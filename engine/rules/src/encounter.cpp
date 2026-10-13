@@ -1023,6 +1023,25 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
         check_end(s, out.events);
         return out;
     }
+    case ActionKind::UseFeature: {
+        if (req.feature_id == 0) return fail("feature_id required");
+        if (req.as_bonus_action) {
+            if (!b.bonus_action) return fail("no bonus action available");
+            b.bonus_action = false;
+        } else if (!spend_action(b, a, req.kind, false)) return fail("no action available");
+        s.budget = b;
+        emit(out.events, EventKind::FeatureUsed, a.id, 0, int32_t(req.feature_id), req.as_bonus_action ? 1 : 0);
+        if (req.heal_dice.count > 0 || req.heal_dice.bonus > 0) {
+            int amount = roll_dice(s.rng, req.heal_dice, false);
+            if (amount > 0) {
+                auto h = apply_healing(a, int16_t(amount));
+                commit_healing(a, h);
+                emit(out.events, EventKind::Healed, a.id, a.id, h.healed, h.hp_after, h.from_zero);
+            }
+        }
+        check_end(s, out.events);
+        return out;
+    }
     case ActionKind::StandUp: {
         int speed = effective_speed(a);
         if (!a.has(Condition::Prone)) return fail("not prone");

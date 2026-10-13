@@ -7,6 +7,10 @@
 //  §5.4; AI drives simulation) and drops "presentation" if it becomes empty.
 //  character@2 (append-only): character@1 + optional top-level "behavior": {"ai": ...}
 //  (NPC allies / auto-play). Migration 1 -> 2 is a no-op.
+//  character@3: feature effects (features[]/traits[] "effect") become mechanically active.
+//  Before @3 they were descriptive only and content baked their numbers into stat blocks (fl1's
+//  longsword 1d8+5 includes Dueling). Migration 2 -> 3 marks every pre-@3 effect
+//  "inert": true so the engine never double-applies it (docs/CONTENT_COMPAT.md).
 #include <optional>
 #include <string>
 
@@ -15,7 +19,7 @@
 namespace eng::assets {
 
 inline constexpr uint32_t kMonsterSchemaVersion = 2;
-inline constexpr uint32_t kCharacterSchemaVersion = 2;
+inline constexpr uint32_t kCharacterSchemaVersion = 3;
 // spell@1: SRD spell (schemas/spell/v1.schema.json); mapped to rules5e::SpellDef by rules5e_content.
 inline constexpr uint32_t kSpellSchemaVersion = 1;
 

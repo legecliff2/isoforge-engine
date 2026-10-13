@@ -36,6 +36,7 @@ CR_XP = {"0": 10, "1/8": 25, "1/4": 50, "1/2": 100, "1": 200, "2": 450, "3": 700
          "18": 20000, "19": 22000, "20": 25000, "21": 33000, "22": 41000, "23": 50000,
          "24": 62000, "25": 75000, "26": 90000, "27": 105000, "28": 120000, "29": 135000,
          "30": 155000}
+TEAM_RE = re.compile(r"^[a-z][a-z0-9_]*$")   # spawn overrides.team (faction id)
 DICE_RE = re.compile(r"^(\d+)d(\d+)([+-]\d+)?$")
 SKILL_ABILITY = {"athletics": "str", "acrobatics": "dex", "sleight_of_hand": "dex", "stealth": "dex",
                  "arcana": "int", "history": "int", "investigation": "int", "nature": "int",
@@ -221,6 +222,9 @@ def check_chunk(doc, errs, ctx):
     for i, s in enumerate(doc["spawns"]):
         if s["archetype"] not in ctx["ids"] and not ctx["external_ok"](s["archetype"]):
             errs.append(f"spawns[{i}]: archetype '{s['archetype']}' not defined in pack or its depends")
+        team = s.get("overrides", {}).get("team")
+        if team is not None and (not isinstance(team, str) or not TEAM_RE.match(team)):
+            errs.append(f"spawns[{i}]: overrides.team {team!r} must match {TEAM_RE.pattern}")
         x, y = s["tile"]["x"], s["tile"]["y"]
         if any(layer[y * CHUNK_SIZE + x][2] & FLAG_BLOCKS_MOVE for layer in layers):
             errs.append(f"spawns[{i}] at ({x},{y}) is on a blocks_move cell")
@@ -312,6 +316,15 @@ def check_spell(doc, errs, ctx):
 CHECKS = {"monster": check_monster, "character": check_character, "chunk": check_chunk, "spell": check_spell}
 
 
+def pack_set_key(pack: Path) -> str:
+    """Packs under tests/compat/<level>/ form one set per level; every other pack is the live set."""
+    parts = pack.resolve().parts
+    for i in range(len(parts) - 2):
+        if parts[i] == "tests" and parts[i + 1] == "compat":
+            return "compat/" + parts[i + 2]
+    return "live"
+
+
 def pack_spell_ids(pack: Path) -> list[tuple[str, str, str]]:
     out = []
     for f in sorted(pack.rglob("*.json")):
@@ -325,8 +338,69 @@ def pack_spell_ids(pack: Path) -> list[tuple[str, str, str]]:
     return out
 
 
-def validate_pack(pack: Path, registry: Registry, by_tag: dict) -> list[str]:
+# Effect kinds with a registered engine hook (eng::sim::FeatureRegistry::builtin()) and a
+# kind-tagged branch in common v1 $defs/effect. Others are allowed but warned about.
+KNOWN_EFFECT_KINDS = frozenset({"damage_bonus", "bonus_action_grant", "self_heal"})
+
+
+COMMON_ID = "https://isoforge.dev/schemas/common/v1.schema.json"
+
+
+def is_active_effects(tag: str) -> bool:
+    """Whether the engine applies this document's feature effects (docs/CONTENT_COMPAT.md §1).
+    character@3+ (gated by the @2->@3 migration); monsters are not gated yet (always applied)."""
+    typ, _, ver = tag.partition("@")
+    return typ == "monster" or (typ == "character" and ver.isdigit() and int(ver) >= 3)
+
+
+def effect_findings(rel: str, doc: dict, tag: str, registry: Registry) -> tuple[list[str], list[str]]:
+    """(errors, warnings) for features[]/traits[] effects.
+
+    - 'inert' is reserved for the engine's character@2->@3 migration: error in every version.
+    - Unknown kinds: warning (the engine reports and ignores them).
+    - Known kinds, active documents (character@3+, monsters): the kind-tagged contract
+      (common@1 $defs/effect) is an error; cost 'reaction' is reserved -> error.
+    - Known kinds, character@1/@2: effects are inert descriptions, so findings are warnings.
+    """
+    errs, warns = [], []
+    active = is_active_effects(tag)
+    v = Draft202012Validator({"$ref": COMMON_ID + "#/$defs/effect"}, registry=registry)
+    for key in ("features", "traits"):
+        for i, f in enumerate(doc.get(key) or []):
+            eff = f.get("effect") if isinstance(f, dict) else None
+            if not isinstance(eff, dict):
+                continue
+            where = f"{rel}: /{key}/{i}/effect"
+            if "inert" in eff:
+                errs.append(f"{where}: 'inert' is reserved for the engine's character@2->@3 migration; "
+                            "do not author it (use character@1/@2 for descriptive effects)")
+            kind = eff.get("kind")
+            if not isinstance(kind, str):
+                continue
+            if kind not in KNOWN_EFFECT_KINDS:
+                warns.append(f"{where}: unknown effect kind '{kind}' "
+                             f"(engine ignores it; known: {', '.join(sorted(KNOWN_EFFECT_KINDS))})")
+                continue
+            found = []
+            if eff.get("cost") == "reaction":
+                found.append("cost 'reaction' is reserved (not supported by the engine yet); "
+                             "use 'action' or 'bonus_action'")
+            # character@3's own schema already reports contract violations as errors.
+            if not (active and tag.startswith("character@")):
+                for e in sorted(v.iter_errors(eff), key=lambda e: list(map(str, e.absolute_path))):
+                    path = "/".join(map(str, e.absolute_path))
+                    found.append(f"{kind}{'.' + path if path else ''}: {e.message[:160]}")
+            if active:
+                errs += [f"{where}: {m}" for m in found]
+            else:
+                warns += [f"{where}: {m} (inert in {tag}; becomes an error if moved to character@3)" for m in found]
+    return errs, warns
+
+
+def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[str] | None = None) -> list[str]:
+    """Returns errors; non-fatal findings are appended to `warnings` (if given)."""
     out: list[str] = runtime_id_collisions(pack_spell_ids(pack))
+    warns: list[str] = warnings if warnings is not None else []
     files = sorted(p for p in pack.rglob("*.json"))
     docs = {}
     for f in files:
@@ -390,6 +464,10 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict) -> list[str]:
         errs += [f"/{'/'.join(map(str, e.absolute_path))}: {e.message[:200]}" for e in schema_errs]
         if not schema_errs and typ in CHECKS:
             CHECKS[typ](doc, errs, ctx)
+        if typ in ("monster", "character") and isinstance(doc, dict):
+            e2, w2 = effect_findings(rel, doc, tag, registry)
+            errs += [e.split(": ", 1)[1] for e in e2]   # errs is prefixed with rel below
+            warns += w2
         out += [f"{rel}: {e}" for e in errs]
     return out
 
@@ -447,10 +525,13 @@ def main(argv: list[str]) -> int:
         return 1
     failed = 0
     for pack in packs:
-        errs = validate_pack(pack, registry, by_tag)
+        warns: list[str] = []
+        errs = validate_pack(pack, registry, by_tag, warns)
         if script_check:
             errs += run_script_check(script_check, pack)
         name = pack.relative_to(ROOT) if pack.is_relative_to(ROOT) else pack
+        for w in warns:
+            print(f"warning {name}/{w}")
         if errs:
             failed += 1
             print(f"FAIL {name}")
@@ -458,12 +539,26 @@ def main(argv: list[str]) -> int:
                 print(f"  {e}")
         else:
             print(f"ok   {name}")
-    # Pack set: every pack validated together is loaded together, so runtime spell ids must be
-    # unique across them too (same content id in several packs is fine: same spell).
-    cross = runtime_id_collisions([e for pack in packs for e in pack_spell_ids(pack)], cross_pack_only=True)
+    # Pack sets: packs loaded together must have unique runtime spell ids and content ids
+    # (a duplicate content id is an error, as in rules5e_content::add_spell). Frozen compat copies
+    # (tests/compat/<level>/...) are their own set, so freezing the live pack doesn't collide with it.
+    sets: dict[str, list[Path]] = {}
+    for pack in packs:
+        sets.setdefault(pack_set_key(pack), []).append(pack)
+    cross = []
+    for key in sorted(sets):
+        cross += runtime_id_collisions([e for pack in sets[key] for e in pack_spell_ids(pack)], cross_pack_only=True)
     for e in cross:
         print(f"FAIL pack set: {e}")
-    print(f"{len(packs) - failed}/{len(packs)} packs valid ({len(by_tag)} schemas)")
+    summary = f"{len(packs) - failed}/{len(packs)} packs valid ({len(by_tag)} schemas)"
+    if cross:
+        summary = f"FAILED: {summary}, but {len(cross)} pack-set error(s)"
+    print(summary)
+    sys.stdout.flush()
+    if not argv:   # default run (ctest content_validate): also the effect negative cases
+        import subprocess
+        r = subprocess.run([sys.executable, str(ROOT / "tests" / "validate" / "run_effect_cases.py")])
+        failed += r.returncode != 0
     return 1 if failed or cross else 0
 
 

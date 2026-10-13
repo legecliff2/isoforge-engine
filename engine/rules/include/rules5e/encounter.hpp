@@ -48,6 +48,11 @@ struct ActionRequest {
     Skill skill = Skill::Athletics;    // AbilityCheck: skill (actor = creature checking)
     int16_t dc = 0;                    // AbilityCheck
     RollMode check_mode = RollMode::Normal;  // AbilityCheck: extra roll-mode source
+    // appended (UseFeature): content feature id (opaque to rules; sim's feature registry) and an
+    // optional self-heal rolled from the encounter rng. Spends the action, or the bonus action
+    // when as_bonus_action (the feature itself grants it). Uses/recharge are tracked by sim.
+    uint32_t feature_id = 0;
+    DiceExpr heal_dice{0, 0, 0};
     // CastSpell: creatures affected when more than one (Hold Person upcast), or one entry per dart
     // (Magic Missile; a single entry = all darts at it). Empty = {target}.
     std::vector<CombatantId> targets = {};
@@ -62,6 +67,9 @@ enum class EventKind : uint8_t {
     CheckRolled,
     ReactionWindowOpened, ReactionTaken, ReactionDeclined, MoveInterrupted, SpellCast, SpellCountered,
     SpellResolved, AcBonus,
+    // appended:
+    FeatureUsed,
+    // appended (spellcasting):
     SavingThrowRolled, ConcentrationEnded, SpellEffectEnded, SpellCheckRolled };
 
 // Flat tagged event; meaning of a/b/c per kind:
@@ -75,7 +83,7 @@ enum class EventKind : uint8_t {
 //   ReactionWindowOpened actor=trigger actor a=ReactionTrigger b=window seq;
 //   ReactionTaken/Declined actor=reactor a=ReactionTrigger b=window seq c=option index;
 //   MoveInterrupted a=feet requested; SpellCast/SpellResolved/SpellCountered a=spell_id b=level;
-//   AcBonus a=bonus b=new AC;
+//   AcBonus a=bonus b=new AC; FeatureUsed a=feature_id b=bonus action (0/1) (Healed follows for self-heals);
 //   SavingThrowRolled actor=saver target=Ability a=natural b=total c=success|concentration<<1;
 //   ConcentrationEnded actor=caster a=spell_id; SpellEffectEnded actor=affected creature a=spell_id
 //   b=Condition removed (-1 none); SpellCheckRolled actor=counterer a=natural b=total c=success (vs DC).

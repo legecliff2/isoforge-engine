@@ -144,3 +144,6 @@ endif()
 
 # Determinism lint over rules5e / detmath / sim / world/gen (§4.7). Registry: cmake/DetLint.cmake.
 include(DetLint)
+
+# Module dependency graph + include lint (§2.2 rules 1, 3-5). Must come after all modules.
+include(DepCheck)

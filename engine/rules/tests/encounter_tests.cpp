@@ -294,3 +294,35 @@ TEST_CASE("dying PC rolls a death save at the start of each of its turns until r
     else if (p->hp == 1) CHECK_FALSE(p->has(Condition::Unconscious));
     else CHECK(p->death.stable);
 }
+
+TEST_CASE("UseFeature: spends the action or bonus action, rolls the self-heal, emits FeatureUsed then Healed") {
+    auto f = fighter(1);
+    f.hp = 5;
+    auto s = begin_encounter({f, goblin(2)}, 9);
+    while (current_actor(s) != 1) REQUIRE(step(s, {current_actor(s), ActionKind::EndTurn}).ok);
+    ActionRequest u{1, ActionKind::UseFeature};
+    CHECK_FALSE(step(s, u).ok);   // feature_id required
+    u.feature_id = 7;
+    u.as_bonus_action = true;
+    u.heal_dice = {1, 10, 1};
+    auto r = step(s, u);
+    REQUIRE(r.ok);
+    REQUIRE(r.events.size() >= 2);
+    CHECK(r.events[0].kind == EventKind::FeatureUsed);
+    CHECK(r.events[0].a == 7);
+    CHECK(r.events[0].b == 1);
+    CHECK(r.events[1].kind == EventKind::Healed);
+    CHECK(r.events[1].actor == 1);
+    CHECK(r.events[1].target == 1);
+    CHECK(find(s, 1)->hp == 5 + r.events[1].a);
+    CHECK(r.events[1].a >= 2);
+    CHECK_FALSE(s.budget.bonus_action);
+    CHECK(s.budget.action);
+    CHECK_FALSE(step(s, u).ok);   // no bonus action left
+    u.as_bonus_action = false;
+    u.heal_dice = {0, 0, 0};
+    auto r2 = step(s, u);         // as an action; no heal
+    REQUIRE(r2.ok);
+    CHECK(r2.events.size() == 1);
+    CHECK_FALSE(s.budget.action);
+}
