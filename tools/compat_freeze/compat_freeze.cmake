@@ -9,12 +9,23 @@ cmake_minimum_required(VERSION 3.28)
 if(NOT ROOT)
     get_filename_component(ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 endif()
-set(dir "${ROOT}/tests/compat")
-set(manifest "${dir}/MANIFEST.sha256")
+# Optional overrides (reused for frozen API definition files):
+#   -DDIR=<abs dir>  -DMANIFEST=<abs file>  -DINCLUDE=<regex on dir-relative paths>
+if(NOT DIR)
+    set(DIR "${ROOT}/tests/compat")
+endif()
+if(NOT MANIFEST)
+    set(MANIFEST "${DIR}/MANIFEST.sha256")
+endif()
+if(NOT INCLUDE)
+    set(INCLUDE "^fl[0-9]+/")   # frozen corpora only; README etc. stay editable
+endif()
+set(dir "${DIR}")
+set(manifest "${MANIFEST}")
 
 file(GLOB_RECURSE files LIST_DIRECTORIES false RELATIVE "${dir}" "${dir}/*")
 list(REMOVE_ITEM files "MANIFEST.sha256")
-list(FILTER files INCLUDE REGEX "^fl[0-9]+/")   # frozen corpora only; README etc. stay editable
+list(FILTER files INCLUDE REGEX "${INCLUDE}")
 list(SORT files)
 set(actual "")
 foreach(f IN LISTS files)
@@ -48,9 +59,9 @@ if(NOT expected STREQUAL actual)
             string(APPEND diff "  + ${l}\n")
         endif()
     endforeach()
-    message(FATAL_ERROR "compat_freeze: tests/compat/ differs from MANIFEST.sha256 "
+    message(FATAL_ERROR "compat_freeze: ${dir} differs from ${manifest} "
                         "(- expected, + actual):\n${diff}"
-                        "Frozen corpus files must never change. See tests/compat/README.md.")
+                        "Frozen files must never change (tests/compat/README.md, ARCHITECTURE.md §3.2/§3.3).")
 endif()
 list(LENGTH files n)
 message(STATUS "compat_freeze: OK (${n} files)")
