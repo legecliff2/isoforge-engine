@@ -18,6 +18,7 @@
 #include "rules5e/encounter.hpp"
 #include "sim/components.hpp"
 #include "sim/content.hpp"
+#include "sim/events.hpp"
 #include "sim/grid.hpp"
 #include "world/chunk.hpp"
 
@@ -51,14 +52,6 @@ struct Command {
 struct LogEntry {
     rules5e::LoggedStep step;
     std::optional<Vec2i> to;
-};
-
-struct SimEvent {
-    enum class Kind : uint8_t { Rules, TileMoved };
-    Kind kind = Kind::Rules;
-    rules5e::Event rules{};       // Kind::Rules (incl. ReactionWindowOpened/Taken/Declined, MoveInterrupted)
-    CombatantId actor = 0;        // TileMoved: mover
-    Vec2i tile{};                 // TileMoved: new tile
 };
 
 struct SubmitResult {
