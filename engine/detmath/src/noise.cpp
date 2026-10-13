@@ -1,18 +1,22 @@
-#include "procgen/noise.hpp"
+#include "detmath/noise.hpp"
 
-#include "base/canonical_hash.hpp"
+#include <array>
 
-namespace procgen::noise {
+#include "detmath/stable_hash.hpp"
 
-using detmath::Fx;
+namespace detmath::noise {
+
 
 Fx lattice(uint64_t seed, int64_t ix, int64_t iy, uint32_t octave) {
-    eng::CanonicalHasher h;
-    h.u64(seed);
-    h.u64(uint64_t(ix));
-    h.u64(uint64_t(iy));
-    h.u32(octave);
-    return Fx::from_raw(int32_t(h.value() >> 48));   // [0, 65535] -> [0, 1)
+    // Canonical little-endian bytes: u64 seed, i64 ix, i64 iy, u32 octave (28 bytes, §4.5).
+    std::array<uint8_t, 28> b{};
+    std::size_t n = 0;
+    auto put = [&](uint64_t v, int bytes) { for (int i = 0; i < bytes; ++i) b[n++] = uint8_t(v >> (8 * i)); };
+    put(seed, 8);
+    put(uint64_t(ix), 8);
+    put(uint64_t(iy), 8);
+    put(octave, 4);
+    return Fx::from_raw(int32_t(stable_hash(b) >> 48));   // [0, 65535] -> [0, 1)
 }
 
 namespace {
@@ -51,4 +55,4 @@ Fx fbm2(uint64_t seed, int64_t x, int64_t y, int log2_cell, int octaves) {
     return Fx::from_raw(int32_t(sum / norm));   // non-negative, so truncation == floor
 }
 
-} // namespace procgen::noise
+} // namespace detmath::noise

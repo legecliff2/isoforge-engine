@@ -11,11 +11,12 @@
 #include <vector>
 
 #include "procgen/dungeon.hpp"
-#include "procgen/noise.hpp"
+#include "detmath/noise.hpp"
 #include "procgen/seed.hpp"
 #include "rng/rng.hpp"
 
 using namespace procgen;
+namespace noise = detmath::noise;   // noise lives in detmath (moved from procgen)
 
 // ---------------------------------------------------------------- seed strings (§4.6)
 

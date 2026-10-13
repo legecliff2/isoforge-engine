@@ -3,7 +3,7 @@
 # world::Chunk; it emits a mirror (GenChunk) and chunk@1 JSON. world_glue/ adapts it to
 # IChunkProvider (ProceduralProvider), see docs/PROCGEN.md.
 engine_add_module(procgen
-    SOURCES     src/seed.cpp src/noise.cpp src/dungeon.cpp
+    SOURCES     src/seed.cpp src/dungeon.cpp
     PUBLIC_DEPS detmath rng base
     TESTS       tests/procgen_tests.cpp
     DETERMINISTIC)
