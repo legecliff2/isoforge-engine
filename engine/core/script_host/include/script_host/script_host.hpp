@@ -100,9 +100,19 @@ struct PackScripts {
     bool ok = false;
     std::vector<std::string> errors;
     std::map<std::string, ScriptId> scripts;   // pack-relative path -> id
+    // Monster archetype id -> its behavior.ai script (monster@2; monster@1 presentation.ai is
+    // migrated). Monsters are the manifest "contents" .json files whose $schema is monster@N.
+    std::map<std::string, ScriptId> ai_by_archetype;
     uint32_t api_level = 0;
 };
 PackScripts load_pack_scripts(ScriptHost& host, const std::filesystem::path& pack_dir);
+// Typecheck only (no VM), as used by tools/script_check.
+struct PackCheck {
+    std::vector<std::string> errors;
+    std::size_t scripts = 0;
+    uint32_t api_level = 0;
+};
+PackCheck check_pack_scripts(const std::filesystem::path& pack_dir);
 // Reads only the manifest api_level (nullopt + message on failure).
 std::optional<uint32_t> read_pack_api_level(const std::filesystem::path& pack_dir, std::string* err = nullptr);
 
