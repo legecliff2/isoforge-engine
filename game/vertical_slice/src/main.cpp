@@ -58,8 +58,8 @@ int main(int argc, char** argv) {
     uint32_t auto_timer = 0;
     int frame = 0;
 
-    // Centre on the middle of the spawns' row (tile 15, 15).
-    const Vec2f focus = view->tile_center_px(15.f, 15.f);
+    // The camera follows the centre of the combatants' bounding box; pan is an offset from it.
+    Vec2f focus = view->actors_focus_px(session->view());
 
     while (!events.input().quit_requested && (max_frames < 0 || frame < max_frames)) {
         events.pump();
@@ -83,6 +83,9 @@ int main(int argc, char** argv) {
             if (autoplay && ++auto_timer % 20 == 0) session->step();
         }
 
+        const slice::ViewModel vm = session->view();
+        const Vec2f target = view->actors_focus_px(vm);
+        focus = {focus.x + (target.x - focus.x) * 0.15f, focus.y + (target.y - focus.y) * 0.15f};   // smooth follow
         const Vec2i px = window->size_in_pixels();
         iso2d::Camera cam;
         cam.zoom = zoom;
@@ -90,7 +93,6 @@ int main(int argc, char** argv) {
         cam.viewport_h = uint32_t(px.y);
         cam.position = {focus.x + pan.x - px.x / (2.f * zoom), focus.y + pan.y - px.y / (2.f * zoom)};
 
-        const slice::ViewModel vm = session->view();
         if (device->begin_frame()) {
             view->prepare(vm, cam, uint32_t(px.x), uint32_t(px.y));
             auto& cl = device->command_list();

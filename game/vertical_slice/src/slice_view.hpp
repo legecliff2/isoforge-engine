@@ -17,6 +17,9 @@ public:
 
     // World px of the centre of tile (x, y) at elevation 0.
     eng::Vec2f tile_center_px(float x, float y) const;
+    // World px centre of the combatants' screen-space bounding box (tile diamonds + sprite
+    // height), or of the whole map when there are no actors. Presentation only.
+    eng::Vec2f actors_focus_px(const ViewModel&) const;
 
     // Builds and uploads this frame's sprites. Call outside a render pass.
     void prepare(const ViewModel&, const eng::iso2d::Camera& world_cam, uint32_t screen_w, uint32_t screen_h);

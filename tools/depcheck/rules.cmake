@@ -34,3 +34,13 @@ set(EXT_sim           "nlohmann_json::nlohmann_json")
 set(EXT_procgen_world "nlohmann_json::nlohmann_json")
 # Allowed everywhere: toolchain/system libs.
 set(EXT_ANY           "Threads::Threads")
+
+# Executables (and their local helper libs), §2.1 last two rows. Edges are legal iff reachable
+# from these lists. No third-party links: SDL etc. only through platform/render_* (rule 3).
+#   game/*: `engine`, `iso2d` (engine facade not built yet; its row = all core modules).
+set(ALLOW_KIND_game "engine;iso2d")
+set(EXT_KIND_game   "")
+#   tools/*: `assets`, `world`, `rules5e`, no renderer/platform. script_check needs script_host
+#   (pack typecheck = validator) and procgen_dump needs procgen (procgen preview).
+set(ALLOW_KIND_tool "assets;world;rules5e;script_host;procgen;procgen_world")
+set(EXT_KIND_tool   "")
