@@ -52,7 +52,7 @@ Location: `tests/goldens/stream/*.txt`. `procgen_world_tests` ("stream golden fi
 @gen_version 1          # directive: applies to following lines (default 1)
 @level 0                # directive: focus level (default 0)
 <world_seed_hex> <focus_x> <focus_y> <radius> <digest_u64>
-c0ffee 5 5 2 6382347445354989004
+c0ffee 5 5 2 16848166243755828085
 ```
 
 - `world_seed_hex`: hex without a `0x` prefix, at most 16 digits.
