@@ -47,6 +47,11 @@ struct ActionRequest {
     Skill skill = Skill::Athletics;    // AbilityCheck: skill (actor = creature checking)
     int16_t dc = 0;                    // AbilityCheck
     RollMode check_mode = RollMode::Normal;  // AbilityCheck: extra roll-mode source
+    // appended (UseFeature): content feature id (opaque to rules; sim's feature registry) and an
+    // optional self-heal rolled from the encounter rng. Spends the action, or the bonus action
+    // when as_bonus_action (the feature itself grants it). Uses/recharge are tracked by sim.
+    uint32_t feature_id = 0;
+    DiceExpr heal_dice{0, 0, 0};
 };
 
 enum class EventKind : uint8_t {
@@ -57,7 +62,9 @@ enum class EventKind : uint8_t {
     Healed, ConditionRemoved, MedicineCheck, Helped, Hid, Readied, ReadyTriggered, ReadyExpired,
     CheckRolled,
     ReactionWindowOpened, ReactionTaken, ReactionDeclined, MoveInterrupted, SpellCast, SpellCountered,
-    SpellResolved, AcBonus };
+    SpellResolved, AcBonus,
+    // appended:
+    FeatureUsed };
 
 // Flat tagged event; meaning of a/b/c per kind:
 //   InitiativeRolled a=total; TurnStarted a=round; AttackResolved a=natural b=total c=hit|crit<<1;
@@ -70,7 +77,7 @@ enum class EventKind : uint8_t {
 //   ReactionWindowOpened actor=trigger actor a=ReactionTrigger b=window seq;
 //   ReactionTaken/Declined actor=reactor a=ReactionTrigger b=window seq c=option index;
 //   MoveInterrupted a=feet requested; SpellCast/SpellResolved/SpellCountered a=spell_id b=level;
-//   AcBonus a=bonus b=new AC.
+//   AcBonus a=bonus b=new AC; FeatureUsed a=feature_id b=bonus action (0/1) (Healed follows for self-heals).
 // reaction_depth: 0 for the action itself, 1+ for events produced while resolving a reaction.
 struct Event { EventKind kind; CombatantId actor = 0, target = 0; int32_t a = 0, b = 0, c = 0;
                uint8_t reaction_depth = 0; };

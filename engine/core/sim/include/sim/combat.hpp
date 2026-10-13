@@ -9,6 +9,7 @@
 // sends rules5e::decision_request. settle() is the sync adapter for AI/tests.
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -18,6 +19,7 @@
 #include "rules5e/encounter.hpp"
 #include "sim/components.hpp"
 #include "sim/content.hpp"
+#include "sim/events.hpp"
 #include "sim/grid.hpp"
 #include "world/chunk.hpp"
 
@@ -51,14 +53,6 @@ struct Command {
 struct LogEntry {
     rules5e::LoggedStep step;
     std::optional<Vec2i> to;
-};
-
-struct SimEvent {
-    enum class Kind : uint8_t { Rules, TileMoved };
-    Kind kind = Kind::Rules;
-    rules5e::Event rules{};       // Kind::Rules (incl. ReactionWindowOpened/Taken/Declined, MoveInterrupted)
-    CombatantId actor = 0;        // TileMoved: mover
-    Vec2i tile{};                 // TileMoved: new tile
 };
 
 struct SubmitResult {
@@ -103,6 +97,11 @@ public:
     const Archetype* archetype(CombatantId id) const;
     std::vector<Vec2i> occupied_except(CombatantId id) const;   // tiles of other non-dead combatants
     bool hostile(CombatantId a, CombatantId b) const;
+    // Active features (UseFeature): remaining uses (255 = unlimited), and whether usable now.
+    // Would stepping `mover` from `from` to `to` leave some hostile's melee reach?
+    bool would_leave_reach(CombatantId mover, Vec2i from, Vec2i to) const { return leaves_reach(mover, from, to); }
+    uint8_t feature_uses_left(CombatantId id, uint32_t feature_id) const;
+    bool can_use_feature(CombatantId id, uint32_t feature_id) const;
 
     // Canonical hash (StableHash) of the event stream + final positions. Golden material.
     uint64_t hash() const;
@@ -118,6 +117,7 @@ private:
     SubmitResult finish(rules5e::StepResult sr);
     SubmitResult do_rules(rules5e::ActionRequest req);
     SubmitResult do_step(Vec2i to);
+    void on_completed(const rules5e::LoggedStep& ls);
     bool move_tile(CombatantId mover, Vec2i to, const std::vector<rules5e::Event>& evs);
     friend std::optional<Combat> replay(ecs::Registry&, const world::Chunk&, const ContentLibrary&, uint64_t,
                                         const std::vector<LogEntry>&, std::string*);
@@ -132,6 +132,7 @@ private:
     std::vector<Slot> slots_;              // in spawn order
     std::vector<SimEvent> events_;
     std::vector<LogEntry> log_;
+    std::map<std::pair<CombatantId, uint32_t>, uint8_t> feature_used_;   // uses spent since recharge
     std::vector<std::string> team_names_;
     PollOrderFn poll_order_;
     std::optional<Vec2i> step_to_;   // destination of the Move being resolved / paused (sim-only)

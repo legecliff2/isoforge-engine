@@ -69,10 +69,13 @@ class EffectKinds(unittest.TestCase):
         self.setUp()
 
     def test_cost_values_accepted(self):
-        for cost in ("action", "bonus_action", "reaction"):
+        for cost in ("action", "bonus_action"):
             with self.subTest(cost):
                 self.edit_fighter(lambda d: d["features"][1]["effect"].__setitem__("cost", cost))
                 self.assertEqual(self.run_pack()[0], [])
+        # character@3: 'reaction' is reserved (clear error); see tests/validate/effect_cases.
+        self.edit_fighter(lambda d: d["features"][1]["effect"].__setitem__("cost", "reaction"))
+        self.assertTrue(any("reserved" in e for e in self.run_pack()[0]))
 
     def test_missing_required_field(self):
         self.edit_fighter(lambda d: d["features"][1]["effect"].pop("dice"))

@@ -29,6 +29,7 @@ function(engine_add_module name)
         _engine_deterministic(${tgt})
     endif()
     # Record dependency edges for tools/depcheck (§2.2).
+    set_property(GLOBAL APPEND PROPERTY ENGINE_MODULES "${name}")
     set_property(GLOBAL APPEND PROPERTY ENGINE_MODULE_EDGES "${name}:${M_PUBLIC_DEPS};${M_PRIVATE_DEPS}")
 
     if(ENGINE_BUILD_TESTS AND M_TESTS)

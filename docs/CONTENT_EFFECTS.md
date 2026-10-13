@@ -4,14 +4,37 @@ Part of the content compatibility contract (ARCHITECTURE §3). Machine-checked b
 `schemas/common/v1.schema.json` (`$defs/effect`, `effect_cost`, `effect_condition`) and
 `tools/validate/validate_packs.py`. The engine side is `eng::sim::FeatureRegistry` (`sim/features.hpp`).
 
+## 0. Version gating: when effects are applied
+
+| document | effects | validator |
+|---|---|---|
+| `character@3` | **applied by the engine** | kind contract errors; `cost: reaction` is an error (reserved) |
+| `character@1` / `@2` | **inert descriptions**: the engine's @2->@3 migration marks each effect `"inert": true` and never applies it, because those stat blocks bake the numbers in (fl1's fighter writes `1d8+5` with Dueling included) | kind contract findings are warnings only |
+| `monster@1` / `@2` | applied (not gated yet) | kind contract errors |
+
+Effects are applied by the engine, so in `character@3` their numbers must **not** be baked
+into the stat block. Dueling's +2 is not in the longsword damage: write `1d8+3`, not `1d8+5`.
+To activate effects on an old character, move it to `character@3` and de-bake its numbers in
+the same change.
+
+`inert` is reserved for the engine migration. Authoring it is an error in every version.
+
+**Monsters:** effects are applied for every monster version today. No shipped monster bakes an
+effect's number into its stats: the goblin's Nimble Escape (`bonus_action_grant`) has no number
+to bake. A monster `damage_bonus` (or any numeric effect) whose number is also baked into its
+actions would require `monster@3`, with the same inert-migration gate as `character@3`. Don't
+author one before that exists.
+
 ## 1. Feature effects
 
 Character `features[]` and monster `traits[]` entries may carry a machine-readable `effect`
 object tagged by `kind`. The engine maps `kind` to a registered hook and never matches feature
 names or ids, so renaming a feature does not change what it does.
 
-- **Known kinds** (listed below) have their fields validated by the schema. A malformed known
-  effect is a validation **error**, and the engine also rejects it at load.
+- **Known kinds** (listed below) have their fields validated against `common@1 $defs/effect`
+  (`character@3` uses it directly via `$defs/trait_active`). A malformed known effect is an
+  **error** in active documents, and the engine also rejects it at load. In `character@1/@2` it is
+  only a **warning** (see §0).
 - **Unknown kinds** are allowed so content can run ahead of the engine. The validator prints a
   **warning** and the engine lists them in `Archetype::unsupported_features` and ignores them.
 - The effect object is **open**: extra fields are ignored. This keeps `common@1` append-only;
@@ -22,7 +45,7 @@ Common field, valid on any kind:
 | field | type | meaning |
 |---|---|---|
 | `kind` | string `^[a-z0-9_]+$` | hook id (required) |
-| `cost` | `"action"` \| `"bonus_action"` \| `"reaction"` | action-economy cost of an *active* effect; omitted = `action`. Engine v0 implements `action` and `bonus_action`; `reaction` is reserved (engine v0 rejects it on `self_heal`). |
+| `cost` | `"action"` \| `"bonus_action"` | action-economy cost of an *active* effect; omitted = `action`. `"reaction"` is **reserved**: the schema enum lists it, but it is an error in active documents (`character@3`, monsters) and the engine rejects it. |
 
 ### `damage_bonus` (static)
 
@@ -51,7 +74,7 @@ Example (Nimble Escape): `{ "kind": "bonus_action_grant", "actions": ["disengage
 | `dice` | dice string `NdS[+/-B]` | yes | healing roll |
 | `plus` | integer, `"level"` or `"<class>_level"` | no | flat bonus: the integer itself, total level, or that class's level (e.g. `fighter_level`) |
 | `uses` | integer 0..255 | no | uses per recharge; 0 or omitted = unlimited |
-| `recharge` | `"short_rest"` \| `"long_rest"` | no | when uses refill; omitted = never |
+| `recharge` | `"short_rest"` \| `"long_rest"` | no | when uses refill; omitted = never (any other value is an error; the engine also rejects it) |
 | `cost` | see above | no | default `action` |
 
 Example (Second Wind): `{ "kind": "self_heal", "dice": "1d10", "plus": "fighter_level", "uses": 1, "recharge": "short_rest", "cost": "bonus_action" }`
@@ -67,7 +90,8 @@ Named predicates over an attack action, registered in the FeatureRegistry:
 | `ranged_weapon` | `kind` is `ranged_weapon_attack` |
 
 Adding a kind or condition: register the hook or predicate in the engine, add a branch or enum
-value to `common@1` (additive), add it to `KNOWN_EFFECT_KINDS` in the validator, and document it here.
+value to `common@1` (additive), add it to `KNOWN_EFFECT_KINDS` in the validator, and document it
+here. Negative cases live in `tests/validate/effect_cases/`.
 
 ## 2. Weapon damage is base damage
 

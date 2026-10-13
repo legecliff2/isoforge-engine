@@ -1,0 +1,1 @@
+rules5e=detmath,rng,ext:SDL3::SDL3-static
