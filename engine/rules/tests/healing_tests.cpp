@@ -51,7 +51,7 @@ TEST_CASE("encounter heal(): events, no-ops on invalid, dying PC returns to the 
     CHECK_FALSE(heal(s, 2, 3).ok);                  // the dead stay dead
 }
 
-TEST_CASE("default end condition: ends when no PC is conscious; reports each PC's state") {
+TEST_CASE("default end condition: a team with no conscious member ends it; PC states reported") {
     auto s = begin_encounter({pc(1), pc(4), pc(5), monster(2)}, 11);
     CHECK_FALSE(s.ended);
     make_dying(mut(s, 1));
@@ -68,7 +68,8 @@ TEST_CASE("default end condition: ends when no PC is conscious; reports each PC'
     }
     REQUIRE(s.ended);
     REQUIRE(s.outcome.has_value());
-    CHECK(s.outcome->reason == EndReason::NoPcConscious);
+    CHECK(s.outcome->reason == EndReason::TeamNoConscious);
+    CHECK(s.outcome->teams_without_conscious == std::vector<uint8_t>{0});
     REQUIRE(s.outcome->pcs.size() == 3);
     CHECK(s.outcome->pcs[0].id == 1); CHECK(s.outcome->pcs[0].state == PcState::Dying);
     CHECK(s.outcome->pcs[1].id == 4); CHECK(s.outcome->pcs[1].state == PcState::Stable);
@@ -76,11 +77,50 @@ TEST_CASE("default end condition: ends when no PC is conscious; reports each PC'
     CHECK(s.outcome->pcs[2].state == PcState::Dying);
 }
 
-TEST_CASE("default end condition does not end when every monster is down") {
+TEST_CASE("default end condition also ends when the monsters' team is down") {
     auto s = begin_encounter({pc(1), monster(2)}, 4);
     mut(s, 2).dead = true;
     REQUIRE(step(s, {current_actor(s), ActionKind::EndTurn}).ok);
-    CHECK_FALSE(s.ended);                           // rules don't call a "win"
+    REQUIRE(s.ended);
+    CHECK(s.outcome->reason == EndReason::TeamNoConscious);
+    CHECK(s.outcome->teams_without_conscious == std::vector<uint8_t>{1});
+    CHECK(s.outcome->pcs[0].state == PcState::Conscious);   // facts only; no win/loss
+}
+
+TEST_CASE("default end condition: three teams, ends when any one is down") {
+    auto third = monster(3); third.team = 2;
+    auto s = begin_encounter({pc(1), monster(2), third}, 4);
+    CHECK_FALSE(s.ended);
+    make_dying(mut(s, 1));
+    mut(s, 3).dead = true;
+    REQUIRE(step(s, {current_actor(s), ActionKind::EndTurn}).ok);
+    REQUIRE(s.ended);
+    CHECK(s.outcome->teams_without_conscious == std::vector<uint8_t>{0, 2});
+}
+
+TEST_CASE("invalid setup: fewer than two teams ends immediately") {
+    std::vector<Event> ev;
+    auto s = begin_encounter({pc(1), pc(4)}, 1, &ev);
+    REQUIRE(s.ended);
+    CHECK(s.outcome->reason == EndReason::InvalidSetup);
+    CHECK(ev.back().kind == EventKind::EncounterEnded);
+    CHECK(ev.back().a == int32_t(EndReason::InvalidSetup));
+    CHECK_FALSE(step(s, {current_actor(s), ActionKind::EndTurn}).ok);
+    auto e = begin_encounter({}, 1);
+    CHECK(e.ended);
+    CHECK(e.outcome->reason == EndReason::InvalidSetup);
+}
+
+TEST_CASE("end_when_no_pc_conscious keeps the previous default available") {
+    EncounterHooks h; h.end_condition = end_when_no_pc_conscious;
+    auto s = begin_encounter({pc(1), monster(2)}, 4, nullptr, h);
+    mut(s, 2).dead = true;
+    REQUIRE(step(s, {current_actor(s), ActionKind::EndTurn}).ok);
+    CHECK_FALSE(s.ended);
+    make_dying(mut(s, 1));
+    REQUIRE(step(s, {current_actor(s), ActionKind::EndTurn}).ok);
+    REQUIRE(s.ended);
+    CHECK(s.outcome->reason == EndReason::NoPcConscious);
 }
 
 TEST_CASE("end-condition hook overrides the default") {

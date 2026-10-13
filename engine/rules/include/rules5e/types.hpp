@@ -93,6 +93,7 @@ struct Combatant {
     CombatantId helped_vs = 0;              // Help: advantage on next attack vs this target
     CombatantId helped_by = 0;              //   ... granted by this helper (expires at its next turn)
     bool     has_readied = false;           // Ready: response stored in the encounter
+    CombatantId check_helped_by = 0;        // Help: advantage on next ability check, from this helper
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
