@@ -211,25 +211,45 @@
     },
     {
       "name": "ci-linux-gcc",
-      "configurePreset": "ci-linux-gcc"
+      "configurePreset": "ci-linux-gcc",
+      "nativeToolOptions": [
+        "-k",
+        "0"
+      ]
     },
     {
       "name": "ci-linux-clang",
-      "configurePreset": "ci-linux-clang"
+      "configurePreset": "ci-linux-clang",
+      "nativeToolOptions": [
+        "-k",
+        "0"
+      ]
     },
     {
       "name": "ci-mac-clang",
-      "configurePreset": "ci-mac-clang"
+      "configurePreset": "ci-mac-clang",
+      "nativeToolOptions": [
+        "-k",
+        "0"
+      ]
     },
     {
       "name": "ci-win-msvc-debug",
       "configurePreset": "ci-win-msvc",
-      "configuration": "Debug"
+      "configuration": "Debug",
+      "nativeToolOptions": [
+        "-k",
+        "0"
+      ]
     },
     {
       "name": "ci-win-msvc-release",
       "configurePreset": "ci-win-msvc",
-      "configuration": "Release"
+      "configuration": "Release",
+      "nativeToolOptions": [
+        "-k",
+        "0"
+      ]
     }
   ],
   "testPresets": [
