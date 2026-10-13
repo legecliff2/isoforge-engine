@@ -104,6 +104,28 @@ void end_concentration(EncounterState& s, CombatantId caster, std::vector<Event>
     }
 }
 
+// Repeat saves with this timing for effects on `c` (Hold Person: end of turn). A success ends that
+// effect; the caster's concentration ends once none of its effects from that spell remain.
+void repeat_saves(EncounterState& s, CombatantId cid, RepeatSave timing, std::vector<Event>& ev) {
+    std::vector<ActiveSpellEffect> due;
+    for (const auto& e : s.effects) if (e.target == cid && e.repeat_save == timing) due.push_back(e);
+    for (const auto& e : due) {
+        Combatant* c = find_mut(s, cid);
+        if (!c || c->dead) return;
+        auto it = std::find_if(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
+            return o.spell_id == e.spell_id && o.caster == e.caster && o.target == e.target; });
+        if (it == s.effects.end()) continue;
+        auto r = saving_throw(s.rng, *c, e.save_ability, e.dc);
+        emit(ev, EventKind::SavingThrowRolled, cid, CombatantId(e.save_ability), r.roll.natural, r.roll.total, int32_t(r.success));
+        if (!r.success) continue;
+        end_effect(s, std::size_t(it - s.effects.begin()), ev);
+        bool remaining = std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
+            return o.caster == e.caster && o.spell_id == e.spell_id; });
+        Combatant* caster = find_mut(s, e.caster);
+        if (!remaining && caster && caster->concentration_spell == e.spell_id) end_concentration(s, e.caster, ev);
+    }
+}
+
 // SRD: concentration ends when the caster is incapacitated or dies.
 void sweep_concentration(EncounterState& s, std::vector<Event>& ev) {
     for (std::size_t i = 0; i < s.combatants.size(); ++i) {
@@ -116,13 +138,18 @@ void sweep_concentration(EncounterState& s, std::vector<Event>& ev) {
 // Damage plus the concentration check (SRD: CON save, DC max(10, half the damage taken)).
 void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bool critical, std::vector<Event>& ev) {
     after_damage(t, d, critical, ev);
-    if (t.concentration_spell == 0 || d.dealt <= 0) return;
-    if (t.dead || t.hp <= 0) { end_concentration(s, t.id, ev); return; }
-    const int dc = std::max(10, d.dealt / 2);
-    auto r = saving_throw(s.rng, t, Ability::Con, dc);
-    emit(ev, EventKind::SavingThrowRolled, t.id, CombatantId(Ability::Con), r.roll.natural, r.roll.total,
-         int32_t(r.success) | 2);
-    if (!r.success) end_concentration(s, t.id, ev);
+    if (d.dealt <= 0) return;
+    if (t.concentration_spell != 0) {
+        if (t.dead || t.hp <= 0) end_concentration(s, t.id, ev);
+        else {
+            const int dc = std::max(10, d.dealt / 2);
+            auto r = saving_throw(s.rng, t, Ability::Con, dc);
+            emit(ev, EventKind::SavingThrowRolled, t.id, CombatantId(Ability::Con), r.roll.natural, r.roll.total,
+                 int32_t(r.success) | 2);
+            if (!r.success) end_concentration(s, t.id, ev);
+        }
+    }
+    repeat_saves(s, t.id, RepeatSave::OnDamage, ev);
 }
 
 const SpellDef* spell_def(const EncounterState& s, uint32_t id) {
@@ -130,21 +157,26 @@ const SpellDef* spell_def(const EncounterState& s, uint32_t id) {
 }
 
 // Reaction spells the reactor can cast now for this trigger (SpellBook options), before hook options.
-// AcBonus: one option at the lowest slot level available. Counter: one option per slot level.
+// One option per available slot level, ascending (Auto takes option 0 = the lowest slot).
 std::vector<ReactionOption> spell_reaction_options(const EncounterState& s, const Combatant& r,
-                                                   ReactionTrigger trig, SpellEffectKind kind) {
+                                                   const ReactionWindow& w, SpellEffectKind kind) {
+    const ReactionTrigger trig = w.trigger;
+    // BeingHit without an attack roll = targeted by a spell (Magic Missile): only spells that list it.
+    const bool targeted_only = trig == ReactionTrigger::BeingHit && w.spell_id != 0 && w.attack_natural == 0;
+    const Combatant* trigger_actor = find(s, w.trigger_actor);
     std::vector<ReactionOption> out;
     if (!s.hooks.spells) return out;
     for (uint32_t id : r.spells_known) {
         const SpellDef* d = s.hooks.spells->find(id);
         if (!d || d->casting_time != CastingTime::Reaction || d->reaction_trigger != trig || d->kind != kind) continue;
         if (s.hooks.can_provide_components && !s.hooks.can_provide_components(s, r, *d)) continue;
+        if (targeted_only && std::find(d->or_targeted_by.begin(), d->or_targeted_by.end(), w.spell_id) == d->or_targeted_by.end()) continue;
+        if (d->requires_sight && s.hooks.can_see && trigger_actor && !s.hooks.can_see(s, r, *trigger_actor)) continue;
         for (uint8_t L = std::max<uint8_t>(d->level, 1); L <= 9; ++L) {
             if (!has_slot(r, L)) continue;
             ReactionOption o{0, kind == SpellEffectKind::AcBonus ? ReactionOptionKind::AcBonus : ReactionOptionKind::Counter,
                              kind == SpellEffectKind::AcBonus ? d->ac_bonus : int8_t(0), d->id, L};
-            out.push_back(o);
-            if (kind == SpellEffectKind::AcBonus) break;
+            out.push_back(o);   // ascending: option 0 = lowest slot (what Auto takes)
         }
     }
     return out;
@@ -253,7 +285,7 @@ bool spell_cast_window(EncounterState& s, Ctx& ctx, Combatant& caster, uint32_t 
 bool being_hit_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const ReactionWindow& w,
                       std::vector<Event>& ev, const std::function<bool(const ReactionOption&)>& auto_ok) {
     if (!may_open(s, w) || !may_react(s, t, w.trigger) || !in_range(s, w, t)) return false;
-    auto opts = spell_reaction_options(s, t, ReactionTrigger::BeingHit, SpellEffectKind::AcBonus);
+    auto opts = spell_reaction_options(s, t, w, SpellEffectKind::AcBonus);
     if (s.hooks.being_hit_options) {
         auto extra = s.hooks.being_hit_options(s, w, t);
         opts.insert(opts.end(), extra.begin(), extra.end());
@@ -367,7 +399,7 @@ bool spell_cast_window(EncounterState& s, Ctx& ctx, Combatant& caster, uint32_t 
     w.spell_id = spell_id; w.spell_level = level; w.target = target;
     if (!may_open(s, w)) return false;
     auto options_for = [&](const Combatant& r) {
-        auto opts = spell_reaction_options(s, r, ReactionTrigger::SpellCast, SpellEffectKind::Counter);
+        auto opts = spell_reaction_options(s, r, w, SpellEffectKind::Counter);
         if (s.hooks.spell_cast_options) {
             auto extra = s.hooks.spell_cast_options(s, w, r);
             opts.insert(opts.end(), extra.begin(), extra.end());
@@ -418,26 +450,6 @@ bool spell_cast_window(EncounterState& s, Ctx& ctx, Combatant& caster, uint32_t 
     return false;
 }
 
-// Repeat saves at the end of `c`'s turn (Hold Person). A success ends that effect; the caster's
-// concentration ends once none of its effects from that spell remain.
-void end_of_turn_saves(EncounterState& s, Combatant& c, std::vector<Event>& ev) {
-    std::vector<ActiveSpellEffect> due;
-    for (const auto& e : s.effects) if (e.target == c.id && e.repeat_save == RepeatSave::EndOfTurn) due.push_back(e);
-    for (const auto& e : due) {
-        auto it = std::find_if(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
-            return o.spell_id == e.spell_id && o.caster == e.caster && o.target == e.target; });
-        if (it == s.effects.end()) continue;
-        auto r = saving_throw(s.rng, c, e.save_ability, e.dc);
-        emit(ev, EventKind::SavingThrowRolled, c.id, CombatantId(e.save_ability), r.roll.natural, r.roll.total, int32_t(r.success));
-        if (!r.success) continue;
-        end_effect(s, std::size_t(it - s.effects.begin()), ev);
-        bool remaining = std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
-            return o.caster == e.caster && o.spell_id == e.spell_id; });
-        Combatant* caster = find_mut(s, e.caster);
-        if (!remaining && caster && caster->concentration_spell == e.spell_id) end_concentration(s, e.caster, ev);
-    }
-}
-
 void start_turn(EncounterState& s, std::vector<Event>& ev) {
     Combatant& c = *find_mut(s, s.order[s.turn_index].id);
     c.reaction_used = false;
@@ -456,6 +468,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         emit(ev, EventKind::ReadyExpired, c.id);
     }
     emit(ev, EventKind::TurnStarted, c.id, 0, s.round);
+    repeat_saves(s, c.id, RepeatSave::StartOfTurn, ev);
     if (dies_of_exhaustion(c) && !c.dead) kill(c, ev);
     if (is_dying(c) && c.uses_death_saves) {
         auto r = roll_death_save(s.rng, c.death);
@@ -575,7 +588,11 @@ void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& de
     case SpellEffectKind::SpellAttack: {
         Attack atk{def.content_id, int8_t(spell_attack_bonus(a)), scaled_dice(def, lvl, a.caster_level),
                    def.damage_type, uint8_t(std::min<int>(def.range_ft, 255)), !def.melee, false};
-        if (!T[0]->dead) do_attack(s, ctx, a, *T[0], atk, within_5ft, ev, def.id);
+        const int beams = scaled_beams(def, lvl, a.caster_level);
+        for (int i = 0; i < beams; ++i) {   // one attack roll per beam: one target, or one per beam
+            Combatant* t = T.size() == 1 ? T[0] : T[std::size_t(i)];
+            if (!t->dead) do_attack(s, ctx, a, *t, atk, within_5ft, ev, def.id);
+        }
         break;
     }
     case SpellEffectKind::AutoHit: {
@@ -584,18 +601,22 @@ void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& de
         if (T.size() > 1) per_dart = T;
         std::vector<Combatant*> distinct;
         for (Combatant* t : per_dart) if (std::find(distinct.begin(), distinct.end(), t) == distinct.end()) distinct.push_back(t);
-        for (Combatant* t : distinct) {
-            if (t->dead) continue;
-            // Shield's trigger includes being targeted by Magic Missile: a BeingHit window with spell_id.
+        // Shield's trigger includes being targeted by Magic Missile: a BeingHit window with spell_id
+        // (attack_total 0). Simultaneous darts: every target reacts before any damage.
+        auto react = [&](Combatant* t) {
+            if (t->dead || t->reaction_blocks_spell == def.id) return;
             ReactionWindow w = new_window(s, ctx, ReactionTrigger::BeingHit, a.id);
             w.target = t->id; w.spell_id = def.id; w.target_ac = int16_t(t->ac + t->reaction_ac_bonus);
-            if (t->reaction_blocks_spell != def.id) {
-                auto blocks = [&](const ReactionOption& o) {
-                    const SpellDef* sd = o.slot_level > 0 ? spell_def(s, o.option_id) : nullptr;
-                    return o.kind == ReactionOptionKind::AcBonus && sd && sd->blocks_spell == def.id;
-                };
-                being_hit_window(s, ctx, a, *t, w, ev, blocks);
-            }
+            auto blocks = [&](const ReactionOption& o) {
+                const SpellDef* sd = o.slot_level > 0 ? spell_def(s, o.option_id) : nullptr;
+                return o.kind == ReactionOptionKind::AcBonus && sd && sd->blocks_spell == def.id;
+            };
+            being_hit_window(s, ctx, a, *t, w, ev, blocks);
+        };
+        if (def.simultaneous) for (Combatant* t : distinct) react(t);
+        for (Combatant* t : distinct) {
+            if (t->dead) continue;
+            if (!def.simultaneous) react(t);
             for (Combatant* d : per_dart) {
                 if (d != t || t->dead) continue;
                 if (t->reaction_blocks_spell == def.id) continue;   // Shield: no damage from the darts
@@ -633,7 +654,7 @@ void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& de
     case SpellEffectKind::Heal: {
         const DiceExpr dice = scaled_dice(def, lvl, a.caster_level);
         for (Combatant* t : T) {
-            if (t->dead) continue;
+            if (t->dead || (def.excluded_types & bit(t->creature_type))) continue;   // no effect (Cure Wounds: undead)
             int amt = roll_dice(s.rng, dice) + (def.add_spellcasting_modifier ? modifier(a.abilities, a.spellcasting_ability) : 0);
             if (amt <= 0) continue;
             bool was_unconscious = t->has(Condition::Unconscious);
@@ -655,6 +676,8 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
                       const ActionRequest& req) {
     if (!knows_spell(a, def.id)) return fail("spell not known");
     if (def.casting_time == CastingTime::Reaction) return fail("reaction spells are cast from reaction windows");
+    if (def.casting_time == CastingTime::Minute || def.casting_time == CastingTime::Hour)
+        return fail("casting time too long for an encounter");
     if (is_incapacitated(a)) return fail("incapacitated");
     const uint8_t lvl = req.spell_level;
     if (def.level == 0 && lvl != 0) return fail("cantrips use no slot");
@@ -668,6 +691,7 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
     for (CombatantId id : ids) {
         Combatant* t = find_mut(s, id);
         if (!t || t->dead) return fail("bad target");
+        if (!valid_target_type(def, *t)) return fail("invalid creature type for this spell");
         if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, a, def, *t)) return fail("invalid spell target");
         T.push_back(t);
     }
@@ -677,18 +701,29 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
         return true;
     };
     switch (def.kind) {
-    case SpellEffectKind::SpellAttack:
-        if (T.size() != 1 || T[0] == &a) return fail("bad target");
+    case SpellEffectKind::SpellAttack: {
+        const int beams = scaled_beams(def, lvl, a.caster_level);
+        if (T.size() != 1 && int(T.size()) != beams) return fail("one target, or one per beam");
+        for (Combatant* t : T) if (t == &a) return fail("bad target");
         break;
+    }
     case SpellEffectKind::Save: case SpellEffectKind::Heal:
-        if (int(T.size()) > scaled_targets(def, lvl) || !distinct()) return fail("too many targets");
+        if ((def.area == AreaShape::None && int(T.size()) > scaled_targets(def, lvl)) || !distinct())
+            return fail("too many targets");
         break;
-    case SpellEffectKind::AutoHit:
-        if (T.size() != 1 && int(T.size()) != scaled_darts(def, lvl)) return fail("one target, or one per dart");
+    case SpellEffectKind::AutoHit: {
+        const int darts = scaled_darts(def, lvl);
+        if (def.distribution == DartDistribution::Single && T.size() != 1) return fail("all darts at one creature");
+        if (def.distribution == DartDistribution::Distinct && (int(T.size()) != darts || !distinct()))
+            return fail("one different creature per dart");
+        if (T.size() != 1 && int(T.size()) != darts) return fail("one target, or one per dart");
         break;
+    }
     case SpellEffectKind::AcBonus: case SpellEffectKind::Counter:
         return fail("reaction spells are cast from reaction windows");
     }
+    if (def.max_spread_ft > 0 && ids.size() > 1 && s.hooks.targets_within && !s.hooks.targets_within(s, ids, def.max_spread_ft))
+        return fail("targets too far apart");
     if (def.casting_time == CastingTime::BonusAction) {
         if (!b.bonus_action) return fail("no bonus action available");
         b.bonus_action = false;
@@ -955,7 +990,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
 
     switch (req.kind) {
     case ActionKind::EndTurn:
-        end_of_turn_saves(s, a, out.events);
+        repeat_saves(s, a.id, RepeatSave::EndOfTurn, out.events);
         emit(out.events, EventKind::TurnEnded, a.id);
         advance_turn(s, out.events);
         return out;
@@ -1136,6 +1171,30 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
         ActionRequest r{a.id, ActionKind::Move};
         r.move_ft = 5;
         out.push_back(r);
+    }
+    // Spells: every known non-reaction SpellBook spell, at every slot level available, at each
+    // valid target (hostile for attacks/saves/darts, same team for healing). Range and sight are
+    // sim's (hooks.spell_target_ok); multi-target / split-dart requests are built by sim or AI.
+    if (s.hooks.spells && !is_incapacitated(a)) {
+        for (uint32_t id : a.spells_known) {
+            const SpellDef* d = s.hooks.spells->find(id);
+            if (!d || (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction)) continue;
+            if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !b.action) continue;
+            if (s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, *d)) continue;
+            for (uint8_t L = d->level; L <= (d->level == 0 ? 0 : 9); ++L) {
+                if (!has_slot(a, L)) continue;
+                for (const auto& t : s.combatants) {
+                    if (t.dead) continue;
+                    const bool heal = d->kind == SpellEffectKind::Heal;
+                    if (heal ? t.team != a.team : (t.team == a.team || t.id == a.id)) continue;
+                    if (!valid_target_type(*d, t) || (d->excluded_types & bit(t.creature_type))) continue;
+                    if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, a, *d, t)) continue;
+                    ActionRequest r{a.id, ActionKind::CastSpell, t.id};
+                    r.spell_id = d->id; r.spell_level = L;
+                    out.push_back(r);
+                }
+            }
+        }
     }
     add(ActionKind::EndTurn);
     return out;

@@ -29,6 +29,11 @@ constexpr Ability skill_ability(Skill k) {
     }
 }
 
+// SRD 5.1 creature types (same order as common@1 creature_type). Append-only.
+enum class CreatureType : uint8_t { Aberration, Beast, Celestial, Construct, Dragon, Elemental, Fey, Fiend,
+                                    Giant, Humanoid, Monstrosity, Ooze, Plant, Undead };
+constexpr uint32_t bit(CreatureType t) { return uint32_t(1) << uint32_t(t); }
+
 enum class RollMode : uint8_t { Normal, Advantage, Disadvantage };
 
 using CombatantId = uint32_t;
@@ -113,6 +118,7 @@ struct Combatant {
     std::vector<uint32_t> spells_known;     // spell ids (spell_id_of) it can cast (known or prepared)
     uint32_t concentration_spell = 0;       // spell id concentrated on (0 = none)
     uint32_t reaction_blocks_spell = 0;     // Shield: no damage from this spell until the start of its turn
+    CreatureType creature_type = CreatureType::Humanoid;   // spell targeting (Hold Person, Cure Wounds)
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };

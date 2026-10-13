@@ -33,7 +33,7 @@ DiceExpr scaled_dice(const SpellDef& d, uint8_t slot_level, uint8_t caster_level
     DiceExpr e = d.dice;
     if (e.count == 0) return e;
     int count = e.count;
-    if (d.level == 0) count += d.dice.count * cantrip_tier(d, caster_level);
+    if (d.level == 0 && !d.cantrip_adds_beams) count += d.dice.count * cantrip_tier(d, caster_level);
     else if (slot_level > d.level) count += d.upcast_dice * (slot_level - d.level);
     e.count = uint8_t(std::min(count, 255));
     return e;
@@ -45,6 +45,17 @@ int scaled_darts(const SpellDef& d, uint8_t slot_level) {
 
 int scaled_targets(const SpellDef& d, uint8_t slot_level) {
     return d.targets + (d.level > 0 && slot_level > d.level ? d.upcast_targets * (slot_level - d.level) : 0);
+}
+
+int scaled_beams(const SpellDef& d, uint8_t slot_level, uint8_t caster_level) {
+    int n = d.beams;
+    if (d.level == 0 && d.cantrip_adds_beams) n += cantrip_tier(d, caster_level);
+    if (d.level > 0 && slot_level > d.level) n += d.upcast_beams * (slot_level - d.level);
+    return n;
+}
+
+bool valid_target_type(const SpellDef& d, const Combatant& t) {
+    return d.target_types == 0 || (d.target_types & bit(t.creature_type)) != 0;
 }
 
 bool has_slot(const Combatant& c, uint8_t level) {

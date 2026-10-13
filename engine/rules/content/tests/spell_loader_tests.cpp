@@ -1,5 +1,7 @@
 #include <doctest/doctest.h>
 
+#include <algorithm>
+#include <fstream>
 #include "rules5e_content/spell_loader.hpp"
 
 using namespace rules5e;
@@ -65,20 +67,110 @@ TEST_CASE("sample pack spells load into a SpellBook") {
     CHECK(cs->reaction_trigger == ReactionTrigger::SpellCast);
     CHECK(cs->counter_dc_base == 10);
     CHECK(cs->components == kComponentS);
+    CHECK(cs->requires_sight);
+    CHECK(sh->or_targeted_by == std::vector<uint32_t>{mm->id});
+    CHECK(sh->duration == SpellDuration::UntilStartOfCasterTurn);
+    CHECK(mm->distribution == DartDistribution::Any);
+    CHECK(mm->simultaneous);
+    CHECK(mm->targets == 0);
+    CHECK(hp->target_types == bit(CreatureType::Humanoid));
+    CHECK(hp->max_spread_ft == 30);
+    CHECK(hp->duration == SpellDuration::Minutes);
+    CHECK(hp->duration_amount == 1);
+    CHECK(cw->excluded_types == (bit(CreatureType::Undead) | bit(CreatureType::Construct)));
 }
 
-TEST_CASE("loader rejects inconsistent spells") {
-    auto base = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.x","level":1,
-        "casting_time":{"kind":"action"},"range":{"kind":"self"},"components":{"v":true},
-        "duration":{"kind":"instantaneous"},"effect":{"kind":"ac_bonus","bonus":5,"until":"start_of_caster_turn"}})");
-    CHECK_FALSE(spell_from_json(base).def);   // ac_bonus must be a reaction
-    base["casting_time"] = {{"kind", "reaction"}, {"trigger", "spell_cast"}};
-    CHECK_FALSE(spell_from_json(base).def);   // wrong trigger
-    base["casting_time"]["trigger"] = "being_hit";
-    CHECK(spell_from_json(base).def);
-    base["scaling"] = {{"cantrip", {{"levels", {5}}}}};
-    CHECK_FALSE(spell_from_json(base).def);   // cantrip scaling on a leveled spell
-    base.erase("scaling");
-    base["components"] = eng::assets::Json::object();
-    CHECK_FALSE(spell_from_json(base).def);
+TEST_CASE("loader rejects every validator negative case (tests/validate/cases)") {
+    // Same rules as tools/validate: each bad doc, loaded alone, must fail.
+    const auto cases = std::filesystem::path(ENGINE_SOURCE_ROOT) / "tests/validate/cases";
+    std::vector<std::filesystem::path> files;
+    for (const auto& e : std::filesystem::directory_iterator(cases))
+        if (e.path().extension() == ".json") files.push_back(e.path());
+    std::sort(files.begin(), files.end());
+    REQUIRE(files.size() >= 10);
+    const auto dir = std::filesystem::temp_directory_path() / "rules5e_spell_negative";
+    for (const auto& f : files) {
+        std::filesystem::remove_all(dir);
+        std::filesystem::create_directories(dir);
+        std::filesystem::copy_file(f, dir / f.filename());
+        auto r = load_spellbook(dir);
+        INFO(f.filename().string());
+        CHECK_FALSE(r.book);
+        CHECK_FALSE(r.errors.empty());
+        // Cross-field rules use the validator's wording.
+        std::ifstream in(std::filesystem::path(f).replace_extension(".expect"));
+        std::string expect;
+        std::getline(in, expect);
+        const bool cross_field = expect.find("scaling.") == 0 || expect.find("effect") == 0 || expect.find("targets not") == 0 ||
+                                 expect.find("ac_bonus") == 0 || expect.find("casting_time") == 0 || expect.find("disagree") == 0 ||
+                                 expect.find("is not a spell@1") == 0 || expect.find("'") == 0 || expect.find("until_start") == 0;
+        const std::string first_error = r.errors.empty() ? std::string() : r.errors[0];
+        INFO(first_error);
+        if (cross_field && !r.errors.empty()) CHECK(r.errors[0].find(expect) != std::string::npos);
+    }
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("loader: R6 rules match the validator") {
+    auto fb = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.x","level":0,"name":"x",
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":30},"components":{"v":true},
+        "duration":{"kind":"instantaneous"},
+        "effects":[{"kind":"spell_attack","attack":"ranged","damage":{"dice":"1d6","type":"fire"}}]})");
+    REQUIRE(spell_from_json(fb).def);
+    auto bad = [](eng::assets::Json j, const char* want) {
+        auto r = spell_from_json(j);
+        INFO(want);
+        CHECK_FALSE(r.def);
+        CHECK(r.error.find(want) != std::string::npos);
+    };
+    auto j = fb; j["effects"][0]["attack"] = "touch"; bad(j, "'touch' is not one of");
+    j = fb; j["level"] = 1; j["scaling"] = {{"upcast", {{"darts", 1}}}}; bad(j, "scaling.upcast.darts not allowed on a spell_attack");
+    j = fb; j["level"] = 1; j["scaling"] = {{"upcast", {{"targets", 1}}}}; bad(j, "scaling.upcast.targets not allowed on a spell_attack");
+    j = fb; j["range"]["feet"] = 0; bad(j, "range invalid");
+    j = fb; j["scaling"] = {{"cantrip", {{"levels", {11, 5}}, {"adds", "dice"}}}}; bad(j, "ascending");
+    j = fb; j["effects"].push_back(fb["effects"][0]); bad(j, "exactly one effect");
+    auto hp = fb; hp["level"] = 2;
+    hp["effects"] = eng::assets::Json::array({{{"kind", "save"}, {"ability", "wis"}, {"condition", "paralyzed"}}});
+    REQUIRE(spell_from_json(hp).def);
+    j = hp; j["scaling"] = {{"upcast", {{"dice", 1}}}}; bad(j, "scaling.upcast.dice needs effect dice or damage");
+    j = hp; j["effects"][0]["on_success"] = "half"; bad(j, "on_success needs damage");
+    j = hp; j["effects"][0].erase("condition"); j["effects"][0]["repeat_save"] = "end_of_turn";
+    j["effects"][0]["damage"] = {{"dice", "1d6"}, {"type", "fire"}}; j["effects"][0]["on_success"] = "none";
+    bad(j, "repeat_save needs condition");
+    j = hp; j["effects"][0]["damage"] = {{"dice", "1d6"}, {"type", "fire"}}; bad(j, "'on_success' is a dependency of 'damage'");
+    j = hp; j["components"]["m"] = {{"text", "x"}, {"consumed", true}}; bad(j, "cost_cp");
+    j = fb; j["casting_time"] = {{"kind", "reaction"}, {"trigger", {{"kind", "being_hit"}}}}; bad(j, "disagree");
+}
+
+TEST_CASE("runtime spell id collision is a hard load error") {
+    // FNV-1a 32 collision (found by search); both hash to 0xce11440b.
+    static_assert(spell_id_of("srd51.spell.x562789") == spell_id_of("srd51.spell.x779192"));
+    static_assert(spell_id_of("srd51.spell.x562789") == 0xce11440bu);
+    SpellBook book;
+    SpellDef a; a.content_id = "srd51.spell.x562789"; a.id = spell_id_of(a.content_id);
+    SpellDef b; b.content_id = "srd51.spell.x779192"; b.id = spell_id_of(b.content_id);
+    std::string e;
+    CHECK(add_spell(book, a, e));
+    CHECK_FALSE(add_spell(book, b, e));
+    CHECK(e.find("collision") != std::string::npos);
+    CHECK(e.find("0xce11440b") != std::string::npos);
+    CHECK_FALSE(add_spell(book, a, e));
+    CHECK(e.find("duplicate") != std::string::npos);
+
+    // Through load_spellbook: the whole load fails (no book).
+    auto dir = std::filesystem::temp_directory_path() / "rules5e_spell_collision";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    for (const char* id : {"srd51.spell.x562789", "srd51.spell.x779192"}) {
+        std::ofstream(dir / (std::string(id) + ".json")) << R"({"$schema":"spell@1","id":")" << id
+            << R"(","name":"X","source":{"ref":"t","license":"t"},"level":0,"school":"evocation",
+               "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":30},"components":{"v":true},
+               "duration":{"kind":"instantaneous"},
+               "effects":[{"kind":"spell_attack","attack":"ranged","damage":{"dice":"1d6","type":"fire"}}]})";
+    }
+    auto r = load_spellbook(dir);
+    CHECK_FALSE(r.book);
+    REQUIRE(r.errors.size() == 1);
+    CHECK(r.errors[0].find("collision") != std::string::npos);
+    std::filesystem::remove_all(dir);
 }

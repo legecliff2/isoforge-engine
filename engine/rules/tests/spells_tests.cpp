@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include "golden_hash.hpp"
 #include "spell_util.hpp"
 
@@ -146,10 +147,13 @@ TEST_CASE("Shield blocks Magic Missile; the prompt names the spell") {
     CHECK(r.needs->trigger == ReactionTrigger::BeingHit);
     CHECK(r.needs->spell_id == kMagicMissile);
     CHECK(r.needs->attack_total == 0);
-    REQUIRE(r.needs->options.size() == 1);
-    CHECK(r.needs->options[0].option_id == kShield);
-    CHECK(r.needs->options[0].slot_level == 1);
-    r = step(s, decision_request(*r.needs, true));
+    REQUIRE(r.needs->options.size() == 3);       // Ask: one Shield option per available slot level
+    for (uint8_t i = 0; i < 3; ++i) {
+        CHECK(r.needs->options[i].option_id == kShield);
+        CHECK(r.needs->options[i].slot_level == i + 1);
+        CHECK(r.needs->options[i].ac_bonus == 5);
+    }
+    r = step(s, decision_request(*r.needs, true));   // option 0 = lowest slot
     REQUIRE(r.status == StepStatus::Done);
     CHECK(count(r.events, EventKind::DamageDealt) == 0);
     CHECK(find(s, 2)->hp == 30);
@@ -430,4 +434,233 @@ TEST_CASE("golden: encounter with spells; sync adapter, async and log replay agr
     CHECK(sync_log.size() == 115u);
     CHECK(hash_spell_state(s) == 241533432519136774ull);
     CHECK(hash_spell_log(sync_log) == 17334714446208789141ull);
+}
+
+TEST_CASE("Shield under Ask: casting with a higher slot spends that slot") {
+    for (uint64_t seed = 0; seed < 100; ++seed) {
+        auto s = begin_encounter({wizard(1), monster(2)}, seed, nullptr, spell_hooks());
+        end_turns_until(s, 2);
+        if (current_actor(s) != 2) continue;
+        auto r = step(s, {2, ActionKind::Attack, 1});
+        if (r.status != StepStatus::NeedsDecision) continue;
+        REQUIRE(r.needs->options.size() == 3);
+        r = step(s, decision_request(*r.needs, true, 1));
+        REQUIRE(r.status == StepStatus::Done);
+        CHECK(find(s, 1)->spell_slots[1] == 4);
+        CHECK(find(s, 1)->spell_slots[2] == 2);
+        CHECK(find(s, 1)->reaction_ac_bonus == 5);
+        return;
+    }
+    FAIL("no hit found");
+}
+
+TEST_CASE("legal_actions suggests spell casts") {
+    auto s = begin_encounter({wizard(1), cleric(3), tough_goblin(2)}, 3, nullptr, spell_hooks());
+    mut(s, 1).spell_slots[3] = 0;
+    end_turns_until(s, 1);
+    auto acts = legal_actions(s);
+    auto has = [&](uint32_t sp, CombatantId t, uint8_t L) {
+        return std::any_of(acts.begin(), acts.end(), [&](const ActionRequest& r) {
+            return r.kind == ActionKind::CastSpell && r.spell_id == sp && r.target == t && r.spell_level == L; });
+    };
+    CHECK(has(kFireBolt, 2, 0));
+    CHECK_FALSE(has(kFireBolt, 3, 0));             // not at allies
+    CHECK(has(kMagicMissile, 2, 1)); CHECK(has(kMagicMissile, 2, 2));
+    CHECK_FALSE(has(kMagicMissile, 2, 3));         // no 3rd-level slot left
+    CHECK(has(kHoldPerson, 2, 2)); CHECK_FALSE(has(kHoldPerson, 2, 1));
+    for (const auto& r : acts) {
+        CHECK(r.spell_id != kShield); CHECK(r.spell_id != kCounterspell);   // reactions
+        if (r.kind == ActionKind::CastSpell) { auto c = s; CHECK(step(c, r).ok); }   // every suggestion is legal
+    }
+    end_turns_until(s, 3);
+    acts = legal_actions(s);
+    CHECK(has(kCureWounds, 1, 1)); CHECK(has(kCureWounds, 3, 1));   // allies incl. self
+    CHECK_FALSE(has(kCureWounds, 2, 1));
+    // Spent action: no spell suggestions.
+    REQUIRE(step(s, cast(3, kCureWounds, 1, 1)).ok);
+    for (const auto& r : legal_actions(s)) CHECK(r.kind != ActionKind::CastSpell);
+}
+
+// ---- spell@1 review (T&C): targeting, distribution, beams, repeat timing, sight ----
+
+TEST_CASE("creature types: Hold Person humanoids only; Cure Wounds no effect on undead") {
+    auto s = begin_encounter({wizard(1), cleric(3), tough_goblin(2)}, 3, nullptr, spell_hooks());
+    mut(s, 2).creature_type = CreatureType::Undead;
+    end_turns_until(s, 1);
+    auto r = step(s, cast(1, kHoldPerson, 2, 2));
+    CHECK_FALSE(r.ok);
+    CHECK(r.error == "invalid creature type for this spell");
+    for (const auto& a : legal_actions(s)) CHECK_FALSE((a.spell_id == kHoldPerson && a.target == 2));
+    mut(s, 3).creature_type = CreatureType::Construct;   // e.g. a warforged-like ally
+    mut(s, 3).hp = 5;
+    end_turns_until(s, 3);
+    auto h = step(s, cast(3, kCureWounds, 3, 1));
+    REQUIRE(h.ok);                                         // cast (slot spent) but no effect
+    CHECK(count(h.events, EventKind::Healed) == 0);
+    CHECK(find(s, 3)->hp == 5);
+    CHECK(find(s, 3)->spell_slots[1] == 1);
+}
+
+TEST_CASE("Hold Person upcast: targets within 30 ft of each other (sim hook)") {
+    EncounterHooks h = spell_hooks();
+    int asked_ft = 0;
+    h.targets_within = [&](const EncounterState&, const std::vector<CombatantId>& ids, int ft) {
+        asked_ft = ft; return ids.size() <= 1;   // pretend they're far apart
+    };
+    auto s = begin_encounter({wizard(1), tough_goblin(2), tough_goblin(3)}, 3, nullptr, h);
+    never_react(mut(s, 2)); never_react(mut(s, 3));
+    end_turns_until(s, 1);
+    auto r = cast(1, kHoldPerson, 2, 3); r.targets = {2, 3};
+    auto res = step(s, r);
+    CHECK_FALSE(res.ok);
+    CHECK(res.error == "targets too far apart");
+    CHECK(asked_ft == 30);
+    s.hooks.targets_within = nullptr;
+    CHECK(step(s, r).ok);
+    CHECK(count(step(s, {1, ActionKind::EndTurn}).events, EventKind::TurnEnded) == 1);
+}
+
+namespace {
+std::shared_ptr<SpellBook> book_with(std::initializer_list<SpellDef> extra) {
+    auto b = srd_spellbook();
+    for (const auto& d : extra) b->add(d);
+    return b;
+}
+SpellDef test_def(const char* cid, SpellEffectKind k) {
+    SpellDef d; d.content_id = cid; d.id = spell_id_of(cid); d.components = kComponentV; d.range_ft = 60; d.kind = k;
+    return d;
+}
+}
+
+TEST_CASE("auto_hit distribution: single and distinct") {
+    auto single = test_def("test.spell.single", SpellEffectKind::AutoHit);
+    single.level = 1; single.darts = 2; single.dice = {1, 4, 0}; single.distribution = DartDistribution::Single;
+    auto distinct = test_def("test.spell.distinct", SpellEffectKind::AutoHit);
+    distinct.level = 1; distinct.darts = 2; distinct.dice = {1, 4, 0}; distinct.distribution = DartDistribution::Distinct;
+    EncounterHooks h = spell_hooks();
+    h.spells = book_with({single, distinct});
+    auto w = wizard(1); w.spells_known = {single.id, distinct.id};
+    auto s = begin_encounter({w, tough_goblin(2), tough_goblin(3)}, 3, nullptr, h);
+    end_turns_until(s, 1);
+    auto a = cast(1, single.id, 2, 1); a.targets = {2, 3};
+    CHECK_FALSE(step(s, a).ok);
+    auto b = cast(1, distinct.id, 2, 1);
+    CHECK_FALSE(step(s, b).ok);                       // needs one creature per dart
+    b.targets = {2, 2};
+    CHECK_FALSE(step(s, b).ok);                       // ... all different
+    b.targets = {2, 3};
+    auto r = step(s, b);
+    REQUIRE(r.ok);
+    CHECK(count(r.events, EventKind::DamageDealt) == 2);
+}
+
+TEST_CASE("Magic Missile is simultaneous: every target's Shield prompt comes before any damage") {
+    auto s = begin_encounter({wizard(1), wizard(2, 1), wizard(3, 1)}, 5, nullptr, spell_hooks());
+    for (CombatantId id : {2u, 3u}) {
+        set_policy(mut(s, id), ReactionTrigger::BeingHit, ReactionPolicy::Never);
+        set_policy(mut(s, id), ReactionTrigger::SpellCast, ReactionPolicy::Never);
+    }
+    set_policy(mut(s, 3), ReactionTrigger::BeingHit, ReactionPolicy::Auto);
+    set_policy(mut(s, 2), ReactionTrigger::BeingHit, ReactionPolicy::Auto);
+    end_turns_until(s, 1);
+    auto r = cast(1, kMagicMissile, 2, 1); r.targets = {2, 3, 2};
+    auto res = step(s, r);
+    REQUIRE(res.status == StepStatus::Done);
+    std::size_t last_shield = 0, first_damage = res.events.size();
+    for (std::size_t i = 0; i < res.events.size(); ++i) {
+        if (res.events[i].kind == EventKind::SpellCast && res.events[i].a == int32_t(kShield)) last_shield = i;
+        if (res.events[i].kind == EventKind::DamageDealt && first_damage == res.events.size()) first_damage = i;
+    }
+    CHECK(count(res.events, EventKind::DamageDealt) == 0);   // both shielded
+    CHECK(last_shield > 0);
+    CHECK(first_damage == res.events.size());
+}
+
+TEST_CASE("Shield-like spells are offered against Magic Missile only via or_targeted_by") {
+    auto plain = test_def("test.spell.plain_shield", SpellEffectKind::AcBonus);
+    plain.level = 1; plain.casting_time = CastingTime::Reaction; plain.reaction_trigger = ReactionTrigger::BeingHit;
+    plain.ac_bonus = 5; plain.duration = SpellDuration::UntilStartOfCasterTurn;   // no or_targeted_by
+    EncounterHooks h = spell_hooks();
+    h.spells = book_with({plain});
+    auto target = wizard(2, 1); target.spells_known = {plain.id};
+    auto s = begin_encounter({wizard(1), target}, 5, nullptr, h);
+    end_turns_until(s, 1);
+    auto res = step(s, cast(1, kMagicMissile, 2, 1));
+    REQUIRE(res.status == StepStatus::Done);           // no prompt: not triggered by being targeted
+    CHECK(count(res.events, EventKind::ReactionWindowOpened) == 0);
+    CHECK(count(res.events, EventKind::DamageDealt) == 3);
+}
+
+TEST_CASE("multi-beam spell attack: cantrip growth adds beams; one target or one per beam") {
+    auto beam = test_def("test.spell.beam", SpellEffectKind::SpellAttack);
+    beam.level = 0; beam.dice = {1, 10, 0}; beam.damage_type = DamageType::Force; beam.beams = 1;
+    beam.cantrip_scales = true; beam.cantrip_adds_beams = true;
+    CHECK(scaled_beams(beam, 0, 4) == 1);
+    CHECK(scaled_beams(beam, 0, 11) == 3);
+    CHECK(scaled_dice(beam, 0, 11).count == 1);        // beams instead of dice
+    EncounterHooks h = spell_hooks();
+    h.spells = book_with({beam});
+    auto w = wizard(1); w.spells_known = {beam.id}; w.caster_level = 5;   // 2 beams
+    auto s = begin_encounter({w, tough_goblin(2), tough_goblin(3)}, 5, nullptr, h);
+    end_turns_until(s, 1);
+    auto bad = cast(1, beam.id, 2); bad.targets = {2, 3, 2};
+    CHECK_FALSE(step(s, bad).ok);
+    auto ok = cast(1, beam.id, 2); ok.targets = {2, 3};
+    auto r = step(s, ok);
+    REQUIRE(r.ok);
+    CHECK(count(r.events, EventKind::AttackResolved) == 2);
+}
+
+TEST_CASE("repeat save timing: start_of_turn and on_damage") {
+    for (RepeatSave timing : {RepeatSave::StartOfTurn, RepeatSave::OnDamage}) {
+        auto hold = test_def("test.spell.hold", SpellEffectKind::Save);
+        hold.level = 1; hold.save_ability = Ability::Wis; hold.applies_condition = true;
+        hold.condition = Condition::Restrained; hold.repeat_save = timing; hold.concentration = true;
+        hold.duration = SpellDuration::Minutes; hold.duration_amount = 1;
+        EncounterHooks h = spell_hooks();
+        h.spells = book_with({hold});
+        int checked = 0;
+        for (uint64_t seed = 0; seed < 60 && checked < 3; ++seed) {
+            auto w = wizard(1); w.spells_known = {hold.id, kFireBolt};
+            auto s = begin_encounter({w, tough_goblin(2)}, seed, nullptr, h);
+            end_turns_until(s, 1);
+            step(s, cast(1, hold.id, 2, 1));
+            if (s.effects.empty()) continue;
+            std::vector<Event> ev;
+            if (timing == RepeatSave::StartOfTurn) {
+                ev = step(s, {1, ActionKind::EndTurn}).events;   // goblin's turn starts
+            } else {
+                end_turns_until(s, 2); end_turns_until(s, 1);
+                if (s.effects.empty()) continue;
+                ev = step(s, cast(1, kFireBolt, 2)).events;      // damage (if it hits) triggers the save
+                if (count(ev, EventKind::DamageDealt) == 0) continue;
+            }
+            int saves = 0;
+            for (const auto& e : ev) saves += e.kind == EventKind::SavingThrowRolled && e.actor == 2 && e.target == CombatantId(Ability::Wis);
+            CHECK(saves == 1);
+            ++checked;
+        }
+        CHECK(checked > 0);
+    }
+}
+
+TEST_CASE("Counterspell requires sight (hooks.can_see); long casting times are rejected") {
+    EncounterHooks h = spell_hooks();
+    h.can_see = [](const EncounterState&, const Combatant&, const Combatant&) { return false; };
+    auto s = begin_encounter({wizard(1), wizard(2, 1)}, 4, nullptr, h);
+    end_turns_until(s, 1);
+    set_policy(mut(s, 2), ReactionTrigger::BeingHit, ReactionPolicy::Never);
+    auto r = step(s, cast(1, kMagicMissile, 2, 1));
+    REQUIRE(r.status == StepStatus::Done);
+    CHECK(count(r.events, EventKind::ReactionWindowOpened) == 0);   // can't see the caster: no Counterspell
+
+    auto ritual = test_def("test.spell.slow", SpellEffectKind::Heal);
+    ritual.level = 1; ritual.casting_time = CastingTime::Minute; ritual.casting_amount = 1; ritual.dice = {1, 4, 0};
+    EncounterHooks h2 = spell_hooks();
+    h2.spells = book_with({ritual});
+    auto c = cleric(1); c.spells_known = {ritual.id};
+    auto t = begin_encounter({c, monster(2)}, 4, nullptr, h2);
+    end_turns_until(t, 1);
+    CHECK(step(t, cast(1, ritual.id, 1, 1)).error == "casting time too long for an encounter");
+    for (const auto& a : legal_actions(t)) CHECK(a.spell_id != ritual.id);
 }

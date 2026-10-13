@@ -24,6 +24,7 @@ void register_content_schemas(SchemaRegistry& reg) {
     reg.register_type("character", kCharacterSchemaVersion);
     reg.register_type("chunk", 1);
     reg.register_type("monster", kMonsterSchemaVersion);
+    reg.register_type("spell", kSpellSchemaVersion);
     reg.register_migration("monster", 1, 2, monster_1_to_2);
     reg.register_migration("character", 1, 2, character_1_to_2);
 }

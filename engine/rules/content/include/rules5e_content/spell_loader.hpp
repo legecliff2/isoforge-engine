@@ -21,9 +21,13 @@ struct SpellLoad {
 SpellLoad spell_from_json(const eng::assets::Json&);
 
 struct SpellBookLoad {
-    std::shared_ptr<rules5e::SpellBook> book;   // null on error
+    std::shared_ptr<rules5e::SpellBook> book;   // null on any error (a collision is a hard error)
     std::vector<std::string> errors;            // "<file>: <message>", sorted by file
 };
+// Adds `d` to `book`. A runtime id (spell_id_of) already taken by a different content id is a hard
+// error ("spell id collision ..."), as is a duplicate content id. Returns false and sets `error`.
+bool add_spell(rules5e::SpellBook& book, rules5e::SpellDef d, std::string& error);
+
 // Loads every *.json with "$schema": "spell@1" under `dir` (recursive, sorted by path).
 SpellBookLoad load_spellbook(const std::filesystem::path& dir);
 

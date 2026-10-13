@@ -2,13 +2,40 @@
   "$schema": "spell@1",
   "id": "srd51.spell.shield",
   "name": "Shield",
-  "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
   "level": 1,
   "school": "abjuration",
-  "classes": ["sorcerer", "wizard"],
-  "casting_time": { "kind": "reaction", "trigger": "being_hit" },
-  "range": { "kind": "self" },
-  "components": { "v": true, "s": true },
-  "duration": { "kind": "rounds", "amount": 1 },
-  "effect": { "kind": "ac_bonus", "bonus": 5, "until": "start_of_caster_turn", "blocks_spell": "srd51.spell.magic_missile" }
+  "classes": [
+    "sorcerer",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "reaction",
+    "trigger": {
+      "kind": "being_hit",
+      "or_targeted_by": [
+        "srd51.spell.magic_missile"
+      ]
+    }
+  },
+  "range": {
+    "kind": "self"
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "until_start_of_caster_turn"
+  },
+  "effects": [
+    {
+      "kind": "ac_bonus",
+      "bonus": 5,
+      "blocks_spell": "srd51.spell.magic_missile"
+    }
+  ]
 }

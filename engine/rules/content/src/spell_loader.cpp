@@ -1,9 +1,11 @@
 #include "rules5e_content/spell_loader.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <fstream>
 #include <map>
 
+#include "assets/content_migrations.hpp"
 #include "rules5e/dice.hpp"
 
 namespace rules5e_content {
@@ -37,6 +39,13 @@ const std::map<std::string, Condition> kCondition{
     {"poisoned", Condition::Poisoned}, {"prone", Condition::Prone}, {"restrained", Condition::Restrained},
     {"stunned", Condition::Stunned}, {"unconscious", Condition::Unconscious}, {"exhaustion", Condition::Exhaustion}};
 
+const std::map<std::string, CreatureType> kCreatureType{
+    {"aberration", CreatureType::Aberration}, {"beast", CreatureType::Beast}, {"celestial", CreatureType::Celestial},
+    {"construct", CreatureType::Construct}, {"dragon", CreatureType::Dragon}, {"elemental", CreatureType::Elemental},
+    {"fey", CreatureType::Fey}, {"fiend", CreatureType::Fiend}, {"giant", CreatureType::Giant},
+    {"humanoid", CreatureType::Humanoid}, {"monstrosity", CreatureType::Monstrosity}, {"ooze", CreatureType::Ooze},
+    {"plant", CreatureType::Plant}, {"undead", CreatureType::Undead}};
+
 SpellLoad err(std::string m) { return {std::nullopt, std::move(m)}; }
 
 bool small_int(const Json& v, int lo, int hi, int& out) {
@@ -58,121 +67,272 @@ bool read_damage(const Json& d, SpellDef& s) {
 } // namespace
 
 SpellLoad spell_from_json(const Json& j) {
+    // Mirrors schemas/spell/v1.schema.json plus tools/validate check_spell (same rules, same wording).
     if (!j.is_object() || j.value("$schema", "") != "spell@1") return err("not a spell@1 document");
     SpellDef s;
     if (!j.contains("id") || !j["id"].is_string()) return err("id missing");
     s.content_id = j["id"].get<std::string>();
+    if (s.content_id.find(".spell.") == std::string::npos) return err("id must be '<ns>.spell.<name>'");
     s.id = spell_id_of(s.content_id);
     int lvl = 0;
     if (!j.contains("level") || !small_int(j["level"], 0, 9, lvl)) return err("level must be 0..9");
     s.level = uint8_t(lvl);
+    s.ritual = j.value("ritual", false);
 
     const Json ct = j.value("casting_time", Json::object());
     const std::string ck = ct.value("kind", "");
+    const bool has_trigger = ct.contains("trigger");
     if (ck == "action") s.casting_time = CastingTime::Action;
     else if (ck == "bonus_action") s.casting_time = CastingTime::BonusAction;
-    else if (ck == "reaction") {
-        s.casting_time = CastingTime::Reaction;
-        const std::string tr = ct.value("trigger", "");
-        if (tr == "being_hit") s.reaction_trigger = ReactionTrigger::BeingHit;
-        else if (tr == "spell_cast") s.reaction_trigger = ReactionTrigger::SpellCast;
-        else return err("casting_time.trigger must be being_hit or spell_cast");
+    else if (ck == "reaction") s.casting_time = CastingTime::Reaction;
+    else if (ck == "minute" || ck == "hour") {
+        s.casting_time = ck == "minute" ? CastingTime::Minute : CastingTime::Hour;
+        int a = 0;
+        if (!ct.contains("amount") || !small_int(ct["amount"], 1, 255, a)) return err("casting_time.amount required for minute/hour");
+        s.casting_amount = uint8_t(a);
     } else return err("casting_time.kind invalid");
+    if ((s.casting_time == CastingTime::Reaction) != has_trigger) return err("casting_time.trigger is required for (and only for) reactions");
+    if (has_trigger) {
+        const Json& tr = ct["trigger"];
+        const std::string tk = tr.value("kind", "");
+        if (tk == "being_hit") s.reaction_trigger = ReactionTrigger::BeingHit;
+        else if (tk == "spell_cast") s.reaction_trigger = ReactionTrigger::SpellCast;
+        else return err("casting_time.trigger.kind must be being_hit or spell_cast");
+        if (tr.contains("or_targeted_by")) {
+            if (tk != "being_hit") return err("casting_time.trigger.or_targeted_by is only for being_hit");
+            for (const Json& r : tr["or_targeted_by"]) {
+                if (!r.is_string() || r.get<std::string>().find(".spell.") == std::string::npos)
+                    return err("casting_time.trigger.or_targeted_by entries must be spell ids");
+                s.or_targeted_by.push_back(spell_id_of(r.get<std::string>()));
+            }
+        }
+        s.requires_sight = tr.value("requires_sight", false);
+    }
 
+    // range: self = 0 ft, touch = 5 ft (adjacent; sim checks reach), ranged = feet (>= 5).
     const Json rg = j.value("range", Json::object());
     const std::string rk = rg.value("kind", "");
     int ft = 0;
-    if (rk == "self") s.range_ft = 0;
-    else if (rk == "touch") s.range_ft = 5;
-    else if (rk == "ranged" && rg.contains("feet") && small_int(rg["feet"], 0, 65535, ft)) s.range_ft = uint16_t(ft);
-    else return err("range invalid");
+    if (rk == "self" && !rg.contains("feet")) s.range_ft = 0;
+    else if (rk == "touch" && !rg.contains("feet")) s.range_ft = 5;
+    else if (rk == "ranged" && rg.contains("feet") && small_int(rg["feet"], 5, 65535, ft) && ft % 5 == 0) s.range_ft = uint16_t(ft);
+    else return err("range invalid (ranged needs feet >= 5, a multiple of 5)");
+
+    if (j.contains("area")) {
+        const Json& a = j["area"];
+        static const std::map<std::string, AreaShape> kShape{{"cone", AreaShape::Cone}, {"cube", AreaShape::Cube},
+            {"cylinder", AreaShape::Cylinder}, {"line", AreaShape::Line}, {"sphere", AreaShape::Sphere}};
+        if (!lookup(kShape, a.value("shape", Json()), s.area)) return err("area.shape invalid");
+        int v = 0;
+        if (!a.contains("size_ft") || !small_int(a["size_ft"], 5, 65535, v)) return err("area.size_ft invalid");
+        s.area_size_ft = uint16_t(v);
+        if ((s.area == AreaShape::Line) != a.contains("width_ft")) return err("area.width_ft is required for (and only for) lines");
+        if ((s.area == AreaShape::Cylinder) != a.contains("height_ft")) return err("area.height_ft is required for (and only for) cylinders");
+        if (a.contains("width_ft")) { if (!small_int(a["width_ft"], 5, 65535, v)) return err("area.width_ft invalid"); s.area_width_ft = uint16_t(v); }
+        if (a.contains("height_ft")) { if (!small_int(a["height_ft"], 5, 65535, v)) return err("area.height_ft invalid"); s.area_height_ft = uint16_t(v); }
+    }
 
     const Json c = j.value("components", Json::object());
     if (c.value("v", false)) s.components |= kComponentV;
     if (c.value("s", false)) s.components |= kComponentS;
-    if (c.contains("m")) s.components |= kComponentM;
+    if (c.contains("m")) {
+        const Json& m = c["m"];
+        if (!m.is_object() || !m.contains("text")) return err("components.m needs text");
+        s.components |= kComponentM;
+        int cost = 0;
+        if (m.contains("cost_cp")) { if (!small_int(m["cost_cp"], 1, 2147483647, cost)) return err("components.m.cost_cp invalid"); s.material_cost_cp = uint32_t(cost); }
+        s.material_consumed = m.value("consumed", false);
+        if (m.contains("consumed") && !m.contains("cost_cp")) return err("'cost_cp' is a dependency of 'consumed'");
+    }
     if (s.components == 0) return err("components: at least one of v, s, m");
 
     const Json du = j.value("duration", Json::object());
+    static const std::map<std::string, SpellDuration> kDur{{"instantaneous", SpellDuration::Instantaneous},
+        {"rounds", SpellDuration::Rounds}, {"minutes", SpellDuration::Minutes}, {"hours", SpellDuration::Hours},
+        {"until_start_of_caster_turn", SpellDuration::UntilStartOfCasterTurn},
+        {"until_dispelled", SpellDuration::UntilDispelled}, {"special", SpellDuration::Special}};
+    if (!lookup(kDur, du.value("kind", Json()), s.duration)) return err("duration.kind invalid");
+    const bool timed = s.duration == SpellDuration::Rounds || s.duration == SpellDuration::Minutes || s.duration == SpellDuration::Hours;
+    int amt = 0;
+    if (timed != du.contains("amount")) return err("duration.amount is required for (and only for) rounds/minutes/hours");
+    if (timed) { if (!small_int(du["amount"], 1, 65535, amt)) return err("duration.amount invalid"); s.duration_amount = uint16_t(amt); }
     s.concentration = du.value("concentration", false);
+    if (du.contains("concentration") && (s.duration == SpellDuration::Instantaneous || s.duration == SpellDuration::UntilStartOfCasterTurn))
+        return err("duration.concentration needs a lasting duration");
 
-    int n = 1;
-    if (j.contains("targets") && !small_int(j["targets"], 1, 255, n)) return err("targets invalid");
-    s.targets = uint8_t(n);
+    // targets: omitted = one creature (Save/Heal), or per dart/beam, or self.
+    const bool has_targets = j.contains("targets");
+    if (has_targets) {
+        const Json& t = j["targets"];
+        int n = 0;
+        if (!t.contains("count") || !small_int(t["count"], 1, 255, n)) return err("targets.count invalid");
+        s.targets = uint8_t(n);
+        if (t.contains("creature_type")) {
+            for (const Json& ty : t["creature_type"]) {
+                CreatureType ct2;
+                if (!lookup(kCreatureType, ty, ct2)) return err("targets.creature_type invalid");
+                s.target_types |= bit(ct2);
+            }
+        }
+        if (t.contains("max_spread_ft")) {
+            int v = 0;
+            if (!small_int(t["max_spread_ft"], 5, 65535, v)) return err("targets.max_spread_ft invalid");
+            s.max_spread_ft = uint16_t(v);
+        }
+    }
 
-    if (!j.contains("effect") || !j["effect"].is_object()) return err("effect missing");
-    const Json& e = j["effect"];
+    if (!j.contains("effects") || !j["effects"].is_array() || j["effects"].empty()) return err("effects missing");
+    if (j["effects"].size() != 1) return err("effects: rules5e resolves exactly one effect per spell for now");
+    const Json& e = j["effects"][0];
     const std::string kind = e.value("kind", "");
     if (kind == "spell_attack") {
         s.kind = SpellEffectKind::SpellAttack;
-        s.melee = e.value("attack", "") == "melee";
-        if (!e.contains("damage") || !read_damage(e["damage"], s)) return err("effect.damage invalid");
+        const std::string atk = e.value("attack", "");
+        if (atk != "melee" && atk != "ranged") return err("effect attack: '" + atk + "' is not one of ['melee', 'ranged']");
+        s.melee = atk == "melee";
+        if (!e.contains("damage") || !read_damage(e["damage"], s)) return err("effect damage invalid");
+        int b = 1;
+        if (e.contains("beams") && !small_int(e["beams"], 1, 255, b)) return err("effect beams invalid");
+        s.beams = uint8_t(b);
     } else if (kind == "save") {
         s.kind = SpellEffectKind::Save;
-        if (!e.contains("ability") || !lookup(kAbility, e["ability"], s.save_ability)) return err("effect.ability invalid");
-        if (e.contains("damage") && !read_damage(e["damage"], s)) return err("effect.damage invalid");
-        s.on_save = e.value("on_success", "none") == "half" ? OnSave::Half : OnSave::None;
+        if (!e.contains("ability") || !lookup(kAbility, e["ability"], s.save_ability)) return err("effect ability invalid");
+        if (e.contains("damage") != e.contains("on_success"))
+            return err(e.contains("damage") ? "'on_success' is a dependency of 'damage'" : "effect on_success needs damage ('damage' is a dependency of 'on_success')");
+        if (e.contains("damage") && !read_damage(e["damage"], s)) return err("effect damage invalid");
+        if (e.contains("on_success")) {
+            const std::string os = e.value("on_success", "");
+            if (os != "half" && os != "none") return err("effect on_success must be half or none");
+            s.on_save = os == "half" ? OnSave::Half : OnSave::None;
+        }
         if (e.contains("condition")) {
-            if (!lookup(kCondition, e["condition"], s.condition)) return err("effect.condition invalid");
+            if (!lookup(kCondition, e["condition"], s.condition)) return err("effect condition invalid");
             s.applies_condition = true;
         }
-        if (e.value("repeat_save", "") == "end_of_turn") s.repeat_save = RepeatSave::EndOfTurn;
+        if (e.contains("repeat_save")) {
+            if (!s.applies_condition) return err("effect repeat_save needs condition ('condition' is a dependency of 'repeat_save')");
+            static const std::map<std::string, RepeatSave> kRep{{"start_of_turn", RepeatSave::StartOfTurn},
+                {"end_of_turn", RepeatSave::EndOfTurn}, {"on_damage", RepeatSave::OnDamage}};
+            if (!lookup(kRep, e["repeat_save"], s.repeat_save)) return err("effect repeat_save invalid");
+        }
         if (!e.contains("damage") && !s.applies_condition) return err("save effect needs damage or condition");
     } else if (kind == "heal") {
         s.kind = SpellEffectKind::Heal;
         auto d = e.contains("dice") && e["dice"].is_string() ? parse_dice(e["dice"].get<std::string>()) : std::nullopt;
-        if (!d) return err("effect.dice invalid");
+        if (!d) return err("effect dice invalid");
         s.dice = *d;
         s.add_spellcasting_modifier = e.value("add_spellcasting_modifier", false);
+        if (e.contains("excludes_creature_type")) {
+            for (const Json& ty : e["excludes_creature_type"]) {
+                CreatureType ct2;
+                if (!lookup(kCreatureType, ty, ct2)) return err("effect excludes_creature_type invalid");
+                s.excluded_types |= bit(ct2);
+            }
+        }
     } else if (kind == "auto_hit") {
         s.kind = SpellEffectKind::AutoHit;
         int darts = 0;
-        if (!e.contains("darts") || !small_int(e["darts"], 1, 255, darts)) return err("effect.darts invalid");
+        if (!e.contains("darts") || !small_int(e["darts"], 1, 255, darts)) return err("effect darts invalid");
         s.darts = uint8_t(darts);
-        if (!e.contains("damage") || !read_damage(e["damage"], s)) return err("effect.damage invalid");
+        if (!e.contains("damage") || !read_damage(e["damage"], s)) return err("effect damage invalid");
+        static const std::map<std::string, DartDistribution> kDist{{"any", DartDistribution::Any},
+            {"single", DartDistribution::Single}, {"distinct", DartDistribution::Distinct}};
+        if (!lookup(kDist, e.value("distribution", Json()), s.distribution)) return err("effect distribution must be any, single or distinct");
+        if (!e.contains("simultaneous") || !e["simultaneous"].is_boolean()) return err("effect simultaneous required");
+        s.simultaneous = e["simultaneous"].get<bool>();
+        s.targets = 0;   // per dart (distribution), not a creature count
     } else if (kind == "ac_bonus") {
         s.kind = SpellEffectKind::AcBonus;
         int b = 0;
-        if (!e.contains("bonus") || !small_int(e["bonus"], 1, 20, b)) return err("effect.bonus invalid");
+        if (!e.contains("bonus") || !small_int(e["bonus"], 1, 20, b)) return err("effect bonus invalid");
         s.ac_bonus = int8_t(b);
         if (e.contains("blocks_spell")) {
-            if (!e["blocks_spell"].is_string()) return err("effect.blocks_spell invalid");
+            if (!e["blocks_spell"].is_string() || e["blocks_spell"].get<std::string>().find(".spell.") == std::string::npos)
+                return err("effect blocks_spell must be a spell id");
             s.blocks_spell = spell_id_of(e["blocks_spell"].get<std::string>());
         }
     } else if (kind == "counter") {
         s.kind = SpellEffectKind::Counter;
-        int b = 10;
-        if (e.contains("check_dc_base") && !small_int(e["check_dc_base"], 1, 99, b)) return err("effect.check_dc_base invalid");
+        if (e.value("auto_max_level", "") != "slot") return err("effect auto_max_level must be slot");
+        const Json chk = e.value("check", Json::object());
+        int b = 0;
+        if (chk.value("ability", "") != "spellcasting" || chk.value("plus", "") != "spell_level" ||
+            !chk.contains("dc_base") || !small_int(chk["dc_base"], 1, 99, b))
+            return err("effect check must be {ability: spellcasting, dc_base, plus: spell_level}");
         s.counter_dc_base = uint8_t(b);
-    } else return err("effect.kind invalid");
+    } else return err("effect kind invalid");
 
     const bool reaction_kind = s.kind == SpellEffectKind::AcBonus || s.kind == SpellEffectKind::Counter;
-    if (reaction_kind != (s.casting_time == CastingTime::Reaction)) return err("ac_bonus/counter effects are reactions (and only they)");
+    if (reaction_kind != (s.casting_time == CastingTime::Reaction))
+        return err("effect kind " + kind + " and casting_time.kind " + ck + " disagree (ac_bonus/counter are reactions, and only they)");
     if (reaction_kind && s.reaction_trigger != (s.kind == SpellEffectKind::AcBonus ? ReactionTrigger::BeingHit : ReactionTrigger::SpellCast))
-        return err("casting_time.trigger doesn't match the effect");
+        return err("effect kind " + kind + " needs casting_time.trigger.kind " + (s.kind == SpellEffectKind::AcBonus ? "being_hit" : "spell_cast"));
+    if ((s.kind == SpellEffectKind::AcBonus) != (s.duration == SpellDuration::UntilStartOfCasterTurn))
+        return err("ac_bonus effects last until_start_of_caster_turn (and only they use it)");
+    if (has_targets && s.kind != SpellEffectKind::Save && s.kind != SpellEffectKind::Heal)
+        return err("targets not allowed on a " + kind + " effect (one target, per dart/beam, or self)");
 
     const Json sc = j.value("scaling", Json::object());
     if (sc.contains("cantrip")) {
-        if (s.level != 0) return err("scaling.cantrip is only for cantrips");
+        if (s.level != 0) return err("scaling.cantrip is only for cantrips (level 0)");
         const Json lv = sc["cantrip"].value("levels", Json::array());
         if (!lv.is_array() || lv.empty() || lv.size() > 3) return err("scaling.cantrip.levels invalid");
         s.cantrip_tiers = {0, 0, 0};
         for (std::size_t i = 0; i < lv.size(); ++i) {
             int t = 0;
             if (!small_int(lv[i], 2, 20, t)) return err("scaling.cantrip.levels invalid");
+            if (i > 0 && t <= s.cantrip_tiers[i - 1]) return err("scaling.cantrip.levels must be ascending");
             s.cantrip_tiers[i] = uint8_t(t);
         }
+        const std::string adds = sc["cantrip"].value("adds", "");
+        if (adds != "dice" && adds != "beams") return err("scaling.cantrip.adds must be dice or beams");
+        if (adds == "beams" && s.kind != SpellEffectKind::SpellAttack) return err("scaling.cantrip.adds beams needs a spell_attack effect");
+        s.cantrip_adds_beams = adds == "beams";
         s.cantrip_scales = true;
     }
     if (sc.contains("upcast")) {
         if (s.level == 0) return err("scaling.upcast is only for leveled spells");
         const Json& u = sc["upcast"];
-        int v = 0;
-        if (u.contains("dice")) { if (!small_int(u["dice"], 1, 255, v)) return err("scaling.upcast.dice invalid"); s.upcast_dice = uint8_t(v); }
-        if (u.contains("darts")) { if (!small_int(u["darts"], 1, 255, v)) return err("scaling.upcast.darts invalid"); s.upcast_darts = uint8_t(v); }
-        if (u.contains("targets")) { if (!small_int(u["targets"], 1, 255, v)) return err("scaling.upcast.targets invalid"); s.upcast_targets = uint8_t(v); }
+        auto allowed = [&](const char* key) {
+            const std::string k = key;
+            if (k == "dice") return s.kind == SpellEffectKind::SpellAttack || s.kind == SpellEffectKind::Save ||
+                                    s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::AutoHit;
+            if (k == "darts") return s.kind == SpellEffectKind::AutoHit;
+            if (k == "beams") return s.kind == SpellEffectKind::SpellAttack;
+            return s.kind == SpellEffectKind::Save || s.kind == SpellEffectKind::Heal;   // targets
+        };
+        for (const char* key : {"beams", "darts", "dice", "targets"}) {   // sorted, like the validator
+            if (!u.contains(key)) continue;
+            if (!allowed(key)) return err(std::string("scaling.upcast.") + key + " not allowed on a " + kind + " effect");
+            int v = 0;
+            if (!small_int(u[key], 1, 255, v)) return err(std::string("scaling.upcast.") + key + " invalid");
+            const std::string k = key;
+            if (k == "dice") {
+                if (s.dice.count == 0) return err("scaling.upcast.dice needs effect dice or damage");
+                s.upcast_dice = uint8_t(v);
+            } else if (k == "darts") s.upcast_darts = uint8_t(v);
+            else if (k == "beams") s.upcast_beams = uint8_t(v);
+            else s.upcast_targets = uint8_t(v);
+        }
     }
     return {std::move(s), {}};
+}
+
+std::string collision_error(const SpellBook& book, const SpellDef& d) {
+    const SpellDef* other = book.find(d.id);
+    char hex[11];
+    std::snprintf(hex, sizeof hex, "0x%08x", unsigned(d.id));
+    return "spell id collision: '" + d.content_id + "' and '" + (other ? other->content_id : std::string("?")) +
+           "' both hash to " + hex + " (rename one)";
+}
+
+bool add_spell(SpellBook& book, SpellDef d, std::string& error) {
+    if (const SpellDef* other = book.find(d.id)) {
+        error = other->content_id == d.content_id ? "duplicate spell id '" + d.content_id + "'" : collision_error(book, d);
+        return false;
+    }
+    book.add(std::move(d));
+    return true;
 }
 
 SpellBookLoad load_spellbook(const std::filesystem::path& dir) {
@@ -183,17 +343,31 @@ SpellBookLoad load_spellbook(const std::filesystem::path& dir) {
         if (it->is_regular_file() && it->path().extension() == ".json") files.push_back(it->path());
     if (ec) { out.errors.push_back(dir.string() + ": " + ec.message()); return out; }
     std::sort(files.begin(), files.end());
+    eng::assets::SchemaRegistry reg;
+    eng::assets::register_content_schemas(reg);
     auto book = std::make_shared<SpellBook>();
     for (const auto& f : files) {
-        std::ifstream in(f, std::ios::binary);
-        Json j = Json::parse(in, nullptr, false);
-        if (j.is_discarded()) { out.errors.push_back(f.string() + ": invalid JSON"); continue; }
-        if (!j.is_object() || j.value("$schema", "") != "spell@1") continue;
-        auto r = spell_from_json(j);
+        auto doc = reg.load_file(f);   // same pipeline as packs: $schema tag, floats rejected, migrations
+        if (!doc.ok) {
+            if (doc.declared.type == "spell") out.errors.push_back(f.string() + ": " + doc.error);
+            continue;
+        }
+        if (doc.current.type != "spell") continue;
+        auto r = spell_from_json(doc.data);
         if (!r.def) { out.errors.push_back(f.string() + ": " + r.error); continue; }
-        if (!book->add(std::move(*r.def))) out.errors.push_back(f.string() + ": duplicate spell id (hash collision)");
+        std::string e;
+        if (!add_spell(*book, std::move(*r.def), e)) out.errors.push_back(f.string() + ": " + e);
     }
-    if (out.errors.empty()) out.book = std::move(book);
+    // References must resolve to a loaded spell (same rule as the validator).
+    for (const SpellDef& d : book->all()) {
+        auto check = [&](uint32_t ref, const char* where) {
+            if (ref != 0 && !book->find(ref))
+                out.errors.push_back(d.content_id + ": " + where + " is not a spell@1 in this pack or its depends");
+        };
+        check(d.blocks_spell, "effect blocks_spell");
+        for (uint32_t r : d.or_targeted_by) check(r, "casting_time.trigger.or_targeted_by");
+    }
+    if (out.errors.empty()) out.book = std::move(book);   // any error (including a collision) is fatal
     return out;
 }
 
