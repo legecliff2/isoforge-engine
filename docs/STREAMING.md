@@ -48,6 +48,7 @@ Location: `tests/goldens/stream/*.txt`. `procgen_world_tests` ("stream golden fi
 
 ```
 # comment (whole line); blank lines ignored
+@world procgen          # directive, required before data lines: sample_layered | procgen
 @gen_version 1          # directive: applies to following lines (default 1)
 @level 0                # directive: focus level (default 0)
 <world_seed_hex> <focus_x> <focus_y> <radius> <digest_u64>
@@ -61,7 +62,12 @@ c0ffee 5 5 2 6382347445354989004
 
 Fields are separated by whitespace, and extra fields are an error.
 
-The world for a file is fixed by its test: `sample_layered_gen1.txt` is the sample pack's `chunks/0_0_0.json` (FileChunkProvider) layered over `ProceduralProvider`. Every OS must reproduce every line. A digest changes only on purpose, when the chunk content, gen_version output, or the digest definition changes. Explain any such change in the PR.
+`@world` selects the provider:
+
+- `sample_layered` is the sample pack's `chunks/0_0_0.json` (FileChunkProvider) layered over `ProceduralProvider`. It is used by `sample_layered_gen1.txt`.
+- `procgen` is `ProceduralProvider` only. It is used by `procgen_gen1.txt`.
+
+**Adding goldens:** append a line to any file, or add a new `*.txt` file. The test picks up every data line automatically; no code change is needed. To get a digest, run `procgen_world_tests -tc="stream golden files reproduce"` with a placeholder digest (for example `0`). The test fails and prints the actual value as `MESSAGE: <file>: <seed> <x> <y> <radius> <digest>`. Every OS must reproduce every line. A digest changes only on purpose, when the chunk content, gen_version output, or the digest definition changes. Explain any such change in the PR.
 
 ## Known limitations
 - **Procgen-to-handcrafted edge connectivity is not guaranteed.** gen_version 1 (v0) chunks keep an empty outer ring, so a corridor never runs into a neighbour, handcrafted or procedural. Connectivity across chunk edges arrives with the milestone 3 region passes. Until then, a combat or path spanning a procedural/handcrafted border may find no route.

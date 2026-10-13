@@ -82,7 +82,7 @@ TEST_CASE("streaming: handcrafted chunk inside procedural wilds; 1 vs N threads,
 
 // Stream golden files (docs/STREAMING.md): every tests/goldens/stream/*.txt line
 // "<world_seed_hex> <focus_x> <focus_y> <radius> <digest_u64>" must reproduce, with 0 and 4
-// worker threads. "@gen_version N" / "@level N" directives apply to following lines; '#' comments.
+// worker threads. "@world sample_layered|procgen" (required), "@gen_version N" / "@level N" directives apply to following lines; '#' comments.
 TEST_CASE("stream golden files reproduce") {
     namespace fs = std::filesystem;
     const fs::path dir = fs::path(PROCGEN_SOURCE_ROOT) / "tests/goldens/stream";
@@ -97,6 +97,7 @@ TEST_CASE("stream golden files reproduce") {
         std::ifstream in(f);
         uint16_t gen_version = 1;
         int16_t level = 0;
+        std::string world_kind;   // "@world": sample_layered | procgen (required before data lines)
         std::string line;
         int lineno = 0;
         while (std::getline(in, line)) {
@@ -107,8 +108,14 @@ TEST_CASE("stream golden files reproduce") {
             std::istringstream ls(line);
             if (line[0] == '@') {
                 std::string key;
+                ls >> key;
+                if (key == "@world") {
+                    REQUIRE((ls >> world_kind));
+                    REQUIRE_MESSAGE((world_kind == "sample_layered" || world_kind == "procgen"), "unknown @world " << world_kind);
+                    continue;
+                }
                 long v = 0;
-                REQUIRE((ls >> key >> v));
+                REQUIRE((ls >> v));
                 if (key == "@gen_version") gen_version = uint16_t(v);
                 else if (key == "@level") level = int16_t(v);
                 else FAIL("unknown directive " << key);
@@ -121,17 +128,19 @@ TEST_CASE("stream golden files reproduce") {
             REQUIRE_MESSAGE((ls >> seed_hex >> fx >> fy >> radius >> digest), "bad line: " << line);
             std::string rest;
             REQUIRE_FALSE((ls >> rest));
+            REQUIRE_MESSAGE(!world_kind.empty(), "missing @world directive before data lines");
             const uint64_t seed = std::strtoull(seed_hex.c_str(), nullptr, 16);
             for (uint32_t threads : {0u, 4u}) {
                 World w;
                 StreamerConfig c;
                 c.world_seed = seed;
                 c.gen_version = gen_version;
-                ChunkStreamer s(w.layered, threads, c);
+                IChunkProvider& prov = world_kind == "procgen" ? static_cast<IChunkProvider&>(w.proc) : w.layered;
+                ChunkStreamer s(prov, threads, c);
                 s.set_focus({fx, fy}, level, radius);
                 s.wait_idle();
                 REQUIRE(s.errors().empty());
-                MESSAGE(seed_hex << " " << fx << " " << fy << " " << radius << " " << s.digest());
+                MESSAGE(f.filename().string() << ": " << seed_hex << " " << fx << " " << fy << " " << radius << " " << s.digest());
                 CHECK(s.digest() == digest);
             }
             ++checked;
