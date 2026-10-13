@@ -1,0 +1,49 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.a",
+  "name": "Magic Missile",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "level": 1,
+  "school": "evocation",
+  "classes": [
+    "sorcerer",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 120
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "auto_hit",
+      "darts": 3,
+      "damage": {
+        "dice": "1d4+1",
+        "type": "force"
+      },
+      "distribution": "any",
+      "simultaneous": true
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "darts": 1
+    }
+  },
+  "targets": {
+    "count": 1
+  }
+}

@@ -1,0 +1,811 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://isoforge.dev/schemas/spell/v1.schema.json",
+  "title": "spell@1",
+  "description": "SRD 5.1 spell. Rules-facing data: rules5e_content maps it to rules5e::SpellDef (engine/rules/content). 'effects' is an array; rules5e currently resolves exactly one effect per spell (the loader rejects more). Cross-field rules are in tools/validate (check_spell) and mirrored by the loader. Integers only (\u00a74.3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "id",
+    "name",
+    "source",
+    "level",
+    "school",
+    "casting_time",
+    "range",
+    "components",
+    "duration",
+    "effects"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "spell@1"
+    },
+    "id": {
+      "$ref": "#/$defs/spell_id"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "$ref": "../common/v1.schema.json#/$defs/source"
+    },
+    "description": {
+      "type": "string"
+    },
+    "level": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9,
+      "description": "0 = cantrip."
+    },
+    "school": {
+      "enum": [
+        "abjuration",
+        "conjuration",
+        "divination",
+        "enchantment",
+        "evocation",
+        "illusion",
+        "necromancy",
+        "transmutation"
+      ]
+    },
+    "classes": {
+      "type": "array",
+      "items": {
+        "$ref": "../common/v1.schema.json#/$defs/class_name"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "ritual": {
+      "type": "boolean",
+      "description": "Can be cast as a ritual (+10 minutes, no slot; outside encounters)."
+    },
+    "casting_time": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "action",
+            "bonus_action",
+            "reaction",
+            "minute",
+            "hour"
+          ]
+        },
+        "amount": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "minute / hour only."
+        },
+        "trigger": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "description": "Reaction only: the rules5e ReactionTrigger window that offers this spell.",
+          "properties": {
+            "kind": {
+              "enum": [
+                "being_hit",
+                "spell_cast"
+              ]
+            },
+            "or_targeted_by": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/spell_id"
+              },
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "being_hit: also offered when targeted by these spells (Shield: Magic Missile)."
+            },
+            "requires_sight": {
+              "type": "boolean",
+              "description": "The reactor must see the triggering creature (Counterspell)."
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "reaction"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "trigger"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "trigger"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "minute",
+                  "hour"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "amount"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "amount"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "self",
+            "touch",
+            "ranged"
+          ]
+        },
+        "feet": {
+          "type": "integer",
+          "minimum": 5,
+          "multipleOf": 5
+        }
+      },
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "ranged"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "feet"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "feet"
+          ]
+        }
+      }
+    },
+    "area": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shape",
+        "size_ft"
+      ],
+      "description": "Area of effect; sim decides which creatures are inside and passes them as targets.",
+      "properties": {
+        "shape": {
+          "enum": [
+            "cone",
+            "cube",
+            "cylinder",
+            "line",
+            "sphere"
+          ]
+        },
+        "size_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "multipleOf": 5,
+          "description": "Cone/line length, cube side, sphere/cylinder radius."
+        },
+        "width_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "multipleOf": 5,
+          "description": "line only."
+        },
+        "height_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "multipleOf": 5,
+          "description": "cylinder only."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "shape": {
+                "const": "line"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "width_ft"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "width_ft"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "shape": {
+                "const": "cylinder"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "height_ft"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "height_ft"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "components": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "v": {
+          "const": true
+        },
+        "s": {
+          "const": true
+        },
+        "m": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "text"
+          ],
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "cost_cp": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Cost in copper pieces (integers only)."
+            },
+            "consumed": {
+              "type": "boolean"
+            }
+          },
+          "dependentRequired": {
+            "consumed": [
+              "cost_cp"
+            ]
+          }
+        }
+      }
+    },
+    "duration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "instantaneous",
+            "rounds",
+            "minutes",
+            "hours",
+            "until_start_of_caster_turn",
+            "until_dispelled",
+            "special"
+          ]
+        },
+        "amount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "concentration": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "rounds",
+                  "minutes",
+                  "hours"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "amount"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "amount"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "instantaneous",
+                  "until_start_of_caster_turn"
+                ]
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "concentration"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "targets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "count"
+      ],
+      "description": "Creatures affected at the spell's base level. Omitted: one creature (or self / area / per-dart, by effect).",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "creature_type": {
+          "$ref": "../common/v1.schema.json#/$defs/creature_types",
+          "description": "Only these creature types are valid targets."
+        },
+        "max_spread_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "multipleOf": 5,
+          "description": "Targets must be within this distance of each other."
+        }
+      }
+    },
+    "effects": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/effect"
+      }
+    },
+    "scaling": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "cantrip": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "levels",
+            "adds"
+          ],
+          "properties": {
+            "levels": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 20
+              },
+              "minItems": 1,
+              "maxItems": 3,
+              "uniqueItems": true,
+              "description": "Caster levels (ascending) at which the cantrip grows (SRD: 5, 11, 17)."
+            },
+            "adds": {
+              "enum": [
+                "dice",
+                "beams"
+              ],
+              "description": "dice: base dice again; beams: one more beam."
+            }
+          }
+        },
+        "upcast": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "description": "Per slot level above the spell's level.",
+          "properties": {
+            "dice": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "darts": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "beams": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "targets": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "spell_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*\\.spell\\.[a-z0-9_]+$",
+      "description": "Content id of a spell ('<ns>.spell.<name>'). Runtime id = FNV-1a 32 of it (rules5e::spell_id_of); collisions are load errors."
+    },
+    "damage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dice",
+        "type"
+      ],
+      "properties": {
+        "dice": {
+          "$ref": "../common/v1.schema.json#/$defs/dice"
+        },
+        "type": {
+          "$ref": "../common/v1.schema.json#/$defs/damage_type"
+        }
+      }
+    },
+    "effect": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "spell_attack",
+            "save",
+            "heal",
+            "auto_hit",
+            "ac_bonus",
+            "counter"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "spell_attack"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "attack",
+              "damage"
+            ],
+            "properties": {
+              "kind": {
+                "const": "spell_attack"
+              },
+              "attack": {
+                "enum": [
+                  "melee",
+                  "ranged"
+                ]
+              },
+              "damage": {
+                "$ref": "#/$defs/damage"
+              },
+              "beams": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Separate attack rolls (default 1); one target, or one per beam."
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "save"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "ability"
+            ],
+            "anyOf": [
+              {
+                "required": [
+                  "damage"
+                ]
+              },
+              {
+                "required": [
+                  "condition"
+                ]
+              }
+            ],
+            "dependentRequired": {
+              "damage": [
+                "on_success"
+              ],
+              "on_success": [
+                "damage"
+              ],
+              "repeat_save": [
+                "condition"
+              ]
+            },
+            "properties": {
+              "kind": {
+                "const": "save"
+              },
+              "ability": {
+                "$ref": "../common/v1.schema.json#/$defs/ability"
+              },
+              "damage": {
+                "$ref": "#/$defs/damage"
+              },
+              "on_success": {
+                "enum": [
+                  "half",
+                  "none"
+                ],
+                "description": "Damage on a successful save."
+              },
+              "condition": {
+                "$ref": "../common/v1.schema.json#/$defs/condition"
+              },
+              "repeat_save": {
+                "enum": [
+                  "start_of_turn",
+                  "end_of_turn",
+                  "on_damage"
+                ],
+                "description": "When the target repeats the save; success ends the condition."
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "heal"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "dice"
+            ],
+            "properties": {
+              "kind": {
+                "const": "heal"
+              },
+              "dice": {
+                "$ref": "../common/v1.schema.json#/$defs/dice"
+              },
+              "add_spellcasting_modifier": {
+                "type": "boolean"
+              },
+              "excludes_creature_type": {
+                "$ref": "../common/v1.schema.json#/$defs/creature_types",
+                "description": "No effect on these (Cure Wounds: undead, construct)."
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "auto_hit"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "darts",
+              "damage",
+              "distribution",
+              "simultaneous"
+            ],
+            "properties": {
+              "kind": {
+                "const": "auto_hit"
+              },
+              "darts": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "damage": {
+                "$ref": "#/$defs/damage"
+              },
+              "distribution": {
+                "enum": [
+                  "any",
+                  "single",
+                  "distinct"
+                ],
+                "description": "any: darts split freely; single: all at one creature; distinct: each at a different creature."
+              },
+              "simultaneous": {
+                "type": "boolean",
+                "description": "All darts strike at once: every target reacts before any damage."
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "ac_bonus"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "bonus"
+            ],
+            "properties": {
+              "kind": {
+                "const": "ac_bonus"
+              },
+              "bonus": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "blocks_spell": {
+                "$ref": "#/$defs/spell_id",
+                "description": "Immune to this spell's damage while the bonus lasts (Shield: Magic Missile)."
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "counter"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "auto_max_level",
+              "check"
+            ],
+            "properties": {
+              "kind": {
+                "const": "counter"
+              },
+              "auto_max_level": {
+                "const": "slot",
+                "description": "Counters spells up to the slot level used, automatically."
+              },
+              "check": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ability",
+                  "dc_base",
+                  "plus"
+                ],
+                "description": "Higher-level spells: ability check, DC dc_base + spell level.",
+                "properties": {
+                  "ability": {
+                    "const": "spellcasting"
+                  },
+                  "dc_base": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "plus": {
+                    "const": "spell_level"
+                  }
+                }
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Discriminated by 'kind' (if/then per kind, so errors name the exact field)."
+    }
+  }
+}

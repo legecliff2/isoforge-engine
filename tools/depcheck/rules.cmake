@@ -19,6 +19,7 @@ set(ALLOW_sim           "ecs;rules5e;world")
 set(ALLOW_script_host   "ecs;sim;world;assets;rng;detmath")
 set(ALLOW_procgen       "detmath;rng;base")          # §2.1 (approved)
 set(ALLOW_procgen_world "world;procgen")             # glue: world <- procgen
+set(ALLOW_rules5e_content "rules5e;assets")         # glue: rules5e <- assets (spell@1 loader, #23)
 set(ALLOW_engine        "base;rng;detmath;rules5e;platform;render_api;render_sdlgpu;render_null;iso2d;assets;ecs;world;audio;sim;script_host;procgen;procgen_world")
 
 # Third-party (non eng::) link targets each module may use directly. ext:* not listed = error.
