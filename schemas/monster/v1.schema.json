@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://isoforge.dev/schemas/monster/v1.schema.json",
+  "title": "monster@1",
+  "description": "SRD 5.1 monster stat block. Shape follows ARCHITECTURE.md §5.4. Integers only (§4.3).",
+  "$ref": "../common/v1.schema.json#/$defs/stat_block",
+  "unevaluatedProperties": false,
+  "required": ["challenge"],
+  "properties": {
+    "$schema": { "const": "monster@1" },
+    "challenge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rating", "xp"],
+      "properties": {
+        "rating": { "enum": ["0", "1/8", "1/4", "1/2", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
+                             "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22",
+                             "23", "24", "25", "26", "27", "28", "29", "30"],
+                    "description": "String so fractional CRs need no floats." },
+        "xp": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "legendary_actions": { "type": "array", "items": { "$ref": "../common/v1.schema.json#/$defs/action" } }
+  }
+}
