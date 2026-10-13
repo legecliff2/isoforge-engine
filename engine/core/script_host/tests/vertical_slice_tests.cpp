@@ -157,8 +157,7 @@ TEST_CASE("vertical slice: a character@2 with behavior.ai is driven by Luau") {
     fs::copy(kPack, tmp, fs::copy_options::recursive);
     const fs::path fj = tmp / "characters" / "fighter_1.json";
     auto doc = assets::Json::parse(std::ifstream(fj));
-    CHECK(doc["$schema"] == "character@1");
-    doc["$schema"] = "character@2";
+    CHECK(doc["$schema"] == "character@3");
     doc["behavior"] = {{"ai", "scripts/ai/skirmisher.luau"}};
     std::ofstream(fj) << doc.dump(2);
     const Outcome o = fight(5, tmp.string());
