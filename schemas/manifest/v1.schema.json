@@ -18,7 +18,7 @@
     "version": { "$ref": "#/$defs/semver" },
     "engine_min": { "$ref": "#/$defs/semver" },
     "feature_level": { "type": "integer", "minimum": 1 },
-    "api_level": { "type": "integer", "minimum": 1 },
+    "api_level": { "const": 1, "description": "Script API level; only level 1 exists for feature_level 1." },
     "rules_profile": { "type": "string", "pattern": "^srd51(-[0-9a-z]+)?$" },
     "requires": { "type": "array", "items": { "$ref": "#/$defs/capability" }, "uniqueItems": true },
     "optional": { "type": "array", "items": { "$ref": "#/$defs/capability" }, "uniqueItems": true },
@@ -36,8 +36,8 @@
     "entry_script": { "type": "string", "pattern": "^scripts/.+\\.luau$" },
     "contents": {
       "type": "array",
-      "description": "Pack-relative data files, in stable (sorted) order. The validator checks every listed file exists and every data file is listed.",
-      "items": { "type": "string", "pattern": "^[a-z0-9_./-]+\\.json$" },
+      "description": "Pack-relative data files and scripts (every *.json except manifest.json, and every scripts/**/*.luau), in stable (sorted) order. The validator checks both directions; the engine ignores non-.json entries.",
+      "items": { "type": "string", "pattern": "^[a-z0-9_./-]+\\.(json|luau)$" },
       "uniqueItems": true
     }
   }

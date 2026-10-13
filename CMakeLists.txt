@@ -92,3 +92,25 @@ if(ENGINE_BUILD_TESTS)
                      "-DINCLUDE=\\.d\\.luau$"
                      -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/compat_freeze/compat_freeze.cmake)
 endif()
+
+# Content scripts: strict Luau typecheck of every pack (content/packs/*) and frozen compat pack
+# (tests/compat/fl*/*) with Engine Core's script_check, i.e. the exact pack-load environment
+# (§3.3). Stock luau-analyze can't load engine.level<N>.d.luau, so it is not used.
+if(ENGINE_BUILD_TESTS)
+    if(ENGINE_SCRIPT_CHECK_EXECUTABLE)
+        file(GLOB _script_packs
+             "${CMAKE_CURRENT_SOURCE_DIR}/content/packs/*/manifest.json"
+             "${CMAKE_CURRENT_SOURCE_DIR}/tests/compat/fl*/*/manifest.json")
+        list(SORT _script_packs)
+        set(_script_pack_dirs "")
+        foreach(m IN LISTS _script_packs)
+            get_filename_component(d "${m}" DIRECTORY)
+            list(APPEND _script_pack_dirs "${d}")
+        endforeach()
+        add_test(NAME content_script_check
+                 COMMAND ${ENGINE_SCRIPT_CHECK_EXECUTABLE} ${_script_pack_dirs})
+    else()
+        message(WARNING "content_script_check disabled: ENGINE_SCRIPT_CHECK_EXECUTABLE not set "
+                        "(engine/core/script_host not configured)")
+    endif()
+endif()

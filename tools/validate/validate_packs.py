@@ -254,14 +254,34 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict) -> list[str]:
     # referenced without a definition; anything else must resolve in-pack or via depends.
     ctx = {"ids": ids, "external_ok": lambda a: a.startswith("srd51.")
            or any(a.startswith(dep + ".") for dep in deps)}
-    if "contents" in man:
-        listed = set(man["contents"])
-        actual = set(docs) - {"manifest.json"}
+    scripts = {f.relative_to(pack).as_posix() for f in pack.glob("scripts/**/*.luau")}
+    script_re = re.compile(r"^scripts/.+\.luau$")
+
+    def check_script_ref(where: str, path) -> None:
+        if not isinstance(path, str) or not script_re.match(path):
+            out.append(f"{where}: script path {path!r} must match ^scripts/.+\\.luau$")
+        elif path not in scripts:
+            out.append(f"{where}: script {path} does not exist in pack")
+
+    if "entry_script" in man:
+        check_script_ref("manifest.json: entry_script", man["entry_script"])
+    for rel in sorted(docs):
+        d = docs[rel]
+        if isinstance(d, dict):
+            if isinstance(d.get("behavior"), dict) and "ai" in d["behavior"]:
+                check_script_ref(f"{rel}: behavior.ai", d["behavior"]["ai"])
+            if (d.get("$schema") == "monster@1" and isinstance(d.get("presentation"), dict)
+                    and "ai" in d["presentation"]):
+                print(f"info {pack.name}/{rel}: monster@1 presentation.ai (engine migrates it to behavior.ai; prefer monster@2)")
+                check_script_ref(f"{rel}: presentation.ai", d["presentation"]["ai"])
+    if "contents" in man or scripts:
+        listed = set(man.get("contents", []))
+        actual = (set(docs) - {"manifest.json"}) | scripts
         for m in sorted(listed - actual):
             out.append(f"manifest.json: contents lists missing file {m}")
         for m in sorted(actual - listed):
             out.append(f"manifest.json: {m} not listed in contents")
-        if man["contents"] != sorted(man["contents"]):
+        if man.get("contents", []) != sorted(man.get("contents", [])):
             out.append("manifest.json: contents must be sorted (stable order)")
     for rel in sorted(docs):
         doc, errs = docs[rel], []
