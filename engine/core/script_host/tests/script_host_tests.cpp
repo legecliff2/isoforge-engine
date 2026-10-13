@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <set>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -65,6 +66,9 @@ TEST_CASE("sample pack: strict typecheck passes and the goblin AI picks a target
     REQUIRE_MESSAGE(p.ok, (p.errors.empty() ? "" : p.errors[0]));
     CHECK(p.api_level == 1);
     REQUIRE(p.scripts.count(kAi) == 1);
+    // goblin.json behavior.ai (migrated from monster@1 presentation.ai) binds the script.
+    REQUIRE(p.ai_by_archetype.count("srd51.monster.goblin") == 1);
+    CHECK(p.ai_by_archetype.at("srd51.monster.goblin") == p.scripts.at(kAi));
     Scene s;
     rng::Pcg32 r(1, 7);
     CallResult cr = host.call_entity_fn(p.scripts.at(kAi), "choose_target", s.reg, s.gob, r);
@@ -216,4 +220,18 @@ TEST_CASE("pack load fails on type errors and api_level mismatch") {
     CHECK_FALSE(q.ok);
     CHECK(q.errors.at(0).find("api_level 2") != std::string::npos);
     std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("embedded level 1 definitions are byte-identical to the frozen source file") {
+    std::ifstream in(std::filesystem::path(SCRIPT_API_DIR) / "engine.level1.d.luau", std::ios::binary);
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    CHECK(api_definitions(1) == ss.str());
+}
+
+TEST_CASE("check_pack_scripts (tools/script_check) on the sample pack") {
+    auto r = check_pack_scripts(kPack);
+    CHECK(r.errors.empty());
+    CHECK(r.scripts >= 1);
+    CHECK(r.api_level == 1);
 }
