@@ -71,8 +71,18 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
         message(WARNING "content_validate disabled: Python3 not found")
     endif()
     if(_content_ok)
+        # Pack scripts are strict-typechecked inside this test with Engine Core's script_check
+        # (exact pack-load environment, §3.3; stock luau-analyze can't load engine defs).
+        set(_script_check_args "")
+        if(ENGINE_SCRIPT_CHECK_EXECUTABLE)
+            set(_script_check_args --script-check "${ENGINE_SCRIPT_CHECK_EXECUTABLE}")
+        else()
+            message(WARNING "content_validate: ENGINE_SCRIPT_CHECK_EXECUTABLE not set, "
+                            "pack scripts will not be type-checked")
+        endif()
         add_test(NAME content_validate
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/validate_packs.py"
+                         ${_script_check_args}
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
     endif()
 endif()
@@ -92,3 +102,4 @@ if(ENGINE_BUILD_TESTS)
                      "-DINCLUDE=\\.d\\.luau$"
                      -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/compat_freeze/compat_freeze.cmake)
 endif()
+

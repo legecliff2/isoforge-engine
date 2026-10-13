@@ -14,6 +14,7 @@
   "contents": [
     "characters/fighter_1.json",
     "chunks/0_0_0.json",
-    "monsters/goblin.json"
+    "monsters/goblin.json",
+    "scripts/ai/skirmisher.luau"
   ]
 }
