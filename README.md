@@ -7,7 +7,9 @@ This work includes material from the System Reference Document 5.1 ("SRD 5.1") b
 ## Content validation
 CTest runs `content_validate`, which checks every pack in `content/packs/` and the frozen
 corpus in `tests/compat/fl*/` against `schemas/<type>/v<N>.schema.json` (JSON Schema 2020-12,
-immutable once released), plus cross-checks (CR/XP, saves/skills, chunk sizes, `content_hash`).
+immutable once released), plus cross-checks (CR/XP, saves/skills, chunk sizes, `content_hash`,
+script paths and `contents`), and strict-typechecks every `scripts/**/*.luau` with Engine Core's
+`script_check` (`--script-check <exe>`, passed automatically by CMake).
 
 ```sh
 cmake -S . -B build && cmake --build build

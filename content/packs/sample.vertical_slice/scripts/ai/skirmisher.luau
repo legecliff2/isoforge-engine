@@ -1,6 +1,6 @@
 --!strict
 -- Goblin target selection (API level 1; types from engine.level1.d.luau).
--- Referenced by monsters/goblin.json presentation.ai.
+-- Referenced by monsters/goblin.json behavior.ai.
 --
 -- Default: focus the weakest foe (lowest hp, ties broken by stable id).
 -- 1 time in 4 (ctx.rng, integer odds), it goes for the nearest foe instead
