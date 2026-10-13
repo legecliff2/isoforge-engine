@@ -51,6 +51,12 @@
       "additionalProperties": { "type": "integer" }
     },
     "size": { "enum": ["tiny", "small", "medium", "large", "huge", "gargantuan"] },
+    "class_name": {
+      "enum": ["barbarian", "bard", "cleric", "druid", "fighter", "monk", "paladin",
+               "ranger", "rogue", "sorcerer", "warlock", "wizard"],
+      "description": "SRD 5.1 class (same list as character@1 classes[].class)."
+    },
+    "creature_types": { "type": "array", "items": { "$ref": "#/$defs/creature_type" }, "minItems": 1, "uniqueItems": true },
     "creature_type": {
       "enum": ["aberration", "beast", "celestial", "construct", "dragon", "elemental", "fey",
                "fiend", "giant", "humanoid", "monstrosity", "ooze", "plant", "undead"]

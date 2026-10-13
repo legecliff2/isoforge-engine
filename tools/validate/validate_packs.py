@@ -134,7 +134,8 @@ def hash_hex(v: int) -> str:
 
 
 def self_test() -> None:
-    """Golden vectors from engine/core/world/tests/chunk_tests.cpp (PR #4)."""
+    """Golden vectors from engine/core/world/tests/chunk_tests.cpp (PR #4) and rules5e spell ids."""
+    assert fnv1a32("srd51.spell.x562789") == fnv1a32("srd51.spell.x779192") == 0xCE11440B
     assert spawn_stable_id(0, 0, 0, 0) == 0xE9CA1F53
     assert spawn_stable_id(-1, 7, -2, 3) == 0x3660E539
 
@@ -232,42 +233,97 @@ def check_chunk(doc, errs, ctx):
             errs.append(f"content_hash {doc['content_hash']} != computed {want} (run with --rehash to update)")
 
 
+def fnv1a32(text: str) -> int:
+    """Runtime spell id: rules5e::spell_id_of (FNV-1a 32 over the UTF-8 content id)."""
+    h = 2166136261
+    for b in text.encode("utf-8"):
+        h = ((h ^ b) * 16777619) & 0xFFFFFFFF
+    return h
+
+
+def runtime_id_collisions(entries: list[tuple[str, str]], cross_pack_only: bool = False) -> list[str]:
+    """entries: (where, content_id). Different content ids with the same 32-bit runtime id."""
+    by_hash: dict[int, tuple[str, str]] = {}
+    out = []
+    for where, cid in sorted(entries):
+        h = fnv1a32(cid)
+        same_pack = h in by_hash and by_hash[h][0].split("/")[0] == where.split("/")[0]
+        if h in by_hash and by_hash[h][1] != cid and not (cross_pack_only and same_pack):
+            out.append(f"{where}: spell id '{cid}' collides with '{by_hash[h][1]}' ({by_hash[h][0]}) "
+                       f"at runtime id {h:#010x} (rename one)")
+        by_hash.setdefault(h, (where, cid))
+    return out
+
+
 REACTION_EFFECT_TRIGGER = {"ac_bonus": "being_hit", "counter": "spell_cast"}
+UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit"), "darts": ("auto_hit",),
+                  "beams": ("spell_attack",), "targets": ("save", "heal")}
 
 
 def check_spell(doc, errs, ctx):
-    """Cross-checks for spell@1 that the schema can't express (rules5e_content mirrors these)."""
-    lvl, eff, ct = doc["level"], doc["effect"], doc["casting_time"]
+    """Cross-checks for spell@1 that the schema can't express. rules5e_content (spell_loader.cpp)
+    enforces the same rules with the same wording; keep them in sync."""
+    lvl, effs, ct = doc["level"], doc["effects"], doc["casting_time"]
+    if len(effs) != 1:
+        errs.append("effects: rules5e resolves exactly one effect per spell for now")
+        return
+    eff = effs[0]
+    kind = eff["kind"]
     scaling = doc.get("scaling", {})
-    if "cantrip" in scaling and lvl != 0:
-        errs.append("scaling.cantrip is only for cantrips (level 0)")
-    if "upcast" in scaling and lvl == 0:
+    cantrip, upcast = scaling.get("cantrip"), scaling.get("upcast", {})
+    if cantrip is not None:
+        if lvl != 0:
+            errs.append("scaling.cantrip is only for cantrips (level 0)")
+        if cantrip["levels"] != sorted(cantrip["levels"]):
+            errs.append("scaling.cantrip.levels must be ascending")
+        if cantrip["adds"] == "beams" and kind != "spell_attack":
+            errs.append("scaling.cantrip.adds beams needs a spell_attack effect")
+    if upcast and lvl == 0:
         errs.append("scaling.upcast is only for leveled spells")
-    if "darts" in scaling.get("upcast", {}) and eff["kind"] != "auto_hit":
-        errs.append("scaling.upcast.darts needs effect.kind auto_hit")
-    if "dice" in scaling.get("upcast", {}) and not ("dice" in eff or "damage" in eff):
-        errs.append("scaling.upcast.dice needs effect dice or damage")
-    want = REACTION_EFFECT_TRIGGER.get(eff["kind"])
+    for key in sorted(upcast):
+        if kind not in UPCAST_EFFECTS[key]:
+            errs.append(f"scaling.upcast.{key} not allowed on a {kind} effect")
+        elif key == "dice" and "dice" not in eff and "damage" not in eff:
+            errs.append("scaling.upcast.dice needs effect dice or damage")
+    want = REACTION_EFFECT_TRIGGER.get(kind)
     if (ct["kind"] == "reaction") != (want is not None):
-        errs.append(f"effect.kind {eff['kind']} and casting_time.kind {ct['kind']} disagree (ac_bonus/counter are reactions)")
-    elif want and ct.get("trigger") != want:
-        errs.append(f"effect.kind {eff['kind']} needs casting_time.trigger {want}")
+        errs.append(f"effect kind {kind} and casting_time.kind {ct['kind']} disagree (ac_bonus/counter are reactions, and only they)")
+    elif want and ct["trigger"]["kind"] != want:
+        errs.append(f"effect kind {kind} needs casting_time.trigger.kind {want}")
+    if "or_targeted_by" in ct.get("trigger", {}) and ct["trigger"]["kind"] != "being_hit":
+        errs.append("casting_time.trigger.or_targeted_by is only for being_hit")
+    if (kind == "ac_bonus") != (doc["duration"]["kind"] == "until_start_of_caster_turn"):
+        errs.append("ac_bonus effects last until_start_of_caster_turn (and only they use it)")
     if "repeat_save" in eff and "condition" not in eff:
-        errs.append("effect.repeat_save needs effect.condition")
-    if eff.get("on_success") and "damage" not in eff:
-        errs.append("effect.on_success needs effect.damage")
-    ref = eff.get("blocks_spell")
-    if ref and ref not in ctx["ids"] and not ctx["external_ok"](ref):
-        errs.append(f"effect.blocks_spell '{ref}' not defined in pack or its depends")
-    if not any(doc["components"].get(k) for k in ("v", "s", "m")):
-        errs.append("components: at least one of v, s, m")
+        errs.append("effect repeat_save needs condition")
+    if "on_success" in eff and "damage" not in eff:
+        errs.append("effect on_success needs damage")
+    if "targets" in doc and kind not in ("save", "heal"):
+        errs.append(f"targets not allowed on a {kind} effect (one target, per dart/beam, or self)")
+    refs = [("effect blocks_spell", eff.get("blocks_spell"))] + \
+           [("casting_time.trigger.or_targeted_by", r) for r in ct.get("trigger", {}).get("or_targeted_by", [])]
+    for where, ref in refs:
+        if ref and ref not in ctx["spell_ids"] and not ctx["external_ok"](ref):
+            errs.append(f"{where} '{ref}' is not a spell@1 in this pack or its depends")
 
 
 CHECKS = {"monster": check_monster, "character": check_character, "chunk": check_chunk, "spell": check_spell}
 
 
+def pack_spell_ids(pack: Path) -> list[tuple[str, str]]:
+    out = []
+    for f in sorted(pack.rglob("*.json")):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        if isinstance(d, dict) and str(d.get("$schema", "")).startswith("spell@") and isinstance(d.get("id"), str):
+            out.append((f"{pack.name}/{f.relative_to(pack).as_posix()}", d["id"]))
+    return out
+
+
 def validate_pack(pack: Path, registry: Registry, by_tag: dict) -> list[str]:
-    out: list[str] = []
+    out: list[str] = runtime_id_collisions(pack_spell_ids(pack))
     files = sorted(p for p in pack.rglob("*.json"))
     docs = {}
     for f in files:
@@ -283,7 +339,8 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict) -> list[str]:
     deps = [d["id"] for d in man.get("depends", [])]
     # srd51.* ids may be defined provisionally in-pack (until packs/srd51.core exists) or
     # referenced without a definition; anything else must resolve in-pack or via depends.
-    ctx = {"ids": ids, "external_ok": lambda a: a.startswith("srd51.")
+    spell_ids = {d.get("id") for r, d in docs.items() if isinstance(d, dict) and str(d.get("$schema", "")).startswith("spell@")}
+    ctx = {"ids": ids, "spell_ids": spell_ids, "external_ok": lambda a: a.startswith("srd51.")
            or any(a.startswith(dep + ".") for dep in deps)}
     scripts = {f.relative_to(pack).as_posix() for f in pack.glob("scripts/**/*.luau")}
     script_re = re.compile(r"^scripts/.+\.luau$")
@@ -398,8 +455,13 @@ def main(argv: list[str]) -> int:
                 print(f"  {e}")
         else:
             print(f"ok   {name}")
+    # Pack set: every pack validated together is loaded together, so runtime spell ids must be
+    # unique across them too (same content id in several packs is fine: same spell).
+    cross = runtime_id_collisions([e for pack in packs for e in pack_spell_ids(pack)], cross_pack_only=True)
+    for e in cross:
+        print(f"FAIL pack set: {e}")
     print(f"{len(packs) - failed}/{len(packs)} packs valid ({len(by_tag)} schemas)")
-    return 1 if failed else 0
+    return 1 if failed or cross else 0
 
 
 if __name__ == "__main__":

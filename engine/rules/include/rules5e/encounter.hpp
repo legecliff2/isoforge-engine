@@ -196,6 +196,10 @@ struct EncounterHooks {
     std::function<bool(const EncounterState&, const Combatant& caster, const SpellDef&)> can_provide_components;
     // Range / line of sight / creature type (Hold Person: humanoid) for one target. Empty = valid.
     std::function<bool(const EncounterState&, const Combatant& caster, const SpellDef&, const Combatant& target)> spell_target_ok;
+    // Positions (sim): are all `ids` within `feet` of each other (Hold Person upcast: 30 ft)? Empty = yes.
+    std::function<bool(const EncounterState&, const std::vector<CombatantId>& ids, int feet)> targets_within;
+    // Sight (sim): can `observer` see `target` (reaction spells with requires_sight)? Empty = yes.
+    std::function<bool(const EncounterState&, const Combatant& observer, const Combatant& target)> can_see;
 };
 
 struct EncounterState {
