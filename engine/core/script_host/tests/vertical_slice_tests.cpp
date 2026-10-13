@@ -111,7 +111,7 @@ TEST_CASE("vertical slice: goblin (Luau) vs fighter runs to completion; same see
     CHECK(a.hash == 5530183380127477598ull);   // feature uses folded into the state hash (log + event digests unchanged)
     CHECK(a.log_hash == 10047098813104974020ull);
     MESSAGE("event digest (schema v" << sim::kSimEventSchemaVersion << ")=" << a.event_digest);
-    CHECK(a.event_digest == 83810279896348715ull);
+    CHECK(a.event_digest == 14305360421686639532ull);   // v4 (v3 was 83810279896348715; version only)
 }
 
 TEST_CASE("vertical slice: the command log alone replays the fight bit-identically") {
