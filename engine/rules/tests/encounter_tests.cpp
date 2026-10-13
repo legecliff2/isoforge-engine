@@ -14,6 +14,7 @@ Combatant fighter(CombatantId id) {
     auto c = make_combatant(id, 14, 16, 28);
     c.team = 0; c.speed_ft = 30; c.proficiency_bonus = 2;
     c.uses_death_saves = true;
+    c.is_pc = true;
     c.attacks = {kLongsword};
     return c;
 }
@@ -48,8 +49,14 @@ uint64_t state_hash(const EncounterState& s) {
 std::vector<Combatant> party() { return {fighter(1), goblin(2), goblin(3)}; }
 
 // Simple deterministic policy: move 5 ft, attack the first enemy, Nimble Escape if granted, end.
+EncounterHooks replay_hooks() {
+    EncounterHooks h;
+    h.end_condition = end_when_no_pc_or_no_opponent;
+    return h;
+}
+
 std::vector<ActionRequest> record_log(uint64_t seed, int max_steps) {
-    auto s = begin_encounter(party(), seed);
+    auto s = begin_encounter(party(), seed, nullptr, replay_hooks());
     std::vector<ActionRequest> log;
     for (int i = 0; i < max_steps && !s.ended; ++i) {
         auto legal = legal_actions(s);
@@ -67,7 +74,7 @@ std::vector<ActionRequest> record_log(uint64_t seed, int max_steps) {
 }
 
 EncounterState replay(uint64_t seed, const std::vector<ActionRequest>& log) {
-    auto s = begin_encounter(party(), seed);
+    auto s = begin_encounter(party(), seed, nullptr, replay_hooks());
     for (const auto& r : log) (void)step(s, r);   // invalid requests are no-ops by contract
     return s;
 }
@@ -196,12 +203,12 @@ TEST_CASE("PC at 0 HP: Unconscious + Prone, death saves at turn start; damage ad
             CHECK(two_failures);
         }
     }
-    const bool pc_team_won = winner_team(s).has_value() && *winner_team(s) == 0;
-    CHECK_FALSE(pc_team_won);
+    CHECK_FALSE(s.ended);   // PC 4 is still conscious
 }
 
-TEST_CASE("monsters die at 0 HP; encounter ends when one team stands") {
+TEST_CASE("monsters die at 0 HP; opt-in policy ends when no opponent is conscious") {
     auto s = at_turn_of(1);
+    s.hooks.end_condition = end_when_no_pc_or_no_opponent;
     mut(s, 2).hp = 0; mut(s, 2).dead = true;
     mut(s, 3).hp = 1; mut(s, 3).ac = -20;
     for (int tries = 0; tries < 50 && !s.ended; ++tries) {
@@ -214,7 +221,10 @@ TEST_CASE("monsters die at 0 HP; encounter ends when one team stands") {
     CHECK(find(s, 3)->dead);
     CHECK_FALSE(find(s, 3)->has(Condition::Unconscious));
     CHECK(s.ended);
-    CHECK(winner_team(s).value() == 0);
+    REQUIRE(s.outcome.has_value());
+    CHECK(s.outcome->reason == EndReason::NoOpponentConscious);
+    REQUIRE(s.outcome->pcs.size() == 1);
+    CHECK(s.outcome->pcs[0].state == PcState::Conscious);
     CHECK_FALSE(step(s, {1, ActionKind::EndTurn}).ok);
 }
 
