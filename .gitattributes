@@ -1,0 +1,2 @@
+# Frozen corpus: byte-exact on every OS (checked by compat_freeze).
+tests/compat/** -text
