@@ -11,6 +11,7 @@
 #include <functional>
 #include <map>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -84,6 +85,12 @@ public:
     // spawn stable_id = CombatantId). Teams: see spawn_team_name. Rolls initiative.
     static std::optional<Combat> create(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content,
                                         uint64_t seed, std::string* error = nullptr);
+    // Combat spanning several chunks of one level (e.g. ChunkStreamer::resident(level)). Positions
+    // are world tiles (Grid::to_world); spawns are taken in chunk-coord order, then file order,
+    // so the argument order does not matter. The single-chunk overload uses the chunk-local frame
+    // (as if the chunk were at (0,0)); this one uses absolute world tiles.
+    static std::optional<Combat> create(ecs::Registry& reg, std::span<const world::Chunk* const> chunks,
+                                        const ContentLibrary& content, uint64_t seed, std::string* error = nullptr);
 
     // Rejected while a decision is pending.
     SubmitResult submit(const Command& cmd);
@@ -129,7 +136,7 @@ public:
 
 private:
     struct Slot { CombatantId id; ecs::Entity entity; const Archetype* archetype; };
-    Combat(ecs::Registry& reg, const world::Chunk& chunk) : reg_(&reg), grid_(chunk) {}
+    Combat(ecs::Registry& reg, Grid grid) : reg_(&reg), grid_(std::move(grid)) {}
     void apply_rules_events(const std::vector<rules5e::Event>& evs);
     void sync_ecs();
     void install_hooks();
@@ -141,8 +148,8 @@ private:
     bool ranged_attack_facts(CombatantId actor, uint8_t attack_index, Vec2i from, Vec2i target_pos,
                              rules5e::ActionRequest& req, std::string* error) const;
     bool move_tile(CombatantId mover, Vec2i to, const std::vector<rules5e::Event>& evs);
-    friend std::optional<Combat> replay(ecs::Registry&, const world::Chunk&, const ContentLibrary&, uint64_t,
-                                        const std::vector<LogEntry>&, std::string*);
+    friend std::optional<Combat> replay(ecs::Registry&, std::span<const world::Chunk* const>, const ContentLibrary&,
+                                        uint64_t, const std::vector<LogEntry>&, std::string*);
     bool leaves_reach(CombatantId mover, Vec2i from, Vec2i to) const;
     int melee_reach_tiles(CombatantId id) const;   // 0 = no melee attack
     const Slot* slot(CombatantId id) const;
@@ -164,6 +171,8 @@ private:
 // Replays a command log from scratch (same chunk, content and seed) into `reg`.
 // Returns the rebuilt combat, or nullopt + error if any command is rejected (desync).
 std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content,
+                             uint64_t seed, const std::vector<LogEntry>& log, std::string* error = nullptr);
+std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
                              uint64_t seed, const std::vector<LogEntry>& log, std::string* error = nullptr);
 
 } // namespace eng::sim
