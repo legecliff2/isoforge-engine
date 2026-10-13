@@ -1,0 +1,59 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.a",
+  "name": "Hold Person",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "level": 2,
+  "school": "enchantment",
+  "classes": [
+    "bard",
+    "cleric",
+    "druid",
+    "sorcerer",
+    "warlock",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "a small, straight piece of iron"
+    }
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "targets": {
+    "count": 1,
+    "creature_type": [
+      "humanoid"
+    ],
+    "max_spread_ft": 30
+  },
+  "effects": [
+    {
+      "kind": "save",
+      "ability": "wis",
+      "condition": "paralyzed",
+      "repeat_save": "end_of_turn",
+      "on_success": "half"
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "targets": 1
+    }
+  }
+}

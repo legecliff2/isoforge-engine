@@ -8,22 +8,17 @@ Part of the content compatibility contract (ARCHITECTURE §3). Machine-checked b
 
 | document | effects | validator |
 |---|---|---|
-| `character@3` | **applied by the engine** | kind contract errors; `cost: reaction` is an error (reserved) |
-| `character@1` / `@2` | **inert descriptions**: the engine's @2->@3 migration marks each effect `"inert": true` and never applies it, because those stat blocks bake the numbers in (fl1's fighter writes `1d8+5` with Dueling included) | kind contract findings are warnings only |
-| `monster@1` / `@2` | applied (not gated yet) | kind contract errors |
+| `character@3`, `monster@3` | **applied by the engine** | kind-contract violations are errors; `cost: reaction` is an error (reserved) |
+| `character@1` / `@2`, `monster@1` / `@2` | **inert descriptions**: the engine's @2->@3 migrations mark each effect `"inert": true` and never apply it, because those stat blocks may bake the numbers in (fl1's fighter writes `1d8+5` with Dueling included) | kind-contract findings are warnings only |
 
-Effects are applied by the engine, so in `character@3` their numbers must **not** be baked
-into the stat block. Dueling's +2 is not in the longsword damage: write `1d8+3`, not `1d8+5`.
-To activate effects on an old character, move it to `character@3` and de-bake its numbers in
-the same change.
+Effects are applied by the engine in @3 files, so the numbers an effect adds must **not** be
+baked into the stat block. Dueling's +2 is not in the fighter's longsword damage (write `1d8+3`,
+not `1d8+5`), and a monster `damage_bonus` is not folded into its action damage. To activate
+effects on an old file, move it to @3 and de-bake its numbers in the same change. The sample
+goblin is `monster@3`: Nimble Escape (`bonus_action_grant`) has no number to bake.
 
-`inert` is reserved for the engine migration. Authoring it is an error in every version.
-
-**Monsters:** effects are applied for every monster version today. No shipped monster bakes an
-effect's number into its stats: the goblin's Nimble Escape (`bonus_action_grant`) has no number
-to bake. A monster `damage_bonus` (or any numeric effect) whose number is also baked into its
-actions would require `monster@3`, with the same inert-migration gate as `character@3`. Don't
-author one before that exists.
+`inert` is reserved for the engine migrations. Authoring it is an error in every version of
+every type.
 
 ## 1. Feature effects
 
@@ -32,8 +27,8 @@ object tagged by `kind`. The engine maps `kind` to a registered hook and never m
 names or ids, so renaming a feature does not change what it does.
 
 - **Known kinds** (listed below) have their fields validated against `common@1 $defs/effect`
-  (`character@3` uses it directly via `$defs/trait_active`). A malformed known effect is an
-  **error** in active documents, and the engine also rejects it at load. In `character@1/@2` it is
+  (`character@3` and `monster@3` use it directly via `$defs/trait_active`). A malformed known effect is an
+  **error** in @3 documents, and the engine also rejects it at load. In @1/@2 documents it is
   only a **warning** (see §0).
 - **Unknown kinds** are allowed so content can run ahead of the engine. The validator prints a
   **warning** and the engine lists them in `Archetype::unsupported_features` and ignores them.
@@ -45,7 +40,7 @@ Common field, valid on any kind:
 | field | type | meaning |
 |---|---|---|
 | `kind` | string `^[a-z0-9_]+$` | hook id (required) |
-| `cost` | `"action"` \| `"bonus_action"` | action-economy cost of an *active* effect; omitted = `action`. `"reaction"` is **reserved**: the schema enum lists it, but it is an error in active documents (`character@3`, monsters) and the engine rejects it. |
+| `cost` | `"action"` \| `"bonus_action"` | action-economy cost of an *active* effect; omitted = `action`. `"reaction"` is **reserved**: the schema enum lists it, but it is an error in @3 documents and the engine rejects it. |
 
 ### `damage_bonus` (static)
 
