@@ -51,6 +51,9 @@ TEST_CASE("event layout: schema version and numeric enum values are locked") {
         {EventKind::SpellCast, 30}, {EventKind::SpellCountered, 31}, {EventKind::SpellResolved, 32},
         {EventKind::AcBonus, 33}, {EventKind::FeatureUsed, 34}};   // v2: FeatureUsed
     CHECK(int(kLastRulesEventKind) == kinds.back().second);
+    // Every rules kind must be listed above: a new kind fails here until the table (and version) is updated.
+    CHECK(rules5e::kEventKindCount == kinds.size());
+    CHECK(int(kLastRulesEventKind) + 1 == int(rules5e::kEventKindCount));
     for (auto [k, v] : kinds) CHECK(int(k) == v);
     CHECK(uint8_t(rules5e::ReactionTrigger::LeavingReach) == 0);
     CHECK(uint8_t(rules5e::ReactionTrigger::BeingHit) == 1);

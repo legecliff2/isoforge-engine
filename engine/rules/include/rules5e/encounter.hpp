@@ -3,6 +3,7 @@
 // Positions/distances/perception live in `sim`; requests carry the facts rules needs.
 // Rules never decide win or loss: the encounter ends via an end-condition policy (hook) that
 // reports a factual outcome (each PC's state); the game layer interprets it.
+#include <cstddef>
 #include <functional>
 #include <optional>
 #include <span>
@@ -49,7 +50,7 @@ struct ActionRequest {
     RollMode check_mode = RollMode::Normal;  // AbilityCheck: extra roll-mode source
     // appended (UseFeature): content feature id (opaque to rules; sim's feature registry) and an
     // optional self-heal rolled from the encounter rng. Spends the action, or the bonus action
-    // when as_bonus_action (the feature itself grants it). Uses/recharge are tracked by sim.
+    // when as_bonus_action (the feature itself grants it). Limited uses: EncounterState::features.
     uint32_t feature_id = 0;
     DiceExpr heal_dice{0, 0, 0};
     // appended (Attack / readied Attack, ranged weapons): facts supplied by sim. Either one gives
@@ -69,7 +70,11 @@ enum class EventKind : uint8_t {
     ReactionWindowOpened, ReactionTaken, ReactionDeclined, MoveInterrupted, SpellCast, SpellCountered,
     SpellResolved, AcBonus,
     // appended:
-    FeatureUsed };
+    FeatureUsed,
+    // Not an event: the number of kinds. Append new kinds ABOVE this line; consumers that lock the
+    // numeric layout (sim's "event layout" test) compare against kEventKindCount.
+    Count_ };
+inline constexpr std::size_t kEventKindCount = std::size_t(EventKind::Count_);
 
 // Flat tagged event; meaning of a/b/c per kind:
 //   InitiativeRolled a=total; TurnStarted a=round; AttackResolved a=natural b=total c=hit|crit<<1;
@@ -151,6 +156,17 @@ struct PendingDecision {
 
 struct ReadiedAction { CombatantId actor; ActionRequest response; uint32_t trigger_id; };
 
+// Limited-use features (Second Wind, ...), keyed by (actor, feature_id). Part of the encounter state,
+// so they are serialized/hashed with it and rebuilt by replay; sim registers them at setup.
+enum class FeatureRecharge : uint8_t { None, ShortRest, LongRest };
+struct FeatureUses {
+    CombatantId actor = 0;
+    uint32_t feature_id = 0;
+    uint8_t max = 0;                 // uses per recharge; 0 = unlimited
+    uint8_t used = 0;
+    FeatureRecharge recharge = FeatureRecharge::None;
+};
+
 using PollOrderFn = std::function<std::vector<CombatantId>(const EncounterState&,
                                                            const std::vector<CombatantId>& eligible_in_initiative_order)>;
 
@@ -181,6 +197,11 @@ struct EncounterHooks {
     // Reactions don't chain: a window that would open while resolving a reaction (depth >= 1), and
     // Ready triggers on events produced by reactions, are skipped unless this returns true.
     std::function<bool(const EncounterState&, const ReactionWindow& nested)> allow_chain;
+    // appended. Ready: called when a readied response fires (after the reactor accepts), with the
+    // triggering event, to re-evaluate facts that depend on the moment it fires (range, hostiles
+    // within 5 ft, target_within_5ft). Returns the request to resolve; nullopt = keep it as readied.
+    // Must be a pure function of the state and sim's (replayed) positions. Empty = keep as readied.
+    std::function<std::optional<ActionRequest>(const EncounterState&, const ReadiedAction&, const Event& e)> refresh_ready;
 };
 
 struct EncounterState {
@@ -195,6 +216,7 @@ struct EncounterState {
     uint32_t next_window_seq = 0;        // reaction windows opened so far
     std::optional<PendingDecision> pending;   // set while an action waits for a reaction decision
     EncounterHooks hooks;                // behaviour, not state: never serialized/hashed
+    std::vector<FeatureUses> features;   // appended: limited-use features (register_feature)
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call
@@ -275,6 +297,18 @@ std::vector<CombatantId> default_poll_order(const EncounterState&, const std::ve
 // An ability (skill) check made during the encounter (content/sim driven). Consumes Help's
 // "next check" advantage. Wrapper over step(check_request(...)).
 StepResult encounter_check(EncounterState&, CombatantId, Skill, int dc, RollMode = RollMode::Normal);
+
+// Limited-use features. A UseFeature for a registered (actor, feature_id) is rejected once its uses
+// are spent; an unregistered feature is unlimited (the caller validates it).
+void register_feature(EncounterState&, CombatantId actor, uint32_t feature_id, uint8_t max_uses,
+                      FeatureRecharge = FeatureRecharge::None, uint8_t used = 0);
+const FeatureUses* find_feature(const EncounterState&, CombatantId actor, uint32_t feature_id);
+// Uses left: 255 = unlimited or unregistered.
+uint8_t feature_uses_left(const EncounterState&, CombatantId actor, uint32_t feature_id);
+// Rest: a short rest recharges ShortRest features; a long rest recharges ShortRest and LongRest ones.
+void recover_features(EncounterState&, bool long_rest);
+// Canonical FNV-1a 64 digest of the feature-use table (fold into any state hash).
+uint64_t feature_uses_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 
 std::vector<ActionRequest> legal_actions(const EncounterState&);   // for AI + UI (current actor)
 CombatantId                current_actor(const EncounterState&);

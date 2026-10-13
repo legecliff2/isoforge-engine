@@ -72,6 +72,14 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, const world::Chunk& chu
     }
     std::vector<rules5e::Event> opening;
     c.state_ = rules5e::begin_encounter(std::move(cs), seed, &opening);
+    // Limited-use features live in the rules state (hashed, rebuilt by replay).
+    for (const auto& sl : c.slots_)
+        for (const auto& f : sl.archetype->active)
+            if (f.uses > 0)
+                rules5e::register_feature(c.state_, sl.id, f.feature_id, f.uses,
+                                          f.recharge == Recharge::ShortRest  ? rules5e::FeatureRecharge::ShortRest
+                                          : f.recharge == Recharge::LongRest ? rules5e::FeatureRecharge::LongRest
+                                                                             : rules5e::FeatureRecharge::None);
     c.apply_rules_events(opening);
     return c;
 }
@@ -155,6 +163,20 @@ void Combat::install_hooks() {
         const Vec2i rp = pos(r.id);
         return reach > 0 && chebyshev(pos(w.trigger_actor), rp) <= reach && chebyshev(*to, rp) > reach;
     };
+    // A readied ranged attack's facts are taken when it fires, not when it was readied.
+    state_.hooks.refresh_ready = [this](const rules5e::EncounterState&, const rules5e::ReadiedAction& ra,
+                                        const rules5e::Event& e) -> std::optional<ActionRequest> {
+        if (ra.response.kind != ActionKind::Attack) return std::nullopt;
+        const auto* a = rules5e::find(state_, ra.actor);
+        if (!a || ra.response.attack_index >= a->attacks.size() || !a->attacks[ra.response.attack_index].ranged)
+            return std::nullopt;
+        const Vec2i rp = pos(ra.actor);
+        const Vec2i tp = ra.response.target == e.actor ? moving_to(e.actor).value_or(pos(e.actor)) : pos(ra.response.target);
+        ActionRequest q = ra.response;
+        if (!ranged_attack_facts(ra.actor, ra.response.attack_index, rp, tp, q, nullptr)) return std::nullopt;
+        q.target_within_5ft = chebyshev(rp, tp) <= 1;
+        return q;
+    };
     state_.hooks.ready_trigger = [this](const rules5e::EncounterState&, const rules5e::ReadiedAction& ra,
                                         const rules5e::Event& e) {
         if (e.kind != rules5e::EventKind::Moved || e.actor == ra.actor) return false;
@@ -215,10 +237,7 @@ static const ActiveFeature* find_active(const Archetype* a, uint32_t fid) {
 uint8_t Combat::feature_uses_left(CombatantId id, uint32_t fid) const {
     const ActiveFeature* f = find_active(archetype(id), fid);
     if (!f) return 0;
-    if (f->uses == 0) return 255;
-    auto it = feature_used_.find({id, fid});
-    const uint8_t used = it == feature_used_.end() ? 0 : it->second;
-    return used >= f->uses ? 0 : uint8_t(f->uses - used);
+    return rules5e::feature_uses_left(state_, id, fid);
 }
 
 bool Combat::can_use_feature(CombatantId id, uint32_t fid) const {
@@ -236,7 +255,7 @@ std::optional<Vec2i> Combat::moving_to(CombatantId id) const {
 }
 
 // Applies a completed request: rules events, then sim events (tiles) in the order of their
-// rules Moved events, then sim bookkeeping (feature uses, readied destinations).
+// rules Moved events, then sim bookkeeping (readied destinations).
 void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs, std::optional<Vec2i> to) {
     const auto& q = ls.request;
     apply_rules_events(evs);
@@ -258,7 +277,6 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
     }
     for (const auto& e : evs)
         if (e.kind == rules5e::EventKind::ReadyTriggered || e.kind == rules5e::EventKind::ReadyExpired) readied_dest_.erase(e.actor);
-    if (q.kind == ActionKind::UseFeature) ++feature_used_[{q.actor, q.feature_id}];
     if (q.kind == ActionKind::Ready && q.ready_kind == ActionKind::Move && to) readied_dest_[q.actor] = *to;
     step_to_.reset();
     ready_to_.reset();
@@ -398,7 +416,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to) {
             if (at.ranged) {
                 if (tiles > reach_tiles(arch->long_range_ft[req.attack_index])) { r.error = "trigger beyond long range"; return r; }
                 req.beyond_normal_range = tiles > reach_tiles(arch->normal_range_ft[req.attack_index]);
-                req.ranged_hostile_within_5ft = false;   // v0: facts frozen at Ready time (see docs)
+                req.ranged_hostile_within_5ft = false;   // re-evaluated when it fires (hooks.refresh_ready)
                 req.target_within_5ft = tiles <= 1;
             } else {
                 if (tiles > reach_tiles(at.reach_or_range_ft)) { r.error = "trigger beyond reach"; return r; }
@@ -467,6 +485,9 @@ uint64_t Combat::hash() const {
         h.i16(c ? c->hp : int16_t(0));
         h.byte(c && c->dead ? 1 : 0);
     }
+    // Feature uses (rules state). Folded only when any are registered, so feature-less combats
+    // keep their hashes.
+    if (!state_.features.empty()) h.u64(rules5e::feature_uses_digest(state_));
     return h.value();
 }
 

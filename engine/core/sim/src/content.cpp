@@ -85,6 +85,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             if (normal <= 0 || lng < normal || lng > 65535) return a.id + ": bad range in action " + act.value("id", "?");
         }
         at.reach_or_range_ft = uint8_t(melee ? geti(act, "reach", 5) : std::min(normal, 255));
+        if (ranged) { at.range_ft = uint16_t(normal); at.long_range_ft = uint16_t(lng); }
         c.attacks.push_back(at);
         a.normal_range_ft.push_back(uint16_t(normal));
         a.long_range_ft.push_back(uint16_t(lng));
