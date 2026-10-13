@@ -140,3 +140,6 @@ endif()
 
 # Determinism lint over rules5e / detmath / sim / world/gen (§4.7). Registry: cmake/DetLint.cmake.
 include(DetLint)
+
+# Vertical slice viewer (session/view libs + tests always; executable needs SDL).
+add_subdirectory(game/vertical_slice)
