@@ -1,0 +1,15 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.cure_wounds",
+  "name": "Cure Wounds",
+  "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
+  "level": 1,
+  "school": "evocation",
+  "classes": ["bard", "cleric", "druid", "paladin", "ranger"],
+  "casting_time": { "kind": "action" },
+  "range": { "kind": "touch" },
+  "components": { "v": true, "s": true },
+  "duration": { "kind": "instantaneous" },
+  "effect": { "kind": "heal", "dice": "1d8", "add_spellcasting_modifier": true },
+  "scaling": { "upcast": { "dice": 1 } }
+}

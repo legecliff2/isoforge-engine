@@ -232,7 +232,38 @@ def check_chunk(doc, errs, ctx):
             errs.append(f"content_hash {doc['content_hash']} != computed {want} (run with --rehash to update)")
 
 
-CHECKS = {"monster": check_monster, "character": check_character, "chunk": check_chunk}
+REACTION_EFFECT_TRIGGER = {"ac_bonus": "being_hit", "counter": "spell_cast"}
+
+
+def check_spell(doc, errs, ctx):
+    """Cross-checks for spell@1 that the schema can't express (rules5e_content mirrors these)."""
+    lvl, eff, ct = doc["level"], doc["effect"], doc["casting_time"]
+    scaling = doc.get("scaling", {})
+    if "cantrip" in scaling and lvl != 0:
+        errs.append("scaling.cantrip is only for cantrips (level 0)")
+    if "upcast" in scaling and lvl == 0:
+        errs.append("scaling.upcast is only for leveled spells")
+    if "darts" in scaling.get("upcast", {}) and eff["kind"] != "auto_hit":
+        errs.append("scaling.upcast.darts needs effect.kind auto_hit")
+    if "dice" in scaling.get("upcast", {}) and not ("dice" in eff or "damage" in eff):
+        errs.append("scaling.upcast.dice needs effect dice or damage")
+    want = REACTION_EFFECT_TRIGGER.get(eff["kind"])
+    if (ct["kind"] == "reaction") != (want is not None):
+        errs.append(f"effect.kind {eff['kind']} and casting_time.kind {ct['kind']} disagree (ac_bonus/counter are reactions)")
+    elif want and ct.get("trigger") != want:
+        errs.append(f"effect.kind {eff['kind']} needs casting_time.trigger {want}")
+    if "repeat_save" in eff and "condition" not in eff:
+        errs.append("effect.repeat_save needs effect.condition")
+    if eff.get("on_success") and "damage" not in eff:
+        errs.append("effect.on_success needs effect.damage")
+    ref = eff.get("blocks_spell")
+    if ref and ref not in ctx["ids"] and not ctx["external_ok"](ref):
+        errs.append(f"effect.blocks_spell '{ref}' not defined in pack or its depends")
+    if not any(doc["components"].get(k) for k in ("v", "s", "m")):
+        errs.append("components: at least one of v, s, m")
+
+
+CHECKS = {"monster": check_monster, "character": check_character, "chunk": check_chunk, "spell": check_spell}
 
 
 def validate_pack(pack: Path, registry: Registry, by_tag: dict) -> list[str]:
