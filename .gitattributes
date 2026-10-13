@@ -1,2 +1,3 @@
 # Frozen corpus: byte-exact on every OS (checked by compat_freeze).
 tests/compat/** -text
+engine/core/script_host/api/*.d.luau -text
