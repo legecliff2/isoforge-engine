@@ -81,7 +81,7 @@ bool satisfies_text(const std::string& v, const std::string& r) {
 TEST_CASE("unit: range dialect matches packset.py") {
     const std::tuple<const char*, const char*, bool> cases[] = {
         {"1.2.3", "1.2.3", true},   {"1.2.4", "1.2.3", false},  {"1.9.0", "^1.0", true},     {"2.0.0", "^1.0", false},
-        {"0.2.9", "^0.2.3", true},  {"0.3.0", "^0.2.3", false}, {"0.0.4", "^0.0.3", false},  {"1.2.9", "~1.2.3", true},
+        {"0.2.9", "^0.2.3", true},  {"0.3.0", "^0.2.3", false}, {"0.0.4", "^0.0.3", false}, {"0.0.9", "^0.0", true}, {"0.1.0", "^0.0", false},  {"1.2.9", "~1.2.3", true},
         {"1.3.0", "~1.2.3", false}, {"7.0.0", ">=1.2.3", true}, {"1.2.2", ">=1.2.3", false}, {"1.0.0-rc.1", "^1.0", false}};
     for (const auto& [v, r, want] : cases) CHECK_MESSAGE(satisfies_text(v, r) == want, v << " " << r);
     for (const char* bad : {"1", "1.2", "~1.2", ">=1.2", "^1", ">1.2.3", "1.2.3-rc1", "^01.0"})
