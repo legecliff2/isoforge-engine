@@ -1,0 +1,110 @@
+// Vertical slice viewer: sample.vertical_slice chunk via world, goblin vs fighter via sim,
+// drawn with iso2d on SDL_GPU. The view only reads ViewModel snapshots.
+//   vertical_slice [--pack DIR] [--seed N] [--static] [--steps K] [--frames N] [--zoom Z] [--debug]
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+
+#include "platform/clock.hpp"
+#include "platform/events.hpp"
+#include "platform/platform.hpp"
+#include "platform/window.hpp"
+#include "render/device.hpp"
+#include "session.hpp"
+#include "slice_view.hpp"
+
+using namespace eng;
+
+#ifndef SLICE_DEFAULT_PACK
+#define SLICE_DEFAULT_PACK "content/packs/sample.vertical_slice"
+#endif
+
+int main(int argc, char** argv) {
+    slice::Session::Options opt;
+    opt.pack_dir = SLICE_DEFAULT_PACK;
+    int max_frames = -1, pre_steps = 0;
+    float zoom = 1.25f;
+    bool debug = false;
+    for (int i = 1; i < argc; ++i) {
+        auto arg = [&](const char* n) { return !std::strcmp(argv[i], n) && i + 1 < argc; };
+        if (arg("--pack")) opt.pack_dir = argv[++i];
+        else if (arg("--seed")) opt.seed = std::strtoull(argv[++i], nullptr, 10);
+        else if (arg("--steps")) pre_steps = std::atoi(argv[++i]);
+        else if (arg("--frames")) max_frames = std::atoi(argv[++i]);
+        else if (arg("--zoom")) zoom = float(std::atof(argv[++i]));
+        else if (!std::strcmp(argv[i], "--static")) opt.with_sim = false;
+        else if (!std::strcmp(argv[i], "--debug")) debug = true;
+    }
+
+    std::string err;
+    auto session = slice::Session::open(opt, &err);
+    if (!session) { std::fprintf(stderr, "vertical_slice: %s\n", err.c_str()); return 1; }
+    for (int i = 0; i < pre_steps && session->step(); ++i) {}
+
+    if (!platform::init()) return 2;
+    auto window = platform::Window::create({"isoforge - vertical slice", 1280, 720});
+    if (!window) return 3;
+    auto device = render::create_sdlgpu_device(window->native(), debug);
+    if (!device) { std::fprintf(stderr, "no SDL_GPU device: %s\n", platform::last_error()); return 4; }
+
+    auto view = std::make_unique<slice::SliceView>(*device);
+    platform::EventPump events;
+    platform::Clock clock;
+    platform::FixedTimestep tick(1'000'000'000ull / 60);
+    Vec2f pan{0, 0};
+    bool autoplay = false;
+    uint32_t auto_timer = 0;
+    int frame = 0;
+
+    // Centre on the middle of the spawns' row (tile 15, 15).
+    const Vec2f focus = view->tile_center_px(15.f, 15.f);
+
+    while (!events.input().quit_requested && (max_frames < 0 || frame < max_frames)) {
+        events.pump();
+        platform::Event ev;
+        while (events.poll(ev)) {
+            if (ev.type == platform::EventType::MouseWheel) zoom = std::clamp(zoom * (ev.wheel.dy > 0 ? 1.1f : 1 / 1.1f), 0.25f, 4.f);
+        }
+        const auto& in = events.input();
+        if (in.is_down(platform::Key::Escape)) break;
+        if (in.was_pressed(platform::Key::Space)) session->step();
+        if (in.was_pressed(platform::Key::A)) autoplay = !autoplay;
+
+        for (uint32_t s = tick.advance(clock.tick()); s > 0; --s) {
+            const float v = 8.f / zoom;
+            if (in.is_down(platform::Key::Left)) pan.x -= v;
+            if (in.is_down(platform::Key::Right)) pan.x += v;
+            if (in.is_down(platform::Key::Up) || in.is_down(platform::Key::W)) pan.y -= v;
+            if (in.is_down(platform::Key::Down) || in.is_down(platform::Key::S)) pan.y += v;
+            if (in.is_down(platform::Key::Num1)) zoom = std::min(4.f, zoom * 1.02f);   // '+' on most layouts needs shift
+            if (in.is_down(platform::Key::Num2)) zoom = std::max(0.25f, zoom / 1.02f);
+            if (autoplay && ++auto_timer % 20 == 0) session->step();
+        }
+
+        const Vec2i px = window->size_in_pixels();
+        iso2d::Camera cam;
+        cam.zoom = zoom;
+        cam.viewport_w = uint32_t(px.x);
+        cam.viewport_h = uint32_t(px.y);
+        cam.position = {focus.x + pan.x - px.x / (2.f * zoom), focus.y + pan.y - px.y / (2.f * zoom)};
+
+        const slice::ViewModel vm = session->view();
+        if (device->begin_frame()) {
+            view->prepare(vm, cam, uint32_t(px.x), uint32_t(px.y));
+            auto& cl = device->command_list();
+            cl.begin_pass(render::TargetId{}, Color::rgba8(16, 17, 24));
+            view->submit(cl);
+            cl.end_pass();
+            device->end_frame();
+        }
+        ++frame;
+    }
+    std::printf("frames: %d, ended: %d, error: %s\n", frame, int(session->ended()), session->error().c_str());
+    view.reset();
+    device.reset();
+    window.reset();
+    platform::shutdown();
+    return 0;
+}
