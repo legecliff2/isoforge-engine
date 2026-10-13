@@ -314,3 +314,63 @@ TEST_CASE("golden: replay with reaction windows; sync adapter, async and log rep
     CHECK(hash_state(s) == 0x844F15B1A57C8722ull);
     CHECK(hash_log(sync_log) == 0x8302FB2D965649C3ull);
 }
+
+TEST_CASE("NeedsDecision carries the prompt details: BeingHit total vs AC, SpellCast spell id") {
+    EncounterHooks h;
+    h.being_hit_options = [](const EncounterState&, const ReactionWindow&, const Combatant& c) {
+        std::vector<ReactionOption> o;
+        if (c.is_pc) o.push_back({0, ReactionOptionKind::AcBonus, 5, 9001});
+        return o;
+    };
+    int seen = 0;
+    for (uint64_t seed = 0; seed < 100 && seen == 0; ++seed) {
+        auto s = begin_encounter({pc(1), pc(4), monster(2)}, seed, nullptr, h);
+        end_turns_until(s, 2);
+        if (current_actor(s) != 2) continue;
+        auto r = step(s, {2, ActionKind::Attack, 1});
+        if (r.status != StepStatus::NeedsDecision) continue;
+        ++seen;
+        const auto& n = *r.needs;
+        CHECK(n.trigger == ReactionTrigger::BeingHit);
+        CHECK(n.trigger_actor == 2);
+        CHECK(n.reactor == 1);
+        CHECK(n.target == 1);
+        CHECK(n.target_ac == find(s, 1)->ac);
+        CHECK((n.attack_natural == 20 || n.attack_total >= n.target_ac));
+        CHECK(n.attack_total != 0);
+        REQUIRE(n.options.size() == 1);
+        CHECK(n.options[0].ac_bonus == 5);
+        CHECK(n.spell_id == 0);
+        auto p = pending_decision(s);
+        REQUIRE(p);
+        CHECK(p->attack_total == n.attack_total);
+        CHECK(p->target_ac == n.target_ac);
+        // The answer is logged as a ReactionDecisionEntry inside the completed LoggedStep.
+        ActionLog log;
+        auto d = step_logged(s, decision_request(n, true, 0), log);
+        REQUIRE(d.status == StepStatus::Done);
+        REQUIRE(log.size() == 1);
+        CHECK(log[0].request.kind == ActionKind::Attack);
+        REQUIRE(log[0].reactions.size() == 1);
+        CHECK(log[0].reactions[0] == ReactionDecisionEntry{n.window_seq, ReactionTrigger::BeingHit, 1,
+                                                           ReactionDecision{n.window_seq, true, 0}});
+    }
+    CHECK(seen == 1);
+
+    EncounterHooks hs = in_range_hooks();
+    hs.spell_cast_options = [](const EncounterState&, const ReactionWindow&, const Combatant&) {
+        return std::vector<ReactionOption>{{0, ReactionOptionKind::Counter, 0, 4242}};
+    };
+    auto s = begin_encounter({pc(1), monster(2)}, 13, nullptr, hs);
+    end_turns_until(s, 1);
+    ActionRequest cast{1, ActionKind::CastSpell, 2};
+    cast.spell_id = 77; cast.spell_level = 2;
+    auto r = step(s, cast);
+    REQUIRE(r.status == StepStatus::NeedsDecision);
+    CHECK(r.needs->trigger == ReactionTrigger::SpellCast);
+    CHECK(r.needs->trigger_actor == 1);
+    CHECK(r.needs->target == 2);
+    CHECK(r.needs->spell_id == 77);
+    CHECK(r.needs->spell_level == 2);
+    CHECK(r.needs->attack_total == 0);
+}

@@ -71,7 +71,7 @@ The outer ring of every chunk is empty, so a chunk never depends on its neighbou
   - `spawn_stable_id` parity with `world`.
   - Procgen JSON decodes through `world::chunk_from_json`, whose `content_hash` check passes, and matches `to_chunk`.
   - `ProceduralProvider` loads chunks, is consistent across threads, and handles NotFound and an unknown `gen_version`.
-  - Documents that `HandcraftedProvider` rejects `origin: procedural`.
+  - A baked procgen chunk loads through `FileChunkProvider` and keeps `origin: procedural`.
 - **`procgen_pack_dump` + `procgen_pack_validate`:** dumps 4 chunks for the doc seed (including `-1000000,123456,7`) and runs `tools/validate` on them. This covers the schema and an independent Python recomputation of `content_hash`.
 - **`procgen_detlint`** (`tools/detlint/detlint.cmake`): fails on `float`/`double`, float literals, `<cmath>`/`<random>`/`<chrono>`, `std::hash`, `unordered_*`, and `rand` anywhere under `engine/procgen`.
 
@@ -83,7 +83,7 @@ Changing any golden requires a new `gen_version` (§4.6/§4.7, D-007). `generate
    - Either way, `world` itself must not depend on `procgen`.
    - Register the edges `procgen → base, detmath, rng` and `procgen_world → world, procgen` in `tools/depcheck` once it exists.
 2. **Wire it into streaming.** `LayeredProvider` / `ChunkStreamer` should construct `ProceduralProvider` and fill `ChunkRequest{coord, world_seed, gen_version}` from the parsed seed string (`procgen::parse_seed`).
-3. **Decide on baked procedural chunks.** `HandcraftedProvider` rejects files whose `origin` isn't `"handcrafted"`, so `procgen_dump` output can't be served by it today. Should baked procedural chunks go through `PackedRegionProvider` instead, or should the origin check be relaxed?
+3. **Baked procedural chunks:** resolved. `FileChunkProvider` (formerly `HandcraftedProvider`) serves chunk files of any origin and preserves it.
 4. **Confirm the `ChunkRequest` mapping.** `ChunkRequest.gen_version` (uint16) is the seed string's `g<N>`, and `world_seed` is the decoded 64-bit value.
 
 ## Open questions
