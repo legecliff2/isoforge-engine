@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://isoforge.dev/schemas/monster/v3.schema.json",
   "title": "monster@3",
-  "description": "monster@3 (minimal, engine-side; T&C to own): monster@2 unchanged in shape, but features[]/traits[] effect objects are mechanically applied by the engine, so stat-block numbers must NOT bake them in (pre-@3 effects are migrated to inert). v2 was: monster@1 + top-level behavior (append-only). presentation.ai moved to behavior.ai (rules/sim never read presentation, §5.4); the engine migrates monster@1 presentation.ai -> behavior.ai (engine/core/assets content_migrations). Integers only (§4.3).",
+  "description": "SRD 5.1 monster, v3 = monster@2 (top-level behavior.ai) + active feature effects, mirroring character@3. traits[].effect follows the kind-tagged effect contract (common@1 $defs/effect, docs/CONTENT_EFFECTS.md) and is APPLIED BY THE ENGINE, so the numbers an effect adds must NOT be baked into the stat block (e.g. a damage_bonus is not folded into action damage). monster@1/@2 files are migrated with their effects marked inert (and monster@1 presentation.ai -> behavior.ai). Integers only (§4.3).",
   "$ref": "../common/v1.schema.json#/$defs/stat_block",
   "unevaluatedProperties": false,
   "required": [
@@ -89,6 +89,13 @@
         "ai": false
       },
       "description": "Presentation-only; 'ai' not allowed in v2 (use behavior.ai)."
+    },
+    "traits": {
+      "type": "array",
+      "items": {
+        "$ref": "../common/v1.schema.json#/$defs/trait_active"
+      },
+      "description": "Traits. Effects are mechanically active; never bake their numbers into actions or other stats."
     }
   }
 }
