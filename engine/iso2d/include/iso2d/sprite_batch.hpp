@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <vector>
 #include "base/math.hpp"
+#include "base/present_math.hpp"
 #include "iso2d/iso.hpp"
 #include "render/device.hpp"
 #include "render/sprite.hpp"

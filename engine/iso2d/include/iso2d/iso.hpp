@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <tuple>
-#include "base/math.hpp"
+#include "base/present_math.hpp"
 
 namespace eng::iso2d {
 

@@ -39,6 +39,7 @@ TEST_CASE("golden: d20 modes, initiative, attacks, damage") {
         g.byte(uint8_t(res.hit)); g.byte(uint8_t(res.critical)); g.i32(res.damage);
         if (res.hit) {
             auto ap = apply_damage(t, res.damage, res.type);
+            commit_damage(t, ap);
             g.i32(ap.dealt); g.i32(ap.hp_after);
             if (t.hp == 0) t.hp = t.hp_max;  // keep the workload going
         }

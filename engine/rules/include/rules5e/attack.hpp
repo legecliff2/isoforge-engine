@@ -14,7 +14,9 @@ struct AttackContext {
 struct AttackResult { D20Roll roll; bool hit, critical; int16_t damage; DamageType type; };
 
 // Combines ctx.mode with condition-based sources (SRD 5.1 Appendix A):
-//   attacker Blinded/Poisoned/Prone/Restrained -> disadvantage; attacker Invisible -> advantage;
+//   attacker Blinded/Frightened/Poisoned/Prone/Restrained or exhaustion >= 3 -> disadvantage;
+//   target Dodging (and not incapacitated / speed 0) -> disadvantage;
+//   attacker Invisible -> advantage;
 //   target Blinded/Paralyzed/Petrified/Restrained/Stunned/Unconscious -> advantage;
 //   target Invisible -> disadvantage; target Prone -> advantage within 5 ft, else disadvantage.
 // Any advantage + any disadvantage -> Normal.

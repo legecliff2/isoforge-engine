@@ -649,6 +649,17 @@ std::optional<uint8_t>     winner_team(const EncounterState&);
 
 Movement on the grid is handled by `sim` (pathing, opportunity attacks via `rules5e::resolve_attack` as a reaction). `rules5e` only validates the movement budget. Replays = `seed + [ActionRequest]`. Golden replays are hashed in tests.
 
+#### Sim responsibilities
+
+`rules5e` has no positions, sight, or perception. `sim` owns these and must do them before calling into rules or around it:
+
+1. **Distance.** Set `ActionRequest::target_within_5ft` (Attack, OpportunityAttack, Help-on-attack, Stabilize, readied Attack). Rules trust it for Prone/Paralyzed/Unconscious effects and adjacency checks.
+2. **Hide feasibility.** Check sight lines, cover, and obscurement before sending `Hide`. Compare `Combatant::stealth_total` against observers' passive Perception, and clear it when the creature is seen.
+3. **Readied Move cost.** A readied `Move` fires as a reaction and is capped only at speed. `sim` charges it against the readier's movement and paths it.
+4. **Ready chaining.** Rules offer only the triggering step's events to `hooks.ready_trigger`; a response's own events are not re-offered. `sim` decides whether and how responses chain.
+5. **Help and Ready in `legal_actions`.** They need adjacency and trigger facts, so `legal_actions` leaves them out. `sim` builds those requests for AI and UI.
+6. **Source- and position-dependent conditions.** Charmed (can't attack the charmer; charmer's social advantage), Frightened (source in line of sight; can't move closer), sight/hearing checks for Blinded and Deafened, and grapple escape (contested check, then removing Grappled).
+
 ### 5.4 Example versioned monster definition — `packs/srd51.core/monsters/goblin.json`
 
 ```json
