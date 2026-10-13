@@ -20,11 +20,22 @@ namespace detmath::noise {
 // Lattice value in [0, 1) as Fx: top 16 bits of StableHash(seed, ix, iy, octave).
 detmath::Fx lattice(uint64_t seed, int64_t ix, int64_t iy, uint32_t octave);
 
-// Value noise in [0, 1). log2_cell in [0, 16].
+// Parameter limits. Out-of-range parameters are a caller bug: debug builds (NDEBUG not
+// defined) assert; release builds return Fx{0} deterministically, identical on every platform.
+inline constexpr int kMaxLog2Cell = 16;
+constexpr bool value2_params_valid(int log2_cell) { return log2_cell >= 0 && log2_cell <= kMaxLog2Cell; }
+constexpr bool fbm2_params_valid(int log2_cell, int octaves) {
+    return value2_params_valid(log2_cell) && octaves >= 1 && octaves <= log2_cell + 1;
+}
+
+// Value noise in [0, 1). Requires log2_cell in [0, 16] (else assert / Fx{0}, see above).
+// Defined for every int64 x, y: the +1 lattice neighbour is computed in uint64 (wrapping), so
+// at x = INT64_MAX with log2_cell 0 the neighbour index wraps to INT64_MIN. Its weight is
+// zero there (fraction 0), so the result is exactly lattice(seed, x, y, octave).
 detmath::Fx value2(uint64_t seed, int64_t x, int64_t y, int log2_cell, uint32_t octave = 0);
 
 // Fractal sum: octave o uses cell 2^(log2_cell - o) and amplitude 2^-o, normalised to [0, 1).
-// Requires 1 <= octaves <= log2_cell + 1.
+// Requires log2_cell in [0, 16] and 1 <= octaves <= log2_cell + 1 (else assert / Fx{0}).
 detmath::Fx fbm2(uint64_t seed, int64_t x, int64_t y, int log2_cell, int octaves);
 
 } // namespace detmath::noise
