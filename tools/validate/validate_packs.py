@@ -64,16 +64,79 @@ def dice_average(expr: str) -> int:
     return (count * (sides + 1)) // 2 + bonus
 
 
-def canonical_json(doc: dict) -> bytes:
-    """Canonical JSON for chunk content_hash: doc minus 'content_hash', keys sorted,
-    separators ',' ':', no whitespace, UTF-8 with non-ASCII written raw."""
-    body = {k: v for k, v in doc.items() if k != "content_hash"}
-    return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
+# ---- chunk@1 decode + hashing: mirrors engine/core/world/src/chunk_codec.cpp (PR #4) ----
+CELLS = CHUNK_SIZE * CHUNK_SIZE
+FLAG_BLOCKS_MOVE, FLAG_BLOCKS_SIGHT, FLAG_DIFFICULT, FLAG_WATER = 1, 2, 4, 8
+FLAG_KNOWN_MASK = 0x0F
 
 
-def chunk_hash(doc: dict) -> str:
-    return xxhash.xxh3_64_hexdigest(canonical_json(doc))  # seed 0, 16 lowercase hex
+def compact_json(obj) -> str:
+    """Same bytes as nlohmann::json::dump() for integer-only data: keys sorted, no spaces, raw UTF-8."""
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+
+
+class Canon:
+    """Port of eng::CanonicalHasher: explicit little-endian, u32-length-prefixed strings."""
+    def __init__(self) -> None:
+        self.buf = bytearray()
+    def u8(self, v: int) -> None: self.buf += (v & 0xFF).to_bytes(1, "little")
+    def u16(self, v: int) -> None: self.buf += (v & 0xFFFF).to_bytes(2, "little")
+    def u32(self, v: int) -> None: self.buf += (v & 0xFFFFFFFF).to_bytes(4, "little")
+    def i16(self, v: int) -> None: self.u16(v)
+    def i32(self, v: int) -> None: self.u32(v)
+    def str(self, s: str) -> None:
+        b = s.encode("utf-8"); self.u32(len(b)); self.buf += b
+    def value(self) -> int: return xxhash.xxh3_64_intdigest(bytes(self.buf))  # seed 0
+
+
+def spawn_stable_id(x: int, y: int, level: int, index: int) -> int:
+    h = Canon(); h.i32(x); h.i32(y); h.i16(level); h.u32(index)
+    v = h.value()
+    return (v & 0xFFFFFFFF) ^ (v >> 32)
+
+
+def decode_layers(doc: dict) -> list[list[tuple[int, int, int]]]:
+    """Dense 4 x 1024 (tile, elevation, flags); omitted arrays are zeros."""
+    out = []
+    for layer in doc["layers"]:
+        t = layer.get("tiles", [0] * CELLS)
+        e = layer.get("elevation", [0] * CELLS)
+        f = layer.get("flags", [0] * CELLS)
+        out.append(list(zip(t, e, f)))
+    return out
+
+
+def compute_content_hash(doc: dict) -> int:
+    """compute_content_hash(Chunk) over the decoded chunk; origin and content_hash excluded."""
+    c, h = doc["coord"], Canon()
+    h.u16(1)  # format_version (kChunkFormatVersion)
+    h.i32(c["x"]); h.i32(c["y"]); h.i16(c["level"])
+    h.u32(len(doc["palette"]))
+    for p in doc["palette"]:
+        h.str(p)
+    for layer in decode_layers(doc):
+        for tile, elev, flags in layer:
+            h.u16(tile); h.u8(elev); h.u8(flags)
+    h.u32(len(doc["spawns"]))
+    for i, s in enumerate(doc["spawns"]):
+        h.str(s["archetype"]); h.i32(s["tile"]["x"]); h.i32(s["tile"]["y"])
+        h.u32(spawn_stable_id(c["x"], c["y"], c["level"], i))
+        ov = s.get("overrides", {})
+        h.str(compact_json(ov) if ov else "")
+    h.u32(len(doc["triggers"]))
+    for t in doc["triggers"]:
+        h.str(compact_json(t))
+    return h.value()
+
+
+def hash_hex(v: int) -> str:
+    return f"{v:016x}"
+
+
+def self_test() -> None:
+    """Golden vectors from engine/core/world/tests/chunk_tests.cpp (PR #4)."""
+    assert spawn_stable_id(0, 0, 0, 0) == 0xE9CA1F53
+    assert spawn_stable_id(-1, 7, -2, 3) == 0x3660E539
 
 
 def load_registry() -> tuple[Registry, dict[str, dict]]:
@@ -139,30 +202,34 @@ def check_character(doc, errs, ctx):
 
 
 def check_chunk(doc, errs, ctx):
-    want = chunk_hash(doc)
-    if doc["content_hash"] != want:
-        errs.append(f"content_hash {doc['content_hash']} != computed {want} (run with --rehash to update)")
-    layers = doc["layers"]
-    if len(layers) != CHUNK_LAYERS:
-        errs.append(f"layers: {len(layers)} != kChunkLayers {CHUNK_LAYERS}")
+    pal = len(doc["palette"])
+    layers = decode_layers(doc)
     for li, layer in enumerate(layers):
-        if len(layer) != CHUNK_SIZE * CHUNK_SIZE:
-            errs.append(f"layers[{li}]: {len(layer)} cells != {CHUNK_SIZE}*{CHUNK_SIZE}")
-        for i, cell in enumerate(layer):
-            if cell["tile"] >= len(doc["palette"]):
-                errs.append(f"layers[{li}][{i}] (x={i % CHUNK_SIZE},y={i // CHUNK_SIZE}): tile {cell['tile']} outside palette ({len(doc['palette'])})")
-            if cell["tile"] == 0 and (cell["elevation"] or cell["flags"]):
-                errs.append(f"layers[{li}][{i}]: empty tile with elevation/flags set")
-    ids = [s["stable_id"] for s in doc["spawns"]]
+        for i, (tile, elev, flags) in enumerate(layer):
+            at = f"layers[{li}] cell {i} (x={i % CHUNK_SIZE},y={i // CHUNK_SIZE})"
+            if tile >= pal:
+                errs.append(f"{at}: tile {tile} outside palette ({pal})")
+            if flags & ~FLAG_KNOWN_MASK:
+                errs.append(f"{at}: reserved flag bits 4-7 set ({flags:#x})")
+            if tile == 0 and (elev or flags):
+                errs.append(f"{at}: empty tile with elevation/flags set")
+    ids = [spawn_stable_id(doc["coord"]["x"], doc["coord"]["y"], doc["coord"]["level"], i)
+           for i in range(len(doc["spawns"]))]
     if len(ids) != len(set(ids)):
-        errs.append("spawns: duplicate stable_id")
-    for s in doc["spawns"]:
+        errs.append("spawns: computed stable_id collision")
+    for i, s in enumerate(doc["spawns"]):
         if s["archetype"] not in ctx["ids"] and not ctx["external_ok"](s["archetype"]):
-            errs.append(f"spawn archetype '{s['archetype']}' not defined in pack or its depends")
+            errs.append(f"spawns[{i}]: archetype '{s['archetype']}' not defined in pack or its depends")
         x, y = s["tile"]["x"], s["tile"]["y"]
-        walls = layers[2][y * CHUNK_SIZE + x]
-        if walls["flags"] & 1:
-            errs.append(f"spawn {s['stable_id']} at ({x},{y}) is on a blocks_move cell")
+        if any(layer[y * CHUNK_SIZE + x][2] & FLAG_BLOCKS_MOVE for layer in layers):
+            errs.append(f"spawns[{i}] at ({x},{y}) is on a blocks_move cell")
+    tids = [t["id"] for t in doc["triggers"]]
+    if len(tids) != len(set(tids)):
+        errs.append("triggers: duplicate id")
+    if "content_hash" in doc:
+        want = hash_hex(compute_content_hash(doc))
+        if doc["content_hash"] != want:
+            errs.append(f"content_hash {doc['content_hash']} != computed {want} (run with --rehash to update)")
 
 
 CHECKS = {"monster": check_monster, "character": check_character, "chunk": check_chunk}
@@ -229,13 +296,16 @@ def rehash(packs: list[Path]) -> None:
             text = f.read_text(encoding="utf-8")
             doc = json.loads(text)
             if isinstance(doc, dict) and doc.get("$schema", "").startswith("chunk@"):
-                new = re.sub(r'"content_hash": "[^"]*"', f'"content_hash": "{chunk_hash(doc)}"', text, count=1)
+                if "content_hash" not in doc:
+                    continue  # optional; only refresh hashes that are present
+                new = re.sub(r'"content_hash": "[^"]*"', f'"content_hash": "{hash_hex(compute_content_hash(doc))}"', text, count=1)
                 if new != text:
                     f.write_text(new, encoding="utf-8")
                     print(f"rehashed {f}")
 
 
 def main(argv: list[str]) -> int:
+    self_test()
     registry, by_tag = load_registry()
     if argv[:1] == ["--rehash"]:
         rehash([Path(a).resolve() for a in argv[1:]] or [p for p in discover() if "compat" not in p.parts])
