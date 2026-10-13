@@ -32,6 +32,9 @@ public:
     // Returns false when there is nothing to do (static mode, ended, or error).
     bool step();
     bool ended() const;
+    // A request is paused on a reaction decision (StepStatus::NeedsDecision); the next step()
+    // answers it. Nothing from the paused request is in the view until it completes.
+    bool paused() const;
     const std::string& error() const;
 
     ViewModel view() const;
