@@ -1,0 +1,16 @@
+{
+  "base": "characters/fighter_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        0,
+        "effect",
+        "condition"
+      ],
+      "two_weapon"
+    ]
+  ],
+  "severity": "error",
+  "expect": "/features/0/effect/condition"
+}

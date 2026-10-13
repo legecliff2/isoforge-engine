@@ -127,8 +127,19 @@
         "id": { "$ref": "#/$defs/local_id" },
         "name": { "type": "string" },
         "description": { "type": "string" },
-        "effect": { "$ref": "#/$defs/effect" }
+        "effect": { "$ref": "#/$defs/effect_descriptive" }
       }
+    },
+    "trait_active": {
+      "description": "A trait whose effect is mechanically applied by the engine (character@3+). Same shape as trait, but the effect must satisfy the kind-tagged effect contract.",
+      "$ref": "#/$defs/trait",
+      "properties": { "effect": { "$ref": "#/$defs/effect" } }
+    },
+    "effect_descriptive": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": { "kind": { "type": "string", "pattern": "^[a-z0-9_]+$" } },
+      "description": "Effect object as accepted by common@1 trait (character@1/@2, monster@1/@2). For character@1/@2 it is an inert description: the engine migrates it with an 'inert' marker and never applies it, because those stat blocks already bake the numbers in. Monster traits are applied by the engine (not gated yet). The validator checks known kinds against $defs/effect (errors for monsters, warnings for character@1/@2). 'inert' is reserved for the engine migration and must never be authored."
     },
     "effect": {
       "type": "object",
