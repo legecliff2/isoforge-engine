@@ -41,6 +41,16 @@ jobs:
             libxi-dev libxss-dev libxfixes-dev libxtst-dev libxkbcommon-dev libwayland-dev \
             wayland-protocols libegl-dev libgl-dev libvulkan-dev libudev-dev libdbus-1-dev
 
+      - name: MSVC dev environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Windows deps (Ninja)
+        if: runner.os == 'Windows'
+        run: choco install ninja -y --no-progress
+
       - name: Install macOS deps
         if: runner.os == 'macOS'
         run: brew install ninja || true
