@@ -39,6 +39,13 @@ struct Attack {
     bool     ranged, finesse;
 };
 
+enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Ready, Move, EndTurn,
+                                  // appended (append-only):
+                                  StandUp, OpportunityAttack };
+constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
+
+struct DeathSaves { uint8_t successes = 0, failures = 0; bool stable = false; };
+
 struct Combatant {
     CombatantId id;
     uint8_t  team;
@@ -52,6 +59,15 @@ struct Combatant {
     uint8_t  exhaustion_level;
     uint32_t resistances, immunities, vulnerabilities;  // bitmask over DamageType
     std::vector<Attack> attacks;
+
+    // ---- Encounter-tracked state (appended; all default-initialised) ----
+    bool     uses_death_saves = false;      // PCs: true. Monsters die at 0 HP (SRD "Monsters and Death").
+    DeathSaves death{};
+    bool     dead = false;
+    uint32_t bonus_action_grants = 0;       // bitmask over ActionKind usable as a bonus action
+    bool     reaction_used = false;         // resets at the start of this combatant's turn
+    bool     dodging = false;               // Dodge action, until the start of its next turn
+    bool     disengaged = false;            // Disengage, for the rest of the turn
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
