@@ -1,5 +1,7 @@
 #include "rules5e/encounter.hpp"
 
+#include <array>
+
 #include "rules5e/checks.hpp"
 #include "rules5e/conditions.hpp"
 #include "rules5e/damage.hpp"
@@ -85,7 +87,10 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
     c.dodging = false;
     c.disengaged = false;
     for (auto& o : s.combatants)   // Help lasts until the start of the helper's next turn
+    {
         if (o.helped_by == c.id) { o.helped_by = 0; o.helped_vs = 0; }
+        if (o.check_helped_by == c.id) o.check_helped_by = 0;
+    }
     if (c.has_readied) {           // a readied action not used by now is lost
         std::erase_if(s.readied, [&](const ReadiedAction& r) { return r.actor == c.id; });
         c.has_readied = false;
@@ -155,6 +160,19 @@ void fire_readies(EncounterState& s, std::vector<Event>& ev) {
 
 StepResult fail(std::string_view why) { return {false, why, {}}; }
 
+// Skill check inside the encounter: Help's "next check" advantage is consumed here.
+CheckResult roll_check(EncounterState& s, Combatant& c, Skill k, int dc, RollMode mode, std::vector<Event>& ev) {
+    bool helped = c.check_helped_by != 0;
+    if (helped) {
+        c.check_helped_by = 0;
+        mode = combine_modes(true, mode == RollMode::Disadvantage);
+    }
+    auto r = skill_check(s.rng, c, k, dc, mode);
+    emit(ev, EventKind::CheckRolled, c.id, CombatantId(k), r.roll.natural, r.roll.total,
+         int32_t(r.success) | (int32_t(helped) << 1));
+    return r;
+}
+
 bool spend_action(TurnBudget& b, const Combatant& c, ActionKind k, bool bonus) {
     if (bonus) {
         if (!b.bonus_action || !(c.bonus_action_grants & bit(k))) return false;
@@ -198,13 +216,27 @@ std::vector<PcStatus> pc_statuses(const EncounterState& s) {
     return out;
 }
 
-std::optional<EncounterOutcome> default_end_condition(const EncounterState& s) {
+std::optional<EncounterOutcome> end_when_no_pc_conscious(const EncounterState& s) {
     for (const auto& c : s.combatants) if (c.is_pc && is_conscious(c)) return std::nullopt;
     return EncounterOutcome{EndReason::NoPcConscious, pc_statuses(s)};
 }
 
+std::optional<EncounterOutcome> default_end_condition(const EncounterState& s) {
+    std::array<bool, 256> present{}, conscious{};
+    int teams = 0;
+    for (const auto& c : s.combatants) {
+        if (!present[c.team]) { present[c.team] = true; ++teams; }
+        if (is_conscious(c)) conscious[c.team] = true;
+    }
+    if (teams < 2) return EncounterOutcome{EndReason::InvalidSetup, pc_statuses(s)};
+    std::vector<uint8_t> down;
+    for (int t = 0; t < 256; ++t) if (present[std::size_t(t)] && !conscious[std::size_t(t)]) down.push_back(uint8_t(t));
+    if (down.empty()) return std::nullopt;
+    return EncounterOutcome{EndReason::TeamNoConscious, pc_statuses(s), std::move(down)};
+}
+
 std::optional<EncounterOutcome> end_when_no_pc_or_no_opponent(const EncounterState& s) {
-    if (auto o = default_end_condition(s)) return o;
+    if (auto o = end_when_no_pc_conscious(s)) return o;
     for (const auto& c : s.combatants) if (!c.is_pc && is_conscious(c)) return std::nullopt;
     return EncounterOutcome{EndReason::NoOpponentConscious, pc_statuses(s)};
 }
@@ -223,6 +255,8 @@ EncounterState begin_encounter(std::vector<Combatant> cs, uint64_t seed, std::ve
     if (!s.order.empty()) {
         if (find_mut(s, s.order[0].id)->dead) advance_turn(s, ev);
         else start_turn(s, ev);
+    } else {
+        check_end(s, ev);   // no combatants: InvalidSetup under the default policy
     }
     if (out) *out = std::move(ev);
     return s;
@@ -232,6 +266,16 @@ StepResult step(EncounterState& s, const ActionRequest& req) {
     StepResult r = step_impl(s, req);
     if (r.ok && req.kind != ActionKind::Ready) fire_readies(s, r.events);
     return r;
+}
+
+StepResult encounter_check(EncounterState& s, CombatantId id, Skill k, int dc, RollMode mode) {
+    if (s.ended) return fail("encounter ended");
+    Combatant* c = find_mut(s, id);
+    if (!c || c->dead) return fail("bad combatant");
+    StepResult out{true, {}, {}};
+    roll_check(s, *c, k, dc, mode, out.events);
+    fire_readies(s, out.events);
+    return out;
 }
 
 StepResult heal(EncounterState& s, CombatantId id, int16_t amount) {
@@ -346,8 +390,15 @@ StepResult step_impl(EncounterState& s, const ActionRequest& req) {
     }
     case ActionKind::Help: {
         Combatant* ally = find_mut(s, req.ally);
-        Combatant* foe = find_mut(s, req.target);
         if (!ally || ally == &a || !is_conscious(*ally)) return fail("bad ally");
+        if (req.target == 0) {   // help with the ally's next ability check
+            if (!spend_action(b, a, req.kind, false)) return fail("no action available");
+            s.budget = b;
+            ally->check_helped_by = a.id;
+            emit(out.events, EventKind::Helped, a.id, ally->id, 0);
+            return out;
+        }
+        Combatant* foe = find_mut(s, req.target);
         if (!foe || foe == &a || foe == ally || foe->dead) return fail("bad target");
         if (!req.target_within_5ft) return fail("target must be within 5 ft of the helper");
         if (!spend_action(b, a, req.kind, false)) return fail("no action available");
@@ -359,7 +410,7 @@ StepResult step_impl(EncounterState& s, const ActionRequest& req) {
     case ActionKind::Hide: {
         if (!spend_action(b, a, req.kind, req.as_bonus_action)) return fail("no action available");
         s.budget = b;
-        auto chk = skill_check(s.rng, a, Skill::Stealth, 0);
+        auto chk = roll_check(s, a, Skill::Stealth, 0, RollMode::Normal, out.events);
         a.stealth_total = int16_t(chk.roll.total > 0 ? chk.roll.total : 1);
         emit(out.events, EventKind::Hid, a.id, 0, a.stealth_total);
         return out;
@@ -388,7 +439,7 @@ StepResult step_impl(EncounterState& s, const ActionRequest& req) {
         if (!req.target_within_5ft) return fail("target must be within 5 ft");
         if (!spend_action(b, a, req.kind, false)) return fail("no action available");
         s.budget = b;
-        auto chk = skill_check(s.rng, a, Skill::Medicine, 10);   // SRD: DC 10 Wisdom (Medicine)
+        auto chk = roll_check(s, a, Skill::Medicine, 10, RollMode::Normal, out.events);   // SRD: DC 10 Wisdom (Medicine)
         emit(out.events, EventKind::MedicineCheck, a.id, t->id, chk.roll.natural, chk.roll.total, chk.success);
         if (chk.success) stabilize(*t, out.events);
         return out;

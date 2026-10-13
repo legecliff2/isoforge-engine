@@ -49,6 +49,8 @@ uint64_t state_hash(const EncounterState& s) {
 std::vector<Combatant> party() { return {fighter(1), goblin(2), goblin(3)}; }
 
 // Simple deterministic policy: move 5 ft, attack the first enemy, Nimble Escape if granted, end.
+// Pinned explicitly (not the default) so the replay golden is independent of the default
+// end-condition policy, which became team-based after this golden was recorded.
 EncounterHooks replay_hooks() {
     EncounterHooks h;
     h.end_condition = end_when_no_pc_or_no_opponent;

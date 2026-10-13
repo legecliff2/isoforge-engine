@@ -26,7 +26,8 @@ struct ActionRequest {
     bool as_bonus_action = false;      // Dash/Disengage/Hide via bonus_action_grants
     bool target_within_5ft = false;    // supplied by sim
     // appended:
-    CombatantId ally = 0;              // Help: the creature that gains advantage
+    CombatantId ally = 0;              // Help: the creature that gains advantage.
+                                       //   target != 0: next attack vs target; target == 0: next ability check
     ActionKind ready_kind = ActionKind::EndTurn;  // Ready: response (Attack or Move) using target/attack_index/move_ft
     uint32_t trigger_id = 0;           // Ready: opaque trigger, interpreted by hooks.ready_trigger (sim)
 };
@@ -36,7 +37,8 @@ enum class EventKind : uint8_t {
     DeathSaveRolled, Stabilized, RegainedHp, CombatantDied, Moved, Dashed, Disengaged, Dodged,
     StoodUp, TurnEnded, EncounterEnded,
     // appended:
-    Healed, ConditionRemoved, MedicineCheck, Helped, Hid, Readied, ReadyTriggered, ReadyExpired };
+    Healed, ConditionRemoved, MedicineCheck, Helped, Hid, Readied, ReadyTriggered, ReadyExpired,
+    CheckRolled };
 
 // Flat tagged event; meaning of a/b/c per kind:
 //   InitiativeRolled a=total; TurnStarted a=round; AttackResolved a=natural b=total c=hit|crit<<1;
@@ -44,14 +46,21 @@ enum class EventKind : uint8_t {
 //   b=successes c=failures; Moved a=feet b=movement left; Dashed a=movement left;
 //   EncounterEnded a=EndReason; Healed a=healed b=hp_after c=from_zero;
 //   MedicineCheck a=natural b=total c=success; Helped target=ally a=vs; Hid a=stealth total;
-//   Readied a=ready_kind b=trigger_id; ReadyTriggered a=trigger_id.
+//   Readied a=ready_kind b=trigger_id; ReadyTriggered a=trigger_id;
+//   CheckRolled a=natural b=total c=success|helped<<1 (target = Skill).
 struct Event { EventKind kind; CombatantId actor = 0, target = 0; int32_t a = 0, b = 0, c = 0; };
 
 // ---- End condition (policy, overridable) ----
 enum class PcState : uint8_t { Conscious, Dying, Stable, Dead, Unconscious /* >0 HP, e.g. sleep */ };
-enum class EndReason : uint8_t { NoPcConscious, NoOpponentConscious, Custom };
+enum class EndReason : uint8_t { NoPcConscious, NoOpponentConscious, Custom,
+                                 // appended:
+                                 TeamNoConscious, InvalidSetup };
 struct PcStatus { CombatantId id; PcState state; };
-struct EncounterOutcome { EndReason reason; std::vector<PcStatus> pcs; };   // pcs in combatant order
+struct EncounterOutcome {
+    EndReason reason;
+    std::vector<PcStatus> pcs;           // in combatant order
+    std::vector<uint8_t> teams_without_conscious = {};  // ascending; set by the team-based default
+};
 
 struct EncounterState;
 using EndConditionFn = std::function<std::optional<EncounterOutcome>(const EncounterState&)>;
@@ -86,9 +95,13 @@ bool is_conscious(const Combatant&);
 PcState pc_state(const Combatant&);
 std::vector<PcStatus> pc_statuses(const EncounterState&);
 
-// Default policy: ends when no PC (is_pc) is conscious. Reports each PC's state.
+// Default policy (team-based): ends when any team has no conscious member
+// (reason TeamNoConscious, listing those teams). Fewer than two teams among the combatants
+// means a team has zero members: ends immediately with InvalidSetup.
 std::optional<EncounterOutcome> default_end_condition(const EncounterState&);
-// Optional built-in policy: default, or ends when every non-PC is unconscious/dead.
+// Built-in alternative: ends only when no PC (is_pc) is conscious.
+std::optional<EncounterOutcome> end_when_no_pc_conscious(const EncounterState&);
+// Built-in alternative: no PC conscious, or every non-PC unconscious/dead.
 std::optional<EncounterOutcome> end_when_no_pc_or_no_opponent(const EncounterState&);
 
 // Rolls initiative from Pcg32(seed, 0) and starts the first turn.
@@ -100,6 +113,10 @@ StepResult step(EncounterState&, const ActionRequest&);
 
 // Healing from any source (spell, potion, feature). Content/game-layer driven; not an action.
 StepResult heal(EncounterState&, CombatantId target, int16_t amount);
+
+// An ability (skill) check made during the encounter (content/sim driven, or internally by
+// Stabilize/Hide). Consumes Help's "next check" advantage if present. Not an action.
+StepResult encounter_check(EncounterState&, CombatantId, Skill, int dc, RollMode = RollMode::Normal);
 
 std::vector<ActionRequest> legal_actions(const EncounterState&);   // for AI + UI (current actor)
 CombatantId                current_actor(const EncounterState&);

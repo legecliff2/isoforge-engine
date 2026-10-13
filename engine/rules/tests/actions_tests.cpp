@@ -16,7 +16,10 @@ TEST_CASE("Medicine check DC 10 stabilizes a dying creature") {
         auto r = step(s, {1, ActionKind::Stabilize, 4, 0, 0, false, true});
         REQUIRE(r.ok);
         REQUIRE(count(r.events, EventKind::MedicineCheck) == 1);
-        const Event& e = r.events[0];
+        const Event* ep = nullptr;
+        for (const auto& x : r.events) if (x.kind == EventKind::MedicineCheck) ep = &x;
+        REQUIRE(ep);
+        const Event& e = *ep;
         bool ok = e.c != 0;
         CHECK(ok == (e.b >= 10));
         CHECK(e.b == e.a + skill_modifier(*find(s, 1), Skill::Medicine));
@@ -154,7 +157,10 @@ TEST_CASE("Hide: Stealth total recorded; hidden attacker gets advantage and is r
     REQUIRE(count(r.events, EventKind::Hid) == 1);
     const auto* g = find(s, 2);
     CHECK(g->stealth_total >= 1);
-    CHECK(g->stealth_total == std::max(1, r.events[0].a));
+    const Event* hid = nullptr;
+    for (const auto& e : r.events) if (e.kind == EventKind::Hid) hid = &e;
+    REQUIRE(hid);
+    CHECK(g->stealth_total == std::max(1, hid->a));
     CHECK(s.budget.action);
     REQUIRE(step(s, {2, ActionKind::Attack, 1}).ok);
     CHECK(find(s, 2)->stealth_total == 0);
@@ -219,4 +225,63 @@ TEST_CASE("Ready: expires at the readier's next turn; no hook means it never fir
     CHECK(count(all, EventKind::ReadyExpired) == 1);
     CHECK_FALSE(find(s, 1)->has_readied);
     CHECK(s.readied.empty());
+}
+
+TEST_CASE("Help on ability checks: advantage on the ally's next check, consumed once") {
+    auto s = begin_encounter({pc(1), pc(4), monster(2)}, 12);
+    end_turns_until(s, 1);
+    REQUIRE(current_actor(s) == 1);
+    CHECK_FALSE(step(s, {1, ActionKind::Help, 0, 0, 0, false, false, 1}).ok);   // self
+    REQUIRE(step(s, {1, ActionKind::Help, 0, 0, 0, false, false, 4}).ok);       // target 0 = check
+    CHECK(find(s, 4)->check_helped_by == 1);
+    CHECK(find(s, 4)->helped_vs == 0);
+    auto r = encounter_check(s, 4, Skill::Athletics, 10);
+    REQUIRE(r.ok);
+    REQUIRE(r.events.size() == 1);
+    CHECK(r.events[0].kind == EventKind::CheckRolled);
+    CHECK((r.events[0].c & 2) != 0);                          // helped
+    CHECK(find(s, 4)->check_helped_by == 0);
+    auto r2 = encounter_check(s, 4, Skill::Athletics, 10);
+    CHECK((r2.events[0].c & 2) == 0);                         // consumed
+}
+
+TEST_CASE("Help on checks draws two d20s (advantage) and cancels with disadvantage") {
+    auto base = begin_encounter({pc(1), pc(4), monster(2)}, 12);
+    auto helped = base;
+    mut(helped, 4).check_helped_by = 1;
+    REQUIRE(encounter_check(base, 4, Skill::Medicine, 10).ok);
+    REQUIRE(encounter_check(helped, 4, Skill::Medicine, 10).ok);
+    rng::Rng extra = base.rng;   // helped drew exactly one more d20
+    (void)extra.d(20);
+    CHECK(extra.save().state == helped.rng.save().state);
+    auto pois = base;
+    mut(pois, 4).check_helped_by = 1;
+    add_condition(mut(pois, 4), Condition::Poisoned);         // adv + dis -> one die
+    auto before = pois.rng;
+    REQUIRE(encounter_check(pois, 4, Skill::Medicine, 10).ok);
+    (void)before.d(20);
+    CHECK(before.save().state == pois.rng.save().state);
+}
+
+TEST_CASE("Help on checks applies to Stabilize's Medicine check and expires like attack Help") {
+    auto s = begin_encounter({pc(1), pc(4), pc(5), monster(2)}, 3);
+    make_dying(mut(s, 5));
+    end_turns_until(s, 1);
+    REQUIRE(current_actor(s) == 1);
+    REQUIRE(step(s, {1, ActionKind::Help, 0, 0, 0, false, false, 4}).ok);
+    REQUIRE(step(s, {1, ActionKind::EndTurn}).ok);
+    end_turns_until(s, 4);
+    if (current_actor(s) == 4) {
+        auto r = step(s, {4, ActionKind::Stabilize, 5, 0, 0, false, true});
+        REQUIRE(r.ok);
+        bool helped = false;
+        for (const auto& e : r.events) if (e.kind == EventKind::CheckRolled) helped = (e.c & 2) != 0;
+        CHECK(helped);
+    }
+    auto t = begin_encounter({pc(1), pc(4), monster(2)}, 3);
+    end_turns_until(t, 1);
+    REQUIRE(step(t, {1, ActionKind::Help, 0, 0, 0, false, false, 4}).ok);
+    REQUIRE(step(t, {1, ActionKind::EndTurn}).ok);
+    end_turns_until(t, 1);                                    // helper's next turn: expired
+    CHECK(find(t, 4)->check_helped_by == 0);
 }
