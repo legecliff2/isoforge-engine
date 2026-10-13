@@ -163,7 +163,7 @@ struct SliceView::Textures {
 };
 
 SliceView::SliceView(IRenderDevice& dev)
-    : dev_(dev), world_(dev, 8192), ui_(dev, 8192), tex_(std::make_unique<Textures>(dev)) {}
+    : world_(dev, 8192), ui_(dev, 8192), tex_(std::make_unique<Textures>(dev)) {}
 SliceView::~SliceView() = default;
 
 Vec2f SliceView::tile_center_px(float x, float y) const {
