@@ -24,7 +24,7 @@ Status: v0, `gen_version` 1. Owner: Tools/Content. Implements ARCHITECTURE.md §
   - `gen_version` is decimal, 1..65535, with no leading zeros.
   - The base32 part uses RFC 4648 uppercase (`A–Z2–7`) with no padding. It is exactly 13 characters (65 bits, big-endian), so the first character is always `A`..`P`.
 - The doc's example `g1-K3QZ7M2XAB4PE` decodes to seed `0xADC33F66AE00F1E4`.
-- There is no checksum, because the doc specifies none. Parsing is strict and canonical: lowercase, padding, wrong length, a first character above `P` (more than 64 bits), and bad prefixes are all rejected. Every seed therefore has exactly one string.
+- There is no checksum, because the doc specifies none. Parsing is case-insensitive (`G1-k3qz…` is accepted); printing is always the canonical form (`g` + uppercase base32). Padding, wrong length, a first character above `P` (more than 64 bits), and bad prefixes are rejected.
 
 ## Chunk seeds (§4.2)
 `chunk_seed = rng::derive_seed(world_seed, {"CHNK", gen_version, x, y, level})`.
@@ -75,7 +75,7 @@ The outer ring of every chunk is empty, so a chunk never depends on its neighbou
 - **`procgen_pack_dump` + `procgen_pack_validate`:** dumps 4 chunks for the doc seed (including `-1000000,123456,7`) and runs `tools/validate` on them. This covers the schema and an independent Python recomputation of `content_hash`.
 - **`procgen_detlint`** (`tools/detlint/detlint.cmake`): fails on `float`/`double`, float literals, `<cmath>`/`<random>`/`<chrono>`, `std::hash`, `unordered_*`, and `rand` anywhere under `engine/procgen`.
 
-Changing any golden requires a `gen_version` bump (§4.6/§4.7). Old versions stay in `generate()`'s switch forever.
+Changing any golden requires a new `gen_version` (§4.6/§4.7, D-007). `generate()` dispatches through an append-only registry (`generator_versions()`, contiguous from 1, `static_assert`ed); a test requires goldens for every registered version, and old versions stay callable forever.
 
 ## What Engine Core needs to do
 1. **Adopt or relocate the adapter.**
@@ -90,5 +90,4 @@ Changing any golden requires a `gen_version` bump (§4.6/§4.7). Old versions st
 1. Is including `gen_version` in the chunk-seed keys OK? It goes beyond the doc's `tag, x, y, level`.
 2. Should the noise move to `detmath::noise` (Rules)? If so, should it be the doc's `Fx`-coordinate signature, or this integer-coordinate one (safe at world scale, §9 Q11)?
 3. Cross-chunk connectivity: v0 chunks are self-contained islands. Corridors between chunks need region passes (§4.4) and a policy for which border cells are doorways.
-4. Should seed-string parsing accept lowercase or Crockford-style input from users? Currently it is strict, with one canonical form.
-5. Should the generic `tools/detlint` be applied to `rules5e`/`sim`/`world/gen` as §4.7 describes? Today it only covers procgen.
+4. Should the generic `tools/detlint` be applied to `rules5e`/`sim`/`world/gen` as §4.7 describes? Today it only covers procgen.
