@@ -17,8 +17,8 @@ const procgen::WorldSeed kSeed = *procgen::parse_seed("g1-K3QZ7M2XAB4PE");
 }
 
 TEST_CASE("procgen spawn_stable_id == world spawn_stable_id") {
-    for (int32_t x : {0, -1, 7, -2147483647 - 1})
-        for (int16_t l : {int16_t(0), int16_t(-2), int16_t(32767)})
+    for (int32_t x : {0, -1, 7, -2147483647 - 1, 2147483647})
+        for (int16_t l : {int16_t(0), int16_t(-2), int16_t(32767), int16_t(-32768)})
             for (uint32_t i : {0u, 3u, 1000u}) {
                 const int32_t y = int32_t(0u - uint32_t(x));   // -x without UB (INT32_MIN maps to itself)
                 CHECK(procgen::spawn_stable_id(x, y, l, i) == spawn_stable_id(ChunkCoord{x, y, l}, i));
@@ -26,9 +26,15 @@ TEST_CASE("procgen spawn_stable_id == world spawn_stable_id") {
 }
 
 TEST_CASE("procgen JSON decodes through world::chunk_from_json with the same hash") {
+    struct C { int32_t x, y; int16_t l; };
+    std::vector<C> cases;
     for (int32_t x : {0, -1, 5, -1000000})
-        for (int16_t l : {int16_t(0), int16_t(-2)}) {
-            auto g = procgen::generate(kSeed, x, -x, l);
+        for (int16_t l : {int16_t(0), int16_t(-2)}) cases.push_back({x, -x, l});
+    cases.push_back({-2147483647 - 1, 2147483647, int16_t(-32768)});   // int32/int16 extremes
+    cases.push_back({2147483647, -2147483647 - 1, int16_t(32767)});
+    for (const C& c : cases) {
+        CAPTURE(c.x); CAPTURE(c.y); CAPTURE(c.l);
+            auto g = procgen::generate(kSeed, c.x, c.y, c.l);
             REQUIRE(g);
             auto r = chunk_from_json(eng::assets::Json::parse(procgen::to_json(*g)));   // checks content_hash
             REQUIRE_MESSAGE(r.status == ChunkStatus::Ready, r.error);
