@@ -31,7 +31,6 @@ private:
     void text(std::string_view s, eng::Vec2f px, float scale, eng::Color c, int32_t layer = 20);
     void rect(eng::Vec2f px, eng::Vec2f size, eng::Color c, int32_t layer = 10);
 
-    eng::render::IRenderDevice& dev_;
     eng::iso2d::SpriteBatch world_, ui_;
     struct Textures;
     std::unique_ptr<Textures> tex_;
