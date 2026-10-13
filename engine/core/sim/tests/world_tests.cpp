@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <string>
 
+#include "sample_set.hpp"
 #include "sim/driver.hpp"
 #include "world/chunk_codec.hpp"
 #include "world/chunk_streamer.hpp"
@@ -41,7 +42,7 @@ world::Chunk east() { return open_chunk({0, 2, 0}, {{kGoblin, 4, 10}}); }
 
 ContentLibrary lib() {
     ContentLibrary l;
-    REQUIRE(l.load_pack(kPack).empty());
+    REQUIRE(l.load(sample_set()).empty());
     return l;
 }
 

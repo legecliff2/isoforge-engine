@@ -8,7 +8,7 @@ using namespace rules5e;
 using namespace rules5e_content;
 
 namespace {
-const std::filesystem::path kSpells = std::filesystem::path(ENGINE_SOURCE_ROOT) / "content/packs/sample.vertical_slice/spells";
+const std::filesystem::path kSpells = std::filesystem::path(ENGINE_SOURCE_ROOT) / "content/packs/srd51.core/spells";
 }
 
 TEST_CASE("sample pack spells load into a SpellBook") {

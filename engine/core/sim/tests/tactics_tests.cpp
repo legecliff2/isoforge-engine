@@ -3,6 +3,7 @@
 
 #include <string>
 
+#include "sample_set.hpp"
 #include "sim/driver.hpp"
 #include "world/chunk_codec.hpp"
 #include "world/handcrafted_provider.hpp"
@@ -34,7 +35,7 @@ world::Chunk arena(std::vector<std::tuple<std::string, int, int>> spawns, std::v
 }
 ContentLibrary lib() {
     ContentLibrary l;
-    REQUIRE(l.load_pack(kPack).empty());
+    REQUIRE(l.load(sample_set()).empty());
     return l;
 }
 void advance_to(Combat& c, CombatantId who) {

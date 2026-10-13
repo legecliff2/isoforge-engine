@@ -54,11 +54,14 @@ private:
 };
 
 Outcome fight(uint64_t seed, const std::string& pack_dir = kPack) {
+    // One ordered PackSet feeds both content and scripts (the game path).
+    const auto set = assets::PackSet::from_pack_dir(pack_dir);
+    REQUIRE_MESSAGE(set.ok(), (set.ok() ? "" : set.error_strings()[0]));
     sim::ContentLibrary lib;
-    auto errs = lib.load_pack(pack_dir);
+    auto errs = lib.load(set);
     REQUIRE(errs.empty());
     script::ScriptHost host(1);
-    auto pack = script::load_pack_scripts(host, pack_dir);
+    auto pack = script::load_pack_scripts(host, set);
     REQUIRE_MESSAGE(pack.ok, (pack.errors.empty() ? "" : pack.errors[0]));
     REQUIRE(pack.ai_by_archetype.count("srd51.monster.goblin"));
     std::map<std::string, std::unique_ptr<script::LuauActorPolicy>> luau;
@@ -66,6 +69,9 @@ Outcome fight(uint64_t seed, const std::string& pack_dir = kPack) {
     for (const auto& [id, a] : lib.all())
         if (a.ai) {
             REQUIRE_MESSAGE(pack.ai_by_archetype.count(id), id);
+            // behavior.ai resolves within the archetype's own pack (script id pack_id:path).
+            REQUIRE(pack.scripts.count(*a.ai_script_id()));
+            CHECK(pack.scripts.at(*a.ai_script_id()) == pack.ai_by_archetype.at(id));
             luau[id] = std::make_unique<script::LuauActorPolicy>(host, pack.ai_by_archetype.at(id));
             counted[id] = std::make_unique<CountingPolicy>(*luau[id]);
         }
@@ -153,8 +159,12 @@ TEST_CASE("vertical slice: different seeds take different paths") {
 TEST_CASE("vertical slice: a character@2 with behavior.ai is driven by Luau") {
     namespace fs = std::filesystem;
     const ScratchDir scratch("vs_character_v2");
-    const fs::path& tmp = scratch.path;
-    fs::copy(kPack, tmp, fs::copy_options::recursive);
+    // Copy of the live root; behavior.ai resolves within the character's own pack, so the
+    // sample pack gets its own copy of the script (key sample.vertical_slice:scripts/ai/...).
+    fs::copy(fs::path(kPack).parent_path(), scratch.path, fs::copy_options::recursive);
+    const fs::path tmp = scratch.path / "sample.vertical_slice";
+    fs::create_directories(tmp / "scripts/ai");
+    fs::copy_file(scratch.path / "srd51.core/scripts/ai/skirmisher.luau", tmp / "scripts/ai/skirmisher.luau");
     const fs::path fj = tmp / "characters" / "fighter_1.json";
     auto doc = assets::Json::parse(std::ifstream(fj));
     CHECK(doc["$schema"] == "character@3");

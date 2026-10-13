@@ -16,7 +16,7 @@ using namespace eng::script;
 
 namespace {
 const std::filesystem::path kPack = std::filesystem::path(ENGINE_SOURCE_ROOT) / "content/packs/sample.vertical_slice";
-const std::string kAi = "scripts/ai/skirmisher.luau";
+const std::string kAi = "srd51.core:scripts/ai/skirmisher.luau";   // script id pack_id:path
 
 ScriptId must_load(ScriptHost& h, const char* src) {
     ScriptError e;
@@ -210,14 +210,14 @@ TEST_CASE("pack load fails on type errors and api_level mismatch") {
     const ScratchDir scratch("script_pack_test");
     const auto& dir = scratch.path;
     std::filesystem::create_directories(dir / "scripts");
-    std::ofstream(dir / "manifest.json") << R"({"$schema":"manifest@1","api_level":1})";
+    std::ofstream(dir / "manifest.json") << R"({"$schema":"manifest@1","id":"test.scripts","version":"1.0.0","api_level":1})";
     std::ofstream(dir / "scripts/bad.luau") << "local n: number = 'x'\nreturn {}\n";
     ScriptHost host(1);
     auto p = load_pack_scripts(host, dir);
     CHECK_FALSE(p.ok);
     REQUIRE_FALSE(p.errors.empty());
-    CHECK(p.errors[0].rfind("scripts/bad.luau:1: ", 0) == 0);
-    std::ofstream(dir / "manifest.json") << R"({"$schema":"manifest@1","api_level":2})";
+    CHECK(p.errors[0].rfind("test.scripts:scripts/bad.luau:1: ", 0) == 0);
+    std::ofstream(dir / "manifest.json") << R"({"$schema":"manifest@1","id":"test.scripts","version":"1.0.0","api_level":2})";
     auto q = load_pack_scripts(host, dir);
     CHECK_FALSE(q.ok);
     CHECK(q.errors.at(0).find("api_level 2") != std::string::npos);
@@ -232,8 +232,53 @@ TEST_CASE("embedded level 1 definitions are byte-identical to the frozen source 
 }
 
 TEST_CASE("check_pack_scripts (tools/script_check) on the sample pack") {
-    auto r = check_pack_scripts(kPack);
+    auto r = check_pack_scripts(kPack.parent_path() / "srd51.core");
     CHECK(r.errors.empty());
     CHECK(r.scripts >= 1);
     CHECK(r.api_level == 1);
+}
+
+TEST_CASE("pack set scripts: ids are pack_id:path; behavior.ai resolves within the archetype's own pack") {
+    const ScratchDir scratch("script_packset");
+    const auto& root = scratch.path;
+    auto pack = [&](const std::string& id, const std::string& depends, const std::string& ai, bool has_script) {
+        const auto dir = root / id;
+        std::filesystem::create_directories(dir / "scripts/ai");
+        std::filesystem::create_directories(dir / "monsters");
+        if (has_script) std::ofstream(dir / "scripts/ai/a.luau") << "return {}\n";
+        std::ofstream(dir / "monsters/m.json")
+            << R"({"$schema":"monster@3","id":")" << id << R"(.monster.m","behavior":{"ai":")" << ai << R"("}})";
+        std::ofstream(dir / "manifest.json") << R"({"$schema":"manifest@1","id":")" << id
+                                             << R"(","version":"1.0.0","api_level":1,"depends":[)" << depends
+                                             << R"(],"contents":["monsters/m.json"]})";
+        return dir;
+    };
+    const auto base = pack("t.base", "", "scripts/ai/a.luau", true);
+    const auto mod = pack("t.mod", R"({"id":"t.base","version":"^1.0"})", "scripts/ai/a.luau", true);
+    ScriptHost host(1);
+    auto resolve = [&](std::vector<std::string> req) {
+        const std::filesystem::path roots[] = {root};
+        return assets::PackSet::resolve(roots, req);
+    };
+    auto set = resolve({"t.mod"});
+    REQUIRE(set.ok());
+    auto p = load_pack_scripts(host, set);
+    REQUIRE_MESSAGE(p.ok, (p.errors.empty() ? "" : p.errors[0]));
+    REQUIRE(p.scripts.count("t.base:scripts/ai/a.luau"));
+    REQUIRE(p.scripts.count("t.mod:scripts/ai/a.luau"));
+    CHECK(p.ai_by_archetype.at("t.base.monster.m") == p.scripts.at("t.base:scripts/ai/a.luau"));
+    CHECK(p.ai_by_archetype.at("t.mod.monster.m") == p.scripts.at("t.mod:scripts/ai/a.luau"));
+    // A behavior.ai path that exists only in a dependency does not resolve.
+    const auto lean = pack("t.lean", R"({"id":"t.base","version":"^1.0"})", "scripts/ai/a.luau", false);
+    std::filesystem::remove_all(lean / "scripts");
+    ScriptHost host2(1);
+    auto q = load_pack_scripts(host2, resolve({"t.lean"}));
+    CHECK_FALSE(q.ok);
+    REQUIRE_FALSE(q.errors.empty());
+    CHECK(q.errors.back().find("is not a script of pack t.lean") != std::string::npos);
+    // A set with errors is rejected before any script loads.
+    ScriptHost host3(1);
+    auto r = load_pack_scripts(host3, resolve({"t.mod", "t.nowhere"}));
+    CHECK_FALSE(r.ok);
+    CHECK(r.errors.at(0) == "missing_dep: requested pack 't.nowhere' is not in the pack set");
 }

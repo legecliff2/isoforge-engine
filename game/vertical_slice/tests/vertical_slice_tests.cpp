@@ -18,7 +18,7 @@ TEST_CASE("palette classification") {
 
 TEST_CASE("static view: chunk tiles, walls and both spawns through the world module") {
     std::string err;
-    auto s = Session::open({SLICE_PACK, 1, false}, &err);
+    auto s = Session::open({{SLICE_PACK_ROOT}, {SLICE_PACK}, 1, false}, &err);
     REQUIRE_MESSAGE(s, err);
     ViewModel v = s->view();
     CHECK_FALSE(v.sim_live);
@@ -39,7 +39,7 @@ TEST_CASE("static view: chunk tiles, walls and both spawns through the world mod
 
 TEST_CASE("sim view: stepping the headless fight to the end updates the snapshot") {
     std::string err;
-    auto s = Session::open({SLICE_PACK, 2, true}, &err);
+    auto s = Session::open({{SLICE_PACK_ROOT}, {SLICE_PACK}, 2, true}, &err);
     REQUIRE_MESSAGE(s, err);
     ViewModel v0 = s->view();
     CHECK(v0.sim_live);
@@ -58,7 +58,7 @@ TEST_CASE("sim view: stepping the headless fight to the end updates the snapshot
 
 TEST_CASE("view renders a snapshot without touching game state (null device)") {
     std::string err;
-    auto s = Session::open({SLICE_PACK, 1, true}, &err);
+    auto s = Session::open({{SLICE_PACK_ROOT}, {SLICE_PACK}, 1, true}, &err);
     REQUIRE(s);
     eng::render::NullDevice dev;
     {
@@ -81,7 +81,7 @@ TEST_CASE("view renders a snapshot without touching game state (null device)") {
 
 TEST_CASE("camera focus: centre of the combatants' bounding box") {
     std::string err;
-    auto s = Session::open({SLICE_PACK, 1, false}, &err);
+    auto s = Session::open({{SLICE_PACK_ROOT}, {SLICE_PACK}, 1, false}, &err);
     REQUIRE(s);
     eng::render::NullDevice dev;
     SliceView view(dev);
@@ -95,4 +95,19 @@ TEST_CASE("camera focus: centre of the combatants' bounding box") {
     vm.actors[0].tile = {3, 4};
     const eng::Vec2f one = view.actors_focus_px(vm), c = view.tile_center_px(3, 4);
     CHECK(one.x == doctest::Approx(c.x));
+}
+
+TEST_CASE("session takes a pack set: errors surface, config shape parses") {
+    std::string err;
+    CHECK_FALSE(Session::open({{SLICE_PACK_ROOT}, {"no.such_pack"}, 1, false}, &err));
+    CHECK(err == "pack set: missing_dep: requested pack 'no.such_pack' is not in the pack set");
+    CHECK_FALSE(Session::open({{SLICE_PACK_ROOT}, {}, 1, false}, &err));
+    // srd51.core alone resolves but has no chunk.
+    CHECK_FALSE(Session::open({{SLICE_PACK_ROOT}, {"srd51.core"}, 1, false}, &err));
+    Session::Options o;
+    REQUIRE(Session::apply_pack_config(R"({"pack_roots": [")" SLICE_PACK_ROOT R"("], "packs": ["sample.vertical_slice"]})", o, &err));
+    CHECK(o.packs == std::vector<std::string>{"sample.vertical_slice"});
+    CHECK(Session::open(o, &err));
+    CHECK_FALSE(Session::apply_pack_config(R"({"packs": "x"})", o, &err));
+    CHECK_FALSE(Session::apply_pack_config("[", o, &err));
 }

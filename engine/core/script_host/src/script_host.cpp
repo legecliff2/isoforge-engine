@@ -11,6 +11,7 @@
 #include <luacode.h>
 
 #include "assets/content_migrations.hpp"
+#include "assets/pack_set.hpp"
 #include "assets/schema_registry.hpp"
 
 namespace eng::script::embedded {
@@ -509,48 +510,63 @@ PackCheck check_pack_scripts(const std::filesystem::path& pack_dir) {
 }
 
 PackScripts load_pack_scripts(ScriptHost& host, const std::filesystem::path& pack_dir) {
+    return load_pack_scripts(host, assets::PackSet::from_pack_dir(pack_dir));
+}
+
+PackScripts load_pack_scripts(ScriptHost& host, const assets::PackSet& packs) {
     PackScripts out;
-    std::map<std::string, std::string> sources;   // sorted by pack-relative path
-    if (!collect(pack_dir, out.api_level, sources, out.errors)) return out;
-    if (out.api_level != host.api_level()) {
-        out.errors.push_back("pack api_level " + std::to_string(out.api_level) + " != host api_level " +
-                             std::to_string(host.api_level()));
+    if (!packs.ok()) {
+        out.errors = packs.error_strings();
         return out;
     }
-    out.errors = typecheck(out.api_level, sources);
-    if (!out.errors.empty()) return out;
-    for (const auto& [path, src] : sources) {
-        ScriptError e;
-        auto id = host.load_script(path, src, &e);
-        if (!id) { out.errors.push_back(path + ": " + e.message); return out; }
-        out.scripts.emplace(path, *id);
-    }
-
-    // Monster behavior.ai bindings (monster@1 presentation.ai is migrated to behavior.ai).
-    assets::SchemaRegistry reg;
-    assets::register_content_schemas(reg);
-    auto man = reg.load_file(pack_dir / "manifest.json");
-    if (man.ok && man.data.contains("contents") && man.data["contents"].is_array()) {
-        for (const auto& item : man.data["contents"]) {   // manifest order is sorted (validator)
-            if (!item.is_string()) continue;
-            const std::string rel = item.get<std::string>();
-            if (rel.size() < 5 || rel.compare(rel.size() - 5, 5, ".json") != 0) continue;
-            auto doc = reg.load_file(pack_dir / rel);
-            if (!doc.ok) {
-                if (doc.declared.type == "monster" || doc.declared.type == "character" || doc.error.find("unknown schema type") == std::string::npos)
-                    out.errors.push_back(doc.error);
-                continue;
-            }
-            if (doc.current.type != "monster" && doc.current.type != "character") continue;
-            auto ai = assets::behavior_ai_script(doc.data);
-            if (!ai) continue;
-            auto it = out.scripts.find(*ai);
-            if (it == out.scripts.end()) {
-                out.errors.push_back(rel + ": behavior.ai '" + *ai + "' is not a pack script");
-                continue;
-            }
-            out.ai_by_archetype[doc.data.value("id", rel)] = it->second;
+    out.api_level = host.api_level();
+    // Per pack (resolved order): api_level check, strict typecheck, then load in script-id order.
+    for (const assets::PackInfo& p : packs.packs()) {
+        uint32_t level = 0;
+        std::map<std::string, std::string> sources;   // script id -> source
+        std::vector<std::string> errs;
+        if (!collect(p.dir, level, sources, errs)) {
+            for (auto& e : errs) out.errors.push_back(p.id + ": " + e);
+            return out;
         }
+        if (level != host.api_level()) {
+            out.errors.push_back(p.id + ": pack api_level " + std::to_string(level) + " != host api_level " +
+                                 std::to_string(host.api_level()));
+            return out;
+        }
+        std::map<std::string, std::string> by_id;
+        for (auto& [rel, src] : sources) by_id.emplace(assets::make_script_key(p.id, rel), std::move(src));
+        auto terrs = typecheck(level, by_id);
+        if (!terrs.empty()) {
+            out.errors.insert(out.errors.end(), terrs.begin(), terrs.end());
+            return out;
+        }
+        for (const auto& [sid, src] : by_id) {
+            ScriptError e;
+            auto id = host.load_script(sid, src, &e);
+            if (!id) { out.errors.push_back(sid + ": " + e.message); return out; }
+            out.scripts.emplace(sid, *id);
+        }
+    }
+    // behavior.ai bindings resolve within the archetype's own pack.
+    for (const assets::PackDocument& d : packs.documents()) {
+        if (!d.doc.ok) {   // stat blocks must load; other unknown types are not ours to judge
+            if (d.doc.declared.type == "monster" || d.doc.declared.type == "character" ||
+                d.doc.error.find("unknown schema type") == std::string::npos)
+                out.errors.push_back(d.doc.error);
+            continue;
+        }
+        if (d.doc.current.type != "monster" && d.doc.current.type != "character") continue;
+        auto ai = assets::behavior_ai_script(d.doc.data);
+        if (!ai) continue;
+        const std::string& pack_id = packs.packs()[d.pack].id;
+        const std::string sid = assets::make_script_key(pack_id, *ai);
+        auto it = out.scripts.find(sid);
+        if (it == out.scripts.end()) {
+            out.errors.push_back(pack_id + ":" + d.path + ": behavior.ai '" + *ai + "' is not a script of pack " + pack_id);
+            continue;
+        }
+        out.ai_by_archetype[d.content_id.empty() ? d.path : d.content_id] = it->second;
     }
     out.ok = out.errors.empty();
     return out;

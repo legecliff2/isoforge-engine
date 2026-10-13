@@ -5,6 +5,7 @@
 #include <fstream>
 #include <string>
 
+#include "sample_set.hpp"
 #include "assets/content_migrations.hpp"
 #include "sim/driver.hpp"
 #include "world/chunk_codec.hpp"
@@ -55,7 +56,7 @@ uint32_t active_id(const Archetype& a, const std::string& kind) {
 
 TEST_CASE("pack features resolve through effect kinds") {
     ContentLibrary lib;
-    REQUIRE(lib.load_pack(kPack).empty());
+    REQUIRE(lib.load(sample_set()).empty());
     const Archetype& f = *lib.find(kFighter);
     const Archetype& g = *lib.find(kGoblin);
     CHECK(f.unsupported_features.empty());
@@ -135,7 +136,7 @@ TEST_CASE("hooks key on effect.kind, not names; unknown kinds are reported; bad 
 
 TEST_CASE("Second Wind via UseFeature: bonus action, rolled heal, one use, replays") {
     ContentLibrary lib;
-    REQUIRE(lib.load_pack(kPack).empty());
+    REQUIRE(lib.load(sample_set()).empty());
     auto ch = arena({{kFighter, 2, 2}, {kGoblin, 20, 20}});
     ecs::Registry reg;
     auto c = Combat::create(reg, ch, lib, 11);
@@ -183,7 +184,7 @@ TEST_CASE("Second Wind via UseFeature: bonus action, rolled heal, one use, repla
 
 TEST_CASE("policy: goblin uses its granted bonus Disengage before leaving reach; no opportunity attack") {
     ContentLibrary lib;
-    REQUIRE(lib.load_pack(kPack).empty());
+    REQUIRE(lib.load(sample_set()).empty());
     // Goblin adjacent to fighter A, chasing fighter B on the far side: its path leaves A's reach.
     auto ch = arena({{kFighter, 5, 5}, {kGoblin, 6, 5}, {kFighter, 12, 5}});
     ecs::Registry reg;
@@ -208,7 +209,7 @@ TEST_CASE("policy: goblin uses its granted bonus Disengage before leaving reach;
 
 TEST_CASE("policy: fighter uses Second Wind when at or below half hp") {
     ContentLibrary lib;
-    REQUIRE(lib.load_pack(kPack).empty());
+    REQUIRE(lib.load(sample_set()).empty());
     auto ch = arena({{kFighter, 5, 5}, {kGoblin, 6, 5}});
     ecs::Registry reg;
     auto c = Combat::create(reg, ch, lib, 2);

@@ -43,11 +43,12 @@ int geti(const Json& j, const char* k, int def = 0) {
 }
 } // namespace
 
-std::optional<std::string> ContentLibrary::add(const Json& doc, const std::string& schema_type) {
+std::optional<std::string> ContentLibrary::add(const Json& doc, const std::string& schema_type, const std::string& pack_id) {
     Archetype a;
     a.id = doc.value("id", "");
     if (a.id.empty()) return "stat block without id";
     a.schema_type = schema_type;
+    a.pack_id = pack_id;
     rules5e::Combatant& c = a.base;
     static const char* ab[] = {"str", "dex", "con", "int", "wis", "cha"};
     const Json& abil = doc.at("abilities");
@@ -114,26 +115,23 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     return std::nullopt;
 }
 
-std::vector<std::string> ContentLibrary::load_pack(const std::string& pack_dir) {
-    std::vector<std::string> errors;
-    assets::SchemaRegistry reg;
-    assets::register_content_schemas(reg);
-    const std::filesystem::path dir(pack_dir);
-    auto man = reg.load_file(dir / "manifest.json");
-    if (!man.ok) return {man.error};
-    for (const Json& item : man.data.value("contents", Json::array())) {
-        const std::string rel = item.get<std::string>();
-        if (rel.size() < 5 || rel.compare(rel.size() - 5, 5, ".json") != 0) continue;
-        auto doc = reg.load_file(dir / rel);
-        if (!doc.ok) { errors.push_back(doc.error); continue; }
-        if (doc.current.type != "monster" && doc.current.type != "character") continue;
+std::vector<std::string> ContentLibrary::load(const assets::PackSet& packs) {
+    if (!packs.ok()) return packs.error_strings();
+    std::vector<std::string> errors = packs.document_errors();
+    for (const assets::PackDocument& d : packs.documents()) {
+        if (!d.doc.ok || (d.doc.current.type != "monster" && d.doc.current.type != "character")) continue;
+        const std::string& pack_id = packs.packs()[d.pack].id;
         try {
-            if (auto e = add(doc.data, doc.current.type)) errors.push_back(rel + ": " + *e);
+            if (auto e = add(d.doc.data, d.doc.current.type, pack_id)) errors.push_back(pack_id + ":" + d.path + ": " + *e);
         } catch (const std::exception& ex) {
-            errors.push_back(rel + ": " + ex.what());
+            errors.push_back(pack_id + ":" + d.path + ": " + ex.what());
         }
     }
     return errors;
+}
+
+std::vector<std::string> ContentLibrary::load_pack(const std::string& pack_dir) {
+    return load(assets::PackSet::from_pack_dir(pack_dir));
 }
 
 const Archetype* ContentLibrary::find(const std::string& id) const {
