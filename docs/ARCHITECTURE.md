@@ -121,7 +121,7 @@ Note: **SDL_GPU already sits on top of Vulkan, Metal, and D3D12.** That makes it
 |---|---|---|---|
 | `base` | static lib | std only | math, `Span`, `Handle<T>`, logging, asserts, allocators |
 | `rng` | static lib | std only | `Pcg32`, `splitmix64`, `derive_seed`, deterministic `uniform`/`shuffle` |
-| `detmath` | static lib | std only | `Fx` (Q16.16), int `sqrt`, LUT trig, value/gradient noise, `StableHash` (§4) |
+| `detmath` | static lib | std, xxHash (header-only, `StableHash` = xxHash3-64, §4.5) | `Fx` (Q16.16), int `sqrt`, LUT trig, value/gradient noise, `StableHash` (§4) |
 | `rules5e` | static lib | `rng`, `detmath`, std | `rules5e/*.hpp`: pure functions + value types |
 | `platform` | static lib | `base`, SDL3 | window, event pump, clock, file I/O, threads, audio device |
 | `render_api` | header + lib | `base` | `IRenderDevice`, resources, command lists |
@@ -131,12 +131,17 @@ Note: **SDL_GPU already sits on top of Vulkan, Metal, and D3D12.** That makes it
 | `assets` | static lib | `base`, `platform` | VFS, pack mounting, schema registry, migrations, typed cache |
 | `ecs` | static lib | `base` | registry, components, system scheduling |
 | `world` | static lib | `assets`, `ecs`, `base`, `rng`, `detmath` | `Chunk`, `IChunkProvider`, `ChunkStreamer`, procgen runtime |
+| `procgen` | static lib | `detmath`, `rng`, `base` | seed strings, chunk seeds, room/corridor generator → `chunk@1` data (no world types) |
+| `procgen_world` | static lib | `world`, `procgen` | glue: `ProceduralProvider` (procgen output → `world::Chunk`) |
 | `audio` | static lib | `assets`, `platform` | buses, one-shots, music |
 | `sim` | static lib | `ecs`, `rules5e`, `world` | turn manager, ECS ↔ rules adapters |
 | `script_host` | static lib | `ecs`, `sim`, `world`, `assets`, `rng`, `detmath`, Luau (VM, Compiler, Analysis) | API vN bindings, sandbox, pack-load typecheck |
 | `engine` | static lib | all core modules | `Engine` facade: main loop, service wiring |
 | `game/*` | executable | `engine`, `iso2d` | per-title boot code (kept tiny) |
 | `tools/*` | executables | `assets`, `world`, `rules5e` (no renderer unless editor) | packer, validator, migrator, procgen preview |
+
+_Lint exception (approved): `tools/*` may also depend on `script_host` (`script_check`, the pack typecheck half of the validator) and on `procgen`/`procgen_world` (`procgen_dump`, the procgen preview). Still no renderer or platform, and no direct third-party links. Enforced by `tools/depcheck/rules.cmake` (`ALLOW_KIND_tool`)._
+
 
 ### 2.2 Rules (enforced in CI)
 

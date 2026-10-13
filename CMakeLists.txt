@@ -108,6 +108,10 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/validate_packs.py"
                          ${_script_check_args}
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        # Validator unit tests (e.g. unknown effect kinds warn, known kinds' fields are checked).
+        add_test(NAME content_validate_tests
+                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/test_validate_packs.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # Procedurally generated chunks must pass the same validator (schema + content_hash).
         if(TARGET procgen_dump)
             set(_pg_out "${CMAKE_BINARY_DIR}/procgen_preview_pack")
@@ -118,6 +122,12 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
                      COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/validate_packs.py" "${_pg_out}"
                      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
             set_tests_properties(procgen_pack_validate PROPERTIES FIXTURES_REQUIRED procgen_pack)
+            # Every archetype procgen can emit must exist in the default packs (else the sim skips it).
+            add_test(NAME procgen_archetypes_defined
+                     COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/check_procgen_archetypes.py"
+                             $<TARGET_FILE:procgen_dump> "${_pg_out}"
+                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+            set_tests_properties(procgen_archetypes_defined PROPERTIES FIXTURES_REQUIRED procgen_pack)
         endif()
     endif()
 endif()
@@ -140,6 +150,9 @@ endif()
 
 # Determinism lint over rules5e / detmath / sim / world/gen (§4.7). Registry: cmake/DetLint.cmake.
 include(DetLint)
+
+# Vertical slice viewer (session/view libs + tests always; executable needs SDL).
+add_subdirectory(game/vertical_slice)
 
 # Module dependency graph + include lint (§2.2 rules 1, 3-5). Must come after all modules.
 include(DepCheck)

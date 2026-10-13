@@ -6,8 +6,10 @@ on:
   pull_request:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Branches/PRs: a new push cancels the previous run. main: every push gets its own group
+  # (keyed by sha) and is never cancelled, so each merge gets a complete run.
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build-test:
