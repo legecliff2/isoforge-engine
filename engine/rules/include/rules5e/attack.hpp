@@ -9,6 +9,9 @@ struct AttackContext {
     RollMode mode = RollMode::Normal;     // extra caller-supplied source; merged with conditions
     bool target_within_5ft = false;       // Prone / Paralyzed / Unconscious rules
     int8_t cover_ac_bonus = 0;            // +2 half, +5 three-quarters
+    // appended: independent disadvantage source (ranged: long range / hostile within 5 ft). Kept
+    // separate from `mode` so it is combined with every other source at once (any adv + any dis = normal).
+    bool extra_disadvantage = false;
 };
 
 struct AttackResult { D20Roll roll; bool hit, critical; int16_t damage; DamageType type; };

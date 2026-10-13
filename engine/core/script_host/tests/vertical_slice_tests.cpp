@@ -108,10 +108,10 @@ TEST_CASE("vertical slice: goblin (Luau) vs fighter runs to completion; same see
     CHECK(a.commands == b.commands);
     CHECK(a.ai_calls > 0);   // the skirmisher script chose the goblin's targets
     MESSAGE("seed 2026: hash=" << a.hash << " log=" << a.log_hash << " commands=" << a.commands << " events=" << a.events << " windows=" << a.windows << " reactions=" << a.reactions);
-    CHECK(a.hash == 2775258447473174400ull);
-    CHECK(a.log_hash == 5996853685404721721ull);
+    CHECK(a.hash == 5530183380127477598ull);   // feature uses folded into the state hash (log + event digests unchanged)
+    CHECK(a.log_hash == 10047098813104974020ull);
     MESSAGE("event digest (schema v" << sim::kSimEventSchemaVersion << ")=" << a.event_digest);
-    CHECK(a.event_digest == 1849769190346522522ull);
+    CHECK(a.event_digest == 83810279896348715ull);
 }
 
 TEST_CASE("vertical slice: the command log alone replays the fight bit-identically") {

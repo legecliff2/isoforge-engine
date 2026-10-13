@@ -21,6 +21,12 @@ public:
     // Walkable: has a ground tile (layer 0 tile != 0) and no layer sets blocks_move.
     bool walkable(Vec2i p) const noexcept;
     bool difficult(Vec2i p) const noexcept;
+    // Some layer sets blocks_sight (flag bit 1).
+    bool blocks_sight(Vec2i p) const noexcept;
+    // Line of sight between tile centres (integer supercover traversal, symmetric). Blocked if a
+    // tile strictly between the endpoints blocks sight; where the line passes exactly through a
+    // corner it is blocked only if both tiles beside the corner block sight.
+    bool line_of_sight(Vec2i a, Vec2i b) const noexcept;
     int  step_cost_ft(Vec2i to) const noexcept { return difficult(to) ? 2 * kFeetPerTile : kFeetPerTile; }
 
     // Shortest path (by feet, ties broken by fixed neighbour order) from `from` to any tile in
@@ -29,6 +35,7 @@ public:
 
 private:
     std::array<uint8_t, world::kChunkSize * world::kChunkSize> walk_{};   // 0 blocked, 1 normal, 2 difficult
+    std::array<uint8_t, world::kChunkSize * world::kChunkSize> sight_{};  // 1 = blocks sight
 };
 
 constexpr int chebyshev(Vec2i a, Vec2i b) noexcept {
