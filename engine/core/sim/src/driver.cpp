@@ -26,6 +26,17 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
     const auto* t = target ? rules5e::find(s, *target) : nullptr;
     if (!me || !t || t->dead || !rules5e::is_conscious(*me) || rules5e::is_incapacitated(*me)) return end;
 
+    // Active features (data-driven: whatever the archetype's hooks registered). v0 tactic: a
+    // self-heal when at or below its threshold.
+    if (const Archetype* arch = c.archetype(self))
+        for (const auto& f : arch->active)
+            if (f.heal.count > 0 && c.can_use_feature(self, f.feature_id) &&
+                int(me->hp) * int(f.use_below_den) <= int(me->hp_max) * int(f.use_below_num)) {
+                Command u;
+                u.request = {self, ActionKind::UseFeature};
+                u.request.feature_id = f.feature_id;
+                return u;
+            }
     // Prefer the first melee attack; fall back to the first attack.
     uint8_t ai = 0;
     for (uint8_t i = 0; i < me->attacks.size(); ++i)
@@ -50,6 +61,15 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
             if (dx || dy) goals.push_back({tp.x + dx, tp.y + dy});
     const auto path = c.grid().path(mp, goals, c.occupied_except(self));
     if (path.empty() || c.grid().step_cost_ft(path[0]) > s.budget.movement_ft) return end;
+    // About to leave a hostile's reach: Disengage first if a bonus Disengage is available
+    // (granted by content, e.g. a bonus_action_grant feature).
+    if (s.budget.bonus_action && !me->disengaged &&
+        (me->bonus_action_grants & rules5e::bit(ActionKind::Disengage)) && c.would_leave_reach(self, mp, path[0])) {
+        Command d;
+        d.request = {self, ActionKind::Disengage};
+        d.request.as_bonus_action = true;
+        return d;
+    }
     Command st;
     st.kind = CommandKind::Step;
     st.to = path[0];
