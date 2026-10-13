@@ -20,7 +20,7 @@ namespace {
 const std::string kPack = std::string(ENGINE_SOURCE_ROOT) + "/content/packs/sample.vertical_slice";
 
 struct Outcome {
-    uint64_t hash = 0, log_hash = 0;
+    uint64_t hash = 0, log_hash = 0, event_digest = 0;
     std::size_t commands = 0, events = 0;
     std::vector<sim::LogEntry> log;
     std::map<std::string, std::size_t> luau_turns;   // archetype -> choose_target calls
@@ -85,6 +85,7 @@ Outcome fight(uint64_t seed, const std::string& pack_dir = kPack) {
     Outcome o;
     o.hash = c->hash();
     o.log_hash = c->log_hash();
+    o.event_digest = sim::event_stream_hash(c->events());
     o.commands = c->log().size();
     o.events = c->events().size();
     o.log = c->log();
@@ -108,6 +109,8 @@ TEST_CASE("vertical slice: goblin (Luau) vs fighter runs to completion; same see
     MESSAGE("seed 2026: hash=" << a.hash << " log=" << a.log_hash << " commands=" << a.commands << " events=" << a.events << " windows=" << a.windows << " reactions=" << a.reactions);
     CHECK(a.hash == 2775258447473174400ull);
     CHECK(a.log_hash == 4295572488395449806ull);
+    MESSAGE("event digest (schema v" << sim::kSimEventSchemaVersion << ")=" << a.event_digest);
+    CHECK(a.event_digest == 1463937795433586784ull);
 }
 
 TEST_CASE("vertical slice: the command log alone replays the fight bit-identically") {
