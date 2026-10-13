@@ -123,7 +123,21 @@ void ChunkStreamer::enqueue_missing() {
     cv_work_.notify_all();
 }
 
-void ChunkStreamer::update() {
+std::set<ChunkCoord> ChunkStreamer::resident_keys() const {
+    std::set<ChunkCoord> out;
+    for (const auto& kv : resident_) out.insert(kv.first);
+    return out;
+}
+
+StreamDelta ChunkStreamer::diff_from(const std::set<ChunkCoord>& before) const {
+    StreamDelta d;   // both walks are in coord order, so both lists come out sorted
+    for (const auto& kv : resident_) if (!before.count(kv.first)) d.added.push_back(kv.first);
+    for (ChunkCoord c : before) if (!resident_.count(c)) d.removed.push_back(c);
+    return d;
+}
+
+StreamDelta ChunkStreamer::update() {
+    const std::set<ChunkCoord> before = resident_keys();
     // 1. Evict resident chunks that are no longer wanted (to the LRU cache); forget failures.
     for (auto it = resident_.begin(); it != resident_.end();) {
         if (wanted_.count(it->first)) { ++it; continue; }
@@ -157,6 +171,8 @@ void ChunkStreamer::update() {
     }
     std::sort(done.begin(), done.end(), [](const Done& a, const Done& b) { return a.coord < b.coord; });
     for (auto& d : done) integrate(d.coord, std::move(d.result));
+    last_delta_ = diff_from(before);
+    return last_delta_;
 }
 
 bool ChunkStreamer::idle() const {
@@ -165,7 +181,8 @@ bool ChunkStreamer::idle() const {
     return true;
 }
 
-void ChunkStreamer::wait_idle() {
+StreamDelta ChunkStreamer::wait_idle() {
+    const std::set<ChunkCoord> before = resident_keys();
     update();
     while (!idle()) {
         {
@@ -174,6 +191,8 @@ void ChunkStreamer::wait_idle() {
         }
         update();
     }
+    last_delta_ = diff_from(before);
+    return last_delta_;
 }
 
 const Chunk* ChunkStreamer::get(ChunkCoord c) const {

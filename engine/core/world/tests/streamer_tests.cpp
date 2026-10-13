@@ -1,6 +1,8 @@
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <atomic>
+#include <set>
 #include <chrono>
 #include <thread>
 #include <vector>
@@ -163,4 +165,80 @@ TEST_CASE("layered provider: first covering layer wins") {
     CHECK(a.loads.load() == 1);
     CHECK(l.load({{0, 0, 1}, 1, 1}).status == ChunkStatus::NotFound);
     (void)b;
+}
+
+namespace {
+std::set<ChunkCoord> resident_set(const ChunkStreamer& s) {
+    std::set<ChunkCoord> out;
+    for (const Chunk* c : s.resident(0)) out.insert(c->coord);
+    return out;
+}
+// Applies d to acc, checking it is sorted, disjoint and never double-reports.
+void apply_delta(std::set<ChunkCoord>& acc, const StreamDelta& d) {
+    CHECK(std::is_sorted(d.added.begin(), d.added.end()));
+    CHECK(std::is_sorted(d.removed.begin(), d.removed.end()));
+    CHECK(std::adjacent_find(d.added.begin(), d.added.end()) == d.added.end());
+    CHECK(std::adjacent_find(d.removed.begin(), d.removed.end()) == d.removed.end());
+    for (ChunkCoord c : d.removed) CHECK(acc.erase(c) == 1);          // was resident
+    for (ChunkCoord c : d.added) CHECK(acc.insert(c).second);         // was not resident
+}
+std::vector<Vec2i> delta_walk() {
+    std::vector<Vec2i> w;
+    for (int i = 0; i < 10; ++i) w.push_back({-90 + i * 29, 50 - i * 21});
+    w.push_back({-90, 50});   // back to the start (cache hits)
+    return w;
+}
+} // namespace
+
+TEST_CASE("stream delta: per-update deltas accumulate to the resident set, never double-reported") {
+    for (uint32_t threads : {0u, 1u, 6u}) {
+        CAPTURE(threads);
+        SynthProvider p;
+        StreamerConfig cfg;
+        cfg.cache_chunks = 6;
+        ChunkStreamer s(p, threads, cfg);
+        std::set<ChunkCoord> acc;
+        for (Vec2i f : delta_walk()) {
+            s.set_focus(f, 0, 1);
+            for (int i = 0; i < 10000 && !s.idle(); ++i) {
+                apply_delta(acc, s.update());
+                CHECK(acc == resident_set(s));
+                if (!s.idle()) std::this_thread::sleep_for(std::chrono::microseconds(200));
+            }
+            REQUIRE(s.idle());
+            const StreamDelta extra = s.update();   // settled: nothing changes
+            CHECK(extra.empty());
+            CHECK(s.last_delta().empty());
+            CHECK(acc == resident_set(s));
+        }
+    }
+}
+
+TEST_CASE("stream delta: wait_idle net deltas are identical across thread counts and request orders") {
+    auto run = [](uint32_t threads, uint64_t shuffle) {
+        SynthProvider p;
+        StreamerConfig cfg;
+        cfg.request_shuffle_seed = shuffle;
+        ChunkStreamer s(p, threads, cfg);
+        std::vector<std::pair<std::vector<ChunkCoord>, std::vector<ChunkCoord>>> out;
+        std::set<ChunkCoord> acc;
+        for (Vec2i f : delta_walk()) {
+            s.set_focus(f, 0, 1);
+            const StreamDelta d = s.wait_idle();
+            CHECK(s.last_delta().added == d.added);
+            apply_delta(acc, d);
+            CHECK(acc == resident_set(s));
+            out.push_back({d.added, d.removed});
+        }
+        return out;
+    };
+    const auto ref = run(0, 0);
+    CHECK(ref.front().first.size() == 9);
+    CHECK(ref.front().second.empty());
+    for (uint32_t threads : {1u, 4u, 8u})
+        for (uint64_t shuffle : {0ull, 11ull}) {
+            CAPTURE(threads);
+            CAPTURE(shuffle);
+            CHECK(run(threads, shuffle) == ref);
+        }
 }

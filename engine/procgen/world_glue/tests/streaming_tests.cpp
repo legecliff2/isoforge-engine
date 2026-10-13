@@ -4,6 +4,10 @@
 #include <doctest/doctest.h>
 
 #include <algorithm>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -72,11 +76,66 @@ TEST_CASE("streaming: handcrafted chunk inside procedural wilds; 1 vs N threads,
     CHECK(s.get({1, 0, 0})->origin == Chunk::Origin::Procedural);
     CHECK(s.resident(0).size() == 25);
 
-    // Golden (stream): settled digest at each walk focus. Changes only with the chunk content,
-    // gen_version 1 output, or the digest definition (ChunkStreamer::digest).
-    MESSAGE("stream golden: " << ref[0] << " " << ref[3] << " " << ref[5]);
-    CHECK(ref[0] == 6382347445354989004ull);
-    CHECK(ref[3] == 16267292006870167738ull);
-    CHECK(ref[5] == 16911436643138033795ull);
+    // Goldens live in tests/goldens/stream/*.txt (see the golden-file test below).
     CHECK(ref[4] == ref[0]);   // same focus chunk (0,0) => same resident set
+}
+
+// Stream golden files (docs/STREAMING.md): every tests/goldens/stream/*.txt line
+// "<world_seed_hex> <focus_x> <focus_y> <radius> <digest_u64>" must reproduce, with 0 and 4
+// worker threads. "@gen_version N" / "@level N" directives apply to following lines; '#' comments.
+TEST_CASE("stream golden files reproduce") {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::path(PROCGEN_SOURCE_ROOT) / "tests/goldens/stream";
+    REQUIRE(fs::is_directory(dir));
+    std::vector<fs::path> files;
+    for (const auto& e : fs::directory_iterator(dir))
+        if (e.path().extension() == ".txt") files.push_back(e.path());
+    std::sort(files.begin(), files.end());
+    REQUIRE_FALSE(files.empty());
+    std::size_t checked = 0;
+    for (const auto& f : files) {
+        std::ifstream in(f);
+        uint16_t gen_version = 1;
+        int16_t level = 0;
+        std::string line;
+        int lineno = 0;
+        while (std::getline(in, line)) {
+            ++lineno;
+            CAPTURE(f.filename().string());
+            CAPTURE(lineno);
+            if (line.empty() || line[0] == '#') continue;
+            std::istringstream ls(line);
+            if (line[0] == '@') {
+                std::string key;
+                long v = 0;
+                REQUIRE((ls >> key >> v));
+                if (key == "@gen_version") gen_version = uint16_t(v);
+                else if (key == "@level") level = int16_t(v);
+                else FAIL("unknown directive " << key);
+                continue;
+            }
+            std::string seed_hex;
+            int32_t fx = 0, fy = 0;
+            int radius = 0;
+            uint64_t digest = 0;
+            REQUIRE_MESSAGE((ls >> seed_hex >> fx >> fy >> radius >> digest), "bad line: " << line);
+            std::string rest;
+            REQUIRE_FALSE((ls >> rest));
+            const uint64_t seed = std::strtoull(seed_hex.c_str(), nullptr, 16);
+            for (uint32_t threads : {0u, 4u}) {
+                World w;
+                StreamerConfig c;
+                c.world_seed = seed;
+                c.gen_version = gen_version;
+                ChunkStreamer s(w.layered, threads, c);
+                s.set_focus({fx, fy}, level, radius);
+                s.wait_idle();
+                REQUIRE(s.errors().empty());
+                MESSAGE(seed_hex << " " << fx << " " << fy << " " << radius << " " << s.digest());
+                CHECK(s.digest() == digest);
+            }
+            ++checked;
+        }
+    }
+    CHECK(checked >= 3);
 }
