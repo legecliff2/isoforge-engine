@@ -1,30 +1,10 @@
 #pragma once
-// HandcraftedProvider v0: serves authored chunk@N JSON files, one file per coord.
-// (The doc's final form slices map@N files into chunks; that arrives with map@1/tools/packer.)
-#include <filesystem>
-#include <map>
-#include <string_view>
-
-#include "assets/schema_registry.hpp"
-#include "world/chunk.hpp"
+// Deprecated: HandcraftedProvider was renamed FileChunkProvider (it now serves chunk files of
+// any origin). This header and alias stay for existing callers; new code should include
+// world/file_chunk_provider.hpp and use FileChunkProvider. (Not [[deprecated]] yet so builds
+// with -Werror stay green until callers migrate.)
+#include "world/file_chunk_provider.hpp"
 
 namespace eng::world {
-
-class HandcraftedProvider final : public IChunkProvider {
-public:
-    // Files are fixed at construction; load() only reads immutable state, so it is
-    // thread-safe as IChunkProvider requires.
-    explicit HandcraftedProvider(std::map<ChunkCoord, std::filesystem::path> files);
-
-    std::string_view name() const override { return "handcrafted"; }
-    bool covers(ChunkCoord c) const override { return files_.count(c) != 0; }
-    // NotFound if not covered; Error on I/O/schema/decode failure or if the file's coord or
-    // origin disagree with the request/provider. world_seed and gen_version are ignored.
-    ChunkResult load(const ChunkRequest& req) override;
-
-private:
-    std::map<ChunkCoord, std::filesystem::path> files_;
-    assets::SchemaRegistry schemas_;
-};
-
+using HandcraftedProvider = FileChunkProvider;   // deprecated alias
 } // namespace eng::world
