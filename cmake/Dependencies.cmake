@@ -28,6 +28,9 @@ if(ENGINE_BUILD_TESTS)
         GIT_SHALLOW    TRUE)
     set(DOCTEST_NO_INSTALL ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(doctest)
+    # Include real <tuple>/<string> etc. instead of doctest's std forward declarations:
+    # newer MSVC flags those as C5285 (forbidden std specialization), fatal under /WX.
+    target_compile_definitions(doctest INTERFACE DOCTEST_CONFIG_USE_STD_HEADERS)
 endif()
 
 if(ENGINE_WITH_SDL)
