@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate content packs against the versioned JSON Schemas (ARCHITECTURE.md §3).
 
-Usage:  python3 tools/validate/validate_packs.py [PACK_DIR ...]
+Usage:  python3 tools/validate/validate_packs.py [--script-check SCRIPT_CHECK_EXE] [PACK_DIR ...]
         python3 tools/validate/validate_packs.py --rehash [PACK_DIR ...]   # update chunk content_hash
                                                                            # (never touches tests/compat)
 With no arguments it validates every pack under content/packs/ and every frozen
@@ -254,14 +254,34 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict) -> list[str]:
     # referenced without a definition; anything else must resolve in-pack or via depends.
     ctx = {"ids": ids, "external_ok": lambda a: a.startswith("srd51.")
            or any(a.startswith(dep + ".") for dep in deps)}
-    if "contents" in man:
-        listed = set(man["contents"])
-        actual = set(docs) - {"manifest.json"}
+    scripts = {f.relative_to(pack).as_posix() for f in pack.glob("scripts/**/*.luau")}
+    script_re = re.compile(r"^scripts/.+\.luau$")
+
+    def check_script_ref(where: str, path) -> None:
+        if not isinstance(path, str) or not script_re.match(path):
+            out.append(f"{where}: script path {path!r} must match ^scripts/.+\\.luau$")
+        elif path not in scripts:
+            out.append(f"{where}: script {path} does not exist in pack")
+
+    if "entry_script" in man:
+        check_script_ref("manifest.json: entry_script", man["entry_script"])
+    for rel in sorted(docs):
+        d = docs[rel]
+        if isinstance(d, dict):
+            if isinstance(d.get("behavior"), dict) and "ai" in d["behavior"]:
+                check_script_ref(f"{rel}: behavior.ai", d["behavior"]["ai"])
+            if (d.get("$schema") == "monster@1" and isinstance(d.get("presentation"), dict)
+                    and "ai" in d["presentation"]):
+                print(f"info {pack.name}/{rel}: monster@1 presentation.ai (engine migrates it to behavior.ai; prefer monster@2)")
+                check_script_ref(f"{rel}: presentation.ai", d["presentation"]["ai"])
+    if "contents" in man or scripts:
+        listed = set(man.get("contents", []))
+        actual = (set(docs) - {"manifest.json"}) | scripts
         for m in sorted(listed - actual):
             out.append(f"manifest.json: contents lists missing file {m}")
         for m in sorted(actual - listed):
             out.append(f"manifest.json: {m} not listed in contents")
-        if man["contents"] != sorted(man["contents"]):
+        if man.get("contents", []) != sorted(man.get("contents", [])):
             out.append("manifest.json: contents must be sorted (stable order)")
     for rel in sorted(docs):
         doc, errs = docs[rel], []
@@ -304,12 +324,32 @@ def rehash(packs: list[Path]) -> None:
                     print(f"rehashed {f}")
 
 
+def run_script_check(exe: str, pack: Path) -> list[str]:
+    """Strict Luau typecheck of the pack's scripts/**/*.luau with Engine Core's script_check
+    (exact pack-load environment, §3.3). Returns error lines; empty on success."""
+    import subprocess
+    try:
+        r = subprocess.run([exe, str(pack)], capture_output=True, text=True, timeout=300)
+    except OSError as e:
+        return [f"script_check: cannot run {exe}: {e}"]
+    if r.returncode == 0:
+        return []
+    lines = [l for l in (r.stderr + r.stdout).splitlines() if l.strip() and not l.startswith("ok ")]
+    return [f"script_check: {l}" for l in lines] or [f"script_check: exit code {r.returncode}"]
+
+
 def main(argv: list[str]) -> int:
     self_test()
     registry, by_tag = load_registry()
     if argv[:1] == ["--rehash"]:
         rehash([Path(a).resolve() for a in argv[1:]] or [p for p in discover() if "compat" not in p.parts])
         return 0
+    script_check = None
+    if argv[:1] == ["--script-check"]:
+        if len(argv) < 2:
+            print("--script-check needs an executable path", file=sys.stderr)
+            return 2
+        script_check, argv = argv[1], argv[2:]
     packs = [Path(a).resolve() for a in argv] or discover()
     if not packs:
         print("no packs found", file=sys.stderr)
@@ -317,6 +357,8 @@ def main(argv: list[str]) -> int:
     failed = 0
     for pack in packs:
         errs = validate_pack(pack, registry, by_tag)
+        if script_check:
+            errs += run_script_check(script_check, pack)
         name = pack.relative_to(ROOT) if pack.is_relative_to(ROOT) else pack
         if errs:
             failed += 1

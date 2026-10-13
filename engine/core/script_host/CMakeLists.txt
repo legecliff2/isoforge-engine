@@ -33,7 +33,4 @@ target_link_libraries(script_check PRIVATE eng::script_host)
 _engine_warnings(script_check)
 set(ENGINE_SCRIPT_CHECK_EXECUTABLE "$<TARGET_FILE:script_check>" CACHE INTERNAL
     "Generator expression for script_check (usage: script_check <pack_dir>...)")
-if(ENGINE_BUILD_TESTS)
-    add_test(NAME script_check_sample_pack
-             COMMAND script_check ${PROJECT_SOURCE_DIR}/content/packs/sample.vertical_slice)
-endif()
+# Pack scripts are type-checked by the root content_validate test (--script-check).

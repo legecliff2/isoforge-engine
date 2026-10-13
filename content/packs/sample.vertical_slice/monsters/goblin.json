@@ -1,5 +1,5 @@
 {
-  "$schema": "monster@1",
+  "$schema": "monster@2",
   "id": "srd51.monster.goblin",
   "name": "Goblin",
   "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
@@ -27,5 +27,5 @@
     { "id": "shortbow", "name": "Shortbow", "kind": "ranged_weapon_attack", "to_hit": 4, "range": [80, 320], "targets": 1,
       "damage": [{ "dice": "1d6+2", "type": "piercing" }] }
   ],
-  "presentation": { "ai": "scripts/ai/skirmisher.luau" }
+  "behavior": { "ai": "scripts/ai/skirmisher.luau" }
 }

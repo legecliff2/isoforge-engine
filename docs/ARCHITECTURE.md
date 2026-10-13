@@ -647,18 +647,37 @@ std::optional<uint8_t>     winner_team(const EncounterState&);
 } // namespace rules5e
 ```
 
-Movement on the grid is handled by `sim` (pathing, opportunity attacks via `rules5e::resolve_attack` as a reaction). `rules5e` only validates the movement budget. Replays = `seed + [ActionRequest]`. Golden replays are hashed in tests.
+Movement on the grid is handled by `sim` (pathing; it flags a `Move` with `leaves_reach`, and `rules5e` offers opportunity attacks through a LeavingReach reaction window). `rules5e` validates the movement budget. Replays = `seed + ActionLog`, where each entry is an `ActionRequest` plus the reaction decisions it needed (see Reaction windows). Golden replays are hashed in tests.
 
 #### Sim responsibilities
 
 `rules5e` has no positions, sight, or perception. `sim` owns these and must do them before calling into rules or around it:
 
-1. **Distance.** Set `ActionRequest::target_within_5ft` (Attack, OpportunityAttack, Help-on-attack, Stabilize, readied Attack). Rules trust it for Prone/Paralyzed/Unconscious effects and adjacency checks.
+1. **Distance and reach.** Set `ActionRequest::target_within_5ft` (Attack, Help-on-attack, Stabilize, readied Attack) and `Move::leaves_reach`, and fill `hooks.in_range` (who can react to a LeavingReach or SpellCast window). Opportunity attacks always count as within 5 ft. Rules trust it for Prone/Paralyzed/Unconscious effects and adjacency checks.
 2. **Hide feasibility.** Check sight lines, cover, and obscurement before sending `Hide`. Compare `Combatant::stealth_total` against observers' passive Perception, and clear it when the creature is seen.
 3. **Readied Move cost.** A readied `Move` fires as a reaction and is capped only at speed. `sim` charges it against the readier's movement and paths it.
-4. **Ready chaining.** Rules offer only the triggering step's events to `hooks.ready_trigger`; a response's own events are not re-offered. `sim` decides whether and how responses chain.
+4. **Ready triggers and chaining.** `sim` fills `hooks.ready_trigger`. Events produced inside a reaction (`Event::reaction_depth >= 1`) and windows nested inside a reaction are skipped unless `hooks.allow_chain` returns true; `sim` or content decides which chains are legal.
 5. **Help and Ready in `legal_actions`.** They need adjacency and trigger facts, so `legal_actions` leaves them out. `sim` builds those requests for AI and UI.
 6. **Source- and position-dependent conditions.** Charmed (can't attack the charmer; charmer's social advantage), Frightened (source in line of sight; can't move closer), sight/hearing checks for Blinded and Deafened, and grapple escape (contested check, then removing Grappled).
+
+#### Reaction windows
+
+When an action reaches a trigger point, `rules5e` pauses it and opens a reaction window:
+
+| Trigger | Opened by | Reactors | Options | Effect on the paused action |
+|---|---|---|---|---|
+| `LeavingReach` | `Move` with `leaves_reach` (not after Disengage) | hostile to the mover, `in_range` | each melee attack | opportunity attack; if the mover drops or reaches speed 0, the move stops (`MoveInterrupted`, no movement spent) |
+| `BeingHit` | an attack that hits, before damage | the creature hit | `hooks.being_hit_options` (e.g. Shield +5 AC) | AC bump re-evaluates the hit; lasts until the reactor's next turn |
+| `SpellCast` | `CastSpell` (spells are stubs for now) | hostile to the caster, `in_range` | `hooks.spell_cast_options` (Counterspell-style) | countered spells don't resolve; a counter is a spell, so it can be countered in turn when chaining is allowed |
+| `ReadiedTrigger` | any event matching `hooks.ready_trigger` | the readier | fire the readied response | response runs as a reaction; declining keeps the readied action |
+
+- **Eligibility:** reaction unused, not incapacitated, `Combatant::reaction_policy[trigger] != Never`, in range, and at least one option.
+- **Polling order:** initiative order starting after the current actor, with the current actor last. Every eligible reactor is polled; polling stops early when the paused action can no longer continue.
+- **Policies:** each combatant has a policy per trigger. `Ask` calls `hooks.decide_reaction` (AI or player UI; empty means decline). `Auto` takes option 0 without asking; BeingHit Auto only reacts when the bump turns the hit into a miss. `Never` skips the combatant.
+- **Budget:** reacting sets `reaction_used`, which resets at the start of the reactor's turn.
+- **No chaining:** windows that would open while a reaction resolves are skipped unless `hooks.allow_chain(state, nested_window)` allows them.
+- **Determinism:** every window gets a sequence number (`EncounterState::next_window_seq`). `Ask` decisions are returned in `StepResult::reactions` and stored with the request in the `ActionLog` (`step_logged`). `replay_step` answers `Ask` polls from the log instead of calling the decider, and flags `desync` if they don't match. `Auto`/`Never` follow from state and aren't logged. Replay needs the same seed, combatants, and hooks except `decide_reaction`.
+- Directly requested `OpportunityAttack` actions are rejected; opportunity attacks come only from LeavingReach windows.
 
 ### 5.4 Example versioned monster definition — `packs/srd51.core/monsters/goblin.json`
 
