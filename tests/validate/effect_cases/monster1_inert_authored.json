@@ -1,0 +1,22 @@
+{
+  "base": "monsters/goblin.json",
+  "sets": [
+    [
+      [
+        "traits",
+        0,
+        "effect",
+        "inert"
+      ],
+      true
+    ]
+  ],
+  "severity": "error",
+  "expect": "'inert' is reserved",
+  "schema": "monster@1",
+  "dels": [
+    [
+      "behavior"
+    ]
+  ]
+}

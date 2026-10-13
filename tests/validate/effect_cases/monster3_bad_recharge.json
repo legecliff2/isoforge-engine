@@ -1,0 +1,19 @@
+{
+  "base": "monsters/goblin.json",
+  "sets": [
+    [
+      [
+        "traits",
+        0,
+        "effect"
+      ],
+      {
+        "kind": "self_heal",
+        "dice": "1d6",
+        "recharge": "dawn"
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "/traits/0/effect/recharge"
+}

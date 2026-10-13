@@ -1,5 +1,5 @@
 {
-  "$schema": "monster@2",
+  "$schema": "monster@3",
   "id": "srd51.monster.goblin",
   "name": "Goblin",
   "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
