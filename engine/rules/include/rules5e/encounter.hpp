@@ -52,6 +52,11 @@ struct ActionRequest {
     // when as_bonus_action (the feature itself grants it). Uses/recharge are tracked by sim.
     uint32_t feature_id = 0;
     DiceExpr heal_dice{0, 0, 0};
+    // appended (Attack / readied Attack, ranged weapons): facts supplied by sim. Either one gives
+    // disadvantage (SRD 5.1 "Ranged Attacks": long range; hostile within 5 ft that can see you and
+    // isn't incapacitated). Ignored for melee attacks.
+    bool ranged_hostile_within_5ft = false;
+    bool beyond_normal_range = false;
 };
 
 enum class EventKind : uint8_t {

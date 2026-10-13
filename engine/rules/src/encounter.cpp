@@ -163,14 +163,14 @@ bool evaluate_hit(const D20Roll& roll, const Combatant& t, const AttackContext& 
 // On a hit, a BeingHit window opens for the target before damage (Shield-style AC bump).
 // Dice order matches resolve_attack: d20(s), then damage dice.
 void do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, uint8_t attack_index,
-               bool within_5ft, std::vector<Event>& ev) {
+               bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage = false) {
     bool adv = false;
     if (a.helped_vs == t.id) { adv = true; a.helped_vs = 0; a.helped_by = 0; }
     if (a.stealth_total > 0) { adv = true; a.stealth_total = 0; }   // unseen attacker; now revealed
     AttackContext actx;
     actx.target_within_5ft = within_5ft;
-    actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
     const Attack& atk = a.attacks[attack_index];
+    actx.mode = combine_modes(adv, ranged_disadvantage && atk.ranged);
     D20Roll roll = roll_d20(s.rng, atk.to_hit, attack_roll_mode(a, t, actx));
     bool crit = false;
     bool hit = evaluate_hit(roll, t, actx, crit);
@@ -369,7 +369,8 @@ void fire_readies(EncounterState& s, Ctx& ctx, std::vector<Event>& ev) {
             if (r.response.kind == ActionKind::Attack) {
                 Combatant* t = find_mut(s, r.response.target);
                 if (t && !t->dead && r.response.attack_index < a->attacks.size())
-                    do_attack(s, ctx, *a, *t, r.response.attack_index, r.response.target_within_5ft, ev);
+                    do_attack(s, ctx, *a, *t, r.response.attack_index, r.response.target_within_5ft, ev,
+                              r.response.ranged_hostile_within_5ft || r.response.beyond_normal_range);
             } else if (r.response.kind == ActionKind::Move) {
                 int16_t ft = r.response.move_ft;
                 int sp = effective_speed(*a);
@@ -756,7 +757,8 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
             b.attacks_remaining = uint8_t(a.attacks_per_action > 1 ? a.attacks_per_action - 1 : 0);
         else return fail("no action available");
         s.budget = b;
-        do_attack(s, ctx, a, *t, req.attack_index, req.target_within_5ft, out.events);
+        do_attack(s, ctx, a, *t, req.attack_index, req.target_within_5ft, out.events,
+                  req.ranged_hostile_within_5ft || req.beyond_normal_range);
         check_end(s, out.events);
         return out;
     }
