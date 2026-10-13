@@ -163,14 +163,15 @@ bool evaluate_hit(const D20Roll& roll, const Combatant& t, const AttackContext& 
 // On a hit, a BeingHit window opens for the target before damage (Shield-style AC bump).
 // Dice order matches resolve_attack: d20(s), then damage dice.
 void do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, uint8_t attack_index,
-               bool within_5ft, std::vector<Event>& ev) {
+               bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage = false) {
     bool adv = false;
     if (a.helped_vs == t.id) { adv = true; a.helped_vs = 0; a.helped_by = 0; }
     if (a.stealth_total > 0) { adv = true; a.stealth_total = 0; }   // unseen attacker; now revealed
     AttackContext actx;
     actx.target_within_5ft = within_5ft;
-    actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
     const Attack& atk = a.attacks[attack_index];
+    actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
+    actx.extra_disadvantage = ranged_disadvantage && atk.ranged;   // combined with conditions in one place
     D20Roll roll = roll_d20(s.rng, atk.to_hit, attack_roll_mode(a, t, actx));
     bool crit = false;
     bool hit = evaluate_hit(roll, t, actx, crit);
@@ -350,7 +351,7 @@ void fire_readies(EncounterState& s, Ctx& ctx, std::vector<Event>& ev) {
     for (std::size_t i = 0; i < n && !s.ended; ++i) {
         const Event e = ev[i];
         for (std::size_t k = 0; k < s.readied.size();) {
-            const ReadiedAction r = s.readied[k];
+            ReadiedAction r = s.readied[k];
             Combatant* a = find_mut(s, r.actor);
             ReactionWindow w = new_window(s, ctx, ReactionTrigger::ReadiedTrigger, e.actor);
             w.depth = e.reaction_depth;
@@ -364,12 +365,21 @@ void fire_readies(EncounterState& s, Ctx& ctx, std::vector<Event>& ev) {
             a->has_readied = false;
             a->reaction_used = true;
             std::size_t from = ev.size();
+            // Re-evaluate the response's facts now that it fires (range, hostiles adjacent, ...).
+            if (s.hooks.refresh_ready)
+                if (auto q = s.hooks.refresh_ready(s, r, e)) {
+                    q->actor = r.response.actor;   // the readier and the kind/target stay as readied
+                    q->kind = r.response.kind;
+                    q->target = r.response.target;
+                    r.response = *q;
+                }
             emit(ev, EventKind::ReadyTriggered, a->id, r.response.target, int32_t(r.trigger_id));
             ++ctx.depth;
             if (r.response.kind == ActionKind::Attack) {
                 Combatant* t = find_mut(s, r.response.target);
                 if (t && !t->dead && r.response.attack_index < a->attacks.size())
-                    do_attack(s, ctx, *a, *t, r.response.attack_index, r.response.target_within_5ft, ev);
+                    do_attack(s, ctx, *a, *t, r.response.attack_index, r.response.target_within_5ft, ev,
+                              r.response.ranged_hostile_within_5ft || r.response.beyond_normal_range);
             } else if (r.response.kind == ActionKind::Move) {
                 int16_t ft = r.response.move_ft;
                 int sp = effective_speed(*a);
@@ -702,11 +712,15 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     }
     case ActionKind::UseFeature: {
         if (req.feature_id == 0) return fail("feature_id required");
+        FeatureUses* fu = nullptr;
+        for (auto& f : s.features) if (f.actor == a.id && f.feature_id == req.feature_id) fu = &f;
+        if (fu && fu->max > 0 && fu->used >= fu->max) return fail("feature has no uses left");
         if (req.as_bonus_action) {
             if (!b.bonus_action) return fail("no bonus action available");
             b.bonus_action = false;
         } else if (!spend_action(b, a, req.kind, false)) return fail("no action available");
         s.budget = b;
+        if (fu && fu->max > 0) ++fu->used;
         emit(out.events, EventKind::FeatureUsed, a.id, 0, int32_t(req.feature_id), req.as_bonus_action ? 1 : 0);
         if (req.heal_dice.count > 0 || req.heal_dice.bonus > 0) {
             int amount = roll_dice(s.rng, req.heal_dice, false);
@@ -756,7 +770,8 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
             b.attacks_remaining = uint8_t(a.attacks_per_action > 1 ? a.attacks_per_action - 1 : 0);
         else return fail("no action available");
         s.budget = b;
-        do_attack(s, ctx, a, *t, req.attack_index, req.target_within_5ft, out.events);
+        do_attack(s, ctx, a, *t, req.attack_index, req.target_within_5ft, out.events,
+                  req.ranged_hostile_within_5ft || req.beyond_normal_range);
         check_end(s, out.events);
         return out;
     }
@@ -873,3 +888,40 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
 }
 
 } // namespace rules5e
+
+namespace rules5e {
+
+void register_feature(EncounterState& s, CombatantId actor, uint32_t feature_id, uint8_t max_uses,
+                      FeatureRecharge recharge, uint8_t used) {
+    for (auto& f : s.features)
+        if (f.actor == actor && f.feature_id == feature_id) { f.max = max_uses; f.recharge = recharge; f.used = used; return; }
+    s.features.push_back({actor, feature_id, max_uses, used, recharge});
+}
+
+const FeatureUses* find_feature(const EncounterState& s, CombatantId actor, uint32_t feature_id) {
+    for (const auto& f : s.features) if (f.actor == actor && f.feature_id == feature_id) return &f;
+    return nullptr;
+}
+
+uint8_t feature_uses_left(const EncounterState& s, CombatantId actor, uint32_t feature_id) {
+    const FeatureUses* f = find_feature(s, actor, feature_id);
+    if (!f || f->max == 0) return 255;
+    return f->used >= f->max ? 0 : uint8_t(f->max - f->used);
+}
+
+void recover_features(EncounterState& s, bool long_rest) {
+    for (auto& f : s.features)
+        if (f.recharge == FeatureRecharge::ShortRest || (long_rest && f.recharge == FeatureRecharge::LongRest)) f.used = 0;
+}
+
+uint64_t feature_uses_digest(const EncounterState& s, uint64_t h) {
+    auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
+    auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) byte(uint8_t(v >> (8 * i))); };
+    u32(uint32_t(s.features.size()));
+    for (const auto& f : s.features) {   // registration order is deterministic (setup + replay)
+        u32(f.actor); u32(f.feature_id); byte(f.max); byte(f.used); byte(uint8_t(f.recharge));
+    }
+    return h;
+}
+
+}  // namespace rules5e
