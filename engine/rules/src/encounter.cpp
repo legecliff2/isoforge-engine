@@ -1,5 +1,6 @@
 #include "rules5e/encounter.hpp"
 
+#include <algorithm>
 #include <array>
 
 #include "rules5e/checks.hpp"
@@ -72,7 +73,9 @@ struct Ctx {
     std::vector<ReactionRecord>& records;
     const std::vector<ReactionRecord>* replay = nullptr;   // replay_step: answer Ask from here
     std::size_t replay_pos = 0;
+    bool replay_only = false;                              // replay_step: running out of decisions = desync
     bool desync = false;
+    std::optional<NeedsDecision> need = std::nullopt;      // first unanswered Ask poll (run is then discarded)
     uint8_t depth = 0;                                     // 0 = action, 1+ = inside a reaction
 };
 
@@ -81,12 +84,21 @@ void mark_depth(std::vector<Event>& ev, std::size_t from, uint8_t d) {
     for (std::size_t i = from; i < ev.size(); ++i) if (ev[i].reaction_depth < d) ev[i].reaction_depth = d;
 }
 
-// Reactor polling order: initiative order starting after the current actor; current actor last.
-std::vector<CombatantId> polling_order(const EncounterState& s) {
+// Eligible ids (initiative order) -> poll order via the hook; unknown/duplicate ids are dropped.
+std::vector<CombatantId> poll_order(const EncounterState& s, const std::vector<CombatantId>& eligible) {
+    if (eligible.empty()) return {};
+    auto ordered = s.hooks.poll_order ? s.hooks.poll_order(s, eligible) : default_poll_order(s, eligible);
     std::vector<CombatantId> out;
-    const std::size_t n = s.order.size();
-    for (std::size_t k = 1; k <= n; ++k) out.push_back(s.order[(s.turn_index + k) % n].id);
+    for (CombatantId id : ordered)
+        if (std::find(eligible.begin(), eligible.end(), id) != eligible.end() &&
+            std::find(out.begin(), out.end(), id) == out.end()) out.push_back(id);
     return out;
+}
+
+std::vector<CombatantId> initiative_ids(const EncounterState& s) {
+    std::vector<CombatantId> ids;
+    for (const auto& e : s.order) ids.push_back(e.id);
+    return ids;
 }
 
 bool may_react(const EncounterState& s, const Combatant& c, ReactionTrigger t) {
@@ -106,28 +118,31 @@ ReactionWindow new_window(EncounterState& s, const Ctx& ctx, ReactionTrigger t, 
     return w;
 }
 
-// Asks one reactor. Auto: take option 0 (BeingHit: only if `auto_ok`). Ask: replay log, else the
-// decide_reaction hook, else decline. Invalid choices decline. Emits Taken/Declined.
-ReactionDecision poll(EncounterState& s, Ctx& ctx, const ReactionWindow& w, const Combatant& r,
+// Asks one reactor. Auto: take option 0 (BeingHit: only if `auto_ok`). Ask: the decisions given so
+// far (log / async answers / sync adapter); if none is left, the run pauses (ctx.need). Invalid choices decline. Emits Taken/Declined.
+ReactionDecision poll(EncounterState&, Ctx& ctx, const ReactionWindow& w, const Combatant& r,
                       std::span<const ReactionOption> opts, std::vector<Event>& ev, bool auto_ok = true) {
     ReactionDecision d{};
     if (r.reaction_policy[std::size_t(w.trigger)] == ReactionPolicy::Auto) {
-        d = {auto_ok, 0};
+        d = ReactionDecision{w.seq, auto_ok, 0};
     } else {
-        if (ctx.replay) {
-            if (ctx.replay_pos < ctx.replay->size()) {
-                const auto& rec = (*ctx.replay)[ctx.replay_pos];
-                if (rec.window_seq == w.seq && rec.reactor == r.id && rec.trigger == w.trigger) {
-                    d = rec.decision; ++ctx.replay_pos;
-                } else ctx.desync = true;
+        if (ctx.replay && ctx.replay_pos < ctx.replay->size()) {
+            const auto& rec = (*ctx.replay)[ctx.replay_pos];
+            if (rec.window_seq == w.seq && rec.reactor == r.id && rec.trigger == w.trigger) {
+                d = rec.decision; ++ctx.replay_pos;
             } else ctx.desync = true;
-        } else if (s.hooks.decide_reaction) {
-            d = s.hooks.decide_reaction(s, w, r, opts);
+        } else if (ctx.replay_only) {
+            ctx.desync = true;
+        } else if (!ctx.need) {
+            // Pause: record what to ask. The rest of this run is discarded by the caller.
+            ctx.need = NeedsDecision{w.seq, w.trigger, r.id, w.trigger_actor,
+                                     std::vector<ReactionOption>(opts.begin(), opts.end()), w};
         }
-        if (d.react && d.option >= opts.size()) d = {};
+        if (d.react && d.option >= opts.size()) d = ReactionDecision{};
+        d.window_seq = w.seq;
         ctx.records.push_back(ReactionRecord{w.seq, w.trigger, r.id, d});
     }
-    if (d.react && d.option >= opts.size()) d = {};
+    if (d.react && d.option >= opts.size()) d = ReactionDecision{w.seq, false, 0};
     emit(ev, d.react ? EventKind::ReactionTaken : EventKind::ReactionDeclined, r.id, w.trigger_actor,
          int32_t(w.trigger), int32_t(w.seq), d.option);
     return d;
@@ -201,14 +216,23 @@ void do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, uint8_t 
 bool leaving_reach_window(EncounterState& s, Ctx& ctx, Combatant& mover, std::vector<Event>& ev) {
     ReactionWindow w = new_window(s, ctx, ReactionTrigger::LeavingReach, mover.id);
     if (!may_open(s, w) || mover.disengaged) return true;
-    bool opened = false;
-    for (CombatantId rid : polling_order(s)) {
-        Combatant& r = *find_mut(s, rid);
-        if (r.id == mover.id || r.team == mover.team || !may_react(s, r, w.trigger) || !in_range(s, w, r)) continue;
+    auto options_for = [](const Combatant& r) {
         std::vector<ReactionOption> opts;
         for (uint8_t i = 0; i < r.attacks.size(); ++i)
-            if (!r.attacks[i].ranged) opts.push_back({ReactionOptionKind::Attack, i});
-        if (opts.empty()) continue;
+            if (!r.attacks[i].ranged) opts.push_back({i, ReactionOptionKind::Attack});
+        return opts;
+    };
+    auto eligible = [&](const Combatant& r) {
+        return r.id != mover.id && r.team != mover.team && may_react(s, r, w.trigger) && in_range(s, w, r) &&
+               !options_for(r).empty();
+    };
+    std::vector<CombatantId> cands;
+    for (CombatantId id : initiative_ids(s)) if (eligible(*find_mut(s, id))) cands.push_back(id);
+    bool opened = false;
+    for (CombatantId rid : poll_order(s, cands)) {
+        Combatant& r = *find_mut(s, rid);
+        if (!eligible(r)) continue;   // re-check: earlier reactions can change eligibility
+        auto opts = options_for(r);
         if (!opened) {
             opened = true; ++s.next_window_seq;
             emit(ev, EventKind::ReactionWindowOpened, mover.id, 0, int32_t(w.trigger), int32_t(w.seq));
@@ -233,12 +257,17 @@ bool spell_cast_window(EncounterState& s, Ctx& ctx, Combatant& caster, uint32_t 
     ReactionWindow w = new_window(s, ctx, ReactionTrigger::SpellCast, caster.id);
     w.spell_id = spell_id; w.spell_level = level;
     if (!may_open(s, w) || !s.hooks.spell_cast_options) return false;
+    auto eligible = [&](const Combatant& r) {
+        return r.id != caster.id && r.team != caster.team && may_react(s, r, w.trigger) && in_range(s, w, r) &&
+               !s.hooks.spell_cast_options(s, w, r).empty();
+    };
+    std::vector<CombatantId> cands;
+    for (CombatantId id : initiative_ids(s)) if (eligible(*find_mut(s, id))) cands.push_back(id);
     bool opened = false;
-    for (CombatantId rid : polling_order(s)) {
+    for (CombatantId rid : poll_order(s, cands)) {
         Combatant& r = *find_mut(s, rid);
-        if (r.id == caster.id || r.team == caster.team || !may_react(s, r, w.trigger) || !in_range(s, w, r)) continue;
+        if (!eligible(r)) continue;
         auto opts = s.hooks.spell_cast_options(s, w, r);
-        if (opts.empty()) continue;
         if (!opened) {
             opened = true; ++s.next_window_seq;
             emit(ev, EventKind::ReactionWindowOpened, caster.id, 0, int32_t(w.trigger), int32_t(w.seq));
@@ -257,7 +286,9 @@ bool spell_cast_window(EncounterState& s, Ctx& ctx, Combatant& caster, uint32_t 
             emit(ev, EventKind::SpellCountered, r.id, 0, int32_t(o.option_id), 3);
             continue;   // the counter failed; later reactors may still try
         }
-        return true;    // spell countered (stub: counters always succeed)
+        // TODO(spellcasting milestone, ARCHITECTURE.md §7 "Later"): Counterspell vs a spell above
+        // the counter's slot level needs an ability check (DC 10 + spell level). Stub: always succeeds.
+        return true;    // spell countered
     }
     return false;
 }
@@ -326,7 +357,7 @@ void fire_readies(EncounterState& s, Ctx& ctx, std::vector<Event>& ev) {
             if (!a || !may_react(s, *a, w.trigger) || !may_open(s, w) || !s.hooks.ready_trigger(s, r, e)) { ++k; continue; }
             ++s.next_window_seq;
             emit(ev, EventKind::ReactionWindowOpened, e.actor, a->id, int32_t(w.trigger), int32_t(w.seq));
-            const ReactionOption fire{ReactionOptionKind::FireReady, r.response.attack_index, 0, r.trigger_id};
+            const ReactionOption fire{r.response.attack_index, ReactionOptionKind::FireReady, 0, r.trigger_id};
             auto d = poll(s, ctx, w, *a, std::span<const ReactionOption>(&fire, 1), ev);
             if (!d.react) { ++k; continue; }   // ignoring the trigger keeps the readied action
             s.readied.erase(s.readied.begin() + std::ptrdiff_t(k));
@@ -343,7 +374,18 @@ void fire_readies(EncounterState& s, Ctx& ctx, std::vector<Event>& ev) {
                 int16_t ft = r.response.move_ft;
                 int sp = effective_speed(*a);
                 if (ft > sp) ft = int16_t(sp);
-                emit(ev, EventKind::Moved, a->id, 0, ft, 0);
+                // SRD: a readied move provokes like any other move. Its LeavingReach window opens at
+                // depth 0 (allowed without allow_chain); its events stay marked as reaction events, so
+                // they don't fire further Ready triggers (no chaining from the reaction itself).
+                bool go = true;
+                if (r.response.leaves_reach) {
+                    uint8_t saved = ctx.depth;
+                    ctx.depth = 0;
+                    go = leaving_reach_window(s, ctx, *a, ev);
+                    ctx.depth = saved;
+                }
+                if (go) emit(ev, EventKind::Moved, a->id, 0, ft, 0);
+                else emit(ev, EventKind::MoveInterrupted, a->id, 0, ft);
             }
             --ctx.depth;
             mark_depth(ev, from, uint8_t(ctx.depth + 1));
@@ -457,56 +499,117 @@ EncounterState begin_encounter(std::vector<Combatant> cs, uint64_t seed, std::ve
 }
 
 namespace {
-StepResult run_step(EncounterState& s, const ActionRequest& req, const std::vector<ReactionRecord>* replay) {
+
+// One deterministic attempt at `req` with the decisions known so far. If an Ask poll has no answer,
+// the state is restored to `before` and the pending decision is stored.
+StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vector<ReactionRecord>& decided,
+                   bool replay_only) {
+    EncounterState before = s;
     std::vector<ReactionRecord> records;
-    Ctx ctx{records, replay};
+    Ctx ctx{records, &decided, 0, replay_only, false, std::nullopt, 0};
     StepResult r = step_impl(s, ctx, req);
     if (r.ok && req.kind != ActionKind::Ready) fire_readies(s, ctx, r.events);
+    if (!r.ok) return r;
+    if (ctx.need && !replay_only) {
+        std::vector<Event> provisional = std::move(r.events);
+        s = std::move(before);
+        s.pending = PendingDecision{req, decided, ctx.need->window, ctx.need->reactor, ctx.need->options};
+        StepResult out{true, {}, std::move(provisional)};
+        out.status = StepStatus::NeedsDecision;
+        out.needs = std::move(ctx.need);
+        out.reactions = decided;
+        return out;
+    }
+    r.status = StepStatus::Done;
     r.reactions = std::move(records);
-    r.desync = ctx.desync || (replay && ctx.replay_pos != replay->size());
+    r.desync = ctx.desync || ctx.replay_pos != decided.size();
+    r.logged = LoggedStep{req, r.reactions};
     return r;
 }
+
+// Synchronous adapter: answer NeedsDecision with hooks.decide_reaction until the request is done.
+StepResult settle(EncounterState& s, StepResult r) {
+    while (r.status == StepStatus::NeedsDecision && s.hooks.decide_reaction) {
+        const auto& p = *s.pending;
+        ReactionDecision d = s.hooks.decide_reaction(s, p.window, *find(s, p.reactor), p.options);
+        r = step(s, decision_request(*r.needs, d));   // window_seq comes from the pending window
+    }
+    return r;
+}
+
 } // namespace
 
-StepResult step(EncounterState& s, const ActionRequest& req) { return run_step(s, req, nullptr); }
+std::vector<CombatantId> default_poll_order(const EncounterState& s, const std::vector<CombatantId>& eligible) {
+    std::vector<CombatantId> out;
+    const std::size_t n = s.order.size();
+    for (std::size_t k = 1; k <= n; ++k) {
+        const CombatantId id = s.order[(s.turn_index + k) % n].id;
+        if (std::find(eligible.begin(), eligible.end(), id) != eligible.end()) out.push_back(id);
+    }
+    return out;
+}
 
-StepResult step_logged(EncounterState& s, const ActionRequest& req, ActionLog& log) {
-    StepResult r = run_step(s, req, nullptr);
-    if (r.ok) log.push_back(LoggedStep{req, r.reactions});
+std::optional<NeedsDecision> pending_decision(const EncounterState& s) {
+    if (!s.pending) return std::nullopt;
+    const auto& p = *s.pending;
+    return NeedsDecision{p.window.seq, p.window.trigger, p.reactor, p.window.trigger_actor, p.options, p.window};
+}
+
+ActionRequest heal_request(CombatantId target, int16_t amount) {
+    ActionRequest r{0, ActionKind::Heal, target};
+    r.amount = amount;
     return r;
 }
 
-StepResult replay_step(EncounterState& s, const LoggedStep& e) { return run_step(s, e.request, &e.reactions); }
+ActionRequest check_request(CombatantId id, Skill k, int dc, RollMode mode) {
+    ActionRequest r{id, ActionKind::AbilityCheck};
+    r.skill = k; r.dc = int16_t(dc); r.check_mode = mode;
+    return r;
+}
+
+ActionRequest decision_request(const NeedsDecision& n, ReactionDecision d) {
+    ActionRequest r{n.reactor, ActionKind::ReactionDecision};
+    r.decision = d;
+    r.decision.window_seq = n.window_seq;
+    return r;
+}
+
+ActionRequest decision_request(const NeedsDecision& n, bool react, uint8_t option) {
+    return decision_request(n, ReactionDecision{n.window_seq, react, option});
+}
+
+StepResult step(EncounterState& s, const ActionRequest& req) {
+    if (req.kind == ActionKind::ReactionDecision) {
+        if (!s.pending) return fail("no pending reaction decision");
+        const PendingDecision& p = *s.pending;
+        if (req.actor != p.reactor || req.decision.window_seq != p.window.seq) return fail("decision does not match the pending window");
+        if (req.decision.react && req.decision.option >= p.options.size()) return fail("bad option");
+        auto decided = p.decided;
+        decided.push_back(ReactionRecord{p.window.seq, p.window.trigger, p.reactor, req.decision});
+        ActionRequest original = p.request;
+        s.pending.reset();
+        return settle(s, attempt(s, original, decided, false));
+    }
+    if (s.pending) return fail("awaiting a reaction decision");
+    return settle(s, attempt(s, req, {}, false));
+}
+
+StepResult step_logged(EncounterState& s, const ActionRequest& req, ActionLog& log) {
+    StepResult r = step(s, req);
+    if (r.status == StepStatus::Done) log.push_back(*r.logged);
+    return r;
+}
+
+StepResult replay_step(EncounterState& s, const LoggedStep& e) {
+    if (s.pending) return fail("awaiting a reaction decision");
+    return attempt(s, e.request, e.reactions, true);
+}
 
 StepResult encounter_check(EncounterState& s, CombatantId id, Skill k, int dc, RollMode mode) {
-    if (s.ended) return fail("encounter ended");
-    Combatant* c = find_mut(s, id);
-    if (!c || c->dead) return fail("bad combatant");
-    StepResult out{true, {}, {}};
-    roll_check(s, *c, k, dc, mode, out.events);
-    Ctx ctx{out.reactions};
-    fire_readies(s, ctx, out.events);
-    return out;
+    return step(s, check_request(id, k, dc, mode));
 }
 
-StepResult heal(EncounterState& s, CombatantId id, int16_t amount) {
-    if (s.ended) return fail("encounter ended");
-    Combatant* t = find_mut(s, id);
-    if (!t) return fail("bad target");
-    if (t->dead) return fail("target is dead");
-    if (amount <= 0) return fail("amount must be positive");
-    StepResult out{true, {}, {}};
-    bool was_unconscious = t->has(Condition::Unconscious);
-    auto h = apply_healing(*t, amount);
-    commit_healing(*t, h);
-    emit(out.events, EventKind::Healed, 0, t->id, h.healed, h.hp_after, h.from_zero);
-    if (h.from_zero && was_unconscious)
-        emit(out.events, EventKind::ConditionRemoved, t->id, 0, int32_t(Condition::Unconscious));
-    check_end(s, out.events);
-    Ctx ctx{out.reactions};
-    fire_readies(s, ctx, out.events);
-    return out;
-}
+StepResult heal(EncounterState& s, CombatantId id, int16_t amount) { return step(s, heal_request(id, amount)); }
 
 namespace {
 
@@ -516,6 +619,30 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     // Opportunity attacks are offered through LeavingReach reaction windows (Move.leaves_reach).
     if (req.kind == ActionKind::OpportunityAttack)
         return fail("opportunity attacks come from LeavingReach reaction windows");
+
+    if (req.kind == ActionKind::Heal) {   // any time; from spells, potions, features
+        Combatant* t = find_mut(s, req.target);
+        if (!t) return fail("bad target");
+        if (t->dead) return fail("target is dead");
+        if (req.amount <= 0) return fail("amount must be positive");
+        StepResult out{true, {}, {}};
+        bool was_unconscious = t->has(Condition::Unconscious);
+        auto h = apply_healing(*t, req.amount);
+        commit_healing(*t, h);
+        emit(out.events, EventKind::Healed, 0, t->id, h.healed, h.hp_after, h.from_zero);
+        if (h.from_zero && was_unconscious)
+            emit(out.events, EventKind::ConditionRemoved, t->id, 0, int32_t(Condition::Unconscious));
+        check_end(s, out.events);
+        return out;
+    }
+    if (req.kind == ActionKind::AbilityCheck) {   // any time; content/sim driven
+        Combatant* c = find_mut(s, req.actor);
+        if (!c || c->dead) return fail("bad combatant");
+        StepResult out{true, {}, {}};
+        roll_check(s, *c, req.skill, req.dc, req.check_mode, out.events);
+        return out;
+    }
+    if (req.kind == ActionKind::ReactionDecision) return fail("no pending reaction decision");
 
     if (req.actor != current_actor(s)) return fail("not this combatant's turn");
     Combatant& a = *find_mut(s, req.actor);
@@ -669,7 +796,8 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
         stabilize(*t, out.events);
         return out;
     }
-    case ActionKind::OpportunityAttack: break;  // handled above
+    case ActionKind::OpportunityAttack: case ActionKind::ReactionDecision:
+    case ActionKind::Heal: case ActionKind::AbilityCheck: break;  // handled above
     }
     return fail("unknown action");
 }
