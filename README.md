@@ -20,6 +20,12 @@ with a warning. Pass `-DENGINE_CONTENT_VALIDATE=OFF` to skip it entirely.
 
 Without CMake: `python3 -m venv .venv && .venv/bin/pip install -r tools/validate/requirements.txt && .venv/bin/python tools/validate/validate_packs.py`.
 
-After editing a chunk, refresh its hash with `validate_packs.py --rehash` (it never touches `tests/compat/`).
-Chunk `content_hash` = xxHash3-64 (seed 0) of canonical JSON: the document without `content_hash`,
-keys sorted, separators `,`/`:` with no whitespace, UTF-8 with non-ASCII written raw, as 16 lowercase hex digits.
+Chunk files (`chunk@1`) use compact layers: `{"tiles"?, "elevation"?, "flags"?}`, each a 1024-entry row-major
+array (index = `y*32 + x`), omitted = all zeros. Flags: bit0 blocks_move, bit1 blocks_sight, bit2 difficult,
+bit3 water, bits 4-7 must be 0. Spawns never carry `stable_id` (the loader derives it from coord + spawn index).
+
+`content_hash` is optional. If present, it is the 16-lowercase-hex xxHash3-64 (seed 0) of the **loaded chunk's
+canonical little-endian byte layout** (ARCHITECTURE.md §4.5; `compute_content_hash` in
+`engine/core/world/src/chunk_codec.cpp`), not of the JSON. The validator reimplements it byte for byte and checks
+it against the engine's golden vectors. After editing a chunk, refresh it with `validate_packs.py --rehash`
+(updates hashes already present; never touches `tests/compat/`).
