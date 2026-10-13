@@ -1,0 +1,14 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.counterspell",
+  "name": "Counterspell",
+  "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
+  "level": 3,
+  "school": "abjuration",
+  "classes": ["sorcerer", "warlock", "wizard"],
+  "casting_time": { "kind": "reaction", "trigger": "spell_cast" },
+  "range": { "kind": "ranged", "feet": 60 },
+  "components": { "s": true },
+  "duration": { "kind": "instantaneous" },
+  "effect": { "kind": "counter", "check_dc_base": 10 }
+}

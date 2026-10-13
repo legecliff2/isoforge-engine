@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://isoforge.dev/schemas/spell/v1.schema.json",
+  "title": "spell@1",
+  "description": "SRD 5.1 spell. Rules-facing data: rules5e_content maps it to rules5e::SpellDef (engine/rules/content). One effect per spell (effect.kind). Integers only (§4.3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "id", "name", "source", "level", "school", "casting_time", "range", "components", "duration", "effect"],
+  "properties": {
+    "$schema": { "const": "spell@1" },
+    "id": { "$ref": "../common/v1.schema.json#/$defs/content_id" },
+    "name": { "type": "string", "minLength": 1 },
+    "source": { "$ref": "../common/v1.schema.json#/$defs/source" },
+    "level": { "type": "integer", "minimum": 0, "maximum": 9, "description": "0 = cantrip." },
+    "school": { "enum": ["abjuration", "conjuration", "divination", "enchantment", "evocation", "illusion", "necromancy", "transmutation"] },
+    "classes": { "type": "array", "items": { "type": "string", "pattern": "^[a-z_]+$" }, "uniqueItems": true },
+    "casting_time": {
+      "type": "object", "additionalProperties": false, "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["action", "bonus_action", "reaction"] },
+        "trigger": { "enum": ["being_hit", "spell_cast"], "description": "Reaction only: the rules5e ReactionTrigger window that offers this spell." }
+      },
+      "if": { "properties": { "kind": { "const": "reaction" } } },
+      "then": { "required": ["trigger"] },
+      "else": { "not": { "required": ["trigger"] } }
+    },
+    "range": {
+      "type": "object", "additionalProperties": false, "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["self", "touch", "ranged"] },
+        "feet": { "$ref": "../common/v1.schema.json#/$defs/range_ft" }
+      },
+      "if": { "properties": { "kind": { "const": "ranged" } } },
+      "then": { "required": ["feet"] },
+      "else": { "not": { "required": ["feet"] } }
+    },
+    "components": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "v": { "type": "boolean" },
+        "s": { "type": "boolean" },
+        "m": { "type": "string", "minLength": 1, "description": "Material component text; presence = M flag." }
+      }
+    },
+    "duration": {
+      "type": "object", "additionalProperties": false, "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["instantaneous", "rounds", "minutes", "hours"] },
+        "amount": { "type": "integer", "minimum": 1 },
+        "concentration": { "type": "boolean" }
+      },
+      "if": { "properties": { "kind": { "const": "instantaneous" } } },
+      "then": { "not": { "anyOf": [ { "required": ["amount"] }, { "required": ["concentration"] } ] } },
+      "else": { "required": ["amount"] }
+    },
+    "targets": { "type": "integer", "minimum": 1, "description": "Creatures affected at the spell's base level (default 1)." },
+    "effect": {
+      "type": "object",
+      "required": ["kind"],
+      "oneOf": [
+        { "additionalProperties": false, "required": ["kind", "attack", "damage"],
+          "properties": { "kind": { "const": "spell_attack" }, "attack": { "enum": ["melee", "ranged"] },
+                          "damage": { "$ref": "#/$defs/damage" } } },
+        { "additionalProperties": false, "required": ["kind", "ability"],
+          "anyOf": [ { "required": ["damage"] }, { "required": ["condition"] } ],
+          "properties": { "kind": { "const": "save" }, "ability": { "$ref": "../common/v1.schema.json#/$defs/ability" },
+                          "damage": { "$ref": "#/$defs/damage" },
+                          "on_success": { "enum": ["half", "none"], "description": "Damage on a successful save (default none)." },
+                          "condition": { "$ref": "../common/v1.schema.json#/$defs/condition" },
+                          "repeat_save": { "enum": ["end_of_turn"], "description": "Target repeats the save; success ends the condition." } } },
+        { "additionalProperties": false, "required": ["kind", "dice"],
+          "properties": { "kind": { "const": "heal" }, "dice": { "$ref": "../common/v1.schema.json#/$defs/dice" },
+                          "add_spellcasting_modifier": { "type": "boolean" } } },
+        { "additionalProperties": false, "required": ["kind", "darts", "damage"],
+          "properties": { "kind": { "const": "auto_hit" }, "darts": { "type": "integer", "minimum": 1 },
+                          "damage": { "$ref": "#/$defs/damage" } } },
+        { "additionalProperties": false, "required": ["kind", "bonus", "until"],
+          "properties": { "kind": { "const": "ac_bonus" }, "bonus": { "type": "integer", "minimum": 1, "maximum": 20 },
+                          "until": { "const": "start_of_caster_turn" },
+                          "blocks_spell": { "$ref": "../common/v1.schema.json#/$defs/content_id",
+                                            "description": "Caster takes no damage from this spell while the bonus lasts." } } },
+        { "additionalProperties": false, "required": ["kind"],
+          "properties": { "kind": { "const": "counter" },
+                          "check_dc_base": { "type": "integer", "minimum": 1, "description": "Spell above the slot level: spellcasting ability check, DC base + spell level (default 10)." } } }
+      ]
+    },
+    "scaling": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "cantrip": { "type": "object", "additionalProperties": false, "required": ["levels"],
+                     "properties": { "levels": { "type": "array", "items": { "type": "integer", "minimum": 2, "maximum": 20 },
+                                                 "minItems": 1, "maxItems": 3, "description": "Caster levels at which the base dice are added again (SRD: 5, 11, 17)." } } },
+        "upcast": { "type": "object", "additionalProperties": false, "minProperties": 1,
+                    "description": "Per slot level above the spell's level.",
+                    "properties": { "dice": { "type": "integer", "minimum": 1 }, "darts": { "type": "integer", "minimum": 1 },
+                                    "targets": { "type": "integer", "minimum": 1 } } }
+      }
+    },
+    "description": { "type": "string" }
+  },
+  "$defs": {
+    "damage": {
+      "type": "object", "additionalProperties": false, "required": ["dice", "type"],
+      "properties": { "dice": { "$ref": "../common/v1.schema.json#/$defs/dice" },
+                      "type": { "$ref": "../common/v1.schema.json#/$defs/damage_type" } }
+    }
+  }
+}

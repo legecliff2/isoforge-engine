@@ -122,6 +122,7 @@ Note: **SDL_GPU already sits on top of Vulkan, Metal, and D3D12.** That makes it
 | `rng` | static lib | std only | `Pcg32`, `splitmix64`, `derive_seed`, deterministic `uniform`/`shuffle` |
 | `detmath` | static lib | std only | `Fx` (Q16.16), int `sqrt`, LUT trig, value/gradient noise, `StableHash` (§4) |
 | `rules5e` | static lib | `rng`, `detmath`, std | `rules5e/*.hpp`: pure functions + value types |
+| `rules5e_content` | static lib | `rules5e`, `assets` | `spell@1` JSON → `rules5e::SpellDef` / `SpellBook` (keeps `rules5e` free of JSON) |
 | `platform` | static lib | `base`, SDL3 | window, event pump, clock, file I/O, threads, audio device |
 | `render_api` | header + lib | `base` | `IRenderDevice`, resources, command lists |
 | `render_sdlgpu` | static lib | `render_api`, `platform`, SDL3 | `create_sdlgpu_device()` |
@@ -667,8 +668,8 @@ When an action reaches a trigger point, `rules5e` pauses it and opens a reaction
 | Trigger | Opened by | Reactors | Options | Effect on the paused action |
 |---|---|---|---|---|
 | `LeavingReach` | `Move` with `leaves_reach` (not after Disengage) | hostile to the mover, `in_range` | each melee attack | opportunity attack; if the mover drops or reaches speed 0, the move stops (`MoveInterrupted`, no movement spent) |
-| `BeingHit` | an attack that hits, before damage | the creature hit | `hooks.being_hit_options` (e.g. Shield +5 AC) | AC bump re-evaluates the hit; lasts until the reactor's next turn |
-| `SpellCast` | `CastSpell` (spells are stubs for now) | hostile to the caster, `in_range` | `hooks.spell_cast_options` (Counterspell-style) | countered spells don't resolve; a counter is a spell, so it can be countered in turn when chaining is allowed. TODO (spellcasting milestone, §7 Later): ability check when countering a spell above the counter's level; counters always succeed for now |
+| `BeingHit` | an attack that hits, before damage; or each target of an `AutoHit` spell (Magic Missile; `spell_id` set, `attack_total` 0) | the creature hit | known `AcBonus` spells (Shield: lowest available slot), then `hooks.being_hit_options` | AC bump re-evaluates the hit and lasts until the start of the reactor's next turn; a SpellBook AcBonus spends the slot, is itself a spell (counterable when chaining), and its `blocks_spell` (Magic Missile) does no damage meanwhile |
+| `SpellCast` | `CastSpell` (and reaction spells such as Shield) | hostile to the caster, `in_range` | known `Counter` spells from the SpellBook (one option per available slot level ≥ the counter's level), then `hooks.spell_cast_options` | countered spells don't resolve (the slot is still spent); a counter is a spell, so it can be countered in turn when chaining is allowed. SpellBook counter: automatic if its slot level ≥ the spell's level, otherwise a spellcasting-ability check, DC `counter_dc_base` (10) + spell level. Hook counters are opaque (level 3, always succeed) |
 | `ReadiedTrigger` | any event matching `hooks.ready_trigger` | the readier | fire the readied response | response runs as a reaction; declining keeps the readied action. A readied `Move` with `leaves_reach` opens its own LeavingReach window like any move (SRD), but its events don't fire other readied actions |
 
 - **Eligibility:** reaction unused, not incapacitated, `Combatant::reaction_policy[trigger] != Never`, in range, and at least one option.
@@ -678,6 +679,17 @@ When an action reaches a trigger point, `rules5e` pauses it and opens a reaction
 - **No chaining:** windows that would open while a reaction resolves are skipped unless `hooks.allow_chain(state, nested_window)` allows them.
 - **Window numbering:** `window_seq` comes from `EncounterState::next_window_seq`, which starts at 0 per encounter and goes up by 1 each time a window actually opens (it has at least one eligible reactor). That includes nested and ReadiedTrigger windows. A trigger point with no eligible reactor uses no number. While a request is paused, the state is the pre-request state, so `next_window_seq` is not yet advanced; the pending window's `window_seq` is the number it will consume.
 - **Determinism:** `Auto`/`Never` follow from state and aren't logged; every `Ask` decision is.
+
+#### Spellcasting (`rules5e/spells.hpp`)
+
+- **Data:** `SpellDef`s come from content (`spell@1`, `schemas/spell/v1.schema.json`), loaded by `rules5e_content::load_spellbook`, and are handed to rules as `hooks.spells` (`std::shared_ptr<const SpellBook>`). `spell_id = spell_id_of(content id)` (FNV-1a 32) is what requests, events, and logs carry. A `CastSpell` whose id isn't in the book is an opaque spell: rules only run its SpellCast window and spend no slot. Sim/content resolve it.
+- **Caster state (`Combatant`):** `spellcasting_ability`, `caster_level` (cantrip scaling), `spell_slots[1..9]` / `spell_slots_max`, Pact Magic `pact_slot_level` / `pact_slots` / `pact_slots_max`, `spells_known`, and `concentration_spell`. `recover_slots_short_rest` restores pact slots; `recover_slots_long_rest` restores all slots. `spend_slot` uses a regular slot first, then a pact slot of that level.
+- **Numbers:** `spell_save_dc = 8 + proficiency + mod`; `spell_attack_bonus = proficiency + mod`.
+- **Casting:** `ActionRequest{kind = CastSpell, spell_id, spell_level (slot; 0 = cantrip), target, targets}`. Rules check that the spell is known, that it isn't a reaction spell, the slot (level ≥ the spell's), components (`hooks.can_provide_components`, flags V/S/M), targets (`hooks.spell_target_ok`: range, sight, creature type), and the action or bonus action. Then rules spend the slot, end any old concentration (for a concentration spell), open the SpellCast window, and resolve the effect. A countered spell still uses the slot.
+- **Effects (`SpellEffectKind`):** `SpellAttack` (spell attack roll; BeingHit window, so Shield works), `Save` (one damage roll for all targets, full or half; and/or a condition plus an `ActiveSpellEffect` with an optional end-of-turn repeat save), `Heal`, `AutoHit` (darts; each target gets a BeingHit window with `spell_id` set, so Shield's `blocks_spell` can stop the darts), `AcBonus` and `Counter` (reaction spells, offered automatically from `spells_known` when a slot is available).
+- **Scaling:** cantrips add their base dice at each `cantrip_tiers` caster level (5/11/17). Upcasting adds dice, darts, or targets per slot level above the spell's level.
+- **Concentration:** damage → CON save, DC max(10, half the damage taken) (`SavingThrowRolled` with `c & 2`). It ends at 0 HP, on death, or on incapacitation (checked after every request), when another concentration spell is cast, or when the spell's last effect ends. Ending it removes the dependent effects and their conditions.
+- **Events (appended):** `SavingThrowRolled`, `ConcentrationEnded`, `SpellEffectEnded`, `SpellCheckRolled`. `EncounterState::effects` holds the lasting effects.
 
 #### Async decisions and the action log (API for `sim`)
 
@@ -858,7 +870,7 @@ Goal: one complete, deterministic fight on one handcrafted iso map, plus proof t
 - **Exit:** an endless procedural overworld with embedded handcrafted town. All three origins look identical to `sim`/`iso2d`.
 
 ### Later
-Tile/map editor, more SRD coverage (spellcasting, full conditions, rests, leveling), native Vulkan/Metal/D3D12 backends if profiling demands, console/mobile/Web ports (input + backend + platform layer only), modding distribution, localization.
+Tile/map editor, more SRD coverage (more spells and effect kinds (areas, multi-effect spells), full conditions, rests, leveling), native Vulkan/Metal/D3D12 backends if profiling demands, console/mobile/Web ports (input + backend + platform layer only), modding distribution, localization.
 
 ---
 

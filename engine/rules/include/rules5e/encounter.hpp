@@ -12,6 +12,7 @@
 #include "rules5e/attack.hpp"
 #include "rules5e/initiative.hpp"
 #include "rules5e/saves.hpp"
+#include "rules5e/spells.hpp"
 #include "rules5e/types.hpp"
 
 namespace rules5e {
@@ -40,13 +41,16 @@ struct ActionRequest {
     ActionKind ready_kind = ActionKind::EndTurn;  // Ready: response (Attack or Move) using target/attack_index/move_ft
     uint32_t trigger_id = 0;           // Ready: opaque trigger, interpreted by hooks.ready_trigger (sim)
     bool leaves_reach = false;         // Move: sim says this move leaves some creature's reach (LeavingReach)
-    uint32_t spell_id = 0;             // CastSpell (stub): content id of the spell
-    uint8_t spell_level = 0;           // CastSpell (stub): slot level (0 = cantrip)
+    uint32_t spell_id = 0;             // CastSpell: spell_id_of(content id)
+    uint8_t spell_level = 0;           // CastSpell: slot level used (0 = cantrip)
     ReactionDecision decision{};       // ReactionDecision: the answer (actor = reactor)
     int16_t amount = 0;                // Heal: hit points (target = creature healed)
     Skill skill = Skill::Athletics;    // AbilityCheck: skill (actor = creature checking)
     int16_t dc = 0;                    // AbilityCheck
     RollMode check_mode = RollMode::Normal;  // AbilityCheck: extra roll-mode source
+    // CastSpell: creatures affected when more than one (Hold Person upcast), or one entry per dart
+    // (Magic Missile; a single entry = all darts at it). Empty = {target}.
+    std::vector<CombatantId> targets = {};
 };
 
 enum class EventKind : uint8_t {
@@ -57,7 +61,8 @@ enum class EventKind : uint8_t {
     Healed, ConditionRemoved, MedicineCheck, Helped, Hid, Readied, ReadyTriggered, ReadyExpired,
     CheckRolled,
     ReactionWindowOpened, ReactionTaken, ReactionDeclined, MoveInterrupted, SpellCast, SpellCountered,
-    SpellResolved, AcBonus };
+    SpellResolved, AcBonus,
+    SavingThrowRolled, ConcentrationEnded, SpellEffectEnded, SpellCheckRolled };
 
 // Flat tagged event; meaning of a/b/c per kind:
 //   InitiativeRolled a=total; TurnStarted a=round; AttackResolved a=natural b=total c=hit|crit<<1;
@@ -70,7 +75,11 @@ enum class EventKind : uint8_t {
 //   ReactionWindowOpened actor=trigger actor a=ReactionTrigger b=window seq;
 //   ReactionTaken/Declined actor=reactor a=ReactionTrigger b=window seq c=option index;
 //   MoveInterrupted a=feet requested; SpellCast/SpellResolved/SpellCountered a=spell_id b=level;
-//   AcBonus a=bonus b=new AC.
+//   AcBonus a=bonus b=new AC;
+//   SavingThrowRolled actor=saver target=Ability a=natural b=total c=success|concentration<<1;
+//   ConcentrationEnded actor=caster a=spell_id; SpellEffectEnded actor=affected creature a=spell_id
+//   b=Condition removed (-1 none); SpellCheckRolled actor=counterer a=natural b=total c=success (vs DC).
+//   SpellCast/Resolved/Countered: actor=caster target=first target, b=slot level (0 = cantrip).
 // reaction_depth: 0 for the action itself, 1+ for events produced while resolving a reaction.
 struct Event { EventKind kind; CombatantId actor = 0, target = 0; int32_t a = 0, b = 0, c = 0;
                uint8_t reaction_depth = 0; };
@@ -99,6 +108,7 @@ struct ReactionOption {
     ReactionOptionKind kind = ReactionOptionKind::Attack;
     int8_t   ac_bonus = 0;            // AcBonus: e.g. +5 for Shield
     uint32_t option_id = 0;           // content id (e.g. the Shield / Counterspell spell id)
+    uint8_t  slot_level = 0;          // spell options from the SpellBook: slot level spent (Counter: one option per level)
 };
 
 // Log entry for one reaction decision made under Ask (Auto/Never are reproduced from state and are
@@ -139,6 +149,14 @@ struct PendingDecision {
 
 struct ReadiedAction { CombatantId actor; ActionRequest response; uint32_t trigger_id; };
 
+// A lasting spell effect on a creature (a condition from a failed save). Ends when the caster's
+// concentration ends, or on a successful repeat save.
+struct ActiveSpellEffect {
+    uint32_t spell_id; CombatantId caster, target;
+    Condition condition; Ability save_ability; int16_t dc;
+    RepeatSave repeat_save; bool concentration;
+};
+
 using PollOrderFn = std::function<std::vector<CombatantId>(const EncounterState&,
                                                            const std::vector<CombatantId>& eligible_in_initiative_order)>;
 
@@ -169,6 +187,15 @@ struct EncounterHooks {
     // Reactions don't chain: a window that would open while resolving a reaction (depth >= 1), and
     // Ready triggers on events produced by reactions, are skipped unless this returns true.
     std::function<bool(const EncounterState&, const ReactionWindow& nested)> allow_chain;
+
+    // ---- Spellcasting (spells.hpp) ----
+    // Spell definitions (content). A CastSpell whose spell_id isn't here is an opaque spell: rules
+    // only run its SpellCast window and sim/content resolve it (no slot is spent).
+    std::shared_ptr<const SpellBook> spells;
+    // Can the caster provide these components (kComponentV/S/M) now? Empty = yes.
+    std::function<bool(const EncounterState&, const Combatant& caster, const SpellDef&)> can_provide_components;
+    // Range / line of sight / creature type (Hold Person: humanoid) for one target. Empty = valid.
+    std::function<bool(const EncounterState&, const Combatant& caster, const SpellDef&, const Combatant& target)> spell_target_ok;
 };
 
 struct EncounterState {
@@ -182,6 +209,7 @@ struct EncounterState {
     std::vector<ReadiedAction> readied;  // in the order they were readied
     uint32_t next_window_seq = 0;        // reaction windows opened so far
     std::optional<PendingDecision> pending;   // set while an action waits for a reaction decision
+    std::vector<ActiveSpellEffect> effects;   // lasting spell effects, in the order applied
     EncounterHooks hooks;                // behaviour, not state: never serialized/hashed
 };
 
@@ -206,8 +234,9 @@ struct NeedsDecision {
     int16_t attack_total = 0;          // BeingHit: attack roll total ...
     int16_t target_ac = 0;             //   ... vs this AC (includes cover and current reaction bonus)
     int8_t  attack_natural = 0;        // BeingHit: d20 natural (20 = crit, AC bonuses can't help)
-    uint32_t spell_id = 0;             // SpellCast: spell being cast
-    uint8_t spell_level = 0;           // SpellCast: its slot level (0 = cantrip)
+    uint32_t spell_id = 0;             // SpellCast: spell being cast; BeingHit: the spell that hits
+                                       //   (Fire Bolt attack, or Magic Missile with attack_total 0)
+    uint8_t spell_level = 0;           // SpellCast: its slot level (0 = cantrip); BeingHit: 0
 };
 NeedsDecision make_needs_decision(const ReactionWindow&, CombatantId reactor, std::vector<ReactionOption> options);
 
