@@ -17,7 +17,7 @@ set(ALLOW_world         "assets;ecs;base;rng;detmath")
 set(ALLOW_audio         "assets;platform")
 set(ALLOW_sim           "ecs;rules5e;world")
 set(ALLOW_script_host   "ecs;sim;world;assets;rng;detmath")
-set(ALLOW_procgen       "detmath;rng;base")          # not in §2.1 table yet (procgen v0, #16)
+set(ALLOW_procgen       "detmath;rng;base")          # §2.1 (approved)
 set(ALLOW_procgen_world "world;procgen")             # glue: world <- procgen
 set(ALLOW_engine        "base;rng;detmath;rules5e;platform;render_api;render_sdlgpu;render_null;iso2d;assets;ecs;world;audio;sim;script_host;procgen;procgen_world")
 
