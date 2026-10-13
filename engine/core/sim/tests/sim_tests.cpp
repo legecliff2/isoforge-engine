@@ -355,7 +355,7 @@ TEST_CASE("step validation: walls, occupied tiles, movement budget; attacks need
     CHECK(c->submit(s).error == "tile not walkable");
     Command atk;
     atk.request = {f, ActionKind::Attack, g};
-    CHECK(c->submit(atk).error == "target out of reach/range");
+    CHECK(c->submit(atk).error == "target out of reach");
     Command mv;
     mv.request = {f, ActionKind::Move};
     mv.request.move_ft = 5;

@@ -16,6 +16,9 @@ struct Archetype {
     std::string id;                       // "srd51.monster.goblin"
     std::string schema_type;              // "monster" | "character"
     rules5e::Combatant base{};            // id/team filled per spawn
+    // Per base.attacks[i]: ranged normal / long range in feet (0 for melee). rules5e::Attack keeps
+    // only a uint8_t reach_or_range_ft, so sim owns the full range data.
+    std::vector<uint16_t> normal_range_ft, long_range_ft;
     std::vector<FeatureDecl> features;    // declared (features[] then traits[]); feature_id = index + 1
     std::vector<ActiveFeature> active;    // usable via UseFeature (from active hooks)
     std::vector<std::string> unsupported_features;   // "<id> (<kind>)" with no registered hook

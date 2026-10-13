@@ -1,11 +1,11 @@
-# sim event stream (schema version 2)
+# sim event stream (schema version 3)
 
 `eng::sim::Combat::events()` is the ordered record of everything that happened in a combat. Render/platform, UI, logs and tests consume it. This document is the contract. The code lives in `engine/core/sim/include/sim/events.hpp`, and the layout is locked by `engine/core/sim/tests/events_tests.cpp`.
 
 ## Types
 
 ```cpp
-inline constexpr uint32_t kSimEventSchemaVersion = 2;
+inline constexpr uint32_t kSimEventSchemaVersion = 3;
 inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::FeatureUsed;
 
 struct SimEvent {
@@ -70,7 +70,11 @@ The authoritative per-kind field meanings are in `rules5e/encounter.hpp`. If tha
 1. **Opening.** One `InitiativeRolled` per combatant, then `TurnStarted` for the first actor.
 2. **One block per completed request.** Each request that completes (`StepStatus::Done`) appends its rules events in emission order, followed by any sim events for that request. Rejected requests append nothing.
 3. **Pauses append nothing.** While a reaction decision is pending (`StepStatus::NeedsDecision`), nothing is appended. The provisional events in `SubmitResult` are not part of the stream. When the decision completes the request, the whole request's events are appended at once. A UI that wants a preview may show the `needs` prompt, but it must not render provisional events as fact.
-4. **`TileMoved`.** It follows the rules `Moved` of the same request and actor. If the move is interrupted (`MoveInterrupted`), no `TileMoved` is emitted. In v1, one Step equals one tile, so each `Moved` has at most one `TileMoved`.
+4. **`TileMoved`.** Sim events come after the request's rules events. There is one `TileMoved` per rules `Moved` that changed a tile, in the order of those `Moved` events, and each has the same actor as its `Moved`.
+   - The mover's own Step produces a depth-0 `Moved`.
+   - A readied Move that fires inside another creature's request produces a `Moved` at depth ≥ 1 for the readier, after `ReadyTriggered`. It ends on the destination chosen at Ready time.
+   - An interrupted move (`MoveInterrupted`) produces no `TileMoved`.
+   - Since v3, a `TileMoved` is not necessarily directly after its `Moved`.
 5. **Reactions.** These events are nested inside the triggering action's block in this order:
    - `ReactionWindowOpened`
    - then for each polled reactor, `ReactionTaken` or `ReactionDeclined`
@@ -99,3 +103,4 @@ The authoritative per-kind field meanings are in `rules5e/encounter.hpp`. If tha
 
 - **v1** (sim v0, PR #14): `Rules` and `TileMoved`; rules5e EventKind values 0–33.
 - **v2** (feature hooks): rules5e `FeatureUsed` (34), emitted for content features such as Second Wind. `Healed` from a feature carries the user as actor. Nothing else changed. The digest changes for every stream because it includes the version.
+- **v3** (Ready and ranged): readied Moves emit `TileMoved` for the readier. `TileMoved` events are placed after the request's rules events instead of directly after their `Moved` (ordering rule 4). Ranged attacks add no new kinds.

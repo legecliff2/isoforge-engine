@@ -33,7 +33,7 @@ world::Chunk sample_chunk() {
 } // namespace
 
 TEST_CASE("event layout: schema version and numeric enum values are locked") {
-    CHECK(kSimEventSchemaVersion == 2);
+    CHECK(kSimEventSchemaVersion == 3);
     CHECK(uint8_t(SimEvent::Kind::Rules) == 0);
     CHECK(uint8_t(SimEvent::Kind::TileMoved) == 1);
     // rules5e::EventKind as surfaced in SimEvent::rules (append-only; values are the contract).
@@ -88,13 +88,16 @@ TEST_CASE("event ordering: opening, per-request blocks, TileMoved after Moved, t
     while (i < ev.size() && ev[i].rules.kind == EventKind::InitiativeRolled) ++i;
     CHECK(i == c->state().combatants.size());
     CHECK(ev[i].rules.kind == EventKind::TurnStarted);
-    // Every TileMoved directly follows the mover's Moved (depth 0) and the tile is adjacent.
+    // v3: every TileMoved is preceded (in its request block) by a rules Moved of the same actor.
     for (std::size_t k = 0; k < ev.size(); ++k)
         if (ev[k].kind == SimEvent::Kind::TileMoved) {
-            REQUIRE(k > 0);
-            CHECK(ev[k - 1].kind == SimEvent::Kind::Rules);
-            CHECK(ev[k - 1].rules.kind == EventKind::Moved);
-            CHECK(ev[k - 1].rules.actor == ev[k].actor);
+            bool found = false;
+            for (std::size_t j = k; j-- > 0;) {
+                if (ev[j].kind == SimEvent::Kind::TileMoved && ev[j].actor == ev[k].actor) break;
+                if (ev[j].kind == SimEvent::Kind::Rules && ev[j].rules.kind == EventKind::Moved &&
+                    ev[j].rules.actor == ev[k].actor) { found = true; break; }
+            }
+            CHECK(found);
         }
     // Exactly one EncounterEnded, and it is last.
     std::size_t ends = 0;
@@ -122,5 +125,5 @@ TEST_CASE("event goldens: same seed => same stream; locked digests") {
     CHECK(a == b);
     CHECK(run(2).first != a.first);
     MESSAGE("seed 1: events=" << a.second << " digest=" << a.first);
-    CHECK(a.first == 1995367089495961954ull);   // GOLDEN (v2; v1 was 10579818256443912811, same 30 events)
+    CHECK(a.first == 5379229055340337023ull);   // GOLDEN v3 (fighter now opens with the crossbow: 7 events)
 }

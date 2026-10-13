@@ -17,6 +17,8 @@ constexpr Vec2i kDirs[8] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {
 Grid::Grid(const world::Chunk& c) {
     for (int i = 0; i < N * N; ++i) {
         const auto ui = std::size_t(i);
+        for (const auto& layer : c.layers)
+            if (layer[ui].flags & world::tile_flags::kBlocksSight) sight_[ui] = 1;
         if (c.layers[0][ui].tile == 0) continue;
         bool blocked = false, diff = false;
         for (const auto& layer : c.layers) {
@@ -30,6 +32,26 @@ Grid::Grid(const world::Chunk& c) {
 bool Grid::in_bounds(Vec2i p) const noexcept { return p.x >= 0 && p.y >= 0 && p.x < N && p.y < N; }
 bool Grid::walkable(Vec2i p) const noexcept { return in_bounds(p) && walk_[std::size_t(p.y * N + p.x)] != 0; }
 bool Grid::difficult(Vec2i p) const noexcept { return in_bounds(p) && walk_[std::size_t(p.y * N + p.x)] == 2; }
+
+bool Grid::blocks_sight(Vec2i p) const noexcept { return in_bounds(p) && sight_[std::size_t(p.y * N + p.x)] != 0; }
+
+bool Grid::line_of_sight(Vec2i a, Vec2i b) const noexcept {
+    const int dx = a.x < b.x ? b.x - a.x : a.x - b.x, dy = a.y < b.y ? b.y - a.y : a.y - b.y;
+    const int sx = b.x > a.x ? 1 : -1, sy = b.y > a.y ? 1 : -1;
+    int x = a.x, y = a.y, ix = 0, iy = 0;
+    auto blocked_mid = [&](Vec2i p) { return !(p == b) && blocks_sight(p); };
+    while (ix < dx || iy < dy) {
+        // Next boundary crossed along the centre-to-centre segment: compare (1+2ix)/dx vs (1+2iy)/dy.
+        const int64_t l = int64_t(1 + 2 * ix) * dy, r = int64_t(1 + 2 * iy) * dx;
+        if (l == r) {   // exactly through a corner
+            if (blocked_mid({x + sx, y}) && blocked_mid({x, y + sy})) return false;
+            x += sx; y += sy; ++ix; ++iy;
+        } else if (l < r) { x += sx; ++ix; }
+        else { y += sy; ++iy; }
+        if (blocked_mid({x, y})) return false;
+    }
+    return true;
+}
 
 std::vector<Vec2i> Grid::path(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied) const {
     auto idx = [](Vec2i p) { return std::size_t(p.y * N + p.x); };
