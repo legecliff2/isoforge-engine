@@ -54,6 +54,34 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
         }
         return end;
     }
+    // Can't get into melee reach this turn: shoot if a ranged attack is legal (range + LOS),
+    // preferring one without disadvantage.
+    auto melee_path_cost = [&]() {
+        std::vector<Vec2i> g;
+        for (int dy = -reach; dy <= reach; ++dy)
+            for (int dx = -reach; dx <= reach; ++dx)
+                if (dx || dy) g.push_back({tp.x + dx, tp.y + dy});
+        const auto p = c.grid().path(mp, g, c.occupied_except(self));
+        if (p.empty()) return 1 << 20;
+        int cost = 0;
+        for (Vec2i q : p) cost += c.grid().step_cost_ft(q);
+        return cost;
+    };
+    if (can_attack && melee_path_cost() > s.budget.movement_ft) {
+        std::optional<uint8_t> best;
+        bool best_clean = false;
+        for (uint8_t i = 0; i < me->attacks.size(); ++i) {
+            if (!me->attacks[i].ranged || !c.can_shoot(self, i, t->id)) continue;
+            const bool clean = !c.ranged_disadvantage(self, i, t->id);
+            if (!best || (clean && !best_clean)) { best = i; best_clean = clean; }
+        }
+        if (best) {
+            Command a;
+            a.request = {self, ActionKind::Attack, t->id};
+            a.request.attack_index = *best;
+            return a;
+        }
+    }
     // Goals: tiles within reach of the target.
     std::vector<Vec2i> goals;
     for (int dy = -reach; dy <= reach; ++dy)

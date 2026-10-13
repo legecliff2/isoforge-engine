@@ -1,12 +1,12 @@
-# sim event stream (schema version 2)
+# sim event stream (schema version 4)
 
 `eng::sim::Combat::events()` is the ordered record of everything that happened in a combat. Render/platform, UI, logs and tests consume it. This document is the contract. The code lives in `engine/core/sim/include/sim/events.hpp`, and the layout is locked by `engine/core/sim/tests/events_tests.cpp`.
 
 ## Types
 
 ```cpp
-inline constexpr uint32_t kSimEventSchemaVersion = 2;
-inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::FeatureUsed;
+inline constexpr uint32_t kSimEventSchemaVersion = 3;
+inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::SpellCheckRolled;
 
 struct SimEvent {
     enum class Kind : uint8_t { Rules = 0, TileMoved = 1 };   // append-only
@@ -58,6 +58,10 @@ struct rules5e::Event { EventKind kind; CombatantId actor, target; int32_t a, b,
 | 30–32 | SpellCast / SpellCountered / SpellResolved | caster | target (counter: countered caster) | spell id | level | |
 | 33 | AcBonus | creature | | bonus | new AC | |
 | 34 | FeatureUsed (v2) | user | | feature id | 1 if bonus action | |
+| 35 | SavingThrowRolled (v4) | saver | Ability | natural | total | success \| concentration<<1 |
+| 36 | ConcentrationEnded (v4) | caster | | spell id | | |
+| 37 | SpellEffectEnded (v4) | affected creature | | spell id | Condition removed (-1 none) | |
+| 38 | SpellCheckRolled (v4) | counterer | | natural | total | success |
 
 `FeatureUsed` feature ids are 1-based indexes into the archetype's declared features (`features[]` then `traits[]`, see `sim/features.hpp`). A self-heal is followed by `Healed`, with actor and target both set to the user.
 
@@ -70,7 +74,11 @@ The authoritative per-kind field meanings are in `rules5e/encounter.hpp`. If tha
 1. **Opening.** One `InitiativeRolled` per combatant, then `TurnStarted` for the first actor.
 2. **One block per completed request.** Each request that completes (`StepStatus::Done`) appends its rules events in emission order, followed by any sim events for that request. Rejected requests append nothing.
 3. **Pauses append nothing.** While a reaction decision is pending (`StepStatus::NeedsDecision`), nothing is appended. The provisional events in `SubmitResult` are not part of the stream. When the decision completes the request, the whole request's events are appended at once. A UI that wants a preview may show the `needs` prompt, but it must not render provisional events as fact.
-4. **`TileMoved`.** It follows the rules `Moved` of the same request and actor. If the move is interrupted (`MoveInterrupted`), no `TileMoved` is emitted. In v1, one Step equals one tile, so each `Moved` has at most one `TileMoved`.
+4. **`TileMoved`.** Sim events come after the request's rules events. There is one `TileMoved` per rules `Moved` that changed a tile, in the order of those `Moved` events, and each has the same actor as its `Moved`.
+   - The mover's own Step produces a depth-0 `Moved`.
+   - A readied Move that fires inside another creature's request produces a `Moved` at depth ≥ 1 for the readier, after `ReadyTriggered`. It ends on the destination chosen at Ready time.
+   - An interrupted move (`MoveInterrupted`) produces no `TileMoved`.
+   - Since v3, a `TileMoved` is not necessarily directly after its `Moved`.
 5. **Reactions.** These events are nested inside the triggering action's block in this order:
    - `ReactionWindowOpened`
    - then for each polled reactor, `ReactionTaken` or `ReactionDeclined`
@@ -99,3 +107,5 @@ The authoritative per-kind field meanings are in `rules5e/encounter.hpp`. If tha
 
 - **v1** (sim v0, PR #14): `Rules` and `TileMoved`; rules5e EventKind values 0–33.
 - **v2** (feature hooks): rules5e `FeatureUsed` (34), emitted for content features such as Second Wind. `Healed` from a feature carries the user as actor. Nothing else changed. The digest changes for every stream because it includes the version.
+- **v3** (Ready and ranged): readied Moves emit `TileMoved` for the readier. `TileMoved` events are placed after the request's rules events instead of directly after their `Moved` (ordering rule 4). Ranged attacks add no new kinds.
+- **v4** (spellcasting, PR #23): rules5e `SavingThrowRolled` (35), `ConcentrationEnded` (36), `SpellEffectEnded` (37) and `SpellCheckRolled` (38). Sim doesn't cast spells yet, so no sim stream emits them; the digest changes for every stream because it includes the version.

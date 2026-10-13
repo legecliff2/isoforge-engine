@@ -5,6 +5,8 @@
 #include <thread>
 #include <vector>
 
+#include "scratch_dir.hpp"
+
 #include "procgen/dungeon.hpp"
 #include "procgen_world/procedural_provider.hpp"
 #include "world/chunk_codec.hpp"
@@ -68,7 +70,9 @@ TEST_CASE("ProceduralProvider: loads, deterministic across threads, rejects unkn
 TEST_CASE("FileChunkProvider loads a baked procgen chunk and keeps origin=procedural") {
     auto g = procgen::generate(kSeed, 2, 3, 0);
     REQUIRE(g);
-    const auto path = std::filesystem::temp_directory_path() / "procgen_world_tests_2_3_0.json";
+    const ScratchDir scratch("procgen_world_baked");   // per-process, under the build tree
+    std::filesystem::create_directories(scratch.path);
+    const auto path = scratch.path / "2_3_0.json";
     std::ofstream(path, std::ios::binary) << procgen::to_json(*g);   // same bytes as procgen_dump
     FileChunkProvider fp({{ChunkCoord{2, 3, 0}, path}});
     auto r = fp.load(ChunkRequest{ChunkCoord{2, 3, 0}, 0, 1});
@@ -78,5 +82,4 @@ TEST_CASE("FileChunkProvider loads a baked procgen chunk and keeps origin=proced
     auto direct = to_chunk(*g);
     REQUIRE(direct.chunk);
     CHECK(r.chunk->spawns[0].stable_id == direct.chunk->spawns[0].stable_id);
-    std::filesystem::remove(path);
 }

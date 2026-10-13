@@ -59,7 +59,15 @@ struct Attack {
     DiceExpr damage; DamageType type;
     uint8_t  reach_or_range_ft;
     bool     ranged, finesse;
+    // appended: ranged weapons' normal / long range in feet (SRD 5.1 "Range"; longbow 150/600 needs
+    // more than reach_or_range_ft's byte). 0 = use reach_or_range_ft as the normal range, no long range.
+    uint16_t range_ft = 0, long_range_ft = 0;
 };
+constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
+constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
+// Range facts for a ranged attack at `dist_ft`: out of reach entirely, or beyond normal range (disadvantage).
+constexpr bool out_of_range(const Attack& a, int dist_ft) { return dist_ft > long_range_ft(a); }
+constexpr bool beyond_normal_range(const Attack& a, int dist_ft) { return a.ranged && dist_ft > normal_range_ft(a); }
 
 enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Ready, Move, EndTurn,
                                   // appended (append-only):

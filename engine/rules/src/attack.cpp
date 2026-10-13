@@ -7,7 +7,7 @@ namespace rules5e {
 
 RollMode attack_roll_mode(const Combatant& a, const Combatant& t, const AttackContext& ctx) {
     bool adv = ctx.mode == RollMode::Advantage;
-    bool dis = ctx.mode == RollMode::Disadvantage;
+    bool dis = ctx.mode == RollMode::Disadvantage || ctx.extra_disadvantage;
     using C = Condition;
     if (a.has(C::Blinded) || a.has(C::Poisoned) || a.has(C::Prone) || a.has(C::Restrained) ||
         a.has(C::Frightened) || a.exhaustion_level >= 3) dis = true;

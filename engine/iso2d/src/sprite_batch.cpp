@@ -45,6 +45,11 @@ void SpriteBatch::draw(const Sprite& s, Vec2f iso_pos, int32_t layer, uint32_t s
     items_.push_back({s, iso_pos, make_sort_key(iso_pos, layer, z, sort_key)});
 }
 
+void SpriteBatch::draw_px(const Sprite& s, Vec2f px, int32_t layer, uint32_t sort_key, int32_t z) {
+    if (items_.size() >= max_sprites_) return;
+    items_.push_back({s, px, SortKey{layer, px.y, z, sort_key}, true});
+}
+
 void SpriteBatch::prepare(const Camera& cam) {
     order_.resize(items_.size());
     std::iota(order_.begin(), order_.end(), 0u);
@@ -58,7 +63,7 @@ void SpriteBatch::prepare(const Camera& cam) {
     for (uint32_t i : order_) {
         const Item& it = items_[i];
         const Sprite& s = it.sprite;
-        const Vec2f p = proj_.to_screen(it.iso.x, it.iso.y);
+        const Vec2f p = it.px ? it.iso : proj_.to_screen(it.iso.x, it.iso.y);
         const float x0 = p.x - s.anchor_x, y0 = p.y - s.anchor_y, x1 = x0 + s.w, y1 = y0 + s.h;
         const uint8_t r = to8(s.tint.r), g = to8(s.tint.g), b = to8(s.tint.b), a = to8(s.tint.a);
         verts_.push_back({x0, y0, s.u0, s.v0, r, g, b, a});
@@ -72,10 +77,11 @@ void SpriteBatch::prepare(const Camera& cam) {
     if (!verts_.empty()) dev_.update_buffer(vbo_, 0, bytes(verts_));
 
     const float w = float(cam.viewport_w), h = float(cam.viewport_h);
-    uniforms_.scale[0] = 2.f / w;
-    uniforms_.scale[1] = -2.f / h;
-    uniforms_.offset[0] = -1.f - 2.f * cam.position.x / w;
-    uniforms_.offset[1] = 1.f + 2.f * cam.position.y / h;
+    const float z = cam.zoom > 0.f ? cam.zoom : 1.f;
+    uniforms_.scale[0] = 2.f * z / w;
+    uniforms_.scale[1] = -2.f * z / h;
+    uniforms_.offset[0] = -1.f - 2.f * z * cam.position.x / w;
+    uniforms_.offset[1] = 1.f + 2.f * z * cam.position.y / h;
 }
 
 void SpriteBatch::submit(ICommandList& cl) {

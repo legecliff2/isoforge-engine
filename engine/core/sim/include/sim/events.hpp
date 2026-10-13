@@ -12,9 +12,9 @@
 namespace eng::sim {
 
 // Version of the event stream contract (SimEvent + rules5e::Event as surfaced by sim).
-inline constexpr uint32_t kSimEventSchemaVersion = 2;
+inline constexpr uint32_t kSimEventSchemaVersion = 4;
 // Last rules5e::EventKind surfaced under this schema version (rules appends; sim bumps).
-inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::FeatureUsed;
+inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::SpellCheckRolled;
 
 struct SimEvent {
     // Append-only. Numeric values are part of the contract.

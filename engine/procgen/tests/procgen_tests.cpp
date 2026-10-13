@@ -157,6 +157,22 @@ TEST_CASE("generator: format invariants and connectivity over many chunks") {
     CHECK_FALSE(generate(WorldSeed{0, 0}, 0, 0, 0));
 }
 
+TEST_CASE("spawn_archetypes: every emitted archetype is in the version's table") {
+    CHECK(spawn_archetypes(0).empty());
+    CHECK(spawn_archetypes(uint16_t(latest_gen_version() + 1)).empty());
+    for (const auto& gv : generator_versions()) {
+        const auto table = spawn_archetypes(gv.gen_version);
+        REQUIRE_FALSE(table.empty());
+        std::set<std::string> ids(table.begin(), table.end());
+        for (uint64_t sd : {0ull, 1ull, 0xADC33F66AE00F1E4ull, ~0ull})
+            for (const Coord& co : coords()) {
+                auto g = generate(WorldSeed{gv.gen_version, sd}, std::get<0>(co), std::get<1>(co), std::get<2>(co));
+                REQUIRE(g);
+                for (const auto& sp : g->spawns) CHECK_MESSAGE(ids.count(sp.archetype), sp.archetype);
+            }
+    }
+}
+
 TEST_CASE("generator: connectivity check detects a split") {
     auto g = generate(kSeed, 0, 0, 0);
     REQUIRE(g);
