@@ -5,3 +5,5 @@ out/
 .idea/
 *.user
 build-*/
+__pycache__/
+*.pyc

@@ -159,3 +159,34 @@ TEST_CASE("spawning chunk entities into the ECS iterates in stable_id order") {
     REQUIRE(seen.size() == 2);
     CHECK(seen[0] < seen[1]);
 }
+
+TEST_CASE("content_hash test vectors match tools/chunk_hash/chunk_hash.py") {
+    eng::assets::SchemaRegistry reg;
+    register_chunk_schema(reg);
+    const std::pair<const char*, const char*> vectors[] = {
+        {"v1_minimal.json", "01fa4a2fde49834b"},
+        {"v2_small.json", "963a7d22563ff71a"},
+    };
+    for (auto [file, hex] : vectors) {
+        auto lr = reg.load_file(std::string(CHUNK_HASH_VECTORS) + "/" + file);
+        REQUIRE_MESSAGE(lr.ok, lr.error);
+        auto r = chunk_from_json(lr.data);
+        REQUIRE_MESSAGE(r.chunk, r.error);
+        CHECK_MESSAGE(hash_to_hex(r.chunk->content_hash) == hex, file);
+    }
+}
+
+TEST_CASE("sample.vertical_slice chunk 0_0_0 (pack and frozen fl1 copy) loads via HandcraftedProvider") {
+    const std::string root = ENGINE_SOURCE_ROOT;
+    for (const char* rel : {"/content/packs/sample.vertical_slice/chunks/0_0_0.json",
+                            "/tests/compat/fl1/sample.vertical_slice/chunks/0_0_0.json"}) {
+        CAPTURE(rel);
+        HandcraftedProvider p({{ChunkCoord{0, 0, 0}, root + rel}});
+        ChunkResult r = p.load(ChunkRequest{ChunkCoord{0, 0, 0}, 0, 1});
+        REQUIRE_MESSAGE(r.status == ChunkStatus::Ready, r.error);
+        CHECK(hash_to_hex(r.chunk->content_hash) == "f044f2c4660809ed");
+        REQUIRE(r.chunk->spawns.size() == 2);
+        CHECK(r.chunk->spawns[0].stable_id == 0xE9CA1F53u);
+        CHECK(r.chunk->spawns[1].stable_id == 0x8654AAD2u);
+    }
+}

@@ -76,3 +76,10 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
     endif()
 endif()
+
+# Golden corpus freeze: tests/compat/ must match tests/compat/MANIFEST.sha256 (no Python needed).
+if(ENGINE_BUILD_TESTS)
+    add_test(NAME compat_freeze
+             COMMAND ${CMAKE_COMMAND} -DROOT=${CMAKE_CURRENT_SOURCE_DIR}
+                     -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/compat_freeze/compat_freeze.cmake)
+endif()
