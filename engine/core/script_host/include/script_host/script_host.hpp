@@ -27,14 +27,14 @@
 
 #include "ecs/registry.hpp"
 #include "rng/rng.hpp"
+#include "sim/components.hpp"
 
 namespace eng::script {
 
-// Script-visible components for API level 1. (They belong in `sim` once it exists;
-// kept here so v0 has no upward dependency.)
-struct Health  { int32_t hp = 0, hp_max = 0; };
-struct Team    { uint8_t team = 0; };
-struct TilePos { int32_t x = 0, y = 0; };
+// Script-visible components for API level 1 are owned by sim (ARCHITECTURE.md §2.1).
+using sim::Health;
+using sim::Team;
+using sim::TilePos;
 
 inline constexpr uint32_t kMaxApiLevel = 1;
 

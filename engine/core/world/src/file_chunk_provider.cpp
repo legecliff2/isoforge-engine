@@ -1,4 +1,4 @@
-#include "world/handcrafted_provider.hpp"
+#include "world/file_chunk_provider.hpp"
 
 #include <string>
 
@@ -6,12 +6,12 @@
 
 namespace eng::world {
 
-HandcraftedProvider::HandcraftedProvider(std::map<ChunkCoord, std::filesystem::path> files)
+FileChunkProvider::FileChunkProvider(std::map<ChunkCoord, std::filesystem::path> files)
     : files_(std::move(files)) {
     register_chunk_schema(schemas_);
 }
 
-ChunkResult HandcraftedProvider::load(const ChunkRequest& req) {
+ChunkResult FileChunkProvider::load(const ChunkRequest& req) {
     auto it = files_.find(req.coord);
     if (it == files_.end()) return ChunkResult{ChunkStatus::NotFound, std::nullopt, {}};
     assets::LoadResult lr = schemas_.load_file(it->second);
@@ -23,8 +23,6 @@ ChunkResult HandcraftedProvider::load(const ChunkRequest& req) {
     }
     if (r.chunk->coord != req.coord)
         return ChunkResult{ChunkStatus::Error, std::nullopt, it->second.generic_string() + ": coord does not match request"};
-    if (r.chunk->origin != Chunk::Origin::Handcrafted)
-        return ChunkResult{ChunkStatus::Error, std::nullopt, it->second.generic_string() + ": origin must be \"handcrafted\""};
     return r;
 }
 
