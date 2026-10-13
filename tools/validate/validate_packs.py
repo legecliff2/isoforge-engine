@@ -26,6 +26,9 @@ try:
 except ImportError:  # pragma: no cover
     sys.exit("error: needs jsonschema + xxhash (pip install -r tools/validate/requirements.txt)")
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import packset  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMAS = ROOT / "schemas"
 CHUNK_SIZE = 32
@@ -397,8 +400,10 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry) -> tuple[
     return errs, warns
 
 
-def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[str] | None = None) -> list[str]:
-    """Returns errors; non-fatal findings are appended to `warnings` (if given)."""
+def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[str] | None = None,
+                  pset: "packset.PackSet | None" = None) -> list[str]:
+    """Returns errors; non-fatal findings are appended to `warnings` (if given).
+    pset: the pack set references resolve against (default: this pack alone)."""
     out: list[str] = runtime_id_collisions(pack_spell_ids(pack))
     warns: list[str] = warnings if warnings is not None else []
     files = sorted(p for p in pack.rglob("*.json"))
@@ -413,12 +418,33 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[s
     if man is None:
         return out + ["manifest.json missing"]
     ids = {d.get("id") for r, d in docs.items() if r != "manifest.json" and isinstance(d, dict)}
-    deps = [d["id"] for d in man.get("depends", [])]
-    # srd51.* ids may be defined provisionally in-pack (until packs/srd51.core exists) or
-    # referenced without a definition; anything else must resolve in-pack or via depends.
+    # References resolve within this pack or its transitive depends (packset.py, the reference
+    # semantics for eng::assets::PackSet). Dependency errors are reported against the pack that
+    # declares the dependency.
+    pset = pset or packset.PackSet([pack])
+    pid = str(man.get("id", ""))
+    order, set_errs = pset.resolve([pid]) if pid in pset.by_id else ([], [])
+    out += [str(e) for e in set_errs if e.pack == pid]
     spell_ids = {d.get("id") for r, d in docs.items() if isinstance(d, dict) and str(d.get("$schema", "")).startswith("spell@")}
-    ctx = {"ids": ids, "spell_ids": spell_ids, "external_ok": lambda a: a.startswith("srd51.")
-           or any(a.startswith(dep + ".") for dep in deps)}
+    for dep in order:
+        if dep.id == pid:
+            continue
+        for cid, rel in dep.content_ids.items():
+            ids.add(cid)
+            if rel.startswith("spells/") or _is_spell(dep.dir / rel):
+                spell_ids.add(cid)
+    # Deprecated escape hatch: a pack that doesn't (transitively) depend on srd51.core may still
+    # reference undefined srd51.* ids, with a warning. Packs depending on srd51.core must resolve.
+    hatch = pid != "srd51.core" and all(d.id != "srd51.core" for d in order)
+    hatch_used: set[str] = set()
+
+    def external_ok(a: str) -> bool:
+        if hatch and a.startswith("srd51."):
+            hatch_used.add(a)
+            return True
+        return False
+
+    ctx = {"ids": ids, "spell_ids": spell_ids, "external_ok": external_ok}
     scripts = {f.relative_to(pack).as_posix() for f in pack.glob("scripts/**/*.luau")}
     script_re = re.compile(r"^scripts/.+\.luau$")
 
@@ -469,7 +495,17 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[s
             errs += [e.split(": ", 1)[1] for e in e2]   # errs is prefixed with rel below
             warns += w2
         out += [f"{rel}: {e}" for e in errs]
+    for a in sorted(hatch_used):
+        warns.append(f"manifest.json: '{a}' is not defined in this pack or its depends; the srd51.* "
+                     "escape hatch is deprecated: add depends [{\"id\": \"srd51.core\", \"version\": \"^1.0\"}]")
     return out
+
+
+def _is_spell(path: Path) -> bool:
+    try:
+        return str(json.loads(path.read_text(encoding="utf-8")).get("$schema", "")).startswith("spell@")
+    except (OSError, ValueError, AttributeError):
+        return False
 
 
 def discover() -> list[Path]:
@@ -524,9 +560,14 @@ def main(argv: list[str]) -> int:
         print("no packs found", file=sys.stderr)
         return 1
     failed = 0
+    # Pack sets: the live packs, or one tests/compat/<level> (compat packs never resolve against
+    # live ones). With explicit pack arguments, the set is exactly the packs given.
+    psets: dict[str, packset.PackSet] = {}
+    for key in sorted({pack_set_key(p) for p in packs}):
+        psets[key] = packset.PackSet([p for p in packs if pack_set_key(p) == key])
     for pack in packs:
         warns: list[str] = []
-        errs = validate_pack(pack, registry, by_tag, warns)
+        errs = validate_pack(pack, registry, by_tag, warns, psets[pack_set_key(pack)])
         if script_check:
             errs += run_script_check(script_check, pack)
         name = pack.relative_to(ROOT) if pack.is_relative_to(ROOT) else pack
@@ -548,6 +589,8 @@ def main(argv: list[str]) -> int:
     cross = []
     for key in sorted(sets):
         cross += runtime_id_collisions([e for pack in sets[key] for e in pack_spell_ids(pack)], cross_pack_only=True)
+    for key in sorted(psets):
+        cross += [str(e) for e in psets[key].errors]
     for e in cross:
         print(f"FAIL pack set: {e}")
     summary = f"{len(packs) - failed}/{len(packs)} packs valid ({len(by_tag)} schemas)"

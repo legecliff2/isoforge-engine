@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import validate_packs as vp  # noqa: E402
 
 SAMPLE = vp.ROOT / "content" / "packs" / "sample.vertical_slice"
+CORE = vp.ROOT / "content" / "packs" / "srd51.core"   # the sample depends on it
 FIGHTER = "characters/fighter_1.json"
 
 
@@ -22,6 +23,8 @@ class EffectKinds(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp(prefix="validate_packs_test_"))   # unique per test
         self.pack = self.tmp / SAMPLE.name
         shutil.copytree(SAMPLE, self.pack)
+        self.core = self.tmp / CORE.name
+        shutil.copytree(CORE, self.core)
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -34,7 +37,7 @@ class EffectKinds(unittest.TestCase):
 
     def run_pack(self):
         warns = []
-        errs = vp.validate_pack(self.pack, self.registry, self.by_tag, warns)
+        errs = vp.validate_pack(self.pack, self.registry, self.by_tag, warns, vp.packset.PackSet([self.core, self.pack]))
         return errs, warns
 
     def test_sample_pack_clean(self):
