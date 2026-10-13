@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "Linux GCC Debug",       os: ubuntu-latest,  preset: ci-linux-gcc,     build: ci-linux-gcc,        test: ci-linux-gcc }
+          - { name: "Linux Clang Release",   os: ubuntu-latest,  preset: ci-linux-clang,   build: ci-linux-clang,      test: ci-linux-clang }
+          - { name: "macOS AppleClang Debug", os: macos-latest,  preset: ci-mac-clang,     build: ci-mac-clang,        test: ci-mac-clang }
+          - { name: "Windows MSVC Debug",    os: windows-latest, preset: ci-win-msvc,      build: ci-win-msvc-debug,   test: ci-win-msvc-debug }
+          - { name: "Windows MSVC Release",  os: windows-latest, preset: ci-win-msvc,      build: ci-win-msvc-release, test: ci-win-msvc-release }
+    steps:
+      - uses: actions/checkout@v4
+
+      # content_validate: CMake creates a venv from this interpreter at configure time and
+      # pip-installs tools/validate/requirements.txt into it.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tools/validate/requirements.txt
+
+      - name: Install Linux deps (SDL3 video backends, Ninja)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxi-dev libxss-dev libxfixes-dev libxtst-dev libxkbcommon-dev libwayland-dev \
+            wayland-protocols libegl-dev libgl-dev libvulkan-dev libudev-dev libdbus-1-dev
+
+      - name: MSVC dev environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Windows deps (Ninja)
+        if: runner.os == 'Windows'
+        run: choco install ninja -y --no-progress
+
+      - name: Install macOS deps
+        if: runner.os == 'macOS'
+        run: brew install ninja || true
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }} -DPython3_EXECUTABLE="${{ env.pythonLocation }}/${{ runner.os == 'Windows' && 'python.exe' || 'bin/python' }}"
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.build }} --parallel
+
+      - name: Require content_validate to be registered
+        shell: bash
+        run: ctest --preset ${{ matrix.test }} -N | grep -q content_validate
+
+      - name: Test
+        run: ctest --preset ${{ matrix.test }}

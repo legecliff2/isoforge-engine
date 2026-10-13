@@ -10,4 +10,14 @@ struct Vec2i {
     auto operator<=>(const Vec2i&) const = default;
 };
 
+struct RectI {
+    int32_t x = 0, y = 0, w = 0, h = 0;
+    auto operator<=>(const RectI&) const = default;
+};
+
 } // namespace eng
+
+namespace eng::render {
+using eng::RectI;
+using eng::Vec2i;
+}
