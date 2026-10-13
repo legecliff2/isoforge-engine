@@ -15,6 +15,12 @@
     "characters/fighter_1.json",
     "chunks/0_0_0.json",
     "monsters/goblin.json",
-    "scripts/ai/skirmisher.luau"
+    "scripts/ai/skirmisher.luau",
+    "spells/counterspell.json",
+    "spells/cure_wounds.json",
+    "spells/fire_bolt.json",
+    "spells/hold_person.json",
+    "spells/magic_missile.json",
+    "spells/shield.json"
   ]
 }
