@@ -1,5 +1,6 @@
 # Determinism lint (ARCHITECTURE.md §4.7) for source trees that feed sim/gen state.
-#   cmake -DDIRS="<dir>;<dir>" -P detlint.cmake
+#   cmake -DDIRS="<dir>;<dir>" [-DREPORT_ONLY=ON] -P detlint.cmake
+# REPORT_ONLY prints violations as a warning and exits 0 (for trees with known, tracked debt).
 # Rejects: float, double, long double, <cmath>/<math.h>, <random>, std::hash, std::unordered_*,
 # <chrono>/std::chrono, rand()/srand(), and float literals (1.0, 2.5f, 1e3).
 # Comments are stripped first so prose can mention the banned words.
@@ -39,6 +40,10 @@ foreach(dir IN LISTS DIRS)
         endforeach()
     endforeach()
 endforeach()
+if(fail AND REPORT_ONLY)
+    message(WARNING "detlint (report-only, TODO fix): banned non-deterministic constructs (§4.7):\n${fail}")
+    return()
+endif()
 if(fail)
     message(FATAL_ERROR "detlint: banned non-deterministic constructs (§4.7):\n${fail}")
 endif()

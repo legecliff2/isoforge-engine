@@ -138,3 +138,5 @@ if(ENGINE_BUILD_TESTS)
                      -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/compat_freeze/compat_freeze.cmake)
 endif()
 
+# Determinism lint over rules5e / detmath / sim / world/gen (§4.7). Registry: cmake/DetLint.cmake.
+include(DetLint)
