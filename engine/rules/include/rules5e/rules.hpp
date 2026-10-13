@@ -9,3 +9,6 @@
 #include "rules5e/initiative.hpp"
 #include "rules5e/attack.hpp"
 #include "rules5e/damage.hpp"
+#include "rules5e/conditions.hpp"
+#include "rules5e/saves.hpp"
+#include "rules5e/encounter.hpp"
