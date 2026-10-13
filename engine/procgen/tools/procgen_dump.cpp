@@ -1,4 +1,5 @@
 // procgen_dump <seed-string> <out_pack_dir> <x,y,level>...
+// procgen_dump --list-archetypes   (every archetype id each generator version can emit)
 // Writes <out>/manifest.json and <out>/chunks/<x>_<y>_<level>.json (chunk@1, origin procedural).
 #include <charconv>
 #include <string_view>
@@ -25,6 +26,12 @@ static bool parse_coord(std::string_view s, int& x, int& y, int& level) {
 }
 
 int main(int argc, char** argv) {
+    if (argc == 2 && std::string_view(argv[1]) == "--list-archetypes") {
+        // "<gen_version> <archetype id>" per line, every shipped generator version.
+        for (const auto& g : procgen::generator_versions())
+            for (const char* id : procgen::spawn_archetypes(g.gen_version)) std::printf("%u %s\n", unsigned(g.gen_version), id);
+        return 0;
+    }
     if (argc < 4) {
         std::fprintf(stderr, "usage: procgen_dump <seed-string> <out_pack_dir> <x,y,level>...\n");
         return 2;

@@ -20,6 +20,10 @@ struct Sprite {
 struct Camera {
     Vec2f position;          // world px at the top-left of the viewport
     uint32_t viewport_w = 1280, viewport_h = 720;
+    float zoom = 1.f;        // screen px per world px
+
+    Vec2f world_to_screen(Vec2f w) const { return {(w.x - position.x) * zoom, (w.y - position.y) * zoom}; }
+    Vec2f screen_to_world(Vec2f s) const { return {s.x / zoom + position.x, s.y / zoom + position.y}; }
 };
 
 // Collects sprites, depth-sorts them, and emits one draw per run of equal texture.
@@ -33,6 +37,9 @@ public:
 
     void begin();
     void draw(const Sprite&, Vec2f iso_pos, int32_t layer, uint32_t sort_key, int32_t z = 0);
+    // Places the sprite's anchor at a pixel position (no iso projection), e.g. for UI drawn
+    // with an identity camera. Sort key = (layer, px.y, z, sort_key).
+    void draw_px(const Sprite&, Vec2f px, int32_t layer, uint32_t sort_key, int32_t z = 0);
     void prepare(const Camera&);           // sorts + uploads; must be outside a render pass
     void submit(render::ICommandList&);    // records draws inside the current pass
 
@@ -45,7 +52,7 @@ public:
     const std::vector<uint32_t>& order() const { return order_; }
 
 private:
-    struct Item { Sprite sprite; Vec2f iso; SortKey key; };
+    struct Item { Sprite sprite; Vec2f iso; SortKey key; bool px = false; };
     struct Run  { render::TextureId texture; uint32_t first_quad, quads; };
 
     render::IRenderDevice& dev_;
