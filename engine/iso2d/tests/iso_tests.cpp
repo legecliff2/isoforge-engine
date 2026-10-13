@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "iso2d/iso.hpp"
+#include "iso2d/sprite_batch.hpp"
 
 using namespace eng::iso2d;
 
@@ -25,4 +26,14 @@ TEST_CASE("sort key: layer, then x+y, then z, then entity") {
     CHECK(k(1, 1, 0, 0, 0) < k(1, 1, 0, 1, 0));  // z
     CHECK(k(1, 1, 0, 0, 1) < k(1, 1, 0, 0, 2));  // entity tie-break
     CHECK_FALSE(k(1, 1, 0, 0, 2) < k(1, 1, 0, 0, 2));
+}
+
+TEST_CASE("camera zoom: world <-> screen round trip") {
+    eng::iso2d::Camera cam{{100, 50}, 800, 600, 2.f};
+    auto s = cam.world_to_screen({110, 60});
+    CHECK(s.x == doctest::Approx(20));
+    CHECK(s.y == doctest::Approx(20));
+    auto w = cam.screen_to_world(s);
+    CHECK(w.x == doctest::Approx(110));
+    CHECK(w.y == doctest::Approx(60));
 }
