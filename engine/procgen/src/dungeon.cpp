@@ -9,6 +9,11 @@
 namespace procgen {
 
 namespace {
+// Archetype ids gen_version 1 can emit (see spawn_archetypes()).
+constexpr const char* kGen1Archetypes[] = {"srd51.monster.goblin"};
+} // namespace
+
+namespace {
 
 constexpr uint64_t kLayoutStream = 1;   // Pcg32 stream id for room/corridor layout
 
@@ -102,7 +107,7 @@ std::optional<GenChunk> generate_v1(WorldSeed w, int32_t cx, int32_t cy, int16_t
 
     // 5. One goblin in the centre of the last room.
     const Rect& last = rooms.back();
-    c.spawns.push_back(GenSpawn{"srd51.monster.goblin", last.x + last.w / 2, last.y + last.h / 2, ""});
+    c.spawns.push_back(GenSpawn{kGen1Archetypes[0], last.x + last.w / 2, last.y + last.h / 2, ""});
     return c;
 }
 
@@ -122,6 +127,12 @@ static_assert(registry_is_contiguous(), "generator registry must be contiguous f
 } // namespace
 
 std::span<const GeneratorVersion> generator_versions() noexcept { return kGenerators; }
+std::span<const char* const> spawn_archetypes(uint16_t gen_version) noexcept {
+    switch (gen_version) {
+        case 1: return kGen1Archetypes;
+        default: return {};
+    }
+}
 uint16_t latest_gen_version() noexcept { return kGenerators[std::size(kGenerators) - 1].gen_version; }
 
 std::optional<GenChunk> generate(WorldSeed w, int32_t x, int32_t y, int16_t level) {
