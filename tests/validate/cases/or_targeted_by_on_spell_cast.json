@@ -1,0 +1,47 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.a",
+  "name": "Counterspell",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "level": 3,
+  "school": "abjuration",
+  "classes": [
+    "sorcerer",
+    "warlock",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "reaction",
+    "trigger": {
+      "kind": "spell_cast",
+      "requires_sight": true,
+      "or_targeted_by": [
+        "srd51.spell.magic_missile"
+      ]
+    }
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "components": {
+    "s": true
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "counter",
+      "auto_max_level": "slot",
+      "check": {
+        "ability": "spellcasting",
+        "dc_base": 10,
+        "plus": "spell_level"
+      }
+    }
+  ]
+}

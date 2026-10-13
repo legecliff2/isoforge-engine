@@ -29,18 +29,23 @@ Current gates:
 | type | version | gate |
 |---|---|---|
 | character | @3 | feature effects (`damage_bonus`, `bonus_action_grant`, `self_heal`, ...) are active only for @3 files. Effects from @1/@2 files are inert. |
-| monster | (none yet) | effects are active for every version. A monster whose stat block bakes in an effect's number (e.g. a `damage_bonus`) would need `monster@3` with the same inert migration. Validator and schema rules: `docs/CONTENT_EFFECTS.md` §0. |
+| monster | @3 | the same gate (`monster_2_to_3`). The sample goblin is `monster@3`: Nimble Escape is active, and no numbers are baked in (`bonus_actions` is empty, the scimitar is a plain `1d6+2`). fl1's monster@1 goblin keeps Nimble Escape descriptive. |
 
 ## 2. Pin old content with a compat behaviour golden
 
 The `tests/compat/<pack>` fixtures are frozen copies of shipped content. Never edit them.
-Each fixture gets a behaviour golden, for example `engine/core/sim/tests/compat_fl1_tests.cpp`:
+Each fixture gets a behaviour golden. fl1 has two:
+
+- `engine/core/sim/tests/compat_fl1_tests.cpp`: the fighter fight.
+- `compat_fl1_goblin_tests.cpp`: the goblin's stat block, an inert Nimble Escape, and per-goblin attacks, hits, damage dealt and taken, and final hp, over 5 seeds. Pinned on main 19a372a, before the monster gate.
+
+Each golden has these parts:
 
 - **Semantics check:** stat blocks as the engine sees them. For example, the fl1 longsword is
   `1d8+5` with to-hit 5.
 - **Seeded fights:** a few seeds run a **fixed command script** that lives in the test file. The
   script is: attack the first conscious hostile when adjacent, else step along the path, else end
-  the turn; always take reaction windows. It never uses the built-in policy or Luau AI, so AI and
+  the turn; always take reaction windows. The script is melee-only, so new ranged or line-of-sight rules can't move it. It never uses the built-in policy or Luau AI, so AI and
   policy work does not change these values. Only rules-level behaviour does.
 - **Digest:** an FNV hash of the rules events present since sim v0 (initiative, turns, moves,
   attacks, damage, downs, deaths, death saves, encounter end), plus final hp, dead flag and position

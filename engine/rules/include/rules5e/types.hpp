@@ -29,6 +29,11 @@ constexpr Ability skill_ability(Skill k) {
     }
 }
 
+// SRD 5.1 creature types (same order as common@1 creature_type). Append-only.
+enum class CreatureType : uint8_t { Aberration, Beast, Celestial, Construct, Dragon, Elemental, Fey, Fiend,
+                                    Giant, Humanoid, Monstrosity, Ooze, Plant, Undead };
+constexpr uint32_t bit(CreatureType t) { return uint32_t(1) << uint32_t(t); }
+
 enum class RollMode : uint8_t { Normal, Advantage, Disadvantage };
 
 using CombatantId = uint32_t;
@@ -114,6 +119,16 @@ struct Combatant {
     CombatantId check_helped_by = 0;        // Help: advantage on next ability check, from this helper
     std::array<ReactionPolicy, kReactionTriggerCount> reaction_policy{};  // per trigger; default Ask
     int8_t   reaction_ac_bonus = 0;         // Shield-style AC bump; until the start of this creature's turn
+    // appended (spellcasting core, spells.hpp):
+    Ability  spellcasting_ability = Ability::Int;
+    uint8_t  caster_level = 0;              // character level for cantrip scaling (monsters: caster level)
+    std::array<uint8_t, 10> spell_slots{};      // [1..9] remaining ([0] unused)
+    std::array<uint8_t, 10> spell_slots_max{};  // [1..9] restored on a long rest
+    uint8_t  pact_slot_level = 0, pact_slots = 0, pact_slots_max = 0;  // Pact Magic: short rest
+    std::vector<uint32_t> spells_known;     // spell ids (spell_id_of) it can cast (known or prepared)
+    uint32_t concentration_spell = 0;       // spell id concentrated on (0 = none)
+    uint32_t reaction_blocks_spell = 0;     // Shield: no damage from this spell until the start of its turn
+    CreatureType creature_type = CreatureType::Humanoid;   // spell targeting (Hold Person, Cure Wounds)
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
