@@ -1,0 +1,10 @@
+# Stream goldens, pure procedural world (format: docs/STREAMING.md "Stream golden files").
+# ProceduralProvider only (no handcrafted chunks). Add lines freely: every data line in every
+# tests/goldens/stream/*.txt is verified by procgen_world_tests ("stream golden files reproduce").
+@world procgen
+@gen_version 1
+@level 0
+# <world_seed_hex> <focus_x> <focus_y> <radius> <digest_u64>
+1 0 0 1 14747012409344305849
+c0ffee -200 -75 2 9934002532382794499
+deadbeefcafef00d 1000 -3000 1 12672035990444053449

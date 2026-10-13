@@ -1,6 +1,6 @@
 #pragma once
 // Verbatim from ARCHITECTURE.md §5.2 (contract header). Encoding decisions for chunk@1
-// live in world/chunk_codec.hpp; ChunkStreamer is declared in the doc but not part of v0.
+// live in world/chunk_codec.hpp; ChunkStreamer lives in world/chunk_streamer.hpp.
 #include <cstdint>
 #include <array>
 #include <vector>

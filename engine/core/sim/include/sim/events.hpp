@@ -20,7 +20,8 @@ struct SimEvent {
     // Append-only. Numeric values are part of the contract.
     enum class Kind : uint8_t {
         Rules = 0,       // `rules` holds a rules5e::Event (see docs/SIM_EVENTS.md for a/b/c per kind)
-        TileMoved = 1,   // `actor` now stands on `tile` (chunk-local tile coordinates)
+        TileMoved = 1,   // `actor` now stands on `tile` (the combat's grid frame: chunk-local
+                         // for single-chunk combats, world tiles for multi-chunk ones)
     };
     Kind kind = Kind::Rules;
     rules5e::Event rules{};          // Kind::Rules only; zero otherwise
