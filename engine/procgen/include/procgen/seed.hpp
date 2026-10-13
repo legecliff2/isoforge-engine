@@ -6,8 +6,9 @@
 //   base32       RFC 4648 alphabet "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567", uppercase, no padding,
 //                exactly 13 characters = 65 bits, big-endian (most significant group first).
 //                The top bit of the first group is always 0, so the first char is A..P.
-//   No checksum (the doc defines none); parsing is strict and canonical, so every seed has
-//   exactly one string and print(parse(s)) == s for every accepted s.
+//   No checksum (the doc defines none). Parsing is case-insensitive ("G1-k3qz..." is accepted);
+//   printing is always the canonical uppercase-base32 form with a lowercase 'g', so
+//   format(parse(s)) == s exactly when s is canonical, and parse(format(w)) == w always.
 #include <cstdint>
 #include <optional>
 #include <string>

@@ -108,11 +108,25 @@ std::optional<GenChunk> generate_v1(WorldSeed w, int32_t cx, int32_t cy, int16_t
 
 } // namespace
 
+namespace {
+// D-007: append only. Never edit or remove an entry; new output = new version.
+constexpr GeneratorVersion kGenerators[] = {
+    {1, &generate_v1, "v0 rooms + L corridors, value-noise rubble/water, one goblin"},
+};
+constexpr bool registry_is_contiguous() {
+    for (std::size_t i = 0; i < std::size(kGenerators); ++i)
+        if (kGenerators[i].gen_version != i + 1 || kGenerators[i].fn == nullptr) return false;
+    return true;
+}
+static_assert(registry_is_contiguous(), "generator registry must be contiguous from gen_version 1");
+} // namespace
+
+std::span<const GeneratorVersion> generator_versions() noexcept { return kGenerators; }
+uint16_t latest_gen_version() noexcept { return kGenerators[std::size(kGenerators) - 1].gen_version; }
+
 std::optional<GenChunk> generate(WorldSeed w, int32_t x, int32_t y, int16_t level) {
-    switch (w.gen_version) {
-        case 1: return generate_v1(w, x, y, level);
-        default: return std::nullopt;   // older versions stay here forever (append-only, §4.6)
-    }
+    if (w.gen_version == 0 || w.gen_version > std::size(kGenerators)) return std::nullopt;
+    return kGenerators[w.gen_version - 1].fn(w, x, y, level);
 }
 
 uint32_t spawn_stable_id(int32_t x, int32_t y, int16_t level, uint32_t index) {
