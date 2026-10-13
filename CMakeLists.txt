@@ -13,13 +13,17 @@ include(EngineModule)
 
 if(ENGINE_BUILD_TESTS)
     enable_testing()
-    include(Dependencies)
 endif()
+include(Dependencies)
 
 # Modules are added by their owners per docs/ARCHITECTURE.md.
 # Deterministic, engine-independent modules (§2.2 rule 2): no SDL, no I/O.
 add_subdirectory(engine/detmath)   # targets: eng::rng, eng::detmath
 add_subdirectory(engine/rules)     # target:  eng::rules5e
+
+# Engine core (ARCHITECTURE.md §2.1): base -> ecs, assets -> world.
+add_subdirectory(engine/base)      # target:  eng::base
+add_subdirectory(engine/core)      # targets: eng::ecs, eng::assets, eng::world
 
 # Content: validate every pack (content/packs/*) and the frozen compat corpus
 # (tests/compat/fl*/*) against schemas/ (§3). A private venv is created in the
