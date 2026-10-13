@@ -78,7 +78,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         at.reach_or_range_ft = uint8_t(melee ? geti(act, "reach", 5) : act.at("range").at(0).get<int>());
         c.attacks.push_back(at);
     }
-    if (schema_type == "monster") a.ai = assets::monster_ai_script(doc);
+    a.ai = assets::behavior_ai_script(doc);   // monster@2 / character@2
     by_id_[a.id] = std::move(a);
     return std::nullopt;
 }

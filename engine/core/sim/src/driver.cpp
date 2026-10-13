@@ -60,11 +60,11 @@ RunResult run_to_end(Combat& c, const PolicyFor& policy_for, uint32_t max_comman
     RunResult rr;
     uint16_t round = 0, turn = 0xFFFF;
     std::optional<CombatantId> target;
-    // Sync adapter: rules5e polls reactors inside step(); route each poll to the reactor's policy.
-    c.set_reaction_decider([&](const Combat& cc, const NeedsDecision& n) {
+    // Sync adapter: answer each NeedsDecision with the reactor's policy.
+    const ReactionDeciderFn decider = [&](const Combat& cc, const NeedsDecision& n) {
         IActorPolicy* p = policy_for(n.reactor);
         return p ? p->decide_reaction(cc, n) : ReactionDecision{n.window_seq, false, 0};
-    });
+    };
     while (!c.ended() && rr.commands < max_commands) {
         const CombatantId self = rules5e::current_actor(c.state());
         if (c.state().round != round || c.state().turn_index != turn) {
@@ -75,6 +75,7 @@ RunResult run_to_end(Combat& c, const PolicyFor& policy_for, uint32_t max_comman
         }
         const Command cmd = next_command(c, target);
         auto r = c.submit(cmd);
+        if (r.ok && r.status == StepStatus::NeedsDecision) r = c.settle(decider);
         ++rr.commands;
         if (!r.ok) {
             rr.error = r.error;

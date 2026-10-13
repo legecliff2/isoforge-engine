@@ -15,7 +15,7 @@ struct Archetype {
     std::string id;                       // "srd51.monster.goblin"
     std::string schema_type;              // "monster" | "character"
     rules5e::Combatant base{};            // id/team filled per spawn
-    std::optional<std::string> ai;        // monster behavior.ai (pack-relative)
+    std::optional<std::string> ai;        // behavior.ai (monster@2 / character@2), pack-relative
 };
 
 // Owns archetypes and the strings rules5e::Attack::id views into (stable addresses).

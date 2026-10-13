@@ -1,6 +1,9 @@
 #include <doctest/doctest.h>
 
+#include <fstream>
 #include <string>
+
+#include "assets/content_migrations.hpp"
 
 #include "sim/combat.hpp"
 #include "sim/driver.hpp"
@@ -54,6 +57,12 @@ void advance_to(Combat& c, CombatantId who) {
         REQUIRE(c.submit(e).ok);
     }
     REQUIRE(rules5e::current_actor(c.state()) == who);
+}
+
+bool has_event(const Combat& c, rules5e::EventKind k, CombatantId actor) {
+    for (auto& ev : c.events())
+        if (ev.kind == SimEvent::Kind::Rules && ev.rules.kind == k && ev.rules.actor == actor) return true;
+    return false;
 }
 } // namespace
 
@@ -118,45 +127,47 @@ TEST_CASE("grid: difficult terrain costs 10 ft and paths prefer to avoid it") {
     for (auto t : p) { const bool ok = t.x != 6 || t.y == 31; CHECK(ok); }   // only through the gap
 }
 
-namespace {
-bool has_event(const Combat& c, rules5e::EventKind k, CombatantId actor) {
-    for (auto& ev : c.events())
-        if (ev.kind == SimEvent::Kind::Rules && ev.rules.kind == k && ev.rules.actor == actor) return true;
-    return false;
-}
-} // namespace
-
-TEST_CASE("leaving reach opens a rules5e window; sync decider reacts => opportunity attack; log replays") {
+TEST_CASE("leaving reach: submit pauses with NeedsDecision; decide() resumes => opportunity attack; log replays") {
     auto lib = pack_content();
     auto chunk = arena({{kFighter, 5, 5}, {kGoblin, 6, 5}});
     ecs::Registry reg;
     auto c = Combat::create(reg, chunk, lib, 7);
     REQUIRE(c);
     const CombatantId fighter = chunk.spawns[0].stable_id, goblin = chunk.spawns[1].stable_id;
-    std::vector<NeedsDecision> asked;
-    c->set_reaction_decider([&](const Combat& cc, const NeedsDecision& n) {
-        asked.push_back(n);
-        CHECK(cc.pos(goblin) == Vec2i{6, 5});   // polled before the mover leaves
-        return ReactionDecision{n.window_seq, true, 0};
-    });
     advance_to(*c, goblin);
     // Direct opportunity attacks are refused (rules5e #11).
     Command oa;
     oa.request = {goblin, ActionKind::OpportunityAttack, fighter};
     CHECK_FALSE(c->submit(oa).ok);
+    const std::size_t log0 = c->log().size(), ev0 = c->events().size();
     Command step;
     step.kind = CommandKind::Step;
     step.to = {7, 5};
     auto r = c->submit(step);
     REQUIRE_MESSAGE(r.ok, r.error);
-    CHECK_FALSE(r.needs);   // sync adapter: answered inline
-    REQUIRE(asked.size() == 1);
-    CHECK(asked[0].reactor == fighter);
-    CHECK(asked[0].trigger_actor == goblin);
-    CHECK(asked[0].trigger == rules5e::ReactionTrigger::LeavingReach);
-    REQUIRE_FALSE(asked[0].options.empty());
-    REQUIRE(r.reactions.size() == 1);
-    CHECK(r.reactions[0].window_seq == asked[0].window_seq);
+    REQUIRE(r.status == StepStatus::NeedsDecision);
+    REQUIRE(r.needs);
+    CHECK(r.needs->reactor == fighter);
+    CHECK(r.needs->trigger_actor == goblin);
+    CHECK(r.needs->trigger == ReactionTrigger::LeavingReach);
+    REQUIRE_FALSE(r.needs->options.empty());
+    // Paused: the pending window is rules state; nothing applied, nothing logged.
+    REQUIRE(c->pending());
+    CHECK(c->pending()->window_seq == r.needs->window_seq);
+    CHECK(c->pos(goblin) == Vec2i{6, 5});
+    CHECK(c->log().size() == log0);
+    CHECK(c->events().size() == ev0);
+    CHECK_FALSE(rules5e::find(c->state(), fighter)->reaction_used);
+    // Anything but a decision is refused while paused; a wrong window seq is refused.
+    Command e;
+    e.request = {goblin, ActionKind::EndTurn};
+    CHECK_FALSE(c->submit(e).ok);
+    CHECK_FALSE(c->decide({r.needs->window_seq + 1, true, 0}).ok);
+    auto r2 = c->decide({r.needs->window_seq, true, 0});
+    REQUIRE_MESSAGE(r2.ok, r2.error);
+    CHECK(r2.status == StepStatus::Done);
+    CHECK_FALSE(c->pending());
+    REQUIRE(r2.reactions.size() == 1);
     CHECK(has_event(*c, rules5e::EventKind::ReactionWindowOpened, goblin));
     CHECK(has_event(*c, rules5e::EventKind::ReactionTaken, fighter));
     CHECK(has_event(*c, rules5e::EventKind::AttackResolved, fighter));
@@ -167,33 +178,40 @@ TEST_CASE("leaving reach opens a rules5e window; sync decider reacts => opportun
         CHECK(c->pos(goblin) == Vec2i{6, 5});   // dropped: move interrupted, no tile change
         CHECK(has_event(*c, rules5e::EventKind::MoveInterrupted, goblin));
     }
-    // The log (commands + recorded decisions) replays exactly without a decider.
+    // One log entry: rules' LoggedStep (Move + decision) + the destination tile.
+    REQUIRE(c->log().size() == log0 + 1);
+    CHECK(c->log().back().step.request.kind == ActionKind::Move);
+    CHECK(c->log().back().step.request.leaves_reach);
+    CHECK(c->log().back().step.reactions.size() == 1);
+    REQUIRE(c->log().back().to);
+    CHECK(*c->log().back().to == Vec2i{7, 5});
     ecs::Registry reg2;
     std::string err;
     auto rep = replay(reg2, chunk, lib, 7, c->log(), &err);
     REQUIRE_MESSAGE(rep, err);
     CHECK(rep->hash() == c->hash());
-    // Tampered decision: the log is authoritative, so replay follows it and diverges.
+    CHECK(rep->log_hash() == c->log_hash());
+    // Tampered decision: replay follows the log and diverges (or desyncs).
     auto bad = c->log();
-    for (auto& e : bad)
-        for (auto& rr : e.reactions) rr.decision.react = false;
+    for (auto& le : bad)
+        for (auto& rr : le.step.reactions) rr.decision.react = false;
     ecs::Registry reg3;
     auto rep3 = replay(reg3, chunk, lib, 7, bad, &err);
     const bool diverged = !rep3 || rep3->hash() != c->hash();
     CHECK(diverged);
 }
 
-TEST_CASE("declined reaction: move completes, no attack; only reactors actually left are polled") {
+TEST_CASE("sync settle() == async decide(); decline; poll-order hook; no window when no reach is left") {
     auto lib = pack_content();
     auto chunk = arena({{kFighter, 5, 5}, {kGoblin, 6, 5}, {kFighter, 7, 6}});
+    const CombatantId f1 = chunk.spawns[0].stable_id, goblin = chunk.spawns[1].stable_id, f2 = chunk.spawns[2].stable_id;
     ecs::Registry reg;
     auto c = Combat::create(reg, chunk, lib, 3);
     REQUIRE(c);
-    const CombatantId f1 = chunk.spawns[0].stable_id, goblin = chunk.spawns[1].stable_id, f2 = chunk.spawns[2].stable_id;
-    std::vector<CombatantId> polled;
-    c->set_reaction_decider([&](const Combat&, const NeedsDecision& n) {
-        polled.push_back(n.reactor);
-        return ReactionDecision{n.window_seq, false, 0};
+    std::vector<CombatantId> seen_eligible;
+    c->set_poll_order([&](const rules5e::EncounterState& s, const std::vector<CombatantId>& el) {
+        seen_eligible = el;
+        return default_poll_order(s, el);
     });
     advance_to(*c, goblin);
     Command step;
@@ -203,21 +221,123 @@ TEST_CASE("declined reaction: move completes, no attack; only reactors actually 
     step.to = {6, 4};   // f1 (5,5)->(6,4) dist 1: still in reach. f2 (7,6)->(6,4) dist 2: leaves
     auto r = c->submit(step);
     REQUIRE_MESSAGE(r.ok, r.error);
+    REQUIRE(r.needs);
+    CHECK(r.needs->reactor == f2);
+    CHECK(seen_eligible == std::vector<CombatantId>{f2});
+    std::vector<CombatantId> polled;
+    auto r2 = c->settle([&](const Combat&, const NeedsDecision& n) {
+        polled.push_back(n.reactor);
+        return ReactionDecision{n.window_seq, false, 0};
+    });
+    REQUIRE_MESSAGE(r2.ok, r2.error);
     CHECK(polled == std::vector<CombatantId>{f2});
     CHECK(has_event(*c, rules5e::EventKind::ReactionDeclined, f2));
     CHECK(c->pos(goblin) == Vec2i{6, 4});
     CHECK_FALSE(rules5e::find(c->state(), f2)->reaction_used);
+    // Same thing answered asynchronously gives the same state.
+    ecs::Registry reg2;
+    auto c2 = Combat::create(reg2, chunk, lib, 3);
+    advance_to(*c2, goblin);
+    auto a1 = c2->submit(step);
+    REQUIRE(a1.needs);
+    REQUIRE(c2->decide({a1.needs->window_seq, false, 0}).ok);
+    CHECK(c2->hash() == c->hash());
     // No window when nobody's reach is left.
-    polled.clear();
     const std::size_t n = c->events().size();
     if (c->state().budget.movement_ft >= 5) {
         step.to = {5, 4};   // f1 dist 1, f2 dist 2 (already outside)
-        REQUIRE(c->submit(step).ok);
-        CHECK(polled.empty());
+        auto r3 = c->submit(step);
+        REQUIRE(r3.ok);
+        CHECK(r3.status == StepStatus::Done);
         for (std::size_t i = n; i < c->events().size(); ++i)
             CHECK(c->events()[i].rules.kind != rules5e::EventKind::ReactionWindowOpened);
     }
     (void)f1;
+}
+
+TEST_CASE("teams: overrides.team names map to ids by byte order; spawn-order independent; fallbacks") {
+    auto lib = pack_content();
+    auto with_teams = [](std::vector<std::pair<std::string, std::string>> spawns) {   // (archetype, overrides)
+        std::vector<std::tuple<std::string, int, int>> s;
+        for (std::size_t i = 0; i < spawns.size(); ++i) s.push_back({spawns[i].first, int(2 + 2 * i), 2});
+        auto ch = arena(s);
+        for (std::size_t i = 0; i < spawns.size(); ++i) ch.spawns[i].overrides_json = spawns[i].second;
+        return ch;
+    };
+    auto team_of = [](const Combat& c, CombatantId id) { return rules5e::find(c.state(), id)->team; };
+    {   // fallback: characters "party", monsters "monsters"; "monsters" < "party"
+        auto ch = with_teams({{kFighter, ""}, {kGoblin, ""}});
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, lib, 1);
+        REQUIRE(c);
+        CHECK(c->team_names() == std::vector<std::string>{"monsters", "party"});
+        CHECK(team_of(*c, ch.spawns[0].stable_id) == 1);
+        CHECK(team_of(*c, ch.spawns[1].stable_id) == 0);
+        CHECK(reg.get<Team>(c->entity(ch.spawns[0].stable_id))->team == 1);   // ECS mirrors
+    }
+    {   // explicit names; reversed spawn order gives the same name -> id mapping
+        auto a = with_teams({{kFighter, R"({"team":"zeta"})"}, {kGoblin, R"({"team":"alpha"})"}, {kGoblin, R"({"team":"mid_1"})"}});
+        auto b = with_teams({{kGoblin, R"({"team":"mid_1"})"}, {kGoblin, R"({"team":"alpha"})"}, {kFighter, R"({"team":"zeta"})"}});
+        ecs::Registry ra, rb;
+        auto ca = Combat::create(ra, a, lib, 1);
+        auto cb = Combat::create(rb, b, lib, 1);
+        REQUIRE(ca);
+        REQUIRE(cb);
+        CHECK(ca->team_names() == std::vector<std::string>{"alpha", "mid_1", "zeta"});
+        CHECK(cb->team_names() == ca->team_names());
+        CHECK(team_of(*ca, a.spawns[0].stable_id) == 2);
+        CHECK(team_of(*ca, a.spawns[1].stable_id) == 0);
+        CHECK(team_of(*cb, b.spawns[0].stable_id) == 1);
+        CHECK(team_of(*cb, b.spawns[2].stable_id) == 2);
+    }
+    {   // same team => not hostile; other overrides keys ignored
+        auto ch = with_teams({{kFighter, R"({"team":"party"})"}, {kGoblin, R"({"team":"party","note":1})"}, {kGoblin, ""}});
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, lib, 1);
+        REQUIRE(c);
+        CHECK_FALSE(c->hostile(ch.spawns[0].stable_id, ch.spawns[1].stable_id));
+        CHECK(c->hostile(ch.spawns[0].stable_id, ch.spawns[2].stable_id));
+    }
+    for (const char* bad : {R"({"team":"Party"})", R"({"team":""})", R"({"team":3})", R"({"team":"9x"})"}) {
+        CAPTURE(bad);
+        auto ch = with_teams({{kFighter, bad}, {kGoblin, ""}});
+        ecs::Registry reg;
+        std::string err;
+        CHECK_FALSE(Combat::create(reg, ch, lib, 1, &err));
+        CHECK(err.find("overrides.team") != std::string::npos);
+    }
+}
+
+TEST_CASE("character@2: v1 migrates (no-op); behavior.ai is read for characters") {
+    assets::SchemaRegistry reg;
+    assets::register_content_schemas(reg);
+    CHECK(reg.check_chains().empty());
+    const std::string fighter = kPack + "/characters/fighter_1.json";
+    auto v1 = reg.load_file(fighter);
+    REQUIRE_MESSAGE(v1.ok, v1.error);
+    CHECK(v1.current.type == "character");
+    CHECK(v1.current.version == 2);
+    CHECK(v1.data["$schema"] == "character@2");
+    auto raw = assets::Json::parse(std::ifstream(fighter));
+    raw.erase("$schema");
+    auto migrated = v1.data;
+    migrated.erase("$schema");
+    CHECK(migrated == raw);   // no-op apart from $schema
+    CHECK_FALSE(assets::behavior_ai_script(v1.data));
+
+    ContentLibrary lib;
+    auto doc = v1.data;
+    doc["id"] = "test.character.npc_ally";
+    doc["behavior"] = {{"ai", "scripts/ai/skirmisher.luau"}};
+    REQUIRE_FALSE(lib.add(doc, "character"));
+    const Archetype* a = lib.find("test.character.npc_ally");
+    REQUIRE(a);
+    REQUIRE(a->ai);
+    CHECK(*a->ai == "scripts/ai/skirmisher.luau");
+    CHECK(a->base.is_pc);
+    auto pack = pack_content();
+    CHECK_FALSE(pack.find(kFighter)->ai);   // sample fighter has no behavior => built-in policy
+    CHECK(pack.find(kGoblin)->ai);
 }
 
 TEST_CASE("step validation: walls, occupied tiles, movement budget; attacks need reach") {

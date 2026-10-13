@@ -1,15 +1,12 @@
 #pragma once
 // Combat state machine v0: chunk spawns -> ECS entities + rules5e encounter; grid movement;
-// opportunity attacks through rules5e LeavingReach reaction windows (#11); a command log that
-// alone replays the fight.
+// opportunity attacks through rules5e LeavingReach reaction windows; the rules5e action log
+// (plus each Move's destination tile) alone replays the fight.
 //
-// Reaction windows: rules5e owns the window (eligibility, polling order = initiative after the
-// current actor, options, resolution, MoveInterrupted). sim supplies `leaves_reach` on each Move
-// and `hooks.in_range` from grid positions. Decisions use rules5e's sync `decide_reaction` hook,
-// adapted to sim's NeedsDecision -> ReactionDecision shape so the planned async step
-// (step() returns NeedsDecision, resumed by a ReactionDecision request) swaps in behind
-// `submit()` without changing callers: today every NeedsDecision is answered inline by the
-// decider; later submit() returns `needs` and callers send a Decide command.
+// Reaction windows are owned by rules5e (#11/#15): sim flags `leaves_reach` on each Move and
+// fills `hooks.in_range` from grid positions. Async: submit() may return NeedsDecision (the
+// pending window lives in EncounterState; read it with pending()); answer with decide(), which
+// sends rules5e::decision_request. settle() is the sync adapter for AI/tests.
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -28,45 +25,32 @@ namespace eng::sim {
 
 using rules5e::CombatantId;
 
-// ---- Reaction windows (sim view of rules5e windows; async-ready shape) -----------------------
-using rules5e::ReactionTrigger;
+// ---- Reaction windows: rules5e types ------------------------------------------------------
+using rules5e::NeedsDecision;
+using rules5e::PollOrderFn;
+using rules5e::ReactionDecision;
 using rules5e::ReactionOption;
-struct NeedsDecision {
-    uint32_t window_seq = 0;
-    ReactionTrigger trigger = ReactionTrigger::LeavingReach;
-    CombatantId reactor = 0;
-    CombatantId trigger_actor = 0;
-    std::vector<ReactionOption> options;
-    rules5e::ReactionWindow window{};   // full window (as in Rules #15's NeedsDecision)
-};
-struct ReactionDecision {
-    uint32_t window_seq = 0; bool react = false; uint8_t option = 0;
-    friend bool operator==(const ReactionDecision&, const ReactionDecision&) = default;
-};
+using rules5e::ReactionTrigger;
+using rules5e::StepStatus;
+using rules5e::default_poll_order;
 class Combat;
 // Sync decision adapter (AI, tests). Empty = decline.
 using ReactionDeciderFn = std::function<ReactionDecision(const Combat&, const NeedsDecision&)>;
 
-// ---- Commands (the replayable action log) ----------------------------------------------------
+// ---- Commands ---------------------------------------------------------------------------------
 enum class CommandKind : uint8_t {
     Rules,    // request: any rules5e ActionRequest for the current actor (sim fills target_within_5ft)
-    Step,     // to: move the current actor one tile (8-neighbour); may open a LeavingReach window
-    // Decide: reserved for the async Rules API (answer a pending window).
+    Step,     // to: move the current actor one tile (8-neighbour) -> rules5e Move{leaves_reach}
 };
 struct Command {
     CommandKind kind = CommandKind::Rules;
     rules5e::ActionRequest request{};
     Vec2i to{};
-    friend bool operator==(const Command& a, const Command& b) {
-        return a.kind == b.kind && a.request.actor == b.request.actor && a.request.kind == b.request.kind &&
-               a.request.target == b.request.target && a.request.attack_index == b.request.attack_index &&
-               a.request.move_ft == b.request.move_ft && a.to == b.to;
-    }
 };
-// Log entry: the command plus the Ask decisions rules recorded while it ran (rules5e::LoggedStep).
-struct LoggedCommand {
-    Command command;
-    std::vector<rules5e::ReactionRecord> reactions;
+// Replay log entry: rules5e's LoggedStep (request + Ask decisions) plus, for Moves, the tile.
+struct LogEntry {
+    rules5e::LoggedStep step;
+    std::optional<Vec2i> to;
 };
 
 struct SimEvent {
@@ -80,31 +64,38 @@ struct SimEvent {
 struct SubmitResult {
     bool ok = false;
     std::string error;
-    std::vector<rules5e::ReactionRecord> reactions;   // Ask decisions made during this command
-    // Async API (next Rules PR): set while a window waits for a decision. Always empty today.
-    std::optional<NeedsDecision> needs;
+    StepStatus status = StepStatus::Rejected;
+    std::optional<NeedsDecision> needs;               // status == NeedsDecision
+    std::vector<rules5e::ReactionRecord> reactions;   // Done: Ask decisions of the completed request
 };
+
+// Team ids: the distinct team names of the combatant spawns (overrides.team, else "party" for
+// characters / "monsters" for monsters), byte-sorted; id = index. Spawn-order independent.
+std::optional<std::string> spawn_team_name(const world::EntitySpawn& sp, const Archetype& a, std::string* error = nullptr);
 
 class Combat {
 public:
     // Spawns every chunk spawn whose archetype is in `content` as an ECS entity (StableId =
-    // spawn stable_id = CombatantId). Teams v0: characters 0, monsters 1. Rolls initiative.
+    // spawn stable_id = CombatantId). Teams: see spawn_team_name. Rolls initiative.
     static std::optional<Combat> create(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content,
                                         uint64_t seed, std::string* error = nullptr);
 
+    // Rejected while a decision is pending.
     SubmitResult submit(const Command& cmd);
-    // Replays one log entry: Ask polls are answered from the recorded decisions (desync = error).
-    SubmitResult submit_logged(const LoggedCommand& entry);
+    // Answers the pending window (rules5e::decision_request). May return the next NeedsDecision.
+    SubmitResult decide(const ReactionDecision& d);
+    // Answers windows with `decider` until nothing is pending. Returns the final result.
+    SubmitResult settle(const ReactionDeciderFn& decider);
+    std::optional<NeedsDecision> pending() const { return rules5e::pending_decision(state_); }
+    void set_poll_order(PollOrderFn f) { poll_order_ = std::move(f); }
 
-    void set_reaction_decider(ReactionDeciderFn f) { decider_ = std::move(f); }
-    // Async API placeholder: always empty until rules5e exposes pending windows.
-    const std::optional<NeedsDecision>& pending() const noexcept { return pending_; }
     bool ended() const noexcept { return state_.ended; }
     const rules5e::EncounterState& state() const noexcept { return state_; }
     const std::vector<SimEvent>& events() const noexcept { return events_; }
-    const std::vector<LoggedCommand>& log() const noexcept { return log_; }
+    const std::vector<LogEntry>& log() const noexcept { return log_; }
     uint64_t seed() const noexcept { return seed_; }
     const Grid& grid() const noexcept { return grid_; }
+    const std::vector<std::string>& team_names() const noexcept { return team_names_; }
     ecs::Registry& registry() const noexcept { return *reg_; }
 
     Vec2i pos(CombatantId id) const;
@@ -124,10 +115,12 @@ private:
     void apply_rules_events(const std::vector<rules5e::Event>& evs);
     void sync_ecs();
     void install_hooks();
-    SubmitResult run(const Command& cmd, const std::vector<rules5e::ReactionRecord>* replay);
-    SubmitResult rules_step(const rules5e::ActionRequest& req, const std::vector<rules5e::ReactionRecord>* replay);
-    SubmitResult do_rules(rules5e::ActionRequest req, const std::vector<rules5e::ReactionRecord>* replay);
-    SubmitResult do_step(Vec2i to, const std::vector<rules5e::ReactionRecord>* replay);
+    SubmitResult finish(rules5e::StepResult sr);
+    SubmitResult do_rules(rules5e::ActionRequest req);
+    SubmitResult do_step(Vec2i to);
+    bool move_tile(CombatantId mover, Vec2i to, const std::vector<rules5e::Event>& evs);
+    friend std::optional<Combat> replay(ecs::Registry&, const world::Chunk&, const ContentLibrary&, uint64_t,
+                                        const std::vector<LogEntry>&, std::string*);
     bool leaves_reach(CombatantId mover, Vec2i from, Vec2i to) const;
     int melee_reach_tiles(CombatantId id) const;   // 0 = no melee attack
     const Slot* slot(CombatantId id) const;
@@ -138,15 +131,15 @@ private:
     rules5e::EncounterState state_{};
     std::vector<Slot> slots_;              // in spawn order
     std::vector<SimEvent> events_;
-    std::vector<LoggedCommand> log_;
-    std::optional<NeedsDecision> pending_;   // async placeholder
-    ReactionDeciderFn decider_;
-    std::optional<Vec2i> step_to_;           // destination of the Step being resolved (in_range)
+    std::vector<LogEntry> log_;
+    std::vector<std::string> team_names_;
+    PollOrderFn poll_order_;
+    std::optional<Vec2i> step_to_;   // destination of the Move being resolved / paused (sim-only)
 };
 
 // Replays a command log from scratch (same chunk, content and seed) into `reg`.
 // Returns the rebuilt combat, or nullopt + error if any command is rejected (desync).
 std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content,
-                             uint64_t seed, const std::vector<LoggedCommand>& log, std::string* error = nullptr);
+                             uint64_t seed, const std::vector<LogEntry>& log, std::string* error = nullptr);
 
 } // namespace eng::sim
