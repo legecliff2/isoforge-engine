@@ -81,7 +81,7 @@ TEST_CASE("monster 2->3: features/traits effects marked inert; @3 passes through
 }
 
 TEST_CASE("sample pack goblin (monster@1 with presentation.ai) resolves behavior.ai") {
-    auto r = make().load_file(kRoot + "/content/packs/sample.vertical_slice/monsters/goblin.json");
+    auto r = make().load_file(kRoot + "/content/packs/srd51.core/monsters/goblin.json");
     REQUIRE_MESSAGE(r.ok, r.error);
     CHECK(monster_ai_script(r.data) == "scripts/ai/skirmisher.luau");
     if (r.data.contains("presentation")) CHECK_FALSE(r.data["presentation"].contains("ai"));

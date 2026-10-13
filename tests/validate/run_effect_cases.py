@@ -25,6 +25,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 VALIDATOR = ROOT / "tools" / "validate" / "validate_packs.py"
 SAMPLE = ROOT / "content" / "packs" / "sample.vertical_slice"
+CORE = ROOT / "content" / "packs" / "srd51.core"   # the sample depends on it
 
 
 def walk(doc, path):
@@ -55,11 +56,13 @@ def main() -> int:
         for case_path in cases:
             case = json.loads(case_path.read_text(encoding="utf-8"))
             pack = Path(tmp) / case_path.stem / SAMPLE.name
+            core = Path(tmp) / case_path.stem / CORE.name
             shutil.copytree(SAMPLE, pack)
-            target = pack / case["base"]
+            shutil.copytree(CORE, core)
+            target = pack / case["base"] if (pack / case["base"]).exists() else core / case["base"]
             target.write_text(json.dumps(apply(json.loads(target.read_text(encoding="utf-8")), case), indent=2),
                               encoding="utf-8")
-            r = subprocess.run([sys.executable, str(VALIDATOR), str(pack)], capture_output=True, text=True)
+            r = subprocess.run([sys.executable, str(VALIDATOR), str(core), str(pack)], capture_output=True, text=True)
             out = r.stdout + r.stderr
             if case["severity"] == "error":
                 ok = r.returncode != 0 and case["expect"] in out

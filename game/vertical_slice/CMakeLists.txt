@@ -2,7 +2,7 @@
 # SliceView (iso2d/render_api only) draws it. No game state on the render side.
 add_library(vertical_slice_session STATIC src/session.cpp src/event_feed.cpp)
 target_include_directories(vertical_slice_session PUBLIC src)
-target_link_libraries(vertical_slice_session PUBLIC eng::base eng::sim PRIVATE eng::world eng::ecs eng::rules5e)
+target_link_libraries(vertical_slice_session PUBLIC eng::base eng::sim PRIVATE eng::world eng::ecs eng::rules5e eng::assets)
 _engine_warnings(vertical_slice_session)
 
 add_library(vertical_slice_view STATIC src/slice_view.cpp)
@@ -16,7 +16,7 @@ if(ENGINE_BUILD_TESTS)
                           eng::sim eng::world eng::ecs
                           doctest::doctest_with_main)
     target_compile_definitions(vertical_slice_tests PRIVATE
-        SLICE_PACK="${PROJECT_SOURCE_DIR}/content/packs/sample.vertical_slice")
+        SLICE_PACK_ROOT="${PROJECT_SOURCE_DIR}/content/packs" SLICE_PACK="sample.vertical_slice")
     _engine_warnings(vertical_slice_tests)
     add_test(NAME vertical_slice_tests COMMAND vertical_slice_tests)
 endif()
@@ -26,6 +26,6 @@ if(ENGINE_WITH_SDL AND ENGINE_BACKEND_SDLGPU)
     target_link_libraries(vertical_slice PRIVATE vertical_slice_session vertical_slice_view
                           eng::platform eng::render_sdlgpu)
     target_compile_definitions(vertical_slice PRIVATE
-        SLICE_DEFAULT_PACK="${PROJECT_SOURCE_DIR}/content/packs/sample.vertical_slice")
+        SLICE_DEFAULT_PACK_ROOT="${PROJECT_SOURCE_DIR}/content/packs" SLICE_DEFAULT_PACK="sample.vertical_slice")
     _engine_warnings(vertical_slice)
 endif()
