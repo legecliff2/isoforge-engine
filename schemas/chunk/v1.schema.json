@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://isoforge.dev/schemas/chunk/v1.schema.json",
+  "title": "chunk@1",
+  "description": "Serialized eng::world::Chunk (ARCHITECTURE.md §5.2), field for field. kChunkSize = 32, kChunkLayers = 4 (ground, detail, walls, roof), kChunkFormatVersion = 1. layers[l] is row-major: cell index = y * 32 + x. Integers only (§4.3); content_hash is a 16-char lowercase hex string (xxHash3-64 of canonical JSON).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "format_version",
+    "coord",
+    "content_hash",
+    "palette",
+    "layers",
+    "spawns",
+    "triggers",
+    "origin"
+  ],
+  "$defs": {
+    "u8": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "u16": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535
+    },
+    "u32": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "tile_cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tile",
+        "elevation",
+        "flags"
+      ],
+      "properties": {
+        "tile": {
+          "$ref": "#/$defs/u16",
+          "description": "TileId: index into palette; 0 = empty."
+        },
+        "elevation": {
+          "$ref": "#/$defs/u8",
+          "description": "Height steps for iso stacking."
+        },
+        "flags": {
+          "$ref": "#/$defs/u8",
+          "description": "Bitfield: blocks_move | blocks_sight | difficult | water ... (bit assignment pending, see PR)."
+        }
+      }
+    },
+    "layer": {
+      "type": "array",
+      "minItems": 1024,
+      "maxItems": 1024,
+      "items": {
+        "$ref": "#/$defs/tile_cell"
+      },
+      "description": "kChunkSize * kChunkSize cells, row-major."
+    },
+    "entity_spawn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "archetype",
+        "tile",
+        "stable_id",
+        "overrides"
+      ],
+      "properties": {
+        "archetype": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)+$",
+          "description": "Content id, e.g. 'srd51.monster.goblin'."
+        },
+        "tile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "x",
+            "y"
+          ],
+          "description": "Vec2i, local to chunk.",
+          "properties": {
+            "x": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            },
+            "y": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            }
+          }
+        },
+        "stable_id": {
+          "$ref": "#/$defs/u32",
+          "description": "StableHash(coord, origin, index); same in every origin."
+        },
+        "overrides": {
+          "type": "object",
+          "description": "Per-instance data merged over the archetype ({} = none). Serialized form of EntitySpawn::overrides_json."
+        }
+      }
+    },
+    "hash_hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "xxHash3-64 (seed 0) of the chunk's canonical JSON, 16 lowercase hex digits. Canonical JSON = the whole document with the 'content_hash' key removed, object keys sorted by code point, no insignificant whitespace (separators ',' and ':'), integers in plain decimal, strings UTF-8 with no escaping beyond what JSON requires (non-ASCII written raw). See tools/validate/validate_packs.py:canonical_json."
+    }
+  },
+  "properties": {
+    "$schema": {
+      "const": "chunk@1"
+    },
+    "format_version": {
+      "const": 1
+    },
+    "coord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "level"
+      ],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "y": {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "level": {
+          "type": "integer",
+          "minimum": -32768,
+          "maximum": 32767
+        }
+      }
+    },
+    "content_hash": {
+      "$ref": "#/$defs/hash_hex"
+    },
+    "palette": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 65536,
+      "items": {
+        "type": "string"
+      },
+      "description": "TileId -> tile asset id. Index 0 is the empty tile and must be ''.",
+      "prefixItems": [
+        {
+          "const": ""
+        }
+      ]
+    },
+    "layers": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "$ref": "#/$defs/layer"
+      },
+      "description": "[ground, detail, walls, roof]."
+    },
+    "spawns": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entity_spawn"
+      }
+    },
+    "triggers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Script hooks / regions (serialized)."
+    },
+    "origin": {
+      "enum": [
+        "handcrafted",
+        "streamed",
+        "procedural"
+      ]
+    }
+  }
+}
