@@ -1,6 +1,6 @@
 {
   "$schema": "monster@1",
-  "id": "sample.vertical_slice.monster.goblin",
+  "id": "srd51.monster.goblin",
   "name": "Goblin",
   "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
   "size": "small",

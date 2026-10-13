@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://isoforge.dev/schemas/chunk/v1.schema.json",
   "title": "chunk@1",
-  "description": "Serialized eng::world::Chunk (ARCHITECTURE.md \u00a75.2), field for field. kChunkSize = 32, kChunkLayers = 4 (ground, detail, walls, roof), kChunkFormatVersion = 1. layers[l] is row-major: cell index = y * 32 + x. Integers only (\u00a74.3); uint64 values are decimal strings so they survive JSON parsers that use doubles.",
+  "description": "Serialized eng::world::Chunk (ARCHITECTURE.md §5.2), field for field. kChunkSize = 32, kChunkLayers = 4 (ground, detail, walls, roof), kChunkFormatVersion = 1. layers[l] is row-major: cell index = y * 32 + x. Integers only (§4.3); content_hash is a 16-char lowercase hex string (xxHash3-64 of canonical JSON).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -31,11 +31,6 @@
       "type": "integer",
       "minimum": 0,
       "maximum": 4294967295
-    },
-    "u64_string": {
-      "type": "string",
-      "pattern": "^(0|[1-9][0-9]{0,19})$",
-      "description": "uint64 as decimal string (validator range-checks <= 2^64-1)."
     },
     "tile_cell": {
       "type": "object",
@@ -76,7 +71,7 @@
         "archetype",
         "tile",
         "stable_id",
-        "overrides_json"
+        "overrides"
       ],
       "properties": {
         "archetype": {
@@ -109,11 +104,16 @@
           "$ref": "#/$defs/u32",
           "description": "StableHash(coord, origin, index); same in every origin."
         },
-        "overrides_json": {
-          "type": "string",
-          "description": "Optional per-instance data as serialized JSON ('' = none)."
+        "overrides": {
+          "type": "object",
+          "description": "Per-instance data merged over the archetype ({} = none). Serialized form of EntitySpawn::overrides_json."
         }
       }
+    },
+    "hash_hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "xxHash3-64 (seed 0) of the chunk's canonical JSON, 16 lowercase hex digits. Canonical JSON = the whole document with the 'content_hash' key removed, object keys sorted by code point, no insignificant whitespace (separators ',' and ':'), integers in plain decimal, strings UTF-8 with no escaping beyond what JSON requires (non-ASCII written raw). See tools/validate/validate_packs.py:canonical_json."
     }
   },
   "properties": {
@@ -150,7 +150,7 @@
       }
     },
     "content_hash": {
-      "$ref": "#/$defs/u64_string"
+      "$ref": "#/$defs/hash_hex"
     },
     "palette": {
       "type": "array",

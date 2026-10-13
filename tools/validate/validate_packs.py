@@ -2,6 +2,8 @@
 """Validate content packs against the versioned JSON Schemas (ARCHITECTURE.md §3).
 
 Usage:  python3 tools/validate/validate_packs.py [PACK_DIR ...]
+        python3 tools/validate/validate_packs.py --rehash [PACK_DIR ...]   # update chunk content_hash
+                                                                           # (never touches tests/compat)
 With no arguments it validates every pack under content/packs/ and every frozen
 compat pack under tests/compat/fl*/ . Exit code 0 = all valid.
 
@@ -20,8 +22,9 @@ from pathlib import Path
 try:
     from jsonschema import Draft202012Validator
     from referencing import Registry, Resource
+    import xxhash
 except ImportError:  # pragma: no cover
-    sys.exit("error: needs 'jsonschema>=4.18' (pip install -r tools/validate/requirements.txt)")
+    sys.exit("error: needs jsonschema + xxhash (pip install -r tools/validate/requirements.txt)")
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMAS = ROOT / "schemas"
@@ -59,6 +62,18 @@ def dice_average(expr: str) -> int:
     m = DICE_RE.match(expr)
     count, sides, bonus = int(m[1]), int(m[2]), int(m[3] or 0)
     return (count * (sides + 1)) // 2 + bonus
+
+
+def canonical_json(doc: dict) -> bytes:
+    """Canonical JSON for chunk content_hash: doc minus 'content_hash', keys sorted,
+    separators ',' ':', no whitespace, UTF-8 with non-ASCII written raw."""
+    body = {k: v for k, v in doc.items() if k != "content_hash"}
+    return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+                      allow_nan=False).encode("utf-8")
+
+
+def chunk_hash(doc: dict) -> str:
+    return xxhash.xxh3_64_hexdigest(canonical_json(doc))  # seed 0, 16 lowercase hex
 
 
 def load_registry() -> tuple[Registry, dict[str, dict]]:
@@ -124,8 +139,9 @@ def check_character(doc, errs, ctx):
 
 
 def check_chunk(doc, errs, ctx):
-    if int(doc["content_hash"]) > 0xFFFFFFFFFFFFFFFF:
-        errs.append("content_hash exceeds uint64")
+    want = chunk_hash(doc)
+    if doc["content_hash"] != want:
+        errs.append(f"content_hash {doc['content_hash']} != computed {want} (run with --rehash to update)")
     layers = doc["layers"]
     if len(layers) != CHUNK_LAYERS:
         errs.append(f"layers: {len(layers)} != kChunkLayers {CHUNK_LAYERS}")
@@ -147,11 +163,6 @@ def check_chunk(doc, errs, ctx):
         walls = layers[2][y * CHUNK_SIZE + x]
         if walls["flags"] & 1:
             errs.append(f"spawn {s['stable_id']} at ({x},{y}) is on a blocks_move cell")
-        if s["overrides_json"]:
-            try:
-                json.loads(s["overrides_json"])
-            except ValueError as e:
-                errs.append(f"spawn {s['stable_id']}: overrides_json is not valid JSON: {e}")
 
 
 CHECKS = {"monster": check_monster, "character": check_character, "chunk": check_chunk}
@@ -172,7 +183,10 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict) -> list[str]:
         return out + ["manifest.json missing"]
     ids = {d.get("id") for r, d in docs.items() if r != "manifest.json" and isinstance(d, dict)}
     deps = [d["id"] for d in man.get("depends", [])]
-    ctx = {"ids": ids, "external_ok": lambda a: any(a.startswith(dep + ".") for dep in deps)}
+    # srd51.* ids may be defined provisionally in-pack (until packs/srd51.core exists) or
+    # referenced without a definition; anything else must resolve in-pack or via depends.
+    ctx = {"ids": ids, "external_ok": lambda a: a.startswith("srd51.")
+           or any(a.startswith(dep + ".") for dep in deps)}
     if "contents" in man:
         listed = set(man["contents"])
         actual = set(docs) - {"manifest.json"}
@@ -189,8 +203,9 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict) -> list[str]:
             out.append(f"{rel}: unknown or missing $schema {tag!r}")
             continue
         typ = tag.split("@")[0]
-        if typ != "manifest" and not str(doc.get("id", "")).startswith(man.get("id", "") + ".") and typ != "chunk":
-            errs.append(f"id '{doc.get('id')}' must be namespaced under pack id '{man.get('id')}'")
+        did = str(doc.get("id", ""))
+        if typ not in ("manifest", "chunk") and not (did.startswith(man.get("id", "") + ".") or did.startswith("srd51.")):
+            errs.append(f"id '{did}' must be namespaced under pack id '{man.get('id')}' or srd51.")
         reject_floats(doc, "", errs)
         v = Draft202012Validator(by_tag[tag], registry=registry)
         schema_errs = sorted(v.iter_errors(doc), key=lambda e: list(map(str, e.absolute_path)))
@@ -207,8 +222,24 @@ def discover() -> list[Path]:
     return packs
 
 
+def rehash(packs: list[Path]) -> None:
+    """Author helper: rewrite content_hash in chunk files in place (text replace keeps formatting)."""
+    for pack in packs:
+        for f in sorted(pack.rglob("*.json")):
+            text = f.read_text(encoding="utf-8")
+            doc = json.loads(text)
+            if isinstance(doc, dict) and doc.get("$schema", "").startswith("chunk@"):
+                new = re.sub(r'"content_hash": "[^"]*"', f'"content_hash": "{chunk_hash(doc)}"', text, count=1)
+                if new != text:
+                    f.write_text(new, encoding="utf-8")
+                    print(f"rehashed {f}")
+
+
 def main(argv: list[str]) -> int:
     registry, by_tag = load_registry()
+    if argv[:1] == ["--rehash"]:
+        rehash([Path(a).resolve() for a in argv[1:]] or [p for p in discover() if "compat" not in p.parts])
+        return 0
     packs = [Path(a).resolve() for a in argv] or discover()
     if not packs:
         print("no packs found", file=sys.stderr)
