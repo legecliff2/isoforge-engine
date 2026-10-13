@@ -15,7 +15,7 @@ TEST_CASE("stable_hash is XXH3-64 (seed 0): reference vectors") {
 TEST_CASE("CanonicalHasher: integers are little-endian, strings length-prefixed") {
     eng::CanonicalHasher x, y;
     x.u32(0x04030201u);
-    for (uint8_t b : {1, 2, 3, 4}) y.byte(b);
+    for (uint8_t b : {uint8_t(1), uint8_t(2), uint8_t(3), uint8_t(4)}) y.byte(b);
     CHECK(x.value() == y.value());
     eng::CanonicalHasher s1, s2;
     s1.str("ab"); s1.str("c");
