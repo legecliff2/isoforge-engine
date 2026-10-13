@@ -308,22 +308,40 @@ TEST_CASE("teams: overrides.team names map to ids by byte order; spawn-order ind
     }
 }
 
-TEST_CASE("character@2: v1 migrates (no-op); behavior.ai is read for characters") {
+TEST_CASE("character@3: v1 -> v2 -> v3 chain; pre-@3 effects inert; behavior.ai is read") {
     assets::SchemaRegistry reg;
     assets::register_content_schemas(reg);
     CHECK(reg.check_chains().empty());
     const std::string fighter = kPack + "/characters/fighter_1.json";
-    auto v1 = reg.load_file(fighter);
+    auto raw = assets::Json::parse(std::ifstream(fighter));
+    CHECK(raw["$schema"] == "character@3");
+    auto cur = reg.load_file(fighter);   // already current: unchanged
+    REQUIRE_MESSAGE(cur.ok, cur.error);
+    CHECK(cur.current.version == 3);
+    CHECK(cur.data == raw);
+
+    auto old_doc = raw;
+    old_doc["$schema"] = "character@1";
+    auto v1 = reg.load(old_doc);
     REQUIRE_MESSAGE(v1.ok, v1.error);
     CHECK(v1.current.type == "character");
-    CHECK(v1.current.version == 2);
-    CHECK(v1.data["$schema"] == "character@2");
-    auto raw = assets::Json::parse(std::ifstream(fighter));
-    raw.erase("$schema");
-    auto migrated = v1.data;
-    migrated.erase("$schema");
-    CHECK(migrated == raw);   // no-op apart from $schema
+    CHECK(v1.current.version == 3);
+    CHECK(v1.data["$schema"] == "character@3");
+    auto expect = raw;
+    for (auto& f : expect["features"]) f["effect"]["inert"] = true;   // 2 -> 3 marks effects inert
+    CHECK(v1.data == expect);
     CHECK_FALSE(assets::behavior_ai_script(v1.data));
+    {
+        ContentLibrary old_lib;
+        auto d = v1.data;
+        d["id"] = "test.character.fighter_v1";
+        REQUIRE_FALSE(old_lib.add(d, "character"));
+        const Archetype* a = old_lib.find("test.character.fighter_v1");
+        REQUIRE(a);
+        CHECK(a->inert_features == std::vector<std::string>{"fighting_style_dueling (damage_bonus)",
+                                                            "second_wind (self_heal)"});
+        CHECK(a->base.attacks[0].damage == rules5e::DiceExpr{1, 8, 3});   // no Dueling applied
+    }
 
     ContentLibrary lib;
     auto doc = v1.data;

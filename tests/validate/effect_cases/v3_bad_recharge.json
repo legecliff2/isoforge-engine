@@ -1,0 +1,16 @@
+{
+  "base": "characters/fighter_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        1,
+        "effect",
+        "recharge"
+      ],
+      "dawn"
+    ]
+  ],
+  "severity": "error",
+  "expect": "/features/1/effect/recharge"
+}
