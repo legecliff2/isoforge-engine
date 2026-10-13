@@ -1,0 +1,12 @@
+# Stream goldens (format: docs/STREAMING.md "Stream golden files").
+# World: content/packs/sample.vertical_slice/chunks/0_0_0.json (FileChunkProvider) layered over
+# ProceduralProvider. Directives below apply to the following lines.
+@world sample_layered
+@gen_version 1
+@level 0
+# 2026-10-13: lines whose radius covers chunk (0,0) re-pinned after #17 added spawn
+# overrides.team to 0_0_0.json (content_hash f044f2c4660809ed -> 91d67970bc471e5f).
+# <world_seed_hex> <focus_x> <focus_y> <radius> <digest_u64>
+c0ffee 5 5 2 16848166243755828085
+c0ffee -50 -60 2 15176518323533859903
+c0ffee -130 70 2 16911436643138033795

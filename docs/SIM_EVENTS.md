@@ -13,7 +13,7 @@ struct SimEvent {
     Kind kind;
     rules5e::Event rules;   // Kind::Rules only (zero otherwise)
     CombatantId actor;      // TileMoved: mover (0 otherwise)
-    Vec2i tile;             // TileMoved: destination tile, chunk-local (zero otherwise)
+    Vec2i tile;             // TileMoved: destination tile in the combat grid frame (zero otherwise)
 };
 
 struct rules5e::Event { EventKind kind; CombatantId actor, target; int32_t a, b, c; uint8_t reaction_depth; };
@@ -64,6 +64,8 @@ struct rules5e::Event { EventKind kind; CombatantId actor, target; int32_t a, b,
 | 38 | SpellCheckRolled (v4) | counterer | | natural | total | success |
 
 `FeatureUsed` feature ids are 1-based indexes into the archetype's declared features (`features[]` then `traits[]`, see `sim/features.hpp`). A self-heal is followed by `Healed`, with actor and target both set to the user.
+
+**Tile frame.** A single-chunk combat (`Combat::create(reg, chunk, ...)`) uses chunk-local tiles, as in every schema version. A multi-chunk combat (`Combat::create(reg, span<const Chunk*>, ...)`) uses world tiles, `chunk.coord * 32 + local`. Field layout and meaning per combat are unchanged, so the version is not bumped. Consumers of a multi-chunk stream map tiles with `Grid::chunk_of`.
 
 `reaction_depth` is 0 for events of the action itself and 1 or more for events produced while a reaction resolves. For example, an opportunity attack's `AttackResolved` has depth 1.
 
