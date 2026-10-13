@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(isoforge LANGUAGES CXX)
+project(isoforge LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -7,6 +7,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(ENGINE_BUILD_TESTS "Build unit tests" ON)
 option(ENGINE_WARNINGS_AS_ERRORS "Treat warnings as errors (CI)" OFF)
+option(ENGINE_HEADLESS "Null renderer only: no SDL, no window (servers/CI)" OFF)
+option(ENGINE_BACKEND_SDLGPU "Build the SDL_GPU render backend" ON)
+option(ENGINE_BUILD_SANDBOX "Build the game/sandbox iso grid demo" ON)
+
+if(ENGINE_HEADLESS)
+    set(ENGINE_WITH_SDL OFF)
+else()
+    set(ENGINE_WITH_SDL ON)
+endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(EngineModule)
@@ -24,6 +33,21 @@ add_subdirectory(engine/rules)     # target:  eng::rules5e
 # Engine core (ARCHITECTURE.md §2.1): base -> ecs, assets -> world.
 add_subdirectory(engine/base)      # target:  eng::base
 add_subdirectory(engine/core)      # targets: eng::ecs, eng::assets, eng::world
+add_subdirectory(engine/procgen)   # targets: eng::procgen (base+detmath only), eng::procgen_world (glue)
+
+# Presentation stack (§2.1).
+add_subdirectory(engine/render/api)    # eng::render_api
+add_subdirectory(engine/render/null)   # eng::render_null
+add_subdirectory(engine/iso2d)         # eng::iso2d
+if(ENGINE_WITH_SDL)
+    add_subdirectory(engine/platform)  # eng::platform (SDL3)
+    if(ENGINE_BACKEND_SDLGPU)
+        add_subdirectory(engine/render/sdlgpu)  # eng::render_sdlgpu
+        if(ENGINE_BUILD_SANDBOX)
+            add_subdirectory(game/sandbox)
+        endif()
+    endif()
+endif()
 
 # Content: validate every pack (content/packs/*) and the frozen compat corpus
 # (tests/compat/fl*/*) against schemas/ (§3). A private venv is created in the
@@ -84,6 +108,17 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/validate_packs.py"
                          ${_script_check_args}
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        # Procedurally generated chunks must pass the same validator (schema + content_hash).
+        if(TARGET procgen_dump)
+            set(_pg_out "${CMAKE_BINARY_DIR}/procgen_preview_pack")
+            add_test(NAME procgen_pack_dump
+                     COMMAND procgen_dump g1-K3QZ7M2XAB4PE "${_pg_out}" 0,0,0 -1,-1,0 5,-3,-2 -1000000,123456,7)
+            set_tests_properties(procgen_pack_dump PROPERTIES FIXTURES_SETUP procgen_pack)
+            add_test(NAME procgen_pack_validate
+                     COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/validate_packs.py" "${_pg_out}"
+                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+            set_tests_properties(procgen_pack_validate PROPERTIES FIXTURES_REQUIRED procgen_pack)
+        endif()
     endif()
 endif()
 
@@ -103,3 +138,8 @@ if(ENGINE_BUILD_TESTS)
                      -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/compat_freeze/compat_freeze.cmake)
 endif()
 
+# Determinism lint over rules5e / detmath / sim / world/gen (§4.7). Registry: cmake/DetLint.cmake.
+include(DetLint)
+
+# Module dependency graph + include lint (§2.2 rules 1, 3-5). Must come after all modules.
+include(DepCheck)

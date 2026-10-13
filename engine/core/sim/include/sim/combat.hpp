@@ -1,0 +1,146 @@
+#pragma once
+// Combat state machine v0: chunk spawns -> ECS entities + rules5e encounter; grid movement;
+// opportunity attacks through rules5e LeavingReach reaction windows; the rules5e action log
+// (plus each Move's destination tile) alone replays the fight.
+//
+// Reaction windows are owned by rules5e (#11/#15): sim flags `leaves_reach` on each Move and
+// fills `hooks.in_range` from grid positions. Async: submit() may return NeedsDecision (the
+// pending window lives in EncounterState; read it with pending()); answer with decide(), which
+// sends rules5e::decision_request. settle() is the sync adapter for AI/tests.
+#include <cstdint>
+#include <functional>
+#include <map>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "base/math.hpp"
+#include "ecs/registry.hpp"
+#include "rules5e/encounter.hpp"
+#include "sim/components.hpp"
+#include "sim/content.hpp"
+#include "sim/events.hpp"
+#include "sim/grid.hpp"
+#include "world/chunk.hpp"
+
+namespace eng::sim {
+
+using rules5e::CombatantId;
+
+// ---- Reaction windows: rules5e types ------------------------------------------------------
+using rules5e::NeedsDecision;
+using rules5e::PollOrderFn;
+using rules5e::ReactionDecision;
+using rules5e::ReactionOption;
+using rules5e::ReactionTrigger;
+using rules5e::StepStatus;
+using rules5e::default_poll_order;
+class Combat;
+// Sync decision adapter (AI, tests). Empty = decline.
+using ReactionDeciderFn = std::function<ReactionDecision(const Combat&, const NeedsDecision&)>;
+
+// ---- Commands ---------------------------------------------------------------------------------
+enum class CommandKind : uint8_t {
+    Rules,    // request: any rules5e ActionRequest for the current actor (sim fills target_within_5ft)
+    Step,     // to: move the current actor one tile (8-neighbour) -> rules5e Move{leaves_reach}
+};
+struct Command {
+    CommandKind kind = CommandKind::Rules;
+    rules5e::ActionRequest request{};
+    Vec2i to{};
+};
+// Replay log entry: rules5e's LoggedStep (request + Ask decisions) plus, for Moves, the tile.
+struct LogEntry {
+    rules5e::LoggedStep step;
+    std::optional<Vec2i> to;
+};
+
+struct SubmitResult {
+    bool ok = false;
+    std::string error;
+    StepStatus status = StepStatus::Rejected;
+    std::optional<NeedsDecision> needs;               // status == NeedsDecision
+    std::vector<rules5e::ReactionRecord> reactions;   // Done: Ask decisions of the completed request
+};
+
+// Team ids: the distinct team names of the combatant spawns (overrides.team, else "party" for
+// characters / "monsters" for monsters), byte-sorted; id = index. Spawn-order independent.
+std::optional<std::string> spawn_team_name(const world::EntitySpawn& sp, const Archetype& a, std::string* error = nullptr);
+
+class Combat {
+public:
+    // Spawns every chunk spawn whose archetype is in `content` as an ECS entity (StableId =
+    // spawn stable_id = CombatantId). Teams: see spawn_team_name. Rolls initiative.
+    static std::optional<Combat> create(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content,
+                                        uint64_t seed, std::string* error = nullptr);
+
+    // Rejected while a decision is pending.
+    SubmitResult submit(const Command& cmd);
+    // Answers the pending window (rules5e::decision_request). May return the next NeedsDecision.
+    SubmitResult decide(const ReactionDecision& d);
+    // Answers windows with `decider` until nothing is pending. Returns the final result.
+    SubmitResult settle(const ReactionDeciderFn& decider);
+    std::optional<NeedsDecision> pending() const { return rules5e::pending_decision(state_); }
+    void set_poll_order(PollOrderFn f) { poll_order_ = std::move(f); }
+
+    bool ended() const noexcept { return state_.ended; }
+    const rules5e::EncounterState& state() const noexcept { return state_; }
+    const std::vector<SimEvent>& events() const noexcept { return events_; }
+    const std::vector<LogEntry>& log() const noexcept { return log_; }
+    uint64_t seed() const noexcept { return seed_; }
+    const Grid& grid() const noexcept { return grid_; }
+    const std::vector<std::string>& team_names() const noexcept { return team_names_; }
+    ecs::Registry& registry() const noexcept { return *reg_; }
+
+    Vec2i pos(CombatantId id) const;
+    ecs::Entity entity(CombatantId id) const;
+    const Archetype* archetype(CombatantId id) const;
+    std::vector<Vec2i> occupied_except(CombatantId id) const;   // tiles of other non-dead combatants
+    bool hostile(CombatantId a, CombatantId b) const;
+    // Active features (UseFeature): remaining uses (255 = unlimited), and whether usable now.
+    // Would stepping `mover` from `from` to `to` leave some hostile's melee reach?
+    bool would_leave_reach(CombatantId mover, Vec2i from, Vec2i to) const { return leaves_reach(mover, from, to); }
+    uint8_t feature_uses_left(CombatantId id, uint32_t feature_id) const;
+    bool can_use_feature(CombatantId id, uint32_t feature_id) const;
+
+    // Canonical hash (StableHash) of the event stream + final positions. Golden material.
+    uint64_t hash() const;
+    // Canonical hash of the command log alone.
+    uint64_t log_hash() const;
+
+private:
+    struct Slot { CombatantId id; ecs::Entity entity; const Archetype* archetype; };
+    Combat(ecs::Registry& reg, const world::Chunk& chunk) : reg_(&reg), grid_(chunk) {}
+    void apply_rules_events(const std::vector<rules5e::Event>& evs);
+    void sync_ecs();
+    void install_hooks();
+    SubmitResult finish(rules5e::StepResult sr);
+    SubmitResult do_rules(rules5e::ActionRequest req);
+    SubmitResult do_step(Vec2i to);
+    void on_completed(const rules5e::LoggedStep& ls);
+    bool move_tile(CombatantId mover, Vec2i to, const std::vector<rules5e::Event>& evs);
+    friend std::optional<Combat> replay(ecs::Registry&, const world::Chunk&, const ContentLibrary&, uint64_t,
+                                        const std::vector<LogEntry>&, std::string*);
+    bool leaves_reach(CombatantId mover, Vec2i from, Vec2i to) const;
+    int melee_reach_tiles(CombatantId id) const;   // 0 = no melee attack
+    const Slot* slot(CombatantId id) const;
+
+    ecs::Registry* reg_;
+    Grid grid_;
+    uint64_t seed_ = 0;
+    rules5e::EncounterState state_{};
+    std::vector<Slot> slots_;              // in spawn order
+    std::vector<SimEvent> events_;
+    std::vector<LogEntry> log_;
+    std::map<std::pair<CombatantId, uint32_t>, uint8_t> feature_used_;   // uses spent since recharge
+    std::vector<std::string> team_names_;
+    PollOrderFn poll_order_;
+    std::optional<Vec2i> step_to_;   // destination of the Move being resolved / paused (sim-only)
+};
+
+// Replays a command log from scratch (same chunk, content and seed) into `reg`.
+// Returns the rebuilt combat, or nullopt + error if any command is rejected (desync).
+std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content,
+                             uint64_t seed, const std::vector<LogEntry>& log, std::string* error = nullptr);
+
+} // namespace eng::sim

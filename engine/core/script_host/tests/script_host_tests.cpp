@@ -1,5 +1,7 @@
 #include <doctest/doctest.h>
 
+#include "scratch_dir.hpp"
+
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -205,8 +207,8 @@ TEST_CASE("typecheck: strict errors with file:line, overrides nonstrict, rejects
 }
 
 TEST_CASE("pack load fails on type errors and api_level mismatch") {
-    const auto dir = std::filesystem::temp_directory_path() / "isoforge_script_pack_test";
-    std::filesystem::remove_all(dir);
+    const ScratchDir scratch("script_pack_test");
+    const auto& dir = scratch.path;
     std::filesystem::create_directories(dir / "scripts");
     std::ofstream(dir / "manifest.json") << R"({"$schema":"manifest@1","api_level":1})";
     std::ofstream(dir / "scripts/bad.luau") << "local n: number = 'x'\nreturn {}\n";

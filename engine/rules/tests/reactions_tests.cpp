@@ -25,7 +25,7 @@ EncounterHooks everyone_in_range(bool react = true) {
     EncounterHooks h;
     h.in_range = [](const EncounterState&, const ReactionWindow&, const Combatant&) { return true; };
     h.decide_reaction = [react](const EncounterState&, const ReactionWindow&, const Combatant&,
-                                std::span<const ReactionOption>) { return ReactionDecision{react, 0}; };
+                                std::span<const ReactionOption>) { return ReactionDecision{0, react, 0}; };
     return h;
 }
 
@@ -137,16 +137,21 @@ TEST_CASE("polling order: initiative order starting after the current actor") {
     for (CombatantId id : {1u, 4u, 5u, 6u}) CHECK_FALSE(find(s, id)->reaction_used);
 }
 
-TEST_CASE("Ask without a decider declines; Auto takes option 0 without asking") {
+TEST_CASE("Ask without a decider pauses (NeedsDecision); Auto takes option 0 without asking") {
     EncounterHooks h;
     h.in_range = [](const EncounterState&, const ReactionWindow&, const Combatant&) { return true; };
     int asked = 0;
     auto s = begin_encounter({pc(1), monster(2)}, 5, nullptr, h);
     end_turns_until(s, 2);
     auto r = step(s, leave_move(2));
-    CHECK(count(r.events, EventKind::ReactionDeclined) == 1);
-    CHECK(r.reactions.size() == 1);
-    CHECK_FALSE(r.reactions[0].decision.react);
+    REQUIRE(r.status == StepStatus::NeedsDecision);
+    REQUIRE(r.needs.has_value());
+    CHECK(r.needs->reactor == 1);
+    auto d = step(s, decision_request(*r.needs, false, 0));
+    REQUIRE(d.status == StepStatus::Done);
+    CHECK(count(d.events, EventKind::ReactionDeclined) == 1);
+    REQUIRE(d.reactions.size() == 1);
+    CHECK_FALSE(d.reactions[0].decision.react);
     auto t = begin_encounter({pc(1), monster(2)}, 5, nullptr, h);
     t.hooks.decide_reaction = [&asked](const EncounterState&, const ReactionWindow&, const Combatant&,
                                        std::span<const ReactionOption>) { ++asked; return ReactionDecision{}; };
@@ -162,11 +167,11 @@ TEST_CASE("BeingHit: Shield-style AC bump before damage can turn a hit into a mi
     EncounterHooks h;
     h.being_hit_options = [](const EncounterState&, const ReactionWindow&, const Combatant& c) {
         std::vector<ReactionOption> o;
-        if (c.is_pc) o.push_back({ReactionOptionKind::AcBonus, 0, 5, 9001});
+        if (c.is_pc) o.push_back({0, ReactionOptionKind::AcBonus, 5, 9001});
         return o;
     };
     h.decide_reaction = [](const EncounterState&, const ReactionWindow&, const Combatant&,
-                           std::span<const ReactionOption>) { return ReactionDecision{true, 0}; };
+                           std::span<const ReactionOption>) { return ReactionDecision{0, true, 0}; };
     int windows = 0, turned = 0;
     for (uint64_t seed = 0; seed < 200; ++seed) {
         auto s = begin_encounter({pc(1), pc(4), monster(2)}, seed, nullptr, h);
@@ -197,7 +202,7 @@ TEST_CASE("BeingHit: Shield-style AC bump before damage can turn a hit into a mi
 TEST_CASE("BeingHit Auto only spends the reaction when it changes the outcome") {
     EncounterHooks h;
     h.being_hit_options = [](const EncounterState&, const ReactionWindow&, const Combatant&) {
-        return std::vector<ReactionOption>{{ReactionOptionKind::AcBonus, 0, 5, 9001}};
+        return std::vector<ReactionOption>{{0, ReactionOptionKind::AcBonus, 5, 9001}};
     };
     int used = 0, kept = 0;
     for (uint64_t seed = 0; seed < 200; ++seed) {
@@ -217,7 +222,7 @@ TEST_CASE("BeingHit Auto only spends the reaction when it changes the outcome") 
 
 TEST_CASE("SpellCast: counter stops the (stub) spell; counter-the-counter needs allow_chain") {
     auto counter_opts = [](const EncounterState&, const ReactionWindow&, const Combatant&) {
-        return std::vector<ReactionOption>{{ReactionOptionKind::Counter, 0, 0, 4242}};
+        return std::vector<ReactionOption>{{0, ReactionOptionKind::Counter, 0, 4242}};
     };
     for (bool chain : {false, true}) {
         EncounterHooks h = everyone_in_range();
@@ -260,7 +265,7 @@ TEST_CASE("ReadiedTrigger: Ask decline keeps the readied action; accept fires it
                                  std::span<const ReactionOption> o) {
         CHECK(w.trigger == kReady);
         CHECK(o.size() == 1);
-        return ReactionDecision{*accept, 0};
+        return ReactionDecision{0, *accept, 0};
     };
     auto s = begin_encounter({pc(1), monster(2)}, 5, nullptr, h);
     mut(s, 2).hp = mut(s, 2).hp_max = 200;
@@ -285,7 +290,7 @@ TEST_CASE("no chaining by default: an opportunity attack's hit doesn't open Bein
     for (bool chain : {false, true}) {
         EncounterHooks h = everyone_in_range();
         h.being_hit_options = [](const EncounterState&, const ReactionWindow&, const Combatant&) {
-            return std::vector<ReactionOption>{{ReactionOptionKind::AcBonus, 0, 5, 1}};
+            return std::vector<ReactionOption>{{0, ReactionOptionKind::AcBonus, 5, 1}};
         };
         if (chain) h.allow_chain = [](const EncounterState&, const ReactionWindow&) { return true; };
         int nested = 0;
@@ -308,14 +313,14 @@ TEST_CASE("replay with reactions: logged decisions reproduce the state bit for b
         h.end_condition = end_when_no_pc_or_no_opponent;
         h.being_hit_options = [](const EncounterState&, const ReactionWindow&, const Combatant& c) {
             std::vector<ReactionOption> o;
-            if (c.is_pc) o.push_back({ReactionOptionKind::AcBonus, 0, 5, 9001});
+            if (c.is_pc) o.push_back({0, ReactionOptionKind::AcBonus, 5, 9001});
             return o;
         };
         h.decide_reaction = nullptr;
         if (with_decider)   // "AI": deterministic but state-dependent choices
             h.decide_reaction = [](const EncounterState& st, const ReactionWindow& w, const Combatant& r,
                                    std::span<const ReactionOption>) {
-                return ReactionDecision{((st.round + r.id + w.seq) % 3) != 0, 0};
+                return ReactionDecision{0, ((st.round + r.id + w.seq) % 3) != 0, 0};
             };
         return h;
     };

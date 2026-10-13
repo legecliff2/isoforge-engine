@@ -21,6 +21,14 @@ struct TurnBudget {
     uint8_t attacks_remaining = 0;     // Extra Attack: further attacks from the Attack action taken this turn
 };
 
+// Answer to a reaction window (names/layout shared with sim::Combat).
+struct ReactionDecision {
+    uint32_t window_seq = 0;           // the window being answered (ignored when returned by decide_reaction)
+    bool react = false;
+    uint8_t option = 0;                // index into NeedsDecision::options
+    friend bool operator==(const ReactionDecision&, const ReactionDecision&) = default;
+};
+
 struct ActionRequest {
     CombatantId actor; ActionKind kind; CombatantId target = 0;
     uint8_t attack_index = 0; int16_t move_ft = 0;
@@ -34,6 +42,16 @@ struct ActionRequest {
     bool leaves_reach = false;         // Move: sim says this move leaves some creature's reach (LeavingReach)
     uint32_t spell_id = 0;             // CastSpell (stub): content id of the spell
     uint8_t spell_level = 0;           // CastSpell (stub): slot level (0 = cantrip)
+    ReactionDecision decision{};       // ReactionDecision: the answer (actor = reactor)
+    int16_t amount = 0;                // Heal: hit points (target = creature healed)
+    Skill skill = Skill::Athletics;    // AbilityCheck: skill (actor = creature checking)
+    int16_t dc = 0;                    // AbilityCheck
+    RollMode check_mode = RollMode::Normal;  // AbilityCheck: extra roll-mode source
+    // appended (UseFeature): content feature id (opaque to rules; sim's feature registry) and an
+    // optional self-heal rolled from the encounter rng. Spends the action, or the bonus action
+    // when as_bonus_action (the feature itself grants it). Uses/recharge are tracked by sim.
+    uint32_t feature_id = 0;
+    DiceExpr heal_dice{0, 0, 0};
 };
 
 enum class EventKind : uint8_t {
@@ -44,7 +62,9 @@ enum class EventKind : uint8_t {
     Healed, ConditionRemoved, MedicineCheck, Helped, Hid, Readied, ReadyTriggered, ReadyExpired,
     CheckRolled,
     ReactionWindowOpened, ReactionTaken, ReactionDeclined, MoveInterrupted, SpellCast, SpellCountered,
-    SpellResolved, AcBonus };
+    SpellResolved, AcBonus,
+    // appended:
+    FeatureUsed };
 
 // Flat tagged event; meaning of a/b/c per kind:
 //   InitiativeRolled a=total; TurnStarted a=round; AttackResolved a=natural b=total c=hit|crit<<1;
@@ -57,7 +77,7 @@ enum class EventKind : uint8_t {
 //   ReactionWindowOpened actor=trigger actor a=ReactionTrigger b=window seq;
 //   ReactionTaken/Declined actor=reactor a=ReactionTrigger b=window seq c=option index;
 //   MoveInterrupted a=feet requested; SpellCast/SpellResolved/SpellCountered a=spell_id b=level;
-//   AcBonus a=bonus b=new AC.
+//   AcBonus a=bonus b=new AC; FeatureUsed a=feature_id b=bonus action (0/1) (Healed follows for self-heals).
 // reaction_depth: 0 for the action itself, 1+ for events produced while resolving a reaction.
 struct Event { EventKind kind; CombatantId actor = 0, target = 0; int32_t a = 0, b = 0, c = 0;
                uint8_t reaction_depth = 0; };
@@ -74,6 +94,7 @@ struct ReactionWindow {
     CombatantId target = 0;           // BeingHit: creature hit
     int16_t     attack_total = 0;     // BeingHit
     int8_t      attack_natural = 0;   // BeingHit
+    int16_t     target_ac = 0;        // BeingHit: AC the total was compared to (AC + cover + reaction bonus)
     uint32_t    spell_id = 0;         // SpellCast
     uint8_t     spell_level = 0;      // SpellCast
     uint8_t     depth = 0;            // 0 = opened by an action; 1+ = opened inside a reaction (chain)
@@ -81,15 +102,21 @@ struct ReactionWindow {
 
 enum class ReactionOptionKind : uint8_t { Attack, AcBonus, Counter, FireReady };
 struct ReactionOption {
-    ReactionOptionKind kind;
-    uint8_t  attack_index = 0;        // Attack: index into reactor.attacks
+    uint8_t  attack_index = 0;        // Attack: index into reactor.attacks (first, so {idx} = an attack option)
+    ReactionOptionKind kind = ReactionOptionKind::Attack;
     int8_t   ac_bonus = 0;            // AcBonus: e.g. +5 for Shield
     uint32_t option_id = 0;           // content id (e.g. the Shield / Counterspell spell id)
 };
 
-struct ReactionDecision { bool react = false; uint8_t option = 0; };
-// A decision made under Ask. Auto/Never are reproduced from state and are not logged.
-struct ReactionRecord { uint32_t window_seq; ReactionTrigger trigger; CombatantId reactor; ReactionDecision decision; };
+// Log entry for one reaction decision made under Ask (Auto/Never are reproduced from state and are
+// not logged). This is the only decision log format: completed requests carry their entries in
+// LoggedStep::reactions; decisions for a paused request live in EncounterState::pending->decided.
+// Sim stores rules' ActionLog as-is and has no separate Decide command.
+struct ReactionDecisionEntry {
+    uint32_t window_seq; ReactionTrigger trigger; CombatantId reactor; ReactionDecision decision;
+    friend bool operator==(const ReactionDecisionEntry&, const ReactionDecisionEntry&) = default;
+};
+using ReactionRecord = ReactionDecisionEntry;   // former name (kept for source compatibility)
 
 // ---- End condition (policy, overridable) ----
 enum class PcState : uint8_t { Conscious, Dying, Stable, Dead, Unconscious /* >0 HP, e.g. sleep */ };
@@ -106,7 +133,21 @@ struct EncounterOutcome {
 struct EncounterState;
 using EndConditionFn = std::function<std::optional<EncounterOutcome>(const EncounterState&)>;
 
+// A paused action. The state is left as it was *before* the action; when the decision arrives the
+// action is re-run deterministically from that state with all decisions so far, so the async and
+// synchronous paths are bit-identical by construction.
+struct PendingDecision {
+    ActionRequest request;                 // the paused request (any loggable kind)
+    std::vector<ReactionRecord> decided;   // decisions already given for this request, in order
+    ReactionWindow window;                 // the window waiting for an answer
+    CombatantId reactor;
+    std::vector<ReactionOption> options;
+};
+
 struct ReadiedAction { CombatantId actor; ActionRequest response; uint32_t trigger_id; };
+
+using PollOrderFn = std::function<std::vector<CombatantId>(const EncounterState&,
+                                                           const std::vector<CombatantId>& eligible_in_initiative_order)>;
 
 struct EncounterHooks {
     // Checked after every state change. Empty = default_end_condition.
@@ -118,7 +159,9 @@ struct EncounterHooks {
     std::function<bool(const EncounterState&, const ReadiedAction&, const Event& e)> ready_trigger;
 
     // ---- Reaction windows (all optional; filled by sim / content / AI / UI) ----
-    // Answers Ask-policy polls. Empty = decline.
+    // Synchronous decider (convenience adapter for AI and tests). When set, step() answers each
+    // NeedsDecision itself by calling this and resubmitting, so it never returns NeedsDecision.
+    // Empty = step() returns NeedsDecision and the caller answers with a ReactionDecision request.
     std::function<ReactionDecision(const EncounterState&, const ReactionWindow&, const Combatant& reactor,
                                    std::span<const ReactionOption>)> decide_reaction;
     // Range/reach/sight test for a would-be reactor. Empty = LeavingReach/SpellCast: nobody in range;
@@ -127,6 +170,9 @@ struct EncounterHooks {
     // Content-provided options (Shield-style AC bumps, Counterspell-style counters). Empty = none.
     std::function<std::vector<ReactionOption>(const EncounterState&, const ReactionWindow&, const Combatant&)> being_hit_options;
     std::function<std::vector<ReactionOption>(const EncounterState&, const ReactionWindow&, const Combatant&)> spell_cast_options;
+    // Order in which eligible reactors are polled; receives them in initiative order and returns
+    // the order to ask (may drop ids; unknown ids are ignored). Empty = default_poll_order.
+    PollOrderFn poll_order;
     // Reactions don't chain: a window that would open while resolving a reaction (depth >= 1), and
     // Ready triggers on events produced by reactions, are skipped unless this returns true.
     std::function<bool(const EncounterState&, const ReactionWindow& nested)> allow_chain;
@@ -142,19 +188,44 @@ struct EncounterState {
     std::optional<EncounterOutcome> outcome;
     std::vector<ReadiedAction> readied;  // in the order they were readied
     uint32_t next_window_seq = 0;        // reaction windows opened so far
+    std::optional<PendingDecision> pending;   // set while an action waits for a reaction decision
     EncounterHooks hooks;                // behaviour, not state: never serialized/hashed
 };
 
-struct StepResult {
-    bool ok; std::string_view error; std::vector<Event> events;
-    std::vector<ReactionRecord> reactions = {};   // Ask decisions made during this step, in order
-    bool desync = false;                          // replay_step: logged decisions didn't match
-};
-
-// Action log entry: the request plus the reaction decisions it needed. Replaying the log with the
-// same seed, combatants, and hooks (minus decide_reaction) reproduces the state bit for bit.
+// Action log entry: the request plus the reaction decisions it needed. Every state-changing call
+// (turn actions, Heal, AbilityCheck) is a request, so the log alone is a complete replay given
+// the same seed, combatants, and hooks (decide_reaction is not needed).
 struct LoggedStep { ActionRequest request; std::vector<ReactionRecord> reactions; };
 using ActionLog = std::vector<LoggedStep>;
+
+enum class StepStatus : uint8_t { Rejected, Done, NeedsDecision };
+
+// Everything a UI needs to show the prompt (also returned by pending_decision(state)).
+struct NeedsDecision {
+    uint32_t window_seq = 0;
+    ReactionTrigger trigger = ReactionTrigger::LeavingReach;
+    CombatantId reactor = 0;
+    CombatantId trigger_actor = 0;     // mover / attacker / caster / creature whose event fired the Ready
+    std::vector<ReactionOption> options;
+    ReactionWindow window{};           // full window details (same values as the fields below)
+    // appended (prompt details; 0 when not applicable):
+    CombatantId target = 0;            // BeingHit: creature hit (= reactor); SpellCast: the spell's target
+    int16_t attack_total = 0;          // BeingHit: attack roll total ...
+    int16_t target_ac = 0;             //   ... vs this AC (includes cover and current reaction bonus)
+    int8_t  attack_natural = 0;        // BeingHit: d20 natural (20 = crit, AC bonuses can't help)
+    uint32_t spell_id = 0;             // SpellCast: spell being cast
+    uint8_t spell_level = 0;           // SpellCast: its slot level (0 = cantrip)
+};
+NeedsDecision make_needs_decision(const ReactionWindow&, CombatantId reactor, std::vector<ReactionOption> options);
+
+struct StepResult {
+    bool ok; std::string_view error; std::vector<Event> events;
+    std::vector<ReactionRecord> reactions = {};   // Done: all Ask decisions of this request, in order
+    bool desync = false;                          // replay_step: logged decisions didn't match
+    StepStatus status = StepStatus::Rejected;     // ok == (status != Rejected)
+    std::optional<NeedsDecision> needs = {};      // NeedsDecision: what to ask; `events` are provisional
+    std::optional<LoggedStep> logged = {};        // Done: the entry to append to the action log
+};
 
 bool is_conscious(const Combatant&);
 PcState pc_state(const Combatant&);
@@ -176,16 +247,28 @@ EncounterState begin_encounter(std::vector<Combatant>, uint64_t seed,
 // Validates and applies one action. Invalid requests change nothing (ok = false).
 StepResult step(EncounterState&, const ActionRequest&);
 
-// step() and, on success, append {request, decisions} to `log`.
+// step() and, when a request completes (Done), append {request, decisions} to `log`.
+// Use it for every request, including ReactionDecision answers; only completed requests are logged.
 StepResult step_logged(EncounterState&, const ActionRequest&, ActionLog& log);
 // step() answering Ask polls from the logged decisions instead of hooks.decide_reaction.
 StepResult replay_step(EncounterState&, const LoggedStep&);
 
-// Healing from any source (spell, potion, feature). Content/game-layer driven; not an action.
+// Convenience wrappers: build a Heal / AbilityCheck request and step() it. Prefer step_logged with
+// the request so the call is logged.
 StepResult heal(EncounterState&, CombatantId target, int16_t amount);
+ActionRequest heal_request(CombatantId target, int16_t amount);
+ActionRequest check_request(CombatantId id, Skill, int dc, RollMode = RollMode::Normal);
+ActionRequest decision_request(const NeedsDecision&, bool react, uint8_t option = 0);
+ActionRequest decision_request(const NeedsDecision&, ReactionDecision);   // window_seq is taken from `needs`
+// The pending window as a NeedsDecision (nullopt if nothing is pending).
+std::optional<NeedsDecision> pending_decision(const EncounterState&);
 
-// An ability (skill) check made during the encounter (content/sim driven, or internally by
-// Stabilize/Hide). Consumes Help's "next check" advantage if present. Not an action.
+// Default poll order: `eligible` reordered to initiative order starting after the current actor
+// (current actor last).
+std::vector<CombatantId> default_poll_order(const EncounterState&, const std::vector<CombatantId>& eligible);
+
+// An ability (skill) check made during the encounter (content/sim driven). Consumes Help's
+// "next check" advantage. Wrapper over step(check_request(...)).
 StepResult encounter_check(EncounterState&, CombatantId, Skill, int dc, RollMode = RollMode::Normal);
 
 std::vector<ActionRequest> legal_actions(const EncounterState&);   // for AI + UI (current actor)

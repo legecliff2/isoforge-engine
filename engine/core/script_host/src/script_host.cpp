@@ -537,12 +537,12 @@ PackScripts load_pack_scripts(ScriptHost& host, const std::filesystem::path& pac
             if (rel.size() < 5 || rel.compare(rel.size() - 5, 5, ".json") != 0) continue;
             auto doc = reg.load_file(pack_dir / rel);
             if (!doc.ok) {
-                if (doc.declared.type == "monster" || doc.error.find("unknown schema type") == std::string::npos)
+                if (doc.declared.type == "monster" || doc.declared.type == "character" || doc.error.find("unknown schema type") == std::string::npos)
                     out.errors.push_back(doc.error);
                 continue;
             }
-            if (doc.current.type != "monster") continue;
-            auto ai = assets::monster_ai_script(doc.data);
+            if (doc.current.type != "monster" && doc.current.type != "character") continue;
+            auto ai = assets::behavior_ai_script(doc.data);
             if (!ai) continue;
             auto it = out.scripts.find(*ai);
             if (it == out.scripts.end()) {
