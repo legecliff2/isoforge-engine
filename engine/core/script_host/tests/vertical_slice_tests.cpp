@@ -10,6 +10,7 @@
 #include <set>
 #include <string>
 
+#include "scratch_dir.hpp"
 #include "script_host/luau_policy.hpp"
 #include "sim/driver.hpp"
 #include "world/handcrafted_provider.hpp"
@@ -151,8 +152,8 @@ TEST_CASE("vertical slice: different seeds take different paths") {
 
 TEST_CASE("vertical slice: a character@2 with behavior.ai is driven by Luau") {
     namespace fs = std::filesystem;
-    const fs::path tmp = fs::temp_directory_path() / "isoforge_vs_character_v2";
-    fs::remove_all(tmp);
+    const ScratchDir scratch("vs_character_v2");
+    const fs::path& tmp = scratch.path;
     fs::copy(kPack, tmp, fs::copy_options::recursive);
     const fs::path fj = tmp / "characters" / "fighter_1.json";
     auto doc = assets::Json::parse(std::ifstream(fj));
@@ -165,5 +166,4 @@ TEST_CASE("vertical slice: a character@2 with behavior.ai is driven by Luau") {
     CHECK(o.luau_turns.at("srd51.character.fighter_1") > 0);
     CHECK(o.luau_turns.at("srd51.monster.goblin") > 0);
     CHECK(fight(5, tmp.string()).hash == o.hash);
-    fs::remove_all(tmp);
 }
