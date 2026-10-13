@@ -25,6 +25,7 @@
 #include <string_view>
 #include <vector>
 
+#include "assets/pack_set.hpp"
 #include "ecs/registry.hpp"
 #include "rng/rng.hpp"
 #include "sim/components.hpp"
@@ -99,12 +100,16 @@ private:
 struct PackScripts {
     bool ok = false;
     std::vector<std::string> errors;
-    std::map<std::string, ScriptId> scripts;   // pack-relative path -> id
+    std::map<std::string, ScriptId> scripts;   // script id "pack_id:path" -> loaded id
     // Monster archetype id -> its behavior.ai script (monster@2; monster@1 presentation.ai is
     // migrated). Monsters are the manifest "contents" .json files whose $schema is monster@N.
     std::map<std::string, ScriptId> ai_by_archetype;
     uint32_t api_level = 0;
 };
+// Every pack of an ordered set (resolved order; each pack's api_level must equal the host's).
+// behavior.ai resolves within the archetype's own pack. A set with errors is rejected.
+PackScripts load_pack_scripts(ScriptHost& host, const assets::PackSet& packs);
+// Adapter: load_pack_scripts(host, PackSet::from_pack_dir(pack_dir)).
 PackScripts load_pack_scripts(ScriptHost& host, const std::filesystem::path& pack_dir);
 // Typecheck only (no VM), as used by tools/script_check.
 struct PackCheck {

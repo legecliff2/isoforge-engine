@@ -1,11 +1,12 @@
 #pragma once
-// Game-side glue: loads sample.vertical_slice through the world module (FileChunkProvider)
+// Game-side glue: loads a pack set (default sample.vertical_slice) through the world module (FileChunkProvider)
 // and, optionally, runs Engine Core's headless sim fight (sim::Combat) one command at a time.
 // Produces ViewModel snapshots; it never touches the renderer.
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "view_model.hpp"
 
@@ -14,10 +15,16 @@ namespace slice {
 class Session {
 public:
     struct Options {
-        std::string pack_dir;
+        // assets::PackSet::resolve(pack_roots, packs); depends (e.g. srd51.core) come in through
+        // the set, never by being listed. The chunk comes from packs.front()'s chunks/0_0_0.json.
+        std::vector<std::string> pack_roots;
+        std::vector<std::string> packs;
         uint64_t    seed = 1;
         bool        with_sim = true;   // false: static chunk + spawns only
     };
+    // Config-file shape {"pack_roots": [...], "packs": [...]} (both optional) -> o. False + *error
+    // on malformed input.
+    static bool apply_pack_config(const std::string& json_text, Options& o, std::string* error);
     static std::unique_ptr<Session> open(const Options&, std::string* error);
     ~Session();
 

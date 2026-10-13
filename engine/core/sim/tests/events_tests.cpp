@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "sample_set.hpp"
 #include "sim/driver.hpp"
 #include "world/chunk_codec.hpp"
 #include "world/handcrafted_provider.hpp"
@@ -21,7 +22,7 @@ const std::string kPack = std::string(ENGINE_SOURCE_ROOT) + "/content/packs/samp
 
 ContentLibrary lib() {
     ContentLibrary l;
-    REQUIRE(l.load_pack(kPack).empty());
+    REQUIRE(l.load(sample_set()).empty());
     return l;
 }
 world::Chunk sample_chunk() {
