@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate content packs against the versioned JSON Schemas (ARCHITECTURE.md §3).
 
-Usage:  python3 tools/validate/validate_packs.py [PACK_DIR ...]
+Usage:  python3 tools/validate/validate_packs.py [--script-check SCRIPT_CHECK_EXE] [PACK_DIR ...]
         python3 tools/validate/validate_packs.py --rehash [PACK_DIR ...]   # update chunk content_hash
                                                                            # (never touches tests/compat)
 With no arguments it validates every pack under content/packs/ and every frozen
@@ -324,12 +324,32 @@ def rehash(packs: list[Path]) -> None:
                     print(f"rehashed {f}")
 
 
+def run_script_check(exe: str, pack: Path) -> list[str]:
+    """Strict Luau typecheck of the pack's scripts/**/*.luau with Engine Core's script_check
+    (exact pack-load environment, §3.3). Returns error lines; empty on success."""
+    import subprocess
+    try:
+        r = subprocess.run([exe, str(pack)], capture_output=True, text=True, timeout=300)
+    except OSError as e:
+        return [f"script_check: cannot run {exe}: {e}"]
+    if r.returncode == 0:
+        return []
+    lines = [l for l in (r.stderr + r.stdout).splitlines() if l.strip() and not l.startswith("ok ")]
+    return [f"script_check: {l}" for l in lines] or [f"script_check: exit code {r.returncode}"]
+
+
 def main(argv: list[str]) -> int:
     self_test()
     registry, by_tag = load_registry()
     if argv[:1] == ["--rehash"]:
         rehash([Path(a).resolve() for a in argv[1:]] or [p for p in discover() if "compat" not in p.parts])
         return 0
+    script_check = None
+    if argv[:1] == ["--script-check"]:
+        if len(argv) < 2:
+            print("--script-check needs an executable path", file=sys.stderr)
+            return 2
+        script_check, argv = argv[1], argv[2:]
     packs = [Path(a).resolve() for a in argv] or discover()
     if not packs:
         print("no packs found", file=sys.stderr)
@@ -337,6 +357,8 @@ def main(argv: list[str]) -> int:
     failed = 0
     for pack in packs:
         errs = validate_pack(pack, registry, by_tag)
+        if script_check:
+            errs += run_script_check(script_check, pack)
         name = pack.relative_to(ROOT) if pack.is_relative_to(ROOT) else pack
         if errs:
             failed += 1

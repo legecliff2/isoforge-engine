@@ -71,8 +71,18 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
         message(WARNING "content_validate disabled: Python3 not found")
     endif()
     if(_content_ok)
+        # Pack scripts are strict-typechecked inside this test with Engine Core's script_check
+        # (exact pack-load environment, §3.3; stock luau-analyze can't load engine defs).
+        set(_script_check_args "")
+        if(ENGINE_SCRIPT_CHECK_EXECUTABLE)
+            set(_script_check_args --script-check "${ENGINE_SCRIPT_CHECK_EXECUTABLE}")
+        else()
+            message(WARNING "content_validate: ENGINE_SCRIPT_CHECK_EXECUTABLE not set, "
+                            "pack scripts will not be type-checked")
+        endif()
         add_test(NAME content_validate
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/validate_packs.py"
+                         ${_script_check_args}
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
     endif()
 endif()
@@ -93,24 +103,3 @@ if(ENGINE_BUILD_TESTS)
                      -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/compat_freeze/compat_freeze.cmake)
 endif()
 
-# Content scripts: strict Luau typecheck of every pack (content/packs/*) and frozen compat pack
-# (tests/compat/fl*/*) with Engine Core's script_check, i.e. the exact pack-load environment
-# (§3.3). Stock luau-analyze can't load engine.level<N>.d.luau, so it is not used.
-if(ENGINE_BUILD_TESTS)
-    if(ENGINE_SCRIPT_CHECK_EXECUTABLE)
-        file(GLOB _script_packs
-             "${CMAKE_CURRENT_SOURCE_DIR}/content/packs/*/manifest.json"
-             "${CMAKE_CURRENT_SOURCE_DIR}/tests/compat/fl*/*/manifest.json")
-        list(SORT _script_packs)
-        set(_script_pack_dirs "")
-        foreach(m IN LISTS _script_packs)
-            get_filename_component(d "${m}" DIRECTORY)
-            list(APPEND _script_pack_dirs "${d}")
-        endforeach()
-        add_test(NAME content_script_check
-                 COMMAND ${ENGINE_SCRIPT_CHECK_EXECUTABLE} ${_script_pack_dirs})
-    else()
-        message(WARNING "content_script_check disabled: ENGINE_SCRIPT_CHECK_EXECUTABLE not set "
-                        "(engine/core/script_host not configured)")
-    endif()
-endif()

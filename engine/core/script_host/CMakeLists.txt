@@ -33,4 +33,4 @@ target_link_libraries(script_check PRIVATE eng::script_host)
 _engine_warnings(script_check)
 set(ENGINE_SCRIPT_CHECK_EXECUTABLE "$<TARGET_FILE:script_check>" CACHE INTERNAL
     "Generator expression for script_check (usage: script_check <pack_dir>...)")
-# The pack typecheck test (content_script_check) lives in the root CMakeLists.txt.
+# Pack scripts are type-checked by the root content_validate test (--script-check).
