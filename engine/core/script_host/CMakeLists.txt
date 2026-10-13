@@ -14,9 +14,9 @@ add_custom_command(
     VERBATIM)
 
 engine_add_module(script_host
-    SOURCES     src/script_host.cpp src/typecheck.cpp ${_api_cpp}
-    PUBLIC_DEPS ecs rng assets
-    TESTS       tests/script_host_tests.cpp)
+    SOURCES     src/script_host.cpp src/typecheck.cpp src/luau_policy.cpp ${_api_cpp}
+    PUBLIC_DEPS ecs rng assets sim
+    TESTS       tests/script_host_tests.cpp tests/vertical_slice_tests.cpp)
 target_link_libraries(eng_script_host PRIVATE Luau.VM Luau.Compiler Luau.Analysis)
 if(TARGET script_host_tests)
     target_compile_definitions(script_host_tests PRIVATE
