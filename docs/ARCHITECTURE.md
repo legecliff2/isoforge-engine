@@ -655,7 +655,7 @@ Movement on the grid is handled by `sim` (pathing; it flags a `Move` with `leave
 
 1. **Distance and reach.** Set `ActionRequest::target_within_5ft` (Attack, Help-on-attack, Stabilize, readied Attack) and `Move::leaves_reach`, and fill `hooks.in_range` (who can react to a LeavingReach or SpellCast window). Opportunity attacks always count as within 5 ft. Rules trust it for Prone/Paralyzed/Unconscious effects and adjacency checks.
 2. **Hide feasibility.** Check sight lines, cover, and obscurement before sending `Hide`. Compare `Combatant::stealth_total` against observers' passive Perception, and clear it when the creature is seen.
-3. **Readied Move cost.** A readied `Move` fires as a reaction and is capped only at speed. `sim` charges it against the readier's movement and paths it.
+3. **Readied Move cost.** A readied `Move` fires as a reaction and is capped only at speed. `sim` charges it against the readier's movement, paths it, and sets `leaves_reach` on the readied response when that path leaves someone's reach.
 4. **Ready triggers and chaining.** `sim` fills `hooks.ready_trigger`. Events produced inside a reaction (`Event::reaction_depth >= 1`) and windows nested inside a reaction are skipped unless `hooks.allow_chain` returns true; `sim` or content decides which chains are legal.
 5. **Help and Ready in `legal_actions`.** They need adjacency and trigger facts, so `legal_actions` leaves them out. `sim` builds those requests for AI and UI.
 6. **Source- and position-dependent conditions.** Charmed (can't attack the charmer; charmer's social advantage), Frightened (source in line of sight; can't move closer), sight/hearing checks for Blinded and Deafened, and grapple escape (contested check, then removing Grappled).
@@ -668,15 +668,30 @@ When an action reaches a trigger point, `rules5e` pauses it and opens a reaction
 |---|---|---|---|---|
 | `LeavingReach` | `Move` with `leaves_reach` (not after Disengage) | hostile to the mover, `in_range` | each melee attack | opportunity attack; if the mover drops or reaches speed 0, the move stops (`MoveInterrupted`, no movement spent) |
 | `BeingHit` | an attack that hits, before damage | the creature hit | `hooks.being_hit_options` (e.g. Shield +5 AC) | AC bump re-evaluates the hit; lasts until the reactor's next turn |
-| `SpellCast` | `CastSpell` (spells are stubs for now) | hostile to the caster, `in_range` | `hooks.spell_cast_options` (Counterspell-style) | countered spells don't resolve; a counter is a spell, so it can be countered in turn when chaining is allowed |
-| `ReadiedTrigger` | any event matching `hooks.ready_trigger` | the readier | fire the readied response | response runs as a reaction; declining keeps the readied action |
+| `SpellCast` | `CastSpell` (spells are stubs for now) | hostile to the caster, `in_range` | `hooks.spell_cast_options` (Counterspell-style) | countered spells don't resolve; a counter is a spell, so it can be countered in turn when chaining is allowed. TODO (spellcasting milestone, §7 Later): ability check when countering a spell above the counter's level; counters always succeed for now |
+| `ReadiedTrigger` | any event matching `hooks.ready_trigger` | the readier | fire the readied response | response runs as a reaction; declining keeps the readied action. A readied `Move` with `leaves_reach` opens its own LeavingReach window like any move (SRD), but its events don't fire other readied actions |
 
 - **Eligibility:** reaction unused, not incapacitated, `Combatant::reaction_policy[trigger] != Never`, in range, and at least one option.
-- **Polling order:** initiative order starting after the current actor, with the current actor last. Every eligible reactor is polled; polling stops early when the paused action can no longer continue.
-- **Policies:** each combatant has a policy per trigger. `Ask` calls `hooks.decide_reaction` (AI or player UI; empty means decline). `Auto` takes option 0 without asking; BeingHit Auto only reacts when the bump turns the hit into a miss. `Never` skips the combatant.
+- **Polling order:** a policy hook, `hooks.poll_order` (`PollOrderFn(state, eligible_in_initiative_order) -> ids`). The default, `default_poll_order`, is initiative order starting after the current actor, with the current actor last. Every eligible reactor is polled; polling stops early when the paused action can no longer continue.
+- **Policies:** each combatant has a policy per trigger. `Ask` needs a decision (see Async decisions). `Auto` takes option 0 without asking; BeingHit Auto only reacts when the bump turns the hit into a miss. `Never` skips the combatant.
 - **Budget:** reacting sets `reaction_used`, which resets at the start of the reactor's turn.
 - **No chaining:** windows that would open while a reaction resolves are skipped unless `hooks.allow_chain(state, nested_window)` allows them.
-- **Determinism:** every window gets a sequence number (`EncounterState::next_window_seq`). `Ask` decisions are returned in `StepResult::reactions` and stored with the request in the `ActionLog` (`step_logged`). `replay_step` answers `Ask` polls from the log instead of calling the decider, and flags `desync` if they don't match. `Auto`/`Never` follow from state and aren't logged. Replay needs the same seed, combatants, and hooks except `decide_reaction`.
+- **Window numbering:** `window_seq` comes from `EncounterState::next_window_seq`, which starts at 0 per encounter and goes up by 1 each time a window actually opens (it has at least one eligible reactor). That includes nested and ReadiedTrigger windows. A trigger point with no eligible reactor uses no number. While a request is paused, the state is the pre-request state, so `next_window_seq` is not yet advanced; the pending window's `window_seq` is the number it will consume.
+- **Determinism:** `Auto`/`Never` follow from state and aren't logged; every `Ask` decision is.
+
+#### Async decisions and the action log (API for `sim`)
+
+Player prompts must never block the game loop, so `Ask` is asynchronous:
+
+1. `step(state, request)` returns a `StepResult` with `status`:
+   - `Rejected`: invalid; the state is unchanged.
+   - `Done`: applied. `events` is the full event list and `logged` is the `LoggedStep` to append to the action log.
+   - `NeedsDecision`: paused at a reaction window. `needs` = `NeedsDecision{window_seq, trigger, reactor, trigger_actor, options, window}`; `pending_decision(state)` returns the same. `events` are provisional (what happened up to the pause, for UI context). The state is exactly as it was before the request, plus `state.pending`.
+2. While `state.pending` is set, every request except the answer is rejected. Answer with `decision_request(needs, react, option)`, which builds an `ActionRequest{actor = reactor, kind = ActionKind::ReactionDecision, decision = ReactionDecision{window_seq, react, option}}`. Rules reject an answer if `window_seq` or the reactor doesn't match, or if the option index is out of range. The answer may be `Done` or another `NeedsDecision`.
+3. On resume, rules re-run the paused request from the saved state with all decisions given so far. The async path is therefore bit-identical to the synchronous one by construction.
+4. **Synchronous adapter:** if `hooks.decide_reaction` is set, `step()` answers each `NeedsDecision` itself and never returns it. Use it for AI and tests. The decider sees the pre-request state plus the `ReactionWindow`.
+5. **Action log:** every state-changing call is an `ActionRequest`. That includes turn actions, `ActionKind::Heal` (`heal_request`) and `ActionKind::AbilityCheck` (`check_request`); `heal()` and `encounter_check()` are wrappers. `step_logged(state, request, log)` appends `{request, decisions}` once a request is `Done`, so pass every request through it, including decision answers. Replaying the log with `replay_step` and the same seed, combatants, and hooks (no decider needed) reproduces the state bit for bit; mismatches set `desync`.
+
 - Directly requested `OpportunityAttack` actions are rejected; opportunity attacks come only from LeavingReach windows.
 
 ### 5.4 Example versioned monster definition — `packs/srd51.core/monsters/goblin.json`

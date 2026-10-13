@@ -7,5 +7,5 @@ engine_add_module(rules5e
     TESTS       tests/dice_tests.cpp tests/attack_tests.cpp tests/initiative_tests.cpp
                 tests/damage_tests.cpp tests/golden_tests.cpp
                 tests/conditions_tests.cpp tests/saves_tests.cpp tests/encounter_tests.cpp
-                tests/healing_tests.cpp tests/actions_tests.cpp tests/reactions_tests.cpp
+                tests/healing_tests.cpp tests/actions_tests.cpp tests/reactions_tests.cpp tests/async_tests.cpp
     DETERMINISTIC)
