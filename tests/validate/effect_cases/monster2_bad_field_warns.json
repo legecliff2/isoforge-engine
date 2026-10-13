@@ -1,0 +1,19 @@
+{
+  "base": "monsters/goblin.json",
+  "sets": [
+    [
+      [
+        "traits",
+        0,
+        "effect",
+        "actions"
+      ],
+      [
+        "fly"
+      ]
+    ]
+  ],
+  "severity": "warning",
+  "expect": "inert in monster@2",
+  "schema": "monster@2"
+}

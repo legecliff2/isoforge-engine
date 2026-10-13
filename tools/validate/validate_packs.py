@@ -348,19 +348,19 @@ COMMON_ID = "https://isoforge.dev/schemas/common/v1.schema.json"
 
 def is_active_effects(tag: str) -> bool:
     """Whether the engine applies this document's feature effects (docs/CONTENT_COMPAT.md §1).
-    character@3+ (gated by the @2->@3 migration); monsters are not gated yet (always applied)."""
+    character@3+ and monster@3+; older files are migrated with effects marked inert."""
     typ, _, ver = tag.partition("@")
-    return typ == "monster" or (typ == "character" and ver.isdigit() and int(ver) >= 3)
+    return typ in ("character", "monster") and ver.isdigit() and int(ver) >= 3
 
 
 def effect_findings(rel: str, doc: dict, tag: str, registry: Registry) -> tuple[list[str], list[str]]:
     """(errors, warnings) for features[]/traits[] effects.
 
-    - 'inert' is reserved for the engine's character@2->@3 migration: error in every version.
+    - 'inert' is reserved for the engine's @2->@3 migrations: error in every version.
     - Unknown kinds: warning (the engine reports and ignores them).
-    - Known kinds, active documents (character@3+, monsters): the kind-tagged contract
+    - Known kinds, active documents (character@3+, monster@3+): the kind-tagged contract
       (common@1 $defs/effect) is an error; cost 'reaction' is reserved -> error.
-    - Known kinds, character@1/@2: effects are inert descriptions, so findings are warnings.
+    - Known kinds, character@1/@2, monster@1/@2: effects are inert descriptions, so findings are warnings.
     """
     errs, warns = [], []
     active = is_active_effects(tag)
@@ -372,8 +372,8 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry) -> tuple[
                 continue
             where = f"{rel}: /{key}/{i}/effect"
             if "inert" in eff:
-                errs.append(f"{where}: 'inert' is reserved for the engine's character@2->@3 migration; "
-                            "do not author it (use character@1/@2 for descriptive effects)")
+                errs.append(f"{where}: 'inert' is reserved for the engine's @2->@3 migrations; "
+                            "do not author it")
             kind = eff.get("kind")
             if not isinstance(kind, str):
                 continue
@@ -385,15 +385,15 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry) -> tuple[
             if eff.get("cost") == "reaction":
                 found.append("cost 'reaction' is reserved (not supported by the engine yet); "
                              "use 'action' or 'bonus_action'")
-            # character@3's own schema already reports contract violations as errors.
-            if not (active and tag.startswith("character@")):
+            # @3 schemas (trait_active) already report contract violations as errors.
+            if not active:
                 for e in sorted(v.iter_errors(eff), key=lambda e: list(map(str, e.absolute_path))):
                     path = "/".join(map(str, e.absolute_path))
                     found.append(f"{kind}{'.' + path if path else ''}: {e.message[:160]}")
             if active:
                 errs += [f"{where}: {m}" for m in found]
             else:
-                warns += [f"{where}: {m} (inert in {tag}; becomes an error if moved to character@3)" for m in found]
+                warns += [f"{where}: {m} (inert in {tag}; becomes an error at @3)" for m in found]
     return errs, warns
 
 
