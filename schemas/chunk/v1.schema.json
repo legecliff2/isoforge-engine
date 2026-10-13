@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://isoforge.dev/schemas/chunk/v1.schema.json",
+  "title": "chunk@1",
+  "description": "Serialized eng::world::Chunk (ARCHITECTURE.md §5.2), encoding per engine/core/world/chunk_codec.hpp (PR #4). kChunkSize = 32, kChunkLayers = 4 (ground, detail, walls, roof), kChunkFormatVersion = 1. Layers are compact: each is an object of optional 1024-entry row-major integer arrays (index = y*32 + x); an omitted array means all zeros. EntitySpawn.stable_id is computed by the loader and must NOT appear in files. content_hash (optional) is xxHash3-64 over the canonical little-endian binary serialization of the loaded Chunk (§4.5), not over the JSON. Integers only (§4.3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "coord",
+    "palette",
+    "layers",
+    "spawns",
+    "triggers",
+    "origin"
+  ],
+  "$defs": {
+    "u8": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "u16": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535
+    },
+    "u32": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "entity_spawn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "archetype",
+        "tile"
+      ],
+      "properties": {
+        "archetype": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)+$",
+          "description": "Content id, e.g. 'srd51.monster.goblin'."
+        },
+        "tile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "x",
+            "y"
+          ],
+          "description": "Vec2i, local to chunk.",
+          "properties": {
+            "x": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            },
+            "y": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            }
+          }
+        },
+        "overrides": {
+          "type": "object",
+          "description": "Per-instance data merged over the archetype. The loader stores its compact sorted-key dump in EntitySpawn::overrides_json ('' when absent or {})."
+        }
+      },
+      "not": {
+        "required": [
+          "stable_id"
+        ]
+      },
+      "description": "stable_id is computed by the loader (xxHash3-64 of i32 x, i32 y, i16 level, u32 spawn index; low ^ high 32 bits) and is forbidden in files."
+    },
+    "hash_hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "16 lowercase hex digits of compute_content_hash(chunk): XXH3-64 (seed 0) over u16 format_version, i32 x, i32 y, i16 level, u32 palette count + strings (u32 length + UTF-8 bytes), 4x1024 cells (u16 tile, u8 elevation, u8 flags), u32 spawn count + per spawn (str archetype, i32 x, i32 y, u32 stable_id, str overrides compact-sorted JSON or \"\"), u32 trigger count + compact-sorted JSON strings. All little-endian. origin is excluded."
+    },
+    "layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One layer; omitted arrays = all zeros.",
+      "properties": {
+        "tiles": {
+          "type": "array",
+          "minItems": 1024,
+          "maxItems": 1024,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "description": "TileId per cell (u16, index into palette; 0 = empty). Validator checks < palette length."
+        },
+        "elevation": {
+          "type": "array",
+          "minItems": 1024,
+          "maxItems": 1024,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "description": "Height steps for iso stacking (u8)."
+        },
+        "flags": {
+          "type": "array",
+          "minItems": 1024,
+          "maxItems": 1024,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 15
+          },
+          "description": "Tile flags (u8): bit0 blocks_move, bit1 blocks_sight, bit2 difficult, bit3 water; bits 4-7 reserved, must be 0."
+        }
+      }
+    },
+    "trigger": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "description": "Script hook / region. id and kind required; other fields free-form. Loader stores the compact sorted-key dump."
+    }
+  },
+  "properties": {
+    "$schema": {
+      "const": "chunk@1"
+    },
+    "format_version": {
+      "const": 1
+    },
+    "coord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "level"
+      ],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "y": {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "level": {
+          "type": "integer",
+          "minimum": -32768,
+          "maximum": 32767
+        }
+      }
+    },
+    "content_hash": {
+      "$ref": "#/$defs/hash_hex"
+    },
+    "palette": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 65536,
+      "prefixItems": [
+        {
+          "const": ""
+        }
+      ],
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "TileId -> tile asset id. Slot 0 is reserved for the empty tile and must be \"\"; all others non-empty."
+    },
+    "layers": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "$ref": "#/$defs/layer"
+      },
+      "description": "[ground, detail, walls, roof]."
+    },
+    "spawns": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entity_spawn"
+      }
+    },
+    "triggers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/trigger"
+      }
+    },
+    "origin": {
+      "enum": [
+        "handcrafted",
+        "streamed",
+        "procedural"
+      ]
+    }
+  }
+}

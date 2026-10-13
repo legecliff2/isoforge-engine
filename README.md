@@ -4,6 +4,32 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 This work includes material from the System Reference Document 5.1 ("SRD 5.1") by Wizards of the Coast LLC, licensed under CC-BY-4.0.
 
+## Content validation
+CTest runs `content_validate`, which checks every pack in `content/packs/` and the frozen
+corpus in `tests/compat/fl*/` against `schemas/<type>/v<N>.schema.json` (JSON Schema 2020-12,
+immutable once released), plus cross-checks (CR/XP, saves/skills, chunk sizes, `content_hash`).
+
+```sh
+cmake -S . -B build && cmake --build build
+ctest --test-dir build -R content_validate
+```
+At configure time CMake creates a private venv at `build/content-venv` (`Scripts/` on Windows,
+`bin/` elsewhere) and installs the pinned `tools/validate/requirements.txt` into it; system Python
+is never modified. That needs network on the first configure. If it fails, the test is disabled
+with a warning. Pass `-DENGINE_CONTENT_VALIDATE=OFF` to skip it entirely.
+
+Without CMake: `python3 -m venv .venv && .venv/bin/pip install -r tools/validate/requirements.txt && .venv/bin/python tools/validate/validate_packs.py`.
+
+Chunk files (`chunk@1`) use compact layers: `{"tiles"?, "elevation"?, "flags"?}`, each a 1024-entry row-major
+array (index = `y*32 + x`), omitted = all zeros. Flags: bit0 blocks_move, bit1 blocks_sight, bit2 difficult,
+bit3 water, bits 4-7 must be 0. Spawns never carry `stable_id` (the loader derives it from coord + spawn index).
+
+`content_hash` is optional. If present, it is the 16-lowercase-hex xxHash3-64 (seed 0) of the **loaded chunk's
+canonical little-endian byte layout** (ARCHITECTURE.md §4.5; `compute_content_hash` in
+`engine/core/world/src/chunk_codec.cpp`), not of the JSON. The validator reimplements it byte for byte and checks
+it against the engine's golden vectors. After editing a chunk, refresh it with `validate_packs.py --rehash`
+(updates hashes already present; never touches `tests/compat/`).
+
 ## Building
 
 ```sh

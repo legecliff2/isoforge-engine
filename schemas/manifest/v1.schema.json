@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://isoforge.dev/schemas/manifest/v1.schema.json",
+  "title": "manifest@1",
+  "description": "Content pack manifest (ARCHITECTURE.md §3.1, §3.4, §3.6). 'attribution' is mandatory (Licensing note).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "id", "version", "engine_min", "feature_level", "api_level", "rules_profile", "requires", "attribution"],
+  "$defs": {
+    "semver": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$" },
+    "capability": { "type": "string", "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*\\.v[1-9][0-9]*$|^rules\\.srd[0-9]+$" },
+    "pack_id": { "type": "string", "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)+$" }
+  },
+  "properties": {
+    "$schema": { "const": "manifest@1" },
+    "id": { "$ref": "#/$defs/pack_id" },
+    "name": { "type": "string" },
+    "version": { "$ref": "#/$defs/semver" },
+    "engine_min": { "$ref": "#/$defs/semver" },
+    "feature_level": { "type": "integer", "minimum": 1 },
+    "api_level": { "type": "integer", "minimum": 1 },
+    "rules_profile": { "type": "string", "pattern": "^srd51(-[0-9a-z]+)?$" },
+    "requires": { "type": "array", "items": { "$ref": "#/$defs/capability" }, "uniqueItems": true },
+    "optional": { "type": "array", "items": { "$ref": "#/$defs/capability" }, "uniqueItems": true },
+    "depends": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["id", "version"],
+        "properties": {
+          "id": { "$ref": "#/$defs/pack_id" },
+          "version": { "type": "string", "pattern": "^[\\^~]?(0|[1-9][0-9]*)(\\.(0|[1-9][0-9]*)){0,2}$" }
+        }
+      }
+    },
+    "attribution": { "type": "string", "minLength": 1, "pattern": "System Reference Document 5\\.1" },
+    "entry_script": { "type": "string", "pattern": "^scripts/.+\\.luau$" },
+    "contents": {
+      "type": "array",
+      "description": "Pack-relative data files, in stable (sorted) order. The validator checks every listed file exists and every data file is listed.",
+      "items": { "type": "string", "pattern": "^[a-z0-9_./-]+\\.json$" },
+      "uniqueItems": true
+    }
+  }
+}

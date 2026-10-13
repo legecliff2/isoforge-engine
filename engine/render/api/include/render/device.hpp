@@ -5,6 +5,7 @@
 #include <memory>
 #include "base/handle.hpp"
 #include "base/math.hpp"
+#include "base/present_math.hpp"   // Color (presentation floats)
 
 namespace eng::render {
 
