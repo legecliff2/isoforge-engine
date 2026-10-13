@@ -1,6 +1,7 @@
 # Stream goldens (format: docs/STREAMING.md "Stream golden files").
 # World: content/packs/sample.vertical_slice/chunks/0_0_0.json (FileChunkProvider) layered over
 # ProceduralProvider. Directives below apply to the following lines.
+@world sample_layered
 @gen_version 1
 @level 0
 # <world_seed_hex> <focus_x> <focus_y> <radius> <digest_u64>
