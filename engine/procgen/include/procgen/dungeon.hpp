@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -42,6 +43,13 @@ struct GenChunk {
     std::vector<std::string> triggers;              // canonical compact JSON (none in gen 1)
     // origin is always Procedural
 };
+
+// Generator registry (D-007): append-only, keyed by gen_version, contiguous from 1. Every
+// shipped version stays callable forever; each has never-changing goldens in procgen_tests.
+using GeneratorFn = std::optional<GenChunk> (*)(WorldSeed, int32_t, int32_t, int16_t);
+struct GeneratorVersion { uint16_t gen_version; GeneratorFn fn; const char* summary; };
+std::span<const GeneratorVersion> generator_versions() noexcept;
+uint16_t latest_gen_version() noexcept;
 
 // Generates the chunk at (x, y, level) for world seed w. nullopt if w.gen_version is unknown.
 // Pure: same inputs -> identical chunk on every platform/thread/order.

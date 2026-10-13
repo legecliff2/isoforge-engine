@@ -44,12 +44,23 @@ TEST_CASE("seed string: round-trip for edge and random values") {
     CHECK(format_seed({1, ~0ull}) == "g1-P777777777777");
 }
 
-TEST_CASE("seed string: rejects non-canonical input") {
-    for (const char* bad : {"", "g", "g1", "g1-", "G1-K3QZ7M2XAB4PE", "x1-K3QZ7M2XAB4PE", "1-K3QZ7M2XAB4PE",
+TEST_CASE("seed string: parsing is case-insensitive, printing is canonical uppercase") {
+    const WorldSeed want = *parse_seed("g1-K3QZ7M2XAB4PE");
+    for (const char* s : {"g1-k3qz7m2xab4pe", "G1-K3QZ7M2XAB4PE", "G1-k3Qz7M2xAb4pE", "g1-K3qz7m2XAB4pe"}) {
+        auto p = parse_seed(s);
+        REQUIRE_MESSAGE(p, s);
+        CHECK(*p == want);
+        CHECK(format_seed(*p) == "g1-K3QZ7M2XAB4PE");
+    }
+    CHECK(format_seed(*parse_seed("g42-p777777777777")) == "g42-P777777777777");
+}
+
+TEST_CASE("seed string: rejects malformed input") {
+    for (const char* bad : {"", "g", "g1", "g1-", "x1-K3QZ7M2XAB4PE", "1-K3QZ7M2XAB4PE",
                             "g-K3QZ7M2XAB4PE", "g0-K3QZ7M2XAB4PE", "g01-K3QZ7M2XAB4PE", "g65536-K3QZ7M2XAB4PE",
                             "g1K3QZ7M2XAB4PE", "g1_K3QZ7M2XAB4PE", "g1-K3QZ7M2XAB4P", "g1-K3QZ7M2XAB4PEA",
-                            "g1-k3qz7m2xab4pe", "g1-K3QZ7M2XAB4P0", "g1-K3QZ7M2XAB4P1", "g1-K3QZ7M2XAB4P8",
-                            "g1-K3QZ7M2XAB4P=", "g1-Q777777777777", "g1-Z777777777777", " g1-K3QZ7M2XAB4PE",
+                            "g1-K3QZ7M2XAB4P0", "g1-K3QZ7M2XAB4P1", "g1-K3QZ7M2XAB4P8",
+                            "g1-K3QZ7M2XAB4P=", "g1-Q777777777777", "g1-Z777777777777", "g1-q777777777777", " g1-K3QZ7M2XAB4PE",
                             "g1-K3QZ7M2XAB4PE ", "g+1-K3QZ7M2XAB4PE"})
         CHECK_MESSAGE(!parse_seed(bad), bad);
 }
@@ -158,22 +169,50 @@ TEST_CASE("generator: connectivity check detects a split") {
     if (!neighbour_floor) CHECK_FALSE(walkable_connected(c));
 }
 
-// Golden hashes: changing any of these requires a gen_version bump (§4.6, §4.7).
-TEST_CASE("golden: content_hash per (seed, coord)") {
-    struct G { int32_t x, y; int16_t l; const char* hex; };
-    const G goldens[] = {
-        {0, 0, 0, "633e9eb6f4f4b0b1"},
-        {-1, -1, 0, "a693a24bb22871b1"},
-        {5, -3, -2, "ca8f557f3a1d00a9"},
-        {-1000000, 123456, 7, "463c3724f76b4bb2"},
-        {-2147483647 - 1, 2147483647, int16_t(-32768), "eeee3b79d9916ce9"},
-        {3, -7, 1, "26aa2d469fe2a0b8"},
+// D-007 goldens, per gen_version. NEVER edit an existing version's entries: an old seed plus
+// its version must rebuild the same world forever. A new generator version adds its own block.
+namespace {
+struct G { int32_t x, y; int16_t l; const char* hex; };
+struct VersionGoldens { uint16_t gen_version; std::vector<G> hashes; };
+const std::vector<VersionGoldens>& version_goldens() {
+    static const std::vector<VersionGoldens> v = {
+        {1, {
+            {0, 0, 0, "633e9eb6f4f4b0b1"},
+            {-1, -1, 0, "a693a24bb22871b1"},
+            {5, -3, -2, "ca8f557f3a1d00a9"},
+            {-1000000, 123456, 7, "463c3724f76b4bb2"},
+            {-2147483647 - 1, 2147483647, int16_t(-32768), "eeee3b79d9916ce9"},
+            {3, -7, 1, "26aa2d469fe2a0b8"},
+        }},
     };
-    for (const G& g : goldens) {
-        auto c = generate(kSeed, g.x, g.y, g.l);
-        REQUIRE(c);
-        CHECK_MESSAGE(hash_hex(content_hash(*c)) == g.hex, g.x, ",", g.y, ",", g.l);
+    return v;
+}
+} // namespace
+
+TEST_CASE("golden: content_hash per (gen_version, seed, coord), every version forever") {
+    for (const VersionGoldens& vg : version_goldens()) {
+        CAPTURE(vg.gen_version);
+        const WorldSeed w{vg.gen_version, kSeed.seed};
+        for (const G& g : vg.hashes) {
+            auto c = generate(w, g.x, g.y, g.l);
+            REQUIRE_MESSAGE(c, "gen_version removed from the registry (forbidden by D-007)");
+            CHECK_MESSAGE(hash_hex(content_hash(*c)) == g.hex, g.x, ",", g.y, ",", g.l);
+        }
     }
+}
+
+TEST_CASE("generator registry: append-only, contiguous, every version has goldens") {
+    const auto reg = generator_versions();
+    REQUIRE(!reg.empty());
+    CHECK(latest_gen_version() == reg.back().gen_version);
+    for (std::size_t i = 0; i < reg.size(); ++i) {
+        CHECK(reg[i].gen_version == i + 1);
+        bool has = false;
+        for (const VersionGoldens& vg : version_goldens()) has = has || (vg.gen_version == reg[i].gen_version && !vg.hashes.empty());
+        CHECK_MESSAGE(has, "gen_version ", reg[i].gen_version, " has no goldens (D-007)");
+    }
+    CHECK(version_goldens().size() == reg.size());   // no goldens for versions that don't exist
+    CHECK_FALSE(generate(WorldSeed{uint16_t(latest_gen_version() + 1), 0}, 0, 0, 0));
 }
 
 TEST_CASE("order independence: shuffled generation orders give identical hashes") {

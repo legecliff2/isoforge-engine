@@ -12,6 +12,7 @@ constexpr int kChars = 13;
 
 int decode_char(char c) {
     if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a';   // case-insensitive parse; printing is uppercase
     if (c >= '2' && c <= '7') return 26 + (c - '2');
     return -1;
 }
@@ -27,7 +28,7 @@ std::string format_seed(WorldSeed s) {
 }
 
 std::optional<WorldSeed> parse_seed(std::string_view s) {
-    if (s.size() < 2 || s[0] != 'g') return std::nullopt;
+    if (s.size() < 2 || (s[0] != 'g' && s[0] != 'G')) return std::nullopt;
     std::size_t i = 1;
     uint32_t gen = 0;
     const std::size_t digits_begin = i;
