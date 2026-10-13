@@ -19,7 +19,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 VALIDATOR = ROOT / "tools" / "validate" / "validate_packs.py"
 ATTRIBUTION = json.loads((ROOT / "content/packs/sample.vertical_slice/manifest.json").read_text(encoding="utf-8"))["attribution"]
-SAMPLE_SPELLS = ROOT / "content" / "packs" / "sample.vertical_slice" / "spells"
+SAMPLE_SPELLS = ROOT / "content" / "packs" / "srd51.core" / "spells"
 
 
 def make_pack(root: Path, pack_id: str, docs: dict[str, dict]) -> Path:

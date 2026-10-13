@@ -113,6 +113,10 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/run_negative.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # Validator unit tests (e.g. unknown effect kinds warn, known kinds' fields are checked).
+        # Pack-set resolution: depends, semver ranges, cycles, duplicate pack/content ids.
+        add_test(NAME content_validate_packset
+                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/run_packset_cases.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         add_test(NAME content_validate_tests
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/test_validate_packs.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
