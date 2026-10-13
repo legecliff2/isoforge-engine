@@ -33,7 +33,7 @@ world::Chunk sample_chunk() {
 } // namespace
 
 TEST_CASE("event layout: schema version and numeric enum values are locked") {
-    CHECK(kSimEventSchemaVersion == 3);
+    CHECK(kSimEventSchemaVersion == 4);
     CHECK(uint8_t(SimEvent::Kind::Rules) == 0);
     CHECK(uint8_t(SimEvent::Kind::TileMoved) == 1);
     // rules5e::EventKind as surfaced in SimEvent::rules (append-only; values are the contract).
@@ -49,7 +49,9 @@ TEST_CASE("event layout: schema version and numeric enum values are locked") {
         {EventKind::ReadyExpired, 24}, {EventKind::CheckRolled, 25}, {EventKind::ReactionWindowOpened, 26},
         {EventKind::ReactionTaken, 27}, {EventKind::ReactionDeclined, 28}, {EventKind::MoveInterrupted, 29},
         {EventKind::SpellCast, 30}, {EventKind::SpellCountered, 31}, {EventKind::SpellResolved, 32},
-        {EventKind::AcBonus, 33}, {EventKind::FeatureUsed, 34}};   // v2: FeatureUsed
+        {EventKind::AcBonus, 33}, {EventKind::FeatureUsed, 34},   // v2: FeatureUsed
+        {EventKind::SavingThrowRolled, 35}, {EventKind::ConcentrationEnded, 36},   // v4: spellcasting
+        {EventKind::SpellEffectEnded, 37}, {EventKind::SpellCheckRolled, 38}};
     CHECK(int(kLastRulesEventKind) == kinds.back().second);
     // Every rules kind must be listed above: a new kind fails here until the table (and version) is updated.
     CHECK(rules5e::kEventKindCount == kinds.size());
@@ -128,5 +130,5 @@ TEST_CASE("event goldens: same seed => same stream; locked digests") {
     CHECK(a == b);
     CHECK(run(2).first != a.first);
     MESSAGE("seed 1: events=" << a.second << " digest=" << a.first);
-    CHECK(a.first == 5379229055340337023ull);   // GOLDEN v3 (fighter now opens with the crossbow: 7 events)
+    CHECK(a.first == 7766538371569885080ull);   // GOLDEN v4 (v3 was 5379229055340337023; same events, version only)
 }

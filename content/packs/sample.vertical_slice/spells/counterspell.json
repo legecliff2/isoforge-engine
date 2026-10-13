@@ -1,0 +1,45 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.counterspell",
+  "name": "Counterspell",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "You attempt to interrupt a creature in the process of casting a spell. If the creature is casting a spell of 3rd level or lower, its spell fails and has no effect. If it is casting a spell of 4th level or higher, make an ability check using your spellcasting ability. The DC equals 10 + the spell's level. On a success, the creature's spell fails and has no effect. At Higher Levels: the interrupted spell has no effect if its level is less than or equal to the level of the spell slot you used.",
+  "level": 3,
+  "school": "abjuration",
+  "classes": [
+    "sorcerer",
+    "warlock",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "reaction",
+    "trigger": {
+      "kind": "spell_cast",
+      "requires_sight": true
+    }
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "components": {
+    "s": true
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "counter",
+      "auto_max_level": "slot",
+      "check": {
+        "ability": "spellcasting",
+        "dc_base": 10,
+        "plus": "spell_level"
+      }
+    }
+  ]
+}

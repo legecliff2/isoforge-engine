@@ -20,6 +20,8 @@ namespace eng::assets {
 
 inline constexpr uint32_t kMonsterSchemaVersion = 2;
 inline constexpr uint32_t kCharacterSchemaVersion = 3;
+// spell@1: SRD spell (schemas/spell/v1.schema.json); mapped to rules5e::SpellDef by rules5e_content.
+inline constexpr uint32_t kSpellSchemaVersion = 1;
 
 // Registers every engine-known content type with its current version and migrations.
 void register_content_schemas(SchemaRegistry& reg);

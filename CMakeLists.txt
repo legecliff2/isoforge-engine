@@ -108,6 +108,10 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/validate_packs.py"
                          ${_script_check_args}
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        # Negative tests: each tests/validate/cases/*.json must fail with its expected message.
+        add_test(NAME content_validate_negative
+                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/run_negative.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # Validator unit tests (e.g. unknown effect kinds warn, known kinds' fields are checked).
         add_test(NAME content_validate_tests
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/test_validate_packs.py"
