@@ -37,6 +37,7 @@ struct ViewModel {
     int         round = 0;
     std::string turn;                 // current actor name
     bool        ended = false;
+    std::string pending;              // reaction prompt while a request is paused (not a fact)
     std::string status;               // e.g. "SPACE: STEP  A: AUTO"
     std::vector<std::string> log;     // newest last
 };
