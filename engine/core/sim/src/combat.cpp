@@ -36,11 +36,32 @@ std::optional<std::string> spawn_team_name(const world::EntitySpawn& sp, const A
 
 std::optional<Combat> Combat::create(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content,
                                      uint64_t seed, std::string* error) {
-    Combat c(reg, chunk);
+    // Single-chunk combat keeps the v0 chunk-local frame (local == world tile), whatever the
+    // chunk's coord: goldens and existing callers are unchanged.
+    world::Chunk local = chunk;
+    local.coord.x = 0;
+    local.coord.y = 0;
+    const world::Chunk* one[] = {&local};
+    return create(reg, std::span<const world::Chunk* const>(one), content, seed, error);
+}
+
+std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::Chunk* const> chunks_in,
+                                     const ContentLibrary& content, uint64_t seed, std::string* error) {
+    // Canonical chunk order (coord), so callers' order (streamer, threads) cannot matter.
+    std::vector<const world::Chunk*> chunks(chunks_in.begin(), chunks_in.end());
+    std::sort(chunks.begin(), chunks.end(), [](const world::Chunk* a, const world::Chunk* b) { return a->coord < b->coord; });
+    Grid grid{std::span<const world::Chunk* const>(chunks)};
+    if (!grid.ok()) { if (error) *error = grid.error(); return std::nullopt; }
+    struct WSpawn { const world::EntitySpawn* sp; Vec2i tile; };
+    std::vector<WSpawn> spawns;
+    for (const world::Chunk* ch : chunks)
+        for (const auto& sp : ch->spawns) spawns.push_back({&sp, Grid::to_world(ch->coord, sp.tile)});
+    Combat c(reg, std::move(grid));
     c.seed_ = seed;
     // Team names -> ids by byte order of the distinct names (spawn-order independent).
     std::vector<std::string> spawn_teams;
-    for (const auto& sp : chunk.spawns) {
+    for (const auto& ws : spawns) {
+        const auto& sp = *ws.sp;
         const Archetype* a = content.find(sp.archetype);
         if (!a) continue;
         auto t = spawn_team_name(sp, *a, error);
@@ -53,7 +74,8 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, const world::Chunk& chu
     if (c.team_names_.size() > 255) { if (error) *error = "too many teams"; return std::nullopt; }
     std::vector<rules5e::Combatant> cs;
     std::size_t ti = 0;
-    for (const auto& sp : chunk.spawns) {
+    for (const auto& ws : spawns) {
+        const auto& sp = *ws.sp;
         const Archetype* a = content.find(sp.archetype);
         if (!a) continue;   // non-combatant spawn
         const std::string& team_name = spawn_teams[ti++];
@@ -65,7 +87,7 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, const world::Chunk& chu
         const ecs::Entity e = reg.create(sp.stable_id);
         reg.emplace(e, Health{k.hp, k.hp_max});
         reg.emplace(e, Team{k.team});
-        reg.emplace(e, TilePos{sp.tile.x, sp.tile.y});
+        reg.emplace(e, TilePos{ws.tile.x, ws.tile.y});
         reg.emplace(e, CombatantLink{k.id});
         c.slots_.push_back({k.id, e, a});
         cs.push_back(std::move(k));
@@ -529,7 +551,16 @@ uint64_t Combat::log_hash() const {
 
 std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content, uint64_t seed,
                              const std::vector<LogEntry>& log, std::string* error) {
-    auto c = Combat::create(reg, chunk, content, seed, error);
+    world::Chunk local = chunk;   // same chunk-local frame as the single-chunk create
+    local.coord.x = 0;
+    local.coord.y = 0;
+    const world::Chunk* one[] = {&local};
+    return replay(reg, std::span<const world::Chunk* const>(one), content, seed, log, error);
+}
+
+std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
+                             uint64_t seed, const std::vector<LogEntry>& log, std::string* error) {
+    auto c = Combat::create(reg, chunks, content, seed, error);
     if (!c) return std::nullopt;
     for (std::size_t i = 0; i < log.size(); ++i) {
         const LogEntry& e = log[i];
