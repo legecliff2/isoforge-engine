@@ -261,6 +261,9 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         text("STATIC CHUNK VIEW", {16, 16}, s2, gold);
     }
     float y = 40.f;
+    if (!vm.pending.empty()) {
+        text(vm.pending, {320, 16}, s2, Color::rgba8(255, 140, 60));
+    }
     for (const ActorView& a : vm.actors) {
         std::string line = (a.current ? "> " : "  ") + a.name + " HP " + std::to_string(a.hp) + "/" + std::to_string(a.hp_max);
         if (a.dead) line += " DEAD";
