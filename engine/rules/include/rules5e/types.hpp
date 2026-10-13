@@ -13,6 +13,22 @@ enum class DamageType : uint8_t { Acid, Bludgeoning, Cold, Fire, Force, Lightnin
 enum class Condition : uint8_t { Blinded, Charmed, Deafened, Frightened, Grappled, Incapacitated,
                                  Invisible, Paralyzed, Petrified, Poisoned, Prone, Restrained,
                                  Stunned, Unconscious, Exhaustion };
+// SRD 5.1 skills (Chapter 7). Append-only.
+enum class Skill : uint8_t { Acrobatics, AnimalHandling, Arcana, Athletics, Deception, History, Insight,
+                             Intimidation, Investigation, Medicine, Nature, Perception, Performance,
+                             Persuasion, Religion, SleightOfHand, Stealth, Survival };
+constexpr Ability skill_ability(Skill k) {
+    switch (k) {
+    case Skill::Athletics: return Ability::Str;
+    case Skill::Acrobatics: case Skill::SleightOfHand: case Skill::Stealth: return Ability::Dex;
+    case Skill::Arcana: case Skill::History: case Skill::Investigation: case Skill::Nature:
+    case Skill::Religion: return Ability::Int;
+    case Skill::AnimalHandling: case Skill::Insight: case Skill::Medicine: case Skill::Perception:
+    case Skill::Survival: return Ability::Wis;
+    default: return Ability::Cha;   // Deception, Intimidation, Performance, Persuasion
+    }
+}
+
 enum class RollMode : uint8_t { Normal, Advantage, Disadvantage };
 
 using CombatantId = uint32_t;
@@ -20,6 +36,7 @@ using CombatantId = uint32_t;
 constexpr uint32_t bit(Condition c) { return uint32_t(1) << uint32_t(c); }
 constexpr uint32_t bit(DamageType t) { return uint32_t(1) << uint32_t(t); }
 constexpr uint32_t bit(Ability a) { return uint32_t(1) << uint32_t(a); }
+constexpr uint32_t bit(Skill k) { return uint32_t(1) << uint32_t(k); }
 
 struct DiceExpr {                                  // "2d6+3"; count == 0 means a flat value
     uint8_t count; uint8_t sides; int16_t bonus;
@@ -41,7 +58,7 @@ struct Attack {
 
 enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Ready, Move, EndTurn,
                                   // appended (append-only):
-                                  StandUp, OpportunityAttack };
+                                  StandUp, OpportunityAttack, Stabilize, SpareTheDying };
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
 
 struct DeathSaves { uint8_t successes = 0, failures = 0; bool stable = false; };
@@ -68,6 +85,14 @@ struct Combatant {
     bool     reaction_used = false;         // resets at the start of this combatant's turn
     bool     dodging = false;               // Dodge action, until the start of its next turn
     bool     disengaged = false;            // Disengage, for the rest of the turn
+    // appended (PR: encounter end / healing / actions):
+    bool     is_pc = false;                 // counted by the default end condition
+    uint32_t skill_proficiencies = 0;       // bitmask over Skill
+    uint8_t  attacks_per_action = 1;        // Extra Attack: 2 (Fighter 5), ...
+    int16_t  stealth_total = 0;             // > 0 while hidden (Hide result); sim compares to perception
+    CombatantId helped_vs = 0;              // Help: advantage on next attack vs this target
+    CombatantId helped_by = 0;              //   ... granted by this helper (expires at its next turn)
+    bool     has_readied = false;           // Ready: response stored in the encounter
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };

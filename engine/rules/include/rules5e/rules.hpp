@@ -12,3 +12,5 @@
 #include "rules5e/conditions.hpp"
 #include "rules5e/saves.hpp"
 #include "rules5e/encounter.hpp"
+#include "rules5e/checks.hpp"
+#include "rules5e/healing.hpp"
