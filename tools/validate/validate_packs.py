@@ -241,17 +241,23 @@ def fnv1a32(text: str) -> int:
     return h
 
 
-def runtime_id_collisions(entries: list[tuple[str, str]], cross_pack_only: bool = False) -> list[str]:
-    """entries: (where, content_id). Different content ids with the same 32-bit runtime id."""
-    by_hash: dict[int, tuple[str, str]] = {}
+def runtime_id_collisions(entries: list[tuple[str, str, str]], cross_pack_only: bool = False) -> list[str]:
+    """entries: (pack key = resolved pack path, file label, content_id). Errors for:
+    - different content ids with the same 32-bit runtime id (spell_id_of collision), and
+    - the same content id defined twice (same pack, or two packs of one set).
+    Matches rules5e_content::add_spell. cross_pack_only: report only pairs from different packs."""
+    by_hash: dict[int, tuple[str, str, str]] = {}
     out = []
-    for where, cid in sorted(entries):
+    for key, where, cid in sorted(entries):
         h = fnv1a32(cid)
-        same_pack = h in by_hash and by_hash[h][0].split("/")[0] == where.split("/")[0]
-        if h in by_hash and by_hash[h][1] != cid and not (cross_pack_only and same_pack):
-            out.append(f"{where}: spell id '{cid}' collides with '{by_hash[h][1]}' ({by_hash[h][0]}) "
-                       f"at runtime id {h:#010x} (rename one)")
-        by_hash.setdefault(h, (where, cid))
+        prev = by_hash.get(h)
+        if prev is not None and not (cross_pack_only and prev[0] == key):
+            if prev[2] != cid:
+                out.append(f"{where}: spell id '{cid}' collides with '{prev[2]}' ({prev[1]}) "
+                           f"at runtime id {h:#010x} (rename one)")
+            else:
+                out.append(f"{where}: spell id '{cid}' is already defined in {prev[1]} (duplicate content id)")
+        by_hash.setdefault(h, (key, where, cid))
     return out
 
 
@@ -294,10 +300,6 @@ def check_spell(doc, errs, ctx):
         errs.append("casting_time.trigger.or_targeted_by is only for being_hit")
     if (kind == "ac_bonus") != (doc["duration"]["kind"] == "until_start_of_caster_turn"):
         errs.append("ac_bonus effects last until_start_of_caster_turn (and only they use it)")
-    if "repeat_save" in eff and "condition" not in eff:
-        errs.append("effect repeat_save needs condition")
-    if "on_success" in eff and "damage" not in eff:
-        errs.append("effect on_success needs damage")
     if "targets" in doc and kind not in ("save", "heal"):
         errs.append(f"targets not allowed on a {kind} effect (one target, per dart/beam, or self)")
     refs = [("effect blocks_spell", eff.get("blocks_spell"))] + \
@@ -310,7 +312,7 @@ def check_spell(doc, errs, ctx):
 CHECKS = {"monster": check_monster, "character": check_character, "chunk": check_chunk, "spell": check_spell}
 
 
-def pack_spell_ids(pack: Path) -> list[tuple[str, str]]:
+def pack_spell_ids(pack: Path) -> list[tuple[str, str, str]]:
     out = []
     for f in sorted(pack.rglob("*.json")):
         try:
@@ -318,7 +320,8 @@ def pack_spell_ids(pack: Path) -> list[tuple[str, str]]:
         except ValueError:
             continue
         if isinstance(d, dict) and str(d.get("$schema", "")).startswith("spell@") and isinstance(d.get("id"), str):
-            out.append((f"{pack.name}/{f.relative_to(pack).as_posix()}", d["id"]))
+            label = pack.relative_to(ROOT) if pack.is_relative_to(ROOT) else pack
+            out.append((str(pack.resolve()), f"{label}/{f.relative_to(pack).as_posix()}", d["id"]))
     return out
 
 

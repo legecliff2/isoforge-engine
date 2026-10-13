@@ -70,6 +70,7 @@ SpellLoad spell_from_json(const Json& j) {
     // Mirrors schemas/spell/v1.schema.json plus tools/validate check_spell (same rules, same wording).
     if (!j.is_object() || j.value("$schema", "") != "spell@1") return err("not a spell@1 document");
     SpellDef s;
+    std::vector<std::pair<std::string, std::string>> refs;
     if (!j.contains("id") || !j["id"].is_string()) return err("id missing");
     s.content_id = j["id"].get<std::string>();
     if (s.content_id.find(".spell.") == std::string::npos) return err("id must be '<ns>.spell.<name>'");
@@ -104,6 +105,7 @@ SpellLoad spell_from_json(const Json& j) {
                 if (!r.is_string() || r.get<std::string>().find(".spell.") == std::string::npos)
                     return err("casting_time.trigger.or_targeted_by entries must be spell ids");
                 s.or_targeted_by.push_back(spell_id_of(r.get<std::string>()));
+                refs.emplace_back("casting_time.trigger.or_targeted_by", r.get<std::string>());
             }
         }
         s.requires_sight = tr.value("requires_sight", false);
@@ -250,6 +252,7 @@ SpellLoad spell_from_json(const Json& j) {
             if (!e["blocks_spell"].is_string() || e["blocks_spell"].get<std::string>().find(".spell.") == std::string::npos)
                 return err("effect blocks_spell must be a spell id");
             s.blocks_spell = spell_id_of(e["blocks_spell"].get<std::string>());
+            refs.emplace_back("effect blocks_spell", e["blocks_spell"].get<std::string>());
         }
     } else if (kind == "counter") {
         s.kind = SpellEffectKind::Counter;
@@ -315,7 +318,7 @@ SpellLoad spell_from_json(const Json& j) {
             else s.upcast_targets = uint8_t(v);
         }
     }
-    return {std::move(s), {}};
+    return {std::move(s), {}, std::move(refs)};
 }
 
 std::string collision_error(const SpellBook& book, const SpellDef& d) {
@@ -346,6 +349,7 @@ SpellBookLoad load_spellbook(const std::filesystem::path& dir) {
     eng::assets::SchemaRegistry reg;
     eng::assets::register_content_schemas(reg);
     auto book = std::make_shared<SpellBook>();
+    std::vector<std::pair<std::filesystem::path, std::pair<std::string, std::string>>> refs;
     for (const auto& f : files) {
         auto doc = reg.load_file(f);   // same pipeline as packs: $schema tag, floats rejected, migrations
         if (!doc.ok) {
@@ -355,17 +359,15 @@ SpellBookLoad load_spellbook(const std::filesystem::path& dir) {
         if (doc.current.type != "spell") continue;
         auto r = spell_from_json(doc.data);
         if (!r.def) { out.errors.push_back(f.string() + ": " + r.error); continue; }
+        for (auto& ref : r.refs) refs.emplace_back(f, std::move(ref));
         std::string e;
         if (!add_spell(*book, std::move(*r.def), e)) out.errors.push_back(f.string() + ": " + e);
     }
     // References must resolve to a loaded spell (same rule as the validator).
-    for (const SpellDef& d : book->all()) {
-        auto check = [&](uint32_t ref, const char* where) {
-            if (ref != 0 && !book->find(ref))
-                out.errors.push_back(d.content_id + ": " + where + " is not a spell@1 in this pack or its depends");
-        };
-        check(d.blocks_spell, "effect blocks_spell");
-        for (uint32_t r : d.or_targeted_by) check(r, "casting_time.trigger.or_targeted_by");
+    for (const auto& [f, ref] : refs) {
+        const SpellDef* d = book->find(spell_id_of(ref.second));
+        if (!d || d->content_id != ref.second)
+            out.errors.push_back(f.string() + ": " + ref.first + " '" + ref.second + "' is not a spell@1 in this pack or its depends");
     }
     if (out.errors.empty()) out.book = std::move(book);   // any error (including a collision) is fatal
     return out;
