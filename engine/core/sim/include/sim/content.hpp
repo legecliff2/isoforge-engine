@@ -21,6 +21,7 @@ struct Archetype {
     std::vector<uint16_t> normal_range_ft, long_range_ft;
     std::vector<FeatureDecl> features;    // declared (features[] then traits[]); feature_id = index + 1
     std::vector<ActiveFeature> active;    // usable via UseFeature (from active hooks)
+    std::vector<std::string> inert_features;         // "<id> (<kind>)" pre-character@3 effect, not applied
     std::vector<std::string> unsupported_features;   // "<id> (<kind>)" with no registered hook
     std::optional<std::string> ai;        // behavior.ai (monster@2 / character@2), pack-relative
 };

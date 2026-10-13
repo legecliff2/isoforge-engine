@@ -1,0 +1,53 @@
+# Content compatibility: schema-version gates + compat behaviour goldens
+
+Shipped content packs must keep playing the same after an engine upgrade. A pack that was valid
+under the old engine must keep the same mechanics under the new one. This doc gives the two rules
+that make that true. The first case was PR #30 (feature hooks): fl1's `fighter_1.json` already
+baked Dueling into its longsword (`1d8+5`). When the engine started applying `damage_bonus`
+effects, that fighter would have hit for `1d8+7`.
+
+## 1. Gate new mechanics by schema version
+
+If a field that used to be descriptive becomes mechanical, or an existing field changes meaning,
+the engine must not reinterpret old files.
+
+- Bump the content type's schema version in `engine/core/assets` (`content_migrations.hpp`).
+- Activate the new behaviour **only** for files authored at the new version.
+- Add a migration from the previous version that keeps old files' meaning explicit. For example,
+  `character_2_to_3` marks each `features[]/traits[]` `effect` `"inert": true`.
+- The consumer (`sim::ContentLibrary::add`) honours the marker. Inert effects are listed in
+  `Archetype::inert_features` and are never applied.
+- Migrations chain (v1 -> v2 -> v3), so every older file goes through the gate.
+- Content that wants the new behaviour is moved to the new version. Its numbers are de-baked in the
+  same change: the sample fighter is `character@3` with longsword `1d8+3` plus an active Dueling
+  effect.
+- Add the matching `schemas/<type>/vN.schema.json`. Tools & Content owns these files, so the
+  engine adds a minimal one and flags it to T&C.
+
+Current gates:
+
+| type | version | gate |
+|---|---|---|
+| character | @3 | feature effects (`damage_bonus`, `bonus_action_grant`, `self_heal`, ...) are active only for @3 files. Effects from @1/@2 files are inert. |
+
+## 2. Pin old content with a compat behaviour golden
+
+The `tests/compat/<pack>` fixtures are frozen copies of shipped content. Never edit them.
+Each fixture gets a behaviour golden, for example `engine/core/sim/tests/compat_fl1_tests.cpp`:
+
+- **Semantics check:** stat blocks as the engine sees them. For example, the fl1 longsword is
+  `1d8+5` with to-hit 5.
+- **Seeded fights:** a few seeds run a **fixed command script** that lives in the test file. The
+  script is: attack the first conscious hostile when adjacent, else step along the path, else end
+  the turn; always take reaction windows. It never uses the built-in policy or Luau AI, so AI and
+  policy work does not change these values. Only rules-level behaviour does.
+- **Digest:** an FNV hash of the rules events present since sim v0 (initiative, turns, moves,
+  attacks, damage, downs, deaths, death saves, encounter end), plus final hp, dead flag and position
+  per combatant. Event-schema versions and newly added event kinds are excluded. Additive event
+  contract changes therefore do not trip the golden.
+- **Pin values:** computed on the engine **before** the change under test (fl1: `main` at
+  `c09ea79`, before #30).
+
+**Policy:** these values never change. If the golden fails, the engine has changed what old
+content does. Fix the engine (add a schema gate); do not re-pin. The only exception is an explicit
+Director-approved rules fix, recorded in the PR.

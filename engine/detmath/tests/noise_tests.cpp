@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdlib>
+#include <limits>
 
 #include "detmath/noise.hpp"
 #include "detmath/stable_hash.hpp"
@@ -33,4 +34,50 @@ TEST_CASE("noise: range, lattice exactness, continuity, golden") {
     CHECK(sum / (128 * 128) < 45000);
     CHECK(noise::fbm2(s, 0, 0, 3, 3).raw == 49016);
     CHECK(noise::fbm2(s, -1000000007, 99999999999, 3, 3).raw == 34028);
+}
+
+TEST_CASE("noise: defined at INT64 extremes (wrapping neighbour index)") {
+    constexpr int64_t kMax = std::numeric_limits<int64_t>::max(), kMin = std::numeric_limits<int64_t>::min();
+    const uint64_t s = 0x1234;
+    for (int k = 0; k <= noise::kMaxLog2Cell; ++k)
+        for (int64_t x : {kMin, kMin + 1, int64_t(-1), int64_t(0), kMax - 1, kMax})
+            for (int64_t y : {kMin, kMax}) {
+                const int32_t v = noise::value2(s, x, y, k).raw;
+                CHECK((v >= 0 && v < Fx::kOne));
+            }
+    // log2_cell 0: fraction is 0, so the (wrapped) neighbours have zero weight.
+    CHECK(noise::value2(s, kMax, kMax, 0).raw == noise::lattice(s, kMax, kMax, 0).raw);
+    CHECK(noise::value2(s, kMin, kMax, 0).raw == noise::lattice(s, kMin, kMax, 0).raw);
+    // Coarser cells near the top: deterministic and in range for full-depth fbm.
+    for (int k = 0; k <= noise::kMaxLog2Cell; ++k) {
+        const int32_t f = noise::fbm2(s, kMax, kMin, k, k + 1).raw;
+        CHECK((f >= 0 && f < Fx::kOne));
+        CHECK(f == noise::fbm2(s, kMax, kMin, k, k + 1).raw);
+    }
+}
+
+TEST_CASE("noise: parameter preconditions") {
+    CHECK(noise::value2_params_valid(0));
+    CHECK(noise::value2_params_valid(16));
+    CHECK_FALSE(noise::value2_params_valid(-1));
+    CHECK_FALSE(noise::value2_params_valid(17));
+    CHECK(noise::fbm2_params_valid(0, 1));
+    CHECK(noise::fbm2_params_valid(16, 17));
+    CHECK(noise::fbm2_params_valid(3, 4));
+    CHECK_FALSE(noise::fbm2_params_valid(3, 5));
+    CHECK_FALSE(noise::fbm2_params_valid(3, 0));
+    CHECK_FALSE(noise::fbm2_params_valid(-1, 1));
+    CHECK_FALSE(noise::fbm2_params_valid(17, 1));
+    // Valid edges compute normally.
+    CHECK(noise::value2(1, 12345, -678, 0).raw == noise::lattice(1, 12345, -678, 0).raw);
+    CHECK(noise::value2(1, 65536 * 3, 0, 16).raw == noise::lattice(1, 3, 0, 0).raw);
+    CHECK(noise::fbm2(1, 7, 7, 0, 1).raw == noise::value2(1, 7, 7, 0, 0).raw);
+#ifdef NDEBUG
+    // Release: out-of-range parameters return 0 deterministically (debug builds assert).
+    CHECK(noise::value2(1, 5, 5, -1).raw == 0);
+    CHECK(noise::value2(1, 5, 5, 17).raw == 0);
+    CHECK(noise::fbm2(1, 5, 5, 3, 5).raw == 0);
+    CHECK(noise::fbm2(1, 5, 5, 3, 0).raw == 0);
+    CHECK(noise::fbm2(1, 5, 5, 17, 1).raw == 0);
+#endif
 }

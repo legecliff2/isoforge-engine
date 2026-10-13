@@ -95,6 +95,12 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     const FeatureBuildCtx fctx{*features_, doc, attack_actions};
     for (std::size_t i = 0; i < a.features.size(); ++i) {
         const FeatureDecl& f = a.features[i];
+        // Schema-version gate (docs/CONTENT_COMPAT.md): effects from pre-character@3 files are
+        // marked inert by the 2 -> 3 migration; their numbers are already baked in.
+        if (!f.kind.empty() && f.effect.value("inert", false)) {
+            a.inert_features.push_back(f.id + " (" + f.kind + ")");
+            continue;
+        }
         const FeatureHook* h = f.kind.empty() ? nullptr : features_->hook(f.kind);
         if (!h) {
             a.unsupported_features.push_back(f.id + " (" + (f.kind.empty() ? "no effect" : f.kind) + ")");
