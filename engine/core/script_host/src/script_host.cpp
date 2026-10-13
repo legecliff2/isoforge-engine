@@ -10,7 +10,13 @@
 #include <lualib.h>
 #include <luacode.h>
 
+#include "assets/content_migrations.hpp"
 #include "assets/schema_registry.hpp"
+
+namespace eng::script::embedded {
+extern const unsigned char kEngineLevel1Defs[];
+extern const std::size_t kEngineLevel1Defs_size;
+}
 
 namespace eng::script {
 
@@ -447,17 +453,14 @@ CallResult ScriptHost::call_entity_fn(ScriptId id, std::string_view fn, ecs::Reg
 }
 
 std::string api_definitions(uint32_t api_level) {
-    if (api_level < 1 || api_level > kMaxApiLevel) return {};
-    std::ifstream in(std::filesystem::path(ENGINE_SCRIPT_API_DIR) / ("engine.level" + std::to_string(api_level) + ".d.luau"),
-                     std::ios::binary);
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
+    if (api_level == 1)
+        return std::string(reinterpret_cast<const char*>(embedded::kEngineLevel1Defs), embedded::kEngineLevel1Defs_size);
+    return {};
 }
 
 std::optional<uint32_t> read_pack_api_level(const std::filesystem::path& pack_dir, std::string* err) {
     assets::SchemaRegistry reg;
-    reg.register_type("manifest", 1);
+    assets::register_content_schemas(reg);
     auto lr = reg.load_file(pack_dir / "manifest.json");
     if (!lr.ok) { if (err) *err = lr.error; return std::nullopt; }
     auto it = lr.data.find("api_level");
@@ -468,31 +471,53 @@ std::optional<uint32_t> read_pack_api_level(const std::filesystem::path& pack_di
     return uint32_t(it->get<uint64_t>());
 }
 
-PackScripts load_pack_scripts(ScriptHost& host, const std::filesystem::path& pack_dir) {
-    PackScripts out;
+namespace {
+std::string read_file(const std::filesystem::path& p) {
+    std::ifstream in(p, std::ios::binary);
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    return ss.str();
+}
+
+// Shared by load and check: api_level + sorted scripts/**/*.luau sources.
+bool collect(const std::filesystem::path& pack_dir, uint32_t& level, std::map<std::string, std::string>& sources,
+             std::vector<std::string>& errors) {
     std::string err;
-    auto level = read_pack_api_level(pack_dir, &err);
-    if (!level) { out.errors.push_back(err); return out; }
-    out.api_level = *level;
-    if (*level > kMaxApiLevel) {
-        out.errors.push_back("manifest.json: api_level " + std::to_string(*level) + " > engine max " + std::to_string(kMaxApiLevel));
-        return out;
+    auto lv = read_pack_api_level(pack_dir, &err);
+    if (!lv) { errors.push_back(err); return false; }
+    level = *lv;
+    if (level > kMaxApiLevel) {
+        errors.push_back("manifest.json: api_level " + std::to_string(level) + " > engine max " + std::to_string(kMaxApiLevel));
+        return false;
     }
-    if (*level != host.api_level()) {
-        out.errors.push_back("pack api_level " + std::to_string(*level) + " != host api_level " + std::to_string(host.api_level()));
-        return out;
-    }
-    std::map<std::string, std::string> sources;   // sorted by pack-relative path
     const auto dir = pack_dir / "scripts";
     if (std::filesystem::is_directory(dir))
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
-            if (!entry.is_regular_file() || entry.path().extension() != ".luau") continue;
-            std::ifstream in(entry.path(), std::ios::binary);
-            std::ostringstream ss;
-            ss << in.rdbuf();
-            sources[std::filesystem::relative(entry.path(), pack_dir).generic_string()] = ss.str();
-        }
-    out.errors = typecheck(*level, sources);
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(dir))
+            if (entry.is_regular_file() && entry.path().extension() == ".luau")
+                sources[std::filesystem::relative(entry.path(), pack_dir).generic_string()] = read_file(entry.path());
+    return true;
+}
+} // namespace
+
+PackCheck check_pack_scripts(const std::filesystem::path& pack_dir) {
+    PackCheck out;
+    std::map<std::string, std::string> sources;
+    if (!collect(pack_dir, out.api_level, sources, out.errors)) return out;
+    out.scripts = sources.size();
+    out.errors = typecheck(out.api_level, sources);
+    return out;
+}
+
+PackScripts load_pack_scripts(ScriptHost& host, const std::filesystem::path& pack_dir) {
+    PackScripts out;
+    std::map<std::string, std::string> sources;   // sorted by pack-relative path
+    if (!collect(pack_dir, out.api_level, sources, out.errors)) return out;
+    if (out.api_level != host.api_level()) {
+        out.errors.push_back("pack api_level " + std::to_string(out.api_level) + " != host api_level " +
+                             std::to_string(host.api_level()));
+        return out;
+    }
+    out.errors = typecheck(out.api_level, sources);
     if (!out.errors.empty()) return out;
     for (const auto& [path, src] : sources) {
         ScriptError e;
@@ -500,7 +525,34 @@ PackScripts load_pack_scripts(ScriptHost& host, const std::filesystem::path& pac
         if (!id) { out.errors.push_back(path + ": " + e.message); return out; }
         out.scripts.emplace(path, *id);
     }
-    out.ok = true;
+
+    // Monster behavior.ai bindings (monster@1 presentation.ai is migrated to behavior.ai).
+    assets::SchemaRegistry reg;
+    assets::register_content_schemas(reg);
+    auto man = reg.load_file(pack_dir / "manifest.json");
+    if (man.ok && man.data.contains("contents") && man.data["contents"].is_array()) {
+        for (const auto& item : man.data["contents"]) {   // manifest order is sorted (validator)
+            if (!item.is_string()) continue;
+            const std::string rel = item.get<std::string>();
+            if (rel.size() < 5 || rel.compare(rel.size() - 5, 5, ".json") != 0) continue;
+            auto doc = reg.load_file(pack_dir / rel);
+            if (!doc.ok) {
+                if (doc.declared.type == "monster" || doc.error.find("unknown schema type") == std::string::npos)
+                    out.errors.push_back(doc.error);
+                continue;
+            }
+            if (doc.current.type != "monster") continue;
+            auto ai = assets::monster_ai_script(doc.data);
+            if (!ai) continue;
+            auto it = out.scripts.find(*ai);
+            if (it == out.scripts.end()) {
+                out.errors.push_back(rel + ": behavior.ai '" + *ai + "' is not a pack script");
+                continue;
+            }
+            out.ai_by_archetype[doc.data.value("id", rel)] = it->second;
+        }
+    }
+    out.ok = out.errors.empty();
     return out;
 }
 
