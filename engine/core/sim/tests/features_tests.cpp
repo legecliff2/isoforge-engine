@@ -112,6 +112,25 @@ TEST_CASE("hooks key on effect.kind, not names; unknown kinds are reported; bad 
     bad = load_doc("characters/fighter_1.json");
     bad["features"][1]["effect"]["cost"] = "free";
     CHECK(lib.add(bad, "character"));
+    // cost "reaction" is schema-valid (CONTENT_EFFECTS.md) but reserved: rejected with a clear error.
+    bad = load_doc("characters/fighter_1.json");
+    bad["features"][1]["effect"]["cost"] = "reaction";
+    auto e = lib.add(bad, "character");
+    REQUIRE(e);
+    CHECK(e->find("reserved, not supported") != std::string::npos);
+    // Unknown recharge is an error, not "never". Omitted recharge = never.
+    for (const assets::Json& v : {assets::Json("dawn"), assets::Json(3)}) {
+        bad = load_doc("characters/fighter_1.json");
+        bad["features"][1]["effect"]["recharge"] = v;
+        auto er = lib.add(bad, "character");
+        REQUIRE(er);
+        CHECK(er->find("unknown recharge") != std::string::npos);
+    }
+    auto ok = load_doc("characters/fighter_1.json");
+    ok["id"] = "test.no_recharge";
+    ok["features"][1]["effect"].erase("recharge");
+    REQUIRE_FALSE(lib.add(ok, "character"));
+    CHECK(lib.find("test.no_recharge")->active.at(0).recharge == Recharge::None);
 }
 
 TEST_CASE("Second Wind via UseFeature: bonus action, rolled heal, one use, replays") {

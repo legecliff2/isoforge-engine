@@ -78,10 +78,18 @@ std::optional<std::string> apply_self_heal(Archetype& a, const FeatureDecl& f, u
     af.heal = *d;
     const std::string cost = f.effect.value("cost", "action");
     if (cost == "bonus_action") af.cost = FeatureCost::BonusAction;
+    else if (cost == "reaction")
+        return f.id + ": self_heal cost 'reaction' is reserved, not supported by this engine (use action or bonus_action)";
     else if (cost != "action") return f.id + ": unknown cost '" + cost + "'";
     af.uses = uint8_t(f.effect.value("uses", 0));
-    const std::string rc = f.effect.value("recharge", "");
-    af.recharge = rc == "short_rest" ? Recharge::ShortRest : rc == "long_rest" ? Recharge::LongRest : Recharge::None;
+    // recharge: omitted = never; otherwise short_rest | long_rest (CONTENT_EFFECTS.md). Unknown values
+    // are errors rather than silently "never".
+    if (auto rc_it = f.effect.find("recharge"); rc_it != f.effect.end()) {
+        const std::string rc = rc_it->is_string() ? rc_it->get<std::string>() : std::string("<non-string>");
+        if (rc == "short_rest") af.recharge = Recharge::ShortRest;
+        else if (rc == "long_rest") af.recharge = Recharge::LongRest;
+        else return f.id + ": unknown recharge '" + rc + "' (expected short_rest or long_rest; omit for never)";
+    }
     a.active.push_back(std::move(af));
     return std::nullopt;
 }
