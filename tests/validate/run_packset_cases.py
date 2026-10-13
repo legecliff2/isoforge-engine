@@ -23,8 +23,11 @@ import packset  # noqa: E402
 BASE_MAN = json.loads((SAMPLE / "manifest.json").read_text(encoding="utf-8"))
 
 
+CORE = ROOT / "content" / "packs" / "srd51.core"
+
+
 def doc(rel: str) -> dict:
-    d = json.loads((SAMPLE / rel).read_text(encoding="utf-8"))
+    d = json.loads(((SAMPLE / rel) if (SAMPLE / rel).exists() else (CORE / rel)).read_text(encoding="utf-8"))
     d.pop("behavior", None)   # no scripts in these packs
     return d
 
