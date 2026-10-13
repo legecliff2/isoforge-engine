@@ -2,31 +2,108 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://isoforge.dev/schemas/character/v3.schema.json",
   "title": "character@3",
-  "description": "character@3 (minimal, engine-side; T&C to own): character@1 + optional behavior.ai; features[]/traits[] effect objects are mechanically applied by the engine, so stat-block numbers must NOT bake them in. SRD 5.1 player character / NPC built from classes. Same stat-block core as monster@1, but level/class instead of CR/XP. Integers only (§4.3).",
+  "description": "SRD 5.1 player character / NPC, v3 = character@2 (optional behavior.ai) + active feature effects. features[].effect follows the kind-tagged effect contract (common@1 $defs/effect, docs/CONTENT_EFFECTS.md) and is APPLIED BY THE ENGINE, so its numbers must NOT be baked into the stat block: e.g. Fighting Style: Dueling's +2 is not in the longsword damage (write 1d8+3, not 1d8+5). character@1/@2 files are migrated with their effects marked inert. Integers only (§4.3).",
   "$ref": "../common/v1.schema.json#/$defs/stat_block",
   "unevaluatedProperties": false,
-  "required": ["race", "classes", "level"],
+  "required": [
+    "race",
+    "classes",
+    "level"
+  ],
   "properties": {
-    "$schema": { "const": "character@3" },
-    "race": { "type": "string", "pattern": "^[a-z_]+$", "description": "SRD race id, e.g. 'human'." },
-    "background": { "type": "string" },
-    "level": { "type": "integer", "minimum": 1, "maximum": 20, "description": "Total character level (sum of classes[].level)." },
+    "$schema": {
+      "const": "character@3"
+    },
+    "race": {
+      "type": "string",
+      "pattern": "^[a-z_]+$",
+      "description": "SRD race id, e.g. 'human'."
+    },
+    "background": {
+      "type": "string"
+    },
+    "level": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20,
+      "description": "Total character level (sum of classes[].level)."
+    },
     "classes": {
-      "type": "array", "minItems": 1,
+      "type": "array",
+      "minItems": 1,
       "items": {
-        "type": "object", "additionalProperties": false, "required": ["class", "level", "hit_die"],
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "class",
+          "level",
+          "hit_die"
+        ],
         "properties": {
-          "class": { "enum": ["barbarian", "bard", "cleric", "druid", "fighter", "monk", "paladin",
-                              "ranger", "rogue", "sorcerer", "warlock", "wizard"] },
-          "subclass": { "type": "string" },
-          "level": { "type": "integer", "minimum": 1, "maximum": 20 },
-          "hit_die": { "enum": ["d6", "d8", "d10", "d12"] }
+          "class": {
+            "enum": [
+              "barbarian",
+              "bard",
+              "cleric",
+              "druid",
+              "fighter",
+              "monk",
+              "paladin",
+              "ranger",
+              "rogue",
+              "sorcerer",
+              "warlock",
+              "wizard"
+            ]
+          },
+          "subclass": {
+            "type": "string"
+          },
+          "level": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "hit_die": {
+            "enum": [
+              "d6",
+              "d8",
+              "d10",
+              "d12"
+            ]
+          }
         }
       }
     },
-    "xp": { "type": "integer", "minimum": 0, "description": "Current experience points." },
-    "behavior": { "type": "object", "additionalProperties": false, "properties": { "ai": { "type": "string" } } },
-    "features": { "type": "array", "items": { "$ref": "../common/v1.schema.json#/$defs/trait" } },
-    "equipment": { "type": "array", "items": { "type": "string" } }
+    "xp": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Current experience points."
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "$ref": "../common/v1.schema.json#/$defs/trait_active"
+      },
+      "description": "Class/race features. Effects are mechanically active (see schema description); never bake their numbers into actions."
+    },
+    "equipment": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "behavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Simulation behaviour hooks.",
+      "properties": {
+        "ai": {
+          "type": "string",
+          "pattern": "^scripts/.+\\.luau$",
+          "description": "Pack-relative strict Luau AI script."
+        }
+      }
+    }
   }
 }

@@ -29,6 +29,7 @@ Current gates:
 | type | version | gate |
 |---|---|---|
 | character | @3 | feature effects (`damage_bonus`, `bonus_action_grant`, `self_heal`, ...) are active only for @3 files. Effects from @1/@2 files are inert. |
+| monster | (none yet) | effects are active for every version. A monster whose stat block bakes in an effect's number (e.g. a `damage_bonus`) would need `monster@3` with the same inert migration. Validator and schema rules: `docs/CONTENT_EFFECTS.md` §0. |
 
 ## 2. Pin old content with a compat behaviour golden
 

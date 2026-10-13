@@ -117,7 +117,7 @@
             "minimum": 0,
             "maximum": 15
           },
-          "description": "Tile flags (u8): bit0 blocks_move, bit1 blocks_sight, bit2 difficult, bit3 water; bits 4-7 reserved, must be 0."
+          "description": "Tile flags (u8): bit0 blocks_move, bit1 blocks_sight, bit2 difficult, bit3 water; bits 4-7 reserved, must be 0. Flags are independent: blocks_sight without blocks_move is valid (curtains, fog, tall grass), as is blocks_move without blocks_sight (glass, low fences)."
         }
       }
     },

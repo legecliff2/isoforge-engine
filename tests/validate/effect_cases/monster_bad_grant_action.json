@@ -1,0 +1,18 @@
+{
+  "base": "monsters/goblin.json",
+  "sets": [
+    [
+      [
+        "traits",
+        0,
+        "effect",
+        "actions"
+      ],
+      [
+        "fly"
+      ]
+    ]
+  ],
+  "severity": "error",
+  "expect": "/traits/0/effect"
+}
