@@ -1,5 +1,7 @@
 #include "session.hpp"
 
+#include "event_feed.hpp"
+
 #include <algorithm>
 #include <cctype>
 
@@ -9,6 +11,8 @@
 #include "sim/content.hpp"
 #include "sim/driver.hpp"
 #include "world/file_chunk_provider.hpp"
+
+#include <span>
 
 namespace slice {
 
@@ -45,7 +49,7 @@ struct Session::Impl {
     uint16_t round = 0, turn = 0xFFFF;
     std::optional<sim::CombatantId> target;
     size_t events_seen = 0;
-    std::vector<std::string> log;
+    FeedState feed;
     std::string error;
     std::vector<TileView> tiles;
 
@@ -53,31 +57,13 @@ struct Session::Impl {
         const sim::Archetype* a = combat ? combat->archetype(id) : nullptr;
         return a ? display_name(a->id) : "?";
     }
-    void push(std::string s) {
-        log.push_back(std::move(s));
-        if (log.size() > 8) log.erase(log.begin());
-    }
+    // Feeds only newly *committed* events (Combat::events() never holds provisional ones).
     void drain_events() {
         const auto& evs = combat->events();
-        for (; events_seen < evs.size(); ++events_seen) {
-            const sim::SimEvent& e = evs[events_seen];
-            if (e.kind != sim::SimEvent::Kind::Rules) continue;
-            const rules5e::Event& r = e.rules;
-            using K = rules5e::EventKind;
-            switch (r.kind) {
-            case K::TurnStarted: push("ROUND " + std::to_string(r.a) + ": " + name_of(r.actor)); break;
-            case K::AttackResolved:
-                push(name_of(r.actor) + ((r.c & 2) ? " CRITS " : (r.c & 1) ? " HITS " : " MISSES ") + name_of(r.target) +
-                     " (" + std::to_string(r.b) + ")");
-                break;
-            case K::DamageDealt: push(name_of(r.target) + " TAKES " + std::to_string(r.a) + " HP: " + std::to_string(r.b)); break;
-            case K::CombatantDowned: push(name_of(r.actor) + " IS DOWN!"); break;
-            case K::CombatantDied: push(name_of(r.actor) + " DIES!"); break;
-            case K::ReactionTaken: push(name_of(r.actor) + " REACTS"); break;
-            case K::EncounterEnded: push("ENCOUNTER ENDED"); break;
-            default: break;
-            }
-        }
+        if (events_seen >= evs.size()) return;
+        apply_events(std::span<const sim::SimEvent>(evs).subspan(events_seen), feed,
+                     [this](uint32_t id) { return name_of(id); });
+        events_seen = evs.size();
     }
 };
 
@@ -118,6 +104,7 @@ std::unique_ptr<Session> Session::open(const Options& o, std::string* error) {
         std::string err;
         m.combat = sim::Combat::create(*m.reg, *m.chunk, *m.content, o.seed, &err);
         if (!m.combat) return fail("sim create failed: " + err);
+        for (const rules5e::Combatant& cb : m.combat->state().combatants) m.feed.tiles[cb.id] = m.combat->pos(cb.id);
         m.drain_events();
     }
     return s;
@@ -127,20 +114,30 @@ bool Session::step() {
     Impl& m = *impl_;
     if (!m.combat || m.combat->ended() || !m.error.empty()) return false;
     sim::Combat& c = *m.combat;
-    // Same loop body as sim::run_to_end, one command per call.
-    const sim::CombatantId self = rules5e::current_actor(c.state());
-    if (c.state().round != m.round || c.state().turn_index != m.turn) {
-        m.round = c.state().round;
-        m.turn = c.state().turn_index;
-        m.target = m.policy.choose_target(c, self);
+    const sim::ReactionDeciderFn decider = [&](const sim::Combat& cc, const sim::NeedsDecision& n) {
+        return m.policy.decide_reaction(cc, n);
+    };
+    sim::SubmitResult r;
+    if (c.pending()) {
+        // The previous step paused on a reaction window: answer it now (AI decides).
+        r = c.settle(decider);
+    } else {
+        // Same loop body as sim::run_to_end, one command per call, but a NeedsDecision pause is
+        // left visible for one step instead of being settled immediately.
+        const sim::CombatantId self = rules5e::current_actor(c.state());
+        if (c.state().round != m.round || c.state().turn_index != m.turn) {
+            m.round = c.state().round;
+            m.turn = c.state().turn_index;
+            m.target = m.policy.choose_target(c, self);
+        }
+        r = c.submit(sim::next_command(c, m.target));
     }
-    auto r = c.submit(sim::next_command(c, m.target));
-    if (r.ok && r.status == sim::StepStatus::NeedsDecision)
-        r = c.settle([&](const sim::Combat& cc, const sim::NeedsDecision& n) { return m.policy.decide_reaction(cc, n); });
     if (!r.ok) m.error = r.error;
-    m.drain_events();
+    m.drain_events();   // a paused request appended nothing; its events arrive when it completes
     return r.ok;
 }
+
+bool Session::paused() const { return impl_->combat && impl_->combat->pending().has_value(); }
 
 bool Session::ended() const { return impl_->combat && impl_->combat->ended(); }
 const std::string& Session::error() const { return impl_->error; }
@@ -149,7 +146,10 @@ ViewModel Session::view() const {
     const Impl& m = *impl_;
     ViewModel v;
     v.tiles = m.tiles;
-    v.log = m.log;
+    v.log = m.feed.log;
+    if (m.combat) {
+        if (auto n = m.combat->pending()) v.pending = "WAITING: " + m.name_of(n->reactor) + " REACTION?";
+    }
     if (m.combat) {
         const sim::Combat& c = *m.combat;
         v.sim_live = true;
@@ -162,7 +162,9 @@ ViewModel Session::view() const {
             const sim::Archetype* arch = c.archetype(cb.id);
             a.name = arch ? display_name(arch->id) : "?";
             a.is_pc = arch && arch->schema_type == "character";
-            a.tile = c.pos(cb.id);
+            // Tile from the committed event stream (v3: readied moves, TileMoved after rules events).
+            auto it = m.feed.tiles.find(cb.id);
+            a.tile = it != m.feed.tiles.end() ? it->second : c.pos(cb.id);
             a.hp = cb.hp; a.hp_max = cb.hp_max; a.team = cb.team;
             a.current = cb.id == cur;
             a.dead = cb.dead;
