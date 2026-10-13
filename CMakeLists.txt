@@ -24,6 +24,7 @@ add_subdirectory(engine/rules)     # target:  eng::rules5e
 # Engine core (ARCHITECTURE.md §2.1): base -> ecs, assets -> world.
 add_subdirectory(engine/base)      # target:  eng::base
 add_subdirectory(engine/core)      # targets: eng::ecs, eng::assets, eng::world
+add_subdirectory(engine/procgen)   # targets: eng::procgen (base+detmath only), eng::procgen_world (glue)
 
 # Content: validate every pack (content/packs/*) and the frozen compat corpus
 # (tests/compat/fl*/*) against schemas/ (§3). A private venv is created in the
@@ -84,6 +85,17 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/validate_packs.py"
                          ${_script_check_args}
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        # Procedurally generated chunks must pass the same validator (schema + content_hash).
+        if(TARGET procgen_dump)
+            set(_pg_out "${CMAKE_BINARY_DIR}/procgen_preview_pack")
+            add_test(NAME procgen_pack_dump
+                     COMMAND procgen_dump g1-K3QZ7M2XAB4PE "${_pg_out}" 0,0,0 -1,-1,0 5,-3,-2 -1000000,123456,7)
+            set_tests_properties(procgen_pack_dump PROPERTIES FIXTURES_SETUP procgen_pack)
+            add_test(NAME procgen_pack_validate
+                     COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/validate_packs.py" "${_pg_out}"
+                     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+            set_tests_properties(procgen_pack_validate PROPERTIES FIXTURES_REQUIRED procgen_pack)
+        endif()
     endif()
 endif()
 
