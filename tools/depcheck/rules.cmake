@@ -40,7 +40,7 @@ set(EXT_ANY           "Threads::Threads")
 #   game/*: `engine`, `iso2d` (engine facade not built yet; its row = all core modules).
 set(ALLOW_KIND_game "engine;iso2d")
 set(EXT_KIND_game   "")
-#   tools/*: `assets`, `world`, `rules5e`, no renderer/platform. script_check needs script_host
+#   tools/*: `assets`, `world`, `rules5e`, no renderer/platform. Approved exception (§2.1 note): script_check needs script_host
 #   (pack typecheck = validator) and procgen_dump needs procgen (procgen preview).
 set(ALLOW_KIND_tool "assets;world;rules5e;script_host;procgen;procgen_world")
 set(EXT_KIND_tool   "")
