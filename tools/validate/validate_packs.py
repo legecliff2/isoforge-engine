@@ -235,8 +235,27 @@ def check_chunk(doc, errs, ctx):
 CHECKS = {"monster": check_monster, "character": check_character, "chunk": check_chunk}
 
 
-def validate_pack(pack: Path, registry: Registry, by_tag: dict) -> list[str]:
+# Effect kinds with a registered engine hook (eng::sim::FeatureRegistry::builtin()) and a
+# kind-tagged branch in common v1 $defs/effect. Others are allowed but warned about.
+KNOWN_EFFECT_KINDS = frozenset({"damage_bonus", "bonus_action_grant", "self_heal"})
+
+
+def effect_warnings(rel: str, doc: dict) -> list[str]:
+    out = []
+    for key in ("features", "traits"):
+        for i, f in enumerate(doc.get(key) or []):
+            eff = f.get("effect") if isinstance(f, dict) else None
+            kind = eff.get("kind") if isinstance(eff, dict) else None
+            if isinstance(kind, str) and kind not in KNOWN_EFFECT_KINDS:
+                out.append(f"{rel}: /{key}/{i}/effect: unknown effect kind '{kind}' "
+                           f"(engine ignores it; known: {', '.join(sorted(KNOWN_EFFECT_KINDS))})")
+    return out
+
+
+def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[str] | None = None) -> list[str]:
+    """Returns errors; non-fatal findings are appended to `warnings` (if given)."""
     out: list[str] = []
+    warns: list[str] = warnings if warnings is not None else []
     files = sorted(p for p in pack.rglob("*.json"))
     docs = {}
     for f in files:
@@ -299,6 +318,8 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict) -> list[str]:
         errs += [f"/{'/'.join(map(str, e.absolute_path))}: {e.message[:200]}" for e in schema_errs]
         if not schema_errs and typ in CHECKS:
             CHECKS[typ](doc, errs, ctx)
+        if typ in ("monster", "character"):
+            warns += effect_warnings(rel, doc)
         out += [f"{rel}: {e}" for e in errs]
     return out
 
@@ -356,10 +377,13 @@ def main(argv: list[str]) -> int:
         return 1
     failed = 0
     for pack in packs:
-        errs = validate_pack(pack, registry, by_tag)
+        warns: list[str] = []
+        errs = validate_pack(pack, registry, by_tag, warns)
         if script_check:
             errs += run_script_check(script_check, pack)
         name = pack.relative_to(ROOT) if pack.is_relative_to(ROOT) else pack
+        for w in warns:
+            print(f"warning {name}/{w}")
         if errs:
             failed += 1
             print(f"FAIL {name}")
