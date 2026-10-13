@@ -17,9 +17,10 @@ const std::string kPack = std::string(ENGINE_SOURCE_ROOT) + "/content/packs/samp
 struct Outcome {
     uint64_t hash = 0, log_hash = 0;
     std::size_t commands = 0, events = 0;
-    std::vector<sim::Command> log;
+    std::vector<sim::LoggedCommand> log;
     bool goblin_alive = false;
     std::size_t ai_calls = 0;
+    std::size_t windows = 0, reactions = 0;
 };
 
 world::Chunk chunk() {
@@ -59,6 +60,9 @@ Outcome fight(uint64_t seed) {
     o.events = c->events().size();
     o.log = c->log();
     o.ai_calls = host.log().size();
+    for (const auto& e : c->events())
+        if (e.kind == sim::SimEvent::Kind::Rules && e.rules.kind == rules5e::EventKind::ReactionWindowOpened) ++o.windows;
+    for (const auto& e : c->log()) o.reactions += e.reactions.size();
     for (const auto& k : c->state().combatants)
         if (!k.is_pc) o.goblin_alive = !k.dead;
     return o;
@@ -71,9 +75,9 @@ TEST_CASE("vertical slice: goblin (Luau) vs fighter runs to completion; same see
     CHECK(a.log_hash == b.log_hash);
     CHECK(a.commands == b.commands);
     CHECK(a.ai_calls > 0);   // the skirmisher script chose the goblin's targets
-    MESSAGE("seed 2026: hash=" << a.hash << " log=" << a.log_hash << " commands=" << a.commands << " events=" << a.events);
-    CHECK(a.hash == 6687972637053972402ull);
-    CHECK(a.log_hash == 214783171545905138ull);
+    MESSAGE("seed 2026: hash=" << a.hash << " log=" << a.log_hash << " commands=" << a.commands << " events=" << a.events << " windows=" << a.windows << " reactions=" << a.reactions);
+    CHECK(a.hash == 2775258447473174400ull);
+    CHECK(a.log_hash == 15440887886570797873ull);
 }
 
 TEST_CASE("vertical slice: the command log alone replays the fight bit-identically") {
@@ -89,9 +93,10 @@ TEST_CASE("vertical slice: the command log alone replays the fight bit-identical
     CHECK(rep->log_hash() == a.log_hash);
     // Tampering with the log desyncs or changes the result.
     auto bad = a.log;
-    for (auto& cmd : bad)
-        if (cmd.kind == sim::CommandKind::Decide) { cmd.decision.react = !cmd.decision.react; break; }
-    if (bad != a.log) {
+    bool tampered = false;
+    for (auto& e : bad)
+        if (!e.reactions.empty() && !tampered) { e.reactions[0].decision.react = !e.reactions[0].decision.react; tampered = true; }
+    if (tampered) {
         ecs::Registry reg2;
         auto rep2 = sim::replay(reg2, chunk(), lib, 77, bad, &err);
         const bool diverged = !rep2 || rep2->hash() != a.hash;

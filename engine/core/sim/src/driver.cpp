@@ -60,22 +60,20 @@ RunResult run_to_end(Combat& c, const PolicyFor& policy_for, uint32_t max_comman
     RunResult rr;
     uint16_t round = 0, turn = 0xFFFF;
     std::optional<CombatantId> target;
+    // Sync adapter: rules5e polls reactors inside step(); route each poll to the reactor's policy.
+    c.set_reaction_decider([&](const Combat& cc, const NeedsDecision& n) {
+        IActorPolicy* p = policy_for(n.reactor);
+        return p ? p->decide_reaction(cc, n) : ReactionDecision{n.window_seq, false, 0};
+    });
     while (!c.ended() && rr.commands < max_commands) {
-        Command cmd;
-        if (const auto& pend = c.pending()) {
-            IActorPolicy* p = policy_for(pend->reactor);
-            cmd.kind = CommandKind::Decide;
-            cmd.decision = p ? p->decide_reaction(c, *pend) : ReactionDecision{pend->window_seq, false, 0};
-        } else {
-            const CombatantId self = rules5e::current_actor(c.state());
-            if (c.state().round != round || c.state().turn_index != turn) {
-                round = c.state().round;
-                turn = c.state().turn_index;
-                IActorPolicy* p = policy_for(self);
-                target = p ? p->choose_target(c, self) : std::nullopt;
-            }
-            cmd = next_command(c, target);
+        const CombatantId self = rules5e::current_actor(c.state());
+        if (c.state().round != round || c.state().turn_index != turn) {
+            round = c.state().round;
+            turn = c.state().turn_index;
+            IActorPolicy* p = policy_for(self);
+            target = p ? p->choose_target(c, self) : std::nullopt;
         }
+        const Command cmd = next_command(c, target);
         auto r = c.submit(cmd);
         ++rr.commands;
         if (!r.ok) {

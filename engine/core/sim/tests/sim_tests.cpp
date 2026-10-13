@@ -118,85 +118,105 @@ TEST_CASE("grid: difficult terrain costs 10 ft and paths prefer to avoid it") {
     for (auto t : p) { const bool ok = t.x != 6 || t.y == 31; CHECK(ok); }   // only through the gap
 }
 
-TEST_CASE("leaving reach opens a window; sim pauses until a decision; react => opportunity attack") {
+namespace {
+bool has_event(const Combat& c, rules5e::EventKind k, CombatantId actor) {
+    for (auto& ev : c.events())
+        if (ev.kind == SimEvent::Kind::Rules && ev.rules.kind == k && ev.rules.actor == actor) return true;
+    return false;
+}
+} // namespace
+
+TEST_CASE("leaving reach opens a rules5e window; sync decider reacts => opportunity attack; log replays") {
     auto lib = pack_content();
     auto chunk = arena({{kFighter, 5, 5}, {kGoblin, 6, 5}});
     ecs::Registry reg;
     auto c = Combat::create(reg, chunk, lib, 7);
     REQUIRE(c);
     const CombatantId fighter = chunk.spawns[0].stable_id, goblin = chunk.spawns[1].stable_id;
+    std::vector<NeedsDecision> asked;
+    c->set_reaction_decider([&](const Combat& cc, const NeedsDecision& n) {
+        asked.push_back(n);
+        CHECK(cc.pos(goblin) == Vec2i{6, 5});   // polled before the mover leaves
+        return ReactionDecision{n.window_seq, true, 0};
+    });
     advance_to(*c, goblin);
+    // Direct opportunity attacks are refused (rules5e #11).
+    Command oa;
+    oa.request = {goblin, ActionKind::OpportunityAttack, fighter};
+    CHECK_FALSE(c->submit(oa).ok);
     Command step;
     step.kind = CommandKind::Step;
     step.to = {7, 5};
     auto r = c->submit(step);
-    REQUIRE(r.ok);
-    REQUIRE(r.needs);
-    CHECK(r.needs->reactor == fighter);
-    CHECK(r.needs->trigger_actor == goblin);
-    CHECK(c->pos(goblin) == Vec2i{6, 5});   // paused before leaving
-    // Anything but a decision is refused while paused; wrong seq is refused.
-    Command e;
-    e.request = {goblin, ActionKind::EndTurn};
-    CHECK_FALSE(c->submit(e).ok);
-    Command bad;
-    bad.kind = CommandKind::Decide;
-    bad.decision = {r.needs->window_seq + 1, true, 0};
-    CHECK_FALSE(c->submit(bad).ok);
-    Command d;
-    d.kind = CommandKind::Decide;
-    d.decision = {r.needs->window_seq, true, 0};
-    auto r2 = c->submit(d);
-    REQUIRE_MESSAGE(r2.ok, r2.error);
-    CHECK_FALSE(c->pending());
-    bool attacked = false;
-    for (auto& ev : c->events())
-        if (ev.kind == SimEvent::Kind::Rules && ev.rules.kind == rules5e::EventKind::AttackResolved && ev.rules.actor == fighter)
-            attacked = true;
-    CHECK(attacked);
+    REQUIRE_MESSAGE(r.ok, r.error);
+    CHECK_FALSE(r.needs);   // sync adapter: answered inline
+    REQUIRE(asked.size() == 1);
+    CHECK(asked[0].reactor == fighter);
+    CHECK(asked[0].trigger_actor == goblin);
+    CHECK(asked[0].trigger == rules5e::ReactionTrigger::LeavingReach);
+    REQUIRE_FALSE(asked[0].options.empty());
+    REQUIRE(r.reactions.size() == 1);
+    CHECK(r.reactions[0].window_seq == asked[0].window_seq);
+    CHECK(has_event(*c, rules5e::EventKind::ReactionWindowOpened, goblin));
+    CHECK(has_event(*c, rules5e::EventKind::ReactionTaken, fighter));
+    CHECK(has_event(*c, rules5e::EventKind::AttackResolved, fighter));
     CHECK(rules5e::find(c->state(), fighter)->reaction_used);
     const auto* gob = rules5e::find(c->state(), goblin);
     if (rules5e::is_conscious(*gob)) CHECK(c->pos(goblin) == Vec2i{7, 5});
-    else CHECK(c->pos(goblin) == Vec2i{6, 5});   // dropped: move interrupted
-    // Log holds Step + Decide (rejected commands are not logged), and replays exactly.
+    else {
+        CHECK(c->pos(goblin) == Vec2i{6, 5});   // dropped: move interrupted, no tile change
+        CHECK(has_event(*c, rules5e::EventKind::MoveInterrupted, goblin));
+    }
+    // The log (commands + recorded decisions) replays exactly without a decider.
     ecs::Registry reg2;
     std::string err;
     auto rep = replay(reg2, chunk, lib, 7, c->log(), &err);
     REQUIRE_MESSAGE(rep, err);
     CHECK(rep->hash() == c->hash());
+    // Tampered decision: the log is authoritative, so replay follows it and diverges.
+    auto bad = c->log();
+    for (auto& e : bad)
+        for (auto& rr : e.reactions) rr.decision.react = false;
+    ecs::Registry reg3;
+    auto rep3 = replay(reg3, chunk, lib, 7, bad, &err);
+    const bool diverged = !rep3 || rep3->hash() != c->hash();
+    CHECK(diverged);
 }
 
-TEST_CASE("declined reaction: move completes, no attack, reaction unused; poll-order hook") {
+TEST_CASE("declined reaction: move completes, no attack; only reactors actually left are polled") {
     auto lib = pack_content();
     auto chunk = arena({{kFighter, 5, 5}, {kGoblin, 6, 5}, {kFighter, 7, 6}});
     ecs::Registry reg;
     auto c = Combat::create(reg, chunk, lib, 3);
     REQUIRE(c);
     const CombatantId f1 = chunk.spawns[0].stable_id, goblin = chunk.spawns[1].stable_id, f2 = chunk.spawns[2].stable_id;
-    std::vector<CombatantId> seen_eligible;
-    c->set_poll_order([&](const rules5e::EncounterState&, const std::vector<CombatantId>& el) {
-        seen_eligible = el;
-        std::vector<CombatantId> out(el.begin(), el.end());
-        std::sort(out.begin(), out.end());   // custom: by id
-        return out;
+    std::vector<CombatantId> polled;
+    c->set_reaction_decider([&](const Combat&, const NeedsDecision& n) {
+        polled.push_back(n.reactor);
+        return ReactionDecision{n.window_seq, false, 0};
     });
     advance_to(*c, goblin);
     Command step;
     step.kind = CommandKind::Step;
     step.to = {6, 3};   // illegal: not adjacent
     CHECK_FALSE(c->submit(step).ok);
-    step.to = {6, 4};   // leaves f1's reach? (5,5)->(6,4) dist 1: no. f2 (7,6)->(6,4) dist 2: yes
+    step.to = {6, 4};   // f1 (5,5)->(6,4) dist 1: still in reach. f2 (7,6)->(6,4) dist 2: leaves
     auto r = c->submit(step);
-    REQUIRE(r.ok);
-    REQUIRE(r.needs);
-    CHECK(seen_eligible == std::vector<CombatantId>{f2});
-    CHECK(r.needs->reactor == f2);
-    Command d;
-    d.kind = CommandKind::Decide;
-    d.decision = {r.needs->window_seq, false, 0};
-    REQUIRE(c->submit(d).ok);
+    REQUIRE_MESSAGE(r.ok, r.error);
+    CHECK(polled == std::vector<CombatantId>{f2});
+    CHECK(has_event(*c, rules5e::EventKind::ReactionDeclined, f2));
     CHECK(c->pos(goblin) == Vec2i{6, 4});
     CHECK_FALSE(rules5e::find(c->state(), f2)->reaction_used);
+    // No window when nobody's reach is left.
+    polled.clear();
+    const std::size_t n = c->events().size();
+    if (c->state().budget.movement_ft >= 5) {
+        step.to = {5, 4};   // f1 dist 1, f2 dist 2 (already outside)
+        REQUIRE(c->submit(step).ok);
+        CHECK(polled.empty());
+        for (std::size_t i = n; i < c->events().size(); ++i)
+            CHECK(c->events()[i].rules.kind != rules5e::EventKind::ReactionWindowOpened);
+    }
     (void)f1;
 }
 

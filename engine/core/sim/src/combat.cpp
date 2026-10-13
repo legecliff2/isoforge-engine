@@ -10,17 +10,6 @@ namespace eng::sim {
 using rules5e::ActionKind;
 using rules5e::ActionRequest;
 
-std::vector<CombatantId> default_poll_order(const rules5e::EncounterState& s, const std::vector<CombatantId>& eligible) {
-    // Initiative order starting after the current actor (the current actor last).
-    std::vector<CombatantId> out;
-    const std::size_t n = s.order.size();
-    for (std::size_t k = 1; k <= n; ++k) {
-        const CombatantId id = s.order[(s.turn_index + k) % n].id;
-        if (std::find(eligible.begin(), eligible.end(), id) != eligible.end()) out.push_back(id);
-    }
-    return out;
-}
-
 std::optional<Combat> Combat::create(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content,
                                      uint64_t seed, std::string* error) {
     Combat c(reg, chunk);
@@ -90,35 +79,73 @@ void Combat::sync_ecs() {
             if (Health* h = reg_->get<Health>(s.entity)) { h->hp = c->hp; h->hp_max = c->hp_max; }
 }
 
-std::optional<uint8_t> Combat::melee_attack(CombatantId id) const {
+int Combat::melee_reach_tiles(CombatantId id) const {
     const auto* c = rules5e::find(state_, id);
-    if (!c) return std::nullopt;
-    for (uint8_t i = 0; i < c->attacks.size(); ++i)
-        if (!c->attacks[i].ranged) return i;
-    return std::nullopt;
+    int best = 0;
+    if (c)
+        for (const auto& at : c->attacks)
+            if (!at.ranged) best = std::max(best, reach_tiles(at.reach_or_range_ft));
+    return best;
 }
 
-SubmitResult Combat::submit(const Command& cmd) {
-    SubmitResult r;
-    if (cmd.kind == CommandKind::Decide) {
-        r = do_decide(cmd.decision);
-    } else if (pending_) {
-        r.error = "a reaction window is waiting for a decision";
-        r.needs = pending_;
-        return r;
-    } else if (state_.ended) {
-        r.error = "encounter ended";
-        return r;
-    } else if (cmd.kind == CommandKind::Step) {
-        r = do_step(cmd.to);
-    } else {
-        r = do_rules(cmd.request);
+bool Combat::leaves_reach(CombatantId mover, Vec2i from, Vec2i to) const {
+    // Facts only; rules5e decides eligibility (reaction used, incapacitated, policy, Disengage).
+    for (const auto& s : slots_) {
+        if (s.id == mover || !hostile(s.id, mover)) continue;
+        const auto* c = rules5e::find(state_, s.id);
+        if (!c || c->dead) continue;
+        const int reach = melee_reach_tiles(s.id);
+        if (reach == 0) continue;
+        const Vec2i rp = pos(s.id);
+        if (chebyshev(from, rp) <= reach && chebyshev(to, rp) > reach) return true;
     }
-    if (r.ok) log_.push_back(cmd);
+    return false;
+}
+
+void Combat::install_hooks() {
+    // Re-bound before every rules call: Combat is movable, so hooks must not outlive `this`.
+    state_.hooks.in_range = [this](const rules5e::EncounterState&, const rules5e::ReactionWindow& w,
+                                   const rules5e::Combatant& r) {
+        if (w.trigger != ReactionTrigger::LeavingReach || !step_to_) return false;
+        const int reach = melee_reach_tiles(r.id);
+        const Vec2i rp = pos(r.id);
+        return reach > 0 && chebyshev(pos(w.trigger_actor), rp) <= reach && chebyshev(*step_to_, rp) > reach;
+    };
+    state_.hooks.decide_reaction = [this](const rules5e::EncounterState&, const rules5e::ReactionWindow& w,
+                                          const rules5e::Combatant& r, std::span<const ReactionOption> opts) {
+        if (!decider_) return rules5e::ReactionDecision{};
+        NeedsDecision nd{w.seq, w.trigger, r.id, w.trigger_actor, {opts.begin(), opts.end()}, w};
+        const ReactionDecision d = decider_(*this, nd);
+        if (d.window_seq != w.seq || (d.react && d.option >= opts.size())) return rules5e::ReactionDecision{};
+        return rules5e::ReactionDecision{d.react, d.option};
+    };
+}
+
+SubmitResult Combat::submit(const Command& cmd) { return run(cmd, nullptr); }
+SubmitResult Combat::submit_logged(const LoggedCommand& e) { return run(e.command, &e.reactions); }
+
+SubmitResult Combat::run(const Command& cmd, const std::vector<rules5e::ReactionRecord>* replay) {
+    SubmitResult r;
+    if (state_.ended) { r.error = "encounter ended"; return r; }
+    install_hooks();
+    r = cmd.kind == CommandKind::Step ? do_step(cmd.to, replay) : do_rules(cmd.request, replay);
+    if (r.ok) log_.push_back({cmd, r.reactions});
     return r;
 }
 
-SubmitResult Combat::do_rules(ActionRequest req) {
+SubmitResult Combat::rules_step(const ActionRequest& req, const std::vector<rules5e::ReactionRecord>* replay) {
+    SubmitResult r;
+    rules5e::StepResult sr = replay ? rules5e::replay_step(state_, rules5e::LoggedStep{req, *replay})
+                                    : rules5e::step(state_, req);
+    if (!sr.ok) { r.error = std::string(sr.error); return r; }
+    if (sr.desync) { r.error = "reaction decisions do not match the log"; return r; }
+    apply_rules_events(sr.events);
+    r.reactions = std::move(sr.reactions);
+    r.ok = true;
+    return r;
+}
+
+SubmitResult Combat::do_rules(ActionRequest req, const std::vector<rules5e::ReactionRecord>* replay) {
     SubmitResult r;
     const CombatantId actor = rules5e::current_actor(state_);
     if (req.actor != actor) { r.error = "not this combatant's turn"; return r; }
@@ -130,38 +157,14 @@ SubmitResult Combat::do_rules(ActionRequest req) {
             r.error = "bad attack";
             return r;
         }
-        const auto& at = a->attacks[req.attack_index];
         const int d = chebyshev(pos(actor), pos(req.target));
-        const int max_tiles = reach_tiles(at.reach_or_range_ft);
-        if (d > max_tiles) { r.error = "target out of reach/range"; return r; }
+        if (d > reach_tiles(a->attacks[req.attack_index].reach_or_range_ft)) { r.error = "target out of reach/range"; return r; }
         req.target_within_5ft = d <= 1;
     }
-    rules5e::StepResult sr = rules5e::step(state_, req);
-    if (!sr.ok) { r.error = std::string(sr.error); return r; }
-    apply_rules_events(sr.events);
-    r.ok = true;
-    return r;
+    return rules_step(req, replay);
 }
 
-std::vector<CombatantId> Combat::leaving_reach_reactors(CombatantId mover, Vec2i from, Vec2i to) const {
-    std::vector<CombatantId> eligible;   // initiative order
-    const auto* m = rules5e::find(state_, mover);
-    if (!m || m->disengaged) return eligible;
-    for (const auto& ie : state_.order) {
-        const CombatantId id = ie.id;
-        if (id == mover || !hostile(id, mover)) continue;
-        const auto* c = rules5e::find(state_, id);
-        if (!c || c->dead || c->reaction_used || !rules5e::is_conscious(*c) || !!rules5e::is_incapacitated(*c)) continue;
-        auto mi = melee_attack(id);
-        if (!mi) continue;
-        const int reach = reach_tiles(c->attacks[*mi].reach_or_range_ft);
-        const Vec2i rp = pos(id);
-        if (chebyshev(from, rp) <= reach && chebyshev(to, rp) > reach) eligible.push_back(id);
-    }
-    return poll_order_ ? poll_order_(state_, eligible) : default_poll_order(state_, eligible);
-}
-
-SubmitResult Combat::do_step(Vec2i to) {
+SubmitResult Combat::do_step(Vec2i to, const std::vector<rules5e::ReactionRecord>* replay) {
     SubmitResult r;
     const CombatantId mover = rules5e::current_actor(state_);
     const Vec2i from = pos(mover);
@@ -171,97 +174,25 @@ SubmitResult Combat::do_step(Vec2i to) {
     if (std::find(occ.begin(), occ.end(), to) != occ.end()) { r.error = "tile occupied"; return r; }
     const int cost = grid_.step_cost_ft(to);
     if (cost > state_.budget.movement_ft) { r.error = "not enough movement"; return r; }
-    const auto* m = rules5e::find(state_, mover);
-    if (!m || !!rules5e::is_incapacitated(*m) || !rules5e::is_conscious(*m)) { r.error = "cannot move"; return r; }
 
-    Window w{next_window_seq_, mover, from, to, cost, leaving_reach_reactors(mover, from, to), 0};
-    if (w.queue.empty()) return finish_move(w);
-    ++next_window_seq_;
-    window_ = w;
-    SimEvent se;
-    se.kind = SimEvent::Kind::WindowOpened;
-    se.actor = mover;
-    se.window_seq = w.seq;
-    events_.push_back(se);
-    return advance_window();
-}
-
-SubmitResult Combat::advance_window() {
-    // STUB of rules' window polling: next still-eligible reactor, else complete the move.
-    Window& w = *window_;
-    const auto* m = rules5e::find(state_, w.mover);
-    const bool mover_ok = m && !m->dead && rules5e::is_conscious(*m) && !state_.ended;
-    while (mover_ok && w.next < w.queue.size()) {
-        const CombatantId rid = w.queue[w.next];
-        const auto* c = rules5e::find(state_, rid);
-        auto mi = melee_attack(rid);
-        if (c && !c->reaction_used && rules5e::is_conscious(*c) && !rules5e::is_incapacitated(*c) && mi) {
-            NeedsDecision nd{w.seq, ReactionTrigger::LeavingReach, rid, w.mover, {ReactionOption{*mi}}};
-            pending_ = nd;
-            SubmitResult r;
-            r.ok = true;
-            r.needs = nd;
-            return r;
-        }
-        ++w.next;
-    }
-    const Window done = w;
-    window_.reset();
-    pending_.reset();
-    if (!mover_ok) {
+    ActionRequest mv{mover, ActionKind::Move};
+    mv.move_ft = int16_t(cost);
+    mv.leaves_reach = leaves_reach(mover, from, to);
+    step_to_ = to;
+    r = rules_step(mv, replay);
+    step_to_.reset();
+    if (!r.ok) return r;
+    bool interrupted = false;
+    for (std::size_t i = events_.size(); i-- > 0 && events_[i].kind == SimEvent::Kind::Rules;)
+        if (events_[i].rules.kind == rules5e::EventKind::MoveInterrupted && events_[i].rules.actor == mover) interrupted = true;
+    if (!interrupted) {
+        if (TilePos* p = reg_->get<TilePos>(entity(mover))) { p->x = to.x; p->y = to.y; }
         SimEvent se;
-        se.kind = SimEvent::Kind::MoveInterrupted;
-        se.actor = done.mover;
-        se.window_seq = done.seq;
-        events_.push_back(se);
-        SubmitResult r;
-        r.ok = true;
-        return r;
-    }
-    return finish_move(done);
-}
-
-SubmitResult Combat::do_decide(const ReactionDecision& d) {
-    SubmitResult r;
-    if (!pending_ || !window_) { r.error = "no pending reaction window"; return r; }
-    if (d.window_seq != pending_->window_seq) { r.error = "decision for a different window"; r.needs = pending_; return r; }
-    if (d.react && d.option >= pending_->options.size()) { r.error = "bad option"; r.needs = pending_; return r; }
-    const NeedsDecision nd = *pending_;
-    SimEvent se;
-    se.actor = nd.reactor;
-    se.window_seq = nd.window_seq;
-    if (d.react) {
-        se.kind = SimEvent::Kind::ReactionTaken;
-        events_.push_back(se);
-        ActionRequest oa{nd.reactor, ActionKind::OpportunityAttack, nd.trigger_actor};
-        oa.attack_index = nd.options[d.option].attack_index;
-        oa.target_within_5ft = chebyshev(window_->from, pos(nd.reactor)) <= 1;   // before leaving reach
-        rules5e::StepResult sr = rules5e::step(state_, oa);
-        if (!sr.ok) { r.error = std::string("opportunity attack rejected: ") + std::string(sr.error); return r; }
-        apply_rules_events(sr.events);
-    } else {
-        se.kind = SimEvent::Kind::ReactionDeclined;
+        se.kind = SimEvent::Kind::TileMoved;
+        se.actor = mover;
+        se.tile = to;
         events_.push_back(se);
     }
-    ++window_->next;
-    pending_.reset();
-    return advance_window();
-}
-
-SubmitResult Combat::finish_move(const Window& w) {
-    SubmitResult r;
-    ActionRequest mv{w.mover, ActionKind::Move};
-    mv.move_ft = int16_t(w.cost_ft);
-    rules5e::StepResult sr = rules5e::step(state_, mv);
-    if (!sr.ok) { r.error = std::string(sr.error); return r; }
-    if (TilePos* p = reg_->get<TilePos>(entity(w.mover))) { p->x = w.to.x; p->y = w.to.y; }
-    apply_rules_events(sr.events);
-    SimEvent se;
-    se.kind = SimEvent::Kind::TileMoved;
-    se.actor = w.mover;
-    se.tile = w.to;
-    events_.push_back(se);
-    r.ok = true;
     return r;
 }
 
@@ -277,10 +208,10 @@ uint64_t Combat::hash() const {
         h.i32(e.rules.a);
         h.i32(e.rules.b);
         h.i32(e.rules.c);
+        h.byte(e.rules.reaction_depth);
         h.u32(e.actor);
         h.i32(e.tile.x);
         h.i32(e.tile.y);
-        h.u32(e.window_seq);
     }
     for (const auto& s : slots_) {
         h.u32(s.id);
@@ -297,7 +228,8 @@ uint64_t Combat::hash() const {
 uint64_t Combat::log_hash() const {
     CanonicalHasher h;
     h.u32(uint32_t(log_.size()));
-    for (const auto& c : log_) {
+    for (const auto& e : log_) {
+        const Command& c = e.command;
         h.byte(uint8_t(c.kind));
         h.u32(c.request.actor);
         h.byte(uint8_t(c.request.kind));
@@ -307,19 +239,24 @@ uint64_t Combat::log_hash() const {
         h.byte(c.request.as_bonus_action ? 1 : 0);
         h.i32(c.to.x);
         h.i32(c.to.y);
-        h.u32(c.decision.window_seq);
-        h.byte(c.decision.react ? 1 : 0);
-        h.byte(c.decision.option);
+        h.u32(uint32_t(e.reactions.size()));
+        for (const auto& rr : e.reactions) {
+            h.u32(rr.window_seq);
+            h.byte(uint8_t(rr.trigger));
+            h.u32(rr.reactor);
+            h.byte(rr.decision.react ? 1 : 0);
+            h.byte(rr.decision.option);
+        }
     }
     return h.value();
 }
 
 std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content, uint64_t seed,
-                             const std::vector<Command>& log, std::string* error) {
+                             const std::vector<LoggedCommand>& log, std::string* error) {
     auto c = Combat::create(reg, chunk, content, seed, error);
     if (!c) return std::nullopt;
     for (std::size_t i = 0; i < log.size(); ++i) {
-        auto r = c->submit(log[i]);
+        auto r = c->submit_logged(log[i]);
         if (!r.ok) {
             if (error) *error = "replay desync at command " + std::to_string(i) + ": " + r.error;
             return std::nullopt;
