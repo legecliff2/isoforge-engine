@@ -154,7 +154,6 @@ private:
     std::vector<Slot> slots_;              // in spawn order
     std::vector<SimEvent> events_;
     std::vector<LogEntry> log_;
-    std::map<std::pair<CombatantId, uint32_t>, uint8_t> feature_used_;   // uses spent since recharge
     std::vector<std::string> team_names_;
     PollOrderFn poll_order_;
     std::map<CombatantId, Vec2i> readied_dest_;   // readied Move destinations (until fired/expired)
