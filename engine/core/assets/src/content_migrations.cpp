@@ -17,9 +17,9 @@ void monster_1_to_2(Json& j, MigrationCtx&) {
 }
 // character@2 = character@1 + optional behavior.ai (append-only): nothing to rewrite.
 void character_1_to_2(Json&, MigrationCtx&) {}
-// character@3 activates feature effects. Pre-@3 effects were descriptive (numbers baked into
+// character@3 / monster@3 activate feature effects. Pre-@3 effects were descriptive (numbers baked into
 // the stat block), so they stay inert: the engine records them but applies nothing.
-void character_2_to_3(Json& j, MigrationCtx&) {
+void mark_effects_inert(Json& j) {
     for (const char* key : {"features", "traits"}) {
         auto it = j.find(key);
         if (it == j.end() || !it->is_array()) continue;
@@ -30,6 +30,9 @@ void character_2_to_3(Json& j, MigrationCtx&) {
         }
     }
 }
+void character_2_to_3(Json& j, MigrationCtx&) { mark_effects_inert(j); }
+// monster@3: same gate as character@3 (docs/CONTENT_COMPAT.md).
+void monster_2_to_3(Json& j, MigrationCtx&) { mark_effects_inert(j); }
 } // namespace
 
 void register_content_schemas(SchemaRegistry& reg) {
@@ -40,6 +43,7 @@ void register_content_schemas(SchemaRegistry& reg) {
     reg.register_migration("monster", 1, 2, monster_1_to_2);
     reg.register_migration("character", 1, 2, character_1_to_2);
     reg.register_migration("character", 2, 3, character_2_to_3);
+    reg.register_migration("monster", 2, 3, monster_2_to_3);
 }
 
 std::optional<std::string> behavior_ai_script(const Json& doc) {
