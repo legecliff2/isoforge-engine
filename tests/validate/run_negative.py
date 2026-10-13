@@ -50,6 +50,7 @@ def main() -> int:
     failures = 0
     cases = sorted((HERE / "cases").glob("*.json"))
     tmp = Path(tempfile.mkdtemp(prefix="validate_neg_"))
+    extra = ()
     try:
         # Sanity: the sample spells alone are valid in a test pack.
         rc, out = run(make_pack(tmp / "ok", "test.neg", {p.stem: spell(p.stem, f"test.neg.spell.{p.stem}")
@@ -80,13 +81,21 @@ def main() -> int:
         # The same content id in two packs is an error too (rules5e_content::add_spell agrees).
         rc, out4 = run(make_pack(tmp / "dup1", "test.nega", {"a": a}), make_pack(tmp / "dup2", "test.negb", {"a": a}))
         ok_dup = rc != 0 and "duplicate content id" in out4
-        for name, ok, o in (("collision_within_pack", ok_in, out), ("collision_across_packs", ok_x, out2),
-                            ("collision_same_folder_name", ok_same, out3), ("duplicate_id_across_packs", ok_dup, out4)):
+        # Pack-set errors make the summary say FAILED, not "N/N packs valid".
+        ok_sum = "FAILED: 2/2 packs valid" in out4 and "\n2/2 packs valid" not in out4
+        # A frozen compat copy (tests/compat/<level>/) is its own pack set: no duplicate vs the live pack.
+        rc5, out5 = run(make_pack(tmp / "live" / "dupl", "test.nega", {"a": a}),
+                        make_pack(tmp / "tests" / "compat" / "fl9" / "dupl", "test.nega", {"a": a}))
+        ok_compat = rc5 == 0
+        extra = (("collision_within_pack", ok_in, out), ("collision_across_packs", ok_x, out2),
+                 ("collision_same_folder_name", ok_same, out3), ("duplicate_id_across_packs", ok_dup, out4),
+                 ("pack_set_error_summary", ok_sum, out4), ("compat_copy_own_pack_set", ok_compat, out5))
+        for name, ok, o in extra:
             print(("ok   " if ok else "FAIL ") + name + ("" if ok else "\n" + o))
             failures += not ok
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    print(f"{len(cases) + 5 - failures}/{len(cases) + 5} negative checks passed")
+    print(f"{len(cases) + len(extra) - failures}/{len(cases) + len(extra)} negative checks passed")
     return 1 if failures else 0
 
 

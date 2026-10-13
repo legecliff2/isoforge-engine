@@ -17,6 +17,19 @@ void monster_1_to_2(Json& j, MigrationCtx&) {
 }
 // character@2 = character@1 + optional behavior.ai (append-only): nothing to rewrite.
 void character_1_to_2(Json&, MigrationCtx&) {}
+// character@3 activates feature effects. Pre-@3 effects were descriptive (numbers baked into
+// the stat block), so they stay inert: the engine records them but applies nothing.
+void character_2_to_3(Json& j, MigrationCtx&) {
+    for (const char* key : {"features", "traits"}) {
+        auto it = j.find(key);
+        if (it == j.end() || !it->is_array()) continue;
+        for (auto& f : *it) {
+            if (!f.is_object()) continue;
+            auto e = f.find("effect");
+            if (e != f.end() && e->is_object()) (*e)["inert"] = true;
+        }
+    }
+}
 } // namespace
 
 void register_content_schemas(SchemaRegistry& reg) {
@@ -27,6 +40,7 @@ void register_content_schemas(SchemaRegistry& reg) {
     reg.register_type("spell", kSpellSchemaVersion);
     reg.register_migration("monster", 1, 2, monster_1_to_2);
     reg.register_migration("character", 1, 2, character_1_to_2);
+    reg.register_migration("character", 2, 3, character_2_to_3);
 }
 
 std::optional<std::string> behavior_ai_script(const Json& doc) {

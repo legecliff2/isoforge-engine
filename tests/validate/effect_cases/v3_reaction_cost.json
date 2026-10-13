@@ -1,0 +1,16 @@
+{
+  "base": "characters/fighter_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        1,
+        "effect",
+        "cost"
+      ],
+      "reaction"
+    ]
+  ],
+  "severity": "error",
+  "expect": "cost 'reaction' is reserved"
+}

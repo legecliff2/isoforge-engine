@@ -133,13 +133,70 @@
         "id": { "$ref": "#/$defs/local_id" },
         "name": { "type": "string" },
         "description": { "type": "string" },
-        "effect": {
-          "type": "object",
-          "required": ["kind"],
-          "properties": { "kind": { "type": "string", "pattern": "^[a-z0-9_]+$" } },
-          "description": "Machine-readable effect; kinds are interpreted by sim/rules adapters."
-        }
+        "effect": { "$ref": "#/$defs/effect_descriptive" }
       }
+    },
+    "trait_active": {
+      "description": "A trait whose effect is mechanically applied by the engine (character@3+). Same shape as trait, but the effect must satisfy the kind-tagged effect contract.",
+      "$ref": "#/$defs/trait",
+      "properties": { "effect": { "$ref": "#/$defs/effect" } }
+    },
+    "effect_descriptive": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": { "kind": { "type": "string", "pattern": "^[a-z0-9_]+$" } },
+      "description": "Effect object as accepted by common@1 trait (character@1/@2, monster@1/@2). For character@1/@2 it is an inert description: the engine migrates it with an 'inert' marker and never applies it, because those stat blocks already bake the numbers in. Monster traits are applied by the engine (not gated yet). The validator checks known kinds against $defs/effect (errors for monsters, warnings for character@1/@2). 'inert' is reserved for the engine migration and must never be authored."
+    },
+    "effect": {
+      "type": "object",
+      "required": ["kind"],
+      "description": "Machine-readable feature effect, tagged by kind (contract: docs/CONTENT_EFFECTS.md). The engine FeatureRegistry maps kind to a hook. Unknown kinds are allowed: the validator warns and the engine reports them as unsupported and ignores them. Known kinds have their fields checked below. The object stays open (no additionalProperties: false), so v1 remains append-only and extra fields are ignored by the engine.",
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "Hook id. Known: damage_bonus, bonus_action_grant, self_heal." },
+        "cost": { "$ref": "#/$defs/effect_cost" }
+      },
+      "allOf": [
+        { "if": { "properties": { "kind": { "const": "damage_bonus" } }, "required": ["kind"] },
+          "then": {
+            "description": "Static: adds amount to the damage bonus of every attack action matching condition (every attack if condition is omitted). Applied when the archetype is built; content damage stays base damage.",
+            "required": ["amount"],
+            "properties": {
+              "amount": { "type": "integer", "minimum": -32768, "maximum": 32767, "description": "Flat damage bonus (int16)." },
+              "condition": { "$ref": "#/$defs/effect_condition" }
+            } } },
+        { "if": { "properties": { "kind": { "const": "bonus_action_grant" } }, "required": ["kind"] },
+          "then": {
+            "description": "Static: the creature may take each listed action as a bonus action (e.g. Nimble Escape).",
+            "required": ["actions"],
+            "properties": {
+              "actions": { "type": "array", "items": { "enum": ["dash", "disengage", "hide", "dodge"] },
+                           "description": "rules5e ActionKind ids grantable as bonus actions." }
+            } } },
+        { "if": { "properties": { "kind": { "const": "self_heal" } }, "required": ["kind"] },
+          "then": {
+            "description": "Active (rules5e UseFeature): the user regains dice + plus hit points; limited to uses per recharge.",
+            "required": ["dice"],
+            "properties": {
+              "dice": { "$ref": "#/$defs/dice" },
+              "plus": {
+                "oneOf": [
+                  { "type": "integer", "minimum": -32768, "maximum": 32767 },
+                  { "type": "string", "pattern": "^(level|[a-z]+_level)$" }
+                ],
+                "description": "Flat bonus added to the roll: an integer, 'level' (total level) or '<class>_level' (that class's level, e.g. fighter_level)."
+              },
+              "uses": { "type": "integer", "minimum": 0, "maximum": 255, "description": "Uses per recharge (uint8); 0 or omitted = unlimited." },
+              "recharge": { "enum": ["short_rest", "long_rest"], "description": "When uses refill; omitted = never." }
+            } } }
+      ]
+    },
+    "effect_cost": {
+      "enum": ["action", "bonus_action", "reaction"],
+      "description": "Action-economy cost of using an active effect; omitted = action. Engine v0 implements action and bonus_action; reaction is reserved."
+    },
+    "effect_condition": {
+      "enum": ["one_handed_melee_no_other_weapon", "melee_weapon", "ranged_weapon"],
+      "description": "Named predicate over an attack action (FeatureRegistry conditions). one_handed_melee_no_other_weapon: melee_weapon_attack without the two_handed property (v0 wield model). melee_weapon: kind melee_weapon_attack. ranged_weapon: kind ranged_weapon_attack."
     },
     "action": {
       "type": "object",
@@ -154,7 +211,7 @@
         "reach": { "$ref": "#/$defs/feet" },
         "range": {
           "type": "array", "prefixItems": [ { "$ref": "#/$defs/range_ft" }, { "$ref": "#/$defs/range_ft" } ],
-          "minItems": 2, "maxItems": 2, "description": "[normal, long] in feet."
+          "minItems": 2, "maxItems": 2, "description": "[normal, long] range in feet (SRD range 80/320 = [80, 320]); targets beyond normal and up to long range are attacked with disadvantage."
         },
         "targets": { "type": "integer", "minimum": 1 },
         "properties": { "type": "array", "items": { "type": "string" }, "uniqueItems": true,
@@ -164,7 +221,8 @@
           "items": {
             "type": "object", "additionalProperties": false, "required": ["dice", "type"],
             "properties": { "dice": { "$ref": "#/$defs/dice" }, "type": { "$ref": "#/$defs/damage_type" } }
-          }
+          },
+          "description": "BASE damage: weapon die + ability modifier (+ magic bonus). Never fold feature bonuses (e.g. Dueling +2) in; feature effects such as damage_bonus are applied by the engine."
         },
         "description": { "type": "string" }
       },

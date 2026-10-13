@@ -1,0 +1,20 @@
+{
+  "base": "characters/fighter_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        2
+      ],
+      {
+        "id": "mystery",
+        "name": "Mystery",
+        "effect": {
+          "kind": "not_a_hook"
+        }
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "unknown effect kind 'not_a_hook'"
+}
