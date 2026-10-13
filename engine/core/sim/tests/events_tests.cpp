@@ -33,7 +33,7 @@ world::Chunk sample_chunk() {
 } // namespace
 
 TEST_CASE("event layout: schema version and numeric enum values are locked") {
-    CHECK(kSimEventSchemaVersion == 1);
+    CHECK(kSimEventSchemaVersion == 2);
     CHECK(uint8_t(SimEvent::Kind::Rules) == 0);
     CHECK(uint8_t(SimEvent::Kind::TileMoved) == 1);
     // rules5e::EventKind as surfaced in SimEvent::rules (append-only; values are the contract).
@@ -49,7 +49,8 @@ TEST_CASE("event layout: schema version and numeric enum values are locked") {
         {EventKind::ReadyExpired, 24}, {EventKind::CheckRolled, 25}, {EventKind::ReactionWindowOpened, 26},
         {EventKind::ReactionTaken, 27}, {EventKind::ReactionDeclined, 28}, {EventKind::MoveInterrupted, 29},
         {EventKind::SpellCast, 30}, {EventKind::SpellCountered, 31}, {EventKind::SpellResolved, 32},
-        {EventKind::AcBonus, 33}};
+        {EventKind::AcBonus, 33}, {EventKind::FeatureUsed, 34}};   // v2: FeatureUsed
+    CHECK(int(kLastRulesEventKind) == kinds.back().second);
     for (auto [k, v] : kinds) CHECK(int(k) == v);
     CHECK(uint8_t(rules5e::ReactionTrigger::LeavingReach) == 0);
     CHECK(uint8_t(rules5e::ReactionTrigger::BeingHit) == 1);
@@ -121,5 +122,5 @@ TEST_CASE("event goldens: same seed => same stream; locked digests") {
     CHECK(a == b);
     CHECK(run(2).first != a.first);
     MESSAGE("seed 1: events=" << a.second << " digest=" << a.first);
-    CHECK(a.first == 10579818256443912811ull);   // GOLDEN (v1)
+    CHECK(a.first == 1995367089495961954ull);   // GOLDEN (v2; v1 was 10579818256443912811, same 30 events)
 }

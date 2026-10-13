@@ -167,6 +167,33 @@ bool Combat::move_tile(CombatantId mover, Vec2i to, const std::vector<rules5e::E
     return true;
 }
 
+static const ActiveFeature* find_active(const Archetype* a, uint32_t fid) {
+    if (!a) return nullptr;
+    for (const auto& f : a->active)
+        if (f.feature_id == fid) return &f;
+    return nullptr;
+}
+
+uint8_t Combat::feature_uses_left(CombatantId id, uint32_t fid) const {
+    const ActiveFeature* f = find_active(archetype(id), fid);
+    if (!f) return 0;
+    if (f->uses == 0) return 255;
+    auto it = feature_used_.find({id, fid});
+    const uint8_t used = it == feature_used_.end() ? 0 : it->second;
+    return used >= f->uses ? 0 : uint8_t(f->uses - used);
+}
+
+bool Combat::can_use_feature(CombatantId id, uint32_t fid) const {
+    const ActiveFeature* f = find_active(archetype(id), fid);
+    if (!f || state_.ended || state_.pending || rules5e::current_actor(state_) != id) return false;
+    if (feature_uses_left(id, fid) == 0) return false;
+    return f->cost == FeatureCost::BonusAction ? state_.budget.bonus_action : state_.budget.action;
+}
+
+void Combat::on_completed(const rules5e::LoggedStep& ls) {
+    if (ls.request.kind == ActionKind::UseFeature) ++feature_used_[{ls.request.actor, ls.request.feature_id}];
+}
+
 SubmitResult Combat::finish(rules5e::StepResult sr) {
     SubmitResult r;
     r.status = sr.status;
@@ -186,6 +213,7 @@ SubmitResult Combat::finish(rules5e::StepResult sr) {
     step_to_.reset();
     apply_rules_events(sr.events);
     if (to) move_tile(ls.request.actor, *to, sr.events);
+    on_completed(ls);
     log_.push_back({ls, to});
     r.reactions = std::move(sr.reactions);
     return r;
@@ -229,6 +257,13 @@ SubmitResult Combat::do_rules(ActionRequest req) {
     if (req.kind == ActionKind::Move) { r.error = "use Step commands for movement (sim paths the grid)"; return r; }
     if (req.kind == ActionKind::OpportunityAttack) { r.error = "opportunity attacks come from reaction windows"; return r; }
     if (req.kind == ActionKind::ReactionDecision) { r.error = "use decide() for reaction decisions"; return r; }
+    if (req.kind == ActionKind::UseFeature) {   // parameters come from content, not the caller
+        const ActiveFeature* f = find_active(archetype(actor), req.feature_id);
+        if (!f) { r.error = "no such active feature"; return r; }
+        if (feature_uses_left(actor, req.feature_id) == 0) { r.error = "feature has no uses left"; return r; }
+        req.as_bonus_action = f->cost == FeatureCost::BonusAction;
+        req.heal_dice = f->heal;   // zero unless the hook set a heal
+    }
     if (req.kind == ActionKind::Attack) {
         const auto* a = rules5e::find(state_, actor);
         if (!a || req.attack_index >= a->attacks.size() || !rules5e::find(state_, req.target)) {
@@ -302,6 +337,10 @@ uint64_t Combat::log_hash() const {
         h.byte(q.as_bonus_action ? 1 : 0);
         h.byte(q.target_within_5ft ? 1 : 0);
         h.byte(q.leaves_reach ? 1 : 0);
+        h.u32(q.feature_id);
+        h.byte(q.heal_dice.count);
+        h.byte(q.heal_dice.sides);
+        h.i16(q.heal_dice.bonus);
         h.byte(e.to ? 1 : 0);
         h.i32(e.to ? e.to->x : 0);
         h.i32(e.to ? e.to->y : 0);
@@ -334,6 +373,7 @@ std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, cons
         }
         c->apply_rules_events(sr.events);
         if (e.to) c->move_tile(e.step.request.actor, *e.to, sr.events);
+        c->on_completed(*sr.logged);
         c->log_.push_back({*sr.logged, e.to});
     }
     return c;

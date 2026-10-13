@@ -1,9 +1,9 @@
 # sim: turn manager, ECS <-> rules5e adapters, grid movement, reaction windows (§2.1, §5.3
 # "Sim responsibilities"). Deterministic (§4): integer math only, stable iteration.
 engine_add_module(sim
-    SOURCES     src/events.cpp src/grid.cpp src/content.cpp src/combat.cpp src/driver.cpp
+    SOURCES     src/events.cpp src/grid.cpp src/content.cpp src/features.cpp src/combat.cpp src/driver.cpp
     PUBLIC_DEPS ecs rules5e world assets
-    TESTS       tests/sim_tests.cpp tests/events_tests.cpp)
+    TESTS       tests/sim_tests.cpp tests/events_tests.cpp tests/features_tests.cpp)
 if(TARGET sim_tests)
     target_compile_definitions(sim_tests PRIVATE ENGINE_SOURCE_ROOT="${PROJECT_SOURCE_DIR}")
 endif()
