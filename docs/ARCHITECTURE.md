@@ -155,6 +155,8 @@ Note: **SDL_GPU already sits on top of Vulkan, Metal, and D3D12.** That makes it
 
 The promise: **a content pack that loads cleanly on engine vX loads and behaves the same on any later version, for as long as its feature level is still supported (§3.5).**
 
+Feature effect kinds, base-damage, range and tile-flag rules: see [CONTENT_EFFECTS.md](CONTENT_EFFECTS.md).
+
 ### 3.1 Versioning axes
 
 | Axis | Format | Bumped when | Example |

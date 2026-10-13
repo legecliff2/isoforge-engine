@@ -109,9 +109,9 @@ TEST_CASE("vertical slice: goblin (Luau) vs fighter runs to completion; same see
     CHECK(a.ai_calls > 0);   // the skirmisher script chose the goblin's targets
     MESSAGE("seed 2026: hash=" << a.hash << " log=" << a.log_hash << " commands=" << a.commands << " events=" << a.events << " windows=" << a.windows << " reactions=" << a.reactions);
     CHECK(a.hash == 2775258447473174400ull);
-    CHECK(a.log_hash == 4295572488395449806ull);
+    CHECK(a.log_hash == 5996853685404721721ull);
     MESSAGE("event digest (schema v" << sim::kSimEventSchemaVersion << ")=" << a.event_digest);
-    CHECK(a.event_digest == 1463937795433586784ull);
+    CHECK(a.event_digest == 1849769190346522522ull);
 }
 
 TEST_CASE("vertical slice: the command log alone replays the fight bit-identically") {
@@ -157,8 +157,7 @@ TEST_CASE("vertical slice: a character@2 with behavior.ai is driven by Luau") {
     fs::copy(kPack, tmp, fs::copy_options::recursive);
     const fs::path fj = tmp / "characters" / "fighter_1.json";
     auto doc = assets::Json::parse(std::ifstream(fj));
-    CHECK(doc["$schema"] == "character@1");
-    doc["$schema"] = "character@2";
+    CHECK(doc["$schema"] == "character@3");
     doc["behavior"] = {{"ai", "scripts/ai/skirmisher.luau"}};
     std::ofstream(fj) << doc.dump(2);
     const Outcome o = fight(5, tmp.string());

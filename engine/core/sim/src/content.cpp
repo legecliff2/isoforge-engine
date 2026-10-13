@@ -59,6 +59,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         for (int i = 0; i < 6; ++i)
             if (st->contains(ab[i])) c.save_proficiencies |= rules5e::bit(rules5e::Ability(i));
     c.is_pc = c.uses_death_saves = (schema_type == "character");
+    std::vector<const Json*> attack_actions;   // content action per c.attacks[i]
     for (const Json& act : doc.at("actions")) {
         const std::string kind = act.value("kind", "");
         const bool melee = kind == "melee_weapon_attack", ranged = kind == "ranged_weapon_attack";
@@ -77,6 +78,25 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         at.finesse = false;
         at.reach_or_range_ft = uint8_t(melee ? geti(act, "reach", 5) : act.at("range").at(0).get<int>());
         c.attacks.push_back(at);
+        attack_actions.push_back(&act);
+    }
+    // Feature hooks (data-driven by effect.kind; see features.hpp).
+    a.features = declared_features(doc);
+    const FeatureBuildCtx fctx{*features_, doc, attack_actions};
+    for (std::size_t i = 0; i < a.features.size(); ++i) {
+        const FeatureDecl& f = a.features[i];
+        // Schema-version gate (docs/CONTENT_COMPAT.md): effects from pre-character@3 files are
+        // marked inert by the 2 -> 3 migration; their numbers are already baked in.
+        if (!f.kind.empty() && f.effect.value("inert", false)) {
+            a.inert_features.push_back(f.id + " (" + f.kind + ")");
+            continue;
+        }
+        const FeatureHook* h = f.kind.empty() ? nullptr : features_->hook(f.kind);
+        if (!h) {
+            a.unsupported_features.push_back(f.id + " (" + (f.kind.empty() ? "no effect" : f.kind) + ")");
+            continue;
+        }
+        if (auto e = h->apply(a, f, uint32_t(i + 1), fctx)) return a.id + ": " + *e;
     }
     a.ai = assets::behavior_ai_script(doc);   // monster@2 / character@2
     by_id_[a.id] = std::move(a);

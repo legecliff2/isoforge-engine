@@ -1,11 +1,12 @@
-# sim event stream (schema version 1)
+# sim event stream (schema version 2)
 
 `eng::sim::Combat::events()` is the ordered record of everything that happened in a combat. Render/platform, UI, logs and tests consume it. This document is the contract. The code lives in `engine/core/sim/include/sim/events.hpp`, and the layout is locked by `engine/core/sim/tests/events_tests.cpp`.
 
 ## Types
 
 ```cpp
-inline constexpr uint32_t kSimEventSchemaVersion = 1;
+inline constexpr uint32_t kSimEventSchemaVersion = 2;
+inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::FeatureUsed;
 
 struct SimEvent {
     enum class Kind : uint8_t { Rules = 0, TileMoved = 1 };   // append-only
@@ -56,6 +57,9 @@ struct rules5e::Event { EventKind kind; CombatantId actor, target; int32_t a, b,
 | 29 | MoveInterrupted | mover | | feet requested | | |
 | 30–32 | SpellCast / SpellCountered / SpellResolved | caster | target (counter: countered caster) | spell id | level | |
 | 33 | AcBonus | creature | | bonus | new AC | |
+| 34 | FeatureUsed (v2) | user | | feature id | 1 if bonus action | |
+
+`FeatureUsed` feature ids are 1-based indexes into the archetype's declared features (`features[]` then `traits[]`, see `sim/features.hpp`). A self-heal is followed by `Healed`, with actor and target both set to the user.
 
 `reaction_depth` is 0 for events of the action itself and 1 or more for events produced while a reaction resolves. For example, an opportunity attack's `AttackResolved` has depth 1.
 
@@ -87,10 +91,11 @@ The authoritative per-kind field meanings are in `rules5e/encounter.hpp`. If tha
 - **The contract.** `kSimEventSchemaVersion` versions the contract: `SimEvent` fields, `SimEvent::Kind` values, the surfaced `rules5e::EventKind` values, field meanings, and the ordering rules above.
 - **Append-only.** New kinds and new fields are appended only. Existing numeric values and field meanings never change.
 - **Version bump.** Any change consumers can observe bumps the version, adds a changelog entry below, and updates `events_tests.cpp`. Observable changes include a new kind, a new field, a new meaning, or an ordering change. The locked digests change deliberately, with an explanation in the PR.
-- **New rules kinds.** When rules5e appends a `EventKind`, sim bumps the version in the same PR that surfaces it. The layout test fails until that happens.
+- **New rules kinds.** When rules5e appends an `EventKind`, sim bumps the version and `kLastRulesEventKind` in the same PR that surfaces it. The layout test locks every value up to `kLastRulesEventKind`.
 - **Consumer behaviour.** Consumers must ignore unknown `SimEvent::Kind` and `rules5e::EventKind` values (skip them), so newer streams degrade gracefully.
 - **Recorded streams.** A stream stored outside the process (save files, replays, network) records the version. Prefer storing seed plus command log and regenerating the stream.
 
 ## Changelog
 
-- **v1** (sim v0, PR #14, documented here): `Rules` and `TileMoved`; rules5e EventKind values 0–33.
+- **v1** (sim v0, PR #14): `Rules` and `TileMoved`; rules5e EventKind values 0–33.
+- **v2** (feature hooks): rules5e `FeatureUsed` (34), emitted for content features such as Second Wind. `Healed` from a feature carries the user as actor. Nothing else changed. The digest changes for every stream because it includes the version.
