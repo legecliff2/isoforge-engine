@@ -1,6 +1,6 @@
-# world: Chunk model, IChunkProvider, HandcraftedProvider (ARCHITECTURE.md §5.2).
+# world: Chunk model, IChunkProvider, FileChunkProvider (ARCHITECTURE.md §5.2).
 engine_add_module(world
-    SOURCES     src/chunk_codec.cpp src/handcrafted_provider.cpp
+    SOURCES     src/chunk_codec.cpp src/file_chunk_provider.cpp
     PUBLIC_DEPS base ecs assets
     TESTS       tests/chunk_tests.cpp)
 if(TARGET world_tests)

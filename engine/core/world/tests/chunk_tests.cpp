@@ -33,7 +33,7 @@ HandcraftedProvider fixture_provider() { return HandcraftedProvider({{kCoord, kC
 
 TEST_CASE("HandcraftedProvider loads the fixture chunk") {
     auto p = fixture_provider();
-    CHECK(p.name() == "handcrafted");
+    CHECK(p.name() == "file");
     CHECK(p.covers(kCoord));
     CHECK_FALSE(p.covers(ChunkCoord{0, 0, 0}));
     ChunkResult r = p.load(ChunkRequest{kCoord, 0, 1});
