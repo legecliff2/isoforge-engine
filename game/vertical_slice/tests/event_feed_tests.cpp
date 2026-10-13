@@ -102,7 +102,7 @@ TEST_CASE("unknown event kinds are skipped (above kLastRulesEventKind, future si
 }
 
 TEST_CASE("feeding a real fight's stream reproduces the sim's final tiles") {
-    const std::string pack = SLICE_PACK;
+    const std::string pack = std::string(SLICE_PACK_ROOT) + "/" + SLICE_PACK;   // load_pack wrapper resolves its root
     sim::ContentLibrary lib;
     REQUIRE(lib.load_pack(pack).empty());
     world::FileChunkProvider p({{world::ChunkCoord{0, 0, 0}, pack + "/chunks/0_0_0.json"}});
@@ -125,7 +125,7 @@ TEST_CASE("feeding a real fight's stream reproduces the sim's final tiles") {
 
 TEST_CASE("NeedsDecision: a paused request adds nothing to the fed stream; completion does") {
     sim::ContentLibrary lib;
-    REQUIRE(lib.load_pack(SLICE_PACK).empty());
+    REQUIRE(lib.load_pack(std::string(SLICE_PACK_ROOT) + "/" + SLICE_PACK).empty());
     world::Chunk ch{};
     ch.coord = {5, 5, 0};
     ch.origin = world::Chunk::Origin::Handcrafted;

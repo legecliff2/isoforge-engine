@@ -3,6 +3,7 @@
 #include <fstream>
 #include <string>
 
+#include "sample_set.hpp"
 #include "assets/content_migrations.hpp"
 
 #include "sim/combat.hpp"
@@ -19,7 +20,7 @@ const std::string kPack = std::string(ENGINE_SOURCE_ROOT) + "/content/packs/samp
 
 ContentLibrary pack_content() {
     ContentLibrary lib;
-    auto errs = lib.load_pack(kPack);
+    auto errs = lib.load(sample_set());
     REQUIRE_MESSAGE(errs.empty(), (errs.empty() ? "" : errs[0]));
     return lib;
 }

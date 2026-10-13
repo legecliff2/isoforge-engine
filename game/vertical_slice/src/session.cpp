@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 
+#include "assets/pack_set.hpp"
 #include "ecs/registry.hpp"
 #include "rules5e/encounter.hpp"
 #include "sim/combat.hpp"
@@ -70,21 +72,52 @@ struct Session::Impl {
 Session::Session() : impl_(std::make_unique<Impl>()) {}
 Session::~Session() = default;
 
+bool Session::apply_pack_config(const std::string& text, Options& o, std::string* error) {
+    auto fail = [&](std::string e) { if (error) *error = std::move(e); return false; };
+    assets::Json j;
+    try {
+        j = assets::Json::parse(text);
+    } catch (const std::exception& ex) {
+        return fail(std::string("pack config: ") + ex.what());
+    }
+    if (!j.is_object()) return fail("pack config: not an object");
+    for (const char* key : {"pack_roots", "packs"}) {
+        if (!j.contains(key)) continue;
+        const auto& a = j[key];
+        if (!a.is_array()) return fail(std::string("pack config: ") + key + " must be an array of strings");
+        std::vector<std::string> v;
+        for (const auto& e : a) {
+            if (!e.is_string()) return fail(std::string("pack config: ") + key + " must be an array of strings");
+            v.push_back(e.get<std::string>());
+        }
+        (std::string(key) == "packs" ? o.packs : o.pack_roots) = std::move(v);
+    }
+    return true;
+}
+
 std::unique_ptr<Session> Session::open(const Options& o, std::string* error) {
     std::unique_ptr<Session> s(new Session());
     Impl& m = *s->impl_;
     m.opt = o;
     auto fail = [&](std::string e) { if (error) *error = std::move(e); return nullptr; };
 
+    // Ordered pack set: content (and, later, scripts/spells) all come from it.
+    if (o.packs.empty()) return fail("no --pack requested");
+    std::vector<std::filesystem::path> roots(o.pack_roots.begin(), o.pack_roots.end());
+    const assets::PackSet set = assets::PackSet::resolve(roots, o.packs);
+    if (!set.ok()) return fail("pack set: " + set.error_strings().front());
+    const assets::PackInfo* chunk_pack = set.find(o.packs.front());
+    if (!chunk_pack) return fail("pack set: '" + o.packs.front() + "' did not resolve");
+
     // Chunk through the world module.
     const world::ChunkCoord coord{0, 0, 0};
-    world::FileChunkProvider provider({{coord, o.pack_dir + "/chunks/0_0_0.json"}});
+    world::FileChunkProvider provider({{coord, chunk_pack->dir / "chunks/0_0_0.json"}});
     world::ChunkResult r = provider.load(world::ChunkRequest{coord, o.seed, 1});
     if (r.status != world::ChunkStatus::Ready || !r.chunk) return fail("chunk load failed: " + r.error);
     m.chunk = std::make_unique<world::Chunk>(std::move(*r.chunk));
 
     m.content = std::make_unique<sim::ContentLibrary>();
-    auto errs = m.content->load_pack(o.pack_dir);
+    auto errs = m.content->load(set);
     if (!errs.empty()) return fail("content load failed: " + errs.front());
 
     for (int layer = 0; layer < world::kChunkLayers; ++layer)

@@ -1,9 +1,13 @@
 // Vertical slice viewer: sample.vertical_slice chunk via world, goblin vs fighter via sim,
 // drawn with iso2d on SDL_GPU. The view only reads ViewModel snapshots.
-//   vertical_slice [--pack DIR] [--seed N] [--static] [--steps K] [--frames N] [--zoom Z] [--debug]
+//   vertical_slice [--config FILE] [--pack-root DIR]... [--pack ID]... [--seed N] [--static] [--steps K] [--frames N] [--zoom Z] [--debug]
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
 #include <cstring>
 #include <string>
 
@@ -18,18 +22,24 @@
 using namespace eng;
 
 #ifndef SLICE_DEFAULT_PACK
-#define SLICE_DEFAULT_PACK "content/packs/sample.vertical_slice"
+#define SLICE_DEFAULT_PACK "sample.vertical_slice"
+#endif
+#ifndef SLICE_DEFAULT_PACK_ROOT
+#define SLICE_DEFAULT_PACK_ROOT "content/packs"
 #endif
 
 int main(int argc, char** argv) {
     slice::Session::Options opt;
-    opt.pack_dir = SLICE_DEFAULT_PACK;
+    std::vector<std::string> roots, packs;
+    const char* config = nullptr;
     int max_frames = -1, pre_steps = 0;
     float zoom = 1.25f;
     bool debug = false;
     for (int i = 1; i < argc; ++i) {
         auto arg = [&](const char* n) { return !std::strcmp(argv[i], n) && i + 1 < argc; };
-        if (arg("--pack")) opt.pack_dir = argv[++i];
+        if (arg("--pack-root")) roots.push_back(argv[++i]);   // repeatable
+        else if (arg("--pack")) packs.push_back(argv[++i]);   // repeatable: requested pack ids
+        else if (arg("--config")) config = argv[++i];
         else if (arg("--seed")) opt.seed = std::strtoull(argv[++i], nullptr, 10);
         else if (arg("--steps")) pre_steps = std::atoi(argv[++i]);
         else if (arg("--frames")) max_frames = std::atoi(argv[++i]);
@@ -37,6 +47,22 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--static")) opt.with_sim = false;
         else if (!std::strcmp(argv[i], "--debug")) debug = true;
     }
+
+    // Defaults, then the config file, then the command line (last wins per field).
+    opt.pack_roots = {SLICE_DEFAULT_PACK_ROOT};
+    opt.packs = {SLICE_DEFAULT_PACK};
+    if (config) {
+        std::ifstream in(config);
+        std::stringstream ss;
+        ss << in.rdbuf();
+        std::string cerr_msg;
+        if (!in || !slice::Session::apply_pack_config(ss.str(), opt, &cerr_msg)) {
+            std::fprintf(stderr, "vertical_slice: %s\n", in ? cerr_msg.c_str() : "cannot read --config file");
+            return 1;
+        }
+    }
+    if (!roots.empty()) opt.pack_roots = roots;
+    if (!packs.empty()) opt.packs = packs;
 
     std::string err;
     auto session = slice::Session::open(opt, &err);
