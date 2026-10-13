@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_PACKS = [ROOT / "content" / "packs" / "sample.vertical_slice"]
+DEFAULT_PACKS = [ROOT / "content" / "packs" / "srd51.core", ROOT / "content" / "packs" / "sample.vertical_slice"]
 
 
 def defined_ids(pack: Path) -> set[str]:
