@@ -83,7 +83,7 @@ public:
 | form | meaning |
 |---|---|
 | `X.Y.Z` | exactly X.Y.Z |
-| `^X.Y.Z` / `^X.Y` | >= X.Y.Z (Z = 0 for `^X.Y`), < next bump of the left-most non-zero component: `^1.2.3` -> <2.0.0, `^0.2.3` -> <0.3.0, `^0.0.3` -> <0.0.4 |
+| `^X.Y.Z` / `^X.Y` | >= X.Y.Z (Z = 0 for `^X.Y`), < next bump of the left-most non-zero component: `^1.2.3` -> <2.0.0, `^0.2.3` -> <0.3.0, `^0.0.3` -> <0.0.4 (so `^0.0.3` rejects 0.0.4), `^0.0` -> <0.1.0 (npm: a missing patch is a wildcard) |
 | `~X.Y.Z` | >= X.Y.Z, < X.(Y+1).0 |
 | `>=X.Y.Z` | >= X.Y.Z, unbounded |
 
@@ -143,7 +143,29 @@ The validator still accepts undefined `srd51.*` references, with a deprecation w
 in packs that don't (transitively) depend on srd51.core. The engine shouldn't implement the hatch:
 a reference that doesn't resolve is skipped with a diagnostic, as the sim does today.
 
-## 8. Work items
+## 8. Decisions recorded with Engine Core (PR #41)
+
+1. **Single-directory wrapper.** `PackSet::from_pack_dir(dir)` uses `dir`'s parent as the only
+   root and requests `dir`'s manifest id. `content/packs/sample.vertical_slice` therefore sees
+   its sibling `srd51.core` through depends. fl1's pack is `tests/compat/fl1/sample.vertical_slice`,
+   so its root is `tests/compat/fl1`, and it stays its own one-pack set (see §6).
+2. **Document load failures are not PackSetErrors.** A contents `.json` that fails to load or
+   migrate is reported in `document_errors()` as `"<pack>:<path>: <error>"`. `errors()` / `ok()`
+   only cover resolution. Each consumer decides whether a document error is fatal. The validator
+   reports these per pack, as before.
+3. **`reference_errors()`** uses the validator wording
+   (`"<pack>:<rel>: spawns[i]: archetype '<id>' not defined in pack or its depends"`).
+   **Known gap:** right now it only checks chunk spawn archetypes. The other reference kinds the
+   validator checks (spell refs and other content refs) still need to be added before this
+   proposal leaves draft.
+4. **behavior.ai is strictly per pack.** `script_key_for` resolves relative to the archetype's own
+   pack only, with no fallback to the depends. A test that builds a scratch copy of the sample pack
+   with its own archetype must also copy `scripts/ai/skirmisher.luau` into that pack. (The
+   script_host test does this.)
+5. **Caret follows npm.** `^1.2.3` -> <2.0.0, `^0.2.3` -> <0.3.0, `^0.0.3` -> <0.0.4 (rejects 0.0.4),
+   `^0.0` -> <0.1.0. Both `packset.py` and `pack_set.cpp` implement this, and the shared cases cover it.
+
+## 9. Work items
 
 1. Engine Core: `PackSet` in engine/assets, plus a port of `tests/validate/run_packset_cases.py`
    cases to C++ unit tests, including the 8-shuffle order test.
