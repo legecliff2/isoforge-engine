@@ -1,5 +1,7 @@
 // procgen_dump <seed-string> <out_pack_dir> <x,y,level>...
 // Writes <out>/manifest.json and <out>/chunks/<x>_<y>_<level>.json (chunk@1, origin procedural).
+#include <charconv>
+#include <string_view>
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
@@ -8,6 +10,19 @@
 #include <vector>
 
 #include "procgen/dungeon.hpp"
+
+// "x,y,level" (no sscanf: MSVC C4996 is fatal under /WX).
+static bool parse_coord(std::string_view s, int& x, int& y, int& level) {
+    int* out[3] = {&x, &y, &level};
+    const char* p = s.data();
+    const char* end = s.data() + s.size();
+    for (int i = 0; i < 3; ++i) {
+        auto [q, ec] = std::from_chars(p, end, *out[i]);
+        if (ec != std::errc{} || (i < 2 && (q == end || *q != ','))) return false;
+        p = i < 2 ? q + 1 : q;
+    }
+    return p == end;
+}
 
 int main(int argc, char** argv) {
     if (argc < 4) {
@@ -22,7 +37,7 @@ int main(int argc, char** argv) {
     std::vector<std::string> files;
     for (int a = 3; a < argc; ++a) {
         int x = 0, y = 0, level = 0;
-        if (std::sscanf(argv[a], "%d,%d,%d", &x, &y, &level) != 3) { std::fprintf(stderr, "bad coord %s\n", argv[a]); return 2; }
+        if (!parse_coord(argv[a], x, y, level)) { std::fprintf(stderr, "bad coord %s\n", argv[a]); return 2; }
         auto g = procgen::generate(*seed, x, y, int16_t(level));
         if (!g) { std::fprintf(stderr, "unknown gen_version\n"); return 1; }
         const std::string rel = "chunks/" + std::to_string(x) + "_" + std::to_string(y) + "_" + std::to_string(level) + ".json";
