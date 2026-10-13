@@ -171,6 +171,19 @@ Vec2f SliceView::tile_center_px(float x, float y) const {
     return {p.x, p.y + kTileH / 2.f};
 }
 
+Vec2f SliceView::actors_focus_px(const ViewModel& vm) const {
+    if (vm.actors.empty()) return tile_center_px(15.5f, 15.5f);
+    float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f;
+    for (const ActorView& a : vm.actors) {
+        const Vec2f c = tile_center_px(float(a.tile.x), float(a.tile.y));
+        x0 = std::min(x0, c.x - kTileW / 2.f);
+        x1 = std::max(x1, c.x + kTileW / 2.f);
+        y0 = std::min(y0, c.y - float(kPawnH));     // head + HP bar sit above the tile
+        y1 = std::max(y1, c.y + kTileH / 2.f);
+    }
+    return {(x0 + x1) * 0.5f, (y0 + y1) * 0.5f};
+}
+
 void SliceView::rect(Vec2f px, Vec2f size, Color c, int32_t layer) {
     iso2d::Sprite s{tex_->white, size.x, size.y, 0, 0};
     s.tint = c;
