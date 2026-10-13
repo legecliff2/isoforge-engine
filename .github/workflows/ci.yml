@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "Linux GCC Debug",       os: ubuntu-latest,  preset: ci-linux-gcc,     build: ci-linux-gcc,        test: ci-linux-gcc }
+          - { name: "Linux Clang Release",   os: ubuntu-latest,  preset: ci-linux-clang,   build: ci-linux-clang,      test: ci-linux-clang }
+          - { name: "macOS AppleClang Debug", os: macos-latest,  preset: ci-mac-clang,     build: ci-mac-clang,        test: ci-mac-clang }
+          - { name: "Windows MSVC Debug",    os: windows-latest, preset: ci-win-msvc,      build: ci-win-msvc-debug,   test: ci-win-msvc-debug }
+          - { name: "Windows MSVC Release",  os: windows-latest, preset: ci-win-msvc,      build: ci-win-msvc-release, test: ci-win-msvc-release }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux deps (SDL3 video backends, Ninja)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxi-dev libxss-dev libxfixes-dev libxtst-dev libxkbcommon-dev libwayland-dev \
+            wayland-protocols libegl-dev libgl-dev libvulkan-dev libudev-dev libdbus-1-dev
+
+      - name: Install macOS deps
+        if: runner.os == 'macOS'
+        run: brew install ninja || true
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.build }} --parallel
+
+      - name: Test
+        run: ctest --preset ${{ matrix.test }}
