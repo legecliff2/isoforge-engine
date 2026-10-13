@@ -59,7 +59,9 @@ struct Attack {
 enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Ready, Move, EndTurn,
                                   // appended (append-only):
                                   StandUp, OpportunityAttack, Stabilize, SpareTheDying,
-                                  CastSpell };
+                                  CastSpell,
+                                  // not turn actions: answered/allowed at any time (logged like actions)
+                                  ReactionDecision, Heal, AbilityCheck };
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
 
 // Reaction windows (encounter.hpp). Append-only.
