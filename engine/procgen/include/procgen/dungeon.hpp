@@ -51,6 +51,12 @@ struct GeneratorVersion { uint16_t gen_version; GeneratorFn fn; const char* summ
 std::span<const GeneratorVersion> generator_versions() noexcept;
 uint16_t latest_gen_version() noexcept;
 
+// Every archetype id generator version `gen_version` can emit in GenChunk::spawns (empty span if
+// the version is unknown). Spawns whose archetype is missing from the loaded packs are skipped
+// by the sim, so ctest (procgen_archetypes_defined) checks this table against the default packs.
+// Append-only per version, like the generators themselves.
+std::span<const char* const> spawn_archetypes(uint16_t gen_version) noexcept;
+
 // Generates the chunk at (x, y, level) for world seed w. nullopt if w.gen_version is unknown.
 // Pure: same inputs -> identical chunk on every platform/thread/order.
 std::optional<GenChunk> generate(WorldSeed w, int32_t x, int32_t y, int16_t level);
