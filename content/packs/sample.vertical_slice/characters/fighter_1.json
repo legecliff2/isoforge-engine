@@ -1,5 +1,5 @@
 {
-  "$schema": "character@1",
+  "$schema": "character@3",
   "id": "srd51.character.fighter_1",
   "name": "Fighter",
   "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
@@ -25,14 +25,14 @@
       "effect": { "kind": "damage_bonus", "amount": 2, "condition": "one_handed_melee_no_other_weapon" } },
     { "id": "second_wind", "name": "Second Wind",
       "description": "On your turn, you can use a bonus action to regain hit points equal to 1d10 + your fighter level. Once you use this feature, you must finish a short or long rest before you can use it again.",
-      "effect": { "kind": "self_heal", "dice": "1d10", "plus": "fighter_level", "uses": 1, "recharge": "short_rest" } }
+      "effect": { "kind": "self_heal", "dice": "1d10", "plus": "fighter_level", "uses": 1, "recharge": "short_rest", "cost": "bonus_action" } }
   ],
   "equipment": ["chain_mail", "shield", "longsword", "light_crossbow", "crossbow_bolts_20", "dungeoneers_pack"],
   "actions": [
     { "id": "longsword", "name": "Longsword", "kind": "melee_weapon_attack", "to_hit": 5, "reach": 5, "targets": 1,
       "properties": ["versatile"],
-      "description": "Includes +2 from Dueling (one-handed, wielded with a shield).",
-      "damage": [{ "dice": "1d8+5", "type": "slashing" }] },
+      "description": "Base damage; Fighting Style: Dueling (+2, one-handed with a shield) is applied by its feature effect.",
+      "damage": [{ "dice": "1d8+3", "type": "slashing" }] },
     { "id": "light_crossbow", "name": "Light Crossbow", "kind": "ranged_weapon_attack", "to_hit": 4, "range": [80, 320], "targets": 1,
       "properties": ["ammunition", "loading", "two_handed"],
       "damage": [{ "dice": "1d8+2", "type": "piercing" }] }
