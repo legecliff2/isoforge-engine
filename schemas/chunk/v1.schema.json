@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://isoforge.dev/schemas/chunk/v1.schema.json",
+  "title": "chunk@1",
+  "description": "Serialized eng::world::Chunk (ARCHITECTURE.md \u00a75.2), field for field. kChunkSize = 32, kChunkLayers = 4 (ground, detail, walls, roof), kChunkFormatVersion = 1. layers[l] is row-major: cell index = y * 32 + x. Integers only (\u00a74.3); uint64 values are decimal strings so they survive JSON parsers that use doubles.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "format_version",
+    "coord",
+    "content_hash",
+    "palette",
+    "layers",
+    "spawns",
+    "triggers",
+    "origin"
+  ],
+  "$defs": {
+    "u8": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "u16": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535
+    },
+    "u32": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "u64_string": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "description": "uint64 as decimal string (validator range-checks <= 2^64-1)."
+    },
+    "tile_cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tile",
+        "elevation",
+        "flags"
+      ],
+      "properties": {
+        "tile": {
+          "$ref": "#/$defs/u16",
+          "description": "TileId: index into palette; 0 = empty."
+        },
+        "elevation": {
+          "$ref": "#/$defs/u8",
+          "description": "Height steps for iso stacking."
+        },
+        "flags": {
+          "$ref": "#/$defs/u8",
+          "description": "Bitfield: blocks_move | blocks_sight | difficult | water ... (bit assignment pending, see PR)."
+        }
+      }
+    },
+    "layer": {
+      "type": "array",
+      "minItems": 1024,
+      "maxItems": 1024,
+      "items": {
+        "$ref": "#/$defs/tile_cell"
+      },
+      "description": "kChunkSize * kChunkSize cells, row-major."
+    },
+    "entity_spawn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "archetype",
+        "tile",
+        "stable_id",
+        "overrides_json"
+      ],
+      "properties": {
+        "archetype": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)+$",
+          "description": "Content id, e.g. 'srd51.monster.goblin'."
+        },
+        "tile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "x",
+            "y"
+          ],
+          "description": "Vec2i, local to chunk.",
+          "properties": {
+            "x": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            },
+            "y": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            }
+          }
+        },
+        "stable_id": {
+          "$ref": "#/$defs/u32",
+          "description": "StableHash(coord, origin, index); same in every origin."
+        },
+        "overrides_json": {
+          "type": "string",
+          "description": "Optional per-instance data as serialized JSON ('' = none)."
+        }
+      }
+    }
+  },
+  "properties": {
+    "$schema": {
+      "const": "chunk@1"
+    },
+    "format_version": {
+      "const": 1
+    },
+    "coord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "level"
+      ],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "y": {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "level": {
+          "type": "integer",
+          "minimum": -32768,
+          "maximum": 32767
+        }
+      }
+    },
+    "content_hash": {
+      "$ref": "#/$defs/u64_string"
+    },
+    "palette": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 65536,
+      "items": {
+        "type": "string"
+      },
+      "description": "TileId -> tile asset id. Index 0 is the empty tile and must be ''.",
+      "prefixItems": [
+        {
+          "const": ""
+        }
+      ]
+    },
+    "layers": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "$ref": "#/$defs/layer"
+      },
+      "description": "[ground, detail, walls, roof]."
+    },
+    "spawns": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entity_spawn"
+      }
+    },
+    "triggers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Script hooks / regions (serialized)."
+    },
+    "origin": {
+      "enum": [
+        "handcrafted",
+        "streamed",
+        "procedural"
+      ]
+    }
+  }
+}
