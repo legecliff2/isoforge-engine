@@ -8,7 +8,7 @@
 #include "procgen/dungeon.hpp"
 #include "procgen_world/procedural_provider.hpp"
 #include "world/chunk_codec.hpp"
-#include "world/handcrafted_provider.hpp"
+#include "world/file_chunk_provider.hpp"
 
 using namespace eng::world;
 
@@ -57,14 +57,18 @@ TEST_CASE("ProceduralProvider: loads, deterministic across threads, rejects unkn
     for (uint64_t v : h) CHECK(v == r.chunk->content_hash);
 }
 
-TEST_CASE("HandcraftedProvider currently rejects origin=procedural files (documented for Engine Core)") {
+TEST_CASE("FileChunkProvider loads a baked procgen chunk and keeps origin=procedural") {
     auto g = procgen::generate(kSeed, 2, 3, 0);
     REQUIRE(g);
     const auto path = std::filesystem::temp_directory_path() / "procgen_world_tests_2_3_0.json";
-    std::ofstream(path, std::ios::binary) << procgen::to_json(*g);
-    HandcraftedProvider hp({{ChunkCoord{2, 3, 0}, path}});
-    auto r = hp.load(ChunkRequest{ChunkCoord{2, 3, 0}, 0, 1});
-    CHECK(r.status == ChunkStatus::Error);
-    CHECK(r.error.find("origin must be \"handcrafted\"") != std::string::npos);
+    std::ofstream(path, std::ios::binary) << procgen::to_json(*g);   // same bytes as procgen_dump
+    FileChunkProvider fp({{ChunkCoord{2, 3, 0}, path}});
+    auto r = fp.load(ChunkRequest{ChunkCoord{2, 3, 0}, 0, 1});
+    REQUIRE_MESSAGE(r.status == ChunkStatus::Ready, r.error);
+    CHECK(r.chunk->origin == Chunk::Origin::Procedural);
+    CHECK(r.chunk->content_hash == procgen::content_hash(*g));
+    auto direct = to_chunk(*g);
+    REQUIRE(direct.chunk);
+    CHECK(r.chunk->spawns[0].stable_id == direct.chunk->spawns[0].stable_id);
     std::filesystem::remove(path);
 }
