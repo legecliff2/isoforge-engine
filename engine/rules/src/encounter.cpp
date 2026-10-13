@@ -135,8 +135,7 @@ ReactionDecision poll(EncounterState&, Ctx& ctx, const ReactionWindow& w, const 
             ctx.desync = true;
         } else if (!ctx.need) {
             // Pause: record what to ask. The rest of this run is discarded by the caller.
-            ctx.need = NeedsDecision{w.seq, w.trigger, r.id, w.trigger_actor,
-                                     std::vector<ReactionOption>(opts.begin(), opts.end()), w};
+            ctx.need = make_needs_decision(w, r.id, std::vector<ReactionOption>(opts.begin(), opts.end()));
         }
         if (d.react && d.option >= opts.size()) d = ReactionDecision{};
         d.window_seq = w.seq;
@@ -178,6 +177,7 @@ void do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, uint8_t 
     if (hit) {
         ReactionWindow w = new_window(s, ctx, ReactionTrigger::BeingHit, a.id);
         w.target = t.id; w.attack_total = roll.total; w.attack_natural = roll.natural;
+        w.target_ac = int16_t(int(t.ac) + int(actx.cover_ac_bonus) + int(t.reaction_ac_bonus));
         if (may_open(s, w) && s.hooks.being_hit_options && may_react(s, t, w.trigger) && in_range(s, w, t)) {
             auto opts = s.hooks.being_hit_options(s, w, t);
             if (!opts.empty()) {
@@ -253,9 +253,9 @@ bool leaving_reach_window(EncounterState& s, Ctx& ctx, Combatant& mover, std::ve
 // SpellCast: polls hostile counters. Returns true if the spell was countered. A counter is itself a spell,
 // so it opens a nested SpellCast window when allow_chain permits (counter the counter).
 bool spell_cast_window(EncounterState& s, Ctx& ctx, Combatant& caster, uint32_t spell_id, uint8_t level,
-                       std::vector<Event>& ev) {
+                       CombatantId target, std::vector<Event>& ev) {
     ReactionWindow w = new_window(s, ctx, ReactionTrigger::SpellCast, caster.id);
-    w.spell_id = spell_id; w.spell_level = level;
+    w.spell_id = spell_id; w.spell_level = level; w.target = target;
     if (!may_open(s, w) || !s.hooks.spell_cast_options) return false;
     auto eligible = [&](const Combatant& r) {
         return r.id != caster.id && r.team != caster.team && may_react(s, r, w.trigger) && in_range(s, w, r) &&
@@ -279,7 +279,7 @@ bool spell_cast_window(EncounterState& s, Ctx& ctx, Combatant& caster, uint32_t 
         std::size_t from = ev.size();
         ++ctx.depth;
         emit(ev, EventKind::SpellCast, r.id, caster.id, int32_t(o.option_id), 3);
-        bool counter_countered = spell_cast_window(s, ctx, r, o.option_id, 3, ev);
+        bool counter_countered = spell_cast_window(s, ctx, r, o.option_id, 3, caster.id, ev);
         --ctx.depth;
         mark_depth(ev, from, uint8_t(ctx.depth + 1));
         if (counter_countered) {
@@ -552,7 +552,17 @@ std::vector<CombatantId> default_poll_order(const EncounterState& s, const std::
 std::optional<NeedsDecision> pending_decision(const EncounterState& s) {
     if (!s.pending) return std::nullopt;
     const auto& p = *s.pending;
-    return NeedsDecision{p.window.seq, p.window.trigger, p.reactor, p.window.trigger_actor, p.options, p.window};
+    return make_needs_decision(p.window, p.reactor, p.options);
+}
+
+NeedsDecision make_needs_decision(const ReactionWindow& w, CombatantId reactor, std::vector<ReactionOption> options) {
+    NeedsDecision n{w.seq, w.trigger, reactor, w.trigger_actor, std::move(options), w};
+    n.target = w.target;
+    if (w.trigger == ReactionTrigger::BeingHit) {
+        n.attack_total = w.attack_total; n.target_ac = w.target_ac; n.attack_natural = w.attack_natural;
+    }
+    if (w.trigger == ReactionTrigger::SpellCast) { n.spell_id = w.spell_id; n.spell_level = w.spell_level; }
+    return n;
 }
 
 ActionRequest heal_request(CombatantId target, int16_t amount) {
@@ -684,7 +694,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
         if (!spend_action(b, a, req.kind, false)) return fail("no action available");
         s.budget = b;
         emit(out.events, EventKind::SpellCast, a.id, req.target, int32_t(req.spell_id), req.spell_level);
-        bool countered = spell_cast_window(s, ctx, a, req.spell_id, req.spell_level, out.events);
+        bool countered = spell_cast_window(s, ctx, a, req.spell_id, req.spell_level, req.target, out.events);
         emit(out.events, countered ? EventKind::SpellCountered : EventKind::SpellResolved, a.id, req.target,
              int32_t(req.spell_id), req.spell_level);
         check_end(s, out.events);

@@ -94,6 +94,7 @@ struct ReactionWindow {
     CombatantId target = 0;           // BeingHit: creature hit
     int16_t     attack_total = 0;     // BeingHit
     int8_t      attack_natural = 0;   // BeingHit
+    int16_t     target_ac = 0;        // BeingHit: AC the total was compared to (AC + cover + reaction bonus)
     uint32_t    spell_id = 0;         // SpellCast
     uint8_t     spell_level = 0;      // SpellCast
     uint8_t     depth = 0;            // 0 = opened by an action; 1+ = opened inside a reaction (chain)
@@ -107,8 +108,15 @@ struct ReactionOption {
     uint32_t option_id = 0;           // content id (e.g. the Shield / Counterspell spell id)
 };
 
-// A decision made under Ask. Auto/Never are reproduced from state and are not logged.
-struct ReactionRecord { uint32_t window_seq; ReactionTrigger trigger; CombatantId reactor; ReactionDecision decision; };
+// Log entry for one reaction decision made under Ask (Auto/Never are reproduced from state and are
+// not logged). This is the only decision log format: completed requests carry their entries in
+// LoggedStep::reactions; decisions for a paused request live in EncounterState::pending->decided.
+// Sim stores rules' ActionLog as-is and has no separate Decide command.
+struct ReactionDecisionEntry {
+    uint32_t window_seq; ReactionTrigger trigger; CombatantId reactor; ReactionDecision decision;
+    friend bool operator==(const ReactionDecisionEntry&, const ReactionDecisionEntry&) = default;
+};
+using ReactionRecord = ReactionDecisionEntry;   // former name (kept for source compatibility)
 
 // ---- End condition (policy, overridable) ----
 enum class PcState : uint8_t { Conscious, Dying, Stable, Dead, Unconscious /* >0 HP, e.g. sleep */ };
@@ -192,14 +200,23 @@ using ActionLog = std::vector<LoggedStep>;
 
 enum class StepStatus : uint8_t { Rejected, Done, NeedsDecision };
 
+// Everything a UI needs to show the prompt (also returned by pending_decision(state)).
 struct NeedsDecision {
     uint32_t window_seq = 0;
     ReactionTrigger trigger = ReactionTrigger::LeavingReach;
     CombatantId reactor = 0;
-    CombatantId trigger_actor = 0;
+    CombatantId trigger_actor = 0;     // mover / attacker / caster / creature whose event fired the Ready
     std::vector<ReactionOption> options;
-    ReactionWindow window{};           // full window details (attack total, spell id, ...)
+    ReactionWindow window{};           // full window details (same values as the fields below)
+    // appended (prompt details; 0 when not applicable):
+    CombatantId target = 0;            // BeingHit: creature hit (= reactor); SpellCast: the spell's target
+    int16_t attack_total = 0;          // BeingHit: attack roll total ...
+    int16_t target_ac = 0;             //   ... vs this AC (includes cover and current reaction bonus)
+    int8_t  attack_natural = 0;        // BeingHit: d20 natural (20 = crit, AC bonuses can't help)
+    uint32_t spell_id = 0;             // SpellCast: spell being cast
+    uint8_t spell_level = 0;           // SpellCast: its slot level (0 = cantrip)
 };
+NeedsDecision make_needs_decision(const ReactionWindow&, CombatantId reactor, std::vector<ReactionOption> options);
 
 struct StepResult {
     bool ok; std::string_view error; std::vector<Event> events;
