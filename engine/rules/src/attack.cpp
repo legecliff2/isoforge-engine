@@ -27,7 +27,7 @@ AttackResult resolve_attack(rng::Rng& r, const Combatant& attacker, const Attack
     bool hit, crit = false;
     if (roll.natural == 20) { hit = true; crit = true; }
     else if (roll.natural == 1) { hit = false; }
-    else hit = roll.total >= int(target.ac) + int(ctx.cover_ac_bonus);
+    else hit = roll.total >= int(target.ac) + int(ctx.cover_ac_bonus) + int(target.reaction_ac_bonus);
     if (hit && ctx.target_within_5ft &&
         (target.has(Condition::Paralyzed) || target.has(Condition::Unconscious)))
         crit = true;

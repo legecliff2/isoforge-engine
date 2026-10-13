@@ -5,6 +5,7 @@
 #include "rules5e/checks.hpp"
 #include "rules5e/conditions.hpp"
 #include "rules5e/damage.hpp"
+#include "rules5e/dice.hpp"
 #include "rules5e/healing.hpp"
 
 namespace rules5e {
@@ -66,19 +67,199 @@ void after_damage(Combatant& t, const DamageApplied& d, bool critical, std::vect
     }
 }
 
+// Per-call reaction context: decision source, recorded decisions, current chain depth.
+struct Ctx {
+    std::vector<ReactionRecord>& records;
+    const std::vector<ReactionRecord>* replay = nullptr;   // replay_step: answer Ask from here
+    std::size_t replay_pos = 0;
+    bool desync = false;
+    uint8_t depth = 0;                                     // 0 = action, 1+ = inside a reaction
+};
+
+// Marks events appended since `from` as produced at reaction depth `d`.
+void mark_depth(std::vector<Event>& ev, std::size_t from, uint8_t d) {
+    for (std::size_t i = from; i < ev.size(); ++i) if (ev[i].reaction_depth < d) ev[i].reaction_depth = d;
+}
+
+// Reactor polling order: initiative order starting after the current actor; current actor last.
+std::vector<CombatantId> polling_order(const EncounterState& s) {
+    std::vector<CombatantId> out;
+    const std::size_t n = s.order.size();
+    for (std::size_t k = 1; k <= n; ++k) out.push_back(s.order[(s.turn_index + k) % n].id);
+    return out;
+}
+
+bool may_react(const EncounterState& s, const Combatant& c, ReactionTrigger t) {
+    (void)s;
+    return !c.dead && can_act(c) && !c.reaction_used &&
+           c.reaction_policy[std::size_t(t)] != ReactionPolicy::Never;
+}
+
+// Returns true if a window may open at this depth (no chaining unless the hook allows it).
+bool may_open(const EncounterState& s, const ReactionWindow& w) {
+    return w.depth == 0 || (s.hooks.allow_chain && s.hooks.allow_chain(s, w));
+}
+
+ReactionWindow new_window(EncounterState& s, const Ctx& ctx, ReactionTrigger t, CombatantId actor) {
+    ReactionWindow w{};
+    w.trigger = t; w.seq = s.next_window_seq; w.trigger_actor = actor; w.depth = ctx.depth;
+    return w;
+}
+
+// Asks one reactor. Auto: take option 0 (BeingHit: only if `auto_ok`). Ask: replay log, else the
+// decide_reaction hook, else decline. Invalid choices decline. Emits Taken/Declined.
+ReactionDecision poll(EncounterState& s, Ctx& ctx, const ReactionWindow& w, const Combatant& r,
+                      std::span<const ReactionOption> opts, std::vector<Event>& ev, bool auto_ok = true) {
+    ReactionDecision d{};
+    if (r.reaction_policy[std::size_t(w.trigger)] == ReactionPolicy::Auto) {
+        d = {auto_ok, 0};
+    } else {
+        if (ctx.replay) {
+            if (ctx.replay_pos < ctx.replay->size()) {
+                const auto& rec = (*ctx.replay)[ctx.replay_pos];
+                if (rec.window_seq == w.seq && rec.reactor == r.id && rec.trigger == w.trigger) {
+                    d = rec.decision; ++ctx.replay_pos;
+                } else ctx.desync = true;
+            } else ctx.desync = true;
+        } else if (s.hooks.decide_reaction) {
+            d = s.hooks.decide_reaction(s, w, r, opts);
+        }
+        if (d.react && d.option >= opts.size()) d = {};
+        ctx.records.push_back(ReactionRecord{w.seq, w.trigger, r.id, d});
+    }
+    if (d.react && d.option >= opts.size()) d = {};
+    emit(ev, d.react ? EventKind::ReactionTaken : EventKind::ReactionDeclined, r.id, w.trigger_actor,
+         int32_t(w.trigger), int32_t(w.seq), d.option);
+    return d;
+}
+
+bool in_range(const EncounterState& s, const ReactionWindow& w, const Combatant& r) {
+    if (s.hooks.in_range) return s.hooks.in_range(s, w, r);
+    return w.trigger == ReactionTrigger::BeingHit && r.id == w.target;
+}
+
+bool evaluate_hit(const D20Roll& roll, const Combatant& t, const AttackContext& ctx, bool& crit) {
+    crit = false;
+    if (roll.natural == 20) { crit = true; return true; }
+    if (roll.natural == 1) return false;
+    return roll.total >= int(t.ac) + int(ctx.cover_ac_bonus) + int(t.reaction_ac_bonus);
+}
+
 // One attack roll, including Help and hidden-attacker advantage. Attacking reveals the attacker.
-void do_attack(EncounterState& s, Combatant& a, Combatant& t, uint8_t attack_index, bool within_5ft,
-               std::vector<Event>& ev) {
+// On a hit, a BeingHit window opens for the target before damage (Shield-style AC bump).
+// Dice order matches resolve_attack: d20(s), then damage dice.
+void do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, uint8_t attack_index,
+               bool within_5ft, std::vector<Event>& ev) {
     bool adv = false;
     if (a.helped_vs == t.id) { adv = true; a.helped_vs = 0; a.helped_by = 0; }
     if (a.stealth_total > 0) { adv = true; a.stealth_total = 0; }   // unseen attacker; now revealed
-    AttackContext ctx;
-    ctx.target_within_5ft = within_5ft;
-    ctx.mode = adv ? RollMode::Advantage : RollMode::Normal;
-    auto res = resolve_attack(s.rng, a, a.attacks[attack_index], t, ctx);
-    emit(ev, EventKind::AttackResolved, a.id, t.id, res.roll.natural, res.roll.total,
-         int32_t(res.hit) | (int32_t(res.critical) << 1));
-    if (res.hit) after_damage(t, apply_damage(t, res.damage, res.type), res.critical, ev);
+    AttackContext actx;
+    actx.target_within_5ft = within_5ft;
+    actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
+    const Attack& atk = a.attacks[attack_index];
+    D20Roll roll = roll_d20(s.rng, atk.to_hit, attack_roll_mode(a, t, actx));
+    bool crit = false;
+    bool hit = evaluate_hit(roll, t, actx, crit);
+    if (hit) {
+        ReactionWindow w = new_window(s, ctx, ReactionTrigger::BeingHit, a.id);
+        w.target = t.id; w.attack_total = roll.total; w.attack_natural = roll.natural;
+        if (may_open(s, w) && s.hooks.being_hit_options && may_react(s, t, w.trigger) && in_range(s, w, t)) {
+            auto opts = s.hooks.being_hit_options(s, w, t);
+            if (!opts.empty()) {
+                ++s.next_window_seq;
+                emit(ev, EventKind::ReactionWindowOpened, a.id, t.id, int32_t(w.trigger), int32_t(w.seq));
+                // Auto only spends the reaction when option 0 would turn the hit into a miss.
+                bool would_miss = false;
+                if (opts[0].kind == ReactionOptionKind::AcBonus && roll.natural != 20) {
+                    would_miss = roll.total < int(t.ac) + int(actx.cover_ac_bonus) + int(t.reaction_ac_bonus) + opts[0].ac_bonus;
+                }
+                auto d = poll(s, ctx, w, t, opts, ev, would_miss);
+                if (d.react) {
+                    t.reaction_used = true;
+                    const auto& o = opts[d.option];
+                    if (o.kind == ReactionOptionKind::AcBonus) {
+                        t.reaction_ac_bonus = int8_t(t.reaction_ac_bonus + o.ac_bonus);
+                        emit(ev, EventKind::AcBonus, t.id, 0, o.ac_bonus, t.ac + t.reaction_ac_bonus);
+                        hit = evaluate_hit(roll, t, actx, crit);
+                    }
+                }
+            }
+        }
+    }
+    if (hit && within_5ft && (t.has(Condition::Paralyzed) || t.has(Condition::Unconscious))) crit = true;
+    emit(ev, EventKind::AttackResolved, a.id, t.id, roll.natural, roll.total,
+         int32_t(hit) | (int32_t(crit) << 1));
+    if (hit) {
+        int dmg = roll_dice(s.rng, atk.damage, crit);
+        if (dmg < 0) dmg = 0;
+        after_damage(t, apply_damage(t, int16_t(dmg), atk.type), crit, ev);
+    }
+}
+
+// LeavingReach: polls hostile reactors before the mover leaves reach. Returns false if the move
+// is stopped (mover dead, at 0 HP, or speed 0).
+bool leaving_reach_window(EncounterState& s, Ctx& ctx, Combatant& mover, std::vector<Event>& ev) {
+    ReactionWindow w = new_window(s, ctx, ReactionTrigger::LeavingReach, mover.id);
+    if (!may_open(s, w) || mover.disengaged) return true;
+    bool opened = false;
+    for (CombatantId rid : polling_order(s)) {
+        Combatant& r = *find_mut(s, rid);
+        if (r.id == mover.id || r.team == mover.team || !may_react(s, r, w.trigger) || !in_range(s, w, r)) continue;
+        std::vector<ReactionOption> opts;
+        for (uint8_t i = 0; i < r.attacks.size(); ++i)
+            if (!r.attacks[i].ranged) opts.push_back({ReactionOptionKind::Attack, i});
+        if (opts.empty()) continue;
+        if (!opened) {
+            opened = true; ++s.next_window_seq;
+            emit(ev, EventKind::ReactionWindowOpened, mover.id, 0, int32_t(w.trigger), int32_t(w.seq));
+        }
+        auto d = poll(s, ctx, w, r, opts, ev);
+        if (!d.react) continue;
+        r.reaction_used = true;
+        std::size_t from = ev.size();
+        ++ctx.depth;
+        do_attack(s, ctx, r, mover, opts[d.option].attack_index, true, ev);   // reach: within 5 ft
+        --ctx.depth;
+        mark_depth(ev, from, uint8_t(ctx.depth + 1));
+        if (mover.dead || mover.hp <= 0 || effective_speed(mover) == 0) return false;
+    }
+    return true;
+}
+
+// SpellCast: polls hostile counters. Returns true if the spell was countered. A counter is itself a spell,
+// so it opens a nested SpellCast window when allow_chain permits (counter the counter).
+bool spell_cast_window(EncounterState& s, Ctx& ctx, Combatant& caster, uint32_t spell_id, uint8_t level,
+                       std::vector<Event>& ev) {
+    ReactionWindow w = new_window(s, ctx, ReactionTrigger::SpellCast, caster.id);
+    w.spell_id = spell_id; w.spell_level = level;
+    if (!may_open(s, w) || !s.hooks.spell_cast_options) return false;
+    bool opened = false;
+    for (CombatantId rid : polling_order(s)) {
+        Combatant& r = *find_mut(s, rid);
+        if (r.id == caster.id || r.team == caster.team || !may_react(s, r, w.trigger) || !in_range(s, w, r)) continue;
+        auto opts = s.hooks.spell_cast_options(s, w, r);
+        if (opts.empty()) continue;
+        if (!opened) {
+            opened = true; ++s.next_window_seq;
+            emit(ev, EventKind::ReactionWindowOpened, caster.id, 0, int32_t(w.trigger), int32_t(w.seq));
+        }
+        auto d = poll(s, ctx, w, r, opts, ev);
+        if (!d.react) continue;
+        r.reaction_used = true;
+        const auto& o = opts[d.option];
+        std::size_t from = ev.size();
+        ++ctx.depth;
+        emit(ev, EventKind::SpellCast, r.id, caster.id, int32_t(o.option_id), 3);
+        bool counter_countered = spell_cast_window(s, ctx, r, o.option_id, 3, ev);
+        --ctx.depth;
+        mark_depth(ev, from, uint8_t(ctx.depth + 1));
+        if (counter_countered) {
+            emit(ev, EventKind::SpellCountered, r.id, 0, int32_t(o.option_id), 3);
+            continue;   // the counter failed; later reactors may still try
+        }
+        return true;    // spell countered (stub: counters always succeed)
+    }
+    return false;
 }
 
 void start_turn(EncounterState& s, std::vector<Event>& ev) {
@@ -86,6 +267,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
     c.reaction_used = false;
     c.dodging = false;
     c.disengaged = false;
+    c.reaction_ac_bonus = 0;       // Shield-style bonus lasts until the start of its next turn
     for (auto& o : s.combatants)   // Help lasts until the start of the helper's next turn
     {
         if (o.helped_by == c.id) { o.helped_by = 0; o.helped_vs = 0; }
@@ -128,9 +310,10 @@ void advance_turn(EncounterState& s, std::vector<Event>& ev) {
     start_turn(s, ev);
 }
 
-// Ready: offer each event of this step to each readied action (readied order, then event order).
-// Responses' own events are not re-offered (no reaction chains).
-void fire_readies(EncounterState& s, std::vector<Event>& ev) {
+// Ready: offer each event of this step to each readied action (readied order, then event order)
+// through a ReadiedTrigger window for the readier. Events produced inside reactions are only
+// offered when allow_chain permits.
+void fire_readies(EncounterState& s, Ctx& ctx, std::vector<Event>& ev) {
     if (!s.hooks.ready_trigger || s.readied.empty()) return;
     const std::size_t n = ev.size();
     for (std::size_t i = 0; i < n && !s.ended; ++i) {
@@ -138,21 +321,32 @@ void fire_readies(EncounterState& s, std::vector<Event>& ev) {
         for (std::size_t k = 0; k < s.readied.size();) {
             const ReadiedAction r = s.readied[k];
             Combatant* a = find_mut(s, r.actor);
-            if (!a || !can_act(*a) || a->reaction_used || !s.hooks.ready_trigger(s, r, e)) { ++k; continue; }
+            ReactionWindow w = new_window(s, ctx, ReactionTrigger::ReadiedTrigger, e.actor);
+            w.depth = e.reaction_depth;
+            if (!a || !may_react(s, *a, w.trigger) || !may_open(s, w) || !s.hooks.ready_trigger(s, r, e)) { ++k; continue; }
+            ++s.next_window_seq;
+            emit(ev, EventKind::ReactionWindowOpened, e.actor, a->id, int32_t(w.trigger), int32_t(w.seq));
+            const ReactionOption fire{ReactionOptionKind::FireReady, r.response.attack_index, 0, r.trigger_id};
+            auto d = poll(s, ctx, w, *a, std::span<const ReactionOption>(&fire, 1), ev);
+            if (!d.react) { ++k; continue; }   // ignoring the trigger keeps the readied action
             s.readied.erase(s.readied.begin() + std::ptrdiff_t(k));
             a->has_readied = false;
             a->reaction_used = true;
+            std::size_t from = ev.size();
             emit(ev, EventKind::ReadyTriggered, a->id, r.response.target, int32_t(r.trigger_id));
+            ++ctx.depth;
             if (r.response.kind == ActionKind::Attack) {
                 Combatant* t = find_mut(s, r.response.target);
                 if (t && !t->dead && r.response.attack_index < a->attacks.size())
-                    do_attack(s, *a, *t, r.response.attack_index, r.response.target_within_5ft, ev);
+                    do_attack(s, ctx, *a, *t, r.response.attack_index, r.response.target_within_5ft, ev);
             } else if (r.response.kind == ActionKind::Move) {
                 int16_t ft = r.response.move_ft;
                 int sp = effective_speed(*a);
                 if (ft > sp) ft = int16_t(sp);
                 emit(ev, EventKind::Moved, a->id, 0, ft, 0);
             }
+            --ctx.depth;
+            mark_depth(ev, from, uint8_t(ctx.depth + 1));
             check_end(s, ev);
         }
     }
@@ -184,7 +378,7 @@ bool spend_action(TurnBudget& b, const Combatant& c, ActionKind k, bool bonus) {
     return true;
 }
 
-StepResult step_impl(EncounterState& s, const ActionRequest& req);
+StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req);
 
 } // namespace
 
@@ -262,11 +456,27 @@ EncounterState begin_encounter(std::vector<Combatant> cs, uint64_t seed, std::ve
     return s;
 }
 
-StepResult step(EncounterState& s, const ActionRequest& req) {
-    StepResult r = step_impl(s, req);
-    if (r.ok && req.kind != ActionKind::Ready) fire_readies(s, r.events);
+namespace {
+StepResult run_step(EncounterState& s, const ActionRequest& req, const std::vector<ReactionRecord>* replay) {
+    std::vector<ReactionRecord> records;
+    Ctx ctx{records, replay};
+    StepResult r = step_impl(s, ctx, req);
+    if (r.ok && req.kind != ActionKind::Ready) fire_readies(s, ctx, r.events);
+    r.reactions = std::move(records);
+    r.desync = ctx.desync || (replay && ctx.replay_pos != replay->size());
     return r;
 }
+} // namespace
+
+StepResult step(EncounterState& s, const ActionRequest& req) { return run_step(s, req, nullptr); }
+
+StepResult step_logged(EncounterState& s, const ActionRequest& req, ActionLog& log) {
+    StepResult r = run_step(s, req, nullptr);
+    if (r.ok) log.push_back(LoggedStep{req, r.reactions});
+    return r;
+}
+
+StepResult replay_step(EncounterState& s, const LoggedStep& e) { return run_step(s, e.request, &e.reactions); }
 
 StepResult encounter_check(EncounterState& s, CombatantId id, Skill k, int dc, RollMode mode) {
     if (s.ended) return fail("encounter ended");
@@ -274,7 +484,8 @@ StepResult encounter_check(EncounterState& s, CombatantId id, Skill k, int dc, R
     if (!c || c->dead) return fail("bad combatant");
     StepResult out{true, {}, {}};
     roll_check(s, *c, k, dc, mode, out.events);
-    fire_readies(s, out.events);
+    Ctx ctx{out.reactions};
+    fire_readies(s, ctx, out.events);
     return out;
 }
 
@@ -292,32 +503,19 @@ StepResult heal(EncounterState& s, CombatantId id, int16_t amount) {
     if (h.from_zero && was_unconscious)
         emit(out.events, EventKind::ConditionRemoved, t->id, 0, int32_t(Condition::Unconscious));
     check_end(s, out.events);
-    fire_readies(s, out.events);
+    Ctx ctx{out.reactions};
+    fire_readies(s, ctx, out.events);
     return out;
 }
 
 namespace {
 
-StepResult step_impl(EncounterState& s, const ActionRequest& req) {
+StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     if (s.ended) return fail("encounter ended");
     if (s.order.empty()) return fail("no combatants");
-
-    // Opportunity attacks are the only directly requested off-turn action.
-    if (req.kind == ActionKind::OpportunityAttack) {
-        Combatant* a = find_mut(s, req.actor);
-        Combatant* t = find_mut(s, req.target);
-        if (!a || !t || a == t) return fail("bad actor/target");
-        if (!can_act(*a) || a->reaction_used) return fail("no reaction available");
-        if (t->dead) return fail("target is dead");
-        if (t->disengaged) return fail("target disengaged");
-        if (req.attack_index >= a->attacks.size()) return fail("bad attack index");
-        if (req.actor == current_actor(s)) return fail("cannot react on own turn");
-        StepResult out{true, {}, {}};
-        a->reaction_used = true;
-        do_attack(s, *a, *t, req.attack_index, req.target_within_5ft, out.events);
-        check_end(s, out.events);
-        return out;
-    }
+    // Opportunity attacks are offered through LeavingReach reaction windows (Move.leaves_reach).
+    if (req.kind == ActionKind::OpportunityAttack)
+        return fail("opportunity attacks come from LeavingReach reaction windows");
 
     if (req.actor != current_actor(s)) return fail("not this combatant's turn");
     Combatant& a = *find_mut(s, req.actor);
@@ -342,9 +540,27 @@ StepResult step_impl(EncounterState& s, const ActionRequest& req) {
         if (req.move_ft <= 0) return fail("move_ft must be positive");
         int cost = req.move_ft * (a.has(Condition::Prone) ? 2 : 1);   // crawling
         if (cost > b.movement_ft) return fail("not enough movement");
+        // Pause before leaving reach; opportunity attacks may stop the move.
+        if (req.leaves_reach && !leaving_reach_window(s, ctx, a, out.events)) {
+            emit(out.events, EventKind::MoveInterrupted, a.id, 0, req.move_ft);
+            check_end(s, out.events);
+            return out;
+        }
         b.movement_ft = int16_t(b.movement_ft - cost);
         s.budget = b;
         emit(out.events, EventKind::Moved, a.id, 0, req.move_ft, b.movement_ft);
+        check_end(s, out.events);
+        return out;
+    }
+    case ActionKind::CastSpell: {   // stub: no effect beyond the SpellCast reaction window
+        if (req.spell_id == 0) return fail("spell_id required");
+        if (!spend_action(b, a, req.kind, false)) return fail("no action available");
+        s.budget = b;
+        emit(out.events, EventKind::SpellCast, a.id, req.target, int32_t(req.spell_id), req.spell_level);
+        bool countered = spell_cast_window(s, ctx, a, req.spell_id, req.spell_level, out.events);
+        emit(out.events, countered ? EventKind::SpellCountered : EventKind::SpellResolved, a.id, req.target,
+             int32_t(req.spell_id), req.spell_level);
+        check_end(s, out.events);
         return out;
     }
     case ActionKind::StandUp: {
@@ -384,7 +600,7 @@ StepResult step_impl(EncounterState& s, const ActionRequest& req) {
             b.attacks_remaining = uint8_t(a.attacks_per_action > 1 ? a.attacks_per_action - 1 : 0);
         else return fail("no action available");
         s.budget = b;
-        do_attack(s, a, *t, req.attack_index, req.target_within_5ft, out.events);
+        do_attack(s, ctx, a, *t, req.attack_index, req.target_within_5ft, out.events);
         check_end(s, out.events);
         return out;
     }
