@@ -1,0 +1,17 @@
+{
+  "base": "characters/fighter_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        0,
+        "effect",
+        "inert"
+      ],
+      true
+    ]
+  ],
+  "severity": "error",
+  "expect": "'inert' is reserved",
+  "schema": "character@2"
+}

@@ -1,0 +1,14 @@
+{
+  "base": "characters/fighter_1.json",
+  "sets": [],
+  "severity": "error",
+  "expect": "'dice' is a required property",
+  "dels": [
+    [
+      "features",
+      1,
+      "effect",
+      "dice"
+    ]
+  ]
+}
