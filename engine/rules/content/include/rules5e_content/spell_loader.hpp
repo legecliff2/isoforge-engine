@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "assets/schema_registry.hpp"
@@ -16,6 +17,8 @@ namespace rules5e_content {
 struct SpellLoad {
     std::optional<rules5e::SpellDef> def;
     std::string error;            // set when !def
+    // Spell references to resolve against the whole book: {field, content id}.
+    std::vector<std::pair<std::string, std::string>> refs = {};
 };
 
 SpellLoad spell_from_json(const eng::assets::Json&);

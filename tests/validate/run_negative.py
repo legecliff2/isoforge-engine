@@ -73,12 +73,20 @@ def main() -> int:
         ok_in = rc != 0 and "collides with" in out
         rc, out2 = run(make_pack(tmp / "coll_x1", "test.nega", {"a": a}), make_pack(tmp / "coll_x2", "test.negb", {"b": b}))
         ok_x = rc != 0 and "FAIL pack set" in out2
-        for name, ok, o in (("collision_within_pack", ok_in, out), ("collision_across_packs", ok_x, out2)):
+        # Same folder name in different places (like tests/compat/fl1/<pack> vs content/packs/<pack>):
+        # packs are keyed by resolved path, so this is still a cross-pack collision.
+        rc, out3 = run(make_pack(tmp / "dir1", "test.neg", {"a": a}), make_pack(tmp / "dir2", "test.neg", {"b": b}))
+        ok_same = rc != 0 and "FAIL pack set" in out3 and "collides with" in out3
+        # The same content id in two packs is an error too (rules5e_content::add_spell agrees).
+        rc, out4 = run(make_pack(tmp / "dup1", "test.nega", {"a": a}), make_pack(tmp / "dup2", "test.negb", {"a": a}))
+        ok_dup = rc != 0 and "duplicate content id" in out4
+        for name, ok, o in (("collision_within_pack", ok_in, out), ("collision_across_packs", ok_x, out2),
+                            ("collision_same_folder_name", ok_same, out3), ("duplicate_id_across_packs", ok_dup, out4)):
             print(("ok   " if ok else "FAIL ") + name + ("" if ok else "\n" + o))
             failures += not ok
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    print(f"{len(cases) + 3 - failures}/{len(cases) + 3} negative checks passed")
+    print(f"{len(cases) + 5 - failures}/{len(cases) + 5} negative checks passed")
     return 1 if failures else 0
 
 
