@@ -37,6 +37,15 @@ struct StreamerConfig {
     uint64_t request_shuffle_seed = 0;
 };
 
+// Change of the resident set over one update() (or one wait_idle()): coords that became
+// resident / stopped being resident, each in ChunkCoord order. Disjoint; a coord appears at
+// most once. Applying successive deltas to an empty set reproduces resident(). (Not to be
+// confused with ChunkDelta, the save-state overlay of ARCHITECTURE.md.)
+struct StreamDelta {
+    std::vector<ChunkCoord> added, removed;
+    bool empty() const noexcept { return added.empty() && removed.empty(); }
+};
+
 // Chunk coord containing a world tile (floor division by kChunkSize).
 ChunkCoord chunk_of_tile(Vec2i world_tile, int16_t level) noexcept;
 
@@ -52,9 +61,12 @@ public:
     // focus chunk and covered by the provider. Out-of-set chunks are evicted at the next update().
     void set_focus(Vec2i world_tile, int16_t level, int radius_chunks);
     // Caller's thread: integrate finished loads (coord order), evict, queue missing chunks.
-    void update();
-    // update() until every wanted chunk is resident or failed.
-    void wait_idle();
+    // Returns the resident-set change it made (also readable via last_delta()).
+    StreamDelta update();
+    // update() until every wanted chunk is resident or failed. Returns the net change over
+    // all those updates (last_delta() is set to it as well).
+    StreamDelta wait_idle();
+    const StreamDelta& last_delta() const noexcept { return last_delta_; }
 
     const Chunk* get(ChunkCoord) const;                       // nullptr if not resident
     std::vector<const Chunk*> resident(int16_t level) const;  // coord order
@@ -72,6 +84,8 @@ private:
     void worker();
     void enqueue_missing();
     void integrate(ChunkCoord c, ChunkResult r);
+    std::set<ChunkCoord> resident_keys() const;
+    StreamDelta diff_from(const std::set<ChunkCoord>& before) const;
 
     IChunkProvider& root_;
     StreamerConfig cfg_;
@@ -83,6 +97,7 @@ private:
     std::map<ChunkCoord, Chunk> cache_;
     std::list<ChunkCoord> cache_lru_;        // front = most recent
     uint64_t loads_started_ = 0;
+    StreamDelta last_delta_;
 
     // Shared with workers.
     mutable std::mutex mu_;
