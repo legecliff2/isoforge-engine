@@ -184,6 +184,7 @@ TEST_CASE("Ready: trigger callback fires the response once as a reaction") {
     };
     auto s = begin_encounter({pc(1), monster(2)}, 5, nullptr, h);
     mut(s, 2).hp = mut(s, 2).hp_max = 200;
+    mut(s, 1).reaction_policy[std::size_t(ReactionTrigger::ReadiedTrigger)] = ReactionPolicy::Auto;
     end_turns_until(s, 1);
     REQUIRE(current_actor(s) == 1);
     ActionRequest ready{1, ActionKind::Ready, 2};

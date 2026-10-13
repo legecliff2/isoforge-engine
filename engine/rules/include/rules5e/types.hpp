@@ -58,8 +58,14 @@ struct Attack {
 
 enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Ready, Move, EndTurn,
                                   // appended (append-only):
-                                  StandUp, OpportunityAttack, Stabilize, SpareTheDying };
+                                  StandUp, OpportunityAttack, Stabilize, SpareTheDying,
+                                  CastSpell };
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
+
+// Reaction windows (encounter.hpp). Append-only.
+enum class ReactionTrigger : uint8_t { LeavingReach, BeingHit, SpellCast, ReadiedTrigger };
+inline constexpr std::size_t kReactionTriggerCount = 4;
+enum class ReactionPolicy : uint8_t { Ask, Never, Auto };
 
 struct DeathSaves { uint8_t successes = 0, failures = 0; bool stable = false; };
 
@@ -94,6 +100,8 @@ struct Combatant {
     CombatantId helped_by = 0;              //   ... granted by this helper (expires at its next turn)
     bool     has_readied = false;           // Ready: response stored in the encounter
     CombatantId check_helped_by = 0;        // Help: advantage on next ability check, from this helper
+    std::array<ReactionPolicy, kReactionTriggerCount> reaction_policy{};  // per trigger; default Ask
+    int8_t   reaction_ac_bonus = 0;         // Shield-style AC bump; until the start of this creature's turn
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };

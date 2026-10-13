@@ -230,20 +230,11 @@ TEST_CASE("monsters die at 0 HP; opt-in policy ends when no opponent is consciou
     CHECK_FALSE(step(s, {1, ActionKind::EndTurn}).ok);
 }
 
-TEST_CASE("reactions: one opportunity attack per round, not vs Disengage, not on own turn") {
+TEST_CASE("direct OpportunityAttack requests are rejected (reaction windows only)") {
     auto s = at_turn_of(2);
-    CHECK_FALSE(step(s, {2, ActionKind::OpportunityAttack, 1}).ok);   // own turn
-    CHECK(step(s, {1, ActionKind::OpportunityAttack, 2, 0, 0, false, true}).ok);
-    CHECK(find(s, 1)->reaction_used);
-    CHECK_FALSE(step(s, {1, ActionKind::OpportunityAttack, 2}).ok);   // reaction spent
-    auto g = at_turn_of(3);
-    if (!find(g, 3)->dead) {
-        REQUIRE(step(g, {3, ActionKind::Disengage, 0, 0, 0, true}).ok);
-        CHECK_FALSE(step(g, {1, ActionKind::OpportunityAttack, 3}).ok);
-    }
-    // Reaction refreshes at the start of the reactor's own turn.
-    while (current_actor(s) != 1) REQUIRE(step(s, {current_actor(s), ActionKind::EndTurn}).ok);
-    CHECK_FALSE(find(s, 1)->reaction_used);
+    auto h = state_hash(s);
+    CHECK_FALSE(step(s, {1, ActionKind::OpportunityAttack, 2, 0, 0, false, true}).ok);
+    CHECK(state_hash(s) == h);
 }
 
 TEST_CASE("replay: same seed + log -> same state; different seed or log -> different") {
