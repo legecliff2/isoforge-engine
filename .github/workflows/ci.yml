@@ -58,6 +58,11 @@ jobs:
       - name: Configure
         run: cmake --preset ${{ matrix.preset }} -DPython3_EXECUTABLE="${{ env.pythonLocation }}/${{ runner.os == 'Windows' && 'python.exe' || 'bin/python' }}"
 
+      # ARCHITECTURE.md §2.2: module dependency graph (rule 1, 2) + SDL/src/backend include lint
+      # (rules 3-5). Configure-time data only, so run before the build to fail fast.
+      - name: Lint (depcheck + include_lint)
+        run: ctest --preset ${{ matrix.test }} -R "^(depcheck|include_lint)" --no-tests=error
+
       - name: Build
         run: cmake --build --preset ${{ matrix.build }} --parallel
 
