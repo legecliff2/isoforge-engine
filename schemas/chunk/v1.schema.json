@@ -2,14 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://isoforge.dev/schemas/chunk/v1.schema.json",
   "title": "chunk@1",
-  "description": "Serialized eng::world::Chunk (ARCHITECTURE.md §5.2), field for field. kChunkSize = 32, kChunkLayers = 4 (ground, detail, walls, roof), kChunkFormatVersion = 1. layers[l] is row-major: cell index = y * 32 + x. Integers only (§4.3); content_hash is a 16-char lowercase hex string (xxHash3-64 of canonical JSON).",
+  "description": "Serialized eng::world::Chunk (ARCHITECTURE.md §5.2), encoding per engine/core/world/chunk_codec.hpp (PR #4). kChunkSize = 32, kChunkLayers = 4 (ground, detail, walls, roof), kChunkFormatVersion = 1. Layers are compact: each is an object of optional 1024-entry row-major integer arrays (index = y*32 + x); an omitted array means all zeros. EntitySpawn.stable_id is computed by the loader and must NOT appear in files. content_hash (optional) is xxHash3-64 over the canonical little-endian binary serialization of the loaded Chunk (§4.5), not over the JSON. Integers only (§4.3).",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "$schema",
-    "format_version",
     "coord",
-    "content_hash",
     "palette",
     "layers",
     "spawns",
@@ -32,46 +30,12 @@
       "minimum": 0,
       "maximum": 4294967295
     },
-    "tile_cell": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "tile",
-        "elevation",
-        "flags"
-      ],
-      "properties": {
-        "tile": {
-          "$ref": "#/$defs/u16",
-          "description": "TileId: index into palette; 0 = empty."
-        },
-        "elevation": {
-          "$ref": "#/$defs/u8",
-          "description": "Height steps for iso stacking."
-        },
-        "flags": {
-          "$ref": "#/$defs/u8",
-          "description": "Bitfield: blocks_move | blocks_sight | difficult | water ... (bit assignment pending, see PR)."
-        }
-      }
-    },
-    "layer": {
-      "type": "array",
-      "minItems": 1024,
-      "maxItems": 1024,
-      "items": {
-        "$ref": "#/$defs/tile_cell"
-      },
-      "description": "kChunkSize * kChunkSize cells, row-major."
-    },
     "entity_spawn": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "archetype",
-        "tile",
-        "stable_id",
-        "overrides"
+        "tile"
       ],
       "properties": {
         "archetype": {
@@ -100,20 +64,78 @@
             }
           }
         },
-        "stable_id": {
-          "$ref": "#/$defs/u32",
-          "description": "StableHash(coord, origin, index); same in every origin."
-        },
         "overrides": {
           "type": "object",
-          "description": "Per-instance data merged over the archetype ({} = none). Serialized form of EntitySpawn::overrides_json."
+          "description": "Per-instance data merged over the archetype. The loader stores its compact sorted-key dump in EntitySpawn::overrides_json ('' when absent or {})."
         }
-      }
+      },
+      "not": {
+        "required": [
+          "stable_id"
+        ]
+      },
+      "description": "stable_id is computed by the loader (xxHash3-64 of i32 x, i32 y, i16 level, u32 spawn index; low ^ high 32 bits) and is forbidden in files."
     },
     "hash_hex": {
       "type": "string",
       "pattern": "^[0-9a-f]{16}$",
-      "description": "xxHash3-64 (seed 0) of the chunk's canonical JSON, 16 lowercase hex digits. Canonical JSON = the whole document with the 'content_hash' key removed, object keys sorted by code point, no insignificant whitespace (separators ',' and ':'), integers in plain decimal, strings UTF-8 with no escaping beyond what JSON requires (non-ASCII written raw). See tools/validate/validate_packs.py:canonical_json."
+      "description": "16 lowercase hex digits of compute_content_hash(chunk): XXH3-64 (seed 0) over u16 format_version, i32 x, i32 y, i16 level, u32 palette count + strings (u32 length + UTF-8 bytes), 4x1024 cells (u16 tile, u8 elevation, u8 flags), u32 spawn count + per spawn (str archetype, i32 x, i32 y, u32 stable_id, str overrides compact-sorted JSON or \"\"), u32 trigger count + compact-sorted JSON strings. All little-endian. origin is excluded."
+    },
+    "layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One layer; omitted arrays = all zeros.",
+      "properties": {
+        "tiles": {
+          "type": "array",
+          "minItems": 1024,
+          "maxItems": 1024,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "description": "TileId per cell (u16, index into palette; 0 = empty). Validator checks < palette length."
+        },
+        "elevation": {
+          "type": "array",
+          "minItems": 1024,
+          "maxItems": 1024,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "description": "Height steps for iso stacking (u8)."
+        },
+        "flags": {
+          "type": "array",
+          "minItems": 1024,
+          "maxItems": 1024,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 15
+          },
+          "description": "Tile flags (u8): bit0 blocks_move, bit1 blocks_sight, bit2 difficult, bit3 water; bits 4-7 reserved, must be 0."
+        }
+      }
+    },
+    "trigger": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "description": "Script hook / region. id and kind required; other fields free-form. Loader stores the compact sorted-key dump."
     }
   },
   "properties": {
@@ -156,15 +178,16 @@
       "type": "array",
       "minItems": 1,
       "maxItems": 65536,
-      "items": {
-        "type": "string"
-      },
-      "description": "TileId -> tile asset id. Index 0 is the empty tile and must be ''.",
       "prefixItems": [
         {
           "const": ""
         }
-      ]
+      ],
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "TileId -> tile asset id. Slot 0 is reserved for the empty tile and must be \"\"; all others non-empty."
     },
     "layers": {
       "type": "array",
@@ -184,9 +207,8 @@
     "triggers": {
       "type": "array",
       "items": {
-        "type": "string"
-      },
-      "description": "Script hooks / regions (serialized)."
+        "$ref": "#/$defs/trigger"
+      }
     },
     "origin": {
       "enum": [
