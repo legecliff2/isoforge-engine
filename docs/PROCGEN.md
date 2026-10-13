@@ -6,7 +6,7 @@ Status: v0, `gen_version` 1. Owner: Tools/Content. Implements ARCHITECTURE.md §
 
 | Target | Path | Depends on | Purpose |
 |---|---|---|---|
-| `eng::procgen` | `engine/procgen/` | `base`, `detmath`, `rng` only (DETERMINISTIC) | seed strings, chunk seeds, integer noise, dungeon generator, chunk@1 JSON + content hash |
+| `eng::procgen` | `engine/procgen/` | `base`, `detmath`, `rng` only (DETERMINISTIC) | seed strings, chunk seeds, dungeon generator (noise from `detmath::noise`), chunk@1 JSON + content hash |
 | `eng::procgen_world` | `engine/procgen/world_glue/` | `world`, `procgen` | `ProceduralProvider : IChunkProvider` adapter (thin glue) |
 | `procgen_dump` | `engine/procgen/tools/` | `procgen` | writes a chunk@1 preview pack for a seed + coord list |
 
@@ -40,7 +40,7 @@ Integer value noise:
 - Inputs are integer world-tile coordinates (int64). Each octave has a cell size of 2^k tiles. The fraction inside a cell is computed with shifts, so there is no Fx overflow even at int32 chunk extremes.
 - fBm uses amplitudes 2^-o and is normalised to [0, 1).
 
-Proposed to move into `detmath::noise` (owned by Rules) unchanged. The goldens pin the outputs.
+Lives in `detmath::noise` (`engine/detmath`, owned by Rules), moved there unchanged from procgen; hashing uses `detmath::stable_hash`. Goldens in `detmath_tests` and procgen's content-hash goldens pin the outputs.
 
 ## Dungeon generator (gen_version 1)
 1. Place 3–6 rooms, each 4–9 × 4–9 floor cells, within [2, 29]. Rooms are kept at least 2 cells apart, with up to 64 placement attempts.
