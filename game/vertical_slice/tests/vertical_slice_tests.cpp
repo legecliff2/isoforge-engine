@@ -4,6 +4,8 @@
 #include "session.hpp"
 #include "slice_view.hpp"
 
+#include <algorithm>
+
 using namespace slice;
 
 TEST_CASE("palette classification") {
@@ -75,4 +77,22 @@ TEST_CASE("view renders a snapshot without touching game state (null device)") {
         CHECK(dev.last_frame().draw_calls == view.batches());
     }
     CHECK(dev.live_textures() == 0);
+}
+
+TEST_CASE("camera focus: centre of the combatants' bounding box") {
+    std::string err;
+    auto s = Session::open({SLICE_PACK, 1, false}, &err);
+    REQUIRE(s);
+    eng::render::NullDevice dev;
+    SliceView view(dev);
+    ViewModel vm = s->view();   // fighter (10,15), goblin (20,15)
+    const eng::Vec2f f = view.actors_focus_px(vm);
+    const eng::Vec2f a = view.tile_center_px(10, 15), b = view.tile_center_px(20, 15);
+    CHECK(f.x == doctest::Approx((a.x + b.x) / 2));
+    CHECK(f.y < (a.y + b.y) / 2 + 16.f);
+    CHECK(f.y > std::min(a.y, b.y) - 44.f);
+    vm.actors.resize(1);
+    vm.actors[0].tile = {3, 4};
+    const eng::Vec2f one = view.actors_focus_px(vm), c = view.tile_center_px(3, 4);
+    CHECK(one.x == doctest::Approx(c.x));
 }

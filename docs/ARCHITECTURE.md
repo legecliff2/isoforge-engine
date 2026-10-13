@@ -140,6 +140,9 @@ Note: **SDL_GPU already sits on top of Vulkan, Metal, and D3D12.** That makes it
 | `game/*` | executable | `engine`, `iso2d` | per-title boot code (kept tiny) |
 | `tools/*` | executables | `assets`, `world`, `rules5e` (no renderer unless editor) | packer, validator, migrator, procgen preview |
 
+_Lint exception (approved): `tools/*` may also depend on `script_host` (`script_check`, the pack typecheck half of the validator) and on `procgen`/`procgen_world` (`procgen_dump`, the procgen preview). Still no renderer or platform, and no direct third-party links. Enforced by `tools/depcheck/rules.cmake` (`ALLOW_KIND_tool`)._
+
+
 ### 2.2 Rules (enforced in CI)
 
 1. **Acyclic, downward only.** Dependencies flow strictly down the table/diagram. CI checks this with a CMake target-graph script (`tools/depcheck`).
