@@ -1,0 +1,19 @@
+#pragma once
+#include "rng/rng.hpp"
+#include "rules5e/types.hpp"
+
+namespace rules5e {
+
+// natural: the die that counts. natural_other: the discarded die (0 for Normal).
+struct D20Roll { int8_t natural; int8_t natural_other; int16_t total; RollMode mode; };
+
+// Draws one d20 (Normal) or two d20s in order (Advantage/Disadvantage).
+D20Roll roll_d20(rng::Rng&, int modifier, RollMode);
+
+// SRD 5.1: any number of advantage and disadvantage sources cancel to Normal.
+constexpr RollMode combine_modes(bool any_advantage, bool any_disadvantage) {
+    if (any_advantage == any_disadvantage) return RollMode::Normal;
+    return any_advantage ? RollMode::Advantage : RollMode::Disadvantage;
+}
+
+} // namespace rules5e

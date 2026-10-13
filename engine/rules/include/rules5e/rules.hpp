@@ -1,0 +1,11 @@
+#pragma once
+// Pure, deterministic SRD 5.1 rules. No engine headers. No I/O. No globals.
+#include "rng/rng.hpp"
+#include "detmath/fx.hpp"
+#include "rules5e/types.hpp"
+#include "rules5e/abilities.hpp"
+#include "rules5e/dice.hpp"
+#include "rules5e/d20.hpp"
+#include "rules5e/initiative.hpp"
+#include "rules5e/attack.hpp"
+#include "rules5e/damage.hpp"
