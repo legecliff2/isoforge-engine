@@ -41,7 +41,9 @@ using ReactionDeciderFn = std::function<ReactionDecision(const Combat&, const Ne
 
 // ---- Commands ---------------------------------------------------------------------------------
 enum class CommandKind : uint8_t {
-    Rules,    // request: any rules5e ActionRequest for the current actor (sim fills target_within_5ft)
+    Rules,    // request: any rules5e ActionRequest for the current actor. sim fills the facts rules
+              // needs (target_within_5ft, ranged disadvantage facts, Ready response details);
+              // Ready with ready_kind Move uses `to` as the destination.
     Step,     // to: move the current actor one tile (8-neighbour) -> rules5e Move{leaves_reach}
 };
 struct Command {
@@ -62,6 +64,15 @@ struct SubmitResult {
     std::optional<NeedsDecision> needs;               // status == NeedsDecision
     std::vector<rules5e::ReactionRecord> reactions;   // Done: Ask decisions of the completed request
 };
+
+// Ready triggers (sim interprets rules5e's opaque trigger_id): kind << 8 | tiles.
+//   TargetWithin:  the response's target ends a move within `tiles` of the readier.
+//   HostileWithin: any hostile ends a move within `tiles` of the readier.
+// A readied Attack also needs, when it fires: target alive, within range, line of sight (ranged).
+// A readied Move goes to the Command's `to` tile (pathed at Ready time) and fires only if that
+// tile is free; leaving reach on the way opens LeavingReach windows like any move.
+enum class ReadyTriggerKind : uint8_t { TargetWithin = 1, HostileWithin = 2 };
+constexpr uint32_t ready_trigger_id(ReadyTriggerKind k, uint8_t tiles) { return (uint32_t(k) << 8) | tiles; }
 
 // Team ids: the distinct team names of the combatant spawns (overrides.team, else "party" for
 // characters / "monsters" for monsters), byte-sorted; id = index. Spawn-order independent.
@@ -100,6 +111,14 @@ public:
     // Active features (UseFeature): remaining uses (255 = unlimited), and whether usable now.
     // Would stepping `mover` from `from` to `to` leave some hostile's melee reach?
     bool would_leave_reach(CombatantId mover, Vec2i from, Vec2i to) const { return leaves_reach(mover, from, to); }
+    // Ranged attack legality from the current positions: in long range and line of sight.
+    bool can_shoot(CombatantId actor, uint8_t attack_index, CombatantId target) const;
+    // Would that ranged attack roll with disadvantage (long range or a hostile within 5 ft)?
+    bool ranged_disadvantage(CombatantId actor, uint8_t attack_index, CombatantId target) const;
+    std::optional<Vec2i> readied_destination(CombatantId id) const {
+        auto it = readied_dest_.find(id);
+        return it == readied_dest_.end() ? std::nullopt : std::optional<Vec2i>(it->second);
+    }
     uint8_t feature_uses_left(CombatantId id, uint32_t feature_id) const;
     bool can_use_feature(CombatantId id, uint32_t feature_id) const;
 
@@ -115,9 +134,12 @@ private:
     void sync_ecs();
     void install_hooks();
     SubmitResult finish(rules5e::StepResult sr);
-    SubmitResult do_rules(rules5e::ActionRequest req);
+    SubmitResult do_rules(rules5e::ActionRequest req, Vec2i to);
     SubmitResult do_step(Vec2i to);
-    void on_completed(const rules5e::LoggedStep& ls);
+    void complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs, std::optional<Vec2i> to);
+    std::optional<Vec2i> moving_to(CombatantId id) const;   // destination of a move being resolved
+    bool ranged_attack_facts(CombatantId actor, uint8_t attack_index, Vec2i from, Vec2i target_pos,
+                             rules5e::ActionRequest& req, std::string* error) const;
     bool move_tile(CombatantId mover, Vec2i to, const std::vector<rules5e::Event>& evs);
     friend std::optional<Combat> replay(ecs::Registry&, const world::Chunk&, const ContentLibrary&, uint64_t,
                                         const std::vector<LogEntry>&, std::string*);
@@ -135,6 +157,8 @@ private:
     std::map<std::pair<CombatantId, uint32_t>, uint8_t> feature_used_;   // uses spent since recharge
     std::vector<std::string> team_names_;
     PollOrderFn poll_order_;
+    std::map<CombatantId, Vec2i> readied_dest_;   // readied Move destinations (until fired/expired)
+    std::optional<Vec2i> ready_to_;               // destination of the Ready being resolved
     std::optional<Vec2i> step_to_;   // destination of the Move being resolved / paused (sim-only)
 };
 
