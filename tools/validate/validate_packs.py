@@ -36,6 +36,7 @@ CR_XP = {"0": 10, "1/8": 25, "1/4": 50, "1/2": 100, "1": 200, "2": 450, "3": 700
          "18": 20000, "19": 22000, "20": 25000, "21": 33000, "22": 41000, "23": 50000,
          "24": 62000, "25": 75000, "26": 90000, "27": 105000, "28": 120000, "29": 135000,
          "30": 155000}
+TEAM_RE = re.compile(r"^[a-z][a-z0-9_]*$")   # spawn overrides.team (faction id)
 DICE_RE = re.compile(r"^(\d+)d(\d+)([+-]\d+)?$")
 SKILL_ABILITY = {"athletics": "str", "acrobatics": "dex", "sleight_of_hand": "dex", "stealth": "dex",
                  "arcana": "int", "history": "int", "investigation": "int", "nature": "int",
@@ -220,6 +221,9 @@ def check_chunk(doc, errs, ctx):
     for i, s in enumerate(doc["spawns"]):
         if s["archetype"] not in ctx["ids"] and not ctx["external_ok"](s["archetype"]):
             errs.append(f"spawns[{i}]: archetype '{s['archetype']}' not defined in pack or its depends")
+        team = s.get("overrides", {}).get("team")
+        if team is not None and (not isinstance(team, str) or not TEAM_RE.match(team)):
+            errs.append(f"spawns[{i}]: overrides.team {team!r} must match {TEAM_RE.pattern}")
         x, y = s["tile"]["x"], s["tile"]["y"]
         if any(layer[y * CHUNK_SIZE + x][2] & FLAG_BLOCKS_MOVE for layer in layers):
             errs.append(f"spawns[{i}] at ({x},{y}) is on a blocks_move cell")
