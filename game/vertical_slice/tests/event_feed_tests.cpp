@@ -60,9 +60,29 @@ TEST_CASE("v3: TileMoved after the request's rules events still lands on the rig
     CHECK(st.log[2] == "FIGHTER HITS GOBLIN (17)");
 }
 
-TEST_CASE("unknown event kinds are skipped (spells 35-38 from #23, future sim kinds)") {
+TEST_CASE("v4 spell kinds 35-38 are known and logged") {
+    static_assert(sim::kSimEventSchemaVersion == 4);
     std::vector<SimEvent> evs;
-    for (int k = 35; k <= 38; ++k) evs.push_back(rules(EventKind(k), 1, 2, 1, 2, 3));
+    evs.push_back(rules(EventKind::SavingThrowRolled, 2, 4, 9, 14, 1));
+    evs.push_back(rules(EventKind::SavingThrowRolled, 2, 4, 3, 5, 0));
+    evs.push_back(rules(EventKind::ConcentrationEnded, 1, 0, 77));
+    evs.push_back(rules(EventKind::SpellEffectEnded, 2, 0, 77, -1));
+    evs.push_back(rules(EventKind::SpellCheckRolled, 1, 0, 12, 15, 1));
+    FeedState st;
+    slice::apply_events(evs, st, nm);
+    CHECK(st.skipped_unknown == 0);
+    for (int k = 35; k <= 38; ++k) CHECK(slice::known_rules_kind(EventKind(k)));
+    REQUIRE(st.log.size() == 5);
+    CHECK(st.log[0] == "GOBLIN SAVES (14)");
+    CHECK(st.log[1] == "GOBLIN FAILS SAVE (5)");
+    CHECK(st.log[2] == "FIGHTER LOSES CONCENTRATION");
+    CHECK(st.log[3] == "SPELL ENDS ON GOBLIN");
+    CHECK(st.log[4] == "FIGHTER COUNTERS (15)");
+}
+
+TEST_CASE("unknown event kinds are skipped (above kLastRulesEventKind, future sim kinds)") {
+    std::vector<SimEvent> evs;
+    for (int k = 39; k <= 42; ++k) evs.push_back(rules(EventKind(k), 1, 2, 1, 2, 3));
     evs.push_back(rules(EventKind(250), 1));
     SimEvent future;
     future.kind = SimEvent::Kind(7);

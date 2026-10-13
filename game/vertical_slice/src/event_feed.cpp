@@ -42,6 +42,16 @@ void apply_events(std::span<const SimEvent> events, FeedState& st, const NameFn&
         case EventKind::ReactionTaken: push(st, name(r.actor) + " REACTS"); break;
         case EventKind::Healed: push(st, name(r.target) + " HEALS " + std::to_string(r.a)); break;
         case EventKind::EncounterEnded: push(st, "ENCOUNTER ENDED"); break;
+        // v4 spellcasting kinds (35-38). Spell names aren't resolvable here (a = hashed spell id),
+        // so the log stays generic. Known kinds: never counted as unknown.
+        case EventKind::SavingThrowRolled:
+            push(st, name(r.actor) + ((r.c & 1) ? " SAVES (" : " FAILS SAVE (") + std::to_string(r.b) + ")");
+            break;
+        case EventKind::ConcentrationEnded: push(st, name(r.actor) + " LOSES CONCENTRATION"); break;
+        case EventKind::SpellEffectEnded: push(st, "SPELL ENDS ON " + name(r.actor)); break;
+        case EventKind::SpellCheckRolled:
+            push(st, name(r.actor) + ((r.c & 1) ? " COUNTERS (" : " FAILS COUNTER (") + std::to_string(r.b) + ")");
+            break;
         default: break;   // known, not shown
         }
     }
