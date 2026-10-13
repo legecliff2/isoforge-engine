@@ -3,7 +3,7 @@
 #include <algorithm>
 
 #include "base/canonical_hash.hpp"
-#include "procgen/noise.hpp"
+#include "detmath/noise.hpp"
 #include "rng/rng.hpp"
 
 namespace procgen {
@@ -95,7 +95,7 @@ std::optional<GenChunk> generate_v1(WorldSeed w, int32_t cx, int32_t cy, int16_t
         for (int x = 0; x < kChunkSize; ++x) {
             const std::size_t i = std::size_t(idx(x, y));
             if (!floor[i]) continue;
-            const int32_t n = noise::fbm2(level_seed, wx0 + x, wy0 + y, 3, 3).raw;   // [0, 65536)
+            const int32_t n = detmath::noise::fbm2(level_seed, wx0 + x, wy0 + y, 3, 3).raw;   // [0, 65536)
             if (n >= 44000) detail[i] = GenCell{tiles::kRubble, 0, flags::kDifficult};
             else if (n < 18000) detail[i] = GenCell{tiles::kWater, 0, flags::kWater};
         }
