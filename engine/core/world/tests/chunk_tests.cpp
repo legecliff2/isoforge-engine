@@ -159,3 +159,19 @@ TEST_CASE("spawning chunk entities into the ECS iterates in stable_id order") {
     REQUIRE(seen.size() == 2);
     CHECK(seen[0] < seen[1]);
 }
+
+TEST_CASE("content_hash test vectors match tools/chunk_hash/chunk_hash.py") {
+    eng::assets::SchemaRegistry reg;
+    register_chunk_schema(reg);
+    const std::pair<const char*, const char*> vectors[] = {
+        {"v1_minimal.json", "01fa4a2fde49834b"},
+        {"v2_small.json", "963a7d22563ff71a"},
+    };
+    for (auto [file, hex] : vectors) {
+        auto lr = reg.load_file(std::string(CHUNK_HASH_VECTORS) + "/" + file);
+        REQUIRE_MESSAGE(lr.ok, lr.error);
+        auto r = chunk_from_json(lr.data);
+        REQUIRE_MESSAGE(r.chunk, r.error);
+        CHECK_MESSAGE(hash_to_hex(r.chunk->content_hash) == hex, file);
+    }
+}
