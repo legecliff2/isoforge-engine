@@ -100,7 +100,7 @@ std::optional<VersionRange> parse_range(std::string_view s) {
         case Tilde: r.hi_exclusive = SemVer{*a, *b + 1, 0}; break;
         case Caret:   // bump the left-most non-zero component (npm)
             if (*a > 0) r.hi_exclusive = SemVer{*a + 1, 0, 0};
-            else if (*b > 0) r.hi_exclusive = SemVer{0, *b + 1, 0};
+            else if (*b > 0 || !c) r.hi_exclusive = SemVer{0, *b + 1, 0};
             else r.hi_exclusive = SemVer{0, 0, z + 1};
             break;
     }

@@ -58,9 +58,9 @@ def parse_range(text: str):
     # caret: bump the left-most non-zero component (npm semantics)
     if a > 0:
         return lo, (a + 1, 0, 0)
-    if b > 0:
-        return lo, (0, b + 1, 0)
-    return lo, (0, 0, z + 1)
+    if b > 0 or c is None:
+        return lo, (0, b + 1, 0)   # ^0.Y(.Z) and ^0.0 (no patch) -> <0.(Y+1).0, as npm
+    return lo, (0, 0, z + 1)       # ^0.0.Z -> <0.0.(Z+1)
 
 
 def parse_version(text: str):
