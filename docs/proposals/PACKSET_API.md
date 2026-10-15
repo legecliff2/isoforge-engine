@@ -153,11 +153,23 @@ a reference that doesn't resolve is skipped with a diagnostic, as the sim does t
    migrate is reported in `document_errors()` as `"<pack>:<path>: <error>"`. `errors()` / `ok()`
    only cover resolution. Each consumer decides whether a document error is fatal. The validator
    reports these per pack, as before.
-3. **`reference_errors()`** uses the validator wording
-   (`"<pack>:<rel>: spawns[i]: archetype '<id>' not defined in pack or its depends"`).
-   **Known gap:** right now it only checks chunk spawn archetypes. The other reference kinds the
-   validator checks (spell refs and other content refs) still need to be added before this
-   proposal leaves draft.
+3. **`reference_errors()`** uses the validator wording and mirrors `tools/validate/validate_packs.py`.
+   Per pack, in resolved load order, it reports (each message is prefixed `"<pack>:"`):
+   - `manifest.json: entry_script: ...`, then `<rel>: behavior.ai: ...` for every document (monster@1
+     files, which the loader migrates, keep the validator's `presentation.ai` spelling). Either
+     `script path <repr> must match ^scripts/.+\.luau$` or `script <path> does not exist in pack`.
+     Script refs resolve only inside the referencing pack (see item 4).
+   - Chunks: `<rel>: spawns[i]: archetype '<id>' not defined in pack or its depends`.
+   - Spells: `<rel>: effect blocks_spell '<id>' is not a spell@1 in this pack or its depends`, then
+     `<rel>: casting_time.trigger.or_targeted_by '<id>' is not a spell@1 in this pack or its depends`
+     for each entry. Like `check_spell`, a spell with other than one effect is skipped. A referenced
+     id counts as a spell if it is a spell@1 document of the same pack, or a content id of a
+     transitive dependency whose file is a spell@1 or lives under `spells/`.
+   No known gap remains for the reference kinds the validator checks. Deliberate differences: the
+   deprecated srd51.* escape hatch (§7) is not implemented; only documents that loaded and are listed
+   in the manifest `contents` are examined (the validator globs every `*.json` and also reports
+   `contents` list/sort consistency, which is not a reference check and stays validator-only); error
+   text for a malformed script path uses `repr`-style quoting without Python's escaping.
 4. **behavior.ai is strictly per pack.** `script_key_for` resolves relative to the archetype's own
    pack only, with no fallback to the depends. A test that builds a scratch copy of the sample pack
    with its own archetype must also copy `scripts/ai/skirmisher.luau` into that pack. (The
