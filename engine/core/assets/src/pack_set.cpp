@@ -206,19 +206,96 @@ PackSet PackSet::resolve(std::span<const std::filesystem::path> roots, std::span
 }
 
 std::vector<std::string> PackSet::reference_errors() const {
+    // Mirrors tools/validate/validate_packs.py (validate_pack: script refs; check_chunk: spawn
+    // archetypes; check_spell: blocks_spell / or_targeted_by). Per pack: manifest entry_script,
+    // then script refs of every document, then the per-document content checks, documents sorted.
     std::vector<std::string> out;
-    for (const auto& d : docs_) {
-        if (!d.doc.ok || schema_type_of(d.doc.data) != "chunk") continue;
-        const auto sp = d.doc.data.find("spawns");
-        if (sp == d.doc.data.end() || !sp->is_array()) continue;
-        const std::string& pid = packs_[d.pack].id;
-        for (std::size_t i = 0; i < sp->size(); ++i) {
-            const Json& s = (*sp)[i];
-            if (!s.is_object() || !s.contains("archetype") || !s["archetype"].is_string()) continue;
-            const std::string a = s["archetype"].get<std::string>();
-            if (!resolve_ref(pid, a))
-                out.push_back(pid + ":" + d.path + ": spawns[" + std::to_string(i) + "]: archetype '" + a +
-                              "' not defined in pack or its depends");
+
+    auto repr = [](const Json& j) {   // python repr() of a JSON scalar
+        if (j.is_string()) return "'" + j.get<std::string>() + "'";
+        if (j.is_null()) return std::string("None");
+        if (j.is_boolean()) return std::string(j.get<bool>() ? "True" : "False");
+        return j.dump();
+    };
+    // check_script_ref: ^scripts/.+\.luau$, then existence in the referencing pack only.
+    auto script_ref = [&](const std::string& pid, const std::string& where, const Json& path) {
+        bool shape = false;
+        if (path.is_string()) {
+            const std::string p = path.get<std::string>();
+            shape = p.size() >= 14 && p.starts_with("scripts/") && ends_with(p, ".luau") &&
+                    p.find('\n') == std::string::npos;
+        }
+        if (!shape)
+            out.push_back(pid + ":" + where + ": script path " + repr(path) + " must match ^scripts/.+\\.luau$");
+        else if (!script(make_script_key(pid, path.get<std::string>())))
+            out.push_back(pid + ":" + where + ": script " + path.get<std::string>() + " does not exist in pack");
+    };
+    auto is_content_type = [](const std::string& t) { return t == "monster" || t == "character" || t == "spell"; };
+    // validator spell_ids: spell@ documents of the pack itself; from each dependency, a content id
+    // (monster/character/spell) whose file is under spells/ or is a spell@ document.
+    auto spell_visible = [&](const std::string& pid, const std::string& ref) {
+        for (const auto& pk : closure(pid)) {
+            const auto idx = index_of(pk);
+            if (!idx) continue;
+            const bool own = pk == pid;
+            for (const auto& d : docs_) {
+                if (d.pack != *idx || !d.doc.ok || d.content_id != ref) continue;
+                const std::string t = schema_type_of(d.doc.data);
+                if (own ? t == "spell" : (is_content_type(t) && (t == "spell" || d.path.starts_with("spells/")))) return true;
+                if (!own && is_content_type(t)) break;   // content_ids keeps the first such document per id
+            }
+        }
+        return false;
+    };
+
+    for (std::size_t pi = 0; pi < packs_.size(); ++pi) {
+        const std::string& pid = packs_[pi].id;
+        if (auto e = packs_[pi].manifest.find("entry_script"); e != packs_[pi].manifest.end())
+            script_ref(pid, "manifest.json: entry_script", *e);
+        for (const auto& d : docs_) {
+            if (d.pack != pi || !d.doc.ok || !d.doc.data.is_object()) continue;
+            const Json& j = d.doc.data;
+            if (auto b = j.find("behavior"); b != j.end() && b->is_object())
+                if (auto ai = b->find("ai"); ai != b->end()) {
+                    // monster@1 files carry it as presentation.ai (migrated to behavior.ai on load).
+                    const bool v1 = d.doc.declared.type == "monster" && d.doc.declared.version == 1;
+                    script_ref(pid, d.path + ": " + (v1 ? "presentation.ai" : "behavior.ai"), *ai);
+                }
+        }
+        for (const auto& d : docs_) {
+            if (d.pack != pi || !d.doc.ok) continue;
+            const std::string type = schema_type_of(d.doc.data);
+            if (type == "chunk") {
+                const auto sp = d.doc.data.find("spawns");
+                if (sp == d.doc.data.end() || !sp->is_array()) continue;
+                for (std::size_t i = 0; i < sp->size(); ++i) {
+                    const Json& s = (*sp)[i];
+                    if (!s.is_object() || !s.contains("archetype") || !s["archetype"].is_string()) continue;
+                    const std::string a = s["archetype"].get<std::string>();
+                    if (!resolve_ref(pid, a))
+                        out.push_back(pid + ":" + d.path + ": spawns[" + std::to_string(i) + "]: archetype '" + a +
+                                      "' not defined in pack or its depends");
+                }
+            } else if (type == "spell") {
+                const Json& j = d.doc.data;
+                const auto effs = j.find("effects");
+                // rules5e resolves exactly one effect per spell; check_spell stops there otherwise.
+                if (effs == j.end() || !effs->is_array() || effs->size() != 1) continue;
+                std::vector<std::pair<std::string, std::string>> refs;   // (where, id), validator order
+                const Json& eff = (*effs)[0];
+                if (eff.is_object())
+                    if (auto b = eff.find("blocks_spell"); b != eff.end() && b->is_string() && !b->get<std::string>().empty())
+                        refs.emplace_back("effect blocks_spell", b->get<std::string>());
+                if (auto ct = j.find("casting_time"); ct != j.end() && ct->is_object())
+                    if (auto tr = ct->find("trigger"); tr != ct->end() && tr->is_object())
+                        if (auto ot = tr->find("or_targeted_by"); ot != tr->end() && ot->is_array())
+                            for (const auto& r : *ot)
+                                if (r.is_string() && !r.get<std::string>().empty())
+                                    refs.emplace_back("casting_time.trigger.or_targeted_by", r.get<std::string>());
+                for (const auto& [where, ref] : refs)
+                    if (!spell_visible(pid, ref))
+                        out.push_back(pid + ":" + d.path + ": " + where + " '" + ref + "' is not a spell@1 in this pack or its depends");
+            }
         }
     }
     return out;

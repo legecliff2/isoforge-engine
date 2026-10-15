@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <functional>
 #include <random>
 #include <string>
 
@@ -222,4 +223,166 @@ TEST_CASE("repo: fl1 compat pack loads as its own set") {
     CHECK(s.ok());
     CHECK(s.packs().size() == 1);
     CHECK(s.document_errors().empty());
+}
+
+// ---- reference_errors(): mirrors check_spell / check_script_ref / check_chunk in validate_packs.py ----
+namespace {
+Json spell(const std::string& rel) { return read(kCore / "spells" / rel); }
+Json patched_manifest(const fs::path& pack, const std::function<void(Json&)>& f) {
+    Json m = read(pack / "manifest.json");
+    f(m);
+    write(pack / "manifest.json", m);
+    return m;
+}
+std::string refs_of(const PackSet& s) {
+    std::string out;
+    for (const auto& e : s.reference_errors()) out += e + "\n";
+    return out;
+}
+Json goblin_v3() { return read(kCore / "monsters/goblin.json"); }
+} // namespace
+
+TEST_CASE("refs: blocks_spell and or_targeted_by, same pack (positive)") {
+    ScratchDir tmp("packset_refs_spell_pos");
+    const auto pack = make(tmp.path, "a", "test.a", "1.0.0", {}, {{"spells/shield.json", spell("shield.json")}, {"spells/magic_missile.json", spell("magic_missile.json")}});
+    PackSet s = run({pack});
+    CAPTURE(refs_of(s));
+    CHECK(s.ok());
+    CHECK(s.reference_errors().empty());
+}
+
+TEST_CASE("refs: blocks_spell and or_targeted_by, undefined (negative, exact wording, validator order)") {
+    ScratchDir tmp("packset_refs_spell_neg");
+    const auto pack = make(tmp.path, "a", "test.a", "1.0.0", {}, {{"spells/shield.json", spell("shield.json")}});
+    PackSet s = run({pack});
+    const std::vector<std::string> want = {
+        "test.a:spells/shield.json: effect blocks_spell 'srd51.spell.magic_missile' is not a spell@1 in this pack or its depends",
+        "test.a:spells/shield.json: casting_time.trigger.or_targeted_by 'srd51.spell.magic_missile' is not a spell@1 in this pack or its depends"};
+    // validator order: blocks_spell first, then each or_targeted_by entry.
+    CHECK(s.reference_errors() == want);
+}
+
+TEST_CASE("refs: each spell reference kind alone") {
+    ScratchDir tmp("packset_refs_spell_each");
+    Json only_blocks = spell("shield.json"), only_or = spell("shield.json");
+    only_blocks["casting_time"]["trigger"].erase("or_targeted_by");
+    only_or["effects"][0].erase("blocks_spell");
+    const auto b = make(tmp.path, "b", "test.b", "1.0.0", {}, {{"spells/shield.json", only_blocks}});
+    const auto o = make(tmp.path, "o", "test.o", "1.0.0", {}, {{"spells/shield.json", only_or}});
+    PackSet sb = run({b}), so = run({o});
+    CHECK(sb.reference_errors() ==
+          std::vector<std::string>{"test.b:spells/shield.json: effect blocks_spell 'srd51.spell.magic_missile' is not a spell@1 in this pack or its depends"});
+    CHECK(so.reference_errors() ==
+          std::vector<std::string>{"test.o:spells/shield.json: casting_time.trigger.or_targeted_by 'srd51.spell.magic_missile' is not a spell@1 in this pack or its depends"});
+    // Several or_targeted_by entries are checked in order; resolvable ones pass.
+    Json many = only_or;
+    many["casting_time"]["trigger"]["or_targeted_by"] = Json::array({"test.m.zzz", "test.m.shield", "test.m.aaa"});
+    many["id"] = "test.m.shield";
+    const auto m = make(tmp.path, "m", "test.m", "1.0.0", {}, {{"spells/shield.json", many}});
+    PackSet sm = run({m});
+    CHECK(sm.reference_errors() ==
+          std::vector<std::string>{"test.m:spells/shield.json: casting_time.trigger.or_targeted_by 'test.m.zzz' is not a spell@1 in this pack or its depends",
+                                   "test.m:spells/shield.json: casting_time.trigger.or_targeted_by 'test.m.aaa' is not a spell@1 in this pack or its depends"});
+}
+
+TEST_CASE("refs: spell references resolve through depends only") {
+    ScratchDir tmp("packset_refs_spell_deps");
+    const Files shield = {{"spells/shield.json", spell("shield.json")}};
+    const Files mm = {{"spells/magic_missile.json", spell("magic_missile.json")}};
+    // positive: spell lives in a transitive dependency
+    const auto a = make(tmp.path, "a", "test.a", "1.0.0", {{"test.b", "^1.0"}}, shield);
+    const auto b = make(tmp.path, "b", "test.b", "1.0.0", {{"test.c", "^1.0"}});
+    const auto c = make(tmp.path, "c", "test.c", "1.0.0", {}, mm);
+    PackSet pos = run({a, b, c});
+    CHECK(pos.ok());
+    CHECK(pos.reference_errors().empty());
+    // negative: the spell is in the set but not in a's closure
+    const auto a2 = make(tmp.path, "a2", "test.a2", "1.0.0", {}, shield);
+    PackSet neg = run({a2, c});
+    CHECK(neg.ok());
+    CHECK(neg.reference_errors().size() == 2);
+    CHECK(refs_of(neg).find("test.a2:spells/shield.json: effect blocks_spell 'srd51.spell.magic_missile' is not a spell@1 in this pack or its depends") !=
+          std::string::npos);
+}
+
+TEST_CASE("refs: a non-spell content id is not a spell reference") {
+    ScratchDir tmp("packset_refs_spell_kind");
+    Json shield = spell("shield.json");
+    shield["effects"][0]["blocks_spell"] = "srd51.monster.goblin";
+    shield["casting_time"]["trigger"].erase("or_targeted_by");
+    const auto goblin = doc("monsters/goblin.json");   // behavior removed: no script refs in this case
+    const auto core_goblin = make(tmp.path, "g", "test.g", "1.0.0", {}, {goblin});
+    const auto own = make(tmp.path, "own", "test.own", "1.0.0", {}, {{"spells/shield.json", shield}, goblin});
+    const auto dep = make(tmp.path, "dep", "test.dep", "1.0.0", {{"test.g", "^1.0"}}, {{"spells/shield.json", shield}});
+    // (goblin id is defined by both test.g and test.own: use separate sets)
+    PackSet s_own = run({own}), s_dep = run({dep, core_goblin});
+    const std::string want = "effect blocks_spell 'srd51.monster.goblin' is not a spell@1 in this pack or its depends";
+    
+    CHECK(s_own.reference_errors() == std::vector<std::string>{"test.own:spells/shield.json: " + want});
+    CHECK(s_dep.reference_errors() == std::vector<std::string>{"test.dep:spells/shield.json: " + want});
+}
+
+TEST_CASE("refs: spells with other than one effect are skipped, like check_spell") {
+    ScratchDir tmp("packset_refs_spell_multi");
+    Json shield = spell("shield.json");
+    shield["effects"].push_back(shield["effects"][0]);
+    const auto pack = make(tmp.path, "a", "test.a", "1.0.0", {}, {{"spells/shield.json", shield}});
+    PackSet s = run({pack});
+    CHECK(s.reference_errors().empty());
+}
+
+TEST_CASE("refs: script references (entry_script, behavior.ai, monster@1 presentation.ai)") {
+    ScratchDir tmp("packset_refs_script");
+    const fs::path& t = tmp.path;
+    const std::string kScript = "scripts/ai/skirmisher.luau";
+    Json goblin = goblin_v3();   // behavior.ai = scripts/ai/skirmisher.luau
+    auto with_script = [&](const fs::path& pack) {
+        fs::create_directories((pack / kScript).parent_path());
+        fs::copy_file(kCore / kScript, pack / kScript);
+    };
+    // positive: script ships in the pack that references it
+    const auto ok = make(t, "ok", "test.ok", "1.0.0", {}, {{"monsters/goblin.json", goblin}});
+    with_script(ok);
+    patched_manifest(ok, [&](Json& m) { m["entry_script"] = kScript; });
+    PackSet s_ok = run({ok});
+    CAPTURE(refs_of(s_ok));
+    CHECK(s_ok.ok());
+    CHECK(s_ok.reference_errors().empty());
+    // negative: missing scripts, and no fallback to a dependency's script (PACKSET_API.md §8.4)
+    const auto dep = make(t, "dep", "test.dep", "1.0.0");
+    with_script(dep);
+    const auto no = make(t, "no", "test.no", "1.0.0", {{"test.dep", "^1.0"}}, {{"monsters/goblin.json", goblin}});
+    patched_manifest(no, [&](Json& m) { m["entry_script"] = "scripts/main.luau"; });
+    PackSet s_no = run({no, dep});
+    CHECK(s_no.reference_errors() ==
+          std::vector<std::string>{"test.no:manifest.json: entry_script: script scripts/main.luau does not exist in pack",
+                                   "test.no:monsters/goblin.json: behavior.ai: script scripts/ai/skirmisher.luau does not exist in pack"});
+    // shape: must match ^scripts/.+\.luau$
+    Json bad = goblin;
+    bad["behavior"]["ai"] = "ai/skirmisher.luau";
+    const auto shape = make(t, "shape", "test.shape", "1.0.0", {}, {{"monsters/goblin.json", bad}});
+    patched_manifest(shape, [](Json& m) { m["entry_script"] = 7; });
+    PackSet s_shape = run({shape});
+    CHECK(s_shape.reference_errors() ==
+          std::vector<std::string>{"test.shape:manifest.json: entry_script: script path 7 must match ^scripts/.+\\.luau$",
+                                   "test.shape:monsters/goblin.json: behavior.ai: script path 'ai/skirmisher.luau' must match ^scripts/.+\\.luau$"});
+    // monster@1 carries it as presentation.ai (migrated on load): validator wording keeps presentation.ai
+    Json v1 = read(kRoot / "tests/compat/fl1/sample.vertical_slice/monsters/goblin.json");
+    v1["presentation"]["ai"] = kScript;
+    const auto legacy = make(t, "legacy", "test.legacy", "1.0.0", {}, {{"monsters/goblin.json", v1}});
+    PackSet s_legacy = run({legacy});
+    CHECK(s_legacy.document_errors().empty());
+    CHECK(s_legacy.reference_errors() ==
+          std::vector<std::string>{"test.legacy:monsters/goblin.json: presentation.ai: script scripts/ai/skirmisher.luau does not exist in pack"});
+    with_script(legacy);
+    CHECK(run({legacy}).reference_errors().empty());
+}
+
+TEST_CASE("refs: chunk spawn archetypes still checked alongside the new kinds") {
+    ScratchDir tmp("packset_refs_chunk");
+    const auto pack = make(tmp.path, "a", "test.a", "1.0.0", {}, {doc("chunks/0_0_0.json")});
+    PackSet s = run({pack});
+    const auto errs = s.reference_errors();
+    REQUIRE(!errs.empty());
+    CHECK(errs[0].rfind("test.a:chunks/0_0_0.json: spawns[0]: archetype '", 0) == 0);
 }
