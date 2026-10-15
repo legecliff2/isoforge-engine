@@ -96,8 +96,11 @@ public:
     // `from_pack` and its transitive depends (load order).
     std::vector<std::string> closure(std::string_view from_pack) const;
 
-    // Chunk spawn archetypes not visible from their pack, validator wording:
-    // "<pack>:<rel>: spawns[i]: archetype '<id>' not defined in pack or its depends".
+    // Unresolved references, validator wording and order (validate_packs.py), each "<pack>:<rel>: ...":
+    // script refs (manifest entry_script, behavior.ai / monster@1 presentation.ai), chunk spawn
+    // archetypes ("spawns[i]: archetype '<id>' not defined in pack or its depends"), and spell refs
+    // ("effect blocks_spell '<id>' is not a spell@1 in this pack or its depends", same for
+    // "casting_time.trigger.or_targeted_by"). See PACKSET_API.md §8.3.
     std::vector<std::string> reference_errors() const;
 
     // Scripts: every <pack>/scripts/**/*.luau of the resolved packs, key "pack_id:path".
