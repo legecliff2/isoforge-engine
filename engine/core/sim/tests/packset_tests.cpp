@@ -75,7 +75,10 @@ TEST_CASE("packset: sample (+ srd51.core) and fl1 (its own set) load identically
             const Archetype* b = viaset.find(id);
             REQUIRE(b);
             const auto o = cs.owner.find(id);
-            CHECK(b->pack_id == (o == cs.owner.end() ? std::string("sample.vertical_slice") : o->second));
+            // Unlisted ids: the srd51.core monsters (added over time) belong to srd51.core, everything else to the sample pack.
+            const std::string dflt = id.rfind("srd51.monster.", 0) == 0 && cs.owner.count("srd51.monster.goblin")
+                                         ? "srd51.core" : "sample.vertical_slice";
+            CHECK(b->pack_id == (o == cs.owner.end() ? dflt : o->second));
             CHECK(b->base.hp_max == a.base.hp_max);
             CHECK(b->base.ac == a.base.ac);
             CHECK(b->base.attacks.size() == a.base.attacks.size());

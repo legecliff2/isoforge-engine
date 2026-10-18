@@ -765,6 +765,34 @@ struct InnateSpell { uint32_t spell_id; uint8_t uses_max;   // 0 = at will
 of encounter state and start full each encounter (no rest model, Q16). Spells cast by `cast` reactions
 (§4) go through the same list.
 
+#### 5.1 Row 8 as implemented (rules) and hand-off to Engine Core
+
+Rules side (`InnateSpell` in `types.hpp`, `Combatant::{innate, spell_dc_override, spell_attack_override}`,
+`ActionRequest::innate` appended last):
+
+* `InnateSpell{spell_id, uses_max (0 = at will), uses_left, recharge_min (>0 = "Recharge N-6", one use), has_ability/ability, as_listed}`.
+  Two fields beyond the sketch above: `has_ability`/`ability` (the innate block's own ability, e.g. Cha, applied for
+  that cast only; slot casting keeps `spellcasting_ability`) and `as_listed` (content `components: "as_listed"`;
+  default false = no components, `can_provide_components` is not consulted).
+* `CastSpell` with `innate = true`: the spell must be in `Combatant::innate` and in the `SpellBook` (else "not an innate
+  spell" / "innate spells must be in the spell book"); `spell_level` must equal the spell's own level ("innate spells
+  cannot be upcast"); no slot, `spells_known` not required; uses: at will none, per-day `--uses_left`, recharge sets
+  `uses_left = 0` ("innate spell has no uses left" when none). It is a normal spell otherwise (`SpellCast` window, Counterspell,
+  concentration, `SpellResolved`).
+* `legal_actions` offers `CastSpell{innate = true, spell_level = spell.level}` per valid target while uses remain.
+* DC / attack: `spell_save_dc(c)` / `spell_attack_bonus(c)` use the override when non-zero; `SpellDef::fixed_dc/fixed_attack` still win.
+* Recharge: at the start of the owner's turn, after the row 5 action-use rolls and before death saves, one d6 per expended
+  innate recharge spell (`RechargeRolled`, `a` = spell id). No draw otherwise.
+* Digest: `has_innate_state(state)` / `innate_digest(state)` (rules). **Engine Core folds it in `Combat::hash` under tag `0xA4`,
+  only when `has_innate_state` is true**, and folds `ActionRequest::innate` into `log_hash` only when true, under a tag byte (9.3 item 5).
+
+Engine Core hand-off: in `Combat::create`, for an archetype with `spellcasting.innate`, fill `Combatant::innate`
+(at_will -> `uses_max 0`; `per_day{"N":[..]}` -> `uses_max = uses_left = N`; `recharge[{spell,min}]` -> `recharge_min = min, uses_left = 1`;
+`ability` -> `has_ability = true`; `components == "as_listed"` -> `as_listed = true`), resolve `spell_id = spell_id_of(content_id)` against the
+loaded `SpellBook`, and set `spell_dc_override = dc`, `spell_attack_override = attack_bonus` from the block. Nothing is added to
+`spells_known` for innate spells. Pass `ActionRequest::innate` through `Combat::submit` unchanged (it is part of the request).
+Old archetypes leave all of it empty, so nothing is hashed and no rng is drawn.
+
 ## 6. Timed buffs and debuffs (R-G3)
 
 ### 6.1 Model

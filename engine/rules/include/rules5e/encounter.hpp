@@ -85,6 +85,10 @@ struct ActionRequest {
     // that track "moved N ft this turn" add 5 * move_tiles only when the move completes. Own-turn Steps only:
     // a readied Move fired out of turn is not a request. Not part of sim's log_hash.
     uint8_t move_tiles = 0;
+    // appended (CastSpell, version-bump batch row 8): cast from Combatant::innate instead of a slot. The level is the
+    // spell's own (spell_level must equal it: no upcasting), no slot is spent, one use is consumed, and components
+    // are skipped unless the InnateSpell is `as_listed`. The spell need not be in spells_known.
+    bool innate = false;
 };
 
 enum class EventKind : uint8_t {
@@ -416,6 +420,10 @@ bool can_spend(const EncounterState&, CombatantId actor, uint32_t pool_id, uint1
 bool spend_pool(EncounterState&, CombatantId actor, uint32_t pool_id, uint16_t n);
 // Canonical FNV-1a 64 digests of the two tables (sim folds each under its own tag byte, only when non-empty).
 uint64_t action_uses_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
+// Innate spells' uses and the printed DC/attack overrides, over every combatant that has any (sim folds it under tag 0xA4,
+// only when `has_innate_state` is true).
+bool has_innate_state(const EncounterState&);
+uint64_t innate_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 uint64_t pools_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 
 // Timed lasting effects (sim folds the digest under tag 0xA5, only when `has_timed_effects`).

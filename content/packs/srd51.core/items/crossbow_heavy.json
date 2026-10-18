@@ -1,0 +1,15 @@
+{
+  "$schema": "item@1",
+  "id": "srd51.item.crossbow_heavy",
+  "name": "Crossbow, heavy",
+  "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
+  "category": "weapon",
+  "cost_cp": 5000,
+  "weight_oz": 288,
+  "weapon_class": "martial",
+  "range": [100, 400],
+  "damage": [
+    {"dice": "1d10", "type": "piercing"}
+  ],
+  "properties": ["ammunition", "heavy", "loading", "two_handed"]
+}
