@@ -15,9 +15,9 @@ uint32_t event_stream_version(std::span<const SimEvent> events) {
             case SimEvent::Kind::Footprint: v = std::max<uint32_t>(v, 6); break;
             case SimEvent::Kind::SpellTarget: v = std::max<uint32_t>(v, 5); break;
             case SimEvent::Kind::Rules:
-                // rules5e kinds past the locked layout were appended after v4/v5: a stream carrying one is
-                // newer than every stream that does not, and hashes at the current contract version.
-                if (uint8_t(e.rules.kind) > uint8_t(kLastRulesEventKind)) v = std::max(v, kSimEventSchemaVersion);
+                // rules5e kinds appended after v6 (39..44 and anything later): a stream carrying one is
+                // newer than every stream that does not, and hashes at the current contract version (7).
+                if (uint8_t(e.rules.kind) > uint8_t(kLastRulesEventKindV6)) v = std::max<uint32_t>(v, 7);
                 break;
             default: break;
         }

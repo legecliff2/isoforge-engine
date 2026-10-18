@@ -314,8 +314,8 @@ bool being_hit_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, c
     emit(ev, EventKind::ReactionWindowOpened, a.id, t.id, int32_t(w.trigger), int32_t(w.seq));
     auto d = poll(s, ctx, w, t, opts, ev, auto_ok(opts[0]));
     if (!d.react) return false;
-    t.reaction_used = true;
     const ReactionOption o = opts[d.option];
+    if (o.uses_reaction) t.reaction_used = true;
     if (o.kind != ReactionOptionKind::AcBonus) return true;
     const SpellDef* def = o.slot_level > 0 ? spell_def(s, o.option_id) : nullptr;
     if (def) {
@@ -408,7 +408,7 @@ bool leaving_reach_window(EncounterState& s, Ctx& ctx, Combatant& mover, std::ve
         }
         auto d = poll(s, ctx, w, r, opts, ev);
         if (!d.react) continue;
-        r.reaction_used = true;
+        if (opts[d.option].uses_reaction) r.reaction_used = true;
         std::size_t from = ev.size();
         ++ctx.depth;
         do_attack(s, ctx, r, mover, r.attacks[opts[d.option].attack_index], true, ev);   // reach: within 5 ft
@@ -454,8 +454,8 @@ bool spell_cast_window(EncounterState& s, Ctx& ctx, Combatant& caster, uint32_t 
         }
         auto d = poll(s, ctx, w, r, opts, ev);
         if (!d.react) continue;
-        r.reaction_used = true;
         const ReactionOption o = opts[d.option];
+        if (o.uses_reaction) r.reaction_used = true;
         const SpellDef* def = o.slot_level > 0 ? spell_def(s, o.option_id) : nullptr;
         const uint8_t clvl = def ? o.slot_level : 3;
         if (def) spend_slot(r, clvl);
@@ -511,6 +511,17 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
             auto h = apply_healing(c, c.regeneration.amount);
             commit_healing(c, h);
             emit(ev, EventKind::Healed, c.id, c.id, h.healed, h.hp_after, h.from_zero);
+        }
+    }
+    if (!c.dead) {   // Recharge: one d6 per expended recharge action of this creature (draws only when one exists)
+        for (auto& u : s.action_uses) {
+            if (u.actor != c.id || !u.expended) continue;
+            const SpellDef* d = spell_def(s, u.spell_id);
+            const int need = d && d->recharge_min ? d->recharge_min : 6;
+            const int roll = roll_dice(s.rng, DiceExpr{1, 6, 0}, false);
+            const bool back = roll >= need;
+            if (back) u.expended = false;
+            emit(ev, EventKind::RechargeRolled, c.id, 0, int32_t(u.spell_id), roll, back ? 1 : 0);
         }
     }
     if (is_dying(c) && c.uses_death_saves) {
@@ -640,9 +651,9 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
     std::vector<Combatant*> affected;
     switch (def.kind) {
     case SpellEffectKind::SpellAttack: {
-        Attack atk{def.content_id, int8_t(spell_attack_bonus(a)), scaled_dice(def, lvl, a.caster_level),
+        Attack atk{def.content_id, int8_t(spell_attack_bonus(a, def)), scaled_dice(def, lvl, a.caster_level),
                    def.damage_type, uint8_t(std::min<int>(def.range_ft, 255)), !def.melee, false};
-        atk.qualifiers = kAttackMagical;   // spell damage is magical (bypasses "nonmagical" resistance)
+        atk.qualifiers = def.magical ? kAttackMagical : 0;   // spell damage is magical (bypasses "nonmagical" resistance)
         const int beams = scaled_beams(def, lvl, a.caster_level);
         for (int i = 0; i < beams; ++i) {   // one attack roll per beam: one target, or one per beam
             Combatant* t = T.size() == 1 ? T[0] : T[std::size_t(i)];
@@ -683,19 +694,20 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         break;
     }
     case SpellEffectKind::Save: {
-        const int dc = spell_save_dc(a);
+        const int dc = spell_save_dc(a, def);
+        const uint8_t dq = def.magical ? kAttackMagical : 0;
         const int dmg = def.dice.count > 0 || def.dice.bonus > 0
                             ? std::max(0, roll_dice(s.rng, scaled_dice(def, lvl, a.caster_level))) : 0;   // one roll for all targets
         bool applied = false;
         for (Combatant* t : T) {
             if (t->dead) continue;
-            SaveSource src{true, def.applies_condition ? bit(def.condition) : 0u,
+            SaveSource src{def.magical, def.applies_condition ? bit(def.condition) : 0u,
                            (def.dice.count > 0 || def.dice.bonus > 0) ? bit(def.damage_type) : 0u};
             auto r = saving_throw(s.rng, *t, def.save_ability, dc, RollMode::Normal, src);
             emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(def.save_ability), r.roll.natural, r.roll.total,
                  int32_t(r.success));
             int dealt = r.success ? (def.on_save == OnSave::Half ? dmg / 2 : 0) : dmg;
-            if (dealt > 0) damage_creature(s, *t, apply_damage(*t, int16_t(dealt), def.damage_type, kAttackMagical), false, ev);
+            if (dealt > 0) damage_creature(s, *t, apply_damage(*t, int16_t(dealt), def.damage_type, dq), false, ev);
             if (!r.success) affected.push_back(t);
             if (def.applies_condition && !r.success && !t->dead && !(t->condition_immunities & bit(def.condition))) {
                 if (!t->has(def.condition)) {
@@ -773,6 +785,18 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
     if (def.level == 0 && lvl != 0) return fail("cantrips use no slot");
     if (def.level > 0 && (lvl < def.level || lvl > 9)) return fail("bad slot level");
     if (!has_slot(a, lvl)) return fail("no spell slot of that level");
+    // Usage limits (registered rows only; no row = unlimited, like features).
+    ActionUse* au = nullptr; FeatureUses* fu = nullptr;
+    const uint16_t pcost = def.pool_cost ? def.pool_cost : 1;
+    if (def.usage_kind == 1) {
+        for (auto& u : s.action_uses) if (u.actor == a.id && u.spell_id == def.id) au = &u;
+        if (au && au->expended) return fail("action has not recharged");
+    } else if (def.usage_kind == 2) {
+        for (auto& f : s.features) if (f.actor == a.id && f.feature_id == def.id) fu = &f;
+        if (fu && fu->max > 0 && fu->used >= fu->max) return fail("no uses left");
+    } else if (def.usage_kind == 3) {
+        if (find_pool(s, a.id, def.pool_id) && !can_spend(s, a.id, def.pool_id, pcost)) return fail("not enough resource");
+    }
     if (s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, def)) return fail("components unavailable");
     std::vector<CombatantId> ids = req.targets;
     if (ids.empty() && req.target != 0) ids.push_back(req.target);
@@ -820,10 +844,15 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
     } else if (!spend_action(b, a, ActionKind::CastSpell, false)) return fail("no action available");
     s.budget = b;
     spend_slot(a, lvl);
+    if (au) au->expended = true;
+    if (fu && fu->max > 0) ++fu->used;
     StepResult out{true, {}, {}};
     if (def.concentration && a.concentration_spell != 0) end_concentration(s, a.id, out.events);
-    emit(out.events, EventKind::SpellCast, a.id, ids[0], int32_t(def.id), lvl);
-    bool countered = spell_cast_window(s, ctx, a, def.id, lvl, ids[0], out.events);
+    if (def.is_spell) emit(out.events, EventKind::SpellCast, a.id, ids[0], int32_t(def.id), lvl);
+    else emit(out.events, EventKind::ActionUsed, a.id, ids[0], int32_t(def.id), 0, def.usage_kind);   // not a spell: no SpellCast window
+    if (def.usage_kind == 3 && spend_pool(s, a.id, def.pool_id, pcost))
+        emit(out.events, EventKind::ResourceSpent, a.id, 0, int32_t(def.pool_id), pcost, find_pool(s, a.id, def.pool_id)->cur);
+    bool countered = def.is_spell && spell_cast_window(s, ctx, a, def.id, lvl, ids[0], out.events);
     if (!countered) resolve_spell(s, ctx, a, def, lvl, T, req.target_within_5ft, out.events);
     emit(out.events, countered ? EventKind::SpellCountered : EventKind::SpellResolved, a.id, ids[0], int32_t(def.id), lvl);
     check_end(s, out.events);
@@ -1095,6 +1124,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
             return out;
         }
         b.movement_ft = int16_t(b.movement_ft - cost);
+        b.moved_ft = uint16_t(b.moved_ft + 5 * req.move_tiles);   // only a completed move counts
         s.budget = b;
         emit(out.events, EventKind::Moved, a.id, 0, req.move_ft, b.movement_ft);
         check_end(s, out.events);
@@ -1336,6 +1366,10 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             if (!d || (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction)) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !b.action) continue;
             if (s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, *d)) continue;
+            if (d->usage_kind == 1) { const ActionUse* u = find_action_use(s, a.id, d->id); if (u && u->expended) continue; }
+            if (d->usage_kind == 2 && feature_uses_left(s, a.id, d->id) == 0) continue;
+            if (d->usage_kind == 3 && find_pool(s, a.id, d->pool_id) &&
+                !can_spend(s, a.id, d->pool_id, d->pool_cost ? d->pool_cost : 1)) continue;
             for (uint8_t L = d->level; L <= (d->level == 0 ? 0 : 9); ++L) {
                 if (!has_slot(a, L)) continue;
                 for (const auto& t : s.combatants) {
@@ -1382,6 +1416,8 @@ uint8_t feature_uses_left(const EncounterState& s, CombatantId actor, uint32_t f
 void recover_features(EncounterState& s, bool long_rest) {
     for (auto& f : s.features)
         if (f.recharge == FeatureRecharge::ShortRest || (long_rest && f.recharge == FeatureRecharge::LongRest)) f.used = 0;
+    for (auto& p : s.pools)
+        if (p.recharge == FeatureRecharge::ShortRest || (long_rest && p.recharge == FeatureRecharge::LongRest)) p.cur = p.max;
 }
 
 uint64_t feature_uses_digest(const EncounterState& s, uint64_t h) {
@@ -1390,6 +1426,66 @@ uint64_t feature_uses_digest(const EncounterState& s, uint64_t h) {
     u32(uint32_t(s.features.size()));
     for (const auto& f : s.features) {   // registration order is deterministic (setup + replay)
         u32(f.actor); u32(f.feature_id); byte(f.max); byte(f.used); byte(uint8_t(f.recharge));
+    }
+    return h;
+}
+
+}  // namespace rules5e
+
+namespace rules5e {
+
+void register_action_use(EncounterState& s, CombatantId actor, uint32_t spell_id, bool expended) {
+    for (auto& u : s.action_uses) if (u.actor == actor && u.spell_id == spell_id) { u.expended = expended; return; }
+    s.action_uses.push_back({actor, spell_id, expended});
+}
+
+const ActionUse* find_action_use(const EncounterState& s, CombatantId actor, uint32_t spell_id) {
+    for (const auto& u : s.action_uses) if (u.actor == actor && u.spell_id == spell_id) return &u;
+    return nullptr;
+}
+
+void register_pool(EncounterState& s, CombatantId actor, uint32_t pool_id, uint16_t max, uint16_t cur,
+                   FeatureRecharge recharge) {
+    cur = std::min(cur, max);
+    for (auto& p : s.pools)
+        if (p.actor == actor && p.pool_id == pool_id) { p.max = max; p.cur = cur; p.recharge = recharge; return; }
+    s.pools.push_back({actor, pool_id, max, cur, recharge});
+}
+
+const ResourcePool* find_pool(const EncounterState& s, CombatantId actor, uint32_t pool_id) {
+    for (const auto& p : s.pools) if (p.actor == actor && p.pool_id == pool_id) return &p;
+    return nullptr;
+}
+
+bool can_spend(const EncounterState& s, CombatantId actor, uint32_t pool_id, uint16_t n) {
+    const ResourcePool* p = find_pool(s, actor, pool_id);
+    return p && p->cur >= n;
+}
+
+bool spend_pool(EncounterState& s, CombatantId actor, uint32_t pool_id, uint16_t n) {
+    for (auto& p : s.pools)
+        if (p.actor == actor && p.pool_id == pool_id) {
+            if (p.cur < n) return false;
+            p.cur = uint16_t(p.cur - n);
+            return true;
+        }
+    return false;
+}
+
+uint64_t action_uses_digest(const EncounterState& s, uint64_t h) {
+    auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
+    auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) byte(uint8_t(v >> (8 * i))); };
+    u32(uint32_t(s.action_uses.size()));
+    for (const auto& u : s.action_uses) { u32(u.actor); u32(u.spell_id); byte(u.expended ? 1 : 0); }
+    return h;
+}
+
+uint64_t pools_digest(const EncounterState& s, uint64_t h) {
+    auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
+    auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) byte(uint8_t(v >> (8 * i))); };
+    u32(uint32_t(s.pools.size()));
+    for (const auto& p : s.pools) {
+        u32(p.actor); u32(p.pool_id); u32(p.max); u32(p.cur); byte(uint8_t(p.recharge));
     }
     return h;
 }
