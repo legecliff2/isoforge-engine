@@ -81,9 +81,9 @@ TEST_CASE("defaults: untimed effects behave as before and nothing is hashed") {
 }
 
 TEST_CASE("rounds: the condition lasts n rounds after the round it was applied in, then ends with the existing events") {
-    for (uint16_t n : {1, 2, 3}) {
+    for (int n : {1, 2, 3}) {
         auto s = begin_encounter({dragon(1, {kFright}), hero(2)}, 3, nullptr,
-                                 hooks({timed_condition(kFright, Condition::Frightened, Expiry::Rounds, n)}));
+                                 hooks({timed_condition(kFright, Condition::Frightened, Expiry::Rounds, uint16_t(n))}));
         end_turns_until(s, 1);
         const uint16_t applied = s.round;
         REQUIRE(step(s, cast(1, kFright, 2, 0)).ok);
@@ -133,7 +133,7 @@ TEST_CASE("two effects of one spell on one target end together; an overlapping u
     REQUIRE(step(s, cast(1, kFright, 2, 0)).ok);
     // Another source also frightens the target (untimed): the condition outlives the timed effect.
     s.effects.push_back(ActiveSpellEffect{0x1234, 1, 2, Condition::Frightened, Ability::Wis, 10, RepeatSave::None, false});
-    auto ev = play_to_round(s, s.round + 1);
+    auto ev = play_to_round(s, uint16_t(s.round + 1));
     CHECK(ended(ev, kFright) == 1);
     CHECK(find(s, 2)->has(Condition::Frightened));
     REQUIRE(s.effects.size() == 1);
@@ -147,7 +147,7 @@ TEST_CASE("a timed concentration effect ends the caster's concentration when it 
     REQUIRE(step(s, cast(1, kFright, 2, 0)).ok);
     mut(s, 1).concentration_spell = kFright;       // as if the action were a concentration one
     s.effects[0].concentration = true;
-    auto ev = play_to_round(s, s.round + 1);
+    auto ev = play_to_round(s, uint16_t(s.round + 1));
     CHECK(find(s, 1)->concentration_spell == 0);
     CHECK(std::count_if(ev.begin(), ev.end(), [](const Event& e) { return e.kind == EventKind::ConcentrationEnded; }) == 1);
 }
