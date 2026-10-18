@@ -1,0 +1,14 @@
+{
+  "$schema": "item@1",
+  "id": "srd51.item.plate_armor",
+  "name": "Plate Armor",
+  "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
+  "category": "armor",
+  "cost_cp": 150000,
+  "weight_oz": 1040,
+  "armor_category": "heavy",
+  "base_ac": 18,
+  "dex_bonus": false,
+  "str_min": 15,
+  "stealth_disadvantage": true
+}

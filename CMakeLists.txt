@@ -134,6 +134,10 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
         add_test(NAME content_validate_v4
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_v4_validator.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        # srd51.core weapons/armor/shields (item@1) against an independent data table.
+        add_test(NAME content_validate_equipment
+                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_srd51_equipment.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # Procedurally generated chunks must pass the same validator (schema + content_hash).
         if(TARGET procgen_dump)
             set(_pg_out "${CMAKE_BINARY_DIR}/procgen_preview_pack")

@@ -1,0 +1,13 @@
+{
+  "$schema": "item@1",
+  "id": "srd51.item.ring_mail",
+  "name": "Ring Mail",
+  "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
+  "category": "armor",
+  "cost_cp": 3000,
+  "weight_oz": 640,
+  "armor_category": "heavy",
+  "base_ac": 14,
+  "dex_bonus": false,
+  "stealth_disadvantage": true
+}

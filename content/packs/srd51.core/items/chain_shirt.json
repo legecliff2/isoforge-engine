@@ -1,0 +1,14 @@
+{
+  "$schema": "item@1",
+  "id": "srd51.item.chain_shirt",
+  "name": "Chain Shirt",
+  "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
+  "category": "armor",
+  "cost_cp": 5000,
+  "weight_oz": 320,
+  "armor_category": "medium",
+  "base_ac": 13,
+  "dex_bonus": true,
+  "dex_cap": 2,
+  "stealth_disadvantage": false
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "item@1",
+  "id": "srd51.item.scimitar",
+  "name": "Scimitar",
+  "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
+  "category": "weapon",
+  "cost_cp": 2500,
+  "weight_oz": 48,
+  "weapon_class": "martial",
+  "reach": 5,
+  "damage": [
+    {"dice": "1d6", "type": "slashing"}
+  ],
+  "properties": ["finesse", "light"]
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "item@1",
+  "id": "srd51.item.sling",
+  "name": "Sling",
+  "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
+  "category": "weapon",
+  "cost_cp": 10,
+  "weight_oz": 0,
+  "weapon_class": "simple",
+  "range": [30, 120],
+  "damage": [
+    {"dice": "1d4", "type": "bludgeoning"}
+  ],
+  "properties": ["ammunition"]
+}

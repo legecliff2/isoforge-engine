@@ -1,0 +1,16 @@
+{
+  "$schema": "item@1",
+  "id": "srd51.item.lance",
+  "name": "Lance",
+  "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
+  "category": "weapon",
+  "cost_cp": 1000,
+  "weight_oz": 96,
+  "weapon_class": "martial",
+  "reach": 10,
+  "damage": [
+    {"dice": "1d12", "type": "piercing"}
+  ],
+  "properties": ["lance", "reach", "special"],
+  "description": "You have disadvantage when you use a lance to attack a target within 5 feet of you. Also, a lance requires two hands to wield when you aren't mounted."
+}
