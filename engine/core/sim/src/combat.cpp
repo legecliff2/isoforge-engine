@@ -612,6 +612,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to) {
             for (Vec2i p : path) { cost += grid_.move_cost_ft(prev, p, fp); prev = p; }
             if (cost > int(a->speed_ft)) { r.error = "readied move longer than speed"; return r; }
             req.move_ft = int16_t(cost);
+            req.move_tiles = uint8_t(std::min<std::size_t>(path.size(), 255));   // path length (rules counts it only when it fires on the readier's own turn)
             req.leaves_reach = true;   // rules polls; sim's in_range decides who is actually left
             ready_to_ = to;
         } else {
