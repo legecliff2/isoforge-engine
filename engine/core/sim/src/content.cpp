@@ -103,11 +103,12 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             c.condition_immunities |= rules5e::bit(*k);
         }
     const bool multi_damage = !inert.count("damage[1..]");
-    // Size: stored for every version (no behaviour). Creature type and spellcasting: monster@3 / character@3.
+    // Size: stored for every version; the footprint (Large+ = 2x2..4x4) is monster@3 / character@3 only. Creature type and spellcasting: monster@3 / character@3.
     {
         static const char* sizes[] = {"tiny", "small", "medium", "large", "huge", "gargantuan"};
         const std::string sz = doc.value("size", "medium");
         for (int i = 0; i < 6; ++i) if (sz == sizes[i]) a.size = CreatureSize(i);
+        a.footprint = inert.count("size") ? uint8_t(1) : footprint_of(a.size);
     }
     if (!inert.count("creature_type") && doc.contains("type")) {
         auto ct = creature_type_of(doc.value("type", ""));
