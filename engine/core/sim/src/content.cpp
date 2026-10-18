@@ -61,6 +61,8 @@ int geti(const Json& j, const char* k, int def = 0) {
 }
 } // namespace
 
+std::optional<rules5e::DamageType> damage_type_from_name(const std::string& s) { return damage_type(s); }
+
 std::optional<std::string> ContentLibrary::add(const Json& doc, const std::string& schema_type, const std::string& pack_id) {
     Archetype a;
     a.id = doc.value("id", "");
@@ -160,6 +162,16 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         at.type = *type;
         at.ranged = ranged;
         at.finesse = false;
+        // Weapon data qualifiers (magical / silvered / adamantine): monster@3 / character@3 only.
+        if (!inert.count("attack_qualifiers"))
+            if (auto qs = act.find("qualifiers"); qs != act.end() && qs->is_array())
+                for (const Json& n : *qs) {
+                    const std::string qn = n.is_string() ? n.get<std::string>() : "";
+                    if (qn == "magical") at.qualifiers |= rules5e::kAttackMagical;
+                    else if (qn == "silvered") at.qualifiers |= rules5e::kAttackSilvered;
+                    else if (qn == "adamantine") at.qualifiers |= rules5e::kAttackAdamantine;
+                    else return a.id + ": bad qualifier '" + qn + "' in action " + act.value("id", "?");
+                }
         if (multi_damage)   // components 2..n (monster@3 / character@3)
             for (std::size_t i = 1; i < act.at("damage").size(); ++i) {
                 const Json& extra = act.at("damage").at(i);

@@ -1,0 +1,8 @@
+{
+  "base": "monsters/goblin.json",
+  "sets": [
+    [["traits", 0, "effect"], { "kind": "damage_mitigation", "resistances": { "nonmagical_not_gold": ["slashing"] } }]
+  ],
+  "severity": "error",
+  "expect": "/traits/0/effect/resistances"
+}
