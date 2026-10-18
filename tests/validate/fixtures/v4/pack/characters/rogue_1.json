@@ -1,0 +1,112 @@
+{
+  "$schema": "character@4",
+  "id": "test.v4.character.rogue_1",
+  "name": "Rogue",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "neutral good",
+  "level": 1,
+  "classes": [
+    {
+      "class": "rogue",
+      "level": 1,
+      "hit_die": "d8"
+    }
+  ],
+  "xp": 0,
+  "armor_class": {
+    "value": 14
+  },
+  "hit_points": {
+    "average": 10,
+    "formula": "1d8+2"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 10,
+    "dex": 16,
+    "con": 14,
+    "int": 12,
+    "wis": 12,
+    "cha": 10
+  },
+  "saving_throws": {
+    "dex": 5,
+    "int": 3
+  },
+  "senses": {
+    "passive_perception": 11
+  },
+  "languages": [
+    "Common"
+  ],
+  "proficiency_bonus": 2,
+  "actions": [
+    {
+      "id": "longsword",
+      "name": "Longsword",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+3",
+          "type": "slashing"
+        }
+      ]
+    }
+  ],
+  "features": [
+    {
+      "id": "sneak_attack",
+      "name": "Sneak Attack",
+      "effect": {
+        "kind": "on_event",
+        "on": "hit",
+        "limit": "once_per_turn",
+        "when": [
+          {
+            "kind": "weapon",
+            "is": "finesse_or_ranged"
+          },
+          {
+            "kind": "advantage_or_ally_adjacent"
+          }
+        ],
+        "effects": [
+          {
+            "kind": "extra_damage",
+            "damage": [
+              {
+                "dice": "1d6",
+                "type": "same_as_weapon"
+              }
+            ],
+            "scale": {
+              "per_levels": {
+                "class": "rogue",
+                "every": 2,
+                "add_dice": "1d6"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "equipment": [
+    {
+      "item": "test.v4.item.dagger",
+      "equipped": true
+    },
+    "thieves_tools"
+  ]
+}

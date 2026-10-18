@@ -18,7 +18,18 @@ effects on an old file, move it to @3 and de-bake its numbers in the same change
 goblin is `monster@3`: Nimble Escape (`bonus_action_grant`) has no number to bake.
 
 `inert` is reserved for the engine migrations. Authoring it is an error in every version of
-every type.
+every type, on effects and (at `@4`) on `reactions[]` / `bonus_actions[]` entries. The `@4`
+schemas accept it so an in-memory migration result validates; a file on disk that carries it fails.
+
+### 0.1 `@4` (docs/proposals/VERSION_BUMP_BATCH.md, row 2: schemas and validator only)
+
+| document | effects | validator |
+|---|---|---|
+| `character@4`, `monster@4` | the `@3` kinds unchanged, plus `on_event`, `apply_modifier`, `grant_action`, `heal_pool` (closed arms of `common@2 $defs/effect`); `cost: reaction` is legal | `checks_v4.TAG_TABLE` row; cross-reference checks 1-18 of the proposal's section 8.3 |
+| a `3 -> 4` migrated file | effects of the frozen new-kind list (`on_event`, `apply_modifier`, `grant_action`, `heal_pool`, `save_effect`, `reaction`) carry `"inert": true`; parameters are **not** validated | accepted in memory; an authored `inert` is an error |
+
+The engine does not apply any `@4`-only construct yet (loader: row 3); until then these documents are
+validated, not played. `@4` packs and `item@1` documents need `api_level >= 2` in the manifest.
 
 ## 1. Feature effects
 

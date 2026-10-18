@@ -1,0 +1,403 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://isoforge.dev/schemas/item/v1.schema.json",
+  "title": "item@1",
+  "description": "Equipment: weapons, armor and shields (docs/proposals/VERSION_BUMP_BATCH.md section 10). Discriminated by 'category'; each arm is a closed propertyNames allow-list (allowed == required + optional, tested by tests/validate/test_union_arms.py). Weapon damage[] is BASE damage only (weapon die; never the magic bonus or the ability modifier). Cross-field rules (range[1] >= range[0], reach 10 iff the 'reach' property, bonus_attack riders) are validator checks 15 and 17. Integers only (4.3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "id",
+    "name",
+    "category"
+  ],
+  "$defs": {
+    "item_damage": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "dice",
+            "type"
+          ],
+          "properties": {
+            "dice": {
+              "$ref": "../common/v1.schema.json#/$defs/dice"
+            },
+            "type": {
+              "$ref": "../common/v1.schema.json#/$defs/damage_type"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "flat",
+            "type"
+          ],
+          "properties": {
+            "flat": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "type": {
+              "$ref": "../common/v1.schema.json#/$defs/damage_type"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "$schema": {
+      "const": "item@1"
+    },
+    "id": {
+      "$ref": "../common/v1.schema.json#/$defs/content_id"
+    },
+    "name": {
+      "type": "string"
+    },
+    "source": {
+      "$ref": "../common/v1.schema.json#/$defs/source"
+    },
+    "category": {
+      "enum": [
+        "weapon",
+        "armor",
+        "shield"
+      ]
+    },
+    "cost_cp": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Cost in copper pieces."
+    },
+    "weight_oz": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Weight in ounces (integers only)."
+    },
+    "description": {
+      "type": "string"
+    },
+    "weapon_class": {
+      "enum": [
+        "simple",
+        "martial"
+      ]
+    },
+    "reach": {
+      "$ref": "../common/v1.schema.json#/$defs/feet",
+      "description": "Melee reach in feet (5, or 10 with the reach property); absent for pure ranged weapons."
+    },
+    "range": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        {
+          "$ref": "../common/v1.schema.json#/$defs/range_ft"
+        },
+        {
+          "$ref": "../common/v1.schema.json#/$defs/range_ft"
+        }
+      ],
+      "description": "[normal, long] range in feet; its presence is what makes a weapon ranged (a thrown dagger has reach 5 and range [20, 60])."
+    },
+    "damage": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/item_damage"
+      },
+      "description": "Base damage only. Required unless properties contains 'special'."
+    },
+    "versatile_damage": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/item_damage"
+      },
+      "description": "Required iff properties contains 'versatile'."
+    },
+    "properties": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "ammunition",
+          "finesse",
+          "heavy",
+          "light",
+          "loading",
+          "reach",
+          "special",
+          "thrown",
+          "two_handed",
+          "versatile",
+          "lance"
+        ]
+      },
+      "description": "weapon.hpp's vocabulary; 'two-handed' is not a content spelling."
+    },
+    "qualifiers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "magical",
+          "silvered",
+          "adamantine"
+        ]
+      },
+      "description": "AttackQualifier bits: magical = 1, silvered = 2, adamantine = 4 (the loader ORs them)."
+    },
+    "magic_bonus": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3,
+      "description": "Weapons: adds to to-hit and damage and implies 'magical'. Armor and shields: adds to AC."
+    },
+    "on_hit": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "../common/v2.schema.json#/$defs/rider"
+      },
+      "description": "Riders (e.g. Flame Tongue extra damage); bonus_attack is rejected by the validator (items have no actions[])."
+    },
+    "armor_category": {
+      "enum": [
+        "light",
+        "medium",
+        "heavy"
+      ]
+    },
+    "base_ac": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 127
+    },
+    "dex_bonus": {
+      "type": "boolean"
+    },
+    "dex_cap": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "str_min": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "stealth_disadvantage": {
+      "type": "boolean"
+    },
+    "ac_bonus": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 2
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "category"
+        ],
+        "properties": {
+          "category": {
+            "const": "weapon"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "weapon_class"
+        ],
+        "propertyNames": {
+          "enum": [
+            "$schema",
+            "id",
+            "name",
+            "source",
+            "category",
+            "cost_cp",
+            "weight_oz",
+            "description",
+            "weapon_class",
+            "reach",
+            "range",
+            "damage",
+            "versatile_damage",
+            "properties",
+            "qualifiers",
+            "magic_bonus",
+            "on_hit"
+          ]
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "properties"
+              ],
+              "properties": {
+                "properties": {
+                  "contains": {
+                    "const": "special"
+                  }
+                }
+              }
+            },
+            "else": {
+              "required": [
+                "damage"
+              ]
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "properties"
+              ],
+              "properties": {
+                "properties": {
+                  "contains": {
+                    "const": "versatile"
+                  }
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "versatile_damage"
+              ]
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "versatile_damage"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "category"
+        ],
+        "properties": {
+          "category": {
+            "const": "armor"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "armor_category",
+          "base_ac",
+          "dex_bonus"
+        ],
+        "propertyNames": {
+          "enum": [
+            "$schema",
+            "id",
+            "name",
+            "source",
+            "category",
+            "cost_cp",
+            "weight_oz",
+            "description",
+            "armor_category",
+            "base_ac",
+            "dex_bonus",
+            "dex_cap",
+            "str_min",
+            "stealth_disadvantage",
+            "magic_bonus"
+          ]
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "armor_category"
+              ],
+              "properties": {
+                "armor_category": {
+                  "const": "heavy"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "dex_bonus": {
+                  "const": false
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "armor_category"
+              ],
+              "properties": {
+                "armor_category": {
+                  "const": "medium"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "dex_cap"
+              ]
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "dex_cap"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "category"
+        ],
+        "properties": {
+          "category": {
+            "const": "shield"
+          }
+        }
+      },
+      "then": {
+        "propertyNames": {
+          "enum": [
+            "$schema",
+            "id",
+            "name",
+            "source",
+            "category",
+            "cost_cp",
+            "weight_oz",
+            "description",
+            "ac_bonus",
+            "magic_bonus"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "item@1",
+  "id": "test.v4.item.glaive",
+  "name": "Glaive",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "weapon",
+  "weapon_class": "martial",
+  "reach": 10,
+  "damage": [
+    {
+      "dice": "1d10",
+      "type": "slashing"
+    }
+  ],
+  "properties": [
+    "heavy",
+    "reach",
+    "two_handed"
+  ]
+}

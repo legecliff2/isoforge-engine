@@ -21,6 +21,7 @@ from pathlib import Path
 
 try:
     from jsonschema import Draft202012Validator
+    from jsonschema.exceptions import best_match
     from referencing import Registry, Resource
     import xxhash
 except ImportError:  # pragma: no cover
@@ -28,6 +29,7 @@ except ImportError:  # pragma: no cover
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import packset  # noqa: E402
+import checks_v4 as c4  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMAS = ROOT / "schemas"
@@ -277,6 +279,7 @@ def check_spell(doc, errs, ctx):
     """Cross-checks for spell@1 that the schema can't express. rules5e_content (spell_loader.cpp)
     enforces the same rules with the same wording; keep them in sync."""
     lvl, effs, ct = doc["level"], doc["effects"], doc["casting_time"]
+    errs += c4.check_spell_modifiers(doc)
     eff = effs[0]   # the first effect carries targeting, scaling and the reaction/duration rules
     if len(effs) > 1 and any(e["kind"] in REACTION_EFFECT_TRIGGER for e in effs):
         errs.append("effects: ac_bonus and counter reactions cannot be combined with other effects")
@@ -343,32 +346,39 @@ def pack_spell_ids(pack: Path) -> list[tuple[str, str, str]]:
     return out
 
 
-# Effect kinds with a registered engine hook (eng::sim::FeatureRegistry::builtin()) and a
-# kind-tagged branch in common v1 $defs/effect. Others are allowed but warned about.
-KNOWN_EFFECT_KINDS = frozenset({"damage_bonus", "bonus_action_grant", "self_heal", "damage_mitigation", "magic_weapons", "multiattack"})
+# Effect kinds with a registered engine hook, cost values, action kinds and top-level keys are per schema
+# tag: checks_v4.TAG_TABLE (the single place that knows what each version accepts; no `if version >= N`).
+# Kinds without a hook at a tag are allowed but warned about.
+KNOWN_EFFECT_KINDS = c4.LIVE_AT_3_EFFECT_KINDS   # @<=3 row (kept for callers/tests that import it)
 
 
 COMMON_ID = "https://isoforge.dev/schemas/common/v1.schema.json"
 
 
 def is_active_effects(tag: str) -> bool:
-    """Whether the engine applies this document's feature effects (docs/CONTENT_COMPAT.md §1).
-    character@3+ and monster@3+; older files are migrated with effects marked inert."""
-    typ, _, ver = tag.partition("@")
-    return typ in ("character", "monster") and ver.isdigit() and int(ver) >= 3
+    """Whether the engine applies this document's feature effects (docs/CONTENT_COMPAT.md §1):
+    the tag table's `active_effects` (character/monster @3+); older files are migrated with effects marked inert."""
+    row = c4.tag_row(tag)
+    return bool(row and row.active_effects)
 
 
-def effect_findings(rel: str, doc: dict, tag: str, registry: Registry) -> tuple[list[str], list[str]]:
-    """(errors, warnings) for features[]/traits[] effects.
+def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: bool = True) -> tuple[list[str], list[str]]:
+    """(errors, warnings) for features[]/traits[] effects, driven by the tag's row of checks_v4.TAG_TABLE.
 
-    - 'inert' is reserved for the engine's @2->@3 migrations: error in every version.
-    - Unknown kinds: warning (the engine reports and ignores them).
+    - 'inert' is reserved for the engine's migrations: error in every version for a file on disk. An
+      in-memory migration result (on_disk=False) legitimately carries it, and its parameters are not
+      validated beyond `kind` (section 8.3: relaxed rule for inert effects of new-set kinds).
+    - Unknown kinds (no hook at this tag): warning (the engine reports and ignores them).
     - Known kinds, active documents (character@3+, monster@3+): the kind-tagged contract
-      (common@1 $defs/effect) is an error; cost 'reaction' is reserved -> error.
+      (common@1 $defs/effect, and the common@2 arms at @4) is an error; cost values outside the tag's
+      row are errors ('reaction' is reserved up to @3 and legal from @4).
     - Known kinds, character@1/@2, monster@1/@2: effects are inert descriptions, so findings are warnings.
     """
     errs, warns = [], []
-    active = is_active_effects(tag)
+    row = c4.tag_row(tag)
+    if row is None:
+        return errs, warns
+    active = row.active_effects
     v = Draft202012Validator({"$ref": COMMON_ID + "#/$defs/effect"}, registry=registry)
     for key in ("features", "traits"):
         for i, f in enumerate(doc.get(key) or []):
@@ -376,18 +386,18 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry) -> tuple[
             if not isinstance(eff, dict):
                 continue
             where = f"{rel}: /{key}/{i}/effect"
-            if "inert" in eff:
-                errs.append(f"{where}: 'inert' is reserved for the engine's @2->@3 migrations; "
+            if "inert" in eff and on_disk:
+                errs.append(f"{where}: 'inert' is reserved for the engine's @2->@3 / @3->@4 migrations; "
                             "do not author it")
             kind = eff.get("kind")
             if not isinstance(kind, str):
                 continue
-            if kind not in KNOWN_EFFECT_KINDS:
+            if kind not in row.effect_kinds:
                 warns.append(f"{where}: unknown effect kind '{kind}' "
-                             f"(engine ignores it; known: {', '.join(sorted(KNOWN_EFFECT_KINDS))})")
+                             f"(engine ignores it; known: {', '.join(sorted(row.effect_kinds))})")
                 continue
             found = []
-            if eff.get("cost") == "reaction":
+            if eff.get("cost") == "reaction" and "reaction" not in row.cost_values:
                 found.append("cost 'reaction' is reserved (not supported by the engine yet); "
                              "use 'action' or 'bonus_action'")
             # @3 schemas (trait_active) already report contract violations as errors.
@@ -399,6 +409,91 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry) -> tuple[
                 errs += [f"{where}: {m}" for m in found]
             else:
                 warns += [f"{where}: {m} (inert in {tag}; becomes an error at @3)" for m in found]
+    return errs, warns
+
+
+def authored_inert_findings(doc: dict, tag: str) -> list[str]:
+    """`inert` on reactions[] / bonus_actions[] entries of a file on disk (@4 arms only; at @<=3 the closed
+    v1 action already rejects it). Only the schema and the in-memory migration output accept it."""
+    row = c4.tag_row(tag)
+    if row is None or not row.legacy_stamps:
+        return []
+    out = []
+    for key in ("reactions", "bonus_actions"):
+        for i, e in enumerate(doc.get(key) or []):
+            if isinstance(e, dict) and "inert" in e:
+                out.append(f"/{key}/{i}: 'inert' is reserved for the engine's @3->@4 migration; do not author it")
+    return out
+
+
+COMMON2_ID = "https://isoforge.dev/schemas/common/v2.schema.json"
+NATIVE_EFFECT_ARMS = {"on_event": "on_event_effect", "apply_modifier": "apply_modifier_effect",
+                      "grant_action": "grant_action_effect", "heal_pool": "heal_pool_effect"}
+
+
+def schema_message(e, registry: Registry | None = None) -> str:
+    """jsonschema's message, kept readable: messages that open with the offending instance's repr
+    ('{...} is not valid under any of the given schemas') would otherwise be cut off before the part
+    that says what is wrong, so a long repr is abbreviated to '{...}'."""
+    msg, rep = e.message, repr(e.instance)
+    if len(msg) > 200 and msg.startswith(rep):
+        if isinstance(e.instance, (dict, list)):
+            msg = "{...}" + msg[len(rep):]
+    msg = msg[:200]
+    inst = e.instance
+    if (e.validator == "anyOf" and registry is not None and isinstance(inst, dict)
+            and inst.get("kind") in NATIVE_EFFECT_ARMS and "inert" not in inst):
+        # the @4 effect is an anyOf of three arms: report the failure inside the arm its `kind` selects
+        arm = Draft202012Validator({"$ref": f"{COMMON2_ID}#/$defs/{NATIVE_EFFECT_ARMS[inst['kind']]}"}, registry=registry)
+        deepest = best_match(arm.iter_errors(inst))
+        if deepest is not None:
+            where = "/".join(map(str, deepest.absolute_path))
+            return f"{inst['kind']} effect is invalid: {'/' + where + ': ' if where else ''}{schema_message(deepest, registry)}"[:300]
+    if (e.validator == "anyOf" and isinstance(inst, dict) and inst.get("kind") in ("save_effect", "reaction")
+            and "inert" not in inst and list(e.absolute_path)[-1:] == ["effect"]):
+        return (f"'{inst['kind']}' is an action / reaction kind, not a trait effect kind: it is valid here only as the "
+                "migration's inert stamp (use actions[] / reactions[])")
+    if e.validator in ("anyOf", "oneOf") and e.context:
+        deepest = best_match(e.context)   # the most relevant failure inside the alternatives
+        if deepest is not None:
+            where = "/".join(map(str, list(deepest.absolute_path)[len(list(e.absolute_path)):]))
+            msg += f" [closest: {'/' + where + ': ' if where else ''}{deepest.message[:120]}]"
+    return msg
+
+
+def validate_doc(rel: str, doc: dict, tag: str, registry: Registry, by_tag: dict, pack_id: str, ctx: dict,
+                 on_disk: bool = True) -> tuple[list[str], list[str]]:
+    """Validate one document of schema `tag`: (errors without the file prefix, warnings with it).
+    on_disk=False validates an in-memory migration result: the migration's `inert` stamps are accepted
+    (they are only rejected in authored files)."""
+    errs: list[str] = []
+    warns: list[str] = []
+    typ = tag.split("@")[0]
+    did = str(doc.get("id", ""))
+    if typ not in ("manifest", "chunk") and not (did.startswith(pack_id + ".") or did.startswith("srd51.")):
+        errs.append(f"id '{did}' must be namespaced under pack id '{pack_id}' or srd51.")
+    reject_floats(doc, "", errs)
+    v = Draft202012Validator(by_tag[tag], registry=registry)
+    schema_errs = sorted(v.iter_errors(doc), key=lambda e: list(map(str, e.absolute_path)))
+    # monster@4 / character@4 reach the same defs through the stat_block $ref and their own properties,
+    # so each finding can be reported twice: de-duplicate, keeping order.
+    errs += list(dict.fromkeys(f"/{'/'.join(map(str, e.absolute_path))}: {schema_message(e, registry)}" for e in schema_errs))
+    if not schema_errs and typ in CHECKS:
+        CHECKS[typ](doc, errs, ctx)
+    row = c4.tag_row(tag)
+    if not schema_errs and row is not None and row.cross_refs:
+        if typ == "item":
+            e4, w4 = c4.check_item(doc, ctx)
+        else:
+            e4, w4 = c4.check_stat_block_v4(typ, doc, ctx)
+        errs += e4
+        warns += [f"{rel}: {w}" for w in w4]
+    if typ in ("monster", "character") and isinstance(doc, dict):
+        e2, w2 = effect_findings(rel, doc, tag, registry, on_disk)
+        errs += [e.split(": ", 1)[1] for e in e2]   # errs is prefixed with rel by the caller
+        warns += w2
+        if on_disk:
+            errs += authored_inert_findings(doc, tag)
     return errs, warns
 
 
@@ -428,6 +523,7 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[s
     order, set_errs = pset.resolve([pid]) if pid in pset.by_id else ([], [])
     out += [str(e) for e in set_errs if e.pack == pid]
     spell_ids = {d.get("id") for r, d in docs.items() if isinstance(d, dict) and str(d.get("$schema", "")).startswith("spell@")}
+    item_ids = {d.get("id") for r, d in docs.items() if isinstance(d, dict) and str(d.get("$schema", "")).startswith("item@")}
     for dep in order:
         if dep.id == pid:
             continue
@@ -435,6 +531,8 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[s
             ids.add(cid)
             if rel.startswith("spells/") or _is_spell(dep.dir / rel):
                 spell_ids.add(cid)
+            if rel.startswith("items/") or _is_item(dep.dir / rel):
+                item_ids.add(cid)
     # Deprecated escape hatch: a pack that doesn't (transitively) depend on srd51.core may still
     # reference undefined srd51.* ids, with a warning. Packs depending on srd51.core must resolve.
     hatch = pid != "srd51.core" and all(d.id != "srd51.core" for d in order)
@@ -446,7 +544,7 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[s
             return True
         return False
 
-    ctx = {"ids": ids, "spell_ids": spell_ids, "external_ok": external_ok}
+    ctx = {"ids": ids, "spell_ids": spell_ids, "items": item_ids, "external_ok": external_ok}
     scripts = {f.relative_to(pack).as_posix() for f in pack.glob("scripts/**/*.luau")}
     script_re = re.compile(r"^scripts/.+\.luau$")
 
@@ -476,27 +574,25 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[s
             out.append(f"manifest.json: {m} not listed in contents")
         if man.get("contents", []) != sorted(man.get("contents", [])):
             out.append("manifest.json: contents must be sorted (stable order)")
+    levels_needed: dict[int, list[str]] = {}
     for rel in sorted(docs):
-        doc, errs = docs[rel], []
+        doc = docs[rel]
         tag = doc.get("$schema") if isinstance(doc, dict) else None
         if tag not in by_tag:
             out.append(f"{rel}: unknown or missing $schema {tag!r}")
             continue
-        typ = tag.split("@")[0]
-        did = str(doc.get("id", ""))
-        if typ not in ("manifest", "chunk") and not (did.startswith(man.get("id", "") + ".") or did.startswith("srd51.")):
-            errs.append(f"id '{did}' must be namespaced under pack id '{man.get('id')}' or srd51.")
-        reject_floats(doc, "", errs)
-        v = Draft202012Validator(by_tag[tag], registry=registry)
-        schema_errs = sorted(v.iter_errors(doc), key=lambda e: list(map(str, e.absolute_path)))
-        errs += [f"/{'/'.join(map(str, e.absolute_path))}: {e.message[:200]}" for e in schema_errs]
-        if not schema_errs and typ in CHECKS:
-            CHECKS[typ](doc, errs, ctx)
-        if typ in ("monster", "character") and isinstance(doc, dict):
-            e2, w2 = effect_findings(rel, doc, tag, registry)
-            errs += [e.split(": ", 1)[1] for e in e2]   # errs is prefixed with rel below
-            warns += w2
+        errs, w = validate_doc(rel, doc, tag, registry, by_tag, str(man.get("id", "")), ctx)
+        warns += w
         out += [f"{rel}: {e}" for e in errs]
+        row = c4.tag_row(tag)
+        if row is not None and row.needs_api_level > 1:
+            levels_needed.setdefault(row.needs_api_level, []).append(f"{rel} ({tag})")
+    # 8.5: a pack containing any @4 or item@1 document must declare api_level >= 2.
+    declared = man.get("api_level")
+    for need in sorted(levels_needed):
+        if isinstance(declared, int) and declared < need:
+            out.append(f"manifest.json: api_level {declared} is below {need}, which {', '.join(levels_needed[need])} "
+                       f"require (a pack containing any @4 or item@1 document must declare api_level >= {need})")
     for a in sorted(hatch_used):
         warns.append(f"manifest.json: '{a}' is not defined in this pack or its depends; the srd51.* "
                      "escape hatch is deprecated: add depends [{\"id\": \"srd51.core\", \"version\": \"^1.0\"}]")
@@ -506,6 +602,13 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[s
 def _is_spell(path: Path) -> bool:
     try:
         return str(json.loads(path.read_text(encoding="utf-8")).get("$schema", "")).startswith("spell@")
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def _is_item(path: Path) -> bool:
+    try:
+        return str(json.loads(path.read_text(encoding="utf-8")).get("$schema", "")).startswith("item@")
     except (OSError, ValueError, AttributeError):
         return False
 
@@ -604,6 +707,14 @@ def main(argv: list[str]) -> int:
         import subprocess
         r = subprocess.run([sys.executable, str(ROOT / "tests" / "validate" / "run_effect_cases.py")])
         failed += r.returncode != 0
+        # Schema-structure lints (fast, no packs): common@2 stray-ref / re-declaration lint (VERSION_BUMP_BATCH
+        # 1.2) and the allowed == required + optional per-arm test for the propertyNames unions (3.1).
+        for lint in ("test_common2_lint.py", "test_union_arms.py"):
+            r = subprocess.run([sys.executable, str(ROOT / "tests" / "validate" / lint)], capture_output=True, text=True)
+            print(("ok   " if r.returncode == 0 else "FAIL ") + f"schema lint {lint}")
+            if r.returncode != 0:
+                print(r.stdout + r.stderr)
+            failed += r.returncode != 0
     return 1 if failed or cross else 0
 
 

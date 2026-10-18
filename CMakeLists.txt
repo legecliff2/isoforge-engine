@@ -120,6 +120,20 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
         add_test(NAME content_validate_tests
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/test_validate_packs.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        # @4 / item@1 (docs/proposals/VERSION_BUMP_BATCH.md row 2): common@2 stray-ref lint, per-arm allowed ==
+        # required + optional, 3->4 migration reference + @4 schema shapes, and the @4 validator cross-reference cases.
+        add_test(NAME content_validate_lint
+                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_common2_lint.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(NAME content_validate_arms
+                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_union_arms.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(NAME content_validate_migrations
+                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_migrations_v4.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(NAME content_validate_v4
+                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_v4_validator.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # Procedurally generated chunks must pass the same validator (schema + content_hash).
         if(TARGET procgen_dump)
             set(_pg_out "${CMAKE_BINARY_DIR}/procgen_preview_pack")
