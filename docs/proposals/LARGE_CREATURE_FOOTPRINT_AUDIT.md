@@ -1,6 +1,6 @@
 # Audit: multi-tile footprints for Large+ creatures in the sim
 
-Status: findings only, no code changed. Base: main `6012567`. Question: does `sim` handle a Large
+Status: findings below are the state at main `6012567`. Implementation is landing in three stacked PRs (A: size loading, footprint model, occupancy, spawns; B: movement, pathing, line of sight, reach and range distances; C: opportunity attacks and reach triggers, events / schema v6, goldens). Each section notes what changed. Question: does `sim` handle a Large
 (2x2), Huge (3x3) or Gargantuan (4x4) creature occupying several tiles, for occupancy, movement,
 line of sight, reach and the grid?
 
@@ -19,6 +19,8 @@ touches all five areas below plus the event/ECS contracts), so nothing was imple
   is the coverage audit (`docs/SRD_COMBAT_COVERAGE.md`, row "Creature size and space", mechanic C6).
 
 ## 1. Occupancy
+
+**Status (PR A):** done. `Archetype::footprint`, `Combat::footprint_size/footprint_tiles(_at)`, `Footprint` ECS component (only when > 1), `occupied_except` returns every footprint tile, spawn overlap / walkability checks for multi-tile spawns. Anchor = min-x/min-y tile. 1x1 stacking at spawn is still unchecked (v0).
 
 - A spawn is one tile: `engine/core/sim/src/combat.cpp:58` (`Grid::to_world(ch->coord, sp.tile)`)
   and the ECS position is one `TilePos {x, y}` (`engine/core/sim/include/sim/components.hpp:14`,
