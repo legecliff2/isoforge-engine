@@ -1,0 +1,15 @@
+{
+  "$schema": "item@1",
+  "id": "test.v4.item.half_plate",
+  "name": "Half Plate",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "armor",
+  "armor_category": "medium",
+  "base_ac": 15,
+  "dex_bonus": true,
+  "dex_cap": 2,
+  "stealth_disadvantage": true
+}
