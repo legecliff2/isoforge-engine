@@ -36,7 +36,7 @@ AttackResult resolve_attack(rng::Rng& r, const Combatant& attacker, const Attack
         dmg = roll_dice(r, atk.damage, crit);
         if (dmg < 0) dmg = 0;
     }
-    return {roll, hit, crit, int16_t(dmg), atk.type};
+    return {roll, hit, crit, int16_t(dmg), atk.type, atk.qualifiers};
 }
 
 } // namespace rules5e
