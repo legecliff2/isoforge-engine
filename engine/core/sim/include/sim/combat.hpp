@@ -132,6 +132,11 @@ public:
     int footprint_size(CombatantId id) const;
     std::vector<Vec2i> footprint_tiles(CombatantId id) const { return footprint_tiles_at(id, pos(id)); }
     std::vector<Vec2i> footprint_tiles_at(CombatantId id, Vec2i anchor) const;   // row-major (y, then x)
+    // Nearest-tile distance in tiles between two creatures' footprints (chebyshev for 1x1), and line of
+    // sight between them: clear from any tile of one to any tile of the other (SRD: a creature may trace
+    // a line from any corner of its space). Both are what reach, range and spell targeting use.
+    int distance_tiles(CombatantId a, CombatantId b) const;
+    bool line_of_sight(CombatantId a, CombatantId b) const;
     std::vector<Vec2i> occupied_except(CombatantId id) const;   // tiles (every footprint tile) of other non-dead combatants
     bool hostile(CombatantId a, CombatantId b) const;
     // Active features (UseFeature): remaining uses (255 = unlimited), and whether usable now.
@@ -164,7 +169,12 @@ private:
     SubmitResult do_step(Vec2i to);
     void complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs, std::optional<Vec2i> to);
     std::optional<Vec2i> moving_to(CombatantId id) const;   // destination of a move being resolved
-    bool ranged_attack_facts(CombatantId actor, uint8_t attack_index, Vec2i from, Vec2i target_pos,
+    // A footprint at a position: anchor + side.
+    struct Spot { Vec2i p; int n; };
+    Spot spot(CombatantId id) const { return {pos(id), footprint_size(id)}; }
+    Spot spot_at(CombatantId id, Vec2i anchor) const { return {anchor, footprint_size(id)}; }
+    bool los_spots(Spot a, Spot b) const;
+    bool ranged_attack_facts(CombatantId actor, uint8_t attack_index, Spot from, Spot target,
                              rules5e::ActionRequest& req, std::string* error) const;
     bool move_tile(CombatantId mover, Vec2i to, const std::vector<rules5e::Event>& evs);
     friend std::optional<Combat> replay(ecs::Registry&, std::span<const world::Chunk* const>, const ContentLibrary&,
@@ -172,7 +182,6 @@ private:
     bool leaves_reach(CombatantId mover, Vec2i from, Vec2i to) const;
     int melee_reach_tiles(CombatantId id) const;   // 0 = no melee attack
     const Slot* slot(CombatantId id) const;
-    bool los_between(Vec2i a, Vec2i b) const { return grid_.line_of_sight(a, b); }
     bool spell_in_reach(const rules5e::SpellDef& def, CombatantId caster, CombatantId target) const;
 
     ecs::Registry* reg_;
