@@ -16,11 +16,20 @@
   "contents": [
     "monsters/goblin.json",
     "scripts/ai/skirmisher.luau",
+    "spells/acid_splash.json",
     "spells/counterspell.json",
     "spells/cure_wounds.json",
+    "spells/eldritch_blast.json",
     "spells/fire_bolt.json",
+    "spells/healing_word.json",
     "spells/hold_person.json",
+    "spells/inflict_wounds.json",
     "spells/magic_missile.json",
+    "spells/mass_healing_word.json",
+    "spells/poison_spray.json",
+    "spells/produce_flame.json",
+    "spells/sacred_flame.json",
+    "spells/scorching_ray.json",
     "spells/shield.json"
   ]
 }
