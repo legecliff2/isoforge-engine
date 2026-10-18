@@ -11,11 +11,23 @@ std::optional<CombatantId> NearestEnemyPolicy::choose_target(const Combat& c, Co
     int best_d = 0;
     for (const auto& k : c.state().combatants) {   // combatant order; tie -> lowest id below
         if (k.id == self || !c.hostile(self, k.id) || k.dead || !rules5e::is_conscious(k)) continue;
-        const int d = chebyshev(c.pos(self), c.pos(k.id));
+        const int d = c.distance_tiles(self, k.id);
         if (!best || d < best_d || (d == best_d && k.id < *best)) { best = k.id; best_d = d; }
     }
     return best;
 }
+
+namespace {
+// Anchors from which a creature of side `mn` stands within `reach` tiles of the `tn`-side creature at
+// `tp`, excluding anchors that overlap it. For 1x1 vs 1x1 this is the 8 * reach-ring around `tp`.
+std::vector<Vec2i> goal_anchors(Vec2i tp, int tn, int mn, int reach) {
+    std::vector<Vec2i> g;
+    for (int y = tp.y - reach - mn + 1; y <= tp.y + tn - 1 + reach; ++y)
+        for (int x = tp.x - reach - mn + 1; x <= tp.x + tn - 1 + reach; ++x)
+            if (rect_distance({x, y}, mn, tp, tn) > 0) g.push_back({x, y});
+    return g;
+}
+} // namespace
 
 Command next_command(const Combat& c, std::optional<CombatantId> target) {
     const auto& s = c.state();
@@ -44,8 +56,9 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
     if (me->attacks.empty()) return end;
     const int reach = reach_tiles(me->attacks[ai].reach_or_range_ft);
     const Vec2i mp = c.pos(self), tp = c.pos(t->id);
+    const int mn = c.footprint_size(self), tn = c.footprint_size(t->id);
     const bool can_attack = s.budget.action || s.budget.attacks_remaining > 0;
-    if (chebyshev(mp, tp) <= reach) {
+    if (c.distance_tiles(self, t->id) <= reach) {
         if (can_attack && rules5e::is_conscious(*t)) {
             Command a;
             a.request = {self, ActionKind::Attack, t->id};
@@ -57,14 +70,11 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
     // Can't get into melee reach this turn: shoot if a ranged attack is legal (range + LOS),
     // preferring one without disadvantage.
     auto melee_path_cost = [&]() {
-        std::vector<Vec2i> g;
-        for (int dy = -reach; dy <= reach; ++dy)
-            for (int dx = -reach; dx <= reach; ++dx)
-                if (dx || dy) g.push_back({tp.x + dx, tp.y + dy});
-        const auto p = c.grid().path(mp, g, c.occupied_except(self));
+        const auto p = c.grid().path(mp, goal_anchors(tp, tn, mn, reach), c.occupied_except(self), mn);
         if (p.empty()) return 1 << 20;
         int cost = 0;
-        for (Vec2i q : p) cost += c.grid().step_cost_ft(q);
+        Vec2i prev = mp;
+        for (Vec2i q : p) { cost += c.grid().move_cost_ft(prev, q, mn); prev = q; }
         return cost;
     };
     if (can_attack && melee_path_cost() > s.budget.movement_ft) {
@@ -83,12 +93,8 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
         }
     }
     // Goals: tiles within reach of the target.
-    std::vector<Vec2i> goals;
-    for (int dy = -reach; dy <= reach; ++dy)
-        for (int dx = -reach; dx <= reach; ++dx)
-            if (dx || dy) goals.push_back({tp.x + dx, tp.y + dy});
-    const auto path = c.grid().path(mp, goals, c.occupied_except(self));
-    if (path.empty() || c.grid().step_cost_ft(path[0]) > s.budget.movement_ft) return end;
+    const auto path = c.grid().path(mp, goal_anchors(tp, tn, mn, reach), c.occupied_except(self), mn);
+    if (path.empty() || c.grid().move_cost_ft(mp, path[0], mn) > s.budget.movement_ft) return end;
     // About to leave a hostile's reach: Disengage first if a bonus Disengage is available
     // (granted by content, e.g. a bonus_action_grant feature).
     if (s.budget.bonus_action && !me->disengaged &&
