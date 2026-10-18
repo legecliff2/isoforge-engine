@@ -1,14 +1,26 @@
 #include "sim/events.hpp"
 
+#include <algorithm>
+
 #include "base/canonical_hash.hpp"
 
 namespace eng::sim {
 
 uint32_t event_stream_version(std::span<const SimEvent> events) {
+    // The lowest schema version that fits: the max over every construct the stream uses, from both kind
+    // families, so one construct never masks a later, newer one.
     uint32_t v = 4;
     for (const auto& e : events) {
-        if (e.kind == SimEvent::Kind::Footprint) return 6;
-        if (e.kind == SimEvent::Kind::SpellTarget) v = 5;
+        switch (e.kind) {
+            case SimEvent::Kind::Footprint: v = std::max<uint32_t>(v, 6); break;
+            case SimEvent::Kind::SpellTarget: v = std::max<uint32_t>(v, 5); break;
+            case SimEvent::Kind::Rules:
+                // rules5e kinds past the locked layout were appended after v4/v5: a stream carrying one is
+                // newer than every stream that does not, and hashes at the current contract version.
+                if (uint8_t(e.rules.kind) > uint8_t(kLastRulesEventKind)) v = std::max(v, kSimEventSchemaVersion);
+                break;
+            default: break;
+        }
     }
     return v;
 }
