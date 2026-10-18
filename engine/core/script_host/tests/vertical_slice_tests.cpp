@@ -60,7 +60,7 @@ Outcome fight(uint64_t seed, const std::string& pack_dir = kPack) {
     sim::ContentLibrary lib;
     auto errs = lib.load(set);
     REQUIRE(errs.empty());
-    script::ScriptHost host(1);
+    script::ScriptHost host(script::kMaxApiLevel);   // host maximum: packs run at their own level (1 or 2)
     auto pack = script::load_pack_scripts(host, set);
     REQUIRE_MESSAGE(pack.ok, (pack.errors.empty() ? "" : pack.errors[0]));
     REQUIRE(pack.ai_by_archetype.count("srd51.monster.goblin"));
