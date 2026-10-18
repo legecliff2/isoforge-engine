@@ -12,7 +12,7 @@
 namespace eng::sim {
 
 // Version of the event stream contract (SimEvent + rules5e::Event as surfaced by sim).
-inline constexpr uint32_t kSimEventSchemaVersion = 5;
+inline constexpr uint32_t kSimEventSchemaVersion = 6;
 // Last rules5e::EventKind surfaced under this schema version (rules appends; sim bumps).
 inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::SpellCheckRolled;
 
@@ -25,6 +25,10 @@ struct SimEvent {
         SpellTarget = 2, // v5. One per creature affected by a CastSpell, right after the request's
                          // rules events: `actor` = caster, `tile` = the target's tile, `rules.target`
                          // = target id, `rules.a` = spell id (other `rules` fields zero)
+        Footprint = 3,   // v6. One per multi-tile creature (footprint side > 1), right after the opening
+                         // rules events, in spawn order: `actor` = the creature, `tile` = its anchor
+                         // (min-x/min-y tile, the frame of TileMoved), `rules.a` = footprint side in
+                         // tiles (2 Large, 3 Huge, 4 Gargantuan). Its `TileMoved` tiles are anchors too.
     };
     Kind kind = Kind::Rules;
     rules5e::Event rules{};          // Kind::Rules only; zero otherwise
@@ -32,9 +36,10 @@ struct SimEvent {
     Vec2i tile{};                    // TileMoved: destination; {0,0} otherwise
 };
 
-// Lowest schema version that can express the stream: 5 if it contains a v5 construct (SpellTarget),
-// else 4. The digest records this, not kSimEventSchemaVersion, so streams without a CastSpell keep
-// their v4 digests bit-identical (docs/SIM_EVENTS.md versioning policy).
+// Lowest schema version that can express the stream: 6 if it contains a v6 construct (Footprint), else
+// 5 if it contains a v5 construct (SpellTarget), else 4. The digest records this, not
+// kSimEventSchemaVersion, so streams without a CastSpell or a multi-tile creature keep their v4 / v5
+// digests bit-identical (docs/SIM_EVENTS.md versioning policy).
 uint32_t event_stream_version(std::span<const SimEvent> events);
 
 // Canonical (StableHash/XXH3-64) digest of an event stream: stream version, count, then every field of
