@@ -71,6 +71,9 @@ struct ActionRequest {
     // same value); targets may differ per attack; moving, reactions and other creatures' Ready triggers happen
     // between attacks like any other step. The sequence ends when its last attack is made or the turn ends.
     uint8_t multiattack = 0;
+    // appended (Attack / readied Attack, T&C-G7): sim fact for Combatant::roll_traits, e.g. Pack Tactics:
+    // an ally of the actor, not incapacitated, is within 5 ft of the target.
+    bool ally_near_target = false;
 };
 
 enum class EventKind : uint8_t {
