@@ -102,4 +102,6 @@ std::optional<std::string> behavior_ai_script(const Json& doc) {
 
 std::optional<std::string> monster_ai_script(const Json& monster) { return behavior_ai_script(monster); }
 
+std::vector<std::string> effect_kinds_introduced_at(uint32_t) { return {}; }
+
 } // namespace eng::assets

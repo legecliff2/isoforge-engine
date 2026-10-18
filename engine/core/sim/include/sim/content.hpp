@@ -67,7 +67,8 @@ public:
     // Adapter: PackSet::load({pack_dir}) + load(). Prefer building the PackSet once.
     std::vector<std::string> load_pack(const std::string& pack_dir);
     // Adds one already-migrated stat block document (owned by pack_id, may be empty).
-    std::optional<std::string> add(const assets::Json& doc, const std::string& schema_type, const std::string& pack_id = "");
+    std::optional<std::string> add(const assets::Json& doc, const std::string& schema_type, const std::string& pack_id = "",
+                                    uint32_t declared_version = 0);
 
     // Spell definitions of every spell@1 document loaded by load() (pack order). Shared with Combat,
     // which installs it as rules5e hooks.spells. Empty when no pack has spells.

@@ -63,7 +63,8 @@ int geti(const Json& j, const char* k, int def = 0) {
 
 std::optional<rules5e::DamageType> damage_type_from_name(const std::string& s) { return damage_type(s); }
 
-std::optional<std::string> ContentLibrary::add(const Json& doc, const std::string& schema_type, const std::string& pack_id) {
+std::optional<std::string> ContentLibrary::add(const Json& doc, const std::string& schema_type, const std::string& pack_id,
+                                                 uint32_t declared_version) {
     Archetype a;
     a.id = doc.value("id", "");
     if (a.id.empty()) return "stat block without id";
@@ -196,7 +197,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     }
     // Feature hooks (data-driven by effect.kind; see features.hpp).
     a.features = declared_features(doc);
-    const FeatureBuildCtx fctx{*features_, doc, attack_actions};
+    const FeatureBuildCtx fctx{*features_, doc, declared_version, attack_actions};
     for (std::size_t i = 0; i < a.features.size(); ++i) {
         const FeatureDecl& f = a.features[i];
         // Schema-version gate (docs/CONTENT_COMPAT.md): effects from pre-character@3 files are
@@ -206,6 +207,13 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             continue;
         }
         const FeatureHook* h = f.kind.empty() ? nullptr : features_->hook(f.kind);
+        // Defence in depth for the migration marker: a file that declared a version older than the one that
+        // made this kind mechanical is listed inert, never an error. 0 (add() called directly, or no usable
+        // $schema) means no refusal.
+        if (h && declared_version != 0 && declared_version < features_->min_schema_version(f.kind)) {
+            a.inert_features.push_back(f.id + " (" + f.kind + ")");
+            continue;
+        }
         if (!h) {
             a.unsupported_features.push_back(f.id + " (" + (f.kind.empty() ? "no effect" : f.kind) + ")");
             continue;
@@ -246,7 +254,7 @@ std::vector<std::string> ContentLibrary::load(const assets::PackSet& packs) {
         if (!d.doc.ok || (d.doc.current.type != "monster" && d.doc.current.type != "character")) continue;
         const std::string& pack_id = packs.packs()[d.pack].id;
         try {
-            if (auto e = add(d.doc.data, d.doc.current.type, pack_id)) errors.push_back(pack_id + ":" + d.path + ": " + *e);
+            if (auto e = add(d.doc.data, d.doc.current.type, pack_id, d.doc.declared.version)) errors.push_back(pack_id + ":" + d.path + ": " + *e);
         } catch (const std::exception& ex) {
             errors.push_back(pack_id + ":" + d.path + ": " + ex.what());
         }

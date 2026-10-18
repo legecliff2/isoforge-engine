@@ -2,6 +2,7 @@
 // Second Wind (self_heal via rules5e UseFeature).
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <fstream>
 #include <string>
 
@@ -222,4 +223,61 @@ TEST_CASE("policy: fighter uses Second Wind when at or below half hp") {
     CHECK(cmd.request.kind == ActionKind::UseFeature);
     REQUIRE(c->submit(cmd).ok);
     CHECK(next_command(*c, g).request.kind == ActionKind::Attack);   // then still attacks
+}
+
+TEST_CASE("declared schema version: kinds newer than the file are listed inert, never an error") {
+    FeatureRegistry reg = FeatureRegistry::builtin();
+    reg.add_hook("late_kind", {[](Archetype& ar, const FeatureDecl&, uint32_t, const FeatureBuildCtx& c) {
+        ar.base.ac = int8_t(ar.base.ac + 1);
+        CHECK(c.declared_version != 0);   // only reached with a known version >= the kind's minimum, or unknown (0 case below)
+        return std::optional<std::string>{};
+    }}, 4);
+    REQUIRE(reg.min_schema_version("late_kind") == 4);
+    CHECK(reg.min_schema_version("damage_bonus") == 0);
+    auto base = load_doc("characters/fighter_1.json");
+    base["features"][0]["effect"] = assets::Json{{"kind", "late_kind"}};
+    auto ac_of = [&](uint32_t declared, std::vector<std::string>* inert) {
+        ContentLibrary lib(reg);
+        auto doc = base;
+        doc["id"] = "test.late";
+        REQUIRE_FALSE(lib.add(doc, "character", "", declared));
+        if (inert) *inert = lib.find("test.late")->inert_features;
+        return int(lib.find("test.late")->base.ac);
+    };
+    std::vector<std::string> inert;
+    const int plain = ac_of(3, &inert);   // declared @3: refused -> inert, hook never ran
+    CHECK(inert.size() == 1);
+    CHECK(inert[0].find("late_kind") != std::string::npos);
+    CHECK(ac_of(4, &inert) == plain + 1);   // declared @4: applied
+    CHECK(inert.empty());
+    // 0 = unknown / add() called directly: no refusal (the hook's check above is for declared != 0)
+    reg.add_hook("late_kind", {[](Archetype& ar, const FeatureDecl&, uint32_t, const FeatureBuildCtx&) {
+        ar.base.ac = int8_t(ar.base.ac + 1);
+        return std::optional<std::string>{};
+    }}, 4);
+    CHECK(ac_of(0, &inert) == plain + 1);
+    CHECK(inert.empty());
+    // an unmarked effect from a pre-@3 declared file is still handled by the migration marker, not this gate:
+    // builtin kinds have minimum 0, so a declared version never refuses them.
+    ContentLibrary builtin_lib;
+    auto doc = load_doc("characters/fighter_1.json");
+    doc["id"] = "test.builtin";
+    REQUIRE_FALSE(builtin_lib.add(doc, "character", "", 3));
+    CHECK(builtin_lib.find("test.builtin")->inert_features.empty());
+}
+
+TEST_CASE("kind list equals the migration's frozen list") {
+    // For every schema version above the current one the registry's kinds with that minimum must be exactly
+    // what the migration marks inert (assets::effect_kinds_introduced_at). Both are empty until @4 lands.
+    const FeatureRegistry& reg = FeatureRegistry::builtin();
+    for (uint32_t v = 1; v <= 8; ++v) {
+        std::vector<std::string> sim_kinds;
+        for (const auto& k : reg.kinds())
+            if (reg.min_schema_version(k) == v) sim_kinds.push_back(k);
+        auto mig = assets::effect_kinds_introduced_at(v);
+        std::sort(sim_kinds.begin(), sim_kinds.end());
+        std::sort(mig.begin(), mig.end());
+        CHECK_MESSAGE(sim_kinds == mig, "schema version " << v);
+    }
+    for (const auto& k : reg.kinds()) CHECK(reg.min_schema_version(k) <= assets::kMonsterSchemaVersion);
 }
