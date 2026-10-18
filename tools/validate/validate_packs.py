@@ -345,7 +345,7 @@ def pack_spell_ids(pack: Path) -> list[tuple[str, str, str]]:
 
 # Effect kinds with a registered engine hook (eng::sim::FeatureRegistry::builtin()) and a
 # kind-tagged branch in common v1 $defs/effect. Others are allowed but warned about.
-KNOWN_EFFECT_KINDS = frozenset({"damage_bonus", "bonus_action_grant", "self_heal", "damage_mitigation", "magic_weapons"})
+KNOWN_EFFECT_KINDS = frozenset({"damage_bonus", "bonus_action_grant", "self_heal", "damage_mitigation", "magic_weapons", "multiattack"})
 
 
 COMMON_ID = "https://isoforge.dev/schemas/common/v1.schema.json"

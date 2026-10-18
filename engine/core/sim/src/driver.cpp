@@ -54,6 +54,23 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
     for (uint8_t i = 0; i < me->attacks.size(); ++i)
         if (!me->attacks[i].ranged) { ai = i; break; }
     if (me->attacks.empty()) return end;
+    // Declared multiattack (T&C-G1): continue the sequence in progress, else start the first option made
+    // only of melee attacks (declaration order; options with a ranged attack are never picked by the AI).
+    uint8_t multi = 0;   // ActionRequest::multiattack to send (0 = continue / plain attack)
+    if (s.budget.sequence != 0 && s.budget.sequence <= me->multiattacks.size()) {
+        const auto& seq = me->multiattacks[std::size_t(s.budget.sequence - 1)].attacks;
+        if (s.budget.sequence_pos < seq.size()) ai = seq[s.budget.sequence_pos];
+    } else {
+        for (std::size_t i = 0; i < me->multiattacks.size() && i < 255; ++i) {
+            const auto& seq = me->multiattacks[i].attacks;
+            bool melee_only = !seq.empty();
+            for (uint8_t k : seq) melee_only = melee_only && k < me->attacks.size() && !me->attacks[k].ranged;
+            if (!melee_only) continue;
+            ai = seq[0];
+            multi = uint8_t(i + 1);
+            break;
+        }
+    }
     const int reach = reach_tiles(me->attacks[ai].reach_or_range_ft);
     const Vec2i mp = c.pos(self), tp = c.pos(t->id);
     const int mn = c.footprint_size(self), tn = c.footprint_size(t->id);
@@ -63,6 +80,7 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
             Command a;
             a.request = {self, ActionKind::Attack, t->id};
             a.request.attack_index = ai;
+            if (s.budget.attacks_remaining == 0) a.request.multiattack = multi;   // only the opener names the option
             return a;
         }
         return end;

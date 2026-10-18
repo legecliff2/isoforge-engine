@@ -43,6 +43,10 @@ struct Archetype {
     // pre-@3 content (its size was descriptive; migration marker "size" in inert_mechanics).
     uint8_t footprint = 1;
     std::vector<std::string> spell_ids;   // spellcasting.spells content ids (monster@3 / character@3)
+    // `multiattack` effect options as authored: option id + indices into base.attacks. ContentLibrary::add
+    // turns them into base.multiattacks (ids stored in the library). Declared order = option order.
+    struct MultiattackDecl { std::string id; std::vector<uint8_t> attacks; };
+    std::vector<MultiattackDecl> multiattack_decls;
     std::optional<std::string> ai;        // behavior.ai (monster@2 / character@2), pack-relative
     // Script id of behavior.ai, resolved within the archetype's own pack: "pack_id:path".
     std::optional<std::string> ai_script_id() const {

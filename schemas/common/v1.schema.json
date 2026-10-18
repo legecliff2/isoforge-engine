@@ -152,7 +152,7 @@
       "required": ["kind"],
       "description": "Machine-readable feature effect, tagged by kind (contract: docs/CONTENT_EFFECTS.md). The engine FeatureRegistry maps kind to a hook. Unknown kinds are allowed: the validator warns and the engine reports them as unsupported and ignores them. Known kinds have their fields checked below. The object stays open (no additionalProperties: false), so v1 remains append-only and extra fields are ignored by the engine.",
       "properties": {
-        "kind": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "Hook id. Known: damage_bonus, bonus_action_grant, self_heal, damage_mitigation, magic_weapons." },
+        "kind": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "Hook id. Known: damage_bonus, bonus_action_grant, self_heal, damage_mitigation, magic_weapons, multiattack." },
         "cost": { "$ref": "#/$defs/effect_cost" }
       },
       "allOf": [
@@ -171,6 +171,23 @@
             "properties": {
               "actions": { "type": "array", "items": { "enum": ["dash", "disengage", "hide", "dodge"] },
                            "description": "rules5e ActionKind ids grantable as bonus actions." }
+            } } },
+        { "if": { "properties": { "kind": { "const": "multiattack" } }, "required": ["kind"] },
+          "then": {
+            "description": "Static: declared multiattack options (SRD Multiattack). Each option is an ordered list of the creature's own attack action ids made with one Attack action; the AI and Command pick one by id. Use `options`, or the shorthand `attacks` for a single option named 'multiattack'. Attack ids that match no attack action are an engine load error.",
+            "oneOf": [ { "required": ["options"] }, { "required": ["attacks"] } ],
+            "properties": {
+              "options": {
+                "type": "array", "minItems": 1,
+                "items": {
+                  "type": "object", "required": ["id", "attacks"], "additionalProperties": false,
+                  "properties": {
+                    "id": { "$ref": "#/$defs/local_id" },
+                    "attacks": { "type": "array", "minItems": 1, "maxItems": 255, "items": { "$ref": "#/$defs/local_id" } }
+                  }
+                }
+              },
+              "attacks": { "type": "array", "minItems": 1, "maxItems": 255, "items": { "$ref": "#/$defs/local_id" } }
             } } },
         { "if": { "properties": { "kind": { "const": "self_heal" } }, "required": ["kind"] },
           "then": {

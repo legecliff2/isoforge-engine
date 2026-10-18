@@ -1,0 +1,8 @@
+{
+  "base": "monsters/goblin.json",
+  "sets": [
+    [["traits", 0, "effect"], { "kind": "multiattack", "options": [ { "id": "rend", "attacks": ["scimitar"], "weight": 2 } ] }]
+  ],
+  "severity": "error",
+  "expect": "/traits/0/effect"
+}

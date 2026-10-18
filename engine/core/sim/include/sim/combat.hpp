@@ -14,6 +14,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/math.hpp"
@@ -139,6 +140,12 @@ public:
     bool line_of_sight(CombatantId a, CombatantId b) const;
     std::vector<Vec2i> occupied_except(CombatantId id) const;   // tiles (every footprint tile) of other non-dead combatants
     bool hostile(CombatantId a, CombatantId b) const;
+    // A declared multiattack option by id (the `multiattack` effect's option id): the value for
+    // ActionRequest::multiattack (1 + option index), or nullopt if the creature has no such option. To use it,
+    // submit Command{Rules, {actor, Attack, target, attack_index = first attack of the option, multiattack = value}};
+    // follow-up attacks carry the sequence's next attack_index (multiattack may stay 0). Sim copies the
+    // request through unchanged; rules5e checks the order and spends the action once.
+    std::optional<uint8_t> multiattack_option(CombatantId id, std::string_view option_id) const;
     // Active features (UseFeature): remaining uses (255 = unlimited), and whether usable now.
     // Would stepping `mover` from `from` to `to` leave some hostile's melee reach?
     bool would_leave_reach(CombatantId mover, Vec2i from, Vec2i to) const { return leaves_reach(mover, from, to); }
