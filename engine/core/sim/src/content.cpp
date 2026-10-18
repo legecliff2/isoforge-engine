@@ -115,10 +115,10 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         c.creature_type = *ct;
     }
     if (auto sc = doc.find("spellcasting"); sc != doc.end() && !inert.count("spellcasting")) {
-        static const char* abil[] = {"str", "dex", "con", "int", "wis", "cha"};
-        const std::string ab = sc->value("ability", "");
+        static const char* sc_abil[] = {"str", "dex", "con", "int", "wis", "cha"};
+        const std::string sc_ab = sc->value("ability", "");
         bool ok = false;
-        for (int i = 0; i < 6; ++i) if (ab == abil[i]) { c.spellcasting_ability = rules5e::Ability(i); ok = true; }
+        for (int i = 0; i < 6; ++i) if (sc_ab == sc_abil[i]) { c.spellcasting_ability = rules5e::Ability(i); ok = true; }
         if (!ok) return a.id + ": bad spellcasting ability";
         const int lvl = geti(*sc, "caster_level");
         if (lvl < 1 || lvl > 20) return a.id + ": bad caster_level";
