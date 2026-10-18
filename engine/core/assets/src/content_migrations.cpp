@@ -56,6 +56,12 @@ void mark_defenses_inert(Json& j) {
     if (j.contains("spellcasting")) marks.push_back("spellcasting");
     if (auto t = j.find("type"); t != j.end() && t->is_string() && t->get<std::string>() != "humanoid")
         marks.push_back("creature_type");
+    // Size becomes a footprint at @3 (Large 2x2, Huge 3x3, Gargantuan 4x4). Pre-@3 it was descriptive and every
+    // creature took one tile, so a pre-@3 Large+ file keeps a 1x1 footprint.
+    if (auto sz = j.find("size"); sz != j.end() && sz->is_string()) {
+        const std::string& v = sz->get<std::string>();
+        if (v == "large" || v == "huge" || v == "gargantuan") marks.push_back("size");
+    }
     if (!marks.empty()) j["inert_mechanics"] = std::move(marks);
 }
 void character_2_to_3(Json& j, MigrationCtx&) { mark_effects_inert(j); mark_defenses_inert(j); }
