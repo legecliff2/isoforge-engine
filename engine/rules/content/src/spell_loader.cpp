@@ -184,87 +184,116 @@ SpellLoad spell_from_json(const Json& j) {
     }
 
     if (!j.contains("effects") || !j["effects"].is_array() || j["effects"].empty()) return err("effects missing");
-    if (j["effects"].size() != 1) return err("effects: rules5e resolves exactly one effect per spell for now");
-    const Json& e = j["effects"][0];
-    const std::string kind = e.value("kind", "");
-    if (kind == "spell_attack") {
-        s.kind = SpellEffectKind::SpellAttack;
-        const std::string atk = e.value("attack", "");
-        if (atk != "melee" && atk != "ranged") return err("effect attack: '" + atk + "' is not one of ['melee', 'ranged']");
-        s.melee = atk == "melee";
-        if (!e.contains("damage") || !read_damage(e["damage"], s)) return err("effect damage invalid");
-        int b = 1;
-        if (e.contains("beams") && !small_int(e["beams"], 1, 255, b)) return err("effect beams invalid");
-        s.beams = uint8_t(b);
-    } else if (kind == "save") {
-        s.kind = SpellEffectKind::Save;
-        if (!e.contains("ability") || !lookup(kAbility, e["ability"], s.save_ability)) return err("effect ability invalid");
-        if (e.contains("damage") != e.contains("on_success"))
-            return err(e.contains("damage") ? "'on_success' is a dependency of 'damage'" : "effect on_success needs damage ('damage' is a dependency of 'on_success')");
-        if (e.contains("damage") && !read_damage(e["damage"], s)) return err("effect damage invalid");
-        if (e.contains("on_success")) {
-            const std::string os = e.value("on_success", "");
-            if (os != "half" && os != "none") return err("effect on_success must be half or none");
-            s.on_save = os == "half" ? OnSave::Half : OnSave::None;
-        }
-        if (e.contains("condition")) {
-            if (!lookup(kCondition, e["condition"], s.condition)) return err("effect condition invalid");
-            s.applies_condition = true;
-        }
-        if (e.contains("repeat_save")) {
-            if (!s.applies_condition) return err("effect repeat_save needs condition ('condition' is a dependency of 'repeat_save')");
-            static const std::map<std::string, RepeatSave> kRep{{"start_of_turn", RepeatSave::StartOfTurn},
-                {"end_of_turn", RepeatSave::EndOfTurn}, {"on_damage", RepeatSave::OnDamage}};
-            if (!lookup(kRep, e["repeat_save"], s.repeat_save)) return err("effect repeat_save invalid");
-        }
-        if (!e.contains("damage") && !s.applies_condition) return err("save effect needs damage or condition");
-    } else if (kind == "heal") {
-        s.kind = SpellEffectKind::Heal;
-        auto d = e.contains("dice") && e["dice"].is_string() ? parse_dice(e["dice"].get<std::string>()) : std::nullopt;
-        if (!d) return err("effect dice invalid");
-        s.dice = *d;
-        s.add_spellcasting_modifier = e.value("add_spellcasting_modifier", false);
-        if (e.contains("excludes_creature_type")) {
-            for (const Json& ty : e["excludes_creature_type"]) {
-                CreatureType ct2;
-                if (!lookup(kCreatureType, ty, ct2)) return err("effect excludes_creature_type invalid");
-                s.excluded_types |= bit(ct2);
+    // One effect object -> the per-effect fields of `t` (kind, damage, save, condition, ...). Returns "" or an error.
+    auto parse_effect = [&](const Json& e, SpellDef& s, std::string& kind) -> std::string {
+        kind = e.is_object() ? e.value("kind", "") : "";
+        if (kind == "spell_attack") {
+            s.kind = SpellEffectKind::SpellAttack;
+            const std::string atk = e.value("attack", "");
+            if (atk != "melee" && atk != "ranged") return ("effect attack: '" + atk + "' is not one of ['melee', 'ranged']");
+            s.melee = atk == "melee";
+            if (!e.contains("damage") || !read_damage(e["damage"], s)) return ("effect damage invalid");
+            int b = 1;
+            if (e.contains("beams") && !small_int(e["beams"], 1, 255, b)) return ("effect beams invalid");
+            s.beams = uint8_t(b);
+        } else if (kind == "save") {
+            s.kind = SpellEffectKind::Save;
+            if (!e.contains("ability") || !lookup(kAbility, e["ability"], s.save_ability)) return ("effect ability invalid");
+            if (e.contains("damage") != e.contains("on_success"))
+                return (e.contains("damage") ? "'on_success' is a dependency of 'damage'" : "effect on_success needs damage ('damage' is a dependency of 'on_success')");
+            if (e.contains("damage") && !read_damage(e["damage"], s)) return ("effect damage invalid");
+            if (e.contains("on_success")) {
+                const std::string os = e.value("on_success", "");
+                if (os != "half" && os != "none") return ("effect on_success must be half or none");
+                s.on_save = os == "half" ? OnSave::Half : OnSave::None;
             }
-        }
-    } else if (kind == "auto_hit") {
-        s.kind = SpellEffectKind::AutoHit;
-        int darts = 0;
-        if (!e.contains("darts") || !small_int(e["darts"], 1, 255, darts)) return err("effect darts invalid");
-        s.darts = uint8_t(darts);
-        if (!e.contains("damage") || !read_damage(e["damage"], s)) return err("effect damage invalid");
-        static const std::map<std::string, DartDistribution> kDist{{"any", DartDistribution::Any},
-            {"single", DartDistribution::Single}, {"distinct", DartDistribution::Distinct}};
-        if (!lookup(kDist, e.value("distribution", Json()), s.distribution)) return err("effect distribution must be any, single or distinct");
-        if (!e.contains("simultaneous") || !e["simultaneous"].is_boolean()) return err("effect simultaneous required");
-        s.simultaneous = e["simultaneous"].get<bool>();
-        s.targets = 0;   // per dart (distribution), not a creature count
-    } else if (kind == "ac_bonus") {
-        s.kind = SpellEffectKind::AcBonus;
-        int b = 0;
-        if (!e.contains("bonus") || !small_int(e["bonus"], 1, 20, b)) return err("effect bonus invalid");
-        s.ac_bonus = int8_t(b);
-        if (e.contains("blocks_spell")) {
-            if (!e["blocks_spell"].is_string() || e["blocks_spell"].get<std::string>().find(".spell.") == std::string::npos)
-                return err("effect blocks_spell must be a spell id");
-            s.blocks_spell = spell_id_of(e["blocks_spell"].get<std::string>());
-            refs.emplace_back("effect blocks_spell", e["blocks_spell"].get<std::string>());
-        }
-    } else if (kind == "counter") {
-        s.kind = SpellEffectKind::Counter;
-        if (e.value("auto_max_level", "") != "slot") return err("effect auto_max_level must be slot");
-        const Json chk = e.value("check", Json::object());
-        int b = 0;
-        if (chk.value("ability", "") != "spellcasting" || chk.value("plus", "") != "spell_level" ||
-            !chk.contains("dc_base") || !small_int(chk["dc_base"], 1, 99, b))
-            return err("effect check must be {ability: spellcasting, dc_base, plus: spell_level}");
-        s.counter_dc_base = uint8_t(b);
-    } else return err("effect kind invalid");
-
+            if (e.contains("condition")) {
+                if (!lookup(kCondition, e["condition"], s.condition)) return ("effect condition invalid");
+                s.applies_condition = true;
+            }
+            if (e.contains("repeat_save")) {
+                if (!s.applies_condition) return ("effect repeat_save needs condition ('condition' is a dependency of 'repeat_save')");
+                static const std::map<std::string, RepeatSave> kRep{{"start_of_turn", RepeatSave::StartOfTurn},
+                    {"end_of_turn", RepeatSave::EndOfTurn}, {"on_damage", RepeatSave::OnDamage}};
+                if (!lookup(kRep, e["repeat_save"], s.repeat_save)) return ("effect repeat_save invalid");
+            }
+            if (!e.contains("damage") && !s.applies_condition) return ("save effect needs damage or condition");
+        } else if (kind == "heal") {
+            s.kind = SpellEffectKind::Heal;
+            auto d = e.contains("dice") && e["dice"].is_string() ? parse_dice(e["dice"].get<std::string>()) : std::nullopt;
+            if (!d) return ("effect dice invalid");
+            s.dice = *d;
+            s.add_spellcasting_modifier = e.value("add_spellcasting_modifier", false);
+            if (e.contains("excludes_creature_type")) {
+                for (const Json& ty : e["excludes_creature_type"]) {
+                    CreatureType ct2;
+                    if (!lookup(kCreatureType, ty, ct2)) return ("effect excludes_creature_type invalid");
+                    s.excluded_types |= bit(ct2);
+                }
+            }
+        } else if (kind == "auto_hit") {
+            s.kind = SpellEffectKind::AutoHit;
+            int darts = 0;
+            if (!e.contains("darts") || !small_int(e["darts"], 1, 255, darts)) return ("effect darts invalid");
+            s.darts = uint8_t(darts);
+            if (!e.contains("damage") || !read_damage(e["damage"], s)) return ("effect damage invalid");
+            static const std::map<std::string, DartDistribution> kDist{{"any", DartDistribution::Any},
+                {"single", DartDistribution::Single}, {"distinct", DartDistribution::Distinct}};
+            if (!lookup(kDist, e.value("distribution", Json()), s.distribution)) return ("effect distribution must be any, single or distinct");
+            if (!e.contains("simultaneous") || !e["simultaneous"].is_boolean()) return ("effect simultaneous required");
+            s.simultaneous = e["simultaneous"].get<bool>();
+            s.targets = 0;   // per dart (distribution), not a creature count
+        } else if (kind == "ac_bonus") {
+            s.kind = SpellEffectKind::AcBonus;
+            int b = 0;
+            if (!e.contains("bonus") || !small_int(e["bonus"], 1, 20, b)) return ("effect bonus invalid");
+            s.ac_bonus = int8_t(b);
+            if (e.contains("blocks_spell")) {
+                if (!e["blocks_spell"].is_string() || e["blocks_spell"].get<std::string>().find(".spell.") == std::string::npos)
+                    return ("effect blocks_spell must be a spell id");
+                s.blocks_spell = spell_id_of(e["blocks_spell"].get<std::string>());
+                refs.emplace_back("effect blocks_spell", e["blocks_spell"].get<std::string>());
+            }
+        } else if (kind == "counter") {
+            s.kind = SpellEffectKind::Counter;
+            if (e.value("auto_max_level", "") != "slot") return ("effect auto_max_level must be slot");
+            const Json chk = e.value("check", Json::object());
+            int b = 0;
+            if (chk.value("ability", "") != "spellcasting" || chk.value("plus", "") != "spell_level" ||
+                !chk.contains("dc_base") || !small_int(chk["dc_base"], 1, 99, b))
+                return ("effect check must be {ability: spellcasting, dc_base, plus: spell_level}");
+            s.counter_dc_base = uint8_t(b);
+        } else if (kind == "apply_condition") {
+            s.kind = SpellEffectKind::ApplyCondition;
+            if (!e.contains("condition") || !lookup(kCondition, e["condition"], s.condition)) return ("effect condition invalid");
+            s.applies_condition = true;
+        } else return ("effect kind invalid");
+        return "";
+    };
+    if (!j["effects"].is_array()) return err("effects missing");
+    std::string kind;
+    if (auto m = parse_effect(j["effects"][0], s, kind); !m.empty()) return err(m);
+    // Effects 2..n: parsed into a scratch SpellDef, then copied into SpellEffect. Reaction kinds stand alone.
+    const std::size_t n_effects = j["effects"].size();
+    for (std::size_t i = 1; i < n_effects; ++i) {
+        SpellDef x;
+        std::string xk;
+        if (auto m = parse_effect(j["effects"][i], x, xk); !m.empty()) return err("effects[" + std::to_string(i) + "]: " + m);
+        if (x.kind == SpellEffectKind::AcBonus || x.kind == SpellEffectKind::Counter)
+            return err("effects: ac_bonus and counter reactions cannot be combined with other effects");
+        SpellEffect fx;
+        fx.kind = x.kind; fx.melee = x.melee; fx.beams = x.beams; fx.dice = x.dice; fx.damage_type = x.damage_type;
+        fx.add_spellcasting_modifier = x.add_spellcasting_modifier; fx.excluded_types = x.excluded_types;
+        fx.save_ability = x.save_ability; fx.on_save = x.on_save; fx.applies_condition = x.applies_condition;
+        fx.condition = x.condition; fx.repeat_save = x.repeat_save; fx.darts = x.darts;
+        fx.distribution = x.distribution; fx.simultaneous = x.simultaneous;
+        fx.affected_only = j["effects"][i].value("applies_to", "all") == "affected";
+        s.extra_effects.push_back(fx);
+    }
+    if (n_effects > 1 && (s.kind == SpellEffectKind::AcBonus || s.kind == SpellEffectKind::Counter))
+        return err("effects: ac_bonus and counter reactions cannot be combined with other effects");
+    if (j["effects"][0].value("applies_to", "all") != "all")
+        return err("effects[0].applies_to needs a previous effect");
     const bool reaction_kind = s.kind == SpellEffectKind::AcBonus || s.kind == SpellEffectKind::Counter;
     if (reaction_kind != (s.casting_time == CastingTime::Reaction))
         return err("effect kind " + kind + " and casting_time.kind " + ck + " disagree (ac_bonus/counter are reactions, and only they)");
@@ -272,7 +301,7 @@ SpellLoad spell_from_json(const Json& j) {
         return err("effect kind " + kind + " needs casting_time.trigger.kind " + (s.kind == SpellEffectKind::AcBonus ? "being_hit" : "spell_cast"));
     if ((s.kind == SpellEffectKind::AcBonus) != (s.duration == SpellDuration::UntilStartOfCasterTurn))
         return err("ac_bonus effects last until_start_of_caster_turn (and only they use it)");
-    if (has_targets && s.kind != SpellEffectKind::Save && s.kind != SpellEffectKind::Heal)
+    if (has_targets && s.kind != SpellEffectKind::Save && s.kind != SpellEffectKind::Heal && s.kind != SpellEffectKind::ApplyCondition)
         return err("targets not allowed on a " + kind + " effect (one target, per dart/beam, or self)");
 
     const Json sc = j.value("scaling", Json::object());
@@ -302,7 +331,7 @@ SpellLoad spell_from_json(const Json& j) {
                                     s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::AutoHit;
             if (k == "darts") return s.kind == SpellEffectKind::AutoHit;
             if (k == "beams") return s.kind == SpellEffectKind::SpellAttack;
-            return s.kind == SpellEffectKind::Save || s.kind == SpellEffectKind::Heal;   // targets
+            return s.kind == SpellEffectKind::Save || s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::ApplyCondition;   // targets
         };
         for (const char* key : {"beams", "darts", "dice", "targets"}) {   // sorted, like the validator
             if (!u.contains(key)) continue;
