@@ -232,7 +232,7 @@ TEST_CASE("save action in a fight: AI uses it, ActionUsed + SpellTarget, recharg
     CHECK(rep->log_hash() == c->log_hash());
 }
 
-TEST_CASE("save action AI: out of range, area actions and per-day exhaustion are not chosen") {
+TEST_CASE("save action AI: out of range, a lone area action's aim and per-day exhaustion are not chosen") {
     auto lib = sample_lib();
     REQUIRE_FALSE(lib.add(drake("t.far", breath()), "monster"));
     REQUIRE_FALSE(lib.add(drake("t.area", breath({{"area", {{"shape", "cone"}, {"size_ft", 30}}}, {"origin", "self"}})), "monster"));
@@ -251,7 +251,7 @@ TEST_CASE("save action AI: out of range, area actions and per-day exhaustion are
         auto c = Combat::create(reg, ch, lib, 3);
         REQUIRE(c);
         advance_to(*c, ch.spawns[1].stable_id);
-        CHECK(next_command(*c, ch.spawns[0].stable_id).request.kind != ActionKind::CastSpell);   // area AI is a later row
+        CHECK(next_command(*c, ch.spawns[0].stable_id).request.kind != ActionKind::CastSpell);   // area AI (row 7): one hostile and a shortbow shot is legal
     }
     {
         auto ch = arena({{kFighter, Vec2i{5, 5}}, {"t.day", Vec2i{8, 5}}});
