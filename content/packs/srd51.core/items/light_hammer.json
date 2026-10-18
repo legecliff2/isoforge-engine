@@ -1,0 +1,16 @@
+{
+  "$schema": "item@1",
+  "id": "srd51.item.light_hammer",
+  "name": "Light hammer",
+  "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
+  "category": "weapon",
+  "cost_cp": 200,
+  "weight_oz": 32,
+  "weapon_class": "simple",
+  "reach": 5,
+  "range": [20, 60],
+  "damage": [
+    {"dice": "1d4", "type": "bludgeoning"}
+  ],
+  "properties": ["light", "thrown"]
+}

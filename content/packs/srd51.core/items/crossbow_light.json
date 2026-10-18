@@ -1,0 +1,15 @@
+{
+  "$schema": "item@1",
+  "id": "srd51.item.crossbow_light",
+  "name": "Crossbow, light",
+  "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
+  "category": "weapon",
+  "cost_cp": 2500,
+  "weight_oz": 80,
+  "weapon_class": "simple",
+  "range": [80, 320],
+  "damage": [
+    {"dice": "1d8", "type": "piercing"}
+  ],
+  "properties": ["ammunition", "loading", "two_handed"]
+}

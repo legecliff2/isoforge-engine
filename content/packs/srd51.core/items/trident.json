@@ -1,0 +1,19 @@
+{
+  "$schema": "item@1",
+  "id": "srd51.item.trident",
+  "name": "Trident",
+  "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
+  "category": "weapon",
+  "cost_cp": 500,
+  "weight_oz": 64,
+  "weapon_class": "martial",
+  "reach": 5,
+  "range": [20, 60],
+  "damage": [
+    {"dice": "1d6", "type": "piercing"}
+  ],
+  "versatile_damage": [
+    {"dice": "1d8", "type": "piercing"}
+  ],
+  "properties": ["thrown", "versatile"]
+}

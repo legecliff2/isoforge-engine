@@ -49,6 +49,31 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
                 u.request.feature_id = f.feature_id;
                 return u;
             }
+    // Save actions (monster@4 / character@4, VERSION_BUMP_BATCH row 6): a single-target one (no area template) that
+    // is available and in reach goes before a multiattack or a plain attack. Availability is read from the rules
+    // state (recharge row expended, uses left); the AI never rolls or keeps its own flag. Area actions are the
+    // area-template row's business.
+    if (const Archetype* arch = c.archetype(self); arch && s.budget.action && s.budget.sequence == 0 &&
+                                                   s.budget.attacks_remaining == 0 && rules5e::is_conscious(*t))
+        for (const auto& sa : arch->save_actions) {
+            if (sa.area) continue;
+            if (sa.usage_kind == 1) {
+                const auto* u = rules5e::find_action_use(s, self, sa.spell_id);
+                if (u && u->expended) continue;
+            } else if (sa.usage_kind == 2 && rules5e::feature_uses_left(s, self, sa.spell_id) == 0) continue;
+            else if (sa.usage_kind == 3) {
+                if (!rules5e::can_spend(s, self, sa.pool_id, sa.pool_cost ? sa.pool_cost : 1)) continue;
+            }
+            if (sa.range_ft == 0 || c.distance_tiles(self, t->id) * kFeetPerTile > int(sa.range_ft) ||
+                !c.line_of_sight(self, t->id))
+                continue;
+            Command cast;
+            cast.request = {self, ActionKind::CastSpell, t->id};
+            cast.request.spell_id = sa.spell_id;
+            cast.request.spell_level = 0;
+            cast.request.targets = {t->id};
+            return cast;
+        }
     // Prefer the first melee attack; fall back to the first attack.
     uint8_t ai = 0;
     for (uint8_t i = 0; i < me->attacks.size(); ++i)
