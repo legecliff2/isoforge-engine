@@ -30,9 +30,32 @@ void mark_effects_inert(Json& j) {
         }
     }
 }
-void character_2_to_3(Json& j, MigrationCtx&) { mark_effects_inert(j); }
+// character@3 / monster@3 also make defenses and multi-component attack damage mechanical. Pre-@3 files
+// listed damage_resistances / damage_immunities / damage_vulnerabilities / condition_immunities and
+// extra damage[] entries as descriptive text, and the engine read none of them (only damage[0]).
+// The migration records which of those a pre-@3 file carries in "inert_mechanics" so the consumer
+// keeps ignoring them. Files without any of them are left byte-identical.
+void mark_defenses_inert(Json& j) {
+    Json marks = Json::array();
+    for (const char* key : {"damage_resistances", "damage_immunities", "damage_vulnerabilities", "condition_immunities"}) {
+        auto it = j.find(key);
+        if (it != j.end() && it->is_array() && !it->empty()) marks.push_back(key);
+    }
+    bool multi = false;
+    for (const char* key : {"actions", "bonus_actions", "reactions", "legendary_actions"}) {
+        auto it = j.find(key);
+        if (it == j.end() || !it->is_array()) continue;
+        for (const auto& a : *it) {
+            auto d = a.is_object() ? a.find("damage") : a.end();
+            if (a.is_object() && d != a.end() && d->is_array() && d->size() > 1) multi = true;
+        }
+    }
+    if (multi) marks.push_back("damage[1..]");
+    if (!marks.empty()) j["inert_mechanics"] = std::move(marks);
+}
+void character_2_to_3(Json& j, MigrationCtx&) { mark_effects_inert(j); mark_defenses_inert(j); }
 // monster@3: same gate as character@3 (docs/CONTENT_COMPAT.md).
-void monster_2_to_3(Json& j, MigrationCtx&) { mark_effects_inert(j); }
+void monster_2_to_3(Json& j, MigrationCtx&) { mark_effects_inert(j); mark_defenses_inert(j); }
 } // namespace
 
 void register_content_schemas(SchemaRegistry& reg) {

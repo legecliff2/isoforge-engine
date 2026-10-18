@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <charconv>
 #include <filesystem>
+#include <set>
 
 #include "assets/content_migrations.hpp"
 
@@ -37,6 +38,14 @@ std::optional<rules5e::DamageType> damage_type(const std::string& s) {
         if (s == names[i]) return rules5e::DamageType(i);
     return std::nullopt;
 }
+std::optional<rules5e::Condition> condition_of(const std::string& s) {
+    static const char* names[] = {"blinded", "charmed", "deafened", "frightened", "grappled", "incapacitated",
+                                  "invisible", "paralyzed", "petrified", "poisoned", "prone", "restrained",
+                                  "stunned", "unconscious", "exhaustion"};
+    for (int i = 0; i < 15; ++i)
+        if (s == names[i]) return rules5e::Condition(i);
+    return std::nullopt;
+}
 int geti(const Json& j, const char* k, int def = 0) {
     auto it = j.find(k);
     return (it != j.end() && it->is_number_integer()) ? it->get<int>() : def;
@@ -60,6 +69,31 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     if (auto st = doc.find("saving_throws"); st != doc.end())
         for (int i = 0; i < 6; ++i)
             if (st->contains(ab[i])) c.save_proficiencies |= rules5e::bit(rules5e::Ability(i));
+    // monster@3 / character@3 defenses. Pre-@3 files' copies are inert (migration marker).
+    std::set<std::string> inert;
+    if (auto m = doc.find("inert_mechanics"); m != doc.end() && m->is_array())
+        for (const Json& x : *m) if (x.is_string()) inert.insert(x.get<std::string>());
+    a.inert_mechanics.assign(inert.begin(), inert.end());
+    auto damage_mask = [&](const char* key, uint32_t& mask) -> std::optional<std::string> {
+        auto it = doc.find(key);
+        if (it == doc.end() || inert.count(key)) return std::nullopt;
+        for (const Json& n : *it) {
+            auto t = damage_type(n.is_string() ? n.get<std::string>() : "");
+            if (!t) return a.id + ": bad damage type in " + key;
+            mask |= rules5e::bit(*t);
+        }
+        return std::nullopt;
+    };
+    if (auto e = damage_mask("damage_resistances", c.resistances)) return e;
+    if (auto e = damage_mask("damage_immunities", c.immunities)) return e;
+    if (auto e = damage_mask("damage_vulnerabilities", c.vulnerabilities)) return e;
+    if (auto it = doc.find("condition_immunities"); it != doc.end() && !inert.count("condition_immunities"))
+        for (const Json& n : *it) {
+            auto k = condition_of(n.is_string() ? n.get<std::string>() : "");
+            if (!k) return a.id + ": bad condition in condition_immunities";
+            c.condition_immunities |= rules5e::bit(*k);
+        }
+    const bool multi_damage = !inert.count("damage[1..]");
     c.is_pc = c.uses_death_saves = (schema_type == "character");
     std::vector<const Json*> attack_actions;   // content action per c.attacks[i]
     for (const Json& act : doc.at("actions")) {
@@ -78,6 +112,14 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         at.type = *type;
         at.ranged = ranged;
         at.finesse = false;
+        if (multi_damage)   // components 2..n (monster@3 / character@3)
+            for (std::size_t i = 1; i < act.at("damage").size(); ++i) {
+                const Json& extra = act.at("damage").at(i);
+                auto xd = parse_dice(extra.value("dice", ""));
+                auto xt = damage_type(extra.value("type", ""));
+                if (!xd || !xt) return a.id + ": bad damage in action " + act.value("id", "?");
+                at.extra_damage.push_back({*xd, *xt});
+            }
         int normal = 0, lng = 0;
         if (ranged) {
             const Json& rg = act.at("range");
