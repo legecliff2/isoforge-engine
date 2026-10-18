@@ -54,8 +54,14 @@ void after_damage(Combatant& t, const DamageApplied& d, bool critical, std::vect
     bool was_at_zero = t.hp <= 0;
     commit_damage(t, d);
     emit(ev, EventKind::DamageDealt, 0, t.id, d.dealt, d.hp_after);
+    if (t.regeneration.amount > 0 && (d.types_dealt & t.regeneration.suppressed_by)) t.regen_suppressed = true;
     if (d.instant_death) { kill(t, ev); return; }
     if (d.dropped_to_zero) {
+        if (!t.uses_death_saves && t.regeneration.amount > 0) {   // regenerators die only at their next turn start
+            t.regen_down = true;
+            emit(ev, EventKind::CombatantDowned, t.id);
+            return;
+        }
         if (!t.uses_death_saves) { kill(t, ev); return; }
         emit(ev, EventKind::CombatantDowned, t.id);
         t.death = DeathSaves{};
@@ -482,6 +488,18 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
     emit(ev, EventKind::TurnStarted, c.id, 0, s.round);
     repeat_saves(s, c.id, RepeatSave::StartOfTurn, ev);
     if (dies_of_exhaustion(c) && !c.dead) kill(c, ev);
+    if (!c.dead && c.regeneration.amount > 0) {   // Regeneration (troll, vampire spawn)
+        const bool suppressed = c.regen_suppressed;
+        c.regen_suppressed = false;
+        if (suppressed) {
+            if (c.regen_down) { c.regen_down = false; kill(c, ev); }
+        } else if (c.regen_down || c.hp < effective_hp_max(c)) {
+            c.regen_down = false;
+            auto h = apply_healing(c, c.regeneration.amount);
+            commit_healing(c, h);
+            emit(ev, EventKind::Healed, c.id, c.id, h.healed, h.hp_after, h.from_zero);
+        }
+    }
     if (is_dying(c) && c.uses_death_saves) {
         auto r = roll_death_save(s.rng, c.death);
         c.death = r.after;
@@ -802,7 +820,7 @@ std::optional<EncounterOutcome> default_end_condition(const EncounterState& s) {
     int teams = 0;
     for (const auto& c : s.combatants) {
         if (!present[c.team]) { present[c.team] = true; ++teams; }
-        if (is_conscious(c)) conscious[c.team] = true;
+        if (is_conscious(c) || (c.regen_down && !c.dead)) conscious[c.team] = true;   // a regenerator at 0 HP is still in the fight
     }
     if (teams < 2) return EncounterOutcome{EndReason::InvalidSetup, pc_statuses(s)};
     std::vector<uint8_t> down;
@@ -1238,7 +1256,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (b.action) {
         add(ActionKind::Dash); add(ActionKind::Disengage); add(ActionKind::Dodge); add(ActionKind::Hide);
         for (const auto& t : s.combatants)
-            if (t.id != a.id && is_dying(t) && t.team == a.team) add(ActionKind::Stabilize, false, t.id);
+            if (t.id != a.id && is_dying(t) && !t.regen_down && t.team == a.team) add(ActionKind::Stabilize, false, t.id);
         // Help and Ready need sim facts (adjacency, trigger); sim builds those requests.
     }
     if (b.bonus_action)
