@@ -81,6 +81,9 @@ private:
     const FeatureRegistry* features_ = &FeatureRegistry::builtin();
 };
 
+// Content damage type name ("fire") -> rules5e::DamageType; nullopt if unknown.
+std::optional<rules5e::DamageType> damage_type_from_name(const std::string& s);
+
 // "1d6+2" -> DiceExpr; nullopt if malformed.
 std::optional<rules5e::DiceExpr> parse_dice(std::string_view s);
 

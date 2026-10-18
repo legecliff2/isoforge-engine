@@ -74,6 +74,25 @@ Example (Nimble Escape): `{ "kind": "bonus_action_grant", "actions": ["disengage
 
 Example (Second Wind): `{ "kind": "self_heal", "dice": "1d10", "plus": "fighter_level", "uses": 1, "recharge": "short_rest", "cost": "bonus_action" }`
 
+### `damage_mitigation` (static)
+
+Qualified resistances and immunities, for SRD text like "bludgeoning, piercing, and slashing from nonmagical attacks". Unqualified defenses stay in `damage_resistances` / `damage_immunities`. Applied to `Combatant::resist_qualified` / `immune_qualified` when the archetype is built; matched against `Attack::qualifiers` (rules5e #47).
+
+| field | type | required | meaning |
+|---|---|---|---|
+| `resistances` | object | one of the two | qualifier -> damage types resisted |
+| `immunities` | object | one of the two | qualifier -> damage types immune |
+
+Qualifier keys: `nonmagical` (any nonmagical source), `nonmagical_not_silvered`, `nonmagical_not_adamantine`. Each value is a unique array of damage types. Spell damage is always magical.
+
+Example (werewolf): `{ "kind": "damage_mitigation", "immunities": { "nonmagical_not_silvered": ["bludgeoning", "piercing", "slashing"] } }`
+
+### `magic_weapons` (static)
+
+No fields. Every attack of the creature counts as magical (`kAttackMagical`), so qualified resistance / immunity does not apply to it (SRD Magic Weapons, Ki-Empowered Strikes). A single weapon is marked with the action's `qualifiers` array (`magical`, `silvered`, `adamantine`, monster@3 / character@3; inert before @3, marker `attack_qualifiers`).
+
+Example: `{ "kind": "magic_weapons" }`
+
 ### 1.1 Condition ids
 
 Named predicates over an attack action, registered in the FeatureRegistry:
