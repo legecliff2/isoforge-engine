@@ -7,12 +7,13 @@ namespace rules5e {
 void add_condition(Combatant& c, Condition k) { c.conditions |= bit(k); }
 void remove_condition(Combatant& c, Condition k) { c.conditions &= ~bit(k); }
 
-DamageApplied apply_damage(const Combatant& c, int16_t amount, DamageType type) {
+DamageApplied apply_damage(const Combatant& c, int16_t amount, DamageType type, uint8_t source) {
     int dmg = amount < 0 ? 0 : amount;
     uint32_t b = bit(type);
-    if (c.immunities & b) dmg = 0;
+    if ((c.immunities & b) || qualified_applies(c.immune_qualified, type, source)) dmg = 0;
     else {
-        if (effective_resistances(c) & b) dmg /= 2;  // non-negative: truncation == round down
+        if ((effective_resistances(c) & b) || qualified_applies(c.resist_qualified, type, source))
+            dmg /= 2;  // non-negative: truncation == round down
         if (c.vulnerabilities & b) dmg *= 2;
     }
     int dealt = dmg;

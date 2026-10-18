@@ -347,7 +347,7 @@ void do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     if (hit) {
         int dmg = roll_dice(s.rng, atk.damage, crit);
         if (dmg < 0) dmg = 0;
-        damage_creature(s, t, apply_damage(t, int16_t(dmg), atk.type), crit, ev);
+        damage_creature(s, t, apply_damage(t, int16_t(dmg), atk.type, atk.source), crit, ev);
     }
 }
 
@@ -599,6 +599,7 @@ void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& de
     case SpellEffectKind::SpellAttack: {
         Attack atk{def.content_id, int8_t(spell_attack_bonus(a)), scaled_dice(def, lvl, a.caster_level),
                    def.damage_type, uint8_t(std::min<int>(def.range_ft, 255)), !def.melee, false};
+        atk.source = damage_source::kMagical;   // spell damage is magical (bypasses "nonmagical" resistance)
         const int beams = scaled_beams(def, lvl, a.caster_level);
         for (int i = 0; i < beams; ++i) {   // one attack roll per beam: one target, or one per beam
             Combatant* t = T.size() == 1 ? T[0] : T[std::size_t(i)];
@@ -632,7 +633,7 @@ void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& de
                 if (d != t || t->dead) continue;
                 if (t->reaction_blocks_spell == def.id) continue;   // Shield: no damage from the darts
                 int dmg = std::max(0, roll_dice(s.rng, def.dice));
-                damage_creature(s, *t, apply_damage(*t, int16_t(dmg), def.damage_type), false, ev);
+                damage_creature(s, *t, apply_damage(*t, int16_t(dmg), def.damage_type, damage_source::kMagical), false, ev);
             }
         }
         break;
@@ -648,7 +649,7 @@ void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& de
             emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(def.save_ability), r.roll.natural, r.roll.total,
                  int32_t(r.success));
             int dealt = r.success ? (def.on_save == OnSave::Half ? dmg / 2 : 0) : dmg;
-            if (dealt > 0) damage_creature(s, *t, apply_damage(*t, int16_t(dealt), def.damage_type), false, ev);
+            if (dealt > 0) damage_creature(s, *t, apply_damage(*t, int16_t(dealt), def.damage_type, damage_source::kMagical), false, ev);
             if (def.applies_condition && !r.success && !t->dead) {
                 if (!t->has(def.condition)) {
                     add_condition(*t, def.condition);
