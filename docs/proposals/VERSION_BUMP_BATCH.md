@@ -1,7 +1,9 @@
 # Proposal: the version-bump batch (common@2 / monster@4 / character@4 / item@1)
 
-Status: decisions recorded (§13); reviewers may still comment on details. Reviewers: Tools & Content (schemas, validator, loaders,
+Status: Director decisions recorded (§13); T&C and Engine Core review notes folded in (rev 2). Reviewers: Tools & Content (schemas, validator, loaders,
 migrations), Engine Core (sim hooks, event schema, digests). Author: Rules (rules5e).
+Sequencing: lands **after #55** (footprint, event schema v6) and #58/#59 (content wiring); this batch is
+event schema **v7** (§9).
 Basis: `docs/SRD_COMBAT_COVERAGE.md` §11 (batch B rows R-G3..R-G5, R-G7, T&C-G4/G5/G9/G10/G17),
 `docs/CONTENT_COMPAT.md`, `docs/SIM_EVENTS.md`, and the code on `main` after #57.
 
@@ -9,7 +11,7 @@ Scope: (1) save-based actions with area templates, (2) on-hit riders and `extra_
 `on_event` triggers, (3) reactions as monster/character actions, (4) monster spellcasting (innate
 and slot-based), (5) timed buffs and debuffs, (6) class resource pools. Out of scope, named so
 nothing is promised by accident: legendary actions (T&C-G11), elevation (T&C-G12), armor/AC
-recomputation from equipment (own proposal, §10 gives only the `item@1` slice these six need).
+recomputation from `item@1` equipment is *in* the bump but as its own late PR (§10, §12 row 15).
 
 **Priority rule (Zach): old content must play identically.** Every section below states its
 inert-marker behaviour and the compat test that proves it. The design goal for golden hashes is
@@ -53,24 +55,71 @@ exactly the "interim trait effect" the Director ruled out, so it lands in `@4` (
 
 | Schema | Change | Why it cannot be additive |
 |---|---|---|
-| `common@2` (new file) | `$defs`: `action` (v2), `reaction`, `trigger`, `rider`, `usage`, `area`, `resource`, `modifier`, `spellcasting` (v2, superset of v1), `trait`/`trait_active` (v2, new effect kinds + `cost: reaction`), `stat_block` (v2) | `common@1 $defs/action` is `additionalProperties:false`; `reactions`/`bonus_actions` exist in v1 but are descriptive; extending them in v1 would let `@3` files carry fields the `@3` engine contract says are inert |
-| `monster@4` | `$ref common@2 stat_block`, `$schema` const | same, plus gating |
-| `character@4` | same; adds `resources[]` and class-feature effect kinds | same |
-| `item@1` | new type, weapon/attack data only (§10) | new type: no old content |
-| `spell@1` | **additive only**: effect kinds `apply_modifier`, optional `usage` (not needed), no tag change | open effect array, no old meaning |
+| `common@2` (new file) | **Only the defs that change**, re-declared locally: `action` (v2), `reaction`, `on_event_effect`, `rider`, `predicate`, `scaling`, `usage`, `area`, `resource`, `modifier`, `damage` (new named def, §1.2), `spellcasting` (v2, superset of v1), `trait` / `trait_active` / `effect_cost` (v2), `stat_block` (v2) | `common@1 $defs/action` is `additionalProperties:false`; `reactions`/`bonus_actions` exist in v1 but are descriptive; widening v1 would let `@3` files carry fields the `@3` contract says are inert |
+| `monster@4` | `$ref common@2 stat_block`; **every `@3` top-level property is carried** (§1.3) | same, plus gating |
+| `character@4` | same; adds `resources[]`, class-feature effect kinds | same |
+| `item@1` | new type: weapons, armor, shields (§10) | new type: no old content |
+| `spell@1` | **additive only**: effect kind `apply_modifier`; no tag change | open effect array, no old meaning |
+| `manifest@1` | **additive**: `api_level` const `1` becomes `enum [1, 2]` (§8.5) | gating for scripts |
 
-`common@2` is a full standalone `stat_block` that `$ref`s unchanged leaf defs from
-`common@1` (`dice`, `ability`, `damage_type`, `condition`, `size`, ...). It cannot be
-`allOf [v1 stat_block, overrides]`: `allOf` is an AND, so v1's `actions.items: $ref action` would
-still reject the new kinds. Cost: ~15 `$defs` are re-declared (the v1 versions stay authoritative
-for `@1..@3` documents; migrations never rewrite them back). See Q11.
+### 1.2 How `common@2` is built (standalone, minimal re-declaration)
+
+`common@2` cannot be `allOf [v1 stat_block, overrides]`: `allOf` is an AND, so v1's
+`actions.items: $ref action` would still reject new kinds. It is a standalone file that
+**re-declares only what changes** and references every unchanged def *absolutely* into v1:
+
+```json
+"dice": { "$ref": "../common/v1.schema.json#/$defs/dice" }          // pattern for every unchanged def
+```
+
+Rules for the file (enforced, not a convention):
+
+* Every `$ref` to an unchanged def is `../common/v1.schema.json#/$defs/<name>`. A **lint test**
+  (`tests/validate/`, runs in `validate_packs`/ctest) fails on any *local* `#/$defs/x` ref whose
+  target is not declared in the same file, and on any re-declared def that is byte-identical to its v1
+  twin (it should be a ref instead). Without it a typo silently resolves to nothing or to a stale copy.
+* New named def `damage` (`{dice, type}` object; v1 inlines it in `action`), referenced by `action`,
+  `rider`, `reaction`, `item@1` and `spell@1`'s future use. Accepts `damage_type` from v1; riders use
+  `rider_damage_type` (v1 enum plus `"same_as_weapon"`; valid only where a weapon is in scope) so the
+  v1 enum is never widened.
+* `area` mirrors `spell@1`'s inline `area` exactly, including `multipleOf: 5` on `size_ft`,
+  `width_ft`, `height_ft` and the `width_ft` (line only) / `height_ft` (cylinder only) if/else rules.
+  It adds nothing, so a later change to `spell@1` area stays in step by test (a shared-fixture test
+  validates both against the same cases).
+* The validator (`tools/validate`) keeps a **per-tag table** `{schema tag -> allowed action kinds,
+  effect kinds, cost values, top-level keys}`; `@≥4` rows come from this proposal, and `@≤3` rows are
+  frozen. No ad hoc `if version >= 4` branches.
+
+### 1.3 `monster@4` / `character@4` carry every `@3` property
+
+`unevaluatedProperties:false` means a `@4` schema that forgets a `@3` key rejects migrated files.
+Both `@4` schemas therefore keep: `challenge` (monster), `behavior.ai`, `presentation`,
+`legendary_actions` (**descriptive and ignored by the engine**, T&C-G11 is deferred; same `action`
+list type, never loaded), `spellcasting` (v2), `traits`, `race/background/level/classes/xp/features/
+equipment` (character), and top-level **`inert_mechanics`** (`array<string>`, unique; declared in
+the `@4` schemas explicitly, since the `3→4` migration writes it). A schema test migrates every
+`@3` fixture to `@4` and validates the result.
+
+### 1.4 Forward-compat flag for elevation (T&C-G12, deferred)
+
+Elevation is not in this batch, but `@4` documents must not need another bump to opt in later. Both
+`@4` schemas accept an optional top-level `forward_compat: array<enum ["elevation"]>`, **descriptive
+and ignored by sim** (listed with the inert mechanics in the archetype report). `area` stays 2D until
+the engine implements elevation; `cylinder.height_ft` is validated but unused by targeting. When
+elevation lands, sim honours the flag per document, so packs that declare it never change behaviour
+for packs that do not.
 
 ## 2. Save-based actions with area templates (T&C-G4, R-G10)
 
 ### 2.1 Content shape (`common@2 $defs/action`, new kind `save_effect`)
 
-Existing kinds keep their exact shape (`melee_weapon_attack`, `ranged_weapon_attack`,
-`special`, `multiattack`). `save_effect` adds:
+`common@2 $defs/action.kind` is a **strict superset of v1**:
+`melee_weapon_attack`, `ranged_weapon_attack`, `melee_spell_attack`, `ranged_spell_attack`,
+`special` (all unchanged in shape and required-field rules: `_attack` kinds require `to_hit` and
+`damage`, `melee_*` requires `reach`, `ranged_*` requires `range`), plus the new **`save_effect`**.
+There is no `multiattack` action kind in v1 or v2. Multiattack remains sim's/rules'
+**ordered sequence of attack refs** (each ref is an attack `id` from `actions[]`, in order, repeats
+allowed; e.g. `["bite","claw","claw"]`), and `@4` does not change how it is expressed. `save_effect` adds:
 
 | Field | Type | Req | Notes |
 |---|---|---|---|
@@ -79,7 +128,7 @@ Existing kinds keep their exact shape (`melee_weapon_attack`, `ranged_weapon_att
 | `save` | `{ability, dc}` | y | `dc` integer 1..30; no derived DCs for actions (SRD blocks print them). `ability` is `$defs/ability` |
 | `area` | `$defs/area` | n | absent = single target (`targets: 1`, `range_ft`) |
 | `range_ft` | integer | n | single-target range; ignored when `area.origin` is `self` |
-| `damage[]` | v1 `damage` items | n | at least one of `damage[]`/`apply[]` required |
+| `damage[]` | `$defs/damage` items | n | at least one of `damage[]`/`apply[]` required |
 | `on_success` | `"half"` \| `"none"` | when `damage[]` | |
 | `apply[]` | `[{condition, duration?, repeat_save?}]` | n | maps to `SpellEffectKind::ApplyCondition`; `duration`: `{kind:"rounds",n}` \| `{kind:"until_save"}` \| `{kind:"until_end_of_target_next_turn"}`; `repeat_save`: `"start_of_turn"` \| `"end_of_turn"` \| `"on_damage"` |
 | `usage` | `$defs/usage` | n | default at-will (§2.2) |
@@ -109,48 +158,83 @@ Example (adult red dragon, replaces today's descriptive `special`):
   "usage": { "kind": "recharge", "min": 5 } }
 ```
 
-### 2.2 `$defs/usage` (shared by §1, §3, §4, §6)
+### 2.2 `$defs/usage` (shared by §2, §3, §4, §7)
+
+Every discriminated union in `common@2` uses the `spell@1` pattern: a closed base object plus
+`allOf` of `if kind const … then` closed properties (never a bare `oneOf`, which accepts unknown
+fields in the unselected arms).
 
 ```json
-"usage": { "oneOf": [
-  { "properties": { "kind": {"const": "at_will"} } },
-  { "properties": { "kind": {"const": "recharge"}, "min": {"enum": [2,3,4,5,6]} }, "required": ["kind","min"] },
-  { "properties": { "kind": {"const": "per_day"},  "uses": {"type":"integer","minimum":1,"maximum":9} }, "required": ["kind","uses"] },
-  { "properties": { "kind": {"const": "per_rest"}, "uses": {"type":"integer","minimum":1,"maximum":9},
-                    "rest": {"enum": ["short","long"]} }, "required": ["kind","uses","rest"] },
-  { "properties": { "kind": {"const": "pool"}, "pool": {"$ref":"#/$defs/local_id"}, "cost": {"type":"integer","minimum":1} },
-    "required": ["kind","pool"] } ] }
+"usage": { "type":"object", "required":["kind"],
+  "properties": { "kind": {"enum":["at_will","recharge","per_day","per_rest","pool"]},
+                  "min": {"enum":[2,3,4,5,6]}, "uses": {"type":"integer","minimum":1,"maximum":9},
+                  "rest": {"enum":["short","long"]}, "pool": {"$ref":"#/$defs/local_id"},
+                  "cost": {"type":"integer","minimum":1} },
+  "additionalProperties": false,
+  "allOf": [
+    { "if": {"properties":{"kind":{"const":"recharge"}}},  "then": {"required":["min"],  "not":{"anyOf":[{"required":["uses"]},{"required":["rest"]},{"required":["pool"]},{"required":["cost"]}]}} },
+    { "if": {"properties":{"kind":{"const":"per_day"}}},   "then": {"required":["uses"], "not":{"anyOf":[{"required":["min"]},{"required":["rest"]},{"required":["pool"]},{"required":["cost"]}]}} },
+    { "if": {"properties":{"kind":{"const":"per_rest"}}},  "then": {"required":["uses","rest"], "not":{"anyOf":[{"required":["min"]},{"required":["pool"]},{"required":["cost"]}]}} },
+    { "if": {"properties":{"kind":{"const":"pool"}}},      "then": {"required":["pool"], "not":{"anyOf":[{"required":["min"]},{"required":["uses"]},{"required":["rest"]}]}} },
+    { "if": {"properties":{"kind":{"const":"at_will"}}},   "then": {"not":{"anyOf":[{"required":["min"]},{"required":["uses"]},{"required":["rest"]},{"required":["pool"]},{"required":["cost"]}]}} } ] }
 ```
 
-`recharge` is "Recharge 5-6": roll d6 at the start of the owner's turn while expended; `min..6`
-recharges. `per_day`/`per_rest` are a `FeatureUses` row; `pool` spends from §7.
+`cost` is the **one name** for "how much a use takes from a pool" everywhere (`usage.cost`,
+`rider spend.cost`, `resource` cost on features); it defaults to 1. `recharge` is "Recharge 5-6":
+roll d6 at the start of the owner's turn while expended; `min..6` recharges. `per_day`/`per_rest` are
+a `FeatureUses` row; `pool` spends from §7. (`per_day`/`per_rest` start full each combat: sim has no
+cross-encounter state, §7.2.)
 
-### 2.3 Rules mapping: a save action compiles to a synthetic `SpellDef`
+### 2.3 Rules mapping: a save action compiles to a synthetic `SpellDef` (Q1, decided)
 
 All resolution code already exists for spells with `SpellEffectKind::Save` plus `extra_effects`
-(damage, half on success, `ApplyCondition`, repeat saves). Rather than a second resolver, sim
-compiles each `save_effect` at archetype build into a `SpellDef` with a reserved id and adds it
-to the shared `SpellBook`:
+(damage, half on success, `ApplyCondition`, repeat saves). Sim compiles each `save_effect` into a
+`SpellDef` and adds it to the shared `SpellBook`. Four requirements came out of Engine Core's review,
+verified against `main`:
+
+1. **Id derivation, not a reserved bit.** `spell_id_of` is plain 32-bit FNV-1a, so about half of
+   all content ids already have the high bit set; a "high bit means synthetic" scheme is false.
+   Derive `id = spell_id_of("<archetype id>#<action id>")` (`#` cannot appear in a content id, so the
+   *string* namespaces are disjoint). The only collision guard is the one that exists:
+   `SpellBook::add` returns false on a duplicate id, and the compile treats that as a **load error
+   naming both strings** (a 32-bit hash collision between two strings is possible but is detected,
+   never silent).
+2. **Fixed DC.** `SpellDef` has no DC; rules derive `8 + prof + ability mod` (`spell_save_dc`). A
+   dragon has different DCs for Fire Breath and Frightful Presence, so `SpellDef` gets appended
+   **`int8_t fixed_dc = 0`** (0 = derive) and, for future attack-roll actions, `int8_t fixed_attack = 0`.
+   `spell_save_dc(caster, def)` returns `fixed_dc` when non-zero. The per-creature
+   `spell_dc_override` in §5 is for `spellcasting` blocks, a different concept.
+3. **Archetype overrides and rollback.** `ContentLibrary::add` ends with `by_id_[a.id] = std::move(a)`,
+   silently replacing an earlier pack's archetype. Synthetic spells are therefore compiled into a
+   **per-archetype list** and registered into the shared book in `load()` once the final archetype
+   set is known (or the replaced archetype's entries are erased on override). If registration fails,
+   nothing is left half-registered (all-or-nothing per `load()`).
+4. **Known spells without a `spellcasting` block.** Combat requires the caster to know the spell
+   (`spells_known`) and installs spell hooks only when the book is non-empty. A monster with
+   `save_effect` but no `spellcasting` block has `caster_level == 0` (and `content.cpp` rejects
+   `caster_level` outside 1..20 for blocks that exist), so the compile path appends to
+   `spells_known` itself and never requires a block. Side effect, noted: a pack that had no spells
+   now yields a non-null book for those combats. Old content is unaffected (nothing in the installed
+   hooks fires without a cast), and the compat goldens prove it.
 
 ```cpp
 // rules5e/spells.hpp (append to SpellDef; defaults preserve every existing spell)
 struct SpellDef {
     // ... existing fields ...
-    bool    is_spell = true;       // false: no SpellCast window (cannot be Counterspelled), no
-                                   //        components, SaveSource.magical = (magical flag)
-    bool    magical = true;        // feeds SaveSource / RollTrait "against magic" (#54)
-    uint8_t usage_kind = 0;        // 0 none/at-will, 1 recharge, 2 per-day/rest (FeatureUses), 3 pool
+    bool    is_spell = true;       // false: no SpellCast window (cannot be Counterspelled), no components
+    bool    magical = true;        // SaveSource.magical (#54): breath weapons are NOT magical
+    int8_t  fixed_dc = 0, fixed_attack = 0;   // 0 = derive from the caster
+    uint8_t usage_kind = 0;        // 0 at-will, 1 recharge, 2 per-day/rest (FeatureUses), 3 pool
     uint8_t recharge_min = 0;      // usage_kind == 1
     uint32_t pool_id = 0; uint8_t pool_cost = 0;   // usage_kind == 3
 };
 ```
 
-Synthetic id: `fnv1a("<archetype id>#<action id>")` with the high bit set (so it cannot collide
-with content spell ids, which sim already hashes without it). The action is offered through
-`legal_actions` as `CastSpell` with `spell_level = 0` (no slot) and carries `usage`. Area targets
-(who is inside the cone) are **supplied by the caller** in `ActionRequest::targets` exactly as for
-`Fireball` today. R-G10 (Engine Core) turns `area` into a target list; until it lands, AI/tests
-list targets explicitly and the template fields are validated but only used for UI hints.
+`is_spell = false` is a **rules** change (suppress the `SpellCast` window, route `magical` into
+`SaveSource`); sim cannot do it alone, hence Rules goes first in §12. The action is offered through
+`legal_actions` as `CastSpell` with `spell_level = 0`, carrying `usage`. Area targets are
+**caller-supplied** in `ActionRequest::targets` first (Q8, decided); `area` is validated and used
+for UI hints only until the area-template PR.
 
 ### 2.4 Recharge
 
@@ -183,12 +267,13 @@ Two surfaces, one object model.
 on character `attacks`): effects that happen *because this attack hit* (Grapple on hit, Poison
 bite save, Pounce prone, Stunning Strike-style save_condition).
 
-**(b) Triggers**: effect `kind: "trigger"` in `traits[]` / `features[]` (character `features[]`
+**(b) Event effects**: effect `kind: "on_event"` (renamed from "trigger" so it cannot be confused with
+the reaction `window` of §4 or `ReadiedTrigger`) in `traits[]` / `features[]` (character `features[]`
 carry the same effect object): effects that happen on an *event*, independent of one action
 (Sneak Attack, Rampage, Undead Fortitude, Death Burst, Divine Smite).
 
 ```json
-"$defs/trigger": { "type":"object", "additionalProperties": false,
+"$defs/on_event_effect": { "type":"object", "additionalProperties": false,
   "required": ["on", "effects"],
   "properties": {
     "on": { "enum": ["hit", "crit", "damage_dealt", "reduce_to_zero", "drop_to_zero", "death", "turn_start", "turn_end"] },
@@ -219,7 +304,7 @@ carry the same effect object): effects that happen on an *event*, independent of
 | `target_creature_type` / `not_creature_type` | creature type list | smites vs undead/fiends |
 | `damage_type_not` / `damage_type_is` | damage types | Undead Fortitude (not radiant) |
 | `not_crit` | none | Undead Fortitude |
-| `moved_at_least_ft` | `ft` | Charge, Pounce (20 ft). Approximation, see below (Q4 decided) |
+| `moved_at_least_ft` | `ft` (counted by rules as tiles x 5, §3.2) | Charge, Pounce (20 ft). Approximation, see below (Q4 decided) |
 | `self_hp_below` | `{num, den}` | Rampage-style gates |
 | `save` | `{ability, dc, dc_from_damage?: true}` | Undead Fortitude: Con save DC `5 + damage taken` (`dc_from_damage`) |
 
@@ -227,38 +312,50 @@ carry the same effect object): effects that happen on an *event*, independent of
 
 | `kind` | Fields | Rules mapping |
 |---|---|---|
-| `extra_damage` | `damage[]` (v1 `damage`), `scale?: {per_levels:{class?,every,add_dice}}` | added to the attack's damage roll (crit doubles) |
+| `extra_damage` | `damage[]` (`$defs/damage`, type may be `rider_damage_type`), `scale?: $defs/scaling` | added to the attack's damage roll (crit doubles) |
 | `save_condition` | `save`, `apply[]` (as §2.1), `damage[]?`, `on_success` | `ActiveSpellEffect`, same as §2 |
 | `apply_condition` | `apply[]` (no save) | prone on hit etc. |
 | `heal_self` / `temp_hp` | `dice` or `amount` | |
 | `set_hp` | `{value}` (e.g. 1) | Undead Fortitude: cancels the drop to 0 |
 | `bonus_attack` | `{attack_id}` | Rampage: a bonus-action attack granted to `TurnBudget` |
 | `area_save` | `$defs/area` + `save` + `damage[]` + `on_success` | Death Burst (centered on owner) |
-| `spend` | `{pool, amount}` or `{slot: "any"|level}` | Divine Smite spends a slot, scaling `extra_damage` by slot level (`scale.per_slot_level`) |
+| `spend` | `{pool, cost}` or `{slot: "any"|level}` | Divine Smite spends a slot, scaling `extra_damage` by slot level (`scaling.per_slot_level`) |
 | `grapple`, `swallow` | reserved | **rejected by the validator** until R-G8 (conditions with a source) lands |
 
 Examples:
 
 ```json
-{ "kind": "trigger", "on": "hit", "limit": "once_per_turn",
+{ "kind": "on_event", "on": "hit", "limit": "once_per_turn",
   "when": [ {"kind":"weapon","is":"finesse_or_ranged"}, {"kind":"advantage_or_ally_adjacent"} ],
   "effects": [ {"kind":"extra_damage","damage":[{"dice":"1d6","type":"same_as_weapon"}],
-                "scale":{"every_levels":2,"add_dice":"1d6","class":"rogue"}} ] }
+                "scale":{"per_levels":{"class":"rogue","every":2,"add_dice":"1d6"}}} ] }
 
-{ "kind": "trigger", "on": "drop_to_zero", "when": [ {"kind":"damage_type_not","types":["radiant"]},
+{ "kind": "on_event", "on": "drop_to_zero", "when": [ {"kind":"damage_type_not","types":["radiant"]},
                                                        {"kind":"not_crit"},
                                                        {"kind":"save","ability":"con","dc_from_damage":true,"base":5} ],
   "effects": [ {"kind":"set_hp","value":1} ] }
 ```
 
 **Charge/Pounce limitation (Q4, decided).** `moved_at_least_ft` means "the owner has moved at least
-`ft` feet this turn (`TurnBudget::moved_ft`) before the attack". There is no path history, so the
+`ft` feet this turn (`TurnBudget::moved_ft`, rules-side, tiles x 5) before the attack". There is no path history, so the
 SRD requirement that the movement be *in a straight line toward the target* is **not** enforced: a
 creature that walks 20 ft sideways or away and then attacks still qualifies. This is slightly
 generous to the attacker. If it matters later, a sim-supplied `charged_straight` fact can be added
 as a new predicate without changing this one.
 
-(`type: "same_as_weapon"` is a documented extension of v1 `damage_type` valid only inside riders.)
+`$defs/scaling` (one shape for Sneak Attack dice, Divine Smite slots and any future scaling):
+
+```json
+"scaling": { "type":"object", "additionalProperties": false, "minProperties": 1, "properties": {
+  "per_levels":     {"type":"object","additionalProperties":false,"required":["every","add_dice"],
+                     "properties":{"class":{"$ref":"#/$defs/local_id"},"every":{"type":"integer","minimum":1},
+                                   "add_dice":{"$ref":"../common/v1.schema.json#/$defs/dice"}}},
+  "per_slot_level": {"type":"object","additionalProperties":false,"required":["base_level","add_dice"],
+                     "properties":{"base_level":{"type":"integer","minimum":1,"maximum":9},
+                                   "add_dice":{"$ref":"../common/v1.schema.json#/$defs/dice"}}} } }
+```
+
+`type: "same_as_weapon"` is valid only through `rider_damage_type` (§1.2), never in v1's `damage_type`.
 
 ### 3.2 Rules sketch
 
@@ -272,7 +369,9 @@ struct RiderEffect { uint8_t kind; DiceExpr dice{}; DamageType type{}; int16_t v
 struct Trigger { uint32_t id; TriggerOn on; TriggerLimit limit; ReactionPolicy choice;
                  std::vector<Predicate> when; std::vector<RiderEffect> effects; };
 // Combatant (appended): std::vector<Trigger> triggers;
-// TurnBudget (appended): uint32_t triggers_used_mask; uint16_t moved_ft;
+// TurnBudget (appended): uint32_t triggers_used_mask; uint16_t moved_ft; uint8_t extra_actions;
+// moved_ft is RULES-side: incremented by Move in rules5e as (tiles moved x 5). NOT move_ft, which sim
+// passes from grid_.move_cost_ft and doubles on difficult terrain. Out-of-turn readied moves are not counted.
 ```
 
 Hook points in `encounter.cpp` (all are existing internal functions; no new public step kind):
@@ -297,8 +396,8 @@ Events: `FeatureTriggered` (§9.1). Damage from riders is folded into the existi
 
 ### 3.3 Inert behaviour
 
-* Old traits whose effect `kind` is `trigger` do not exist (open effect, none shipped).
-  `3→4` marks any pre-existing `trigger`-kind effect `"inert": true` (§8.2).
+* Old traits whose effect `kind` is `on_event` do not exist (open effect, none shipped).
+  `3→4` marks any pre-existing `on_event`-kind effect `"inert": true` (§8.2).
 * `on_hit[]` is a new property of attack actions: absent in all `@≤3` files by schema.
 * Descriptive Sneak Attack / Rampage / Undead Fortitude text remains description.
 
@@ -306,32 +405,69 @@ Events: `FeatureTriggered` (§9.1). Damage from riders is folded into the existi
 
 ### 4.1 Content shape
 
-`reactions[]` exists in `common@1 stat_block` and is descriptive today (sim ignores it). In
-`common@2 $defs/reaction` it becomes mechanical:
+`reactions[]` and `bonus_actions[]` exist in `common@1 stat_block` as lists of v1 `action`
+and are descriptive today (sim ignores them). In `common@2` each entry is a **`oneOf` of exactly two
+closed shapes**, so a migrated old entry still validates:
+
+```json
+"reactions": { "type":"array", "items": { "oneOf": [
+    { "$ref": "#/$defs/reaction" },                    // mechanical (new at @4)
+    { "$ref": "#/$defs/legacy_action" } ] } }          // v1 action shape, requires "inert": true
+"bonus_actions": { "type":"array", "items": { "oneOf": [
+    { "$ref": "#/$defs/action" },                      // mechanical: any v2 action kind except "special"
+    { "$ref": "#/$defs/legacy_action" } ] } }
+"legacy_action": { "allOf": [ {"$ref":"../common/v1.schema.json#/$defs/action"} ],
+                   "required": ["inert"], "properties": { "inert": {"const": true} } }
+```
+
+(`legacy_action` is v1's action plus the marker; v1's closed `properties` get `inert` added by
+re-declaring the def in `common@2`, since a plain `allOf` over a closed v1 def would reject it.
+The two arms are mutually exclusive: `reaction` requires `window`/`effect` and forbids `inert`;
+`legacy_action` requires `inert`.)
+
+* **Migration stamps `inert: true` per entry** (not just a file-level marker): every `reactions[]`
+  entry, and every `bonus_actions[]` entry **that `@4` would load**, meaning `kind` other than
+  `special` (a `special` bonus action stays descriptive at `@4` exactly as it is at `@3`, so it is
+  neither loaded nor stamped). The file-level `inert_mechanics` list also gets `"reactions"` /
+  `"bonus_actions"` when at least one entry was stamped (§8.2), so reporting stays uniform.
+* `cost: "reaction"` on trait/feature effects becomes legal at `@4`. This is a **`common@2
+  effect_cost` change** (v1's enum documents `reaction` as reserved; v2's enum is the same three
+  values but the v2 validator row *accepts* it, where the v1 row rejects it for `@≤3` files).
 
 ```json
 "$defs/reaction": { "type":"object", "additionalProperties": false,
-  "required": ["id","name","trigger","effect"],
+  "required": ["id","name","window","effect"],
   "properties": {
-    "id": {"$ref":"#/$defs/local_id"}, "name": {"type":"string"}, "description": {"type":"string"},
-    "trigger": { "type":"object", "additionalProperties": false, "required":["kind"], "properties": {
+    "id": {"$ref":"../common/v1.schema.json#/$defs/local_id"}, "name": {"type":"string"}, "description": {"type":"string"},
+    "window": { "type":"object", "additionalProperties": false, "required":["kind"], "properties": {
         "kind":  {"enum": ["being_hit","damaged","leaving_reach","ally_attacked","spell_cast","roll_attack"]},
         "melee_only": {"type":"boolean"}, "ranged_only": {"type":"boolean"},
         "source": {"enum": ["self","ally_within_5ft"], "default": "self"},
         "visible": {"type":"boolean","default":true} } },
-    "effect": { "oneOf": [
-        { "properties": {"kind":{"const":"ac_bonus"},       "bonus":{"type":"integer"}},  "comment": "Parry, Shield" },
-        { "properties": {"kind":{"const":"reduce_damage"},  "fraction":{"enum":["half"]}, "dice":{"$ref":"#/$defs/dice"}}, "comment": "Uncanny Dodge, Deflect Missiles" },
-        { "properties": {"kind":{"const":"impose_disadvantage"}}, "comment": "Protection" },
-        { "properties": {"kind":{"const":"retaliate"},      "damage":{}, "save":{}},       "comment": "Hellish Rebuke, Fire Shield-style" },
-        { "properties": {"kind":{"const":"attack"},         "attack_id":{}},              "comment": "OA-style, Riposte" },
-        { "properties": {"kind":{"const":"cast"},           "spell":{"$ref":"#/$defs/content_id"}}, "comment": "monster casts Shield/Counterspell via its spellcasting list" },
-        { "properties": {"kind":{"const":"subtract_roll"},  "dice":{"$ref":"#/$defs/dice"}}, "comment": "Cutting Words (phase 2, needs roll window)" } ] },
+    "effect": { "$ref": "#/$defs/reaction_effect" },
     "usage": {"$ref":"#/$defs/usage"} } }
+
+"reaction_effect": { "type":"object", "required":["kind"], "additionalProperties": false,
+  "properties": { "kind": {"enum":["ac_bonus","reduce_damage","impose_disadvantage","retaliate","attack","cast","subtract_roll"]},
+                  "bonus":{"type":"integer"}, "fraction":{"const":"half"}, "dice":{"$ref":"../common/v1.schema.json#/$defs/dice"},
+                  "damage":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/damage"}},
+                  "save":{"$ref":"#/$defs/save"}, "on_success":{"enum":["half","none"]},
+                  "attack_id":{"$ref":"../common/v1.schema.json#/$defs/local_id"},
+                  "spell":{"$ref":"../common/v1.schema.json#/$defs/content_id"} },
+  "allOf": [
+    { "if": {"properties":{"kind":{"const":"ac_bonus"}}},            "then": {"required":["bonus"], "not":{"anyOf":[{"required":["fraction"]},{"required":["dice"]},{"required":["damage"]},{"required":["attack_id"]},{"required":["spell"]}]}} },   // Parry, Shield
+    { "if": {"properties":{"kind":{"const":"reduce_damage"}}},       "then": {"oneOf":[{"required":["fraction"]},{"required":["dice"]}]} },                                                                                  // Uncanny Dodge, Deflect Missiles
+    { "if": {"properties":{"kind":{"const":"impose_disadvantage"}}}, "then": {"not":{"anyOf":[{"required":["bonus"]},{"required":["fraction"]},{"required":["dice"]},{"required":["damage"]},{"required":["attack_id"]},{"required":["spell"]}]}} },  // Protection
+    { "if": {"properties":{"kind":{"const":"retaliate"}}},           "then": {"required":["damage"]} },                                                                                                                       // Hellish Rebuke (save optional)
+    { "if": {"properties":{"kind":{"const":"attack"}}},              "then": {"required":["attack_id"]} },                                                                                                                    // Riposte
+    { "if": {"properties":{"kind":{"const":"cast"}}},                "then": {"required":["spell"]} },                                                                                                                        // monster casts a listed spell
+    { "if": {"properties":{"kind":{"const":"subtract_roll"}}},       "then": {"required":["dice"]} } ] }                                                                                                                      // Cutting Words: reserved (Q6)
 ```
 
-`cost: "reaction"` on trait/feature effects becomes legal at `@4` (it is a schema error at `@≤3`).
-All reactions share the one-reaction-per-round budget (`Combatant::reaction_used`, unchanged).
+(`save` is a shared `{ability, dc}` def, the same object as `save_effect.save`.)
+The trigger field of v1-style prose is renamed **`window`** so it is never confused with
+`on_event` effects (§3) or the rules `ReadiedTrigger`. All reactions share the one-reaction-per-round
+budget (`Combatant::reaction_used`, unchanged).
 
 ### 4.2 Rules sketch
 
@@ -359,8 +495,8 @@ addition (deduplicated by `attack_id`), so a creature never gets two OAs.
 ### 4.3 Version gate and inert behaviour
 
 * `@4` documents: `reactions[]` entries are validated and compiled.
-* `@≤3` documents migrate with `inert_mechanics: ["reactions"]` whenever `reactions` is non-empty
-  (sim: `Archetype::reactions` stays empty, `Archetype::inert_mechanics` reports it). Any
+* `@≤3` documents migrate with each `reactions[]` entry stamped `inert: true` and `"reactions"` added to
+  `inert_mechanics` (sim: `Archetype::reactions` stays empty, `Archetype::inert_mechanics` reports it). Any
   `cost: "reaction"` effect cannot exist at `@≤3` (schema).
 * No options means no window and no `NeedsDecision`, which is the pre-bump flow.
 
@@ -378,9 +514,9 @@ superset in `common@2 $defs/spellcasting`:
 | `innate` | object | below |
 | `innate.ability` | `$defs/ability` | |
 | `innate.components` | `"none"` \| `"as_listed"` | default `"none"` (SRD innate casting needs no components) |
-| `innate.at_will` | `local_id/content_id[]` | spell content ids |
-| `innate.per_day` | `{ "1": [...], "2": [...], "3": [...] }` | key = uses/day |
-| `innate.recharge` | `[{spell, min}]` | rare ("Recharge 6"), uses `$defs/usage` semantics |
+| `innate.at_will` | `content_id[]` | spell content ids (`$defs/content_id`, same as `spells[]`) |
+| `innate.per_day` | `{ "1": [content_id...], "3": [content_id...] }` | key = uses/day (`1..9`), values `content_id[]` |
+| `innate.recharge` | `[{spell: content_id, min}]` | rare ("Recharge 6"), `usage.recharge` semantics |
 
 ```json
 "spellcasting": { "ability": "int", "caster_level": 9, "slots": {"1":4,"2":3,"3":3,"4":3,"5":1},
@@ -406,7 +542,7 @@ struct InnateSpell { uint32_t spell_id; uint8_t uses_max;   // 0 = at will
 `legal_actions` offers `CastSpell{spell, innate=true}` for each innate spell with uses left
 (`spell_level` is the spell's own level; upcasting disallowed). The DC/attack override feeds
 `caster_spell_dc()` / `caster_spell_attack()` ahead of the derived values. `InnateSpell` uses are part
-of encounter state and are restored by `recover_features(long_rest)`. Spells cast by `cast` reactions
+of encounter state and start full each encounter (no rest model, Q16). Spells cast by `cast` reactions
 (§4) go through the same list.
 
 ## 6. Timed buffs and debuffs (R-G3)
@@ -414,35 +550,40 @@ of encounter state and are restored by `recover_features(long_rest)`. Spells cas
 ### 6.1 Model
 
 A *modifier* is a timed, sourced change to one number or roll. It generalizes `RollTrait` (#54)
-and the `ac_bonus` spell effect (which is only an instantaneous reaction today).
+and the `ac_bonus` spell effect (instantaneous reaction today). **Integers only** (no float
+`multiply`): speed scaling is `speed_scale: "half" | "double"` or a `{num, den}` pair.
 
 ```json
 "$defs/modifier": { "type":"object", "additionalProperties": false, "required": ["stat","duration"],
   "properties": {
     "stat": { "enum": ["attack_roll","save","ability_check","ac","speed","damage","temp_hp",
                        "resistance","attacks_against","advantage_on","disadvantage_on"] },
-    "bonus":   {"type":"integer"}, "die": {"$ref":"#/$defs/dice"},           // Bless: stat save/attack_roll, die 1d4
-    "set":     {"type":"integer"},                                            // reserved; rejected for stat "ac" at @4 (Q15, decided)
-    "multiply":{"enum":[0.5,2]},                                              // Haste/Slow speed
-    "damage_type": {"$ref":"#/$defs/damage_type"},                            // resistance / damage
-    "ability": {"$ref":"#/$defs/ability"},                                    // save/check scoped
+    "bonus": {"type":"integer"},
+    "die":   {"$ref":"../common/v1.schema.json#/$defs/dice"},                 // Bless: stat attack_roll/save, die 1d4
+    "speed_scale": { "oneOf": [ {"enum":["half","double"]},
+                    {"type":"object","additionalProperties":false,"required":["num","den"],
+                     "properties":{"num":{"type":"integer","minimum":1},"den":{"type":"integer","minimum":1}}} ] },
+    "damage_type": {"$ref":"../common/v1.schema.json#/$defs/damage_type"},   // resistance / damage
+    "ability": {"$ref":"../common/v1.schema.json#/$defs/ability"},            // save/check scoped
     "applies_to": {"enum":["self","target","allies_within_30"]},
-    "duration": { "oneOf": [
-        {"properties":{"kind":{"const":"rounds"},"n":{"type":"integer"}}},
-        {"properties":{"kind":{"const":"until_start_of_caster_turn"}}},
-        {"properties":{"kind":{"const":"until_end_of_target_turn"}}},
-        {"properties":{"kind":{"const":"concentration"}}},
-        {"properties":{"kind":{"const":"until_rest"}}} ] },
-    "stacks": {"enum":["replace","stack"],"default":"replace"} } }
+    "duration": {"$ref":"#/$defs/modifier_duration"},
+    "stacks": {"enum":["replace","stack"],"default":"replace"} },
+  "allOf": [
+    { "if": {"properties":{"stat":{"const":"speed"}}}, "then": {"required":["speed_scale"]},
+      "else": {"not":{"required":["speed_scale"]}} } ] }
+
+"modifier_duration": { "type":"object", "required":["kind"], "additionalProperties": false,
+  "properties": { "kind": {"enum":["rounds","until_start_of_caster_turn","until_end_of_target_turn","concentration","until_rest"]},
+                  "n": {"type":"integer","minimum":1} },
+  "allOf": [ { "if": {"properties":{"kind":{"const":"rounds"}}}, "then": {"required":["n"]}, "else": {"not":{"required":["n"]}} } ] }
 ```
 
-Surfaces:
+`ac` modifiers are `bonus`-only in this batch (Q15); there is no `set`. Surfaces:
 
-* **Spells (additive, no bump)**: `spell@1` effect kind `apply_modifier` with `modifier`
-  (Bless, Bane, Shield of Faith, Haste, Slow, Faerie Fire via `attacks_against`+advantage, Hunter's
-  Mark via `damage`). This is why §1 says R-G3 is batch N on the spell side.
-* **Features/traits (`@4`)**: effect kind `apply_modifier` with `cost`/`usage` (Rage, Bardic
-  Inspiration token, Leadership, Frightful Presence `apply[]` is §2's condition path, not this).
+* **Spells (additive, no bump)**: `spell@1` effect kind `apply_modifier` with `modifier` (Bless,
+  Bane, Shield of Faith, Haste, Slow, Faerie Fire via `attacks_against`, Hunter's Mark via `damage`).
+* **Features/traits (`@4`, Q2 decided)**: effect kind `apply_modifier` (Rage, Bardic Inspiration
+  token, Leadership). Frightful Presence's conditions use §2's `apply[]`, not this.
 
 ### 6.2 Rules sketch
 
@@ -500,8 +641,8 @@ Feature effect kinds that become available at `@4` and need pools or grants:
 | `grant_action` | Action Surge, Haste-like | `UseFeature` increments `TurnBudget::extra_actions` (Q7, decided) |
 | `apply_modifier` | Rage (+dmg, resistances) | §6 |
 | `save_effect` action with `usage.pool` | Turn Undead, Stunning Strike | §2 |
-| `heal_pool` | Lay on Hands: spend N from a pool to heal N | `UseFeature` with `amount` (appended `ActionRequest::amount`) |
-| `trigger` + `spend` | Divine Smite, Sneak-style resource riders | §3 |
+| `heal_pool` | Lay on Hands: spend N from a pool to heal N | `UseFeature` with `amount` (reuses the **existing** `ActionRequest::amount`, as Heal does) |
+| `on_event` + `spend` | Divine Smite, Sneak-style resource riders | §3 |
 
 ### 7.2 Rules sketch
 
@@ -513,8 +654,11 @@ bool can_spend(const EncounterState&, CombatantId, uint32_t pool_id, uint16_t n)
 ```
 
 `UseFeature` is unchanged for the old path; a feature with a pool cost requires `can_spend` in
-`legal_actions` and emits `ResourceSpent`. There is no rest model in the encounter: sim/Combat
-call `recover_features` between encounters as today.
+`legal_actions` and emits `ResourceSpent`. There is **no rest model** in this batch (Q16, decided). `recover_features` exists in rules but
+nothing in sim or game calls it: `Combat::create` registers fresh `FeatureUses` rows from the archetype
+and copies spell slots from the archetype each time, so uses, innate spells and pools **start full in
+every encounter** and recharge only through their in-combat rules (recharge d6). A real rest model
+needs persistent party/creature state outside `Combat` and is its own design.
 
 ### 7.3 Inert behaviour
 
@@ -526,31 +670,61 @@ call `recover_features` between encounters as today.
 ### 8.1 Chain
 
 `monster_3_to_4`, `character_3_to_4` registered in `engine/core/assets/.../content_migrations.hpp`
-alongside `2→3`. `common@2` has no document type of its own, so no `common` migration. Both are
-pure, idempotent, order-independent, and preserve key order.
+alongside `2→3`. `common@2` has no document type, so no `common` migration. Both are pure,
+idempotent, preserve key order, and are **functions of old data only**.
 
 ### 8.2 What `3→4` writes
 
 1. Set `$schema` to the `@4` tag.
-2. `reactions` non-empty ⇒ append `"reactions"` to `inert_mechanics`.
-3. `bonus_actions` non-empty ⇒ append `"bonus_actions"` (`@4` reads `bonus_actions[]` as real
-   actions; at `@3` it was never loaded).
-4. For every `traits[]` / `features[]` entry whose `effect.kind` ∈ **new-kind set** (`trigger`,
-   `apply_modifier`, `grant_action`, `heal_pool`, `save_effect`, `reaction`, any kind introduced by
-   this batch) set `effect.inert = true`. Sim already lists these in `Archetype::inert_features`.
-5. `inert_mechanics` stays sorted/deduplicated; existing `2→3` entries are preserved.
-6. Never touch `actions[]` (`special` keeps its descriptive meaning), `spellcasting`, `size`,
-   defenses, anything already live at `@3`.
+2. `reactions[]`: stamp `inert: true` on **every** entry; if any were stamped, add `"reactions"` to
+   `inert_mechanics`.
+3. `bonus_actions[]`: stamp `inert: true` only on entries `@4` would load (`kind != "special"`); if any,
+   add `"bonus_actions"`.
+4. For every `traits[]` / `features[]` entry whose `effect.kind` is in the **frozen literal list**
+   `{on_event, apply_modifier, grant_action, heal_pool, save_effect, reaction}` set `effect.inert = true`.
+   The list is a literal inside the migration, **not** "whatever this batch introduces": a later
+   batch gets its own `4→5` list. (`self_heal`, `damage_bonus`, `bonus_action_grant` are live at `@3`
+   and are never marked.)
+5. **Merge, never overwrite**, `inert_mechanics`: read the existing array (`2→3` writes entries such
+   as `damage[1..]`), union, sort, dedup. The `2→3` helper `mark_defenses_inert` assigns the whole
+   array; the `3→4` migration must not copy that pattern (test: a file with both `damage[1..]` and
+   `reactions`).
+6. Never touch `actions[]` (`special` stays descriptive), `spellcasting`, `size`, defenses, `legendary_actions`,
+   or anything live at `@3`.
 
 ### 8.3 Loader contract (Engine Core / T&C)
 
-`sim::ContentLibrary` already ignores whatever `inert_mechanics` lists. New rules:
+`sim::ContentLibrary` already ignores whatever `inert_mechanics` lists, and `content.cpp` checks
+`effect.inert` **before** hook lookup, so a marked effect lands in `inert_features` even once the
+registry learns the kind. New: the loader honours `reactions` and `bonus_actions` markers and the
+per-entry `inert` stamps.
 
-* New keys the loader must honour: `reactions`, `bonus_actions`.
-* `FeatureRegistry` must refuse a *new-set* kind from any document whose schema tag < 4 even
-  without the marker (defence in depth against hand-edited migrated content).
-* Validator (`tools/validate`): `KNOWN_EFFECT_KINDS_V4`; per-tag allowed sets; error on `@≥4`
-  grapple/swallow riders until R-G8; warn (not error) on unknown kinds, unchanged.
+**Registry refusal rule (Q12, approved), made implementable.** A second line of defence: a
+new-set kind in a document that *declared* a version below 4 is **listed as inert and skipped** (the
+same outcome as the marker path), **never a load error**: compat content must always load. The
+migrated document's `$schema` is already `@4`, so the check needs the *declared* version
+(`LoadResult::declared.version`), which today never reaches `ContentLibrary::add()` or
+`FeatureRegistry::add()`. Sim-side work (Engine Core): pass `declared.version` into `add()`
+(public API, so T&C must agree) and onto `FeatureBuildCtx`, and apply the refusal there.
+
+**Validator (`tools/validate`):**
+
+* Per-tag table (§1.2); no ad hoc version branches.
+* **Migrated files skip or relax `inert: true` effects:** a `@4` document produced by migration may
+  carry effects of new kinds with `inert: true` whose parameters were never validated at the time
+  (they were descriptive). The validator accepts an `inert: true` effect of a new-set kind without
+  validating its parameters beyond `kind` (it is data kept for reporting), and does *not* count it as
+  unknown-kind noise.
+* Errors on `@≥4`: `grapple`/`swallow` riders (until R-G8); `cost` outside the v2 enum; unknown
+  `window` / predicate / rider kinds. Warnings (unchanged): unknown effect kinds.
+* **Cross-reference checks (new):**
+  1. `on_hit[]`/rider `attack_id`, `reaction_effect.attack_id`, and `bonus_attack.attack_id` must name an `id` in the same document's `actions[]`.
+  2. `usage.pool` / `spend.pool` must name a `resources[].id` of the same document; `cost` may not exceed the pool's `max` (when `max` is a constant).
+  3. `spellcasting.spells` / `innate.*` / `reaction_effect.spell` content ids must resolve in the loaded pack set (as `spells[]` does today).
+  4. Every `save_effect.id` is unique within the document and `"<archetype id>#<id>"` contains exactly one `#` (spell-id derivation, §2.3).
+  5. `multiattack` sequence entries (as the existing field expresses them) reference existing attack ids.
+  6. `item@1` ids referenced from `character@4 equipment` resolve (§10).
+  7. `forward_compat` values are in the known enum.
 
 ### 8.4 Compat behaviour goldens (CONTENT_COMPAT §2)
 
@@ -559,12 +733,29 @@ New *decorated* fixtures per piece prove "descriptive stays descriptive":
 | Fixture (at `@3`) | Must digest identically to |
 |---|---|
 | fl1 goblin + descriptive `special` breath weapon, `reactions: [Parry]`, `bonus_actions: [Nimble Escape]` | the undecorated fl1 goblin |
-| fl1 fighter with a trait effect `{kind:"trigger", ...}` and `{kind:"apply_modifier", ...}` | the undecorated fighter |
+| fl1 fighter with trait effects `{kind:"on_event", ...}` and `{kind:"apply_modifier", ...}` | the undecorated fighter |
 | Same two, run through `3→4` | themselves (the migrated form plays like the `@3` one) |
 
-None of these re-pin anything.
+Expected migration output for existing frozen fixtures: the `fl*` files gain `inert_mechanics` /
+per-entry `inert` stamps **only** where they have non-empty `reactions` / loadable `bonus_actions`
+(the goblin's descriptive entries do). No frozen file is edited (`compat_freeze` unaffected); the
+stamps exist only in migrated in-memory form, and tests assert exactly that.
 
-## 9. Event schema impact and golden hashes
+### 8.5 Luau API level 2 and manifest `api_level` (approved)
+
+`manifest@1.api_level` is `const: 1` today. This batch widens it **additively** to `enum [1, 2]` (no
+manifest tag change). **Level 2** is the script API that can see `@4` content: reaction/resource/
+modifier queries, the new `EventKind`s 39+ in the event feed, and `ActionUsed`-style casts. Rules:
+
+* A pack containing any `@4` or `item@1` document must declare `api_level >= 2` (validator error otherwise,
+  because the engine exposes level-2 semantics to that pack's scripts).
+* **Level-1 scripts see exactly what they see today**: the script event feed filters rules kinds
+  above `SpellCheckRolled` for `api_level 1` packs (ARCHITECTURE.md, script API levels: "old semantics stay behind the
+  old level"), so a level-1 pack that loads against the new engine is observably identical.
+* `engine_min`/`feature_level` handling is unchanged. Details of the level-2 definitions file
+  (`engine.level2.d.luau`) are script_host/T&C work, listed in §12.
+
+## 9. Event schema impact, hashing and golden hashes
 
 ### 9.1 New `rules5e::EventKind` values (append after `SpellCheckRolled` = 38)
 
@@ -575,58 +766,110 @@ None of these re-pin anything.
 | 41 | `ResourceSpent` | actor, -, pool id, amount, remaining | §7 |
 | 42 | `ModifierApplied` | caster, target, modifier id, stat, magnitude | §6 |
 | 43 | `ModifierExpired` | caster, target, modifier id, reason, - | §6 |
+| 44 | `ActionUsed` | actor, first target, action/spell id, `is_spell` (0/1), usage kind | §2 |
 
-`kEventKindCount` grows by 5 and `kLastRulesEventKind` moves to `ModifierExpired`. Sim events:
-`SimEvent::Kind` is unchanged (rules events pass through as today). Casting uses the existing
-`SpellCast`/`SpellResolved` kinds for synthetic save spells, with `is_spell = false` recorded in a
-flag bit of `c`; no dedicated `ActionUsed` kind (Q9, decided).
+`ActionUsed` is a dedicated kind (Q9, revised on Engine Core's review): flag bits inside an existing
+payload are invisible to event-schema checks. Non-spell save actions emit `ActionUsed` *instead of*
+`SpellCast`, and still emit `SpellResolved`/save events as usual. `kEventKindCount` grows by 6 and
+`kLastRulesEventKind` moves to `ActionUsed`. `SimEvent::Kind` is unchanged.
 
-### 9.2 Sim event schema
+### 9.2 Sim event schema: **v7**, on top of #55's v6
 
-`kSimEventSchemaVersion` 5 → **6**, in the first PR that appends an `EventKind` (the rules PR
-that adds `RechargeRolled`; later additions inside this batch extend v6, they do not each bump).
-Because `event_stream_version()` returns the *lowest* fitting version, a stream that contains none
-of kinds 39..43 still hashes under its old version and its digests are **byte-identical**. That is
-the whole golden story: old content never produces the new kinds (it has no recharge actions, no
-triggers, no modifiers, no pools, and §8 makes the markers inert), so nothing re-pins.
+#55 (footprint) already sets `kSimEventSchemaVersion = 6`, adds `SimEvent::Kind::Footprint` and
+rewrites `event_stream_version` to return 6 on a Footprint event. This batch is therefore **v7** and
+**depends on #55's v6 landing first** (or rebases onto it). Whichever PR merges second renumbers
+nothing: #55 keeps v6, this batch is v7 everywhere (code, `docs/SIM_EVENTS.md` table and changelog).
 
-Same-PR obligations (docs/SIM_EVENTS.md): update `kLastRulesEventKind`,
-`events_tests.cpp`, the sim "event layout" test, the §table and the changelog row for v6.
+**`event_stream_version` must change** (Engine Core, sim). Today it only inspects `SimEvent::Kind`
+(`SpellTarget` → 5, else 4) and never looks at `rules.kind`; kinds 39..44 are *rules* kinds that sim
+passes straight through (`apply_rules_events`), so the current function would hash a stream containing
+`RechargeRolled` as version 4/5 and the "lowest fitting version" argument would be false. New rule: a
+**max over constructs**, no early returns:
 
-### 9.3 Guards that make "no golden change" true
-
-* **RNG draw order.** New code draws from the stream only when new content is present
-  (recharge: only for creatures with a recharge action; modifier dice: only with a die modifier;
-  triggers: only the `save` predicate / extra dice of a *fired* trigger). A test replays every
-  existing golden fight and asserts the rng position after the fight is unchanged.
-* **State hash.** New `EncounterState` vectors (`action_uses`, `modifiers`, `pools`) and new
-  `Combatant` vectors are appended and hashed only when non-empty, so an
-  old encounter serializes to the same bytes as before (decided, Q10).
-* **`ActionRequest` / `ReactionDecision`** only gain trailing fields with defaults that equal the old
-  behaviour.
-* **`kReactionTriggerCount`** growth enlarges `reaction_policy`; confirm `Combatant` is not hashed
-  by raw bytes (it is serialized field by field; verified in the PR that makes the change, which
-  adds a test pinning it).
-
-## 10. `item@1` (only the slice these six topics need)
-
-Full equipment (armor AC formula, shields, magic bonuses, attunement) is its own proposal. The
-batch needs weapons to be data so Sneak Attack (`finesse`), riders and `same_as_weapon` damage have a
-source:
-
-```json
-"item@1": { "type":"weapon",
-  "id": "...", "name": "...",
-  "category": "simple|martial", "range": "melee|ranged",
-  "damage": [ {"dice":"1d6","type":"piercing"} ],
-  "properties": ["finesse","light","thrown"],       // vocabulary = rules5e/weapon.hpp (#53)
-  "reach_ft": 5, "normal_range_ft": 20, "long_range_ft": 60,
-  "magic_bonus": 0, "qualifiers": ["magical","silvered"],   // damage qualifiers, same as #53
-  "on_hit": [ ... §3 rider ... ] }                         // e.g. Flame Tongue extra damage
+```cpp
+uint32_t v = 4;
+for (const auto& e : events) {
+    if (e.kind == SimEvent::Kind::SpellTarget) v = std::max(v, 5u);
+    if (e.kind == SimEvent::Kind::Footprint)   v = std::max(v, 6u);     // #55
+    if (e.kind == SimEvent::Kind::Rules && uint8_t(e.rules.kind) > uint8_t(rules5e::EventKind::SpellCheckRolled))
+        v = std::max(v, 7u);
+}
+return v;
 ```
 
-`character@4` `equipment` may reference `item@1` ids; a `character@3` file's inline attack objects
-are untouched (no migration needed, nothing becomes mechanical).
+(The Footprint branch in #55 returns early; under v7 an early `return 6` would mask a later kind-39+
+event in the same stream, so #55's function is restructured into the max form by this change.) Tests:
+Footprint-only stream = 6; new-rules-kind-only = 7; both = 7; neither = unchanged (4/5). Old streams
+keep their digests **only if old content can never emit kinds 39+**, which is what the §8 gates
+guarantee and the compat goldens verify.
+
+Same-PR obligations: `kLastRulesEventKind`, `events_tests.cpp` layout pins (L57/L60 area), the sim
+"event layout" test, `docs/SIM_EVENTS.md` table and changelog row for v7, and the
+`game/vertical_slice` `known_rules_kind` tests in `event_feed_tests.cpp` ("kLast+1 is unknown").
+
+### 9.3 What is actually hashed (rewritten against `main`)
+
+There is **no** `EncounterState` serializer or hash in production. The digests are:
+
+* `Combat::hash()`: seed, every event field, per-slot position/hp/dead flag, then
+  `feature_uses_digest` **only if `!state_.features.empty()`**;
+* `Combat::log_hash()`: the request fields listed explicitly;
+* `event_stream_hash` (`events.cpp`): stream version, count, every event field.
+
+(The rules tests' `state_hash`/`hash_state` helpers are test-local and cover a hand-picked subset.)
+New `Combatant`/`EncounterState` vectors are therefore **digest-neutral unless sim folds them in**,
+and the rule that keeps goldens identical is the existing `features` precedent: **fold only when
+non-empty** (Q10, decided), with these obligations:
+
+1. New sections fold in `Combat::hash()` *after* the features fold, each guarded by its own `!empty()`.
+2. **One tag byte before each folded section** (e.g. `0xA1` action_uses, `0xA2` modifiers, `0xA3`
+   pools, `0xA4` innate). The precedent writes a bare `u64`; with several optional bare `u64`s "pools only"
+   and "modifiers only" would hash identically. The tags also keep the existing features fold unambiguous.
+3. Rows are registered **at setup only for new content** (like `register_feature`); an old archetype
+   must leave all new vectors empty. An old archetype registering any row would re-pin every golden.
+4. Hashing of the new state is for desync detection, not golden coverage (the events already expose
+   it); it is included for completeness but each section is individually droppable.
+5. **`log_hash` omits `spell_id`, `spell_level`, `targets`, `multiattack`, `ally_near_target` and
+   `amount`.** This proposal does *not* fix that (doing so re-pins `vertical_slice_tests.cpp`'s
+   `log_hash`). New `ActionRequest` fields (`innate`, `choice`, any aim tile) are folded **only when
+   non-default, under a tag byte**, so every existing log hashes as before.
+
+### 9.4 Guards that make "no golden change" true
+
+* **RNG draw order.** New code draws only when new content is present: recharge d6 (creatures with a
+  recharge action only), modifier dice (only with a die modifier), trigger saves/extra dice (only on a
+  *fired* trigger). Placement is fixed: the recharge d6 is rolled in `begin_turn` **after `TurnStarted`
+  and repeat saves, before death saves** (rules `encounter.cpp` ~L497-520). A test replays every
+  existing golden fight and asserts the rng position after it is unchanged.
+* **`ActionRequest` / `ReactionDecision`** gain only trailing fields whose defaults equal the old behaviour.
+* **`kReactionTriggerCount`** growth enlarges `reaction_policy` (not hashed by raw bytes; `Combatant`
+  is not hashed at all, see 9.3); a test pins that the default policies are unchanged.
+* **Result:** no existing golden (`compat_*`, fl1, vertical_slice `log_hash`, event digests) changes.
+
+## 10. `item@1` (weapons, armor, shields; Director-approved)
+
+`item@1` makes equipment data so Sneak Attack (`finesse`), riders and `same_as_weapon` damage have a
+source, and so AC can be computed (§12 row 15). It discriminates on `category`, using the same
+`allOf`/`if` closed-properties pattern as everything else.
+
+```json
+"item@1": { "$schema": "item@1", "id": "content_id", "name": "string", "source": "$defs/source",
+  "category": "weapon | armor | shield" }
+```
+
+| `category` | Fields | Notes |
+|---|---|---|
+| `weapon` | `weapon_class` (`simple`\|`martial`), `range` (`melee`\|`ranged`), `damage[]` (`$defs/damage`), `properties[]` (vocabulary = `rules5e/weapon.hpp`, #53), `reach_ft`, `normal_range_ft`, `long_range_ft` (ranged), `magic_bonus` (int), `qualifiers[]` (`magical`, `silvered`, ... as #53), `on_hit[]` (`rider`, e.g. Flame Tongue) | |
+| `armor` | `armor_class` (`light`\|`medium`\|`heavy`), **`base_ac`** (int), **`dex_bonus`** (bool), **`dex_cap`** (int or absent; medium = 2), **`str_min`** (int, default 0), **`stealth_disadvantage`** (bool), `magic_bonus` | AC = `base_ac` + (`dex_bonus` ? min(Dex mod, `dex_cap` if present) : 0) + `magic_bonus`; Str shortfall reduces speed by 10 ft (rules, flagged in the AC PR) |
+| `shield` | **`ac_bonus`** (int, default 2), `magic_bonus`, `stealth_disadvantage` (false) | adds to AC when equipped |
+
+`character@4 equipment` becomes `array<string | {item: content_id, equipped?: bool}>`; the bare string
+form is the `@3` descriptive entry. Migration `3→4` adds `"equipment"` to `inert_mechanics` when the
+list is non-empty, so fl1's equipment list stays **inert**, and `armor_class` (baked AC) stays
+authoritative for every `@≤3` file. At `@4` the AC recompute (§12 row 15) applies **only** when the
+character declares an equipped `armor`/`shield` item *object* (`{item, equipped:true}`); otherwise
+`armor_class.value` is used as written. Fields for which the validator cross-checks `item` ids are in
+§8.3. A `character@3` file's inline attack objects are untouched.
 
 ## 11. Test plan
 
@@ -640,10 +883,12 @@ Rules (mine; each PR carries its own):
 | Innate casting | at-will, per-day use counting, no components, DC override, rejected upcast |
 | Modifiers | Bless d4 draws, Haste/Slow speed, expiry at turn boundaries, concentration drop, stacking rule |
 | Pools | spend/refuse, recharge by kind, Lay on Hands amount, grant_action |
-| Events | layout/enum value pins, event schema v6 roundtrip, lowest-version digest for old streams |
+| Events | layout/enum value pins, event schema **v7** roundtrip, `event_stream_version` max-over-constructs cases (Footprint-only 6, new-kind-only 7, both 7, neither unchanged), `known_rules_kind` tests |
+| Hashing | tagged fold only when non-empty (pools-only vs modifiers-only differ), old archetype leaves all new vectors empty, `log_hash` unchanged for old logs, `vertical_slice` pin unchanged |
+| Synthetic spells | derived id, duplicate detection, `fixed_dc`, per-archetype override rollback, caster without `spellcasting` block |
 | Replay | every new decision kind round-trips through the action log and replays identically |
 
-Tools & Content: schema positive/negative per `$defs` (unknown predicate, missing `on_success`,
+Tools & Content: **common@2 lint** (no stray local `$ref`, no byte-identical re-declared defs), migrated-`@3`-fixtures-validate-as-`@4`, schema positive/negative per `$defs` (unknown predicate, missing `on_success`,
 `grapple` rejected, `cost: reaction` at `@3` rejected, `resources` at `@3` rejected), migration
 tests (idempotence, marker contents, key order), `validate_packs.py` across `tests/compat/fl*`,
 `compat_freeze` unaffected (no frozen file edited).
@@ -654,58 +899,73 @@ digests: `compat_*` goldens and the existing `fl1` golden **unchanged** (CI prov
 
 ## 12. Implementation order (PRs, owners, dependencies)
 
+**Gate (not part of this batch):** #55 (footprint, event schema v6) lands first; #58/#59 (content
+wiring: `common/v1.schema.json`, `validate_packs.py`, `content.cpp`/`features.cpp`/`driver.cpp`) land
+before row 2, otherwise `common@2` would fork stale v1 defs and rows 6, 8 and 10 would conflict.
+Everything below is event schema **v7**.
+
 | # | PR | Owner | Depends on | Notes |
 |---|---|---|---|---|
-| 1 | `common@2` + `monster@4`/`character@4` schemas (new kinds, `$defs`), validator tables, `3→4` migrations (§8.2), compat decorated fixtures (§8.4) | **T&C** | this proposal approved | No behaviour: sim treats `@4` like `@3` (`Archetype` reads are identical). Golden-neutral by construction |
-| 2 | Engine Core loader: accept `@4`, honour `reactions`/`bonus_actions` markers, registry refusal rule (§8.3) | **Engine Core** | 1 | Still no mechanics |
-| 3 | rules5e foundation: `usage`, `ActionUse`, `ResourcePool`, recharge, `RechargeRolled`/`ResourceSpent`, sim event schema **v6** + `kLastRulesEventKind` (§9.2) | **Rules** | none (parallel with 1) | Engine Core co-reviews the event PR; the one bump lives here |
-| 4 | Save actions: `SpellDef::is_spell/magical/usage`, synthetic spell compile in sim, AI offers | **Rules** (rules5e) then **Engine Core** (compile + AI) | 1-3 | **Ships with caller-supplied targets (Q8)**; `area` is validated and used for UI hints only |
-| 5 | Area templates R-G10 (cone/line/sphere/cube targeting) | **Engine Core** | 4 (later PR, Q8) | Independent follow-up; turns `area` into the target list. Death Burst/`area_save` riders use it too |
-| 6 | Innate/slot monster spellcasting, DC overrides | **Rules** + **Engine Core** (archetype) | 1-2 | `ActionRequest::innate` appended |
-| 7 | Triggers/riders: `triggers.hpp`, hook points, `FeatureTriggered`, `TurnBudget` facts | **Rules**; **Engine Core** supplies `moved_ft`, ally adjacency | 3 | Reaction-style smite needs 9 |
-| 8 | Trigger/rider loader (`on_hit[]`, `trigger` effects) | **T&C** schema already in 1; **Engine Core** loader | 2, 7 | |
-| 9 | Reactions: new triggers/options, hooks, `reactions[]` compile | **Rules** then **Engine Core** (hooks + AI policy) | 2, 7 | Phase 2 `RollAttack` window deferred (Q6, decided) |
-| 10 | Timed modifiers + `spell@1 apply_modifier` (additive) | **Rules**; **T&C** adds the spell kind to `spell@1` validation | 3 | Spell side can ship before 1 |
-| 11 | Class pools + feature kinds (`grant_action`, `heal_pool`, pool usage) | **Rules** + **Engine Core** (FeatureRegistry hooks) | 3, 7, 10 | |
-| 12 | `item@1` weapon slice | **T&C** (schema/loader), **Rules** (none; reuses #53) | 7 | |
-| 13 | SRD content passes (breath weapons, riders, innate lists, PC features) | **T&C** | 4,6,8,9,11 | Re-authors descriptive content; separate PRs per tier |
+| 1 | `ally_near_target` sim fact: same-team, conscious, non-incapacitated creature other than the attacker within 1 tile of the target footprint, set in `do_rules` (Attack branch) and `hooks.refresh_ready` | **Engine Core** | none (can land now) | Fixes Pack Tactics (#54; dead today because sim never sets it); Sneak Attack reuses it. Stays out of `log_hash` (§9.3) |
+| 2 | `common@2` (changed defs only, absolute refs to v1), `monster@4`/`character@4`, lint test, per-tag validator table, cross-ref checks (§8.3), `3→4` migrations (§8.2), `manifest@1` `api_level` enum + validator rule (§8.5), decorated compat fixtures (§8.4) | **T&C** | #58, #59 | No behaviour; golden-neutral by construction |
+| 3 | Loader: accept `@4`, **`declared.version` plumbing** into `ContentLibrary::add()` and `FeatureBuildCtx`, `reactions`/`bonus_actions` markers, registry "list as inert" rule (§8.3), `forward_compat` listing | **Engine Core** | 2 | Public `add()` signature: T&C signs off |
+| 4 | `event_stream_version` max-over-constructs (§9.2), v7 constant, SIM_EVENTS.md v7 row, tests (Footprint-only 6 / new-kind-only 7 / both 7 / neither unchanged) | **Engine Core** | #55 | Lands before any kind 39+ is emitted |
+| 5 | rules5e foundation: `usage`, `ActionUse`, `ResourcePool`, recharge roll, `moved_ft` (tiles x 5, rules-side), `SpellDef::{is_spell, magical, fixed_dc, fixed_attack}`, kinds 39-44, `kLastRulesEventKind` | **Rules** | 4, #55 | Tagged `Combat::hash` folds are part of the sim side of this PR (Engine Core co-reviews) |
+| 6 | **Save actions, caller-supplied targets (Q8)**: synthetic-spell compile in `ContentLibrary` (§2.3), `spells_known` append, AI offer on top of #59's multiattack ordering (save action if worthwhile, else multiattack, else single attack) | **Engine Core** (compile + AI), Rules for any `legal_actions` change | 3, 5 | AI reads `state_` (expended or not), never rolls; heuristic: use when >= 2 hostile targets (or 1 if no attack is legal) and never include allies |
+| 7 | **Area templates (R-G10)**: aim input via `Command::to` for `CastSpell` (already in `LogEntry`/`log_hash`), geometry over `footprint_tiles_at`, LOS/cover from origin, opt-in (derive targets only when an aim tile is given and `targets` is empty), `spell_in_reach` fix for self-origin | **Engine Core** | #55, 6 | Later PR (Q8); also serves `area_save` riders |
+| 8 | Innate/slot monster spellcasting, DC/attack overrides, `ActionRequest::innate` | **Rules** + **Engine Core** (archetype) | 3 | |
+| 9 | Triggers/riders in rules: `triggers.hpp`, hook points, `FeatureTriggered`, `HitRider` reaction trigger | **Rules** | 4, 5 | AI default: `ask` riders **decline** unless policy/content opts in |
+| 10 | Rider/`on_event` loader (`on_hit[]`, effects) | **Engine Core** (loader), schema in row 2 | 1, 3, 9 | |
+| 11 | Reactions: new triggers/options, hooks, `reactions[]` compile | **Rules** then **Engine Core** (hooks + deterministic default order by content order, honouring `uses_reaction`; a free `HitRider` is never option 0 ahead of a real reaction) | 3, 9 | `RollAttack` window deferred (Q6) |
+| 12 | Timed modifiers (+ `spell@1` `apply_modifier`, additive) | **Rules**; **T&C** adds the spell kind to validation | 5 | Spell side can ship before row 2 |
+| 13 | Class pools + feature kinds (`grant_action` via `TurnBudget::extra_actions`, `heal_pool` reusing existing `ActionRequest::amount`, pool usage), Legendary Resistance as a pool | **Rules** + **Engine Core** (FeatureRegistry hooks) | 5, 9, 12 | |
+| 14 | `item@1` schema + loader (weapons, armor, shields) | **T&C** (schema/validator), **Engine Core** (loader) | 2, 3 | |
+| 15 | **AC recompute from equipped armor/shield** (`rules5e::compute_ac`, `character@4 equipment` objects; fl1's baked AC and equipment list stay inert) | **Rules** (formula, Str-shortfall speed) + **Engine Core** (apply at archetype build) | 14 | Own PR; goldens unaffected because only `{item, equipped}` objects opt in |
+| 16 | Luau **API level 2** definitions (`engine.level2.d.luau`), level-1 event-feed filtering (§8.5) | **T&C** / script_host owner, **Engine Core** | 4, 5 | Level 1 observably unchanged |
+| 17 | SRD content passes (breath weapons, riders, innate lists, PC features) | **T&C** | 6, 8, 10, 11, 13, 15 | Re-authors descriptive content; separate PRs per tier |
 
-One PR per row, from fresh `main`, normal pushes, full suite on GCC Debug and Clang Release, CI
-green before review.
+One PR per row, from fresh `main`, normal pushes, full suite on GCC Debug and Clang Release, CI green
+before review. Engine Core offered rows 1, 3, 4 and 7; they are recorded above as theirs.
 
 ## 13. Decisions log
 
-All sixteen questions are **DECIDED** (Director, 2026-10-18). Q1-Q4, Q8, Q10 and Q12 are explicit
-Director rulings; the rest adopt this proposal's recommendation, as the Director directed. Reviewer
-feedback may still refine details, but these are no longer open.
+All questions are **DECIDED** (Director, 2026-10-18; Engine Core and T&C review folded in). Entries
+marked "(Director)" are explicit rulings; "(adopted)" are this proposal's recommendations accepted by
+the Director's instruction.
 
 | Q | Decision | Status |
 |---|---|---|
-| Q1 | Save actions reuse the spell resolver: synthetic `SpellDef` with `is_spell=false`, `magical=false` (§2.3). No separate `ActionDef` table | DECIDED (Director) |
-| Q2 | Pools and trait/feature-side timed modifiers wait for `@4` (one bump, no interim trait kinds). Only the spell-side `apply_modifier` stays additive (§6.1) | DECIDED (Director) |
-| Q3 | Divine Smite is a post-hit reaction-window option (free, `HitRider`), not a declare-before-attack flag (§3.2) | DECIDED (Director) |
-| Q4 | Charge/Pounce use `moved_at_least_ft` ("moved at least N ft this turn before the attack"). No path history. Limitation documented in §3.1 | DECIDED (Director) |
-| Q5 | `drop_to_zero` triggers (Undead Fortitude, Relentless Endurance) run before the regeneration-down check; a creature kept at 1 HP never enters the regen-down branch | DECIDED (adopted recommendation) |
-| Q6 | Roll-modifying reactions (Cutting Words, Bardic Inspiration spend, `RollAttack`/`RollSave` windows) are deferred to a later phase; `subtract_roll` stays reserved in the schema | DECIDED (adopted recommendation) |
-| Q7 | Extra actions (Action Surge, Haste) use a distinct `TurnBudget::extra_actions` counter (appended, default 0), not mutation of `action`, so turn-end checks and old hashes are unaffected | DECIDED (adopted recommendation; refines §7.1 `grant_action`) |
-| Q8 | Save actions ship first with caller-supplied targets; area templates (R-G10) are a later, independent PR (§12 rows 4-5) | DECIDED (Director) |
-| Q9 | One generic `FeatureTriggered` event (outcome in a payload field). Non-spell save actions reuse `SpellCast`/`SpellResolved` with `is_spell=false` recorded in a flag bit; no `ActionUsed` kind | DECIDED (adopted recommendation) |
-| Q10 | New state vectors (`action_uses`, `modifiers`, `pools`, new `Combatant` vectors) are hashed/serialized **only when non-empty**, so old encounters hash to the same bytes (§9.3) | DECIDED (Director) |
-| Q11 | `common@2` is a standalone copy of `stat_block` with `$ref`s to unchanged `common@1` leaf defs (§1.1); the cost of re-declaring ~15 defs is accepted | DECIDED (adopted recommendation) |
-| Q12 | Approved: `3→4` marks new-kind effects `inert` in old documents, plus the `FeatureRegistry` refusal rule for new kinds from `@≤3` documents. This is an approved behaviour change to `FeatureRegistry` (§1, §8.2 step 4, §8.3) | DECIDED (Director) |
-| Q13 | `spellcasting.dc` / `attack_bonus` overrides win over derived values (SRD printed numbers are authoritative) | DECIDED (adopted recommendation) |
-| Q14 | Legendary Resistance is a plain pool; legendary *actions* stay T&C-G11 and nothing is reserved in the schema now | DECIDED (adopted recommendation) |
-| Q15 | `ac` modifiers are `bonus`-only in this batch; `set` / "base AC = 13 + Dex" (Mage Armor) waits for the equipment/AC proposal. The `set` field is removed from `$defs/modifier` use at `@4` until then | DECIDED (adopted recommendation) |
-| Q16 | No first-class rest API in this batch; sim keeps calling `recover_features(state, long_rest)` between encounters. A rest API can be its own Engine Core proposal | DECIDED (adopted recommendation) |
+| Q1 | Save actions reuse the spell resolver via synthetic `SpellDef`s (`is_spell=false`, `magical=false`, `fixed_dc`; id = `spell_id_of("<archetype>#<action>")`, duplicates are a load error; per-archetype compile; §2.3) | DECIDED (Director; design corrected by Engine Core review) |
+| Q2 | Pools and trait/feature-side modifiers wait for `@4` (one bump, no interim kinds); spell-side `apply_modifier` stays additive | DECIDED (Director) |
+| Q3 | Divine Smite is a post-hit reaction-window option (free `HitRider`); sim default declines unless opted in | DECIDED (Director) |
+| Q4 | Charge/Pounce use "moved at least N ft this turn"; `moved_ft` is rules-side, **tiles x 5** (not `move_ft`); no path history; limitation documented in §3.1 | DECIDED (Director) |
+| Q5 | `drop_to_zero` triggers run before the regeneration-down check | DECIDED (adopted) |
+| Q6 | Roll-modifying reactions (`RollAttack`/`RollSave`, `subtract_roll`) deferred; `subtract_roll` reserved | DECIDED (adopted) |
+| Q7 | Extra actions via `TurnBudget::extra_actions` (appended, default 0) | DECIDED (adopted) |
+| Q8 | Save actions ship first with caller-supplied targets; area templates are a later Engine Core PR (needs an aim input, built on #55 footprint code) | DECIDED (Director) |
+| Q9 | One generic `FeatureTriggered`; **dedicated `ActionUsed`** rules event (kind 44) for save actions instead of a flag bit | DECIDED (adopted; revised per Engine Core) |
+| Q10 | New state is folded into `Combat::hash()` **only when non-empty, one tag byte per section**; no `EncounterState` hash exists; new `ActionRequest` fields fold into `log_hash` only when non-default (§9.3) | DECIDED (Director; mechanism corrected by Engine Core review) |
+| Q11 | `common@2` re-declares **only the changed defs** and references the rest absolutely into `common@1`; lint test enforces it (§1.2) | DECIDED (adopted; revised per T&C) |
+| Q12 | Inert-marking of new-kind effects in old documents (frozen literal list) plus a registry rule that **lists as inert and skips**, never a load error; needs `declared.version` plumbing (Engine Core PR, row 3) | DECIDED (Director; wording per Engine Core) |
+| Q13 | `spellcasting.dc` / `attack_bonus` overrides win over derived values | DECIDED (adopted) |
+| Q14 | **Legendary Resistance is in the bump** as a plain `resources[]` pool; only legendary *actions* are deferred (T&C-G11). `legendary_actions` stays descriptive/ignored in `@4` | DECIDED (Director) |
+| Q15 | `ac` modifiers are `bonus`-only (no `set`); base-AC formulas come from `item@1` armor (row 15) | DECIDED (adopted) |
+| Q16 | **Dropped from this batch.** No rest model: sim never calls `recover_features`; uses/pools/innate/slots start full each encounter. A rest model needs persistent party state and is its own design | DECIDED (Engine Core review) |
+| D17 | Event schema **v7** on top of #55's v6; `event_stream_version` becomes max-over-constructs (§9.2) | DECIDED (Director) |
+| D18 | `item@1` covers weapons, armor and shields; AC recompute is its own PR (row 15); fl1's baked AC and equipment list stay inert | DECIDED (Director) |
+| D19 | Elevation forward-compat flag (`forward_compat: ["elevation"]`, inert) in `@4` | DECIDED (Director) |
+| D20 | Luau API level 2 and `manifest@1.api_level` `enum [1, 2]`; `@4`/`item@1` packs require level 2 | DECIDED (Director) |
+| D21 | Engine Core owns: `ally_near_target`, `declared.version` plumbing, `event_stream_version`, area-template targets | DECIDED (Engine Core offer, recorded in §12) |
 
-## 14. What to ask reviewers
+## 14. What to ask reviewers (rev 2)
 
-**Tools & Content:** (a) field names/casing against the existing schemas (`save`, `on_success`,
-`apply[]`, `usage`, `area`, `resources[]`); (b) the standalone `common@2` approach and the
-`$defs` list in §1.1; (c) the `3→4` migration contents (§8.2) and the validator tables;
-(d) whether `bonus_actions` really deserves a marker; (e) `item@1` slice scope.
+**Tools & Content:** (a) §1.2/§1.3 (absolute refs, lint test, `@3`-carry-over incl. `inert_mechanics`
+and `forward_compat`), (b) the `oneOf` of mechanical vs `legacy_action` for `reactions[]` /
+`bonus_actions[]` and the per-entry stamping (§4.1, §8.2), (c) the closed `if/then` unions (§2.2, §4.1,
+§6.1), (d) the validator cross-reference list (§8.3), (e) `item@1` field names (§10), (f) the
+`manifest@1` `api_level` enum change and the level-2 rule (§8.5).
 
-**Engine Core:** (a) sim facts needed (`moved_ft`, ally-adjacency, area targets, rest API);
-(b) the event-schema v6 plan and the lowest-version digest argument (§9.2), and that the decided only-when-non-empty hash rule (Q10) matches how `EncounterState` is hashed today;
-(c) synthetic spell compile in `ContentLibrary` and the `FeatureRegistry` refusal rule;
-(d) AI policy for recharge/riders/reactions; (e) PR ordering in §12.
+**Engine Core:** (a) rows 1, 3, 4, 7 as yours; (b) the `event_stream_version` max form (§9.2) and the
+hash rules (§9.3: tagged folds, `log_hash` stays unchanged for old logs); (c) the synthetic-spell
+compile (§2.3 points 1-4); (d) AI defaults (§12 rows 6, 9, 11); (e) the declared-version plumbing and the
+public `add()` signature change (§8.3).
