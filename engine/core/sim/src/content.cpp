@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cstdlib>
 #include <filesystem>
 #include <set>
 
 #include "assets/content_migrations.hpp"
+#include "rules5e_content/spell_loader.hpp"
 
 namespace eng::sim {
 
@@ -44,6 +46,13 @@ std::optional<rules5e::Condition> condition_of(const std::string& s) {
                                   "stunned", "unconscious", "exhaustion"};
     for (int i = 0; i < 15; ++i)
         if (s == names[i]) return rules5e::Condition(i);
+    return std::nullopt;
+}
+std::optional<rules5e::CreatureType> creature_type_of(const std::string& s) {
+    static const char* names[] = {"aberration", "beast", "celestial", "construct", "dragon", "elemental", "fey",
+                                  "fiend", "giant", "humanoid", "monstrosity", "ooze", "plant", "undead"};
+    for (int i = 0; i < 14; ++i)
+        if (s == names[i]) return rules5e::CreatureType(i);
     return std::nullopt;
 }
 int geti(const Json& j, const char* k, int def = 0) {
@@ -94,6 +103,44 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             c.condition_immunities |= rules5e::bit(*k);
         }
     const bool multi_damage = !inert.count("damage[1..]");
+    // Size: stored for every version (no behaviour). Creature type and spellcasting: monster@3 / character@3.
+    {
+        static const char* sizes[] = {"tiny", "small", "medium", "large", "huge", "gargantuan"};
+        const std::string sz = doc.value("size", "medium");
+        for (int i = 0; i < 6; ++i) if (sz == sizes[i]) a.size = CreatureSize(i);
+    }
+    if (!inert.count("creature_type") && doc.contains("type")) {
+        auto ct = creature_type_of(doc.value("type", ""));
+        if (!ct) return a.id + ": bad creature type";
+        c.creature_type = *ct;
+    }
+    if (auto sc = doc.find("spellcasting"); sc != doc.end() && !inert.count("spellcasting")) {
+        static const char* sc_abil[] = {"str", "dex", "con", "int", "wis", "cha"};
+        const std::string sc_ab = sc->value("ability", "");
+        bool ok = false;
+        for (int i = 0; i < 6; ++i) if (sc_ab == sc_abil[i]) { c.spellcasting_ability = rules5e::Ability(i); ok = true; }
+        if (!ok) return a.id + ": bad spellcasting ability";
+        const int lvl = geti(*sc, "caster_level");
+        if (lvl < 1 || lvl > 20) return a.id + ": bad caster_level";
+        c.caster_level = uint8_t(lvl);
+        if (auto sl = sc->find("slots"); sl != sc->end())
+            for (auto it = sl->begin(); it != sl->end(); ++it) {
+                const int level = std::atoi(it.key().c_str());
+                if (level < 1 || level > 9 || !it.value().is_number_integer() || it.value().get<int>() < 1 || it.value().get<int>() > 9)
+                    return a.id + ": bad spellcasting slots";
+                c.spell_slots[std::size_t(level)] = c.spell_slots_max[std::size_t(level)] = uint8_t(it.value().get<int>());
+            }
+        if (auto pc = sc->find("pact"); pc != sc->end()) {
+            c.pact_slot_level = uint8_t(geti(*pc, "level"));
+            c.pact_slots = c.pact_slots_max = uint8_t(geti(*pc, "slots"));
+            if (c.pact_slot_level < 1 || c.pact_slot_level > 5 || c.pact_slots < 1) return a.id + ": bad pact slots";
+        }
+        for (const Json& sp : sc->at("spells")) {
+            if (!sp.is_string()) return a.id + ": bad spell id";
+            a.spell_ids.push_back(sp.get<std::string>());
+            c.spells_known.push_back(rules5e::spell_id_of(a.spell_ids.back()));
+        }
+    }
     c.is_pc = c.uses_death_saves = (schema_type == "character");
     std::vector<const Json*> attack_actions;   // content action per c.attacks[i]
     for (const Json& act : doc.at("actions")) {
@@ -157,9 +204,26 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     return std::nullopt;
 }
 
+std::optional<std::string> ContentLibrary::add_spell(const Json& doc) {
+    auto r = rules5e_content::spell_from_json(doc);
+    if (!r.def) return r.error;
+    std::string e;
+    if (!rules5e_content::add_spell(*spells_, std::move(*r.def), e)) return e;
+    return std::nullopt;
+}
+
 std::vector<std::string> ContentLibrary::load(const assets::PackSet& packs) {
     if (!packs.ok()) return packs.error_strings();
     std::vector<std::string> errors = packs.document_errors();
+    for (const assets::PackDocument& d : packs.documents()) {
+        if (!d.doc.ok || d.doc.current.type != "spell") continue;
+        const std::string& pack_id = packs.packs()[d.pack].id;
+        try {
+            if (auto e = add_spell(d.doc.data)) errors.push_back(pack_id + ":" + d.path + ": " + *e);
+        } catch (const std::exception& ex) {
+            errors.push_back(pack_id + ":" + d.path + ": " + ex.what());
+        }
+    }
     for (const assets::PackDocument& d : packs.documents()) {
         if (!d.doc.ok || (d.doc.current.type != "monster" && d.doc.current.type != "character")) continue;
         const std::string& pack_id = packs.packs()[d.pack].id;
@@ -169,6 +233,12 @@ std::vector<std::string> ContentLibrary::load(const assets::PackSet& packs) {
             errors.push_back(pack_id + ":" + d.path + ": " + ex.what());
         }
     }
+    // Spellcasting references must resolve to a loaded spell@1 (same rule as the validator).
+    for (const auto& [id, a] : by_id_)
+        for (const std::string& sid : a.spell_ids) {
+            const rules5e::SpellDef* d = spells_->find(rules5e::spell_id_of(sid));
+            if (!d || d->content_id != sid) errors.push_back(a.pack_id + ":" + id + ": spellcasting.spells '" + sid + "' is not a loaded spell@1");
+        }
     return errors;
 }
 
