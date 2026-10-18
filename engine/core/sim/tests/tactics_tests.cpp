@@ -205,6 +205,7 @@ TEST_CASE("readied Move: moves the readier to its tile when a hostile comes clos
     REQUIRE_MESSAGE(r0.ok, r0.error);
     REQUIRE(c->readied_destination(f));
     CHECK(c->log().back().step.request.move_ft == 15);
+    CHECK(c->log().back().step.request.move_tiles == 3);   // path length, not cost
     CHECK(*c->log().back().to == Vec2i{2, 5});
     Command end;
     end.request = {f, ActionKind::EndTurn};
