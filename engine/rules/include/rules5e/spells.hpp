@@ -96,6 +96,13 @@ struct SpellDef {
     bool simultaneous = false;           // AutoHit: every target reacts before any damage
     AreaShape area = AreaShape::None; uint16_t area_size_ft = 0, area_width_ft = 0, area_height_ft = 0;
     std::vector<SpellEffect> extra_effects;   // appended: effects 2..n (see SpellEffect); empty = single-effect spell
+    // appended (version-bump batch, row 5). Defaults preserve every existing spell.
+    bool    is_spell = true;       // false: no SpellCast window (cannot be Counterspelled); emits ActionUsed instead of SpellCast
+    bool    magical = true;        // SaveSource.magical and damage qualifier (breath weapons are NOT magical)
+    int8_t  fixed_dc = 0, fixed_attack = 0;   // 0 = derive from the caster (spell_save_dc / spell_attack_bonus)
+    uint8_t usage_kind = 0;        // 0 at-will, 1 recharge (ActionUse), 2 per-day/rest (FeatureUses row keyed by spell id), 3 pool
+    uint8_t recharge_min = 0;      // usage_kind == 1: recharges on a d6 roll >= this
+    uint32_t pool_id = 0; uint8_t pool_cost = 0;   // usage_kind == 3 (0 cost = 1)
 };
 
 // The spell as seen by one extra effect: `base` with that effect's fields, no scaling, no further effects.
@@ -106,6 +113,8 @@ class SpellBook {
 public:
     // Returns false on a duplicate id (content id hash collision).
     bool add(SpellDef);
+    // Removes a definition (a replaced archetype's synthetic spells). Returns false if absent.
+    bool erase(uint32_t id);
     const SpellDef* find(uint32_t id) const;
     const std::vector<SpellDef>& all() const { return defs_; }
 private:
@@ -123,6 +132,9 @@ constexpr uint32_t spell_id_of(std::string_view content_id) {
 // spell attack bonus = proficiency bonus + spellcasting ability modifier.
 int spell_save_dc(const Combatant&);
 int spell_attack_bonus(const Combatant&);
+// Per-definition forms: fixed_dc / fixed_attack when non-zero, else the caster-derived value above.
+int spell_save_dc(const Combatant&, const SpellDef&);
+int spell_attack_bonus(const Combatant&, const SpellDef&);
 // Cantrip damage tier (0..3) for a caster level: number of entries in `tiers` reached.
 int cantrip_tier(const SpellDef&, uint8_t caster_level);
 // Damage/healing dice when cast with a slot of `slot_level` by a caster of `caster_level`.

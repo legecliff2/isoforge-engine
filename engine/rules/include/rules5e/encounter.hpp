@@ -27,6 +27,9 @@ struct TurnBudget {
     // Loading weapons already fired in the current Attack action (bit per Combatant::attacks index < 32):
     // a Loading weapon fires once per action regardless of Extra Attack / multiattack. Reset when an action is spent.
     uint32_t loading_fired = 0;
+    // Feet moved this turn: += 5 * ActionRequest::move_tiles when an own-turn Move completes (Moved emitted).
+    // An opportunity-attack-interrupted move and a readied Move fired out of turn do not count.
+    uint16_t moved_ft = 0;
 };
 
 // Answer to a reaction window (names/layout shared with sim::Combat).
@@ -97,6 +100,8 @@ enum class EventKind : uint8_t {
     FeatureUsed,
     // appended (spellcasting):
     SavingThrowRolled, ConcentrationEnded, SpellEffectEnded, SpellCheckRolled,
+    // appended (version-bump batch, event schema v7):
+    RechargeRolled, FeatureTriggered, ResourceSpent, ModifierApplied, ModifierExpired, ActionUsed,
     // Not an event: the number of kinds. Append new kinds ABOVE this line; consumers that lock the
     // numeric layout (sim's "event layout" test) compare against kEventKindCount.
     Count_ };
@@ -118,6 +123,13 @@ inline constexpr std::size_t kEventKindCount = std::size_t(EventKind::Count_);
 //   ConcentrationEnded actor=caster a=spell_id; SpellEffectEnded actor=affected creature a=spell_id
 //   b=Condition removed (-1 none); SpellCheckRolled actor=counterer a=natural b=total c=success (vs DC).
 //   SpellCast/Resolved/Countered: actor=caster target=first target, b=slot level (0 = cantrip).
+//   v7: RechargeRolled actor a=action/spell id b=d6 natural c=recharged(0/1); FeatureTriggered actor=owner
+//   target=subject a=trigger id b=TriggerOn c=outcome (0 none, 1 applied, 2 declined, 3 failed save);
+//   ResourceSpent actor a=pool id b=amount c=remaining; ModifierApplied actor=caster target a=modifier id
+//   b=stat c=magnitude; ModifierExpired actor=caster target a=modifier id b=reason;
+//   ActionUsed actor target=first target a=action/spell id b=is_spell(0/1) c=usage kind. A non-spell action
+//   (SpellDef::is_spell == false) emits ActionUsed *instead of* SpellCast, then its save/damage events, then
+//   SpellResolved. (FeatureTriggered/ModifierApplied/ModifierExpired are reserved: later rows emit them.)
 // reaction_depth: 0 for the action itself, 1+ for events produced while resolving a reaction.
 struct Event { EventKind kind; CombatantId actor = 0, target = 0; int32_t a = 0, b = 0, c = 0;
                uint8_t reaction_depth = 0; };
@@ -147,6 +159,7 @@ struct ReactionOption {
     int8_t   ac_bonus = 0;            // AcBonus: e.g. +5 for Shield
     uint32_t option_id = 0;           // content id (e.g. the Shield / Counterspell spell id)
     uint8_t  slot_level = 0;          // spell options from the SpellBook: slot level spent (Counter: one option per level)
+    bool     uses_reaction = true;    // appended: false = taking this option does not spend the reactor's reaction
 };
 
 // Log entry for one reaction decision made under Ask (Auto/Never are reproduced from state and are
@@ -205,6 +218,15 @@ struct FeatureUses {
     uint8_t used = 0;
     FeatureRecharge recharge = FeatureRecharge::None;
 };
+
+// A recharge action (Recharge 5-6), keyed by (actor, spell_id of the synthetic SpellDef). Registered at setup
+// only for content that has one; `expended` is set when the action is used and cleared by the begin_turn
+// recharge roll (the only place such a combatant draws from the encounter rng).
+struct ActionUse { CombatantId actor = 0; uint32_t spell_id = 0; bool expended = false; };
+
+// A class resource pool (ki, rage, ...), keyed by (actor, pool_id). Registered at setup only for new content.
+struct ResourcePool { CombatantId actor = 0; uint32_t pool_id = 0; uint16_t max = 0, cur = 0;
+                      FeatureRecharge recharge = FeatureRecharge::None; };
 
 using PollOrderFn = std::function<std::vector<CombatantId>(const EncounterState&,
                                                            const std::vector<CombatantId>& eligible_in_initiative_order)>;
@@ -270,6 +292,8 @@ struct EncounterState {
     std::vector<ActiveSpellEffect> effects;   // lasting spell effects, in the order applied
     EncounterHooks hooks;                // behaviour, not state: never serialized/hashed
     std::vector<FeatureUses> features;   // appended: limited-use features (register_feature)
+    std::vector<ActionUse> action_uses;  // appended (v7): recharge actions; empty for content without one
+    std::vector<ResourcePool> pools;     // appended (v7): resource pools; empty for content without one
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call
@@ -359,10 +383,25 @@ void register_feature(EncounterState&, CombatantId actor, uint32_t feature_id, u
 const FeatureUses* find_feature(const EncounterState&, CombatantId actor, uint32_t feature_id);
 // Uses left: 255 = unlimited or unregistered.
 uint8_t feature_uses_left(const EncounterState&, CombatantId actor, uint32_t feature_id);
-// Rest: a short rest recharges ShortRest features; a long rest recharges ShortRest and LongRest ones.
+// Rest: a short rest recharges ShortRest features; a long rest recharges ShortRest and LongRest ones
+// (and refills pools with the same recharge kinds).
 void recover_features(EncounterState&, bool long_rest);
 // Canonical FNV-1a 64 digest of the feature-use table (fold into any state hash).
 uint64_t feature_uses_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
+
+// Recharge actions. `register_action_use` is idempotent (re-registering resets `expended`). A spell/action
+// with no row is unlimited (the feature-use precedent).
+void register_action_use(EncounterState&, CombatantId actor, uint32_t spell_id, bool expended = false);
+const ActionUse* find_action_use(const EncounterState&, CombatantId actor, uint32_t spell_id);
+// Resource pools. `can_spend` is false for an unregistered pool; spend_pool returns false (no change) when short.
+void register_pool(EncounterState&, CombatantId actor, uint32_t pool_id, uint16_t max, uint16_t cur,
+                   FeatureRecharge = FeatureRecharge::None);
+const ResourcePool* find_pool(const EncounterState&, CombatantId actor, uint32_t pool_id);
+bool can_spend(const EncounterState&, CombatantId actor, uint32_t pool_id, uint16_t n);
+bool spend_pool(EncounterState&, CombatantId actor, uint32_t pool_id, uint16_t n);
+// Canonical FNV-1a 64 digests of the two tables (sim folds each under its own tag byte, only when non-empty).
+uint64_t action_uses_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
+uint64_t pools_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 
 std::vector<ActionRequest> legal_actions(const EncounterState&);   // for AI + UI (current actor)
 CombatantId                current_actor(const EncounterState&);

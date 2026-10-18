@@ -1,12 +1,13 @@
-# sim event stream (schema version 5)
+# sim event stream (schema version 7)
 
 `eng::sim::Combat::events()` is the ordered record of everything that happened in a combat. Render/platform, UI, logs and tests consume it. This document is the contract. The code lives in `engine/core/sim/include/sim/events.hpp`, and the layout is locked by `engine/core/sim/tests/events_tests.cpp`.
 
 ## Types
 
 ```cpp
-inline constexpr uint32_t kSimEventSchemaVersion = 6;
-inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::SpellCheckRolled;
+inline constexpr uint32_t kSimEventSchemaVersion = 7;
+inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::ActionUsed;
+inline constexpr rules5e::EventKind kLastRulesEventKindV6 = rules5e::EventKind::SpellCheckRolled;   // digest versioning keys on this
 
 struct SimEvent {
     enum class Kind : uint8_t { Rules = 0, TileMoved = 1, SpellTarget = 2, Footprint = 3 };   // append-only
@@ -62,6 +63,14 @@ struct rules5e::Event { EventKind kind; CombatantId actor, target; int32_t a, b,
 | 36 | ConcentrationEnded (v4) | caster | | spell id | | |
 | 37 | SpellEffectEnded (v4) | affected creature | | spell id | Condition removed (-1 none) | |
 | 38 | SpellCheckRolled (v4) | counterer | | natural | total | success |
+| 39 | RechargeRolled (v7) | creature | | action/spell id | d6 natural | recharged 0/1 |
+| 40 | FeatureTriggered (v7, reserved) | owner | subject | trigger id | TriggerOn | outcome (0 none, 1 applied, 2 declined, 3 failed save) |
+| 41 | ResourceSpent (v7) | creature | | pool id | amount | remaining |
+| 42 | ModifierApplied (v7, reserved) | caster | target | modifier id | stat | magnitude |
+| 43 | ModifierExpired (v7, reserved) | caster | target | modifier id | reason | |
+| 44 | ActionUsed (v7) | creature | first target | action/spell id | is_spell 0/1 | usage kind (0 at-will, 1 recharge, 2 per-day/rest, 3 pool) |
+
+Kinds 39-44 are locked at v7. Rules emits `RechargeRolled`, `ResourceSpent` and `ActionUsed` today (recharge actions, resource pools, non-spell actions); `FeatureTriggered`, `ModifierApplied` and `ModifierExpired` are reserved for the trigger/modifier rows and no stream carries them yet. No existing content can emit any of them (they need `usage`/pool/non-spell definitions that only the version-bump batch's new content produces), so every pre-v7 digest keeps its recorded version.
 
 `FeatureUsed` feature ids are 1-based indexes into the archetype's declared features (`features[]` then `traits[]`, see `sim/features.hpp`). A self-heal is followed by `Healed`, with actor and target both set to the user.
 
@@ -90,12 +99,13 @@ The authoritative per-kind field meanings are in `rules5e/encounter.hpp`. If tha
    - then for each polled reactor, `ReactionTaken` or `ReactionDeclined`
    - then the reaction's effects at depth ≥ 1
    - then the rest of the action
+   - **`ActionUsed` (v7).** A non-spell action (`SpellDef::is_spell == false`, e.g. a breath weapon) emits `ActionUsed` at the position a spell's `SpellCast` would take, *instead of* `SpellCast` (no `SpellCast` window, so it cannot be Counterspelled). Its `ResourceSpent` (pool usage) follows directly, then the effect's own events (`SavingThrowRolled`, `DamageDealt`, `ConditionAdded`, ...), then `SpellResolved`, which is still emitted. `RechargeRolled` is emitted at the start of the owner's turn, after `TurnStarted` and any repeat saves and regeneration, before death saves.
 6. **Turns.** `TurnEnded` is followed by `TurnStarted` of the next actor (dead combatants are skipped).
 7. **End.** `EncounterEnded` appears exactly once and is the last event. After it, `submit()` is rejected.
 
-## Digest versioning (v5, v6)
+## Digest versioning (v5, v6, v7)
 
-`event_stream_hash` records `event_stream_version(events)`, the lowest schema version that can express the stream, taken as the **maximum over every construct** in it, from both kind families: 6 for a `Footprint`, 5 for a `SpellTarget`, `kSimEventSchemaVersion` for a rules event whose kind is past `kLastRulesEventKind` (appended after the locked layout; sim bumps the contract version when it adopts such kinds), otherwise 4. No construct masks a later, newer one (the function has no early return). `kSimEventSchemaVersion` (6) is the contract version. Streams without a `CastSpell` or a multi-tile creature therefore keep their v4 digests bit-identical, streams with spells but no multi-tile creature keep their v5 digests, and every locked digest from before v6 is unchanged. Only a stream with a multi-tile creature hashes as version 6.
+`event_stream_hash` records `event_stream_version(events)`, the lowest schema version that can express the stream, taken as the **maximum over every construct** in it, from both kind families: 7 for a rules event whose kind is past `kLastRulesEventKindV6` (the v7 kinds 39-44 and anything appended later), 6 for a `Footprint`, 5 for a `SpellTarget`, otherwise 4. No construct masks a later, newer one (the function has no early return). `kSimEventSchemaVersion` (7) is the contract version, and no stream's version exceeds it (tested). Streams without a `CastSpell` or a multi-tile creature therefore keep their v4 digests bit-identical, streams with spells but no multi-tile creature keep their v5 digests, and every locked digest from before v6 is unchanged. Only a stream with a multi-tile creature hashes as version 6, and only a stream with a v7 kind as version 7.
 
 ## Determinism guarantees
 
@@ -121,3 +131,4 @@ The authoritative per-kind field meanings are in `rules5e/encounter.hpp`. If tha
 - **v4** (spellcasting, PR #23): rules5e `SavingThrowRolled` (35), `ConcentrationEnded` (36), `SpellEffectEnded` (37) and `SpellCheckRolled` (38). Sim doesn't cast spells yet, so no sim stream emits them; the digest changes for every stream because it includes the version.
 - **v5** (CastSpell, sim): `SimEvent::Kind::SpellTarget` (2), appended per affected creature of a `CastSpell`. Sim now surfaces the v4 spell kinds 30-38 (it supplies the spell hooks). The digest records the lowest version that fits the stream (see "Digest versioning"), so no existing stream's digest changed. Viewers that skip unknown kinds (the sample `event_feed`) keep working.
 - **v6** (multi-tile footprints, sim): `SimEvent::Kind::Footprint` (3), one per Large+ creature at combat start. `TileMoved` / `SpellTarget` tiles of such creatures are anchors. Emitted only when a footprint is > 1, and the digest records the lowest version that fits, so no existing stream's digest changed.
+- **v7** (rules foundation, version-bump batch row 5): rules5e `RechargeRolled` (39), `FeatureTriggered` (40), `ResourceSpent` (41), `ModifierApplied` (42), `ModifierExpired` (43) and `ActionUsed` (44), plus the `ActionUsed` ordering rule. `SimEvent::Kind` is unchanged. Nothing existing emits the new kinds, and `event_stream_version` returns 7 only for streams that carry one, so no existing stream's digest changed. `Combat::hash` gains tagged sections (0xA1 action uses, 0xA3 pools), folded only when non-empty.

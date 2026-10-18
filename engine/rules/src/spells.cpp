@@ -13,6 +13,14 @@ bool SpellBook::add(SpellDef d) {
     return true;
 }
 
+bool SpellBook::erase(uint32_t id) {
+    auto it = std::lower_bound(defs_.begin(), defs_.end(), id,
+                               [](const SpellDef& a, uint32_t v) { return a.id < v; });
+    if (it == defs_.end() || it->id != id) return false;
+    defs_.erase(it);
+    return true;
+}
+
 const SpellDef* SpellBook::find(uint32_t id) const {
     auto it = std::lower_bound(defs_.begin(), defs_.end(), id,
                                [](const SpellDef& a, uint32_t v) { return a.id < v; });
@@ -21,6 +29,8 @@ const SpellDef* SpellBook::find(uint32_t id) const {
 
 int spell_attack_bonus(const Combatant& c) { return c.proficiency_bonus + modifier(c.abilities, c.spellcasting_ability); }
 int spell_save_dc(const Combatant& c) { return 8 + spell_attack_bonus(c); }
+int spell_save_dc(const Combatant& c, const SpellDef& d) { return d.fixed_dc != 0 ? int(d.fixed_dc) : spell_save_dc(c); }
+int spell_attack_bonus(const Combatant& c, const SpellDef& d) { return d.fixed_attack != 0 ? int(d.fixed_attack) : spell_attack_bonus(c); }
 
 int cantrip_tier(const SpellDef& d, uint8_t caster_level) {
     if (d.level != 0 || !d.cantrip_scales) return 0;
