@@ -39,6 +39,7 @@ using rules5e::ReactionTrigger;
 using rules5e::StepStatus;
 using rules5e::default_poll_order;
 class Combat;
+struct CombatTestAccess;   // tests only (sim_tests): lets a test register state rows; not part of the contract
 // Sync decision adapter (AI, tests). Empty = decline.
 using ReactionDeciderFn = std::function<ReactionDecision(const Combat&, const NeedsDecision&)>;
 
@@ -190,6 +191,7 @@ private:
     bool ranged_attack_facts(CombatantId actor, uint8_t attack_index, Spot from, Spot target,
                              rules5e::ActionRequest& req, std::string* error) const;
     bool move_tile(CombatantId mover, Vec2i to, const std::vector<rules5e::Event>& evs);
+    friend struct CombatTestAccess;
     friend std::optional<Combat> replay(ecs::Registry&, std::span<const world::Chunk* const>, const ContentLibrary&,
                                         uint64_t, const std::vector<LogEntry>&, std::string*);
     bool leaves_reach(CombatantId mover, Vec2i from, Vec2i to) const;
