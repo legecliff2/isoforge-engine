@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <set>
 
+#include "rules5e/encounter.hpp"
 #include "assets/content_migrations.hpp"
 #include "rules5e_content/spell_loader.hpp"
 
@@ -147,24 +148,45 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
         for (const Json& x : *ap) {
             auto cond = condition_of(x.is_object() ? x.value("condition", "") : "");
             if (!cond) return where + ": bad condition in apply[]";
-            // Durations are not enforced by rules until timed modifiers (row 12): a condition lasts until a
-            // successful repeat save (until_save / repeat_save) or the end of the combat. Compile only those
-            // that end by a save; anything else is listed, not compiled.
+            // Durations (rules5e timed effects, #76): rounds n -> expiry Rounds + duration_rounds; until_end_of_target_next_turn
+            // -> expiry EndOfTargetNextTurn; until_save -> a repeat save (end_of_turn unless one is named), no expiry. A
+            // repeat_save may accompany a timed duration. No duration and no repeat save lasts until the combat ends,
+            // which the engine does not model for conditions yet: listed, not compiled.
             const std::string rs = x.value("repeat_save", "");
-            const Json dur = x.contains("duration") ? x["duration"] : Json::object();
-            const std::string dk = dur.is_object() ? dur.value("kind", "") : "";
-            if (rs.empty() && dk != "until_save") { unsupported = true; return std::nullopt; }
+            const bool has_dur = x.contains("duration");
+            if (has_dur && !x["duration"].is_object()) return where + ": bad duration in apply[]";
+            const Json dur = has_dur ? x["duration"] : Json::object();
+            const std::string dk = dur.is_object() && dur.contains("kind") && dur["kind"].is_string() ? dur["kind"].get<std::string>() : "";
+            uint8_t expiry = 0;
+            uint16_t rounds = 0;
+            if (dk == "rounds") {
+                const int n = geti(dur, "n");
+                if (n < 1 || n > 65535) return where + ": bad duration rounds";
+                expiry = uint8_t(rules5e::Expiry::Rounds);
+                rounds = uint16_t(n);
+            } else if (dk == "until_end_of_target_next_turn") {
+                expiry = uint8_t(rules5e::Expiry::EndOfTargetNextTurn);
+            } else if (dk != "until_save" && (has_dur || rs.empty())) {
+                unsupported = true;   // an unknown duration kind (or none at all, without a repeat save)
+                return std::nullopt;
+            }
+            const rules5e::RepeatSave rep = !rs.empty() ? repeat_of(rs)
+                                          : dk == "until_save" ? rules5e::RepeatSave::EndOfTurn : rules5e::RepeatSave::None;
             if (first) {   // the first condition rides the primary Save effect
                 d.applies_condition = true;
                 d.condition = *cond;
-                d.repeat_save = repeat_of(rs.empty() ? "end_of_turn" : rs);
+                d.repeat_save = rep;
+                d.expiry = expiry;
+                d.duration_rounds = rounds;
                 first = false;
             } else {       // further conditions: ApplyCondition on the creatures that failed the save
                 rules5e::SpellEffect e;
                 e.kind = rules5e::SpellEffectKind::ApplyCondition;
                 e.applies_condition = true;
                 e.condition = *cond;
-                e.repeat_save = repeat_of(rs.empty() ? "end_of_turn" : rs);
+                e.repeat_save = rep;
+                e.expiry = expiry;
+                e.duration_rounds = rounds;
                 e.affected_only = true;
                 d.extra_effects.push_back(e);
             }
