@@ -145,6 +145,41 @@ void repeat_saves(EncounterState& s, CombatantId cid, RepeatSave timing, std::ve
     }
 }
 
+// Timed effects that ran out: end them (and any sibling effects of the same spell on the same target, like a
+// repeat-save success), then end the caster's concentration once nothing of that spell remains. Events are the
+// existing SpellEffectEnded (+ ConditionRemoved when the condition goes away).
+using GoneEffect = std::pair<uint32_t, std::pair<CombatantId, CombatantId>>;   // (spell, (caster, target))
+void expire_effects(EncounterState& s, const std::vector<GoneEffect>& gone, std::vector<Event>& ev) {
+    for (const auto& g : gone) {
+        for (;;) {
+            auto it = std::find_if(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
+                return o.spell_id == g.first && o.caster == g.second.first && o.target == g.second.second; });
+            if (it == s.effects.end()) break;
+            end_effect(s, std::size_t(it - s.effects.begin()), ev);
+        }
+        bool remaining = std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
+            return o.caster == g.second.first && o.spell_id == g.first; });
+        Combatant* caster = find_mut(s, g.second.first);
+        if (!remaining && caster && caster->concentration_spell == g.first) end_concentration(s, g.second.first, ev);
+    }
+}
+
+// New round: Rounds timers tick (all effects, in application order).
+void tick_effects_round_start(EncounterState& s, std::vector<Event>& ev) {
+    std::vector<GoneEffect> gone;
+    for (auto& e : s.effects)
+        if (tick_round_start(e.timed)) gone.push_back({e.spell_id, {e.caster, e.target}});
+    expire_effects(s, gone, ev);
+}
+
+// End of `cid`'s turn: EndOfTargetNextTurn timers on `cid` tick.
+void tick_effects_turn_end(EncounterState& s, CombatantId cid, std::vector<Event>& ev) {
+    std::vector<GoneEffect> gone;
+    for (auto& e : s.effects)
+        if (e.target == cid && tick_target_turn_end(e.timed)) gone.push_back({e.spell_id, {e.caster, e.target}});
+    expire_effects(s, gone, ev);
+}
+
 // SRD: concentration ends when the caster is incapacitated or dies.
 void sweep_concentration(EncounterState& s, std::vector<Event>& ev) {
     for (std::size_t i = 0; i < s.combatants.size(); ++i) {
@@ -547,10 +582,12 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
 
 void advance_turn(EncounterState& s, std::vector<Event>& ev) {
     const auto n = s.order.size();
+    const uint16_t round_before = s.round;
     for (std::size_t k = 0; k < n; ++k) {
         if (++s.turn_index >= n) { s.turn_index = 0; ++s.round; }
         if (!find_mut(s, s.order[s.turn_index].id)->dead) break;
     }
+    if (s.round != round_before) tick_effects_round_start(s, ev);   // timed effects: a new round has started
     start_turn(s, ev);
 }
 
@@ -715,7 +752,8 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                     emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.condition));
                 }
                 s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, def.save_ability,
-                                                      int16_t(dc), def.repeat_save, def.concentration});
+                                                      int16_t(dc), def.repeat_save, def.concentration,
+                                                      make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id)});
                 applied = true;
             }
         }
@@ -747,7 +785,8 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.condition));
             }
             s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, Ability::Wis, 0, RepeatSave::None,
-                                                  def.concentration});
+                                                  def.concentration,
+                                                  make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id)});
             affected.push_back(t);
             applied = true;
         }
@@ -1110,6 +1149,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     switch (req.kind) {
     case ActionKind::EndTurn:
         repeat_saves(s, a.id, RepeatSave::EndOfTurn, out.events);
+        tick_effects_turn_end(s, a.id, out.events);
         emit(out.events, EventKind::TurnEnded, a.id);
         advance_turn(s, out.events);
         return out;
@@ -1426,6 +1466,43 @@ uint64_t feature_uses_digest(const EncounterState& s, uint64_t h) {
     u32(uint32_t(s.features.size()));
     for (const auto& f : s.features) {   // registration order is deterministic (setup + replay)
         u32(f.actor); u32(f.feature_id); byte(f.max); byte(f.used); byte(uint8_t(f.recharge));
+    }
+    return h;
+}
+
+}  // namespace rules5e
+
+namespace rules5e {
+
+Timed make_timed(Expiry kind, uint16_t rounds, bool target_acting) {
+    switch (kind) {
+    case Expiry::Rounds: return {kind, int16_t(std::min<int>(rounds, 32767))};
+    case Expiry::EndOfTargetNextTurn: return {kind, int16_t(target_acting ? 2 : 1)};   // the acting target's current turn does not count
+    default: return {};
+    }
+}
+
+bool tick_round_start(Timed& t) {
+    if (t.kind != Expiry::Rounds || t.rounds_left <= 0) return false;
+    return --t.rounds_left == 0;
+}
+
+bool tick_target_turn_end(Timed& t) {
+    if (t.kind != Expiry::EndOfTargetNextTurn || t.rounds_left <= 0) return false;
+    return --t.rounds_left == 0;
+}
+
+bool has_timed_effects(const EncounterState& s) {
+    return std::any_of(s.effects.begin(), s.effects.end(), [](const ActiveSpellEffect& e) { return e.timed.kind != Expiry::None; });
+}
+
+uint64_t timed_effects_digest(const EncounterState& s, uint64_t h) {
+    auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
+    auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) byte(uint8_t(v >> (8 * i))); };
+    for (const auto& e : s.effects) {   // application order is deterministic
+        if (e.timed.kind == Expiry::None) continue;
+        u32(e.spell_id); u32(e.caster); u32(e.target); byte(uint8_t(e.condition));
+        byte(uint8_t(e.timed.kind)); u32(uint32_t(uint16_t(e.timed.rounds_left)));
     }
     return h;
 }
