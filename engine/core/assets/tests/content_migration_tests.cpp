@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include <fstream>
 #include <string>
 #include "assets/content_migrations.hpp"
 
@@ -163,4 +164,20 @@ TEST_CASE("3 -> 4 ignores a mistyped kind instead of failing the load (as migrat
     CHECK(r.data["traits"][2]["effect"]["inert"] == true);
     CHECK_FALSE(r.data["traits"][3]["effect"].contains("inert"));
     CHECK(r.data["inert_mechanics"] == Json::array({"bonus_actions"}));
+}
+
+TEST_CASE("3 -> 4 parity: T&C's at3 fixtures migrate to the Python reference's expected @4 documents (as JSON)") {
+    struct Case { const char* name; const char* type; };
+    for (const Case& cs : {Case{"decorated_goblin", "monster"}, Case{"merge_goblin", "monster"},
+                           Case{"decorated_fighter", "character"}, Case{"bogus_inert_fighter", "character"}}) {
+        CAPTURE(cs.name);
+        const std::string base = kRoot + "/tests/validate/fixtures/v4/";
+        auto r = make().load_file(base + "at3/" + cs.name + ".json");
+        REQUIRE_MESSAGE(r.ok, r.error);
+        CHECK(r.declared == SchemaRef{cs.type, 3});
+        std::ifstream f(base + "expected4/" + cs.name + ".json");
+        REQUIRE(f.good());
+        const Json expected = Json::parse(f);
+        CHECK(r.data == expected);   // nlohmann sorts keys: equal as JSON, not byte-identical
+    }
 }

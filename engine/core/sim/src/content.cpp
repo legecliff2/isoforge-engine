@@ -420,7 +420,6 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     }
     // Feature hooks (data-driven by effect.kind; see features.hpp).
     a.features = declared_features(doc);
-    // 0 = parse the document's own $schema tag (never "latest"); a missing or unparsable tag means no refusal.
     const FeatureBuildCtx fctx{*features_, doc, declared, attack_actions};
     for (std::size_t i = 0; i < a.features.size(); ++i) {
         const FeatureDecl& f = a.features[i];
