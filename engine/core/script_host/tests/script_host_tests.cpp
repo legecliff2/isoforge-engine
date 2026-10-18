@@ -40,7 +40,7 @@ struct Scene {
 };
 
 std::vector<uint64_t> decisions(uint64_t seed, int turns) {
-    ScriptHost host(1);
+    ScriptHost host(kMaxApiLevel);
     auto pack = load_pack_scripts(host, kPack);
     REQUIRE_MESSAGE(pack.ok, (pack.errors.empty() ? "" : pack.errors[0]));
     Scene s;
@@ -63,10 +63,11 @@ TEST_CASE("api level 1 definitions are available and only level 1 exists") {
 }
 
 TEST_CASE("sample pack: strict typecheck passes and the goblin AI picks a target") {
-    ScriptHost host(1);
+    ScriptHost host(kMaxApiLevel);
     PackScripts p = load_pack_scripts(host, kPack);
     REQUIRE_MESSAGE(p.ok, (p.errors.empty() ? "" : p.errors[0]));
-    CHECK(p.api_level == 1);
+    CHECK(p.api_level >= 1);
+    CHECK(p.api_level <= kMaxApiLevel);   // the pack declares its own level (1 today, 2 once T&C #72 lands)
     REQUIRE(p.scripts.count(kAi) == 1);
     // goblin.json behavior.ai (migrated from monster@1 presentation.ai) binds the script.
     REQUIRE(p.ai_by_archetype.count("srd51.monster.goblin") == 1);
@@ -298,7 +299,16 @@ TEST_CASE("check_pack_scripts (tools/script_check) on the sample pack") {
     auto r = check_pack_scripts(kPack.parent_path() / "srd51.core");
     CHECK(r.errors.empty());
     CHECK(r.scripts >= 1);
-    CHECK(r.api_level == 1);
+    std::ifstream man(kPack.parent_path() / "srd51.core" / "manifest.json");   // the pack's own declared level
+    std::stringstream mtext;
+    mtext << man.rdbuf();
+    const std::string m = mtext.str();
+    const auto at = m.find("\"api_level\"");
+    REQUIRE(at != std::string::npos);
+    const uint32_t declared = uint32_t(std::stoul(m.substr(m.find(':', at) + 1)));
+    CHECK(r.api_level == declared);
+    CHECK(declared >= 1);
+    CHECK(declared <= kMaxApiLevel);
 }
 
 TEST_CASE("pack set scripts: ids are pack_id:path; behavior.ai resolves within the archetype's own pack") {
