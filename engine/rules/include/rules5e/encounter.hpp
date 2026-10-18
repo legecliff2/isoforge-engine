@@ -77,6 +77,11 @@ struct ActionRequest {
     // appended (Attack / readied Attack, T&C-G7): sim fact for Combatant::roll_traits, e.g. Pack Tactics:
     // an ally of the actor, not incapacitated, is within 5 ft of the target.
     bool ally_near_target = false;
+    // appended (Move): sim fact, the number of tiles this Move covers (sim paths one tile per Step, so 1; 0 for
+    // every other request). Unlike move_ft it is not terrain cost (difficult terrain doubles move_ft). Callers
+    // that track "moved N ft this turn" add 5 * move_tiles only when the move completes. Own-turn Steps only:
+    // a readied Move fired out of turn is not a request. Not part of sim's log_hash.
+    uint8_t move_tiles = 0;
 };
 
 enum class EventKind : uint8_t {
