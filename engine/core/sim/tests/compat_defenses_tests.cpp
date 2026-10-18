@@ -13,6 +13,7 @@
 // edited): fl1 is copied to a temp dir and the stat blocks get the decoration below.
 #include <doctest/doctest.h>
 
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -63,6 +64,9 @@ struct Decorated {
         g["damage_vulnerabilities"] = Json::array({"fire"});
         g["condition_immunities"] = Json::array({"frightened", "poisoned"});
         for (auto& a : g["actions"]) a["damage"].push_back({{"dice", "1d4"}, {"type", "fire"}});
+        g["type"] = "undead";   // creature type is mechanical only at @3
+        g["spellcasting"] = {{"ability", "int"}, {"caster_level", 5}, {"slots", {{"1", 4}, {"3", 2}}},
+                             {"spells", Json::array({"srd51.spell.fire_bolt", "srd51.spell.hold_person"})}};
         write_json(dir / "monsters/goblin.json", g);
         Json f = read_json(dir / "characters/fighter_1.json");
         f["$schema"] = character_schema;
@@ -71,6 +75,8 @@ struct Decorated {
         f["damage_vulnerabilities"] = Json::array({"fire"});
         f["condition_immunities"] = Json::array({"charmed"});
         for (auto& a : f["actions"]) a["damage"].push_back({{"dice", "2d6"}, {"type", "fire"}});
+        f["spellcasting"] = {{"ability", "wis"}, {"caster_level", 3}, {"slots", {{"2", 3}}},
+                             {"pact", {{"level", 1}, {"slots", 2}}}, {"spells", Json::array({"srd51.spell.cure_wounds"})}};
         write_json(dir / "characters/fighter_1.json", f);
     }
     ~Decorated() { fs::remove_all(root); }
@@ -182,7 +188,15 @@ TEST_CASE("compat defenses: decorated pre-@3 stat blocks load with no defenses a
             CHECK(a->base.condition_immunities == 0);
             for (const auto& at : a->base.attacks) CHECK(at.extra_damage.empty());
             CHECK_FALSE(a->inert_mechanics.empty());   // reported, never applied
+            CHECK(a->base.creature_type == rules5e::CreatureType::Humanoid);   // goblin "undead" is not read pre-@3
+            CHECK(a->base.spells_known.empty());
+            CHECK(a->base.caster_level == 0);
+            CHECK(a->base.spell_slots_max == std::array<uint8_t, 10>{});
+            CHECK(a->base.pact_slots_max == 0);
+            CHECK(a->spell_ids.empty());
         }
+        CHECK(g->inert_mechanics.size() == 7);   // 4 defenses, damage[1..], spellcasting, creature_type
+        CHECK(f->inert_mechanics.size() == 6);
         CHECK(g->base.attacks[0].damage == rules5e::DiceExpr{1, 6, 2});
         CHECK(f->base.attacks[0].damage == rules5e::DiceExpr{1, 8, 5});
     }

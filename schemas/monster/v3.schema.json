@@ -9,6 +9,9 @@
     "challenge"
   ],
   "properties": {
+    "spellcasting": {
+      "$ref": "../common/v1.schema.json#/$defs/spellcasting"
+    },
     "$schema": {
       "const": "monster@3"
     },
