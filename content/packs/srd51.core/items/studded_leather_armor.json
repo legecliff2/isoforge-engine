@@ -1,0 +1,13 @@
+{
+  "$schema": "item@1",
+  "id": "srd51.item.studded_leather_armor",
+  "name": "Studded Leather Armor",
+  "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
+  "category": "armor",
+  "cost_cp": 4500,
+  "weight_oz": 208,
+  "armor_category": "light",
+  "base_ac": 12,
+  "dex_bonus": true,
+  "stealth_disadvantage": false
+}
