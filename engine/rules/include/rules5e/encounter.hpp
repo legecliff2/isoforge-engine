@@ -20,7 +20,10 @@ namespace rules5e {
 
 struct TurnBudget {
     bool action = true, bonus_action = true, reaction = true; int16_t movement_ft = 0;
-    uint8_t attacks_remaining = 0;     // Extra Attack: further attacks from the Attack action taken this turn
+    uint8_t attacks_remaining = 0;     // Extra Attack / multiattack: further attacks from the Attack action taken this turn
+    // Multiattack in progress: 1 + index into Combatant::multiattacks (0 = none) and the position of the
+    // next attack in that sequence. While one is active, Attack must follow the declared order.
+    uint8_t sequence = 0, sequence_pos = 0;
 };
 
 // Answer to a reaction window (names/layout shared with sim::Combat).
@@ -62,6 +65,12 @@ struct ActionRequest {
     // CastSpell: creatures affected when more than one (Hold Person upcast), or one entry per dart
     // (Magic Missile; a single entry = all darts at it). Empty = {target}.
     std::vector<CombatantId> targets = {};
+    // appended (Attack): start a declared multiattack: 1 + index into Combatant::multiattacks (0 = a plain
+    // attack / legacy Extra Attack). The request's attack_index must be the sequence's first attack. Once started,
+    // every further Attack this turn must carry the next attack_index of the sequence (multiattack = 0 or the
+    // same value); targets may differ per attack; moving, reactions and other creatures' Ready triggers happen
+    // between attacks like any other step. The sequence ends when its last attack is made or the turn ends.
+    uint8_t multiattack = 0;
 };
 
 enum class EventKind : uint8_t {
