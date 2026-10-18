@@ -4,9 +4,15 @@
 
 namespace eng::sim {
 
+uint32_t event_stream_version(std::span<const SimEvent> events) {
+    for (const auto& e : events)
+        if (e.kind == SimEvent::Kind::SpellTarget) return 5;
+    return 4;
+}
+
 uint64_t event_stream_hash(std::span<const SimEvent> events) {
     CanonicalHasher h;
-    h.u32(kSimEventSchemaVersion);
+    h.u32(event_stream_version(events));
     h.u32(uint32_t(events.size()));
     for (const auto& e : events) {
         h.byte(uint8_t(e.kind));

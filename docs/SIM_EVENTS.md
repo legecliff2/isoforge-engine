@@ -1,15 +1,15 @@
-# sim event stream (schema version 4)
+# sim event stream (schema version 5)
 
 `eng::sim::Combat::events()` is the ordered record of everything that happened in a combat. Render/platform, UI, logs and tests consume it. This document is the contract. The code lives in `engine/core/sim/include/sim/events.hpp`, and the layout is locked by `engine/core/sim/tests/events_tests.cpp`.
 
 ## Types
 
 ```cpp
-inline constexpr uint32_t kSimEventSchemaVersion = 3;
+inline constexpr uint32_t kSimEventSchemaVersion = 5;
 inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::SpellCheckRolled;
 
 struct SimEvent {
-    enum class Kind : uint8_t { Rules = 0, TileMoved = 1 };   // append-only
+    enum class Kind : uint8_t { Rules = 0, TileMoved = 1, SpellTarget = 2 };   // append-only
     Kind kind;
     rules5e::Event rules;   // Kind::Rules only (zero otherwise)
     CombatantId actor;      // TileMoved: mover (0 otherwise)
@@ -65,6 +65,8 @@ struct rules5e::Event { EventKind kind; CombatantId actor, target; int32_t a, b,
 
 `FeatureUsed` feature ids are 1-based indexes into the archetype's declared features (`features[]` then `traits[]`, see `sim/features.hpp`). A self-heal is followed by `Healed`, with actor and target both set to the user.
 
+**`SpellTarget` (v5).** One per creature affected by a `CastSpell` request, after the request's rules events (and after any `TileMoved`), in target order: `actor` = caster, `tile` = the target's tile at cast time (same frame as `TileMoved`), `rules.target` = target id, `rules.a` = spell id; every other `rules` field is zero. It is emitted only when the request produced a depth-0 `SpellCast` (rejected casts append nothing). It gives viewers the tiles of area spells, whose `SpellCast` names only the first target. The effect itself arrives as the usual rules events (`AttackResolved`, `SavingThrowRolled`, `DamageDealt`, `ConditionAdded`, `Healed`, `SpellResolved`, ...).
+
 **Tile frame.** A single-chunk combat (`Combat::create(reg, chunk, ...)`) uses chunk-local tiles, as in every schema version. A multi-chunk combat (`Combat::create(reg, span<const Chunk*>, ...)`) uses world tiles, `chunk.coord * 32 + local`. Field layout and meaning per combat are unchanged, so the version is not bumped. Consumers of a multi-chunk stream map tiles with `Grid::chunk_of`.
 
 `reaction_depth` is 0 for events of the action itself and 1 or more for events produced while a reaction resolves. For example, an opportunity attack's `AttackResolved` has depth 1.
@@ -89,6 +91,10 @@ The authoritative per-kind field meanings are in `rules5e/encounter.hpp`. If tha
 6. **Turns.** `TurnEnded` is followed by `TurnStarted` of the next actor (dead combatants are skipped).
 7. **End.** `EncounterEnded` appears exactly once and is the last event. After it, `submit()` is rejected.
 
+## Digest versioning (v5)
+
+`event_stream_hash` records `event_stream_version(events)`, the lowest schema version that can express the stream: 5 if it contains a `SpellTarget`, otherwise 4. `kSimEventSchemaVersion` (5) is the contract version. Streams without a `CastSpell` therefore keep their v4 digests bit-identical, and every locked digest from before v5 is unchanged. Only a stream that casts a spell hashes as version 5.
+
 ## Determinism guarantees
 
 - **Same inputs, same stream.** The same content, chunk, seed and command log produce a bit-identical stream on every platform and compiler. The sim and rules use integer math only, with fixed iteration orders (ARCHITECTURE §4).
@@ -111,3 +117,4 @@ The authoritative per-kind field meanings are in `rules5e/encounter.hpp`. If tha
 - **v2** (feature hooks): rules5e `FeatureUsed` (34), emitted for content features such as Second Wind. `Healed` from a feature carries the user as actor. Nothing else changed. The digest changes for every stream because it includes the version.
 - **v3** (Ready and ranged): readied Moves emit `TileMoved` for the readier. `TileMoved` events are placed after the request's rules events instead of directly after their `Moved` (ordering rule 4). Ranged attacks add no new kinds.
 - **v4** (spellcasting, PR #23): rules5e `SavingThrowRolled` (35), `ConcentrationEnded` (36), `SpellEffectEnded` (37) and `SpellCheckRolled` (38). Sim doesn't cast spells yet, so no sim stream emits them; the digest changes for every stream because it includes the version.
+- **v5** (CastSpell, sim): `SimEvent::Kind::SpellTarget` (2), appended per affected creature of a `CastSpell`. Sim now surfaces the v4 spell kinds 30-38 (it supplies the spell hooks). The digest records the lowest version that fits the stream (see "Digest versioning"), so no existing stream's digest changed. Viewers that skip unknown kinds (the sample `event_feed`) keep working.

@@ -1,6 +1,7 @@
 #pragma once
 // Content -> rules adapters: monster@N / character@N stat blocks -> rules5e::Combatant.
 #include <deque>
+#include <memory>
 #include <map>
 #include <optional>
 #include <string>
@@ -9,9 +10,14 @@
 #include "assets/pack_set.hpp"
 #include "assets/schema_registry.hpp"
 #include "sim/features.hpp"
+#include "rules5e/spells.hpp"
 #include "rules5e/types.hpp"
 
 namespace eng::sim {
+
+// SRD creature size category. Stored from the stat block's "size"; no behaviour yet (no footprints:
+// docs/proposals/LARGE_CREATURE_FOOTPRINT_AUDIT.md).
+enum class CreatureSize : uint8_t { Tiny, Small, Medium, Large, Huge, Gargantuan };
 
 struct Archetype {
     std::string id;                       // "srd51.monster.goblin"
@@ -28,6 +34,8 @@ struct Archetype {
     // Pre-@3 descriptive defenses / extra damage entries carried by the file (migration marker
     // "inert_mechanics"): listed, never applied (docs/CONTENT_COMPAT.md).
     std::vector<std::string> inert_mechanics;
+    CreatureSize size = CreatureSize::Medium;        // stat block "size" (stored only)
+    std::vector<std::string> spell_ids;   // spellcasting.spells content ids (monster@3 / character@3)
     std::optional<std::string> ai;        // behavior.ai (monster@2 / character@2), pack-relative
     // Script id of behavior.ai, resolved within the archetype's own pack: "pack_id:path".
     std::optional<std::string> ai_script_id() const {
@@ -50,12 +58,19 @@ public:
     // Adds one already-migrated stat block document (owned by pack_id, may be empty).
     std::optional<std::string> add(const assets::Json& doc, const std::string& schema_type, const std::string& pack_id = "");
 
+    // Spell definitions of every spell@1 document loaded by load() (pack order). Shared with Combat,
+    // which installs it as rules5e hooks.spells. Empty when no pack has spells.
+    const std::shared_ptr<rules5e::SpellBook>& spells() const noexcept { return spells_; }
+    // Adds one already-migrated spell@1 document. Returns an error message or nullopt.
+    std::optional<std::string> add_spell(const assets::Json& doc);
+
     const Archetype* find(const std::string& id) const;
     const std::map<std::string, Archetype>& all() const noexcept { return by_id_; }
 
 private:
     std::map<std::string, Archetype> by_id_;
     std::deque<std::string> strings_;
+    std::shared_ptr<rules5e::SpellBook> spells_ = std::make_shared<rules5e::SpellBook>();
     const FeatureRegistry* features_ = &FeatureRegistry::builtin();
 };
 
