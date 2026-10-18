@@ -72,6 +72,9 @@ enum AttackQualifier : uint8_t { kAttackMagical = 1, kAttackSilvered = 2, kAttac
 // Unqualified Combatant::resistances / immunities are unaffected and apply to every source.
 struct QualifiedDamageMask { uint32_t nonmagical = 0, nonmagical_not_silvered = 0, nonmagical_not_adamantine = 0; };
 
+// Creature size category (SRD 5.1). Rules only reads it for the Heavy weapon property.
+enum class Size : uint8_t { Tiny, Small, Medium, Large, Huge, Gargantuan };
+
 struct Attack {
     std::string_view id;
     int8_t   to_hit;                               // total bonus
@@ -84,6 +87,7 @@ struct Attack {
     // appended: damage components 2..n (empty = single-component attack, the pre-existing behaviour).
     std::vector<DamagePart> extra_damage{};
     uint8_t qualifiers = 0;   // AttackQualifier bits (magic / silvered / adamantine); 0 = plain nonmagical
+    uint16_t properties = 0;  // WeaponProperty bits (weapon.hpp): heavy, loading, finesse, light, ...; 0 = none
 };
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
 constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
@@ -192,6 +196,7 @@ struct Combatant {
     // appended (damage qualifiers): resistance / immunity that applies only to nonmagical sources.
     QualifiedDamageMask resist_qualified{}, immune_qualified{};
     std::vector<RollTrait> roll_traits;   // appended: conditional advantage / disadvantage (Pack Tactics, Magic Resistance, ...)
+    Size size = Size::Medium;   // appended: Heavy weapons impose disadvantage on Small / Tiny wielders
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };

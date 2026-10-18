@@ -1,6 +1,8 @@
 #include "rules5e/attack.hpp"
 
 #include "rules5e/conditions.hpp"
+#include "rules5e/abilities.hpp"
+#include "rules5e/weapon.hpp"
 #include "rules5e/dice.hpp"
 #include "rules5e/traits.hpp"
 
@@ -43,10 +45,21 @@ TraitModes attack_trait_modes(const Combatant& a, const Combatant& t, bool ally_
     return m;
 }
 
+Ability attack_ability(const Combatant& c, const Attack& a) {
+    if (is_finesse(a)) return modifier(c.abilities, Ability::Dex) > modifier(c.abilities, Ability::Str) ? Ability::Dex : Ability::Str;
+    return a.ranged ? Ability::Dex : Ability::Str;
+}
+
+bool weapon_disadvantage(const Combatant& c, const Attack& a, bool within_5ft) {
+    if (has_property(a, kWeaponHeavy) && (c.size == Size::Small || c.size == Size::Tiny)) return true;
+    return has_property(a, kWeaponLance) && within_5ft;
+}
+
 AttackResult resolve_attack(rng::Rng& r, const Combatant& attacker, const Attack& atk,
                             const Combatant& target, const AttackContext& ctx) {
     AttackContext wctx = ctx;
     wctx.ranged = atk.ranged;
+    wctx.extra_disadvantage = ctx.extra_disadvantage || weapon_disadvantage(attacker, atk, ctx.target_within_5ft);
     RollMode mode = attack_roll_mode(attacker, target, wctx);
     D20Roll roll = roll_d20(r, atk.to_hit, mode);
     bool hit, crit = false;
