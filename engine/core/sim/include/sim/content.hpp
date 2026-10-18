@@ -15,9 +15,13 @@
 
 namespace eng::sim {
 
-// SRD creature size category. Stored from the stat block's "size"; no behaviour yet (no footprints:
-// docs/proposals/LARGE_CREATURE_FOOTPRINT_AUDIT.md).
+// SRD creature size category, from the stat block's "size".
 enum class CreatureSize : uint8_t { Tiny, Small, Medium, Large, Huge, Gargantuan };
+// Side of the square space a creature occupies, in tiles (5 ft each): Tiny/Small/Medium 1, Large 2,
+// Huge 3, Gargantuan 4. Tiny/Small share a tile with nobody (SRD sharing rules are out of scope).
+constexpr uint8_t footprint_of(CreatureSize s) noexcept {
+    return s == CreatureSize::Large ? 2 : s == CreatureSize::Huge ? 3 : s == CreatureSize::Gargantuan ? 4 : 1;
+}
 
 struct Archetype {
     std::string id;                       // "srd51.monster.goblin"
@@ -34,7 +38,10 @@ struct Archetype {
     // Pre-@3 descriptive defenses / extra damage entries carried by the file (migration marker
     // "inert_mechanics"): listed, never applied (docs/CONTENT_COMPAT.md).
     std::vector<std::string> inert_mechanics;
-    CreatureSize size = CreatureSize::Medium;        // stat block "size" (stored only)
+    CreatureSize size = CreatureSize::Medium;        // stat block "size"
+    // Side of the footprint in tiles: footprint_of(size) for monster@3 / character@3, always 1 for
+    // pre-@3 content (its size was descriptive; migration marker "size" in inert_mechanics).
+    uint8_t footprint = 1;
     std::vector<std::string> spell_ids;   // spellcasting.spells content ids (monster@3 / character@3)
     std::optional<std::string> ai;        // behavior.ai (monster@2 / character@2), pack-relative
     // Script id of behavior.ai, resolved within the archetype's own pack: "pack_id:path".
