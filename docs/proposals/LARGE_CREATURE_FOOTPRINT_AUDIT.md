@@ -35,6 +35,8 @@ touches all five areas below plus the event/ECS contracts), so nothing was imple
 
 ## 2. Movement
 
+**Status (PR B):** done. `do_step` checks every newly entered footprint tile (walkable, free) and charges the dearest `step_cost_ft` among them (`Grid::move_cost_ft`); `Grid::path(..., footprint)` is footprint-aware (anchors in and out, no squeezing: a 2x2 does not fit a one-tile gap); readied moves and the AI driver use both. Squeezing (SRD: one size smaller space, costs extra) is deliberately not modelled.
+
 - `Combat::do_step` (`combat.cpp:467-482`) moves one tile: it requires `chebyshev(from, to) == 1`
   (`:471`), `grid_.walkable(to)` for that one tile (`:472`) and `to` not in the occupied list (`:474`).
   A 2x2 would need all newly entered tiles of the footprint to be free and walkable, and squeezing
@@ -49,6 +51,8 @@ touches all five areas below plus the event/ECS contracts), so nothing was imple
 
 ## 3. Line of sight and cover
 
+**Status (PR B):** line of sight between creatures is clear when any tile of one footprint sees any tile of the other (`Combat::line_of_sight`, a superset of the SRD corner rule for the tile grid). Cover is still unmodelled.
+
 - `Grid::line_of_sight(a, b)` (`grid.cpp:74-90`) is tile-centre to tile-centre. SRD 5.1 lets a
   creature of any size trace lines from a corner of its space; with a footprint the test would be
   "any corner/tile of A to any corner/tile of B". No call site passes anything but `pos()`:
@@ -57,6 +61,8 @@ touches all five areas below plus the event/ECS contracts), so nothing was imple
   number that sim never sets), so footprint cover is part of the larger missing cover work.
 
 ## 4. Reach and range
+
+**Status:** PR B: attack reach, ranged range / line of sight, spell range (`spell_in_reach`, `targets_within`, `can_see`, Counterspell reach) and the AI driver measure nearest-tile distance (`Combat::distance_tiles`, `rect_distance`). PR C: opportunity attacks / `leaves_reach` and readied-trigger distances.
 
 - All distance tests are Chebyshev distance between two single tiles:
   `combat.cpp:169` (`leaves_reach`), `:186` (reaction `in_range`), `:199`, `:213`, `:218-224`

@@ -5,6 +5,7 @@
 
 #include "rules5e/abilities.hpp"
 #include "rules5e/checks.hpp"
+#include "rules5e/weapon.hpp"
 #include "rules5e/d20.hpp"
 #include "rules5e/saves.hpp"
 #include "rules5e/conditions.hpp"
@@ -124,7 +125,7 @@ void repeat_saves(EncounterState& s, CombatantId cid, RepeatSave timing, std::ve
         auto it = std::find_if(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
             return o.spell_id == e.spell_id && o.caster == e.caster && o.target == e.target; });
         if (it == s.effects.end()) continue;
-        auto r = saving_throw(s.rng, *c, e.save_ability, e.dc);
+        auto r = saving_throw(s.rng, *c, e.save_ability, e.dc, RollMode::Normal, SaveSource{true, 0, 0});   // an ongoing spell effect
         emit(ev, EventKind::SavingThrowRolled, cid, CombatantId(e.save_ability), r.roll.natural, r.roll.total, int32_t(r.success));
         if (!r.success) continue;
         end_effect(s, std::size_t(it - s.effects.begin()), ev);
@@ -327,14 +328,16 @@ bool being_hit_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, c
 
 void do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
                bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage = false,
-               uint32_t spell_id = 0) {
+               uint32_t spell_id = 0, bool ally_near_target = false) {
     bool adv = false;
     if (a.helped_vs == t.id) { adv = true; a.helped_vs = 0; a.helped_by = 0; }
     if (a.stealth_total > 0) { adv = true; a.stealth_total = 0; }   // unseen attacker; now revealed
     AttackContext actx;
     actx.target_within_5ft = within_5ft;
+    actx.ally_near_target = ally_near_target;
+    actx.ranged = atk.ranged;
     actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
-    actx.extra_disadvantage = ranged_disadvantage && atk.ranged;   // combined with conditions in one place
+    actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft);   // combined with conditions in one place
     D20Roll roll = roll_d20(s.rng, atk.to_hit, attack_roll_mode(a, t, actx));
     bool crit = false;
     bool hit = evaluate_hit(roll, t, actx, crit);
@@ -567,7 +570,8 @@ void fire_readies(EncounterState& s, Ctx& ctx, std::vector<Event>& ev) {
                 Combatant* t = find_mut(s, r.response.target);
                 if (t && !t->dead && r.response.attack_index < a->attacks.size())
                     do_attack(s, ctx, *a, *t, a->attacks[r.response.attack_index], r.response.target_within_5ft, ev,
-                              r.response.ranged_hostile_within_5ft || r.response.beyond_normal_range);
+                              r.response.ranged_hostile_within_5ft || r.response.beyond_normal_range, 0,
+                              r.response.ally_near_target);
             } else if (r.response.kind == ActionKind::Move) {
                 int16_t ft = r.response.move_ft;
                 int sp = effective_speed(*a);
@@ -673,7 +677,9 @@ void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& de
         bool applied = false;
         for (Combatant* t : T) {
             if (t->dead) continue;
-            auto r = saving_throw(s.rng, *t, def.save_ability, dc);
+            SaveSource src{true, def.applies_condition ? bit(def.condition) : 0u,
+                           (def.dice.count > 0 || def.dice.bonus > 0) ? bit(def.damage_type) : 0u};
+            auto r = saving_throw(s.rng, *t, def.save_ability, dc, RollMode::Normal, src);
             emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(def.save_ability), r.roll.natural, r.roll.total,
                  int32_t(r.success));
             int dealt = r.success ? (def.on_save == OnSave::Half ? dmg / 2 : 0) : dmg;
@@ -1133,15 +1139,22 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
             for (uint8_t i : seq) if (i >= a.attacks.size()) return fail("bad multiattack");
             if (req.attack_index != seq[0]) return fail("attack out of multiattack sequence");
             if (!spend_action(b, a, req.kind, false)) return fail("no action available");
+            b.loading_fired = 0;
             b.attacks_remaining = uint8_t(seq.size() - 1);
             if (b.attacks_remaining > 0) { b.sequence = req.multiattack; b.sequence_pos = 1; }
         } else if (b.attacks_remaining > 0) --b.attacks_remaining;       // Extra Attack
-        else if (spend_action(b, a, req.kind, false))
+        else if (spend_action(b, a, req.kind, false)) {
+            b.loading_fired = 0;
             b.attacks_remaining = uint8_t(a.attacks_per_action > 1 ? a.attacks_per_action - 1 : 0);
-        else return fail("no action available");
+        } else return fail("no action available");
+        if (has_property(a.attacks[req.attack_index], kWeaponLoading) && req.attack_index < 32) {
+            const uint32_t lbit = uint32_t(1) << req.attack_index;
+            if (b.loading_fired & lbit) return fail("loading weapon already fired this action");
+            b.loading_fired |= lbit;
+        }
         s.budget = b;
         do_attack(s, ctx, a, *t, a.attacks[req.attack_index], req.target_within_5ft, out.events,
-                  req.ranged_hostile_within_5ft || req.beyond_normal_range);
+                  req.ranged_hostile_within_5ft || req.beyond_normal_range, 0, req.ally_near_target);
         check_end(s, out.events);
         return out;
     }
@@ -1240,6 +1253,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
                 continue;
             }
             for (uint8_t i = 0; i < a.attacks.size(); ++i) {
+                if (!b.action && i < 32 && has_property(a.attacks[i], kWeaponLoading) && (b.loading_fired >> i & 1)) continue;
                 ActionRequest r{a.id, ActionKind::Attack, t.id, i};
                 out.push_back(r);
             }
