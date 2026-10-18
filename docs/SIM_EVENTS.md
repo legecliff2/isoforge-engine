@@ -28,7 +28,7 @@ struct rules5e::Event { EventKind kind; CombatantId actor, target; int32_t a, b,
 | 0 | InitiativeRolled | combatant | | total | | |
 | 1 | TurnStarted | combatant | | round | | |
 | 2 | AttackResolved | attacker | target | natural d20 | total | bit0 hit, bit1 crit (damage follows as DamageDealt) |
-| 3 | DamageDealt | 0 | creature damaged | damage dealt | hp after | |
+| 3 | DamageDealt | 0 | creature damaged | damage dealt | hp after | one per hit: for a multi-component attack (monster@3 / character@3 `damage[]` with several entries) `a` is the SUM of the components after each one's own immunity/resistance/vulnerability (no per-type breakdown; a fully immune hit is `a = 0`). Single-component hits are unchanged |
 | 4 | ConditionAdded | creature | | Condition | | |
 | 5 | CombatantDowned | creature | | | | |
 | 6 | DeathSaveRolled | creature | | natural | successes | failures |
