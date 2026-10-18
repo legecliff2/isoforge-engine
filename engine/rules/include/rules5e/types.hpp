@@ -58,6 +58,10 @@ struct AbilityScores {
 // (and doubled on a critical hit) separately and gets immunity/resistance/vulnerability for ITS type.
 struct DamagePart { DiceExpr dice; DamageType type; };
 
+// Weapon qualifiers for nonmagical-attack resistance (werewolf, gargoyle, ...): RESERVED. Nothing reads
+// Attack::qualifiers yet; Rules' follow-up fills and consumes it. Applies to every damage component.
+enum AttackQualifier : uint8_t { kAttackMagical = 1, kAttackSilvered = 2, kAttackAdamantine = 4 };
+
 struct Attack {
     std::string_view id;
     int8_t   to_hit;                               // total bonus
@@ -69,6 +73,7 @@ struct Attack {
     uint16_t range_ft = 0, long_range_ft = 0;
     // appended: damage components 2..n (empty = single-component attack, the pre-existing behaviour).
     std::vector<DamagePart> extra_damage{};
+    uint8_t qualifiers = 0;   // AttackQualifier bits; reserved, unused by the rules today
 };
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
 constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
