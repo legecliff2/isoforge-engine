@@ -34,7 +34,8 @@ world::Chunk sample_chunk() {
 } // namespace
 
 TEST_CASE("event layout: schema version and numeric enum values are locked") {
-    CHECK(kSimEventSchemaVersion == 4);
+    CHECK(kSimEventSchemaVersion == 5);
+    CHECK(uint8_t(SimEvent::Kind::SpellTarget) == 2);   // v5
     CHECK(uint8_t(SimEvent::Kind::Rules) == 0);
     CHECK(uint8_t(SimEvent::Kind::TileMoved) == 1);
     // rules5e::EventKind as surfaced in SimEvent::rules (append-only; values are the contract).

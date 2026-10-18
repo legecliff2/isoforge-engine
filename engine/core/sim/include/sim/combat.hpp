@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -74,6 +75,17 @@ struct SubmitResult {
 // tile is free; leaving reach on the way opens LeavingReach windows like any move.
 enum class ReadyTriggerKind : uint8_t { TargetWithin = 1, HostileWithin = 2 };
 constexpr uint32_t ready_trigger_id(ReadyTriggerKind k, uint8_t tiles) { return (uint32_t(k) << 8) | tiles; }
+
+// CastSpell (v5): submit a Command{Rules, request{actor, ActionKind::CastSpell, target, ...,
+// spell_id = rules5e::spell_id_of(<spell@1 content id>), spell_level = slot level (0 = cantrip),
+// targets = affected creatures when not just `target`}}. The spell must be in the loaded SpellBook
+// (ContentLibrary::spells()) and known by the caster (spellcasting.spells). Sim supplies the facts
+// rules5e asks for: range / line of sight (spell_target_ok: self = caster only, touch = adjacent,
+// else Chebyshev range in tiles with line of sight), targets_within, can_see (line of sight, not
+// Blinded), can_provide_components (V/S always; a spell with a material cost is refused: no
+// inventory yet), and reaction reach (Shield: the creature hit; Counterspell: a reactor within the
+// counter spell's range of the caster). Area templates are NOT computed: the caller lists the
+// creatures inside the area in `targets`. Slots are spent by rules5e.
 
 // Team ids: the distinct team names of the combatant spawns (overrides.team, else "party" for
 // characters / "monsters" for monsters), byte-sorted; id = index. Spawn-order independent.
@@ -153,6 +165,8 @@ private:
     bool leaves_reach(CombatantId mover, Vec2i from, Vec2i to) const;
     int melee_reach_tiles(CombatantId id) const;   // 0 = no melee attack
     const Slot* slot(CombatantId id) const;
+    bool los_between(Vec2i a, Vec2i b) const { return grid_.line_of_sight(a, b); }
+    bool spell_in_reach(const rules5e::SpellDef& def, CombatantId caster, CombatantId target) const;
 
     ecs::Registry* reg_;
     Grid grid_;
@@ -163,6 +177,7 @@ private:
     std::vector<LogEntry> log_;
     std::vector<std::string> team_names_;
     PollOrderFn poll_order_;
+    std::shared_ptr<const rules5e::SpellBook> spells_;   // content spell@1 defs (null = no spells)
     std::map<CombatantId, Vec2i> readied_dest_;   // readied Move destinations (until fired/expired)
     std::optional<Vec2i> ready_to_;               // destination of the Ready being resolved
     std::optional<Vec2i> step_to_;   // destination of the Move being resolved / paused (sim-only)
