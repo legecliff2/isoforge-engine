@@ -74,6 +74,19 @@ Example (Nimble Escape): `{ "kind": "bonus_action_grant", "actions": ["disengage
 
 Example (Second Wind): `{ "kind": "self_heal", "dice": "1d10", "plus": "fighter_level", "uses": 1, "recharge": "short_rest", "cost": "bonus_action" }`
 
+### `multiattack` (static)
+
+SRD Multiattack as declared sequences (rules5e #48: `Combatant::multiattacks`). Each option is an ordered list of the creature's own attack action ids (`actions[].id` of attack kinds) made with one Attack action. The Attack request starts one with `ActionRequest::multiattack = 1 + option index` (`Combat::multiattack_option(id, option_id)` finds it) and `attack_index` = the sequence's first attack; each further attack follows the declared order, with reactions / Ready / movement allowed in between.
+
+| field | type | required | meaning |
+|---|---|---|---|
+| `options` | array of `{ id, attacks[] }` | one of the two | option id (unique per creature) and ordered action ids (1..255, repeats allowed) |
+| `attacks` | array of action ids | one of the two | shorthand for a single option named `multiattack` |
+
+The engine rejects an action id that names no attack action and duplicate option ids. Option order is declaration order. The sim AI (`next_command`) opens the first option made only of melee attacks and finishes it; options with a ranged attack are available to Commands but the AI never picks them.
+
+Example (owlbear): `{ "kind": "multiattack", "options": [ { "id": "claw_beak", "attacks": ["beak", "claws"] } ] }`
+
 ### 1.1 Condition ids
 
 Named predicates over an attack action, registered in the FeatureRegistry:

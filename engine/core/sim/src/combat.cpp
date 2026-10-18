@@ -136,6 +136,14 @@ Vec2i Combat::pos(CombatantId id) const {
     const TilePos* p = reg_->get<TilePos>(s->entity);
     return p ? Vec2i{p->x, p->y} : Vec2i{};
 }
+std::optional<uint8_t> Combat::multiattack_option(CombatantId id, std::string_view option_id) const {
+    const auto* c = rules5e::find(state_, id);
+    if (!c) return std::nullopt;
+    for (std::size_t i = 0; i < c->multiattacks.size() && i < 255; ++i)
+        if (c->multiattacks[i].id == option_id) return uint8_t(i + 1);
+    return std::nullopt;
+}
+
 bool Combat::hostile(CombatantId a, CombatantId b) const {
     const auto* ca = rules5e::find(state_, a);
     const auto* cb = rules5e::find(state_, b);
@@ -656,6 +664,7 @@ uint64_t Combat::log_hash() const {
         h.u32(q.trigger_id);
         h.byte(q.ranged_hostile_within_5ft ? 1 : 0);
         h.byte(q.beyond_normal_range ? 1 : 0);
+        if (q.multiattack != 0) h.byte(q.multiattack);   // folded only when used: older logs hash as before
         h.byte(q.heal_dice.count);
         h.byte(q.heal_dice.sides);
         h.i16(q.heal_dice.bonus);
