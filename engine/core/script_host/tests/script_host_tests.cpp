@@ -40,7 +40,7 @@ struct Scene {
 };
 
 std::vector<uint64_t> decisions(uint64_t seed, int turns) {
-    ScriptHost host(1);
+    ScriptHost host(kMaxApiLevel);
     auto pack = load_pack_scripts(host, kPack);
     REQUIRE_MESSAGE(pack.ok, (pack.errors.empty() ? "" : pack.errors[0]));
     Scene s;
@@ -63,10 +63,11 @@ TEST_CASE("api level 1 definitions are available and only level 1 exists") {
 }
 
 TEST_CASE("sample pack: strict typecheck passes and the goblin AI picks a target") {
-    ScriptHost host(1);
+    ScriptHost host(kMaxApiLevel);
     PackScripts p = load_pack_scripts(host, kPack);
     REQUIRE_MESSAGE(p.ok, (p.errors.empty() ? "" : p.errors[0]));
-    CHECK(p.api_level == 1);
+    CHECK(p.api_level >= 1);
+    CHECK(p.api_level <= kMaxApiLevel);   // the pack declares its own level (1 today, 2 once T&C #72 lands)
     REQUIRE(p.scripts.count(kAi) == 1);
     // goblin.json behavior.ai (migrated from monster@1 presentation.ai) binds the script.
     REQUIRE(p.ai_by_archetype.count("srd51.monster.goblin") == 1);
