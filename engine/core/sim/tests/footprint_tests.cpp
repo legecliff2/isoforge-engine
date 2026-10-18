@@ -392,3 +392,181 @@ TEST_CASE("footprint driver: a Large cannot reach a target behind a one-tile gap
     const Command cmd = next_command(*f.c, f.id(1));
     CHECK(cmd.kind != CommandKind::Step);   // no path for a 2x2: it never steps toward the gap
 }
+
+// ---- opportunity attacks, reach triggers, events (PR C) ------------------------------------------------
+
+namespace {
+bool has_leaving_window(const SubmitResult& r) {
+    return r.needs && r.needs->trigger == ReactionTrigger::LeavingReach;
+}
+int count_events(const Combat& c, SimEvent::Kind k) {
+    int n = 0;
+    for (const auto& e : c.events()) n += e.kind == k;
+    return n;
+}
+} // namespace
+
+TEST_CASE("footprint opportunity attacks: a Large leaves reach only when no footprint tile stays in reach") {
+    auto lib = make_lib({"large", "medium"});
+    // Large (4,4)-(5,5); goblin at (6,4) is adjacent to its east edge.
+    {   // West: new footprint x 3..4, nearest tile 2 away from the goblin: leaves reach -> a window opens.
+        Fight f(lib, {{"test.monster.large", 4, 4}, {"test.monster.medium", 6, 4}});
+        f.advance_to(f.id(0));
+        CHECK(f.c->would_leave_reach(f.id(0), {4, 4}, {3, 4}));
+        Command s;
+        s.kind = CommandKind::Step;
+        s.to = {3, 4};
+        auto r = f.c->submit(s);
+        CHECK(r.ok);
+        CHECK(has_leaving_window(r));
+        CHECK(r.needs->reactor == f.id(1));
+    }
+    {   // North / south: the footprint still touches the goblin's reach: no window.
+        Fight f(lib, {{"test.monster.large", 4, 4}, {"test.monster.medium", 6, 4}});
+        f.advance_to(f.id(0));
+        CHECK_FALSE(f.c->would_leave_reach(f.id(0), {4, 4}, {4, 3}));
+        CHECK_FALSE(f.c->would_leave_reach(f.id(0), {4, 4}, {4, 5}));
+        auto r = f.step({4, 3});
+        CHECK(r.ok);
+        CHECK_FALSE(has_leaving_window(r));
+    }
+    {   // East into the goblin's side is blocked; diagonal away NE keeps the goblin adjacent (rect dist 1).
+        Fight f(lib, {{"test.monster.large", 4, 4}, {"test.monster.medium", 6, 4}});
+        f.advance_to(f.id(0));
+        CHECK_FALSE(f.c->would_leave_reach(f.id(0), {4, 4}, {5, 3}));   // footprint x 5..6, y 3..4: overlaps? no: goblin tile is (6,4)
+    }
+}
+
+TEST_CASE("footprint opportunity attacks: a goblin leaving a Large's reach, measured from its nearest tile") {
+    auto lib = make_lib({"large", "medium"});
+    // Goblin at (6,5), east of the Large's lower-right tile (5,5). Stepping to (7,5) puts it 2 tiles from
+    // the footprint: out of reach (the anchor (4,4) is 3 away either way, so only the footprint rule is right).
+    Fight f(lib, {{"test.monster.large", 4, 4}, {"test.monster.medium", 6, 5}});
+    f.advance_to(f.id(1));
+    CHECK(f.c->would_leave_reach(f.id(1), {6, 5}, {7, 5}));
+    CHECK_FALSE(f.c->would_leave_reach(f.id(1), {6, 5}, {6, 6}));   // still diagonal-adjacent to (5,5)
+    Command s;
+    s.kind = CommandKind::Step;
+    s.to = {7, 5};
+    auto r = f.c->submit(s);   // (not f.step: that declines windows)
+    CHECK(r.ok);
+    REQUIRE(has_leaving_window(r));
+    CHECK(r.needs->reactor == f.id(0));
+}
+
+TEST_CASE("footprint reach triggers: a readied attack fires when a Large's footprint comes within reach") {
+    auto lib = make_lib({"large", "medium"});
+    // Goblin at (10,10) readies an attack on the Large (TargetWithin 1). The Large at (7,10) covers x 7..8
+    // (rect distance 2); stepping east to anchor (8,10) covers x 8..9, distance 1: the trigger fires.
+    // The anchors are 2 apart both before and after, so only a nearest-tile test sees it.
+    Fight f(lib, {{"test.monster.large", 7, 10}, {"test.monster.medium", 10, 10}});
+    const CombatantId L = f.id(0), G = f.id(1);
+    f.advance_to(G);
+    Command rd;
+    rd.request = {G, rules5e::ActionKind::Ready, L};
+    rd.request.ready_kind = rules5e::ActionKind::Attack;
+    rd.request.attack_index = 0;
+    rd.request.trigger_id = ready_trigger_id(ReadyTriggerKind::TargetWithin, 1);
+    auto r = f.settle(f.c->submit(rd));
+    REQUIRE_MESSAGE(r.ok, r.error);
+    f.advance_to(L);
+    auto fired = [&] {
+        int n = 0;
+        for (const auto& e : f.c->events()) n += e.kind == SimEvent::Kind::Rules && e.rules.kind == rules5e::EventKind::ReadyTriggered;
+        return n;
+    };
+    Command far;
+    far.kind = CommandKind::Step;
+    far.to = {7, 11};   // anchor moves, footprint x 7..8 still 2 from the goblin: no trigger
+    CHECK(f.c->submit(far).ok);
+    CHECK(fired() == 0);
+    Command near;
+    near.kind = CommandKind::Step;
+    near.to = {8, 11};   // footprint x 8..9, one tile from the goblin: the readier is asked
+    auto sr = f.c->submit(near);
+    REQUIRE(sr.status == StepStatus::NeedsDecision);
+    CHECK(sr.needs->trigger == ReactionTrigger::ReadiedTrigger);
+    sr = f.c->settle([](const Combat&, const NeedsDecision& nd) { return ReactionDecision{nd.window_seq, true, 0}; });
+    REQUIRE_MESSAGE(sr.ok, sr.error);
+    CHECK(fired() == 1);
+}
+
+TEST_CASE("footprint events: Footprint kinds appear only with multi-tile creatures; digest version is the lowest that fits") {
+    auto lib = make_lib({"large", "huge", "gargantuan", "medium"});
+    {   // No multi-tile creature: no new event, a v4 stream.
+        Fight f(lib, {{"test.monster.medium", 4, 4}, {"test.monster.medium", 8, 8}});
+        CHECK(count_events(*f.c, SimEvent::Kind::Footprint) == 0);
+        CHECK(event_stream_version(f.c->events()) == 4);
+    }
+    Fight f(lib, {{"test.monster.medium", 2, 2}, {"test.monster.large", 4, 4}, {"test.monster.huge", 10, 10},
+                  {"test.monster.gargantuan", 20, 20}});
+    CHECK(count_events(*f.c, SimEvent::Kind::Footprint) == 3);
+    CHECK(event_stream_version(f.c->events()) == 6);
+    // Spawn order, right after the opening rules events; anchor in `tile`, side in rules.a.
+    std::vector<SimEvent> fp;
+    for (const auto& e : f.c->events()) if (e.kind == SimEvent::Kind::Footprint) fp.push_back(e);
+    REQUIRE(fp.size() == 3);
+    CHECK(fp[0].actor == f.id(1));
+    CHECK(fp[0].tile == Vec2i{4, 4});
+    CHECK(fp[0].rules.a == 2);
+    CHECK(fp[1].actor == f.id(2));
+    CHECK(fp[1].tile == Vec2i{10, 10});
+    CHECK(fp[1].rules.a == 3);
+    CHECK(fp[2].rules.a == 4);
+    // A stream with a spell target but no footprint stays v5; the hash separates the versions.
+    std::vector<SimEvent> st(1);
+    st[0].kind = SimEvent::Kind::SpellTarget;
+    CHECK(event_stream_version(st) == 5);
+    st.push_back(fp[0]);
+    CHECK(event_stream_version(st) == 6);
+}
+
+namespace {
+struct Digest { uint64_t events, state, log; uint32_t version, count; };
+Digest run_fight(const ContentLibrary& lib, const std::vector<Spawn>& sp, std::vector<Vec2i> walls, uint64_t seed) {
+    ecs::Registry reg;
+    auto chunk = arena(sp, walls);
+    auto c = Combat::create(reg, chunk, lib, seed);
+    REQUIRE(c);
+    NearestEnemyPolicy pol;
+    auto rr = run_to_end(*c, [&](CombatantId) { return &pol; }, 3000);
+    REQUIRE_MESSAGE(rr.error.empty(), rr.error);
+    REQUIRE(c->ended());
+    ecs::Registry reg2;
+    auto rep = replay(reg2, chunk, lib, seed, c->log());   // exact replay
+    REQUIRE(rep);
+    CHECK(rep->hash() == c->hash());
+    CHECK(event_stream_hash(rep->events()) == event_stream_hash(c->events()));
+    return {event_stream_hash(c->events()), c->hash(), c->log_hash(), event_stream_version(c->events()),
+            uint32_t(c->events().size())};
+}
+} // namespace
+
+// Behaviour goldens, pinned once on the engine that first ran multi-tile footprints. A change here
+// means Large+ movement, reach, opportunity attacks or the v6 event stream changed.
+TEST_CASE("footprint golden: Large vs goblins round a wall with a two-tile gap") {
+    auto lib = make_lib({"large", "medium"});
+    std::vector<Vec2i> walls;
+    for (int y = 0; y < 32; ++y) if (y != 8 && y != 9) walls.push_back({12, y});
+    const Digest d = run_fight(lib, {{"test.monster.large", 3, 8}, {"test.monster.medium", 20, 7}, {"test.monster.medium", 22, 11}},
+                               walls, 41);
+    MESSAGE("large golden: events=" << d.events << " state=" << d.state << " log=" << d.log << " n=" << d.count);
+    CHECK(d.version == 6);
+    CHECK(d.events == 17302741854514879656ull);
+    CHECK(d.state == 1903385362550943425ull);
+    CHECK(d.log == 14977014498367770028ull);
+    CHECK(d.count == 160u);
+}
+
+TEST_CASE("footprint golden: Huge (3x3) and Gargantuan (4x4) vs a goblin pack") {
+    auto lib = make_lib({"huge", "gargantuan", "medium"});
+    const Digest d = run_fight(lib, {{"test.monster.huge", 3, 3}, {"test.monster.gargantuan", 3, 20}, {"test.monster.medium", 24, 10},
+                                     {"test.monster.medium", 26, 14}, {"test.monster.medium", 27, 6}},
+                               {}, 77);
+    MESSAGE("huge golden: events=" << d.events << " state=" << d.state << " log=" << d.log << " n=" << d.count);
+    CHECK(d.version == 6);
+    CHECK(d.events == 7252396575971630989ull);
+    CHECK(d.state == 4864805552138262344ull);
+    CHECK(d.log == 5232406441536582572ull);
+    CHECK(d.count == 359u);
+}

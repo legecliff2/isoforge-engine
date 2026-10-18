@@ -98,6 +98,40 @@ std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f,
     return std::nullopt;
 }
 
+// Qualified resistances / immunities ("from nonmagical attacks [that aren't silvered / adamantine]").
+std::optional<std::string> mitigation_masks(const FeatureDecl& f, const char* key, rules5e::QualifiedDamageMask& m) {
+    auto it = f.effect.find(key);
+    if (it == f.effect.end()) return std::nullopt;
+    if (!it->is_object()) return f.id + ": damage_mitigation " + key + " must be an object";
+    for (const auto& [qual, list] : it->items()) {
+        uint32_t* mask = qual == "nonmagical"                   ? &m.nonmagical
+                         : qual == "nonmagical_not_silvered"    ? &m.nonmagical_not_silvered
+                         : qual == "nonmagical_not_adamantine"  ? &m.nonmagical_not_adamantine
+                                                                 : nullptr;
+        if (!mask) return f.id + ": damage_mitigation: unknown qualifier '" + qual + "'";
+        if (!list.is_array()) return f.id + ": damage_mitigation " + qual + " must be an array of damage types";
+        for (const auto& n : list) {
+            auto t = damage_type_from_name(n.is_string() ? n.get<std::string>() : "");
+            if (!t) return f.id + ": damage_mitigation: bad damage type in " + qual;
+            *mask |= rules5e::bit(*t);
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> apply_damage_mitigation(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx&) {
+    if (!f.effect.contains("resistances") && !f.effect.contains("immunities"))
+        return f.id + ": damage_mitigation needs resistances and/or immunities";
+    if (auto e = mitigation_masks(f, "resistances", a.base.resist_qualified)) return e;
+    return mitigation_masks(f, "immunities", a.base.immune_qualified);
+}
+
+// Magic Weapons: every attack counts as magical (bypasses "nonmagical" resistance / immunity).
+std::optional<std::string> apply_magic_weapons(Archetype& a, const FeatureDecl&, uint32_t, const FeatureBuildCtx&) {
+    for (auto& at : a.base.attacks) at.qualifiers |= rules5e::kAttackMagical;
+    return std::nullopt;
+}
+
 std::optional<std::string> apply_self_heal(Archetype& a, const FeatureDecl& f, uint32_t fid, const FeatureBuildCtx& ctx) {
     ActiveFeature af;
     af.feature_id = fid;
@@ -136,6 +170,8 @@ FeatureRegistry make_builtin() {
     r.add_hook("bonus_action_grant", {apply_bonus_action_grant});
     r.add_hook("self_heal", {apply_self_heal});
     r.add_hook("multiattack", {apply_multiattack});
+    r.add_hook("damage_mitigation", {apply_damage_mitigation});
+    r.add_hook("magic_weapons", {apply_magic_weapons});
     // v0 wield model: a melee weapon without the two_handed property counts as wielded in one hand
     // with no other weapon (sim has no equipment/wield state yet).
     r.add_condition("one_handed_melee_no_other_weapon", [](const Json&, const Json& act) {

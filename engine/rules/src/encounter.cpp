@@ -55,8 +55,14 @@ void after_damage(Combatant& t, const DamageApplied& d, bool critical, std::vect
     bool was_at_zero = t.hp <= 0;
     commit_damage(t, d);
     emit(ev, EventKind::DamageDealt, 0, t.id, d.dealt, d.hp_after);
+    if (t.regeneration.amount > 0 && (d.types_dealt & t.regeneration.suppressed_by)) t.regen_suppressed = true;
     if (d.instant_death) { kill(t, ev); return; }
     if (d.dropped_to_zero) {
+        if (!t.uses_death_saves && t.regeneration.amount > 0) {   // regenerators die only at their next turn start
+            t.regen_down = true;
+            emit(ev, EventKind::CombatantDowned, t.id);
+            return;
+        }
         if (!t.uses_death_saves) { kill(t, ev); return; }
         emit(ev, EventKind::CombatantDowned, t.id);
         t.death = DeathSaves{};
@@ -113,16 +119,25 @@ void end_concentration(EncounterState& s, CombatantId caster, std::vector<Event>
 void repeat_saves(EncounterState& s, CombatantId cid, RepeatSave timing, std::vector<Event>& ev) {
     std::vector<ActiveSpellEffect> due;
     for (const auto& e : s.effects) if (e.target == cid && e.repeat_save == timing) due.push_back(e);
+    std::vector<std::pair<uint32_t, CombatantId>> done;   // one save per (spell, caster) even if it left several effects
     for (const auto& e : due) {
         Combatant* c = find_mut(s, cid);
         if (!c || c->dead) return;
+        if (std::find(done.begin(), done.end(), std::make_pair(e.spell_id, e.caster)) != done.end()) continue;
+        done.emplace_back(e.spell_id, e.caster);
         auto it = std::find_if(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
             return o.spell_id == e.spell_id && o.caster == e.caster && o.target == e.target; });
         if (it == s.effects.end()) continue;
-        auto r = saving_throw(s.rng, *c, e.save_ability, e.dc);
+        auto r = saving_throw(s.rng, *c, e.save_ability, e.dc, RollMode::Normal, SaveSource{true, 0, 0});   // an ongoing spell effect
         emit(ev, EventKind::SavingThrowRolled, cid, CombatantId(e.save_ability), r.roll.natural, r.roll.total, int32_t(r.success));
         if (!r.success) continue;
         end_effect(s, std::size_t(it - s.effects.begin()), ev);
+        for (;;) {   // a multi-effect spell ends all its effects on this target together
+            auto more = std::find_if(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
+                return o.spell_id == e.spell_id && o.caster == e.caster && o.target == e.target; });
+            if (more == s.effects.end()) break;
+            end_effect(s, std::size_t(more - s.effects.begin()), ev);
+        }
         bool remaining = std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
             return o.caster == e.caster && o.spell_id == e.spell_id; });
         Combatant* caster = find_mut(s, e.caster);
@@ -320,14 +335,16 @@ bool being_hit_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, c
     return true;
 }
 
-void do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
+bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
                bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage = false,
-               uint32_t spell_id = 0) {
+               uint32_t spell_id = 0, bool ally_near_target = false) {
     bool adv = false;
     if (a.helped_vs == t.id) { adv = true; a.helped_vs = 0; a.helped_by = 0; }
     if (a.stealth_total > 0) { adv = true; a.stealth_total = 0; }   // unseen attacker; now revealed
     AttackContext actx;
     actx.target_within_5ft = within_5ft;
+    actx.ally_near_target = ally_near_target;
+    actx.ranged = atk.ranged;
     actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
     actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft);   // combined with conditions in one place
     D20Roll roll = roll_d20(s.rng, atk.to_hit, attack_roll_mode(a, t, actx));
@@ -360,6 +377,7 @@ void do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
             damage_creature(s, t, apply_damage_parts(t, parts, atk.qualifiers), crit, ev);
         }
     }
+    return hit;
 }
 
 // LeavingReach: polls hostile reactors before the mover leaves reach. Returns false if the move
@@ -483,6 +501,18 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
     emit(ev, EventKind::TurnStarted, c.id, 0, s.round);
     repeat_saves(s, c.id, RepeatSave::StartOfTurn, ev);
     if (dies_of_exhaustion(c) && !c.dead) kill(c, ev);
+    if (!c.dead && c.regeneration.amount > 0) {   // Regeneration (troll, vampire spawn)
+        const bool suppressed = c.regen_suppressed;
+        c.regen_suppressed = false;
+        if (suppressed) {
+            if (c.regen_down) { c.regen_down = false; kill(c, ev); }
+        } else if (c.regen_down || c.hp < effective_hp_max(c)) {
+            c.regen_down = false;
+            auto h = apply_healing(c, c.regeneration.amount);
+            commit_healing(c, h);
+            emit(ev, EventKind::Healed, c.id, c.id, h.healed, h.hp_after, h.from_zero);
+        }
+    }
     if (is_dying(c) && c.uses_death_saves) {
         auto r = roll_death_save(s.rng, c.death);
         c.death = r.after;
@@ -550,7 +580,8 @@ void fire_readies(EncounterState& s, Ctx& ctx, std::vector<Event>& ev) {
                 Combatant* t = find_mut(s, r.response.target);
                 if (t && !t->dead && r.response.attack_index < a->attacks.size())
                     do_attack(s, ctx, *a, *t, a->attacks[r.response.attack_index], r.response.target_within_5ft, ev,
-                              r.response.ranged_hostile_within_5ft || r.response.beyond_normal_range);
+                              r.response.ranged_hostile_within_5ft || r.response.beyond_normal_range, 0,
+                              r.response.ally_near_target);
             } else if (r.response.kind == ActionKind::Move) {
                 int16_t ft = r.response.move_ft;
                 int sp = effective_speed(*a);
@@ -603,9 +634,10 @@ bool spend_action(TurnBudget& b, const Combatant& c, ActionKind k, bool bonus) {
 
 StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req);
 
-// Applies a resolved (not countered) spell.
-void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& def, uint8_t lvl,
-                   const std::vector<Combatant*>& T, bool within_5ft, std::vector<Event>& ev) {
+// Resolves ONE effect (def.kind and its fields) over T. Returns the targets it affected (for rider effects).
+std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& def, uint8_t lvl,
+                                       const std::vector<Combatant*>& T, bool within_5ft, std::vector<Event>& ev) {
+    std::vector<Combatant*> affected;
     switch (def.kind) {
     case SpellEffectKind::SpellAttack: {
         Attack atk{def.content_id, int8_t(spell_attack_bonus(a)), scaled_dice(def, lvl, a.caster_level),
@@ -614,7 +646,7 @@ void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& de
         const int beams = scaled_beams(def, lvl, a.caster_level);
         for (int i = 0; i < beams; ++i) {   // one attack roll per beam: one target, or one per beam
             Combatant* t = T.size() == 1 ? T[0] : T[std::size_t(i)];
-            if (!t->dead) do_attack(s, ctx, a, *t, atk, within_5ft, ev, false, def.id);   // TODO: ranged facts for spell attacks
+            if (!t->dead && do_attack(s, ctx, a, *t, atk, within_5ft, ev, false, def.id)) affected.push_back(t);   // TODO: ranged facts for spell attacks
         }
         break;
     }
@@ -639,6 +671,7 @@ void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& de
         if (def.simultaneous) for (Combatant* t : distinct) react(t);
         for (Combatant* t : distinct) {
             if (t->dead) continue;
+            affected.push_back(t);
             if (!def.simultaneous) react(t);
             for (Combatant* d : per_dart) {
                 if (d != t || t->dead) continue;
@@ -656,11 +689,14 @@ void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& de
         bool applied = false;
         for (Combatant* t : T) {
             if (t->dead) continue;
-            auto r = saving_throw(s.rng, *t, def.save_ability, dc);
+            SaveSource src{true, def.applies_condition ? bit(def.condition) : 0u,
+                           (def.dice.count > 0 || def.dice.bonus > 0) ? bit(def.damage_type) : 0u};
+            auto r = saving_throw(s.rng, *t, def.save_ability, dc, RollMode::Normal, src);
             emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(def.save_ability), r.roll.natural, r.roll.total,
                  int32_t(r.success));
             int dealt = r.success ? (def.on_save == OnSave::Half ? dmg / 2 : 0) : dmg;
             if (dealt > 0) damage_creature(s, *t, apply_damage(*t, int16_t(dealt), def.damage_type, kAttackMagical), false, ev);
+            if (!r.success) affected.push_back(t);
             if (def.applies_condition && !r.success && !t->dead && !(t->condition_immunities & bit(def.condition))) {
                 if (!t->has(def.condition)) {
                     add_condition(*t, def.condition);
@@ -684,12 +720,43 @@ void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& de
             auto h = apply_healing(*t, int16_t(amt));
             commit_healing(*t, h);
             emit(ev, EventKind::Healed, a.id, t->id, h.healed, h.hp_after, h.from_zero);
+            affected.push_back(t);
             if (h.from_zero && was_unconscious)
                 emit(ev, EventKind::ConditionRemoved, t->id, 0, int32_t(Condition::Unconscious));
         }
         break;
     }
+    case SpellEffectKind::ApplyCondition: {   // no save: the condition lasts with the spell
+        bool applied = false;
+        for (Combatant* t : T) {
+            if (t->dead || (t->condition_immunities & bit(def.condition))) continue;
+            if (!t->has(def.condition)) {
+                add_condition(*t, def.condition);
+                emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.condition));
+            }
+            s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, Ability::Wis, 0, RepeatSave::None,
+                                                  def.concentration});
+            affected.push_back(t);
+            applied = true;
+        }
+        if (def.concentration && applied) a.concentration_spell = def.id;
+        break;
+    }
     case SpellEffectKind::AcBonus: case SpellEffectKind::Counter: break;   // reactions only
+    }
+    return affected;
+}
+
+// Applies a resolved (not countered) spell: the first effect, then each extra effect in order. A rider
+// (affected_only) resolves over the targets the previous effect affected; others over every target.
+void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& def, uint8_t lvl,
+                   const std::vector<Combatant*>& T, bool within_5ft, std::vector<Event>& ev) {
+    std::vector<Combatant*> affected = resolve_effect(s, ctx, a, def, lvl, T, within_5ft, ev);
+    for (const SpellEffect& e : def.extra_effects) {
+        const std::vector<Combatant*>& targets = e.affected_only ? affected : T;
+        if (targets.empty()) { affected.clear(); continue; }
+        const SpellDef view = effect_view(def, e);
+        affected = resolve_effect(s, ctx, a, view, lvl, std::vector<Combatant*>(targets), within_5ft, ev);
     }
 }
 
@@ -730,7 +797,7 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
         for (Combatant* t : T) if (t == &a) return fail("bad target");
         break;
     }
-    case SpellEffectKind::Save: case SpellEffectKind::Heal:
+    case SpellEffectKind::Save: case SpellEffectKind::Heal: case SpellEffectKind::ApplyCondition:
         if ((def.area == AreaShape::None && int(T.size()) > scaled_targets(def, lvl)) || !distinct())
             return fail("too many targets");
         break;
@@ -803,7 +870,7 @@ std::optional<EncounterOutcome> default_end_condition(const EncounterState& s) {
     int teams = 0;
     for (const auto& c : s.combatants) {
         if (!present[c.team]) { present[c.team] = true; ++teams; }
-        if (is_conscious(c)) conscious[c.team] = true;
+        if (is_conscious(c) || (c.regen_down && !c.dead)) conscious[c.team] = true;   // a regenerator at 0 HP is still in the fight
     }
     if (teams < 2) return EncounterOutcome{EndReason::InvalidSetup, pc_statuses(s)};
     std::vector<uint8_t> down;
@@ -1131,7 +1198,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
         }
         s.budget = b;
         do_attack(s, ctx, a, *t, a.attacks[req.attack_index], req.target_within_5ft, out.events,
-                  req.ranged_hostile_within_5ft || req.beyond_normal_range);
+                  req.ranged_hostile_within_5ft || req.beyond_normal_range, 0, req.ally_near_target);
         check_end(s, out.events);
         return out;
     }
@@ -1247,7 +1314,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (b.action) {
         add(ActionKind::Dash); add(ActionKind::Disengage); add(ActionKind::Dodge); add(ActionKind::Hide);
         for (const auto& t : s.combatants)
-            if (t.id != a.id && is_dying(t) && t.team == a.team) add(ActionKind::Stabilize, false, t.id);
+            if (t.id != a.id && is_dying(t) && !t.regen_down && t.team == a.team) add(ActionKind::Stabilize, false, t.id);
         // Help and Ready need sim facts (adjacency, trigger); sim builds those requests.
     }
     if (b.bonus_action)
@@ -1273,7 +1340,9 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
                 if (!has_slot(a, L)) continue;
                 for (const auto& t : s.combatants) {
                     if (t.dead) continue;
-                    const bool heal = d->kind == SpellEffectKind::Heal;
+                    // Heal, and Invisibility-style conditions (the only beneficial SRD condition), go on allies.
+                    const bool heal = d->kind == SpellEffectKind::Heal ||
+                                      (d->kind == SpellEffectKind::ApplyCondition && d->condition == Condition::Invisible);
                     if (heal ? t.team != a.team : (t.team == a.team || t.id == a.id)) continue;
                     if (!valid_target_type(*d, t) || (d->excluded_types & bit(t.creature_type))) continue;
                     if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, a, *d, t)) continue;

@@ -128,7 +128,11 @@ TEST_CASE("loader: R6 rules match the validator") {
     j = fb; j["level"] = 1; j["scaling"] = {{"upcast", {{"targets", 1}}}}; bad(j, "scaling.upcast.targets not allowed on a spell_attack");
     j = fb; j["range"]["feet"] = 0; bad(j, "range invalid");
     j = fb; j["scaling"] = {{"cantrip", {{"levels", {11, 5}}, {"adds", "dice"}}}}; bad(j, "ascending");
-    j = fb; j["effects"].push_back(fb["effects"][0]); bad(j, "exactly one effect");
+    j = fb; j["effects"].push_back({{"kind", "apply_condition"}}); bad(j, "effects[1]: effect condition invalid");
+    j = fb; j["effects"][0]["applies_to"] = "affected"; bad(j, "effects[0].applies_to needs a previous effect");
+    j = fb; j["effects"] = eng::assets::Json::array({{{"kind", "ac_bonus"}, {"bonus", 5}}, fb["effects"][0]});
+    j["casting_time"] = {{"kind", "reaction"}, {"trigger", {{"kind", "being_hit"}}}}; j["duration"] = {{"kind", "until_start_of_caster_turn"}};
+    bad(j, "cannot be combined with other effects");
     auto hp = fb; hp["level"] = 2;
     hp["effects"] = eng::assets::Json::array({{{"kind", "save"}, {"ability", "wis"}, {"condition", "paralyzed"}}});
     REQUIRE(spell_from_json(hp).def);
@@ -173,4 +177,41 @@ TEST_CASE("runtime spell id collision is a hard load error") {
     REQUIRE(r.errors.size() == 1);
     CHECK(r.errors[0].find("collision") != std::string::npos);
     std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("loader: several effects, a no-save apply_condition effect, riders") {
+    auto doc = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.laugh","level":1,"name":"x",
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":30},"components":{"v":true},
+        "duration":{"kind":"minutes","amount":1,"concentration":true},
+        "effects":[{"kind":"save","ability":"wis","condition":"prone","repeat_save":"on_damage"},
+                   {"kind":"apply_condition","condition":"incapacitated","applies_to":"affected"},
+                   {"kind":"save","ability":"con","damage":{"dice":"2d6","type":"thunder"},"on_success":"half"}]})");
+    auto r = spell_from_json(doc);
+    REQUIRE(r.def);
+    const SpellDef& d = *r.def;
+    CHECK(d.kind == SpellEffectKind::Save);
+    CHECK(d.condition == Condition::Prone);
+    REQUIRE(d.extra_effects.size() == 2);
+    CHECK(d.extra_effects[0].kind == SpellEffectKind::ApplyCondition);
+    CHECK(d.extra_effects[0].condition == Condition::Incapacitated);
+    CHECK(d.extra_effects[0].affected_only);
+    CHECK(d.extra_effects[1].kind == SpellEffectKind::Save);
+    CHECK(d.extra_effects[1].save_ability == Ability::Con);
+    CHECK(d.extra_effects[1].dice == DiceExpr{2, 6, 0});
+    CHECK(d.extra_effects[1].on_save == OnSave::Half);
+    CHECK_FALSE(d.extra_effects[1].affected_only);
+
+    // apply_condition alone (Invisibility): targets and upcast targets are allowed
+    auto inv = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.inv","level":2,"name":"x",
+        "casting_time":{"kind":"action"},"range":{"kind":"touch"},"components":{"v":true},
+        "duration":{"kind":"hours","amount":1,"concentration":true},"targets":{"count":1},
+        "scaling":{"upcast":{"targets":1}},
+        "effects":[{"kind":"apply_condition","condition":"invisible"}]})");
+    auto ri = spell_from_json(inv);
+    REQUIRE(ri.def);
+    CHECK(ri.def->kind == SpellEffectKind::ApplyCondition);
+    CHECK(ri.def->extra_effects.empty());
+    CHECK(scaled_targets(*ri.def, 3) == 2);
+    auto bad_c = inv; bad_c["effects"][0]["condition"] = "wet";
+    CHECK_FALSE(spell_from_json(bad_c).def);
 }

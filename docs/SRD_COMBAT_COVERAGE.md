@@ -17,7 +17,7 @@ Status (first word of the status cell):
 Things that apply to many rows (so they are not repeated):
 
 1. **R-G1, content-to-sim wiring (status on main after #45, #47, #48, #49).** `sim::ContentLibrary::add` (engine/core/sim/src/content.cpp) now reads: abilities, AC value, average HP, walk speed, proficiency bonus, saving-throw proficiencies, PC vs monster, `melee_weapon_attack`/`ranged_weapon_attack` actions with **every** `damage[]` entry (#45; `Attack::extra_damage`), `finesse` still always false, feature effects, `damage_resistances` / `damage_immunities` / `damage_vulnerabilities` and `condition_immunities` (#45, monster@3 / character@3; pre-@3 files stay inert via the migration gate), `type` -> creature type, `size` (stored in `Archetype::size`, no behaviour), and the `spellcasting` block (ability, caster level, slots, pact slots, known spells) (#49). `sim::Combat` now has `CastSpell` plumbing: it installs `hooks.spells` (a SpellBook built from the pack set's `spell@1` files), `spell_target_ok`, `targets_within`, `can_see`, `can_provide_components` (V/S always; a material cost is refused, no inventory) and answers BeingHit / SpellCast windows in `in_range`; sim event schema is v5 (`SpellTarget`, hashed only when present). **Still not read:** skills / passive Perception (T&C-G16), `attacks_per_action` and any multiattack declaration (T&C-G1 content side), qualified resistances and `Attack::qualifiers` from data (T&C-G2 / R-G17 content side), alignment/type normalization (T&C-G15), `finesse` and other weapon properties (T&C-G18), multi-tile footprint (T&C-G14; the `size` value is stored only, footprint work is in flight), monster innate spellcasting (T&C-G10, `monster@4`). Area templates are still not computed: callers list the creatures in `targets`. Spell rows marked DATA are DATA in `spell@1` + rules5e and are now castable from content in a sim combat.
-2. **Single effect per spell (S6, still deferred; R-G2).** The `spell@1` schema declares `effects` as an array, but `check_spell` (tools/validate) and `rules5e_content/spell_loader.cpp` reject anything other than exactly one effect. A spell is therefore one of: spell attack, save (damage and/or one condition), heal, auto-hit darts, AC bonus reaction, counter reaction. "Damage plus a rider" spells need R-G2/T&C-G5/R-G3.
+2. **Several effects per spell (S6 / R-G2, rules + loader + validator done).** `spell@1` `effects` may hold N effects: the first carries targeting and scaling, later effects resolve in order over the same targets (optionally only for the targets the previous effect affected, `applies_to: affected`), a no-save `apply_condition` kind exists, and reaction effects stand alone. Extra effects do not scale. Still not expressible: effects that need new mechanics (push, speed change, advantage on the next attack, "can't regain HP", forced movement) and per-cast options (Blindness/Deafness choice).
 3. **Area spells.** `spell@1` stores `area` (cone/cube/cylinder/line/sphere + size) and rules5e resolves a caller-supplied `ActionRequest::targets` list with a save each. Nothing computes who is inside a template on the grid, so area spells are NEW (R-G10) even though their dice/save/scaling are data.
 4. **Spell durations.** Concentration, repeat saves and `UntilStartOfCasterTurn` (Shield) end effects. Timed `rounds/minutes/hours` durations are stored but never expire on their own (no round counter on `ActiveSpellEffect`). Fine for concentration spells (which end with concentration), a gap for non-concentration timed buffs (R-G3, R-G15).
 5. **Authored numbers.** Today characters are authored per level as `character@3` stat blocks. Static numbers such as AC from armor, Unarmored Defense, Unarmored Movement, +1 magic weapon bonuses, ability modifiers and proficiency are baked by the author; that is DATA **today**. Director approved `item@1` + `character@4` with an equipment model and AC recompute (T&C-G17), after which armor/weapons drive AC and attacks and the equipment rows in sections 2-3 become NEW. Level-up / ASI / multiclassing remain OOS (Tools & Content authoring).
@@ -260,12 +260,12 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 |---|---|---|
 | Darkvision | NEW | R-G13. |
 | Dwarven Resilience (poison resistance; advantage vs poison) | NEW | Resistance is DATA (loaded by #45); save advantage vs source type is T&C-G7 style. |
-| Fey Ancestry (advantage vs charm) / Brave (halfling, vs frightened) | NEW | Conditional save advantage (T&C-G7). |
+| Fey Ancestry (advantage vs charm) / Brave (halfling, vs frightened) | NEW (wiring) | Rules done: `{Save, Advantage, save_vs_conditions}` (Charmed / Frightened). Content loader is T&C's. |
 | Halfling Lucky (reroll natural 1) | NEW | R-G7. |
 | Relentless Endurance (drop to 1 HP once per day) / Savage Attacks (extra crit die) | NEW | T&C-G7 / R-G7. |
 | Dragonborn breath weapon and resistance | NEW | Area save + limited use (R-G10, T&C-G7). |
 | Tiefling Hellish Resistance / Infernal Legacy (Thaumaturgy, Hellish Rebuke) | NEW | Resistance is DATA (loaded by #45); Hellish Rebuke trigger (R-G7). |
-| Gnome Cunning (advantage on Int/Wis/Cha saves vs magic) | NEW | T&C-G7. |
+| Gnome Cunning (advantage on Int/Wis/Cha saves vs magic) | NEW (wiring) | Rules done: `{Save, Advantage, kWhenSourceMagical, save_abilities}`. Content loader is T&C's. |
 | Speed, size | DATA | Baked (`speed.walk`); `size` is loaded into `Archetype::size` (stored only; footprint is T&C-G12 / T&C-G14). |
 
 ## 7. Core spell mechanics
@@ -279,7 +279,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Cantrip tiers (5/11/17), upcast scaling dice/darts/targets/beams | DATA | `scaling.cantrip`, `scaling.upcast`. |
 | Reaction spells with triggers (being hit, targeted by named spell, spell cast with sight) | DATA | `casting_time.trigger` {being_hit, spell_cast, or_targeted_by, requires_sight}. |
 | Spell with one effect | DATA | Single `effects[0]`. |
-| Spell with several effects (damage + rider) | NEW | R-G2 (S6 deferred). |
+| Spell with several effects (damage + rider) | DATA | `effects[]` with N effects, `applies_to: affected` riders, no-save `apply_condition` (R-G2 done). The rider mechanics themselves (push, disadvantage on next attack, etc.) are still NEW. |
 | Targeting: single, N targets, creature_type filter, max spread | DATA | `targets {count, creature_type, max_spread_ft}`; `hooks.spell_target_ok`, `targets_within` (installed by sim, #49: range + line of sight; no area templates). |
 | Area of effect templates | NEW | R-G10. |
 | Casting time minute/hour (non-combat) | OOS | Stored; rejected during encounters. |
@@ -425,13 +425,13 @@ Stat-block data: `monster@3` carries abilities, AC, HP average, speed (walk, fly
 | Several damage components in one attack | ankheg (slashing + acid), basilisk (piercing + poison) | DATA | T&C-G6, done in #45. Corrected: giant spider (poison is a Constitution-save rider with save-for-half damage, T&C-G5) and giant scorpion (multiattack + save poison rider) are not multi-component attacks. |
 | On-hit saving throw rider (poison, paralysis, prone, grapple, restrain) | ghoul (claws: paralysis, not vs elf/undead), wolf (prone), giant spider (bite: CON save, 2d8 poison, half on save), giant scorpion (sting: CON save, 4d10 poison), crocodile (grapple, restrained), giant toad (swallow) | NEW | T&C-G5, R-G8. |
 | Action: Web (ranged restrain, escape DC) | giant spider | NEW | T&C-G5, R-G8. |
-| Pack Tactics (advantage if an ally is within 5 ft of the target) | wolf, dire wolf, jackal, kobold, blood hawk | NEW | Conditional advantage fed by a sim adjacency fact (T&C-G7). |
+| Pack Tactics (advantage if an ally is within 5 ft of the target) | wolf, dire wolf, jackal, kobold, blood hawk | NEW (wiring) | Rules done: `Combatant::roll_traits` `{Attack, Advantage, kWhenAllyNearTarget}`; sim supplies `ActionRequest::ally_near_target`; content loader for the trait is T&C's. |
 | Keen Senses / Smell / Hearing (Perception advantage) | wolf, hawk, owl | OOS | Perception checks are not simulated at all (Hide stores a Stealth total but nothing opposes it). |
 | Darkvision, Blindsight, Tremorsense, Truesight | most monsters, bat, ankheg | NEW | Lighting and vision (R-G13). |
 | Damage resistances / immunities / vulnerabilities | skeleton (poison immune, bludgeoning vulnerable), zombie, fire elementals | DATA | Loaded by #45 (T&C-G2). |
 | Nonmagical-attack resistance | werewolf, gargoyle, specter, ghost, wight | NEW (wiring) | Rules done (#47); content lists and `Attack::qualifiers` not loaded (R-G17, T&C-G2). |
 | Condition immunities | skeleton, zombie, ghoul, golems, elementals | DATA | Loaded by #45 (T&C-G3). |
-| Regeneration (loses it to certain damage) | troll, vampire spawn | NEW | Start-of-turn heal with suppression by damage type (T&C-G8). |
+| Regeneration (loses it to certain damage) | troll, vampire spawn | NEW (wiring) | Rules done: `Combatant::regeneration {amount, suppressed_by}`; start-of-turn heal, suppressed by a listed damage type taken since its last turn, and a regenerator at 0 HP dies only at its next turn start if suppressed. Content `regen` effect + loader and the vampire-spawn sunlight/running-water clause (needs a lighting/terrain fact) remain. |
 | Recharge (5-6) breath weapon | dragon wyrmlings, hell hound (CR 3, in the mirror; T&C's name list missed it) | NEW | Recharge roll on an action (T&C-G4) + cone/line (R-G10). |
 | Limited-use actions (N/day) | knight Leadership, innate spellcasters and various | NEW | Uses/recharge machinery exists only for `self_heal` features (R-G5, T&C-G4). |
 | Spellcasting (slots, prepared list) | acolyte (CR 1/4), priest, druid (CR 2), mage (CR 6) | DATA | monster@3 now accepts the `spellcasting` block (#49: ability, caster level, slots, pact, known spells; an engine-minimal addition whose final shape T&C owns) and sim casts through `CastSpell`. Corrected from NEW. At-will / N-per-day Innate Spellcasting is separate (below). |
@@ -449,7 +449,7 @@ Stat-block data: `monster@3` carries abilities, AC, HP average, speed (walk, fly
 | Swarm of Tiny creatures (shares space, half damage at half HP, resistances) | swarms of rats, ravens, insects | NEW | T&C-G14, T&C-G2. |
 | Undead Fortitude (CON save to drop to 1 HP unless radiant or crit) | zombie | NEW | Drop-to-0 trigger (T&C-G7). |
 | Death Burst | magmin | NEW | Death trigger (T&C-G7). |
-| Magic Resistance (advantage on saves vs spells) | dryad, satyr, imp | NEW | Save advantage by source (T&C-G7). |
+| Magic Resistance (advantage on saves vs spells) | dryad, satyr, imp | NEW (wiring) | Rules done: `{Save, Advantage, kWhenSourceMagical}`; spell saves pass `SaveSource{magical}`. Content loader is T&C's. |
 | Magic Weapons (attacks count as magical) | couatl and many fiends/celestials | NEW (wiring) | `Attack::qualifiers` exists (#47); no trait effect sets it (R-G17, T&C-G2). |
 | Sunlight Sensitivity (disadvantage on attacks and sight Perception in sunlight) | kobold, drow | OOS | Descriptive for the slice: needs a sunlight/lighting model (R-G13) that is not planned, so the T&C data keeps it as a plain trait. Not filed as a lighting mechanic. If lighting ever lands it is a conditional-disadvantage trait (T&C-G7). |
 | Life Drain / max HP or ability drain | specter, wraith, shadow, vampire spawn | NEW | T&C-G7. |
@@ -461,7 +461,7 @@ Stat-block data: `monster@3` carries abilities, AC, HP average, speed (walk, fly
 | Teleport bonus action | blink dog | NEW | R-G9. |
 | Shapechanger | werewolf, doppelganger | NEW | Stat block swap (R-G12). |
 | Rust Metal / Corrode / Stench | rust monster, ghast | NEW | T&C-G5 and aura (R-G11). Disease itself OOS. |
-| Blood Frenzy (advantage vs damaged creatures) | sharks | NEW | Conditional advantage (T&C-G7). |
+| Blood Frenzy (advantage vs damaged creatures) | sharks | NEW (wiring) | Rules done: `{Attack, Advantage, kWhenTargetDamaged}` (reads target HP). Content loader is T&C's. |
 | False Appearance, ambush setups | mimic | OOS | Only surprise (R-G16) matters. |
 | Amphibious, Hold Breath, Spider Climb, Web Walker, Web Sense | crocodile, giant spider | OOS | Non-combat movement/sense. |
 
@@ -485,13 +485,13 @@ Row counts are over the tables in sections 1-9 (one row per mechanic or feature;
 | 6.3 Wizard (full; Evocation) | 5 | 2 | 1 | 8 |
 | 6.4 Lower tier (nine classes) | 15 | 42 | 12 | 69 |
 | 6.5 Races | 1 | 8 | 0 | 9 |
-| 7. Core spell mechanics | 10 | 3 | 2 | 15 |
+| 7. Core spell mechanics | 11 | 2 | 2 | 15 |
 | 8.1 Cantrips | 7 | 6 | 1 | 14 |
 | 8.2 Level 1 | 5 | 25 | 1 | 31 |
 | 8.3 Level 2 | 2 | 30 | 1 | 33 |
 | 8.4 Level 3 | 2 | 21 | 1 | 24 |
 | 9. Monsters: stat blocks, traits, actions | 6 | 33 | 5 | 44 |
-| **Total** | **111** | **210** | **31** | **352** |
+| **Total** | **112** | **209** | **31** | **352** |
 
 "NEW (wiring)" rows (rules5e models it, content-to-sim does not carry it) are counted under NEW. Counts are as of main after #45, #47, #48 and #49; before those PRs the totals were DATA 104 / NEW 217 / OOS 31 = 352. "DATA (baked)" / "DATA (partial)" rows count as DATA.
 
@@ -529,9 +529,9 @@ Sizes: S = days, M = about a week, L = multi-week / cross-module. "Batch" = **N*
 | 3 | T&C-G6 | **Multiple damage components per attack** (`damage[]` beyond the first; crit doubles each die group). Adapter/engine only; schema already allows it. | ankheg, basilisk, flaming/elemental weapons, smites | Rules S; Engine Core S | S | N |
 | 4 | R-G17 + T&C-G2 (qualifiers) | **Magic-weapon and material qualifiers**: magic / silvered / adamantine flag on attacks and qualified resistance masks (additive `damage_mitigation` effect). | 70 qualified resistances (werewolf, gargoyle, specter, golems), Magic Weapon, Ki-Empowered | Rules S; T&C S | S | N |
 | 5 | T&C-G18 | **Weapon property semantics**: finesse (adapter hard-codes false), light, loading, thrown, reach, heavy, ammunition; closed vocabulary later in `item@1`. **Rules side done**: `rules5e/weapon.hpp` (`WeaponProperty` bits, `weapon_property_from_string`, `attack_ability`, `weapon_disadvantage`), `Attack::properties`, `Combatant::size`, Loading enforced per action. Adapter (Engine Core) still sets `properties`/`size` from content. | equipment-driven attacks | T&C S; Rules S | S | N |
-| 6 | T&C-G7 (+ R-G4, R-G5, R-G7 PC analogues) | **Small generic conditional/trigger effect set designed by Rules** (`advantage_when`, `extra_damage`, `on_event`): Pack Tactics, Blood Frenzy, Charge/Pounce, Aggressive, Rampage, Undead Fortitude, Death Burst, Magic Resistance, Reckless, Sneak Attack, Hunter's Mark, Colossus Slayer, Relentless Endurance, Gnome Cunning. | most CR 0-5 trait monsters; Rogue/Ranger/Paladin | Rules M (design); T&C M | M | N |
-| 7 | T&C-G8 | **Regeneration / Rejuvenation** (`regen` effect, suppression by damage type; depends on T&C-G7 events). | troll, vampire spawn | Rules S; T&C S | S | N |
-| 8 | R-G2 | **Effects array (S6)**: N effects per spell, a no-save apply-condition effect, per-cast option. | Guiding Bolt, Vicious Mockery, Hideous Laughter, Thunderwave, Chill Touch, Shocking Grasp | Rules S-M; T&C S | M | N |
+| 6 | T&C-G7 (+ R-G4, R-G5, R-G7 PC analogues) | **Small generic conditional/trigger effect set designed by Rules** (**roll-mode part done in rules**: `RollTrait` conditional advantage/disadvantage on attacks, attacks against, and saves, `rules5e/traits.hpp`; `extra_damage` and `on_event` triggers are still open) (`advantage_when`, `extra_damage`, `on_event`): Pack Tactics, Blood Frenzy, Charge/Pounce, Aggressive, Rampage, Undead Fortitude, Death Burst, Magic Resistance, Reckless, Sneak Attack, Hunter's Mark, Colossus Slayer, Relentless Endurance, Gnome Cunning. | most CR 0-5 trait monsters; Rogue/Ranger/Paladin | Rules M (design); T&C M | M | N |
+| 7 | T&C-G8 | **Regeneration / Rejuvenation** (`regen` effect, suppression by damage type; depends on T&C-G7 events). **Regeneration rules side done** (`Combatant::regeneration`, `DamageApplied::types_dealt`); Rejuvenation (lich/ghost) is not. | troll, vampire spawn | Rules S; T&C S | S | N |
+| 8 | R-G2 | **Effects array (S6)**: N effects per spell, a no-save apply-condition effect, per-cast option. **Done except the per-cast option** (rules + loader + validator; schema additive: new `apply_condition` kind and optional `applies_to`, no version bump). | Guiding Bolt, Vicious Mockery, Hideous Laughter, Thunderwave, Chill Touch, Shocking Grasp | Rules S-M; T&C S | M | N |
 | 9 | T&C-G13 | **Senses/vision data consumed** (darkvision, blindsight, tremorsense, truesight); effective only with R-G13. Data is already in schema. | most monsters | Engine Core | M | N (with R-G13) |
 | 10 | T&C-G4 | **Save-based/area monster actions + Recharge 5-6 + limited use** (`usage`): first-class `save_effect` action kind, no interim trait effects. | dragon breath, hell hound, giant spider web, Leadership, Turn Undead-like | Rules M; T&C M-L | M-L | B |
 | 11 | T&C-G5 | **On-hit riders** (save/condition/grapple/swallow/prone) as first-class `on_hit` on attack actions; depends on R-G8 for grapple/swallow. | wolf, ghoul, giant spider/scorpion, crocodile, Stunning Strike, net, smites | Rules M; T&C M | M | B |

@@ -3,6 +3,7 @@
 #include "rules5e/abilities.hpp"
 #include "rules5e/d20.hpp"
 #include "rules5e/types.hpp"
+#include "rules5e/traits.hpp"
 
 namespace rules5e {
 
@@ -13,6 +14,9 @@ struct SaveResult { D20Roll roll; bool success; bool auto_fail; };
 // Auto-fail (Paralyzed/Petrified/Stunned/Unconscious on Str/Dex): no dice are drawn,
 // roll is zeroed, success = false. Natural 20/1 have no special meaning on saves (SRD 5.1).
 SaveResult saving_throw(rng::Rng&, const Combatant&, Ability, int dc, RollMode mode = RollMode::Normal);
+
+// Same, with the effect's source so Combatant::roll_traits (Magic Resistance, Fey Ancestry, ...) apply.
+SaveResult saving_throw(rng::Rng&, const Combatant&, Ability, int dc, RollMode mode, const SaveSource&);
 
 // Ability modifier + proficiency bonus if proficient in that save.
 constexpr int save_modifier(const Combatant& c, Ability a) {

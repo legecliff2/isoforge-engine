@@ -8,6 +8,7 @@
 #include "rules5e/d20.hpp"
 #include "rules5e/initiative.hpp"
 #include "rules5e/attack.hpp"
+#include "rules5e/traits.hpp"
 #include "rules5e/weapon.hpp"
 #include "rules5e/damage.hpp"
 #include "rules5e/conditions.hpp"
