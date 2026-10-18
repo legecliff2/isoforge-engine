@@ -61,6 +61,7 @@ struct Archetype {
     // pre-@3 content (its size was descriptive; migration marker "size" in inert_mechanics).
     uint8_t footprint = 1;
     std::vector<std::string> spell_ids;   // spellcasting.spells content ids (monster@3 / character@3)
+    std::vector<std::string> innate_spell_ids;   // spellcasting.innate.* content ids (monster@4 / character@4); base.innate holds the rows
     // `multiattack` effect options as authored: option id + indices into base.attacks. ContentLibrary::add
     // turns them into base.multiattacks (ids stored in the library). Declared order = option order.
     struct MultiattackDecl { std::string id; std::vector<uint8_t> attacks; };

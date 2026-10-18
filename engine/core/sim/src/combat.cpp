@@ -814,9 +814,10 @@ uint64_t Combat::hash() const {
     if (!state_.features.empty()) h.u64(rules5e::feature_uses_digest(state_));
     // v7 sections: each folded only when non-empty, under its own tag byte (so "pools only" and
     // "action uses only" differ). Rows are registered at setup only for content that uses them, so every
-    // existing combat hashes as before. 0xA2 (modifiers) and 0xA4 (innate) are reserved for later rows.
+    // existing combat hashes as before. 0xA2 (modifiers) is reserved for a later row.
     if (!state_.action_uses.empty()) { h.byte(0xA1); h.u64(rules5e::action_uses_digest(state_)); }
     if (!state_.pools.empty()) { h.byte(0xA3); h.u64(rules5e::pools_digest(state_)); }
+    if (rules5e::has_innate_state(state_)) { h.byte(0xA4); h.u64(rules5e::innate_digest(state_)); }
     return h.value();
 }
 
@@ -839,6 +840,7 @@ uint64_t Combat::log_hash() const {
         h.byte(q.ranged_hostile_within_5ft ? 1 : 0);
         h.byte(q.beyond_normal_range ? 1 : 0);
         if (q.multiattack != 0) h.byte(q.multiattack);   // folded only when used: older logs hash as before
+        if (q.innate) h.byte(0xA4);                       // innate CastSpell: folded only when set, under a tag byte
         h.byte(q.heal_dice.count);
         h.byte(q.heal_dice.sides);
         h.i16(q.heal_dice.bonus);
