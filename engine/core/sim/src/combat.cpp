@@ -120,6 +120,21 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
                                           f.recharge == Recharge::ShortRest  ? rules5e::FeatureRecharge::ShortRest
                                           : f.recharge == Recharge::LongRest ? rules5e::FeatureRecharge::LongRest
                                                                              : rules5e::FeatureRecharge::None);
+    // Save actions (monster@4 / character@4): recharge and per-day / per-rest usage rows, only for creatures
+    // that have one (digest-neutral for every other combat).
+    for (const auto& sl : c.slots_)
+        for (const auto& sa : sl.archetype->save_actions) {
+            if (sa.usage_kind == 3)
+                rules5e::register_pool(c.state_, sl.id, sa.pool_id, sa.pool_max, sa.pool_start,
+                                       sa.pool_recharge == Recharge::ShortRest  ? rules5e::FeatureRecharge::ShortRest
+                                       : sa.pool_recharge == Recharge::LongRest ? rules5e::FeatureRecharge::LongRest
+                                                                                : rules5e::FeatureRecharge::None);
+            else if (sa.usage_kind == 1) rules5e::register_action_use(c.state_, sl.id, sa.spell_id, false);
+            else if (sa.usage_kind == 2)
+                rules5e::register_feature(c.state_, sl.id, sa.spell_id, sa.uses,
+                                          sa.recharge == Recharge::ShortRest ? rules5e::FeatureRecharge::ShortRest
+                                                                             : rules5e::FeatureRecharge::LongRest);
+        }
     c.apply_rules_events(opening);
     // v6: where each multi-tile creature stands, once, in spawn order (nothing for 1x1-only combats).
     for (const auto& sl : c.slots_)
@@ -431,7 +446,10 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
     }
     if (q.kind == ActionKind::CastSpell) {   // v5: where each affected creature stood
         bool cast = false;
-        for (const auto& e : evs) cast = cast || (e.kind == rules5e::EventKind::SpellCast && e.reaction_depth == 0 && e.actor == q.actor);
+        // A depth-0 SpellCast, or ActionUsed for a non-spell action (SpellDef::is_spell == false; no SpellCast).
+        for (const auto& e : evs)
+            cast = cast || ((e.kind == rules5e::EventKind::SpellCast || e.kind == rules5e::EventKind::ActionUsed) &&
+                            e.reaction_depth == 0 && e.actor == q.actor);
         if (cast) {
             std::vector<CombatantId> ids = q.targets;
             if (ids.empty()) ids.push_back(q.target);
