@@ -5,6 +5,7 @@
 
 #include "rules5e/abilities.hpp"
 #include "rules5e/checks.hpp"
+#include "rules5e/weapon.hpp"
 #include "rules5e/d20.hpp"
 #include "rules5e/saves.hpp"
 #include "rules5e/conditions.hpp"
@@ -328,7 +329,7 @@ void do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     AttackContext actx;
     actx.target_within_5ft = within_5ft;
     actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
-    actx.extra_disadvantage = ranged_disadvantage && atk.ranged;   // combined with conditions in one place
+    actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft);   // combined with conditions in one place
     D20Roll roll = roll_d20(s.rng, atk.to_hit, attack_roll_mode(a, t, actx));
     bool crit = false;
     bool hit = evaluate_hit(roll, t, actx, crit);
@@ -1115,12 +1116,19 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
             for (uint8_t i : seq) if (i >= a.attacks.size()) return fail("bad multiattack");
             if (req.attack_index != seq[0]) return fail("attack out of multiattack sequence");
             if (!spend_action(b, a, req.kind, false)) return fail("no action available");
+            b.loading_fired = 0;
             b.attacks_remaining = uint8_t(seq.size() - 1);
             if (b.attacks_remaining > 0) { b.sequence = req.multiattack; b.sequence_pos = 1; }
         } else if (b.attacks_remaining > 0) --b.attacks_remaining;       // Extra Attack
-        else if (spend_action(b, a, req.kind, false))
+        else if (spend_action(b, a, req.kind, false)) {
+            b.loading_fired = 0;
             b.attacks_remaining = uint8_t(a.attacks_per_action > 1 ? a.attacks_per_action - 1 : 0);
-        else return fail("no action available");
+        } else return fail("no action available");
+        if (has_property(a.attacks[req.attack_index], kWeaponLoading) && req.attack_index < 32) {
+            const uint32_t lbit = uint32_t(1) << req.attack_index;
+            if (b.loading_fired & lbit) return fail("loading weapon already fired this action");
+            b.loading_fired |= lbit;
+        }
         s.budget = b;
         do_attack(s, ctx, a, *t, a.attacks[req.attack_index], req.target_within_5ft, out.events,
                   req.ranged_hostile_within_5ft || req.beyond_normal_range);
@@ -1222,6 +1230,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
                 continue;
             }
             for (uint8_t i = 0; i < a.attacks.size(); ++i) {
+                if (!b.action && i < 32 && has_property(a.attacks[i], kWeaponLoading) && (b.loading_fired >> i & 1)) continue;
                 ActionRequest r{a.id, ActionKind::Attack, t.id, i};
                 out.push_back(r);
             }
