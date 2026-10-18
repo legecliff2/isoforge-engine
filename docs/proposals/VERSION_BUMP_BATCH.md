@@ -290,6 +290,38 @@ struct SpellDef {
 **caller-supplied** in `ActionRequest::targets` first (Q8, decided); `area` is validated and used
 for UI hints only until the area-template PR.
 
+#### 2.3.1 Row 6 hand-off API (Rules to Engine Core)
+
+Rules (row 5 and the row 6 tests in `engine/rules/tests/save_action_tests.cpp`) provide everything below;
+**Engine Core owns the compile, `Combat::create` registration, the AI and the `SpellTarget` change** (row 6 assignment).
+
+1. **Compile.** For each `save_effect` build a `SpellDef` and add it to the `SpellBook` (new `SpellBook::erase(id)` supports
+   the override/rebuild path):
+   `id = spell_id_of("<archetype id>#<action id>")`, `content_id` = that string, `level = 0`, `casting_time = Action`,
+   `range_ft` (single target) , `targets = 1`, `kind = Save`, `save_ability = save.ability`, **`fixed_dc = save.dc`**,
+   `dice`/`damage_type` from `damage[0]` (further `damage[]` entries and `apply[]` become `extra_effects`: damage entries as
+   further `Save` effects with `on_save` copied; each `apply` as an `ApplyCondition`/`Save`-with-condition effect with
+   `affected_only` as the rules tests show), `on_save = on_success` (`half` -> `OnSave::Half`, `none` -> `OnSave::None`),
+   **`is_spell = false`**, **`magical = action.magical` (default false)**, `area`/`area_size_ft`... from `area`, and `usage`:
+   `at_will` -> `usage_kind 0`; `recharge` -> `1` + `recharge_min`; `per_day`/`per_rest` -> `2`; `pool` -> `3` + `pool_id`,
+   `pool_cost`. `components = 0`, `concentration = false`.
+2. **Registration** (`Combat::create`, only when the archetype has such an action, so old archetypes register nothing):
+   append the synthetic id to the combatant's `spells_known`; `register_action_use(state, actor, spell_id)` for `recharge`;
+   `register_feature(state, actor, spell_id, uses, recharge)` for `per_day`/`per_rest`; `register_pool(state, actor, pool_id,
+   max, cur, recharge)` for pools. `Combat::hash` already folds the tables (0xA1 / 0xA3) when non-empty.
+3. **Requests.** `ActionRequest{actor, CastSpell, target}` with `spell_id`, `spell_level = 0`, optional `targets` (area
+   callers). `legal_actions` already offers the action per hostile target (level 0), and filters expended recharge, spent
+   per-day and unaffordable pool actions. Rejections: `"action has not recharged"`, `"no uses left"`, `"not enough resource"`,
+   `"too many targets"`.
+4. **Events.** `ActionUsed` (depth 0) replaces `SpellCast` (no counter window), then `ResourceSpent` (pool), the save and
+   damage events, then `SpellResolved`. Engine Core's `Combat::complete` change: also emit `SpellTarget` for a depth-0
+   `ActionUsed` by the actor (and update the `SpellTarget` wording in `docs/SIM_EVENTS.md`).
+5. **Known gap (decision needed, not in this PR).** `apply[].duration` (`rounds`, `until_end_of_target_next_turn`) is not
+   enforced by rules today: an `ActiveSpellEffect` ends only on concentration loss or a successful repeat save, so a
+   non-concentration condition with no `repeat_save` lasts the whole combat. `until_save` maps to a `repeat_save`; the
+   other two need the `expiry_kind`/`rounds_left` state of section 6 (row 12). Until then Engine Core should compile only
+   `until_save`/`repeat_save` conditions (or accept the whole-combat duration for the interim fixtures).
+
 ### 2.4 Recharge
 
 ```cpp
