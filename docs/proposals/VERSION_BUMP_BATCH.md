@@ -490,8 +490,10 @@ struct Trigger { uint32_t id; TriggerOn on; TriggerLimit limit; ReactionPolicy c
 // Move handler doubles again for Prone (crawling), and `Moved` carries only that cost, so a tile count
 // cannot be recovered in rules. Therefore: ActionRequest (appended, default 0) `uint8_t move_tiles`,
 // set by sim in do_step (1 per Step) and in the readied-move path (path length). Rules add
-// 5 * move_tiles to TurnBudget::moved_ft for the actor's OWN turn only (readied/out-of-turn moves
-// are not counted). move_tiles is logged with the request (replay reproduces it) and stays OUT of log_hash.
+// 5 * move_tiles to TurnBudget::moved_ft ONLY WHEN THE MOVE COMPLETES (where `Moved` is emitted), for the
+// actor's OWN turn only. A move interrupted by an opportunity attack (MoveInterrupted: no movement spent,
+// tile not moved) must not count; readied/out-of-turn moves are not counted. uint8_t is enough (a readied
+// path is bounded by speed). move_tiles is logged with the request (replay reproduces it) and stays OUT of log_hash.
 ```
 
 Hook points in `encounter.cpp` (all are existing internal functions; no new public step kind):
@@ -879,7 +881,7 @@ migrated document's `$schema` is already `@4`, so the check needs the *declared*
 (`LoadResult::declared.version`), which today never reaches `ContentLibrary::add()` or
 `FeatureRegistry::add()`. Sim-side work (Engine Core), agreed API: `ContentLibrary::add(doc, schema_type, pack_id, uint32_t declared_version = 0)`,
 an **optional trailing parameter where 0 means "parse the document's own `$schema` tag"** (never "latest",
-so a direct `add()` of an `@3` doc behaves as `@3`); `load()` passes `LoadResult::declared.version`. It is
+so a direct `add()` of an `@3` doc behaves as `@3`). **A missing or unparsable `$schema` with `declared_version == 0` means no refusal**, so the many existing direct `add()` callers with hand-built documents (e.g. `casting_tests.cpp`) behave identically. A migrated document has `$schema` rewritten to `@4`, so the parse path only refuses *unmigrated* `@3` documents; `load()` passes `LoadResult::declared.version`, which is the path that matters; `load()` passes `LoadResult::declared.version`. It is
 plumbed through `FeatureBuildCtx` and `FeatureRegistry::add`, and the refusal applies there. Existing
 callers (`sample_set.hpp`, packset tests, direct users) keep compiling and behave identically. Test: a
 **migrated** doc (declared 3, `$schema` `@4`) with a new-kind effect and **no** marker loads cleanly and
@@ -1009,9 +1011,15 @@ Footprint-only stream = 6; new-rules-kind-only = 7; both = 7; neither = unchange
 keep their digests **only if old content can never emit kinds 39+**, which is what the §8 gates
 guarantee and the compat goldens verify.
 
-Same-PR obligations: `kLastRulesEventKind`, `events_tests.cpp` layout pins (L57/L60 area), the sim
-"event layout" test, `docs/SIM_EVENTS.md` table and changelog row for v7, and the
-`game/vertical_slice` `known_rules_kind` tests in `event_feed_tests.cpp` ("kLast+1 is unknown").
+**Timing (decided).** Row 4 only restructures `event_stream_version` (tested with a synthetic
+`EventKind(39)`) and **leaves `kSimEventSchemaVersion` at 6**. Row 5, the PR that appends kinds 39-44,
+bumps the constant to 7, per `docs/SIM_EVENTS.md` policy ("sim bumps the version and
+`kLastRulesEventKind` in the same PR that surfaces it"). Row 5's same-PR pin list:
+`kSimEventSchemaVersion` to 7 and `kLastRulesEventKind` to `ActionUsed`; `events_tests.cpp` (~L37
+`kSimEventSchemaVersion == 6`, and the L57/L60 layout pins); the sim "event layout" test;
+`event_feed_tests.cpp` (~L64 `static_assert(sim::kSimEventSchemaVersion == 6)`, and the `known_rules_kind`
+"kLast+1 is unknown" tests); `docs/SIM_EVENTS.md` table, ordering rules and v7 changelog row; and the
+`event_stream_version <= kSimEventSchemaVersion` invariant test.
 
 ### 9.3 What is actually hashed (rewritten against `main`)
 
@@ -1142,8 +1150,8 @@ Everything below is event schema **v7**.
 | 1 | **Sim facts: `ally_near_target` and `move_tiles`.** `ally_near_target`: same-team, conscious, non-incapacitated creature other than the attacker within 1 tile of the target footprint, set in `do_rules` (Attack branch) and `hooks.refresh_ready` | **Engine Core** | none (can land now) | Supplies the fact #54 expects. Sim does not load `roll_traits` from content yet, so this changes nothing observable today (golden-neutral); it becomes observable when a loader or trait uses it (Sneak Attack, rows 9/10). `move_tiles` (appended `ActionRequest` field, default 0): set in `do_step` (1 per Step) and the readied-move path (path length). Both stay out of `log_hash` (§9.3) |
 | 2 | `common@2` (changed defs only, absolute refs to v1), `monster@4`/`character@4`, lint test, per-tag validator table, cross-ref checks (§8.3), `3→4` migrations (§8.2), `manifest@1` `api_level` enum + validator rule (§8.5), decorated compat fixtures (§8.4) | **T&C** | #58, #59 | No behaviour; golden-neutral by construction |
 | 3 | Loader: accept `@4`, **`declared.version` plumbing** into `ContentLibrary::add()` and `FeatureBuildCtx`, `reactions`/`bonus_actions` markers, registry "list as inert" rule (§8.3), `forward_compat` listing | **Engine Core** | 2 | Public `add()` signature: T&C signs off |
-| 4 | `event_stream_version` max-over-constructs (§9.2), v7 constant (raised before any kind 39+ exists; harmless, and the SIM_EVENTS.md v7 row says so), SIM_EVENTS.md v7 row, tests (Footprint-only 6 / new-kind-only 7 / both 7 / neither unchanged) | **Engine Core** | #55 | Lands before any kind 39+ is emitted |
-| 5 | rules5e foundation: `usage`, `ActionUse`, `ResourcePool`, recharge roll, `moved_ft` (rules half: adds 5 x `move_tiles` on the actor's own turn), `SpellBook::erase`/rebuild support (§2.3), `ReactionOption::uses_reaction` (appended, default true), `SpellDef::{is_spell, magical, fixed_dc, fixed_attack}`, kinds 39-44, `kLastRulesEventKind` | **Rules** | 4, #55 | Tagged `Combat::hash` folds are part of the sim side of this PR (Engine Core co-reviews) |
+| 4 | `event_stream_version` restructured into the max-over-constructs form (§9.2), including the `rules.kind > SpellCheckRolled` → 7 branch; tests use a **synthetic `EventKind(39)`** event (Footprint-only 6 / new-kind-only 7 / both 7 / neither unchanged). **`kSimEventSchemaVersion` stays 6** in this PR and no `<= kSimEventSchemaVersion` invariant is added here | **Engine Core** | #55 | Digest-neutral: the digest uses the lowest fitting version |
+| 5 | rules5e foundation: `usage`, `ActionUse`, `ResourcePool`, recharge roll, `moved_ft` (rules half: adds 5 x `move_tiles` on the actor's own turn, **only when the move completes**, i.e. when `Moved` is emitted; an OA-interrupted move does not count), `SpellBook::erase`/rebuild support (§2.3), `ReactionOption::uses_reaction` (appended, default true), `SpellDef::{is_spell, magical, fixed_dc, fixed_attack}`, kinds 39-44. **This PR bumps `kSimEventSchemaVersion` to 7** together with `kLastRulesEventKind`, SIM_EVENTS.md (v7 table/changelog row and the `ActionUsed` ordering), the pins in `events_tests.cpp` (~L37 `kSimEventSchemaVersion == 6`, plus the L57/L60 layout pins) and `event_feed_tests.cpp` (~L64 `static_assert(... == 6)`, plus `known_rules_kind`), and adds the `event_stream_version <= kSimEventSchemaVersion` invariant (SIM_EVENTS.md policy: bump in the PR that surfaces the kinds) | **Rules** | 4, #55 | Tagged `Combat::hash` folds are part of the sim side of this PR (Engine Core co-reviews) |
 | 6 | **Save actions, caller-supplied targets (Q8), single-target only for AI**: synthetic-spell compile in `ContentLibrary` (§2.3), `spells_known` append; **`Combat::complete` also emits `SpellTarget` for a depth-0 `ActionUsed` by the actor** (today it keys on a depth-0 `SpellCast`; non-spell save actions emit `ActionUsed` instead, §9.1; `docs/SIM_EVENTS.md`'s "`SpellTarget` (v5): depth-0 `SpellCast`" wording is updated in this PR; no new `SimEvent` kind, so no version change); AI offers save actions **without an `area`** on top of #59's multiattack ordering (save action if worthwhile, else multiattack, else single attack) | **Engine Core** (compile + AI), Rules for any `legal_actions` change | 3, 5 | AI reads `state_` (expended or not), never rolls. Interim: single-target save actions only (no geometry exists before row 7); area actions are usable by explicit callers/tests with listed targets but the built-in AI does not choose them yet |
 | 7 | **Area templates (R-G10)**: aim input via `Command::to` for `CastSpell` (already in `LogEntry`/`log_hash`), geometry over `footprint_tiles_at`, LOS/cover from origin, opt-in (derive targets only when an aim tile is given and `targets` is empty), `spell_in_reach` fix for self-origin | **Engine Core** | #55, 6 | Later PR (Q8); also serves `area_save` riders. **Area-action AI moves here**: use when >= 2 hostile targets are inside the template (or 1 if no attack is legal), never include allies |
 | 8 | Innate/slot monster spellcasting, DC/attack overrides, `ActionRequest::innate` | **Rules** + **Engine Core** (archetype) | 3 | |
