@@ -117,6 +117,32 @@ struct AttackSequence {
     std::vector<uint8_t> attacks;         // indices into Combatant::attacks, in order (1..255)
 };
 
+// Conditional advantage/disadvantage trait (T&C-G7); semantics and examples in traits.hpp.
+enum class TraitRoll : uint8_t {
+    Attack,       // this creature's own attack rolls
+    AttackedBy,   // attack rolls made AGAINST this creature
+    Save,         // this creature's saving throws
+};
+
+enum TraitWhen : uint16_t {
+    kWhenAllyNearTarget  = 1,   // Attack: caller fact "an ally of the attacker is within 5 ft of the target, not incapacitated"
+    kWhenTargetDamaged   = 2,   // Attack: the target is below its maximum hit points
+    kWhenMeleeAttack     = 4,   // Attack / AttackedBy: the attack is a melee attack (not Attack::ranged)
+    kWhenRangedAttack    = 8,   // Attack / AttackedBy: the attack is ranged
+    kWhenSourceMagical   = 16,  // Save: the effect is a spell or other magical effect
+};
+
+struct RollTrait {
+    TraitRoll roll = TraitRoll::Attack;
+    RollMode  mode = RollMode::Advantage;   // Advantage or Disadvantage (Normal = no effect)
+    uint16_t  when = 0;                     // TraitWhen bits, all must hold
+    uint32_t  target_conditions = 0;        // Attack: target must have at least one of these Conditions (bitmask); 0 = any
+    uint32_t  target_types = 0;             // Attack: target CreatureType must be in this mask; 0 = any
+    uint8_t   save_abilities = 0;           // Save: only these abilities (bitmask over Ability); 0 = any
+    uint32_t  save_vs_conditions = 0;       // Save: the effect imposes one of these Conditions ...
+    uint32_t  save_vs_damage_types = 0;     //       ... or deals one of these damage types (either listed set matches); both 0 = any
+};
+
 struct Combatant {
     CombatantId id;
     uint8_t  team;
@@ -165,6 +191,7 @@ struct Combatant {
     uint32_t condition_immunities = 0;
     // appended (damage qualifiers): resistance / immunity that applies only to nonmagical sources.
     QualifiedDamageMask resist_qualified{}, immune_qualified{};
+    std::vector<RollTrait> roll_traits;   // appended: conditional advantage / disadvantage (Pack Tactics, Magic Resistance, ...)
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
