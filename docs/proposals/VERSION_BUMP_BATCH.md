@@ -55,7 +55,7 @@ exactly the "interim trait effect" the Director ruled out, so it lands in `@4` (
 
 | Schema | Change | Why it cannot be additive |
 |---|---|---|
-| `common@2` (new file) | **Only the defs that change**, re-declared locally (this is the complete local list, and the lint in §1.2 checks the doc's own snippets against it): `action` (v2), `legacy_action`, `legacy_nonspecial_action`, `legacy_special_action`, `effect`, `effect_inert`, `effect_live`, `apply_modifier_effect`, `grant_action_effect`, `heal_pool_effect`, `level_table`, `level_table_entry`, `pool_level_table`, `pool_level_table_entry`, `reaction`, `reaction_effect`, `on_event_effect`, `apply`, `item_damage` (`item@1`'s file), `rider`, `predicate`, `scaling`, `usage`, `area`, `save`, `resource`, `modifier`, `modifier_duration`, `damage` (new named def), `rider_damage_type`, `rider_damage`, `spellcasting` (v2, superset of v1), `trait` / `trait_active` / `effect_cost` (v2), `stat_block` (v2) | `common@1 $defs/action` is `additionalProperties:false`; `reactions`/`bonus_actions` exist in v1 but are descriptive; widening v1 would let `@3` files carry fields the `@3` contract says are inert |
+| `common@2` (new file) | **Only the defs that change**, re-declared locally (this is the complete local list, and the lint in §1.2 checks the doc's own snippets against it): `action` (v2), `legacy_action`, `legacy_nonspecial_action`, `legacy_special_action`, `effect`, `effect_inert`, `effect_live`, `apply_modifier_effect`, `grant_action_effect`, `heal_pool_effect`, `level_table`, `level_table_entry`, `pool_level_table`, `pool_level_table_entry`, `reaction`, `reaction_effect`, `on_event_effect`, `apply`, `item_damage` (`item@1`'s file), `rider`, `predicate`, `scaling`, `usage`, `area`, `save`, `resource`, `modifier`, `modifier_duration`, `damage` (new named def), `rider_damage_type`, `rider_damage`, `spellcasting` (v2, superset of v1), `trait` / `trait_active` (v2), `stat_block` (v2) | `common@1 $defs/action` is `additionalProperties:false`; `reactions`/`bonus_actions` exist in v1 but are descriptive; widening v1 would let `@3` files carry fields the `@3` contract says are inert |
 | `monster@4` | `$ref common@2 stat_block`; **every `@3` top-level property is carried** (§1.3) | same, plus gating |
 | `character@4` | same; adds `resources[]`, class-feature effect kinds | same |
 | `item@1` | new type: weapons, armor, shields (§10) | new type: no old content |
@@ -137,7 +137,7 @@ before merge, this section follows it. Validator check 5 (§8.3) points at these
 | `save` | `$defs/save` = `{ability, dc}` | y | `dc` integer 1..30; no derived DCs for actions (SRD blocks print them) |
 | `area` | `$defs/area` | n | absent = single target (`targets: 1`, `range_ft`) |
 | `origin` | `"self"` \| `"point"` | n | **on the action, not in `area`** (default `self`); `point` requires `range_ft` |
-| `range_ft` | `$defs/range_ft` (v1) | n | single-target range, or the reach of a `point` origin; forbidden when `origin` is `self` and there is no single target |
+| `range_ft` | `$defs/range_ft` (v1) | n | single-target range, or the reach of a `point` origin; forbidden iff `origin` is `self` and `area` is present (check 13) |
 | `damage[]` | `$defs/damage` items | n | at least one of `damage[]`/`apply[]` required |
 | `on_success` | `"half"` \| `"none"` | when `damage[]` | |
 | `apply[]` | `[{condition, duration?, repeat_save?}]` | n | maps to `SpellEffectKind::ApplyCondition`; `duration`: `{kind:"rounds",n}` \| `{kind:"until_save"}` \| `{kind:"until_end_of_target_next_turn"}`; `repeat_save`: `"start_of_turn"` \| `"end_of_turn"` \| `"on_damage"` |
@@ -214,7 +214,7 @@ fields in the unselected arms).
 ```json
 "usage": { "type":"object", "additionalProperties": false, "required":["kind"],
   "properties": { "kind": {"enum":["at_will","recharge","per_day","per_rest","pool"]},
-                  "min": {"enum":[2,3,4,5,6]}, "uses": {"type":"integer","minimum":1,"maximum":9},
+                  "min": {"enum":[2,3,4,5,6]}, "uses": {"type":"integer","minimum":1,"maximum":255},
                   "rest": {"enum":["short","long"]}, "pool": {"$ref":"../common/v1.schema.json#/$defs/local_id"},
                   "cost": {"type":"integer","minimum":1} },
   "allOf": [
@@ -432,12 +432,13 @@ they are a schema error until R-G8):
     { "if": {"required":["kind"], "properties":{"kind":{"const":"set_hp"}}},          "then": {"required":["value"], "propertyNames":{"enum":["kind","value"]}} },
     { "if": {"required":["kind"], "properties":{"kind":{"const":"bonus_attack"}}},    "then": {"required":["attack_id"], "propertyNames":{"enum":["kind","attack_id"]}} },
     { "if": {"required":["kind"], "properties":{"kind":{"const":"area_save"}}},       "then": {"required":["area","save","damage","on_success"], "propertyNames":{"enum":["kind","area","save","damage","on_success"]}} },
-    { "if": {"required":["kind"], "properties":{"kind":{"const":"spend"}}},           "then": {"oneOf":[{"required":["pool"]},{"required":["slot"],"not":{"required":["cost"]}}],   // cost only with pool, never with slot
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"spend"}}},           "then": {"oneOf":[{"required":["pool"],"not":{"required":["slot"]}},
+                                                                           {"required":["slot"],"not":{"anyOf":[{"required":["pool"]},{"required":["cost"]}]}}],   // pool XOR slot; cost only with pool
                                                                  "propertyNames":{"enum":["kind","pool","cost","slot"]}} } ] }
 ```
 
 (`$defs/apply` is the shared `{condition, duration?, repeat_save?}` object of §2.1, also a local def, listed
-in §1.1 with `save`; `damage` here is `$defs/damage` whose `type` may be `rider_damage_type`.)
+in §1.1 with `save`; `damage` here is `$defs/rider_damage` (type may be `same_as_weapon`).)
 `spend` + `extra_damage` with `scale.per_slot_level` is Divine Smite; `pool` + `cost` is a resource
 spend. `set_hp` is Undead Fortitude's cancel; `bonus_attack` is Rampage; `area_save` is Death Burst.
 
@@ -573,6 +574,21 @@ extra `inert` property): v1's property list verbatim, plus `inert`.
   "allOf": [ /* v1's three if/then rules (to_hit+damage for _attack, reach for melee_, range for ranged_) verbatim */ ] }
 ```
 
+The two bonus-action legacy defs are written out in full (so the lint and the allowed = required + optional test
+cover them; both share `legacy_action`'s property list):
+
+```json
+"legacy_nonspecial_action": { "type":"object","additionalProperties":false,"required":["id","name","kind","inert"],
+  "properties": { /* legacy_action's properties verbatim, except: */
+    "kind":{"enum":["melee_weapon_attack","ranged_weapon_attack","melee_spell_attack","ranged_spell_attack"]},
+    "inert":{"const":true} },
+  "allOf": [ /* v1's three if/then rules (to_hit+damage for _attack, reach for melee_, range for ranged_) */ ] },
+"legacy_special_action": { "type":"object","additionalProperties":false,"required":["id","name","kind"],
+  "properties": { /* legacy_action's properties verbatim, except: */
+    "kind":{"const":"special"},
+    "inert":{"const":true} } }                    // optional: a special bonus action is never stamped, but a stamped one is accepted
+```
+
 The `reactions[]` arms are mutually exclusive: `reaction` requires `window`/`effect` and forbids
 `inert`; `legacy_action` requires `inert`. For `bonus_actions[]` there is a third arm,
 `legacy_special_action` (= `legacy_action` with `kind` const `special` and `inert` *optional*; `legacy_nonspecial_action` is `legacy_action` minus `special`), because a
@@ -584,9 +600,15 @@ excludes `special` (`kind: {not: {const: special}}`), so no `special` entry can 
   `special` (a `special` bonus action stays descriptive at `@4` exactly as at `@3`, neither loaded nor
   stamped). The file-level `inert_mechanics` list also gets `"reactions"` / `"bonus_actions"` when at
   least one entry was stamped (§8.2), so reporting stays uniform.
-* `cost: "reaction"` on trait/feature effects becomes legal at `@4`. This is a **`common@2
-  effect_cost` change**: v1's enum documents `reaction` as reserved; the v2 validator row *accepts* it
-  where the v1 row rejects it for `@≤3` files.
+* **Authored `inert` is still rejected on disk.** `validate_packs.py` (~L379) errors on an authored `inert`
+  in every version and `docs/CONTENT_EFFECTS.md` says the same ("reserved for the engine migrations").
+  That does not change: only the **schema** (so migration output validates) and the **in-memory migration
+  output** accept `inert`; a file on disk that carries it is a validator error. New validator negative cases:
+  authored `inert` on a `reactions[]` entry and on a `bonus_actions[]` entry (and the existing effect case).
+  The §8.4 migrated-file fixtures are validated in memory, not as authored files.
+* `cost: "reaction"` on trait/feature effects becomes legal at `@4`. There is **no v2 `effect_cost`
+  def**: v1's `effect_cost` enum already contains `reaction` (documented as reserved); the v2 *validator row*
+  accepts it where the v1 row rejects it for `@≤3` files, and the new arms `$ref` v1's def.
 
 ```json
 "$defs/reaction": { "type":"object", "additionalProperties": false,
@@ -719,7 +741,7 @@ and the `ac_bonus` spell effect (instantaneous reaction today). **Integers only*
 "$defs/modifier": { "type":"object", "additionalProperties": false, "required": ["stat","duration"],
   "properties": {
     "stat": { "enum": ["attack_roll","save","ability_check","ac","speed","damage","temp_hp","resistance","attacks_against"] },
-    "bonus": {"type":"integer"},
+    "bonus": {"type":"integer","minimum":-32767,"maximum":32767},
     "bonus_table": {"$ref":"#/$defs/level_table"},                            // stat damage only (Rage, §7.1)
     "die":   {"$ref":"../common/v1.schema.json#/$defs/dice"},                 // Bless: stat attack_roll/save, die 1d4
     "mode":  {"enum":["advantage","disadvantage"]},                           // Faerie Fire: attacks_against + advantage
@@ -961,19 +983,30 @@ native file validates and a typo in a new kind is still an error:
 "effect_live": { "allOf": [ {"$ref":"../common/v1.schema.json#/$defs/effect"},                   // v1: multiattack, damage_bonus, self_heal, bonus_action_grant, unknown kinds
                             {"properties":{"kind":{"not":{"enum":["on_event","apply_modifier","grant_action","heal_pool","save_effect","reaction"]}}}} ] },
 
-"apply_modifier_effect": { "type":"object","additionalProperties":false,"required":["kind","modifier"],
-  "properties":{"kind":{"const":"apply_modifier"},"cost":{"$ref":"#/$defs/effect_cost"},"usage":{"$ref":"#/$defs/usage"},"modifier":{"$ref":"#/$defs/modifier"}} },
+"apply_modifier_effect": { "type":"object","additionalProperties":false,"required":["kind"],
+  "properties":{"kind":{"const":"apply_modifier"},"cost":{"$ref":"../common/v1.schema.json#/$defs/effect_cost"},"usage":{"$ref":"#/$defs/usage"},
+                "modifier":{"$ref":"#/$defs/modifier"},
+                "modifiers":{"type":"array","minItems":1,"maxItems":16,"items":{"$ref":"#/$defs/modifier"}}},   // Rage: one modifier per damage type of resistance
+  "oneOf":[{"required":["modifier"]},{"required":["modifiers"]}] },
 "grant_action_effect":   { "type":"object","additionalProperties":false,"required":["kind"],
-  "properties":{"kind":{"const":"grant_action"},"cost":{"$ref":"#/$defs/effect_cost"},"usage":{"$ref":"#/$defs/usage"},"count":{"type":"integer","minimum":1,"maximum":2}} },
+  "properties":{"kind":{"const":"grant_action"},"cost":{"enum":["action","bonus_action","reaction","free"]},   // omitting cost means action; `free` for Action Surge
+                "action_list":{"enum":["any"]},"usage":{"$ref":"#/$defs/usage"},"count":{"type":"integer","minimum":1,"maximum":2}} },
 "heal_pool_effect":      { "type":"object","additionalProperties":false,"required":["kind","pool"],
-  "properties":{"kind":{"const":"heal_pool"},"cost":{"$ref":"#/$defs/effect_cost"},"pool":{"$ref":"../common/v1.schema.json#/$defs/local_id"}} }
+  "properties":{"kind":{"const":"heal_pool"},"cost":{"$ref":"../common/v1.schema.json#/$defs/effect_cost"},"pool":{"$ref":"../common/v1.schema.json#/$defs/local_id"}} }
 ```
+
+`grant_action.action_list` has the single value `any` today: **Haste's restricted extra action** (one weapon
+attack, Dash, Disengage, Hide or Use Object only) is **not expressible**; the field exists so a later closed
+enum value can add it without a new effect kind. Gaps against the legacy kinds that stay live under arm (b):
+`damage_bonus.condition` has no `modifier.when` counterpart yet (a conditional static bonus stays a
+`damage_bonus` effect), and `usage.uses` is bounded at **255** in v2 (`self_heal.uses` goes to 255; the
+schema above raises the max from 9) so a migrated-style pool can mirror it.
 
 `on_event_effect` (§3.1) has **no** `inert` property: an inert `on_event` is arm (a). A native `@4` effect
 whose kind is in the frozen list but is neither stamped inert nor a valid closed arm (e.g. `save_effect`
 or `reaction` as a trait effect kind: they are action/reaction kinds, not effect kinds) is a schema error.
 `trait` and `trait_active` (v2) differ from v1 only in `effect` -> this `effect` and in `cost` accepting
-`reaction` (`effect_cost` v2). **Schema-level test** (the §8.4 migrated-file row): a `@4` document with an
+`reaction` (the v2 validator row, no new def). **Schema-level test** (the §8.4 migrated-file row): a `@4` document with an
 `inert: true` `on_event` effect whose `on` is bogus validates through arm (a) and fails once `inert` is removed.
 
 ### 8.3 Loader contract (Engine Core / T&C)
@@ -1008,7 +1041,7 @@ lands in `inert_features`. The "new set" lives in two places (sim's registry lis
   `window` / predicate / rider kinds. Warnings (unchanged): unknown effect kinds.
 * **Cross-reference checks (new):**
   1. `on_hit[]`/rider `attack_id`, `reaction_effect.attack_id`, and `bonus_attack.attack_id` must name an `id` in the same document's `actions[]`.
-  2. `usage.pool` / `spend.pool` must name a `resources[].id` of the same document; `cost` may not exceed the pool's `max` (when `max` is a constant).
+  2. `usage.pool` / `spend.pool` / `heal_pool.pool` must name a `resources[].id` of the same document; `cost` may not exceed the pool's `max` (when `max` is a constant).
   3. `spellcasting.spells` / `innate.*` / `reaction_effect.spell` content ids must resolve in the loaded pack set (as `spells[]` does today).
   4. Every `save_effect.id` is unique within the document and `"<archetype id>#<id>"` contains exactly one `#` (spell-id derivation, §2.3).
   5. `multiattack` effect `options[].attacks` **and the top-level `attacks` shorthand** (the #59 shape, carried unchanged, §2.1) reference attack `id`s in the same document's `actions[]`; option ids are unique. **Ask on #59** (T&C relays): close the option items with `additionalProperties: false`, so `options[]` entries cannot carry stray fields at `@3` or `@4`.
@@ -1018,9 +1051,11 @@ lands in `inert_features`. The "new set" lives in two places (sim's registry lis
   9. `window.kind: roll_attack` and `effect.kind: subtract_roll` are **rejected at `@4`** (reserved, Q6).
   10. A `save_effect` that violates the schema rules in §2.1 (no `damage[]`/`apply[]`, `damage[]` without `on_success`, `origin: point` without `range_ft`) has one negative case each.
   11. **`item` references** (below).
-  12. A Legendary Resistance-style pool is *declaration-only* until row 13: the validator warns when a `resources[]` entry is never referenced by any `usage.pool`/`spend`.
-  13. `save_effect.range_ft` is **forbidden when `origin` is `self`** and there is no single target (cross-field, validator).
-  14. **`resource.max` for a monster must be an integer** (object/table forms are `character@4`-only).
+  12. A Legendary Resistance-style pool is *declaration-only* until row 13: the validator warns when a `resources[]` entry is never referenced by any `usage.pool` / `spend.pool` / `heal_pool.pool`.
+  13. `save_effect.range_ft` is **forbidden iff `origin` is `self` and `area` is present** (an area centred on the caster has no range; a single-target action with `origin: self` may still carry `range_ft`). One negative case.
+  14. **`resource.max` for a monster must be an integer** (object/table forms are `character@4`-only). One negative case.
+  17. **Item riders** of kind `bonus_attack` are rejected (items have no `actions[]` to reference).
+  18. `modifier.bonus_table` is forbidden in `spell@1`'s additive `apply_modifier` (tables resolve from class level, which spells do not have).
   15. `item@1` weapons: `range[1] >= range[0]`; `reach` is 10 **iff** `properties` includes `reach` (otherwise 5, or absent for pure ranged).
   16. Level tables (§7.1): the rules listed there (ascending levels, `unlimited` last only, integer tokens, class character-only, `start` forbidden with a table, cost <= largest finite value).
 
@@ -1070,8 +1105,16 @@ new rules `EventKind`s 39+ in the event feed). Rules for **mixed levels**:
   declaring level 2 on a level-1 host is **rejected** (the existing `level > kMaxApiLevel` check).
 * `load_pack_scripts` today requires **equality** (`level != host.api_level()` is an error). That
   becomes `level <= host_max` with the pack's scripts bound to the *pack's* level (the host already
-  runs the strict typecheck per pack with that pack's `api_definitions(level)`, which today only serves
-  level 1: the level-2 `engine.level2.d.luau` is added to the embedded defs). This is script_host work.
+  runs the strict typecheck per pack at that pack's level). **Level-N definitions are a superset of
+  level 1..N-1**: today `typecheck()` (`typecheck.cpp` ~L58-62) loads one defs file standalone and treats
+  empty defs as the error "no API definitions for api_level N", and `api_definitions()`
+  (`script_host.cpp` ~L457) hard-codes level 1. So the level-2 file is **not empty and not standalone**:
+  `api_definitions(N)` returns the **concatenation** of `engine.level1.d.luau` .. `engine.level<N>.d.luau`
+  in order, and `typecheck` type-checks a pack at level N against that concatenation. A level-2 pack
+  therefore type-checks level-1 calls. `engine.level2.d.luau` in 16a is a **minimal non-empty additive file**
+  (the existing check is only `defs.empty()`, so any non-empty text passes; to make the superset behaviour
+  testable it contains one level-2-only declaration, a marker such as `declare engine_api_level2: boolean`, that the
+  typecheck test can reference). This is script_host work.
 * A pack containing any `@4` or `item@1` document must declare `api_level >= 2` (validator error otherwise).
 * **Who passes the max.** The embedder (the process that owns the `ScriptHost`: `game/vertical_slice`
   and the sim test hosts) constructs `ScriptHost(kMaxApiLevel, limits)`; the constructor's `api_level`
@@ -1081,7 +1124,7 @@ new rules `EventKind`s 39+ in the event feed). Rules for **mixed levels**:
   existing callers: it is `host.api_level()`), and 16a adds `PackScripts::pack_levels` (pack id → declared
   level) so tools can see the mix. Nothing reads a single "the" level once levels are per pack.
 * **Manifest schema text.** `api_level`'s description changes from "only level 1 exists for feature_level 1"
-  to "Script API level; levels 1 and 2 exist (level 2's definitions file is empty until row 16b)".
+  to "Script API level; levels 1 and 2 exist (level 2's definitions file is minimal until row 16b)".
 * **Order (explicit).** Row **16a has no dependencies and lands first**; row 2 depends on it, so the
   validator's level-2 rule never outruns the host. `kMaxApiLevel = 2`, the manifest enum and `run_negative.py`
   (levels 1, 2, 3) are all in 16a; 16b (level-2 content and feed filtering) follows rows 4 and 5. Until 16b
@@ -1315,7 +1358,7 @@ Everything below is event schema **v7**.
 | 13 | Class pools + feature kinds (`grant_action` via `TurnBudget::extra_actions`, `heal_pool` reusing existing `ActionRequest::amount`, pool usage), Legendary Resistance as a pool (**declaration-only until this row** unless a hook is added earlier: the pool and `usage` exist in the schema from row 2, but nothing spends it before row 13) | **Rules** + **Engine Core** (FeatureRegistry hooks) | 5, 9, 12 | |
 | 14 | `item@1` schema + loader (weapons, armor, shields) | **T&C** (schema/validator), **Engine Core** (loader) | 2, 3 | |
 | 15 | **AC recompute from equipped armor/shield** (`rules5e::compute_ac`, `character@4 equipment` objects; fl1's baked AC and equipment list stay inert) | **Rules** (formula, Str-shortfall speed) + **Engine Core** (apply at archetype build) | 14 | Own PR; goldens unaffected because only `{item, equipped}` objects opt in |
-| 16a | **API level plumbing** (no dependencies): `kMaxApiLevel = 2`; per-pack levels (`level <= host_max`, replacing the equality check in `load_pack_scripts`, `script_host.cpp` ~L532); an **empty** `engine.level2.d.luau`; the `manifest@1` enum `[1, 2]` and its description; `run_negative.py` cases for levels 1, 2 and 3 (reject) | **T&C** / script_host owner | none | Row 2 depends on it (validator rule "`@4` packs need `api_level >= 2`") |
+| 16a | **API level plumbing** (no dependencies): `kMaxApiLevel = 2`; per-pack levels (`level <= host_max`, replacing the equality check in `load_pack_scripts`, `script_host.cpp` ~L532); a **minimal non-empty `engine.level2.d.luau`** (§8.5: defs are a superset of level 1, `api_definitions(N)` concatenates levels 1..N), embedded alongside level 1 in `engine/core/script_host/CMakeLists.txt` (which today embeds only `engine.level1.d.luau` via `tools/embed/embed_file.cmake`: add a second `add_custom_command` / `SYMBOL=kEngineLevel2Defs`); C++ test updates in `script_host_tests.cpp`: `typecheck(2, ...)` is asserted non-empty as "unknown level" (L206) and the `api_level: 2` pack is expected to fail (L220-223), so **both move to level 3**; **new** positive cases: `host(2)` loading a level-1 pack and a level-2 pack, a **typecheck test that a level-2 pack calling a level-1 API passes**, and the `PackScripts::pack_levels` test (§8.5); the `manifest@1` enum `[1, 2]` and its description; `run_negative.py` cases for levels 1, 2 and 3 (reject) | **T&C** / script_host owner | none | Row 2 depends on it (validator rule "`@4` packs need `api_level >= 2`") |
 | 16b | **Level-2 API content**: reaction/resource/modifier queries, level-1 event-feed filtering of kinds above `SpellCheckRolled` | **T&C** / script_host owner, **Engine Core** (feed) | 4, 5, 16a | Level 1 observably unchanged |
 | 17 | SRD content passes (breath weapons, riders, innate lists, PC features) | **T&C** | 6, 8, 10, 11, 13, 15 | Re-authors descriptive content; separate PRs per tier |
 
