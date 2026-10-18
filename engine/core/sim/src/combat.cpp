@@ -642,6 +642,7 @@ SubmitResult Combat::do_step(Vec2i to) {
     if (cost > state_.budget.movement_ft) { r.error = "not enough movement"; return r; }
     ActionRequest mv{mover, ActionKind::Move};
     mv.move_ft = int16_t(cost);
+    mv.move_tiles = 1;
     mv.leaves_reach = leaves_reach(mover, from, to);
     step_to_ = to;
     return finish(rules5e::step(state_, mv));

@@ -270,3 +270,41 @@ TEST_CASE("policy: shoots when melee is out of reach this turn; closes to melee 
     advance_to(*c2, ch2.spawns[0].stable_id);
     CHECK(next_command(*c2, ch2.spawns[1].stable_id).kind == CommandKind::Step);
 }
+
+TEST_CASE("Move requests carry move_tiles (tiles, not terrain cost); other requests and log_hash are unaffected") {
+    auto l = lib();
+    auto ch = arena({{kFighter, 5, 5}, {kGoblin, 20, 20}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, l, 3);
+    REQUIRE(c);
+    const CombatantId f = ch.spawns[0].stable_id;
+    advance_to(*c, f);
+    Command st;
+    st.kind = CommandKind::Step;
+    st.to = {6, 5};
+    REQUIRE(c->submit(st).ok);
+    st.to = {7, 5};
+    REQUIRE(c->submit(st).ok);
+    Command dodge;
+    dodge.request = {f, ActionKind::Dodge};
+    REQUIRE(c->submit(dodge).ok);
+    REQUIRE(c->log().size() >= 3);
+    const auto& lg = c->log();
+    CHECK(lg[lg.size() - 3].step.request.move_tiles == 1);
+    CHECK(lg[lg.size() - 2].step.request.move_tiles == 1);
+    CHECK(lg[lg.size() - 1].step.request.move_tiles == 0);
+    // not folded into log_hash: clearing the field on a copy of the log leaves the hash unchanged
+    const uint64_t h = c->log_hash();
+    ecs::Registry reg2;
+    std::string err;
+    auto rep = replay(reg2, ch, l, 3, lg, &err);
+    REQUIRE_MESSAGE(rep, err);
+    CHECK(rep->hash() == c->hash());
+    CHECK(rep->log_hash() == h);
+    auto stripped = lg;
+    for (auto& e : stripped) e.step.request.move_tiles = 0;
+    ecs::Registry reg3;
+    auto rep2 = replay(reg3, ch, l, 3, stripped, &err);
+    REQUIRE_MESSAGE(rep2, err);
+    CHECK(rep2->log_hash() == h);
+}
