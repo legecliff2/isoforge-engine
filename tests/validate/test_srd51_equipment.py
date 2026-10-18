@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""srd51.core weapons / armor / shields against an independent data table (ctest: content_validate_equipment).
+
+The tables below were generated once from 5e-bits/5e-database @ a6212be and cross-checked row by row against
+the SRD weapon/armor tables (srd_content_inventory.md section 2); the pack files must keep matching them.
+Units: cost in copper pieces, weight in ounces (SRD pounds x 16). Reach weapons are 10 ft; a thrown melee
+weapon keeps reach 5 and gains range [thrown normal, long]; a pure ranged weapon has range and no reach;
+Blowgun is flat 1 piercing; Net has no damage and 'special'.
+"""
+from __future__ import annotations
+
+import json
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+PACK = ROOT / "content/packs/srd51.core"
+ITEMS = PACK / "items"
+
+# (local_id, weapon_class, reach, range, damage "dice type" | None, versatile "dice type" | None, properties, cost_cp, weight_oz)
+WEAPONS = [
+    ('battleaxe', 'martial', 5, None, '1d8 slashing', '1d10 slashing', ('versatile',), 1000, 64),
+    ('blowgun', 'martial', None, (25, 100), '1 piercing', None, ('ammunition', 'loading'), 1000, 16),
+    ('club', 'simple', 5, None, '1d4 bludgeoning', None, ('light',), 10, 32),
+    ('crossbow_hand', 'martial', None, (30, 120), '1d6 piercing', None, ('ammunition', 'light', 'loading'), 7500, 48),
+    ('crossbow_heavy', 'martial', None, (100, 400), '1d10 piercing', None, ('ammunition', 'heavy', 'loading', 'two_handed'), 5000, 288),
+    ('crossbow_light', 'simple', None, (80, 320), '1d8 piercing', None, ('ammunition', 'loading', 'two_handed'), 2500, 80),
+    ('dagger', 'simple', 5, (20, 60), '1d4 piercing', None, ('finesse', 'light', 'thrown'), 200, 16),
+    ('dart', 'simple', None, (20, 60), '1d4 piercing', None, ('finesse', 'thrown'), 5, 4),
+    ('flail', 'martial', 5, None, '1d8 bludgeoning', None, (), 1000, 32),
+    ('glaive', 'martial', 10, None, '1d10 slashing', None, ('heavy', 'reach', 'two_handed'), 2000, 96),
+    ('greataxe', 'martial', 5, None, '1d12 slashing', None, ('heavy', 'two_handed'), 3000, 112),
+    ('greatclub', 'simple', 5, None, '1d8 bludgeoning', None, ('two_handed',), 20, 160),
+    ('greatsword', 'martial', 5, None, '2d6 slashing', None, ('heavy', 'two_handed'), 5000, 96),
+    ('halberd', 'martial', 10, None, '1d10 slashing', None, ('heavy', 'reach', 'two_handed'), 2000, 96),
+    ('handaxe', 'simple', 5, (20, 60), '1d6 slashing', None, ('light', 'thrown'), 500, 32),
+    ('javelin', 'simple', 5, (30, 120), '1d6 piercing', None, ('thrown',), 50, 32),
+    ('lance', 'martial', 10, None, '1d12 piercing', None, ('lance', 'reach', 'special'), 1000, 96),
+    ('light_hammer', 'simple', 5, (20, 60), '1d4 bludgeoning', None, ('light', 'thrown'), 200, 32),
+    ('longbow', 'martial', None, (150, 600), '1d8 piercing', None, ('ammunition', 'heavy', 'two_handed'), 5000, 32),
+    ('longsword', 'martial', 5, None, '1d8 slashing', '1d10 slashing', ('versatile',), 1500, 48),
+    ('mace', 'simple', 5, None, '1d6 bludgeoning', None, (), 500, 64),
+    ('maul', 'martial', 5, None, '2d6 bludgeoning', None, ('heavy', 'two_handed'), 1000, 160),
+    ('morningstar', 'martial', 5, None, '1d8 piercing', None, (), 1500, 64),
+    ('net', 'martial', None, (5, 15), None, None, ('special', 'thrown'), 100, 48),
+    ('pike', 'martial', 10, None, '1d10 piercing', None, ('heavy', 'reach', 'two_handed'), 500, 288),
+    ('quarterstaff', 'simple', 5, None, '1d6 bludgeoning', '1d8 bludgeoning', ('versatile',), 20, 64),
+    ('rapier', 'martial', 5, None, '1d8 piercing', None, ('finesse',), 2500, 32),
+    ('scimitar', 'martial', 5, None, '1d6 slashing', None, ('finesse', 'light'), 2500, 48),
+    ('shortbow', 'simple', None, (80, 320), '1d6 piercing', None, ('ammunition', 'two_handed'), 2500, 32),
+    ('shortsword', 'martial', 5, None, '1d6 piercing', None, ('finesse', 'light'), 1000, 32),
+    ('sickle', 'simple', 5, None, '1d4 slashing', None, ('light',), 100, 32),
+    ('sling', 'simple', None, (30, 120), '1d4 bludgeoning', None, ('ammunition',), 10, 0),
+    ('spear', 'simple', 5, (20, 60), '1d6 piercing', '1d8 piercing', ('thrown', 'versatile'), 100, 48),
+    ('trident', 'martial', 5, (20, 60), '1d6 piercing', '1d8 piercing', ('thrown', 'versatile'), 500, 64),
+    ('war_pick', 'martial', 5, None, '1d8 piercing', None, (), 500, 32),
+    ('warhammer', 'martial', 5, None, '1d8 bludgeoning', '1d10 bludgeoning', ('versatile',), 1500, 32),
+    ('whip', 'martial', 10, None, '1d4 slashing', None, ('finesse', 'reach'), 200, 48),
+]
+# (local_id, armor_category | 'shield', base_ac (shield: ac_bonus), dex_bonus, dex_cap, str_min, stealth_disadvantage, cost_cp, weight_oz)
+ARMOR = [
+    ('breastplate', 'medium', 14, True, 2, 0, False, 40000, 320),
+    ('chain_mail', 'heavy', 16, False, None, 13, True, 7500, 880),
+    ('chain_shirt', 'medium', 13, True, 2, 0, False, 5000, 320),
+    ('half_plate_armor', 'medium', 15, True, 2, 0, True, 75000, 640),
+    ('hide_armor', 'medium', 12, True, 2, 0, False, 1000, 192),
+    ('leather_armor', 'light', 11, True, None, 0, False, 1000, 160),
+    ('padded_armor', 'light', 11, True, None, 0, True, 500, 128),
+    ('plate_armor', 'heavy', 18, False, None, 15, True, 150000, 1040),
+    ('ring_mail', 'heavy', 14, False, None, 0, True, 3000, 640),
+    ('scale_mail', 'medium', 14, True, 2, 0, True, 5000, 720),
+    ('shield', 'shield', 2, None, None, 0, False, 1000, 96),
+    ('splint_armor', 'heavy', 17, False, None, 15, True, 20000, 960),
+    ('studded_leather_armor', 'light', 12, True, None, 0, False, 4500, 208),
+]
+
+
+def load(lid):
+    return json.loads((ITEMS / f"{lid}.json").read_text(encoding="utf-8"))
+
+
+def dmg_text(entry):
+    return f"{entry.get('dice', entry.get('flat'))} {entry['type']}"
+
+
+class Srd51Equipment(unittest.TestCase):
+    def test_counts(self):
+        self.assertEqual(len(WEAPONS), 37)
+        self.assertEqual(sum(1 for w in WEAPONS if w[1] == "simple"), 14)
+        self.assertEqual(sum(1 for w in WEAPONS if w[1] == "martial"), 23)
+        self.assertEqual(len(ARMOR), 13)
+        self.assertEqual(sum(1 for a in ARMOR if a[1] == "light"), 3)
+        self.assertEqual(sum(1 for a in ARMOR if a[1] == "medium"), 5)
+        self.assertEqual(sum(1 for a in ARMOR if a[1] == "heavy"), 4)
+        self.assertEqual(sum(1 for a in ARMOR if a[1] == "shield"), 1)
+        files = sorted(p.stem for p in ITEMS.glob("*.json"))
+        self.assertEqual(files, sorted([w[0] for w in WEAPONS] + [a[0] for a in ARMOR]), "no extra or missing item files")
+
+    def test_manifest_lists_every_item(self):
+        man = json.loads((PACK / "manifest.json").read_text(encoding="utf-8"))
+        listed = [c for c in man["contents"] if c.startswith("items/")]
+        self.assertEqual(listed, sorted(f"items/{p.name}" for p in ITEMS.glob("*.json")))
+        self.assertGreaterEqual(man["api_level"], 2, "item@1 documents need api_level >= 2 (VERSION_BUMP_BATCH 8.5)")
+
+    def test_weapons(self):
+        for lid, cls, reach, rng, dmg, vers, props, cost, oz in WEAPONS:
+            with self.subTest(lid):
+                d = load(lid)
+                self.assertEqual((d["$schema"], d["id"], d["category"]), ("item@1", f"srd51.item.{lid}", "weapon"))
+                self.assertEqual(d["weapon_class"], cls)
+                self.assertEqual(d.get("reach"), reach)
+                self.assertEqual(tuple(d["range"]) if "range" in d else None, rng)
+                self.assertEqual(dmg_text(d["damage"][0]) if "damage" in d else None, dmg)
+                self.assertEqual(dmg_text(d["versatile_damage"][0]) if "versatile_damage" in d else None, vers)
+                self.assertEqual(tuple(d.get("properties", [])), props)
+                self.assertEqual((d["cost_cp"], d["weight_oz"]), (cost, oz))
+                self.assertEqual(reach == 10, "reach" in props)
+                self.assertEqual("versatile" in props, vers is not None)
+                self.assertEqual("damage" in d, "special" not in props or lid == "lance")
+
+    def test_armor_and_shield(self):
+        for lid, cat, ac, dex, cap, strmin, stealth, cost, oz in ARMOR:
+            with self.subTest(lid):
+                d = load(lid)
+                self.assertEqual((d["$schema"], d["id"]), ("item@1", f"srd51.item.{lid}"))
+                self.assertEqual((d["cost_cp"], d["weight_oz"]), (cost, oz))
+                if cat == "shield":
+                    self.assertEqual((d["category"], d["ac_bonus"]), ("shield", ac))
+                    continue
+                self.assertEqual(d["category"], "armor")
+                self.assertEqual((d["armor_category"], d["base_ac"], d["dex_bonus"]), (cat, ac, dex))
+                self.assertEqual(d.get("dex_cap"), cap)
+                self.assertEqual(d.get("str_min", 0), strmin)
+                self.assertEqual(d["stealth_disadvantage"], stealth)
+
+    def test_spot_values(self):
+        by = {w[0]: w for w in WEAPONS}
+        self.assertEqual(by["longsword"][4:6], ("1d8 slashing", "1d10 slashing"))
+        self.assertEqual(by["blowgun"][4], "1 piercing")
+        self.assertIsNone(by["net"][4])
+        self.assertEqual((by["glaive"][2], by["whip"][2], by["lance"][2]), (10, 10, 10))
+        self.assertEqual(by["dagger"][2:4], (5, (20, 60)))
+        self.assertEqual((by["dart"][7], by["dart"][8]), (5, 4))   # 5 cp, 1/4 lb = 4 oz
+        self.assertEqual(by["sling"][8], 0)
+
+    def test_frozen_fl1_has_no_items(self):
+        self.assertEqual(list((ROOT / "tests/compat").glob("fl*/**/items")), [])
+
+
+if __name__ == "__main__":
+    sys.exit(0 if unittest.main(exit=False).result.wasSuccessful() else 1)

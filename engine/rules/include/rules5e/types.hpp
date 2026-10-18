@@ -152,6 +152,22 @@ struct RollTrait {
     uint32_t  save_vs_damage_types = 0;     //       ... or deals one of these damage types (either listed set matches); both 0 = any
 };
 
+// One innate spell (SRD "Innate Spellcasting"): cast without a slot (and without components unless
+// `as_listed`), at the spell's own level. uses_max 0 = at will; recharge_min > 0 = "Recharge N-6" (one use,
+// uses_left 0 = expended, recharged by a d6 at the start of the owner's turn); otherwise per-day (uses_max).
+struct InnateSpell {
+    uint32_t spell_id = 0;
+    uint8_t uses_max = 0;
+    uint8_t uses_left = 0;
+    uint8_t recharge_min = 0;
+    // appended: the innate block's own spellcasting ability (monsters often use Cha innately and Int for slots),
+    // and whether the spell's listed components are required (content `innate.components: "as_listed"`).
+    bool has_ability = false; Ability ability = Ability::Cha;
+    bool as_listed = false;
+    constexpr bool at_will() const { return uses_max == 0 && recharge_min == 0; }
+    constexpr bool available() const { return at_will() || uses_left > 0; }
+};
+
 struct Combatant {
     CombatantId id;
     uint8_t  team;
@@ -206,6 +222,9 @@ struct Combatant {
     bool regen_suppressed = false, regen_down = false;
     std::vector<RollTrait> roll_traits;   // appended: conditional advantage / disadvantage (Pack Tactics, Magic Resistance, ...)
     Size size = Size::Medium;   // appended: Heavy weapons impose disadvantage on Small / Tiny wielders
+    // appended (version-bump batch, row 8): innate spellcasting and printed DC / attack overrides.
+    std::vector<InnateSpell> innate;   // castable via ActionRequest::innate; uses start full each encounter
+    int16_t spell_dc_override = 0, spell_attack_override = 0;   // 0 = derive (8 + prof + mod / prof + mod)
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };

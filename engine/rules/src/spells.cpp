@@ -27,8 +27,12 @@ const SpellDef* SpellBook::find(uint32_t id) const {
     return it != defs_.end() && it->id == id ? &*it : nullptr;
 }
 
-int spell_attack_bonus(const Combatant& c) { return c.proficiency_bonus + modifier(c.abilities, c.spellcasting_ability); }
-int spell_save_dc(const Combatant& c) { return 8 + spell_attack_bonus(c); }
+int spell_attack_bonus(const Combatant& c) {
+    return c.spell_attack_override != 0 ? int(c.spell_attack_override) : c.proficiency_bonus + modifier(c.abilities, c.spellcasting_ability);
+}
+int spell_save_dc(const Combatant& c) {
+    return c.spell_dc_override != 0 ? int(c.spell_dc_override) : 8 + c.proficiency_bonus + modifier(c.abilities, c.spellcasting_ability);
+}
 int spell_save_dc(const Combatant& c, const SpellDef& d) { return d.fixed_dc != 0 ? int(d.fixed_dc) : spell_save_dc(c); }
 int spell_attack_bonus(const Combatant& c, const SpellDef& d) { return d.fixed_attack != 0 ? int(d.fixed_attack) : spell_attack_bonus(c); }
 

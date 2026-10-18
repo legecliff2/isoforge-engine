@@ -1,0 +1,15 @@
+{
+  "$schema": "item@1",
+  "id": "srd51.item.sickle",
+  "name": "Sickle",
+  "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
+  "category": "weapon",
+  "cost_cp": 100,
+  "weight_oz": 32,
+  "weapon_class": "simple",
+  "reach": 5,
+  "damage": [
+    {"dice": "1d4", "type": "slashing"}
+  ],
+  "properties": ["light"]
+}

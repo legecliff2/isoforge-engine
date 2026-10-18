@@ -524,6 +524,15 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
             emit(ev, EventKind::RechargeRolled, c.id, 0, int32_t(u.spell_id), roll, back ? 1 : 0);
         }
     }
+    if (!c.dead) {   // Innate "Recharge N-6" spells: same roll, same position, after the action rows
+        for (auto& is : c.innate) {
+            if (is.recharge_min == 0 || is.uses_left > 0) continue;
+            const int roll = roll_dice(s.rng, DiceExpr{1, 6, 0}, false);
+            const bool back = roll >= is.recharge_min;
+            if (back) is.uses_left = 1;
+            emit(ev, EventKind::RechargeRolled, c.id, 0, int32_t(is.spell_id), roll, back ? 1 : 0);
+        }
+    }
     if (is_dying(c) && c.uses_death_saves) {
         auto r = roll_death_save(s.rng, c.death);
         c.death = r.after;
@@ -776,7 +785,13 @@ void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& de
 // window, then resolves the effect.
 StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def,
                       const ActionRequest& req) {
-    if (!knows_spell(a, def.id)) return fail("spell not known");
+    InnateSpell* inn = nullptr;
+    if (req.innate) {
+        for (auto& is : a.innate) if (is.spell_id == def.id) inn = &is;
+        if (!inn) return fail("not an innate spell");
+        if (!inn->available()) return fail("innate spell has no uses left");
+        if (req.spell_level != def.level) return fail("innate spells cannot be upcast");
+    } else if (!knows_spell(a, def.id)) return fail("spell not known");
     if (def.casting_time == CastingTime::Reaction) return fail("reaction spells are cast from reaction windows");
     if (def.casting_time == CastingTime::Minute || def.casting_time == CastingTime::Hour)
         return fail("casting time too long for an encounter");
@@ -784,7 +799,7 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
     const uint8_t lvl = req.spell_level;
     if (def.level == 0 && lvl != 0) return fail("cantrips use no slot");
     if (def.level > 0 && (lvl < def.level || lvl > 9)) return fail("bad slot level");
-    if (!has_slot(a, lvl)) return fail("no spell slot of that level");
+    if (!inn && !has_slot(a, lvl)) return fail("no spell slot of that level");
     // Usage limits (registered rows only; no row = unlimited, like features).
     ActionUse* au = nullptr; FeatureUses* fu = nullptr;
     const uint16_t pcost = def.pool_cost ? def.pool_cost : 1;
@@ -797,7 +812,7 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
     } else if (def.usage_kind == 3) {
         if (find_pool(s, a.id, def.pool_id) && !can_spend(s, a.id, def.pool_id, pcost)) return fail("not enough resource");
     }
-    if (s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, def)) return fail("components unavailable");
+    if ((!inn || inn->as_listed) && s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, def)) return fail("components unavailable");
     std::vector<CombatantId> ids = req.targets;
     if (ids.empty() && req.target != 0) ids.push_back(req.target);
     if (ids.empty()) return fail("target required");
@@ -843,7 +858,16 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
         b.bonus_action = false;
     } else if (!spend_action(b, a, ActionKind::CastSpell, false)) return fail("no action available");
     s.budget = b;
-    spend_slot(a, lvl);
+    if (inn) {   // one use; "Recharge N-6" is a single use
+        if (inn->recharge_min > 0) inn->uses_left = 0;
+        else if (inn->uses_max > 0) --inn->uses_left;
+    } else spend_slot(a, lvl);
+    // An innate block with its own ability casts with that ability for this resolution.
+    struct AbilitySwap {
+        Combatant& c; Ability saved; bool on;
+        ~AbilitySwap() { if (on) c.spellcasting_ability = saved; }
+    } swap{a, a.spellcasting_ability, inn && inn->has_ability};
+    if (swap.on) a.spellcasting_ability = inn->ability;
     if (au) au->expended = true;
     if (fu && fu->max > 0) ++fu->used;
     StepResult out{true, {}, {}};
@@ -1133,6 +1157,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     case ActionKind::CastSpell: {
         if (req.spell_id == 0) return fail("spell_id required");
         if (const SpellDef* def = spell_def(s, req.spell_id)) return cast_spell(s, ctx, a, b, *def, req);
+        if (req.innate) return fail("innate spells must be in the spell book");
         // Opaque spell (not in the SpellBook): only the SpellCast window; sim/content resolve it.
         if (!spend_action(b, a, req.kind, false)) return fail("no action available");
         s.budget = b;
@@ -1387,6 +1412,26 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             }
         }
     }
+    if (s.hooks.spells && !is_incapacitated(a)) {   // innate spells: no slot, own level, uses left (at will / per-day / recharged)
+        for (const InnateSpell& is : a.innate) {
+            const SpellDef* d = s.hooks.spells->find(is.spell_id);
+            if (!d || !is.available()) continue;
+            if (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction) continue;
+            if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !b.action) continue;
+            if (is.as_listed && s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, *d)) continue;
+            for (const auto& t : s.combatants) {
+                if (t.dead) continue;
+                const bool heal = d->kind == SpellEffectKind::Heal ||
+                                  (d->kind == SpellEffectKind::ApplyCondition && d->condition == Condition::Invisible);
+                if (heal ? t.team != a.team : (t.team == a.team || t.id == a.id)) continue;
+                if (!valid_target_type(*d, t) || (d->excluded_types & bit(t.creature_type))) continue;
+                if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, a, *d, t)) continue;
+                ActionRequest r{a.id, ActionKind::CastSpell, t.id};
+                r.spell_id = d->id; r.spell_level = d->level; r.innate = true;
+                out.push_back(r);
+            }
+        }
+    }
     add(ActionKind::EndTurn);
     return out;
 }
@@ -1486,6 +1531,31 @@ uint64_t pools_digest(const EncounterState& s, uint64_t h) {
     u32(uint32_t(s.pools.size()));
     for (const auto& p : s.pools) {
         u32(p.actor); u32(p.pool_id); u32(p.max); u32(p.cur); byte(uint8_t(p.recharge));
+    }
+    return h;
+}
+
+}  // namespace rules5e
+
+namespace rules5e {
+
+bool has_innate_state(const EncounterState& s) {
+    for (const auto& c : s.combatants)
+        if (!c.innate.empty() || c.spell_dc_override != 0 || c.spell_attack_override != 0) return true;
+    return false;
+}
+
+uint64_t innate_digest(const EncounterState& s, uint64_t h) {
+    auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
+    auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) byte(uint8_t(v >> (8 * i))); };
+    for (const auto& c : s.combatants) {   // combatant order is deterministic
+        if (c.innate.empty() && c.spell_dc_override == 0 && c.spell_attack_override == 0) continue;
+        u32(c.id); u32(uint32_t(uint16_t(c.spell_dc_override))); u32(uint32_t(uint16_t(c.spell_attack_override)));
+        u32(uint32_t(c.innate.size()));
+        for (const auto& is : c.innate) {
+            u32(is.spell_id); byte(is.uses_max); byte(is.uses_left); byte(is.recharge_min);
+            byte(is.has_ability ? uint8_t(1 + uint8_t(is.ability)) : 0); byte(is.as_listed ? 1 : 0);
+        }
     }
     return h;
 }
