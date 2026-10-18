@@ -77,7 +77,7 @@ TEST_CASE("save_effect compiles to a synthetic SpellDef known to the creature") 
     auto lib = sample_lib();
     Json extra = {{"usage", {{"kind", "recharge"}, {"min", 5}}},
                   {"apply", Json::array({{{"condition", "frightened"}, {"repeat_save", "end_of_turn"}},
-                                         {{"condition", "poisoned"}}})}};
+                                         {{"condition", "poisoned"}, {"duration", {{"kind", "until_save"}}}}})}};
     REQUIRE_FALSE(lib.add(drake("t.drake", breath(extra)), "monster"));
     const Archetype* a = lib.find("t.drake");
     REQUIRE(a);
@@ -122,16 +122,39 @@ TEST_CASE("save_effect: area is kept, errors name the action, pool usage and pre
     CHECK(lib.find("t.cone")->save_actions[0].area);
 
     auto bad = breath();
-    bad["damage"].push_back({{"dice", "1d6"}, {"type", "cold"}});
+    bad["damage"][0]["type"] = "not_a_type";
     auto e = lib.add(drake("t.bad", bad), "monster");
     REQUIRE(e);
     CHECK(e->find("fire_breath") != std::string::npos);
     CHECK_FALSE(lib.find("t.bad"));
 
-    REQUIRE_FALSE(lib.add(drake("t.pool", breath({{"usage", {{"kind", "pool"}, {"pool", "p"}}}})), "monster"));
-    CHECK(lib.find("t.pool")->save_actions.empty());
-    CHECK(lib.find("t.pool")->unsupported_features.size() == 1);
-    CHECK_FALSE(lib.spells()->find(rules5e::spell_id_of("t.pool#fire_breath")));
+    // a condition that only a duration (not a save) ends is listed, not compiled, until timed modifiers (row 12)
+    REQUIRE_FALSE(lib.add(drake("t.dur", breath({{"apply", Json::array({{{"condition", "stunned"}, {"duration", {{"kind", "rounds"}, {"n", 1}}}}})}})), "monster"));
+    CHECK(lib.find("t.dur")->save_actions.empty());
+    CHECK(lib.find("t.dur")->unsupported_features.size() == 1);
+    CHECK_FALSE(lib.spells()->find(rules5e::spell_id_of("t.dur#fire_breath")));
+    // pool usage needs an integer-max resource of the same document
+    REQUIRE_FALSE(lib.add(drake("t.nopool", breath({{"usage", {{"kind", "pool"}, {"pool", "p"}}}})), "monster"));
+    CHECK(lib.find("t.nopool")->save_actions.empty());
+    CHECK(lib.find("t.nopool")->unsupported_features.size() == 1);
+    Json pooled = drake("t.pool", breath({{"usage", {{"kind", "pool"}, {"pool", "breaths"}, {"cost", 2}}}}));
+    pooled["resources"] = Json::array({{{"id", "breaths"}, {"max", 4}, {"recharge", "long_rest"}}});
+    REQUIRE_FALSE(lib.add(pooled, "monster"));
+    const auto* pd = lib.spells()->find(rules5e::spell_id_of("t.pool#fire_breath"));
+    REQUIRE(pd);
+    CHECK(pd->usage_kind == 3);
+    CHECK(pd->pool_id == rules5e::spell_id_of("breaths"));
+    CHECK(pd->pool_cost == 2);
+    CHECK(lib.find("t.pool")->save_actions[0].pool_max == 4);
+    // further damage components become further Save effects
+    auto two = breath();
+    two["damage"].push_back({{"dice", "2d6"}, {"type", "cold"}});
+    REQUIRE_FALSE(lib.add(drake("t.two", two), "monster"));
+    const auto* td = lib.spells()->find(rules5e::spell_id_of("t.two#fire_breath"));
+    REQUIRE(td);
+    REQUIRE(td->extra_effects.size() == 1);
+    CHECK(td->extra_effects[0].damage_type == rules5e::DamageType::Cold);
+    CHECK(td->extra_effects[0].on_save == rules5e::OnSave::Half);
 
     auto old = drake("t.old", breath());
     REQUIRE_FALSE(lib.add(old, "monster", "", 3));   // declared @3: never compiled
@@ -163,7 +186,7 @@ TEST_CASE("save_effect: overriding an archetype replaces its synthetic spells; c
 
 TEST_CASE("save action in a fight: AI uses it, ActionUsed + SpellTarget, recharge roll, hash and replay") {
     auto lib = sample_lib();
-    REQUIRE_FALSE(lib.add(drake("t.drake", breath({{"usage", {{"kind", "recharge"}, {"min", 6}}}})), "monster"));
+    REQUIRE_FALSE(lib.add(drake("t.drake", breath({{"usage", {{"kind", "recharge"}, {"min", 6}}}, {"damage", Json::array({{{"dice", "1d2"}, {"type", "fire"}}})}})), "monster"));
     auto ch = arena({{kFighter, Vec2i{5, 5}}, {"t.drake", Vec2i{9, 5}}});
     ecs::Registry reg;
     auto c = Combat::create(reg, ch, lib, 11);
@@ -213,7 +236,7 @@ TEST_CASE("save action AI: out of range, area actions and per-day exhaustion are
     auto lib = sample_lib();
     REQUIRE_FALSE(lib.add(drake("t.far", breath()), "monster"));
     REQUIRE_FALSE(lib.add(drake("t.area", breath({{"area", {{"shape", "cone"}, {"size_ft", 30}}}, {"origin", "self"}})), "monster"));
-    REQUIRE_FALSE(lib.add(drake("t.day", breath({{"usage", {{"kind", "per_day"}, {"uses", 1}}}})), "monster"));
+    REQUIRE_FALSE(lib.add(drake("t.day", breath({{"usage", {{"kind", "per_day"}, {"uses", 1}}}, {"damage", Json::array({{{"dice", "1d2"}, {"type", "fire"}}})}})), "monster"));   // weak: the fighter must survive
     {
         auto ch = arena({{kFighter, Vec2i{5, 5}}, {"t.far", Vec2i{20, 5}}});   // 15 tiles = 75 ft > 30
         ecs::Registry reg;

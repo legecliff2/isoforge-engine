@@ -44,7 +44,11 @@ struct Archetype {
     struct SaveAction {
         std::string id;                 // content action id
         uint32_t spell_id = 0;
-        uint8_t usage_kind = 0;         // SpellDef::usage_kind: 0 at-will, 1 recharge, 2 per-day / per-rest
+        uint8_t usage_kind = 0;         // SpellDef::usage_kind: 0 at-will, 1 recharge, 2 per-day / per-rest, 3 pool
+        uint32_t pool_id = 0;           // usage_kind 3: spell_id_of(resources[].id)
+        uint16_t pool_max = 0, pool_start = 0;
+        uint8_t pool_cost = 0;
+        Recharge pool_recharge = Recharge::None;
         uint8_t uses = 0;               // usage_kind 2
         Recharge recharge = Recharge::None;   // usage_kind 2
         bool area = false;              // has an area template (the AI never picks these before the area-template row)

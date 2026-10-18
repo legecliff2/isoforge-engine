@@ -124,7 +124,12 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
     // that have one (digest-neutral for every other combat).
     for (const auto& sl : c.slots_)
         for (const auto& sa : sl.archetype->save_actions) {
-            if (sa.usage_kind == 1) rules5e::register_action_use(c.state_, sl.id, sa.spell_id, false);
+            if (sa.usage_kind == 3)
+                rules5e::register_pool(c.state_, sl.id, sa.pool_id, sa.pool_max, sa.pool_start,
+                                       sa.pool_recharge == Recharge::ShortRest  ? rules5e::FeatureRecharge::ShortRest
+                                       : sa.pool_recharge == Recharge::LongRest ? rules5e::FeatureRecharge::LongRest
+                                                                                : rules5e::FeatureRecharge::None);
+            else if (sa.usage_kind == 1) rules5e::register_action_use(c.state_, sl.id, sa.spell_id, false);
             else if (sa.usage_kind == 2)
                 rules5e::register_feature(c.state_, sl.id, sa.spell_id, sa.uses,
                                           sa.recharge == Recharge::ShortRest ? rules5e::FeatureRecharge::ShortRest
@@ -691,11 +696,6 @@ uint64_t Combat::hash() const {
     // Feature uses (rules state). Folded only when any are registered, so feature-less combats
     // keep their hashes.
     if (!state_.features.empty()) h.u64(rules5e::feature_uses_digest(state_));
-    // Recharge rows (save actions): tagged section, only when any are registered, so every other combat keeps its hash.
-    if (!state_.action_uses.empty()) {
-        h.byte(0xA1);
-        h.u64(rules5e::action_uses_digest(state_));
-    }
     // v7 sections: each folded only when non-empty, under its own tag byte (so "pools only" and
     // "action uses only" differ). Rows are registered at setup only for content that uses them, so every
     // existing combat hashes as before. 0xA2 (modifiers) and 0xA4 (innate) are reserved for later rows.

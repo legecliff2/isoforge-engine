@@ -70,7 +70,7 @@ std::optional<rules5e::Ability> ability_of(const std::string& s) {
 // Returns an error message (load error), or nullopt. `unsupported` is set (and nothing compiled) for shapes
 // the engine cannot run yet (pool usage: needs resource pools, row 13).
 std::optional<std::string> compile_save_action(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
-                                               Archetype::SaveAction& sa, bool& unsupported) {
+                                               Archetype::SaveAction& sa, const Json& doc, bool& unsupported) {
     const std::string aid = act.value("id", "");
     const std::string where = arch_id + ": save_effect '" + aid + "'";
     if (aid.empty() || aid.find('#') != std::string::npos || arch_id.find('#') != std::string::npos)
@@ -118,13 +118,25 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
     sa.range_ft = d.range_ft;
     // Damage (one component; the save is rolled once per target) and applied conditions.
     if (auto dm = act.find("damage"); dm != act.end() && dm->is_array() && !dm->empty()) {
-        if (dm->size() > 1) return where + ": damage[] with more than one entry is not supported yet";
-        auto dice = parse_dice((*dm)[0].value("dice", ""));
-        auto type = damage_type((*dm)[0].value("type", ""));
-        if (!dice || !type) return where + ": bad damage";
-        d.dice = *dice;
-        d.damage_type = *type;
-        d.on_save = act.value("on_success", "") == "half" ? rules5e::OnSave::Half : rules5e::OnSave::None;
+        const auto on_save = act.value("on_success", "") == "half" ? rules5e::OnSave::Half : rules5e::OnSave::None;
+        for (std::size_t i = 0; i < dm->size(); ++i) {
+            auto dice = parse_dice((*dm)[i].value("dice", ""));
+            auto type = damage_type((*dm)[i].value("type", ""));
+            if (!dice || !type) return where + ": bad damage";
+            if (i == 0) {
+                d.dice = *dice;
+                d.damage_type = *type;
+                d.on_save = on_save;
+            } else {   // further damage components: further Save effects over the same targets, on_save copied
+                rules5e::SpellEffect e;
+                e.kind = rules5e::SpellEffectKind::Save;
+                e.dice = *dice;
+                e.damage_type = *type;
+                e.save_ability = d.save_ability;
+                e.on_save = on_save;
+                d.extra_effects.push_back(e);
+            }
+        }
     }
     if (auto ap = act.find("apply"); ap != act.end() && ap->is_array()) {
         auto repeat_of = [](const std::string& r) {
@@ -135,17 +147,24 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
         for (const Json& x : *ap) {
             auto cond = condition_of(x.is_object() ? x.value("condition", "") : "");
             if (!cond) return where + ": bad condition in apply[]";
+            // Durations are not enforced by rules until timed modifiers (row 12): a condition lasts until a
+            // successful repeat save (until_save / repeat_save) or the end of the combat. Compile only those
+            // that end by a save; anything else is listed, not compiled.
+            const std::string rs = x.value("repeat_save", "");
+            const Json dur = x.contains("duration") ? x["duration"] : Json::object();
+            const std::string dk = dur.is_object() ? dur.value("kind", "") : "";
+            if (rs.empty() && dk != "until_save") { unsupported = true; return std::nullopt; }
             if (first) {   // the first condition rides the primary Save effect
                 d.applies_condition = true;
                 d.condition = *cond;
-                d.repeat_save = repeat_of(x.value("repeat_save", ""));
+                d.repeat_save = repeat_of(rs.empty() ? "end_of_turn" : rs);
                 first = false;
             } else {       // further conditions: ApplyCondition on the creatures that failed the save
                 rules5e::SpellEffect e;
                 e.kind = rules5e::SpellEffectKind::ApplyCondition;
                 e.applies_condition = true;
                 e.condition = *cond;
-                e.repeat_save = repeat_of(x.value("repeat_save", ""));
+                e.repeat_save = repeat_of(rs.empty() ? "end_of_turn" : rs);
                 e.affected_only = true;
                 d.extra_effects.push_back(e);
             }
@@ -168,8 +187,24 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             sa.uses = uint8_t(uses);
             sa.recharge = k == "per_day" || u->value("rest", "long") == "long" ? Recharge::LongRest : Recharge::ShortRest;
         } else if (k == "pool") {
-            unsupported = true;
-            return std::nullopt;
+            // The pool comes from the document's resources[]; integer max only until class pools (row 13).
+            const std::string pid = u->value("pool", "");
+            const Json* res = nullptr;
+            if (auto rs = doc.find("resources"); rs != doc.end() && rs->is_array())
+                for (const Json& r : *rs) if (r.is_object() && r.value("id", "") == pid) res = &r;
+            if (!res || !(*res)["max"].is_number_integer()) { unsupported = true; return std::nullopt; }
+            const int mx = (*res)["max"].get<int>(), cost = geti(*u, "cost", 1);
+            const int start = geti(*res, "start", mx);
+            if (mx < 1 || mx > 65535 || cost < 1 || cost > 255 || start < 0 || start > mx) return where + ": bad pool";
+            const std::string rc = res->value("recharge", "never");
+            d.usage_kind = 3;
+            d.pool_id = rules5e::spell_id_of(pid);
+            d.pool_cost = uint8_t(cost);
+            sa.pool_id = d.pool_id;
+            sa.pool_cost = d.pool_cost;
+            sa.pool_max = uint16_t(mx);
+            sa.pool_start = uint16_t(start);
+            sa.pool_recharge = rc == "short_rest" ? Recharge::ShortRest : rc == "long_rest" ? Recharge::LongRest : Recharge::None;
         } else return where + ": bad usage kind";
     }
     sa.usage_kind = d.usage_kind;
@@ -357,8 +392,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             rules5e::SpellDef d;
             Archetype::SaveAction sa;
             bool unsupported = false;
-            if (auto e = compile_save_action(a.id, act, d, sa, unsupported)) return e;
-            if (unsupported) { a.unsupported_features.push_back(act.value("id", "?") + " (save_effect pool usage)"); continue; }
+            if (auto e = compile_save_action(a.id, act, d, sa, doc, unsupported)) return e;
+            if (unsupported) { a.unsupported_features.push_back(act.value("id", "?") + " (save_effect: unsupported usage or condition duration)"); continue; }
             for (const auto& prev : synth)
                 if (prev.id == d.id) return a.id + ": save_effect ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
             c.spells_known.push_back(d.id);
