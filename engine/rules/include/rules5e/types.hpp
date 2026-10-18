@@ -108,6 +108,15 @@ enum class ReactionPolicy : uint8_t { Ask, Never, Auto };
 
 struct DeathSaves { uint8_t successes = 0, failures = 0; bool stable = false; };
 
+// A declared multiattack option (SRD "Multiattack"; also Thirsting Blade, ...): an ordered list of
+// indices into Combatant::attacks, all made with ONE Attack action. A creature may declare several
+// (a dragon's "Bite, Claw, Claw" vs "Tail"). Each attack resolves as its own step, so reaction windows,
+// Ready triggers and movement can happen between attacks (see ActionRequest::multiattack).
+struct AttackSequence {
+    std::string_view id;                  // option id; storage owned by the caller (like Attack::id)
+    std::vector<uint8_t> attacks;         // indices into Combatant::attacks, in order (1..255)
+};
+
 struct Combatant {
     CombatantId id;
     uint8_t  team;
@@ -134,6 +143,7 @@ struct Combatant {
     bool     is_pc = false;                 // counted by the default end condition
     uint32_t skill_proficiencies = 0;       // bitmask over Skill
     uint8_t  attacks_per_action = 1;        // Extra Attack: 2 (Fighter 5), ...
+    std::vector<AttackSequence> multiattacks;   // declared multiattack options (empty = none); see AttackSequence
     int16_t  stealth_total = 0;             // > 0 while hidden (Hide result); sim compares to perception
     CombatantId helped_vs = 0;              // Help: advantage on next attack vs this target
     CombatantId helped_by = 0;              //   ... granted by this helper (expires at its next turn)
