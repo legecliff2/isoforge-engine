@@ -40,13 +40,23 @@ DamageApplied absorb(const Combatant& c, int dmg) {
 } // namespace
 
 DamageApplied apply_damage(const Combatant& c, int16_t amount, DamageType type, uint8_t qualifiers) {
-    return absorb(c, modified(c, amount, type, qualifiers));
+    const int m = modified(c, amount, type, qualifiers);
+    DamageApplied d = absorb(c, m);
+    if (m > 0) d.types_dealt = bit(type);
+    return d;
 }
 
 DamageApplied apply_damage_parts(const Combatant& c, std::span<const DamagePiece> parts, uint8_t qualifiers) {
     int total = 0;
-    for (const DamagePiece& p : parts) total += modified(c, p.amount, p.type, qualifiers);
-    return absorb(c, total);
+    uint32_t types = 0;
+    for (const DamagePiece& p : parts) {
+        const int m = modified(c, p.amount, p.type, qualifiers);
+        total += m;
+        if (m > 0) types |= bit(p.type);
+    }
+    DamageApplied d = absorb(c, total);
+    d.types_dealt = types;
+    return d;
 }
 
 void commit_damage(Combatant& c, const DamageApplied& d) {
