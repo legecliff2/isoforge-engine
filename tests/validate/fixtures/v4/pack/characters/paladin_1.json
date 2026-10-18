@@ -1,0 +1,165 @@
+{
+  "$schema": "character@4",
+  "id": "test.v4.character.paladin_1",
+  "name": "Paladin",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "neutral good",
+  "level": 1,
+  "classes": [
+    {
+      "class": "paladin",
+      "level": 1,
+      "hit_die": "d10"
+    }
+  ],
+  "xp": 0,
+  "armor_class": {
+    "value": 14
+  },
+  "hit_points": {
+    "average": 12,
+    "formula": "1d10+2"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 16,
+    "dex": 10,
+    "con": 14,
+    "int": 8,
+    "wis": 12,
+    "cha": 14
+  },
+  "saving_throws": {
+    "wis": 3,
+    "cha": 4
+  },
+  "senses": {
+    "passive_perception": 11
+  },
+  "languages": [
+    "Common"
+  ],
+  "proficiency_bonus": 2,
+  "actions": [
+    {
+      "id": "longsword",
+      "name": "Longsword",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+3",
+          "type": "slashing"
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "id": "lay_on_hands",
+      "name": "Lay on Hands",
+      "recharge": "long_rest",
+      "max": {
+        "per_level": 5,
+        "class": "paladin"
+      }
+    },
+    {
+      "id": "channel",
+      "recharge": "short_rest",
+      "max": {
+        "plus_ability": "cha",
+        "min": 1
+      },
+      "start": 1
+    },
+    {
+      "id": "surge",
+      "recharge": "short_rest",
+      "max": 1
+    }
+  ],
+  "features": [
+    {
+      "id": "lay_on_hands",
+      "name": "Lay on Hands",
+      "effect": {
+        "kind": "heal_pool",
+        "cost": "action",
+        "pool": "lay_on_hands"
+      }
+    },
+    {
+      "id": "smite",
+      "name": "Divine Smite",
+      "effect": {
+        "kind": "on_event",
+        "on": "hit",
+        "choice": "ask",
+        "effects": [
+          {
+            "kind": "spend",
+            "slot": "any"
+          },
+          {
+            "kind": "extra_damage",
+            "damage": [
+              {
+                "dice": "2d8",
+                "type": "radiant"
+              }
+            ],
+            "scale": {
+              "per_slot_level": {
+                "base_level": 1,
+                "add_dice": "1d8"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "channel_divinity",
+      "name": "Channel Divinity",
+      "effect": {
+        "kind": "grant_action",
+        "usage": {
+          "kind": "pool",
+          "pool": "channel",
+          "cost": 1
+        }
+      }
+    },
+    {
+      "id": "action_surge",
+      "name": "Action Surge",
+      "effect": {
+        "kind": "grant_action",
+        "cost": "free",
+        "usage": {
+          "kind": "pool",
+          "pool": "surge",
+          "cost": 1
+        }
+      }
+    }
+  ],
+  "spellcasting": {
+    "ability": "cha",
+    "caster_level": 1,
+    "spells": [
+      "srd51.spell.cure_wounds"
+    ]
+  }
+}

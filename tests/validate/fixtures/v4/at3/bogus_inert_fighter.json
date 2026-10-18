@@ -1,0 +1,128 @@
+{
+  "$schema": "character@3",
+  "id": "test.v4.character.bogus_inert_fighter",
+  "name": "Fighter",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "neutral good",
+  "level": 1,
+  "classes": [
+    {
+      "class": "fighter",
+      "level": 1,
+      "hit_die": "d10"
+    }
+  ],
+  "xp": 0,
+  "armor_class": {
+    "value": 18,
+    "note": "chain mail, shield"
+  },
+  "hit_points": {
+    "average": 12,
+    "formula": "1d10+2"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 16,
+    "dex": 14,
+    "con": 15,
+    "int": 9,
+    "wis": 13,
+    "cha": 11
+  },
+  "saving_throws": {
+    "str": 5,
+    "con": 4
+  },
+  "skills": {
+    "athletics": 5,
+    "perception": 3
+  },
+  "senses": {
+    "passive_perception": 13
+  },
+  "languages": [
+    "Common",
+    "Goblin"
+  ],
+  "proficiency_bonus": 2,
+  "features": [
+    {
+      "id": "ahead_of_engine",
+      "name": "Ahead of the engine",
+      "effect": {
+        "kind": "on_event",
+        "on": "whenever_i_like",
+        "effects": [],
+        "mystery": 1
+      }
+    }
+  ],
+  "equipment": [
+    "chain_mail",
+    "shield",
+    "longsword",
+    "light_crossbow",
+    "crossbow_bolts_20",
+    "dungeoneers_pack"
+  ],
+  "actions": [
+    {
+      "id": "longsword",
+      "name": "Longsword",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "versatile"
+      ],
+      "description": "Includes +2 from Dueling (one-handed, wielded with a shield).",
+      "damage": [
+        {
+          "dice": "1d8+5",
+          "type": "slashing"
+        }
+      ]
+    },
+    {
+      "id": "light_crossbow",
+      "name": "Light Crossbow",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 4,
+      "range": [
+        80,
+        320
+      ],
+      "targets": 1,
+      "properties": [
+        "ammunition",
+        "loading",
+        "two_handed"
+      ],
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ]
+    }
+  ],
+  "bonus_actions": [],
+  "reactions": [
+    {
+      "id": "riposte",
+      "name": "Riposte",
+      "kind": "special",
+      "description": "Descriptive."
+    }
+  ]
+}

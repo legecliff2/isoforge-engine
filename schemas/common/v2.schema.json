@@ -1,0 +1,3206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://isoforge.dev/schemas/common/v2.schema.json",
+  "title": "common@2 shared definitions (the defs the version-bump batch changes)",
+  "description": "STANDALONE: re-declares only the defs that change from common@1 and references every unchanged def absolutely as ../common/v1.schema.json#/$defs/<name> (docs/proposals/VERSION_BUMP_BATCH.md 1.2; enforced by tests/validate/test_common2_lint.py). Immutable once released (ARCHITECTURE.md 3.2). Integers only (4.3).",
+  "$defs": {
+    "save": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ability",
+        "dc"
+      ],
+      "properties": {
+        "ability": {
+          "$ref": "../common/v1.schema.json#/$defs/ability"
+        },
+        "dc": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        }
+      }
+    },
+    "damage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dice",
+        "type"
+      ],
+      "properties": {
+        "dice": {
+          "$ref": "../common/v1.schema.json#/$defs/dice"
+        },
+        "type": {
+          "$ref": "../common/v1.schema.json#/$defs/damage_type"
+        }
+      }
+    },
+    "rider_damage_type": {
+      "oneOf": [
+        {
+          "$ref": "../common/v1.schema.json#/$defs/damage_type"
+        },
+        {
+          "const": "same_as_weapon"
+        }
+      ]
+    },
+    "rider_damage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dice",
+        "type"
+      ],
+      "properties": {
+        "dice": {
+          "$ref": "../common/v1.schema.json#/$defs/dice"
+        },
+        "type": {
+          "$ref": "#/$defs/rider_damage_type"
+        }
+      }
+    },
+    "modifier_duration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "rounds",
+            "until_start_of_caster_turn",
+            "until_end_of_target_turn",
+            "concentration",
+            "until_rest"
+          ]
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "rounds"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "n"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "n"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "apply": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "condition"
+      ],
+      "properties": {
+        "condition": {
+          "$ref": "../common/v1.schema.json#/$defs/condition"
+        },
+        "duration": {
+          "$ref": "#/$defs/modifier_duration"
+        },
+        "repeat_save": {
+          "enum": [
+            "start_of_turn",
+            "end_of_turn",
+            "on_damage"
+          ]
+        }
+      }
+    },
+    "area": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shape",
+        "size_ft"
+      ],
+      "description": "Area of effect; sim decides which creatures are inside and passes them as targets.",
+      "properties": {
+        "shape": {
+          "enum": [
+            "cone",
+            "cube",
+            "cylinder",
+            "line",
+            "sphere"
+          ]
+        },
+        "size_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "multipleOf": 5,
+          "description": "Cone/line length, cube side, sphere/cylinder radius."
+        },
+        "width_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "multipleOf": 5,
+          "description": "line only."
+        },
+        "height_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "multipleOf": 5,
+          "description": "cylinder only."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "shape": {
+                "const": "line"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "width_ft"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "width_ft"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "shape": {
+                "const": "cylinder"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "height_ft"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "height_ft"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "at_will",
+            "recharge",
+            "per_day",
+            "per_rest",
+            "pool"
+          ]
+        },
+        "min": {
+          "enum": [
+            2,
+            3,
+            4,
+            5,
+            6
+          ]
+        },
+        "uses": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "rest": {
+          "enum": [
+            "short",
+            "long"
+          ]
+        },
+        "pool": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "cost": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "at_will"
+              }
+            }
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "kind"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "recharge"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "min"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "min"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "per_day"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "uses"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "uses"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "per_rest"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "uses",
+              "rest"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "uses",
+                "rest"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "pool"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "pool"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "pool",
+                "cost"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "scaling": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "per_levels": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "every",
+            "add_dice"
+          ],
+          "properties": {
+            "class": {
+              "$ref": "../common/v1.schema.json#/$defs/local_id"
+            },
+            "every": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "add_dice": {
+              "$ref": "../common/v1.schema.json#/$defs/dice"
+            }
+          }
+        },
+        "per_slot_level": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "base_level",
+            "add_dice"
+          ],
+          "properties": {
+            "base_level": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9
+            },
+            "add_dice": {
+              "$ref": "../common/v1.schema.json#/$defs/dice"
+            }
+          }
+        }
+      }
+    },
+    "predicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "weapon",
+            "advantage_or_ally_adjacent",
+            "target_creature_type",
+            "not_creature_type",
+            "damage_type_is",
+            "damage_type_not",
+            "not_crit",
+            "moved_at_least_ft",
+            "self_hp_below",
+            "save"
+          ]
+        },
+        "is": {
+          "enum": [
+            "melee",
+            "ranged",
+            "finesse",
+            "finesse_or_ranged"
+          ]
+        },
+        "types": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/damage_type"
+          }
+        },
+        "creature_types": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/creature_type"
+          }
+        },
+        "ft": {
+          "type": "integer",
+          "minimum": 5,
+          "multipleOf": 5
+        },
+        "num": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "den": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ability": {
+          "$ref": "../common/v1.schema.json#/$defs/ability"
+        },
+        "dc": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "dc_from_damage": {
+          "const": true
+        },
+        "base": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 30
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "weapon"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "is"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "is"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "advantage_or_ally_adjacent"
+              }
+            }
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "kind"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "target_creature_type",
+                  "not_creature_type"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "creature_types"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "creature_types"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "damage_type_is",
+                  "damage_type_not"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "types"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "types"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "not_crit"
+              }
+            }
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "kind"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "moved_at_least_ft"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "ft"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "ft"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "self_hp_below"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "num",
+              "den"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "num",
+                "den"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "save"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "ability"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "ability",
+                "dc",
+                "dc_from_damage",
+                "base"
+              ]
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "dc"
+                ],
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "dc_from_damage"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "base"
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "dc_from_damage"
+                ],
+                "not": {
+                  "required": [
+                    "dc"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "rider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "extra_damage",
+            "save_condition",
+            "apply_condition",
+            "heal_self",
+            "temp_hp",
+            "set_hp",
+            "bonus_attack",
+            "area_save",
+            "spend"
+          ]
+        },
+        "damage": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/rider_damage"
+          }
+        },
+        "scale": {
+          "$ref": "#/$defs/scaling"
+        },
+        "save": {
+          "$ref": "#/$defs/save"
+        },
+        "on_success": {
+          "enum": [
+            "half",
+            "none"
+          ]
+        },
+        "apply": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/apply"
+          }
+        },
+        "dice": {
+          "$ref": "../common/v1.schema.json#/$defs/dice"
+        },
+        "amount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "attack_id": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "area": {
+          "$ref": "#/$defs/area"
+        },
+        "pool": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "cost": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "slot": {
+          "oneOf": [
+            {
+              "const": "any"
+            },
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "extra_damage"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "damage"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "damage",
+                "scale"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "save_condition"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "save"
+            ],
+            "anyOf": [
+              {
+                "required": [
+                  "apply"
+                ]
+              },
+              {
+                "required": [
+                  "damage"
+                ]
+              }
+            ],
+            "dependentRequired": {
+              "damage": [
+                "on_success"
+              ],
+              "on_success": [
+                "damage"
+              ]
+            },
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "save",
+                "apply",
+                "damage",
+                "on_success"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "apply_condition"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "apply"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "apply"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "heal_self",
+                  "temp_hp"
+                ]
+              }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "required": [
+                  "dice"
+                ]
+              },
+              {
+                "required": [
+                  "amount"
+                ]
+              }
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "dice",
+                "amount"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "set_hp"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "value"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "value"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "bonus_attack"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "attack_id"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "attack_id"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "area_save"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "area",
+              "save",
+              "damage",
+              "on_success"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "area",
+                "save",
+                "damage",
+                "on_success"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "spend"
+              }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "required": [
+                  "pool"
+                ],
+                "not": {
+                  "required": [
+                    "slot"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "slot"
+                ],
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "pool"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "cost"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "pool",
+                "cost",
+                "slot"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "on_event_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "on",
+        "effects"
+      ],
+      "properties": {
+        "kind": {
+          "const": "on_event"
+        },
+        "on": {
+          "enum": [
+            "hit",
+            "crit",
+            "damage_dealt",
+            "reduce_to_zero",
+            "drop_to_zero",
+            "death",
+            "turn_start",
+            "turn_end"
+          ]
+        },
+        "when": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/predicate"
+          }
+        },
+        "limit": {
+          "enum": [
+            "once_per_turn",
+            "once_per_round",
+            "once_per_attack",
+            "none"
+          ],
+          "default": "none"
+        },
+        "choice": {
+          "enum": [
+            "auto",
+            "ask"
+          ],
+          "default": "auto"
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        },
+        "effects": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/rider"
+          }
+        }
+      }
+    },
+    "level_table_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "level",
+        "value"
+      ],
+      "properties": {
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        }
+      }
+    },
+    "pool_level_table_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "level"
+      ],
+      "properties": {
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "unlimited": {
+          "const": true
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "value"
+          ]
+        },
+        {
+          "required": [
+            "unlimited"
+          ]
+        }
+      ]
+    },
+    "level_table": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "by_level"
+      ],
+      "properties": {
+        "class": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "by_level": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/level_table_entry"
+                },
+                {
+                  "required": [
+                    "level"
+                  ],
+                  "properties": {
+                    "level": {
+                      "const": 1
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": {
+            "$ref": "#/$defs/level_table_entry"
+          }
+        }
+      }
+    },
+    "pool_level_table": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "by_level"
+      ],
+      "properties": {
+        "class": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "by_level": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/pool_level_table_entry"
+                },
+                {
+                  "required": [
+                    "level"
+                  ],
+                  "properties": {
+                    "level": {
+                      "const": 1
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": {
+            "$ref": "#/$defs/pool_level_table_entry"
+          }
+        }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "max",
+        "recharge"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "max": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "anyOf": [
+                {
+                  "required": [
+                    "per_level"
+                  ]
+                },
+                {
+                  "required": [
+                    "plus_ability"
+                  ]
+                }
+              ],
+              "properties": {
+                "per_level": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "class": {
+                  "$ref": "../common/v1.schema.json#/$defs/local_id"
+                },
+                "plus_ability": {
+                  "$ref": "../common/v1.schema.json#/$defs/ability"
+                },
+                "min": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "table"
+              ],
+              "properties": {
+                "table": {
+                  "$ref": "#/$defs/pool_level_table"
+                }
+              }
+            }
+          ]
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "recharge": {
+          "enum": [
+            "short_rest",
+            "long_rest",
+            "dawn",
+            "never"
+          ]
+        }
+      }
+    },
+    "modifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stat",
+        "duration"
+      ],
+      "properties": {
+        "stat": {
+          "enum": [
+            "attack_roll",
+            "save",
+            "ability_check",
+            "ac",
+            "speed",
+            "damage",
+            "temp_hp",
+            "resistance",
+            "attacks_against"
+          ]
+        },
+        "bonus": {
+          "type": "integer",
+          "minimum": -32767,
+          "maximum": 32767
+        },
+        "bonus_table": {
+          "$ref": "#/$defs/level_table"
+        },
+        "die": {
+          "$ref": "../common/v1.schema.json#/$defs/dice"
+        },
+        "mode": {
+          "enum": [
+            "advantage",
+            "disadvantage"
+          ]
+        },
+        "speed_scale": {
+          "oneOf": [
+            {
+              "enum": [
+                "half",
+                "double"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "num",
+                "den"
+              ],
+              "properties": {
+                "num": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "den": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          ]
+        },
+        "damage_type": {
+          "$ref": "../common/v1.schema.json#/$defs/damage_type"
+        },
+        "ability": {
+          "$ref": "../common/v1.schema.json#/$defs/ability"
+        },
+        "applies_to": {
+          "enum": [
+            "self",
+            "target",
+            "allies_within_30"
+          ]
+        },
+        "duration": {
+          "$ref": "#/$defs/modifier_duration"
+        },
+        "stacks": {
+          "enum": [
+            "replace",
+            "stack"
+          ],
+          "default": "replace"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "stat"
+            ],
+            "properties": {
+              "stat": {
+                "enum": [
+                  "attack_roll"
+                ]
+              }
+            }
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "bonus"
+                ]
+              },
+              {
+                "required": [
+                  "die"
+                ]
+              },
+              {
+                "required": [
+                  "mode"
+                ]
+              }
+            ],
+            "propertyNames": {
+              "enum": [
+                "stat",
+                "bonus",
+                "die",
+                "mode",
+                "applies_to",
+                "duration",
+                "stacks"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "stat"
+            ],
+            "properties": {
+              "stat": {
+                "enum": [
+                  "save",
+                  "ability_check"
+                ]
+              }
+            }
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "bonus"
+                ]
+              },
+              {
+                "required": [
+                  "die"
+                ]
+              },
+              {
+                "required": [
+                  "mode"
+                ]
+              }
+            ],
+            "propertyNames": {
+              "enum": [
+                "stat",
+                "bonus",
+                "die",
+                "mode",
+                "ability",
+                "applies_to",
+                "duration",
+                "stacks"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "stat"
+            ],
+            "properties": {
+              "stat": {
+                "const": "ac"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "bonus"
+            ],
+            "propertyNames": {
+              "enum": [
+                "stat",
+                "bonus",
+                "applies_to",
+                "duration",
+                "stacks"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "stat"
+            ],
+            "properties": {
+              "stat": {
+                "const": "speed"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "speed_scale"
+            ],
+            "propertyNames": {
+              "enum": [
+                "stat",
+                "speed_scale",
+                "applies_to",
+                "duration",
+                "stacks"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "stat"
+            ],
+            "properties": {
+              "stat": {
+                "const": "damage"
+              }
+            }
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "bonus"
+                ]
+              },
+              {
+                "required": [
+                  "die"
+                ]
+              },
+              {
+                "required": [
+                  "bonus_table"
+                ]
+              }
+            ],
+            "not": {
+              "required": [
+                "bonus",
+                "bonus_table"
+              ]
+            },
+            "propertyNames": {
+              "enum": [
+                "stat",
+                "bonus",
+                "bonus_table",
+                "die",
+                "damage_type",
+                "applies_to",
+                "duration",
+                "stacks"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "stat"
+            ],
+            "properties": {
+              "stat": {
+                "const": "temp_hp"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "bonus"
+            ],
+            "propertyNames": {
+              "enum": [
+                "stat",
+                "bonus",
+                "applies_to",
+                "duration",
+                "stacks"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "stat"
+            ],
+            "properties": {
+              "stat": {
+                "const": "resistance"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "damage_type"
+            ],
+            "propertyNames": {
+              "enum": [
+                "stat",
+                "damage_type",
+                "applies_to",
+                "duration",
+                "stacks"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "stat"
+            ],
+            "properties": {
+              "stat": {
+                "const": "attacks_against"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "mode"
+            ],
+            "propertyNames": {
+              "enum": [
+                "stat",
+                "mode",
+                "applies_to",
+                "duration",
+                "stacks"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "reaction_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "ac_bonus",
+            "reduce_damage",
+            "impose_disadvantage",
+            "retaliate",
+            "attack",
+            "cast",
+            "subtract_roll"
+          ]
+        },
+        "bonus": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "fraction": {
+          "const": "half"
+        },
+        "dice": {
+          "$ref": "../common/v1.schema.json#/$defs/dice"
+        },
+        "damage": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/damage"
+          }
+        },
+        "save": {
+          "$ref": "#/$defs/save"
+        },
+        "on_success": {
+          "enum": [
+            "half",
+            "none"
+          ]
+        },
+        "attack_id": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "spell": {
+          "$ref": "../common/v1.schema.json#/$defs/content_id"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "ac_bonus"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "bonus"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "bonus"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "reduce_damage"
+              }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "required": [
+                  "fraction"
+                ]
+              },
+              {
+                "required": [
+                  "dice"
+                ]
+              }
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "fraction",
+                "dice"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "impose_disadvantage"
+              }
+            }
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "kind"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "retaliate"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "damage"
+            ],
+            "dependentRequired": {
+              "save": [
+                "on_success"
+              ],
+              "on_success": [
+                "save"
+              ]
+            },
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "damage",
+                "save",
+                "on_success"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "attack"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "attack_id"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "attack_id"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "cast"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "spell"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "spell"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "subtract_roll"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "dice"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "dice"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "reaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "window",
+        "effect"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "window": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "being_hit",
+                "damaged",
+                "leaving_reach",
+                "ally_attacked",
+                "spell_cast",
+                "roll_attack"
+              ]
+            },
+            "melee_only": {
+              "type": "boolean"
+            },
+            "ranged_only": {
+              "type": "boolean"
+            },
+            "source": {
+              "enum": [
+                "self",
+                "ally_within_5ft"
+              ],
+              "default": "self"
+            },
+            "visible": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "effect": {
+          "$ref": "#/$defs/reaction_effect"
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        }
+      }
+    },
+    "legacy_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "inert"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "melee_weapon_attack",
+            "ranged_weapon_attack",
+            "melee_spell_attack",
+            "ranged_spell_attack",
+            "special"
+          ]
+        },
+        "to_hit": {
+          "type": "integer",
+          "minimum": -128,
+          "maximum": 127
+        },
+        "reach": {
+          "$ref": "../common/v1.schema.json#/$defs/feet"
+        },
+        "range": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "$ref": "../common/v1.schema.json#/$defs/range_ft"
+            },
+            {
+              "$ref": "../common/v1.schema.json#/$defs/range_ft"
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[normal, long] range in feet (SRD range 80/320 = [80, 320]); targets beyond normal and up to long range are attacked with disadvantage."
+        },
+        "targets": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "properties": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Weapon properties, e.g. 'finesse', 'light', 'ammunition', 'versatile'."
+        },
+        "damage": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "dice",
+              "type"
+            ],
+            "properties": {
+              "dice": {
+                "$ref": "../common/v1.schema.json#/$defs/dice"
+              },
+              "type": {
+                "$ref": "../common/v1.schema.json#/$defs/damage_type"
+              }
+            }
+          },
+          "description": "BASE damage: weapon die + ability modifier (+ magic bonus). Never fold feature bonuses (e.g. Dueling +2) in; feature effects such as damage_bonus are applied by the engine."
+        },
+        "qualifiers": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "magical",
+              "silvered",
+              "adamantine"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "monster@3 / character@3: what the weapon is made of / counts as, for qualified resistances (nonmagical, silvered, adamantine). Inert in earlier versions."
+        },
+        "description": {
+          "type": "string"
+        },
+        "inert": {
+          "const": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "pattern": "_attack$"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "to_hit",
+              "damage"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "pattern": "^melee_"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reach"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "pattern": "^ranged_"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "range"
+            ]
+          }
+        }
+      ]
+    },
+    "legacy_nonspecial_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "inert"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "melee_weapon_attack",
+            "ranged_weapon_attack",
+            "melee_spell_attack",
+            "ranged_spell_attack"
+          ]
+        },
+        "to_hit": {
+          "type": "integer",
+          "minimum": -128,
+          "maximum": 127
+        },
+        "reach": {
+          "$ref": "../common/v1.schema.json#/$defs/feet"
+        },
+        "range": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "$ref": "../common/v1.schema.json#/$defs/range_ft"
+            },
+            {
+              "$ref": "../common/v1.schema.json#/$defs/range_ft"
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[normal, long] range in feet (SRD range 80/320 = [80, 320]); targets beyond normal and up to long range are attacked with disadvantage."
+        },
+        "targets": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "properties": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Weapon properties, e.g. 'finesse', 'light', 'ammunition', 'versatile'."
+        },
+        "damage": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "dice",
+              "type"
+            ],
+            "properties": {
+              "dice": {
+                "$ref": "../common/v1.schema.json#/$defs/dice"
+              },
+              "type": {
+                "$ref": "../common/v1.schema.json#/$defs/damage_type"
+              }
+            }
+          },
+          "description": "BASE damage: weapon die + ability modifier (+ magic bonus). Never fold feature bonuses (e.g. Dueling +2) in; feature effects such as damage_bonus are applied by the engine."
+        },
+        "qualifiers": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "magical",
+              "silvered",
+              "adamantine"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "monster@3 / character@3: what the weapon is made of / counts as, for qualified resistances (nonmagical, silvered, adamantine). Inert in earlier versions."
+        },
+        "description": {
+          "type": "string"
+        },
+        "inert": {
+          "const": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "pattern": "_attack$"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "to_hit",
+              "damage"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "pattern": "^melee_"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reach"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "pattern": "^ranged_"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "range"
+            ]
+          }
+        }
+      ]
+    },
+    "legacy_special_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "const": "special"
+        },
+        "to_hit": {
+          "type": "integer",
+          "minimum": -128,
+          "maximum": 127
+        },
+        "reach": {
+          "$ref": "../common/v1.schema.json#/$defs/feet"
+        },
+        "range": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "$ref": "../common/v1.schema.json#/$defs/range_ft"
+            },
+            {
+              "$ref": "../common/v1.schema.json#/$defs/range_ft"
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[normal, long] range in feet (SRD range 80/320 = [80, 320]); targets beyond normal and up to long range are attacked with disadvantage."
+        },
+        "targets": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "properties": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Weapon properties, e.g. 'finesse', 'light', 'ammunition', 'versatile'."
+        },
+        "damage": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "dice",
+              "type"
+            ],
+            "properties": {
+              "dice": {
+                "$ref": "../common/v1.schema.json#/$defs/dice"
+              },
+              "type": {
+                "$ref": "../common/v1.schema.json#/$defs/damage_type"
+              }
+            }
+          },
+          "description": "BASE damage: weapon die + ability modifier (+ magic bonus). Never fold feature bonuses (e.g. Dueling +2) in; feature effects such as damage_bonus are applied by the engine."
+        },
+        "qualifiers": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "magical",
+              "silvered",
+              "adamantine"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "monster@3 / character@3: what the weapon is made of / counts as, for qualified resistances (nonmagical, silvered, adamantine). Inert in earlier versions."
+        },
+        "description": {
+          "type": "string"
+        },
+        "inert": {
+          "const": true
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "melee_weapon_attack",
+            "ranged_weapon_attack",
+            "melee_spell_attack",
+            "ranged_spell_attack",
+            "special",
+            "save_effect"
+          ]
+        },
+        "to_hit": {
+          "type": "integer",
+          "minimum": -128,
+          "maximum": 127
+        },
+        "reach": {
+          "$ref": "../common/v1.schema.json#/$defs/feet"
+        },
+        "range": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "$ref": "../common/v1.schema.json#/$defs/range_ft"
+            },
+            {
+              "$ref": "../common/v1.schema.json#/$defs/range_ft"
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[normal, long] range in feet (SRD range 80/320 = [80, 320]); targets beyond normal and up to long range are attacked with disadvantage."
+        },
+        "targets": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "properties": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Weapon properties, e.g. 'finesse', 'light', 'ammunition', 'versatile'."
+        },
+        "damage": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/damage"
+          },
+          "description": "BASE damage: weapon die + ability modifier (+ magic bonus). Never fold feature bonuses (e.g. Dueling +2) in; feature effects such as damage_bonus are applied by the engine."
+        },
+        "qualifiers": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "magical",
+              "silvered",
+              "adamantine"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "monster@3 / character@3: what the weapon is made of / counts as, for qualified resistances (nonmagical, silvered, adamantine). Inert in earlier versions."
+        },
+        "description": {
+          "type": "string"
+        },
+        "save": {
+          "$ref": "#/$defs/save"
+        },
+        "area": {
+          "$ref": "#/$defs/area"
+        },
+        "origin": {
+          "enum": [
+            "self",
+            "point"
+          ],
+          "default": "self"
+        },
+        "range_ft": {
+          "$ref": "../common/v1.schema.json#/$defs/range_ft"
+        },
+        "on_success": {
+          "enum": [
+            "half",
+            "none"
+          ]
+        },
+        "apply": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/apply"
+          }
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        },
+        "magical": {
+          "type": "boolean",
+          "default": false
+        },
+        "on_hit": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/rider"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "pattern": "_attack$"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "to_hit",
+              "damage"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "pattern": "^melee_"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reach"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "pattern": "^ranged_"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "range"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "save_effect"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "save"
+            ],
+            "dependentRequired": {
+              "on_success": [
+                "damage"
+              ]
+            },
+            "anyOf": [
+              {
+                "required": [
+                  "damage"
+                ]
+              },
+              {
+                "required": [
+                  "apply"
+                ]
+              }
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "to_hit"
+                  ]
+                },
+                {
+                  "required": [
+                    "reach"
+                  ]
+                },
+                {
+                  "required": [
+                    "range"
+                  ]
+                },
+                {
+                  "required": [
+                    "properties"
+                  ]
+                },
+                {
+                  "required": [
+                    "on_hit"
+                  ]
+                }
+              ]
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "save"
+                  ]
+                },
+                {
+                  "required": [
+                    "area"
+                  ]
+                },
+                {
+                  "required": [
+                    "origin"
+                  ]
+                },
+                {
+                  "required": [
+                    "range_ft"
+                  ]
+                },
+                {
+                  "required": [
+                    "apply"
+                  ]
+                },
+                {
+                  "required": [
+                    "on_success"
+                  ]
+                },
+                {
+                  "required": [
+                    "usage"
+                  ]
+                },
+                {
+                  "required": [
+                    "magical"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind",
+              "damage"
+            ],
+            "properties": {
+              "kind": {
+                "const": "save_effect"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "on_success"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "origin"
+            ],
+            "properties": {
+              "origin": {
+                "const": "point"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "range_ft"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "melee_weapon_attack",
+                  "ranged_weapon_attack"
+                ]
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "on_hit"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "effect_inert": {
+      "type": "object",
+      "required": [
+        "kind",
+        "inert"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "on_event",
+            "apply_modifier",
+            "grant_action",
+            "heal_pool",
+            "save_effect",
+            "reaction"
+          ]
+        },
+        "inert": {
+          "const": true
+        }
+      },
+      "description": "Migrated/stamped effect of a kind in the FROZEN 3->4 list (docs/proposals/VERSION_BUMP_BATCH.md 8.2 step 4): any parameters, never applied, not validated."
+    },
+    "effect_live": {
+      "allOf": [
+        {
+          "$ref": "../common/v1.schema.json#/$defs/effect"
+        },
+        {
+          "properties": {
+            "kind": {
+              "not": {
+                "enum": [
+                  "on_event",
+                  "apply_modifier",
+                  "grant_action",
+                  "heal_pool",
+                  "save_effect",
+                  "reaction"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "apply_modifier_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "apply_modifier"
+        },
+        "cost": {
+          "$ref": "../common/v1.schema.json#/$defs/effect_cost"
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        },
+        "modifier": {
+          "$ref": "#/$defs/modifier"
+        },
+        "modifiers": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/modifier"
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "modifier"
+          ]
+        },
+        {
+          "required": [
+            "modifiers"
+          ]
+        }
+      ]
+    },
+    "grant_action_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "grant_action"
+        },
+        "cost": {
+          "enum": [
+            "action",
+            "bonus_action",
+            "reaction",
+            "free"
+          ]
+        },
+        "action_list": {
+          "enum": [
+            "any"
+          ]
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        }
+      }
+    },
+    "heal_pool_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "pool"
+      ],
+      "properties": {
+        "kind": {
+          "const": "heal_pool"
+        },
+        "cost": {
+          "$ref": "../common/v1.schema.json#/$defs/effect_cost"
+        },
+        "pool": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        }
+      }
+    },
+    "effect": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/effect_inert"
+        },
+        {
+          "$ref": "#/$defs/effect_live"
+        },
+        {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/on_event_effect"
+            },
+            {
+              "$ref": "#/$defs/apply_modifier_effect"
+            },
+            {
+              "$ref": "#/$defs/grant_action_effect"
+            },
+            {
+              "$ref": "#/$defs/heal_pool_effect"
+            }
+          ]
+        }
+      ]
+    },
+    "trait": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "effect": {
+          "$ref": "#/$defs/effect"
+        }
+      }
+    },
+    "trait_active": {
+      "description": "A trait whose effect is mechanically applied by the engine (@4). Differs from the v1 def only in effect (-> common@2 effect).",
+      "$ref": "#/$defs/trait"
+    },
+    "spellcasting": {
+      "description": "monster@4 / character@4: strict superset of common@1 spellcasting (all v1 fields, same meaning) plus dc / attack_bonus overrides and an innate block.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ability",
+        "caster_level",
+        "spells"
+      ],
+      "properties": {
+        "ability": {
+          "enum": [
+            "int",
+            "wis",
+            "cha"
+          ]
+        },
+        "caster_level": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Character / caster level (cantrip scaling tiers)."
+        },
+        "slots": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[1-9]$": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9
+            }
+          },
+          "description": "Spell slots per spell level, keys \"1\"..\"9\"."
+        },
+        "pact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "level",
+            "slots"
+          ],
+          "properties": {
+            "level": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "slots": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4
+            }
+          },
+          "description": "Pact Magic: slots all of one level, restored on a short rest."
+        },
+        "spells": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/content_id"
+          }
+        },
+        "dc": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30,
+          "description": "Optional override of the derived 8 + proficiency + ability modifier save DC."
+        },
+        "attack_bonus": {
+          "type": "integer",
+          "minimum": -128,
+          "maximum": 127,
+          "description": "Optional override of the derived spell attack bonus."
+        },
+        "innate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ability"
+          ],
+          "properties": {
+            "ability": {
+              "$ref": "../common/v1.schema.json#/$defs/ability"
+            },
+            "components": {
+              "enum": [
+                "none",
+                "as_listed"
+              ],
+              "default": "none"
+            },
+            "at_will": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "../common/v1.schema.json#/$defs/content_id"
+              }
+            },
+            "per_day": {
+              "type": "object",
+              "additionalProperties": false,
+              "patternProperties": {
+                "^[1-9]$": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "../common/v1.schema.json#/$defs/content_id"
+                  }
+                }
+              },
+              "description": "Key = uses per day (1..9), value = spell content ids."
+            },
+            "recharge": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "spell",
+                  "min"
+                ],
+                "properties": {
+                  "spell": {
+                    "$ref": "../common/v1.schema.json#/$defs/content_id"
+                  },
+                  "min": {
+                    "enum": [
+                      2,
+                      3,
+                      4,
+                      5,
+                      6
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "stat_block": {
+      "description": "Fields shared by monster@4 and character@4 (common@1 stat_block with the v2 action / trait / reaction / resource defs).",
+      "type": "object",
+      "required": [
+        "$schema",
+        "id",
+        "name",
+        "source",
+        "size",
+        "type",
+        "alignment",
+        "armor_class",
+        "hit_points",
+        "speed",
+        "abilities",
+        "proficiency_bonus",
+        "senses",
+        "languages",
+        "actions"
+      ],
+      "properties": {
+        "$schema": {
+          "$ref": "../common/v1.schema.json#/$defs/schema_tag"
+        },
+        "id": {
+          "$ref": "../common/v1.schema.json#/$defs/content_id"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "$ref": "../common/v1.schema.json#/$defs/source"
+        },
+        "size": {
+          "$ref": "../common/v1.schema.json#/$defs/size"
+        },
+        "type": {
+          "$ref": "../common/v1.schema.json#/$defs/creature_type"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "alignment": {
+          "$ref": "../common/v1.schema.json#/$defs/alignment"
+        },
+        "armor_class": {
+          "$ref": "../common/v1.schema.json#/$defs/armor_class"
+        },
+        "hit_points": {
+          "$ref": "../common/v1.schema.json#/$defs/hit_points"
+        },
+        "speed": {
+          "$ref": "../common/v1.schema.json#/$defs/speed"
+        },
+        "abilities": {
+          "$ref": "../common/v1.schema.json#/$defs/abilities"
+        },
+        "saving_throws": {
+          "$ref": "../common/v1.schema.json#/$defs/saving_throws"
+        },
+        "skills": {
+          "$ref": "../common/v1.schema.json#/$defs/skills"
+        },
+        "damage_vulnerabilities": {
+          "$ref": "../common/v1.schema.json#/$defs/damage_types"
+        },
+        "damage_resistances": {
+          "$ref": "../common/v1.schema.json#/$defs/damage_types"
+        },
+        "damage_immunities": {
+          "$ref": "../common/v1.schema.json#/$defs/damage_types"
+        },
+        "condition_immunities": {
+          "type": "array",
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/condition"
+          },
+          "uniqueItems": true
+        },
+        "senses": {
+          "$ref": "../common/v1.schema.json#/$defs/senses"
+        },
+        "languages": {
+          "$ref": "../common/v1.schema.json#/$defs/languages"
+        },
+        "proficiency_bonus": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 9
+        },
+        "traits": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/trait_active"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/action"
+          }
+        },
+        "bonus_actions": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/action"
+                  },
+                  {
+                    "properties": {
+                      "kind": {
+                        "not": {
+                          "const": "special"
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "$ref": "#/$defs/legacy_nonspecial_action"
+              },
+              {
+                "$ref": "#/$defs/legacy_special_action"
+              }
+            ]
+          }
+        },
+        "reactions": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/reaction"
+              },
+              {
+                "$ref": "#/$defs/legacy_action"
+              }
+            ]
+          }
+        },
+        "presentation": {
+          "$ref": "../common/v1.schema.json#/$defs/presentation"
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/resource"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "item@1",
+  "id": "test.v4.item.leather_armor",
+  "name": "Leather Armor",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "armor",
+  "armor_category": "light",
+  "base_ac": 11,
+  "dex_bonus": true
+}

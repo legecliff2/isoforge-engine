@@ -1,0 +1,542 @@
+{
+  "$schema": "monster@4",
+  "id": "test.v4.monster.red_dragon",
+  "name": "Adult Red Dragon",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "huge",
+  "type": "dragon",
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 19,
+    "note": "natural armor"
+  },
+  "hit_points": {
+    "average": 256,
+    "formula": "19d12+133"
+  },
+  "speed": {
+    "walk": 40,
+    "climb": 40,
+    "fly": 80
+  },
+  "abilities": {
+    "str": 27,
+    "dex": 10,
+    "con": 25,
+    "int": 16,
+    "wis": 13,
+    "cha": 21
+  },
+  "saving_throws": {
+    "dex": 6,
+    "con": 13,
+    "wis": 7,
+    "cha": 11
+  },
+  "skills": {
+    "perception": 13,
+    "stealth": 6
+  },
+  "damage_immunities": [
+    "fire"
+  ],
+  "senses": {
+    "blindsight": 60,
+    "darkvision": 120,
+    "passive_perception": 23
+  },
+  "languages": [
+    "Common",
+    "Draconic"
+  ],
+  "challenge": {
+    "rating": "17",
+    "xp": 18000
+  },
+  "proficiency_bonus": 6,
+  "resources": [
+    {
+      "id": "legendary_resistance",
+      "name": "Legendary Resistance",
+      "max": 3,
+      "recharge": "long_rest"
+    },
+    {
+      "id": "wing_dust",
+      "name": "Wing Dust",
+      "max": 2,
+      "recharge": "short_rest"
+    }
+  ],
+  "traits": [
+    {
+      "id": "amphibious_rage",
+      "name": "Hot Blooded",
+      "description": "Descriptive trait with a live effect.",
+      "effect": {
+        "kind": "on_event",
+        "on": "hit",
+        "limit": "once_per_turn",
+        "when": [
+          {
+            "kind": "weapon",
+            "is": "melee"
+          },
+          {
+            "kind": "not_creature_type",
+            "creature_types": [
+              "dragon"
+            ]
+          }
+        ],
+        "effects": [
+          {
+            "kind": "extra_damage",
+            "damage": [
+              {
+                "dice": "1d6",
+                "type": "fire"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "legendary_resistance",
+      "name": "Legendary Resistance (3/Day)",
+      "effect": {
+        "kind": "apply_modifier",
+        "cost": "reaction",
+        "usage": {
+          "kind": "pool",
+          "pool": "legendary_resistance",
+          "cost": 1
+        },
+        "modifier": {
+          "stat": "save",
+          "bonus": 20,
+          "applies_to": "self",
+          "duration": {
+            "kind": "rounds",
+            "n": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "undead_fortitude_like",
+      "name": "Stubborn",
+      "effect": {
+        "kind": "on_event",
+        "on": "drop_to_zero",
+        "when": [
+          {
+            "kind": "damage_type_not",
+            "types": [
+              "radiant"
+            ]
+          },
+          {
+            "kind": "not_crit"
+          },
+          {
+            "kind": "save",
+            "ability": "con",
+            "dc_from_damage": true,
+            "base": 5
+          }
+        ],
+        "effects": [
+          {
+            "kind": "set_hp",
+            "value": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "dust_cloud",
+      "name": "Dust Cloud",
+      "effect": {
+        "kind": "heal_pool",
+        "pool": "wing_dust"
+      }
+    },
+    {
+      "id": "multi",
+      "name": "Multiattack",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "full",
+            "attacks": [
+              "bite",
+              "claw",
+              "claw"
+            ]
+          },
+          {
+            "id": "bite_only",
+            "attacks": [
+              "bite"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "second_wind_like",
+      "name": "Surge",
+      "effect": {
+        "kind": "grant_action",
+        "cost": "free",
+        "usage": {
+          "kind": "per_rest",
+          "uses": 1,
+          "rest": "short"
+        },
+        "count": 1
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "to_hit": 14,
+      "reach": 10,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d10+8",
+          "type": "piercing"
+        },
+        {
+          "dice": "2d6",
+          "type": "fire"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "con",
+            "dc": 20
+          },
+          "apply": [
+            {
+              "condition": "poisoned",
+              "duration": {
+                "kind": "rounds",
+                "n": 10
+              },
+              "repeat_save": "end_of_turn"
+            }
+          ]
+        },
+        {
+          "kind": "extra_damage",
+          "damage": [
+            {
+              "dice": "1d6",
+              "type": "same_as_weapon"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "claw",
+      "name": "Claw",
+      "kind": "melee_weapon_attack",
+      "to_hit": 14,
+      "reach": 5,
+      "targets": 1,
+      "qualifiers": [
+        "magical"
+      ],
+      "damage": [
+        {
+          "dice": "2d6+8",
+          "type": "slashing"
+        }
+      ]
+    },
+    {
+      "id": "tail",
+      "name": "Tail",
+      "kind": "melee_weapon_attack",
+      "to_hit": 14,
+      "reach": 15,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d8+8",
+          "type": "bludgeoning"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "bonus_attack",
+          "attack_id": "claw"
+        }
+      ]
+    },
+    {
+      "id": "frightful_presence",
+      "name": "Frightful Presence",
+      "kind": "save_effect",
+      "save": {
+        "ability": "wis",
+        "dc": 19
+      },
+      "area": {
+        "shape": "sphere",
+        "size_ft": 120
+      },
+      "origin": "self",
+      "apply": [
+        {
+          "condition": "frightened",
+          "duration": {
+            "kind": "rounds",
+            "n": 10
+          },
+          "repeat_save": "end_of_turn"
+        }
+      ],
+      "usage": {
+        "kind": "per_day",
+        "uses": 1
+      }
+    },
+    {
+      "id": "fire_breath",
+      "name": "Fire Breath",
+      "kind": "save_effect",
+      "save": {
+        "ability": "dex",
+        "dc": 21
+      },
+      "area": {
+        "shape": "cone",
+        "size_ft": 60
+      },
+      "damage": [
+        {
+          "dice": "18d6",
+          "type": "fire"
+        }
+      ],
+      "on_success": "half",
+      "usage": {
+        "kind": "recharge",
+        "min": 5
+      }
+    },
+    {
+      "id": "gaze",
+      "name": "Withering Gaze",
+      "kind": "save_effect",
+      "save": {
+        "ability": "con",
+        "dc": 18
+      },
+      "range_ft": 30,
+      "damage": [
+        {
+          "dice": "4d6",
+          "type": "necrotic"
+        }
+      ],
+      "on_success": "none",
+      "magical": true,
+      "usage": {
+        "kind": "pool",
+        "pool": "wing_dust",
+        "cost": 1
+      }
+    },
+    {
+      "id": "meteor",
+      "name": "Meteor",
+      "kind": "save_effect",
+      "save": {
+        "ability": "dex",
+        "dc": 18
+      },
+      "origin": "point",
+      "range_ft": 120,
+      "area": {
+        "shape": "sphere",
+        "size_ft": 10
+      },
+      "damage": [
+        {
+          "dice": "6d6",
+          "type": "fire"
+        }
+      ],
+      "on_success": "half"
+    },
+    {
+      "id": "lore_check",
+      "name": "Draconic Lore",
+      "kind": "special",
+      "description": "Descriptive only."
+    }
+  ],
+  "bonus_actions": [
+    {
+      "id": "wing_buffet",
+      "name": "Wing Buffet",
+      "kind": "save_effect",
+      "save": {
+        "ability": "str",
+        "dc": 20
+      },
+      "origin": "self",
+      "area": {
+        "shape": "cube",
+        "size_ft": 10
+      },
+      "apply": [
+        {
+          "condition": "prone"
+        }
+      ],
+      "usage": {
+        "kind": "recharge",
+        "min": 6
+      }
+    },
+    {
+      "id": "tail_flick",
+      "name": "Tail Flick",
+      "kind": "melee_weapon_attack",
+      "to_hit": 14,
+      "reach": 15,
+      "damage": [
+        {
+          "dice": "1d6+8",
+          "type": "bludgeoning"
+        }
+      ]
+    },
+    {
+      "id": "preen",
+      "name": "Preen",
+      "kind": "special",
+      "description": "Special bonus actions stay descriptive."
+    }
+  ],
+  "reactions": [
+    {
+      "id": "tail_parry",
+      "name": "Tail Parry",
+      "window": {
+        "kind": "being_hit",
+        "melee_only": true
+      },
+      "effect": {
+        "kind": "ac_bonus",
+        "bonus": 3
+      }
+    },
+    {
+      "id": "scorch",
+      "name": "Scorching Reply",
+      "window": {
+        "kind": "damaged",
+        "source": "self"
+      },
+      "effect": {
+        "kind": "retaliate",
+        "damage": [
+          {
+            "dice": "3d6",
+            "type": "fire"
+          }
+        ],
+        "save": {
+          "ability": "dex",
+          "dc": 18
+        },
+        "on_success": "half"
+      }
+    },
+    {
+      "id": "swat",
+      "name": "Swat",
+      "window": {
+        "kind": "leaving_reach"
+      },
+      "effect": {
+        "kind": "attack",
+        "attack_id": "claw"
+      }
+    },
+    {
+      "id": "dispel",
+      "name": "Spell Reply",
+      "window": {
+        "kind": "spell_cast"
+      },
+      "effect": {
+        "kind": "cast",
+        "spell": "srd51.spell.shield"
+      }
+    }
+  ],
+  "spellcasting": {
+    "ability": "cha",
+    "caster_level": 9,
+    "slots": {
+      "1": 4,
+      "2": 3
+    },
+    "spells": [
+      "srd51.spell.magic_missile",
+      "srd51.spell.shield"
+    ],
+    "dc": 19,
+    "attack_bonus": 11,
+    "innate": {
+      "ability": "cha",
+      "components": "none",
+      "at_will": [
+        "srd51.spell.fire_bolt"
+      ],
+      "per_day": {
+        "3": [
+          "srd51.spell.hold_person"
+        ],
+        "1": [
+          "srd51.spell.cure_wounds"
+        ]
+      },
+      "recharge": [
+        {
+          "spell": "srd51.spell.counterspell",
+          "min": 6
+        }
+      ]
+    }
+  },
+  "legendary_actions": [
+    {
+      "id": "detect",
+      "name": "Detect",
+      "kind": "special"
+    }
+  ],
+  "forward_compat": [
+    "elevation"
+  ]
+}

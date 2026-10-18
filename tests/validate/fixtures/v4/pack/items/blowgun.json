@@ -1,0 +1,25 @@
+{
+  "$schema": "item@1",
+  "id": "test.v4.item.blowgun",
+  "name": "Blowgun",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "weapon",
+  "weapon_class": "martial",
+  "range": [
+    25,
+    100
+  ],
+  "damage": [
+    {
+      "flat": 1,
+      "type": "piercing"
+    }
+  ],
+  "properties": [
+    "ammunition",
+    "loading"
+  ]
+}

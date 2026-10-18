@@ -1,0 +1,29 @@
+{
+  "$schema": "item@1",
+  "id": "test.v4.item.dagger",
+  "name": "Dagger",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "weapon",
+  "cost_cp": 200,
+  "weight_oz": 16,
+  "weapon_class": "simple",
+  "reach": 5,
+  "range": [
+    20,
+    60
+  ],
+  "damage": [
+    {
+      "dice": "1d4",
+      "type": "piercing"
+    }
+  ],
+  "properties": [
+    "finesse",
+    "light",
+    "thrown"
+  ]
+}

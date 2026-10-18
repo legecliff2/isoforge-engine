@@ -1,0 +1,42 @@
+{
+  "$schema": "item@1",
+  "id": "test.v4.item.flame_tongue",
+  "name": "Flame Tongue Longsword",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "weapon",
+  "weapon_class": "martial",
+  "reach": 5,
+  "damage": [
+    {
+      "dice": "1d8",
+      "type": "slashing"
+    }
+  ],
+  "versatile_damage": [
+    {
+      "dice": "1d10",
+      "type": "slashing"
+    }
+  ],
+  "properties": [
+    "versatile"
+  ],
+  "qualifiers": [
+    "magical"
+  ],
+  "magic_bonus": 1,
+  "on_hit": [
+    {
+      "kind": "extra_damage",
+      "damage": [
+        {
+          "dice": "2d6",
+          "type": "fire"
+        }
+      ]
+    }
+  ]
+}
