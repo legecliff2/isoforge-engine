@@ -1,0 +1,50 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.effectsappl",
+  "name": "Fire Bolt",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "level": 0,
+  "school": "evocation",
+  "classes": [
+    "sorcerer",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 120
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "spell_attack",
+      "attack": "ranged",
+      "damage": {
+        "dice": "1d10",
+        "type": "fire"
+      },
+      "applies_to": "affected"
+    }
+  ],
+  "scaling": {
+    "cantrip": {
+      "levels": [
+        5,
+        11,
+        17
+      ],
+      "adds": "dice"
+    }
+  }
+}

@@ -1,19 +1,22 @@
 {
   "$schema": "spell@1",
-  "id": "test.neg.spell.a",
+  "id": "test.neg.spell.effectsreac",
   "name": "Fire Bolt",
   "source": {
     "ref": "SRD 5.1",
     "license": "CC-BY-4.0"
   },
-  "level": 0,
+  "level": 1,
   "school": "evocation",
   "classes": [
     "sorcerer",
     "wizard"
   ],
   "casting_time": {
-    "kind": "action"
+    "kind": "reaction",
+    "trigger": {
+      "kind": "being_hit"
+    }
   },
   "range": {
     "kind": "ranged",
@@ -24,16 +27,12 @@
     "s": true
   },
   "duration": {
-    "kind": "instantaneous"
+    "kind": "until_start_of_caster_turn"
   },
   "effects": [
     {
-      "kind": "spell_attack",
-      "attack": "ranged",
-      "damage": {
-        "dice": "1d10",
-        "type": "fire"
-      }
+      "kind": "ac_bonus",
+      "bonus": 5
     },
     {
       "kind": "spell_attack",

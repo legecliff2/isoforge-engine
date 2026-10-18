@@ -279,8 +279,8 @@ std::vector<std::string> PackSet::reference_errors() const {
             } else if (type == "spell") {
                 const Json& j = d.doc.data;
                 const auto effs = j.find("effects");
-                // rules5e resolves exactly one effect per spell; check_spell stops there otherwise.
-                if (effs == j.end() || !effs->is_array() || effs->size() != 1) continue;
+                // blocks_spell lives on the first effect (reaction effects stand alone).
+                if (effs == j.end() || !effs->is_array() || effs->empty()) continue;
                 std::vector<std::pair<std::string, std::string>> refs;   // (where, id), validator order
                 const Json& eff = (*effs)[0];
                 if (eff.is_object())
