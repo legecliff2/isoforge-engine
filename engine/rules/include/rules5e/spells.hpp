@@ -27,9 +27,27 @@ enum class SpellEffectKind : uint8_t {
     AutoHit,        // darts that hit automatically (Magic Missile)
     AcBonus,        // reaction: AC bonus until the start of the caster's next turn (Shield)
     Counter,        // reaction: interrupts a spell being cast (Counterspell)
+    ApplyCondition, // a condition on each target with no save (Invisibility); lasts with the spell
 };
 enum class OnSave : uint8_t { None, Half };          // damage on a successful save
 enum class RepeatSave : uint8_t { None, EndOfTurn, StartOfTurn, OnDamage };   // condition: target repeats the save
+
+// One further effect of a multi-effect spell (SpellDef::extra_effects; effects 2..n of spell@1 `effects`).
+// Mirrors the per-effect fields of SpellDef. Extra effects resolve in order over the same targets as the
+// first effect and do not scale with slot level or caster level (scaling belongs to the first effect).
+struct SpellEffect {
+    SpellEffectKind kind = SpellEffectKind::Save;
+    bool melee = false; uint8_t beams = 1;                    // SpellAttack
+    DiceExpr dice{0, 0, 0}; DamageType damage_type = DamageType::Force;
+    bool add_spellcasting_modifier = false; uint32_t excluded_types = 0;   // Heal
+    Ability save_ability = Ability::Wis; OnSave on_save = OnSave::None;    // Save
+    bool applies_condition = false; Condition condition = Condition::Paralyzed;   // Save / ApplyCondition
+    RepeatSave repeat_save = RepeatSave::None;
+    uint8_t darts = 0; DartDistribution distribution = DartDistribution::Any; bool simultaneous = false;   // AutoHit
+    // Rider: resolve only for the targets the previous effect affected (spell attack: hit; save: failed;
+    // heal: healed; auto-hit: struck; apply_condition: received it). false = every target.
+    bool affected_only = false;
+};
 
 struct SpellDef {
     uint32_t id = 0;                     // spell_id_of(content_id)
@@ -77,7 +95,11 @@ struct SpellDef {
     DartDistribution distribution = DartDistribution::Any;   // AutoHit
     bool simultaneous = false;           // AutoHit: every target reacts before any damage
     AreaShape area = AreaShape::None; uint16_t area_size_ft = 0, area_width_ft = 0, area_height_ft = 0;
+    std::vector<SpellEffect> extra_effects;   // appended: effects 2..n (see SpellEffect); empty = single-effect spell
 };
+
+// The spell as seen by one extra effect: `base` with that effect's fields, no scaling, no further effects.
+SpellDef effect_view(const SpellDef& base, const SpellEffect& e);
 
 // Owned by the encounter hooks (shared, immutable). Sorted by id.
 class SpellBook {
