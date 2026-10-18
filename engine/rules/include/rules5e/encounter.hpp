@@ -24,6 +24,9 @@ struct TurnBudget {
     // Multiattack in progress: 1 + index into Combatant::multiattacks (0 = none) and the position of the
     // next attack in that sequence. While one is active, Attack must follow the declared order.
     uint8_t sequence = 0, sequence_pos = 0;
+    // Loading weapons already fired in the current Attack action (bit per Combatant::attacks index < 32):
+    // a Loading weapon fires once per action regardless of Extra Attack / multiattack. Reset when an action is spent.
+    uint32_t loading_fired = 0;
 };
 
 // Answer to a reaction window (names/layout shared with sim::Combat).
