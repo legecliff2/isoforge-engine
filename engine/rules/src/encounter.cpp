@@ -60,7 +60,10 @@ void after_damage(Combatant& t, const DamageApplied& d, bool critical, std::vect
         emit(ev, EventKind::CombatantDowned, t.id);
         t.death = DeathSaves{};
         for (Condition k : {Condition::Unconscious, Condition::Prone}) {
-            if (!t.has(k)) { add_condition(t, k); emit(ev, EventKind::ConditionAdded, t.id, 0, int32_t(k)); }
+            if (!t.has(k)) {
+                add_condition(t, k);
+                if (t.has(k)) emit(ev, EventKind::ConditionAdded, t.id, 0, int32_t(k));   // not if immune
+            }
         }
         return;
     }
@@ -347,7 +350,14 @@ void do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     if (hit) {
         int dmg = roll_dice(s.rng, atk.damage, crit);
         if (dmg < 0) dmg = 0;
-        damage_creature(s, t, apply_damage(t, int16_t(dmg), atk.type), crit, ev);
+        if (atk.extra_damage.empty()) {
+            damage_creature(s, t, apply_damage(t, int16_t(dmg), atk.type), crit, ev);
+        } else {   // multi-component hit: one DamageDealt carrying the per-type-modified sum
+            std::vector<DamagePiece> parts{{int16_t(dmg), atk.type}};
+            for (const DamagePart& p : atk.extra_damage)
+                parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.dice, crit))), p.type});
+            damage_creature(s, t, apply_damage_parts(t, parts), crit, ev);
+        }
     }
 }
 
@@ -649,7 +659,7 @@ void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& de
                  int32_t(r.success));
             int dealt = r.success ? (def.on_save == OnSave::Half ? dmg / 2 : 0) : dmg;
             if (dealt > 0) damage_creature(s, *t, apply_damage(*t, int16_t(dealt), def.damage_type), false, ev);
-            if (def.applies_condition && !r.success && !t->dead) {
+            if (def.applies_condition && !r.success && !t->dead && !(t->condition_immunities & bit(def.condition))) {
                 if (!t->has(def.condition)) {
                     add_condition(*t, def.condition);
                     emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.condition));
