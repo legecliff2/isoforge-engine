@@ -53,6 +53,15 @@ struct AbilityScores {
     constexpr int8_t operator[](Ability a) const { return score[std::size_t(a)]; }
 };
 
+// One extra damage component of an attack (SRD "damage dice + type"; e.g. a flame tongue's +2d6 fire).
+// Attack::damage/type stay the first component; extra_damage holds components 2..n. Each is rolled
+// (and doubled on a critical hit) separately and gets immunity/resistance/vulnerability for ITS type.
+struct DamagePart { DiceExpr dice; DamageType type; };
+
+// Weapon qualifiers for nonmagical-attack resistance (werewolf, gargoyle, ...): RESERVED. Nothing reads
+// Attack::qualifiers yet; Rules' follow-up fills and consumes it. Applies to every damage component.
+enum AttackQualifier : uint8_t { kAttackMagical = 1, kAttackSilvered = 2, kAttackAdamantine = 4 };
+
 struct Attack {
     std::string_view id;
     int8_t   to_hit;                               // total bonus
@@ -62,6 +71,9 @@ struct Attack {
     // appended: ranged weapons' normal / long range in feet (SRD 5.1 "Range"; longbow 150/600 needs
     // more than reach_or_range_ft's byte). 0 = use reach_or_range_ft as the normal range, no long range.
     uint16_t range_ft = 0, long_range_ft = 0;
+    // appended: damage components 2..n (empty = single-component attack, the pre-existing behaviour).
+    std::vector<DamagePart> extra_damage{};
+    uint8_t qualifiers = 0;   // AttackQualifier bits; reserved, unused by the rules today
 };
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
 constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
@@ -139,6 +151,8 @@ struct Combatant {
     uint32_t concentration_spell = 0;       // spell id concentrated on (0 = none)
     uint32_t reaction_blocks_spell = 0;     // Shield: no damage from this spell until the start of its turn
     CreatureType creature_type = CreatureType::Humanoid;   // spell targeting (Hold Person, Cure Wounds)
+    // appended: condition immunities (bitmask over Condition). add_condition() refuses an immune condition.
+    uint32_t condition_immunities = 0;
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
