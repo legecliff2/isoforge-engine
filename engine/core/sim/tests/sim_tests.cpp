@@ -318,17 +318,20 @@ TEST_CASE("character@3: v1 -> v2 -> v3 chain; pre-@3 effects inert; behavior.ai 
     CHECK(raw["$schema"] == "character@3");
     auto cur = reg.load_file(fighter);   // already current: unchanged
     REQUIRE_MESSAGE(cur.ok, cur.error);
-    CHECK(cur.current.version == 3);
-    CHECK(cur.data == raw);
+    CHECK(cur.current.version == 4);
+    auto raw4 = raw;   // the on-disk @3 file migrates 3 -> 4: schema tag and the descriptive-equipment marker
+    raw4["$schema"] = "character@4";
+    raw4["inert_mechanics"] = assets::Json::array({"equipment"});
+    CHECK(cur.data == raw4);
 
     auto old_doc = raw;
     old_doc["$schema"] = "character@1";
     auto v1 = reg.load(old_doc);
     REQUIRE_MESSAGE(v1.ok, v1.error);
     CHECK(v1.current.type == "character");
-    CHECK(v1.current.version == 3);
-    CHECK(v1.data["$schema"] == "character@3");
-    auto expect = raw;
+    CHECK(v1.current.version == 4);
+    CHECK(v1.data["$schema"] == "character@4");
+    auto expect = raw4;
     for (auto& f : expect["features"]) f["effect"]["inert"] = true;   // 2 -> 3 marks effects inert
     CHECK(v1.data == expect);
     CHECK_FALSE(assets::behavior_ai_script(v1.data));

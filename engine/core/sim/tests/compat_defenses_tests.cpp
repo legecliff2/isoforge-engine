@@ -209,7 +209,7 @@ TEST_CASE("compat defenses: decorated pre-@3 stat blocks load with no defenses a
             for (const auto& at : a->base.attacks) CHECK(at.qualifiers == 0);   // action qualifiers and magic_weapons are inert
         }
         CHECK(g->inert_mechanics.size() == 8);   // 4 defenses, damage[1..], attack_qualifiers, spellcasting, creature_type
-        CHECK(f->inert_mechanics.size() == 7);
+        CHECK(f->inert_mechanics.size() == 8);   // + equipment (3 -> 4 marker: the fl1 equipment list stays inert)
         CHECK(g->base.attacks[0].damage == rules5e::DiceExpr{1, 6, 2});
         CHECK(f->base.attacks[0].damage == rules5e::DiceExpr{1, 8, 5});
     }

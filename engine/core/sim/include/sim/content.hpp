@@ -38,6 +38,7 @@ struct Archetype {
     // Pre-@3 descriptive defenses / extra damage entries carried by the file (migration marker
     // "inert_mechanics"): listed, never applied (docs/CONTENT_COMPAT.md).
     std::vector<std::string> inert_mechanics;
+    std::vector<std::string> forward_compat;         // monster@4 / character@4 "forward_compat" flags: listed, ignored
     CreatureSize size = CreatureSize::Medium;        // stat block "size"
     // Side of the footprint in tiles: footprint_of(size) for monster@3 / character@3, always 1 for
     // pre-@3 content (its size was descriptive; migration marker "size" in inert_mechanics).

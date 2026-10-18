@@ -172,6 +172,9 @@ FeatureRegistry make_builtin() {
     r.add_hook("multiattack", {apply_multiattack});
     r.add_hook("damage_mitigation", {apply_damage_mitigation});
     r.add_hook("magic_weapons", {apply_magic_weapons});
+    // Kinds the @4 schemas introduce (frozen list of the 3 -> 4 migration; hooks arrive with their rows).
+    for (const char* k : {"on_event", "apply_modifier", "grant_action", "heal_pool", "save_effect", "reaction"})
+        r.reserve_kind(k, 4);
     // v0 wield model: a melee weapon without the two_handed property counts as wielded in one hand
     // with no other weapon (sim has no equipment/wield state yet).
     r.add_condition("one_handed_melee_no_other_weapon", [](const Json&, const Json& act) {
