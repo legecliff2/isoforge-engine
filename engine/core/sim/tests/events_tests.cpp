@@ -135,3 +135,40 @@ TEST_CASE("event goldens: same seed => same stream; locked digests") {
     MESSAGE("seed 1: events=" << a.second << " digest=" << a.first);
     CHECK(a.first == 7766538371569885080ull);   // GOLDEN v4 (v3 was 5379229055340337023; same events, version only)
 }
+
+TEST_CASE("event_stream_version: max over SimEvent::Kind and rules.kind constructs") {
+    auto sim_ev = [](SimEvent::Kind k) { SimEvent e{}; e.kind = k; return e; };
+    auto rules_ev = [](uint8_t kind) {
+        SimEvent e{};
+        e.kind = SimEvent::Kind::Rules;
+        e.rules.kind = rules5e::EventKind(kind);
+        return e;
+    };
+    const SimEvent plain = rules_ev(uint8_t(kLastRulesEventKind));   // last locked rules kind: no bump
+    const SimEvent spell = sim_ev(SimEvent::Kind::SpellTarget);
+    const SimEvent foot = sim_ev(SimEvent::Kind::Footprint);
+    const SimEvent late = rules_ev(uint8_t(kLastRulesEventKind) + 1);   // synthetic EventKind(39): past the locked layout
+    REQUIRE(uint8_t(late.rules.kind) == 39);
+    auto v = [](std::initializer_list<SimEvent> l) { std::vector<SimEvent> s(l); return event_stream_version(s); };
+
+    CHECK(event_stream_version(std::vector<SimEvent>{}) == 4);
+    CHECK(v({plain}) == 4);
+    CHECK(v({plain, spell}) == 5);
+    CHECK(v({foot}) == 6);
+    CHECK(v({late}) == kSimEventSchemaVersion);   // new-kind only: the contract version
+    // every ordering of a lower construct and a higher one gives the higher one (no early return, no last-wins)
+    CHECK(v({foot, spell}) == 6);
+    CHECK(v({spell, foot}) == 6);
+    CHECK(v({late, spell}) == kSimEventSchemaVersion);
+    CHECK(v({spell, late}) == kSimEventSchemaVersion);
+    CHECK(v({foot, late}) == kSimEventSchemaVersion);
+    CHECK(v({late, foot}) == kSimEventSchemaVersion);
+    CHECK(v({late, plain, foot, spell}) == kSimEventSchemaVersion);
+    CHECK(kSimEventSchemaVersion >= 6);
+    // A non-Rules event's unused rules.kind field is never read as a rules kind.
+    SimEvent tile = sim_ev(SimEvent::Kind::TileMoved);
+    tile.rules.kind = rules5e::EventKind(200);
+    CHECK(v({tile}) == 4);
+    // the hash separates versions: same payload, different version byte
+    CHECK(event_stream_hash(std::vector<SimEvent>{plain}) != event_stream_hash(std::vector<SimEvent>{late, plain}));
+}

@@ -95,7 +95,7 @@ The authoritative per-kind field meanings are in `rules5e/encounter.hpp`. If tha
 
 ## Digest versioning (v5, v6)
 
-`event_stream_hash` records `event_stream_version(events)`, the lowest schema version that can express the stream: 6 if it contains a `Footprint`, else 5 if it contains a `SpellTarget`, otherwise 4. `kSimEventSchemaVersion` (6) is the contract version. Streams without a `CastSpell` or a multi-tile creature therefore keep their v4 digests bit-identical, streams with spells but no multi-tile creature keep their v5 digests, and every locked digest from before v6 is unchanged. Only a stream with a multi-tile creature hashes as version 6.
+`event_stream_hash` records `event_stream_version(events)`, the lowest schema version that can express the stream, taken as the **maximum over every construct** in it, from both kind families: 6 for a `Footprint`, 5 for a `SpellTarget`, `kSimEventSchemaVersion` for a rules event whose kind is past `kLastRulesEventKind` (appended after the locked layout; sim bumps the contract version when it adopts such kinds), otherwise 4. No construct masks a later, newer one (the function has no early return). `kSimEventSchemaVersion` (6) is the contract version. Streams without a `CastSpell` or a multi-tile creature therefore keep their v4 digests bit-identical, streams with spells but no multi-tile creature keep their v5 digests, and every locked digest from before v6 is unchanged. Only a stream with a multi-tile creature hashes as version 6.
 
 ## Determinism guarantees
 
