@@ -186,6 +186,24 @@ bool Combat::los_spots(Spot a, Spot b) const {
     return false;
 }
 
+bool Combat::ally_near(CombatantId attacker, Spot target) const {
+    const auto* me = rules5e::find(state_, attacker);
+    if (!me) return false;
+    for (const auto& sl : slots_) {
+        const auto* c = rules5e::find(state_, sl.id);
+        if (sl.id == attacker || !c || c->dead || c->team != me->team || !rules5e::is_conscious(*c) ||
+            rules5e::is_incapacitated(*c))
+            continue;
+        const Spot as = spot(sl.id);
+        if (rect_distance(as.p, as.n, target.p, target.n) <= 1) return true;
+    }
+    return false;
+}
+
+bool Combat::ally_near_target(CombatantId attacker, CombatantId target) const {
+    return ally_near(attacker, spot(target));
+}
+
 bool Combat::line_of_sight(CombatantId a, CombatantId b) const { return los_spots(spot(a), spot(b)); }
 
 std::vector<Vec2i> Combat::occupied_except(CombatantId id) const {
@@ -290,12 +308,13 @@ void Combat::install_hooks() {
                                         const rules5e::Event& e) -> std::optional<ActionRequest> {
         if (ra.response.kind != ActionKind::Attack) return std::nullopt;
         const auto* a = rules5e::find(state_, ra.actor);
-        if (!a || ra.response.attack_index >= a->attacks.size() || !a->attacks[ra.response.attack_index].ranged)
-            return std::nullopt;
+        if (!a || ra.response.attack_index >= a->attacks.size()) return std::nullopt;
         const Spot rp = spot(ra.actor);
         const Spot tp = ra.response.target == e.actor ? spot_at(e.actor, moving_to(e.actor).value_or(pos(e.actor)))
                                                       : spot(ra.response.target);
         ActionRequest q = ra.response;
+        q.ally_near_target = ally_near(ra.actor, tp);   // facts are taken when the readied attack fires
+        if (!a->attacks[ra.response.attack_index].ranged) return q;   // melee: only the ally fact is refreshed
         if (!ranged_attack_facts(ra.actor, ra.response.attack_index, rp, tp, q, nullptr)) return std::nullopt;
         q.target_within_5ft = rect_distance(rp.p, rp.n, tp.p, tp.n) <= 1;
         return q;
@@ -541,6 +560,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to) {
             return r;
         }
         req.target_within_5ft = d <= 1;
+        req.ally_near_target = ally_near(actor, spot(req.target));
     }
     if (req.kind == ActionKind::CastSpell) {
         if (!spells_ || !spells_->find(req.spell_id)) { r.error = "unknown spell"; return r; }
