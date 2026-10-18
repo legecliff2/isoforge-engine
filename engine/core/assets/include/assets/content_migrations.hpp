@@ -23,6 +23,7 @@
 //  "inert": true so the engine never double-applies it (docs/CONTENT_COMPAT.md).
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "assets/schema_registry.hpp"
 
@@ -32,6 +33,12 @@ inline constexpr uint32_t kMonsterSchemaVersion = 3;
 inline constexpr uint32_t kCharacterSchemaVersion = 3;
 // spell@1: SRD spell (schemas/spell/v1.schema.json); mapped to rules5e::SpellDef by rules5e_content.
 inline constexpr uint32_t kSpellSchemaVersion = 1;
+
+// Effect kinds first made mechanical by schema version `v` of monster / character (the frozen list a
+// migration (v-1 -> v) must mark inert in older files). Empty for every version until the batch that
+// introduces new kinds (@4) lands; sim::FeatureRegistry's per-kind minimum versions must equal these
+// (pinned by sim's features_tests "kind list equals the migration's frozen list").
+std::vector<std::string> effect_kinds_introduced_at(uint32_t schema_version);
 
 // Registers every engine-known content type with its current version and migrations.
 void register_content_schemas(SchemaRegistry& reg);

@@ -51,6 +51,7 @@ class FeatureRegistry;
 struct FeatureBuildCtx {
     const FeatureRegistry& registry;
     const assets::Json& doc;                    // the stat block (migrated)
+    uint32_t declared_version = 0;              // schema version the file declared before migration; 0 = unknown
     const std::vector<const assets::Json*>& attack_actions;   // content action per base.attacks[i]
 };
 
@@ -65,7 +66,17 @@ using ActionPredicate = std::function<bool(const assets::Json& stat_block, const
 
 class FeatureRegistry {
 public:
-    void add_hook(std::string kind, FeatureHook hook) { hooks_[std::move(kind)] = std::move(hook); }
+    // min_schema_version: the monster / character schema version that made this kind mechanical (0 = since @3,
+    // the version that introduced effects). A file that declared an older version than this lists the effect
+    // as inert instead of applying it (ContentLibrary::add); content never fails to load because of it.
+    void add_hook(std::string kind, FeatureHook hook, uint32_t min_schema_version = 0) {
+        hooks_[kind] = std::move(hook);
+        min_version_[std::move(kind)] = min_schema_version;
+    }
+    uint32_t min_schema_version(const std::string& kind) const {
+        auto it = min_version_.find(kind);
+        return it == min_version_.end() ? 0 : it->second;
+    }
     void add_condition(std::string id, ActionPredicate p) { conditions_[std::move(id)] = std::move(p); }
     const FeatureHook* hook(const std::string& kind) const;
     const ActionPredicate* condition(const std::string& id) const;
@@ -77,6 +88,7 @@ public:
 
 private:
     std::map<std::string, FeatureHook> hooks_;
+    std::map<std::string, uint32_t> min_version_;
     std::map<std::string, ActionPredicate> conditions_;
 };
 
