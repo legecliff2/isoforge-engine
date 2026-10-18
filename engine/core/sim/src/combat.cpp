@@ -1,6 +1,7 @@
 #include "sim/combat.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 
 #include "assets/schema_registry.hpp"
 #include "base/canonical_hash.hpp"
@@ -174,7 +175,109 @@ bool Combat::hostile(CombatantId a, CombatantId b) const {
     const auto* cb = rules5e::find(state_, b);
     return ca && cb && ca->team != cb->team;
 }
+const rules5e::SpellDef* Combat::spell_def(uint32_t id) const { return spells_ ? spells_->find(id) : nullptr; }
+
+namespace {
+using rules5e::AreaShape;
+int64_t i64(int v) { return v; }
+}
+
+std::vector<CombatantId> Combat::area_targets(CombatantId caster, const rules5e::SpellDef& def, Vec2i aim,
+                                              std::string* error) const {
+    auto fail = [&](const char* m) { if (error) *error = m; return std::vector<CombatantId>{}; };
+    if (def.area == AreaShape::None) return fail("spell has no area");
+    if (!rules5e::find(state_, caster)) return fail("bad caster");
+    if (!grid_.in_bounds(aim)) return fail("aim tile out of bounds");
+    const Spot cs = spot(caster);
+    const bool self_origin = def.range_ft == 0;
+    const bool directional = def.area == AreaShape::Cone || def.area == AreaShape::Line;
+    const int size = int(def.area_size_ft) / kFeetPerTile;   // cone/line length, cube side, sphere/cylinder radius (tiles)
+    const int width = std::max(1, int(def.area_width_ft) / kFeetPerTile);
+    // Doubled coordinates keep even footprints' centres integral.
+    const Vec2i c2{2 * cs.p.x + cs.n - 1, 2 * cs.p.y + cs.n - 1};
+    const Vec2i a2{2 * aim.x - c2.x, 2 * aim.y - c2.y};   // aim relative to the caster's centre
+    if (!self_origin && !directional) {
+        if (rect_distance(cs.p, cs.n, aim, 1) * kFeetPerTile > int(def.range_ft)) return fail("aim beyond range");
+        bool seen = false;
+        for (int y = 0; y < cs.n && !seen; ++y)
+            for (int x = 0; x < cs.n && !seen; ++x) seen = grid_.line_of_sight({cs.p.x + x, cs.p.y + y}, aim);
+        if (!seen) return fail("aim not in line of sight");
+    } else if (directional || def.area == AreaShape::Cube) {
+        if (a2.x == 0 && a2.y == 0) return fail("aim must differ from the caster's tile");
+    }
+    // Template membership of one tile.
+    auto inside = [&](Vec2i t) {
+        const Vec2i v2{2 * t.x - c2.x, 2 * t.y - c2.y};   // tile centre relative to the caster centre, doubled
+        switch (def.area) {
+            case AreaShape::Cone: {
+                const int64_t dot = i64(v2.x) * a2.x + i64(v2.y) * a2.y, cross = i64(v2.x) * a2.y - i64(v2.y) * a2.x;
+                const int cheb = std::max(std::abs(v2.x), std::abs(v2.y));
+                const int64_t cr = cross < 0 ? -cross : cross;
+                // 5e cone: as wide as it is long, i.e. half angle atan(1/2): |cross| * 2 <= dot.
+                return dot > 0 && cr * 2 <= dot && cheb <= 2 * size && cheb > 0;
+            }
+            case AreaShape::Line: {
+                const int64_t dot = i64(v2.x) * a2.x + i64(v2.y) * a2.y, cross = i64(v2.x) * a2.y - i64(v2.y) * a2.x;
+                const int64_t aa = i64(a2.x) * a2.x + i64(a2.y) * a2.y;
+                // Perpendicular distance <= width / 2 and projection in (0, length], all in tiles.
+                return dot > 0 && cross * cross <= i64(width) * width * aa && dot * dot <= 4 * i64(size) * size * aa;
+            }
+            case AreaShape::Cube: {
+                if (!self_origin) {   // centred on the aim tile
+                    const int lo = -((size - 1) / 2), hi = size / 2;
+                    return t.x >= aim.x + lo && t.x <= aim.x + hi && t.y >= aim.y + lo && t.y <= aim.y + hi;
+                }
+                // Starts at the caster: the side-`size` square touching the caster's footprint on the side the aim
+                // points to (dominant axis; a tie prefers x), centred across on the footprint's centre.
+                const bool horiz = std::abs(a2.x) >= std::abs(a2.y);
+                const int lo = -((size - 1) / 2), hi = size / 2;
+                const int mid_x = (c2.x - 1 + 1) / 2, mid_y = (c2.y - 1 + 1) / 2;   // centre tile (lower of an even pair)
+                if (horiz) {
+                    const int x0 = a2.x > 0 ? cs.p.x + cs.n : cs.p.x - size;
+                    return t.x >= x0 && t.x < x0 + size && t.y >= mid_y + lo && t.y <= mid_y + hi;
+                }
+                const int y0 = a2.y > 0 ? cs.p.y + cs.n : cs.p.y - size;
+                return t.y >= y0 && t.y < y0 + size && t.x >= mid_x + lo && t.x <= mid_x + hi;
+            }
+            case AreaShape::Sphere:
+            case AreaShape::Cylinder: {   // 2D: radius in tiles by Chebyshev distance (the sim's distance metric)
+                if (self_origin) return rect_distance(cs.p, cs.n, t, 1) <= size;
+                return std::max(std::abs(t.x - aim.x), std::abs(t.y - aim.y)) <= size;
+            }
+            default: return false;
+        }
+    };
+    // Where line of sight is taken from: the aim tile for a point origin, otherwise the caster's footprint.
+    auto origin_sees = [&](Vec2i t) {
+        if (!self_origin && !directional) return grid_.line_of_sight(aim, t);
+        for (int y = 0; y < cs.n; ++y)
+            for (int x = 0; x < cs.n; ++x)
+                if (grid_.line_of_sight({cs.p.x + x, cs.p.y + y}, t)) return true;
+        return false;
+    };
+    std::vector<CombatantId> out;
+    for (const auto& sl : slots_) {
+        const auto* c = rules5e::find(state_, sl.id);
+        if (sl.id == caster || !c || c->dead) continue;
+        const Spot s = spot(sl.id);
+        bool hit = false;
+        for (int y = 0; y < s.n && !hit; ++y)
+            for (int x = 0; x < s.n && !hit; ++x) {
+                const Vec2i t{s.p.x + x, s.p.y + y};
+                hit = inside(t) && origin_sees(t);
+            }
+        if (hit) out.push_back(sl.id);
+    }
+    if (out.empty()) return fail("no creature in the area");
+    return out;
+}
+
 bool Combat::spell_in_reach(const rules5e::SpellDef& def, CombatantId caster, CombatantId target) const {
+    if (derived_area_) return true;   // area_targets already applied range, origin and line of sight
+    if (def.area != AreaShape::None && def.range_ft == 0) {   // self-origin template: anyone inside its extent in sight
+        if (caster == target) return true;
+        return distance_tiles(caster, target) * kFeetPerTile <= int(def.area_size_ft) && line_of_sight(caster, target);
+    }
     if (def.range_ft == 0) return caster == target;   // self
     if (distance_tiles(caster, target) * kFeetPerTile > int(def.range_ft)) return false;
     return caster == target || line_of_sight(caster, target);
@@ -509,7 +612,7 @@ SubmitResult Combat::finish(rules5e::StepResult sr) {
     r.status = sr.status;
     if (sr.status == StepStatus::Rejected) {
         r.error = std::string(sr.error);
-        if (!state_.pending) { step_to_.reset(); ready_to_.reset(); }   // nothing paused
+        if (!state_.pending) { step_to_.reset(); ready_to_.reset(); derived_area_ = false; }   // nothing paused
         return r;
     }
     r.ok = true;
@@ -521,6 +624,8 @@ SubmitResult Combat::finish(rules5e::StepResult sr) {
     std::optional<Vec2i> to;
     if (ls.request.kind == ActionKind::Move) to = step_to_;
     if (ls.request.kind == ActionKind::Ready) to = ready_to_;
+    if (ls.request.kind == ActionKind::CastSpell && derived_area_) to = aim_to_;   // the aim tile (log_hash folds it)
+    derived_area_ = false;
     complete(ls, sr.events, to);
     log_.push_back({ls, to});
     r.reactions = std::move(sr.reactions);
@@ -532,7 +637,7 @@ SubmitResult Combat::submit(const Command& cmd) {
     if (state_.pending) { r.error = "a reaction window is waiting for a decision"; r.needs = pending(); return r; }
     if (state_.ended) { r.error = "encounter ended"; return r; }
     install_hooks();
-    return cmd.kind == CommandKind::Step ? do_step(cmd.to) : do_rules(cmd.request, cmd.to);
+    return cmd.kind == CommandKind::Step ? do_step(cmd.to) : do_rules(cmd.request, cmd.to, cmd.aim);
 }
 
 SubmitResult Combat::decide(const ReactionDecision& d) {
@@ -558,8 +663,9 @@ SubmitResult Combat::settle(const ReactionDeciderFn& decider) {
     return r;
 }
 
-SubmitResult Combat::do_rules(ActionRequest req, Vec2i to) {
+SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     SubmitResult r;
+    derived_area_ = false;
     const CombatantId actor = rules5e::current_actor(state_);
     if (req.actor != actor) { r.error = "not this combatant's turn"; return r; }
     if (req.kind == ActionKind::Move) { r.error = "use Step commands for movement (sim paths the grid)"; return r; }
@@ -590,6 +696,16 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to) {
     }
     if (req.kind == ActionKind::CastSpell) {
         if (!spells_ || !spells_->find(req.spell_id)) { r.error = "unknown spell"; return r; }
+        if (aim) {   // area template: derive the targets from the aim tile (opt-in; an explicit list wins)
+            const auto* def = spells_->find(req.spell_id);
+            if (def->area == rules5e::AreaShape::None || !req.targets.empty()) { r.error = "aim needs an area spell and no explicit targets"; return r; }
+            std::string err;
+            req.targets = area_targets(actor, *def, to, &err);
+            if (req.targets.empty()) { r.error = err; return r; }
+            req.target = req.targets[0];
+            derived_area_ = true;
+            aim_to_ = to;
+        }
         const CombatantId first = !req.targets.empty() ? req.targets[0] : req.target;
         if (!rules5e::find(state_, first)) { r.error = "bad target"; return r; }
         req.target_within_5ft = distance_tiles(actor, first) <= 1;   // spell attacks: crit vs Paralyzed/Unconscious
@@ -761,12 +877,14 @@ std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* c
         c->ready_to_.reset();
         if (e.step.request.kind == ActionKind::Move) c->step_to_ = e.to;
         if (e.step.request.kind == ActionKind::Ready) c->ready_to_ = e.to;
+        c->derived_area_ = e.step.request.kind == ActionKind::CastSpell && e.to;   // logged targets came from an aim tile
         rules5e::StepResult sr = rules5e::replay_step(c->state_, e.step);   // rules' replay; no decider
         if (!sr.ok || sr.desync || sr.status != StepStatus::Done) {
             if (error) *error = "replay desync at entry " + std::to_string(i) + ": " +
                                 (sr.ok ? std::string("logged decisions do not match") : std::string(sr.error));
             return std::nullopt;
         }
+        c->derived_area_ = false;
         c->complete(*sr.logged, sr.events, e.to);
         c->log_.push_back({*sr.logged, e.to});
     }

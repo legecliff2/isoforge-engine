@@ -54,6 +54,9 @@ struct Command {
     CommandKind kind = CommandKind::Rules;
     rules5e::ActionRequest request{};
     Vec2i to{};
+    // CastSpell of an area spell: `to` is the aim tile and sim derives the targets (the creatures inside the template)
+    // when `request.targets` is empty. Opt-in: without it an area spell keeps the caller-supplied target list.
+    bool aim = false;
 };
 // Replay log entry: rules5e's LoggedStep (request + Ask decisions) plus, for Moves, the tile.
 struct LogEntry {
@@ -169,14 +172,24 @@ public:
     // Canonical hash of the command log alone.
     uint64_t log_hash() const;
 
+    // Area templates (VERSION_BUMP_BATCH row 7). The creatures (other than the caster) a spell's template catches when
+    // aimed at `aim`, in combatant order; empty with *error set when the aim is invalid. Geometry is over footprint tiles
+    // (see docs/SIM_EVENTS.md "Area templates"): range 0 is a self origin (cone / line / cube start at the caster and
+    // point toward `aim`; sphere / cylinder are centred on the caster), range > 0 a point origin at `aim` (must be within
+    // range and in line of sight of the caster). Creatures need line of sight from the origin to a tile of their footprint.
+    std::vector<CombatantId> area_targets(CombatantId caster, const rules5e::SpellDef& def, Vec2i aim,
+                                          std::string* error = nullptr) const;
+    const rules5e::SpellDef* spell_def(uint32_t id) const;
+
 private:
+    bool derived_area_ = false;   // targets of the request being resolved came from area_targets (skips the per-target range check)
     struct Slot { CombatantId id; ecs::Entity entity; const Archetype* archetype; };
     Combat(ecs::Registry& reg, Grid grid) : reg_(&reg), grid_(std::move(grid)) {}
     void apply_rules_events(const std::vector<rules5e::Event>& evs);
     void sync_ecs();
     void install_hooks();
     SubmitResult finish(rules5e::StepResult sr);
-    SubmitResult do_rules(rules5e::ActionRequest req, Vec2i to);
+    SubmitResult do_rules(rules5e::ActionRequest req, Vec2i to, bool aim = false);
     SubmitResult do_step(Vec2i to);
     void complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs, std::optional<Vec2i> to);
     std::optional<Vec2i> moving_to(CombatantId id) const;   // destination of a move being resolved
@@ -211,6 +224,7 @@ private:
     std::shared_ptr<const rules5e::SpellBook> spells_;   // content spell@1 defs (null = no spells)
     std::map<CombatantId, Vec2i> readied_dest_;   // readied Move destinations (until fired/expired)
     std::optional<Vec2i> ready_to_;               // destination of the Ready being resolved
+    std::optional<Vec2i> aim_to_;                 // aim tile of the area CastSpell being resolved
     std::optional<Vec2i> step_to_;   // destination of the Move being resolved / paused (sim-only)
 };
 
