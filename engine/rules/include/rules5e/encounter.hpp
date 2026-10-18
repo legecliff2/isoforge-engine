@@ -422,6 +422,10 @@ bool spend_pool(EncounterState&, CombatantId actor, uint32_t pool_id, uint16_t n
 uint64_t action_uses_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 // Innate spells' uses and the printed DC/attack overrides, over every combatant that has any (sim folds it under tag 0xA4,
 // only when `has_innate_state` is true).
+// Triggers' once-per-turn/round bookkeeping over every combatant that has triggers (sim folds it under tag 0xA6, only
+// when `has_trigger_state`).
+bool has_trigger_state(const EncounterState&);
+uint64_t triggers_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 bool has_innate_state(const EncounterState&);
 uint64_t innate_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 uint64_t pools_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);

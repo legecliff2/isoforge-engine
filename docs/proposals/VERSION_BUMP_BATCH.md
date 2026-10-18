@@ -556,6 +556,12 @@ without asking; default `Ask` with *no content* opens no window, so old encounte
 Events: `FeatureTriggered` (§9.1). Damage from riders is folded into the existing `DamageRolled` /
 `DamageApplied` payloads (`types_dealt` already carries per-type totals), so damage consumers need no change.
 
+### 3.2a Row 9 sub-PR split and 9a as implemented
+
+Row 9 lands as three rules PRs: **9a** (trigger model; `hit`/`crit` triggers with `extra_damage` riders; predicates; limits; the `FeatureTriggered` emit site), **9b** (`reduce_to_zero`/`drop_to_zero`/`death`/`turn_start`/`turn_end`/`damage_dealt` triggers; `bonus_attack`, `set_hp`, `area_save`, `heal_self`, `temp_hp` riders; the `save` predicate), **9c** (`choice: ask` through the `HitRider` reaction window, `spend`, `save_condition`/`apply_condition`, `scale.per_slot_level`).
+
+9a: `Combatant::triggers` (`Trigger{id, on, limit, choice, when[], effects[]}`) is filled by `Combat::create`. Only `on: hit|crit`, `choice: auto`, and `extra_damage` effects fire; every other value is stored and inert until its sub-PR. On a hit, before damage is rolled, matching triggers emit `FeatureTriggered(actor=owner, target, a=trigger id, b=TriggerOn, c=1)` and their dice join the damage as extra pieces (dice doubled on a crit; type = the weapon's when `same_as_weapon`). A trigger with an empty `when` list always passes. `weapon` predicates are false for spell attacks. `advantage_or_ally_adjacent` is true when the attack rolled with advantage (net of disadvantage) or `ally_near_target`. `moved_at_least_ft` reads `TurnBudget::moved_ft` and only holds on the owner's own turn. Deviation from the sketch: limit bookkeeping (`trigger_turn_mask/stamp`, `trigger_round_mask/stamp`) lives on the `Combatant`, not on `TurnBudget`, so once-per-turn also covers off-turn reactions; stamps reset lazily. A combatant with no triggers draws no extra rng and emits no events, so goldens are unchanged. `triggers_digest` / `has_trigger_state` are rules-side; the fold into `Combat::hash` (tag `0xA6`, only when non-empty) is an Engine Core hand-off.
+
 ### 3.3 Inert behaviour
 
 * Old traits whose effect `kind` is `on_event` do not exist (open effect, none shipped).
