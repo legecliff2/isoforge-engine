@@ -72,6 +72,14 @@ constexpr int chebyshev(Vec2i a, Vec2i b) noexcept {
     const int dy = a.y > b.y ? a.y - b.y : b.y - a.y;
     return dx > dy ? dx : dy;
 }
+// Distance in tiles between the nearest tiles of two square footprints (side na / nb, anchored at their
+// min-x/min-y tile): 0 when they overlap, 1 when adjacent (incl. diagonally). SRD reach and range are
+// measured to the nearest part of a creature's space. For na == nb == 1 this is chebyshev(a, b).
+constexpr int rect_distance(Vec2i a, int na, Vec2i b, int nb) noexcept {
+    const int dx = a.x > b.x + nb - 1 ? a.x - (b.x + nb - 1) : (b.x > a.x + na - 1 ? b.x - (a.x + na - 1) : 0);
+    const int dy = a.y > b.y + nb - 1 ? a.y - (b.y + nb - 1) : (b.y > a.y + na - 1 ? b.y - (a.y + na - 1) : 0);
+    return dx > dy ? dx : dy;
+}
 // Reach in tiles from feet (5 ft = adjacent).
 constexpr int reach_tiles(int feet) noexcept { return feet / kFeetPerTile; }
 
