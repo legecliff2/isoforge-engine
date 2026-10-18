@@ -15,7 +15,7 @@ set(ALLOW_assets        "base;platform")
 set(ALLOW_ecs           "base")
 set(ALLOW_world         "assets;ecs;base;rng;detmath")
 set(ALLOW_audio         "assets;platform")
-set(ALLOW_sim           "ecs;rules5e;world")
+set(ALLOW_sim           "ecs;rules5e;rules5e_content;world")   # spell@1 -> SpellBook for CastSpell (PR: sim CastSpell)
 set(ALLOW_script_host   "ecs;sim;world;assets;rng;detmath")
 set(ALLOW_procgen       "detmath;rng;base")          # §2.1 (approved)
 set(ALLOW_procgen_world "world;procgen")             # glue: world <- procgen

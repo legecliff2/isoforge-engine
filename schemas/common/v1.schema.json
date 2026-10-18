@@ -247,6 +247,27 @@
         "sprite": { "type": "string" }, "portrait": { "type": "string" }, "ai": { "type": "string" }
       }
     },
+    "spellcasting": {
+      "description": "monster@3 / character@3 only (engine-minimal; Tools & Content owns the final shape). Slots, caster level, ability and the spells the creature can cast now (known or prepared; cantrips included). Referenced spells must be spell@1 documents of the loaded pack set.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ability", "caster_level", "spells"],
+      "properties": {
+        "ability": { "enum": ["int", "wis", "cha"] },
+        "caster_level": { "type": "integer", "minimum": 1, "maximum": 20, "description": "Character / caster level (cantrip scaling tiers)." },
+        "slots": {
+          "type": "object", "additionalProperties": false,
+          "patternProperties": { "^[1-9]$": { "type": "integer", "minimum": 1, "maximum": 9 } },
+          "description": "Spell slots per spell level, keys \"1\"..\"9\"."
+        },
+        "pact": {
+          "type": "object", "additionalProperties": false, "required": ["level", "slots"],
+          "properties": { "level": { "type": "integer", "minimum": 1, "maximum": 5 }, "slots": { "type": "integer", "minimum": 1, "maximum": 4 } },
+          "description": "Pact Magic: slots all of one level, restored on a short rest."
+        },
+        "spells": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/content_id" } }
+      }
+    },
     "stat_block": {
       "description": "Fields shared by monsters and characters.",
       "type": "object",

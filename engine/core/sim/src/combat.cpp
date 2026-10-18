@@ -93,6 +93,7 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
         cs.push_back(std::move(k));
     }
     std::vector<rules5e::Event> opening;
+    if (!content.spells()->all().empty()) c.spells_ = content.spells();
     c.state_ = rules5e::begin_encounter(std::move(cs), seed, &opening);
     // Limited-use features live in the rules state (hashed, rebuilt by replay).
     for (const auto& sl : c.slots_)
@@ -123,6 +124,13 @@ bool Combat::hostile(CombatantId a, CombatantId b) const {
     const auto* cb = rules5e::find(state_, b);
     return ca && cb && ca->team != cb->team;
 }
+bool Combat::spell_in_reach(const rules5e::SpellDef& def, CombatantId caster, CombatantId target) const {
+    if (def.range_ft == 0) return caster == target;   // self
+    const Vec2i a = pos(caster), b = pos(target);
+    if (chebyshev(a, b) * kFeetPerTile > int(def.range_ft)) return false;
+    return caster == target || grid_.line_of_sight(a, b);
+}
+
 std::vector<Vec2i> Combat::occupied_except(CombatantId id) const {
     std::vector<Vec2i> out;
     for (const auto& s : slots_) {
@@ -176,8 +184,39 @@ void Combat::install_hooks() {
     // No decide_reaction: rules5e returns NeedsDecision and sim pauses (settle() is the adapter).
     state_.hooks.decide_reaction = nullptr;
     state_.hooks.poll_order = poll_order_;
+    state_.hooks.spells = spells_;
+    if (spells_) {
+        state_.hooks.can_provide_components = [](const rules5e::EncounterState&, const rules5e::Combatant&,
+                                                 const rules5e::SpellDef& d) { return d.material_cost_cp == 0; };
+        state_.hooks.spell_target_ok = [this](const rules5e::EncounterState&, const rules5e::Combatant& caster,
+                                              const rules5e::SpellDef& d, const rules5e::Combatant& t) {
+            return spell_in_reach(d, caster.id, t.id);
+        };
+        state_.hooks.targets_within = [this](const rules5e::EncounterState&, const std::vector<CombatantId>& ids, int feet) {
+            for (std::size_t i = 0; i < ids.size(); ++i)
+                for (std::size_t j = i + 1; j < ids.size(); ++j)
+                    if (chebyshev(pos(ids[i]), pos(ids[j])) * kFeetPerTile > feet) return false;
+            return true;
+        };
+        state_.hooks.can_see = [this](const rules5e::EncounterState&, const rules5e::Combatant& observer,
+                                      const rules5e::Combatant& target) {
+            return !observer.has(rules5e::Condition::Blinded) && grid_.line_of_sight(pos(observer.id), pos(target.id));
+        };
+    }
     state_.hooks.in_range = [this](const rules5e::EncounterState&, const rules5e::ReactionWindow& w,
                                    const rules5e::Combatant& r) {
+        if (w.trigger == ReactionTrigger::BeingHit) return r.id == w.target;   // Shield: the creature hit
+        if (w.trigger == ReactionTrigger::SpellCast) {   // Counterspell: within the counter spell's range, in sight
+            if (!spells_) return false;
+            for (uint32_t id : r.spells_known) {
+                const rules5e::SpellDef* d = spells_->find(id);
+                if (d && d->kind == rules5e::SpellEffectKind::Counter &&
+                    chebyshev(pos(r.id), pos(w.trigger_actor)) * kFeetPerTile <= int(d->range_ft) &&
+                    grid_.line_of_sight(pos(r.id), pos(w.trigger_actor)))
+                    return true;
+            }
+            return false;
+        }
         if (w.trigger != ReactionTrigger::LeavingReach) return false;
         const auto to = moving_to(w.trigger_actor);
         if (!to) return false;
@@ -296,6 +335,23 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
                 }
         }
         if (e.kind == rules5e::EventKind::ReadyTriggered) fired.push_back(e.actor);
+    }
+    if (q.kind == ActionKind::CastSpell) {   // v5: where each affected creature stood
+        bool cast = false;
+        for (const auto& e : evs) cast = cast || (e.kind == rules5e::EventKind::SpellCast && e.reaction_depth == 0 && e.actor == q.actor);
+        if (cast) {
+            std::vector<CombatantId> ids = q.targets;
+            if (ids.empty()) ids.push_back(q.target);
+            for (CombatantId id : ids) {
+                SimEvent se;
+                se.kind = SimEvent::Kind::SpellTarget;
+                se.actor = q.actor;
+                se.tile = pos(id);
+                se.rules.target = id;
+                se.rules.a = int32_t(q.spell_id);
+                events_.push_back(se);
+            }
+        }
     }
     for (const auto& e : evs)
         if (e.kind == rules5e::EventKind::ReadyTriggered || e.kind == rules5e::EventKind::ReadyExpired) readied_dest_.erase(e.actor);
@@ -418,6 +474,12 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to) {
             return r;
         }
         req.target_within_5ft = d <= 1;
+    }
+    if (req.kind == ActionKind::CastSpell) {
+        if (!spells_ || !spells_->find(req.spell_id)) { r.error = "unknown spell"; return r; }
+        const CombatantId first = !req.targets.empty() ? req.targets[0] : req.target;
+        if (!rules5e::find(state_, first)) { r.error = "bad target"; return r; }
+        req.target_within_5ft = chebyshev(pos(actor), pos(first)) <= 1;   // spell attacks: crit vs Paralyzed/Unconscious
     }
     ready_to_.reset();
     if (req.kind == ActionKind::Ready) {
