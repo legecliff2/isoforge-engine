@@ -14,7 +14,7 @@ struct AttackContext {
     bool extra_disadvantage = false;
 };
 
-struct AttackResult { D20Roll roll; bool hit, critical; int16_t damage; DamageType type; };
+struct AttackResult { D20Roll roll; bool hit, critical; int16_t damage; DamageType type; uint8_t qualifiers = 0; };
 
 // Combines ctx.mode with condition-based sources (SRD 5.1 Appendix A):
 //   attacker Blinded/Frightened/Poisoned/Prone/Restrained or exhaustion >= 3 -> disadvantage;

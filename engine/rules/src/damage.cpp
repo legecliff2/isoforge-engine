@@ -13,11 +13,12 @@ void remove_condition(Combatant& c, Condition k) { c.conditions &= ~bit(k); }
 
 namespace {
 // SRD order: immunity -> 0; resistance halves (round down); vulnerability doubles.
-int modified(const Combatant& c, int16_t amount, DamageType type) {
+int modified(const Combatant& c, int16_t amount, DamageType type, uint8_t qualifiers) {
     int dmg = amount < 0 ? 0 : amount;
     uint32_t b = bit(type);
-    if (c.immunities & b) return 0;
-    if (effective_resistances(c) & b) dmg /= 2;  // non-negative: truncation == round down
+    if ((c.immunities & b) || qualified_applies(c.immune_qualified, type, qualifiers)) return 0;
+    if ((effective_resistances(c) & b) || qualified_applies(c.resist_qualified, type, qualifiers))
+        dmg /= 2;  // non-negative: truncation == round down
     if (c.vulnerabilities & b) dmg *= 2;
     return dmg;
 }
@@ -38,13 +39,13 @@ DamageApplied absorb(const Combatant& c, int dmg) {
 }
 } // namespace
 
-DamageApplied apply_damage(const Combatant& c, int16_t amount, DamageType type) {
-    return absorb(c, modified(c, amount, type));
+DamageApplied apply_damage(const Combatant& c, int16_t amount, DamageType type, uint8_t qualifiers) {
+    return absorb(c, modified(c, amount, type, qualifiers));
 }
 
-DamageApplied apply_damage_parts(const Combatant& c, std::span<const DamagePiece> parts) {
+DamageApplied apply_damage_parts(const Combatant& c, std::span<const DamagePiece> parts, uint8_t qualifiers) {
     int total = 0;
-    for (const DamagePiece& p : parts) total += modified(c, p.amount, p.type);
+    for (const DamagePiece& p : parts) total += modified(c, p.amount, p.type, qualifiers);
     return absorb(c, total);
 }
 
