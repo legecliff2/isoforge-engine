@@ -51,6 +51,11 @@ void mark_defenses_inert(Json& j) {
         }
     }
     if (multi) marks.push_back("damage[1..]");
+    // Spellcasting and creature type also become mechanical at @3. Pre-@3 `type` was descriptive and the
+    // sim treated everything as Humanoid, so only a non-humanoid type changes behaviour when read.
+    if (j.contains("spellcasting")) marks.push_back("spellcasting");
+    if (auto t = j.find("type"); t != j.end() && t->is_string() && t->get<std::string>() != "humanoid")
+        marks.push_back("creature_type");
     if (!marks.empty()) j["inert_mechanics"] = std::move(marks);
 }
 void character_2_to_3(Json& j, MigrationCtx&) { mark_effects_inert(j); mark_defenses_inert(j); }

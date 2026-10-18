@@ -13,6 +13,10 @@
 //  condition_immunities and every damage[] entry after the first become mechanical. Migration 2 -> 3
 //  records the ones a pre-@3 file carries in a top-level "inert_mechanics" string array
 //  (e.g. ["damage_resistances", "damage[1..]"]); sim::ContentLibrary ignores exactly those.
+//  Also at @3 (both types): the "spellcasting" block (slots, caster level, ability, spells) and "type"
+//  (creature type) become mechanical. Pre-@3 files carrying a spellcasting block, or a non-humanoid type,
+//  get "spellcasting" / "creature_type" in inert_mechanics. "size" is stored (Archetype::size) but has
+//  no behaviour yet.
 //  character@3: feature effects (features[]/traits[] "effect") become mechanically active.
 //  Before @3 they were descriptive only and content baked their numbers into stat blocks (fl1's
 //  longsword 1d8+5 includes Dueling). Migration 2 -> 3 marks every pre-@3 effect
