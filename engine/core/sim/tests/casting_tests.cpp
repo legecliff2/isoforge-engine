@@ -224,7 +224,7 @@ TEST_CASE("casting content: PackSet load builds the SpellBook and rejects unreso
     const std::string req[] = {"sample.vertical_slice"};
     const auto set = assets::PackSet::resolve(roots, req);
     REQUIRE(live.load(set).empty());
-    CHECK(live.spells()->all().size() == 6);
+    CHECK(live.spells()->all().size() == 15);
 }
 
 TEST_CASE("cast: Fire Bolt spends no slot, rolls a spell attack, emits SpellTarget (stream v5)") {

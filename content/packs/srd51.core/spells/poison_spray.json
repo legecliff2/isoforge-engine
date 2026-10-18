@@ -1,0 +1,53 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.poison_spray",
+  "name": "Poison Spray",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "You extend your hand toward a creature you can see within range and project a puff of noxious gas from your palm. The creature must succeed on a constitution saving throw or take 1d12 poison damage. This spell's damage increases by 1d12 when you reach 5th level (2d12), 11th level (3d12), and 17th level (4d12).",
+  "level": 0,
+  "school": "conjuration",
+  "classes": [
+    "druid",
+    "sorcerer",
+    "warlock",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 10
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "save",
+      "ability": "con",
+      "damage": {
+        "dice": "1d12",
+        "type": "poison"
+      },
+      "on_success": "none"
+    }
+  ],
+  "scaling": {
+    "cantrip": {
+      "levels": [
+        5,
+        11,
+        17
+      ],
+      "adds": "dice"
+    }
+  }
+}
