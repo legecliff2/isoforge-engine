@@ -298,7 +298,16 @@ TEST_CASE("check_pack_scripts (tools/script_check) on the sample pack") {
     auto r = check_pack_scripts(kPack.parent_path() / "srd51.core");
     CHECK(r.errors.empty());
     CHECK(r.scripts >= 1);
-    CHECK(r.api_level == 1);
+    std::ifstream man(kPack.parent_path() / "srd51.core" / "manifest.json");   // the pack's own declared level
+    std::stringstream mtext;
+    mtext << man.rdbuf();
+    const std::string m = mtext.str();
+    const auto at = m.find("\"api_level\"");
+    REQUIRE(at != std::string::npos);
+    const uint32_t declared = uint32_t(std::stoul(m.substr(m.find(':', at) + 1)));
+    CHECK(r.api_level == declared);
+    CHECK(declared >= 1);
+    CHECK(declared <= kMaxApiLevel);
 }
 
 TEST_CASE("pack set scripts: ids are pack_id:path; behavior.ai resolves within the archetype's own pack") {
