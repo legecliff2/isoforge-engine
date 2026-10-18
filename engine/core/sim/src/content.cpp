@@ -322,12 +322,12 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 if (!in->is_object()) return a.id + ": bad innate block";
                 const bool as_listed = in->value("components", std::string("none")) == "as_listed";
                 bool has_ab = false;
-                rules5e::Ability ab = rules5e::Ability::Cha;
+                rules5e::Ability innate_ab = rules5e::Ability::Cha;
                 if (auto it = in->find("ability"); it != in->end()) {
                     const auto o = it->is_string() ? ability_of(it->get<std::string>()) : std::nullopt;
                     if (!o) return a.id + ": bad innate ability";
                     has_ab = true;
-                    ab = *o;
+                    innate_ab = *o;
                 }
                 auto add_spell = [&](const Json& id, uint8_t uses_max, uint8_t uses_left, uint8_t recharge) -> std::optional<std::string> {
                     if (!id.is_string()) return a.id + ": bad innate spell id";
@@ -337,7 +337,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                     is.uses_left = uses_left;
                     is.recharge_min = recharge;
                     is.has_ability = has_ab;
-                    is.ability = ab;
+                    is.ability = innate_ab;
                     is.as_listed = as_listed;
                     for (const auto& o : c.innate)
                         if (o.spell_id == is.spell_id) return a.id + ": innate spell '" + id.get<std::string>() + "' listed twice";
