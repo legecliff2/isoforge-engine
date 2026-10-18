@@ -38,20 +38,6 @@ enum class RollMode : uint8_t { Normal, Advantage, Disadvantage };
 
 using CombatantId = uint32_t;
 
-// Facts about a damage source that qualified resistances/immunities care about (SRD 5.1: "bludgeoning,
-// piercing, and slashing from nonmagical attacks [that aren't silvered / adamantine]"). Bit flags.
-// Spell damage is always Magical; weapon attacks are Magical for magic weapons or creatures whose
-// attacks count as magical ("Magic Weapons", Ki-Empowered Strikes); Silvered / Adamantine describe the weapon.
-namespace damage_source {
-inline constexpr uint8_t kMagical = 1, kSilvered = 2, kAdamantine = 4;
-} // namespace damage_source
-
-// Damage types that only resist (or are immune to) damage whose source is nonmagical:
-//   nonmagical                 - any nonmagical source ("from nonmagical attacks")
-//   nonmagical_not_silvered    - nonmagical and not silvered
-//   nonmagical_not_adamantine  - nonmagical and not adamantine
-struct QualifiedDamageMask { uint32_t nonmagical = 0, nonmagical_not_silvered = 0, nonmagical_not_adamantine = 0; };
-
 constexpr uint32_t bit(Condition c) { return uint32_t(1) << uint32_t(c); }
 constexpr uint32_t bit(DamageType t) { return uint32_t(1) << uint32_t(t); }
 constexpr uint32_t bit(Ability a) { return uint32_t(1) << uint32_t(a); }
@@ -67,6 +53,25 @@ struct AbilityScores {
     constexpr int8_t operator[](Ability a) const { return score[std::size_t(a)]; }
 };
 
+// One extra damage component of an attack (SRD "damage dice + type"; e.g. a flame tongue's +2d6 fire).
+// Attack::damage/type stay the first component; extra_damage holds components 2..n. Each is rolled
+// (and doubled on a critical hit) separately and gets immunity/resistance/vulnerability for ITS type.
+struct DamagePart { DiceExpr dice; DamageType type; };
+
+// Facts about an attack's damage source that qualified resistances/immunities care about (SRD 5.1:
+// "bludgeoning, piercing, and slashing from nonmagical attacks [that aren't silvered / adamantine]").
+// Bit flags in Attack::qualifiers; they apply to every damage component of the attack. Spell damage is
+// always magical; weapon attacks are magical for magic weapons or creatures whose attacks count as
+// magical ("Magic Weapons", Ki-Empowered Strikes). kAttackSilvered / kAttackAdamantine describe the weapon.
+enum AttackQualifier : uint8_t { kAttackMagical = 1, kAttackSilvered = 2, kAttackAdamantine = 4 };
+
+// Damage types that only resist (or are immune to) damage from a nonmagical source:
+//   nonmagical                 - any nonmagical source ("from nonmagical attacks")
+//   nonmagical_not_silvered    - nonmagical and not silvered
+//   nonmagical_not_adamantine  - nonmagical and not adamantine
+// Unqualified Combatant::resistances / immunities are unaffected and apply to every source.
+struct QualifiedDamageMask { uint32_t nonmagical = 0, nonmagical_not_silvered = 0, nonmagical_not_adamantine = 0; };
+
 struct Attack {
     std::string_view id;
     int8_t   to_hit;                               // total bonus
@@ -76,8 +81,9 @@ struct Attack {
     // appended: ranged weapons' normal / long range in feet (SRD 5.1 "Range"; longbow 150/600 needs
     // more than reach_or_range_ft's byte). 0 = use reach_or_range_ft as the normal range, no long range.
     uint16_t range_ft = 0, long_range_ft = 0;
-    // appended: damage_source flags of this attack (magic weapon, silvered, adamantine). 0 = plain nonmagical.
-    uint8_t  source = 0;
+    // appended: damage components 2..n (empty = single-component attack, the pre-existing behaviour).
+    std::vector<DamagePart> extra_damage{};
+    uint8_t qualifiers = 0;   // AttackQualifier bits (magic / silvered / adamantine); 0 = plain nonmagical
 };
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
 constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
@@ -145,8 +151,9 @@ struct Combatant {
     uint32_t concentration_spell = 0;       // spell id concentrated on (0 = none)
     uint32_t reaction_blocks_spell = 0;     // Shield: no damage from this spell until the start of its turn
     CreatureType creature_type = CreatureType::Humanoid;   // spell targeting (Hold Person, Cure Wounds)
+    // appended: condition immunities (bitmask over Condition). add_condition() refuses an immune condition.
+    uint32_t condition_immunities = 0;
     // appended (damage qualifiers): resistance / immunity that applies only to nonmagical sources.
-    // Unqualified `resistances` / `immunities` above are unchanged and apply to every source.
     QualifiedDamageMask resist_qualified{}, immune_qualified{};
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }

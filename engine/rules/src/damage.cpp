@@ -4,18 +4,26 @@
 
 namespace rules5e {
 
-void add_condition(Combatant& c, Condition k) { c.conditions |= bit(k); }
+// Condition immunity (stat block `condition_immunities`): the condition is never added.
+void add_condition(Combatant& c, Condition k) {
+    if (c.condition_immunities & bit(k)) return;
+    c.conditions |= bit(k);
+}
 void remove_condition(Combatant& c, Condition k) { c.conditions &= ~bit(k); }
 
-DamageApplied apply_damage(const Combatant& c, int16_t amount, DamageType type, uint8_t source) {
+namespace {
+// SRD order: immunity -> 0; resistance halves (round down); vulnerability doubles.
+int modified(const Combatant& c, int16_t amount, DamageType type, uint8_t qualifiers) {
     int dmg = amount < 0 ? 0 : amount;
     uint32_t b = bit(type);
-    if ((c.immunities & b) || qualified_applies(c.immune_qualified, type, source)) dmg = 0;
-    else {
-        if ((effective_resistances(c) & b) || qualified_applies(c.resist_qualified, type, source))
-            dmg /= 2;  // non-negative: truncation == round down
-        if (c.vulnerabilities & b) dmg *= 2;
-    }
+    if ((c.immunities & b) || qualified_applies(c.immune_qualified, type, qualifiers)) return 0;
+    if ((effective_resistances(c) & b) || qualified_applies(c.resist_qualified, type, qualifiers))
+        dmg /= 2;  // non-negative: truncation == round down
+    if (c.vulnerabilities & b) dmg *= 2;
+    return dmg;
+}
+
+DamageApplied absorb(const Combatant& c, int dmg) {
     int dealt = dmg;
     int absorbed = dmg < c.temp_hp ? dmg : c.temp_hp;
     int temp_after = c.temp_hp - absorbed;
@@ -28,6 +36,17 @@ DamageApplied apply_damage(const Combatant& c, int16_t amount, DamageType type, 
     bool instant = hp == 0 && dmg > 0 &&
                    (at_zero_before ? dmg >= c.hp_max : leftover >= c.hp_max);
     return {int16_t(dealt), int16_t(temp_after), int16_t(hp), dropped, instant};
+}
+} // namespace
+
+DamageApplied apply_damage(const Combatant& c, int16_t amount, DamageType type, uint8_t qualifiers) {
+    return absorb(c, modified(c, amount, type, qualifiers));
+}
+
+DamageApplied apply_damage_parts(const Combatant& c, std::span<const DamagePiece> parts, uint8_t qualifiers) {
+    int total = 0;
+    for (const DamagePiece& p : parts) total += modified(c, p.amount, p.type, qualifiers);
+    return absorb(c, total);
 }
 
 void commit_damage(Combatant& c, const DamageApplied& d) {

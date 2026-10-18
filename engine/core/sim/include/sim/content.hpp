@@ -25,6 +25,9 @@ struct Archetype {
     std::vector<ActiveFeature> active;    // usable via UseFeature (from active hooks)
     std::vector<std::string> inert_features;         // "<id> (<kind>)" pre-character@3 effect, not applied
     std::vector<std::string> unsupported_features;   // "<id> (<kind>)" with no registered hook
+    // Pre-@3 descriptive defenses / extra damage entries carried by the file (migration marker
+    // "inert_mechanics"): listed, never applied (docs/CONTENT_COMPAT.md).
+    std::vector<std::string> inert_mechanics;
     std::optional<std::string> ai;        // behavior.ai (monster@2 / character@2), pack-relative
     // Script id of behavior.ai, resolved within the archetype's own pack: "pack_id:path".
     std::optional<std::string> ai_script_id() const {
