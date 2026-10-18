@@ -1,6 +1,6 @@
 # Proposal: the version-bump batch (common@2 / monster@4 / character@4 / item@1)
 
-Status: draft for Director decision. Reviewers: Tools & Content (schemas, validator, loaders,
+Status: decisions recorded (§13); reviewers may still comment on details. Reviewers: Tools & Content (schemas, validator, loaders,
 migrations), Engine Core (sim hooks, event schema, digests). Author: Rules (rules5e).
 Basis: `docs/SRD_COMBAT_COVERAGE.md` §11 (batch B rows R-G3..R-G5, R-G7, T&C-G4/G5/G9/G10/G17),
 `docs/CONTENT_COMPAT.md`, `docs/SIM_EVENTS.md`, and the code on `main` after #57.
@@ -47,7 +47,7 @@ consequences drive the structure of this proposal:
 **Rows R-G3 (timed modifiers) and R-G5 (pools) are batch N in §11.** They *can* ship before the
 bump on the spell side (`spell@1` gets additive effect kind `apply_modifier`, §6) because spells
 have no old meaning to protect. The *trait/feature* surface (Rage, Bardic Inspiration, Ki) is
-exactly the "interim trait effect" the Director ruled out, so it lands in `@4`. See Q2.
+exactly the "interim trait effect" the Director ruled out, so it lands in `@4` (decided, Q2: one bump, no interim kinds).
 
 ### 1.1 Which schema carries what
 
@@ -219,7 +219,7 @@ carry the same effect object): effects that happen on an *event*, independent of
 | `target_creature_type` / `not_creature_type` | creature type list | smites vs undead/fiends |
 | `damage_type_not` / `damage_type_is` | damage types | Undead Fortitude (not radiant) |
 | `not_crit` | none | Undead Fortitude |
-| `moved_at_least_ft` | `ft` | Charge, Pounce (20 ft). Straight-line requirement approximated, see Q4 |
+| `moved_at_least_ft` | `ft` | Charge, Pounce (20 ft). Approximation, see below (Q4 decided) |
 | `self_hp_below` | `{num, den}` | Rampage-style gates |
 | `save` | `{ability, dc, dc_from_damage?: true}` | Undead Fortitude: Con save DC `5 + damage taken` (`dc_from_damage`) |
 
@@ -250,6 +250,13 @@ Examples:
                                                        {"kind":"save","ability":"con","dc_from_damage":true,"base":5} ],
   "effects": [ {"kind":"set_hp","value":1} ] }
 ```
+
+**Charge/Pounce limitation (Q4, decided).** `moved_at_least_ft` means "the owner has moved at least
+`ft` feet this turn (`TurnBudget::moved_ft`) before the attack". There is no path history, so the
+SRD requirement that the movement be *in a straight line toward the target* is **not** enforced: a
+creature that walks 20 ft sideways or away and then attacks still qualifies. This is slightly
+generous to the attacker. If it matters later, a sim-supplied `charged_straight` fact can be added
+as a new predicate without changing this one.
 
 (`type: "same_as_weapon"` is a documented extension of v1 `damage_type` valid only inside riders.)
 
@@ -415,7 +422,7 @@ and the `ac_bonus` spell effect (which is only an instantaneous reaction today).
     "stat": { "enum": ["attack_roll","save","ability_check","ac","speed","damage","temp_hp",
                        "resistance","attacks_against","advantage_on","disadvantage_on"] },
     "bonus":   {"type":"integer"}, "die": {"$ref":"#/$defs/dice"},           // Bless: stat save/attack_roll, die 1d4
-    "set":     {"type":"integer"},                                            // Mage Armor: ac base handled by "ac_base" (Q15)
+    "set":     {"type":"integer"},                                            // reserved; rejected for stat "ac" at @4 (Q15, decided)
     "multiply":{"enum":[0.5,2]},                                              // Haste/Slow speed
     "damage_type": {"$ref":"#/$defs/damage_type"},                            // resistance / damage
     "ability": {"$ref":"#/$defs/ability"},                                    // save/check scoped
@@ -490,7 +497,7 @@ Feature effect kinds that become available at `@4` and need pools or grants:
 
 | Kind | Example | Rules |
 |---|---|---|
-| `grant_action` | Action Surge, Haste-like | `UseFeature` sets `TurnBudget::action = true` (bonus/extra action; Q7) |
+| `grant_action` | Action Surge, Haste-like | `UseFeature` increments `TurnBudget::extra_actions` (Q7, decided) |
 | `apply_modifier` | Rage (+dmg, resistances) | §6 |
 | `save_effect` action with `usage.pool` | Turn Undead, Stunning Strike | §2 |
 | `heal_pool` | Lay on Hands: spend N from a pool to heal N | `UseFeature` with `amount` (appended `ActionRequest::amount`) |
@@ -572,7 +579,7 @@ None of these re-pin anything.
 `kEventKindCount` grows by 5 and `kLastRulesEventKind` moves to `ModifierExpired`. Sim events:
 `SimEvent::Kind` is unchanged (rules events pass through as today). Casting uses the existing
 `SpellCast`/`SpellResolved` kinds for synthetic save spells, with `is_spell = false` recorded in a
-flag bit of `c`; Q9 asks whether a dedicated `ActionUsed` is preferred.
+flag bit of `c`; no dedicated `ActionUsed` kind (Q9, decided).
 
 ### 9.2 Sim event schema
 
@@ -594,7 +601,7 @@ Same-PR obligations (docs/SIM_EVENTS.md): update `kLastRulesEventKind`,
   existing golden fight and asserts the rng position after the fight is unchanged.
 * **State hash.** New `EncounterState` vectors (`action_uses`, `modifiers`, `pools`) and new
   `Combatant` vectors are appended and hashed only when non-empty, so an
-  old encounter serializes to the same bytes as before (exact rule: Q10).
+  old encounter serializes to the same bytes as before (decided, Q10).
 * **`ActionRequest` / `ReactionDecision`** only gain trailing fields with defaults that equal the old
   behaviour.
 * **`kReactionTriggerCount`** growth enlarges `reaction_policy`; confirm `Combatant` is not hashed
@@ -652,12 +659,12 @@ digests: `compat_*` goldens and the existing `fl1` golden **unchanged** (CI prov
 | 1 | `common@2` + `monster@4`/`character@4` schemas (new kinds, `$defs`), validator tables, `3→4` migrations (§8.2), compat decorated fixtures (§8.4) | **T&C** | this proposal approved | No behaviour: sim treats `@4` like `@3` (`Archetype` reads are identical). Golden-neutral by construction |
 | 2 | Engine Core loader: accept `@4`, honour `reactions`/`bonus_actions` markers, registry refusal rule (§8.3) | **Engine Core** | 1 | Still no mechanics |
 | 3 | rules5e foundation: `usage`, `ActionUse`, `ResourcePool`, recharge, `RechargeRolled`/`ResourceSpent`, sim event schema **v6** + `kLastRulesEventKind` (§9.2) | **Rules** | none (parallel with 1) | Engine Core co-reviews the event PR; the one bump lives here |
-| 4 | Save actions: `SpellDef::is_spell/magical/usage`, synthetic spell compile in sim, AI offers | **Rules** (rules5e) then **Engine Core** (compile + AI) | 1-3 | Caller-supplied targets first |
-| 5 | Area templates R-G10 (cone/line/sphere/cube targeting) | **Engine Core** | none; needed for full §2 UX | Independent; breath weapons work without it |
+| 4 | Save actions: `SpellDef::is_spell/magical/usage`, synthetic spell compile in sim, AI offers | **Rules** (rules5e) then **Engine Core** (compile + AI) | 1-3 | **Ships with caller-supplied targets (Q8)**; `area` is validated and used for UI hints only |
+| 5 | Area templates R-G10 (cone/line/sphere/cube targeting) | **Engine Core** | 4 (later PR, Q8) | Independent follow-up; turns `area` into the target list. Death Burst/`area_save` riders use it too |
 | 6 | Innate/slot monster spellcasting, DC overrides | **Rules** + **Engine Core** (archetype) | 1-2 | `ActionRequest::innate` appended |
 | 7 | Triggers/riders: `triggers.hpp`, hook points, `FeatureTriggered`, `TurnBudget` facts | **Rules**; **Engine Core** supplies `moved_ft`, ally adjacency | 3 | Reaction-style smite needs 9 |
 | 8 | Trigger/rider loader (`on_hit[]`, `trigger` effects) | **T&C** schema already in 1; **Engine Core** loader | 2, 7 | |
-| 9 | Reactions: new triggers/options, hooks, `reactions[]` compile | **Rules** then **Engine Core** (hooks + AI policy) | 2, 7 | Phase 2 `RollAttack` window deferred (Q6) |
+| 9 | Reactions: new triggers/options, hooks, `reactions[]` compile | **Rules** then **Engine Core** (hooks + AI policy) | 2, 7 | Phase 2 `RollAttack` window deferred (Q6, decided) |
 | 10 | Timed modifiers + `spell@1 apply_modifier` (additive) | **Rules**; **T&C** adds the spell kind to `spell@1` validation | 3 | Spell side can ship before 1 |
 | 11 | Class pools + feature kinds (`grant_action`, `heal_pool`, pool usage) | **Rules** + **Engine Core** (FeatureRegistry hooks) | 3, 7, 10 | |
 | 12 | `item@1` weapon slice | **T&C** (schema/loader), **Rules** (none; reuses #53) | 7 | |
@@ -666,45 +673,30 @@ digests: `compat_*` goldens and the existing `fl1` golden **unchanged** (CI prov
 One PR per row, from fresh `main`, normal pushes, full suite on GCC Debug and Clang Release, CI
 green before review.
 
-## 13. Open questions (need Director decisions)
+## 13. Decisions log
 
-1. **Q1: Save actions as synthetic `SpellDef`s.** OK to reuse the spell resolver with
-   `is_spell=false` / `magical=false`, or do you want a separate `ActionDef` table? (Recommended:
-   synthetic; ~0 new resolution code; one more flag on `SpellDef`.)
-2. **Q2: Timed modifiers and pools before the bump?** They are batch N, and spell-side modifiers are
-   additive. Do the *trait/feature* surfaces (Rage, Ki, Bardic Inspiration) wait for `@4` (the
-   "no interim trait effects" ruling), or may they ship earlier as additive effect kinds? This
-   proposal assumes they wait.
-3. **Q3: Optional riders (Divine Smite).** Decide via the reaction-window machinery
-   (recommended; after the hit, free action), or a declare-before-attack flag (simpler, not RAW).
-4. **Q4: Charge/Pounce "straight 20 ft".** Approximate as "moved ≥ N ft this turn before the attack"
-   (needs only `TurnBudget::moved_ft`), or require path history from sim?
-5. **Q5: Order of `drop_to_zero` triggers vs regeneration-down.** Proposed: Undead Fortitude/Relentless
-   Endurance first, then the regen suppression check, since a creature that stays at 1 HP never
-   enters the regen-down branch.
-6. **Q6: Roll-modifying reactions** (Cutting Words, Bardic Inspiration spend): add a `RollAttack`/
-   `RollSave` window now or defer as phase 2? Deferred here.
-7. **Q7: Extra actions** (Action Surge, Haste): is mutating `TurnBudget::action` acceptable, or
-   should extra actions be a distinct budget field (affects the turn-end checks)?
-8. **Q8: Area templates (R-G10) timing.** Ship §2 with caller-supplied targets first, or hold
-   breath weapons until R-G10 lands? Also confirm Engine Core owns template→target resolution.
-9. **Q9: Events.** One generic `FeatureTriggered` vs a kind per trigger; and `ActionUsed` for
-   non-spell save actions vs reusing `SpellCast`/`SpellResolved` with a flag bit.
-10. **Q10: State-hash rule for new vectors.** Hash them only when non-empty (digest-neutral) vs bumping
-    the state-hash layout version. Recommended: only-when-non-empty. Engine Core to confirm how
-    `EncounterState` is hashed today.
-11. **Q11: `common@2` as a standalone copy** (recommended) vs a `$ref` overlay mechanism; accepted
-    cost is re-declaring ~15 defs and keeping them in step.
-12. **Q12: New-kind inert marking (§1, §8.2 step 4)** and the registry refusal rule: approve as a
-    behaviour change to the existing `FeatureRegistry`?
-13. **Q13: Monster DC/attack overrides** (`spellcasting.dc`, `attack_bonus`): confirm SRD printed
-    values win over derived ones.
-14. **Q14: Legendary actions/resistance.** Legendary Resistance is a plain pool + `drop to success`
-    reaction here; legendary *actions* remain T&C-G11. Confirm no placeholders are reserved now.
-15. **Q15: `ac` modifiers** for Mage Armor-style "base AC = 13 + Dex" (`set`) vs `bonus`-only; the
-    former touches AC recomputation (§10 note) and may wait for the equipment proposal.
-16. **Q16: Rest model.** Pools/uses recharge only via sim calling `recover_features`; is a
-    first-class rest API wanted in this batch (owner: Engine Core)?
+All sixteen questions are **DECIDED** (Director, 2026-10-18). Q1-Q4, Q8, Q10 and Q12 are explicit
+Director rulings; the rest adopt this proposal's recommendation, as the Director directed. Reviewer
+feedback may still refine details, but these are no longer open.
+
+| Q | Decision | Status |
+|---|---|---|
+| Q1 | Save actions reuse the spell resolver: synthetic `SpellDef` with `is_spell=false`, `magical=false` (§2.3). No separate `ActionDef` table | DECIDED (Director) |
+| Q2 | Pools and trait/feature-side timed modifiers wait for `@4` (one bump, no interim trait kinds). Only the spell-side `apply_modifier` stays additive (§6.1) | DECIDED (Director) |
+| Q3 | Divine Smite is a post-hit reaction-window option (free, `HitRider`), not a declare-before-attack flag (§3.2) | DECIDED (Director) |
+| Q4 | Charge/Pounce use `moved_at_least_ft` ("moved at least N ft this turn before the attack"). No path history. Limitation documented in §3.1 | DECIDED (Director) |
+| Q5 | `drop_to_zero` triggers (Undead Fortitude, Relentless Endurance) run before the regeneration-down check; a creature kept at 1 HP never enters the regen-down branch | DECIDED (adopted recommendation) |
+| Q6 | Roll-modifying reactions (Cutting Words, Bardic Inspiration spend, `RollAttack`/`RollSave` windows) are deferred to a later phase; `subtract_roll` stays reserved in the schema | DECIDED (adopted recommendation) |
+| Q7 | Extra actions (Action Surge, Haste) use a distinct `TurnBudget::extra_actions` counter (appended, default 0), not mutation of `action`, so turn-end checks and old hashes are unaffected | DECIDED (adopted recommendation; refines §7.1 `grant_action`) |
+| Q8 | Save actions ship first with caller-supplied targets; area templates (R-G10) are a later, independent PR (§12 rows 4-5) | DECIDED (Director) |
+| Q9 | One generic `FeatureTriggered` event (outcome in a payload field). Non-spell save actions reuse `SpellCast`/`SpellResolved` with `is_spell=false` recorded in a flag bit; no `ActionUsed` kind | DECIDED (adopted recommendation) |
+| Q10 | New state vectors (`action_uses`, `modifiers`, `pools`, new `Combatant` vectors) are hashed/serialized **only when non-empty**, so old encounters hash to the same bytes (§9.3) | DECIDED (Director) |
+| Q11 | `common@2` is a standalone copy of `stat_block` with `$ref`s to unchanged `common@1` leaf defs (§1.1); the cost of re-declaring ~15 defs is accepted | DECIDED (adopted recommendation) |
+| Q12 | Approved: `3→4` marks new-kind effects `inert` in old documents, plus the `FeatureRegistry` refusal rule for new kinds from `@≤3` documents. This is an approved behaviour change to `FeatureRegistry` (§1, §8.2 step 4, §8.3) | DECIDED (Director) |
+| Q13 | `spellcasting.dc` / `attack_bonus` overrides win over derived values (SRD printed numbers are authoritative) | DECIDED (adopted recommendation) |
+| Q14 | Legendary Resistance is a plain pool; legendary *actions* stay T&C-G11 and nothing is reserved in the schema now | DECIDED (adopted recommendation) |
+| Q15 | `ac` modifiers are `bonus`-only in this batch; `set` / "base AC = 13 + Dex" (Mage Armor) waits for the equipment/AC proposal. The `set` field is removed from `$defs/modifier` use at `@4` until then | DECIDED (adopted recommendation) |
+| Q16 | No first-class rest API in this batch; sim keeps calling `recover_features(state, long_rest)` between encounters. A rest API can be its own Engine Core proposal | DECIDED (adopted recommendation) |
 
 ## 14. What to ask reviewers
 
@@ -714,6 +706,6 @@ green before review.
 (d) whether `bonus_actions` really deserves a marker; (e) `item@1` slice scope.
 
 **Engine Core:** (a) sim facts needed (`moved_ft`, ally-adjacency, area targets, rest API);
-(b) the event-schema v6 plan and the lowest-version digest argument (§9.2) and Q10 hash rule;
+(b) the event-schema v6 plan and the lowest-version digest argument (§9.2), and that the decided only-when-non-empty hash rule (Q10) matches how `EncounterState` is hashed today;
 (c) synthetic spell compile in `ContentLibrary` and the `FeatureRegistry` refusal rule;
 (d) AI policy for recharge/riders/reactions; (e) PR ordering in §12.
