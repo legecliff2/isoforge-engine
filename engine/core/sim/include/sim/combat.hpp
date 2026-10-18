@@ -153,6 +153,9 @@ public:
     bool can_shoot(CombatantId actor, uint8_t attack_index, CombatantId target) const;
     // Would that ranged attack roll with disadvantage (long range or a hostile within 5 ft)?
     bool ranged_disadvantage(CombatantId actor, uint8_t attack_index, CombatantId target) const;
+    // ActionRequest::ally_near_target for an attack on `target` from `attacker` (Pack Tactics, Sneak Attack):
+    // a same-team creature other than the attacker, conscious and not incapacitated, within 5 ft of `target`.
+    bool ally_near_target(CombatantId attacker, CombatantId target) const;
     std::optional<Vec2i> readied_destination(CombatantId id) const {
         auto it = readied_dest_.find(id);
         return it == readied_dest_.end() ? std::nullopt : std::optional<Vec2i>(it->second);
@@ -181,6 +184,9 @@ private:
     Spot spot(CombatantId id) const { return {pos(id), footprint_size(id)}; }
     Spot spot_at(CombatantId id, Vec2i anchor) const { return {anchor, footprint_size(id)}; }
     bool los_spots(Spot a, Spot b) const;
+    // Pack Tactics / Sneak Attack fact (ActionRequest::ally_near_target): a creature on the attacker's team,
+    // other than the attacker, conscious and not incapacitated, within 5 ft (nearest tile) of `target`.
+    bool ally_near(CombatantId attacker, Spot target) const;
     bool ranged_attack_facts(CombatantId actor, uint8_t attack_index, Spot from, Spot target,
                              rules5e::ActionRequest& req, std::string* error) const;
     bool move_tile(CombatantId mover, Vec2i to, const std::vector<rules5e::Event>& evs);
