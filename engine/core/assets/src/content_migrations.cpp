@@ -51,6 +51,17 @@ void mark_defenses_inert(Json& j) {
         }
     }
     if (multi) marks.push_back("damage[1..]");
+    // Weapon qualifiers on actions (magical / silvered / adamantine) are mechanical at @3 only.
+    bool quals = false;
+    for (const char* key : {"actions", "bonus_actions", "reactions", "legendary_actions"}) {
+        auto it = j.find(key);
+        if (it == j.end() || !it->is_array()) continue;
+        for (const auto& a : *it) {
+            auto q = a.is_object() ? a.find("qualifiers") : a.end();
+            if (a.is_object() && q != a.end() && q->is_array() && !q->empty()) quals = true;
+        }
+    }
+    if (quals) marks.push_back("attack_qualifiers");
     // Spellcasting and creature type also become mechanical at @3. Pre-@3 `type` was descriptive and the
     // sim treated everything as Humanoid, so only a non-humanoid type changes behaviour when read.
     if (j.contains("spellcasting")) marks.push_back("spellcasting");

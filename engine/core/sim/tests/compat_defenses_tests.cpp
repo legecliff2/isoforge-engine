@@ -64,6 +64,12 @@ struct Decorated {
         g["damage_vulnerabilities"] = Json::array({"fire"});
         g["condition_immunities"] = Json::array({"frightened", "poisoned"});
         for (auto& a : g["actions"]) a["damage"].push_back({{"dice", "1d4"}, {"type", "fire"}});
+        for (auto& a : g["actions"]) a["qualifiers"] = Json::array({"silvered", "magical"});   // inert before @3
+        g["traits"].push_back({{"id", "ghostly"}, {"name", "Ghostly"}, {"description", "x"},
+                               {"effect", {{"kind", "damage_mitigation"},
+                                           {"resistances", {{"nonmagical", Json::array({"slashing"})}}}}}});
+        g["traits"].push_back({{"id", "arcane_blows"}, {"name", "Arcane Blows"}, {"description", "x"},
+                               {"effect", {{"kind", "magic_weapons"}}}});
         g["type"] = "undead";   // creature type is mechanical only at @3
         g["spellcasting"] = {{"ability", "int"}, {"caster_level", 5}, {"slots", {{"1", 4}, {"3", 2}}},
                              {"spells", Json::array({"srd51.spell.fire_bolt", "srd51.spell.hold_person"})}};
@@ -75,6 +81,7 @@ struct Decorated {
         f["damage_vulnerabilities"] = Json::array({"fire"});
         f["condition_immunities"] = Json::array({"charmed"});
         for (auto& a : f["actions"]) a["damage"].push_back({{"dice", "2d6"}, {"type", "fire"}});
+        for (auto& a : f["actions"]) a["qualifiers"] = Json::array({"adamantine"});
         f["spellcasting"] = {{"ability", "wis"}, {"caster_level", 3}, {"slots", {{"2", 3}}},
                              {"pact", {{"level", 1}, {"slots", 2}}}, {"spells", Json::array({"srd51.spell.cure_wounds"})}};
         write_json(dir / "characters/fighter_1.json", f);
@@ -194,9 +201,15 @@ TEST_CASE("compat defenses: decorated pre-@3 stat blocks load with no defenses a
             CHECK(a->base.spell_slots_max == std::array<uint8_t, 10>{});
             CHECK(a->base.pact_slots_max == 0);
             CHECK(a->spell_ids.empty());
+            const auto& rq = a->base.resist_qualified;
+            CHECK(rq.nonmagical == 0);
+            CHECK(rq.nonmagical_not_silvered == 0);
+            CHECK(rq.nonmagical_not_adamantine == 0);
+            CHECK(a->base.immune_qualified.nonmagical == 0);
+            for (const auto& at : a->base.attacks) CHECK(at.qualifiers == 0);   // action qualifiers and magic_weapons are inert
         }
-        CHECK(g->inert_mechanics.size() == 7);   // 4 defenses, damage[1..], spellcasting, creature_type
-        CHECK(f->inert_mechanics.size() == 6);
+        CHECK(g->inert_mechanics.size() == 8);   // 4 defenses, damage[1..], attack_qualifiers, spellcasting, creature_type
+        CHECK(f->inert_mechanics.size() == 7);
         CHECK(g->base.attacks[0].damage == rules5e::DiceExpr{1, 6, 2});
         CHECK(f->base.attacks[0].damage == rules5e::DiceExpr{1, 8, 5});
     }
