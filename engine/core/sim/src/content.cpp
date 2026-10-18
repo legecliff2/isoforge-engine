@@ -86,6 +86,9 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     if (auto m = doc.find("inert_mechanics"); m != doc.end() && m->is_array())
         for (const Json& x : *m) if (x.is_string()) inert.insert(x.get<std::string>());
     a.inert_mechanics.assign(inert.begin(), inert.end());
+    // @4 forward_compat flags (descriptive, ignored by sim; listed with the inert mechanics).
+    if (auto fc = doc.find("forward_compat"); fc != doc.end() && fc->is_array())
+        for (const Json& x : *fc) if (x.is_string()) a.forward_compat.push_back(x.get<std::string>());
     auto damage_mask = [&](const char* key, uint32_t& mask) -> std::optional<std::string> {
         auto it = doc.find(key);
         if (it == doc.end() || inert.count(key)) return std::nullopt;
@@ -197,7 +200,12 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     }
     // Feature hooks (data-driven by effect.kind; see features.hpp).
     a.features = declared_features(doc);
-    const FeatureBuildCtx fctx{*features_, doc, declared_version, attack_actions};
+    // 0 = parse the document's own $schema tag (never "latest"); a missing or unparsable tag means no refusal.
+    uint32_t declared = declared_version;
+    if (declared == 0)
+        if (auto s = doc.find("$schema"); s != doc.end() && s->is_string())
+            if (auto ref = assets::parse_schema_ref(s->get<std::string>())) declared = ref->version;
+    const FeatureBuildCtx fctx{*features_, doc, declared, attack_actions};
     for (std::size_t i = 0; i < a.features.size(); ++i) {
         const FeatureDecl& f = a.features[i];
         // Schema-version gate (docs/CONTENT_COMPAT.md): effects from pre-character@3 files are
@@ -208,9 +216,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         }
         const FeatureHook* h = f.kind.empty() ? nullptr : features_->hook(f.kind);
         // Defence in depth for the migration marker: a file that declared a version older than the one that
-        // made this kind mechanical is listed inert, never an error. 0 (add() called directly, or no usable
-        // $schema) means no refusal.
-        if (h && declared_version != 0 && declared_version < features_->min_schema_version(f.kind)) {
+        // made this kind mechanical is listed inert (hook or not), never an error.
+        if (!f.kind.empty() && declared != 0 && declared < features_->min_schema_version(f.kind)) {
             a.inert_features.push_back(f.id + " (" + f.kind + ")");
             continue;
         }

@@ -73,6 +73,15 @@ public:
         hooks_[kind] = std::move(hook);
         min_version_[std::move(kind)] = min_schema_version;
     }
+    // A kind with no hook yet whose minimum version is still known (the frozen new-kind list of the latest
+    // migration): files that declared an older version list it as inert instead of "unsupported".
+    void reserve_kind(std::string kind, uint32_t min_schema_version) { min_version_[std::move(kind)] = min_schema_version; }
+    // Kinds (hooked or reserved) whose minimum schema version is exactly `v`, sorted.
+    std::vector<std::string> kinds_introduced_at(uint32_t v) const {
+        std::vector<std::string> out;
+        for (const auto& [k, m] : min_version_) if (m == v) out.push_back(k);
+        return out;
+    }
     uint32_t min_schema_version(const std::string& kind) const {
         auto it = min_version_.find(kind);
         return it == min_version_.end() ? 0 : it->second;

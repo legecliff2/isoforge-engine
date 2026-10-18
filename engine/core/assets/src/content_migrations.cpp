@@ -1,6 +1,9 @@
 #include "assets/content_migrations.hpp"
 
+#include <algorithm>
+#include <set>
 #include <stdexcept>
+#include <string>
 
 namespace eng::assets {
 
@@ -78,6 +81,52 @@ void mark_defenses_inert(Json& j) {
 void character_2_to_3(Json& j, MigrationCtx&) { mark_effects_inert(j); mark_defenses_inert(j); }
 // monster@3: same gate as character@3 (docs/CONTENT_COMPAT.md).
 void monster_2_to_3(Json& j, MigrationCtx&) { mark_effects_inert(j); mark_defenses_inert(j); }
+
+// 3 -> 4 (VERSION_BUMP_BATCH 8.2; tools/validate/migrate_v4.py is the reference, outputs must be identical).
+// A pure function of the old document. Pre-@4 reactions, loadable bonus actions and the new effect kinds are
+// descriptive; they are stamped inert so the @4 loader never applies them.
+void migrate_3_to_4(Json& j, bool character) {
+    std::set<std::string> marks;
+    auto stamp = [&](const char* key, bool only_loadable, const char* mark) {
+        auto it = j.find(key);
+        if (it == j.end() || !it->is_array()) return;
+        bool any = false;
+        for (auto& e : *it) {
+            if (!e.is_object()) continue;
+            if (only_loadable && e.value("kind", std::string()) == "special") continue;
+            e["inert"] = true;
+            any = true;
+        }
+        if (any) marks.insert(mark);
+    };
+    stamp("reactions", false, "reactions");
+    stamp("bonus_actions", true, "bonus_actions");
+    const auto frozen = effect_kinds_introduced_at(4);
+    for (const char* key : {"traits", "features"}) {
+        auto it = j.find(key);
+        if (it == j.end() || !it->is_array()) continue;
+        for (auto& f : *it) {
+            if (!f.is_object()) continue;
+            auto e = f.find("effect");
+            if (e == f.end() || !e->is_object()) continue;
+            const std::string k = e->value("kind", std::string());
+            if (std::find(frozen.begin(), frozen.end(), k) != frozen.end()) (*e)["inert"] = true;
+        }
+    }
+    if (character) {
+        auto eq = j.find("equipment");
+        if (eq != j.end() && eq->is_array() && !eq->empty()) marks.insert("equipment");
+    }
+    if (!marks.empty()) {   // merge, never overwrite (2 -> 3 may have written damage[1..] etc.)
+        if (auto old = j.find("inert_mechanics"); old != j.end() && old->is_array())
+            for (const auto& x : *old) if (x.is_string()) marks.insert(x.get<std::string>());
+        Json out = Json::array();
+        for (const auto& m : marks) out.push_back(m);
+        j["inert_mechanics"] = std::move(out);
+    }
+}
+void character_3_to_4(Json& j, MigrationCtx&) { migrate_3_to_4(j, true); }
+void monster_3_to_4(Json& j, MigrationCtx&) { migrate_3_to_4(j, false); }
 } // namespace
 
 void register_content_schemas(SchemaRegistry& reg) {
@@ -90,6 +139,8 @@ void register_content_schemas(SchemaRegistry& reg) {
     reg.register_migration("character", 1, 2, character_1_to_2);
     reg.register_migration("character", 2, 3, character_2_to_3);
     reg.register_migration("monster", 2, 3, monster_2_to_3);
+    reg.register_migration("character", 3, 4, character_3_to_4);
+    reg.register_migration("monster", 3, 4, monster_3_to_4);
 }
 
 std::optional<std::string> behavior_ai_script(const Json& doc) {
@@ -102,6 +153,9 @@ std::optional<std::string> behavior_ai_script(const Json& doc) {
 
 std::optional<std::string> monster_ai_script(const Json& monster) { return behavior_ai_script(monster); }
 
-std::vector<std::string> effect_kinds_introduced_at(uint32_t) { return {}; }
+std::vector<std::string> effect_kinds_introduced_at(uint32_t schema_version) {
+    if (schema_version == 4) return {"on_event", "apply_modifier", "grant_action", "heal_pool", "save_effect", "reaction"};
+    return {};
+}
 
 } // namespace eng::assets

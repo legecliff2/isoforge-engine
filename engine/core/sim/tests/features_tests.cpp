@@ -268,16 +268,74 @@ TEST_CASE("declared schema version: kinds newer than the file are listed inert, 
 
 TEST_CASE("kind list equals the migration's frozen list") {
     // For every schema version above the current one the registry's kinds with that minimum must be exactly
-    // what the migration marks inert (assets::effect_kinds_introduced_at). Both are empty until @4 lands.
+    // what the migration marks inert (assets::effect_kinds_introduced_at). The @4 list is on_event, apply_modifier, grant_action, heal_pool, save_effect, reaction.
     const FeatureRegistry& reg = FeatureRegistry::builtin();
     for (uint32_t v = 1; v <= 8; ++v) {
-        std::vector<std::string> sim_kinds;
-        for (const auto& k : reg.kinds())
-            if (reg.min_schema_version(k) == v) sim_kinds.push_back(k);
+        auto sim_kinds = reg.kinds_introduced_at(v);
         auto mig = assets::effect_kinds_introduced_at(v);
         std::sort(sim_kinds.begin(), sim_kinds.end());
         std::sort(mig.begin(), mig.end());
         CHECK_MESSAGE(sim_kinds == mig, "schema version " << v);
     }
     for (const auto& k : reg.kinds()) CHECK(reg.min_schema_version(k) <= assets::kMonsterSchemaVersion);
+}
+
+TEST_CASE("@4 loader: migrated @3 doc with an unmarked new kind is listed inert; direct add() parses its own tag") {
+    assets::SchemaRegistry sreg;
+    assets::register_content_schemas(sreg);
+    auto src = assets::Json::parse(std::ifstream(kPack + "/characters/fighter_1.json"));
+    src["features"][0]["effect"] = assets::Json{{"kind", "save_effect"}, {"id", "breath"}};
+    auto r = sreg.load(src);   // @3 -> @4: the migration stamps the new kind inert
+    REQUIRE_MESSAGE(r.ok, r.error);
+    CHECK(r.declared.version == 3);
+    CHECK(r.data["$schema"] == "character@4");
+    CHECK(r.data["features"][0]["effect"]["inert"] == true);
+    {
+        ContentLibrary lib;
+        auto d = r.data;
+        d["id"] = "t.migrated";
+        REQUIRE_FALSE(lib.add(d, "character", "", r.declared.version));
+        const auto* a = lib.find("t.migrated");
+        REQUIRE(a);
+        CHECK(a->inert_features.size() == 1);
+        CHECK(a->unsupported_features.empty());
+    }
+    {   // the marker removed (hand-edit): the declared version alone lists it as inert, still no load error
+        ContentLibrary lib;
+        auto d = r.data;
+        d["id"] = "t.nomarker";
+        d["features"][0]["effect"].erase("inert");
+        REQUIRE_FALSE(lib.add(d, "character", "", r.declared.version));
+        CHECK(lib.find("t.nomarker")->inert_features.size() == 1);
+        CHECK(lib.find("t.nomarker")->unsupported_features.empty());
+        // declared 0 = parse the doc's own tag: @4 means no refusal, so the kind is simply unsupported (no hook yet)
+        ContentLibrary lib0;
+        d["id"] = "t.native";
+        REQUIRE_FALSE(lib0.add(d, "character"));
+        CHECK(lib0.find("t.native")->inert_features.empty());
+        CHECK(lib0.find("t.native")->unsupported_features.size() == 1);
+        // ... while an unmigrated @3 tag is refused through the same 0 path
+        auto d3 = d;
+        d3["$schema"] = "character@3";
+        d3["id"] = "t.at3";
+        ContentLibrary lib3;
+        REQUIRE_FALSE(lib3.add(d3, "character"));
+        CHECK(lib3.find("t.at3")->inert_features.size() == 1);
+        // a missing or unparsable tag means no refusal
+        auto dn = d;
+        dn.erase("$schema");
+        dn["id"] = "t.notag";
+        REQUIRE_FALSE(lib3.add(dn, "character"));
+        CHECK(lib3.find("t.notag")->inert_features.empty());
+    }
+}
+
+TEST_CASE("@4 loader: forward_compat flags are listed and ignored") {
+    ContentLibrary lib;
+    auto d = load_doc("characters/fighter_1.json");
+    d["id"] = "t.fc";
+    d["forward_compat"] = assets::Json::array({"elevation"});
+    REQUIRE_FALSE(lib.add(d, "character"));
+    CHECK(lib.find("t.fc")->forward_compat == std::vector<std::string>{"elevation"});
+    CHECK(lib.find("t.fc")->base.ac == 18);   // nothing else changes
 }
