@@ -499,7 +499,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         }
     }
     bool act = can_act(c);
-    s.budget = TurnBudget{act, act, act, int16_t(c.hp > 0 ? effective_speed(c) : 0), 0};
+    s.budget = TurnBudget{act, act, act, int16_t(c.hp > 0 ? effective_speed(c) : 0), 0, 0, 0};
     check_end(s, ev);
 }
 
@@ -1100,7 +1100,24 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
         if (!t || t == &a) return fail("bad target");
         if (t->dead) return fail("target is dead");
         if (req.attack_index >= a.attacks.size()) return fail("bad attack index");
-        if (b.attacks_remaining > 0) --b.attacks_remaining;               // Extra Attack
+        if (b.sequence != 0) {                                            // multiattack in progress
+            if (req.multiattack != 0 && req.multiattack != b.sequence) return fail("another multiattack is in progress");
+            if (b.sequence > a.multiattacks.size()) return fail("bad multiattack");
+            const auto& seq = a.multiattacks[std::size_t(b.sequence - 1)].attacks;
+            if (b.sequence_pos >= seq.size() || req.attack_index != seq[b.sequence_pos]) return fail("attack out of multiattack sequence");
+            ++b.sequence_pos;
+            if (--b.attacks_remaining == 0) { b.sequence = 0; b.sequence_pos = 0; }
+        } else if (req.multiattack != 0) {                                // start a declared multiattack
+            if (b.attacks_remaining > 0) return fail("attack action already in progress");
+            if (req.multiattack > a.multiattacks.size()) return fail("bad multiattack");
+            const auto& seq = a.multiattacks[std::size_t(req.multiattack - 1)].attacks;
+            if (seq.empty()) return fail("bad multiattack");
+            for (uint8_t i : seq) if (i >= a.attacks.size()) return fail("bad multiattack");
+            if (req.attack_index != seq[0]) return fail("attack out of multiattack sequence");
+            if (!spend_action(b, a, req.kind, false)) return fail("no action available");
+            b.attacks_remaining = uint8_t(seq.size() - 1);
+            if (b.attacks_remaining > 0) { b.sequence = req.multiattack; b.sequence_pos = 1; }
+        } else if (b.attacks_remaining > 0) --b.attacks_remaining;       // Extra Attack
         else if (spend_action(b, a, req.kind, false))
             b.attacks_remaining = uint8_t(a.attacks_per_action > 1 ? a.attacks_per_action - 1 : 0);
         else return fail("no action available");
@@ -1139,6 +1156,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     }
     case ActionKind::Ready: {
         const auto& rk = req.ready_kind;
+        if (req.multiattack != 0) return fail("a readied action is a single attack");
         if (rk == ActionKind::Attack) {
             Combatant* t = find_mut(s, req.target);
             if (!t || t == &a || t->dead) return fail("bad target");
@@ -1196,10 +1214,25 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (b.action || b.attacks_remaining > 0) {
         for (const auto& t : s.combatants) {
             if (t.dead || t.id == a.id || t.team == a.team) continue;
+            if (b.sequence != 0 && b.sequence <= a.multiattacks.size() &&
+                b.sequence_pos < a.multiattacks[std::size_t(b.sequence - 1)].attacks.size()) {   // multiattack in progress: only the next declared attack
+                ActionRequest r{a.id, ActionKind::Attack, t.id, a.multiattacks[std::size_t(b.sequence - 1)].attacks[b.sequence_pos]};
+                r.multiattack = b.sequence;
+                out.push_back(r);
+                continue;
+            }
             for (uint8_t i = 0; i < a.attacks.size(); ++i) {
                 ActionRequest r{a.id, ActionKind::Attack, t.id, i};
                 out.push_back(r);
             }
+            if (b.action)   // start any declared multiattack (needs a fresh action)
+                for (std::size_t k = 0; k < a.multiattacks.size(); ++k) {
+                    const auto& seq = a.multiattacks[k].attacks;
+                    if (seq.empty()) continue;
+                    ActionRequest r{a.id, ActionKind::Attack, t.id, seq[0]};
+                    r.multiattack = uint8_t(k + 1);
+                    out.push_back(r);
+                }
         }
     }
     if (b.action) {
