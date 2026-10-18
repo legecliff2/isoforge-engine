@@ -327,6 +327,18 @@ TEST_CASE("@4 loader: migrated @3 doc with an unmarked new kind is listed inert;
         dn["id"] = "t.notag";
         REQUIRE_FALSE(lib3.add(dn, "character"));
         CHECK(lib3.find("t.notag")->inert_features.empty());
+        // a tag of another type is not this document's version: spell@1 on a character gives no refusal ...
+        auto dt = d;
+        dt["$schema"] = "spell@1";
+        dt["id"] = "t.wrongtype";
+        REQUIRE_FALSE(lib3.add(dt, "character"));
+        CHECK(lib3.find("t.wrongtype")->inert_features.empty());
+        CHECK(lib3.find("t.wrongtype")->unsupported_features.size() == 1);
+        // ... while the right type with the same low version is refused (the contrast)
+        dt["$schema"] = "character@1";
+        dt["id"] = "t.righttype";
+        REQUIRE_FALSE(lib3.add(dt, "character"));
+        CHECK(lib3.find("t.righttype")->inert_features.size() == 1);
     }
 }
 

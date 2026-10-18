@@ -272,11 +272,11 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         if (!ct) return a.id + ": bad creature type";
         c.creature_type = *ct;
     }
-    // 0 = parse the document's own $schema tag (never "latest"); a missing or unparsable tag means no refusal.
+    // 0 = parse the document's own $schema tag (never "latest"); a missing, unparsable or other-type tag means no refusal.
     uint32_t declared = declared_version;
     if (declared == 0)
         if (auto s = doc.find("$schema"); s != doc.end() && s->is_string())
-            if (auto ref = assets::parse_schema_ref(s->get<std::string>())) declared = ref->version;
+            if (auto ref = assets::parse_schema_ref(s->get<std::string>()); ref && ref->type == schema_type) declared = ref->version;   // another type's tag is not this document's version
     if (auto sc = doc.find("spellcasting"); sc != doc.end() && !inert.count("spellcasting")) {
         static const char* sc_abil[] = {"str", "dex", "con", "int", "wis", "cha"};
         const std::string sc_ab = sc->value("ability", "");
