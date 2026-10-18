@@ -17,6 +17,8 @@
 namespace eng::script::embedded {
 extern const unsigned char kEngineLevel1Defs[];
 extern const std::size_t kEngineLevel1Defs_size;
+extern const unsigned char kEngineLevel2Defs[];
+extern const std::size_t kEngineLevel2Defs_size;
 }
 
 namespace eng::script {
@@ -454,9 +456,19 @@ CallResult ScriptHost::call_entity_fn(ScriptId id, std::string_view fn, ecs::Reg
 }
 
 std::string api_definitions(uint32_t api_level) {
-    if (api_level == 1)
-        return std::string(reinterpret_cast<const char*>(embedded::kEngineLevel1Defs), embedded::kEngineLevel1Defs_size);
-    return {};
+    // Level N = levels 1..N concatenated in order (a level-N pack sees every lower-level API).
+    struct Part { const unsigned char* data; std::size_t size; };
+    const Part parts[kMaxApiLevel] = {
+        {reinterpret_cast<const unsigned char*>(embedded::kEngineLevel1Defs), embedded::kEngineLevel1Defs_size},
+        {reinterpret_cast<const unsigned char*>(embedded::kEngineLevel2Defs), embedded::kEngineLevel2Defs_size},
+    };
+    if (api_level < 1 || api_level > kMaxApiLevel) return {};
+    std::string out;
+    for (uint32_t i = 0; i < api_level; ++i) {
+        if (i) out += '\n';
+        out.append(reinterpret_cast<const char*>(parts[i].data), parts[i].size);
+    }
+    return out;
 }
 
 std::optional<uint32_t> read_pack_api_level(const std::filesystem::path& pack_dir, std::string* err) {
@@ -529,11 +541,12 @@ PackScripts load_pack_scripts(ScriptHost& host, const assets::PackSet& packs) {
             for (auto& e : errs) out.errors.push_back(p.id + ": " + e);
             return out;
         }
-        if (level != host.api_level()) {
-            out.errors.push_back(p.id + ": pack api_level " + std::to_string(level) + " != host api_level " +
+        if (level > host.api_level()) {   // a pack may run below the host's maximum, never above it
+            out.errors.push_back(p.id + ": pack api_level " + std::to_string(level) + " > host api_level " +
                                  std::to_string(host.api_level()));
             return out;
         }
+        out.pack_levels[p.id] = level;
         std::map<std::string, std::string> by_id;
         for (auto& [rel, src] : sources) by_id.emplace(assets::make_script_key(p.id, rel), std::move(src));
         auto terrs = typecheck(level, by_id);

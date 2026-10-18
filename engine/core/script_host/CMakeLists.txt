@@ -1,20 +1,26 @@
-# script_host: Luau VM host, sandbox, budgets, API level 1 bindings, pack-load strict
+# script_host: Luau VM host, sandbox, budgets, API level 1 bindings (+ level 2 definitions), pack-load strict
 # typecheck (ARCHITECTURE.md §3.3). No SDL. Luau.CodeGen is never linked.
 
 # Frozen API definitions are embedded byte-exact at build time (api_freeze guards the source).
-set(_api_src ${CMAKE_CURRENT_SOURCE_DIR}/api/engine.level1.d.luau)
-set(_api_cpp ${CMAKE_CURRENT_BINARY_DIR}/generated/engine_level1_d_luau.cpp)
-add_custom_command(
-    OUTPUT  ${_api_cpp}
-    COMMAND ${CMAKE_COMMAND} -DINPUT=${_api_src} -DOUTPUT=${_api_cpp}
-            -DSYMBOL=kEngineLevel1Defs -DNAMESPACE=eng::script::embedded
-            -P ${PROJECT_SOURCE_DIR}/tools/embed/embed_file.cmake
-    DEPENDS ${_api_src} ${PROJECT_SOURCE_DIR}/tools/embed/embed_file.cmake
-    COMMENT "Embedding engine.level1.d.luau"
-    VERBATIM)
+# Level-N definitions are a superset of levels 1..N-1 (api_definitions concatenates them), so every
+# level file is embedded. Level 2 is not frozen until row 16b (api/FROZEN.sha256 lists level 1 only).
+set(_api_cpps "")
+foreach(_lvl 1 2)
+    set(_api_src ${CMAKE_CURRENT_SOURCE_DIR}/api/engine.level${_lvl}.d.luau)
+    set(_api_cpp ${CMAKE_CURRENT_BINARY_DIR}/generated/engine_level${_lvl}_d_luau.cpp)
+    add_custom_command(
+        OUTPUT  ${_api_cpp}
+        COMMAND ${CMAKE_COMMAND} -DINPUT=${_api_src} -DOUTPUT=${_api_cpp}
+                -DSYMBOL=kEngineLevel${_lvl}Defs -DNAMESPACE=eng::script::embedded
+                -P ${PROJECT_SOURCE_DIR}/tools/embed/embed_file.cmake
+        DEPENDS ${_api_src} ${PROJECT_SOURCE_DIR}/tools/embed/embed_file.cmake
+        COMMENT "Embedding engine.level${_lvl}.d.luau"
+        VERBATIM)
+    list(APPEND _api_cpps ${_api_cpp})
+endforeach()
 
 engine_add_module(script_host
-    SOURCES     src/script_host.cpp src/typecheck.cpp src/luau_policy.cpp ${_api_cpp}
+    SOURCES     src/script_host.cpp src/typecheck.cpp src/luau_policy.cpp ${_api_cpps}
     PUBLIC_DEPS ecs rng assets sim
     TESTS       tests/script_host_tests.cpp tests/vertical_slice_tests.cpp)
 target_link_libraries(eng_script_host PRIVATE Luau.VM Luau.Compiler Luau.Analysis)

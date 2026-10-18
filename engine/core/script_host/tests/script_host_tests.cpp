@@ -59,7 +59,7 @@ std::vector<uint64_t> decisions(uint64_t seed, int turns) {
 TEST_CASE("api level 1 definitions are available and only level 1 exists") {
     CHECK(api_definitions(1).find("declare extern type SimContext with") != std::string::npos);
     CHECK(api_definitions(0).empty());
-    CHECK(api_definitions(2).empty());
+    CHECK(api_definitions(kMaxApiLevel + 1).empty());   // level 3 is the first unknown level
 }
 
 TEST_CASE("sample pack: strict typecheck passes and the goblin AI picks a target") {
@@ -203,7 +203,8 @@ TEST_CASE("typecheck: strict errors with file:line, overrides nonstrict, rejects
     CHECK_FALSE(typecheck(1, {{"f.luau", "return { f = function(ctx: SimContext) return ctx.rng:below(\"x\") end }"}}).empty());
     CHECK_FALSE(typecheck(1, {{"g.luau", "return { f = function(ctx: SimContext) return ctx:teleport() end }"}}).empty());
     CHECK(typecheck(1, {{"h.luau", "return { f = function(ctx: SimContext): number return ctx.rng:d(20) + math.abs(-1) end }"}}).empty());
-    CHECK_FALSE(typecheck(2, {{"i.luau", "return {}"}}).empty());   // unknown api level
+    CHECK_FALSE(typecheck(3, {{"i.luau", "return {}"}}).empty());   // unknown api level (level 3: first unknown)
+    CHECK_FALSE(typecheck(0, {{"i0.luau", "return {}"}}).empty());
 }
 
 TEST_CASE("pack load fails on type errors and api_level mismatch") {
@@ -217,11 +218,73 @@ TEST_CASE("pack load fails on type errors and api_level mismatch") {
     CHECK_FALSE(p.ok);
     REQUIRE_FALSE(p.errors.empty());
     CHECK(p.errors[0].rfind("test.scripts:scripts/bad.luau:1: ", 0) == 0);
+    // A level-2 pack on a level-1 host is still rejected (a pack may run below the host's maximum, never above it).
     std::ofstream(dir / "manifest.json") << R"({"$schema":"manifest@1","id":"test.scripts","version":"1.0.0","api_level":2})";
+    std::ofstream(dir / "scripts/bad.luau") << "return {}\n";
     auto q = load_pack_scripts(host, dir);
     CHECK_FALSE(q.ok);
-    CHECK(q.errors.at(0).find("api_level 2") != std::string::npos);
+    CHECK(q.errors.at(0).find("api_level 2 > host api_level 1") != std::string::npos);
+    // Level 3 is the new unknown level: rejected even by a level-2 host (engine max is 2).
+    std::ofstream(dir / "manifest.json") << R"({"$schema":"manifest@1","id":"test.scripts","version":"1.0.0","api_level":3})";
+    ScriptHost host2(2);
+    auto r3 = load_pack_scripts(host2, dir);
+    CHECK_FALSE(r3.ok);
+    CHECK(r3.errors.at(0).find("api_level 3 > engine max 2") != std::string::npos);
     std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("mixed api levels: a level-2 host loads level-1 and level-2 packs, each typechecked at its own level") {
+    const ScratchDir scratch("script_levels");
+    const auto& root = scratch.path;
+    const std::string level1_call = "return { f = function(ctx: SimContext): number return ctx.rng:d(20) end }\n";
+    const std::string level2_only = "local m: Level2Marker? = nil\nreturn {}\n";
+    auto pack = [&](const std::string& id, int level, const std::string& src) {
+        const auto dir = root / id;
+        std::filesystem::create_directories(dir / "scripts");
+        std::ofstream(dir / "scripts/a.luau") << src;
+        std::ofstream(dir / "manifest.json") << R"({"$schema":"manifest@1","id":")" << id
+                                             << R"(","version":"1.0.0","api_level":)" << level << "}";
+        return dir;
+    };
+    const auto p1 = pack("t.l1", 1, level1_call);
+    const auto p2 = pack("t.l2", 2, "local m: Level2Marker? = nil\n" + level1_call);   // level-2 pack calls a level-1 API
+    const auto p1_bad = pack("t.l1bad", 1, level2_only);                               // level-1 pack may not see level 2
+    {
+        ScriptHost host(2);
+        auto a = load_pack_scripts(host, p1);
+        CHECK(a.errors.empty());
+        CHECK(a.ok);
+        CHECK(a.api_level == 2);                      // the host maximum
+        REQUIRE(a.pack_levels.count("t.l1") == 1);
+        CHECK(a.pack_levels.at("t.l1") == 1);
+        auto b = load_pack_scripts(host, p2);
+        CHECK(b.errors.empty());
+        CHECK(b.ok);
+        REQUIRE(b.pack_levels.count("t.l2") == 1);
+        CHECK(b.pack_levels.at("t.l2") == 2);
+        auto c = load_pack_scripts(host, p1_bad);     // Level2Marker is an unknown type at level 1
+        CHECK_FALSE(c.ok);
+    }
+    // typecheck is per level: a level-2 pack sees level-1 symbols, a level-1 pack does not see level 2.
+    CHECK(typecheck(2, {{"s.luau", level1_call}}).empty());
+    CHECK(typecheck(2, {{"s.luau", level2_only}}).empty());
+    CHECK_FALSE(typecheck(1, {{"s.luau", level2_only}}).empty());
+}
+
+TEST_CASE("api_definitions(2) is level 1 plus level 2 (superset); level 1 is unchanged") {
+    auto slurp = [](const char* name) {
+        std::ifstream in(std::filesystem::path(SCRIPT_API_DIR) / name, std::ios::binary);
+        std::ostringstream ss;
+        ss << in.rdbuf();
+        return ss.str();
+    };
+    const std::string l1 = slurp("engine.level1.d.luau"), l2 = slurp("engine.level2.d.luau");
+    REQUIRE_FALSE(l2.empty());
+    CHECK(api_definitions(1) == l1);
+    CHECK(api_definitions(2) == l1 + "\n" + l2);
+    CHECK(api_definitions(2).find("declare extern type SimContext with") != std::string::npos);   // level-1 API present
+    CHECK(api_definitions(2).find("Level2Marker") != std::string::npos);
+    CHECK(api_definitions(1).find("Level2Marker") == std::string::npos);
 }
 
 TEST_CASE("embedded level 1 definitions are byte-identical to the frozen source file") {
