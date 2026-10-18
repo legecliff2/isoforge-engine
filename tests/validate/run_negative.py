@@ -22,13 +22,13 @@ ATTRIBUTION = json.loads((ROOT / "content/packs/sample.vertical_slice/manifest.j
 SAMPLE_SPELLS = ROOT / "content" / "packs" / "srd51.core" / "spells"
 
 
-def make_pack(root: Path, pack_id: str, docs: dict[str, dict]) -> Path:
+def make_pack(root: Path, pack_id: str, docs: dict[str, dict], api_level: int = 1) -> Path:
     pack = root / pack_id
     (pack / "spells").mkdir(parents=True)
     for name, doc in docs.items():
         (pack / "spells" / f"{name}.json").write_text(json.dumps(doc, indent=2), encoding="utf-8")
     manifest = {"$schema": "manifest@1", "id": pack_id, "name": "negative test", "version": "1.0.0",
-                "engine_min": "0.1.0", "feature_level": 1, "api_level": 1, "rules_profile": "srd51",
+                "engine_min": "0.1.0", "feature_level": 1, "api_level": api_level, "rules_profile": "srd51",
                 "requires": [], "optional": [], "depends": [], "attribution": ATTRIBUTION,
                 "contents": sorted(f"spells/{n}.json" for n in docs)}
     (pack / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -87,9 +87,18 @@ def main() -> int:
         rc5, out5 = run(make_pack(tmp / "live" / "dupl", "test.nega", {"a": a}),
                         make_pack(tmp / "tests" / "compat" / "fl9" / "dupl", "test.nega", {"a": a}))
         ok_compat = rc5 == 0
+        # Manifest api_level: levels 1 and 2 are valid (a pack runs at its own level), level 3 (and 0) is not.
+        one = {"fire_bolt": spell("fire_bolt", "test.neg.spell.fire_bolt")}
+        rc_l1, out_l1 = run(make_pack(tmp / "lvl1", "test.neg", one, api_level=1))
+        rc_l2, out_l2 = run(make_pack(tmp / "lvl2", "test.neg", one, api_level=2))
+        rc_l3, out_l3 = run(make_pack(tmp / "lvl3", "test.neg", one, api_level=3))
+        rc_l0, out_l0 = run(make_pack(tmp / "lvl0", "test.neg", one, api_level=0))
+        extra_levels = (("api_level_1_ok", rc_l1 == 0, out_l1), ("api_level_2_ok", rc_l2 == 0, out_l2),
+                        ("api_level_3_rejected", rc_l3 != 0 and "api_level" in out_l3, out_l3),
+                        ("api_level_0_rejected", rc_l0 != 0 and "api_level" in out_l0, out_l0))
         extra = (("collision_within_pack", ok_in, out), ("collision_across_packs", ok_x, out2),
                  ("collision_same_folder_name", ok_same, out3), ("duplicate_id_across_packs", ok_dup, out4),
-                 ("pack_set_error_summary", ok_sum, out4), ("compat_copy_own_pack_set", ok_compat, out5))
+                 ("pack_set_error_summary", ok_sum, out4), ("compat_copy_own_pack_set", ok_compat, out5)) + extra_levels
         for name, ok, o in extra:
             print(("ok   " if ok else "FAIL ") + name + ("" if ok else "\n" + o))
             failures += not ok

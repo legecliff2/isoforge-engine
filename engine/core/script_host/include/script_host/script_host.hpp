@@ -37,7 +37,9 @@ using sim::Health;
 using sim::Team;
 using sim::TilePos;
 
-inline constexpr uint32_t kMaxApiLevel = 1;
+// Highest script API level this engine knows. A host's api_level is its MAXIMUM; each pack runs at its own
+// manifest level (<= the host's, section 8.5 of the version-bump proposal).
+inline constexpr uint32_t kMaxApiLevel = 2;
 
 struct Limits {
     uint64_t max_safepoints_per_call = 200'000;     // deterministic CPU budget
@@ -58,7 +60,9 @@ struct ScriptId { uint32_t value = 0xFFFF'FFFFu; auto operator<=>(const ScriptId
 // `--!nocheck` headers are overridden. Returns "name:line: message" per error (empty = ok).
 std::vector<std::string> typecheck(uint32_t api_level, const std::map<std::string, std::string>& sources);
 
-// The frozen definitions source for an API level (empty if unknown).
+// The definitions source for an API level (empty if unknown, i.e. 0 or > kMaxApiLevel). Level-N definitions
+// are a SUPERSET of levels 1..N-1: the result is engine.level1.d.luau + "\n" + ... + engine.level<N>.d.luau,
+// so a level-N pack type-checks every lower-level API. (Level 1 is byte-frozen; level 2 is not frozen until row 16b.)
 std::string api_definitions(uint32_t api_level);
 
 struct CallResult {
@@ -70,6 +74,7 @@ struct CallResult {
 
 class ScriptHost {
 public:
+    // `api_level` is the host MAXIMUM (default 1 until the embedder opts in); packs of a lower level load under it.
     explicit ScriptHost(uint32_t api_level = 1, Limits limits = {});
     ~ScriptHost();
     ScriptHost(const ScriptHost&) = delete;
@@ -104,9 +109,11 @@ struct PackScripts {
     // Monster archetype id -> its behavior.ai script (monster@2; monster@1 presentation.ai is
     // migrated). Monsters are the manifest "contents" .json files whose $schema is monster@N.
     std::map<std::string, ScriptId> ai_by_archetype;
-    uint32_t api_level = 0;
+    uint32_t api_level = 0;                              // the host maximum (unchanged meaning)
+    std::map<std::string, uint32_t> pack_levels;         // pack id -> its declared api_level (may be below the host's)
 };
-// Every pack of an ordered set (resolved order; each pack's api_level must equal the host's).
+// Every pack of an ordered set (resolved order; each pack's api_level must be <= the host's and is type-checked
+// at the pack's own level; a level-2 pack on a level-1 host is rejected).
 // behavior.ai resolves within the archetype's own pack. A set with errors is rejected.
 PackScripts load_pack_scripts(ScriptHost& host, const assets::PackSet& packs);
 // Adapter: load_pack_scripts(host, PackSet::from_pack_dir(pack_dir)).

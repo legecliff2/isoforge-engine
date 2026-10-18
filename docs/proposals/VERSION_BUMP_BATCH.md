@@ -118,7 +118,7 @@ for packs that do not.
 
 `common@2 $defs/action.kind` is a **strict superset of v1**:
 `melee_weapon_attack`, `ranged_weapon_attack`, `melee_spell_attack`, `ranged_spell_attack`,
-`special` (all unchanged in shape and required-field rules: `_attack` kinds require `to_hit` and
+`special` (all unchanged in shape, **including the v1 `qualifiers` array from #58**, and required-field rules: `_attack` kinds require `to_hit` and
 `damage`, `melee_*` requires `reach`, `ranged_*` requires `range`), plus the new **`save_effect`**.
 There is no `multiattack` action kind in v1 or v2, and **no new `multiattack` stat-block field**.
 Multiattack's content shape is defined by **PR #59** (open, row 2's gate): a *`multiattack` feature
@@ -568,6 +568,7 @@ extra `inert` property): v1's property list verbatim, plus `inert`.
     "range":{"type":"array","minItems":2,"maxItems":2,"prefixItems":[{"$ref":"../common/v1.schema.json#/$defs/range_ft"},{"$ref":"../common/v1.schema.json#/$defs/range_ft"}]},
     "targets":{"type":"integer","minimum":1},
     "properties":{"type":"array","uniqueItems":true,"items":{"type":"string"}},
+    "qualifiers":{"type":"array","uniqueItems":true,"items":{"enum":["magical","silvered","adamantine"]}},   // live at @3 (#58); v1 field, carried
     "damage":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["dice","type"],
               "properties":{"dice":{"$ref":"../common/v1.schema.json#/$defs/dice"},"type":{"$ref":"../common/v1.schema.json#/$defs/damage_type"}}}},
     "description":{"type":"string"}, "inert":{"const":true} },
@@ -579,12 +580,12 @@ cover them; both share `legacy_action`'s property list):
 
 ```json
 "legacy_nonspecial_action": { "type":"object","additionalProperties":false,"required":["id","name","kind","inert"],
-  "properties": { /* legacy_action's properties verbatim, except: */
+  "properties": { /* legacy_action's properties verbatim (including `qualifiers`), except: */
     "kind":{"enum":["melee_weapon_attack","ranged_weapon_attack","melee_spell_attack","ranged_spell_attack"]},
     "inert":{"const":true} },
   "allOf": [ /* v1's three if/then rules (to_hit+damage for _attack, reach for melee_, range for ranged_) */ ] },
 "legacy_special_action": { "type":"object","additionalProperties":false,"required":["id","name","kind"],
-  "properties": { /* legacy_action's properties verbatim, except: */
+  "properties": { /* legacy_action's properties verbatim (including `qualifiers`), except: */
     "kind":{"const":"special"},
     "inert":{"const":true} } }                    // optional: a special bonus action is never stamped, but a stamped one is accepted
 ```
@@ -890,11 +891,15 @@ duplicate levels so rules (1)/(2) own them.
     {"level":1,"value":2},{"level":3,"value":3},{"level":6,"value":4},{"level":12,"value":5},{"level":17,"value":6},{"level":20,"unlimited":true} ] } } } ],
 "features": [ { "id":"rage","name":"Rage",
   "effect": { "kind":"apply_modifier","cost":"bonus_action","usage":{"kind":"pool","pool":"rage","cost":1},
-    "modifier": { "stat":"damage","applies_to":"self","duration":{"kind":"rounds","n":10},
-                  "bonus_table": { "class":"barbarian","by_level":[{"level":1,"value":2},{"level":9,"value":3},{"level":16,"value":4}] } } } } ]
+    "modifiers": [
+      { "stat":"damage","applies_to":"self","duration":{"kind":"rounds","n":10},
+        "bonus_table": { "class":"barbarian","by_level":[{"level":1,"value":2},{"level":9,"value":3},{"level":16,"value":4}] } },
+      { "stat":"resistance","damage_type":"bludgeoning","applies_to":"self","duration":{"kind":"rounds","n":10} },
+      { "stat":"resistance","damage_type":"piercing","applies_to":"self","duration":{"kind":"rounds","n":10} },
+      { "stat":"resistance","damage_type":"slashing","applies_to":"self","duration":{"kind":"rounds","n":10} } ] } } ]
 ```
 
-Rage's resistances are separate `modifier` entries with `stat: resistance`, one per damage type. **Not covered**
+Rage's resistances are separate entries of the effect's **`modifiers[]`** (the `apply_modifier` arm takes `modifier` or `modifiers[]`), with `stat: resistance`, one per damage type, as in the example. **Not covered**
 (separate rows, because `modifier` has no `when` scope yet): Rage's melee-only Strength scope, the Rage
 ending conditions, and the heavy-armor restriction. The static `damage_bonus` effect (`@3`, live) is
 **not** extended with `amount_table` unless a non-Rage static case appears (it would need a v2 arm).
@@ -955,8 +960,8 @@ idempotent, preserve key order, and are **functions of old data only**.
 4. For every `traits[]` / `features[]` entry whose `effect.kind` is in the **frozen literal list**
    `{on_event, apply_modifier, grant_action, heal_pool, save_effect, reaction}` set `effect.inert = true`.
    The list is a literal inside the migration, **not** "whatever this batch introduces": a later
-   batch gets its own `4→5` list. (`self_heal`, `damage_bonus`, `bonus_action_grant` are live at `@3`
-   and are never marked.)
+   batch gets its own `4→5` list. (`self_heal`, `damage_bonus`, `bonus_action_grant`, **`damage_mitigation`, `magic_weapons`** (#58) and
+   **`multiattack`** (#59) are live at `@3` and are never marked; `qualifiers` on actions is likewise a live `@3` field.)
 5. **Merge, never overwrite**, `inert_mechanics`: read the existing array (`2→3` writes entries such
    as `damage[1..]`), union, sort, dedup. The `2→3` helper `mark_defenses_inert` assigns the whole
    array; the `3→4` migration must not copy that pattern (test: a file with both `damage[1..]` and
@@ -1054,10 +1059,10 @@ lands in `inert_features`. The "new set" lives in two places (sim's registry lis
   12. A Legendary Resistance-style pool is *declaration-only* until row 13: the validator warns when a `resources[]` entry is never referenced by any `usage.pool` / `spend.pool` / `heal_pool.pool`.
   13. `save_effect.range_ft` is **forbidden iff `origin` is `self` and `area` is present** (an area centred on the caster has no range; a single-target action with `origin: self` may still carry `range_ft`). One negative case.
   14. **`resource.max` for a monster must be an integer** (object/table forms are `character@4`-only). One negative case.
-  17. **Item riders** of kind `bonus_attack` are rejected (items have no `actions[]` to reference).
-  18. `modifier.bonus_table` is forbidden in `spell@1`'s additive `apply_modifier` (tables resolve from class level, which spells do not have).
   15. `item@1` weapons: `range[1] >= range[0]`; `reach` is 10 **iff** `properties` includes `reach` (otherwise 5, or absent for pure ranged).
   16. Level tables (§7.1): the rules listed there (ascending levels, `unlimited` last only, integer tokens, class character-only, `start` forbidden with a table, cost <= largest finite value).
+  17. **Item riders** of kind `bonus_attack` are rejected (items have no `actions[]` to reference).
+  18. `modifier.bonus_table` is forbidden in `spell@1`'s additive `apply_modifier` (tables resolve from class level, which spells do not have).
 
 **Item references.** Cross-document id resolution lives in **`tools/validate/validate_packs.py`**
 (the `ids` / `spell_ids` sets built from the pack's own documents plus each resolved dependency's
@@ -1115,6 +1120,13 @@ new rules `EventKind`s 39+ in the event feed). Rules for **mixed levels**:
   (the existing check is only `defs.empty()`, so any non-empty text passes; to make the superset behaviour
   testable it contains one level-2-only declaration, a marker such as `declare engine_api_level2: boolean`, that the
   typecheck test can reference). This is script_host work.
+* **Level-2 queries are free functions or new types, never `SimContext` extensions.** Level 1's
+  `SimContext` is frozen with the rest of level 1; level-2 API (row 16b: reaction/resource/modifier
+  queries) is added as new `declare function`s and new `declare extern type`s in `engine.level2.d.luau`.
+  Row 16a ships only a marker type (`Level2Marker`) so the superset behaviour is testable.
+* **`FROZEN.sha256` keeps level 1 only until row 16b.** The `api_freeze` ctest's `INCLUDE` regex is narrowed from
+  `\.d\.luau$` to `^engine\.level1\.d\.luau$`, so the unfrozen level-2 file is not flagged as an added file; 16b
+  freezes it (adds its hash and widens the regex back) when its content is final.
 * A pack containing any `@4` or `item@1` document must declare `api_level >= 2` (validator error otherwise).
 * **Who passes the max.** The embedder (the process that owns the `ScriptHost`: `game/vertical_slice`
   and the sim test hosts) constructs `ScriptHost(kMaxApiLevel, limits)`; the constructor's `api_level`
@@ -1344,7 +1356,7 @@ Everything below is event schema **v7**.
 | # | PR | Owner | Depends on | Notes |
 |---|---|---|---|---|
 | 1 | **Sim facts: `ally_near_target` and `move_tiles`.** `ally_near_target`: same-team, conscious, non-incapacitated creature other than the attacker within 1 tile of the target footprint, set in `do_rules` (Attack branch) and `hooks.refresh_ready` | **Engine Core** | none (can land now) | Supplies the fact #54 expects. Sim does not load `roll_traits` from content yet, so this changes nothing observable today (golden-neutral); it becomes observable when a loader or trait uses it (Sneak Attack, rows 9/10). `move_tiles` (appended `ActionRequest` field, default 0): set in `do_step` (1 per Step) and the readied-move path (path length). Both stay out of `log_hash` (§9.3) |
-| 2 | `common@2` (changed defs only, absolute refs to v1), `monster@4`/`character@4`, lint test, per-tag validator table, cross-ref checks (§8.3), `3→4` migrations (§8.2), the `api_level >= 2` validator rule for `@4` packs (§8.5; the manifest enum itself ships in 16a), decorated compat fixtures (§8.4) | **T&C** | #58, #59, **16a** | No behaviour; golden-neutral by construction |
+| 2 | `common@2` (changed defs only, absolute refs to v1), `monster@4`/`character@4`, lint test, per-tag validator table, cross-ref checks (§8.3), `3→4` migrations (§8.2), the `api_level >= 2` validator rule for `@4` packs (§8.5; the manifest enum itself ships in 16a), decorated compat fixtures (§8.4) | **T&C** | #58, #59, **16a** | No behaviour; golden-neutral by construction. **Carries the validator code and negative cases for authored `inert` on `reactions[]` and `bonus_actions[]`** (those arms only exist from the `@4` schemas in this row; at `@≤3` the closed v1 `action` already rejects an authored `inert`) |
 | 3 | Loader: accept `@4`, **`declared.version` plumbing** into `ContentLibrary::add()` and `FeatureBuildCtx`, `reactions`/`bonus_actions` markers, registry "list as inert" rule (§8.3), `forward_compat` listing | **Engine Core** | 2 | Public `add()` signature: T&C signs off |
 | 4 | `event_stream_version` restructured into the max-over-constructs form (§9.2), including the `rules.kind > SpellCheckRolled` → 7 branch; tests use a **synthetic `EventKind(39)`** event (Footprint-only 6 / new-kind-only 7 / both 7 / neither unchanged). **`kSimEventSchemaVersion` stays 6** in this PR and no `<= kSimEventSchemaVersion` invariant is added here | **Engine Core** | #55 | Digest-neutral: the digest uses the lowest fitting version |
 | 5 | rules5e foundation: `usage`, `ActionUse`, `ResourcePool`, recharge roll, `moved_ft` (rules half: adds 5 x `move_tiles` on the actor's own turn, **only when the move completes**, i.e. when `Moved` is emitted; an OA-interrupted move does not count), `SpellBook::erase`/rebuild support (§2.3), `ReactionOption::uses_reaction` (appended, default true), `SpellDef::{is_spell, magical, fixed_dc, fixed_attack}`, kinds 39-44. **This PR bumps `kSimEventSchemaVersion` to 7** together with `kLastRulesEventKind`, SIM_EVENTS.md (v7 table/changelog row and the `ActionUsed` ordering), the pins in `events_tests.cpp` (~L37 `kSimEventSchemaVersion == 6`, plus the L57/L60 layout pins) and `event_feed_tests.cpp` (~L64 `static_assert(... == 6)`, plus `known_rules_kind`), and adds the `event_stream_version <= kSimEventSchemaVersion` invariant (SIM_EVENTS.md policy: bump in the PR that surfaces the kinds) | **Rules** | 4, #55 | Tagged `Combat::hash` folds are part of the sim side of this PR (Engine Core co-reviews) |

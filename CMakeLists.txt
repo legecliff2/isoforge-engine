@@ -152,7 +152,7 @@ if(ENGINE_BUILD_TESTS)
              COMMAND ${CMAKE_COMMAND} -DROOT=${CMAKE_CURRENT_SOURCE_DIR}
                      -DDIR=${CMAKE_CURRENT_SOURCE_DIR}/engine/core/script_host/api
                      -DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/engine/core/script_host/api/FROZEN.sha256
-                     "-DINCLUDE=\\.d\\.luau$"
+                     "-DINCLUDE=^engine\\.level1\\.d\\.luau$"   # level 2 stays unfrozen until row 16b
                      -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/compat_freeze/compat_freeze.cmake)
 endif()
 
