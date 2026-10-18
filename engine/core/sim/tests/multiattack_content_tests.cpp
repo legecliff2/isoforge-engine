@@ -157,8 +157,8 @@ ContentLibrary rig_lib() {
 TEST_CASE("multiattack sim: option lookup by id, one action for the whole sequence, order enforced") {
     auto lib = rig_lib();
     Rig r(lib);
-    CHECK(r.c->multiattack_option(r.beast_id, "rend") == std::optional<uint8_t>(1));
-    CHECK(r.c->multiattack_option(r.beast_id, "snipe") == std::optional<uint8_t>(2));
+    CHECK(r.c->multiattack_option(r.beast_id, "rend").value_or(0) == 1);
+    CHECK(r.c->multiattack_option(r.beast_id, "snipe").value_or(0) == 2);
     CHECK_FALSE(r.c->multiattack_option(r.beast_id, "nope"));
     CHECK_FALSE(r.c->multiattack_option(r.foe_id, "rend"));
     const uint8_t rend = *r.c->multiattack_option(r.beast_id, "rend");
