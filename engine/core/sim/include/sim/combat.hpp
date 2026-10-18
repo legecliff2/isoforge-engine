@@ -125,7 +125,14 @@ public:
     Vec2i pos(CombatantId id) const;
     ecs::Entity entity(CombatantId id) const;
     const Archetype* archetype(CombatantId id) const;
-    std::vector<Vec2i> occupied_except(CombatantId id) const;   // tiles of other non-dead combatants
+    // Footprint (Large 2x2, Huge 3x3, Gargantuan 4x4; monster@3 / character@3 only, see Archetype::footprint).
+    // Convention: pos(id) is the ANCHOR, the footprint's min-x / min-y tile, and the footprint is the square
+    // [pos.x, pos.x + n) x [pos.y, pos.y + n). Spawn tiles and Step destinations are anchors. n == 1 for
+    // every pre-footprint creature, which then behaves exactly as before.
+    int footprint_size(CombatantId id) const;
+    std::vector<Vec2i> footprint_tiles(CombatantId id) const { return footprint_tiles_at(id, pos(id)); }
+    std::vector<Vec2i> footprint_tiles_at(CombatantId id, Vec2i anchor) const;   // row-major (y, then x)
+    std::vector<Vec2i> occupied_except(CombatantId id) const;   // tiles (every footprint tile) of other non-dead combatants
     bool hostile(CombatantId a, CombatantId b) const;
     // Active features (UseFeature): remaining uses (255 = unlimited), and whether usable now.
     // Would stepping `mover` from `from` to `to` leave some hostile's melee reach?
