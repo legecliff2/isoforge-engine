@@ -37,6 +37,9 @@ inline constexpr uint32_t kMonsterSchemaVersion = 4;
 inline constexpr uint32_t kCharacterSchemaVersion = 4;
 // spell@1: SRD spell (schemas/spell/v1.schema.json); mapped to rules5e::SpellDef by rules5e_content.
 inline constexpr uint32_t kSpellSchemaVersion = 1;
+// item@1: weapons, armor and shields (schemas/item/v1.schema.json). The engine registers the type so item
+// documents load and their ids are indexed (PackSet content ids); item loading into archetypes is a later row.
+inline constexpr uint32_t kItemSchemaVersion = 1;
 
 // Effect kinds first made mechanical by schema version `v` of monster / character (the frozen literal list a
 // migration (v-1 -> v) marks inert in older files). @4: on_event, apply_modifier, grant_action, heal_pool,
