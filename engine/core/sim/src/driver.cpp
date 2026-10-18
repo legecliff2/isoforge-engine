@@ -56,13 +56,42 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
     if (const Archetype* arch = c.archetype(self); arch && s.budget.action && s.budget.sequence == 0 &&
                                                    s.budget.attacks_remaining == 0 && rules5e::is_conscious(*t))
         for (const auto& sa : arch->save_actions) {
-            if (sa.area) continue;
             if (sa.usage_kind == 1) {
                 const auto* u = rules5e::find_action_use(s, self, sa.spell_id);
                 if (u && u->expended) continue;
             } else if (sa.usage_kind == 2 && rules5e::feature_uses_left(s, self, sa.spell_id) == 0) continue;
             else if (sa.usage_kind == 3) {
                 if (!rules5e::can_spend(s, self, sa.pool_id, sa.pool_cost ? sa.pool_cost : 1)) continue;
+            }
+            if (sa.area) {   // area template: aim at a hostile; never catch an ally; >= 2 hostiles (1 if no attack is legal)
+                const auto* def = c.spell_def(sa.spell_id);
+                if (!def) continue;
+                bool attack_legal = false;
+                for (uint8_t i = 0; i < me->attacks.size() && !attack_legal; ++i)
+                    attack_legal = me->attacks[i].ranged ? c.can_shoot(self, i, t->id)
+                                                         : c.distance_tiles(self, t->id) <= reach_tiles(me->attacks[i].reach_or_range_ft);
+                std::optional<Command> best;
+                std::size_t best_n = 0;
+                for (const auto& k : s.combatants) {
+                    if (k.id == self || !c.hostile(self, k.id) || k.dead || !rules5e::is_conscious(k)) continue;
+                    const auto hit = c.area_targets(self, *def, c.pos(k.id));
+                    std::size_t hostile_n = 0;
+                    bool ally = false;
+                    for (CombatantId id : hit) {
+                        if (c.hostile(self, id)) ++hostile_n; else ally = true;
+                    }
+                    if (hit.empty() || ally || hostile_n <= best_n) continue;   // first aim wins a tie
+                    best_n = hostile_n;
+                    Command cast;
+                    cast.request = {self, ActionKind::CastSpell, hit[0]};
+                    cast.request.spell_id = sa.spell_id;
+                    cast.request.spell_level = 0;
+                    cast.aim = true;
+                    cast.to = c.pos(k.id);
+                    best = cast;
+                }
+                if (best && (best_n >= 2 || !attack_legal)) return *best;
+                continue;
             }
             if (sa.range_ft == 0 || c.distance_tiles(self, t->id) * kFeetPerTile > int(sa.range_ft) ||
                 !c.line_of_sight(self, t->id))
