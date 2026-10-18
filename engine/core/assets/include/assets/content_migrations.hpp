@@ -9,6 +9,10 @@
 //  (NPC allies / auto-play). Migration 1 -> 2 is a no-op.
 //  monster@3: same gate as character@3. Migration 2 -> 3 marks every pre-@3 features[]/traits[]
 //  effect "inert": true (feature effects are active only for monster@3+ files).
+//  Also at @3 (both types): damage_resistances / damage_immunities / damage_vulnerabilities /
+//  condition_immunities and every damage[] entry after the first become mechanical. Migration 2 -> 3
+//  records the ones a pre-@3 file carries in a top-level "inert_mechanics" string array
+//  (e.g. ["damage_resistances", "damage[1..]"]); sim::ContentLibrary ignores exactly those.
 //  character@3: feature effects (features[]/traits[] "effect") become mechanically active.
 //  Before @3 they were descriptive only and content baked their numbers into stat blocks (fl1's
 //  longsword 1d8+5 includes Dueling). Migration 2 -> 3 marks every pre-@3 effect
