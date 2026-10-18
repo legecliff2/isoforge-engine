@@ -4,6 +4,7 @@
 #include "rules5e/abilities.hpp"
 #include "rules5e/weapon.hpp"
 #include "rules5e/dice.hpp"
+#include "rules5e/traits.hpp"
 
 namespace rules5e {
 
@@ -18,8 +19,30 @@ RollMode attack_roll_mode(const Combatant& a, const Combatant& t, const AttackCo
     if (t.has(C::Blinded) || t.has(C::Paralyzed) || t.has(C::Petrified) || t.has(C::Restrained) ||
         t.has(C::Stunned) || t.has(C::Unconscious)) adv = true;
     if (t.has(C::Invisible)) dis = true;
+    const TraitModes tm = attack_trait_modes(a, t, ctx.ally_near_target, ctx.ranged);
+    adv = adv || tm.advantage; dis = dis || tm.disadvantage;
     if (t.has(C::Prone)) (ctx.target_within_5ft ? adv : dis) = true;
     return combine_modes(adv, dis);
+}
+
+TraitModes attack_trait_modes(const Combatant& a, const Combatant& t, bool ally_near_target, bool ranged) {
+    TraitModes m;
+    auto test = [&](const RollTrait& r) {
+        if ((r.when & kWhenAllyNearTarget) && !ally_near_target) return false;
+        if ((r.when & kWhenTargetDamaged) && t.hp >= t.hp_max) return false;
+        if ((r.when & kWhenMeleeAttack) && ranged) return false;
+        if ((r.when & kWhenRangedAttack) && !ranged) return false;
+        if ((r.when & kWhenSourceMagical)) return false;   // a save predicate; never true for attack rolls
+        if (r.target_conditions && !(t.conditions & r.target_conditions)) return false;
+        if (r.target_types && !(r.target_types & bit(t.creature_type))) return false;
+        return true;
+    };
+    auto note = [&](const RollTrait& r) {
+        if (r.mode == RollMode::Advantage) m.advantage = true; else if (r.mode == RollMode::Disadvantage) m.disadvantage = true;
+    };
+    for (const auto& r : a.roll_traits) if (r.roll == TraitRoll::Attack && test(r)) note(r);
+    for (const auto& r : t.roll_traits) if (r.roll == TraitRoll::AttackedBy && test(r)) note(r);
+    return m;
 }
 
 Ability attack_ability(const Combatant& c, const Attack& a) {
@@ -35,6 +58,7 @@ bool weapon_disadvantage(const Combatant& c, const Attack& a, bool within_5ft) {
 AttackResult resolve_attack(rng::Rng& r, const Combatant& attacker, const Attack& atk,
                             const Combatant& target, const AttackContext& ctx) {
     AttackContext wctx = ctx;
+    wctx.ranged = atk.ranged;
     wctx.extra_disadvantage = ctx.extra_disadvantage || weapon_disadvantage(attacker, atk, ctx.target_within_5ft);
     RollMode mode = attack_roll_mode(attacker, target, wctx);
     D20Roll roll = roll_d20(r, atk.to_hit, mode);
