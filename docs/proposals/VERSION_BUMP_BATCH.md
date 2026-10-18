@@ -55,7 +55,7 @@ exactly the "interim trait effect" the Director ruled out, so it lands in `@4` (
 
 | Schema | Change | Why it cannot be additive |
 |---|---|---|
-| `common@2` (new file) | **Only the defs that change**, re-declared locally (this is the complete local list, and the lint in §1.2 checks the doc's own snippets against it): `action` (v2), `legacy_action`, `legacy_special_action`, `reaction`, `reaction_effect`, `on_event_effect`, `apply`, `item_damage` (`item@1`'s file), `rider`, `predicate`, `scaling`, `usage`, `area`, `save`, `resource`, `modifier`, `modifier_duration`, `damage` (new named def), `rider_damage_type`, `spellcasting` (v2, superset of v1), `trait` / `trait_active` / `effect_cost` (v2), `stat_block` (v2) | `common@1 $defs/action` is `additionalProperties:false`; `reactions`/`bonus_actions` exist in v1 but are descriptive; widening v1 would let `@3` files carry fields the `@3` contract says are inert |
+| `common@2` (new file) | **Only the defs that change**, re-declared locally (this is the complete local list, and the lint in §1.2 checks the doc's own snippets against it): `action` (v2), `legacy_action`, `legacy_nonspecial_action`, `legacy_special_action`, `effect`, `effect_inert`, `effect_live`, `apply_modifier_effect`, `grant_action_effect`, `heal_pool_effect`, `level_table`, `level_table_entry`, `pool_level_table`, `pool_level_table_entry`, `reaction`, `reaction_effect`, `on_event_effect`, `apply`, `item_damage` (`item@1`'s file), `rider`, `predicate`, `scaling`, `usage`, `area`, `save`, `resource`, `modifier`, `modifier_duration`, `damage` (new named def), `rider_damage_type`, `rider_damage`, `spellcasting` (v2, superset of v1), `trait` / `trait_active` / `effect_cost` (v2), `stat_block` (v2) | `common@1 $defs/action` is `additionalProperties:false`; `reactions`/`bonus_actions` exist in v1 but are descriptive; widening v1 would let `@3` files carry fields the `@3` contract says are inert |
 | `monster@4` | `$ref common@2 stat_block`; **every `@3` top-level property is carried** (§1.3) | same, plus gating |
 | `character@4` | same; adds `resources[]`, class-feature effect kinds | same |
 | `item@1` | new type: weapons, armor, shields (§10) | new type: no old content |
@@ -157,23 +157,23 @@ belong to the action (above).
     "width_ft": { "type": "integer", "minimum": 5, "multipleOf": 5, "description": "line only." },
     "height_ft":{ "type": "integer", "minimum": 5, "multipleOf": 5, "description": "cylinder only." } },
   "allOf": [
-    { "if": {"properties":{"shape":{"const":"line"}}},     "then": {"required":["width_ft"]},  "else": {"not":{"required":["width_ft"]}} },
-    { "if": {"properties":{"shape":{"const":"cylinder"}}}, "then": {"required":["height_ft"]}, "else": {"not":{"required":["height_ft"]}} } ] }
+    { "if": {"required":["shape"], "properties":{"shape":{"const":"line"}}},     "then": {"required":["width_ft"]},  "else": {"not":{"required":["width_ft"]}} },
+    { "if": {"required":["shape"], "properties":{"shape":{"const":"cylinder"}}}, "then": {"required":["height_ft"]}, "else": {"not":{"required":["height_ft"]}} } ] }
 ```
 
 **Schema-enforced `save_effect` rules** (not just prose; each has a validator negative case):
 
 ```json
 "action.allOf (additions)": [
-  { "if": {"properties":{"kind":{"const":"save_effect"}}},
-    "then": { "required": ["save"],
+  { "if": {"required":["kind"], "properties":{"kind":{"const":"save_effect"}}},
+    "then": { "required": ["save"], "dependentRequired": {"on_success":["damage"]},   // on_success only with damage[]
               "anyOf": [ {"required":["damage"]}, {"required":["apply"]} ],        // damage[] or apply[] required
               "not": { "anyOf": [ {"required":["to_hit"]}, {"required":["reach"]}, {"required":["range"]}, {"required":["properties"]}, {"required":["on_hit"]} ] } },
     "else": { "not": { "anyOf": [ {"required":["save"]}, {"required":["area"]}, {"required":["origin"]}, {"required":["range_ft"]},
                                   {"required":["apply"]}, {"required":["on_success"]}, {"required":["usage"]}, {"required":["magical"]} ] } } },
   { "if": {"required":["kind","damage"], "properties":{"kind":{"const":"save_effect"}}}, "then": {"required":["on_success"]} },   // on_success iff damage[]
   { "if": {"required":["origin"], "properties":{"origin":{"const":"point"}}}, "then": {"required":["range_ft"]} },
-  { "if": {"properties":{"kind":{"enum":["melee_weapon_attack","ranged_weapon_attack"]}}}, "then": {"properties":{"on_hit":{"type":"array","items":{"$ref":"#/$defs/rider"}}}},
+  { "if": {"required":["kind"], "properties":{"kind":{"enum":["melee_weapon_attack","ranged_weapon_attack"]}}}, "then": {"properties":{"on_hit":{"type":"array","items":{"$ref":"#/$defs/rider"}}}},
     "else": {"not":{"required":["on_hit"]}} } ]
 ```
 
@@ -185,14 +185,15 @@ Small shared defs used above and in §3/§4 (all local, all in the §1.1 list):
 "damage": { "type":"object","additionalProperties":false,"required":["dice","type"],
             "properties":{"dice":{"$ref":"../common/v1.schema.json#/$defs/dice"},"type":{"$ref":"../common/v1.schema.json#/$defs/damage_type"}} },
 "rider_damage_type": { "oneOf":[ {"$ref":"../common/v1.schema.json#/$defs/damage_type"}, {"const":"same_as_weapon"} ] },
+"rider_damage": { "type":"object","additionalProperties":false,"required":["dice","type"],
+                 "properties":{"dice":{"$ref":"../common/v1.schema.json#/$defs/dice"},"type":{"$ref":"#/$defs/rider_damage_type"}} },
 "apply":  { "type":"object","additionalProperties":false,"required":["condition"],
             "properties":{"condition":{"$ref":"../common/v1.schema.json#/$defs/condition"},
                           "duration":{"$ref":"#/$defs/modifier_duration"},      // same closed def as §6.1
                           "repeat_save":{"enum":["start_of_turn","end_of_turn","on_damage"]}} }
 ```
 
-(Riders use a `damage` whose `type` is `rider_damage_type`; the rider `damage` property is declared
-against that variant. `on_hit[]` is allowed only on weapon-attack kinds; `damage` stays required for `_attack` kinds exactly as in v1.)
+(`rider.damage[]` items are `$defs/rider_damage` (type may be `same_as_weapon`); every other `damage` is `$defs/damage`. `on_hit[]` is allowed only on weapon-attack kinds; `damage` stays required for `_attack` kinds exactly as in v1.)
 
 Example (adult red dragon, replaces today's descriptive `special`):
 
@@ -211,19 +212,21 @@ Every discriminated union in `common@2` uses the `spell@1` pattern: a closed bas
 fields in the unselected arms).
 
 ```json
-"usage": { "type":"object", "required":["kind"],
+"usage": { "type":"object", "additionalProperties": false, "required":["kind"],
   "properties": { "kind": {"enum":["at_will","recharge","per_day","per_rest","pool"]},
                   "min": {"enum":[2,3,4,5,6]}, "uses": {"type":"integer","minimum":1,"maximum":9},
                   "rest": {"enum":["short","long"]}, "pool": {"$ref":"../common/v1.schema.json#/$defs/local_id"},
                   "cost": {"type":"integer","minimum":1} },
-  "additionalProperties": false,
   "allOf": [
-    { "if": {"properties":{"kind":{"const":"recharge"}}},  "then": {"required":["min"],  "not":{"anyOf":[{"required":["uses"]},{"required":["rest"]},{"required":["pool"]},{"required":["cost"]}]}} },
-    { "if": {"properties":{"kind":{"const":"per_day"}}},   "then": {"required":["uses"], "not":{"anyOf":[{"required":["min"]},{"required":["rest"]},{"required":["pool"]},{"required":["cost"]}]}} },
-    { "if": {"properties":{"kind":{"const":"per_rest"}}},  "then": {"required":["uses","rest"], "not":{"anyOf":[{"required":["min"]},{"required":["pool"]},{"required":["cost"]}]}} },
-    { "if": {"properties":{"kind":{"const":"pool"}}},      "then": {"required":["pool"], "not":{"anyOf":[{"required":["min"]},{"required":["uses"]},{"required":["rest"]}]}} },
-    { "if": {"properties":{"kind":{"const":"at_will"}}},   "then": {"not":{"anyOf":[{"required":["min"]},{"required":["uses"]},{"required":["rest"]},{"required":["pool"]},{"required":["cost"]}]}} } ] }
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"at_will"}}},   "then": {"propertyNames":{"enum":["kind"]}} },
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"recharge"}}},  "then": {"required":["min"],  "propertyNames":{"enum":["kind","min"]}} },
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"per_day"}}},   "then": {"required":["uses"], "propertyNames":{"enum":["kind","uses"]}} },
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"per_rest"}}},  "then": {"required":["uses","rest"], "propertyNames":{"enum":["kind","uses","rest"]}} },
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"pool"}}},      "then": {"required":["pool"], "propertyNames":{"enum":["kind","pool","cost"]}} } ] }
 ```
+
+(`usage` is converted from per-arm forbid lists to the same `propertyNames` allow-list as every other union, so the
+single "allowed == required ∪ optional" test covers it.)
 
 `cost` is the **one name** for "how much a use takes from a pool" everywhere (`usage.cost`,
 `rider spend.cost`, `resource` cost on features); it defaults to 1. `recharge` is "Recharge 5-6":
@@ -333,8 +336,7 @@ carry the same effect object): effects that happen on an *event*, independent of
     "limit": { "enum": ["once_per_turn","once_per_round","once_per_attack","none"], "default": "none" },
     "choice": { "enum": ["auto","ask"], "default": "auto" },   // Divine Smite: "ask"
     "usage": { "$ref": "#/$defs/usage" },
-    "effects": { "type":"array", "minItems":1, "items": {"$ref":"#/$defs/rider"} },
-    "inert": { "type":"boolean" } } }            // stamped by the 3->4 migration (§8.2)
+    "effects": { "type":"array", "minItems":1, "items": {"$ref":"#/$defs/rider"} } } }   // no `inert` here: an inert on_event is arm (a) of `effect` (§8.2.1)
 ```
 
 **Ids.** Content authors do not write trigger ids. The loader derives a stable one per trigger:
@@ -378,14 +380,14 @@ each arm that `allowed == required ∪ optional` as documented here.
     "dc": {"type":"integer","minimum":1,"maximum":30},
     "dc_from_damage": {"const": true}, "base": {"type":"integer","minimum":0,"maximum":30} },
   "allOf": [
-    { "if": {"properties":{"kind":{"const":"weapon"}}},                       "then": {"required":["is"], "propertyNames":{"enum":["kind","is"]}} },
-    { "if": {"properties":{"kind":{"const":"advantage_or_ally_adjacent"}}},   "then": {"propertyNames":{"enum":["kind"]}} },
-    { "if": {"properties":{"kind":{"enum":["target_creature_type","not_creature_type"]}}}, "then": {"required":["creature_types"], "propertyNames":{"enum":["kind","creature_types"]}} },
-    { "if": {"properties":{"kind":{"enum":["damage_type_is","damage_type_not"]}}},        "then": {"required":["types"], "propertyNames":{"enum":["kind","types"]}} },
-    { "if": {"properties":{"kind":{"const":"not_crit"}}},                     "then": {"propertyNames":{"enum":["kind"]}} },
-    { "if": {"properties":{"kind":{"const":"moved_at_least_ft"}}},            "then": {"required":["ft"], "propertyNames":{"enum":["kind","ft"]}} },
-    { "if": {"properties":{"kind":{"const":"self_hp_below"}}},                "then": {"required":["num","den"], "propertyNames":{"enum":["kind","num","den"]}} },
-    { "if": {"properties":{"kind":{"const":"save"}}},
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"weapon"}}},                       "then": {"required":["is"], "propertyNames":{"enum":["kind","is"]}} },
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"advantage_or_ally_adjacent"}}},   "then": {"propertyNames":{"enum":["kind"]}} },
+    { "if": {"required":["kind"], "properties":{"kind":{"enum":["target_creature_type","not_creature_type"]}}}, "then": {"required":["creature_types"], "propertyNames":{"enum":["kind","creature_types"]}} },
+    { "if": {"required":["kind"], "properties":{"kind":{"enum":["damage_type_is","damage_type_not"]}}},        "then": {"required":["types"], "propertyNames":{"enum":["kind","types"]}} },
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"not_crit"}}},                     "then": {"propertyNames":{"enum":["kind"]}} },
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"moved_at_least_ft"}}},            "then": {"required":["ft"], "propertyNames":{"enum":["kind","ft"]}} },
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"self_hp_below"}}},                "then": {"required":["num","den"], "propertyNames":{"enum":["kind","num","den"]}} },
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"save"}}},
       "then": {"required":["ability"], "propertyNames":{"enum":["kind","ability","dc","dc_from_damage","base"]},
                "oneOf": [ {"required":["dc"],             "not":{"anyOf":[{"required":["dc_from_damage"]},{"required":["base"]}]}},
                           {"required":["dc_from_damage"], "not":{"required":["dc"]}} ] } } ] }
@@ -409,7 +411,7 @@ they are a schema error until R-G8):
 "rider": { "type":"object", "additionalProperties": false, "required": ["kind"],
   "properties": {
     "kind": {"enum": ["extra_damage","save_condition","apply_condition","heal_self","temp_hp","set_hp","bonus_attack","area_save","spend"]},
-    "damage": {"type":"array","minItems":1,"items":{"$ref":"#/$defs/damage"}},
+    "damage": {"type":"array","minItems":1,"items":{"$ref":"#/$defs/rider_damage"}},
     "scale":  {"$ref":"#/$defs/scaling"},
     "save":   {"$ref":"#/$defs/save"},
     "on_success": {"enum":["half","none"]},
@@ -421,15 +423,17 @@ they are a schema error until R-G8):
     "pool":   {"$ref":"../common/v1.schema.json#/$defs/local_id"}, "cost": {"type":"integer","minimum":1},
     "slot":   {"oneOf":[{"const":"any"},{"type":"integer","minimum":1,"maximum":9}]} },
   "allOf": [
-    { "if": {"properties":{"kind":{"const":"extra_damage"}}},    "then": {"required":["damage"], "propertyNames":{"enum":["kind","damage","scale"]}} },
-    { "if": {"properties":{"kind":{"const":"save_condition"}}},  "then": {"required":["save"], "anyOf":[{"required":["apply"]},{"required":["damage"]}],
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"extra_damage"}}},    "then": {"required":["damage"], "propertyNames":{"enum":["kind","damage","scale"]}} },
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"save_condition"}}},  "then": {"required":["save"], "anyOf":[{"required":["apply"]},{"required":["damage"]}],
+                                                                           "dependentRequired": {"damage":["on_success"],"on_success":["damage"]},   // both directions
                                                                            "propertyNames":{"enum":["kind","save","apply","damage","on_success"]} } },
-    { "if": {"properties":{"kind":{"const":"apply_condition"}}}, "then": {"required":["apply"], "propertyNames":{"enum":["kind","apply"]}} },
-    { "if": {"properties":{"kind":{"enum":["heal_self","temp_hp"]}}}, "then": {"oneOf":[{"required":["dice"]},{"required":["amount"]}], "propertyNames":{"enum":["kind","dice","amount"]}} },
-    { "if": {"properties":{"kind":{"const":"set_hp"}}},          "then": {"required":["value"], "propertyNames":{"enum":["kind","value"]}} },
-    { "if": {"properties":{"kind":{"const":"bonus_attack"}}},    "then": {"required":["attack_id"], "propertyNames":{"enum":["kind","attack_id"]}} },
-    { "if": {"properties":{"kind":{"const":"area_save"}}},       "then": {"required":["area","save","damage","on_success"], "propertyNames":{"enum":["kind","area","save","damage","on_success"]}} },
-    { "if": {"properties":{"kind":{"const":"spend"}}},           "then": {"oneOf":[{"required":["pool"]},{"required":["slot"]}], "propertyNames":{"enum":["kind","pool","cost","slot"]}} } ] }
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"apply_condition"}}}, "then": {"required":["apply"], "propertyNames":{"enum":["kind","apply"]}} },
+    { "if": {"required":["kind"], "properties":{"kind":{"enum":["heal_self","temp_hp"]}}}, "then": {"oneOf":[{"required":["dice"]},{"required":["amount"]}], "propertyNames":{"enum":["kind","dice","amount"]}} },
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"set_hp"}}},          "then": {"required":["value"], "propertyNames":{"enum":["kind","value"]}} },
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"bonus_attack"}}},    "then": {"required":["attack_id"], "propertyNames":{"enum":["kind","attack_id"]}} },
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"area_save"}}},       "then": {"required":["area","save","damage","on_success"], "propertyNames":{"enum":["kind","area","save","damage","on_success"]}} },
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"spend"}}},           "then": {"oneOf":[{"required":["pool"]},{"required":["slot"],"not":{"required":["cost"]}}],   // cost only with pool, never with slot
+                                                                 "propertyNames":{"enum":["kind","pool","cost","slot"]}} } ] }
 ```
 
 (`$defs/apply` is the shared `{condition, duration?, repeat_save?}` object of §2.1, also a local def, listed
@@ -535,10 +539,20 @@ closed shapes**, so a migrated old entry still validates:
 "reactions": { "type":"array", "items": { "oneOf": [
     { "$ref": "#/$defs/reaction" },                    // mechanical (new at @4)
     { "$ref": "#/$defs/legacy_action" } ] } }          // v1 action shape, requires "inert": true
-"bonus_actions": { "type":"array", "items": { "oneOf": [
-    { "allOf": [ {"$ref":"#/$defs/action"}, {"properties":{"kind":{"not":{"const":"special"}}}} ] },   // mechanical: every v2 kind EXCEPT special
-    { "$ref": "#/$defs/legacy_action" } ] } }          // includes every special bonus action, unstamped
+"bonus_actions": { "type":"array", "items": { "oneOf": [        // THREE arms, pairwise disjoint
+    { "allOf": [ {"$ref":"#/$defs/action"}, {"properties":{"kind":{"not":{"const":"special"}}}} ] },   // (1) mechanical: every v2 kind EXCEPT special
+    { "$ref": "#/$defs/legacy_nonspecial_action" },                                                    // (2) legacy, non-special, `inert: true` REQUIRED (stamped)
+    { "$ref": "#/$defs/legacy_special_action" } ] } }                                                  // (3) legacy special, `inert` optional (never stamped)
 ```
+
+Disjointness: (1) and (2) differ by `inert` (the v2 `action` forbids it); (2) and (3) differ by `kind`
+(`legacy_nonspecial_action.kind` excludes `special`, `legacy_special_action.kind` is const `special`);
+(1) never matches `special`. `reactions[]` keeps the two-arm `reaction | legacy_action` form (every
+reaction entry is stamped, `special` included, so `legacy_action` there allows all five v1 kinds).
+Required schema tests for `bonus_actions[]`: **special unstamped** (valid, arm 3), **special stamped**
+(valid, arm 3), **mechanical** non-special v2 action (valid, arm 1), **stamped non-special** (valid, arm 2),
+and the negatives **unstamped special read as mechanical** (a `special` carrying `save`/`usage` fields is
+invalid) and **non-special with `inert:false`** (invalid).
 
 `legacy_action` is **re-declared in full** (a plain `allOf` over v1's closed `action` would reject the
 extra `inert` property): v1's property list verbatim, plus `inert`.
@@ -561,7 +575,7 @@ extra `inert` property): v1's property list verbatim, plus `inert`.
 
 The `reactions[]` arms are mutually exclusive: `reaction` requires `window`/`effect` and forbids
 `inert`; `legacy_action` requires `inert`. For `bonus_actions[]` there is a third arm,
-`legacy_special_action` (= `legacy_action` with `kind` const `special` and `inert` *optional*), because a
+`legacy_special_action` (= `legacy_action` with `kind` const `special` and `inert` *optional*; `legacy_nonspecial_action` is `legacy_action` minus `special`), because a
 `special` bonus action is not loaded at `@4` and therefore is **not stamped**; the mechanical arm
 excludes `special` (`kind: {not: {const: special}}`), so no `special` entry can be read as mechanical.
 
@@ -604,13 +618,13 @@ is a validator-table change, not a schema change.
     "attack_id": {"$ref":"../common/v1.schema.json#/$defs/local_id"},
     "spell":  {"$ref":"../common/v1.schema.json#/$defs/content_id"} },
   "allOf": [
-    { "if": {"properties":{"kind":{"const":"ac_bonus"}}},            "then": {"required":["bonus"],  "propertyNames":{"enum":["kind","bonus"]}} },                    // Parry, Shield
-    { "if": {"properties":{"kind":{"const":"reduce_damage"}}},       "then": {"oneOf":[{"required":["fraction"]},{"required":["dice"]}], "propertyNames":{"enum":["kind","fraction","dice"]}} },  // Uncanny Dodge, Deflect Missiles
-    { "if": {"properties":{"kind":{"const":"impose_disadvantage"}}}, "then": {"propertyNames":{"enum":["kind"]}} },                                                    // Protection
-    { "if": {"properties":{"kind":{"const":"retaliate"}}},           "then": {"required":["damage"], "dependentRequired":{"save":["on_success"],"on_success":["save"]}, "propertyNames":{"enum":["kind","damage","save","on_success"]}} },  // Hellish Rebuke
-    { "if": {"properties":{"kind":{"const":"attack"}}},              "then": {"required":["attack_id"], "propertyNames":{"enum":["kind","attack_id"]}} },              // Riposte
-    { "if": {"properties":{"kind":{"const":"cast"}}},                "then": {"required":["spell"],  "propertyNames":{"enum":["kind","spell"]}} },                      // monster casts a listed spell
-    { "if": {"properties":{"kind":{"const":"subtract_roll"}}},       "then": {"required":["dice"],   "propertyNames":{"enum":["kind","dice"]}} } ] }                    // reserved (Q6)
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"ac_bonus"}}},            "then": {"required":["bonus"],  "propertyNames":{"enum":["kind","bonus"]}} },                    // Parry, Shield
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"reduce_damage"}}},       "then": {"oneOf":[{"required":["fraction"]},{"required":["dice"]}], "propertyNames":{"enum":["kind","fraction","dice"]}} },  // Uncanny Dodge, Deflect Missiles
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"impose_disadvantage"}}}, "then": {"propertyNames":{"enum":["kind"]}} },                                                    // Protection
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"retaliate"}}},           "then": {"required":["damage"], "dependentRequired":{"save":["on_success"],"on_success":["save"]}, "propertyNames":{"enum":["kind","damage","save","on_success"]}} },  // Hellish Rebuke
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"attack"}}},              "then": {"required":["attack_id"], "propertyNames":{"enum":["kind","attack_id"]}} },              // Riposte
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"cast"}}},                "then": {"required":["spell"],  "propertyNames":{"enum":["kind","spell"]}} },                      // monster casts a listed spell
+    { "if": {"required":["kind"], "properties":{"kind":{"const":"subtract_roll"}}},       "then": {"required":["dice"],   "propertyNames":{"enum":["kind","dice"]}} } ] }                    // reserved (Q6)
 ```
 
 The reaction's trigger field is named **`window`** so it is never confused with `on_event` effects (§3)
@@ -706,6 +720,7 @@ and the `ac_bonus` spell effect (instantaneous reaction today). **Integers only*
   "properties": {
     "stat": { "enum": ["attack_roll","save","ability_check","ac","speed","damage","temp_hp","resistance","attacks_against"] },
     "bonus": {"type":"integer"},
+    "bonus_table": {"$ref":"#/$defs/level_table"},                            // stat damage only (Rage, §7.1)
     "die":   {"$ref":"../common/v1.schema.json#/$defs/dice"},                 // Bless: stat attack_roll/save, die 1d4
     "mode":  {"enum":["advantage","disadvantage"]},                           // Faerie Fire: attacks_against + advantage
     "speed_scale": { "oneOf": [ {"enum":["half","double"]},
@@ -717,22 +732,23 @@ and the `ac_bonus` spell effect (instantaneous reaction today). **Integers only*
     "duration": {"$ref":"#/$defs/modifier_duration"},
     "stacks": {"enum":["replace","stack"],"default":"replace"} },
   "allOf": [   // gated by `stat`: allow-list per stat (closed-union convention, §3.1)
-    { "if": {"properties":{"stat":{"enum":["attack_roll"]}}},       "then": {"anyOf":[{"required":["bonus"]},{"required":["die"]},{"required":["mode"]}],
+    { "if": {"required":["stat"], "properties":{"stat":{"enum":["attack_roll"]}}},       "then": {"anyOf":[{"required":["bonus"]},{"required":["die"]},{"required":["mode"]}],
         "propertyNames":{"enum":["stat","bonus","die","mode","applies_to","duration","stacks"]}} },
-    { "if": {"properties":{"stat":{"enum":["save","ability_check"]}}}, "then": {"anyOf":[{"required":["bonus"]},{"required":["die"]},{"required":["mode"]}],
+    { "if": {"required":["stat"], "properties":{"stat":{"enum":["save","ability_check"]}}}, "then": {"anyOf":[{"required":["bonus"]},{"required":["die"]},{"required":["mode"]}],
         "propertyNames":{"enum":["stat","bonus","die","mode","ability","applies_to","duration","stacks"]}} },
-    { "if": {"properties":{"stat":{"const":"ac"}}},                 "then": {"required":["bonus"], "propertyNames":{"enum":["stat","bonus","applies_to","duration","stacks"]}} },
-    { "if": {"properties":{"stat":{"const":"speed"}}},              "then": {"required":["speed_scale"], "propertyNames":{"enum":["stat","speed_scale","applies_to","duration","stacks"]}} },
-    { "if": {"properties":{"stat":{"const":"damage"}}},             "then": {"anyOf":[{"required":["bonus"]},{"required":["die"]}],
-        "propertyNames":{"enum":["stat","bonus","die","damage_type","applies_to","duration","stacks"]}} },
-    { "if": {"properties":{"stat":{"const":"temp_hp"}}},            "then": {"required":["bonus"], "propertyNames":{"enum":["stat","bonus","applies_to","duration","stacks"]}} },
-    { "if": {"properties":{"stat":{"const":"resistance"}}},         "then": {"required":["damage_type"], "propertyNames":{"enum":["stat","damage_type","applies_to","duration","stacks"]}} },
-    { "if": {"properties":{"stat":{"const":"attacks_against"}}},    "then": {"required":["mode"], "propertyNames":{"enum":["stat","mode","applies_to","duration","stacks"]}} } ] }
+    { "if": {"required":["stat"], "properties":{"stat":{"const":"ac"}}},                 "then": {"required":["bonus"], "propertyNames":{"enum":["stat","bonus","applies_to","duration","stacks"]}} },
+    { "if": {"required":["stat"], "properties":{"stat":{"const":"speed"}}},              "then": {"required":["speed_scale"], "propertyNames":{"enum":["stat","speed_scale","applies_to","duration","stacks"]}} },
+    { "if": {"required":["stat"], "properties":{"stat":{"const":"damage"}}},             "then": {"anyOf":[{"required":["bonus"]},{"required":["die"]},{"required":["bonus_table"]}],
+        "not": {"required":["bonus","bonus_table"]},                            // bonus XOR bonus_table (D24)
+        "propertyNames":{"enum":["stat","bonus","bonus_table","die","damage_type","applies_to","duration","stacks"]}} },
+    { "if": {"required":["stat"], "properties":{"stat":{"const":"temp_hp"}}},            "then": {"required":["bonus"], "propertyNames":{"enum":["stat","bonus","applies_to","duration","stacks"]}} },
+    { "if": {"required":["stat"], "properties":{"stat":{"const":"resistance"}}},         "then": {"required":["damage_type"], "propertyNames":{"enum":["stat","damage_type","applies_to","duration","stacks"]}} },
+    { "if": {"required":["stat"], "properties":{"stat":{"const":"attacks_against"}}},    "then": {"required":["mode"], "propertyNames":{"enum":["stat","mode","applies_to","duration","stacks"]}} } ] }
 
 "modifier_duration": { "type":"object", "additionalProperties": false, "required":["kind"],
   "properties": { "kind": {"enum":["rounds","until_start_of_caster_turn","until_end_of_target_turn","concentration","until_rest"]},
                   "n": {"type":"integer","minimum":1} },
-  "allOf": [ { "if": {"properties":{"kind":{"const":"rounds"}}}, "then": {"required":["n"]}, "else": {"not":{"required":["n"]}} } ] }
+  "allOf": [ { "if": {"required":["kind"], "properties":{"kind":{"const":"rounds"}}}, "then": {"required":["n"]}, "else": {"not":{"required":["n"]}} } ] }
 ```
 
 `ac` modifiers are `bonus`-only in this batch (Q15); there is no `set`. Surfaces:
@@ -788,19 +804,78 @@ characters):
          "properties": { "per_level": {"type":"integer","minimum":1},
                          "class":      {"$ref":"../common/v1.schema.json#/$defs/local_id"},
                          "plus_ability":{"$ref":"../common/v1.schema.json#/$defs/ability"},
-                         "min":        {"type":"integer","minimum":1} } } ] },
+                         "min":        {"type":"integer","minimum":1} } },
+        {"type":"object","additionalProperties":false,"required":["table"],
+         "properties":{"table":{"$ref":"#/$defs/pool_level_table"}}} ] },          // level table, see below (D24)
     "start": {"type":"integer","minimum":0},                       // default = max
     "recharge": {"enum":["short_rest","long_rest","dawn","never"]} } }
 ```
 
-**Object-form `max` semantics (`character@4` only; a monster pool must use an integer):**
+**Object-form `max` semantics (`character@4` only; a monster pool must use an integer, validator check 14):**
 `max = per_level x L + mod(plus_ability)`, then at least `min` (default 1), where `L` is the level in
 `class` when given (else total character level), a missing `per_level` counts as 0, and a missing
 `plus_ability` contributes 0 (at least one of the two is required). Examples: Ki
 `{per_level:1, class:"monk"}`; Lay on Hands `{per_level:5, class:"paladin"}`; Sorcery Points
 `{per_level:1, class:"sorcerer"}`; Bardic Inspiration `{plus_ability:"cha", min:1}`; Legendary
-Resistance (monster) `3`. Anything that needs a level table (Rage uses) is out of scope here and uses
-the integer form with a per-level feature variant until a table form is wanted (T&C may propose one).
+Resistance (monster) `3`.
+
+**Level tables (D24, decided).** `resource.max` has a **third `oneOf` arm** `{ "table": <pool_level_table> }`
+(mutually exclusive with the integer and with the `per_level`/`plus_ability` object, which stays
+`additionalProperties:false`), and `modifier` with `stat: damage` gains **`bonus_table`** (a `level_table`),
+mutually exclusive with `bonus`. A table is a **step function resolved by the loader to a plain integer**:
+for level `L` (level in `class` when given, else total character level; fixed when the archetype is built,
+since sim has no mid-combat level changes) the value is that of the last entry with `level <= L`, or 0 /
+feature inert when `L` is below the first entry (only possible with a `class` the character has no levels
+in). No runtime lookup, no hashing impact. Integers only, no null, no decimals, no formulas.
+
+```json
+"level_table_entry":      { "type":"object","additionalProperties":false,"required":["level","value"],
+  "properties":{"level":{"type":"integer","minimum":1,"maximum":20},"value":{"type":"integer","minimum":0,"maximum":255}} },
+"pool_level_table_entry": { "type":"object","additionalProperties":false,"required":["level"],
+  "properties":{"level":{"type":"integer","minimum":1,"maximum":20},"value":{"type":"integer","minimum":0,"maximum":255},"unlimited":{"const":true}},
+  "oneOf":[{"required":["value"]},{"required":["unlimited"]}] },
+"level_table":      { "type":"object","additionalProperties":false,"required":["by_level"],
+  "properties":{ "class":{"$ref":"../common/v1.schema.json#/$defs/local_id"},
+    "by_level":{"type":"array","minItems":1,"maxItems":20,
+      "prefixItems":[{"allOf":[{"$ref":"#/$defs/level_table_entry"},{"required":["level"],"properties":{"level":{"const":1}}}]}],
+      "items":{"$ref":"#/$defs/level_table_entry"}} } },
+"pool_level_table": { /* identical to level_table with pool_level_table_entry in both positions */ }
+// resource.max, third oneOf arm:   { "type":"object","additionalProperties":false,"required":["table"],"properties":{"table":{"$ref":"#/$defs/pool_level_table"}} }
+// modifier base property:          "bonus_table": {"$ref":"#/$defs/level_table"}
+// modifier stat=damage arm:        "anyOf":[{"required":["bonus"]},{"required":["die"]},{"required":["bonus_table"]}],
+//                                  "not":{"required":["bonus","bonus_table"]}, propertyNames enum += "bonus_table"
+```
+
+`unlimited` (pools only) is an explicit boolean flag, not a magic number (`-1`, `null` and `0` were
+rejected: `0` is a legitimate table value, `null` is not integers-only and the C++/Python parsers diverge).
+Rules maps it to the existing `FeatureUses` "255 = unlimited" convention: `can_spend` is always true and
+nothing is decremented. The damage-table entry def has no `unlimited`, so it is a schema error there.
+Values are 0..255 (the uint8 `FeatureUses` range; widening later is additive).
+
+**Validator rules for tables** (one negative case each, in `validate_packs.py`): (1) `level` strictly
+ascending; (2) `unlimited` only on the **last** entry; (3) **float tokens rejected** (`2.0` passes JSON
+Schema `integer`; check `isinstance(x, int) and not bool`); (4) `class` is `character@4`-only (monster tables
+rejected); (5) `start` is not allowed with `max.table` (pools start full; with `unlimited` there is nothing
+to start); (6) `usage.cost` / `spend.cost` must not exceed the table's largest finite `value` (warn if it
+exceeds the level-1 value: legal but unusable at low levels). The schema deliberately accepts unsorted and
+duplicate levels so rules (1)/(2) own them.
+
+**Rage** (`character@4`, SRD barbarian: 2/3/4/5/6/unlimited at levels 1/3/6/12/17/20; damage +2/+3/+4 at 1/9/16):
+
+```json
+"resources": [ { "id":"rage","name":"Rage","recharge":"long_rest",
+  "max": { "table": { "class":"barbarian", "by_level": [
+    {"level":1,"value":2},{"level":3,"value":3},{"level":6,"value":4},{"level":12,"value":5},{"level":17,"value":6},{"level":20,"unlimited":true} ] } } } ],
+"features": [ { "id":"rage","name":"Rage",
+  "effect": { "kind":"apply_modifier","cost":"bonus_action","usage":{"kind":"pool","pool":"rage","cost":1},
+    "modifier": { "stat":"damage","applies_to":"self","duration":{"kind":"rounds","n":10},
+                  "bonus_table": { "class":"barbarian","by_level":[{"level":1,"value":2},{"level":9,"value":3},{"level":16,"value":4}] } } } } ]
+```
+
+Rage's resistances are separate `modifier` entries with `stat: resistance`, one per damage type. **Not covered**
+(separate rows, because `modifier` has no `when` scope yet): Rage's melee-only Strength scope, the Rage
+ending conditions, and the heavy-armor restriction. The static `damage_bonus` effect (`@3`, live) is
+**not** extended with `amount_table` unless a non-Rage static case appears (it would need a v2 arm).
 `recharge` is when it refills, **by the §7.2 rule (no rest model): pools start full each encounter and
 `short_rest`/`long_rest`/`dawn` only matter once a rest model exists**. Resource ids are unique within a
 document (validator, §8.3).
@@ -867,6 +942,40 @@ idempotent, preserve key order, and are **functions of old data only**.
 6. Never touch `actions[]` (`special` stays descriptive), `spellcasting`, `size`, defenses, `legendary_actions`,
    or anything live at `@3`.
 
+#### 8.2.1 The `common@2` trait / trait_active / effect defs
+
+A trait (or feature) `effect` at `@4` is an `anyOf` of **three arms**, so every migrated and every
+native file validates and a typo in a new kind is still an error:
+
+```json
+"effect": { "anyOf": [
+  { "$ref": "#/$defs/effect_inert" },       // (a) migrated/stamped: any parameters, never applied
+  { "$ref": "#/$defs/effect_live" },        // (b) live @3 kinds and unknown kinds, v1 behaviour
+  { "oneOf": [ {"$ref":"#/$defs/on_event_effect"}, {"$ref":"#/$defs/apply_modifier_effect"},
+               {"$ref":"#/$defs/grant_action_effect"}, {"$ref":"#/$defs/heal_pool_effect"} ] } ] }   // (c) new closed arms
+
+"effect_inert": { "type":"object", "required":["kind","inert"],
+  "properties": { "kind": {"enum":["on_event","apply_modifier","grant_action","heal_pool","save_effect","reaction"]},   // the FROZEN 3->4 list (§8.2 step 4)
+                  "inert": {"const": true} } },                           // otherwise open: parameters are not validated (§8.3)
+
+"effect_live": { "allOf": [ {"$ref":"../common/v1.schema.json#/$defs/effect"},                   // v1: multiattack, damage_bonus, self_heal, bonus_action_grant, unknown kinds
+                            {"properties":{"kind":{"not":{"enum":["on_event","apply_modifier","grant_action","heal_pool","save_effect","reaction"]}}}} ] },
+
+"apply_modifier_effect": { "type":"object","additionalProperties":false,"required":["kind","modifier"],
+  "properties":{"kind":{"const":"apply_modifier"},"cost":{"$ref":"#/$defs/effect_cost"},"usage":{"$ref":"#/$defs/usage"},"modifier":{"$ref":"#/$defs/modifier"}} },
+"grant_action_effect":   { "type":"object","additionalProperties":false,"required":["kind"],
+  "properties":{"kind":{"const":"grant_action"},"cost":{"$ref":"#/$defs/effect_cost"},"usage":{"$ref":"#/$defs/usage"},"count":{"type":"integer","minimum":1,"maximum":2}} },
+"heal_pool_effect":      { "type":"object","additionalProperties":false,"required":["kind","pool"],
+  "properties":{"kind":{"const":"heal_pool"},"cost":{"$ref":"#/$defs/effect_cost"},"pool":{"$ref":"../common/v1.schema.json#/$defs/local_id"}} }
+```
+
+`on_event_effect` (§3.1) has **no** `inert` property: an inert `on_event` is arm (a). A native `@4` effect
+whose kind is in the frozen list but is neither stamped inert nor a valid closed arm (e.g. `save_effect`
+or `reaction` as a trait effect kind: they are action/reaction kinds, not effect kinds) is a schema error.
+`trait` and `trait_active` (v2) differ from v1 only in `effect` -> this `effect` and in `cost` accepting
+`reaction` (`effect_cost` v2). **Schema-level test** (the §8.4 migrated-file row): a `@4` document with an
+`inert: true` `on_event` effect whose `on` is bogus validates through arm (a) and fails once `inert` is removed.
+
 ### 8.3 Loader contract (Engine Core / T&C)
 
 `sim::ContentLibrary` already ignores whatever `inert_mechanics` lists, and `content.cpp` checks
@@ -902,7 +1011,7 @@ lands in `inert_features`. The "new set" lives in two places (sim's registry lis
   2. `usage.pool` / `spend.pool` must name a `resources[].id` of the same document; `cost` may not exceed the pool's `max` (when `max` is a constant).
   3. `spellcasting.spells` / `innate.*` / `reaction_effect.spell` content ids must resolve in the loaded pack set (as `spells[]` does today).
   4. Every `save_effect.id` is unique within the document and `"<archetype id>#<id>"` contains exactly one `#` (spell-id derivation, §2.3).
-  5. `multiattack` effect `options[].attacks` (the #59 shape, carried unchanged, §2.1) reference attack `id`s in the same document's `actions[]`; option ids are unique.
+  5. `multiattack` effect `options[].attacks` **and the top-level `attacks` shorthand** (the #59 shape, carried unchanged, §2.1) reference attack `id`s in the same document's `actions[]`; option ids are unique. **Ask on #59** (T&C relays): close the option items with `additionalProperties: false`, so `options[]` entries cannot carry stray fields at `@3` or `@4`.
   6. `item@1` ids referenced from `character@4 equipment` resolve (see "Item references" below).
   7. `forward_compat` values are in the known enum and unique.
   8. Derived trigger ids (`<owner id>#<index>`, §3.1) are unique within the document; `resources[].id` values are unique.
@@ -910,6 +1019,10 @@ lands in `inert_features`. The "new set" lives in two places (sim's registry lis
   10. A `save_effect` that violates the schema rules in §2.1 (no `damage[]`/`apply[]`, `damage[]` without `on_success`, `origin: point` without `range_ft`) has one negative case each.
   11. **`item` references** (below).
   12. A Legendary Resistance-style pool is *declaration-only* until row 13: the validator warns when a `resources[]` entry is never referenced by any `usage.pool`/`spend`.
+  13. `save_effect.range_ft` is **forbidden when `origin` is `self`** and there is no single target (cross-field, validator).
+  14. **`resource.max` for a monster must be an integer** (object/table forms are `character@4`-only).
+  15. `item@1` weapons: `range[1] >= range[0]`; `reach` is 10 **iff** `properties` includes `reach` (otherwise 5, or absent for pure ranged).
+  16. Level tables (§7.1): the rules listed there (ascending levels, `unlimited` last only, integer tokens, class character-only, `start` forbidden with a table, cost <= largest finite value).
 
 **Item references.** Cross-document id resolution lives in **`tools/validate/validate_packs.py`**
 (the `ids` / `spell_ids` sets built from the pack's own documents plus each resolved dependency's
@@ -918,12 +1031,15 @@ lands in `inert_features`. The "new set" lives in two places (sim's registry lis
 `content_ids` where an `_is_item` check on the file matches). An `equipment` entry `{item, equipped?}`
 resolves **by content id** against that set (own pack or any pack in the resolved dependency order; an
 `srd51.*` id not defined anywhere follows the same escape-hatch rule as spells). `packset.py` is unchanged.
-At runtime the loader resolves the id in the final `PackSet`. For a **native `@4` file** that mixes
-bare strings and `{item, equipped}` objects: bare strings stay descriptive and are *not* inert-marked
-(they are ordinary `@4` data, never loaded); `inert_mechanics` is **not** written by the validator or by
-authors, only by the `3→4` migration, which adds `"equipment"` only when the *migrated* `@3` list is
-non-empty (so a native `@4` file's `inert_mechanics` never lists `equipment`, and its `{item, equipped}`
-objects are live). A native `@4` file may carry `inert_mechanics` explicitly for other keys.
+At runtime the loader resolves the id in the final `PackSet`. For a **native `@4` file** (not produced by migration): bare string entries in `equipment` are
+ordinary descriptive data and are never loaded; `{item, equipped}` objects are live. `inert_mechanics` is
+written by the `3→4` migration, not by authors, but a hand-written `@4` file *may* carry it (it is
+declared in the schema, §1.3) and sim honours whatever it lists. The migration adds `"equipment"` only when the
+*migrated* `@3` list is non-empty, so a native file normally never lists it. **If a file lists `equipment`
+as inert and also holds an `{item}` object** (only possible by hand-editing): the marker wins (the same rule as
+every inert key: sim ignores exactly what is listed), the objects are **not** equipped, no AC is recomputed, and
+the validator emits a **warning** ("equipment marked inert but contains item objects; they are ignored"), never an
+error, so such a file still loads.
 
 ### 8.4 Compat behaviour goldens (CONTENT_COMPAT §2)
 
@@ -957,11 +1073,19 @@ new rules `EventKind`s 39+ in the event feed). Rules for **mixed levels**:
   runs the strict typecheck per pack with that pack's `api_definitions(level)`, which today only serves
   level 1: the level-2 `engine.level2.d.luau` is added to the embedded defs). This is script_host work.
 * A pack containing any `@4` or `item@1` document must declare `api_level >= 2` (validator error otherwise).
-* **Order (explicit):** `kMaxApiLevel` goes to 2 in the **same PR** as the validator rule and the
-  manifest enum (row 2 carries the schema/validator half; row 16 the host half). To keep the tree
-  consistent, **row 16 lands before or with row 2's merge** (the validator rule is added to row 2 only
-  once the host accepts 2); `run_negative.py` is updated in that PR to cover levels 1, 2 and 3 (reject).
-  Until then no `@4` pack exists, so nothing is stranded.
+* **Who passes the max.** The embedder (the process that owns the `ScriptHost`: `game/vertical_slice`
+  and the sim test hosts) constructs `ScriptHost(kMaxApiLevel, limits)`; the constructor's `api_level`
+  parameter now means the **host maximum**, not a single pack's level (default stays 1 until the embedder opts in).
+  `load_pack_scripts` type-checks and binds each pack at **its own** manifest level (`<= host max`).
+* **What `PackScripts::api_level` reports.** It keeps meaning "the host maximum" (unchanged value for
+  existing callers: it is `host.api_level()`), and 16a adds `PackScripts::pack_levels` (pack id → declared
+  level) so tools can see the mix. Nothing reads a single "the" level once levels are per pack.
+* **Manifest schema text.** `api_level`'s description changes from "only level 1 exists for feature_level 1"
+  to "Script API level; levels 1 and 2 exist (level 2's definitions file is empty until row 16b)".
+* **Order (explicit).** Row **16a has no dependencies and lands first**; row 2 depends on it, so the
+  validator's level-2 rule never outruns the host. `kMaxApiLevel = 2`, the manifest enum and `run_negative.py`
+  (levels 1, 2, 3) are all in 16a; 16b (level-2 content and feed filtering) follows rows 4 and 5. Until 16b
+  no pack gains anything from level 2, and a level-1 pack is observably unchanged.
 
 ## 9. Event schema impact, hashing and golden hashes
 
@@ -1088,6 +1212,35 @@ pieces), `weight_oz` (integer, ounces; integers only), `description`.
     { "type":"object","additionalProperties":false,"required":["flat","type"],"properties":{"flat":{"type":"integer","minimum":0},"type":{"$ref":"../common/v1.schema.json#/$defs/damage_type"}} } ] }   // blowgun: {"flat":1,"type":"piercing"}
 ```
 
+Closed arms for `item@1` (same convention as §3.1; the per-arm allowed == required ∪ optional test covers
+them):
+
+```json
+"item@1": { "type":"object","additionalProperties":false,"required":["$schema","id","name","category"],
+  "properties": { "$schema":{"const":"item@1"}, "id":{"$ref":"../common/v1.schema.json#/$defs/content_id"}, "name":{"type":"string"},
+                  "source":{"$ref":"../common/v1.schema.json#/$defs/source"}, "category":{"enum":["weapon","armor","shield"]},
+                  "cost_cp":{"type":"integer","minimum":0}, "weight_oz":{"type":"integer","minimum":0}, "description":{"type":"string"},
+                  /* + every arm's fields, declared once in the base */ },
+  "allOf": [
+    { "if": {"required":["category"],"properties":{"category":{"const":"weapon"}}},
+      "then": { "required":["weapon_class"],
+                "propertyNames":{"enum":["$schema","id","name","source","category","cost_cp","weight_oz","description",
+                                          "weapon_class","reach","range","damage","versatile_damage","properties","qualifiers","magic_bonus","on_hit"]},
+                "allOf":[ {"if":{"required":["properties"],"properties":{"properties":{"contains":{"const":"special"}}}}, "else":{"required":["damage"]}},
+                          {"if":{"required":["properties"],"properties":{"properties":{"contains":{"const":"versatile"}}}}, "then":{"required":["versatile_damage"]}, "else":{"not":{"required":["versatile_damage"]}}} ] } },
+    { "if": {"required":["category"],"properties":{"category":{"const":"armor"}}},
+      "then": { "required":["armor_category","base_ac","dex_bonus"],
+                "propertyNames":{"enum":["$schema","id","name","source","category","cost_cp","weight_oz","description",
+                                          "armor_category","base_ac","dex_bonus","dex_cap","str_min","stealth_disadvantage","magic_bonus"]},
+                "allOf":[ {"if":{"required":["armor_category"],"properties":{"armor_category":{"const":"heavy"}}}, "then":{"properties":{"dex_bonus":{"const":false}}}},
+                          {"if":{"required":["armor_category"],"properties":{"armor_category":{"const":"medium"}}}, "then":{"required":["dex_cap"]}, "else":{"not":{"required":["dex_cap"]}}} ] } },
+    { "if": {"required":["category"],"properties":{"category":{"const":"shield"}}},
+      "then": { "propertyNames":{"enum":["$schema","id","name","source","category","cost_cp","weight_oz","description","ac_bonus","magic_bonus"]} } } ] }
+```
+
+Validator-only checks (cross-field, not expressible in the schema): `range[1] >= range[0]`; `reach` is `10`
+**iff** `properties` includes `reach`; `magic_bonus` and `qualifiers` consistency (§8.3 items 15).
+
 **Armor** (`category: "armor"`; the AC formula inputs):
 
 | Field | Type | Notes |
@@ -1148,7 +1301,7 @@ Everything below is event schema **v7**.
 | # | PR | Owner | Depends on | Notes |
 |---|---|---|---|---|
 | 1 | **Sim facts: `ally_near_target` and `move_tiles`.** `ally_near_target`: same-team, conscious, non-incapacitated creature other than the attacker within 1 tile of the target footprint, set in `do_rules` (Attack branch) and `hooks.refresh_ready` | **Engine Core** | none (can land now) | Supplies the fact #54 expects. Sim does not load `roll_traits` from content yet, so this changes nothing observable today (golden-neutral); it becomes observable when a loader or trait uses it (Sneak Attack, rows 9/10). `move_tiles` (appended `ActionRequest` field, default 0): set in `do_step` (1 per Step) and the readied-move path (path length). Both stay out of `log_hash` (§9.3) |
-| 2 | `common@2` (changed defs only, absolute refs to v1), `monster@4`/`character@4`, lint test, per-tag validator table, cross-ref checks (§8.3), `3→4` migrations (§8.2), `manifest@1` `api_level` enum + validator rule (§8.5), decorated compat fixtures (§8.4) | **T&C** | #58, #59 | No behaviour; golden-neutral by construction |
+| 2 | `common@2` (changed defs only, absolute refs to v1), `monster@4`/`character@4`, lint test, per-tag validator table, cross-ref checks (§8.3), `3→4` migrations (§8.2), the `api_level >= 2` validator rule for `@4` packs (§8.5; the manifest enum itself ships in 16a), decorated compat fixtures (§8.4) | **T&C** | #58, #59, **16a** | No behaviour; golden-neutral by construction |
 | 3 | Loader: accept `@4`, **`declared.version` plumbing** into `ContentLibrary::add()` and `FeatureBuildCtx`, `reactions`/`bonus_actions` markers, registry "list as inert" rule (§8.3), `forward_compat` listing | **Engine Core** | 2 | Public `add()` signature: T&C signs off |
 | 4 | `event_stream_version` restructured into the max-over-constructs form (§9.2), including the `rules.kind > SpellCheckRolled` → 7 branch; tests use a **synthetic `EventKind(39)`** event (Footprint-only 6 / new-kind-only 7 / both 7 / neither unchanged). **`kSimEventSchemaVersion` stays 6** in this PR and no `<= kSimEventSchemaVersion` invariant is added here | **Engine Core** | #55 | Digest-neutral: the digest uses the lowest fitting version |
 | 5 | rules5e foundation: `usage`, `ActionUse`, `ResourcePool`, recharge roll, `moved_ft` (rules half: adds 5 x `move_tiles` on the actor's own turn, **only when the move completes**, i.e. when `Moved` is emitted; an OA-interrupted move does not count), `SpellBook::erase`/rebuild support (§2.3), `ReactionOption::uses_reaction` (appended, default true), `SpellDef::{is_spell, magical, fixed_dc, fixed_attack}`, kinds 39-44. **This PR bumps `kSimEventSchemaVersion` to 7** together with `kLastRulesEventKind`, SIM_EVENTS.md (v7 table/changelog row and the `ActionUsed` ordering), the pins in `events_tests.cpp` (~L37 `kSimEventSchemaVersion == 6`, plus the L57/L60 layout pins) and `event_feed_tests.cpp` (~L64 `static_assert(... == 6)`, plus `known_rules_kind`), and adds the `event_stream_version <= kSimEventSchemaVersion` invariant (SIM_EVENTS.md policy: bump in the PR that surfaces the kinds) | **Rules** | 4, #55 | Tagged `Combat::hash` folds are part of the sim side of this PR (Engine Core co-reviews) |
@@ -1162,7 +1315,8 @@ Everything below is event schema **v7**.
 | 13 | Class pools + feature kinds (`grant_action` via `TurnBudget::extra_actions`, `heal_pool` reusing existing `ActionRequest::amount`, pool usage), Legendary Resistance as a pool (**declaration-only until this row** unless a hook is added earlier: the pool and `usage` exist in the schema from row 2, but nothing spends it before row 13) | **Rules** + **Engine Core** (FeatureRegistry hooks) | 5, 9, 12 | |
 | 14 | `item@1` schema + loader (weapons, armor, shields) | **T&C** (schema/validator), **Engine Core** (loader) | 2, 3 | |
 | 15 | **AC recompute from equipped armor/shield** (`rules5e::compute_ac`, `character@4 equipment` objects; fl1's baked AC and equipment list stay inert) | **Rules** (formula, Str-shortfall speed) + **Engine Core** (apply at archetype build) | 14 | Own PR; goldens unaffected because only `{item, equipped}` objects opt in |
-| 16 | Luau **API level 2**: `kMaxApiLevel = 2`, per-pack levels (`level <= host_max`, replacing today's equality check), `engine.level2.d.luau`, level-1 event-feed filtering, `run_negative.py` levels (§8.5) | **T&C** / script_host owner, **Engine Core** | 4, 5 | **Lands before or with row 2's merge** so the validator's level-2 rule never outruns the host; level 1 observably unchanged |
+| 16a | **API level plumbing** (no dependencies): `kMaxApiLevel = 2`; per-pack levels (`level <= host_max`, replacing the equality check in `load_pack_scripts`, `script_host.cpp` ~L532); an **empty** `engine.level2.d.luau`; the `manifest@1` enum `[1, 2]` and its description; `run_negative.py` cases for levels 1, 2 and 3 (reject) | **T&C** / script_host owner | none | Row 2 depends on it (validator rule "`@4` packs need `api_level >= 2`") |
+| 16b | **Level-2 API content**: reaction/resource/modifier queries, level-1 event-feed filtering of kinds above `SpellCheckRolled` | **T&C** / script_host owner, **Engine Core** (feed) | 4, 5, 16a | Level 1 observably unchanged |
 | 17 | SRD content passes (breath weapons, riders, innate lists, PC features) | **T&C** | 6, 8, 10, 11, 13, 15 | Re-authors descriptive content; separate PRs per tier |
 
 One PR per row, from fresh `main`, normal pushes, full suite on GCC Debug and Clang Release, CI green
@@ -1197,6 +1351,7 @@ the Director's instruction.
 | D19 | Elevation forward-compat flag (`forward_compat: ["elevation"]`, inert) in `@4` | DECIDED (Director) |
 | D20 | Luau API level 2 and `manifest@1.api_level` `enum [1, 2]`; `@4`/`item@1` packs require level 2 | DECIDED (Director) |
 | D21 | Engine Core owns: `ally_near_target`, `declared.version` plumbing, `event_stream_version`, area-template targets | DECIDED (Engine Core offer, recorded in §12) |
+| D24 | Level tables: `resource.max.table` (third `oneOf` arm) and `modifier` `bonus_table`, step function resolved by the loader to an integer, `unlimited` flag for pools (§7.1; adopts T&C's `rage_table_proposal`) | DECIDED (Director) |
 | D22 | Multiattack's content shape is PR #59's `multiattack` feature effect; `@4` carries it unchanged and adds no stat-block field | DECIDED (adopted; follows #59) |
 | D23 | Mixed API levels: host = max, per-pack levels, level-1 packs load under a level-2 host (§8.5) | DECIDED (adopted) |
 
