@@ -67,16 +67,16 @@ Things that apply to many rows (so they are not repeated):
 | Simple/martial melee weapon, damage die + type | DATA | `melee_weapon_attack` action, `to_hit` baked (author applies ability mod + proficiency + magic bonus). All `damage[]` entries are loaded (#45): the first is `Attack::damage`, the rest `Attack::extra_damage`. |
 | Simple/martial ranged weapon, normal/long range | DATA | `ranged_weapon_attack` with `range:[normal,long]`; `Attack::range_ft/long_range_ft`; disadvantage beyond normal range, none past long. |
 | Ranged attack with hostile within 5 ft = disadvantage | DATA | `ActionRequest::ranged_hostile_within_5ft` (sim computes). |
-| Finesse | DATA (baked) / NEW (T&C-G18) | Today the author bakes the better of Str/Dex into `to_hit` and damage. The adapter hard-codes `Attack::finesse = false`, so finesse is **not** honored from data; it matters once equipment drives attacks (T&C-G17 `item@1`, character@4 recompute). |
+| Finesse | DATA (baked) / NEW (T&C-G18) | Today the author bakes the better of Str/Dex into `to_hit` and damage. The adapter hard-codes `Attack::finesse = false`, so finesse is **not** honored from data (rules: `kWeaponFinesse` / `Attack::finesse`, `attack_ability()` picks the better of Str/Dex; adapter must set the bit); it matters once equipment drives attacks (T&C-G17 `item@1`, character@4 recompute). |
 | Reach (glaive, halberd, whip, pike, lance) | DATA | `reach` on the action; sim reach tiles. |
 | Thrown | DATA | A second `ranged_weapon_attack` action with `range`. Item is not removed from inventory (inventory is OOS). |
 | Versatile | DATA | Two actions (1-handed die, 2-handed die). |
 | Two-handed | DATA | `properties:["two_handed"]`; used by the Dueling predicate `one_handed_melee_no_other_weapon`. |
 | Ammunition | DATA | Ranged attack; ammunition count is OOS (no inventory in sim). |
-| Light | NEW | Only matters for two-weapon fighting (R-G6). |
-| Loading | NEW | One shot per action even with Extra Attack; needs per-attack limit (T&C-G1). |
-| Heavy (Small creatures disadvantage) | NEW | Needs size on the combatant (T&C-G12, T&C-G14). Low priority. |
-| Special: net (restrains; Large or smaller, DC 10 Str escape or 5 slashing vs AC 10; one attack per action), lance (disadvantage within 5 ft; two hands unless mounted) | NEW | Net = restrain rider (T&C-G5); lance needs adjacency rule. Low priority. |
+| Light | NEW (wiring) | `kWeaponLight` bit in `Attack::properties` (rules done); only matters for two-weapon fighting (R-G6). |
+| Loading | NEW (wiring) | Rules done: `kWeaponLoading`; one shot per Attack action even with Extra Attack / multiattack (`TurnBudget::loading_fired`). Content/adapter must set the bit. |
+| Heavy (Small creatures disadvantage) | NEW (wiring) | Rules done: `kWeaponHeavy` + `Combatant::size` (Small/Tiny attacker = disadvantage). Adapter must set the bit and `Combatant::size` (sim stores `Archetype::size` only). |
+| Special: net (restrains; Large or smaller, DC 10 Str escape or 5 slashing vs AC 10; one attack per action), lance (disadvantage within 5 ft; two hands unless mounted) | NEW | Net = restrain rider (T&C-G5); lance: `kWeaponLance` gives disadvantage with the target within 5 ft (rules done; two-hands/mounted rule is not modelled). Low priority. |
 | Silvered / adamantine weapons, magic weapons vs nonmagical resistance | NEW (wiring) | Rules done (#47): `Attack::qualifiers` (magic / silvered / adamantine) and `Combatant::resist_qualified` / `immune_qualified`. Nothing loads them from content yet, and no weapon data sets the flags (R-G17, T&C-G2, T&C-G17). Magic bonuses themselves are baked: DATA. |
 | Improvised weapons, unarmed strike (1 + Str) | DATA | Authored as an action. |
 | Weapon proficiency | DATA | Baked into `to_hit`. |
@@ -260,12 +260,12 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 |---|---|---|
 | Darkvision | NEW | R-G13. |
 | Dwarven Resilience (poison resistance; advantage vs poison) | NEW | Resistance is DATA (loaded by #45); save advantage vs source type is T&C-G7 style. |
-| Fey Ancestry (advantage vs charm) / Brave (halfling, vs frightened) | NEW | Conditional save advantage (T&C-G7). |
+| Fey Ancestry (advantage vs charm) / Brave (halfling, vs frightened) | NEW (wiring) | Rules done: `{Save, Advantage, save_vs_conditions}` (Charmed / Frightened). Content loader is T&C's. |
 | Halfling Lucky (reroll natural 1) | NEW | R-G7. |
 | Relentless Endurance (drop to 1 HP once per day) / Savage Attacks (extra crit die) | NEW | T&C-G7 / R-G7. |
 | Dragonborn breath weapon and resistance | NEW | Area save + limited use (R-G10, T&C-G7). |
 | Tiefling Hellish Resistance / Infernal Legacy (Thaumaturgy, Hellish Rebuke) | NEW | Resistance is DATA (loaded by #45); Hellish Rebuke trigger (R-G7). |
-| Gnome Cunning (advantage on Int/Wis/Cha saves vs magic) | NEW | T&C-G7. |
+| Gnome Cunning (advantage on Int/Wis/Cha saves vs magic) | NEW (wiring) | Rules done: `{Save, Advantage, kWhenSourceMagical, save_abilities}`. Content loader is T&C's. |
 | Speed, size | DATA | Baked (`speed.walk`); `size` is loaded into `Archetype::size` (stored only; footprint is T&C-G12 / T&C-G14). |
 
 ## 7. Core spell mechanics
@@ -425,13 +425,13 @@ Stat-block data: `monster@3` carries abilities, AC, HP average, speed (walk, fly
 | Several damage components in one attack | ankheg (slashing + acid), basilisk (piercing + poison) | DATA | T&C-G6, done in #45. Corrected: giant spider (poison is a Constitution-save rider with save-for-half damage, T&C-G5) and giant scorpion (multiattack + save poison rider) are not multi-component attacks. |
 | On-hit saving throw rider (poison, paralysis, prone, grapple, restrain) | ghoul (claws: paralysis, not vs elf/undead), wolf (prone), giant spider (bite: CON save, 2d8 poison, half on save), giant scorpion (sting: CON save, 4d10 poison), crocodile (grapple, restrained), giant toad (swallow) | NEW | T&C-G5, R-G8. |
 | Action: Web (ranged restrain, escape DC) | giant spider | NEW | T&C-G5, R-G8. |
-| Pack Tactics (advantage if an ally is within 5 ft of the target) | wolf, dire wolf, jackal, kobold, blood hawk | NEW | Conditional advantage fed by a sim adjacency fact (T&C-G7). |
+| Pack Tactics (advantage if an ally is within 5 ft of the target) | wolf, dire wolf, jackal, kobold, blood hawk | NEW (wiring) | Rules done: `Combatant::roll_traits` `{Attack, Advantage, kWhenAllyNearTarget}`; sim supplies `ActionRequest::ally_near_target`; content loader for the trait is T&C's. |
 | Keen Senses / Smell / Hearing (Perception advantage) | wolf, hawk, owl | OOS | Perception checks are not simulated at all (Hide stores a Stealth total but nothing opposes it). |
 | Darkvision, Blindsight, Tremorsense, Truesight | most monsters, bat, ankheg | NEW | Lighting and vision (R-G13). |
 | Damage resistances / immunities / vulnerabilities | skeleton (poison immune, bludgeoning vulnerable), zombie, fire elementals | DATA | Loaded by #45 (T&C-G2). |
 | Nonmagical-attack resistance | werewolf, gargoyle, specter, ghost, wight | NEW (wiring) | Rules done (#47); content lists and `Attack::qualifiers` not loaded (R-G17, T&C-G2). |
 | Condition immunities | skeleton, zombie, ghoul, golems, elementals | DATA | Loaded by #45 (T&C-G3). |
-| Regeneration (loses it to certain damage) | troll, vampire spawn | NEW | Start-of-turn heal with suppression by damage type (T&C-G8). |
+| Regeneration (loses it to certain damage) | troll, vampire spawn | NEW (wiring) | Rules done: `Combatant::regeneration {amount, suppressed_by}`; start-of-turn heal, suppressed by a listed damage type taken since its last turn, and a regenerator at 0 HP dies only at its next turn start if suppressed. Content `regen` effect + loader and the vampire-spawn sunlight/running-water clause (needs a lighting/terrain fact) remain. |
 | Recharge (5-6) breath weapon | dragon wyrmlings, hell hound (CR 3, in the mirror; T&C's name list missed it) | NEW | Recharge roll on an action (T&C-G4) + cone/line (R-G10). |
 | Limited-use actions (N/day) | knight Leadership, innate spellcasters and various | NEW | Uses/recharge machinery exists only for `self_heal` features (R-G5, T&C-G4). |
 | Spellcasting (slots, prepared list) | acolyte (CR 1/4), priest, druid (CR 2), mage (CR 6) | DATA | monster@3 now accepts the `spellcasting` block (#49: ability, caster level, slots, pact, known spells; an engine-minimal addition whose final shape T&C owns) and sim casts through `CastSpell`. Corrected from NEW. At-will / N-per-day Innate Spellcasting is separate (below). |
@@ -449,7 +449,7 @@ Stat-block data: `monster@3` carries abilities, AC, HP average, speed (walk, fly
 | Swarm of Tiny creatures (shares space, half damage at half HP, resistances) | swarms of rats, ravens, insects | NEW | T&C-G14, T&C-G2. |
 | Undead Fortitude (CON save to drop to 1 HP unless radiant or crit) | zombie | NEW | Drop-to-0 trigger (T&C-G7). |
 | Death Burst | magmin | NEW | Death trigger (T&C-G7). |
-| Magic Resistance (advantage on saves vs spells) | dryad, satyr, imp | NEW | Save advantage by source (T&C-G7). |
+| Magic Resistance (advantage on saves vs spells) | dryad, satyr, imp | NEW (wiring) | Rules done: `{Save, Advantage, kWhenSourceMagical}`; spell saves pass `SaveSource{magical}`. Content loader is T&C's. |
 | Magic Weapons (attacks count as magical) | couatl and many fiends/celestials | NEW (wiring) | `Attack::qualifiers` exists (#47); no trait effect sets it (R-G17, T&C-G2). |
 | Sunlight Sensitivity (disadvantage on attacks and sight Perception in sunlight) | kobold, drow | OOS | Descriptive for the slice: needs a sunlight/lighting model (R-G13) that is not planned, so the T&C data keeps it as a plain trait. Not filed as a lighting mechanic. If lighting ever lands it is a conditional-disadvantage trait (T&C-G7). |
 | Life Drain / max HP or ability drain | specter, wraith, shadow, vampire spawn | NEW | T&C-G7. |
@@ -461,7 +461,7 @@ Stat-block data: `monster@3` carries abilities, AC, HP average, speed (walk, fly
 | Teleport bonus action | blink dog | NEW | R-G9. |
 | Shapechanger | werewolf, doppelganger | NEW | Stat block swap (R-G12). |
 | Rust Metal / Corrode / Stench | rust monster, ghast | NEW | T&C-G5 and aura (R-G11). Disease itself OOS. |
-| Blood Frenzy (advantage vs damaged creatures) | sharks | NEW | Conditional advantage (T&C-G7). |
+| Blood Frenzy (advantage vs damaged creatures) | sharks | NEW (wiring) | Rules done: `{Attack, Advantage, kWhenTargetDamaged}` (reads target HP). Content loader is T&C's. |
 | False Appearance, ambush setups | mimic | OOS | Only surprise (R-G16) matters. |
 | Amphibious, Hold Breath, Spider Climb, Web Walker, Web Sense | crocodile, giant spider | OOS | Non-combat movement/sense. |
 
@@ -528,9 +528,9 @@ Sizes: S = days, M = about a week, L = multi-week / cross-module. "Batch" = **N*
 | 2 | T&C-G1 | **Multiattack as a declared sequence.** An id-addressable multiattack option is an ordered list of attack refs inside one Attack action; each attack resolves separately with reaction windows and Ready allowed between attacks; the AI picks by id (several options per monster). PC Extra Attack reuses `attacks_per_action`; `loading` limits one shot per action (T&C-G18). | 148 monsters; Fighter/Barbarian/Monk/Paladin/Ranger L5; Thirsting Blade | Rules M; T&C S (additive effect + validator) | M | N |
 | 3 | T&C-G6 | **Multiple damage components per attack** (`damage[]` beyond the first; crit doubles each die group). Adapter/engine only; schema already allows it. | ankheg, basilisk, flaming/elemental weapons, smites | Rules S; Engine Core S | S | N |
 | 4 | R-G17 + T&C-G2 (qualifiers) | **Magic-weapon and material qualifiers**: magic / silvered / adamantine flag on attacks and qualified resistance masks (additive `damage_mitigation` effect). | 70 qualified resistances (werewolf, gargoyle, specter, golems), Magic Weapon, Ki-Empowered | Rules S; T&C S | S | N |
-| 5 | T&C-G18 | **Weapon property semantics**: finesse (adapter hard-codes false), light, loading, thrown, reach, heavy, ammunition; closed vocabulary later in `item@1`. | equipment-driven attacks | T&C S; Rules S | S | N |
-| 6 | T&C-G7 (+ R-G4, R-G5, R-G7 PC analogues) | **Small generic conditional/trigger effect set designed by Rules** (`advantage_when`, `extra_damage`, `on_event`): Pack Tactics, Blood Frenzy, Charge/Pounce, Aggressive, Rampage, Undead Fortitude, Death Burst, Magic Resistance, Reckless, Sneak Attack, Hunter's Mark, Colossus Slayer, Relentless Endurance, Gnome Cunning. | most CR 0-5 trait monsters; Rogue/Ranger/Paladin | Rules M (design); T&C M | M | N |
-| 7 | T&C-G8 | **Regeneration / Rejuvenation** (`regen` effect, suppression by damage type; depends on T&C-G7 events). | troll, vampire spawn | Rules S; T&C S | S | N |
+| 5 | T&C-G18 | **Weapon property semantics**: finesse (adapter hard-codes false), light, loading, thrown, reach, heavy, ammunition; closed vocabulary later in `item@1`. **Rules side done**: `rules5e/weapon.hpp` (`WeaponProperty` bits, `weapon_property_from_string`, `attack_ability`, `weapon_disadvantage`), `Attack::properties`, `Combatant::size`, Loading enforced per action. Adapter (Engine Core) still sets `properties`/`size` from content. | equipment-driven attacks | T&C S; Rules S | S | N |
+| 6 | T&C-G7 (+ R-G4, R-G5, R-G7 PC analogues) | **Small generic conditional/trigger effect set designed by Rules** (**roll-mode part done in rules**: `RollTrait` conditional advantage/disadvantage on attacks, attacks against, and saves, `rules5e/traits.hpp`; `extra_damage` and `on_event` triggers are still open) (`advantage_when`, `extra_damage`, `on_event`): Pack Tactics, Blood Frenzy, Charge/Pounce, Aggressive, Rampage, Undead Fortitude, Death Burst, Magic Resistance, Reckless, Sneak Attack, Hunter's Mark, Colossus Slayer, Relentless Endurance, Gnome Cunning. | most CR 0-5 trait monsters; Rogue/Ranger/Paladin | Rules M (design); T&C M | M | N |
+| 7 | T&C-G8 | **Regeneration / Rejuvenation** (`regen` effect, suppression by damage type; depends on T&C-G7 events). **Regeneration rules side done** (`Combatant::regeneration`, `DamageApplied::types_dealt`); Rejuvenation (lich/ghost) is not. | troll, vampire spawn | Rules S; T&C S | S | N |
 | 8 | R-G2 | **Effects array (S6)**: N effects per spell, a no-save apply-condition effect, per-cast option. **Done except the per-cast option** (rules + loader + validator; schema additive: new `apply_condition` kind and optional `applies_to`, no version bump). | Guiding Bolt, Vicious Mockery, Hideous Laughter, Thunderwave, Chill Touch, Shocking Grasp | Rules S-M; T&C S | M | N |
 | 9 | T&C-G13 | **Senses/vision data consumed** (darkvision, blindsight, tremorsense, truesight); effective only with R-G13. Data is already in schema. | most monsters | Engine Core | M | N (with R-G13) |
 | 10 | T&C-G4 | **Save-based/area monster actions + Recharge 5-6 + limited use** (`usage`): first-class `save_effect` action kind, no interim trait effects. | dragon breath, hell hound, giant spider web, Leadership, Turn Undead-like | Rules M; T&C M-L | M-L | B |

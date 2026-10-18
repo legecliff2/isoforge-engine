@@ -143,9 +143,8 @@ bool Combat::hostile(CombatantId a, CombatantId b) const {
 }
 bool Combat::spell_in_reach(const rules5e::SpellDef& def, CombatantId caster, CombatantId target) const {
     if (def.range_ft == 0) return caster == target;   // self
-    const Vec2i a = pos(caster), b = pos(target);
-    if (chebyshev(a, b) * kFeetPerTile > int(def.range_ft)) return false;
-    return caster == target || grid_.line_of_sight(a, b);
+    if (distance_tiles(caster, target) * kFeetPerTile > int(def.range_ft)) return false;
+    return caster == target || line_of_sight(caster, target);
 }
 
 int Combat::footprint_size(CombatantId id) const {
@@ -161,6 +160,23 @@ std::vector<Vec2i> Combat::footprint_tiles_at(CombatantId id, Vec2i anchor) cons
         for (int dx = 0; dx < n; ++dx) out.push_back({anchor.x + dx, anchor.y + dy});
     return out;
 }
+
+int Combat::distance_tiles(CombatantId a, CombatantId b) const {
+    const Spot sa = spot(a), sb = spot(b);
+    return rect_distance(sa.p, sa.n, sb.p, sb.n);
+}
+
+bool Combat::los_spots(Spot a, Spot b) const {
+    if (a.n == 1 && b.n == 1) return grid_.line_of_sight(a.p, b.p);   // v0 test
+    for (int ay = 0; ay < a.n; ++ay)
+        for (int ax = 0; ax < a.n; ++ax)
+            for (int by = 0; by < b.n; ++by)
+                for (int bx = 0; bx < b.n; ++bx)
+                    if (grid_.line_of_sight({a.p.x + ax, a.p.y + ay}, {b.p.x + bx, b.p.y + by})) return true;
+    return false;
+}
+
+bool Combat::line_of_sight(CombatantId a, CombatantId b) const { return los_spots(spot(a), spot(b)); }
 
 std::vector<Vec2i> Combat::occupied_except(CombatantId id) const {
     std::vector<Vec2i> out;
@@ -228,12 +244,12 @@ void Combat::install_hooks() {
         state_.hooks.targets_within = [this](const rules5e::EncounterState&, const std::vector<CombatantId>& ids, int feet) {
             for (std::size_t i = 0; i < ids.size(); ++i)
                 for (std::size_t j = i + 1; j < ids.size(); ++j)
-                    if (chebyshev(pos(ids[i]), pos(ids[j])) * kFeetPerTile > feet) return false;
+                    if (distance_tiles(ids[i], ids[j]) * kFeetPerTile > feet) return false;
             return true;
         };
         state_.hooks.can_see = [this](const rules5e::EncounterState&, const rules5e::Combatant& observer,
                                       const rules5e::Combatant& target) {
-            return !observer.has(rules5e::Condition::Blinded) && grid_.line_of_sight(pos(observer.id), pos(target.id));
+            return !observer.has(rules5e::Condition::Blinded) && line_of_sight(observer.id, target.id);
         };
     }
     state_.hooks.in_range = [this](const rules5e::EncounterState&, const rules5e::ReactionWindow& w,
@@ -244,8 +260,8 @@ void Combat::install_hooks() {
             for (uint32_t id : r.spells_known) {
                 const rules5e::SpellDef* d = spells_->find(id);
                 if (d && d->kind == rules5e::SpellEffectKind::Counter &&
-                    chebyshev(pos(r.id), pos(w.trigger_actor)) * kFeetPerTile <= int(d->range_ft) &&
-                    grid_.line_of_sight(pos(r.id), pos(w.trigger_actor)))
+                    distance_tiles(r.id, w.trigger_actor) * kFeetPerTile <= int(d->range_ft) &&
+                    line_of_sight(r.id, w.trigger_actor))
                     return true;
             }
             return false;
@@ -264,11 +280,12 @@ void Combat::install_hooks() {
         const auto* a = rules5e::find(state_, ra.actor);
         if (!a || ra.response.attack_index >= a->attacks.size() || !a->attacks[ra.response.attack_index].ranged)
             return std::nullopt;
-        const Vec2i rp = pos(ra.actor);
-        const Vec2i tp = ra.response.target == e.actor ? moving_to(e.actor).value_or(pos(e.actor)) : pos(ra.response.target);
+        const Spot rp = spot(ra.actor);
+        const Spot tp = ra.response.target == e.actor ? spot_at(e.actor, moving_to(e.actor).value_or(pos(e.actor)))
+                                                      : spot(ra.response.target);
         ActionRequest q = ra.response;
         if (!ranged_attack_facts(ra.actor, ra.response.attack_index, rp, tp, q, nullptr)) return std::nullopt;
-        q.target_within_5ft = chebyshev(rp, tp) <= 1;
+        q.target_within_5ft = rect_distance(rp.p, rp.n, tp.p, tp.n) <= 1;
         return q;
     };
     state_.hooks.ready_trigger = [this](const rules5e::EncounterState&, const rules5e::ReadiedAction& ra,
@@ -299,9 +316,12 @@ void Combat::install_hooks() {
             auto it = readied_dest_.find(ra.actor);
             if (it == readied_dest_.end()) return false;
             if (it->second == mp) return false;
+            const int fp = footprint_size(ra.actor);
             for (const auto& sl : slots_) {
                 const auto* c = rules5e::find(state_, sl.id);
-                if (sl.id != ra.actor && sl.id != e.actor && c && !c->dead && pos(sl.id) == it->second) return false;
+                if (sl.id == ra.actor || sl.id == e.actor || !c || c->dead) continue;
+                const Spot o = spot(sl.id);
+                if (rect_distance(it->second, fp, o.p, o.n) == 0) return false;   // 1x1 vs 1x1: same tile
             }
             return true;
         }
@@ -393,13 +413,13 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
     ready_to_.reset();
 }
 
-bool Combat::ranged_attack_facts(CombatantId actor, uint8_t ai, Vec2i from, Vec2i tp, ActionRequest& req,
+bool Combat::ranged_attack_facts(CombatantId actor, uint8_t ai, Spot from, Spot tp, ActionRequest& req,
                                  std::string* error) const {
     const Archetype* arch = archetype(actor);
     if (!arch || ai >= arch->long_range_ft.size()) { if (error) *error = "bad attack"; return false; }
-    const int d = chebyshev(from, tp);
+    const int d = rect_distance(from.p, from.n, tp.p, tp.n);
     if (d > reach_tiles(arch->long_range_ft[ai])) { if (error) *error = "target beyond long range"; return false; }
-    if (!grid_.line_of_sight(from, tp)) { if (error) *error = "no line of sight"; return false; }
+    if (!los_spots(from, tp)) { if (error) *error = "no line of sight"; return false; }
     req.beyond_normal_range = d > reach_tiles(arch->normal_range_ft[ai]);
     req.ranged_hostile_within_5ft = false;
     for (const auto& sl : slots_) {
@@ -407,14 +427,15 @@ bool Combat::ranged_attack_facts(CombatantId actor, uint8_t ai, Vec2i from, Vec2
         if (sl.id == actor || !c || c->dead || !hostile(sl.id, actor) || !rules5e::is_conscious(*c) ||
             rules5e::is_incapacitated(*c))
             continue;
-        if (chebyshev(from, pos(sl.id)) <= 1) req.ranged_hostile_within_5ft = true;
+        const Spot hs = spot(sl.id);
+        if (rect_distance(from.p, from.n, hs.p, hs.n) <= 1) req.ranged_hostile_within_5ft = true;
     }
     return true;
 }
 
 bool Combat::ranged_disadvantage(CombatantId actor, uint8_t ai, CombatantId target) const {
     ActionRequest q{};
-    if (!ranged_attack_facts(actor, ai, pos(actor), pos(target), q, nullptr)) return false;
+    if (!ranged_attack_facts(actor, ai, spot(actor), spot(target), q, nullptr)) return false;
     return q.beyond_normal_range || q.ranged_hostile_within_5ft;
 }
 
@@ -422,7 +443,7 @@ bool Combat::can_shoot(CombatantId actor, uint8_t ai, CombatantId target) const 
     const auto* a = rules5e::find(state_, actor);
     if (!a || ai >= a->attacks.size() || !a->attacks[ai].ranged || !rules5e::find(state_, target)) return false;
     ActionRequest scratch{};
-    return ranged_attack_facts(actor, ai, pos(actor), pos(target), scratch, nullptr);
+    return ranged_attack_facts(actor, ai, spot(actor), spot(target), scratch, nullptr);
 }
 
 SubmitResult Combat::finish(rules5e::StepResult sr) {
@@ -499,9 +520,9 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to) {
             r.error = "bad attack";
             return r;
         }
-        const int d = chebyshev(pos(actor), pos(req.target));
+        const int d = distance_tiles(actor, req.target);
         if (a->attacks[req.attack_index].ranged) {
-            if (!ranged_attack_facts(actor, req.attack_index, pos(actor), pos(req.target), req, &r.error)) return r;
+            if (!ranged_attack_facts(actor, req.attack_index, spot(actor), spot(req.target), req, &r.error)) return r;
         } else if (d > reach_tiles(a->attacks[req.attack_index].reach_or_range_ft)) {
             r.error = "target out of reach";
             return r;
@@ -512,7 +533,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to) {
         if (!spells_ || !spells_->find(req.spell_id)) { r.error = "unknown spell"; return r; }
         const CombatantId first = !req.targets.empty() ? req.targets[0] : req.target;
         if (!rules5e::find(state_, first)) { r.error = "bad target"; return r; }
-        req.target_within_5ft = chebyshev(pos(actor), pos(first)) <= 1;   // spell attacks: crit vs Paralyzed/Unconscious
+        req.target_within_5ft = distance_tiles(actor, first) <= 1;   // spell attacks: crit vs Paralyzed/Unconscious
     }
     ready_to_.reset();
     if (req.kind == ActionKind::Ready) {
@@ -541,11 +562,13 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to) {
             }
         } else if (req.ready_kind == ActionKind::Move) {
             const Vec2i from = pos(actor);
-            if (!grid_.walkable(to) || to == from) { r.error = "bad readied move destination"; return r; }
-            const auto path = grid_.path(from, {to}, occupied_except(actor));
+            const int fp = footprint_size(actor);
+            if (!grid_.footprint_walkable(to, fp) || to == from) { r.error = "bad readied move destination"; return r; }
+            const auto path = grid_.path(from, {to}, occupied_except(actor), fp);
             if (path.empty()) { r.error = "readied move destination unreachable"; return r; }
             int cost = 0;
-            for (Vec2i p : path) cost += grid_.step_cost_ft(p);
+            Vec2i prev = from;
+            for (Vec2i p : path) { cost += grid_.move_cost_ft(prev, p, fp); prev = p; }
             if (cost > int(a->speed_ft)) { r.error = "readied move longer than speed"; return r; }
             req.move_ft = int16_t(cost);
             req.leaves_reach = true;   // rules polls; sim's in_range decides who is actually left
@@ -563,12 +586,18 @@ SubmitResult Combat::do_step(Vec2i to) {
     SubmitResult r;
     const CombatantId mover = rules5e::current_actor(state_);
     const Vec2i from = pos(mover);
-    if (footprint_size(mover) > 1) { r.error = "multi-tile creatures cannot move yet"; return r; }   // lands with footprint movement
     if (chebyshev(from, to) != 1) { r.error = "step must be to an adjacent tile"; return r; }
-    if (!grid_.walkable(to)) { r.error = "tile not walkable"; return r; }
+    // Every tile the footprint newly enters must be walkable and free (the tiles it keeps are its own).
+    const int fp = footprint_size(mover);
     const auto occ = occupied_except(mover);
-    if (std::find(occ.begin(), occ.end(), to) != occ.end()) { r.error = "tile occupied"; return r; }
-    const int cost = grid_.step_cost_ft(to);
+    for (int dy = 0; dy < fp; ++dy)
+        for (int dx = 0; dx < fp; ++dx) {
+            const Vec2i t{to.x + dx, to.y + dy};
+            if (t.x >= from.x && t.x < from.x + fp && t.y >= from.y && t.y < from.y + fp) continue;
+            if (!grid_.walkable(t)) { r.error = "tile not walkable"; return r; }
+            if (std::find(occ.begin(), occ.end(), t) != occ.end()) { r.error = "tile occupied"; return r; }
+        }
+    const int cost = grid_.move_cost_ft(from, to, fp);
     if (cost > state_.budget.movement_ft) { r.error = "not enough movement"; return r; }
     ActionRequest mv{mover, ActionKind::Move};
     mv.move_ft = int16_t(cost);

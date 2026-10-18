@@ -48,10 +48,20 @@ public:
     // corner it is blocked only if both tiles beside the corner block sight.
     bool line_of_sight(Vec2i a, Vec2i b) const noexcept;
     int  step_cost_ft(Vec2i to) const noexcept { return difficult(to) ? 2 * kFeetPerTile : kFeetPerTile; }
+    // Square footprints (side n, anchored at the min-x/min-y tile). All n*n tiles walkable.
+    bool footprint_walkable(Vec2i anchor, int n) const noexcept;
+    // Cost in feet of moving a footprint from anchor `from` one tile to the adjacent anchor `to`: the
+    // dearest step_cost_ft over the tiles it newly enters (just step_cost_ft(to) when n == 1).
+    int  move_cost_ft(Vec2i from, Vec2i to, int n) const noexcept;
 
     // Shortest path (by feet, ties broken by fixed neighbour order) from `from` to any tile in
     // `goals`, avoiding `occupied`. Excludes `from`; empty if unreachable or already at a goal.
-    std::vector<Vec2i> path(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied) const;
+    // `footprint` > 1 paths an n x n creature: `from`, `goals` and the result are anchors, a node is
+    // enterable only if every tile of its footprint is walkable and not in `occupied` (the mover's own
+    // tiles must not be listed there), and a step costs move_cost_ft. No squeezing: a Large creature
+    // does not fit a one-tile gap. footprint == 1 is the v0 search, unchanged.
+    std::vector<Vec2i> path(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied,
+                            int footprint = 1) const;
 
 private:
     struct Cells {

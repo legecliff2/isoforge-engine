@@ -71,6 +71,25 @@ bool Grid::walkable(Vec2i p) const noexcept { const uint8_t* w = walk_at(p); ret
 bool Grid::difficult(Vec2i p) const noexcept { const uint8_t* w = walk_at(p); return w && *w == 2; }
 bool Grid::blocks_sight(Vec2i p) const noexcept { const uint8_t* s = sight_at(p); return s && *s != 0; }
 
+bool Grid::footprint_walkable(Vec2i anchor, int n) const noexcept {
+    for (int dy = 0; dy < n; ++dy)
+        for (int dx = 0; dx < n; ++dx)
+            if (!walkable({anchor.x + dx, anchor.y + dy})) return false;
+    return true;
+}
+
+int Grid::move_cost_ft(Vec2i from, Vec2i to, int n) const noexcept {
+    if (n <= 1) return step_cost_ft(to);
+    int cost = 0;
+    for (int dy = 0; dy < n; ++dy)
+        for (int dx = 0; dx < n; ++dx) {
+            const Vec2i t{to.x + dx, to.y + dy};
+            const bool was_inside = t.x >= from.x && t.x < from.x + n && t.y >= from.y && t.y < from.y + n;
+            if (!was_inside) cost = std::max(cost, step_cost_ft(t));
+        }
+    return cost;
+}
+
 bool Grid::line_of_sight(Vec2i a, Vec2i b) const noexcept {
     const int dx = a.x < b.x ? b.x - a.x : a.x - b.x, dy = a.y < b.y ? b.y - a.y : a.y - b.y;
     const int sx = b.x > a.x ? 1 : -1, sy = b.y > a.y ? 1 : -1;
@@ -89,7 +108,8 @@ bool Grid::line_of_sight(Vec2i a, Vec2i b) const noexcept {
     return true;
 }
 
-std::vector<Vec2i> Grid::path(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied) const {
+std::vector<Vec2i> Grid::path(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied,
+                              int footprint) const {
     // Same search as v0 (Dijkstra, ordered set (cost, y, x), fixed neighbour order), over world
     // tiles with sparse bookkeeping so paths cross chunk boundaries.
     using Key = std::pair<int32_t, int32_t>;   // (y, x)
@@ -116,8 +136,18 @@ std::vector<Vec2i> Grid::path(Vec2i from, const std::vector<Vec2i>& goals, const
         }
         for (Vec2i dxy : kDirs) {
             const Vec2i q{p.x + dxy.x, p.y + dxy.y};
-            if (!walkable(q) || blocked.count(key(q))) continue;
-            const int nd = d + step_cost_ft(q);
+            if (footprint <= 1) {
+                if (!walkable(q) || blocked.count(key(q))) continue;
+            } else {
+                bool fits = true;
+                for (int fy = 0; fy < footprint && fits; ++fy)
+                    for (int fx = 0; fx < footprint && fits; ++fx) {
+                        const Vec2i t{q.x + fx, q.y + fy};
+                        fits = walkable(t) && !blocked.count(key(t));
+                    }
+                if (!fits) continue;
+            }
+            const int nd = d + move_cost_ft(p, q, footprint);
             auto it = dist.find(key(q));
             if (it == dist.end() || nd < it->second) {
                 dist[key(q)] = nd;

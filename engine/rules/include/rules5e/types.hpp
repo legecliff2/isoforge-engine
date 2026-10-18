@@ -72,6 +72,9 @@ enum AttackQualifier : uint8_t { kAttackMagical = 1, kAttackSilvered = 2, kAttac
 // Unqualified Combatant::resistances / immunities are unaffected and apply to every source.
 struct QualifiedDamageMask { uint32_t nonmagical = 0, nonmagical_not_silvered = 0, nonmagical_not_adamantine = 0; };
 
+// Creature size category (SRD 5.1). Rules only reads it for the Heavy weapon property.
+enum class Size : uint8_t { Tiny, Small, Medium, Large, Huge, Gargantuan };
+
 struct Attack {
     std::string_view id;
     int8_t   to_hit;                               // total bonus
@@ -84,6 +87,7 @@ struct Attack {
     // appended: damage components 2..n (empty = single-component attack, the pre-existing behaviour).
     std::vector<DamagePart> extra_damage{};
     uint8_t qualifiers = 0;   // AttackQualifier bits (magic / silvered / adamantine); 0 = plain nonmagical
+    uint16_t properties = 0;  // WeaponProperty bits (weapon.hpp): heavy, loading, finesse, light, ...; 0 = none
 };
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
 constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
@@ -115,6 +119,37 @@ struct DeathSaves { uint8_t successes = 0, failures = 0; bool stable = false; };
 struct AttackSequence {
     std::string_view id;                  // option id; storage owned by the caller (like Attack::id)
     std::vector<uint8_t> attacks;         // indices into Combatant::attacks, in order (1..255)
+};
+
+// SRD "Regeneration" (troll, vampire spawn): regains `amount` HP at the start of its turn unless it took damage of
+// a `suppressed_by` type since its last turn started (troll: acid, fire; vampire spawn: radiant). A creature with
+// amount > 0 that is reduced to 0 HP is not dead until its next turn starts without regenerating (SRD troll:
+// "dies only if it starts its turn with 0 hit points and doesn't regenerate").
+struct Regeneration { int16_t amount = 0; uint32_t suppressed_by = 0; };   // suppressed_by: bitmask over DamageType
+// Conditional advantage/disadvantage trait (T&C-G7); semantics and examples in traits.hpp.
+enum class TraitRoll : uint8_t {
+    Attack,       // this creature's own attack rolls
+    AttackedBy,   // attack rolls made AGAINST this creature
+    Save,         // this creature's saving throws
+};
+
+enum TraitWhen : uint16_t {
+    kWhenAllyNearTarget  = 1,   // Attack: caller fact "an ally of the attacker is within 5 ft of the target, not incapacitated"
+    kWhenTargetDamaged   = 2,   // Attack: the target is below its maximum hit points
+    kWhenMeleeAttack     = 4,   // Attack / AttackedBy: the attack is a melee attack (not Attack::ranged)
+    kWhenRangedAttack    = 8,   // Attack / AttackedBy: the attack is ranged
+    kWhenSourceMagical   = 16,  // Save: the effect is a spell or other magical effect
+};
+
+struct RollTrait {
+    TraitRoll roll = TraitRoll::Attack;
+    RollMode  mode = RollMode::Advantage;   // Advantage or Disadvantage (Normal = no effect)
+    uint16_t  when = 0;                     // TraitWhen bits, all must hold
+    uint32_t  target_conditions = 0;        // Attack: target must have at least one of these Conditions (bitmask); 0 = any
+    uint32_t  target_types = 0;             // Attack: target CreatureType must be in this mask; 0 = any
+    uint8_t   save_abilities = 0;           // Save: only these abilities (bitmask over Ability); 0 = any
+    uint32_t  save_vs_conditions = 0;       // Save: the effect imposes one of these Conditions ...
+    uint32_t  save_vs_damage_types = 0;     //       ... or deals one of these damage types (either listed set matches); both 0 = any
 };
 
 struct Combatant {
@@ -165,6 +200,12 @@ struct Combatant {
     uint32_t condition_immunities = 0;
     // appended (damage qualifiers): resistance / immunity that applies only to nonmagical sources.
     QualifiedDamageMask resist_qualified{}, immune_qualified{};
+    // appended (regeneration): config + encounter state (suppressed: took a suppressing type since its last turn
+    // began; down: at 0 HP waiting for its next turn start instead of dying).
+    Regeneration regeneration{};
+    bool regen_suppressed = false, regen_down = false;
+    std::vector<RollTrait> roll_traits;   // appended: conditional advantage / disadvantage (Pack Tactics, Magic Resistance, ...)
+    Size size = Size::Medium;   // appended: Heavy weapons impose disadvantage on Small / Tiny wielders
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };

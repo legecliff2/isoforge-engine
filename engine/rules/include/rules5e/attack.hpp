@@ -2,6 +2,7 @@
 #include "rng/rng.hpp"
 #include "rules5e/d20.hpp"
 #include "rules5e/types.hpp"
+#include "rules5e/traits.hpp"
 
 namespace rules5e {
 
@@ -12,6 +13,10 @@ struct AttackContext {
     // appended: independent disadvantage source (ranged: long range / hostile within 5 ft). Kept
     // separate from `mode` so it is combined with every other source at once (any adv + any dis = normal).
     bool extra_disadvantage = false;
+    // appended (T&C-G7): facts for Combatant::roll_traits. ally_near_target is supplied by sim (Pack Tactics);
+    // `ranged` is set from Attack::ranged by do_attack / resolve_attack.
+    bool ally_near_target = false;
+    bool ranged = false;
 };
 
 struct AttackResult { D20Roll roll; bool hit, critical; int16_t damage; DamageType type; uint8_t qualifiers = 0; };
