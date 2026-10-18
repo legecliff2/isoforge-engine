@@ -47,6 +47,10 @@ struct SpellEffect {
     // Rider: resolve only for the targets the previous effect affected (spell attack: hit; save: failed;
     // heal: healed; auto-hit: struck; apply_condition: received it). false = every target.
     bool affected_only = false;
+    // appended: timed condition (Save / ApplyCondition): ends after `duration_rounds` rounds or at the end of the
+    // target's next turn. `expiry` holds an rules5e::Expiry value (encounter.hpp): 0 none, 1 rounds, 2 end of target's next turn.
+    uint8_t expiry = 0;
+    uint16_t duration_rounds = 0;      // expiry == 1
 };
 
 struct SpellDef {
@@ -97,6 +101,8 @@ struct SpellDef {
     AreaShape area = AreaShape::None; uint16_t area_size_ft = 0, area_width_ft = 0, area_height_ft = 0;
     std::vector<SpellEffect> extra_effects;   // appended: effects 2..n (see SpellEffect); empty = single-effect spell
     // appended (version-bump batch, row 5). Defaults preserve every existing spell.
+    uint8_t expiry = 0;            // appended (timed effects): see SpellEffect::expiry
+    uint16_t duration_rounds = 0;
     bool    is_spell = true;       // false: no SpellCast window (cannot be Counterspelled); emits ActionUsed instead of SpellCast
     bool    magical = true;        // SaveSource.magical and damage qualifier (breath weapons are NOT magical)
     int8_t  fixed_dc = 0, fixed_attack = 0;   // 0 = derive from the caster (spell_save_dc / spell_attack_bonus)
