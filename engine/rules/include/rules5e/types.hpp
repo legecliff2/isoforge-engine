@@ -38,6 +38,20 @@ enum class RollMode : uint8_t { Normal, Advantage, Disadvantage };
 
 using CombatantId = uint32_t;
 
+// Facts about a damage source that qualified resistances/immunities care about (SRD 5.1: "bludgeoning,
+// piercing, and slashing from nonmagical attacks [that aren't silvered / adamantine]"). Bit flags.
+// Spell damage is always Magical; weapon attacks are Magical for magic weapons or creatures whose
+// attacks count as magical ("Magic Weapons", Ki-Empowered Strikes); Silvered / Adamantine describe the weapon.
+namespace damage_source {
+inline constexpr uint8_t kMagical = 1, kSilvered = 2, kAdamantine = 4;
+} // namespace damage_source
+
+// Damage types that only resist (or are immune to) damage whose source is nonmagical:
+//   nonmagical                 - any nonmagical source ("from nonmagical attacks")
+//   nonmagical_not_silvered    - nonmagical and not silvered
+//   nonmagical_not_adamantine  - nonmagical and not adamantine
+struct QualifiedDamageMask { uint32_t nonmagical = 0, nonmagical_not_silvered = 0, nonmagical_not_adamantine = 0; };
+
 constexpr uint32_t bit(Condition c) { return uint32_t(1) << uint32_t(c); }
 constexpr uint32_t bit(DamageType t) { return uint32_t(1) << uint32_t(t); }
 constexpr uint32_t bit(Ability a) { return uint32_t(1) << uint32_t(a); }
@@ -62,6 +76,8 @@ struct Attack {
     // appended: ranged weapons' normal / long range in feet (SRD 5.1 "Range"; longbow 150/600 needs
     // more than reach_or_range_ft's byte). 0 = use reach_or_range_ft as the normal range, no long range.
     uint16_t range_ft = 0, long_range_ft = 0;
+    // appended: damage_source flags of this attack (magic weapon, silvered, adamantine). 0 = plain nonmagical.
+    uint8_t  source = 0;
 };
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
 constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
@@ -129,6 +145,9 @@ struct Combatant {
     uint32_t concentration_spell = 0;       // spell id concentrated on (0 = none)
     uint32_t reaction_blocks_spell = 0;     // Shield: no damage from this spell until the start of its turn
     CreatureType creature_type = CreatureType::Humanoid;   // spell targeting (Hold Person, Cure Wounds)
+    // appended (damage qualifiers): resistance / immunity that applies only to nonmagical sources.
+    // Unqualified `resistances` / `immunities` above are unchanged and apply to every source.
+    QualifiedDamageMask resist_qualified{}, immune_qualified{};
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
