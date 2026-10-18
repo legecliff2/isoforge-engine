@@ -73,6 +73,8 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
     c.team_names_.erase(std::unique(c.team_names_.begin(), c.team_names_.end()), c.team_names_.end());
     if (c.team_names_.size() > 255) { if (error) *error = "too many teams"; return std::nullopt; }
     std::vector<rules5e::Combatant> cs;
+    struct Placed { Vec2i anchor; int n; };
+    std::vector<Placed> placed;   // footprints so far, for the overlap check (multi-tile spawns only)
     std::size_t ti = 0;
     for (const auto& ws : spawns) {
         const auto& sp = *ws.sp;
@@ -81,6 +83,20 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
         const std::string& team_name = spawn_teams[ti++];
         if (sp.stable_id == 0) { if (error) *error = "spawn stable_id 0 is reserved"; return std::nullopt; }
         if (reg.find(sp.stable_id)) { if (error) *error = "duplicate spawn stable_id"; return std::nullopt; }
+        const int fp = a->footprint;
+        for (const Placed& o : placed)   // 1x1 vs 1x1 overlap stays unchecked (v0 behaviour)
+            if ((fp > 1 || o.n > 1) && rect_distance(ws.tile, fp, o.anchor, o.n) == 0) {
+                if (error) *error = "spawn footprint overlaps another spawn";
+                return std::nullopt;
+            }
+        if (fp > 1)
+            for (int dy = 0; dy < fp; ++dy)
+                for (int dx = 0; dx < fp; ++dx)
+                    if (!c.grid_.walkable({ws.tile.x + dx, ws.tile.y + dy})) {
+                        if (error) *error = "spawn footprint is not on walkable ground";
+                        return std::nullopt;
+                    }
+        placed.push_back({ws.tile, fp});
         rules5e::Combatant k = a->base;
         k.id = sp.stable_id;
         k.team = uint8_t(std::lower_bound(c.team_names_.begin(), c.team_names_.end(), team_name) - c.team_names_.begin());
@@ -88,6 +104,7 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
         reg.emplace(e, Health{k.hp, k.hp_max});
         reg.emplace(e, Team{k.team});
         reg.emplace(e, TilePos{ws.tile.x, ws.tile.y});
+        if (fp > 1) reg.emplace(e, Footprint{uint8_t(fp)});
         reg.emplace(e, CombatantLink{k.id});
         c.slots_.push_back({k.id, e, a});
         cs.push_back(std::move(k));
@@ -131,11 +148,27 @@ bool Combat::spell_in_reach(const rules5e::SpellDef& def, CombatantId caster, Co
     return caster == target || grid_.line_of_sight(a, b);
 }
 
+int Combat::footprint_size(CombatantId id) const {
+    const Slot* s = slot(id);
+    return s ? int(s->archetype->footprint) : 1;
+}
+
+std::vector<Vec2i> Combat::footprint_tiles_at(CombatantId id, Vec2i anchor) const {
+    const int n = footprint_size(id);
+    std::vector<Vec2i> out;
+    out.reserve(std::size_t(n * n));
+    for (int dy = 0; dy < n; ++dy)
+        for (int dx = 0; dx < n; ++dx) out.push_back({anchor.x + dx, anchor.y + dy});
+    return out;
+}
+
 std::vector<Vec2i> Combat::occupied_except(CombatantId id) const {
     std::vector<Vec2i> out;
     for (const auto& s : slots_) {
         const auto* c = rules5e::find(state_, s.id);
-        if (s.id != id && c && !c->dead) out.push_back(pos(s.id));
+        if (s.id == id || !c || c->dead) continue;
+        if (s.archetype->footprint == 1) { out.push_back(pos(s.id)); continue; }
+        for (Vec2i t : footprint_tiles(s.id)) out.push_back(t);
     }
     return out;
 }
@@ -530,6 +563,7 @@ SubmitResult Combat::do_step(Vec2i to) {
     SubmitResult r;
     const CombatantId mover = rules5e::current_actor(state_);
     const Vec2i from = pos(mover);
+    if (footprint_size(mover) > 1) { r.error = "multi-tile creatures cannot move yet"; return r; }   // lands with footprint movement
     if (chebyshev(from, to) != 1) { r.error = "step must be to an adjacent tile"; return r; }
     if (!grid_.walkable(to)) { r.error = "tile not walkable"; return r; }
     const auto occ = occupied_except(mover);
