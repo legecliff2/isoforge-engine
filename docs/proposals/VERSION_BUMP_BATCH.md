@@ -1157,7 +1157,7 @@ new rules `EventKind`s 39+ in the event feed). Rules for **mixed levels**:
 
 `ActionUsed` is a dedicated kind (Q9, revised on Engine Core's review): flag bits inside an existing
 payload are invisible to event-schema checks. Non-spell save actions emit `ActionUsed` *instead of*
-`SpellCast`, and still emit `SpellResolved`/save events as usual. Ordering of `ActionUsed` relative to `SpellResolved` is pinned in `docs/SIM_EVENTS.md`'s ordering rules in the row 5 PR. Sim's viewer events: `SpellTarget` keys on a depth-0 `ActionUsed` as well (row 6), so breath weapons still produce target tiles. `kEventKindCount` grows by 6 and
+`SpellCast`, and still emit `SpellResolved`/save events as usual. Ordering of `ActionUsed` relative to `SpellResolved` is pinned in `docs/SIM_EVENTS.md`'s ordering rules in the row 5 PR. Sim's viewer events: `SpellTarget` keys on a depth-0 `ActionUsed` as well (row 6), so breath weapons still produce target tiles. As implemented in row 5, `ActionUsed` is emitted **only for non-spell actions** (`is_spell == false`), so its `is_spell` payload is 0 today; spells with a `usage` (innate, row 8) keep `SpellCast`. `RechargeRolled`, `ResourceSpent` and `ActionUsed` are live in row 5; `FeatureTriggered`, `ModifierApplied` and `ModifierExpired` are reserved and appear with rows 9 and 12. `event_stream_version` keys on `kLastRulesEventKindV6` (the last pre-v7 kind), not on `kLastRulesEventKind`, so kinds 39-44 hash as v7. `kEventKindCount` grows by 6 and
 `kLastRulesEventKind` moves to `ActionUsed`. `SimEvent::Kind` is unchanged.
 
 ### 9.2 Sim event schema: **v7**, on top of #55's v6

@@ -678,6 +678,11 @@ uint64_t Combat::hash() const {
     // Feature uses (rules state). Folded only when any are registered, so feature-less combats
     // keep their hashes.
     if (!state_.features.empty()) h.u64(rules5e::feature_uses_digest(state_));
+    // v7 sections: each folded only when non-empty, under its own tag byte (so "pools only" and
+    // "action uses only" differ). Rows are registered at setup only for content that uses them, so every
+    // existing combat hashes as before. 0xA2 (modifiers) and 0xA4 (innate) are reserved for later rows.
+    if (!state_.action_uses.empty()) { h.byte(0xA1); h.u64(rules5e::action_uses_digest(state_)); }
+    if (!state_.pools.empty()) { h.byte(0xA3); h.u64(rules5e::pools_digest(state_)); }
     return h.value();
 }
 

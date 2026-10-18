@@ -61,7 +61,7 @@ TEST_CASE("v3: TileMoved after the request's rules events still lands on the rig
 }
 
 TEST_CASE("v4 spell kinds 35-38 are known and logged") {
-    static_assert(sim::kSimEventSchemaVersion == 6);
+    static_assert(sim::kSimEventSchemaVersion == 7);
     std::vector<SimEvent> evs;
     evs.push_back(rules(EventKind::SavingThrowRolled, 2, 4, 9, 14, 1));
     evs.push_back(rules(EventKind::SavingThrowRolled, 2, 4, 3, 5, 0));
@@ -80,9 +80,20 @@ TEST_CASE("v4 spell kinds 35-38 are known and logged") {
     CHECK(st.log[4] == "FIGHTER COUNTERS (15)");
 }
 
+TEST_CASE("v7 kinds 39-44 are known (not counted as unknown, not shown)") {
+    std::vector<SimEvent> evs;
+    for (int k = 39; k <= 44; ++k) evs.push_back(rules(EventKind(k), 1, 2, 1, 2, 3));
+    FeedState st;
+    slice::apply_events(evs, st, nm);
+    CHECK(st.skipped_unknown == 0);
+    CHECK(st.log.empty());
+    for (int k = 39; k <= 44; ++k) CHECK(slice::known_rules_kind(EventKind(k)));
+    CHECK(sim::kLastRulesEventKind == EventKind::ActionUsed);
+}
+
 TEST_CASE("unknown event kinds are skipped (above kLastRulesEventKind, future sim kinds)") {
     std::vector<SimEvent> evs;
-    for (int k = 39; k <= 42; ++k) evs.push_back(rules(EventKind(k), 1, 2, 1, 2, 3));
+    for (int k = 45; k <= 48; ++k) evs.push_back(rules(EventKind(k), 1, 2, 1, 2, 3));   // past v7's last kind (44)
     evs.push_back(rules(EventKind(250), 1));
     SimEvent future;
     future.kind = SimEvent::Kind(7);

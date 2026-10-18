@@ -34,7 +34,7 @@ world::Chunk sample_chunk() {
 } // namespace
 
 TEST_CASE("event layout: schema version and numeric enum values are locked") {
-    CHECK(kSimEventSchemaVersion == 6);
+    CHECK(kSimEventSchemaVersion == 7);
     CHECK(uint8_t(SimEvent::Kind::SpellTarget) == 2);   // v5
     CHECK(uint8_t(SimEvent::Kind::Footprint) == 3);     // v6
     CHECK(uint8_t(SimEvent::Kind::Rules) == 0);
@@ -54,7 +54,9 @@ TEST_CASE("event layout: schema version and numeric enum values are locked") {
         {EventKind::SpellCast, 30}, {EventKind::SpellCountered, 31}, {EventKind::SpellResolved, 32},
         {EventKind::AcBonus, 33}, {EventKind::FeatureUsed, 34},   // v2: FeatureUsed
         {EventKind::SavingThrowRolled, 35}, {EventKind::ConcentrationEnded, 36},   // v4: spellcasting
-        {EventKind::SpellEffectEnded, 37}, {EventKind::SpellCheckRolled, 38}};
+        {EventKind::SpellEffectEnded, 37}, {EventKind::SpellCheckRolled, 38},
+        {EventKind::RechargeRolled, 39}, {EventKind::FeatureTriggered, 40}, {EventKind::ResourceSpent, 41},   // v7
+        {EventKind::ModifierApplied, 42}, {EventKind::ModifierExpired, 43}, {EventKind::ActionUsed, 44}};
     CHECK(int(kLastRulesEventKind) == kinds.back().second);
     // Every rules kind must be listed above: a new kind fails here until the table (and version) is updated.
     CHECK(rules5e::kEventKindCount == kinds.size());
@@ -138,24 +140,28 @@ TEST_CASE("event goldens: same seed => same stream; locked digests") {
 
 TEST_CASE("event_stream_version: max over SimEvent::Kind and rules.kind constructs") {
     auto sim_ev = [](SimEvent::Kind k) { SimEvent e{}; e.kind = k; return e; };
+    auto v1 = [](std::initializer_list<SimEvent> l) { std::vector<SimEvent> s(l); return event_stream_version(s); };
     auto rules_ev = [](uint8_t kind) {
         SimEvent e{};
         e.kind = SimEvent::Kind::Rules;
         e.rules.kind = rules5e::EventKind(kind);
         return e;
     };
-    const SimEvent plain = rules_ev(uint8_t(kLastRulesEventKind));   // last locked rules kind: no bump
+    const SimEvent plain = rules_ev(uint8_t(kLastRulesEventKindV6));   // last pre-v7 rules kind: no bump
     const SimEvent spell = sim_ev(SimEvent::Kind::SpellTarget);
     const SimEvent foot = sim_ev(SimEvent::Kind::Footprint);
-    const SimEvent late = rules_ev(uint8_t(kLastRulesEventKind) + 1);   // synthetic EventKind(39): past the locked layout
+    const SimEvent late = rules_ev(uint8_t(kLastRulesEventKindV6) + 1);   // EventKind(39) = RechargeRolled: the first v7 kind
     REQUIRE(uint8_t(late.rules.kind) == 39);
+    for (int k = 39; k <= int(kLastRulesEventKind); ++k) CHECK(v1({rules_ev(uint8_t(k))}) == 7);   // every v7 kind
+    CHECK(v1({rules_ev(uint8_t(kLastRulesEventKind) + 1)}) == 7);   // and anything later
+    CHECK(event_stream_version(std::vector<SimEvent>{rules_ev(uint8_t(kLastRulesEventKind))}) <= kSimEventSchemaVersion);
     auto v = [](std::initializer_list<SimEvent> l) { std::vector<SimEvent> s(l); return event_stream_version(s); };
 
     CHECK(event_stream_version(std::vector<SimEvent>{}) == 4);
     CHECK(v({plain}) == 4);
     CHECK(v({plain, spell}) == 5);
     CHECK(v({foot}) == 6);
-    CHECK(v({late}) == kSimEventSchemaVersion);   // new-kind only: the contract version
+    CHECK(v({late}) == 7);   // new-kind only: v7
     // every ordering of a lower construct and a higher one gives the higher one (no early return, no last-wins)
     CHECK(v({foot, spell}) == 6);
     CHECK(v({spell, foot}) == 6);
@@ -164,7 +170,8 @@ TEST_CASE("event_stream_version: max over SimEvent::Kind and rules.kind construc
     CHECK(v({foot, late}) == kSimEventSchemaVersion);
     CHECK(v({late, foot}) == kSimEventSchemaVersion);
     CHECK(v({late, plain, foot, spell}) == kSimEventSchemaVersion);
-    CHECK(kSimEventSchemaVersion >= 6);
+    CHECK(kSimEventSchemaVersion == 7);
+    CHECK(v({late}) <= kSimEventSchemaVersion);   // invariant: a stream never claims a version above the contract
     // A non-Rules event's unused rules.kind field is never read as a rules kind.
     SimEvent tile = sim_ev(SimEvent::Kind::TileMoved);
     tile.rules.kind = rules5e::EventKind(200);
