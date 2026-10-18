@@ -13,6 +13,7 @@ struct DamageApplied {
     bool dropped_to_zero;     // was above 0 HP, now at 0
     bool instant_death;       // SRD massive damage: damage left over after reaching 0 HP >= HP max
                               // (also when already at 0 HP and the damage >= HP max)
+    uint32_t types_dealt = 0; // bitmask over DamageType: components that were above 0 after mitigation (before temp HP)
 };
 
 // SRD 5.1 order: immunity -> 0; resistance halves (round down; Petrified = resist all);

@@ -121,6 +121,11 @@ struct AttackSequence {
     std::vector<uint8_t> attacks;         // indices into Combatant::attacks, in order (1..255)
 };
 
+// SRD "Regeneration" (troll, vampire spawn): regains `amount` HP at the start of its turn unless it took damage of
+// a `suppressed_by` type since its last turn started (troll: acid, fire; vampire spawn: radiant). A creature with
+// amount > 0 that is reduced to 0 HP is not dead until its next turn starts without regenerating (SRD troll:
+// "dies only if it starts its turn with 0 hit points and doesn't regenerate").
+struct Regeneration { int16_t amount = 0; uint32_t suppressed_by = 0; };   // suppressed_by: bitmask over DamageType
 // Conditional advantage/disadvantage trait (T&C-G7); semantics and examples in traits.hpp.
 enum class TraitRoll : uint8_t {
     Attack,       // this creature's own attack rolls
@@ -195,6 +200,10 @@ struct Combatant {
     uint32_t condition_immunities = 0;
     // appended (damage qualifiers): resistance / immunity that applies only to nonmagical sources.
     QualifiedDamageMask resist_qualified{}, immune_qualified{};
+    // appended (regeneration): config + encounter state (suppressed: took a suppressing type since its last turn
+    // began; down: at 0 HP waiting for its next turn start instead of dying).
+    Regeneration regeneration{};
+    bool regen_suppressed = false, regen_down = false;
     std::vector<RollTrait> roll_traits;   // appended: conditional advantage / disadvantage (Pack Tactics, Magic Resistance, ...)
     Size size = Size::Medium;   // appended: Heavy weapons impose disadvantage on Small / Tiny wielders
 
