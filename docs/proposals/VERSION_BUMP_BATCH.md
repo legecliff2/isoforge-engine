@@ -216,6 +216,11 @@ verified against `main`:
    `spells_known` itself and never requires a block. Side effect, noted: a pack that had no spells
    now yields a non-null book for those combats. Old content is unaffected (nothing in the installed
    hooks fires without a cast), and the compat goldens prove it.
+5. **Direct `ContentLibrary::add()`** (not via `load()`): a `save_effect` registers its synthetic spells
+   immediately, replacing that archetype's earlier entries. `SpellBook` has no erase today, so "erase on
+   override" and "all-or-nothing" need either a rules5e `SpellBook::erase`/rebuild (listed in row 5) or
+   **build-then-swap** of the whole book in `load()` (recommended: build a new book from the final archetype
+   set, then swap the shared pointer). Direct `add()` uses the rebuild path for the replaced archetype's ids.
 
 ```cpp
 // rules5e/spells.hpp (append to SpellDef; defaults preserve every existing spell)
@@ -304,7 +309,7 @@ carry the same effect object): effects that happen on an *event*, independent of
 | `target_creature_type` / `not_creature_type` | creature type list | smites vs undead/fiends |
 | `damage_type_not` / `damage_type_is` | damage types | Undead Fortitude (not radiant) |
 | `not_crit` | none | Undead Fortitude |
-| `moved_at_least_ft` | `ft` (counted by rules as tiles x 5, §3.2) | Charge, Pounce (20 ft). Approximation, see below (Q4 decided) |
+| `moved_at_least_ft` | `ft` (`TurnBudget::moved_ft` = 5 x `move_tiles` from sim, §3.2) | Charge, Pounce (20 ft). Approximation, see below (Q4 decided) |
 | `self_hp_below` | `{num, den}` | Rampage-style gates |
 | `save` | `{ability, dc, dc_from_damage?: true}` | Undead Fortitude: Con save DC `5 + damage taken` (`dc_from_damage`) |
 
@@ -337,7 +342,7 @@ Examples:
 ```
 
 **Charge/Pounce limitation (Q4, decided).** `moved_at_least_ft` means "the owner has moved at least
-`ft` feet this turn (`TurnBudget::moved_ft`, rules-side, tiles x 5) before the attack". There is no path history, so the
+`ft` feet this turn (`TurnBudget::moved_ft`, tiles x 5, fed by sim's `ActionRequest::move_tiles`) before the attack". There is no path history, so the
 SRD requirement that the movement be *in a straight line toward the target* is **not** enforced: a
 creature that walks 20 ft sideways or away and then attacks still qualifies. This is slightly
 generous to the attacker. If it matters later, a sim-supplied `charged_straight` fact can be added
@@ -370,8 +375,13 @@ struct Trigger { uint32_t id; TriggerOn on; TriggerLimit limit; ReactionPolicy c
                  std::vector<Predicate> when; std::vector<RiderEffect> effects; };
 // Combatant (appended): std::vector<Trigger> triggers;
 // TurnBudget (appended): uint32_t triggers_used_mask; uint16_t moved_ft; uint8_t extra_actions;
-// moved_ft is RULES-side: incremented by Move in rules5e as (tiles moved x 5). NOT move_ft, which sim
-// passes from grid_.move_cost_ft and doubles on difficult terrain. Out-of-turn readied moves are not counted.
+// moved_ft is a rules-side counter fed by a SIM-supplied fact. rules5e only ever sees ActionRequest::move_ft,
+// which is the grid *cost* sim passes (grid_.move_cost_ft, doubled for difficult terrain) and which the
+// Move handler doubles again for Prone (crawling), and `Moved` carries only that cost, so a tile count
+// cannot be recovered in rules. Therefore: ActionRequest (appended, default 0) `uint8_t move_tiles`,
+// set by sim in do_step (1 per Step) and in the readied-move path (path length). Rules add
+// 5 * move_tiles to TurnBudget::moved_ft for the actor's OWN turn only (readied/out-of-turn moves
+// are not counted). move_tiles is logged with the request (replay reproduces it) and stays OUT of log_hash.
 ```
 
 Hook points in `encounter.cpp` (all are existing internal functions; no new public step kind):
@@ -705,7 +715,7 @@ same outcome as the marker path), **never a load error**: compat content must al
 migrated document's `$schema` is already `@4`, so the check needs the *declared* version
 (`LoadResult::declared.version`), which today never reaches `ContentLibrary::add()` or
 `FeatureRegistry::add()`. Sim-side work (Engine Core): pass `declared.version` into `add()`
-(public API, so T&C must agree) and onto `FeatureBuildCtx`, and apply the refusal there.
+(public API, so T&C must agree) and onto `FeatureBuildCtx`, and apply the refusal there. The new `declared_version` parameter has a **default meaning "current, no refusal"** (e.g. `UINT32_MAX`), so existing callers (`sample_set.hpp`, packset tests, direct `add()` users) compile and behave identically. The "new set" lives in two places (sim's registry list and the migration's frozen literal list), so a **test keeps the two equal**.
 
 **Validator (`tools/validate`):**
 
@@ -770,7 +780,7 @@ modifier queries, the new `EventKind`s 39+ in the event feed, and `ActionUsed`-s
 
 `ActionUsed` is a dedicated kind (Q9, revised on Engine Core's review): flag bits inside an existing
 payload are invisible to event-schema checks. Non-spell save actions emit `ActionUsed` *instead of*
-`SpellCast`, and still emit `SpellResolved`/save events as usual. `kEventKindCount` grows by 6 and
+`SpellCast`, and still emit `SpellResolved`/save events as usual. Ordering of `ActionUsed` relative to `SpellResolved` is pinned in `docs/SIM_EVENTS.md`'s ordering rules in the row 5 PR. Sim's viewer events: `SpellTarget` keys on a depth-0 `ActionUsed` as well (row 6), so breath weapons still produce target tiles. `kEventKindCount` grows by 6 and
 `kLastRulesEventKind` moves to `ActionUsed`. `SimEvent::Kind` is unchanged.
 
 ### 9.2 Sim event schema: **v7**, on top of #55's v6
@@ -906,17 +916,17 @@ Everything below is event schema **v7**.
 
 | # | PR | Owner | Depends on | Notes |
 |---|---|---|---|---|
-| 1 | `ally_near_target` sim fact: same-team, conscious, non-incapacitated creature other than the attacker within 1 tile of the target footprint, set in `do_rules` (Attack branch) and `hooks.refresh_ready` | **Engine Core** | none (can land now) | Fixes Pack Tactics (#54; dead today because sim never sets it); Sneak Attack reuses it. Stays out of `log_hash` (§9.3) |
+| 1 | **Sim facts: `ally_near_target` and `move_tiles`.** `ally_near_target`: same-team, conscious, non-incapacitated creature other than the attacker within 1 tile of the target footprint, set in `do_rules` (Attack branch) and `hooks.refresh_ready` | **Engine Core** | none (can land now) | Supplies the fact #54 expects. Sim does not load `roll_traits` from content yet, so this changes nothing observable today (golden-neutral); it becomes observable when a loader or trait uses it (Sneak Attack, rows 9/10). `move_tiles` (appended `ActionRequest` field, default 0): set in `do_step` (1 per Step) and the readied-move path (path length). Both stay out of `log_hash` (§9.3) |
 | 2 | `common@2` (changed defs only, absolute refs to v1), `monster@4`/`character@4`, lint test, per-tag validator table, cross-ref checks (§8.3), `3→4` migrations (§8.2), `manifest@1` `api_level` enum + validator rule (§8.5), decorated compat fixtures (§8.4) | **T&C** | #58, #59 | No behaviour; golden-neutral by construction |
 | 3 | Loader: accept `@4`, **`declared.version` plumbing** into `ContentLibrary::add()` and `FeatureBuildCtx`, `reactions`/`bonus_actions` markers, registry "list as inert" rule (§8.3), `forward_compat` listing | **Engine Core** | 2 | Public `add()` signature: T&C signs off |
-| 4 | `event_stream_version` max-over-constructs (§9.2), v7 constant, SIM_EVENTS.md v7 row, tests (Footprint-only 6 / new-kind-only 7 / both 7 / neither unchanged) | **Engine Core** | #55 | Lands before any kind 39+ is emitted |
-| 5 | rules5e foundation: `usage`, `ActionUse`, `ResourcePool`, recharge roll, `moved_ft` (tiles x 5, rules-side), `SpellDef::{is_spell, magical, fixed_dc, fixed_attack}`, kinds 39-44, `kLastRulesEventKind` | **Rules** | 4, #55 | Tagged `Combat::hash` folds are part of the sim side of this PR (Engine Core co-reviews) |
-| 6 | **Save actions, caller-supplied targets (Q8)**: synthetic-spell compile in `ContentLibrary` (§2.3), `spells_known` append, AI offer on top of #59's multiattack ordering (save action if worthwhile, else multiattack, else single attack) | **Engine Core** (compile + AI), Rules for any `legal_actions` change | 3, 5 | AI reads `state_` (expended or not), never rolls; heuristic: use when >= 2 hostile targets (or 1 if no attack is legal) and never include allies |
-| 7 | **Area templates (R-G10)**: aim input via `Command::to` for `CastSpell` (already in `LogEntry`/`log_hash`), geometry over `footprint_tiles_at`, LOS/cover from origin, opt-in (derive targets only when an aim tile is given and `targets` is empty), `spell_in_reach` fix for self-origin | **Engine Core** | #55, 6 | Later PR (Q8); also serves `area_save` riders |
+| 4 | `event_stream_version` max-over-constructs (§9.2), v7 constant (raised before any kind 39+ exists; harmless, and the SIM_EVENTS.md v7 row says so), SIM_EVENTS.md v7 row, tests (Footprint-only 6 / new-kind-only 7 / both 7 / neither unchanged) | **Engine Core** | #55 | Lands before any kind 39+ is emitted |
+| 5 | rules5e foundation: `usage`, `ActionUse`, `ResourcePool`, recharge roll, `moved_ft` (rules half: adds 5 x `move_tiles` on the actor's own turn), `SpellBook::erase`/rebuild support (§2.3), `ReactionOption::uses_reaction` (appended, default true), `SpellDef::{is_spell, magical, fixed_dc, fixed_attack}`, kinds 39-44, `kLastRulesEventKind` | **Rules** | 4, #55 | Tagged `Combat::hash` folds are part of the sim side of this PR (Engine Core co-reviews) |
+| 6 | **Save actions, caller-supplied targets (Q8), single-target only for AI**: synthetic-spell compile in `ContentLibrary` (§2.3), `spells_known` append; **`Combat::complete` also emits `SpellTarget` for a depth-0 `ActionUsed` by the actor** (today it keys on a depth-0 `SpellCast`; non-spell save actions emit `ActionUsed` instead, §9.1; `docs/SIM_EVENTS.md`'s "`SpellTarget` (v5): depth-0 `SpellCast`" wording is updated in this PR; no new `SimEvent` kind, so no version change); AI offers save actions **without an `area`** on top of #59's multiattack ordering (save action if worthwhile, else multiattack, else single attack) | **Engine Core** (compile + AI), Rules for any `legal_actions` change | 3, 5 | AI reads `state_` (expended or not), never rolls. Interim: single-target save actions only (no geometry exists before row 7); area actions are usable by explicit callers/tests with listed targets but the built-in AI does not choose them yet |
+| 7 | **Area templates (R-G10)**: aim input via `Command::to` for `CastSpell` (already in `LogEntry`/`log_hash`), geometry over `footprint_tiles_at`, LOS/cover from origin, opt-in (derive targets only when an aim tile is given and `targets` is empty), `spell_in_reach` fix for self-origin | **Engine Core** | #55, 6 | Later PR (Q8); also serves `area_save` riders. **Area-action AI moves here**: use when >= 2 hostile targets are inside the template (or 1 if no attack is legal), never include allies |
 | 8 | Innate/slot monster spellcasting, DC/attack overrides, `ActionRequest::innate` | **Rules** + **Engine Core** (archetype) | 3 | |
 | 9 | Triggers/riders in rules: `triggers.hpp`, hook points, `FeatureTriggered`, `HitRider` reaction trigger | **Rules** | 4, 5 | AI default: `ask` riders **decline** unless policy/content opts in |
 | 10 | Rider/`on_event` loader (`on_hit[]`, effects) | **Engine Core** (loader), schema in row 2 | 1, 3, 9 | |
-| 11 | Reactions: new triggers/options, hooks, `reactions[]` compile | **Rules** then **Engine Core** (hooks + deterministic default order by content order, honouring `uses_reaction`; a free `HitRider` is never option 0 ahead of a real reaction) | 3, 9 | `RollAttack` window deferred (Q6) |
+| 11 | Reactions: new triggers/options, hooks, `reactions[]` compile | **Rules** then **Engine Core** (hooks + deterministic default order by content order, honouring `uses_reaction`; a free `HitRider` is never option 0 ahead of a real reaction). **Default policy:** `IActorPolicy::decide_reaction` today answers `{react=true, option 0}` for every window; the new default **declines `HitRider` windows** and keeps option 0 for every existing trigger (so existing goldens, e.g. the vertical_slice reaction count, are unchanged); `ReactionOption::uses_reaction` is a new appended field defaulting to `true` | 3, 9 | `RollAttack` window deferred (Q6) |
 | 12 | Timed modifiers (+ `spell@1` `apply_modifier`, additive) | **Rules**; **T&C** adds the spell kind to validation | 5 | Spell side can ship before row 2 |
 | 13 | Class pools + feature kinds (`grant_action` via `TurnBudget::extra_actions`, `heal_pool` reusing existing `ActionRequest::amount`, pool usage), Legendary Resistance as a pool | **Rules** + **Engine Core** (FeatureRegistry hooks) | 5, 9, 12 | |
 | 14 | `item@1` schema + loader (weapons, armor, shields) | **T&C** (schema/validator), **Engine Core** (loader) | 2, 3 | |
@@ -938,7 +948,7 @@ the Director's instruction.
 | Q1 | Save actions reuse the spell resolver via synthetic `SpellDef`s (`is_spell=false`, `magical=false`, `fixed_dc`; id = `spell_id_of("<archetype>#<action>")`, duplicates are a load error; per-archetype compile; §2.3) | DECIDED (Director; design corrected by Engine Core review) |
 | Q2 | Pools and trait/feature-side modifiers wait for `@4` (one bump, no interim kinds); spell-side `apply_modifier` stays additive | DECIDED (Director) |
 | Q3 | Divine Smite is a post-hit reaction-window option (free `HitRider`); sim default declines unless opted in | DECIDED (Director) |
-| Q4 | Charge/Pounce use "moved at least N ft this turn"; `moved_ft` is rules-side, **tiles x 5** (not `move_ft`); no path history; limitation documented in §3.1 | DECIDED (Director) |
+| Q4 | Charge/Pounce use "moved at least N ft this turn"; `moved_ft` is a rules-side counter fed by sim's appended `ActionRequest::move_tiles` (tiles x 5; rules cannot derive tiles from the cost-valued `move_ft`); no path history; limitation documented in §3.1 | DECIDED (Director) |
 | Q5 | `drop_to_zero` triggers run before the regeneration-down check | DECIDED (adopted) |
 | Q6 | Roll-modifying reactions (`RollAttack`/`RollSave`, `subtract_roll`) deferred; `subtract_roll` reserved | DECIDED (adopted) |
 | Q7 | Extra actions via `TurnBudget::extra_actions` (appended, default 0) | DECIDED (adopted) |
@@ -967,5 +977,5 @@ and `forward_compat`), (b) the `oneOf` of mechanical vs `legacy_action` for `rea
 
 **Engine Core:** (a) rows 1, 3, 4, 7 as yours; (b) the `event_stream_version` max form (§9.2) and the
 hash rules (§9.3: tagged folds, `log_hash` stays unchanged for old logs); (c) the synthetic-spell
-compile (§2.3 points 1-4); (d) AI defaults (§12 rows 6, 9, 11); (e) the declared-version plumbing and the
+compile (§2.3 points 1-4); (d) AI defaults (§12 rows 6, 7, 9, 11), `move_tiles` in row 1; (e) the declared-version plumbing and the
 public `add()` signature change (§8.3).
