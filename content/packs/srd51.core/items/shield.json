@@ -1,0 +1,10 @@
+{
+  "$schema": "item@1",
+  "id": "srd51.item.shield",
+  "name": "Shield",
+  "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
+  "category": "shield",
+  "cost_cp": 1000,
+  "weight_oz": 96,
+  "ac_bonus": 2
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "item@1",
+  "id": "srd51.item.longbow",
+  "name": "Longbow",
+  "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
+  "category": "weapon",
+  "cost_cp": 5000,
+  "weight_oz": 32,
+  "weapon_class": "martial",
+  "range": [150, 600],
+  "damage": [
+    {"dice": "1d8", "type": "piercing"}
+  ],
+  "properties": ["ammunition", "heavy", "two_handed"]
+}
