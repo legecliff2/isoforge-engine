@@ -62,6 +62,42 @@ std::optional<std::string> apply_bonus_action_grant(Archetype& a, const FeatureD
     return std::nullopt;
 }
 
+// Multiattack (static): declared options, each an ordered list of this creature's attack action ids made
+// with one Attack action. `options: [{id, attacks: [...]}]`, or the shorthand `attacks: [...]` = one option
+// named "multiattack". Option order is the order content declares them (the AI prefers earlier ones).
+std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    std::vector<std::pair<std::string, const Json*>> opts;
+    if (auto o = f.effect.find("options"); o != f.effect.end()) {
+        if (!o->is_array() || o->empty()) return f.id + ": multiattack options must be a non-empty array";
+        for (const Json& x : *o) {
+            if (!x.is_object() || !x.contains("id") || !x["id"].is_string()) return f.id + ": multiattack option needs an id";
+            opts.emplace_back(x["id"].get<std::string>(), &x["attacks"]);
+        }
+    } else if (auto at = f.effect.find("attacks"); at != f.effect.end()) {
+        opts.emplace_back("multiattack", &*at);
+    } else {
+        return f.id + ": multiattack needs options[] or attacks[]";
+    }
+    for (const auto& [oid, list] : opts) {
+        if (oid.empty()) return f.id + ": multiattack option id is empty";
+        for (const auto& d : a.multiattack_decls)
+            if (d.id == oid) return f.id + ": duplicate multiattack option '" + oid + "'";
+        if (!list->is_array() || list->empty() || list->size() > 255)
+            return f.id + ": multiattack option '" + oid + "' needs 1..255 attacks";
+        Archetype::MultiattackDecl d;
+        d.id = oid;
+        for (const Json& n : *list) {
+            const std::string aid = n.is_string() ? n.get<std::string>() : "";
+            bool found = false;
+            for (std::size_t i = 0; i < ctx.attack_actions.size() && !found; ++i)
+                if (ctx.attack_actions[i]->value("id", "") == aid) { d.attacks.push_back(uint8_t(i)); found = true; }
+            if (!found) return f.id + ": multiattack option '" + oid + "' names unknown attack action '" + aid + "'";
+        }
+        a.multiattack_decls.push_back(std::move(d));
+    }
+    return std::nullopt;
+}
+
 std::optional<std::string> apply_self_heal(Archetype& a, const FeatureDecl& f, uint32_t fid, const FeatureBuildCtx& ctx) {
     ActiveFeature af;
     af.feature_id = fid;
@@ -99,6 +135,7 @@ FeatureRegistry make_builtin() {
     r.add_hook("damage_bonus", {apply_damage_bonus});
     r.add_hook("bonus_action_grant", {apply_bonus_action_grant});
     r.add_hook("self_heal", {apply_self_heal});
+    r.add_hook("multiattack", {apply_multiattack});
     // v0 wield model: a melee weapon without the two_handed property counts as wielded in one hand
     // with no other weapon (sim has no equipment/wield state yet).
     r.add_condition("one_handed_melee_no_other_weapon", [](const Json&, const Json& act) {

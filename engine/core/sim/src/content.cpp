@@ -200,6 +200,11 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         }
         if (auto e = h->apply(a, f, uint32_t(i + 1), fctx)) return a.id + ": " + *e;
     }
+    // multiattack options -> rules5e::AttackSequence (ids owned by the library, stable addresses).
+    for (const auto& m : a.multiattack_decls) {
+        strings_.push_back(m.id);
+        c.multiattacks.push_back({strings_.back(), m.attacks});
+    }
     a.ai = assets::behavior_ai_script(doc);   // monster@2 / character@2
     by_id_[a.id] = std::move(a);
     return std::nullopt;
