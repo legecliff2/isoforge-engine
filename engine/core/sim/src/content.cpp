@@ -59,6 +59,122 @@ int geti(const Json& j, const char* k, int def = 0) {
     auto it = j.find(k);
     return (it != j.end() && it->is_number_integer()) ? it->get<int>() : def;
 }
+
+std::optional<rules5e::Ability> ability_of(const std::string& s) {
+    static const char* names[] = {"str", "dex", "con", "int", "wis", "cha"};
+    for (int i = 0; i < 6; ++i) if (s == names[i]) return rules5e::Ability(i);
+    return std::nullopt;
+}
+
+// Compiles a monster@4 / character@4 `save_effect` action into a synthetic SpellDef (VERSION_BUMP_BATCH 2.3).
+// Returns an error message (load error), or nullopt. `unsupported` is set (and nothing compiled) for shapes
+// the engine cannot run yet (pool usage: needs resource pools, row 13).
+std::optional<std::string> compile_save_action(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
+                                               Archetype::SaveAction& sa, bool& unsupported) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch_id + ": save_effect '" + aid + "'";
+    if (aid.empty() || aid.find('#') != std::string::npos || arch_id.find('#') != std::string::npos)
+        return where + ": id must be non-empty and contain no '#'";
+    d = rules5e::SpellDef{};
+    d.content_id = arch_id + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.casting_time = rules5e::CastingTime::Action;
+    d.kind = rules5e::SpellEffectKind::Save;
+    d.is_spell = false;   // not a spell: no SpellCast window, no components, not Counterspellable
+    d.magical = act.value("magical", false);
+    d.targets = 1;
+    sa = {};
+    sa.id = aid;
+    sa.spell_id = d.id;
+    const auto sv = act.find("save");
+    if (sv == act.end() || !sv->is_object()) return where + ": missing save";
+    auto ab = ability_of(sv->value("ability", ""));
+    const int dc = geti(*sv, "dc");
+    if (!ab || dc < 1 || dc > 30) return where + ": bad save";
+    d.save_ability = *ab;
+    d.fixed_dc = int8_t(dc);
+    // Area template (validated and kept for the area row; UI hint until then) and origin / range.
+    const bool has_area = act.contains("area") && act["area"].is_object();
+    const std::string origin = act.value("origin", "self");
+    if (origin != "self" && origin != "point") return where + ": bad origin";
+    if (has_area) {
+        const Json& ar = act["area"];
+        const std::string shape = ar.value("shape", "");
+        d.area = shape == "cone" ? rules5e::AreaShape::Cone : shape == "cube" ? rules5e::AreaShape::Cube
+               : shape == "cylinder" ? rules5e::AreaShape::Cylinder : shape == "line" ? rules5e::AreaShape::Line
+               : shape == "sphere" ? rules5e::AreaShape::Sphere : rules5e::AreaShape::None;
+        if (d.area == rules5e::AreaShape::None) return where + ": bad area shape";
+        const int size = geti(ar, "size_ft"), width = geti(ar, "width_ft"), height = geti(ar, "height_ft");
+        if (size < 5 || size > 65535 || width < 0 || width > 65535 || height < 0 || height > 65535) return where + ": bad area size";
+        d.area_size_ft = uint16_t(size);
+        d.area_width_ft = uint16_t(width);
+        d.area_height_ft = uint16_t(height);
+        sa.area = true;
+    }
+    const int range = geti(act, "range_ft", origin == "self" && has_area ? 0 : 5);
+    if (range < 0 || range > 65535 || (origin == "point" && range < 5)) return where + ": bad range_ft";
+    d.range_ft = uint16_t(origin == "self" && has_area ? 0 : range);
+    sa.range_ft = d.range_ft;
+    // Damage (one component; the save is rolled once per target) and applied conditions.
+    if (auto dm = act.find("damage"); dm != act.end() && dm->is_array() && !dm->empty()) {
+        if (dm->size() > 1) return where + ": damage[] with more than one entry is not supported yet";
+        auto dice = parse_dice((*dm)[0].value("dice", ""));
+        auto type = damage_type((*dm)[0].value("type", ""));
+        if (!dice || !type) return where + ": bad damage";
+        d.dice = *dice;
+        d.damage_type = *type;
+        d.on_save = act.value("on_success", "") == "half" ? rules5e::OnSave::Half : rules5e::OnSave::None;
+    }
+    if (auto ap = act.find("apply"); ap != act.end() && ap->is_array()) {
+        auto repeat_of = [](const std::string& r) {
+            return r == "start_of_turn" ? rules5e::RepeatSave::StartOfTurn : r == "end_of_turn" ? rules5e::RepeatSave::EndOfTurn
+                 : r == "on_damage" ? rules5e::RepeatSave::OnDamage : rules5e::RepeatSave::None;
+        };
+        bool first = true;
+        for (const Json& x : *ap) {
+            auto cond = condition_of(x.is_object() ? x.value("condition", "") : "");
+            if (!cond) return where + ": bad condition in apply[]";
+            if (first) {   // the first condition rides the primary Save effect
+                d.applies_condition = true;
+                d.condition = *cond;
+                d.repeat_save = repeat_of(x.value("repeat_save", ""));
+                first = false;
+            } else {       // further conditions: ApplyCondition on the creatures that failed the save
+                rules5e::SpellEffect e;
+                e.kind = rules5e::SpellEffectKind::ApplyCondition;
+                e.applies_condition = true;
+                e.condition = *cond;
+                e.repeat_save = repeat_of(x.value("repeat_save", ""));
+                e.affected_only = true;
+                d.extra_effects.push_back(e);
+            }
+        }
+    }
+    if (d.dice.count == 0 && d.dice.bonus == 0 && !d.applies_condition) return where + ": needs damage[] or apply[]";
+    // Usage. Pools need resource rows (a later row): such actions are listed, not compiled.
+    if (auto u = act.find("usage"); u != act.end() && u->is_object()) {
+        const std::string k = u->value("kind", "");
+        if (k == "at_will") d.usage_kind = 0;
+        else if (k == "recharge") {
+            const int mn = geti(*u, "min");
+            if (mn < 2 || mn > 6) return where + ": bad recharge min";
+            d.usage_kind = 1;
+            d.recharge_min = uint8_t(mn);
+        } else if (k == "per_day" || k == "per_rest") {
+            const int uses = geti(*u, "uses");
+            if (uses < 1 || uses > 255) return where + ": bad uses";
+            d.usage_kind = 2;
+            sa.uses = uint8_t(uses);
+            sa.recharge = k == "per_day" || u->value("rest", "long") == "long" ? Recharge::LongRest : Recharge::ShortRest;
+        } else if (k == "pool") {
+            unsupported = true;
+            return std::nullopt;
+        } else return where + ": bad usage kind";
+    }
+    sa.usage_kind = d.usage_kind;
+    return std::nullopt;
+}
 } // namespace
 
 std::optional<rules5e::DamageType> damage_type_from_name(const std::string& s) { return damage_type(s); }
@@ -233,6 +349,41 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         c.multiattacks.push_back({strings_.back(), m.attacks});
     }
     a.ai = assets::behavior_ai_script(doc);   // monster@2 / character@2
+    // monster@4 / character@4 save_effect actions -> synthetic SpellDefs (never for a file that declared < 4).
+    std::vector<rules5e::SpellDef> synth;
+    if (declared == 0 || declared >= 4)
+        for (const Json& act : doc.at("actions")) {
+            if (act.value("kind", "") != "save_effect") continue;
+            rules5e::SpellDef d;
+            Archetype::SaveAction sa;
+            bool unsupported = false;
+            if (auto e = compile_save_action(a.id, act, d, sa, unsupported)) return e;
+            if (unsupported) { a.unsupported_features.push_back(act.value("id", "?") + " (save_effect pool usage)"); continue; }
+            for (const auto& prev : synth)
+                if (prev.id == d.id) return a.id + ": save_effect ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+            c.spells_known.push_back(d.id);
+            a.save_actions.push_back(sa);
+            synth.push_back(std::move(d));
+        }
+    // Register in the shared SpellBook, replacing an overridden archetype's entries; all-or-nothing.
+    if (!synth.empty() || by_id_.count(a.id)) {
+        std::vector<rules5e::SpellDef> old;
+        if (auto prev = by_id_.find(a.id); prev != by_id_.end())
+            for (const auto& sa : prev->second.save_actions)
+                if (const auto* d = spells_->find(sa.spell_id)) old.push_back(*d);
+        for (const auto& d : old) spells_->erase(d.id);
+        std::vector<uint32_t> added;
+        for (const auto& d : synth) {
+            if (const auto* clash = spells_->find(d.id)) {
+                const std::string other = clash->content_id;
+                for (uint32_t id : added) spells_->erase(id);
+                for (const auto& o : old) spells_->add(o);
+                return a.id + ": synthetic spell id of '" + d.content_id + "' collides with '" + other + "'";
+            }
+            spells_->add(d);
+            added.push_back(d.id);
+        }
+    }
     by_id_[a.id] = std::move(a);
     return std::nullopt;
 }

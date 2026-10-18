@@ -38,6 +38,19 @@ struct Archetype {
     // Pre-@3 descriptive defenses / extra damage entries carried by the file (migration marker
     // "inert_mechanics"): listed, never applied (docs/CONTENT_COMPAT.md).
     std::vector<std::string> inert_mechanics;
+    // monster@4 / character@4 `save_effect` actions (VERSION_BUMP_BATCH 2.3): each compiles to a synthetic rules5e
+    // SpellDef (id = spell_id_of("<archetype id>#<action id>"), is_spell = false) registered in the library's
+    // SpellBook and appended to Combatant::spells_known. Combat::create registers the usage rows.
+    struct SaveAction {
+        std::string id;                 // content action id
+        uint32_t spell_id = 0;
+        uint8_t usage_kind = 0;         // SpellDef::usage_kind: 0 at-will, 1 recharge, 2 per-day / per-rest
+        uint8_t uses = 0;               // usage_kind 2
+        Recharge recharge = Recharge::None;   // usage_kind 2
+        bool area = false;              // has an area template (the AI never picks these before the area-template row)
+        uint16_t range_ft = 0;
+    };
+    std::vector<SaveAction> save_actions;
     std::vector<std::string> forward_compat;         // monster@4 / character@4 "forward_compat" flags: listed, ignored
     CreatureSize size = CreatureSize::Medium;        // stat block "size"
     // Side of the footprint in tiles: footprint_of(size) for monster@3 / character@3, always 1 for
