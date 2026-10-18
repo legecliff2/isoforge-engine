@@ -1,0 +1,183 @@
+{
+  "$schema": "character@4",
+  "abilities": {
+    "cha": 11,
+    "con": 15,
+    "dex": 14,
+    "int": 9,
+    "str": 16,
+    "wis": 13
+  },
+  "actions": [
+    {
+      "damage": [
+        {
+          "dice": "1d8+5",
+          "type": "slashing"
+        }
+      ],
+      "description": "Includes +2 from Dueling (one-handed, wielded with a shield).",
+      "id": "longsword",
+      "kind": "melee_weapon_attack",
+      "name": "Longsword",
+      "properties": [
+        "versatile"
+      ],
+      "reach": 5,
+      "targets": 1,
+      "to_hit": 5
+    },
+    {
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ],
+      "id": "light_crossbow",
+      "kind": "ranged_weapon_attack",
+      "name": "Light Crossbow",
+      "properties": [
+        "ammunition",
+        "loading",
+        "two_handed"
+      ],
+      "range": [
+        80,
+        320
+      ],
+      "targets": 1,
+      "to_hit": 4
+    }
+  ],
+  "alignment": "neutral good",
+  "armor_class": {
+    "note": "chain mail, shield",
+    "value": 18
+  },
+  "bonus_actions": [],
+  "classes": [
+    {
+      "class": "fighter",
+      "hit_die": "d10",
+      "level": 1
+    }
+  ],
+  "equipment": [
+    "chain_mail",
+    "shield",
+    "longsword",
+    "light_crossbow",
+    "crossbow_bolts_20",
+    "dungeoneers_pack"
+  ],
+  "features": [
+    {
+      "description": "When you are wielding a melee weapon in one hand and no other weapons, you gain a +2 bonus to damage rolls with that weapon.",
+      "effect": {
+        "amount": 2,
+        "condition": "one_handed_melee_no_other_weapon",
+        "kind": "damage_bonus"
+      },
+      "id": "fighting_style_dueling",
+      "name": "Fighting Style: Dueling"
+    },
+    {
+      "description": "On your turn, you can use a bonus action to regain hit points equal to 1d10 + your fighter level. Once you use this feature, you must finish a short or long rest before you can use it again.",
+      "effect": {
+        "dice": "1d10",
+        "kind": "self_heal",
+        "plus": "fighter_level",
+        "recharge": "short_rest",
+        "uses": 1
+      },
+      "id": "second_wind",
+      "name": "Second Wind"
+    },
+    {
+      "effect": {
+        "effects": [
+          {
+            "damage": [
+              {
+                "dice": "1d6",
+                "type": "same_as_weapon"
+              }
+            ],
+            "kind": "extra_damage"
+          }
+        ],
+        "inert": true,
+        "kind": "on_event",
+        "limit": "once_per_turn",
+        "on": "hit"
+      },
+      "id": "sneak_like",
+      "name": "Sneak-like"
+    },
+    {
+      "effect": {
+        "cost": "bonus_action",
+        "inert": true,
+        "kind": "apply_modifier",
+        "modifier": {
+          "bonus": 2,
+          "duration": {
+            "kind": "rounds",
+            "n": 10
+          },
+          "stat": "damage"
+        }
+      },
+      "id": "rage_like",
+      "name": "Rage-like"
+    }
+  ],
+  "hit_points": {
+    "average": 12,
+    "formula": "1d10+2"
+  },
+  "id": "test.v4.character.decorated_fighter",
+  "inert_mechanics": [
+    "equipment",
+    "reactions"
+  ],
+  "languages": [
+    "Common",
+    "Goblin"
+  ],
+  "level": 1,
+  "name": "Fighter",
+  "proficiency_bonus": 2,
+  "race": "human",
+  "reactions": [
+    {
+      "description": "Descriptive.",
+      "id": "riposte",
+      "inert": true,
+      "kind": "special",
+      "name": "Riposte"
+    }
+  ],
+  "saving_throws": {
+    "con": 4,
+    "str": 5
+  },
+  "senses": {
+    "passive_perception": 13
+  },
+  "size": "medium",
+  "skills": {
+    "athletics": 5,
+    "perception": 3
+  },
+  "source": {
+    "license": "CC-BY-4.0",
+    "ref": "SRD 5.1"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "type": "humanoid",
+  "xp": 0
+}
