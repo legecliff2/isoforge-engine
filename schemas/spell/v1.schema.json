@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://isoforge.dev/schemas/spell/v1.schema.json",
   "title": "spell@1",
-  "description": "SRD 5.1 spell. Rules-facing data: rules5e_content maps it to rules5e::SpellDef (engine/rules/content). 'effects' is an array; rules5e currently resolves exactly one effect per spell (the loader rejects more). Cross-field rules are in tools/validate (check_spell) and mirrored by the loader. Integers only (\u00a74.3).",
+  "description": "SRD 5.1 spell. Rules-facing data: rules5e_content maps it to rules5e::SpellDef (engine/rules/content). 'effects' is an array of one or more effects (reaction kinds stand alone; extra effects resolve in order over the same targets and may use applies_to: affected). Cross-field rules are in tools/validate (check_spell) and mirrored by the loader. Integers only (\u00a74.3).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -427,7 +427,8 @@
       "minItems": 1,
       "items": {
         "$ref": "#/$defs/effect"
-      }
+      },
+      "description": "One or more effects, resolved in order over the same targets. The first effect carries targeting and scaling; reaction effects (ac_bonus, counter) must be the only effect. Extra effects do not scale with slot or caster level."
     },
     "scaling": {
       "type": "object",
@@ -525,7 +526,8 @@
             "heal",
             "auto_hit",
             "ac_bonus",
-            "counter"
+            "counter",
+            "apply_condition"
           ]
         }
       },
@@ -565,6 +567,13 @@
               },
               "description": {
                 "type": "string"
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ],
+                "description": "Effects after the first only: 'affected' resolves this effect only for the targets the previous effect affected (spell attack: hit; save: failed; heal: healed; auto_hit: struck; apply_condition: received it). Default 'all'."
               }
             }
           }
@@ -636,6 +645,13 @@
               },
               "description": {
                 "type": "string"
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ],
+                "description": "Effects after the first only: 'affected' resolves this effect only for the targets the previous effect affected (spell attack: hit; save: failed; heal: healed; auto_hit: struck; apply_condition: received it). Default 'all'."
               }
             }
           }
@@ -670,6 +686,13 @@
               },
               "description": {
                 "type": "string"
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ],
+                "description": "Effects after the first only: 'affected' resolves this effect only for the targets the previous effect affected (spell attack: hit; save: failed; heal: healed; auto_hit: struck; apply_condition: received it). Default 'all'."
               }
             }
           }
@@ -716,6 +739,13 @@
               },
               "description": {
                 "type": "string"
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ],
+                "description": "Effects after the first only: 'affected' resolves this effect only for the targets the previous effect affected (spell attack: hit; save: failed; heal: healed; auto_hit: struck; apply_condition: received it). Default 'all'."
               }
             }
           }
@@ -749,6 +779,13 @@
               },
               "description": {
                 "type": "string"
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ],
+                "description": "Effects after the first only: 'affected' resolves this effect only for the targets the previous effect affected (spell attack: hit; save: failed; heal: healed; auto_hit: struck; apply_condition: received it). Default 'all'."
               }
             }
           }
@@ -797,6 +834,48 @@
                     "const": "spell_level"
                   }
                 }
+              },
+              "description": {
+                "type": "string"
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ],
+                "description": "Effects after the first only: 'affected' resolves this effect only for the targets the previous effect affected (spell attack: hit; save: failed; heal: healed; auto_hit: struck; apply_condition: received it). Default 'all'."
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "apply_condition"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "condition"
+            ],
+            "properties": {
+              "kind": {
+                "const": "apply_condition"
+              },
+              "condition": {
+                "$ref": "../common/v1.schema.json#/$defs/condition",
+                "description": "Applied to each target with no saving throw; lasts with the spell's duration (Invisibility)."
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ],
+                "description": "Effects after the first only: 'affected' resolves this effect only for the targets the previous effect affected (spell attack: hit; save: failed; heal: healed; auto_hit: struck; apply_condition: received it). Default 'all'."
               },
               "description": {
                 "type": "string"

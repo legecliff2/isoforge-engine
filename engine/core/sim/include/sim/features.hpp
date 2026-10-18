@@ -71,7 +71,7 @@ public:
     const ActionPredicate* condition(const std::string& id) const;
     std::vector<std::string> kinds() const;   // sorted
 
-    // Built-in hooks: damage_bonus, bonus_action_grant, self_heal, multiattack; conditions:
+    // Built-in hooks: damage_bonus, bonus_action_grant, self_heal, damage_mitigation, magic_weapons, multiattack; conditions:
     // one_handed_melee_no_other_weapon, melee_weapon, ranged_weapon.
     static const FeatureRegistry& builtin();
 

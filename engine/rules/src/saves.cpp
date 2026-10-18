@@ -1,6 +1,7 @@
 #include "rules5e/saves.hpp"
 
 #include "rules5e/conditions.hpp"
+#include "rules5e/traits.hpp"
 
 namespace rules5e {
 
@@ -9,6 +10,26 @@ SaveResult saving_throw(rng::Rng& r, const Combatant& c, Ability a, int dc, Roll
     if (auto_fails_save(c, a)) return {D20Roll{0, 0, 0, m}, false, true};
     D20Roll roll = roll_d20(r, save_modifier(c, a), m);
     return {roll, roll.total >= dc, false};
+}
+
+TraitModes save_trait_modes(const Combatant& c, Ability a, const SaveSource& src) {
+    TraitModes m;
+    for (const auto& r : c.roll_traits) {
+        if (r.roll != TraitRoll::Save) continue;
+        if ((r.when & kWhenSourceMagical) && !src.magical) continue;
+        if (r.save_abilities && !(r.save_abilities & bit(a))) continue;
+        if (r.save_vs_conditions || r.save_vs_damage_types) {
+            if (!((r.save_vs_conditions & src.conditions) || (r.save_vs_damage_types & src.damage_types))) continue;
+        }
+        if (r.mode == RollMode::Advantage) m.advantage = true; else if (r.mode == RollMode::Disadvantage) m.disadvantage = true;
+    }
+    return m;
+}
+
+SaveResult saving_throw(rng::Rng& r, const Combatant& c, Ability a, int dc, RollMode mode, const SaveSource& src) {
+    const TraitModes tm = save_trait_modes(c, a, src);
+    const bool adv = mode == RollMode::Advantage || tm.advantage, dis = mode == RollMode::Disadvantage || tm.disadvantage;
+    return saving_throw(r, c, a, dc, combine_modes(adv, dis));
 }
 
 DeathSaveResult roll_death_save(rng::Rng& r, const DeathSaves& in) {

@@ -121,6 +121,16 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
                                           : f.recharge == Recharge::LongRest ? rules5e::FeatureRecharge::LongRest
                                                                              : rules5e::FeatureRecharge::None);
     c.apply_rules_events(opening);
+    // v6: where each multi-tile creature stands, once, in spawn order (nothing for 1x1-only combats).
+    for (const auto& sl : c.slots_)
+        if (sl.archetype->footprint > 1) {
+            SimEvent se;
+            se.kind = SimEvent::Kind::Footprint;
+            se.actor = sl.id;
+            se.tile = c.pos(sl.id);
+            se.rules.a = sl.archetype->footprint;
+            c.events_.push_back(se);
+        }
     return c;
 }
 
@@ -230,8 +240,9 @@ bool Combat::leaves_reach(CombatantId mover, Vec2i from, Vec2i to) const {
         if (!c || c->dead) continue;
         const int reach = melee_reach_tiles(s.id);
         if (reach == 0) continue;
-        const Vec2i rp = pos(s.id);
-        if (chebyshev(from, rp) <= reach && chebyshev(to, rp) > reach) return true;
+        // Nearest-tile distances between the footprints: the mover's before and after the step.
+        const Spot rs = spot(s.id), f = spot_at(mover, from), t = spot_at(mover, to);
+        if (rect_distance(f.p, f.n, rs.p, rs.n) <= reach && rect_distance(t.p, t.n, rs.p, rs.n) > reach) return true;
     }
     return false;
 }
@@ -278,8 +289,9 @@ void Combat::install_hooks() {
         const auto to = moving_to(w.trigger_actor);
         if (!to) return false;
         const int reach = melee_reach_tiles(r.id);
-        const Vec2i rp = pos(r.id);
-        return reach > 0 && chebyshev(pos(w.trigger_actor), rp) <= reach && chebyshev(*to, rp) > reach;
+        if (reach == 0) return false;
+        const Spot rs = spot(r.id), f = spot(w.trigger_actor), t = spot_at(w.trigger_actor, *to);
+        return rect_distance(f.p, f.n, rs.p, rs.n) <= reach && rect_distance(t.p, t.n, rs.p, rs.n) > reach;
     };
     // A readied ranged attack's facts are taken when it fires, not when it was readied.
     state_.hooks.refresh_ready = [this](const rules5e::EncounterState&, const rules5e::ReadiedAction& ra,
@@ -306,19 +318,20 @@ void Combat::install_hooks() {
         if (kind == ReadyTriggerKind::TargetWithin && e.actor != ra.response.target) return false;
         if (kind == ReadyTriggerKind::HostileWithin && !hostile(e.actor, ra.actor)) return false;
         const Vec2i mp = moving_to(e.actor).value_or(pos(e.actor));
-        const Vec2i rp = pos(ra.actor);
-        if (chebyshev(mp, rp) > tiles) return false;
+        const Spot ms = spot_at(e.actor, mp), rs = spot(ra.actor);
+        if (rect_distance(ms.p, ms.n, rs.p, rs.n) > tiles) return false;
         if (ra.response.kind == ActionKind::Attack) {
             const auto* a = rules5e::find(state_, ra.actor);
             const auto* t = rules5e::find(state_, ra.response.target);
             if (!a || !t || t->dead || ra.response.attack_index >= a->attacks.size()) return false;
-            const Vec2i tp = ra.response.target == e.actor ? mp : pos(ra.response.target);
+            const Spot ts = ra.response.target == e.actor ? ms : spot(ra.response.target);
+            const int td = rect_distance(rs.p, rs.n, ts.p, ts.n);
             if (a->attacks[ra.response.attack_index].ranged) {
                 const Archetype* arch = archetype(ra.actor);
                 const int lt = arch ? reach_tiles(arch->long_range_ft[ra.response.attack_index]) : 0;
-                return chebyshev(rp, tp) <= lt && grid_.line_of_sight(rp, tp);
+                return td <= lt && los_spots(rs, ts);
             }
-            return chebyshev(rp, tp) <= reach_tiles(a->attacks[ra.response.attack_index].reach_or_range_ft);
+            return td <= reach_tiles(a->attacks[ra.response.attack_index].reach_or_range_ft);
         }
         if (ra.response.kind == ActionKind::Move) {
             auto it = readied_dest_.find(ra.actor);

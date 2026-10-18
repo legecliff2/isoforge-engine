@@ -79,6 +79,8 @@ touches all five areas below plus the event/ECS contracts), so nothing was imple
 
 ## 5. Grid, ECS and rendering contracts
 
+**Status (PR C):** event schema v6: `SimEvent::Kind::Footprint` (one per multi-tile creature at start; digest records the lowest fitting version, so existing digests are unchanged). `TileMoved` carries anchors. ECS: `Footprint` component (PR A) alongside `TilePos` (anchor); the Luau script host still reads only `TilePos` and does not see the footprint yet. Opportunity attacks (`leaves_reach` and the reaction hook) and readied-trigger distances use nearest-tile distances. Open items: script-host / Luau exposure of the footprint, cover for footprints, squeezing, grapple size limits, Tiny/Small space sharing, swarms.
+
 - `Grid` knows nothing about creatures; it only holds walk/sight bits per chunk tile
   (`grid.hpp:57-65`). Footprints belong in a new occupancy layer in `Combat`, not in `Grid`, but
   `Grid::path` needs a footprint parameter (or a predicate).

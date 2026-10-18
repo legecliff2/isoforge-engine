@@ -152,7 +152,7 @@
       "required": ["kind"],
       "description": "Machine-readable feature effect, tagged by kind (contract: docs/CONTENT_EFFECTS.md). The engine FeatureRegistry maps kind to a hook. Unknown kinds are allowed: the validator warns and the engine reports them as unsupported and ignores them. Known kinds have their fields checked below. The object stays open (no additionalProperties: false), so v1 remains append-only and extra fields are ignored by the engine.",
       "properties": {
-        "kind": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "Hook id. Known: damage_bonus, bonus_action_grant, self_heal, multiattack." },
+        "kind": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "Hook id. Known: damage_bonus, bonus_action_grant, self_heal, damage_mitigation, magic_weapons, multiattack." },
         "cost": { "$ref": "#/$defs/effect_cost" }
       },
       "allOf": [
@@ -180,7 +180,7 @@
               "options": {
                 "type": "array", "minItems": 1,
                 "items": {
-                  "type": "object", "required": ["id", "attacks"],
+                  "type": "object", "required": ["id", "attacks"], "additionalProperties": false,
                   "properties": {
                     "id": { "$ref": "#/$defs/local_id" },
                     "attacks": { "type": "array", "minItems": 1, "maxItems": 255, "items": { "$ref": "#/$defs/local_id" } }
@@ -204,8 +204,29 @@
               },
               "uses": { "type": "integer", "minimum": 0, "maximum": 255, "description": "Uses per recharge (uint8); 0 or omitted = unlimited." },
               "recharge": { "enum": ["short_rest", "long_rest"], "description": "When uses refill; omitted = never." }
-            } } }
+            } } },
+        { "if": { "properties": { "kind": { "const": "damage_mitigation" } }, "required": ["kind"] },
+          "then": {
+            "description": "Static: qualified resistances / immunities (SRD 'from nonmagical attacks', '... that aren't silvered / adamantine'). Plain, unqualified defenses stay in damage_resistances / damage_immunities.",
+            "anyOf": [ { "required": ["resistances"] }, { "required": ["immunities"] } ],
+            "properties": {
+              "resistances": { "$ref": "#/$defs/qualified_damage" },
+              "immunities": { "$ref": "#/$defs/qualified_damage" }
+            } } },
+        { "if": { "properties": { "kind": { "const": "magic_weapons" } }, "required": ["kind"] },
+          "then": { "description": "Static (Magic Weapons): every attack of the creature counts as magical, so it bypasses 'nonmagical' resistance and immunity." } }
       ]
+    },
+    "qualified_damage": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "Damage types that are resisted / immune only for a qualified source: nonmagical = any nonmagical attack; nonmagical_not_silvered = nonmagical and not silvered; nonmagical_not_adamantine = nonmagical and not adamantine.",
+      "properties": {
+        "nonmagical": { "$ref": "#/$defs/damage_types" },
+        "nonmagical_not_silvered": { "$ref": "#/$defs/damage_types" },
+        "nonmagical_not_adamantine": { "$ref": "#/$defs/damage_types" }
+      }
     },
     "effect_cost": {
       "enum": ["action", "bonus_action", "reaction"],
@@ -240,6 +261,10 @@
             "properties": { "dice": { "$ref": "#/$defs/dice" }, "type": { "$ref": "#/$defs/damage_type" } }
           },
           "description": "BASE damage: weapon die + ability modifier (+ magic bonus). Never fold feature bonuses (e.g. Dueling +2) in; feature effects such as damage_bonus are applied by the engine."
+        },
+        "qualifiers": {
+          "type": "array", "items": { "enum": ["magical", "silvered", "adamantine"] }, "uniqueItems": true,
+          "description": "monster@3 / character@3: what the weapon is made of / counts as, for qualified resistances (nonmagical, silvered, adamantine). Inert in earlier versions."
         },
         "description": { "type": "string" }
       },

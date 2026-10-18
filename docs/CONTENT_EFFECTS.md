@@ -74,9 +74,28 @@ Example (Nimble Escape): `{ "kind": "bonus_action_grant", "actions": ["disengage
 
 Example (Second Wind): `{ "kind": "self_heal", "dice": "1d10", "plus": "fighter_level", "uses": 1, "recharge": "short_rest", "cost": "bonus_action" }`
 
+### `damage_mitigation` (static)
+
+Qualified resistances and immunities, for SRD text like "bludgeoning, piercing, and slashing from nonmagical attacks". Unqualified defenses stay in `damage_resistances` / `damage_immunities`. Applied to `Combatant::resist_qualified` / `immune_qualified` when the archetype is built; matched against `Attack::qualifiers` (rules5e #47).
+
+| field | type | required | meaning |
+|---|---|---|---|
+| `resistances` | object | one of the two | qualifier -> damage types resisted |
+| `immunities` | object | one of the two | qualifier -> damage types immune |
+
+Qualifier keys: `nonmagical` (any nonmagical source), `nonmagical_not_silvered`, `nonmagical_not_adamantine`. Each value is a unique array of damage types. Spell damage is always magical.
+
+Example (werewolf): `{ "kind": "damage_mitigation", "immunities": { "nonmagical_not_silvered": ["bludgeoning", "piercing", "slashing"] } }`
+
+### `magic_weapons` (static)
+
+No fields. Every attack of the creature counts as magical (`kAttackMagical`), so qualified resistance / immunity does not apply to it (SRD Magic Weapons, Ki-Empowered Strikes). A single weapon is marked with the action's `qualifiers` array (`magical`, `silvered`, `adamantine`, monster@3 / character@3; inert before @3, marker `attack_qualifiers`).
+
+Example: `{ "kind": "magic_weapons" }`
+
 ### `multiattack` (static)
 
-SRD Multiattack as declared sequences (rules5e #48: `Combatant::multiattacks`). Each option is an ordered list of the creature's own attack action ids (`actions[].id` of attack kinds) made with one Attack action. The Attack request starts one with `ActionRequest::multiattack = 1 + option index` (`Combat::multiattack_option(id, option_id)` finds it) and `attack_index` = the sequence's first attack; each further attack follows the declared order, with reactions / Ready / movement allowed in between.
+SRD Multiattack as declared sequences (rules5e #48: `Combatant::multiattacks`). Each option is a closed object (`id`, `attacks` only; unknown keys fail validation) holding an ordered list of the creature's own attack action ids (`actions[].id` of attack kinds) made with one Attack action. The Attack request starts one with `ActionRequest::multiattack = 1 + option index` (`Combat::multiattack_option(id, option_id)` finds it) and `attack_index` = the sequence's first attack; each further attack follows the declared order, with reactions / Ready / movement allowed in between.
 
 | field | type | required | meaning |
 |---|---|---|---|
