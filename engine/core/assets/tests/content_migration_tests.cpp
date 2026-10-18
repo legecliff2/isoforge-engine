@@ -92,6 +92,15 @@ TEST_CASE("sample pack goblin (monster@1 with presentation.ai) resolves behavior
     if (r.data.contains("presentation")) CHECK_FALSE(r.data["presentation"].contains("ai"));
 }
 
+TEST_CASE("item@1 documents load (type registered at version 1)") {
+    CHECK(make().current_version("item") == 1u);
+    auto r = make().load_file(kRoot + "/tests/validate/fixtures/v4/pack/items/dagger.json");
+    REQUIRE_MESSAGE(r.ok, r.error);
+    CHECK(r.current == SchemaRef{"item", 1});
+    CHECK(r.data.contains("id"));
+    CHECK_FALSE(make().load_text(R"({"$schema":"item@2","id":"x"})").ok);
+}
+
 TEST_CASE("3 -> 4 migration: markers, frozen effect kinds, merged inert_mechanics, purity") {
     const char* kDoc = R"({"$schema":"monster@3","id":"t.m","inert_mechanics":["damage[1..]","spellcasting"],
         "reactions":[{"id":"parry","kind":"special"},{"id":"r2"}],

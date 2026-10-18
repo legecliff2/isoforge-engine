@@ -331,7 +331,7 @@ PackSet PackSet::resolve_dirs(std::span<const std::filesystem::path> in_dirs, st
             auto doc = read_json(d / rel);
             if (!doc) continue;
             const std::string t = schema_type_of(*doc);
-            if ((t == "monster" || t == "character" || t == "spell") && (*doc).contains("id") && (*doc)["id"].is_string())
+            if ((t == "monster" || t == "character" || t == "spell" || t == "item") && (*doc).contains("id") && (*doc)["id"].is_string())
                 p.content_ids.emplace((*doc)["id"].get<std::string>(), rel);   // setdefault
         }
         if (by_id.count(p.info.id)) {
