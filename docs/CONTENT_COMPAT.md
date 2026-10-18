@@ -29,6 +29,7 @@ Current gates:
 | type | version | gate |
 |---|---|---|
 | character | @3 | feature effects (`damage_bonus`, `bonus_action_grant`, `self_heal`, ...) are active only for @3 files. Effects from @1/@2 files are inert. |
+| character, monster | @3 | **defenses and multi-component damage**: `damage_resistances`, `damage_immunities`, `damage_vulnerabilities`, `condition_immunities` (mapped onto `rules5e::Combatant` masks) and every `damage[]` entry after the first (`Attack::extra_damage`). Pre-@3 files listed these as text and the engine read none of them (only `damage[0]`). Migration 2 -> 3 records the ones a pre-@3 file carries in a top-level `inert_mechanics` array (`damage_resistances`, ..., `damage[1..]`); `ContentLibrary` ignores exactly those and lists them in `Archetype::inert_mechanics`. Files carrying none are left byte-identical. Pinned by `compat_defenses_tests.cpp`. |
 | monster | @3 | the same gate (`monster_2_to_3`). The sample goblin is `monster@3`: Nimble Escape is active, and no numbers are baked in (`bonus_actions` is empty, the scimitar is a plain `1d6+2`). fl1's monster@1 goblin keeps Nimble Escape descriptive. |
 
 ## 2. Pin old content with a compat behaviour golden
@@ -37,6 +38,7 @@ The `tests/compat/<pack>` fixtures are frozen copies of shipped content. Never e
 Each fixture gets a behaviour golden. fl1 has two:
 
 - `engine/core/sim/tests/compat_fl1_tests.cpp`: the fighter fight.
+- `compat_defenses_tests.cpp`: fl1 copied to a temp dir with resistances/immunities/vulnerabilities/condition immunities and a second damage entry bolted onto both stat blocks (declared @1 and @2). Fights must equal the undecorated fl1 goblin digests: the decoration was never read, so the pins are the same numbers, computed on main `6012567` before the gate.
 - `compat_fl1_goblin_tests.cpp`: the goblin's stat block, an inert Nimble Escape, and per-goblin attacks, hits, damage dealt and taken, and final hp, over 5 seeds. Pinned on main 19a372a, before the monster gate.
 
 Each golden has these parts:
