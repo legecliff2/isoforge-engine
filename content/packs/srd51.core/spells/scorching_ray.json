@@ -1,0 +1,46 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.scorching_ray",
+  "name": "Scorching Ray",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "You create three rays of fire and hurl them at targets within range. You can hurl them at one target or several. Make a ranged spell attack for each ray. On a hit, the target takes 2d6 fire damage. At Higher Levels: When you cast this spell using a spell slot of 3rd level or higher, you create one additional ray for each slot level above 2nd.",
+  "level": 2,
+  "school": "evocation",
+  "classes": [
+    "sorcerer",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 120
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "spell_attack",
+      "attack": "ranged",
+      "beams": 3,
+      "damage": {
+        "dice": "2d6",
+        "type": "fire"
+      }
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "beams": 1
+    }
+  }
+}
