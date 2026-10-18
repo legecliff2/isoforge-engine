@@ -322,13 +322,14 @@ TEST_CASE("refs: a non-spell content id is not a spell reference") {
     CHECK(s_dep.reference_errors() == std::vector<std::string>{"test.dep:spells/shield.json: " + want});
 }
 
-TEST_CASE("refs: spells with other than one effect are skipped, like check_spell") {
+TEST_CASE("refs: multi-effect spells are checked like single-effect ones (first effect, as check_spell)") {
     ScratchDir tmp("packset_refs_spell_multi");
     Json shield = spell("shield.json");
     shield["effects"].push_back(shield["effects"][0]);
     const auto pack = make(tmp.path, "a", "test.a", "1.0.0", {}, {{"spells/shield.json", shield}});
     PackSet s = run({pack});
-    CHECK(s.reference_errors().empty());
+    REQUIRE_FALSE(s.reference_errors().empty());   // the first effect's refs (blocks_spell, or_targeted_by) are checked, as single-effect spells are
+    CHECK(s.reference_errors()[0].find("effect blocks_spell") != std::string::npos);
 }
 
 TEST_CASE("refs: script references (entry_script, behavior.ai, monster@1 presentation.ai)") {

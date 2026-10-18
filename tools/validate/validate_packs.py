@@ -270,17 +270,19 @@ def runtime_id_collisions(entries: list[tuple[str, str, str]], cross_pack_only: 
 
 REACTION_EFFECT_TRIGGER = {"ac_bonus": "being_hit", "counter": "spell_cast"}
 UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit"), "darts": ("auto_hit",),
-                  "beams": ("spell_attack",), "targets": ("save", "heal")}
+                  "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition")}
 
 
 def check_spell(doc, errs, ctx):
     """Cross-checks for spell@1 that the schema can't express. rules5e_content (spell_loader.cpp)
     enforces the same rules with the same wording; keep them in sync."""
     lvl, effs, ct = doc["level"], doc["effects"], doc["casting_time"]
-    if len(effs) != 1:
-        errs.append("effects: rules5e resolves exactly one effect per spell for now")
+    eff = effs[0]   # the first effect carries targeting, scaling and the reaction/duration rules
+    if len(effs) > 1 and any(e["kind"] in REACTION_EFFECT_TRIGGER for e in effs):
+        errs.append("effects: ac_bonus and counter reactions cannot be combined with other effects")
         return
-    eff = effs[0]
+    if eff.get("applies_to", "all") != "all":
+        errs.append("effects[0].applies_to needs a previous effect")
     kind = eff["kind"]
     scaling = doc.get("scaling", {})
     cantrip, upcast = scaling.get("cantrip"), scaling.get("upcast", {})
@@ -307,7 +309,7 @@ def check_spell(doc, errs, ctx):
         errs.append("casting_time.trigger.or_targeted_by is only for being_hit")
     if (kind == "ac_bonus") != (doc["duration"]["kind"] == "until_start_of_caster_turn"):
         errs.append("ac_bonus effects last until_start_of_caster_turn (and only they use it)")
-    if "targets" in doc and kind not in ("save", "heal"):
+    if "targets" in doc and kind not in ("save", "heal", "apply_condition"):
         errs.append(f"targets not allowed on a {kind} effect (one target, per dart/beam, or self)")
     refs = [("effect blocks_spell", eff.get("blocks_spell"))] + \
            [("casting_time.trigger.or_targeted_by", r) for r in ct.get("trigger", {}).get("or_targeted_by", [])]
