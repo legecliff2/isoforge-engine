@@ -305,6 +305,24 @@ TEST_CASE("refs: spell references resolve through depends only") {
           std::string::npos);
 }
 
+TEST_CASE("item@1 ids are content ids: indexed per pack, duplicates across the set are rejected") {
+    ScratchDir tmp("packset_items");
+    const fs::path fixtures = fs::path(ENGINE_SOURCE_ROOT) / "tests/validate/fixtures/v4/pack/items";
+    const Json dagger = read(fixtures / "dagger.json");
+    const std::string id = dagger["id"].get<std::string>();
+    const auto a = make(tmp.path, "a", "test.items", "1.0.0", {}, {{"items/dagger.json", dagger}});
+    PackSet one = run({a});
+    REQUIRE_MESSAGE(one.ok(), all_errors(one));
+    REQUIRE(one.owner_of(id));
+    CHECK(one.owner_of(id)->id == "test.items");
+    bool found = false;
+    for (const auto& d : one.documents()) found = found || (d.path == "items/dagger.json" && d.doc.ok && d.content_id == id);
+    CHECK(found);
+    const auto b = make(tmp.path, "b", "test.items2", "1.0.0", {}, {{"items/dagger.json", dagger}});
+    PackSet two = run({a, b});
+    CHECK(all_errors(two).find("duplicate_content_id") != std::string::npos);
+}
+
 TEST_CASE("refs: a non-spell content id is not a spell reference") {
     ScratchDir tmp("packset_refs_spell_kind");
     Json shield = spell("shield.json");
