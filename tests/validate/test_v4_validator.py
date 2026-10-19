@@ -214,6 +214,24 @@ class V4Validator(unittest.TestCase):
         errs, _ = h.validate_docs(dict(self.base, **{B: h.edit(self.base[B], [(["equipment", 1, "item"], "srd51.item.longsword")])}))
         self.assertTrue(any("(check 6/11)" in e for e in errs), errs)
 
+    def test_priced_material_value_gp(self):
+        # Director ruling (priced material components): {"item": id, "value_gp": N} satisfies a spell's components.m when the
+        # id matches and value_gp * 100 >= cost_cp; it needs no item@1 document (item@1 has no gem/valuable category yet).
+        n = len(self.base[B]["equipment"])
+        diamond = {"item": "srd51.item.diamond", "value_gp": 300}
+        self.assertEqual(h.validate_docs(dict(self.base, **{B: h.edit(self.base[B], [(["equipment", n], diamond)])})), ([], []))
+        zero = {"item": "test.v4.item.ghost_gem", "value_gp": 0}
+        self.assertEqual(h.validate_docs(dict(self.base, **{B: h.edit(self.base[B], [(["equipment", n], zero)])}))[0], [])
+        # value_gp on an entry that does resolve (a priced longsword) is fine too
+        self.assertEqual(h.validate_docs(dict(self.base, **{B: h.edit(self.base[B], [(["equipment", 1, "value_gp"], 15)])}))[0], [])
+        for bad, want in ((-1, "is not valid under any of"), (1.5, "float value 1.5 not allowed"), ("300", "is not valid under any of")):
+            with self.subTest(bad):
+                errs, _ = h.validate_docs(dict(self.base, **{B: h.edit(self.base[B], [(["equipment", n], dict(diamond, value_gp=bad))])}))
+                self.assertTrue(any(want in e for e in errs), (want, errs))
+        # without value_gp an unknown item still has to resolve (check 6/11)
+        errs, _ = h.validate_docs(dict(self.base, **{B: h.edit(self.base[B], [(["equipment", n], {"item": "srd51.item.diamond"})])}))
+        self.assertTrue(any("(check 6/11)" in e for e in errs), errs)
+
     def test_stamped_legacy_entries_fail_only_on_disk(self):
         entry = {"id": "p", "name": "P", "kind": "special", "inert": True}
         doc = h.edit(self.base[D], [(["reactions", 0], entry)])
