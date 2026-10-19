@@ -1,0 +1,24 @@
+{
+  "base": "characters/fighter_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        2
+      ],
+      {
+        "id": "metamagic",
+        "name": "metamagic",
+        "description": "x",
+        "effect": {
+          "kind": "metamagic",
+          "options": [
+            "subtle"
+          ]
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "'pool' is a required property"
+}
