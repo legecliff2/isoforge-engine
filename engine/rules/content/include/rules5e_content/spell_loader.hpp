@@ -23,6 +23,11 @@ struct SpellLoad {
 
 SpellLoad spell_from_json(const eng::assets::Json&);
 
+// Row 12: one `modifier` object (VERSION_BUMP_BATCH section 6.1) -> rules5e::ModifierSpec (id and source are the
+// caller's). Returns an error message, or "" on success. A `bonus_table` is only accepted with `table != nullptr`
+// (features, resolved by the caller against the owner's level) and is then returned there with `bonus` left 0.
+std::string parse_modifier(const eng::assets::Json& m, rules5e::ModifierSpec& out, const eng::assets::Json** table = nullptr);
+
 struct SpellBookLoad {
     std::shared_ptr<rules5e::SpellBook> book;   // null on any error (a collision is a hard error)
     std::vector<std::string> errors;            // "<file>: <message>", sorted by file

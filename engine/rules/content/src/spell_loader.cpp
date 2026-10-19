@@ -66,6 +66,83 @@ bool read_damage(const Json& d, SpellDef& s) {
 
 } // namespace
 
+std::string parse_modifier(const Json& m, ModifierSpec& out, const Json** table) {
+    if (!m.is_object()) return "modifier must be an object";
+    static const std::map<std::string, ModStat> kStat{{"attack_roll", ModStat::AttackRoll}, {"save", ModStat::Save},
+        {"ability_check", ModStat::AbilityCheck}, {"ac", ModStat::Ac}, {"speed", ModStat::Speed}, {"damage", ModStat::Damage},
+        {"temp_hp", ModStat::TempHp}, {"resistance", ModStat::Resistance}, {"attacks_against", ModStat::AttacksAgainst}};
+    out = ModifierSpec{};
+    if (!lookup(kStat, m.value("stat", Json()), out.stat)) return "modifier stat invalid";
+    if (m.contains("bonus")) { int b = 0; if (!small_int(m["bonus"], -32767, 32767, b)) return "modifier bonus invalid"; out.bonus = int16_t(b); }
+    if (m.contains("bonus_table")) {
+        if (!table) return "modifier bonus_table is not allowed here";
+        if (m.contains("bonus")) return "modifier bonus and bonus_table together";
+        *table = &m["bonus_table"];
+    }
+    if (m.contains("die")) {
+        if (!m["die"].is_string()) return "modifier die invalid";
+        std::string d = m["die"].get<std::string>();
+        if (!d.empty() && d[0] == '-') { out.die_mult = -1; d.erase(0, 1); }
+        auto pd = parse_dice(d);
+        if (!pd) return "modifier die invalid";
+        out.die = *pd;
+    }
+    if (m.contains("mode")) {
+        const std::string md = m["mode"].is_string() ? m["mode"].get<std::string>() : "";
+        if (md == "advantage") out.mode = RollMode::Advantage;
+        else if (md == "disadvantage") out.mode = RollMode::Disadvantage;
+        else return "modifier mode invalid";
+    }
+    if (m.contains("speed_scale")) {
+        const Json& sc = m["speed_scale"];
+        int n = 1, d = 1;
+        if (sc.is_string() && sc.get<std::string>() == "half") { n = 1; d = 2; }
+        else if (sc.is_string() && sc.get<std::string>() == "double") { n = 2; d = 1; }
+        else if (!sc.is_object() || !sc.contains("num") || !sc.contains("den") || !small_int(sc["num"], 1, 255, n) || !small_int(sc["den"], 1, 255, d))
+            return "modifier speed_scale invalid";
+        out.speed_num = uint8_t(n);
+        out.speed_den = uint8_t(d);
+    } else if (out.stat == ModStat::Speed) return "speed modifier needs speed_scale";
+    if (m.contains("damage_type")) {
+        if (!lookup(kDamage, m["damage_type"], out.damage_type)) return "modifier damage_type invalid";
+        out.has_damage_type = true;
+    } else if (out.stat == ModStat::Resistance) return "resistance modifier needs damage_type";
+    if (m.contains("ability")) {
+        if (!lookup(kAbility, m["ability"], out.ability)) return "modifier ability invalid";
+        out.has_ability = true;
+    }
+    static const std::map<std::string, ModAppliesTo> kApplies{{"self", ModAppliesTo::Self}, {"target", ModAppliesTo::Target},
+                                                              {"allies_within_30", ModAppliesTo::AlliesWithin30}};
+    out.applies_to = ModAppliesTo::Target;
+    if (m.contains("applies_to") && !lookup(kApplies, m["applies_to"], out.applies_to)) return "modifier applies_to invalid";
+    const std::string st = m.value("stacks", "replace");
+    if (st != "replace" && st != "stack") return "modifier stacks invalid";
+    out.stack = st == "stack";
+    if (!m.contains("duration") || !m["duration"].is_object()) return "modifier duration required";
+    const Json& du = m["duration"];
+    const std::string dk = du.value("kind", "");
+    if (dk == "rounds") {
+        int n = 0;
+        if (!du.contains("n") || !small_int(du["n"], 1, 65535, n)) return "modifier duration n invalid";
+        out.expiry = 1;
+        out.rounds = uint16_t(n);
+    } else if (dk == "until_start_of_caster_turn") out.until_caster_turn = true;
+    else if (dk == "until_end_of_target_turn") out.expiry = 2;
+    else if (dk == "concentration") out.concentration = true;
+    else if (dk != "until_rest") return "modifier duration kind invalid";
+    const bool has_bonus = m.contains("bonus") || m.contains("bonus_table");
+    switch (out.stat) {
+        case ModStat::Ac: case ModStat::TempHp: if (!has_bonus) return "modifier needs bonus"; break;
+        case ModStat::AttacksAgainst: if (out.mode == RollMode::Normal) return "attacks_against needs mode"; break;
+        case ModStat::AttackRoll: case ModStat::Save: case ModStat::AbilityCheck:
+            if (!has_bonus && out.die.count == 0 && out.mode == RollMode::Normal) return "modifier needs bonus, die or mode";
+            break;
+        case ModStat::Damage: if (!has_bonus && out.die.count == 0) return "damage modifier needs bonus, bonus_table or die"; break;
+        default: break;
+    }
+    return "";
+}
+
 SpellLoad spell_from_json(const Json& j) {
     // Mirrors schemas/spell/v1.schema.json plus tools/validate check_spell (same rules, same wording).
     if (!j.is_object() || j.value("$schema", "") != "spell@1") return err("not a spell@1 document");
@@ -263,6 +340,11 @@ SpellLoad spell_from_json(const Json& j) {
                 !chk.contains("dc_base") || !small_int(chk["dc_base"], 1, 99, b))
                 return ("effect check must be {ability: spellcasting, dc_base, plus: spell_level}");
             s.counter_dc_base = uint8_t(b);
+        } else if (kind == "apply_modifier") {   // row 12: a timed modifier; primary effect only, no bonus_table (no class level)
+            s.kind = SpellEffectKind::ApplyModifier;
+            if (!e.contains("modifier")) return ("effect modifier required");
+            if (auto m = parse_modifier(e["modifier"], s.modifier); !m.empty()) return ("effect " + m);
+            s.modifier.id = spell_id_of(s.content_id + "#modifier");
         } else if (kind == "apply_condition") {
             s.kind = SpellEffectKind::ApplyCondition;
             if (!e.contains("condition") || !lookup(kCondition, e["condition"], s.condition)) return ("effect condition invalid");
@@ -281,6 +363,7 @@ SpellLoad spell_from_json(const Json& j) {
         if (auto m = parse_effect(j["effects"][i], x, xk); !m.empty()) return err("effects[" + std::to_string(i) + "]: " + m);
         if (x.kind == SpellEffectKind::AcBonus || x.kind == SpellEffectKind::Counter)
             return err("effects: ac_bonus and counter reactions cannot be combined with other effects");
+        if (x.kind == SpellEffectKind::ApplyModifier) return err("effects[" + std::to_string(i) + "]: apply_modifier is a primary effect only");
         SpellEffect fx;
         fx.kind = x.kind; fx.melee = x.melee; fx.beams = x.beams; fx.dice = x.dice; fx.damage_type = x.damage_type;
         fx.add_spellcasting_modifier = x.add_spellcasting_modifier; fx.excluded_types = x.excluded_types;
