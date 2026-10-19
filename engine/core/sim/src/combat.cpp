@@ -457,6 +457,9 @@ void Combat::install_hooks() {
         if (w.trigger == ReactionTrigger::Damaged) return r.id == w.target;       // reduce_damage / retaliate / riposte: the creature hurt
         if (w.trigger == ReactionTrigger::AllyAttacked)                          // Protection: within 5 ft of the ally attacked
             return r.id != w.target && distance_tiles(r.id, w.target) * kFeetPerTile <= 5;   // footprint-aware nearest-tile distance
+        if (w.trigger == ReactionTrigger::AttackRolled)   // R-G7 Cutting Words: within 60 ft of the attacker and able to see it
+            return r.id != w.trigger_actor && distance_tiles(r.id, w.trigger_actor) * kFeetPerTile <= 60 &&
+                   !r.has(rules5e::Condition::Blinded) && line_of_sight(r.id, w.trigger_actor);   // footprint-aware nearest-tile
         if (w.trigger == ReactionTrigger::SpellCast) {   // Counterspell: within the counter spell's range, in sight
             if (!spells_) return false;
             for (uint32_t id : r.spells_known) {

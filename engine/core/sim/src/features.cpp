@@ -352,6 +352,37 @@ std::optional<std::string> apply_ac_bonus(Archetype& a, const FeatureDecl& f, ui
     return std::nullopt;
 }
 
+// R-G7 static feature kinds (open kinds, live at any declared version like R-G5's).
+// reroll_ones {rolls: ["attack", "check", "save"]} (Halfling Lucky): rules5e Combatant::reroll_ones bits 1 attack roll,
+// 2 ability check, 4 saving throw; `rolls` omitted = all three (7). Several declarations OR together.
+std::optional<std::string> apply_reroll_ones(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx&) {
+    uint8_t mask = 7;
+    if (auto rl = f.effect.find("rolls"); rl != f.effect.end()) {
+        if (!rl->is_array() || rl->empty()) return f.id + ": reroll_ones rolls must be a non-empty array";
+        mask = 0;
+        for (const Json& r : *rl) {
+            const std::string n = r.is_string() ? r.get<std::string>() : "";
+            if (n == "attack") mask |= 1;
+            else if (n == "check") mask |= 2;
+            else if (n == "save") mask |= 4;
+            else return f.id + ": reroll_ones rolls entries must be 'attack', 'check' or 'save'";
+        }
+    }
+    a.base.reroll_ones = uint8_t(a.base.reroll_ones | mask);
+    return std::nullopt;
+}
+// great_weapon_fighting {} (Fighting Style): weapon dice of two-handed / versatile-in-two-hands melee attacks showing 1-2 are
+// rerolled once (rules5e). The grip of a versatile weapon is ActionRequest::two_handed_grip (sim AI, Archetype::two_handed_grip).
+std::optional<std::string> apply_great_weapon_fighting(Archetype& a, const FeatureDecl&, uint32_t, const FeatureBuildCtx&) {
+    a.base.great_weapon_fighting = true;
+    return std::nullopt;
+}
+// evasion {} (Rogue / Monk): a Dex save against a half-on-success effect deals 0 on a success, half on a failure (rules5e).
+std::optional<std::string> apply_evasion(Archetype& a, const FeatureDecl&, uint32_t, const FeatureBuildCtx&) {
+    a.base.evasion = true;
+    return std::nullopt;
+}
+
 FeatureRegistry make_builtin() {
     FeatureRegistry r;
     r.add_hook("damage_bonus", {apply_damage_bonus});
@@ -366,6 +397,9 @@ FeatureRegistry make_builtin() {
     r.add_hook("ac_bonus", {apply_ac_bonus});
     r.add_hook("grant_action", {apply_grant_action}, 4);
     r.add_hook("heal_pool", {apply_heal_pool}, 4);
+    r.add_hook("reroll_ones", {apply_reroll_ones});
+    r.add_hook("great_weapon_fighting", {apply_great_weapon_fighting});
+    r.add_hook("evasion", {apply_evasion});
     // Kinds the @4 schemas introduce (frozen list of the 3 -> 4 migration; hooks arrive with their rows).
     for (const char* k : {"on_event", "save_effect", "reaction"})
         r.reserve_kind(k, 4);
