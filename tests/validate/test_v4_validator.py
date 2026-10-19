@@ -255,8 +255,9 @@ class V4Validator(unittest.TestCase):
             with self.subTest(bad):
                 errs, _ = h.validate_docs(dict(self.base, **{B: h.edit(self.base[B], [(["equipment", n], dict(diamond, value_gp=bad))])}))
                 self.assertTrue(any(want in e for e in errs), (want, errs))
-        # without value_gp an unknown item still has to resolve (check 6/11)
-        errs, _ = h.validate_docs(dict(self.base, **{B: h.edit(self.base[B], [(["equipment", n], {"item": "srd51.item.diamond"})])}))
+        # without value_gp an unknown item still has to resolve (check 6/11); srd51.item.diamond is now a real
+        # srd51.core item@1 doc (#132) indexed by the pack set (#134), so use an id no pack defines
+        errs, _ = h.validate_docs(dict(self.base, **{B: h.edit(self.base[B], [(["equipment", n], {"item": "srd51.item.black_sapphire"})])}))
         self.assertTrue(any("(check 6/11)" in e for e in errs), errs)
 
     def test_stamped_legacy_entries_fail_only_on_disk(self):
