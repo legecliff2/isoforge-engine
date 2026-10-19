@@ -54,6 +54,7 @@ RestResult long_rest(Combatant& c, const RestTables& t, bool food_and_drink) {
         if (c.exhaustion_level == 0) remove_condition(c, Condition::Exhaustion);
         r.exhaustion_reduced = true;
     }
+    c.hp_max_reduction = 0;   // Life Drain lasts until a long rest
     const int cap = effective_hp_max(c);
     if (c.hp < cap) { r.hp_regained = int16_t(cap - c.hp); c.hp = int16_t(cap); }
     c.temp_hp = 0;
