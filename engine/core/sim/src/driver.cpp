@@ -151,9 +151,9 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
         const bool fresh_action = s.budget.action && s.budget.attacks_remaining == 0 && s.budget.sequence == 0;
         const bool attack_open = s.budget.action || s.budget.attacks_remaining > 0;
         const bool adjacent = c.distance_tiles(self, t->id) <= 1;
-        auto special = [&](uint8_t kind, CombatantId target) {
+        auto special = [&](uint8_t kind, CombatantId who) {
             Command x;
-            x.request = {self, ActionKind::Attack, target};
+            x.request = {self, ActionKind::Attack, who};
             x.request.special = kind;
             return x;
         };

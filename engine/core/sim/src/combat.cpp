@@ -595,9 +595,10 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
             if (!held_elsewhere && std::find(released.begin(), released.end(), sc.target) == released.end()) released.push_back(sc.target);
         }
         for (CombatantId id : released) {
-            auto* c = rules5e::find(state_, id);
-            if (!c || !(c->conditions & rules5e::bit(rules5e::Condition::Grappled))) continue;
-            c->conditions &= ~rules5e::bit(rules5e::Condition::Grappled);
+            rules5e::Combatant* held = nullptr;
+            for (auto& k : state_.combatants) if (k.id == id) held = &k;
+            if (!held || !(held->conditions & rules5e::bit(rules5e::Condition::Grappled))) continue;
+            held->conditions &= ~rules5e::bit(rules5e::Condition::Grappled);
             SimEvent se;
             se.kind = SimEvent::Kind::Rules;
             se.rules = {rules5e::EventKind::ConditionRemoved, id, 0, int32_t(rules5e::Condition::Grappled), 0, 0, 0};
