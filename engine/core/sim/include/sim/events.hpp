@@ -18,10 +18,11 @@ inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::Ac
 // Last rules kind that existed at v6 and below. event_stream_version keys on this, not on kLastRulesEventKind:
 // kinds 39..44 are locked at v7 but a stream carrying one is a v7 stream.
 inline constexpr rules5e::EventKind kLastRulesEventKindV6 = rules5e::EventKind::SpellCheckRolled;
-// v8: flag bits in a rules `Moved` event's `c` (0 for every ordinary move, and in every stream before v8).
-inline constexpr int32_t kMovedForced = 1;     // bit0: forced movement (the 5 ft shove push)
-inline constexpr int32_t kMovedTeleport = 2;   // bit1: teleport (reserved; nothing sets it yet)
-inline constexpr int32_t kMovedDrag = 4;       // bit2: dragged along by a grappler's own Move
+// v8: flag bits in a rules `Moved` event's `c` (0 for every ordinary move, and in every stream before v8). Defined once, in
+// rules5e (which emits them for R-G9 pushes and teleports); these are the sim names for the same values.
+inline constexpr int32_t kMovedForced = rules5e::kMovedForced;       // bit0: forced movement (shove push, R-G9 spell pushes)
+inline constexpr int32_t kMovedTeleport = rules5e::kMovedTeleport;   // bit1: teleport (R-G9 Misty Step)
+inline constexpr int32_t kMovedDrag = rules5e::kMovedDrag;           // bit2: dragged along by a grappler's own Move
 
 struct SimEvent {
     // Append-only. Numeric values are part of the contract.
