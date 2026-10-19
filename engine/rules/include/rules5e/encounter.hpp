@@ -332,6 +332,10 @@ struct FeatureSpec {
     bool heal_pool = false;     // Lay on Hands: spend `amount` from `pool`, heal ActionRequest::target (0 = self) by that much
 };
 
+// v8 Moved.c flag bits (the one definition; sim's kMoved* alias these).
+inline constexpr int32_t kMovedForced = 1;     // Moved.c bit0: forced movement (push / pull)
+inline constexpr int32_t kMovedTeleport = 2;   // Moved.c bit1: teleport
+inline constexpr int32_t kMovedDrag = 4;       // Moved.c bit2: dragged by a grappler's own Move (sim emits it)
 // R-G9 forced movement / teleport (docs/proposals/FORCED_MOVEMENT.md §2.4, §3). One query per creature moved by an effect.
 // mode: 1 push, 2 pull, 3 line (ForcedMoveSpec), 0 teleport. feet: requested distance (teleport: ActionRequest::teleport_feet).
 // step_seq: index of the query among the forced moves of this step (0, 1, ...). The destination fields are the request's.
@@ -563,7 +567,7 @@ bool has_surprised(const EncounterState&);
 // FNV-1a 64 over the ids of surprised creatures (combatants order); sim folds it under tag 0xA8 only when has_surprised.
 uint64_t surprised_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 // Small leftovers: Life Drain max-HP reductions, Haste lethargy, active Reckless Attack, and escalating (Petrifying Gaze)
-// effects. sim folds leftover_digest under tag 0xA9 only when has_leftover_state (nothing for content that uses none).
+// effects. sim folds leftover_digest under tag 0xAA only when has_leftover_state (nothing for content that uses none).
 // Haste / Slow themselves are modifiers (modifiers_digest, 0xA2, which folds repeat_save fields only when set).
 bool has_leftover_state(const EncounterState&);
 uint64_t leftover_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);

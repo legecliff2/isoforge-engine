@@ -21,6 +21,7 @@ struct Seen {
     uint16_t feet = 0xFFFF;                     // answer: feet moved (0xFFFF = as requested)
     std::vector<CombatantId> out_of_reach{};    // answer for every query
     std::vector<std::size_t> order{};           // forced_move_order answer (empty = no hook)
+    std::vector<std::pair<CombatantId, int>> dist{};   // when set: order farthest first (then lower id), like sim
     int order_calls = 0;
 };
 
@@ -60,9 +61,20 @@ EncounterHooks hooks(const std::shared_ptr<Seen>& seen, bool with_hook) {
             r.out_of_reach_of = seen->out_of_reach;
             return r;
         };
-        h.forced_move_order = [seen](const EncounterState&, std::span<const ForcedMoveQuery>) {
+        h.forced_move_order = [seen](const EncounterState&, std::span<const ForcedMoveQuery> qs) {
             ++seen->order_calls;
-            return seen->order;
+            if (seen->dist.empty()) return seen->order;
+            auto far = [&](CombatantId id) {
+                for (const auto& d : seen->dist) if (d.first == id) return d.second;
+                return 0;
+            };
+            std::vector<std::size_t> o(qs.size());
+            for (std::size_t i = 0; i < o.size(); ++i) o[i] = i;
+            std::sort(o.begin(), o.end(), [&](std::size_t x, std::size_t y) {
+                const int fx = far(qs[x].mover), fy = far(qs[y].mover);
+                return fx != fy ? fx > fy : qs[x].mover < qs[y].mover;
+            });
+            return o;
         };
     }
     return h;
@@ -357,4 +369,72 @@ TEST_CASE("shove 5 ft away: c = 0 by default (no locked digest moves), c = 1 wit
         }
         CHECK(pushes > 0);
     }
+}
+
+TEST_CASE("an Ask decision in the same step: the hook runs once per move, only in the kept run, farthest first") {
+    auto seen = std::make_shared<Seen>();
+    seen->dist = {{2, 5}, {3, 15}, {4, 15}};   // 3 and 4 are farthest (tie: lower id first), then 2
+    auto h = hooks(seen, true);
+    h.damaged_options = [](const EncounterState&, const ReactionWindow&, const Combatant&) {
+        ReactionOption o{}; o.kind = ReactionOptionKind::ReduceDamage; o.half = true; o.option_id = 991;
+        return std::vector<ReactionOption>{o};
+    };
+    auto asker = dummy(2);
+    set_policy(asker, ReactionTrigger::Damaged, ReactionPolicy::Ask);
+    auto s = begin_encounter({caster(1), asker, dummy(3), dummy(4)}, 1, nullptr, h);
+    end_turns_until(s, 1);
+    auto r = step(s, cast_at(1, kThunderwave, {2, 3, 4}));
+    REQUIRE(r.ok);
+    REQUIRE(r.status == StepStatus::NeedsDecision);
+    CHECK(seen->queries.empty());     // the paused run is discarded: no hook call
+    CHECK(seen->order_calls == 0);
+    REQUIRE(r.needs);
+    auto done = step(s, decision_request(*r.needs, false));
+    REQUIRE(done.ok);
+    REQUIRE(done.status == StepStatus::Done);
+    REQUIRE(seen->queries.size() == 3);   // exactly once per (step, step_seq)
+    std::vector<uint32_t> seqs;
+    for (const auto& q : seen->queries) seqs.push_back(q.step_seq);
+    std::sort(seqs.begin(), seqs.end());
+    CHECK(seqs == std::vector<uint32_t>{0, 1, 2});
+    CHECK(seen->order_calls == 1);
+    CHECK(seen->queries[0].mover == 3); CHECK(seen->queries[1].mover == 4); CHECK(seen->queries[2].mover == 2);
+    const auto moved = of_kind(done.events, EventKind::Moved);
+    REQUIRE(moved.size() == 3);
+    CHECK(moved[0].actor == 3); CHECK(moved[1].actor == 4); CHECK(moved[2].actor == 2);
+    for (const auto& m : moved) CHECK(m.c == kMovedForced);
+    CHECK(index_of(done.events, EventKind::ReactionWindowOpened) < index_of(done.events, EventKind::Moved));
+    CHECK(index_of(done.events, EventKind::Moved, true) < index_of(done.events, EventKind::SpellResolved));
+}
+
+TEST_CASE("a Ready trigger sees the placeholder; the hook still runs once, after it") {
+    auto seen = std::make_shared<Seen>();
+    seen->feet = 5;
+    auto h = hooks(seen, true);
+    auto fired = std::make_shared<int>(0);
+    h.ready_trigger = [fired, seen](const EncounterState&, const ReadiedAction&, const Event& e) {
+        if (e.kind != EventKind::Moved || e.c != kMovedForced) return false;
+        CHECK(e.a == 10);                 // the intent (requested feet)
+        CHECK(seen->queries.empty());     // the hook has not run yet
+        ++*fired;
+        return true;
+    };
+    h.decide_reaction = [](const EncounterState&, const ReactionWindow&, const Combatant&,
+                           std::span<const ReactionOption>) { return ReactionDecision{0, true, 0}; };
+    auto readier = dummy(3);
+    set_policy(readier, ReactionTrigger::ReadiedTrigger, ReactionPolicy::Ask);
+    auto s = begin_encounter({caster(1), dummy(2), readier}, 1, nullptr, h);
+    end_turns_until(s, 3);
+    ActionRequest ready{3, ActionKind::Ready, 2};
+    ready.ready_kind = ActionKind::Attack; ready.trigger_id = 1; ready.target_within_5ft = true;
+    REQUIRE(step(s, ready).ok);
+    REQUIRE(step(s, {3, ActionKind::EndTurn}).ok);
+    end_turns_until(s, 1);
+    auto r = step(s, cast_at(1, kThunderwave, {2}));
+    REQUIRE(r.ok);
+    CHECK(*fired >= 1);
+    REQUIRE(seen->queries.size() == 1);
+    const auto moved = of_kind(r.events, EventKind::Moved);
+    REQUIRE(moved.size() == 1);
+    CHECK(moved[0].a == 5);               // the placeholder became the hook's result
 }
