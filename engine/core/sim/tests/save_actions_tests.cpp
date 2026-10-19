@@ -128,11 +128,16 @@ TEST_CASE("save_effect: area is kept, errors name the action, pool usage and pre
     CHECK(e->find("fire_breath") != std::string::npos);
     CHECK_FALSE(lib.find("t.bad"));
 
-    // a condition that only a duration (not a save) ends is listed, not compiled, until timed modifiers (row 12)
-    REQUIRE_FALSE(lib.add(drake("t.dur", breath({{"apply", Json::array({{{"condition", "stunned"}, {"duration", {{"kind", "rounds"}, {"n", 1}}}}})}})), "monster"));
+    // a condition with an unknown duration kind, or neither a duration nor a repeat save, is listed, not compiled
+    REQUIRE_FALSE(lib.add(drake("t.dur", breath({{"apply", Json::array({{{"condition", "stunned"}, {"duration", {{"kind", "concentration"}}}}})}})), "monster"));
     CHECK(lib.find("t.dur")->save_actions.empty());
     CHECK(lib.find("t.dur")->unsupported_features.size() == 1);
     CHECK_FALSE(lib.spells()->find(rules5e::spell_id_of("t.dur#fire_breath")));
+    REQUIRE_FALSE(lib.add(drake("t.nodur", breath({{"apply", Json::array({{{"condition", "stunned"}}})}})), "monster"));
+    CHECK(lib.find("t.nodur")->save_actions.empty());
+    CHECK(lib.find("t.nodur")->unsupported_features.size() == 1);
+    // a malformed duration is a load error
+    CHECK(lib.add(drake("t.bn", breath({{"apply", Json::array({{{"condition", "stunned"}, {"duration", {{"kind", "rounds"}, {"n", 0}}}}})}})), "monster"));
     // pool usage needs an integer-max resource of the same document
     REQUIRE_FALSE(lib.add(drake("t.nopool", breath({{"usage", {{"kind", "pool"}, {"pool", "p"}}}})), "monster"));
     CHECK(lib.find("t.nopool")->save_actions.empty());
@@ -270,4 +275,63 @@ TEST_CASE("save action AI: out of range, a lone area action's aim and per-day ex
         advance_to(*c, g);
         CHECK(next_command(*c, f).request.kind != ActionKind::CastSpell);
     }
+}
+
+TEST_CASE("save_effect timed durations compile to expiry / duration_rounds and expire in a fight") {
+    auto lib = sample_lib();
+    Json apply = Json::array({{{"condition", "poisoned"}, {"duration", {{"kind", "rounds"}, {"n", 3}}}},
+                              {{"condition", "frightened"}, {"duration", {{"kind", "until_end_of_target_next_turn"}}}},
+                              {{"condition", "blinded"}, {"duration", {{"kind", "rounds"}, {"n", 2}}}, {"repeat_save", "end_of_turn"}},
+                              {{"condition", "restrained"}, {"duration", {{"kind", "until_save"}}}}});
+    Json act = breath({{"apply", apply}, {"save", {{"ability", "dex"}, {"dc", 30}}}});
+    { const auto er = lib.add(drake("t.timed", act), "monster"); REQUIRE_MESSAGE(!er, er.value_or("")); }
+    const Archetype* a = lib.find("t.timed");
+    REQUIRE(a);
+    REQUIRE(a->save_actions.size() == 1);
+    const auto* d = lib.spells()->find(a->save_actions[0].spell_id);
+    REQUIRE(d);
+    using rules5e::Expiry;
+    CHECK(d->condition == rules5e::Condition::Poisoned);
+    CHECK(d->expiry == uint8_t(Expiry::Rounds));
+    CHECK(d->duration_rounds == 3);
+    CHECK(d->repeat_save == rules5e::RepeatSave::None);
+    REQUIRE(d->extra_effects.size() == 3);
+    CHECK(d->extra_effects[0].expiry == uint8_t(Expiry::EndOfTargetNextTurn));
+    CHECK(d->extra_effects[0].duration_rounds == 0);
+    CHECK(d->extra_effects[1].expiry == uint8_t(Expiry::Rounds));
+    CHECK(d->extra_effects[1].duration_rounds == 2);
+    CHECK(d->extra_effects[1].repeat_save == rules5e::RepeatSave::EndOfTurn);   // both a timer and a repeat save
+    CHECK(d->extra_effects[2].expiry == 0);
+    CHECK(d->extra_effects[2].repeat_save == rules5e::RepeatSave::EndOfTurn);   // until_save
+
+    // In a fight: the condition lands, then ends at the start of round R + 3.
+    Json one = breath({{"apply", Json::array({{{"condition", "poisoned"}, {"duration", {{"kind", "rounds"}, {"n", 1}}}}})},
+                       {"save", {{"ability", "dex"}, {"dc", 30}}}});
+    REQUIRE_FALSE(lib.add(drake("t.one", one), "monster"));
+    auto ch = arena({{kFighter, Vec2i{5, 5}}, {"t.one", Vec2i{8, 5}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 21);
+    REQUIRE(c);
+    const CombatantId f = ch.spawns[0].stable_id, g = ch.spawns[1].stable_id;
+    advance_to(*c, g);
+    Command cmd = next_command(*c, f);
+    REQUIRE(cmd.request.kind == ActionKind::CastSpell);
+    REQUIRE(c->submit(cmd).ok);
+    CHECK(rules5e::find(c->state(), f)->has(rules5e::Condition::Poisoned));
+    CHECK(rules5e::has_timed_effects(c->state()));
+    const uint16_t round0 = c->state().round;
+    for (int i = 0; i < 6 && c->state().round == round0; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(c->state()), ActionKind::EndTurn};
+        REQUIRE(c->submit(e).ok);
+    }
+    REQUIRE(c->state().round == round0 + 1);
+    CHECK_FALSE(rules5e::find(c->state(), f)->has(rules5e::Condition::Poisoned));   // gone when the next round starts
+    CHECK(count(*c, EventKind::ConditionRemoved) >= 1);
+    // replay agrees, including the timed-effect digest
+    ecs::Registry reg2;
+    std::string err;
+    auto rep = replay(reg2, ch, lib, 21, c->log(), &err);
+    REQUIRE_MESSAGE(rep, err);
+    CHECK(rep->hash() == c->hash());
 }

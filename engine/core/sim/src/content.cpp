@@ -7,6 +7,7 @@
 #include <map>
 #include <set>
 
+#include "rules5e/encounter.hpp"
 #include "assets/content_migrations.hpp"
 #include "rules5e_content/spell_loader.hpp"
 
@@ -318,24 +319,45 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
         for (const Json& x : *ap) {
             auto cond = condition_of(x.is_object() ? x.value("condition", "") : "");
             if (!cond) return where + ": bad condition in apply[]";
-            // Durations are not enforced by rules until timed modifiers (row 12): a condition lasts until a
-            // successful repeat save (until_save / repeat_save) or the end of the combat. Compile only those
-            // that end by a save; anything else is listed, not compiled.
+            // Durations (rules5e timed effects, #76): rounds n -> expiry Rounds + duration_rounds; until_end_of_target_next_turn
+            // -> expiry EndOfTargetNextTurn; until_save -> a repeat save (end_of_turn unless one is named), no expiry. A
+            // repeat_save may accompany a timed duration. No duration and no repeat save lasts until the combat ends,
+            // which the engine does not model for conditions yet: listed, not compiled.
             const std::string rs = x.value("repeat_save", "");
-            const Json dur = x.contains("duration") ? x["duration"] : Json::object();
-            const std::string dk = dur.is_object() ? dur.value("kind", "") : "";
-            if (rs.empty() && dk != "until_save") { unsupported = true; return std::nullopt; }
+            const bool has_dur = x.contains("duration");
+            if (has_dur && !x["duration"].is_object()) return where + ": bad duration in apply[]";
+            const Json dur = has_dur ? x["duration"] : Json::object();
+            const std::string dk = dur.is_object() && dur.contains("kind") && dur["kind"].is_string() ? dur["kind"].get<std::string>() : "";
+            uint8_t expiry = 0;
+            uint16_t rounds = 0;
+            if (dk == "rounds") {
+                const int n = geti(dur, "n");
+                if (n < 1 || n > 65535) return where + ": bad duration rounds";
+                expiry = uint8_t(rules5e::Expiry::Rounds);
+                rounds = uint16_t(n);
+            } else if (dk == "until_end_of_target_next_turn") {
+                expiry = uint8_t(rules5e::Expiry::EndOfTargetNextTurn);
+            } else if (dk != "until_save" && (has_dur || rs.empty())) {
+                unsupported = true;   // an unknown duration kind (or none at all, without a repeat save)
+                return std::nullopt;
+            }
+            const rules5e::RepeatSave rep = !rs.empty() ? repeat_of(rs)
+                                          : dk == "until_save" ? rules5e::RepeatSave::EndOfTurn : rules5e::RepeatSave::None;
             if (first) {   // the first condition rides the primary Save effect
                 d.applies_condition = true;
                 d.condition = *cond;
-                d.repeat_save = repeat_of(rs.empty() ? "end_of_turn" : rs);
+                d.repeat_save = rep;
+                d.expiry = expiry;
+                d.duration_rounds = rounds;
                 first = false;
             } else {       // further conditions: ApplyCondition on the creatures that failed the save
                 rules5e::SpellEffect e;
                 e.kind = rules5e::SpellEffectKind::ApplyCondition;
                 e.applies_condition = true;
                 e.condition = *cond;
-                e.repeat_save = repeat_of(rs.empty() ? "end_of_turn" : rs);
+                e.repeat_save = rep;
+                e.expiry = expiry;
+                e.duration_rounds = rounds;
                 e.affected_only = true;
                 d.extra_effects.push_back(e);
             }
@@ -443,6 +465,11 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         if (!ct) return a.id + ": bad creature type";
         c.creature_type = *ct;
     }
+    // 0 = parse the document's own $schema tag (never "latest"); a missing or unparsable tag means no refusal.
+    uint32_t declared = declared_version;
+    if (declared == 0)
+        if (auto s = doc.find("$schema"); s != doc.end() && s->is_string())
+            if (auto ref = assets::parse_schema_ref(s->get<std::string>())) declared = ref->version;
     if (auto sc = doc.find("spellcasting"); sc != doc.end() && !inert.count("spellcasting")) {
         static const char* sc_abil[] = {"str", "dex", "con", "int", "wis", "cha"};
         const std::string sc_ab = sc->value("ability", "");
@@ -464,10 +491,74 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             c.pact_slots = c.pact_slots_max = uint8_t(geti(*pc, "slots"));
             if (c.pact_slot_level < 1 || c.pact_slot_level > 5 || c.pact_slots < 1) return a.id + ": bad pact slots";
         }
-        for (const Json& sp : sc->at("spells")) {
-            if (!sp.is_string()) return a.id + ": bad spell id";
-            a.spell_ids.push_back(sp.get<std::string>());
-            c.spells_known.push_back(rules5e::spell_id_of(a.spell_ids.back()));
+        // monster@4 / character@4 `spellcasting` (VERSION_BUMP_BATCH row 8): `spells` is optional (an innate-only caster),
+        // `dc` / `attack_bonus` override the derived values, `innate` lists spells cast without slots. A file that
+        // declared < 4 cannot carry them (its schema refuses them); they are ignored, never half-applied.
+        const bool v4 = declared == 0 || declared >= 4;
+        if (auto sp = sc->find("spells"); sp != sc->end()) {
+            if (!sp->is_array()) return a.id + ": bad spell id";
+            for (const Json& e : *sp) {
+                if (!e.is_string()) return a.id + ": bad spell id";
+                a.spell_ids.push_back(e.get<std::string>());
+                c.spells_known.push_back(rules5e::spell_id_of(a.spell_ids.back()));
+            }
+        } else if (!v4) {
+            return a.id + ": bad spell id";   // @3 requires `spells`
+        }
+        if (v4) {
+            for (const char* k : {"dc", "attack_bonus"})
+                if (auto it = sc->find(k); it != sc->end() && (!it->is_number_integer() || it->get<int>() < 0 || it->get<int>() > 100))
+                    return a.id + ": bad spellcasting " + k;
+            c.spell_dc_override = int16_t(geti(*sc, "dc"));
+            c.spell_attack_override = int16_t(geti(*sc, "attack_bonus"));
+            if (auto in = sc->find("innate"); in != sc->end()) {
+                if (!in->is_object()) return a.id + ": bad innate block";
+                const bool as_listed = in->value("components", std::string("none")) == "as_listed";
+                bool has_ab = false;
+                rules5e::Ability innate_ab = rules5e::Ability::Cha;
+                if (auto it = in->find("ability"); it != in->end()) {
+                    const auto o = it->is_string() ? ability_of(it->get<std::string>()) : std::nullopt;
+                    if (!o) return a.id + ": bad innate ability";
+                    has_ab = true;
+                    innate_ab = *o;
+                }
+                auto add_spell = [&](const Json& id, uint8_t uses_max, uint8_t uses_left, uint8_t recharge) -> std::optional<std::string> {
+                    if (!id.is_string()) return a.id + ": bad innate spell id";
+                    rules5e::InnateSpell is;
+                    is.spell_id = rules5e::spell_id_of(id.get<std::string>());
+                    is.uses_max = uses_max;
+                    is.uses_left = uses_left;
+                    is.recharge_min = recharge;
+                    is.has_ability = has_ab;
+                    is.ability = innate_ab;
+                    is.as_listed = as_listed;
+                    for (const auto& o : c.innate)
+                        if (o.spell_id == is.spell_id) return a.id + ": innate spell '" + id.get<std::string>() + "' listed twice";
+                    c.innate.push_back(is);
+                    a.innate_spell_ids.push_back(id.get<std::string>());
+                    return std::nullopt;
+                };
+                if (auto it = in->find("at_will"); it != in->end()) {
+                    if (!it->is_array()) return a.id + ": bad innate at_will";
+                    for (const Json& e : *it) if (auto er = add_spell(e, 0, 0, 0)) return *er;
+                }
+                if (auto it = in->find("per_day"); it != in->end()) {
+                    if (!it->is_object()) return a.id + ": bad innate per_day";
+                    for (auto pd = it->begin(); pd != it->end(); ++pd) {
+                        const int n = std::atoi(pd.key().c_str());
+                        if (n < 1 || n > 9 || !pd.value().is_array()) return a.id + ": bad innate per_day";
+                        for (const Json& e : pd.value()) if (auto er = add_spell(e, uint8_t(n), uint8_t(n), 0)) return *er;
+                    }
+                }
+                if (auto it = in->find("recharge"); it != in->end()) {
+                    if (!it->is_array()) return a.id + ": bad innate recharge";
+                    for (const Json& e : *it) {
+                        const int min = e.is_object() ? geti(e, "min") : 0;
+                        if (min < 2 || min > 6 || !e.contains("spell")) return a.id + ": bad innate recharge";
+                        if (auto er = add_spell(e["spell"], 1, 1, uint8_t(min))) return *er;
+                    }
+                }
+            }
         }
     }
     c.is_pc = c.uses_death_saves = (schema_type == "character");
@@ -523,10 +614,6 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     // Feature hooks (data-driven by effect.kind; see features.hpp).
     a.features = declared_features(doc);
     // 0 = parse the document's own $schema tag (never "latest"); a missing or unparsable tag means no refusal.
-    uint32_t declared = declared_version;
-    if (declared == 0)
-        if (auto s = doc.find("$schema"); s != doc.end() && s->is_string())
-            if (auto ref = assets::parse_schema_ref(s->get<std::string>())) declared = ref->version;
     std::map<uint32_t, std::string> trigger_ids;   // numeric trigger id -> its string (duplicates are load errors)
     const FeatureBuildCtx fctx{*features_, doc, declared, attack_actions};
     for (std::size_t i = 0; i < a.features.size(); ++i) {
@@ -651,9 +738,15 @@ std::vector<std::string> ContentLibrary::load(const assets::PackSet& packs) {
     }
     // Spellcasting references must resolve to a loaded spell@1 (same rule as the validator).
     for (const auto& [id, a] : by_id_)
-        for (const std::string& sid : a.spell_ids) {
-            const rules5e::SpellDef* d = spells_->find(rules5e::spell_id_of(sid));
-            if (!d || d->content_id != sid) errors.push_back(a.pack_id + ":" + id + ": spellcasting.spells '" + sid + "' is not a loaded spell@1");
+        {
+            for (const std::string& sid : a.spell_ids) {
+                const rules5e::SpellDef* d = spells_->find(rules5e::spell_id_of(sid));
+                if (!d || d->content_id != sid) errors.push_back(a.pack_id + ":" + id + ": spellcasting.spells '" + sid + "' is not a loaded spell@1");
+            }
+            for (const std::string& sid : a.innate_spell_ids) {
+                const rules5e::SpellDef* d = spells_->find(rules5e::spell_id_of(sid));
+                if (!d || d->content_id != sid) errors.push_back(a.pack_id + ":" + id + ": spellcasting.innate '" + sid + "' is not a loaded spell@1");
+            }
         }
     return errors;
 }
