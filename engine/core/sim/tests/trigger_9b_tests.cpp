@@ -176,3 +176,97 @@ TEST_CASE("9b in a fight: Death Burst hits the neighbour of a dead creature; Ram
         CHECK_FALSE(c->state().budget.bonus_action);   // the bonus action was spent by the granted attack
     }
 }
+
+// ---- Row 9c: choice ask, spend, per_slot_level, save_condition / apply_condition ----
+namespace {
+Json smite(const char* choice, Json spend) {
+    return {{"kind", "on_event"}, {"on", "hit"}, {"choice", choice},
+            {"effects", Json::array({spend, {{"kind", "extra_damage"}, {"damage", Json::array({{{"dice", "2d8"}, {"type", "radiant"}}})},
+                                             {"scale", {{"per_slot_level", {{"base_level", 1}, {"add_dice", "1d8"}}}}}}})}};
+}
+}  // namespace
+
+TEST_CASE("9c content: spend, per_slot_level, save_condition and apply_condition compile") {
+    ContentLibrary lib;
+    REQUIRE(lib.load(sample_set()).empty());
+    Json save = {{"kind", "on_event"}, {"on", "hit"},
+                 {"effects", Json::array({{{"kind", "save_condition"}, {"save", {{"ability", "con"}, {"dc", 12}}},
+                                           {"damage", Json::array({{{"dice", "1d6"}, {"type", "poison"}}})}, {"on_success", "half"},
+                                           {"apply", Json::array({{{"condition", "poisoned"}, {"duration", {{"kind", "rounds"}, {"n", 3}}}}})}}})}};
+    Json apply = {{"kind", "on_event"}, {"on", "hit"},
+                  {"effects", Json::array({{{"kind", "apply_condition"},
+                                            {"apply", Json::array({{{"condition", "prone"}, {"duration", {{"kind", "until_end_of_target_next_turn"}}}}})}}})}};
+    REQUIRE_FALSE(lib.add(goblin("t.9c", {smite("ask", {{"kind", "spend"}, {"slot", "any"}}), smite("auto", {{"kind", "spend"}, {"pool", "ki"}, {"cost", 2}}),
+                                          smite("never", {{"kind", "spend"}, {"slot", 3}}), save, apply}), "monster"));
+    const auto& tr = lib.find("t.9c")->base.triggers;
+    REQUIRE(tr.size() == 5);
+    CHECK(tr[0].choice == 1);
+    CHECK(tr[1].choice == 0);
+    CHECK(tr[2].choice == 2);
+    CHECK(tr[0].effects[0].kind == RiderKind::Spend);
+    CHECK(tr[0].effects[0].slot == 10);
+    CHECK(tr[1].effects[0].slot == 0);
+    CHECK(tr[1].effects[0].pool == spell_id_of("ki"));
+    CHECK(tr[1].effects[0].value == 2);
+    CHECK(tr[2].effects[0].slot == 3);
+    CHECK(tr[0].effects[1].slot_base == 1);
+    CHECK(tr[0].effects[1].slot_dice.count == 1);
+    CHECK(tr[0].effects[1].slot_dice.sides == 8);
+    const auto* sd = lib.spells()->find(tr[3].effects[0].spell_id);
+    REQUIRE(sd);
+    CHECK(sd->kind == rules5e::SpellEffectKind::Save);
+    CHECK_FALSE(sd->is_spell);
+    CHECK(sd->fixed_dc == 12);
+    CHECK(sd->applies_condition);
+    CHECK(sd->expiry == uint8_t(rules5e::Expiry::Rounds));
+    CHECK(sd->duration_rounds == 3);
+    const auto* ad = lib.spells()->find(tr[4].effects[0].spell_id);
+    REQUIRE(ad);
+    CHECK(ad->kind == rules5e::SpellEffectKind::ApplyCondition);
+    CHECK(ad->expiry == uint8_t(rules5e::Expiry::EndOfTargetNextTurn));
+    // load errors: same_as_weapon in save_condition damage, bad slot, apply_condition without a duration
+    Json sw = save;
+    sw["effects"][0]["damage"][0]["type"] = "same_as_weapon";
+    REQUIRE(lib.add(goblin("t.e1", {sw}), "monster"));
+    REQUIRE(lib.add(goblin("t.e2", {smite("ask", {{"kind", "spend"}, {"slot", 12}})}), "monster"));
+    Json nd = apply;
+    nd["effects"][0]["apply"][0].erase("duration");
+    REQUIRE(lib.add(goblin("t.e3", {nd}), "monster"));
+}
+
+TEST_CASE("9c in a fight: an ask rider opens a HitRider window; the default policy declines, a decision applies it") {
+    auto lib = lib_with({goblin("t.ask", {smite("ask", {{"kind", "spend"}, {"pool", "ki"}, {"cost", 1}})})});
+    const uint32_t tid = spell_id_of("t.ask#burst#0");
+    for (bool take : {false, true}) {
+        auto ch = arena({{"t.ask", Vec2i{5, 5}}, {kFighter, Vec2i{6, 5}}});
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, lib, 4);
+        REQUIRE(c);
+        const CombatantId g = ch.spawns[0].stable_id, f = ch.spawns[1].stable_id;
+        for (int i = 0; i < 6 && rules5e::current_actor(c->state()) != g; ++i) {
+            Command e;
+            e.request = {rules5e::current_actor(c->state()), ActionKind::EndTurn};
+            REQUIRE(c->submit(e).ok);
+        }
+        Command a;
+        a.request = {g, ActionKind::Attack, f};
+        a.request.attack_index = 0;
+        auto r = c->submit(a);
+        REQUIRE_MESSAGE(r.ok, r.error);
+        REQUIRE(r.needs);
+        CHECK(r.needs->trigger == rules5e::ReactionTrigger::HitRider);
+        CHECK(r.needs->reactor == g);
+        class P final : public IActorPolicy {
+        public:
+            std::optional<CombatantId> choose_target(const Combat&, CombatantId) override { return std::nullopt; }
+        } policy;
+        auto d = policy.decide_reaction(*c, *r.needs);
+        CHECK_FALSE(d.react);   // the default declines HitRider
+        d.react = take;
+        REQUIRE(c->decide(d).ok);
+        int outcome = 0;
+        for (const auto& e : c->events())
+            if (e.kind == SimEvent::Kind::Rules && e.rules.kind == EventKind::FeatureTriggered && uint32_t(e.rules.a) == tid) outcome = int(e.rules.c);
+        CHECK(outcome == (take ? 1 : 2));
+    }
+}
