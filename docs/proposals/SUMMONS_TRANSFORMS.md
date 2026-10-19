@@ -1,7 +1,7 @@
 # Summons and transforms (R-G12): rules / sim co-design proposal
 
-Status: **proposal, docs only.** The RULES section is written by Rules. The SIM CONTRACT section is a stub for Engine Core to
-complete. Content / schema needs are listed for Tools & Content. Open questions (section 5) need Director rulings before code.
+Status: **proposal, docs only; Director rulings D1..D14 recorded (§5).** The RULES section is written by Rules. The SIM CONTRACT section is a stub for Engine Core to
+complete. Content / schema needs are listed for Tools & Content. Open questions (section 5) are ruled (D1..D14).
 Tracks `docs/SRD_COMBAT_COVERAGE.md` §11.1 row 27 / §11.5 order 12 (R-G12) and the rows it unlocks: Wild Shape, Find Familiar,
 Pact of the Chain, Pact of the Blade (bonded weapon part only), Spiritual Weapon, Conjure Animals, Shapechanger (werewolf,
 doppelganger), plus Animate Dead and Polymorph (outside today's L1-3 / CR tables, listed for completeness).
@@ -224,34 +224,48 @@ covers what slots do not.*
   skeleton, zombie, ...); T&C confirms the SRD set ships in `srd51.core`.
 - Validator: archetype ids resolve; CR limits; Find Familiar forms list.
 
-## 5. Open questions (Director rulings; recommended answer in each)
+## 5. Open questions (all ruled by Director: D1..D14, every recommendation accepted)
 
 - **Q1 Who chooses the creatures of Conjure Animals / the conjure family?** SRD: the DM. **Recommend:** the content lists allowed
   archetypes per CR band; the caster's request picks (AI: strongest by CR then id). Director may pin a per-encounter choice.
+  - **Ruled (Director, D1):** Accepted. The caster's request picks both the CR band and the specific creature (an archetype from loaded content); the choice is in the logged request (`summon_archetypes`, log_hash 0xBC), so replay matches.
 - **Q2 Animate Dead initiative: own per creature or shared?** SRD is silent. **Recommend:** one shared group per cast (like the
   conjure family), so a cast adds one slot of turns.
+  - **Ruled (Director, D2):** Accepted as recommended.
 - **Q3 Spiritual Weapon as a combatant or a non-creature effect?** **Recommend:** non-creature (`ActiveSummonWeapon`): no HP, not
   targetable, attacks in the caster's bonus action; position is a sim token without a Combatant.
+  - **Ruled (Director, D3):** Accepted as recommended.
 - **Q4 Uncommanded summons:** SRD conjure: "defends itself and otherwise takes no actions"; Animate Dead: "only defends itself".
   **Recommend:** Dodge on its turn and opportunity attacks / reactions allowed; no movement.
+  - **Ruled (Director, D4):** Accepted: Dodge is the default. The SRD says these creatures "defend themselves", so AI retaliation (attacking a creature that attacked it) may be added later without a rules change.
 - **Q5 Conjure Elemental hostile on broken concentration:** **Recommend:** model it (team flips to the summoner's enemies, keeps
   its turn); level 5, so after PR 2.
+  - **Ruled (Director, D5):** Accepted as recommended.
 - **Q6 Pact of the Chain attack trade:** **Recommend:** `Attack` request flag `familiar_attack` that spends one of the warlock's
   attacks and the familiar's reaction (PR 3).
+  - **Ruled (Director, D6):** Accepted as recommended.
 - **Q7 Wild Shape "features it can physically use":** **Recommend:** keep all class / racial features unless content marks a
   feature `requires_humanoid_form`; spellcasting always off (SRD), concentration kept.
+  - **Ruled (Director, D7):** Accepted. SRD 5.1 Wild Shape: you retain the benefit of any features from your class, race, or other source and can use them "if the new form is physically capable of doing so"; content marks the exceptions (`requires_humanoid_form`).
 - **Q8 Temporary HP across a transform:** SRD is silent. **Recommend:** keep them on the creature (they absorb damage before the
   form's HP); not part of the saved base block.
+  - **Ruled (Director, D8):** Accepted as recommended.
 - **Q9 Find Steed / mounted combat:** **Recommend:** out of R-G12 (with R-G17); Find Steed summons on its own initiative unmounted.
+  - **Ruled (Director, D9):** Accepted as recommended.
 - **Q10 Summons when the summoner dies:** SRD: Find Familiar / Find Steed persist; concentration summons end with concentration
   (death ends it). **Recommend:** follow SRD per spell (`SummonEnded.b = 1` via concentration; no generic "summoner died" end).
+  - **Ruled (Director, D10):** Accepted as recommended.
 - **Q11 Ids for summons:** **Recommend:** sim counter above the create-time maximum, carried in the logged request (2.6).
+  - **Ruled (Director, D11):** Accepted as recommended.
 - **Q12 Massive damage on revert:** **Recommend:** instant death checks the overflow against the base form's hp_max (SRD death
   rules apply to the normal form after carrying over).
+  - **Ruled (Director, D12):** Accepted as recommended.
 - **Q13 Polymorph on a shapechanger / an unwilling target at 0 HP:** **Recommend:** refuse on shapechangers (`excludes_shapechangers`);
   a 0-HP target can't be polymorphed (no effect).
+  - **Ruled (Director, D13):** Accepted. SRD 5.1 Polymorph: the spell "has no effect on a shapechanger or a creature with 0 hit points"; rules refuses both targets (no effect).
 - **Q14 Initiative position for a summon whose roll beats the current actor:** **Recommend:** first turn next round (2.4); no
   turn in the round it appeared after its slot has passed.
+  - **Ruled (Director, D14):** Accepted as recommended.
 
 ## 6. SRD coverage mapping
 
