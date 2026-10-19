@@ -91,9 +91,12 @@ struct ActionRequest {
     // appended (R-G8, Attack): a special attack that replaces one attack of the Attack action (or, for Escape, takes the action):
     // 1 Grapple (target), 2 Shove prone (target), 3 Shove 5 ft away (target), 4 Escape a grapple (target = the grappler, 0 = any;
     // `dc` > 0 is the escape DC when the grapple has none recorded). attack_index / multiattack are ignored (multiattack must be 0).
-    uint8_t special = 0;
+    uint8_t special = 0;   // R-G15: 5 Wake (target): the action, ends the target's ends_on_damage effects (shake a sleeper awake)
     // appended (R-G7, Attack): the weapon is held in two hands (a versatile weapon); Great Weapon Fighting applies.
     bool two_handed_grip = false;
+    // appended (R-G15, CastSpell): sustain the actor's SustainedDamage spell `spell_id` on `target` (Heat Metal): a bonus action,
+    // no slot, not on the turn it was cast.
+    bool sustain = false;
     // appended (Attack / readied Attack, T&C-G7): sim fact for Combatant::roll_traits, e.g. Pack Tactics:
     // an ally of the actor, not incapacitated, is within 5 ft of the target.
     bool ally_near_target = false;
@@ -251,6 +254,15 @@ struct ActiveSpellEffect {
     Condition condition; Ability save_ability; int16_t dc;
     RepeatSave repeat_save; bool concentration;
     Timed timed{};                     // appended: Expiry::None = lasts until concentration ends / a repeat save succeeds
+    uint8_t slot_level = 0;            // appended (R-G15): level the spell was cast at (Dispel Magic); 0 = the spell's level
+    bool ends_on_damage = false;       // appended (R-G15): ends when the target takes damage (Sleep)
+    // appended (R-G15, delayed / sustained damage): the effect carries no condition (`condition` is unused), and deals
+    // `damage` of `damage_type`: damage_when 1 when its timer runs out (Acid Arrow), 2 each time the caster sustains it
+    // (Heat Metal: ActionRequest::sustain). cast_stamp = round << 16 | turn_index of the cast (no sustain on that turn).
+    bool no_condition = false;
+    uint8_t damage_when = 0;
+    DiceExpr damage{0, 0, 0}; DamageType damage_type = DamageType::Force; bool magical = true;
+    uint32_t cast_stamp = 0;
 };
 
 // A modifier in force on `target` (row 12). `timed` reuses the condition-duration machinery (Rounds / EndOfTargetNextTurn).
@@ -258,6 +270,7 @@ struct ActiveModifier {
     ModifierSpec spec; CombatantId caster = 0, target = 0;
     Timed timed{};
     bool gated = false;   // transient: a `when` that does not hold for the roll in progress (never set between steps)
+    uint8_t slot_level = 0;   // appended (R-G15): level of the spell that applied it (Dispel Magic); 0 = unknown / not a spell
 };
 
 // Limited-use features (Second Wind, ...), keyed by (actor, feature_id). Part of the encounter state,
