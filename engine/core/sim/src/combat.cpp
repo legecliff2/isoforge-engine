@@ -1026,7 +1026,7 @@ uint64_t Combat::log_hash() const {
         h.byte(q.ranged_hostile_within_5ft ? 1 : 0);
         h.byte(q.beyond_normal_range ? 1 : 0);
         if (q.multiattack != 0) h.byte(q.multiattack);   // folded only when used: older logs hash as before
-        if (q.special != 0) { h.byte(0xB5); h.byte(q.special); }   // R-G8 grapple / shove / escape: folded only when set (0xA9 is Combat::hash's)
+        if (q.special != 0) { h.byte(0xB5); h.byte(q.special); }   // R-G8 grapple / shove / escape: folded only when set (0xA9 is retired)
         if (q.bonus_option != 0) { h.byte(0xB0); h.byte(q.bonus_option); }   // R-G6 bonus attack option: folded only when set
         if (q.two_handed_grip) { h.byte(0xB6); h.byte(1); }   // R-G7 versatile weapon in two hands: folded only when set
         if (q.innate) h.byte(0xA4);                       // innate CastSpell: folded only when set, under a tag byte
