@@ -1,0 +1,8 @@
+{
+  "$schema": "item@1",
+  "id": "srd51.item.diamond",
+  "name": "Diamond",
+  "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
+  "category": "valuable",
+  "description": "A diamond, the priced material component of SRD 5.1 spells (Revivify: diamonds worth 300 gp, which the spell consumes; Raise Dead: a diamond worth at least 500 gp; Greater Restoration: diamond dust worth at least 100 gp). The SRD equipment tables list no gems, so the item has no list price or weight: each character@4 equipment[] entry carries its own value_gp."
+}
