@@ -1481,7 +1481,7 @@ Drain's Con save (when `drain_save_dc` is set).
   a condition (Restrained, `repeat_save` EndOfTurn) whose failed repeat save turns the condition into `escalate_to` for good (no
   more saves, no timer; `ConditionRemoved` + `ConditionAdded`); failing the first save by `escalate_margin` or more applies
   `escalate_to` at once (medusa 5; basilisk 0).
-- **Hashing.** `Combat::hash` tag **0xA9**: `leftover_digest` (per combatant with `hp_max_reduction`, `lethargy` or
+- **Hashing.** `Combat::hash` tag **0xAA** (claimed as 0xA9 in #111; moved by #112, since EC #104 uses 0xA9 for `special` in `log_hash`): `leftover_digest` (per combatant with `hp_max_reduction`, `lethargy` or
   `reckless_active` set, then escalating effects), only when `has_leftover_state`. `modifiers_digest` (0xA2) folds `repeat_save`,
   `repeat_ability`, `repeat_dc` only for a modifier with `repeat_save != 0`. `log_hash` tag **0xB3**: one byte, bit0
   `haste_action`, bit1 `reckless`, bit2 `aggressive`, only when non-zero (0xB2 is reserved for R-G9's teleport destination, per
@@ -1491,12 +1491,76 @@ Drain's Con save (when `drain_save_dc` is set).
   `repeat_ability` on modifier content; spell content for Haste and Slow as above; monster `attack.drain_max_hp` (+ `drain_save_dc`)
   for wight / specter / wraith / vampire spawn; `reckless_attack` (Barbarian 2, minotaur, berserker); `aggressive` (orc); gaze
   saves with `escalates` / `escalate_to` / `escalate_margin` (basilisk, medusa). (b) sim: carry `haste_action` / `reckless` /
-  `aggressive` into `ActionRequest` and fold them into `log_hash` under 0xB3; fold `leftover_digest` under 0xA9; keep Aggressive
+  `aggressive` into `ActionRequest` and fold them into `log_hash` under 0xB3; fold `leftover_digest` under 0xAA; keep Aggressive
   movement toward a hostile; fire the gaze (a creature starting its turn within 30 ft that can see the gazer) as a Save request
   (sim owns positions and sight). (c) AI: may use `legal_actions`' Haste and Aggressive entries; ignoring them is valid.
 - **Not covered / deviations.** Haste's "Use an Object" (no such action in rules); Slow's spell-casting delay (a somatic spell
   fails on d20 < 11 and takes effect next turn: needs a delayed-cast model); ability drain (shadow's Strength Drain); the gaze
   trigger and averting the eyes (positions / sight, sim); lethargy also blocks reactions (reading).
+
+### 7.2k R-G9 forced movement and self-teleport (rules side) and hand-off
+
+Spec: `docs/proposals/FORCED_MOVEMENT.md` as agreed in #110 (Director rulings Q4 / Q9-Q11, Engine Core's §3; merged while this
+PR was open and merged in, unchanged from its reviewed head 1453b5c). Scope per Q10: pushes and self-teleport. Branch `feat/rules-forced-movement`.
+
+- **Effect kinds** (`SpellEffectKind`, appended): `ForcedMove` (`ForcedMoveSpec forced`: `mode` 1 push / 2 pull / 3 line,
+  `feet`, `up_to`, per-effect `max_size` (-1 = none; a bigger creature skips the push only), `provokes_oa`) and `Teleport`
+  (`TeleportSpec teleport`: `max_feet`, `needs_sight`, the latter a sim check). On `SpellDef` (primary) and `SpellEffect`
+  (riders; `effect_view` copies them). Thunderwave = Save + `ForcedMove` rider `affected_only` (failed saves only); Repelling
+  Blast = spell attack + `ForcedMove` rider `up_to` 10 (one push per beam hit); Misty Step = `Teleport`, bonus action, max 30.
+- **Requests** (`ActionRequest`, appended, CastSpell only; otherwise refused): `forced_feet` (an "up to" distance: multiple of 5,
+  at most the effect's; 0 = the maximum), `teleport_feet` (distance to the destination when sim knows positions: multiple of 5,
+  at most `max_feet`; 0 = not supplied, no check), and the destination `has_teleport_dest` / `teleport_x` / `teleport_y` (a sim
+  tile rules never reads; passed to the hook). Teleport is self only (Dimension Door companions deferred). `legal_actions`
+  lists a Teleport spell once per slot level, at the caster, with no destination (sim fills it from `legal_teleport_tiles`).
+- **Hook** (`EncounterHooks`, appended): `forced_move(state, ForcedMoveQuery) -> ForcedMoveResult`, synchronous, resolving and
+  committing at once (§3, Q3). Query: mover, source, mode (0 teleport), feet, teleport, step_seq (index among the step's forced
+  moves), destination. Result: `feet_moved`, `stopped_short`, `hazard` / `fell_ft` (reserved for R-G11), `out_of_reach_of`.
+  **No hook = intent only**: `Moved.a` = the requested feet, no grapple ends. `forced_move_order(state, queries)` returns a
+  permutation (sim: farthest first, Q2); anything else, or no hook, keeps the target order.
+- **Resolution (deferred, EC's double-call fix).** Effects queue their moves; a cast turns its queue into one group of
+  placeholder `Moved` events after all of the spell's saves and damage and before `SpellResolved` (moves queued outside a cast,
+  such as on-hit riders and the shove, form a group at the end of the step, before Ready triggers). The hook is **not** called
+  there: `forced_move_order` and `forced_move` run only in `finalize_forced`, once, after every decision point of the step
+  (reaction / Ready windows, Ask decisions, `step()`'s internal decide loop) and only in the run that is kept, i.e. never in a
+  run that ends with a pending decision and is discarded or re-run. Each group's placeholders are then replaced in place by
+  `Moved{actor = mover, target = source, a = feet moved, b = 0, c = 1 forced / 2 teleport}` in the hook's order, each followed
+  by `ConditionRemoved{Grappled}` for each grapple (either direction) with a creature in `out_of_reach_of` (sourced entries
+  removed); the event positions relative to saves, damage and `SpellResolved` are unchanged. `step_seq` is the move's index
+  among the step's forced moves; a debug-build `assert` checks each (step, step_seq) reaches the hook only once (and that
+  finalize runs once per kept step). Forced moves and teleports open no `LeavingReach` window, spend no movement, ignore
+  speed 0 (Grappled / Restrained), and fire Ready triggers like any `Moved`. **Known limitation:** a Ready trigger fires on the
+  placeholder, i.e. the intent (`a` = requested feet), because it runs before the hook; a trigger that needs the distance
+  actually moved would need a second pass (none in SRD scope).
+- **Shove** (`special` 3) now goes through the same deferred path (hook, grapple ends). **EC #104 has landed** and sim flags
+  the shove push itself (`Combat::complete` sets `c |= kMovedForced` on its copy), so rules' own shove event stays `c = 0`
+  unless `EncounterHooks::shove_forced_flag` is true (default false): nothing is flagged twice and #104's locked digests don't
+  move. EC will later set `shove_forced_flag = true` and drop its own flagging. With no `forced_move` hook (all of sim today) a
+  shove is `Moved{a = 5, c = 0}` from rules as before.
+- **Schema v8** comes from EC #104 (merged into this branch with a merge commit): `kSimEventSchemaVersion` 8 and the v8 rule
+  (`event_stream_version` returns 8 only for a stream with a `Moved` whose `c != 0`) are #104's; this PR's duplicates and its
+  duplicate v8 test were dropped in the merge. The flag bits (`kMovedForced` 1, `kMovedTeleport` 2, `kMovedDrag` 4) are
+  defined once, in `rules5e/encounter.hpp`, and sim's `kMoved*` in `events.hpp` alias them (deviation: rules cannot include
+  sim headers, since sim depends on rules, so the single definition has to live on the rules side; values are #104's).
+  SIM_EVENTS.md has one `Moved` row and one v8 changelog entry. Every golden and locked digest, #104's included, is unchanged.
+- **Hashing.** No `Combat::hash` tag (no lasting state; positions are sim's). Registry fix: EC #104 folds `special` under
+  0xA9 in `log_hash`, which collided with #111's 0xA9 `Combat::hash` claim for `leftover_digest` (not folded by sim yet), so
+  `leftover_digest` moves to **0xAA**, the 0xA9 `log_hash` row is added (main), 0xA7 is marked main, and the next free
+  `Combat::hash` tag is 0xAB. `log_hash` **0xB4**: `forced_feet` u16 then
+  `teleport_feet` u16, only when either is non-zero (claimed in the registry); the destination is **0xB2**, claimed by the R-G9
+  sim PR (not taken here).
+- **Hand-off (Engine Core).** (a) Implement `forced_move` (§3 path rules: 8-way direction in doubled coordinates, tile-by-tile
+  walk, any creature blocks, stop at the last free tile, commit immediately, report `out_of_reach_of`) and
+  `forced_move_order` (farthest first, lower id); apply `Moved` with `c != 0` to tokens (`TileMoved`), not as the actor's own
+  move. (b) Teleport: `legal_teleport_tiles`, re-validate at `Combat::submit` (range, free footprint, sight, Frightened "not
+  closer"), then fill `teleport_feet` and the destination. (c) Later: set `shove_forced_flag = true` and drop sim's own shove flagging in `Combat::complete` in the same change (same events, so no digest should move). (d) Fold
+  0xB4 and 0xB2 into `log_hash`. **(T&C)** loader: `forced_move` / `teleport` effect kinds and fields for spell@1 effects,
+  `provokes_oa: true` is a load error in R-G9, Thunderwave / Misty Step / Repelling Blast / blink dog content.
+- **Not covered / deviations.** Out of scope per Q10: Dimension Door companions and the 4d6 failure, Gust of Wind (mode 3 is data
+  only), falling / hazard damage (the hook keeps `hazard` / `fell_ft`). Open Hand Technique's push needs a bonus-attack rider
+  with a save (not in this PR). The hook signature adds `forced_move_order` and destination fields to §2.4's query (rules needs
+  a way to take sim's order and to pass the destination). `ForcedMoveSpec::mode` defaults to 1 (push). The R-G9 load error is
+  the loader's (no rules check). Rules does not re-check Frightened "not closer" (sim's re-validation, §3).
 
 ## 8. Migrations and inert markers
 
