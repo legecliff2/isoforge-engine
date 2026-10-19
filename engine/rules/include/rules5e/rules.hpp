@@ -18,3 +18,4 @@
 #include "rules5e/checks.hpp"
 #include "rules5e/healing.hpp"
 #include "rules5e/armor.hpp"
+#include "rules5e/rest.hpp"
