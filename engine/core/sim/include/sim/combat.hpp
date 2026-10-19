@@ -87,8 +87,10 @@ constexpr uint32_t ready_trigger_id(ReadyTriggerKind k, uint8_t tiles) { return 
 // (ContentLibrary::spells()) and known by the caster (spellcasting.spells). Sim supplies the facts
 // rules5e asks for: range / line of sight (spell_target_ok: self = caster only, touch = adjacent,
 // else Chebyshev range in tiles with line of sight), targets_within, can_see (line of sight, not
-// Blinded), can_provide_components (V/S always; a spell with a material cost is refused: no
-// inventory yet), and reaction reach (Shield: the creature hit; Counterspell: a reactor within the
+// Blinded), can_provide_components (V/S and unpriced M always; a priced material, cost_cp > 0,
+// needs the first combat-local equipment entry whose id equals components.m.item exactly and whose
+// value_gp * 100 >= cost_cp; no item key = refused; a `consumed` material removes that one entry when
+// the cast completes, CONTENT_CONVENTIONS §7, hashed under 0xAD once something was consumed), and reaction reach (Shield: the creature hit; Counterspell: a reactor within the
 // counter spell's range of the caster). Area templates are NOT computed: the caller lists the
 // creatures inside the area in `targets`. Slots are spent by rules5e.
 
@@ -126,6 +128,10 @@ public:
     const Grid& grid() const noexcept { return grid_; }
     const std::vector<std::string>& team_names() const noexcept { return team_names_; }
     ecs::Registry& registry() const noexcept { return *reg_; }
+    // Priced materials: the combatant's combat-local equipment (copied from content at create; consumed entries removed).
+    const std::vector<EquipmentEntry>& equipment(CombatantId id) const;
+    struct MaterialUse { CombatantId caster; uint32_t spell_id; uint32_t entry; uint32_t value_gp; };
+    const std::vector<MaterialUse>& materials_consumed() const noexcept { return materials_used_; }
 
     Vec2i pos(CombatantId id) const;
     ecs::Entity entity(CombatantId id) const;
@@ -249,6 +255,9 @@ private:
     // turn_index), the dasher, and the movement left from before the Dash (spent first by its Moves).
     struct AggressiveDash { uint32_t stamp = 0; CombatantId actor = 0; int free_ft = 0; };
     std::optional<AggressiveDash> aggressive_;
+    std::map<CombatantId, std::vector<EquipmentEntry>> equipment_;   // combat-local (priced materials)
+    std::vector<MaterialUse> materials_used_;   // consumed materials, in cast order (0xAD)
+    int material_entry(CombatantId caster, const rules5e::SpellDef& d) const;   // -1 = no entry provides it
     std::vector<CombatantId> surprised_at_start_;   // R-G16: apply_surprise input (combatant order)
 };
 
