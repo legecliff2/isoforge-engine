@@ -118,7 +118,7 @@ The authoritative per-kind field meanings are in `rules5e/encounter.hpp`. If tha
 
 Tag bytes are globally unique across `Combat::hash` and `Combat::log_hash` (separate streams, one registry). **Rule: a new tag is
 claimed in this table first**, in the PR that introduces it (or before), and is folded only when its section is non-empty, so every
-existing hash is unchanged. Next free: **0xAC** in `Combat::hash`, **0xB8** in `log_hash` (0xAA is `leftover_digest`; 0xAB and 0xB7 are claimed by R-G11 zones rules PR 1, `docs/proposals/ZONES_AURAS.md`). Status: *main* = verified in
+existing hash is unchanged. Next free: **0xAC** in `Combat::hash`, **0xBA** in `log_hash` (0xAA is `leftover_digest`; 0xAB and 0xB7 are claimed by R-G11 zones rules PR 1, `docs/proposals/ZONES_AURAS.md`; 0xB8 is claimed by the open EC #120, which also claims 0xAC; 0xB9 is claimed by R-G11 zones rules PR 2). Status: *main* = verified in
 `engine/core/sim/src/combat.cpp` on main; *pending* = claimed by an open PR.
 
 | Tag | Stream | Section (rules5e function) | Folded when | Owner / PR | Status |
@@ -144,6 +144,7 @@ existing hash is unchanged. Next free: **0xAC** in `Combat::hash`, **0xB8** in `
 | 0xB5 | `log_hash` | `ActionRequest::special` byte (1 Grapple, 2 Shove prone, 3 Shove 5 ft, 4 Escape, 5 Wake) | `special != 0` | R-G8, EC #104; tag fixed (was 0xA9) in EC #114 (merged) | main |
 | 0xB6 | `log_hash` | `ActionRequest::two_handed_grip`: one byte, 1 | `two_handed_grip` true | R-G7, EC #114 (merged) | main |
 | 0xB7 | `log_hash` | R-G11 caller-chosen zone inputs: `zone_move` u32, `has_zone_dest` byte, `zone_x` i32, `zone_y` i32, `zone_excluded` (count u32 + ids u32), in that order. Membership fields (`zones_entered` / `zones_left` / `zones_within`) are **not** folded (sim derives them at submit, Q11) | `zone_move != 0`, `has_zone_dest` or `zone_excluded` non-empty | R-G11 rules PR 1; sim fold not yet written | pending (sim fold) |
+| 0xB9 | `log_hash` | R-G11 rules PR 2 wall choices (Wall of Fire): `has_zone_end` byte, `zone_x2` i32, `zone_y2` i32, `zone_side` byte (int8: +1 / -1, 0 = none), `zone_ring` byte, in that order | `has_zone_end`, `zone_side != 0` or `zone_ring` | R-G11 rules PR 2 (`docs/proposals/ZONES_AURAS.md` §2.10); sim fold not yet written | pending (sim fold) |
 
 ## Determinism guarantees
 
