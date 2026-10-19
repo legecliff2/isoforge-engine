@@ -578,12 +578,96 @@ std::optional<Vec2i> Combat::moving_to(CombatantId id) const {
 // rules Moved events, then sim bookkeeping (readied destinations).
 void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs, std::optional<Vec2i> to) {
     const auto& q = ls.request;
-    apply_rules_events(evs);
+    // v8: the 5 ft shove's Moved{actor = target, target = shover} is forced movement; sim flags it (rules emit c = 0).
+    auto is_shove_push = [&q](const rules5e::Event& e) {
+        return e.kind == rules5e::EventKind::Moved && q.kind == ActionKind::Attack && q.special == 3 && e.actor == q.target &&
+               e.target == q.actor;
+    };
+    if (std::any_of(evs.begin(), evs.end(), is_shove_push)) {
+        std::vector<rules5e::Event> flagged = evs;
+        for (auto& fe : flagged)
+            if (is_shove_push(fe)) fe.c |= kMovedForced;
+        apply_rules_events(flagged);
+    } else {
+        apply_rules_events(evs);
+    }
+    // R-G8 helpers: put a creature on a tile (forced movement / drag), and end grapples whose holder and held creature are no
+    // longer within 5 ft after an effect moved one of them (Grappled is removed from the target; the next step prunes the entry).
+    auto place = [this](CombatantId id, Vec2i t) {
+        if (TilePos* p = reg_->get<TilePos>(entity(id))) { p->x = t.x; p->y = t.y; }
+        SimEvent se;
+        se.kind = SimEvent::Kind::TileMoved;
+        se.actor = id;
+        se.tile = t;
+        events_.push_back(se);
+    };
+    auto free_for = [this](CombatantId id, Vec2i t) {
+        const int fp = footprint_size(id);
+        if (!grid_.footprint_walkable(t, fp)) return false;
+        const auto occ = occupied_except(id);
+        for (int dy = 0; dy < fp; ++dy)
+            for (int dx = 0; dx < fp; ++dx)
+                if (std::find(occ.begin(), occ.end(), Vec2i{t.x + dx, t.y + dy}) != occ.end()) return false;
+        return true;
+    };
+    auto release_out_of_reach = [this](CombatantId moved) {
+        std::vector<CombatantId> released;
+        for (const auto& sc : state_.sourced) {
+            if (sc.condition != rules5e::Condition::Grappled || (sc.target != moved && sc.source != moved)) continue;
+            if (distance_tiles(sc.source, sc.target) <= 1) continue;
+            bool held_elsewhere = false;   // another holder still within 5 ft keeps the condition
+            for (const auto& o : state_.sourced)
+                held_elsewhere = held_elsewhere || (o.condition == rules5e::Condition::Grappled && o.target == sc.target &&
+                                                    o.source != sc.source && distance_tiles(o.source, o.target) <= 1);
+            if (!held_elsewhere && std::find(released.begin(), released.end(), sc.target) == released.end()) released.push_back(sc.target);
+        }
+        for (CombatantId id : released) {
+            rules5e::Combatant* held = nullptr;
+            for (auto& k : state_.combatants) if (k.id == id) held = &k;
+            if (!held || !(held->conditions & rules5e::bit(rules5e::Condition::Grappled))) continue;
+            held->conditions &= ~rules5e::bit(rules5e::Condition::Grappled);
+            SimEvent se;
+            se.kind = SimEvent::Kind::Rules;
+            se.rules = {rules5e::EventKind::ConditionRemoved, id, 0, int32_t(rules5e::Condition::Grappled), 0, 0, 0};
+            events_.push_back(se);
+        }
+    };
     std::vector<CombatantId> fired;
     for (const auto& e : evs) {
+        // R-G8 shove 5 ft away: Moved{actor = target, target = shover}; push one tile straight away from the shover if it is free.
+        if (is_shove_push(e)) {
+            const Vec2i sp = pos(q.actor), tp = pos(e.actor);
+            const Vec2i d{(tp.x > sp.x) - (tp.x < sp.x), (tp.y > sp.y) - (tp.y < sp.y)};
+            const Vec2i dest{tp.x + d.x, tp.y + d.y};
+            if ((d.x != 0 || d.y != 0) && free_for(e.actor, dest)) {
+                place(e.actor, dest);
+                release_out_of_reach(e.actor);
+            }
+            continue;
+        }
+        if (e.kind == rules5e::EventKind::Moved && e.reaction_depth == 0 && q.kind == ActionKind::Move && e.actor == q.actor && to) {
+            const Vec2i from = pos(q.actor);
+            if (move_tile(q.actor, *to, evs))   // drag: creatures the mover holds come along (same step, else into the vacated tile)
+                for (CombatantId held : rules5e::grappled_by(state_, q.actor)) {
+                    const Vec2i hp = pos(held);
+                    const Vec2i same{hp.x + to->x - from.x, hp.y + to->y - from.y};
+                    std::optional<Vec2i> drag_to;
+                    if (same != hp && free_for(held, same)) drag_to = same;
+                    else if (distance_tiles(q.actor, held) > 1 && free_for(held, from)) drag_to = from;
+                    if (drag_to) {   // v8: a Moved{actor = held, target = grappler, a = feet, c = drag} precedes its TileMoved
+                        SimEvent dm;
+                        dm.kind = SimEvent::Kind::Rules;
+                        const int32_t ft = 5 * std::max(std::abs(drag_to->x - hp.x), std::abs(drag_to->y - hp.y));
+                        dm.rules = {rules5e::EventKind::Moved, held, q.actor, ft, 0, kMovedDrag, 0};
+                        events_.push_back(dm);
+                        place(held, *drag_to);
+                    }
+                    release_out_of_reach(held);
+                }
+            continue;
+        }
         if (e.kind == rules5e::EventKind::Moved) {
-            if (e.reaction_depth == 0 && q.kind == ActionKind::Move && e.actor == q.actor && to) move_tile(q.actor, *to, evs);
-            else if (e.reaction_depth > 0 && std::find(fired.begin(), fired.end(), e.actor) != fired.end())
+            if (e.reaction_depth > 0 && std::find(fired.begin(), fired.end(), e.actor) != fired.end())
                 if (auto d = readied_destination(e.actor)) {
                     if (TilePos* p = reg_->get<TilePos>(entity(e.actor))) { p->x = d->x; p->y = d->y; }
                     SimEvent se;
@@ -595,6 +679,17 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
         }
         if (e.kind == rules5e::EventKind::ReadyTriggered) fired.push_back(e.actor);
     }
+    // R-G8 monster grapple riders (on_hit kind "grapple"): a hit by the actor's own Attack with that attack grapples the target.
+    if (q.kind == ActionKind::Attack && q.special == 0)
+        if (const Archetype* arch = archetype(q.actor))
+            if (auto g = arch->grapple_on_hit.find(q.attack_index); g != arch->grapple_on_hit.end())
+                for (const auto& e : evs)
+                    if (e.kind == rules5e::EventKind::AttackResolved && e.reaction_depth == 0 && e.actor == q.actor && (e.c & 1)) {
+                        std::vector<rules5e::Event> gev;
+                        rules5e::grapple(state_, q.actor, e.target, g->second, gev);
+                        apply_rules_events(gev);
+                        break;
+                    }
     if (q.kind == ActionKind::CastSpell) {   // v5: where each affected creature stood
         bool cast = false;
         // A depth-0 SpellCast, or ActionUsed for a non-spell action (SpellDef::is_spell == false; no SpellCast).
@@ -726,7 +821,13 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
         req.as_bonus_action = f->cost == FeatureCost::BonusAction;   // rules read FeatureSpec::cost when a spec exists
         req.heal_dice = f->heal;   // zero unless the hook set a heal
     }
-    if (req.kind == ActionKind::Attack) {
+    if (req.kind == ActionKind::Attack && req.special != 0) {   // R-G8 grapple / shove / escape: a creature within 5 ft
+        if (req.special != 4 || req.target != 0) {
+            if (!rules5e::find(state_, req.target)) { r.error = "bad target"; return r; }
+            req.target_within_5ft = distance_tiles(actor, req.target) <= 1;
+            if (!req.target_within_5ft && req.special != 4) { r.error = "target not within 5 ft"; return r; }
+        }
+    } else if (req.kind == ActionKind::Attack) {
         const auto* a = rules5e::find(state_, actor);
         if (!a || req.attack_index >= a->attacks.size() || !rules5e::find(state_, req.target)) {
             r.error = "bad attack";
@@ -753,6 +854,14 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
             req.target = req.targets[0];
             derived_area_ = true;
             aim_to_ = to;
+        }
+        // R-G8 Charmed: no harmful spell (attack or save) may include the recorded charmer.
+        if (const CombatantId charmer = rules5e::condition_source(state_, actor, rules5e::Condition::Charmed)) {
+            const auto* def = spells_->find(req.spell_id);
+            const bool harmful = def->kind == rules5e::SpellEffectKind::SpellAttack || def->kind == rules5e::SpellEffectKind::Save;
+            bool hits = req.target == charmer;
+            for (CombatantId id : req.targets) hits = hits || id == charmer;
+            if (harmful && hits) { r.error = "charmed: cannot target the charmer with a harmful spell"; derived_area_ = false; return r; }
         }
         const CombatantId first = !req.targets.empty() ? req.targets[0] : req.target;
         if (!rules5e::find(state_, first)) { r.error = "bad target"; return r; }
@@ -821,6 +930,11 @@ SubmitResult Combat::do_step(Vec2i to) {
             if (!grid_.walkable(t)) { r.error = "tile not walkable"; return r; }
             if (std::find(occ.begin(), occ.end(), t) != occ.end()) { r.error = "tile occupied"; return r; }
         }
+    // R-G8 Frightened: no step that ends closer to the recorded source of the fear.
+    if (const CombatantId src = rules5e::condition_source(state_, mover, rules5e::Condition::Frightened)) {
+        const Spot ss = spot(src);
+        if (rect_distance(to, fp, ss.p, ss.n) < rect_distance(from, fp, ss.p, ss.n)) { r.error = "frightened: cannot move closer to the source"; return r; }
+    }
     const int cost = grid_.move_cost_ft(from, to, fp);
     if (cost > state_.budget.movement_ft) { r.error = "not enough movement"; return r; }
     ActionRequest mv{mover, ActionKind::Move};
@@ -872,6 +986,21 @@ uint64_t Combat::hash() const {
     if (rules5e::has_timed_effects(state_)) { h.byte(0xA5); h.u64(rules5e::timed_effects_digest(state_)); }
     // 0xA6: event triggers' once-per-turn / round bookkeeping (row 9a), only when some combatant has triggers.
     if (rules5e::has_trigger_state(state_)) { h.byte(0xA6); h.u64(rules5e::triggers_digest(state_)); }
+    // 0xA7 (R-G8, Director): sourced conditions, only the entries that carry Grappled (spell-applied Charmed / Frightened entries
+    // are left out so no golden moves; widen only with documented golden regeneration once a rule reads their source).
+    if (rules5e::has_sourced_conditions(state_)) {
+        bool any = false;
+        for (const auto& sc : state_.sourced) any = any || sc.condition == rules5e::Condition::Grappled;
+        if (any) {
+            h.byte(0xA7);
+            for (const auto& sc : state_.sourced) {
+                if (sc.condition != rules5e::Condition::Grappled) continue;
+                h.u32(sc.target);
+                h.u32(sc.source);
+                h.i16(sc.escape_dc);
+            }
+        }
+    }
     return h.value();
 }
 
@@ -894,6 +1023,7 @@ uint64_t Combat::log_hash() const {
         h.byte(q.ranged_hostile_within_5ft ? 1 : 0);
         h.byte(q.beyond_normal_range ? 1 : 0);
         if (q.multiattack != 0) h.byte(q.multiattack);   // folded only when used: older logs hash as before
+        if (q.special != 0) { h.byte(0xA9); h.byte(q.special); }   // R-G8 grapple / shove / escape: folded only when set
         if (q.innate) h.byte(0xA4);                       // innate CastSpell: folded only when set, under a tag byte
         h.byte(q.heal_dice.count);
         h.byte(q.heal_dice.sides);

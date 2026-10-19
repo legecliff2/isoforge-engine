@@ -65,6 +65,8 @@ struct Archetype {
     std::map<uint32_t, rules5e::FeatureSpec> feature_specs;
     // apply_modifier features (row 12): the modifier rows hooks.feature_modifiers hands to rules, by feature_id (1-based index in features)
     std::map<uint32_t, std::vector<rules5e::ModifierSpec>> feature_modifiers;
+    // on_hit[] kind "grapple" (R-G8): attack index -> escape DC; a hit by that attack grapples the target (sim calls rules5e::grapple).
+    std::map<uint8_t, int16_t> grapple_on_hit;
     std::vector<uint32_t> trigger_spell_ids;   // synthetic Save SpellDefs of area_save riders (SpellBook only, not spells_known)
     std::vector<std::string> forward_compat;         // monster@4 / character@4 "forward_compat" flags: listed, ignored
     CreatureSize size = CreatureSize::Medium;        // stat block "size"
