@@ -1739,6 +1739,30 @@ today; the PR 2 fields above (`upcast_size_ft`, `ring_size_ft`, `sided`, `side_f
 `zone: unknown key ...` until T&C adds them to `schemas/spell/v1.schema.json` / `check_spell_zone`, and the loader gains them in
 the same PR.
 
+### 7.2n Slot recovery feature kind: Arcane Recovery, Natural Recovery (rules side) and hand-off
+
+Rules (`engine/rules/include/rules5e/rest.hpp`, on top of the R-G16 `recover_spell_slots` / `recovery_budget` of 7.2h):
+
+- `SlotRecoverySpec { feature_id, class_level, max_slot_level = 5, uses = 1 }`; `slot_recovery_budget(spec)` = ceil(class_level / 2).
+- `slot_recovery_uses(actor, spec)` -> the `FeatureUses` row to register (max = `uses`, recharge `LongRest`): `long_rest` /
+  `recharge_tables` reset it, `short_rest` does not ("once per day"; Natural Recovery's "finish a long rest" reset).
+- `apply_slot_recovery(Combatant&, spec, std::vector<FeatureUses>&, std::array<uint8_t,10> add)` -> `SlotRecoveryResult`:
+  `Ok` (slots added, one use spent), or, changing nothing, `NoFeature` (no row for `(c.id, feature_id)` / class_level 0),
+  `NoUsesLeft`, `Empty` (nothing chosen), `LevelTooHigh` (a slot above `max_slot_level`), `OverBudget`, `AboveMax` (more than
+  `spell_slots_max`: only expended slots return). Checked in that order (per-level checks in ascending slot level).
+- No events, no rng, no hash tags: rests stay outside `Combat::hash` (7.2h). Goldens unchanged.
+
+Hand-off (Engine Core, `sim/rest.hpp` / `sim/content.cpp`, not edited by rules):
+
+1. Content -> spec: a feature kind `slot_recovery` on character@N features, loaded by the sim feature loader (rules' content
+   library only parses spells). Proposed keys (T&C schema): `kind: "slot_recovery"`, `class` (`wizard` | `druid`; the class
+   level comes from `classes[]`), `max_slot_level` (integer 1..9, default 5), `uses` (integer 1..255, default 1). The loader
+   sets `SlotRecoverySpec` and registers `slot_recovery_uses(id, spec)` in the roster's `features` table.
+2. Short rest: after `eng::sim::short_rest(roster, id, ...)` succeeds, call
+   `rules5e::apply_slot_recovery(combatant, spec, roster.features, chosen)` with the caller's choice (sim AI / UI input at
+   short-rest time); a non-`Ok` result is a refused choice, report it to the caller.
+3. Long rest: nothing extra; `long_rest` resets the row through the roster's `RestTables`.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain

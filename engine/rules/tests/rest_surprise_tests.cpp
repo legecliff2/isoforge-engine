@@ -243,3 +243,61 @@ TEST_CASE("recover_spell_slots (Arcane / Natural Recovery): budget, level limit,
     CHECK(recover_spell_slots(w, third, budget));
     CHECK(w.spell_slots[3] == 1);
 }
+
+TEST_CASE("slot recovery feature (Arcane / Natural Recovery): budget rounding, level cap, once per day, long-rest reset") {
+    CHECK(slot_recovery_budget(SlotRecoverySpec{1, 1}) == 1);
+    CHECK(slot_recovery_budget(SlotRecoverySpec{1, 2}) == 1);
+    CHECK(slot_recovery_budget(SlotRecoverySpec{1, 3}) == 2);
+    CHECK(slot_recovery_budget(SlotRecoverySpec{1, 5}) == 3);
+    CHECK(slot_recovery_budget(SlotRecoverySpec{1, 20}) == 10);
+
+    auto w = pc(1);
+    w.spell_slots_max = {0, 4, 3, 3, 3, 2, 1, 0, 0, 0};
+    w.spell_slots = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    const SlotRecoverySpec arcane{77, 12};   // budget 6, max level 5, 1 use
+    std::vector<FeatureUses> rows{slot_recovery_uses(1, arcane)};
+    CHECK(rows[0].recharge == FeatureRecharge::LongRest);
+    CHECK(rows[0].max == 1);
+    const RestTables tables{&rows, nullptr, nullptr};
+
+    std::array<uint8_t, 10> none{};
+    CHECK(apply_slot_recovery(w, arcane, rows, none) == SlotRecoveryResult::Empty);
+    std::array<uint8_t, 10> sixth{}; sixth[6] = 1;
+    CHECK(apply_slot_recovery(w, arcane, rows, sixth) == SlotRecoveryResult::LevelTooHigh);
+    std::array<uint8_t, 10> over{}; over[5] = 1; over[2] = 1;   // 7 > 6
+    CHECK(apply_slot_recovery(w, arcane, rows, over) == SlotRecoveryResult::OverBudget);
+    std::array<uint8_t, 10> above{}; above[1] = 5;              // max 4
+    CHECK(apply_slot_recovery(w, arcane, rows, above) == SlotRecoveryResult::AboveMax);
+    const SlotRecoverySpec other{78, 12};
+    CHECK(apply_slot_recovery(w, other, rows, none) == SlotRecoveryResult::NoFeature);
+    CHECK(rows[0].used == 0);
+    CHECK(w.spell_slots == std::array<uint8_t, 10>{});
+
+    std::array<uint8_t, 10> ok{}; ok[5] = 1; ok[1] = 1;         // exactly 6
+    CHECK(apply_slot_recovery(w, arcane, rows, ok) == SlotRecoveryResult::Ok);
+    CHECK(w.spell_slots[5] == 1); CHECK(w.spell_slots[1] == 1); CHECK(rows[0].used == 1);
+    std::array<uint8_t, 10> one{}; one[1] = 1;
+    CHECK(apply_slot_recovery(w, arcane, rows, one) == SlotRecoveryResult::NoUsesLeft);   // once per day
+    CHECK(w.spell_slots[1] == 1);
+
+    rng::Rng rr(7, 2);
+    REQUIRE(short_rest(w, rr, 0, tables).ok);
+    CHECK(rows[0].used == 1);                                   // a short rest does not reset it
+    CHECK(apply_slot_recovery(w, arcane, rows, one) == SlotRecoveryResult::NoUsesLeft);
+    REQUIRE(long_rest(w, tables).ok);
+    CHECK(rows[0].used == 0);                                   // long rest resets
+    w.spell_slots[1] = 0;
+    CHECK(apply_slot_recovery(w, arcane, rows, one) == SlotRecoveryResult::Ok);
+
+    // Natural Recovery: druid 3 -> budget 2
+    auto d = pc(2);
+    d.spell_slots_max = {0, 4, 2, 0, 0, 0, 0, 0, 0, 0};
+    d.spell_slots = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    const SlotRecoverySpec natural{79, 3};
+    rows.push_back(slot_recovery_uses(2, natural));
+    std::array<uint8_t, 10> three{}; three[1] = 1; three[2] = 1;
+    CHECK(apply_slot_recovery(d, natural, rows, three) == SlotRecoveryResult::OverBudget);
+    std::array<uint8_t, 10> two{}; two[2] = 1;
+    CHECK(apply_slot_recovery(d, natural, rows, two) == SlotRecoveryResult::Ok);
+    CHECK(rows[0].used == 1);   // the wizard's row is untouched
+}
