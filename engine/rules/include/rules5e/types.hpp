@@ -229,6 +229,32 @@ struct Reaction {
     uint8_t attack_index = 0;                // Attack: index into Combatant::attacks (Riposte)
 };
 
+// ---- Timed modifiers (version-bump batch, row 12; docs/proposals/VERSION_BUMP_BATCH.md section 6) ----
+// A sourced, timed change to one number or roll. Integers only. `bonus_table` is resolved by the loader into `bonus`.
+enum class ModStat : uint8_t { AttackRoll, Save, AbilityCheck, Ac, Speed, Damage, TempHp, Resistance, AttacksAgainst };
+enum class ModAppliesTo : uint8_t { Self, Target, AlliesWithin30 };
+struct ModifierSpec {
+    uint32_t id = 0;                     // stable id of this modifier (the a of ModifierApplied / ModifierExpired)
+    uint32_t source = 0;                 // spell / feature id (concentration ends modifiers of the source)
+    ModStat stat = ModStat::AttackRoll;
+    int16_t bonus = 0;                   // flat; Ac / TempHp use only this
+    DiceExpr die{0, 0, 0};               // rolled at the moment of the roll (Bless 1d4); one rng draw per die, only if present
+    int8_t die_mult = 1;                 // +1 / -1 (Bane)
+    RollMode mode = RollMode::Normal;    // Advantage / Disadvantage (AttackRoll, Save, AbilityCheck, AttacksAgainst)
+    uint8_t speed_num = 1, speed_den = 1;// Speed: speed * num / den (half 1/2, double 2/1)
+    DamageType damage_type = DamageType::Force;
+    bool has_damage_type = false;        // Resistance: required; Damage: the type of the extra damage (else the weapon's)
+    Ability ability = Ability::Str;
+    bool has_ability = false;            // Save / AbilityCheck scope (else all)
+    uint8_t scope = 0;                   // Damage: 0 any weapon attack, 1 melee only (Rage), 2 ranged only
+    ModAppliesTo applies_to = ModAppliesTo::Target;
+    uint8_t expiry = 0;                  // 0 none (until rest / concentration), 1 rounds, 2 end of the target's next turn
+    uint16_t rounds = 0;                 // expiry == 1
+    bool until_caster_turn = false;      // ends at the start of the caster's next turn (Shield-like durations)
+    bool concentration = false;          // ends when the caster's concentration on `source` ends
+    bool stack = false;                  // false: replaces a modifier with the same id on the same target
+};
+
 struct Combatant {
     CombatantId id;
     uint8_t  team;
@@ -290,7 +316,8 @@ struct Combatant {
     // index in `triggers`, valid only while the stamp matches), kept on the owner because a turn limit also covers
     // reactions on other creatures' turns.
     std::vector<Trigger> triggers;
-    std::vector<Reaction> reactions;       // row 11: mechanical reactions (Damaged / AllyAttacked windows)
+    std::vector<Reaction> reactions;
+    uint32_t mod_resist = 0;               // row 12: damage types resisted through active modifiers (cache, rules-maintained)       // row 11: mechanical reactions (Damaged / AllyAttacked windows)
     uint32_t trigger_turn_mask = 0, trigger_turn_stamp = 0;       // stamp = round << 16 | turn_index
     uint32_t trigger_round_mask = 0; uint16_t trigger_round_stamp = 0;
     bool death_triggers_done = false;   // 9b: this creature's death triggers have been processed

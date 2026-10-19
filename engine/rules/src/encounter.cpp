@@ -36,6 +36,81 @@ void kill(Combatant& c, std::vector<Event>& ev) {
     emit(ev, EventKind::CombatantDied, c.id);
 }
 
+
+// ---- Timed modifiers (row 12) ----
+void refresh_mod_cache(EncounterState& s) {
+    for (auto& c : s.combatants) c.mod_resist = 0;
+    for (const auto& m : s.modifiers)
+        if (m.spec.stat == ModStat::Resistance && m.spec.has_damage_type)
+            for (auto& c : s.combatants) if (c.id == m.target) c.mod_resist |= bit(m.spec.damage_type);
+}
+
+bool mod_in_scope(const ModifierSpec& m, ModStat st, int ability) {
+    if (m.stat != st) return false;
+    return !(m.has_ability && ability >= 0 && int(m.ability) != ability);
+}
+
+// Advantage / disadvantage sources from the modifiers of `id` for `st` (AttackRoll, Save, AbilityCheck, AttacksAgainst).
+void mod_modes(const EncounterState& s, CombatantId id, ModStat st, int ability, bool& adv, bool& dis) {
+    for (const auto& m : s.modifiers) {
+        if (m.target != id || !mod_in_scope(m.spec, st, ability)) continue;
+        if (m.spec.mode == RollMode::Advantage) adv = true;
+        else if (m.spec.mode == RollMode::Disadvantage) dis = true;
+    }
+}
+
+// Dice of the modifiers of `id` for `st`, rolled now in application order (one rng draw per die, none without one).
+int mod_roll(EncounterState& s, CombatantId id, ModStat st, int ability) {
+    int total = 0;
+    for (const auto& m : s.modifiers) {
+        if (m.target != id || !mod_in_scope(m.spec, st, ability) || m.spec.die.count == 0) continue;
+        total += m.spec.die_mult * roll_dice(s.rng, m.spec.die, false);
+    }
+    return total;
+}
+
+void remove_modifier(EncounterState& s, std::size_t i, int reason, std::vector<Event>& ev) {
+    const ActiveModifier m = s.modifiers[i];
+    s.modifiers.erase(s.modifiers.begin() + std::ptrdiff_t(i));
+    emit(ev, EventKind::ModifierExpired, m.caster, m.target, int32_t(m.spec.id), reason);
+    if (m.spec.stat == ModStat::Resistance) refresh_mod_cache(s);
+}
+
+// reason: 0 duration ran out, 1 concentration ended, 2 replaced by a same-id modifier
+void tick_modifiers_round_start(EncounterState& s, std::vector<Event>& ev) {
+    for (std::size_t i = 0; i < s.modifiers.size();) {
+        if (tick_round_start(s.modifiers[i].timed)) remove_modifier(s, i, 0, ev); else ++i;
+    }
+}
+void tick_modifiers_turn_end(EncounterState& s, CombatantId cid, std::vector<Event>& ev) {
+    for (std::size_t i = 0; i < s.modifiers.size();) {
+        if (s.modifiers[i].target == cid && tick_target_turn_end(s.modifiers[i].timed)) remove_modifier(s, i, 0, ev); else ++i;
+    }
+}
+void drop_caster_turn_modifiers(EncounterState& s, CombatantId caster, std::vector<Event>& ev) {
+    for (std::size_t i = 0; i < s.modifiers.size();) {
+        if (s.modifiers[i].caster == caster && s.modifiers[i].spec.until_caster_turn) remove_modifier(s, i, 0, ev); else ++i;
+    }
+}
+void drop_concentration_modifiers(EncounterState& s, CombatantId caster, uint32_t source, std::vector<Event>& ev) {
+    for (std::size_t i = 0; i < s.modifiers.size();) {
+        const auto& m = s.modifiers[i];
+        if (m.caster == caster && m.spec.concentration && m.spec.source == source) remove_modifier(s, i, 1, ev); else ++i;
+    }
+}
+
+// d20 saving throw with modifiers: modes merge, then flat bonus and dice (drawn after the d20, only if a die exists).
+SaveResult save_roll(EncounterState& s, const Combatant& t, Ability ab, int dc, RollMode mode, const SaveSource* src = nullptr) {
+    bool adv = mode == RollMode::Advantage, dis = mode == RollMode::Disadvantage;
+    mod_modes(s, t.id, ModStat::Save, int(ab), adv, dis);
+    const RollMode m = combine_modes(adv, dis);
+    SaveResult r = src ? saving_throw(s.rng, t, ab, dc, m, *src) : saving_throw(s.rng, t, ab, dc, m);
+    if (r.auto_fail) return r;
+    const int add = modifier_flat(s, t.id, ModStat::Save, int(ab)) + mod_roll(s, t.id, ModStat::Save, int(ab));
+    if (add != 0) { r.roll.total = int16_t(r.roll.total + add); r.success = r.roll.total >= dc; }
+    return r;
+}
+
 void check_end(EncounterState& s, std::vector<Event>& ev) {
     if (s.ended) return;
     auto o = s.hooks.end_condition ? s.hooks.end_condition(s) : default_end_condition(s);
@@ -107,6 +182,7 @@ void end_concentration(EncounterState& s, CombatantId caster, std::vector<Event>
     const uint32_t sp = c->concentration_spell;
     c->concentration_spell = 0;
     emit(ev, EventKind::ConcentrationEnded, caster, 0, int32_t(sp));
+    drop_concentration_modifiers(s, caster, sp, ev);
     for (std::size_t i = 0; i < s.effects.size();) {
         const auto& e = s.effects[i];
         if (e.caster == caster && e.concentration && e.spell_id == sp) end_effect(s, i, ev);
@@ -128,7 +204,8 @@ void repeat_saves(EncounterState& s, CombatantId cid, RepeatSave timing, std::ve
         auto it = std::find_if(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
             return o.spell_id == e.spell_id && o.caster == e.caster && o.target == e.target; });
         if (it == s.effects.end()) continue;
-        auto r = saving_throw(s.rng, *c, e.save_ability, e.dc, RollMode::Normal, SaveSource{true, 0, 0});   // an ongoing spell effect
+        const SaveSource ssrc{true, 0, 0};
+        auto r = save_roll(s, *c, e.save_ability, e.dc, RollMode::Normal, &ssrc);   // an ongoing spell effect
         emit(ev, EventKind::SavingThrowRolled, cid, CombatantId(e.save_ability), r.roll.natural, r.roll.total, int32_t(r.success));
         if (!r.success) continue;
         end_effect(s, std::size_t(it - s.effects.begin()), ev);
@@ -170,6 +247,7 @@ void tick_effects_round_start(EncounterState& s, std::vector<Event>& ev) {
     for (auto& e : s.effects)
         if (tick_round_start(e.timed)) gone.push_back({e.spell_id, {e.caster, e.target}});
     expire_effects(s, gone, ev);
+    tick_modifiers_round_start(s, ev);
 }
 
 // End of `cid`'s turn: EndOfTargetNextTurn timers on `cid` tick.
@@ -178,6 +256,7 @@ void tick_effects_turn_end(EncounterState& s, CombatantId cid, std::vector<Event
     for (auto& e : s.effects)
         if (e.target == cid && tick_target_turn_end(e.timed)) gone.push_back({e.spell_id, {e.caster, e.target}});
     expire_effects(s, gone, ev);
+    tick_modifiers_turn_end(s, cid, ev);
 }
 
 // SRD: concentration ends when the caster is incapacitated or dies.
@@ -417,7 +496,7 @@ bool predicate_holds(EncounterState& s, Combatant& owner, const Combatant& subje
     case PredicateKind::Save: {   // the owner rolls: a = Ability, b = DC (or the base with mask bit 0 = dc_from_damage)
         const int dc = int(p.b) + ((p.mask & 1u) ? x.dmg : 0);
         const Ability ab = Ability(p.a);
-        auto r = saving_throw(s.rng, owner, ab, dc);
+        auto r = save_roll(s, owner, ab, dc, RollMode::Normal);
         emit(ev, EventKind::SavingThrowRolled, owner.id, CombatantId(ab), r.roll.natural, r.roll.total, int32_t(r.success));
         if (!r.success) failed_save = true;
         return r.success;
@@ -681,7 +760,7 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
         if (t.dead || t.hp <= 0) end_concentration(s, t.id, ev);
         else {
             const int dc = std::max(10, applied.dealt / 2);
-            auto r = saving_throw(s.rng, t, Ability::Con, dc);
+            auto r = save_roll(s, t, Ability::Con, dc, RollMode::Normal);
             emit(ev, EventKind::SavingThrowRolled, t.id, CombatantId(Ability::Con), r.roll.natural, r.roll.total,
                  int32_t(r.success) | 2);
             if (!r.success) end_concentration(s, t.id, ev);
@@ -808,8 +887,17 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
     const bool protected_by_ally = ally_attacked_window(s, ctx, a, t, atk.ranged, spell_id, ev);   // Protection-style reactions
     actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft) || protected_by_ally;   // combined with conditions in one place
+    if (!s.modifiers.empty()) {   // timed modifiers (row 12): sources merged into the one advantage/disadvantage resolution
+        bool madv = false, mdis = false;
+        mod_modes(s, a.id, ModStat::AttackRoll, -1, madv, mdis);
+        mod_modes(s, t.id, ModStat::AttacksAgainst, -1, madv, mdis);
+        if (madv) actx.mode = RollMode::Advantage;
+        if (mdis) actx.extra_disadvantage = true;
+        actx.cover_ac_bonus = int8_t(std::clamp(int(actx.cover_ac_bonus) + modified_ac_bonus(s, t.id), -128, 127));
+    }
     const RollMode atk_mode = attack_roll_mode(a, t, actx);
-    D20Roll roll = roll_d20(s.rng, atk.to_hit, atk_mode);
+    D20Roll roll = roll_d20(s.rng, int(atk.to_hit) + modifier_flat(s, a.id, ModStat::AttackRoll), atk_mode);
+    if (!s.modifiers.empty()) roll.total = int16_t(roll.total + mod_roll(s, a.id, ModStat::AttackRoll, -1));
     bool crit = false;
     bool hit = evaluate_hit(roll, t, actx, crit);
     if (hit) {
@@ -834,12 +922,23 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         const HitRiders riders = fire_hit_triggers(s, ctx, a, t, atk, spell_id != 0, atk_mode, ally_near_target, crit, roll, ev);
         int dmg = roll_dice(s.rng, atk.damage, crit);
         if (dmg < 0) dmg = 0;
-        if (!riders.pieces.empty()) {
+        std::vector<std::pair<int, DamageType>> modp;   // Damage modifiers (Rage, Hunter's Mark): weapon attacks only
+        if (spell_id == 0 && !s.modifiers.empty()) {
+            for (const auto& m : s.modifiers) {
+                if (m.target != a.id || m.spec.stat != ModStat::Damage) continue;
+                if ((m.spec.scope == 1 && atk.ranged) || (m.spec.scope == 2 && !atk.ranged)) continue;
+                int amt = m.spec.bonus;
+                if (m.spec.die.count > 0) amt += m.spec.die_mult * roll_dice(s.rng, m.spec.die, crit);
+                modp.push_back({std::max(0, amt), m.spec.has_damage_type ? m.spec.damage_type : atk.type});
+            }
+        }
+        if (!riders.pieces.empty() || !modp.empty()) {
             std::vector<DamagePiece> parts{{int16_t(dmg), atk.type}};
             for (const DamagePart& p : atk.extra_damage)
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.dice, crit))), p.type});
             for (const HitRiderPiece& r : riders.pieces)
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, r.dice, crit))), r.same_as_weapon ? atk.type : r.type});
+            for (const auto& mp : modp) parts.push_back({int16_t(mp.first), mp.second});
             damage_creature(s, t, apply_damage_parts(t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
         } else if (atk.extra_damage.empty()) {
             damage_creature(s, t, apply_damage(t, int16_t(dmg), atk.type, atk.qualifiers), crit, ev, &tsrc, &ctx);
@@ -976,6 +1075,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         emit(ev, EventKind::ReadyExpired, c.id);
     }
     emit(ev, EventKind::TurnStarted, c.id, 0, s.round);
+    drop_caster_turn_modifiers(s, c.id, ev);
     repeat_saves(s, c.id, RepeatSave::StartOfTurn, ev);
     if (dies_of_exhaustion(c) && !c.dead) kill(c, ev);
     if (!c.dead && c.regeneration.amount > 0) {   // Regeneration (troll, vampire spawn)
@@ -1031,7 +1131,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         }
     }
     bool act = can_act(c);
-    s.budget = TurnBudget{act, act, act, int16_t(c.hp > 0 ? effective_speed(c) : 0), 0, 0, 0};
+    s.budget = TurnBudget{act, act, act, int16_t(c.hp > 0 ? modified_speed(s, c) : 0), 0, 0, 0};
     check_end(s, ev);
 }
 
@@ -1118,7 +1218,16 @@ CheckResult roll_check(EncounterState& s, Combatant& c, Skill k, int dc, RollMod
         c.check_helped_by = 0;
         mode = combine_modes(true, mode == RollMode::Disadvantage);
     }
+    {   // modifiers: modes merge, then flat bonus and dice after the d20
+        bool adv = mode == RollMode::Advantage, dis = mode == RollMode::Disadvantage;
+        mod_modes(s, c.id, ModStat::AbilityCheck, int(skill_ability(k)), adv, dis);
+        mode = combine_modes(adv, dis);
+    }
     auto r = skill_check(s.rng, c, k, dc, mode);
+    if (const int add = modifier_flat(s, c.id, ModStat::AbilityCheck, int(skill_ability(k))) + mod_roll(s, c.id, ModStat::AbilityCheck, int(skill_ability(k)))) {
+        r.roll.total = int16_t(r.roll.total + add);
+        r.success = r.roll.total >= dc;
+    }
     emit(ev, EventKind::CheckRolled, c.id, CombatantId(k), r.roll.natural, r.roll.total,
          int32_t(r.success) | (int32_t(helped) << 1));
     return r;
@@ -1195,7 +1304,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (t->dead) continue;
             SaveSource src{def.magical, def.applies_condition ? bit(def.condition) : 0u,
                            (def.dice.count > 0 || def.dice.bonus > 0) ? bit(def.damage_type) : 0u};
-            auto r = saving_throw(s.rng, *t, def.save_ability, dc, RollMode::Normal, src);
+            auto r = save_roll(s, *t, def.save_ability, dc, RollMode::Normal, &src);
             emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(def.save_ability), r.roll.natural, r.roll.total,
                  int32_t(r.success));
             int dealt = r.success ? (def.on_save == OnSave::Half ? dmg / 2 : 0) : dmg;
@@ -1244,6 +1353,27 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                                                   make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id)});
             affected.push_back(t);
             applied = true;
+        }
+        if (def.concentration && applied) a.concentration_spell = def.id;
+        break;
+    }
+    case SpellEffectKind::ApplyModifier: {   // timed modifier on each target (applies_to Self: the caster)
+        ModifierSpec m = def.modifier;
+        m.source = def.id; m.concentration = def.concentration;
+        std::vector<Combatant*> to = T;
+        if (m.applies_to == ModAppliesTo::Self) to = {&a};
+        else if (m.applies_to == ModAppliesTo::AlliesWithin30 && s.hooks.area_targets) {
+            SpellDef area; area.area = AreaShape::Sphere; area.area_size_ft = 30;
+            to.clear();
+            for (CombatantId id : s.hooks.area_targets(s, a, area)) {
+                Combatant* c = find_mut(s, id);
+                if (c && !c->dead && c->id != a.id && c->team == a.team) to.push_back(c);
+            }
+        }
+        bool applied = false;
+        for (Combatant* t : to) {
+            if (t->dead) continue;
+            if (apply_modifier(s, a.id, t->id, m, ev)) { affected.push_back(t); applied = true; }
         }
         if (def.concentration && applied) a.concentration_spell = def.id;
         break;
@@ -1321,7 +1451,7 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
         for (Combatant* t : T) if (t == &a) return fail("bad target");
         break;
     }
-    case SpellEffectKind::Save: case SpellEffectKind::Heal: case SpellEffectKind::ApplyCondition:
+    case SpellEffectKind::Save: case SpellEffectKind::Heal: case SpellEffectKind::ApplyCondition: case SpellEffectKind::ApplyModifier:
         if ((def.area == AreaShape::None && int(T.size()) > scaled_targets(def, lvl)) || !distinct())
             return fail("too many targets");
         break;
@@ -1671,6 +1801,22 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
         s.budget = b;
         if (fu && fu->max > 0) ++fu->used;
         emit(out.events, EventKind::FeatureUsed, a.id, 0, int32_t(req.feature_id), req.as_bonus_action ? 1 : 0);
+        if (s.hooks.feature_modifiers) {   // Rage, Bardic Inspiration token, Leadership (row 12)
+            for (ModifierSpec m : s.hooks.feature_modifiers(s, a, req.feature_id)) {
+                if (m.source == 0) m.source = req.feature_id;
+                std::vector<CombatantId> to;
+                if (m.applies_to == ModAppliesTo::Self) to.push_back(a.id);
+                else if (m.applies_to == ModAppliesTo::Target) { if (req.target != 0) to.push_back(req.target); }
+                else if (s.hooks.area_targets) {
+                    SpellDef area; area.area = AreaShape::Sphere; area.area_size_ft = 30;
+                    for (CombatantId id : s.hooks.area_targets(s, a, area)) {
+                        const Combatant* c = find(s, id);
+                        if (c && !c->dead && c->id != a.id && c->team == a.team) to.push_back(id);
+                    }
+                }
+                for (CombatantId id : to) apply_modifier(s, a.id, id, m, out.events);
+            }
+        }
         if (req.heal_dice.count > 0 || req.heal_dice.bonus > 0) {
             int amount = roll_dice(s.rng, req.heal_dice, false);
             if (amount > 0) {
@@ -2112,6 +2258,70 @@ uint64_t triggers_digest(const EncounterState& s, uint64_t h) {
         for (const auto& t : c.triggers) { u32(t.id); byte(uint8_t(t.on)); byte(uint8_t(t.limit)); byte(t.choice); }
         byte(c.death_triggers_done ? 1 : 0);
         u32(c.trigger_turn_mask); u32(c.trigger_turn_stamp); u32(c.trigger_round_mask); u32(c.trigger_round_stamp);
+    }
+    return h;
+}
+
+}  // namespace rules5e
+
+namespace rules5e {
+
+bool apply_modifier(EncounterState& s, CombatantId caster, CombatantId target, const ModifierSpec& spec, std::vector<Event>& ev) {
+    Combatant* t = find_mut(s, target);
+    if (!t) return false;
+    int32_t magnitude = spec.bonus;
+    if (magnitude == 0 && spec.die.count > 0) magnitude = int32_t(spec.die.count) * 100 + spec.die.sides;
+    else if (magnitude == 0 && spec.mode != RollMode::Normal) magnitude = int32_t(spec.mode);
+    else if (magnitude == 0 && spec.stat == ModStat::Speed) magnitude = int32_t(spec.speed_num) * 100 + spec.speed_den;
+    if (spec.stat == ModStat::TempHp) {   // granted at once; the larger pool is kept; no record
+        if (spec.bonus > t->temp_hp) t->temp_hp = spec.bonus;
+        emit(ev, EventKind::ModifierApplied, caster, target, int32_t(spec.id), int32_t(spec.stat), magnitude);
+        return true;
+    }
+    if (!spec.stack) {
+        for (std::size_t i = 0; i < s.modifiers.size();) {
+            if (s.modifiers[i].spec.id == spec.id && s.modifiers[i].target == target) remove_modifier(s, i, 2, ev); else ++i;
+        }
+    }
+    ActiveModifier m;
+    m.spec = spec; m.caster = caster; m.target = target;
+    m.timed = make_timed(Expiry(spec.expiry), spec.rounds, current_actor(s) == target);
+    s.modifiers.push_back(m);
+    if (spec.stat == ModStat::Resistance) refresh_mod_cache(s);
+    emit(ev, EventKind::ModifierApplied, caster, target, int32_t(spec.id), int32_t(spec.stat), magnitude);
+    return true;
+}
+
+int modifier_flat(const EncounterState& s, CombatantId id, ModStat st, int ability) {
+    int sum = 0;
+    for (const auto& m : s.modifiers)
+        if (m.target == id && mod_in_scope(m.spec, st, ability)) sum += m.spec.bonus;
+    return sum;
+}
+
+int modified_ac_bonus(const EncounterState& s, CombatantId id) { return modifier_flat(s, id, ModStat::Ac); }
+
+int modified_speed(const EncounterState& s, const Combatant& c) {
+    int sp = effective_speed(c);
+    if (sp <= 0) return sp;
+    for (const auto& m : s.modifiers)
+        if (m.target == c.id && m.spec.stat == ModStat::Speed && m.spec.speed_den > 0) sp = sp * m.spec.speed_num / m.spec.speed_den;
+    return sp;
+}
+
+bool has_modifier_state(const EncounterState& s) { return !s.modifiers.empty(); }
+
+uint64_t modifiers_digest(const EncounterState& s, uint64_t h) {
+    auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
+    auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) byte(uint8_t(v >> (8 * i))); };
+    for (const auto& m : s.modifiers) {   // application order is deterministic
+        const ModifierSpec& p = m.spec;
+        u32(p.id); u32(p.source); u32(m.caster); u32(m.target);
+        byte(uint8_t(p.stat)); u32(uint32_t(uint16_t(p.bonus))); byte(p.die.count); byte(p.die.sides); u32(uint32_t(uint16_t(p.die.bonus)));
+        byte(uint8_t(p.die_mult)); byte(uint8_t(p.mode)); byte(p.speed_num); byte(p.speed_den);
+        byte(uint8_t(p.damage_type)); byte(p.has_damage_type); byte(uint8_t(p.ability)); byte(p.has_ability);
+        byte(p.scope); byte(p.until_caster_turn); byte(p.concentration);
+        byte(uint8_t(m.timed.kind)); u32(uint32_t(uint16_t(m.timed.rounds_left)));
     }
     return h;
 }
