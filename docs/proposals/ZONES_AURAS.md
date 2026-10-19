@@ -244,9 +244,9 @@ Reused unchanged: `SavingThrowRolled`, `DamageDealt`, `ConditionAdded` / `Condit
   **Claimed in the implementation PR, not here.**
   - The next free tag is **0xAB**, once #112's registry fix lands. That fix moves #111's `leftover_digest` from 0xA9 to 0xAA,
     because EC #104 uses 0xA9 for `special` in `log_hash`.
-  - If #112's fix has not merged, the next free tag is 0xAA.
 - **`log_hash`:** one tag for the new request fields (`zone_move`, zone destination, `excluded` ids), folded only when set.
-  The next free tag is **0xB5**. It is also claimed in the implementation PR.
+  The tag is **0xB7**: 0xB4 is R-G9's (#112), and EC #114 moves `special` from 0xA9 to 0xB5 and claims 0xB6 for
+  `two_handed_grip`. It is also claimed in the implementation PR.
 - Membership facts that sim supplies on a `Move` request (§3) are part of the request. They need a `log_hash` fold under the same
   or another tag (Q11).
 
@@ -270,7 +270,7 @@ Reused unchanged: `SavingThrowRolled`, `DamageDealt`, `ConditionAdded` / `Condit
    - Concentration and timer endings; the request fields for membership and zone moves; `ForcedMoveResult` membership with the
      recorded-result fix (Q7).
    - Spells: **Spirit Guardians, Moonbeam (with the move), Spike Growth, Grease, Web (restrain on enter, Str escape)**.
-   - Claim `Combat::hash` 0xAB and `log_hash` 0xB5.
+   - Claim `Combat::hash` 0xAB and `log_hash` 0xB7.
 2. **Rules PR 2:** Silence (V components, thunder immunity, deafened), Stinking Cloud (action loss, completely within), Wall of
    Fire (appear, sides, end of turn), Fog Cloud and Darkness flags, and Aura of Protection and Aura of Courage (passive auras).
    Cloud of Daggers comes only if D5 says yes.
