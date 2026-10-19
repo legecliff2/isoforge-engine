@@ -1041,6 +1041,10 @@
             "$ref": "#/$defs/zone_trigger"
           },
           "description": "Trigger rows, in resolution order (ZoneTriggerRow)."
+        },
+        "needs_conscious_owner": {
+          "type": "boolean",
+          "description": "The zone / aura only functions while its owner is conscious (D7; ZoneSpec::needs_conscious_owner). Default false."
         }
       },
       "allOf": [
@@ -1067,7 +1071,8 @@
                 "flags",
                 "move",
                 "chooses_excluded",
-                "triggers"
+                "triggers",
+                "needs_conscious_owner"
               ]
             }
           }
@@ -1096,7 +1101,8 @@
                 "flags",
                 "move",
                 "chooses_excluded",
-                "triggers"
+                "triggers",
+                "needs_conscious_owner"
               ]
             }
           }

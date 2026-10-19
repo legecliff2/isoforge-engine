@@ -65,7 +65,7 @@ REACTION_EFFECT = {("ac_bonus",): (S({"kind", "bonus"}), S()),
                    ("cast",): (S({"kind", "spell"}), S()),
                    ("subtract_roll",): (S({"kind", "dice"}), S())}
 # spell@1 R-G11 zones (docs/CONTENT_CONVENTIONS.md section 4).
-_ZOPT = {"flags", "move", "chooses_excluded", "triggers"}
+_ZOPT = {"flags", "move", "chooses_excluded", "needs_conscious_owner", "triggers"}
 ZONE = {("sphere", "cube"): (S({"shape", "size_ft", "anchor"}), S(_ZOPT)),
         ("cylinder",): (S({"shape", "size_ft", "height_ft", "anchor"}), S(_ZOPT))}
 ZONE_EFFECT = {("save",): (S({"kind", "ability"}), S({"damage", "on_success", "condition", "description"})),   # damage or condition

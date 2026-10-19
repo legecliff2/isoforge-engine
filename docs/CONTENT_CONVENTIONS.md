@@ -140,9 +140,10 @@ Closed object, discriminated by `shape`; each arm is a propertyNames allow-list 
 | `flags` | non-empty array of unique names | `flags` bitmask, OR of `kZone*` | `difficult` 1, `light_obscured` 2, `heavy_obscured` 4, `magical_darkness` 8, `silence` 16, `halve_speed` 32, `opaque` 64. Named strings, never a raw integer. Omitted = 0 |
 | `move` | `{cost, feet}`, both required | `move_cost`, `move_ft` | `cost`: `action` = 1 (Moonbeam, D3), `bonus_action` = 2. `feet`: integer 5..65530, multiple of 5. Omitted = `move_cost` 0 (cannot move) |
 | `chooses_excluded` | boolean | `chooses_excluded` | Spirit Guardians. Default false |
+| `needs_conscious_owner` | boolean | `needs_conscious_owner` | the zone / aura only functions while its owner is conscious (D7; rules R-G11 PR 2). Default false. The Spirit Guardians fixture sets it |
 | `triggers` | non-empty array of trigger rows (4.2), in order | `triggers` | omitted = no rows (Fog Cloud, Darkness, Silence) |
 
-`needs_conscious_owner` (D7, feature auras) has no spell@1 key; `length_ft` arrives with `line`. Both are append-only additions.
+`length_ft` arrives with `line` (append-only).
 
 ### 4.2 `zone.triggers[]` rows (`ZoneTriggerRow`)
 
@@ -201,7 +202,7 @@ Ranges are integers only (floats are rejected: the content spec's integers-only 
 
 Fog Cloud's +20 ft radius per slot level (no upcast size), Darkness on an object, Spirit Guardians' necrotic for an evil caster
 (the fixture uses radiant), Moonbeam's shapechanger rules, Stinking Cloud's lost action (D9: no effect kind), Silence's
-deafened / thunder immunity (the `silence` flag only, R-G13), walls (`line`, Wall of Fire), feature auras (D7).
+deafened / thunder immunity (the `silence` flag only, R-G13), walls (`line`, Wall of Fire), feature auras (D7: the paladin auras are features, not spells; spell zones take `needs_conscious_owner`).
 
 Versioning: an additive spell@1 effect kind with new closed `$defs`. No tag change, no migration, no api_level gate: the old
 schema rejected kind `zone`, so no existing file can carry it (`tests/compat` and both shipped packs validate unchanged).
