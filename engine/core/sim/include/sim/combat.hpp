@@ -164,6 +164,20 @@ public:
         auto it = readied_dest_.find(id);
         return it == readied_dest_.end() ? std::nullopt : std::optional<Vec2i>(it->second);
     }
+    // R-G16 surprise (VERSION_BUMP_BATCH 7.2h hand-off (b)). Marks `ids` surprised (rules5e::apply_surprise) for round 1:
+    // each takes only EndTurn on its first turn and cannot react until that turn ends. Setup only: refused (false, *error)
+    // once any command was logged or a decision is pending, or after the encounter ended; unknown or dead ids are refused
+    // too, and nothing changes on a refusal. May be called more than once before the first command (the sets add up).
+    // rules5e reads `surprised` only from turn processing, never in begin_encounter, so marking right after create() is the
+    // same as marking before begin_encounter. Replays must pass the same set (surprised_at_start()) to replay().
+    bool apply_surprise(const std::vector<CombatantId>& ids, std::string* error = nullptr);
+    // The creatures surprised by hiders' Dexterity (Stealth) totals (rules5e::surprised_by_stealth over the current
+    // combatants; ties go to the hider). Pure; pass the result to apply_surprise.
+    std::vector<CombatantId> surprised_by_stealth(const std::vector<rules5e::StealthTotal>& hiders) const {
+        return rules5e::surprised_by_stealth(state_.combatants, hiders);
+    }
+    // The set given to apply_surprise (combatant order), kept after the flags clear: replay input, like the seed.
+    const std::vector<CombatantId>& surprised_at_start() const noexcept { return surprised_at_start_; }
     uint8_t feature_uses_left(CombatantId id, uint32_t feature_id) const;
     bool can_use_feature(CombatantId id, uint32_t feature_id) const;
 
@@ -206,7 +220,7 @@ private:
     bool move_tile(CombatantId mover, Vec2i to, const std::vector<rules5e::Event>& evs);
     friend struct CombatTestAccess;
     friend std::optional<Combat> replay(ecs::Registry&, std::span<const world::Chunk* const>, const ContentLibrary&,
-                                        uint64_t, const std::vector<LogEntry>&, std::string*);
+                                        uint64_t, const std::vector<LogEntry>&, std::string*, const std::vector<CombatantId>&);
     bool leaves_reach(CombatantId mover, Vec2i from, Vec2i to) const;
     int melee_reach_tiles(CombatantId id) const;   // 0 = no melee attack
     const Slot* slot(CombatantId id) const;
@@ -226,13 +240,17 @@ private:
     std::optional<Vec2i> ready_to_;               // destination of the Ready being resolved
     std::optional<Vec2i> aim_to_;                 // aim tile of the area CastSpell being resolved
     std::optional<Vec2i> step_to_;   // destination of the Move being resolved / paused (sim-only)
+    std::vector<CombatantId> surprised_at_start_;   // R-G16: apply_surprise input (combatant order)
 };
 
 // Replays a command log from scratch (same chunk, content and seed) into `reg`.
 // Returns the rebuilt combat, or nullopt + error if any command is rejected (desync).
+// `surprised` (R-G16): the original combat's surprised_at_start(), applied before the first entry (empty = no surprise).
 std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content,
-                             uint64_t seed, const std::vector<LogEntry>& log, std::string* error = nullptr);
+                             uint64_t seed, const std::vector<LogEntry>& log, std::string* error = nullptr,
+                             const std::vector<CombatantId>& surprised = {});
 std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
-                             uint64_t seed, const std::vector<LogEntry>& log, std::string* error = nullptr);
+                             uint64_t seed, const std::vector<LogEntry>& log, std::string* error = nullptr,
+                             const std::vector<CombatantId>& surprised = {});
 
 } // namespace eng::sim
