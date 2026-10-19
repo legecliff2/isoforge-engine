@@ -282,28 +282,49 @@ Shapes the #120 description gave that the loader does not use (loader wins): `hp
 Versioning: additive spell@1 kinds and a new `$defs`; no tag change, no migration, no api_level gate (the old schema rejected
 these kinds, so no existing file carries them; `tests/compat` and both shipped packs validate unchanged).
 
-## 7. Priced material components (Director ruling)
+## 7. Priced material components (Director ruling; contract agreed with Engine Core)
 
-A spell's material cost is spell@1 `components.m.cost_cp` (integer copper, >= 1) with `consumed` (requires `cost_cp`); the loader
-maps them to `SpellDef::material_cost_cp` / `material_consumed`, and the sim's `can_provide_components` checks them (today it only
-provides materials with no cost). Revivify: `{"text": "diamonds worth 300 gp, which the spell consumes", "cost_cp": 30000,
-"consumed": true}`.
+Content keys (all integers; additive, no tag change, no migration):
 
-A character@4 `equipment[]` item entry may carry **`value_gp`** (integer >= 0, optional, additive): the entry's value in gold.
-Per the ruling, an entry satisfies a priced material when its `item` id matches and `value_gp * 100 >= cost_cp`; the sim does not
-need an item@1 document for it:
+| where | key | shape | meaning |
+|---|---|---|---|
+| spell@1 `components.m` | `cost_cp` | integer >= 1, optional | the material's price in copper (`SpellDef::material_cost_cp`, loaded today) |
+| spell@1 `components.m` | `consumed` | boolean, needs `cost_cp` | the cast uses the material up (`SpellDef::material_consumed`, loaded today) |
+| spell@1 `components.m` | **`item`** | content id string (common@1 `content_id`: dotted lowercase, e.g. `srd51.item.diamond`), optional | the equipment id that provides the priced material. **Contract only: no loader reads it yet**; Engine Core's loader follows these key names |
+| character@4 `equipment[]` item object | **`value_gp`** | integer >= 0, optional, **default 0** | the entry's value in gold pieces |
+
+Example (Revivify, fixture `tests/validate/fixtures/spell_kinds/spells/revivify.json`) and a caster that can pay for it:
 
 ```json
-"equipment": [ {"item": "srd51.item.diamond", "value_gp": 300} ]
+"components": { "v": true, "s": true,
+                "m": { "text": "diamonds worth 300 gp, which the spell consumes", "item": "srd51.item.diamond",
+                       "cost_cp": 30000, "consumed": true } }
+
+"equipment": [ { "item": "srd51.item.diamond", "value_gp": 300 } ]
 ```
 
-Validator: an entry with `value_gp` is exempt from check 6/11 (its `item` need not resolve to an item@1); without `value_gp` an
-item still must resolve. Floats and negatives are schema errors.
+Sim semantics (agreed; implemented by Engine Core's loader / `can_provide_components` later):
 
-Open points for the sim / a follow-up:
+1. A material with no cost (`cost_cp` absent) needs nothing.
+2. A priced material (`cost_cp` > 0) is satisfied by the **first** `equipment[]` entry, in array order, whose id equals
+   `components.m.item` **exactly** (the full content id; not the last-segment suffix match used for shields / armor) and whose
+   `value_gp * 100 >= cost_cp`. The entry id is read like `equipment_entry_id`: a bare string, `{"id": ...}` or `{"item": ...}`.
+   An entry without `value_gp` counts as 0 gp, so bare strings (which cannot carry `value_gp`) never satisfy a priced material.
+   Values are **not summed** across entries: one entry has to cover the cost on its own.
+3. No `item` key on a priced material: it is unsatisfiable and the cast is refused (today's behaviour for every priced material).
+4. `consumed: true` removes that one entry (the one that satisfied the cast) from the caster's combat-local equipment state; one
+   entry per cast. Nothing is written back to the content document.
+5. No item@1 document is needed for the id (item@1 has only `weapon`, `armor` and `shield` categories, so `srd51.item.diamond` is
+   not an item@1 document; a gem / valuables category is a possible later additive arm).
 
-- spell@1 `components.m` has no item id (only `text`, `cost_cp`, `consumed`), so "id matches" needs either an optional
-  `components.m.item` content id (an additive spell@1 key, not added here because no loader reads it) or a sim-side convention.
-- item@1 has only `weapon`, `armor` and `shield` categories, so `srd51.item.diamond` is not added as an item@1 document; a
-  gem / valuables category would be a later additive arm.
-- Consumption (removing or reducing the entry when `consumed`) is sim inventory state; content only states the value.
+Validator:
+
+- `components.m.item`: schema `content_id` pattern; **no existence check** against item@1 documents (the sim requires none).
+- warning: `cost_cp` > 0 without `item` (`/components/m: cost_cp N without item: no equipment entry can provide this material,
+  so the sim refuses the cast (priced materials)`): the spell loads, but nobody can ever cast it.
+- warning: `item` without `cost_cp` (`... is ignored without cost_cp (a material with no cost needs nothing; priced
+  materials)`).
+- There is no "not loaded yet" warning for `item`: like the zone keys (section 4), it is a contract the loader is written
+  against, and valid content should validate clean.
+- character@4 `value_gp`: integer >= 0 (floats and negatives are schema errors). An equipment entry with `value_gp` is exempt from
+  check 6/11 (its `item` need not resolve to an item@1); an entry without `value_gp` must still resolve.

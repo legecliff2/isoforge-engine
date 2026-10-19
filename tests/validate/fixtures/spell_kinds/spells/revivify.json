@@ -24,6 +24,7 @@
     "s": true,
     "m": {
       "text": "diamonds worth 300 gp, which the spell consumes",
+      "item": "srd51.item.diamond",
       "cost_cp": 30000,
       "consumed": true
     }

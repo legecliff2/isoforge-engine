@@ -114,7 +114,7 @@
               "value_gp": {
                 "type": "integer",
                 "minimum": 0,
-                "description": "Value in gp of this entry (a priced material component: an entry satisfies a spell's components.m when its item id matches and value_gp * 100 >= cost_cp; Director ruling). Such an entry needs no item@1 document."
+                "description": "Value in gp of this entry, default 0. A priced material (spell@1 components.m with cost_cp and item) is provided by the first equipment entry whose id equals components.m.item exactly and whose value_gp * 100 >= cost_cp (docs/CONTENT_CONVENTIONS.md section 7). Such an entry needs no item@1 document."
               }
             }
           }
