@@ -55,7 +55,7 @@ Things that apply to many rows (so they are not repeated):
 | Cover (+2 / +5 AC **and Dexterity saves**, total cover) | NEW | `AttackContext::cover_ac_bonus` exists and is honored for attack rolls only; there is no cover bonus on Dexterity saves, and sim never computes cover (R-G13). SRD: half cover +2, three-quarters +5, to AC and Dex saves. |
 | Lighting, darkness, obscurement, darkvision/blindsight/truesight | NEW | Not modelled; sim has LOS only (R-G13). |
 | Flanking | OOS | Optional rule, not SRD core. |
-| Two-weapon fighting | NEW | R-G6. |
+| Two-weapon fighting | NEW (wiring) | Rules done (R-G6): `Combatant::bonus_attacks` option with `requires_attacks` (light weapons), `different_weapon` and off-hand `damage` dice; `ActionRequest::bonus_option`. Loader / AI pending. |
 | Grapple and shove (contested Athletics/Acrobatics) | NEW | R-G8. |
 | Flying, swimming, climbing, burrowing movement | NEW | One `speed_ft`; sim reads `speed.walk` only (T&C-G12, T&C-G14). |
 | Creature size and space (large creatures occupy 2x2) | NEW | Size is loaded (`Archetype::size`, #49) but only stored; the grid is still one tile per creature (T&C-G12, T&C-G14; footprint model in flight). |
@@ -145,7 +145,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Fighting Style: Defense (+1 AC in armor) | 1 | NEW | No AC bonus effect kind; could be baked into AC but then not de-duplicated with armor (R-G3/R-G5 `ac_bonus` static kind). |
 | Fighting Style: Great Weapon Fighting (reroll 1-2 on damage dice) | 1 | NEW | Damage reroll hook (R-G7). |
 | Fighting Style: Protection (reaction, impose disadvantage on attack vs adjacent ally) | 1 | NEW (wiring) | Rules done (#87): `AllyAttacked` window + `ImposeDisadvantage` reaction (R-G7); no content/hook compile yet (Engine Core). |
-| Fighting Style: Two-Weapon Fighting (add mod to off-hand) | 1 | NEW | R-G6. |
+| Fighting Style: Two-Weapon Fighting (add mod to off-hand) | 1 | NEW (wiring) | Rules done (R-G6): omit the off-hand `damage` override so the baked ability modifier stays. Loader pending. |
 | Second Wind | 1 | DATA | `self_heal {dice 1d10, plus fighter_level, uses 1, recharge short_rest, cost bonus_action}` (shipped). |
 | Action Surge | 2 | NEW (wiring) | Rules done (#91): `FeatureSpec::grant_actions` -> `TurnBudget::extra_actions` (R-G5). Needs the `grant_action` feature compile and a `feature_spec` hook (Engine Core). |
 | Martial Archetype: Champion, Improved Critical (crit on 19-20) | 3 | NEW | Crit range per attack/combatant (R-G5 `crit_range`). |
@@ -190,7 +190,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Unarmored Defense (10 + Dex + Con) | 1 | DATA | Baked AC. |
 | Reckless Attack | 2 | NEW | Per-attack choice: advantage for you and against you until next turn (R-G7/R-G3). |
 | Danger Sense (adv on Dex saves vs visible effects) | 2 | NEW | Conditional save advantage (T&C-G7 style trait). |
-| Primal Path: Berserker, Frenzy (extra attack as bonus action, exhaustion after) | 3 | NEW | R-G6, conditions. |
+| Primal Path: Berserker, Frenzy (extra attack as bonus action, exhaustion after) | 3 | NEW (wiring) | Rules done (R-G6): `any_melee` bonus attack with `requires_modifier` = the Rage modifier; the exhaustion at the end of Rage is not modelled (conditions). |
 | Extra Attack | 5 | NEW (wiring) | T&C-G1. |
 | Fast Movement (+10 ft) | 5 | DATA | Baked speed (`speed.walk`). Condition "no heavy armor" is the author's. |
 | **Bard** spellcasting (full caster) | 1 | DATA | |
@@ -205,9 +205,9 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Circle of the Land: Natural Recovery | 2 | NEW | Same family as Arcane Recovery (R-G16). |
 | Druidic, Land bonus cantrip | 1-2 | OOS | Language / one extra cantrip (authored). |
 | **Monk** Unarmored Defense (10 + Dex + Wis) | 1 | DATA | Baked AC. |
-| Martial Arts (d4 die, Dex for unarmed, unarmed bonus action attack) | 1 | NEW | Bonus-action attack (R-G6). Die is baked. |
+| Martial Arts (d4 die, Dex for unarmed, unarmed bonus action attack) | 1 | NEW (wiring) | Rules done (R-G6): unarmed bonus attack after the Attack action with an unarmed strike or monk weapon (`requires_attacks`). The martial-arts die is baked. Loader pending. |
 | Ki (pool = monk level, short rest) | 2 | NEW (wiring) | Pool, spend and `ResourceSpent` done in rules (#91, R-G5); `resources[]` compile at `Combat::create` pending. |
-| Flurry of Blows, Patient Defense, Step of the Wind | 2 | NEW | Ki-cost bonus actions (R-G5, R-G6). Patient Defense and Step of the Wind could use `bonus_action_grant` without a ki cost only. |
+| Flurry of Blows, Patient Defense, Step of the Wind | 2 | NEW (wiring) | Flurry of Blows rules done (R-G6): `count` 2 with the ki pool (`ResourceSpent`, spent once); Patient Defense / Step of the Wind need pool-backed Dodge / Disengage / Dash features (row 13 `FeatureSpec` covers the pool, the action grant is a `bonus_action_grant` use). |
 | Unarmored Movement (+10 ft) | 2 | DATA | Baked speed. |
 | Deflect Missiles (reaction: reduce ranged damage by 1d10 + Dex + level) | 3 | NEW (wiring) | Rules done (#87): `ReduceDamage` with `dice` (1d10 + bonus) in the `Damaged` window; the catch-and-throw option is not modelled. Compile pending. |
 | Way of the Open Hand: Open Hand Technique (rider on Flurry: prone / push / no reactions) | 3 | NEW | Rider on hit (T&C-G5, R-G9). |
@@ -494,7 +494,7 @@ Row counts are over the tables in sections 1-9 (one row per mechanic or feature;
 | 9. Monsters: stat blocks, traits, actions | 13 | 26 | 5 | 44 |
 | **Total** | **129** | **192** | **31** | **352** |
 
-"NEW (wiring)" rows (rules5e models it, content-to-sim does not carry it) are counted under NEW. Counts are as of main after #91 (and #93 for row 15); after #45, #47, #48 and #49 the totals were DATA 112 / NEW 209 / OOS 31 = 352, and before those PRs DATA 104 / NEW 217 / OOS 31. The version-bump batch moved 17 rows NEW -> DATA (conditions with a duration, condition riders from actions, area templates, duration expiry, Divine Smite, Sneak Attack, Burning Hands, Shatter, Fireball, Lightning Bolt, on-hit save riders, Recharge breath weapons, Innate Spellcasting, Charge / Pounce, Rampage, Undead Fortitude, Death Burst). A further 26 rows moved NEW -> `NEW (wiring)` (rules done, still counted NEW): see 11.5. This recount was produced by a script over the tables, which also reproduced the previous 112 / 209 / 31. "DATA (baked)" / "DATA (partial)" rows count as DATA.
+"NEW (wiring)" rows (rules5e models it, content-to-sim does not carry it) are counted under NEW. Counts are as of main after #91 (and #93 for row 15); after #45, #47, #48 and #49 the totals were DATA 112 / NEW 209 / OOS 31 = 352, and before those PRs DATA 104 / NEW 217 / OOS 31. The version-bump batch moved 17 rows NEW -> DATA (conditions with a duration, condition riders from actions, area templates, duration expiry, Divine Smite, Sneak Attack, Burning Hands, Shatter, Fireball, Lightning Bolt, on-hit save riders, Recharge breath weapons, Innate Spellcasting, Charge / Pounce, Rampage, Undead Fortitude, Death Burst). A further 26 rows moved NEW -> `NEW (wiring)` (rules done, still counted NEW): see 11.5; the bonus-action attack PR (R-G6) moved 5 more (two-weapon fighting and its style, Martial Arts, Flurry of Blows, Frenzy), still counted NEW. This recount was produced by a script over the tables, which also reproduced the previous 112 / 209 / 31. "DATA (baked)" / "DATA (partial)" rows count as DATA.
 
 ### 10.2 Spells, per spell (SRD 5.1 levels 0-3)
 
@@ -629,7 +629,7 @@ Gaps that need new rules mechanics (not just Engine Core / T&C wiring, which is 
 | 1 | R-G3 follow-ups | **Done in rules** (this PR): one-shot / until-damaged expiry (`consume`), speed reduction (`speed_sub`), AC floor (`ac_floor`), per-turn temp HP (`per_turn`), general `when` scope (attack roll, attacks against, AC, damage), and `apply_modifier` as a rider effect. Still open: Haste's restricted extra action, `when` on saves / checks, a "marked target" scope (Hunter's Mark), "frightened immunity" (Heroism) | Needs only wiring now: True Strike, Guiding Bolt, Vicious Mockery, Ray of Frost, Mage Armor, Barkskin, Heroism | done |
 | 2 | R-G5 rest | Static feature kinds `attack_bonus`, `ac_bonus`, `crit_range` | Archery, Defense, Champion Improved Critical, Dueling-style bonuses | S |
 | 3 | R-G8 | Conditions with a source; grapple / shove; swallow / engulf; crawl cost; Large-creature size limits (grapple, net) | grapple monsters, giant toad, crocodile, Turn Undead, Fear, Charm Person, Command, Hold effects with a source | M |
-| 4 | R-G6 | Bonus-action attacks (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy); `light` property use; builds on `bonus_attack_grant` (#85) | Monk, Berserker, dual wielders | M |
+| 4 | R-G6 | **Done in rules**: bonus-action attack options (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy) with prerequisites, pool spend and an off-hand damage override. Still open: Open Hand Technique riders, Frenzy's exhaustion, a rules-side `legal_actions` listing | Monk, Berserker, dual wielders need wiring only | done |
 | 5 | R-G7 rest | d20 modify / reroll windows (`RollAttack` deferred, Q6): Cutting Words, Lucky, Great Weapon Fighting, Guidance / Resistance / Bardic Inspiration spending, Evasion | Bard, Halfling, Fighter style, cantrips | M |
 | 6 | R-G15 | Spell kinds: HP-pool targeting (Sleep, Color Spray), dispel / cleanse, delayed / sustained damage (Acid Arrow, Heat Metal), resurrection (Revivify); non-concentration timed spells now have expiry | Sleep, Dispel Magic, Lesser Restoration, Revivify | S-M each |
 | 7 | R-G16 | Surprise, Hit Dice, Arcane / Natural Recovery; a rest model that makes `recharge` kinds meaningful | round-1 ambush, attrition | S-M |

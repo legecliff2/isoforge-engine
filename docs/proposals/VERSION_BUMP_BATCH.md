@@ -1163,6 +1163,32 @@ every path is the pre-row-13 one and no extra rng is drawn. The pool table, `reg
   caller sets `ActionRequest::amount` and `target`. (d) `TurnBudget::extra_actions` is a new budget field; hash it only
   if sim already hashes the budget. (e) Pools are already folded under 0xA3 (non-empty only).
 
+### 7.2b R-G6 bonus-action attacks (post-batch rules follow-up) and hand-off
+
+Rules side only (`feat/rules-bonus-attacks`); no schema change, no new event kind, goldens unchanged (nothing sets
+`bonus_attacks`; the new `ActionRequest` / `TurnBudget` fields default to 0).
+
+- `BonusAttack` rows in `Combatant::bonus_attacks`: `attack_index` (or `any_melee`), `count` (Flurry 2), `requires_attacks`
+  (bitmask: the Attack action this turn used one of those attacks), `different_weapon` (two-weapon fighting), `requires_modifier`
+  (a modifier id in force on the attacker: Frenzy's Rage), `pool` + `pool_cost` (Flurry's ki), `has_damage` + `damage` (the
+  off-hand dice without the ability modifier).
+- Request: `ActionRequest{Attack, as_bonus_action = true, bonus_option = 1 + index, attack_index}`; `attack_index` must be the
+  option's (any melee attack for `any_melee`). The first attack spends the bonus action and the pool (`ResourceSpent`);
+  the next `count - 1` attacks of the same option are free and need no new prerequisite (`TurnBudget::bonus_option` /
+  `bonus_remaining`). The Rampage grant (`bonus_attack_grant`) is unchanged.
+- `TurnBudget::attacks_used_mask` records the attack indices used by the Attack action (including Extra Attack and multiattack
+  steps; not bonus attacks); it resets with the turn. `bonus_attack_available(state, actor, option)` is the pure check.
+- **Hand-off (Engine Core / T&C).** (a) Compile: two-weapon fighting = a light off-hand attack with `requires_attacks` = the
+  light weapons, `different_weapon`, and `damage` = the dice without the ability modifier (omit `has_damage` when the Two-Weapon
+  Fighting style applies); Martial Arts = an unarmed attack with `requires_attacks` = unarmed and monk weapons; Flurry of Blows
+  = `count` 2 with the ki pool; Frenzy = `any_melee` with `requires_modifier` = the Rage modifier id. (b) Fill
+  `ActionRequest::bonus_option` from the AI / `legal_actions`-style enumeration (rules `legal_actions` does not list bonus
+  options yet); sim's `log_hash` should fold `bonus_option` when non-zero. (c) `TurnBudget` is not hashed by sim.
+- **Deviations / limits.** The off-hand damage without the modifier needs the loader to supply the dice (damage bonuses are baked
+  into `Attack::damage`). Frenzy's exhaustion at the end of Rage and Rage ending when the creature did not attack are not
+  modelled (they need condition-source work, R-G8 / R-G3). The "light" property is not checked by rules; the loader lists the
+  light attacks in `requires_attacks`. Open Hand Technique riders on Flurry are not modelled.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain

@@ -35,6 +35,10 @@ struct TurnBudget {
     uint8_t bonus_attack_grant = 0;
     // Row 13: further actions granted this turn (Action Surge). spend_action takes one when the action is spent.
     uint8_t extra_actions = 0;
+    // R-G6: bitmask over Combatant::attacks indices used by the Attack action this turn (not bonus attacks), and a bonus
+    // attack option in progress (1 + index into bonus_attacks) with the attacks it still owes (Flurry's second strike).
+    uint32_t attacks_used_mask = 0;
+    uint8_t bonus_option = 0, bonus_remaining = 0;
 };
 
 // Answer to a reaction window (names/layout shared with sim::Combat).
@@ -82,6 +86,8 @@ struct ActionRequest {
     // same value); targets may differ per attack; moving, reactions and other creatures' Ready triggers happen
     // between attacks like any other step. The sequence ends when its last attack is made or the turn ends.
     uint8_t multiattack = 0;
+    // appended (R-G6, Attack with as_bonus_action): 1 + index into Combatant::bonus_attacks (0 = none / the Rampage grant).
+    uint8_t bonus_option = 0;
     // appended (Attack / readied Attack, T&C-G7): sim fact for Combatant::roll_traits, e.g. Pack Tactics:
     // an ally of the actor, not incapacitated, is within 5 ft of the target.
     bool ally_near_target = false;
@@ -451,6 +457,9 @@ uint8_t feature_uses_left(const EncounterState&, CombatantId actor, uint32_t fea
 // Rest: a short rest recharges ShortRest features; a long rest recharges ShortRest and LongRest ones
 // (and refills pools with the same recharge kinds).
 void recover_features(EncounterState&, bool long_rest);
+// R-G6: could `actor` start bonus attack option `option` (1 + index) now? Checks the bonus action, the prerequisite (Attack action
+// used a listed attack, a different weapon, a modifier in force) and the pool. Pure.
+bool bonus_attack_available(const EncounterState&, const Combatant& actor, uint8_t option);
 // Canonical FNV-1a 64 digest of the feature-use table (fold into any state hash).
 uint64_t feature_uses_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 

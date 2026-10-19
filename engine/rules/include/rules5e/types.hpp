@@ -267,6 +267,21 @@ struct ModifierSpec {
     std::vector<Predicate> when;
 };
 
+// Row R-G6: a bonus-action attack option (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy). Requested with
+// ActionRequest{Attack, as_bonus_action, bonus_option = 1 + index into Combatant::bonus_attacks}.
+struct BonusAttack {
+    uint32_t id = 0;                    // content id (opaque to rules)
+    uint8_t attack_index = 0;           // Combatant::attacks index the attack uses
+    bool any_melee = false;             // Frenzy: any melee attack of the combatant (attack_index is ignored)
+    uint8_t count = 1;                  // attacks one use of the bonus action makes (Flurry of Blows: 2)
+    uint32_t requires_attacks = 0;      // bitmask over attack indices: the Attack action this turn must have used one (0 = none)
+    bool different_weapon = false;      // the one used must not be attack_index itself (two-weapon fighting)
+    uint32_t requires_modifier = 0;     // a modifier with this id must be in force on the attacker (Frenzy: the Rage modifier; 0 = none)
+    uint32_t pool = 0; uint16_t pool_cost = 0;   // spend from this pool when the bonus action is spent (Flurry: ki, 1); 0 cost = 1
+    bool has_damage = false;            // the off-hand attack rolls `damage` instead of the attack's dice
+    DiceExpr damage{0, 0, 0};           //   (two-weapon fighting without the style: the dice without the ability modifier)
+};
+
 struct Combatant {
     CombatantId id;
     uint8_t  team;
@@ -329,6 +344,7 @@ struct Combatant {
     // reactions on other creatures' turns.
     std::vector<Trigger> triggers;
     std::vector<Reaction> reactions;
+    std::vector<BonusAttack> bonus_attacks;   // R-G6: bonus-action attack options; empty for old content
     uint32_t legendary_pool = 0;           // row 13: pool id Legendary Resistance spends from (0 = none); a failed save succeeds instead
     uint32_t mod_resist = 0;               // row 12: damage types resisted through active modifiers (cache, rules-maintained)       // row 11: mechanical reactions (Damaged / AllyAttacked windows)
     uint32_t trigger_turn_mask = 0, trigger_turn_stamp = 0;       // stamp = round << 16 | turn_index
