@@ -751,12 +751,23 @@ std::optional<std::string> compile_resources(Archetype& a, const Json& doc, bool
     }
     return std::nullopt;
 }
-// R-G7 wield model: equipment[] names a shield ("shield", or {"id": "shield"}), or armor_class.note mentions one.
+// R-G7 wield model: equipment[] names a shield, or armor_class.note mentions one. An entry is a string, {"id": ...} or the
+// character@4 form {"item": "srd51.item.shield"}; it is a shield when the id is "shield" or a namespaced id whose last
+// '.'-segment is "shield" (sim does not load item@1 defs, so the item's category is not reachable here).
 bool carries_shield(const Json& doc) {
+    auto is_shield_id = [](const std::string& id) {
+        const std::size_t dot = id.rfind('.');
+        return (dot == std::string::npos ? id : id.substr(dot + 1)) == "shield";
+    };
     if (auto eq = doc.find("equipment"); eq != doc.end() && eq->is_array())
         for (const Json& e : *eq) {
-            const std::string id = e.is_string() ? e.get<std::string>() : (e.is_object() ? e.value("id", "") : "");
-            if (id == "shield") return true;
+            std::string id;
+            if (e.is_string()) id = e.get<std::string>();
+            else if (e.is_object()) {
+                if (auto it = e.find("item"); it != e.end() && it->is_string()) id = it->get<std::string>();
+                else if (auto jt = e.find("id"); jt != e.end() && jt->is_string()) id = jt->get<std::string>();
+            }
+            if (is_shield_id(id)) return true;
         }
     if (auto ac = doc.find("armor_class"); ac != doc.end() && ac->is_object()) {
         std::string note = ac->value("note", "");
