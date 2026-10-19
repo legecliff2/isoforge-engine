@@ -112,6 +112,15 @@ std::optional<std::string> compile_rider(const std::string& where, const Json& r
                 if (!add || every < 1) return where + ": bad scale.per_levels";
                 extra = (owner_level(doc, *pl) - 1) / every;
             }
+        std::optional<rules5e::DiceExpr> slot_add;
+        uint8_t slot_base = 0;
+        if (auto sc = r.find("scale"); sc != r.end() && sc->is_object())
+            if (auto ps = sc->find("per_slot_level"); ps != sc->end() && ps->is_object()) {
+                slot_add = parse_dice(ps->value("add_dice", ""));
+                const int base = geti(*ps, "base_level");
+                if (!slot_add || base < 1 || base > 9) return where + ": bad scale.per_slot_level";
+                slot_base = uint8_t(base);
+            }
         bool first = true;
         for (const Json& d : *dm) {
             auto dice = d.is_object() && d["dice"].is_string() ? parse_dice(d["dice"].get<std::string>()) : std::nullopt;
@@ -123,6 +132,7 @@ std::optional<std::string> compile_rider(const std::string& where, const Json& r
             if (ty == "same_as_weapon") x.same_as_weapon = true;
             else if (auto t = damage_type(ty)) x.type = *t;
             else return where + ": bad rider damage type";
+            if (first && slot_add) { x.slot_dice = *slot_add; x.slot_base = slot_base; }
             if (first && add && extra > 0) {   // scaling rides the first damage entry
                 if (add->sides != x.dice.sides) return where + ": scale add_dice sides differ from the base dice";
                 const int cnt = int(x.dice.count) + extra * int(add->count);
@@ -164,9 +174,72 @@ std::optional<std::string> compile_rider(const std::string& where, const Json& r
         out.push_back(e);
         return std::nullopt;
     }
-    // Every other rider kind is stored for its sub-PR (9c) and does not fire yet.
-    static const std::pair<const char*, RK> kinds[] = {{"save_condition", RK::SaveCondition}, {"apply_condition", RK::ApplyCondition},
-        {"heal_self", RK::HealSelf}, {"temp_hp", RK::TempHp}, {"set_hp", RK::SetHp}, {"spend", RK::Spend}};
+    if (k == "spend") {   // pool + cost -> slot 0, pool id, value = cost; slot N -> N; "any" -> 10
+        e.kind = RK::Spend;
+        if (auto sl = r.find("slot"); sl != r.end()) {
+            if (sl->is_string() && sl->get<std::string>() == "any") e.slot = 10;
+            else if (sl->is_number_integer() && sl->get<int>() >= 1 && sl->get<int>() <= 9) e.slot = uint8_t(sl->get<int>());
+            else return where + ": bad spend slot";
+        } else {
+            if (!r.contains("pool") || !r["pool"].is_string()) return where + ": spend needs pool or slot";
+            const int cost = geti(r, "cost", 1);
+            if (cost < 1 || cost > 255) return where + ": bad spend cost";
+            e.pool = rules5e::spell_id_of(r["pool"].get<std::string>());
+            e.value = int16_t(cost);
+        }
+        out.push_back(e);
+        return std::nullopt;
+    }
+    if (k == "save_condition") {   // a synthetic Save SpellDef (fixed DC, damage, condition); same_as_weapon is a load error (bad damage type)
+        Json act = r;
+        act["kind"] = "save_effect";
+        act["id"] = "save_condition." + std::to_string(rc.synth.size());
+        rules5e::SpellDef d;
+        Archetype::SaveAction sa;
+        bool unsupported = false;
+        if (auto er = compile_save_action(rc.arch, act, d, sa, doc, unsupported)) return er;
+        if (unsupported) return where + ": save_condition uses an unsupported duration";
+        e.kind = RK::SaveCondition;
+        e.spell_id = d.id;
+        rc.synth.push_back(std::move(d));
+        out.push_back(e);
+        return std::nullopt;
+    }
+    if (k == "apply_condition") {   // a synthetic ApplyCondition SpellDef: condition, expiry, duration_rounds
+        const auto ap = r.find("apply");
+        if (ap == r.end() || !ap->is_array() || ap->size() != 1 || !(*ap)[0].is_object()) return where + ": apply_condition needs exactly one apply[] entry";
+        const Json& x = (*ap)[0];
+        auto cond = condition_of(x.value("condition", ""));
+        if (!cond) return where + ": bad condition";
+        if (x.contains("repeat_save")) return where + ": apply_condition does not take repeat_save";
+        rules5e::SpellDef d;
+        d.content_id = rc.arch + "#apply_condition." + std::to_string(rc.synth.size());
+        d.id = rules5e::spell_id_of(d.content_id);
+        d.level = 0;
+        d.casting_time = rules5e::CastingTime::Action;
+        d.kind = rules5e::SpellEffectKind::ApplyCondition;
+        d.is_spell = false;
+        d.magical = false;
+        d.applies_condition = true;
+        d.condition = *cond;
+        if (!x.contains("duration")) return where + ": apply_condition needs a duration";
+        const Json& du = x["duration"];
+        const std::string dk = du.is_object() && du.contains("kind") && du["kind"].is_string() ? du["kind"].get<std::string>() : "";
+        if (dk == "rounds") {
+            const int n = geti(du, "n");
+            if (n < 1 || n > 65535) return where + ": bad duration rounds";
+            d.expiry = uint8_t(rules5e::Expiry::Rounds);
+            d.duration_rounds = uint16_t(n);
+        } else if (dk == "until_end_of_target_next_turn") d.expiry = uint8_t(rules5e::Expiry::EndOfTargetNextTurn);
+        else return where + ": unsupported apply_condition duration";
+        e.kind = RK::ApplyCondition;
+        e.spell_id = d.id;
+        rc.synth.push_back(std::move(d));
+        out.push_back(e);
+        return std::nullopt;
+    }
+    // Every other rider kind is stored (reserved) and does not fire.
+    static const std::pair<const char*, RK> kinds[] = {{"heal_self", RK::HealSelf}, {"temp_hp", RK::TempHp}, {"set_hp", RK::SetHp}};
     for (const auto& [name, kind] : kinds)
         if (k == name) {
             e.kind = kind;

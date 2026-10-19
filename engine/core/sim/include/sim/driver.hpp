@@ -17,7 +17,11 @@ public:
     // Called once at the start of each of `self`'s turns. nullopt = no target (end turn).
     virtual std::optional<CombatantId> choose_target(const Combat& c, CombatantId self) = 0;
     // Sync adapter for reaction windows. Default: always take option 0.
-    virtual ReactionDecision decide_reaction(const Combat&, const NeedsDecision& n) { return {n.window_seq, true, 0}; }
+    // HitRider windows (row 9c: the attacker is the reactor, Divine Smite style) are declined by default: spending a
+    // resource on a rider is a deliberate choice. Every other trigger keeps {react, option 0}.
+    virtual ReactionDecision decide_reaction(const Combat&, const NeedsDecision& n) {
+        return {n.window_seq, n.trigger != rules5e::ReactionTrigger::HitRider, 0};
+    }
 };
 
 // Built-in: nearest conscious hostile (Chebyshev), ties by lowest id.
