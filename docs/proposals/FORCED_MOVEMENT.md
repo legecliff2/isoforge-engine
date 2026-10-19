@@ -44,10 +44,14 @@ Rules that cut across these cases:
 
 - **Opportunity attacks.** SRD 5.1 "Opportunity Attacks": you don't provoke one when you teleport, or when someone or something
   moves you without using your movement, action or reaction. A forced move or a teleport **never opens a `LeavingReach` window**
-  unless the effect says so (`provokes_oa`, default false). Movement the creature makes with its own reaction (for example a
-  readied move) still provokes, as today.
+  unless the effect says so (`provokes_oa`, default false). In R-G9 `provokes_oa = true` is a **load error** (§3): no effect
+  needs it yet. Movement the creature makes with its own reaction (for example a readied move) still provokes, as today.
 - **Movement budget.** Forced movement and teleport don't spend the moved creature's speed. `Moved.b` is 0 and is not
-  "movement left". A speed of 0 (Grappled, Restrained) doesn't stop a forced move or a teleport.
+  "movement left". A speed of 0 (Grappled, Restrained) doesn't stop a forced move or a teleport. Difficult terrain costs nothing
+  for forced movement (§3).
+- **Blocking (§3).** Any other creature blocks a push, allies included (a push is not the creature's own movement, so the
+  move-through-a-non-hostile-space rule doesn't apply), as do blocked tiles and the map edge. The move stops at the last free
+  tile. A creature blocked on its first step still gets `Moved{a = 0}`.
 - **Grapple ends when moved out of reach.** SRD 5.1 Grappled: the condition ends "if an effect removes the grappled creature from
   the reach of the grappler or grappling effect, such as when a creature is hurled away by the thunderwave spell". That covers:
   - the grappled creature being pushed;
@@ -60,8 +64,8 @@ Rules that cut across these cases:
 - **Frightened.** The creature can't *willingly* move closer to the source of its fear.
   - Forced movement is not willing, so a push or pull toward the source is allowed.
   - A teleport the creature chooses itself (Misty Step, blink dog) is willing movement: the destination must not be closer to any
-    source it is frightened of. Sim checks this with the distance it owns. Rules passes the sources (`condition_source` /
-    `SourcedCondition`, R-G8).
+    source it is frightened of. Sim checks this when `Combat::submit` re-validates the teleport destination (§3), using the
+    sources rules records (`condition_source` / `SourcedCondition`, R-G8).
 - **Charmed.** No movement restriction in SRD 5.1. A charmed creature is a valid target for push and teleport-other effects as
   usual. "Willing" is the creature's choice (Q4); rules does not make a charmed creature willing.
 - **Incapacitated / unconscious creatures** can be pushed or pulled. They can't take a self-teleport action. As a Dimension Door
@@ -69,11 +73,12 @@ Rules that cut across these cases:
 - **Prone.** Forced movement doesn't make a creature prone or end prone. Crawling cost doesn't apply, because no movement is spent.
 - **Hazards and ledges.** A forced move can end over a pit, off a ledge, or into a damaging zone. SRD 5.1 falling: 1d6
   bludgeoning per 10 ft fallen (max 20d6), and the creature lands prone unless it avoids the damage. This proposal reserves the
-  **hook result** for it (2.4). Falling damage itself is a later rules PR. Zones are R-G11.
+  **hook result** for it (2.4: `hazard` / `fell_ft`). Falling and hazard damage wait for zones (R-G11) and elevation
+  (deferred), per the Director (Q11).
 - **Size limits** are per effect: `max_size` on the effect (Size; none = no limit) and the existing `size_within_one` for shove. A
   creature over the limit is unaffected by the push part only. The damage and save still happen.
-- **Several creatures moved by one effect** (Thunderwave on three) resolve in a deterministic order: the targets' order in the
-  request, which sim builds from `area_targets` (Q2).
+- **Several creatures moved by one effect** (Thunderwave on three) resolve farthest from the origin first, ties to the lower id,
+  by nearest-tile Chebyshev distance between footprints. Sim sorts (Q2, §3).
 - **Distance rounding.** Feet are multiples of 5 (one tile = 5 ft). "Up to N ft" effects take the chosen distance, which must be a
   multiple of 5 and at most N. Fixed effects use exactly N, and sim may stop short (blocked).
 
@@ -87,13 +92,13 @@ struct ForcedMoveSpec {
     uint16_t feet = 0;           // exact distance, or the maximum when up_to
     bool     up_to = false;      // the caster may choose a shorter distance (Repelling Blast, Open Hand)
     int8_t   max_size = -1;      // largest Size moved (-1 = no limit)
-    bool     provokes_oa = false;// SRD: never by default
+    bool     provokes_oa = false;// SRD: never by default; true is a load error in R-G9 (§3)
 };
 struct TeleportSpec {
     uint16_t max_feet = 0;       // Misty Step 30, Dimension Door 500, blink dog 40
     bool     needs_sight = true; // Misty Step yes; Dimension Door no
     uint8_t  companions = 0;     // Dimension Door 1 willing creature within 5 ft, caster's size or smaller
-    DiceExpr occupied_damage{0, 0, 0}; DamageType occupied_type = DamageType::Force;   // Dimension Door 4d6 force, teleport fails
+    DiceExpr occupied_damage{0, 0, 0}; DamageType occupied_type = DamageType::Force;   // Dimension Door 4d6 force: deferred (§3, Q10)
 };
 ```
 
@@ -110,24 +115,25 @@ struct TeleportSpec {
   teleport, the destination. The destination is a tile, so it is a **sim** fact. Rules never interprets it: sim puts it in its log
   entry (as it already does for `to` on Move) and validates it before submitting. Rules gets only `teleport_feet` (distance to the
   destination, for the `max_feet` check). The same applies to `forced_line` (a direction, for Gust of Wind, sim's).
-- **Willing companions** (Dimension Door): ids in `ActionRequest::targets` after the caster. Willingness is the caller's
+- **Willing companions** (Dimension Door; **deferred** past the first PR, together with the occupied-destination 4d6 failure,
+  per §3 and Q10): ids in `ActionRequest::targets` after the caster. Willingness is the caller's
   assertion (`ActionRequest::companions_willing`), because rules has no consent model (Q4). Rules checks size (caster's size or
   smaller), count, `target_within_5ft`-style adjacency through a new hook or a request fact, and that each one is alive.
-- All new request fields are log-relevant and would claim a `log_hash` tag in `SIM_EVENTS.md` (next free 0xB2).
+- All new request fields are log-relevant. The teleport-destination `log_hash` tag (**0xB2**, the next free one) is claimed in the
+  `SIM_EVENTS.md` registry by the R-G9 sim PR that adds the field. `SIM_EVENTS.md` is not part of this PR, so it is only noted here.
 
-### 2.4 How rules emits a forced move: reuse `Moved` plus flags (preferred), else v8 kind
+### 2.4 How rules emits a forced move: reuse `Moved` plus flags (Resolved (Engine Core), Q1)
 
-**Preferred: reuse `Moved`, give `c` a meaning, and bump the event schema to v8 for the new meaning only.**
+**Superseded by §3.** The flag layout originally proposed here (direction, stopped-short and hazard bits) is replaced by §3's:
+`c` bit 0 forced, bit 1 teleport, bit 2 drag, bits 3+ reserved 0. Feet actually moved is in `a`, so there are no direction,
+stopped-short or hazard bits. Direction and stopping are sim's path decisions, and hazards stay hook results until zones exist.
 
 ```
 Moved  actor = moved creature
-       target = source (pusher / caster / teleporter; for a self-teleport = actor)
-       a = feet actually moved (after sim's path; see the hook below)
-       b = 0 for forced / teleport (it is NOT movement left)
-       c = flags: bit 0 forced (not the creature's own movement), bit 1 teleport,
-                  bits 2-3 direction (0 n/a, 1 away from target, 2 toward target, 3 to a chosen destination / along a line),
-                  bit 4 stopped short (blocked / occupied before the full distance),
-                  bit 5 hazard (ended in or fell through a hazard the hook reported)
+       target = source (pusher / caster / teleporter / grappler; for a self-teleport = actor)
+       a = feet actually moved (0 when blocked on the first step)
+       b = 0 for forced / teleport / drag (it is NOT movement left)
+       c = flags (§3): bit 0 forced, bit 1 teleport, bit 2 drag
 ```
 
 - **Why reuse.** Pushes already flow through `Moved` (EC's design and the shove precedent). Consumers that ignore `c` (the event
@@ -135,12 +141,10 @@ Moved  actor = moved creature
   `kLastRulesEventKind` don't move.
 - **Versioning.** `c` gains a meaning, which `SIM_EVENTS.md`'s policy calls observable. So: schema v8, and
   `event_stream_version(events)` returns 8 only for a stream with a `Moved` whose `c != 0`. Every existing stream (all `c == 0`)
-  keeps its digest. The shove push changes from `c = 0` to `c = forced | away (= 0b0101)`. That moves digests only for streams
-  that contain a shove push. None is locked today; EC #104 would be the first, so land them together (Q1).
-- **Fallback, if EC prefers a new kind:** `EventKind::ForcedMoved` (= 45) and `Teleported` (= 46), same payload, v8 via a new kind.
-  This is cleaner for consumers that switch on kind, but costs two kinds and a layout-test change.
+  keeps its digest. The shove push changes from `c = 0` to `c = 1` (forced) in EC #104, so no locked digest moves twice (§3).
+- The fallback with new kinds (`ForcedMoved` / `Teleported`) was not taken (Q1).
 
-**Hook (preferred over a two-phase request).** Rules needs the outcome inside the same step: whether the move happened, how far, and
+**Hook (Resolved (Engine Core), Q3: synchronous, commits immediately, §3).** Rules needs the outcome inside the same step: whether the move happened, how far, and
 whether a grapple ended. So:
 
 ```cpp
@@ -150,18 +154,22 @@ struct ForcedMoveResult { uint16_t feet_moved = 0; bool stopped_short = false; b
 std::function<ForcedMoveResult(const EncounterState&, const ForcedMoveQuery&)> forced_move;   // EncounterHooks, appended
 ```
 
-- The hook is **pure with respect to rules state**: it doesn't change `EncounterState`. Sim records the tentative position for the
-  in-progress step (like `moving_to` today), so later queries in the same step see earlier moves. Sim commits from the `Moved`
-  events when the step completes, and drops them if the attempt is discarded (an Ask pause re-runs the step from a copy).
+- **Superseded by §3:** no tentative positions and no rollback. The hook resolves and commits immediately, and later queries in
+  the same step see the committed positions. Readied triggers raised during the effect queue and fire after the whole effect.
+- **Rules-side consequence.** A forced move itself never pauses (no OAs). Another Ask window in the same step could still pause
+  and discard the run, for example a Damaged reaction to a later target's damage. So rules calls `forced_move` only in a step's
+  final run: it queues the effect's forced moves and calls the hook once no decision is pending, before `SpellResolved`.
+- `ForcedMoveResult::stopped_short`, `hazard` and `fell_ft` stay hook results for rules' own use. `hazard` / `fell_ft` are unused
+  until zones (Q11).
 - **No hook** (rules-only tests, old content): rules emits the event with `a` = requested feet. It does not end grapples on
   distance. This is today's shove behaviour.
 
 ### 2.5 Order of events inside a step (proposed ordering rule)
 
-For each moved creature, in target order: `Moved{forced...}`, then `ConditionRemoved{Grappled}` for each grapple the hook reported
+For each moved creature, in the order sim resolves them (farthest from the origin first, Q2): `Moved{forced...}`, then `ConditionRemoved{Grappled}` for each grapple the hook reported
 broken (both sides as applicable), then any hazard events (falling damage, later). The forced move comes after the effect's own
-save / damage events for that creature (Thunderwave: `SavingThrowRolled`, `DamageDealt`, then `Moved`), and before
-`SpellResolved`. A teleport emits `Moved{teleport}` for the caster first, then the companions in request order.
+save / damage events (Thunderwave: every target's `SavingThrowRolled` / `DamageDealt`, then the queued `Moved` events), and
+before `SpellResolved`. A self-teleport emits one `Moved{c = 2}` for the caster. Companions are deferred.
 
 ### 2.6 Rules / sim API split
 
@@ -170,19 +178,21 @@ save / damage events for that creature (Thunderwave: `SavingThrowRolled`, `Damag
 | Whether a creature is moved at all: save failed, hit landed, size limit, willing companion, effect present | **rules** |
 | Distance (fixed, or the chosen "up to"), mode (push / pull / line / teleport), and whether it provokes OAs | **rules** (from content + request) |
 | Path: tiles, direction from the source footprint, blocking, occupied tiles, stopping short, multi-tile footprints | **sim** |
-| Teleport destination validity: unoccupied, within `max_feet` (Chebyshev, footprint-aware), line of sight if `needs_sight`, Frightened "not closer" | **sim** (rules passes the facts it owns: max_feet, needs_sight, fear sources) |
+| Teleport destination validity: unoccupied, within `max_feet` (Chebyshev, footprint-aware), line of sight if `needs_sight`, Frightened "not closer" (checked at `Combat::submit` re-validation) | **sim** (rules passes the facts it owns: max_feet, needs_sight, fear sources) |
 | Grapple ends: is the pair still within reach after the move | **sim** answers (hook result); **rules** ends the condition and emits |
-| Falling / hazard damage amount and prone | **rules** (later PR), from the hook's `fell_ft` / hazard facts |
+| Falling / hazard damage amount and prone | **rules**, after zones (R-G11) and elevation (Q11), from the hook's `fell_ft` / `hazard` |
 | Committing positions, `TileMoved` sim events, readied-move destinations | **sim** |
 
 ### 2.7 Rules work once agreed (one rules PR, then the sim PR)
 
 1. `ForcedMove` / `Teleport` effect kinds and specs, rider support, shove routed through them. Rules tests: no hook = requested
    feet; hook truncation; grapple pruning from `out_of_reach_of`; no `LeavingReach` window; speed 0 doesn't block; size limit; save gating.
-2. `Moved.c` flags plus the v8 note in `SIM_EVENTS.md` (if EC agrees), or the two new kinds.
-3. `forced_move` hook, `ActionRequest` fields (`forced_feet`, `teleport_feet`, `companions_willing`) plus their `log_hash` tag claim.
+2. `Moved.c` flags (bit 0 forced, bit 1 teleport, bit 2 drag; §3) plus the v8 note in `SIM_EVENTS.md`.
+3. `forced_move` hook (called only in a step's final run), `ActionRequest` fields (`forced_feet`, `teleport_feet`;
+   `companions_willing` with Dimension Door later). The sim PR claims the teleport-destination `log_hash` tag 0xB2.
 4. Coverage rows: Thunderwave, Gust of Wind, Misty Step, Repelling Blast, Open Hand, blink dog, OA exceptions.
-5. Later: falling damage from `fell_ft`, and zone entry (R-G11).
+5. Scope (Q10): pushes (Thunderwave, Repelling Blast, shove, Open Hand) plus self-teleport (Misty Step) first. Later: Dimension
+   Door companions and the 4d6 failure, Gust of Wind, and falling / hazard damage with zones (R-G11, Q11).
 
 ## 3. SIM CONTRACT section (Engine Core: decided)
 
@@ -249,44 +259,49 @@ save / damage events for that creature (Thunderwave: `SavingThrowRolled`, `Damag
 
 - **Q1. Event encoding.** Reuse `Moved` with the `c` flags and a payload-only v8, or add new kinds? If reuse: land the shove push
   `c` change together with EC #104, so no locked digest moves twice.
-  - **EC answer:** reuse `Moved`; `c` bit 0 forced, bit 1 teleport, bit 2 drag. v8 only for streams with a `Moved` whose
+  - **Resolved (Engine Core):** reuse `Moved`; `c` bit 0 forced, bit 1 teleport, bit 2 drag. v8 only for streams with a `Moved` whose
     `c != 0`; older streams and goldens unchanged. The shove push (#104) is the first user (§3).
 - **Q2. Order of several forced moves in one effect.** Is "the request's target order" (sim's `area_targets` order) acceptable, or
   should sim order pushes far-to-near so the front creature doesn't block the one behind it?
-  - **EC answer:** far-to-near: farthest from the origin first, ties by lower combatant id; distance = nearest-tile Chebyshev
+  - **Resolved (Engine Core):** far-to-near: farthest from the origin first, ties by lower combatant id; distance = nearest-tile Chebyshev
     between footprints (§3).
 - **Q3. Hook vs two-phase.** A synchronous `forced_move` hook with tentative positions and rollback on an Ask pause, or a
   follow-up logged step? The hook keeps one step = one log entry. Two-phase avoids sim state inside rules' attempt loop.
-  - **EC answer:** synchronous `forced_move` hook that resolves and commits immediately, pure function of state, no tentative
+  - **Resolved (Engine Core):** synchronous `forced_move` hook that resolves and commits immediately, pure function of state, no tentative
     positions or rollback. Forced moves never provoke OAs, so no pause can occur mid-move; readied triggers queue and fire after the
     whole effect resolves (§3).
 - **Q5. Footprint geometry for push direction**, and blocked-path semantics: stop at the last free tile, or no move at all if the
   first tile is blocked?
-  - **EC answer:** 8-way direction from the signs of (target centre − source centre) in doubled integer coordinates; overlap
+  - **Resolved (Engine Core):** 8-way direction from the signs of (target centre − source centre) in doubled integer coordinates; overlap
     fallback = source facing, then +x. Tile-by-tile walk checking every footprint tile; stop at the last free tile (partial
     movement). Integer math only (§3).
 - **Q6. Drag and forced moves of a grappler.** Does sim move the dragged creature on the grappler's voluntary `Move` only (as
   proposed), never on a forced move of the grappler (where the grapple usually ends instead)?
-  - **EC answer:** yes. Drag only on the grappler's own voluntary `Move` (`Moved` with the drag bit). A grappler pushed out of
+  - **Resolved (Engine Core):** yes. Drag only on the grappler's own voluntary `Move` (`Moved` with the drag bit). A grappler pushed out of
     reach loses the grapple; the next step prunes the entry, per #99 (§3).
 - **Q7. Readied actions.** Should a forced move or a teleport fire "when a creature moves within N ft" Readies? Proposed: yes for
   both: the trigger is a perceivable circumstance, not a choice by the mover. But sim's `ready_trigger` should see the `c` flags.
-  - **EC answer:** yes for both. Predicates can read the `c` flags (e.g. to exclude teleports). Current sim already fires readied
+  - **Resolved (Engine Core):** yes for both. Predicates can read the `c` flags (e.g. to exclude teleports). Current sim already fires readied
     triggers on any `Moved` (§3).
 - **Q8. Teleport destination UX/AI.** Who picks a destination for the AI (Misty Step out of melee), and how is an invalid one
   reported: request rejected before it reaches rules, or a rules rejection via a hook?
-  - **EC answer:** sim exposes `legal_teleport_tiles(state, actor, def)` (row-major order); the AI scores and picks.
+  - **Resolved (Engine Core):** sim exposes `legal_teleport_tiles(state, actor, def)` (row-major order); the AI scores and picks.
     `Combat::submit` re-validates; an invalid destination is rejected like any illegal request, with no state change (§3).
 
 **For the Director**
 
 - **Q4. "Willing."** There is no consent model. Proposed: the controller asserts it for its own team's creatures, and
   unconscious / incapacitated creatures are never willing. Charmed doesn't make a creature willing. Accept?
+  - **Resolved (Director):** approved as written.
 - **Q9. Thunderwave size limit.** The request mentioned "Thunderwave Large or smaller". SRD 5.1 Thunderwave has **no** size limit
   (and neither do Gust of Wind or Repelling Blast). Size limits come from shove (one size larger) and from some monster actions.
   Proposed: follow SRD 5.1 (no limit on Thunderwave), with `max_size` available per effect. Confirm.
+  - **Resolved (Director):** approved: SRD 5.1, with a per-effect `max_size`.
 - **Q10. Scope of the first implementation.** Proposed: push (Thunderwave, Repelling Blast, shove, Open Hand) and self-teleport
   (Misty Step, blink dog) first. Then Dimension Door companions and occupied-destination damage, Gust of Wind (line plus repeated
   saves, needs R-G10 / R-G11), and falling damage. Accept the order?
+  - **Resolved (Director):** approved. The first implementation PR is pushes plus self-teleport (Misty Step).
 - **Q11. Hazards.** Should forced movement into a hazard wait for R-G11 zones, or ship falling damage (ledges / pits as sim terrain
   facts) with the first PR?
+  - **Resolved (Director):** falling and hazard damage wait for zones (R-G11). Falling also needs elevation, which is deferred.
+    The hook keeps `hazard` / `fell_ft`, so a push into a hazard tile can be resolved later.
