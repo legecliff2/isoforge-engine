@@ -1,0 +1,113 @@
+{
+  "$schema": "monster@4",
+  "id": "srd51.monster.black_dragon_wyrmling",
+  "name": "Black Dragon Wyrmling",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "dragon",
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 17,
+    "note": "natural armor"
+  },
+  "hit_points": {
+    "average": 33,
+    "formula": "6d8+6"
+  },
+  "speed": {
+    "walk": 30,
+    "fly": 60,
+    "swim": 30
+  },
+  "abilities": {
+    "str": 15,
+    "dex": 14,
+    "con": 13,
+    "int": 10,
+    "wis": 11,
+    "cha": 13
+  },
+  "saving_throws": {
+    "dex": 4,
+    "con": 3,
+    "wis": 2,
+    "cha": 3
+  },
+  "skills": {
+    "perception": 4,
+    "stealth": 4
+  },
+  "damage_immunities": [
+    "acid"
+  ],
+  "senses": {
+    "blindsight": 10,
+    "darkvision": 60,
+    "passive_perception": 14
+  },
+  "languages": [
+    "Draconic"
+  ],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "amphibious",
+      "name": "Amphibious",
+      "description": "The dragon can breathe air and water."
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d10+2",
+          "type": "piercing"
+        },
+        {
+          "dice": "1d4",
+          "type": "acid"
+        }
+      ]
+    },
+    {
+      "id": "acid_breath",
+      "name": "Acid Breath",
+      "kind": "save_effect",
+      "description": "The dragon exhales acid in a 15-foot line that is 5 feet wide. Each creature in that line must make a DC 11 Dexterity saving throw, taking 22 (5d8) acid damage on a failed save, or half as much damage on a successful one.",
+      "save": {
+        "ability": "dex",
+        "dc": 11
+      },
+      "origin": "self",
+      "area": {
+        "shape": "line",
+        "size_ft": 15,
+        "width_ft": 5
+      },
+      "damage": [
+        {
+          "dice": "5d8",
+          "type": "acid"
+        }
+      ],
+      "on_success": "half",
+      "usage": {
+        "kind": "recharge",
+        "min": 5
+      }
+    }
+  ]
+}
