@@ -441,6 +441,40 @@ std::optional<std::string> apply_sculpt_spells(Archetype& a, const FeatureDecl&,
     return std::nullopt;
 }
 
+// slot_recovery {class: wizard | druid, max_slot_level 1..9 = 5, uses 1..255 = 1} (Arcane Recovery / Natural Recovery,
+// VERSION_BUMP_BATCH 7.2n hand-off 1): a rules5e SlotRecoverySpec with the class level from classes[]. Load errors: unknown
+// class, class missing from classes[], non-integer or out-of-range max_slot_level / uses, two declarations for one class.
+std::optional<std::string> apply_slot_recovery(Archetype& a, const FeatureDecl& f, uint32_t feature_id, const FeatureBuildCtx& ctx) {
+    const std::string cls = f.effect.value("class", "");
+    if (cls != "wizard" && cls != "druid") return f.id + ": slot_recovery class must be wizard or druid";
+    int level = 0;
+    bool listed = false;
+    for (const Json& c : ctx.doc.value("classes", Json::array()))
+        if (c.is_object() && c.value("class", "") == cls) {
+            listed = true;
+            level += c.value("level", 0);
+        }
+    if (!listed) return f.id + ": slot_recovery class '" + cls + "' is not in classes[]";
+    if (level < 1 || level > 20) return f.id + ": slot_recovery class level out of range 1..20";
+    auto int_key = [&](const char* key, int def, int lo, int hi, int& out) -> std::optional<std::string> {
+        const auto it = f.effect.find(key);
+        if (it == f.effect.end()) { out = def; return std::nullopt; }
+        if (!it->is_number_integer()) return f.id + ": slot_recovery " + key + " must be an integer";
+        const int64_t v = it->get<int64_t>();
+        if (v < lo || v > hi) return f.id + ": slot_recovery " + key + " out of range " + std::to_string(lo) + ".." + std::to_string(hi);
+        out = int(v);
+        return std::nullopt;
+    };
+    int max_level = 5, uses = 1;
+    if (auto e = int_key("max_slot_level", 5, 1, 9, max_level)) return e;
+    if (auto e = int_key("uses", 1, 1, 255, uses)) return e;
+    for (const auto& prev : a.slot_recovery)
+        if (a.features[prev.feature_id - 1].effect.value("class", "") == cls)
+            return f.id + ": slot_recovery declared twice for class '" + cls + "'";
+    a.slot_recovery.push_back(rules5e::SlotRecoverySpec{feature_id, uint8_t(level), uint8_t(max_level), uint8_t(uses)});
+    return std::nullopt;
+}
+
 // pack_tactics {} (SRD Pack Tactics: jackal, kobold, wolf, dire wolf; T&C-G7): advantage on the creature's attack rolls
 // against a creature when at least one of its allies that is not incapacitated is within 5 ft of it. Fills the rules5e
 // roll trait {Attack, Advantage, kWhenAllyNearTarget}; sim supplies the fact (ActionRequest::ally_near_target, Combat::ally_near).
@@ -480,6 +514,7 @@ FeatureRegistry make_builtin() {
     r.add_hook("pack_tactics", {apply_pack_tactics});
     r.add_hook("metamagic", {apply_metamagic});
     r.add_hook("sculpt_spells", {apply_sculpt_spells});
+    r.add_hook("slot_recovery", {apply_slot_recovery});
     // Kinds the @4 schemas introduce (frozen list of the 3 -> 4 migration; hooks arrive with their rows).
     for (const char* k : {"on_event", "save_effect", "reaction"})
         r.reserve_kind(k, 4);
