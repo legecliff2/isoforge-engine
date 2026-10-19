@@ -214,9 +214,12 @@ the `line` arm is its own propertyNames allow-list) and `check_spell_zone`, toge
 Optional additive keys: no tag change (docs/CONTENT_COMPAT.md). Type, range, enum and shape-arm errors are the schema's (the
 validator prints jsonschema wording; the loader its own 4.6 wording); the cross-field rules print the 4.6 loader messages verbatim
 and each has a `tests/validate/cases/zone_*` case. Fixtures: `tests/validate/fixtures/zones/spells` `fog_cloud` (upcast_size_ft),
-`moonbeam` (shapechanger_disadvantage), `spirit_guardians` (evil_damage_type), `stinking_cloud`, `wall_of_fire`, `warding_aura`
-(test-only D7 aura). The creature facts `no_breath`, `shapechanger`, `evil` are **not** in the monster / character schemas yet:
-their reader is the sim archetype loader (Engine Core), which is not in this PR. Silence needs none of these: `flags: ["silence"]`.
+`moonbeam` (shapechanger_disadvantage), `spirit_guardians` (evil_damage_type) (still the loader's 8-spell book), and
+`tests/validate/fixtures/zones/spells_pr2` `stinking_cloud`, `wall_of_fire`, `warding_aura` (test-only D7 aura). The creature
+facts `no_breath`, `shapechanger`, `evil` (booleans, default false) are accepted on `monster@4` / `character@4` but are
+**reserved**: their reader is the sim archetype loader (`engine/core/sim/src/content.cpp`, Engine Core), not wired yet, so
+the validator warns (`/<key>: <key> is reserved: the sim archetype loader does not read it yet ...`, not an error) and they have
+no effect until Engine Core lands it. Silence needs none of these: `flags: ["silence"]`.
 
 Formerly not expressible, now expressed by those keys: Fog Cloud's +20 ft radius per slot level, Spirit Guardians' necrotic
 for an evil caster, Moonbeam's shapechanger disadvantage, Stinking Cloud's lost action (D9), walls (`line`, Wall of Fire) and

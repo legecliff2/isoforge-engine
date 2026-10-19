@@ -248,6 +248,18 @@ def check_chunk_surprise(doc, errs, ctx) -> None:
                         f"(teams here: {sorted(t for t in set(teams.values()) if t)})")
 
 
+# R-G11 creature facts (docs/CONTENT_CONVENTIONS.md 4.6): monster@4 / character@4 accept them, but their reader is the sim
+# archetype loader (engine/core/sim/src/content.cpp, Engine Core), which does not read them yet: reserved, warning only.
+CREATURE_FACTS = ("no_breath", "shapechanger", "evil")
+
+
+def creature_fact_warnings(doc) -> list[str]:
+    if not isinstance(doc, dict):
+        return []
+    return [f"/{k}: {k} is reserved: the sim archetype loader does not read it yet (R-G11 creature fact, Combatant::{k}; "
+            "Engine Core), so it has no effect until that loader lands" for k in CREATURE_FACTS if k in doc]
+
+
 def chunk_warnings(doc) -> list[str]:
     """Non-fatal chunk findings (prefixed with the file by the caller)."""
     if not isinstance(doc, dict) or "surprise" not in doc:
@@ -655,6 +667,8 @@ def validate_doc(rel: str, doc: dict, tag: str, registry: Registry, by_tag: dict
         warns += [f"{rel}: {w}" for w in chunk_warnings(doc)]
     if not schema_errs and typ == "spell":
         warns += [f"{rel}: {w}" for w in spell_material_warnings(doc)]
+    if not schema_errs and typ in ("monster", "character"):
+        warns += [f"{rel}: {w}" for w in creature_fact_warnings(doc)]
     row = c4.tag_row(tag)
     if not schema_errs and row is not None and row.cross_refs:
         if typ == "item":

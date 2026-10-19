@@ -118,6 +118,18 @@
         "type": "string"
       },
       "description": "Mechanics the document carries but the engine must ignore (e.g. 'reactions', 'bonus_actions', 'equipment', 'damage[1..]'). Written by the 3->4 migration; a hand-written @4 file may carry it too."
+    },
+    "no_breath": {
+      "type": "boolean",
+      "description": "R-G11 creature fact (CONTENT_CONVENTIONS 4.6), default false: the monster doesn't need to breathe (Stinking Cloud's automatic success with auto_success_no_breath); maps to Combatant::no_breath. Reserved: the sim archetype loader (engine/core/sim/src/content.cpp, Engine Core) does not read it yet, so the validator warns and it has no effect until then."
+    },
+    "shapechanger": {
+      "type": "boolean",
+      "description": "R-G11 creature fact (CONTENT_CONVENTIONS 4.6), default false: the monster is a shapechanger (Moonbeam's shapechanger_disadvantage); maps to Combatant::shapechanger. Reserved: the sim archetype loader (engine/core/sim/src/content.cpp, Engine Core) does not read it yet, so the validator warns and it has no effect until then."
+    },
+    "evil": {
+      "type": "boolean",
+      "description": "R-G11 creature fact (CONTENT_CONVENTIONS 4.6), default false: the monster is evil for zone rows (Spirit Guardians' evil_damage_type); maps to Combatant::evil. Reserved: the sim archetype loader (engine/core/sim/src/content.cpp, Engine Core) does not read it yet, so the validator warns and it has no effect until then."
     }
   }
 }

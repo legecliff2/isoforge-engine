@@ -49,7 +49,8 @@ _SB_KEYS = frozenset({"$schema", "id", "name", "source", "size", "type", "tags",
 _MONSTER_KEYS = frozenset({"challenge", "behavior", "legendary_actions", "spellcasting"})
 _CHARACTER_KEYS = frozenset({"race", "background", "level", "classes", "xp", "features", "equipment", "behavior",
                              "spellcasting"})
-_AT4_KEYS = frozenset({"resources", "forward_compat", "inert_mechanics"})
+_AT4_KEYS = frozenset({"resources", "forward_compat", "inert_mechanics",
+                       "no_breath", "shapechanger", "evil"})   # R-G11 creature facts (reserved, CONTENT_CONVENTIONS 4.6)
 
 
 @dataclass(frozen=True)
