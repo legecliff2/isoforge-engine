@@ -24,6 +24,7 @@ AcResult compute_ac(const AcInput& in) {
         if (in.natural_base > 0) ac = std::max(ac, in.natural_base + (in.natural_dex_bonus ? dex : 0));
     }
     if (in.has_shield) ac += in.shield.ac_bonus + in.shield.magic_bonus;
+    if (in.has_armor) ac += in.armored_bonus;
     ac += in.flat_bonus;
     r.ac = int16_t(std::clamp(ac, 0, 100));
     r.speed_ft = int16_t(std::max(0, int(in.base_speed_ft) - (r.str_shortfall ? 10 : 0)));
