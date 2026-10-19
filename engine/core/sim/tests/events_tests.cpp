@@ -34,7 +34,10 @@ world::Chunk sample_chunk() {
 } // namespace
 
 TEST_CASE("event layout: schema version and numeric enum values are locked") {
-    CHECK(kSimEventSchemaVersion == 7);
+    CHECK(kSimEventSchemaVersion == 8);
+    CHECK(kMovedForced == 1);     // v8 Moved.c flag bits
+    CHECK(kMovedTeleport == 2);
+    CHECK(kMovedDrag == 4);
     CHECK(uint8_t(SimEvent::Kind::SpellTarget) == 2);   // v5
     CHECK(uint8_t(SimEvent::Kind::Footprint) == 3);     // v6
     CHECK(uint8_t(SimEvent::Kind::Rules) == 0);
@@ -165,12 +168,31 @@ TEST_CASE("event_stream_version: max over SimEvent::Kind and rules.kind construc
     // every ordering of a lower construct and a higher one gives the higher one (no early return, no last-wins)
     CHECK(v({foot, spell}) == 6);
     CHECK(v({spell, foot}) == 6);
-    CHECK(v({late, spell}) == kSimEventSchemaVersion);
-    CHECK(v({spell, late}) == kSimEventSchemaVersion);
-    CHECK(v({foot, late}) == kSimEventSchemaVersion);
-    CHECK(v({late, foot}) == kSimEventSchemaVersion);
-    CHECK(v({late, plain, foot, spell}) == kSimEventSchemaVersion);
-    CHECK(kSimEventSchemaVersion == 7);
+    CHECK(v({late, spell}) == 7);
+    CHECK(v({spell, late}) == 7);
+    CHECK(v({foot, late}) == 7);
+    CHECK(v({late, foot}) == 7);
+    CHECK(v({late, plain, foot, spell}) == 7);
+    // v8: a rules Moved with flag bits in c (forced / teleport / drag); a plain Moved (c == 0) stays v4
+    auto moved = [](int32_t flags) {
+        SimEvent e{};
+        e.kind = SimEvent::Kind::Rules;
+        e.rules.kind = rules5e::EventKind::Moved;
+        e.rules.a = 5;
+        e.rules.c = flags;
+        return e;
+    };
+    CHECK(v({moved(0)}) == 4);
+    CHECK(v({moved(0), late}) == 7);
+    CHECK(v({moved(kMovedForced)}) == 8);
+    CHECK(v({moved(kMovedTeleport)}) == 8);
+    CHECK(v({moved(kMovedDrag)}) == 8);
+    CHECK(v({moved(kMovedDrag), late, foot, spell}) == kSimEventSchemaVersion);
+    CHECK(v({late, foot, moved(kMovedForced)}) == kSimEventSchemaVersion);
+    SimEvent other_c = rules_ev(uint8_t(rules5e::EventKind::Dashed));   // c != 0 on another kind is not a flag
+    other_c.rules.c = 1;
+    CHECK(v({other_c}) == 4);
+    CHECK(kSimEventSchemaVersion == 8);
     CHECK(v({late}) <= kSimEventSchemaVersion);   // invariant: a stream never claims a version above the contract
     // A non-Rules event's unused rules.kind field is never read as a rules kind.
     SimEvent tile = sim_ev(SimEvent::Kind::TileMoved);

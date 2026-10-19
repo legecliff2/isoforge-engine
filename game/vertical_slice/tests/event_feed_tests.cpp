@@ -61,7 +61,7 @@ TEST_CASE("v3: TileMoved after the request's rules events still lands on the rig
 }
 
 TEST_CASE("v4 spell kinds 35-38 are known and logged") {
-    static_assert(sim::kSimEventSchemaVersion == 7);
+    static_assert(sim::kSimEventSchemaVersion >= 7);
     std::vector<SimEvent> evs;
     evs.push_back(rules(EventKind::SavingThrowRolled, 2, 4, 9, 14, 1));
     evs.push_back(rules(EventKind::SavingThrowRolled, 2, 4, 3, 5, 0));
