@@ -315,18 +315,35 @@ ones, with the normal end events. Nothing is carried into another Combat for now
 
 - **Trigger:** the step that makes the encounter end (rules decides `EncounterEnded`), live or in replay. Teardown is part
   of that step, so replay reproduces it from the log alone. No log entry or request field is added.
-- **Order (deterministic):**
+- **Order (deterministic).** SIM_EVENTS.md ordering rule 7 is unchanged (Director): `EncounterEnded` is the last event of
+  the stream.
   1. **Summons end** in ascending summon id. Each one emits `SummonEnded{actor = summoner, target = id, a = source, b = 5}`.
-     The new reason 5 means "encounter ended" and is added to 2.5's list. Spiritual Weapon rows (`ActiveSummonWeapon`) end
-     in the same pass, ordered by token id. A transformed summon just ends; it gets no separate `Reverted`.
-  2. **Transforms revert** next, for creatures that are not gone, in ascending combatant id. Each one emits
-     `Reverted{actor = id, a = source, b = 5, c = 0}`. Reason 5 "encounter ended" is added to 2.7's list. Nothing overflows,
-     and HP and the other stats come back from `base`.
-  3. Then rules' **`EncounterEnded`**, which stays the last rules event.
-  4. **Sim events of the step:** first the step's usual `TileMoved` / `SpellTarget`, then one `TokenRemoved` per summon and
-     weapon token in the same order as step 1. Ordering rule 7 in SIM_EVENTS.md must be amended to say: "`EncounterEnded` is
-     the last *rules* event. Only the ending step's sim events (`TileMoved`, `SpellTarget`, teardown `TokenRemoved`) may
-     follow it, and nothing after that block."
+     Reason 5 means "encounter ended" (2.5). Spiritual Weapon rows (`ActiveSummonWeapon`) end in the same pass, by token id.
+     A transformed summon just ends, with no separate `Reverted`.
+  2. **`TokenRemoved`** for each of them, emitted inline: each one directly follows its `SummonEnded` (or its weapon row's
+     end). This is a documented **exception** to ordering rule 4, under which sim events normally come after the step's rules
+     events. It applies only to the teardown block.
+  3. **Transforms revert** in ascending combatant id, for creatures that are not gone. Each one emits
+     `Reverted{actor = id, a = source, b = 5, c = 0}`. Reason 5 means "encounter ended" (2.7). Nothing overflows, and stats
+     come back from `base`.
+  4. **`EncounterEnded`**, last.
+- **How sim does it.** Rules emits the ending step as [the step's own events][teardown `SummonEnded`... then `Reverted`...]
+  [`EncounterEnded`]. It reports where the teardown starts with `StepResult::teardown_begin` (an index into the step's
+  events, or none). `Combat::complete` then builds the stream in this order:
+  - (a) the step's rules events before `teardown_begin`;
+  - (b) the step's ordinary sim events (`TileMoved`, drag `Moved`, `SpellTarget`), by the usual rules 4 and 5;
+  - (c) the teardown rules events, each `SummonEnded` followed at once by its `TokenRemoved`, then the `Reverted`s;
+  - (d) `EncounterEnded`.
+
+  So every sim event of the step comes before `EncounterEnded`. When a step ends the encounter with no summon or transform
+  alive, `teardown_begin` is none: (c) is empty, and the only change from today is that (b) is placed before
+  `EncounterEnded`. **Golden risk:** today `complete()` appends `TileMoved` / `SpellTarget`
+  after *all* of the step's rules events (combat.cpp ~L649-771). It does not special-case `EncounterEnded`, so a fight that
+  ends on a spell or a move step currently has sim events **after** `EncounterEnded`, which already contradicts rule 7.
+  Moving them before it fixes that, but it moves the digests of any locked stream that ends that way. The implementation PR
+  must audit the goldens. If any moves, re-pin it with that explanation (a rule 7 conformance fix), or, if Director prefers,
+  apply (b)-before-(d) only when (c) is non-empty. Live play and replay share `complete`, so both produce the same order. Sim tests lock it, and SIM_EVENTS.md
+  gets the rule-4 exception in the implementation PR.
 - Concentration links do not fire separately. Teardown ends the summons first, and the summoner's concentration is not
   ended by sim. So there is no duplicate `SummonEnded{b = 1}`, and rules' `ConcentrationEnded` behaviour at encounter end is
   unchanged.
