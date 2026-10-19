@@ -213,7 +213,7 @@ TEST_CASE("modifier follow-ups: new properties compile for spells and features; 
         CHECK_FALSE(rules5e_content::spell_from_json(spell({{"kind", "apply_modifier"}, {"modifier", bad}})).def);
     }
     // rider (Guiding Bolt): a spell attack, then apply_modifier on the affected only, with its own modifier id
-    Json gb = spell({{"kind", "spell_attack"}, {"melee", false}, {"damage", {{"dice", "4d6"}, {"type", "radiant"}}}});
+    Json gb = spell({{"kind", "spell_attack"}, {"attack", "ranged"}, {"damage", {{"dice", "4d6"}, {"type", "radiant"}}}});
     gb["effects"].push_back({{"kind", "apply_modifier"}, {"applies_to", "affected"},
                              {"modifier", {{"stat", "attacks_against"}, {"mode", "advantage"}, {"consume", "next_attack_against"},
                                            {"duration", {{"kind", "until_start_of_caster_turn"}}}}}});
