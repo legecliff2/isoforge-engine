@@ -1189,6 +1189,46 @@ Rules side only (`feat/rules-bonus-attacks`); no schema change, no new event kin
   modelled (they need condition-source work, R-G8 / R-G3). The "light" property is not checked by rules; the loader lists the
   light attacks in `requires_attacks`. Open Hand Technique riders on Flurry are not modelled.
 
+### 7.2c R-G8 conditions with a source, grapple / shove / escape (post-batch rules follow-up) and hand-off
+
+Rules side only (`feat/rules-grapple-shove`); no new event kind (event schema stays v7, sim's layout test is untouched), no new
+`ActionKind`, no change to existing content behaviour. Goldens are unchanged until sim folds the new digest (below).
+
+- **State.** `EncounterState::sourced`: `SourcedCondition{condition, target, source, escape_dc}`. Written by
+  `apply_sourced_condition` / `grapple(...)` (also applies the condition; refuses a dead, immune or self target, and a Grappled
+  target more than one size larger), and automatically for spell-applied **Charmed** and **Frightened** (the caster is the source;
+  both `ApplyCondition` and save-and-condition effects). Entries are pruned after every step (`prune_sourced`): the condition is gone,
+  the target is dead, or (Grappled) the grappler is dead or incapacitated, in which case Grappled is removed with a `ConditionRemoved`
+  unless another holder remains. Queries: `condition_source`, `grappled_by`, `size_within_one`.
+- **Digest.** `sourced_digest` / `has_sourced_conditions`: **sim must fold under the new tag byte 0xA7, only when non-empty**
+  (like 0xA2..0xA6). Until sim does, goldens cannot move. Once it does, a scenario that has a spell-applied Charmed / Frightened will
+  carry entries and its hash changes: Engine Core should regenerate those goldens and document it (or fold only entries with a
+  Grappled condition; the entries for Charmed / Frightened are the only ones that exist without a grapple).
+- **Actions.** `ActionRequest::special` (append-only, with `Attack`): 1 Grapple, 2 Shove prone, 3 Shove 5 ft away, 4 Escape.
+  Grapple / shove replace one attack of the Attack action (Extra Attack aware: they consume `attacks_remaining`, else the action);
+  Escape takes the action. Requires `target_within_5ft` (sim fact), `multiattack == 0`, no other multiattack in progress.
+  The attacker rolls Athletics, the target the better of Athletics / Acrobatics (higher modifier, Athletics on a tie); the attacker
+  wins only with a strictly higher total. Both rolls are `CheckRolled` events, attacker first; on the second, `c & 1` = "the target
+  held". Result events: `ConditionAdded` (Grappled / Prone) or, for the 5 ft shove, `Moved{actor = target, target = shover, a = 5}`
+  (forced movement; sim applies it, rules know no positions). Escape: against the recorded `escape_dc` (a `CheckRolled` with that DC),
+  or, when 0, a contest against the grappler's Athletics (`req.target` picks the grappler; 0 = the first); `req.dc > 0` supplies a DC
+  when the Grappled condition has no recorded source. Success removes the entry and the condition (`ConditionRemoved`).
+- **Movement.** Speed 0 while Grappled was already in `effective_speed`. A Move by a grappler now costs double while it holds a creature
+  that is less than two sizes smaller. Rules do not move the grappled creature: sim asks `grappled_by(state, mover)` and moves them
+  with the mover (SRD drag). Crawling (double cost while Prone) was already in `Move`.
+- **Charmed.** A charmed creature cannot Attack (or grapple / shove) its recorded charmer: the request is rejected.
+- **Hand-off (Engine Core / T&C).** (a) Monster grapple riders (crocodile, constrictors): call `grapple(state, attacker, target, escape_dc, ev)`
+  from the hit rider with the monster's DC; (b) fold `sourced_digest` under 0xA7 when `has_sourced_conditions`; (c) sim: drag
+  grappled creatures on Move, apply the shove push from `Moved{actor != mover}`, end the grapple when the target is moved out of
+  reach by an effect (remove the Grappled condition from the target; the next step's pruning drops the entry);
+  (d) AI: emit `special` requests; (e) Frightened "cannot willingly move closer" and spell target restrictions for Charmed use
+  `condition_source`.
+- **Remaining / not done.** Swallow / engulf (the contained state, the swallower's escape and damage-per-turn, the half cover and
+  blinded / restrained rules) and web-style ranged restrain with an escape action are not modelled: they need a position-aware
+  container state. Charmed's social advantage and Frightened's movement limit are sim facts. Other conditions (Restrained, Paralyzed)
+  from monster actions could use `apply_sourced_condition` but are not recorded automatically. Shoving or grappling a creature
+  that is not within reach, and the one-free-hand requirement, are the caller's checks.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain

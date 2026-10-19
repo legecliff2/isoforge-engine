@@ -44,7 +44,7 @@ Things that apply to many rows (so they are not repeated):
 | Ability checks, saving throws, proficiency, advantage/disadvantage cancel | DATA | `ActionKind::AbilityCheck`, `saves.hpp`, `combine_modes`. |
 | Standing up from prone (half movement) | DATA | `ActionKind::StandUp`. |
 | Movement on a grid, difficult terrain (2x), LOS | DATA | sim `Grid`, `step_cost_ft`, supercover LOS. |
-| Crawling while prone (extra movement cost) | NEW | Not modelled in rules or sim (R-G8). |
+| Crawling while prone (extra movement cost) | NEW (wiring) | Rules done: a Move while Prone costs double (already in `Move`); sim's own movement budget is not wired (R-G8). |
 | Opportunity-attack exceptions (Disengage, teleport, forced movement) | DATA | Disengage implemented; teleport/forced movement do not exist yet (R-G9). |
 | Surprise (skip first turn, no reactions) | NEW | No surprise state in `begin_encounter` (R-G16). |
 | Short / long rest: spell slots, Pact slots, feature uses | DATA | `recover_slots_short_rest/long_rest`, `recover_features`. |
@@ -56,7 +56,7 @@ Things that apply to many rows (so they are not repeated):
 | Lighting, darkness, obscurement, darkvision/blindsight/truesight | NEW | Not modelled; sim has LOS only (R-G13). |
 | Flanking | OOS | Optional rule, not SRD core. |
 | Two-weapon fighting | NEW (wiring) | Rules done (R-G6): `Combatant::bonus_attacks` option with `requires_attacks` (light weapons), `different_weapon` and off-hand `damage` dice; `ActionRequest::bonus_option`. Loader / AI pending. |
-| Grapple and shove (contested Athletics/Acrobatics) | NEW | R-G8. |
+| Grapple and shove (contested Athletics/Acrobatics) | NEW (wiring) | Rules done (R-G8): `ActionRequest::special` 1-3, Athletics vs Athletics/Acrobatics, one-size limit, replaces one attack. Sim / AI wiring pending. |
 | Flying, swimming, climbing, burrowing movement | NEW | One `speed_ft`; sim reads `speed.walk` only (T&C-G12, T&C-G14). |
 | Creature size and space (large creatures occupy 2x2) | NEW | Size is loaded (`Archetype::size`, #49) but only stored; the grid is still one tile per creature (T&C-G12, T&C-G14; footprint model in flight). |
 | Dispel / end effects on a creature | NEW | R-G15. |
@@ -99,10 +99,10 @@ Things that apply to many rows (so they are not repeated):
 | Condition | Status | Notes |
 |---|---|---|
 | Blinded | DATA | Attack disadvantage on self, advantage against. Sight-based checks are not modelled. |
-| Charmed | NEW | Needs a source creature (cannot attack charmer, social advantage). `Combatant::conditions` is a bitmask with no source (R-G8). |
+| Charmed | NEW (wiring) | Rules done (R-G8): the spell-applied source is recorded (`EncounterState::sourced`) and the charmed creature cannot attack its charmer. Social advantage is a sim fact. |
 | Deafened | DATA | No combat effect beyond the flag. |
-| Frightened | NEW | Disadvantage on attacks/checks is implemented. "Cannot willingly move closer to the source" needs source + LOS (R-G8). |
-| Grappled | NEW | Speed 0 is implemented. Grapple action, source, escape check, drag are not (R-G8). |
+| Frightened | NEW (wiring) | Disadvantage on attacks/checks is implemented; the spell-applied source is recorded (`condition_source`). The movement limit needs positions (sim). |
+| Grappled | NEW (wiring) | Rules done (R-G8): speed 0, source and escape DC recorded, `special` 4 Escape (DC or contest), ends if the grappler is incapacitated or dies, drag halves the grappler's Move cost. Sim moves the held creature (`grappled_by`). |
 | Incapacitated | DATA | No actions/reactions. |
 | Invisible | DATA | Attack advantage / disadvantage against. No "heard/ noticed" rules. |
 | Paralyzed | DATA | Incapacitated, auto-fail Str/Dex saves, advantage against, crit within 5 ft. |
@@ -494,7 +494,7 @@ Row counts are over the tables in sections 1-9 (one row per mechanic or feature;
 | 9. Monsters: stat blocks, traits, actions | 13 | 26 | 5 | 44 |
 | **Total** | **129** | **192** | **31** | **352** |
 
-"NEW (wiring)" rows (rules5e models it, content-to-sim does not carry it) are counted under NEW. Counts are as of main after #91 (and #93 for row 15); after #45, #47, #48 and #49 the totals were DATA 112 / NEW 209 / OOS 31 = 352, and before those PRs DATA 104 / NEW 217 / OOS 31. The version-bump batch moved 17 rows NEW -> DATA (conditions with a duration, condition riders from actions, area templates, duration expiry, Divine Smite, Sneak Attack, Burning Hands, Shatter, Fireball, Lightning Bolt, on-hit save riders, Recharge breath weapons, Innate Spellcasting, Charge / Pounce, Rampage, Undead Fortitude, Death Burst). A further 26 rows moved NEW -> `NEW (wiring)` (rules done, still counted NEW): see 11.5; the bonus-action attack PR (R-G6) moved 5 more (two-weapon fighting and its style, Martial Arts, Flurry of Blows, Frenzy), still counted NEW. This recount was produced by a script over the tables, which also reproduced the previous 112 / 209 / 31. "DATA (baked)" / "DATA (partial)" rows count as DATA.
+"NEW (wiring)" rows (rules5e models it, content-to-sim does not carry it) are counted under NEW. Counts are as of main after #91 (and #93 for row 15); after #45, #47, #48 and #49 the totals were DATA 112 / NEW 209 / OOS 31 = 352, and before those PRs DATA 104 / NEW 217 / OOS 31. The version-bump batch moved 17 rows NEW -> DATA (conditions with a duration, condition riders from actions, area templates, duration expiry, Divine Smite, Sneak Attack, Burning Hands, Shatter, Fireball, Lightning Bolt, on-hit save riders, Recharge breath weapons, Innate Spellcasting, Charge / Pounce, Rampage, Undead Fortitude, Death Burst). A further 26 rows moved NEW -> `NEW (wiring)` (rules done, still counted NEW): see 11.5; the bonus-action attack PR (R-G6) moved 5 more (two-weapon fighting and its style, Martial Arts, Flurry of Blows, Frenzy), still counted NEW; the grapple / shove PR (R-G8) moved 5 more (grapple and shove, Charmed, Frightened, Grappled, crawling), still counted NEW. This recount was produced by a script over the tables, which also reproduced the previous 112 / 209 / 31. "DATA (baked)" / "DATA (partial)" rows count as DATA.
 
 ### 10.2 Spells, per spell (SRD 5.1 levels 0-3)
 
@@ -628,7 +628,7 @@ Gaps that need new rules mechanics (not just Engine Core / T&C wiring, which is 
 |---|---|---|---|---|
 | 1 | R-G3 follow-ups | **Done in rules** (this PR): one-shot / until-damaged expiry (`consume`), speed reduction (`speed_sub`), AC floor (`ac_floor`), per-turn temp HP (`per_turn`), general `when` scope (attack roll, attacks against, AC, damage), and `apply_modifier` as a rider effect. Still open: Haste's restricted extra action, `when` on saves / checks, a "marked target" scope (Hunter's Mark), "frightened immunity" (Heroism) | Needs only wiring now: True Strike, Guiding Bolt, Vicious Mockery, Ray of Frost, Mage Armor, Barkskin, Heroism | done |
 | 2 | R-G5 rest | Static feature kinds `attack_bonus`, `ac_bonus`, `crit_range` | Archery, Defense, Champion Improved Critical, Dueling-style bonuses | S |
-| 3 | R-G8 | Conditions with a source; grapple / shove; swallow / engulf; crawl cost; Large-creature size limits (grapple, net) | grapple monsters, giant toad, crocodile, Turn Undead, Fear, Charm Person, Command, Hold effects with a source | M |
+| 3 | R-G8 | **Done in rules** (conditions with a source, grapple / shove / escape, drag, one-size limit). Still open: swallow / engulf, web-style restrain, sim wiring of the push / drag | grapple monsters, crocodile, Charm Person, Fear | done |
 | 4 | R-G6 | **Done in rules**: bonus-action attack options (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy) with prerequisites, pool spend and an off-hand damage override. Still open: Open Hand Technique riders, Frenzy's exhaustion, a rules-side `legal_actions` listing | Monk, Berserker, dual wielders need wiring only | done |
 | 5 | R-G7 rest | d20 modify / reroll windows (`RollAttack` deferred, Q6): Cutting Words, Lucky, Great Weapon Fighting, Guidance / Resistance / Bardic Inspiration spending, Evasion | Bard, Halfling, Fighter style, cantrips | M |
 | 6 | R-G15 | Spell kinds: HP-pool targeting (Sleep, Color Spray), dispel / cleanse, delayed / sustained damage (Acid Arrow, Heat Metal), resurrection (Revivify); non-concentration timed spells now have expiry | Sleep, Dispel Magic, Lesser Restoration, Revivify | S-M each |
