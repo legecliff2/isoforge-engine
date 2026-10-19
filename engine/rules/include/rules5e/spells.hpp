@@ -28,6 +28,7 @@ enum class SpellEffectKind : uint8_t {
     AcBonus,        // reaction: AC bonus until the start of the caster's next turn (Shield)
     Counter,        // reaction: interrupts a spell being cast (Counterspell)
     ApplyCondition, // a condition on each target with no save (Invisibility); lasts with the spell
+    ApplyModifier,  // row 12: a timed modifier (Bless, Bane, Haste, Slow, Shield of Faith, Faerie Fire, Hunter's Mark); SpellDef::modifier
 };
 enum class OnSave : uint8_t { None, Half };          // damage on a successful save
 enum class RepeatSave : uint8_t { None, EndOfTurn, StartOfTurn, OnDamage };   // condition: target repeats the save
@@ -74,6 +75,7 @@ struct SpellDef {
     Condition condition = Condition::Paralyzed;
     RepeatSave repeat_save = RepeatSave::None;
     uint8_t darts = 0;                   // AutoHit
+    ModifierSpec modifier{};             // ApplyModifier (primary effect only): `source` and `concentration` are filled from the spell
     int8_t ac_bonus = 0;                 // AcBonus
     uint32_t blocks_spell = 0;           // AcBonus: also takes no damage from this spell (Shield vs Magic Missile)
     uint8_t counter_dc_base = 10;        // Counter: check DC = base + spell level when above the slot level
