@@ -176,7 +176,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Spellcasting, spellbook (known list), prepared spells, cantrips | 1 | DATA | `spells_known`; spellbook copying/prep is OOS (downtime). |
 | Arcane Recovery (once per day, short rest, recover slots <= half wizard level) | 1 | NEW (wiring) | rules5e `recover_spell_slots` + `recovery_budget` (R-G16, 7.2h); slot choice and the once-per-day row are the caller's. |
 | Arcane Tradition: Evocation; Evocation Savant | 2 | OOS | Downtime spell copying cost. |
-| Sculpt Spells (allies auto-succeed and take no damage from your evocation area) | 2 | NEW (wiring) | rules5e `Combatant::sculpt_spells` + `SpellDef::evocation` + `ActionRequest::spared` (R-G14, VERSION_BUMP_BATCH 7.2i). Sim wiring done: open feature kind `sculpt_spells {}`; spell@1 `school: evocation` sets `evocation` (loader). Validator arm pending (T&C). |
+| Sculpt Spells (allies auto-succeed and take no damage from your evocation area) | 2 | NEW (wiring) | rules5e `Combatant::sculpt_spells` + `SpellDef::evocation` + `ActionRequest::spared` (R-G14, VERSION_BUMP_BATCH 7.2i). Sim wiring done: open feature kind `sculpt_spells {}`; spell@1 `school: evocation` sets `evocation` (loader). Validator: common@1 `sculpt_spells` arm (#145). Authored on `srd51.character.wizard_level_2..5` (`features[].effect {"kind": "sculpt_spells"}`). |
 | Ability Score Improvement | 4 | DATA | Authored. |
 | Cantrip damage scaling at 5 | 5 | DATA | `scaling.cantrip.levels [5,11,17]` (shipped on Fire Bolt). |
 | 3rd-level slots at 5 | 5 | DATA | `spell_slots` table baked on the character. |
