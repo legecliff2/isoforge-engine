@@ -1,4 +1,4 @@
-# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds)
+# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G15 spell kinds, priced materials)
 
 Owner: Tools & Content. Source of truth is the C++ loader; this file records what it reads and what the validator checks.
 All numbers are integers.
@@ -102,3 +102,68 @@ Versioning: no tag change, no migration. The reaction parts were already in the 
 feature arms only constrain kinds that no file can have relied on (they were unknown kinds; no shipped pack or `tests/compat` file
 uses them, and both validate unchanged).
 
+
+## 5. R-G15 spell@1 kinds wired by sim #120: `hp_pool`, `dispel`, `revive`, `end_condition`, `delayed_damage`, `sustained_damage`
+
+(Section 4 is R-G11 zones, PR #119.) Compiled by `rules5e_content::spell_from_json` (`engine/rules/content/src/spell_loader.cpp`,
+#120, 66012c7; rules #105 / #106, proposal sections 7.2f / 7.2g). Schema: six closed arms of spell@1 `$defs/effect` (each also a
+propertyNames allow-list, `tests/validate/test_union_arms.py` `SpellEffectArmsR120`) and the closed `$defs/delayed_expiry` union.
+Fixtures: `tests/validate/fixtures/spell_kinds/spells/` (Sleep, Color Spray, Dispel Magic, Revivify, Lesser Restoration, Acid
+Arrow, Heat Metal; test namespace, not in `srd51.core`).
+
+| kind | keys (required **bold**) | compiles to | loader errors |
+|---|---|---|---|
+| `hp_pool` | **`dice`** (`NdS[+/-B]`), **`condition`**, `ends_on_damage` (boolean), `excludes_creature_type` (non-empty creature types, as on `heal`) | `HpPool`: roll `dice` (+ `scaling.upcast.dice`), cover targets by lowest current HP with `condition` for the spell's duration (Sleep, Color Spray) | `effect dice invalid`, `effect condition invalid`, `effect ends_on_damage must be a boolean`, `effect excludes_creature_type invalid` |
+| `dispel` | `check` = `{ability: "spellcasting", dc_base: 1..99, plus: "spell_level"}` (all three required; omitted = dc_base 10) | `Dispel`: spells of the slot level or lower end; higher ones on a check, DC `dc_base` + their level (Dispel Magic) | see note |
+| `revive` | `within_rounds` 1..255 (default 10 = 1 minute) | `Revive`: a creature dead at most that long returns with 1 HP (Revivify) | `effect within_rounds invalid` |
+| `end_condition` | **`conditions`**: non-empty array of common@1 conditions (unique in the schema) | `EndCondition`: ends the lowest `Condition` value present (Lesser Restoration) | `effect conditions invalid` |
+| `delayed_damage` | **`damage`** `{dice, type}`, **`expiry`**: `{kind: "rounds", n: 1..65535}` or `{kind: "until_end_of_target_next_turn"}`; `applies_to` | `DelayedDamage` with its own timer (Acid Arrow's 2d4 rides the spell attack with `applies_to: affected`) | `effect damage invalid`, `effect expiry must be {kind: rounds, n} or {kind: until_end_of_target_next_turn}`, `effect expiry n invalid` |
+| `sustained_damage` | **`damage`** `{dice, type}`; no `expiry` | `SustainedDamage`: damage now and on each bonus-action sustain while the spell lasts (Heat Metal) | `effect damage invalid`, `effect expiry is only for delayed_damage (sustained_damage lasts the spell's duration)` |
+
+Every arm also takes `description`; only `delayed_damage` takes `applies_to`. Cross-field rules (validator `check_spell`, same
+wording as the loader):
+
+- `effects[N]: <kind> is only allowed as the first effect` for `hp_pool`, `dispel`, `revive`, `end_condition`,
+  `sustained_damage` (only `delayed_damage` rides another effect).
+- `hp_pool needs a rounds, minutes or hours duration` / `sustained_damage needs ...`: their timer is the spell's duration in rounds
+  (minutes x 10, hours x 600; Color Spray's "until the end of your next turn" is written as 1 round).
+- `scaling.upcast.dice` is allowed on `hp_pool`, `delayed_damage`, `sustained_damage` (first effect); `scaling.upcast.dice not
+  allowed on a dispel effect` (and on `revive` / `end_condition`). `targets` is not allowed on any of the six.
+
+**Dispel DC (note).** The #120 loader reads a bare integer `effect.dc_base`; Engine Core is switching it (follow-up PR) to the
+`check` object above, the same shape as `counter`'s. The schema follows the check-object form and intentionally does **not**
+accept the bare `dc_base` (it was never valid content). Until the follow-up lands the loader ignores `check`, so authored DCs other
+than 10 do not take effect yet; SRD Dispel Magic uses 10.
+
+Shapes the #120 description gave that the loader does not use (loader wins): `hp_pool` takes a bare `dice` string, not
+`damage {dice, type}` (the pool is hit points, not damage); `damage {dice, type}` is used by `delayed_damage` /
+`sustained_damage` only.
+
+Versioning: additive spell@1 kinds and a new `$defs`; no tag change, no migration, no api_level gate (the old schema rejected
+these kinds, so no existing file carries them; `tests/compat` and both shipped packs validate unchanged).
+
+## 6. Priced material components (Director ruling)
+
+A spell's material cost is spell@1 `components.m.cost_cp` (integer copper, >= 1) with `consumed` (requires `cost_cp`); the loader
+maps them to `SpellDef::material_cost_cp` / `material_consumed`, and the sim's `can_provide_components` checks them (today it only
+provides materials with no cost). Revivify: `{"text": "diamonds worth 300 gp, which the spell consumes", "cost_cp": 30000,
+"consumed": true}`.
+
+A character@4 `equipment[]` item entry may carry **`value_gp`** (integer >= 0, optional, additive): the entry's value in gold.
+Per the ruling, an entry satisfies a priced material when its `item` id matches and `value_gp * 100 >= cost_cp`; the sim does not
+need an item@1 document for it:
+
+```json
+"equipment": [ {"item": "srd51.item.diamond", "value_gp": 300} ]
+```
+
+Validator: an entry with `value_gp` is exempt from check 6/11 (its `item` need not resolve to an item@1); without `value_gp` an
+item still must resolve. Floats and negatives are schema errors.
+
+Open points for the sim / a follow-up:
+
+- spell@1 `components.m` has no item id (only `text`, `cost_cp`, `consumed`), so "id matches" needs either an optional
+  `components.m.item` content id (an additive spell@1 key, not added here because no loader reads it) or a sim-side convention.
+- item@1 has only `weapon`, `armor` and `shield` categories, so `srd51.item.diamond` is not added as an item@1 document; a
+  gem / valuables category would be a later additive arm.
+- Consumption (removing or reducing the entry when `consumed`) is sim inventory state; content only states the value.

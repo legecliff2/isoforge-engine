@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://isoforge.dev/schemas/spell/v1.schema.json",
   "title": "spell@1",
-  "description": "SRD 5.1 spell. Rules-facing data: rules5e_content maps it to rules5e::SpellDef (engine/rules/content). 'effects' is an array of one or more effects (reaction kinds stand alone; extra effects resolve in order over the same targets and may use applies_to: affected). Cross-field rules are in tools/validate (check_spell) and mirrored by the loader. Integers only (\u00a74.3).",
+  "description": "SRD 5.1 spell. Rules-facing data: rules5e_content maps it to rules5e::SpellDef (engine/rules/content). 'effects' is an array of one or more effects (reaction kinds stand alone; hp_pool, dispel, revive, end_condition and sustained_damage are first-effect only; extra effects resolve in order over the same targets and may use applies_to: affected). Cross-field rules are in tools/validate (check_spell) and mirrored by the loader. Integers only (\u00a74.3).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -528,7 +528,13 @@
             "ac_bonus",
             "counter",
             "apply_condition",
-            "apply_modifier"
+            "apply_modifier",
+            "hp_pool",
+            "dispel",
+            "revive",
+            "end_condition",
+            "delayed_damage",
+            "sustained_damage"
           ]
         }
       },
@@ -917,9 +923,341 @@
               }
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "hp_pool"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "dice",
+              "condition"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "dice",
+                "condition",
+                "ends_on_damage",
+                "excludes_creature_type",
+                "description"
+              ]
+            },
+            "description": "R-G15 HpPool (Sleep, Color Spray). First effect only; needs a rounds/minutes/hours duration.",
+            "properties": {
+              "kind": {
+                "const": "hp_pool"
+              },
+              "dice": {
+                "$ref": "../common/v1.schema.json#/$defs/dice",
+                "description": "The pool: roll (scaled by scaling.upcast.dice) and cover targets by lowest current HP."
+              },
+              "condition": {
+                "$ref": "../common/v1.schema.json#/$defs/condition",
+                "description": "Applied to each creature the pool covers; lasts the spell's duration."
+              },
+              "ends_on_damage": {
+                "type": "boolean",
+                "description": "The condition ends early when the creature takes damage (Sleep). Default false."
+              },
+              "excludes_creature_type": {
+                "$ref": "../common/v1.schema.json#/$defs/creature_types",
+                "description": "Skipped by the pool (Sleep: undead). Same key and meaning as heal's."
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "dispel"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "check",
+                "description"
+              ]
+            },
+            "description": "R-G15 Dispel (Dispel Magic): ends spells of the slot level or lower on each target automatically, higher ones on the check. First effect only.",
+            "properties": {
+              "kind": {
+                "const": "dispel"
+              },
+              "check": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ability",
+                  "dc_base",
+                  "plus"
+                ],
+                "description": "Spells above the slot level end on an ability check, DC dc_base + that spell's level (same object as counter's check). Omitted: dc_base 10 (SRD).",
+                "properties": {
+                  "ability": {
+                    "const": "spellcasting"
+                  },
+                  "dc_base": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 99
+                  },
+                  "plus": {
+                    "const": "spell_level"
+                  }
+                }
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "revive"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "within_rounds",
+                "description"
+              ]
+            },
+            "description": "R-G15 Revive (Revivify): returns with 1 HP. First effect only.",
+            "properties": {
+              "kind": {
+                "const": "revive"
+              },
+              "within_rounds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 255,
+                "description": "Dead for at most this many rounds (Revivify: 1 minute = 10, the default)."
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "end_condition"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "conditions"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "conditions",
+                "description"
+              ]
+            },
+            "description": "R-G15 EndCondition (Lesser Restoration). First effect only.",
+            "properties": {
+              "kind": {
+                "const": "end_condition"
+              },
+              "conditions": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "$ref": "../common/v1.schema.json#/$defs/condition"
+                },
+                "description": "Ends one of these on each target: the lowest rules5e Condition value present."
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "delayed_damage"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "damage",
+              "expiry"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "damage",
+                "expiry",
+                "applies_to",
+                "description"
+              ]
+            },
+            "description": "R-G15 DelayedDamage: damage when the effect's own timer runs out (Acid Arrow). The only new kind that may ride another effect.",
+            "properties": {
+              "kind": {
+                "const": "delayed_damage"
+              },
+              "damage": {
+                "$ref": "#/$defs/damage"
+              },
+              "expiry": {
+                "$ref": "#/$defs/delayed_expiry"
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ],
+                "description": "Effects after the first only (Acid Arrow's later damage rides a spell_attack with 'affected': only the creatures it hit). Default 'all'."
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "sustained_damage"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "damage"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "damage",
+                "description"
+              ]
+            },
+            "description": "R-G15 SustainedDamage (Heat Metal): damage now and each time the caster sustains it (a bonus action); lasts the spell's duration (no expiry). First effect only; needs a rounds/minutes/hours duration.",
+            "properties": {
+              "kind": {
+                "const": "sustained_damage"
+              },
+              "damage": {
+                "$ref": "#/$defs/damage"
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
         }
       ],
       "description": "Discriminated by 'kind' (if/then per kind, so errors name the exact field)."
+    },
+    "delayed_expiry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "description": "delayed_damage's timer (rules5e Expiry): rounds (n rounds) or the end of the target's next turn. Closed propertyNames arms (tests/validate/test_union_arms.py).",
+      "properties": {
+        "kind": {
+          "enum": [
+            "rounds",
+            "until_end_of_target_next_turn"
+          ]
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "rounds"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "n"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "n"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "until_end_of_target_next_turn"
+              }
+            }
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "kind"
+              ]
+            }
+          }
+        }
+      ]
     }
   }
 }

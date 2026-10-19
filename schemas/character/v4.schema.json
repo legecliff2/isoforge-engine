@@ -92,7 +92,7 @@
     },
     "equipment": {
       "type": "array",
-      "description": "Bare strings are the descriptive @3 entries (never loaded). {item, equipped?} objects reference an item@1 document by content id and are live (docs/proposals/VERSION_BUMP_BATCH.md 10).",
+      "description": "Bare strings are the descriptive @3 entries (never loaded). {item, equipped?, value_gp?} objects reference an item@1 document by content id and are live (docs/proposals/VERSION_BUMP_BATCH.md 10).",
       "items": {
         "oneOf": [
           {
@@ -110,6 +110,11 @@
               },
               "equipped": {
                 "type": "boolean"
+              },
+              "value_gp": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Value in gp of this entry (a priced material component: an entry satisfies a spell's components.m when its item id matches and value_gp * 100 >= cost_cp; Director ruling). Such an entry needs no item@1 document."
               }
             }
           }
