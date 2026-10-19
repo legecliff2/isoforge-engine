@@ -925,6 +925,40 @@ an extra source (same code path as `RollTrait`). Expiry: `begin_turn`/`end_turn`
 concentration modifiers drop when `ActiveSpellEffect` concentration ends (the same drop function).
 `ModifierApplied` / `ModifierExpired` events (§9.1).
 
+### 6.2a Row 12 as implemented (rules side) and hand-off to Engine Core
+
+Rules side only (`feat/rules-modifiers-12`); sim, `content.cpp` and `Combat::create` are untouched. Event schema stays v7
+(`ModifierApplied` / `ModifierExpired` were already reserved). Goldens are unchanged: with no modifier on the board every
+new code path is skipped and no extra rng is drawn.
+
+- **Types.** `ModStat` (AttackRoll, Save, AbilityCheck, Ac, Speed, Damage, TempHp, Resistance, AttacksAgainst),
+  `ModAppliesTo` (Self, Target, AlliesWithin30), `ModifierSpec` (id, source, stat, bonus, die + die_mult, mode,
+  speed_num/den, damage_type, ability, scope, applies_to, expiry, rounds, until_caster_turn, concentration, stack),
+  `ActiveModifier {spec, caster, target, Timed}` in `EncounterState::modifiers`. Timers reuse `Timed` (`make_timed`,
+  `tick_round_start`, `tick_target_turn_end`).
+- **Evaluation.** Flat bonuses add; dice are rolled at the moment of the roll, after the d20, one rng draw per die and only
+  if a die exists, in application order. Modes (attack_roll, attacks_against, save, ability_check) merge into the existing
+  advantage/disadvantage resolution. Ac adds to the cover AC bonus of the attack. Resistance is mirrored into
+  `Combatant::mod_resist` (a rules-maintained cache OR-ed into `effective_resistances`).
+- **Events.** `ModifierApplied` actor=caster target a=id b=ModStat c=magnitude (bonus, else die count*100+sides, else the
+  RollMode, else speed num*100+den, else 0). `ModifierExpired` actor=caster target a=id b=reason (0 duration ran out,
+  1 concentration ended, 2 replaced by a same-id modifier).
+- **Producers.** `SpellEffectKind::ApplyModifier` with `SpellDef::modifier`; `EncounterHooks::feature_modifiers(state, actor,
+  feature_id)` applied after `FeatureUsed` on UseFeature (Self = actor, Target = req.target, AlliesWithin30 = `area_targets`
+  with a 30-ft sphere, same team, caster excluded).
+- **Deviations from section 6.1.** (1) Speed is read when the target's turn starts (budget), not mid-turn. (2) Damage
+  modifiers apply to weapon attacks only (spell_id == 0), and `ModifierSpec::scope` (0 any, 1 melee, 2 ranged) was added for
+  Rage. (3) ApplyModifier is a primary spell effect only, not an `extra_effects` entry. (4) TempHp is instantaneous (larger
+  pool kept), emits ModifierApplied and leaves no record. (5) One `ModifierSpec` serves spells and features. (6)
+  `bonus_table` is resolved by the loader into `bonus`. (7) `until_rest` has no in-encounter expiry (expiry 0 and no
+  concentration). (8) The legal-action enumeration is unchanged.
+- **Hand-off (Engine Core).** (a) Compile spell and feature `apply_modifier` content into `SpellDef::modifier`
+  (`kind = ApplyModifier`) and the `feature_modifiers` hook rows; register the SpellDefs in the SpellBook. (b) Fold
+  `modifiers_digest(state)` in `Combat::hash` under tag **0xA2**, only when `has_modifier_state(state)` is true. (c) Make
+  `hooks.area_targets` answer a 30-ft sphere centred on the actor (AlliesWithin30). (d) Decide AI use of modifier spells and
+  features. (e) Sim code reading AC or resistances directly should add `modified_ac_bonus` / `effective_resistances`; rules
+  already apply them internally.
+
 ### 6.3 Inert behaviour
 
 Spell side is additive (old spells contain no such kind). Feature side: `3→4` marks any pre-existing
@@ -1066,6 +1100,36 @@ needs persistent party/creature state outside `Combat` and is its own design.
 
 `resources[]` does not exist pre-`@4` (schema). `character@3` features keep `uses`/`recharge`
 (still live). Nothing is marked.
+
+### 7.2a Row 13 as implemented (rules side) and hand-off to Engine Core
+
+Rules side only; sim, `content.cpp` and `Combat::create` are untouched. Schema stays v7, no new event kinds
+(`ResourceSpent` is reused), goldens unchanged: with no `feature_spec` hook, no `legendary_pool` and no extra actions
+every path is the pre-row-13 one and no extra rng is drawn. The pool table, `register_pool`, `can_spend`/`spend_pool`,
+`ResourceSpent` and `pools_digest` (tag 0xA3) already existed (#79 / 9c).
+
+- **`FeatureSpec` + `EncounterHooks::feature_spec(state, actor, feature_id)`** (nullopt = plain UseFeature): `pool` +
+  `pool_cost` (0 = 1) spend from a registered pool; `cost` 0 follow `as_bonus_action`, 1 action, 2 bonus action,
+  3 reaction, 4 free; `grant_actions` (grant_action); `heal_pool` (Lay on Hands).
+- **UseFeature order:** validate (registered pool, enough in it, heal target/amount, feature uses, action economy) with no
+  state change on failure, then spend the economy, bump `FeatureUses`, emit `FeatureUsed`, `ResourceSpent`
+  (actor, a = pool, b = amount, c = remaining), the heal (`Healed` actor = user, target), then modifiers (row 12).
+- **grant_action:** `TurnBudget::extra_actions` (appended, 0) += `grant_actions`; `spend_action` takes one when the
+  action is already spent; it is gone with the turn (new budget). `legal_actions` counts it as an available action.
+- **heal_pool:** the amount is `ActionRequest::amount` (target 0 = self); the pool is charged the full amount
+  (no clamping to missing hit points) and the heal is capped by max hp as usual.
+- **Legendary Resistance:** `Combatant::legendary_pool` (appended, 0 = none). When that creature fails a saving throw
+  (spell Save, repeat save, trigger predicate save, concentration check) and the pool has 1, rules spend it
+  automatically: `ResourceSpent` is emitted, then `SavingThrowRolled` reports success. No decision window.
+- **Deviations.** (1) No `unlimited` pool: the loader registers no pool for an `unlimited` table entry and leaves
+  `FeatureSpec::pool = 0`, so nothing is spent. (2) LR is auto-spent, with no choice. (3) Haste's restricted action is
+  not expressible (as §7.1 says). (4) No rest model change.
+- **Hand-off (Engine Core).** (a) At archetype build resolve `resources[]` (integer, `per_level`/`plus_ability`, `table`)
+  and `register_pool(state, actor, id, max, max, recharge)` in `Combat::create`; set `Combatant::legendary_pool` for a
+  Legendary Resistance pool. (b) Provide `hooks.feature_spec` from the feature registry (usage.pool/cost, effect.cost,
+  grant_action count, heal_pool) and `hooks.feature_modifiers` (row 12). (c) For `heal_pool`/Lay on Hands the AI or
+  caller sets `ActionRequest::amount` and `target`. (d) `TurnBudget::extra_actions` is a new budget field; hash it only
+  if sim already hashes the budget. (e) Pools are already folded under 0xA3 (non-empty only).
 
 ## 8. Migrations and inert markers
 

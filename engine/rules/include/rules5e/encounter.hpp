@@ -33,6 +33,8 @@ struct TurnBudget {
     // Row 9b: a trigger granted a bonus-action attack (Rampage): Combatant::attacks index + 1, 0 = none. Spent by
     // Attack with as_bonus_action; gone with the turn.
     uint8_t bonus_attack_grant = 0;
+    // Row 13: further actions granted this turn (Action Surge). spend_action takes one when the action is spent.
+    uint8_t extra_actions = 0;
 };
 
 // Answer to a reaction window (names/layout shared with sim::Combat).
@@ -239,6 +241,12 @@ struct ActiveSpellEffect {
     Timed timed{};                     // appended: Expiry::None = lasts until concentration ends / a repeat save succeeds
 };
 
+// A modifier in force on `target` (row 12). `timed` reuses the condition-duration machinery (Rounds / EndOfTargetNextTurn).
+struct ActiveModifier {
+    ModifierSpec spec; CombatantId caster = 0, target = 0;
+    Timed timed{};
+};
+
 // Limited-use features (Second Wind, ...), keyed by (actor, feature_id). Part of the encounter state,
 // so they are serialized/hashed with it and rebuilt by replay; sim registers them at setup.
 enum class FeatureRecharge : uint8_t { None, ShortRest, LongRest };
@@ -261,6 +269,15 @@ struct ResourcePool { CombatantId actor = 0; uint32_t pool_id = 0; uint16_t max 
 
 using PollOrderFn = std::function<std::vector<CombatantId>(const EncounterState&,
                                                            const std::vector<CombatantId>& eligible_in_initiative_order)>;
+
+// Row 13: what UseFeature does for one feature (content: usage.pool, effect.cost, grant_action, heal_pool).
+struct FeatureSpec {
+    uint32_t pool = 0;          // spend from this pool (0 = none); the pool must be registered for the actor
+    uint16_t pool_cost = 0;     // 0 = 1; ignored for heal_pool (the spend is ActionRequest::amount)
+    uint8_t cost = 0;           // 0 follow ActionRequest::as_bonus_action, 1 action, 2 bonus action, 3 reaction, 4 free
+    uint8_t grant_actions = 0;  // grant_action: TurnBudget::extra_actions += this (Action Surge: 1)
+    bool heal_pool = false;     // Lay on Hands: spend `amount` from `pool`, heal ActionRequest::target (0 = self) by that much
+};
 
 struct EncounterHooks {
     // Checked after every state change. Empty = default_end_condition.
@@ -315,6 +332,13 @@ struct EncounterHooks {
     // SpellDef) centred on `source`, as sim sees positions. The source itself is ignored. Empty = nobody, and then an
     // area_save trigger does not fire.
     std::function<std::vector<CombatantId>(const EncounterState&, const Combatant& source, const SpellDef&)> area_targets;
+    // Row 12: modifiers a feature grants when UseFeature resolves (Rage, Bardic Inspiration token, Leadership). Empty = none.
+    // `applies_to` Self = the actor, Target = ActionRequest::target, AlliesWithin30 = area_targets with a 30 ft sphere
+    // (the actor excluded).
+    std::function<std::vector<ModifierSpec>(const EncounterState&, const Combatant& actor, uint32_t feature_id)> feature_modifiers;
+    // Row 13: the mechanics of a feature beyond its uses and modifiers (pool spend, cost kind, grant_action, heal_pool).
+    // nullopt = the plain pre-row-13 UseFeature (as_bonus_action decides the cost).
+    std::function<std::optional<FeatureSpec>(const EncounterState&, const Combatant& actor, uint32_t feature_id)> feature_spec;
 };
 
 struct EncounterState {
@@ -329,6 +353,7 @@ struct EncounterState {
     uint32_t next_window_seq = 0;        // reaction windows opened so far
     std::optional<PendingDecision> pending;   // set while an action waits for a reaction decision
     std::vector<ActiveSpellEffect> effects;   // lasting spell effects, in the order applied
+    std::vector<ActiveModifier> modifiers;    // row 12 (appended): timed modifiers in application order; empty for old content
     EncounterHooks hooks;                // behaviour, not state: never serialized/hashed
     std::vector<FeatureUses> features;   // appended: limited-use features (register_feature)
     std::vector<ActionUse> action_uses;  // appended (v7): recharge actions; empty for content without one
@@ -452,6 +477,19 @@ uint64_t pools_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325u
 
 // Timed lasting effects (sim folds the digest under tag 0xA5, only when `has_timed_effects`).
 bool has_timed_effects(const EncounterState&);
+
+// ---- Timed modifiers (row 12) ----
+// Applies `spec` to `target` (replacing a same-id modifier unless spec.stack). TempHp is granted at once (the larger
+// pool is kept) and leaves no record. Emits ModifierApplied (actor = caster, target, a = id, b = ModStat,
+// c = magnitude: bonus, else die count*100+sides, else the RollMode, else speed num*100+den, else 0). Returns false
+// if the target does not exist.
+bool apply_modifier(EncounterState&, CombatantId caster, CombatantId target, const ModifierSpec& spec, std::vector<Event>& ev);
+// Pure queries over the active modifiers of `id` (ability < 0: no ability scope check).
+int modifier_flat(const EncounterState&, CombatantId id, ModStat, int ability = -1);   // sum of flat bonuses
+int modified_ac_bonus(const EncounterState& s, CombatantId id);
+int modified_speed(const EncounterState&, const Combatant&);                          // effective_speed scaled by Speed modifiers
+bool has_modifier_state(const EncounterState&);
+uint64_t modifiers_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);                      // fold under tag 0xA2 when has_modifier_state
 uint64_t timed_effects_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 
 std::vector<ActionRequest> legal_actions(const EncounterState&);   // for AI + UI (current actor)
