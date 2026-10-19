@@ -491,14 +491,18 @@ GRAPPLE_CASES = [
     ("grapple_on_save_effect", CRAB, [(["actions", 0], {"kind": "save_effect", "id": "x", "name": "X", "save": {"ability": "str", "dc": 11},
                                                         "apply": [{"condition": "grappled"}], "on_hit": [{"kind": "grapple"}]})], [], "should not be valid under"),
     # the file loads, the rider is ignored or overwritten: warnings
-    # an untimed save_condition rider (no duration, no repeat_save): sim load error (checks_v4.UNTIMED_ON_HIT_CONDITIONS is empty)
-    ("save_condition_untimed_prone", CRAB, [(["actions", 1, "on_hit", 1], {"kind": "save_condition", "save": {"ability": "str", "dc": 11},
-                                                                           "apply": [{"condition": "prone"}]})], [],
+    # an untimed save_condition rider (no duration, no repeat_save): sim load error unless the condition ends by its own
+    # rules (checks_v4.UNTIMED_ON_HIT_CONDITIONS = {prone}, sim #133 kEndsByOwnRules)
+    ("save_condition_untimed_restrained", CRAB, [(["actions", 1, "on_hit", 1], {"kind": "save_condition", "save": {"ability": "str", "dc": 11},
+                                                                               "apply": [{"condition": "restrained"}]})], [],
      "save_condition uses an unsupported duration"),
-    ("save_condition_untimed_in_on_event", CRAB, [(["traits"], [{"id": "trip", "name": "Trip", "description": "x",
-                                                                "effect": {"kind": "on_event", "on": "hit", "effects": [
-                                                                    {"kind": "save_condition", "save": {"ability": "str", "dc": 11},
-                                                                     "apply": [{"condition": "prone"}]}]}}])], [],
+    ("save_condition_untimed_prone_with_untimed_restrained", CRAB, [(["actions", 1, "on_hit", 1], {"kind": "save_condition", "save": {"ability": "str", "dc": 11},
+                                                                                                  "apply": [{"condition": "prone"}, {"condition": "restrained"}]})], [],
+     "save_condition uses an unsupported duration (apply condition restrained"),
+    ("save_condition_untimed_poisoned_in_on_event", CRAB, [(["traits"], [{"id": "trip", "name": "Trip", "description": "x",
+                                                                         "effect": {"kind": "on_event", "on": "hit", "effects": [
+                                                                             {"kind": "save_condition", "save": {"ability": "str", "dc": 11},
+                                                                              "apply": [{"condition": "poisoned"}]}]}}])], [],
      "save_condition uses an unsupported duration"),
     ("warn_grapple_twice_on_one_attack", CRAB, [(["actions", 0, "on_hit", 1], {"kind": "grapple", "escape_dc": 13})], [], "the sim keeps only the last one"),
     ("warn_grapple_on_bonus_action", CRAB, [(["bonus_actions"], [{"id": "nip", "name": "Nip", "kind": "melee_weapon_attack", "to_hit": 3, "reach": 5,
@@ -520,6 +524,20 @@ class RG8GrappleRider(unittest.TestCase):
     def test_positive_fixture_validates_clean(self):
         # claw: grapple escape_dc 11; pincer: grapple with no escape_dc (Athletics contest) followed by an extra_damage rider.
         self.assertEqual(h.validate_docs(self.docs_with(extra("giant_crab_grappler.json"))), ([], []))
+
+    def test_untimed_prone_rider_is_accepted(self):
+        # sim #133: an untimed prone save_condition rider loads (untracked), on_hit[] and on_event effects[] alike, alone or
+        # after a timed condition; the validator reports nothing for it.
+        rider = {"kind": "save_condition", "save": {"ability": "str", "dc": 11}, "apply": [{"condition": "prone"}]}
+        mixed = {"kind": "save_condition", "save": {"ability": "str", "dc": 11},
+                 "apply": [{"condition": "poisoned", "duration": {"kind": "rounds", "n": 1}}, {"condition": "prone"}]}
+        on_event = [{"id": "trip", "name": "Trip", "description": "x",
+                     "effect": {"kind": "on_event", "on": "hit", "effects": [rider]}}]
+        for name, sets in (("on_hit", [(["actions", 1, "on_hit", 1], rider)]), ("on_hit_mixed", [(["actions", 1, "on_hit", 1], mixed)]),
+                           ("on_event", [(["traits"], on_event)])):
+            with self.subTest(case=name):
+                doc = h.edit(extra("giant_crab_grappler.json"), sets)
+                self.assertEqual(h.validate_docs(self.docs_with(doc)), ([], []))
 
     def test_escape_dc_bounds_are_accepted(self):
         for dc in (0, 1, 30):

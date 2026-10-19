@@ -138,13 +138,13 @@ class MonsterTable(unittest.TestCase):
             with self.subTest(monster=idx):
                 effs = [t["effect"] for t in load(idx)["traits"] if "effect" in t]
                 self.assertEqual(effs, [{"kind": "pack_tactics"}])
-        # bite knock-prone rider: description only. An on_hit save_condition applying prone has no duration (prone lasts
-        # until the target stands up), which the sim loader rejects as an unsupported duration (load error); see
-        # docs/SRD_MONSTERS_DEFERRED.md
-        for idx in ("wolf", "dire-wolf"):
+        # bite knock-prone rider (sim #133): on_hit save_condition, Str DC 11 / 13, prone untimed (ends when the target
+        # stands up; applied untracked like Shove)
+        for idx, dc in (("wolf", 11), ("dire-wolf", 13)):
             with self.subTest(monster=idx):
                 bite = load(idx)["actions"][0]
-                self.assertNotIn("on_hit", bite)
+                self.assertEqual(bite["on_hit"], [{"kind": "save_condition", "save": {"ability": "str", "dc": dc},
+                                                   "apply": [{"condition": "prone"}]}])
                 self.assertIn("knocked prone", bite["description"])
         # Aggressive / Reckless (common@1 open kinds aggressive / reckless_attack, sim #129): one declaration, no fields
         for idx, kind in (("orc", "aggressive"), ("berserker", "reckless_attack")):
