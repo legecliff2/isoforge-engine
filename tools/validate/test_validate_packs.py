@@ -87,7 +87,10 @@ class EffectKinds(unittest.TestCase):
 
 
 ZONE_FIXTURES = vp.ROOT / "tests" / "validate" / "fixtures" / "zones" / "spells"
+# R-G11 rules PR 2 positives kept apart so spell_loader_tests' 8-spell zone fixture book is unchanged (CONTENT_CONVENTIONS 4.5)
+ZONE_FIXTURES_PR2 = ZONE_FIXTURES.parent / "spells_pr2"
 MB, SG, FOG, SPIKE, WEB, GREASE = "moonbeam", "spirit_guardians", "fog_cloud", "spike_growth", "web", "grease"
+SC, WOF, AURA = "stinking_cloud", "wall_of_fire", "warding_aura"   # R-G11 rules PR 2 keys (CONTENT_CONVENTIONS 4.6)
 T0 = ["effects", 0, "zone", "triggers", 0]
 SAVE_FX = {"kind": "save", "ability": "con", "damage": {"dice": "2d10", "type": "radiant"}, "on_success": "half"}
 # R-G11 spell@1 kind `zone` (docs/CONTENT_CONVENTIONS.md section 4). (name, fixture, sets, dels, expected substring).
@@ -98,7 +101,11 @@ ZONE_CASES = [
     ("flags_raw_bitmask", FOG, [(["effects", 0, "zone", "flags"], 4)], [], "is not of type 'array'"),
     ("flags_duplicate", FOG, [(["effects", 0, "zone", "flags"], ["difficult", "difficult"])], [], "has non-unique elements"),
     ("bad_anchor", FOG, [(["effects", 0, "zone", "anchor"], "object")], [], "'object' is not one of"),
-    ("shape_line_not_yet", FOG, [(["effects", 0, "zone", "shape"], "line")], [], "'line' is not one of"),
+    ("line_needs_length", FOG, [(["effects", 0, "zone", "shape"], "line")], [["effects", 0, "zone", "size_ft"]], "'length_ft' is a required property"),
+    ("line_rejects_size", WOF, [(["effects", 0, "zone", "size_ft"], 20)], [], "'size_ft' is not one of"),
+    ("line_needs_height", WOF, [], [["effects", 0, "zone", "height_ft"]], "'height_ft' is a required property"),
+    ("sphere_needs_size", FOG, [], [["effects", 0, "zone", "size_ft"]], "'size_ft' is a required property"),
+    ("sphere_rejects_length", FOG, [(["effects", 0, "zone", "length_ft"], 20)], [], "'length_ft' is not one of"),
     ("cylinder_needs_height", MB, [], [["effects", 0, "zone", "height_ft"]], "'height_ft' is a required property"),
     ("sphere_rejects_height", FOG, [(["effects", 0, "zone", "height_ft"], 10)], [], "'height_ft' is not one of"),
     ("size_not_multiple_of_5", FOG, [(["effects", 0, "zone", "size_ft"], 12)], [], "is not a multiple of 5"),
@@ -112,8 +119,31 @@ ZONE_CASES = [
     ("needs_conscious_owner_string", SG, [(["effects", 0, "zone", "needs_conscious_owner"], "yes")], [], "'yes' is not of type 'boolean'"),
     ("unknown_zone_key", MB, [(["effects", 0, "zone", "move_cost"], 1)], [], "'move_cost' is not one of"),
     # rules PR 2 (#122) ZoneSpec / ZoneTriggerRow fields its loader still refuses ("zone: unknown key"); see CONTENT_CONVENTIONS 4.5
-    ("pr2_upcast_size_ft_not_yet", FOG, [(["effects", 0, "zone", "upcast_size_ft"], 20)], [], "'upcast_size_ft' is not one of"),
-    ("pr2_loses_action_not_yet", MB, [(T0 + ["loses_action"], True)], [], "Additional properties are not allowed ('loses_action'"),
+    # R-G11 rules PR 2 keys (CONTENT_CONVENTIONS 4.6): schema types / ranges / shape arms
+    ("upcast_size_not_multiple_of_5", FOG, [(["effects", 0, "zone", "upcast_size_ft"], 12)], [], "is not a multiple of 5"),
+    ("upcast_size_float", FOG, [(["effects", 0, "zone", "upcast_size_ft"], 20.0)], [], "float value 20.0 not allowed"),
+    ("upcast_size_on_line", WOF, [(["effects", 0, "zone", "upcast_size_ft"], 20)], [], "'upcast_size_ft' is not one of"),
+    ("ring_size_on_sphere", FOG, [(["effects", 0, "zone", "ring_size_ft"], 20)], [], "'ring_size_ft' is not one of"),
+    ("sided_on_sphere", FOG, [(["effects", 0, "zone", "sided"], True)], [], "'sided' is not one of"),
+    ("sided_not_bool", WOF, [(["effects", 0, "zone", "sided"], 1)], [], "1 is not of type 'boolean'"),
+    ("side_ft_below_5", WOF, [(["effects", 0, "zone", "side_ft"], 0)], [], "is less than the minimum of 5"),
+    ("length_above_u16", WOF, [(["effects", 0, "zone", "length_ft"], 65535)], [], "is greater than the maximum of 65530"),
+    ("aura_modifier_unknown_key", AURA, [(["effects", 0, "zone", "aura_modifier", "duration"], {"kind": "rounds", "n": 1})], [], "Additional properties are not allowed ('duration'"),
+    ("aura_modifier_bad_stat", AURA, [(["effects", 0, "zone", "aura_modifier", "stat"], "luck")], [], "'luck' is not one of"),
+    ("aura_modifier_bonus_above_30", AURA, [(["effects", 0, "zone", "aura_modifier", "bonus"], 31)], [], "is greater than the maximum of 30"),
+    ("aura_bonus_ability_bad", AURA, [(["effects", 0, "zone", "aura_bonus_ability"], "luck")], [], "'luck' is not one of"),
+    ("aura_immunity_empty", AURA, [(["effects", 0, "zone", "aura_immunity"], [])], [], "should be non-empty"),
+    ("aura_immunity_duplicate", AURA, [(["effects", 0, "zone", "aura_immunity"], ["frightened", "frightened"])], [], "has non-unique elements"),
+    ("aura_immunity_bad", AURA, [(["effects", 0, "zone", "aura_immunity"], ["scared"])], [], "'scared' is not one of"),
+    ("aura_allies_only_not_bool", AURA, [(["effects", 0, "zone", "aura_allies_only"], "yes")], [], "'yes' is not of type 'boolean'"),
+    ("region_bad", WOF, [(["effects", 0, "zone", "triggers", 1, "region"], "side")], [], "'side' is not one of"),
+    ("loses_action_not_bool", SC, [(T0 + ["loses_action"], 1)], [], "1 is not of type 'boolean'"),
+    ("auto_success_damage_empty", SC, [(T0 + ["auto_success_damage"], [])], [], "should be non-empty"),
+    ("auto_success_damage_bad", SC, [(T0 + ["auto_success_damage"], ["gas"])], [], "'gas' is not one of"),
+    ("auto_success_conditions_duplicate", SC, [(T0 + ["auto_success_conditions"], ["poisoned", "poisoned"])], [], "has non-unique elements"),
+    ("auto_success_no_breath_not_bool", SC, [(T0 + ["auto_success_no_breath"], "true")], [], "'true' is not of type 'boolean'"),
+    ("shapechanger_disadvantage_not_bool", MB, [(T0 + ["shapechanger_disadvantage"], 0)], [], "0 is not of type 'boolean'"),
+    ("evil_damage_type_bad", SG, [(T0 + ["evil_damage_type"], "unholy")], [], "'unholy' is not one of"),
     ("unknown_trigger_key", MB, [(T0 + ["limit"], "none")], [], "Additional properties are not allowed ('limit'"),
     ("legacy_trigger_key", MB, [(T0 + ["trigger"], "zone_enter")], [], "Additional properties are not allowed ('trigger'"),
     ("trigger_effect_spell_attack", MB, [(T0 + ["effect"], {"kind": "spell_attack", "attack": "ranged", "damage": {"dice": "1d6", "type": "fire"}})], [], "'spell_attack' is not one of"),
@@ -139,12 +169,25 @@ ZONE_CASES = [
     ("while_in_zone_needs_condition", MB, [(T0 + ["while_in_zone"], True)], [], "zone.triggers[0]: while_in_zone needs an effect condition"),
     ("upcast_dice_needs_damage", WEB, [(["scaling"], {"upcast": {"dice": 1}})], [], "scaling.upcast.dice needs effect dice or damage"),
     ("upcast_targets_on_zone", MB, [(["scaling", "upcast", "targets"], 1)], [], "scaling.upcast.targets not allowed on a zone effect"),
+    # R-G11 rules PR 2 cross-field rules (validator check_spell_zone; loader parse_zone, same wording)
+    ("side_ft_without_sided", WOF, [(["effects", 0, "zone", "sided"], False)], [], "zone: side_ft is required for (and only for) sided zones"),
+    ("sided_without_side_ft", WOF, [], [["effects", 0, "zone", "side_ft"]], "zone: side_ft is required for (and only for) sided zones"),
+    ("aura_bonus_ability_without_modifier", AURA, [], [["effects", 0, "zone", "aura_modifier"]], "zone: aura_bonus_ability needs aura_modifier"),
+    ("aura_modifier_not_save", AURA, [(["effects", 0, "zone", "aura_modifier", "stat"], "ability_check")], [], "zone.aura_modifier stat must be save"),
+    ("aura_fields_on_point_zone", FOG, [(["effects", 0, "zone", "aura_allies_only"], True)], [], "zone: aura fields need anchor creature"),
+    ("aura_immunity_on_point_zone", FOG, [(["effects", 0, "zone", "aura_immunity"], ["frightened"])], [], "zone: aura fields need anchor creature"),
+    ("region_side_unsided", MB, [(["effects", 0, "zone", "triggers", 1, "region"], "zone_or_side")], [], "zone.triggers[1]: region zone_or_side needs a sided zone"),
+    ("region_side_on_enter", WOF, [(["effects", 0, "zone", "triggers", 2, "region"], "zone_or_side")], [], "zone.triggers[2]: region zone_or_side is only for zone_appear / zone_start_turn / zone_end_turn"),
+    ("auto_success_on_damage_row", WOF, [(["effects", 0, "zone", "triggers", 1, "auto_success_damage"], ["fire"])], [], "zone.triggers[1]: auto_success / shapechanger_disadvantage need effect kind save"),
+    ("shapechanger_on_damage_row", SPIKE, [(T0 + ["shapechanger_disadvantage"], True)], [], "zone.triggers[0]: auto_success / shapechanger_disadvantage need effect kind save"),
+    ("evil_damage_type_without_damage", SC, [(T0 + ["evil_damage_type"], "necrotic")], [], "zone.triggers[0]: evil_damage_type needs effect damage"),
     ("zone_as_reaction", FOG, [(["casting_time"], {"kind": "reaction", "trigger": {"kind": "being_hit"}})], [], "effect kind zone and casting_time.kind reaction disagree"),
 ]
 
 
 def zone_fixture(name: str) -> dict:
-    return json.loads((ZONE_FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
+    f = ZONE_FIXTURES / f"{name}.json"
+    return json.loads((f if f.exists() else ZONE_FIXTURES_PR2 / f"{name}.json").read_text(encoding="utf-8"))
 
 
 def zone_edit(doc: dict, sets, dels) -> dict:
@@ -189,11 +232,11 @@ class SpellZones(unittest.TestCase):
             return errs, warns
 
     def all_fixtures(self) -> dict[str, dict]:
-        return {f.stem: zone_fixture(f.stem) for f in sorted(ZONE_FIXTURES.glob("*.json"))}
+        return {f.stem: zone_fixture(f.stem) for f in sorted([*ZONE_FIXTURES.glob("*.json"), *ZONE_FIXTURES_PR2.glob("*.json")])}
 
     def test_positive_fixtures_validate_clean(self):
         fx = self.all_fixtures()
-        self.assertEqual(sorted(fx), sorted(["darkness", FOG, GREASE, MB, "silence", SPIKE, SG, WEB]))
+        self.assertEqual(sorted(fx), sorted(["darkness", FOG, GREASE, MB, "silence", SPIKE, SG, WEB, SC, WOF, AURA]))
         self.assertEqual(self.run_docs(fx), ([], []))
 
     def test_cases(self):
@@ -460,6 +503,40 @@ class ChunkSurprise(unittest.TestCase):
         for f in sorted(list((vp.ROOT / "content" / "packs").rglob("chunks/*.json")) + list((vp.ROOT / "tests" / "compat").rglob("chunks/*.json"))):
             with self.subTest(str(f.relative_to(vp.ROOT))):
                 self.assertNotIn("surprise", json.loads(f.read_text(encoding="utf-8")))
+
+
+class CreatureFacts(unittest.TestCase):
+    """R-G11 creature facts no_breath / shapechanger / evil (CONTENT_CONVENTIONS 4.6): accepted on monster@4 / character@4,
+    reserved (warning, no error) until the sim archetype loader (Engine Core) reads them."""
+
+    def run_monster(self, doc):
+        reg, by_tag = vp.load_registry()
+        att = json.loads((CORE / "manifest.json").read_text(encoding="utf-8"))["attribution"]
+        with tempfile.TemporaryDirectory(prefix="facts_pack_") as tmp:
+            pack = Path(tmp) / "test.facts"
+            (pack / "monsters").mkdir(parents=True)
+            doc = dict(doc, id="test.facts.monster.axe_beak")
+            (pack / "monsters" / "axe_beak.json").write_text(json.dumps(doc, indent=2), encoding="utf-8")
+            man = {"$schema": "manifest@1", "id": "test.facts", "name": "facts", "version": "1.0.0", "engine_min": "0.1.0",
+                   "feature_level": 1, "api_level": 2, "rules_profile": "srd51", "requires": [], "optional": [], "depends": [],
+                   "attribution": att, "contents": ["monsters/axe_beak.json"]}
+            (pack / "manifest.json").write_text(json.dumps(man, indent=2), encoding="utf-8")
+            warns = []
+            errs = vp.validate_pack(pack, reg, by_tag, warns, vp.packset.PackSet([pack]))
+            return errs, warns
+
+    def base(self):
+        return json.loads((CORE / "monsters" / "axe_beak.json").read_text(encoding="utf-8"))
+
+    def test_facts_accepted_with_reserved_warning(self):
+        errs, warns = self.run_monster(dict(self.base(), no_breath=True, shapechanger=False, evil=True))
+        self.assertEqual(errs, [])
+        self.assertEqual(sorted(k for k in vp.CREATURE_FACTS if any(f"/{k}: {k} is reserved" in w for w in warns)),
+                         sorted(vp.CREATURE_FACTS))
+
+    def test_fact_not_boolean(self):
+        errs, _ = self.run_monster(dict(self.base(), evil="yes"))
+        self.assertTrue(any("'yes' is not of type 'boolean'" in e for e in errs), errs)
 
 
 if __name__ == "__main__":

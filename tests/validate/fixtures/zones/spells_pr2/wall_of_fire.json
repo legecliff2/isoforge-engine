@@ -1,0 +1,94 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "id": "test.zone.spell.wall_of_fire",
+  "name": "Wall of Fire",
+  "description": "An opaque wall of fire up to 60 feet long, 20 feet high and 1 foot thick, or a ringed wall up to 20 feet in diameter. Creatures in the wall when it appears make a Dexterity save: 5d8 fire, half on a success. One side (chosen at the cast) deals 5d8 fire to a creature that ends its turn within 10 feet of that side or inside the wall, and a creature entering the wall takes it too (no save). At Higher Levels: +1d8 per slot level above 4th.",
+  "level": 4,
+  "school": "evocation",
+  "classes": [
+    "druid",
+    "sorcerer",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 120
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "a small piece of phosphorus"
+    }
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "zone",
+      "zone": {
+        "shape": "line",
+        "length_ft": 60,
+        "height_ft": 20,
+        "ring_size_ft": 20,
+        "sided": true,
+        "side_ft": 10,
+        "anchor": "point",
+        "flags": [
+          "opaque"
+        ],
+        "triggers": [
+          {
+            "on": "zone_appear",
+            "effect": {
+              "kind": "save",
+              "ability": "dex",
+              "damage": {
+                "dice": "5d8",
+                "type": "fire"
+              },
+              "on_success": "half"
+            }
+          },
+          {
+            "on": "zone_end_turn",
+            "region": "zone_or_side",
+            "effect": {
+              "kind": "damage",
+              "damage": {
+                "dice": "5d8",
+                "type": "fire"
+              }
+            }
+          },
+          {
+            "on": "zone_enter",
+            "region": "zone",
+            "effect": {
+              "kind": "damage",
+              "damage": {
+                "dice": "5d8",
+                "type": "fire"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "dice": 1
+    }
+  }
+}

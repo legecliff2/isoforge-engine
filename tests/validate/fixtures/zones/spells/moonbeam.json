@@ -6,7 +6,7 @@
     "ref": "SRD 5.1",
     "license": "CC-BY-4.0"
   },
-  "description": "A silvery beam of pale light (5-foot radius, 40-foot-high cylinder). A creature that enters the area for the first time on a turn or starts its turn there makes a Constitution save: 2d10 radiant, half on a success. On each of your turns after you cast it, you can use an action to move the beam up to 60 feet. At Higher Levels: +1d10 per slot level above 2nd. Shapechanger disadvantage / revert are not modelled.",
+  "description": "A silvery beam of pale light (5-foot radius, 40-foot-high cylinder). A creature that enters the area for the first time on a turn or starts its turn there makes a Constitution save: 2d10 radiant, half on a success. On each of your turns after you cast it, you can use an action to move the beam up to 60 feet. At Higher Levels: +1d10 per slot level above 2nd. Shapechangers save with disadvantage (shapechanger_disadvantage); the form revert is not modelled.",
   "level": 2,
   "school": "evocation",
   "classes": [
@@ -57,7 +57,8 @@
                 "type": "radiant"
               },
               "on_success": "half"
-            }
+            },
+            "shapechanger_disadvantage": true
           },
           {
             "on": "zone_start_turn",
@@ -69,7 +70,8 @@
                 "type": "radiant"
               },
               "on_success": "half"
-            }
+            },
+            "shapechanger_disadvantage": true
           }
         ]
       }
