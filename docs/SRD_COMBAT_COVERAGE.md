@@ -59,7 +59,7 @@ Things that apply to many rows (so they are not repeated):
 | Grapple and shove (contested Athletics/Acrobatics) | NEW (wiring) | Rules done (R-G8): `ActionRequest::special` 1-3, Athletics vs Athletics/Acrobatics, one-size limit, replaces one attack. The push goes through the R-G9 `forced_move` hook; `Moved.c` = 1 only with `EncounterHooks::shove_forced_flag` (sim turns it on with EC #104) (R-G9, VERSION_BUMP_BATCH 7.2k). Sim / AI wiring pending. |
 | Flying, swimming, climbing, burrowing movement | NEW | One `speed_ft`; sim reads `speed.walk` only (T&C-G12, T&C-G14). |
 | Creature size and space (large creatures occupy 2x2) | NEW | Size is loaded (`Archetype::size`, #49) but only stored; the grid is still one tile per creature (T&C-G12, T&C-G14; footprint model in flight). |
-| Dispel / end effects on a creature | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::Dispel` ends spell effects and spell modifiers on a target (check vs 10 + level above the slot). Loader done (EC #PRNUM): spell@1 effect `dispel {dc_base?}` (default 10). No pack ships it yet; schema / validator pending (T&C). |
+| Dispel / end effects on a creature | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::Dispel` ends spell effects and spell modifiers on a target (check vs 10 + level above the slot). Loader done (EC #120): spell@1 effect `dispel {dc_base?}` (default 10). No pack ships it yet; schema / validator pending (T&C). |
 
 ## 2. Weapons (properties)
 
@@ -321,7 +321,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Bless | NEW (wiring) | Rules done (#89): 1d4 die on AttackRoll and Save, concentration, up to 3 targets. Needs a `spell@1` `apply_modifier` kind / loader (R-G3). |
 | Burning Hands | DATA | Cone template computed by sim (#78); dice/save/upcast are data. |
 | Charm Person | NEW | Charmed with source (R-G8). |
-| Color Spray | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::HpPool` with Blinded; end of the caster's next turn approximated by 1 round. Loader and sim done (EC #PRNUM): `hp_pool {dice, condition}`, the timer from the spell's `duration` (`rounds 1` = 1 round); area targets from an aimed `Command` (self cone). No pack ships it yet; schema / validator pending (T&C). |
+| Color Spray | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::HpPool` with Blinded; end of the caster's next turn approximated by 1 round. Loader and sim done (EC #120): `hp_pool {dice, condition}`, the timer from the spell's `duration` (`rounds 1` = 1 round); area targets from an aimed `Command` (self cone). No pack ships it yet; schema / validator pending (T&C). |
 | Command | NEW | Forced action next turn (R-G8). |
 | Cure Wounds | DATA | Shipped (`heal`, excludes undead/construct). |
 | Divine Favor | NEW (wiring) | Rules done (#89): Damage modifier with `damage_type` radiant and a 1d4 die, concentration (weapon attacks only). Spell kind pending (R-G3). |
@@ -345,7 +345,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Sanctuary | NEW | Attackers must save to target (R-G3/R-G7). |
 | Shield | DATA | Shipped (`ac_bonus`). |
 | Shield of Faith | NEW (wiring) | Rules done (#89): +2 `Ac` modifier, concentration. Spell kind pending (R-G3). |
-| Sleep | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::HpPool` (lowest HP first, upcast dice, undead excluded, ends on damage). Loader and sim done (EC #PRNUM): `hp_pool {dice, condition, ends_on_damage, excludes_creature_type}`, `scaling.upcast.dice`, timer from `duration` (1 minute = 10 rounds), area targets from an aimed `Command`; the AI wakes a sleeping ally within 5 ft (Wake, `special` 5). No pack ships it yet; schema / validator pending (T&C). |
+| Sleep | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::HpPool` (lowest HP first, upcast dice, undead excluded, ends on damage). Loader and sim done (EC #120): `hp_pool {dice, condition, ends_on_damage, excludes_creature_type}`, `scaling.upcast.dice`, timer from `duration` (1 minute = 10 rounds), area targets from an aimed `Command`; the AI wakes a sleeping ally within 5 ft (Wake, `special` 5). No pack ships it yet; schema / validator pending (T&C). |
 | Thunderwave | NEW (wiring) | Cube (R-G10) + push: `ForcedMove` rider (10 ft, `affected_only`: failed saves only) (R-G9, VERSION_BUMP_BATCH 7.2k); dice/save DATA. Sim: path / blocking via `forced_move`. |
 
 ### 8.3 Level 2
@@ -366,10 +366,10 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Flame Blade | NEW | Summoned weapon (R-G12). |
 | Flaming Sphere | NEW | Object/zone (R-G11/R-G12). |
 | Gust of Wind | NEW | Line + push (R-G9, R-G10). |
-| Heat Metal | NEW (wiring) | rules5e `SustainedDamage` + `CastSpell sustain` bonus action (R-G15, VERSION_BUMP_BATCH 7.2g); object rider not modelled. Loader and sim done (EC #PRNUM): `sustained_damage {damage}` (+ `scaling.upcast.dice`, `duration.concentration`, timer from `duration`); the AI sustains its own Heat Metal with the bonus action from the next turn; `log_hash` folds `sustain` (0xB8). No pack ships it yet; schema / validator pending (T&C). |
+| Heat Metal | NEW (wiring) | rules5e `SustainedDamage` + `CastSpell sustain` bonus action (R-G15, VERSION_BUMP_BATCH 7.2g); object rider not modelled. Loader and sim done (EC #120): `sustained_damage {damage}` (+ `scaling.upcast.dice`, `duration.concentration`, timer from `duration`); the AI sustains its own Heat Metal with the bonus action from the next turn; `log_hash` folds `sustain` (0xB8). No pack ships it yet; schema / validator pending (T&C). |
 | Hold Person | DATA | Shipped (`save` WIS, paralyzed, repeat end_of_turn, humanoid, upcast targets). |
 | Invisibility | NEW | Condition applied with no save, ends on attack/cast; `save` kind requires a save (R-G2/R-G3). |
-| Lesser Restoration | NEW (wiring) | rules5e `EndCondition` + `ends_conditions` (R-G15, 7.2g); lowest listed condition first; no disease model. Loader done (EC #PRNUM): `end_condition {conditions[]}` (one def, lowest-first; no per-condition defs). No pack ships it yet; schema / validator pending (T&C). |
+| Lesser Restoration | NEW (wiring) | rules5e `EndCondition` + `ends_conditions` (R-G15, 7.2g); lowest listed condition first; no disease model. Loader done (EC #120): `end_condition {conditions[]}` (one def, lowest-first; no per-condition defs). No pack ships it yet; schema / validator pending (T&C). |
 | Magic Weapon | NEW | Magic bonus (R-G17, T&C-G2/R-G3). |
 | Mirror Image | NEW | Duplicates that absorb attacks (R-G3). |
 | Misty Step | NEW (wiring) | `Teleport` effect (`max_feet` 30), bonus action, self; destination from the request, validated by sim (R-G9, VERSION_BUMP_BATCH 7.2k). |
@@ -384,7 +384,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Suggestion | NEW | Forced behavior (R-G8). |
 | Warding Bond | NEW | Shared damage (R-G3). |
 | Web | NEW (wiring) | `Zone` (point, 20 ft cube, difficult terrain, lightly obscured flag): StartTurn / own-turn Enter, Dex save or restrained while in the webs, not re-saved; Strength check (action, `special` 4) to break free; ends on leaving or with the zone (R-G11, 7.2l). Flammability / anchoring OOS (D8). |
-| Acid Arrow | NEW (wiring) | rules5e `DelayedDamage` rider at end of target's next turn (R-G15, 7.2g). Loader done (EC #PRNUM): `delayed_damage {damage, expiry}` as an `applies_to: affected` rider (or primary); the rider does not upcast (rules: riders do not scale). No pack ships it yet; schema / validator pending (T&C). |
+| Acid Arrow | NEW (wiring) | rules5e `DelayedDamage` rider at end of target's next turn (R-G15, 7.2g). Loader done (EC #120): `delayed_damage {damage, expiry}` as an `applies_to: affected` rider (or primary); the rider does not upcast (rules: riders do not scale). No pack ships it yet; schema / validator pending (T&C). |
 
 ### 8.4 Level 3
 
@@ -397,7 +397,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Call Lightning | NEW | Zone + repeating action (R-G11). |
 | Conjure Animals | NEW | Summons (R-G12). |
 | Counterspell | DATA | Shipped (`counter`). |
-| Dispel Magic | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::Dispel` (auto at or below the slot level, else spellcasting check vs 10 + level). Loader done (EC #PRNUM): `dispel {dc_base?}`. No pack ships it yet; schema / validator pending (T&C). |
+| Dispel Magic | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::Dispel` (auto at or below the slot level, else spellcasting check vs 10 + level). Loader done (EC #120): `dispel {dc_base?}`. No pack ships it yet; schema / validator pending (T&C). |
 | Daylight | NEW | Light/obscurement dispelling (R-G13). |
 | Fear | NEW | Cone, frightened, drop items, forced Dash (R-G10, R-G8). |
 | Fireball | DATA | Sphere template computed by sim (#78); 8d6 DEX half, `upcast.dice 1` are data. |
@@ -407,7 +407,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Lightning Bolt | DATA | Line template computed by sim (#78); dice/save are data. |
 | Mass Healing Word | DATA | `heal` with `targets {count 6}`, bonus action, range 60. |
 | Protection from Energy | NEW (wiring) | Rules done (#89): `Resistance` modifier for one chosen damage type, concentration (R-G3). |
-| Revivify | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::Revive` within 10 rounds of death (`Combatant::died_round`), 1 HP. Loader and sim done (EC #PRNUM): `revive {within_rounds?}`; sim refuses a revival into an occupied space. Material still pending: sim has no inventory, so `can_provide_components` refuses the 300 gp consumed diamond and the SRD Revivify cannot be cast in sim yet. |
+| Revivify | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::Revive` within 10 rounds of death (`Combatant::died_round`), 1 HP. Loader and sim done (EC #120): `revive {within_rounds?}`; sim refuses a revival into an occupied space. Material still pending: sim has no inventory, so `can_provide_components` refuses the 300 gp consumed diamond and the SRD Revivify cannot be cast in sim yet. |
 | Sleet Storm | NEW | Zone (R-G11). |
 | Slow | NEW (wiring) | Marker `ModStat::Slow` + AC / Dex-save -2 and half-speed modifiers; no reactions, action or bonus action, one attack; end-of-turn repeat save (`ModifierSpec::repeat_save`) (small leftovers, VERSION_BUMP_BATCH 7.2j). The somatic-spell delay (d20 >= 11 or next turn) is not modelled. |
 | Spirit Guardians | NEW (wiring) | `Zone` anchored on the caster (aura, 15 ft, halved-speed flag): Enter / StartTurn once per turn (D2), Wis save, 3d8 radiant half, +1d8 per slot above 3, excluded creatures from the cast (`zone_excluded`), never the caster (R-G11, 7.2l). Evil caster's necrotic: content / damage choice. Sim: aura geometry, Q8 changes, halved-speed cost. |
@@ -631,7 +631,7 @@ Gaps that need new rules mechanics (not just Engine Core / T&C wiring, which is 
 | 3 | R-G8 | **Done in rules** (conditions with a source, grapple / shove / escape, drag, one-size limit). Still open: swallow / engulf, web-style restrain, sim wiring of the push / drag | grapple monsters, crocodile, Charm Person, Fear | done |
 | 4 | R-G6 | **Done in rules**: bonus-action attack options (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy) with prerequisites, pool spend and an off-hand damage override. Still open: Open Hand Technique riders, Frenzy's exhaustion, a rules-side `legal_actions` listing | Monk, Berserker, dual wielders need wiring only | done |
 | 5 | R-G7 rest | **Done in rules**: Lucky (`reroll_ones`), Cutting Words on attack rolls (`AttackRolled` + `SubtractRoll`), Great Weapon Fighting, Evasion. Still open: Cutting Words on checks / damage, Bardic Inspiration spending by the ally, Guidance / Resistance, roller-chosen rerolls (Lucky feat, Indomitable, Portent) | Bard, Halfling, Fighter style, Rogue / Monk | M (done) |
-| 6 | R-G15 | **Done in rules**: HP-pool (Sleep, Color Spray), Dispel Magic, Revivify (7.2f); end-a-condition, delayed / sustained damage, Wake action (`special` 5) (7.2g). Loader / sim wiring done (EC #PRNUM); remaining: spell@1 schema / validator arms (T&C), Revivify's material (no inventory) | Sleep, Color Spray, Dispel Magic, Revivify, Lesser Restoration, Acid Arrow, Heat Metal done | - |
+| 6 | R-G15 | **Done in rules**: HP-pool (Sleep, Color Spray), Dispel Magic, Revivify (7.2f); end-a-condition, delayed / sustained damage, Wake action (`special` 5) (7.2g). Loader / sim wiring done (EC #120); remaining: spell@1 schema / validator arms (T&C), Revivify's material (no inventory) | Sleep, Color Spray, Dispel Magic, Revivify, Lesser Restoration, Acid Arrow, Heat Metal done | - |
 | 7 | R-G16 | **Done in rules** (7.2h): surprise (`surprised`, Stealth vs passive Perception helper), Hit Dice, `short_rest` / `long_rest` over combatant and table state, Arcane / Natural Recovery (`recover_spell_slots`). Remaining: sim rest flow and surprise setup (wiring) | round-1 ambush, attrition | done |
 | 8 | R-G9 | **Done in rules** (7.2k): `ForcedMove` / `Teleport` effect kinds (per-effect `max_size`), the synchronous `forced_move` hook (+ `forced_move_order`), `Moved.c` flags with schema v8, grapples ending out of reach, shove through the hook. Spec: co-design proposal `docs/proposals/FORCED_MOVEMENT.md` (#110, merged). Still open: sim hook and paths (Engine Core), Open Hand Technique rider, Dimension Door companions and the 4d6 failure, Gust of Wind, falling / hazard damage (R-G11) | Thunderwave push, Repelling Blast, Misty Step, Open Hand | done (rules) |
 | 9 | R-G14 | **Done in rules** (7.2i): Metamagic (all eight options, sorcery-point pool), Sculpt Spells, cast-time damage type / condition choices. Still open: Eldritch Spear (feature range modifier), Font of Magic slot / point conversion, Empowered / Careful on non-Save effects beyond those listed | Sorcerer, Evocation Wizard, Blindness/Deafness, Chromatic Orb | done |
