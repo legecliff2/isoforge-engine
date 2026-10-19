@@ -114,7 +114,7 @@ The authoritative per-kind field meanings are in `rules5e/encounter.hpp`. If tha
 
 Tag bytes are globally unique across `Combat::hash` and `Combat::log_hash` (separate streams, one registry). **Rule: a new tag is
 claimed in this table first**, in the PR that introduces it (or before), and is folded only when its section is non-empty, so every
-existing hash is unchanged. Next free: **0xAB** in `Combat::hash`, **0xB5** in `log_hash`. Status: *main* = verified in
+existing hash is unchanged. Next free: **0xAB** in `Combat::hash`, **0xB7** in `log_hash` (0xB7 is planned for R-G11 zones, `docs/proposals/ZONES_AURAS.md`, #113; claimed in its implementation PR). Status: *main* = verified in
 `engine/core/sim/src/combat.cpp` on main; *pending* = claimed by an open PR.
 
 | Tag | Stream | Section (rules5e function) | Folded when | Owner / PR | Status |
@@ -129,13 +129,15 @@ existing hash is unchanged. Next free: **0xAB** in `Combat::hash`, **0xB5** in `
 | 0xA6 | `Combat::hash` | `triggers_digest` (once-per-turn / round bookkeeping, incl. `death_triggers_done`) | `has_trigger_state` | row 9a | main |
 | 0xA7 | `Combat::hash` | `sourced_digest` (conditions with a source; sim folds Grappled entries only) | `has_sourced_conditions` | R-G8, rules #99; sim fold EC #104 (merged) | main |
 | 0xA8 | `Combat::hash` | `surprised_digest` (surprised creatures, round 1) | `has_surprised` | R-G16, rules #108 (merged); sim fold not yet written | pending (sim fold) |
-| 0xA9 | `log_hash` | `ActionRequest::special` byte (1 Grapple, 2 Shove prone, 3 Shove 5 ft, 4 Escape) | `special != 0` | R-G8, EC #104 (merged) | main |
+| 0xA9 | `log_hash` | `ActionRequest::special` byte (1 Grapple, 2 Shove prone, 3 Shove 5 ft, 4 Escape) | `special != 0` | R-G8, EC #104 (merged) | main, moving to 0xB5 in EC #114 |
 | 0xAA | `Combat::hash` | `leftover_digest` (Life Drain `hp_max_reduction`, Haste `lethargy`, `reckless_active` per combatant; escalating Petrifying Gaze effects) | `has_leftover_state` | small leftovers, rules #111 (merged; claimed 0xA9, moved to 0xAA in rules #112 because EC #104 folds `special` under 0xA9 in `log_hash`); sim fold not yet written | pending (sim fold) |
-| 0xB0 | `log_hash` | `ActionRequest::bonus_option` byte | `bonus_option != 0` | R-G6, EC #100 | pending (EC #100) |
+| 0xB0 | `log_hash` | `ActionRequest::bonus_option` byte | `bonus_option != 0` | R-G6, EC #100 (merged) | main |
 | 0xB1 | `log_hash` | R-G14 per-cast options: `metamagic` byte, `spared` (count u32 + ids u32), `heighten_target` u32, `damage_choice` byte, `condition_choice` byte, in that order | any of them non-zero / non-empty | R-G14, rules #109 (merged); sim fold not yet written | pending (sim fold) |
 | 0xB2 | `log_hash` | R-G9 teleport destination (reserved: `docs/proposals/FORCED_MOVEMENT.md`, PR #110, names it for the R-G9 sim PR) | destination set | R-G9 sim PR (Engine Core) | reserved |
 | 0xB3 | `log_hash` | small leftovers: one byte, bit0 `haste_action`, bit1 `reckless`, bit2 `aggressive` | the byte non-zero | small leftovers, rules #111 (merged); sim fold not yet written | pending (sim fold) |
 | 0xB4 | `log_hash` | R-G9 cast choices: `forced_feet` u16, `teleport_feet` u16, in that order (the destination tile itself is 0xB2) | either non-zero | R-G9 rules (this PR); sim fold not yet written | pending (sim fold) |
+| 0xB5 | `log_hash` | `ActionRequest::special` byte (1 Grapple, 2 Shove prone, 3 Shove 5 ft, 4 Escape, 5 Wake) | `special != 0` | R-G8, EC #104; tag fixed (was 0xA9) in EC #114 | pending (EC #114) |
+| 0xB6 | `log_hash` | `ActionRequest::two_handed_grip`: one byte, 1 | `two_handed_grip` true | R-G7, EC #114 | pending (EC #114) |
 
 ## Determinism guarantees
 
