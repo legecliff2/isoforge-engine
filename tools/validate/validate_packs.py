@@ -271,7 +271,7 @@ def runtime_id_collisions(entries: list[tuple[str, str, str]], cross_pack_only: 
 
 
 REACTION_EFFECT_TRIGGER = {"ac_bonus": "being_hit", "counter": "spell_cast"}
-UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "hp_pool", "delayed_damage", "sustained_damage"),
+UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "zone", "hp_pool", "delayed_damage", "sustained_damage"),
                   "darts": ("auto_hit",),
                   "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition")}
 
@@ -311,7 +311,7 @@ def check_spell(doc, errs, ctx):
     for key in sorted(upcast):
         if kind not in UPCAST_EFFECTS[key]:
             errs.append(f"scaling.upcast.{key} not allowed on a {kind} effect")
-        elif key == "dice" and "dice" not in eff and "damage" not in eff:
+        elif key == "dice" and "dice" not in eff and "damage" not in eff and not zone_has_damage(eff):
             errs.append("scaling.upcast.dice needs effect dice or damage")
     want = REACTION_EFFECT_TRIGGER.get(kind)
     if (ct["kind"] == "reaction") != (want is not None):
@@ -326,11 +326,60 @@ def check_spell(doc, errs, ctx):
         errs.append(f"targets not allowed on a {kind} effect (one target, per dart/beam, or self)")
     if kind in TIMED_BY_DURATION and doc["duration"]["kind"] not in ("rounds", "minutes", "hours"):
         errs.append(f"{kind} needs a rounds, minutes or hours duration")
+    check_spell_zone(doc, errs)
     refs = [("effect blocks_spell", eff.get("blocks_spell"))] + \
            [("casting_time.trigger.or_targeted_by", r) for r in ct.get("trigger", {}).get("or_targeted_by", [])]
     for where, ref in refs:
         if ref and ref not in ctx["spell_ids"] and not ctx["external_ok"](ref):
             errs.append(f"{where} '{ref}' is not a spell@1 in this pack or its depends")
+
+
+ZONE_ENTER_ONLY = ("zone_enter",)
+ZONE_OWN_TURN = ("zone_enter", "zone_move_within")
+
+
+def zone_has_damage(eff) -> bool:
+    """A zone's damage lives in its trigger rows (scaling.upcast.dice scales them)."""
+    return eff.get("kind") == "zone" and any("damage" in t["effect"] for t in eff["zone"].get("triggers", []))
+
+
+def check_spell_zone(doc, errs):
+    """R-G11 zones (spell@1 kind `zone`, docs/CONTENT_CONVENTIONS.md section 4). The loader contract: rules5e_content must
+    refuse the same documents with the same wording. Messages start with `zone` (not `effect`), so the loader's negative-case
+    test does not compare them before the loader parses zones."""
+    effs = doc["effects"]
+    for i, e in enumerate(effs[1:], 1):
+        if e["kind"] == "zone":
+            errs.append(f"zone must be the primary effect (effects[{i}] is a zone)")
+    eff = effs[0]
+    if eff["kind"] != "zone":
+        return
+    z = eff["zone"]
+    if "area" in doc:
+        errs.append("zone: area not allowed (zone.shape / size_ft give the zone's geometry)")
+    if doc["duration"]["kind"] == "instantaneous":
+        errs.append("zone: needs a lasting duration (not instantaneous)")
+    if z["anchor"] == "creature" and doc["range"]["kind"] != "self":
+        errs.append("zone: anchor creature (an aura on the caster) needs range self")
+    if "move" in z and z["anchor"] != "point":
+        errs.append("zone: move needs anchor point")
+    flags = z.get("flags", [])
+    if "light_obscured" in flags and "heavy_obscured" in flags:
+        errs.append("zone: flags light_obscured and heavy_obscured are exclusive")
+    if not flags and not z.get("triggers"):
+        errs.append("zone: needs triggers or flags (it would do nothing)")
+    for i, t in enumerate(z.get("triggers", [])):
+        where = f"zone.triggers[{i}]"
+        if t["effect"]["kind"] not in ("save", "damage", "apply_condition"):
+            errs.append(f"{where}.effect.kind '{t['effect']['kind']}' is not a zone trigger effect (save, damage, apply_condition)")
+        if t.get("own_turn_only") and t["on"] not in ZONE_OWN_TURN:
+            errs.append(f"{where}: own_turn_only is only for zone_enter / zone_move_within")
+        if t.get("counts_aura_move_as_enter") and t["on"] not in ZONE_ENTER_ONLY:
+            errs.append(f"{where}: counts_aura_move_as_enter is only for zone_enter")
+        if t.get("while_in_zone") and "condition" not in t["effect"]:
+            errs.append(f"{where}: while_in_zone needs an effect condition")
+        if t.get("counts_aura_move_as_enter") and z["anchor"] == "point" and "move" not in z:
+            errs.append(f"{where}: counts_aura_move_as_enter on a zone that never moves")
 
 
 CHECKS = {"monster": check_monster, "character": check_character, "chunk": check_chunk, "spell": check_spell}

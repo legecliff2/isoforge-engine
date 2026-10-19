@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://isoforge.dev/schemas/spell/v1.schema.json",
   "title": "spell@1",
-  "description": "SRD 5.1 spell. Rules-facing data: rules5e_content maps it to rules5e::SpellDef (engine/rules/content). 'effects' is an array of one or more effects (reaction kinds stand alone; hp_pool, dispel, revive, end_condition and sustained_damage are first-effect only; extra effects resolve in order over the same targets and may use applies_to: affected). Cross-field rules are in tools/validate (check_spell) and mirrored by the loader. Integers only (\u00a74.3).",
+  "description": "SRD 5.1 spell. Rules-facing data: rules5e_content maps it to rules5e::SpellDef (engine/rules/content). 'effects' is an array of one or more effects (reaction kinds stand alone; hp_pool, dispel, revive, end_condition and sustained_damage are first-effect only; a zone is the first effect only; extra effects resolve in order over the same targets and may use applies_to: affected). Cross-field rules are in tools/validate (check_spell) and mirrored by the loader. Integers only (\u00a74.3).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -529,6 +529,7 @@
             "counter",
             "apply_condition",
             "apply_modifier",
+            "zone",
             "hp_pool",
             "dispel",
             "revive",
@@ -928,6 +929,33 @@
           "if": {
             "properties": {
               "kind": {
+                "const": "zone"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "zone"
+            ],
+            "properties": {
+              "kind": {
+                "const": "zone"
+              },
+              "zone": {
+                "$ref": "#/$defs/zone"
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
                 "const": "hp_pool"
               }
             }
@@ -1193,6 +1221,346 @@
         }
       ],
       "description": "Discriminated by 'kind' (if/then per kind, so errors name the exact field)."
+    },
+    "zone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shape",
+        "size_ft",
+        "anchor"
+      ],
+      "description": "R-G11 persistent zone or aura (rules5e::ZoneSpec on SpellDef::zone; docs/CONTENT_CONVENTIONS.md section 4 is the loader contract). Kind 'zone' is the spell's primary effect only (effects[0]). Discriminated by 'shape'; each arm is a closed propertyNames allow-list (tests/validate/test_union_arms.py). The spell's duration is the zone's lifetime; concentration ends it.",
+      "properties": {
+        "shape": {
+          "enum": [
+            "sphere",
+            "cylinder",
+            "cube"
+          ],
+          "description": "AreaShape (line / walls: rules PR 2, appended later)."
+        },
+        "size_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 65530,
+          "multipleOf": 5,
+          "description": "Sphere / cylinder radius, cube side."
+        },
+        "height_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 65530,
+          "multipleOf": 5,
+          "description": "cylinder only."
+        },
+        "anchor": {
+          "enum": [
+            "point",
+            "creature"
+          ],
+          "description": "point: fixed at a tile within range (sim's zone_x / zone_y); creature: an aura centred on the caster that moves with it (needs range self)."
+        },
+        "flags": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "difficult",
+              "light_obscured",
+              "heavy_obscured",
+              "magical_darkness",
+              "silence",
+              "halve_speed",
+              "opaque"
+            ]
+          },
+          "description": "Terrain / sense data for sim (kZone* bits, in this order: 1 difficult, 2 light_obscured, 4 heavy_obscured, 8 magical_darkness, 16 silence, 32 halve_speed, 64 opaque). light_obscured and heavy_obscured are exclusive (validator)."
+        },
+        "move": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "cost",
+            "feet"
+          ],
+          "description": "The caster can move a point zone on a later turn (Moonbeam: an action, 60 ft; D3). Omitted: the zone cannot be moved.",
+          "properties": {
+            "cost": {
+              "enum": [
+                "action",
+                "bonus_action"
+              ],
+              "description": "ZoneSpec::move_cost 1 / 2."
+            },
+            "feet": {
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 65530,
+              "multipleOf": 5,
+              "description": "ZoneSpec::move_ft: farthest move."
+            }
+          }
+        },
+        "chooses_excluded": {
+          "type": "boolean",
+          "description": "The caster designates creatures the zone does not affect (Spirit Guardians)."
+        },
+        "triggers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/zone_trigger"
+          },
+          "description": "Trigger rows, in resolution order (ZoneTriggerRow)."
+        },
+        "needs_conscious_owner": {
+          "type": "boolean",
+          "description": "The zone / aura only functions while its owner is conscious (D7; ZoneSpec::needs_conscious_owner). Default false."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "shape"
+            ],
+            "properties": {
+              "shape": {
+                "enum": [
+                  "sphere",
+                  "cube"
+                ]
+              }
+            }
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "shape",
+                "size_ft",
+                "anchor",
+                "flags",
+                "move",
+                "chooses_excluded",
+                "triggers",
+                "needs_conscious_owner"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "shape"
+            ],
+            "properties": {
+              "shape": {
+                "const": "cylinder"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "height_ft"
+            ],
+            "propertyNames": {
+              "enum": [
+                "shape",
+                "size_ft",
+                "height_ft",
+                "anchor",
+                "flags",
+                "move",
+                "chooses_excluded",
+                "triggers",
+                "needs_conscious_owner"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "zone_trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "on",
+        "effect"
+      ],
+      "description": "One ZoneTriggerRow. Not spell@1 casting_time.trigger (a reaction window) and not common@2 on_event 'on'.",
+      "properties": {
+        "on": {
+          "enum": [
+            "zone_appear",
+            "zone_enter",
+            "zone_start_turn",
+            "zone_end_turn",
+            "zone_move_within"
+          ],
+          "description": "ZoneTrigger Appear / Enter / StartTurn / EndTurn / MoveWithin."
+        },
+        "group": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255,
+          "description": "Once-per-turn group (default 1; 0 = no limit). Rows sharing a group fire once per creature per zone per turn (Enter + StartTurn, D2)."
+        },
+        "own_turn_only": {
+          "type": "boolean",
+          "description": "zone_enter / zone_move_within only: only during the creature's own turn (Web)."
+        },
+        "completely_within": {
+          "type": "boolean",
+          "description": "The creature's whole footprint must be inside (Stinking Cloud)."
+        },
+        "counts_aura_move_as_enter": {
+          "type": "boolean",
+          "description": "zone_enter only: the zone moving onto the creature counts as entering (D1; default no)."
+        },
+        "while_in_zone": {
+          "type": "boolean",
+          "description": "The effect's condition lasts while the creature stays in the zone (Web); needs a condition."
+        },
+        "effect": {
+          "$ref": "#/$defs/zone_effect"
+        }
+      }
+    },
+    "zone_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "description": "What a zone trigger does (a SpellEffect). save: a saving throw against the caster's spell save DC, damage (on_success) and/or a condition on a failure. damage: no save, the damage (and condition) always apply. apply_condition: no save, the condition always applies. Damage dice gain scaling.upcast.dice per slot level above the spell's level. Discriminated by 'kind'; closed propertyNames arms.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "save",
+            "damage",
+            "apply_condition"
+          ]
+        },
+        "ability": {
+          "$ref": "../common/v1.schema.json#/$defs/ability"
+        },
+        "damage": {
+          "$ref": "#/$defs/damage"
+        },
+        "on_success": {
+          "enum": [
+            "half",
+            "none"
+          ],
+          "description": "save only: damage on a successful save."
+        },
+        "condition": {
+          "$ref": "../common/v1.schema.json#/$defs/condition"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "save"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "ability"
+            ],
+            "anyOf": [
+              {
+                "required": [
+                  "damage"
+                ]
+              },
+              {
+                "required": [
+                  "condition"
+                ]
+              }
+            ],
+            "dependentRequired": {
+              "damage": [
+                "on_success"
+              ],
+              "on_success": [
+                "damage"
+              ]
+            },
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "ability",
+                "damage",
+                "on_success",
+                "condition",
+                "description"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "damage"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "damage"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "damage",
+                "condition",
+                "description"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "apply_condition"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "condition"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "condition",
+                "description"
+              ]
+            }
+          }
+        }
+      ]
     },
     "delayed_expiry": {
       "type": "object",
