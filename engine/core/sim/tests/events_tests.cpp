@@ -34,7 +34,7 @@ world::Chunk sample_chunk() {
 } // namespace
 
 TEST_CASE("event layout: schema version and numeric enum values are locked") {
-    CHECK(kSimEventSchemaVersion == 8);
+    CHECK(kSimEventSchemaVersion == 9);
     CHECK(kMovedForced == 1);     // v8 Moved.c flag bits
     CHECK(kMovedTeleport == 2);
     CHECK(kMovedDrag == 4);
@@ -59,7 +59,16 @@ TEST_CASE("event layout: schema version and numeric enum values are locked") {
         {EventKind::SavingThrowRolled, 35}, {EventKind::ConcentrationEnded, 36},   // v4: spellcasting
         {EventKind::SpellEffectEnded, 37}, {EventKind::SpellCheckRolled, 38},
         {EventKind::RechargeRolled, 39}, {EventKind::FeatureTriggered, 40}, {EventKind::ResourceSpent, 41},   // v7
-        {EventKind::ModifierApplied, 42}, {EventKind::ModifierExpired, 43}, {EventKind::ActionUsed, 44}};
+        {EventKind::ModifierApplied, 42}, {EventKind::ModifierExpired, 43}, {EventKind::ActionUsed, 44},
+        {EventKind::ZoneCreated, 45}, {EventKind::ZoneMoved, 46}, {EventKind::ZoneEnded, 47}};   // v9 (R-G11)
+    CHECK(int(kLastRulesEventKindV8) == 44);
+    // v9: the zone trigger values of TriggerOn (FeatureTriggered.b), appended after TurnEnd
+    CHECK(uint8_t(rules5e::TriggerOn::TurnEnd) == 7);
+    CHECK(uint8_t(rules5e::TriggerOn::ZoneAppear) == 8);
+    CHECK(uint8_t(rules5e::TriggerOn::ZoneEnter) == 9);
+    CHECK(uint8_t(rules5e::TriggerOn::ZoneStartTurn) == 10);
+    CHECK(uint8_t(rules5e::TriggerOn::ZoneEndTurn) == 11);
+    CHECK(uint8_t(rules5e::TriggerOn::ZoneMoveWithin) == 12);
     CHECK(int(kLastRulesEventKind) == kinds.back().second);
     // Every rules kind must be listed above: a new kind fails here until the table (and version) is updated.
     CHECK(rules5e::kEventKindCount == kinds.size());
@@ -155,8 +164,9 @@ TEST_CASE("event_stream_version: max over SimEvent::Kind and rules.kind construc
     const SimEvent foot = sim_ev(SimEvent::Kind::Footprint);
     const SimEvent late = rules_ev(uint8_t(kLastRulesEventKindV6) + 1);   // EventKind(39) = RechargeRolled: the first v7 kind
     REQUIRE(uint8_t(late.rules.kind) == 39);
-    for (int k = 39; k <= int(kLastRulesEventKind); ++k) CHECK(v1({rules_ev(uint8_t(k))}) == 7);   // every v7 kind
-    CHECK(v1({rules_ev(uint8_t(kLastRulesEventKind) + 1)}) == 7);   // and anything later
+    for (int k = 39; k <= int(kLastRulesEventKindV8); ++k) CHECK(v1({rules_ev(uint8_t(k))}) == 7);   // every v7 kind
+    for (int k = int(kLastRulesEventKindV8) + 1; k <= int(kLastRulesEventKind); ++k) CHECK(v1({rules_ev(uint8_t(k))}) == 9);   // v9 zone kinds
+    CHECK(v1({rules_ev(uint8_t(kLastRulesEventKind) + 1)}) == 9);   // and anything later
     CHECK(event_stream_version(std::vector<SimEvent>{rules_ev(uint8_t(kLastRulesEventKind))}) <= kSimEventSchemaVersion);
     auto v = [](std::initializer_list<SimEvent> l) { std::vector<SimEvent> s(l); return event_stream_version(s); };
 
@@ -187,12 +197,25 @@ TEST_CASE("event_stream_version: max over SimEvent::Kind and rules.kind construc
     CHECK(v({moved(kMovedForced)}) == 8);
     CHECK(v({moved(kMovedTeleport)}) == 8);
     CHECK(v({moved(kMovedDrag)}) == 8);
-    CHECK(v({moved(kMovedDrag), late, foot, spell}) == kSimEventSchemaVersion);
-    CHECK(v({late, foot, moved(kMovedForced)}) == kSimEventSchemaVersion);
+    CHECK(v({moved(kMovedDrag), late, foot, spell}) == 8);
+    CHECK(v({late, foot, moved(kMovedForced)}) == 8);
     SimEvent other_c = rules_ev(uint8_t(rules5e::EventKind::Dashed));   // c != 0 on another kind is not a flag
     other_c.rules.c = 1;
     CHECK(v({other_c}) == 4);
-    CHECK(kSimEventSchemaVersion == 8);
+    // v9 (R-G11): a zone kind, or a zone trigger's FeatureTriggered (b >= TriggerOn::ZoneAppear); a row 9 FeatureTriggered stays v7
+    const SimEvent zone = rules_ev(uint8_t(rules5e::EventKind::ZoneCreated));
+    SimEvent ft_zone = rules_ev(uint8_t(rules5e::EventKind::FeatureTriggered));
+    ft_zone.rules.b = int32_t(rules5e::TriggerOn::ZoneEnter);
+    SimEvent ft_row9 = rules_ev(uint8_t(rules5e::EventKind::FeatureTriggered));
+    ft_row9.rules.b = int32_t(rules5e::TriggerOn::TurnEnd);
+    CHECK(v({zone}) == 9);
+    CHECK(v({ft_zone}) == 9);
+    CHECK(v({ft_row9}) == 7);
+    CHECK(v({rules_ev(uint8_t(rules5e::EventKind::ZoneMoved))}) == 9);
+    CHECK(v({rules_ev(uint8_t(rules5e::EventKind::ZoneEnded))}) == 9);
+    CHECK(v({moved(kMovedForced), zone, foot}) == kSimEventSchemaVersion);
+    CHECK(v({zone, moved(kMovedForced)}) == kSimEventSchemaVersion);
+    CHECK(kSimEventSchemaVersion == 9);
     CHECK(v({late}) <= kSimEventSchemaVersion);   // invariant: a stream never claims a version above the contract
     // A non-Rules event's unused rules.kind field is never read as a rules kind.
     SimEvent tile = sim_ev(SimEvent::Kind::TileMoved);

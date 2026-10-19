@@ -52,6 +52,10 @@ struct ReactionDecision {
     friend bool operator==(const ReactionDecision&, const ReactionDecision&) = default;
 };
 
+// R-G11: a membership change of another creature caused by this step (an aura owner's move, a zone move; Q8). Only the final
+// position counts (Q10). Filled by sim inside Combat::submit, like the Move membership lists.
+struct ZoneChange { CombatantId creature = 0; uint32_t zone_id = 0; bool entered = false; };
+
 struct ActionRequest {
     CombatantId actor; ActionKind kind; CombatantId target = 0;
     uint8_t attack_index = 0; int16_t move_ft = 0;
@@ -134,6 +138,19 @@ struct ActionRequest {
     // appended (R-G9): the teleport destination, a sim tile that rules never interprets (passed to EncounterHooks::forced_move;
     // sim validates it before submitting and folds it into log_hash under 0xB2, claimed by the R-G9 sim PR).
     bool has_teleport_dest = false; int32_t teleport_x = 0, teleport_y = 0;
+    // appended (R-G11, docs/proposals/ZONES_AURAS.md §3 Q2): membership facts of a Move tile step (and of a readied Move's
+    // response), ascending zone ids. Sim fills them inside Combat::submit from the from / to tiles; caller values are
+    // overwritten; not folded into log_hash (Q11). zones_entered: in after, not before; zones_left: in before, not after;
+    // zones_within: in before and after. zone_changes: other creatures' changes caused by this step (aura owner's move, zone move).
+    std::vector<uint32_t> zones_entered = {}, zones_left = {}, zones_within = {};
+    std::vector<ZoneChange> zone_changes = {};
+    // appended (R-G11, CastSpell; log-relevant, SIM_EVENTS.md log_hash tag 0xB7): a point zone's anchor tile (opaque to rules,
+    // validated by sim) and the creatures a chooses_excluded zone leaves unaffected (Spirit Guardians). zone_move = id of the
+    // actor's zone to move instead of casting (Moonbeam: ZoneSpec::move_cost), to has_zone_dest / zone_x / zone_y;
+    // zone_move_ft = the distance when sim knows positions (0 = not supplied, no distance check; sim-derived, not folded).
+    bool has_zone_dest = false; int32_t zone_x = 0, zone_y = 0;
+    std::vector<CombatantId> zone_excluded = {};
+    uint32_t zone_move = 0; uint16_t zone_move_ft = 0;
 };
 
 enum class EventKind : uint8_t {
@@ -151,6 +168,8 @@ enum class EventKind : uint8_t {
     SavingThrowRolled, ConcentrationEnded, SpellEffectEnded, SpellCheckRolled,
     // appended (version-bump batch, event schema v7):
     RechargeRolled, FeatureTriggered, ResourceSpent, ModifierApplied, ModifierExpired, ActionUsed,
+    // appended (R-G11 zones, event schema v9):
+    ZoneCreated, ZoneMoved, ZoneEnded,
     // Not an event: the number of kinds. Append new kinds ABOVE this line; consumers that lock the
     // numeric layout (sim's "event layout" test) compare against kEventKindCount.
     Count_ };
@@ -179,6 +198,10 @@ inline constexpr std::size_t kEventKindCount = std::size_t(EventKind::Count_);
 //   ActionUsed actor target=first target a=action/spell id b=is_spell(0/1) c=usage kind. A non-spell action
 //   (SpellDef::is_spell == false) emits ActionUsed *instead of* SpellCast, then its save/damage events, then
 //   SpellResolved. (FeatureTriggered/ModifierApplied/ModifierExpired are reserved: later rows emit them.)
+//   v9 (R-G11): ZoneCreated actor=owner target=anchor creature (0 = a point zone) a=zone id b=spell id c=ZoneSpec flags;
+//   ZoneMoved actor=owner a=zone id b=feet moved (0 = not supplied); ZoneEnded actor=owner a=zone id b=reason (0 timer,
+//   1 concentration, 2 owner died / feature ended, 3 dispelled). A zone trigger emits FeatureTriggered{actor=owner,
+//   target=subject, a=spell id, b=TriggerOn::Zone*, c=outcome (0 saved, 1 no save, 3 failed save)} before its save / damage.
 // reaction_depth: 0 for the action itself, 1+ for events produced while resolving a reaction.
 struct Event { EventKind kind; CombatantId actor = 0, target = 0; int32_t a = 0, b = 0, c = 0;
                uint8_t reaction_depth = 0; };
@@ -245,6 +268,18 @@ struct EncounterOutcome {
 struct EncounterState;
 using EndConditionFn = std::function<std::optional<EncounterOutcome>(const EncounterState&)>;
 
+// The hook's answer: feet actually moved (Moved.a), whether it stopped short, and every creature the mover was grappling or
+// grappled by that is no longer within reach (rules ends those grapples). hazard: sim's "entered a zone or hazard tile" (R-G11;
+// rules reads the membership lists, not this bool); fell_ft stays reserved until elevation exists.
+struct ForcedMoveResult {
+    uint16_t feet_moved = 0; bool stopped_short = false; bool hazard = false; uint16_t fell_ft = 0;
+    std::vector<CombatantId> out_of_reach_of{};
+    // appended (R-G11, Q2): the move's zone membership, as on a Move step (ascending zone ids). A forced move covers several
+    // tiles, so zones_within repeats a zone id once per further 5 ft moved inside it (Spike Growth's per-5-ft damage:
+    // MoveWithin fires once per occurrence in zones_entered and zones_within). A teleport reports entered / left only.
+    std::vector<uint32_t> zones_entered{}, zones_left{}, zones_within{};
+};
+
 // A paused action. The state is left as it was *before* the action; when the decision arrives the
 // action is re-run deterministically from that state with all decisions so far, so the async and
 // synchronous paths are bit-identical by construction.
@@ -254,6 +289,9 @@ struct PendingDecision {
     ReactionWindow window;                 // the window waiting for an answer
     CombatantId reactor;
     std::vector<ReactionOption> options;
+    // appended (R-G11, Q7): forced-move results the paused run already got from hooks.forced_move, by step_seq. The re-run
+    // reuses them instead of calling the hook again, so it is still called once per (step, step_seq).
+    std::vector<std::pair<uint32_t, ForcedMoveResult>> forced_results = {};
 };
 
 struct ReadiedAction { CombatantId actor; ActionRequest response; uint32_t trigger_id; };
@@ -290,6 +328,9 @@ struct ActiveSpellEffect {
     uint32_t cast_stamp = 0;
     // appended (Petrifying Gaze): a failed repeat save turns `condition` into `escalate_to` for good (no further saves).
     bool escalates = false; Condition escalate_to = Condition::Petrified;
+    // appended (R-G11): the zone that applied this effect "while in the zone" (Web's restraint), 0 = none. It ends when the
+    // target leaves the zone, escapes (special 4: Strength check vs `dc`) or the zone ends.
+    uint32_t zone_id = 0;
 };
 
 // A modifier in force on `target` (row 12). `timed` reuses the condition-duration machinery (Rounds / EndOfTargetNextTurn).
@@ -343,13 +384,6 @@ struct ForcedMoveQuery {
     CombatantId mover = 0, source = 0; uint8_t mode = 0; uint16_t feet = 0; bool teleport = false; uint32_t step_seq = 0;
     bool has_dest = false; int32_t dest_x = 0, dest_y = 0;
 };
-// The hook's answer: feet actually moved (Moved.a), whether it stopped short, and every creature the mover was grappling or
-// grappled by that is no longer within reach (rules ends those grapples). hazard / fell_ft are reserved for zones (R-G11).
-struct ForcedMoveResult {
-    uint16_t feet_moved = 0; bool stopped_short = false; bool hazard = false; uint16_t fell_ft = 0;
-    std::vector<CombatantId> out_of_reach_of{};
-};
-
 struct EncounterHooks {
     // Checked after every state change. Empty = default_end_condition.
     EndConditionFn end_condition;
@@ -421,6 +455,27 @@ struct EncounterHooks {
     // Shove "push 5 ft away" sets Moved.c bit 0 (forced) only when this is true. Default false keeps today's c = 0 shove event
     // so no locked digest moves; sim turns it on together with its shove support (EC #104).
     bool shove_forced_flag = false;
+    // ---- R-G11 zones (appended; docs/proposals/ZONES_AURAS.md §3) ----
+    // Is `creature` in zone `zone_id` now (any footprint tile covered), or completely within it (every tile) when `completely`?
+    // Pure and synchronous, from sim's positions. Answers Appear, StartTurn and EndTurn. Empty = nobody is in any zone.
+    std::function<bool(const EncounterState&, uint32_t zone_id, CombatantId creature, bool completely)> zone_contains;
+};
+
+// R-G11: a live zone or aura (ZONES_AURAS.md §2.6). anchor_x / anchor_y: a point zone's sim tile, opaque to rules (Q1).
+// fired: once-per-turn bookkeeping, (creature, turn stamp = round << 16 | turn_index, group); entries of earlier turns are
+// pruned at each turn start.
+struct ZoneFired { CombatantId creature = 0; uint32_t stamp = 0; uint8_t group = 0;
+                   friend bool operator==(const ZoneFired&, const ZoneFired&) = default; };
+struct ActiveZone {
+    uint32_t zone_id = 0;
+    uint32_t spell_id = 0;
+    CombatantId owner = 0;
+    uint8_t slot_level = 0; int16_t dc = 0;
+    bool concentration = false; Timed timed{};
+    uint32_t cast_stamp = 0;                   // round << 16 | turn_index of the cast (no move on that turn)
+    bool has_anchor_tile = false; int32_t anchor_x = 0, anchor_y = 0;
+    std::vector<CombatantId> excluded{};       // ascending; unaffected creatures (Spirit Guardians)
+    std::vector<ZoneFired> fired{};
 };
 
 // R-G8: a condition with a source (Grappled: the grappler and the escape DC; Charmed / Frightened: the caster).
@@ -447,6 +502,8 @@ struct EncounterState {
     std::vector<ActionUse> action_uses;  // appended (v7): recharge actions; empty for content without one
     std::vector<ResourcePool> pools;     // appended (v7): resource pools; empty for content without one
     std::vector<SourcedCondition> sourced;   // appended (R-G8): who a condition came from; empty for old content
+    std::vector<ActiveZone> zones;            // appended (R-G11): live zones in creation order; empty unless a zone exists
+    uint32_t next_zone_id = 1;                // appended (R-G11): id of the next zone (ids start at 1)
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call
@@ -616,6 +673,13 @@ int modified_speed(const EncounterState&, const Combatant&);                    
 bool has_modifier_state(const EncounterState&);
 uint64_t modifiers_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);                      // fold under tag 0xA2 when has_modifier_state
 uint64_t timed_effects_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
+
+// ---- R-G11 zones ----
+const ActiveZone* find_zone(const EncounterState&, uint32_t zone_id);
+// Zone state (sim folds zones_digest under Combat::hash tag 0xAB, only when has_zone_state: a zone exists or has existed):
+// next_zone_id, every ActiveZone field in order, and the zone-bound effects (ActiveSpellEffect::zone_id != 0).
+bool has_zone_state(const EncounterState&);
+uint64_t zones_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 
 std::vector<ActionRequest> legal_actions(const EncounterState&);   // for AI + UI (current actor)
 CombatantId                current_actor(const EncounterState&);
