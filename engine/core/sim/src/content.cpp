@@ -1,3 +1,4 @@
+#include <bit>
 #include "sim/content.hpp"
 
 #include <algorithm>
@@ -311,6 +312,83 @@ std::optional<std::string> compile_predicate(const std::string& where, const Jso
         out.mask = from_dmg ? 1u : 0u;
     }
     else return where + ": unknown predicate '" + k + "'";
+    return std::nullopt;
+}
+
+// R-G6 bonus-action attack options (declared >= 4 / undeclared only), compiled from existing content fields (no schema change):
+//   * two-weapon fighting: a character with >= 2 melee weapon actions whose `properties` list "light" gets one off-hand option per
+//     light weapon (requires one of the light weapons used by the Attack action, a different one); the off-hand rolls the dice
+//     without the ability modifier unless a feature with id "two_weapon_fighting" (the style) is present;
+//   * features by local id: "martial_arts" (an unarmed strike: an action whose properties list "unarmed"), "flurry_of_blows"
+//     (2 unarmed strikes, spends 1 from the "ki" pool; the document must declare a resource "ki"), "frenzy" (needs a "rage"
+//     feature; any melee attack while the Rage modifier, `<archetype>#rage#m0`, is in force).
+// Martial Arts / Flurry require the Attack action to have used an "unarmed" or "monk" action.
+std::optional<std::string> compile_bonus_attacks(const std::string& aid, const std::vector<FeatureDecl>& feats,
+                                                 const std::vector<const Json*>& acts, bool is_character, rules5e::Combatant& c) {
+    auto has_feature = [&](const char* id) {
+        for (const auto& f : feats) if (f.id == id) return true;
+        return false;
+    };
+    auto has_prop = [](const Json& act, const char* p) {
+        auto it = act.find("properties");
+        if (it == act.end() || !it->is_array()) return false;
+        for (const Json& x : *it) if (x.is_string() && x.get<std::string>() == p) return true;
+        return false;
+    };
+    uint32_t light = 0, unarmed_set = 0;
+    int first_unarmed = -1;
+    for (std::size_t i = 0; i < acts.size() && i < 32; ++i) {
+        const Json& act = *acts[i];
+        if (act.value("kind", "") != "melee_weapon_attack") continue;
+        if (has_prop(act, "light")) light |= 1u << i;
+        if (has_prop(act, "unarmed") || has_prop(act, "monk")) unarmed_set |= 1u << i;
+        if (has_prop(act, "unarmed") && first_unarmed < 0) first_unarmed = int(i);
+    }
+    auto add = [&](const std::string& name, rules5e::BonusAttack b) {
+        b.id = rules5e::spell_id_of(aid + "#bonus#" + name);
+        c.bonus_attacks.push_back(b);
+    };
+    if (is_character && std::popcount(light) >= 2) {
+        const bool style = has_feature("two_weapon_fighting");
+        for (std::size_t i = 0; i < acts.size() && i < 32; ++i) {
+            if (!(light & (1u << i))) continue;
+            rules5e::BonusAttack b;
+            b.attack_index = uint8_t(i);
+            b.requires_attacks = light;
+            b.different_weapon = true;
+            if (!style) {
+                b.has_damage = true;
+                b.damage = c.attacks[i].damage;
+                b.damage.bonus = 0;
+            }
+            add("offhand#" + acts[i]->value("id", "?"), b);
+        }
+    }
+    const bool martial = has_feature("martial_arts"), flurry = has_feature("flurry_of_blows");
+    if ((martial || flurry) && first_unarmed < 0) return aid + ": martial_arts / flurry_of_blows need an action with the 'unarmed' property";
+    if (martial) {
+        rules5e::BonusAttack b;
+        b.attack_index = uint8_t(first_unarmed);
+        b.requires_attacks = unarmed_set;
+        add("martial_arts", b);
+    }
+    if (flurry) {
+        rules5e::BonusAttack b;
+        b.attack_index = uint8_t(first_unarmed);
+        b.count = 2;
+        b.requires_attacks = unarmed_set;
+        b.pool = rules5e::spell_id_of("ki");
+        b.pool_cost = 1;
+        add("flurry_of_blows", b);
+    }
+    if (has_feature("frenzy")) {
+        if (!has_feature("rage")) return aid + ": frenzy needs a 'rage' feature";
+        rules5e::BonusAttack b;
+        b.any_melee = true;
+        b.requires_modifier = rules5e::spell_id_of(aid + "#rage#m0");
+        add("frenzy", b);
+    }
+    if (c.bonus_attacks.size() > 255) return aid + ": too many bonus attack options";
     return std::nullopt;
 }
 
@@ -877,6 +955,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     // reactions[] (monster@4 / character@4; older files carry them stamped inert)
     if (declared == 0 || declared >= 4)
         if (auto e = compile_reactions(a, doc, rider_ctx, c)) return *e;
+    if (declared == 0 || declared >= 4)
+        if (auto e = compile_bonus_attacks(a.id, a.features, attack_actions, schema_type == "character", c)) return *e;
     // multiattack options -> rules5e::AttackSequence (ids owned by the library, stable addresses).
     for (const auto& m : a.multiattack_decls) {
         strings_.push_back(m.id);
