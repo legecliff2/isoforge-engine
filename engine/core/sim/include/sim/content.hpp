@@ -61,6 +61,7 @@ struct Archetype {
     struct Resource { std::string id; uint32_t pool_id = 0; uint16_t max = 0, start = 0; uint8_t recharge = 0; };   // recharge: FeatureRecharge
     std::vector<Resource> resources;
     std::vector<std::string> unlimited_resources;
+    bool has_shield = false;   // R-G7: a shield is carried (the AI's two_handed_grip fact for versatile weapons)
     // UseFeature specs (row 13: usage.pool / cost, grant_action, heal_pool), by feature_id; hooks.feature_spec reads them.
     std::map<uint32_t, rules5e::FeatureSpec> feature_specs;
     // apply_modifier features (row 12): the modifier rows hooks.feature_modifiers hands to rules, by feature_id (1-based index in features)

@@ -1,6 +1,7 @@
 #include "sim/driver.hpp"
 
 #include "rules5e/conditions.hpp"
+#include "rules5e/weapon.hpp"
 
 namespace eng::sim {
 
@@ -194,6 +195,9 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
             Command a;
             a.request = {self, ActionKind::Attack, t->id};
             a.request.attack_index = ai;
+            // R-G7: a versatile weapon without a shield is gripped in two hands (only Great Weapon Fighting reads it, so only set then).
+            if (me->great_weapon_fighting && (me->attacks[ai].properties & rules5e::kWeaponVersatile))
+                if (const Archetype* arch = c.archetype(self); arch && !arch->has_shield) a.request.two_handed_grip = true;
             if (s.budget.attacks_remaining == 0) a.request.multiattack = multi;   // only the opener names the option
             return a;
         }

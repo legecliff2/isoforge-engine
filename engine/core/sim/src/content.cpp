@@ -9,6 +9,7 @@
 
 #include "rules5e/encounter.hpp"
 #include "assets/content_migrations.hpp"
+#include "rules5e/weapon.hpp"
 #include "rules5e_content/spell_loader.hpp"
 
 namespace eng::sim {
@@ -493,8 +494,23 @@ std::optional<std::string> compile_reactions(Archetype& a, const Json& doc, cons
         rules5e::Reaction x;
         if (wk == "damaged") x.window = rules5e::ReactionTrigger::Damaged;
         else if (wk == "ally_attacked") x.window = rules5e::ReactionTrigger::AllyAttacked;
+        else if (wk == "roll_attack") x.window = rules5e::ReactionTrigger::AttackRolled;   // R-G7 (Cutting Words)
         else { a.unsupported_features.push_back(rid + " (reaction window " + wk + ")"); continue; }
-        if (r.contains("usage") || w->value("source", "self") != "self" || !w->value("visible", true)) {
+        // usage: only a pool on a subtract_roll reaction (Cutting Words spends bardic inspiration); the pool must be declared in
+        // resources[] (an `unlimited` one spends nothing).
+        bool usage_ok = !r.contains("usage");
+        if (!usage_ok && ek == "subtract_roll" && r["usage"].is_object() && r["usage"].value("kind", "") == "pool") {
+            const std::string pid = r["usage"].value("pool", "");
+            const int pc = r["usage"].value("cost", 1);
+            bool found = false, unlimited = false;
+            for (const auto& res : a.resources) found = found || res.id == pid;
+            for (const auto& u : a.unlimited_resources) unlimited = unlimited || u == pid;
+            if (!found && !unlimited) return where + ": usage names unknown pool '" + pid + "'";
+            if (pc < 1 || pc > 65535) return where + ": bad pool cost";
+            if (found) { x.pool = rules5e::spell_id_of(pid); x.pool_cost = uint16_t(pc); }
+            usage_ok = true;
+        }
+        if (!usage_ok || w->value("source", "self") != "self" || !w->value("visible", true)) {
             a.unsupported_features.push_back(rid + " (reaction: unsupported usage / source / visible)");
             continue;
         }
@@ -502,7 +518,14 @@ std::optional<std::string> compile_reactions(Archetype& a, const Json& doc, cons
         x.ranged_only = w->value("ranged_only", false);
         if (x.melee_only && x.ranged_only) return where + ": melee_only and ranged_only together";
         const bool damaged = x.window == rules5e::ReactionTrigger::Damaged;
-        if (ek == "reduce_damage") {
+        if ((ek == "subtract_roll") != (x.window == rules5e::ReactionTrigger::AttackRolled))
+            return where + ": subtract_roll and the roll_attack window go together";
+        if (ek == "subtract_roll") {
+            x.kind = RE::SubtractRoll;
+            auto d = parse_dice(ef->contains("dice") && (*ef)["dice"].is_string() ? (*ef)["dice"].get<std::string>() : "");
+            if (!d || d->count == 0) return where + ": subtract_roll needs dice";
+            x.dice = *d;
+        } else if (ek == "reduce_damage") {
             if (!damaged) return where + ": reduce_damage needs the damaged window";
             x.kind = RE::ReduceDamage;
             if (ef->contains("fraction")) x.half = true;
@@ -811,6 +834,13 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         at.type = *type;
         at.ranged = ranged;
         at.finesse = false;
+        // R-G7: two_handed / versatile bits (read only by Great Weapon Fighting); other property bits stay unset (goldens).
+        if (auto ps = act.find("properties"); ps != act.end() && ps->is_array())
+            for (const Json& pn : *ps) {
+                const std::string pv = pn.is_string() ? pn.get<std::string>() : "";
+                if (pv == "two_handed" || pv == "two-handed") at.properties |= rules5e::kWeaponTwoHanded;
+                else if (pv == "versatile") at.properties |= rules5e::kWeaponVersatile;
+            }
         // Weapon data qualifiers (magical / silvered / adamantine): monster@3 / character@3 only.
         if (!inert.count("attack_qualifiers"))
             if (auto qs = act.find("qualifiers"); qs != act.end() && qs->is_array())
@@ -897,6 +927,23 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 if (auto e = add_trigger(a.id, act.value("id", "?"), ri, std::move(t), trigger_ids, c)) return *e;
             }
         }
+    // R-G7 feature flags by local id (monster@4 / character@4): "lucky" (Halfling: reroll natural 1s on attacks, checks, saves),
+    // "great_weapon_fighting" / "fighting_style_great_weapon_fighting", "evasion" (Rogue / Monk). A shield (equipment[] "shield" or
+    // armor_class.note naming one) tells the AI a versatile weapon is held in one hand.
+    if (declared == 0 || declared >= 4)
+        for (const auto& f : a.features) {
+            if (f.id == "lucky") c.reroll_ones = 7;
+            else if (f.id == "great_weapon_fighting" || f.id == "fighting_style_great_weapon_fighting") c.great_weapon_fighting = true;
+            else if (f.id == "evasion") c.evasion = true;
+        }
+    {
+        bool shield = false;
+        if (auto eq = doc.find("equipment"); eq != doc.end() && eq->is_array())
+            for (const Json& e : *eq) shield = shield || (e.is_string() && e.get<std::string>() == "shield");
+        if (auto acn = doc.find("armor_class"); acn != doc.end() && acn->is_object() && acn->value("note", "").find("shield") != std::string::npos)
+            shield = true;
+        a.has_shield = shield;
+    }
     // reactions[] (monster@4 / character@4; older files carry them stamped inert)
     if (declared == 0 || declared >= 4)
         if (auto e = compile_reactions(a, doc, rider_ctx, c)) return *e;

@@ -23,6 +23,15 @@ public:
     virtual ReactionDecision decide_reaction(const Combat&, const NeedsDecision& n) {
         if (n.trigger == rules5e::ReactionTrigger::HitRider) return {n.window_seq, false, 0};
         uint8_t pick = 0;
+        // R-G7 AttackRolled (Cutting Words): spend the die only when its maximum could turn a hit into a miss.
+        if (n.trigger == rules5e::ReactionTrigger::AttackRolled) {
+            for (std::size_t i = 0; i < n.options.size(); ++i) {
+                const auto& d = n.options[i].dice;
+                const int most = int(d.count) * int(d.sides) + int(d.bonus);
+                if (n.attack_total >= n.target_ac && n.attack_total - most < n.target_ac) return {n.window_seq, true, uint8_t(i)};
+            }
+            return {n.window_seq, false, 0};
+        }
         if (n.trigger == rules5e::ReactionTrigger::Damaged)
             for (std::size_t i = 0; i < n.options.size(); ++i)
                 if (n.options[i].kind == rules5e::ReactionOptionKind::ReduceDamage) { pick = uint8_t(i); break; }

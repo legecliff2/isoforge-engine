@@ -457,6 +457,12 @@ void Combat::install_hooks() {
         if (w.trigger == ReactionTrigger::Damaged) return r.id == w.target;       // reduce_damage / retaliate / riposte: the creature hurt
         if (w.trigger == ReactionTrigger::AllyAttacked)                          // Protection: within 5 ft of the ally attacked
             return r.id != w.target && distance_tiles(r.id, w.target) * kFeetPerTile <= 5;   // footprint-aware nearest-tile distance
+        if (w.trigger == ReactionTrigger::AttackRolled) {   // R-G7 Cutting Words: within 60 ft of the attacker and able to see it
+            const auto* att = rules5e::find(state_, w.trigger_actor);
+            if (!att || r.id == w.trigger_actor || distance_tiles(r.id, w.trigger_actor) * kFeetPerTile > 60) return false;
+            if (!line_of_sight(r.id, w.trigger_actor)) return false;
+            return !state_.hooks.can_see || state_.hooks.can_see(state_, r, *att);
+        }
         if (w.trigger == ReactionTrigger::SpellCast) {   // Counterspell: within the counter spell's range, in sight
             if (!spells_) return false;
             for (uint32_t id : r.spells_known) {
@@ -894,6 +900,7 @@ uint64_t Combat::log_hash() const {
         h.byte(q.ranged_hostile_within_5ft ? 1 : 0);
         h.byte(q.beyond_normal_range ? 1 : 0);
         if (q.multiattack != 0) h.byte(q.multiattack);   // folded only when used: older logs hash as before
+        if (q.two_handed_grip) h.byte(0xAA);   // R-G7: folded only when set
         if (q.innate) h.byte(0xA4);                       // innate CastSpell: folded only when set, under a tag byte
         h.byte(q.heal_dice.count);
         h.byte(q.heal_dice.sides);
