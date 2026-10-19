@@ -368,6 +368,11 @@ struct Combatant {
     bool great_weapon_fighting = false;
     bool evasion = false;
     uint16_t died_round = 0;   // R-G15 (appended): EncounterState::round when the creature died (0 = alive / unknown); rules-maintained
+    // R-G16 (appended). surprised: set by the caller before begin_encounter (or apply_surprise); while set the creature can
+    // only end its turn (no move, action, bonus action or other request) and cannot react; rules clear it when its first turn ends.
+    bool surprised = false;
+    // Hit Dice (rest.hpp): die size (6, 8, 10, 12; 0 = none), remaining and maximum (usually the character level).
+    uint8_t hit_die = 0, hit_dice = 0, hit_dice_max = 0;
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };

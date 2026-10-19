@@ -1361,6 +1361,49 @@ Wake action only act when used, and the new fields are not hashed (see hand-off)
   modelled; Heat Metal's object-holding rider is not modelled; Wake does not wake a creature at 0 HP; delayed damage has no own event
   (only `DamageDealt`, with actor = the caster).
 
+### 7.2h R-G16 surprise, Hit Dice, rests (post-batch rules follow-up) and hand-off
+
+Rules side only (`feat/rules-surprise-rests`); no schema change, no new event kind, no rng draw unless a Hit Die is spent. Goldens
+unchanged: the new `Combatant` fields default to off / 0, and surprise state is hashed only when present (tag **0xA8**).
+
+- **Surprise.** `Combatant::surprised` (appended) is set by the caller before `begin_encounter` (`apply_surprise(combatants, ids)`).
+  While set, the creature's turn accepts only `EndTurn` (no move, action, bonus action, feature, or spell; `legal_actions` lists only
+  `EndTurn`), and `may_react` is false, so no reaction window offers it anything (opportunity attacks, Shield, readied actions, Ask
+  windows). Rules clear it when that creature's `EndTurn` resolves (after `TurnEnded`), so it can react for the rest of round 1
+  after its turn. Start-of-turn upkeep (regeneration, repeat saves, recharge rolls) still runs. Ability checks and `Heal` requests
+  made for it by sim are not blocked.
+- **`surprised_by_stealth(combatants, hiders)`** (pure): a living creature is surprised when it has a living enemy, every living
+  enemy is listed in `hiders` (`StealthTotal{id, total}`, the Dexterity (Stealth) results), and every such total is **>=** its
+  `passive_perception` (new in checks.hpp: 10 + Perception modifier + caller bonus, +5 / -5 for advantage / disadvantage).
+  Ties go to the hider (the stealth total meets the passive "DC"). An enemy that is not hiding is noticed, so nobody on that side is
+  surprised; the caller can always pass its own set instead.
+- **Hashing.** `has_surprised(state)` / `surprised_digest(state)` (FNV-1a over the surprised ids): sim folds it under tag **0xA8**
+  only when `has_surprised`. It is non-empty only during round 1 of an ambush.
+- **Hit Dice.** `Combatant::hit_die` (die size, 0 = none), `hit_dice` (left), `hit_dice_max` (appended). `spend_hit_dice(c, rng, n)`
+  spends up to `n` dice one at a time: each is 1d`hit_die` + Con modifier, minimum 0, healed through `apply_healing` (so from 0 HP it
+  resets death saves and ends Unconscious) and capped at `effective_hp_max`. It stops once HP is full (no wasted dice). One rng draw
+  per die spent; the caller passes the rng it uses between encounters.
+- **Rests** (new `rest.hpp`, pure, outside the encounter; no events). `RestTables{features, pools, action_uses}` points at the
+  caller's per-actor rows (same types as `EncounterState`); null pointers are skipped and only rows of the resting actor change.
+  - `short_rest(c, rng, hit_dice_to_spend, tables)`: Hit Dice, Pact slots, ShortRest features and pools, recharge actions.
+  - `long_rest(c, tables, food_and_drink = true)`: refused below 1 HP or when dead. Exhaustion -1 (with food and drink) first, then
+    all HP to the adjusted maximum, temp HP lost, death saves reset, Hit Dice back up to half the maximum (minimum 1), all spell and
+    Pact slots, innate uses, ShortRest + LongRest features and pools, recharge actions.
+  - `recharge_tables(actor, long_rest, tables)` is the table part on its own; `recover_features(EncounterState&, bool)` stays.
+  - `recover_spell_slots(c, add[10], max_total_levels, max_slot_level = 5)` with `recovery_budget(level) = ceil(level / 2)`: Arcane
+    Recovery / Natural Recovery. All-or-nothing; refuses over budget, a slot above level 5, or more than `spell_slots_max`.
+- **Hand-off (Engine Core / T&C).** (a) Loader: `character@N` `hit_die` per class (d6 wizard / sorcerer, d8 most, d10 fighter /
+  paladin / ranger, d12 barbarian) and `hit_dice_max` = level; Arcane / Natural Recovery as a `once per long rest` FeatureUses row.
+  (b) sim encounter setup: build the surprised set (from an ambush flag or `surprised_by_stealth` over the hiders' Stealth rolls),
+  call `apply_surprise` before `begin_encounter`, fold `surprised_digest` under 0xA8 when `has_surprised`. (c) Campaign / party layer:
+  keep combatants and their tables between encounters, call `short_rest` / `long_rest`, and seed a dedicated rng stream for Hit
+  Dice (not the encounter stream). The Combatant hash in sim does not include `hit_die` / `hit_dice` / `hit_dice_max`; add them only
+  in a hash of out-of-encounter state if one exists.
+- **Not covered / deviations.** Choosing Hit Dice one at a time after seeing each roll is modelled by "stop when full" plus the
+  caller's `n`; multiclass mixed Hit Dice sizes are not modelled (one die size); rest interruption, the 1-per-24h long-rest limit and
+  rest durations are the caller's; exhaustion is reduced only by `long_rest`'s flag (no other source); surprise does not model a
+  creature that is surprised by only part of the enemy side (any noticed enemy cancels surprise, the SRD's "doesn't notice a threat").
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
