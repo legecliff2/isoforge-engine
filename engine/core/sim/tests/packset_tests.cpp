@@ -76,7 +76,8 @@ TEST_CASE("packset: sample (+ srd51.core) and fl1 (its own set) load identically
             REQUIRE(b);
             const auto o = cs.owner.find(id);
             // Unlisted ids: the srd51.core monsters (added over time) belong to srd51.core, everything else to the sample pack.
-            const std::string dflt = id.rfind("srd51.monster.", 0) == 0 && cs.owner.count("srd51.monster.goblin")
+            const bool core_id = id.rfind("srd51.monster.", 0) == 0 || id.rfind("srd51.character.", 0) == 0;
+            const std::string dflt = core_id && cs.owner.count("srd51.monster.goblin")
                                          ? "srd51.core" : "sample.vertical_slice";
             CHECK(b->pack_id == (o == cs.owner.end() ? dflt : o->second));
             CHECK(b->base.hp_max == a.base.hp_max);
