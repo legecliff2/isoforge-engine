@@ -87,6 +87,13 @@ CASES = [
     ("c16_table_must_start_at_level_1", B, [(["resources", 0, "max", "table", "by_level", 0, "level"], 2)], [], "is not valid"),
     ("c16_bonus_table_on_monster", D, [(["traits", 1, "effect", "modifier"], {"stat": "damage", "applies_to": "self", "duration": {"kind": "rounds", "n": 1}, "bonus_table": {"by_level": [{"level": 1, "value": 1}]}})], [], "(check 16.4)"),
     ("c16_bonus_and_bonus_table", B, [(["features", 0, "effect", "modifiers", 0, "bonus"], 2)], [], "should not be valid under {'required': ['bonus', 'bonus_table']}"),
+    # --- R-G5 static kinds (sim #107): known at @4, shapes the sim would refuse to load are errors
+    ("rg5_attack_bonus_bad_attacks", R, [(["features", 1], {"id": "archery", "name": "A", "effect": {"kind": "attack_bonus", "attacks": "thrown", "amount": 2}})], [], "attack_bonus.attacks must be 'melee' or 'ranged' (R-G5)"),
+    ("rg5_attack_bonus_float_amount", R, [(["features", 1], {"id": "archery", "name": "A", "effect": {"kind": "attack_bonus", "attacks": "ranged", "amount": 2.0}})], [], "attack_bonus.amount must be an integer"),
+    ("rg5_crit_range_min_1", R, [(["features", 1], {"id": "crit", "name": "C", "effect": {"kind": "crit_range", "min": 1}})], [], "crit_range.min must be an integer in 2..20 (R-G5)"),
+    ("rg5_crit_range_missing_min", R, [(["features", 1], {"id": "crit", "name": "C", "effect": {"kind": "crit_range"}})], [], "crit_range.min must be an integer in 2..20 (R-G5)"),
+    ("rg5_ac_bonus_out_of_range", R, [(["features", 1], {"id": "defense", "name": "D", "effect": {"kind": "ac_bonus", "amount": 11}})], [], "ac_bonus.amount must be an integer in -10..10 (R-G5)"),
+    ("rg5_ac_bonus_requires_armor_not_bool", R, [(["features", 1], {"id": "defense", "name": "D", "effect": {"kind": "ac_bonus", "amount": 1, "requires_armor": 1}})], [], "ac_bonus.requires_armor must be a boolean (R-G5)"),
     # --- authored inert is rejected on disk (stamped legacy shapes validate against the schema, not on disk)
     ("inert_on_reaction_entry", D, [(["reactions", 0], {"id": "p", "name": "P", "kind": "special", "inert": True})], [], "/reactions/0: 'inert' is reserved"),
     ("inert_on_bonus_action_entry", D, [(["bonus_actions", 1], {"id": "k", "name": "K", "kind": "melee_weapon_attack", "to_hit": 1, "reach": 5, "damage": [{"dice": "1d4", "type": "fire"}], "inert": True})], [], "/bonus_actions/1: 'inert' is reserved"),
@@ -157,6 +164,21 @@ class V4Validator(unittest.TestCase):
                     self.assertTrue(any(expect in w for w in warns), warns)
                 else:
                     self.assertTrue(any(expect in e for e in errs), (expect, errs))
+
+    def test_rg5_static_kinds_are_known_at_4(self):
+        """attack_bonus / crit_range / ac_bonus have sim hooks (#107): no unknown-kind warning, no error."""
+        feats = [{"id": "archery", "name": "Archery", "effect": {"kind": "attack_bonus", "attacks": "ranged", "amount": 2}},
+                 {"id": "crit", "name": "Improved Critical", "effect": {"kind": "crit_range", "min": 19}},
+                 {"id": "defense", "name": "Defense", "effect": {"kind": "ac_bonus", "amount": 1, "requires_armor": True}}]
+        docs = dict(self.base)
+        docs[R] = h.edit(self.base[R], [(["features", 1 + i], f) for i, f in enumerate(feats)])
+        errs, warns = h.validate_docs(docs)
+        self.assertEqual(errs, [])
+        self.assertEqual(warns, [])
+        for k in ("attack_bonus", "crit_range", "ac_bonus"):
+            self.assertIn(k, checks_v4.TAG_TABLE["character@4"].effect_kinds)
+            self.assertIn(k, checks_v4.TAG_TABLE["monster@4"].effect_kinds)
+            self.assertNotIn(k, checks_v4.TAG_TABLE["character@3"].effect_kinds)   # @<=3 rows are frozen
 
     def test_api_level_rule(self):
         # A pack containing any @4 or item@1 document must declare api_level >= 2 (section 8.5, validator error).
