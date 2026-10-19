@@ -409,6 +409,38 @@ std::optional<std::string> apply_reckless_attack(Archetype& a, const FeatureDecl
     return std::nullopt;
 }
 
+// R-G14 sim wiring (rules #109, VERSION_BUMP_BATCH 7.2i hand-off a), open static kinds:
+// metamagic {options: [careful | distant | empowered | extended | heightened | quickened | subtle | twinned], pool}: Sorcerer
+// Metamagic. rules5e Combatant::metamagic_known (kMeta* bits) and sorcery_pool = the resources[] pool `pool` (sorcery points);
+// the caller sets ActionRequest::metamagic (log_hash 0xB1). Several declarations add options; the pool must agree.
+std::optional<std::string> apply_metamagic(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx&) {
+    static const char* kNames[] = {"careful", "distant", "empowered", "extended", "heightened", "quickened", "subtle", "twinned"};
+    const auto opts = f.effect.find("options");
+    if (opts == f.effect.end() || !opts->is_array() || opts->empty()) return f.id + ": metamagic needs options";
+    uint8_t known = 0;
+    for (const Json& o : *opts) {
+        const std::string n = o.is_string() ? o.get<std::string>() : "";
+        int bitpos = -1;
+        for (int i = 0; i < 8; ++i) if (n == kNames[i]) bitpos = i;
+        if (bitpos < 0) return f.id + ": unknown metamagic option '" + n + "'";
+        known = uint8_t(known | (1u << bitpos));   // kMetaCareful 1 ... kMetaTwinned 128, in kNames order
+    }
+    const std::string pid = f.effect.value("pool", "");
+    bool found = false;
+    for (const auto& r : a.resources) found = found || r.id == pid;
+    if (!found) return f.id + ": metamagic pool '" + pid + "' is not a limited resources[] pool";
+    const uint32_t pool = rules5e::spell_id_of(pid);
+    if (a.base.sorcery_pool != 0 && a.base.sorcery_pool != pool) return f.id + ": metamagic declarations name different pools";
+    a.base.metamagic_known = uint8_t(a.base.metamagic_known | known);
+    a.base.sorcery_pool = pool;
+    return std::nullopt;
+}
+// sculpt_spells {} (Evocation Wizard): rules5e Combatant::sculpt_spells; the caller lists ActionRequest::spared.
+std::optional<std::string> apply_sculpt_spells(Archetype& a, const FeatureDecl&, uint32_t, const FeatureBuildCtx&) {
+    a.base.sculpt_spells = true;
+    return std::nullopt;
+}
+
 // pack_tactics {} (SRD Pack Tactics: jackal, kobold, wolf, dire wolf; T&C-G7): advantage on the creature's attack rolls
 // against a creature when at least one of its allies that is not incapacitated is within 5 ft of it. Fills the rules5e
 // roll trait {Attack, Advantage, kWhenAllyNearTarget}; sim supplies the fact (ActionRequest::ally_near_target, Combat::ally_near).
@@ -446,6 +478,8 @@ FeatureRegistry make_builtin() {
     r.add_hook("aggressive", {apply_aggressive});
     r.add_hook("reckless_attack", {apply_reckless_attack});
     r.add_hook("pack_tactics", {apply_pack_tactics});
+    r.add_hook("metamagic", {apply_metamagic});
+    r.add_hook("sculpt_spells", {apply_sculpt_spells});
     // Kinds the @4 schemas introduce (frozen list of the 3 -> 4 migration; hooks arrive with their rows).
     for (const char* k : {"on_event", "save_effect", "reaction"})
         r.reserve_kind(k, 4);
