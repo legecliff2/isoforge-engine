@@ -367,6 +367,7 @@ struct Combatant {
     uint8_t reroll_ones = 0;
     bool great_weapon_fighting = false;
     bool evasion = false;
+    uint16_t died_round = 0;   // R-G15 (appended): EncounterState::round when the creature died (0 = alive / unknown); rules-maintained
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };

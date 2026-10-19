@@ -29,6 +29,13 @@ enum class SpellEffectKind : uint8_t {
     Counter,        // reaction: interrupts a spell being cast (Counterspell)
     ApplyCondition, // a condition on each target with no save (Invisibility); lasts with the spell
     ApplyModifier,  // row 12: a timed modifier (Bless, Bane, Haste, Slow, Shield of Faith, Faerie Fire, Hunter's Mark); SpellDef::modifier
+    // appended (R-G15):
+    HpPool,         // roll `dice` (scaled) as a hit-point pool; targets by lowest current HP get `condition` while the pool covers them (Sleep, Color Spray)
+    Dispel,         // end spells on each target: slot level or lower automatically, higher ones on a check (Dispel Magic)
+    Revive,         // a creature dead for at most `revive_within_rounds` returns with 1 HP (Revivify)
+    EndCondition,   // ends one condition of `ends_conditions` on each target, the lowest Condition value present (Lesser Restoration)
+    DelayedDamage,  // `dice` of `damage_type` when the effect's timer runs out (`expiry`; Acid Arrow: end of the target's next turn)
+    SustainedDamage,// `dice` now, and again each time the caster sustains it with a bonus action (Heat Metal; concentration)
 };
 enum class OnSave : uint8_t { None, Half };          // damage on a successful save
 enum class RepeatSave : uint8_t { None, EndOfTurn, StartOfTurn, OnDamage };   // condition: target repeats the save
@@ -112,6 +119,12 @@ struct SpellDef {
     uint8_t usage_kind = 0;        // 0 at-will, 1 recharge (ActionUse), 2 per-day/rest (FeatureUses row keyed by spell id), 3 pool
     uint8_t recharge_min = 0;      // usage_kind == 1: recharges on a d6 roll >= this
     uint32_t pool_id = 0; uint8_t pool_cost = 0;   // usage_kind == 3 (0 cost = 1)
+    // appended (R-G15). HpPool: the condition ends early when the creature takes damage (Sleep); Dispel: check DC = base + the
+    // spell's level for spells above the slot level; Revive: rounds since death allowed (Revivify: 1 minute = 10 rounds).
+    bool ends_on_damage = false;
+    uint8_t dispel_dc_base = 10;
+    uint8_t revive_within_rounds = 10;
+    uint32_t ends_conditions = 0;   // EndCondition: bitmask over Condition (Lesser Restoration: blinded, deafened, paralyzed, poisoned)
 };
 
 // The spell as seen by one extra effect: `base` with that effect's fields, no scaling, no further effects.
