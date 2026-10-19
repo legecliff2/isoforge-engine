@@ -1,0 +1,138 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.cleric_level_3",
+  "name": "Cleric, level 3 (Life Domain)",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "neutral good",
+  "level": 3,
+  "classes": [
+    {
+      "class": "cleric",
+      "level": 3,
+      "hit_die": "d8",
+      "subclass": "life"
+    }
+  ],
+  "xp": 900,
+  "armor_class": {
+    "value": 18,
+    "note": "chain mail, shield"
+  },
+  "hit_points": {
+    "average": 24,
+    "formula": "3d8+6"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 14,
+    "dex": 11,
+    "con": 15,
+    "int": 9,
+    "wis": 16,
+    "cha": 13
+  },
+  "saving_throws": {
+    "wis": 5,
+    "cha": 3
+  },
+  "skills": {
+    "insight": 5,
+    "religion": 1
+  },
+  "senses": {
+    "passive_perception": 13
+  },
+  "languages": [
+    "Common",
+    "Celestial"
+  ],
+  "proficiency_bonus": 2,
+  "features": [
+    {
+      "id": "bonus_proficiency",
+      "name": "Bonus Proficiency",
+      "description": "You gain proficiency with heavy armor (worn: chain mail, baked into armor_class)."
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.mace",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.chain_mail",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.shield",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.crossbow_light"
+    },
+    "crossbow_bolts_20",
+    "priests_pack",
+    "holy_symbol"
+  ],
+  "actions": [
+    {
+      "id": "mace",
+      "name": "Mace",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "bludgeoning"
+        }
+      ]
+    },
+    {
+      "id": "light_crossbow",
+      "name": "Light Crossbow",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 2,
+      "range": [
+        80,
+        320
+      ],
+      "targets": 1,
+      "properties": [
+        "ammunition",
+        "loading",
+        "two_handed"
+      ],
+      "damage": [
+        {
+          "dice": "1d8",
+          "type": "piercing"
+        }
+      ]
+    }
+  ],
+  "spellcasting": {
+    "ability": "wis",
+    "caster_level": 3,
+    "slots": {
+      "1": 4,
+      "2": 2
+    },
+    "spells": [
+      "srd51.spell.sacred_flame",
+      "srd51.spell.cure_wounds",
+      "srd51.spell.healing_word",
+      "srd51.spell.inflict_wounds",
+      "srd51.spell.hold_person"
+    ]
+  }
+}
