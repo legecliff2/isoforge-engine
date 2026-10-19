@@ -854,6 +854,11 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     c.hp = c.hp_max = int16_t(geti(doc.at("hit_points"), "average"));
     c.speed_ft = uint8_t(geti(doc.at("speed"), "walk"));
     c.proficiency_bonus = int8_t(geti(doc, "proficiency_bonus", 2));
+    // R-G11 rules PR 2 creature facts (CONTENT_CONVENTIONS 4.6; schema keys from #142): Stinking Cloud's no_breath automatic
+    // success, Moonbeam's shapechanger disadvantage, Spirit Guardians' evil damage type. Default false.
+    c.no_breath = doc.value("no_breath", false);
+    c.shapechanger = doc.value("shapechanger", false);
+    c.evil = doc.value("evil", false);
     if (auto st = doc.find("saving_throws"); st != doc.end())
         for (int i = 0; i < 6; ++i)
             if (st->contains(ab[i])) c.save_proficiencies |= rules5e::bit(rules5e::Ability(i));

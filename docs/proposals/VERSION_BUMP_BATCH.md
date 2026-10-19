@@ -1739,6 +1739,70 @@ today; the PR 2 fields above (`upcast_size_ft`, `ring_size_ft`, `sided`, `side_f
 `zone: unknown key ...` until T&C adds them to `schemas/spell/v1.schema.json` / `check_spell_zone`, and the loader gains them in
 the same PR.
 
+### 7.2n Slot recovery feature kind: Arcane Recovery, Natural Recovery (rules side) and hand-off
+
+Rules (`engine/rules/include/rules5e/rest.hpp`, on top of the R-G16 `recover_spell_slots` / `recovery_budget` of 7.2h):
+
+- `SlotRecoverySpec { feature_id, class_level, max_slot_level = 5, uses = 1 }`; `slot_recovery_budget(spec)` = ceil(class_level / 2).
+- `slot_recovery_uses(actor, spec)` -> the `FeatureUses` row to register (max = `uses`, recharge `LongRest`): `long_rest` /
+  `recharge_tables` reset it, `short_rest` does not ("once per day"; Natural Recovery's "finish a long rest" reset).
+- `apply_slot_recovery(Combatant&, spec, std::vector<FeatureUses>&, std::array<uint8_t,10> add)` -> `SlotRecoveryResult`:
+  `Ok` (slots added, one use spent), or, changing nothing, `NoFeature` (no row for `(c.id, feature_id)` / class_level 0),
+  `NoUsesLeft`, `Empty` (nothing chosen), `LevelTooHigh` (a slot above `max_slot_level`), `OverBudget`, `AboveMax` (more than
+  `spell_slots_max`: only expended slots return). Checked in that order (per-level checks in ascending slot level).
+- No events, no rng, no hash tags: rests stay outside `Combat::hash` (7.2h). Goldens unchanged.
+
+Hand-off (Engine Core, `sim/rest.hpp` / `sim/content.cpp`, not edited by rules):
+
+1. Content -> spec: a feature kind `slot_recovery` on character@N features, loaded by the sim feature loader (rules' content
+   library only parses spells). Proposed keys (T&C schema): `kind: "slot_recovery"`, `class` (`wizard` | `druid`; the class
+   level comes from `classes[]`), `max_slot_level` (integer 1..9, default 5), `uses` (integer 1..255, default 1). The loader
+   sets `SlotRecoverySpec` and registers `slot_recovery_uses(id, spec)` in the roster's `features` table.
+2. Short rest: after `eng::sim::short_rest(roster, id, ...)` succeeds, call
+   `rules5e::apply_slot_recovery(combatant, spec, roster.features, chosen)` with the caller's choice (sim AI / UI input at
+   short-rest time); a non-`Ok` result is a refused choice, report it to the caller.
+3. Long rest: nothing extra; `long_rest` resets the row through the roster's `RestTables`.
+
+### 7.2o Font of Magic: sorcery points and Flexible Casting (rules side) and hand-off
+
+(Numbered 7.2o because 7.2n is taken by the slot recovery PR, #146.)
+
+Builds on R-G14 (7.2i): sorcery points are the existing `ResourcePool` named by `Combatant::sorcery_pool` (the Metamagic
+pool, folded under `Combat::hash` 0xA3 when pools exist). No new Combatant or EncounterState field.
+
+Rules (`engine/rules/include/rules5e/font_of_magic.hpp`):
+
+- `sorcery_points_max(sorcerer_level)` = level from 2nd (0 below); `flexible_casting_cost(level)` = 2 / 3 / 5 / 6 / 7 for 1st..5th
+  (0 = not creatable).
+- `check_flexible_casting(const Combatant&, const std::vector<ResourcePool>&, flexible, level)` / `flexible_casting(...)`:
+  the pure out-of-encounter helper (and the encounter action's core). `flexible` 1 = expend a spell slot of `level` (1..9) for
+  `level` points; 2 = spend `flexible_casting_cost(level)` points for a slot of `level` (1..5). Results: `Ok`, `NoPool`,
+  `BadDirection`, `BadLevel`, `NoSlot`, `OverMax`, `NotEnoughPoints`; anything but `Ok` changes nothing.
+- In an encounter: `ActionKind::FlexibleCasting` (appended) with `ActionRequest::flexible` / `flexible_level` (appended), a
+  bonus action (needs `TurnBudget::bonus_action`; not while incapacitated; no SpellCast window). Emits one `ResourceSpent`
+  {actor, a = pool id, b = points spent (negative = gained), c = points after}; the slot level follows from `b` (the costs are
+  distinct). Errors: `no bonus action available`, `incapacitated`, `no sorcery points`, `bad flexible_level`,
+  `no spell slot of that level`, `sorcery points would exceed the maximum`, `not enough sorcery points`,
+  `flexible must be 1 (slot to points) or 2 (points to slot)`.
+- `legal_actions` lists every valid conversion (as_bonus_action) while the bonus action is unused.
+- Long rest: `long_rest` restores `spell_slots` to `spell_slots_max`, so created slots (which may exceed the maximum) vanish;
+  the pool refills when registered with recharge `LongRest`.
+
+Deviations / readings: going above the point maximum is refused (`OverMax`), not capped (SRD: "can't have more sorcery points
+than your maximum"; refusing keeps the slot). Pact Magic slots are not converted (SRD Flexible Casting names spell slots; the
+Warlock is not a sorcerer). No new event kind (event_stream_version unchanged); `ResourceSpent.b` may now be negative.
+
+Hand-off:
+
+- **Engine Core (sim)**: `Combat::log_hash` folds 0xBA + `flexible` + `flexible_level` when `flexible != 0` (claimed in
+  SIM_EVENTS.md); no `Combat::hash` section (pool 0xA3 + events). The feature loader (`sim/content.cpp`) registers the sorcery
+  pool with `max = sorcery_points_max(sorcerer level)`, recharge `LongRest`, and sets `sorcery_pool` for a `font_of_magic`
+  feature even without Metamagic (Sorcerer 2). AI: optional (no conversion by default). Out of encounters: call
+  `rules5e::flexible_casting(combatant, roster.pools, flexible, level)` on the kept roster.
+- **Tools & Content (schema)**: character@N feature kind `font_of_magic { pool }` (the pool id, the same `resources[]` pool as
+  `metamagic.pool`); the pool's `max` should equal the sorcerer level (validator warning otherwise).
+- Goldens unchanged: nothing folds unless a combat registers pools and logs a FlexibleCasting request.
+
 ### 7.2p Petrifying Gaze feature kind (basilisk, medusa) (rules side) and hand-off
 
 (Numbered after 7.2o, Font of Magic, #147; 7.2n is slot recovery, #146.) Agreed ruling with Engine Core; reuses the small
