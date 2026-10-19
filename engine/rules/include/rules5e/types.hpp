@@ -107,6 +107,8 @@ enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Re
                                   ReactionDecision, Heal, AbilityCheck,
                                   // turn action (appended): a content feature (Second Wind, ...)
                                   UseFeature,
+                                  // appended: Font of Magic, Flexible Casting (bonus action; ActionRequest::flexible)
+                                  FlexibleCasting,
                                   // appended: Petrifying Gaze turn-start response (ActionRequest::avert_gaze / gaze_seen)
                                   GazeResponse };
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
