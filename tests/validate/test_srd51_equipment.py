@@ -75,6 +75,14 @@ ARMOR = [
     ('studded_leather_armor', 'light', 12, True, None, 0, False, 4500, 208),
 ]
 
+# (local_id, category, description must mention): valuables (item@1 category 'valuable'). The SRD equipment list at a6212be has
+# no gems (no 'Diamond' in 5e-SRD-Equipment.json: categories weapon, armor, adventuring-gear, tools, mounts-and-vehicles), so
+# the diamond is based on the SRD spell material text (Revivify, Raise Dead, ...) and carries no cost_cp / weight_oz: each
+# character@4 equipment[] entry gives its own value_gp (docs/CONTENT_CONVENTIONS.md section 7).
+VALUABLES = [
+    ('diamond', 'valuable', 'Revivify'),
+]
+
 
 def load(lid):
     return json.loads((ITEMS / f"{lid}.json").read_text(encoding="utf-8"))
@@ -94,8 +102,10 @@ class Srd51Equipment(unittest.TestCase):
         self.assertEqual(sum(1 for a in ARMOR if a[1] == "medium"), 5)
         self.assertEqual(sum(1 for a in ARMOR if a[1] == "heavy"), 4)
         self.assertEqual(sum(1 for a in ARMOR if a[1] == "shield"), 1)
+        self.assertEqual(len(VALUABLES), 1)
         files = sorted(p.stem for p in ITEMS.glob("*.json"))
-        self.assertEqual(files, sorted([w[0] for w in WEAPONS] + [a[0] for a in ARMOR]), "no extra or missing item files")
+        self.assertEqual(files, sorted([w[0] for w in WEAPONS] + [a[0] for a in ARMOR] + [v[0] for v in VALUABLES]),
+                         "no extra or missing item files")
 
     def test_manifest_lists_every_item(self):
         man = json.loads((PACK / "manifest.json").read_text(encoding="utf-8"))
@@ -133,6 +143,22 @@ class Srd51Equipment(unittest.TestCase):
                 self.assertEqual(d.get("dex_cap"), cap)
                 self.assertEqual(d.get("str_min", 0), strmin)
                 self.assertEqual(d["stealth_disadvantage"], stealth)
+
+    def test_valuables(self):
+        for lid, cat, mention in VALUABLES:
+            with self.subTest(lid):
+                d = load(lid)
+                self.assertEqual((d["$schema"], d["id"], d["category"]), ("item@1", f"srd51.item.{lid}", cat))
+                self.assertEqual(d["source"], {"ref": "SRD 5.1", "license": "CC-BY-4.0"})
+                self.assertNotIn("cost_cp", d)    # no list price: the equipment entry's value_gp is the value
+                self.assertNotIn("weight_oz", d)  # the SRD gives none
+                self.assertIn(mention, d["description"])
+                self.assertEqual(set(d), {"$schema", "id", "name", "source", "category", "description"})
+
+    def test_diamond_is_the_priced_material_id(self):
+        # spell@1 components.m.item names it (Revivify fixture); the contract matches equipment ids exactly.
+        rv = json.loads((ROOT / "tests/validate/fixtures/spell_kinds/spells/revivify.json").read_text(encoding="utf-8"))
+        self.assertEqual(rv["components"]["m"]["item"], load("diamond")["id"])
 
     def test_spot_values(self):
         by = {w[0]: w for w in WEAPONS}

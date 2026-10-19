@@ -1974,7 +1974,8 @@ non-empty** (Q10, decided), with these obligations:
 
 `item@1` makes equipment data so Sneak Attack (`finesse`), riders and `same_as_weapon` damage have a
 source and so AC can be computed (§12 row 15). **The discriminator is `category`**
-(`weapon | armor | shield`); each arm uses the closed-union convention (§3.1). Common fields: `$schema`
+(`weapon | armor | shield`, plus `valuable` appended later: gems with only the common fields, docs/CONTENT_CONVENTIONS.md
+section 7.1); each arm uses the closed-union convention (§3.1). Common fields: `$schema`
 (`const "item@1"`), `id` (`content_id`), `name`, `source`, `category`, `cost_cp` (integer, copper
 pieces), `weight_oz` (integer, ounces; integers only), `description`.
 
