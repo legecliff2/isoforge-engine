@@ -1077,7 +1077,26 @@ uint64_t Combat::hash() const {
             }
         }
     }
+    // 0xA8 (R-G16): surprised creatures, only while one is still surprised (round 1 of an ambush); never for other combats.
+    if (rules5e::has_surprised(state_)) { h.byte(0xA8); h.u64(rules5e::surprised_digest(state_)); }
     return h.value();
+}
+
+bool Combat::apply_surprise(const std::vector<CombatantId>& ids, std::string* error) {
+    auto fail = [&](const char* m) { if (error) *error = m; return false; };
+    if (!log_.empty()) return fail("surprise must be set before the first command");
+    if (pending()) return fail("a decision is pending");
+    if (state_.ended) return fail("the encounter has ended");
+    for (CombatantId id : ids) {
+        const auto* k = rules5e::find(state_, id);
+        if (!k) return fail("unknown surprised combatant");
+        if (k->dead) return fail("a dead combatant cannot be surprised");
+    }
+    rules5e::apply_surprise(state_.combatants, ids);
+    surprised_at_start_.clear();
+    for (const auto& k : state_.combatants)
+        if (k.surprised) surprised_at_start_.push_back(k.id);
+    return true;
 }
 
 uint64_t Combat::log_hash() const {
@@ -1128,18 +1147,20 @@ uint64_t Combat::log_hash() const {
 }
 
 std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content, uint64_t seed,
-                             const std::vector<LogEntry>& log, std::string* error) {
+                             const std::vector<LogEntry>& log, std::string* error, const std::vector<CombatantId>& surprised) {
     world::Chunk local = chunk;   // same chunk-local frame as the single-chunk create
     local.coord.x = 0;
     local.coord.y = 0;
     const world::Chunk* one[] = {&local};
-    return replay(reg, std::span<const world::Chunk* const>(one), content, seed, log, error);
+    return replay(reg, std::span<const world::Chunk* const>(one), content, seed, log, error, surprised);
 }
 
 std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
-                             uint64_t seed, const std::vector<LogEntry>& log, std::string* error) {
+                             uint64_t seed, const std::vector<LogEntry>& log, std::string* error,
+                             const std::vector<CombatantId>& surprised) {
     auto c = Combat::create(reg, chunks, content, seed, error);
     if (!c) return std::nullopt;
+    if (!surprised.empty() && !c->apply_surprise(surprised, error)) return std::nullopt;
     for (std::size_t i = 0; i < log.size(); ++i) {
         const LogEntry& e = log[i];
         c->install_hooks();

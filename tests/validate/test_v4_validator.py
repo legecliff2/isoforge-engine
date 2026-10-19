@@ -100,7 +100,7 @@ CASES = [
     ("inert_on_special_bonus_action_entry", D, [(["bonus_actions", 2, "inert"], True)], [], "/bonus_actions/2: 'inert' is reserved"),
     ("inert_on_effect", D, [(["traits", 3, "effect", "inert"], True)], [], "'inert' is reserved"),
     # --- schema negatives per def
-    ("schema_grapple_rider_rejected", D, [(["actions", 0, "on_hit", 0, "kind"], "grapple")], [], "grapple"),
+    ("schema_unknown_rider_kind", D, [(["actions", 0, "on_hit", 0, "kind"], "swallow")], [], "'swallow' is not one of"),
     ("schema_unknown_predicate", R, [(["features", 0, "effect", "when", 0, "kind"], "full_moon")], [], "/when/0/kind: 'full_moon' is not one of"),
     ("schema_unknown_window", D, [(["reactions", 0, "window", "kind"], "tuesday")], [], "is not valid under any of"),
     ("schema_save_condition_without_on_success", D, [(["actions", 0, "on_hit", 0, "damage"], [{"dice": "1d4", "type": "fire"}])], [], "dependency"),
@@ -135,7 +135,8 @@ CASES = [
     ("item_magic_bonus_range", "items/flame_tongue.json", [(["magic_bonus"], 4)], [], "maximum"),
     ("item_float_cost", "items/shield.json", [(["cost_cp"], 1.5)], [], "float value"),
     ("item_unknown_category", "items/shield.json", [(["category"], "ring")], [], "is not one of"),
-    ("item_unknown_rider_kind", "items/flame_tongue.json", [(["on_hit", 0, "kind"], "grapple")], [], "grapple"),
+    ("item_unknown_rider_kind", "items/flame_tongue.json", [(["on_hit", 0, "kind"], "swallow")], [], "'swallow' is not one of"),
+    ("item_c17_grapple_rider", "items/flame_tongue.json", [(["on_hit", 1], {"kind": "grapple", "escape_dc": 12})], [], "grapple riders are rejected in items"),
     ("item_flat_damage_negative", "items/blowgun.json", [(["damage", 0, "flat"], -1)], [], "is not valid under any of"),
 ]
 EXPECT_WARNING = lambda name: name.startswith("warn_")
@@ -422,6 +423,81 @@ class RG7ReactionsAndFeatures(unittest.TestCase):
         self.assertIn("roll_attack", checks_v4.COMPILED_WINDOWS)
         for tag in ("monster@3", "monster@4", "character@3", "character@4"):
             self.assertTrue(checks_v4.OPEN_EFFECT_KINDS_RG7 <= checks_v4.TAG_TABLE[tag].effect_kinds, tag)
+
+
+# ---- R-G8 grapple hit rider (sim #104, docs/CONTENT_CONVENTIONS.md section 5) --------------------------------
+CRAB = "monsters/giant_crab_grappler.json"
+GR = ["actions", 0, "on_hit", 0]   # giant_crab_grappler.json: claw grapple escape_dc 11
+
+# (name, rel path, sets, dels, expected substring); "warn_" cases must validate with that warning only.
+GRAPPLE_CASES = [
+    # the loader's errors (sim: "bad grapple escape_dc")
+    ("grapple_escape_dc_above_30", CRAB, [(GR + ["escape_dc"], 31)], [], "greater than the maximum of 30"),
+    ("grapple_escape_dc_negative", CRAB, [(GR + ["escape_dc"], -1)], [], "less than the minimum of 0"),
+    ("grapple_escape_dc_float", CRAB, [(GR + ["escape_dc"], 11.0)], [], "grapple escape_dc must be an integer 0..30, got 11.0"),
+    ("grapple_escape_dc_string", CRAB, [(GR + ["escape_dc"], "11")], [], "is not of type 'integer'"),
+    ("grapple_escape_dc_bool", CRAB, [(GR + ["escape_dc"], True)], [], "is not of type 'integer'"),
+    ("grapple_extra_field", CRAB, [(GR + ["condition"], "restrained")], [], "'condition' is not one of ['kind', 'escape_dc']"),
+    ("grapple_escape_dc_on_other_rider", CRAB, [(["actions", 1, "on_hit", 1, "escape_dc"], 12)], [], "'escape_dc' is not one of ['kind', 'damage', 'scale']"),
+    ("grapple_in_on_event_effects", CRAB, [(["traits"], [{"id": "hold", "name": "Hold", "description": "x",
+                                                          "effect": {"kind": "on_event", "on": "hit", "effects": [{"kind": "grapple", "escape_dc": 11}]}}])],
+     [], "unknown rider kind 'grapple'"),
+    ("grapple_on_save_effect", CRAB, [(["actions", 0], {"kind": "save_effect", "id": "x", "name": "X", "save": {"ability": "str", "dc": 11},
+                                                        "apply": [{"condition": "grappled"}], "on_hit": [{"kind": "grapple"}]})], [], "should not be valid under"),
+    # the file loads, the rider is ignored or overwritten: warnings
+    ("warn_grapple_twice_on_one_attack", CRAB, [(["actions", 0, "on_hit", 1], {"kind": "grapple", "escape_dc": 13})], [], "the sim keeps only the last one"),
+    ("warn_grapple_on_bonus_action", CRAB, [(["bonus_actions"], [{"id": "nip", "name": "Nip", "kind": "melee_weapon_attack", "to_hit": 3, "reach": 5,
+                                                                   "targets": 1, "damage": [{"dice": "1d4", "type": "piercing"}],
+                                                                   "on_hit": [{"kind": "grapple"}]}])], [], "this grapple rider never applies"),
+]
+
+
+class RG8GrappleRider(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.base = h.pack_fixtures()
+
+    def docs_with(self, doc: dict) -> dict:
+        d = dict(self.base)
+        d[CRAB] = doc
+        return d
+
+    def test_positive_fixture_validates_clean(self):
+        # claw: grapple escape_dc 11; pincer: grapple with no escape_dc (Athletics contest) followed by an extra_damage rider.
+        self.assertEqual(h.validate_docs(self.docs_with(extra("giant_crab_grappler.json"))), ([], []))
+
+    def test_escape_dc_bounds_are_accepted(self):
+        for dc in (0, 1, 30):
+            with self.subTest(dc):
+                doc = h.edit(extra("giant_crab_grappler.json"), [(GR + ["escape_dc"], dc)])
+                self.assertEqual(h.validate_docs(self.docs_with(doc)), ([], []))
+
+    def test_cases(self):
+        for name, rel, sets, dels, expect in GRAPPLE_CASES:
+            with self.subTest(name):
+                errs, warns = h.validate_docs(self.docs_with(h.edit(extra("giant_crab_grappler.json"), sets, dels)))
+                if EXPECT_WARNING(name):
+                    self.assertEqual(errs, [], errs)
+                    self.assertTrue(any(expect in w for w in warns), warns)
+                else:
+                    self.assertTrue(any(expect in e for e in errs), (expect, errs))
+
+    def test_grapple_rider_makes_no_trigger(self):
+        # check 8: the loader compiles no trigger for a grapple rider, so 'claw#0' is free for a trait named 'claw'.
+        trait = {"id": "claw", "name": "Claw Snap", "description": "x",
+                 "effect": {"kind": "on_event", "on": "hit", "effects": [{"kind": "extra_damage", "damage": [{"dice": "1d4", "type": "bludgeoning"}]}]}}
+        doc = h.edit(extra("giant_crab_grappler.json"), [(["traits"], [trait])])
+        self.assertEqual(h.validate_docs(self.docs_with(doc)), ([], []))
+        clash = h.edit(doc, [(GR, {"kind": "extra_damage", "damage": [{"dice": "1d4", "type": "fire"}]})])
+        errs, _warns = h.validate_docs(self.docs_with(clash))
+        self.assertTrue(any("derived trigger id 'claw#0'" in e for e in errs), errs)
+
+    def test_grapple_is_a_rider_kind_only_in_common2(self):
+        import json
+        c2 = json.loads((Path(__file__).resolve().parents[2] / "schemas/common/v2.schema.json").read_text(encoding="utf-8"))
+        self.assertIn("grapple", c2["$defs"]["rider"]["properties"]["kind"]["enum"])
+        dc = c2["$defs"]["rider"]["properties"]["escape_dc"]
+        self.assertEqual((dc["type"], dc["minimum"], dc["maximum"]), ("integer", 0, checks_v4.GRAPPLE_ESCAPE_DC_MAX))
 
 
 if __name__ == "__main__":
