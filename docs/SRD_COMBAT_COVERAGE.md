@@ -369,7 +369,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Heat Metal | NEW (wiring) | rules5e `SustainedDamage` + `CastSpell sustain` bonus action (R-G15, VERSION_BUMP_BATCH 7.2g); object rider not modelled. Loader and sim done (EC #120): `sustained_damage {damage}` (+ `scaling.upcast.dice`, `duration.concentration`, timer from `duration`); the AI sustains its own Heat Metal with the bonus action from the next turn; `log_hash` folds `sustain` (0xB8). No pack ships it yet; schema / validator pending (T&C). |
 | Hold Person | DATA | Shipped (`save` WIS, paralyzed, repeat end_of_turn, humanoid, upcast targets). |
 | Invisibility | NEW | Condition applied with no save, ends on attack/cast; `save` kind requires a save (R-G2/R-G3). |
-| Lesser Restoration | NEW (wiring) | rules5e `EndCondition` + `ends_conditions` (R-G15, 7.2g); lowest listed condition first; no disease model. Loader done (EC #120): `end_condition {conditions[]}` (one def, lowest-first; no per-condition defs). No pack ships it yet; schema / validator pending (T&C). |
+| Lesser Restoration | NEW (wiring) | rules5e `EndCondition` + `ends_conditions` (R-G15, 7.2g); the caster chooses which listed condition ends (`ActionRequest::condition_choice` = 1 + index into the spell's `conditions` in JSON list order; not listed / not on the target = refused, no state change; no choice and the AI = the lowest listed condition present); no disease model. Loader done (EC #120): `end_condition {conditions[]}` (one def; no per-condition defs). No pack ships it yet; schema / validator pending (T&C). |
 | Magic Weapon | NEW | Magic bonus (R-G17, T&C-G2/R-G3). |
 | Mirror Image | NEW | Duplicates that absorb attacks (R-G3). |
 | Misty Step | NEW (wiring) | `Teleport` effect (`max_feet` 30), bonus action, self; destination from the request, validated by sim (R-G9, VERSION_BUMP_BATCH 7.2k). |
@@ -384,7 +384,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Suggestion | NEW | Forced behavior (R-G8). |
 | Warding Bond | NEW | Shared damage (R-G3). |
 | Web | NEW (wiring) | `Zone` (point, 20 ft cube, difficult terrain, lightly obscured flag): StartTurn / own-turn Enter, Dex save or restrained while in the webs, not re-saved; Strength check (action, `special` 4) to break free; ends on leaving or with the zone (R-G11, 7.2l). Flammability / anchoring OOS (D8). |
-| Acid Arrow | NEW (wiring) | rules5e `DelayedDamage` rider at end of target's next turn (R-G15, 7.2g). Loader done (EC #120): `delayed_damage {damage, expiry}` as an `applies_to: affected` rider (or primary); the rider does not upcast (rules: riders do not scale). No pack ships it yet; schema / validator pending (T&C). |
+| Acid Arrow | NEW (wiring) | rules5e `DelayedDamage` rider at end of target's next turn (R-G15, 7.2g). Loader done (EC #120): `delayed_damage {damage, expiry}` as an `applies_to: affected` rider (or primary); both the initial and the later damage gain `scaling.upcast.dice` per slot above 2nd (SRD; the loader copies it to the rider's `SpellEffect::upcast_dice`, applied at cast; the effect stores the scaled dice and slot level, folded under 0xAC). No pack ships it yet; schema / validator pending (T&C). |
 
 ### 8.4 Level 3
 

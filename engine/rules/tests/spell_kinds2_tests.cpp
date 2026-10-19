@@ -26,7 +26,8 @@ EncounterHooks hooks() {
     SpellDef aa; aa.id = kAcidArrow; aa.content_id = "test.spell#acid_arrow"; aa.level = 2; aa.range_ft = 90;
     aa.kind = SpellEffectKind::SpellAttack; aa.dice = DiceExpr{4, 4, 0}; aa.damage_type = DamageType::Acid; aa.fixed_attack = 30;
     SpellEffect later; later.kind = SpellEffectKind::DelayedDamage; later.dice = DiceExpr{2, 4, 0}; later.damage_type = DamageType::Acid;
-    later.expiry = 2; later.affected_only = true;
+    later.expiry = 2; later.affected_only = true; later.upcast_dice = 1;   // as the loader sets it from scaling.upcast.dice
+    aa.upcast_dice = 1;
     aa.extra_effects = {later};
     book->add(aa);
     SpellDef hm; hm.id = kHeatMetal; hm.content_id = "test.spell#heat_metal"; hm.level = 2; hm.range_ft = 60;
@@ -189,4 +190,77 @@ TEST_CASE("Wake (special 5): an action ends a sleeper's ends_on_damage effects")
     CHECK(has_ev(r.events, EventKind::SpellEffectEnded));
     CHECK_FALSE(s.budget.action);
     CHECK(s.effects.empty());
+}
+
+TEST_CASE("EndCondition: condition_choice picks the listed condition to end; invalid choices are refused unchanged") {
+    // no ends_condition_list (hand-built def): mask order 1 blinded, 2 deafened, 3 paralyzed, 4 poisoned
+    auto s = start({caster(1), mob(2, 30), pc(3, 30)});
+    mut(s, 3).conditions |= bit(Condition::Blinded) | bit(Condition::Poisoned);
+    const auto before = s;
+    auto pick = [](uint8_t c) { auto r = cast_at(kRestore, 3, 2); r.condition_choice = c; return r; };
+    for (uint8_t bad : {uint8_t(2), uint8_t(3), uint8_t(5), uint8_t(255)}) {   // not present (deafened, paralyzed) / not listed
+        const auto r = step(s, pick(bad));
+        CHECK_FALSE(r.ok);
+        CHECK(r.events.empty());
+        CHECK(find(s, 1)->spell_slots == find(before, 1)->spell_slots);
+        CHECK(find(s, 3)->conditions == find(before, 3)->conditions);
+        CHECK(s.effects.size() == before.effects.size());
+        CHECK(s.budget.action == before.budget.action);
+    }
+    const auto r = step(s, pick(4));   // poisoned, though blinded is lower
+    REQUIRE(r.ok);
+    CHECK_FALSE(find(s, 3)->has(Condition::Poisoned));
+    CHECK(find(s, 3)->has(Condition::Blinded));
+    end_turns_until(s, 3); end_turns_until(s, 1);
+    REQUIRE(step(s, cast_at(kRestore, 3, 2)).ok);   // no choice: the lowest present, as before
+    CHECK_FALSE(find(s, 3)->has(Condition::Blinded));
+}
+
+TEST_CASE("Acid Arrow: the later damage gains 1d4 per slot above 2nd (slot 2 / 3 / 4)") {
+    for (uint8_t slot : {uint8_t(2), uint8_t(3), uint8_t(4)}) {
+        bool seen = false;
+        for (uint64_t seed = 0; seed < 40 && !seen; ++seed) {
+            auto c = caster(1);
+            c.spell_slots_max[4] = 1; c.spell_slots = c.spell_slots_max;
+            auto s = start({c, mob(2, 200), mob(4, 60)}, seed);
+            REQUIRE(step(s, cast_at(kAcidArrow, 2, slot)).ok);
+            if (s.effects.empty()) continue;   // missed
+            seen = true;
+            CHECK(s.effects[0].slot_level == slot);
+            CHECK(s.effects[0].damage.count == slot);   // 2d4, 3d4, 4d4
+            CHECK(s.effects[0].damage.sides == 4);
+            std::vector<Event> ev;
+            end_turn_of(s, 1); end_turn_of(s, 2, &ev);
+            const int d = dealt_to(ev, 2);
+            CHECK(d >= slot); CHECK(d <= 4 * slot);
+        }
+        CHECK(seen);
+    }
+}
+
+TEST_CASE("EndCondition: condition_choice indexes ends_condition_list (JSON order), not Condition enum order") {
+    auto h = hooks();
+    auto book = std::make_shared<SpellBook>(*h.spells);
+    const uint32_t kOdd = spell_id_of("test.spell#restoration_odd");
+    SpellDef lr = *book->find(kRestore);
+    lr.id = kOdd; lr.content_id = "test.spell#restoration_odd";
+    lr.ends_conditions = bit(Condition::Poisoned) | bit(Condition::Blinded);
+    lr.ends_condition_list = {Condition::Poisoned, Condition::Blinded};
+    book->add(lr);
+    h.spells = book;
+    auto me = caster(1);
+    me.spells_known.push_back(kOdd);
+    auto s = begin_encounter({me, mob(2, 30), pc(3, 30)}, 1, nullptr, h);
+    end_turns_until(s, 1);
+    mut(s, 3).conditions |= bit(Condition::Blinded) | bit(Condition::Poisoned);
+    auto r = cast_at(kOdd, 3, 2); r.condition_choice = 1;   // poisoned
+    REQUIRE(step(s, r).ok);
+    CHECK_FALSE(find(s, 3)->has(Condition::Poisoned));
+    CHECK(find(s, 3)->has(Condition::Blinded));
+    end_turns_until(s, 3); end_turns_until(s, 1);
+    r.condition_choice = 3;   // past the list
+    CHECK_FALSE(step(s, r).ok);
+    r.condition_choice = 2;   // blinded
+    REQUIRE(step(s, r).ok);
+    CHECK_FALSE(find(s, 3)->has(Condition::Blinded));
 }

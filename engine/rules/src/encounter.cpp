@@ -2292,7 +2292,8 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         }
         break;
     }
-    case SpellEffectKind::EndCondition: {   // Lesser Restoration: one condition, the lowest Condition value present
+    case SpellEffectKind::EndCondition: {   // Lesser Restoration: one condition, the lowest Condition value present (the chosen one
+        // when ActionRequest::condition_choice narrowed ends_conditions to it, see cast_spell)
         for (Combatant* t : T) {
             if (t->dead) continue;
             const uint32_t present = t->conditions & def.ends_conditions;
@@ -2604,7 +2605,21 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
         if (std::size_t(req.damage_choice) > def.damage_choices.size()) return fail("bad damage choice");
         eff.damage_type = def.damage_choices[std::size_t(req.damage_choice - 1)];
     }
-    if (req.condition_choice != 0) {
+    if (req.condition_choice != 0 && def.kind == SpellEffectKind::EndCondition) {
+        // Lesser Restoration: 1 + index into ends_condition_list (the spell's JSON list order); each target must have the chosen
+        // one. Refused before anything is spent. No choice = the lowest listed condition present (as before).
+        std::vector<Condition> listed = def.ends_condition_list;
+        if (listed.empty())   // a def built without the loader: mask order
+            for (int k = 0; k < 32; ++k) if (def.ends_conditions & (uint32_t(1) << k)) listed.push_back(Condition(k));
+        uint32_t chosen = 0;
+        if (std::size_t(req.condition_choice) <= listed.size()) chosen = bit(listed[std::size_t(req.condition_choice - 1)]) & def.ends_conditions;
+        if (chosen == 0) return fail("bad condition choice");
+        auto has_it = [&](CombatantId id) { const Combatant* t = find(s, id); return t != nullptr && (t->conditions & chosen) != 0; };
+        if (req.target != 0 && !has_it(req.target)) return fail("target does not have the chosen condition");
+        for (CombatantId id : req.targets) if (!has_it(id)) return fail("target does not have the chosen condition");
+        if (req.target == 0 && req.targets.empty()) return fail("target does not have the chosen condition");
+        eff.ends_conditions = chosen;
+    } else if (req.condition_choice != 0) {
         if (std::size_t(req.condition_choice) > def.condition_choices.size()) return fail("bad condition choice");
         eff.condition = def.condition_choices[std::size_t(req.condition_choice - 1)];
     }
