@@ -29,6 +29,10 @@ OPEN_EFFECT_KINDS_RG7 = frozenset({"reroll_ones", "great_weapon_fighting", "evas
 # a stamped one validates (effect_inert) but a native one is a schema error.
 NEW_EFFECT_KINDS_AT_4 = frozenset({"on_event", "apply_modifier", "grant_action", "heal_pool", "save_effect", "reaction"})
 NATIVE_EFFECT_KINDS_AT_4 = frozenset({"on_event", "apply_modifier", "grant_action", "heal_pool"})
+# R-G5 static kinds (sim #107: eng::sim::FeatureRegistry::builtin() hooks attack_bonus, crit_range, ac_bonus). Open
+# common@1 kinds (no schema arm, not in the frozen 3 -> 4 list): known at @4, their fields are checked by
+# check_static_kinds below, mirroring the sim's load errors (sim/src/features.cpp apply_attack_bonus / _crit_range / _ac_bonus).
+STATIC_EFFECT_KINDS_R_G5 = frozenset({"attack_bonus", "crit_range", "ac_bonus"})
 EFFECT_COST_V1 = frozenset({"action", "bonus_action"})            # reaction is reserved up to @3
 EFFECT_COST_V2 = frozenset({"action", "bonus_action", "reaction"})  # grant_action additionally accepts "free"
 
@@ -61,7 +65,7 @@ for _typ, _keys in (("monster", _SB_KEYS | _MONSTER_KEYS), ("character", _SB_KEY
     TAG_TABLE[f"{_typ}@1"] = TagRow(False, V1_ACTION_KINDS, _OPEN, EFFECT_COST_V1, _keys - {"spellcasting"})
     TAG_TABLE[f"{_typ}@2"] = TagRow(False, V1_ACTION_KINDS, _OPEN, EFFECT_COST_V1, _keys - {"spellcasting"})
     TAG_TABLE[f"{_typ}@3"] = TagRow(True, V1_ACTION_KINDS, _OPEN, EFFECT_COST_V1, _keys, cross_refs=False)
-    TAG_TABLE[f"{_typ}@4"] = TagRow(True, V2_ACTION_KINDS, _OPEN | NATIVE_EFFECT_KINDS_AT_4,
+    TAG_TABLE[f"{_typ}@4"] = TagRow(True, V2_ACTION_KINDS, _OPEN | NATIVE_EFFECT_KINDS_AT_4 | STATIC_EFFECT_KINDS_R_G5,
                                     EFFECT_COST_V2, _keys | _AT4_KEYS, cross_refs=True, needs_api_level=2,
                                     legacy_stamps=True)
 TAG_TABLE["item@1"] = TagRow(False, frozenset(), frozenset(), frozenset(), frozenset(), cross_refs=True,
@@ -384,12 +388,35 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
         if rage_live.get("rage", {}).get("kind") != "apply_modifier":
             warns.append(f"{doc.get('id')}: feature 'frenzy' requires the Rage modifier '<id>#rage#m0', but the 'rage' feature has no live "
                          "apply_modifier effect: the option is never available (bonus attacks)")
+    errs += check_static_kinds(doc)
     # check 12: declared but never referenced pools (Legendary Resistance is declaration-only until row 13)
     for i, r in enumerate(resources):
         if r.get("id") not in referenced:
             warns.append(f"/resources/{i}: pool '{r.get('id')}' is never referenced by a usage.pool / spend.pool / "
                          "heal_pool.pool (declaration-only until the pool rows land) (check 12)")
     return errs, warns
+
+
+def check_static_kinds(doc: dict) -> list[str]:
+    """R-G5 static kinds: the shapes the sim accepts (anything else is a load error there).
+    attack_bonus {attacks: melee | ranged, amount: integer}, crit_range {min: 2..20}, ac_bonus {amount: -10..10, requires_armor?: bool}."""
+    errs = []
+    for path, _owner, eff in live_effects(doc):
+        kind = eff.get("kind")
+        if kind == "attack_bonus":
+            if eff.get("attacks") not in ("melee", "ranged"):
+                errs.append(f"{path}: attack_bonus.attacks must be 'melee' or 'ranged' (R-G5)")
+            if not is_int(eff.get("amount")) or not -20 <= eff["amount"] <= 20:
+                errs.append(f"{path}: attack_bonus.amount must be an integer in -20..20 (R-G5)")
+        elif kind == "crit_range":
+            if not is_int(eff.get("min")) or not 2 <= eff["min"] <= 20:
+                errs.append(f"{path}: crit_range.min must be an integer in 2..20 (R-G5)")
+        elif kind == "ac_bonus":
+            if not is_int(eff.get("amount")) or not -10 <= eff["amount"] <= 10:
+                errs.append(f"{path}: ac_bonus.amount must be an integer in -10..10 (R-G5)")
+            if "requires_armor" in eff and not isinstance(eff["requires_armor"], bool):
+                errs.append(f"{path}: ac_bonus.requires_armor must be a boolean (R-G5)")
+    return errs
 
 
 # ---- item@1 (section 10, checks 15 and 17) ------------------------------------------------------------
