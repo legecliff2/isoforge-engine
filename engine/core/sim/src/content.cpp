@@ -254,63 +254,7 @@ std::optional<std::string> compile_rider(const std::string& where, const Json& r
 }
 
 std::optional<std::string> compile_predicate(const std::string& where, const Json& p, rules5e::Predicate& out) {
-    if (!p.is_object() || !p.contains("kind") || !p["kind"].is_string()) return where + ": bad predicate";
-    const std::string k = p["kind"].get<std::string>();
-    using PK = rules5e::PredicateKind;
-    auto types_mask = [&](const char* key, bool creature) -> std::optional<uint32_t> {
-        auto it = p.find(key);
-        if (it == p.end() || !it->is_array() || it->empty()) return std::nullopt;
-        uint32_t m = 0;
-        for (const Json& t : *it) {
-            if (!t.is_string()) return std::nullopt;
-            if (creature) { auto c = creature_type_of(t.get<std::string>()); if (!c) return std::nullopt; m |= rules5e::bit(*c); }
-            else { auto d = damage_type(t.get<std::string>()); if (!d) return std::nullopt; m |= rules5e::bit(*d); }
-        }
-        return m;
-    };
-    if (k == "weapon") {
-        const std::string is = p.value("is", "");
-        out.kind = PK::Weapon;
-        if (is == "melee") out.a = int16_t(rules5e::WeaponIs::Melee);
-        else if (is == "ranged") out.a = int16_t(rules5e::WeaponIs::Ranged);
-        else if (is == "finesse") out.a = int16_t(rules5e::WeaponIs::Finesse);
-        else if (is == "finesse_or_ranged") out.a = int16_t(rules5e::WeaponIs::FinesseOrRanged);
-        else return where + ": bad weapon predicate";
-    } else if (k == "advantage_or_ally_adjacent") out.kind = PK::AdvantageOrAllyAdjacent;
-    else if (k == "target_creature_type" || k == "not_creature_type") {
-        auto m = types_mask("creature_types", true);
-        if (!m) return where + ": bad creature_types";
-        out.kind = k == "target_creature_type" ? PK::TargetCreatureType : PK::NotCreatureType;
-        out.mask = *m;
-    } else if (k == "damage_type_is" || k == "damage_type_not") {
-        auto m = types_mask("types", false);
-        if (!m) return where + ": bad damage types";
-        out.kind = k == "damage_type_is" ? PK::DamageTypeIs : PK::DamageTypeNot;
-        out.mask = *m;
-    } else if (k == "not_crit") out.kind = PK::NotCrit;
-    else if (k == "moved_at_least_ft") {
-        const int ft = geti(p, "ft");
-        if (ft < 5 || ft > 32767) return where + ": bad ft";
-        out.kind = PK::MovedAtLeastFt;
-        out.a = int16_t(ft);
-    } else if (k == "self_hp_below") {
-        const int n = geti(p, "num"), d = geti(p, "den");
-        if (n < 1 || d < 1 || n > 32767 || d > 32767) return where + ": bad self_hp_below";
-        out.kind = PK::SelfHpBelow;
-        out.a = int16_t(n);
-        out.b = int16_t(d);
-    } else if (k == "save") {   // the owner rolls: a = ability, b = DC (or the base with dc_from_damage), mask bit 0 = dc_from_damage
-        auto ab = ability_of(p.contains("ability") && p["ability"].is_string() ? p["ability"].get<std::string>() : "");
-        const bool from_dmg = p.value("dc_from_damage", false);
-        if (!ab || p.contains("dc") == from_dmg) return where + ": bad save predicate";
-        const int dc = from_dmg ? geti(p, "base") : geti(p, "dc");
-        if (dc < 0 || dc > 30) return where + ": bad save DC";
-        out.kind = PK::Save;
-        out.a = int16_t(int(*ab));
-        out.b = int16_t(dc);
-        out.mask = from_dmg ? 1u : 0u;
-    }
-    else return where + ": unknown predicate '" + k + "'";
+    if (auto e = rules5e_content::parse_predicate(p, out); !e.empty()) return where + ": " + e;
     return std::nullopt;
 }
 

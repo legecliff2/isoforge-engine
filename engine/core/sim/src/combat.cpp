@@ -441,6 +441,13 @@ void Combat::install_hooks() {
             if (auto it = arch->feature_specs.find(feature_id); it != arch->feature_specs.end()) return it->second;
         return std::nullopt;
     };
+    // Row 12: apply_modifier features hand their compiled rows to rules when used (UseFeature).
+    state_.hooks.feature_modifiers = [this](const rules5e::EncounterState&, const rules5e::Combatant& actor, uint32_t feature_id) {
+        std::vector<rules5e::ModifierSpec> rows;
+        if (const Archetype* arch = archetype(actor.id))
+            if (auto it = arch->feature_modifiers.find(feature_id); it != arch->feature_modifiers.end()) rows = it->second;
+        return rows;
+    };
     state_.hooks.in_range = [this](const rules5e::EncounterState&, const rules5e::ReactionWindow& w,
                                    const rules5e::Combatant& r) {
         if (w.trigger == ReactionTrigger::BeingHit) return r.id == w.target;   // Shield: the creature hit
@@ -859,6 +866,8 @@ uint64_t Combat::hash() const {
     if (!state_.action_uses.empty()) { h.byte(0xA1); h.u64(rules5e::action_uses_digest(state_)); }
     if (!state_.pools.empty()) { h.byte(0xA3); h.u64(rules5e::pools_digest(state_)); }
     if (rules5e::has_innate_state(state_)) { h.byte(0xA4); h.u64(rules5e::innate_digest(state_)); }
+    // 0xA2: timed modifiers (row 12), only when one is on the board (or was applied); never for old content.
+    if (rules5e::has_modifier_state(state_)) { h.byte(0xA2); h.u64(rules5e::modifiers_digest(state_)); }
     // 0xA5: timed lasting effects (condition durations). 0xA2 (modifiers) stays reserved for row 12; 0xA4 (innate) is Engine Core's.
     if (rules5e::has_timed_effects(state_)) { h.byte(0xA5); h.u64(rules5e::timed_effects_digest(state_)); }
     // 0xA6: event triggers' once-per-turn / round bookkeeping (row 9a), only when some combatant has triggers.

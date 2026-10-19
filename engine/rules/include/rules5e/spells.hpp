@@ -52,6 +52,7 @@ struct SpellEffect {
     // target's next turn. `expiry` holds an rules5e::Expiry value (encounter.hpp): 0 none, 1 rounds, 2 end of target's next turn.
     uint8_t expiry = 0;
     uint16_t duration_rounds = 0;      // expiry == 1
+    ModifierSpec modifier{};           // appended (row 12 follow-up): kind ApplyModifier as a rider (Guiding Bolt, Ray of Frost, Vicious Mockery)
 };
 
 struct SpellDef {

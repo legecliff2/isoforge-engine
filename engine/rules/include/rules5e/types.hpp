@@ -253,6 +253,33 @@ struct ModifierSpec {
     bool until_caster_turn = false;      // ends at the start of the caster's next turn (Shield-like durations)
     bool concentration = false;          // ends when the caster's concentration on `source` ends
     bool stack = false;                  // false: replaces a modifier with the same id on the same target
+    // ---- Row 12 follow-ups (appended) ----
+    // Consumed early: 0 never; 1 after the target's next attack roll (True Strike); 2 after the next attack roll made against the
+    // target (Guiding Bolt); 3 when the target takes damage ("until damaged"). Combines with any expiry: the first one wins.
+    uint8_t consume = 0;
+    uint8_t speed_sub = 0;               // Speed: feet subtracted after the num/den scaling (Ray of Frost 10)
+    int16_t ac_floor = 0;                // Ac: AC is at least this (+ Dex mod with ac_floor_dex), before bonuses (Barkskin 16, Mage Armor 13 + Dex); 0 = none
+    bool ac_floor_dex = false;
+    bool per_turn = false;               // TempHp: granted again at the start of each of the target's turns while the modifier lasts (Heroism)
+    // General `when` scope for AttackRoll, AttacksAgainst, Ac (evaluated before the roll, crit unknown) and Damage (crit and the
+    // damage type known): every predicate must hold, owner = the creature the modifier is on, subject = the other party. Predicate
+    // kinds that roll (Save) never hold here.
+    std::vector<Predicate> when;
+};
+
+// Row R-G6: a bonus-action attack option (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy). Requested with
+// ActionRequest{Attack, as_bonus_action, bonus_option = 1 + index into Combatant::bonus_attacks}.
+struct BonusAttack {
+    uint32_t id = 0;                    // content id (opaque to rules)
+    uint8_t attack_index = 0;           // Combatant::attacks index the attack uses
+    bool any_melee = false;             // Frenzy: any melee attack of the combatant (attack_index is ignored)
+    uint8_t count = 1;                  // attacks one use of the bonus action makes (Flurry of Blows: 2)
+    uint32_t requires_attacks = 0;      // bitmask over attack indices: the Attack action this turn must have used one (0 = none)
+    bool different_weapon = false;      // the one used must not be attack_index itself (two-weapon fighting)
+    uint32_t requires_modifier = 0;     // a modifier with this id must be in force on the attacker (Frenzy: the Rage modifier; 0 = none)
+    uint32_t pool = 0; uint16_t pool_cost = 0;   // spend from this pool when the bonus action is spent (Flurry: ki, 1); 0 cost = 1
+    bool has_damage = false;            // the off-hand attack rolls `damage` instead of the attack's dice
+    DiceExpr damage{0, 0, 0};           //   (two-weapon fighting without the style: the dice without the ability modifier)
 };
 
 struct Combatant {
@@ -317,6 +344,7 @@ struct Combatant {
     // reactions on other creatures' turns.
     std::vector<Trigger> triggers;
     std::vector<Reaction> reactions;
+    std::vector<BonusAttack> bonus_attacks;   // R-G6: bonus-action attack options; empty for old content
     uint32_t legendary_pool = 0;           // row 13: pool id Legendary Resistance spends from (0 = none); a failed save succeeds instead
     uint32_t mod_resist = 0;               // row 12: damage types resisted through active modifiers (cache, rules-maintained)       // row 11: mechanical reactions (Damaged / AllyAttacked windows)
     uint32_t trigger_turn_mask = 0, trigger_turn_stamp = 0;       // stamp = round << 16 | turn_index

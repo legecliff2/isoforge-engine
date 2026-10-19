@@ -35,6 +35,10 @@ struct TurnBudget {
     uint8_t bonus_attack_grant = 0;
     // Row 13: further actions granted this turn (Action Surge). spend_action takes one when the action is spent.
     uint8_t extra_actions = 0;
+    // R-G6: bitmask over Combatant::attacks indices used by the Attack action this turn (not bonus attacks), and a bonus
+    // attack option in progress (1 + index into bonus_attacks) with the attacks it still owes (Flurry's second strike).
+    uint32_t attacks_used_mask = 0;
+    uint8_t bonus_option = 0, bonus_remaining = 0;
 };
 
 // Answer to a reaction window (names/layout shared with sim::Combat).
@@ -82,6 +86,12 @@ struct ActionRequest {
     // same value); targets may differ per attack; moving, reactions and other creatures' Ready triggers happen
     // between attacks like any other step. The sequence ends when its last attack is made or the turn ends.
     uint8_t multiattack = 0;
+    // appended (R-G6, Attack with as_bonus_action): 1 + index into Combatant::bonus_attacks (0 = none / the Rampage grant).
+    uint8_t bonus_option = 0;
+    // appended (R-G8, Attack): a special attack that replaces one attack of the Attack action (or, for Escape, takes the action):
+    // 1 Grapple (target), 2 Shove prone (target), 3 Shove 5 ft away (target), 4 Escape a grapple (target = the grappler, 0 = any;
+    // `dc` > 0 is the escape DC when the grapple has none recorded). attack_index / multiattack are ignored (multiattack must be 0).
+    uint8_t special = 0;
     // appended (Attack / readied Attack, T&C-G7): sim fact for Combatant::roll_traits, e.g. Pack Tactics:
     // an ally of the actor, not incapacitated, is within 5 ft of the target.
     bool ally_near_target = false;
@@ -245,6 +255,7 @@ struct ActiveSpellEffect {
 struct ActiveModifier {
     ModifierSpec spec; CombatantId caster = 0, target = 0;
     Timed timed{};
+    bool gated = false;   // transient: a `when` that does not hold for the roll in progress (never set between steps)
 };
 
 // Limited-use features (Second Wind, ...), keyed by (actor, feature_id). Part of the encounter state,
@@ -341,6 +352,12 @@ struct EncounterHooks {
     std::function<std::optional<FeatureSpec>(const EncounterState&, const Combatant& actor, uint32_t feature_id)> feature_spec;
 };
 
+// R-G8: a condition with a source (Grappled: the grappler and the escape DC; Charmed / Frightened: the caster).
+struct SourcedCondition {
+    Condition condition = Condition::Grappled; CombatantId target = 0, source = 0;
+    int16_t escape_dc = 0;   // Grappled: 0 = escape by a contest against the grappler's Athletics
+};
+
 struct EncounterState {
     std::vector<Combatant>       combatants;
     std::vector<InitiativeEntry> order;
@@ -358,6 +375,7 @@ struct EncounterState {
     std::vector<FeatureUses> features;   // appended: limited-use features (register_feature)
     std::vector<ActionUse> action_uses;  // appended (v7): recharge actions; empty for content without one
     std::vector<ResourcePool> pools;     // appended (v7): resource pools; empty for content without one
+    std::vector<SourcedCondition> sourced;   // appended (R-G8): who a condition came from; empty for old content
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call
@@ -450,6 +468,25 @@ uint8_t feature_uses_left(const EncounterState&, CombatantId actor, uint32_t fea
 // Rest: a short rest recharges ShortRest features; a long rest recharges ShortRest and LongRest ones
 // (and refills pools with the same recharge kinds).
 void recover_features(EncounterState&, bool long_rest);
+// ---- R-G8: conditions with a source, grapple and shove ----
+// SRD 5.1: a target can be grappled / shoved only if it is at most one size larger than the creature.
+bool size_within_one(Size grappler, Size target);
+// Applies `c` to `target` and records `source` (replaces an entry for the same condition, target and source). False (nothing
+// happens) when the target is missing, dead, immune, or (Grappled) too large.
+bool apply_sourced_condition(EncounterState&, CombatantId source, CombatantId target, Condition c, int escape_dc, std::vector<Event>&);
+inline bool grapple(EncounterState& s, CombatantId grappler, CombatantId target, int escape_dc, std::vector<Event>& ev) {
+    return apply_sourced_condition(s, grappler, target, Condition::Grappled, escape_dc, ev);
+}
+CombatantId condition_source(const EncounterState&, CombatantId target, Condition);   // 0 = none recorded
+std::vector<CombatantId> grappled_by(const EncounterState&, CombatantId grappler);     // creatures the grappler is holding
+// Drops entries whose condition is gone; a grapple also ends when the grappler is dead or incapacitated. Called after every step.
+void prune_sourced(EncounterState&, std::vector<Event>&);
+bool has_sourced_conditions(const EncounterState&);
+uint64_t sourced_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);   // sim folds under tag 0xA7 when non-empty
+
+// R-G6: could `actor` start bonus attack option `option` (1 + index) now? Checks the bonus action, the prerequisite (Attack action
+// used a listed attack, a different weapon, a modifier in force) and the pool. Pure.
+bool bonus_attack_available(const EncounterState&, const Combatant& actor, uint8_t option);
 // Canonical FNV-1a 64 digest of the feature-use table (fold into any state hash).
 uint64_t feature_uses_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 

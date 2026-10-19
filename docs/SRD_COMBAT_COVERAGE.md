@@ -44,7 +44,7 @@ Things that apply to many rows (so they are not repeated):
 | Ability checks, saving throws, proficiency, advantage/disadvantage cancel | DATA | `ActionKind::AbilityCheck`, `saves.hpp`, `combine_modes`. |
 | Standing up from prone (half movement) | DATA | `ActionKind::StandUp`. |
 | Movement on a grid, difficult terrain (2x), LOS | DATA | sim `Grid`, `step_cost_ft`, supercover LOS. |
-| Crawling while prone (extra movement cost) | NEW | Not modelled in rules or sim (R-G8). |
+| Crawling while prone (extra movement cost) | NEW (wiring) | Rules done: a Move while Prone costs double (already in `Move`); sim's own movement budget is not wired (R-G8). |
 | Opportunity-attack exceptions (Disengage, teleport, forced movement) | DATA | Disengage implemented; teleport/forced movement do not exist yet (R-G9). |
 | Surprise (skip first turn, no reactions) | NEW | No surprise state in `begin_encounter` (R-G16). |
 | Short / long rest: spell slots, Pact slots, feature uses | DATA | `recover_slots_short_rest/long_rest`, `recover_features`. |
@@ -55,8 +55,8 @@ Things that apply to many rows (so they are not repeated):
 | Cover (+2 / +5 AC **and Dexterity saves**, total cover) | NEW | `AttackContext::cover_ac_bonus` exists and is honored for attack rolls only; there is no cover bonus on Dexterity saves, and sim never computes cover (R-G13). SRD: half cover +2, three-quarters +5, to AC and Dex saves. |
 | Lighting, darkness, obscurement, darkvision/blindsight/truesight | NEW | Not modelled; sim has LOS only (R-G13). |
 | Flanking | OOS | Optional rule, not SRD core. |
-| Two-weapon fighting | NEW | R-G6. |
-| Grapple and shove (contested Athletics/Acrobatics) | NEW | R-G8. |
+| Two-weapon fighting | NEW (wiring) | Rules done (R-G6): `Combatant::bonus_attacks` option with `requires_attacks` (light weapons), `different_weapon` and off-hand `damage` dice; `ActionRequest::bonus_option`. Loader / AI pending. |
+| Grapple and shove (contested Athletics/Acrobatics) | NEW (wiring) | Rules done (R-G8): `ActionRequest::special` 1-3, Athletics vs Athletics/Acrobatics, one-size limit, replaces one attack. Sim / AI wiring pending. |
 | Flying, swimming, climbing, burrowing movement | NEW | One `speed_ft`; sim reads `speed.walk` only (T&C-G12, T&C-G14). |
 | Creature size and space (large creatures occupy 2x2) | NEW | Size is loaded (`Archetype::size`, #49) but only stored; the grid is still one tile per creature (T&C-G12, T&C-G14; footprint model in flight). |
 | Dispel / end effects on a creature | NEW | R-G15. |
@@ -99,10 +99,10 @@ Things that apply to many rows (so they are not repeated):
 | Condition | Status | Notes |
 |---|---|---|
 | Blinded | DATA | Attack disadvantage on self, advantage against. Sight-based checks are not modelled. |
-| Charmed | NEW | Needs a source creature (cannot attack charmer, social advantage). `Combatant::conditions` is a bitmask with no source (R-G8). |
+| Charmed | NEW (wiring) | Rules done (R-G8): the spell-applied source is recorded (`EncounterState::sourced`) and the charmed creature cannot attack its charmer. Social advantage is a sim fact. |
 | Deafened | DATA | No combat effect beyond the flag. |
-| Frightened | NEW | Disadvantage on attacks/checks is implemented. "Cannot willingly move closer to the source" needs source + LOS (R-G8). |
-| Grappled | NEW | Speed 0 is implemented. Grapple action, source, escape check, drag are not (R-G8). |
+| Frightened | NEW (wiring) | Disadvantage on attacks/checks is implemented; the spell-applied source is recorded (`condition_source`). The movement limit needs positions (sim). |
+| Grappled | NEW (wiring) | Rules done (R-G8): speed 0, source and escape DC recorded, `special` 4 Escape (DC or contest), ends if the grappler is incapacitated or dies, drag halves the grappler's Move cost. Sim moves the held creature (`grappled_by`). |
 | Incapacitated | DATA | No actions/reactions. |
 | Invisible | DATA | Attack advantage / disadvantage against. No "heard/ noticed" rules. |
 | Paralyzed | DATA | Incapacitated, auto-fail Str/Dex saves, advantage against, crit within 5 ft. |
@@ -145,7 +145,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Fighting Style: Defense (+1 AC in armor) | 1 | NEW | No AC bonus effect kind; could be baked into AC but then not de-duplicated with armor (R-G3/R-G5 `ac_bonus` static kind). |
 | Fighting Style: Great Weapon Fighting (reroll 1-2 on damage dice) | 1 | NEW | Damage reroll hook (R-G7). |
 | Fighting Style: Protection (reaction, impose disadvantage on attack vs adjacent ally) | 1 | NEW (wiring) | Rules done (#87): `AllyAttacked` window + `ImposeDisadvantage` reaction (R-G7); no content/hook compile yet (Engine Core). |
-| Fighting Style: Two-Weapon Fighting (add mod to off-hand) | 1 | NEW | R-G6. |
+| Fighting Style: Two-Weapon Fighting (add mod to off-hand) | 1 | NEW (wiring) | Rules done (R-G6): omit the off-hand `damage` override so the baked ability modifier stays. Loader pending. |
 | Second Wind | 1 | DATA | `self_heal {dice 1d10, plus fighter_level, uses 1, recharge short_rest, cost bonus_action}` (shipped). |
 | Action Surge | 2 | NEW (wiring) | Rules done (#91): `FeatureSpec::grant_actions` -> `TurnBudget::extra_actions` (R-G5). Needs the `grant_action` feature compile and a `feature_spec` hook (Engine Core). |
 | Martial Archetype: Champion, Improved Critical (crit on 19-20) | 3 | NEW | Crit range per attack/combatant (R-G5 `crit_range`). |
@@ -190,7 +190,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Unarmored Defense (10 + Dex + Con) | 1 | DATA | Baked AC. |
 | Reckless Attack | 2 | NEW | Per-attack choice: advantage for you and against you until next turn (R-G7/R-G3). |
 | Danger Sense (adv on Dex saves vs visible effects) | 2 | NEW | Conditional save advantage (T&C-G7 style trait). |
-| Primal Path: Berserker, Frenzy (extra attack as bonus action, exhaustion after) | 3 | NEW | R-G6, conditions. |
+| Primal Path: Berserker, Frenzy (extra attack as bonus action, exhaustion after) | 3 | NEW (wiring) | Rules done (R-G6): `any_melee` bonus attack with `requires_modifier` = the Rage modifier; the exhaustion at the end of Rage is not modelled (conditions). |
 | Extra Attack | 5 | NEW (wiring) | T&C-G1. |
 | Fast Movement (+10 ft) | 5 | DATA | Baked speed (`speed.walk`). Condition "no heavy armor" is the author's. |
 | **Bard** spellcasting (full caster) | 1 | DATA | |
@@ -205,9 +205,9 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Circle of the Land: Natural Recovery | 2 | NEW | Same family as Arcane Recovery (R-G16). |
 | Druidic, Land bonus cantrip | 1-2 | OOS | Language / one extra cantrip (authored). |
 | **Monk** Unarmored Defense (10 + Dex + Wis) | 1 | DATA | Baked AC. |
-| Martial Arts (d4 die, Dex for unarmed, unarmed bonus action attack) | 1 | NEW | Bonus-action attack (R-G6). Die is baked. |
+| Martial Arts (d4 die, Dex for unarmed, unarmed bonus action attack) | 1 | NEW (wiring) | Rules done (R-G6): unarmed bonus attack after the Attack action with an unarmed strike or monk weapon (`requires_attacks`). The martial-arts die is baked. Loader pending. |
 | Ki (pool = monk level, short rest) | 2 | NEW (wiring) | Pool, spend and `ResourceSpent` done in rules (#91, R-G5); `resources[]` compile at `Combat::create` pending. |
-| Flurry of Blows, Patient Defense, Step of the Wind | 2 | NEW | Ki-cost bonus actions (R-G5, R-G6). Patient Defense and Step of the Wind could use `bonus_action_grant` without a ki cost only. |
+| Flurry of Blows, Patient Defense, Step of the Wind | 2 | NEW (wiring) | Flurry of Blows rules done (R-G6): `count` 2 with the ki pool (`ResourceSpent`, spent once); Patient Defense / Step of the Wind need pool-backed Dodge / Disengage / Dash features (row 13 `FeatureSpec` covers the pool, the action grant is a `bonus_action_grant` use). |
 | Unarmored Movement (+10 ft) | 2 | DATA | Baked speed. |
 | Deflect Missiles (reaction: reduce ranged damage by 1d10 + Dex + level) | 3 | NEW (wiring) | Rules done (#87): `ReduceDamage` with `dice` (1d10 + bonus) in the `Damaged` window; the catch-and-throw option is not modelled. Compile pending. |
 | Way of the Open Hand: Open Hand Technique (rider on Flurry: prone / push / no reactions) | 3 | NEW | Rider on hit (T&C-G5, R-G9). |
@@ -304,13 +304,13 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Fire Bolt | DATA | Shipped. Ignites objects: OOS. |
 | Poison Spray | DATA | `save` CON, 1d12 poison, range 10, `on_success none`. |
 | Produce Flame | DATA | Thrown `spell_attack` 1d8 fire (the light effect is OOS). |
-| Ray of Frost | NEW | Damage DATA; speed -10 until next turn is R-G3. |
+| Ray of Frost | NEW (wiring) | Rules done (follow-up): `Speed` modifier with `speed_sub` 10 and `until_end_of_target_next_turn` as an `ApplyModifier` rider on the spell attack; damage is DATA. Spell kind / loader pending (R-G3). |
 | Sacred Flame | DATA | `save` DEX, 1d8 radiant, none on success. "Target gains no benefit from cover" is R-G13. |
 | Shillelagh | NEW | Weapon-damage buff (R-G3). |
 | Shocking Grasp | NEW | Melee spell attack DATA; advantage vs metal armor and "no reactions" rider R-G2/R-G3. |
 | Spare the Dying | DATA | `ActionKind::SpareTheDying` (hook `spare_the_dying`). |
-| True Strike | NEW | Advantage on next attack (R-G3). |
-| Vicious Mockery | NEW | Damage DATA; disadvantage on next attack rider R-G2/R-G3. |
+| True Strike | NEW (wiring) | Rules done (follow-up): AttackRoll advantage modifier with `consume` 1 (spent by the next attack roll). Spell kind pending (R-G3). |
+| Vicious Mockery | NEW (wiring) | Rules done (follow-up): AttackRoll disadvantage modifier, `consume` 1, as a rider on the save effect. Spell kind pending (R-G3). |
 
 ### 8.2 Level 1
 
@@ -332,14 +332,14 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Faerie Fire | NEW (wiring) | Rules done (#89): `AttacksAgainst` advantage modifier applied to each target in the area (sim computes the area, #78). Spell kind pending; the Dex save gate rides the existing Save effect (R-G3). |
 | False Life | NEW (wiring) | Rules done (#89): `ModStat::TempHp` (the larger pool is kept; no record); the 1d4 + 4 roll is fixed by the loader as `bonus` today. Spell kind pending (R-G3). |
 | Grease | NEW | Zone + prone (R-G11). |
-| Guiding Bolt | NEW | Attack damage DATA; advantage on next attack vs target rider (R-G2/R-G3). |
+| Guiding Bolt | NEW (wiring) | Rules done (follow-up): `ApplyModifier` rider (`affected_only`) with AttacksAgainst advantage, `consume` 2 and `until_caster_turn`; covered by a test. Spell kind pending (R-G3). |
 | Healing Word | DATA | `heal`, `casting_time bonus_action`, range 60, `upcast.dice`. |
 | Hellish Rebuke | NEW (wiring) | Rules done (#87): `Damaged` window + `Retaliate` reaction resolving a synthetic Save SpellDef against the damager (R-G7). Content/hook compile pending. |
-| Heroism | NEW | Temp HP each turn, frightened immunity (R-G3). |
+| Heroism | NEW (wiring) | Rules done (follow-up): `TempHp` modifier with `per_turn`; the frightened immunity is not modelled (R-G3). |
 | Hideous Laughter | NEW | Prone + incapacitated (two conditions) and save-on-damage repeat (R-G2). |
-| Hunter's Mark | NEW (wiring) | Rules done (#89): Damage modifier (1d6, concentration, `applies_to` self); the "marked target only" scope and the move-the-mark option are not modelled (R-G4). |
+| Hunter's Mark | NEW (wiring) | Rules done (#89, follow-up): Damage modifier (1d6, concentration, `applies_to` self) with the general `when` scope for conditions on the target; the "marked target only" scope and the move-the-mark option are not modelled (R-G4). |
 | Inflict Wounds | DATA | Melee `spell_attack`, 3d10 necrotic, `upcast.dice`. |
-| Mage Armor | NEW (wiring) | Rules: `Ac` modifier is `bonus`-only (Q15), so "base AC 13 + Dex" is approximated by the loader (R-G3). |
+| Mage Armor | NEW (wiring) | Rules done (follow-up): `Ac` modifier with `ac_floor` 13 + Dex (`ac_floor_dex`); the loader gates "not wearing armor". Spell kind pending (R-G3). |
 | Magic Missile | DATA | Shipped (`auto_hit`). |
 | Protection from Evil and Good | NEW | R-G3. |
 | Sanctuary | NEW | Attackers must save to target (R-G3/R-G7). |
@@ -354,7 +354,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 |---|---|---|
 | Aid | NEW | Max HP and HP increase (R-G3). |
 | Alter Self, Animal Messenger, Arcane Lock, Augury, Continual Flame, Darkvision, Gentle Repose, Knock, Levitate, Locate Animals or Plants, Locate Object, Magic Mouth, Pass without Trace, Prayer of Healing (10 min), Rope Trick, See Invisibility, Spider Climb, Zone of Truth, Find Traps, Arcanist's Magic Aura, Detect Thoughts, Enthrall, Find Steed (10 minutes) | OOS | Utility / out of encounter casting time. |
-| Barkskin | NEW | AC floor (R-G3). |
+| Barkskin | NEW (wiring) | Rules done (follow-up): `Ac` modifier with `ac_floor` 16, concentration. Spell kind pending (R-G3). |
 | Blindness/Deafness | NEW | `save` with condition is DATA, but the caster chooses blinded or deafened per cast (parameterized effect, small R-G2). |
 | Blur | NEW (wiring) | Rules done (#89): `AttacksAgainst` disadvantage modifier on self, concentration (the blindsight/truesight exception is not modelled). |
 | Branding Smite | NEW | R-G4. |
@@ -494,7 +494,7 @@ Row counts are over the tables in sections 1-9 (one row per mechanic or feature;
 | 9. Monsters: stat blocks, traits, actions | 13 | 26 | 5 | 44 |
 | **Total** | **129** | **192** | **31** | **352** |
 
-"NEW (wiring)" rows (rules5e models it, content-to-sim does not carry it) are counted under NEW. Counts are as of main after #91 (and #93 for row 15); after #45, #47, #48 and #49 the totals were DATA 112 / NEW 209 / OOS 31 = 352, and before those PRs DATA 104 / NEW 217 / OOS 31. The version-bump batch moved 17 rows NEW -> DATA (conditions with a duration, condition riders from actions, area templates, duration expiry, Divine Smite, Sneak Attack, Burning Hands, Shatter, Fireball, Lightning Bolt, on-hit save riders, Recharge breath weapons, Innate Spellcasting, Charge / Pounce, Rampage, Undead Fortitude, Death Burst). A further 26 rows moved NEW -> `NEW (wiring)` (rules done, still counted NEW): see 11.5. This recount was produced by a script over the tables, which also reproduced the previous 112 / 209 / 31. "DATA (baked)" / "DATA (partial)" rows count as DATA.
+"NEW (wiring)" rows (rules5e models it, content-to-sim does not carry it) are counted under NEW. Counts are as of main after #91 (and #93 for row 15); after #45, #47, #48 and #49 the totals were DATA 112 / NEW 209 / OOS 31 = 352, and before those PRs DATA 104 / NEW 217 / OOS 31. The version-bump batch moved 17 rows NEW -> DATA (conditions with a duration, condition riders from actions, area templates, duration expiry, Divine Smite, Sneak Attack, Burning Hands, Shatter, Fireball, Lightning Bolt, on-hit save riders, Recharge breath weapons, Innate Spellcasting, Charge / Pounce, Rampage, Undead Fortitude, Death Burst). A further 26 rows moved NEW -> `NEW (wiring)` (rules done, still counted NEW): see 11.5; the bonus-action attack PR (R-G6) moved 5 more (two-weapon fighting and its style, Martial Arts, Flurry of Blows, Frenzy), still counted NEW; the grapple / shove PR (R-G8) moved 5 more (grapple and shove, Charmed, Frightened, Grappled, crawling), still counted NEW. This recount was produced by a script over the tables, which also reproduced the previous 112 / 209 / 31. "DATA (baked)" / "DATA (partial)" rows count as DATA.
 
 ### 10.2 Spells, per spell (SRD 5.1 levels 0-3)
 
@@ -626,10 +626,10 @@ Gaps that need new rules mechanics (not just Engine Core / T&C wiring, which is 
 
 | Order | Id | Gap | Unlocks | Size |
 |---|---|---|---|---|
-| 1 | R-G3 follow-ups | Modifier gaps: one-shot "next attack / until damaged" expiry, speed *reduction* (Ray of Frost -10; today only num/den scaling), AC *set / floor* (Mage Armor base 13, Barkskin; Q15 made `ac` bonus-only), per-turn temp HP (Heroism), a general `when` scope beyond weapon scope | True Strike, Guiding Bolt, Vicious Mockery, Ray of Frost, Mage Armor, Barkskin, Heroism, Haste's restricted action | S-M |
+| 1 | R-G3 follow-ups | **Done in rules** (this PR): one-shot / until-damaged expiry (`consume`), speed reduction (`speed_sub`), AC floor (`ac_floor`), per-turn temp HP (`per_turn`), general `when` scope (attack roll, attacks against, AC, damage), and `apply_modifier` as a rider effect. Still open: Haste's restricted extra action, `when` on saves / checks, a "marked target" scope (Hunter's Mark), "frightened immunity" (Heroism) | Needs only wiring now: True Strike, Guiding Bolt, Vicious Mockery, Ray of Frost, Mage Armor, Barkskin, Heroism | done |
 | 2 | R-G5 rest | Static feature kinds `attack_bonus`, `ac_bonus`, `crit_range` | Archery, Defense, Champion Improved Critical, Dueling-style bonuses | S |
-| 3 | R-G8 | Conditions with a source; grapple / shove; swallow / engulf; crawl cost; Large-creature size limits (grapple, net) | grapple monsters, giant toad, crocodile, Turn Undead, Fear, Charm Person, Command, Hold effects with a source | M |
-| 4 | R-G6 | Bonus-action attacks (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy); `light` property use; builds on `bonus_attack_grant` (#85) | Monk, Berserker, dual wielders | M |
+| 3 | R-G8 | **Done in rules** (conditions with a source, grapple / shove / escape, drag, one-size limit). Still open: swallow / engulf, web-style restrain, sim wiring of the push / drag | grapple monsters, crocodile, Charm Person, Fear | done |
+| 4 | R-G6 | **Done in rules**: bonus-action attack options (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy) with prerequisites, pool spend and an off-hand damage override. Still open: Open Hand Technique riders, Frenzy's exhaustion, a rules-side `legal_actions` listing | Monk, Berserker, dual wielders need wiring only | done |
 | 5 | R-G7 rest | d20 modify / reroll windows (`RollAttack` deferred, Q6): Cutting Words, Lucky, Great Weapon Fighting, Guidance / Resistance / Bardic Inspiration spending, Evasion | Bard, Halfling, Fighter style, cantrips | M |
 | 6 | R-G15 | Spell kinds: HP-pool targeting (Sleep, Color Spray), dispel / cleanse, delayed / sustained damage (Acid Arrow, Heat Metal), resurrection (Revivify); non-concentration timed spells now have expiry | Sleep, Dispel Magic, Lesser Restoration, Revivify | S-M each |
 | 7 | R-G16 | Surprise, Hit Dice, Arcane / Natural Recovery; a rest model that makes `recharge` kinds meaningful | round-1 ambush, attrition | S-M |

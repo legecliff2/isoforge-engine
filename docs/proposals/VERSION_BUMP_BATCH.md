@@ -959,6 +959,38 @@ new code path is skipped and no extra rng is drawn.
   features. (e) Sim code reading AC or resistances directly should add `modified_ac_bonus` / `effective_resistances`; rules
   already apply them internally.
 
+### 6.2b Row 12 follow-ups as implemented (rules side) and hand-off
+
+Rules side only (`feat/rules-modifiers-followups`); goldens unchanged (new fields default to "off", and a combat without modifiers
+runs none of this). `ModifierSpec` gains, appended:
+
+- `consume` (0 never; 1 after the target's next attack roll; 2 after the next attack roll made against the target; 3 when the
+  target takes damage). It combines with any expiry (first wins). `ModifierExpired` reasons gain **3** (spent by an attack roll,
+  emitted just before that `AttackResolved`) and **4** (the target took damage, via `damage_creature`). A modifier gated off by
+  `when` is not consumed. Use: True Strike (AttackRoll advantage, consume 1), Guiding Bolt (AttacksAgainst advantage, consume 2 +
+  `until_caster_turn`), Vicious Mockery (AttackRoll disadvantage, consume 1), "until damaged" effects (consume 3).
+- `speed_sub` (feet, subtracted after the num/den scaling, clamped at 0; Ray of Frost 10). `ModifierApplied.c` for a Speed
+  modifier is `speed_sub` when num == den, else num*100+den.
+- `ac_floor` / `ac_floor_dex` on `ModStat::Ac`: AC is at least `ac_floor` (+ Dex mod) before the bonuses (Barkskin 16, Mage Armor
+  13 + Dex). `modified_ac_bonus` returns the floor shortfall plus the flat bonuses. The caller (loader) decides "not wearing
+  armor". `ModifierApplied.c` = `ac_floor` when there is no flat bonus.
+- `per_turn` on `ModStat::TempHp` (Heroism): the first grant is immediate (`ModifierApplied`), the record is kept, and the target
+  gets `bonus` again (the larger pool is kept) at the start of each of its turns, with a `ModifierApplied` each time, until the
+  modifier expires. A TempHp modifier without `per_turn` is unchanged (instant, no record).
+- `when` (a `std::vector<Predicate>`, reusing the row 9 predicate kinds): every predicate must hold. Evaluated for AttackRoll
+  (owner = attacker), AttacksAgainst and Ac (owner = the defender) before the roll (so `NotCrit` is true and the roll mode is the
+  pre-modifier one), and for Damage with the real crit and damage type (owner = attacker, subject = target). Save-rolling
+  predicates never hold. Not evaluated for Save / AbilityCheck / Speed / Resistance / TempHp.
+- `SpellEffect::modifier`: `ApplyModifier` is now allowed as an **extra (rider) effect**, with `affected_only` (the earlier
+  "primary only" deviation is lifted): Guiding Bolt = SpellAttack + rider.
+- `modifiers_digest` folds all the new fields (still only folded, under 0xA2, when `has_modifier_state`).
+- **Deviations / limits.** `consume` 3 fires through `damage_creature` only (spell, weapon and trigger damage; not a direct
+  `apply_damage` caller). `when` is not available on Save / AbilityCheck. "True Strike next attack" does not distinguish
+  weapon from spell attacks (any attack roll spends it).
+- **Hand-off (Engine Core / T&C).** Compile the new `modifier` properties (`consume`, `speed_sub`, `ac_floor`, `per_turn`,
+  `when` with the row 9 predicate vocabulary) into `ModifierSpec`; allow `apply_modifier` in a spell's `effects[]` after the
+  first (maps to `SpellEffect::modifier`); no new hash tag (the 0xA2 digest covers them); no new event kinds.
+
 ### 6.3 Inert behaviour
 
 Spell side is additive (old spells contain no such kind). Feature side: `3→4` marks any pre-existing
@@ -1130,6 +1162,72 @@ every path is the pre-row-13 one and no extra rng is drawn. The pool table, `reg
   grant_action count, heal_pool) and `hooks.feature_modifiers` (row 12). (c) For `heal_pool`/Lay on Hands the AI or
   caller sets `ActionRequest::amount` and `target`. (d) `TurnBudget::extra_actions` is a new budget field; hash it only
   if sim already hashes the budget. (e) Pools are already folded under 0xA3 (non-empty only).
+
+### 7.2b R-G6 bonus-action attacks (post-batch rules follow-up) and hand-off
+
+Rules side only (`feat/rules-bonus-attacks`); no schema change, no new event kind, goldens unchanged (nothing sets
+`bonus_attacks`; the new `ActionRequest` / `TurnBudget` fields default to 0).
+
+- `BonusAttack` rows in `Combatant::bonus_attacks`: `attack_index` (or `any_melee`), `count` (Flurry 2), `requires_attacks`
+  (bitmask: the Attack action this turn used one of those attacks), `different_weapon` (two-weapon fighting), `requires_modifier`
+  (a modifier id in force on the attacker: Frenzy's Rage), `pool` + `pool_cost` (Flurry's ki), `has_damage` + `damage` (the
+  off-hand dice without the ability modifier).
+- Request: `ActionRequest{Attack, as_bonus_action = true, bonus_option = 1 + index, attack_index}`; `attack_index` must be the
+  option's (any melee attack for `any_melee`). The first attack spends the bonus action and the pool (`ResourceSpent`);
+  the next `count - 1` attacks of the same option are free and need no new prerequisite (`TurnBudget::bonus_option` /
+  `bonus_remaining`). The Rampage grant (`bonus_attack_grant`) is unchanged.
+- `TurnBudget::attacks_used_mask` records the attack indices used by the Attack action (including Extra Attack and multiattack
+  steps; not bonus attacks); it resets with the turn. `bonus_attack_available(state, actor, option)` is the pure check.
+- **Hand-off (Engine Core / T&C).** (a) Compile: two-weapon fighting = a light off-hand attack with `requires_attacks` = the
+  light weapons, `different_weapon`, and `damage` = the dice without the ability modifier (omit `has_damage` when the Two-Weapon
+  Fighting style applies); Martial Arts = an unarmed attack with `requires_attacks` = unarmed and monk weapons; Flurry of Blows
+  = `count` 2 with the ki pool; Frenzy = `any_melee` with `requires_modifier` = the Rage modifier id. (b) Fill
+  `ActionRequest::bonus_option` from the AI / `legal_actions`-style enumeration (rules `legal_actions` does not list bonus
+  options yet); sim's `log_hash` should fold `bonus_option` when non-zero. (c) `TurnBudget` is not hashed by sim.
+- **Deviations / limits.** The off-hand damage without the modifier needs the loader to supply the dice (damage bonuses are baked
+  into `Attack::damage`). Frenzy's exhaustion at the end of Rage and Rage ending when the creature did not attack are not
+  modelled (they need condition-source work, R-G8 / R-G3). The "light" property is not checked by rules; the loader lists the
+  light attacks in `requires_attacks`. Open Hand Technique riders on Flurry are not modelled.
+
+### 7.2c R-G8 conditions with a source, grapple / shove / escape (post-batch rules follow-up) and hand-off
+
+Rules side only (`feat/rules-grapple-shove`); no new event kind (event schema stays v7, sim's layout test is untouched), no new
+`ActionKind`, no change to existing content behaviour. Goldens are unchanged until sim folds the new digest (below).
+
+- **State.** `EncounterState::sourced`: `SourcedCondition{condition, target, source, escape_dc}`. Written by
+  `apply_sourced_condition` / `grapple(...)` (also applies the condition; refuses a dead, immune or self target, and a Grappled
+  target more than one size larger), and automatically for spell-applied **Charmed** and **Frightened** (the caster is the source;
+  both `ApplyCondition` and save-and-condition effects). Entries are pruned after every step (`prune_sourced`): the condition is gone,
+  the target is dead, or (Grappled) the grappler is dead or incapacitated, in which case Grappled is removed with a `ConditionRemoved`
+  unless another holder remains. Queries: `condition_source`, `grappled_by`, `size_within_one`.
+- **Digest.** `sourced_digest` / `has_sourced_conditions`: **sim must fold under the new tag byte 0xA7, only when non-empty**
+  (like 0xA2..0xA6). Until sim does, goldens cannot move. Once it does, a scenario that has a spell-applied Charmed / Frightened will
+  carry entries and its hash changes: Engine Core should regenerate those goldens and document it (or fold only entries with a
+  Grappled condition; the entries for Charmed / Frightened are the only ones that exist without a grapple).
+- **Actions.** `ActionRequest::special` (append-only, with `Attack`): 1 Grapple, 2 Shove prone, 3 Shove 5 ft away, 4 Escape.
+  Grapple / shove replace one attack of the Attack action (Extra Attack aware: they consume `attacks_remaining`, else the action);
+  Escape takes the action. Requires `target_within_5ft` (sim fact), `multiattack == 0`, no other multiattack in progress.
+  The attacker rolls Athletics, the target the better of Athletics / Acrobatics (higher modifier, Athletics on a tie); the attacker
+  wins only with a strictly higher total. Both rolls are `CheckRolled` events, attacker first; on the second, `c & 1` = "the target
+  held". Result events: `ConditionAdded` (Grappled / Prone) or, for the 5 ft shove, `Moved{actor = target, target = shover, a = 5}`
+  (forced movement; sim applies it, rules know no positions). Escape: against the recorded `escape_dc` (a `CheckRolled` with that DC),
+  or, when 0, a contest against the grappler's Athletics (`req.target` picks the grappler; 0 = the first); `req.dc > 0` supplies a DC
+  when the Grappled condition has no recorded source. Success removes the entry and the condition (`ConditionRemoved`).
+- **Movement.** Speed 0 while Grappled was already in `effective_speed`. A Move by a grappler now costs double while it holds a creature
+  that is less than two sizes smaller. Rules do not move the grappled creature: sim asks `grappled_by(state, mover)` and moves them
+  with the mover (SRD drag). Crawling (double cost while Prone) was already in `Move`.
+- **Charmed.** A charmed creature cannot Attack (or grapple / shove) its recorded charmer: the request is rejected.
+- **Hand-off (Engine Core / T&C).** (a) Monster grapple riders (crocodile, constrictors): call `grapple(state, attacker, target, escape_dc, ev)`
+  from the hit rider with the monster's DC; (b) fold `sourced_digest` under 0xA7 when `has_sourced_conditions`; (c) sim: drag
+  grappled creatures on Move, apply the shove push from `Moved{actor != mover}`, end the grapple when the target is moved out of
+  reach by an effect (remove the Grappled condition from the target; the next step's pruning drops the entry);
+  (d) AI: emit `special` requests; (e) Frightened "cannot willingly move closer" and spell target restrictions for Charmed use
+  `condition_source`.
+- **Remaining / not done.** Swallow / engulf (the contained state, the swallower's escape and damage-per-turn, the half cover and
+  blinded / restrained rules) and web-style ranged restrain with an escape action are not modelled: they need a position-aware
+  container state. Charmed's social advantage and Frightened's movement limit are sim facts. Other conditions (Restrained, Paralyzed)
+  from monster actions could use `apply_sourced_condition` but are not recorded automatically. Shoving or grappling a creature
+  that is not within reach, and the one-free-hand requirement, are the caller's checks.
 
 ## 8. Migrations and inert markers
 

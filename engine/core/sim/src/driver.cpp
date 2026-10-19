@@ -74,6 +74,25 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
                 u.request.feature_id = f.feature_id;
                 return u;
             }
+    // Modifier features (row 12: Rage-like, applies_to self): use one when its cost is available, a hostile is within
+    // reach or one move + reach, and none of its modifiers from this source is already on the creature. The AI never
+    // casts modifier spells (Bless, Haste, ...) and never targets allies with features: that stays a caller decision.
+    if (const Archetype* arch = c.archetype(self))
+        for (const auto& f : arch->active) {
+            const auto mods = arch->feature_modifiers.find(f.feature_id);
+            if (mods == arch->feature_modifiers.end() || !c.can_use_feature(self, f.feature_id)) continue;
+            bool self_only = true, active = false;
+            for (const auto& m : mods->second) {
+                self_only = self_only && m.applies_to == rules5e::ModAppliesTo::Self;
+                for (const auto& am : s.modifiers) active = active || (am.target == self && am.spec.id == m.id);
+            }
+            const int reach_now = c.distance_tiles(self, t->id) * kFeetPerTile;
+            if (!self_only || active || reach_now > int(me->speed_ft) + 10) continue;
+            Command u;
+            u.request = {self, ActionKind::UseFeature};
+            u.request.feature_id = f.feature_id;
+            return u;
+        }
     // Save actions (monster@4 / character@4, VERSION_BUMP_BATCH row 6): a single-target one (no area template) that
     // is available and in reach goes before a multiattack or a plain attack. Availability is read from the rules
     // state (recharge row expended, uses left); the AI never rolls or keeps its own flag. Area actions are the
