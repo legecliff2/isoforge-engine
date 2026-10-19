@@ -277,42 +277,52 @@ Reused unchanged: `SavingThrowRolled`, `DamageDealt`, `ConditionAdded` / `Condit
 3. **Sim PR (EC):** the §3 contract: geometry, membership facts, overlays and the hash folds.
 4. **T&C:** `spell@1` `zone` keys and content for the spells above.
 
-## 3. SIM CONTRACT section (Engine Core: stub, to complete)
+## 3. SIM CONTRACT section (Engine Core: decided)
 
-Starting facts, not decisions: integer tiles, footprints anchored at min-x / min-y, nearest-tile Chebyshev distance, and
-synchronous hooks that resolve and commit at once (FORCED_MOVEMENT.md §3).
+Engine Core owns sim. Base facts as in FORCED_MOVEMENT.md §3: integer tiles, footprints anchored at min-x / min-y, nearest-tile
+Chebyshev distance, synchronous hooks that resolve and commit at once. Integer math only, bit-identical across platforms.
 
 - **Geometry.**
-  - A point zone's anchor is a tile (`ActiveZone::anchor_x / anchor_y`).
-  - An aura's centre is its owner's footprint. Radii are measured with the same nearest-tile Chebyshev rule as `rect_distance`
-    and as area templates (#78).
-  - Cylinders ignore height until elevation exists.
-  - A tile is in the zone when the template (#78's rule) covers it.
-  - A creature is **in** a zone when any footprint tile is covered, and **completely within** when all of them are.
-  - *EC to decide:* wall and ring rasterisation for 1 ft-thick walls on 5 ft tiles, and which tiles are "within 10 ft of the
-    chosen side" (Q4).
-- **Membership facts to rules** (proposal; EC chooses between request fields and a hook, Q2):
-  - `ActionRequest` for `Move` (each tile step): `zones_entered`, `zones_left`, `zones_within`, as lists of zone ids in
-    ascending order. Sim already computes `leaves_reach` from the same `from` / `to`.
-  - `ForcedMoveResult`: the same three lists (R-G9, §2.5).
-  - Teleport (Misty Step): the same lists in the hook result.
-  - After a step that moves an aura's owner, or after a zone move: `zones_entered` / `zones_left` for the other creatures. By
-    default rules ignores those entries for `Enter` (D1) but uses them to start and stop "while in the area" effects.
-  - Order: creatures in initiative order, then lower id (Q9).
-- **Membership query hook:** `zone_contains(state, zone_id, creature, completely) -> bool`. It answers `StartTurn` / `EndTurn`,
-  Silence's V check and Stinking Cloud's "completely within". It is synchronous and a pure function of the state.
-- **Overlays.**
-  - Difficult terrain on the tiles of a live zone with `kZoneDifficult`, in `move_cost_ft`.
-  - The `kZoneHalveSpeed` cost for affected creatures.
-  - Optionally a `blocks_sight` overlay for `kZoneHeavyObscured` / `kZoneOpaque` (Q6).
-- **Zone moves:** a `legal_zone_tiles(state, zone)` listing like `legal_teleport_tiles` (row-major), and re-validation at
-  `Combat::submit`.
-- **Hashing:**
-  - Fold `zones_digest` under the claimed `Combat::hash` tag, only when zones exist.
-  - Fold the zone request fields under the claimed `log_hash` tag, only when set.
-  - No golden moves for content without zones.
-- **Events:** apply `ZoneCreated` / `ZoneMoved` / `ZoneEnded` to sim's own zone tile cache, if it keeps one. Whether to emit a
-  `SimEvent` for rendering is Q12.
+  - A point zone's anchor is a tile stored in **rules state** (`ActiveZone::anchor_x / anchor_y`), opaque to rules and hashed by
+    `zones_digest`. It is the single source of truth, like #112's teleport destination (Q1).
+  - An aura's centre is its owner's footprint. Radii use the same nearest-tile Chebyshev rule as `rect_distance` and area
+    templates (#78). Cylinders ignore height until elevation exists. A tile is in the zone when the template covers it.
+  - A creature is **in** a zone when any footprint tile is covered, **completely within** when all are. **Entering** = not in
+    before and in after, so a Large creature that stays partly inside doesn't re-enter (Q3).
+  - **Line wall:** the supercover of the segment between the start and end tile centres in doubled integer coordinates: every tile
+    the segment touches, 1 tile thick. **Ring:** the tiles at exactly radius-in-tiles nearest-tile Chebyshev distance from the
+    centre footprint (a square ring, consistent with Chebyshev).
+  - **Damaging side:** tiles within 2 tiles (10 ft, Chebyshev) of a wall tile, on the chosen side. Line: side = sign of the integer
+    cross product of (tile centre − start) with (end − start), doubled coordinates; chosen at cast as +1 / −1. Ring: inside or
+    outside. Tiles on the wall itself are the wall, not a side (Q4).
+- **Membership facts to rules (Q2).**
+  - Request fields on each `Move` tile step: `zones_entered`, `zones_left`, `zones_within`, ascending zone ids. **Sim fills them
+    inside `Combat::submit`** from the `from` / `to` tiles and current state; they are never trusted from the caller (AI / UI
+    leave them empty; non-empty caller values are overwritten).
+  - `ForcedMoveResult` and the teleport hook result carry the same three lists.
+  - **Zone and aura moves (Q8):** membership changes caused by an aura owner's move or a Moonbeam move are reported for the other
+    creatures, attached to the step that caused them. Only the final position counts: a moving zone doesn't affect creatures it
+    passes over (Q10, matching D1).
+  - **Order (Q9):** ascending `zone_id` outer, then initiative order, then lower combatant id within a zone.
+- **Membership query hook:** `zone_contains(state, zone_id, creature, completely) -> bool`, pure and synchronous. Answers
+  `StartTurn` / `EndTurn`, Silence's V check and Stinking Cloud's "completely within".
+- **Forced moves and deferral (Q7).** Accepted: rules records `ForcedMoveResult`s per step_seq across re-runs. Sim's hook is still
+  called exactly once per (step, step_seq); #112's debug assert stays.
+- **Overlays in `move_cost_ft`**, for live zones only:
+  - base 5 ft per tile, +5 for difficult terrain (including `kZoneDifficult` tiles), then doubled for `kZoneHalveSpeed` for
+    affected creatures, so both stack to 20 ft per tile. A cost multiplier, not a rules speed modifier (Q5).
+  - No `blocks_sight` overlay before R-G13: `kZoneHeavyObscured` / `kZoneOpaque` stay data only, so LOS targeting doesn't
+    change now (Q6).
+- **Zone moves:** `legal_zone_tiles(state, zone)` lists candidates in row-major order (y, then x); the AI / UI picks.
+  `Combat::submit` re-validates (range and LOS from the owner); an invalid destination is rejected with no state change.
+- **Hashing (Q11).**
+  - `zones_digest` takes `Combat::hash` **0xAB**, folded only when `zones` is non-empty.
+  - Membership fields are **not** folded into `log_hash`: sim derives them deterministically at submit from positions, they are
+    not inputs. Only caller-chosen inputs (zone move destination, excluded ids) fold, under `log_hash` **0xB7**, only when set.
+    (0xB5 is now `special` and 0xB6 `two_handed_grip`, per the `SIM_EVENTS.md` registry; §2.8 already reflects this.)
+  - Both tags are claimed in the implementation PR's registry rows. No golden moves for content without zones.
+- **Events and rendering (Q12).** No new `SimEvent`; the game renders from rules' `ZoneCreated` / `ZoneMoved` / `ZoneEnded`. Sim
+  may keep a zone-tile cache derived from state (rebuilt on those events or on load), never hashed and never a source of truth.
 
 ## 4. Open questions
 
@@ -321,27 +331,44 @@ synchronous hooks that resolve and commit at once (FORCED_MOVEMENT.md §3).
 - **Q1. Anchor storage.** Should the point zone's anchor tile be stored in rules state (opaque, hashed by `zones_digest`, one
   source of truth) or in a sim side table keyed by `zone_id`? Rules proposes rules state, as with #112's opaque teleport
   destination.
+  - **EC answer:** Rules state (`ActiveZone::anchor_x / anchor_y`), opaque, hashed by `zones_digest`; single source of truth (§3).
 - **Q2. Membership facts.** Should sim pass request fields on each `Move`, the proposal, or should rules call a
   `zone_transitions(state, mover, from, to)` hook?
+  - **EC answer:** Request fields on each `Move` step, filled by sim inside `Combat::submit` from `from` / `to` and state, never trusted from the
+    caller. Same lists in `ForcedMoveResult` and the teleport hook result (§3).
 - **Q3. Large creatures.** Confirm "in" = any footprint tile and "completely within" = all of them. Does a Large creature that
   steps one tile and stays partly inside "enter" again? Rules says no: entering means not in before and in after.
+  - **EC answer:** Confirmed: any tile = in, all = completely within; entering = not in before and in after, so no re-entry (§3).
 - **Q4. Walls.** How do Wall of Fire (1 ft thick, up to 60 ft, or a 20 ft ring) and its damaging side map to tiles?
+  - **EC answer:** Line = supercover of the centre-to-centre segment (doubled coords, 1 tile thick); ring = tiles at exactly the radius
+    (Chebyshev). Damaging side = within 2 tiles of a wall tile on the cross-product sign (line) or inside / outside (ring) chosen
+    at cast; wall tiles are not a side (§3).
 - **Q5. Speed halving.** Is Spirit Guardians' halving a cost multiplier in `move_cost_ft` (the proposal) or a rules speed
   modifier? Does it stack with difficult terrain (rules: yes, 20 ft per tile)?
+  - **EC answer:** Cost multiplier in `move_cost_ft`: 5, +5 difficult, then ×2 for affected creatures; stacks to 20 ft per tile (§3).
 - **Q6. Obscurement before R-G13.** Should sim overlay `blocks_sight` for heavily obscured and opaque zones now? That changes
   LOS-based targeting in zone content. If not, the flags stay data only until R-G13.
+  - **EC answer:** No overlay before R-G13; the flags stay data only (§3).
 - **Q7. Deferral vs zone decisions.** Zone triggers resolved after `forced_move` can open Ask windows. Rules proposes to record
   hook results per step_seq across re-runs (§2.5). Is that acceptable to EC as the extension of #112's contract? The hook would
   still be called once per (step, step_seq).
+  - **EC answer:** Accepted. Hook still called exactly once per (step, step_seq); #112's debug assert stays (§3).
 - **Q8. Aura moves.** Should sim report membership changes caused by an aura's owner moving, and a Moonbeam move, with the step
   that caused them? Rules applies "while in the area" effects from them, but no `Enter` damage (D1).
+  - **EC answer:** Yes, attached to the causing step, ordered as Q9 (§3).
 - **Q9. Trigger order.** When several creatures enter at once (an aura moves, Grease or Wall of Fire appears), is the order
   initiative order then lower id? Across zones, the order is ascending `zone_id`.
+  - **EC answer:** Ascending `zone_id`, then initiative order, then lower combatant id (§3).
 - **Q10. Zone moves through creatures.** Does a moving Moonbeam affect creatures it passes over? Rules says no, matching D1.
+  - **EC answer:** No; only the final position counts, matching D1 (§3).
 - **Q11. `log_hash`.** Should membership request fields be folded (they are inputs, so yes, under one new tag), or derived again
   at replay from positions (no fold)?
+  - **EC answer:** Not folded: sim derives membership at submit from positions. Only caller-chosen inputs (zone move destination, excluded ids)
+    fold under 0xB7 when set; `zones_digest` takes `Combat::hash` 0xAB when zones is non-empty (§3).
 - **Q12. Rendering.** Does sim want a `SimEvent` for zone tiles appearing, moving and ending, or will it render from rules'
   `ZoneCreated` / `ZoneMoved` / `ZoneEnded`?
+  - **EC answer:** No new `SimEvent`; render from `ZoneCreated` / `ZoneMoved` / `ZoneEnded`. Any sim zone-tile cache is derived, unhashed, not a
+    source of truth (§3).
 
 ### Director
 
