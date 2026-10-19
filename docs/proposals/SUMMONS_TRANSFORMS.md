@@ -258,6 +258,8 @@ unchanged in each sim PR).
 - **0xBC** (`log_hash`, folded when any of the fields is non-empty / non-zero): `summon_ids` (count u32 + u32 each),
   `summon_archetypes` (count u32 + byte each), `summon_tiles` (count u32 + i32 x, i32 y each), `command` byte, then the
   `CommandSummons` id list (count u32 + u32 each). **0xBD** as 2.8.
+- Event order is not part of a hash section, but `event_stream_hash` and `Combat::hash` fold events in stream order. The v10
+  ending-step reorder (3.5) therefore changes only v10 streams; pre-v10 streams hash byte-identically.
 - 0xAC (`cast_stamp`) is unchanged in layout. In a combat with summons it folds the stamps after rules has rewritten them
   (3.4 ruling), so live play and replay agree. Combats without summons never rewrite, so their 0xAC bytes are as today.
 - Required: 0xAF, 0xBC and 0xBD are added to the SIM_EVENTS.md registry by the first implementation PR (rules PR 1 for 0xBD;
@@ -337,12 +339,20 @@ ones, with the normal end events. Nothing is carried into another Combat for now
 
   So every sim event of the step comes before `EncounterEnded`. When a step ends the encounter with no summon or transform
   alive, `teardown_begin` is none: (c) is empty, and the only change from today is that (b) is placed before
-  `EncounterEnded`. **Golden risk:** today `complete()` appends `TileMoved` / `SpellTarget`
-  after *all* of the step's rules events (combat.cpp ~L649-771). It does not special-case `EncounterEnded`, so a fight that
-  ends on a spell or a move step currently has sim events **after** `EncounterEnded`, which already contradicts rule 7.
-  Moving them before it fixes that, but it moves the digests of any locked stream that ends that way. The implementation PR
-  must audit the goldens. If any moves, re-pin it with that explanation (a rule 7 conformance fix), or, if Director prefers,
-  apply (b)-before-(d) only when (c) is non-empty. Live play and replay share `complete`, so both produce the same order. Sim tests lock it, and SIM_EVENTS.md
+  `EncounterEnded`. **Version gate (Director ruling).** Today `complete()` appends `TileMoved` / `SpellTarget` after
+  *all* of the step's rules events (combat.cpp ~L649-771), so before v10 a fight that ends on a spell or move step has sim
+  events after `EncounterEnded` (the known exception under rule 7 in SIM_EVENTS.md). From v10 on, `complete` places **every**
+  sim event of the ending step ((b) and the teardown `TokenRemoved`s) before `EncounterEnded`, whether or not there is a
+  teardown. Streams below v10 keep today's order, so no golden moves and none is re-pinned.
+  - **The gate.** It reads the stream as it will be after this step: `event_stream_version(events_ + this step's rules and
+    sim events) >= 10`. That is true when the stream already has a v10 construct (any of kinds 48-52, `TokenSpawned`,
+    `TokenRemoved`) or this step adds one. Each v10 construct only enters the stream through a summon or transform, so every
+    pre-R-G12 stream evaluates below 10 and keeps its bytes. Moving events within the step does not change which constructs
+    are present, so the gate gives the same answer before and after the reorder; it is not circular. Replay runs the same
+    `complete` and so takes the same branch.
+  - **Fallback** (if the gate turns out messy in code): reorder only when (c) is non-empty. Every stream with a teardown is
+    v10 anyway, and every other stream keeps today's order.
+  Live play and replay share `complete`, so both produce the same order. Sim tests lock it, and SIM_EVENTS.md
   gets the rule-4 exception in the implementation PR.
 - Concentration links do not fire separately. Teardown ends the summons first, and the summoner's concentration is not
   ended by sim. So there is no duplicate `SummonEnded{b = 1}`, and rules' `ConcentrationEnded` behaviour at encounter end is

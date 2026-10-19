@@ -109,6 +109,7 @@ The authoritative per-kind field meanings are in `rules5e/encounter.hpp`. If tha
    - **`ActionUsed` (v7).** A non-spell action (`SpellDef::is_spell == false`, e.g. a breath weapon) emits `ActionUsed` at the position a spell's `SpellCast` would take, *instead of* `SpellCast` (no `SpellCast` window, so it cannot be Counterspelled). Its `ResourceSpent` (pool usage) follows directly, then the effect's own events (`SavingThrowRolled`, `DamageDealt`, `ConditionAdded`, ...), then `SpellResolved`, which is still emitted. `RechargeRolled` is emitted at the start of the owner's turn, after `TurnStarted` and any repeat saves and regeneration, before death saves.
 6. **Turns.** `TurnEnded` is followed by `TurnStarted` of the next actor (dead combatants are skipped).
 7. **End.** `EncounterEnded` appears exactly once and is the last event. After it, `submit()` is rejected.
+   - **Known exception (before v10):** a step that ends the encounter may append its sim events (`TileMoved`, drag `Moved`, `SpellTarget`) after `EncounterEnded`, because sim events follow the step's rules events (rule 4). From v10 (R-G12, `docs/proposals/SUMMONS_TRANSFORMS.md` §3.5) every sim event of the ending step precedes `EncounterEnded`. The implementation PR gates this on the stream version (`event_stream_version` >= 10), so pre-v10 streams and their digests are unchanged.
 
 ## Digest versioning (v5, v6, v7, v8, v9)
 
