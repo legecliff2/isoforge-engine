@@ -44,7 +44,7 @@ RollMode check_roll_mode(const Combatant& c, RollMode extra) {
 }
 
 uint32_t effective_resistances(const Combatant& c) {
-    return c.has(C::Petrified) ? 0xFFFFFFFFu : c.resistances;
+    return c.has(C::Petrified) ? 0xFFFFFFFFu : (c.resistances | c.mod_resist);
 }
 
 } // namespace rules5e
