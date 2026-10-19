@@ -1,0 +1,49 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "id": "test.neg.spell.zone_aura_modifier_not_save",
+  "name": "Warding Aura (test)",
+  "description": "Test-only D7 aura (Aura of Protection / Aura of Courage shape as a spell): you and friendly creatures within 10 feet add your Charisma modifier (minimum +1) to saving throws and can't be frightened while you are conscious.",
+  "level": 3,
+  "school": "abjuration",
+  "classes": [
+    "paladin"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "self"
+  },
+  "components": {
+    "v": true
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 10,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "zone",
+      "zone": {
+        "shape": "sphere",
+        "size_ft": 10,
+        "anchor": "creature",
+        "needs_conscious_owner": true,
+        "aura_modifier": {
+          "stat": "ability_check",
+          "bonus": 1
+        },
+        "aura_bonus_ability": "cha",
+        "aura_immunity": [
+          "frightened"
+        ],
+        "aura_allies_only": true
+      }
+    }
+  ]
+}
