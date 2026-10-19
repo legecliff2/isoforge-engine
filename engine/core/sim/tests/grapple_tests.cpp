@@ -115,16 +115,17 @@ TEST_CASE("grapple / shove: requests, the 5 ft push, drag, 0xA7 fold, log fold, 
     }
     REQUIRE(held);
     CHECK(rules5e::condition_source(c->state(), g, Condition::Grappled) == f);
+    end_turn(*c);
+    to_turn(*c, f);
     // AI: holding a target that is not prone -> shove it prone
     const Command ai = next_command(*c, g);
     CHECK(ai.request.special == 2);
     // drag: the fighter steps away and the goblin comes along
-    end_turn(*c);
-    to_turn(*c, f);
     Command back;
     back.kind = CommandKind::Step;
     back.to = Vec2i{5, 5};
     REQUIRE(c->submit(back).ok);
+    c->settle(nullptr);
     CHECK(c->pos(f) == Vec2i{5, 5});
     CHECK(c->distance_tiles(f, g) <= 1);
     CHECK(c->pos(g) == Vec2i{6, 5});
