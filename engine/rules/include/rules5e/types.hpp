@@ -108,7 +108,9 @@ enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Re
                                   // turn action (appended): a content feature (Second Wind, ...)
                                   UseFeature,
                                   // appended: Font of Magic, Flexible Casting (bonus action; ActionRequest::flexible)
-                                  FlexibleCasting };
+                                  FlexibleCasting,
+                                  // appended: Petrifying Gaze turn-start response (ActionRequest::avert_gaze / gaze_seen)
+                                  GazeResponse };
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
 
 // Reaction windows (encounter.hpp). Append-only.
@@ -409,6 +411,13 @@ struct Combatant {
     // R-G11 rules PR 2 (appended), content facts for zone rows: no_breath (doesn't need to breathe: Stinking Cloud's automatic
     // success), shapechanger (Moonbeam's disadvantage), evil (an evil caster's Spirit Guardians deals necrotic damage).
     bool no_breath = false, shapechanger = false, evil = false;
+    // Petrifying Gaze (appended, VERSION_BUMP_BATCH 7.2p). gazes: this creature's gaze features; each names a synthetic Save
+    // SpellDef (is_spell false, fixed_dc, condition + repeat save + escalates / escalate_to / escalate_margin) and a range that
+    // only sim reads. gaze_averted: it averted its eyes at its turn start; until the start of its next turn it treats every
+    // gazer as unseen (its attacks against a gazer have disadvantage, a gazer's attacks against it advantage).
+    struct Gaze { uint32_t spell_id = 0; uint16_t range_ft = 0; };
+    std::vector<Gaze> gazes{};
+    bool gaze_averted = false;
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
