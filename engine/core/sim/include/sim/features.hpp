@@ -23,6 +23,10 @@ namespace eng::sim {
 
 struct Archetype;
 
+// The item id an equipment[] entry names, for any of its forms: a bare string ("chain_mail"), {"id": ...}, or the
+// character@4 form {"item": "srd51.item.chain_mail"} ("item" wins when both are present). "" for anything else.
+std::string equipment_entry_id(const assets::Json& entry);
+
 // A feature as declared in content.
 struct FeatureDecl {
     std::string id;            // content-local id ("second_wind")
