@@ -19,7 +19,7 @@ public:
     // Sync adapter for reaction windows. HitRider (row 9c: the attacker is the reactor, Divine Smite style) is declined:
     // spending a resource on a rider is a deliberate choice. Damaged (row 11) takes a ReduceDamage option when there is
     // one, else the first (retaliate / riposte); AllyAttacked takes the first option (impose disadvantage). Every other
-    // trigger takes option 0.
+    // trigger (AttackRolled included: Cutting Words' subtract_roll) takes option 0.
     virtual ReactionDecision decide_reaction(const Combat&, const NeedsDecision& n) {
         if (n.trigger == rules5e::ReactionTrigger::HitRider) return {n.window_seq, false, 0};
         uint8_t pick = 0;
