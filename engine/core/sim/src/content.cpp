@@ -761,13 +761,7 @@ bool carries_shield(const Json& doc) {
     };
     if (auto eq = doc.find("equipment"); eq != doc.end() && eq->is_array())
         for (const Json& e : *eq) {
-            std::string id;
-            if (e.is_string()) id = e.get<std::string>();
-            else if (e.is_object()) {
-                if (auto it = e.find("item"); it != e.end() && it->is_string()) id = it->get<std::string>();
-                else if (auto jt = e.find("id"); jt != e.end() && jt->is_string()) id = jt->get<std::string>();
-            }
-            if (is_shield_id(id)) return true;
+            if (is_shield_id(equipment_entry_id(e))) return true;
         }
     if (auto ac = doc.find("armor_class"); ac != doc.end() && ac->is_object()) {
         std::string note = ac->value("note", "");
