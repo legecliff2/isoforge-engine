@@ -449,7 +449,7 @@ std::optional<std::string> apply_font_of_magic(Archetype& a, const FeatureDecl& 
     for (const Json& c : ctx.doc.value("classes", Json::array()))
         if (c.is_object() && c.value("class", "") == "sorcerer") level += c.value("level", 0);
     const int max = rules5e::sorcery_points_max(level);
-    if (max <= 0) return f.id + ": font_of_magic needs sorcerer level 2 or higher in classes[]";
+    if (max <= 0) return f.id + ": font_of_magic needs sorcerer level 2+ (sorcerer level " + std::to_string(level) + ")";
     const uint32_t pool = rules5e::spell_id_of(pid);
     if (a.base.sorcery_pool != 0 && a.base.sorcery_pool != pool) return f.id + ": font_of_magic and metamagic name different pools";
     Archetype::Resource* res = nullptr;
