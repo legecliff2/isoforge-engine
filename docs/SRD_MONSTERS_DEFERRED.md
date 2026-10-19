@@ -52,20 +52,37 @@ Carried and validated but **not applied** (the registry reserves the `@4` kinds;
 
 Gap ids: `T&C-Gn` = Tools & Content, `R-Gn` = Rules (see the crosswalk in the coverage doc).
 
-| monster (`srd51.monster.<id>`) | CR | missing mechanic | gap id |
+| monster (`srd51.monster.<id>`) | CR | missing mechanic (re-checked at `cfb5eed`) | gap id |
 |---|---|---|---|
-| `srd51.monster.jackal` | 0 | Pack Tactics: conditional advantage on attacks (ally within 5 ft). Rules has the `RollTrait` `kWhenAllyNearTarget` and sim supplies `ally_near_target` (#54, #61), but `common@2` has no effect/trait shape to declare it | T&C-G7 (R-G7); content shape |
+| `srd51.monster.jackal` | 0 | Pack Tactics: conditional advantage on attacks (ally within 5 ft). Rules has the `RollTrait` `kWhenAllyNearTarget` and sim supplies `ally_near_target` (#54, #61), but the sim content loader never fills `roll_traits` and `common@2` has no effect/trait shape to declare it | T&C-G7 (R-G7); content shape + loader |
 | `srd51.monster.kobold` | 1/8 | Pack Tactics (as above). Sunlight Sensitivity would be descriptive (R-G13) | T&C-G7 |
 | `srd51.monster.wolf` | 1/4 | Pack Tactics (as above). The prone bite rider alone is expressible | T&C-G7 |
 | `srd51.monster.dire_wolf` | 1 | Pack Tactics (as above) | T&C-G7 |
-| `srd51.monster.boar` | 1/4 | Relentless: `drop_to_zero` only when the damage is 7 or less (no damage-threshold predicate), once per short/long rest. Charge (`moved_at_least_ft` 20, 1d6, Str DC 11 prone) is expressible but is not worth shipping without Relentless | T&C-G7 (predicate: damage taken <= N) |
-| `srd51.monster.hobgoblin` | 1/2 | Martial Advantage: +2d6 only if an ally is within 5 ft of the target. The only ally predicate is `advantage_or_ally_adjacent` (advantage OR ally), which would also fire with advantage and no ally | T&C-G7 (predicate: ally adjacent only) |
-| `srd51.monster.orc` | 1/2 | Aggressive: bonus-action move toward a visible hostile. `bonus_action_grant dash` has no direction constraint | T&C-G7 (coverage doc: "`bonus_action_grant` has no Move") |
-| `srd51.monster.bugbear` | 1 | Surprise Attack: +2d6 when it surprises a creature in round 1. No surprise state or predicate. (Brute is already baked into the printed attack dice per SRD text) | R-G16 (surprise) + T&C-G7 |
-| `srd51.monster.ghoul` | 1 | Claws paralysis rider applies only to creatures other than elves and undead; riders have no `when` / target predicate (`on_hit` rider shape is closed) | T&C-G5 (rider target predicate) |
-| `srd51.monster.giant_spider` | 1 | Web: a ranged *attack roll* that only restrains (no damage; `ranged_weapon_attack` requires `damage`, `save_effect` is a save not an attack) with Recharge 5-6; Strength-check escape and destructible web. Also the bite's "stable but poisoned and paralyzed at 0 HP" clause | T&C-G4 / T&C-G5 (+ R-G8 for restrain source) |
-| `srd51.monster.berserker` | 2 | Reckless: free per-turn choice of advantage on own melee attacks and advantage against it. `apply_modifier` needs a cost and a duration shape that does not fit a free start-of-turn toggle | T&C-G7 / R-G7 |
-| `srd51.monster.swarm_of_rats` | 1/4 | Swarm: shares space with other creatures (T&C-G14), cannot regain HP / gain temp HP; bite damage 2d6 or 1d6 at half HP (no HP-conditional damage swap); creature type "swarm of Tiny beasts" is not in the `creature_type` enum (`beast` + tag `swarm` is the convention, T&C-G15) | T&C-G7, T&C-G14, T&C-G15 |
+| `srd51.monster.boar` | 1/4 | Relentless: `drop_to_zero` only when the damage is 7 or less (no damage-threshold predicate; the loader's predicates are `weapon`, `advantage_or_ally_adjacent`, `target_creature_type`, `not_creature_type`, `damage_type_is/not`, `not_crit`, `moved_at_least_ft`, `self_hp_below`, `save`), once per short/long rest (`on_event` with `usage` is listed unsupported by the loader, "a use cost is a later sub-PR"). Charge (`moved_at_least_ft` 20, 1d6, Str DC 11 prone) is expressible but is not worth shipping without Relentless | T&C-G7 (predicate: damage taken <= N; `on_event` usage) |
+| `srd51.monster.hobgoblin` | 1/2 | Martial Advantage: +2d6 once per turn only if an ally (not incapacitated) is within 5 ft of the target. The only ally predicate is still `advantage_or_ally_adjacent` (advantage OR ally, the Sneak Attack gate), which would also fire with advantage and no ally | T&C-G7 (predicate: ally adjacent only) |
+| `srd51.monster.orc` | 1/2 | Aggressive: bonus-action move toward a visible hostile. Rules has it since #111 (`Combatant::aggressive`, `ActionRequest::aggressive`), but the sim content loader never sets `aggressive` and there is no content shape; `bonus_action_grant dash` has no direction constraint | T&C-G7 (content shape + loader for #111 Aggressive) |
+| `srd51.monster.bugbear` | 1 | Surprise Attack: +2d6 when it hits a surprised creature in round 1. Rules has surprise since #108 (R-G16, `Combatant::surprised`), but there is no `surprised` predicate (target state) in the loader or `common@2`. (Brute is already baked into the printed attack dice per SRD text) | T&C-G7 (predicate: target surprised) |
+| `srd51.monster.ghoul` | 1 | Claws paralysis (Con DC 10, 1 minute, repeat end of turn) applies only to creatures other than elves and undead. `on_hit` riders still have no `when`; an `on_event hit` with `not_creature_type [undead]` could gate undead, but there is no predicate for elves (a race, not a creature type) and no predicate naming one attack (claws vs bite) | T&C-G5 (rider target predicate; race / attack-id predicate) |
+| `srd51.monster.giant_spider` | 1 | Web: a ranged *attack roll* that only restrains (no damage; `ranged_weapon_attack` requires `damage`, `save_effect` is a save not an attack) with Recharge 5-6; Strength-check escape (DC 12) and destructible web (AC 10, 5 HP). The R-G8 `grapple` hit rider (sim #104) is grappled-only and not in the `common@2` rider enum. Also the bite's "stable but poisoned and paralyzed at 0 HP" clause | T&C-G4 / T&C-G5 (+ R-G8 for restrain source) |
+| `srd51.monster.berserker` | 2 | Reckless: free per-turn choice of advantage on own melee attacks and advantage against it. Rules has Reckless Attack since #111 (`Combatant::reckless_attack`, `ActionRequest::reckless`), but the sim content loader never sets it and there is no content shape; `apply_modifier` needs a cost and a duration shape that does not fit a free start-of-turn toggle | T&C-G7 (content shape + loader for #111 Reckless) |
+| `srd51.monster.swarm_of_rats` | 1/4 | Swarm: shares space with other creatures (T&C-G14), cannot regain HP / gain temp HP; bite damage 2d6 or 1d6 at half HP or fewer (no HP-conditional damage swap; `self_hp_below` is strict and has no negation); creature type "swarm of Tiny beasts" is not in the `creature_type` enum (`beast` + tag `swarm` is the convention, T&C-G15) | T&C-G7, T&C-G14, T&C-G15 |
+
+### Re-check at `cfb5eed` (2026-10-19)
+
+All 12 stay deferred. Checked against the sim loader (`engine/core/sim/src/content.cpp`, `features.cpp`), the rules content loader (`engine/rules/content/src/spell_loader.cpp`), `schemas/common/v2.schema.json` / `schemas/monster/v4.schema.json` and `tools/validate_packs.py` / `tools/checks_v4.py`:
+
+| landed mechanic | loads from content? | shape | unblocks |
+|---|---|---|---|
+| Undead Fortitude | yes | `on_event drop_to_zero` + `save` predicate (`dc_from_damage`) + `set_hp` | (zombie, already authored) |
+| Rampage | yes | `on_event reduce_to_zero` + `bonus_attack` rider | (gnoll, already authored) |
+| Sneak Attack | yes | `on_event hit` + `advantage_or_ally_adjacent`, `limit once_per_turn` | not Martial Advantage (hobgoblin): ally-only gate missing |
+| breath weapons | yes | `save_effect` with `area`, `usage recharge` | (wyrmling, already authored); not Web (attack roll) |
+| reactions | yes | `reactions[]` (#114/#115) | none of the 12 |
+| grapple | sim only | `on_hit [{"kind":"grapple","escape_dc":N}]` (#104); not in the `common@2` rider enum (validator rejects it) | none of the 12 (Web restrains) |
+| timed modifiers, Metamagic, Haste/Slow, Sleep, dispel | spell / `apply_modifier` mechanics | not used by any of the 12 stat blocks | none of the 12 |
+| Pack Tactics | **no** | rules `RollTrait` only; sim never fills `roll_traits` | jackal, kobold, wolf, dire wolf blocked |
+| Aggressive, Reckless (#111) | **no** | rules flags only; sim never sets them | orc, berserker blocked |
+| surprise (#108) | **no** (as a predicate) | rules state only | bugbear blocked |
 
 ## Other notes for Rules / Engine Core
 

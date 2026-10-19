@@ -1,0 +1,49 @@
+{
+  "$schema": "spell@1",
+  "id": "test.zone.spell.darkness",
+  "name": "Darkness",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "Magical darkness spreads from a point within range to fill a 15-foot-radius sphere. Darkvision can't see through it and nonmagical light can't illuminate it. Casting it on an object (it moves with the object) and dispelling light (R-G13) are not expressible.",
+  "level": 2,
+  "school": "evocation",
+  "classes": [
+    "sorcerer",
+    "warlock",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "components": {
+    "v": true,
+    "m": {
+      "text": "bat fur and a drop of pitch or piece of coal"
+    }
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 10,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "zone",
+      "zone": {
+        "shape": "sphere",
+        "size_ft": 15,
+        "anchor": "point",
+        "flags": [
+          "heavy_obscured",
+          "magical_darkness"
+        ]
+      }
+    }
+  ]
+}
