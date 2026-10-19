@@ -510,6 +510,18 @@ as a new predicate without changing this one.
                                    "add_dice":{"$ref":"../common/v1.schema.json#/$defs/dice"}}} } }
 ```
 
+**`per_levels` resolution (decided).** The loader resolves it to final dice when it builds the owner's `Trigger`
+(rules5e only ever sees the resolved `RiderEffect::dice`): `extra_dice = floor((level - 1) / every)` copies of
+`add_dice`, added to the base dice, where `level` is the owner's level in `class` (or the total character level when
+`class` is omitted). Monsters have no class levels, so `per_levels` does not apply to them. Worked example, Sneak
+Attack (base `1d6`, `every: 2`, `add_dice: 1d6`): levels 1, 2, 3, 4, 5, 19, 20 give 1, 1, 2, 2, 3, 10, 10 d6, i.e.
+`ceil(level / 2)` d6.
+
+**`AttackIs` (approved, rules-internal).** A predicate appended by the sim loader for `on_hit[]` riders, not part of the
+content `predicate` schema above: `a` = index into the owner's `Combatant::attacks`; it holds only for that exact weapon
+attack and is false for spell attacks. The loader binds each `on_hit[]` rider to its attack action with it, so a rider
+fires only when that attack hits (the trigger is otherwise an ordinary `hit` trigger with the same limits and effects).
+
 `type: "same_as_weapon"` is valid only through `rider_damage_type` (§1.2), never in v1's `damage_type`.
 
 ### 3.2 Rules sketch
@@ -561,6 +573,28 @@ Events: `FeatureTriggered` (§9.1). Damage from riders is folded into the existi
 Row 9 lands as three rules PRs: **9a** (trigger model; `hit`/`crit` triggers with `extra_damage` riders; predicates; limits; the `FeatureTriggered` emit site), **9b** (`reduce_to_zero`/`drop_to_zero`/`death`/`turn_start`/`turn_end`/`damage_dealt` triggers; `bonus_attack`, `set_hp`, `area_save`, `heal_self`, `temp_hp` riders; the `save` predicate), **9c** (`choice: ask` through the `HitRider` reaction window, `spend`, `save_condition`/`apply_condition`, `scale.per_slot_level`).
 
 9a: `Combatant::triggers` (`Trigger{id, on, limit, choice, when[], effects[]}`) is filled by `Combat::create`. Only `on: hit|crit`, `choice: auto`, and `extra_damage` effects fire; every other value is stored and inert until its sub-PR. On a hit, before damage is rolled, matching triggers emit `FeatureTriggered(actor=owner, target, a=trigger id, b=TriggerOn, c=1)` and their dice join the damage as extra pieces (dice doubled on a crit; type = the weapon's when `same_as_weapon`). A trigger with an empty `when` list always passes. `weapon` predicates are false for spell attacks. `advantage_or_ally_adjacent` is true when the attack rolled with advantage (net of disadvantage) or `ally_near_target`. `moved_at_least_ft` reads `TurnBudget::moved_ft` and only holds on the owner's own turn. Deviation from the sketch: limit bookkeeping (`trigger_turn_mask/stamp`, `trigger_round_mask/stamp`) lives on the `Combatant`, not on `TurnBudget`, so once-per-turn also covers off-turn reactions; stamps reset lazily. A combatant with no triggers draws no extra rng and emits no events, so goldens are unchanged. `triggers_digest` / `has_trigger_state` are rules-side; the fold into `Combat::hash` (tag `0xA6`, only when non-empty) is an Engine Core hand-off.
+
+### 3.2b 9b as implemented
+
+9b adds the non-attack-roll events. `damage_creature` now takes the damage source (`TrigSrc`: owner, attack facts, spell or not) so it can run triggers around `after_damage`:
+
+| `on` | Evaluated | Subject (`FeatureTriggered.target`) | Effects that fire |
+|---|---|---|---|
+| `drop_to_zero` | before the HP is committed, when the damage would take the owner from above 0 to 0 (not for massive-damage instant death) | the damager if known, else the owner | `set_hp` (hp = `value`, clamped to 1..hp_max: the drop is cancelled and `DamageDealt.b` reports the new hp), `heal_self`, `temp_hp`, `area_save` |
+| `damage_dealt` | after `DamageDealt`, owner is the damager, damage after mitigation > 0 | the creature damaged | `heal_self`, `temp_hp`, `bonus_attack`, `area_save` |
+| `reduce_to_zero` | right after `damage_dealt`, when the damager took a creature from above 0 to 0 (dead or dying) | the creature | same as `damage_dealt` |
+| `death` | after the step's events (and readies): `process_deaths` handles every creature with `dead && !death_triggers_done`, including ones killed by an earlier burst (bounded by the creature count); queued so no reaction window nests | the owner | `heal_self`/`temp_hp` do nothing (dead), `area_save` |
+| `turn_start` | `start_turn`, after regeneration and recharge, before death saves; not for the dead | the owner | `heal_self`, `temp_hp`, `area_save` |
+| `turn_end` | `EndTurn`, after repeat saves and timed-effect ticks, before `TurnEnded`; not for the dead | the owner | same |
+
+* **Save predicate.** `Predicate{Save, a = Ability, b = DC or base, mask bit 0 = dc_from_damage}`: the *owner* rolls (`SavingThrowRolled`, c = success) when evaluation reaches it, so list it last. A failed save emits `FeatureTriggered` with c = 3 (failed save) and the trigger does not fire; an ordinary predicate failure is silent. DC from damage = `b + damage taken` (after mitigation).
+* **`bonus_attack`** (Rampage) does not pick a target (rules have no positions): it sets `TurnBudget::bonus_attack_grant = value + 1` (`value` = index into `Combatant::attacks`, resolved by the loader from `attack_id`). The grant exists only on the owner's own turn with the bonus action unspent. The caller then sends `ActionRequest{Attack, attack_index, as_bonus_action = true}`: it spends the bonus action and the grant, and is refused otherwise (the old "attack is not a bonus action" error). The Rampage "move up to half speed" part is an ordinary `Move` request by the caller.
+* **`area_save`** (Death Burst, aura ticks): `RiderEffect::spell_id` names a synthetic Save `SpellDef` (fixed DC, damage, `on_save`, `is_spell = false`) and the targets come from the new `EncounterHooks::area_targets(state, source, def)` (sim, positions; the source is ignored; dead creatures are dropped). No hook, no def or no `Save` kind: the trigger does not fire. It resolves with the existing Save resolution, so it emits the same `SavingThrowRolled`, `DamageDealt`, `ConditionAdded` events, and the damage counts as the owner's `damage_dealt` if the owner is alive.
+* **`heal_self` / `temp_hp`**: `dice` if set, else `value`. `heal_self` emits `Healed`; `temp_hp` keeps the larger pool and has no event of its own (`FeatureTriggered` marks it; event schema stays v7).
+* **Guard.** Trigger evaluation nests at most 4 levels (a `damage_dealt` area_save that damages again), so loops end.
+* Limits work as in 9a. Still reserved for 9c: `choice: ask`, `spend`, `save_condition`, `apply_condition`, `scale.per_slot_level`.
+* Goldens: unchanged. Creatures without triggers take none of these paths (no events, no rng).
+* New state: `Combatant::death_triggers_done` (folded into `triggers_digest`) and `TurnBudget::bonus_attack_grant` (Engine Core: include it wherever `TurnBudget` is hashed, if it is).
 
 ### 3.3 Inert behaviour
 

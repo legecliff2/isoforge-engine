@@ -9,3 +9,7 @@
   They are inputs for Engine Core's digest goldens (row 3: migrated form must digest like the `@3` source).
 
 These files are not part of any shipped pack and are not under `tests/compat` (that corpus is frozen).
+
+- `expected4/`: the Python reference migration's output for each `at3/` file (same file name), written with sorted keys.
+  Engine Core's C++ test compares `monster_3_to_4` / `character_3_to_4` output against these as JSON.
+  Mapping: decorated_goblin and merge_goblin use monster_3_to_4; decorated_fighter and bogus_inert_fighter use character_3_to_4.
