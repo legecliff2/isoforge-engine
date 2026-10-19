@@ -208,6 +208,53 @@ def check_character(doc, errs, ctx):
             errs.append(f"level-1 hit_points {doc['hit_points']['average']} != {want} (max hit die + CON)")
 
 
+# R-G16 chunk `surprise` (docs/CONTENT_CONVENTIONS.md section 8): reserved, no loader reads it yet.
+SURPRISE_RESERVED = ("surprise is reserved: no loader reads it yet (R-G16; the future chunk loader passes it to "
+                     "sim::Combat::apply_surprise, #123), so it has no effect until that loader lands")
+
+
+def spawn_team(spawn: dict, typ: str | None) -> str | None:
+    """sim spawn_team_name (combat.cpp): overrides.team, else 'party' for a character archetype, 'monsters' for a
+    monster one. None when the archetype's schema type is unknown (srd51.* escape hatch) and there is no override."""
+    team = spawn.get("overrides", {}).get("team")
+    if isinstance(team, str):
+        return team
+    return {"character": "party", "monster": "monsters"}.get(typ)
+
+
+def check_chunk_surprise(doc, errs, ctx) -> None:
+    """The refs the future loader resolves: spawns[] indices must exist and be combatants (sim::Combat::apply_surprise
+    refuses an unknown id, and a spawn whose archetype is not a monster / character is no combatant); each side must be
+    the team of a combatant spawn of this chunk."""
+    types = ctx.get("types", {})
+    spawns = doc["spawns"]
+    sp = doc["surprise"]
+    kinds = [types.get(s["archetype"]) for s in spawns]
+    # combatant spawns: monster / character archetypes, plus unknown types (escape hatch: assume a combatant)
+    combat = [i for i, k in enumerate(kinds) if k in ("monster", "character") or k is None]
+    for k, idx in enumerate(sp.get("spawns", [])):
+        where = f"surprise.spawns[{k}]"
+        if idx >= len(spawns):
+            errs.append(f"{where}: index {idx} is not a spawns[] index (this chunk has {len(spawns)} spawns)")
+        elif idx not in combat:
+            errs.append(f"{where}: spawns[{idx}] ({spawns[idx]['archetype']}, a {kinds[idx]}) is not a combatant "
+                        "(only monster and character archetypes can be surprised)")
+    teams = {i: spawn_team(spawns[i], kinds[i]) for i in combat}
+    for k, side in enumerate(sp.get("sides", [])):
+        members = {i for i, t in teams.items() if t == side}
+        unknown = {i for i, t in teams.items() if t is None} if side in ("party", "monsters") else set()
+        if not members and not unknown:
+            errs.append(f"surprise.sides[{k}]: no combatant spawn in this chunk is on team {side!r} "
+                        f"(teams here: {sorted(t for t in set(teams.values()) if t)})")
+
+
+def chunk_warnings(doc) -> list[str]:
+    """Non-fatal chunk findings (prefixed with the file by the caller)."""
+    if not isinstance(doc, dict) or "surprise" not in doc:
+        return []
+    return [SURPRISE_RESERVED]
+
+
 def check_chunk(doc, errs, ctx):
     pal = len(doc["palette"])
     layers = decode_layers(doc)
@@ -236,6 +283,8 @@ def check_chunk(doc, errs, ctx):
     tids = [t["id"] for t in doc["triggers"]]
     if len(tids) != len(set(tids)):
         errs.append("triggers: duplicate id")
+    if "surprise" in doc:
+        check_chunk_surprise(doc, errs, ctx)
     if "content_hash" in doc:
         want = hash_hex(compute_content_hash(doc))
         if doc["content_hash"] != want:
@@ -458,6 +507,7 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         return errs, warns
     active = row.active_effects
     v = Draft202012Validator({"$ref": COMMON_ID + "#/$defs/effect"}, registry=registry)
+    seen_once: dict[str, str] = {}
     for key in ("features", "traits"):
         for i, f in enumerate(doc.get(key) or []):
             eff = f.get("effect") if isinstance(f, dict) else None
@@ -474,6 +524,12 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
                 warns.append(f"{where}: unknown effect kind '{kind}' "
                              f"(engine ignores it; known: {', '.join(sorted(row.effect_kinds))})")
                 continue
+            if kind in c4.NO_STACK_EFFECT_KINDS and "inert" not in eff:
+                if kind in seen_once:
+                    warns.append(f"{where}: duplicate '{kind}' effect (already declared at {seen_once[kind]}); "
+                                 "a second declaration adds nothing")
+                else:
+                    seen_once[kind] = f"/{key}/{i}/effect"
             found = []
             if eff.get("cost") == "reaction" and "reaction" not in row.cost_values:
                 found.append("cost 'reaction' is reserved (not supported by the engine yet); "
@@ -574,6 +630,8 @@ def validate_doc(rel: str, doc: dict, tag: str, registry: Registry, by_tag: dict
     errs += list(dict.fromkeys(f"/{'/'.join(map(str, e.absolute_path))}: {schema_message(e, registry)}" for e in schema_errs))
     if not schema_errs and typ in CHECKS:
         CHECKS[typ](doc, errs, ctx)
+    if typ == "chunk":
+        warns += [f"{rel}: {w}" for w in chunk_warnings(doc)]
     if not schema_errs and typ == "spell":
         warns += [f"{rel}: {w}" for w in spell_material_warnings(doc)]
     row = c4.tag_row(tag)
@@ -640,7 +698,14 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[s
             return True
         return False
 
-    ctx = {"ids": ids, "spell_ids": spell_ids, "items": item_ids, "external_ok": external_ok}
+    # content id -> schema type (monster, character, ...): chunk surprise derives spawn teams from it
+    types = {d.get("id"): str(d.get("$schema", "")).split("@")[0] for r, d in docs.items()
+             if r != "manifest.json" and isinstance(d, dict)}
+    for dep in order:
+        if dep.id != pid:
+            for cid, rel in dep.content_ids.items():
+                types.setdefault(cid, _schema_type(dep.dir / rel))
+    ctx = {"ids": ids, "spell_ids": spell_ids, "items": item_ids, "external_ok": external_ok, "types": types}
     scripts = {f.relative_to(pack).as_posix() for f in pack.glob("scripts/**/*.luau")}
     script_re = re.compile(r"^scripts/.+\.luau$")
 
@@ -693,6 +758,13 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[s
         warns.append(f"manifest.json: '{a}' is not defined in this pack or its depends; the srd51.* "
                      "escape hatch is deprecated: add depends [{\"id\": \"srd51.core\", \"version\": \"^1.0\"}]")
     return out
+
+
+def _schema_type(path: Path) -> str | None:
+    try:
+        return str(json.loads(path.read_text(encoding="utf-8")).get("$schema", "")).split("@")[0] or None
+    except (OSError, ValueError, AttributeError):
+        return None
 
 
 def _is_spell(path: Path) -> bool:

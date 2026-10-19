@@ -7,5 +7,5 @@ Web (`own_turn_only`, `while_in_zone`), Grease (`zone_appear` / `zone_enter` / `
 `tools/validate/test_validate_packs.py` `SpellZones` validates them as one pack and runs its table of negative edits;
 `tests/validate/cases/zone_*` are the run_negative / spell_loader_tests copies.
 
-They are not part of any shipped pack (srd51.core gets zone spells in a later PR, after the loader parses zones) and are not
-under `tests/compat` (that corpus is frozen). The loader author can use them as positive loader fixtures.
+They are not part of any shipped pack (srd51.core gets zone spells in a later PR) and are not
+under `tests/compat` (that corpus is frozen). `spell_loader_tests` loads them as positive loader fixtures.

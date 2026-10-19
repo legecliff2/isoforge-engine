@@ -42,6 +42,9 @@ struct TurnBudget {
     // Small leftovers (appended): Haste's extra action is available (granted at turn start while hasted, not lethargic);
     // Slow: an attack was made this turn; Aggressive: this turn's bonus Dash was Aggressive (movement toward a hostile, sim's).
     bool haste_action = false, slow_attacked = false, aggressive_dash = false;
+    // R-G11 rules PR 2 (appended): a zone row with loses_action took this turn's action (Stinking Cloud, D9); set together
+    // with action = false, gone with the turn.
+    bool action_lost = false;
 };
 
 // Answer to a reaction window (names/layout shared with sim::Combat).
@@ -151,6 +154,12 @@ struct ActionRequest {
     bool has_zone_dest = false; int32_t zone_x = 0, zone_y = 0;
     std::vector<CombatantId> zone_excluded = {};
     uint32_t zone_move = 0; uint16_t zone_move_ft = 0;
+    // appended (R-G11 rules PR 2, CastSpell of a zone; log-relevant, SIM_EVENTS.md log_hash tag 0xB9): a wall's end tile
+    // (shape Line: from zone_x / zone_y to zone_x2 / zone_y2, opaque to rules), its damaging side (ZoneSpec::sided: +1 / -1,
+    // required then; 0 otherwise) and the ring form (ZoneSpec::ring_size_ft > 0).
+    bool has_zone_end = false; int32_t zone_x2 = 0, zone_y2 = 0;
+    int8_t zone_side = 0;
+    bool zone_ring = false;
 };
 
 enum class EventKind : uint8_t {
@@ -201,7 +210,8 @@ inline constexpr std::size_t kEventKindCount = std::size_t(EventKind::Count_);
 //   v9 (R-G11): ZoneCreated actor=owner target=anchor creature (0 = a point zone) a=zone id b=spell id c=ZoneSpec flags;
 //   ZoneMoved actor=owner a=zone id b=feet moved (0 = not supplied); ZoneEnded actor=owner a=zone id b=reason (0 timer,
 //   1 concentration, 2 owner died / feature ended, 3 dispelled). A zone trigger emits FeatureTriggered{actor=owner,
-//   target=subject, a=spell id, b=TriggerOn::Zone*, c=outcome (0 saved, 1 no save, 3 failed save)} before its save / damage.
+//   target=subject, a=spell id, b=TriggerOn::Zone*, c=outcome (0 saved, 1 no save, 2 automatic success: immune, no roll, 3 failed save)} before its save /
+//   damage.
 // reaction_depth: 0 for the action itself, 1+ for events produced while resolving a reaction.
 struct Event { EventKind kind; CombatantId actor = 0, target = 0; int32_t a = 0, b = 0, c = 0;
                uint8_t reaction_depth = 0; };
@@ -459,6 +469,9 @@ struct EncounterHooks {
     // Is `creature` in zone `zone_id` now (any footprint tile covered), or completely within it (every tile) when `completely`?
     // Pure and synchronous, from sim's positions. Answers Appear, StartTurn and EndTurn. Empty = nobody is in any zone.
     std::function<bool(const EncounterState&, uint32_t zone_id, CombatantId creature, bool completely)> zone_contains;
+    // R-G11 rules PR 2 (appended): is `creature` within the damaging side of a sided zone (Wall of Fire: within side_ft of a
+    // wall tile on the chosen side, wall tiles excluded; Q4)? Asked only by region 1 rows. Empty = nobody is.
+    std::function<bool(const EncounterState&, uint32_t zone_id, CombatantId creature)> zone_side_contains;
 };
 
 // R-G11: a live zone or aura (ZONES_AURAS.md §2.6). anchor_x / anchor_y: a point zone's sim tile, opaque to rules (Q1).
@@ -476,6 +489,14 @@ struct ActiveZone {
     bool has_anchor_tile = false; int32_t anchor_x = 0, anchor_y = 0;
     std::vector<CombatantId> excluded{};       // ascending; unaffected creatures (Spirit Guardians)
     std::vector<ZoneFired> fired{};
+    // appended (R-G11 rules PR 2): size_ft after upcasting (ZoneSpec::size_ft + upcast_size_ft per slot level above; a
+    // ring's ring_size_ft); a wall's end tile (opaque, like the anchor), its damaging side (+1 / -1, 0 = none) and ring form;
+    // feature: created by add_feature_aura (no spell cast; ends when its owner dies, ZoneEnded reason 2).
+    uint16_t size_ft = 0;
+    bool has_end_tile = false; int32_t end_x = 0, end_y = 0;
+    int8_t side = 0;
+    bool ring = false;
+    bool feature = false;
 };
 
 // R-G8: a condition with a source (Grappled: the grappler and the escape DC; Charmed / Frightened: the caster).
@@ -680,6 +701,12 @@ const ActiveZone* find_zone(const EncounterState&, uint32_t zone_id);
 // next_zone_id, every ActiveZone field in order, and the zone-bound effects (ActiveSpellEffect::zone_id != 0).
 bool has_zone_state(const EncounterState&);
 uint64_t zones_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
+// R-G11 rules PR 2 (D7 model): a feature aura (no cast, no concentration, no timer) of `spell_id`'s ZoneSpec centred on `owner`
+// (anchor Creature), e.g. a Paladin aura at encounter start. Appends ZoneCreated to `events` when given. Returns the zone id,
+// 0 when the spell is unknown, not a Zone with anchor Creature, or the owner is missing or dead.
+uint32_t add_feature_aura(EncounterState&, CombatantId owner, uint32_t spell_id, std::vector<Event>* events = nullptr);
+// R-G11 rules PR 2: is `id` completely inside a live Silence zone (kZoneSilence; hooks.zone_contains)?
+bool in_silence(const EncounterState&, CombatantId id);
 
 std::vector<ActionRequest> legal_actions(const EncounterState&);   // for AI + UI (current actor)
 CombatantId                current_actor(const EncounterState&);

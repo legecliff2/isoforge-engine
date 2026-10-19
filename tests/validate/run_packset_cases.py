@@ -37,7 +37,17 @@ FIGHTER = ("characters/fighter_1.json", doc("characters/fighter_1.json"))
 CHUNK = ("chunks/0_0_0.json", doc("chunks/0_0_0.json"))   # spawns fighter_1 + goblin
 
 
-def make(root: Path, dirname: str, pid: str, version: str = "1.2.0", depends=(), files=()) -> Path:
+def core_fighter(**equipment_edit) -> tuple[str, dict]:
+    """srd51.core's character@4 fighter_level_1 moved into test.a: its equipment[] names srd51.item.* item@1 documents
+    (chain_mail, shield, longsword, crossbow_light) without value_gp, so check 6/11 must resolve them in the dependency."""
+    d = json.loads((CORE / "characters/fighter_level_1.json").read_text(encoding="utf-8"))
+    d["id"] = "test.a.character.fighter"
+    for i, item in equipment_edit.get("set", []):
+        d["equipment"][i] = item
+    return ("characters/fighter.json", d)
+
+
+def make(root: Path, dirname: str, pid: str, version: str = "1.2.0", depends=(), files=(), api_level: int | None = None) -> Path:
     pack = root / dirname
     for rel, d in files:
         (pack / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -45,6 +55,8 @@ def make(root: Path, dirname: str, pid: str, version: str = "1.2.0", depends=(),
     man = dict(BASE_MAN, id=pid, version=version, contents=sorted(rel for rel, _ in files),
                depends=[{"id": i, "version": r} for i, r in depends])
     man.pop("entry_script", None)
+    if api_level is not None:
+        man["api_level"] = api_level
     pack.mkdir(parents=True, exist_ok=True)
     (pack / "manifest.json").write_text(json.dumps(man, indent=2), encoding="utf-8")
     return pack
@@ -87,6 +99,24 @@ def cases(t: Path):
             make(t / "a9", "core", "srd51.core", files=[]),
             make(t / "a9", "other", "test.other", files=[GOBLIN])],
            False, "archetype 'srd51.monster.goblin' not defined in pack or its depends")
+    # item@1 ids of dependency packs are content ids (C++ PackSet indexes monster, character, spell and item documents)
+    yield ("dependency_items_resolve",
+           [make(t / "a11", "a", "test.a", depends=[("srd51.core", "^1.0")], files=[core_fighter()], api_level=2), CORE],
+           True, "")
+    yield ("unknown_item_still_errors",
+           [make(t / "a12", "a", "test.a", depends=[("srd51.core", "^1.0")],
+                 files=[core_fighter(set=[(2, {"item": "srd51.item.vorpal_sword", "equipped": True})])], api_level=2), CORE],
+           False, "/equipment/2: item 'srd51.item.vorpal_sword' is not an item@1 in this pack or its depends (check 6/11)")
+    yield ("dependency_item_not_in_non_dependency",
+           [make(t / "a13", "a", "test.a", depends=[("test.gear", "^1.0")],
+                 files=[core_fighter(set=[(2, {"item": "test.other.item.longsword", "equipped": True})])], api_level=2),
+            make(t / "a13", "gear", "test.gear", depends=[("srd51.core", "^1.0")], api_level=2), CORE,
+            make(t / "a13", "other", "test.other", files=[("items/longsword.json", dict(json.loads((CORE / "items/longsword.json").read_text(encoding="utf-8")), id="test.other.item.longsword"))], api_level=2)],
+           False, "/equipment/2: item 'test.other.item.longsword' is not an item@1 in this pack or its depends (check 6/11)")
+    yield ("duplicate_item_id_across_set",
+           [make(t / "a14", "a", "test.a", depends=[("srd51.core", "^1.0")],
+                 files=[("items/shield.json", json.loads((CORE / "items/shield.json").read_text(encoding="utf-8")))], api_level=2), CORE],
+           False, "duplicate_content_id")
     yield ("srd51_escape_hatch_warns_without_core",
            [make(t / "a10", "a", "test.a", files=[CHUNK, FIGHTER])], True, "escape hatch is deprecated")
 

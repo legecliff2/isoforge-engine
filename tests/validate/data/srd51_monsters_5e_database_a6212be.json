@@ -903,6 +903,276 @@
      ]
     }
    ]
+  },
+  "jackal": {
+   "name": "Jackal",
+   "size": "Small",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 3,
+   "hp_roll": "1d6",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    8,
+    15,
+    11,
+    3,
+    12,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 1,
+     "damage_options": [
+      [
+       [
+        "1d4-1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "kobold": {
+   "name": "Kobold",
+   "size": "Small",
+   "type": "humanoid",
+   "ac": [
+    12
+   ],
+   "hp": 5,
+   "hp_roll": "2d6-2",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    7,
+    15,
+    9,
+    8,
+    7,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Dagger",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Sling",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "wolf": {
+   "name": "Wolf",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 11,
+   "hp_roll": "2d8+2",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    12,
+    15,
+    12,
+    3,
+    12,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d4+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "dire-wolf": {
+   "name": "Dire Wolf",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    14
+   ],
+   "hp": 37,
+   "hp_roll": "5d10+10",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "50 ft."
+   },
+   "abilities": [
+    17,
+    15,
+    15,
+    3,
+    12,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "orc": {
+   "name": "Orc",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    13
+   ],
+   "hp": 15,
+   "hp_roll": "2d8+6",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    16,
+    12,
+    16,
+    7,
+    11,
+    10
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Greataxe",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d12+3",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Javelin",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "berserker": {
+   "name": "Berserker",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    13
+   ],
+   "hp": 67,
+   "hp_roll": "9d8+27",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    16,
+    12,
+    17,
+    9,
+    11,
+    9
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Greataxe",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d12+3",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://isoforge.dev/schemas/item/v1.schema.json",
   "title": "item@1",
-  "description": "Equipment: weapons, armor and shields (docs/proposals/VERSION_BUMP_BATCH.md section 10). Discriminated by 'category'; each arm is a closed propertyNames allow-list (allowed == required + optional, tested by tests/validate/test_union_arms.py). Weapon damage[] is BASE damage only (weapon die; never the magic bonus or the ability modifier). Cross-field rules (range[1] >= range[0], reach 10 iff the 'reach' property, bonus_attack riders) are validator checks 15 and 17. Integers only (4.3).",
+  "description": "Equipment: weapons, armor, shields and valuables (gems; docs/CONTENT_CONVENTIONS.md section 7) (docs/proposals/VERSION_BUMP_BATCH.md section 10). Discriminated by 'category'; each arm is a closed propertyNames allow-list (allowed == required + optional, tested by tests/validate/test_union_arms.py). Weapon damage[] is BASE damage only (weapon die; never the magic bonus or the ability modifier). Cross-field rules (range[1] >= range[0], reach 10 iff the 'reach' property, bonus_attack riders) are validator checks 15 and 17. Integers only (4.3).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -67,7 +67,8 @@
       "enum": [
         "weapon",
         "armor",
-        "shield"
+        "shield",
+        "valuable"
       ]
     },
     "cost_cp": {
@@ -395,6 +396,32 @@
             "description",
             "ac_bonus",
             "magic_bonus"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "category"
+        ],
+        "properties": {
+          "category": {
+            "const": "valuable"
+          }
+        }
+      },
+      "then": {
+        "propertyNames": {
+          "enum": [
+            "$schema",
+            "id",
+            "name",
+            "source",
+            "category",
+            "cost_cp",
+            "weight_oz",
+            "description"
           ]
         }
       }

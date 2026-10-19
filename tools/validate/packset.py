@@ -79,6 +79,9 @@ def satisfies(version: str, rng: str) -> bool:
     return v >= lo and (hi is None or v < hi)
 
 
+CONTENT_TYPES = ("monster", "character", "spell", "item")   # pack_set.cpp: the types whose ids are content ids
+
+
 @dataclass
 class Pack:
     id: str
@@ -98,15 +101,20 @@ def load_pack(dir: Path) -> Pack | None:
     except (OSError, ValueError):
         return None
     p = Pack(str(man.get("id", "")), str(man.get("version", "")), dir, man)
-    for rel in sorted(man.get("contents", [])):
+    # Mirrors eng::assets::PackSet (engine/core/assets/src/pack_set.cpp, content id indexing): the string entries of an
+    # array `contents`, sorted; *.json only; the type is the `$schema` string up to '@'; monster, character, spell and
+    # item documents with a string id are content ids (first file per id wins, like std::map::emplace).
+    contents = man.get("contents")
+    for rel in sorted(c for c in (contents if isinstance(contents, list) else []) if isinstance(c, str)):
         if not rel.endswith(".json"):
             continue
         try:
             d = json.loads((dir / rel).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        typ = str(d.get("$schema", "")).split("@")[0] if isinstance(d, dict) else ""
-        if typ in ("monster", "character", "spell") and isinstance(d.get("id"), str):
+        sch = d.get("$schema") if isinstance(d, dict) else None
+        typ = sch.split("@")[0] if isinstance(sch, str) else ""
+        if typ in CONTENT_TYPES and isinstance(d.get("id"), str):
             p.content_ids.setdefault(d["id"], rel)   # in-pack duplicates are per-pack errors elsewhere
     return p
 

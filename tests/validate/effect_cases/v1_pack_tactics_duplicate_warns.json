@@ -1,0 +1,31 @@
+{
+  "base": "characters/fighter_1.json",
+  "schema": "character@1",
+  "sets": [
+    [
+      [
+        "features",
+        0,
+        "effect"
+      ],
+      {
+        "kind": "pack_tactics"
+      }
+    ],
+    [
+      [
+        "features",
+        2
+      ],
+      {
+        "id": "pack_tactics_2",
+        "name": "Pack Tactics",
+        "effect": {
+          "kind": "pack_tactics"
+        }
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "duplicate 'pack_tactics' effect"
+}

@@ -1672,6 +1672,73 @@ Scope: §2.10 item 1. Branch `feat/rules-zones` from main after #112 (b106b45) a
   - Spirit Guardians' evil-caster necrotic is content.
   - `needs_conscious_owner` and the passive aura fields are deferred (D7).
 
+### 7.2m R-G11 zones and auras, rules PR 2 (rules side) and hand-off
+
+Scope per `docs/proposals/ZONES_AURAS.md` §2.10 item 2 (Silence, Stinking Cloud, Wall of Fire, Fog Cloud / Darkness flags) plus
+what PR 1 (#118, 7.2l) deferred: Moonbeam's shapechanger rule, Spirit Guardians' evil-caster damage, and the D7 creature-anchored
+aura fields (the Paladin aura content stays deferred by D7). Tests: `engine/rules/tests/zones2_tests.cpp`. No new event kind (v9
+unchanged), no golden moved.
+
+**Rules API (all appended, defaults keep PR 1 behaviour):**
+- `ZoneTriggerRow`: `region` (1 = the zone or its damaging side, for hook-answered rows), `loses_action`, `auto_success_damage`,
+  `auto_success_conditions`, `auto_success_no_breath`, `shapechanger_disadvantage`, `has_evil_damage_type` / `evil_damage_type`.
+- `ZoneSpec`: `upcast_size_ft` (Fog Cloud), `ring_size_ft`, `sided`, `side_ft` (Wall of Fire), and the D7 fields
+  `aura_modifier` (stat Save only for now), `has_aura_bonus_ability` / `aura_bonus_ability`, `aura_immunity`,
+  `aura_allies_only`; `needs_conscious_owner` (from PR 1) now suppresses the zone's rows and passive effects while its owner is
+  dead, at 0 HP or unconscious.
+- `ActiveZone`: `size_ft` (after upcast; a ring's `ring_size_ft`), `has_end_tile` / `end_x` / `end_y`, `side`, `ring`, `feature`.
+- `ActionRequest` (CastSpell of a zone, log_hash **0xB9**): `has_zone_end`, `zone_x2`, `zone_y2`, `zone_side` (required +1 / -1
+  for a sided zone, else 0), `zone_ring`. Refused on other spells, on `zone_move`, and on non-CastSpell requests.
+- `TurnBudget::action_lost`; `Combatant::no_breath`, `shapechanger`, `evil` (content facts, not hashed).
+- Hook `zone_side_contains(state, zone_id, creature)`; functions `in_silence(state, id)` and
+  `add_feature_aura(state, owner, spell_id, events*)`.
+- `FeatureTriggered.c = 2` for a zone row's automatic success.
+
+**Behaviour:**
+- Silence (`kZoneSilence`): completely inside (`zone_contains(..., true)`) = no spell with a V component (cast refused before
+  `can_provide_components`, nothing rolled; also filtered from `legal_actions` and reaction-spell options; Subtle Spell lifts it),
+  thunder damage immunity at damage time, and Deafened as a zone-bound effect applied at creation, on Enter / MoveWithin, on an
+  aura or zone move onto the creature, and at its turn start; it ends on leaving or with the zone.
+- Stinking Cloud: a StartTurn row with `completely_within` and `loses_action`. The StartTurn rows still run before the turn's
+  budget is built (as in PR 1); the lost action is carried over the reset, so the creature keeps its movement, bonus action and
+  Haste action (D9). A row with `loses_action` outside the creature's own turn does nothing.
+- Wall of Fire: shape Line (start tile = `zone_x` / `zone_y`, end tile = `zone_x2` / `zone_y2`) or a ring; Appear Dex half;
+  EndTurn with `region = 1` (in the wall or on the chosen side, no save, D4); Enter (wall only, no save). `legal_actions` lists
+  each form: line / ring x side +1 / -1.
+- Fog Cloud / Darkness: flags only until R-G13 (Q6); Fog Cloud's radius grows with `upcast_size_ft`.
+- Moonbeam: shapechangers save with disadvantage. **Reverting the form on a failure is not modelled** (no shapechange state
+  before R-G12).
+- Spirit Guardians: an evil owner (`Combatant::evil`) deals `evil_damage_type` (necrotic).
+- D7: `aura_modifier` adds a flat save bonus (`bonus`, or max(1, owner's `aura_bonus_ability` modifier)) to the owner and
+  creatures in the aura (owner's team only with `aura_allies_only`); the same spell's auras don't stack. `aura_immunity` blocks
+  those conditions from being applied (spell saves, ApplyCondition, HP pools, zone rows, shove prone, sourced conditions); a
+  condition already present is not removed. A feature aura (`add_feature_aura`) of a dead owner ends at the next round start
+  (`ZoneEnded{2}`).
+
+**Engine Core hand-off (sim), in addition to 7.2l:**
+1. Implement `zone_side_contains` (§3 Q4: within `side_ft` / 2 tiles of a wall tile on the chosen side, wall tiles excluded;
+   ring inside / outside) and the Line / ring geometry in `zone_contains`, from `ActiveZone::anchor_*`, `end_*`, `ring`,
+   `size_ft` (use `ActiveZone::size_ft`, not `ZoneSpec::size_ft`, so upcast Fog Cloud is right).
+2. Fill `has_zone_end` / `zone_x2` / `zone_y2` from the UI / AI choice for line walls (and validate range / LOS); pass
+   `zone_side` / `zone_ring` through from `legal_actions`.
+3. Fold `has_zone_end` byte, `zone_x2` i32, `zone_y2` i32, `zone_side` byte, `zone_ring` byte under `log_hash` 0xB9 when any is set.
+   `zones_digest` (0xAB) already covers the new `ActiveZone` fields and `action_lost`; no new `Combat::hash` tag.
+4. Call `add_feature_aura` for creatures whose feature carries an aura, once content exists (D7 deferred), and forward its
+   `ZoneCreated`.
+
+**T&C hand-off (content):** `spell@1` `zone` keys for the new fields (`upcast_size_ft`, `ring_size_ft`, `sided`, `side_ft`; row
+`region`, `loses_action`, `auto_success_*`, `shapechanger_disadvantage`, `evil_damage_type`; `line` shape with `length_ft`) and
+`Combatant` keys `no_breath`, `shapechanger`, `evil` on monster / character archetypes. Silence needs only `flags: ["silence"]`
+(as in #119's fixture): rules derives the V block, thunder immunity and deafness from the flag. `needs_conscious_owner` keeps
+that name (T&C #119).
+
+**Loader (folded into this PR, own commit):** `rules5e_content` `spell_loader.cpp` parses kind `zone` per
+`docs/CONTENT_CONVENTIONS.md` section 4 (final): every section 4 key, `needs_conscious_owner` onto the D7 field, the section 4.4
+cross-field rules with the validator's messages, and an expiry timer from the duration. It parses only the keys the schema has
+today; the PR 2 fields above (`upcast_size_ft`, `ring_size_ft`, `sided`, `side_ft`, `line`, the new row keys) are refused as
+`zone: unknown key ...` until T&C adds them to `schemas/spell/v1.schema.json` / `check_spell_zone`, and the loader gains them in
+the same PR.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
@@ -1974,7 +2041,8 @@ non-empty** (Q10, decided), with these obligations:
 
 `item@1` makes equipment data so Sneak Attack (`finesse`), riders and `same_as_weapon` damage have a
 source and so AC can be computed (§12 row 15). **The discriminator is `category`**
-(`weapon | armor | shield`); each arm uses the closed-union convention (§3.1). Common fields: `$schema`
+(`weapon | armor | shield`, plus `valuable` appended later: gems with only the common fields, docs/CONTENT_CONVENTIONS.md
+section 7.1); each arm uses the closed-union convention (§3.1). Common fields: `$schema`
 (`const "item@1"`), `id` (`content_id`), `name`, `source`, `category`, `cost_cp` (integer, copper
 pieces), `weight_oz` (integer, ounces; integers only), `description`.
 
