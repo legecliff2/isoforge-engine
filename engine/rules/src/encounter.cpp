@@ -189,9 +189,51 @@ void sweep_concentration(EncounterState& s, std::vector<Event>& ev) {
     }
 }
 
+// ---- Triggers (rows 9a/9b), defined before do_attack ----
+struct TrigSrc {                 // who dealt the damage, and how (attack facts for weapon predicates)
+    Combatant* who = nullptr;
+    const Attack* atk = nullptr; // null for spell/save damage
+    bool is_spell = false;
+    RollMode mode = RollMode::Normal;
+    bool ally = false;
+};
+struct TrigCtx {                 // facts a predicate can read
+    const Attack* atk = nullptr;
+    bool is_spell = false;
+    RollMode mode = RollMode::Normal;
+    bool ally = false;
+    bool crit = false;
+    uint32_t types = 0;          // damage types of the event (bitmask)
+    int dmg = 0;                 // damage taken / dealt (Save predicate dc_from_damage)
+};
+struct TrigOut { bool set_hp = false; int16_t hp = 0; };
+bool run_event_triggers(EncounterState& s, Combatant& owner, Combatant& subject, TriggerOn on, const TrigCtx& x,
+                        std::vector<Event>& ev, TrigOut* out = nullptr);
+
 // Damage plus the concentration check (SRD: CON save, DC max(10, half the damage taken)).
-void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bool critical, std::vector<Event>& ev) {
-    after_damage(t, d, critical, ev);
+void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bool critical, std::vector<Event>& ev,
+                     const TrigSrc* src = nullptr) {
+    DamageApplied applied = d;
+    Combatant* attacker = src && src->who && src->who != &t && !src->who->dead ? src->who : nullptr;
+    const bool was_up = t.hp > 0;
+    if (!t.triggers.empty() && d.dropped_to_zero && !d.instant_death) {   // Undead Fortitude: before the drop applies
+        TrigCtx x; x.atk = src ? src->atk : nullptr; x.is_spell = src && src->is_spell; x.crit = critical;
+        x.types = d.types_dealt; x.dmg = d.dealt;
+        TrigOut o;
+        run_event_triggers(s, t, attacker ? *attacker : t, TriggerOn::DropToZero, x, ev, &o);
+        if (o.set_hp) {
+            applied.hp_after = std::max<int16_t>(1, std::min<int16_t>(o.hp, t.hp_max));
+            applied.dropped_to_zero = false;
+        }
+    }
+    after_damage(t, applied, critical, ev);
+    if (attacker && !attacker->triggers.empty() && d.dealt > 0) {
+        TrigCtx x; x.atk = src->atk; x.is_spell = src->is_spell; x.mode = src->mode; x.ally = src->ally; x.crit = critical;
+        x.types = d.types_dealt; x.dmg = d.dealt;
+        run_event_triggers(s, *attacker, t, TriggerOn::DamageDealt, x, ev);
+        if (was_up && (t.dead || t.hp <= 0) && !attacker->dead)
+            run_event_triggers(s, *attacker, t, TriggerOn::ReduceToZero, x, ev);
+    }
     if (d.dealt <= 0) return;
     if (t.concentration_spell != 0) {
         if (t.dead || t.hp <= 0) end_concentration(s, t.id, ev);
@@ -370,13 +412,25 @@ bool being_hit_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, c
     return true;
 }
 
-// ---- Triggers (row 9a): Hit / Crit events with extra_damage riders ----
+// ---- Triggers (rows 9a/9b): predicates, limits, effects ----
 
-bool predicate_holds(const EncounterState& s, const Combatant& owner, const Combatant& target, const Attack& atk,
-                     bool is_spell, RollMode mode, bool ally_near, bool crit, const Predicate& p) {
+std::vector<Combatant*> area_save_targets(EncounterState& s, const Combatant& owner, const SpellDef& def);
+std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& def, uint8_t lvl,
+                                       const std::vector<Combatant*>& T, bool within_5ft, std::vector<Event>& ev);
+
+struct DepthGuard {   // an area_save / damage_dealt chain cannot recurse without bound
+    static int& depth() { thread_local int d = 0; return d; }
+    DepthGuard() { ++depth(); }
+    ~DepthGuard() { --depth(); }
+};
+
+// Evaluates one predicate. `failed_save` is set when a Save predicate was rolled and failed.
+bool predicate_holds(EncounterState& s, Combatant& owner, const Combatant& subject, const TrigCtx& x, const Predicate& p,
+                     std::vector<Event>& ev, bool& failed_save) {
     switch (p.kind) {
     case PredicateKind::Weapon: {
-        if (is_spell) return false;
+        if (x.is_spell || !x.atk) return false;
+        const Attack& atk = *x.atk;
         switch (WeaponIs(p.a)) {
         case WeaponIs::Melee: return !atk.ranged;
         case WeaponIs::Ranged: return atk.ranged;
@@ -385,17 +439,136 @@ bool predicate_holds(const EncounterState& s, const Combatant& owner, const Comb
         }
         return false;
     }
-    case PredicateKind::AdvantageOrAllyAdjacent: return mode == RollMode::Advantage || (ally_near && mode != RollMode::Disadvantage);
-    case PredicateKind::TargetCreatureType: return (p.mask & bit(target.creature_type)) != 0;
-    case PredicateKind::NotCreatureType: return (p.mask & bit(target.creature_type)) == 0;
-    case PredicateKind::DamageTypeIs: return (p.mask & bit(atk.type)) != 0;
-    case PredicateKind::DamageTypeNot: return (p.mask & bit(atk.type)) == 0;
-    case PredicateKind::NotCrit: return !crit;
+    case PredicateKind::AdvantageOrAllyAdjacent: return x.mode == RollMode::Advantage || (x.ally && x.mode != RollMode::Disadvantage);
+    case PredicateKind::TargetCreatureType: return (p.mask & bit(subject.creature_type)) != 0;
+    case PredicateKind::NotCreatureType: return (p.mask & bit(subject.creature_type)) == 0;
+    case PredicateKind::DamageTypeIs: return (p.mask & x.types) != 0;
+    case PredicateKind::DamageTypeNot: return (p.mask & x.types) == 0;
+    case PredicateKind::NotCrit: return !x.crit;
     case PredicateKind::MovedAtLeastFt: return owner.id == current_actor(s) && s.budget.moved_ft >= p.a;   // own turn only
     case PredicateKind::SelfHpBelow: return int(owner.hp) * int(p.b) < int(owner.hp_max) * int(p.a);
-    case PredicateKind::Save: return false;   // reserved (9b)
+    case PredicateKind::Save: {   // the owner rolls: a = Ability, b = DC (or the base with mask bit 0 = dc_from_damage)
+        const int dc = int(p.b) + ((p.mask & 1u) ? x.dmg : 0);
+        const Ability ab = Ability(p.a);
+        auto r = saving_throw(s.rng, owner, ab, dc);
+        emit(ev, EventKind::SavingThrowRolled, owner.id, CombatantId(ab), r.roll.natural, r.roll.total, int32_t(r.success));
+        if (!r.success) failed_save = true;
+        return r.success;
+    }
     }
     return false;
+}
+
+// Can effect `e` of a trigger on `on` do something right now? Reserved combinations never fire.
+bool effect_applies(const EncounterState& s, const Combatant& owner, TriggerOn on, const RiderEffect& e) {
+    switch (e.kind) {
+    case RiderKind::HealSelf: case RiderKind::TempHp:
+        return on != TriggerOn::Hit && on != TriggerOn::Crit && !owner.dead;
+    case RiderKind::SetHp: return on == TriggerOn::DropToZero;
+    case RiderKind::BonusAttack:
+        return (on == TriggerOn::ReduceToZero || on == TriggerOn::DamageDealt) && !owner.dead && owner.id == current_actor(s) &&
+               s.budget.bonus_action && e.value >= 0 && std::size_t(e.value) < owner.attacks.size();
+    case RiderKind::AreaSave: {
+        if (on == TriggerOn::Hit || on == TriggerOn::Crit || !s.hooks.area_targets) return false;
+        const SpellDef* d = s.hooks.spells ? s.hooks.spells->find(e.spell_id) : nullptr;
+        return d && d->kind == SpellEffectKind::Save;
+    }
+    default: return false;   // ExtraDamage (hit/crit only, in fire_hit_triggers), save_condition/apply_condition/spend (9c)
+    }
+}
+
+// Fires the non-attack-roll triggers of `owner` for event `on` (damage_dealt, reduce_to_zero, drop_to_zero, death,
+// turn_start, turn_end). Emits FeatureTriggered (actor = owner, target = subject, a = trigger id, b = TriggerOn,
+// c = 1 applied / 3 failed save) and applies the effects in order. No triggers, no events, no rng.
+bool run_event_triggers(EncounterState& s, Combatant& owner, Combatant& subject, TriggerOn on, const TrigCtx& x,
+                        std::vector<Event>& ev, TrigOut* out) {
+    if (owner.triggers.empty() || DepthGuard::depth() >= 4) return false;
+    DepthGuard guard;
+    const uint32_t turn_stamp = uint32_t(s.round) << 16 | s.turn_index;
+    if (owner.trigger_turn_stamp != turn_stamp) { owner.trigger_turn_stamp = turn_stamp; owner.trigger_turn_mask = 0; }
+    if (owner.trigger_round_stamp != s.round) { owner.trigger_round_stamp = s.round; owner.trigger_round_mask = 0; }
+    bool fired = false;
+    for (std::size_t i = 0; i < owner.triggers.size() && i < 32; ++i) {
+        const Trigger& tr = owner.triggers[i];
+        if (tr.on != on || tr.choice != 0) continue;
+        const uint32_t m = uint32_t(1) << i;
+        if (tr.limit == TriggerLimit::OncePerTurn && (owner.trigger_turn_mask & m)) continue;
+        if (tr.limit == TriggerLimit::OncePerRound && (owner.trigger_round_mask & m)) continue;
+        bool any = false;
+        for (const RiderEffect& e : tr.effects) if (effect_applies(s, owner, on, e)) any = true;
+        if (!any) continue;
+        bool ok = true, failed_save = false;
+        for (const Predicate& p : tr.when)
+            if (!predicate_holds(s, owner, subject, x, p, ev, failed_save)) { ok = false; break; }
+        if (!ok) {
+            if (failed_save) emit(ev, EventKind::FeatureTriggered, owner.id, subject.id, int32_t(tr.id), int32_t(on), 3);
+            continue;
+        }
+        if (tr.limit == TriggerLimit::OncePerTurn) owner.trigger_turn_mask |= m;
+        if (tr.limit == TriggerLimit::OncePerRound) owner.trigger_round_mask |= m;
+        emit(ev, EventKind::FeatureTriggered, owner.id, subject.id, int32_t(tr.id), int32_t(on), 1);
+        fired = true;
+        for (const RiderEffect& e : tr.effects) {
+            if (!effect_applies(s, owner, on, e)) continue;
+            switch (e.kind) {
+            case RiderKind::HealSelf: case RiderKind::TempHp: {
+                const int amt = (e.dice.count > 0 || e.dice.bonus > 0) ? std::max(0, roll_dice(s.rng, e.dice)) : int(e.value);
+                if (amt <= 0) break;
+                if (e.kind == RiderKind::TempHp) {   // temporary HP never stack: keep the larger pool
+                    if (amt > owner.temp_hp) owner.temp_hp = int16_t(amt);
+                } else {
+                    auto h = apply_healing(owner, int16_t(amt));
+                    commit_healing(owner, h);
+                    emit(ev, EventKind::Healed, owner.id, owner.id, h.healed, h.hp_after, h.from_zero);
+                }
+                break;
+            }
+            case RiderKind::SetHp:
+                if (out) { out->set_hp = true; out->hp = e.value; }
+                break;
+            case RiderKind::BonusAttack:
+                s.budget.bonus_attack_grant = uint8_t(e.value + 1);   // spent by Attack with as_bonus_action
+                break;
+            case RiderKind::AreaSave: {
+                const SpellDef* d = s.hooks.spells->find(e.spell_id);
+                std::vector<Combatant*> T = area_save_targets(s, owner, *d);
+                if (T.empty()) break;
+                std::vector<ReactionRecord> recs;   // a Save effect opens no reaction windows
+                Ctx local{recs};
+                resolve_effect(s, local, owner, *d, 0, T, false, ev);
+                break;
+            }
+            default: break;
+            }
+        }
+    }
+    return fired;
+}
+
+std::vector<Combatant*> area_save_targets(EncounterState& s, const Combatant& owner, const SpellDef& def) {
+    std::vector<Combatant*> T;
+    for (CombatantId id : s.hooks.area_targets(s, owner, def)) {
+        Combatant* c = find_mut(s, id);
+        if (c && !c->dead && c->id != owner.id && std::find(T.begin(), T.end(), c) == T.end()) T.push_back(c);
+    }
+    return T;
+}
+
+// Death triggers (Death Burst) of creatures that died during this step, after all the step's events: queued so a
+// reaction window cannot nest inside a death. A burst that kills another trigger owner is handled on the next pass.
+void process_deaths(EncounterState& s, std::vector<Event>& ev) {
+    for (std::size_t pass = 0; pass < s.combatants.size(); ++pass) {
+        bool any = false;
+        for (std::size_t i = 0; i < s.combatants.size(); ++i) {
+            Combatant& c = s.combatants[i];
+            if (!c.dead || c.death_triggers_done || c.triggers.empty()) continue;
+            c.death_triggers_done = true;
+            any = true;
+            TrigCtx x;
+            run_event_triggers(s, c, c, TriggerOn::Death, x, ev);
+        }
+        if (!any) break;
+    }
 }
 
 // Fires every Hit / Crit trigger of `a` whose predicates hold and whose limit allows it; emits FeatureTriggered
@@ -406,6 +579,7 @@ std::vector<const RiderEffect*> fire_hit_triggers(EncounterState& s, Combatant& 
                                                   std::vector<Event>& ev) {
     std::vector<const RiderEffect*> out;
     if (a.triggers.empty()) return out;
+    TrigCtx x; x.atk = &atk; x.is_spell = is_spell; x.mode = mode; x.ally = ally_near; x.crit = crit; x.types = bit(atk.type);
     const uint32_t turn_stamp = uint32_t(s.round) << 16 | s.turn_index;
     if (a.trigger_turn_stamp != turn_stamp) { a.trigger_turn_stamp = turn_stamp; a.trigger_turn_mask = 0; }
     if (a.trigger_round_stamp != s.round) { a.trigger_round_stamp = s.round; a.trigger_round_mask = 0; }
@@ -416,14 +590,14 @@ std::vector<const RiderEffect*> fire_hit_triggers(EncounterState& s, Combatant& 
         const uint32_t m = uint32_t(1) << i;
         if (tr.limit == TriggerLimit::OncePerTurn && (a.trigger_turn_mask & m)) continue;
         if (tr.limit == TriggerLimit::OncePerRound && (a.trigger_round_mask & m)) continue;
-        bool ok = true;
+        bool ok = true, failed_save = false;
         for (const Predicate& p : tr.when)
-            if (!predicate_holds(s, a, t, atk, is_spell, mode, ally_near, crit, p)) { ok = false; break; }
+            if (!predicate_holds(s, a, t, x, p, ev, failed_save)) { ok = false; break; }
         if (!ok) continue;
         bool any = false;
         for (const RiderEffect& e : tr.effects)
             if (e.kind == RiderKind::ExtraDamage) { out.push_back(&e); any = true; }
-        if (!any) continue;                                            // no 9a effect: reserved kinds do not fire yet
+        if (!any) continue;                                            // no hit effect: other kinds do not fire here
         if (tr.limit == TriggerLimit::OncePerTurn) a.trigger_turn_mask |= m;
         if (tr.limit == TriggerLimit::OncePerRound) a.trigger_round_mask |= m;
         emit(ev, EventKind::FeatureTriggered, a.id, t.id, int32_t(tr.id), int32_t(tr.on), 1);
@@ -462,6 +636,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     if (hit && within_5ft && (t.has(Condition::Paralyzed) || t.has(Condition::Unconscious))) crit = true;
     emit(ev, EventKind::AttackResolved, a.id, t.id, roll.natural, roll.total,
          int32_t(hit) | (int32_t(crit) << 1));
+    const TrigSrc tsrc{&a, &atk, spell_id != 0, atk_mode, ally_near_target};
     if (hit) {
         // Triggers that fire on this hit (Sneak Attack-style): their FeatureTriggered events come before the damage
         // dice; extra_damage riders are rolled with the attack's damage so a crit doubles them.
@@ -474,14 +649,14 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.dice, crit))), p.type});
             for (const RiderEffect* r : riders)
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, r->dice, crit))), r->same_as_weapon ? atk.type : r->type});
-            damage_creature(s, t, apply_damage_parts(t, parts, atk.qualifiers), crit, ev);
+            damage_creature(s, t, apply_damage_parts(t, parts, atk.qualifiers), crit, ev, &tsrc);
         } else if (atk.extra_damage.empty()) {
-            damage_creature(s, t, apply_damage(t, int16_t(dmg), atk.type, atk.qualifiers), crit, ev);
+            damage_creature(s, t, apply_damage(t, int16_t(dmg), atk.type, atk.qualifiers), crit, ev, &tsrc);
         } else {   // multi-component hit: one DamageDealt carrying the per-type-modified sum
             std::vector<DamagePiece> parts{{int16_t(dmg), atk.type}};
             for (const DamagePart& p : atk.extra_damage)
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.dice, crit))), p.type});
-            damage_creature(s, t, apply_damage_parts(t, parts, atk.qualifiers), crit, ev);
+            damage_creature(s, t, apply_damage_parts(t, parts, atk.qualifiers), crit, ev, &tsrc);
         }
     }
     return hit;
@@ -639,6 +814,10 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
             if (back) is.uses_left = 1;
             emit(ev, EventKind::RechargeRolled, c.id, 0, int32_t(is.spell_id), roll, back ? 1 : 0);
         }
+    }
+    if (!c.dead && !c.triggers.empty()) {   // turn_start triggers (after regeneration and recharge)
+        TrigCtx x;
+        run_event_triggers(s, c, c, TriggerOn::TurnStart, x, ev);
     }
     if (is_dying(c) && c.uses_death_saves) {
         auto r = roll_death_save(s.rng, c.death);
@@ -806,7 +985,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 if (d != t || t->dead) continue;
                 if (t->reaction_blocks_spell == def.id) continue;   // Shield: no damage from the darts
                 int dmg = std::max(0, roll_dice(s.rng, def.dice));
-                damage_creature(s, *t, apply_damage(*t, int16_t(dmg), def.damage_type, kAttackMagical), false, ev);
+                { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, apply_damage(*t, int16_t(dmg), def.damage_type, kAttackMagical), false, ev, &ts); }
             }
         }
         break;
@@ -825,7 +1004,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(def.save_ability), r.roll.natural, r.roll.total,
                  int32_t(r.success));
             int dealt = r.success ? (def.on_save == OnSave::Half ? dmg / 2 : 0) : dmg;
-            if (dealt > 0) damage_creature(s, *t, apply_damage(*t, int16_t(dealt), def.damage_type, dq), false, ev);
+            if (dealt > 0) { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, apply_damage(*t, int16_t(dealt), def.damage_type, dq), false, ev, &ts); }
             if (!r.success) affected.push_back(t);
             if (def.applies_condition && !r.success && !t->dead && !(t->condition_immunities & bit(def.condition))) {
                 if (!t->has(def.condition)) {
@@ -1082,6 +1261,7 @@ StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vecto
     StepResult r = step_impl(s, ctx, req);
     if (r.ok && req.kind != ActionKind::Ready) fire_readies(s, ctx, r.events);
     if (!r.ok) return r;
+    process_deaths(s, r.events);
     sweep_concentration(s, r.events);
     if (ctx.need && !replay_only) {
         std::vector<Event> provisional = std::move(r.events);
@@ -1246,6 +1426,10 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     case ActionKind::EndTurn:
         repeat_saves(s, a.id, RepeatSave::EndOfTurn, out.events);
         tick_effects_turn_end(s, a.id, out.events);
+        if (!a.dead && !a.triggers.empty()) {   // turn_end triggers
+            TrigCtx x;
+            run_event_triggers(s, a, a, TriggerOn::TurnEnd, x, out.events);
+        }
         emit(out.events, EventKind::TurnEnded, a.id);
         advance_turn(s, out.events);
         return out;
@@ -1330,12 +1514,18 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
         emit(out.events, EventKind::Dodged, a.id);
         return out;
     case ActionKind::Attack: {
-        if (req.as_bonus_action) return fail("attack is not a bonus action");
+        // A bonus-action attack exists only as a granted trigger rider (Rampage): bonus_attack_grant = index + 1.
+        const bool granted = req.as_bonus_action && b.bonus_attack_grant != 0 && b.bonus_action &&
+                             req.attack_index + 1 == b.bonus_attack_grant;
+        if (req.as_bonus_action && !granted) return fail("attack is not a bonus action");
         Combatant* t = find_mut(s, req.target);
         if (!t || t == &a) return fail("bad target");
         if (t->dead) return fail("target is dead");
         if (req.attack_index >= a.attacks.size()) return fail("bad attack index");
-        if (b.sequence != 0) {                                            // multiattack in progress
+        if (granted) {
+            b.bonus_action = false;
+            b.bonus_attack_grant = 0;
+        } else if (b.sequence != 0) {                                            // multiattack in progress
             if (req.multiattack != 0 && req.multiattack != b.sequence) return fail("another multiattack is in progress");
             if (b.sequence > a.multiattacks.size()) return fail("bad multiattack");
             const auto& seq = a.multiattacks[std::size_t(b.sequence - 1)].attacks;
@@ -1725,6 +1915,7 @@ uint64_t triggers_digest(const EncounterState& s, uint64_t h) {
         if (c.triggers.empty()) continue;
         u32(c.id); u32(uint32_t(c.triggers.size()));
         for (const auto& t : c.triggers) { u32(t.id); byte(uint8_t(t.on)); byte(uint8_t(t.limit)); byte(t.choice); }
+        byte(c.death_triggers_done ? 1 : 0);
         u32(c.trigger_turn_mask); u32(c.trigger_turn_stamp); u32(c.trigger_round_mask); u32(c.trigger_round_stamp);
     }
     return h;
