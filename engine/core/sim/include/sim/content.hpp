@@ -24,6 +24,13 @@ constexpr uint8_t footprint_of(CreatureSize s) noexcept {
     return s == CreatureSize::Large ? 2 : s == CreatureSize::Huge ? 3 : s == CreatureSize::Gargantuan ? 4 : 1;
 }
 
+// character@4 equipment[] entry as the sim's priced-material check sees it (CONTENT_CONVENTIONS §7): id read like
+// equipment_entry_id, value_gp default 0. Every entry is kept, in array order.
+struct EquipmentEntry {
+    std::string id;
+    uint32_t value_gp = 0;
+};
+
 struct Archetype {
     std::string id;                       // "srd51.monster.goblin"
     std::string pack_id;                  // owning pack ("" when added directly via add())
@@ -88,6 +95,7 @@ struct Archetype {
         if (!ai) return std::nullopt;
         return assets::make_script_key(pack_id, *ai);
     }
+    std::vector<EquipmentEntry> equipment;   // equipment[] in array order (priced materials; Combat copies it per combatant)
 };
 
 // Owns archetypes and the strings rules5e::Attack::id views into (stable addresses).
