@@ -46,9 +46,9 @@ Things that apply to many rows (so they are not repeated):
 | Movement on a grid, difficult terrain (2x), LOS | DATA | sim `Grid`, `step_cost_ft`, supercover LOS. |
 | Crawling while prone (extra movement cost) | NEW (wiring) | Rules done: a Move while Prone costs double (already in `Move`); sim's own movement budget is not wired (R-G8). |
 | Opportunity-attack exceptions (Disengage, teleport, forced movement) | DATA | Disengage implemented; teleport/forced movement do not exist yet (R-G9). |
-| Surprise (skip first turn, no reactions) | NEW | No surprise state in `begin_encounter` (R-G16). |
+| Surprise (skip first turn, no reactions) | NEW (wiring) | rules5e `Combatant::surprised` (only EndTurn on the first turn, no reactions until it ends), `surprised_by_stealth` (Stealth vs passive Perception), `apply_surprise` (R-G16, VERSION_BUMP_BATCH 7.2h); sim must supply the hiders / surprised set and fold 0xA8. |
 | Short / long rest: spell slots, Pact slots, feature uses | DATA | `recover_slots_short_rest/long_rest`, `recover_features`. |
-| Rests: Hit Dice spending, HP regained | NEW | No Hit Dice on `Combatant` (R-G16). |
+| Rests: Hit Dice spending, HP regained | NEW (wiring) | rules5e `Combatant::hit_die` / `hit_dice` / `hit_dice_max`, `spend_hit_dice`, `short_rest`, `long_rest` (rest.hpp, R-G16, 7.2h); no between-encounter rest flow in sim yet. |
 | Falling damage, suffocation, starvation, extreme heat | OOS | Hazard/exploration; not part of a fight. |
 | Mounted combat | OOS | No mounts in the SRD party we target. |
 | Underwater combat | OOS | Environment variant; defer. |
@@ -174,7 +174,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 |---|---|---|---|
 | Hit die d6, proficiencies, saves (Int/Wis) | 1 | DATA | Baked. |
 | Spellcasting, spellbook (known list), prepared spells, cantrips | 1 | DATA | `spells_known`; spellbook copying/prep is OOS (downtime). |
-| Arcane Recovery (once per day, short rest, recover slots <= half wizard level) | 1 | NEW | Rest-time feature with a choice of slot levels; `recover_slots_short_rest` only restores Pact slots (R-G16). |
+| Arcane Recovery (once per day, short rest, recover slots <= half wizard level) | 1 | NEW (wiring) | rules5e `recover_spell_slots` + `recovery_budget` (R-G16, 7.2h); slot choice and the once-per-day row are the caller's. |
 | Arcane Tradition: Evocation; Evocation Savant | 2 | OOS | Downtime spell copying cost. |
 | Sculpt Spells (allies auto-succeed and take no damage from your evocation area) | 2 | NEW | Needs area spells (R-G10) plus a per-cast ally choice (R-G14). |
 | Ability Score Improvement | 4 | DATA | Authored. |
@@ -202,7 +202,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Font of Inspiration (short rest recharge) | 5 | NEW | Recharge change on the same pool (R-G5). |
 | **Druid** spellcasting (full caster) | 1 | DATA | |
 | Wild Shape (CR 1/4 at L2, no fly/swim; CR 1/2 at L4; CR 1 at L8) | 2 | NEW | Replace stat block temporarily; HP overflow carries over (R-G12). |
-| Circle of the Land: Natural Recovery | 2 | NEW | Same family as Arcane Recovery (R-G16). |
+| Circle of the Land: Natural Recovery | 2 | NEW (wiring) | Same helper as Arcane Recovery, `recover_spell_slots` (R-G16, 7.2h). |
 | Druidic, Land bonus cantrip | 1-2 | OOS | Language / one extra cantrip (authored). |
 | **Monk** Unarmored Defense (10 + Dex + Wis) | 1 | DATA | Baked AC. |
 | Martial Arts (d4 die, Dex for unarmed, unarmed bonus action attack) | 1 | NEW (wiring) | Rules done (R-G6): unarmed bonus attack after the Attack action with an unarmed strike or monk weapon (`requires_attacks`). The martial-arts die is baked. Loader pending. |
@@ -494,7 +494,7 @@ Row counts are over the tables in sections 1-9 (one row per mechanic or feature;
 | 9. Monsters: stat blocks, traits, actions | 13 | 26 | 5 | 44 |
 | **Total** | **129** | **192** | **31** | **352** |
 
-"NEW (wiring)" rows (rules5e models it, content-to-sim does not carry it) are counted under NEW. Counts are as of main after #91 (and #93 for row 15); after #45, #47, #48 and #49 the totals were DATA 112 / NEW 209 / OOS 31 = 352, and before those PRs DATA 104 / NEW 217 / OOS 31. The version-bump batch moved 17 rows NEW -> DATA (conditions with a duration, condition riders from actions, area templates, duration expiry, Divine Smite, Sneak Attack, Burning Hands, Shatter, Fireball, Lightning Bolt, on-hit save riders, Recharge breath weapons, Innate Spellcasting, Charge / Pounce, Rampage, Undead Fortitude, Death Burst). A further 26 rows moved NEW -> `NEW (wiring)` (rules done, still counted NEW): see 11.5; the bonus-action attack PR (R-G6) moved 5 more (two-weapon fighting and its style, Martial Arts, Flurry of Blows, Frenzy), still counted NEW; the grapple / shove PR (R-G8) moved 5 more (grapple and shove, Charmed, Frightened, Grappled, crawling), still counted NEW; the static-feature-kinds PR (R-G5) moved 3 more (Archery, Defense, Improved Critical), still counted NEW; the R-G7 roll-window PR moved 4 more (Lucky, Cutting Words, Great Weapon Fighting, Evasion), still counted NEW; the R-G15 spell-kinds PR moved 5 more (dispel / end effects, Color Spray, Sleep, Dispel Magic, Revivify), still counted NEW; the R-G15 follow-up moved 3 more (Lesser Restoration, Acid Arrow, Heat Metal), still counted NEW. This recount was produced by a script over the tables, which also reproduced the previous 112 / 209 / 31. "DATA (baked)" / "DATA (partial)" rows count as DATA.
+"NEW (wiring)" rows (rules5e models it, content-to-sim does not carry it) are counted under NEW. Counts are as of main after #91 (and #93 for row 15); after #45, #47, #48 and #49 the totals were DATA 112 / NEW 209 / OOS 31 = 352, and before those PRs DATA 104 / NEW 217 / OOS 31. The version-bump batch moved 17 rows NEW -> DATA (conditions with a duration, condition riders from actions, area templates, duration expiry, Divine Smite, Sneak Attack, Burning Hands, Shatter, Fireball, Lightning Bolt, on-hit save riders, Recharge breath weapons, Innate Spellcasting, Charge / Pounce, Rampage, Undead Fortitude, Death Burst). A further 26 rows moved NEW -> `NEW (wiring)` (rules done, still counted NEW): see 11.5; the bonus-action attack PR (R-G6) moved 5 more (two-weapon fighting and its style, Martial Arts, Flurry of Blows, Frenzy), still counted NEW; the grapple / shove PR (R-G8) moved 5 more (grapple and shove, Charmed, Frightened, Grappled, crawling), still counted NEW; the static-feature-kinds PR (R-G5) moved 3 more (Archery, Defense, Improved Critical), still counted NEW; the R-G7 roll-window PR moved 4 more (Lucky, Cutting Words, Great Weapon Fighting, Evasion), still counted NEW; the R-G15 spell-kinds PR moved 5 more (dispel / end effects, Color Spray, Sleep, Dispel Magic, Revivify), still counted NEW; the R-G15 follow-up moved 3 more (Lesser Restoration, Acid Arrow, Heat Metal), still counted NEW; the R-G16 PR moved 4 more (surprise, Hit Dice / rests, Arcane Recovery, Natural Recovery), still counted NEW. This recount was produced by a script over the tables, which also reproduced the previous 112 / 209 / 31. "DATA (baked)" / "DATA (partial)" rows count as DATA.
 
 ### 10.2 Spells, per spell (SRD 5.1 levels 0-3)
 
@@ -632,7 +632,7 @@ Gaps that need new rules mechanics (not just Engine Core / T&C wiring, which is 
 | 4 | R-G6 | **Done in rules**: bonus-action attack options (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy) with prerequisites, pool spend and an off-hand damage override. Still open: Open Hand Technique riders, Frenzy's exhaustion, a rules-side `legal_actions` listing | Monk, Berserker, dual wielders need wiring only | done |
 | 5 | R-G7 rest | **Done in rules**: Lucky (`reroll_ones`), Cutting Words on attack rolls (`AttackRolled` + `SubtractRoll`), Great Weapon Fighting, Evasion. Still open: Cutting Words on checks / damage, Bardic Inspiration spending by the ally, Guidance / Resistance, roller-chosen rerolls (Lucky feat, Indomitable, Portent) | Bard, Halfling, Fighter style, Rogue / Monk | M (done) |
 | 6 | R-G15 | **Done in rules**: HP-pool (Sleep, Color Spray), Dispel Magic, Revivify (7.2f); end-a-condition, delayed / sustained damage, Wake action (`special` 5) (7.2g). Remaining: loader / sim wiring | Sleep, Color Spray, Dispel Magic, Revivify, Lesser Restoration, Acid Arrow, Heat Metal done | - |
-| 7 | R-G16 | Surprise, Hit Dice, Arcane / Natural Recovery; a rest model that makes `recharge` kinds meaningful | round-1 ambush, attrition | S-M |
+| 7 | R-G16 | **Done in rules** (7.2h): surprise (`surprised`, Stealth vs passive Perception helper), Hit Dice, `short_rest` / `long_rest` over combatant and table state, Arcane / Natural Recovery (`recover_spell_slots`). Remaining: sim rest flow and surprise setup (wiring) | round-1 ambush, attrition | done |
 | 8 | R-G9 | Forced movement and teleport with OA rules (Engine Core owns positions) | Thunderwave push, Repelling Blast, Misty Step, Open Hand | M |
 | 9 | R-G14 | Per-cast options: Metamagic, Sculpt Spells, chosen condition / damage type | Sorcerer, Evocation Wizard, Blindness/Deafness | M |
 | 10 | Large / elevation follow-ups | Multi-tile footprints landed in sim (#50, #51, #55); remaining: Large reach and OA edge cases in rules, size limits for grapple / swallow (with R-G8), swarm (Tiny sharing space, half damage), and elevation / fly / swim / climb (T&C-G12, deferred; today all non-walk speeds act as walk) with the Flyby OA exception and falling damage | owlbear, troll, swarms, bat, eagle, owl | M-L, mostly Engine Core |
@@ -640,7 +640,7 @@ Gaps that need new rules mechanics (not just Engine Core / T&C wiring, which is 
 | 12 | R-G12 | Summons, familiars, bonded weapons, transforms (Wild Shape, Shapechanger) | Druid, Warlock Chain, werewolf | L |
 | deferred | T&C-G11 | Legendary actions and lair actions (Legendary Resistance is already a pool, #91) | CR 10+ monsters, unicorn | L |
 
-Also open but small: Hide opposed by passive Perception (R-G1 / T&C-G16, sim), monster trait one-offs (Life Drain max-HP reduction, Reckless, Aggressive's bonus-action move, Petrifying Gaze progression), and Haste / Slow as full spells.
+Also open but small: Hide opposed by passive Perception (R-G1 / T&C-G16, sim; rules now has `passive_perception`), monster trait one-offs (Life Drain max-HP reduction, Reckless, Aggressive's bonus-action move, Petrifying Gaze progression), and Haste / Slow as full spells.
 
 ## 12. Source notes and verification
 
