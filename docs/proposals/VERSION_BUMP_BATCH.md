@@ -1803,6 +1803,49 @@ Hand-off:
   `metamagic.pool`); the pool's `max` should equal the sorcerer level (validator warning otherwise).
 - Goldens unchanged: nothing folds unless a combat registers pools and logs a FlexibleCasting request.
 
+### 7.2p Petrifying Gaze feature kind (basilisk, medusa) (rules side) and hand-off
+
+(Numbered after 7.2o, Font of Magic, #147; 7.2n is slot recovery, #146.) Agreed ruling with Engine Core; reuses the small
+leftovers escalation (7.2j: `SpellDef::escalates` / `escalate_to` / `escalate_margin`) and the repeat-save machinery.
+
+Rules:
+
+- `Combatant::gazes` (`std::vector<Combatant::Gaze{spell_id, range_ft}>`): each gaze names a synthetic Save `SpellDef`
+  (`is_spell` false, `fixed_dc`, `save_ability`, `applies_condition` Restrained, `repeat_save` EndOfTurn, `escalates`,
+  `escalate_to` Petrified, `escalate_margin` 5 for the medusa, 0 for the basilisk). `range_ft` is for sim only.
+- Turn start: when a living gazer other than the creature is on the board and the creature is alive above 0 HP,
+  `TurnBudget::gaze_pending` is set (last step of `start_turn`). Every turn request except `GazeResponse` is then refused
+  (`gaze pending: answer with GazeResponse first`); `legal_actions` offers only `GazeResponse` (avert false, and avert true
+  unless surprised). Answering clears the flag, so a re-run / second answer is refused (`no gaze pending`): no double trigger.
+- `ActionKind::GazeResponse` (appended) with `ActionRequest::avert_gaze` (caller input) and `gaze_seen` (sim fact):
+  - `avert_gaze`: refused while `surprised` (`surprised: cannot avert the eyes`); sets `Combatant::gaze_averted`, no save.
+    Until the start of its next turn it treats every gazer as unseen: its attacks against a creature with gazes have
+    disadvantage, and a gazer's attacks against it have advantage (SRD unseen attacker / target; see deviations).
+  - otherwise, per gazer in initiative order that is alive, not incapacitated and listed in `gaze_seen`, each of its gazes
+    resolves on the creature (no reaction windows, like turn-start triggers), unless the creature already carries that gaze's
+    effect (restrained, awaiting the repeat save) or its `escalate_to` condition. A surprised creature still saves.
+  - Medusa: failing by 5 or more = Petrified at once, no repeat save; otherwise restrained. Basilisk: restrained, the repeat
+    save at the end of its turn ends it on a success and petrifies on a failure.
+- `has_gaze_state` / `gaze_digest` (Combat::hash 0xAE): ids of creatures with eyes averted, only while any.
+
+Hand-off:
+
+- **Engine Core (sim)**: loader (`sim/content.cpp`) compiles a `gaze` feature into a synthetic Save SpellDef (from the wrapped
+  save_effect fields) and a `Combatant::Gaze`; at each turn start with `gaze_pending`, submit `GazeResponse` with
+  `gaze_seen` = gazers the actor can see (line of sight, within `range_ft`, not Blinded, the gazer not invisible to it;
+  until R-G13) and the actor's averting choice (AI default: do not avert; UI asks). Fold `log_hash` 0xBB + 1 when
+  `avert_gaze`; `Combat::hash` 0xAE + `gaze_digest` when `has_gaze_state`. The headless driver must answer pending gazes
+  (a surprised creature's turn: `GazeResponse`, then `EndTurn`). `gaze_seen` is not folded (derived, like zone membership).
+- **Tools & Content (schema)**: monster@4 feature kind `gaze { range_ft, save: {ability, dc}, condition, repeat_save,
+  escalates, escalate_to, escalate_margin }` (the save_effect escalation fields wrapped; `range_ft` integer 5..65530,
+  multiple of 5). SRD: basilisk DC 12 Con, 30 ft; medusa DC 14 Con, 30 ft, margin 5.
+- Goldens unchanged: no gazer = no pending flag, no fold.
+
+Deviations / readings: the SRD conditions "the gazer can see the creature" and "the creature can see the gazer" are both
+folded into the one sim fact `gaze_seen`. Averting applies to all gazers at once. The gazer's advantage against an averted
+creature follows SRD unseen-attacker rules (the ruling named only the disadvantage). Gaze saves hit every other creature
+(allies too), as the SRD text has no team limit.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain

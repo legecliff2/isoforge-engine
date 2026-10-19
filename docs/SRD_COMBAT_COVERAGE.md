@@ -458,7 +458,7 @@ Stat-block data: `monster@3` carries abilities, AC, HP average, speed (walk, fly
 | Frightful gaze/visage (save or frightened) | ghost (Horrifying Visage), mummy (Dreadful Glare) | NEW | Save action + condition with source (T&C-G4, R-G8). |
 | Leadership (limited-use buff action: allies add 1d4 to attacks and saves for 1 minute) | knight | NEW (wiring) | Rules done (#89, #91): `AlliesWithin30` modifiers (1d4 on AttackRoll and Save, timed) through a `feature_modifiers` hook, with a per-day or pool use. Compile pending (T&C-G4, R-G3). |
 | Engulf / Swallow | gelatinous cube, giant toad | NEW | Contained state (R-G8). |
-| Petrifying Gaze / Touch (delayed condition progression) | basilisk, cockatrice | NEW (wiring) | `SpellDef::escalates` / `escalate_to` / `escalate_margin`: restrained, petrified on the failed repeat save (or at once when failing by the margin) (small leftovers, VERSION_BUMP_BATCH 7.2j). The gaze's start-of-turn-within-30-ft trigger and averting the eyes are sim's (positions / sight). |
+| Petrifying Gaze / Touch (delayed condition progression) | basilisk, cockatrice | NEW (wiring) | `SpellDef::escalates` / `escalate_to` / `escalate_margin`: restrained, petrified on the failed repeat save (or at once when failing by the margin) (small leftovers, VERSION_BUMP_BATCH 7.2j). Gaze trigger (7.2p): `Combatant::gazes`, turn-start `GazeResponse` (`gaze_seen` sim fact, `avert_gaze` caller input, log_hash 0xBB; averted state Combat::hash 0xAE), averted eyes = gazer unseen (disadvantage against it, its attacks with advantage). Medusa (margin 5) and basilisk covered. Pending: sim fill / fold / AI, loader `gaze` kind (EC), schema (T&C). Cockatrice's touch is an on-hit rider, not a gaze. |
 | Teleport bonus action | blink dog | NEW (wiring) | Innate `Teleport` effect (`max_feet` 40) (R-G9, VERSION_BUMP_BATCH 7.2k); content wiring pending. |
 | Shapechanger | werewolf, doppelganger | NEW | Stat block swap (R-G12). |
 | Rust Metal / Corrode / Stench | rust monster, ghast | NEW | T&C-G5 and aura (R-G11). Disease itself OOS. |
@@ -648,7 +648,7 @@ Gaps that need new rules mechanics (not just Engine Core / T&C wiring, which is 
 | 12 | R-G12 | Summons, familiars, bonded weapons, transforms (Wild Shape, Shapechanger) | Druid, Warlock Chain, werewolf | L |
 | deferred | T&C-G11 | Legendary actions and lair actions (Legendary Resistance is already a pool, #91) | CR 10+ monsters, unicorn | L |
 
-Also open but small: Hide opposed by passive Perception (R-G1 / T&C-G16, sim; rules now has `passive_perception`). **Done in rules** (7.2j): Haste / Slow as full spells and the monster one-offs (Life Drain max-HP reduction, Reckless, Aggressive's bonus-action move, Petrifying Gaze progression); still open from that list: Slow's spell-casting delay, Haste's Use an Object, ability drain, and the gaze trigger (sim).
+Also open but small: Hide opposed by passive Perception (R-G1 / T&C-G16, sim; rules now has `passive_perception`). **Done in rules** (7.2j): Haste / Slow as full spells and the monster one-offs (Life Drain max-HP reduction, Reckless, Aggressive's bonus-action move, Petrifying Gaze progression); still open from that list: Slow's spell-casting delay, Haste's Use an Object, ability drain, and the gaze trigger (rules done in 7.2p; sim wiring pending).
 
 ## 12. Source notes and verification
 
