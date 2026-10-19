@@ -1,0 +1,132 @@
+{
+  "$schema": "character@4",
+  "id": "test.v4.character.halfling_fighter_1",
+  "name": "Halfling Fighter",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "halfling",
+  "size": "small",
+  "type": "humanoid",
+  "alignment": "neutral good",
+  "level": 1,
+  "classes": [
+    {
+      "class": "fighter",
+      "level": 1,
+      "hit_die": "d10"
+    }
+  ],
+  "xp": 0,
+  "armor_class": {
+    "value": 16,
+    "note": "chain mail"
+  },
+  "hit_points": {
+    "average": 12,
+    "formula": "1d10+2"
+  },
+  "speed": {
+    "walk": 25
+  },
+  "abilities": {
+    "str": 16,
+    "dex": 12,
+    "con": 14,
+    "int": 10,
+    "wis": 12,
+    "cha": 8
+  },
+  "saving_throws": {
+    "str": 5,
+    "con": 4
+  },
+  "senses": {
+    "passive_perception": 11
+  },
+  "languages": [
+    "Common"
+  ],
+  "proficiency_bonus": 2,
+  "actions": [
+    {
+      "id": "longsword",
+      "name": "Longsword",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "versatile"
+      ],
+      "damage": [
+        {
+          "dice": "1d8+3",
+          "type": "slashing"
+        }
+      ]
+    },
+    {
+      "id": "greatsword",
+      "name": "Greatsword",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "heavy",
+        "two_handed"
+      ],
+      "damage": [
+        {
+          "dice": "2d6+3",
+          "type": "slashing"
+        }
+      ]
+    }
+  ],
+  "features": [
+    {
+      "id": "lucky",
+      "name": "Lucky",
+      "description": "Reroll a natural 1 on an attack roll, ability check or saving throw.",
+      "effect": {
+        "kind": "reroll_ones"
+      }
+    },
+    {
+      "id": "lucky_saves",
+      "name": "Lucky (saves only)",
+      "description": "Explicit rolls list.",
+      "effect": {
+        "kind": "reroll_ones",
+        "rolls": [
+          "save",
+          "attack"
+        ]
+      }
+    },
+    {
+      "id": "great_weapon_fighting",
+      "name": "Great Weapon Fighting",
+      "description": "Reroll 1s and 2s on two-handed weapon damage dice.",
+      "effect": {
+        "kind": "great_weapon_fighting"
+      }
+    },
+    {
+      "id": "evasion",
+      "name": "Evasion",
+      "description": "No damage on a successful Dex save for half.",
+      "effect": {
+        "kind": "evasion"
+      }
+    }
+  ],
+  "equipment": [
+    "chain_mail",
+    "longsword",
+    "greatsword"
+  ]
+}
