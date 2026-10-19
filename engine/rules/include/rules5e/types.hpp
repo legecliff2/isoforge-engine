@@ -106,7 +106,9 @@ enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Re
                                   // not turn actions: answered/allowed at any time (logged like actions)
                                   ReactionDecision, Heal, AbilityCheck,
                                   // turn action (appended): a content feature (Second Wind, ...)
-                                  UseFeature };
+                                  UseFeature,
+                                  // appended: Font of Magic, Flexible Casting (bonus action; ActionRequest::flexible)
+                                  FlexibleCasting };
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
 
 // Reaction windows (encounter.hpp). Append-only.

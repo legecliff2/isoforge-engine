@@ -118,7 +118,7 @@ The authoritative per-kind field meanings are in `rules5e/encounter.hpp`. If tha
 
 Tag bytes are globally unique across `Combat::hash` and `Combat::log_hash` (separate streams, one registry). **Rule: a new tag is
 claimed in this table first**, in the PR that introduces it (or before), and is folded only when its section is non-empty, so every
-existing hash is unchanged. Next free: **0xAE** in `Combat::hash` (0xAD is priced materials), **0xBA** in `log_hash` (0xAC and 0xB8 are the R-G15 spell kinds, sim wiring of rules #105 / #106; 0xAA is `leftover_digest`; 0xAB and 0xB7 are claimed by R-G11 zones rules PR 1, `docs/proposals/ZONES_AURAS.md`; 0xB9 is claimed by R-G11 zones rules PR 2). Status: *main* = verified in
+existing hash is unchanged. Next free: **0xAE** in `Combat::hash` (0xAD is priced materials), **0xBB** in `log_hash` (0xBA is Font of Magic, VERSION_BUMP_BATCH 7.2o; 0xAC and 0xB8 are the R-G15 spell kinds, sim wiring of rules #105 / #106; 0xAA is `leftover_digest`; 0xAB and 0xB7 are claimed by R-G11 zones rules PR 1, `docs/proposals/ZONES_AURAS.md`; 0xB9 is claimed by R-G11 zones rules PR 2). Status: *main* = verified in
 `engine/core/sim/src/combat.cpp` on main; *pending* = claimed by an open PR.
 
 | Tag | Stream | Section (rules5e function) | Folded when | Owner / PR | Status |
@@ -148,6 +148,7 @@ existing hash is unchanged. Next free: **0xAE** in `Combat::hash` (0xAD is price
 | 0xB7 | `log_hash` | R-G11 caller-chosen zone inputs: `zone_move` u32, `has_zone_dest` byte, `zone_x` i32, `zone_y` i32, `zone_excluded` (count u32 + ids u32), in that order. Membership fields (`zones_entered` / `zones_left` / `zones_within`) are **not** folded (sim derives them at submit, Q11) | `zone_move != 0`, `has_zone_dest` or `zone_excluded` non-empty | R-G11 rules PR 1; sim fold in `Combat::log_hash` (zones sim PR) | done |
 | 0xB8 | `log_hash` | `ActionRequest::sustain` (R-G15 Heat Metal again: bonus action, no slot): one byte, 1 | `sustain` true | R-G15, rules #106; EC #120 | pending |
 | 0xB9 | `log_hash` | R-G11 rules PR 2 wall choices (Wall of Fire): `has_zone_end` byte, `zone_x2` i32, `zone_y2` i32, `zone_side` byte (int8: +1 / -1, 0 = none), `zone_ring` byte, in that order | `has_zone_end`, `zone_side != 0` or `zone_ring` | R-G11 rules PR 2 (`docs/proposals/ZONES_AURAS.md` §2.10); sim fold not yet written | pending (sim fold) |
+| 0xBA | `log_hash` | Font of Magic Flexible Casting (`ActionKind::FlexibleCasting`): `flexible` byte (1 slot to points, 2 points to slot), `flexible_level` byte, in that order. State needs no `Combat::hash` section: points are the 0xA3 pool, slots follow from the `ResourceSpent` event (b = points spent, negative = gained) | `flexible != 0` | Font of Magic rules (VERSION_BUMP_BATCH 7.2o); sim fold not yet written | pending (sim fold) |
 
 ## Determinism guarantees
 
