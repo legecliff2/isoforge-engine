@@ -178,7 +178,9 @@ TEST_CASE("AC floor and AC floor with Dex; floor loses to better armor; bonuses 
     for (uint64_t seed = 0; seed < 10; ++seed) {
         auto u = start({striker(1), dummy(2, 10)}, seed);
         apply_modifier(u, 1, 2, wall, ev);
-        const Event* a = find_ev(step(u, stab(1, 2)).events, EventKind::AttackResolved);
+        const auto r = step(u, stab(1, 2));   // keep the result alive: the event pointer points into it
+        const Event* a = find_ev(r.events, EventKind::AttackResolved);
+        REQUIRE(a);
         if (a->c & 1) CHECK(a->a == 20);
     }
 }
