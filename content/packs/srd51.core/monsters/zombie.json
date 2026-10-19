@@ -1,0 +1,101 @@
+{
+  "$schema": "monster@4",
+  "id": "srd51.monster.zombie",
+  "name": "Zombie",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "undead",
+  "alignment": "neutral evil",
+  "armor_class": {
+    "value": 8
+  },
+  "hit_points": {
+    "average": 22,
+    "formula": "3d8+9"
+  },
+  "speed": {
+    "walk": 20
+  },
+  "abilities": {
+    "str": 13,
+    "dex": 6,
+    "con": 16,
+    "int": 3,
+    "wis": 6,
+    "cha": 5
+  },
+  "saving_throws": {
+    "wis": 0
+  },
+  "damage_immunities": [
+    "poison"
+  ],
+  "condition_immunities": [
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 8
+  },
+  "languages": [
+    "understands all languages it spoke in life but can't speak"
+  ],
+  "challenge": {
+    "rating": "1/4",
+    "xp": 50
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "undead_fortitude",
+      "name": "Undead Fortitude",
+      "description": "If damage reduces the zombie to 0 hit points, it must make a Constitution saving throw with a DC of 5+the damage taken, unless the damage is radiant or from a critical hit. On a success, the zombie drops to 1 hit point instead.",
+      "effect": {
+        "kind": "on_event",
+        "on": "drop_to_zero",
+        "when": [
+          {
+            "kind": "damage_type_not",
+            "types": [
+              "radiant"
+            ]
+          },
+          {
+            "kind": "not_crit"
+          },
+          {
+            "kind": "save",
+            "ability": "con",
+            "dc_from_damage": true,
+            "base": 5
+          }
+        ],
+        "effects": [
+          {
+            "kind": "set_hp",
+            "value": 1
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "slam",
+      "name": "Slam",
+      "kind": "melee_weapon_attack",
+      "to_hit": 3,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+1",
+          "type": "bludgeoning"
+        }
+      ]
+    }
+  ]
+}

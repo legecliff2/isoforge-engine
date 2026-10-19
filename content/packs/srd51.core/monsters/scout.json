@@ -1,0 +1,118 @@
+{
+  "$schema": "monster@4",
+  "id": "srd51.monster.scout",
+  "name": "Scout",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "any race"
+  ],
+  "alignment": "any alignment",
+  "armor_class": {
+    "value": 13,
+    "note": "leather armor"
+  },
+  "hit_points": {
+    "average": 16,
+    "formula": "3d8+3"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 11,
+    "dex": 14,
+    "con": 12,
+    "int": 11,
+    "wis": 13,
+    "cha": 11
+  },
+  "skills": {
+    "nature": 4,
+    "perception": 5,
+    "stealth": 6,
+    "survival": 5
+  },
+  "senses": {
+    "passive_perception": 15
+  },
+  "languages": [
+    "any one language (usually Common)"
+  ],
+  "challenge": {
+    "rating": "1/2",
+    "xp": 100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The scout makes two melee attacks or two ranged attacks.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "melee",
+            "attacks": [
+              "shortsword",
+              "shortsword"
+            ]
+          },
+          {
+            "id": "ranged",
+            "attacks": [
+              "longbow",
+              "longbow"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "keen_hearing_and_sight",
+      "name": "Keen Hearing and Sight",
+      "description": "The scout has advantage on Wisdom (Perception) checks that rely on hearing or sight."
+    }
+  ],
+  "actions": [
+    {
+      "id": "shortsword",
+      "name": "Shortsword",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "longbow",
+      "name": "Longbow",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 4,
+      "range": [
+        150,
+        600
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ]
+    }
+  ],
+  "behavior": {
+    "ai": "scripts/ai/skirmisher.luau"
+  }
+}

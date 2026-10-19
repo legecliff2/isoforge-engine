@@ -51,6 +51,7 @@ SpellDef effect_view(const SpellDef& base, const SpellEffect& e) {
     v.add_spellcasting_modifier = e.add_spellcasting_modifier; v.excluded_types = e.excluded_types;
     v.save_ability = e.save_ability; v.on_save = e.on_save;
     v.applies_condition = e.applies_condition; v.condition = e.condition; v.repeat_save = e.repeat_save;
+    v.expiry = e.expiry; v.duration_rounds = e.duration_rounds;
     v.darts = e.darts; v.distribution = e.distribution; v.simultaneous = e.simultaneous;
     v.cantrip_scales = false; v.cantrip_adds_beams = false;
     v.upcast_beams = 0; v.upcast_dice = 0; v.upcast_darts = 0; v.upcast_targets = 0;

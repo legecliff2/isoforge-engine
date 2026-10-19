@@ -1,0 +1,188 @@
+{
+  "$schema": "monster@4",
+  "id": "srd51.monster.lizardfolk",
+  "name": "Lizardfolk",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "lizardfolk"
+  ],
+  "alignment": "neutral",
+  "armor_class": {
+    "value": 15,
+    "note": "natural armor, shield"
+  },
+  "hit_points": {
+    "average": 22,
+    "formula": "4d8+4"
+  },
+  "speed": {
+    "walk": 30,
+    "swim": 30
+  },
+  "abilities": {
+    "str": 15,
+    "dex": 10,
+    "con": 13,
+    "int": 7,
+    "wis": 12,
+    "cha": 7
+  },
+  "skills": {
+    "perception": 3,
+    "stealth": 4,
+    "survival": 5
+  },
+  "senses": {
+    "passive_perception": 13
+  },
+  "languages": [
+    "Draconic"
+  ],
+  "challenge": {
+    "rating": "1/2",
+    "xp": 100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The lizardfolk makes two melee attacks, each one with a different weapon.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "bite_heavy_club",
+            "attacks": [
+              "bite",
+              "heavy_club"
+            ]
+          },
+          {
+            "id": "bite_javelin",
+            "attacks": [
+              "bite",
+              "javelin"
+            ]
+          },
+          {
+            "id": "bite_spiked_shield",
+            "attacks": [
+              "bite",
+              "spiked_shield"
+            ]
+          },
+          {
+            "id": "heavy_club_javelin",
+            "attacks": [
+              "heavy_club",
+              "javelin"
+            ]
+          },
+          {
+            "id": "heavy_club_spiked_shield",
+            "attacks": [
+              "heavy_club",
+              "spiked_shield"
+            ]
+          },
+          {
+            "id": "javelin_spiked_shield",
+            "attacks": [
+              "javelin",
+              "spiked_shield"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "hold_breath",
+      "name": "Hold Breath",
+      "description": "The lizardfolk can hold its breath for 15 minutes."
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "heavy_club",
+      "name": "Heavy Club",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "bludgeoning"
+        }
+      ]
+    },
+    {
+      "id": "javelin",
+      "name": "Javelin",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "javelin_thrown",
+      "name": "Javelin (thrown)",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 4,
+      "range": [
+        30,
+        120
+      ],
+      "targets": 1,
+      "properties": [
+        "thrown"
+      ],
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "spiked_shield",
+      "name": "Spiked Shield",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ]
+    }
+  ]
+}

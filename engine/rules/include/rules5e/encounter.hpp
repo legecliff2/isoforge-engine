@@ -204,12 +204,27 @@ struct PendingDecision {
 
 struct ReadiedAction { CombatantId actor; ActionRequest response; uint32_t trigger_id; };
 
+// Timed expiry shared by lasting effects (conditions from save actions / spells) and, later, modifiers (section 6).
+//   Rounds:               ends at the start of a round, `rounds_left` rounds after the one it was applied in
+//                         (applied in round R with n = 1: gone when round R + 1 starts; independent of who is alive).
+//   EndOfTargetNextTurn:  ends at the end of the target's next turn (when applied during the target's own turn,
+//                         that turn does not count; make_timed counts it).
+enum class Expiry : uint8_t { None, Rounds, EndOfTargetNextTurn };
+struct Timed { Expiry kind = Expiry::None; int16_t rounds_left = 0;
+               friend bool operator==(const Timed&, const Timed&) = default; };
+// `target_acting`: the target is the current actor when the effect is applied.
+Timed make_timed(Expiry, uint16_t rounds, bool target_acting);
+// Each returns true when the timer has just run out. No-ops (false) for another kind or Expiry::None.
+bool tick_round_start(Timed&);
+bool tick_target_turn_end(Timed&);
+
 // A lasting spell effect on a creature (a condition from a failed save). Ends when the caster's
 // concentration ends, or on a successful repeat save.
 struct ActiveSpellEffect {
     uint32_t spell_id; CombatantId caster, target;
     Condition condition; Ability save_ability; int16_t dc;
     RepeatSave repeat_save; bool concentration;
+    Timed timed{};                     // appended: Expiry::None = lasts until concentration ends / a repeat save succeeds
 };
 
 // Limited-use features (Second Wind, ...), keyed by (actor, feature_id). Part of the encounter state,
@@ -410,6 +425,10 @@ uint64_t action_uses_digest(const EncounterState&, uint64_t seed = 0xCBF29CE4842
 bool has_innate_state(const EncounterState&);
 uint64_t innate_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 uint64_t pools_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
+
+// Timed lasting effects (sim folds the digest under tag 0xA5, only when `has_timed_effects`).
+bool has_timed_effects(const EncounterState&);
+uint64_t timed_effects_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 
 std::vector<ActionRequest> legal_actions(const EncounterState&);   // for AI + UI (current actor)
 CombatantId                current_actor(const EncounterState&);
