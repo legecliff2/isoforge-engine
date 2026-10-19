@@ -248,6 +248,18 @@ def check_chunk_surprise(doc, errs, ctx) -> None:
                         f"(teams here: {sorted(t for t in set(teams.values()) if t)})")
 
 
+# R-G11 creature facts (docs/CONTENT_CONVENTIONS.md 4.6): monster@4 / character@4 accept them, but their reader is the sim
+# archetype loader (engine/core/sim/src/content.cpp, Engine Core), which does not read them yet: reserved, warning only.
+CREATURE_FACTS = ("no_breath", "shapechanger", "evil")
+
+
+def creature_fact_warnings(doc) -> list[str]:
+    if not isinstance(doc, dict):
+        return []
+    return [f"/{k}: {k} is reserved: the sim archetype loader does not read it yet (R-G11 creature fact, Combatant::{k}; "
+            "Engine Core), so it has no effect until that loader lands" for k in CREATURE_FACTS if k in doc]
+
+
 def chunk_warnings(doc) -> list[str]:
     """Non-fatal chunk findings (prefixed with the file by the caller)."""
     if not isinstance(doc, dict) or "surprise" not in doc:
@@ -415,8 +427,19 @@ def check_spell_zone(doc, errs):
     flags = z.get("flags", [])
     if "light_obscured" in flags and "heavy_obscured" in flags:
         errs.append("zone: flags light_obscured and heavy_obscured are exclusive")
-    if not flags and not z.get("triggers"):
+    if not flags and not z.get("triggers") and "aura_modifier" not in z and "aura_immunity" not in z:
         errs.append("zone: needs triggers or flags (it would do nothing)")
+    # R-G11 rules PR 2 keys (CONTENT_CONVENTIONS 4.6; loader parse_zone uses the same messages). Type / range / shape-arm
+    # errors are the schema's; these are the cross-field rules.
+    sided = z.get("sided") is True
+    if ("side_ft" in z) != sided:
+        errs.append("zone: side_ft is required for (and only for) sided zones")
+    if "aura_bonus_ability" in z and "aura_modifier" not in z:
+        errs.append("zone: aura_bonus_ability needs aura_modifier")
+    if "aura_modifier" in z and z["aura_modifier"]["stat"] != "save":
+        errs.append("zone.aura_modifier stat must be save")
+    if any(k in z for k in ("aura_modifier", "aura_immunity", "aura_allies_only")) and z["anchor"] != "creature":
+        errs.append("zone: aura fields need anchor creature")
     for i, t in enumerate(z.get("triggers", [])):
         where = f"zone.triggers[{i}]"
         if t["effect"]["kind"] not in ("save", "damage", "apply_condition"):
@@ -429,6 +452,16 @@ def check_spell_zone(doc, errs):
             errs.append(f"{where}: while_in_zone needs an effect condition")
         if t.get("counts_aura_move_as_enter") and z["anchor"] == "point" and "move" not in z:
             errs.append(f"{where}: counts_aura_move_as_enter on a zone that never moves")
+        if t.get("region") == "zone_or_side":
+            if not sided:
+                errs.append(f"{where}: region zone_or_side needs a sided zone")
+            if t["on"] not in ("zone_appear", "zone_start_turn", "zone_end_turn"):
+                errs.append(f"{where}: region zone_or_side is only for zone_appear / zone_start_turn / zone_end_turn")
+        if t["effect"]["kind"] != "save" and (t.get("auto_success_damage") or t.get("auto_success_conditions")
+                                              or t.get("auto_success_no_breath") or t.get("shapechanger_disadvantage")):
+            errs.append(f"{where}: auto_success / shapechanger_disadvantage need effect kind save")
+        if "evil_damage_type" in t and "damage" not in t["effect"]:
+            errs.append(f"{where}: evil_damage_type needs effect damage")
 
 
 def spell_material_warnings(doc) -> list[str]:
@@ -543,6 +576,10 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
                 errs += [f"{where}: {m}" for m in found]
             else:
                 warns += [f"{where}: {m} (inert in {tag}; becomes an error at @3)" for m in found]
+    if active:   # R-G14 metamagic / sculpt_spells: pools and declarations (sim #143 load errors)
+        m_errs, m_warns = c4.check_metamagic(doc)
+        errs += [f"{rel}: {m}" for m in m_errs]
+        warns += [f"{rel}: {m}" for m in m_warns]
     return errs, warns
 
 
@@ -634,6 +671,8 @@ def validate_doc(rel: str, doc: dict, tag: str, registry: Registry, by_tag: dict
         warns += [f"{rel}: {w}" for w in chunk_warnings(doc)]
     if not schema_errs and typ == "spell":
         warns += [f"{rel}: {w}" for w in spell_material_warnings(doc)]
+    if not schema_errs and typ in ("monster", "character"):
+        warns += [f"{rel}: {w}" for w in creature_fact_warnings(doc)]
     row = c4.tag_row(tag)
     if not schema_errs and row is not None and row.cross_refs:
         if typ == "item":
