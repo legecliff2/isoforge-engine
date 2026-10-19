@@ -25,9 +25,11 @@ LIVE_AT_3_EFFECT_KINDS = frozenset({"damage_bonus", "bonus_action_grant", "self_
 # not in the frozen 3 -> 4 list, so the migration never stamps them. Shapes: common@1 $defs/effect.
 OPEN_EFFECT_KINDS_RG7 = frozenset({"reroll_ones", "great_weapon_fighting", "evasion",
                                    # T&C-G7 (sim #127): SRD Pack Tactics; no fields, a duplicate adds nothing (warned)
-                                   "pack_tactics"})
+                                   "pack_tactics",
+                                   # T&C-G7 (sim #129): orc Aggressive, Reckless Attack / berserker Reckless; no fields
+                                   "aggressive", "reckless_attack"})
 # Open kinds whose second declaration in one document adds nothing (the sim dedupes): the validator warns.
-NO_STACK_EFFECT_KINDS = frozenset({"pack_tactics"})
+NO_STACK_EFFECT_KINDS = frozenset({"pack_tactics", "aggressive", "reckless_attack"})
 # The kinds @4 adds; also the frozen literal list of the 3 -> 4 migration (VERSION_BUMP_BATCH 8.2 step 4).
 # save_effect and reaction are action / reaction kinds, not trait effect kinds: they exist in the list so
 # a stamped one validates (effect_inert) but a native one is a schema error.

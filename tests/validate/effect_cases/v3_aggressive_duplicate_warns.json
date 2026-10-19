@@ -1,0 +1,33 @@
+{
+  "base": "characters/fighter_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        2
+      ],
+      {
+        "id": "aggressive_1",
+        "name": "aggressive",
+        "effect": {
+          "kind": "aggressive"
+        }
+      }
+    ],
+    [
+      [
+        "features",
+        3
+      ],
+      {
+        "id": "aggressive_2",
+        "name": "aggressive",
+        "effect": {
+          "kind": "aggressive"
+        }
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "duplicate 'aggressive' effect"
+}
