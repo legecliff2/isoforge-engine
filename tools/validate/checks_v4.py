@@ -324,6 +324,9 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     equipment = doc.get("equipment") or []
     objs = [(i, e) for i, e in enumerate(equipment) if isinstance(e, dict)]
     for i, e in objs:
+        # A priced entry (value_gp: a material component such as a 300 gp diamond) needs no item@1 document (Director ruling).
+        if "value_gp" in e:
+            continue
         if e.get("item") not in ctx["items"] and not ctx["external_ok"](e.get("item")):
             errs.append(f"/equipment/{i}: item '{e.get('item')}' is not an item@1 in this pack or its depends (check 6/11)")
     if objs and "equipment" in (doc.get("inert_mechanics") or []):
