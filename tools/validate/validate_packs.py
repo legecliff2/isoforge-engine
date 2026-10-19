@@ -271,8 +271,13 @@ def runtime_id_collisions(entries: list[tuple[str, str, str]], cross_pack_only: 
 
 
 REACTION_EFFECT_TRIGGER = {"ac_bonus": "being_hit", "counter": "spell_cast"}
-UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit"), "darts": ("auto_hit",),
+UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "hp_pool", "delayed_damage", "sustained_damage"),
+                  "darts": ("auto_hit",),
                   "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition")}
+
+
+FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_damage")   # R-G15, spell_loader.cpp
+TIMED_BY_DURATION = ("hp_pool", "sustained_damage")   # their timer is the spell's duration in rounds
 
 
 def check_spell(doc, errs, ctx):
@@ -284,6 +289,11 @@ def check_spell(doc, errs, ctx):
     if len(effs) > 1 and any(e["kind"] in REACTION_EFFECT_TRIGGER for e in effs):
         errs.append("effects: ac_bonus and counter reactions cannot be combined with other effects")
         return
+    # R-G15 (#120): of the new kinds only delayed_damage rides another effect (the loader's wording).
+    for i, e in enumerate(effs[1:], 1):
+        if e["kind"] in FIRST_EFFECT_ONLY:
+            errs.append(f"effects[{i}]: {e['kind']} is only allowed as the first effect")
+            return
     if eff.get("applies_to", "all") != "all":
         errs.append("effects[0].applies_to needs a previous effect")
     kind = eff["kind"]
@@ -314,6 +324,8 @@ def check_spell(doc, errs, ctx):
         errs.append("ac_bonus effects last until_start_of_caster_turn (and only they use it)")
     if "targets" in doc and kind not in ("save", "heal", "apply_condition"):
         errs.append(f"targets not allowed on a {kind} effect (one target, per dart/beam, or self)")
+    if kind in TIMED_BY_DURATION and doc["duration"]["kind"] not in ("rounds", "minutes", "hours"):
+        errs.append(f"{kind} needs a rounds, minutes or hours duration")
     refs = [("effect blocks_spell", eff.get("blocks_spell"))] + \
            [("casting_time.trigger.or_targeted_by", r) for r in ct.get("trigger", {}).get("or_targeted_by", [])]
     for where, ref in refs:

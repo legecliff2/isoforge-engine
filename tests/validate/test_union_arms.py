@@ -6,7 +6,7 @@ property of every arm; each arm is `if <discriminator> const ... then {required,
 <exactly the arm's allowed names>}}`. A test asserts for each arm that `allowed == required U optional`
 as documented. The documented sets below are written out by hand from the proposal (so a schema edit
 that widens or narrows an arm without the doc changing fails here), for every propertyNames union:
-common@2 usage, predicate, rider, modifier, reaction_effect, and item@1.
+common@2 usage, predicate, rider, modifier, reaction_effect, item@1, and spell@1 delayed_expiry (plus the R-G15 spell effect arms).
 """
 from __future__ import annotations
 
@@ -64,6 +64,17 @@ REACTION_EFFECT = {("ac_bonus",): (S({"kind", "bonus"}), S()),
                    ("attack",): (S({"kind", "attack_id"}), S()),
                    ("cast",): (S({"kind", "spell"}), S()),
                    ("subtract_roll",): (S({"kind", "dice"}), S())}
+# spell@1 delayed_damage expiry (R-G15, sim #120; docs/CONTENT_CONVENTIONS.md section 5).
+DELAYED_EXPIRY = {("rounds",): (S({"kind", "n"}), S()),
+                  ("until_end_of_target_next_turn",): (S({"kind"}), S())}
+# spell@1 $defs/effect arms of the R-G15 kinds. The effect union is the file's older if/then pattern (open base, each arm
+# closed with additionalProperties: false); these arms also carry a propertyNames allow-list, checked in SpellEffectArmsR120.
+SPELL_EFFECT_R120 = {"hp_pool": (S({"kind", "dice", "condition"}), S({"ends_on_damage", "excludes_creature_type", "description"})),
+                     "dispel": (S({"kind"}), S({"check", "description"})),
+                     "revive": (S({"kind"}), S({"within_rounds", "description"})),
+                     "end_condition": (S({"kind", "conditions"}), S({"description"})),
+                     "delayed_damage": (S({"kind", "damage", "expiry"}), S({"applies_to", "description"})),
+                     "sustained_damage": (S({"kind", "damage"}), S({"description"}))}
 _ICOMMON = {"source", "cost_cp", "weight_oz", "description"}
 _IBASE = S({"$schema", "id", "name", "category"})
 ITEM = {("weapon",): (_IBASE | {"weapon_class"}, S(_ICOMMON | {"reach", "range", "damage", "versatile_damage", "properties", "qualifiers", "magic_bonus", "on_hit"})),
@@ -76,7 +87,8 @@ def unions():
     return [("common@2 usage", c2["usage"], "kind", USAGE), ("common@2 predicate", c2["predicate"], "kind", PREDICATE),
             ("common@2 rider", c2["rider"], "kind", RIDER), ("common@2 modifier", c2["modifier"], "stat", MODIFIER),
             ("common@2 reaction_effect", c2["reaction_effect"], "kind", REACTION_EFFECT),
-            ("item@1", load("item/v1.schema.json"), "category", ITEM)]
+            ("item@1", load("item/v1.schema.json"), "category", ITEM),
+            ("spell@1 delayed_expiry", load("spell/v1.schema.json")["$defs"]["delayed_expiry"], "kind", DELAYED_EXPIRY)]
 
 
 def required_names(node):
@@ -150,6 +162,25 @@ def check_union(label, schema, disc, doc) -> list[str]:
     if base_props - used:
         problems.append(f"{label}: base properties {sorted(base_props - used)} are allowed by no arm (orphans)")
     return problems
+
+
+class SpellEffectArmsR120(unittest.TestCase):
+    def test_r120_arms_are_closed_allow_lists(self):
+        eff = load("spell/v1.schema.json")["$defs"]["effect"]
+        found = {}
+        for sub in eff["allOf"]:
+            k = sub["if"]["properties"]["kind"]["const"]
+            if k in SPELL_EFFECT_R120:
+                found[k] = sub["then"]
+        self.assertEqual(set(found), set(SPELL_EFFECT_R120))
+        for k, then in found.items():
+            with self.subTest(k):
+                req, opt = SPELL_EFFECT_R120[k]
+                self.assertIs(then["additionalProperties"], False)
+                self.assertEqual(set(then["propertyNames"]["enum"]), set(req) | set(opt))
+                self.assertEqual(set(then["properties"]), set(req) | set(opt))
+                self.assertEqual(set(then["required"]), set(req))
+                self.assertIn(k, eff["properties"]["kind"]["enum"])
 
 
 class UnionArms(unittest.TestCase):
