@@ -316,11 +316,14 @@ Rules (row 5 and the row 6 tests in `engine/rules/tests/save_action_tests.cpp`) 
 4. **Events.** `ActionUsed` (depth 0) replaces `SpellCast` (no counter window), then `ResourceSpent` (pool), the save and
    damage events, then `SpellResolved`. Engine Core's `Combat::complete` change: also emit `SpellTarget` for a depth-0
    `ActionUsed` by the actor (and update the `SpellTarget` wording in `docs/SIM_EVENTS.md`).
-5. **Known gap (decision needed, not in this PR).** `apply[].duration` (`rounds`, `until_end_of_target_next_turn`) is not
-   enforced by rules today: an `ActiveSpellEffect` ends only on concentration loss or a successful repeat save, so a
-   non-concentration condition with no `repeat_save` lasts the whole combat. `until_save` maps to a `repeat_save`; the
-   other two need the `expiry_kind`/`rounds_left` state of section 6 (row 12). Until then Engine Core should compile only
-   `until_save`/`repeat_save` conditions (or accept the whole-combat duration for the interim fixtures).
+5. **Timed conditions (rules, follow-up PR).** `SpellDef`/`SpellEffect` carry `expiry` (`0` none, `1` rounds, `2`
+   end of the target's next turn; the `rules5e::Expiry` values) and `duration_rounds`. Map `apply[].duration`:
+   `{kind:"rounds",n}` -> `expiry 1, duration_rounds n` (the condition ends at the start of round R+n, R = the round it was applied
+   in); `{kind:"until_end_of_target_next_turn"}` -> `expiry 2` (ends at the end of the target's next turn; a turn the target is
+   already acting in does not count); `{kind:"until_save"}` -> a `repeat_save`, no expiry. Expiry reuses the existing
+   `SpellEffectEnded` + `ConditionRemoved` events (`ModifierExpired` stays reserved for row 12). `ActiveSpellEffect::timed`
+   (`Timed{kind, rounds_left}`, helpers `make_timed` / `tick_round_start` / `tick_target_turn_end`) is the shared timer row 12 modifiers
+   reuse. `Combat::hash` folds timed effects under tag `0xA5`, only when one exists.
 
 ### 2.4 Recharge
 

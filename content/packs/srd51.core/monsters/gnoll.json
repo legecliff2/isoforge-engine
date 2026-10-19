@@ -1,0 +1,154 @@
+{
+  "$schema": "monster@4",
+  "id": "srd51.monster.gnoll",
+  "name": "Gnoll",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "gnoll"
+  ],
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 15,
+    "note": "hide armor, shield"
+  },
+  "hit_points": {
+    "average": 22,
+    "formula": "5d8"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 14,
+    "dex": 12,
+    "con": 11,
+    "int": 6,
+    "wis": 10,
+    "cha": 7
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 10
+  },
+  "languages": [
+    "Gnoll"
+  ],
+  "challenge": {
+    "rating": "1/2",
+    "xp": 100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "rampage",
+      "name": "Rampage",
+      "description": "When the gnoll reduces a creature to 0 hit points with a melee attack on its turn, the gnoll can take a bonus action to move up to half its speed and make a bite attack.",
+      "effect": {
+        "kind": "on_event",
+        "on": "reduce_to_zero",
+        "limit": "once_per_turn",
+        "when": [
+          {
+            "kind": "weapon",
+            "is": "melee"
+          }
+        ],
+        "effects": [
+          {
+            "kind": "bonus_attack",
+            "attack_id": "bite"
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d4+2",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "spear",
+      "name": "Spear",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "spear_two_handed",
+      "name": "Spear (two hands)",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "two_handed"
+      ],
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "spear_thrown",
+      "name": "Spear (thrown)",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 4,
+      "range": [
+        20,
+        60
+      ],
+      "targets": 1,
+      "properties": [
+        "thrown"
+      ],
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "longbow",
+      "name": "Longbow",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 3,
+      "range": [
+        150,
+        600
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+1",
+          "type": "piercing"
+        }
+      ]
+    }
+  ]
+}
