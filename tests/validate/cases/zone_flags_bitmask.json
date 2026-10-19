@@ -1,0 +1,45 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.zoneflagsbitmask",
+  "name": "Fog Cloud",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "A 20-foot-radius sphere of fog centred on a point within range; the area is heavily obscured. The +20 ft radius per slot level above 1st and wind dispersal (D8) are not expressible.",
+  "level": 1,
+  "school": "conjuration",
+  "classes": [
+    "druid",
+    "ranger",
+    "sorcerer",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 120
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "hours",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "zone",
+      "zone": {
+        "shape": "sphere",
+        "size_ft": 20,
+        "anchor": "point",
+        "flags": 4
+      }
+    }
+  ]
+}
