@@ -103,6 +103,22 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
             cast.request.targets = {t->id};
             return cast;
         }
+    // Rampage (trigger rider bonus_attack): while a grant is present, the bonus-action attack is the granted attack index
+    // (grant - 1) against the target if it is in reach (melee) or legal to shoot; otherwise the grant is left unused.
+    if (s.budget.bonus_attack_grant != 0 && s.budget.bonus_action && rules5e::is_conscious(*t)) {
+        const uint8_t gi = uint8_t(s.budget.bonus_attack_grant - 1);
+        if (gi < me->attacks.size()) {
+            const bool ok = me->attacks[gi].ranged ? c.can_shoot(self, gi, t->id)
+                                                   : c.distance_tiles(self, t->id) <= reach_tiles(me->attacks[gi].reach_or_range_ft);
+            if (ok) {
+                Command b;
+                b.request = {self, ActionKind::Attack, t->id};
+                b.request.attack_index = gi;
+                b.request.as_bonus_action = true;
+                return b;
+            }
+        }
+    }
     // Prefer the first melee attack; fall back to the first attack.
     uint8_t ai = 0;
     for (uint8_t i = 0; i < me->attacks.size(); ++i)

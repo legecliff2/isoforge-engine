@@ -55,6 +55,7 @@ struct Archetype {
         uint16_t range_ft = 0;
     };
     std::vector<SaveAction> save_actions;
+    std::vector<uint32_t> trigger_spell_ids;   // synthetic Save SpellDefs of area_save riders (SpellBook only, not spells_known)
     std::vector<std::string> forward_compat;         // monster@4 / character@4 "forward_compat" flags: listed, ignored
     CreatureSize size = CreatureSize::Medium;        // stat block "size"
     // Side of the footprint in tiles: footprint_of(size) for monster@3 / character@3, always 1 for

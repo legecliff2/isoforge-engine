@@ -402,6 +402,26 @@ void Combat::install_hooks() {
                     if (distance_tiles(ids[i], ids[j]) * kFeetPerTile > feet) return false;
             return true;
         };
+        // Row 9b (area_save riders: Death Burst): the template centred on the source (its tile is used even when it is
+        // dead). Sphere / cylinder around the source need no aim; cone / line / cube / point-origin templates aim at the
+        // nearest other living creature (ties: lowest id), and catch nobody when there is none.
+        state_.hooks.area_targets = [this](const rules5e::EncounterState& st, const rules5e::Combatant& source,
+                                           const rules5e::SpellDef& d) {
+            Vec2i aim = pos(source.id);
+            const bool centred = d.range_ft == 0 && (d.area == AreaShape::Sphere || d.area == AreaShape::Cylinder);
+            if (!centred) {
+                const rules5e::Combatant* best = nullptr;
+                int best_d = 0;
+                for (const auto& o : st.combatants) {
+                    if (o.id == source.id || o.dead) continue;
+                    const int dist = distance_tiles(source.id, o.id);
+                    if (!best || dist < best_d) { best = &o; best_d = dist; }
+                }
+                if (!best) return std::vector<CombatantId>{};
+                aim = pos(best->id);
+            }
+            return area_targets(source.id, d, aim);
+        };
         state_.hooks.can_see = [this](const rules5e::EncounterState&, const rules5e::Combatant& observer,
                                       const rules5e::Combatant& target) {
             return !observer.has(rules5e::Condition::Blinded) && line_of_sight(observer.id, target.id);
