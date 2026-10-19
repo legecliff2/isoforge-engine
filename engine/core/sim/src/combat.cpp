@@ -108,6 +108,7 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
         if (fp > 1) reg.emplace(e, Footprint{uint8_t(fp)});
         reg.emplace(e, CombatantLink{k.id});
         c.slots_.push_back({k.id, e, a});
+        if (!a->equipment.empty()) c.equipment_[k.id] = a->equipment;
         cs.push_back(std::move(k));
     }
     std::vector<rules5e::Event> opening;
@@ -397,8 +398,10 @@ void Combat::install_hooks() {
     state_.hooks.poll_order = poll_order_;
     state_.hooks.spells = spells_;
     if (spells_) {
-        state_.hooks.can_provide_components = [](const rules5e::EncounterState&, const rules5e::Combatant&,
-                                                 const rules5e::SpellDef& d) { return d.material_cost_cp == 0; };
+        state_.hooks.can_provide_components = [this](const rules5e::EncounterState&, const rules5e::Combatant& caster,
+                                                     const rules5e::SpellDef& d) {
+            return d.material_cost_cp == 0 || material_entry(caster.id, d) >= 0;
+        };
         state_.hooks.spell_target_ok = [this](const rules5e::EncounterState&, const rules5e::Combatant& caster,
                                               const rules5e::SpellDef& d, const rules5e::Combatant& t) {
             return spell_in_reach(d, caster.id, t.id);
@@ -579,8 +582,40 @@ std::optional<Vec2i> Combat::moving_to(CombatantId id) const {
 
 // Applies a completed request: rules events, then sim events (tiles) in the order of their
 // rules Moved events, then sim bookkeeping (readied destinations).
+const std::vector<EquipmentEntry>& Combat::equipment(CombatantId id) const {
+    static const std::vector<EquipmentEntry> kNone;
+    auto it = equipment_.find(id);
+    return it == equipment_.end() ? kNone : it->second;
+}
+
+// CONTENT_CONVENTIONS §7 rule 2: the first entry (array order) whose id equals components.m.item exactly and whose
+// value_gp * 100 >= cost_cp. No item key: nothing provides it (rule 3).
+int Combat::material_entry(CombatantId caster, const rules5e::SpellDef& d) const {
+    if (d.material_item.empty()) return -1;
+    const auto& eq = equipment(caster);
+    for (std::size_t i = 0; i < eq.size(); ++i)
+        if (eq[i].id == d.material_item && uint64_t(eq[i].value_gp) * 100u >= d.material_cost_cp) return int(i);
+    return -1;
+}
+
 void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs, std::optional<Vec2i> to) {
     const auto& q = ls.request;
+    // Priced material consumed by a completed cast (rule 4): the entry that satisfied it, one per cast. Rules checked the
+    // components for this cast unless it was a sustain or an innate spell not cast as listed; replay runs the same code.
+    if (q.kind == ActionKind::CastSpell && !q.sustain && spells_) {
+        const rules5e::SpellDef* def = spells_->find(q.spell_id);
+        bool checked = def && def->material_cost_cp > 0 && def->material_consumed;
+        if (checked && q.innate)
+            if (const auto* caster = rules5e::find(state_, q.actor))
+                for (const auto& is : caster->innate)
+                    if (is.spell_id == q.spell_id) checked = is.as_listed;
+        const int idx = checked ? material_entry(q.actor, *def) : -1;
+        if (idx >= 0) {
+            auto& eq = equipment_[q.actor];
+            materials_used_.push_back({q.actor, q.spell_id, uint32_t(idx), eq[std::size_t(idx)].value_gp});
+            eq.erase(eq.begin() + idx);
+        }
+    }
     // v8: the 5 ft shove's Moved{actor = target, target = shover} is forced movement; sim flags it (rules emit c = 0).
     auto is_shove_push = [&q](const rules5e::Event& e) {
         return e.kind == rules5e::EventKind::Moved && q.kind == ActionKind::Attack && q.special == 3 && e.actor == q.target &&
@@ -1052,6 +1087,14 @@ uint64_t Combat::hash() const {
     // 0xAA (small leftovers, rules #111): Life Drain max-HP reductions, Haste lethargy, active Reckless Attack and escalating
     // (Petrifying Gaze) effects, only when some is present; content that uses none hashes as before.
     if (rules5e::has_leftover_state(state_)) { h.byte(0xAA); h.u64(rules5e::leftover_digest(state_)); }
+    // 0xAD (priced materials, CONTENT_CONVENTIONS §7): consumed materials in cast order (caster, spell, index of the entry in
+    // the caster's equipment at that moment, its value_gp), only once something was consumed; the remaining equipment is
+    // derived from content plus this list, and no combat consumed anything before, so every golden hashes as before.
+    if (!materials_used_.empty()) {
+        h.byte(0xAD);
+        h.u32(uint32_t(materials_used_.size()));
+        for (const auto& u : materials_used_) { h.u32(u.caster); h.u32(u.spell_id); h.u32(u.entry); h.u32(u.value_gp); }
+    }
     // 0xAC (R-G15, rules #105 / #106): the state of the new spell kinds that 0xA5 does not cover (damage dice, type, sustain
     // stamp, ends-on-damage, slot level), only for effects that carry it: Sleep / Color Spray-style `ends_on_damage`, Acid
     // Arrow's delayed and Heat Metal's sustained damage (`damage_when != 0`). No such effect exists in older content.
