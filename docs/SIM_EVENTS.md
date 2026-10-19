@@ -118,7 +118,7 @@ The authoritative per-kind field meanings are in `rules5e/encounter.hpp`. If tha
 
 Tag bytes are globally unique across `Combat::hash` and `Combat::log_hash` (separate streams, one registry). **Rule: a new tag is
 claimed in this table first**, in the PR that introduces it (or before), and is folded only when its section is non-empty, so every
-existing hash is unchanged. Next free: **0xAD** in `Combat::hash`, **0xB9** in `log_hash` (0xAC and 0xB8 are the R-G15 spell kinds, sim wiring of rules #105 / #106; 0xAA is `leftover_digest`; 0xAB and 0xB7 are claimed by R-G11 zones rules PR 1, `docs/proposals/ZONES_AURAS.md`). Status: *main* = verified in
+existing hash is unchanged. Next free: **0xAE** in `Combat::hash` (0xAD is priced materials), **0xB9** in `log_hash` (0xAC and 0xB8 are the R-G15 spell kinds, sim wiring of rules #105 / #106; 0xAA is `leftover_digest`; 0xAB and 0xB7 are claimed by R-G11 zones rules PR 1, `docs/proposals/ZONES_AURAS.md`). Status: *main* = verified in
 `engine/core/sim/src/combat.cpp` on main; *pending* = claimed by an open PR.
 
 | Tag | Stream | Section (rules5e function) | Folded when | Owner / PR | Status |
