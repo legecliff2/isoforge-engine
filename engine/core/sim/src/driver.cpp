@@ -322,7 +322,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         if (p.empty()) return 1 << 20;
         int cost = 0;
         Vec2i prev = mp;
-        for (Vec2i q : p) { cost += c.grid().move_cost_ft(prev, q, mn); prev = q; }
+        for (Vec2i q : p) { cost += c.step_cost_ft(self, prev, q); prev = q; }
         return cost;
     };
     // Aggressive (rules #111, VERSION_BUMP_BATCH 7.2j c): out of reach with too little movement left, take the bonus-action
@@ -360,7 +360,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     }
     // Goals: tiles within reach of the target.
     const auto path = c.grid().path(mp, goal_anchors(tp, tn, mn, reach), c.occupied_except(self), mn);
-    if (path.empty() || c.grid().move_cost_ft(mp, path[0], mn) > s.budget.movement_ft) return end;
+    if (path.empty() || c.step_cost_ft(self, mp, path[0]) > s.budget.movement_ft) return end;
     // About to leave a hostile's reach: Disengage first if a bonus Disengage is available
     // (granted by content, e.g. a bonus_action_grant feature).
     if (s.budget.bonus_action && !me->disengaged &&
