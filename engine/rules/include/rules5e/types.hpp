@@ -107,8 +107,10 @@ constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
 
 // Reaction windows (encounter.hpp). Append-only.
 // HitRider (row 9c): the attacker is the reactor; opened after a hit for each `choice: ask` trigger (Divine Smite).
-enum class ReactionTrigger : uint8_t { LeavingReach, BeingHit, SpellCast, ReadiedTrigger, HitRider };
-inline constexpr std::size_t kReactionTriggerCount = 5;
+// Damaged (row 11): damage to the reactor has been computed (after mitigation) but is not committed yet, so a
+// reduce_damage reaction can act; AllyAttacked: an attack roll against an ally of the reactor is about to be made.
+enum class ReactionTrigger : uint8_t { LeavingReach, BeingHit, SpellCast, ReadiedTrigger, HitRider, Damaged, AllyAttacked };
+inline constexpr std::size_t kReactionTriggerCount = 7;
 enum class ReactionPolicy : uint8_t { Ask, Never, Auto };
 
 struct DeathSaves { uint8_t successes = 0, failures = 0; bool stable = false; };
@@ -214,6 +216,19 @@ struct Trigger {
     std::vector<RiderEffect> effects;
 };
 
+// A mechanical reaction compiled from content (row 11): offered in the Damaged / AllyAttacked windows of its owner.
+enum class ReactionEffectKind : uint8_t { ReduceDamage, ImposeDisadvantage, Retaliate, Attack };
+struct Reaction {
+    uint32_t id = 0;                         // spell_id_of("<archetype>#<reaction id>")
+    ReactionTrigger window = ReactionTrigger::Damaged;   // Damaged or AllyAttacked
+    ReactionEffectKind kind = ReactionEffectKind::ReduceDamage;
+    bool melee_only = false, ranged_only = false;        // window filter on the attack that caused it
+    bool half = false;                       // ReduceDamage: halve the damage (else roll `dice`)
+    DiceExpr dice{0, 0, 0};                  // ReduceDamage: amount to subtract (Deflect Missiles: 1d10 + bonus)
+    uint32_t spell_id = 0;                   // Retaliate: synthetic Save / AutoHit SpellDef resolved against the damager
+    uint8_t attack_index = 0;                // Attack: index into Combatant::attacks (Riposte)
+};
+
 struct Combatant {
     CombatantId id;
     uint8_t  team;
@@ -275,6 +290,7 @@ struct Combatant {
     // index in `triggers`, valid only while the stamp matches), kept on the owner because a turn limit also covers
     // reactions on other creatures' turns.
     std::vector<Trigger> triggers;
+    std::vector<Reaction> reactions;       // row 11: mechanical reactions (Damaged / AllyAttacked windows)
     uint32_t trigger_turn_mask = 0, trigger_turn_stamp = 0;       // stamp = round << 16 | turn_index
     uint32_t trigger_round_mask = 0; uint16_t trigger_round_stamp = 0;
     bool death_triggers_done = false;   // 9b: this creature's death triggers have been processed
