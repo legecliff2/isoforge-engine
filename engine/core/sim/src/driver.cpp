@@ -312,6 +312,24 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         for (Vec2i q : p) { cost += c.grid().move_cost_ft(prev, q, mn); prev = q; }
         return cost;
     };
+    // Aggressive (rules #111, VERSION_BUMP_BATCH 7.2j c): out of reach with too little movement left, take the bonus-action
+    // Dash toward the target when it is visible and reachable by a path, if that Dash gets it into reach this turn or no
+    // ranged attack is legal now (otherwise shoot, as before). Only creatures with Combatant::aggressive (content kind
+    // `aggressive`) do this, so no other combat changes.
+    if (me->aggressive && s.budget.bonus_action && !me->has(rules5e::Condition::Blinded) && c.line_of_sight(self, t->id)) {
+        const int need = melee_path_cost();
+        if (need > s.budget.movement_ft && need < (1 << 20)) {
+            bool shoot = false;
+            for (uint8_t i = 0; i < me->attacks.size() && !shoot; ++i) shoot = me->attacks[i].ranged && c.can_shoot(self, i, t->id);
+            if (!can_attack || !shoot || need <= s.budget.movement_ft + rules5e::effective_speed(*me)) {
+                Command d;
+                d.request = {self, ActionKind::Dash};
+                d.request.as_bonus_action = true;
+                d.request.aggressive = true;
+                return d;
+            }
+        }
+    }
     if (can_attack && melee_path_cost() > s.budget.movement_ft) {
         std::optional<uint8_t> best;
         bool best_clean = false;
@@ -347,6 +365,8 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             const int after = std::max(std::abs(fp.x - path[0].x), std::abs(fp.y - path[0].y));
             if (after < before) return end;
         }
+    // Aggressive: the Dash's movement only goes toward a hostile it can see (sim refuses other steps); stop instead.
+    if (!c.aggressive_step_ok(self, path[0])) return end;
     Command st;
     st.kind = CommandKind::Step;
     st.to = path[0];

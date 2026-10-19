@@ -164,6 +164,11 @@ public:
         auto it = readied_dest_.find(id);
         return it == readied_dest_.end() ? std::nullopt : std::optional<Vec2i>(it->second);
     }
+    // Aggressive (rules #111, VERSION_BUMP_BATCH 7.2j b): after the current actor's bonus-action Dash with
+    // ActionRequest::aggressive, the movement it had before that Dash is spent first; a Step that needs the Dash's movement
+    // must end nearer (footprint distance) to a hostile, not dead, that it can see from where it stands (not Blinded, line of
+    // sight). False only for such a step (submit refuses it); true for every other step.
+    bool aggressive_step_ok(CombatantId mover, Vec2i to) const;
     uint8_t feature_uses_left(CombatantId id, uint32_t feature_id) const;
     bool can_use_feature(CombatantId id, uint32_t feature_id) const;
 
@@ -226,6 +231,10 @@ private:
     std::optional<Vec2i> ready_to_;               // destination of the Ready being resolved
     std::optional<Vec2i> aim_to_;                 // aim tile of the area CastSpell being resolved
     std::optional<Vec2i> step_to_;   // destination of the Move being resolved / paused (sim-only)
+    // Aggressive Dash of the current turn (sim-only, derived from the log, not hashed): the turn stamp (round << 16 |
+    // turn_index), the dasher, and the movement left from before the Dash (spent first by its Moves).
+    struct AggressiveDash { uint32_t stamp = 0; CombatantId actor = 0; int free_ft = 0; };
+    std::optional<AggressiveDash> aggressive_;
 };
 
 // Replays a command log from scratch (same chunk, content and seed) into `reg`.
