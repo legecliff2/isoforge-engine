@@ -6,7 +6,7 @@
     "ref": "SRD 5.1",
     "license": "CC-BY-4.0"
   },
-  "description": "A 20-foot-radius sphere of fog centred on a point within range; the area is heavily obscured. The +20 ft radius per slot level above 1st and wind dispersal (D8) are not expressible.",
+  "description": "A 20-foot-radius sphere of fog centred on a point within range; the area is heavily obscured. At Higher Levels: the radius increases by 20 feet per slot level above 1st (upcast_size_ft). Wind dispersal (D8) is not expressible.",
   "level": 1,
   "school": "conjuration",
   "classes": [
@@ -40,7 +40,8 @@
         "anchor": "point",
         "flags": [
           "heavy_obscured"
-        ]
+        ],
+        "upcast_size_ft": 20
       }
     }
   ]
