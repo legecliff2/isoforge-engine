@@ -290,9 +290,9 @@ FeatureRegistry make_builtin() {
     r.add_hook("damage_mitigation", {apply_damage_mitigation});
     r.add_hook("magic_weapons", {apply_magic_weapons});
     r.add_hook("apply_modifier", {apply_apply_modifier}, 4);
-    r.add_hook("attack_bonus", {apply_attack_bonus}, 4);
-    r.add_hook("crit_range", {apply_crit_range}, 4);
-    r.add_hook("ac_bonus", {apply_ac_bonus}, 4);
+    r.add_hook("attack_bonus", {apply_attack_bonus});
+    r.add_hook("crit_range", {apply_crit_range});
+    r.add_hook("ac_bonus", {apply_ac_bonus});
     // Kinds the @4 schemas introduce (frozen list of the 3 -> 4 migration; hooks arrive with their rows).
     for (const char* k : {"on_event", "grant_action", "heal_pool", "save_effect", "reaction"})
         r.reserve_kind(k, 4);

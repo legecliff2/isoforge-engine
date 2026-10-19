@@ -56,9 +56,9 @@ TEST_CASE("static features: attack_bonus sums, crit_range lowest wins, ac_bonus 
     bare["armor_class"]["note"] = "unarmored";
     REQUIRE_FALSE(lib.add(bare, "character"));
     CHECK(lib.find("t.bare")->base.ac == 20);
-    // an older file lists them inert; bad shapes are load errors
+    // open v1 kinds (not in the frozen 3 -> 4 list): live at any declared version; bad shapes are load errors
     REQUIRE_FALSE(lib.add(with("t.old", {{{"kind", "crit_range"}, {"min", 19}}}, 3), "character", "", 3));
-    CHECK(lib.find("t.old")->base.crit_min == 20);
+    CHECK(lib.find("t.old")->base.crit_min == 19);
     CHECK(lib.add(with("t.bad1", {{{"kind", "attack_bonus"}, {"attacks", "thrown"}, {"amount", 2}}}), "character"));
     CHECK(lib.add(with("t.bad2", {{{"kind", "crit_range"}, {"min", 1}}}), "character"));
     CHECK(lib.add(with("t.bad3", {{{"kind", "ac_bonus"}}}), "character"));
