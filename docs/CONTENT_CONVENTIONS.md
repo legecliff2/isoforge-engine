@@ -92,11 +92,11 @@ row of the tag table (no unknown-kind warning; shape violations are errors at `@
 ### 3.3 Grip for Great Weapon Fighting (v0 wield model, no schema change)
 
 Read from existing fields: an action's `properties` `two_handed` (or `two-handed`) and `versatile` are carried onto the attack.
-A versatile **melee** weapon counts as held in two hands when the stat block carries no shield, i.e. no `equipment[]` string equal
-to `shield` and no `armor_class.note` containing `shield` (case-insensitive), and the creature has no two-weapon bonus option.
-Note: a character@4 `equipment[]` item object (`{"item": "srd51.item.shield"}`) is **not** recognised as a shield by #114 (it
-looks for a bare `shield` string or an `{"id": "shield"}` object, which the character@4 schema rejects); keep `shield` in
-`armor_class.note` or as a bare `equipment[]` string until the loader reads item objects.
+A versatile **melee** weapon counts as held in two hands when the stat block carries no shield and the creature has no two-weapon
+bonus option. A shield is an `equipment[]` entry whose id is `shield` or a namespaced id whose last `.`-segment is `shield`: a bare
+string, or the character@4 item object `{"item": "srd51.item.shield"}` (the sim does not load item@1 definitions, so it matches the
+id, not the item's `category`); or an `armor_class.note` containing `shield` (case-insensitive). Name a custom shield item id so
+that it ends in `.shield`, or mention the shield in `armor_class.note`.
 
 Versioning: no tag change, no migration. The reaction parts were already in the `@4` schemas (only check 9 rejected them), and the
 feature arms only constrain kinds that no file can have relied on (they were unknown kinds; no shipped pack or `tests/compat` file
