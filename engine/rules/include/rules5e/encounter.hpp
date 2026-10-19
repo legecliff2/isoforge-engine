@@ -33,6 +33,8 @@ struct TurnBudget {
     // Row 9b: a trigger granted a bonus-action attack (Rampage): Combatant::attacks index + 1, 0 = none. Spent by
     // Attack with as_bonus_action; gone with the turn.
     uint8_t bonus_attack_grant = 0;
+    // Row 13: further actions granted this turn (Action Surge). spend_action takes one when the action is spent.
+    uint8_t extra_actions = 0;
 };
 
 // Answer to a reaction window (names/layout shared with sim::Combat).
@@ -268,6 +270,15 @@ struct ResourcePool { CombatantId actor = 0; uint32_t pool_id = 0; uint16_t max 
 using PollOrderFn = std::function<std::vector<CombatantId>(const EncounterState&,
                                                            const std::vector<CombatantId>& eligible_in_initiative_order)>;
 
+// Row 13: what UseFeature does for one feature (content: usage.pool, effect.cost, grant_action, heal_pool).
+struct FeatureSpec {
+    uint32_t pool = 0;          // spend from this pool (0 = none); the pool must be registered for the actor
+    uint16_t pool_cost = 0;     // 0 = 1; ignored for heal_pool (the spend is ActionRequest::amount)
+    uint8_t cost = 0;           // 0 follow ActionRequest::as_bonus_action, 1 action, 2 bonus action, 3 reaction, 4 free
+    uint8_t grant_actions = 0;  // grant_action: TurnBudget::extra_actions += this (Action Surge: 1)
+    bool heal_pool = false;     // Lay on Hands: spend `amount` from `pool`, heal ActionRequest::target (0 = self) by that much
+};
+
 struct EncounterHooks {
     // Checked after every state change. Empty = default_end_condition.
     EndConditionFn end_condition;
@@ -325,6 +336,9 @@ struct EncounterHooks {
     // `applies_to` Self = the actor, Target = ActionRequest::target, AlliesWithin30 = area_targets with a 30 ft sphere
     // (the actor excluded).
     std::function<std::vector<ModifierSpec>(const EncounterState&, const Combatant& actor, uint32_t feature_id)> feature_modifiers;
+    // Row 13: the mechanics of a feature beyond its uses and modifiers (pool spend, cost kind, grant_action, heal_pool).
+    // nullopt = the plain pre-row-13 UseFeature (as_bonus_action decides the cost).
+    std::function<std::optional<FeatureSpec>(const EncounterState&, const Combatant& actor, uint32_t feature_id)> feature_spec;
 };
 
 struct EncounterState {
