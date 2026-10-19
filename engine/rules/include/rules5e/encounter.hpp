@@ -30,6 +30,9 @@ struct TurnBudget {
     // Feet moved this turn: += 5 * ActionRequest::move_tiles when an own-turn Move completes (Moved emitted).
     // An opportunity-attack-interrupted move and a readied Move fired out of turn do not count.
     uint16_t moved_ft = 0;
+    // Row 9b: a trigger granted a bonus-action attack (Rampage): Combatant::attacks index + 1, 0 = none. Spent by
+    // Attack with as_bonus_action; gone with the turn.
+    uint8_t bonus_attack_grant = 0;
 };
 
 // Answer to a reaction window (names/layout shared with sim::Combat).
@@ -295,6 +298,10 @@ struct EncounterHooks {
     std::function<bool(const EncounterState&, const std::vector<CombatantId>& ids, int feet)> targets_within;
     // Sight (sim): can `observer` see `target` (reaction spells with requires_sight)? Empty = yes.
     std::function<bool(const EncounterState&, const Combatant& observer, const Combatant& target)> can_see;
+    // Row 9b (area_save riders: Death Burst, aura ticks): the creatures inside the area of `def` (a synthetic Save
+    // SpellDef) centred on `source`, as sim sees positions. The source itself is ignored. Empty = nobody, and then an
+    // area_save trigger does not fire.
+    std::function<std::vector<CombatantId>(const EncounterState&, const Combatant& source, const SpellDef&)> area_targets;
 };
 
 struct EncounterState {
