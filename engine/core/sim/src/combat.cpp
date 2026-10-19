@@ -848,6 +848,10 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     }
     if (req.kind == ActionKind::CastSpell) {
         if (!spells_ || !spells_->find(req.spell_id)) { r.error = "unknown spell"; return r; }
+        if (req.sustain && (aim || !req.targets.empty())) {   // R-G15 Heat Metal again: one creature, the request's target
+            r.error = "sustain takes a single target and no aim";
+            return r;
+        }
         if (aim) {   // area template: derive the targets from the aim tile (opt-in; an explicit list wins)
             const auto* def = spells_->find(req.spell_id);
             if (def->area == rules5e::AreaShape::None || !req.targets.empty()) { r.error = "aim needs an area spell and no explicit targets"; return r; }
@@ -861,13 +865,24 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
         // R-G8 Charmed: no harmful spell (attack or save) may include the recorded charmer.
         if (const CombatantId charmer = rules5e::condition_source(state_, actor, rules5e::Condition::Charmed)) {
             const auto* def = spells_->find(req.spell_id);
-            const bool harmful = def->kind == rules5e::SpellEffectKind::SpellAttack || def->kind == rules5e::SpellEffectKind::Save;
+            // R-G15: the HP pool (Sleep), delayed and sustained damage (Acid Arrow, Heat Metal and sustaining it) are harmful too.
+            const auto k = def->kind;
+            const bool harmful = k == rules5e::SpellEffectKind::SpellAttack || k == rules5e::SpellEffectKind::Save ||
+                                 k == rules5e::SpellEffectKind::HpPool || k == rules5e::SpellEffectKind::DelayedDamage ||
+                                 k == rules5e::SpellEffectKind::SustainedDamage;
             bool hits = req.target == charmer;
             for (CombatantId id : req.targets) hits = hits || id == charmer;
             if (harmful && hits) { r.error = "charmed: cannot target the charmer with a harmful spell"; derived_area_ = false; return r; }
         }
         const CombatantId first = !req.targets.empty() ? req.targets[0] : req.target;
         if (!rules5e::find(state_, first)) { r.error = "bad target"; return r; }
+        // R-G15 Revivify: a dead creature does not block its tiles, so another may stand there now; it cannot come back
+        // into an occupied space (rules check death and the time window).
+        if (!req.sustain && spells_->find(req.spell_id)->kind == rules5e::SpellEffectKind::Revive) {
+            const auto taken = occupied_except(first);
+            for (Vec2i t : footprint_tiles(first))
+                if (std::find(taken.begin(), taken.end(), t) != taken.end()) { r.error = "revive target's space is occupied"; return r; }
+        }
         req.target_within_5ft = distance_tiles(actor, first) <= 1;   // spell attacks: crit vs Paralyzed/Unconscious
     }
     ready_to_.reset();
@@ -1004,6 +1019,31 @@ uint64_t Combat::hash() const {
             }
         }
     }
+    // 0xAC (R-G15, rules #105 / #106): the state of the new spell kinds that 0xA5 does not cover (damage dice, type, sustain
+    // stamp, ends-on-damage, slot level), only for effects that carry it: Sleep / Color Spray-style `ends_on_damage`, Acid
+    // Arrow's delayed and Heat Metal's sustained damage (`damage_when != 0`). No such effect exists in older content.
+    {
+        uint32_t n = 0;
+        for (const auto& e : state_.effects) n += (e.damage_when != 0 || e.ends_on_damage) ? 1u : 0u;
+        if (n != 0) {
+            h.byte(0xAC);
+            h.u32(n);
+            for (const auto& e : state_.effects) {
+                if (e.damage_when == 0 && !e.ends_on_damage) continue;
+                h.u32(e.spell_id);
+                h.u32(e.caster);
+                h.u32(e.target);
+                h.byte(uint8_t((e.no_condition ? 1 : 0) | (e.ends_on_damage ? 2 : 0) | (e.magical ? 4 : 0)));
+                h.byte(e.damage_when);
+                h.byte(e.damage.count);
+                h.byte(e.damage.sides);
+                h.i16(e.damage.bonus);
+                h.byte(uint8_t(e.damage_type));
+                h.u32(e.cast_stamp);
+                h.byte(e.slot_level);
+            }
+        }
+    }
     return h.value();
 }
 
@@ -1029,6 +1069,7 @@ uint64_t Combat::log_hash() const {
         if (q.special != 0) { h.byte(0xB5); h.byte(q.special); }   // R-G8 grapple / shove / escape: folded only when set (0xA9 is retired)
         if (q.bonus_option != 0) { h.byte(0xB0); h.byte(q.bonus_option); }   // R-G6 bonus attack option: folded only when set
         if (q.two_handed_grip) { h.byte(0xB6); h.byte(1); }   // R-G7 versatile weapon in two hands: folded only when set
+        if (q.sustain) { h.byte(0xB8); h.byte(1); }   // R-G15 Heat Metal sustained with a bonus action: folded only when set
         if (q.innate) h.byte(0xA4);                       // innate CastSpell: folded only when set, under a tag byte
         h.byte(q.heal_dice.count);
         h.byte(q.heal_dice.sides);
