@@ -88,7 +88,8 @@ _ICOMMON = {"source", "cost_cp", "weight_oz", "description"}
 _IBASE = S({"$schema", "id", "name", "category"})
 ITEM = {("weapon",): (_IBASE | {"weapon_class"}, S(_ICOMMON | {"reach", "range", "damage", "versatile_damage", "properties", "qualifiers", "magic_bonus", "on_hit"})),
         ("armor",): (_IBASE | {"armor_category", "base_ac", "dex_bonus"}, S(_ICOMMON | {"dex_cap", "str_min", "stealth_disadvantage", "magic_bonus"})),
-        ("shield",): (_IBASE, S(_ICOMMON | {"ac_bonus", "magic_bonus"}))}
+        ("shield",): (_IBASE, S(_ICOMMON | {"ac_bonus", "magic_bonus"})),
+        ("valuable",): (_IBASE, S(_ICOMMON))}   # gems (srd51.item.diamond): priced materials, docs/CONTENT_CONVENTIONS.md section 7
 
 # (label, schema locator, discriminator, documented table)
 def unions():
