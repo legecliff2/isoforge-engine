@@ -1,0 +1,53 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.kindssustainedexpiry",
+  "name": "Heat Metal",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "Choose a manufactured metal object within range. Any creature in physical contact with it takes 2d8 fire damage when you cast the spell; until the spell ends you can use a bonus action on each of your later turns to deal this damage again. Dropping the object and the disadvantage while holding it are not modelled. At Higher Levels: +1d8 per slot level above 2nd.",
+  "level": 2,
+  "school": "transmutation",
+  "classes": [
+    "bard",
+    "druid"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "a piece of iron and a flame"
+    }
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "sustained_damage",
+      "damage": {
+        "dice": "2d8",
+        "type": "fire"
+      },
+      "expiry": {
+        "kind": "rounds",
+        "n": 1
+      }
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "dice": 1
+    }
+  }
+}

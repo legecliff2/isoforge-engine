@@ -1,0 +1,49 @@
+{
+  "$schema": "spell@1",
+  "id": "test.kinds.spell.color_spray",
+  "name": "Color Spray",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "Roll 6d10: creatures in a 15-foot cone are blinded until the end of your next turn (1 round here), in ascending order of current hit points. Unconscious creatures and creatures that can't see are skipped (not expressible). At Higher Levels: +2d10 per slot level above 1st.",
+  "level": 1,
+  "school": "illusion",
+  "classes": [
+    "sorcerer",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "self"
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "a pinch of powder or sand that is colored red, yellow, and blue"
+    }
+  },
+  "duration": {
+    "kind": "rounds",
+    "amount": 1
+  },
+  "area": {
+    "shape": "cone",
+    "size_ft": 15
+  },
+  "effects": [
+    {
+      "kind": "hp_pool",
+      "dice": "6d10",
+      "condition": "blinded"
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "dice": 2
+    }
+  }
+}
