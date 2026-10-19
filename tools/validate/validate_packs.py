@@ -431,7 +431,7 @@ NATIVE_EFFECT_ARMS = {"on_event": "on_event_effect", "apply_modifier": "apply_mo
                       "grant_action": "grant_action_effect", "heal_pool": "heal_pool_effect"}
 
 
-def schema_message(e, registry: Registry | None = None) -> str:
+def schema_message(e, registry: Registry | None = None, drill: bool = True) -> str:
     """jsonschema's message, kept readable: messages that open with the offending instance's repr
     ('{...} is not valid under any of the given schemas') would otherwise be cut off before the part
     that says what is wrong, so a long repr is abbreviated to '{...}'."""
@@ -449,6 +449,22 @@ def schema_message(e, registry: Registry | None = None) -> str:
         if deepest is not None:
             where = "/".join(map(str, deepest.absolute_path))
             return f"{inst['kind']} effect is invalid: {'/' + where + ': ' if where else ''}{schema_message(deepest, registry)}"[:300]
+    if (drill and e.validator == "anyOf" and registry is not None and isinstance(inst, dict) and "inert" not in inst
+            and inst.get("kind") in c4.LIVE_AT_3_EFFECT_KINDS | c4.OPEN_EFFECT_KINDS_RG7):
+        # a live open kind (common@1 contract): report the failure inside the effect_live arm
+        arm = Draft202012Validator({"$ref": f"{COMMON2_ID}#/$defs/effect_live"}, registry=registry)
+        deepest = best_match(arm.iter_errors(inst))
+        if deepest is not None:
+            where = "/".join(map(str, deepest.absolute_path))
+            return f"{inst['kind']} effect is invalid: {'/' + where + ': ' if where else ''}{schema_message(deepest, registry, False)}"[:300]
+    if (drill and e.validator == "oneOf" and registry is not None and isinstance(inst, dict) and "window" in inst
+            and "inert" not in inst and list(e.absolute_path)[-2:-1] == ["reactions"]):
+        # a reactions[] entry with a window is the common@2 reaction arm (not the migration's legacy stamp)
+        arm = Draft202012Validator({"$ref": f"{COMMON2_ID}#/$defs/reaction"}, registry=registry)
+        deepest = best_match(arm.iter_errors(inst))
+        if deepest is not None:
+            where = "/".join(map(str, deepest.absolute_path))
+            return f"{msg} [reaction: {'/' + where + ': ' if where else ''}{schema_message(deepest, registry, False)}]"[:400]
     if (e.validator == "anyOf" and isinstance(inst, dict) and inst.get("kind") in ("save_effect", "reaction")
             and "inert" not in inst and list(e.absolute_path)[-1:] == ["effect"]):
         return (f"'{inst['kind']}' is an action / reaction kind, not a trait effect kind: it is valid here only as the "

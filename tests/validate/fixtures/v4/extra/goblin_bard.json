@@ -1,0 +1,137 @@
+{
+  "$schema": "monster@4",
+  "id": "test.v4.monster.goblin_bard",
+  "name": "Goblin Bard",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "small",
+  "type": "humanoid",
+  "alignment": "neutral evil",
+  "armor_class": {
+    "value": 13,
+    "note": "leather armor"
+  },
+  "hit_points": {
+    "average": 18,
+    "formula": "4d6+4"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 8,
+    "dex": 14,
+    "con": 12,
+    "int": 10,
+    "wis": 10,
+    "cha": 16
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 10
+  },
+  "languages": [
+    "Common",
+    "Goblin"
+  ],
+  "challenge": {
+    "rating": "1",
+    "xp": 200
+  },
+  "proficiency_bonus": 2,
+  "resources": [
+    {
+      "id": "bardic_inspiration",
+      "name": "Bardic Inspiration",
+      "max": 3,
+      "recharge": "long_rest"
+    }
+  ],
+  "traits": [
+    {
+      "id": "evasion",
+      "name": "Evasion",
+      "description": "No damage on a successful Dex save for half.",
+      "effect": {
+        "kind": "evasion"
+      }
+    },
+    {
+      "id": "lucky",
+      "name": "Lucky",
+      "description": "Rerolls natural 1s on attack rolls.",
+      "effect": {
+        "kind": "reroll_ones",
+        "rolls": [
+          "attack"
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "scimitar",
+      "name": "Scimitar",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "slashing"
+        }
+      ]
+    }
+  ],
+  "reactions": [
+    {
+      "id": "cutting_words",
+      "name": "Cutting Words",
+      "description": "Spend one Bardic Inspiration: subtract 1d6 from an attack roll of a creature within 60 ft that it can see.",
+      "window": {
+        "kind": "roll_attack"
+      },
+      "effect": {
+        "kind": "subtract_roll",
+        "dice": "1d6"
+      },
+      "usage": {
+        "kind": "pool",
+        "pool": "bardic_inspiration"
+      }
+    },
+    {
+      "id": "heckle",
+      "name": "Heckle",
+      "description": "No usage: an ungated reaction (the sim compiles it with no pool).",
+      "window": {
+        "kind": "roll_attack",
+        "melee_only": true
+      },
+      "effect": {
+        "kind": "subtract_roll",
+        "dice": "1d4"
+      }
+    },
+    {
+      "id": "big_words",
+      "name": "Big Words",
+      "description": "Pool usage with an explicit cost.",
+      "window": {
+        "kind": "roll_attack"
+      },
+      "effect": {
+        "kind": "subtract_roll",
+        "dice": "1d8"
+      },
+      "usage": {
+        "kind": "pool",
+        "pool": "bardic_inspiration",
+        "cost": 2
+      }
+    }
+  ]
+}

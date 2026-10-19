@@ -18,3 +18,7 @@ These files are not part of any shipped pack and are not under `tests/compat` (t
   a character@4 using every timed-modifier property (`consume`, `speed_sub`, `ac_floor` / `ac_floor_dex`, `per_turn`, `when`),
   spell@1 `apply_modifier` spells (True Strike, Guiding Bolt rider) and a monk with the bonus-attack feature conventions
   (`martial_arts`, `flurry_of_blows` + `ki` pool, `two_weapon_fighting`, `light` / `unarmed` / `monk` properties).
+  R-G7 (`RG7ReactionsAndFeatures`, sim #114): `goblin_bard.json` (monster@4: Cutting Words `roll_attack` / `subtract_roll` with a
+  `bardic_inspiration` pool usage, an ungated one and one with `cost` 2; `evasion` and `reroll_ones` traits) and
+  `halfling_fighter_1.json` (character@4: `reroll_ones` with and without `rolls`, `great_weapon_fighting`, `evasion`; versatile and
+  two_handed weapons, no shield).
