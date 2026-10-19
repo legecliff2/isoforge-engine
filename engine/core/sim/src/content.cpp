@@ -404,6 +404,53 @@ std::optional<std::string> compile_on_event(const std::string& arch, const std::
     return add_trigger(arch, owner, 0, std::move(t), ids, c);
 }
 
+// Petrifying Gaze (VERSION_BUMP_BATCH 7.2p): a monster@4 / character@4 `gaze` feature
+// { range_ft, save: {ability, dc}, condition, repeat_save, escalates, escalate_to, escalate_margin } compiles to a synthetic
+// Save SpellDef (SpellBook only, not spells_known: it never is an action) and a Combatant::Gaze{spell_id, range_ft}. Sim fills
+// ActionRequest::gaze_seen from range_ft at the target's turn start (Combat::gaze_seen).
+std::optional<std::string> compile_gaze(const std::string& arch_id, const std::string& fid, const Json& g, rules5e::SpellDef& d,
+                                        rules5e::Combatant::Gaze& out) {
+    const std::string where = arch_id + ": gaze '" + fid + "'";
+    if (fid.empty() || fid.find('#') != std::string::npos || arch_id.find('#') != std::string::npos)
+        return where + ": id must be non-empty and contain no '#'";
+    const int range = geti(g, "range_ft");
+    if (range < 5 || range > 65530 || range % 5 != 0) return where + ": bad range_ft";
+    const auto sv = g.find("save");
+    if (sv == g.end() || !sv->is_object()) return where + ": missing save";
+    const auto ab = ability_of(sv->value("ability", ""));
+    const int dc = geti(*sv, "dc");
+    if (!ab || dc < 1 || dc > 30) return where + ": bad save";
+    const auto cond = condition_of(g.value("condition", "restrained"));
+    if (!cond) return where + ": bad condition";
+    const std::string rs = g.value("repeat_save", "end_of_turn");
+    const rules5e::RepeatSave rep = rs == "end_of_turn" ? rules5e::RepeatSave::EndOfTurn
+                                  : rs == "start_of_turn" ? rules5e::RepeatSave::StartOfTurn : rules5e::RepeatSave::None;
+    if (rep == rules5e::RepeatSave::None && rs != "none") return where + ": bad repeat_save";
+    const bool esc = g.value("escalates", false);
+    const auto to = condition_of(g.value("escalate_to", "petrified"));
+    if (!to) return where + ": bad escalate_to";
+    const int margin = geti(g, "escalate_margin", 0);
+    if (margin < 0 || margin > 30) return where + ": bad escalate_margin";
+    d = rules5e::SpellDef{};
+    d.content_id = arch_id + "#" + fid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.kind = rules5e::SpellEffectKind::Save;
+    d.is_spell = false;   // not a spell: no SpellCast window, no components, not Counterspellable
+    d.targets = 1;
+    d.range_ft = uint16_t(range);
+    d.save_ability = *ab;
+    d.fixed_dc = int8_t(dc);
+    d.applies_condition = true;
+    d.condition = *cond;
+    d.repeat_save = rep;
+    d.escalates = esc;
+    d.escalate_to = *to;
+    d.escalate_margin = uint8_t(margin);
+    out = rules5e::Combatant::Gaze{d.id, uint16_t(range)};
+    return std::nullopt;
+}
+
 std::optional<std::string> compile_save_action(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
                                                Archetype::SaveAction& sa, const Json& doc, bool& unsupported,
                                                bool untimed_ok) {
@@ -1045,6 +1092,21 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             bool unsupported = false;
             if (auto e = compile_on_event(a.id, f.id, f.effect, doc, rider_ctx, trigger_ids, c, unsupported)) return *e;
             if (unsupported) a.unsupported_features.push_back(f.id + " (on_event: unsupported usage)");
+            continue;
+        }
+        if (f.kind == "gaze") {   // Petrifying Gaze (7.2p): compiled here. Not a registry kind (the 3 -> 4 migration's list is
+                                  // frozen), so the @4 gate is explicit: a file that declared < 4 lists it inert.
+            if (declared != 0 && declared < 4) {
+                a.inert_features.push_back(f.id + " (gaze)");
+                continue;
+            }
+            rules5e::SpellDef d;
+            rules5e::Combatant::Gaze gz;
+            if (auto e = compile_gaze(a.id, f.id, f.effect, d, gz)) return *e;
+            for (const auto& prev : synth)
+                if (prev.id == d.id) return a.id + ": gaze ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+            c.gazes.push_back(gz);
+            synth.push_back(std::move(d));   // before n_trigger_spells: registered like area_save riders (SpellBook only)
             continue;
         }
         if (!h) {

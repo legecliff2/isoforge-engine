@@ -72,6 +72,11 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     const CombatantId self = rules5e::current_actor(s);
     Command end;
     end.request = {self, ActionKind::EndTurn};
+    if (s.budget.gaze_pending) {   // Petrifying Gaze (7.2p): answer first, even surprised or incapacitated; AI default: look
+        Command look;
+        look.request = {self, ActionKind::GazeResponse};   // avert_gaze false; submit fills gaze_seen
+        return look;
+    }
     const auto* me = rules5e::find(s, self);
     if (!me || !rules5e::is_conscious(*me) || rules5e::is_incapacitated(*me)) return end;
     if (me->surprised) return end;   // R-G16: a surprised creature's first turn accepts only EndTurn
