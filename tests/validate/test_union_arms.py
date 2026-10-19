@@ -194,6 +194,16 @@ class SpellEffectArmsR120(unittest.TestCase):
                 self.assertIn(k, eff["properties"]["kind"]["enum"])
 
 
+class SpellMaterialObject(unittest.TestCase):
+    def test_components_m_is_closed_with_the_documented_keys(self):
+        # spell@1 components.m (priced materials, docs/CONTENT_CONVENTIONS.md section 7): a closed object, not a union.
+        m = load("spell/v1.schema.json")["properties"]["components"]["properties"]["m"]
+        self.assertIs(m["additionalProperties"], False)
+        self.assertEqual(set(m["properties"]), {"text", "cost_cp", "consumed", "item"})
+        self.assertEqual(m["required"], ["text"])
+        self.assertEqual(m["properties"]["item"]["$ref"], "../common/v1.schema.json#/$defs/content_id")
+
+
 class UnionArms(unittest.TestCase):
     def test_every_union_matches_the_documented_sets(self):
         for label, schema, disc, doc in unions():

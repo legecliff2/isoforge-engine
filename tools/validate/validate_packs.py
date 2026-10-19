@@ -382,6 +382,23 @@ def check_spell_zone(doc, errs):
             errs.append(f"{where}: counts_aura_move_as_enter on a zone that never moves")
 
 
+def spell_material_warnings(doc) -> list[str]:
+    """Priced material components (docs/CONTENT_CONVENTIONS.md section 7). Warnings, not errors: the documents load, but a
+    priced material without `item` can never be provided (the sim refuses the cast), and `item` without a cost does nothing.
+    `item` is not checked against item@1 documents (the sim needs none; an equipment[] entry with value_gp provides it)."""
+    m = doc.get("components", {}).get("m")
+    if not isinstance(m, dict):
+        return []
+    cost = m.get("cost_cp", 0)
+    if cost > 0 and "item" not in m:
+        return [f"/components/m: cost_cp {cost} without item: no equipment entry can provide this material, so the sim "
+                "refuses the cast (priced materials)"]
+    if "item" in m and cost <= 0:
+        return [f"/components/m: item '{m['item']}' is ignored without cost_cp (a material with no cost needs nothing; "
+                "priced materials)"]
+    return []
+
+
 CHECKS = {"monster": check_monster, "character": check_character, "chunk": check_chunk, "spell": check_spell}
 
 
@@ -557,6 +574,8 @@ def validate_doc(rel: str, doc: dict, tag: str, registry: Registry, by_tag: dict
     errs += list(dict.fromkeys(f"/{'/'.join(map(str, e.absolute_path))}: {schema_message(e, registry)}" for e in schema_errs))
     if not schema_errs and typ in CHECKS:
         CHECKS[typ](doc, errs, ctx)
+    if not schema_errs and typ == "spell":
+        warns += [f"{rel}: {w}" for w in spell_material_warnings(doc)]
     row = c4.tag_row(tag)
     if not schema_errs and row is not None and row.cross_refs:
         if typ == "item":

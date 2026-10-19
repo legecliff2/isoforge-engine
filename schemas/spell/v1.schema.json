@@ -315,6 +315,10 @@
             },
             "consumed": {
               "type": "boolean"
+            },
+            "item": {
+              "$ref": "../common/v1.schema.json#/$defs/content_id",
+              "description": "Priced material: the equipment[] entry id that provides it (e.g. 'srd51.item.diamond'; docs/CONTENT_CONVENTIONS.md section 7). Matched exactly against the caster's equipment ids together with value_gp * 100 >= cost_cp; no item@1 document is required. Ignored without cost_cp. Contract only: no loader reads it yet."
             }
           },
           "dependentRequired": {

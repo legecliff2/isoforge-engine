@@ -314,6 +314,29 @@ class SpellKindsR120(unittest.TestCase):
                                                "expiry": {"kind": "rounds", "n": 2}}])], [])}
         self.assertEqual(self.run_docs(docs), ([], []))
 
+    def test_priced_material_item(self):
+        # components.m.item (priced materials, docs/CONTENT_CONVENTIONS.md section 7): no item@1 document is required.
+        m = ["components", "m"]
+        rv = kinds_fixture(REVIVE)
+        self.assertEqual(rv["components"]["m"]["item"], "srd51.item.diamond")
+        self.assertEqual(self.run_docs({REVIVE: rv}), ([], []))
+        errs, warns = self.run_docs({REVIVE: _edit(rv, [], [m + ["item"]])})
+        self.assertEqual(errs, [])
+        self.assertEqual(len(warns), 1, warns)
+        self.assertIn("/components/m: cost_cp 30000 without item", warns[0])
+        errs, warns = self.run_docs({REVIVE: _edit(rv, [], [m + ["cost_cp"], m + ["consumed"]])})
+        self.assertEqual(errs, [])
+        self.assertTrue(any("item 'srd51.item.diamond' is ignored without cost_cp" in w for w in warns), warns)
+        for bad, want in (("Diamond", "does not match"), ("diamond", "does not match"), (7, "is not of type 'string'")):
+            with self.subTest(bad):
+                errs, _ = self.run_docs({REVIVE: _edit(rv, [(m + ["item"], bad)], [])})
+                self.assertTrue(any(want in e for e in errs), (want, errs))
+        # an unrelated key is still refused (components.m stays closed)
+        errs, _ = self.run_docs({REVIVE: _edit(rv, [(m + ["value_gp"], 300)], [])})
+        self.assertTrue(any("Additional properties are not allowed ('value_gp'" in e for e in errs), errs)
+        # a free material with no item needs nothing (no warning)
+        self.assertEqual(self.run_docs({LR: _edit(kinds_fixture(LR), [(["components", "m"], {"text": "a feather"})], [])}), ([], []))
+
     def test_cases(self):
         for name, fx, sets, dels, expect in KIND_CASES:
             with self.subTest(name):
