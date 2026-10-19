@@ -1,0 +1,157 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.fighter_level_2",
+  "name": "Fighter, level 2",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "neutral good",
+  "level": 2,
+  "classes": [
+    {
+      "class": "fighter",
+      "level": 2,
+      "hit_die": "d10"
+    }
+  ],
+  "xp": 300,
+  "armor_class": {
+    "value": 18,
+    "note": "chain mail, shield"
+  },
+  "hit_points": {
+    "average": 20,
+    "formula": "2d10+4"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 16,
+    "dex": 14,
+    "con": 15,
+    "int": 9,
+    "wis": 13,
+    "cha": 11
+  },
+  "saving_throws": {
+    "str": 5,
+    "con": 4
+  },
+  "skills": {
+    "athletics": 5,
+    "perception": 3
+  },
+  "senses": {
+    "passive_perception": 13
+  },
+  "languages": [
+    "Common",
+    "Goblin"
+  ],
+  "proficiency_bonus": 2,
+  "features": [
+    {
+      "id": "fighting_style_dueling",
+      "name": "Fighting Style: Dueling",
+      "description": "When you are wielding a melee weapon in one hand and no other weapons, you gain a +2 bonus to damage rolls with that weapon.",
+      "effect": {
+        "kind": "damage_bonus",
+        "amount": 2,
+        "condition": "one_handed_melee_no_other_weapon"
+      }
+    },
+    {
+      "id": "second_wind",
+      "name": "Second Wind",
+      "description": "On your turn, you can use a bonus action to regain hit points equal to 1d10 + your fighter level. Once you use this feature, you must finish a short or long rest before you can use it again.",
+      "effect": {
+        "kind": "self_heal",
+        "dice": "1d10",
+        "plus": "fighter_level",
+        "uses": 1,
+        "recharge": "short_rest",
+        "cost": "bonus_action"
+      }
+    },
+    {
+      "id": "action_surge",
+      "name": "Action Surge",
+      "description": "On your turn, you can take one additional action on top of your regular action and a possible bonus action. Once you use this feature, you must finish a short or long rest before you can use it again.",
+      "effect": {
+        "kind": "grant_action",
+        "cost": "free",
+        "usage": {
+          "kind": "per_rest",
+          "uses": 1,
+          "rest": "short"
+        }
+      }
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.chain_mail",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.shield",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.longsword",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.crossbow_light"
+    },
+    "crossbow_bolts_20",
+    "dungeoneers_pack"
+  ],
+  "actions": [
+    {
+      "id": "longsword",
+      "name": "Longsword",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "versatile"
+      ],
+      "description": "Base damage; Fighting Style: Dueling (+2, one-handed with a shield) is applied by its feature effect.",
+      "damage": [
+        {
+          "dice": "1d8+3",
+          "type": "slashing"
+        }
+      ]
+    },
+    {
+      "id": "light_crossbow",
+      "name": "Light Crossbow",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 4,
+      "range": [
+        80,
+        320
+      ],
+      "targets": 1,
+      "properties": [
+        "ammunition",
+        "loading",
+        "two_handed"
+      ],
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ]
+    }
+  ]
+}
