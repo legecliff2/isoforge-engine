@@ -543,6 +543,10 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
                 errs += [f"{where}: {m}" for m in found]
             else:
                 warns += [f"{where}: {m} (inert in {tag}; becomes an error at @3)" for m in found]
+    if active:   # R-G14 metamagic / sculpt_spells: pools and declarations (sim #143 load errors)
+        m_errs, m_warns = c4.check_metamagic(doc)
+        errs += [f"{rel}: {m}" for m in m_errs]
+        warns += [f"{rel}: {m}" for m in m_warns]
     return errs, warns
 
 

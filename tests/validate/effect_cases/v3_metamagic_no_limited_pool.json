@@ -1,0 +1,26 @@
+{
+  "base": "characters/fighter_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        2
+      ],
+      {
+        "id": "metamagic",
+        "name": "metamagic",
+        "description": "x",
+        "effect": {
+          "kind": "metamagic",
+          "options": [
+            "quickened",
+            "twinned"
+          ],
+          "pool": "sorcery_points"
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "metamagic: metamagic pool 'sorcery_points' is not a limited resources[] pool"
+}

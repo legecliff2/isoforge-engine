@@ -1,0 +1,23 @@
+{
+  "base": "characters/fighter_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        2
+      ],
+      {
+        "id": "metamagic",
+        "name": "metamagic",
+        "description": "x",
+        "effect": {
+          "kind": "metamagic",
+          "options": [],
+          "pool": "sorcery_points"
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "should be non-empty"
+}

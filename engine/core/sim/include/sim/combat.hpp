@@ -205,6 +205,12 @@ public:
     std::vector<CombatantId> area_targets(CombatantId caster, const rules5e::SpellDef& def, Vec2i aim,
                                           std::string* error = nullptr) const;
     const rules5e::SpellDef* spell_def(uint32_t id) const;
+    // R-G9 teleport (FORCED_MOVEMENT.md §3, Q8): the anchors `actor` may teleport to with `def` (a Teleport spell), row-major
+    // (y, then x): footprint walkable and free, not its own tile, at most max_feet away (anchor-to-anchor Chebyshev x 5 ft), in
+    // line of sight when needs_sight, and not closer to a creature it is frightened of. Callers pick one and set
+    // ActionRequest::has_teleport_dest / teleport_x / teleport_y; submit re-validates it and fills teleport_feet.
+    std::vector<Vec2i> legal_teleport_tiles(CombatantId actor, const rules5e::SpellDef& def) const;
+    bool teleport_dest_ok(CombatantId actor, const rules5e::SpellDef& def, Vec2i dest) const;
 
 private:
     bool derived_area_ = false;   // targets of the request being resolved came from area_targets (skips the per-target range check)
@@ -213,6 +219,14 @@ private:
     void apply_rules_events(const std::vector<rules5e::Event>& evs);
     void sync_ecs();
     void install_hooks();
+    // R-G9: the rules forced_move hook (path walk / teleport, committed at once) and its farthest-first order.
+    rules5e::ForcedMoveResult resolve_forced(const rules5e::ForcedMoveQuery& q);
+    void set_step_context(const rules5e::ActionRequest& q) {   // which step the hook runs in (shove detection)
+        shove_actor_ = q.kind == rules5e::ActionKind::Attack && q.special == 3 ? q.actor : 0;
+        shove_target_ = shove_actor_ ? q.target : 0;
+    }
+    CombatantId shove_actor_ = 0, shove_target_ = 0;
+    std::vector<std::pair<CombatantId, Vec2i>> forced_placed_;   // hook commits of the step being resolved, in order
     SubmitResult finish(rules5e::StepResult sr);
     SubmitResult do_rules(rules5e::ActionRequest req, Vec2i to, bool aim = false);
     SubmitResult do_step(Vec2i to);
