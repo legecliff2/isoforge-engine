@@ -180,7 +180,7 @@ TEST_CASE("priced materials loader: components.m.item and character@4 equipment 
     ContentLibrary l2;
     Json neg = caster("test.character.neg", Json::array({{{"item", kDiamond}, {"value_gp", -1}}}));
     CHECK(l2.add(neg, "character"));
-    Json flt = caster("test.character.flt", Json::array({{{"item", kDiamond}, {"value_gp", 1.5}}}));
+    Json flt = caster("test.character.flt", Json::array({{{"item", kDiamond}, {"value_gp", Json::parse("1.5")}}}));
     CHECK(l2.add(flt, "character"));
 }
 
