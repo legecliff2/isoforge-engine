@@ -21,8 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (all monster@4). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-DEFERRED = ["boar", "hobgoblin", "orc", "bugbear", "ghoul", "giant-spider",
-            "berserker", "swarm-of-rats"]
+DEFERRED = ["boar", "hobgoblin", "bugbear", "ghoul", "giant-spider",
+            "swarm-of-rats"]
 # Documented deviations: monster -> why the content differs from the raw table.
 DEVIATIONS = {
     "lizardfolk": "AC: the table lists 13 (natural armor) and 15 (with shield); the SRD line is 15 and the Spiked Shield attack needs the shield.",
@@ -146,6 +146,10 @@ class MonsterTable(unittest.TestCase):
                 bite = load(idx)["actions"][0]
                 self.assertNotIn("on_hit", bite)
                 self.assertIn("knocked prone", bite["description"])
+        # Aggressive / Reckless (common@1 open kinds aggressive / reckless_attack, sim #129): one declaration, no fields
+        for idx, kind in (("orc", "aggressive"), ("berserker", "reckless_attack")):
+            with self.subTest(monster=idx):
+                self.assertEqual([t["effect"] for t in load(idx)["traits"] if "effect" in t], [{"kind": kind}])
         # Sunlight Sensitivity / Keen Hearing and Smell: descriptive (no light model, no perception checks in the sim)
         self.assertNotIn("effect", {t["id"]: t for t in load("kobold")["traits"]}["sunlight_sensitivity"])
 

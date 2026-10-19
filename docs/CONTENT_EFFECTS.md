@@ -144,7 +144,20 @@ declaration adds nothing (the validator warns).
 
 Example: `{ "kind": "pack_tactics" }`
 
-These four are open kinds (live at `@3` and `@4`); see `docs/CONTENT_CONVENTIONS.md` section 3.
+### `aggressive` (static, T&C-G7)
+
+No fields. SRD orc Aggressive (sim #129: rules5e `Combatant::aggressive`): a bonus-action Dash whose extra movement must take the
+creature toward a hostile it can see (`Combat::aggressive_step_ok`); the built-in AI uses it when the Dash lets it reach a target.
+A second declaration adds nothing (the validator warns).
+
+### `reckless_attack` (static, T&C-G7)
+
+No fields. Barbarian Reckless Attack / SRD berserker Reckless (sim #129: rules5e `Combatant::reckless_attack`): declared by the
+caller with `ActionRequest::reckless` on the turn's first attack (advantage on Strength melee weapon attacks that turn; attacks
+against the creature have advantage until its next turn). The built-in AI never declares it. A second declaration adds nothing
+(the validator warns).
+
+These six are open kinds (live at `@3` and `@4`); see `docs/CONTENT_CONVENTIONS.md` section 3.
 
 ### 1.1 Condition ids
 

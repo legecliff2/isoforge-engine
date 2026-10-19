@@ -1,0 +1,113 @@
+{
+  "$schema": "monster@4",
+  "id": "srd51.monster.orc",
+  "name": "Orc",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "orc"
+  ],
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 13,
+    "note": "hide armor"
+  },
+  "hit_points": {
+    "average": 15,
+    "formula": "2d8+6"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 16,
+    "dex": 12,
+    "con": 16,
+    "int": 7,
+    "wis": 11,
+    "cha": 10
+  },
+  "skills": {
+    "intimidation": 2
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 10
+  },
+  "languages": [
+    "Common",
+    "Orc"
+  ],
+  "challenge": {
+    "rating": "1/2",
+    "xp": 100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "aggressive",
+      "name": "Aggressive",
+      "description": "As a bonus action, the orc can move up to its speed toward a hostile creature that it can see.",
+      "effect": {
+        "kind": "aggressive"
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "greataxe",
+      "name": "Greataxe",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d12+3",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 9 (1d12 + 3) slashing damage."
+    },
+    {
+      "id": "javelin",
+      "name": "Javelin",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+3",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee or Ranged Weapon Attack: +5 to hit, reach 5 ft. or range 30/120 ft., one target. Hit: 6 (1d6 + 3) piercing damage."
+    },
+    {
+      "id": "javelin_thrown",
+      "name": "Javelin (thrown)",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 5,
+      "range": [
+        30,
+        120
+      ],
+      "targets": 1,
+      "properties": [
+        "thrown"
+      ],
+      "damage": [
+        {
+          "dice": "1d6+3",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee or Ranged Weapon Attack: +5 to hit, reach 5 ft. or range 30/120 ft., one target. Hit: 6 (1d6 + 3) piercing damage."
+    }
+  ]
+}

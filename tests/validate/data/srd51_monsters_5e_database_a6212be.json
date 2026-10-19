@@ -1079,6 +1079,100 @@
      ]
     }
    ]
+  },
+  "orc": {
+   "name": "Orc",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    13
+   ],
+   "hp": 15,
+   "hp_roll": "2d8+6",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    16,
+    12,
+    16,
+    7,
+    11,
+    10
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Greataxe",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d12+3",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Javelin",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "berserker": {
+   "name": "Berserker",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    13
+   ],
+   "hp": 67,
+   "hp_roll": "9d8+27",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    16,
+    12,
+    17,
+    9,
+    11,
+    9
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Greataxe",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d12+3",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
