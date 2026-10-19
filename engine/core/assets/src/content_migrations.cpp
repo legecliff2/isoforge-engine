@@ -85,6 +85,12 @@ void monster_2_to_3(Json& j, MigrationCtx&) { mark_effects_inert(j); mark_defens
 // 3 -> 4 (VERSION_BUMP_BATCH 8.2; tools/validate/migrate_v4.py is the reference, outputs must be identical).
 // A pure function of the old document. Pre-@4 reactions, loadable bonus actions and the new effect kinds are
 // descriptive; they are stamped inert so the @4 loader never applies them.
+// `e[key]` is the string `want`. Anything else (absent, null, a number, an object) is "not equal", as in the Python
+// reference (`e.get("kind") != "special"`); nlohmann's value() would throw type_error on a non-string.
+bool string_is(const Json& e, const char* key, const char* want) {
+    const auto it = e.find(key);
+    return it != e.end() && it->is_string() && it->get_ref<const std::string&>() == want;
+}
 void migrate_3_to_4(Json& j, bool character) {
     std::set<std::string> marks;
     auto stamp = [&](const char* key, bool only_loadable, const char* mark) {
@@ -93,7 +99,7 @@ void migrate_3_to_4(Json& j, bool character) {
         bool any = false;
         for (auto& e : *it) {
             if (!e.is_object()) continue;
-            if (only_loadable && e.value("kind", std::string()) == "special") continue;
+            if (only_loadable && string_is(e, "kind", "special")) continue;
             e["inert"] = true;
             any = true;
         }
@@ -109,8 +115,9 @@ void migrate_3_to_4(Json& j, bool character) {
             if (!f.is_object()) continue;
             auto e = f.find("effect");
             if (e == f.end() || !e->is_object()) continue;
-            const std::string k = e->value("kind", std::string());
-            if (std::find(frozen.begin(), frozen.end(), k) != frozen.end()) (*e)["inert"] = true;
+            const auto kind = e->find("kind");
+            if (kind == e->end() || !kind->is_string()) continue;   // a mistyped kind is not one of the frozen kinds
+            if (std::find(frozen.begin(), frozen.end(), kind->get<std::string>()) != frozen.end()) (*e)["inert"] = true;
         }
     }
     if (character) {
