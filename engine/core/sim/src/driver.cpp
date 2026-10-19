@@ -32,7 +32,8 @@ std::vector<Vec2i> goal_anchors(Vec2i tp, int tn, int mn, int reach) {
 }
 } // namespace
 
-Command next_command(const Combat& c, std::optional<CombatantId> target) {
+namespace {
+Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     const auto& s = c.state();
     const CombatantId self = rules5e::current_actor(s);
     Command end;
@@ -282,6 +283,24 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
     st.kind = CommandKind::Step;
     st.to = path[0];
     return st;
+}
+}  // namespace
+
+// The tactical choice, plus R-G7's grip fact: a versatile melee weapon held in two hands (Archetype::two_handed_grip, the v0
+// wield model; never with a two-weapon bonus option) is attacked with ActionRequest::two_handed_grip so Great Weapon Fighting
+// applies. Only rules5e's Great Weapon Fighting reads the flag.
+Command next_command(const Combat& c, std::optional<CombatantId> target) {
+    Command cmd = tactical_command(c, target);
+    rules5e::ActionRequest& q = cmd.request;
+    if (cmd.kind != CommandKind::Rules || q.kind != ActionKind::Attack || q.special != 0 || q.as_bonus_action) return cmd;
+    const auto* me = rules5e::find(c.state(), q.actor);
+    const Archetype* arch = c.archetype(q.actor);
+    if (!me || !arch || q.attack_index >= me->attacks.size() || q.attack_index >= 32) return cmd;
+    if (!(arch->two_handed_grip >> q.attack_index & 1u)) return cmd;
+    for (const auto& bo : me->bonus_attacks)
+        if (bo.different_weapon) return cmd;
+    q.two_handed_grip = true;
+    return cmd;
 }
 
 RunResult run_to_end(Combat& c, const PolicyFor& policy_for, uint32_t max_commands) {
