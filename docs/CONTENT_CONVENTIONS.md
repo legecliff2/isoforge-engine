@@ -362,8 +362,12 @@ the category, and `tests/compat` has no items.
 
 A `save_condition` rider (an attack's `on_hit[]` or an `on_event` `effects[]` entry) whose `apply[]` entry has neither
 `duration` nor `repeat_save` fails to load in the sim ("save_condition uses an unsupported duration"); the validator reports the
-same error. `checks_v4.UNTIMED_ON_HIT_CONDITIONS` lists the exceptions: empty today; `prone` joins it when Engine Core's loader
-accepts untimed conditions that end by their own rules (the SRD wolf / dire wolf bite rider stays descriptive until then).
+same error. `checks_v4.UNTIMED_ON_HIT_CONDITIONS` lists the exceptions, mirroring the loader's `kEndsByOwnRules` (#133): `prone`
+only, a condition that ends by its own rules (the target stands up). The sim applies it untracked, the condition bit only with no
+timed entry, as Shove does; a timed prone rider loads as before. Every other untimed condition, including one beside an untimed
+prone in the same `apply[]`, is still the load error. The exception covers riders only: a `save_effect` action with an untimed
+condition (prone included) is still listed unsupported by the loader (it loads, the action is not compiled). Example, the SRD wolf
+bite: `"on_hit": [{"kind": "save_condition", "save": {"ability": "str", "dc": 11}, "apply": [{"condition": "prone"}]}]`.
 
 ## 8. R-G16 encounter surprise: chunk@1 top-level `surprise` (reserved; contract for the loader)
 
