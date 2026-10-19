@@ -128,7 +128,7 @@ Things that apply to many rows (so they are not repeated):
 | Critical hits double dice only | DATA | `roll_dice(..., crit)`. |
 | Temp HP | DATA | See section 1. |
 | Damage when hit by a save-based effect: full / half | DATA | `Save` effect with `on_success: half`. |
-| Evasion (no damage on success, half on fail) | NEW (wiring) | Rules done (R-G7): `Combatant::evasion` (Dex save vs half: none on success, half on failure). Loader pending. |
+| Evasion (no damage on success, half on fail) | NEW (wiring) | Rules done (R-G7): `Combatant::evasion` (Dex save vs half: none on success, half on failure). Loader done (EC #114): feature / trait kind `evasion`. |
 | Maximum HP reduction (wraith, vampire, specter life drain) | NEW (wiring) | rules5e `Attack::drain_max_hp` / `drain_save_dc`, `Combatant::hp_max_reduction` (death at 0 maximum, `long_rest` clears) (small leftovers, VERSION_BUMP_BATCH 7.2j). |
 
 ## 6. Class features, levels 1-5
@@ -143,7 +143,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Fighting Style: Dueling | 1 | DATA | `damage_bonus {amount:2, condition: one_handed_melee_no_other_weapon}` (shipped, `fighter_1`). |
 | Fighting Style: Archery (+2 ranged attack rolls) | 1 | NEW (wiring) | Rules done (R-G5): `Combatant::attack_bonus_ranged` (weapon attacks only). Loader kind `attack_bonus` pending. |
 | Fighting Style: Defense (+1 AC in armor) | 1 | NEW (wiring) | Rules done (R-G5): `AcInput::armored_bonus` in `compute_ac` (only while armor is worn). Loader kind `ac_bonus` pending. |
-| Fighting Style: Great Weapon Fighting (reroll 1-2 on damage dice) | 1 | NEW (wiring) | Rules done (R-G7): `Combatant::great_weapon_fighting`, two-handed or versatile with `ActionRequest::two_handed_grip`; weapon dice showing 1-2 rerolled once. |
+| Fighting Style: Great Weapon Fighting (reroll 1-2 on damage dice) | 1 | NEW (wiring) | Rules done (R-G7): `Combatant::great_weapon_fighting`, two-handed or versatile with `ActionRequest::two_handed_grip`; weapon dice showing 1-2 rerolled once. Loader done (EC #114): feature kind `great_weapon_fighting`, `two_handed` / `versatile` property bits; the AI sets `two_handed_grip` for a versatile melee weapon of a stat block without a shield (v0 wield model). |
 | Fighting Style: Protection (reaction, impose disadvantage on attack vs adjacent ally) | 1 | NEW (wiring) | Rules done (#87): `AllyAttacked` window + `ImposeDisadvantage` reaction (R-G7); no content/hook compile yet (Engine Core). |
 | Fighting Style: Two-Weapon Fighting (add mod to off-hand) | 1 | NEW (wiring) | Rules done (R-G6): omit the off-hand `damage` override so the baked ability modifier stays. Loader pending. |
 | Second Wind | 1 | DATA | `self_heal {dice 1d10, plus fighter_level, uses 1, recharge short_rest, cost bonus_action}` (shipped). |
@@ -198,7 +198,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Jack of All Trades (+half proficiency to checks) | 2 | NEW | Check modifier (R-G7/small). |
 | Song of Rest | 2 | OOS | Out of combat healing. |
 | Expertise | 3 | DATA | Authored skills. |
-| College of Lore: Cutting Words (reaction, subtract inspiration die from enemy roll) | 3 | NEW (wiring) | Rules done for attack rolls (R-G7): `AttackRolled` window, `Reaction{SubtractRoll, dice, pool}`; checks and damage rolls not covered. Sim `in_range` / loader pending. |
+| College of Lore: Cutting Words (reaction, subtract inspiration die from enemy roll) | 3 | NEW (wiring) | Rules done for attack rolls (R-G7): `AttackRolled` window, `Reaction{SubtractRoll, dice, pool}`; checks and damage rolls not covered. Loader and sim done (EC #114): `reactions[]` window `roll_attack` + `subtract_roll {dice}` + `usage {kind: pool}` (resources[] pool); `in_range` = within 60 ft of the attacker and sees it. The Python validator still lists `roll_attack` / `subtract_roll` as reserved. |
 | Font of Inspiration (short rest recharge) | 5 | NEW | Recharge change on the same pool (R-G5). |
 | **Druid** spellcasting (full caster) | 1 | DATA | |
 | Wild Shape (CR 1/4 at L2, no fly/swim; CR 1/2 at L4; CR 1 at L8) | 2 | NEW | Replace stat block temporarily; HP overflow carries over (R-G12). |
@@ -262,7 +262,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Darkvision | NEW | R-G13. |
 | Dwarven Resilience (poison resistance; advantage vs poison) | NEW | Resistance is DATA (loaded by #45); save advantage vs source type is T&C-G7 style. |
 | Fey Ancestry (advantage vs charm) / Brave (halfling, vs frightened) | NEW (wiring) | Rules done: `{Save, Advantage, save_vs_conditions}` (Charmed / Frightened). Content loader is T&C's. |
-| Halfling Lucky (reroll natural 1) | NEW (wiring) | Rules done (R-G7): `Combatant::reroll_ones` (attack / check / save; not death saves). Loader pending. |
+| Halfling Lucky (reroll natural 1) | NEW (wiring) | Rules done (R-G7): `Combatant::reroll_ones` (attack / check / save; not death saves). Loader done (EC #114): feature kind `reroll_ones` (default all three = 7, optional `rolls`). |
 | Relentless Endurance (drop to 1 HP once per day) / Savage Attacks (extra crit die) | NEW | T&C-G7 / R-G7. |
 | Dragonborn breath weapon and resistance | NEW | Area save + limited use (R-G10, T&C-G7). |
 | Tiefling Hellish Resistance / Infernal Legacy (Thaumaturgy, Hellish Rebuke) | NEW | Resistance is DATA (loaded by #45); Hellish Rebuke trigger (R-G7). |
