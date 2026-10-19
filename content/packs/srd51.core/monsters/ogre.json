@@ -1,0 +1,94 @@
+{
+  "$schema": "monster@4",
+  "id": "srd51.monster.ogre",
+  "name": "Ogre",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "giant",
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 11,
+    "note": "hide armor"
+  },
+  "hit_points": {
+    "average": 59,
+    "formula": "7d10+21"
+  },
+  "speed": {
+    "walk": 40
+  },
+  "abilities": {
+    "str": 19,
+    "dex": 8,
+    "con": 16,
+    "int": 5,
+    "wis": 7,
+    "cha": 7
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 8
+  },
+  "languages": [
+    "Common",
+    "Giant"
+  ],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "actions": [
+    {
+      "id": "greatclub",
+      "name": "Greatclub",
+      "kind": "melee_weapon_attack",
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d8+4",
+          "type": "bludgeoning"
+        }
+      ]
+    },
+    {
+      "id": "javelin",
+      "name": "Javelin",
+      "kind": "melee_weapon_attack",
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+4",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "javelin_thrown",
+      "name": "Javelin (thrown)",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 6,
+      "range": [
+        30,
+        120
+      ],
+      "targets": 1,
+      "properties": [
+        "thrown"
+      ],
+      "damage": [
+        {
+          "dice": "2d6+4",
+          "type": "piercing"
+        }
+      ]
+    }
+  ]
+}
