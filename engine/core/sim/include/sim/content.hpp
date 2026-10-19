@@ -12,6 +12,7 @@
 #include "sim/features.hpp"
 #include "rules5e/spells.hpp"
 #include "rules5e/encounter.hpp"
+#include "rules5e/rest.hpp"
 #include "rules5e/types.hpp"
 
 namespace eng::sim {
@@ -67,6 +68,10 @@ struct Archetype {
     // `unlimited` table entries register no pool. legendary_resistance names the pool base.legendary_pool points at.
     struct Resource { std::string id; uint32_t pool_id = 0; uint16_t max = 0, start = 0; uint8_t recharge = 0; };   // recharge: FeatureRecharge
     std::vector<Resource> resources;
+    // slot_recovery features (Arcane Recovery / Natural Recovery, VERSION_BUMP_BATCH 7.2n hand-off 1): one spec per
+    // declaration (feature_id = 1-based index in features). Never registered by Combat::create (rests stay outside Combat
+    // and its hash); sim::register_slot_recovery puts the FeatureUses rows into a kept roster.
+    std::vector<rules5e::SlotRecoverySpec> slot_recovery;
     std::vector<std::string> unlimited_resources;
     // UseFeature specs (row 13: usage.pool / cost, grant_action, heal_pool), by feature_id; hooks.feature_spec reads them.
     std::map<uint32_t, rules5e::FeatureSpec> feature_specs;
