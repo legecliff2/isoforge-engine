@@ -588,6 +588,10 @@ Update after #91 / #93 (version-bump batch):
   used up). Today every combat starts from content (full HP, full slots, the content `equipment[]`), and consumption is
   combat-local only (CONTENT_CONVENTIONS §7: nothing is written back). The input would be a replay input like the seed and the
   surprised set; absent, behaviour and every hash stay as today.
+- **TODO (R-G12 carry-over between fights, campaign layer; `docs/proposals/SUMMONS_TRANSFORMS.md` §3.5, D15):** today Combat ends every summon and transform at
+  the end of the encounter (Q15). Carrying long-lived summons (Find Familiar, Find Steed, Animate Dead control) and lasting
+  transforms into the next fight belongs in this carry-over input: summon records with their ids from a campaign-level counter,
+  hashed under 0xAF, and replayed like the surprised set.
 
 ### 11.2 Mapping: first-draft id -> unified id
 
