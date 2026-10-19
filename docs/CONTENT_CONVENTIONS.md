@@ -1,4 +1,4 @@
-# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G11 zones, R-G8 grapple rider)
+# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G11 zones, R-G8 grapple rider, R-G15 spell kinds, priced materials)
 
 Owner: Tools & Content. Source of truth is the C++ loader; this file records what it reads and what the validator checks.
 All numbers are integers.
@@ -243,3 +243,89 @@ Versioning: an additive kind with a new closed arm in `common@2 $defs/rider` and
 no migration, no api_level gate: the old schema rejected kind `grapple`, so no existing file can carry it (`tests/compat` and the
 shipped packs validate unchanged). Fixture: `tests/validate/fixtures/v4/extra/giant_crab_grappler.json`; cases: `test_v4_validator.py`
 `GRAPPLE_CASES`.
+
+## 6. R-G15 spell@1 kinds wired by sim #120: `hp_pool`, `dispel`, `revive`, `end_condition`, `delayed_damage`, `sustained_damage`
+
+Compiled by `rules5e_content::spell_from_json` (`engine/rules/content/src/spell_loader.cpp`,
+#120, 66012c7; rules #105 / #106, proposal sections 7.2f / 7.2g). Schema: six closed arms of spell@1 `$defs/effect` (each also a
+propertyNames allow-list, `tests/validate/test_union_arms.py` `SpellEffectArmsR120`) and the closed `$defs/delayed_expiry` union.
+Fixtures: `tests/validate/fixtures/spell_kinds/spells/` (Sleep, Color Spray, Dispel Magic, Revivify, Lesser Restoration, Acid
+Arrow, Heat Metal; test namespace, not in `srd51.core`).
+
+| kind | keys (required **bold**) | compiles to | loader errors |
+|---|---|---|---|
+| `hp_pool` | **`dice`** (`NdS[+/-B]`), **`condition`**, `ends_on_damage` (boolean), `excludes_creature_type` (non-empty creature types, as on `heal`) | `HpPool`: roll `dice` (+ `scaling.upcast.dice`), cover targets by lowest current HP with `condition` for the spell's duration (Sleep, Color Spray) | `effect dice invalid`, `effect condition invalid`, `effect ends_on_damage must be a boolean`, `effect excludes_creature_type invalid` |
+| `dispel` | `check` = `{ability: "spellcasting", dc_base: 1..99, plus: "spell_level"}` (all three required; omitted = dc_base 10) | `Dispel`: spells of the slot level or lower end; higher ones on a check, DC `dc_base` + their level (Dispel Magic) | see note |
+| `revive` | `within_rounds` 1..255 (default 10 = 1 minute) | `Revive`: a creature dead at most that long returns with 1 HP (Revivify) | `effect within_rounds invalid` |
+| `end_condition` | **`conditions`**: non-empty array of common@1 conditions (unique in the schema) | `EndCondition`: ends the lowest `Condition` value present (Lesser Restoration) | `effect conditions invalid` |
+| `delayed_damage` | **`damage`** `{dice, type}`, **`expiry`**: `{kind: "rounds", n: 1..65535}` or `{kind: "until_end_of_target_next_turn"}`; `applies_to` | `DelayedDamage` with its own timer (Acid Arrow's 2d4 rides the spell attack with `applies_to: affected`) | `effect damage invalid`, `effect expiry must be {kind: rounds, n} or {kind: until_end_of_target_next_turn}`, `effect expiry n invalid` |
+| `sustained_damage` | **`damage`** `{dice, type}`; no `expiry` | `SustainedDamage`: damage now and on each bonus-action sustain while the spell lasts (Heat Metal) | `effect damage invalid`, `effect expiry is only for delayed_damage (sustained_damage lasts the spell's duration)` |
+
+Every arm also takes `description`; only `delayed_damage` takes `applies_to`. Cross-field rules (validator `check_spell`, same
+wording as the loader):
+
+- `effects[N]: <kind> is only allowed as the first effect` for `hp_pool`, `dispel`, `revive`, `end_condition`,
+  `sustained_damage` (only `delayed_damage` rides another effect).
+- `hp_pool needs a rounds, minutes or hours duration` / `sustained_damage needs ...`: their timer is the spell's duration in rounds
+  (minutes x 10, hours x 600; Color Spray's "until the end of your next turn" is written as 1 round).
+- `scaling.upcast.dice` is allowed on `hp_pool`, `delayed_damage`, `sustained_damage` (first effect); `scaling.upcast.dice not
+  allowed on a dispel effect` (and on `revive` / `end_condition`). `targets` is not allowed on any of the six.
+
+**Dispel DC (note).** The #120 loader reads a bare integer `effect.dc_base`; Engine Core is switching it (follow-up PR) to the
+`check` object above, the same shape as `counter`'s. The schema follows the check-object form and intentionally does **not**
+accept the bare `dc_base` (it was never valid content). Until the follow-up lands the loader ignores `check`, so authored DCs other
+than 10 do not take effect yet; SRD Dispel Magic uses 10.
+
+Shapes the #120 description gave that the loader does not use (loader wins): `hp_pool` takes a bare `dice` string, not
+`damage {dice, type}` (the pool is hit points, not damage); `damage {dice, type}` is used by `delayed_damage` /
+`sustained_damage` only.
+
+Versioning: additive spell@1 kinds and a new `$defs`; no tag change, no migration, no api_level gate (the old schema rejected
+these kinds, so no existing file carries them; `tests/compat` and both shipped packs validate unchanged).
+
+## 7. Priced material components (Director ruling; contract agreed with Engine Core)
+
+Content keys (all integers; additive, no tag change, no migration):
+
+| where | key | shape | meaning |
+|---|---|---|---|
+| spell@1 `components.m` | `cost_cp` | integer >= 1, optional | the material's price in copper (`SpellDef::material_cost_cp`, loaded today) |
+| spell@1 `components.m` | `consumed` | boolean, needs `cost_cp` | the cast uses the material up (`SpellDef::material_consumed`, loaded today) |
+| spell@1 `components.m` | **`item`** | content id string (common@1 `content_id`: dotted lowercase, e.g. `srd51.item.diamond`), optional | the equipment id that provides the priced material. **Contract only: no loader reads it yet**; Engine Core's loader follows these key names |
+| character@4 `equipment[]` item object | **`value_gp`** | integer >= 0, optional, **default 0** | the entry's value in gold pieces |
+
+Example (Revivify, fixture `tests/validate/fixtures/spell_kinds/spells/revivify.json`) and a caster that can pay for it:
+
+```json
+"components": { "v": true, "s": true,
+                "m": { "text": "diamonds worth 300 gp, which the spell consumes", "item": "srd51.item.diamond",
+                       "cost_cp": 30000, "consumed": true } }
+
+"equipment": [ { "item": "srd51.item.diamond", "value_gp": 300 } ]
+```
+
+Sim semantics (agreed; implemented by Engine Core's loader / `can_provide_components` later):
+
+1. A material with no cost (`cost_cp` absent) needs nothing.
+2. A priced material (`cost_cp` > 0) is satisfied by the **first** `equipment[]` entry, in array order, whose id equals
+   `components.m.item` **exactly** (the full content id; not the last-segment suffix match used for shields / armor) and whose
+   `value_gp * 100 >= cost_cp`. The entry id is read like `equipment_entry_id`: a bare string, `{"id": ...}` or `{"item": ...}`.
+   An entry without `value_gp` counts as 0 gp, so bare strings (which cannot carry `value_gp`) never satisfy a priced material.
+   Values are **not summed** across entries: one entry has to cover the cost on its own.
+3. No `item` key on a priced material: it is unsatisfiable and the cast is refused (today's behaviour for every priced material).
+4. `consumed: true` removes that one entry (the one that satisfied the cast) from the caster's combat-local equipment state; one
+   entry per cast. Nothing is written back to the content document.
+5. No item@1 document is needed for the id (item@1 has only `weapon`, `armor` and `shield` categories, so `srd51.item.diamond` is
+   not an item@1 document; a gem / valuables category is a possible later additive arm).
+
+Validator:
+
+- `components.m.item`: schema `content_id` pattern; **no existence check** against item@1 documents (the sim requires none).
+- warning: `cost_cp` > 0 without `item` (`/components/m: cost_cp N without item: no equipment entry can provide this material,
+  so the sim refuses the cast (priced materials)`): the spell loads, but nobody can ever cast it.
+- warning: `item` without `cost_cp` (`... is ignored without cost_cp (a material with no cost needs nothing; priced
+  materials)`).
+- There is no "not loaded yet" warning for `item`: like the zone keys (section 4), it is a contract the loader is written
+  against, and valid content should validate clean.
+- character@4 `value_gp`: integer >= 0 (floats and negatives are schema errors). An equipment entry with `value_gp` is exempt from
+  check 6/11 (its `item` need not resolve to an item@1); an entry without `value_gp` must still resolve.

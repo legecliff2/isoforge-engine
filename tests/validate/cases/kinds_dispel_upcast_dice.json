@@ -1,0 +1,50 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.kindsdispelupcastdice",
+  "name": "Dispel Magic",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "Any spell of 3rd level or lower on the target ends. For each spell of 4th level or higher, make an ability check using your spellcasting ability (DC 10 + the spell's level); on a success, the spell ends. At Higher Levels: the automatic limit is the slot level used.",
+  "level": 3,
+  "school": "abjuration",
+  "classes": [
+    "bard",
+    "cleric",
+    "druid",
+    "paladin",
+    "sorcerer",
+    "warlock",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 120
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "dispel",
+      "check": {
+        "ability": "spellcasting",
+        "dc_base": 10,
+        "plus": "spell_level"
+      }
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "dice": 1
+    }
+  }
+}

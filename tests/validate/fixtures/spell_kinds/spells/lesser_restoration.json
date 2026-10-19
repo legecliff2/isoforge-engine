@@ -1,0 +1,43 @@
+{
+  "$schema": "spell@1",
+  "id": "test.kinds.spell.lesser_restoration",
+  "name": "Lesser Restoration",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "You touch a creature and can end either one disease or one condition afflicting it: blinded, deafened, paralyzed, or poisoned (diseases are out of scope; the lowest listed condition present ends).",
+  "level": 2,
+  "school": "abjuration",
+  "classes": [
+    "bard",
+    "cleric",
+    "druid",
+    "paladin",
+    "ranger"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "end_condition",
+      "conditions": [
+        "blinded",
+        "deafened",
+        "paralyzed",
+        "poisoned"
+      ]
+    }
+  ]
+}

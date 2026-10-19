@@ -6,7 +6,8 @@ property of every arm; each arm is `if <discriminator> const ... then {required,
 <exactly the arm's allowed names>}}`. A test asserts for each arm that `allowed == required U optional`
 as documented. The documented sets below are written out by hand from the proposal (so a schema edit
 that widens or narrows an arm without the doc changing fails here), for every propertyNames union:
-common@2 usage, predicate, rider, modifier, reaction_effect, item@1, and spell@1 zone / zone_effect.
+common@2 usage, predicate, rider, modifier, reaction_effect, item@1, and spell@1 zone / zone_effect / delayed_expiry (plus the
+R-G15 spell effect arms).
 """
 from __future__ import annotations
 
@@ -72,6 +73,17 @@ ZONE = {("sphere", "cube"): (S({"shape", "size_ft", "anchor"}), S(_ZOPT)),
 ZONE_EFFECT = {("save",): (S({"kind", "ability"}), S({"damage", "on_success", "condition", "description"})),   # damage or condition
                ("damage",): (S({"kind", "damage"}), S({"condition", "description"})),
                ("apply_condition",): (S({"kind", "condition"}), S({"description"}))}
+# spell@1 delayed_damage expiry (R-G15, sim #120; docs/CONTENT_CONVENTIONS.md section 6).
+DELAYED_EXPIRY = {("rounds",): (S({"kind", "n"}), S()),
+                  ("until_end_of_target_next_turn",): (S({"kind"}), S())}
+# spell@1 $defs/effect arms of the R-G15 kinds. The effect union is the file's older if/then pattern (open base, each arm
+# closed with additionalProperties: false); these arms also carry a propertyNames allow-list, checked in SpellEffectArmsR120.
+SPELL_EFFECT_R120 = {"hp_pool": (S({"kind", "dice", "condition"}), S({"ends_on_damage", "excludes_creature_type", "description"})),
+                     "dispel": (S({"kind"}), S({"check", "description"})),
+                     "revive": (S({"kind"}), S({"within_rounds", "description"})),
+                     "end_condition": (S({"kind", "conditions"}), S({"description"})),
+                     "delayed_damage": (S({"kind", "damage", "expiry"}), S({"applies_to", "description"})),
+                     "sustained_damage": (S({"kind", "damage"}), S({"description"}))}
 _ICOMMON = {"source", "cost_cp", "weight_oz", "description"}
 _IBASE = S({"$schema", "id", "name", "category"})
 ITEM = {("weapon",): (_IBASE | {"weapon_class"}, S(_ICOMMON | {"reach", "range", "damage", "versatile_damage", "properties", "qualifiers", "magic_bonus", "on_hit"})),
@@ -86,7 +98,8 @@ def unions():
             ("common@2 reaction_effect", c2["reaction_effect"], "kind", REACTION_EFFECT),
             ("item@1", load("item/v1.schema.json"), "category", ITEM),
             ("spell@1 zone", load("spell/v1.schema.json")["$defs"]["zone"], "shape", ZONE),
-            ("spell@1 zone_effect", load("spell/v1.schema.json")["$defs"]["zone_effect"], "kind", ZONE_EFFECT)]
+            ("spell@1 zone_effect", load("spell/v1.schema.json")["$defs"]["zone_effect"], "kind", ZONE_EFFECT),
+            ("spell@1 delayed_expiry", load("spell/v1.schema.json")["$defs"]["delayed_expiry"], "kind", DELAYED_EXPIRY)]
 
 
 def required_names(node):
@@ -160,6 +173,35 @@ def check_union(label, schema, disc, doc) -> list[str]:
     if base_props - used:
         problems.append(f"{label}: base properties {sorted(base_props - used)} are allowed by no arm (orphans)")
     return problems
+
+
+class SpellEffectArmsR120(unittest.TestCase):
+    def test_r120_arms_are_closed_allow_lists(self):
+        eff = load("spell/v1.schema.json")["$defs"]["effect"]
+        found = {}
+        for sub in eff["allOf"]:
+            k = sub["if"]["properties"]["kind"]["const"]
+            if k in SPELL_EFFECT_R120:
+                found[k] = sub["then"]
+        self.assertEqual(set(found), set(SPELL_EFFECT_R120))
+        for k, then in found.items():
+            with self.subTest(k):
+                req, opt = SPELL_EFFECT_R120[k]
+                self.assertIs(then["additionalProperties"], False)
+                self.assertEqual(set(then["propertyNames"]["enum"]), set(req) | set(opt))
+                self.assertEqual(set(then["properties"]), set(req) | set(opt))
+                self.assertEqual(set(then["required"]), set(req))
+                self.assertIn(k, eff["properties"]["kind"]["enum"])
+
+
+class SpellMaterialObject(unittest.TestCase):
+    def test_components_m_is_closed_with_the_documented_keys(self):
+        # spell@1 components.m (priced materials, docs/CONTENT_CONVENTIONS.md section 7): a closed object, not a union.
+        m = load("spell/v1.schema.json")["properties"]["components"]["properties"]["m"]
+        self.assertIs(m["additionalProperties"], False)
+        self.assertEqual(set(m["properties"]), {"text", "cost_cp", "consumed", "item"})
+        self.assertEqual(m["required"], ["text"])
+        self.assertEqual(m["properties"]["item"]["$ref"], "../common/v1.schema.json#/$defs/content_id")
 
 
 class UnionArms(unittest.TestCase):
