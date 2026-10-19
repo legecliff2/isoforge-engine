@@ -1,0 +1,79 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.zoneauraneedsrangeself",
+  "name": "Spirit Guardians",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "Spirits flit around you to a distance of 15 feet. You can designate any number of creatures to be unaffected. An affected creature's speed is halved in the area, and when it enters the area for the first time on a turn or starts its turn there it makes a Wisdom save: 3d8 radiant (necrotic if you are evil; this fixture is radiant), half on a success. At Higher Levels: +1d8 per slot level above 3rd.",
+  "level": 3,
+  "school": "conjuration",
+  "classes": [
+    "cleric"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 30
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "a holy symbol"
+    }
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 10,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "zone",
+      "zone": {
+        "shape": "sphere",
+        "size_ft": 15,
+        "anchor": "creature",
+        "flags": [
+          "halve_speed"
+        ],
+        "chooses_excluded": true,
+        "triggers": [
+          {
+            "on": "zone_enter",
+            "effect": {
+              "kind": "save",
+              "ability": "wis",
+              "damage": {
+                "dice": "3d8",
+                "type": "radiant"
+              },
+              "on_success": "half"
+            }
+          },
+          {
+            "on": "zone_start_turn",
+            "effect": {
+              "kind": "save",
+              "ability": "wis",
+              "damage": {
+                "dice": "3d8",
+                "type": "radiant"
+              },
+              "on_success": "half"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "dice": 1
+    }
+  }
+}
