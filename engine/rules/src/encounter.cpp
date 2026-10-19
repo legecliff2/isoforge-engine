@@ -53,7 +53,7 @@ bool mod_in_scope(const ModifierSpec& m, ModStat st, int ability) {
 // Advantage / disadvantage sources from the modifiers of `id` for `st` (AttackRoll, Save, AbilityCheck, AttacksAgainst).
 void mod_modes(const EncounterState& s, CombatantId id, ModStat st, int ability, bool& adv, bool& dis) {
     for (const auto& m : s.modifiers) {
-        if (m.target != id || !mod_in_scope(m.spec, st, ability)) continue;
+        if (m.gated || m.target != id || !mod_in_scope(m.spec, st, ability)) continue;
         if (m.spec.mode == RollMode::Advantage) adv = true;
         else if (m.spec.mode == RollMode::Disadvantage) dis = true;
     }
@@ -63,7 +63,7 @@ void mod_modes(const EncounterState& s, CombatantId id, ModStat st, int ability,
 int mod_roll(EncounterState& s, CombatantId id, ModStat st, int ability) {
     int total = 0;
     for (const auto& m : s.modifiers) {
-        if (m.target != id || !mod_in_scope(m.spec, st, ability) || m.spec.die.count == 0) continue;
+        if (m.gated || m.target != id || !mod_in_scope(m.spec, st, ability) || m.spec.die.count == 0) continue;
         total += m.spec.die_mult * roll_dice(s.rng, m.spec.die, false);
     }
     return total;
@@ -96,6 +96,13 @@ void drop_concentration_modifiers(EncounterState& s, CombatantId caster, uint32_
     for (std::size_t i = 0; i < s.modifiers.size();) {
         const auto& m = s.modifiers[i];
         if (m.caster == caster && m.spec.concentration && m.spec.source == source) remove_modifier(s, i, 1, ev); else ++i;
+    }
+}
+
+// Early consumption (ModifierExpired reason 3: spent by an attack roll, 4: the target took damage).
+void consume_modifiers(EncounterState& s, int kind, CombatantId id, int reason, std::vector<Event>& ev) {
+    for (std::size_t i = 0; i < s.modifiers.size();) {
+        if (!s.modifiers[i].gated && s.modifiers[i].spec.consume == kind && s.modifiers[i].target == id) remove_modifier(s, i, reason, ev); else ++i;
     }
 }
 
@@ -519,6 +526,17 @@ bool predicate_holds(EncounterState& s, Combatant& owner, const Combatant& subje
     return false;
 }
 
+// Modifier `when` scope: every predicate must hold. Rolling predicates (Save) never hold in a modifier.
+bool when_ok(EncounterState& s, Combatant& owner, const Combatant& subject, const TrigCtx& x, const std::vector<Predicate>& when) {
+    std::vector<Event> sink;
+    bool failed = false;
+    for (const Predicate& p : when) {
+        if (p.kind == PredicateKind::Save) return false;
+        if (!predicate_holds(s, owner, subject, x, p, sink, failed)) return false;
+    }
+    return true;
+}
+
 // Can effect `e` of a trigger on `on` do something right now? Reserved combinations never fire.
 bool effect_applies(const EncounterState& s, const Combatant& owner, TriggerOn on, const RiderEffect& e) {
     switch (e.kind) {
@@ -747,6 +765,7 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
         }
     }
     after_damage(t, applied, critical, ev);
+    if (applied.dealt > 0 && !s.modifiers.empty()) consume_modifiers(s, 3, t.id, 4, ev);   // "until damaged"
     if (attacker && !attacker->triggers.empty() && applied.dealt > 0) {
         TrigCtx x; x.atk = src->atk; x.is_spell = src->is_spell; x.mode = src->mode; x.ally = src->ally; x.crit = critical;
         x.types = applied.types_dealt; x.dmg = applied.dealt;
@@ -900,6 +919,16 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     const bool protected_by_ally = ally_attacked_window(s, ctx, a, t, atk.ranged, spell_id, ev);   // Protection-style reactions
     actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft) || protected_by_ally;   // combined with conditions in one place
     if (!s.modifiers.empty()) {   // timed modifiers (row 12): sources merged into the one advantage/disadvantage resolution
+        for (auto& m : s.modifiers) {   // `when` scope of roll-time modifiers (follow-up): gate the ones that do not hold
+            m.gated = false;
+            if (m.spec.when.empty()) continue;
+            Combatant* owner = nullptr; const Combatant* subject = nullptr;
+            if (m.spec.stat == ModStat::AttackRoll && m.target == a.id) { owner = &a; subject = &t; }
+            else if ((m.spec.stat == ModStat::AttacksAgainst || m.spec.stat == ModStat::Ac) && m.target == t.id) { owner = &t; subject = &a; }
+            if (!owner) continue;
+            TrigCtx x; x.atk = &atk; x.is_spell = spell_id != 0; x.mode = actx.mode; x.ally = ally_near_target;
+            m.gated = !when_ok(s, *owner, *subject, x, m.spec.when);
+        }
         bool madv = false, mdis = false;
         mod_modes(s, a.id, ModStat::AttackRoll, -1, madv, mdis);
         mod_modes(s, t.id, ModStat::AttacksAgainst, -1, madv, mdis);
@@ -909,7 +938,12 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     }
     const RollMode atk_mode = attack_roll_mode(a, t, actx);
     D20Roll roll = roll_d20(s.rng, int(atk.to_hit) + modifier_flat(s, a.id, ModStat::AttackRoll), atk_mode);
-    if (!s.modifiers.empty()) roll.total = int16_t(roll.total + mod_roll(s, a.id, ModStat::AttackRoll, -1));
+    if (!s.modifiers.empty()) {
+        roll.total = int16_t(roll.total + mod_roll(s, a.id, ModStat::AttackRoll, -1));
+        consume_modifiers(s, 1, a.id, 3, ev);   // True Strike: spent by this attack roll
+        consume_modifiers(s, 2, t.id, 3, ev);   // Guiding Bolt: spent by this attack roll against the target
+        for (auto& m : s.modifiers) m.gated = false;
+    }
     bool crit = false;
     bool hit = evaluate_hit(roll, t, actx, crit);
     if (hit) {
@@ -939,6 +973,11 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
             for (const auto& m : s.modifiers) {
                 if (m.target != a.id || m.spec.stat != ModStat::Damage) continue;
                 if ((m.spec.scope == 1 && atk.ranged) || (m.spec.scope == 2 && !atk.ranged)) continue;
+                if (!m.spec.when.empty()) {
+                    TrigCtx x; x.atk = &atk; x.is_spell = false; x.mode = atk_mode; x.ally = ally_near_target; x.crit = crit;
+                    x.types = bit(m.spec.has_damage_type ? m.spec.damage_type : atk.type);
+                    if (!when_ok(s, a, t, x, m.spec.when)) continue;
+                }
                 int amt = m.spec.bonus;
                 if (m.spec.die.count > 0) amt += m.spec.die_mult * roll_dice(s.rng, m.spec.die, crit);
                 modp.push_back({std::max(0, amt), m.spec.has_damage_type ? m.spec.damage_type : atk.type});
@@ -1088,6 +1127,11 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
     }
     emit(ev, EventKind::TurnStarted, c.id, 0, s.round);
     drop_caster_turn_modifiers(s, c.id, ev);
+    for (const auto& m : s.modifiers)   // Heroism: temp hp again at the start of each turn
+        if (m.target == c.id && m.spec.stat == ModStat::TempHp && m.spec.per_turn && !c.dead && m.spec.bonus > c.temp_hp) {
+            c.temp_hp = m.spec.bonus;
+            emit(ev, EventKind::ModifierApplied, m.caster, c.id, int32_t(m.spec.id), int32_t(m.spec.stat), m.spec.bonus);
+        }
     repeat_saves(s, c.id, RepeatSave::StartOfTurn, ev);
     if (dies_of_exhaustion(c) && !c.dead) kill(c, ev);
     if (!c.dead && c.regeneration.amount > 0) {   // Regeneration (troll, vampire spawn)
@@ -2319,11 +2363,13 @@ bool apply_modifier(EncounterState& s, CombatantId caster, CombatantId target, c
     int32_t magnitude = spec.bonus;
     if (magnitude == 0 && spec.die.count > 0) magnitude = int32_t(spec.die.count) * 100 + spec.die.sides;
     else if (magnitude == 0 && spec.mode != RollMode::Normal) magnitude = int32_t(spec.mode);
-    else if (magnitude == 0 && spec.stat == ModStat::Speed) magnitude = int32_t(spec.speed_num) * 100 + spec.speed_den;
+    else if (magnitude == 0 && spec.stat == ModStat::Speed)
+        magnitude = (spec.speed_num == spec.speed_den && spec.speed_sub > 0) ? int32_t(spec.speed_sub) : int32_t(spec.speed_num) * 100 + spec.speed_den;
+    else if (magnitude == 0 && spec.stat == ModStat::Ac && spec.ac_floor > 0) magnitude = spec.ac_floor;
     if (spec.stat == ModStat::TempHp) {   // granted at once; the larger pool is kept; no record
         if (spec.bonus > t->temp_hp) t->temp_hp = spec.bonus;
         emit(ev, EventKind::ModifierApplied, caster, target, int32_t(spec.id), int32_t(spec.stat), magnitude);
-        return true;
+        if (!spec.per_turn) return true;   // Heroism keeps a record and grants again each turn
     }
     if (!spec.stack) {
         for (std::size_t i = 0; i < s.modifiers.size();) {
@@ -2335,24 +2381,35 @@ bool apply_modifier(EncounterState& s, CombatantId caster, CombatantId target, c
     m.timed = make_timed(Expiry(spec.expiry), spec.rounds, current_actor(s) == target);
     s.modifiers.push_back(m);
     if (spec.stat == ModStat::Resistance) refresh_mod_cache(s);
-    emit(ev, EventKind::ModifierApplied, caster, target, int32_t(spec.id), int32_t(spec.stat), magnitude);
+    if (spec.stat != ModStat::TempHp) emit(ev, EventKind::ModifierApplied, caster, target, int32_t(spec.id), int32_t(spec.stat), magnitude);
     return true;
 }
 
 int modifier_flat(const EncounterState& s, CombatantId id, ModStat st, int ability) {
     int sum = 0;
     for (const auto& m : s.modifiers)
-        if (m.target == id && mod_in_scope(m.spec, st, ability)) sum += m.spec.bonus;
+        if (!m.gated && m.target == id && mod_in_scope(m.spec, st, ability)) sum += m.spec.bonus;
     return sum;
 }
 
-int modified_ac_bonus(const EncounterState& s, CombatantId id) { return modifier_flat(s, id, ModStat::Ac); }
+int modified_ac_bonus(const EncounterState& s, CombatantId id) {
+    int bonus = modifier_flat(s, id, ModStat::Ac);
+    const Combatant* c = nullptr;
+    for (const auto& x : s.combatants) if (x.id == id) c = &x;
+    if (!c) return bonus;
+    int floor_ac = 0;   // Barkskin / Mage Armor: AC is at least this before the bonuses
+    for (const auto& m : s.modifiers)
+        if (!m.gated && m.target == id && m.spec.stat == ModStat::Ac && m.spec.ac_floor > 0)
+            floor_ac = std::max(floor_ac, int(m.spec.ac_floor) + (m.spec.ac_floor_dex ? modifier(c->abilities, Ability::Dex) : 0));
+    return bonus + std::max(0, floor_ac - int(c->ac));
+}
 
 int modified_speed(const EncounterState& s, const Combatant& c) {
     int sp = effective_speed(c);
     if (sp <= 0) return sp;
     for (const auto& m : s.modifiers)
-        if (m.target == c.id && m.spec.stat == ModStat::Speed && m.spec.speed_den > 0) sp = sp * m.spec.speed_num / m.spec.speed_den;
+        if (m.target == c.id && m.spec.stat == ModStat::Speed && m.spec.speed_den > 0)
+            sp = std::max(0, sp * m.spec.speed_num / m.spec.speed_den - int(m.spec.speed_sub));
     return sp;
 }
 
@@ -2368,6 +2425,9 @@ uint64_t modifiers_digest(const EncounterState& s, uint64_t h) {
         byte(uint8_t(p.die_mult)); byte(uint8_t(p.mode)); byte(p.speed_num); byte(p.speed_den);
         byte(uint8_t(p.damage_type)); byte(p.has_damage_type); byte(uint8_t(p.ability)); byte(p.has_ability);
         byte(p.scope); byte(p.until_caster_turn); byte(p.concentration);
+        byte(p.consume); byte(p.speed_sub); u32(uint32_t(uint16_t(p.ac_floor))); byte(p.ac_floor_dex); byte(p.per_turn);
+        byte(uint8_t(p.when.size()));
+        for (const Predicate& w : p.when) { byte(uint8_t(w.kind)); u32(uint32_t(uint16_t(w.a))); u32(uint32_t(uint16_t(w.b))); u32(w.mask); }
         byte(uint8_t(m.timed.kind)); u32(uint32_t(uint16_t(m.timed.rounds_left)));
     }
     return h;

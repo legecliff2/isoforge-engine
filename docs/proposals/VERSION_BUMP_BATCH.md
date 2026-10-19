@@ -959,6 +959,38 @@ new code path is skipped and no extra rng is drawn.
   features. (e) Sim code reading AC or resistances directly should add `modified_ac_bonus` / `effective_resistances`; rules
   already apply them internally.
 
+### 6.2b Row 12 follow-ups as implemented (rules side) and hand-off
+
+Rules side only (`feat/rules-modifiers-followups`); goldens unchanged (new fields default to "off", and a combat without modifiers
+runs none of this). `ModifierSpec` gains, appended:
+
+- `consume` (0 never; 1 after the target's next attack roll; 2 after the next attack roll made against the target; 3 when the
+  target takes damage). It combines with any expiry (first wins). `ModifierExpired` reasons gain **3** (spent by an attack roll,
+  emitted just before that `AttackResolved`) and **4** (the target took damage, via `damage_creature`). A modifier gated off by
+  `when` is not consumed. Use: True Strike (AttackRoll advantage, consume 1), Guiding Bolt (AttacksAgainst advantage, consume 2 +
+  `until_caster_turn`), Vicious Mockery (AttackRoll disadvantage, consume 1), "until damaged" effects (consume 3).
+- `speed_sub` (feet, subtracted after the num/den scaling, clamped at 0; Ray of Frost 10). `ModifierApplied.c` for a Speed
+  modifier is `speed_sub` when num == den, else num*100+den.
+- `ac_floor` / `ac_floor_dex` on `ModStat::Ac`: AC is at least `ac_floor` (+ Dex mod) before the bonuses (Barkskin 16, Mage Armor
+  13 + Dex). `modified_ac_bonus` returns the floor shortfall plus the flat bonuses. The caller (loader) decides "not wearing
+  armor". `ModifierApplied.c` = `ac_floor` when there is no flat bonus.
+- `per_turn` on `ModStat::TempHp` (Heroism): the first grant is immediate (`ModifierApplied`), the record is kept, and the target
+  gets `bonus` again (the larger pool is kept) at the start of each of its turns, with a `ModifierApplied` each time, until the
+  modifier expires. A TempHp modifier without `per_turn` is unchanged (instant, no record).
+- `when` (a `std::vector<Predicate>`, reusing the row 9 predicate kinds): every predicate must hold. Evaluated for AttackRoll
+  (owner = attacker), AttacksAgainst and Ac (owner = the defender) before the roll (so `NotCrit` is true and the roll mode is the
+  pre-modifier one), and for Damage with the real crit and damage type (owner = attacker, subject = target). Save-rolling
+  predicates never hold. Not evaluated for Save / AbilityCheck / Speed / Resistance / TempHp.
+- `SpellEffect::modifier`: `ApplyModifier` is now allowed as an **extra (rider) effect**, with `affected_only` (the earlier
+  "primary only" deviation is lifted): Guiding Bolt = SpellAttack + rider.
+- `modifiers_digest` folds all the new fields (still only folded, under 0xA2, when `has_modifier_state`).
+- **Deviations / limits.** `consume` 3 fires through `damage_creature` only (spell, weapon and trigger damage; not a direct
+  `apply_damage` caller). `when` is not available on Save / AbilityCheck. "True Strike next attack" does not distinguish
+  weapon from spell attacks (any attack roll spends it).
+- **Hand-off (Engine Core / T&C).** Compile the new `modifier` properties (`consume`, `speed_sub`, `ac_floor`, `per_turn`,
+  `when` with the row 9 predicate vocabulary) into `ModifierSpec`; allow `apply_modifier` in a spell's `effects[]` after the
+  first (maps to `SpellEffect::modifier`); no new hash tag (the 0xA2 digest covers them); no new event kinds.
+
 ### 6.3 Inert behaviour
 
 Spell side is additive (old spells contain no such kind). Feature side: `3→4` marks any pre-existing

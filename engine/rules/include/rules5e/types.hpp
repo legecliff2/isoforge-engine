@@ -253,6 +253,18 @@ struct ModifierSpec {
     bool until_caster_turn = false;      // ends at the start of the caster's next turn (Shield-like durations)
     bool concentration = false;          // ends when the caster's concentration on `source` ends
     bool stack = false;                  // false: replaces a modifier with the same id on the same target
+    // ---- Row 12 follow-ups (appended) ----
+    // Consumed early: 0 never; 1 after the target's next attack roll (True Strike); 2 after the next attack roll made against the
+    // target (Guiding Bolt); 3 when the target takes damage ("until damaged"). Combines with any expiry: the first one wins.
+    uint8_t consume = 0;
+    uint8_t speed_sub = 0;               // Speed: feet subtracted after the num/den scaling (Ray of Frost 10)
+    int16_t ac_floor = 0;                // Ac: AC is at least this (+ Dex mod with ac_floor_dex), before bonuses (Barkskin 16, Mage Armor 13 + Dex); 0 = none
+    bool ac_floor_dex = false;
+    bool per_turn = false;               // TempHp: granted again at the start of each of the target's turns while the modifier lasts (Heroism)
+    // General `when` scope for AttackRoll, AttacksAgainst, Ac (evaluated before the roll, crit unknown) and Damage (crit and the
+    // damage type known): every predicate must hold, owner = the creature the modifier is on, subject = the other party. Predicate
+    // kinds that roll (Save) never hold here.
+    std::vector<Predicate> when;
 };
 
 struct Combatant {
