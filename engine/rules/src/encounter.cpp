@@ -219,6 +219,35 @@ void end_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev) {
     }
 }
 
+// ---- R-G11 zones: lifetime (triggers are further down, after damage_creature) ----
+uint32_t turn_stamp(const EncounterState& s) { return (uint32_t(s.round) << 16) | s.turn_index; }
+
+ActiveZone* find_zone_mut(EncounterState& s, uint32_t id) {
+    for (auto& z : s.zones) if (z.zone_id == id) return &z;
+    return nullptr;
+}
+
+// A live zone of `owner`'s spell (keeps its concentration alive like a remaining effect).
+bool zone_alive(const EncounterState& s, CombatantId owner, uint32_t spell) {
+    return std::any_of(s.zones.begin(), s.zones.end(), [&](const ActiveZone& z) { return z.owner == owner && z.spell_id == spell; });
+}
+
+// Ends the "while in the zone" effects of zone `zone_id` (on `who` only, or on everyone when 0), in application order.
+void end_zone_effects(EncounterState& s, uint32_t zone_id, CombatantId who, std::vector<Event>& ev) {
+    for (std::size_t i = 0; i < s.effects.size();) {
+        const ActiveSpellEffect& e = s.effects[i];
+        if (e.zone_id == zone_id && (who == 0 || e.target == who)) end_effect(s, i, ev); else ++i;
+    }
+}
+
+// Removes zone `i`: ZoneEnded{owner, a = zone id, b = reason}, then its "while in the zone" effects end.
+void end_zone(EncounterState& s, std::size_t i, int32_t reason, std::vector<Event>& ev) {
+    const ActiveZone z = s.zones[i];
+    s.zones.erase(s.zones.begin() + std::ptrdiff_t(i));
+    emit(ev, EventKind::ZoneEnded, z.owner, 0, int32_t(z.zone_id), reason);
+    end_zone_effects(s, z.zone_id, 0, ev);
+}
+
 // Ends `c`'s concentration and every effect that depends on it.
 void end_concentration(EncounterState& s, CombatantId caster, std::vector<Event>& ev) {
     Combatant* c = find_mut(s, caster);
@@ -227,6 +256,10 @@ void end_concentration(EncounterState& s, CombatantId caster, std::vector<Event>
     c->concentration_spell = 0;
     emit(ev, EventKind::ConcentrationEnded, caster, 0, int32_t(sp));
     drop_concentration_modifiers(s, caster, sp, ev);
+    for (std::size_t i = 0; i < s.zones.size();) {   // R-G11: its zones end first (ZoneEnded reason 1)
+        if (s.zones[i].owner == caster && s.zones[i].concentration && s.zones[i].spell_id == sp) end_zone(s, i, 1, ev);
+        else ++i;
+    }
     for (std::size_t i = 0; i < s.effects.size();) {
         const auto& e = s.effects[i];
         if (e.caster == caster && e.concentration && e.spell_id == sp) end_effect(s, i, ev);
@@ -283,7 +316,7 @@ void repeat_saves(EncounterState& s, CombatantId cid, RepeatSave timing, std::ve
             end_effect(s, std::size_t(more - s.effects.begin()), ev);
         }
         bool remaining = std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
-            return o.caster == e.caster && o.spell_id == e.spell_id; });
+            return o.caster == e.caster && o.spell_id == e.spell_id; }) || zone_alive(s, e.caster, e.spell_id);
         Combatant* caster = find_mut(s, e.caster);
         if (!remaining && caster && caster->concentration_spell == e.spell_id) end_concentration(s, e.caster, ev);
     }
@@ -331,7 +364,7 @@ void expire_effects(EncounterState& s, const std::vector<GoneEffect>& gone, std:
             end_effect(s, std::size_t(it - s.effects.begin()), ev);
         }
         bool remaining = std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
-            return o.caster == g.second.first && o.spell_id == g.first; });
+            return o.caster == g.second.first && o.spell_id == g.first; }) || zone_alive(s, g.second.first, g.first);
         Combatant* caster = find_mut(s, g.second.first);
         if (!remaining && caster && caster->concentration_spell == g.first) end_concentration(s, g.second.first, ev);
     }
@@ -358,6 +391,22 @@ void tick_effects_round_start(EncounterState& s, std::vector<Event>& ev) {
     for (const auto& e : due) deal_effect_damage(s, e, ev);
     expire_effects(s, gone, ev);
     tick_modifiers_round_start(s, ev);
+    if (!s.zones.empty()) {   // R-G11: zone timers (ZoneEnded reason 0); the spell ends with its last zone
+        std::vector<uint32_t> out;
+        for (auto& z : s.zones) if (tick_round_start(z.timed)) out.push_back(z.zone_id);
+        for (uint32_t id : out) {
+            for (std::size_t i = 0; i < s.zones.size(); ++i) {
+                if (s.zones[i].zone_id != id) continue;
+                const CombatantId owner = s.zones[i].owner; const uint32_t sp = s.zones[i].spell_id;
+                end_zone(s, i, 0, ev);
+                const Combatant* c = find(s, owner);
+                const bool left = zone_alive(s, owner, sp) || std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
+                    return o.caster == owner && o.spell_id == sp; });
+                if (!left && c && c->concentration_spell == sp) end_concentration(s, owner, ev);
+                break;
+            }
+        }
+    }
 }
 
 // End of `cid`'s turn: EndOfTargetNextTurn timers on `cid` tick.
@@ -461,7 +510,20 @@ struct Ctx {
     std::vector<Deferred> forced_deferred{};
     uint32_t forced_groups = 0;
     bool forced_resolved = false;
+    // R-G11: the cast's zone choices (set by cast_spell around resolve_spell only).
+    bool has_zone_dest = false; int32_t zone_x = 0, zone_y = 0;
+    const std::vector<CombatantId>* zone_excluded = nullptr;
+    // R-G11 (Q7): forced-move results recorded by an earlier run of this request (PendingDecision::forced_results), reused
+    // instead of calling the hook; and every result of this run, stored with the pause when the run is discarded.
+    const std::vector<std::pair<uint32_t, ForcedMoveResult>>* forced_recorded = nullptr;
+    std::vector<std::pair<uint32_t, ForcedMoveResult>> forced_results{};
+    bool zone_fired = false;   // a zone trigger resolved inside finalize_forced (deaths / concentration are swept again)
 };
+
+// R-G11 zone triggers (defined after damage_creature).
+void zone_membership(EncounterState& s, Ctx* ctx, CombatantId who, const std::vector<uint32_t>& entered,
+                     const std::vector<uint32_t>& left, const std::vector<uint32_t>& within, std::vector<Event>& ev);
+void zone_changes(EncounterState& s, Ctx* ctx, const std::vector<ZoneChange>& changes, std::vector<Event>& ev);
 
 // R-G9: ends the grapple between `x` and `y` (either way round) after a forced move left them out of reach: the sourced entries
 // go, and Grappled goes from a creature no other grappler still holds (ConditionRemoved).
@@ -548,7 +610,12 @@ void finalize_forced(EncounterState& s, Ctx& ctx, std::vector<Event>& events) {
             const Event& ph = events[slot[at]];
             ForcedMoveResult res;
             Combatant* m = find_mut(s, d.q.mover);
-            if (m && !m->dead && s.hooks.forced_move) {
+            const ForcedMoveResult* rec = nullptr;   // R-G11 (Q7): an earlier run of this request already asked the hook
+            if (ctx.forced_recorded)
+                for (const auto& x : *ctx.forced_recorded) if (x.first == d.q.step_seq) rec = &x.second;
+            if (rec) {
+                res = *rec;
+            } else if (m && !m->dead && s.hooks.forced_move) {
 #ifndef NDEBUG
                 assert(!called[at]);   // each (step, step_seq) reaches the hook once
                 called[at] = true;
@@ -557,10 +624,19 @@ void finalize_forced(EncounterState& s, Ctx& ctx, std::vector<Event>& events) {
             } else {
                 res.feet_moved = d.q.feet;
             }
+            if (rec || (m && !m->dead && s.hooks.forced_move)) ctx.forced_results.emplace_back(d.q.step_seq, res);
             std::vector<Event> tail;
             emit(tail, EventKind::Moved, d.q.mover, d.q.source, int32_t(res.feet_moved), 0, d.flags);
             for (CombatantId other : res.out_of_reach_of) end_grapple_pair(s, d.q.mover, other, tail);
-            for (Event& t : tail) { t.reaction_depth = ph.reaction_depth; out.push_back(t); }
+            const uint8_t saved_depth = ctx.depth;
+            if (!s.zones.empty() && m && !m->dead &&   // R-G11: the move's zone triggers, before the next forced move
+                (!res.zones_entered.empty() || !res.zones_left.empty() || !res.zones_within.empty())) {
+                ctx.zone_fired = true;
+                ctx.depth = ph.reaction_depth;
+                zone_membership(s, &ctx, d.q.mover, res.zones_entered, res.zones_left, res.zones_within, tail);
+                ctx.depth = saved_depth;
+            }
+            for (Event& t : tail) { if (t.reaction_depth < ph.reaction_depth) t.reaction_depth = ph.reaction_depth; out.push_back(t); }
         }
         for (std::size_t i = k + 1; i < e; ++i) drop[i] = true;
         k = e;
@@ -1446,6 +1522,154 @@ bool spell_cast_window(EncounterState& s, Ctx& ctx, Combatant& caster, uint32_t 
     return false;
 }
 
+// ---- R-G11 zone triggers (docs/proposals/ZONES_AURAS.md §2.2) ----
+TriggerOn zone_trigger_on(ZoneTrigger t) {
+    switch (t) {
+    case ZoneTrigger::Appear: return TriggerOn::ZoneAppear;
+    case ZoneTrigger::Enter: return TriggerOn::ZoneEnter;
+    case ZoneTrigger::StartTurn: return TriggerOn::ZoneStartTurn;
+    case ZoneTrigger::EndTurn: return TriggerOn::ZoneEndTurn;
+    case ZoneTrigger::MoveWithin: return TriggerOn::ZoneMoveWithin;
+    }
+    return TriggerOn::ZoneEnter;
+}
+
+// Is `c` affected by zone `z` at all: alive, not excluded, and not the owner of its own aura (§2.2).
+bool zone_affects(const ActiveZone& z, const SpellDef& def, const Combatant& c) {
+    if (c.dead) return false;
+    if (def.zone.anchor == ZoneAnchor::Creature && c.id == z.owner) return false;
+    return !std::binary_search(z.excluded.begin(), z.excluded.end(), c.id);
+}
+
+// One trigger row of zone `zone_id` for `who`. `hook_membership`: Appear / StartTurn / EndTurn ask hooks.zone_contains; the
+// others come from sim's membership facts (a completely_within row still asks the hook for the whole footprint). Emits
+// FeatureTriggered{owner, who, a = spell id, b = TriggerOn::Zone*, c = 0 saved / 1 no save / 3 failed}, then the save,
+// damage and condition exactly as a Save / ApplyCondition effect would. Nothing is copied by pointer: damage can end the
+// owner's concentration and with it the zone.
+void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_index, CombatantId who, bool hook_membership,
+              std::vector<Event>& ev) {
+    const ActiveZone* zp = find_zone(s, zone_id);
+    const SpellDef* def = zp ? spell_def(s, zp->spell_id) : nullptr;
+    Combatant* t = find_mut(s, who);
+    if (!zp || !def || !t || row_index >= def->zone.triggers.size() || !zone_affects(*zp, *def, *t)) return;
+    const ActiveZone z = *zp;
+    const ZoneTriggerRow row = def->zone.triggers[row_index];
+    if (row.own_turn_only && current_actor(s) != who) return;
+    if (hook_membership || row.completely_within) {
+        if (!s.hooks.zone_contains || !s.hooks.zone_contains(s, zone_id, who, row.completely_within)) return;
+    }
+    const SpellEffect& e = row.effect;
+    // A creature already held by this zone's "while in the zone" condition is not saved against it again (Web).
+    if (row.while_in_zone && e.applies_condition)
+        for (const auto& x : s.effects) if (x.zone_id == zone_id && x.target == who) return;
+    if (row.group != 0) {   // once per creature per zone per turn, per group (D2)
+        const uint32_t now = turn_stamp(s);
+        ActiveZone* zm = find_zone_mut(s, zone_id);
+        for (const auto& f : zm->fired) if (f.creature == who && f.stamp == now && f.group == row.group) return;
+        zm->fired.push_back(ZoneFired{who, now, row.group});
+    }
+    Combatant* owner = find_mut(s, z.owner);
+    DiceExpr dice = e.dice;
+    if (dice.count > 0 && z.slot_level > def->level)
+        dice.count = uint8_t(std::min(255, int(dice.count) + int(def->upcast_dice) * (int(z.slot_level) - int(def->level))));
+    const bool damaging = dice.count > 0 || dice.bonus > 0;
+    const int dmg = damaging ? std::max(0, roll_dice(s.rng, dice)) : 0;
+    const std::size_t at = ev.size();
+    emit(ev, EventKind::FeatureTriggered, z.owner, who, int32_t(z.spell_id), int32_t(zone_trigger_on(row.on)), 1);
+    bool failed = true;
+    if (e.kind == SpellEffectKind::Save) {
+        const SaveSource src{def->magical, e.applies_condition ? bit(e.condition) : 0u, damaging ? bit(e.damage_type) : 0u};
+        const SaveResult r = save_roll(s, *t, e.save_ability, z.dc, RollMode::Normal, ev, &src);
+        emit(ev, EventKind::SavingThrowRolled, who, CombatantId(e.save_ability), r.roll.natural, r.roll.total, int32_t(r.success));
+        failed = !r.success;
+        ev[at].c = failed ? 3 : 0;
+    }
+    int dealt = failed ? dmg : (e.on_save == OnSave::Half ? dmg / 2 : 0);
+    if (e.kind == SpellEffectKind::Save && t->evasion && e.save_ability == Ability::Dex && e.on_save == OnSave::Half)
+        dealt = failed ? dmg / 2 : 0;   // Evasion
+    if (dealt > 0) {
+        const TrigSrc ts{owner, nullptr, true};
+        damage_creature(s, *t, apply_damage(*t, int16_t(std::min(dealt, 32767)), e.damage_type, def->magical ? uint8_t(kAttackMagical) : uint8_t(0)),
+                        false, ev, owner ? &ts : nullptr, ctx);
+    }
+    if (e.applies_condition && failed && !t->dead && !(t->condition_immunities & bit(e.condition))) {
+        if (!t->has(e.condition)) {
+            add_condition(*t, e.condition);
+            emit(ev, EventKind::ConditionAdded, who, 0, int32_t(e.condition));
+        }
+        if (row.while_in_zone && find_zone(s, zone_id)) {   // lasts while in the zone (Web): ends on leaving, escape, zone end
+            ActiveSpellEffect x{z.spell_id, z.owner, who, e.condition, e.save_ability, z.dc, RepeatSave::None, z.concentration,
+                                Timed{}, z.slot_level, false};
+            x.zone_id = zone_id;
+            s.effects.push_back(x);
+        }
+    }
+}
+
+// Every row of zone `zone_id` with trigger `on` for `who`, in row order. `aura_move`: the zone moved onto `who` (Enter rows
+// only with counts_aura_move_as_enter, D1).
+void zone_event(EncounterState& s, Ctx* ctx, uint32_t zone_id, CombatantId who, ZoneTrigger on, bool hook_membership,
+                bool aura_move, std::vector<Event>& ev) {
+    const ActiveZone* z = find_zone(s, zone_id);
+    const SpellDef* def = z ? spell_def(s, z->spell_id) : nullptr;
+    if (!def) return;
+    const std::size_t n = def->zone.triggers.size();
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!find_zone(s, zone_id) || s.ended) return;
+        const Combatant* c = find(s, who);
+        if (!c || c->dead) return;
+        const ZoneTriggerRow& row = def->zone.triggers[i];
+        if (row.on != on || (aura_move && !row.counts_aura_move_as_enter)) continue;
+        zone_row(s, ctx, zone_id, i, who, hook_membership, ev);
+    }
+}
+
+// StartTurn / EndTurn rows of every zone for `who` (ascending zone id), membership from hooks.zone_contains.
+void zone_turn_triggers(EncounterState& s, Ctx* ctx, CombatantId who, ZoneTrigger on, std::vector<Event>& ev) {
+    std::vector<uint32_t> ids;
+    for (const auto& z : s.zones) ids.push_back(z.zone_id);
+    std::sort(ids.begin(), ids.end());
+    for (uint32_t id : ids) zone_event(s, ctx, id, who, on, true, false, ev);
+}
+
+void zone_membership(EncounterState& s, Ctx* ctx, CombatantId who, const std::vector<uint32_t>& entered,
+                     const std::vector<uint32_t>& left, const std::vector<uint32_t>& within, std::vector<Event>& ev) {
+    std::vector<uint32_t> ids = entered;
+    ids.insert(ids.end(), left.begin(), left.end());
+    ids.insert(ids.end(), within.begin(), within.end());
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    for (uint32_t id : ids) {   // per zone, ascending (Q9): Enter, MoveWithin once per 5 ft, then leaving
+        if (!find_zone(s, id)) continue;
+        const auto n_in = std::count(entered.begin(), entered.end(), id);
+        const auto n_within = std::count(within.begin(), within.end(), id);
+        if (n_in > 0) zone_event(s, ctx, id, who, ZoneTrigger::Enter, false, false, ev);
+        for (std::ptrdiff_t k = 0; k < n_in + n_within; ++k) zone_event(s, ctx, id, who, ZoneTrigger::MoveWithin, false, false, ev);
+        if (std::find(left.begin(), left.end(), id) != left.end()) end_zone_effects(s, id, who, ev);   // exits never deal damage
+    }
+}
+
+// Other creatures' membership changes from an aura owner's move or a zone move (Q8): ascending zone id, then initiative
+// order, then lower id (Q9). Entering counts only for rows with counts_aura_move_as_enter (D1); leaving ends "while in" effects.
+void zone_changes(EncounterState& s, Ctx* ctx, const std::vector<ZoneChange>& changes, std::vector<Event>& ev) {
+    if (changes.empty()) return;
+    auto init_pos = [&](CombatantId id) {
+        for (std::size_t i = 0; i < s.order.size(); ++i) if (s.order[i].id == id) return i;
+        return s.order.size();
+    };
+    std::vector<ZoneChange> sorted = changes;
+    std::stable_sort(sorted.begin(), sorted.end(), [&](const ZoneChange& x, const ZoneChange& y) {
+        if (x.zone_id != y.zone_id) return x.zone_id < y.zone_id;
+        const std::size_t px = init_pos(x.creature), py = init_pos(y.creature);
+        return px != py ? px < py : x.creature < y.creature;
+    });
+    for (const ZoneChange& c : sorted) {
+        if (!find_zone(s, c.zone_id)) continue;
+        if (c.entered) zone_event(s, ctx, c.zone_id, c.creature, ZoneTrigger::Enter, false, true, ev);
+        else end_zone_effects(s, c.zone_id, c.creature, ev);
+    }
+}
+
 void start_turn(EncounterState& s, std::vector<Event>& ev) {
     Combatant& c = *find_mut(s, s.order[s.turn_index].id);
     c.reaction_used = false;
@@ -1470,6 +1694,14 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
             c.temp_hp = m.spec.bonus;
             emit(ev, EventKind::ModifierApplied, m.caster, c.id, int32_t(m.spec.id), int32_t(m.spec.stat), m.spec.bonus);
         }
+    bool zone_downed = false;   // R-G11: dropped to 0 HP by a zone this turn start: no death save until its next turn
+    if (!s.zones.empty()) {
+        for (auto& z : s.zones)   // once-per-turn bookkeeping of earlier turns is stale now
+            std::erase_if(z.fired, [&](const ZoneFired& f) { return f.stamp != turn_stamp(s); });
+        const bool up = c.hp > 0;
+        if (!c.dead) zone_turn_triggers(s, nullptr, c.id, ZoneTrigger::StartTurn, ev);   // no reaction windows (no Ctx)
+        zone_downed = up && c.hp <= 0;
+    }
     repeat_saves(s, c.id, RepeatSave::StartOfTurn, ev);
     if (dies_of_exhaustion(c) && !c.dead) kill(c, ev);
     if (!c.dead && c.regeneration.amount > 0) {   // Regeneration (troll, vampire spawn)
@@ -1508,7 +1740,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         TrigCtx x;
         run_event_triggers(s, c, c, TriggerOn::TurnStart, x, ev);
     }
-    if (is_dying(c) && c.uses_death_saves) {
+    if (is_dying(c) && c.uses_death_saves && !zone_downed) {
         auto r = roll_death_save(s.rng, c.death);
         c.death = r.after;
         emit(ev, EventKind::DeathSaveRolled, c.id, 0, r.natural, c.death.successes, c.death.failures);
@@ -1601,8 +1833,13 @@ void fire_readies(EncounterState& s, Ctx& ctx, std::vector<Event>& ev) {
                     go = leaving_reach_window(s, ctx, *a, ev);
                     ctx.depth = saved;
                 }
-                if (go) emit(ev, EventKind::Moved, a->id, 0, ft, 0);
-                else emit(ev, EventKind::MoveInterrupted, a->id, 0, ft);
+                if (go) {
+                    emit(ev, EventKind::Moved, a->id, 0, ft, 0);
+                    if (!s.zones.empty()) {   // R-G11: the readied move's membership facts (sim refreshes them in refresh_ready)
+                        zone_membership(s, &ctx, a->id, r.response.zones_entered, r.response.zones_left, r.response.zones_within, ev);
+                        zone_changes(s, &ctx, r.response.zone_changes, ev);
+                    }
+                } else emit(ev, EventKind::MoveInterrupted, a->id, 0, ft);
             }
             --ctx.depth;
             mark_depth(ev, from, uint8_t(ctx.depth + 1));
@@ -1632,6 +1869,25 @@ CheckResult roll_check(EncounterState& s, Combatant& c, Skill k, int dc, RollMod
         r.success = r.roll.total >= dc;
     }
     emit(ev, EventKind::CheckRolled, c.id, CombatantId(k), r.roll.natural, r.roll.total,
+         int32_t(r.success) | (int32_t(helped) << 1));
+    return r;
+}
+
+// R-G11: a plain ability check (no skill; Web's Strength check to break free), same rules as roll_check. CheckRolled target =
+// 0x100 | Ability (a Skill value otherwise).
+CheckResult roll_ability_check(EncounterState& s, Combatant& c, Ability ab, int dc, std::vector<Event>& ev) {
+    const bool helped = c.check_helped_by != 0;
+    if (helped) c.check_helped_by = 0;
+    bool adv = helped, dis = false;
+    mod_modes(s, c.id, ModStat::AbilityCheck, int(ab), adv, dis);
+    const D20Roll roll = roll_d20(s.rng, modifier(c.abilities, ab), check_roll_mode(c, combine_modes(adv, dis)));
+    CheckResult r{roll, roll.total >= dc};
+    if ((c.reroll_ones & 2) && reroll_natural_one(s.rng, r.roll)) r.success = r.roll.total >= dc;   // Lucky
+    if (const int add = modifier_flat(s, c.id, ModStat::AbilityCheck, int(ab)) + mod_roll(s, c.id, ModStat::AbilityCheck, int(ab))) {
+        r.roll.total = int16_t(r.roll.total + add);
+        r.success = r.roll.total >= dc;
+    }
+    emit(ev, EventKind::CheckRolled, c.id, CombatantId(0x100u | uint32_t(ab)), r.roll.natural, r.roll.total,
          int32_t(r.success) | (int32_t(helped) << 1));
     return r;
 }
@@ -1889,6 +2145,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                     bool left = false;
                     for (const auto& e : s.effects) left = left || (e.spell_id == o.spell && e.caster == o.caster);
                     for (const auto& m : s.modifiers) left = left || (m.spec.source == o.spell && m.caster == o.caster);
+                    left = left || zone_alive(s, o.caster, o.spell);   // R-G11: its zone is still up
                     if (!left) end_concentration(s, o.caster, ev);
                 }
             }
@@ -1948,6 +2205,33 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         if (def.concentration && !affected.empty()) a.concentration_spell = def.id;
         break;
     }
+    case SpellEffectKind::Zone: {   // R-G11: a persistent zone / aura (primary effect only), then its Appear rows
+        ActiveZone z;
+        z.zone_id = s.next_zone_id++;
+        z.spell_id = def.id; z.owner = a.id; z.slot_level = lvl; z.dc = int16_t(spell_save_dc(a, def));
+        z.concentration = def.concentration;
+        z.timed = make_timed(Expiry(def.expiry), def.duration_rounds, false);
+        z.cast_stamp = turn_stamp(s);
+        if (def.zone.anchor == ZoneAnchor::Point && ctx.has_zone_dest) { z.has_anchor_tile = true; z.anchor_x = ctx.zone_x; z.anchor_y = ctx.zone_y; }
+        if (ctx.zone_excluded) {
+            z.excluded = *ctx.zone_excluded;
+            std::sort(z.excluded.begin(), z.excluded.end());
+            z.excluded.erase(std::unique(z.excluded.begin(), z.excluded.end()), z.excluded.end());
+        }
+        const uint32_t id = z.zone_id;
+        s.zones.push_back(std::move(z));
+        if (def.concentration) a.concentration_spell = def.id;
+        emit(ev, EventKind::ZoneCreated, a.id, def.zone.anchor == ZoneAnchor::Creature ? a.id : 0, int32_t(id), int32_t(def.id),
+             int32_t(def.zone.flags));
+        const bool appear = std::any_of(def.zone.triggers.begin(), def.zone.triggers.end(), [](const ZoneTriggerRow& r) {
+            return r.on == ZoneTrigger::Appear; });
+        if (appear) {   // creatures in it when it appears, in initiative order
+            std::vector<CombatantId> ids;
+            for (const auto& o : s.order) ids.push_back(o.id);
+            for (CombatantId c : ids) zone_event(s, &ctx, id, c, ZoneTrigger::Appear, true, false, ev);
+        }
+        break;
+    }
     case SpellEffectKind::AcBonus: case SpellEffectKind::Counter: break;   // reactions only
     }
     return affected;
@@ -1970,6 +2254,30 @@ void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& de
 // window, then resolves the effect.
 StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def,
                            const ActionRequest& req, int meta_cost) {
+    if (req.zone_move != 0) {   // R-G11: move the actor's zone (Moonbeam); no slot, no SpellCast window
+        if (req.sustain) return fail("zone_move: not with sustain");
+        const ActiveZone* z = find_zone(s, req.zone_move);
+        if (!z || z->owner != a.id || z->spell_id != def.id) return fail("zone_move: not a zone of this spell of yours");
+        if (def.zone.move_cost == 0 || def.zone.anchor != ZoneAnchor::Point) return fail("zone_move: this zone cannot be moved");
+        if (z->cast_stamp == turn_stamp(s)) return fail("zone_move: not on the turn it was cast");
+        if (is_incapacitated(a)) return fail("incapacitated");
+        if (req.zone_move_ft % 5 != 0 || req.zone_move_ft > def.zone.move_ft) return fail("zone_move: beyond the zone's move distance");
+        if (!req.zone_excluded.empty()) return fail("zone_move: zone_excluded is chosen at the cast");
+        if (req.metamagic != 0 || !req.spared.empty() || req.innate) return fail("zone_move: not a cast");
+        if (def.zone.move_cost == 2) {
+            if (!b.bonus_action) return fail("no bonus action available");
+            b.bonus_action = false;
+        } else if (!spend_action(b, a, ActionKind::CastSpell, false)) return fail("no action available");
+        s.budget = b;
+        ActiveZone* zm = find_zone_mut(s, req.zone_move);
+        if (req.has_zone_dest) { zm->has_anchor_tile = true; zm->anchor_x = req.zone_x; zm->anchor_y = req.zone_y; }
+        StepResult out{true, {}, {}};
+        emit(out.events, EventKind::ZoneMoved, a.id, 0, int32_t(req.zone_move), int32_t(req.zone_move_ft));
+        zone_changes(s, &ctx, req.zone_changes, out.events);   // only the final position counts (Q10)
+        check_end(s, out.events);
+        return out;
+    }
+    if (req.zone_move_ft != 0) return fail("zone_move_ft: zone_move only");
     if (req.sustain) {   // R-G15: Heat Metal's repeat damage with a bonus action, no slot, no SpellCast window
         Combatant* t = find_mut(s, req.target);
         if (!t || t->dead) return fail("bad target");
@@ -2020,7 +2328,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     if ((!inn || inn->as_listed) && s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, def)) return fail("components unavailable");
     std::vector<CombatantId> ids = req.targets;
     if (ids.empty() && req.target != 0) ids.push_back(req.target);
-    if (ids.empty() && def.kind == SpellEffectKind::Teleport) ids.push_back(a.id);   // R-G9: self
+    if (ids.empty() && (def.kind == SpellEffectKind::Teleport || def.kind == SpellEffectKind::Zone)) ids.push_back(a.id);   // R-G9 / R-G11: self
     if (ids.empty()) return fail("target required");
     std::vector<Combatant*> T;
     for (CombatantId id : ids) {
@@ -2066,7 +2374,15 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     case SpellEffectKind::Teleport:   // R-G9: self only (Dimension Door companions are deferred)
         if (T.size() != 1 || T[0] != &a) return fail("teleport: self only");
         break;
+    case SpellEffectKind::Zone:   // R-G11: cast at a point (zone_x / zone_y) or on the caster; no creature targets
+        if (T.size() != 1 || T[0] != &a) return fail("zone: no creature targets");
+        if (req.has_zone_dest && def.zone.anchor == ZoneAnchor::Creature) return fail("zone: an aura has no destination");
+        break;
     }
+    for (const SpellEffect& x : def.extra_effects)
+        if (x.kind == SpellEffectKind::Zone) return fail("zone: primary effect only");
+    if ((req.has_zone_dest || !req.zone_excluded.empty()) && def.kind != SpellEffectKind::Zone) return fail("zone: not a zone spell");
+    if (!req.zone_excluded.empty() && !def.zone.chooses_excluded) return fail("zone_excluded: the spell does not let the caster choose");
     if (req.forced_feet != 0) {   // R-G9: the chosen distance of an "up to N ft" forced move
         int most = -1;
         if (def.kind == SpellEffectKind::ForcedMove && def.forced.up_to) most = def.forced.feet;
@@ -2114,9 +2430,12 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         ctx.empower = (req.metamagic & kMetaEmpowered) ? std::max(1, modifier(a.abilities, Ability::Cha)) : 0;
         ctx.forced_feet = req.forced_feet; ctx.teleport_feet = req.teleport_feet;
         ctx.has_teleport_dest = req.has_teleport_dest; ctx.teleport_x = req.teleport_x; ctx.teleport_y = req.teleport_y;
+        ctx.has_zone_dest = req.has_zone_dest; ctx.zone_x = req.zone_x; ctx.zone_y = req.zone_y;
+        ctx.zone_excluded = req.zone_excluded.empty() ? nullptr : &req.zone_excluded;
         resolve_spell(s, ctx, a, def, lvl, T, req.target_within_5ft, out.events);
         ctx.spared = nullptr; ctx.spared_no_damage = false; ctx.heighten = 0; ctx.empower = 0;
         ctx.forced_feet = 0; ctx.teleport_feet = 0; ctx.has_teleport_dest = false; ctx.teleport_x = 0; ctx.teleport_y = 0;
+        ctx.has_zone_dest = false; ctx.zone_x = 0; ctx.zone_y = 0; ctx.zone_excluded = nullptr;
         defer_forced(s, ctx, out.events);   // R-G9: placeholders after every save and damage of the spell, before SpellResolved
     }
     emit(out.events, countered ? EventKind::SpellCountered : EventKind::SpellResolved, a.id, ids[0], int32_t(def.id), lvl);
@@ -2128,7 +2447,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
 StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def, const ActionRequest& req) {
     const bool any = req.metamagic != 0 || !req.spared.empty() || req.heighten_target != 0 || req.damage_choice != 0 ||
                      req.condition_choice != 0 || !def.damage_choices.empty() || !def.condition_choices.empty();
-    if (!any || req.sustain) return cast_spell_impl(s, ctx, a, b, def, req, 0);
+    if (!any || req.sustain || req.zone_move != 0) return cast_spell_impl(s, ctx, a, b, def, req, 0);
     SpellDef eff = def;
     const uint8_t lvl = req.spell_level;
     // Cast-time choices (Chromatic Orb, Blindness/Deafness).
@@ -2289,10 +2608,11 @@ namespace {
 // One deterministic attempt at `req` with the decisions known so far. If an Ask poll has no answer,
 // the state is restored to `before` and the pending decision is stored.
 StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vector<ReactionRecord>& decided,
-                   bool replay_only) {
+                   bool replay_only, const std::vector<std::pair<uint32_t, ForcedMoveResult>>* forced_recorded = nullptr) {
     EncounterState before = s;
     std::vector<ReactionRecord> records;
     Ctx ctx{records, &decided, 0, replay_only, false, std::nullopt, 0};
+    ctx.forced_recorded = forced_recorded;
     StepResult r = step_impl(s, ctx, req);
     if (r.ok) defer_forced(s, ctx, r.events);   // R-G9: forced moves queued outside a cast (on-hit riders), before Ready triggers
     else { ctx.forced_queue.clear(); ctx.forced_deferred.clear(); }
@@ -2302,17 +2622,27 @@ StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vecto
     sweep_concentration(s, r.events);
     prune_sourced(s, r.events);
     for (auto& c : s.combatants) if (c.dead && c.died_round == 0) c.died_round = s.round;   // R-G15: Revivify's window
-    if (ctx.need && !replay_only) {
+    if (!ctx.need) {
+        finalize_forced(s, ctx, r.events);   // R-G9: after every decision point of the step
+        if (ctx.zone_fired) {   // R-G11: zone triggers of the forced moves (damage, conditions) settle like the step's own
+            process_deaths(s, r.events, &ctx);
+            sweep_concentration(s, r.events);
+            prune_sourced(s, r.events);
+            for (auto& c : s.combatants) if (c.dead && c.died_round == 0) c.died_round = s.round;
+            check_end(s, r.events);
+        }
+    }
+    if (ctx.need && !replay_only) {   // R-G11 (Q7): a zone trigger inside finalize_forced may also pause the step
         std::vector<Event> provisional = std::move(r.events);
         s = std::move(before);
         s.pending = PendingDecision{req, decided, ctx.need->window, ctx.need->reactor, ctx.need->options};
+        s.pending->forced_results = std::move(ctx.forced_results);
         StepResult out{true, {}, std::move(provisional)};
         out.status = StepStatus::NeedsDecision;
         out.needs = std::move(ctx.need);
         out.reactions = decided;
         return out;
     }
-    if (!ctx.need) finalize_forced(s, ctx, r.events);   // R-G9: after every decision point of the step
     r.status = StepStatus::Done;
     r.reactions = std::move(records);
     r.desync = ctx.desync || ctx.replay_pos != decided.size();
@@ -2391,8 +2721,9 @@ StepResult step(EncounterState& s, const ActionRequest& req) {
         auto decided = p.decided;
         decided.push_back(ReactionRecord{p.window.seq, p.window.trigger, p.reactor, req.decision});
         ActionRequest original = p.request;
+        const auto recorded = p.forced_results;   // R-G11 (Q7): reused by the re-run (copied: s.pending is reset below)
         s.pending.reset();
-        return settle(s, attempt(s, original, decided, false));
+        return settle(s, attempt(s, original, decided, false, recorded.empty() ? nullptr : &recorded));
     }
     if (s.pending) return fail("awaiting a reaction decision");
     return settle(s, attempt(s, req, {}, false));
@@ -2468,6 +2799,24 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
             b.attacks_remaining = uint8_t(a.attacks_per_action > 1 ? a.attacks_per_action - 1 : 0);
         } else return fail("no action available");
     } else {
+        // R-G11: break free of a zone's "while in the zone" condition (Web: restrained): an action, a Strength check vs the
+        // zone's DC. Chosen with spell_id, or when the creature is not grappled.
+        std::size_t zi = s.effects.size();
+        if (req.spell_id != 0 || !a.has(Condition::Grappled))
+            for (std::size_t i = 0; i < s.effects.size() && zi == s.effects.size(); ++i) {
+                const ActiveSpellEffect& e = s.effects[i];
+                if (e.zone_id != 0 && e.target == a.id && e.condition == Condition::Restrained && (req.spell_id == 0 || e.spell_id == req.spell_id)) zi = i;
+            }
+        if (zi < s.effects.size()) {
+            if (!spend_action(b, a, ActionKind::Attack, false)) return fail("no action available");
+            s.budget = b;
+            const int zdc = s.effects[zi].dc;
+            const uint32_t zone = s.effects[zi].zone_id;
+            if (roll_ability_check(s, a, Ability::Str, zdc, out.events).success) end_zone_effects(s, zone, a.id, out.events);
+            check_end(s, out.events);
+            return out;
+        }
+        if (req.spell_id != 0) return fail("not restrained by that spell's zone");
         if (!a.has(Condition::Grappled)) return fail("not grappled");
         for (const auto& e : s.sourced)
             if (!has_held && e.condition == Condition::Grappled && e.target == a.id && (req.target == 0 || e.source == req.target)) { held = e; has_held = true; }
@@ -2528,6 +2877,8 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     Combatant* a = own_turn ? find_mut(s, req.actor) : nullptr;
     if ((req.forced_feet != 0 || req.teleport_feet != 0 || req.has_teleport_dest) && req.kind != ActionKind::CastSpell)
         return fail("forced_feet / teleport: CastSpell only");
+    if ((req.has_zone_dest || req.zone_move != 0 || req.zone_move_ft != 0 || !req.zone_excluded.empty()) && req.kind != ActionKind::CastSpell)
+        return fail("zone fields: CastSpell only");
     if (!a || a->dead || req.kind == ActionKind::EndTurn) {
         if (req.haste_action) return fail("haste_action: not a turn action");
         if (req.reckless) return fail("reckless: Attack only");
@@ -2626,6 +2977,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
 
     switch (req.kind) {
     case ActionKind::EndTurn:
+        if (!s.zones.empty() && !a.dead) zone_turn_triggers(s, &ctx, a.id, ZoneTrigger::EndTurn, out.events);   // R-G11
         repeat_saves(s, a.id, RepeatSave::EndOfTurn, out.events);
         if (!s.modifiers.empty()) repeat_modifier_saves(s, a.id, out.events);   // Slow
         tick_effects_turn_end(s, a.id, out.events);
@@ -2653,6 +3005,10 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         b.moved_ft = uint16_t(b.moved_ft + 5 * req.move_tiles);   // only a completed move counts
         s.budget = b;
         emit(out.events, EventKind::Moved, a.id, 0, req.move_ft, b.movement_ft);
+        if (!s.zones.empty()) {   // R-G11: the step's zone membership (sim's facts), then other creatures' changes (aura move)
+            zone_membership(s, &ctx, a.id, req.zones_entered, req.zones_left, req.zones_within, out.events);
+            zone_changes(s, &ctx, req.zone_changes, out.events);
+        }
         check_end(s, out.events);
         return out;
     }
@@ -3004,7 +3360,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
                 !can_spend(s, a.id, d->pool_id, d->pool_cost ? d->pool_cost : 1)) continue;
             for (uint8_t L = d->level; L <= (d->level == 0 ? 0 : 9); ++L) {
                 if (!has_slot(a, L)) continue;
-                if (d->kind == SpellEffectKind::Teleport) {   // R-G9: self; sim adds the destination (legal_teleport_tiles)
+                if (d->kind == SpellEffectKind::Teleport || d->kind == SpellEffectKind::Zone) {   // R-G9 / R-G11: self; sim adds the destination (legal_teleport_tiles / zone tiles)
                     ActionRequest r{a.id, ActionKind::CastSpell, a.id};
                     r.spell_id = d->id; r.spell_level = L;
                     out.push_back(r);
@@ -3032,7 +3388,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             if (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !can_act) continue;
             if (is.as_listed && s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, *d)) continue;
-            if (d->kind == SpellEffectKind::Teleport) {   // R-G9: blink dog-style innate teleport, self
+            if (d->kind == SpellEffectKind::Teleport || d->kind == SpellEffectKind::Zone) {   // R-G9 / R-G11: self (sim adds a destination)
                 ActionRequest r{a.id, ActionKind::CastSpell, a.id};
                 r.spell_id = d->id; r.spell_level = d->level; r.innate = true;
                 out.push_back(r);
@@ -3051,6 +3407,15 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             }
         }
     }
+    if (s.hooks.spells && !is_incapacitated(a))   // R-G11: move a zone (Moonbeam); sim adds the destination (legal_zone_tiles)
+        for (const auto& z : s.zones) {
+            const SpellDef* d = s.hooks.spells->find(z.spell_id);
+            if (z.owner != a.id || !d || d->zone.move_cost == 0 || d->zone.anchor != ZoneAnchor::Point || z.cast_stamp == turn_stamp(s)) continue;
+            if (d->zone.move_cost == 2 ? !b.bonus_action : !can_act) continue;
+            ActionRequest r{a.id, ActionKind::CastSpell, a.id};
+            r.spell_id = z.spell_id; r.spell_level = z.slot_level; r.zone_move = z.zone_id;
+            out.push_back(r);
+        }
     add(ActionKind::EndTurn);
     return out;
 }
@@ -3114,6 +3479,32 @@ bool tick_round_start(Timed& t) {
 bool tick_target_turn_end(Timed& t) {
     if (t.kind != Expiry::EndOfTargetNextTurn || t.rounds_left <= 0) return false;
     return --t.rounds_left == 0;
+}
+
+const ActiveZone* find_zone(const EncounterState& s, uint32_t id) {
+    for (const auto& z : s.zones) if (z.zone_id == id) return &z;
+    return nullptr;
+}
+
+bool has_zone_state(const EncounterState& s) { return !s.zones.empty() || s.next_zone_id != 1; }   // a zone existed
+
+uint64_t zones_digest(const EncounterState& s, uint64_t h) {
+    auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
+    auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) byte(uint8_t(v >> (8 * i))); };
+    u32(s.next_zone_id);
+    u32(uint32_t(s.zones.size()));
+    for (const auto& z : s.zones) {
+        u32(z.zone_id); u32(z.spell_id); u32(z.owner); byte(z.slot_level); u32(uint32_t(uint16_t(z.dc)));
+        byte(uint8_t(z.concentration)); byte(uint8_t(z.timed.kind)); u32(uint32_t(uint16_t(z.timed.rounds_left)));
+        u32(z.cast_stamp); byte(uint8_t(z.has_anchor_tile)); u32(uint32_t(z.anchor_x)); u32(uint32_t(z.anchor_y));
+        u32(uint32_t(z.excluded.size())); for (CombatantId id : z.excluded) u32(id);
+        u32(uint32_t(z.fired.size())); for (const auto& f : z.fired) { u32(f.creature); u32(f.stamp); byte(f.group); }
+    }
+    for (const auto& e : s.effects) {   // the zone-bound effects (Web's restraint), in application order
+        if (e.zone_id == 0) continue;
+        u32(e.zone_id); u32(e.spell_id); u32(e.caster); u32(e.target); byte(uint8_t(e.condition)); u32(uint32_t(uint16_t(e.dc)));
+    }
+    return h;
 }
 
 bool has_timed_effects(const EncounterState& s) {

@@ -20,6 +20,11 @@ uint32_t event_stream_version(std::span<const SimEvent> events) {
                 if (uint8_t(e.rules.kind) > uint8_t(kLastRulesEventKindV6)) v = std::max<uint32_t>(v, 7);
                 // v8: a Moved carrying movement flags (forced / teleport / drag) in `c`; plain Moves keep c == 0
                 if (e.rules.kind == rules5e::EventKind::Moved && e.rules.c != 0) v = std::max<uint32_t>(v, 8);
+                // v9: R-G11 zone kinds (ZoneCreated / ZoneMoved / ZoneEnded); a zone trigger's FeatureTriggered (b = TriggerOn::Zone*)
+                // only follows a ZoneCreated in the same stream
+                if (uint8_t(e.rules.kind) > uint8_t(kLastRulesEventKindV8) ||
+                    (e.rules.kind == rules5e::EventKind::FeatureTriggered && e.rules.b >= int32_t(rules5e::TriggerOn::ZoneAppear)))
+                    v = std::max<uint32_t>(v, 9);
                 break;
             default: break;
         }

@@ -39,6 +39,8 @@ enum class SpellEffectKind : uint8_t {
     // appended (R-G9, docs/proposals/FORCED_MOVEMENT.md):
     ForcedMove,     // push / pull each target (`forced`); mostly an `affected_only` rider (Thunderwave, Repelling Blast)
     Teleport,       // the caster teleports (`teleport`; Misty Step); the destination is sim's (ActionRequest::teleport_*)
+    // appended (R-G11, docs/proposals/ZONES_AURAS.md): a persistent zone or aura (`zone`; primary effect only)
+    Zone,
 };
 // R-G9 forced movement (push / pull) of an effect. mode 1 push (away from the source), 2 pull (toward it), 3 along a line
 // (Gust of Wind: sim's direction; not in R-G9's first scope). feet: exact distance, or the maximum when up_to (the caster
@@ -81,6 +83,45 @@ struct SpellEffect {
     ModifierSpec modifier{};           // appended (row 12 follow-up): kind ApplyModifier as a rider (Guiding Bolt, Ray of Frost, Vicious Mockery)
     ForcedMoveSpec forced{};           // appended (R-G9): kind ForcedMove
     TeleportSpec teleport{};           // appended (R-G9): kind Teleport
+};
+
+// ---- R-G11 persistent zones and auras (docs/proposals/ZONES_AURAS.md §2.6) ----
+// Point: fixed at a sim tile (ActionRequest::zone_x / zone_y, kept opaque in ActiveZone); Creature: an aura centred on the
+// caster that moves with it (Spirit Guardians). Geometry and membership are sim's; rules keeps lifetime and triggers.
+enum class ZoneAnchor : uint8_t { Point, Creature };
+// Appear: once, when the zone is created, for each creature in it. Enter: the creature moves into it (own move, forced move,
+// teleport; an aura / zone move onto it only with counts_aura_move_as_enter). StartTurn / EndTurn: the creature's turn starts /
+// ends while it is in the zone. MoveWithin: every 5 ft the creature travels into or inside it (Spike Growth).
+enum class ZoneTrigger : uint8_t { Appear, Enter, StartTurn, EndTurn, MoveWithin };
+// Zone flags. Terrain and sense flags are data for sim (difficult-terrain overlay, halved-speed cost, Q5); obscurement and
+// Silence are stored only until R-G13 / rules PR 2.
+inline constexpr uint8_t kZoneDifficult = 1, kZoneLightObscured = 2, kZoneHeavyObscured = 4, kZoneMagicalDarkness = 8,
+                         kZoneSilence = 16, kZoneHalveSpeed = 32, kZoneOpaque = 64;
+// One trigger row. `effect` reuses SpellEffect for what happens: kind Save = a saving throw (save_ability, on_save) against the
+// zone's DC, damage `dice` of `damage_type` (half on a success with OnSave::Half) and, on a failure, `condition` when
+// applies_condition; any other kind = no save, the damage and condition always apply. Damage dice gain SpellDef::upcast_dice
+// per slot level above the spell's level, like the spell's first effect. `while_in_zone`: the condition lasts while the
+// creature stays in the zone (Web's restraint; it ends on leaving, on escape, or when the zone ends); false = an ordinary
+// condition (Grease's prone).
+struct ZoneTriggerRow {
+    ZoneTrigger on = ZoneTrigger::Enter;
+    uint8_t group = 1;                       // once-per-turn group (0 = no limit); Enter + StartTurn share group 1 (D2)
+    bool own_turn_only = false;              // only during the creature's own turn (Web's "enters during its turn")
+    bool completely_within = false;          // the whole footprint must be inside (zone_contains with completely = true)
+    bool counts_aura_move_as_enter = false;  // D1: an aura / zone moving onto the creature counts as Enter (default no)
+    bool while_in_zone = false;              // the condition lasts while in the zone (Web)
+    SpellEffect effect{};
+};
+struct ZoneSpec {
+    AreaShape shape = AreaShape::None;       // Sphere, Cylinder, Cube, Line (walls: rules PR 2)
+    uint16_t size_ft = 0, height_ft = 0, length_ft = 0;
+    ZoneAnchor anchor = ZoneAnchor::Point;
+    uint8_t flags = 0;                       // kZone*
+    uint8_t move_cost = 0;                   // 0 cannot move, 1 action (Moonbeam, D3), 2 bonus action
+    uint16_t move_ft = 0;                    // Moonbeam 60
+    bool chooses_excluded = false;           // Spirit Guardians: ActionRequest::zone_excluded are unaffected
+    std::vector<ZoneTriggerRow> triggers{};
+    bool needs_conscious_owner = false;      // feature auras (D7, later); no effect in PR 1
 };
 
 struct SpellDef {
@@ -159,6 +200,8 @@ struct SpellDef {
     // appended (R-G9): primary-effect forced movement / teleport (extra effects carry their own).
     ForcedMoveSpec forced{};
     TeleportSpec teleport{};
+    // appended (R-G11): kind Zone (primary effect only; an extra effect of kind Zone is refused at cast).
+    ZoneSpec zone{};
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered

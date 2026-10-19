@@ -12,9 +12,11 @@
 namespace eng::sim {
 
 // Version of the event stream contract (SimEvent + rules5e::Event as surfaced by sim).
-inline constexpr uint32_t kSimEventSchemaVersion = 8;
+inline constexpr uint32_t kSimEventSchemaVersion = 9;
 // Last rules5e::EventKind surfaced under this schema version (rules appends; sim bumps).
-inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::ActionUsed;
+inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::ZoneEnded;
+// Last rules kind that existed at v8. A stream carrying a later kind (R-G11 ZoneCreated / ZoneMoved / ZoneEnded) is a v9 stream.
+inline constexpr rules5e::EventKind kLastRulesEventKindV8 = rules5e::EventKind::ActionUsed;
 // Last rules kind that existed at v6 and below. event_stream_version keys on this, not on kLastRulesEventKind:
 // kinds 39..44 are locked at v7 but a stream carrying one is a v7 stream.
 inline constexpr rules5e::EventKind kLastRulesEventKindV6 = rules5e::EventKind::SpellCheckRolled;
@@ -44,7 +46,8 @@ struct SimEvent {
     Vec2i tile{};                    // TileMoved: destination; {0,0} otherwise
 };
 
-// Lowest schema version that can express the stream: 8 if it contains a rules Moved with c != 0 (movement flags), 7 if
+// Lowest schema version that can express the stream: 9 if it contains a rules kind past kLastRulesEventKindV8 (R-G11 zones),
+// 8 if it contains a rules Moved with c != 0 (movement flags), 7 if
 // it contains a rules kind past kLastRulesEventKindV6, 6 if it contains a v6 construct (Footprint), else
 // 5 if it contains a v5 construct (SpellTarget), else 4. The digest records this, not
 // kSimEventSchemaVersion, so streams without a CastSpell or a multi-tile creature keep their v4 / v5

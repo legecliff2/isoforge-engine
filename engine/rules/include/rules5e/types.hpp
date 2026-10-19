@@ -180,7 +180,9 @@ struct InnateSpell {
 // An effect that happens on an event (Sneak Attack, Rampage, Undead Fortitude, Divine Smite, ...). Rows 9a-9c
 // evaluate every TriggerOn; `choice: ask` is offered only for hit/crit triggers (the HitRider window). Other
 // ask triggers and any effect kind that makes no sense for the event never fire.
-enum class TriggerOn : uint8_t { Hit, Crit, DamageDealt, ReduceToZero, DropToZero, Death, TurnStart, TurnEnd };
+enum class TriggerOn : uint8_t { Hit, Crit, DamageDealt, ReduceToZero, DropToZero, Death, TurnStart, TurnEnd,
+                                 // appended (R-G11): FeatureTriggered.b of a zone trigger (never a Combatant::triggers row)
+                                 ZoneAppear, ZoneEnter, ZoneStartTurn, ZoneEndTurn, ZoneMoveWithin };
 enum class TriggerLimit : uint8_t { None, OncePerTurn, OncePerRound, OncePerAttack };
 enum class PredicateKind : uint8_t {
     Weapon,                 // a: WeaponIs; false for spell attacks
