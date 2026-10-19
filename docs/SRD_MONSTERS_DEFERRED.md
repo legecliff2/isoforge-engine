@@ -13,11 +13,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | | count |
 |---|---|
 | inventory candidates | 30 |
-| authored now as `monster@4` | 17 |
+| authored now as `monster@4` | 21 (17 in batch 1, 4 Pack Tactics monsters after #127) |
 | goblin (already shipped, left at `monster@3`) | 1 |
-| deferred (mechanic not expressible) | 12 |
+| deferred (mechanic not expressible) | 8 |
 
-## Authored (17, all `monster@4`)
+## Authored (21, all `monster@4`)
 
 | monster | CR | mechanics carried as data | notes |
 |---|---|---|---|
@@ -38,6 +38,10 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Ogre | 2 | greatclub, javelin (melee and thrown) | |
 | Gargoyle | 2 | `damage_mitigation` (nonmagical not adamantine: bludgeoning, piercing, slashing), immunity poison, condition immunities, Multiattack bite + claws, fly 60 | plain `damage_resistances` stays empty on purpose (it would be unqualified) |
 | Black Dragon Wyrmling | 2 | bite with two damage components; Acid Breath as `save_effect` (Dex DC 11, 5d8 acid, half, line 15 x 5 ft, recharge 5-6), immunity acid | `save_effect` not played yet |
+| Jackal | 0 | Pack Tactics as trait effect `{ "kind": "pack_tactics" }` (sim #127), bite | Keen Hearing and Smell descriptive (no perception checks in the sim) |
+| Kobold | 1/8 | Pack Tactics (`pack_tactics`), dagger, sling | **partial**: Sunlight Sensitivity (disadvantage on attacks in sunlight) is description only: there is no light / sunlight model or supported effect for it (R-G13), so the kobold attacks normally in sunlight |
+| Wolf | 1/4 | Pack Tactics (`pack_tactics`), bite + `on_hit save_condition` (Str DC 11, `apply prone`) | Keen Hearing and Smell descriptive; rider played once Engine Core applies `on_hit[]` |
+| Dire Wolf | 1 | Pack Tactics (`pack_tactics`), bite + `on_hit save_condition` (Str DC 13, `apply prone`) | as wolf |
 
 The goblin keeps `$schema: monster@3`, its id (`srd51.monster.goblin`, stable id derived from it) and bytes. It is referenced by C++ tests that assert its `@3` form (`content_migration_tests`, `pack_set_tests`, compat goblin tests) and by the fl1 compat corpus, and a schema change could shift digests and goldens; migrating it buys nothing until a `@4`-only feature is needed.
 
@@ -48,16 +52,12 @@ Not set: `presentation` (the goblin has none; sprite assets for these monsters d
 Played: stats, attacks with every `damage[]` entry (#45), resistances / immunities / vulnerabilities / condition immunities (#45), `multiattack` options (#48/#59), `damage_mitigation` (#47/#58), `bonus_action_grant`, size footprint (#50/#55).
 Carried and validated but **not applied** (the registry reserves the `@4` kinds; the archetype lists them in `unsupported_features` and ignores them): `on_event` (Undead Fortitude, Rampage, Sneak Attack), `on_hit[]` riders (snake poison), `save_effect` actions with `usage` (Acid Breath). Until Engine Core lands the row 6 compile / row 9-10 trigger hooks these monsters play without those effects. No content change is needed when the hooks land.
 
-## Deferred (12)
+## Deferred (8)
 
 Gap ids: `T&C-Gn` = Tools & Content, `R-Gn` = Rules (see the crosswalk in the coverage doc).
 
 | monster (`srd51.monster.<id>`) | CR | missing mechanic (re-checked at `cfb5eed`) | gap id |
 |---|---|---|---|
-| `srd51.monster.jackal` | 0 | Pack Tactics: conditional advantage on attacks (ally within 5 ft). Rules has the `RollTrait` `kWhenAllyNearTarget` and sim supplies `ally_near_target` (#54, #61), but the sim content loader never fills `roll_traits` and `common@2` has no effect/trait shape to declare it | T&C-G7 (R-G7); content shape + loader |
-| `srd51.monster.kobold` | 1/8 | Pack Tactics (as above). Sunlight Sensitivity would be descriptive (R-G13) | T&C-G7 |
-| `srd51.monster.wolf` | 1/4 | Pack Tactics (as above). The prone bite rider alone is expressible | T&C-G7 |
-| `srd51.monster.dire_wolf` | 1 | Pack Tactics (as above) | T&C-G7 |
 | `srd51.monster.boar` | 1/4 | Relentless: `drop_to_zero` only when the damage is 7 or less (no damage-threshold predicate; the loader's predicates are `weapon`, `advantage_or_ally_adjacent`, `target_creature_type`, `not_creature_type`, `damage_type_is/not`, `not_crit`, `moved_at_least_ft`, `self_hp_below`, `save`), once per short/long rest (`on_event` with `usage` is listed unsupported by the loader, "a use cost is a later sub-PR"). Charge (`moved_at_least_ft` 20, 1d6, Str DC 11 prone) is expressible but is not worth shipping without Relentless | T&C-G7 (predicate: damage taken <= N; `on_event` usage) |
 | `srd51.monster.hobgoblin` | 1/2 | Martial Advantage: +2d6 once per turn only if an ally (not incapacitated) is within 5 ft of the target. The only ally predicate is still `advantage_or_ally_adjacent` (advantage OR ally, the Sneak Attack gate), which would also fire with advantage and no ally | T&C-G7 (predicate: ally adjacent only) |
 | `srd51.monster.orc` | 1/2 | Aggressive: bonus-action move toward a visible hostile. Rules has it since #111 (`Combatant::aggressive`, `ActionRequest::aggressive`), but the sim content loader never sets `aggressive` and there is no content shape; `bonus_action_grant dash` has no direction constraint | T&C-G7 (content shape + loader for #111 Aggressive) |
@@ -69,7 +69,7 @@ Gap ids: `T&C-Gn` = Tools & Content, `R-Gn` = Rules (see the crosswalk in the co
 
 ### Re-check at `cfb5eed` (2026-10-19)
 
-All 12 stay deferred. Checked against the sim loader (`engine/core/sim/src/content.cpp`, `features.cpp`), the rules content loader (`engine/rules/content/src/spell_loader.cpp`), `schemas/common/v2.schema.json` / `schemas/monster/v4.schema.json` and `tools/validate_packs.py` / `tools/checks_v4.py`:
+All 12 stayed deferred at that point; jackal, kobold, wolf and dire wolf were authored afterwards once #127 landed the `pack_tactics` loader kind. Checked against the sim loader (`engine/core/sim/src/content.cpp`, `features.cpp`), the rules content loader (`engine/rules/content/src/spell_loader.cpp`), `schemas/common/v2.schema.json` / `schemas/monster/v4.schema.json` and `tools/validate_packs.py` / `tools/checks_v4.py`:
 
 | landed mechanic | loads from content? | shape | unblocks |
 |---|---|---|---|
@@ -80,7 +80,7 @@ All 12 stay deferred. Checked against the sim loader (`engine/core/sim/src/conte
 | reactions | yes | `reactions[]` (#114/#115) | none of the 12 |
 | grapple | sim only | `on_hit [{"kind":"grapple","escape_dc":N}]` (#104); not in the `common@2` rider enum (validator rejects it) | none of the 12 (Web restrains) |
 | timed modifiers, Metamagic, Haste/Slow, Sleep, dispel | spell / `apply_modifier` mechanics | not used by any of the 12 stat blocks | none of the 12 |
-| Pack Tactics | **no** | rules `RollTrait` only; sim never fills `roll_traits` | jackal, kobold, wolf, dire wolf blocked |
+| Pack Tactics | **yes** (#127) | trait effect `{ "kind": "pack_tactics" }` (common@1 open kind) | jackal, kobold, wolf, dire wolf: authored (kobold partial, Sunlight Sensitivity descriptive) |
 | Aggressive, Reckless (#111) | **no** | rules flags only; sim never sets them | orc, berserker blocked |
 | surprise (#108) | **no** (as a predicate) | rules state only | bugbear blocked |
 

@@ -21,7 +21,7 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (all monster@4). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-DEFERRED = ["jackal", "kobold", "wolf", "dire-wolf", "boar", "hobgoblin", "orc", "bugbear", "ghoul", "giant-spider",
+DEFERRED = ["boar", "hobgoblin", "orc", "bugbear", "ghoul", "giant-spider",
             "berserker", "swarm-of-rats"]
 # Documented deviations: monster -> why the content differs from the raw table.
 DEVIATIONS = {
@@ -133,6 +133,18 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual(bite["on_hit"][0]["damage"], [{"dice": "3d6", "type": "poison"}])
         self.assertEqual((bite["on_hit"][0]["save"], bite["on_hit"][0]["on_success"]), ({"ability": "con", "dc": 11}, "half"))
         self.assertEqual(load("skeleton")["damage_vulnerabilities"], ["bludgeoning"])
+        # Pack Tactics (common@1 open kind pack_tactics, sim #127): one declaration, no fields
+        for idx in ("jackal", "kobold", "wolf", "dire-wolf"):
+            with self.subTest(monster=idx):
+                effs = [t["effect"] for t in load(idx)["traits"] if "effect" in t]
+                self.assertEqual(effs, [{"kind": "pack_tactics"}])
+        # bite knock-prone rider: Str save or prone (common@2 save_condition with apply, no damage)
+        for idx, dc in (("wolf", 11), ("dire-wolf", 13)):
+            with self.subTest(monster=idx):
+                self.assertEqual(load(idx)["actions"][0]["on_hit"],
+                                 [{"kind": "save_condition", "save": {"ability": "str", "dc": dc}, "apply": [{"condition": "prone"}]}])
+        # Sunlight Sensitivity / Keen Hearing and Smell: descriptive (no light model, no perception checks in the sim)
+        self.assertNotIn("effect", {t["id"]: t for t in load("kobold")["traits"]}["sunlight_sensitivity"])
 
     def test_authored_and_deferred_split(self):
         have = sorted(p.stem for p in (PACK / "monsters").glob("*.json"))

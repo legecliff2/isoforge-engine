@@ -74,17 +74,18 @@ takes option 0. Check 9 (`roll_attack` / `subtract_roll` reserved, Q6) is lifted
 | `window.source` / `visible` | `source` other than `self` or `visible: false`: listed as unsupported | warning on `roll_attack` / `subtract_roll` reactions |
 | `melee_only` + `ranged_only` | both true: **load error** | error on `roll_attack` reactions |
 
-### 3.2 Feature / trait effect kinds `reroll_ones`, `great_weapon_fighting`, `evasion`
+### 3.2 Feature / trait effect kinds `reroll_ones`, `great_weapon_fighting`, `evasion`, `pack_tactics`
 
 | kind | fields | compiles to |
 |---|---|---|
 | `reroll_ones` | `rolls` (optional): non-empty array of `attack`, `check`, `save` (repeats allowed); omitted = all three | `Combatant::reroll_ones` bits 1 / 2 / 4 (Halfling Lucky = 7); several declarations OR together. Empty array or another entry: **load error** |
 | `great_weapon_fighting` | none | `Combatant::great_weapon_fighting` |
 | `evasion` | none | `Combatant::evasion` |
+| `pack_tactics` | none | rules5e `RollTrait {Attack, Advantage, kWhenAllyNearTarget}` (sim #127; the sim supplies `ally_near_target`). A second declaration adds nothing: validator **warning** |
 
 They are **open kinds** (registered with no minimum version, like the sim's R-G5 kinds): the sim applies them in every document
 whose effects are active (`character@3`/`@4`, `monster@3`/`@4`; `@1`/`@2` effects are inert through the 2 -> 3 migration) and they
-are not in the frozen 3 -> 4 list, so the migration never stamps them. Schema: three appended arms of `common@1 $defs/effect` (the
+are not in the frozen 3 -> 4 list, so the migration never stamps them. Schema: four appended arms of `common@1 $defs/effect` (the
 open, append-only effect contract that `@3` `trait_active` and `@4` `effect_live` both use, so the rule is the same at `@3` and
 `@4`); the object stays open (the loader ignores fields it does not read). Validator: `checks_v4.OPEN_EFFECT_KINDS_RG7` joins every
 row of the tag table (no unknown-kind warning; shape violations are errors at `@3`/`@4`, warnings at `@1`/`@2`).

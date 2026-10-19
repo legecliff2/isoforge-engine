@@ -136,7 +136,15 @@ No fields. Weapon damage dice of a `two_handed` melee attack, or a `versatile` m
 
 No fields. A Dex save against an effect that deals half on a success deals none on a success and half on a failure.
 
-These three are open kinds (live at `@3` and `@4`); see `docs/CONTENT_CONVENTIONS.md` section 3.
+### `pack_tactics` (static, T&C-G7)
+
+No fields. SRD Pack Tactics: advantage on the creature's attack rolls against a creature when at least one of its allies that
+is not incapacitated is within 5 ft of it (sim #127: rules5e `RollTrait {Attack, Advantage, kWhenAllyNearTarget}`). A second
+declaration adds nothing (the validator warns).
+
+Example: `{ "kind": "pack_tactics" }`
+
+These four are open kinds (live at `@3` and `@4`); see `docs/CONTENT_CONVENTIONS.md` section 3.
 
 ### 1.1 Condition ids
 

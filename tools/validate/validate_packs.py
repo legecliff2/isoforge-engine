@@ -429,6 +429,7 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         return errs, warns
     active = row.active_effects
     v = Draft202012Validator({"$ref": COMMON_ID + "#/$defs/effect"}, registry=registry)
+    seen_once: dict[str, str] = {}
     for key in ("features", "traits"):
         for i, f in enumerate(doc.get(key) or []):
             eff = f.get("effect") if isinstance(f, dict) else None
@@ -445,6 +446,12 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
                 warns.append(f"{where}: unknown effect kind '{kind}' "
                              f"(engine ignores it; known: {', '.join(sorted(row.effect_kinds))})")
                 continue
+            if kind in c4.NO_STACK_EFFECT_KINDS and "inert" not in eff:
+                if kind in seen_once:
+                    warns.append(f"{where}: duplicate '{kind}' effect (already declared at {seen_once[kind]}); "
+                                 "a second declaration adds nothing")
+                else:
+                    seen_once[kind] = f"/{key}/{i}/effect"
             found = []
             if eff.get("cost") == "reaction" and "reaction" not in row.cost_values:
                 found.append("cost 'reaction' is reserved (not supported by the engine yet); "

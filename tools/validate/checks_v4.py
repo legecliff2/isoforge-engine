@@ -23,7 +23,11 @@ LIVE_AT_3_EFFECT_KINDS = frozenset({"damage_bonus", "bonus_action_grant", "self_
 # R-G7 static kinds (sim #114 features.cpp): registered with no minimum version ("open kinds", like the sim's R-G5
 # kinds), so the sim applies them at every tag whose effects are active (@3 and @4; @1/@2 effects are inert). They are
 # not in the frozen 3 -> 4 list, so the migration never stamps them. Shapes: common@1 $defs/effect.
-OPEN_EFFECT_KINDS_RG7 = frozenset({"reroll_ones", "great_weapon_fighting", "evasion"})
+OPEN_EFFECT_KINDS_RG7 = frozenset({"reroll_ones", "great_weapon_fighting", "evasion",
+                                   # T&C-G7 (sim #127): SRD Pack Tactics; no fields, a duplicate adds nothing (warned)
+                                   "pack_tactics"})
+# Open kinds whose second declaration in one document adds nothing (the sim dedupes): the validator warns.
+NO_STACK_EFFECT_KINDS = frozenset({"pack_tactics"})
 # The kinds @4 adds; also the frozen literal list of the 3 -> 4 migration (VERSION_BUMP_BATCH 8.2 step 4).
 # save_effect and reaction are action / reaction kinds, not trait effect kinds: they exist in the list so
 # a stamped one validates (effect_inert) but a native one is a schema error.
