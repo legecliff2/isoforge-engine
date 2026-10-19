@@ -430,6 +430,12 @@ void Combat::install_hooks() {
     state_.hooks.in_range = [this](const rules5e::EncounterState&, const rules5e::ReactionWindow& w,
                                    const rules5e::Combatant& r) {
         if (w.trigger == ReactionTrigger::BeingHit) return r.id == w.target;   // Shield: the creature hit
+        if (w.trigger == ReactionTrigger::Damaged) return r.id == w.target;       // reduce_damage / retaliate / riposte: the creature hurt
+        if (w.trigger == ReactionTrigger::AllyAttacked)                          // Protection: within 5 ft of the ally attacked
+            return r.id != w.target && distance_tiles(r.id, w.target) * kFeetPerTile <= 5;   // footprint-aware nearest-tile distance
+        if (w.trigger == ReactionTrigger::Damaged) return r.id == w.target;       // reduce_damage / retaliate / riposte: the creature hurt
+        if (w.trigger == ReactionTrigger::AllyAttacked)                          // Protection: within 5 ft of the ally attacked
+            return r.id != w.target && distance_tiles(r.id, w.target) * kFeetPerTile <= 5;   // footprint-aware nearest-tile distance
         if (w.trigger == ReactionTrigger::SpellCast) {   // Counterspell: within the counter spell's range, in sight
             if (!spells_) return false;
             for (uint32_t id : r.spells_known) {

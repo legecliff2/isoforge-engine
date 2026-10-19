@@ -16,8 +16,18 @@ public:
     virtual ~IActorPolicy() = default;
     // Called once at the start of each of `self`'s turns. nullopt = no target (end turn).
     virtual std::optional<CombatantId> choose_target(const Combat& c, CombatantId self) = 0;
-    // Sync adapter for reaction windows. Default: always take option 0.
-    virtual ReactionDecision decide_reaction(const Combat&, const NeedsDecision& n) { return {n.window_seq, true, 0}; }
+    // Sync adapter for reaction windows. HitRider (row 9c: the attacker is the reactor, Divine Smite style) is declined:
+    // spending a resource on a rider is a deliberate choice. Damaged (row 11) takes a ReduceDamage option when there is
+    // one, else the first (retaliate / riposte); AllyAttacked takes the first option (impose disadvantage). Every other
+    // trigger takes option 0.
+    virtual ReactionDecision decide_reaction(const Combat&, const NeedsDecision& n) {
+        if (n.trigger == rules5e::ReactionTrigger::HitRider) return {n.window_seq, false, 0};
+        uint8_t pick = 0;
+        if (n.trigger == rules5e::ReactionTrigger::Damaged)
+            for (std::size_t i = 0; i < n.options.size(); ++i)
+                if (n.options[i].kind == rules5e::ReactionOptionKind::ReduceDamage) { pick = uint8_t(i); break; }
+        return {n.window_seq, true, pick};
+    }
 };
 
 // Built-in: nearest conscious hostile (Chebyshev), ties by lowest id.

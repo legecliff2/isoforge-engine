@@ -452,6 +452,95 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
     sa.usage_kind = d.usage_kind;
     return std::nullopt;
 }
+
+// ---- Reactions (row 11 sim side): reactions[] entries -> rules5e::Reaction rows on the base combatant ----
+// Compiled: window damaged / ally_attacked with reduce_damage (fraction half | dice), impose_disadvantage, retaliate
+// (synthetic Save or AutoHit SpellDef) and attack (attack_id -> attack index). Listed in unsupported_features and not
+// compiled: every other window (being_hit / spell_cast / leaving_reach: ac_bonus and the opportunity-attack path stay with
+// the existing hooks and features; a leaving_reach `attack` is never a second OA), effect kinds cast / subtract_roll /
+// ac_bonus, `usage`, `source: ally_within_5ft` and `visible: false`.
+std::optional<std::string> compile_reactions(Archetype& a, const Json& doc, const RiderCtx& rc, rules5e::Combatant& c) {
+    auto rs = doc.find("reactions");
+    if (rs == doc.end() || !rs->is_array()) return std::nullopt;
+    using RE = rules5e::ReactionEffectKind;
+    std::map<uint32_t, std::string> ids;
+    for (const Json& r : *rs) {
+        if (!r.is_object() || r.value("inert", false)) continue;
+        const std::string rid = r.value("id", "");
+        const std::string where = a.id + ": reaction '" + rid + "'";
+        if (rid.empty() || rid.find('#') != std::string::npos) return where + ": id must be non-empty and contain no '#'";
+        const Json* w = r.contains("window") && r["window"].is_object() ? &r["window"] : nullptr;
+        const Json* ef = r.contains("effect") && r["effect"].is_object() ? &r["effect"] : nullptr;
+        if (!w || !ef) return where + ": needs window and effect";
+        const std::string wk = w->value("kind", ""), ek = ef->value("kind", "");
+        rules5e::Reaction x;
+        if (wk == "damaged") x.window = rules5e::ReactionTrigger::Damaged;
+        else if (wk == "ally_attacked") x.window = rules5e::ReactionTrigger::AllyAttacked;
+        else { a.unsupported_features.push_back(rid + " (reaction window " + wk + ")"); continue; }
+        if (r.contains("usage") || w->value("source", "self") != "self" || !w->value("visible", true)) {
+            a.unsupported_features.push_back(rid + " (reaction: unsupported usage / source / visible)");
+            continue;
+        }
+        x.melee_only = w->value("melee_only", false);
+        x.ranged_only = w->value("ranged_only", false);
+        if (x.melee_only && x.ranged_only) return where + ": melee_only and ranged_only together";
+        const bool damaged = x.window == rules5e::ReactionTrigger::Damaged;
+        if (ek == "reduce_damage") {
+            if (!damaged) return where + ": reduce_damage needs the damaged window";
+            x.kind = RE::ReduceDamage;
+            if (ef->contains("fraction")) x.half = true;
+            else if (auto d = parse_dice(ef->contains("dice") && (*ef)["dice"].is_string() ? (*ef)["dice"].get<std::string>() : "")) x.dice = *d;
+            else return where + ": reduce_damage needs fraction or dice";
+        } else if (ek == "impose_disadvantage") {
+            if (damaged) return where + ": impose_disadvantage needs the ally_attacked window";
+            x.kind = RE::ImposeDisadvantage;
+        } else if (ek == "retaliate") {
+            if (!damaged) return where + ": retaliate needs the damaged window";
+            x.kind = RE::Retaliate;
+            const auto dm = ef->find("damage");
+            if (dm == ef->end() || !dm->is_array() || dm->empty()) return where + ": retaliate needs damage[]";
+            rules5e::SpellDef d;
+            if (ef->contains("save")) {   // Save kind: fixed DC, dice, damage type, on_save
+                Json act = *ef;
+                act["kind"] = "save_effect";
+                act["id"] = "reaction." + rid;
+                Archetype::SaveAction sa;
+                bool unsupported = false;
+                if (auto er = compile_save_action(rc.arch, act, d, sa, doc, unsupported)) return er;
+            } else {                      // no save: an auto-hit def (one damage entry)
+                if (dm->size() != 1) return where + ": retaliate without a save takes one damage entry";
+                auto dice = parse_dice((*dm)[0].value("dice", ""));
+                auto type = damage_type((*dm)[0].value("type", ""));
+                if (!dice || !type) return where + ": bad damage";
+                d.content_id = rc.arch + "#reaction." + rid;
+                d.id = rules5e::spell_id_of(d.content_id);
+                d.level = 0;
+                d.casting_time = rules5e::CastingTime::Reaction;
+                d.kind = rules5e::SpellEffectKind::AutoHit;
+                d.is_spell = false;
+                d.magical = false;
+                d.targets = 1;
+                d.darts = 1;
+                d.dice = *dice;
+                d.damage_type = *type;
+            }
+            x.spell_id = d.id;
+            rc.synth.push_back(std::move(d));
+        } else if (ek == "attack") {
+            if (!damaged) return where + ": attack needs the damaged window";
+            x.kind = RE::Attack;
+            const std::string at = ef->value("attack_id", "");
+            bool found = false;
+            for (std::size_t i = 0; i < rc.attacks.size() && !found; ++i)
+                if (!at.empty() && rc.attacks[i]->value("id", "") == at) { x.attack_index = uint8_t(i); found = true; }
+            if (!found) return where + ": attack names unknown attack_id '" + at + "'";
+        } else { a.unsupported_features.push_back(rid + " (reaction effect " + ek + ")"); continue; }
+        x.id = rules5e::spell_id_of(a.id + "#" + rid);
+        if (auto [it, fresh] = ids.emplace(x.id, rid); !fresh) return where + ": id collides with reaction '" + it->second + "'";
+        c.reactions.push_back(x);
+    }
+    return std::nullopt;
+}
 } // namespace
 
 std::optional<rules5e::DamageType> damage_type_from_name(const std::string& s) { return damage_type(s); }
@@ -712,6 +801,9 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 if (auto e = add_trigger(a.id, act.value("id", "?"), ri, std::move(t), trigger_ids, c)) return *e;
             }
         }
+    // reactions[] (monster@4 / character@4; older files carry them stamped inert)
+    if (declared == 0 || declared >= 4)
+        if (auto e = compile_reactions(a, doc, rider_ctx, c)) return *e;
     // multiattack options -> rules5e::AttackSequence (ids owned by the library, stable addresses).
     for (const auto& m : a.multiattack_decls) {
         strings_.push_back(m.id);
