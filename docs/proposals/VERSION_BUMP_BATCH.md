@@ -596,6 +596,15 @@ Row 9 lands as three rules PRs: **9a** (trigger model; `hit`/`crit` triggers wit
 * Goldens: unchanged. Creatures without triggers take none of these paths (no events, no rng).
 * New state: `Combatant::death_triggers_done` (folded into `triggers_digest`) and `TurnBudget::bonus_attack_grant` (Engine Core: include it wherever `TurnBudget` is hashed, if it is).
 
+### 3.2c 9c as implemented
+
+* **`choice: ask`** (hit/crit triggers only; `ask` on any other event never fires). For each ask trigger whose `on`, limit, predicates and cost allow it, `do_attack` opens a `ReactionTrigger::HitRider` window right after the auto triggers and before damage is rolled, so a crit doubles the rider dice. The **reactor is the attacker** (`trigger_actor` = attacker, `target` = creature hit, `attack_total/natural` filled). One window per trigger. `ReactionWindowOpened` (a = `HitRider`), then `ReactionTaken`/`ReactionDeclined`, then `FeatureTriggered`: c = 1 applied, **c = 2 declined** (nothing is spent, no limit consumed). HitRider windows are not subject to chain gating (`allow_chain`): they belong to the attacker's own attack, so Smite works on an opportunity attack.
+* **Options.** `ReactionOptionKind::Rider` (appended, value 4): `option_id` = trigger id, `slot_level` = slot spent (0 = no slot), `attack_index` = index of the trigger in `Combatant::triggers`, `uses_reaction = false` (free). One option per affordable slot level, ascending; **option 0 is what `ReactionPolicy::Auto` takes**. Policy `Never` for `HitRider` opens no window; default `Ask` with no ask trigger opens none, so old encounters are unchanged. With no decider, `step` returns `NeedsDecision` as for other windows and the sim default must decline (row 11 hand-off).
+* **`spend`** (any hit/crit trigger, auto or ask): `RiderEffect::slot` 0 = pool `pool` with cost `value` (0 = 1; an unregistered pool is unlimited, as for pool-limited actions; `ResourceSpent` is emitted when paid), 1..9 = that slot level, 10 = any level 1..9. A trigger whose cost cannot be paid does not fire (silent, no window). Auto triggers pay the lowest affordable level.
+* **`scale.per_slot_level`** is resolved by the loader into `RiderEffect::slot_dice` (`add_dice`) and `slot_base` (`base_level`); at slot level L the attack rolls the base dice plus `slot_dice.count * (L - slot_base)` extra dice of `slot_dice.sides` (same type, doubled on a crit). Divine Smite: `dice 2d8`, `slot_dice 1d8`, `slot_base 1`, `slot 10`.
+* **`save_condition` / `apply_condition`** riders are resolved after the damage (and not on a dead target) with the existing Save / ApplyCondition resolution, so they emit the same `SavingThrowRolled`, `ConditionAdded` events and create the same timed effects. `RiderEffect::spell_id` names a **synthetic SpellDef** built by the loader (`Save` kind with `fixed_dc`, `save_ability`, `on_save`, `dice`/`damage_type`, `applies_condition`, `condition`, `expiry`/`duration_rounds`, `repeat_save`; or `ApplyCondition` kind with `condition`, `expiry`, `duration_rounds`; `is_spell = false`). The save damage of such a def has a fixed type: `same_as_weapon` is not supported in `save_condition.damage` (loader error). A missing def or one of the wrong kind means the trigger does not fire.
+* Goldens unchanged: no ask triggers, no spend and no riders mean no windows, events or rng.
+
 ### 3.3 Inert behaviour
 
 * Old traits whose effect `kind` is `on_event` do not exist (open effect, none shipped).
@@ -740,8 +749,10 @@ appended `uint8_t choice = 0` (slot level for `Rider`/`cast`).
 
 ```cpp
 // types.hpp: enum class ReactionTrigger { LeavingReach, BeingHit, SpellCast, ReadiedTrigger,
-//                                         Damaged, AllyAttacked, HitRider /*, RollAttack (phase 2)*/ };
-// kReactionTriggerCount = 7  -> Combatant::reaction_policy grows; defaults stay Ask
+//                                         HitRider /* row 9c, landed: value 4 */,
+//                                         Damaged, AllyAttacked /* row 11, appended after HitRider */
+//                                         /*, RollAttack (phase 2)*/ };
+// kReactionTriggerCount = 5 after 9c, 7 after row 11 -> Combatant::reaction_policy grows; defaults stay Ask
 // Combatant (appended): std::vector<Reaction> reactions;   // compiled from content, id/trigger/effect/usage
 ```
 

@@ -573,13 +573,48 @@ void process_deaths(EncounterState& s, std::vector<Event>& ev) {
     }
 }
 
-// Fires every Hit / Crit trigger of `a` whose predicates hold and whose limit allows it; emits FeatureTriggered
-// (actor = owner, target = the creature hit, a = trigger id, b = TriggerOn, c = 1 applied) in trigger order and
-// returns the extra_damage riders to roll with the attack's damage. No triggers, no events, no rng.
-std::vector<const RiderEffect*> fire_hit_triggers(EncounterState& s, Combatant& a, const Combatant& t, const Attack& atk,
-                                                  bool is_spell, RollMode mode, bool ally_near, bool crit,
-                                                  std::vector<Event>& ev) {
-    std::vector<const RiderEffect*> out;
+// What the Hit / Crit triggers of one attack contribute: damage dice rolled with the attack, and synthetic
+// save_condition / apply_condition effects applied after the damage (spell ids resolved with resolve_effect).
+struct HitRiderPiece { DiceExpr dice; DamageType type; bool same_as_weapon; };
+struct HitRiders { std::vector<HitRiderPiece> pieces; std::vector<uint32_t> after; };
+
+bool hit_effect_ok(const EncounterState& s, const RiderEffect& e) {
+    switch (e.kind) {
+    case RiderKind::ExtraDamage: return true;
+    case RiderKind::SaveCondition: case RiderKind::ApplyCondition: {
+        const SpellDef* d = spell_def(s, e.spell_id);
+        return d && d->kind == (e.kind == RiderKind::SaveCondition ? SpellEffectKind::Save : SpellEffectKind::ApplyCondition);
+    }
+    default: return false;
+    }
+}
+
+// Slot levels at which the Spend effect of `tr` can be paid now (empty: it cannot). A trigger without a slot spend
+// yields {0} (one option, no slot). Pool spends are checked here; the pool is charged when the trigger applies.
+std::vector<uint8_t> spend_levels(const EncounterState& s, const Combatant& a, const Trigger& tr) {
+    const RiderEffect* sp = nullptr;
+    for (const RiderEffect& e : tr.effects) if (e.kind == RiderKind::Spend) { sp = &e; break; }
+    if (!sp) return {0};
+    if (sp->slot == 0) {   // pool: no registered row = unlimited (like pool-limited actions)
+        const uint16_t cost = sp->value > 0 ? uint16_t(sp->value) : uint16_t(1);
+        if (find_pool(s, a.id, sp->pool) && !can_spend(s, a.id, sp->pool, cost)) return {};
+        return {0};
+    }
+    std::vector<uint8_t> out;
+    const uint8_t lo = sp->slot == 10 ? uint8_t(1) : sp->slot, hi = sp->slot == 10 ? uint8_t(9) : sp->slot;
+    for (uint8_t L = lo; L <= hi; ++L) if (has_slot(a, L)) out.push_back(L);
+    return out;
+}
+
+// Fires every Hit / Crit trigger of `a` whose predicates hold, whose limit allows it and whose cost can be paid.
+// choice auto: applies at once (a slot spend takes the lowest affordable level). choice ask: opens a HitRider window
+// with the attacker as reactor (free options: one per affordable slot level, ascending; option 0 is what Auto takes);
+// declining emits FeatureTriggered c = 2 and costs nothing. Applying emits FeatureTriggered (actor = owner,
+// target = the creature hit, a = trigger id, b = TriggerOn, c = 1) in trigger order. No triggers: no events, no rng.
+HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
+                            bool is_spell, RollMode mode, bool ally_near, bool crit, const D20Roll& roll,
+                            std::vector<Event>& ev) {
+    HitRiders out;
     if (a.triggers.empty()) return out;
     TrigCtx x; x.atk = &atk; x.is_spell = is_spell; x.mode = mode; x.ally = ally_near; x.crit = crit; x.types = bit(atk.type);
     const uint32_t turn_stamp = uint32_t(s.round) << 16 | s.turn_index;
@@ -587,22 +622,58 @@ std::vector<const RiderEffect*> fire_hit_triggers(EncounterState& s, Combatant& 
     if (a.trigger_round_stamp != s.round) { a.trigger_round_stamp = s.round; a.trigger_round_mask = 0; }
     for (std::size_t i = 0; i < a.triggers.size() && i < 32; ++i) {
         const Trigger& tr = a.triggers[i];
-        if (tr.choice != 0) continue;                                  // ask (9c) / never
+        if (tr.choice == 2) continue;                                  // never
         if (!(tr.on == TriggerOn::Hit || (tr.on == TriggerOn::Crit && crit))) continue;
         const uint32_t m = uint32_t(1) << i;
         if (tr.limit == TriggerLimit::OncePerTurn && (a.trigger_turn_mask & m)) continue;
         if (tr.limit == TriggerLimit::OncePerRound && (a.trigger_round_mask & m)) continue;
+        bool any = false;
+        for (const RiderEffect& e : tr.effects) if (hit_effect_ok(s, e)) any = true;
+        if (!any) continue;                                            // no hit effect: other kinds do not fire here
         bool ok = true, failed_save = false;
         for (const Predicate& p : tr.when)
             if (!predicate_holds(s, a, t, x, p, ev, failed_save)) { ok = false; break; }
         if (!ok) continue;
-        bool any = false;
-        for (const RiderEffect& e : tr.effects)
-            if (e.kind == RiderKind::ExtraDamage) { out.push_back(&e); any = true; }
-        if (!any) continue;                                            // no hit effect: other kinds do not fire here
+        const std::vector<uint8_t> levels = spend_levels(s, a, tr);
+        if (levels.empty()) continue;                                  // cannot pay
+        uint8_t level = levels[0];
+        if (tr.choice == 1) {                                          // ask: HitRider window, the attacker decides
+            if (a.dead || a.reaction_policy[std::size_t(ReactionTrigger::HitRider)] == ReactionPolicy::Never) continue;
+            std::vector<ReactionOption> opts;
+            for (uint8_t L : levels) opts.push_back(ReactionOption{uint8_t(i), ReactionOptionKind::Rider, 0, tr.id, L, false});
+            ReactionWindow w = new_window(s, ctx, ReactionTrigger::HitRider, a.id);
+            w.target = t.id; w.attack_total = roll.total; w.attack_natural = roll.natural;
+            ++s.next_window_seq;
+            emit(ev, EventKind::ReactionWindowOpened, a.id, t.id, int32_t(w.trigger), int32_t(w.seq));
+            const ReactionDecision d = poll(s, ctx, w, a, opts, ev, true);
+            if (!d.react) {
+                emit(ev, EventKind::FeatureTriggered, a.id, t.id, int32_t(tr.id), int32_t(tr.on), 2);
+                continue;
+            }
+            level = opts[d.option].slot_level;
+        }
+        for (const RiderEffect& e : tr.effects) {                      // pay
+            if (e.kind != RiderKind::Spend) continue;
+            if (e.slot != 0) spend_slot(a, level);
+            else {
+                const uint16_t cost = e.value > 0 ? uint16_t(e.value) : uint16_t(1);
+                if (find_pool(s, a.id, e.pool) && spend_pool(s, a.id, e.pool, cost))
+                    emit(ev, EventKind::ResourceSpent, a.id, 0, int32_t(e.pool), cost, find_pool(s, a.id, e.pool)->cur);
+            }
+            break;
+        }
         if (tr.limit == TriggerLimit::OncePerTurn) a.trigger_turn_mask |= m;
         if (tr.limit == TriggerLimit::OncePerRound) a.trigger_round_mask |= m;
         emit(ev, EventKind::FeatureTriggered, a.id, t.id, int32_t(tr.id), int32_t(tr.on), 1);
+        for (const RiderEffect& e : tr.effects) {
+            if (!hit_effect_ok(s, e)) continue;
+            if (e.kind == RiderKind::ExtraDamage) {
+                out.pieces.push_back({e.dice, e.type, e.same_as_weapon});
+                if (e.slot_dice.count > 0 && level > e.slot_base)      // scale.per_slot_level: +add_dice per level above base
+                    out.pieces.push_back({DiceExpr{uint8_t(e.slot_dice.count * (level - e.slot_base)), e.slot_dice.sides, 0},
+                                          e.type, e.same_as_weapon});
+            } else out.after.push_back(e.spell_id);
+        }
     }
     return out;
 }
@@ -642,15 +713,15 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     if (hit) {
         // Triggers that fire on this hit (Sneak Attack-style): their FeatureTriggered events come before the damage
         // dice; extra_damage riders are rolled with the attack's damage so a crit doubles them.
-        const auto riders = fire_hit_triggers(s, a, t, atk, spell_id != 0, atk_mode, ally_near_target, crit, ev);
+        const HitRiders riders = fire_hit_triggers(s, ctx, a, t, atk, spell_id != 0, atk_mode, ally_near_target, crit, roll, ev);
         int dmg = roll_dice(s.rng, atk.damage, crit);
         if (dmg < 0) dmg = 0;
-        if (!riders.empty()) {
+        if (!riders.pieces.empty()) {
             std::vector<DamagePiece> parts{{int16_t(dmg), atk.type}};
             for (const DamagePart& p : atk.extra_damage)
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.dice, crit))), p.type});
-            for (const RiderEffect* r : riders)
-                parts.push_back({int16_t(std::max(0, roll_dice(s.rng, r->dice, crit))), r->same_as_weapon ? atk.type : r->type});
+            for (const HitRiderPiece& r : riders.pieces)
+                parts.push_back({int16_t(std::max(0, roll_dice(s.rng, r.dice, crit))), r.same_as_weapon ? atk.type : r.type});
             damage_creature(s, t, apply_damage_parts(t, parts, atk.qualifiers), crit, ev, &tsrc);
         } else if (atk.extra_damage.empty()) {
             damage_creature(s, t, apply_damage(t, int16_t(dmg), atk.type, atk.qualifiers), crit, ev, &tsrc);
@@ -659,6 +730,10 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
             for (const DamagePart& p : atk.extra_damage)
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.dice, crit))), p.type});
             damage_creature(s, t, apply_damage_parts(t, parts, atk.qualifiers), crit, ev, &tsrc);
+        }
+        for (uint32_t sid : riders.after) {   // save_condition / apply_condition riders: after the damage, if it still stands
+            if (t.dead) break;
+            if (const SpellDef* d = spell_def(s, sid)) resolve_effect(s, ctx, a, *d, 0, std::vector<Combatant*>{&t}, within_5ft, ev);
         }
     }
     return hit;

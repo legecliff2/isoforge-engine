@@ -223,7 +223,7 @@ TEST_CASE("reserved: other TriggerOn values, ask/never choice and non-9a effects
     CHECK(fires(base()) == 1);
     Trigger t = base(); t.on = TriggerOn::ReduceToZero; CHECK(fires(t) == 0);
     t = base(); t.on = TriggerOn::DropToZero; CHECK(fires(t) == 0);
-    t = base(); t.choice = 1; CHECK(fires(t) == 0);
+    // (choice ask is a HitRider window since 9c: see trigger_rider_tests.cpp)
     t = base(); t.choice = 2; CHECK(fires(t) == 0);
     t = base(); t.effects[0].kind = RiderKind::SetHp; CHECK(fires(t) == 0);
 }
