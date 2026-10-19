@@ -202,6 +202,9 @@ struct SpellDef {
     TeleportSpec teleport{};
     // appended (R-G11): kind Zone (primary effect only; an extra effect of kind Zone is refused at cast).
     ZoneSpec zone{};
+    // appended (priced materials, CONTENT_CONVENTIONS §7): components.m.item, the equipment content id that provides a priced
+    // material ("" = none: a priced material without an item is unsatisfiable). rules5e never reads it (sim's components hook does).
+    std::string material_item;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
