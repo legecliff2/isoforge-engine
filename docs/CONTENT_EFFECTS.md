@@ -159,6 +159,22 @@ against the creature have advantage until its next turn). The built-in AI never 
 
 These six are open kinds (live at `@3` and `@4`); see `docs/CONTENT_CONVENTIONS.md` section 3.
 
+### `slot_recovery` (reserved, VERSION_BUMP_BATCH 7.2n)
+
+**Reserved: no loader reads it yet.** Arcane Recovery (wizard) and Natural Recovery (druid, Circle of the Land). The schema arm
+and the validator checks are live; the kind is in no `TAG_TABLE` row, so instead of the unknown-kind warning the validator warns
+`effect kind 'slot_recovery' is reserved: no loader reads it yet ...` on every use (the pattern of chunk `surprise`,
+`docs/CONTENT_CONVENTIONS.md` section 8). Contract for the loader: `docs/CONTENT_CONVENTIONS.md` section 9.
+
+| field | type | meaning |
+|---|---|---|
+| `class` | `"wizard"` \| `"druid"` (required) | whose level sets the budget; must name a `classes[]` entry (validator error otherwise: the level would be 0 and `apply_slot_recovery` refuses `NoFeature`) |
+| `max_slot_level` | integer 1..9, default 5 | no recovered slot above this level (SRD: none 6th or higher) |
+| `uses` | integer 1..255, default 1 | uses per long rest; a short rest does not reset it ("once per day") |
+
+The budget, combined slot levels <= ceil(class level / 2), is derived from `classes[]` by the rules (`slot_recovery_budget`); it is
+not a field. Which slots come back is the caller's choice at short-rest time (sim AI / UI), not content.
+
 ### 1.1 Condition ids
 
 Named predicates over an attack action, registered in the FeatureRegistry:

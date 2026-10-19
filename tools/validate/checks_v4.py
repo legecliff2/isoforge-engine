@@ -39,6 +39,16 @@ NATIVE_EFFECT_KINDS_AT_4 = frozenset({"on_event", "apply_modifier", "grant_actio
 # common@1 kinds (no schema arm, not in the frozen 3 -> 4 list): known at @4, their fields are checked by
 # check_static_kinds below, mirroring the sim's load errors (sim/src/features.cpp apply_attack_bonus / _crit_range / _ac_bonus).
 STATIC_EFFECT_KINDS_R_G5 = frozenset({"attack_bonus", "crit_range", "ac_bonus"})
+# Reserved feature kinds (VERSION_BUMP_BATCH 7.2n): the rules side exists and common@1 $defs/effect has the arm, but no sim
+# loader reads them yet. Like chunk `surprise` (R-G16), they are not in any row's effect_kinds; the validator checks the
+# shape (schema arm + check_reserved_kind) as for a live kind and replaces the generic unknown-kind warning with a
+# "reserved" one. When Engine Core's loader lands, move the kind into a row set and drop the warning.
+SLOT_RECOVERY_CLASSES = frozenset({"wizard", "druid"})
+RESERVED_EFFECT_KINDS = {
+    "slot_recovery": ("effect kind 'slot_recovery' is reserved: no loader reads it yet (VERSION_BUMP_BATCH 7.2n; Engine Core "
+                      "wires it in sim/content.cpp to rules5e SlotRecoverySpec / apply_slot_recovery), so it has no effect "
+                      "until that loader lands"),
+}
 EFFECT_COST_V1 = frozenset({"action", "bonus_action"})            # reaction is reserved up to @3
 EFFECT_COST_V2 = frozenset({"action", "bonus_action", "reaction"})  # grant_action additionally accepts "free"
 
@@ -429,6 +439,22 @@ def check_static_kinds(doc: dict) -> list[str]:
             if "requires_armor" in eff and not isinstance(eff["requires_armor"], bool):
                 errs.append(f"{path}: ac_bonus.requires_armor must be a boolean (R-G5)")
     return errs
+
+
+def check_reserved_kind(doc: dict, eff: dict) -> list[str]:
+    """Findings (messages without the path) for a reserved kind the schema arm cannot express. slot_recovery: the
+    class level comes from classes[] (7.2n hand-off item 1), and a class the creature does not have gives class_level 0,
+    which apply_slot_recovery refuses (NoFeature): the feature could never be used."""
+    out = []
+    if eff.get("kind") == "slot_recovery":
+        cls = eff.get("class")
+        have = [c.get("class") for c in doc.get("classes") or [] if isinstance(c, dict)]
+        if cls in SLOT_RECOVERY_CLASSES and cls not in have:
+            out.append(f"slot_recovery.class '{cls}' matches no classes[] entry (has: {', '.join(map(str, have)) or 'none'}); "
+                       "the class level would be 0 and the feature never usable (7.2n)")
+        if doc.get("$schema", "").startswith("monster@"):
+            out.append("slot_recovery is a character feature kind (the class level comes from classes[]) (7.2n)")
+    return out
 
 
 # ---- untimed save_condition riders (sim content.cpp compile_rider -> compile_save_action) ----------------------

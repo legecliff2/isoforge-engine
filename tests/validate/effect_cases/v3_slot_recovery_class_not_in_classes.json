@@ -1,0 +1,21 @@
+{
+  "base": "characters/fighter_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        2
+      ],
+      {
+        "id": "arcane_recovery",
+        "name": "Arcane Recovery",
+        "effect": {
+          "kind": "slot_recovery",
+          "class": "wizard"
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "slot_recovery.class 'wizard' matches no classes[] entry"
+}

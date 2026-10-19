@@ -1,0 +1,21 @@
+{
+  "base": "characters/wizard_level_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        0
+      ],
+      {
+        "id": "arcane_recovery",
+        "name": "Arcane Recovery",
+        "effect": {
+          "kind": "slot_recovery",
+          "class": "druid"
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "slot_recovery.class 'druid' matches no classes[] entry"
+}
