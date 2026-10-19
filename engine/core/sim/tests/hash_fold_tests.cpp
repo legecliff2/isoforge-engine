@@ -64,3 +64,25 @@ TEST_CASE("Combat::hash: v7 sections are folded only when non-empty, each under 
     CombatTestAccess::state(both).pools.clear();
     CHECK(both.hash() == h0);
 }
+
+TEST_CASE("Combat::hash: timed lasting effects fold under tag 0xA5 only when present") {
+    ContentLibrary l;
+    REQUIRE(l.load(sample_set()).empty());
+    const auto ch = arena();
+    ecs::Registry r0, r1, r2;
+    auto c0 = Combat::create(r0, ch, l, 9), c1 = Combat::create(r1, ch, l, 9), c2 = Combat::create(r2, ch, l, 9);
+    REQUIRE(c0); REQUIRE(c1); REQUIRE(c2);
+    const CombatantId a = ch.spawns[0].stable_id, b = ch.spawns[1].stable_id;
+    const uint64_t h0 = c0->hash();
+    auto effect = [&](Combat& c, rules5e::Timed t) {
+        CombatTestAccess::state(c).effects.push_back(rules5e::ActiveSpellEffect{
+            5, a, b, rules5e::Condition::Frightened, rules5e::Ability::Wis, 10, rules5e::RepeatSave::None, false, t});
+    };
+    effect(*c1, {});   // an untimed effect folds nothing (effects were never hashed)
+    CHECK(c1->hash() == h0);
+    effect(*c1, {rules5e::Expiry::Rounds, 3});
+    effect(*c2, {rules5e::Expiry::Rounds, 2});
+    CHECK(c1->hash() != h0);
+    CHECK(c2->hash() != h0);
+    CHECK(c1->hash() != c2->hash());   // rounds_left is covered
+}

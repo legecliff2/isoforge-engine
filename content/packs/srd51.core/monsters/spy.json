@@ -1,0 +1,143 @@
+{
+  "$schema": "monster@4",
+  "id": "srd51.monster.spy",
+  "name": "Spy",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "any race"
+  ],
+  "alignment": "any alignment",
+  "armor_class": {
+    "value": 12
+  },
+  "hit_points": {
+    "average": 27,
+    "formula": "6d8"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 10,
+    "dex": 15,
+    "con": 10,
+    "int": 12,
+    "wis": 14,
+    "cha": 16
+  },
+  "skills": {
+    "deception": 5,
+    "insight": 4,
+    "investigation": 5,
+    "perception": 6,
+    "persuasion": 5,
+    "stealth": 4
+  },
+  "senses": {
+    "passive_perception": 16
+  },
+  "languages": [
+    "any two languages"
+  ],
+  "challenge": {
+    "rating": "1",
+    "xp": 200
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The spy makes two melee attacks.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "shortsword_x2",
+            "attacks": [
+              "shortsword",
+              "shortsword"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "cunning_action",
+      "name": "Cunning Action",
+      "description": "On each of its turns, the spy can use a bonus action to take the Dash, Disengage, or Hide action.",
+      "effect": {
+        "kind": "bonus_action_grant",
+        "actions": [
+          "dash",
+          "disengage",
+          "hide"
+        ]
+      }
+    },
+    {
+      "id": "sneak_attack",
+      "name": "Sneak Attack (1/Turn)",
+      "description": "The spy deals an extra 7 (2d6) damage when it hits a target with a weapon attack and has advantage on the attack roll, or when the target is within 5 ft. of an ally of the spy that isn't incapacitated and the spy doesn't have disadvantage on the attack roll.",
+      "effect": {
+        "kind": "on_event",
+        "on": "hit",
+        "limit": "once_per_turn",
+        "when": [
+          {
+            "kind": "advantage_or_ally_adjacent"
+          }
+        ],
+        "effects": [
+          {
+            "kind": "extra_damage",
+            "damage": [
+              {
+                "dice": "2d6",
+                "type": "same_as_weapon"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "shortsword",
+      "name": "Shortsword",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "hand_crossbow",
+      "name": "Hand Crossbow",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 4,
+      "range": [
+        30,
+        120
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ]
+    }
+  ]
+}

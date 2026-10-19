@@ -224,7 +224,10 @@ TEST_CASE("casting content: PackSet load builds the SpellBook and rejects unreso
     const std::string req[] = {"sample.vertical_slice"};
     const auto set = assets::PackSet::resolve(roots, req);
     REQUIRE(live.load(set).empty());
-    CHECK(live.spells()->all().size() == 15);
+    // Count authored spells only: monster@4 save_effect actions (row 6) add synthetic SpellDefs (is_spell == false).
+    size_t authored = 0;
+    for (const auto& sd : live.spells()->all()) authored += sd.is_spell ? 1 : 0;
+    CHECK(authored == 15);
 }
 
 TEST_CASE("cast: Fire Bolt spends no slot, rolls a spell attack, emits SpellTarget (stream v5)") {

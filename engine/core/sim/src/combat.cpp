@@ -818,6 +818,8 @@ uint64_t Combat::hash() const {
     if (!state_.action_uses.empty()) { h.byte(0xA1); h.u64(rules5e::action_uses_digest(state_)); }
     if (!state_.pools.empty()) { h.byte(0xA3); h.u64(rules5e::pools_digest(state_)); }
     if (rules5e::has_innate_state(state_)) { h.byte(0xA4); h.u64(rules5e::innate_digest(state_)); }
+    // 0xA5: timed lasting effects (condition durations). 0xA2 (modifiers) stays reserved for row 12; 0xA4 (innate) is Engine Core's.
+    if (rules5e::has_timed_effects(state_)) { h.byte(0xA5); h.u64(rules5e::timed_effects_digest(state_)); }
     return h.value();
 }
 
