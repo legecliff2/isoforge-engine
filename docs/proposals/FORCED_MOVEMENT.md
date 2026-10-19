@@ -1,7 +1,6 @@
 # Forced movement and teleport (R-G9): rules / sim co-design proposal
 
-Status: **proposal, docs only.** The RULES section is written by Rules. The SIM CONTRACT section is a stub that carries Engine
-Core's starting design and is for Engine Core to complete. Nothing here is implemented yet. Tracks `docs/SRD_COMBAT_COVERAGE.md`
+Status: **proposal, docs only.** The RULES section is written by Rules. The SIM CONTRACT section is Engine Core's. Nothing here is implemented yet. Tracks `docs/SRD_COMBAT_COVERAGE.md`
 §11.5 order 8 (R-G9) and the rows it unlocks: Thunderwave, Gust of Wind, Misty Step, Repelling Blast, Open Hand Technique, blink
 dog teleport, and the "Opportunity-attack exceptions" row.
 
@@ -184,42 +183,64 @@ save / damage events for that creature (Thunderwave: `SavingThrowRolled`, `Damag
 4. Coverage rows: Thunderwave, Gust of Wind, Misty Step, Repelling Blast, Open Hand, blink dog, OA exceptions.
 5. Later: falling damage from `fell_ft`, and zone entry (R-G11).
 
-## 3. SIM CONTRACT section (Engine Core: stub with EC's starting design, to be completed by EC)
+## 3. SIM CONTRACT section (Engine Core: decided)
 
-> **EC to complete.** The bullets are Engine Core's starting proposal as relayed; the TODOs are open for EC.
+> **Engine Core owns sim.** These are EC's decisions for R-G9. Where they differ from the RULES section's proposal (2.4 flag
+> layout, 2.1 target order, the hook's tentative-position scratch), this section wins.
 
 - **Positions.** Sim positions are integer tiles (`TilePos`, chunk-local). A multi-tile footprint is anchored at its min-x / min-y
   tile (`grid.hpp`: `footprint_walkable(anchor, n)`). Distance between creatures is the nearest-tile Chebyshev distance between
   footprints (`rect_distance`), in tiles, × 5 ft.
-- **Event flow.** Pushes already flow through `Moved` events with `actor = moved creature` (the shove precedent). Sim applies them
-  to positions. *TODO EC: confirm the `c` flag layout (2.4) or pick the new-kind fallback; confirm the v8 rule "version 8 only when
-  a Moved has c != 0".*
-- **OAs.** Forced movement and teleport never provoke opportunity attacks unless an effect says so (`provokes_oa`). *TODO EC: how
-  a `provokes_oa` forced move is offered. Proposed: rules opens `LeavingReach` itself when the hook reports a reach being left;
-  needs `out_of_reach_of`-style data for enemies, not just grapple partners.*
-- **Path resolution.** Sim resolves each forced step as a tile path that stops at blocked or occupied tiles.
-  *TODO EC:*
-  - direction for push / pull from footprint to footprint: centre-to-centre ray, or "increase / decrease Chebyshev distance each
-    step"; tie-breaks when several tiles qualify;
-  - whether a pushed creature can pass through allies' / enemies' spaces (SRD: you can move through a non-hostile creature's
-    space, but a push is not your movement);
-  - diagonals;
-  - difficult terrain (forced movement ignores the cost: proposed).
-- **Teleport.** *TODO EC:*
-  - destination validation: unoccupied for the whole footprint, Chebyshev within `max_feet`, LOS when `needs_sight`, Frightened
-    "not closer to a fear source";
-  - Dimension Door companion placement next to the caster's destination (who picks the tile, tie-break; SRD 5.1 only says it travels with you);
-  - the occupied-destination failure (4d6 force) when the destination is unknown or invisible.
-- **Grapple drag.** Grapple drag uses the same path machinery: the grappled creature follows the grappler's path. *TODO EC: the
-  order of the two tokens on each step; what happens if the grappled creature's footprint is blocked.*
-- **Hook.** *TODO EC: accept or replace the `forced_move` hook (2.4), including the in-step tentative-position scratch and rollback
-  on an Ask pause; or propose the two-phase alternative (rules emits intent, sim resolves after the step and submits a follow-up
-  logged step).*
-- **Hashing / log.** *TODO EC:*
-  - teleport destination and Gust of Wind direction in the log entry (like Move's `to`);
-  - the `log_hash` tag for the new request fields (claim in `SIM_EVENTS.md`, next free 0xB2);
-  - whether `Combat::hash` needs anything (positions are already hashed).
-- **Readied triggers.** *TODO EC: whether forced `Moved` (c bit 0) and teleports should fire movement-based Readies (Q7).*
+- **Event flow (Q1).** Reuse `Moved`. No new `EventKind`. `c` carries flags:
+
+  ```
+  Moved.c  bit 0 forced    (not the creature's own movement: push, pull)
+           bit 1 teleport
+           bit 2 drag      (a held creature moved along with its grappler's voluntary Move)
+           bits 3+ reserved, 0
+  ```
+
+  This replaces 2.4's layout: no direction or stopped-short bits (`a` = feet actually moved already says it), and no hazard bit
+  until hazards exist. Schema **v8**: `event_stream_version(events)` returns 8 only for a stream containing a `Moved` with
+  `c != 0`. All older streams and goldens are unchanged. The shove push (EC #104) is the first user: it emits `c = 1` (forced) and
+  lands with #104, so no locked digest moves twice.
+- **OAs.** Forced moves and teleports never provoke opportunity attacks, so no `LeavingReach` window and no Ask pause can occur
+  mid-move. `provokes_oa` stays in the rules data model but sim does not support `true` in R-G9; content setting it is rejected at
+  load until an effect needs it.
+- **Order of several forced moves in one effect (Q2).** Farthest from the origin first, ties by lower combatant id. Distance is the
+  nearest-tile Chebyshev distance between the source and target footprints. So the back creature moves before the front one and
+  doesn't block it. Sim sorts; rules emits in the order the hook resolves them.
+- **Path resolution (Q5).**
+  - Direction: the sign of each component of (target centre − source centre), computed in doubled integer coordinates (centre of a
+    footprint at anchor `p` with size `n` = `2p + n`), giving one of 8 directions. Push uses that direction, pull its negation.
+    Exact overlap (zero vector): the source's facing, then +x.
+  - Walk tile by tile in that direction (diagonals are single steps). At each step check every tile of the mover's footprint.
+  - Stop at the last free tile when the next step would leave the map, or enter a blocked tile or a tile occupied by any other
+    creature (ally or enemy: a push is not the creature's own movement, so the pass-through rule doesn't apply). Movement is
+    partial, not all-or-nothing; a creature blocked on the first step moves 0 ft and still gets `Moved{a = 0}`.
+  - Difficult terrain costs nothing for forced movement.
+  - Integer math only, bit-identical across platforms.
+- **Hook (Q3).** Synchronous `forced_move` hook as in 2.4 (`ForcedMoveQuery` / `ForcedMoveResult`), but it **resolves and commits
+  immediately** as a pure function of state: no tentative positions, no rollback. This is safe because a forced move can never
+  pause (no OAs). Later queries in the same step see the committed positions. Readied triggers produced during the effect are
+  queued and fire after the whole effect resolves. One step stays one log entry.
+- **Teleport (Q8).**
+  - Sim exposes `legal_teleport_tiles(state, actor, def)`, returning candidate anchors in deterministic row-major order (y, then x).
+    The AI scores them and picks one; sim never chooses for it.
+  - `Combat::submit` re-validates the chosen destination: within range (Chebyshev, footprint-aware, ≤ `max_feet`), the full
+    footprint free, line of sight when the spell requires it (`needs_sight`), and Frightened "not closer to a fear source" for a
+    willing self-teleport. An invalid destination is rejected like any other illegal request, with no state change and no log entry.
+  - Dimension Door companions and the occupied-destination 4d6 failure are out of the first sim PR (Q10 order); their placement rule
+    is decided with that PR.
+- **Grapple drag (Q6).** Only on the grappler's own voluntary `Move`: held creatures move along the same path, each emitting
+  `Moved` with the drag bit (`c = 4`) after the grappler's `Moved`. A forced move of the grappler never drags. If the grappler is
+  pushed out of reach, Grappled is removed (rules ends it from `out_of_reach_of`; the next step's `prune_sourced` prunes the
+  sourced entry), per #99.
+- **Hashing / log.** No new `Combat::hash` tag: positions are already hashed. If a request field is added for the teleport
+  destination, it is folded into `log_hash` only when set, under the next free tag in the `SIM_EVENTS.md` hash tag registry
+  (**0xB2** at the time of writing), claimed in that registry by the PR that adds the field.
+- **Readied triggers (Q7).** Forced moves and teleports do fire readied "moves within N" triggers. Trigger predicates can read the
+  `c` flags (for example to exclude teleports). Current sim already fires `ready_trigger` on any `Moved`, which matches.
 
 ## 4. Open questions
 
@@ -227,18 +248,34 @@ save / damage events for that creature (Thunderwave: `SavingThrowRolled`, `Damag
 
 - **Q1. Event encoding.** Reuse `Moved` with the `c` flags and a payload-only v8, or add new kinds? If reuse: land the shove push
   `c` change together with EC #104, so no locked digest moves twice.
+  - **EC answer:** reuse `Moved`; `c` bit 0 forced, bit 1 teleport, bit 2 drag. v8 only for streams with a `Moved` whose
+    `c != 0`; older streams and goldens unchanged. The shove push (#104) is the first user (§3).
 - **Q2. Order of several forced moves in one effect.** Is "the request's target order" (sim's `area_targets` order) acceptable, or
   should sim order pushes far-to-near so the front creature doesn't block the one behind it?
+  - **EC answer:** far-to-near: farthest from the origin first, ties by lower combatant id; distance = nearest-tile Chebyshev
+    between footprints (§3).
 - **Q3. Hook vs two-phase.** A synchronous `forced_move` hook with tentative positions and rollback on an Ask pause, or a
   follow-up logged step? The hook keeps one step = one log entry. Two-phase avoids sim state inside rules' attempt loop.
+  - **EC answer:** synchronous `forced_move` hook that resolves and commits immediately, pure function of state, no tentative
+    positions or rollback. Forced moves never provoke OAs, so no pause can occur mid-move; readied triggers queue and fire after the
+    whole effect resolves (§3).
 - **Q5. Footprint geometry for push direction**, and blocked-path semantics: stop at the last free tile, or no move at all if the
   first tile is blocked?
+  - **EC answer:** 8-way direction from the signs of (target centre − source centre) in doubled integer coordinates; overlap
+    fallback = source facing, then +x. Tile-by-tile walk checking every footprint tile; stop at the last free tile (partial
+    movement). Integer math only (§3).
 - **Q6. Drag and forced moves of a grappler.** Does sim move the dragged creature on the grappler's voluntary `Move` only (as
   proposed), never on a forced move of the grappler (where the grapple usually ends instead)?
+  - **EC answer:** yes. Drag only on the grappler's own voluntary `Move` (`Moved` with the drag bit). A grappler pushed out of
+    reach loses the grapple; the next step prunes the entry, per #99 (§3).
 - **Q7. Readied actions.** Should a forced move or a teleport fire "when a creature moves within N ft" Readies? Proposed: yes for
   both: the trigger is a perceivable circumstance, not a choice by the mover. But sim's `ready_trigger` should see the `c` flags.
+  - **EC answer:** yes for both. Predicates can read the `c` flags (e.g. to exclude teleports). Current sim already fires readied
+    triggers on any `Moved` (§3).
 - **Q8. Teleport destination UX/AI.** Who picks a destination for the AI (Misty Step out of melee), and how is an invalid one
   reported: request rejected before it reaches rules, or a rules rejection via a hook?
+  - **EC answer:** sim exposes `legal_teleport_tiles(state, actor, def)` (row-major order); the AI scores and picks.
+    `Combat::submit` re-validates; an invalid destination is rejected like any illegal request, with no state change (§3).
 
 **For the Director**
 
