@@ -117,6 +117,27 @@ The engine rejects an action id that names no attack action and duplicate option
 
 Example (owlbear): `{ "kind": "multiattack", "options": [ { "id": "claw_beak", "attacks": ["beak", "claws"] } ] }`
 
+### `reroll_ones` (static, R-G7)
+
+Halfling Lucky: a natural 1 on the listed d20 rolls is rerolled once and kept (`Combatant::reroll_ones`).
+
+| field | type | required | meaning |
+|---|---|---|---|
+| `rolls` | non-empty array of `attack` / `check` / `save` | no | which rolls; omitted = all three. Several declarations OR together |
+
+Example: `{ "kind": "reroll_ones" }`, `{ "kind": "reroll_ones", "rolls": ["save"] }`
+
+### `great_weapon_fighting` (static, R-G7)
+
+No fields. Weapon damage dice of a `two_handed` melee attack, or a `versatile` melee attack held in two hands (v0 wield model:
+`docs/CONTENT_CONVENTIONS.md` section 3.3), showing 1 or 2 are rerolled once.
+
+### `evasion` (static, R-G7)
+
+No fields. A Dex save against an effect that deals half on a success deals none on a success and half on a failure.
+
+These three are open kinds (live at `@3` and `@4`); see `docs/CONTENT_CONVENTIONS.md` section 3.
+
 ### 1.1 Condition ids
 
 Named predicates over an attack action, registered in the FeatureRegistry:
@@ -152,4 +173,4 @@ Chunk palette flags (u8): bit0 `blocks_move`, bit1 `blocks_sight`, bit2 `difficu
 as is `blocks_move` without `blocks_sight` (glass, low fences). Line of sight checks only
 `blocks_sight`, and pathing checks only `blocks_move`.
 
-See `docs/CONTENT_CONVENTIONS.md` for the timed-modifier properties the sim compiles (`consume`, `speed_sub`, `ac_floor` / `ac_floor_dex`, `per_turn`, `when`) and the bonus-attack feature-id conventions.
+See `docs/CONTENT_CONVENTIONS.md` for the timed-modifier properties the sim compiles (`consume`, `speed_sub`, `ac_floor` / `ac_floor_dex`, `per_turn`, `when`) and the bonus-attack feature-id conventions, and for the R-G7 reactions (`roll_attack` / `subtract_roll`) and kinds.

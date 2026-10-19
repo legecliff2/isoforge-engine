@@ -152,7 +152,7 @@
       "required": ["kind"],
       "description": "Machine-readable feature effect, tagged by kind (contract: docs/CONTENT_EFFECTS.md). The engine FeatureRegistry maps kind to a hook. Unknown kinds are allowed: the validator warns and the engine reports them as unsupported and ignores them. Known kinds have their fields checked below. The object stays open (no additionalProperties: false), so v1 remains append-only and extra fields are ignored by the engine.",
       "properties": {
-        "kind": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "Hook id. Known: damage_bonus, bonus_action_grant, self_heal, damage_mitigation, magic_weapons, multiattack." },
+        "kind": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "Hook id. Known: damage_bonus, bonus_action_grant, self_heal, damage_mitigation, magic_weapons, multiattack, reroll_ones, great_weapon_fighting, evasion." },
         "cost": { "$ref": "#/$defs/effect_cost" }
       },
       "allOf": [
@@ -214,7 +214,18 @@
               "immunities": { "$ref": "#/$defs/qualified_damage" }
             } } },
         { "if": { "properties": { "kind": { "const": "magic_weapons" } }, "required": ["kind"] },
-          "then": { "description": "Static (Magic Weapons): every attack of the creature counts as magical, so it bypasses 'nonmagical' resistance and immunity." } }
+          "then": { "description": "Static (Magic Weapons): every attack of the creature counts as magical, so it bypasses 'nonmagical' resistance and immunity." } },
+        { "if": { "properties": { "kind": { "const": "reroll_ones" } }, "required": ["kind"] },
+          "then": {
+            "description": "Static (R-G7, Halfling Lucky): a natural 1 on the listed d20 rolls is rerolled once and the new roll is used. Several declarations OR together.",
+            "properties": {
+              "rolls": { "type": "array", "minItems": 1, "items": { "enum": ["attack", "check", "save"] },
+                         "description": "Which d20 rolls: attack rolls, ability checks, saving throws. Omitted = all three. Repeats are allowed (OR)." }
+            } } },
+        { "if": { "properties": { "kind": { "const": "great_weapon_fighting" } }, "required": ["kind"] },
+          "then": { "description": "Static (R-G7, Fighting Style): weapon damage dice of a two_handed melee attack, or a versatile melee attack held in two hands, that show 1 or 2 are rerolled once. No parameters." } },
+        { "if": { "properties": { "kind": { "const": "evasion" } }, "required": ["kind"] },
+          "then": { "description": "Static (R-G7, Rogue / Monk Evasion): a Dex save against an effect that deals half on a success deals none on a success and half on a failure. No parameters." } }
       ]
     },
     "qualified_damage": {

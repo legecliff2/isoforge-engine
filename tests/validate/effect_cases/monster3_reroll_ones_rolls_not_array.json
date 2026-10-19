@@ -1,0 +1,18 @@
+{
+  "base": "monsters/goblin.json",
+  "sets": [
+    [
+      [
+        "traits",
+        0,
+        "effect"
+      ],
+      {
+        "kind": "reroll_ones",
+        "rolls": "save"
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "/traits/0/effect"
+}
