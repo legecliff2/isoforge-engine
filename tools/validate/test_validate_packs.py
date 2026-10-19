@@ -108,6 +108,8 @@ ZONE_CASES = [
     ("move_needs_feet", MB, [], [["effects", 0, "zone", "move", "feet"]], "'feet' is a required property"),
     ("group_above_255", MB, [(T0 + ["group"], 256)], [], "is greater than the maximum of 255"),
     ("group_negative", MB, [(T0 + ["group"], -1)], [], "is less than the minimum of 0"),
+    ("needs_conscious_owner_not_bool", SG, [(["effects", 0, "zone", "needs_conscious_owner"], 1)], [], "1 is not of type 'boolean'"),
+    ("needs_conscious_owner_string", SG, [(["effects", 0, "zone", "needs_conscious_owner"], "yes")], [], "'yes' is not of type 'boolean'"),
     ("unknown_zone_key", MB, [(["effects", 0, "zone", "move_cost"], 1)], [], "'move_cost' is not one of"),
     ("unknown_trigger_key", MB, [(T0 + ["limit"], "none")], [], "Additional properties are not allowed ('limit'"),
     ("legacy_trigger_key", MB, [(T0 + ["trigger"], "zone_enter")], [], "Additional properties are not allowed ('trigger'"),
@@ -201,7 +203,7 @@ class SpellZones(unittest.TestCase):
         # group 0..255, every boolean, bonus_action moves, the no-save condition kind, a cube aura.
         mb = zone_edit(zone_fixture(MB), [(T0 + ["group"], 255), (T0 + ["completely_within"], True),
                                           (T0 + ["counts_aura_move_as_enter"], True),
-                                          (["effects", 0, "zone", "move", "cost"], "bonus_action"),
+                                          (["effects", 0, "zone", "move", "cost"], "bonus_action"), (["effects", 0, "zone", "needs_conscious_owner"], False),
                                           (["effects", 0, "zone", "triggers", 2], {"on": "zone_end_turn",
                                            "effect": {"kind": "apply_condition", "condition": "blinded"}, "while_in_zone": True})], [])
         sg = zone_edit(zone_fixture(SG), [(["effects", 0, "zone", "shape"], "cube"),
