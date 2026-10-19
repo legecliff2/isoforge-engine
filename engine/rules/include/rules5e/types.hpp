@@ -109,8 +109,9 @@ constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
 // HitRider (row 9c): the attacker is the reactor; opened after a hit for each `choice: ask` trigger (Divine Smite).
 // Damaged (row 11): damage to the reactor has been computed (after mitigation) but is not committed yet, so a
 // reduce_damage reaction can act; AllyAttacked: an attack roll against an ally of the reactor is about to be made.
-enum class ReactionTrigger : uint8_t { LeavingReach, BeingHit, SpellCast, ReadiedTrigger, HitRider, Damaged, AllyAttacked };
-inline constexpr std::size_t kReactionTriggerCount = 7;
+// AttackRolled (appended, R-G7): an attack roll was made, before hit or miss is decided (Cutting Words).
+enum class ReactionTrigger : uint8_t { LeavingReach, BeingHit, SpellCast, ReadiedTrigger, HitRider, Damaged, AllyAttacked, AttackRolled };
+inline constexpr std::size_t kReactionTriggerCount = 8;
 enum class ReactionPolicy : uint8_t { Ask, Never, Auto };
 
 struct DeathSaves { uint8_t successes = 0, failures = 0; bool stable = false; };
@@ -217,7 +218,7 @@ struct Trigger {
 };
 
 // A mechanical reaction compiled from content (row 11): offered in the Damaged / AllyAttacked windows of its owner.
-enum class ReactionEffectKind : uint8_t { ReduceDamage, ImposeDisadvantage, Retaliate, Attack };
+enum class ReactionEffectKind : uint8_t { ReduceDamage, ImposeDisadvantage, Retaliate, Attack, SubtractRoll /* R-G7, AttackRolled */ };
 struct Reaction {
     uint32_t id = 0;                         // spell_id_of("<archetype>#<reaction id>")
     ReactionTrigger window = ReactionTrigger::Damaged;   // Damaged or AllyAttacked
@@ -227,6 +228,9 @@ struct Reaction {
     DiceExpr dice{0, 0, 0};                  // ReduceDamage: amount to subtract (Deflect Missiles: 1d10 + bonus)
     uint32_t spell_id = 0;                   // Retaliate: synthetic Save / AutoHit SpellDef resolved against the damager
     uint8_t attack_index = 0;                // Attack: index into Combatant::attacks (Riposte)
+    // appended (R-G7): SubtractRoll rolls `dice` and subtracts it from an enemy's attack roll (Cutting Words: the bardic
+    // inspiration die). Offered only while `pool` (0 = none) can pay `pool_cost` (0 = 1); spent when taken (ResourceSpent).
+    uint32_t pool = 0; uint16_t pool_cost = 0;
 };
 
 // ---- Timed modifiers (version-bump batch, row 12; docs/proposals/VERSION_BUMP_BATCH.md section 6) ----
@@ -350,6 +354,19 @@ struct Combatant {
     uint32_t trigger_turn_mask = 0, trigger_turn_stamp = 0;       // stamp = round << 16 | turn_index
     uint32_t trigger_round_mask = 0; uint16_t trigger_round_stamp = 0;
     bool death_triggers_done = false;   // 9b: this creature's death triggers have been processed
+    // R-G5 static feature kinds (appended). Weapon attacks only (never spell attacks): a flat bonus to the attack roll by
+    // melee / ranged (Archery +2 ranged), and the lowest natural d20 that is a critical hit when the attack hits (Improved
+    // Critical 19, Superior Critical 18; 20 = default). A natural 20 always hits and crits; a lower crit roll must still hit.
+    int8_t attack_bonus_melee = 0, attack_bonus_ranged = 0;
+    int8_t crit_min = 20;
+    // R-G7 (appended). reroll_ones: bitmask 1 attack roll, 2 ability check, 4 saving throw: a natural 1 is rerolled once and the
+    // new roll is used (Halfling Lucky; with advantage / disadvantage the die showing 1 is rerolled). great_weapon_fighting:
+    // damage dice of a melee weapon attack with a two-handed weapon (or a versatile one held in two hands, a caller fact) showing
+    // 1 or 2 are rerolled once. evasion: a Dex save against an effect that deals half on a success deals none on a success and
+    // half on a failure. Each draws extra rng only when it applies.
+    uint8_t reroll_ones = 0;
+    bool great_weapon_fighting = false;
+    bool evasion = false;
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
