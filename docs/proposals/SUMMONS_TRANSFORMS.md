@@ -237,7 +237,7 @@ unchanged in each sim PR).
 - **Removal**: at `SummonEnded`, the slot is marked `gone`, its entity is destroyed at the end of `complete()` (never mid-step,
   matching 2.6), the slot stays in `slots_` (index stability, hashing below).
 - **Events** (SimEvent kinds appended, v10 like the rules kinds): `TokenSpawned = 4` (actor = id, tile = anchor,
-  rules.a = footprint side, rules.b = summoner id) one per summon right after the request's rules `Summoned`... block, in id
+  rules.a = footprint side, rules.b = summoner id) one per summon right after the request's rules events, in id
   order, before `SpellTarget`; `TokenRemoved = 5` (actor = id, tile = last anchor, rules.a = `SummonEnded.b` reason) after the
   request's rules events (and after its `TileMoved`s). A Large+ summon needs no separate `Footprint` event (TokenSpawned
   carries the side). `event_stream_version` returns 10 for either kind. Spiritual Weapon's token is `TokenSpawned` with
