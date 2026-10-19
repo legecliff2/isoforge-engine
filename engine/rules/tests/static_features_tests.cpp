@@ -15,7 +15,7 @@ Combatant archer(CombatantId id, int to_hit) {
     return c;
 }
 Combatant target(CombatantId id, int ac) {
-    auto m = monster(id); m.hp = m.hp_max = 5000; m.ac = int16_t(ac); return m;
+    auto m = monster(id); m.hp = m.hp_max = 5000; m.ac = int8_t(ac); return m;
 }
 // the AttackResolved event of one attack with `index` on a fresh encounter
 struct Roll { int natural = 0, total = 0; bool hit = false, crit = false; };
