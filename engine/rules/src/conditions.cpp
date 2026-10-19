@@ -1,4 +1,5 @@
 #include "rules5e/conditions.hpp"
+#include <algorithm>
 
 #include "rules5e/d20.hpp"
 
@@ -21,7 +22,8 @@ int effective_speed(const Combatant& c) {
 }
 
 int effective_hp_max(const Combatant& c) {
-    return c.exhaustion_level >= 4 ? c.hp_max / 2 : c.hp_max;
+    const int base = c.exhaustion_level >= 4 ? c.hp_max / 2 : c.hp_max;
+    return std::max(0, base - int(c.hp_max_reduction));   // Life Drain
 }
 
 bool auto_fails_save(const Combatant& c, Ability a) {

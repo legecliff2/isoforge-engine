@@ -220,7 +220,7 @@ TEST_CASE("save action in a fight: AI uses it, ActionUsed + SpellTarget, recharg
     CHECK(used);
     CHECK(target);
     CHECK(before == 4);
-    CHECK(event_stream_version(c->events()) == kSimEventSchemaVersion);   // ActionUsed is a v7 rules kind
+    CHECK(event_stream_version(c->events()) == 7);   // ActionUsed is a v7 rules kind
     // Expended: the AI falls back to its other actions until the recharge roll (turn start draws a d6).
     Command next = next_command(*c, f);
     CHECK(next.request.kind != ActionKind::CastSpell);

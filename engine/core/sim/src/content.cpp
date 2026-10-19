@@ -970,6 +970,13 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             if (oh == act.end()) continue;
             if (!oh->is_array()) return a.id + ": bad on_hit";
             for (std::size_t ri = 0; ri < oh->size(); ++ri) {
+                if ((*oh)[ri].is_object() && (*oh)[ri].value("kind", "") == "grapple") {   // R-G8: sim applies it on the hit
+                    const Json& g = (*oh)[ri];
+                    const int dc = g.contains("escape_dc") ? (g["escape_dc"].is_number_integer() ? g["escape_dc"].get<int>() : -1) : 0;
+                    if (dc < 0 || dc > 30) return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple escape_dc";
+                    a.grapple_on_hit[uint8_t(ai)] = int16_t(dc);
+                    continue;
+                }
                 rules5e::Trigger t;
                 t.on = rules5e::TriggerOn::Hit;
                 rules5e::Predicate pr;

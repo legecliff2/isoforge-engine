@@ -74,9 +74,21 @@ void remove_modifier(EncounterState& s, std::size_t i, int reason, std::vector<E
     s.modifiers.erase(s.modifiers.begin() + std::ptrdiff_t(i));
     emit(ev, EventKind::ModifierExpired, m.caster, m.target, int32_t(m.spec.id), reason);
     if (m.spec.stat == ModStat::Resistance) refresh_mod_cache(s);
+    if (m.spec.stat == ModStat::Haste && reason != 2) {   // Haste ended: lethargy (none while another Haste still holds)
+        const bool still = std::any_of(s.modifiers.begin(), s.modifiers.end(), [&](const ActiveModifier& o) {
+            return o.target == m.target && o.spec.stat == ModStat::Haste; });
+        Combatant* t = find_mut(s, m.target);
+        if (!still && t && !t->dead) t->lethargy = 1;
+    }
 }
 
-// reason: 0 duration ran out, 1 concentration ended, 2 replaced by a same-id modifier, 3 spent by an attack roll, 4 damaged, 5 dispelled (R-G15)
+bool has_marker(const EncounterState& s, CombatantId id, ModStat st) {
+    return std::any_of(s.modifiers.begin(), s.modifiers.end(), [&](const ActiveModifier& m) {
+        return m.target == id && m.spec.stat == st; });
+}
+
+// reason: 0 duration ran out, 1 concentration ended, 2 replaced by a same-id modifier, 3 spent by an attack roll, 4 damaged, 5 dispelled (R-G15),
+// 6 repeat save succeeded (Slow)
 void tick_modifiers_round_start(EncounterState& s, std::vector<Event>& ev) {
     for (std::size_t i = 0; i < s.modifiers.size();) {
         if (tick_round_start(s.modifiers[i].timed)) remove_modifier(s, i, 0, ev); else ++i;
@@ -221,6 +233,26 @@ void end_concentration(EncounterState& s, CombatantId caster, std::vector<Event>
     }
 }
 
+// Petrifying Gaze: the effect's condition becomes its escalate_to condition for good (no more saves, no timer). Same
+// events as any condition change: ConditionRemoved for the old one (unless something else still imposes it), ConditionAdded.
+void escalate_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev) {
+    ActiveSpellEffect& e = s.effects[i];
+    Combatant* t = find_mut(s, e.target);
+    const Condition old = e.condition, next = e.escalate_to;
+    e.condition = next; e.escalates = false; e.repeat_save = RepeatSave::None; e.timed = Timed{};
+    if (!t) return;
+    const bool still = std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
+        return o.target == t->id && !o.no_condition && o.condition == old; });
+    if (!still && t->has(old)) {
+        remove_condition(*t, old);
+        emit(ev, EventKind::ConditionRemoved, t->id, 0, int32_t(old));
+    }
+    if (!(t->condition_immunities & bit(next)) && !t->has(next)) {
+        add_condition(*t, next);
+        emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(next));
+    }
+}
+
 // Repeat saves with this timing for effects on `c` (Hold Person: end of turn). A success ends that
 // effect; the caster's concentration ends once none of its effects from that spell remain.
 void repeat_saves(EncounterState& s, CombatantId cid, RepeatSave timing, std::vector<Event>& ev) {
@@ -238,7 +270,10 @@ void repeat_saves(EncounterState& s, CombatantId cid, RepeatSave timing, std::ve
         const SaveSource ssrc{true, 0, 0};
         auto r = save_roll(s, *c, e.save_ability, e.dc, RollMode::Normal, ev, &ssrc);   // an ongoing spell effect
         emit(ev, EventKind::SavingThrowRolled, cid, CombatantId(e.save_ability), r.roll.natural, r.roll.total, int32_t(r.success));
-        if (!r.success) continue;
+        if (!r.success) {
+            if (it->escalates) escalate_effect(s, std::size_t(it - s.effects.begin()), ev);   // Petrifying Gaze: second failure
+            continue;
+        }
         end_effect(s, std::size_t(it - s.effects.begin()), ev);
         for (;;) {   // a multi-effect spell ends all its effects on this target together
             auto more = std::find_if(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
@@ -250,6 +285,35 @@ void repeat_saves(EncounterState& s, CombatantId cid, RepeatSave timing, std::ve
             return o.caster == e.caster && o.spell_id == e.spell_id; });
         Combatant* caster = find_mut(s, e.caster);
         if (!remaining && caster && caster->concentration_spell == e.spell_id) end_concentration(s, e.caster, ev);
+    }
+}
+
+// Slow-style modifier repeat saves at the end of `cid`'s turn: one save per (source, caster); a success removes every
+// modifier of that source and caster on it (ModifierExpired reason 6), then ends the caster's concentration on the source
+// once nothing of it remains. SavingThrowRolled as for repeat_saves.
+void repeat_modifier_saves(EncounterState& s, CombatantId cid, std::vector<Event>& ev) {
+    std::vector<ActiveModifier> due;
+    for (const auto& m : s.modifiers) if (m.target == cid && m.spec.repeat_save == 1) due.push_back(m);
+    std::vector<std::pair<uint32_t, CombatantId>> done;
+    for (const auto& m : due) {
+        Combatant* c = find_mut(s, cid);
+        if (!c || c->dead) return;
+        const uint32_t src = m.spec.source ? m.spec.source : m.spec.id;
+        if (std::find(done.begin(), done.end(), std::make_pair(src, m.caster)) != done.end()) continue;
+        done.emplace_back(src, m.caster);
+        const SaveSource ssrc{true, 0, 0};
+        auto r = save_roll(s, *c, m.spec.repeat_ability, m.spec.repeat_dc, RollMode::Normal, ev, &ssrc);
+        emit(ev, EventKind::SavingThrowRolled, cid, CombatantId(m.spec.repeat_ability), r.roll.natural, r.roll.total, int32_t(r.success));
+        if (!r.success) continue;
+        for (std::size_t k = 0; k < s.modifiers.size();) {
+            const auto& o = s.modifiers[k];
+            if (o.target == cid && o.caster == m.caster && (o.spec.source ? o.spec.source : o.spec.id) == src) remove_modifier(s, k, 6, ev);
+            else ++k;
+        }
+        const bool remaining = std::any_of(s.modifiers.begin(), s.modifiers.end(), [&](const ActiveModifier& o) {
+            return o.caster == m.caster && o.spec.source == src; });
+        Combatant* caster = find_mut(s, m.caster);
+        if (!remaining && caster && caster->concentration_spell == src) end_concentration(s, m.caster, ev);
     }
 }
 
@@ -430,7 +494,7 @@ std::vector<CombatantId> initiative_ids(const EncounterState& s) {
 }
 
 bool may_react(const EncounterState& s, const Combatant& c, ReactionTrigger t) {
-    (void)s;
+    if (c.lethargy != 0 || (!s.modifiers.empty() && has_marker(s, c.id, ModStat::Slow))) return false;   // Haste ended / Slow
     return !c.dead && !c.surprised && can_act(c) && !c.reaction_used &&
            c.reaction_policy[std::size_t(t)] != ReactionPolicy::Never;
 }
@@ -706,6 +770,24 @@ void process_deaths(EncounterState& s, std::vector<Event>& ev, Ctx* ctx = nullpt
 }
 
 // ---- Reactions of row 11: Damaged and AllyAttacked windows ----
+
+// Life Drain: the target's hit point maximum drops by `taken` (after a Con save vs `dc` when non-zero; success: no
+// reduction) until it finishes a long rest; HP over the new maximum is lost; a maximum of 0 kills it. Event: ModifierApplied
+// {actor = source, target, a = 0, b = ModStat::MaxHp, c = -taken} (+ CombatantDied).
+void life_drain(EncounterState& s, Combatant& t, int taken, int dc, CombatantId source, std::vector<Event>& ev) {
+    if (taken <= 0) return;
+    if (dc > 0) {
+        const SaveSource ssrc{false, 0, 0};
+        auto r = save_roll(s, t, Ability::Con, dc, RollMode::Normal, ev, &ssrc);
+        emit(ev, EventKind::SavingThrowRolled, t.id, CombatantId(Ability::Con), r.roll.natural, r.roll.total, int32_t(r.success));
+        if (r.success) return;
+    }
+    t.hp_max_reduction = int16_t(std::min(int(t.hp_max), int(t.hp_max_reduction) + taken));
+    emit(ev, EventKind::ModifierApplied, source, t.id, 0, int32_t(ModStat::MaxHp), -taken);
+    const int cap = effective_hp_max(t);
+    if (t.hp > cap) t.hp = int16_t(cap);
+    if (cap <= 0) { kill(t, ev); check_end(s, ev); }
+}
 
 bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
                bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage = false,
@@ -1021,6 +1103,10 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
                uint32_t spell_id, bool ally_near_target, const DiceExpr* damage_override, bool two_handed_grip) {
     bool adv = false;
     if (a.helped_vs == t.id) { adv = true; a.helped_vs = 0; a.helped_by = 0; }
+    if (t.reckless_active) adv = true;   // Reckless Attack: attacks against it have advantage
+    if (a.reckless_active && !atk.ranged && spell_id == 0 &&
+        !(atk.finesse && modifier(a.abilities, Ability::Dex) > modifier(a.abilities, Ability::Str))) adv = true;   // Str melee
+    const int drain_before = int(t.hp) + int(t.temp_hp);   // Life Drain: damage taken by this hit
     if (a.stealth_total > 0) { adv = true; a.stealth_total = 0; }   // unseen attacker; now revealed
     AttackContext actx;
     actx.target_within_5ft = within_5ft;
@@ -1122,6 +1208,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.dice, crit))), p.type});
             damage_creature(s, t, apply_damage_parts(t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
         }
+        if (atk.drain_max_hp && !t.dead) life_drain(s, t, drain_before - (int(t.hp) + int(t.temp_hp)), atk.drain_save_dc, a.id, ev);
         for (uint32_t sid : riders.after) {   // save_condition / apply_condition riders: after the damage, if it still stands
             if (t.dead) break;
             if (const SpellDef* d = spell_def(s, sid)) resolve_effect(s, ctx, a, *d, 0, std::vector<Combatant*>{&t}, within_5ft, ev);
@@ -1311,6 +1398,14 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
     }
     bool act = can_act(c);
     s.budget = TurnBudget{act, act, act, int16_t(c.hp > 0 ? modified_speed(s, c) : 0), 0, 0, 0};
+    c.reckless_active = false;   // Reckless Attack: attacks against it had advantage until now
+    if (c.lethargy != 0) {       // Haste ended: no move, action or bonus action this turn
+        c.lethargy = 2;
+        s.budget.action = s.budget.bonus_action = false;
+        s.budget.movement_ft = 0;
+    } else if (act && !s.modifiers.empty() && has_marker(s, c.id, ModStat::Haste)) {
+        s.budget.haste_action = true;
+    }
     check_end(s, ev);
 }
 
@@ -1505,16 +1600,20 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (t->evasion && def.save_ability == Ability::Dex && def.on_save == OnSave::Half) dealt = r.success ? 0 : dmg / 2;   // Evasion
             if (dealt > 0) { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, apply_damage(*t, int16_t(dealt), def.damage_type, dq), false, ev, &ts, &ctx); }
             if (!r.success) affected.push_back(t);
-            if (def.applies_condition && !r.success && !t->dead && !(t->condition_immunities & bit(def.condition))) {
-                if (!t->has(def.condition)) {
-                    add_condition(*t, def.condition);
-                    emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.condition));
+            // Petrifying Gaze: failing by escalate_margin or more applies escalate_to at once, with no repeat save
+            const bool at_once = def.escalates && def.escalate_margin > 0 && !r.success && int(r.roll.total) <= dc - int(def.escalate_margin);
+            const Condition cond = at_once ? def.escalate_to : def.condition;
+            if (def.applies_condition && !r.success && !t->dead && !(t->condition_immunities & bit(cond))) {
+                if (!t->has(cond)) {
+                    add_condition(*t, cond);
+                    emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(cond));
                 }
-                note_source(s, def.condition, a.id, t->id);
-                s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, def.save_ability,
-                                                      int16_t(dc), def.repeat_save, def.concentration,
-                                                      make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
+                note_source(s, cond, a.id, t->id);
+                s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, cond, def.save_ability,
+                                                      int16_t(dc), at_once ? RepeatSave::None : def.repeat_save, def.concentration,
+                                                      at_once ? Timed{} : make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
                                                       lvl, false});
+                if (def.escalates && !at_once) { s.effects.back().escalates = true; s.effects.back().escalate_to = def.escalate_to; }
                 applied = true;
             }
         }
@@ -1575,7 +1674,10 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (t->dead) continue;
             if (apply_modifier(s, a.id, t->id, m, ev)) {
                 affected.push_back(t); applied = true;
-                for (auto& am : s.modifiers) if (am.spec.id == m.id && am.target == t->id && am.caster == a.id) am.slot_level = lvl;
+                for (auto& am : s.modifiers) if (am.spec.id == m.id && am.target == t->id && am.caster == a.id) {
+                    am.slot_level = lvl;
+                    if (am.spec.repeat_save != 0 && am.spec.repeat_dc == 0) am.spec.repeat_dc = int16_t(spell_save_dc(a, def));   // Slow
+                }
             }
         }
         if (def.concentration && applied) a.concentration_spell = def.id;
@@ -2243,7 +2345,64 @@ StepResult special_action(EncounterState& s, Combatant& a, TurnBudget b, const A
     return out;
 }
 
+// Small leftovers around the per-request core: Reckless Attack's declaration, Haste's extra action and Slow's limits.
+StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req);
 StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
+    const bool own_turn = !s.ended && !s.order.empty() && req.actor == current_actor(s) &&
+                          req.kind != ActionKind::Heal && req.kind != ActionKind::AbilityCheck &&
+                          req.kind != ActionKind::ReactionDecision && req.kind != ActionKind::OpportunityAttack;
+    Combatant* a = own_turn ? find_mut(s, req.actor) : nullptr;
+    if (!a || a->dead || req.kind == ActionKind::EndTurn) {
+        if (req.haste_action) return fail("haste_action: not a turn action");
+        if (req.reckless) return fail("reckless: Attack only");
+        return step_impl_core(s, ctx, req);
+    }
+    if (req.reckless) {   // Reckless Attack: declared with the first attack of the turn
+        if (req.kind != ActionKind::Attack || req.as_bonus_action || req.special != 0) return fail("reckless: Attack only");
+        if (!a->reckless_attack) return fail("no Reckless Attack");
+        if (a->reckless_active || s.budget.attacks_used_mask != 0 || s.budget.sequence != 0 || !s.budget.action)
+            return fail("reckless: only on the first attack of the turn");
+    }
+    const bool slowed = !s.modifiers.empty() && has_marker(s, a->id, ModStat::Slow);
+    if (slowed && req.kind == ActionKind::Attack && s.budget.slow_attacked) return fail("slowed: one attack per turn");
+    const TurnBudget saved = s.budget;
+    if (req.haste_action) {   // Haste: one weapon attack, Dash, Disengage or Hide, beside the action
+        if (!s.budget.haste_action) return fail("no Haste action");
+        const bool ok_kind = (req.kind == ActionKind::Attack && req.multiattack == 0 && req.special == 0 && req.bonus_option == 0) ||
+                             req.kind == ActionKind::Dash || req.kind == ActionKind::Disengage || req.kind == ActionKind::Hide;
+        if (!ok_kind || req.as_bonus_action) return fail("haste_action: Attack (one weapon attack), Dash, Disengage or Hide");
+        s.budget.action = true; s.budget.extra_actions = 0; s.budget.attacks_remaining = 0;   // restored after
+        s.budget.sequence = 0; s.budget.sequence_pos = 0;
+    }
+    const bool was_reckless = a->reckless_active;
+    if (req.reckless) a->reckless_active = true;   // before the roll: this attack has advantage too
+    StepResult r = step_impl_core(s, ctx, req);
+    a = find_mut(s, req.actor);
+    if (!r.ok) {
+        s.budget = saved;
+        if (a) a->reckless_active = was_reckless;
+        return r;
+    }
+    if (req.haste_action) {   // the extra action is spent; the creature's own action, surges and attack sequence are as before
+        s.budget.action = saved.action; s.budget.extra_actions = saved.extra_actions;
+        s.budget.attacks_remaining = saved.attacks_remaining; s.budget.sequence = saved.sequence;
+        s.budget.sequence_pos = saved.sequence_pos; s.budget.attacks_used_mask = saved.attacks_used_mask;
+        s.budget.haste_action = false;
+    }
+    if (slowed && a && !a->dead && current_actor(s) == a->id) {   // Slow: an action or a bonus action, not both; one attack
+        if ((saved.action && !s.budget.action) || (saved.bonus_action && !s.budget.bonus_action) ||
+            (saved.haste_action && !s.budget.haste_action)) {
+            s.budget.action = false; s.budget.bonus_action = false; s.budget.extra_actions = 0; s.budget.haste_action = false;
+        }
+        if (req.kind == ActionKind::Attack) {
+            s.budget.slow_attacked = true; s.budget.attacks_remaining = 0; s.budget.sequence = 0; s.budget.sequence_pos = 0;
+            s.budget.bonus_attack_grant = 0; s.budget.bonus_option = 0; s.budget.bonus_remaining = 0;
+        }
+    }
+    return r;
+}
+
+StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     if (s.ended) return fail("encounter ended");
     if (s.order.empty()) return fail("no combatants");
     // Opportunity attacks are offered through LeavingReach reaction windows (Move.leaves_reach).
@@ -2292,6 +2451,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     switch (req.kind) {
     case ActionKind::EndTurn:
         repeat_saves(s, a.id, RepeatSave::EndOfTurn, out.events);
+        if (!s.modifiers.empty()) repeat_modifier_saves(s, a.id, out.events);   // Slow
         tick_effects_turn_end(s, a.id, out.events);
         if (!a.dead && !a.triggers.empty()) {   // turn_end triggers
             TrigCtx x;
@@ -2299,6 +2459,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
         }
         emit(out.events, EventKind::TurnEnded, a.id);
         a.surprised = false;   // R-G16: surprise ends with the creature's first turn
+        if (a.lethargy == 2) a.lethargy = 0;   // Haste lethargy lasts until after this turn
         advance_turn(s, out.events);
         return out;
     case ActionKind::Move: {
@@ -2413,7 +2574,11 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
         return out;
     }
     case ActionKind::Dash:
-        if (!spend_action(b, a, req.kind, req.as_bonus_action)) return fail("no action available");
+        if (req.aggressive) {   // Aggressive: a bonus-action Dash (sim keeps it toward a hostile)
+            if (!a.aggressive) return fail("no Aggressive");
+            if (!b.bonus_action || !req.as_bonus_action) return fail("Aggressive needs the bonus action");
+            b.bonus_action = false; b.aggressive_dash = true;
+        } else if (!spend_action(b, a, req.kind, req.as_bonus_action)) return fail("no action available");
         b.movement_ft = int16_t(b.movement_ft + effective_speed(a));
         s.budget = b;
         emit(out.events, EventKind::Dashed, a.id, 0, b.movement_ft);
@@ -2621,6 +2786,26 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (b.bonus_action)
         for (ActionKind k : {ActionKind::Dash, ActionKind::Disengage, ActionKind::Dodge, ActionKind::Hide})
             if (a.bonus_action_grants & bit(k)) add(k, true);
+    if (b.bonus_action && a.aggressive) {   // Aggressive: bonus-action Dash (sim moves it toward a hostile)
+        ActionRequest r{a.id, ActionKind::Dash};
+        r.as_bonus_action = true; r.aggressive = true;
+        out.push_back(r);
+    }
+    if (b.haste_action) {   // Haste: one weapon attack, Dash, Disengage or Hide
+        for (const auto& t : s.combatants) {
+            if (t.dead || t.id == a.id || t.team == a.team) continue;
+            for (uint8_t i = 0; i < a.attacks.size(); ++i) {
+                ActionRequest r{a.id, ActionKind::Attack, t.id, i};
+                r.haste_action = true;
+                out.push_back(r);
+            }
+        }
+        for (ActionKind k : {ActionKind::Dash, ActionKind::Disengage, ActionKind::Hide}) {
+            ActionRequest r{a.id, k};
+            r.haste_action = true;
+            out.push_back(r);
+        }
+    }
     int speed = effective_speed(a);
     if (a.has(Condition::Prone) && speed > 0 && b.movement_ft >= speed / 2) add(ActionKind::StandUp);
     if (b.movement_ft >= (a.has(Condition::Prone) ? 10 : 5)) {
@@ -2941,6 +3126,7 @@ uint64_t modifiers_digest(const EncounterState& s, uint64_t h) {
         byte(uint8_t(p.when.size()));
         for (const Predicate& w : p.when) { byte(uint8_t(w.kind)); u32(uint32_t(uint16_t(w.a))); u32(uint32_t(uint16_t(w.b))); u32(w.mask); }
         byte(uint8_t(m.timed.kind)); u32(uint32_t(uint16_t(m.timed.rounds_left)));
+        if (p.repeat_save != 0) { byte(p.repeat_save); byte(uint8_t(p.repeat_ability)); u32(uint32_t(uint16_t(p.repeat_dc))); }   // Slow
     }
     return h;
 }
@@ -3061,6 +3247,25 @@ uint64_t surprised_digest(const EncounterState& s, uint64_t h) {
     auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
     for (const auto& c : s.combatants)
         if (c.surprised) for (int i = 0; i < 4; ++i) byte(uint8_t(uint32_t(c.id) >> (8 * i)));
+    return h;
+}
+
+bool has_leftover_state(const EncounterState& s) {
+    return std::any_of(s.combatants.begin(), s.combatants.end(), [](const Combatant& c) {
+               return c.hp_max_reduction != 0 || c.lethargy != 0 || c.reckless_active; }) ||
+           std::any_of(s.effects.begin(), s.effects.end(), [](const ActiveSpellEffect& e) { return e.escalates; });
+}
+
+uint64_t leftover_digest(const EncounterState& s, uint64_t h) {
+    auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
+    auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) byte(uint8_t(v >> (8 * i))); };
+    for (const auto& c : s.combatants) {
+        if (c.hp_max_reduction == 0 && c.lethargy == 0 && !c.reckless_active) continue;
+        u32(c.id); u32(uint32_t(uint16_t(c.hp_max_reduction))); byte(c.lethargy); byte(uint8_t(c.reckless_active));
+    }
+    byte(0xFF);   // separator: combatant records / escalating effects
+    for (const auto& e : s.effects)
+        if (e.escalates) { u32(e.spell_id); u32(e.caster); u32(e.target); byte(uint8_t(e.escalate_to)); }
     return h;
 }
 

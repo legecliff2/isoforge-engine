@@ -88,6 +88,10 @@ struct Attack {
     std::vector<DamagePart> extra_damage{};
     uint8_t qualifiers = 0;   // AttackQualifier bits (magic / silvered / adamantine); 0 = plain nonmagical
     uint16_t properties = 0;  // WeaponProperty bits (weapon.hpp): heavy, loading, finesse, light, ...; 0 = none
+    // appended (Life Drain: wight, specter, vampire spawn): on a hit, the target's hit point maximum is reduced by the damage it
+    // took (Combatant::hp_max_reduction), after a Con save vs drain_save_dc when non-zero (success: no reduction).
+    bool drain_max_hp = false;
+    int8_t drain_save_dc = 0;
 };
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
 constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
@@ -235,7 +239,12 @@ struct Reaction {
 
 // ---- Timed modifiers (version-bump batch, row 12; docs/proposals/VERSION_BUMP_BATCH.md section 6) ----
 // A sourced, timed change to one number or roll. Integers only. `bonus_table` is resolved by the loader into `bonus`.
-enum class ModStat : uint8_t { AttackRoll, Save, AbilityCheck, Ac, Speed, Damage, TempHp, Resistance, AttacksAgainst };
+enum class ModStat : uint8_t { AttackRoll, Save, AbilityCheck, Ac, Speed, Damage, TempHp, Resistance, AttacksAgainst,
+                               // appended (small leftovers): markers read by rules, no number of their own.
+                               // Haste: the restricted extra action (TurnBudget::haste_action), lethargy when it ends;
+                               // Slow: no reactions, action or bonus action, one attack per turn;
+                               // MaxHp: event-only stat value for Life Drain (ModifierApplied b = MaxHp, c = -reduction).
+                               Haste, Slow, MaxHp };
 enum class ModAppliesTo : uint8_t { Self, Target, AlliesWithin30 };
 struct ModifierSpec {
     uint32_t id = 0;                     // stable id of this modifier (the a of ModifierApplied / ModifierExpired)
@@ -269,6 +278,12 @@ struct ModifierSpec {
     // damage type known): every predicate must hold, owner = the creature the modifier is on, subject = the other party. Predicate
     // kinds that roll (Save) never hold here.
     std::vector<Predicate> when;
+    // appended (Slow): the target repeats `repeat_ability` save vs `repeat_dc` at the end of each of its turns (repeat_save 1);
+    // a success ends every modifier of this source and caster on it (ModifierExpired reason 6). rules fills repeat_dc from the
+    // caster's spell save DC when a spell applies it.
+    uint8_t repeat_save = 0;
+    Ability repeat_ability = Ability::Wis;
+    int16_t repeat_dc = 0;
 };
 
 // Row R-G6: a bonus-action attack option (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy). Requested with
@@ -378,6 +393,15 @@ struct Combatant {
     uint8_t metamagic_known = 0;
     uint32_t sorcery_pool = 0;
     bool sculpt_spells = false;
+    // Small leftovers (appended). hp_max_reduction: Life Drain, subtracted by effective_hp_max, cleared by long_rest; a creature
+    // whose maximum reaches 0 dies. lethargy: Haste ended (1 = pending, 2 = this turn: no move, action or bonus action; cleared
+    // when that turn ends). reckless_attack: Barbarian Reckless Attack known; reckless_active: declared this turn (advantage on
+    // its Str melee weapon attacks; attacks against it have advantage until its next turn starts). aggressive: orc Aggressive
+    // (bonus-action Dash toward a hostile; sim keeps the movement toward one).
+    int16_t hp_max_reduction = 0;
+    uint8_t lethargy = 0;
+    bool reckless_attack = false, reckless_active = false;
+    bool aggressive = false;
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
