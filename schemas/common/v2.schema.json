@@ -1420,6 +1420,41 @@
             "stack"
           ],
           "default": "replace"
+        },
+        "consume": {
+          "enum": [
+            "next_attack",
+            "next_attack_against",
+            "until_damaged"
+          ],
+          "description": "Timed modifier is spent early (sim: ModifierSpec::consume 1/2/3): next_attack = after the target's next attack roll (True Strike, Vicious Mockery); next_attack_against = after the next attack roll made against the target (Guiding Bolt); until_damaged = when the target takes damage. Combines with any duration (first wins)."
+        },
+        "speed_sub": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 255,
+          "description": "speed only: feet subtracted after speed_scale, clamped at 0 (Ray of Frost 10)."
+        },
+        "ac_floor": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 40,
+          "description": "ac only: AC is at least this value before flat bonuses (Barkskin 16, Mage Armor 13 + Dex with ac_floor_dex). The 'not wearing armor' condition is the author's concern."
+        },
+        "ac_floor_dex": {
+          "type": "boolean",
+          "description": "ac only, needs ac_floor: add the target's Dex modifier to the floor."
+        },
+        "per_turn": {
+          "type": "boolean",
+          "description": "temp_hp only: grant the bonus again at the start of each of the target's turns until the modifier expires (Heroism)."
+        },
+        "when": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/predicate"
+          },
+          "description": "attack_roll, ac, damage, attacks_against only: every predicate (row 9 vocabulary) must hold for the modifier to apply."
         }
       },
       "allOf": [
@@ -1462,7 +1497,9 @@
                 "mode",
                 "applies_to",
                 "duration",
-                "stacks"
+                "stacks",
+                "consume",
+                "when"
               ]
             }
           }
@@ -1508,7 +1545,8 @@
                 "ability",
                 "applies_to",
                 "duration",
-                "stacks"
+                "stacks",
+                "consume"
               ]
             }
           }
@@ -1525,18 +1563,31 @@
             }
           },
           "then": {
-            "required": [
-              "bonus"
-            ],
             "propertyNames": {
               "enum": [
                 "stat",
                 "bonus",
                 "applies_to",
                 "duration",
-                "stacks"
+                "stacks",
+                "consume",
+                "when",
+                "ac_floor",
+                "ac_floor_dex"
               ]
-            }
+            },
+            "anyOf": [
+              {
+                "required": [
+                  "bonus"
+                ]
+              },
+              {
+                "required": [
+                  "ac_floor"
+                ]
+              }
+            ]
           }
         },
         {
@@ -1560,7 +1611,9 @@
                 "speed_scale",
                 "applies_to",
                 "duration",
-                "stacks"
+                "stacks",
+                "consume",
+                "speed_sub"
               ]
             }
           }
@@ -1609,7 +1662,9 @@
                 "damage_type",
                 "applies_to",
                 "duration",
-                "stacks"
+                "stacks",
+                "consume",
+                "when"
               ]
             }
           }
@@ -1635,7 +1690,9 @@
                 "bonus",
                 "applies_to",
                 "duration",
-                "stacks"
+                "stacks",
+                "consume",
+                "per_turn"
               ]
             }
           }
@@ -1661,7 +1718,8 @@
                 "damage_type",
                 "applies_to",
                 "duration",
-                "stacks"
+                "stacks",
+                "consume"
               ]
             }
           }
@@ -1687,12 +1745,19 @@
                 "mode",
                 "applies_to",
                 "duration",
-                "stacks"
+                "stacks",
+                "consume",
+                "when"
               ]
             }
           }
         }
-      ]
+      ],
+      "dependentRequired": {
+        "ac_floor_dex": [
+          "ac_floor"
+        ]
+      }
     },
     "reaction_effect": {
       "type": "object",

@@ -13,3 +13,8 @@ These files are not part of any shipped pack and are not under `tests/compat` (t
 - `expected4/`: the Python reference migration's output for each `at3/` file (same file name), written with sorted keys.
   Engine Core's C++ test compares `monster_3_to_4` / `character_3_to_4` output against these as JSON.
   Mapping: decorated_goblin and merge_goblin use monster_3_to_4; decorated_fighter and bogus_inert_fighter use character_3_to_4.
+
+- `extra/`: valid documents for `test_v4_validator.py` `TimedModifiersAndBonusAttacks` (added on top of `pack/` one at a time):
+  a character@4 using every timed-modifier property (`consume`, `speed_sub`, `ac_floor` / `ac_floor_dex`, `per_turn`, `when`),
+  spell@1 `apply_modifier` spells (True Strike, Guiding Bolt rider) and a monk with the bonus-attack feature conventions
+  (`martial_arts`, `flurry_of_blows` + `ki` pool, `two_weapon_fighting`, `light` / `unarmed` / `monk` properties).

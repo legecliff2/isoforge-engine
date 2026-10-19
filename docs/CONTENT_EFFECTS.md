@@ -151,3 +151,5 @@ Chunk palette flags (u8): bit0 `blocks_move`, bit1 `blocks_sight`, bit2 `difficu
 `blocks_sight` without `blocks_move` is a valid, intended tile (curtains, fog, tall grass),
 as is `blocks_move` without `blocks_sight` (glass, low fences). Line of sight checks only
 `blocks_sight`, and pathing checks only `blocks_move`.
+
+See `docs/CONTENT_CONVENTIONS.md` for the timed-modifier properties the sim compiles (`consume`, `speed_sub`, `ac_floor` / `ac_floor_dex`, `per_turn`, `when`) and the bonus-attack feature-id conventions.
