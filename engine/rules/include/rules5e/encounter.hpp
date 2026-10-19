@@ -245,6 +245,7 @@ struct ActiveSpellEffect {
 struct ActiveModifier {
     ModifierSpec spec; CombatantId caster = 0, target = 0;
     Timed timed{};
+    bool gated = false;   // transient: a `when` that does not hold for the roll in progress (never set between steps)
 };
 
 // Limited-use features (Second Wind, ...), keyed by (actor, feature_id). Part of the encounter state,

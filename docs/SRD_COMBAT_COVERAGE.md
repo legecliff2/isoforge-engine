@@ -304,13 +304,13 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Fire Bolt | DATA | Shipped. Ignites objects: OOS. |
 | Poison Spray | DATA | `save` CON, 1d12 poison, range 10, `on_success none`. |
 | Produce Flame | DATA | Thrown `spell_attack` 1d8 fire (the light effect is OOS). |
-| Ray of Frost | NEW | Damage DATA; speed -10 until next turn is R-G3. |
+| Ray of Frost | NEW (wiring) | Rules done (follow-up): `Speed` modifier with `speed_sub` 10 and `until_end_of_target_next_turn` as an `ApplyModifier` rider on the spell attack; damage is DATA. Spell kind / loader pending (R-G3). |
 | Sacred Flame | DATA | `save` DEX, 1d8 radiant, none on success. "Target gains no benefit from cover" is R-G13. |
 | Shillelagh | NEW | Weapon-damage buff (R-G3). |
 | Shocking Grasp | NEW | Melee spell attack DATA; advantage vs metal armor and "no reactions" rider R-G2/R-G3. |
 | Spare the Dying | DATA | `ActionKind::SpareTheDying` (hook `spare_the_dying`). |
-| True Strike | NEW | Advantage on next attack (R-G3). |
-| Vicious Mockery | NEW | Damage DATA; disadvantage on next attack rider R-G2/R-G3. |
+| True Strike | NEW (wiring) | Rules done (follow-up): AttackRoll advantage modifier with `consume` 1 (spent by the next attack roll). Spell kind pending (R-G3). |
+| Vicious Mockery | NEW (wiring) | Rules done (follow-up): AttackRoll disadvantage modifier, `consume` 1, as a rider on the save effect. Spell kind pending (R-G3). |
 
 ### 8.2 Level 1
 
@@ -332,14 +332,14 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Faerie Fire | NEW (wiring) | Rules done (#89): `AttacksAgainst` advantage modifier applied to each target in the area (sim computes the area, #78). Spell kind pending; the Dex save gate rides the existing Save effect (R-G3). |
 | False Life | NEW (wiring) | Rules done (#89): `ModStat::TempHp` (the larger pool is kept; no record); the 1d4 + 4 roll is fixed by the loader as `bonus` today. Spell kind pending (R-G3). |
 | Grease | NEW | Zone + prone (R-G11). |
-| Guiding Bolt | NEW | Attack damage DATA; advantage on next attack vs target rider (R-G2/R-G3). |
+| Guiding Bolt | NEW (wiring) | Rules done (follow-up): `ApplyModifier` rider (`affected_only`) with AttacksAgainst advantage, `consume` 2 and `until_caster_turn`; covered by a test. Spell kind pending (R-G3). |
 | Healing Word | DATA | `heal`, `casting_time bonus_action`, range 60, `upcast.dice`. |
 | Hellish Rebuke | NEW (wiring) | Rules done (#87): `Damaged` window + `Retaliate` reaction resolving a synthetic Save SpellDef against the damager (R-G7). Content/hook compile pending. |
-| Heroism | NEW | Temp HP each turn, frightened immunity (R-G3). |
+| Heroism | NEW (wiring) | Rules done (follow-up): `TempHp` modifier with `per_turn`; the frightened immunity is not modelled (R-G3). |
 | Hideous Laughter | NEW | Prone + incapacitated (two conditions) and save-on-damage repeat (R-G2). |
-| Hunter's Mark | NEW (wiring) | Rules done (#89): Damage modifier (1d6, concentration, `applies_to` self); the "marked target only" scope and the move-the-mark option are not modelled (R-G4). |
+| Hunter's Mark | NEW (wiring) | Rules done (#89, follow-up): Damage modifier (1d6, concentration, `applies_to` self) with the general `when` scope for conditions on the target; the "marked target only" scope and the move-the-mark option are not modelled (R-G4). |
 | Inflict Wounds | DATA | Melee `spell_attack`, 3d10 necrotic, `upcast.dice`. |
-| Mage Armor | NEW (wiring) | Rules: `Ac` modifier is `bonus`-only (Q15), so "base AC 13 + Dex" is approximated by the loader (R-G3). |
+| Mage Armor | NEW (wiring) | Rules done (follow-up): `Ac` modifier with `ac_floor` 13 + Dex (`ac_floor_dex`); the loader gates "not wearing armor". Spell kind pending (R-G3). |
 | Magic Missile | DATA | Shipped (`auto_hit`). |
 | Protection from Evil and Good | NEW | R-G3. |
 | Sanctuary | NEW | Attackers must save to target (R-G3/R-G7). |
@@ -354,7 +354,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 |---|---|---|
 | Aid | NEW | Max HP and HP increase (R-G3). |
 | Alter Self, Animal Messenger, Arcane Lock, Augury, Continual Flame, Darkvision, Gentle Repose, Knock, Levitate, Locate Animals or Plants, Locate Object, Magic Mouth, Pass without Trace, Prayer of Healing (10 min), Rope Trick, See Invisibility, Spider Climb, Zone of Truth, Find Traps, Arcanist's Magic Aura, Detect Thoughts, Enthrall, Find Steed (10 minutes) | OOS | Utility / out of encounter casting time. |
-| Barkskin | NEW | AC floor (R-G3). |
+| Barkskin | NEW (wiring) | Rules done (follow-up): `Ac` modifier with `ac_floor` 16, concentration. Spell kind pending (R-G3). |
 | Blindness/Deafness | NEW | `save` with condition is DATA, but the caster chooses blinded or deafened per cast (parameterized effect, small R-G2). |
 | Blur | NEW (wiring) | Rules done (#89): `AttacksAgainst` disadvantage modifier on self, concentration (the blindsight/truesight exception is not modelled). |
 | Branding Smite | NEW | R-G4. |
@@ -626,7 +626,7 @@ Gaps that need new rules mechanics (not just Engine Core / T&C wiring, which is 
 
 | Order | Id | Gap | Unlocks | Size |
 |---|---|---|---|---|
-| 1 | R-G3 follow-ups | Modifier gaps: one-shot "next attack / until damaged" expiry, speed *reduction* (Ray of Frost -10; today only num/den scaling), AC *set / floor* (Mage Armor base 13, Barkskin; Q15 made `ac` bonus-only), per-turn temp HP (Heroism), a general `when` scope beyond weapon scope | True Strike, Guiding Bolt, Vicious Mockery, Ray of Frost, Mage Armor, Barkskin, Heroism, Haste's restricted action | S-M |
+| 1 | R-G3 follow-ups | **Done in rules** (this PR): one-shot / until-damaged expiry (`consume`), speed reduction (`speed_sub`), AC floor (`ac_floor`), per-turn temp HP (`per_turn`), general `when` scope (attack roll, attacks against, AC, damage), and `apply_modifier` as a rider effect. Still open: Haste's restricted extra action, `when` on saves / checks, a "marked target" scope (Hunter's Mark), "frightened immunity" (Heroism) | Needs only wiring now: True Strike, Guiding Bolt, Vicious Mockery, Ray of Frost, Mage Armor, Barkskin, Heroism | done |
 | 2 | R-G5 rest | Static feature kinds `attack_bonus`, `ac_bonus`, `crit_range` | Archery, Defense, Champion Improved Critical, Dueling-style bonuses | S |
 | 3 | R-G8 | Conditions with a source; grapple / shove; swallow / engulf; crawl cost; Large-creature size limits (grapple, net) | grapple monsters, giant toad, crocodile, Turn Undead, Fear, Charm Person, Command, Hold effects with a source | M |
 | 4 | R-G6 | Bonus-action attacks (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy); `light` property use; builds on `bonus_attack_grant` (#85) | Monk, Berserker, dual wielders | M |
