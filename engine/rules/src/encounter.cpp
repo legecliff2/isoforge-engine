@@ -438,11 +438,13 @@ bool in_range(const EncounterState& s, const ReactionWindow& w, const Combatant&
     return (w.trigger == ReactionTrigger::BeingHit || w.trigger == ReactionTrigger::Damaged) && r.id == w.target;
 }
 
-bool evaluate_hit(const D20Roll& roll, const Combatant& t, const AttackContext& ctx, bool& crit) {
+bool evaluate_hit(const D20Roll& roll, const Combatant& t, const AttackContext& ctx, bool& crit, int crit_min = 20) {
     crit = false;
     if (roll.natural == 20) { crit = true; return true; }
     if (roll.natural == 1) return false;
-    return roll.total >= int(t.ac) + int(ctx.cover_ac_bonus) + int(t.reaction_ac_bonus);
+    const bool hit = roll.total >= int(t.ac) + int(ctx.cover_ac_bonus) + int(t.reaction_ac_bonus);
+    crit = hit && roll.natural >= std::max(2, crit_min);
+    return hit;
 }
 
 // One attack roll, including Help and hidden-attacker advantage. Attacking reveals the attacker.
@@ -948,7 +950,8 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         actx.cover_ac_bonus = int8_t(std::clamp(int(actx.cover_ac_bonus) + modified_ac_bonus(s, t.id), -128, 127));
     }
     const RollMode atk_mode = attack_roll_mode(a, t, actx);
-    D20Roll roll = roll_d20(s.rng, int(atk.to_hit) + modifier_flat(s, a.id, ModStat::AttackRoll), atk_mode);
+    D20Roll roll = roll_d20(s.rng, int(atk.to_hit) + modifier_flat(s, a.id, ModStat::AttackRoll) +
+                                (spell_id != 0 ? 0 : atk.ranged ? int(a.attack_bonus_ranged) : int(a.attack_bonus_melee)), atk_mode);
     if (!s.modifiers.empty()) {
         roll.total = int16_t(roll.total + mod_roll(s, a.id, ModStat::AttackRoll, -1));
         consume_modifiers(s, 1, a.id, 3, ev);   // True Strike: spent by this attack roll
@@ -956,7 +959,8 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         for (auto& m : s.modifiers) m.gated = false;
     }
     bool crit = false;
-    bool hit = evaluate_hit(roll, t, actx, crit);
+    const int crit_min = spell_id != 0 ? 20 : int(a.crit_min);   // Improved Critical: weapon attacks only
+    bool hit = evaluate_hit(roll, t, actx, crit, crit_min);
     if (hit) {
         ReactionWindow w = new_window(s, ctx, ReactionTrigger::BeingHit, a.id);
         w.target = t.id; w.attack_total = roll.total; w.attack_natural = roll.natural;
@@ -967,7 +971,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
             return o.kind == ReactionOptionKind::AcBonus && roll.natural != 20 &&
                    roll.total < int(w.target_ac) + o.ac_bonus;
         };
-        if (being_hit_window(s, ctx, a, t, w, ev, would_miss)) hit = evaluate_hit(roll, t, actx, crit);
+        if (being_hit_window(s, ctx, a, t, w, ev, would_miss)) hit = evaluate_hit(roll, t, actx, crit, crit_min);
     }
     if (hit && within_5ft && (t.has(Condition::Paralyzed) || t.has(Condition::Unconscious))) crit = true;
     emit(ev, EventKind::AttackResolved, a.id, t.id, roll.natural, roll.total,

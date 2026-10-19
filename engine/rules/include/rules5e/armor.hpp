@@ -37,6 +37,7 @@ struct AcInput {
     // Natural armor (monster stat blocks): fixed base, optionally plus Dex. 0 = none. Used when no armor is worn
     // and it beats the unarmored formulas.
     int16_t natural_base = 0; bool natural_dex_bonus = false;
+    int16_t armored_bonus = 0;         // added only while armor is worn (fighting style Defense +1)
     int16_t flat_bonus = 0;            // other static bonuses (fighting style Defense, ring of protection)
     int16_t base_speed_ft = 0;         // speed before the Str penalty
 };

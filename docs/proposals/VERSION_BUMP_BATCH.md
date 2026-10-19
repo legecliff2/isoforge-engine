@@ -1229,6 +1229,25 @@ Rules side only (`feat/rules-grapple-shove`); no new event kind (event schema st
   from monster actions could use `apply_sourced_condition` but are not recorded automatically. Shoving or grappling a creature
   that is not within reach, and the one-free-hand requirement, are the caller's checks.
 
+### 7.2d R-G5 static feature kinds (post-batch rules follow-up) and hand-off
+
+Rules side only (`feat/rules-static-features`); no schema change, no event, no digest, no new action. Goldens unchanged: the
+fields default to 0 / 0 / 20, which reproduces the old behaviour exactly.
+
+- **`attack_bonus`** (Archery +2 ranged): `Combatant::attack_bonus_melee` / `attack_bonus_ranged` (int8) are added to the attack roll of
+  *weapon* attacks (spell attacks excluded), in `do_attack` and `resolve_attack`. The bonus is reported only through the roll total.
+- **`crit_range`** (Improved Critical 19, Superior Critical 18): `Combatant::crit_min` (default 20). A natural 20 still always hits and
+  crits; a lower natural >= `crit_min` crits only if the attack hits (SRD / Sage Advice). Values below 2 clamp to 2. Weapon attacks only.
+  Re-evaluated after a BeingHit reaction changes the hit.
+- **`ac_bonus`** (Defense +1 in armor): `AcInput::armored_bonus` is added by `compute_ac` only when `has_armor`; `flat_bonus` stays
+  the unconditional bonus (ring of protection). Engine Core applies the result at archetype build as before.
+- **Hand-off.** The loader maps `attack_bonus {ranged|melee, amount}` -> `attack_bonus_*` (sum several), `crit_range {min}` ->
+  `crit_min` (lowest wins), `ac_bonus {amount, requires_armor}` -> `AcInput::armored_bonus` / `flat_bonus`. If sim hashes a
+  `Combatant` field by field, fold the three new fields only when they differ from the defaults.
+- **Not covered.** Great Weapon Fighting (damage reroll window, R-G7) and Dueling (already a baked `damage_bonus` with a predicate).
+  Per-attack bonuses (a magic weapon's +1) stay in `Attack::to_hit`. A conditional "while wielding a ranged weapon" for Archery is
+  implied by the melee / ranged split.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
