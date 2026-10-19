@@ -45,6 +45,9 @@ struct DamagePiece { int16_t amount; DamageType type; };
 // are applied to each component by its own type; the modified amounts are summed and then absorbed
 // by temp HP / HP as a single hit (one dropped_to_zero / instant_death outcome). `dealt` is the
 // sum. A single piece equals apply_damage().
+// `d` with `reduction` taken off `dealt` (clamped to 0..dealt) and temporary HP / HP / drop / massive damage
+// recomputed from the creature's current state (row 11: reduce_damage reactions before the damage is committed).
+DamageApplied reduce_applied(const Combatant&, const DamageApplied& d, int reduction);
 DamageApplied apply_damage_parts(const Combatant&, std::span<const DamagePiece>, uint8_t qualifiers = 0);
 
 // Writes hp/temp_hp from a result. Convenience for callers; nothing else changes.

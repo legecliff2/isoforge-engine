@@ -157,9 +157,14 @@ struct ReactionWindow {
     uint32_t    spell_id = 0;         // SpellCast
     uint8_t     spell_level = 0;      // SpellCast
     uint8_t     depth = 0;            // 0 = opened by an action; 1+ = opened inside a reaction (chain)
+    // appended (row 11). Damaged: target = creature damaged (the reactor), trigger_actor = the damager (0 unknown),
+    // damage = amount after mitigation, before temporary HP. AllyAttacked: target = the ally attacked.
+    // `ranged`: the attack that caused the window was ranged.
+    int16_t     damage = 0;
+    bool        ranged = false;
 };
 
-enum class ReactionOptionKind : uint8_t { Attack, AcBonus, Counter, FireReady, Rider };   // Rider (9c): option_id = trigger id, slot_level = slot spent (0 none)
+enum class ReactionOptionKind : uint8_t { Attack, AcBonus, Counter, FireReady, Rider, ReduceDamage, ImposeDisadvantage, Retaliate, SubtractRoll /* reserved (Q6) */ };   // Rider (9c): option_id = trigger id, slot_level = slot spent (0 none)
 struct ReactionOption {
     uint8_t  attack_index = 0;        // Attack: index into reactor.attacks (first, so {idx} = an attack option)
     ReactionOptionKind kind = ReactionOptionKind::Attack;
@@ -167,6 +172,10 @@ struct ReactionOption {
     uint32_t option_id = 0;           // content id (e.g. the Shield / Counterspell spell id)
     uint8_t  slot_level = 0;          // spell options from the SpellBook: slot level spent (Counter: one option per level)
     bool     uses_reaction = true;    // appended: false = taking this option does not spend the reactor's reaction
+    // appended (row 11): ReduceDamage: `half` or `dice` is the reduction (option_id = reaction id); Retaliate:
+    // option_id = the synthetic SpellDef resolved against the damager; ImposeDisadvantage: option_id = reaction id.
+    bool     half = false;
+    DiceExpr dice{0, 0, 0};
 };
 
 // Log entry for one reaction decision made under Ask (Auto/Never are reproduced from state and are
@@ -273,6 +282,10 @@ struct EncounterHooks {
     std::function<bool(const EncounterState&, const ReactionWindow&, const Combatant& reactor)> in_range;
     // Content-provided options (Shield-style AC bumps, Counterspell-style counters). Empty = none.
     std::function<std::vector<ReactionOption>(const EncounterState&, const ReactionWindow&, const Combatant&)> being_hit_options;
+    // Row 11: extra options for the Damaged / AllyAttacked windows, appended after the options rules build from
+    // Combatant::reactions. Empty = none.
+    std::function<std::vector<ReactionOption>(const EncounterState&, const ReactionWindow&, const Combatant&)> damaged_options;
+    std::function<std::vector<ReactionOption>(const EncounterState&, const ReactionWindow&, const Combatant&)> ally_attacked_options;
     std::function<std::vector<ReactionOption>(const EncounterState&, const ReactionWindow&, const Combatant&)> spell_cast_options;
     // Order in which eligible reactors are polled; receives them in initiative order and returns
     // the order to ask (may drop ids; unknown ids are ignored). Empty = default_poll_order.
