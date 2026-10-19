@@ -51,7 +51,11 @@ Json color_spray_doc() {
                  {{"range", {{"kind", "self"}}}, {"area", {{"shape", "cone"}, {"size_ft", 15}}},
                   {"duration", {{"kind", "rounds"}, {"amount", 1}}}, {"scaling", {{"upcast", {{"dice", 2}}}}}});
 }
-Json dispel_doc() { return spell("dispel_magic", 3, Json::array({{{"kind", "dispel"}}}), {{"range", {{"kind", "ranged"}, {"feet", 120}}}}); }
+Json dispel_doc() {
+    return spell("dispel_magic", 3,
+                 Json::array({{{"kind", "dispel"}, {"check", {{"ability", "spellcasting"}, {"dc_base", 10}, {"plus", "spell_level"}}}}}),
+                 {{"range", {{"kind", "ranged"}, {"feet", 120}}}});
+}
 Json revivify_doc(bool priced) {
     Json m = {{"text", "diamonds worth 300 gp"}};
     if (priced) { m["cost_cp"] = 30000; m["consumed"] = true; }
@@ -219,7 +223,7 @@ TEST_CASE("R-G15 loader: hp_pool, dispel, revive, end_condition, delayed_damage,
     const auto dm = def_of(dispel_doc());
     CHECK(dm.kind == SpellEffectKind::Dispel);
     CHECK(dm.dispel_dc_base == 10);
-    Json dm12 = dispel_doc(); dm12["effects"][0]["dc_base"] = 12;
+    Json dm12 = dispel_doc(); dm12["effects"][0]["check"]["dc_base"] = 12;
     CHECK(def_of(dm12).dispel_dc_base == 12);
 
     const auto rv = def_of(revivify_doc(true));
@@ -283,7 +287,20 @@ TEST_CASE("R-G15 loader: bad shapes are load errors") {
     CHECK(error_of(hm_inst) == "sustained_damage needs a rounds, minutes or hours duration");
     Json tg = sleep_doc(); tg["targets"] = {{"count", 2}};
     CHECK(error_of(tg) == "targets not allowed on a hp_pool effect (one target, per dart/beam, or self)");
-    CHECK(error_of(with(dispel_doc(), "dc_base", 0)) == "effect dc_base invalid");
+    // dispel reads counter's check object, with counter's validation: required, exact ability / plus, dc_base 1..99.
+    const std::string bad_check = "effect check must be {ability: spellcasting, dc_base, plus: spell_level}";
+    CHECK(error_of(without(dispel_doc(), "check")) == bad_check);
+    CHECK(error_of(with(without(dispel_doc(), "check"), "dc_base", 12)) == bad_check);   // the bare integer is gone
+    for (int dc : {0, 100}) {
+        Json j = dispel_doc(); j["effects"][0]["check"]["dc_base"] = dc;
+        CHECK(error_of(j) == bad_check);
+    }
+    Json no_base = dispel_doc(); no_base["effects"][0]["check"].erase("dc_base");
+    CHECK(error_of(no_base) == bad_check);
+    Json wrong_ability = dispel_doc(); wrong_ability["effects"][0]["check"]["ability"] = "int";
+    CHECK(error_of(wrong_ability) == bad_check);
+    Json wrong_plus = dispel_doc(); wrong_plus["effects"][0]["check"]["plus"] = "slot_level";
+    CHECK(error_of(wrong_plus) == bad_check);
     CHECK(error_of(with(revivify_doc(false), "within_rounds", 0)) == "effect within_rounds invalid");
     CHECK(error_of(with(restoration_doc(), "conditions", Json::array())) == "effect conditions invalid");
     CHECK(error_of(with(restoration_doc(), "conditions", {"disease"})) == "effect conditions invalid");
@@ -297,7 +314,8 @@ TEST_CASE("R-G15 loader: bad shapes are load errors") {
     for (const char* k : {"hp_pool", "dispel", "revive", "end_condition", "sustained_damage"}) {
         Json j = acid_arrow_doc();
         j["effects"][1] = {{"kind", k}, {"dice", "1d8"}, {"condition", "blinded"}, {"conditions", {"blinded"}},
-                           {"damage", {{"dice", "1d8"}, {"type", "fire"}}}};
+                           {"damage", {{"dice", "1d8"}, {"type", "fire"}}},
+                           {"check", {{"ability", "spellcasting"}, {"dc_base", 10}, {"plus", "spell_level"}}}};
         CHECK(error_of(j) == std::string("effects[1]: ") + k + " is only allowed as the first effect");
     }
     // Upcast dice are allowed on the new damage / pool kinds only.
