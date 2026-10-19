@@ -1499,6 +1499,26 @@ Validator-only checks (cross-field, not expressible in the schema): `range[1] >=
 
 AC = `base_ac` + (`dex_bonus` ? min(Dex mod, `dex_cap` if present) : 0) + `magic_bonus`.
 
+#### 10.1 Row 15 as implemented (rules side) and hand-off
+
+`rules5e/armor.hpp` + `src/armor.cpp`; pure, no loader or `item@1` dependency, no schema change, no sim / `content.cpp` /
+`Combat::create` change, goldens unchanged (nothing calls it yet).
+
+- `ArmorPiece` (category, base_ac, dex_bonus, has_dex_cap/dex_cap, str_min, stealth_disadvantage, magic_bonus) and `ShieldPiece`
+  (ac_bonus, magic_bonus) mirror the `item@1` fields above; `AcInput` adds the ability scores, optional armor and shield, the
+  unarmored formula (`unarmored_base` 10, optional `alt_ability` for Unarmored Defense), natural armor (`natural_base`,
+  `natural_dex_bonus`), a `flat_bonus` and `base_speed_ft`.
+- `compute_ac(in) -> AcResult {ac, speed_ft, str_shortfall, stealth_disadvantage}`: armor worn: `base_ac` + Dex term (none for
+  heavy, capped by `dex_cap`, a negative Dex is never capped away) + `magic_bonus`; no armor: the best of 10 + Dex,
+  10 + Dex + `alt_ability` and natural armor; a shield adds `ac_bonus + magic_bonus` to either; then `flat_bonus`; clamped
+  to 0..100. Str below `str_min` takes 10 ft off `base_speed_ft` (never below 0).
+- Hand-off (Engine Core / T&C): (a) at archetype build, only when the character lists an equipped `{item, equipped:true}` armor
+  or shield, fill `AcInput` (item fields 1:1, scores from the stat block, `alt_ability` from a barbarian / monk feature,
+  `natural_base` from a monster) and store `AcResult::ac` into `Combatant::ac` and `speed_ft` into `speed_ft`; every other
+  stat block keeps its baked `armor_class.value`. (b) Surface `stealth_disadvantage` to the Stealth check path if wanted (rules
+  do not yet read it). (c) A Monk's Unarmored Defense must not pass a shield (the caller decides); Mage Armor is a modifier
+  (row 12 `ac`), not an input here.
+
 **Shield** (`category: "shield"`): `ac_bonus` (integer, default 2) and `magic_bonus`. No
 `stealth_disadvantage` (shields never impose it in the SRD).
 
