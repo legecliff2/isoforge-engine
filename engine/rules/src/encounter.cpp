@@ -654,7 +654,7 @@ void process_deaths(EncounterState& s, std::vector<Event>& ev, Ctx* ctx = nullpt
 
 bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
                bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage = false,
-               uint32_t spell_id = 0, bool ally_near_target = false);
+               uint32_t spell_id = 0, bool ally_near_target = false, const DiceExpr* damage_override = nullptr);
 
 // The options `r` has in window `w` from its compiled Combatant::reactions, then the hook options.
 std::vector<ReactionOption> reaction_options(const EncounterState& s, const Combatant& r, const ReactionWindow& w) {
@@ -907,7 +907,7 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
 
 bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
                bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage,
-               uint32_t spell_id, bool ally_near_target) {
+               uint32_t spell_id, bool ally_near_target, const DiceExpr* damage_override) {
     bool adv = false;
     if (a.helped_vs == t.id) { adv = true; a.helped_vs = 0; a.helped_by = 0; }
     if (a.stealth_total > 0) { adv = true; a.stealth_total = 0; }   // unseen attacker; now revealed
@@ -966,7 +966,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         // Triggers that fire on this hit (Sneak Attack-style): their FeatureTriggered events come before the damage
         // dice; extra_damage riders are rolled with the attack's damage so a crit doubles them.
         const HitRiders riders = fire_hit_triggers(s, ctx, a, t, atk, spell_id != 0, atk_mode, ally_near_target, crit, roll, ev);
-        int dmg = roll_dice(s.rng, atk.damage, crit);
+        int dmg = roll_dice(s.rng, damage_override ? *damage_override : atk.damage, crit);
         if (dmg < 0) dmg = 0;
         std::vector<std::pair<int, DamageType>> modp;   // Damage modifiers (Rage, Hunter's Mark): weapon attacks only
         if (spell_id == 0 && !s.modifiers.empty()) {
@@ -1945,15 +1945,36 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
         emit(out.events, EventKind::Dodged, a.id);
         return out;
     case ActionKind::Attack: {
-        // A bonus-action attack exists only as a granted trigger rider (Rampage): bonus_attack_grant = index + 1.
-        const bool granted = req.as_bonus_action && b.bonus_attack_grant != 0 && b.bonus_action &&
+        // A bonus-action attack is a granted trigger rider (Rampage: bonus_attack_grant = index + 1) or a compiled option
+        // (bonus_option = 1 + index into bonus_attacks).
+        const BonusAttack* bopt = nullptr;
+        bool bonus_continue = false;
+        if (req.bonus_option != 0) {
+            if (!req.as_bonus_action) return fail("a bonus attack option needs as_bonus_action");
+            if (req.bonus_option > a.bonus_attacks.size()) return fail("bad bonus attack option");
+            bopt = &a.bonus_attacks[std::size_t(req.bonus_option - 1)];
+            bonus_continue = b.bonus_option == req.bonus_option && b.bonus_remaining > 0;
+            if (!bonus_continue && !bonus_attack_available(s, a, req.bonus_option)) return fail("bonus attack not available");
+            if (bopt->any_melee) { if (req.attack_index >= a.attacks.size() || a.attacks[req.attack_index].ranged) return fail("bonus attack must be a melee attack"); }
+            else if (req.attack_index != bopt->attack_index) return fail("bonus attack uses a different attack");
+        }
+        const bool granted = bopt == nullptr && req.as_bonus_action && b.bonus_attack_grant != 0 && b.bonus_action &&
                              req.attack_index + 1 == b.bonus_attack_grant;
-        if (req.as_bonus_action && !granted) return fail("attack is not a bonus action");
+        if (req.as_bonus_action && !granted && !bopt) return fail("attack is not a bonus action");
         Combatant* t = find_mut(s, req.target);
         if (!t || t == &a) return fail("bad target");
         if (t->dead) return fail("target is dead");
         if (req.attack_index >= a.attacks.size()) return fail("bad attack index");
-        if (granted) {
+        uint32_t pending_pool = 0; uint16_t pending_cost = 0;
+        if (bopt) {
+            if (bonus_continue) {
+                if (--b.bonus_remaining == 0) b.bonus_option = 0;
+            } else {
+                b.bonus_action = false;
+                if (bopt->count > 1) { b.bonus_option = req.bonus_option; b.bonus_remaining = uint8_t(bopt->count - 1); }
+                if (bopt->pool != 0) { pending_pool = bopt->pool; pending_cost = bopt->pool_cost ? bopt->pool_cost : uint16_t(1); }
+            }
+        } else if (granted) {
             b.bonus_action = false;
             b.bonus_attack_grant = 0;
         } else if (b.sequence != 0) {                                            // multiattack in progress
@@ -1984,9 +2005,13 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
             if (b.loading_fired & lbit) return fail("loading weapon already fired this action");
             b.loading_fired |= lbit;
         }
+        if (!bopt && !granted && req.attack_index < 32) b.attacks_used_mask |= uint32_t(1) << req.attack_index;
         s.budget = b;
+        if (pending_pool != 0 && spend_pool(s, a.id, pending_pool, pending_cost))
+            emit(out.events, EventKind::ResourceSpent, a.id, 0, int32_t(pending_pool), pending_cost, find_pool(s, a.id, pending_pool)->cur);
         do_attack(s, ctx, a, *t, a.attacks[req.attack_index], req.target_within_5ft, out.events,
-                  req.ranged_hostile_within_5ft || req.beyond_normal_range, 0, req.ally_near_target);
+                  req.ranged_hostile_within_5ft || req.beyond_normal_range, 0, req.ally_near_target,
+                  bopt && bopt->has_damage ? &bopt->damage : nullptr);
         check_end(s, out.events);
         return out;
     }
@@ -2431,6 +2456,27 @@ uint64_t modifiers_digest(const EncounterState& s, uint64_t h) {
         byte(uint8_t(m.timed.kind)); u32(uint32_t(uint16_t(m.timed.rounds_left)));
     }
     return h;
+}
+
+}  // namespace rules5e
+
+namespace rules5e {
+
+bool bonus_attack_available(const EncounterState& s, const Combatant& a, uint8_t option) {
+    if (option == 0 || option > a.bonus_attacks.size() || !s.budget.bonus_action || s.budget.bonus_option != 0) return false;
+    const BonusAttack& o = a.bonus_attacks[std::size_t(option - 1)];
+    if (o.requires_attacks != 0) {
+        uint32_t used = s.budget.attacks_used_mask & o.requires_attacks;
+        if (o.different_weapon && o.attack_index < 32) used &= ~(uint32_t(1) << o.attack_index);
+        if (used == 0) return false;
+    }
+    if (o.requires_modifier != 0) {
+        bool on = false;
+        for (const auto& m : s.modifiers) on = on || (m.target == a.id && m.spec.id == o.requires_modifier);
+        if (!on) return false;
+    }
+    if (o.pool != 0 && !can_spend(s, a.id, o.pool, o.pool_cost ? o.pool_cost : uint16_t(1))) return false;
+    return true;
 }
 
 }  // namespace rules5e
