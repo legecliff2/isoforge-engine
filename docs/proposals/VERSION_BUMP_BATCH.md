@@ -991,6 +991,11 @@ runs none of this). `ModifierSpec` gains, appended:
   `when` with the row 9 predicate vocabulary) into `ModifierSpec`; allow `apply_modifier` in a spell's `effects[]` after the
   first (maps to `SpellEffect::modifier`); no new hash tag (the 0xA2 digest covers them); no new event kinds.
 
+- **T&C schema follow-up (done).** `common@2 $defs/modifier` gains the optional properties `consume`, `speed_sub`,
+  `ac_floor`, `ac_floor_dex` (needs `ac_floor`), `per_turn` and `when` on the stats `parse_modifier` accepts them for (an `ac`
+  modifier needs `bonus` or `ac_floor`); `spell@1` declares the additive effect kind `apply_modifier` (`modifier`, `applies_to`
+  for riders). Additive, no tag change: see `docs/CONTENT_CONVENTIONS.md` section 1.
+
 ### 6.3 Inert behaviour
 
 Spell side is additive (old spells contain no such kind). Feature side: `3→4` marks any pre-existing
