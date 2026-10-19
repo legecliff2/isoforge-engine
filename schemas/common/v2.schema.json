@@ -735,7 +735,8 @@
             "set_hp",
             "bonus_attack",
             "area_save",
-            "spend"
+            "spend",
+            "grapple"
           ]
         },
         "damage": {
@@ -799,6 +800,12 @@
               "maximum": 9
             }
           ]
+        },
+        "escape_dc": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 30,
+          "description": "grapple (R-G8, sim #104): escape DC of the Grappled condition the hit applies; 0 or omitted = escape by a contest against the grappler's Athletics. Read only in on_hit[] of monster@4 / character@4 actions[] weapon attacks."
         }
       },
       "allOf": [
@@ -1055,6 +1062,26 @@
                 "pool",
                 "cost",
                 "slot"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "grapple"
+              }
+            }
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "escape_dc"
               ]
             }
           }

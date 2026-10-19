@@ -22,3 +22,5 @@ These files are not part of any shipped pack and are not under `tests/compat` (t
   `bardic_inspiration` pool usage, an ungated one and one with `cost` 2; `evasion` and `reroll_ones` traits) and
   `halfling_fighter_1.json` (character@4: `reroll_ones` with and without `rolls`, `great_weapon_fighting`, `evasion`; versatile and
   two_handed weapons, no shield).
+  R-G8 (`RG8GrappleRider`, sim #104): `giant_crab_grappler.json` (monster@4: a claw with a `grapple` rider, `escape_dc` 11, and a
+  pincer with a `grapple` rider without `escape_dc` (Athletics contest) followed by an `extra_damage` rider).
