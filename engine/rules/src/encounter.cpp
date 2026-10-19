@@ -370,6 +370,67 @@ bool being_hit_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, c
     return true;
 }
 
+// ---- Triggers (row 9a): Hit / Crit events with extra_damage riders ----
+
+bool predicate_holds(const EncounterState& s, const Combatant& owner, const Combatant& target, const Attack& atk,
+                     bool is_spell, RollMode mode, bool ally_near, bool crit, const Predicate& p) {
+    switch (p.kind) {
+    case PredicateKind::Weapon: {
+        if (is_spell) return false;
+        switch (WeaponIs(p.a)) {
+        case WeaponIs::Melee: return !atk.ranged;
+        case WeaponIs::Ranged: return atk.ranged;
+        case WeaponIs::Finesse: return is_finesse(atk);
+        case WeaponIs::FinesseOrRanged: return is_finesse(atk) || atk.ranged;
+        }
+        return false;
+    }
+    case PredicateKind::AdvantageOrAllyAdjacent: return mode == RollMode::Advantage || (ally_near && mode != RollMode::Disadvantage);
+    case PredicateKind::TargetCreatureType: return (p.mask & bit(target.creature_type)) != 0;
+    case PredicateKind::NotCreatureType: return (p.mask & bit(target.creature_type)) == 0;
+    case PredicateKind::DamageTypeIs: return (p.mask & bit(atk.type)) != 0;
+    case PredicateKind::DamageTypeNot: return (p.mask & bit(atk.type)) == 0;
+    case PredicateKind::NotCrit: return !crit;
+    case PredicateKind::MovedAtLeastFt: return owner.id == current_actor(s) && s.budget.moved_ft >= p.a;   // own turn only
+    case PredicateKind::SelfHpBelow: return int(owner.hp) * int(p.b) < int(owner.hp_max) * int(p.a);
+    case PredicateKind::Save: return false;   // reserved (9b)
+    }
+    return false;
+}
+
+// Fires every Hit / Crit trigger of `a` whose predicates hold and whose limit allows it; emits FeatureTriggered
+// (actor = owner, target = the creature hit, a = trigger id, b = TriggerOn, c = 1 applied) in trigger order and
+// returns the extra_damage riders to roll with the attack's damage. No triggers, no events, no rng.
+std::vector<const RiderEffect*> fire_hit_triggers(EncounterState& s, Combatant& a, const Combatant& t, const Attack& atk,
+                                                  bool is_spell, RollMode mode, bool ally_near, bool crit,
+                                                  std::vector<Event>& ev) {
+    std::vector<const RiderEffect*> out;
+    if (a.triggers.empty()) return out;
+    const uint32_t turn_stamp = uint32_t(s.round) << 16 | s.turn_index;
+    if (a.trigger_turn_stamp != turn_stamp) { a.trigger_turn_stamp = turn_stamp; a.trigger_turn_mask = 0; }
+    if (a.trigger_round_stamp != s.round) { a.trigger_round_stamp = s.round; a.trigger_round_mask = 0; }
+    for (std::size_t i = 0; i < a.triggers.size() && i < 32; ++i) {
+        const Trigger& tr = a.triggers[i];
+        if (tr.choice != 0) continue;                                  // ask (9c) / never
+        if (!(tr.on == TriggerOn::Hit || (tr.on == TriggerOn::Crit && crit))) continue;
+        const uint32_t m = uint32_t(1) << i;
+        if (tr.limit == TriggerLimit::OncePerTurn && (a.trigger_turn_mask & m)) continue;
+        if (tr.limit == TriggerLimit::OncePerRound && (a.trigger_round_mask & m)) continue;
+        bool ok = true;
+        for (const Predicate& p : tr.when)
+            if (!predicate_holds(s, a, t, atk, is_spell, mode, ally_near, crit, p)) { ok = false; break; }
+        if (!ok) continue;
+        bool any = false;
+        for (const RiderEffect& e : tr.effects)
+            if (e.kind == RiderKind::ExtraDamage) { out.push_back(&e); any = true; }
+        if (!any) continue;                                            // no 9a effect: reserved kinds do not fire yet
+        if (tr.limit == TriggerLimit::OncePerTurn) a.trigger_turn_mask |= m;
+        if (tr.limit == TriggerLimit::OncePerRound) a.trigger_round_mask |= m;
+        emit(ev, EventKind::FeatureTriggered, a.id, t.id, int32_t(tr.id), int32_t(tr.on), 1);
+    }
+    return out;
+}
+
 bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
                bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage = false,
                uint32_t spell_id = 0, bool ally_near_target = false) {
@@ -382,7 +443,8 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     actx.ranged = atk.ranged;
     actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
     actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft);   // combined with conditions in one place
-    D20Roll roll = roll_d20(s.rng, atk.to_hit, attack_roll_mode(a, t, actx));
+    const RollMode atk_mode = attack_roll_mode(a, t, actx);
+    D20Roll roll = roll_d20(s.rng, atk.to_hit, atk_mode);
     bool crit = false;
     bool hit = evaluate_hit(roll, t, actx, crit);
     if (hit) {
@@ -401,9 +463,19 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     emit(ev, EventKind::AttackResolved, a.id, t.id, roll.natural, roll.total,
          int32_t(hit) | (int32_t(crit) << 1));
     if (hit) {
+        // Triggers that fire on this hit (Sneak Attack-style): their FeatureTriggered events come before the damage
+        // dice; extra_damage riders are rolled with the attack's damage so a crit doubles them.
+        const auto riders = fire_hit_triggers(s, a, t, atk, spell_id != 0, atk_mode, ally_near_target, crit, ev);
         int dmg = roll_dice(s.rng, atk.damage, crit);
         if (dmg < 0) dmg = 0;
-        if (atk.extra_damage.empty()) {
+        if (!riders.empty()) {
+            std::vector<DamagePiece> parts{{int16_t(dmg), atk.type}};
+            for (const DamagePart& p : atk.extra_damage)
+                parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.dice, crit))), p.type});
+            for (const RiderEffect* r : riders)
+                parts.push_back({int16_t(std::max(0, roll_dice(s.rng, r->dice, crit))), r->same_as_weapon ? atk.type : r->type});
+            damage_creature(s, t, apply_damage_parts(t, parts, atk.qualifiers), crit, ev);
+        } else if (atk.extra_damage.empty()) {
             damage_creature(s, t, apply_damage(t, int16_t(dmg), atk.type, atk.qualifiers), crit, ev);
         } else {   // multi-component hit: one DamageDealt carrying the per-type-modified sum
             std::vector<DamagePiece> parts{{int16_t(dmg), atk.type}};
@@ -1633,6 +1705,27 @@ uint64_t innate_digest(const EncounterState& s, uint64_t h) {
             u32(is.spell_id); byte(is.uses_max); byte(is.uses_left); byte(is.recharge_min);
             byte(is.has_ability ? uint8_t(1 + uint8_t(is.ability)) : 0); byte(is.as_listed ? 1 : 0);
         }
+    }
+    return h;
+}
+
+}  // namespace rules5e
+
+namespace rules5e {
+
+bool has_trigger_state(const EncounterState& s) {
+    for (const auto& c : s.combatants) if (!c.triggers.empty()) return true;
+    return false;
+}
+
+uint64_t triggers_digest(const EncounterState& s, uint64_t h) {
+    auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
+    auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) byte(uint8_t(v >> (8 * i))); };
+    for (const auto& c : s.combatants) {
+        if (c.triggers.empty()) continue;
+        u32(c.id); u32(uint32_t(c.triggers.size()));
+        for (const auto& t : c.triggers) { u32(t.id); byte(uint8_t(t.on)); byte(uint8_t(t.limit)); byte(t.choice); }
+        u32(c.trigger_turn_mask); u32(c.trigger_turn_stamp); u32(c.trigger_round_mask); u32(c.trigger_round_stamp);
     }
     return h;
 }
