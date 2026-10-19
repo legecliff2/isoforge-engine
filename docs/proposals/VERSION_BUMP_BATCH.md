@@ -1562,6 +1562,116 @@ PR was open and merged in, unchanged from its reviewed head 1453b5c). Scope per 
   a way to take sim's order and to pass the destination). `ForcedMoveSpec::mode` defaults to 1 (push). The R-G9 load error is
   the loader's (no rules check). Rules does not re-check Frightened "not closer" (sim's re-validation, §3).
 
+### 7.2l R-G11 zones and auras, rules PR 1 (rules side) and hand-off
+
+Spec: `docs/proposals/ZONES_AURAS.md` on main (#113, merged as a9f7c98): Director rulings D1-D9 and Engine Core's §3 / Q1-Q12.
+Scope: §2.10 item 1. Branch `feat/rules-zones` from main after #112 (b106b45) and #113. The registry claims (`Combat::hash`
+0xAB, `log_hash` 0xB7) are their own first commit.
+
+- **Data** (`spells.hpp`, appended). `SpellEffectKind::Zone` (16), primary effect only, with `SpellDef::zone` (`ZoneSpec`):
+  - shape and sizes, `anchor` (`Point` or `Creature`: an aura on the caster), `kZone*` flags (terrain / sense data for sim),
+    `move_cost` (0 none, 1 action, 2 bonus action), `move_ft`, `chooses_excluded`, `needs_conscious_owner` (D7, unused);
+  - `triggers`, a list of `ZoneTriggerRow`s: `on` (`Appear`, `Enter`, `StartTurn`, `EndTurn`, `MoveWithin`), `group`
+    (once-per-turn group, 0 = no limit; Enter + StartTurn share group 1 by default, D2), `own_turn_only` (Web),
+    `completely_within`, `counts_aura_move_as_enter` (D1), `while_in_zone` (the condition lasts while in the zone: Web), and
+    `effect` (a `SpellEffect`). Kind `Save` is a save against the zone's DC with damage (half on a success with
+    `OnSave::Half`) and a condition on a failure. Any other kind applies the damage and condition with no save (Spike Growth).
+  - Damage dice scale by `SpellDef::upcast_dice` per slot level above the spell's level.
+  - The spell's timer is the usual `expiry` / `duration_rounds` (Grease).
+- **State** (`encounter.hpp`, appended). `EncounterState::zones` (`ActiveZone`: id, spell, owner, slot level, DC,
+  concentration, timer, `cast_stamp`, the opaque anchor tile (Q1), sorted `excluded`, and `fired` bookkeeping
+  `{creature, turn stamp, group}`, pruned at each turn start) and `next_zone_id` (from 1).
+  `ActiveSpellEffect::zone_id` marks a "while in the zone" effect.
+- **Requests** (`ActionRequest`, appended).
+  - Membership facts, filled by sim at submit (Q2):
+    - Move: `zones_entered` / `zones_left` / `zones_within`, read for a readied Move's response too.
+    - `zone_changes` (`{creature, zone_id, entered}`): other creatures' changes from the step (Q8).
+  - CastSpell inputs (0xB7):
+    - `has_zone_dest` / `zone_x` / `zone_y`: a point zone's anchor. An aura refuses one.
+    - `zone_excluded`: only for `chooses_excluded` spells.
+    - `zone_move`: the zone id, with `spell_id` = its spell.
+  - `zone_move_ft`: the distance, sim-derived, at most `move_ft`; 0 means no check.
+  - Zone fields on any other kind are refused.
+- **Hook.** `zone_contains(state, zone_id, creature, completely)` answers Appear, StartTurn and EndTurn, and any
+  `completely_within` row. No hook means nobody is in a zone.
+- **Triggers and order.**
+  - **Appear** runs at creation for each combatant in initiative order, after `ZoneCreated` and before `SpellResolved`.
+  - **Enter / MoveWithin** run after the step's `Moved`, per zone ascending, in this order:
+    1. Enter.
+    2. MoveWithin, once per occurrence of the zone in `zones_entered` + `zones_within`.
+    3. Leaving ends the creature's "while in the zone" effects. Exits never deal damage.
+  - **`zone_changes`** sort by zone, then initiative, then id (Q9). An entry counts as Enter only for rows with
+    `counts_aura_move_as_enter`.
+  - **StartTurn** runs right after `TurnStarted` and Heroism's temp HP, before `RepeatSave::StartOfTurn` and the row 9
+    `TurnStart` triggers. It runs with no Ctx, so no reaction windows open, like delayed damage. A creature dropped to 0 HP
+    there makes no death save that turn.
+  - **EndTurn** runs first in `EndTurn`, before `RepeatSave::EndOfTurn`.
+  - **Who is affected:** dead creatures, `excluded` creatures and the aura's own owner trigger nothing. `own_turn_only` needs
+    the creature to be the current actor. A creature already held by the zone's while-in effect is not saved again (Web).
+  - **Events:** each trigger emits
+    `FeatureTriggered{owner, subject, a = spell id, b = TriggerOn::Zone* (8..12), c = 0 saved / 1 no save / 3 failed}`, then
+    the save, damage (`damage_creature`, magical, source = owner) and condition events.
+- **Endings.**
+  - `end_concentration` ends the caster's zones of that spell, emitting `ZoneEnded{reason 1}` after `ConcentrationEnded` and
+    before the spell's `SpellEffectEnded`.
+  - Zone timers tick at round start (`ZoneEnded{0}`). The caster's concentration ends once nothing of the spell is left.
+  - A live zone keeps its spell's concentration "remaining" for repeat saves, expiries and Dispel Magic.
+- **Zone move (Moonbeam).** CastSpell with `zone_move` checks:
+  - the owner, the spell, `move_cost != 0`, a point zone, and not the casting turn (`cast_stamp`);
+  - `zone_move_ft` (≤ `move_ft`, multiple of 5);
+  - no metamagic, spared, innate or excluded fields.
+
+  It spends the action or bonus action (D3: data), moves the anchor when a destination is given, and emits
+  `ZoneMoved{owner, a = zone id, b = feet}`, then `zone_changes`. No slot is spent and no SpellCast window opens.
+  `legal_actions` lists zone spells at the caster without a destination, and zone moves without a destination; sim adds
+  them from `legal_zone_tiles`.
+- **Web's escape.** `special` 4 when the creature is restrained by a zone effect and not grappled, or with `spell_id` = the
+  zone's spell. It costs an action: a plain Strength check (`CheckRolled.target = 0x100 | Ability`, all of `roll_check`'s
+  Help / modifier / Lucky rules) against the zone's DC. Success ends the restraint (`SpellEffectEnded` + `ConditionRemoved`).
+- **Forced moves (Q7).** `ForcedMoveResult` gains `zones_entered` / `zones_left` / `zones_within`.
+  - For a multi-tile move, `zones_within` repeats a zone once per further 5 ft inside it. This gives D6's per-5-ft Spike
+    Growth damage.
+  - `finalize_forced` resolves each move's zone triggers right after its `Moved` / `ConditionRemoved`, before the next move.
+  - `attempt` now runs `finalize_forced` before the pause check, so a trigger there may open an Ask window. The run then
+    pauses with `PendingDecision::forced_results` (step_seq → result).
+  - The re-run reuses those results and does not call the hook, so `forced_move` still runs once per (step, step_seq), and
+    #112's assert stays. Deaths, concentration and sourced conditions are swept again only when a zone trigger fired there.
+- **Schema v9** (sim `events.hpp` / `events.cpp`; not `content.cpp` or `Combat::create`):
+  - `kSimEventSchemaVersion` is 9, `kLastRulesEventKind` is `ZoneEnded`, and there is a new `kLastRulesEventKindV8`.
+  - `event_stream_version` returns 9 only for a stream with a kind past `ActionUsed` or a `FeatureTriggered` with
+    `b >= ZoneAppear`.
+  - The events_tests layout table and the version cases are updated.
+  - No content has a zone, so every golden and locked digest is unchanged.
+- **Hashing.** `zones_digest` hashes `next_zone_id`, every `ActiveZone` field in order, then the zone-bound effects. It is
+  folded under `Combat::hash` **0xAB** only when `has_zone_state` holds (a zone exists or has existed). `log_hash` **0xB7**
+  (`zone_move`, `has_zone_dest`, `zone_x`, `zone_y`, `zone_excluded`) is defined in the registry. Membership lists,
+  `zone_changes` and `zone_move_ft` are not folded (sim-derived, Q11). Both folds are pending on the sim side.
+- **Hand-off (Engine Core)**, per §3:
+  - (a) Geometry and `zone_contains`.
+  - (b) Fill the Move lists, `zone_changes` (aura owner moves, Moonbeam moves) and `zone_move_ft` inside `Combat::submit`,
+    overwriting caller values. Fill the readied Move's lists in `refresh_ready`.
+  - (c) The `forced_move` / teleport result lists, with `zones_within` repeated per 5 ft.
+  - (d) `legal_zone_tiles` and re-validating the destination.
+  - (e) The `kZoneDifficult` overlay and the `kZoneHalveSpeed` cost for non-excluded creatures (Q5).
+  - (f) Fold 0xAB (`has_zone_state`) and 0xB7.
+  - (g) v9 consumers render from `ZoneCreated` / `ZoneMoved` / `ZoneEnded` (Q12).
+- **Hand-off (T&C).** spell@1 `zone` keys (shape and sizes, anchor, flags, `move_cost` / `move_ft`, `chooses_excluded`,
+  and trigger rows with their effect). Content for Spirit Guardians, Moonbeam, Spike Growth, Grease and Web.
+- **Not covered / deviations.**
+  - Zones are primary-effect only: an extra effect of kind `Zone` is refused. This avoids a recursive SpellEffect / ZoneSpec
+    type (the doc allowed riders).
+  - Web's restraint is an `ActiveSpellEffect` with `zone_id`, not a sourced condition with an `escape_ability` (§2.4).
+    Concentration, leaving and escape all end it through the effect.
+  - `fired` is a `ZoneFired` struct instead of the doc's packed pair, and it is pruned at each turn start rather than each
+    round start.
+  - The zone move is a CastSpell with `zone_move` (sustain precedent), with an optional destination (teleport precedent).
+  - Added `zone_changes` and `while_in_zone`, which the doc's data model implied but did not name.
+  - StartTurn triggers open no reaction windows.
+  - Ready triggers don't see zone events from `finalize_forced` (as with #112's placeholders).
+  - Moonbeam's shapechanger disadvantage and revert are not modelled.
+  - Spirit Guardians' evil-caster necrotic is content.
+  - `needs_conscious_owner` and the passive aura fields are deferred (D7).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
