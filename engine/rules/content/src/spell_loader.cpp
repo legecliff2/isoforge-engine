@@ -633,6 +633,30 @@ SpellLoad spell_from_json(const Json& j) {
                     s.excluded_types |= bit(ct2);
                 }
             }
+        } else if (kind == "forced_move") {   // R-G9 (7.2k): push / pull the targets (Thunderwave, Repelling Blast)
+            s.kind = SpellEffectKind::ForcedMove;
+            const std::string mode = e.value("mode", "push");
+            if (mode == "push") s.forced.mode = 1;
+            else if (mode == "pull") s.forced.mode = 2;
+            else return ("effect mode must be push or pull");   // line (Gust of Wind) is data only in R-G9
+            int ft = 0;
+            if (!e.contains("feet") || !feet_5(e["feet"], ft)) return ("effect feet must be a positive multiple of 5");
+            s.forced.feet = uint16_t(ft);
+            s.forced.up_to = e.value("up_to", false);
+            if (e.contains("max_size")) {
+                static const std::map<std::string, Size> kSizes = {{"tiny", Size::Tiny}, {"small", Size::Small}, {"medium", Size::Medium},
+                                                                   {"large", Size::Large}, {"huge", Size::Huge}, {"gargantuan", Size::Gargantuan}};
+                Size sz;
+                if (!lookup(kSizes, e["max_size"], sz)) return ("effect max_size invalid");
+                s.forced.max_size = int8_t(sz);
+            }
+            if (e.value("provokes_oa", false)) return ("effect provokes_oa: true is not supported (R-G9: forced moves never provoke)");
+        } else if (kind == "teleport") {   // R-G9 (7.2k): self-teleport (Misty Step); the destination is the caller's (sim)
+            s.kind = SpellEffectKind::Teleport;
+            int ft = 0;
+            if (!e.contains("max_feet") || !feet_5(e["max_feet"], ft)) return ("effect max_feet must be a positive multiple of 5");
+            s.teleport.max_feet = uint16_t(ft);
+            s.teleport.needs_sight = e.value("needs_sight", true);
         } else if (kind == "dispel") {   // R-G15 (7.2f): Dispel Magic; spells above the slot end on the check (DC dc_base + level)
             s.kind = SpellEffectKind::Dispel;
             if (!read_spell_check(e, s.dispel_dc_base)) return ("effect check must be {ability: spellcasting, dc_base, plus: spell_level}");
@@ -694,7 +718,7 @@ SpellLoad spell_from_json(const Json& j) {
         // R-G15: of the new kinds only delayed_damage rides another effect (Acid Arrow); the others read spell-level fields
         // (pool, dispel DC, revive window, condition mask, sustain) that an extra effect does not carry.
         if (x.kind == SpellEffectKind::HpPool || x.kind == SpellEffectKind::Dispel || x.kind == SpellEffectKind::Revive ||
-            x.kind == SpellEffectKind::EndCondition || x.kind == SpellEffectKind::SustainedDamage)
+            x.kind == SpellEffectKind::EndCondition || x.kind == SpellEffectKind::SustainedDamage || x.kind == SpellEffectKind::Teleport)
             return err("effects[" + std::to_string(i) + "]: " + xk + " is only allowed as the first effect");
         SpellEffect fx;
         fx.kind = x.kind; fx.melee = x.melee; fx.beams = x.beams; fx.dice = x.dice; fx.damage_type = x.damage_type;
@@ -702,6 +726,7 @@ SpellLoad spell_from_json(const Json& j) {
         fx.save_ability = x.save_ability; fx.on_save = x.on_save; fx.applies_condition = x.applies_condition;
         fx.condition = x.condition; fx.repeat_save = x.repeat_save; fx.darts = x.darts;
         fx.distribution = x.distribution; fx.simultaneous = x.simultaneous;
+        fx.forced = x.forced; fx.teleport = x.teleport;   // R-G9
         fx.expiry = x.expiry; fx.duration_rounds = x.duration_rounds;   // delayed_damage's timer (0 for every other spell@1 kind)
         if (x.kind == SpellEffectKind::ApplyModifier) {   // rider (Guiding Bolt): its own modifier id
             fx.modifier = x.modifier;

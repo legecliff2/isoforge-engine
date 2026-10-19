@@ -8,6 +8,7 @@ docs/proposals/VERSION_BUMP_BATCH.md section 8.3. Frozen-corpus checks live in t
 """
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -571,6 +572,73 @@ class RG8GrappleRider(unittest.TestCase):
         self.assertIn("grapple", c2["$defs"]["rider"]["properties"]["kind"]["enum"])
         dc = c2["$defs"]["rider"]["properties"]["escape_dc"]
         self.assertEqual((dc["type"], dc["minimum"], dc["maximum"]), ("integer", 0, checks_v4.GRAPPLE_ESCAPE_DC_MAX))
+
+
+# ---- R-G14 metamagic / sculpt_spells (sim #143, features.cpp apply_metamagic / apply_sculpt_spells) ----------------
+MM = {"kind": "metamagic", "options": ["quickened", "twinned"], "pool": "rage"}   # barbarian_1: rage is a limited pool at level 1
+
+
+def _feat(fid, eff):
+    return {"id": fid, "name": fid, "description": "x", "effect": eff}
+
+
+SORC = [(["features", 1], _feat("metamagic", MM)), (["features", 2], _feat("sculpt", {"kind": "sculpt_spells"}))]
+SP = ["resources", 1]
+SPARE = {"id": "spare", "max": 3, "recharge": "long_rest"}
+
+# (name, sets, dels, expected substring) over barbarian_1 + SORC; "warn_" cases must validate with that warning only.
+RG14_CASES = [
+    ("mm_pool_unknown", [(["features", 1, "effect", "pool"], "nope")], [], "metamagic: metamagic pool 'nope' is not a limited resources[] pool"),
+    ("mm_pool_unlimited", [(["resources", 0, "max", "table", "by_level"], [{"level": 1, "unlimited": True}])], [],
+     "metamagic: metamagic pool 'rage' is not a limited resources[] pool"),
+    ("mm_pool_not_string", [(["features", 1, "effect", "pool"], 3)], [], "is not of type 'string'"),
+    ("mm_needs_pool", [], [["features", 1, "effect", "pool"]], "'pool' is a required property"),
+    ("mm_needs_options", [], [["features", 1, "effect", "options"]], "'options' is a required property"),
+    ("mm_empty_options", [(["features", 1, "effect", "options"], [])], [], "should be non-empty"),
+    ("mm_unknown_option", [(["features", 1, "effect", "options"], ["loud"])], [], "'loud' is not one of"),
+    ("mm_options_not_array", [(["features", 1, "effect", "options"], "quickened")], [], "is not of type 'array'"),
+    ("mm_different_pools", [(SP, SPARE), (["features", 3], _feat("mm2", {"kind": "metamagic", "options": ["subtle"], "pool": "spare"}))], [],
+     "mm2: metamagic declarations name different pools"),
+    ("warn_mm_repeated_option", [(["features", 1, "effect", "options"], ["quickened", "quickened"])], [], "listed more than once"),
+    ("warn_sculpt_extra_field", [(["features", 2, "effect", "radius"], 5)], [], "sculpt_spells takes no fields"),
+    ("warn_sculpt_duplicate", [(["features", 3], _feat("sculpt2", {"kind": "sculpt_spells"}))], [], "duplicate 'sculpt_spells' effect"),
+]
+
+
+class RG14MetamagicSculpt(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.base = h.pack_fixtures()
+
+    def sorc(self, sets=(), dels=()):
+        return h.edit(h.edit(self.base[B], SORC, []), list(sets), list(dels))
+
+    def run_doc(self, doc):
+        d = dict(self.base)
+        d[B] = doc
+        return h.validate_docs(d)
+
+    def test_positive_validates_clean(self):
+        # two declarations on one pool OR their options; the pool counts as referenced (no check-12 warning)
+        doc = self.sorc([(["features", 3], _feat("mm2", {"kind": "metamagic", "options": ["distant"], "pool": "rage"}))])
+        self.assertEqual(self.run_doc(doc), ([], []))
+
+    def test_cases(self):
+        for name, sets, dels, expect in RG14_CASES:
+            with self.subTest(name):
+                errs, warns = self.run_doc(self.sorc(sets, dels))
+                if EXPECT_WARNING(name):
+                    self.assertEqual(errs, [], errs)
+                    self.assertTrue(any(expect in w for w in warns), (expect, warns))
+                else:
+                    self.assertTrue(any(expect in e for e in errs), (expect, errs))
+
+    def test_options_mirror_the_loader(self):
+        arm = next(a["then"] for a in json.loads((h.ROOT / "schemas/common/v1.schema.json").read_text(encoding="utf-8"))["$defs"]["effect"]["allOf"]
+                   if a["if"]["properties"]["kind"].get("const") == "metamagic")
+        self.assertEqual(tuple(arm["properties"]["options"]["items"]["enum"]), checks_v4.METAMAGIC_OPTIONS)
+        self.assertIn("sculpt_spells", checks_v4.NO_STACK_EFFECT_KINDS)
+        self.assertNotIn("metamagic", checks_v4.NO_STACK_EFFECT_KINDS)   # several declarations add options
 
 
 if __name__ == "__main__":
