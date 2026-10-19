@@ -53,6 +53,15 @@ std::optional<rules5e::Condition> condition_of(const std::string& s) {
         if (s == names[i]) return rules5e::Condition(i);
     return std::nullopt;
 }
+// Conditions a save_condition rider (on_hit[] or on_event) may apply with NO duration and no repeat save: they end by their
+// own rules, not by a timer or a save, so the rules apply them untimed (rules5e SpellDef / SpellEffect::condition_untracked:
+// no ActiveSpellEffect entry), the way Shove applies prone. Prone ends when the creature stands up (half its speed, rules5e
+// ActionKind::StandUp). Keep this list explicit; every other condition without a duration stays unsupported.
+constexpr rules5e::Condition kEndsByOwnRules[] = {rules5e::Condition::Prone};
+bool ends_by_own_rules(rules5e::Condition c) {
+    for (rules5e::Condition x : kEndsByOwnRules) if (x == c) return true;
+    return false;
+}
 std::optional<rules5e::CreatureType> creature_type_of(const std::string& s) {
     static const char* names[] = {"aberration", "beast", "celestial", "construct", "dragon", "elemental", "fey",
                                   "fiend", "giant", "humanoid", "monstrosity", "ooze", "plant", "undead"};
@@ -86,8 +95,11 @@ int owner_level(const Json& doc, const Json& per_levels) {
     return std::max(1, geti(doc, "level", 1));
 }
 
+// `untimed_ok`: an apply[] entry with no duration and no repeat save is accepted for the conditions that end by their own
+// rules (kEndsByOwnRules), applied untracked; only save_condition riders pass true.
 std::optional<std::string> compile_save_action(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
-                                               Archetype::SaveAction& sa, const Json& doc, bool& unsupported);
+                                               Archetype::SaveAction& sa, const Json& doc, bool& unsupported,
+                                               bool untimed_ok = false);
 
 // What a rider needs beyond its own JSON: the owner's attacks (bonus_attack resolves attack_id) and the list the
 // synthetic Save SpellDefs of area_save riders go to (registered in the SpellBook by ContentLibrary::add).
@@ -200,7 +212,7 @@ std::optional<std::string> compile_rider(const std::string& where, const Json& r
         rules5e::SpellDef d;
         Archetype::SaveAction sa;
         bool unsupported = false;
-        if (auto er = compile_save_action(rc.arch, act, d, sa, doc, unsupported)) return er;
+        if (auto er = compile_save_action(rc.arch, act, d, sa, doc, unsupported, true)) return er;
         if (unsupported) return where + ": save_condition uses an unsupported duration";
         e.kind = RK::SaveCondition;
         e.spell_id = d.id;
@@ -393,7 +405,8 @@ std::optional<std::string> compile_on_event(const std::string& arch, const std::
 }
 
 std::optional<std::string> compile_save_action(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
-                                               Archetype::SaveAction& sa, const Json& doc, bool& unsupported) {
+                                               Archetype::SaveAction& sa, const Json& doc, bool& unsupported,
+                                               bool untimed_ok) {
     const std::string aid = act.value("id", "");
     const std::string where = arch_id + ": save_effect '" + aid + "'";
     if (aid.empty() || aid.find('#') != std::string::npos || arch_id.find('#') != std::string::npos)
@@ -473,9 +486,11 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             // Durations (rules5e timed effects, #76): rounds n -> expiry Rounds + duration_rounds; until_end_of_target_next_turn
             // -> expiry EndOfTargetNextTurn; until_save -> a repeat save (end_of_turn unless one is named), no expiry. A
             // repeat_save may accompany a timed duration. No duration and no repeat save lasts until the combat ends,
-            // which the engine does not model for conditions yet: listed, not compiled.
+            // which the engine does not model for conditions yet: listed, not compiled. Exception (`untimed_ok`, save_condition
+            // riders): a condition that ends by its own rules (kEndsByOwnRules: prone) is applied untracked, with no timer.
             const std::string rs = x.value("repeat_save", "");
             const bool has_dur = x.contains("duration");
+            const bool untracked = untimed_ok && !has_dur && rs.empty() && ends_by_own_rules(*cond);
             if (has_dur && !x["duration"].is_object()) return where + ": bad duration in apply[]";
             const Json dur = has_dur ? x["duration"] : Json::object();
             const std::string dk = dur.is_object() && dur.contains("kind") && dur["kind"].is_string() ? dur["kind"].get<std::string>() : "";
@@ -488,7 +503,7 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 rounds = uint16_t(n);
             } else if (dk == "until_end_of_target_next_turn") {
                 expiry = uint8_t(rules5e::Expiry::EndOfTargetNextTurn);
-            } else if (dk != "until_save" && (has_dur || rs.empty())) {
+            } else if (dk != "until_save" && (has_dur || rs.empty()) && !untracked) {
                 unsupported = true;   // an unknown duration kind (or none at all, without a repeat save)
                 return std::nullopt;
             }
@@ -500,6 +515,7 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 d.repeat_save = rep;
                 d.expiry = expiry;
                 d.duration_rounds = rounds;
+                d.condition_untracked = untracked;
                 first = false;
             } else {       // further conditions: ApplyCondition on the creatures that failed the save
                 rules5e::SpellEffect e;
@@ -509,6 +525,7 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 e.repeat_save = rep;
                 e.expiry = expiry;
                 e.duration_rounds = rounds;
+                e.condition_untracked = untracked;
                 e.affected_only = true;
                 d.extra_effects.push_back(e);
             }
