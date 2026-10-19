@@ -1447,6 +1447,57 @@ off, a cast without options takes the old path, and new rng draws happen only fo
   primary Save effect (and Careful / Sculpt also on later Save effects of the same cast); Twinned on spells with extra effects
   applies them to both targets.
 
+### 7.2j Small leftovers: Haste, Slow, Life Drain, Reckless Attack, Aggressive, Petrifying Gaze (post-batch rules follow-up) and hand-off
+
+Rules side only (`feat/rules-small-leftovers`); no schema change, no new event kind. Goldens unchanged: every new field defaults to
+off, the new marker stats are only read when a modifier carries them, and new rng draws happen only for Slow's repeat save and Life
+Drain's Con save (when `drain_save_dc` is set).
+
+- **Haste.** Content: a concentration ApplyModifier spell whose primary modifier is the marker `ModStat::Haste`, with riders (all
+  existing stats) `Ac` +2, `Save` advantage with `ability = Dex`, `Speed` `speed_num = 2`. While a Haste marker is on a creature,
+  its turn starts with `TurnBudget::haste_action`; `ActionRequest::haste_action` takes Attack (one weapon attack: no multiattack,
+  special or bonus option), Dash, Disengage or Hide with it, leaving the creature's own action, Action Surges and Attack-action
+  sequence (Extra Attack) as they were. `legal_actions` lists the Haste options (`haste_action = true`). **Lethargy**: when the
+  last Haste marker on a creature goes (any reason but "replaced"), `Combatant::lethargy` = 1; at its next turn start it becomes 2
+  and that turn has no action, bonus action, Haste action or movement; it clears when that turn ends. A lethargic creature also
+  cannot react (rules reading of "can't take actions").
+- **Slow.** Content: a concentration Save spell (Wis; up to six targets via `targets`) with `affected_only` ApplyModifier riders:
+  the marker `ModStat::Slow` (with `repeat_save = 1`, `repeat_ability = Wis`), `Ac` -2, `Save` -2 with `ability = Dex`, `Speed`
+  1/2. Rules fills `ModifierSpec::repeat_dc` from the caster's spell save DC when a spell applies a repeat-save modifier. While
+  slowed: no reactions (`may_react`); spending the action, bonus action or Haste action spends the others; one weapon attack per
+  turn (`TurnBudget::slow_attacked`; Extra Attack and bonus attacks are cut). At the end of each of its turns the target repeats
+  the save (`SavingThrowRolled`); a success removes every modifier of that source and caster on it (`ModifierExpired` reason
+  **6**), then ends the caster's concentration once nothing of the spell remains.
+- **Life Drain.** `Attack::drain_max_hp` (+ optional `drain_save_dc`, Con): on a hit the target's `hp_max_reduction` grows by the
+  damage it took (HP + temp HP lost to the hit), HP over the new maximum is lost, and a maximum of 0 kills (`CombatantDied`).
+  `effective_hp_max` subtracts it; `long_rest` clears it. Event: `ModifierApplied{actor = attacker, target, a = 0, b =
+  ModStat::MaxHp, c = -amount}` (a reserved v7 kind; no new kind), after the save's `SavingThrowRolled`.
+- **Reckless Attack.** `Combatant::reckless_attack`; `ActionRequest::reckless` on the turn's first Attack (Attack action, not
+  bonus, no special): `reckless_active` is set before that roll; its melee weapon attacks using Str (not finesse with a better
+  Dex) have advantage; attacks against it have advantage until its next turn starts. Not listed by `legal_actions` (a choice).
+- **Aggressive.** `Combatant::aggressive`; `ActionRequest{Dash, as_bonus_action, aggressive}` spends the bonus action for a Dash
+  (`TurnBudget::aggressive_dash` marks it); `legal_actions` lists it. Sim keeps that movement toward a hostile.
+- **Petrifying Gaze progression.** `SpellDef::escalates`, `escalate_to` (default Petrified), `escalate_margin`: a primary Save with
+  a condition (Restrained, `repeat_save` EndOfTurn) whose failed repeat save turns the condition into `escalate_to` for good (no
+  more saves, no timer; `ConditionRemoved` + `ConditionAdded`); failing the first save by `escalate_margin` or more applies
+  `escalate_to` at once (medusa 5; basilisk 0).
+- **Hashing.** `Combat::hash` tag **0xA9**: `leftover_digest` (per combatant with `hp_max_reduction`, `lethargy` or
+  `reckless_active` set, then escalating effects), only when `has_leftover_state`. `modifiers_digest` (0xA2) folds `repeat_save`,
+  `repeat_ability`, `repeat_dc` only for a modifier with `repeat_save != 0`. `log_hash` tag **0xB3**: one byte, bit0
+  `haste_action`, bit1 `reckless`, bit2 `aggressive`, only when non-zero (0xB2 is reserved for R-G9's teleport destination, per
+  `FORCED_MOVEMENT.md`). The new `TurnBudget` fields are not hashed (sim does not hash the budget). Both tags are in the
+  `docs/SIM_EVENTS.md` registry.
+- **Hand-off (Engine Core / T&C).** (a) Loader: `apply_modifier` stats `haste` / `slow` (markers) and `repeat_save` /
+  `repeat_ability` on modifier content; spell content for Haste and Slow as above; monster `attack.drain_max_hp` (+ `drain_save_dc`)
+  for wight / specter / wraith / vampire spawn; `reckless_attack` (Barbarian 2, minotaur, berserker); `aggressive` (orc); gaze
+  saves with `escalates` / `escalate_to` / `escalate_margin` (basilisk, medusa). (b) sim: carry `haste_action` / `reckless` /
+  `aggressive` into `ActionRequest` and fold them into `log_hash` under 0xB3; fold `leftover_digest` under 0xA9; keep Aggressive
+  movement toward a hostile; fire the gaze (a creature starting its turn within 30 ft that can see the gazer) as a Save request
+  (sim owns positions and sight). (c) AI: may use `legal_actions`' Haste and Aggressive entries; ignoring them is valid.
+- **Not covered / deviations.** Haste's "Use an Object" (no such action in rules); Slow's spell-casting delay (a somatic spell
+  fails on d20 < 11 and takes effect next turn: needs a delayed-cast model); ability drain (shadow's Strength Drain); the gaze
+  trigger and averting the eyes (positions / sight, sim); lethargy also blocks reactions (reading).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
