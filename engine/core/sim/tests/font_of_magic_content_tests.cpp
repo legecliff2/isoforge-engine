@@ -199,7 +199,10 @@ TEST_CASE("Font of Magic content: the sorcery pool max follows the sorcerer leve
     }
     {
         ContentLibrary lib;
-        CHECK(build_raw(lib, sorcerer(Json::array({fom()}), 1)));
+        const auto e = build_raw(lib, sorcerer(Json::array({fom()}), 1));
+        REQUIRE(e);
+        CHECK(e->find("font_of_magic needs sorcerer level 2+") != std::string::npos);
+        CHECK(e->find("sorcerer level 1") != std::string::npos);
     }
     {
         ContentLibrary lib;
