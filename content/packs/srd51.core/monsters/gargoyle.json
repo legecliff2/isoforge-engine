@@ -1,0 +1,121 @@
+{
+  "$schema": "monster@4",
+  "id": "srd51.monster.gargoyle",
+  "name": "Gargoyle",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "elemental",
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 15,
+    "note": "natural armor"
+  },
+  "hit_points": {
+    "average": 52,
+    "formula": "7d8+21"
+  },
+  "speed": {
+    "walk": 30,
+    "fly": 60
+  },
+  "abilities": {
+    "str": 15,
+    "dex": 11,
+    "con": 16,
+    "int": 6,
+    "wis": 11,
+    "cha": 7
+  },
+  "damage_immunities": [
+    "poison"
+  ],
+  "condition_immunities": [
+    "exhaustion",
+    "petrified",
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 10
+  },
+  "languages": [
+    "Terran"
+  ],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "damage_resistances_nonmagical",
+      "name": "Damage Resistances",
+      "description": "Resistant to bludgeoning, piercing, and slashing from nonmagical weapons that aren't adamantine.",
+      "effect": {
+        "kind": "damage_mitigation",
+        "resistances": {
+          "nonmagical_not_adamantine": [
+            "bludgeoning",
+            "piercing",
+            "slashing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The gargoyle makes two attacks: one with its bite and one with its claws.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "bite_claws",
+            "attacks": [
+              "bite",
+              "claws"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "false_appearance",
+      "name": "False Appearance",
+      "description": "While the gargoyle remains motion less, it is indistinguishable from an inanimate statue."
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "claws",
+      "name": "Claws",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "slashing"
+        }
+      ]
+    }
+  ]
+}

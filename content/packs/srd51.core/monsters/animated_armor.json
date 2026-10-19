@@ -1,0 +1,100 @@
+{
+  "$schema": "monster@4",
+  "id": "srd51.monster.animated_armor",
+  "name": "Animated Armor",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "construct",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 18,
+    "note": "natural armor"
+  },
+  "hit_points": {
+    "average": 33,
+    "formula": "6d8+6"
+  },
+  "speed": {
+    "walk": 25
+  },
+  "abilities": {
+    "str": 14,
+    "dex": 11,
+    "con": 13,
+    "int": 1,
+    "wis": 3,
+    "cha": 1
+  },
+  "damage_immunities": [
+    "poison",
+    "psychic"
+  ],
+  "condition_immunities": [
+    "blinded",
+    "charmed",
+    "deafened",
+    "exhaustion",
+    "frightened",
+    "paralyzed",
+    "petrified",
+    "poisoned"
+  ],
+  "senses": {
+    "blindsight": 60,
+    "passive_perception": 6
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "1",
+    "xp": 200
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The armor makes two melee attacks.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "slam_slam",
+            "attacks": [
+              "slam",
+              "slam"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "antimagic_susceptibility",
+      "name": "Antimagic Susceptibility",
+      "description": "The armor is incapacitated while in the area of an antimagic field. If targeted by dispel magic, the armor must succeed on a Constitution saving throw against the caster's spell save DC or fall unconscious for 1 minute."
+    },
+    {
+      "id": "false_appearance",
+      "name": "False Appearance",
+      "description": "While the armor remains motionless, it is indistinguishable from a normal suit of armor."
+    }
+  ],
+  "actions": [
+    {
+      "id": "slam",
+      "name": "Slam",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "bludgeoning"
+        }
+      ]
+    }
+  ]
+}
