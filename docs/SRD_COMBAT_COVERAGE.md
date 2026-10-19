@@ -174,7 +174,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 |---|---|---|---|
 | Hit die d6, proficiencies, saves (Int/Wis) | 1 | DATA | Baked. |
 | Spellcasting, spellbook (known list), prepared spells, cantrips | 1 | DATA | `spells_known`; spellbook copying/prep is OOS (downtime). |
-| Arcane Recovery (once per day, short rest, recover slots <= half wizard level) | 1 | NEW (wiring) | rules5e `recover_spell_slots` + `recovery_budget` (R-G16, 7.2h); slot choice and the once-per-day row are the caller's. |
+| Arcane Recovery (once per day, short rest, recover slots <= half wizard level) | 1 | NEW (wiring) | rules5e `recover_spell_slots` + `recovery_budget` (R-G16, 7.2h); feature kind `SlotRecoverySpec` + `apply_slot_recovery` (validated choice, spends the once-per-day `FeatureUses` row, long-rest reset) (7.2n). Pending: sim feature loader `slot_recovery` kind and the short-rest call (EC), schema (T&C); slot choice is the caller's. |
 | Arcane Tradition: Evocation; Evocation Savant | 2 | OOS | Downtime spell copying cost. |
 | Sculpt Spells (allies auto-succeed and take no damage from your evocation area) | 2 | NEW (wiring) | rules5e `Combatant::sculpt_spells` + `SpellDef::evocation` + `ActionRequest::spared` (R-G14, VERSION_BUMP_BATCH 7.2i). Sim wiring done: open feature kind `sculpt_spells {}`; spell@1 `school: evocation` sets `evocation` (loader). Validator arm pending (T&C). |
 | Ability Score Improvement | 4 | DATA | Authored. |
@@ -202,7 +202,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Font of Inspiration (short rest recharge) | 5 | NEW | Recharge change on the same pool (R-G5). |
 | **Druid** spellcasting (full caster) | 1 | DATA | |
 | Wild Shape (CR 1/4 at L2, no fly/swim; CR 1/2 at L4; CR 1 at L8) | 2 | NEW | Replace stat block temporarily; HP overflow carries over (R-G12). |
-| Circle of the Land: Natural Recovery | 2 | NEW (wiring) | Same helper as Arcane Recovery, `recover_spell_slots` (R-G16, 7.2h). |
+| Circle of the Land: Natural Recovery | 2 | NEW (wiring) | Same feature kind as Arcane Recovery: `SlotRecoverySpec` (druid level) + `apply_slot_recovery` (7.2n, on R-G16 `recover_spell_slots`). Pending: sim loader + short-rest call (EC), schema (T&C). |
 | Druidic, Land bonus cantrip | 1-2 | OOS | Language / one extra cantrip (authored). |
 | **Monk** Unarmored Defense (10 + Dex + Wis) | 1 | DATA | Baked AC. |
 | Martial Arts (d4 die, Dex for unarmed, unarmed bonus action attack) | 1 | NEW (wiring) | Rules done (R-G6): unarmed bonus attack after the Attack action with an unarmed strike or monk weapon (`requires_attacks`). The martial-arts die is baked. Loader pending. |
