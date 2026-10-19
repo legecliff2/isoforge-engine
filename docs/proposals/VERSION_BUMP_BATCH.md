@@ -1101,6 +1101,36 @@ needs persistent party/creature state outside `Combat` and is its own design.
 `resources[]` does not exist pre-`@4` (schema). `character@3` features keep `uses`/`recharge`
 (still live). Nothing is marked.
 
+### 7.2a Row 13 as implemented (rules side) and hand-off to Engine Core
+
+Rules side only; sim, `content.cpp` and `Combat::create` are untouched. Schema stays v7, no new event kinds
+(`ResourceSpent` is reused), goldens unchanged: with no `feature_spec` hook, no `legendary_pool` and no extra actions
+every path is the pre-row-13 one and no extra rng is drawn. The pool table, `register_pool`, `can_spend`/`spend_pool`,
+`ResourceSpent` and `pools_digest` (tag 0xA3) already existed (#79 / 9c).
+
+- **`FeatureSpec` + `EncounterHooks::feature_spec(state, actor, feature_id)`** (nullopt = plain UseFeature): `pool` +
+  `pool_cost` (0 = 1) spend from a registered pool; `cost` 0 follow `as_bonus_action`, 1 action, 2 bonus action,
+  3 reaction, 4 free; `grant_actions` (grant_action); `heal_pool` (Lay on Hands).
+- **UseFeature order:** validate (registered pool, enough in it, heal target/amount, feature uses, action economy) with no
+  state change on failure, then spend the economy, bump `FeatureUses`, emit `FeatureUsed`, `ResourceSpent`
+  (actor, a = pool, b = amount, c = remaining), the heal (`Healed` actor = user, target), then modifiers (row 12).
+- **grant_action:** `TurnBudget::extra_actions` (appended, 0) += `grant_actions`; `spend_action` takes one when the
+  action is already spent; it is gone with the turn (new budget). `legal_actions` counts it as an available action.
+- **heal_pool:** the amount is `ActionRequest::amount` (target 0 = self); the pool is charged the full amount
+  (no clamping to missing hit points) and the heal is capped by max hp as usual.
+- **Legendary Resistance:** `Combatant::legendary_pool` (appended, 0 = none). When that creature fails a saving throw
+  (spell Save, repeat save, trigger predicate save, concentration check) and the pool has 1, rules spend it
+  automatically: `ResourceSpent` is emitted, then `SavingThrowRolled` reports success. No decision window.
+- **Deviations.** (1) No `unlimited` pool: the loader registers no pool for an `unlimited` table entry and leaves
+  `FeatureSpec::pool = 0`, so nothing is spent. (2) LR is auto-spent, with no choice. (3) Haste's restricted action is
+  not expressible (as §7.1 says). (4) No rest model change.
+- **Hand-off (Engine Core).** (a) At archetype build resolve `resources[]` (integer, `per_level`/`plus_ability`, `table`)
+  and `register_pool(state, actor, id, max, max, recharge)` in `Combat::create`; set `Combatant::legendary_pool` for a
+  Legendary Resistance pool. (b) Provide `hooks.feature_spec` from the feature registry (usage.pool/cost, effect.cost,
+  grant_action count, heal_pool) and `hooks.feature_modifiers` (row 12). (c) For `heal_pool`/Lay on Hands the AI or
+  caller sets `ActionRequest::amount` and `target`. (d) `TurnBudget::extra_actions` is a new budget field; hash it only
+  if sim already hashes the budget. (e) Pools are already folded under 0xA3 (non-empty only).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
