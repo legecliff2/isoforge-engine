@@ -1321,6 +1321,46 @@ for spells that use them, and the new state fields are not hashed (see hand-off)
   or modifiers (summons, terrain), are not covered; Lesser Restoration-style "end one condition" and delayed / sustained damage
   (Acid Arrow, Heat Metal) are not in this PR; Revivify only works for creatures that died during the encounter.
 
+### 7.2g R-G15 (rest): end a condition, delayed / sustained damage, Wake (post-batch rules follow-up) and hand-off
+
+Rules side only (`feat/rules-spell-kinds-2`); no schema change, no new event kind, no digest. Goldens unchanged: the new kinds and the
+Wake action only act when used, and the new fields are not hashed (see hand-off).
+
+- **`SpellEffectKind::EndCondition`** (Lesser Restoration; appended = 11). `SpellDef::ends_conditions` (appended, bitmask of
+  `Condition`) lists what the spell can end. On each target, the **lowest** `Condition` value both present and listed is ended (one
+  per cast; the SRD lets the caster choose, so a caller wanting another order passes one condition in the mask). Spell effects that
+  imposed it end through the usual path (`SpellEffectEnded` + `ConditionRemoved`); if the creature still has the condition (another
+  source, or no effect), it is removed with a bare `ConditionRemoved`. Nothing to end = cast succeeds, no event. (Lesser Restoration
+  on a disease is out of scope: there is no disease model.)
+- **`SpellEffectKind::DelayedDamage`** (Acid Arrow's second hit; = 12). Pushes an `ActiveSpellEffect` with no condition
+  (`no_condition`, appended) and the damage to deal (`damage_when` = 1, `damage`, `damage_type`, `magical`, appended). The spell's
+  `expiry` / `duration_rounds` pick the timer (Acid Arrow: `expiry` 2 = end of the target's next turn). When the timer runs out, the
+  damage is rolled and applied (`DamageDealt`, through `damage_creature`: resistances, concentration, Sleep-style wake, death), then
+  the effect ends (`SpellEffectEnded` with `b = -1`, as for any effect whose condition stays; no `ConditionRemoved`). Use it as a rider
+  (`extra_effects` with `affected_only`) on a spell attack so it only follows a hit; as a primary kind it always lands.
+- **`SpellEffectKind::SustainedDamage`** (Heat Metal; = 13). Deals the (slot-scaled) damage now and pushes a no-condition effect
+  with `damage_when` = 2 and `cast_stamp` (round << 16 | turn index, appended). If `concentration`, the caster concentrates on it,
+  so the effect ends with concentration. **Repeat:** `ActionRequest{caster, CastSpell, target}` with `spell_id` and
+  `sustain = true` (appended) spends the **bonus action**, no slot, no components, no `SpellCast` / counter window; it rolls the
+  stored dice, applies them (`DamageDealt`), and emits `SpellResolved{actor = caster, target, a = spell, b = slot level}`.
+  Refused on the turn of the cast, without a bonus action, or without that caster's effect on that target. (Heat Metal's
+  drop-the-object / disadvantage rider is not modelled.)
+- **Wake** (`ActionRequest::special = 5`, documented choice: special-attack style, like Escape = 4, so no new `ActionKind`).
+  `ActionRequest{actor, Attack, target}`, `special = 5`, `target_within_5ft = true`: spends the action and ends every
+  `ends_on_damage` effect on the target (Sleep), with `SpellEffectEnded` + `ConditionRemoved`. Refused if not within 5 ft, as a
+  bonus action, or if the target has no such effect. Unconsciousness from 0 HP is not affected.
+- **Hand-off (Engine Core / T&C).** (a) Loader: `spell@1` kinds `end_condition {conditions[]}`, `delayed_damage {dice, damage_type,
+  expiry}` (also as a rider in `extra_effects`), `sustained_damage {dice, damage_type, upcast_dice, concentration}`. (b) sim / UI: offer
+  "Heat Metal again" as a bonus action (`CastSpell` + `sustain`) while the caster's effect exists; offer "Wake" (special 5) next to a
+  sleeping creature; Lesser Restoration's condition choice can be passed by narrowing `ends_conditions` per cast only if the loader
+  builds per-condition defs, otherwise lowest-first applies. (c) Hashing: `no_condition`, `damage_when`, `damage`, `damage_type`,
+  `magical` and `cast_stamp` are not in `timed_effects_digest` (0xA5 folds spell, caster, target, condition, timer). They exist only
+  while one of these spells is active; if sim wants them hashed, fold them only when `damage_when != 0` (moves no goldens without
+  these spells), or leave them out (derived deterministically from logged actions).
+- **Not covered / deviations.** Lesser Restoration ends the lowest listed condition rather than a caster choice; diseases are not
+  modelled; Heat Metal's object-holding rider is not modelled; Wake does not wake a creature at 0 HP; delayed damage has no own event
+  (only `DamageDealt`, with actor = the caster).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
