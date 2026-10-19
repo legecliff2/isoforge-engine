@@ -56,7 +56,7 @@ Things that apply to many rows (so they are not repeated):
 | Lighting, darkness, obscurement, darkvision/blindsight/truesight | NEW | Not modelled; sim has LOS only (R-G13). |
 | Flanking | OOS | Optional rule, not SRD core. |
 | Two-weapon fighting | NEW (wiring) | Rules done (R-G6): `Combatant::bonus_attacks` option with `requires_attacks` (light weapons), `different_weapon` and off-hand `damage` dice; `ActionRequest::bonus_option`. Loader / AI pending. |
-| Grapple and shove (contested Athletics/Acrobatics) | NEW (wiring) | Rules done (R-G8): `ActionRequest::special` 1-3, Athletics vs Athletics/Acrobatics, one-size limit, replaces one attack. The push goes through the R-G9 `forced_move` hook; `Moved.c` = 1 only with `EncounterHooks::shove_forced_flag` (sim turns it on with EC #104) (R-G9, VERSION_BUMP_BATCH 7.2k). Sim / AI wiring pending. |
+| Grapple and shove (contested Athletics/Acrobatics) | NEW (wiring) | Rules done (R-G8): `ActionRequest::special` 1-3, Athletics vs Athletics/Acrobatics, one-size limit, replaces one attack. The push goes through the R-G9 `forced_move` hook; `Moved.c` = 1 from rules via `EncounterHooks::shove_forced_flag`, which sim sets (R-G9 sim PR; same events as EC #104's own flagging) (R-G9, VERSION_BUMP_BATCH 7.2k). Sim / AI wiring pending. |
 | Flying, swimming, climbing, burrowing movement | NEW | One `speed_ft`; sim reads `speed.walk` only (T&C-G12, T&C-G14). |
 | Creature size and space (large creatures occupy 2x2) | NEW | Size is loaded (`Archetype::size`, #49) but only stored; the grid is still one tile per creature (T&C-G12, T&C-G14; footprint model in flight). |
 | Dispel / end effects on a creature | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::Dispel` ends spell effects and spell modifiers on a target (check vs 10 + level above the slot). Loader done (EC #120, check form in #126): spell@1 effect `dispel {check: {ability: spellcasting, dc_base, plus: spell_level}}` (same object as `counter`; `dc_base` required, 1..99). No pack ships it yet; schema / validator pending (T&C). |
@@ -346,7 +346,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Shield | DATA | Shipped (`ac_bonus`). |
 | Shield of Faith | NEW (wiring) | Rules done (#89): +2 `Ac` modifier, concentration. Spell kind pending (R-G3). |
 | Sleep | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::HpPool` (lowest HP first, upcast dice, undead excluded, ends on damage). Loader and sim done (EC #120): `hp_pool {dice, condition, ends_on_damage, excludes_creature_type}`, `scaling.upcast.dice`, timer from `duration` (1 minute = 10 rounds), area targets from an aimed `Command`; the AI wakes a sleeping ally within 5 ft (Wake, `special` 5). No pack ships it yet; schema / validator pending (T&C). |
-| Thunderwave | NEW (wiring) | Cube (R-G10) + push: `ForcedMove` rider (10 ft, `affected_only`: failed saves only) (R-G9, VERSION_BUMP_BATCH 7.2k); dice/save DATA. Sim: path / blocking via `forced_move`. |
+| Thunderwave | NEW (wiring) | Cube (R-G10) + push: `ForcedMove` rider (10 ft, `affected_only`: failed saves only) (R-G9, VERSION_BUMP_BATCH 7.2k); dice/save DATA. Sim done (R-G9 sim PR): spell@1 `forced_move {mode, feet, up_to, max_size}` rider; sim's `forced_move` hook walks the push tile by tile (8-way, stops at the last free tile, farthest first) and ends grapples out of reach. No pack ships Thunderwave yet; schema / validator arm pending (T&C). |
 
 ### 8.3 Level 2
 
@@ -372,7 +372,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Lesser Restoration | NEW (wiring) | rules5e `EndCondition` + `ends_conditions` (R-G15, 7.2g); the caster chooses which listed condition ends (`ActionRequest::condition_choice` = 1 + index into the spell's `conditions` in JSON list order; not listed / not on the target = refused, no state change; no choice and the AI = the lowest listed condition present); no disease model. Loader done (EC #120): `end_condition {conditions[]}` (one def; no per-condition defs). No pack ships it yet; schema / validator pending (T&C). |
 | Magic Weapon | NEW | Magic bonus (R-G17, T&C-G2/R-G3). |
 | Mirror Image | NEW | Duplicates that absorb attacks (R-G3). |
-| Misty Step | NEW (wiring) | `Teleport` effect (`max_feet` 30), bonus action, self; destination from the request, validated by sim (R-G9, VERSION_BUMP_BATCH 7.2k). |
+| Misty Step | NEW (wiring) | `Teleport` effect (`max_feet` 30), bonus action, self; destination from the request, validated by sim (R-G9, VERSION_BUMP_BATCH 7.2k). Sim done (R-G9 sim PR): spell@1 `teleport {max_feet, needs_sight}`; `Combat::legal_teleport_tiles`; submit re-validates (range, free footprint, sight, Frightened not closer) and fills `teleport_feet`; log_hash 0xB2 / 0xB4. The built-in AI does not cast it; schema / validator arm pending (T&C). |
 | Moonbeam | NEW (wiring) | `Zone` (point cylinder): Enter / StartTurn once per turn, Con save, 2d10 radiant half, upcast; the action move up to 60 ft on later turns (`zone_move`, D3) (R-G11, 7.2l). Shapechanger disadvantage done (`shapechanger_disadvantage`, PR 2); reverting the form is not modelled (R-G12). Sim: geometry, `legal_zone_tiles`. |
 | Protection from Poison | NEW | R-G3. |
 | Ray of Enfeeblement | NEW | Attack + damage halving rider (R-G3). |
