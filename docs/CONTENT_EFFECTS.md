@@ -211,6 +211,7 @@ See `docs/CONTENT_CONVENTIONS.md` for the timed-modifier properties the sim comp
 | `end_condition` | EndCondition | yes | `conditions[]` |
 | `delayed_damage` | DelayedDamage | no (Acid Arrow rider) | `damage`, `expiry` |
 | `sustained_damage` | SustainedDamage | yes | `damage`; needs a rounds / minutes / hours duration; no `expiry` |
+| `zone` | Zone (`SpellDef::zone`, `ZoneSpec`) | yes (never an extra effect) | `zone {shape, size_ft, height_ft, anchor, flags[], move, chooses_excluded, needs_conscious_owner, triggers[]}`; needs a lasting duration (the zone's expiry timer); parsed by the loader since R-G11 rules PR 2 (#122); `docs/CONTENT_CONVENTIONS.md` section 4 |
 
-Details and loader messages: `docs/CONTENT_CONVENTIONS.md` section 6 (R-G15 kinds, sim #120) and section 7 (priced material
+Details and loader messages: `docs/CONTENT_CONVENTIONS.md` section 4 (R-G11 zones), section 6 (R-G15 kinds, sim #120) and section 7 (priced material
 components, character@4 `equipment[].value_gp`).

@@ -1,0 +1,71 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.zoneauramoveenternevermoves",
+  "name": "Web",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "A 20-foot cube of sticky webbing: difficult terrain, lightly obscured. A creature that starts its turn in the webs or enters them during its turn makes a Dexterity save or is restrained while it remains in the webs or until it breaks free (an action: Strength check against your spell save DC). Flammability and anchoring are out of scope (D8).",
+  "level": 2,
+  "school": "conjuration",
+  "classes": [
+    "sorcerer",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "a bit of spiderweb"
+    }
+  },
+  "duration": {
+    "kind": "hours",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "zone",
+      "zone": {
+        "shape": "cube",
+        "size_ft": 20,
+        "anchor": "point",
+        "flags": [
+          "difficult",
+          "light_obscured"
+        ],
+        "triggers": [
+          {
+            "on": "zone_start_turn",
+            "while_in_zone": true,
+            "effect": {
+              "kind": "save",
+              "ability": "dex",
+              "condition": "restrained"
+            }
+          },
+          {
+            "on": "zone_enter",
+            "own_turn_only": true,
+            "while_in_zone": true,
+            "effect": {
+              "kind": "save",
+              "ability": "dex",
+              "condition": "restrained"
+            },
+            "counts_aura_move_as_enter": true
+          }
+        ]
+      }
+    }
+  ]
+}
