@@ -432,10 +432,11 @@ def check_static_kinds(doc: dict) -> list[str]:
 
 
 # ---- untimed save_condition riders (sim content.cpp compile_rider -> compile_save_action) ----------------------
-# Conditions an on_hit / on_event save_condition rider may apply with no duration and no repeat_save. Empty on main
-# today: the sim loader treats every such apply[] entry as an unsupported duration, which on a rider is a load error.
-# Add "prone" here when Engine Core's loader PR lands (untimed conditions that end by their own rules, like Shove).
-UNTIMED_ON_HIT_CONDITIONS: frozenset = frozenset()
+# Conditions an on_hit / on_event save_condition rider may apply with no duration and no repeat_save: the sim loader's
+# kEndsByOwnRules (#133), conditions that end by their own rules and are applied untracked, like Shove. Every other such
+# apply[] entry is an unsupported duration, which on a rider is a load error. A save_effect action is not a rider: an
+# untimed condition there (prone included) is still listed unsupported by the loader, not a load error, and not checked here.
+UNTIMED_ON_HIT_CONDITIONS: frozenset = frozenset({"prone"})
 
 
 def check_untimed_save_condition_riders(doc: dict, errs: list[str]) -> None:
