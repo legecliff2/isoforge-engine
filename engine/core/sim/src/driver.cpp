@@ -74,6 +74,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     end.request = {self, ActionKind::EndTurn};
     const auto* me = rules5e::find(s, self);
     if (!me || !rules5e::is_conscious(*me) || rules5e::is_incapacitated(*me)) return end;
+    if (me->surprised) return end;   // R-G16: a surprised creature's first turn accepts only EndTurn
     if (auto x = spell_kind_command(c, *me)) return *x;
     const auto* t = target ? rules5e::find(s, *target) : nullptr;
     if (!t || t->dead) return end;
