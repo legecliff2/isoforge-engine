@@ -403,7 +403,7 @@ std::optional<std::string> apply_aggressive(Archetype& a, const FeatureDecl&, ui
     return std::nullopt;
 }
 // reckless_attack {} (Barbarian Reckless Attack; minotaur / berserker Reckless): rules5e Combatant::reckless_attack. Declared by
-// the caller with ActionRequest::reckless on the turn's first Attack; the built-in AI never declares it (a choice).
+// the caller with ActionRequest::reckless on the turn's first Attack; the built-in AI declares it on its first melee attack.
 std::optional<std::string> apply_reckless_attack(Archetype& a, const FeatureDecl&, uint32_t, const FeatureBuildCtx&) {
     a.base.reckless_attack = true;
     return std::nullopt;
