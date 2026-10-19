@@ -713,6 +713,18 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
             }
         }
     }
+    // Aggressive (rules #111): remember the movement from before the bonus-action Dash; the actor's Moves this turn spend it first.
+    {
+        const uint32_t now = (uint32_t(state_.round) << 16) | state_.turn_index;
+        if (aggressive_ && aggressive_->stamp != now) aggressive_.reset();
+        const auto* actor = rules5e::find(state_, q.actor);
+        bool dashed = false;
+        for (const auto& e : evs) dashed = dashed || (e.kind == rules5e::EventKind::Dashed && e.reaction_depth == 0 && e.actor == q.actor);
+        if (q.kind == ActionKind::Dash && q.aggressive && dashed && actor)
+            aggressive_ = AggressiveDash{now, q.actor, std::max(0, int(state_.budget.movement_ft) - rules5e::effective_speed(*actor))};
+        else if (aggressive_ && q.kind == ActionKind::Move && q.actor == aggressive_->actor)
+            aggressive_->free_ft = std::max(0, aggressive_->free_ft - int(q.move_ft));
+    }
     for (const auto& e : evs)
         if (e.kind == rules5e::EventKind::ReadyTriggered || e.kind == rules5e::EventKind::ReadyExpired) readied_dest_.erase(e.actor);
     if (q.kind == ActionKind::Ready && q.ready_kind == ActionKind::Move && to) readied_dest_[q.actor] = *to;
@@ -955,12 +967,30 @@ SubmitResult Combat::do_step(Vec2i to) {
     }
     const int cost = grid_.move_cost_ft(from, to, fp);
     if (cost > state_.budget.movement_ft) { r.error = "not enough movement"; return r; }
+    if (!aggressive_step_ok(mover, to)) { r.error = "aggressive: the Dash's movement must go toward a hostile it can see"; return r; }
     ActionRequest mv{mover, ActionKind::Move};
     mv.move_ft = int16_t(cost);
     mv.move_tiles = 1;
     mv.leaves_reach = leaves_reach(mover, from, to);
     step_to_ = to;
     return finish(rules5e::step(state_, mv));
+}
+
+bool Combat::aggressive_step_ok(CombatantId mover, Vec2i to) const {
+    const uint32_t now = (uint32_t(state_.round) << 16) | state_.turn_index;
+    if (!aggressive_ || aggressive_->stamp != now || aggressive_->actor != mover) return true;
+    const Vec2i from = pos(mover);
+    const int fp = footprint_size(mover);
+    if (grid_.move_cost_ft(from, to, fp) <= aggressive_->free_ft) return true;   // the creature's own movement
+    const auto* m = rules5e::find(state_, mover);
+    if (!m || m->has(rules5e::Condition::Blinded)) return false;
+    for (const auto& sl : slots_) {
+        const auto* k = rules5e::find(state_, sl.id);
+        if (sl.id == mover || !k || k->dead || !hostile(mover, sl.id) || !line_of_sight(mover, sl.id)) continue;
+        const Spot ks = spot(sl.id);
+        if (rect_distance(to, fp, ks.p, ks.n) < rect_distance(from, fp, ks.p, ks.n)) return true;
+    }
+    return false;
 }
 
 uint64_t Combat::hash() const {
@@ -1019,6 +1049,9 @@ uint64_t Combat::hash() const {
             }
         }
     }
+    // 0xAA (small leftovers, rules #111): Life Drain max-HP reductions, Haste lethargy, active Reckless Attack and escalating
+    // (Petrifying Gaze) effects, only when some is present; content that uses none hashes as before.
+    if (rules5e::has_leftover_state(state_)) { h.byte(0xAA); h.u64(rules5e::leftover_digest(state_)); }
     // 0xAC (R-G15, rules #105 / #106): the state of the new spell kinds that 0xA5 does not cover (damage dice, type, sustain
     // stamp, ends-on-damage, slot level), only for effects that carry it: Sleep / Color Spray-style `ends_on_damage`, Acid
     // Arrow's delayed and Heat Metal's sustained damage (`damage_when != 0`). No such effect exists in older content.
@@ -1089,6 +1122,11 @@ uint64_t Combat::log_hash() const {
         if (q.bonus_option != 0) { h.byte(0xB0); h.byte(q.bonus_option); }   // R-G6 bonus attack option: folded only when set
         if (q.two_handed_grip) { h.byte(0xB6); h.byte(1); }   // R-G7 versatile weapon in two hands: folded only when set
         if (q.sustain) { h.byte(0xB8); h.byte(1); }   // R-G15 Heat Metal sustained with a bonus action: folded only when set
+        // Small leftovers (rules #111): bit0 haste_action, bit1 reckless, bit2 aggressive; folded only when some bit is set.
+        if (const uint8_t lo = uint8_t((q.haste_action ? 1 : 0) | (q.reckless ? 2 : 0) | (q.aggressive ? 4 : 0)); lo != 0) {
+            h.byte(0xB3);
+            h.byte(lo);
+        }
         if (q.innate) h.byte(0xA4);                       // innate CastSpell: folded only when set, under a tag byte
         h.byte(q.heal_dice.count);
         h.byte(q.heal_dice.sides);

@@ -395,6 +395,37 @@ std::optional<std::string> apply_evasion(Archetype& a, const FeatureDecl&, uint3
     return std::nullopt;
 }
 
+// Small leftovers (rules #111, VERSION_BUMP_BATCH 7.2j hand-off a): open static kinds, no fields (the object stays open).
+// aggressive {} (orc Aggressive): rules5e Combatant::aggressive, a bonus-action Dash (ActionRequest::aggressive); sim keeps the
+// movement past the creature's own toward a hostile it can see (Combat::aggressive_step_ok).
+std::optional<std::string> apply_aggressive(Archetype& a, const FeatureDecl&, uint32_t, const FeatureBuildCtx&) {
+    a.base.aggressive = true;
+    return std::nullopt;
+}
+// reckless_attack {} (Barbarian Reckless Attack; minotaur / berserker Reckless): rules5e Combatant::reckless_attack. Declared by
+// the caller with ActionRequest::reckless on the turn's first Attack; the built-in AI never declares it (a choice).
+std::optional<std::string> apply_reckless_attack(Archetype& a, const FeatureDecl&, uint32_t, const FeatureBuildCtx&) {
+    a.base.reckless_attack = true;
+    return std::nullopt;
+}
+
+// pack_tactics {} (SRD Pack Tactics: jackal, kobold, wolf, dire wolf; T&C-G7): advantage on the creature's attack rolls
+// against a creature when at least one of its allies that is not incapacitated is within 5 ft of it. Fills the rules5e
+// roll trait {Attack, Advantage, kWhenAllyNearTarget}; sim supplies the fact (ActionRequest::ally_near_target, Combat::ally_near).
+// No fields; a second declaration adds nothing. Static data, not state: no hash tag.
+std::optional<std::string> apply_pack_tactics(Archetype& a, const FeatureDecl&, uint32_t, const FeatureBuildCtx&) {
+    rules5e::RollTrait t{};
+    t.roll = rules5e::TraitRoll::Attack;
+    t.mode = rules5e::RollMode::Advantage;
+    t.when = rules5e::kWhenAllyNearTarget;
+    for (const rules5e::RollTrait& have : a.base.roll_traits)
+        if (have.roll == t.roll && have.mode == t.mode && have.when == t.when && have.target_conditions == 0 &&
+            have.target_types == 0)
+            return std::nullopt;
+    a.base.roll_traits.push_back(t);
+    return std::nullopt;
+}
+
 FeatureRegistry make_builtin() {
     FeatureRegistry r;
     r.add_hook("damage_bonus", {apply_damage_bonus});
@@ -412,6 +443,9 @@ FeatureRegistry make_builtin() {
     r.add_hook("reroll_ones", {apply_reroll_ones});
     r.add_hook("great_weapon_fighting", {apply_great_weapon_fighting});
     r.add_hook("evasion", {apply_evasion});
+    r.add_hook("aggressive", {apply_aggressive});
+    r.add_hook("reckless_attack", {apply_reckless_attack});
+    r.add_hook("pack_tactics", {apply_pack_tactics});
     // Kinds the @4 schemas introduce (frozen list of the 3 -> 4 migration; hooks arrive with their rows).
     for (const char* k : {"on_event", "save_effect", "reaction"})
         r.reserve_kind(k, 4);
