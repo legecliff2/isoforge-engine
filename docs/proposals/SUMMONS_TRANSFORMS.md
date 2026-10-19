@@ -163,9 +163,10 @@ Appended rules5e `EventKind`s (after `ZoneEnded` = 47; numbers proposed):
 
 **Encounter end (D15, §3.5):** in the ending step rules emits, in order, `SummonEnded{b = 5}` per summon in ascending id (a
 transformed summon just ends, with no separate `Reverted`), then `Reverted{b = 5, c = 0}` per remaining transformed creature in
-ascending id, then `EncounterEnded`, which stays the last rules event. **Pending (Director):** EC asked Director to amend
-SIM_EVENTS.md ordering rule 7 so sim's teardown `TokenRemoved` events may follow `EncounterEnded`; this proposal does not change
-rule 7.
+ascending id, then `EncounterEnded`, which stays the last event of the stream. **Settled (Director, #155):** SIM_EVENTS.md
+ordering rule 7 is unchanged; rules reports the start of the teardown block with `StepResult::teardown_begin` (index into the
+step's events, or none), and sim places each `TokenRemoved` right after its `SummonEnded` and every sim event of the ending
+step before `EncounterEnded` (v10-gated; a documented rule-4 exception), per §3.5.
 
 `event_stream_version` returns 10 only for streams that carry one of them (SIM_EVENTS.md versioning policy), so no existing digest
 moves. Sim adds a `SimEvent::Kind::TokenSpawned` / `TokenRemoved` for tiles (EC, 3.x).
