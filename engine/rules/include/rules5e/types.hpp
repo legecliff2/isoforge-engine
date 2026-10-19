@@ -404,6 +404,9 @@ struct Combatant {
     uint8_t lethargy = 0;
     bool reckless_attack = false, reckless_active = false;
     bool aggressive = false;
+    // R-G11 rules PR 2 (appended), content facts for zone rows: no_breath (doesn't need to breathe: Stinking Cloud's automatic
+    // success), shapechanger (Moonbeam's disadvantage), evil (an evil caster's Spirit Guardians deals necrotic damage).
+    bool no_breath = false, shapechanger = false, evil = false;
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
