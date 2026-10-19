@@ -218,6 +218,22 @@ public:
     // ActionRequest::has_teleport_dest / teleport_x / teleport_y; submit re-validates it and fills teleport_feet.
     std::vector<Vec2i> legal_teleport_tiles(CombatantId actor, const rules5e::SpellDef& def) const;
     bool teleport_dest_ok(CombatantId actor, const rules5e::SpellDef& def, Vec2i dest) const;
+    struct Spot { Vec2i p; int n; };   // a creature's footprint: anchor tile and side
+    // ---- R-G11 zones (VERSION_BUMP_BATCH 7.2l hand-off, ZONES_AURAS.md §3) ----
+    // Geometry: a point zone is centred on its anchor tile; an aura (anchor Creature) on its owner's footprint. Sphere /
+    // cylinder: Chebyshev radius size_ft (tiles); cube: side size_ft centred on the anchor (an aura: half the side around the
+    // footprint). Walls (shape Line / rings) are not modelled yet: they cover no tile. `owner_at` overrides the owner's
+    // footprint and `anchor_at` the anchor tile (a move being evaluated).
+    bool zone_covers(const rules5e::ActiveZone& z, Vec2i tile, const Spot* owner_at = nullptr, const Vec2i* anchor_at = nullptr) const;
+    // Is creature `id` standing at `at` in zone `z` (any footprint tile, or every tile when `completely`)?
+    bool zone_holds(const rules5e::ActiveZone& z, CombatantId id, Spot at, bool completely, const Spot* owner_at = nullptr,
+                    const Vec2i* anchor_at = nullptr) const;
+    // Anchor tiles a point zone may be cast at (in the spell's range, in sight, in bounds) or moved to (zone_move: within
+    // ZoneSpec::move_ft of its anchor), row-major (y, then x). Empty for auras and non-zone spells.
+    std::vector<Vec2i> legal_zone_tiles(CombatantId actor, const rules5e::SpellDef& def, uint32_t zone_move = 0) const;
+    // Cost in feet of one step of `mover` from `from` to `to`: the grid's cost, at least 10 when it enters a kZoneDifficult zone
+    // and doubled in a kZoneHalveSpeed zone (the mover not excluded), at most 20 ft per tile.
+    int step_cost_ft(CombatantId mover, Vec2i from, Vec2i to) const;
 
 private:
     bool derived_area_ = false;   // targets of the request being resolved came from area_targets (skips the per-target range check)
@@ -233,6 +249,12 @@ private:
         shove_target_ = shove_actor_ ? q.target : 0;
     }
     CombatantId shove_actor_ = 0, shove_target_ = 0;
+    // R-G11: membership lists of a move of `mover` from `from` to `to` (ascending zone ids; its own auras skipped), and the
+    // membership changes of other creatures when `mover` owns auras (aura owner's move) or zone `moved_zone` moves to `anchor_to`.
+    void zone_lists(CombatantId mover, Spot from, Spot to, rules5e::ActionRequest& q) const;
+    bool zone_spec_anchor_creature(const rules5e::ActiveZone& z) const;   // an aura (moves with its owner)
+    std::vector<rules5e::ZoneChange> zone_changes_for(CombatantId mover, Spot from, Spot to, uint32_t moved_zone = 0,
+                                                      const Vec2i* anchor_to = nullptr) const;
     std::vector<std::pair<CombatantId, Vec2i>> forced_placed_;   // hook commits of the step being resolved, in order
     SubmitResult finish(rules5e::StepResult sr);
     SubmitResult do_rules(rules5e::ActionRequest req, Vec2i to, bool aim = false);
@@ -240,7 +262,6 @@ private:
     void complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs, std::optional<Vec2i> to);
     std::optional<Vec2i> moving_to(CombatantId id) const;   // destination of a move being resolved
     // A footprint at a position: anchor + side.
-    struct Spot { Vec2i p; int n; };
     Spot spot(CombatantId id) const { return {pos(id), footprint_size(id)}; }
     Spot spot_at(CombatantId id, Vec2i anchor) const { return {anchor, footprint_size(id)}; }
     bool los_spots(Spot a, Spot b) const;

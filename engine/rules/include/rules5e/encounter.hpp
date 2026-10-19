@@ -162,6 +162,10 @@ struct ActionRequest {
     bool has_zone_end = false; int32_t zone_x2 = 0, zone_y2 = 0;
     int8_t zone_side = 0;
     bool zone_ring = false;
+    // appended (Font of Magic, ActionKind::FlexibleCasting; log-relevant, SIM_EVENTS.md log_hash tag 0xBA): flexible = 1
+    // expend a spell slot of flexible_level (1..9) for that many sorcery points, 2 spend flexible_casting_cost(level)
+    // points for a slot of flexible_level (1..5). Paid from / into Combatant::sorcery_pool. A bonus action.
+    uint8_t flexible = 0, flexible_level = 0;
     // appended (Petrifying Gaze, ActionKind::GazeResponse, VERSION_BUMP_BATCH 7.2p): the turn-start answer while
     // TurnBudget::gaze_pending. avert_gaze (caller input, log_hash 0xBB): avert the eyes (refused while surprised): no save,
     // gazers unseen until its next turn starts. gaze_seen (sim fact, not folded): the gazers it can see now (line of sight,
