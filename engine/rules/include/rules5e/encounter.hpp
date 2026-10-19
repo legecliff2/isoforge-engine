@@ -251,6 +251,8 @@ struct ActiveSpellEffect {
     Condition condition; Ability save_ability; int16_t dc;
     RepeatSave repeat_save; bool concentration;
     Timed timed{};                     // appended: Expiry::None = lasts until concentration ends / a repeat save succeeds
+    uint8_t slot_level = 0;            // appended (R-G15): level the spell was cast at (Dispel Magic); 0 = the spell's level
+    bool ends_on_damage = false;       // appended (R-G15): ends when the target takes damage (Sleep)
 };
 
 // A modifier in force on `target` (row 12). `timed` reuses the condition-duration machinery (Rounds / EndOfTargetNextTurn).
@@ -258,6 +260,7 @@ struct ActiveModifier {
     ModifierSpec spec; CombatantId caster = 0, target = 0;
     Timed timed{};
     bool gated = false;   // transient: a `when` that does not hold for the roll in progress (never set between steps)
+    uint8_t slot_level = 0;   // appended (R-G15): level of the spell that applied it (Dispel Magic); 0 = unknown / not a spell
 };
 
 // Limited-use features (Second Wind, ...), keyed by (actor, feature_id). Part of the encounter state,

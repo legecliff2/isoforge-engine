@@ -76,7 +76,7 @@ void remove_modifier(EncounterState& s, std::size_t i, int reason, std::vector<E
     if (m.spec.stat == ModStat::Resistance) refresh_mod_cache(s);
 }
 
-// reason: 0 duration ran out, 1 concentration ended, 2 replaced by a same-id modifier
+// reason: 0 duration ran out, 1 concentration ended, 2 replaced by a same-id modifier, 3 spent by an attack roll, 4 damaged, 5 dispelled (R-G15)
 void tick_modifiers_round_start(EncounterState& s, std::vector<Event>& ev) {
     for (std::size_t i = 0; i < s.modifiers.size();) {
         if (tick_round_start(s.modifiers[i].timed)) remove_modifier(s, i, 0, ev); else ++i;
@@ -829,6 +829,11 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
             applied.dropped_to_zero = false;
         }
     }
+    if (applied.dealt > 0 && !s.effects.empty()) {   // R-G15: Sleep-style effects end when the creature takes damage
+        for (std::size_t i = 0; i < s.effects.size();) {
+            if (s.effects[i].ends_on_damage && s.effects[i].target == t.id) end_effect(s, i, ev); else ++i;
+        }
+    }
     after_damage(t, applied, critical, ev);
     if (applied.dealt > 0 && !s.modifiers.empty()) consume_modifiers(s, 3, t.id, 4, ev);   // "until damaged"
     if (attacker && !attacker->triggers.empty() && applied.dealt > 0) {
@@ -1455,7 +1460,8 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 note_source(s, def.condition, a.id, t->id);
                 s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, def.save_ability,
                                                       int16_t(dc), def.repeat_save, def.concentration,
-                                                      make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id)});
+                                                      make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
+                                                      lvl, false});
                 applied = true;
             }
         }
@@ -1489,7 +1495,8 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             note_source(s, def.condition, a.id, t->id);
             s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, Ability::Wis, 0, RepeatSave::None,
                                                   def.concentration,
-                                                  make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id)});
+                                                  make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
+                                                  lvl, false});
             affected.push_back(t);
             applied = true;
         }
@@ -1512,9 +1519,92 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         bool applied = false;
         for (Combatant* t : to) {
             if (t->dead) continue;
-            if (apply_modifier(s, a.id, t->id, m, ev)) { affected.push_back(t); applied = true; }
+            if (apply_modifier(s, a.id, t->id, m, ev)) {
+                affected.push_back(t); applied = true;
+                for (auto& am : s.modifiers) if (am.spec.id == m.id && am.target == t->id && am.caster == a.id) am.slot_level = lvl;
+            }
         }
         if (def.concentration && applied) a.concentration_spell = def.id;
+        break;
+    }
+    case SpellEffectKind::HpPool: {   // Sleep / Color Spray: lowest current HP first while the pool covers them
+        int pool = std::max(0, roll_dice(s.rng, scaled_dice(def, lvl, a.caster_level)));
+        std::vector<Combatant*> order;
+        for (Combatant* t : T) {
+            if (t->dead || t->hp <= 0 || t->has(def.condition) || (t->condition_immunities & bit(def.condition))) continue;
+            if (def.excluded_types & bit(t->creature_type)) continue;
+            order.push_back(t);
+        }
+        std::stable_sort(order.begin(), order.end(), [](const Combatant* x, const Combatant* y) {
+            return x->hp != y->hp ? x->hp < y->hp : x->id < y->id; });
+        for (Combatant* t : order) {
+            if (t->hp > pool) break;   // the rest have at least as many hit points
+            pool -= t->hp;
+            add_condition(*t, def.condition);
+            emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.condition));
+            s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, Ability::Wis, 0, RepeatSave::None,
+                                                  def.concentration,
+                                                  make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
+                                                  lvl, def.ends_on_damage});
+            affected.push_back(t);
+        }
+        if (def.concentration && !affected.empty()) a.concentration_spell = def.id;
+        break;
+    }
+    case SpellEffectKind::Dispel: {
+        for (Combatant* t : T) {
+            struct OnTarget { uint32_t spell; CombatantId caster; int level; };
+            std::vector<OnTarget> list;
+            auto note = [&](uint32_t sp, CombatantId caster, uint8_t slot) {
+                for (const auto& o : list) if (o.spell == sp && o.caster == caster) return;
+                const SpellDef* d = spell_def(s, sp);
+                if (!d && slot == 0) return;   // not a spell (a feature's modifier): not dispellable
+                list.push_back({sp, caster, slot ? int(slot) : int(d->level)});
+            };
+            for (const auto& e : s.effects) if (e.target == t->id) note(e.spell_id, e.caster, e.slot_level);
+            for (const auto& m : s.modifiers) if (m.target == t->id && m.spec.source != 0) note(m.spec.source, m.caster, m.slot_level);
+            bool ended = false;
+            for (const auto& o : list) {
+                bool ends = o.level <= int(lvl);
+                if (!ends) {   // ability check with the spellcasting ability, DC base + the spell's level
+                    D20Roll roll = roll_d20(s.rng, modifier(a.abilities, a.spellcasting_ability), RollMode::Normal);
+                    ends = roll.total >= int(def.dispel_dc_base) + o.level;
+                    emit(ev, EventKind::SpellCheckRolled, a.id, t->id, roll.natural, roll.total, int32_t(ends));
+                }
+                if (!ends) continue;
+                ended = true;
+                for (std::size_t i = 0; i < s.effects.size();) {
+                    const auto& e = s.effects[i];
+                    if (e.target == t->id && e.spell_id == o.spell && e.caster == o.caster) end_effect(s, i, ev); else ++i;
+                }
+                for (std::size_t i = 0; i < s.modifiers.size();) {
+                    const auto& m = s.modifiers[i];
+                    if (m.target == t->id && m.spec.source == o.spell && m.caster == o.caster) remove_modifier(s, i, 5, ev); else ++i;
+                }
+                // the spell has nothing left anywhere: the caster's concentration on it ends too
+                Combatant* c = find_mut(s, o.caster);
+                if (c && c->concentration_spell == o.spell) {
+                    bool left = false;
+                    for (const auto& e : s.effects) left = left || (e.spell_id == o.spell && e.caster == o.caster);
+                    for (const auto& m : s.modifiers) left = left || (m.spec.source == o.spell && m.caster == o.caster);
+                    if (!left) end_concentration(s, o.caster, ev);
+                }
+            }
+            if (ended) affected.push_back(t);
+        }
+        break;
+    }
+    case SpellEffectKind::Revive: {
+        for (Combatant* t : T) {
+            if (!t->dead || t->died_round == 0 || int(s.round) - int(t->died_round) > int(def.revive_within_rounds)) continue;
+            t->dead = false; t->hp = 1; t->death = DeathSaves{}; t->died_round = 0; t->death_triggers_done = false;
+            if (t->has(Condition::Unconscious)) {
+                remove_condition(*t, Condition::Unconscious);
+                emit(ev, EventKind::ConditionRemoved, t->id, 0, int32_t(Condition::Unconscious));
+            }
+            emit(ev, EventKind::Healed, a.id, t->id, 1, 1, 1);
+            affected.push_back(t);
+        }
         break;
     }
     case SpellEffectKind::AcBonus: case SpellEffectKind::Counter: break;   // reactions only
@@ -1573,7 +1663,11 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
     std::vector<Combatant*> T;
     for (CombatantId id : ids) {
         Combatant* t = find_mut(s, id);
-        if (!t || t->dead) return fail("bad target");
+        if (!t || (t->dead && def.kind != SpellEffectKind::Revive)) return fail("bad target");
+        if (def.kind == SpellEffectKind::Revive) {
+            if (!t->dead) return fail("target is not dead");
+            if (t->died_round == 0 || int(s.round) - int(t->died_round) > int(def.revive_within_rounds)) return fail("dead too long");
+        }
         if (!valid_target_type(def, *t)) return fail("invalid creature type for this spell");
         if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, a, def, *t)) return fail("invalid spell target");
         T.push_back(t);
@@ -1591,6 +1685,7 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
         break;
     }
     case SpellEffectKind::Save: case SpellEffectKind::Heal: case SpellEffectKind::ApplyCondition: case SpellEffectKind::ApplyModifier:
+    case SpellEffectKind::HpPool: case SpellEffectKind::Dispel: case SpellEffectKind::Revive:
         if ((def.area == AreaShape::None && int(T.size()) > scaled_targets(def, lvl)) || !distinct())
             return fail("too many targets");
         break;
@@ -1728,6 +1823,7 @@ StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vecto
     process_deaths(s, r.events, &ctx);
     sweep_concentration(s, r.events);
     prune_sourced(s, r.events);
+    for (auto& c : s.combatants) if (c.dead && c.died_round == 0) c.died_round = s.round;   // R-G15: Revivify's window
     if (ctx.need && !replay_only) {
         std::vector<Event> provisional = std::move(r.events);
         s = std::move(before);

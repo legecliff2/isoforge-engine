@@ -1280,6 +1280,42 @@ the AttackRolled window opens only when an enemy has a compiled `SubtractRoll` r
   Lucky on death saves, and reroll windows that the roller chooses (Indomitable, Portent) are not modelled. The AttackRolled
   window does not open for attack rolls inside resolve_attack (pure API, no state).
 
+### 7.2f R-G15 spell kinds: HP pool, dispel, revive (post-batch rules follow-up) and hand-off
+
+Rules side only (`feat/rules-spell-kinds`); no schema change, no new event kind, no digest. Goldens unchanged: the new kinds only act
+for spells that use them, and the new state fields are not hashed (see hand-off).
+
+- **`SpellEffectKind::HpPool`** (Sleep, Color Spray; appended = 8). Rolls `scaled_dice` (so `upcast_dice` gives Sleep's +2d8 per level)
+  as a pool. Candidates are the targets (sim passes the area's creatures) that are alive, above 0 HP, not already under
+  `condition`, not immune to it, and not of an `excluded_types` type (Sleep: undead). They are taken by current HP, then id; each is
+  affected while its HP fits in the remainder, and the first that does not fit ends the pass. Each affected creature gets
+  `condition` (`ConditionAdded`) and an `ActiveSpellEffect` with the spell's `expiry` / `duration_rounds`. `SpellDef::ends_on_damage`
+  (appended) ends the effect when the creature takes damage (Sleep), before the damage is applied, so damage that drops it to 0 still
+  leaves it unconscious. The pool roll itself has no event.
+- **`SpellEffectKind::Dispel`** (Dispel Magic; = 9). For each target, every (spell, caster) on it, from `effects` and from `modifiers`
+  whose `spec.source` is a SpellBook spell, ends when its level is at most the slot level; a higher one ends on a d20 + spellcasting
+  modifier check against `dispel_dc_base` (10) + its level (`SpellCheckRolled actor = dispeller, target = creature, c = success`).
+  Ending removes that spell's effects and modifiers **on that target** (`SpellEffectEnded` / `ConditionRemoved`,
+  `ModifierExpired` reason **5** = dispelled); if the spell then has nothing left anywhere, the caster's concentration on it ends
+  (`ConcentrationEnded`). Spell levels come from the new `ActiveSpellEffect::slot_level` / `ActiveModifier::slot_level` (appended;
+  recorded by rules when a spell creates them; 0 = the spell's base level). Feature modifiers (no spell def) are not dispelled.
+- **`SpellEffectKind::Revive`** (Revivify; = 10). `Combatant::died_round` (appended) is stamped by rules after each step for a newly
+  dead creature. The target must be dead and dead for at most `revive_within_rounds` (10 = 1 minute) rounds; it returns with 1 HP,
+  death saves reset, Unconscious removed (`ConditionRemoved`), and a `Healed{actor = caster, target, a = 1, b = 1, c = 1}`. A dead
+  target is accepted by `CastSpell` only for this kind.
+- **Hand-off (Engine Core / T&C).** (a) Loader: `spell@1` kinds `hp_pool {dice, condition, ends_on_damage, excluded_types}`,
+  `dispel {dc_base}`, `revive {within_rounds}`; Color Spray's "until the end of your next turn" maps to `expiry` 1 / 1 round
+  (approximation, see below). (b) sim: pass the area's creatures as `targets` for Sleep / Color Spray (as for other area spells);
+  Revivify's material (300 gp diamond, consumed) goes through `can_provide_components`. (c) Hashing: `died_round`,
+  `ActiveSpellEffect::slot_level` / `ends_on_damage` and `ActiveModifier::slot_level` are not in any digest. They only matter while
+  a spell effect or a dead creature exists; if sim wants them in the state hash, fold them only when non-zero under the existing
+  0xA5 / 0xA2 sections (that would move goldens with timed effects: regenerate and document), or leave them out (they are derived
+  deterministically from the logged actions).
+- **Not covered / deviations.** Color Spray's end-of-caster's-next-turn expiry is approximated by one round; waking a sleeper with an
+  action (shake awake) is not an action kind yet; Dispel Magic on an area / object, and dispelling effects not recorded as spell effects
+  or modifiers (summons, terrain), are not covered; Lesser Restoration-style "end one condition" and delayed / sustained damage
+  (Acid Arrow, Heat Metal) are not in this PR; Revivify only works for creatures that died during the encounter.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
