@@ -14,15 +14,19 @@
 #include <doctest/doctest.h>
 
 #include <array>
-#include <chrono>
 #include <filesystem>
 #include <fstream>
-#include <random>
 #include <string>
 #include <system_error>
 #include <vector>
 
 #include <nlohmann/json.hpp>
+
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "base/canonical_hash.hpp"
 #include "sim/combat.hpp"
@@ -36,14 +40,14 @@ namespace fs = std::filesystem;
 using Json = nlohmann::json;
 
 namespace {
-// A per-run suffix for temp folders, so concurrent runs (gcc and ASan trees, other checkouts on the same machine) never
-// share or delete each other's fixture copies. Portable: no getpid.
+// A per-process suffix for temp folders, so concurrent runs (gcc and ASan trees, other checkouts on the same machine) never
+// share or delete each other's fixture copies. (The process id, not a clock or rng: those are banned in this tree.)
 const std::string& run_suffix() {
-    static const std::string s = [] {
-        std::random_device rd;
-        const auto ticks = static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count());
-        return std::to_string(ticks) + "_" + std::to_string(rd());
-    }();
+#ifdef _WIN32
+    static const std::string s = std::to_string(_getpid());
+#else
+    static const std::string s = std::to_string(getpid());
+#endif
     return s;
 }
 const std::string kFl1 = std::string(ENGINE_SOURCE_ROOT) + "/tests/compat/fl1/sample.vertical_slice";
