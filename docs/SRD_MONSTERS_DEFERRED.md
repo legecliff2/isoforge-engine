@@ -54,7 +54,7 @@ Gap ids: `T&C-Gn` = Tools & Content, `R-Gn` = Rules (see the crosswalk in the co
 
 | monster (`srd51.monster.<id>`) | CR | missing mechanic (re-checked at `cfb5eed`) | gap id |
 |---|---|---|---|
-| `srd51.monster.jackal` | 0 | Pack Tactics: conditional advantage on attacks (ally within 5 ft). **Engine side unblocked** (sim, branch `feat/sim-pack-tactics-roll-traits`): trait effect `{ "kind": "pack_tactics" }` (no fields, open kind, live at `@3` / `@4`) fills the rules `RollTrait` `{Attack, Advantage, kWhenAllyNearTarget}`, and sim supplies `ally_near_target` (#54, #61). Still open (T&C): register the kind in `common@1` / `KNOWN_EFFECT_KINDS` / `CONTENT_EFFECTS.md` (the validator only warns on it today), then author the stat block | T&C-G7 (R-G7); content registration + authoring |
+| `srd51.monster.jackal` | 0 | Pack Tactics: conditional advantage on attacks (ally within 5 ft). **Engine side unblocked** (sim, #127): trait effect `{ "kind": "pack_tactics" }` (no fields, open kind, live at `@3` / `@4`) fills the rules `RollTrait` `{Attack, Advantage, kWhenAllyNearTarget}`, and sim supplies `ally_near_target` (#54, #61). Still open (T&C): register the kind in `common@1` / `KNOWN_EFFECT_KINDS` / `CONTENT_EFFECTS.md` (the validator only warns on it today), then author the stat block | T&C-G7 (R-G7); content registration + authoring |
 | `srd51.monster.kobold` | 1/8 | Pack Tactics (as above: engine side unblocked, T&C registration open). Sunlight Sensitivity would be descriptive (R-G13) | T&C-G7 |
 | `srd51.monster.wolf` | 1/4 | Pack Tactics (as above: engine side unblocked, T&C registration open). The prone bite rider alone is expressible | T&C-G7 |
 | `srd51.monster.dire_wolf` | 1 | Pack Tactics (as above: engine side unblocked, T&C registration open) | T&C-G7 |
@@ -80,7 +80,7 @@ All 12 stay deferred. Checked against the sim loader (`engine/core/sim/src/conte
 | reactions | yes | `reactions[]` (#114/#115) | none of the 12 |
 | grapple | sim only | `on_hit [{"kind":"grapple","escape_dc":N}]` (#104); not in the `common@2` rider enum (validator rejects it) | none of the 12 (Web restrains) |
 | timed modifiers, Metamagic, Haste/Slow, Sleep, dispel | spell / `apply_modifier` mechanics | not used by any of the 12 stat blocks | none of the 12 |
-| Pack Tactics | **sim yes** (engine side, after this re-check) | trait `effect` `{ "kind": "pack_tactics" }` -> `Combatant::roll_traits`; not yet in `common@1` / the validator (warning only) | jackal, kobold, wolf, dire wolf: engine side unblocked; T&C registration + authoring open |
+| Pack Tactics | **sim yes** (#127, after this re-check) | trait `effect` `{ "kind": "pack_tactics" }` -> `Combatant::roll_traits`; not yet in `common@1` / the validator (warning only) | jackal, kobold, wolf, dire wolf: engine side unblocked; T&C registration + authoring open |
 | Aggressive, Reckless (#111) | **no** | rules flags only; sim never sets them | orc, berserker blocked |
 | surprise (#108) | **no** (as a predicate) | rules state only | bugbear blocked |
 
