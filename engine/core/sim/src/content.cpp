@@ -514,11 +514,11 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         if (!ct) return a.id + ": bad creature type";
         c.creature_type = *ct;
     }
-    // 0 = parse the document's own $schema tag (never "latest"); a missing or unparsable tag means no refusal.
+    // 0 = parse the document's own $schema tag (never "latest"); a missing, unparsable or other-type tag means no refusal.
     uint32_t declared = declared_version;
     if (declared == 0)
         if (auto s = doc.find("$schema"); s != doc.end() && s->is_string())
-            if (auto ref = assets::parse_schema_ref(s->get<std::string>())) declared = ref->version;
+            if (auto ref = assets::parse_schema_ref(s->get<std::string>()); ref && ref->type == schema_type) declared = ref->version;   // another type's tag is not this document's version
     if (auto sc = doc.find("spellcasting"); sc != doc.end() && !inert.count("spellcasting")) {
         static const char* sc_abil[] = {"str", "dex", "con", "int", "wis", "cha"};
         const std::string sc_ab = sc->value("ability", "");
@@ -662,7 +662,6 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     }
     // Feature hooks (data-driven by effect.kind; see features.hpp).
     a.features = declared_features(doc);
-    // 0 = parse the document's own $schema tag (never "latest"); a missing or unparsable tag means no refusal.
     std::vector<rules5e::SpellDef> synth;   // synthetic SpellDefs: area_save riders first, then save_effect actions
     const RiderCtx rider_ctx{a.id, attack_actions, synth};
     std::map<uint32_t, std::string> trigger_ids;   // numeric trigger id -> its string (duplicates are load errors)

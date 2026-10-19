@@ -206,47 +206,14 @@ struct TrigCtx {                 // facts a predicate can read
     uint32_t types = 0;          // damage types of the event (bitmask)
     int dmg = 0;                 // damage taken / dealt (Save predicate dc_from_damage)
 };
+struct Ctx;
 struct TrigOut { bool set_hp = false; int16_t hp = 0; };
 bool run_event_triggers(EncounterState& s, Combatant& owner, Combatant& subject, TriggerOn on, const TrigCtx& x,
-                        std::vector<Event>& ev, TrigOut* out = nullptr);
+                        std::vector<Event>& ev, TrigOut* out = nullptr, Ctx* ctx = nullptr);
 
-// Damage plus the concentration check (SRD: CON save, DC max(10, half the damage taken)).
+struct Ctx;
 void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bool critical, std::vector<Event>& ev,
-                     const TrigSrc* src = nullptr) {
-    DamageApplied applied = d;
-    Combatant* attacker = src && src->who && src->who != &t && !src->who->dead ? src->who : nullptr;
-    const bool was_up = t.hp > 0;
-    if (!t.triggers.empty() && d.dropped_to_zero && !d.instant_death) {   // Undead Fortitude: before the drop applies
-        TrigCtx x; x.atk = src ? src->atk : nullptr; x.is_spell = src && src->is_spell; x.crit = critical;
-        x.types = d.types_dealt; x.dmg = d.dealt;
-        TrigOut o;
-        run_event_triggers(s, t, attacker ? *attacker : t, TriggerOn::DropToZero, x, ev, &o);
-        if (o.set_hp) {
-            applied.hp_after = std::max<int16_t>(1, std::min<int16_t>(o.hp, t.hp_max));
-            applied.dropped_to_zero = false;
-        }
-    }
-    after_damage(t, applied, critical, ev);
-    if (attacker && !attacker->triggers.empty() && d.dealt > 0) {
-        TrigCtx x; x.atk = src->atk; x.is_spell = src->is_spell; x.mode = src->mode; x.ally = src->ally; x.crit = critical;
-        x.types = d.types_dealt; x.dmg = d.dealt;
-        run_event_triggers(s, *attacker, t, TriggerOn::DamageDealt, x, ev);
-        if (was_up && (t.dead || t.hp <= 0) && !attacker->dead)
-            run_event_triggers(s, *attacker, t, TriggerOn::ReduceToZero, x, ev);
-    }
-    if (d.dealt <= 0) return;
-    if (t.concentration_spell != 0) {
-        if (t.dead || t.hp <= 0) end_concentration(s, t.id, ev);
-        else {
-            const int dc = std::max(10, d.dealt / 2);
-            auto r = saving_throw(s.rng, t, Ability::Con, dc);
-            emit(ev, EventKind::SavingThrowRolled, t.id, CombatantId(Ability::Con), r.roll.natural, r.roll.total,
-                 int32_t(r.success) | 2);
-            if (!r.success) end_concentration(s, t.id, ev);
-        }
-    }
-    repeat_saves(s, t.id, RepeatSave::OnDamage, ev);
-}
+                     const TrigSrc* src = nullptr, Ctx* ctx = nullptr);
 
 const SpellDef* spell_def(const EncounterState& s, uint32_t id) {
     return s.hooks.spells ? s.hooks.spells->find(id) : nullptr;
@@ -359,7 +326,7 @@ ReactionDecision poll(EncounterState&, Ctx& ctx, const ReactionWindow& w, const 
 
 bool in_range(const EncounterState& s, const ReactionWindow& w, const Combatant& r) {
     if (s.hooks.in_range) return s.hooks.in_range(s, w, r);
-    return w.trigger == ReactionTrigger::BeingHit && r.id == w.target;
+    return (w.trigger == ReactionTrigger::BeingHit || w.trigger == ReactionTrigger::Damaged) && r.id == w.target;
 }
 
 bool evaluate_hit(const D20Roll& roll, const Combatant& t, const AttackContext& ctx, bool& crit) {
@@ -483,7 +450,7 @@ bool effect_applies(const EncounterState& s, const Combatant& owner, TriggerOn o
 // turn_start, turn_end). Emits FeatureTriggered (actor = owner, target = subject, a = trigger id, b = TriggerOn,
 // c = 1 applied / 3 failed save) and applies the effects in order. No triggers, no events, no rng.
 bool run_event_triggers(EncounterState& s, Combatant& owner, Combatant& subject, TriggerOn on, const TrigCtx& x,
-                        std::vector<Event>& ev, TrigOut* out) {
+                        std::vector<Event>& ev, TrigOut* out, Ctx* ctx) {
     if (owner.triggers.empty() || DepthGuard::depth() >= 4) return false;
     DepthGuard guard;
     const uint32_t turn_stamp = uint32_t(s.round) << 16 | s.turn_index;
@@ -535,9 +502,10 @@ bool run_event_triggers(EncounterState& s, Combatant& owner, Combatant& subject,
                 const SpellDef* d = s.hooks.spells->find(e.spell_id);
                 std::vector<Combatant*> T = area_save_targets(s, owner, *d);
                 if (T.empty()) break;
-                std::vector<ReactionRecord> recs;   // a Save effect opens no reaction windows
+                std::vector<ReactionRecord> recs;   // no caller context (turn_start): reactions do not open (depth 1)
                 Ctx local{recs};
-                resolve_effect(s, local, owner, *d, 0, T, false, ev);
+                local.depth = 1;
+                resolve_effect(s, ctx ? *ctx : local, owner, *d, 0, T, false, ev);
                 break;
             }
             default: break;
@@ -558,7 +526,7 @@ std::vector<Combatant*> area_save_targets(EncounterState& s, const Combatant& ow
 
 // Death triggers (Death Burst) of creatures that died during this step, after all the step's events: queued so a
 // reaction window cannot nest inside a death. A burst that kills another trigger owner is handled on the next pass.
-void process_deaths(EncounterState& s, std::vector<Event>& ev) {
+void process_deaths(EncounterState& s, std::vector<Event>& ev, Ctx* ctx = nullptr) {
     for (std::size_t pass = 0; pass < s.combatants.size(); ++pass) {
         bool any = false;
         for (std::size_t i = 0; i < s.combatants.size(); ++i) {
@@ -567,10 +535,159 @@ void process_deaths(EncounterState& s, std::vector<Event>& ev) {
             c.death_triggers_done = true;
             any = true;
             TrigCtx x;
-            run_event_triggers(s, c, c, TriggerOn::Death, x, ev);
+            run_event_triggers(s, c, c, TriggerOn::Death, x, ev, nullptr, ctx);
         }
         if (!any) break;
     }
+}
+
+// ---- Reactions of row 11: Damaged and AllyAttacked windows ----
+
+bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
+               bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage = false,
+               uint32_t spell_id = 0, bool ally_near_target = false);
+
+// The options `r` has in window `w` from its compiled Combatant::reactions, then the hook options.
+std::vector<ReactionOption> reaction_options(const EncounterState& s, const Combatant& r, const ReactionWindow& w) {
+    std::vector<ReactionOption> out;
+    const Combatant* damager = w.trigger == ReactionTrigger::Damaged ? find(s, w.trigger_actor) : nullptr;
+    const bool has_damager = damager && !damager->dead && damager->id != r.id;
+    for (const Reaction& rx : r.reactions) {
+        if (rx.window != w.trigger) continue;
+        if ((rx.melee_only && w.ranged) || (rx.ranged_only && !w.ranged)) continue;
+        ReactionOption o{};
+        o.option_id = rx.id; o.uses_reaction = true;
+        switch (rx.kind) {
+        case ReactionEffectKind::ReduceDamage:
+            if (w.trigger != ReactionTrigger::Damaged) continue;
+            o.kind = ReactionOptionKind::ReduceDamage; o.half = rx.half; o.dice = rx.dice; break;
+        case ReactionEffectKind::ImposeDisadvantage:
+            if (w.trigger != ReactionTrigger::AllyAttacked) continue;
+            o.kind = ReactionOptionKind::ImposeDisadvantage; break;
+        case ReactionEffectKind::Retaliate:
+            if (w.trigger != ReactionTrigger::Damaged || !has_damager || !spell_def(s, rx.spell_id)) continue;
+            o.kind = ReactionOptionKind::Retaliate; o.option_id = rx.spell_id; break;
+        case ReactionEffectKind::Attack:
+            if (w.trigger != ReactionTrigger::Damaged || !has_damager || rx.attack_index >= r.attacks.size()) continue;
+            o.kind = ReactionOptionKind::Attack; o.attack_index = rx.attack_index; break;
+        }
+        out.push_back(o);
+    }
+    const auto& hook = w.trigger == ReactionTrigger::Damaged ? s.hooks.damaged_options : s.hooks.ally_attacked_options;
+    if (hook) { auto extra = hook(s, w, r); out.insert(out.end(), extra.begin(), extra.end()); }
+    return out;
+}
+
+// AllyAttacked: before the attack roll, each creature on the target's team (not the target) that can react and is
+// "in range" (hook: Engine Core supplies adjacency; no hook = nobody) may impose disadvantage. Returns true if the
+// attack is made with disadvantage.
+bool ally_attacked_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, bool ranged, uint32_t spell_id,
+                          std::vector<Event>& ev) {
+    ReactionWindow w = new_window(s, ctx, ReactionTrigger::AllyAttacked, a.id);
+    w.target = t.id; w.ranged = ranged; w.spell_id = spell_id;
+    if (!may_open(s, w)) return false;
+    auto eligible = [&](const Combatant& r) {
+        return r.id != a.id && r.id != t.id && r.team == t.team && may_react(s, r, w.trigger) && s.hooks.in_range &&
+               in_range(s, w, r) && !reaction_options(s, r, w).empty();
+    };
+    bool any = false;
+    for (const auto& c : s.combatants) { if (eligible(c)) { any = true; break; } }
+    if (!any) return false;
+    std::vector<CombatantId> cands;
+    for (CombatantId id : initiative_ids(s)) if (eligible(*find_mut(s, id))) cands.push_back(id);
+    bool opened = false;
+    for (CombatantId rid : poll_order(s, cands)) {
+        Combatant& r = *find_mut(s, rid);
+        if (!eligible(r)) continue;
+        auto opts = reaction_options(s, r, w);
+        if (!opened) {
+            opened = true; ++s.next_window_seq;
+            emit(ev, EventKind::ReactionWindowOpened, a.id, t.id, int32_t(w.trigger), int32_t(w.seq));
+        }
+        auto d = poll(s, ctx, w, r, opts, ev);
+        if (!d.react) continue;
+        const ReactionOption o = opts[d.option];
+        if (o.uses_reaction) r.reaction_used = true;
+        if (o.kind == ReactionOptionKind::ImposeDisadvantage) return true;   // disadvantage does not stack
+    }
+    return false;
+}
+
+// Damage plus the Damaged window, triggers and the concentration check (SRD: CON save, DC max(10, half the damage)).
+// Order: Damaged window (reduce_damage) -> drop_to_zero triggers -> commit and DamageDealt -> damage_dealt /
+// reduce_to_zero triggers -> retaliate / riposte reactions -> concentration -> repeat saves.
+void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bool critical, std::vector<Event>& ev,
+                     const TrigSrc* src, Ctx* ctx) {
+    DamageApplied applied = d;
+    Combatant* attacker = src && src->who && src->who != &t && !src->who->dead ? src->who : nullptr;
+    const bool was_up = t.hp > 0;
+    std::optional<ReactionOption> after_reaction;   // retaliate / riposte: after the damage lands
+    if (ctx && d.dealt > 0 && !t.dead && (!t.reactions.empty() || s.hooks.damaged_options)) {
+        ReactionWindow w = new_window(s, *ctx, ReactionTrigger::Damaged, attacker ? attacker->id : 0);
+        w.target = t.id; w.damage = d.dealt; w.ranged = src && src->atk && src->atk->ranged;
+        w.spell_id = src && src->is_spell ? 1u : 0u;
+        if (may_open(s, w) && may_react(s, t, w.trigger) && in_range(s, w, t)) {
+            auto opts = reaction_options(s, t, w);
+            if (!opts.empty()) {
+                ++s.next_window_seq;
+                emit(ev, EventKind::ReactionWindowOpened, w.trigger_actor, t.id, int32_t(w.trigger), int32_t(w.seq));
+                const auto dec = poll(s, *ctx, w, t, opts, ev);
+                if (dec.react) {
+                    const ReactionOption o = opts[dec.option];
+                    if (o.uses_reaction) t.reaction_used = true;
+                    if (o.kind == ReactionOptionKind::ReduceDamage) {
+                        const int red = o.half ? d.dealt / 2 : std::max(0, roll_dice(s.rng, o.dice));
+                        applied = reduce_applied(t, d, red);
+                    } else if (o.kind == ReactionOptionKind::Retaliate || o.kind == ReactionOptionKind::Attack) {
+                        after_reaction = o;
+                    }
+                }
+            }
+        }
+    }
+    if (!t.triggers.empty() && applied.dropped_to_zero && !applied.instant_death) {   // Undead Fortitude: before the drop applies
+        TrigCtx x; x.atk = src ? src->atk : nullptr; x.is_spell = src && src->is_spell; x.crit = critical;
+        x.types = applied.types_dealt; x.dmg = applied.dealt;
+        TrigOut o;
+        run_event_triggers(s, t, attacker ? *attacker : t, TriggerOn::DropToZero, x, ev, &o, ctx);
+        if (o.set_hp) {
+            applied.hp_after = std::max<int16_t>(1, std::min<int16_t>(o.hp, t.hp_max));
+            applied.dropped_to_zero = false;
+        }
+    }
+    after_damage(t, applied, critical, ev);
+    if (attacker && !attacker->triggers.empty() && applied.dealt > 0) {
+        TrigCtx x; x.atk = src->atk; x.is_spell = src->is_spell; x.mode = src->mode; x.ally = src->ally; x.crit = critical;
+        x.types = applied.types_dealt; x.dmg = applied.dealt;
+        run_event_triggers(s, *attacker, t, TriggerOn::DamageDealt, x, ev, nullptr, ctx);
+        if (was_up && (t.dead || t.hp <= 0) && !attacker->dead)
+            run_event_triggers(s, *attacker, t, TriggerOn::ReduceToZero, x, ev, nullptr, ctx);
+    }
+    if (after_reaction && attacker && !attacker->dead && !t.dead && t.hp > 0) {   // the reactor must still stand
+        const ReactionOption& o = *after_reaction;
+        const std::size_t from = ev.size();
+        ++ctx->depth;
+        if (o.kind == ReactionOptionKind::Retaliate) {
+            if (const SpellDef* def = spell_def(s, o.option_id))
+                resolve_effect(s, *ctx, t, *def, 0, std::vector<Combatant*>{attacker}, true, ev);
+        } else if (o.attack_index < t.attacks.size()) {
+            do_attack(s, *ctx, t, *attacker, t.attacks[o.attack_index], true, ev);
+        }
+        --ctx->depth;
+        mark_depth(ev, from, uint8_t(ctx->depth + 1));
+    }
+    if (applied.dealt <= 0) return;
+    if (t.concentration_spell != 0) {
+        if (t.dead || t.hp <= 0) end_concentration(s, t.id, ev);
+        else {
+            const int dc = std::max(10, applied.dealt / 2);
+            auto r = saving_throw(s.rng, t, Ability::Con, dc);
+            emit(ev, EventKind::SavingThrowRolled, t.id, CombatantId(Ability::Con), r.roll.natural, r.roll.total,
+                 int32_t(r.success) | 2);
+            if (!r.success) end_concentration(s, t.id, ev);
+        }
+    }
+    repeat_saves(s, t.id, RepeatSave::OnDamage, ev);
 }
 
 // What the Hit / Crit triggers of one attack contribute: damage dice rolled with the attack, and synthetic
@@ -679,8 +796,8 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
 }
 
 bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
-               bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage = false,
-               uint32_t spell_id = 0, bool ally_near_target = false) {
+               bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage,
+               uint32_t spell_id, bool ally_near_target) {
     bool adv = false;
     if (a.helped_vs == t.id) { adv = true; a.helped_vs = 0; a.helped_by = 0; }
     if (a.stealth_total > 0) { adv = true; a.stealth_total = 0; }   // unseen attacker; now revealed
@@ -689,7 +806,8 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     actx.ally_near_target = ally_near_target;
     actx.ranged = atk.ranged;
     actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
-    actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft);   // combined with conditions in one place
+    const bool protected_by_ally = ally_attacked_window(s, ctx, a, t, atk.ranged, spell_id, ev);   // Protection-style reactions
+    actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft) || protected_by_ally;   // combined with conditions in one place
     const RollMode atk_mode = attack_roll_mode(a, t, actx);
     D20Roll roll = roll_d20(s.rng, atk.to_hit, atk_mode);
     bool crit = false;
@@ -722,14 +840,14 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.dice, crit))), p.type});
             for (const HitRiderPiece& r : riders.pieces)
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, r.dice, crit))), r.same_as_weapon ? atk.type : r.type});
-            damage_creature(s, t, apply_damage_parts(t, parts, atk.qualifiers), crit, ev, &tsrc);
+            damage_creature(s, t, apply_damage_parts(t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
         } else if (atk.extra_damage.empty()) {
-            damage_creature(s, t, apply_damage(t, int16_t(dmg), atk.type, atk.qualifiers), crit, ev, &tsrc);
+            damage_creature(s, t, apply_damage(t, int16_t(dmg), atk.type, atk.qualifiers), crit, ev, &tsrc, &ctx);
         } else {   // multi-component hit: one DamageDealt carrying the per-type-modified sum
             std::vector<DamagePiece> parts{{int16_t(dmg), atk.type}};
             for (const DamagePart& p : atk.extra_damage)
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.dice, crit))), p.type});
-            damage_creature(s, t, apply_damage_parts(t, parts, atk.qualifiers), crit, ev, &tsrc);
+            damage_creature(s, t, apply_damage_parts(t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
         }
         for (uint32_t sid : riders.after) {   // save_condition / apply_condition riders: after the damage, if it still stands
             if (t.dead) break;
@@ -1062,7 +1180,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 if (d != t || t->dead) continue;
                 if (t->reaction_blocks_spell == def.id) continue;   // Shield: no damage from the darts
                 int dmg = std::max(0, roll_dice(s.rng, def.dice));
-                { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, apply_damage(*t, int16_t(dmg), def.damage_type, kAttackMagical), false, ev, &ts); }
+                { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, apply_damage(*t, int16_t(dmg), def.damage_type, kAttackMagical), false, ev, &ts, &ctx); }
             }
         }
         break;
@@ -1081,7 +1199,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(def.save_ability), r.roll.natural, r.roll.total,
                  int32_t(r.success));
             int dealt = r.success ? (def.on_save == OnSave::Half ? dmg / 2 : 0) : dmg;
-            if (dealt > 0) { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, apply_damage(*t, int16_t(dealt), def.damage_type, dq), false, ev, &ts); }
+            if (dealt > 0) { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, apply_damage(*t, int16_t(dealt), def.damage_type, dq), false, ev, &ts, &ctx); }
             if (!r.success) affected.push_back(t);
             if (def.applies_condition && !r.success && !t->dead && !(t->condition_immunities & bit(def.condition))) {
                 if (!t->has(def.condition)) {
@@ -1338,7 +1456,7 @@ StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vecto
     StepResult r = step_impl(s, ctx, req);
     if (r.ok && req.kind != ActionKind::Ready) fire_readies(s, ctx, r.events);
     if (!r.ok) return r;
-    process_deaths(s, r.events);
+    process_deaths(s, r.events, &ctx);
     sweep_concentration(s, r.events);
     if (ctx.need && !replay_only) {
         std::vector<Event> provisional = std::move(r.events);
@@ -1505,7 +1623,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
         tick_effects_turn_end(s, a.id, out.events);
         if (!a.dead && !a.triggers.empty()) {   // turn_end triggers
             TrigCtx x;
-            run_event_triggers(s, a, a, TriggerOn::TurnEnd, x, out.events);
+            run_event_triggers(s, a, a, TriggerOn::TurnEnd, x, out.events, nullptr, &ctx);
         }
         emit(out.events, EventKind::TurnEnded, a.id);
         advance_turn(s, out.events);

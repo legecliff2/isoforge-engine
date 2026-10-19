@@ -59,6 +59,13 @@ DamageApplied apply_damage_parts(const Combatant& c, std::span<const DamagePiece
     return d;
 }
 
+DamageApplied reduce_applied(const Combatant& c, const DamageApplied& d, int reduction) {
+    const int r = reduction < 0 ? 0 : (reduction > d.dealt ? int(d.dealt) : reduction);
+    DamageApplied out = absorb(c, d.dealt - r);
+    out.types_dealt = out.dealt > 0 ? d.types_dealt : 0u;
+    return out;
+}
+
 void commit_damage(Combatant& c, const DamageApplied& d) {
     c.hp = d.hp_after;
     c.temp_hp = d.temp_hp_after;
