@@ -1763,6 +1763,46 @@ Hand-off (Engine Core, `sim/rest.hpp` / `sim/content.cpp`, not edited by rules):
    short-rest time); a non-`Ok` result is a refused choice, report it to the caller.
 3. Long rest: nothing extra; `long_rest` resets the row through the roster's `RestTables`.
 
+### 7.2o Font of Magic: sorcery points and Flexible Casting (rules side) and hand-off
+
+(Numbered 7.2o because 7.2n is taken by the slot recovery PR, #146.)
+
+Builds on R-G14 (7.2i): sorcery points are the existing `ResourcePool` named by `Combatant::sorcery_pool` (the Metamagic
+pool, folded under `Combat::hash` 0xA3 when pools exist). No new Combatant or EncounterState field.
+
+Rules (`engine/rules/include/rules5e/font_of_magic.hpp`):
+
+- `sorcery_points_max(sorcerer_level)` = level from 2nd (0 below); `flexible_casting_cost(level)` = 2 / 3 / 5 / 6 / 7 for 1st..5th
+  (0 = not creatable).
+- `check_flexible_casting(const Combatant&, const std::vector<ResourcePool>&, flexible, level)` / `flexible_casting(...)`:
+  the pure out-of-encounter helper (and the encounter action's core). `flexible` 1 = expend a spell slot of `level` (1..9) for
+  `level` points; 2 = spend `flexible_casting_cost(level)` points for a slot of `level` (1..5). Results: `Ok`, `NoPool`,
+  `BadDirection`, `BadLevel`, `NoSlot`, `OverMax`, `NotEnoughPoints`; anything but `Ok` changes nothing.
+- In an encounter: `ActionKind::FlexibleCasting` (appended) with `ActionRequest::flexible` / `flexible_level` (appended), a
+  bonus action (needs `TurnBudget::bonus_action`; not while incapacitated; no SpellCast window). Emits one `ResourceSpent`
+  {actor, a = pool id, b = points spent (negative = gained), c = points after}; the slot level follows from `b` (the costs are
+  distinct). Errors: `no bonus action available`, `incapacitated`, `no sorcery points`, `bad flexible_level`,
+  `no spell slot of that level`, `sorcery points would exceed the maximum`, `not enough sorcery points`,
+  `flexible must be 1 (slot to points) or 2 (points to slot)`.
+- `legal_actions` lists every valid conversion (as_bonus_action) while the bonus action is unused.
+- Long rest: `long_rest` restores `spell_slots` to `spell_slots_max`, so created slots (which may exceed the maximum) vanish;
+  the pool refills when registered with recharge `LongRest`.
+
+Deviations / readings: going above the point maximum is refused (`OverMax`), not capped (SRD: "can't have more sorcery points
+than your maximum"; refusing keeps the slot). Pact Magic slots are not converted (SRD Flexible Casting names spell slots; the
+Warlock is not a sorcerer). No new event kind (event_stream_version unchanged); `ResourceSpent.b` may now be negative.
+
+Hand-off:
+
+- **Engine Core (sim)**: `Combat::log_hash` folds 0xBA + `flexible` + `flexible_level` when `flexible != 0` (claimed in
+  SIM_EVENTS.md); no `Combat::hash` section (pool 0xA3 + events). The feature loader (`sim/content.cpp`) registers the sorcery
+  pool with `max = sorcery_points_max(sorcerer level)`, recharge `LongRest`, and sets `sorcery_pool` for a `font_of_magic`
+  feature even without Metamagic (Sorcerer 2). AI: optional (no conversion by default). Out of encounters: call
+  `rules5e::flexible_casting(combatant, roster.pools, flexible, level)` on the kept roster.
+- **Tools & Content (schema)**: character@N feature kind `font_of_magic { pool }` (the pool id, the same `resources[]` pool as
+  `metamagic.pool`); the pool's `max` should equal the sorcerer level (validator warning otherwise).
+- Goldens unchanged: nothing folds unless a combat registers pools and logs a FlexibleCasting request.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
