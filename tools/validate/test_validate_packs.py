@@ -111,6 +111,9 @@ ZONE_CASES = [
     ("needs_conscious_owner_not_bool", SG, [(["effects", 0, "zone", "needs_conscious_owner"], 1)], [], "1 is not of type 'boolean'"),
     ("needs_conscious_owner_string", SG, [(["effects", 0, "zone", "needs_conscious_owner"], "yes")], [], "'yes' is not of type 'boolean'"),
     ("unknown_zone_key", MB, [(["effects", 0, "zone", "move_cost"], 1)], [], "'move_cost' is not one of"),
+    # rules PR 2 (#122) ZoneSpec / ZoneTriggerRow fields its loader still refuses ("zone: unknown key"); see CONTENT_CONVENTIONS 4.5
+    ("pr2_upcast_size_ft_not_yet", FOG, [(["effects", 0, "zone", "upcast_size_ft"], 20)], [], "'upcast_size_ft' is not one of"),
+    ("pr2_loses_action_not_yet", MB, [(T0 + ["loses_action"], True)], [], "Additional properties are not allowed ('loses_action'"),
     ("unknown_trigger_key", MB, [(T0 + ["limit"], "none")], [], "Additional properties are not allowed ('limit'"),
     ("legacy_trigger_key", MB, [(T0 + ["trigger"], "zone_enter")], [], "Additional properties are not allowed ('trigger'"),
     ("trigger_effect_spell_attack", MB, [(T0 + ["effect"], {"kind": "spell_attack", "attack": "ranged", "damage": {"dice": "1d6", "type": "fire"}})], [], "'spell_attack' is not one of"),

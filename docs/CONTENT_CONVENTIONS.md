@@ -180,6 +180,8 @@ spell's level (rules does this from `SpellDef::upcast_dice`).
 Messages start with `zone` on purpose: `spell_loader_tests` compares the loader's first error with a negative case's `.expect`
 only for the prefixes `effect`, `scaling.`, `'`, `zone`, ...; the loader (R-G11 rules PR 2) uses these messages verbatim, so
 the cross-field `tests/validate/cases/zone_*` cases compare their first error there.
+Every rule in the table below has a `tests/validate/cases/zone_*` case (loader-checked by `spell_loader_tests`) as well as a
+`tools/validate/test_validate_packs.py` row.
 
 | rule | message |
 |---|---|
@@ -203,6 +205,16 @@ Ranges are integers only (floats are rejected: the content spec's integers-only 
 `SpellDef::kind = Zone`; `targets` stays 1 (rules uses the caster); the spell's `duration` / `concentration` as for any spell.
 
 ### 4.5 Not expressible yet (no key; content keeps it in `description`)
+
+Rules PR 2 (#122, `docs/proposals/VERSION_BUMP_BATCH.md` 7.2m) models these in `ZoneSpec` / `ZoneTriggerRow`, but its loader
+parses only the section 4.1-4.3 keys and refuses any other key as `zone: unknown key '...'` /
+`zone.triggers[N]: unknown key '...'`. They get schema keys together with the loader change (a C++ PR), not before: a schema-only
+key would validate content the loader refuses. Pending keys: `ZoneSpec` `upcast_size_ft`, `ring_size_ft`, `sided`, `side_ft`, a
+`line` shape (`length_ft`), the D7 aura fields (`aura_modifier`, `aura_bonus_ability`, `aura_immunity`, `aura_allies_only`);
+row `region`, `loses_action`, `auto_success_damage` / `_conditions` / `_no_breath`, `shapechanger_disadvantage`,
+`evil_damage_type`; and the archetype facts `no_breath`, `shapechanger`, `evil`. Silence needs none: `flags: ["silence"]` is
+enough (rules derives the V block, thunder immunity and deafness from the flag).
+
 
 Fog Cloud's +20 ft radius per slot level (no upcast size), Darkness on an object, Spirit Guardians' necrotic for an evil caster
 (the fixture uses radiant), Moonbeam's shapechanger rules, Stinking Cloud's lost action (D9: no effect kind), Silence's
