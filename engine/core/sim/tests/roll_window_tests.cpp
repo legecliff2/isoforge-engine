@@ -5,6 +5,7 @@
 #include <fstream>
 #include <string>
 
+#include "rules5e/weapon.hpp"
 #include "sample_set.hpp"
 #include "sim/driver.hpp"
 #include "world/chunk_codec.hpp"
