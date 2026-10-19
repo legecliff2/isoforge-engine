@@ -1500,8 +1500,8 @@ Drain's Con save (when `drain_save_dc` is set).
 
 ### 7.2k R-G9 forced movement and self-teleport (rules side) and hand-off
 
-Spec: `docs/proposals/FORCED_MOVEMENT.md` as agreed in #110 (Director rulings Q4 / Q9-Q11, Engine Core's §3); #110 is still
-open, so its branch (1453b5c) is the spec. Scope per Q10: pushes and self-teleport. Branch `feat/rules-forced-movement`.
+Spec: `docs/proposals/FORCED_MOVEMENT.md` as agreed in #110 (Director rulings Q4 / Q9-Q11, Engine Core's §3; merged while this
+PR was open and merged in, unchanged from its reviewed head 1453b5c). Scope per Q10: pushes and self-teleport. Branch `feat/rules-forced-movement`.
 
 - **Effect kinds** (`SpellEffectKind`, appended): `ForcedMove` (`ForcedMoveSpec forced`: `mode` 1 push / 2 pull / 3 line,
   `feet`, `up_to`, per-effect `max_size` (-1 = none; a bigger creature skips the push only), `provokes_oa`) and `Teleport`
