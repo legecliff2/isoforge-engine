@@ -1404,6 +1404,49 @@ unchanged: the new `Combatant` fields default to off / 0, and surprise state is 
   rest durations are the caller's; exhaustion is reduced only by `long_rest`'s flag (no other source); surprise does not model a
   creature that is surprised by only part of the enemy side (any noticed enemy cancels surprise, the SRD's "doesn't notice a threat").
 
+### 7.2i R-G14 per-cast options: Metamagic, Sculpt Spells, cast-time choices (post-batch rules follow-up) and hand-off
+
+Rules side only (`feat/rules-per-cast-options`); no schema change, no new event kind. Goldens unchanged: every new field defaults to
+off, a cast without options takes the old path, and new rng draws happen only for Heightened (second save d20) and Empowered
+(rerolled dice), while Careful / Sculpt skip the spared creatures' save rolls.
+
+- **Request fields** (`ActionRequest`, appended, CastSpell only): `metamagic` (bitmask `kMeta*`: Careful 1, Distant 2, Empowered 4,
+  Extended 8, Heightened 16, Quickened 32, Subtle 64, Twinned 128), `spared` (creature ids), `heighten_target`, `damage_choice`,
+  `condition_choice` (1 + index; 0 = none). All are **log-relevant**: sim's `log_hash` must fold them under tag **0xB1** (claimed in
+  `docs/SIM_EVENTS.md`), only when any is set, so existing logs hash as before.
+- **Caster facts** (`Combatant`, appended): `metamagic_known` (bitmask), `sorcery_pool` (pool id of sorcery points, a registered
+  `ResourcePool`), `sculpt_spells`. **Spell facts** (`SpellDef`, appended): `evocation`, `damage_choices`, `condition_choices`.
+- **Validation** (a refusal changes nothing): options must be known; one option per spell, except Empowered may be added to
+  another; the pool must cover `metamagic_cost` (Careful / Distant / Empowered / Extended / Subtle 1, Quickened 2, Heightened 3,
+  Twinned = slot level, 1 for a cantrip); only for spells (`is_spell`). Per option:
+  - **Careful**: a Save spell; `spared` 1 to max(1, Cha mod) creatures; they succeed automatically (still half damage).
+  - **Distant**: range >= 5 ft; touch becomes 30 ft, otherwise doubled (what `spell_target_ok` sees: sim's range check).
+  - **Empowered**: rerolls up to max(1, Cha mod) damage dice that rolled below the die's average, lowest first (rules policy for
+    the caster's choice); Save damage and spell attack damage.
+  - **Extended**: a duration of 1 minute or more (`Minutes` / `Hours` or `duration_rounds` >= 10); doubles `duration_amount`,
+    `duration_rounds` and modifier `rounds` (primary and extra effects).
+  - **Heightened**: a Save spell; `heighten_target` must be a target; disadvantage on its first save against the spell.
+  - **Quickened**: a 1-action spell becomes a bonus action (the "bonus-action spell, then only a cantrip" rule is not enforced).
+  - **Subtle**: V and S are dropped from `components` (what `can_provide_components` sees).
+  - **Twinned**: a single-target spell (no area, range > 0, one beam / one target at this slot level; spell attack, save, heal,
+    apply condition / modifier); `targets` must be exactly two different creatures.
+  - **Sculpt Spells** (no Careful, `spared` non-empty): `sculpt_spells` and an `evocation` Save spell, up to 1 + slot level
+    creatures; they succeed automatically and take **no** damage from a half-on-save spell.
+  - **Choices**: a spell with `damage_choices` / `condition_choices` requires the matching choice, which replaces the primary
+    effect's `damage_type` / `condition` for the cast. `legal_actions` fills choice 1.
+- **Events.** The sorcery-point spend is a `ResourceSpent{actor, a = sorcery_pool, b = cost, c = remaining}` right after
+  `SpellCast` (after the spell's own pool spend, before the SpellCast window). A spared creature's save is a `SavingThrowRolled`
+  with natural 0, total 0, success 1 (no roll).
+- **Hand-off (Engine Core / T&C).** (a) Loader: `character@N` Sorcerer `metamagic` (known options) and `sorcery_points` as a
+  `resources[]` pool (long rest) with `sorcery_pool` pointing at it; Evocation Wizard `sculpt_spells`; `spell@1` `school`
+  (evocation -> `evocation`), `damage_choices[]`, `condition_choices[]`. (b) sim: pass the options from UI / AI into
+  `ActionRequest`; fold them into `log_hash` under 0xB1 (fields in the order of the SIM_EVENTS registry). (c) AI: may ignore the
+  options (casts without them behave exactly as before).
+- **Not covered / deviations.** Font of Magic (slot <-> point conversion) and Eldritch Spear are not in this PR; Quickened's
+  bonus-action-spell restriction is not enforced; Empowered's die choice is a fixed policy; Careful / Heightened / Sculpt act on the
+  primary Save effect (and Careful / Sculpt also on later Save effects of the same cast); Twinned on spells with extra effects
+  applies them to both targets.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain

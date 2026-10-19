@@ -125,7 +125,32 @@ struct SpellDef {
     uint8_t dispel_dc_base = 10;
     uint8_t revive_within_rounds = 10;
     uint32_t ends_conditions = 0;   // EndCondition: bitmask over Condition (Lesser Restoration: blinded, deafened, paralyzed, poisoned)
+    // appended (R-G14): school flag for Sculpt Spells, and cast-time choices. Non-empty `damage_choices` (Chromatic Orb) /
+    // `condition_choices` (Blindness/Deafness) require ActionRequest::damage_choice / condition_choice (1 + index), which replace
+    // the primary effect's damage_type / condition for that cast.
+    bool evocation = false;
+    std::vector<DamageType> damage_choices;
+    std::vector<Condition> condition_choices;
 };
+
+// R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
+// may be combined with another (SRD 5.1). Costs in sorcery points: metamagic_cost.
+inline constexpr uint8_t kMetaCareful = 1, kMetaDistant = 2, kMetaEmpowered = 4, kMetaExtended = 8, kMetaHeightened = 16,
+                         kMetaQuickened = 32, kMetaSubtle = 64, kMetaTwinned = 128;
+// Total sorcery points for `options` at `slot_level`: Careful / Distant / Empowered / Extended / Subtle 1, Quickened 2,
+// Heightened 3, Twinned = the slot level (1 for a cantrip).
+constexpr int metamagic_cost(uint8_t options, uint8_t slot_level) {
+    int c = 0;
+    if (options & kMetaCareful) c += 1;
+    if (options & kMetaDistant) c += 1;
+    if (options & kMetaEmpowered) c += 1;
+    if (options & kMetaExtended) c += 1;
+    if (options & kMetaSubtle) c += 1;
+    if (options & kMetaQuickened) c += 2;
+    if (options & kMetaHeightened) c += 3;
+    if (options & kMetaTwinned) c += slot_level == 0 ? 1 : slot_level;
+    return c;
+}
 
 // The spell as seen by one extra effect: `base` with that effect's fields, no scaling, no further effects.
 SpellDef effect_view(const SpellDef& base, const SpellEffect& e);
