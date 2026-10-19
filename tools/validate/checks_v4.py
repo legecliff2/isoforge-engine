@@ -20,6 +20,10 @@ V2_ACTION_KINDS = V1_ACTION_KINDS | {"save_effect"}
 # carried unchanged by @4, never marked inert by the 3 -> 4 migration.
 LIVE_AT_3_EFFECT_KINDS = frozenset({"damage_bonus", "bonus_action_grant", "self_heal", "damage_mitigation",
                                     "magic_weapons", "multiattack"})
+# R-G7 static kinds (sim #114 features.cpp): registered with no minimum version ("open kinds", like the sim's R-G5
+# kinds), so the sim applies them at every tag whose effects are active (@3 and @4; @1/@2 effects are inert). They are
+# not in the frozen 3 -> 4 list, so the migration never stamps them. Shapes: common@1 $defs/effect.
+OPEN_EFFECT_KINDS_RG7 = frozenset({"reroll_ones", "great_weapon_fighting", "evasion"})
 # The kinds @4 adds; also the frozen literal list of the 3 -> 4 migration (VERSION_BUMP_BATCH 8.2 step 4).
 # save_effect and reaction are action / reaction kinds, not trait effect kinds: they exist in the list so
 # a stamped one validates (effect_inert) but a native one is a schema error.
@@ -52,19 +56,22 @@ class TagRow:
 
 
 TAG_TABLE: dict[str, TagRow] = {}
+_OPEN = LIVE_AT_3_EFFECT_KINDS | OPEN_EFFECT_KINDS_RG7   # open kinds join every row (inert at @1/@2: findings are warnings)
 for _typ, _keys in (("monster", _SB_KEYS | _MONSTER_KEYS), ("character", _SB_KEYS | _CHARACTER_KEYS)):
-    TAG_TABLE[f"{_typ}@1"] = TagRow(False, V1_ACTION_KINDS, LIVE_AT_3_EFFECT_KINDS, EFFECT_COST_V1, _keys - {"spellcasting"})
-    TAG_TABLE[f"{_typ}@2"] = TagRow(False, V1_ACTION_KINDS, LIVE_AT_3_EFFECT_KINDS, EFFECT_COST_V1, _keys - {"spellcasting"})
-    TAG_TABLE[f"{_typ}@3"] = TagRow(True, V1_ACTION_KINDS, LIVE_AT_3_EFFECT_KINDS, EFFECT_COST_V1, _keys, cross_refs=False)
-    TAG_TABLE[f"{_typ}@4"] = TagRow(True, V2_ACTION_KINDS, LIVE_AT_3_EFFECT_KINDS | NATIVE_EFFECT_KINDS_AT_4,
+    TAG_TABLE[f"{_typ}@1"] = TagRow(False, V1_ACTION_KINDS, _OPEN, EFFECT_COST_V1, _keys - {"spellcasting"})
+    TAG_TABLE[f"{_typ}@2"] = TagRow(False, V1_ACTION_KINDS, _OPEN, EFFECT_COST_V1, _keys - {"spellcasting"})
+    TAG_TABLE[f"{_typ}@3"] = TagRow(True, V1_ACTION_KINDS, _OPEN, EFFECT_COST_V1, _keys, cross_refs=False)
+    TAG_TABLE[f"{_typ}@4"] = TagRow(True, V2_ACTION_KINDS, _OPEN | NATIVE_EFFECT_KINDS_AT_4,
                                     EFFECT_COST_V2, _keys | _AT4_KEYS, cross_refs=True, needs_api_level=2,
                                     legacy_stamps=True)
 TAG_TABLE["item@1"] = TagRow(False, frozenset(), frozenset(), frozenset(), frozenset(), cross_refs=True,
                              needs_api_level=2)
 
 FORWARD_COMPAT_KNOWN = frozenset({"elevation"})
-RESERVED_WINDOWS = frozenset({"roll_attack"})
-RESERVED_REACTION_EFFECTS = frozenset({"subtract_roll"})
+# Reaction windows the sim compiles (content.cpp compile_reactions); every other window is listed as unsupported and
+# skipped. roll_attack (R-G7, AttackRolled) was reserved by check 9 (Q6) until sim #114 compiled it.
+COMPILED_WINDOWS = frozenset({"damaged", "ally_attacked", "roll_attack"})
+U16_MAX = 65535
 
 
 def tag_row(tag: object) -> TagRow | None:
@@ -163,6 +170,52 @@ def table_values(table: dict) -> tuple[int | None, int | None]:
     return (max(vals) if vals else None), first
 
 
+# ---- R-G7 reactions (sim #114, docs/CONTENT_CONVENTIONS.md section 3) ------------------------------------
+
+def check_roll_attack_reaction(path: str, r: dict, errs: list[str], warns: list[str]) -> None:
+    """Mirror of the sim's compile_reactions (content.cpp) for the roll_attack window and the subtract_roll effect,
+    in the loader's order: windows it does not compile are skipped; a usage is compiled only on roll_attack +
+    subtract_roll and only as kind pool (any other usage, source != self or visible false: the reaction is listed as
+    unsupported and skipped); then the window / effect pairing and melee_only + ranged_only are load errors.
+    Unsupported combinations of the R-G7 names are warnings (the file loads, the reaction never fires)."""
+    w = r.get("window") or {}
+    eff = r.get("effect") or {}
+    wk, ek = w.get("kind"), eff.get("kind")
+    rg7 = wk == "roll_attack" or ek == "subtract_roll"
+    if wk not in COMPILED_WINDOWS:
+        if rg7:
+            warns.append(f"{path}: subtract_roll in window '{wk}' is not compiled (only the roll_attack window takes it); "
+                         "the sim lists the reaction as unsupported (R-G7 reactions)")
+        return
+    rolled = wk == "roll_attack"
+    u = r.get("usage")
+    if rolled and ek == "subtract_roll" and u is not None:
+        if not isinstance(u, dict) or u.get("kind") != "pool":
+            warns.append(f"{path}/usage: a roll_attack reaction compiles only a 'pool' usage; kind {u.get('kind') if isinstance(u, dict) else u!r} "
+                         "makes the sim list it as unsupported (R-G7 reactions)")
+            return
+        cost = u.get("cost", 1)
+        if not is_int(cost) or not 1 <= cost <= U16_MAX:
+            errs.append(f"{path}/usage: cost must be an integer 1..{U16_MAX}, got {cost!r} (sim: bad usage cost) (R-G7 reactions)")
+        # the pool must be a resources[].id: check 2 (usage_sites covers reactions[])
+    elif u is not None:
+        if rg7:
+            warns.append(f"{path}/usage: a usage is compiled only on a roll_attack subtract_roll reaction; the sim lists this "
+                         "reaction as unsupported (R-G7 reactions)")
+        return
+    if w.get("source", "self") != "self" or w.get("visible", True) is not True:
+        if rg7:
+            warns.append(f"{path}/window: source ally_within_5ft / visible false are not compiled; the sim lists this reaction "
+                         "as unsupported (R-G7 reactions)")
+        return
+    if rolled and w.get("melee_only") is True and w.get("ranged_only") is True:
+        errs.append(f"{path}/window: melee_only and ranged_only together (R-G7 reactions)")
+    if ek == "subtract_roll" and not rolled:
+        errs.append(f"{path}: subtract_roll needs the roll_attack window (R-G7 reactions)")
+    elif rolled and ek != "subtract_roll":
+        errs.append(f"{path}: the roll_attack window only takes subtract_roll, not '{ek}' (R-G7 reactions)")
+
+
 # ---- the @4 stat-block checks (monster@4 / character@4) -----------------------------------------------
 
 def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
@@ -210,11 +263,8 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
         eff = r.get("effect") or {}
         if eff.get("kind") == "attack":
             need_attack(f"{path}/effect", eff.get("attack_id"))
-        # check 9: reserved names
-        if (r.get("window") or {}).get("kind") in RESERVED_WINDOWS:
-            errs.append(f"{path}/window: kind '{r['window']['kind']}' is reserved and rejected at @4 (check 9, Q6)")
-        if eff.get("kind") in RESERVED_REACTION_EFFECTS:
-            errs.append(f"{path}/effect: kind '{eff['kind']}' is reserved and rejected at @4 (check 9, Q6)")
+        # R-G7 (sim #114): roll_attack / subtract_roll are live (check 9's reservation is lifted)
+        check_roll_attack_reaction(path, r, errs, warns)
     # check 2: pools
     for path, u in usage_sites(doc):
         if u.get("kind") == "pool":

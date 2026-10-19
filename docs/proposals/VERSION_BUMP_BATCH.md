@@ -1610,6 +1610,7 @@ lands in `inert_features`. The "new set" lives in two places (sim's registry lis
   7. `forward_compat` values are in the known enum and unique.
   8. Derived trigger ids (`<owner id>#<index>`, §3.1) are unique within the document; `resources[].id` values are unique.
   9. `window.kind: roll_attack` and `effect.kind: subtract_roll` are **rejected at `@4`** (reserved, Q6).
+     **Lifted by R-G7** (sim #114): both are live; the validator now mirrors the loader's rules instead (`docs/CONTENT_CONVENTIONS.md` section 3).
   10. A `save_effect` that violates the schema rules in §2.1 (no `damage[]`/`apply[]`, `damage[]` without `on_success`, `origin: point` without `range_ft`) has one negative case each.
   11. **`item` references** (below).
   12. A Legendary Resistance-style pool is *declaration-only* until row 13: the validator warns when a `resources[]` entry is never referenced by any `usage.pool` / `spend.pool` / `heal_pool.pool`.

@@ -1,0 +1,21 @@
+{
+  "base": "characters/fighter_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        2
+      ],
+      {
+        "id": "lucky",
+        "name": "Lucky",
+        "effect": {
+          "kind": "reroll_ones",
+          "rolls": []
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "/features/2/effect"
+}
