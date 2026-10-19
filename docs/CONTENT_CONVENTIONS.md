@@ -329,3 +329,10 @@ Validator:
   against, and valid content should validate clean.
 - character@4 `value_gp`: integer >= 0 (floats and negatives are schema errors). An equipment entry with `value_gp` is exempt from
   check 6/11 (its `item` need not resolve to an item@1); an entry without `value_gp` must still resolve.
+
+### Untimed `save_condition` riders (validator mirror of the sim loader)
+
+A `save_condition` rider (an attack's `on_hit[]` or an `on_event` `effects[]` entry) whose `apply[]` entry has neither
+`duration` nor `repeat_save` fails to load in the sim ("save_condition uses an unsupported duration"); the validator reports the
+same error. `checks_v4.UNTIMED_ON_HIT_CONDITIONS` lists the exceptions: empty today; `prone` joins it when Engine Core's loader
+accepts untimed conditions that end by their own rules (the SRD wolf / dire wolf bite rider stays descriptive until then).

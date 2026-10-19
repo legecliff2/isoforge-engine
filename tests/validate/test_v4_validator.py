@@ -463,6 +463,15 @@ GRAPPLE_CASES = [
     ("grapple_on_save_effect", CRAB, [(["actions", 0], {"kind": "save_effect", "id": "x", "name": "X", "save": {"ability": "str", "dc": 11},
                                                         "apply": [{"condition": "grappled"}], "on_hit": [{"kind": "grapple"}]})], [], "should not be valid under"),
     # the file loads, the rider is ignored or overwritten: warnings
+    # an untimed save_condition rider (no duration, no repeat_save): sim load error (checks_v4.UNTIMED_ON_HIT_CONDITIONS is empty)
+    ("save_condition_untimed_prone", CRAB, [(["actions", 1, "on_hit", 1], {"kind": "save_condition", "save": {"ability": "str", "dc": 11},
+                                                                           "apply": [{"condition": "prone"}]})], [],
+     "save_condition uses an unsupported duration"),
+    ("save_condition_untimed_in_on_event", CRAB, [(["traits"], [{"id": "trip", "name": "Trip", "description": "x",
+                                                                "effect": {"kind": "on_event", "on": "hit", "effects": [
+                                                                    {"kind": "save_condition", "save": {"ability": "str", "dc": 11},
+                                                                     "apply": [{"condition": "prone"}]}]}}])], [],
+     "save_condition uses an unsupported duration"),
     ("warn_grapple_twice_on_one_attack", CRAB, [(["actions", 0, "on_hit", 1], {"kind": "grapple", "escape_dc": 13})], [], "the sim keeps only the last one"),
     ("warn_grapple_on_bonus_action", CRAB, [(["bonus_actions"], [{"id": "nip", "name": "Nip", "kind": "melee_weapon_attack", "to_hit": 3, "reach": 5,
                                                                    "targets": 1, "damage": [{"dice": "1d4", "type": "piercing"}],
