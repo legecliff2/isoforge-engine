@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "rules5e_content/spell_loader.hpp"
 #include "sim/content.hpp"
 
 namespace eng::sim {
@@ -164,6 +165,61 @@ std::optional<std::string> apply_self_heal(Archetype& a, const FeatureDecl& f, u
     return std::nullopt;
 }
 
+// apply_modifier (row 12): Rage, Bardic Inspiration token, Leadership. `modifier` or `modifiers[]` compile to rows the
+// feature_modifiers hook hands to rules when the feature is used (UseFeature). A damage `bonus_table` resolves against
+// the owner's level in `class` (else the total level). usage kind "pool" is row 13's; other usage shapes are listed
+// as unsupported and the feature is not offered.
+std::optional<std::string> apply_apply_modifier(Archetype& a, const FeatureDecl& f, uint32_t fid, const FeatureBuildCtx& ctx) {
+    std::vector<const Json*> mods;
+    if (auto m = f.effect.find("modifier"); m != f.effect.end()) mods.push_back(&*m);
+    if (auto ms = f.effect.find("modifiers"); ms != f.effect.end() && ms->is_array())
+        for (const Json& m : *ms) mods.push_back(&m);
+    if (mods.empty() || mods.size() > 16) return f.id + ": apply_modifier needs modifier or 1..16 modifiers[]";
+    ActiveFeature af;
+    af.feature_id = fid;
+    af.id = f.id;
+    af.kind = f.kind;
+    const std::string cost = f.effect.value("cost", "action");
+    if (cost == "bonus_action") af.cost = FeatureCost::BonusAction;
+    else if (cost != "action") return f.id + ": apply_modifier cost '" + cost + "' is not supported (use action or bonus_action)";
+    if (f.effect.contains("usage")) {
+        a.unsupported_features.push_back(f.id + " (apply_modifier: usage needs resource pools)");
+        return std::nullopt;
+    }
+    std::vector<rules5e::ModifierSpec> rows;
+    const uint32_t source = rules5e::spell_id_of(a.id + "#" + f.id);
+    for (std::size_t i = 0; i < mods.size(); ++i) {
+        rules5e::ModifierSpec m;
+        const Json* table = nullptr;
+        if (auto e = rules5e_content::parse_modifier(*mods[i], m, &table); !e.empty()) return f.id + ": " + e;
+        if (table) {
+            if (m.stat != rules5e::ModStat::Damage) return f.id + ": bonus_table only applies to damage modifiers";
+            int level = 0;
+            const std::string cls = table->is_object() ? table->value("class", "") : "";
+            for (const Json& c : ctx.doc.value("classes", Json::array()))
+                if (c.value("class", "") == cls) level += c.value("level", 0);
+            if (level == 0 && cls.empty()) level = ctx.doc.value("level", 0);
+            if (level < 1) return f.id + ": bonus_table has no level to resolve against";
+            const auto bl = table->find("by_level");
+            if (bl == table->end() || !bl->is_array()) return f.id + ": bonus_table needs by_level";
+            int best_level = 0, value = 0;
+            for (const Json& e : *bl)
+                if (e.is_object() && e.value("level", 0) <= level && e.value("level", 0) >= best_level) {
+                    best_level = e.value("level", 0);
+                    value = e.value("value", 0);
+                }
+            if (best_level == 0) return f.id + ": bonus_table has no entry for level " + std::to_string(level);
+            m.bonus = int16_t(value);
+        }
+        m.source = source;
+        m.id = rules5e::spell_id_of(a.id + "#" + f.id + "#m" + std::to_string(i));
+        rows.push_back(m);
+    }
+    a.feature_modifiers[fid] = std::move(rows);
+    a.active.push_back(std::move(af));
+    return std::nullopt;
+}
+
 FeatureRegistry make_builtin() {
     FeatureRegistry r;
     r.add_hook("damage_bonus", {apply_damage_bonus});
@@ -172,8 +228,9 @@ FeatureRegistry make_builtin() {
     r.add_hook("multiattack", {apply_multiattack});
     r.add_hook("damage_mitigation", {apply_damage_mitigation});
     r.add_hook("magic_weapons", {apply_magic_weapons});
+    r.add_hook("apply_modifier", {apply_apply_modifier}, 4);
     // Kinds the @4 schemas introduce (frozen list of the 3 -> 4 migration; hooks arrive with their rows).
-    for (const char* k : {"on_event", "apply_modifier", "grant_action", "heal_pool", "save_effect", "reaction"})
+    for (const char* k : {"on_event", "grant_action", "heal_pool", "save_effect", "reaction"})
         r.reserve_kind(k, 4);
     // v0 wield model: a melee weapon without the two_handed property counts as wielded in one hand
     // with no other weapon (sim has no equipment/wield state yet).
