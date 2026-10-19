@@ -141,14 +141,14 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 |---|---|---|---|
 | Hit Die d10, proficiencies, saves (Str/Con), armor/weapons | 1 | DATA | `character@3 classes[].hit_die`, `saving_throws`, baked AC/to_hit. |
 | Fighting Style: Dueling | 1 | DATA | `damage_bonus {amount:2, condition: one_handed_melee_no_other_weapon}` (shipped, `fighter_1`). |
-| Fighting Style: Archery (+2 ranged attack rolls) | 1 | NEW | No to-hit bonus effect kind (R-G5: `attack_bonus`). |
-| Fighting Style: Defense (+1 AC in armor) | 1 | NEW | No AC bonus effect kind; could be baked into AC but then not de-duplicated with armor (R-G3/R-G5 `ac_bonus` static kind). |
+| Fighting Style: Archery (+2 ranged attack rolls) | 1 | NEW (wiring) | Rules done (R-G5): `Combatant::attack_bonus_ranged` (weapon attacks only). Loader kind `attack_bonus` pending. |
+| Fighting Style: Defense (+1 AC in armor) | 1 | NEW (wiring) | Rules done (R-G5): `AcInput::armored_bonus` in `compute_ac` (only while armor is worn). Loader kind `ac_bonus` pending. |
 | Fighting Style: Great Weapon Fighting (reroll 1-2 on damage dice) | 1 | NEW | Damage reroll hook (R-G7). |
 | Fighting Style: Protection (reaction, impose disadvantage on attack vs adjacent ally) | 1 | NEW (wiring) | Rules done (#87): `AllyAttacked` window + `ImposeDisadvantage` reaction (R-G7); no content/hook compile yet (Engine Core). |
 | Fighting Style: Two-Weapon Fighting (add mod to off-hand) | 1 | NEW (wiring) | Rules done (R-G6): omit the off-hand `damage` override so the baked ability modifier stays. Loader pending. |
 | Second Wind | 1 | DATA | `self_heal {dice 1d10, plus fighter_level, uses 1, recharge short_rest, cost bonus_action}` (shipped). |
 | Action Surge | 2 | NEW (wiring) | Rules done (#91): `FeatureSpec::grant_actions` -> `TurnBudget::extra_actions` (R-G5). Needs the `grant_action` feature compile and a `feature_spec` hook (Engine Core). |
-| Martial Archetype: Champion, Improved Critical (crit on 19-20) | 3 | NEW | Crit range per attack/combatant (R-G5 `crit_range`). |
+| Martial Archetype: Champion, Improved Critical (crit on 19-20) | 3 | NEW (wiring) | Rules done (R-G5): `Combatant::crit_min` (19 / 18); a non-20 crit must still hit. Loader kind `crit_range` pending. |
 | Ability Score Improvement | 4 | DATA | Authored stats. |
 | Extra Attack | 5 | NEW (wiring) | `attacks_per_action=2` exists in rules; no effect kind or loader sets it (T&C-G1 content side). |
 
@@ -494,7 +494,7 @@ Row counts are over the tables in sections 1-9 (one row per mechanic or feature;
 | 9. Monsters: stat blocks, traits, actions | 13 | 26 | 5 | 44 |
 | **Total** | **129** | **192** | **31** | **352** |
 
-"NEW (wiring)" rows (rules5e models it, content-to-sim does not carry it) are counted under NEW. Counts are as of main after #91 (and #93 for row 15); after #45, #47, #48 and #49 the totals were DATA 112 / NEW 209 / OOS 31 = 352, and before those PRs DATA 104 / NEW 217 / OOS 31. The version-bump batch moved 17 rows NEW -> DATA (conditions with a duration, condition riders from actions, area templates, duration expiry, Divine Smite, Sneak Attack, Burning Hands, Shatter, Fireball, Lightning Bolt, on-hit save riders, Recharge breath weapons, Innate Spellcasting, Charge / Pounce, Rampage, Undead Fortitude, Death Burst). A further 26 rows moved NEW -> `NEW (wiring)` (rules done, still counted NEW): see 11.5; the bonus-action attack PR (R-G6) moved 5 more (two-weapon fighting and its style, Martial Arts, Flurry of Blows, Frenzy), still counted NEW; the grapple / shove PR (R-G8) moved 5 more (grapple and shove, Charmed, Frightened, Grappled, crawling), still counted NEW. This recount was produced by a script over the tables, which also reproduced the previous 112 / 209 / 31. "DATA (baked)" / "DATA (partial)" rows count as DATA.
+"NEW (wiring)" rows (rules5e models it, content-to-sim does not carry it) are counted under NEW. Counts are as of main after #91 (and #93 for row 15); after #45, #47, #48 and #49 the totals were DATA 112 / NEW 209 / OOS 31 = 352, and before those PRs DATA 104 / NEW 217 / OOS 31. The version-bump batch moved 17 rows NEW -> DATA (conditions with a duration, condition riders from actions, area templates, duration expiry, Divine Smite, Sneak Attack, Burning Hands, Shatter, Fireball, Lightning Bolt, on-hit save riders, Recharge breath weapons, Innate Spellcasting, Charge / Pounce, Rampage, Undead Fortitude, Death Burst). A further 26 rows moved NEW -> `NEW (wiring)` (rules done, still counted NEW): see 11.5; the bonus-action attack PR (R-G6) moved 5 more (two-weapon fighting and its style, Martial Arts, Flurry of Blows, Frenzy), still counted NEW; the grapple / shove PR (R-G8) moved 5 more (grapple and shove, Charmed, Frightened, Grappled, crawling), still counted NEW; the static-feature-kinds PR (R-G5) moved 3 more (Archery, Defense, Improved Critical), still counted NEW. This recount was produced by a script over the tables, which also reproduced the previous 112 / 209 / 31. "DATA (baked)" / "DATA (partial)" rows count as DATA.
 
 ### 10.2 Spells, per spell (SRD 5.1 levels 0-3)
 
@@ -627,7 +627,7 @@ Gaps that need new rules mechanics (not just Engine Core / T&C wiring, which is 
 | Order | Id | Gap | Unlocks | Size |
 |---|---|---|---|---|
 | 1 | R-G3 follow-ups | **Done in rules** (this PR): one-shot / until-damaged expiry (`consume`), speed reduction (`speed_sub`), AC floor (`ac_floor`), per-turn temp HP (`per_turn`), general `when` scope (attack roll, attacks against, AC, damage), and `apply_modifier` as a rider effect. Still open: Haste's restricted extra action, `when` on saves / checks, a "marked target" scope (Hunter's Mark), "frightened immunity" (Heroism) | Needs only wiring now: True Strike, Guiding Bolt, Vicious Mockery, Ray of Frost, Mage Armor, Barkskin, Heroism | done |
-| 2 | R-G5 rest | Static feature kinds `attack_bonus`, `ac_bonus`, `crit_range` | Archery, Defense, Champion Improved Critical, Dueling-style bonuses | S |
+| 2 | R-G5 rest | **Done in rules**: static feature kinds `attack_bonus`, `ac_bonus`, `crit_range` (loader kinds pending). Dueling stays a baked `damage_bonus` | Archery, Defense, Champion Improved Critical | done |
 | 3 | R-G8 | **Done in rules** (conditions with a source, grapple / shove / escape, drag, one-size limit). Still open: swallow / engulf, web-style restrain, sim wiring of the push / drag | grapple monsters, crocodile, Charm Person, Fear | done |
 | 4 | R-G6 | **Done in rules**: bonus-action attack options (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy) with prerequisites, pool spend and an off-hand damage override. Still open: Open Hand Technique riders, Frenzy's exhaustion, a rules-side `legal_actions` listing | Monk, Berserker, dual wielders need wiring only | done |
 | 5 | R-G7 rest | d20 modify / reroll windows (`RollAttack` deferred, Q6): Cutting Words, Lucky, Great Weapon Fighting, Guidance / Resistance / Bardic Inspiration spending, Evasion | Bard, Halfling, Fighter style, cantrips | M |

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "rules5e/attack.hpp"
 
 #include "rules5e/conditions.hpp"
@@ -61,11 +62,14 @@ AttackResult resolve_attack(rng::Rng& r, const Combatant& attacker, const Attack
     wctx.ranged = atk.ranged;
     wctx.extra_disadvantage = ctx.extra_disadvantage || weapon_disadvantage(attacker, atk, ctx.target_within_5ft);
     RollMode mode = attack_roll_mode(attacker, target, wctx);
-    D20Roll roll = roll_d20(r, atk.to_hit, mode);
+    D20Roll roll = roll_d20(r, atk.to_hit + (atk.ranged ? attacker.attack_bonus_ranged : attacker.attack_bonus_melee), mode);
     bool hit, crit = false;
     if (roll.natural == 20) { hit = true; crit = true; }
     else if (roll.natural == 1) { hit = false; }
-    else hit = roll.total >= int(target.ac) + int(ctx.cover_ac_bonus) + int(target.reaction_ac_bonus);
+    else {
+        hit = roll.total >= int(target.ac) + int(ctx.cover_ac_bonus) + int(target.reaction_ac_bonus);
+        crit = hit && roll.natural >= std::max(2, int(attacker.crit_min));
+    }
     if (hit && ctx.target_within_5ft &&
         (target.has(Condition::Paralyzed) || target.has(Condition::Unconscious)))
         crit = true;

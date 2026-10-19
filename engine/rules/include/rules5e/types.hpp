@@ -350,6 +350,11 @@ struct Combatant {
     uint32_t trigger_turn_mask = 0, trigger_turn_stamp = 0;       // stamp = round << 16 | turn_index
     uint32_t trigger_round_mask = 0; uint16_t trigger_round_stamp = 0;
     bool death_triggers_done = false;   // 9b: this creature's death triggers have been processed
+    // R-G5 static feature kinds (appended). Weapon attacks only (never spell attacks): a flat bonus to the attack roll by
+    // melee / ranged (Archery +2 ranged), and the lowest natural d20 that is a critical hit when the attack hits (Improved
+    // Critical 19, Superior Critical 18; 20 = default). A natural 20 always hits and crits; a lower crit roll must still hit.
+    int8_t attack_bonus_melee = 0, attack_bonus_ranged = 0;
+    int8_t crit_min = 20;
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
