@@ -1,0 +1,21 @@
+{
+  "base": "characters/fighter_1.json",
+  "schema": "character@1",
+  "sets": [
+    [
+      [
+        "features",
+        0,
+        "effect"
+      ],
+      {
+        "kind": "reroll_ones",
+        "rolls": [
+          "damage"
+        ]
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "inert in character@1"
+}

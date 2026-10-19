@@ -2,6 +2,7 @@
 #include "sim/content.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <cstdlib>
 #include <filesystem>
@@ -9,6 +10,7 @@
 #include <set>
 
 #include "rules5e/encounter.hpp"
+#include "rules5e/weapon.hpp"
 #include "assets/content_migrations.hpp"
 #include "rules5e_content/spell_loader.hpp"
 
@@ -555,10 +557,11 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
 
 // ---- Reactions (row 11 sim side): reactions[] entries -> rules5e::Reaction rows on the base combatant ----
 // Compiled: window damaged / ally_attacked with reduce_damage (fraction half | dice), impose_disadvantage, retaliate
-// (synthetic Save or AutoHit SpellDef) and attack (attack_id -> attack index). Listed in unsupported_features and not
-// compiled: every other window (being_hit / spell_cast / leaving_reach: ac_bonus and the opportunity-attack path stay with
-// the existing hooks and features; a leaving_reach `attack` is never a second OA), effect kinds cast / subtract_roll /
-// ac_bonus, `usage`, `source: ally_within_5ft` and `visible: false`.
+// (synthetic Save or AutoHit SpellDef) and attack (attack_id -> attack index); window roll_attack (R-G7, AttackRolled) with
+// subtract_roll {dice} and an optional `usage: {kind: pool, pool, cost}` (Cutting Words). Listed in unsupported_features and
+// not compiled: every other window (being_hit / spell_cast / leaving_reach: ac_bonus and the opportunity-attack path stay with
+// the existing hooks and features; a leaving_reach `attack` is never a second OA), effect kinds cast / ac_bonus, any other
+// `usage`, `source: ally_within_5ft` and `visible: false`.
 std::optional<std::string> compile_reactions(Archetype& a, const Json& doc, const RiderCtx& rc, rules5e::Combatant& c) {
     auto rs = doc.find("reactions");
     if (rs == doc.end() || !rs->is_array()) return std::nullopt;
@@ -576,8 +579,30 @@ std::optional<std::string> compile_reactions(Archetype& a, const Json& doc, cons
         rules5e::Reaction x;
         if (wk == "damaged") x.window = rules5e::ReactionTrigger::Damaged;
         else if (wk == "ally_attacked") x.window = rules5e::ReactionTrigger::AllyAttacked;
+        else if (wk == "roll_attack") x.window = rules5e::ReactionTrigger::AttackRolled;   // R-G7 (Cutting Words)
         else { a.unsupported_features.push_back(rid + " (reaction window " + wk + ")"); continue; }
-        if (r.contains("usage") || w->value("source", "self") != "self" || !w->value("visible", true)) {
+        const bool attack_rolled = x.window == rules5e::ReactionTrigger::AttackRolled;
+        // R-G7: a subtract_roll reaction may spend from a resources[] pool (Cutting Words: bardic inspiration). Combat::create
+        // registers resources[] pools with rules5e::register_pool; an unlimited pool gates nothing.
+        if (attack_rolled && ek == "subtract_roll" && r.contains("usage")) {
+            const Json& u = r["usage"];
+            if (!u.is_object() || u.value("kind", "") != "pool") {
+                a.unsupported_features.push_back(rid + " (reaction: unsupported usage / source / visible)");
+                continue;
+            }
+            const std::string pid = u.value("pool", "");
+            const int cost = u.contains("cost") ? (u["cost"].is_number_integer() ? u["cost"].get<int>() : 0) : 1;
+            if (cost < 1 || cost > 65535) return where + ": bad usage cost";
+            bool found = false, unlimited = false;
+            for (const auto& res : a.resources) found = found || res.id == pid;
+            for (const auto& res : a.unlimited_resources) unlimited = unlimited || res == pid;
+            if (!found && !unlimited) return where + ": usage names unknown pool '" + pid + "'";
+            if (found) { x.pool = rules5e::spell_id_of(pid); x.pool_cost = uint16_t(cost); }
+        } else if (r.contains("usage")) {
+            a.unsupported_features.push_back(rid + " (reaction: unsupported usage / source / visible)");
+            continue;
+        }
+        if (w->value("source", "self") != "self" || !w->value("visible", true)) {
             a.unsupported_features.push_back(rid + " (reaction: unsupported usage / source / visible)");
             continue;
         }
@@ -591,6 +616,14 @@ std::optional<std::string> compile_reactions(Archetype& a, const Json& doc, cons
             if (ef->contains("fraction")) x.half = true;
             else if (auto d = parse_dice(ef->contains("dice") && (*ef)["dice"].is_string() ? (*ef)["dice"].get<std::string>() : "")) x.dice = *d;
             else return where + ": reduce_damage needs fraction or dice";
+        } else if (ek == "subtract_roll") {   // R-G7 Cutting Words: subtract `dice` (the bardic die) from an enemy's attack roll
+            if (!attack_rolled) return where + ": subtract_roll needs the roll_attack window";
+            x.kind = RE::SubtractRoll;
+            auto d = parse_dice(ef->contains("dice") && (*ef)["dice"].is_string() ? (*ef)["dice"].get<std::string>() : "");
+            if (!d || d->count == 0) return where + ": subtract_roll needs dice";
+            x.dice = *d;
+        } else if (attack_rolled) {
+            return where + ": the roll_attack window only takes subtract_roll";
         } else if (ek == "impose_disadvantage") {
             if (damaged) return where + ": impose_disadvantage needs the ally_attacked window";
             x.kind = RE::ImposeDisadvantage;
@@ -718,6 +751,32 @@ std::optional<std::string> compile_resources(Archetype& a, const Json& doc, bool
     }
     return std::nullopt;
 }
+// R-G7 wield model: equipment[] names a shield, or armor_class.note mentions one. An entry is a string, {"id": ...} or the
+// character@4 form {"item": "srd51.item.shield"}; it is a shield when the id is "shield" or a namespaced id whose last
+// '.'-segment is "shield" (sim does not load item@1 defs, so the item's category is not reachable here).
+bool carries_shield(const Json& doc) {
+    auto is_shield_id = [](const std::string& id) {
+        const std::size_t dot = id.rfind('.');
+        return (dot == std::string::npos ? id : id.substr(dot + 1)) == "shield";
+    };
+    if (auto eq = doc.find("equipment"); eq != doc.end() && eq->is_array())
+        for (const Json& e : *eq) {
+            std::string id;
+            if (e.is_string()) id = e.get<std::string>();
+            else if (e.is_object()) {
+                if (auto it = e.find("item"); it != e.end() && it->is_string()) id = it->get<std::string>();
+                else if (auto jt = e.find("id"); jt != e.end() && jt->is_string()) id = jt->get<std::string>();
+            }
+            if (is_shield_id(id)) return true;
+        }
+    if (auto ac = doc.find("armor_class"); ac != doc.end() && ac->is_object()) {
+        std::string note = ac->value("note", "");
+        for (char& ch : note) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+        if (note.find("shield") != std::string::npos) return true;
+    }
+    return false;
+}
+
 } // namespace
 
 std::optional<rules5e::DamageType> damage_type_from_name(const std::string& s) { return damage_type(s); }
@@ -894,6 +953,12 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         at.type = *type;
         at.ranged = ranged;
         at.finesse = false;
+        // R-G7: only the grip bits Great Weapon Fighting reads (two_handed, versatile) are carried; other properties (loading,
+        // heavy, finesse, ...) stay off so existing behaviour and goldens do not move.
+        if (auto ps = act.find("properties"); ps != act.end() && ps->is_array())
+            for (const Json& pn : *ps)
+                if (auto bitv = rules5e::weapon_property_from_string(pn.is_string() ? pn.get<std::string>() : std::string()))
+                    at.properties = uint16_t(at.properties | (*bitv & (rules5e::kWeaponTwoHanded | rules5e::kWeaponVersatile)));
         // Weapon data qualifiers (magical / silvered / adamantine): monster@3 / character@3 only.
         if (!inert.count("attack_qualifiers"))
             if (auto qs = act.find("qualifiers"); qs != act.end() && qs->is_array())
@@ -1037,6 +1102,11 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             added.push_back(d.id);
         }
     }
+    // R-G7 v0 wield model (sim has no equipment state): a versatile melee weapon of a stat block that carries no shield is
+    // held in two hands (the AI also requires no two-weapon bonus option, see driver.cpp).
+    if (!carries_shield(doc))
+        for (std::size_t i = 0; i < c.attacks.size() && i < 32; ++i)
+            if (!c.attacks[i].ranged && rules5e::has_property(c.attacks[i], rules5e::kWeaponVersatile)) a.two_handed_grip |= 1u << i;
     by_id_[a.id] = std::move(a);
     return std::nullopt;
 }

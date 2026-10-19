@@ -54,9 +54,9 @@ CASES = [
     ("c8_trigger_id_collides_with_rider", D, [(["traits", 0, "id"], "bite"), (["actions", 0, "on_hit", 0], {"kind": "extra_damage", "damage": [{"dice": "1d4", "type": "fire"}]})], [], "derived trigger id 'bite#0'"),
     ("c8_duplicate_event_trait_id", D, [(["traits", 2, "id"], "amphibious_rage")], [], "derived trigger id 'amphibious_rage#0'"),
     ("c8_duplicate_resource_id", D, [(["resources", 1, "id"], "legendary_resistance")], [], "duplicate resource id 'legendary_resistance' (check 8)"),
-    # --- check 9: reserved names
-    ("c9_roll_attack_window", D, [(["reactions", 0, "window", "kind"], "roll_attack")], [], "(check 9, Q6)"),
-    ("c9_subtract_roll_effect", D, [(["reactions", 0, "effect"], {"kind": "subtract_roll", "dice": "1d4"})], [], "(check 9, Q6)"),
+    # --- check 9: the roll_attack / subtract_roll reservation is lifted by R-G7 (sim #114); see RG7_CASES below
+    ("c9_roll_attack_takes_only_subtract_roll", D, [(["reactions", 1, "window"], {"kind": "roll_attack"})], [], "the roll_attack window only takes subtract_roll, not 'retaliate'"),
+    ("c9_subtract_roll_needs_roll_attack", D, [(["reactions", 1, "effect"], {"kind": "subtract_roll", "dice": "1d4"})], [], "subtract_roll needs the roll_attack window"),
     # --- check 10: save_effect schema rules (one negative each)
     ("c10_no_damage_or_apply", D, [], [["actions", 4, "damage"], ["actions", 4, "on_success"]], "is not valid under any of the given schemas [closest: 'damage' is a required property]"),
     ("c10_damage_without_on_success", D, [], [["actions", 4, "on_success"]], "'on_success' is a required property"),
@@ -178,7 +178,7 @@ class V4Validator(unittest.TestCase):
         for k in ("attack_bonus", "crit_range", "ac_bonus"):
             self.assertIn(k, checks_v4.TAG_TABLE["character@4"].effect_kinds)
             self.assertIn(k, checks_v4.TAG_TABLE["monster@4"].effect_kinds)
-            self.assertNotIn(k, checks_v4.TAG_TABLE["character@3"].effect_kinds)   # @<=3 rows are frozen
+            self.assertNotIn(k, checks_v4.TAG_TABLE["character@3"].effect_kinds)   # R-G5 kinds are known at @4 only
 
     def test_api_level_rule(self):
         # A pack containing any @4 or item@1 document must declare api_level >= 2 (section 8.5, validator error).
@@ -315,6 +315,113 @@ class TimedModifiersAndBonusAttacks(unittest.TestCase):
         # check 12 must not call the ki pool declaration-only: the sim spends it by convention.
         errs, warns = h.validate_docs(self.docs_with(MONK, extra("monk_1.json")))
         self.assertFalse([w for w in warns if "(check 12)" in w], warns)
+
+
+# ---- R-G7 (sim #114): roll_attack / subtract_roll reactions, reroll_ones / great_weapon_fighting / evasion ------------
+BARD = "monsters/goblin_bard.json"
+HALF = "characters/halfling_fighter_1.json"
+CW = ["reactions", 0]   # goblin_bard.json: Cutting Words (roll_attack, subtract_roll 1d6, pool bardic_inspiration)
+
+# (name, fixture file, rel path, sets, dels, expected substring); "warn_" cases must validate with that warning only.
+RG7_CASES = [
+    # reactions: the loader's errors
+    ("cw_pool_unknown", "goblin_bard.json", BARD, [(CW + ["usage", "pool"], "nope")], [], "pool 'nope' is not a resources[].id of this document (check 2)"),
+    ("cw_cost_zero", "goblin_bard.json", BARD, [(CW + ["usage", "cost"], 0)], [], "less than the minimum of 1"),
+    ("cw_cost_negative", "goblin_bard.json", BARD, [(CW + ["usage", "cost"], -1)], [], "less than the minimum of 1"),
+    ("cw_cost_float", "goblin_bard.json", BARD, [(CW + ["usage", "cost"], 1.0)], [], "float value"),
+    ("cw_cost_string", "goblin_bard.json", BARD, [(CW + ["usage", "cost"], "1")], [], "is not of type 'integer'"),
+    ("cw_cost_above_u16", "goblin_bard.json", BARD, [(CW + ["usage", "cost"], 65536), (["resources", 0, "max"], 70000)], [], "cost must be an integer 1..65535, got 65536"),
+    ("cw_cost_above_pool_max", "goblin_bard.json", BARD, [(CW + ["usage", "cost"], 4)], [], "cost 4 exceeds the pool's max 3 (check 2)"),
+    ("cw_needs_dice", "goblin_bard.json", BARD, [], [CW + ["effect", "dice"]], "'dice' is a required property"),
+    ("cw_zero_dice", "goblin_bard.json", BARD, [(CW + ["effect", "dice"], "0d6")], [], "does not match"),
+    ("cw_bad_dice", "goblin_bard.json", BARD, [(CW + ["effect", "dice"], "1d7")], [], "does not match"),
+    ("cw_extra_effect_field", "goblin_bard.json", BARD, [(CW + ["effect", "bonus"], 1)], [], "'bonus' is not one of ['kind', 'dice']"),
+    ("cw_pool_usage_extra_field", "goblin_bard.json", BARD, [(CW + ["usage", "uses"], 1)], [], "'uses' is not one of ['kind', 'pool', 'cost']"),
+    ("cw_pool_usage_needs_pool", "goblin_bard.json", BARD, [], [CW + ["usage", "pool"]], "'pool' is a required property"),
+    ("cw_window_takes_only_subtract_roll", "goblin_bard.json", BARD, [(["reactions", 1, "effect"], {"kind": "impose_disadvantage"})], [], "the roll_attack window only takes subtract_roll, not 'impose_disadvantage'"),
+    ("cw_subtract_roll_in_damaged", "goblin_bard.json", BARD, [(["reactions", 1, "window", "kind"], "damaged")], [], "subtract_roll needs the roll_attack window"),
+    ("cw_subtract_roll_in_ally_attacked", "goblin_bard.json", BARD, [(["reactions", 1, "window"], {"kind": "ally_attacked"})], [], "subtract_roll needs the roll_attack window"),
+    ("cw_melee_and_ranged_only", "goblin_bard.json", BARD, [(["reactions", 1, "window", "ranged_only"], True)], [], "melee_only and ranged_only together"),
+    # reactions: the loader lists these as unsupported and skips them (the file loads): warnings
+    ("warn_cw_per_rest_usage", "goblin_bard.json", BARD, [(CW + ["usage"], {"kind": "per_rest", "uses": 1, "rest": "short"})], [], "compiles only a 'pool' usage"),
+    ("warn_cw_usage_on_other_effect", "goblin_bard.json", BARD, [(CW + ["effect"], {"kind": "impose_disadvantage"})], [], "a usage is compiled only on a roll_attack subtract_roll reaction"),
+    ("warn_cw_source_ally", "goblin_bard.json", BARD, [(["reactions", 1, "window", "source"], "ally_within_5ft")], [], "are not compiled"),
+    ("warn_cw_not_visible", "goblin_bard.json", BARD, [(["reactions", 1, "window", "visible"], False)], [], "are not compiled"),
+    ("warn_cw_subtract_roll_in_being_hit", "goblin_bard.json", BARD, [(["reactions", 1, "window"], {"kind": "being_hit"})], [], "subtract_roll in window 'being_hit' is not compiled"),
+    # features / traits
+    ("lucky_rolls_empty", "halfling_fighter_1.json", HALF, [(["features", 1, "effect", "rolls"], [])], [], "should be non-empty"),
+    ("lucky_rolls_damage", "halfling_fighter_1.json", HALF, [(["features", 1, "effect", "rolls"], ["save", "damage"])], [], "'damage' is not one of ['attack', 'check', 'save']"),
+    ("lucky_rolls_not_array", "halfling_fighter_1.json", HALF, [(["features", 1, "effect", "rolls"], "save")], [], "is not of type 'array'"),
+    ("lucky_rolls_bad_on_monster", "goblin_bard.json", BARD, [(["traits", 1, "effect", "rolls"], ["initiative"])], [], "'initiative' is not one of"),
+]
+
+
+class RG7ReactionsAndFeatures(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.base = h.pack_fixtures()
+
+    def docs_with(self, *pairs) -> dict:
+        d = dict(self.base)
+        for rel, doc in pairs:
+            d[rel] = doc
+        return d
+
+    def test_positive_fixtures_validate_clean(self):
+        # goblin_bard: Cutting Words (pool usage, default cost), an ungated melee_only one, an explicit cost 2; evasion and
+        # reroll_ones traits. halfling_fighter_1: reroll_ones with and without rolls, great_weapon_fighting, evasion.
+        errs, warns = h.validate_docs(self.docs_with((BARD, extra("goblin_bard.json")), (HALF, extra("halfling_fighter_1.json"))))
+        self.assertEqual(errs, [])
+        self.assertEqual(warns, [])
+
+    def test_cases(self):
+        for name, fx, rel, sets, dels, expect in RG7_CASES:
+            with self.subTest(name):
+                errs, warns = h.validate_docs(self.docs_with((rel, h.edit(extra(fx), sets, dels))))
+                if EXPECT_WARNING(name):
+                    self.assertEqual(errs, [], errs)
+                    self.assertTrue(any(expect in w for w in warns), warns)
+                else:
+                    self.assertTrue(any(expect in e for e in errs), (expect, errs))
+
+    def test_open_kinds_ignore_extra_fields(self):
+        # common@1 effects stay open: the loader ignores fields it does not read, so the schema does too.
+        doc = h.edit(extra("halfling_fighter_1.json"), [(["features", 2, "effect", "note"], "x"), (["features", 3, "effect", "x"], 1)])
+        self.assertEqual(h.validate_docs(self.docs_with((HALF, doc))), ([], []))
+
+    def test_pool_counts_as_referenced(self):
+        # check 12: a reaction usage.pool references the pool (no declaration-only warning).
+        errs, warns = h.validate_docs(self.docs_with((BARD, extra("goblin_bard.json"))))
+        self.assertFalse([w for w in warns if "(check 12)" in w], warns)
+        no_usage = h.edit(extra("goblin_bard.json"), [], [CW + ["usage"], ["reactions", 2, "usage"]])
+        _errs, warns = h.validate_docs(self.docs_with((BARD, no_usage)))
+        self.assertTrue([w for w in warns if "(check 12)" in w], warns)
+
+    def test_kinds_are_live_at_3_and_known_but_inert_at_2(self):
+        # sim #114 registers the three kinds with no minimum version: live at @3 (no unknown-kind warning, bad shapes are
+        # schema errors through trait_active) and known at @1/@2, where effects are inert and findings stay warnings.
+        for tag in ("character@3", "character@2"):
+            with self.subTest(tag):
+                doc = h.edit(extra("halfling_fighter_1.json"), [(["$schema"], tag)])
+                for k in ("resources", "forward_compat", "inert_mechanics"):
+                    doc.pop(k, None)
+                ok_errs, ok_warns = h.validate_docs({HALF: doc})
+                self.assertEqual(ok_errs, [])
+                self.assertFalse([w for w in ok_warns if "unknown effect kind" in w], ok_warns)
+                bad = h.edit(doc, [(["features", 1, "effect", "rolls"], ["damage"])])
+                errs, warns = h.validate_docs({HALF: bad})
+                if tag == "character@3":
+                    self.assertTrue(any("'damage' is not one of" in e for e in errs), errs)
+                else:
+                    self.assertEqual(errs, [], errs)
+                    self.assertTrue(any("'damage' is not one of" in w and "inert in character@2" in w for w in warns), warns)
+
+    def test_reservation_is_lifted(self):
+        self.assertFalse(hasattr(checks_v4, "RESERVED_WINDOWS"))
+        self.assertFalse(hasattr(checks_v4, "RESERVED_REACTION_EFFECTS"))
+        self.assertIn("roll_attack", checks_v4.COMPILED_WINDOWS)
+        for tag in ("monster@3", "monster@4", "character@3", "character@4"):
+            self.assertTrue(checks_v4.OPEN_EFFECT_KINDS_RG7 <= checks_v4.TAG_TABLE[tag].effect_kinds, tag)
 
 
 if __name__ == "__main__":
