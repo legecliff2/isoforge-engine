@@ -34,7 +34,7 @@ enum class SpellEffectKind : uint8_t {
     Dispel,         // end spells on each target: slot level or lower automatically, higher ones on a check (Dispel Magic)
     Revive,         // a creature dead for at most `revive_within_rounds` returns with 1 HP (Revivify)
     EndCondition,   // ends one condition of `ends_conditions` on each target, the lowest Condition value present, or the cast-time
-                    // ActionRequest::condition_choice (1 + index in ascending Condition order) (Lesser Restoration)
+                    // ActionRequest::condition_choice (1 + index into ends_condition_list, JSON order) (Lesser Restoration)
     DelayedDamage,  // `dice` of `damage_type` when the effect's timer runs out (`expiry`; Acid Arrow: end of the target's next turn)
     SustainedDamage,// `dice` now, and again each time the caster sustains it with a bonus action (Heat Metal; concentration)
     // appended (R-G9, docs/proposals/FORCED_MOVEMENT.md):
@@ -256,6 +256,9 @@ struct SpellDef {
     std::string material_item;
     // appended: see SpellEffect::condition_untracked (primary effect).
     bool condition_untracked = false;
+    // appended (#138): EndCondition's `ends_conditions` in spell@1 JSON list order; ActionRequest::condition_choice is 1 + an
+    // index into it (stable across engine versions, unlike Condition enum order). Filled by the loader; empty = mask order.
+    std::vector<Condition> ends_condition_list;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered

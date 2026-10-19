@@ -519,6 +519,8 @@ TEST_CASE("Lesser Restoration: cast-time condition_choice (sim, folded under 0xB
     const auto lib = make_lib();
     const auto lr = def_of(restoration_doc());
     CHECK(lr.condition_choices.empty());   // the choice indexes the listed conditions, not condition_choices
+    Json odd = restoration_doc(); odd["effects"][0]["conditions"] = {"poisoned", "blinded"};
+    CHECK(def_of(odd).ends_condition_list == std::vector<Condition>{Condition::Poisoned, Condition::Blinded});
     Fight f(lib, {{kWizard, 5, 5}, {"test.monster.gob60", 12, 5}, {"test.monster.gob20", 4, 5}});
     const CombatantId wiz = f.id(0), b = f.id(2);
     f.advance_to(wiz);
@@ -527,7 +529,7 @@ TEST_CASE("Lesser Restoration: cast-time condition_choice (sim, folded under 0xB
     f.next_turn_of(wiz);
     const uint64_t h0 = f.c->hash(), lh0 = f.c->log_hash();
     const std::size_t n0 = f.c->log().size();
-    // listed in ascending Condition order: 1 blinded, 2 deafened, 3 paralyzed, 4 poisoned
+    // listed in JSON order: 1 blinded, 2 deafened, 3 paralyzed, 4 poisoned
     for (uint8_t bad : {uint8_t(1), uint8_t(4), uint8_t(5)}) {   // not present / not listed: refused, nothing changes
         Command cmd = f.cast_cmd("test.spell.lesser_restoration", 2, b);
         cmd.request.condition_choice = bad;

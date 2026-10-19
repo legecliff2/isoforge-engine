@@ -193,7 +193,7 @@ TEST_CASE("Wake (special 5): an action ends a sleeper's ends_on_damage effects")
 }
 
 TEST_CASE("EndCondition: condition_choice picks the listed condition to end; invalid choices are refused unchanged") {
-    // listed, ascending Condition order: 1 blinded, 2 deafened, 3 paralyzed, 4 poisoned
+    // no ends_condition_list (hand-built def): mask order 1 blinded, 2 deafened, 3 paralyzed, 4 poisoned
     auto s = start({caster(1), mob(2, 30), pc(3, 30)});
     mut(s, 3).conditions |= bit(Condition::Blinded) | bit(Condition::Poisoned);
     const auto before = s;
@@ -236,4 +236,31 @@ TEST_CASE("Acid Arrow: the later damage gains 1d4 per slot above 2nd (slot 2 / 3
         }
         CHECK(seen);
     }
+}
+
+TEST_CASE("EndCondition: condition_choice indexes ends_condition_list (JSON order), not Condition enum order") {
+    auto h = hooks();
+    auto book = std::make_shared<SpellBook>(*h.spells);
+    const uint32_t kOdd = spell_id_of("test.spell#restoration_odd");
+    SpellDef lr = *book->find(kRestore);
+    lr.id = kOdd; lr.content_id = "test.spell#restoration_odd";
+    lr.ends_conditions = bit(Condition::Poisoned) | bit(Condition::Blinded);
+    lr.ends_condition_list = {Condition::Poisoned, Condition::Blinded};
+    book->add(lr);
+    h.spells = book;
+    auto me = caster(1);
+    me.spells_known.push_back(kOdd);
+    auto s = begin_encounter({me, mob(2, 30), pc(3, 30)}, 1, nullptr, h);
+    end_turns_until(s, 1);
+    mut(s, 3).conditions |= bit(Condition::Blinded) | bit(Condition::Poisoned);
+    auto r = cast_at(kOdd, 3, 2); r.condition_choice = 1;   // poisoned
+    REQUIRE(step(s, r).ok);
+    CHECK_FALSE(find(s, 3)->has(Condition::Poisoned));
+    CHECK(find(s, 3)->has(Condition::Blinded));
+    end_turns_until(s, 3); end_turns_until(s, 1);
+    r.condition_choice = 3;   // past the list
+    CHECK_FALSE(step(s, r).ok);
+    r.condition_choice = 2;   // blinded
+    REQUIRE(step(s, r).ok);
+    CHECK_FALSE(find(s, 3)->has(Condition::Blinded));
 }

@@ -649,6 +649,8 @@ SpellLoad spell_from_json(const Json& j) {
                 Condition cd;
                 if (!lookup(kCondition, cj, cd)) return ("effect conditions invalid");
                 s.ends_conditions |= bit(cd);
+                if (std::find(s.ends_condition_list.begin(), s.ends_condition_list.end(), cd) == s.ends_condition_list.end())
+                    s.ends_condition_list.push_back(cd);   // JSON order: the cast-time condition_choice indexes it
             }
         } else if (kind == "delayed_damage" || kind == "sustained_damage") {   // R-G15 (7.2g): Acid Arrow's later hit, Heat Metal
             const bool delayed = kind == "delayed_damage";

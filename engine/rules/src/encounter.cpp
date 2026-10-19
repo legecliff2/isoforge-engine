@@ -2606,12 +2606,13 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
         eff.damage_type = def.damage_choices[std::size_t(req.damage_choice - 1)];
     }
     if (req.condition_choice != 0 && def.kind == SpellEffectKind::EndCondition) {
-        // Lesser Restoration: 1 + index into the listed conditions (ends_conditions, ascending Condition order); each target must
-        // have the chosen one. Refused before anything is spent. No choice = the lowest listed condition present (as before).
+        // Lesser Restoration: 1 + index into ends_condition_list (the spell's JSON list order); each target must have the chosen
+        // one. Refused before anything is spent. No choice = the lowest listed condition present (as before).
+        std::vector<Condition> listed = def.ends_condition_list;
+        if (listed.empty())   // a def built without the loader: mask order
+            for (int k = 0; k < 32; ++k) if (def.ends_conditions & (uint32_t(1) << k)) listed.push_back(Condition(k));
         uint32_t chosen = 0;
-        int idx = 0;
-        for (int k = 0; k < 32 && chosen == 0; ++k)
-            if (def.ends_conditions & (uint32_t(1) << k)) { if (++idx == int(req.condition_choice)) chosen = uint32_t(1) << k; }
+        if (std::size_t(req.condition_choice) <= listed.size()) chosen = bit(listed[std::size_t(req.condition_choice - 1)]) & def.ends_conditions;
         if (chosen == 0) return fail("bad condition choice");
         auto has_it = [&](CombatantId id) { const Combatant* t = find(s, id); return t != nullptr && (t->conditions & chosen) != 0; };
         if (req.target != 0 && !has_it(req.target)) return fail("target does not have the chosen condition");
