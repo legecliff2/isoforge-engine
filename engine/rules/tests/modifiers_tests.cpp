@@ -19,7 +19,7 @@ Combatant striker(CombatantId id) {
 Combatant dummy(CombatantId id, int ac = 10) {
     auto m = monster(id);
     m.hp = m.hp_max = 500;
-    m.ac = int16_t(ac);
+    m.ac = int8_t(ac);
     m.attacks = {Attack{"claw", 40, {1, 4, 0}, DamageType::Slashing, 5, false, false}};
     return m;
 }
