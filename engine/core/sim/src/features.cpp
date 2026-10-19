@@ -10,6 +10,14 @@
 
 namespace eng::sim {
 
+std::string equipment_entry_id(const assets::Json& entry) {
+    if (entry.is_string()) return entry.get<std::string>();
+    if (!entry.is_object()) return {};
+    if (auto it = entry.find("item"); it != entry.end() && it->is_string()) return it->get<std::string>();
+    if (auto jt = entry.find("id"); jt != entry.end() && jt->is_string()) return jt->get<std::string>();
+    return {};
+}
+
 using assets::Json;
 
 namespace {
@@ -316,14 +324,18 @@ std::optional<std::string> apply_crit_range(Archetype& a, const FeatureDecl& f, 
 }
 // ac_bonus {amount, requires_armor}: rules5e::compute_ac with AcInput::armored_bonus (requires_armor) or flat_bonus; the
 // difference is added to the content AC. "Wearing armor" (sim has no equipment model): equipment[] names an SRD armor item, or
-// armor_class.note names one (e.g. "chain mail, shield"); "natural armor" does not count.
+// armor_class.note names one (e.g. "chain mail, shield"); "natural armor" does not count. Entries take any
+// equipment_entry_id form, so character@4 {"item": "srd51.item.chain_mail"} counts.
 bool wears_armor(const Json& doc) {
     static const char* kArmor[] = {"padded", "leather", "studded_leather", "hide", "chain_shirt", "scale_mail", "breastplate",
                                    "half_plate", "ring_mail", "chain_mail", "splint", "plate"};
     if (auto eq = doc.find("equipment"); eq != doc.end() && eq->is_array())
         for (const Json& e : *eq) {
-            const std::string id = e.is_string() ? e.get<std::string>() : (e.is_object() ? e.value("id", "") : "");
-            for (const char* k : kArmor) if (id == k || id == std::string(k) + "_armor") return true;
+            // A namespaced id ("srd51.item.chain_mail") matches on its last '.'-segment, as carries_shield does.
+            const std::string id = equipment_entry_id(e);
+            const std::size_t dot = id.rfind('.');
+            const std::string name = dot == std::string::npos ? id : id.substr(dot + 1);
+            for (const char* k : kArmor) if (name == k || name == std::string(k) + "_armor") return true;
         }
     std::string note;
     if (auto ac = doc.find("armor_class"); ac != doc.end() && ac->is_object()) note = ac->value("note", "");
