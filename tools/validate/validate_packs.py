@@ -208,7 +208,7 @@ def check_character(doc, errs, ctx):
             errs.append(f"level-1 hit_points {doc['hit_points']['average']} != {want} (max hit die + CON)")
 
 
-# R-G16 chunk `surprise` (docs/CONTENT_CONVENTIONS.md section 6): reserved, no loader reads it yet.
+# R-G16 chunk `surprise` (docs/CONTENT_CONVENTIONS.md section 8): reserved, no loader reads it yet.
 SURPRISE_RESERVED = ("surprise is reserved: no loader reads it yet (R-G16; the future chunk loader passes it to "
                      "sim::Combat::apply_surprise, #123), so it has no effect until that loader lands")
 
@@ -320,8 +320,13 @@ def runtime_id_collisions(entries: list[tuple[str, str, str]], cross_pack_only: 
 
 
 REACTION_EFFECT_TRIGGER = {"ac_bonus": "being_hit", "counter": "spell_cast"}
-UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "zone"), "darts": ("auto_hit",),
+UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "zone", "hp_pool", "delayed_damage", "sustained_damage"),
+                  "darts": ("auto_hit",),
                   "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition")}
+
+
+FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_damage")   # R-G15, spell_loader.cpp
+TIMED_BY_DURATION = ("hp_pool", "sustained_damage")   # their timer is the spell's duration in rounds
 
 
 def check_spell(doc, errs, ctx):
@@ -333,6 +338,11 @@ def check_spell(doc, errs, ctx):
     if len(effs) > 1 and any(e["kind"] in REACTION_EFFECT_TRIGGER for e in effs):
         errs.append("effects: ac_bonus and counter reactions cannot be combined with other effects")
         return
+    # R-G15 (#120): of the new kinds only delayed_damage rides another effect (the loader's wording).
+    for i, e in enumerate(effs[1:], 1):
+        if e["kind"] in FIRST_EFFECT_ONLY:
+            errs.append(f"effects[{i}]: {e['kind']} is only allowed as the first effect")
+            return
     if eff.get("applies_to", "all") != "all":
         errs.append("effects[0].applies_to needs a previous effect")
     kind = eff["kind"]
@@ -363,6 +373,8 @@ def check_spell(doc, errs, ctx):
         errs.append("ac_bonus effects last until_start_of_caster_turn (and only they use it)")
     if "targets" in doc and kind not in ("save", "heal", "apply_condition"):
         errs.append(f"targets not allowed on a {kind} effect (one target, per dart/beam, or self)")
+    if kind in TIMED_BY_DURATION and doc["duration"]["kind"] not in ("rounds", "minutes", "hours"):
+        errs.append(f"{kind} needs a rounds, minutes or hours duration")
     check_spell_zone(doc, errs)
     refs = [("effect blocks_spell", eff.get("blocks_spell"))] + \
            [("casting_time.trigger.or_targeted_by", r) for r in ct.get("trigger", {}).get("or_targeted_by", [])]
@@ -417,6 +429,23 @@ def check_spell_zone(doc, errs):
             errs.append(f"{where}: while_in_zone needs an effect condition")
         if t.get("counts_aura_move_as_enter") and z["anchor"] == "point" and "move" not in z:
             errs.append(f"{where}: counts_aura_move_as_enter on a zone that never moves")
+
+
+def spell_material_warnings(doc) -> list[str]:
+    """Priced material components (docs/CONTENT_CONVENTIONS.md section 7). Warnings, not errors: the documents load, but a
+    priced material without `item` can never be provided (the sim refuses the cast), and `item` without a cost does nothing.
+    `item` is not checked against item@1 documents (the sim needs none; an equipment[] entry with value_gp provides it)."""
+    m = doc.get("components", {}).get("m")
+    if not isinstance(m, dict):
+        return []
+    cost = m.get("cost_cp", 0)
+    if cost > 0 and "item" not in m:
+        return [f"/components/m: cost_cp {cost} without item: no equipment entry can provide this material, so the sim "
+                "refuses the cast (priced materials)"]
+    if "item" in m and cost <= 0:
+        return [f"/components/m: item '{m['item']}' is ignored without cost_cp (a material with no cost needs nothing; "
+                "priced materials)"]
+    return []
 
 
 CHECKS = {"monster": check_monster, "character": check_character, "chunk": check_chunk, "spell": check_spell}
@@ -596,6 +625,8 @@ def validate_doc(rel: str, doc: dict, tag: str, registry: Registry, by_tag: dict
         CHECKS[typ](doc, errs, ctx)
     if typ == "chunk":
         warns += [f"{rel}: {w}" for w in chunk_warnings(doc)]
+    if not schema_errs and typ == "spell":
+        warns += [f"{rel}: {w}" for w in spell_material_warnings(doc)]
     row = c4.tag_row(tag)
     if not schema_errs and row is not None and row.cross_refs:
         if typ == "item":

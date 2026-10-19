@@ -175,7 +175,7 @@
           "description": "Indices into this chunk's spawns[] (the spawn index that EntitySpawn.stable_id is derived from; stable_id itself is forbidden in files). Each must name a combatant spawn (monster or character archetype)."
         }
       },
-      "description": "R-G16 encounter surprise (docs/CONTENT_CONVENTIONS.md section 6). RESERVED: no loader reads it yet; the validator warns that it has no effect. Contract for the future loader: resolve to the combatant ids (spawn stable_ids) of this chunk and pass them to sim::Combat::apply_surprise (#123) after create() and before the first command. Exactly one of sides / spawns. Not part of content_hash (the chunk decoder ignores the key)."
+      "description": "R-G16 encounter surprise (docs/CONTENT_CONVENTIONS.md section 8). RESERVED: no loader reads it yet; the validator warns that it has no effect. Contract for the future loader: resolve to the combatant ids (spawn stable_ids) of this chunk and pass them to sim::Combat::apply_surprise (#123) after create() and before the first command. Exactly one of sides / spawns. Not part of content_hash (the chunk decoder ignores the key)."
     }
   },
   "properties": {
