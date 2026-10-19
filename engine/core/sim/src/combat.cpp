@@ -121,11 +121,18 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
                                           f.recharge == Recharge::ShortRest  ? rules5e::FeatureRecharge::ShortRest
                                           : f.recharge == Recharge::LongRest ? rules5e::FeatureRecharge::LongRest
                                                                              : rules5e::FeatureRecharge::None);
+    // resources[] pools (row 13): registered first so features and save actions can spend from them (pools fold under 0xA3).
+    for (const auto& sl : c.slots_)
+        for (const auto& r : sl.archetype->resources)
+            rules5e::register_pool(c.state_, sl.id, r.pool_id, r.max, r.start,
+                                   r.recharge == uint8_t(rules5e::FeatureRecharge::ShortRest)  ? rules5e::FeatureRecharge::ShortRest
+                                   : r.recharge == uint8_t(rules5e::FeatureRecharge::LongRest) ? rules5e::FeatureRecharge::LongRest
+                                                                                              : rules5e::FeatureRecharge::None);
     // Save actions (monster@4 / character@4): recharge and per-day / per-rest usage rows, only for creatures
     // that have one (digest-neutral for every other combat).
     for (const auto& sl : c.slots_)
         for (const auto& sa : sl.archetype->save_actions) {
-            if (sa.usage_kind == 3)
+            if (sa.usage_kind == 3 && !rules5e::find_pool(c.state_, sl.id, sa.pool_id))
                 rules5e::register_pool(c.state_, sl.id, sa.pool_id, sa.pool_max, sa.pool_start,
                                        sa.pool_recharge == Recharge::ShortRest  ? rules5e::FeatureRecharge::ShortRest
                                        : sa.pool_recharge == Recharge::LongRest ? rules5e::FeatureRecharge::LongRest
@@ -427,6 +434,13 @@ void Combat::install_hooks() {
             return !observer.has(rules5e::Condition::Blinded) && line_of_sight(observer.id, target.id);
         };
     }
+    // Row 13: what UseFeature spends / grants (usage.pool + cost, grant_action, heal_pool).
+    state_.hooks.feature_spec = [this](const rules5e::EncounterState&, const rules5e::Combatant& actor, uint32_t feature_id)
+        -> std::optional<rules5e::FeatureSpec> {
+        if (const Archetype* arch = archetype(actor.id))
+            if (auto it = arch->feature_specs.find(feature_id); it != arch->feature_specs.end()) return it->second;
+        return std::nullopt;
+    };
     state_.hooks.in_range = [this](const rules5e::EncounterState&, const rules5e::ReactionWindow& w,
                                    const rules5e::Combatant& r) {
         if (w.trigger == ReactionTrigger::BeingHit) return r.id == w.target;   // Shield: the creature hit
@@ -542,7 +556,8 @@ bool Combat::can_use_feature(CombatantId id, uint32_t fid) const {
     const ActiveFeature* f = find_active(archetype(id), fid);
     if (!f || state_.ended || state_.pending || rules5e::current_actor(state_) != id) return false;
     if (feature_uses_left(id, fid) == 0) return false;
-    return f->cost == FeatureCost::BonusAction ? state_.budget.bonus_action : state_.budget.action;
+    if (f->cost == FeatureCost::Free) return true;
+    return f->cost == FeatureCost::BonusAction ? state_.budget.bonus_action : state_.budget.action || state_.budget.extra_actions > 0;
 }
 
 std::optional<Vec2i> Combat::moving_to(CombatantId id) const {
@@ -701,7 +716,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
         const ActiveFeature* f = find_active(archetype(actor), req.feature_id);
         if (!f) { r.error = "no such active feature"; return r; }
         if (feature_uses_left(actor, req.feature_id) == 0) { r.error = "feature has no uses left"; return r; }
-        req.as_bonus_action = f->cost == FeatureCost::BonusAction;
+        req.as_bonus_action = f->cost == FeatureCost::BonusAction;   // rules read FeatureSpec::cost when a spec exists
         req.heal_dice = f->heal;   // zero unless the hook set a heal
     }
     if (req.kind == ActionKind::Attack) {
