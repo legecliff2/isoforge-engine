@@ -308,7 +308,7 @@ TEST_CASE("loader: R-G11 zone rules match the validator") {
     j = zj; j["effects"][0]["zone"]["triggers"][0]["counts_aura_move_as_enter"] = true; bad(j, "on a zone that never moves");
     j = zj; j["effects"][0]["zone"]["triggers"][0]["while_in_zone"] = true; bad(j, "while_in_zone needs an effect condition");
     j = zj; j["effects"].push_back(zj["effects"][0]); bad(j, "zone must be the primary effect (effects[1] is a zone)");
-    j = zj; j["effects"][0]["zone"]["shape"] = "line"; bad(j, "zone.shape");
+    j = zj; j["effects"][0]["zone"]["shape"] = "cone"; bad(j, "zone.shape must be sphere, cylinder, cube or line");
     j = zj; j["effects"][0]["zone"]["size_ft"] = 7; bad(j, "zone.size_ft");
     j = zj; j["effects"][0]["zone"]["height_ft"] = 40; bad(j, "height_ft is required for (and only for) cylinders");
     j = zj; j["effects"][0]["zone"]["shape"] = "cylinder"; bad(j, "height_ft is required for (and only for) cylinders");
@@ -318,7 +318,8 @@ TEST_CASE("loader: R-G11 zone rules match the validator") {
     j = zj; j["effects"][0]["zone"]["move"] = {{"cost", "reaction"}, {"feet", 60}}; bad(j, "zone.move.cost");
     j = zj; j["effects"][0]["zone"]["triggers"][0]["group"] = 256; bad(j, "group invalid");
     j = zj; j["effects"][0]["zone"]["triggers"][0]["on"] = "enter"; bad(j, ".on must be");
-    j = zj; j["effects"][0]["zone"]["upcast_size_ft"] = 20; bad(j, "zone: unknown key 'upcast_size_ft'");
+    j = zj; j["effects"][0]["zone"]["upcast_size"] = 20; bad(j, "zone: unknown key 'upcast_size'");
+    j = zj; j["effects"][0]["zone"]["triggers"][0]["regions"] = "zone"; bad(j, "zone.triggers[0]: unknown key 'regions'");
     j = zj; j["targets"] = {{"count", 1}}; bad(j, "targets not allowed on a zone effect");
     j = zj; j["scaling"] = {{"upcast", {{"dice", 1}}}};
     REQUIRE(spell_from_json(j).def);
@@ -336,4 +337,119 @@ TEST_CASE("loader: R-G11 zone rules match the validator") {
     CHECK(w.def->zone.triggers[0].effect.kind == SpellEffectKind::Save);
     CHECK(w.def->zone.triggers[0].effect.applies_condition);
     CHECK(w.def->zone.triggers[0].while_in_zone);
+}
+
+TEST_CASE("loader: R-G11 rules PR 2 zone / trigger keys (CONTENT_CONVENTIONS.md 4.6)") {
+    using J = eng::assets::Json;
+    const J base = J::parse(R"({"$schema":"spell@1","id":"srd51.spell.zk","level":2,"name":"x",
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":120},"components":{"v":true},
+        "duration":{"kind":"minutes","amount":1,"concentration":true},
+        "effects":[{"kind":"zone","zone":{"shape":"sphere","size_ft":20,"anchor":"point","flags":["heavy_obscured"]}}]})");
+    auto bad = [](const J& j, const char* want) {
+        auto r = spell_from_json(j);
+        INFO(want);
+        INFO(r.error);
+        CHECK_FALSE(r.def);
+        CHECK(r.error.find(want) != std::string::npos);
+    };
+    // Fog Cloud: upcast_size_ft
+    J fog = base; fog["effects"][0]["zone"]["upcast_size_ft"] = 20;
+    auto rf = spell_from_json(fog);
+    INFO(rf.error);
+    REQUIRE(rf.def);
+    CHECK(rf.def->zone.upcast_size_ft == 20);
+    J j = base; j["effects"][0]["zone"]["upcast_size_ft"] = 21; bad(j, "zone.upcast_size_ft invalid");
+
+    // Wall of Fire: line + length_ft, ring_size_ft, sided, side_ft, region
+    J wall = base;
+    wall["effects"][0]["zone"] = J::parse(R"({"shape":"line","length_ft":60,"height_ft":20,"ring_size_ft":20,"sided":true,
+        "side_ft":10,"anchor":"point","triggers":[
+          {"on":"zone_appear","region":"zone_or_side","effect":{"kind":"save","ability":"dex","damage":{"dice":"5d8","type":"fire"},"on_success":"half"}},
+          {"on":"zone_end_turn","region":"zone_or_side","effect":{"kind":"damage","damage":{"dice":"5d8","type":"fire"}}},
+          {"on":"zone_enter","region":"zone","effect":{"kind":"damage","damage":{"dice":"5d8","type":"fire"}}}]})");
+    auto rw = spell_from_json(wall);
+    INFO(rw.error);
+    REQUIRE(rw.def);
+    const ZoneSpec& wz = rw.def->zone;
+    CHECK(wz.shape == AreaShape::Line); CHECK(wz.length_ft == 60); CHECK(wz.height_ft == 20); CHECK(wz.size_ft == 0);
+    CHECK(wz.ring_size_ft == 20); CHECK(wz.sided); CHECK(wz.side_ft == 10);
+    REQUIRE(wz.triggers.size() == 3);
+    CHECK(wz.triggers[0].region == 1); CHECK(wz.triggers[1].region == 1); CHECK(wz.triggers[2].region == 0);
+    j = wall; j["effects"][0]["zone"]["size_ft"] = 20; bad(j, "zone.size_ft not allowed on a line");
+    j = wall; j["effects"][0]["zone"].erase("length_ft"); bad(j, "zone.length_ft is required for (and only for) lines");
+    j = base; j["effects"][0]["zone"]["length_ft"] = 60; bad(j, "zone.length_ft is required for (and only for) lines");
+    j = wall; j["effects"][0]["zone"].erase("height_ft"); bad(j, "zone.height_ft is required for (and only for) cylinders and lines");
+    j = wall; j["effects"][0]["zone"]["upcast_size_ft"] = 20; bad(j, "zone: upcast_size_ft not allowed on a line");
+    j = base; j["effects"][0]["zone"]["ring_size_ft"] = 20; bad(j, "zone: ring_size_ft needs shape line");
+    j = base; j["effects"][0]["zone"]["sided"] = true; j["effects"][0]["zone"]["side_ft"] = 10; bad(j, "zone: sided needs shape line");
+    j = wall; j["effects"][0]["zone"]["sided"] = "yes"; bad(j, "zone.sided must be a boolean");
+    j = wall; j["effects"][0]["zone"].erase("side_ft"); bad(j, "zone: side_ft is required for (and only for) sided zones");
+    j = wall; j["effects"][0]["zone"]["side_ft"] = 3; bad(j, "zone.side_ft invalid");
+    j = wall; j["effects"][0]["zone"]["triggers"][0]["region"] = "side"; bad(j, "zone.triggers[0].region must be zone or zone_or_side");
+    j = wall; j["effects"][0]["zone"]["triggers"][2]["region"] = "zone_or_side";
+    bad(j, "zone.triggers[2]: region zone_or_side is only for zone_appear / zone_start_turn / zone_end_turn");
+    j = wall; j["effects"][0]["zone"]["sided"] = false; j["effects"][0]["zone"].erase("side_ft");
+    bad(j, "zone.triggers[0]: region zone_or_side needs a sided zone");
+
+    // Stinking Cloud: loses_action, auto_success_*
+    J sc = base;
+    sc["effects"][0]["zone"]["triggers"] = J::parse(R"([{"on":"zone_start_turn","loses_action":true,
+        "auto_success_damage":["poison"],"auto_success_conditions":["poisoned"],"auto_success_no_breath":true,
+        "effect":{"kind":"save","ability":"con","condition":"poisoned"}}])");
+    auto rs = spell_from_json(sc);
+    INFO(rs.error);
+    REQUIRE(rs.def);
+    const ZoneTriggerRow& sr = rs.def->zone.triggers[0];
+    CHECK(sr.loses_action); CHECK(sr.auto_success_no_breath);
+    CHECK(sr.auto_success_damage == bit(DamageType::Poison)); CHECK(sr.auto_success_conditions == bit(Condition::Poisoned));
+    j = sc; j["effects"][0]["zone"]["triggers"][0]["loses_action"] = 1; bad(j, "zone.triggers[0]: flags must be booleans");
+    j = sc; j["effects"][0]["zone"]["triggers"][0]["auto_success_damage"] = J::array({"poison", "poison"});
+    bad(j, "zone.triggers[0].auto_success_damage must be a non-empty array of unique damage types");
+    j = sc; j["effects"][0]["zone"]["triggers"][0]["auto_success_conditions"] = J::array();
+    bad(j, "zone.triggers[0].auto_success_conditions must be a non-empty array of unique conditions");
+    j = sc; j["effects"][0]["zone"]["triggers"][0]["effect"] = {{"kind", "apply_condition"}, {"condition", "poisoned"}};
+    bad(j, "zone.triggers[0]: auto_success / shapechanger_disadvantage need effect kind save");
+
+    // Moonbeam / Spirit Guardians: shapechanger_disadvantage, evil_damage_type
+    J mb = base;
+    mb["effects"][0]["zone"]["triggers"] = J::parse(R"([{"on":"zone_enter","shapechanger_disadvantage":true,"evil_damage_type":"necrotic",
+        "effect":{"kind":"save","ability":"con","damage":{"dice":"2d10","type":"radiant"},"on_success":"half"}}])");
+    auto rm = spell_from_json(mb);
+    INFO(rm.error);
+    REQUIRE(rm.def);
+    CHECK(rm.def->zone.triggers[0].shapechanger_disadvantage);
+    CHECK(rm.def->zone.triggers[0].has_evil_damage_type); CHECK(rm.def->zone.triggers[0].evil_damage_type == DamageType::Necrotic);
+    j = mb; j["effects"][0]["zone"]["triggers"][0]["evil_damage_type"] = "unholy"; bad(j, "zone.triggers[0].evil_damage_type invalid");
+    j = mb; j["effects"][0]["zone"]["triggers"][0]["shapechanger_disadvantage"] = false;
+    j["effects"][0]["zone"]["triggers"][0]["effect"] = {{"kind", "save"}, {"ability", "con"}, {"condition", "blinded"}};
+    bad(j, "zone.triggers[0]: evil_damage_type needs effect damage");
+
+    // D7 auras: aura_modifier, aura_bonus_ability, aura_immunity, aura_allies_only (no flags / triggers needed)
+    J au = base; au["range"] = {{"kind", "self"}};
+    au["effects"][0]["zone"] = J::parse(R"({"shape":"sphere","size_ft":10,"anchor":"creature","needs_conscious_owner":true,
+        "aura_modifier":{"stat":"save","bonus":0,"ability":"wis"},"aura_bonus_ability":"cha","aura_immunity":["frightened"],"aura_allies_only":true})");
+    auto ra = spell_from_json(au);
+    INFO(ra.error);
+    REQUIRE(ra.def);
+    const ZoneSpec& az = ra.def->zone;
+    CHECK(az.aura_modifier.stat == ModStat::Save); CHECK(az.aura_modifier.has_ability); CHECK(az.aura_modifier.ability == Ability::Wis); CHECK(az.aura_modifier.id == spell_id_of("srd51.spell.zk#aura"));
+    CHECK(az.has_aura_bonus_ability); CHECK(az.aura_bonus_ability == Ability::Cha);
+    CHECK(az.aura_immunity == bit(Condition::Frightened)); CHECK(az.aura_allies_only);
+    j = au; j["effects"][0]["zone"]["aura_modifier"] = {{"stat", "ac"}, {"bonus", 1}}; bad(j, "zone.aura_modifier stat must be save");
+    j = au; j["effects"][0]["zone"]["aura_modifier"] = {{"stat", "save"}, {"duration", 1}}; bad(j, "zone.aura_modifier must be {stat, bonus, ability}");
+    j = au; j["effects"][0]["zone"]["aura_modifier"] = {{"stat", "save"}, {"bonus", 99}}; bad(j, "zone.aura_modifier bonus invalid (-30..30)");
+    j = au; j["effects"][0]["zone"]["aura_modifier"] = {{"stat", "save"}, {"ability", "luck"}}; bad(j, "zone.aura_modifier ability invalid");
+    j = au; j["effects"][0]["zone"]["aura_bonus_ability"] = "luck"; bad(j, "zone.aura_bonus_ability invalid");
+    j = au; j["effects"][0]["zone"].erase("aura_modifier"); bad(j, "zone: aura_bonus_ability needs aura_modifier");
+    j = au; j["effects"][0]["zone"]["aura_immunity"] = J::array({"scared"});
+    bad(j, "zone.aura_immunity must be a non-empty array of unique conditions");
+    j = au; j["effects"][0]["zone"]["aura_allies_only"] = "yes"; bad(j, "zone.aura_allies_only must be a boolean");
+    j = base; j["effects"][0]["zone"]["aura_allies_only"] = true; bad(j, "zone: aura fields need anchor creature");
+
+    // Silence needs no new key: the flag alone
+    j = base; j["effects"][0]["zone"]["flags"] = J::array({"silence"});
+    REQUIRE(spell_from_json(j).def);
+    // Refusal: unknown keys stay refused at both levels
+    j = base; j["effects"][0]["zone"]["no_breath"] = true; bad(j, "zone: unknown key 'no_breath'");
+    j = sc; j["effects"][0]["zone"]["triggers"][0]["evil"] = true; bad(j, "zone.triggers[0]: unknown key 'evil'");
 }

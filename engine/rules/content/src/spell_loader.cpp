@@ -128,16 +128,28 @@ std::string parse_zone(const Json& z, SpellDef& s) {
     if (!z.is_object()) return "zone missing (kind zone needs a zone object)";
     std::string bad;
     if (!only_keys(z, {"shape", "size_ft", "height_ft", "anchor", "flags", "move", "chooses_excluded", "needs_conscious_owner",
-                       "triggers"}, bad))
+                       "triggers", "length_ft", "upcast_size_ft", "ring_size_ft", "sided", "side_ft", "aura_modifier",
+                       "aura_bonus_ability", "aura_immunity", "aura_allies_only"}, bad))
         return "zone: unknown key '" + bad + "'";
     static const std::map<std::string, AreaShape> kZoneShape{{"sphere", AreaShape::Sphere}, {"cylinder", AreaShape::Cylinder},
-                                                             {"cube", AreaShape::Cube}};
+                                                             {"cube", AreaShape::Cube}, {"line", AreaShape::Line}};
     ZoneSpec& zs = s.zone;
-    if (!lookup(kZoneShape, z.value("shape", Json()), zs.shape)) return "zone.shape must be sphere, cylinder or cube";
+    if (!lookup(kZoneShape, z.value("shape", Json()), zs.shape)) return "zone.shape must be sphere, cylinder, cube or line";
+    const bool line = zs.shape == AreaShape::Line;
     int v = 0;
-    if (!z.contains("size_ft") || !feet_5(z["size_ft"], v)) return "zone.size_ft invalid (5..65530, a multiple of 5)";
-    zs.size_ft = uint16_t(v);
-    if ((zs.shape == AreaShape::Cylinder) != z.contains("height_ft")) return "zone.height_ft is required for (and only for) cylinders";
+    if (line) {
+        if (z.contains("size_ft")) return "zone.size_ft not allowed on a line (length_ft / height_ft give a wall's geometry)";
+    } else {
+        if (!z.contains("size_ft") || !feet_5(z["size_ft"], v)) return "zone.size_ft invalid (5..65530, a multiple of 5)";
+        zs.size_ft = uint16_t(v);
+    }
+    if (line != z.contains("length_ft")) return "zone.length_ft is required for (and only for) lines";
+    if (line) {
+        if (!feet_5(z["length_ft"], v)) return "zone.length_ft invalid (5..65530, a multiple of 5)";
+        zs.length_ft = uint16_t(v);
+    }
+    if ((zs.shape == AreaShape::Cylinder || line) != z.contains("height_ft"))
+        return "zone.height_ft is required for (and only for) cylinders and lines";
     if (z.contains("height_ft")) {
         if (!feet_5(z["height_ft"], v)) return "zone.height_ft invalid (5..65530, a multiple of 5)";
         zs.height_ft = uint16_t(v);
@@ -166,6 +178,57 @@ std::string parse_zone(const Json& z, SpellDef& s) {
         if (!m.contains("feet") || !feet_5(m["feet"], v)) return "zone.move.feet invalid (5..65530, a multiple of 5)";
         zs.move_ft = uint16_t(v);
     }
+    if (z.contains("upcast_size_ft")) {
+        if (!feet_5(z["upcast_size_ft"], v)) return "zone.upcast_size_ft invalid (5..65530, a multiple of 5)";
+        if (line) return "zone: upcast_size_ft not allowed on a line";
+        zs.upcast_size_ft = uint16_t(v);
+    }
+    if (z.contains("ring_size_ft")) {
+        if (!feet_5(z["ring_size_ft"], v)) return "zone.ring_size_ft invalid (5..65530, a multiple of 5)";
+        if (!line) return "zone: ring_size_ft needs shape line";
+        zs.ring_size_ft = uint16_t(v);
+    }
+    if (!bool_key(z, "sided", zs.sided)) return "zone.sided must be a boolean";
+    if (zs.sided && !line) return "zone: sided needs shape line";
+    if (zs.sided != z.contains("side_ft")) return "zone: side_ft is required for (and only for) sided zones";
+    if (z.contains("side_ft")) {
+        if (!feet_5(z["side_ft"], v)) return "zone.side_ft invalid (5..65530, a multiple of 5)";
+        zs.side_ft = uint16_t(v);
+    }
+    if (z.contains("aura_modifier")) {
+        // A passive aura has no duration of its own (it lasts while the creature is in the zone): a closed {stat, bonus, ability}.
+        const Json& am = z["aura_modifier"];
+        if (!am.is_object() || !only_keys(am, {"stat", "bonus", "ability"}, bad))
+            return "zone.aura_modifier must be {stat, bonus, ability}";
+        if (am.value("stat", Json()) != "save") return "zone.aura_modifier stat must be save";
+        zs.aura_modifier.stat = ModStat::Save;
+        if (am.contains("bonus")) {
+            if (!small_int(am["bonus"], -30, 30, v)) return "zone.aura_modifier bonus invalid (-30..30)";
+            zs.aura_modifier.bonus = int16_t(v);
+        }
+        if (am.contains("ability")) {
+            if (!lookup(kAbility, am["ability"], zs.aura_modifier.ability)) return "zone.aura_modifier ability invalid";
+            zs.aura_modifier.has_ability = true;
+        }
+        zs.aura_modifier.id = spell_id_of(s.content_id + "#aura");
+    }
+    if (z.contains("aura_bonus_ability")) {
+        if (!lookup(kAbility, z["aura_bonus_ability"], zs.aura_bonus_ability)) return "zone.aura_bonus_ability invalid";
+        if (!z.contains("aura_modifier")) return "zone: aura_bonus_ability needs aura_modifier";
+        zs.has_aura_bonus_ability = true;
+    }
+    if (z.contains("aura_immunity")) {
+        const Json& ai = z["aura_immunity"];
+        if (!ai.is_array() || ai.empty()) return "zone.aura_immunity must be a non-empty array of unique conditions";
+        for (const Json& x : ai) {
+            Condition c{};
+            if (!lookup(kCondition, x, c) || (zs.aura_immunity & bit(c))) return "zone.aura_immunity must be a non-empty array of unique conditions";
+            zs.aura_immunity |= bit(c);
+        }
+    }
+    if (!bool_key(z, "aura_allies_only", zs.aura_allies_only)) return "zone.aura_allies_only must be a boolean";
+    if ((z.contains("aura_modifier") || z.contains("aura_immunity") || zs.aura_allies_only) && zs.anchor != ZoneAnchor::Creature)
+        return "zone: aura fields need anchor creature";
     if (!bool_key(z, "chooses_excluded", zs.chooses_excluded)) return "zone.chooses_excluded must be a boolean";
     if (!bool_key(z, "needs_conscious_owner", zs.needs_conscious_owner)) return "zone.needs_conscious_owner must be a boolean";
     if (z.contains("triggers")) {
@@ -179,7 +242,8 @@ std::string parse_zone(const Json& z, SpellDef& s) {
             const Json& t = ts[i];
             if (!t.is_object()) return where + " must be an object";
             if (!only_keys(t, {"on", "group", "own_turn_only", "completely_within", "counts_aura_move_as_enter", "while_in_zone",
-                               "effect"}, bad))
+                               "effect", "region", "loses_action", "auto_success_damage", "auto_success_conditions",
+                               "auto_success_no_breath", "shapechanger_disadvantage", "evil_damage_type"}, bad))
                 return where + ": unknown key '" + bad + "'";
             ZoneTriggerRow r;
             if (!lookup(kOn, t.value("on", Json()), r.on))
@@ -189,10 +253,50 @@ std::string parse_zone(const Json& z, SpellDef& s) {
                 r.group = uint8_t(v);
             }
             if (!bool_key(t, "own_turn_only", r.own_turn_only) || !bool_key(t, "completely_within", r.completely_within) ||
-                !bool_key(t, "counts_aura_move_as_enter", r.counts_aura_move_as_enter) || !bool_key(t, "while_in_zone", r.while_in_zone))
+                !bool_key(t, "counts_aura_move_as_enter", r.counts_aura_move_as_enter) || !bool_key(t, "while_in_zone", r.while_in_zone) ||
+                !bool_key(t, "loses_action", r.loses_action) || !bool_key(t, "auto_success_no_breath", r.auto_success_no_breath) ||
+                !bool_key(t, "shapechanger_disadvantage", r.shapechanger_disadvantage))
                 return where + ": flags must be booleans";
             if (!t.contains("effect")) return where + ".effect missing";
             if (auto m = parse_zone_effect(t["effect"], where, r.effect); !m.empty()) return m;
+            if (t.contains("region")) {
+                const Json& rg = t["region"];
+                if (!rg.is_string() || (rg != "zone" && rg != "zone_or_side")) return where + ".region must be zone or zone_or_side";
+                r.region = rg == "zone_or_side" ? 1 : 0;
+                if (r.region == 1 && !zs.sided) return where + ": region zone_or_side needs a sided zone";
+                if (r.region == 1 && r.on != ZoneTrigger::Appear && r.on != ZoneTrigger::StartTurn && r.on != ZoneTrigger::EndTurn)
+                    return where + ": region zone_or_side is only for zone_appear / zone_start_turn / zone_end_turn";
+            }
+            if (t.contains("auto_success_damage")) {
+                const Json& a = t["auto_success_damage"];
+                const std::string em = where + ".auto_success_damage must be a non-empty array of unique damage types";
+                if (!a.is_array() || a.empty()) return em;
+                for (const Json& x : a) {
+                    DamageType d{};
+                    if (!lookup(kDamage, x, d)) return em;
+                    const uint32_t b = bit(d);
+                    if (r.auto_success_damage & b) return em;
+                    r.auto_success_damage |= b;
+                }
+            }
+            if (t.contains("auto_success_conditions")) {
+                const Json& a = t["auto_success_conditions"];
+                const std::string em = where + ".auto_success_conditions must be a non-empty array of unique conditions";
+                if (!a.is_array() || a.empty()) return em;
+                for (const Json& x : a) {
+                    Condition c{};
+                    if (!lookup(kCondition, x, c) || (r.auto_success_conditions & bit(c))) return em;
+                    r.auto_success_conditions |= bit(c);
+                }
+            }
+            if ((r.auto_success_damage || r.auto_success_conditions || r.auto_success_no_breath || r.shapechanger_disadvantage) &&
+                r.effect.kind != SpellEffectKind::Save)
+                return where + ": auto_success / shapechanger_disadvantage need effect kind save";
+            if (t.contains("evil_damage_type")) {
+                if (!lookup(kDamage, t["evil_damage_type"], r.evil_damage_type)) return where + ".evil_damage_type invalid";
+                if (r.effect.dice.count == 0) return where + ": evil_damage_type needs effect damage";
+                r.has_evil_damage_type = true;
+            }
             zs.triggers.push_back(r);
         }
     }
@@ -207,7 +311,7 @@ std::string check_zone(const Json& j, const SpellDef& s) {
     if (z.anchor == ZoneAnchor::Creature && s.range_ft != 0) return "zone: anchor creature (an aura on the caster) needs range self";
     if (z.move_cost != 0 && z.anchor != ZoneAnchor::Point) return "zone: move needs anchor point";
     if ((z.flags & kZoneLightObscured) && (z.flags & kZoneHeavyObscured)) return "zone: flags light_obscured and heavy_obscured are exclusive";
-    if (z.flags == 0 && z.triggers.empty()) return "zone: needs triggers or flags (it would do nothing)";
+    if (z.flags == 0 && z.triggers.empty() && z.aura_modifier.id == 0 && z.aura_immunity == 0) return "zone: needs triggers or flags (it would do nothing)";
     for (std::size_t i = 0; i < z.triggers.size(); ++i) {
         const ZoneTriggerRow& r = z.triggers[i];
         const std::string where = "zone.triggers[" + std::to_string(i) + "]";
