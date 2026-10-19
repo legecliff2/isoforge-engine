@@ -235,3 +235,70 @@ TEST_CASE("compat defenses: decorated pre-@3 fights reproduce the frozen fl1 dig
         }
     }
 }
+
+// VERSION_BUMP_BATCH 8.4: T&C's decorated @3 fixtures (descriptive reactions / bonus_actions / new-kind effects, ids rewritten
+// to the frozen ones) must play exactly like the same documents without the decoration, and their 3 -> 4 migrated forms
+// (expected4/, the Python reference's output) like their @3 sources.
+//  * Goblins: the undecorated baseline is the frozen fl1 goblin itself (pinned digests above; its @1 -> @3 migration
+//    makes no behaviour change for a goblin).
+//  * Fighters: the fixture is character@3, where the Dueling bonus and Second Wind are live (the @1 file's effects were
+//    marked inert because their numbers are baked in), so the frozen fl1 digest does not apply; the baseline is the
+//    same @3 fighter with the decoration (reactions, the on_event / apply_modifier features) removed.
+namespace {
+uint64_t digest_of_pack(const std::string& tag, const Json& goblin, const Json& fighter, uint64_t seed) {
+    const fs::path root = fs::temp_directory_path() / ("isoforge_compat_v4_" + tag);
+    fs::remove_all(root);
+    const fs::path dir = root / "sample.vertical_slice";
+    fs::create_directories(root);
+    fs::copy(kFl1, dir, fs::copy_options::recursive);
+    write_json(dir / "monsters/goblin.json", goblin);
+    write_json(dir / "characters/fighter_1.json", fighter);
+    const uint64_t d = run_digest(dir.string(), seed);
+    fs::remove_all(root);
+    return d;
+}
+Json fixture(const char* dir, const char* name, const char* frozen_id) {
+    Json j = read_json(fs::path(ENGINE_SOURCE_ROOT) / "tests/validate/fixtures/v4" / dir / (std::string(name) + ".json"));
+    j["id"] = frozen_id;
+    return j;
+}
+} // namespace
+
+TEST_CASE("compat defenses: decorated @3 fixtures and their @4 migrations play like the undecorated documents (NEVER update these)") {
+    struct Pin { uint64_t seed, digest; };
+    const Pin pins[] = {   // the frozen fl1 fight (same pins as above)
+        {1, 17752322533980382510ull},
+        {2, 5403282979316985951ull},
+        {3, 15477144339721690572ull},
+    };
+    const Json frozen_fighter = read_json(fs::path(kFl1) / "characters/fighter_1.json");
+    const Json frozen_goblin = read_json(fs::path(kFl1) / "monsters/goblin.json");
+    for (const char* dir : {"at3", "expected4"}) {
+        CAPTURE(std::string(dir));
+        for (const char* gob : {"decorated_goblin", "merge_goblin"}) {
+            CAPTURE(std::string(gob));
+            const Json g = fixture(dir, gob, "srd51.monster.goblin");
+            for (const Pin& p : pins) {
+                CAPTURE(p.seed);
+                CHECK(digest_of_pack(std::string(dir) + "_" + gob, g, frozen_fighter, p.seed) == p.digest);
+            }
+        }
+        for (const char* fig : {"decorated_fighter", "bogus_inert_fighter"}) {
+            CAPTURE(std::string(fig));
+            const Json f = fixture(dir, fig, "srd51.character.fighter_1");
+            Json bare = f;   // the same document without the decoration
+            bare.erase("reactions");
+            bare.erase("inert_mechanics");
+            auto& feats = bare["features"];
+            for (auto it = feats.begin(); it != feats.end();) {
+                const std::string id = it->value("id", "");
+                it = (id == "sneak_like" || id == "rage_like" || id == "ahead_of_engine") ? feats.erase(it) : it + 1;
+            }
+            for (const Pin& p : pins) {
+                CAPTURE(p.seed);
+                CHECK(digest_of_pack(std::string(dir) + "_" + fig + "_dec", frozen_goblin, f, p.seed) ==
+                      digest_of_pack(std::string(dir) + "_" + fig + "_bare", frozen_goblin, bare, p.seed));
+            }
+        }
+    }
+}

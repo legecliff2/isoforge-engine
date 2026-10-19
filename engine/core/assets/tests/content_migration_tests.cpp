@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include <fstream>
 #include <string>
 #include "assets/content_migrations.hpp"
 
@@ -64,10 +65,11 @@ TEST_CASE("frozen fl1 goblin (monster@1, no ai) migrates to monster@4; only effe
     for (auto& t : raw.data["traits"])
         if (t.contains("effect")) t["effect"]["inert"] = true;
     // ... and the 3 -> 4 markers (stamps on reactions / loadable bonus actions, merged inert_mechanics).
-    r.data.erase("inert_mechanics");
-    for (const char* key : {"reactions", "bonus_actions"})
-        if (r.data.contains(key))
-            for (auto& e : r.data[key]) e.erase("inert");
+    // The frozen goblin has no reactions, bonus actions or equipment, so 3 -> 4 adds no stamp and writes no
+    // inert_mechanics key at all (nothing is erased from the comparison below).
+    CHECK_FALSE(r.data.contains("inert_mechanics"));
+    CHECK_FALSE(r.data.contains("reactions"));
+    CHECK_FALSE(r.data.contains("bonus_actions"));
     CHECK(raw.data == r.data);
 }
 
@@ -146,4 +148,36 @@ TEST_CASE("3 -> 4 migration: markers, frozen effect kinds, merged inert_mechanic
     // the frozen list the sim registry must equal
     CHECK(effect_kinds_introduced_at(4) == std::vector<std::string>{"on_event", "apply_modifier", "grant_action", "heal_pool", "save_effect", "reaction"});
     CHECK(effect_kinds_introduced_at(3).empty());
+}
+
+TEST_CASE("3 -> 4 ignores a mistyped kind instead of failing the load (as migrate_v4.py does)") {
+    // `kind` that is a number / null / object / array on bonus_actions[] and on a trait effect: the file loads.
+    auto r = make().load_text(R"({"$schema":"monster@3","id":"x.monster.k",
+        "bonus_actions":[{"id":"a","kind":5},{"id":"b","kind":null},{"id":"c","kind":{"x":1}},{"id":"d","kind":["special"]},{"id":"e","kind":"special"},{"id":"f"}],
+        "traits":[{"id":"t1","effect":{"kind":7}},{"id":"t2","effect":{"kind":null}},{"id":"t3","effect":{"kind":"save_effect"}},{"id":"t4","effect":{"kind":"damage_bonus"}}]})");
+    REQUIRE_MESSAGE(r.ok, r.error);
+    const auto& ba = r.data["bonus_actions"];
+    for (int i : {0, 1, 2, 3, 5}) CHECK(ba[std::size_t(i)]["inert"] == true);   // anything that is not the string "special" is stamped
+    CHECK_FALSE(ba[4].contains("inert"));                                        // the one real "special"
+    CHECK_FALSE(r.data["traits"][0]["effect"].contains("inert"));                // mistyped kinds are not frozen kinds
+    CHECK_FALSE(r.data["traits"][1]["effect"].contains("inert"));
+    CHECK(r.data["traits"][2]["effect"]["inert"] == true);
+    CHECK_FALSE(r.data["traits"][3]["effect"].contains("inert"));
+    CHECK(r.data["inert_mechanics"] == Json::array({"bonus_actions"}));
+}
+
+TEST_CASE("3 -> 4 parity: T&C's at3 fixtures migrate to the Python reference's expected @4 documents (as JSON)") {
+    struct Case { const char* name; const char* type; };
+    for (const Case& cs : {Case{"decorated_goblin", "monster"}, Case{"merge_goblin", "monster"},
+                           Case{"decorated_fighter", "character"}, Case{"bogus_inert_fighter", "character"}}) {
+        CAPTURE(cs.name);
+        const std::string base = kRoot + "/tests/validate/fixtures/v4/";
+        auto r = make().load_file(base + "at3/" + cs.name + ".json");
+        REQUIRE_MESSAGE(r.ok, r.error);
+        CHECK(r.declared == SchemaRef{cs.type, 3});
+        std::ifstream f(base + "expected4/" + cs.name + ".json");
+        REQUIRE(f.good());
+        const Json expected = Json::parse(f);
+        CHECK(r.data == expected);   // nlohmann sorts keys: equal as JSON, not byte-identical
+    }
 }
