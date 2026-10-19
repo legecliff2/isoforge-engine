@@ -284,3 +284,29 @@ TEST_CASE("R-G7 AI: two_handed_grip for a versatile weapon held in two hands; Gr
         CHECK(c->log().back().step.request.two_handed_grip == cmd.request.two_handed_grip);
     }
 }
+
+TEST_CASE("R-G7 log_hash: two_handed_grip folds (0xB6) only when set") {
+    auto lib = lib_with({plain_goblin("t.tgt")}, {no_shield(fighter("t.gwf", {{{"kind", "great_weapon_fighting"}}}))});
+    auto ch = arena({{"t.tgt", Vec2i{5, 5}}, {"t.gwf", Vec2i{6, 5}}});
+    uint64_t h[2] = {0, 0};
+    for (int grip = 0; grip < 2; ++grip) {
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, lib, 7);
+        REQUIRE(c);
+        const CombatantId t = ch.spawns[0].stable_id, f = ch.spawns[1].stable_id;
+        to_actor(*c, f);
+        const uint64_t before = c->log_hash();
+        Command a;
+        a.request = {f, ActionKind::Attack, t};
+        a.request.attack_index = 0;
+        a.request.two_handed_grip = grip == 1;
+        REQUIRE(c->submit(a).ok);
+        CHECK(c->log_hash() != before);
+        h[grip] = c->log_hash();
+        ecs::Registry reg2;
+        auto rp = replay(reg2, ch, lib, 7, c->log());
+        REQUIRE(rp);
+        CHECK(rp->log_hash() == c->log_hash());
+    }
+    CHECK(h[0] != h[1]);
+}
