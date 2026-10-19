@@ -137,9 +137,9 @@ Closed object, discriminated by `shape`; each arm is a propertyNames allow-list 
 
 | key | shape | maps to | notes |
 |---|---|---|---|
-| `shape` | `sphere` \| `cylinder` \| `cube` | `ZoneSpec::shape` (`AreaShape::Sphere` / `Cylinder` / `Cube`) | required. `line` (walls, rules PR 2) is appended later |
-| `size_ft` | integer 5..65530, multiple of 5 | `size_ft` | required. Sphere / cylinder radius, cube side |
-| `height_ft` | integer 5..65530, multiple of 5 | `height_ft` | required on `cylinder`, refused on the other shapes |
+| `shape` | `sphere` \| `cylinder` \| `cube` | `ZoneSpec::shape` (`AreaShape::Sphere` / `Cylinder` / `Cube`) | required. `line` (walls, Wall of Fire): appended by rules PR 2, see 4.6 |
+| `size_ft` | integer 5..65530, multiple of 5 | `size_ft` | required (forbidden on `line`, 4.6). Sphere / cylinder radius, cube side |
+| `height_ft` | integer 5..65530, multiple of 5 | `height_ft` | required on `cylinder` and `line` (4.6), refused on the other shapes |
 | `anchor` | `point` \| `creature` | `ZoneAnchor::Point` / `Creature` | required. `creature` = an aura centred on the caster |
 | `flags` | non-empty array of unique names | `flags` bitmask, OR of `kZone*` | `difficult` 1, `light_obscured` 2, `heavy_obscured` 4, `magical_darkness` 8, `silence` 16, `halve_speed` 32, `opaque` 64. Named strings, never a raw integer. Omitted = 0 |
 | `move` | `{cost, feet}`, both required | `move_cost`, `move_ft` | `cost`: `action` = 1 (Moonbeam, D3), `bonus_action` = 2. `feet`: integer 5..65530, multiple of 5. Omitted = `move_cost` 0 (cannot move) |
@@ -147,7 +147,7 @@ Closed object, discriminated by `shape`; each arm is a propertyNames allow-list 
 | `needs_conscious_owner` | boolean | `needs_conscious_owner` | the zone / aura only functions while its owner is conscious (D7; rules R-G11 PR 2). Default false. The Spirit Guardians fixture sets it |
 | `triggers` | non-empty array of trigger rows (4.2), in order | `triggers` | omitted = no rows (Fog Cloud, Darkness, Silence) |
 
-`length_ft` arrives with `line` (append-only).
+`length_ft` arrived with `line` (append-only); the PR 2 keys are in 4.6.
 
 ### 4.2 `zone.triggers[]` rows (`ZoneTriggerRow`)
 
@@ -204,21 +204,24 @@ Every rule in the table below has a `tests/validate/cases/zone_*` case (loader-c
 Ranges are integers only (floats are rejected: the content spec's integers-only rule, §4.3 in the schema descriptions). Loader mapping for the fixed parts:
 `SpellDef::kind = Zone`; `targets` stays 1 (rules uses the caster); the spell's `duration` / `concentration` as for any spell.
 
-### 4.5 Not expressible yet (no key; content keeps it in `description`)
+### 4.5 Rules PR 2 keys: specified (formerly pending)
 
-Rules PR 2 (#122, `docs/proposals/VERSION_BUMP_BATCH.md` 7.2m) models these in `ZoneSpec` / `ZoneTriggerRow`, but its loader
-parses only the section 4.1-4.3 keys and refuses any other key as `zone: unknown key '...'` /
-`zone.triggers[N]: unknown key '...'`. They get schema keys together with the loader change (a C++ PR), not before: a schema-only
-key would validate content the loader refuses. Pending keys: `ZoneSpec` `upcast_size_ft`, `ring_size_ft`, `sided`, `side_ft`, a
-`line` shape (`length_ft`), the D7 aura fields (`aura_modifier`, `aura_bonus_ability`, `aura_immunity`, `aura_allies_only`);
-row `region`, `loses_action`, `auto_success_damage` / `_conditions` / `_no_breath`, `shapechanger_disadvantage`,
-`evil_damage_type`; and the archetype facts `no_breath`, `shapechanger`, `evil`. Silence needs none: `flags: ["silence"]` is
-enough (rules derives the V block, thunder immunity and deafness from the flag).
+The keys this section used to list as pending (`ZoneSpec` `upcast_size_ft`, `ring_size_ft`, `sided`, `side_ft`, the `line` shape
+with `length_ft`, the D7 aura fields `aura_modifier` / `aura_bonus_ability` / `aura_immunity` / `aura_allies_only`; row `region`,
+`loses_action`, `auto_success_damage` / `_conditions` / `_no_breath`, `shapechanger_disadvantage`, `evil_damage_type`) are now
+specified in 4.6 and accepted by `schemas/spell/v1.schema.json` (`$defs/zone`, `$defs/zone_aura_modifier`, `$defs/zone_trigger`;
+the `line` arm is its own propertyNames allow-list) and `check_spell_zone`, together with the loader (`parse_zone`) in the same PR.
+Optional additive keys: no tag change (docs/CONTENT_COMPAT.md). Type, range, enum and shape-arm errors are the schema's (the
+validator prints jsonschema wording; the loader its own 4.6 wording); the cross-field rules print the 4.6 loader messages verbatim
+and each has a `tests/validate/cases/zone_*` case. Fixtures: `tests/validate/fixtures/zones/spells` `fog_cloud` (upcast_size_ft),
+`moonbeam` (shapechanger_disadvantage), `spirit_guardians` (evil_damage_type), `stinking_cloud`, `wall_of_fire`, `warding_aura`
+(test-only D7 aura). The creature facts `no_breath`, `shapechanger`, `evil` are **not** in the monster / character schemas yet:
+their reader is the sim archetype loader (Engine Core), which is not in this PR. Silence needs none of these: `flags: ["silence"]`.
 
-
-Fog Cloud's +20 ft radius per slot level (no upcast size), Darkness on an object, Spirit Guardians' necrotic for an evil caster
-(the fixture uses radiant), Moonbeam's shapechanger rules, Stinking Cloud's lost action (D9: no effect kind), Silence's
-deafened / thunder immunity (the `silence` flag only, R-G13), walls (`line`, Wall of Fire), feature auras (D7: the paladin auras are features, not spells; spell zones take `needs_conscious_owner`).
+Formerly not expressible, now expressed by those keys: Fog Cloud's +20 ft radius per slot level, Spirit Guardians' necrotic
+for an evil caster, Moonbeam's shapechanger disadvantage, Stinking Cloud's lost action (D9), walls (`line`, Wall of Fire) and
+the D7 aura fields (the paladin aura content itself stays deferred). Silence's deafened / thunder immunity come from the
+`silence` flag alone. Still not expressible: see the end of 4.6.
 
 Versioning: an additive spell@1 effect kind with new closed `$defs`. No tag change, no migration, no api_level gate: the old
 schema rejected kind `zone`, so no existing file can carry it (`tests/compat` and both shipped packs validate unchanged).
