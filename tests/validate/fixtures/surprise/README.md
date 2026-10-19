@@ -1,6 +1,6 @@
 # chunk@1 `surprise` fixtures (R-G16)
 
-Valid chunk@1 documents using the reserved top-level `surprise` key (docs/CONTENT_CONVENTIONS.md section 6). Spawns use
+Valid chunk@1 documents using the reserved top-level `surprise` key (docs/CONTENT_CONVENTIONS.md section 8). Spawns use
 `srd51.core` archetypes:
 
 - `chunks/ambush_sides.json` (coord 1,0,0): two characters (default team `party`) and two goblins (default team `monsters`);

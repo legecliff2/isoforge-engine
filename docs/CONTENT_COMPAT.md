@@ -38,7 +38,7 @@ Current gates:
 | monster | @3 | the same gate (`monster_2_to_3`). The sample goblin is `monster@3`: Nimble Escape is active, and no numbers are baked in (`bonus_actions` is empty, the scimitar is a plain `1d6+2`). fl1's monster@1 goblin keeps Nimble Escape descriptive. |
 
 Reserved keys: a key the schema accepts before any loader reads it (today: chunk@1 `surprise`, R-G16, see
-`docs/CONTENT_CONVENTIONS.md` section 6) is a new key the old schema rejected, so no old file carries it and no gate is needed. The
+`docs/CONTENT_CONVENTIONS.md` section 8) is a new key the old schema rejected, so no old file carries it and no gate is needed. The
 validator warns on every use that it has no effect yet; the loader that lands it follows the contract recorded for it.
 
 ## 2. Pin old content with a compat behaviour golden

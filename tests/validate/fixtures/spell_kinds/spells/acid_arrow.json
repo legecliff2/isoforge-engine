@@ -1,0 +1,58 @@
+{
+  "$schema": "spell@1",
+  "id": "test.kinds.spell.acid_arrow",
+  "name": "Acid Arrow",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "On a hit, the target takes 4d4 acid damage immediately and 2d4 acid damage at the end of its next turn. On a miss, the arrow deals half the initial damage and no later damage (half on a miss is not expressible). At Higher Levels: both increase by 1d4 per slot level above 2nd (only the first effect scales).",
+  "level": 2,
+  "school": "evocation",
+  "classes": [
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 90
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "powdered rhubarb leaf and an adder's stomach"
+    }
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "spell_attack",
+      "attack": "ranged",
+      "damage": {
+        "dice": "4d4",
+        "type": "acid"
+      }
+    },
+    {
+      "kind": "delayed_damage",
+      "applies_to": "affected",
+      "damage": {
+        "dice": "2d4",
+        "type": "acid"
+      },
+      "expiry": {
+        "kind": "until_end_of_target_next_turn"
+      }
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "dice": 1
+    }
+  }
+}
