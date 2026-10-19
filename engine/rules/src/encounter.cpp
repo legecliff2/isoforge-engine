@@ -380,7 +380,32 @@ struct Ctx {
     bool desync = false;
     std::optional<NeedsDecision> need = std::nullopt;      // first unanswered Ask poll (run is then discarded)
     uint8_t depth = 0;                                     // 0 = action, 1+ = inside a reaction
+    // R-G14: per-cast options of the spell being resolved (set by cast_spell around resolve_spell only).
+    const std::vector<CombatantId>* spared = nullptr;      // Careful / Sculpt Spells: automatic save success
+    bool spared_no_damage = false;                         //   Sculpt: no damage on a half-on-save spell
+    CombatantId heighten = 0;                              // Heightened: disadvantage on this creature's first save
+    int empower = 0;                                       // Empowered: damage dice rerolled (0 = off)
 };
+
+// R-G14 Empowered Spell: rolls each die, then rerolls up to `n` dice that rolled below the die's average, lowest first (earliest
+// on ties); the new rolls are kept. Same draws as roll_dice when no die is rerolled.
+int roll_empowered(rng::Rng& r, DiceExpr e, bool critical, int n) {
+    const int cnt = int(e.count) * (critical ? 2 : 1);
+    std::vector<int> v;
+    for (int k = 0; k < cnt; ++k) v.push_back(r.d(e.sides));
+    std::vector<bool> done(v.size(), false);
+    for (int k = 0; k < n; ++k) {
+        int pick = -1;
+        for (std::size_t i = 0; i < v.size(); ++i)
+            if (!done[i] && v[i] * 2 < e.sides + 1 && (pick < 0 || v[i] < v[std::size_t(pick)])) pick = int(i);
+        if (pick < 0) break;
+        done[std::size_t(pick)] = true;
+        v[std::size_t(pick)] = r.d(e.sides);
+    }
+    int total = e.bonus;
+    for (int x : v) total += x;
+    return total;
+}
 
 // Marks events appended since `from` as produced at reaction depth `d`.
 void mark_depth(std::vector<Event>& ev, std::size_t from, uint8_t d) {
@@ -1062,7 +1087,9 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         const DiceExpr& wdice = damage_override ? *damage_override : atk.damage;
         const bool gwf = a.great_weapon_fighting && spell_id == 0 && !atk.ranged &&
                          (has_property(atk, kWeaponTwoHanded) || (two_handed_grip && has_property(atk, kWeaponVersatile)));
-        int dmg = gwf ? roll_dice_reroll_low(s.rng, wdice, crit, 2) : roll_dice(s.rng, wdice, crit);
+        int dmg = gwf ? roll_dice_reroll_low(s.rng, wdice, crit, 2)
+                      : (spell_id != 0 && ctx.empower > 0 ? roll_empowered(s.rng, wdice, crit, ctx.empower)
+                                                          : roll_dice(s.rng, wdice, crit));
         if (dmg < 0) dmg = 0;
         std::vector<std::pair<int, DamageType>> modp;   // Damage modifiers (Rage, Hunter's Mark): weapon attacks only
         if (spell_id == 0 && !s.modifiers.empty()) {
@@ -1454,17 +1481,27 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
     case SpellEffectKind::Save: {
         const int dc = spell_save_dc(a, def);
         const uint8_t dq = def.magical ? kAttackMagical : 0;
+        const DiceExpr sdice = scaled_dice(def, lvl, a.caster_level);
         const int dmg = def.dice.count > 0 || def.dice.bonus > 0
-                            ? std::max(0, roll_dice(s.rng, scaled_dice(def, lvl, a.caster_level))) : 0;   // one roll for all targets
+                            ? std::max(0, ctx.empower > 0 ? roll_empowered(s.rng, sdice, false, ctx.empower)
+                                                          : roll_dice(s.rng, sdice)) : 0;   // one roll for all targets
         bool applied = false;
         for (Combatant* t : T) {
             if (t->dead) continue;
             SaveSource src{def.magical, def.applies_condition ? bit(def.condition) : 0u,
                            (def.dice.count > 0 || def.dice.bonus > 0) ? bit(def.damage_type) : 0u};
-            auto r = save_roll(s, *t, def.save_ability, dc, RollMode::Normal, ev, &src);
+            const bool spared = ctx.spared && std::find(ctx.spared->begin(), ctx.spared->end(), t->id) != ctx.spared->end();
+            SaveResult r{};
+            if (spared) {   // R-G14 Careful / Sculpt Spells: automatic success, no roll (natural 0, total 0)
+                r.success = true;
+            } else {
+                r = save_roll(s, *t, def.save_ability, dc, ctx.heighten == t->id ? RollMode::Disadvantage : RollMode::Normal,
+                              ev, &src);
+            }
             emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(def.save_ability), r.roll.natural, r.roll.total,
                  int32_t(r.success));
             int dealt = r.success ? (def.on_save == OnSave::Half ? dmg / 2 : 0) : dmg;
+            if (spared && ctx.spared_no_damage) dealt = 0;
             if (t->evasion && def.save_ability == Ability::Dex && def.on_save == OnSave::Half) dealt = r.success ? 0 : dmg / 2;   // Evasion
             if (dealt > 0) { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, apply_damage(*t, int16_t(dealt), def.damage_type, dq), false, ev, &ts, &ctx); }
             if (!r.success) affected.push_back(t);
@@ -1482,6 +1519,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             }
         }
         if (def.concentration && applied) a.concentration_spell = def.id;
+        ctx.heighten = 0;   // R-G14: Heightened covers only the first save against the spell
         break;
     }
     case SpellEffectKind::Heal: {
@@ -1682,8 +1720,8 @@ void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& de
 
 // CastSpell for a SpellBook spell: validates, spends the action and slot, runs the SpellCast
 // window, then resolves the effect.
-StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def,
-                      const ActionRequest& req) {
+StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def,
+                           const ActionRequest& req, int meta_cost) {
     if (req.sustain) {   // R-G15: Heat Metal's repeat damage with a bonus action, no slot, no SpellCast window
         Combatant* t = find_mut(s, req.target);
         if (!t || t->dead) return fail("bad target");
@@ -1801,11 +1839,104 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
     else emit(out.events, EventKind::ActionUsed, a.id, ids[0], int32_t(def.id), 0, def.usage_kind);   // not a spell: no SpellCast window
     if (def.usage_kind == 3 && spend_pool(s, a.id, def.pool_id, pcost))
         emit(out.events, EventKind::ResourceSpent, a.id, 0, int32_t(def.pool_id), pcost, find_pool(s, a.id, def.pool_id)->cur);
+    if (meta_cost > 0 && spend_pool(s, a.id, a.sorcery_pool, uint16_t(meta_cost)))   // R-G14: sorcery points for Metamagic
+        emit(out.events, EventKind::ResourceSpent, a.id, 0, int32_t(a.sorcery_pool), meta_cost, find_pool(s, a.id, a.sorcery_pool)->cur);
     bool countered = def.is_spell && spell_cast_window(s, ctx, a, def.id, lvl, ids[0], out.events);
-    if (!countered) resolve_spell(s, ctx, a, def, lvl, T, req.target_within_5ft, out.events);
+    if (!countered) {
+        const bool careful = (req.metamagic & kMetaCareful) != 0;
+        if (!req.spared.empty()) { ctx.spared = &req.spared; ctx.spared_no_damage = !careful; }
+        ctx.heighten = (req.metamagic & kMetaHeightened) ? req.heighten_target : 0;
+        ctx.empower = (req.metamagic & kMetaEmpowered) ? std::max(1, modifier(a.abilities, Ability::Cha)) : 0;
+        resolve_spell(s, ctx, a, def, lvl, T, req.target_within_5ft, out.events);
+        ctx.spared = nullptr; ctx.spared_no_damage = false; ctx.heighten = 0; ctx.empower = 0;
+    }
     emit(out.events, countered ? EventKind::SpellCountered : EventKind::SpellResolved, a.id, ids[0], int32_t(def.id), lvl);
     check_end(s, out.events);
     return out;
+}
+
+// R-G14: validates the per-cast options and resolves the spell as modified by them (a copy of `def`); no option = as before.
+StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def, const ActionRequest& req) {
+    const bool any = req.metamagic != 0 || !req.spared.empty() || req.heighten_target != 0 || req.damage_choice != 0 ||
+                     req.condition_choice != 0 || !def.damage_choices.empty() || !def.condition_choices.empty();
+    if (!any || req.sustain) return cast_spell_impl(s, ctx, a, b, def, req, 0);
+    SpellDef eff = def;
+    const uint8_t lvl = req.spell_level;
+    // Cast-time choices (Chromatic Orb, Blindness/Deafness).
+    if (req.damage_choice != 0) {
+        if (std::size_t(req.damage_choice) > def.damage_choices.size()) return fail("bad damage choice");
+        eff.damage_type = def.damage_choices[std::size_t(req.damage_choice - 1)];
+    }
+    if (req.condition_choice != 0) {
+        if (std::size_t(req.condition_choice) > def.condition_choices.size()) return fail("bad condition choice");
+        eff.condition = def.condition_choices[std::size_t(req.condition_choice - 1)];
+    }
+    if (!def.damage_choices.empty() && req.damage_choice == 0) return fail("choose a damage type");
+    if (!def.condition_choices.empty() && req.condition_choice == 0) return fail("choose a condition");
+    const uint8_t m = req.metamagic;
+    if (req.heighten_target != 0 && !(m & kMetaHeightened)) return fail("heighten_target needs Heightened Spell");
+    if (m != 0) {
+        if (!def.is_spell) return fail("metamagic needs a spell");
+        if ((m & ~a.metamagic_known) != 0) return fail("metamagic option not known");
+        const uint8_t primary = uint8_t(m & ~kMetaEmpowered);
+        if ((primary & (primary - 1)) != 0) return fail("one metamagic option per spell (Empowered may be added)");
+        const int cost = metamagic_cost(m, lvl);
+        if (a.sorcery_pool == 0 || !can_spend(s, a.id, a.sorcery_pool, uint16_t(cost))) return fail("not enough sorcery points");
+        if (m & kMetaCareful) {
+            if (def.kind != SpellEffectKind::Save) return fail("Careful Spell needs a saving throw");
+            if (req.spared.empty() || int(req.spared.size()) > std::max(1, modifier(a.abilities, Ability::Cha)))
+                return fail("Careful Spell: 1 to Cha modifier creatures");
+        }
+        if (m & kMetaDistant) {
+            if (def.range_ft < 5) return fail("Distant Spell needs a range of 5 ft or more");
+            eff.range_ft = uint16_t(def.range_ft == 5 ? 30 : std::min<int>(def.range_ft * 2, 65535));
+        }
+        if (m & kMetaExtended) {
+            const bool long_enough = def.duration == SpellDuration::Minutes || def.duration == SpellDuration::Hours ||
+                                     def.duration_rounds >= 10;
+            if (!long_enough) return fail("Extended Spell needs a duration of 1 minute or longer");
+            eff.duration_amount = uint16_t(std::min<int>(def.duration_amount * 2, 65535));
+            eff.duration_rounds = uint16_t(std::min<int>(def.duration_rounds * 2, 65535));
+            eff.modifier.rounds = uint16_t(std::min<int>(def.modifier.rounds * 2, 65535));
+            for (auto& x : eff.extra_effects) {
+                x.duration_rounds = uint16_t(std::min<int>(x.duration_rounds * 2, 65535));
+                x.modifier.rounds = uint16_t(std::min<int>(x.modifier.rounds * 2, 65535));
+            }
+        }
+        if (m & kMetaHeightened) {
+            if (def.kind != SpellEffectKind::Save) return fail("Heightened Spell needs a saving throw");
+            if (req.heighten_target == 0) return fail("Heightened Spell needs heighten_target");
+            const bool listed = req.heighten_target == req.target ||
+                                std::find(req.targets.begin(), req.targets.end(), req.heighten_target) != req.targets.end();
+            if (!listed) return fail("heighten_target must be a target of the spell");
+        }
+        if (m & kMetaQuickened) {
+            if (def.casting_time != CastingTime::Action) return fail("Quickened Spell needs a casting time of 1 action");
+            eff.casting_time = CastingTime::BonusAction;
+        }
+        if (m & kMetaSubtle) eff.components = uint8_t(def.components & ~(kComponentV | kComponentS));
+        if (m & kMetaTwinned) {
+            const bool single = def.area == AreaShape::None && def.range_ft > 0 &&
+                (def.kind == SpellEffectKind::SpellAttack ? scaled_beams(def, lvl, a.caster_level) == 1
+                                                          : scaled_targets(def, lvl) == 1);
+            const bool kind_ok = def.kind == SpellEffectKind::SpellAttack || def.kind == SpellEffectKind::Save ||
+                                 def.kind == SpellEffectKind::Heal || def.kind == SpellEffectKind::ApplyCondition ||
+                                 def.kind == SpellEffectKind::ApplyModifier;
+            if (!single || !kind_ok) return fail("Twinned Spell needs a spell that targets only one creature");
+            if (req.targets.size() != 2 || req.targets[0] == req.targets[1]) return fail("Twinned Spell needs two different targets");
+            if (def.kind == SpellEffectKind::SpellAttack) { eff.beams = 2; eff.upcast_beams = 0; eff.cantrip_adds_beams = false; }
+            else { eff.targets = 2; eff.upcast_targets = 0; }
+        }
+    }
+    if (!req.spared.empty() && !(m & kMetaCareful)) {   // Sculpt Spells
+        if (!a.sculpt_spells || !def.evocation) return fail("spared creatures need Careful Spell or Sculpt Spells");
+        if (def.kind != SpellEffectKind::Save) return fail("Sculpt Spells needs a saving throw");
+        if (int(req.spared.size()) > 1 + int(lvl)) return fail("Sculpt Spells: up to 1 + spell level creatures");
+    }
+    for (std::size_t i = 0; i < req.spared.size(); ++i)
+        for (std::size_t j = i + 1; j < req.spared.size(); ++j)
+            if (req.spared[i] == req.spared[j]) return fail("spared creatures must be different");
+    return cast_spell_impl(s, ctx, a, b, eff, req, m != 0 ? metamagic_cost(m, lvl) : 0);
 }
 
 } // namespace
@@ -2521,7 +2652,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
                     if (!valid_target_type(*d, t) || (d->excluded_types & bit(t.creature_type))) continue;
                     if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, a, *d, t)) continue;
                     ActionRequest r{a.id, ActionKind::CastSpell, t.id};
-                    r.spell_id = d->id; r.spell_level = L;
+                    r.spell_id = d->id; r.spell_level = L; r.damage_choice = uint8_t(d->damage_choices.empty() ? 0 : 1); r.condition_choice = uint8_t(d->condition_choices.empty() ? 0 : 1);
                     out.push_back(r);
                 }
             }
@@ -2542,7 +2673,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
                 if (!valid_target_type(*d, t) || (d->excluded_types & bit(t.creature_type))) continue;
                 if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, a, *d, t)) continue;
                 ActionRequest r{a.id, ActionKind::CastSpell, t.id};
-                r.spell_id = d->id; r.spell_level = d->level; r.innate = true;
+                r.spell_id = d->id; r.spell_level = d->level; r.innate = true; r.damage_choice = uint8_t(d->damage_choices.empty() ? 0 : 1); r.condition_choice = uint8_t(d->condition_choices.empty() ? 0 : 1);
                 out.push_back(r);
             }
         }

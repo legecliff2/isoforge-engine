@@ -109,6 +109,16 @@ struct ActionRequest {
     // spell's own (spell_level must equal it: no upcasting), no slot is spent, one use is consumed, and components
     // are skipped unless the InnateSpell is `as_listed`. The spell need not be in spells_known.
     bool innate = false;
+    // appended (R-G14, CastSpell per-cast options; all log-relevant, see SIM_EVENTS.md tag 0xB1):
+    //   metamagic: kMeta* options (Combatant::metamagic_known, paid from Combatant::sorcery_pool);
+    //   spared: Careful Spell (up to max(1, Cha mod)) or, without Careful, Sculpt Spells (up to 1 + slot level, evocation):
+    //     those creatures succeed on the spell's save automatically (Sculpt: and take no damage on a half-on-save spell);
+    //   heighten_target: Heightened Spell's target (disadvantage on its first save against the spell);
+    //   damage_choice / condition_choice: 1 + index into SpellDef::damage_choices / condition_choices (0 = none).
+    uint8_t metamagic = 0;
+    std::vector<CombatantId> spared = {};
+    CombatantId heighten_target = 0;
+    uint8_t damage_choice = 0, condition_choice = 0;
 };
 
 enum class EventKind : uint8_t {
