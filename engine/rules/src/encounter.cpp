@@ -1993,12 +1993,13 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                     emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(cond));
                 }
                 note_source(s, cond, a.id, t->id);
+                applied = true;
+                if (def.condition_untracked && !at_once) continue;   // ends by its own rules (prone): no effect entry, like Shove
                 s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, cond, def.save_ability,
                                                       int16_t(dc), at_once ? RepeatSave::None : def.repeat_save, def.concentration,
                                                       at_once ? Timed{} : make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
                                                       lvl, false});
                 if (def.escalates && !at_once) { s.effects.back().escalates = true; s.effects.back().escalate_to = def.escalate_to; }
-                applied = true;
             }
         }
         if (def.concentration && applied) a.concentration_spell = def.id;
@@ -2030,10 +2031,11 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.condition));
             }
             note_source(s, def.condition, a.id, t->id);
-            s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, Ability::Wis, 0, RepeatSave::None,
-                                                  def.concentration,
-                                                  make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
-                                                  lvl, false});
+            if (!def.condition_untracked)   // ends by its own rules (prone): no effect entry, like Shove
+                s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, Ability::Wis, 0, RepeatSave::None,
+                                                      def.concentration,
+                                                      make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
+                                                      lvl, false});
             affected.push_back(t);
             applied = true;
         }

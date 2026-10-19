@@ -83,6 +83,9 @@ struct SpellEffect {
     ModifierSpec modifier{};           // appended (row 12 follow-up): kind ApplyModifier as a rider (Guiding Bolt, Ray of Frost, Vicious Mockery)
     ForcedMoveSpec forced{};           // appended (R-G9): kind ForcedMove
     TeleportSpec teleport{};           // appended (R-G9): kind Teleport
+    // appended: Save / ApplyCondition with expiry 0 and no repeat save, for a condition that ends by its own rules (prone: the
+    // creature stands up). Applied like Shove's prone: the condition only, no ActiveSpellEffect entry.
+    bool condition_untracked = false;
 };
 
 // ---- R-G11 persistent zones and auras (docs/proposals/ZONES_AURAS.md §2.6) ----
@@ -202,6 +205,8 @@ struct SpellDef {
     TeleportSpec teleport{};
     // appended (R-G11): kind Zone (primary effect only; an extra effect of kind Zone is refused at cast).
     ZoneSpec zone{};
+    // appended: see SpellEffect::condition_untracked (primary effect).
+    bool condition_untracked = false;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
