@@ -2,6 +2,9 @@
 
 #include "rules5e/conditions.hpp"
 
+#include <algorithm>
+#include <cstdlib>
+
 namespace eng::sim {
 
 using rules5e::ActionKind;
@@ -37,6 +40,8 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
     const auto* me = rules5e::find(s, self);
     const auto* t = target ? rules5e::find(s, *target) : nullptr;
     if (!me || !t || t->dead || !rules5e::is_conscious(*me) || rules5e::is_incapacitated(*me)) return end;
+    // R-G8 Charmed: the charmer is never attacked (rules refuse it) or targeted with a harmful spell (sim refuses it).
+    if (rules5e::condition_source(s, self, rules5e::Condition::Charmed) == t->id) return end;
 
     // Pool features (row 13). Lay on Hands (heal_pool): at or below half hp, heal self for min(pool, missing hp); the caller's
     // `amount` and (default self) target come from here. Action Surge (grant_action): once the action is spent with a hostile
@@ -163,6 +168,35 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
             }
         }
     }
+    // R-G8 grapple / shove / escape (only arise once something grapples; no existing content does):
+    //  * held (Grappled with a recorded holder) and the target is out of reach: Escape (takes the action);
+    //  * the target holds one of my allies and is within 5 ft: Shove it 5 ft away (breaks the hold when the push lands);
+    //  * I hold the target and it is not prone: Shove it prone.
+    {
+        const bool fresh_action = s.budget.action && s.budget.attacks_remaining == 0 && s.budget.sequence == 0;
+        const bool attack_open = s.budget.action || s.budget.attacks_remaining > 0;
+        const bool adjacent = c.distance_tiles(self, t->id) <= 1;
+        auto special = [&](uint8_t kind, CombatantId who) {
+            Command x;
+            x.request = {self, ActionKind::Attack, who};
+            x.request.special = kind;
+            return x;
+        };
+        const CombatantId holder = rules5e::condition_source(s, self, rules5e::Condition::Grappled);
+        if (holder != 0 && fresh_action && (me->conditions & rules5e::bit(rules5e::Condition::Grappled))) {
+            bool reach_ok = false;
+            for (const auto& at : me->attacks)
+                reach_ok = reach_ok || (at.ranged ? false : c.distance_tiles(self, t->id) <= reach_tiles(at.reach_or_range_ft));
+            if (!reach_ok) return special(4, holder);
+        }
+        if (attack_open && adjacent && rules5e::is_conscious(*t) && s.budget.sequence == 0) {
+            for (CombatantId held : rules5e::grappled_by(s, t->id))
+                if (held != self && !c.hostile(self, held)) return special(3, t->id);
+            if (rules5e::condition_source(s, t->id, rules5e::Condition::Grappled) == self &&
+                !(t->conditions & rules5e::bit(rules5e::Condition::Prone)))
+                return special(2, t->id);
+        }
+    }
     // Prefer the first melee attack; fall back to the first attack.
     uint8_t ai = 0;
     for (uint8_t i = 0; i < me->attacks.size(); ++i)
@@ -236,6 +270,14 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
         d.request.as_bonus_action = true;
         return d;
     }
+    // R-G8 Frightened: a step that ends closer to the source of the fear is refused by the sim; stop instead.
+    if (const CombatantId fear = rules5e::condition_source(s, self, rules5e::Condition::Frightened))
+        if (c.distance_tiles(self, fear) > 0) {
+            const Vec2i fp = c.pos(fear);
+            const int before = std::max(std::abs(fp.x - mp.x), std::abs(fp.y - mp.y));
+            const int after = std::max(std::abs(fp.x - path[0].x), std::abs(fp.y - path[0].y));
+            if (after < before) return end;
+        }
     Command st;
     st.kind = CommandKind::Step;
     st.to = path[0];
