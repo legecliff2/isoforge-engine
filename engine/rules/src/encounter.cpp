@@ -455,6 +455,8 @@ bool predicate_holds(EncounterState& s, Combatant& owner, const Combatant& subje
         if (!r.success) failed_save = true;
         return r.success;
     }
+    case PredicateKind::AttackIs: return !x.is_spell && x.atk && x.atk >= owner.attacks.data() && x.atk < owner.attacks.data() + owner.attacks.size() &&
+                                         std::size_t(x.atk - owner.attacks.data()) == std::size_t(p.a);   // pointer identity into owner.attacks
     }
     return false;
 }
