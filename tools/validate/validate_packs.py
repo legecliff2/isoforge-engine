@@ -496,6 +496,8 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
       in-memory migration result (on_disk=False) legitimately carries it, and its parameters are not
       validated beyond `kind` (section 8.3: relaxed rule for inert effects of new-set kinds).
     - Unknown kinds (no hook at this tag): warning (the engine reports and ignores them).
+    - Reserved kinds (checks_v4.RESERVED_EFFECT_KINDS: schema arm, no loader yet): a 'reserved' warning instead of the
+      unknown-kind one, and their shape is checked like a known kind's (schema arm + check_reserved_kind).
     - Known kinds, active documents (character@3+, monster@3+): the kind-tagged contract
       (common@1 $defs/effect, and the common@2 arms at @4) is an error; cost values outside the tag's
       row are errors ('reaction' is reserved up to @3 and legal from @4).
@@ -519,6 +521,16 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
                             "do not author it")
             kind = eff.get("kind")
             if not isinstance(kind, str):
+                continue
+            if kind in c4.RESERVED_EFFECT_KINDS and "inert" not in eff:
+                warns.append(f"{where}: {c4.RESERVED_EFFECT_KINDS[kind]}")
+                found = [f"{kind}{'.' + '/'.join(map(str, e.absolute_path)) if e.absolute_path else ''}: {e.message[:160]}"
+                         for e in sorted(v.iter_errors(eff), key=lambda e: list(map(str, e.absolute_path)))] if not active else []
+                found += c4.check_reserved_kind(doc, eff)
+                if active:
+                    errs += [f"{where}: {m}" for m in found]
+                else:
+                    warns += [f"{where}: {m} (inert in {tag}; becomes an error at @3)" for m in found]
                 continue
             if kind not in row.effect_kinds:
                 warns.append(f"{where}: unknown effect kind '{kind}' "

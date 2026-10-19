@@ -1,4 +1,4 @@
-# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G11 zones, R-G8 grapple rider, R-G15 spell kinds, priced materials, R-G16 encounter surprise)
+# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G11 zones, R-G8 grapple rider, R-G15 spell kinds, priced materials, R-G16 encounter surprise, slot recovery)
 
 Owner: Tools & Content. Source of truth is the C++ loader; this file records what it reads and what the validator checks.
 All numbers are integers.
@@ -418,3 +418,29 @@ schema rejected the key (chunk@1 is closed), and no shipped or `tests/compat` ch
 `test_no_shipped_or_compat_chunk_carries_surprise`), so nothing existing changes meaning when the loader lands. A chunk that carries it
 today is authored with that intent (the warning says so). Fixtures: `tests/validate/fixtures/surprise/`; cases:
 `tools/validate/test_validate_packs.py` `SURPRISE_CASES`.
+
+## 9. Feature kind `slot_recovery` (reserved; contract for the loader, VERSION_BUMP_BATCH 7.2n)
+
+**Status: reserved**, like section 8: `common@1 $defs/effect` has the arm and the validator checks it, but **no loader reads it
+yet** (Engine Core is wiring it in `sim/content.cpp`). The validator warns `effect kind 'slot_recovery' is reserved: no loader reads
+it yet ... so it has no effect until that loader lands` on each use (`checks_v4.RESERVED_EFFECT_KINDS`), instead of the generic
+unknown-kind warning; findings are errors at @3/@4 and warnings at @1/@2, as for a known kind.
+
+```json
+"effect": { "kind": "slot_recovery", "class": "wizard", "max_slot_level": 5, "uses": 1 }
+```
+
+| part | rule | schema / validator |
+|---|---|---|
+| `class` | `wizard` \| `druid`, required | schema enum; validator error when no `classes[]` entry has that class (`slot_recovery.class '...' matches no classes[] entry`), and on a monster (no `classes[]`) |
+| `max_slot_level` | integer 1..9, default 5 | schema + float rejection |
+| `uses` | integer 1..255, default 1 | schema + float rejection |
+| other keys | ignored (the effect object is open, append-only) | none |
+
+**Loader contract** (Engine Core, 7.2n hand-off): `SlotRecoverySpec { feature_id, class_level = level of the classes[] entry named
+by class, max_slot_level, uses }`; register `slot_recovery_uses(id, spec)` (recharge LongRest) in the roster's `features` table; after
+a successful `sim::short_rest`, call `rules5e::apply_slot_recovery(c, spec, roster.features, chosen)` with the caller's choice. Long rest
+needs nothing extra. When the loader lands, move the kind from `RESERVED_EFFECT_KINDS` into the open kinds and drop the warning.
+
+Content: `srd51.character.wizard_level_1..5` carry `arcane_recovery`. No druid character ships yet, so Natural Recovery is listed in
+`docs/SRD_CLASSES_DEFERRED.md`. Cases: `tests/validate/effect_cases/*slot_recovery*`.

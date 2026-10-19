@@ -1,0 +1,5 @@
+{
+  "base": "characters/wizard_level_1.json",
+  "severity": "warning",
+  "expect": "effect kind 'slot_recovery' is reserved: no loader reads it yet"
+}
