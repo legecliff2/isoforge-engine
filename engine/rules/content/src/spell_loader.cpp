@@ -447,6 +447,61 @@ SpellLoad spell_from_json(const Json& j) {
             s.kind = SpellEffectKind::ApplyCondition;
             if (!e.contains("condition") || !lookup(kCondition, e["condition"], s.condition)) return ("effect condition invalid");
             s.applies_condition = true;
+        } else if (kind == "hp_pool") {   // R-G15 (VERSION_BUMP_BATCH 7.2f): Sleep, Color Spray; timer from the spell's duration
+            s.kind = SpellEffectKind::HpPool;
+            auto d = e.contains("dice") && e["dice"].is_string() ? parse_dice(e["dice"].get<std::string>()) : std::nullopt;
+            if (!d || d->count == 0) return ("effect dice invalid");
+            s.dice = *d;
+            if (!e.contains("condition") || !lookup(kCondition, e["condition"], s.condition)) return ("effect condition invalid");
+            if (e.contains("ends_on_damage")) {
+                if (!e["ends_on_damage"].is_boolean()) return ("effect ends_on_damage must be a boolean");
+                s.ends_on_damage = e["ends_on_damage"].get<bool>();
+            }
+            if (e.contains("excludes_creature_type")) {   // same key and meaning as heal's (SpellDef::excluded_types)
+                if (!e["excludes_creature_type"].is_array() || e["excludes_creature_type"].empty()) return ("effect excludes_creature_type invalid");
+                for (const Json& ty : e["excludes_creature_type"]) {
+                    CreatureType ct2;
+                    if (!lookup(kCreatureType, ty, ct2)) return ("effect excludes_creature_type invalid");
+                    s.excluded_types |= bit(ct2);
+                }
+            }
+        } else if (kind == "dispel") {   // R-G15 (7.2f): Dispel Magic; check DC = dc_base + the spell's level above the slot
+            s.kind = SpellEffectKind::Dispel;
+            if (e.contains("dc_base")) {
+                int b = 0;
+                if (!small_int(e["dc_base"], 1, 99, b)) return ("effect dc_base invalid");
+                s.dispel_dc_base = uint8_t(b);
+            }
+        } else if (kind == "revive") {   // R-G15 (7.2f): Revivify; dead for at most within_rounds rounds
+            s.kind = SpellEffectKind::Revive;
+            if (e.contains("within_rounds")) {
+                int n = 0;
+                if (!small_int(e["within_rounds"], 1, 255, n)) return ("effect within_rounds invalid");
+                s.revive_within_rounds = uint8_t(n);
+            }
+        } else if (kind == "end_condition") {   // R-G15 (7.2g): Lesser Restoration; ends the lowest listed condition present
+            s.kind = SpellEffectKind::EndCondition;
+            if (!e.contains("conditions") || !e["conditions"].is_array() || e["conditions"].empty()) return ("effect conditions invalid");
+            for (const Json& cj : e["conditions"]) {
+                Condition cd;
+                if (!lookup(kCondition, cj, cd)) return ("effect conditions invalid");
+                s.ends_conditions |= bit(cd);
+            }
+        } else if (kind == "delayed_damage" || kind == "sustained_damage") {   // R-G15 (7.2g): Acid Arrow's later hit, Heat Metal
+            const bool delayed = kind == "delayed_damage";
+            s.kind = delayed ? SpellEffectKind::DelayedDamage : SpellEffectKind::SustainedDamage;
+            if (!e.contains("damage") || !read_damage(e["damage"], s)) return ("effect damage invalid");
+            if (delayed) {   // its own timer: {kind: rounds, n} or {kind: until_end_of_target_next_turn} (the common@2 duration words)
+                const Json ex = e.value("expiry", Json());
+                const std::string xk = ex.is_object() ? ex.value("kind", "") : "";
+                if (xk == "until_end_of_target_next_turn") s.expiry = 2;   // rules5e::Expiry::EndOfTargetNextTurn
+                else if (xk == "rounds") {
+                    int n = 0;
+                    if (!ex.contains("n") || !small_int(ex["n"], 1, 65535, n)) return ("effect expiry n invalid");
+                    s.expiry = 1;   // rules5e::Expiry::Rounds
+                    s.duration_rounds = uint16_t(n);
+                } else return ("effect expiry must be {kind: rounds, n} or {kind: until_end_of_target_next_turn}");
+            } else if (e.contains("expiry")) return ("effect expiry is only for delayed_damage (sustained_damage lasts the spell's duration)");
         } else return ("effect kind invalid");
         return "";
     };
@@ -461,12 +516,18 @@ SpellLoad spell_from_json(const Json& j) {
         if (auto m = parse_effect(j["effects"][i], x, xk); !m.empty()) return err("effects[" + std::to_string(i) + "]: " + m);
         if (x.kind == SpellEffectKind::AcBonus || x.kind == SpellEffectKind::Counter)
             return err("effects: ac_bonus and counter reactions cannot be combined with other effects");
+        // R-G15: of the new kinds only delayed_damage rides another effect (Acid Arrow); the others read spell-level fields
+        // (pool, dispel DC, revive window, condition mask, sustain) that an extra effect does not carry.
+        if (x.kind == SpellEffectKind::HpPool || x.kind == SpellEffectKind::Dispel || x.kind == SpellEffectKind::Revive ||
+            x.kind == SpellEffectKind::EndCondition || x.kind == SpellEffectKind::SustainedDamage)
+            return err("effects[" + std::to_string(i) + "]: " + xk + " is only allowed as the first effect");
         SpellEffect fx;
         fx.kind = x.kind; fx.melee = x.melee; fx.beams = x.beams; fx.dice = x.dice; fx.damage_type = x.damage_type;
         fx.add_spellcasting_modifier = x.add_spellcasting_modifier; fx.excluded_types = x.excluded_types;
         fx.save_ability = x.save_ability; fx.on_save = x.on_save; fx.applies_condition = x.applies_condition;
         fx.condition = x.condition; fx.repeat_save = x.repeat_save; fx.darts = x.darts;
         fx.distribution = x.distribution; fx.simultaneous = x.simultaneous;
+        fx.expiry = x.expiry; fx.duration_rounds = x.duration_rounds;   // delayed_damage's timer (0 for every other spell@1 kind)
         if (x.kind == SpellEffectKind::ApplyModifier) {   // rider (Guiding Bolt): its own modifier id
             fx.modifier = x.modifier;
             fx.modifier.id = spell_id_of(s.content_id + "#modifier" + std::to_string(i));
@@ -487,6 +548,18 @@ SpellLoad spell_from_json(const Json& j) {
         return err("ac_bonus effects last until_start_of_caster_turn (and only they use it)");
     if (has_targets && s.kind != SpellEffectKind::Save && s.kind != SpellEffectKind::Heal && s.kind != SpellEffectKind::ApplyCondition)
         return err("targets not allowed on a " + kind + " effect (one target, per dart/beam, or self)");
+    // R-G15: an HP pool's condition and a sustained effect last the spell's duration (Sleep 1 minute = 10 rounds; Color Spray
+    // 1 round, the proposal's approximation of "until the end of your next turn"; Heat Metal 1 minute, and also ends with
+    // concentration).
+    if (s.kind == SpellEffectKind::HpPool || s.kind == SpellEffectKind::SustainedDamage) {
+        int rounds = 0;
+        if (s.duration == SpellDuration::Rounds) rounds = s.duration_amount;
+        else if (s.duration == SpellDuration::Minutes) rounds = s.duration_amount * 10;
+        else if (s.duration == SpellDuration::Hours) rounds = s.duration_amount * 600;
+        else return err(kind + " needs a rounds, minutes or hours duration");
+        s.expiry = 1;   // rules5e::Expiry::Rounds
+        s.duration_rounds = uint16_t(std::min(rounds, 65535));
+    }
 
     const Json sc = j.value("scaling", Json::object());
     if (sc.contains("cantrip")) {
@@ -512,7 +585,9 @@ SpellLoad spell_from_json(const Json& j) {
         auto allowed = [&](const char* key) {
             const std::string k = key;
             if (k == "dice") return s.kind == SpellEffectKind::SpellAttack || s.kind == SpellEffectKind::Save ||
-                                    s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::AutoHit;
+                                    s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::AutoHit ||
+                                    s.kind == SpellEffectKind::HpPool || s.kind == SpellEffectKind::DelayedDamage ||
+                                    s.kind == SpellEffectKind::SustainedDamage;
             if (k == "darts") return s.kind == SpellEffectKind::AutoHit;
             if (k == "beams") return s.kind == SpellEffectKind::SpellAttack;
             return s.kind == SpellEffectKind::Save || s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::ApplyCondition;   // targets
