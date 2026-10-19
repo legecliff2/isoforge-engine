@@ -1,0 +1,83 @@
+{
+  "$schema": "spell@1",
+  "id": "test.zone.spell.moonbeam",
+  "name": "Moonbeam",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "A silvery beam of pale light (5-foot radius, 40-foot-high cylinder). A creature that enters the area for the first time on a turn or starts its turn there makes a Constitution save: 2d10 radiant, half on a success. On each of your turns after you cast it, you can use an action to move the beam up to 60 feet. At Higher Levels: +1d10 per slot level above 2nd. Shapechanger disadvantage / revert are not modelled.",
+  "level": 2,
+  "school": "evocation",
+  "classes": [
+    "druid"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 120
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "several seeds of any moonseed plant and a piece of opalescent feldspar"
+    }
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "zone",
+      "zone": {
+        "shape": "cylinder",
+        "size_ft": 5,
+        "height_ft": 40,
+        "anchor": "point",
+        "flags": [
+          "light_obscured"
+        ],
+        "move": {
+          "cost": "action",
+          "feet": 60
+        },
+        "triggers": [
+          {
+            "on": "zone_enter",
+            "effect": {
+              "kind": "save",
+              "ability": "con",
+              "damage": {
+                "dice": "2d10",
+                "type": "radiant"
+              },
+              "on_success": "half"
+            }
+          },
+          {
+            "on": "zone_start_turn",
+            "effect": {
+              "kind": "save",
+              "ability": "con",
+              "damage": {
+                "dice": "2d10",
+                "type": "radiant"
+              },
+              "on_success": "half"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "dice": 1
+    }
+  }
+}

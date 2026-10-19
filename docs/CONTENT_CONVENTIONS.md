@@ -1,4 +1,4 @@
-# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G15 spell kinds, priced materials)
+# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G11 zones, R-G15 spell kinds, priced materials)
 
 Owner: Tools & Content. Source of truth is the C++ loader; this file records what it reads and what the validator checks.
 All numbers are integers.
@@ -103,9 +103,113 @@ feature arms only constrain kinds that no file can have relied on (they were unk
 uses them, and both validate unchanged).
 
 
+## 4. R-G11 zones and auras: spell@1 effect kind `zone` (loader contract)
+
+Rules side: #118 (merged 49d4fe2), `SpellEffectKind::Zone` with `SpellDef::zone` (`rules5e::ZoneSpec`,
+`engine/rules/include/rules5e/spells.hpp`), proposal `docs/proposals/VERSION_BUMP_BATCH.md` section 7.2l and
+`docs/proposals/ZONES_AURAS.md`. **No loader parses zones yet**: `rules5e_content` (`spell_loader.cpp`) refuses kind `zone`
+with `effect kind invalid`. This section is the **contract for the loader author (Engine Core / Rules)**: the schema
+(`schemas/spell/v1.schema.json` `$defs/zone`, `zone_trigger`, `zone_effect`) and `tools/validate` `check_spell_zone` define
+the keys, values, ranges and errors below, and the loader must map them exactly and refuse the same documents with the same
+wording (the validator's messages are quoted). Unlike sections 1-3, the source of truth here is this file until the loader lands.
+
+```json
+{ "kind": "zone",
+  "zone": { "shape": "cylinder", "size_ft": 5, "height_ft": 40, "anchor": "point", "flags": ["light_obscured"],
+            "move": { "cost": "action", "feet": 60 },
+            "triggers": [
+              { "on": "zone_enter",      "effect": { "kind": "save", "ability": "con", "on_success": "half",
+                                                     "damage": { "dice": "2d10", "type": "radiant" } } },
+              { "on": "zone_start_turn", "effect": { "kind": "save", "ability": "con", "on_success": "half",
+                                                     "damage": { "dice": "2d10", "type": "radiant" } } } ] } }
+```
+
+(Moonbeam, with `scaling.upcast.dice: 1`. Fixtures for Moonbeam, Spirit Guardians, Fog Cloud, Darkness, Silence, Spike
+Growth, Web and Grease: `tests/validate/fixtures/zones/spells/`. None are in `srd51.core` yet.)
+
+### 4.1 `zone` (`ZoneSpec`)
+
+Closed object, discriminated by `shape`; each arm is a propertyNames allow-list (`tests/validate/test_union_arms.py`).
+
+| key | shape | maps to | notes |
+|---|---|---|---|
+| `shape` | `sphere` \| `cylinder` \| `cube` | `ZoneSpec::shape` (`AreaShape::Sphere` / `Cylinder` / `Cube`) | required. `line` (walls, rules PR 2) is appended later |
+| `size_ft` | integer 5..65530, multiple of 5 | `size_ft` | required. Sphere / cylinder radius, cube side |
+| `height_ft` | integer 5..65530, multiple of 5 | `height_ft` | required on `cylinder`, refused on the other shapes |
+| `anchor` | `point` \| `creature` | `ZoneAnchor::Point` / `Creature` | required. `creature` = an aura centred on the caster |
+| `flags` | non-empty array of unique names | `flags` bitmask, OR of `kZone*` | `difficult` 1, `light_obscured` 2, `heavy_obscured` 4, `magical_darkness` 8, `silence` 16, `halve_speed` 32, `opaque` 64. Named strings, never a raw integer. Omitted = 0 |
+| `move` | `{cost, feet}`, both required | `move_cost`, `move_ft` | `cost`: `action` = 1 (Moonbeam, D3), `bonus_action` = 2. `feet`: integer 5..65530, multiple of 5. Omitted = `move_cost` 0 (cannot move) |
+| `chooses_excluded` | boolean | `chooses_excluded` | Spirit Guardians. Default false |
+| `needs_conscious_owner` | boolean | `needs_conscious_owner` | the zone / aura only functions while its owner is conscious (D7; rules R-G11 PR 2). Default false. The Spirit Guardians fixture sets it |
+| `triggers` | non-empty array of trigger rows (4.2), in order | `triggers` | omitted = no rows (Fog Cloud, Darkness, Silence) |
+
+`length_ft` arrives with `line` (append-only).
+
+### 4.2 `zone.triggers[]` rows (`ZoneTriggerRow`)
+
+Closed object. Rows live only under `zone.triggers`; they are unrelated to spell@1 `casting_time.trigger` (a reaction window)
+and to common@2 `on_event` `on` (row 9 `TriggerOn`), which is why the `on` values carry a `zone_` prefix.
+
+| key | shape | maps to | default |
+|---|---|---|---|
+| `on` | `zone_appear` \| `zone_enter` \| `zone_start_turn` \| `zone_end_turn` \| `zone_move_within` | `ZoneTrigger::Appear` / `Enter` / `StartTurn` / `EndTurn` / `MoveWithin` | required |
+| `group` | integer 0..255 | `group` | **1** (Enter + StartTurn share group 1, D2). 0 = no per-turn limit (Spike Growth, Grease) |
+| `own_turn_only` | boolean | `own_turn_only` | false |
+| `completely_within` | boolean | `completely_within` | false |
+| `counts_aura_move_as_enter` | boolean | `counts_aura_move_as_enter` | false (D1) |
+| `while_in_zone` | boolean | `while_in_zone` | false |
+| `effect` | 4.3 | `effect` (`SpellEffect`) | required |
+
+### 4.3 `effect` of a row (`SpellEffect`)
+
+Closed object, discriminated by `kind`, propertyNames arms. Damage dice gain `scaling.upcast.dice` per slot level above the
+spell's level (rules does this from `SpellDef::upcast_dice`).
+
+| `kind` | keys | maps to |
+|---|---|---|
+| `save` | `ability` (required); `damage` + `on_success` (`half` \| `none`, each requires the other); `condition`; at least one of `damage` / `condition`; `description` | `SpellEffectKind::Save`, `save_ability`, `dice` / `damage_type`, `on_save` (`half` = `OnSave::Half`), `applies_condition` + `condition`. No `repeat_save`, no `applies_to` |
+| `damage` | `damage` (required); `condition`; `description` | no save: `SpellEffectKind::ApplyCondition` (any non-Save kind; rules applies the damage and the condition without a save), `applies_condition` iff `condition` |
+| `apply_condition` | `condition` (required); `description` | `SpellEffectKind::ApplyCondition`, `applies_condition` = true |
+
+### 4.4 Cross-field rules (validator `check_spell_zone` / `check_spell`; the loader must refuse the same)
+
+Messages start with `zone` on purpose: `spell_loader_tests` compares the loader's first error with a negative case's `.expect`
+only for the prefixes `effect`, `scaling.`, `'`, ...; until the loader parses zones it answers `effect kind invalid`, so the
+`tests/validate/cases/zone_*` cases are only required to fail there. Once the loader lands it should use these messages verbatim.
+
+| rule | message |
+|---|---|
+| `zone` only as `effects[0]` (cast refuses an extra effect of kind Zone) | `zone must be the primary effect (effects[N] is a zone)` |
+| no top-level `area` (the zone carries its geometry) | `zone: area not allowed (zone.shape / size_ft give the zone's geometry)` |
+| no top-level `targets` | existing `targets not allowed on a zone effect (one target, per dart/beam, or self)` |
+| `duration.kind` not `instantaneous` (the spell's duration is the zone's lifetime) | `zone: needs a lasting duration (not instantaneous)` |
+| `anchor: creature` needs `range.kind: self` | `zone: anchor creature (an aura on the caster) needs range self` |
+| `move` needs `anchor: point` | `zone: move needs anchor point` |
+| `light_obscured` and `heavy_obscured` not together | `zone: flags light_obscured and heavy_obscured are exclusive` |
+| at least one of `flags` / `triggers` | `zone: needs triggers or flags (it would do nothing)` |
+| row `effect.kind` in `save`, `damage`, `apply_condition` (also schema) | `zone.triggers[N].effect.kind '<k>' is not a zone trigger effect (save, damage, apply_condition)` |
+| `own_turn_only` only on `zone_enter` / `zone_move_within` | `zone.triggers[N]: own_turn_only is only for zone_enter / zone_move_within` |
+| `counts_aura_move_as_enter` only on `zone_enter` | `zone.triggers[N]: counts_aura_move_as_enter is only for zone_enter` |
+| ... and not on a point zone without `move` (it never moves) | `zone.triggers[N]: counts_aura_move_as_enter on a zone that never moves` |
+| `while_in_zone` needs an effect `condition` | `zone.triggers[N]: while_in_zone needs an effect condition` |
+| `scaling.upcast.dice` allowed on `zone`, needs a row with `damage` | existing `scaling.upcast.dice needs effect dice or damage` |
+| other `scaling.upcast` keys, `scaling.cantrip` beams, reaction casting | existing messages (`scaling.upcast.targets not allowed on a zone effect`, ...) |
+
+Ranges are integers only (floats are rejected: the content spec's integers-only rule, §4.3 in the schema descriptions). Loader mapping for the fixed parts:
+`SpellDef::kind = Zone`; `targets` stays 1 (rules uses the caster); the spell's `duration` / `concentration` as for any spell.
+
+### 4.5 Not expressible yet (no key; content keeps it in `description`)
+
+Fog Cloud's +20 ft radius per slot level (no upcast size), Darkness on an object, Spirit Guardians' necrotic for an evil caster
+(the fixture uses radiant), Moonbeam's shapechanger rules, Stinking Cloud's lost action (D9: no effect kind), Silence's
+deafened / thunder immunity (the `silence` flag only, R-G13), walls (`line`, Wall of Fire), feature auras (D7: the paladin auras are features, not spells; spell zones take `needs_conscious_owner`).
+
+Versioning: an additive spell@1 effect kind with new closed `$defs`. No tag change, no migration, no api_level gate: the old
+schema rejected kind `zone`, so no existing file can carry it (`tests/compat` and both shipped packs validate unchanged).
+
 ## 5. R-G15 spell@1 kinds wired by sim #120: `hp_pool`, `dispel`, `revive`, `end_condition`, `delayed_damage`, `sustained_damage`
 
-(Section 4 is R-G11 zones, PR #119.) Compiled by `rules5e_content::spell_from_json` (`engine/rules/content/src/spell_loader.cpp`,
+Compiled by `rules5e_content::spell_from_json` (`engine/rules/content/src/spell_loader.cpp`,
 #120, 66012c7; rules #105 / #106, proposal sections 7.2f / 7.2g). Schema: six closed arms of spell@1 `$defs/effect` (each also a
 propertyNames allow-list, `tests/validate/test_union_arms.py` `SpellEffectArmsR120`) and the closed `$defs/delayed_expiry` union.
 Fixtures: `tests/validate/fixtures/spell_kinds/spells/` (Sleep, Color Spray, Dispel Magic, Revivify, Lesser Restoration, Acid
