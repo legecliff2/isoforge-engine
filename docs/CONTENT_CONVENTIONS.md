@@ -223,6 +223,51 @@ deafened / thunder immunity (the `silence` flag only, R-G13), walls (`line`, Wal
 Versioning: an additive spell@1 effect kind with new closed `$defs`. No tag change, no migration, no api_level gate: the old
 schema rejected kind `zone`, so no existing file can carry it (`tests/compat` and both shipped packs validate unchanged).
 
+### 4.6 R-G11 rules PR 2 keys (loader `parse_zone`, branch `feat/rules-zone-loader-keys`; supersedes the 4.5 pending list)
+
+All keys optional; absent = the default. Feet are integers 5..65530, multiples of 5 (floats rejected). Enum values are the
+existing common@1 names (`damage_type`, `condition`, `ability`). The loader checks in table order; the first failure is the error.
+
+**`zone` (`ZoneSpec`)**
+
+| key | JSON type / range | default | maps to | loader error |
+|---|---|---|---|---|
+| `shape` | adds `"line"` (sphere, cylinder, cube, line) | — | `AreaShape::Line` | `zone.shape must be sphere, cylinder, cube or line` |
+| `size_ft` | feet; **required except** for `line`, **forbidden** on `line` | — | `size_ft` | `zone.size_ft invalid (5..65530, a multiple of 5)` / `zone.size_ft not allowed on a line (length_ft / height_ft give a wall's geometry)` |
+| `length_ft` | feet; required for (and only for) `line` | 0 | `length_ft` | `zone.length_ft is required for (and only for) lines` / `zone.length_ft invalid (5..65530, a multiple of 5)` |
+| `height_ft` | feet; now required for `cylinder` **and** `line` | 0 | `height_ft` | `zone.height_ft is required for (and only for) cylinders and lines` |
+| `upcast_size_ft` | feet; not on `line` | 0 | `upcast_size_ft` (+ per slot level above) | `zone.upcast_size_ft invalid (5..65530, a multiple of 5)` / `zone: upcast_size_ft not allowed on a line` |
+| `ring_size_ft` | feet; only on `line` | 0 | `ring_size_ft` | `zone.ring_size_ft invalid (5..65530, a multiple of 5)` / `zone: ring_size_ft needs shape line` |
+| `sided` | boolean; only on `line` | false | `sided` | `zone.sided must be a boolean` / `zone: sided needs shape line` |
+| `side_ft` | feet; required iff `sided: true` | 0 | `side_ft` | `zone.side_ft invalid (5..65530, a multiple of 5)` / `zone: side_ft is required for (and only for) sided zones` |
+| `aura_modifier` | object, `common@2 $defs/modifier` with `stat: "save"` only (`bonus`, `ability` scope; no `bonus_table`, no expiry/`consume`) | absent | `aura_modifier` (id = `spell_id_of(content_id + "#aura")`) | parse_modifier's message prefixed `zone.aura_modifier: ...` / `zone.aura_modifier stat must be save` |
+| `aura_bonus_ability` | ability enum | absent | `has_aura_bonus_ability` + `aura_bonus_ability` | `zone.aura_bonus_ability invalid` / `zone: aura_bonus_ability needs aura_modifier` |
+| `aura_immunity` | non-empty array of unique conditions | [] | `aura_immunity` (bit mask) | `zone.aura_immunity must be a non-empty array of unique conditions` |
+| `aura_allies_only` | boolean | false | `aura_allies_only` | `zone.aura_allies_only must be a boolean` |
+| (cross) | `aura_modifier` / `aura_immunity` / `aura_allies_only` need `anchor: creature` | | | `zone: aura fields need anchor creature` |
+
+`zone: needs triggers or flags (it would do nothing)` also accepts a zone with `aura_modifier` or `aura_immunity` (D7 auras).
+
+**`zone.triggers[N]` (`ZoneTriggerRow`)**
+
+| key | JSON type / range | default | maps to | loader error (`where` = `zone.triggers[N]`) |
+|---|---|---|---|---|
+| `region` | `"zone"` \| `"zone_or_side"` | `"zone"` | `region` 0 / 1 | `where.region must be zone or zone_or_side` |
+| (cross) | `zone_or_side` needs a `sided` zone and `on` in zone_appear / zone_start_turn / zone_end_turn | | | `where: region zone_or_side needs a sided zone` / `where: region zone_or_side is only for zone_appear / zone_start_turn / zone_end_turn` |
+| `loses_action` | boolean | false | `loses_action` | `where: flags must be booleans` |
+| `auto_success_damage` | non-empty array of unique damage types; row effect `save` only | [] | `auto_success_damage` (mask) | `where.auto_success_damage must be a non-empty array of unique damage types` |
+| `auto_success_conditions` | non-empty array of unique conditions; `save` only | [] | `auto_success_conditions` (mask) | `where.auto_success_conditions must be a non-empty array of unique conditions` |
+| `auto_success_no_breath` | boolean; `save` only | false | `auto_success_no_breath` | `where: flags must be booleans` |
+| `shapechanger_disadvantage` | boolean; `save` only | false | `shapechanger_disadvantage` | `where: flags must be booleans` |
+| (cross) | the four above on a non-`save` row | | | `where: auto_success / shapechanger_disadvantage need effect kind save` |
+| `evil_damage_type` | damage type; the row effect needs `damage` | absent | `has_evil_damage_type` + `evil_damage_type` | `where.evil_damage_type invalid` / `where: evil_damage_type needs effect damage` |
+
+**Creature facts** (`monster@4` / `character@4` top level): `no_breath`, `shapechanger`, `evil`, booleans, default false, map to
+`Combatant::no_breath / shapechanger / evil`. They are read by the sim archetype loader (`engine/core/sim/src/content.cpp`, Engine
+Core's), not by this PR: until EC wires them the schema should accept them but they have no effect (tracked for EC).
+
+Still not expressible: Darkness on an object, Moonbeam's form revert, the Paladin auras' content (fields exist, content deferred, D7).
+
 ## 5. R-G8 grapple hit rider: `common@2 $defs/rider` kind `grapple` (sim #104)
 
 Read by the sim loader (`engine/core/sim/src/content.cpp`, the `on_hit[]` loop over the archetype's attack actions) since
