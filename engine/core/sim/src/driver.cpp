@@ -75,6 +75,18 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     const auto* me = rules5e::find(s, self);
     if (!me || !rules5e::is_conscious(*me) || rules5e::is_incapacitated(*me)) return end;
     if (me->surprised) return end;   // R-G16: a surprised creature's first turn accepts only EndTurn
+    // Stand up (Director-approved AI policy): a prone creature, at the start of its turn (nothing spent or moved yet), stands with
+    // rules5e StandUp (half its speed, StoodUp) when it is not grappled, its speed is not 0 and its remaining movement is at least
+    // half its speed. Otherwise it stays prone and acts as before (crawls, attacks with disadvantage).
+    if (me->has(rules5e::Condition::Prone) && !me->has(rules5e::Condition::Grappled) && s.budget.action && s.budget.bonus_action &&
+        s.budget.moved_ft == 0 && s.budget.attacks_used_mask == 0 && s.budget.sequence == 0) {
+        const int speed = rules5e::effective_speed(*me);
+        if (speed > 0 && s.budget.movement_ft >= speed / 2) {
+            Command up;
+            up.request = {self, ActionKind::StandUp};
+            return up;
+        }
+    }
     if (auto x = spell_kind_command(c, *me)) return *x;
     const auto* t = target ? rules5e::find(s, *target) : nullptr;
     if (!t || t->dead) return end;
@@ -375,16 +387,26 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
 }
 }  // namespace
 
-// The tactical choice, plus R-G7's grip fact: a versatile melee weapon held in two hands (Archetype::two_handed_grip, the v0
-// wield model; never with a two-weapon bonus option) is attacked with ActionRequest::two_handed_grip so Great Weapon Fighting
-// applies. Only rules5e's Great Weapon Fighting reads the flag.
+// The tactical choice, plus two declarations on the Attack action's weapon attacks:
+//  * Reckless (Director-approved AI policy, rules #111 / sim #129): a creature with Combatant::reckless_attack declares
+//    ActionRequest::reckless on its turn's first melee attack (the first attack of the Attack action: nothing attacked yet, no
+//    sequence, the action unspent; rules refuse it later). A ranged attack never declares it, so a turn that opens with a ranged
+//    attack stays un-reckless.
+//  * R-G7's grip fact: a versatile melee weapon held in two hands (Archetype::two_handed_grip, the v0 wield model; never with a
+//    two-weapon bonus option) is attacked with ActionRequest::two_handed_grip so Great Weapon Fighting applies. Only rules5e's
+//    Great Weapon Fighting reads the flag.
 Command next_command(const Combat& c, std::optional<CombatantId> target) {
     Command cmd = tactical_command(c, target);
     rules5e::ActionRequest& q = cmd.request;
     if (cmd.kind != CommandKind::Rules || q.kind != ActionKind::Attack || q.special != 0 || q.as_bonus_action) return cmd;
     const auto* me = rules5e::find(c.state(), q.actor);
+    if (!me || q.attack_index >= me->attacks.size()) return cmd;
+    const rules5e::TurnBudget& b = c.state().budget;
+    if (me->reckless_attack && !me->reckless_active && !me->attacks[q.attack_index].ranged && !q.haste_action && b.action &&
+        b.attacks_used_mask == 0 && b.sequence == 0)
+        q.reckless = true;
     const Archetype* arch = c.archetype(q.actor);
-    if (!me || !arch || q.attack_index >= me->attacks.size() || q.attack_index >= 32) return cmd;
+    if (!arch || q.attack_index >= 32) return cmd;
     if (!(arch->two_handed_grip >> q.attack_index & 1u)) return cmd;
     for (const auto& bo : me->bonus_attacks)
         if (bo.different_weapon) return cmd;

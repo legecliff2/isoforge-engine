@@ -42,7 +42,7 @@ Things that apply to many rows (so they are not repeated):
 | Monsters die at 0 HP | DATA | `uses_death_saves=false` for non-PCs. |
 | Healing, temp HP (absorbs first) | DATA | `apply_healing`, `apply_damage`. Temp HP can be set on a combatant but no spell/feature grants it (R-G3). Update: rules can now grant temp HP (`ModStat::TempHp` through `apply_modifier`, #89; riders `temp_hp`, #85); no authored `spell@1` kind produces it yet. |
 | Ability checks, saving throws, proficiency, advantage/disadvantage cancel | DATA | `ActionKind::AbilityCheck`, `saves.hpp`, `combine_modes`. |
-| Standing up from prone (half movement) | DATA | `ActionKind::StandUp`. |
+| Standing up from prone (half movement) | DATA | `ActionKind::StandUp`. The built-in AI stands up at the start of its turn when not grappled, speed > 0 and at least half its speed is left. |
 | Movement on a grid, difficult terrain (2x), LOS | DATA | sim `Grid`, `step_cost_ft`, supercover LOS. |
 | Crawling while prone (extra movement cost) | NEW (wiring) | Rules done: a Move while Prone costs double (already in `Move`); sim's own movement budget is not wired (R-G8). |
 | Opportunity-attack exceptions (Disengage, teleport, forced movement) | DATA | Disengage implemented; forced moves and teleports never open a `LeavingReach` window and spend no movement (R-G9, VERSION_BUMP_BATCH 7.2k). |
@@ -108,7 +108,7 @@ Things that apply to many rows (so they are not repeated):
 | Paralyzed | DATA | Incapacitated, auto-fail Str/Dex saves, advantage against, crit within 5 ft. |
 | Petrified | DATA | Incapacitated, speed 0, resistance to all damage, auto-fail Str/Dex. Aging/weight not modelled. SRD also grants immunity to poison and disease, which is not modelled (condition-granted immunity). |
 | Poisoned | DATA | Attack and check disadvantage. |
-| Prone | DATA | Attack disadvantage on self; advantage within 5 ft against, disadvantage beyond. `StandUp` action. |
+| Prone | DATA | Attack disadvantage on self; advantage within 5 ft against, disadvantage beyond. `StandUp` action. Built-in AI: at the start of its turn a prone creature stands up (`StandUp`, `StoodUp`) unless it is grappled, its speed is 0 or less than half its speed is left; otherwise it stays prone and acts as before. |
 | Restrained | DATA | Speed 0, attack disadvantage, advantage against, Dex save disadvantage. |
 | Stunned | DATA | Incapacitated, auto-fail Str/Dex, advantage against. |
 | Unconscious | DATA | Prone-like effects, crit within 5 ft, death saves. |
@@ -188,7 +188,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | **Barbarian** hit die d12, proficiencies | 1 | DATA | Baked. |
 | Rage (+damage, resist B/P/S, adv on Str checks/saves; bonus action; uses/long rest) | 1 | NEW (wiring) | Rules done: `apply_modifier` Damage (melee `scope`) + per-type Resistance + Str Save/AbilityCheck advantage (#89) with a `rage` pool (#91). Needs the `character@4` effect compile, `feature_modifiers` / `feature_spec` hooks and the 0xA2 hash fold (Engine Core). |
 | Unarmored Defense (10 + Dex + Con) | 1 | DATA | Baked AC. |
-| Reckless Attack | 2 | NEW (wiring) | rules5e `Combatant::reckless_attack` + `ActionRequest::reckless` on the first attack: advantage on Str melee weapon attacks this turn, attacks against it have advantage until its next turn (small leftovers, VERSION_BUMP_BATCH 7.2j). Loader done (EC #129): feature / trait kind `reckless_attack`; the caller declares `reckless` (the built-in AI does not). |
+| Reckless Attack | 2 | NEW (wiring) | rules5e `Combatant::reckless_attack` + `ActionRequest::reckless` on the first attack: advantage on Str melee weapon attacks this turn, attacks against it have advantage until its next turn (small leftovers, VERSION_BUMP_BATCH 7.2j). Loader done (EC #129): feature / trait kind `reckless_attack`; the caller declares `reckless`; the built-in AI (`sim::next_command`, Director-approved policy) declares it on the first melee attack of each of the creature's turns, never on a ranged attack. |
 | Danger Sense (adv on Dex saves vs visible effects) | 2 | NEW | Conditional save advantage (T&C-G7 style trait). |
 | Primal Path: Berserker, Frenzy (extra attack as bonus action, exhaustion after) | 3 | NEW (wiring) | Rules done (R-G6): `any_melee` bonus attack with `requires_modifier` = the Rage modifier; the exhaustion at the end of Rage is not modelled (conditions). |
 | Extra Attack | 5 | NEW (wiring) | T&C-G1. |
@@ -440,7 +440,7 @@ Stat-block data: `monster@3` carries abilities, AC, HP average, speed (walk, fly
 | Legendary actions, lair actions, Legendary Resistance | aboleth (CR 10), mummy lord, adult/ancient dragons, **unicorn (CR 5)** | OOS | Deferred by Director decision (T&C-G11). 32 SRD monsters have legendary actions: 31 are CR 10 or higher, the unicorn is CR 5; none is CR 4 or lower. Corrected from "CR 10+". Update: Legendary Resistance is no longer deferred (Q14); it is a plain pool: rules done (#91, `Combatant::legendary_pool`, auto-spend on a failed save); `Combat::create` must register the pool and set the field. Legendary and lair actions stay deferred. |
 | Charge / Pounce / Trampling Charge (move then bonus damage / knock prone) | boar, lion, panther, tiger, warhorse | DATA | `on_hit[]` rider with the `moved_at_least_ft` predicate (rules `TurnBudget::moved_ft` fed by `ActionRequest::move_tiles`; sim #61, #84) for the damage; the prone-on-failed-save rider is `save_condition` (#90). |
 | Aggressive (bonus action move toward a hostile) | orc | NEW (wiring) | rules5e `Combatant::aggressive`: bonus-action Dash (`ActionRequest::aggressive`, `TurnBudget::aggressive_dash`); sim keeps the movement toward a hostile (small leftovers, VERSION_BUMP_BATCH 7.2j). Sim done (EC #129): trait kind `aggressive`; the AI takes the Dash toward a visible target when it then reaches it (or cannot shoot), and a step on the Dash's movement must end nearer to a hostile the orc can see. |
-| Reckless | minotaur, berserker | NEW (wiring) | Same as Reckless Attack (`reckless_attack`, `ActionRequest::reckless`) (small leftovers, VERSION_BUMP_BATCH 7.2j). Loader done (EC #129): trait kind `reckless_attack`; the built-in AI does not declare it. |
+| Reckless | minotaur, berserker | NEW (wiring) | Same as Reckless Attack (`reckless_attack`, `ActionRequest::reckless`) (small leftovers, VERSION_BUMP_BATCH 7.2j). Loader done (EC #129): trait kind `reckless_attack`; the built-in AI declares `reckless` on the first melee attack of each of its turns (never on a ranged attack). |
 | Rampage (bonus attack after reducing a creature to 0 HP) | gnoll | DATA | `reduce_to_zero` trigger with a `bonus_attack` rider (rules #85, sim #88 incl. AI). |
 | Nimble Escape | goblin | DATA | `bonus_action_grant [disengage, hide]` (shipped). |
 | Parry (reaction, +AC) | gladiator, knight, bandit captain | NEW (wiring) | Rules done (#87): `BeingHit` window with an AC-bonus option plus `Attack` / `ReduceDamage` reactions. `reactions[]` compile and hooks pending (T&C-G9, Engine Core). |
