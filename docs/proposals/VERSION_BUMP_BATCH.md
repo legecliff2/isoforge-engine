@@ -440,7 +440,7 @@ each arm that `allowed == required ∪ optional` as documented here.
 | `save` | `ability`, then **either** `dc` **or** `dc_from_damage: true` with optional `base` (default 0; DC = `base` + damage taken) | Undead Fortitude: Con save, `dc_from_damage` with `base: 5` |
 
 `$defs/rider` (closed set of kinds; `grapple`/`swallow` are **reserved names that are not in the enum**, so
-they are a schema error until R-G8):
+they are a schema error until R-G8; `grapple` has since been appended, see `docs/CONTENT_CONVENTIONS.md` section 5):
 
 ```json
 "rider": { "type":"object", "additionalProperties": false, "required": ["kind"],
