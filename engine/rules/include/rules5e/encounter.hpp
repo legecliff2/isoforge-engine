@@ -39,6 +39,9 @@ struct TurnBudget {
     // attack option in progress (1 + index into bonus_attacks) with the attacks it still owes (Flurry's second strike).
     uint32_t attacks_used_mask = 0;
     uint8_t bonus_option = 0, bonus_remaining = 0;
+    // Small leftovers (appended): Haste's extra action is available (granted at turn start while hasted, not lethargic);
+    // Slow: an attack was made this turn; Aggressive: this turn's bonus Dash was Aggressive (movement toward a hostile, sim's).
+    bool haste_action = false, slow_attacked = false, aggressive_dash = false;
 };
 
 // Answer to a reaction window (names/layout shared with sim::Combat).
@@ -119,6 +122,11 @@ struct ActionRequest {
     std::vector<CombatantId> spared = {};
     CombatantId heighten_target = 0;
     uint8_t damage_choice = 0, condition_choice = 0;
+    // appended (small leftovers; log-relevant, SIM_EVENTS.md tag 0xB3):
+    //   haste_action: take Attack (one weapon attack), Dash, Disengage or Hide with Haste's extra action;
+    //   reckless: Attack, declare Reckless Attack (first attack of the turn, Combatant::reckless_attack);
+    //   aggressive: Dash as a bonus action through Combatant::aggressive.
+    bool haste_action = false, reckless = false, aggressive = false;
 };
 
 enum class EventKind : uint8_t {
@@ -273,6 +281,8 @@ struct ActiveSpellEffect {
     uint8_t damage_when = 0;
     DiceExpr damage{0, 0, 0}; DamageType damage_type = DamageType::Force; bool magical = true;
     uint32_t cast_stamp = 0;
+    // appended (Petrifying Gaze): a failed repeat save turns `condition` into `escalate_to` for good (no further saves).
+    bool escalates = false; Condition escalate_to = Condition::Petrified;
 };
 
 // A modifier in force on `target` (row 12). `timed` reuses the condition-duration machinery (Rounds / EndOfTargetNextTurn).
@@ -520,6 +530,11 @@ void apply_surprise(std::vector<Combatant>&, const std::vector<CombatantId>& sur
 bool has_surprised(const EncounterState&);
 // FNV-1a 64 over the ids of surprised creatures (combatants order); sim folds it under tag 0xA8 only when has_surprised.
 uint64_t surprised_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
+// Small leftovers: Life Drain max-HP reductions, Haste lethargy, active Reckless Attack, and escalating (Petrifying Gaze)
+// effects. sim folds leftover_digest under tag 0xA9 only when has_leftover_state (nothing for content that uses none).
+// Haste / Slow themselves are modifiers (modifiers_digest, 0xA2, which folds repeat_save fields only when set).
+bool has_leftover_state(const EncounterState&);
+uint64_t leftover_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 
 // R-G6: could `actor` start bonus attack option `option` (1 + index) now? Checks the bonus action, the prerequisite (Attack action
 // used a listed attack, a different weapon, a modifier in force) and the pool. Pure.
