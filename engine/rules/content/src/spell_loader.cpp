@@ -476,6 +476,10 @@ SpellLoad spell_from_json(const Json& j) {
         int cost = 0;
         if (m.contains("cost_cp")) { if (!small_int(m["cost_cp"], 1, 2147483647, cost)) return err("components.m.cost_cp invalid"); s.material_cost_cp = uint32_t(cost); }
         s.material_consumed = m.value("consumed", false);
+        if (m.contains("item")) {
+            if (!m["item"].is_string() || m["item"].get<std::string>().empty()) return err("components.m.item invalid");
+            s.material_item = m["item"].get<std::string>();
+        }
         if (m.contains("consumed") && !m.contains("cost_cp")) return err("'cost_cp' is a dependency of 'consumed'");
     }
     if (s.components == 0) return err("components: at least one of v, s, m");

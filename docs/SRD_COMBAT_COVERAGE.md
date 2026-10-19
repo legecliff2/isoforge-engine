@@ -275,7 +275,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 |---|---|---|
 | Spell slots by level, Pact slots, recovery | DATA | `Combatant::spell_slots`, `spend_slot`, rest recovery. |
 | Save DC = 8 + prof + mod; spell attack bonus | DATA | `spell_save_dc`, `spell_attack_bonus`. |
-| Components V/S/M, material cost/consumed | DATA | Flags in `SpellDef`; `hooks.can_provide_components`, installed by sim (#49): V/S always, a material cost is refused (no inventory yet). |
+| Components V/S/M, material cost/consumed | DATA | Flags in `SpellDef`; `hooks.can_provide_components`, installed by sim (#49): V/S always; a priced material needs the first combat-local `equipment[]` entry with the exact `components.m.item` id and `value_gp * 100 >= cost_cp` (no `item`: refused); `consumed` removes that entry (CONTENT_CONVENTIONS §7, `Combat::hash` 0xAD). |
 | Concentration (CON save on damage DC max(10, half), ends on incapacitation / new concentration) | DATA | `damage_creature`, `concentration_spell`. |
 | Cantrip tiers (5/11/17), upcast scaling dice/darts/targets/beams | DATA | `scaling.cantrip`, `scaling.upcast`. |
 | Reaction spells with triggers (being hit, targeted by named spell, spell cast with sight) | DATA | `casting_time.trigger` {being_hit, spell_cast, or_targeted_by, requires_sight}. |
@@ -407,7 +407,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Lightning Bolt | DATA | Line template computed by sim (#78); dice/save are data. |
 | Mass Healing Word | DATA | `heal` with `targets {count 6}`, bonus action, range 60. |
 | Protection from Energy | NEW (wiring) | Rules done (#89): `Resistance` modifier for one chosen damage type, concentration (R-G3). |
-| Revivify | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::Revive` within 10 rounds of death (`Combatant::died_round`), 1 HP. Loader and sim done (EC #120): `revive {within_rounds?}`; sim refuses a revival into an occupied space. Material still pending: sim has no inventory, so `can_provide_components` refuses the 300 gp consumed diamond and the SRD Revivify cannot be cast in sim yet. |
+| Revivify | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::Revive` within 10 rounds of death (`Combatant::died_round`), 1 HP. Loader and sim done (EC #120): `revive {within_rounds?}`; sim refuses a revival into an occupied space. Material done (EC, priced materials): a caster with `{"item": "srd51.item.diamond", "value_gp": 300}` (or more) in `equipment[]` casts it and the diamond is consumed from combat-local state. |
 | Sleet Storm | NEW | Zone (R-G11). |
 | Slow | NEW (wiring) | Marker `ModStat::Slow` + AC / Dex-save -2 and half-speed modifiers; no reactions, action or bonus action, one attack; end-of-turn repeat save (`ModifierSpec::repeat_save`) (small leftovers, VERSION_BUMP_BATCH 7.2j). The somatic-spell delay (d20 >= 11 or next turn) is not modelled. |
 | Spirit Guardians | NEW (wiring) | `Zone` anchored on the caster (aura, 15 ft, halved-speed flag): Enter / StartTurn once per turn (D2), Wis save, 3d8 radiant half, +1d8 per slot above 3, excluded creatures from the cast (`zone_excluded`), never the caster (R-G11, 7.2l). Evil caster's necrotic: `has_evil_damage_type` + `Combatant::evil` (PR 2). Sim: aura geometry, Q8 changes, halved-speed cost. |
@@ -581,6 +581,14 @@ Update after #91 / #93 (version-bump batch):
 | T&C-G17 equipment and AC | `item@1` + SRD items (#67, #72); **rules done** `compute_ac` (#93) | apply at archetype build, read `{item, equipped}` (Engine Core); Hide reading `stealth_disadvantage` |
 | R-G10 area templates | **Done** in sim (#78) | cover for Dex saves, lighting (R-G13) |
 
+### 11.4a TODO: campaign carry-over input (owned by Engine Core)
+
+- **TODO (Engine Core):** a future optional per-creature carry-over input to `Combat::create` for the campaign layer: current HP,
+  remaining Hit Dice, spell slots, feature / pool uses and consumed items (the combat-local equipment after priced materials were
+  used up). Today every combat starts from content (full HP, full slots, the content `equipment[]`), and consumption is
+  combat-local only (CONTENT_CONVENTIONS §7: nothing is written back). The input would be a replay input like the seed and the
+  surprised set; absent, behaviour and every hash stay as today.
+
 ### 11.2 Mapping: first-draft id -> unified id
 
 | First draft | Unified | Note |
@@ -631,7 +639,7 @@ Gaps that need new rules mechanics (not just Engine Core / T&C wiring, which is 
 | 3 | R-G8 | **Done in rules** (conditions with a source, grapple / shove / escape, drag, one-size limit). Still open: swallow / engulf, web-style restrain, sim wiring of the push / drag | grapple monsters, crocodile, Charm Person, Fear | done |
 | 4 | R-G6 | **Done in rules**: bonus-action attack options (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy) with prerequisites, pool spend and an off-hand damage override. Still open: Open Hand Technique riders, Frenzy's exhaustion, a rules-side `legal_actions` listing | Monk, Berserker, dual wielders need wiring only | done |
 | 5 | R-G7 rest | **Done in rules**: Lucky (`reroll_ones`), Cutting Words on attack rolls (`AttackRolled` + `SubtractRoll`), Great Weapon Fighting, Evasion. Still open: Cutting Words on checks / damage, Bardic Inspiration spending by the ally, Guidance / Resistance, roller-chosen rerolls (Lucky feat, Indomitable, Portent) | Bard, Halfling, Fighter style, Rogue / Monk | M (done) |
-| 6 | R-G15 | **Done in rules**: HP-pool (Sleep, Color Spray), Dispel Magic, Revivify (7.2f); end-a-condition, delayed / sustained damage, Wake action (`special` 5) (7.2g). Loader / sim wiring done (EC #120); remaining: spell@1 schema / validator arms (T&C), Revivify's material (no inventory) | Sleep, Color Spray, Dispel Magic, Revivify, Lesser Restoration, Acid Arrow, Heat Metal done | - |
+| 6 | R-G15 | **Done in rules**: HP-pool (Sleep, Color Spray), Dispel Magic, Revivify (7.2f); end-a-condition, delayed / sustained damage, Wake action (`special` 5) (7.2g). Loader / sim wiring done (EC #120); remaining: spell@1 schema / validator arms (T&C); Revivify's material done (priced materials, CONTENT_CONVENTIONS §7) | Sleep, Color Spray, Dispel Magic, Revivify, Lesser Restoration, Acid Arrow, Heat Metal done | - |
 | 7 | R-G16 | **Done in rules** (7.2h): surprise (`surprised`, Stealth vs passive Perception helper), Hit Dice, `short_rest` / `long_rest` over combatant and table state, Arcane / Natural Recovery (`recover_spell_slots`). Sim wiring: surprise setup + 0xA8, Hit Dice loader, rest entry points (EC #123). Remaining: party layer carry-over, ambush content flag, Arcane / Natural Recovery content kind | round-1 ambush, attrition | done |
 | 8 | R-G9 | **Done in rules** (7.2k): `ForcedMove` / `Teleport` effect kinds (per-effect `max_size`), the synchronous `forced_move` hook (+ `forced_move_order`), `Moved.c` flags with schema v8, grapples ending out of reach, shove through the hook. Spec: co-design proposal `docs/proposals/FORCED_MOVEMENT.md` (#110, merged). Still open: sim hook and paths (Engine Core), Open Hand Technique rider, Dimension Door companions and the 4d6 failure, Gust of Wind, falling / hazard damage (R-G11) | Thunderwave push, Repelling Blast, Misty Step, Open Hand | done (rules) |
 | 9 | R-G14 | **Done in rules** (7.2i): Metamagic (all eight options, sorcery-point pool), Sculpt Spells, cast-time damage type / condition choices. Still open: Eldritch Spear (feature range modifier), Font of Magic slot / point conversion, Empowered / Careful on non-Save effects beyond those listed | Sorcerer, Evocation Wizard, Blindness/Deafness, Chromatic Orb | done |

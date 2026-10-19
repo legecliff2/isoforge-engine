@@ -74,17 +74,18 @@ takes option 0. Check 9 (`roll_attack` / `subtract_roll` reserved, Q6) is lifted
 | `window.source` / `visible` | `source` other than `self` or `visible: false`: listed as unsupported | warning on `roll_attack` / `subtract_roll` reactions |
 | `melee_only` + `ranged_only` | both true: **load error** | error on `roll_attack` reactions |
 
-### 3.2 Feature / trait effect kinds `reroll_ones`, `great_weapon_fighting`, `evasion`
+### 3.2 Feature / trait effect kinds `reroll_ones`, `great_weapon_fighting`, `evasion`, `pack_tactics`
 
 | kind | fields | compiles to |
 |---|---|---|
 | `reroll_ones` | `rolls` (optional): non-empty array of `attack`, `check`, `save` (repeats allowed); omitted = all three | `Combatant::reroll_ones` bits 1 / 2 / 4 (Halfling Lucky = 7); several declarations OR together. Empty array or another entry: **load error** |
 | `great_weapon_fighting` | none | `Combatant::great_weapon_fighting` |
 | `evasion` | none | `Combatant::evasion` |
+| `pack_tactics` | none | rules5e `RollTrait {Attack, Advantage, kWhenAllyNearTarget}` (sim #127; the sim supplies `ally_near_target`). A second declaration adds nothing: validator **warning** |
 
 They are **open kinds** (registered with no minimum version, like the sim's R-G5 kinds): the sim applies them in every document
 whose effects are active (`character@3`/`@4`, `monster@3`/`@4`; `@1`/`@2` effects are inert through the 2 -> 3 migration) and they
-are not in the frozen 3 -> 4 list, so the migration never stamps them. Schema: three appended arms of `common@1 $defs/effect` (the
+are not in the frozen 3 -> 4 list, so the migration never stamps them. Schema: four appended arms of `common@1 $defs/effect` (the
 open, append-only effect contract that `@3` `trait_active` and `@4` `effect_live` both use, so the rule is the same at `@3` and
 `@4`); the object stays open (the loader ignores fields it does not read). Validator: `checks_v4.OPEN_EFFECT_KINDS_RG7` joins every
 row of the tag table (no unknown-kind warning; shape violations are errors at `@3`/`@4`, warnings at `@1`/`@2`).
@@ -291,7 +292,7 @@ Content keys (all integers; additive, no tag change, no migration):
 |---|---|---|---|
 | spell@1 `components.m` | `cost_cp` | integer >= 1, optional | the material's price in copper (`SpellDef::material_cost_cp`, loaded today) |
 | spell@1 `components.m` | `consumed` | boolean, needs `cost_cp` | the cast uses the material up (`SpellDef::material_consumed`, loaded today) |
-| spell@1 `components.m` | **`item`** | content id string (common@1 `content_id`: dotted lowercase, e.g. `srd51.item.diamond`), optional | the equipment id that provides the priced material. **Contract only: no loader reads it yet**; Engine Core's loader follows these key names |
+| spell@1 `components.m` | **`item`** | content id string (common@1 `content_id`: dotted lowercase, e.g. `srd51.item.diamond`), optional | the equipment id that provides the priced material. Read by the spell loader into `SpellDef::material_item` (EC, priced materials PR) |
 | character@4 `equipment[]` item object | **`value_gp`** | integer >= 0, optional, **default 0** | the entry's value in gold pieces |
 
 Example (Revivify, fixture `tests/validate/fixtures/spell_kinds/spells/revivify.json`) and a caster that can pay for it:
@@ -304,7 +305,7 @@ Example (Revivify, fixture `tests/validate/fixtures/spell_kinds/spells/revivify.
 "equipment": [ { "item": "srd51.item.diamond", "value_gp": 300 } ]
 ```
 
-Sim semantics (agreed; implemented by Engine Core's loader / `can_provide_components` later):
+Sim semantics (agreed; implemented by Engine Core: `Archetype::equipment`, `Combat`'s combat-local copy, `can_provide_components`, consumption at cast completion, `Combat::hash` tag 0xAD once something was consumed):
 
 1. A material with no cost (`cost_cp` absent) needs nothing.
 2. A priced material (`cost_cp` > 0) is satisfied by the **first** `equipment[]` entry, in array order, whose id equals
@@ -329,3 +330,10 @@ Validator:
   against, and valid content should validate clean.
 - character@4 `value_gp`: integer >= 0 (floats and negatives are schema errors). An equipment entry with `value_gp` is exempt from
   check 6/11 (its `item` need not resolve to an item@1); an entry without `value_gp` must still resolve.
+
+### Untimed `save_condition` riders (validator mirror of the sim loader)
+
+A `save_condition` rider (an attack's `on_hit[]` or an `on_event` `effects[]` entry) whose `apply[]` entry has neither
+`duration` nor `repeat_save` fails to load in the sim ("save_condition uses an unsupported duration"); the validator reports the
+same error. `checks_v4.UNTIMED_ON_HIT_CONDITIONS` lists the exceptions: empty today; `prone` joins it when Engine Core's loader
+accepts untimed conditions that end by their own rules (the SRD wolf / dire wolf bite rider stays descriptive until then).
