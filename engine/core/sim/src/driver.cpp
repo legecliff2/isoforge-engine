@@ -198,6 +198,38 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
                 return special(2, t->id);
         }
     }
+    // R-G6 bonus-action attack options: finish the option in progress (Flurry's second strike), else start the first one that is
+    // available (rules check the bonus action, the prerequisite attacks, the modifier and the pool) with a legal target.
+    {
+        auto bonus_cmd = [&](std::size_t k) -> std::optional<Command> {
+            const rules5e::BonusAttack& o = me->bonus_attacks[k];
+            int bi = o.attack_index;
+            if (o.any_melee) {
+                bi = -1;
+                for (std::size_t i = 0; i < me->attacks.size() && bi < 0; ++i) if (!me->attacks[i].ranged) bi = int(i);
+            }
+            if (bi < 0 || std::size_t(bi) >= me->attacks.size()) return std::nullopt;
+            const bool ok = me->attacks[std::size_t(bi)].ranged
+                                ? c.can_shoot(self, uint8_t(bi), t->id)
+                                : c.distance_tiles(self, t->id) <= reach_tiles(me->attacks[std::size_t(bi)].reach_or_range_ft);
+            if (!ok || !rules5e::is_conscious(*t)) return std::nullopt;
+            Command b;
+            b.request = {self, ActionKind::Attack, t->id};
+            b.request.attack_index = uint8_t(bi);
+            b.request.as_bonus_action = true;
+            b.request.bonus_option = uint8_t(k + 1);
+            return b;
+        };
+        if (s.budget.bonus_option != 0 && s.budget.bonus_remaining > 0) {
+            if (std::size_t(s.budget.bonus_option) <= me->bonus_attacks.size())
+                if (auto b = bonus_cmd(std::size_t(s.budget.bonus_option - 1))) return *b;
+        } else {
+            for (std::size_t k = 0; k < me->bonus_attacks.size(); ++k) {
+                if (!rules5e::bonus_attack_available(s, *me, uint8_t(k + 1))) continue;
+                if (auto b = bonus_cmd(k)) return *b;
+            }
+        }
+    }
     // Prefer the first melee attack; fall back to the first attack.
     uint8_t ai = 0;
     for (uint8_t i = 0; i < me->attacks.size(); ++i)
