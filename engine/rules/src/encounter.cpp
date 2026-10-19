@@ -406,7 +406,7 @@ std::vector<CombatantId> initiative_ids(const EncounterState& s) {
 
 bool may_react(const EncounterState& s, const Combatant& c, ReactionTrigger t) {
     (void)s;
-    return !c.dead && can_act(c) && !c.reaction_used &&
+    return !c.dead && !c.surprised && can_act(c) && !c.reaction_used &&
            c.reaction_policy[std::size_t(t)] != ReactionPolicy::Never;
 }
 
@@ -2146,6 +2146,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     if (req.actor != current_actor(s)) return fail("not this combatant's turn");
     Combatant& a = *find_mut(s, req.actor);
     if ((a.dead || a.hp <= 0) && req.kind != ActionKind::EndTurn) return fail("actor is down");
+    if (a.surprised && req.kind != ActionKind::EndTurn) return fail("surprised: can only end the turn");
     TurnBudget b = s.budget;               // mutate a copy; commit only on success
     StepResult out{true, {}, {}};
 
@@ -2166,6 +2167,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
             run_event_triggers(s, a, a, TriggerOn::TurnEnd, x, out.events, nullptr, &ctx);
         }
         emit(out.events, EventKind::TurnEnded, a.id);
+        a.surprised = false;   // R-G16: surprise ends with the creature's first turn
         advance_turn(s, out.events);
         return out;
     case ActionKind::Move: {
@@ -2452,6 +2454,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
         r.as_bonus_action = bonus;
         out.push_back(r);
     };
+    if (a.surprised) { add(ActionKind::EndTurn); return out; }   // R-G16
     const bool can_act = b.action || b.extra_actions > 0;   // row 13: an extra action counts
     if (can_act || b.attacks_remaining > 0) {
         for (const auto& t : s.combatants) {
@@ -2889,6 +2892,44 @@ uint64_t sourced_digest(const EncounterState& s, uint64_t h) {
     auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
     auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) byte(uint8_t(v >> (8 * i))); };
     for (const auto& e : s.sourced) { byte(uint8_t(e.condition)); u32(e.target); u32(e.source); u32(uint32_t(uint16_t(e.escape_dc))); }
+    return h;
+}
+
+}  // namespace rules5e
+
+namespace rules5e {
+
+std::vector<CombatantId> surprised_by_stealth(const std::vector<Combatant>& cs, const std::vector<StealthTotal>& hiders) {
+    std::vector<CombatantId> out;
+    for (const auto& c : cs) {
+        if (c.dead) continue;
+        bool any_enemy = false, noticed = false;
+        const int passive = passive_perception(c);
+        for (const auto& e : cs) {
+            if (e.dead || e.team == c.team) continue;
+            any_enemy = true;
+            const StealthTotal* h = nullptr;
+            for (const auto& x : hiders) if (x.id == e.id) h = &x;
+            if (!h || h->total < passive) { noticed = true; break; }
+        }
+        if (any_enemy && !noticed) out.push_back(c.id);
+    }
+    return out;
+}
+
+void apply_surprise(std::vector<Combatant>& cs, const std::vector<CombatantId>& ids) {
+    for (auto& c : cs)
+        for (CombatantId id : ids) if (c.id == id) c.surprised = true;
+}
+
+bool has_surprised(const EncounterState& s) {
+    return std::any_of(s.combatants.begin(), s.combatants.end(), [](const Combatant& c) { return c.surprised; });
+}
+
+uint64_t surprised_digest(const EncounterState& s, uint64_t h) {
+    auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
+    for (const auto& c : s.combatants)
+        if (c.surprised) for (int i = 0; i < 4; ++i) byte(uint8_t(uint32_t(c.id) >> (8 * i)));
     return h;
 }
 
