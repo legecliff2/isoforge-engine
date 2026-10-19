@@ -17,3 +17,4 @@
 #include "rules5e/encounter.hpp"
 #include "rules5e/checks.hpp"
 #include "rules5e/healing.hpp"
+#include "rules5e/armor.hpp"
