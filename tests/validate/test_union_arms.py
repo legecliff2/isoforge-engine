@@ -48,7 +48,8 @@ RIDER = {("extra_damage",): (S({"kind", "damage"}), S({"scale"})),
          ("set_hp",): (S({"kind", "value"}), S()),
          ("bonus_attack",): (S({"kind", "attack_id"}), S()),
          ("area_save",): (S({"kind", "area", "save", "damage", "on_success"}), S()),
-         ("spend",): (S({"kind"}), S({"pool", "cost", "slot"}))}
+         ("spend",): (S({"kind"}), S({"pool", "cost", "slot"})),
+         ("grapple",): (S({"kind"}), S({"escape_dc"}))}   # R-G8 hit rider (sim #104); on_hit[] of actions[] weapon attacks only
 _M = {"applies_to", "stacks", "consume"}   # consume: any stat (section 6.2b, docs/CONTENT_CONVENTIONS.md 1)
 MODIFIER = {("attack_roll",): (S({"stat", "duration"}), S({"bonus", "die", "mode", "when"} | _M)),
             ("save", "ability_check"): (S({"stat", "duration"}), S({"bonus", "die", "mode", "ability"} | _M)),
@@ -72,7 +73,7 @@ ZONE = {("sphere", "cube"): (S({"shape", "size_ft", "anchor"}), S(_ZOPT)),
 ZONE_EFFECT = {("save",): (S({"kind", "ability"}), S({"damage", "on_success", "condition", "description"})),   # damage or condition
                ("damage",): (S({"kind", "damage"}), S({"condition", "description"})),
                ("apply_condition",): (S({"kind", "condition"}), S({"description"}))}
-# spell@1 delayed_damage expiry (R-G15, sim #120; docs/CONTENT_CONVENTIONS.md section 5).
+# spell@1 delayed_damage expiry (R-G15, sim #120; docs/CONTENT_CONVENTIONS.md section 6).
 DELAYED_EXPIRY = {("rounds",): (S({"kind", "n"}), S()),
                   ("until_end_of_target_next_turn",): (S({"kind"}), S())}
 # spell@1 $defs/effect arms of the R-G15 kinds. The effect union is the file's older if/then pattern (open base, each arm

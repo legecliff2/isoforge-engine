@@ -930,6 +930,22 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         }
     }
     c.is_pc = c.uses_death_saves = (schema_type == "character");
+    // R-G16 Hit Dice (VERSION_BUMP_BATCH 7.2h hand-off (a)): character classes[].hit_die ("d6".."d12") and hit_dice_max = the
+    // summed class levels, all dice unspent. rules5e models one die size, so a multiclass character uses classes[0]'s die.
+    // Not part of Combat::hash (rests run outside the encounter), so no digest moves.
+    if (c.is_pc)
+        if (auto cl = doc.find("classes"); cl != doc.end() && cl->is_array() && !cl->empty()) {
+            int total = 0;
+            for (const Json& k : *cl)
+                if (k.is_object()) total += std::max(0, geti(k, "level"));
+            const Json& first = cl->front();
+            const std::string hd = first.is_object() ? first.value("hit_die", "") : std::string();
+            const int sides = hd.size() >= 2 && hd[0] == 'd' ? std::atoi(hd.c_str() + 1) : 0;
+            if (sides == 6 || sides == 8 || sides == 10 || sides == 12) {
+                c.hit_die = uint8_t(sides);
+                c.hit_dice = c.hit_dice_max = uint8_t(std::clamp(total, 0, 255));
+            }
+        }
     std::vector<const Json*> attack_actions;   // content action per c.attacks[i]
     for (const Json& act : doc.at("actions")) {
         const std::string kind = act.value("kind", "");

@@ -1,0 +1,94 @@
+{
+  "$schema": "monster@4",
+  "id": "test.v4.monster.giant_crab_grappler",
+  "name": "Giant Crab (grapple rider fixture)",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 15,
+    "note": "natural armor"
+  },
+  "hit_points": {
+    "average": 13,
+    "formula": "3d8"
+  },
+  "speed": {
+    "walk": 30,
+    "swim": 30
+  },
+  "abilities": {
+    "str": 13,
+    "dex": 15,
+    "con": 11,
+    "int": 1,
+    "wis": 9,
+    "cha": 3
+  },
+  "senses": {
+    "blindsight": 30,
+    "passive_perception": 9
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "1/8",
+    "xp": 25
+  },
+  "proficiency_bonus": 2,
+  "actions": [
+    {
+      "id": "claw",
+      "name": "Claw",
+      "kind": "melee_weapon_attack",
+      "to_hit": 3,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+1",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "The target is grappled (escape DC 11).",
+      "on_hit": [
+        {
+          "kind": "grapple",
+          "escape_dc": 11
+        }
+      ]
+    },
+    {
+      "id": "pincer",
+      "name": "Pincer",
+      "kind": "melee_weapon_attack",
+      "to_hit": 3,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d4+1",
+          "type": "piercing"
+        }
+      ],
+      "description": "No escape_dc: escape is a contest against the crab's Athletics. A second rider after the grapple keeps its derived trigger id pincer#1.",
+      "on_hit": [
+        {
+          "kind": "grapple"
+        },
+        {
+          "kind": "extra_damage",
+          "damage": [
+            {
+              "dice": "1d4",
+              "type": "same_as_weapon"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

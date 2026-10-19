@@ -223,7 +223,7 @@ KINDS_FIXTURES = vp.ROOT / "tests" / "validate" / "fixtures" / "spell_kinds" / "
 SLEEP, SPRAY, DISPEL, REVIVE, LR, ACID, HEAT = ("sleep", "color_spray", "dispel_magic", "revivify", "lesser_restoration",
                                                 "acid_arrow", "heat_metal")
 E0, E1 = ["effects", 0], ["effects", 1]
-# R-G15 spell@1 kinds wired by sim #120 (docs/CONTENT_CONVENTIONS.md section 5). (name, fixture, sets, dels, expected substring).
+# R-G15 spell@1 kinds wired by sim #120 (docs/CONTENT_CONVENTIONS.md section 6). (name, fixture, sets, dels, expected substring).
 # Cross-field messages are the loader's (spell_loader.cpp) verbatim.
 KIND_CASES = [
     # hp_pool

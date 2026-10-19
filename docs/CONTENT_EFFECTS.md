@@ -191,5 +191,5 @@ See `docs/CONTENT_CONVENTIONS.md` for the timed-modifier properties the sim comp
 | `delayed_damage` | DelayedDamage | no (Acid Arrow rider) | `damage`, `expiry` |
 | `sustained_damage` | SustainedDamage | yes | `damage`; needs a rounds / minutes / hours duration; no `expiry` |
 
-Details and loader messages: `docs/CONTENT_CONVENTIONS.md` section 5 (R-G15 kinds, sim #120) and section 6 (priced material
+Details and loader messages: `docs/CONTENT_CONVENTIONS.md` section 6 (R-G15 kinds, sim #120) and section 7 (priced material
 components, character@4 `equipment[].value_gp`).

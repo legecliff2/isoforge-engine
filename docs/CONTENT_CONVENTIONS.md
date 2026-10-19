@@ -1,4 +1,4 @@
-# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G11 zones, R-G15 spell kinds, priced materials)
+# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G11 zones, R-G8 grapple rider, R-G15 spell kinds, priced materials)
 
 Owner: Tools & Content. Source of truth is the C++ loader; this file records what it reads and what the validator checks.
 All numbers are integers.
@@ -207,7 +207,43 @@ deafened / thunder immunity (the `silence` flag only, R-G13), walls (`line`, Wal
 Versioning: an additive spell@1 effect kind with new closed `$defs`. No tag change, no migration, no api_level gate: the old
 schema rejected kind `zone`, so no existing file can carry it (`tests/compat` and both shipped packs validate unchanged).
 
-## 5. R-G15 spell@1 kinds wired by sim #120: `hp_pool`, `dispel`, `revive`, `end_condition`, `delayed_damage`, `sustained_damage`
+## 5. R-G8 grapple hit rider: `common@2 $defs/rider` kind `grapple` (sim #104)
+
+Read by the sim loader (`engine/core/sim/src/content.cpp`, the `on_hit[]` loop over the archetype's attack actions) since
+sim #104; rules side `rules5e::grapple(state, attacker, target, escape_dc, ev)` (proposal section 7.2c). Until this schema change
+the kind was a reserved name that the schema rejected (VERSION_BUMP_BATCH `$defs/rider`).
+
+```json
+{ "id": "claw", "name": "Claw", "kind": "melee_weapon_attack", "to_hit": 3, "reach": 5, "targets": 1,
+  "damage": [{ "dice": "1d6+1", "type": "bludgeoning" }],
+  "on_hit": [{ "kind": "grapple", "escape_dc": 11 }] }
+```
+
+A hit by the creature's own Attack action (not a reaction or bonus attack) with that attack calls `grapple(...)`: the target gains Grappled with the
+attacker as its source and the given escape DC (rules refuses a dead, immune or self target). The grapple rider compiles to
+`Archetype::grapple_on_hit[attack index]`, **not** to a trigger: it gets no derived trigger id (check 8 skips it) and does not
+count toward the 32-trigger limit. Other riders in the same `on_hit[]` keep their positional ids (`<action id>#<index>`).
+
+| part | loader rule | schema / validator |
+|---|---|---|
+| where | only `on_hit[]` of `actions[]` entries of kind `melee_weapon_attack` / `ranged_weapon_attack` in `monster@4` / `character@4` (`declared >= 4`) | schema: `on_hit` is allowed only on those kinds (existing); `common@2` riders exist only in `@4` documents and `item@1` |
+| `escape_dc` | optional; absent = 0 = escape by a contest against the grappler's Athletics; otherwise an integer 1..30. Not an integer (a float `11.0`, a string) or outside 0..30: **load error** `on_hit: bad grapple escape_dc` | schema `integer`, `minimum` 0, `maximum` 30 + the float rejection; validator error `grapple escape_dc must be an integer 0..30` (`(R-G8 grapple)`) |
+| other fields | ignored by the loader | schema: arm closed to `kind`, `escape_dc` (no `condition`, `save`, ...); `escape_dc` is forbidden on every other rider kind |
+| two `grapple` riders on one attack | the last one wins (map assignment), no error | warning `the sim keeps only the last one` |
+| `bonus_actions[]` weapon attacks | their `on_hit[]` is never read | warning `this grapple rider never applies` |
+| `on_event` `effects[]` | reaches `compile_rider`: **load error** `unknown rider kind 'grapple'` | error (`grapple is an on_hit[] rider of a weapon attack only`) |
+| `item@1` `on_hit[]` | not read by the sim | error (check 17, like `bonus_attack`): items carry no attack of their own; put the rider on the wielder's action |
+
+Not expressible (content keeps it in `description`): "until this grapple ends, the target is restrained" (crocodile, constrictor
+snake: no condition tied to a grapple), "can't bite another target" / "can grapple only one target per claw", and Restrained with
+an escape (giant spider Web, R-G8 restrain source).
+
+Versioning: an additive kind with a new closed arm in `common@2 $defs/rider` and one new base property (`escape_dc`). No tag change,
+no migration, no api_level gate: the old schema rejected kind `grapple`, so no existing file can carry it (`tests/compat` and the
+shipped packs validate unchanged). Fixture: `tests/validate/fixtures/v4/extra/giant_crab_grappler.json`; cases: `test_v4_validator.py`
+`GRAPPLE_CASES`.
+
+## 6. R-G15 spell@1 kinds wired by sim #120: `hp_pool`, `dispel`, `revive`, `end_condition`, `delayed_damage`, `sustained_damage`
 
 Compiled by `rules5e_content::spell_from_json` (`engine/rules/content/src/spell_loader.cpp`,
 #120, 66012c7; rules #105 / #106, proposal sections 7.2f / 7.2g). Schema: six closed arms of spell@1 `$defs/effect` (each also a
@@ -246,7 +282,7 @@ Shapes the #120 description gave that the loader does not use (loader wins): `hp
 Versioning: additive spell@1 kinds and a new `$defs`; no tag change, no migration, no api_level gate (the old schema rejected
 these kinds, so no existing file carries them; `tests/compat` and both shipped packs validate unchanged).
 
-## 6. Priced material components (Director ruling)
+## 7. Priced material components (Director ruling)
 
 A spell's material cost is spell@1 `components.m.cost_cp` (integer copper, >= 1) with `consumed` (requires `cost_cp`); the loader
 maps them to `SpellDef::material_cost_cp` / `material_consumed`, and the sim's `can_provide_components` checks them (today it only

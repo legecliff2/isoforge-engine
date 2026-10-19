@@ -344,8 +344,9 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
         tids.setdefault(tid, where)
 
     for path, a in mechanical_actions(doc):
-        for j, _r in enumerate(a.get("on_hit") or []):
-            add_trigger(f"{a.get('id')}#{j}", f"{path}/on_hit/{j}")
+        for j, r in enumerate(a.get("on_hit") or []):
+            if not is_grapple(r):   # a grapple rider compiles to Archetype::grapple_on_hit, not to a trigger
+                add_trigger(f"{a.get('id')}#{j}", f"{path}/on_hit/{j}")
     for path, owner, eff in live_effects(doc):
         if eff.get("kind") == "on_event":
             add_trigger(f"{owner}#0", path)
@@ -392,6 +393,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
             warns.append(f"{doc.get('id')}: feature 'frenzy' requires the Rage modifier '<id>#rage#m0', but the 'rage' feature has no live "
                          "apply_modifier effect: the option is never available (bonus attacks)")
     errs += check_static_kinds(doc)
+    check_grapple_riders(doc, errs, warns)
     # check 12: declared but never referenced pools (Legendary Resistance is declaration-only until row 13)
     for i, r in enumerate(resources):
         if r.get("id") not in referenced:
@@ -422,6 +424,52 @@ def check_static_kinds(doc: dict) -> list[str]:
     return errs
 
 
+# ---- R-G8 grapple hit rider (sim #104, docs/CONTENT_CONVENTIONS.md section 5) ---------------------------
+
+GRAPPLE_ESCAPE_DC_MAX = 30
+
+
+def is_grapple(r) -> bool:
+    return isinstance(r, dict) and r.get("kind") == "grapple"
+
+
+def check_grapple_riders(doc: dict, errs: list[str], warns: list[str]) -> None:
+    """Mirror of the sim loader (content.cpp, on_hit[] of the archetype's attack actions): only actions[] entries of kind
+    melee_weapon_attack / ranged_weapon_attack read on_hit[]; there a grapple rider sets Archetype::grapple_on_hit for that
+    attack (no trigger) and escape_dc must be an integer 0..30 (absent = 0 = Athletics contest), else the load error
+    'bad grapple escape_dc'. In an on_event effects[] list it reaches compile_rider: load error "unknown rider kind
+    'grapple'". bonus_actions[] on_hit riders are never read (warning); two on one attack: the last one wins (warning)."""
+    for i, a in enumerate(doc.get("actions") or []):
+        if not isinstance(a, dict) or a.get("inert") is True:
+            continue
+        seen = None
+        for j, r in enumerate(a.get("on_hit") or []):
+            if not is_grapple(r):
+                continue
+            where = f"/actions/{i}/on_hit/{j}"
+            dc = r.get("escape_dc", 0)
+            if not is_int(dc) or not 0 <= dc <= GRAPPLE_ESCAPE_DC_MAX:
+                errs.append(f"{where}: grapple escape_dc must be an integer 0..{GRAPPLE_ESCAPE_DC_MAX}, got {dc!r} "
+                            "(sim: bad grapple escape_dc) (R-G8 grapple)")
+            if seen is not None:
+                warns.append(f"{where}: second grapple rider on action '{a.get('id')}' (first at {seen}); the sim keeps only "
+                             "the last one (R-G8 grapple)")
+            seen = seen or where
+    for i, a in enumerate(doc.get("bonus_actions") or []):
+        if not isinstance(a, dict) or a.get("inert") is True:
+            continue
+        for j, r in enumerate(a.get("on_hit") or []):
+            if is_grapple(r):
+                warns.append(f"/bonus_actions/{i}/on_hit/{j}: the sim reads on_hit[] only on actions[] weapon attacks; this "
+                             "grapple rider never applies (R-G8 grapple)")
+    for path, _owner, eff in live_effects(doc):
+        if eff.get("kind") == "on_event":
+            for j, r in enumerate(eff.get("effects") or []):
+                if is_grapple(r):
+                    errs.append(f"{path}/effects/{j}: grapple is an on_hit[] rider of a weapon attack only; in on_event effects "
+                                "the sim fails to load (unknown rider kind 'grapple') (R-G8 grapple)")
+
+
 # ---- item@1 (section 10, checks 15 and 17) ------------------------------------------------------------
 
 def check_item(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
@@ -441,6 +489,9 @@ def check_item(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
     for j, r in enumerate(doc.get("on_hit") or []):
         if r.get("kind") == "bonus_attack":
             errs.append(f"/on_hit/{j}: bonus_attack riders are rejected in items: they have no actions[] to reference (check 17)")
+        elif is_grapple(r):
+            errs.append(f"/on_hit/{j}: grapple riders are rejected in items: the sim reads them only from monster@4 / character@4 "
+                        "actions[] weapon attacks (check 17, R-G8 grapple)")
     return errs, []
 
 
