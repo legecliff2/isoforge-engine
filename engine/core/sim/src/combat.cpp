@@ -938,7 +938,10 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
             const auto* def = spells_->find(req.spell_id);
             if (def->area == rules5e::AreaShape::None || !req.targets.empty()) { r.error = "aim needs an area spell and no explicit targets"; return r; }
             std::string err;
-            req.targets = area_targets(actor, *def, to, &err);
+            rules5e::SpellDef ranged = *def;   // R-G14 Distant Spell: the aim may reach the doubled range (rules #109 formula)
+            if ((req.metamagic & rules5e::kMetaDistant) && def->range_ft >= 5)
+                ranged.range_ft = uint16_t(def->range_ft == 5 ? 30 : std::min<int>(def->range_ft * 2, 65535));
+            req.targets = area_targets(actor, ranged, to, &err);
             if (req.targets.empty()) { r.error = err; return r; }
             req.target = req.targets[0];
             derived_area_ = true;
