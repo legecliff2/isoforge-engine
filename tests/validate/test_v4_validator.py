@@ -233,8 +233,12 @@ class V4Validator(unittest.TestCase):
 
     def test_srd51_escape_hatch_for_items_and_spells(self):
         # An srd51.* id that no pack defines resolves with the deprecated escape hatch only for packs that
-        # do not depend on srd51.core (same rule as spells); this pack depends on it, so it must resolve.
+        # do not depend on srd51.core (same rule as spells); this pack depends on it, so it must resolve there.
+        # srd51.core's item@1 ids are content ids of the set (C++ PackSet), so srd51.item.longsword resolves...
         errs, _ = h.validate_docs(dict(self.base, **{B: h.edit(self.base[B], [(["equipment", 1, "item"], "srd51.item.longsword")])}))
+        self.assertFalse(any("(check 6/11)" in e for e in errs), errs)
+        # ...and an srd51 id srd51.core does not define is an error.
+        errs, _ = h.validate_docs(dict(self.base, **{B: h.edit(self.base[B], [(["equipment", 1, "item"], "srd51.item.vorpal_sword")])}))
         self.assertTrue(any("(check 6/11)" in e for e in errs), errs)
 
     def test_priced_material_value_gp(self):
