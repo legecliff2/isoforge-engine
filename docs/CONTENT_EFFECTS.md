@@ -157,7 +157,26 @@ caller with `ActionRequest::reckless` on the turn's first attack (advantage on S
 against the creature have advantage until its next turn). The built-in AI never declares it. A second declaration adds nothing
 (the validator warns).
 
-These six are open kinds (live at `@3` and `@4`); see `docs/CONTENT_CONVENTIONS.md` section 3.
+### `metamagic` (static, R-G14)
+
+Fields: `options` (required, non-empty array of `careful`, `distant`, `empowered`, `extended`, `heightened`, `quickened`,
+`subtle`, `twinned`) and `pool` (required, the `resources[].id` of the sorcery-point pool). Sorcerer Metamagic (sim #143: rules5e
+`Combatant::metamagic_known` / `sorcery_pool`): the caller picks at most one known option per cast with
+`ActionRequest::metamagic` and its sorcery-point cost is spent from `pool` (Distant also widens an aimed area's range). `pool` must
+be a limited `resources[]` pool of the document (load error otherwise, so only `@4` documents can declare it). Several declarations
+add options and must name the same pool (load error otherwise); a repeated option adds nothing (the validator warns).
+
+Example: `{ "kind": "metamagic", "options": ["quickened", "twinned"], "pool": "sorcery_points" }`
+
+### `sculpt_spells` (static, R-G14)
+
+No fields. Evocation Wizard Sculpt Spells (sim #143: rules5e `Combatant::sculpt_spells`): when the creature casts an evocation
+spell (spell@1 `school: "evocation"`), the caller may name creatures spared from its area with `ActionRequest::spared`. The
+built-in AI does not. A second declaration, or any field, adds nothing (the validator warns).
+
+Example: `{ "kind": "sculpt_spells" }`
+
+These eight are open kinds (live at `@3` and `@4`); see `docs/CONTENT_CONVENTIONS.md` section 3.
 
 ### 1.1 Condition ids
 

@@ -1,0 +1,22 @@
+{
+  "base": "characters/fighter_1.json",
+  "schema": "character@1",
+  "sets": [
+    [
+      [
+        "features",
+        0,
+        "effect"
+      ],
+      {
+        "kind": "metamagic",
+        "options": [
+          "loud"
+        ],
+        "pool": "sorcery_points"
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "'loud' is not one of"
+}
