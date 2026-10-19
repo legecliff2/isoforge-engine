@@ -1,4 +1,4 @@
-# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G11 zones, R-G8 grapple rider, R-G15 spell kinds, priced materials)
+# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G11 zones, R-G8 grapple rider, R-G15 spell kinds, priced materials, R-G16 encounter surprise)
 
 Owner: Tools & Content. Source of truth is the C++ loader; this file records what it reads and what the validator checks.
 All numbers are integers.
@@ -74,17 +74,20 @@ takes option 0. Check 9 (`roll_attack` / `subtract_roll` reserved, Q6) is lifted
 | `window.source` / `visible` | `source` other than `self` or `visible: false`: listed as unsupported | warning on `roll_attack` / `subtract_roll` reactions |
 | `melee_only` + `ranged_only` | both true: **load error** | error on `roll_attack` reactions |
 
-### 3.2 Feature / trait effect kinds `reroll_ones`, `great_weapon_fighting`, `evasion`
+### 3.2 Feature / trait effect kinds `reroll_ones`, `great_weapon_fighting`, `evasion`, `pack_tactics`, `aggressive`, `reckless_attack`
 
 | kind | fields | compiles to |
 |---|---|---|
 | `reroll_ones` | `rolls` (optional): non-empty array of `attack`, `check`, `save` (repeats allowed); omitted = all three | `Combatant::reroll_ones` bits 1 / 2 / 4 (Halfling Lucky = 7); several declarations OR together. Empty array or another entry: **load error** |
 | `great_weapon_fighting` | none | `Combatant::great_weapon_fighting` |
 | `evasion` | none | `Combatant::evasion` |
+| `pack_tactics` | none | rules5e `RollTrait {Attack, Advantage, kWhenAllyNearTarget}` (sim #127; the sim supplies `ally_near_target`). A second declaration adds nothing: validator **warning** |
+| `aggressive` | none | rules5e `Combatant::aggressive` (sim #129; bonus-action Dash toward a visible hostile). Duplicate: validator **warning** |
+| `reckless_attack` | none | rules5e `Combatant::reckless_attack` (sim #129; the caller declares `ActionRequest::reckless`, the built-in AI does not). Duplicate: validator **warning** |
 
 They are **open kinds** (registered with no minimum version, like the sim's R-G5 kinds): the sim applies them in every document
 whose effects are active (`character@3`/`@4`, `monster@3`/`@4`; `@1`/`@2` effects are inert through the 2 -> 3 migration) and they
-are not in the frozen 3 -> 4 list, so the migration never stamps them. Schema: three appended arms of `common@1 $defs/effect` (the
+are not in the frozen 3 -> 4 list, so the migration never stamps them. Schema: six appended arms of `common@1 $defs/effect` (the
 open, append-only effect contract that `@3` `trait_active` and `@4` `effect_live` both use, so the rule is the same at `@3` and
 `@4`); the object stays open (the loader ignores fields it does not read). Validator: `checks_v4.OPEN_EFFECT_KINDS_RG7` joins every
 row of the tag table (no unknown-kind warning; shape violations are errors at `@3`/`@4`, warnings at `@1`/`@2`).
@@ -107,11 +110,12 @@ uses them, and both validate unchanged).
 
 Rules side: #118 (merged 49d4fe2), `SpellEffectKind::Zone` with `SpellDef::zone` (`rules5e::ZoneSpec`,
 `engine/rules/include/rules5e/spells.hpp`), proposal `docs/proposals/VERSION_BUMP_BATCH.md` section 7.2l and
-`docs/proposals/ZONES_AURAS.md`. **No loader parses zones yet**: `rules5e_content` (`spell_loader.cpp`) refuses kind `zone`
-with `effect kind invalid`. This section is the **contract for the loader author (Engine Core / Rules)**: the schema
+`docs/proposals/ZONES_AURAS.md`. **The loader parses zones** since R-G11 rules PR 2: `rules5e_content` (`spell_loader.cpp`)
+maps kind `zone` onto `SpellDef::zone` (`needs_conscious_owner` onto the D7 field of the same name) and gives the zone an
+expiry timer from the spell's duration. This section is the **contract for the loader author (Engine Core / Rules)**: the schema
 (`schemas/spell/v1.schema.json` `$defs/zone`, `zone_trigger`, `zone_effect`) and `tools/validate` `check_spell_zone` define
 the keys, values, ranges and errors below, and the loader must map them exactly and refuse the same documents with the same
-wording (the validator's messages are quoted). Unlike sections 1-3, the source of truth here is this file until the loader lands.
+wording (the validator's messages are quoted). Schema, validator and loader now agree; change all three together.
 
 ```json
 { "kind": "zone",
@@ -174,8 +178,8 @@ spell's level (rules does this from `SpellDef::upcast_dice`).
 ### 4.4 Cross-field rules (validator `check_spell_zone` / `check_spell`; the loader must refuse the same)
 
 Messages start with `zone` on purpose: `spell_loader_tests` compares the loader's first error with a negative case's `.expect`
-only for the prefixes `effect`, `scaling.`, `'`, ...; until the loader parses zones it answers `effect kind invalid`, so the
-`tests/validate/cases/zone_*` cases are only required to fail there. Once the loader lands it should use these messages verbatim.
+only for the prefixes `effect`, `scaling.`, `'`, `zone`, ...; the loader (R-G11 rules PR 2) uses these messages verbatim, so
+the cross-field `tests/validate/cases/zone_*` cases compare their first error there.
 
 | rule | message |
 |---|---|
@@ -314,8 +318,9 @@ Sim semantics (agreed; implemented by Engine Core: `Archetype::equipment`, `Comb
 3. No `item` key on a priced material: it is unsatisfiable and the cast is refused (today's behaviour for every priced material).
 4. `consumed: true` removes that one entry (the one that satisfied the cast) from the caster's combat-local equipment state; one
    entry per cast. Nothing is written back to the content document.
-5. No item@1 document is needed for the id (item@1 has only `weapon`, `armor` and `shield` categories, so `srd51.item.diamond` is
-   not an item@1 document; a gem / valuables category is a possible later additive arm).
+5. No item@1 document is needed for the id: the match is on the id string and `value_gp`, never on an item@1 definition (the sim
+   does not load item@1 documents). `srd51.item.diamond` now also exists as an item@1 `valuable` (section 7.1), so a reference to it
+   resolves, but an entry with `value_gp` naming an id that has no document stays valid.
 
 Validator:
 
@@ -328,3 +333,72 @@ Validator:
   against, and valid content should validate clean.
 - character@4 `value_gp`: integer >= 0 (floats and negatives are schema errors). An equipment entry with `value_gp` is exempt from
   check 6/11 (its `item` need not resolve to an item@1); an entry without `value_gp` must still resolve.
+
+### 7.1 item@1 category `valuable` (gems)
+
+An additive arm of the closed item@1 union (Director-approved): `category: "valuable"` takes **only the common item fields**
+(`$schema`, `id`, `name`, `category` required; `source`, `cost_cp`, `weight_oz`, `description` optional). It has no value field of its
+own: a valuable's worth is per instance, so it lives on the character@4 `equipment[]` entry as `value_gp` (section 7 table), not
+on the item. `cost_cp` stays available for a valuable with a fixed list price; `value_gp` on an item is a schema error.
+
+```json
+{ "$schema": "item@1", "id": "srd51.item.diamond", "name": "Diamond", "category": "valuable",
+  "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" }, "description": "..." }
+```
+
+`srd51.item.diamond` (`content/packs/srd51.core/items/diamond.json`): the SRD equipment list (5e-bits/5e-database `a6212be`,
+`5e-SRD-Equipment.json`: categories weapon, armor, adventuring-gear, tools, mounts-and-vehicles) has **no Diamond and no gems**, so
+the item is based on the SRD spell material text (Revivify "Diamonds worth 300gp, which the spell consumes", Raise Dead,
+Resurrection, Greater Restoration, Stoneskin, ...) and has no `cost_cp` or `weight_oz` (the SRD gives neither). Pinned by
+`tests/validate/test_srd51_equipment.py` (`VALUABLES`).
+
+Validator: the schema arm (closed, `test_union_arms.py` row); `check_item` (checks 15 / 17) applies to weapons only, so nothing else
+is checked. Check 6/11: an `equipment[]` entry `{"item": "srd51.item.diamond"}` resolves to the document; with `value_gp` it is exempt
+as before. Loader: the C++ side registers `item@1` by type and version only (`content_migrations.cpp`, `pack_set.cpp` indexes the
+id); nothing reads `category`, so a `valuable` document loads like any item. No tag change, no migration: the old schema rejected
+the category, and `tests/compat` has no items.
+
+### Untimed `save_condition` riders (validator mirror of the sim loader)
+
+A `save_condition` rider (an attack's `on_hit[]` or an `on_event` `effects[]` entry) whose `apply[]` entry has neither
+`duration` nor `repeat_save` fails to load in the sim ("save_condition uses an unsupported duration"); the validator reports the
+same error. `checks_v4.UNTIMED_ON_HIT_CONDITIONS` lists the exceptions: empty today; `prone` joins it when Engine Core's loader
+accepts untimed conditions that end by their own rules (the SRD wolf / dire wolf bite rider stays descriptive until then).
+
+## 8. R-G16 encounter surprise: chunk@1 top-level `surprise` (reserved; contract for the loader)
+
+**Status: reserved.** The key is in the schema and the validator checks its references, but **no loader reads it yet**: the
+validator warns `surprise is reserved: no loader reads it yet ... so it has no effect until that loader lands` on every chunk that
+carries it (the same "declared, validated, not applied" pattern as check 12's declaration-only pools and `forward_compat`).
+Engine Core's #123 added the runtime entry point `sim::Combat::apply_surprise(ids)`; this section is the contract for the code that
+will call it from content.
+
+```json
+"surprise": { "sides": ["party"] }
+"surprise": { "spawns": [0, 3] }
+```
+
+| part | rule | schema / validator |
+|---|---|---|
+| shape | closed object, **exactly one** of `sides` / `spawns` | schema `oneOf` required + `additionalProperties: false` |
+| `sides` | non-empty, unique team names `^[a-z][a-z0-9_]*$`. A spawn's team is `sim::spawn_team_name`: `overrides.team`, else `party` for a character archetype, `monsters` for a monster archetype | schema; validator error when no combatant spawn **of this chunk** is on the team (`surprise.sides[k]: no combatant spawn in this chunk is on team ...`) |
+| `spawns` | non-empty, unique indices into this chunk's `spawns[]` (`EntitySpawn.stable_id` is derived from the index and is forbidden in files) | schema integer 0..2^32-1 + the float rejection; validator errors for an index past the end and for a spawn whose archetype is not a monster / character (no combatant: `apply_surprise` would refuse its id) |
+| hashing | not part of `content_hash`: `chunk_codec.cpp` ignores unknown top-level keys, and the Python mirror hashes the decoded chunk | `test_surprise_is_not_hashed` |
+
+**Loader contract** (Engine Core, when it lands):
+
+1. Resolve per chunk: `sides` -> every combatant spawn of that chunk whose `spawn_team_name` is listed; `spawns` -> `spawns[i].stable_id`.
+   A chunk's `surprise` only ever names that chunk's own spawns (a multi-chunk combat takes the union over its chunks). Spawns whose
+   archetype is not loaded are skipped like in `Combat::create` (non-combatants).
+2. Call `Combat::apply_surprise(ids)` once, after `Combat::create` and before the first command (the call is refused after a command,
+   with a pending decision, or for an unknown or dead id). Replays pass the same set: `surprised_at_start()` -> `replay(..., surprised)`.
+3. Semantics are the rules' (#108): a surprised creature only ends its turn in round 1 and cannot react until that turn ends; the
+   0xA8 hash fold applies only while one is surprised. Listing every side is legal (everyone loses round 1).
+4. Rolled surprise (Dexterity (Stealth) vs passive Perception, `Combat::surprised_by_stealth`) is **not** part of this key; a later
+   additive key (for example a `stealth` list of hiders) would be a third, exclusive arm.
+
+Versioning: an additive optional top-level key of chunk@1 with a new closed `$defs/surprise`. No tag change, no migration: the old
+schema rejected the key (chunk@1 is closed), and no shipped or `tests/compat` chunk carries it (pinned by
+`test_no_shipped_or_compat_chunk_carries_surprise`), so nothing existing changes meaning when the loader lands. A chunk that carries it
+today is authored with that intent (the warning says so). Fixtures: `tests/validate/fixtures/surprise/`; cases:
+`tools/validate/test_validate_packs.py` `SURPRISE_CASES`.

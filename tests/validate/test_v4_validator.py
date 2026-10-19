@@ -135,6 +135,11 @@ CASES = [
     ("item_magic_bonus_range", "items/flame_tongue.json", [(["magic_bonus"], 4)], [], "maximum"),
     ("item_float_cost", "items/shield.json", [(["cost_cp"], 1.5)], [], "float value"),
     ("item_unknown_category", "items/shield.json", [(["category"], "ring")], [], "is not one of"),
+    ("item_gem_is_not_a_category", "items/shield.json", [(["category"], "gem")], [["ac_bonus"]], "/category: 'gem' is not one of ['weapon', 'armor', 'shield', 'valuable']"),
+    ("item_valuable_forbids_ac_bonus", "items/shield.json", [(["category"], "valuable")], [], "/: 'ac_bonus' is not one of ['$schema', 'id', 'name', 'source', 'category', 'cost_cp', 'weight_oz', 'description']"),
+    ("item_valuable_forbids_damage", "items/shield.json", [(["category"], "valuable"), (["damage"], [{"dice": "1d4", "type": "fire"}])], [["ac_bonus"]], "/: 'damage' is not one of"),
+    ("item_valuable_forbids_value_gp", "items/shield.json", [(["category"], "valuable"), (["value_gp"], 300)], [["ac_bonus"]], "Additional properties are not allowed ('value_gp'"),
+    ("item_valuable_float_cost", "items/shield.json", [(["category"], "valuable"), (["cost_cp"], 1.5)], [["ac_bonus"]], "float value"),
     ("item_unknown_rider_kind", "items/flame_tongue.json", [(["on_hit", 0, "kind"], "swallow")], [], "'swallow' is not one of"),
     ("item_c17_grapple_rider", "items/flame_tongue.json", [(["on_hit", 1], {"kind": "grapple", "escape_dc": 12})], [], "grapple riders are rejected in items"),
     ("item_flat_damage_negative", "items/blowgun.json", [(["damage", 0, "flat"], -1)], [], "is not valid under any of"),
@@ -165,6 +170,24 @@ class V4Validator(unittest.TestCase):
                     self.assertTrue(any(expect in w for w in warns), warns)
                 else:
                     self.assertTrue(any(expect in e for e in errs), (expect, errs))
+
+    def test_valuable_item(self):
+        """item@1 category valuable (gems; docs/CONTENT_CONVENTIONS.md section 7): only the common item fields; an equipment
+        entry naming it resolves (check 6/11) with or without value_gp."""
+        gem = {"$schema": "item@1", "id": "test.v4.item.diamond", "name": "Diamond", "category": "valuable",
+               "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"}, "description": "x"}
+        docs = dict(self.base)
+        docs["items/diamond.json"] = gem
+        docs[B] = h.edit(self.base[B], [(["equipment", 5], {"item": "test.v4.item.diamond"}),
+                                         (["equipment", 6], {"item": "test.v4.item.diamond", "value_gp": 300})])
+        self.assertEqual(h.validate_docs(docs), ([], []))
+        docs["items/diamond.json"] = {**gem, "cost_cp": 30000, "weight_oz": 0}
+        self.assertEqual(h.validate_docs(docs), ([], []))
+        # without the item doc: the value_gp entry stays valid (priced materials need no item@1), the bare one does not
+        del docs["items/diamond.json"]
+        errs, _ = h.validate_docs(docs)
+        self.assertEqual([e for e in errs if "(check 6/11)" in e],
+                         [f"{B}: /equipment/5: item 'test.v4.item.diamond' is not an item@1 in this pack or its depends (check 6/11)"])
 
     def test_rg5_static_kinds_are_known_at_4(self):
         """attack_bonus / crit_range / ac_bonus have sim hooks (#107): no unknown-kind warning, no error."""
@@ -210,8 +233,12 @@ class V4Validator(unittest.TestCase):
 
     def test_srd51_escape_hatch_for_items_and_spells(self):
         # An srd51.* id that no pack defines resolves with the deprecated escape hatch only for packs that
-        # do not depend on srd51.core (same rule as spells); this pack depends on it, so it must resolve.
+        # do not depend on srd51.core (same rule as spells); this pack depends on it, so it must resolve there.
+        # srd51.core's item@1 ids are content ids of the set (C++ PackSet), so srd51.item.longsword resolves...
         errs, _ = h.validate_docs(dict(self.base, **{B: h.edit(self.base[B], [(["equipment", 1, "item"], "srd51.item.longsword")])}))
+        self.assertFalse(any("(check 6/11)" in e for e in errs), errs)
+        # ...and an srd51 id srd51.core does not define is an error.
+        errs, _ = h.validate_docs(dict(self.base, **{B: h.edit(self.base[B], [(["equipment", 1, "item"], "srd51.item.vorpal_sword")])}))
         self.assertTrue(any("(check 6/11)" in e for e in errs), errs)
 
     def test_priced_material_value_gp(self):
@@ -463,6 +490,15 @@ GRAPPLE_CASES = [
     ("grapple_on_save_effect", CRAB, [(["actions", 0], {"kind": "save_effect", "id": "x", "name": "X", "save": {"ability": "str", "dc": 11},
                                                         "apply": [{"condition": "grappled"}], "on_hit": [{"kind": "grapple"}]})], [], "should not be valid under"),
     # the file loads, the rider is ignored or overwritten: warnings
+    # an untimed save_condition rider (no duration, no repeat_save): sim load error (checks_v4.UNTIMED_ON_HIT_CONDITIONS is empty)
+    ("save_condition_untimed_prone", CRAB, [(["actions", 1, "on_hit", 1], {"kind": "save_condition", "save": {"ability": "str", "dc": 11},
+                                                                           "apply": [{"condition": "prone"}]})], [],
+     "save_condition uses an unsupported duration"),
+    ("save_condition_untimed_in_on_event", CRAB, [(["traits"], [{"id": "trip", "name": "Trip", "description": "x",
+                                                                "effect": {"kind": "on_event", "on": "hit", "effects": [
+                                                                    {"kind": "save_condition", "save": {"ability": "str", "dc": 11},
+                                                                     "apply": [{"condition": "prone"}]}]}}])], [],
+     "save_condition uses an unsupported duration"),
     ("warn_grapple_twice_on_one_attack", CRAB, [(["actions", 0, "on_hit", 1], {"kind": "grapple", "escape_dc": 13})], [], "the sim keeps only the last one"),
     ("warn_grapple_on_bonus_action", CRAB, [(["bonus_actions"], [{"id": "nip", "name": "Nip", "kind": "melee_weapon_attack", "to_hit": 3, "reach": 5,
                                                                    "targets": 1, "damage": [{"dice": "1d4", "type": "piercing"}],

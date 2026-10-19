@@ -23,7 +23,13 @@ LIVE_AT_3_EFFECT_KINDS = frozenset({"damage_bonus", "bonus_action_grant", "self_
 # R-G7 static kinds (sim #114 features.cpp): registered with no minimum version ("open kinds", like the sim's R-G5
 # kinds), so the sim applies them at every tag whose effects are active (@3 and @4; @1/@2 effects are inert). They are
 # not in the frozen 3 -> 4 list, so the migration never stamps them. Shapes: common@1 $defs/effect.
-OPEN_EFFECT_KINDS_RG7 = frozenset({"reroll_ones", "great_weapon_fighting", "evasion"})
+OPEN_EFFECT_KINDS_RG7 = frozenset({"reroll_ones", "great_weapon_fighting", "evasion",
+                                   # T&C-G7 (sim #127): SRD Pack Tactics; no fields, a duplicate adds nothing (warned)
+                                   "pack_tactics",
+                                   # T&C-G7 (sim #129): orc Aggressive, Reckless Attack / berserker Reckless; no fields
+                                   "aggressive", "reckless_attack"})
+# Open kinds whose second declaration in one document adds nothing (the sim dedupes): the validator warns.
+NO_STACK_EFFECT_KINDS = frozenset({"pack_tactics", "aggressive", "reckless_attack"})
 # The kinds @4 adds; also the frozen literal list of the 3 -> 4 migration (VERSION_BUMP_BATCH 8.2 step 4).
 # save_effect and reaction are action / reaction kinds, not trait effect kinds: they exist in the list so
 # a stamped one validates (effect_inert) but a native one is a schema error.
@@ -394,6 +400,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
                          "apply_modifier effect: the option is never available (bonus attacks)")
     errs += check_static_kinds(doc)
     check_grapple_riders(doc, errs, warns)
+    check_untimed_save_condition_riders(doc, errs)
     # check 12: declared but never referenced pools (Legendary Resistance is declaration-only until row 13)
     for i, r in enumerate(resources):
         if r.get("id") not in referenced:
@@ -422,6 +429,27 @@ def check_static_kinds(doc: dict) -> list[str]:
             if "requires_armor" in eff and not isinstance(eff["requires_armor"], bool):
                 errs.append(f"{path}: ac_bonus.requires_armor must be a boolean (R-G5)")
     return errs
+
+
+# ---- untimed save_condition riders (sim content.cpp compile_rider -> compile_save_action) ----------------------
+# Conditions an on_hit / on_event save_condition rider may apply with no duration and no repeat_save. Empty on main
+# today: the sim loader treats every such apply[] entry as an unsupported duration, which on a rider is a load error.
+# Add "prone" here when Engine Core's loader PR lands (untimed conditions that end by their own rules, like Shove).
+UNTIMED_ON_HIT_CONDITIONS: frozenset = frozenset()
+
+
+def check_untimed_save_condition_riders(doc: dict, errs: list[str]) -> None:
+    """Mirror of the sim loader: a save_condition rider (on_hit[] of an attack action or an on_event effects[] entry)
+    whose apply[] entry has no duration and no repeat_save fails to load ("save_condition uses an unsupported duration")."""
+    for path, _owner, _j, r in rider_sites(doc):
+        if not isinstance(r, dict) or r.get("kind") != "save_condition":
+            continue
+        for x in r.get("apply") or []:
+            if (isinstance(x, dict) and "duration" not in x and "repeat_save" not in x
+                    and x.get("condition") not in UNTIMED_ON_HIT_CONDITIONS):
+                errs.append(f"{path}: save_condition uses an unsupported duration (apply condition {x.get('condition')} has "
+                            "no duration and no repeat_save; the sim fails to load it)")
+                break
 
 
 # ---- R-G8 grapple hit rider (sim #104, docs/CONTENT_CONVENTIONS.md section 5) ---------------------------

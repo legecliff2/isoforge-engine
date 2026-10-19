@@ -363,5 +363,101 @@ def _edit(doc: dict, sets, dels) -> dict:
     return d
 
 
+SURPRISE_FIXTURES = vp.ROOT / "tests" / "validate" / "fixtures" / "surprise" / "chunks"
+SIDES, SPAWNS = "ambush_sides", "ambush_spawns"
+# R-G16 chunk@1 `surprise` (docs/CONTENT_CONVENTIONS.md section 8). (name, fixture, sets, dels, expected substring).
+SURPRISE_CASES = [
+    # schema: closed object, exactly one of sides / spawns, names and indices
+    ("both_keys", SIDES, [(["surprise", "spawns"], [0])], [], "is valid under each of"),
+    ("neither_key", SIDES, [(["surprise"], {})], [], "is not valid under any of the given schemas"),
+    ("unknown_key", SIDES, [(["surprise", "rounds"], 1)], [], "Additional properties are not allowed ('rounds'"),
+    ("not_an_object", SIDES, [(["surprise"], ["party"])], [], "is not of type 'object'"),
+    ("sides_empty", SIDES, [(["surprise", "sides"], [])], [], "should be non-empty"),
+    ("sides_duplicate", SIDES, [(["surprise", "sides"], ["party", "party"])], [], "has non-unique elements"),
+    ("side_bad_name", SIDES, [(["surprise", "sides"], ["Party"])], [], "does not match"),
+    ("side_not_string", SIDES, [(["surprise", "sides"], [1])], [], "is not of type 'string'"),
+    ("spawns_empty", SPAWNS, [(["surprise", "spawns"], [])], [], "should be non-empty"),
+    ("spawns_duplicate", SPAWNS, [(["surprise", "spawns"], [0, 0])], [], "has non-unique elements"),
+    ("spawn_negative", SPAWNS, [(["surprise", "spawns"], [-1])], [], "is less than the minimum of 0"),
+    ("spawn_float", SPAWNS, [(["surprise", "spawns"], [1.0])], [], "float value 1.0 not allowed"),
+    ("spawn_string", SPAWNS, [(["surprise", "spawns"], ["0"])], [], "is not of type 'integer'"),
+    ("spawn_stable_id_object", SPAWNS, [(["surprise", "spawns"], [{"stable_id": 1}])], [], "is not of type 'integer'"),
+    # validator (check_chunk_surprise): the refs the future loader resolves
+    ("spawn_index_out_of_range", SPAWNS, [(["surprise", "spawns"], [4])], [], "surprise.spawns[0]: index 4 is not a spawns[] index (this chunk has 4 spawns)"),
+    ("spawn_not_a_combatant", SPAWNS, [(["spawns", 4], {"archetype": "srd51.spell.fire_bolt", "tile": {"x": 12, "y": 15}}), (["surprise", "spawns"], [0, 4])], [],
+     "surprise.spawns[1]: spawns[4] (srd51.spell.fire_bolt, a spell) is not a combatant"),
+    ("side_without_members", SIDES, [(["surprise", "sides"], ["party", "bandits"])], [], "surprise.sides[1]: no combatant spawn in this chunk is on team"),
+    ("side_default_team_overridden", SPAWNS, [(["surprise"], {"sides": ["monsters"]})], [], "surprise.sides[0]: no combatant spawn in this chunk is on team"),
+]
+
+
+def surprise_fixture(name: str) -> dict:
+    return json.loads((SURPRISE_FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
+
+
+class ChunkSurprise(unittest.TestCase):
+    """R-G16 chunk@1 `surprise`: positive fixtures (tests/validate/fixtures/surprise) and the table above."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.registry, cls.by_tag = vp.load_registry()
+        cls.attribution = json.loads((CORE / "manifest.json").read_text(encoding="utf-8"))["attribution"]
+
+    def run_docs(self, docs: dict[str, dict], rehash: bool = True):
+        with tempfile.TemporaryDirectory(prefix="surprise_pack_") as tmp:
+            pack = Path(tmp) / "test.surprise"
+            (pack / "chunks").mkdir(parents=True)
+            for name, d in docs.items():
+                if rehash and "content_hash" in d:
+                    d = {**d, "content_hash": vp.hash_hex(vp.compute_content_hash(d))}   # an edited spawns[] moves the hash
+                (pack / "chunks" / f"{name}.json").write_text(json.dumps(d, indent=2), encoding="utf-8")
+            man = {"$schema": "manifest@1", "id": "test.surprise", "name": "surprise test", "version": "1.0.0", "engine_min": "0.1.0",
+                   "feature_level": 1, "api_level": 1, "rules_profile": "srd51", "requires": [], "optional": [],
+                   "depends": [{"id": "srd51.core", "version": "^1.0"}], "attribution": self.attribution,
+                   "contents": sorted(f"chunks/{n}.json" for n in docs)}
+            (pack / "manifest.json").write_text(json.dumps(man, indent=2), encoding="utf-8")
+            warns = []
+            errs = vp.validate_pack(pack, self.registry, self.by_tag, warns, vp.packset.PackSet([CORE, pack]))
+            return errs, warns
+
+    def test_positive_fixtures_validate_with_the_reserved_warning_only(self):
+        fx = {f.stem: surprise_fixture(f.stem) for f in sorted(SURPRISE_FIXTURES.glob("*.json"))}
+        self.assertEqual(sorted(fx), [SIDES, SPAWNS])
+        errs, warns = self.run_docs(fx, rehash=False)   # the committed content_hash values must already be right
+        self.assertEqual(errs, [])
+        self.assertEqual(sorted(warns), sorted(f"chunks/{n}.json: {vp.SURPRISE_RESERVED}" for n in fx))
+        self.assertIn("has no effect until that loader lands", vp.SURPRISE_RESERVED)
+
+    def test_cases(self):
+        for name, fx, sets, dels, expect in SURPRISE_CASES:
+            with self.subTest(name):
+                errs, _ = self.run_docs({fx: zone_edit(surprise_fixture(fx), sets, dels)})
+                self.assertTrue(any(expect in e for e in errs), (expect, errs))
+                self.assertFalse(expect.startswith("'"), "expected substrings must not start with a quote")
+
+    def test_surprise_is_not_hashed(self):
+        # the chunk decoder (chunk_codec.cpp) ignores the key, so content_hash is the same with and without it
+        for fx in (SIDES, SPAWNS):
+            d = surprise_fixture(fx)
+            bare = {k: v for k, v in d.items() if k != "surprise"}
+            self.assertEqual(vp.compute_content_hash(d), vp.compute_content_hash(bare))
+            self.assertEqual(d["content_hash"], vp.hash_hex(vp.compute_content_hash(bare)))
+            errs, warns = self.run_docs({fx: bare}, rehash=False)
+            self.assertEqual((errs, warns), ([], []))   # without the key: no warning (old content unchanged)
+
+    def test_both_default_teams_and_overrides(self):
+        # sides by default team ('party' = character archetypes) and by override ('bandits'); spawns by index
+        d = zone_edit(surprise_fixture(SPAWNS), [(["surprise"], {"sides": ["bandits", "party"]})], [])
+        errs, warns = self.run_docs({SPAWNS: d})
+        self.assertEqual(errs, [])
+        self.assertEqual(len(warns), 1)
+
+    def test_no_shipped_or_compat_chunk_carries_surprise(self):
+        # the key is new: nothing that exists today changes meaning when the loader lands
+        for f in sorted(list((vp.ROOT / "content" / "packs").rglob("chunks/*.json")) + list((vp.ROOT / "tests" / "compat").rglob("chunks/*.json"))):
+            with self.subTest(str(f.relative_to(vp.ROOT))):
+                self.assertNotIn("surprise", json.loads(f.read_text(encoding="utf-8")))
+
+
 if __name__ == "__main__":
     unittest.main()

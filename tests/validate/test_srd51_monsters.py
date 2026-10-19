@@ -21,8 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (all monster@4). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-DEFERRED = ["jackal", "kobold", "wolf", "dire-wolf", "boar", "hobgoblin", "orc", "bugbear", "ghoul", "giant-spider",
-            "berserker", "swarm-of-rats"]
+DEFERRED = ["boar", "hobgoblin", "bugbear", "ghoul", "giant-spider",
+            "swarm-of-rats"]
 # Documented deviations: monster -> why the content differs from the raw table.
 DEVIATIONS = {
     "lizardfolk": "AC: the table lists 13 (natural armor) and 15 (with shield); the SRD line is 15 and the Spiked Shield attack needs the shield.",
@@ -133,6 +133,25 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual(bite["on_hit"][0]["damage"], [{"dice": "3d6", "type": "poison"}])
         self.assertEqual((bite["on_hit"][0]["save"], bite["on_hit"][0]["on_success"]), ({"ability": "con", "dc": 11}, "half"))
         self.assertEqual(load("skeleton")["damage_vulnerabilities"], ["bludgeoning"])
+        # Pack Tactics (common@1 open kind pack_tactics, sim #127): one declaration, no fields
+        for idx in ("jackal", "kobold", "wolf", "dire-wolf"):
+            with self.subTest(monster=idx):
+                effs = [t["effect"] for t in load(idx)["traits"] if "effect" in t]
+                self.assertEqual(effs, [{"kind": "pack_tactics"}])
+        # bite knock-prone rider: description only. An on_hit save_condition applying prone has no duration (prone lasts
+        # until the target stands up), which the sim loader rejects as an unsupported duration (load error); see
+        # docs/SRD_MONSTERS_DEFERRED.md
+        for idx in ("wolf", "dire-wolf"):
+            with self.subTest(monster=idx):
+                bite = load(idx)["actions"][0]
+                self.assertNotIn("on_hit", bite)
+                self.assertIn("knocked prone", bite["description"])
+        # Aggressive / Reckless (common@1 open kinds aggressive / reckless_attack, sim #129): one declaration, no fields
+        for idx, kind in (("orc", "aggressive"), ("berserker", "reckless_attack")):
+            with self.subTest(monster=idx):
+                self.assertEqual([t["effect"] for t in load(idx)["traits"] if "effect" in t], [{"kind": kind}])
+        # Sunlight Sensitivity / Keen Hearing and Smell: descriptive (no light model, no perception checks in the sim)
+        self.assertNotIn("effect", {t["id"]: t for t in load("kobold")["traits"]}["sunlight_sensitivity"])
 
     def test_authored_and_deferred_split(self):
         have = sorted(p.stem for p in (PACK / "monsters").glob("*.json"))

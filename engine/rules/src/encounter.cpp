@@ -119,6 +119,9 @@ void consume_modifiers(EncounterState& s, int kind, CombatantId id, int reason, 
     }
 }
 
+int aura_save_bonus(const EncounterState& s, const Combatant& t, Ability ab);   // R-G11 PR 2 (D7), below spell_def
+DamageApplied zone_apply_damage(const EncounterState& s, const Combatant& t, int16_t amount, DamageType type, uint8_t qualifiers);
+
 SaveResult save_roll_raw(EncounterState& s, const Combatant& t, Ability ab, int dc, RollMode mode, const SaveSource* src) {
     bool adv = mode == RollMode::Advantage, dis = mode == RollMode::Disadvantage;
     mod_modes(s, t.id, ModStat::Save, int(ab), adv, dis);
@@ -126,7 +129,8 @@ SaveResult save_roll_raw(EncounterState& s, const Combatant& t, Ability ab, int 
     SaveResult r = src ? saving_throw(s.rng, t, ab, dc, m, *src) : saving_throw(s.rng, t, ab, dc, m);
     if (r.auto_fail) return r;
     if ((t.reroll_ones & 4) && reroll_natural_one(s.rng, r.roll)) r.success = r.roll.total >= dc;   // Lucky
-    const int add = modifier_flat(s, t.id, ModStat::Save, int(ab)) + mod_roll(s, t.id, ModStat::Save, int(ab));
+    const int add = modifier_flat(s, t.id, ModStat::Save, int(ab)) + mod_roll(s, t.id, ModStat::Save, int(ab)) +
+                    (s.zones.empty() ? 0 : aura_save_bonus(s, t, ab));
     if (add != 0) { r.roll.total = int16_t(r.roll.total + add); r.success = r.roll.total >= dc; }
     return r;
 }
@@ -380,7 +384,7 @@ void deal_effect_damage(EncounterState& s, const ActiveSpellEffect& e, std::vect
     Combatant* t = find_mut(s, e.target);
     if (!t || t->dead) return;
     const int dmg = std::max(0, roll_dice(s.rng, e.damage));
-    damage_creature(s, *t, apply_damage(*t, int16_t(dmg), e.damage_type, e.magical ? uint8_t(kAttackMagical) : uint8_t(0)), false, ev, nullptr, nullptr);
+    damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(dmg), e.damage_type, e.magical ? uint8_t(kAttackMagical) : uint8_t(0)), false, ev, nullptr, nullptr);
 }
 
 void tick_effects_round_start(EncounterState& s, std::vector<Event>& ev) {
@@ -391,6 +395,10 @@ void tick_effects_round_start(EncounterState& s, std::vector<Event>& ev) {
     for (const auto& e : due) deal_effect_damage(s, e, ev);
     expire_effects(s, gone, ev);
     tick_modifiers_round_start(s, ev);
+    for (std::size_t i = 0; i < s.zones.size();) {   // R-G11 PR 2: a feature aura ends with its dead owner (ZoneEnded reason 2)
+        const Combatant* o = s.zones[i].feature ? find(s, s.zones[i].owner) : nullptr;
+        if (s.zones[i].feature && (!o || o->dead)) end_zone(s, i, 2, ev); else ++i;
+    }
     if (!s.zones.empty()) {   // R-G11: zone timers (ZoneEnded reason 0); the spell ends with its last zone
         std::vector<uint32_t> out;
         for (auto& z : s.zones) if (tick_round_start(z.timed)) out.push_back(z.zone_id);
@@ -459,6 +467,75 @@ const SpellDef* spell_def(const EncounterState& s, uint32_t id) {
     return s.hooks.spells ? s.hooks.spells->find(id) : nullptr;
 }
 
+// ---- R-G11 rules PR 2: passive zone queries (Silence, D7 auras). All answer false / 0 at once without zones. ----
+// A needs_conscious_owner zone does nothing while its owner is dead, at 0 HP or unconscious.
+bool zone_suppressed(const EncounterState& s, const ActiveZone& z, const SpellDef& def) {
+    if (!def.zone.needs_conscious_owner) return false;
+    const Combatant* o = find(s, z.owner);
+    return !o || o->dead || o->hp <= 0 || o->has(Condition::Unconscious);
+}
+// Is `c` covered by the passive part of aura `z`: the owner of a creature aura (always inside it) or a creature in the zone;
+// the owner's team only when aura_allies_only.
+bool in_aura(const EncounterState& s, const ActiveZone& z, const SpellDef& def, const Combatant& c) {
+    if (c.dead || zone_suppressed(s, z, def)) return false;
+    if (def.zone.aura_allies_only) {
+        const Combatant* o = find(s, z.owner);
+        if (!o || o->team != c.team) return false;
+    }
+    if (def.zone.anchor == ZoneAnchor::Creature && c.id == z.owner) return true;
+    return s.hooks.zone_contains && s.hooks.zone_contains(s, z.zone_id, c.id, false);
+}
+// D7: flat save bonus from auras (aura_modifier, stat Save). The same spell's auras don't stack: the highest counts.
+int aura_save_bonus(const EncounterState& s, const Combatant& t, Ability ab) {
+    std::vector<std::pair<uint32_t, int>> best;   // (spell, bonus)
+    for (const auto& z : s.zones) {
+        const SpellDef* d = spell_def(s, z.spell_id);
+        if (!d || d->zone.aura_modifier.id == 0 || !mod_in_scope(d->zone.aura_modifier, ModStat::Save, int(ab)) || !in_aura(s, z, *d, t))
+            continue;
+        int bonus = d->zone.aura_modifier.bonus;
+        if (d->zone.has_aura_bonus_ability) {
+            const Combatant* o = find(s, z.owner);
+            bonus = std::max(1, o ? modifier(o->abilities, d->zone.aura_bonus_ability) : 1);
+        }
+        auto it = std::find_if(best.begin(), best.end(), [&](const std::pair<uint32_t, int>& p) { return p.first == z.spell_id; });
+        if (it == best.end()) best.emplace_back(z.spell_id, bonus);
+        else it->second = std::max(it->second, bonus);
+    }
+    int sum = 0;
+    for (const auto& p : best) sum += p.second;
+    return sum;
+}
+// D7: can `t` not be given `c` because of an aura (aura_immunity)?
+bool aura_immune(const EncounterState& s, const Combatant& t, Condition c) {
+    for (const auto& z : s.zones) {
+        const SpellDef* d = spell_def(s, z.spell_id);
+        if (d && (d->zone.aura_immunity & bit(c)) && in_aura(s, z, *d, t)) return true;
+    }
+    return false;
+}
+// Condition immunity: the creature's own, or an aura's.
+bool immune_to(const EncounterState& s, const Combatant& t, Condition c) {
+    return (t.condition_immunities & bit(c)) != 0 || (!s.zones.empty() && aura_immune(s, t, c));
+}
+// Damage as apply_damage, plus Silence's thunder immunity for a creature completely inside a Silence zone.
+DamageApplied zone_apply_damage(const EncounterState& s, const Combatant& t, int16_t amount, DamageType type, uint8_t qualifiers) {
+    if (type == DamageType::Thunder && !s.zones.empty() && in_silence(s, t.id)) {
+        Combatant immune = t;
+        immune.immunities |= bit(DamageType::Thunder);
+        return apply_damage(immune, amount, type, qualifiers);
+    }
+    return apply_damage(t, amount, type, qualifiers);
+}
+DamageApplied zone_apply_damage_parts(const EncounterState& s, const Combatant& t, std::span<const DamagePiece> parts, uint8_t qualifiers) {
+    if (!s.zones.empty() && std::any_of(parts.begin(), parts.end(), [](const DamagePiece& p) { return p.type == DamageType::Thunder; }) &&
+        in_silence(s, t.id)) {
+        Combatant immune = t;
+        immune.immunities |= bit(DamageType::Thunder);
+        return apply_damage_parts(immune, parts, qualifiers);
+    }
+    return apply_damage_parts(t, parts, qualifiers);
+}
+
 // Reaction spells the reactor can cast now for this trigger (SpellBook options), before hook options.
 // One option per available slot level, ascending (Auto takes option 0 = the lowest slot).
 std::vector<ReactionOption> spell_reaction_options(const EncounterState& s, const Combatant& r,
@@ -472,6 +549,7 @@ std::vector<ReactionOption> spell_reaction_options(const EncounterState& s, cons
     for (uint32_t id : r.spells_known) {
         const SpellDef* d = s.hooks.spells->find(id);
         if (!d || d->casting_time != CastingTime::Reaction || d->reaction_trigger != trig || d->kind != kind) continue;
+        if ((d->components & kComponentV) && !s.zones.empty() && in_silence(s, r.id)) continue;   // R-G11 PR 2: Silence
         if (s.hooks.can_provide_components && !s.hooks.can_provide_components(s, r, *d)) continue;
         if (targeted_only && std::find(d->or_targeted_by.begin(), d->or_targeted_by.end(), w.spell_id) == d->or_targeted_by.end()) continue;
         if (d->requires_sight && s.hooks.can_see && trigger_actor && !s.hooks.can_see(s, r, *trigger_actor)) continue;
@@ -513,6 +591,7 @@ struct Ctx {
     // R-G11: the cast's zone choices (set by cast_spell around resolve_spell only).
     bool has_zone_dest = false; int32_t zone_x = 0, zone_y = 0;
     const std::vector<CombatantId>* zone_excluded = nullptr;
+    bool has_zone_end = false; int32_t zone_x2 = 0, zone_y2 = 0; int8_t zone_side = 0; bool zone_ring = false;   // PR 2: walls
     // R-G11 (Q7): forced-move results recorded by an earlier run of this request (PendingDecision::forced_results), reused
     // instead of calling the hook; and every result of this run, stored with the pause when the run is discarded.
     const std::vector<std::pair<uint32_t, ForcedMoveResult>>* forced_recorded = nullptr;
@@ -1403,14 +1482,14 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
             for (const HitRiderPiece& r : riders.pieces)
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, r.dice, crit))), r.same_as_weapon ? atk.type : r.type});
             for (const auto& mp : modp) parts.push_back({int16_t(mp.first), mp.second});
-            damage_creature(s, t, apply_damage_parts(t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
+            damage_creature(s, t, zone_apply_damage_parts(s, t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
         } else if (atk.extra_damage.empty()) {
-            damage_creature(s, t, apply_damage(t, int16_t(dmg), atk.type, atk.qualifiers), crit, ev, &tsrc, &ctx);
+            damage_creature(s, t, zone_apply_damage(s, t, int16_t(dmg), atk.type, atk.qualifiers), crit, ev, &tsrc, &ctx);
         } else {   // multi-component hit: one DamageDealt carrying the per-type-modified sum
             std::vector<DamagePiece> parts{{int16_t(dmg), atk.type}};
             for (const DamagePart& p : atk.extra_damage)
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.dice, crit))), p.type});
-            damage_creature(s, t, apply_damage_parts(t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
+            damage_creature(s, t, zone_apply_damage_parts(s, t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
         }
         if (atk.drain_max_hp && !t.dead) life_drain(s, t, drain_before - (int(t.hp) + int(t.temp_hp)), atk.drain_save_dc, a.id, ev);
         for (uint32_t sid : riders.after) {   // save_condition / apply_condition riders: after the damage, if it still stands
@@ -1552,11 +1631,15 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
     const SpellDef* def = zp ? spell_def(s, zp->spell_id) : nullptr;
     Combatant* t = find_mut(s, who);
     if (!zp || !def || !t || row_index >= def->zone.triggers.size() || !zone_affects(*zp, *def, *t)) return;
+    if (zone_suppressed(s, *zp, *def)) return;   // D7: a feature aura whose owner is not conscious
     const ActiveZone z = *zp;
     const ZoneTriggerRow row = def->zone.triggers[row_index];
     if (row.own_turn_only && current_actor(s) != who) return;
     if (hook_membership || row.completely_within) {
-        if (!s.hooks.zone_contains || !s.hooks.zone_contains(s, zone_id, who, row.completely_within)) return;
+        const bool in = s.hooks.zone_contains && s.hooks.zone_contains(s, zone_id, who, row.completely_within);
+        // region 1 (Wall of Fire's end of turn): the damaging side counts too, for hook-answered rows
+        const bool side = !in && hook_membership && row.region == 1 && s.hooks.zone_side_contains && s.hooks.zone_side_contains(s, zone_id, who);
+        if (!in && !side) return;
     }
     const SpellEffect& e = row.effect;
     // A creature already held by this zone's "while in the zone" condition is not saved against it again (Web).
@@ -1572,14 +1655,23 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
     DiceExpr dice = e.dice;
     if (dice.count > 0 && z.slot_level > def->level)
         dice.count = uint8_t(std::min(255, int(dice.count) + int(def->upcast_dice) * (int(z.slot_level) - int(def->level))));
+    // Spirit Guardians: an evil owner's aura deals its evil damage type (necrotic) instead
+    const DamageType dtype = (row.has_evil_damage_type && owner && owner->evil) ? row.evil_damage_type : e.damage_type;
     const bool damaging = dice.count > 0 || dice.bonus > 0;
-    const int dmg = damaging ? std::max(0, roll_dice(s.rng, dice)) : 0;
+    // Stinking Cloud: immune to poison / poisoned, or not breathing: an automatic success, no roll (and no damage draw)
+    const bool auto_success = e.kind == SpellEffectKind::Save &&
+        ((row.auto_success_damage & t->immunities) != 0 || (row.auto_success_conditions & t->condition_immunities) != 0 ||
+         (row.auto_success_no_breath && t->no_breath));
+    const int dmg = damaging && !auto_success ? std::max(0, roll_dice(s.rng, dice)) : 0;
     const std::size_t at = ev.size();
-    emit(ev, EventKind::FeatureTriggered, z.owner, who, int32_t(z.spell_id), int32_t(zone_trigger_on(row.on)), 1);
+    emit(ev, EventKind::FeatureTriggered, z.owner, who, int32_t(z.spell_id), int32_t(zone_trigger_on(row.on)), auto_success ? 2 : 1);
     bool failed = true;
-    if (e.kind == SpellEffectKind::Save) {
-        const SaveSource src{def->magical, e.applies_condition ? bit(e.condition) : 0u, damaging ? bit(e.damage_type) : 0u};
-        const SaveResult r = save_roll(s, *t, e.save_ability, z.dc, RollMode::Normal, ev, &src);
+    if (auto_success) failed = false;
+    else if (e.kind == SpellEffectKind::Save) {
+        const SaveSource src{def->magical, e.applies_condition ? bit(e.condition) : 0u, damaging ? bit(dtype) : 0u};
+        // Moonbeam: a shapechanger makes the save with disadvantage
+        const RollMode mode = row.shapechanger_disadvantage && t->shapechanger ? RollMode::Disadvantage : RollMode::Normal;
+        const SaveResult r = save_roll(s, *t, e.save_ability, z.dc, mode, ev, &src);
         emit(ev, EventKind::SavingThrowRolled, who, CombatantId(e.save_ability), r.roll.natural, r.roll.total, int32_t(r.success));
         failed = !r.success;
         ev[at].c = failed ? 3 : 0;
@@ -1589,10 +1681,12 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
         dealt = failed ? dmg / 2 : 0;   // Evasion
     if (dealt > 0) {
         const TrigSrc ts{owner, nullptr, true};
-        damage_creature(s, *t, apply_damage(*t, int16_t(std::min(dealt, 32767)), e.damage_type, def->magical ? uint8_t(kAttackMagical) : uint8_t(0)),
+        damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(std::min(dealt, 32767)), dtype, def->magical ? uint8_t(kAttackMagical) : uint8_t(0)),
                         false, ev, owner ? &ts : nullptr, ctx);
     }
-    if (e.applies_condition && failed && !t->dead && !(t->condition_immunities & bit(e.condition))) {
+    // Stinking Cloud (D9): the creature spends its action this turn (only on its own turn; movement and bonus action remain)
+    if (row.loses_action && failed && !t->dead && current_actor(s) == who) { s.budget.action = false; s.budget.action_lost = true; }
+    if (e.applies_condition && failed && !t->dead && !immune_to(s, *t, e.condition)) {
         if (!t->has(e.condition)) {
             add_condition(*t, e.condition);
             emit(ev, EventKind::ConditionAdded, who, 0, int32_t(e.condition));
@@ -1604,6 +1698,26 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
             s.effects.push_back(x);
         }
     }
+}
+
+// Silence (kZoneSilence, PR 2): a creature completely inside is deafened while it stays in the zone (a zone-bound effect,
+// like Web's restraint: it ends on leaving or when the zone ends). No FeatureTriggered, no roll.
+void silence_deafen(EncounterState& s, uint32_t zone_id, CombatantId who, std::vector<Event>& ev) {
+    const ActiveZone* z = find_zone(s, zone_id);
+    const SpellDef* def = z ? spell_def(s, z->spell_id) : nullptr;
+    Combatant* t = find_mut(s, who);
+    if (!z || !def || !t || t->dead || !(def->zone.flags & kZoneSilence) || zone_suppressed(s, *z, *def)) return;
+    if (!s.hooks.zone_contains || !s.hooks.zone_contains(s, zone_id, who, true)) return;
+    for (const auto& x : s.effects) if (x.zone_id == zone_id && x.target == who) return;
+    if (immune_to(s, *t, Condition::Deafened)) return;
+    if (!t->has(Condition::Deafened)) {
+        add_condition(*t, Condition::Deafened);
+        emit(ev, EventKind::ConditionAdded, who, 0, int32_t(Condition::Deafened));
+    }
+    ActiveSpellEffect x{z->spell_id, z->owner, who, Condition::Deafened, Ability::Wis, z->dc, RepeatSave::None, z->concentration,
+                        Timed{}, z->slot_level, false};
+    x.zone_id = zone_id;
+    s.effects.push_back(x);
 }
 
 // Every row of zone `zone_id` with trigger `on` for `who`, in row order. `aura_move`: the zone moved onto `who` (Enter rows
@@ -1629,7 +1743,10 @@ void zone_turn_triggers(EncounterState& s, Ctx* ctx, CombatantId who, ZoneTrigge
     std::vector<uint32_t> ids;
     for (const auto& z : s.zones) ids.push_back(z.zone_id);
     std::sort(ids.begin(), ids.end());
-    for (uint32_t id : ids) zone_event(s, ctx, id, who, on, true, false, ev);
+    for (uint32_t id : ids) {
+        zone_event(s, ctx, id, who, on, true, false, ev);
+        if (on == ZoneTrigger::StartTurn) silence_deafen(s, id, who, ev);   // PR 2: Silence catches who is inside now
+    }
 }
 
 void zone_membership(EncounterState& s, Ctx* ctx, CombatantId who, const std::vector<uint32_t>& entered,
@@ -1646,6 +1763,7 @@ void zone_membership(EncounterState& s, Ctx* ctx, CombatantId who, const std::ve
         if (n_in > 0) zone_event(s, ctx, id, who, ZoneTrigger::Enter, false, false, ev);
         for (std::ptrdiff_t k = 0; k < n_in + n_within; ++k) zone_event(s, ctx, id, who, ZoneTrigger::MoveWithin, false, false, ev);
         if (std::find(left.begin(), left.end(), id) != left.end()) end_zone_effects(s, id, who, ev);   // exits never deal damage
+        else if (n_in + n_within > 0) silence_deafen(s, id, who, ev);   // PR 2: now completely inside a Silence zone
     }
 }
 
@@ -1665,8 +1783,10 @@ void zone_changes(EncounterState& s, Ctx* ctx, const std::vector<ZoneChange>& ch
     });
     for (const ZoneChange& c : sorted) {
         if (!find_zone(s, c.zone_id)) continue;
-        if (c.entered) zone_event(s, ctx, c.zone_id, c.creature, ZoneTrigger::Enter, false, true, ev);
-        else end_zone_effects(s, c.zone_id, c.creature, ev);
+        if (c.entered) {
+            zone_event(s, ctx, c.zone_id, c.creature, ZoneTrigger::Enter, false, true, ev);
+            silence_deafen(s, c.zone_id, c.creature, ev);   // PR 2: "while in the area" starts with the aura / zone move
+        } else end_zone_effects(s, c.zone_id, c.creature, ev);
     }
 }
 
@@ -1695,12 +1815,15 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
             emit(ev, EventKind::ModifierApplied, m.caster, c.id, int32_t(m.spec.id), int32_t(m.spec.stat), m.spec.bonus);
         }
     bool zone_downed = false;   // R-G11: dropped to 0 HP by a zone this turn start: no death save until its next turn
+    bool action_lost = false;   // R-G11 PR 2: a StartTurn row took this turn's action (Stinking Cloud); kept over the budget reset
     if (!s.zones.empty()) {
         for (auto& z : s.zones)   // once-per-turn bookkeeping of earlier turns is stale now
             std::erase_if(z.fired, [&](const ZoneFired& f) { return f.stamp != turn_stamp(s); });
         const bool up = c.hp > 0;
+        s.budget.action_lost = false;
         if (!c.dead) zone_turn_triggers(s, nullptr, c.id, ZoneTrigger::StartTurn, ev);   // no reaction windows (no Ctx)
         zone_downed = up && c.hp <= 0;
+        action_lost = s.budget.action_lost;
     }
     repeat_saves(s, c.id, RepeatSave::StartOfTurn, ev);
     if (dies_of_exhaustion(c) && !c.dead) kill(c, ev);
@@ -1758,6 +1881,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
     }
     bool act = can_act(c);
     s.budget = TurnBudget{act, act, act, int16_t(c.hp > 0 ? modified_speed(s, c) : 0), 0, 0, 0};
+    if (action_lost) { s.budget.action = false; s.budget.action_lost = true; }   // R-G11 PR 2 (D9): movement and bonus action remain
     c.reckless_active = false;   // Reckless Attack: attacks against it had advantage until now
     if (c.lethargy != 0) {       // Haste ended: no move, action or bonus action this turn
         c.lethargy = 2;
@@ -1952,7 +2076,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 if (d != t || t->dead) continue;
                 if (t->reaction_blocks_spell == def.id) continue;   // Shield: no damage from the darts
                 int dmg = std::max(0, roll_dice(s.rng, def.dice));
-                { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, apply_damage(*t, int16_t(dmg), def.damage_type, kAttackMagical), false, ev, &ts, &ctx); }
+                { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(dmg), def.damage_type, kAttackMagical), false, ev, &ts, &ctx); }
             }
         }
         break;
@@ -1982,23 +2106,24 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             int dealt = r.success ? (def.on_save == OnSave::Half ? dmg / 2 : 0) : dmg;
             if (spared && ctx.spared_no_damage) dealt = 0;
             if (t->evasion && def.save_ability == Ability::Dex && def.on_save == OnSave::Half) dealt = r.success ? 0 : dmg / 2;   // Evasion
-            if (dealt > 0) { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, apply_damage(*t, int16_t(dealt), def.damage_type, dq), false, ev, &ts, &ctx); }
+            if (dealt > 0) { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(dealt), def.damage_type, dq), false, ev, &ts, &ctx); }
             if (!r.success) affected.push_back(t);
             // Petrifying Gaze: failing by escalate_margin or more applies escalate_to at once, with no repeat save
             const bool at_once = def.escalates && def.escalate_margin > 0 && !r.success && int(r.roll.total) <= dc - int(def.escalate_margin);
             const Condition cond = at_once ? def.escalate_to : def.condition;
-            if (def.applies_condition && !r.success && !t->dead && !(t->condition_immunities & bit(cond))) {
+            if (def.applies_condition && !r.success && !t->dead && !immune_to(s, *t, cond)) {
                 if (!t->has(cond)) {
                     add_condition(*t, cond);
                     emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(cond));
                 }
                 note_source(s, cond, a.id, t->id);
+                applied = true;
+                if (def.condition_untracked && !at_once) continue;   // ends by its own rules (prone): no effect entry, like Shove
                 s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, cond, def.save_ability,
                                                       int16_t(dc), at_once ? RepeatSave::None : def.repeat_save, def.concentration,
                                                       at_once ? Timed{} : make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
                                                       lvl, false});
                 if (def.escalates && !at_once) { s.effects.back().escalates = true; s.effects.back().escalate_to = def.escalate_to; }
-                applied = true;
             }
         }
         if (def.concentration && applied) a.concentration_spell = def.id;
@@ -2024,16 +2149,17 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
     case SpellEffectKind::ApplyCondition: {   // no save: the condition lasts with the spell
         bool applied = false;
         for (Combatant* t : T) {
-            if (t->dead || (t->condition_immunities & bit(def.condition))) continue;
+            if (t->dead || immune_to(s, *t, def.condition)) continue;
             if (!t->has(def.condition)) {
                 add_condition(*t, def.condition);
                 emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.condition));
             }
             note_source(s, def.condition, a.id, t->id);
-            s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, Ability::Wis, 0, RepeatSave::None,
-                                                  def.concentration,
-                                                  make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
-                                                  lvl, false});
+            if (!def.condition_untracked)   // ends by its own rules (prone): no effect entry, like Shove
+                s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, Ability::Wis, 0, RepeatSave::None,
+                                                      def.concentration,
+                                                      make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
+                                                      lvl, false});
             affected.push_back(t);
             applied = true;
         }
@@ -2089,7 +2215,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         int pool = std::max(0, roll_dice(s.rng, scaled_dice(def, lvl, a.caster_level)));
         std::vector<Combatant*> order;
         for (Combatant* t : T) {
-            if (t->dead || t->hp <= 0 || t->has(def.condition) || (t->condition_immunities & bit(def.condition))) continue;
+            if (t->dead || t->hp <= 0 || t->has(def.condition) || immune_to(s, *t, def.condition)) continue;
             if (def.excluded_types & bit(t->creature_type)) continue;
             order.push_back(t);
         }
@@ -2193,7 +2319,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (t->dead) continue;
             if (sustained) {
                 const int dmg = std::max(0, roll_dice(s.rng, dice));
-                damage_creature(s, *t, apply_damage(*t, int16_t(dmg), def.damage_type, def.magical ? uint8_t(kAttackMagical) : uint8_t(0)), false, ev);
+                damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(dmg), def.damage_type, def.magical ? uint8_t(kAttackMagical) : uint8_t(0)), false, ev);
             }
             ActiveSpellEffect e{def.id, a.id, t->id, Condition::Blinded, Ability::Wis, 0, RepeatSave::None, def.concentration,
                                 make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id), lvl, false};
@@ -2213,6 +2339,12 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         z.timed = make_timed(Expiry(def.expiry), def.duration_rounds, false);
         z.cast_stamp = turn_stamp(s);
         if (def.zone.anchor == ZoneAnchor::Point && ctx.has_zone_dest) { z.has_anchor_tile = true; z.anchor_x = ctx.zone_x; z.anchor_y = ctx.zone_y; }
+        // PR 2: the size after upcasting (Fog Cloud), or the ring's; a wall's end tile, side and form
+        z.ring = ctx.zone_ring;
+        if (z.ring) z.size_ft = def.zone.ring_size_ft;
+        else z.size_ft = uint16_t(std::min(65535, int(def.zone.size_ft) + int(def.zone.upcast_size_ft) * std::max(0, int(lvl) - int(def.level))));
+        if (ctx.has_zone_end) { z.has_end_tile = true; z.end_x = ctx.zone_x2; z.end_y = ctx.zone_y2; }
+        z.side = ctx.zone_side;
         if (ctx.zone_excluded) {
             z.excluded = *ctx.zone_excluded;
             std::sort(z.excluded.begin(), z.excluded.end());
@@ -2225,10 +2357,13 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
              int32_t(def.zone.flags));
         const bool appear = std::any_of(def.zone.triggers.begin(), def.zone.triggers.end(), [](const ZoneTriggerRow& r) {
             return r.on == ZoneTrigger::Appear; });
-        if (appear) {   // creatures in it when it appears, in initiative order
+        if (appear || (def.zone.flags & kZoneSilence)) {   // creatures in it when it appears, in initiative order
             std::vector<CombatantId> ids;
             for (const auto& o : s.order) ids.push_back(o.id);
-            for (CombatantId c : ids) zone_event(s, &ctx, id, c, ZoneTrigger::Appear, true, false, ev);
+            for (CombatantId c : ids) {
+                if (appear) zone_event(s, &ctx, id, c, ZoneTrigger::Appear, true, false, ev);
+                silence_deafen(s, id, c, ev);   // PR 2: Silence deafens who is completely inside
+            }
         }
         break;
     }
@@ -2263,6 +2398,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (is_incapacitated(a)) return fail("incapacitated");
         if (req.zone_move_ft % 5 != 0 || req.zone_move_ft > def.zone.move_ft) return fail("zone_move: beyond the zone's move distance");
         if (!req.zone_excluded.empty()) return fail("zone_move: zone_excluded is chosen at the cast");
+        if (req.has_zone_end || req.zone_side != 0 || req.zone_ring) return fail("zone_move: wall choices are made at the cast");
         if (req.metamagic != 0 || !req.spared.empty() || req.innate) return fail("zone_move: not a cast");
         if (def.zone.move_cost == 2) {
             if (!b.bonus_action) return fail("no bonus action available");
@@ -2293,7 +2429,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         StepResult out{true, {}, {}};
         const ActiveSpellEffect copy = *e;
         const int dmg = std::max(0, roll_dice(s.rng, copy.damage));
-        damage_creature(s, *t, apply_damage(*t, int16_t(dmg), copy.damage_type, copy.magical ? uint8_t(kAttackMagical) : uint8_t(0)), false, out.events, nullptr, &ctx);
+        damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(dmg), copy.damage_type, copy.magical ? uint8_t(kAttackMagical) : uint8_t(0)), false, out.events, nullptr, &ctx);
         emit(out.events, EventKind::SpellResolved, a.id, t->id, int32_t(def.id), copy.slot_level);
         check_end(s, out.events);
         return out;
@@ -2325,6 +2461,9 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     } else if (def.usage_kind == 3) {
         if (find_pool(s, a.id, def.pool_id) && !can_spend(s, a.id, def.pool_id, pcost)) return fail("not enough resource");
     }
+    // R-G11 PR 2: no verbal component while completely inside a Silence zone (checked before sim's component hook; no roll)
+    if ((!inn || inn->as_listed) && (def.components & kComponentV) && !s.zones.empty() && in_silence(s, a.id))
+        return fail("silence: no verbal component inside a Silence zone");
     if ((!inn || inn->as_listed) && s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, def)) return fail("components unavailable");
     std::vector<CombatantId> ids = req.targets;
     if (ids.empty() && req.target != 0) ids.push_back(req.target);
@@ -2383,6 +2522,13 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (x.kind == SpellEffectKind::Zone) return fail("zone: primary effect only");
     if ((req.has_zone_dest || !req.zone_excluded.empty()) && def.kind != SpellEffectKind::Zone) return fail("zone: not a zone spell");
     if (!req.zone_excluded.empty() && !def.zone.chooses_excluded) return fail("zone_excluded: the spell does not let the caster choose");
+    if ((req.has_zone_end || req.zone_side != 0 || req.zone_ring) && def.kind != SpellEffectKind::Zone) return fail("zone: not a zone spell");
+    if (def.kind == SpellEffectKind::Zone) {   // R-G11 PR 2: wall choices (Wall of Fire)
+        if (req.zone_ring && def.zone.ring_size_ft == 0) return fail("zone_ring: the spell has no ring form");
+        if (req.has_zone_end && (def.zone.shape != AreaShape::Line || req.zone_ring)) return fail("zone_end: only a line wall has an end tile");
+        if (def.zone.sided ? (req.zone_side != 1 && req.zone_side != -1) : req.zone_side != 0)
+            return fail(def.zone.sided ? "zone_side: choose the damaging side (+1 or -1)" : "zone_side: the spell has no damaging side");
+    }
     if (req.forced_feet != 0) {   // R-G9: the chosen distance of an "up to N ft" forced move
         int most = -1;
         if (def.kind == SpellEffectKind::ForcedMove && def.forced.up_to) most = def.forced.feet;
@@ -2432,10 +2578,13 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         ctx.has_teleport_dest = req.has_teleport_dest; ctx.teleport_x = req.teleport_x; ctx.teleport_y = req.teleport_y;
         ctx.has_zone_dest = req.has_zone_dest; ctx.zone_x = req.zone_x; ctx.zone_y = req.zone_y;
         ctx.zone_excluded = req.zone_excluded.empty() ? nullptr : &req.zone_excluded;
+        ctx.has_zone_end = req.has_zone_end; ctx.zone_x2 = req.zone_x2; ctx.zone_y2 = req.zone_y2;
+        ctx.zone_side = req.zone_side; ctx.zone_ring = req.zone_ring;
         resolve_spell(s, ctx, a, def, lvl, T, req.target_within_5ft, out.events);
         ctx.spared = nullptr; ctx.spared_no_damage = false; ctx.heighten = 0; ctx.empower = 0;
         ctx.forced_feet = 0; ctx.teleport_feet = 0; ctx.has_teleport_dest = false; ctx.teleport_x = 0; ctx.teleport_y = 0;
         ctx.has_zone_dest = false; ctx.zone_x = 0; ctx.zone_y = 0; ctx.zone_excluded = nullptr;
+        ctx.has_zone_end = false; ctx.zone_x2 = 0; ctx.zone_y2 = 0; ctx.zone_side = 0; ctx.zone_ring = false;
         defer_forced(s, ctx, out.events);   // R-G9: placeholders after every save and damage of the spell, before SpellResolved
     }
     emit(out.events, countered ? EventKind::SpellCountered : EventKind::SpellResolved, a.id, ids[0], int32_t(def.id), lvl);
@@ -2854,7 +3003,7 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
     if (!held_off) {
         if (req.special == 1) apply_sourced_condition(s, a.id, t->id, Condition::Grappled, 0, ev);
         else if (req.special == 2) {
-            if (!t->has(Condition::Prone) && !(t->condition_immunities & bit(Condition::Prone))) {
+            if (!t->has(Condition::Prone) && !immune_to(s, *t, Condition::Prone)) {
                 add_condition(*t, Condition::Prone);
                 emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(Condition::Prone));
             }
@@ -2877,7 +3026,8 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     Combatant* a = own_turn ? find_mut(s, req.actor) : nullptr;
     if ((req.forced_feet != 0 || req.teleport_feet != 0 || req.has_teleport_dest) && req.kind != ActionKind::CastSpell)
         return fail("forced_feet / teleport: CastSpell only");
-    if ((req.has_zone_dest || req.zone_move != 0 || req.zone_move_ft != 0 || !req.zone_excluded.empty()) && req.kind != ActionKind::CastSpell)
+    if ((req.has_zone_dest || req.zone_move != 0 || req.zone_move_ft != 0 || !req.zone_excluded.empty() || req.has_zone_end ||
+         req.zone_side != 0 || req.zone_ring) && req.kind != ActionKind::CastSpell)
         return fail("zone fields: CastSpell only");
     if (!a || a->dead || req.kind == ActionKind::EndTurn) {
         if (req.haste_action) return fail("haste_action: not a turn action");
@@ -3272,6 +3422,22 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
 
 } // namespace
 
+namespace {
+// R-G11 PR 2: one zone cast per form the caster picks at the cast: a sided zone (Wall of Fire) once per side (+1, then -1),
+// and with ring_size_ft also as a ring (inside +1, outside -1). Sim adds the tiles (destination, a wall's end tile).
+void push_zone_forms(std::vector<ActionRequest>& out, const ActionRequest& base, const SpellDef& d) {
+    if (d.kind != SpellEffectKind::Zone || (!d.zone.sided && d.zone.ring_size_ft == 0)) { out.push_back(base); return; }
+    for (int ring = 0; ring < (d.zone.ring_size_ft > 0 ? 2 : 1); ++ring) {
+        for (int side = 0; side < (d.zone.sided ? 2 : 1); ++side) {
+            ActionRequest r = base;
+            r.zone_ring = ring == 1;
+            r.zone_side = d.zone.sided ? int8_t(side == 0 ? 1 : -1) : int8_t(0);
+            out.push_back(r);
+        }
+    }
+}
+} // namespace
+
 std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     std::vector<ActionRequest> out;
     if (s.ended || s.order.empty()) return out;
@@ -3345,6 +3511,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
         r.move_ft = 5;
         out.push_back(r);
     }
+    const bool silenced = !s.zones.empty() && in_silence(s, a.id);   // R-G11 PR 2: no verbal components (Silence)
     // Spells: every known non-reaction SpellBook spell, at every slot level available, at each
     // valid target (hostile for attacks/saves/darts, same team for healing). Range and sight are
     // sim's (hooks.spell_target_ok); multi-target / split-dart requests are built by sim or AI.
@@ -3353,6 +3520,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             const SpellDef* d = s.hooks.spells->find(id);
             if (!d || (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction)) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !can_act) continue;
+            if ((d->components & kComponentV) && silenced) continue;   // R-G11 PR 2: Silence
             if (s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, *d)) continue;
             if (d->usage_kind == 1) { const ActionUse* u = find_action_use(s, a.id, d->id); if (u && u->expended) continue; }
             if (d->usage_kind == 2 && feature_uses_left(s, a.id, d->id) == 0) continue;
@@ -3363,7 +3531,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
                 if (d->kind == SpellEffectKind::Teleport || d->kind == SpellEffectKind::Zone) {   // R-G9 / R-G11: self; sim adds the destination (legal_teleport_tiles / zone tiles)
                     ActionRequest r{a.id, ActionKind::CastSpell, a.id};
                     r.spell_id = d->id; r.spell_level = L;
-                    out.push_back(r);
+                    push_zone_forms(out, r, *d);
                     continue;
                 }
                 for (const auto& t : s.combatants) {
@@ -3387,11 +3555,12 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             if (!d || !is.available()) continue;
             if (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !can_act) continue;
+            if (is.as_listed && (d->components & kComponentV) && silenced) continue;   // R-G11 PR 2: Silence
             if (is.as_listed && s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, *d)) continue;
             if (d->kind == SpellEffectKind::Teleport || d->kind == SpellEffectKind::Zone) {   // R-G9 / R-G11: self (sim adds a destination)
                 ActionRequest r{a.id, ActionKind::CastSpell, a.id};
                 r.spell_id = d->id; r.spell_level = d->level; r.innate = true;
-                out.push_back(r);
+                push_zone_forms(out, r, *d);
                 continue;
             }
             for (const auto& t : s.combatants) {
@@ -3499,12 +3668,38 @@ uint64_t zones_digest(const EncounterState& s, uint64_t h) {
         u32(z.cast_stamp); byte(uint8_t(z.has_anchor_tile)); u32(uint32_t(z.anchor_x)); u32(uint32_t(z.anchor_y));
         u32(uint32_t(z.excluded.size())); for (CombatantId id : z.excluded) u32(id);
         u32(uint32_t(z.fired.size())); for (const auto& f : z.fired) { u32(f.creature); u32(f.stamp); byte(f.group); }
+        // PR 2: size, wall end tile, side, ring, feature aura
+        u32(z.size_ft); byte(uint8_t(z.has_end_tile)); u32(uint32_t(z.end_x)); u32(uint32_t(z.end_y));
+        byte(uint8_t(z.side)); byte(uint8_t(z.ring)); byte(uint8_t(z.feature));
     }
     for (const auto& e : s.effects) {   // the zone-bound effects (Web's restraint), in application order
         if (e.zone_id == 0) continue;
         u32(e.zone_id); u32(e.spell_id); u32(e.caster); u32(e.target); byte(uint8_t(e.condition)); u32(uint32_t(uint16_t(e.dc)));
     }
+    byte(uint8_t(s.budget.action_lost));   // PR 2: Stinking Cloud took this turn's action (the budget is not hashed otherwise)
     return h;
+}
+
+bool in_silence(const EncounterState& s, CombatantId id) {
+    if (!s.hooks.zone_contains) return false;
+    for (const auto& z : s.zones) {
+        const SpellDef* d = spell_def(s, z.spell_id);
+        if (d && (d->zone.flags & kZoneSilence) && !zone_suppressed(s, z, *d) && s.hooks.zone_contains(s, z.zone_id, id, true)) return true;
+    }
+    return false;
+}
+
+uint32_t add_feature_aura(EncounterState& s, CombatantId owner, uint32_t spell_id, std::vector<Event>* events) {
+    const SpellDef* d = spell_def(s, spell_id);
+    const Combatant* o = find(s, owner);
+    if (!d || d->kind != SpellEffectKind::Zone || d->zone.anchor != ZoneAnchor::Creature || !o || o->dead) return 0;
+    ActiveZone z;
+    z.zone_id = s.next_zone_id++;
+    z.spell_id = spell_id; z.owner = owner; z.slot_level = d->level; z.dc = int16_t(spell_save_dc(*o, *d));
+    z.cast_stamp = turn_stamp(s); z.size_ft = d->zone.size_ft; z.feature = true;
+    s.zones.push_back(z);
+    if (events) emit(*events, EventKind::ZoneCreated, owner, owner, int32_t(z.zone_id), int32_t(spell_id), int32_t(d->zone.flags));
+    return z.zone_id;
 }
 
 bool has_timed_effects(const EncounterState& s) {
@@ -3740,7 +3935,7 @@ bool size_within_one(Size g, Size t) { return int(t) <= int(g) + 1; }
 bool apply_sourced_condition(EncounterState& s, CombatantId source, CombatantId target, Condition c, int escape_dc, std::vector<Event>& ev) {
     Combatant* t = find_mut(s, target);
     const Combatant* src = find(s, source);
-    if (!t || !src || t->dead || t == src || (t->condition_immunities & bit(c))) return false;
+    if (!t || !src || t->dead || t == src || immune_to(s, *t, c)) return false;
     if (c == Condition::Grappled && !size_within_one(src->size, t->size)) return false;
     if (!t->has(c)) {
         add_condition(*t, c);

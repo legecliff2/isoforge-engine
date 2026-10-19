@@ -152,7 +152,7 @@
       "required": ["kind"],
       "description": "Machine-readable feature effect, tagged by kind (contract: docs/CONTENT_EFFECTS.md). The engine FeatureRegistry maps kind to a hook. Unknown kinds are allowed: the validator warns and the engine reports them as unsupported and ignores them. Known kinds have their fields checked below. The object stays open (no additionalProperties: false), so v1 remains append-only and extra fields are ignored by the engine.",
       "properties": {
-        "kind": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "Hook id. Known: damage_bonus, bonus_action_grant, self_heal, damage_mitigation, magic_weapons, multiattack, reroll_ones, great_weapon_fighting, evasion." },
+        "kind": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "Hook id. Known: damage_bonus, bonus_action_grant, self_heal, damage_mitigation, magic_weapons, multiattack, reroll_ones, great_weapon_fighting, evasion, pack_tactics, aggressive, reckless_attack." },
         "cost": { "$ref": "#/$defs/effect_cost" }
       },
       "allOf": [
@@ -225,7 +225,13 @@
         { "if": { "properties": { "kind": { "const": "great_weapon_fighting" } }, "required": ["kind"] },
           "then": { "description": "Static (R-G7, Fighting Style): weapon damage dice of a two_handed melee attack, or a versatile melee attack held in two hands, that show 1 or 2 are rerolled once. No parameters." } },
         { "if": { "properties": { "kind": { "const": "evasion" } }, "required": ["kind"] },
-          "then": { "description": "Static (R-G7, Rogue / Monk Evasion): a Dex save against an effect that deals half on a success deals none on a success and half on a failure. No parameters." } }
+          "then": { "description": "Static (R-G7, Rogue / Monk Evasion): a Dex save against an effect that deals half on a success deals none on a success and half on a failure. No parameters." } },
+        { "if": { "properties": { "kind": { "const": "pack_tactics" } }, "required": ["kind"] },
+          "then": { "description": "Static (T&C-G7, SRD Pack Tactics): advantage on the creature's attack rolls against a creature when at least one of its allies that is not incapacitated is within 5 ft of it. No parameters; a second declaration adds nothing." } },
+        { "if": { "properties": { "kind": { "const": "aggressive" } }, "required": ["kind"] },
+          "then": { "description": "Static (T&C-G7, SRD orc Aggressive): as a bonus action the creature can Dash, and the movement past its own speed must take it toward a hostile creature it can see. No parameters; a second declaration adds nothing." } },
+        { "if": { "properties": { "kind": { "const": "reckless_attack" } }, "required": ["kind"] },
+          "then": { "description": "Static (T&C-G7, Barbarian Reckless Attack / SRD berserker Reckless): on its first attack of a turn the creature can choose advantage on Strength melee weapon attack rolls that turn; attack rolls against it then have advantage until its next turn. No parameters; a second declaration adds nothing." } }
       ]
     },
     "qualified_damage": {

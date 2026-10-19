@@ -13,11 +13,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | | count |
 |---|---|
 | inventory candidates | 30 |
-| authored now as `monster@4` | 17 |
+| authored now as `monster@4` | 23 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129) |
 | goblin (already shipped, left at `monster@3`) | 1 |
-| deferred (mechanic not expressible) | 12 |
+| deferred (mechanic not expressible) | 6 |
 
-## Authored (17, all `monster@4`)
+## Authored (23, all `monster@4`)
 
 | monster | CR | mechanics carried as data | notes |
 |---|---|---|---|
@@ -38,6 +38,12 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Ogre | 2 | greatclub, javelin (melee and thrown) | |
 | Gargoyle | 2 | `damage_mitigation` (nonmagical not adamantine: bludgeoning, piercing, slashing), immunity poison, condition immunities, Multiattack bite + claws, fly 60 | plain `damage_resistances` stays empty on purpose (it would be unqualified) |
 | Black Dragon Wyrmling | 2 | bite with two damage components; Acid Breath as `save_effect` (Dex DC 11, 5d8 acid, half, line 15 x 5 ft, recharge 5-6), immunity acid | `save_effect` not played yet |
+| Jackal | 0 | Pack Tactics as trait effect `{ "kind": "pack_tactics" }` (sim #127), bite | Keen Hearing and Smell descriptive (no perception checks in the sim) |
+| Kobold | 1/8 | Pack Tactics (`pack_tactics`), dagger, sling | **partial**: Sunlight Sensitivity (disadvantage on attacks in sunlight) is description only: there is no light / sunlight model or supported effect for it (R-G13), so the kobold attacks normally in sunlight |
+| Wolf | 1/4 | Pack Tactics (`pack_tactics`), bite | **partial**: the bite's knock-prone rider (Str DC 11 or prone) is description only. `common@2` accepts `on_hit [{"kind": "save_condition", "save": {...}, "apply": [{"condition": "prone"}]}]`, but prone has no duration (it lasts until the target stands up) and the sim loader (`compile_save_action`) treats a condition with no duration and no repeat save as an unsupported duration, which on an `on_hit` rider is a **load error**; an `until_end_of_target_next_turn` stand-in would be an approximation. Needs a "until it stands up" (no-expiry) condition in the rider compile (Engine Core) and a matching validator check (T&C). Keen Hearing and Smell descriptive |
+| Dire Wolf | 1 | Pack Tactics (`pack_tactics`), bite | **partial**, as wolf (knock-prone rider Str DC 13 description only) |
+| Orc | 1/2 | Aggressive as trait effect `{ "kind": "aggressive" }` (sim #129: bonus-action Dash toward a visible hostile; the built-in AI uses it), greataxe, javelin (melee and thrown) | |
+| Berserker | 2 | Reckless as trait effect `{ "kind": "reckless_attack" }` (sim #129), greataxe | the sim applies Reckless when the caller declares `ActionRequest::reckless` on the first attack; the built-in AI never declares it, so an AI-driven berserker attacks without it (a choice the AI does not make yet, not a content gap) |
 
 The goblin keeps `$schema: monster@3`, its id (`srd51.monster.goblin`, stable id derived from it) and bytes. It is referenced by C++ tests that assert its `@3` form (`content_migration_tests`, `pack_set_tests`, compat goblin tests) and by the fl1 compat corpus, and a schema change could shift digests and goldens; migrating it buys nothing until a `@4`-only feature is needed.
 
@@ -48,28 +54,22 @@ Not set: `presentation` (the goblin has none; sprite assets for these monsters d
 Played: stats, attacks with every `damage[]` entry (#45), resistances / immunities / vulnerabilities / condition immunities (#45), `multiattack` options (#48/#59), `damage_mitigation` (#47/#58), `bonus_action_grant`, size footprint (#50/#55).
 Carried and validated but **not applied** (the registry reserves the `@4` kinds; the archetype lists them in `unsupported_features` and ignores them): `on_event` (Undead Fortitude, Rampage, Sneak Attack), `on_hit[]` riders (snake poison), `save_effect` actions with `usage` (Acid Breath). Until Engine Core lands the row 6 compile / row 9-10 trigger hooks these monsters play without those effects. No content change is needed when the hooks land.
 
-## Deferred (12)
+## Deferred (6)
 
 Gap ids: `T&C-Gn` = Tools & Content, `R-Gn` = Rules (see the crosswalk in the coverage doc).
 
 | monster (`srd51.monster.<id>`) | CR | missing mechanic (re-checked at `cfb5eed`) | gap id |
 |---|---|---|---|
-| `srd51.monster.jackal` | 0 | Pack Tactics: conditional advantage on attacks (ally within 5 ft). **Engine side unblocked** (sim, #127): trait effect `{ "kind": "pack_tactics" }` (no fields, open kind, live at `@3` / `@4`) fills the rules `RollTrait` `{Attack, Advantage, kWhenAllyNearTarget}`, and sim supplies `ally_near_target` (#54, #61). Still open (T&C): register the kind in `common@1` / `KNOWN_EFFECT_KINDS` / `CONTENT_EFFECTS.md` (the validator only warns on it today), then author the stat block | T&C-G7 (R-G7); content registration + authoring |
-| `srd51.monster.kobold` | 1/8 | Pack Tactics (as above: engine side unblocked, T&C registration open). Sunlight Sensitivity would be descriptive (R-G13) | T&C-G7 |
-| `srd51.monster.wolf` | 1/4 | Pack Tactics (as above: engine side unblocked, T&C registration open). The prone bite rider alone is expressible | T&C-G7 |
-| `srd51.monster.dire_wolf` | 1 | Pack Tactics (as above: engine side unblocked, T&C registration open) | T&C-G7 |
 | `srd51.monster.boar` | 1/4 | Relentless: `drop_to_zero` only when the damage is 7 or less (no damage-threshold predicate; the loader's predicates are `weapon`, `advantage_or_ally_adjacent`, `target_creature_type`, `not_creature_type`, `damage_type_is/not`, `not_crit`, `moved_at_least_ft`, `self_hp_below`, `save`), once per short/long rest (`on_event` with `usage` is listed unsupported by the loader, "a use cost is a later sub-PR"). Charge (`moved_at_least_ft` 20, 1d6, Str DC 11 prone) is expressible but is not worth shipping without Relentless | T&C-G7 (predicate: damage taken <= N; `on_event` usage) |
 | `srd51.monster.hobgoblin` | 1/2 | Martial Advantage: +2d6 once per turn only if an ally (not incapacitated) is within 5 ft of the target. The only ally predicate is still `advantage_or_ally_adjacent` (advantage OR ally, the Sneak Attack gate), which would also fire with advantage and no ally | T&C-G7 (predicate: ally adjacent only) |
-| `srd51.monster.orc` | 1/2 | Aggressive: bonus-action move toward a visible hostile. Rules has it since #111 (`Combatant::aggressive`, `ActionRequest::aggressive`), but the sim content loader never sets `aggressive` and there is no content shape; `bonus_action_grant dash` has no direction constraint | T&C-G7 (content shape + loader for #111 Aggressive) |
 | `srd51.monster.bugbear` | 1 | Surprise Attack: +2d6 when it hits a surprised creature in round 1. Rules has surprise since #108 (R-G16, `Combatant::surprised`), but there is no `surprised` predicate (target state) in the loader or `common@2`. (Brute is already baked into the printed attack dice per SRD text) | T&C-G7 (predicate: target surprised) |
 | `srd51.monster.ghoul` | 1 | Claws paralysis (Con DC 10, 1 minute, repeat end of turn) applies only to creatures other than elves and undead. `on_hit` riders still have no `when`; an `on_event hit` with `not_creature_type [undead]` could gate undead, but there is no predicate for elves (a race, not a creature type) and no predicate naming one attack (claws vs bite) | T&C-G5 (rider target predicate; race / attack-id predicate) |
 | `srd51.monster.giant_spider` | 1 | Web: a ranged *attack roll* that only restrains (no damage; `ranged_weapon_attack` requires `damage`, `save_effect` is a save not an attack) with Recharge 5-6; Strength-check escape (DC 12) and destructible web (AC 10, 5 HP). The R-G8 `grapple` hit rider (sim #104) is grappled-only and not in the `common@2` rider enum. Also the bite's "stable but poisoned and paralyzed at 0 HP" clause | T&C-G4 / T&C-G5 (+ R-G8 for restrain source) |
-| `srd51.monster.berserker` | 2 | Reckless: free per-turn choice of advantage on own melee attacks and advantage against it. Rules has Reckless Attack since #111 (`Combatant::reckless_attack`, `ActionRequest::reckless`), but the sim content loader never sets it and there is no content shape; `apply_modifier` needs a cost and a duration shape that does not fit a free start-of-turn toggle | T&C-G7 (content shape + loader for #111 Reckless) |
 | `srd51.monster.swarm_of_rats` | 1/4 | Swarm: shares space with other creatures (T&C-G14), cannot regain HP / gain temp HP; bite damage 2d6 or 1d6 at half HP or fewer (no HP-conditional damage swap; `self_hp_below` is strict and has no negation); creature type "swarm of Tiny beasts" is not in the `creature_type` enum (`beast` + tag `swarm` is the convention, T&C-G15) | T&C-G7, T&C-G14, T&C-G15 |
 
 ### Re-check at `cfb5eed` (2026-10-19)
 
-All 12 stay deferred. Checked against the sim loader (`engine/core/sim/src/content.cpp`, `features.cpp`), the rules content loader (`engine/rules/content/src/spell_loader.cpp`), `schemas/common/v2.schema.json` / `schemas/monster/v4.schema.json` and `tools/validate_packs.py` / `tools/checks_v4.py`:
+All 12 stayed deferred at that point; jackal, kobold, wolf and dire wolf were authored afterwards once #127 landed the `pack_tactics` loader kind. Checked against the sim loader (`engine/core/sim/src/content.cpp`, `features.cpp`), the rules content loader (`engine/rules/content/src/spell_loader.cpp`), `schemas/common/v2.schema.json` / `schemas/monster/v4.schema.json` and `tools/validate_packs.py` / `tools/checks_v4.py`:
 
 | landed mechanic | loads from content? | shape | unblocks |
 |---|---|---|---|
@@ -80,8 +80,8 @@ All 12 stay deferred. Checked against the sim loader (`engine/core/sim/src/conte
 | reactions | yes | `reactions[]` (#114/#115) | none of the 12 |
 | grapple | sim only | `on_hit [{"kind":"grapple","escape_dc":N}]` (#104); not in the `common@2` rider enum (validator rejects it) | none of the 12 (Web restrains) |
 | timed modifiers, Metamagic, Haste/Slow, Sleep, dispel | spell / `apply_modifier` mechanics | not used by any of the 12 stat blocks | none of the 12 |
-| Pack Tactics | **sim yes** (#127, after this re-check) | trait `effect` `{ "kind": "pack_tactics" }` -> `Combatant::roll_traits`; not yet in `common@1` / the validator (warning only) | jackal, kobold, wolf, dire wolf: engine side unblocked; T&C registration + authoring open |
-| Aggressive, Reckless (#111) | **no** | rules flags only; sim never sets them | orc, berserker blocked |
+| Pack Tactics | **yes** (#127) | trait effect `{ "kind": "pack_tactics" }` (common@1 open kind) | jackal, kobold, wolf, dire wolf: authored (kobold partial, Sunlight Sensitivity descriptive) |
+| Aggressive, Reckless (#111) | **yes** (#129) | trait effects `{ "kind": "aggressive" }` / `{ "kind": "reckless_attack" }` (common@1 open kinds) | orc, berserker: authored |
 | surprise (#108) | **no** (as a predicate) | rules state only | bugbear blocked |
 
 ## Other notes for Rules / Engine Core
