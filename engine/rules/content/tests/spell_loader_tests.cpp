@@ -453,3 +453,68 @@ TEST_CASE("loader: R-G11 rules PR 2 zone / trigger keys (CONTENT_CONVENTIONS.md 
     j = base; j["effects"][0]["zone"]["no_breath"] = true; bad(j, "zone: unknown key 'no_breath'");
     j = sc; j["effects"][0]["zone"]["triggers"][0]["evil"] = true; bad(j, "zone.triggers[0]: unknown key 'evil'");
 }
+
+static std::string tests_read_wall(const std::filesystem::path& p) {
+    std::ifstream in(p);
+    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+TEST_CASE("loader: R-G11 PR 2 fixtures (tests/validate/fixtures/zones/spells_pr2) and T&C edge cases") {
+    const auto dir = std::filesystem::path(ENGINE_SOURCE_ROOT) / "tests/validate/fixtures/zones/spells_pr2";
+    auto r = load_spellbook(dir);
+    INFO((r.errors.empty() ? std::string() : r.errors[0]));
+    REQUIRE(r.errors.empty());
+    REQUIRE(r.book);
+    CHECK(r.book->all().size() == 3);
+
+    const SpellDef* sc = r.book->find(spell_id_of("test.zone.spell.stinking_cloud"));
+    REQUIRE(sc);
+    REQUIRE(sc->zone.triggers.size() == 1);
+    const ZoneTriggerRow& scr = sc->zone.triggers[0];
+    CHECK(scr.loses_action); CHECK(scr.auto_success_no_breath); CHECK(scr.completely_within);
+    CHECK(scr.auto_success_damage == bit(DamageType::Poison)); CHECK(scr.auto_success_conditions == bit(Condition::Poisoned));
+
+    const SpellDef* wf = r.book->find(spell_id_of("test.zone.spell.wall_of_fire"));
+    REQUIRE(wf);
+    CHECK(wf->zone.shape == AreaShape::Line); CHECK(wf->zone.length_ft == 60); CHECK(wf->zone.height_ft == 20);
+    CHECK(wf->zone.ring_size_ft == 20); CHECK(wf->zone.sided); CHECK(wf->zone.side_ft == 10);
+    REQUIRE(wf->zone.triggers.size() == 3);
+    CHECK(wf->zone.triggers[0].region == 0); CHECK(wf->zone.triggers[1].region == 1); CHECK(wf->zone.triggers[2].region == 0);
+
+    const SpellDef* wa = r.book->find(spell_id_of("test.zone.spell.warding_aura"));
+    REQUIRE(wa);
+    CHECK(wa->zone.anchor == ZoneAnchor::Creature); CHECK(wa->zone.triggers.empty());
+    CHECK(wa->zone.aura_modifier.stat == ModStat::Save); CHECK(wa->zone.aura_modifier.bonus == 1);
+    CHECK(wa->zone.has_aura_bonus_ability); CHECK(wa->zone.aura_bonus_ability == Ability::Cha);
+    CHECK(wa->zone.aura_immunity == bit(Condition::Frightened)); CHECK(wa->zone.aura_allies_only);
+
+    using J = eng::assets::Json;
+    const J base = J::parse(R"({"$schema":"spell@1","id":"srd51.spell.ze","level":2,"name":"x",
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":120},"components":{"v":true},
+        "duration":{"kind":"minutes","amount":1,"concentration":true},
+        "effects":[{"kind":"zone","zone":{"shape":"sphere","size_ft":20,"anchor":"point",
+            "triggers":[{"on":"zone_enter","effect":{"kind":"damage","damage":{"dice":"2d4","type":"fire"}}}]}}]})");
+    // (a) explicit false on the save-only keys passes on a non-save row
+    J j = base;
+    j["effects"][0]["zone"]["triggers"][0]["auto_success_no_breath"] = false;
+    j["effects"][0]["zone"]["triggers"][0]["shapechanger_disadvantage"] = false;
+    CHECK(spell_from_json(j).def);
+    // (b) evil_damage_type needs a damage key on the row's effect
+    j = base; j["effects"][0]["zone"]["triggers"][0]["evil_damage_type"] = "necrotic";
+    CHECK(spell_from_json(j).def);
+    j["effects"][0]["zone"]["triggers"][0]["effect"] = {{"kind", "apply_condition"}, {"condition", "prone"}};
+    CHECK(spell_from_json(j).error.find("evil_damage_type needs effect damage") != std::string::npos);
+    // (c) sided:false with side_ft is an error
+    J w = J::parse(tests_read_wall(dir / "wall_of_fire.json"));
+    w["effects"][0]["zone"]["sided"] = false;
+    w["effects"][0]["zone"]["triggers"][1].erase("region");
+    CHECK(spell_from_json(w).error.find("zone: side_ft is required for (and only for) sided zones") != std::string::npos);
+    // (d) feet are 5..65530, multiples of 5
+    for (int ft : {0, 3, 65535, 65540}) {
+        j = base; j["effects"][0]["zone"]["size_ft"] = ft;
+        INFO(ft);
+        CHECK(spell_from_json(j).error.find("zone.size_ft invalid (5..65530, a multiple of 5)") != std::string::npos);
+    }
+    j = base; j["effects"][0]["zone"]["size_ft"] = 65530; CHECK(spell_from_json(j).def);
+    j = base; j["effects"][0]["zone"]["upcast_size_ft"] = J::parse("20.0"); CHECK_FALSE(spell_from_json(j).def);   // floats are rejected
+}
