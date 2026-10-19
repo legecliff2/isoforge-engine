@@ -820,6 +820,8 @@ uint64_t Combat::hash() const {
     if (rules5e::has_innate_state(state_)) { h.byte(0xA4); h.u64(rules5e::innate_digest(state_)); }
     // 0xA5: timed lasting effects (condition durations). 0xA2 (modifiers) stays reserved for row 12; 0xA4 (innate) is Engine Core's.
     if (rules5e::has_timed_effects(state_)) { h.byte(0xA5); h.u64(rules5e::timed_effects_digest(state_)); }
+    // 0xA6: event triggers' once-per-turn / round bookkeeping (row 9a), only when some combatant has triggers.
+    if (rules5e::has_trigger_state(state_)) { h.byte(0xA6); h.u64(rules5e::triggers_digest(state_)); }
     return h.value();
 }
 
