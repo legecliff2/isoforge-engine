@@ -34,7 +34,7 @@ world::Chunk sample_chunk() {
 } // namespace
 
 TEST_CASE("event layout: schema version and numeric enum values are locked") {
-    CHECK(kSimEventSchemaVersion == 7);
+    CHECK(kSimEventSchemaVersion == 8);
     CHECK(uint8_t(SimEvent::Kind::SpellTarget) == 2);   // v5
     CHECK(uint8_t(SimEvent::Kind::Footprint) == 3);     // v6
     CHECK(uint8_t(SimEvent::Kind::Rules) == 0);
@@ -165,12 +165,12 @@ TEST_CASE("event_stream_version: max over SimEvent::Kind and rules.kind construc
     // every ordering of a lower construct and a higher one gives the higher one (no early return, no last-wins)
     CHECK(v({foot, spell}) == 6);
     CHECK(v({spell, foot}) == 6);
-    CHECK(v({late, spell}) == kSimEventSchemaVersion);
-    CHECK(v({spell, late}) == kSimEventSchemaVersion);
-    CHECK(v({foot, late}) == kSimEventSchemaVersion);
-    CHECK(v({late, foot}) == kSimEventSchemaVersion);
-    CHECK(v({late, plain, foot, spell}) == kSimEventSchemaVersion);
-    CHECK(kSimEventSchemaVersion == 7);
+    CHECK(v({late, spell}) == 7);
+    CHECK(v({spell, late}) == 7);
+    CHECK(v({foot, late}) == 7);
+    CHECK(v({late, foot}) == 7);
+    CHECK(v({late, plain, foot, spell}) == 7);
+    CHECK(kSimEventSchemaVersion == 8);
     CHECK(v({late}) <= kSimEventSchemaVersion);   // invariant: a stream never claims a version above the contract
     // A non-Rules event's unused rules.kind field is never read as a rules kind.
     SimEvent tile = sim_ev(SimEvent::Kind::TileMoved);
@@ -178,4 +178,33 @@ TEST_CASE("event_stream_version: max over SimEvent::Kind and rules.kind construc
     CHECK(v({tile}) == 4);
     // the hash separates versions: same payload, different version byte
     CHECK(event_stream_hash(std::vector<SimEvent>{plain}) != event_stream_hash(std::vector<SimEvent>{late, plain}));
+}
+
+TEST_CASE("event_stream_version: v8 only for a Moved with c != 0 (R-G9 flags)") {
+    auto v = [](std::initializer_list<SimEvent> l) { std::vector<SimEvent> s(l); return event_stream_version(s); };
+    auto moved = [](int32_t c) {
+        SimEvent e{};
+        e.kind = SimEvent::Kind::Rules;
+        e.rules.kind = EventKind::Moved;
+        e.rules.a = 5;
+        e.rules.c = c;
+        return e;
+    };
+    SimEvent late{};
+    late.kind = SimEvent::Kind::Rules;
+    late.rules.kind = EventKind::ActionUsed;
+    SimEvent foot{};
+    foot.kind = SimEvent::Kind::Footprint;
+    CHECK(v({moved(0)}) == 4);          // voluntary move (and today's shove): unchanged
+    CHECK(v({moved(0), late}) == 7);
+    for (int32_t c : {1, 2, 4, 3}) CHECK(v({moved(c)}) == 8);   // forced, teleport, drag
+    CHECK(v({moved(1), foot, late}) == 8);
+    CHECK(v({late, moved(2)}) == 8);
+    CHECK(v({moved(1)}) == kSimEventSchemaVersion);
+    SimEvent other{};   // c != 0 on another kind is not a v8 construct
+    other.kind = SimEvent::Kind::Rules;
+    other.rules.kind = EventKind::DamageDealt;
+    other.rules.c = 1;
+    CHECK(v({other}) == 4);
+    CHECK(event_stream_hash(std::vector<SimEvent>{moved(0)}) != event_stream_hash(std::vector<SimEvent>{moved(1)}));
 }

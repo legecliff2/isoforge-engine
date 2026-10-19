@@ -127,6 +127,13 @@ struct ActionRequest {
     //   reckless: Attack, declare Reckless Attack (first attack of the turn, Combatant::reckless_attack);
     //   aggressive: Dash as a bonus action through Combatant::aggressive.
     bool haste_action = false, reckless = false, aggressive = false;
+    // appended (R-G9, CastSpell; log-relevant, SIM_EVENTS.md tag 0xB4): forced_feet = the chosen distance of an "up to N ft"
+    // forced move (multiple of 5, at most N; 0 = N). teleport_feet = distance to the teleport destination when sim knows
+    // positions (multiple of 5, at most TeleportSpec::max_feet; 0 = not supplied, no distance check).
+    uint16_t forced_feet = 0, teleport_feet = 0;
+    // appended (R-G9): the teleport destination, a sim tile that rules never interprets (passed to EncounterHooks::forced_move;
+    // sim validates it before submitting and folds it into log_hash under 0xB2, claimed by the R-G9 sim PR).
+    bool has_teleport_dest = false; int32_t teleport_x = 0, teleport_y = 0;
 };
 
 enum class EventKind : uint8_t {
@@ -152,7 +159,7 @@ inline constexpr std::size_t kEventKindCount = std::size_t(EventKind::Count_);
 // Flat tagged event; meaning of a/b/c per kind:
 //   InitiativeRolled a=total; TurnStarted a=round; AttackResolved a=natural b=total c=hit|crit<<1;
 //   DamageDealt a=dealt b=hp_after; ConditionAdded/Removed a=Condition; DeathSaveRolled a=natural
-//   b=successes c=failures; Moved a=feet b=movement left; Dashed a=movement left;
+//   b=successes c=failures; Moved a=feet b=movement left (0 when c != 0) c=flags (R-G9: bit0 forced, bit1 teleport, bit2 drag; target = source); Dashed a=movement left;
 //   EncounterEnded a=EndReason; Healed a=healed b=hp_after c=from_zero;
 //   MedicineCheck a=natural b=total c=success; Helped target=ally a=vs; Hid a=stealth total;
 //   Readied a=ready_kind b=trigger_id; ReadyTriggered a=trigger_id;
@@ -325,6 +332,20 @@ struct FeatureSpec {
     bool heal_pool = false;     // Lay on Hands: spend `amount` from `pool`, heal ActionRequest::target (0 = self) by that much
 };
 
+// R-G9 forced movement / teleport (docs/proposals/FORCED_MOVEMENT.md §2.4, §3). One query per creature moved by an effect.
+// mode: 1 push, 2 pull, 3 line (ForcedMoveSpec), 0 teleport. feet: requested distance (teleport: ActionRequest::teleport_feet).
+// step_seq: index of the query among the forced moves of this step (0, 1, ...). The destination fields are the request's.
+struct ForcedMoveQuery {
+    CombatantId mover = 0, source = 0; uint8_t mode = 0; uint16_t feet = 0; bool teleport = false; uint32_t step_seq = 0;
+    bool has_dest = false; int32_t dest_x = 0, dest_y = 0;
+};
+// The hook's answer: feet actually moved (Moved.a), whether it stopped short, and every creature the mover was grappling or
+// grappled by that is no longer within reach (rules ends those grapples). hazard / fell_ft are reserved for zones (R-G11).
+struct ForcedMoveResult {
+    uint16_t feet_moved = 0; bool stopped_short = false; bool hazard = false; uint16_t fell_ft = 0;
+    std::vector<CombatantId> out_of_reach_of{};
+};
+
 struct EncounterHooks {
     // Checked after every state change. Empty = default_end_condition.
     EndConditionFn end_condition;
@@ -385,6 +406,17 @@ struct EncounterHooks {
     // Row 13: the mechanics of a feature beyond its uses and modifiers (pool spend, cost kind, grant_action, heal_pool).
     // nullopt = the plain pre-row-13 UseFeature (as_bonus_action decides the cost).
     std::function<std::optional<FeatureSpec>(const EncounterState&, const Combatant& actor, uint32_t feature_id)> feature_spec;
+    // ---- R-G9 forced movement / teleport (appended) ----
+    // Synchronous: resolves the move on sim's grid and commits it at once (no rollback; a forced move never pauses), as a pure
+    // function of the state and sim's positions. Rules calls it only when no decision is pending in the run. Empty = no
+    // positions: the move is an intent only (Moved.a = requested feet; no grapple ends on distance).
+    std::function<ForcedMoveResult(const EncounterState&, const ForcedMoveQuery&)> forced_move;
+    // Order in which one effect's forced moves resolve (sim: farthest from the origin first, ties to the lower id). Returns a
+    // permutation of indices into `queries`; anything else = the given order. Empty = the given (target) order.
+    std::function<std::vector<std::size_t>(const EncounterState&, std::span<const ForcedMoveQuery> queries)> forced_move_order;
+    // Shove "push 5 ft away" sets Moved.c bit 0 (forced) only when this is true. Default false keeps today's c = 0 shove event
+    // so no locked digest moves; sim turns it on together with its shove support (EC #104).
+    bool shove_forced_flag = false;
 };
 
 // R-G8: a condition with a source (Grappled: the grappler and the escape DC; Charmed / Frightened: the caster).

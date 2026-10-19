@@ -12,7 +12,7 @@
 namespace eng::sim {
 
 // Version of the event stream contract (SimEvent + rules5e::Event as surfaced by sim).
-inline constexpr uint32_t kSimEventSchemaVersion = 7;
+inline constexpr uint32_t kSimEventSchemaVersion = 8;   // v8 (R-G9): Moved.c flags
 // Last rules5e::EventKind surfaced under this schema version (rules appends; sim bumps).
 inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::ActionUsed;
 // Last rules kind that existed at v6 and below. event_stream_version keys on this, not on kLastRulesEventKind:
@@ -39,7 +39,8 @@ struct SimEvent {
     Vec2i tile{};                    // TileMoved: destination; {0,0} otherwise
 };
 
-// Lowest schema version that can express the stream: 6 if it contains a v6 construct (Footprint), else
+// Lowest schema version that can express the stream: 8 if it contains a rules Moved with c != 0 (R-G9 flags: bit 0 forced,
+// bit 1 teleport, bit 2 drag), else 7 if it contains a v7 rules kind, else 6 if it contains a v6 construct (Footprint), else
 // 5 if it contains a v5 construct (SpellTarget), else 4. The digest records this, not
 // kSimEventSchemaVersion, so streams without a CastSpell or a multi-tile creature keep their v4 / v5
 // digests bit-identical (docs/SIM_EVENTS.md versioning policy).
