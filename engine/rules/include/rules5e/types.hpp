@@ -106,8 +106,9 @@ enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Re
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
 
 // Reaction windows (encounter.hpp). Append-only.
-enum class ReactionTrigger : uint8_t { LeavingReach, BeingHit, SpellCast, ReadiedTrigger };
-inline constexpr std::size_t kReactionTriggerCount = 4;
+// HitRider (row 9c): the attacker is the reactor; opened after a hit for each `choice: ask` trigger (Divine Smite).
+enum class ReactionTrigger : uint8_t { LeavingReach, BeingHit, SpellCast, ReadiedTrigger, HitRider };
+inline constexpr std::size_t kReactionTriggerCount = 5;
 enum class ReactionPolicy : uint8_t { Ask, Never, Auto };
 
 struct DeathSaves { uint8_t successes = 0, failures = 0; bool stable = false; };
@@ -169,9 +170,9 @@ struct InnateSpell {
 };
 
 // ---- Triggers (version-bump batch, row 9; docs/proposals/VERSION_BUMP_BATCH.md section 3) ----
-// An effect that happens on an event (Sneak Attack, Rampage, Undead Fortitude, ...). Sub-PR 9a evaluates the
-// Hit and Crit events with extra_damage riders; the other TriggerOn values and RiderKind values are reserved
-// (9b/9c) and a trigger carrying them never fires yet.
+// An effect that happens on an event (Sneak Attack, Rampage, Undead Fortitude, Divine Smite, ...). Rows 9a-9c
+// evaluate every TriggerOn; `choice: ask` is offered only for hit/crit triggers (the HitRider window). Other
+// ask triggers and any effect kind that makes no sense for the event never fire.
 enum class TriggerOn : uint8_t { Hit, Crit, DamageDealt, ReduceToZero, DropToZero, Death, TurnStart, TurnEnd };
 enum class TriggerLimit : uint8_t { None, OncePerTurn, OncePerRound, OncePerAttack };
 enum class PredicateKind : uint8_t {
@@ -196,13 +197,18 @@ struct RiderEffect {
     bool same_as_weapon = false;          // ExtraDamage: use the attack's damage type
     int16_t value = 0;                    // SetHp / amount rider kinds (9b)
     uint32_t spell_id = 0;                // SaveCondition / AreaSave: synthetic save spell (9b/9c)
-    uint32_t pool = 0;                    // Spend (9c)
+    uint32_t pool = 0;                    // Spend: pool id (slot == 0)
+    // 9c. Spend: slot 0 = pool `pool`, cost `value` (0 = 1); 1..9 = that slot level; 10 = any slot level (1..9).
+    uint8_t slot = 0;
+    // ExtraDamage scale.per_slot_level: `slot_dice` per slot level above `slot_base` (Divine Smite: 1d8, base 1).
+    DiceExpr slot_dice{0, 0, 0};
+    uint8_t slot_base = 0;
 };
 struct Trigger {
     uint32_t id = 0;                      // spell_id_of("<archetype>#<owner>#<index>"); the trigger_id of FeatureTriggered
     TriggerOn on = TriggerOn::Hit;
     TriggerLimit limit = TriggerLimit::None;
-    uint8_t choice = 0;                   // 0 auto (fires), 1 ask (9c: not offered yet, never fires in 9a), 2 never
+    uint8_t choice = 0;                   // 0 auto (fires), 1 ask (hit/crit triggers: HitRider window, 9c), 2 never
     std::vector<Predicate> when;          // all must hold
     std::vector<RiderEffect> effects;
 };

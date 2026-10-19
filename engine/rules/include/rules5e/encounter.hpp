@@ -159,7 +159,7 @@ struct ReactionWindow {
     uint8_t     depth = 0;            // 0 = opened by an action; 1+ = opened inside a reaction (chain)
 };
 
-enum class ReactionOptionKind : uint8_t { Attack, AcBonus, Counter, FireReady };
+enum class ReactionOptionKind : uint8_t { Attack, AcBonus, Counter, FireReady, Rider };   // Rider (9c): option_id = trigger id, slot_level = slot spent (0 none)
 struct ReactionOption {
     uint8_t  attack_index = 0;        // Attack: index into reactor.attacks (first, so {idx} = an attack option)
     ReactionOptionKind kind = ReactionOptionKind::Attack;
