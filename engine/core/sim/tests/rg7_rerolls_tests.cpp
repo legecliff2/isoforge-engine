@@ -173,6 +173,15 @@ TEST_CASE("R-G7 loader: weapon grip bits and the v0 wield model") {
     note_only["armor_class"]["note"] = "Chain Mail, Shield";
     REQUIRE_FALSE(lib.add(note_only, "character"));
     CHECK(lib.find("t.note")->two_handed_grip == 0);
+    // character@4 equipment entries: {"item": "<namespaced item id>"}
+    Json v4 = no_shield(fighter("t.v4shield", {}));
+    v4["equipment"] = Json::array({{{"item", "srd51.item.chain_mail"}}, {{"item", "srd51.item.shield"}}, {{"item", "srd51.item.longsword"}}});
+    REQUIRE_FALSE(lib.add(v4, "character"));
+    CHECK(lib.find("t.v4shield")->two_handed_grip == 0);
+    Json v4bare = no_shield(fighter("t.v4bare", {}));
+    v4bare["equipment"] = Json::array({{{"item", "srd51.item.chain_mail"}}, {{"item", "srd51.item.longsword"}}});
+    REQUIRE_FALSE(lib.add(v4bare, "character"));
+    CHECK(lib.find("t.v4bare")->two_handed_grip == 1u);
 }
 
 TEST_CASE("R-G7 loader: Cutting Words compiles to Reaction{AttackRolled, SubtractRoll, dice, pool}") {
@@ -267,7 +276,10 @@ TEST_CASE("R-G7 AI: two_handed_grip for a versatile weapon held in two hands; Gr
     auto lib = lib_with({plain_goblin("t.tgt")}, {no_shield(fighter("t.gwf", {{{"kind", "great_weapon_fighting"}}})), twf});
     REQUIRE_FALSE(lib.find("t.twf")->base.bonus_attacks.empty());
     CHECK(lib.find("t.twf")->two_handed_grip == 1u);   // the loader bit; the AI drops it for a two-weapon fighter
-    for (const char* who : {kFighter, "t.gwf", "t.twf"}) {
+    Json v4s = no_shield(fighter("t.v4s", {{{"kind", "great_weapon_fighting"}}}));
+    v4s["equipment"] = Json::array({{{"item", "srd51.item.chain_mail"}}, {{"item", "srd51.item.shield"}}, {{"item", "srd51.item.longsword"}}});
+    REQUIRE_FALSE(lib.add(v4s, "character"));
+    for (const char* who : {kFighter, "t.gwf", "t.twf", "t.v4s"}) {
         auto ch = arena({{"t.tgt", Vec2i{5, 5}}, {who, Vec2i{6, 5}}});
         ecs::Registry reg;
         auto c = Combat::create(reg, ch, lib, 7);
