@@ -1171,6 +1171,16 @@ uint64_t Combat::log_hash() const {
             h.byte(lo);
         }
         if (q.innate) h.byte(0xA4);                       // innate CastSpell: folded only when set, under a tag byte
+        // 0xB1 (R-G14 per-cast options; also Lesser Restoration's condition_choice): folded only when some option is set.
+        if (q.metamagic != 0 || !q.spared.empty() || q.heighten_target != 0 || q.damage_choice != 0 || q.condition_choice != 0) {
+            h.byte(0xB1);
+            h.byte(q.metamagic);
+            h.u32(uint32_t(q.spared.size()));
+            for (const auto sp : q.spared) h.u32(sp);
+            h.u32(q.heighten_target);
+            h.byte(q.damage_choice);
+            h.byte(q.condition_choice);
+        }
         h.byte(q.heal_dice.count);
         h.byte(q.heal_dice.sides);
         h.i16(q.heal_dice.bonus);

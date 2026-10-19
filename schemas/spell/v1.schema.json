@@ -1231,7 +1231,6 @@
       "additionalProperties": false,
       "required": [
         "shape",
-        "size_ft",
         "anchor"
       ],
       "description": "R-G11 persistent zone or aura (rules5e::ZoneSpec on SpellDef::zone; docs/CONTENT_CONVENTIONS.md section 4 is the loader contract). Kind 'zone' is the spell's primary effect only (effects[0]). Discriminated by 'shape'; each arm is a closed propertyNames allow-list (tests/validate/test_union_arms.py). The spell's duration is the zone's lifetime; concentration ends it.",
@@ -1240,23 +1239,24 @@
           "enum": [
             "sphere",
             "cylinder",
-            "cube"
+            "cube",
+            "line"
           ],
-          "description": "AreaShape (line / walls: rules PR 2, appended later)."
+          "description": "AreaShape. line (R-G11 rules PR 2, appended): a wall length_ft x height_ft, 1 tile thick (Wall of Fire); start tile = the sim's zone_x / zone_y, end tile zone_x2 / zone_y2."
         },
         "size_ft": {
           "type": "integer",
           "minimum": 5,
           "maximum": 65530,
           "multipleOf": 5,
-          "description": "Sphere / cylinder radius, cube side."
+          "description": "Sphere / cylinder radius, cube side. Required except for line; not allowed on line (CONTENT_CONVENTIONS 4.6)."
         },
         "height_ft": {
           "type": "integer",
           "minimum": 5,
           "maximum": 65530,
           "multipleOf": 5,
-          "description": "cylinder only."
+          "description": "cylinder and line (required for both, only for those)."
         },
         "anchor": {
           "enum": [
@@ -1322,6 +1322,58 @@
         "needs_conscious_owner": {
           "type": "boolean",
           "description": "The zone / aura only functions while its owner is conscious (D7; ZoneSpec::needs_conscious_owner). Default false."
+        },
+        "length_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 65530,
+          "multipleOf": 5,
+          "description": "line only (required): the wall's length (ZoneSpec::length_ft)."
+        },
+        "upcast_size_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 65530,
+          "multipleOf": 5,
+          "description": "+ feet of size_ft per slot level above the spell's level (Fog Cloud 20; ZoneSpec::upcast_size_ft). Not on line. Default 0."
+        },
+        "ring_size_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 65530,
+          "multipleOf": 5,
+          "description": "line only: the caster may make a ring this many feet across instead (Wall of Fire 20; ZoneSpec::ring_size_ft). Default 0."
+        },
+        "sided": {
+          "type": "boolean",
+          "description": "line only: the caster picks the damaging side at the cast (ZoneSpec::sided). Default false."
+        },
+        "side_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 65530,
+          "multipleOf": 5,
+          "description": "Depth of the damaging side; required iff sided is true (validator / loader: zone: side_ft is required for (and only for) sided zones). Default 0."
+        },
+        "aura_modifier": {
+          "$ref": "#/$defs/zone_aura_modifier"
+        },
+        "aura_bonus_ability": {
+          "$ref": "../common/v1.schema.json#/$defs/ability",
+          "description": "The aura_modifier bonus is max(1, the owner's modifier of this ability) (Aura of Protection: cha). Needs aura_modifier."
+        },
+        "aura_immunity": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/condition"
+          },
+          "description": "Conditions creatures in the aura can't be given (Aura of Courage: frightened; ZoneSpec::aura_immunity bit mask). Needs anchor creature."
+        },
+        "aura_allies_only": {
+          "type": "boolean",
+          "description": "aura_modifier / aura_immunity apply to the owner's team only (ZoneSpec::aura_allies_only). Needs anchor creature. Default false."
         }
       },
       "allOf": [
@@ -1349,9 +1401,17 @@
                 "move",
                 "chooses_excluded",
                 "triggers",
-                "needs_conscious_owner"
+                "needs_conscious_owner",
+                "upcast_size_ft",
+                "aura_modifier",
+                "aura_bonus_ability",
+                "aura_immunity",
+                "aura_allies_only"
               ]
-            }
+            },
+            "required": [
+              "size_ft"
+            ]
           }
         },
         {
@@ -1367,6 +1427,7 @@
           },
           "then": {
             "required": [
+              "size_ft",
               "height_ft"
             ],
             "propertyNames": {
@@ -1379,7 +1440,50 @@
                 "move",
                 "chooses_excluded",
                 "triggers",
-                "needs_conscious_owner"
+                "needs_conscious_owner",
+                "upcast_size_ft",
+                "aura_modifier",
+                "aura_bonus_ability",
+                "aura_immunity",
+                "aura_allies_only"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "shape"
+            ],
+            "properties": {
+              "shape": {
+                "const": "line"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "length_ft",
+              "height_ft"
+            ],
+            "propertyNames": {
+              "enum": [
+                "shape",
+                "length_ft",
+                "height_ft",
+                "anchor",
+                "flags",
+                "move",
+                "chooses_excluded",
+                "triggers",
+                "needs_conscious_owner",
+                "ring_size_ft",
+                "sided",
+                "side_ft",
+                "aura_modifier",
+                "aura_bonus_ability",
+                "aura_immunity",
+                "aura_allies_only"
               ]
             }
           }
@@ -1429,6 +1533,47 @@
         },
         "effect": {
           "$ref": "#/$defs/zone_effect"
+        },
+        "region": {
+          "enum": [
+            "zone",
+            "zone_or_side"
+          ],
+          "description": "Where a hook-answered row finds the creature (ZoneTriggerRow::region 0 / 1). zone_or_side: in the wall or on its damaging side; needs a sided zone and on zone_appear / zone_start_turn / zone_end_turn. Default zone."
+        },
+        "loses_action": {
+          "type": "boolean",
+          "description": "A failed save (or the no-save effect) takes the creature's action this turn (Stinking Cloud, D9). Default false."
+        },
+        "auto_success_damage": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/damage_type"
+          },
+          "description": "save rows only: a creature immune to one of these damage types succeeds automatically (bit mask)."
+        },
+        "auto_success_conditions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/condition"
+          },
+          "description": "save rows only: a creature immune to one of these conditions succeeds automatically (Stinking Cloud: poisoned)."
+        },
+        "auto_success_no_breath": {
+          "type": "boolean",
+          "description": "save rows only: a creature that doesn't need to breathe succeeds automatically (Combatant::no_breath). Default false."
+        },
+        "shapechanger_disadvantage": {
+          "type": "boolean",
+          "description": "save rows only: shapechangers save with disadvantage (Moonbeam). Default false."
+        },
+        "evil_damage_type": {
+          "$ref": "../common/v1.schema.json#/$defs/damage_type",
+          "description": "The damage is this type instead when the zone's owner is evil (Spirit Guardians: necrotic). Needs effect damage."
         }
       }
     },
@@ -1630,6 +1775,29 @@
           }
         }
       ]
+    },
+    "zone_aura_modifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stat"
+      ],
+      "description": "D7 aura save bonus (ZoneSpec::aura_modifier, CONTENT_CONVENTIONS 4.6): the common@2 modifier subset the loader reads. Only stat save is accepted (validator / loader: zone.aura_modifier stat must be save); no duration (the zone's lifetime), no bonus_table, consume, die or mode. Needs anchor creature.",
+      "properties": {
+        "stat": {
+          "$ref": "../common/v2.schema.json#/$defs/modifier/properties/stat"
+        },
+        "bonus": {
+          "type": "integer",
+          "minimum": -30,
+          "maximum": 30,
+          "description": "Flat save bonus -30..30, default 0 (ignored when aura_bonus_ability is set; CONTENT_CONVENTIONS 4.6)."
+        },
+        "ability": {
+          "$ref": "../common/v1.schema.json#/$defs/ability",
+          "description": "Scope: saves of this ability only. Absent: every save."
+        }
+      }
     }
   }
 }
