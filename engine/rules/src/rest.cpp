@@ -85,4 +85,33 @@ bool recover_spell_slots(Combatant& c, const std::array<uint8_t, 10>& add, int m
     return true;
 }
 
+FeatureUses slot_recovery_uses(CombatantId actor, const SlotRecoverySpec& s) {
+    FeatureUses f;
+    f.actor = actor;
+    f.feature_id = s.feature_id;
+    f.max = s.uses;
+    f.recharge = FeatureRecharge::LongRest;
+    return f;
+}
+
+SlotRecoveryResult apply_slot_recovery(Combatant& c, const SlotRecoverySpec& s, std::vector<FeatureUses>& features,
+                                       const std::array<uint8_t, 10>& add) {
+    auto row = std::find_if(features.begin(), features.end(),
+                            [&](const FeatureUses& f) { return f.actor == c.id && f.feature_id == s.feature_id; });
+    if (row == features.end() || s.class_level == 0) return SlotRecoveryResult::NoFeature;
+    if (row->max != 0 && row->used >= row->max) return SlotRecoveryResult::NoUsesLeft;
+    int total = 0;
+    for (std::size_t i = 1; i <= 9; ++i) {
+        if (add[i] == 0) continue;
+        if (int(i) > int(s.max_slot_level)) return SlotRecoveryResult::LevelTooHigh;
+        if (int(c.spell_slots[i]) + int(add[i]) > int(c.spell_slots_max[i])) return SlotRecoveryResult::AboveMax;
+        total += int(i) * int(add[i]);
+    }
+    if (total == 0) return SlotRecoveryResult::Empty;
+    if (total > slot_recovery_budget(s)) return SlotRecoveryResult::OverBudget;
+    if (!recover_spell_slots(c, add, slot_recovery_budget(s), int(s.max_slot_level))) return SlotRecoveryResult::AboveMax;
+    row->used = uint8_t(row->used + 1);
+    return SlotRecoveryResult::Ok;
+}
+
 }  // namespace rules5e
