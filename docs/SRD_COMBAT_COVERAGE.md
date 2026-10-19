@@ -174,7 +174,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 |---|---|---|---|
 | Hit die d6, proficiencies, saves (Int/Wis) | 1 | DATA | Baked. |
 | Spellcasting, spellbook (known list), prepared spells, cantrips | 1 | DATA | `spells_known`; spellbook copying/prep is OOS (downtime). |
-| Arcane Recovery (once per day, short rest, recover slots <= half wizard level) | 1 | NEW (wiring) | rules5e `recover_spell_slots` + `recovery_budget` (R-G16, 7.2h); feature kind `SlotRecoverySpec` + `apply_slot_recovery` (validated choice, spends the once-per-day `FeatureUses` row, long-rest reset) (7.2n). Pending: sim feature loader `slot_recovery` kind and the short-rest call (EC), schema (T&C); slot choice is the caller's. |
+| Arcane Recovery (once per day, short rest, recover slots <= half wizard level) | 1 | NEW (wiring) | rules5e `recover_spell_slots` + `recovery_budget` (R-G16, 7.2h); feature kind `SlotRecoverySpec` + `apply_slot_recovery` (validated choice, spends the once-per-day `FeatureUses` row, long-rest reset) (7.2n). Sim: `slot_recovery {class wizard, max_slot_level 1..9 = 5, uses 1..255 = 1}` feature kind (class level from `classes[]`) -> `Archetype::slot_recovery`; `sim::register_slot_recovery` adds the row to a kept roster, `sim::short_rest_with_recovery` / `sim::apply_slot_recovery` return the rules result (refusals change nothing); long rest resets via `RestTables`. Outside `Combat`, no hash tags. Pending: schema (T&C); slot choice is the caller's (AI / UI). |
 | Arcane Tradition: Evocation; Evocation Savant | 2 | OOS | Downtime spell copying cost. |
 | Sculpt Spells (allies auto-succeed and take no damage from your evocation area) | 2 | NEW (wiring) | rules5e `Combatant::sculpt_spells` + `SpellDef::evocation` + `ActionRequest::spared` (R-G14, VERSION_BUMP_BATCH 7.2i). Sim wiring done: open feature kind `sculpt_spells {}`; spell@1 `school: evocation` sets `evocation` (loader). Validator arm pending (T&C). |
 | Ability Score Improvement | 4 | DATA | Authored. |
@@ -202,7 +202,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Font of Inspiration (short rest recharge) | 5 | NEW | Recharge change on the same pool (R-G5). |
 | **Druid** spellcasting (full caster) | 1 | DATA | |
 | Wild Shape (CR 1/4 at L2, no fly/swim; CR 1/2 at L4; CR 1 at L8) | 2 | NEW | Replace stat block temporarily; HP overflow carries over (R-G12). |
-| Circle of the Land: Natural Recovery | 2 | NEW (wiring) | Same feature kind as Arcane Recovery: `SlotRecoverySpec` (druid level) + `apply_slot_recovery` (7.2n, on R-G16 `recover_spell_slots`). Pending: sim loader + short-rest call (EC), schema (T&C). |
+| Circle of the Land: Natural Recovery | 2 | NEW (wiring) | Same feature kind as Arcane Recovery: `SlotRecoverySpec` (druid level) + `apply_slot_recovery` (7.2n, on R-G16 `recover_spell_slots`). Sim: same `slot_recovery` kind with `class: druid` (druid level from `classes[]`) and the same `sim/rest.hpp` short-rest call. Pending: schema (T&C); Circle of the Land subclass gating is content's. |
 | Druidic, Land bonus cantrip | 1-2 | OOS | Language / one extra cantrip (authored). |
 | **Monk** Unarmored Defense (10 + Dex + Wis) | 1 | DATA | Baked AC. |
 | Martial Arts (d4 die, Dex for unarmed, unarmed bonus action attack) | 1 | NEW (wiring) | Rules done (R-G6): unarmed bonus attack after the Attack action with an unarmed strike or monk weapon (`requires_attacks`). The martial-arts die is baked. Loader pending. |
@@ -458,7 +458,7 @@ Stat-block data: `monster@3` carries abilities, AC, HP average, speed (walk, fly
 | Frightful gaze/visage (save or frightened) | ghost (Horrifying Visage), mummy (Dreadful Glare) | NEW | Save action + condition with source (T&C-G4, R-G8). |
 | Leadership (limited-use buff action: allies add 1d4 to attacks and saves for 1 minute) | knight | NEW (wiring) | Rules done (#89, #91): `AlliesWithin30` modifiers (1d4 on AttackRoll and Save, timed) through a `feature_modifiers` hook, with a per-day or pool use. Compile pending (T&C-G4, R-G3). |
 | Engulf / Swallow | gelatinous cube, giant toad | NEW | Contained state (R-G8). |
-| Petrifying Gaze / Touch (delayed condition progression) | basilisk, cockatrice | NEW (wiring) | `SpellDef::escalates` / `escalate_to` / `escalate_margin`: restrained, petrified on the failed repeat save (or at once when failing by the margin) (small leftovers, VERSION_BUMP_BATCH 7.2j). The gaze's start-of-turn-within-30-ft trigger and averting the eyes are sim's (positions / sight). |
+| Petrifying Gaze / Touch (delayed condition progression) | basilisk, cockatrice | NEW (wiring) | `SpellDef::escalates` / `escalate_to` / `escalate_margin`: restrained, petrified on the failed repeat save (or at once when failing by the margin) (small leftovers, VERSION_BUMP_BATCH 7.2j). Gaze trigger (7.2p): `Combatant::gazes`, turn-start `GazeResponse` (`gaze_seen` sim fact, `avert_gaze` caller input, log_hash 0xBB; averted state Combat::hash 0xAE), averted eyes = gazer unseen (disadvantage against it, its attacks with advantage). Medusa (margin 5) and basilisk covered. Pending: sim fill / fold / AI, loader `gaze` kind (EC), schema (T&C). Cockatrice's touch is an on-hit rider, not a gaze. |
 | Teleport bonus action | blink dog | NEW (wiring) | Innate `Teleport` effect (`max_feet` 40) (R-G9, VERSION_BUMP_BATCH 7.2k); content wiring pending. |
 | Shapechanger | werewolf, doppelganger | NEW | Stat block swap (R-G12). |
 | Rust Metal / Corrode / Stench | rust monster, ghast | NEW | T&C-G5 and aura (R-G11). Disease itself OOS. |
@@ -588,6 +588,10 @@ Update after #91 / #93 (version-bump batch):
   used up). Today every combat starts from content (full HP, full slots, the content `equipment[]`), and consumption is
   combat-local only (CONTENT_CONVENTIONS §7: nothing is written back). The input would be a replay input like the seed and the
   surprised set; absent, behaviour and every hash stay as today.
+- **TODO (R-G12 carry-over between fights, campaign layer; `docs/proposals/SUMMONS_TRANSFORMS.md` §3.5, D15):** today Combat ends every summon and transform at
+  the end of the encounter (Q15). Carrying long-lived summons (Find Familiar, Find Steed, Animate Dead control) and lasting
+  transforms into the next fight belongs in this carry-over input: summon records with their ids from a campaign-level counter,
+  hashed under 0xAF, and replayed like the surprised set.
 
 ### 11.2 Mapping: first-draft id -> unified id
 
@@ -648,7 +652,7 @@ Gaps that need new rules mechanics (not just Engine Core / T&C wiring, which is 
 | 12 | R-G12 | Summons, familiars, bonded weapons, transforms (Wild Shape, Shapechanger) | Druid, Warlock Chain, werewolf | L |
 | deferred | T&C-G11 | Legendary actions and lair actions (Legendary Resistance is already a pool, #91) | CR 10+ monsters, unicorn | L |
 
-Also open but small: Hide opposed by passive Perception (R-G1 / T&C-G16, sim; rules now has `passive_perception`). **Done in rules** (7.2j): Haste / Slow as full spells and the monster one-offs (Life Drain max-HP reduction, Reckless, Aggressive's bonus-action move, Petrifying Gaze progression); still open from that list: Slow's spell-casting delay, Haste's Use an Object, ability drain, and the gaze trigger (sim).
+Also open but small: Hide opposed by passive Perception (R-G1 / T&C-G16, sim; rules now has `passive_perception`). **Done in rules** (7.2j): Haste / Slow as full spells and the monster one-offs (Life Drain max-HP reduction, Reckless, Aggressive's bonus-action move, Petrifying Gaze progression); still open from that list: Slow's spell-casting delay, Haste's Use an Object, ability drain, and the gaze trigger (rules done in 7.2p; sim wiring pending).
 
 ## 12. Source notes and verification
 

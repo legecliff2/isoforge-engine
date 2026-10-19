@@ -1388,6 +1388,8 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     bool adv = false;
     if (a.helped_vs == t.id) { adv = true; a.helped_vs = 0; a.helped_by = 0; }
     if (t.reckless_active) adv = true;   // Reckless Attack: attacks against it have advantage
+    const bool gaze_dis = a.gaze_averted && !t.gazes.empty();   // Petrifying Gaze: eyes averted, the gazer is unseen
+    if (t.gaze_averted && !a.gazes.empty()) adv = true;         // ... and the gazer is an unseen attacker to it
     if (a.reckless_active && !atk.ranged && spell_id == 0 &&
         !(atk.finesse && modifier(a.abilities, Ability::Dex) > modifier(a.abilities, Ability::Str))) adv = true;   // Str melee
     const int drain_before = int(t.hp) + int(t.temp_hp);   // Life Drain: damage taken by this hit
@@ -1398,7 +1400,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     actx.ranged = atk.ranged;
     actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
     const bool protected_by_ally = ally_attacked_window(s, ctx, a, t, atk.ranged, spell_id, ev);   // Protection-style reactions
-    actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft) || protected_by_ally;   // combined with conditions in one place
+    actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft) || protected_by_ally || gaze_dis;   // combined with conditions in one place
     if (!s.modifiers.empty()) {   // timed modifiers (row 12): sources merged into the one advantage/disadvantage resolution
         for (auto& m : s.modifiers) {   // `when` scope of roll-time modifiers (follow-up): gate the ones that do not hold
             m.gated = false;
@@ -1791,6 +1793,14 @@ void zone_changes(EncounterState& s, Ctx* ctx, const std::vector<ZoneChange>& ch
     }
 }
 
+// Petrifying Gaze: a living gazer other than c is on the board (c must answer GazeResponse at its turn start).
+bool gaze_applies(const EncounterState& s, const Combatant& c) {
+    if (c.dead || c.hp <= 0) return false;
+    for (const auto& g : s.combatants)
+        if (g.id != c.id && !g.dead && !g.gazes.empty()) return true;
+    return false;
+}
+
 void start_turn(EncounterState& s, std::vector<Event>& ev) {
     Combatant& c = *find_mut(s, s.order[s.turn_index].id);
     c.reaction_used = false;
@@ -1798,6 +1808,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
     c.disengaged = false;
     c.reaction_ac_bonus = 0;       // Shield-style bonus lasts until the start of its next turn
     c.reaction_blocks_spell = 0;
+    c.gaze_averted = false;        // Petrifying Gaze: averted eyes last until the start of its next turn
     for (auto& o : s.combatants)   // Help lasts until the start of the helper's next turn
     {
         if (o.helped_by == c.id) { o.helped_by = 0; o.helped_vs = 0; }
@@ -1891,6 +1902,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
     } else if (act && !s.modifiers.empty() && has_marker(s, c.id, ModStat::Haste)) {
         s.budget.haste_action = true;
     }
+    s.budget.gaze_pending = gaze_applies(s, c);   // Petrifying Gaze: answered by GazeResponse before anything else
     check_end(s, ev);
 }
 
@@ -3033,6 +3045,36 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
     return out;
 }
 
+// Petrifying Gaze (VERSION_BUMP_BATCH 7.2p): the turn-start answer. Averting: no save, gazers unseen until the next turn
+// starts. Otherwise each gazer (initiative order) that is alive, not incapacitated and in req.gaze_seen applies its gaze
+// SpellDef (a Save with escalation) to the actor, unless the actor already carries that gaze's effect or its end condition.
+StepResult gaze_response(EncounterState& s, Combatant& a, const ActionRequest& req) {
+    if (!s.budget.gaze_pending) return fail("no gaze pending");
+    if (req.avert_gaze && a.surprised) return fail("surprised: cannot avert the eyes");
+    StepResult out{true, {}, {}};
+    s.budget.gaze_pending = false;
+    if (req.avert_gaze) { a.gaze_averted = true; check_end(s, out.events); return out; }
+    std::vector<ReactionRecord> recs;   // no reaction windows at turn start (as zone / turn_start triggers)
+    Ctx local{recs};
+    local.depth = 1;
+    for (const auto& slot : s.order) {
+        Combatant* g = find_mut(s, slot.id);
+        if (!g || g->id == a.id || g->dead || g->gazes.empty() || is_incapacitated(*g)) continue;
+        if (std::find(req.gaze_seen.begin(), req.gaze_seen.end(), g->id) == req.gaze_seen.end()) continue;
+        for (const auto& gz : g->gazes) {
+            const SpellDef* d = spell_def(s, gz.spell_id);
+            if (!d || a.dead || a.hp <= 0) continue;
+            if (d->escalates && a.has(d->escalate_to)) continue;   // already petrified
+            const bool carrying = std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& e) {
+                return e.spell_id == d->id && e.caster == g->id && e.target == a.id; });
+            if (carrying) continue;   // already turning to stone: the repeat save decides
+            resolve_effect(s, local, *g, *d, 0, std::vector<Combatant*>{&a}, false, out.events);
+        }
+    }
+    check_end(s, out.events);
+    return out;
+}
+
 // Small leftovers around the per-request core: Reckless Attack's declaration, Haste's extra action and Slow's limits.
 StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req);
 StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
@@ -3129,6 +3171,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
     if (req.actor != current_actor(s)) return fail("not this combatant's turn");
     Combatant& a = *find_mut(s, req.actor);
     if ((a.dead || a.hp <= 0) && req.kind != ActionKind::EndTurn) return fail("actor is down");
+    if (req.kind == ActionKind::GazeResponse) return gaze_response(s, a, req);   // Petrifying Gaze (7.2p): also while surprised
+    if (s.budget.gaze_pending) return fail("gaze pending: answer with GazeResponse first");
     if (a.surprised && req.kind != ActionKind::EndTurn) return fail("surprised: can only end the turn");
     TurnBudget b = s.budget;               // mutate a copy; commit only on success
     StepResult out{true, {}, {}};
@@ -3450,7 +3494,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         return out;
     }
     case ActionKind::OpportunityAttack: case ActionKind::ReactionDecision:
-    case ActionKind::Heal: case ActionKind::AbilityCheck: break;  // handled above
+    case ActionKind::Heal: case ActionKind::AbilityCheck: case ActionKind::GazeResponse: break;  // handled above
     }
     return fail("unknown action");
 }
@@ -3483,6 +3527,11 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
         r.as_bonus_action = bonus;
         out.push_back(r);
     };
+    if (b.gaze_pending) {   // Petrifying Gaze: only the turn-start answer (sim fills gaze_seen)
+        add(ActionKind::GazeResponse);
+        if (!a.surprised) { ActionRequest r{a.id, ActionKind::GazeResponse}; r.avert_gaze = true; out.push_back(r); }
+        return out;
+    }
     if (a.surprised) { add(ActionKind::EndTurn); return out; }   // R-G16
     const bool can_act = b.action || b.extra_actions > 0;   // row 13: an extra action counts
     if (can_act || b.attacks_remaining > 0) {
@@ -4065,6 +4114,18 @@ uint64_t surprised_digest(const EncounterState& s, uint64_t h) {
     auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
     for (const auto& c : s.combatants)
         if (c.surprised) for (int i = 0; i < 4; ++i) byte(uint8_t(uint32_t(c.id) >> (8 * i)));
+    return h;
+}
+
+bool has_gaze_state(const EncounterState& s) {
+    return std::any_of(s.combatants.begin(), s.combatants.end(), [](const Combatant& c) { return c.gaze_averted; });
+}
+
+uint64_t gaze_digest(const EncounterState& s, uint64_t h) {
+    for (const auto& c : s.combatants) {
+        if (!c.gaze_averted) continue;
+        for (int i = 0; i < 4; ++i) { h ^= uint8_t(uint32_t(c.id) >> (8 * i)); h *= 0x100000001B3ull; }
+    }
     return h;
 }
 
