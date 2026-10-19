@@ -93,8 +93,9 @@ enum class ZoneAnchor : uint8_t { Point, Creature };
 // teleport; an aura / zone move onto it only with counts_aura_move_as_enter). StartTurn / EndTurn: the creature's turn starts /
 // ends while it is in the zone. MoveWithin: every 5 ft the creature travels into or inside it (Spike Growth).
 enum class ZoneTrigger : uint8_t { Appear, Enter, StartTurn, EndTurn, MoveWithin };
-// Zone flags. Terrain and sense flags are data for sim (difficult-terrain overlay, halved-speed cost, Q5); obscurement and
-// Silence are stored only until R-G13 / rules PR 2.
+// Zone flags. Terrain and sense flags are data for sim (difficult-terrain overlay, halved-speed cost, Q5); obscurement,
+// magical darkness and opaque are stored only until R-G13 (Q6). kZoneSilence is rules' (PR 2): a creature completely inside
+// can't cast a spell with a verbal component, is immune to thunder damage, and is deafened while it stays in the zone.
 inline constexpr uint8_t kZoneDifficult = 1, kZoneLightObscured = 2, kZoneHeavyObscured = 4, kZoneMagicalDarkness = 8,
                          kZoneSilence = 16, kZoneHalveSpeed = 32, kZoneOpaque = 64;
 // One trigger row. `effect` reuses SpellEffect for what happens: kind Save = a saving throw (save_ability, on_save) against the
@@ -111,9 +112,28 @@ struct ZoneTriggerRow {
     bool counts_aura_move_as_enter = false;  // D1: an aura / zone moving onto the creature counts as Enter (default no)
     bool while_in_zone = false;              // the condition lasts while in the zone (Web)
     SpellEffect effect{};
+    // ---- appended (R-G11 rules PR 2) ----
+    // region: where a hook-answered row (Appear / StartTurn / EndTurn) finds the creature. 0 = in the zone; 1 = in the zone
+    // or within its damaging side (Wall of Fire's "ends its turn within 10 feet of that side or inside the wall";
+    // hooks.zone_side_contains). Rows from sim's membership facts (Enter, MoveWithin) always mean the zone itself.
+    uint8_t region = 0;
+    // A failed save (or the row's effect with no save) spends the creature's action for its current turn, only when it is
+    // that creature's turn: TurnBudget::action_lost; movement and the bonus action remain (Stinking Cloud, D9).
+    bool loses_action = false;
+    // Automatic success, no roll (FeatureTriggered c = 2): the creature is immune to a damage type in auto_success_damage
+    // (bitmask over DamageType) or a condition in auto_success_conditions (bitmask over Condition), or doesn't breathe
+    // (Combatant::no_breath) when auto_success_no_breath (Stinking Cloud: poison, poisoned, no breath).
+    uint32_t auto_success_damage = 0, auto_success_conditions = 0;
+    bool auto_success_no_breath = false;
+    // Moonbeam: a shapechanger (Combatant::shapechanger) makes the save with disadvantage. Reverting its form on a failure
+    // is not modelled (rules has no shapechange state).
+    bool shapechanger_disadvantage = false;
+    // Spirit Guardians: the damage is evil_damage_type instead when the zone's owner is evil (Combatant::evil).
+    bool has_evil_damage_type = false;
+    DamageType evil_damage_type = DamageType::Necrotic;
 };
 struct ZoneSpec {
-    AreaShape shape = AreaShape::None;       // Sphere, Cylinder, Cube, Line (walls: rules PR 2)
+    AreaShape shape = AreaShape::None;       // Sphere, Cylinder, Cube, Line (walls)
     uint16_t size_ft = 0, height_ft = 0, length_ft = 0;
     ZoneAnchor anchor = ZoneAnchor::Point;
     uint8_t flags = 0;                       // kZone*
@@ -121,7 +141,28 @@ struct ZoneSpec {
     uint16_t move_ft = 0;                    // Moonbeam 60
     bool chooses_excluded = false;           // Spirit Guardians: ActionRequest::zone_excluded are unaffected
     std::vector<ZoneTriggerRow> triggers{};
-    bool needs_conscious_owner = false;      // feature auras (D7, later); no effect in PR 1
+    bool needs_conscious_owner = false;      // the zone does nothing while its owner is dead, at 0 HP or unconscious (feature auras, D7)
+    // ---- appended (R-G11 rules PR 2) ----
+    uint16_t upcast_size_ft = 0;   // + feet of size_ft per slot level above the spell's level (Fog Cloud 20); ActiveZone::size_ft
+    // Walls (Wall of Fire): shape Line, length_ft x height_ft, 1 tile thick; the start tile is ActionRequest::zone_x / zone_y,
+    // the end tile zone_x2 / zone_y2 (has_zone_end). ring_size_ft > 0: the caster may make a ring this many feet across
+    // instead (ActionRequest::zone_ring). sided: the caster picks the damaging side at the cast (ActionRequest::zone_side,
+    // +1 / -1: the sign of the cross product for a line, +1 inside / -1 outside for a ring, ZONES_AURAS.md §3 Q4), side_ft deep.
+    uint16_t ring_size_ft = 0;
+    bool sided = false;
+    uint16_t side_ft = 0;
+    // D7 passive auras (fields only; the Paladin auras' content stays deferred). For creatures in the zone, and for its owner
+    // (always inside its own creature aura), only the owner's team when aura_allies_only, and not while needs_conscious_owner
+    // suppresses it:
+    //   aura_modifier: stat Save only (others are ignored for now), id != 0 = present: a flat bonus to their saving throws
+    //   (scope: has_ability / ability), `bonus`, or max(1, the owner's aura_bonus_ability modifier) when
+    //   has_aura_bonus_ability (Aura of Protection: Cha). The same spell's auras don't stack (the highest counts).
+    //   aura_immunity: bitmask over Condition they can't be given (Aura of Courage: frightened).
+    ModifierSpec aura_modifier{};
+    bool has_aura_bonus_ability = false;
+    Ability aura_bonus_ability = Ability::Cha;
+    uint32_t aura_immunity = 0;
+    bool aura_allies_only = false;
 };
 
 struct SpellDef {
