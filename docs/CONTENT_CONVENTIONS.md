@@ -1,4 +1,4 @@
-# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G11 zones, R-G8 grapple rider, R-G15 spell kinds, priced materials)
+# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G11 zones, R-G8 grapple rider, R-G15 spell kinds, priced materials, R-G16 encounter surprise)
 
 Owner: Tools & Content. Source of truth is the C++ loader; this file records what it reads and what the validator checks.
 All numbers are integers.
@@ -364,3 +364,41 @@ A `save_condition` rider (an attack's `on_hit[]` or an `on_event` `effects[]` en
 `duration` nor `repeat_save` fails to load in the sim ("save_condition uses an unsupported duration"); the validator reports the
 same error. `checks_v4.UNTIMED_ON_HIT_CONDITIONS` lists the exceptions: empty today; `prone` joins it when Engine Core's loader
 accepts untimed conditions that end by their own rules (the SRD wolf / dire wolf bite rider stays descriptive until then).
+
+## 8. R-G16 encounter surprise: chunk@1 top-level `surprise` (reserved; contract for the loader)
+
+**Status: reserved.** The key is in the schema and the validator checks its references, but **no loader reads it yet**: the
+validator warns `surprise is reserved: no loader reads it yet ... so it has no effect until that loader lands` on every chunk that
+carries it (the same "declared, validated, not applied" pattern as check 12's declaration-only pools and `forward_compat`).
+Engine Core's #123 added the runtime entry point `sim::Combat::apply_surprise(ids)`; this section is the contract for the code that
+will call it from content.
+
+```json
+"surprise": { "sides": ["party"] }
+"surprise": { "spawns": [0, 3] }
+```
+
+| part | rule | schema / validator |
+|---|---|---|
+| shape | closed object, **exactly one** of `sides` / `spawns` | schema `oneOf` required + `additionalProperties: false` |
+| `sides` | non-empty, unique team names `^[a-z][a-z0-9_]*$`. A spawn's team is `sim::spawn_team_name`: `overrides.team`, else `party` for a character archetype, `monsters` for a monster archetype | schema; validator error when no combatant spawn **of this chunk** is on the team (`surprise.sides[k]: no combatant spawn in this chunk is on team ...`) |
+| `spawns` | non-empty, unique indices into this chunk's `spawns[]` (`EntitySpawn.stable_id` is derived from the index and is forbidden in files) | schema integer 0..2^32-1 + the float rejection; validator errors for an index past the end and for a spawn whose archetype is not a monster / character (no combatant: `apply_surprise` would refuse its id) |
+| hashing | not part of `content_hash`: `chunk_codec.cpp` ignores unknown top-level keys, and the Python mirror hashes the decoded chunk | `test_surprise_is_not_hashed` |
+
+**Loader contract** (Engine Core, when it lands):
+
+1. Resolve per chunk: `sides` -> every combatant spawn of that chunk whose `spawn_team_name` is listed; `spawns` -> `spawns[i].stable_id`.
+   A chunk's `surprise` only ever names that chunk's own spawns (a multi-chunk combat takes the union over its chunks). Spawns whose
+   archetype is not loaded are skipped like in `Combat::create` (non-combatants).
+2. Call `Combat::apply_surprise(ids)` once, after `Combat::create` and before the first command (the call is refused after a command,
+   with a pending decision, or for an unknown or dead id). Replays pass the same set: `surprised_at_start()` -> `replay(..., surprised)`.
+3. Semantics are the rules' (#108): a surprised creature only ends its turn in round 1 and cannot react until that turn ends; the
+   0xA8 hash fold applies only while one is surprised. Listing every side is legal (everyone loses round 1).
+4. Rolled surprise (Dexterity (Stealth) vs passive Perception, `Combat::surprised_by_stealth`) is **not** part of this key; a later
+   additive key (for example a `stealth` list of hiders) would be a third, exclusive arm.
+
+Versioning: an additive optional top-level key of chunk@1 with a new closed `$defs/surprise`. No tag change, no migration: the old
+schema rejected the key (chunk@1 is closed), and no shipped or `tests/compat` chunk carries it (pinned by
+`test_no_shipped_or_compat_chunk_carries_surprise`), so nothing existing changes meaning when the loader lands. A chunk that carries it
+today is authored with that intent (the warning says so). Fixtures: `tests/validate/fixtures/surprise/`; cases:
+`tools/validate/test_validate_packs.py` `SURPRISE_CASES`.
