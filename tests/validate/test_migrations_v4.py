@@ -348,9 +348,9 @@ class V4SchemaShapes(unittest.TestCase):
             declared = set(sb["properties"]) | set(by_tag[tag]["properties"])
             self.assertEqual(set(checks_v4.TAG_TABLE[tag].top_level_keys), declared, tag)
         self.assertEqual(set(checks_v4.TAG_TABLE["monster@4"].top_level_keys) - set(checks_v4.TAG_TABLE["monster@3"].top_level_keys),
-                         {"resources", "forward_compat", "inert_mechanics"})
+                         {"resources", "forward_compat", "inert_mechanics", "no_breath", "shapechanger", "evil"})   # + R-G11 reserved creature facts (4.6)
         self.assertEqual(set(checks_v4.TAG_TABLE["character@4"].top_level_keys) - set(checks_v4.TAG_TABLE["character@3"].top_level_keys),
-                         {"resources", "forward_compat", "inert_mechanics"})
+                         {"resources", "forward_compat", "inert_mechanics", "no_breath", "shapechanger", "evil"})
         self.assertEqual(sorted(t for t, r in checks_v4.TAG_TABLE.items() if r.needs_api_level > 1),
                          ["character@4", "item@1", "monster@4"])
 

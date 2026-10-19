@@ -13,6 +13,7 @@
 #include "rules5e/damage.hpp"
 #include "rules5e/dice.hpp"
 #include "rules5e/healing.hpp"
+#include "rules5e/font_of_magic.hpp"
 
 namespace rules5e {
 
@@ -3314,6 +3315,25 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         emit(out.events, EventKind::StoodUp, a.id, 0, b.movement_ft);
         return out;
     }
+    case ActionKind::FlexibleCasting: {   // Font of Magic (VERSION_BUMP_BATCH 7.2o): a bonus action, no SpellCast window
+        if (is_incapacitated(a)) return fail("incapacitated");
+        if (!b.bonus_action) return fail("no bonus action available");
+        const FlexibleOutcome fo = flexible_casting(a, s.pools, req.flexible, req.flexible_level);
+        switch (fo.result) {
+        case FlexibleResult::Ok: break;
+        case FlexibleResult::NoPool: return fail("no sorcery points");
+        case FlexibleResult::BadDirection: return fail("flexible must be 1 (slot to points) or 2 (points to slot)");
+        case FlexibleResult::BadLevel: return fail("bad flexible_level");
+        case FlexibleResult::NoSlot: return fail("no spell slot of that level");
+        case FlexibleResult::OverMax: return fail("sorcery points would exceed the maximum");
+        case FlexibleResult::NotEnoughPoints: return fail("not enough sorcery points");
+        }
+        b.bonus_action = false;
+        s.budget = b;
+        // ResourceSpent b = points spent; negative = gained (slot to points). The level follows from b (costs are distinct).
+        emit(out.events, EventKind::ResourceSpent, a.id, 0, int32_t(a.sorcery_pool), -int32_t(fo.points_delta), fo.points_after);
+        return out;
+    }
     case ActionKind::Dash:
         if (req.aggressive) {   // Aggressive: a bonus-action Dash (sim keeps it toward a hostile)
             if (!a.aggressive) return fail("no Aggressive");
@@ -3548,6 +3568,15 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (b.bonus_action)
         for (ActionKind k : {ActionKind::Dash, ActionKind::Disengage, ActionKind::Dodge, ActionKind::Hide})
             if (a.bonus_action_grants & bit(k)) add(k, true);
+    if (b.bonus_action && a.sorcery_pool != 0 && !is_incapacitated(a)) {   // Font of Magic: every valid conversion
+        for (uint8_t dir = 1; dir <= 2; ++dir)
+            for (uint8_t lvl = 1; lvl <= 9; ++lvl)
+                if (check_flexible_casting(a, s.pools, dir, lvl).result == FlexibleResult::Ok) {
+                    ActionRequest r{a.id, ActionKind::FlexibleCasting};
+                    r.as_bonus_action = true; r.flexible = dir; r.flexible_level = lvl;
+                    out.push_back(r);
+                }
+    }
     if (b.bonus_action && a.aggressive) {   // Aggressive: bonus-action Dash (sim moves it toward a hostile)
         ActionRequest r{a.id, ActionKind::Dash};
         r.as_bonus_action = true; r.aggressive = true;

@@ -438,6 +438,26 @@ void Combat::install_hooks() {
         };
     }
     // Row 13: what UseFeature spends / grants (usage.pool + cost, grant_action, heal_pool).
+    // R-G9 (FORCED_MOVEMENT.md §3): forced moves and teleports resolve on sim's grid and commit at once. The shove push keeps
+    // EC #104's placement in complete() (the hook only reports its 5 ft), and rules flags it (shove_forced_flag).
+    state_.hooks.forced_move = [this](const rules5e::EncounterState&, const rules5e::ForcedMoveQuery& q) { return resolve_forced(q); };
+    state_.hooks.forced_move_order = [this](const rules5e::EncounterState&, std::span<const rules5e::ForcedMoveQuery> qs) {
+        std::vector<std::size_t> idx(qs.size());
+        for (std::size_t i = 0; i < idx.size(); ++i) idx[i] = i;
+        std::vector<int> dist(qs.size());
+        for (std::size_t i = 0; i < qs.size(); ++i) dist[i] = distance_tiles(qs[i].source, qs[i].mover);
+        std::stable_sort(idx.begin(), idx.end(), [&](std::size_t x, std::size_t y) {
+            if (dist[x] != dist[y]) return dist[x] > dist[y];   // farthest from the origin first
+            return qs[x].mover < qs[y].mover;                   // ties: lower id
+        });
+        return idx;
+    };
+    // R-G11: zone membership from sim's positions (Appear / StartTurn / EndTurn rows, completely_within rows).
+    state_.hooks.zone_contains = [this](const rules5e::EncounterState& st, uint32_t zone_id, CombatantId id, bool completely) {
+        const rules5e::ActiveZone* z = rules5e::find_zone(st, zone_id);
+        return z && rules5e::find(st, id) && zone_holds(*z, id, spot(id), completely);
+    };
+    state_.hooks.shove_forced_flag = true;   // rules flags the shove push (c = 1); sim no longer flags its copy (same events)
     state_.hooks.feature_spec = [this](const rules5e::EncounterState&, const rules5e::Combatant& actor, uint32_t feature_id)
         -> std::optional<rules5e::FeatureSpec> {
         if (const Archetype* arch = archetype(actor.id))
@@ -485,6 +505,16 @@ void Combat::install_hooks() {
     // A readied ranged attack's facts are taken when it fires, not when it was readied.
     state_.hooks.refresh_ready = [this](const rules5e::EncounterState&, const rules5e::ReadiedAction& ra,
                                         const rules5e::Event& e) -> std::optional<ActionRequest> {
+        if (ra.response.kind == ActionKind::Move) {   // R-G11: the readied Move's zone membership, taken when it fires
+            if (state_.zones.empty()) return std::nullopt;
+            const auto it = readied_dest_.find(ra.actor);
+            if (it == readied_dest_.end()) return std::nullopt;
+            ActionRequest q = ra.response;
+            const Spot from = spot(ra.actor), to = spot_at(ra.actor, it->second);
+            zone_lists(ra.actor, from, to, q);
+            q.zone_changes = zone_changes_for(ra.actor, from, to);
+            return q;
+        }
         if (ra.response.kind != ActionKind::Attack) return std::nullopt;
         const auto* a = rules5e::find(state_, ra.actor);
         if (!a || ra.response.attack_index >= a->attacks.size()) return std::nullopt;
@@ -600,6 +630,7 @@ int Combat::material_entry(CombatantId caster, const rules5e::SpellDef& d) const
 
 void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs, std::optional<Vec2i> to) {
     const auto& q = ls.request;
+    struct ClearPlaced { std::vector<std::pair<CombatantId, Vec2i>>& v; ~ClearPlaced() { v.clear(); } } clear_placed{forced_placed_};
     // Priced material consumed by a completed cast (rule 4): the entry that satisfied it, one per cast. Rules checked the
     // components for this cast unless it was a sustain or an innate spell not cast as listed; replay runs the same code.
     if (q.kind == ActionKind::CastSpell && !q.sustain && spells_) {
@@ -621,14 +652,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
         return e.kind == rules5e::EventKind::Moved && q.kind == ActionKind::Attack && q.special == 3 && e.actor == q.target &&
                e.target == q.actor;
     };
-    if (std::any_of(evs.begin(), evs.end(), is_shove_push)) {
-        std::vector<rules5e::Event> flagged = evs;
-        for (auto& fe : flagged)
-            if (is_shove_push(fe)) fe.c |= kMovedForced;
-        apply_rules_events(flagged);
-    } else {
-        apply_rules_events(evs);
-    }
+    apply_rules_events(evs);   // the shove push arrives flagged c = 1 from rules (EncounterHooks::shove_forced_flag)
     // R-G8 helpers: put a creature on a tile (forced movement / drag), and end grapples whose holder and held creature are no
     // longer within 5 ft after an effect moved one of them (Grappled is removed from the target; the next step prunes the entry).
     auto place = [this](CombatantId id, Vec2i t) {
@@ -671,7 +695,22 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
         }
     };
     std::vector<CombatantId> fired;
+    std::size_t placed_i = 0;   // R-G9: hook commits, in the order of their Moved events
     for (const auto& e : evs) {
+        if (e.kind == rules5e::EventKind::Moved && (e.c & (kMovedForced | kMovedTeleport)) && !is_shove_push(e)) {
+            while (placed_i < forced_placed_.size() && forced_placed_[placed_i].first != e.actor) ++placed_i;
+            if (placed_i < forced_placed_.size()) {
+                if (e.a > 0) {   // already committed by the hook: the token's TileMoved
+                    SimEvent se;
+                    se.kind = SimEvent::Kind::TileMoved;
+                    se.actor = e.actor;
+                    se.tile = forced_placed_[placed_i].second;
+                    events_.push_back(se);
+                }
+                ++placed_i;
+            }
+            continue;
+        }
         // R-G8 shove 5 ft away: Moved{actor = target, target = shover}; push one tile straight away from the shover if it is free.
         if (is_shove_push(e)) {
             const Vec2i sp = pos(q.actor), tp = pos(e.actor);
@@ -839,6 +878,8 @@ SubmitResult Combat::decide(const ReactionDecision& d) {
     if (!nd) { r.error = "no pending reaction window"; return r; }
     if (d.window_seq != nd->window_seq) { r.error = "decision for a different window"; r.needs = nd; return r; }
     install_hooks();
+    if (state_.pending) set_step_context(state_.pending->request);
+    forced_placed_.clear();
     return finish(rules5e::step(state_, rules5e::decision_request(*nd, d)));
 }
 
@@ -895,6 +936,37 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     }
     if (req.kind == ActionKind::CastSpell) {
         if (!spells_ || !spells_->find(req.spell_id)) { r.error = "unknown spell"; return r; }
+        // R-G9 teleport (Misty Step): the caller's destination, re-validated here; sim fills teleport_feet. The request's
+        // teleport_feet is sim's to set (a caller value is ignored), so a logged request always carries the derived distance.
+        if (const auto* tdef = spells_->find(req.spell_id); tdef->kind == rules5e::SpellEffectKind::Teleport && !req.sustain) {
+            if (!req.has_teleport_dest) { r.error = "teleport: needs a destination (has_teleport_dest)"; return r; }
+            const Vec2i dest{req.teleport_x, req.teleport_y};
+            if (!teleport_dest_ok(actor, *tdef, dest)) { r.error = "teleport: illegal destination"; return r; }
+            const Vec2i from = pos(actor);
+            req.teleport_feet = uint16_t(kFeetPerTile * std::max(std::abs(dest.x - from.x), std::abs(dest.y - from.y)));
+        }
+        // R-G11 zones: sim owns the anchor tile (re-validated against legal_zone_tiles), the zone move's distance and the
+        // membership changes it causes; membership fields are sim-derived, so caller values are overwritten.
+        req.zones_entered.clear(); req.zones_left.clear(); req.zones_within.clear(); req.zone_changes.clear();
+        req.zone_move_ft = 0;
+        if (const auto* zdef = spells_->find(req.spell_id); zdef->kind == rules5e::SpellEffectKind::Zone) {
+            if (req.has_zone_end || req.zone_ring || req.zone_side != 0) { r.error = "zone: walls and rings are not supported by sim yet"; return r; }
+            if (req.zone_move != 0) {
+                const rules5e::ActiveZone* z = rules5e::find_zone(state_, req.zone_move);
+                if (!z || !z->has_anchor_tile) { r.error = "zone_move: no such point zone"; return r; }
+                if (req.has_zone_dest) {
+                    const Vec2i dest{req.zone_x, req.zone_y};
+                    const auto ok = legal_zone_tiles(actor, *zdef, req.zone_move);
+                    if (std::find(ok.begin(), ok.end(), dest) == ok.end()) { r.error = "zone_move: illegal destination"; return r; }
+                    req.zone_move_ft = uint16_t(kFeetPerTile * std::max(std::abs(dest.x - z->anchor_x), std::abs(dest.y - z->anchor_y)));
+                    req.zone_changes = zone_changes_for(actor, spot(actor), spot(actor), req.zone_move, &dest);
+                }
+            } else if (zdef->zone.anchor == rules5e::ZoneAnchor::Point && !req.sustain) {
+                if (!req.has_zone_dest) { r.error = "zone: a point zone needs a destination (has_zone_dest)"; return r; }
+                const auto ok = legal_zone_tiles(actor, *zdef);
+                if (std::find(ok.begin(), ok.end(), Vec2i{req.zone_x, req.zone_y}) == ok.end()) { r.error = "zone: illegal destination"; return r; }
+            }
+        }
         if (req.sustain && (aim || !req.targets.empty())) {   // R-G15 Heat Metal again: one creature, the request's target
             r.error = "sustain takes a single target and no aim";
             return r;
@@ -968,7 +1040,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
             if (path.empty()) { r.error = "readied move destination unreachable"; return r; }
             int cost = 0;
             Vec2i prev = from;
-            for (Vec2i p : path) { cost += grid_.move_cost_ft(prev, p, fp); prev = p; }
+            for (Vec2i p : path) { cost += step_cost_ft(actor, prev, p); prev = p; }
             if (cost > int(a->speed_ft)) { r.error = "readied move longer than speed"; return r; }
             req.move_ft = int16_t(cost);
             req.move_tiles = uint8_t(std::min<std::size_t>(path.size(), 255));   // path length (rules counts it only when it fires on the readier's own turn)
@@ -980,6 +1052,8 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
         }
     }
     step_to_.reset();
+    set_step_context(req);
+    forced_placed_.clear();
     return finish(rules5e::step(state_, req));
 }
 
@@ -1003,14 +1077,20 @@ SubmitResult Combat::do_step(Vec2i to) {
         const Spot ss = spot(src);
         if (rect_distance(to, fp, ss.p, ss.n) < rect_distance(from, fp, ss.p, ss.n)) { r.error = "frightened: cannot move closer to the source"; return r; }
     }
-    const int cost = grid_.move_cost_ft(from, to, fp);
+    const int cost = step_cost_ft(mover, from, to);   // R-G11: zone terrain overlays
     if (cost > state_.budget.movement_ft) { r.error = "not enough movement"; return r; }
     if (!aggressive_step_ok(mover, to)) { r.error = "aggressive: the Dash's movement must go toward a hostile it can see"; return r; }
     ActionRequest mv{mover, ActionKind::Move};
     mv.move_ft = int16_t(cost);
     mv.move_tiles = 1;
     mv.leaves_reach = leaves_reach(mover, from, to);
+    if (!state_.zones.empty()) {   // R-G11: membership facts, sim-derived (Q2 / Q8)
+        zone_lists(mover, spot(mover), spot_at(mover, to), mv);
+        mv.zone_changes = zone_changes_for(mover, spot(mover), spot_at(mover, to));
+    }
     step_to_ = to;
+    set_step_context(mv);
+    forced_placed_.clear();
     return finish(rules5e::step(state_, mv));
 }
 
@@ -1125,6 +1205,8 @@ uint64_t Combat::hash() const {
     }
     // 0xA8 (R-G16): surprised creatures, only while one is still surprised (round 1 of an ambush); never for other combats.
     if (rules5e::has_surprised(state_)) { h.byte(0xA8); h.u64(rules5e::surprised_digest(state_)); }
+    // 0xAB (R-G11): zones, only once a zone exists or has existed (has_zone_state); no older combat has one.
+    if (rules5e::has_zone_state(state_)) { h.byte(0xAB); h.u64(rules5e::zones_digest(state_)); }
     return h.value();
 }
 
@@ -1184,6 +1266,19 @@ uint64_t Combat::log_hash() const {
             h.byte(q.damage_choice);
             h.byte(q.condition_choice);
         }
+        // R-G9: 0xB4 forced_feet / teleport_feet, 0xB2 the teleport destination; each folded only when set.
+        if (q.forced_feet != 0 || q.teleport_feet != 0) { h.byte(0xB4); h.u16(q.forced_feet); h.u16(q.teleport_feet); }
+        if (q.has_teleport_dest) { h.byte(0xB2); h.i32(q.teleport_x); h.i32(q.teleport_y); }
+        // 0xB7 (R-G11): caller-chosen zone inputs, only when set (membership lists / zone_move_ft are sim-derived, not folded).
+        if (q.zone_move != 0 || q.has_zone_dest || !q.zone_excluded.empty()) {
+            h.byte(0xB7);
+            h.u32(q.zone_move);
+            h.byte(q.has_zone_dest ? 1 : 0);
+            h.i32(q.zone_x);
+            h.i32(q.zone_y);
+            h.u32(uint32_t(q.zone_excluded.size()));
+            for (const auto zx : q.zone_excluded) h.u32(zx);
+        }
         h.byte(q.heal_dice.count);
         h.byte(q.heal_dice.sides);
         h.i16(q.heal_dice.bonus);
@@ -1200,6 +1295,225 @@ uint64_t Combat::log_hash() const {
         }
     }
     return h.value();
+}
+
+// ---- R-G11 zones (VERSION_BUMP_BATCH 7.2l hand-off, ZONES_AURAS.md §3) ----
+bool Combat::zone_spec_anchor_creature(const rules5e::ActiveZone& z) const {
+    const rules5e::SpellDef* d = spells_ ? spells_->find(z.spell_id) : nullptr;
+    return d && d->zone.anchor == rules5e::ZoneAnchor::Creature;
+}
+
+bool Combat::zone_covers(const rules5e::ActiveZone& z, Vec2i tile, const Spot* owner_at, const Vec2i* anchor_at) const {
+    const rules5e::SpellDef* d = spells_ ? spells_->find(z.spell_id) : nullptr;
+    if (!d || d->kind != rules5e::SpellEffectKind::Zone || z.ring) return false;
+    const int sz = int(z.size_ft != 0 ? z.size_ft : d->zone.size_ft) / kFeetPerTile;
+    const AreaShape shape = d->zone.shape;
+    if (d->zone.anchor == rules5e::ZoneAnchor::Creature) {
+        if (!rules5e::find(state_, z.owner)) return false;
+        const Spot o = owner_at ? *owner_at : spot(z.owner);
+        const int dist = rect_distance(o.p, o.n, tile, 1);
+        if (shape == AreaShape::Sphere || shape == AreaShape::Cylinder) return dist <= sz;
+        if (shape == AreaShape::Cube) return dist <= sz / 2;
+        return false;
+    }
+    if (!z.has_anchor_tile && !anchor_at) return false;
+    const Vec2i a = anchor_at ? *anchor_at : Vec2i{z.anchor_x, z.anchor_y};
+    if (shape == AreaShape::Sphere || shape == AreaShape::Cylinder) return std::max(std::abs(tile.x - a.x), std::abs(tile.y - a.y)) <= sz;
+    if (shape == AreaShape::Cube) {
+        const int lo = -((sz - 1) / 2), hi = sz / 2;
+        return tile.x >= a.x + lo && tile.x <= a.x + hi && tile.y >= a.y + lo && tile.y <= a.y + hi;
+    }
+    return false;   // walls (Line) are not modelled yet
+}
+
+bool Combat::zone_holds(const rules5e::ActiveZone& z, CombatantId, Spot at, bool completely, const Spot* owner_at,
+                        const Vec2i* anchor_at) const {
+    bool any = false, all = true;
+    for (int y = 0; y < at.n; ++y)
+        for (int x = 0; x < at.n; ++x) {
+            const bool in = zone_covers(z, {at.p.x + x, at.p.y + y}, owner_at, anchor_at);
+            any = any || in;
+            all = all && in;
+        }
+    return completely ? all : any;
+}
+
+void Combat::zone_lists(CombatantId mover, Spot from, Spot to, rules5e::ActionRequest& q) const {
+    q.zones_entered.clear(); q.zones_left.clear(); q.zones_within.clear();
+    for (const auto& z : state_.zones) {   // creation order = ascending ids
+        if (z.owner == mover && zone_spec_anchor_creature(z)) continue;   // its own aura moves with it
+        const bool was = zone_holds(z, mover, from, false), is = zone_holds(z, mover, to, false);
+        if (!was && is) q.zones_entered.push_back(z.zone_id);
+        else if (was && !is) q.zones_left.push_back(z.zone_id);
+        else if (was && is) q.zones_within.push_back(z.zone_id);
+    }
+}
+
+std::vector<rules5e::ZoneChange> Combat::zone_changes_for(CombatantId mover, Spot from, Spot to, uint32_t moved_zone,
+                                                          const Vec2i* anchor_to) const {
+    std::vector<rules5e::ZoneChange> out;
+    for (const auto& z : state_.zones) {
+        const bool aura = z.owner == mover && zone_spec_anchor_creature(z) && (from.p != to.p);
+        const bool moved = moved_zone != 0 && z.zone_id == moved_zone && anchor_to;
+        if (!aura && !moved) continue;
+        for (const auto& k : state_.combatants) {
+            if (k.id == z.owner || k.dead) continue;
+            const Spot ks = spot(k.id);
+            const bool was = zone_holds(z, k.id, ks, false);
+            const bool is = aura ? zone_holds(z, k.id, ks, false, &to) : zone_holds(z, k.id, ks, false, nullptr, anchor_to);
+            if (was != is) out.push_back({k.id, z.zone_id, is});
+        }
+    }
+    std::stable_sort(out.begin(), out.end(), [](const rules5e::ZoneChange& x, const rules5e::ZoneChange& y) {
+        return x.zone_id != y.zone_id ? x.zone_id < y.zone_id : x.creature < y.creature;
+    });
+    return out;
+}
+
+std::vector<Vec2i> Combat::legal_zone_tiles(CombatantId actor, const rules5e::SpellDef& def, uint32_t zone_move) const {
+    std::vector<Vec2i> out;
+    if (def.kind != rules5e::SpellEffectKind::Zone || def.zone.anchor != rules5e::ZoneAnchor::Point || !rules5e::find(state_, actor)) return out;
+    const Spot cs = spot(actor);
+    if (zone_move != 0) {
+        const rules5e::ActiveZone* z = rules5e::find_zone(state_, zone_move);
+        if (!z || !z->has_anchor_tile || z->owner != actor || z->spell_id != def.id) return out;
+        const int r = int(def.zone.move_ft) / kFeetPerTile;
+        for (int y = z->anchor_y - r; y <= z->anchor_y + r; ++y)
+            for (int x = z->anchor_x - r; x <= z->anchor_x + r; ++x)
+                if (grid_.in_bounds({x, y}) && Vec2i{x, y} != Vec2i{z->anchor_x, z->anchor_y}) out.push_back({x, y});
+        return out;
+    }
+    const int r = int(def.range_ft) / kFeetPerTile;
+    for (int y = cs.p.y - r; y <= cs.p.y + cs.n - 1 + r; ++y)
+        for (int x = cs.p.x - r; x <= cs.p.x + cs.n - 1 + r; ++x) {
+            const Vec2i t{x, y};
+            if (!grid_.in_bounds(t) || rect_distance(cs.p, cs.n, t, 1) > r) continue;
+            if (!los_spots(cs, Spot{t, 1})) continue;
+            out.push_back(t);
+        }
+    return out;
+}
+
+int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to) const {
+    const int fp = footprint_size(mover);
+    int cost = grid_.move_cost_ft(from, to, fp);
+    if (state_.zones.empty() || !spells_) return cost;
+    bool difficult = false, halve = false;
+    for (const auto& z : state_.zones) {
+        const rules5e::SpellDef* d = spells_->find(z.spell_id);
+        if (!d || !(d->zone.flags & (rules5e::kZoneDifficult | rules5e::kZoneHalveSpeed))) continue;
+        if (std::binary_search(z.excluded.begin(), z.excluded.end(), mover)) continue;
+        if (!zone_holds(z, mover, Spot{to, fp}, false)) continue;
+        difficult = difficult || (d->zone.flags & rules5e::kZoneDifficult);
+        halve = halve || (d->zone.flags & rules5e::kZoneHalveSpeed);
+    }
+    if (difficult) cost = std::max(cost, 10);   // difficult terrain does not stack with itself
+    if (halve) cost *= 2;
+    return std::min(cost, 20);
+}
+
+// ---- R-G9 forced movement / teleport (FORCED_MOVEMENT.md §3) ----
+rules5e::ForcedMoveResult Combat::resolve_forced(const rules5e::ForcedMoveQuery& q) {
+    rules5e::ForcedMoveResult res;
+    if (shove_actor_ != 0 && q.source == shove_actor_ && q.mover == shove_target_ && !q.teleport) {
+        res.feet_moved = q.feet;   // EC #104's shove placement stays in complete(); report the 5 ft as before
+        return res;
+    }
+    auto commit = [this](CombatantId id, Vec2i t) {
+        if (TilePos* p = reg_->get<TilePos>(entity(id))) { p->x = t.x; p->y = t.y; }
+        forced_placed_.push_back({id, t});
+    };
+    const Vec2i start = pos(q.mover);
+    if (q.teleport) {
+        if (!q.has_dest) { forced_placed_.push_back({q.mover, start}); return res; }
+        commit(q.mover, {q.dest_x, q.dest_y});   // validated at submit
+        res.feet_moved = q.feet;
+        const Spot before{start, footprint_size(q.mover)}, after{Vec2i{q.dest_x, q.dest_y}, footprint_size(q.mover)};
+        for (const auto& z : state_.zones) {   // R-G11: a teleport reports entered / left only
+            if (z.owner == q.mover && zone_spec_anchor_creature(z)) continue;
+            const bool was = zone_holds(z, q.mover, before, false), is = zone_holds(z, q.mover, after, false);
+            if (!was && is) res.zones_entered.push_back(z.zone_id);
+            if (was && !is) res.zones_left.push_back(z.zone_id);
+        }
+    } else {
+        // direction: sign of (mover centre - source centre) in doubled coordinates; pull negates; overlap: +x
+        const Spot ms = spot(q.mover), ss = spot(q.source);
+        const int dx2 = (2 * ms.p.x + ms.n) - (2 * ss.p.x + ss.n), dy2 = (2 * ms.p.y + ms.n) - (2 * ss.p.y + ss.n);
+        Vec2i d{(dx2 > 0) - (dx2 < 0), (dy2 > 0) - (dy2 < 0)};
+        if (d.x == 0 && d.y == 0) d = {1, 0};
+        if (q.mode == 2) d = {-d.x, -d.y};
+        const int fp = ms.n;
+        const auto occ = occupied_except(q.mover);
+        Vec2i cur = start;
+        const int steps = int(q.feet) / kFeetPerTile;
+        int moved = 0;
+        std::vector<Vec2i> walked{start};
+        for (; moved < steps; ++moved) {
+            const Vec2i nx{cur.x + d.x, cur.y + d.y};
+            bool free = grid_.footprint_walkable(nx, fp);
+            for (int yy = 0; yy < fp && free; ++yy)
+                for (int xx = 0; xx < fp && free; ++xx)
+                    free = std::find(occ.begin(), occ.end(), Vec2i{nx.x + xx, nx.y + yy}) == occ.end();
+            if (!free) break;
+            cur = nx;
+            walked.push_back(cur);
+        }
+        // R-G11 (Q7): membership per tile walked; zones_within repeats a zone once per further 5 ft inside it.
+        for (const auto& z : state_.zones) {
+            if (z.owner == q.mover && zone_spec_anchor_creature(z)) continue;
+            bool entered = false, left = false;
+            for (std::size_t i = 1; i < walked.size(); ++i) {
+                const bool was = zone_holds(z, q.mover, Spot{walked[i - 1], fp}, false), is = zone_holds(z, q.mover, Spot{walked[i], fp}, false);
+                if (!was && is) entered = true;
+                if (was && !is) left = true;
+                if (was && is) res.zones_within.push_back(z.zone_id);
+            }
+            if (entered) res.zones_entered.push_back(z.zone_id);
+            if (left) res.zones_left.push_back(z.zone_id);
+        }
+        res.feet_moved = uint16_t(moved * kFeetPerTile);
+        res.stopped_short = moved < steps;
+        if (moved > 0) commit(q.mover, cur);
+        else forced_placed_.push_back({q.mover, start});
+    }
+    // grapples (either direction) no longer within 5 ft
+    for (const auto& sc : state_.sourced) {
+        if (sc.condition != rules5e::Condition::Grappled || (sc.target != q.mover && sc.source != q.mover)) continue;
+        const CombatantId other = sc.target == q.mover ? sc.source : sc.target;
+        if (distance_tiles(sc.source, sc.target) > 1 &&
+            std::find(res.out_of_reach_of.begin(), res.out_of_reach_of.end(), other) == res.out_of_reach_of.end())
+            res.out_of_reach_of.push_back(other);
+    }
+    return res;
+}
+
+bool Combat::teleport_dest_ok(CombatantId actor, const rules5e::SpellDef& def, Vec2i dest) const {
+    if (def.kind != rules5e::SpellEffectKind::Teleport || !rules5e::find(state_, actor)) return false;
+    const Vec2i from = pos(actor);
+    const int fp = footprint_size(actor);
+    if (dest == from || !grid_.footprint_walkable(dest, fp)) return false;
+    if (kFeetPerTile * std::max(std::abs(dest.x - from.x), std::abs(dest.y - from.y)) > int(def.teleport.max_feet)) return false;
+    const auto occ = occupied_except(actor);
+    for (int yy = 0; yy < fp; ++yy)
+        for (int xx = 0; xx < fp; ++xx)
+            if (std::find(occ.begin(), occ.end(), Vec2i{dest.x + xx, dest.y + yy}) != occ.end()) return false;
+    if (def.teleport.needs_sight && !los_spots(spot(actor), spot_at(actor, dest))) return false;
+    if (const CombatantId src = rules5e::condition_source(state_, actor, rules5e::Condition::Frightened)) {
+        const Spot ss = spot(src);
+        if (rect_distance(dest, fp, ss.p, ss.n) < rect_distance(from, fp, ss.p, ss.n)) return false;   // not closer
+    }
+    return true;
+}
+
+std::vector<Vec2i> Combat::legal_teleport_tiles(CombatantId actor, const rules5e::SpellDef& def) const {
+    std::vector<Vec2i> out;
+    if (def.kind != rules5e::SpellEffectKind::Teleport || !rules5e::find(state_, actor)) return out;
+    const Vec2i from = pos(actor);
+    const int r = int(def.teleport.max_feet) / kFeetPerTile;
+    for (int y = from.y - r; y <= from.y + r; ++y)
+        for (int x = from.x - r; x <= from.x + r; ++x)
+            if (grid_.in_bounds({x, y}) && teleport_dest_ok(actor, def, {x, y})) out.push_back({x, y});
+    return out;
 }
 
 std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content, uint64_t seed,
@@ -1225,6 +1539,8 @@ std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* c
         if (e.step.request.kind == ActionKind::Move) c->step_to_ = e.to;
         if (e.step.request.kind == ActionKind::Ready) c->ready_to_ = e.to;
         c->derived_area_ = e.step.request.kind == ActionKind::CastSpell && e.to;   // logged targets came from an aim tile
+        c->set_step_context(e.step.request);
+        c->forced_placed_.clear();
         rules5e::StepResult sr = rules5e::replay_step(c->state_, e.step);   // rules' replay; no decider
         if (!sr.ok || sr.desync || sr.status != StepStatus::Done) {
             if (error) *error = "replay desync at entry " + std::to_string(i) + ": " +
