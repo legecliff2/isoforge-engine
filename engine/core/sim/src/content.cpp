@@ -1134,6 +1134,19 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     if (!carries_shield(doc))
         for (std::size_t i = 0; i < c.attacks.size() && i < 32; ++i)
             if (!c.attacks[i].ranged && rules5e::has_property(c.attacks[i], rules5e::kWeaponVersatile)) a.two_handed_grip |= 1u << i;
+    // Priced materials (CONTENT_CONVENTIONS §7): equipment[] entries with their value_gp (integer >= 0, default 0).
+    if (auto eq = doc.find("equipment"); eq != doc.end() && eq->is_array())
+        for (const auto& e : *eq) {
+            EquipmentEntry ent;
+            ent.id = equipment_entry_id(e);
+            if (e.is_object())
+                if (auto v = e.find("value_gp"); v != e.end()) {
+                    if (!v->is_number_integer() || v->get<int64_t>() < 0 || v->get<int64_t>() > 0xFFFFFFFFll)
+                        return a.id + ": equipment value_gp must be a non-negative integer";
+                    ent.value_gp = uint32_t(v->get<int64_t>());
+                }
+            a.equipment.push_back(std::move(ent));
+        }
     by_id_[a.id] = std::move(a);
     return std::nullopt;
 }
