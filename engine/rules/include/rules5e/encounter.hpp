@@ -499,6 +499,18 @@ void prune_sourced(EncounterState&, std::vector<Event>&);
 bool has_sourced_conditions(const EncounterState&);
 uint64_t sourced_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);   // sim folds under tag 0xA7 when non-empty
 
+// ---- R-G16: surprise ----
+// A creature is surprised when it notices no threat: it has at least one living enemy (another team), every living enemy is
+// hiding (listed in `hiders` with its Dexterity (Stealth) total), and each such total is >= the creature's passive Perception
+// (passive_perception + `perception_bonus`, 0 here). Pure; returns ids in `combatants` order. Dead creatures are never listed.
+struct StealthTotal { CombatantId id = 0; int16_t total = 0; };
+std::vector<CombatantId> surprised_by_stealth(const std::vector<Combatant>&, const std::vector<StealthTotal>& hiders);
+// Sets Combatant::surprised on the listed creatures (call before begin_encounter). Unknown ids are ignored.
+void apply_surprise(std::vector<Combatant>&, const std::vector<CombatantId>& surprised);
+bool has_surprised(const EncounterState&);
+// FNV-1a 64 over the ids of surprised creatures (combatants order); sim folds it under tag 0xA8 only when has_surprised.
+uint64_t surprised_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
+
 // R-G6: could `actor` start bonus attack option `option` (1 + index) now? Checks the bonus action, the prerequisite (Attack action
 // used a listed attack, a different weapon, a modifier in force) and the pool. Pure.
 bool bonus_attack_available(const EncounterState&, const Combatant& actor, uint8_t option);
