@@ -107,11 +107,12 @@ uses them, and both validate unchanged).
 
 Rules side: #118 (merged 49d4fe2), `SpellEffectKind::Zone` with `SpellDef::zone` (`rules5e::ZoneSpec`,
 `engine/rules/include/rules5e/spells.hpp`), proposal `docs/proposals/VERSION_BUMP_BATCH.md` section 7.2l and
-`docs/proposals/ZONES_AURAS.md`. **No loader parses zones yet**: `rules5e_content` (`spell_loader.cpp`) refuses kind `zone`
-with `effect kind invalid`. This section is the **contract for the loader author (Engine Core / Rules)**: the schema
+`docs/proposals/ZONES_AURAS.md`. **The loader parses zones** since R-G11 rules PR 2: `rules5e_content` (`spell_loader.cpp`)
+maps kind `zone` onto `SpellDef::zone` (`needs_conscious_owner` onto the D7 field of the same name) and gives the zone an
+expiry timer from the spell's duration. This section is the **contract for the loader author (Engine Core / Rules)**: the schema
 (`schemas/spell/v1.schema.json` `$defs/zone`, `zone_trigger`, `zone_effect`) and `tools/validate` `check_spell_zone` define
 the keys, values, ranges and errors below, and the loader must map them exactly and refuse the same documents with the same
-wording (the validator's messages are quoted). Unlike sections 1-3, the source of truth here is this file until the loader lands.
+wording (the validator's messages are quoted). Schema, validator and loader now agree; change all three together.
 
 ```json
 { "kind": "zone",
@@ -174,8 +175,8 @@ spell's level (rules does this from `SpellDef::upcast_dice`).
 ### 4.4 Cross-field rules (validator `check_spell_zone` / `check_spell`; the loader must refuse the same)
 
 Messages start with `zone` on purpose: `spell_loader_tests` compares the loader's first error with a negative case's `.expect`
-only for the prefixes `effect`, `scaling.`, `'`, ...; until the loader parses zones it answers `effect kind invalid`, so the
-`tests/validate/cases/zone_*` cases are only required to fail there. Once the loader lands it should use these messages verbatim.
+only for the prefixes `effect`, `scaling.`, `'`, `zone`, ...; the loader (R-G11 rules PR 2) uses these messages verbatim, so
+the cross-field `tests/validate/cases/zone_*` cases compare their first error there.
 
 | rule | message |
 |---|---|

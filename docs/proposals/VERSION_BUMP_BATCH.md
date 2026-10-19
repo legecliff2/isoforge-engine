@@ -1732,6 +1732,13 @@ unchanged), no golden moved.
 (as in #119's fixture): rules derives the V block, thunder immunity and deafness from the flag. `needs_conscious_owner` keeps
 that name (T&C #119).
 
+**Loader (folded into this PR, own commit):** `rules5e_content` `spell_loader.cpp` parses kind `zone` per
+`docs/CONTENT_CONVENTIONS.md` section 4 (final): every section 4 key, `needs_conscious_owner` onto the D7 field, the section 4.4
+cross-field rules with the validator's messages, and an expiry timer from the duration. It parses only the keys the schema has
+today; the PR 2 fields above (`upcast_size_ft`, `ring_size_ft`, `sided`, `side_ft`, `line`, the new row keys) are refused as
+`zone: unknown key ...` until T&C adds them to `schemas/spell/v1.schema.json` / `check_spell_zone`, and the loader gains them in
+the same PR.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
