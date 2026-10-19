@@ -1248,6 +1248,38 @@ fields default to 0 / 0 / 20, which reproduces the old behaviour exactly.
   Per-attack bonuses (a magic weapon's +1) stay in `Attack::to_hit`. A conditional "while wielding a ranged weapon" for Archery is
   implied by the melee / ranged split.
 
+### 7.2e R-G7 d20 reroll / subtract windows, Great Weapon Fighting, Evasion (post-batch rules follow-up) and hand-off
+
+Rules side only (`feat/rules-roll-windows`); no schema change, no new event kind, no digest. Goldens unchanged: every new rng draw
+happens only when the feature is present (and, for Lucky, only on a natural 1; for Great Weapon Fighting, only on a die showing 1-2;
+the AttackRolled window opens only when an enemy has a compiled `SubtractRoll` reaction, is in range by the hook, and can pay).
+
+- **Lucky** (Halfling): `Combatant::reroll_ones` bitmask (1 attack roll, 2 ability check, 4 saving throw). A natural 1 is rerolled
+  once and kept (`reroll_natural_one`: with advantage / disadvantage the die showing 1 is replaced and the mode re-applied).
+  Applied before modifiers' dice and before Legendary Resistance. Death saves are not covered.
+- **Cutting Words** (subtract): appended `ReactionTrigger::AttackRolled` (= 7; `kReactionTriggerCount` 7 -> 8, so
+  `Combatant::reaction_policy` grows by one entry) and `ReactionEffectKind::SubtractRoll`; the reserved
+  `ReactionOptionKind::SubtractRoll` is now used (`dice` = the die). `Reaction::pool` / `pool_cost` (appended) gate the option and are
+  spent when it is taken (`ResourceSpent` after `ReactionTaken`). The window opens after an attack roll (not a natural 1 or 20,
+  after Lucky and Bless-style dice), before hit / miss and before the BeingHit window, for every enemy of the attacker that may react
+  and that `hooks.in_range` accepts (no hook = nobody, like AllyAttacked). `ReactionWindow::attack_total` / `target_ac` are set.
+  The first taker ends it. Auto takes it only when the die's maximum could turn a hit into a miss. The subtracted total is the
+  `AttackResolved` b.
+- **Great Weapon Fighting**: `Combatant::great_weapon_fighting`; melee weapon attacks (not spells) with `kWeaponTwoHanded`, or
+  `kWeaponVersatile` with the appended `ActionRequest::two_handed_grip` (caller fact), roll the weapon dice with
+  `roll_dice_reroll_low(.., 2)`: each die showing 1 or 2 is rolled once more. Extra damage parts and rider dice are not rerolled.
+- **Evasion**: `Combatant::evasion`; a Dex save against an effect with `OnSave::Half` deals 0 on a success and half on a failure.
+- **Hand-off (Engine Core / T&C).** (a) Loader: Halfling Lucky -> `reroll_ones = 7`; Fighting Style GWF -> `great_weapon_fighting`;
+  Rogue / Monk Evasion -> `evasion`; Cutting Words -> a `Reaction{window AttackRolled, kind SubtractRoll, dice = bardic die,
+  pool = bardic inspiration}` (register the pool with `register_pool`). (b) sim: `in_range` must answer `AttackRolled` (Cutting
+  Words: within 60 ft and can see the attacker); until then the window never opens in sim. Default decider: decline or Auto as
+  for other windows; the sim layout / policy code that iterates triggers must accept 8. (c) AI: set `two_handed_grip` for a versatile
+  weapon held in two hands.
+- **Not covered / deviations.** Cutting Words on ability checks and damage rolls, Bardic Inspiration spent by the ally on its own
+  roll, Guidance / Resistance (d4 on a check / save: expressible as row 12 modifiers with `consume`), the Lucky feat (luck points),
+  Lucky on death saves, and reroll windows that the roller chooses (Indomitable, Portent) are not modelled. The AttackRolled
+  window does not open for attack rolls inside resolve_attack (pure API, no state).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
