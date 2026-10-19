@@ -1,6 +1,9 @@
 #include "sim/features.hpp"
 
 #include <algorithm>
+#include <cctype>
+
+#include "rules5e/armor.hpp"
 
 #include "rules5e_content/spell_loader.hpp"
 #include "sim/content.hpp"
@@ -220,6 +223,64 @@ std::optional<std::string> apply_apply_modifier(Archetype& a, const FeatureDecl&
     return std::nullopt;
 }
 
+// R-G5 static feature kinds (character@4 / monster@4).
+// attack_bonus {attacks: "ranged" | "melee", amount}: weapon attack rolls (Archery +2 ranged); several sum.
+std::optional<std::string> apply_attack_bonus(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx&) {
+    const std::string which = f.effect.value("attacks", "");
+    const auto amt = f.effect.find("amount");
+    if (amt == f.effect.end() || !amt->is_number_integer()) return f.id + ": attack_bonus needs integer amount";
+    int8_t& slot = which == "ranged" ? a.base.attack_bonus_ranged : a.base.attack_bonus_melee;
+    if (which != "ranged" && which != "melee") return f.id + ": attack_bonus attacks must be 'ranged' or 'melee'";
+    const int v = int(slot) + amt->get<int>();
+    if (v < -20 || v > 20) return f.id + ": attack_bonus out of range";
+    slot = int8_t(v);
+    return std::nullopt;
+}
+// crit_range {min}: Improved Critical 19, Superior Critical 18; the lowest wins.
+std::optional<std::string> apply_crit_range(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx&) {
+    const int m = f.effect.value("min", 0);
+    if (m < 2 || m > 20) return f.id + ": crit_range min must be 2..20";
+    if (m < a.base.crit_min) a.base.crit_min = int8_t(m);
+    return std::nullopt;
+}
+// ac_bonus {amount, requires_armor}: rules5e::compute_ac with AcInput::armored_bonus (requires_armor) or flat_bonus; the
+// difference is added to the content AC. "Wearing armor" (sim has no equipment model): equipment[] names an SRD armor item, or
+// armor_class.note names one (e.g. "chain mail, shield"); "natural armor" does not count.
+bool wears_armor(const Json& doc) {
+    static const char* kArmor[] = {"padded", "leather", "studded_leather", "hide", "chain_shirt", "scale_mail", "breastplate",
+                                   "half_plate", "ring_mail", "chain_mail", "splint", "plate"};
+    if (auto eq = doc.find("equipment"); eq != doc.end() && eq->is_array())
+        for (const Json& e : *eq) {
+            const std::string id = e.is_string() ? e.get<std::string>() : (e.is_object() ? e.value("id", "") : "");
+            for (const char* k : kArmor) if (id == k || id == std::string(k) + "_armor") return true;
+        }
+    std::string note;
+    if (auto ac = doc.find("armor_class"); ac != doc.end() && ac->is_object()) note = ac->value("note", "");
+    for (char& ch : note) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+    if (note.find("natural armor") != std::string::npos) return false;
+    for (const char* k : kArmor) {
+        std::string n = k;
+        for (char& ch : n) if (ch == '_') ch = ' ';
+        if (note.find(n) != std::string::npos) return true;
+    }
+    return false;
+}
+std::optional<std::string> apply_ac_bonus(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    const auto amt = f.effect.find("amount");
+    if (amt == f.effect.end() || !amt->is_number_integer() || amt->get<int>() < -10 || amt->get<int>() > 10)
+        return f.id + ": ac_bonus needs integer amount (-10..10)";
+    rules5e::AcInput in;
+    in.abilities = a.base.abilities;
+    in.has_armor = wears_armor(ctx.doc);
+    const int before = rules5e::compute_ac(in).ac;
+    if (f.effect.value("requires_armor", false)) in.armored_bonus = int16_t(amt->get<int>());
+    else in.flat_bonus = int16_t(amt->get<int>());
+    const int ac = int(a.base.ac) + rules5e::compute_ac(in).ac - before;
+    if (ac < 0 || ac > 127) return f.id + ": ac_bonus puts AC out of range";
+    a.base.ac = int8_t(ac);
+    return std::nullopt;
+}
+
 FeatureRegistry make_builtin() {
     FeatureRegistry r;
     r.add_hook("damage_bonus", {apply_damage_bonus});
@@ -229,6 +290,9 @@ FeatureRegistry make_builtin() {
     r.add_hook("damage_mitigation", {apply_damage_mitigation});
     r.add_hook("magic_weapons", {apply_magic_weapons});
     r.add_hook("apply_modifier", {apply_apply_modifier}, 4);
+    r.add_hook("attack_bonus", {apply_attack_bonus}, 4);
+    r.add_hook("crit_range", {apply_crit_range}, 4);
+    r.add_hook("ac_bonus", {apply_ac_bonus}, 4);
     // Kinds the @4 schemas introduce (frozen list of the 3 -> 4 migration; hooks arrive with their rows).
     for (const char* k : {"on_event", "grant_action", "heal_pool", "save_effect", "reaction"})
         r.reserve_kind(k, 4);
