@@ -87,6 +87,8 @@ class EffectKinds(unittest.TestCase):
 
 
 ZONE_FIXTURES = vp.ROOT / "tests" / "validate" / "fixtures" / "zones" / "spells"
+# R-G11 rules PR 2 positives kept apart so spell_loader_tests' 8-spell zone fixture book is unchanged (CONTENT_CONVENTIONS 4.5)
+ZONE_FIXTURES_PR2 = ZONE_FIXTURES.parent / "spells_pr2"
 MB, SG, FOG, SPIKE, WEB, GREASE = "moonbeam", "spirit_guardians", "fog_cloud", "spike_growth", "web", "grease"
 SC, WOF, AURA = "stinking_cloud", "wall_of_fire", "warding_aura"   # R-G11 rules PR 2 keys (CONTENT_CONVENTIONS 4.6)
 T0 = ["effects", 0, "zone", "triggers", 0]
@@ -184,7 +186,8 @@ ZONE_CASES = [
 
 
 def zone_fixture(name: str) -> dict:
-    return json.loads((ZONE_FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
+    f = ZONE_FIXTURES / f"{name}.json"
+    return json.loads((f if f.exists() else ZONE_FIXTURES_PR2 / f"{name}.json").read_text(encoding="utf-8"))
 
 
 def zone_edit(doc: dict, sets, dels) -> dict:
@@ -229,7 +232,7 @@ class SpellZones(unittest.TestCase):
             return errs, warns
 
     def all_fixtures(self) -> dict[str, dict]:
-        return {f.stem: zone_fixture(f.stem) for f in sorted(ZONE_FIXTURES.glob("*.json"))}
+        return {f.stem: zone_fixture(f.stem) for f in sorted([*ZONE_FIXTURES.glob("*.json"), *ZONE_FIXTURES_PR2.glob("*.json")])}
 
     def test_positive_fixtures_validate_clean(self):
         fx = self.all_fixtures()
@@ -500,6 +503,40 @@ class ChunkSurprise(unittest.TestCase):
         for f in sorted(list((vp.ROOT / "content" / "packs").rglob("chunks/*.json")) + list((vp.ROOT / "tests" / "compat").rglob("chunks/*.json"))):
             with self.subTest(str(f.relative_to(vp.ROOT))):
                 self.assertNotIn("surprise", json.loads(f.read_text(encoding="utf-8")))
+
+
+class CreatureFacts(unittest.TestCase):
+    """R-G11 creature facts no_breath / shapechanger / evil (CONTENT_CONVENTIONS 4.6): accepted on monster@4 / character@4,
+    reserved (warning, no error) until the sim archetype loader (Engine Core) reads them."""
+
+    def run_monster(self, doc):
+        reg, by_tag = vp.load_registry()
+        att = json.loads((CORE / "manifest.json").read_text(encoding="utf-8"))["attribution"]
+        with tempfile.TemporaryDirectory(prefix="facts_pack_") as tmp:
+            pack = Path(tmp) / "test.facts"
+            (pack / "monsters").mkdir(parents=True)
+            doc = dict(doc, id="test.facts.monster.axe_beak")
+            (pack / "monsters" / "axe_beak.json").write_text(json.dumps(doc, indent=2), encoding="utf-8")
+            man = {"$schema": "manifest@1", "id": "test.facts", "name": "facts", "version": "1.0.0", "engine_min": "0.1.0",
+                   "feature_level": 1, "api_level": 2, "rules_profile": "srd51", "requires": [], "optional": [], "depends": [],
+                   "attribution": att, "contents": ["monsters/axe_beak.json"]}
+            (pack / "manifest.json").write_text(json.dumps(man, indent=2), encoding="utf-8")
+            warns = []
+            errs = vp.validate_pack(pack, reg, by_tag, warns, vp.packset.PackSet([pack]))
+            return errs, warns
+
+    def base(self):
+        return json.loads((CORE / "monsters" / "axe_beak.json").read_text(encoding="utf-8"))
+
+    def test_facts_accepted_with_reserved_warning(self):
+        errs, warns = self.run_monster(dict(self.base(), no_breath=True, shapechanger=False, evil=True))
+        self.assertEqual(errs, [])
+        self.assertEqual(sorted(k for k in vp.CREATURE_FACTS if any(f"/{k}: {k} is reserved" in w for w in warns)),
+                         sorted(vp.CREATURE_FACTS))
+
+    def test_fact_not_boolean(self):
+        errs, _ = self.run_monster(dict(self.base(), evil="yes"))
+        self.assertTrue(any("'yes' is not of type 'boolean'" in e for e in errs), errs)
 
 
 if __name__ == "__main__":
