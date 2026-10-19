@@ -411,6 +411,7 @@ SpellLoad spell_from_json(const Json& j) {
     if (!j.contains("level") || !small_int(j["level"], 0, 9, lvl)) return err("level must be 0..9");
     s.level = uint8_t(lvl);
     s.ritual = j.value("ritual", false);
+    s.evocation = j.value("school", "") == "evocation";   // R-G14 Sculpt Spells (rules #109 hand-off a); spell@1 requires school
 
     const Json ct = j.value("casting_time", Json::object());
     const std::string ck = ct.value("kind", "");
