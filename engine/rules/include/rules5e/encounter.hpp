@@ -160,6 +160,10 @@ struct ActionRequest {
     bool has_zone_end = false; int32_t zone_x2 = 0, zone_y2 = 0;
     int8_t zone_side = 0;
     bool zone_ring = false;
+    // appended (Font of Magic, ActionKind::FlexibleCasting; log-relevant, SIM_EVENTS.md log_hash tag 0xBA): flexible = 1
+    // expend a spell slot of flexible_level (1..9) for that many sorcery points, 2 spend flexible_casting_cost(level)
+    // points for a slot of flexible_level (1..5). Paid from / into Combatant::sorcery_pool. A bonus action.
+    uint8_t flexible = 0, flexible_level = 0;
 };
 
 enum class EventKind : uint8_t {
