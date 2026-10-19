@@ -54,4 +54,32 @@ void recharge_tables(CombatantId actor, bool long_rest, const RestTables&);
 bool recover_spell_slots(Combatant&, const std::array<uint8_t, 10>& add, int max_total_levels, int max_slot_level = 5);
 constexpr int recovery_budget(int class_level) { return (class_level + 1) / 2; }
 
+// ---- Slot recovery feature kind (Arcane Recovery, Natural Recovery; VERSION_BUMP_BATCH 7.2n) ----
+// Feature data: budget = recovery_budget(class_level) slot levels, no slot above max_slot_level, `uses` per long rest.
+// The once-per-day limit is a FeatureUses row (recharge LongRest) the caller registers with slot_recovery_uses and keeps in
+// its RestTables, so long_rest / recharge_tables reset it and short_rest leaves it alone. Rests are outside Combat::hash.
+struct SlotRecoverySpec {
+    uint32_t feature_id = 0;     // stable id of the feature (FeatureUses::feature_id)
+    uint8_t class_level = 0;     // wizard level (Arcane Recovery) / druid level (Natural Recovery), 1..20
+    uint8_t max_slot_level = 5;  // SRD 5.1: "none of the slots can be 6th level or higher"
+    uint8_t uses = 1;            // per long rest ("once per day")
+};
+constexpr int slot_recovery_budget(const SlotRecoverySpec& s) { return recovery_budget(s.class_level); }
+// The FeatureUses row to register for `actor` (max = spec.uses, recharge LongRest).
+FeatureUses slot_recovery_uses(CombatantId actor, const SlotRecoverySpec&);
+
+enum class SlotRecoveryResult : uint8_t {
+    Ok,
+    NoFeature,      // no FeatureUses row for (c.id, spec.feature_id), or a spec with class_level 0
+    NoUsesLeft,     // already used since the last long rest
+    Empty,          // no slot chosen
+    LevelTooHigh,   // a chosen slot above spec.max_slot_level
+    OverBudget,     // combined level above slot_recovery_budget(spec)
+    AboveMax,       // would exceed spell_slots_max at some level (only expended slots come back)
+};
+// Use the feature when `c` finishes a short rest (the caller calls it after short_rest; the choice of slots is the caller's
+// input from sim / UI). Validates `add` (as recover_spell_slots), then spends one use. Anything but Ok changes nothing.
+SlotRecoveryResult apply_slot_recovery(Combatant& c, const SlotRecoverySpec&, std::vector<FeatureUses>& features,
+                                       const std::array<uint8_t, 10>& add);
+
 }  // namespace rules5e
