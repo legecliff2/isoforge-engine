@@ -196,8 +196,8 @@ void end_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev) {
     Combatant* t = find_mut(s, e.target);
     if (!t) return;
     bool still = std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
-        return o.target == e.target && o.condition == e.condition; });
-    if (!still && t->has(e.condition)) {
+        return o.target == e.target && !o.no_condition && o.condition == e.condition; });
+    if (!e.no_condition && !still && t->has(e.condition)) {
         remove_condition(*t, e.condition);
         emit(ev, EventKind::SpellEffectEnded, t->id, 0, int32_t(e.spell_id), int32_t(e.condition));
         emit(ev, EventKind::ConditionRemoved, t->id, 0, int32_t(e.condition));
@@ -273,10 +273,24 @@ void expire_effects(EncounterState& s, const std::vector<GoneEffect>& gone, std:
 }
 
 // New round: Rounds timers tick (all effects, in application order).
+struct TrigSrc;
+struct Ctx;
+void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bool critical, std::vector<Event>& ev,
+                     const TrigSrc* src, Ctx* ctx);
+// R-G15: delayed damage (Acid Arrow) lands as its timer runs out, before the effect ends.
+void deal_effect_damage(EncounterState& s, const ActiveSpellEffect& e, std::vector<Event>& ev) {
+    Combatant* t = find_mut(s, e.target);
+    if (!t || t->dead) return;
+    const int dmg = std::max(0, roll_dice(s.rng, e.damage));
+    damage_creature(s, *t, apply_damage(*t, int16_t(dmg), e.damage_type, e.magical ? uint8_t(kAttackMagical) : uint8_t(0)), false, ev, nullptr, nullptr);
+}
+
 void tick_effects_round_start(EncounterState& s, std::vector<Event>& ev) {
     std::vector<GoneEffect> gone;
+    std::vector<ActiveSpellEffect> due;
     for (auto& e : s.effects)
-        if (tick_round_start(e.timed)) gone.push_back({e.spell_id, {e.caster, e.target}});
+        if (tick_round_start(e.timed)) { gone.push_back({e.spell_id, {e.caster, e.target}}); if (e.damage_when == 1) due.push_back(e); }
+    for (const auto& e : due) deal_effect_damage(s, e, ev);
     expire_effects(s, gone, ev);
     tick_modifiers_round_start(s, ev);
 }
@@ -284,8 +298,10 @@ void tick_effects_round_start(EncounterState& s, std::vector<Event>& ev) {
 // End of `cid`'s turn: EndOfTargetNextTurn timers on `cid` tick.
 void tick_effects_turn_end(EncounterState& s, CombatantId cid, std::vector<Event>& ev) {
     std::vector<GoneEffect> gone;
+    std::vector<ActiveSpellEffect> due;
     for (auto& e : s.effects)
-        if (e.target == cid && tick_target_turn_end(e.timed)) gone.push_back({e.spell_id, {e.caster, e.target}});
+        if (e.target == cid && tick_target_turn_end(e.timed)) { gone.push_back({e.spell_id, {e.caster, e.target}}); if (e.damage_when == 1) due.push_back(e); }
+    for (const auto& e : due) deal_effect_damage(s, e, ev);
     expire_effects(s, gone, ev);
     tick_modifiers_turn_end(s, cid, ev);
 }
@@ -1607,6 +1623,45 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         }
         break;
     }
+    case SpellEffectKind::EndCondition: {   // Lesser Restoration: one condition, the lowest Condition value present
+        for (Combatant* t : T) {
+            if (t->dead) continue;
+            const uint32_t present = t->conditions & def.ends_conditions;
+            if (present == 0) continue;
+            Condition c = Condition::Blinded;
+            for (int k = 0; k < 32; ++k) if (present & (uint32_t(1) << k)) { c = Condition(k); break; }
+            bool via_effect = false;
+            for (std::size_t i = 0; i < s.effects.size();) {
+                if (s.effects[i].target == t->id && !s.effects[i].no_condition && s.effects[i].condition == c) { end_effect(s, i, ev); via_effect = true; }
+                else ++i;
+            }
+            if (t->has(c)) {   // also when an effect still claims it, or it came from elsewhere
+                remove_condition(*t, c);
+                emit(ev, EventKind::ConditionRemoved, t->id, 0, int32_t(c));
+            } else if (!via_effect) continue;
+            affected.push_back(t);
+        }
+        break;
+    }
+    case SpellEffectKind::DelayedDamage: case SpellEffectKind::SustainedDamage: {
+        const bool sustained = def.kind == SpellEffectKind::SustainedDamage;
+        const DiceExpr dice = scaled_dice(def, lvl, a.caster_level);
+        for (Combatant* t : T) {
+            if (t->dead) continue;
+            if (sustained) {
+                const int dmg = std::max(0, roll_dice(s.rng, dice));
+                damage_creature(s, *t, apply_damage(*t, int16_t(dmg), def.damage_type, def.magical ? uint8_t(kAttackMagical) : uint8_t(0)), false, ev);
+            }
+            ActiveSpellEffect e{def.id, a.id, t->id, Condition::Blinded, Ability::Wis, 0, RepeatSave::None, def.concentration,
+                                make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id), lvl, false};
+            e.no_condition = true; e.damage_when = sustained ? 2 : 1; e.damage = dice; e.damage_type = def.damage_type;
+            e.magical = def.magical; e.cast_stamp = (uint32_t(s.round) << 16) | s.turn_index;
+            s.effects.push_back(e);
+            affected.push_back(t);
+        }
+        if (def.concentration && !affected.empty()) a.concentration_spell = def.id;
+        break;
+    }
     case SpellEffectKind::AcBonus: case SpellEffectKind::Counter: break;   // reactions only
     }
     return affected;
@@ -1629,6 +1684,26 @@ void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& de
 // window, then resolves the effect.
 StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def,
                       const ActionRequest& req) {
+    if (req.sustain) {   // R-G15: Heat Metal's repeat damage with a bonus action, no slot, no SpellCast window
+        Combatant* t = find_mut(s, req.target);
+        if (!t || t->dead) return fail("bad target");
+        const uint32_t now = (uint32_t(s.round) << 16) | s.turn_index;
+        const ActiveSpellEffect* e = nullptr;
+        for (const auto& x : s.effects)
+            if (x.spell_id == def.id && x.caster == a.id && x.target == t->id && x.damage_when == 2) e = &x;
+        if (!e) return fail("no sustained effect of that spell on the target");
+        if (e->cast_stamp == now) return fail("cannot sustain on the turn it was cast");
+        if (!b.bonus_action) return fail("no bonus action available");
+        b.bonus_action = false;
+        s.budget = b;
+        StepResult out{true, {}, {}};
+        const ActiveSpellEffect copy = *e;
+        const int dmg = std::max(0, roll_dice(s.rng, copy.damage));
+        damage_creature(s, *t, apply_damage(*t, int16_t(dmg), copy.damage_type, copy.magical ? uint8_t(kAttackMagical) : uint8_t(0)), false, out.events, nullptr, &ctx);
+        emit(out.events, EventKind::SpellResolved, a.id, t->id, int32_t(def.id), copy.slot_level);
+        check_end(s, out.events);
+        return out;
+    }
     InnateSpell* inn = nullptr;
     if (req.innate) {
         for (auto& is : a.innate) if (is.spell_id == def.id) inn = &is;
@@ -1686,6 +1761,7 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
     }
     case SpellEffectKind::Save: case SpellEffectKind::Heal: case SpellEffectKind::ApplyCondition: case SpellEffectKind::ApplyModifier:
     case SpellEffectKind::HpPool: case SpellEffectKind::Dispel: case SpellEffectKind::Revive:
+    case SpellEffectKind::EndCondition: case SpellEffectKind::DelayedDamage: case SpellEffectKind::SustainedDamage:
         if ((def.area == AreaShape::None && int(T.size()) > scaled_targets(def, lvl)) || !distinct())
             return fail("too many targets");
         break;
@@ -1954,6 +2030,21 @@ Skill best_defence(const Combatant& c) {
 
 StepResult special_action(EncounterState& s, Combatant& a, TurnBudget b, const ActionRequest& req) {
     StepResult out{true, {}, {}};
+    if (req.special == 5) {   // Wake: shake a sleeper awake (ends its ends_on_damage effects); uses the action
+        if (req.as_bonus_action) return fail("not a bonus action");
+        Combatant* t = find_mut(s, req.target);
+        if (!t || t == &a || t->dead) return fail("bad target");
+        if (!req.target_within_5ft) return fail("target must be within 5 ft");
+        bool asleep = false;
+        for (const auto& e : s.effects) asleep = asleep || (e.target == t->id && e.ends_on_damage);
+        if (!asleep) return fail("target is not under an effect that waking ends");
+        if (!spend_action(b, a, ActionKind::Attack, false)) return fail("no action available");
+        s.budget = b;
+        for (std::size_t i = 0; i < s.effects.size();) {
+            if (s.effects[i].target == t->id && s.effects[i].ends_on_damage) end_effect(s, i, out.events); else ++i;
+        }
+        return out;
+    }
     if (req.special > 4) return fail("bad special attack");
     if (req.as_bonus_action) return fail("not a bonus action");
     if (req.multiattack != 0 || b.sequence != 0) return fail("a multiattack is in progress or declared");

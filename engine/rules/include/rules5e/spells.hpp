@@ -33,6 +33,9 @@ enum class SpellEffectKind : uint8_t {
     HpPool,         // roll `dice` (scaled) as a hit-point pool; targets by lowest current HP get `condition` while the pool covers them (Sleep, Color Spray)
     Dispel,         // end spells on each target: slot level or lower automatically, higher ones on a check (Dispel Magic)
     Revive,         // a creature dead for at most `revive_within_rounds` returns with 1 HP (Revivify)
+    EndCondition,   // ends one condition of `ends_conditions` on each target, the lowest Condition value present (Lesser Restoration)
+    DelayedDamage,  // `dice` of `damage_type` when the effect's timer runs out (`expiry`; Acid Arrow: end of the target's next turn)
+    SustainedDamage,// `dice` now, and again each time the caster sustains it with a bonus action (Heat Metal; concentration)
 };
 enum class OnSave : uint8_t { None, Half };          // damage on a successful save
 enum class RepeatSave : uint8_t { None, EndOfTurn, StartOfTurn, OnDamage };   // condition: target repeats the save
@@ -121,6 +124,7 @@ struct SpellDef {
     bool ends_on_damage = false;
     uint8_t dispel_dc_base = 10;
     uint8_t revive_within_rounds = 10;
+    uint32_t ends_conditions = 0;   // EndCondition: bitmask over Condition (Lesser Restoration: blinded, deafened, paralyzed, poisoned)
 };
 
 // The spell as seen by one extra effect: `base` with that effect's fields, no scaling, no further effects.

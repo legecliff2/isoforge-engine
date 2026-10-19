@@ -366,10 +366,10 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Flame Blade | NEW | Summoned weapon (R-G12). |
 | Flaming Sphere | NEW | Object/zone (R-G11/R-G12). |
 | Gust of Wind | NEW | Line + push (R-G9, R-G10). |
-| Heat Metal | NEW | Sustained damage (R-G3). |
+| Heat Metal | NEW (wiring) | rules5e `SustainedDamage` + `CastSpell sustain` bonus action (R-G15, VERSION_BUMP_BATCH 7.2g); object rider not modelled. |
 | Hold Person | DATA | Shipped (`save` WIS, paralyzed, repeat end_of_turn, humanoid, upcast targets). |
 | Invisibility | NEW | Condition applied with no save, ends on attack/cast; `save` kind requires a save (R-G2/R-G3). |
-| Lesser Restoration | NEW | End a condition (R-G15). |
+| Lesser Restoration | NEW (wiring) | rules5e `EndCondition` + `ends_conditions` (R-G15, 7.2g); lowest listed condition first; no disease model. |
 | Magic Weapon | NEW | Magic bonus (R-G17, T&C-G2/R-G3). |
 | Mirror Image | NEW | Duplicates that absorb attacks (R-G3). |
 | Misty Step | NEW | Teleport (R-G9). |
@@ -384,7 +384,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Suggestion | NEW | Forced behavior (R-G8). |
 | Warding Bond | NEW | Shared damage (R-G3). |
 | Web | NEW | Area zone + restrained (R-G10, R-G11). |
-| Acid Arrow | NEW | Delayed second damage (R-G15). |
+| Acid Arrow | NEW (wiring) | rules5e `DelayedDamage` rider at end of target's next turn (R-G15, 7.2g). |
 
 ### 8.4 Level 3
 
@@ -494,7 +494,7 @@ Row counts are over the tables in sections 1-9 (one row per mechanic or feature;
 | 9. Monsters: stat blocks, traits, actions | 13 | 26 | 5 | 44 |
 | **Total** | **129** | **192** | **31** | **352** |
 
-"NEW (wiring)" rows (rules5e models it, content-to-sim does not carry it) are counted under NEW. Counts are as of main after #91 (and #93 for row 15); after #45, #47, #48 and #49 the totals were DATA 112 / NEW 209 / OOS 31 = 352, and before those PRs DATA 104 / NEW 217 / OOS 31. The version-bump batch moved 17 rows NEW -> DATA (conditions with a duration, condition riders from actions, area templates, duration expiry, Divine Smite, Sneak Attack, Burning Hands, Shatter, Fireball, Lightning Bolt, on-hit save riders, Recharge breath weapons, Innate Spellcasting, Charge / Pounce, Rampage, Undead Fortitude, Death Burst). A further 26 rows moved NEW -> `NEW (wiring)` (rules done, still counted NEW): see 11.5; the bonus-action attack PR (R-G6) moved 5 more (two-weapon fighting and its style, Martial Arts, Flurry of Blows, Frenzy), still counted NEW; the grapple / shove PR (R-G8) moved 5 more (grapple and shove, Charmed, Frightened, Grappled, crawling), still counted NEW; the static-feature-kinds PR (R-G5) moved 3 more (Archery, Defense, Improved Critical), still counted NEW; the R-G7 roll-window PR moved 4 more (Lucky, Cutting Words, Great Weapon Fighting, Evasion), still counted NEW; the R-G15 spell-kinds PR moved 5 more (dispel / end effects, Color Spray, Sleep, Dispel Magic, Revivify), still counted NEW. This recount was produced by a script over the tables, which also reproduced the previous 112 / 209 / 31. "DATA (baked)" / "DATA (partial)" rows count as DATA.
+"NEW (wiring)" rows (rules5e models it, content-to-sim does not carry it) are counted under NEW. Counts are as of main after #91 (and #93 for row 15); after #45, #47, #48 and #49 the totals were DATA 112 / NEW 209 / OOS 31 = 352, and before those PRs DATA 104 / NEW 217 / OOS 31. The version-bump batch moved 17 rows NEW -> DATA (conditions with a duration, condition riders from actions, area templates, duration expiry, Divine Smite, Sneak Attack, Burning Hands, Shatter, Fireball, Lightning Bolt, on-hit save riders, Recharge breath weapons, Innate Spellcasting, Charge / Pounce, Rampage, Undead Fortitude, Death Burst). A further 26 rows moved NEW -> `NEW (wiring)` (rules done, still counted NEW): see 11.5; the bonus-action attack PR (R-G6) moved 5 more (two-weapon fighting and its style, Martial Arts, Flurry of Blows, Frenzy), still counted NEW; the grapple / shove PR (R-G8) moved 5 more (grapple and shove, Charmed, Frightened, Grappled, crawling), still counted NEW; the static-feature-kinds PR (R-G5) moved 3 more (Archery, Defense, Improved Critical), still counted NEW; the R-G7 roll-window PR moved 4 more (Lucky, Cutting Words, Great Weapon Fighting, Evasion), still counted NEW; the R-G15 spell-kinds PR moved 5 more (dispel / end effects, Color Spray, Sleep, Dispel Magic, Revivify), still counted NEW; the R-G15 follow-up moved 3 more (Lesser Restoration, Acid Arrow, Heat Metal), still counted NEW. This recount was produced by a script over the tables, which also reproduced the previous 112 / 209 / 31. "DATA (baked)" / "DATA (partial)" rows count as DATA.
 
 ### 10.2 Spells, per spell (SRD 5.1 levels 0-3)
 
@@ -631,7 +631,7 @@ Gaps that need new rules mechanics (not just Engine Core / T&C wiring, which is 
 | 3 | R-G8 | **Done in rules** (conditions with a source, grapple / shove / escape, drag, one-size limit). Still open: swallow / engulf, web-style restrain, sim wiring of the push / drag | grapple monsters, crocodile, Charm Person, Fear | done |
 | 4 | R-G6 | **Done in rules**: bonus-action attack options (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy) with prerequisites, pool spend and an off-hand damage override. Still open: Open Hand Technique riders, Frenzy's exhaustion, a rules-side `legal_actions` listing | Monk, Berserker, dual wielders need wiring only | done |
 | 5 | R-G7 rest | **Done in rules**: Lucky (`reroll_ones`), Cutting Words on attack rolls (`AttackRolled` + `SubtractRoll`), Great Weapon Fighting, Evasion. Still open: Cutting Words on checks / damage, Bardic Inspiration spending by the ally, Guidance / Resistance, roller-chosen rerolls (Lucky feat, Indomitable, Portent) | Bard, Halfling, Fighter style, Rogue / Monk | M (done) |
-| 6 | R-G15 | **Partly done in rules**: HP-pool (Sleep, Color Spray), Dispel Magic, Revivify. Still open: Lesser Restoration-style end-a-condition, delayed / sustained damage (Acid Arrow, Heat Metal), waking a sleeper as an action | Sleep, Color Spray, Dispel Magic, Revivify done; Lesser Restoration, Acid Arrow open | S |
+| 6 | R-G15 | **Done in rules**: HP-pool (Sleep, Color Spray), Dispel Magic, Revivify (7.2f); end-a-condition, delayed / sustained damage, Wake action (`special` 5) (7.2g). Remaining: loader / sim wiring | Sleep, Color Spray, Dispel Magic, Revivify, Lesser Restoration, Acid Arrow, Heat Metal done | - |
 | 7 | R-G16 | Surprise, Hit Dice, Arcane / Natural Recovery; a rest model that makes `recharge` kinds meaningful | round-1 ambush, attrition | S-M |
 | 8 | R-G9 | Forced movement and teleport with OA rules (Engine Core owns positions) | Thunderwave push, Repelling Blast, Misty Step, Open Hand | M |
 | 9 | R-G14 | Per-cast options: Metamagic, Sculpt Spells, chosen condition / damage type | Sorcerer, Evocation Wizard, Blindness/Deafness | M |
