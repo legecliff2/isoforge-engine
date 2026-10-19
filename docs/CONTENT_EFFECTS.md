@@ -174,3 +174,22 @@ as is `blocks_move` without `blocks_sight` (glass, low fences). Line of sight ch
 `blocks_sight`, and pathing checks only `blocks_move`.
 
 See `docs/CONTENT_CONVENTIONS.md` for the timed-modifier properties the sim compiles (`consume`, `speed_sub`, `ac_floor` / `ac_floor_dex`, `per_turn`, `when`) and the bonus-attack feature-id conventions, and for the R-G7 reactions (`roll_attack` / `subtract_roll`) and kinds.
+
+## 5. spell@1 effect kinds
+
+`schemas/spell/v1.schema.json` `$defs/effect` (closed arms; cross-field rules in `tools/validate` `check_spell`, mirrored by
+`rules5e_content`). Each maps to a `rules5e::SpellEffectKind`.
+
+| kind | rules5e | first effect only | notes |
+|---|---|---|---|
+| `spell_attack`, `save`, `heal`, `auto_hit`, `apply_condition`, `apply_modifier` | SpellAttack, Save, Heal, AutoHit, ApplyCondition, ApplyModifier | no (riders take `applies_to`) | |
+| `ac_bonus`, `counter` | AcBonus, Counter | must be the only effect | reactions |
+| `hp_pool` | HpPool | yes | `dice`, `condition`; needs a rounds / minutes / hours duration |
+| `dispel` | Dispel | yes | optional `check {ability: spellcasting, dc_base, plus: spell_level}` |
+| `revive` | Revive | yes | optional `within_rounds` |
+| `end_condition` | EndCondition | yes | `conditions[]` |
+| `delayed_damage` | DelayedDamage | no (Acid Arrow rider) | `damage`, `expiry` |
+| `sustained_damage` | SustainedDamage | yes | `damage`; needs a rounds / minutes / hours duration; no `expiry` |
+
+Details and loader messages: `docs/CONTENT_CONVENTIONS.md` section 6 (R-G15 kinds, sim #120) and section 7 (priced material
+components, character@4 `equipment[].value_gp`).
