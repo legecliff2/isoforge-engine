@@ -1,6 +1,6 @@
 # Summons and transforms (R-G12): rules / sim co-design proposal
 
-Status: **proposal, docs only; Director rulings D1..D14 recorded (§5), Q15 open.** The RULES section is written by Rules. The SIM CONTRACT
+Status: **proposal, docs only; Director rulings D1..D15 recorded (§5).** The RULES section is written by Rules. The SIM CONTRACT
 section is drafted by Engine Core (for review). Content / schema needs are listed for Tools & Content.
 Tracks `docs/SRD_COMBAT_COVERAGE.md` §11.1 row 27 / §11.5 order 12 (R-G12) and the rows it unlocks: Wild Shape, Find Familiar,
 Pact of the Chain, Pact of the Blade (bonded weapon part only), Spiritual Weapon, Conjure Animals, Shapechanger (werewolf,
@@ -112,11 +112,21 @@ Two independent mechanisms:
 - **Rider's turn** (Find Steed when mounted): out of scope (Q9).
 - Removal: a summon that ends (0 HP, dismissed, concentration) is removed from `order` at the end of the current step; if it is
   the current actor, its turn ends first (`TurnEnded`, then removal). `turn_index` is adjusted so the next actor is unchanged.
+- **Insertion before the current actor shifts `turn_index`.** A summon whose entry sorts before the current actor's slot moves
+  the current actor one index later (per inserted entry). Rules adjusts `turn_index` in the same step so the **current actor's
+  turn continues** (same budget, no new `TurnStarted`); the inserted creature first acts next round (D14). Removal before the
+  current actor shifts it back the same way. Engine Core changes `run_to_end`'s turn detector to key on the current actor and
+  the count of `TurnStarted` events instead of `(round, turn_index)` (§3.4).
+- **Decision: `cast_stamp` rewrite.** `cast_stamp` (`round << 16 | turn_index`, folded under `Combat::hash` 0xAC; read by Heat
+  Metal's sustain check and the driver's `spell_kind_command`) would go stale on such a shift. When an insert or removal shifts
+  `turn_index`, rules rewrites every stored `cast_stamp` (live effects) in the same step by the same shift, so "cast this turn"
+  stays true. Combats without summons never shift, so the encoding and every golden stay unchanged. Rejected alternative: a
+  monotonic turn counter (`turn_seq`) as the stamp, which would change 0xAC's bytes and move the Heat Metal goldens.
 
 ### 2.5 Concentration links
 
 - `concentration_link` summons end with the summoner's concentration on `summon_source` (same place that drops effects:
-  `end_concentration`). Reason codes on `SummonEnded.b`: 0 duration, 1 concentration, 2 dismissed, 3 0 HP, 4 summoner died
+  `end_concentration`). Reason codes on `SummonEnded.b`: 0 duration, 1 concentration, 2 dismissed, 3 0 HP, 4 summoner died, 5 encounter ended (§3.5)
   (only where SRD says so; Find Familiar does not end on the caster's death, Q10).
 - Polymorph: concentration end reverts the target (`Reverted.b = 1`).
 - Conjure Elemental with `hostile_on_break`: on concentration loss the creature stays, changes team to hostile, and acts on its
@@ -124,9 +134,12 @@ Two independent mechanisms:
 
 ### 2.6 Determinism, ids and replay
 
-- **Ids**: sim assigns summon ids at request time from a monotonic per-Combat counter starting above the highest create-time id
-  (proposed: `max(create ids) + 1`, then +1 per summon, never reused). The ids travel in the logged request (`summon_ids`), so
-  replay rebuilds the same roster without re-deriving them. Rules refuses an id already present.
+- **Ids** (D11 as refined with Engine Core, §3.0): sim assigns summon ids from a monotonic per-Combat counter that starts above
+  **every chunk spawn id** (combatant or not), not just combatants; +1 per summon, **never reused** (also after `SummonEnded`).
+  The counter is folded in `Combat::hash` 0xAF. Ids travel in the logged request (`summon_ids`); a caller-supplied
+  `summon_ids` is refused in live play (sim fills it), and **replay rejects** logged ids that differ from what the counter
+  would assign (desync). Rules refuses an id already present as a second check.
+- **Turn order shifts**: see §2.4 (current actor's turn kept, `cast_stamp` rewritten).
 - **Roster growth**: `EncounterState::combatants` / `order` grow by append; nothing is erased mid-step (an ended summon is marked
   `gone` and removed at the step boundary) so pointers / spans taken inside a step stay valid. Iteration order everywhere stays
   "combatants vector order" = creation order, which is deterministic.
@@ -145,8 +158,14 @@ Appended rules5e `EventKind`s (after `ZoneEnded` = 47; numbers proposed):
 | `Summoned` (48) | actor = summoner, target = new creature, a = source spell / feature id, b = archetype index, c = initiative total (or -1 = none) |
 | `SummonEnded` (49) | actor = summoner, target = creature, a = source id, b = reason (2.5) |
 | `Transformed` (50) | actor = creature, target = 0, a = source id, b = archetype index, c = FormKind |
-| `Reverted` (51) | actor = creature, a = source id, b = reason (0 duration, 1 concentration, 2 0 HP, 3 chose, 4 died), c = overflow damage carried |
+| `Reverted` (51) | actor = creature, a = source id, b = reason (0 duration, 1 concentration, 2 0 HP, 3 chose, 4 died, 5 encounter ended), c = overflow damage carried |
 | `Commanded` (52) | actor = summoner, target = creature (0 = all), a = command |
+
+**Encounter end (D15, §3.5):** in the ending step rules emits, in order, `SummonEnded{b = 5}` per summon in ascending id (a
+transformed summon just ends, with no separate `Reverted`), then `Reverted{b = 5, c = 0}` per remaining transformed creature in
+ascending id, then `EncounterEnded`, which stays the last rules event. **Pending (Director):** EC asked Director to amend
+SIM_EVENTS.md ordering rule 7 so sim's teardown `TokenRemoved` events may follow `EncounterEnded`; this proposal does not change
+rule 7.
 
 `event_stream_version` returns 10 only for streams that carry one of them (SIM_EVENTS.md versioning policy), so no existing digest
 moves. Sim adds a `SimEvent::Kind::TokenSpawned` / `TokenRemoved` for tiles (EC, 3.x).
@@ -154,16 +173,19 @@ moves. Sim adds a `SimEvent::Kind::TokenSpawned` / `TokenRemoved` for tiles (EC,
 ### 2.8 Hashing plan (tags reserved here, claimed in SIM_EVENTS.md by the implementation PR)
 
 Taken on main or by open PRs at the time of writing: Combat::hash up to 0xAD on main, **0xAE** (#149, gaze); log_hash up to
-0xB9 on main, **0xBA** (#147, Font of Magic), **0xBB** (#149, gaze). #146 / #148 claim none.
+0xB9 on main, **0xBA** (#147, Font of Magic), **0xBB** (#149, gaze). #146 / #148 claim none. **These reservations depend on
+#147 and #149** landing with the claims they carry; if either changes its tags, this table moves with it.
 
 | tag (reserved) | where | content | folded when |
 |---|---|---|---|
-| **0xAF** | `Combat::hash` | `summons_digest`: per summoned combatant (creation order): id, summoner, source, group, gone flag; per transformed combatant: id, FormKind, source, base hp / hp_max (the saved block's HP) | any summon or transform has happened |
-| **0xBC** | `log_hash` | summon inputs: `summon_ids` (count + ids), `summon_archetypes` (count + bytes), then `CommandSummons` `command` byte | any non-empty / non-zero |
+| **0xAF** | `Combat::hash` | the summon id counter, then `summons_digest`: per summoned combatant (creation order): id, summoner, source, group, gone flag; per transformed combatant: id, FormKind, source, base hp / hp_max (the saved block's HP); then sim's per-summon-slot part (§3.2) | only when something has been summoned or transformed |
+| **0xBC** | `log_hash` | summon inputs: `summon_ids` (count + ids), `summon_archetypes` (count + bytes), `summon_tiles` (count + x, y), then `CommandSummons` `command` byte and ids | any non-empty / non-zero |
 | **0xBD** | `log_hash` | transform input: `form_archetype` byte (1 + index; 0 = none) | non-zero |
 
-`summon_tiles` / placement are sim facts (not folded, like zone membership) unless EC decides otherwise (3.x). Combatant records
-of summons are covered by the existing per-slot fold once sim has a slot for them (EC: decide whether summons get slots, 3.2).
+`summon_tiles` are **caller inputs** (or written back by sim's deterministic choice before logging), so they **are folded** in
+0xBC (this reverses the earlier draft, which treated them as derived facts like zone membership; §3.1). Summon slots stay **out
+of the untagged per-slot loop** of `Combat::hash` (which covers create-time slots only, byte-for-byte as today) and are folded
+only inside 0xAF (§3.2).
 
 ### 2.9 Rules / sim split
 
@@ -258,6 +280,8 @@ unchanged in each sim PR).
 - **0xBC** (`log_hash`, folded when any of the fields is non-empty / non-zero): `summon_ids` (count u32 + u32 each),
   `summon_archetypes` (count u32 + byte each), `summon_tiles` (count u32 + i32 x, i32 y each), `command` byte, then the
   `CommandSummons` id list (count u32 + u32 each). **0xBD** as 2.8.
+- 0xAC (`cast_stamp`) is unchanged in layout. In a combat with summons it folds the stamps after rules has rewritten them
+  (3.4 ruling), so live play and replay agree. Combats without summons never rewrite, so their 0xAC bytes are as today.
 - Required: 0xAF, 0xBC and 0xBD are added to the SIM_EVENTS.md registry by the first implementation PR (rules PR 1 for 0xBD;
   rules PR 2 for 0xAF / 0xBC), before or with the code.
 
@@ -284,10 +308,10 @@ unchanged in each sim PR).
   look like a new turn. Key it on `(round, current_actor, TurnStarted count)` instead (count of `TurnStarted` events in
   `events_`), which is identical today.
 - **cast_stamp** (`round << 16 | turn_index`, used by Heat Metal's sustain and the driver's `spell_kind_command`): same
-  hazard; rules must keep `turn_index` stable for the stamp or switch the stamp to a monotonic turn counter
-  (`EncounterState::turn_seq`, already derivable). Since 0xAC folds `cast_stamp`, changing its encoding moves Heat Metal
-  goldens; recommend: keep the encoding, and have rules rewrite `cast_stamp` of live effects when it adjusts `turn_index`
-  (only in combats with summons, so no golden moves). Rules to decide; EC needs it before rules PR 2.
+  hazard. **Director ruling (accepted):** the encoding is kept; when rules shifts `turn_index` (summon inserted into or
+  removed from `order`), it rewrites the `cast_stamp` of every live effect in the same step so "cast this turn" stays true.
+  This happens only in combats with summons, so no golden moves. Sim's driver keeps comparing against `round << 16 | turn_index`
+  unchanged. 0xAC folds the rewritten stamps (3.2).
 - **Policies**: `PolicyFor` is called with summon ids too; the default for a summon is `SummonPolicy` (built in):
   - control None / Telepathic / Verbal with `commanded` this turn (or Own-initiative familiars): `NearestEnemyPolicy`, except
     Find Familiar (`can_attack = false`): Help the summoner's nearest ally against its target if adjacent, else Dodge.
@@ -306,20 +330,36 @@ unchanged in each sim PR).
 - **Headless driver**: a summon's turn is driven like any creature; a `gone` combatant never becomes current (rules removes
   it from `order`); `max_commands` is unchanged.
 
-### 3.5 Campaign roster
+### 3.5 End of encounter teardown (Q15, ruled) and campaign roster
 
-- Long-lived summons (Find Familiar, Find Steed, Animate Dead control) persist on the caller-kept roster that `sim/rest.hpp`
-  already uses (`EncounterState` copy). Rules: rest helpers skip `summoner != 0` creatures except Find Familiar / Steed HP (no
-  Hit Dice; they are dismissed or re-cast, not rested; recommend rest helpers just skip them).
-- Carrying into the next encounter: `Combat::create` stays chunk-only. Add `CombatOptions::carried` (or a create overload) that
-  takes roster entries `{id, archetype content id, summoner, source, hp, anchor}`; they are created after the chunk spawns, in
-  the given id order, with the **same ids** (they must not collide with spawn ids: `create` fails "carried id clashes"), and
-  `next_summon_id_` starts above both. Like `apply_surprise`, the carried list is a replay input (`replay(..., carried)`),
-  not folded into `log_hash`; it is folded into `Combat::hash` 0xAF (non-empty only).
-- Roster id allocation across encounters is the campaign's (a party-level counter kept with the rest rng); the encounter
-  counter only covers mid-encounter summons. Concentration summons never carry over (the concentration ends with the encounter
-  scope only if the duration runs out; in practice Conjure Animals' 1 hour can outlast a fight: out of scope, they end at
-  `EncounterEnded` with reason 0, recommended Director ruling Q15).
+**Director ruling (Q15):** when the encounter ends, Combat ends every summon and transform it owns, including concentration
+ones, with the normal end events. Nothing is carried into another Combat for now.
+
+- **Trigger:** the step that makes the encounter end (rules decides `EncounterEnded`), live or in replay. Teardown is part
+  of that step, so replay reproduces it from the log alone. No log entry or request field is added.
+- **Order (deterministic):**
+  1. **Summons end** in ascending summon id. Each one emits `SummonEnded{actor = summoner, target = id, a = source, b = 5}`.
+     The new reason 5 means "encounter ended" and is added to 2.5's list. Spiritual Weapon rows (`ActiveSummonWeapon`) end
+     in the same pass, ordered by token id. A transformed summon just ends; it gets no separate `Reverted`.
+  2. **Transforms revert** next, for creatures that are not gone, in ascending combatant id. Each one emits
+     `Reverted{actor = id, a = source, b = 5, c = 0}`. Reason 5 "encounter ended" is added to 2.7's list. Nothing overflows,
+     and HP and the other stats come back from `base`.
+  3. Then rules' **`EncounterEnded`**, which stays the last rules event.
+  4. **Sim events of the step:** first the step's usual `TileMoved` / `SpellTarget`, then one `TokenRemoved` per summon and
+     weapon token in the same order as step 1. Ordering rule 7 in SIM_EVENTS.md must be amended to say: "`EncounterEnded` is
+     the last *rules* event. Only the ending step's sim events (`TileMoved`, `SpellTarget`, teardown `TokenRemoved`) may
+     follow it, and nothing after that block."
+- Concentration links do not fire separately. Teardown ends the summons first, and the summoner's concentration is not
+  ended by sim. So there is no duplicate `SummonEnded{b = 1}`, and rules' `ConcentrationEnded` behaviour at encounter end is
+  unchanged.
+- **Hash:** after teardown every summon slot is `gone` and every `form` is None. 0xAF still folds (the counter has moved),
+  so the final `Combat::hash` records the teardown. Combats without summons or transforms emit nothing and fold nothing.
+- `Combat::state()` after the end is therefore free of summons and forms. A caller that copies it into the rest roster
+  (`sim/rest.hpp`) gets creatures in their base forms, and its summons are gone (the slot is marked, the entity is destroyed).
+- **TODO (campaign layer, later; tracked with SRD_COMBAT_COVERAGE §11.4a):** carrying long-lived summons (Find Familiar,
+  Find Steed, Animate Dead control) and lasting transforms between fights. This will be an optional carry-over input to
+  `Combat::create`, a replay input like the surprised set, with ids allocated by a campaign-level counter. Until it exists,
+  a familiar is re-summoned in each fight.
 
 ## 4. Content / schema needs (Tools & Content)
 
@@ -336,7 +376,7 @@ unchanged in each sim PR).
   skeleton, zombie, ...); T&C confirms the SRD set ships in `srd51.core`.
 - Validator: archetype ids resolve; CR limits; Find Familiar forms list.
 
-## 5. Open questions (all ruled by Director: D1..D14, every recommendation accepted)
+## 5. Open questions (all ruled by Director: D1..D15; every recommendation accepted, D15 as recommended)
 
 - **Q1 Who chooses the creatures of Conjure Animals / the conjure family?** SRD: the DM. **Recommend:** the content lists allowed
   archetypes per CR band; the caster's request picks (AI: strongest by CR then id). Director may pin a per-encounter choice.
@@ -368,7 +408,8 @@ unchanged in each sim PR).
   (death ends it). **Recommend:** follow SRD per spell (`SummonEnded.b = 1` via concentration; no generic "summoner died" end).
   - **Ruled (Director, D10):** Accepted as recommended.
 - **Q11 Ids for summons:** **Recommend:** sim counter above the create-time maximum, carried in the logged request (2.6).
-  - **Ruled (Director, D11):** Accepted as recommended.
+  - **Ruled (Director, D11):** Accepted, refined with Engine Core (§2.6, §3.0): the counter starts above every chunk spawn id, is
+    folded in 0xAF, ids are never reused, live callers cannot supply `summon_ids`, and replay rejects mismatched ids.
 - **Q12 Massive damage on revert:** **Recommend:** instant death checks the overflow against the base form's hp_max (SRD death
   rules apply to the normal form after carrying over).
   - **Ruled (Director, D12):** Accepted as recommended.
@@ -378,6 +419,12 @@ unchanged in each sim PR).
 - **Q14 Initiative position for a summon whose roll beats the current actor:** **Recommend:** first turn next round (2.4); no
   turn in the round it appeared after its slot has passed.
   - **Ruled (Director, D14):** Accepted as recommended.
+- **Q15 Summons and transforms at the end of the encounter** (from Engine Core): do concentration summons end when the
+  encounter ends? **Recommend:** yes for now: every summon and transform ends at encounter end (`Combat::complete`), with
+  `SummonEnded` / `Reverted` with reason 5 ("encounter ended"); carrying them in the campaign roster can come later.
+  - **Ruled (Director, D15):** yes. When the encounter ends, Combat ends every summon and transform it owns, concentration ones
+    included, with the normal end events (`SummonEnded` / `Reverted`, reason 5 "encounter ended"; §3.5). Carry-over between fights
+    is deferred to the campaign layer (`SRD_COMBAT_COVERAGE.md` §11.4a TODO).
 
 ## 6. SRD coverage mapping
 
