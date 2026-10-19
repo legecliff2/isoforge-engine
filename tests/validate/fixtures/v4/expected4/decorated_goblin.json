@@ -1,0 +1,146 @@
+{
+  "$schema": "monster@4",
+  "abilities": {
+    "cha": 8,
+    "con": 10,
+    "dex": 14,
+    "int": 10,
+    "str": 8,
+    "wis": 8
+  },
+  "actions": [
+    {
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "slashing"
+        }
+      ],
+      "id": "scimitar",
+      "kind": "melee_weapon_attack",
+      "name": "Scimitar",
+      "reach": 5,
+      "targets": 1,
+      "to_hit": 4
+    },
+    {
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ],
+      "id": "shortbow",
+      "kind": "ranged_weapon_attack",
+      "name": "Shortbow",
+      "range": [
+        80,
+        320
+      ],
+      "targets": 1,
+      "to_hit": 4
+    },
+    {
+      "description": "Descriptive breath weapon (DC 11 Dex, 2d6 fire, recharge 5-6): stays 'special'.",
+      "id": "fire_breath",
+      "kind": "special",
+      "name": "Fire Breath"
+    }
+  ],
+  "alignment": "neutral evil",
+  "armor_class": {
+    "note": "leather armor, shield",
+    "value": 15
+  },
+  "bonus_actions": [
+    {
+      "description": "Disengage or Hide as a bonus action.",
+      "id": "nimble_escape",
+      "kind": "special",
+      "name": "Nimble Escape"
+    },
+    {
+      "damage": [
+        {
+          "dice": "1d4",
+          "type": "bludgeoning"
+        }
+      ],
+      "id": "kick",
+      "inert": true,
+      "kind": "melee_weapon_attack",
+      "name": "Kick",
+      "reach": 5,
+      "to_hit": 4
+    }
+  ],
+  "challenge": {
+    "rating": "1/4",
+    "xp": 50
+  },
+  "hit_points": {
+    "average": 7,
+    "formula": "2d6"
+  },
+  "id": "test.v4.monster.decorated_goblin",
+  "inert_mechanics": [
+    "bonus_actions",
+    "reactions"
+  ],
+  "languages": [
+    "Common",
+    "Goblin"
+  ],
+  "name": "Goblin",
+  "proficiency_bonus": 2,
+  "reactions": [
+    {
+      "damage": [
+        {
+          "dice": "1d6",
+          "type": "slashing"
+        }
+      ],
+      "description": "Descriptive: +2 AC against one melee attack.",
+      "id": "parry",
+      "inert": true,
+      "kind": "melee_weapon_attack",
+      "name": "Parry",
+      "reach": 5,
+      "to_hit": 4
+    }
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 9
+  },
+  "size": "small",
+  "skills": {
+    "stealth": 6
+  },
+  "source": {
+    "license": "CC-BY-4.0",
+    "ref": "SRD 5.1"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "tags": [
+    "goblinoid"
+  ],
+  "traits": [
+    {
+      "description": "The goblin can take the Disengage or Hide action as a bonus action on each of its turns.",
+      "effect": {
+        "actions": [
+          "disengage",
+          "hide"
+        ],
+        "kind": "bonus_action_grant"
+      },
+      "id": "nimble_escape",
+      "name": "Nimble Escape"
+    }
+  ],
+  "type": "humanoid"
+}

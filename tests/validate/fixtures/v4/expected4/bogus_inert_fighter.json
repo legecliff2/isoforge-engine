@@ -1,0 +1,134 @@
+{
+  "$schema": "character@4",
+  "abilities": {
+    "cha": 11,
+    "con": 15,
+    "dex": 14,
+    "int": 9,
+    "str": 16,
+    "wis": 13
+  },
+  "actions": [
+    {
+      "damage": [
+        {
+          "dice": "1d8+5",
+          "type": "slashing"
+        }
+      ],
+      "description": "Includes +2 from Dueling (one-handed, wielded with a shield).",
+      "id": "longsword",
+      "kind": "melee_weapon_attack",
+      "name": "Longsword",
+      "properties": [
+        "versatile"
+      ],
+      "reach": 5,
+      "targets": 1,
+      "to_hit": 5
+    },
+    {
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ],
+      "id": "light_crossbow",
+      "kind": "ranged_weapon_attack",
+      "name": "Light Crossbow",
+      "properties": [
+        "ammunition",
+        "loading",
+        "two_handed"
+      ],
+      "range": [
+        80,
+        320
+      ],
+      "targets": 1,
+      "to_hit": 4
+    }
+  ],
+  "alignment": "neutral good",
+  "armor_class": {
+    "note": "chain mail, shield",
+    "value": 18
+  },
+  "bonus_actions": [],
+  "classes": [
+    {
+      "class": "fighter",
+      "hit_die": "d10",
+      "level": 1
+    }
+  ],
+  "equipment": [
+    "chain_mail",
+    "shield",
+    "longsword",
+    "light_crossbow",
+    "crossbow_bolts_20",
+    "dungeoneers_pack"
+  ],
+  "features": [
+    {
+      "effect": {
+        "effects": [],
+        "inert": true,
+        "kind": "on_event",
+        "mystery": 1,
+        "on": "whenever_i_like"
+      },
+      "id": "ahead_of_engine",
+      "name": "Ahead of the engine"
+    }
+  ],
+  "hit_points": {
+    "average": 12,
+    "formula": "1d10+2"
+  },
+  "id": "test.v4.character.bogus_inert_fighter",
+  "inert_mechanics": [
+    "equipment",
+    "reactions"
+  ],
+  "languages": [
+    "Common",
+    "Goblin"
+  ],
+  "level": 1,
+  "name": "Fighter",
+  "proficiency_bonus": 2,
+  "race": "human",
+  "reactions": [
+    {
+      "description": "Descriptive.",
+      "id": "riposte",
+      "inert": true,
+      "kind": "special",
+      "name": "Riposte"
+    }
+  ],
+  "saving_throws": {
+    "con": 4,
+    "str": 5
+  },
+  "senses": {
+    "passive_perception": 13
+  },
+  "size": "medium",
+  "skills": {
+    "athletics": 5,
+    "perception": 3
+  },
+  "source": {
+    "license": "CC-BY-4.0",
+    "ref": "SRD 5.1"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "type": "humanoid",
+  "xp": 0
+}
