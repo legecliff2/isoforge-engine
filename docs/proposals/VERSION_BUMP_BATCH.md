@@ -510,6 +510,18 @@ as a new predicate without changing this one.
                                    "add_dice":{"$ref":"../common/v1.schema.json#/$defs/dice"}}} } }
 ```
 
+**`per_levels` resolution (decided).** The loader resolves it to final dice when it builds the owner's `Trigger`
+(rules5e only ever sees the resolved `RiderEffect::dice`): `extra_dice = floor((level - 1) / every)` copies of
+`add_dice`, added to the base dice, where `level` is the owner's level in `class` (or the total character level when
+`class` is omitted). Monsters have no class levels, so `per_levels` does not apply to them. Worked example, Sneak
+Attack (base `1d6`, `every: 2`, `add_dice: 1d6`): levels 1, 2, 3, 4, 5, 19, 20 give 1, 1, 2, 2, 3, 10, 10 d6, i.e.
+`ceil(level / 2)` d6.
+
+**`AttackIs` (approved, rules-internal).** A predicate appended by the sim loader for `on_hit[]` riders, not part of the
+content `predicate` schema above: `a` = index into the owner's `Combatant::attacks`; it holds only for that exact weapon
+attack and is false for spell attacks. The loader binds each `on_hit[]` rider to its attack action with it, so a rider
+fires only when that attack hits (the trigger is otherwise an ordinary `hit` trigger with the same limits and effects).
+
 `type: "same_as_weapon"` is valid only through `rider_damage_type` (§1.2), never in v1's `damage_type`.
 
 ### 3.2 Rules sketch
