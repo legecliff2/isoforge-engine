@@ -130,6 +130,17 @@ SaveResult save_roll(EncounterState& s, const Combatant& t, Ability ab, int dc, 
     return r;
 }
 
+// R-G8: record the source of a spell-applied Charmed / Frightened (other conditions carry no source).
+void note_source(EncounterState& s, Condition c, CombatantId source, CombatantId target) {
+    if (c != Condition::Charmed && c != Condition::Frightened) return;
+    for (auto& e : s.sourced) if (e.condition == c && e.target == target && e.source == source) return;
+    s.sourced.push_back(SourcedCondition{c, target, source, 0});
+}
+bool charmed_by(const EncounterState& s, CombatantId actor, CombatantId other) {
+    for (const auto& e : s.sourced) if (e.condition == Condition::Charmed && e.target == actor && e.source == other) return true;
+    return false;
+}
+
 void check_end(EncounterState& s, std::vector<Event>& ev) {
     if (s.ended) return;
     auto o = s.hooks.end_condition ? s.hooks.end_condition(s) : default_end_condition(s);
@@ -1375,6 +1386,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                     add_condition(*t, def.condition);
                     emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.condition));
                 }
+                note_source(s, def.condition, a.id, t->id);
                 s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, def.save_ability,
                                                       int16_t(dc), def.repeat_save, def.concentration,
                                                       make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id)});
@@ -1408,6 +1420,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 add_condition(*t, def.condition);
                 emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.condition));
             }
+            note_source(s, def.condition, a.id, t->id);
             s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, Ability::Wis, 0, RepeatSave::None,
                                                   def.concentration,
                                                   make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id)});
@@ -1648,6 +1661,7 @@ StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vecto
     if (!r.ok) return r;
     process_deaths(s, r.events, &ctx);
     sweep_concentration(s, r.events);
+    prune_sourced(s, r.events);
     if (ctx.need && !replay_only) {
         std::vector<Event> provisional = std::move(r.events);
         s = std::move(before);
@@ -1762,6 +1776,89 @@ StepResult heal(EncounterState& s, CombatantId id, int16_t amount) { return step
 
 namespace {
 
+// ---- R-G8: grapple, shove, escape ----
+bool drags_grappled(const EncounterState& s, const Combatant& a) {
+    for (const auto& e : s.sourced) {
+        if (e.condition != Condition::Grappled || e.source != a.id) continue;
+        const Combatant* t = find(s, e.target);
+        if (t && !t->dead && int(a.size) - int(t->size) < 2) return true;   // no penalty against a creature two or more sizes smaller
+    }
+    return false;
+}
+
+Skill best_defence(const Combatant& c) {
+    return skill_modifier(c, Skill::Athletics) >= skill_modifier(c, Skill::Acrobatics) ? Skill::Athletics : Skill::Acrobatics;
+}
+
+StepResult special_action(EncounterState& s, Combatant& a, TurnBudget b, const ActionRequest& req) {
+    StepResult out{true, {}, {}};
+    if (req.special > 4) return fail("bad special attack");
+    if (req.as_bonus_action) return fail("not a bonus action");
+    if (req.multiattack != 0 || b.sequence != 0) return fail("a multiattack is in progress or declared");
+    const bool escape = req.special == 4;
+    Combatant* t = nullptr;
+    SourcedCondition held{};
+    bool has_held = false;
+    if (!escape) {
+        t = find_mut(s, req.target);
+        if (!t || t == &a) return fail("bad target");
+        if (t->dead) return fail("target is dead");
+        if (charmed_by(s, a.id, t->id)) return fail("a charmed creature cannot attack its charmer");
+        if (!req.target_within_5ft) return fail("target must be within 5 ft");
+        if (!size_within_one(a.size, t->size)) return fail("target is more than one size larger");
+        if (b.attacks_remaining > 0) --b.attacks_remaining;
+        else if (spend_action(b, a, ActionKind::Attack, false)) {
+            b.loading_fired = 0;
+            b.attacks_remaining = uint8_t(a.attacks_per_action > 1 ? a.attacks_per_action - 1 : 0);
+        } else return fail("no action available");
+    } else {
+        if (!a.has(Condition::Grappled)) return fail("not grappled");
+        for (const auto& e : s.sourced)
+            if (!has_held && e.condition == Condition::Grappled && e.target == a.id && (req.target == 0 || e.source == req.target)) { held = e; has_held = true; }
+        if (!has_held && req.dc <= 0) return fail("no grappler recorded and no escape dc");
+        if (has_held) t = find_mut(s, held.source);
+        if (!spend_action(b, a, ActionKind::Attack, false)) return fail("no action available");
+    }
+    s.budget = b;
+    std::vector<Event>& ev = out.events;
+    if (escape) {
+        const int dc = has_held ? held.escape_dc : req.dc;
+        bool free = false;
+        if (dc > 0) free = roll_check(s, a, best_defence(a), dc, RollMode::Normal, ev).success;
+        else {   // contest: the escaper rolls first, then the grappler must match or beat it
+            auto first = roll_check(s, a, best_defence(a), 0, RollMode::Normal, ev);
+            free = !t || !roll_check(s, *t, Skill::Athletics, first.roll.total, RollMode::Normal, ev).success;
+        }
+        if (free) {
+            const CombatantId src = has_held ? held.source : 0;
+            for (std::size_t i = 0; i < s.sourced.size();) {
+                if (s.sourced[i].condition == Condition::Grappled && s.sourced[i].target == a.id && (src == 0 || s.sourced[i].source == src))
+                    s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i));
+                else ++i;
+            }
+            bool still = false;
+            for (const auto& e : s.sourced) still = still || (e.condition == Condition::Grappled && e.target == a.id);
+            if (!still) { remove_condition(a, Condition::Grappled); emit(ev, EventKind::ConditionRemoved, a.id, 0, int32_t(Condition::Grappled)); }
+        }
+        check_end(s, ev);
+        return out;
+    }
+    // contest: the attacker rolls Athletics, the target the better of Athletics / Acrobatics and wins ties
+    auto first = roll_check(s, a, Skill::Athletics, 0, RollMode::Normal, ev);
+    const bool held_off = roll_check(s, *t, best_defence(*t), first.roll.total, RollMode::Normal, ev).success;
+    if (!held_off) {
+        if (req.special == 1) apply_sourced_condition(s, a.id, t->id, Condition::Grappled, 0, ev);
+        else if (req.special == 2) {
+            if (!t->has(Condition::Prone) && !(t->condition_immunities & bit(Condition::Prone))) {
+                add_condition(*t, Condition::Prone);
+                emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(Condition::Prone));
+            }
+        } else emit(ev, EventKind::Moved, t->id, a.id, 5, 0);   // forced movement: a = feet, target = the shover; sim applies it
+    }
+    check_end(s, ev);
+    return out;
+}
+
 StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     if (s.ended) return fail("encounter ended");
     if (s.order.empty()) return fail("no combatants");
@@ -1821,6 +1918,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     case ActionKind::Move: {
         if (req.move_ft <= 0) return fail("move_ft must be positive");
         int cost = req.move_ft * (a.has(Condition::Prone) ? 2 : 1);   // crawling
+        if (drags_grappled(s, a)) cost *= 2;                           // SRD: half speed while moving a grappled creature
         if (cost > b.movement_ft) return fail("not enough movement");
         // Pause before leaving reach; opportunity attacks may stop the move.
         if (req.leaves_reach && !leaving_reach_window(s, ctx, a, out.events)) {
@@ -1945,6 +2043,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
         emit(out.events, EventKind::Dodged, a.id);
         return out;
     case ActionKind::Attack: {
+        if (req.special != 0) return special_action(s, a, b, req);
         // A bonus-action attack is a granted trigger rider (Rampage: bonus_attack_grant = index + 1) or a compiled option
         // (bonus_option = 1 + index into bonus_attacks).
         const BonusAttack* bopt = nullptr;
@@ -1964,6 +2063,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
         Combatant* t = find_mut(s, req.target);
         if (!t || t == &a) return fail("bad target");
         if (t->dead) return fail("target is dead");
+        if (charmed_by(s, a.id, t->id)) return fail("a charmed creature cannot attack its charmer");
         if (req.attack_index >= a.attacks.size()) return fail("bad attack index");
         uint32_t pending_pool = 0; uint16_t pending_cost = 0;
         if (bopt) {
@@ -2477,6 +2577,66 @@ bool bonus_attack_available(const EncounterState& s, const Combatant& a, uint8_t
     }
     if (o.pool != 0 && !can_spend(s, a.id, o.pool, o.pool_cost ? o.pool_cost : uint16_t(1))) return false;
     return true;
+}
+
+}  // namespace rules5e
+
+namespace rules5e {
+
+bool size_within_one(Size g, Size t) { return int(t) <= int(g) + 1; }
+
+bool apply_sourced_condition(EncounterState& s, CombatantId source, CombatantId target, Condition c, int escape_dc, std::vector<Event>& ev) {
+    Combatant* t = find_mut(s, target);
+    const Combatant* src = find(s, source);
+    if (!t || !src || t->dead || t == src || (t->condition_immunities & bit(c))) return false;
+    if (c == Condition::Grappled && !size_within_one(src->size, t->size)) return false;
+    if (!t->has(c)) {
+        add_condition(*t, c);
+        emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(c));
+    }
+    for (auto& e : s.sourced)
+        if (e.condition == c && e.target == target && e.source == source) { e.escape_dc = int16_t(escape_dc); return true; }
+    s.sourced.push_back(SourcedCondition{c, target, source, int16_t(escape_dc)});
+    return true;
+}
+
+CombatantId condition_source(const EncounterState& s, CombatantId target, Condition c) {
+    for (const auto& e : s.sourced) if (e.condition == c && e.target == target) return e.source;
+    return 0;
+}
+
+std::vector<CombatantId> grappled_by(const EncounterState& s, CombatantId g) {
+    std::vector<CombatantId> out;
+    for (const auto& e : s.sourced) if (e.condition == Condition::Grappled && e.source == g) out.push_back(e.target);
+    return out;
+}
+
+void prune_sourced(EncounterState& s, std::vector<Event>& ev) {
+    if (s.sourced.empty()) return;
+    std::vector<CombatantId> ended;   // grapple targets whose holder let go
+    for (std::size_t i = 0; i < s.sourced.size();) {
+        const SourcedCondition e = s.sourced[i];
+        const Combatant* t = find(s, e.target);
+        const Combatant* src = find(s, e.source);
+        bool drop = !t || t->dead || !t->has(e.condition);
+        if (!drop && e.condition == Condition::Grappled && (!src || src->dead || is_incapacitated(*src))) { drop = true; ended.push_back(e.target); }
+        if (drop) s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i)); else ++i;
+    }
+    for (CombatantId id : ended) {
+        bool still = false;
+        for (const auto& e : s.sourced) still = still || (e.condition == Condition::Grappled && e.target == id);
+        Combatant* t = find_mut(s, id);
+        if (!still && t && t->has(Condition::Grappled)) { remove_condition(*t, Condition::Grappled); emit(ev, EventKind::ConditionRemoved, id, 0, int32_t(Condition::Grappled)); }
+    }
+}
+
+bool has_sourced_conditions(const EncounterState& s) { return !s.sourced.empty(); }
+
+uint64_t sourced_digest(const EncounterState& s, uint64_t h) {
+    auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
+    auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) byte(uint8_t(v >> (8 * i))); };
+    for (const auto& e : s.sourced) { byte(uint8_t(e.condition)); u32(e.target); u32(e.source); u32(uint32_t(uint16_t(e.escape_dc))); }
+    return h;
 }
 
 }  // namespace rules5e
