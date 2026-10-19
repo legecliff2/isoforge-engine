@@ -128,6 +128,7 @@ ZONE_CASES = [
     ("length_above_u16", WOF, [(["effects", 0, "zone", "length_ft"], 65535)], [], "is greater than the maximum of 65530"),
     ("aura_modifier_unknown_key", AURA, [(["effects", 0, "zone", "aura_modifier", "duration"], {"kind": "rounds", "n": 1})], [], "Additional properties are not allowed ('duration'"),
     ("aura_modifier_bad_stat", AURA, [(["effects", 0, "zone", "aura_modifier", "stat"], "luck")], [], "'luck' is not one of"),
+    ("aura_modifier_bonus_above_30", AURA, [(["effects", 0, "zone", "aura_modifier", "bonus"], 31)], [], "is greater than the maximum of 30"),
     ("aura_bonus_ability_bad", AURA, [(["effects", 0, "zone", "aura_bonus_ability"], "luck")], [], "'luck' is not one of"),
     ("aura_immunity_empty", AURA, [(["effects", 0, "zone", "aura_immunity"], [])], [], "should be non-empty"),
     ("aura_immunity_duplicate", AURA, [(["effects", 0, "zone", "aura_immunity"], ["frightened", "frightened"])], [], "has non-unique elements"),

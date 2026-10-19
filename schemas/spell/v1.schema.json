@@ -1789,9 +1789,9 @@
         },
         "bonus": {
           "type": "integer",
-          "minimum": -32767,
-          "maximum": 32767,
-          "description": "Flat save bonus (ignored when aura_bonus_ability is set)."
+          "minimum": -30,
+          "maximum": 30,
+          "description": "Flat save bonus -30..30, default 0 (ignored when aura_bonus_ability is set; CONTENT_CONVENTIONS 4.6)."
         },
         "ability": {
           "$ref": "../common/v1.schema.json#/$defs/ability",
