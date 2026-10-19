@@ -184,7 +184,7 @@ enum class PredicateKind : uint8_t {
     NotCrit,
     MovedAtLeastFt,         // a: feet. TurnBudget::moved_ft of the owner's own current turn (Q4: no path direction)
     SelfHpBelow,            // a/b = num/den: hp * den < hp_max * num
-    Save,                   // reserved (9b): Con save for Undead Fortitude
+    Save,                   // the owner rolls a save: a = Ability, b = DC (mask bit 0: dc_from_damage, DC = b + damage taken)
 };
 enum class WeaponIs : uint8_t { Melee, Ranged, Finesse, FinesseOrRanged };
 struct Predicate { PredicateKind kind = PredicateKind::NotCrit; int16_t a = 0, b = 0; uint32_t mask = 0; };
@@ -270,6 +270,7 @@ struct Combatant {
     std::vector<Trigger> triggers;
     uint32_t trigger_turn_mask = 0, trigger_turn_stamp = 0;       // stamp = round << 16 | turn_index
     uint32_t trigger_round_mask = 0; uint16_t trigger_round_stamp = 0;
+    bool death_triggers_done = false;   // 9b: this creature's death triggers have been processed
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
