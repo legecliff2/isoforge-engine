@@ -475,7 +475,7 @@ TEST_CASE("R-G15 sim: Revivify a creature that died this encounter; material cos
     REQUIRE(f.who(gob).dead);
     CHECK(f.who(gob).died_round == f.c->state().round);
     f.next_turn_of(wiz);
-    // Priced, consumed material (300 gp diamonds): sim has no inventory, so can_provide_components refuses it.
+    // Priced, consumed material (300 gp diamonds) with no components.m.item: unsatisfiable, so the cast is refused.
     CHECK_FALSE(f.cast("test.spell.revivify", 3, gob).ok);
     // The dead creature's tile is free to stand on; a creature there blocks the revival.
     Command st;
