@@ -176,7 +176,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Spellcasting, spellbook (known list), prepared spells, cantrips | 1 | DATA | `spells_known`; spellbook copying/prep is OOS (downtime). |
 | Arcane Recovery (once per day, short rest, recover slots <= half wizard level) | 1 | NEW (wiring) | rules5e `recover_spell_slots` + `recovery_budget` (R-G16, 7.2h); slot choice and the once-per-day row are the caller's. |
 | Arcane Tradition: Evocation; Evocation Savant | 2 | OOS | Downtime spell copying cost. |
-| Sculpt Spells (allies auto-succeed and take no damage from your evocation area) | 2 | NEW (wiring) | rules5e `Combatant::sculpt_spells` + `SpellDef::evocation` + `ActionRequest::spared` (R-G14, VERSION_BUMP_BATCH 7.2i). |
+| Sculpt Spells (allies auto-succeed and take no damage from your evocation area) | 2 | NEW (wiring) | rules5e `Combatant::sculpt_spells` + `SpellDef::evocation` + `ActionRequest::spared` (R-G14, VERSION_BUMP_BATCH 7.2i). Sim wiring done: open feature kind `sculpt_spells {}`; spell@1 `school: evocation` sets `evocation` (loader). Validator arm pending (T&C). |
 | Ability Score Improvement | 4 | DATA | Authored. |
 | Cantrip damage scaling at 5 | 5 | DATA | `scaling.cantrip.levels [5,11,17]` (shipped on Fire Bolt). |
 | 3rd-level slots at 5 | 5 | DATA | `spell_slots` table baked on the character. |
@@ -242,7 +242,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Draconic Bloodline: Draconic Resilience (HP +1/level, AC 13 + Dex unarmored) | 1 | DATA | Baked HP and AC. |
 | Draconic Bloodline: Dragon Ancestor | 1 | OOS | Language and Cha checks. |
 | Font of Magic / Sorcery Points (convert slots and points) | 2 | NEW | Pool + conversions (R-G5). |
-| Metamagic (Careful, Distant, Empowered, Extended, Heightened, Quickened, Subtle, Twinned) | 3 | NEW (wiring) | rules5e `ActionRequest::metamagic` (+ `spared`, `heighten_target`), `Combatant::metamagic_known` / `sorcery_pool`, all eight options (R-G14, 7.2i); Font of Magic conversions still open. |
+| Metamagic (Careful, Distant, Empowered, Extended, Heightened, Quickened, Subtle, Twinned) | 3 | NEW (wiring) | rules5e `ActionRequest::metamagic` (+ `spared`, `heighten_target`), `Combatant::metamagic_known` / `sorcery_pool`, all eight options (R-G14, 7.2i). Sim wiring done: open feature kind `metamagic {options[], pool}` (sorcery points = a `resources[]` pool, folded under 0xA3); the request's options reach rules5e, fold under log_hash 0xB1, and Distant also widens sim's aim range for area spells; the AI casts without options. Validator arm pending (T&C); Font of Magic conversions still open. |
 | **Warlock** Pact Magic (slots recharge on short rest, all same level) | 1 | DATA | `pact_slot_level`, `pact_slots`, short-rest recovery implemented. |
 | Otherworldly Patron: The Fiend, Dark One's Blessing (temp HP on kill) | 1 | NEW | On-kill trigger granting temp HP (T&C-G7/R-G3). |
 | Eldritch Invocations: Agonizing Blast (+Cha per beam) | 2 | NEW | Per-beam damage bonus on a spell (R-G4). |
