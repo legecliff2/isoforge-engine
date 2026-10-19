@@ -315,8 +315,9 @@ Sim semantics (agreed; implemented by Engine Core: `Archetype::equipment`, `Comb
 3. No `item` key on a priced material: it is unsatisfiable and the cast is refused (today's behaviour for every priced material).
 4. `consumed: true` removes that one entry (the one that satisfied the cast) from the caster's combat-local equipment state; one
    entry per cast. Nothing is written back to the content document.
-5. No item@1 document is needed for the id (item@1 has only `weapon`, `armor` and `shield` categories, so `srd51.item.diamond` is
-   not an item@1 document; a gem / valuables category is a possible later additive arm).
+5. No item@1 document is needed for the id: the match is on the id string and `value_gp`, never on an item@1 definition (the sim
+   does not load item@1 documents). `srd51.item.diamond` now also exists as an item@1 `valuable` (section 7.1), so a reference to it
+   resolves, but an entry with `value_gp` naming an id that has no document stays valid.
 
 Validator:
 
@@ -329,6 +330,30 @@ Validator:
   against, and valid content should validate clean.
 - character@4 `value_gp`: integer >= 0 (floats and negatives are schema errors). An equipment entry with `value_gp` is exempt from
   check 6/11 (its `item` need not resolve to an item@1); an entry without `value_gp` must still resolve.
+
+### 7.1 item@1 category `valuable` (gems)
+
+An additive arm of the closed item@1 union (Director-approved): `category: "valuable"` takes **only the common item fields**
+(`$schema`, `id`, `name`, `category` required; `source`, `cost_cp`, `weight_oz`, `description` optional). It has no value field of its
+own: a valuable's worth is per instance, so it lives on the character@4 `equipment[]` entry as `value_gp` (section 7 table), not
+on the item. `cost_cp` stays available for a valuable with a fixed list price; `value_gp` on an item is a schema error.
+
+```json
+{ "$schema": "item@1", "id": "srd51.item.diamond", "name": "Diamond", "category": "valuable",
+  "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" }, "description": "..." }
+```
+
+`srd51.item.diamond` (`content/packs/srd51.core/items/diamond.json`): the SRD equipment list (5e-bits/5e-database `a6212be`,
+`5e-SRD-Equipment.json`: categories weapon, armor, adventuring-gear, tools, mounts-and-vehicles) has **no Diamond and no gems**, so
+the item is based on the SRD spell material text (Revivify "Diamonds worth 300gp, which the spell consumes", Raise Dead,
+Resurrection, Greater Restoration, Stoneskin, ...) and has no `cost_cp` or `weight_oz` (the SRD gives neither). Pinned by
+`tests/validate/test_srd51_equipment.py` (`VALUABLES`).
+
+Validator: the schema arm (closed, `test_union_arms.py` row); `check_item` (checks 15 / 17) applies to weapons only, so nothing else
+is checked. Check 6/11: an `equipment[]` entry `{"item": "srd51.item.diamond"}` resolves to the document; with `value_gp` it is exempt
+as before. Loader: the C++ side registers `item@1` by type and version only (`content_migrations.cpp`, `pack_set.cpp` indexes the
+id); nothing reads `category`, so a `valuable` document loads like any item. No tag change, no migration: the old schema rejected
+the category, and `tests/compat` has no items.
 
 ### Untimed `save_condition` riders (validator mirror of the sim loader)
 
