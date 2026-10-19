@@ -317,6 +317,7 @@ struct Combatant {
     // reactions on other creatures' turns.
     std::vector<Trigger> triggers;
     std::vector<Reaction> reactions;
+    uint32_t legendary_pool = 0;           // row 13: pool id Legendary Resistance spends from (0 = none); a failed save succeeds instead
     uint32_t mod_resist = 0;               // row 12: damage types resisted through active modifiers (cache, rules-maintained)       // row 11: mechanical reactions (Damaged / AllyAttacked windows)
     uint32_t trigger_turn_mask = 0, trigger_turn_stamp = 0;       // stamp = round << 16 | turn_index
     uint32_t trigger_round_mask = 0; uint16_t trigger_round_stamp = 0;
