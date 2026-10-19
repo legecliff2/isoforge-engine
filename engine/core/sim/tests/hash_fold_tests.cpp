@@ -11,6 +11,7 @@ namespace eng::sim {
 struct CombatTestAccess {
     static rules5e::EncounterState& state(Combat& c) { return c.state_; }
     static std::vector<LogEntry>& log(Combat& c) { return c.log_; }
+    static std::vector<Combat::MaterialUse>& materials(Combat& c) { return c.materials_used_; }
 };
 }  // namespace eng::sim
 
@@ -217,4 +218,27 @@ TEST_CASE("Combat::log_hash: small-leftover request flags (rules #111) fold unde
     q.aggressive = false;
     log[2].step.request.aggressive = true;
     CHECK(c0->log_hash() != h1);
+}
+
+TEST_CASE("Combat::hash: consumed priced materials fold under 0xAD only when something was consumed") {
+    ContentLibrary l;
+    REQUIRE(l.load(sample_set()).empty());
+    const auto ch = arena();
+    ecs::Registry r0, r1;
+    auto c0 = Combat::create(r0, ch, l, 9), c1 = Combat::create(r1, ch, l, 9);
+    REQUIRE(c0); REQUIRE(c1);
+    const uint64_t h0 = c0->hash();
+    CHECK(c1->hash() == h0);   // nothing consumed: no 0xAD section
+    const CombatantId a = ch.spawns[0].stable_id;
+    CombatTestAccess::materials(*c1).push_back({a, 7, 0, 300});
+    const uint64_t h1 = c1->hash();
+    CHECK(h1 != h0);
+    CombatTestAccess::materials(*c1).back().entry = 1;   // every field is covered
+    CHECK(c1->hash() != h1);
+    CombatTestAccess::materials(*c1).back() = {a, 7, 0, 500};
+    CHECK(c1->hash() != h1);
+    CombatTestAccess::materials(*c1).back() = {a, 8, 0, 300};
+    CHECK(c1->hash() != h1);
+    CombatTestAccess::materials(*c1).clear();
+    CHECK(c1->hash() == h0);
 }
