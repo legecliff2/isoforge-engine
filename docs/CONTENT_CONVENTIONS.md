@@ -290,7 +290,7 @@ Content keys (all integers; additive, no tag change, no migration):
 |---|---|---|---|
 | spell@1 `components.m` | `cost_cp` | integer >= 1, optional | the material's price in copper (`SpellDef::material_cost_cp`, loaded today) |
 | spell@1 `components.m` | `consumed` | boolean, needs `cost_cp` | the cast uses the material up (`SpellDef::material_consumed`, loaded today) |
-| spell@1 `components.m` | **`item`** | content id string (common@1 `content_id`: dotted lowercase, e.g. `srd51.item.diamond`), optional | the equipment id that provides the priced material. **Contract only: no loader reads it yet**; Engine Core's loader follows these key names |
+| spell@1 `components.m` | **`item`** | content id string (common@1 `content_id`: dotted lowercase, e.g. `srd51.item.diamond`), optional | the equipment id that provides the priced material. Read by the spell loader into `SpellDef::material_item` (EC, priced materials PR) |
 | character@4 `equipment[]` item object | **`value_gp`** | integer >= 0, optional, **default 0** | the entry's value in gold pieces |
 
 Example (Revivify, fixture `tests/validate/fixtures/spell_kinds/spells/revivify.json`) and a caster that can pay for it:
@@ -303,7 +303,7 @@ Example (Revivify, fixture `tests/validate/fixtures/spell_kinds/spells/revivify.
 "equipment": [ { "item": "srd51.item.diamond", "value_gp": 300 } ]
 ```
 
-Sim semantics (agreed; implemented by Engine Core's loader / `can_provide_components` later):
+Sim semantics (agreed; implemented by Engine Core: `Archetype::equipment`, `Combat`'s combat-local copy, `can_provide_components`, consumption at cast completion, `Combat::hash` tag 0xAD once something was consumed):
 
 1. A material with no cost (`cost_cp` absent) needs nothing.
 2. A priced material (`cost_cp` > 0) is satisfied by the **first** `equipment[]` entry, in array order, whose id equals
