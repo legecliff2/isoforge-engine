@@ -168,6 +168,45 @@ struct InnateSpell {
     constexpr bool available() const { return at_will() || uses_left > 0; }
 };
 
+// ---- Triggers (version-bump batch, row 9; docs/proposals/VERSION_BUMP_BATCH.md section 3) ----
+// An effect that happens on an event (Sneak Attack, Rampage, Undead Fortitude, ...). Sub-PR 9a evaluates the
+// Hit and Crit events with extra_damage riders; the other TriggerOn values and RiderKind values are reserved
+// (9b/9c) and a trigger carrying them never fires yet.
+enum class TriggerOn : uint8_t { Hit, Crit, DamageDealt, ReduceToZero, DropToZero, Death, TurnStart, TurnEnd };
+enum class TriggerLimit : uint8_t { None, OncePerTurn, OncePerRound, OncePerAttack };
+enum class PredicateKind : uint8_t {
+    Weapon,                 // a: WeaponIs; false for spell attacks
+    AdvantageOrAllyAdjacent,// the attack had advantage, or an ally fact and no disadvantage
+    TargetCreatureType,     // mask: bitmask over CreatureType; the target is one of them
+    NotCreatureType,        // mask: the target is none of them
+    DamageTypeIs,           // mask: bitmask over DamageType; the attack's damage type is one of them
+    DamageTypeNot,
+    NotCrit,
+    MovedAtLeastFt,         // a: feet. TurnBudget::moved_ft of the owner's own current turn (Q4: no path direction)
+    SelfHpBelow,            // a/b = num/den: hp * den < hp_max * num
+    Save,                   // reserved (9b): Con save for Undead Fortitude
+};
+enum class WeaponIs : uint8_t { Melee, Ranged, Finesse, FinesseOrRanged };
+struct Predicate { PredicateKind kind = PredicateKind::NotCrit; int16_t a = 0, b = 0; uint32_t mask = 0; };
+enum class RiderKind : uint8_t { ExtraDamage, SaveCondition, ApplyCondition, HealSelf, TempHp, SetHp, BonusAttack, AreaSave, Spend };
+struct RiderEffect {
+    RiderKind kind = RiderKind::ExtraDamage;
+    DiceExpr dice{0, 0, 0};               // ExtraDamage: final dice (the loader resolves `scale.per_levels` for the owner's level)
+    DamageType type = DamageType::Force;  // ExtraDamage: type, unless same_as_weapon
+    bool same_as_weapon = false;          // ExtraDamage: use the attack's damage type
+    int16_t value = 0;                    // SetHp / amount rider kinds (9b)
+    uint32_t spell_id = 0;                // SaveCondition / AreaSave: synthetic save spell (9b/9c)
+    uint32_t pool = 0;                    // Spend (9c)
+};
+struct Trigger {
+    uint32_t id = 0;                      // spell_id_of("<archetype>#<owner>#<index>"); the trigger_id of FeatureTriggered
+    TriggerOn on = TriggerOn::Hit;
+    TriggerLimit limit = TriggerLimit::None;
+    uint8_t choice = 0;                   // 0 auto (fires), 1 ask (9c: not offered yet, never fires in 9a), 2 never
+    std::vector<Predicate> when;          // all must hold
+    std::vector<RiderEffect> effects;
+};
+
 struct Combatant {
     CombatantId id;
     uint8_t  team;
@@ -225,6 +264,12 @@ struct Combatant {
     // appended (version-bump batch, row 8): innate spellcasting and printed DC / attack overrides.
     std::vector<InnateSpell> innate;   // castable via ActionRequest::innate; uses start full each encounter
     int16_t spell_dc_override = 0, spell_attack_override = 0;   // 0 = derive (8 + prof + mod / prof + mod)
+    // appended (row 9): event triggers. `trigger_*` is the once-per-turn / once-per-round bookkeeping (a bit per
+    // index in `triggers`, valid only while the stamp matches), kept on the owner because a turn limit also covers
+    // reactions on other creatures' turns.
+    std::vector<Trigger> triggers;
+    uint32_t trigger_turn_mask = 0, trigger_turn_stamp = 0;       // stamp = round << 16 | turn_index
+    uint32_t trigger_round_mask = 0; uint16_t trigger_round_stamp = 0;
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
