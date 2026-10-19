@@ -33,7 +33,8 @@ enum class SpellEffectKind : uint8_t {
     HpPool,         // roll `dice` (scaled) as a hit-point pool; targets by lowest current HP get `condition` while the pool covers them (Sleep, Color Spray)
     Dispel,         // end spells on each target: slot level or lower automatically, higher ones on a check (Dispel Magic)
     Revive,         // a creature dead for at most `revive_within_rounds` returns with 1 HP (Revivify)
-    EndCondition,   // ends one condition of `ends_conditions` on each target, the lowest Condition value present (Lesser Restoration)
+    EndCondition,   // ends one condition of `ends_conditions` on each target, the lowest Condition value present, or the cast-time
+                    // ActionRequest::condition_choice (1 + index in ascending Condition order) (Lesser Restoration)
     DelayedDamage,  // `dice` of `damage_type` when the effect's timer runs out (`expiry`; Acid Arrow: end of the target's next turn)
     SustainedDamage,// `dice` now, and again each time the caster sustains it with a bonus action (Heat Metal; concentration)
     // appended (R-G9, docs/proposals/FORCED_MOVEMENT.md):
@@ -63,7 +64,8 @@ enum class RepeatSave : uint8_t { None, EndOfTurn, StartOfTurn, OnDamage };   //
 
 // One further effect of a multi-effect spell (SpellDef::extra_effects; effects 2..n of spell@1 `effects`).
 // Mirrors the per-effect fields of SpellDef. Extra effects resolve in order over the same targets as the
-// first effect and do not scale with slot level or caster level (scaling belongs to the first effect).
+// first effect and do not scale with slot level or caster level (scaling belongs to the first effect), except a
+// DelayedDamage rider's upcast_dice (Acid Arrow's later damage).
 struct SpellEffect {
     SpellEffectKind kind = SpellEffectKind::Save;
     bool melee = false; uint8_t beams = 1;                    // SpellAttack
@@ -83,6 +85,9 @@ struct SpellEffect {
     ModifierSpec modifier{};           // appended (row 12 follow-up): kind ApplyModifier as a rider (Guiding Bolt, Ray of Frost, Vicious Mockery)
     ForcedMoveSpec forced{};           // appended (R-G9): kind ForcedMove
     TeleportSpec teleport{};           // appended (R-G9): kind Teleport
+    // appended (#120 follow-up): + this many dice per slot level above the spell's level; set by the loader only on a
+    // DelayedDamage extra effect (Acid Arrow), from the spell's scaling.upcast.dice. 0 = does not scale (every other effect).
+    uint8_t upcast_dice = 0;
 };
 
 // ---- R-G11 persistent zones and auras (docs/proposals/ZONES_AURAS.md §2.6) ----

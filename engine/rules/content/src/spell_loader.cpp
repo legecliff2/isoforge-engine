@@ -788,6 +788,9 @@ SpellLoad spell_from_json(const Json& j) {
             else s.upcast_targets = uint8_t(v);
         }
     }
+    // #120 follow-up: Acid Arrow's later damage also gains scaling.upcast.dice per slot level (SRD: both increase by 1d4).
+    for (auto& x : s.extra_effects)
+        if (x.kind == SpellEffectKind::DelayedDamage && x.dice.count > 0) x.upcast_dice = s.upcast_dice;
     return {std::move(s), {}, std::move(refs)};
 }
 
