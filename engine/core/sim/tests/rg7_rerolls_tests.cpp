@@ -259,8 +259,15 @@ TEST_CASE("R-G7 sim: AttackRolled opens for an enemy within 60 ft that sees the 
 }
 
 TEST_CASE("R-G7 AI: two_handed_grip for a versatile weapon held in two hands; Great Weapon Fighting attacks resolve") {
-    auto lib = lib_with({plain_goblin("t.tgt")}, {no_shield(fighter("t.gwf", {{{"kind", "great_weapon_fighting"}}}))});
-    for (const char* who : {kFighter, "t.gwf"}) {
+    Json twf = no_shield(fighter("t.twf", {}));   // two light daggers: a two-weapon bonus option, so no two-handed grip
+    for (const char* id : {"dagger_a", "dagger_b"})
+        twf["actions"].push_back({{"id", id}, {"name", "Dagger"}, {"kind", "melee_weapon_attack"}, {"to_hit", 5}, {"reach", 5},
+                                  {"targets", 1}, {"properties", Json::array({"light", "finesse"})},
+                                  {"damage", Json::array({{{"dice", "1d4+3"}, {"type", "piercing"}}})}});
+    auto lib = lib_with({plain_goblin("t.tgt")}, {no_shield(fighter("t.gwf", {{{"kind", "great_weapon_fighting"}}})), twf});
+    REQUIRE_FALSE(lib.find("t.twf")->base.bonus_attacks.empty());
+    CHECK(lib.find("t.twf")->two_handed_grip == 1u);   // the loader bit; the AI drops it for a two-weapon fighter
+    for (const char* who : {kFighter, "t.gwf", "t.twf"}) {
         auto ch = arena({{"t.tgt", Vec2i{5, 5}}, {who, Vec2i{6, 5}}});
         ecs::Registry reg;
         auto c = Combat::create(reg, ch, lib, 7);
