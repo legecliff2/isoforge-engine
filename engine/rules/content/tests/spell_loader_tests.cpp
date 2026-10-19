@@ -103,7 +103,8 @@ TEST_CASE("loader rejects every validator negative case (tests/validate/cases)")
         std::getline(in, expect);
         const bool cross_field = expect.find("scaling.") == 0 || expect.find("effect") == 0 || expect.find("targets not") == 0 ||
                                  expect.find("ac_bonus") == 0 || expect.find("casting_time") == 0 || expect.find("disagree") == 0 ||
-                                 expect.find("is not a spell@1") == 0 || expect.find("'") == 0 || expect.find("until_start") == 0;
+                                 expect.find("is not a spell@1") == 0 || expect.find("'") == 0 || expect.find("until_start") == 0 ||
+                                 expect.find("zone") == 0;   // R-G11: the loader parses zones (CONTENT_CONVENTIONS.md section 4)
         const std::string first_error = r.errors.empty() ? std::string() : r.errors[0];
         INFO(first_error);
         if (cross_field && !r.errors.empty()) CHECK(r.errors[0].find(expect) != std::string::npos);
@@ -214,4 +215,125 @@ TEST_CASE("loader: several effects, a no-save apply_condition effect, riders") {
     CHECK(scaled_targets(*ri.def, 3) == 2);
     auto bad_c = inv; bad_c["effects"][0]["condition"] = "wet";
     CHECK_FALSE(spell_from_json(bad_c).def);
+}
+
+TEST_CASE("loader: R-G11 zone fixtures (tests/validate/fixtures/zones) map onto ZoneSpec") {
+    const auto dir = std::filesystem::path(ENGINE_SOURCE_ROOT) / "tests/validate/fixtures/zones/spells";
+    auto r = load_spellbook(dir);
+    INFO((r.errors.empty() ? std::string() : r.errors[0]));
+    REQUIRE(r.errors.empty());
+    REQUIRE(r.book);
+    CHECK(r.book->all().size() == 8);
+    for (const SpellDef& d : r.book->all()) { CHECK(d.kind == SpellEffectKind::Zone); CHECK(d.extra_effects.empty()); }
+
+    const SpellDef* mb = r.book->find(spell_id_of("test.zone.spell.moonbeam"));
+    REQUIRE(mb);
+    CHECK(mb->zone.shape == AreaShape::Cylinder); CHECK(mb->zone.size_ft == 5); CHECK(mb->zone.height_ft == 40);
+    CHECK(mb->zone.anchor == ZoneAnchor::Point);
+    CHECK(mb->zone.move_cost == 1); CHECK(mb->zone.move_ft == 60);
+    CHECK(mb->upcast_dice == 1);
+    CHECK(mb->expiry == 1); CHECK(mb->duration_rounds == 10);   // 1 minute: the zone's timer
+    REQUIRE(mb->zone.triggers.size() == 2);
+    CHECK(mb->zone.triggers[0].on == ZoneTrigger::Enter); CHECK(mb->zone.triggers[1].on == ZoneTrigger::StartTurn);
+    CHECK(mb->zone.triggers[0].group == 1);
+    const SpellEffect& e = mb->zone.triggers[0].effect;
+    CHECK(e.kind == SpellEffectKind::Save); CHECK(e.save_ability == Ability::Con); CHECK(e.on_save == OnSave::Half);
+    CHECK(e.dice == DiceExpr{2, 10, 0}); CHECK(e.damage_type == DamageType::Radiant); CHECK_FALSE(e.applies_condition);
+
+    const SpellDef* sg = r.book->find(spell_id_of("test.zone.spell.spirit_guardians"));
+    REQUIRE(sg);
+    CHECK(sg->zone.anchor == ZoneAnchor::Creature); CHECK(sg->range_ft == 0);
+    CHECK(sg->zone.flags == kZoneHalveSpeed); CHECK(sg->zone.chooses_excluded);
+    CHECK(sg->zone.needs_conscious_owner);   // D7 field
+    CHECK(sg->concentration); CHECK(sg->duration_rounds == 100);
+
+    const SpellDef* si = r.book->find(spell_id_of("test.zone.spell.silence"));
+    REQUIRE(si);
+    CHECK(si->zone.flags == kZoneSilence); CHECK(si->zone.triggers.empty()); CHECK_FALSE(si->zone.needs_conscious_owner);
+
+    const SpellDef* sp = r.book->find(spell_id_of("test.zone.spell.spike_growth"));
+    REQUIRE(sp);
+    REQUIRE(sp->zone.triggers.size() == 1);
+    CHECK(sp->zone.triggers[0].on == ZoneTrigger::MoveWithin); CHECK(sp->zone.triggers[0].group == 0);
+    CHECK(sp->zone.triggers[0].effect.kind == SpellEffectKind::ApplyCondition);   // damage, no save
+    CHECK_FALSE(sp->zone.triggers[0].effect.applies_condition);
+    CHECK((sp->zone.flags & kZoneDifficult) != 0);
+
+    const SpellDef* web = r.book->find(spell_id_of("test.zone.spell.web"));
+    REQUIRE(web);
+    bool own = false, held = false;
+    for (const auto& t : web->zone.triggers) {
+        own = own || t.own_turn_only;
+        held = held || (t.while_in_zone && t.effect.applies_condition && t.effect.condition == Condition::Restrained);
+    }
+    CHECK(own); CHECK(held);
+
+    const SpellDef* gr = r.book->find(spell_id_of("test.zone.spell.grease"));
+    REQUIRE(gr);
+    CHECK_FALSE(gr->concentration); CHECK(gr->expiry == 1);
+    CHECK(gr->zone.triggers.front().on == ZoneTrigger::Appear);
+}
+
+TEST_CASE("loader: R-G11 zone rules match the validator") {
+    auto zj = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.zz","level":2,"name":"x",
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":120},"components":{"v":true},
+        "duration":{"kind":"minutes","amount":1,"concentration":true},
+        "effects":[{"kind":"zone","zone":{"shape":"sphere","size_ft":20,"anchor":"point","flags":["difficult"],
+            "triggers":[{"on":"zone_enter","group":0,"effect":{"kind":"damage","damage":{"dice":"2d4","type":"piercing"}}}]}}]})");
+    auto ok = spell_from_json(zj);
+    INFO(ok.error);
+    REQUIRE(ok.def);
+    CHECK(ok.def->zone.triggers[0].group == 0);
+    CHECK_FALSE(ok.def->zone.needs_conscious_owner);
+    auto bad = [](eng::assets::Json j, const char* want) {
+        auto r = spell_from_json(j);
+        INFO(want);
+        INFO(r.error);
+        CHECK_FALSE(r.def);
+        CHECK(r.error.find(want) != std::string::npos);
+    };
+    using J = eng::assets::Json;
+    auto j = zj; j["area"] = {{"shape", "sphere"}, {"size_ft", 20}}; bad(j, "zone: area not allowed");
+    j = zj; j["duration"] = {{"kind", "instantaneous"}}; bad(j, "zone: needs a lasting duration");
+    j = zj; j["effects"][0]["zone"]["anchor"] = "creature"; bad(j, "zone: anchor creature (an aura on the caster) needs range self");
+    j = zj; j["range"] = {{"kind", "self"}}; j["effects"][0]["zone"]["anchor"] = "creature";
+    j["effects"][0]["zone"]["move"] = {{"cost", "action"}, {"feet", 60}}; bad(j, "zone: move needs anchor point");
+    j = zj; j["effects"][0]["zone"]["flags"] = J::array({"light_obscured", "heavy_obscured"}); bad(j, "are exclusive");
+    j = zj; j["effects"][0]["zone"].erase("flags"); j["effects"][0]["zone"].erase("triggers"); bad(j, "zone: needs triggers or flags");
+    j = zj; j["effects"][0]["zone"]["triggers"][0]["effect"] = {{"kind", "heal"}}; bad(j, "is not a zone trigger effect");
+    j = zj; j["effects"][0]["zone"]["triggers"][0]["on"] = "zone_start_turn"; j["effects"][0]["zone"]["triggers"][0]["own_turn_only"] = true;
+    bad(j, "zone.triggers[0]: own_turn_only is only for zone_enter / zone_move_within");
+    j = zj; j["effects"][0]["zone"]["triggers"][0]["on"] = "zone_end_turn"; j["effects"][0]["zone"]["triggers"][0]["counts_aura_move_as_enter"] = true;
+    bad(j, "counts_aura_move_as_enter is only for zone_enter");
+    j = zj; j["effects"][0]["zone"]["triggers"][0]["counts_aura_move_as_enter"] = true; bad(j, "on a zone that never moves");
+    j = zj; j["effects"][0]["zone"]["triggers"][0]["while_in_zone"] = true; bad(j, "while_in_zone needs an effect condition");
+    j = zj; j["effects"].push_back(zj["effects"][0]); bad(j, "zone must be the primary effect (effects[1] is a zone)");
+    j = zj; j["effects"][0]["zone"]["shape"] = "line"; bad(j, "zone.shape");
+    j = zj; j["effects"][0]["zone"]["size_ft"] = 7; bad(j, "zone.size_ft");
+    j = zj; j["effects"][0]["zone"]["height_ft"] = 40; bad(j, "height_ft is required for (and only for) cylinders");
+    j = zj; j["effects"][0]["zone"]["shape"] = "cylinder"; bad(j, "height_ft is required for (and only for) cylinders");
+    j = zj; j["effects"][0]["zone"]["flags"] = 4; bad(j, "zone.flags");
+    j = zj; j["effects"][0]["zone"]["flags"] = J::array({"difficult", "difficult"}); bad(j, "duplicate flag");
+    j = zj; j["effects"][0]["zone"]["needs_conscious_owner"] = 1; bad(j, "needs_conscious_owner must be a boolean");
+    j = zj; j["effects"][0]["zone"]["move"] = {{"cost", "reaction"}, {"feet", 60}}; bad(j, "zone.move.cost");
+    j = zj; j["effects"][0]["zone"]["triggers"][0]["group"] = 256; bad(j, "group invalid");
+    j = zj; j["effects"][0]["zone"]["triggers"][0]["on"] = "enter"; bad(j, ".on must be");
+    j = zj; j["effects"][0]["zone"]["upcast_size_ft"] = 20; bad(j, "zone: unknown key 'upcast_size_ft'");
+    j = zj; j["targets"] = {{"count", 1}}; bad(j, "targets not allowed on a zone effect");
+    j = zj; j["scaling"] = {{"upcast", {{"dice", 1}}}};
+    REQUIRE(spell_from_json(j).def);
+    CHECK(spell_from_json(j).def->upcast_dice == 1);
+    j = zj; j["effects"][0]["zone"]["triggers"][0]["effect"] = {{"kind", "apply_condition"}, {"condition", "prone"}};
+    j["scaling"] = {{"upcast", {{"dice", 1}}}}; bad(j, "scaling.upcast.dice needs effect dice or damage");
+    j = zj; j["effects"][0]["zone"]["needs_conscious_owner"] = true;
+    auto nc = spell_from_json(j);
+    REQUIRE(nc.def);
+    CHECK(nc.def->zone.needs_conscious_owner);
+    j = zj; j["effects"][0]["zone"]["triggers"][0]["effect"] = {{"kind", "save"}, {"ability", "dex"}, {"condition", "restrained"}};
+    j["effects"][0]["zone"]["triggers"][0]["while_in_zone"] = true;
+    auto w = spell_from_json(j);
+    REQUIRE(w.def);
+    CHECK(w.def->zone.triggers[0].effect.kind == SpellEffectKind::Save);
+    CHECK(w.def->zone.triggers[0].effect.applies_condition);
+    CHECK(w.def->zone.triggers[0].while_in_zone);
 }

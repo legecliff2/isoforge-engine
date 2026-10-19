@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <fstream>
+#include <initializer_list>
 #include <map>
 
 #include "assets/content_migrations.hpp"
@@ -62,6 +63,162 @@ bool read_damage(const Json& d, SpellDef& s) {
     if (!e) return false;
     s.dice = *e;
     return lookup(kDamage, d["type"], s.damage_type);
+}
+
+// ---- R-G11 zones (docs/CONTENT_CONVENTIONS.md section 4; schemas/spell/v1.schema.json $defs zone / zone_trigger /
+// zone_effect; tools/validate check_spell_zone) ----
+bool only_keys(const Json& o, std::initializer_list<const char*> keys, std::string& bad) {
+    for (auto it = o.begin(); it != o.end(); ++it) {
+        if (std::none_of(keys.begin(), keys.end(), [&](const char* k) { return it.key() == k; })) { bad = it.key(); return false; }
+    }
+    return true;
+}
+bool feet_5(const Json& v, int& out) { return small_int(v, 5, 65530, out) && out % 5 == 0; }
+bool bool_key(const Json& o, const char* k, bool& out) {
+    if (!o.contains(k)) return true;
+    if (!o[k].is_boolean()) return false;
+    out = o[k].get<bool>();
+    return true;
+}
+
+// One trigger row's effect: save / damage (no save) / apply_condition (4.3).
+std::string parse_zone_effect(const Json& e, const std::string& where, SpellEffect& fx) {
+    if (!e.is_object() || !e.contains("kind") || !e["kind"].is_string()) return where + ".effect.kind missing";
+    const std::string k = e["kind"].get<std::string>();
+    if (k != "save" && k != "damage" && k != "apply_condition")
+        return where + ".effect.kind '" + k + "' is not a zone trigger effect (save, damage, apply_condition)";
+    std::string bad;
+    if (k == "save" && !only_keys(e, {"kind", "ability", "damage", "on_success", "condition", "description"}, bad))
+        return where + ".effect: unknown key '" + bad + "'";
+    if (k == "damage" && !only_keys(e, {"kind", "damage", "condition", "description"}, bad))
+        return where + ".effect: unknown key '" + bad + "'";
+    if (k == "apply_condition" && !only_keys(e, {"kind", "condition", "description"}, bad))
+        return where + ".effect: unknown key '" + bad + "'";
+    SpellDef scratch;   // read_damage writes a SpellDef
+    if (e.contains("damage")) {
+        if (!read_damage(e["damage"], scratch)) return where + ".effect damage invalid";
+        fx.dice = scratch.dice; fx.damage_type = scratch.damage_type;
+    }
+    if (e.contains("condition")) {
+        if (!lookup(kCondition, e["condition"], fx.condition)) return where + ".effect condition invalid";
+        fx.applies_condition = true;
+    }
+    if (k == "save") {
+        fx.kind = SpellEffectKind::Save;
+        if (!e.contains("ability") || !lookup(kAbility, e["ability"], fx.save_ability)) return where + ".effect ability invalid";
+        if (e.contains("damage") != e.contains("on_success"))
+            return where + (e.contains("damage") ? ".effect: 'on_success' is a dependency of 'damage'" : ".effect: 'damage' is a dependency of 'on_success'");
+        if (e.contains("on_success")) {
+            const std::string os = e.value("on_success", "");
+            if (os != "half" && os != "none") return where + ".effect on_success must be half or none";
+            fx.on_save = os == "half" ? OnSave::Half : OnSave::None;
+        }
+        if (!e.contains("damage") && !fx.applies_condition) return where + ".effect: save needs damage or condition";
+    } else {   // no save: rules applies the damage and the condition outright (any non-Save kind)
+        fx.kind = SpellEffectKind::ApplyCondition;
+        if (k == "damage" && !e.contains("damage")) return where + ".effect damage invalid";
+        if (k == "apply_condition" && !e.contains("condition")) return where + ".effect condition invalid";
+    }
+    return "";
+}
+
+// The `zone` object of a kind-zone effect (4.1, 4.2) into s.zone. Cross-field rules that need the rest of the document are
+// checked by the caller.
+std::string parse_zone(const Json& z, SpellDef& s) {
+    if (!z.is_object()) return "zone missing (kind zone needs a zone object)";
+    std::string bad;
+    if (!only_keys(z, {"shape", "size_ft", "height_ft", "anchor", "flags", "move", "chooses_excluded", "needs_conscious_owner",
+                       "triggers"}, bad))
+        return "zone: unknown key '" + bad + "'";
+    static const std::map<std::string, AreaShape> kZoneShape{{"sphere", AreaShape::Sphere}, {"cylinder", AreaShape::Cylinder},
+                                                             {"cube", AreaShape::Cube}};
+    ZoneSpec& zs = s.zone;
+    if (!lookup(kZoneShape, z.value("shape", Json()), zs.shape)) return "zone.shape must be sphere, cylinder or cube";
+    int v = 0;
+    if (!z.contains("size_ft") || !feet_5(z["size_ft"], v)) return "zone.size_ft invalid (5..65530, a multiple of 5)";
+    zs.size_ft = uint16_t(v);
+    if ((zs.shape == AreaShape::Cylinder) != z.contains("height_ft")) return "zone.height_ft is required for (and only for) cylinders";
+    if (z.contains("height_ft")) {
+        if (!feet_5(z["height_ft"], v)) return "zone.height_ft invalid (5..65530, a multiple of 5)";
+        zs.height_ft = uint16_t(v);
+    }
+    static const std::map<std::string, ZoneAnchor> kAnchor{{"point", ZoneAnchor::Point}, {"creature", ZoneAnchor::Creature}};
+    if (!lookup(kAnchor, z.value("anchor", Json()), zs.anchor)) return "zone.anchor must be point or creature";
+    if (z.contains("flags")) {
+        static const std::map<std::string, uint8_t> kFlag{{"difficult", kZoneDifficult}, {"light_obscured", kZoneLightObscured},
+            {"heavy_obscured", kZoneHeavyObscured}, {"magical_darkness", kZoneMagicalDarkness}, {"silence", kZoneSilence},
+            {"halve_speed", kZoneHalveSpeed}, {"opaque", kZoneOpaque}};
+        const Json& f = z["flags"];
+        if (!f.is_array() || f.empty()) return "zone.flags must be a non-empty array of flag names";
+        for (const Json& x : f) {
+            uint8_t b = 0;
+            if (!lookup(kFlag, x, b)) return "zone.flags: unknown flag";
+            if (zs.flags & b) return "zone.flags: duplicate flag";
+            zs.flags = uint8_t(zs.flags | b);
+        }
+    }
+    if (z.contains("move")) {
+        const Json& m = z["move"];
+        if (!m.is_object() || !only_keys(m, {"cost", "feet"}, bad)) return "zone.move must be {cost, feet}";
+        const std::string cost = m.value("cost", "");
+        if (cost != "action" && cost != "bonus_action") return "zone.move.cost must be action or bonus_action";
+        zs.move_cost = cost == "action" ? 1 : 2;
+        if (!m.contains("feet") || !feet_5(m["feet"], v)) return "zone.move.feet invalid (5..65530, a multiple of 5)";
+        zs.move_ft = uint16_t(v);
+    }
+    if (!bool_key(z, "chooses_excluded", zs.chooses_excluded)) return "zone.chooses_excluded must be a boolean";
+    if (!bool_key(z, "needs_conscious_owner", zs.needs_conscious_owner)) return "zone.needs_conscious_owner must be a boolean";
+    if (z.contains("triggers")) {
+        static const std::map<std::string, ZoneTrigger> kOn{{"zone_appear", ZoneTrigger::Appear}, {"zone_enter", ZoneTrigger::Enter},
+            {"zone_start_turn", ZoneTrigger::StartTurn}, {"zone_end_turn", ZoneTrigger::EndTurn},
+            {"zone_move_within", ZoneTrigger::MoveWithin}};
+        const Json& ts = z["triggers"];
+        if (!ts.is_array() || ts.empty()) return "zone.triggers must be a non-empty array";
+        for (std::size_t i = 0; i < ts.size(); ++i) {
+            const std::string where = "zone.triggers[" + std::to_string(i) + "]";
+            const Json& t = ts[i];
+            if (!t.is_object()) return where + " must be an object";
+            if (!only_keys(t, {"on", "group", "own_turn_only", "completely_within", "counts_aura_move_as_enter", "while_in_zone",
+                               "effect"}, bad))
+                return where + ": unknown key '" + bad + "'";
+            ZoneTriggerRow r;
+            if (!lookup(kOn, t.value("on", Json()), r.on))
+                return where + ".on must be zone_appear, zone_enter, zone_start_turn, zone_end_turn or zone_move_within";
+            if (t.contains("group")) {
+                if (!small_int(t["group"], 0, 255, v)) return where + ".group invalid (0..255)";
+                r.group = uint8_t(v);
+            }
+            if (!bool_key(t, "own_turn_only", r.own_turn_only) || !bool_key(t, "completely_within", r.completely_within) ||
+                !bool_key(t, "counts_aura_move_as_enter", r.counts_aura_move_as_enter) || !bool_key(t, "while_in_zone", r.while_in_zone))
+                return where + ": flags must be booleans";
+            if (!t.contains("effect")) return where + ".effect missing";
+            if (auto m = parse_zone_effect(t["effect"], where, r.effect); !m.empty()) return m;
+            zs.triggers.push_back(r);
+        }
+    }
+    return "";
+}
+
+// The cross-field rules of check_spell_zone (4.4), in the validator's order.
+std::string check_zone(const Json& j, const SpellDef& s) {
+    const ZoneSpec& z = s.zone;
+    if (j.contains("area")) return "zone: area not allowed (zone.shape / size_ft give the zone's geometry)";
+    if (s.duration == SpellDuration::Instantaneous) return "zone: needs a lasting duration (not instantaneous)";
+    if (z.anchor == ZoneAnchor::Creature && s.range_ft != 0) return "zone: anchor creature (an aura on the caster) needs range self";
+    if (z.move_cost != 0 && z.anchor != ZoneAnchor::Point) return "zone: move needs anchor point";
+    if ((z.flags & kZoneLightObscured) && (z.flags & kZoneHeavyObscured)) return "zone: flags light_obscured and heavy_obscured are exclusive";
+    if (z.flags == 0 && z.triggers.empty()) return "zone: needs triggers or flags (it would do nothing)";
+    for (std::size_t i = 0; i < z.triggers.size(); ++i) {
+        const ZoneTriggerRow& r = z.triggers[i];
+        const std::string where = "zone.triggers[" + std::to_string(i) + "]";
+        if (r.own_turn_only && r.on != ZoneTrigger::Enter && r.on != ZoneTrigger::MoveWithin)
+            return where + ": own_turn_only is only for zone_enter / zone_move_within";
+        if (r.counts_aura_move_as_enter && r.on != ZoneTrigger::Enter) return where + ": counts_aura_move_as_enter is only for zone_enter";
+        if (r.while_in_zone && !r.effect.applies_condition) return where + ": while_in_zone needs an effect condition";
+        if (r.counts_aura_move_as_enter && z.anchor == ZoneAnchor::Point && z.move_cost == 0)
+            return where + ": counts_aura_move_as_enter on a zone that never moves";
+    }
+    return "";
 }
 
 } // namespace
@@ -508,6 +665,12 @@ SpellLoad spell_from_json(const Json& j) {
                     s.duration_rounds = uint16_t(n);
                 } else return ("effect expiry must be {kind: rounds, n} or {kind: until_end_of_target_next_turn}");
             } else if (e.contains("expiry")) return ("effect expiry is only for delayed_damage (sustained_damage lasts the spell's duration)");
+        } else if (kind == "zone") {   // R-G11 (CONTENT_CONVENTIONS.md section 4): a persistent zone / aura
+            s.kind = SpellEffectKind::Zone;
+            std::string bad;
+            if (!only_keys(e, {"kind", "zone", "description"}, bad)) return ("zone effect: unknown key '" + bad + "'");
+            if (!e.contains("zone")) return ("zone missing (kind zone needs a zone object)");
+            if (auto m = parse_zone(e["zone"], s); !m.empty()) return m;
         } else return ("effect kind invalid");
         return "";
     };
@@ -517,6 +680,9 @@ SpellLoad spell_from_json(const Json& j) {
     // Effects 2..n: parsed into a scratch SpellDef, then copied into SpellEffect. Reaction kinds stand alone.
     const std::size_t n_effects = j["effects"].size();
     for (std::size_t i = 1; i < n_effects; ++i) {
+        const Json& xe = j["effects"][i];
+        if (xe.is_object() && xe.value("kind", "") == "zone")   // the cast refuses an extra effect of kind Zone
+            return err("zone must be the primary effect (effects[" + std::to_string(i) + "] is a zone)");
         SpellDef x;
         std::string xk;
         if (auto m = parse_effect(j["effects"][i], x, xk); !m.empty()) return err("effects[" + std::to_string(i) + "]: " + m);
@@ -557,6 +723,14 @@ SpellLoad spell_from_json(const Json& j) {
     // R-G15: an HP pool's condition and a sustained effect last the spell's duration (Sleep 1 minute = 10 rounds; Color Spray
     // 1 round, the proposal's approximation of "until the end of your next turn"; Heat Metal 1 minute, and also ends with
     // concentration).
+    if (s.kind == SpellEffectKind::Zone) {   // R-G11: cross-field rules; the spell's duration is the zone's lifetime
+        if (auto m = check_zone(j, s); !m.empty()) return err(m);
+        int rounds = 0;
+        if (s.duration == SpellDuration::Rounds) rounds = s.duration_amount;
+        else if (s.duration == SpellDuration::Minutes) rounds = s.duration_amount * 10;
+        else if (s.duration == SpellDuration::Hours) rounds = s.duration_amount * 600;
+        if (rounds > 0) { s.expiry = 1; s.duration_rounds = uint16_t(std::min(rounds, 65535)); }   // rules5e::Expiry::Rounds
+    }
     if (s.kind == SpellEffectKind::HpPool || s.kind == SpellEffectKind::SustainedDamage) {
         int rounds = 0;
         if (s.duration == SpellDuration::Rounds) rounds = s.duration_amount;
@@ -593,7 +767,7 @@ SpellLoad spell_from_json(const Json& j) {
             if (k == "dice") return s.kind == SpellEffectKind::SpellAttack || s.kind == SpellEffectKind::Save ||
                                     s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::AutoHit ||
                                     s.kind == SpellEffectKind::HpPool || s.kind == SpellEffectKind::DelayedDamage ||
-                                    s.kind == SpellEffectKind::SustainedDamage;
+                                    s.kind == SpellEffectKind::SustainedDamage || s.kind == SpellEffectKind::Zone;
             if (k == "darts") return s.kind == SpellEffectKind::AutoHit;
             if (k == "beams") return s.kind == SpellEffectKind::SpellAttack;
             return s.kind == SpellEffectKind::Save || s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::ApplyCondition;   // targets
@@ -605,7 +779,9 @@ SpellLoad spell_from_json(const Json& j) {
             if (!small_int(u[key], 1, 255, v)) return err(std::string("scaling.upcast.") + key + " invalid");
             const std::string k = key;
             if (k == "dice") {
-                if (s.dice.count == 0) return err("scaling.upcast.dice needs effect dice or damage");
+                const bool zone_dice = s.kind == SpellEffectKind::Zone &&   // R-G11: a trigger row with damage
+                    std::any_of(s.zone.triggers.begin(), s.zone.triggers.end(), [](const ZoneTriggerRow& r) { return r.effect.dice.count > 0; });
+                if (s.dice.count == 0 && !zone_dice) return err("scaling.upcast.dice needs effect dice or damage");
                 s.upcast_dice = uint8_t(v);
             } else if (k == "darts") s.upcast_darts = uint8_t(v);
             else if (k == "beams") s.upcast_beams = uint8_t(v);
