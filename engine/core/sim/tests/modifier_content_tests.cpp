@@ -176,3 +176,86 @@ TEST_CASE("modifiers in a fight: AlliesWithin30 uses the area hook; 0xA2 folds o
     const Command second = next_command(*c2, foe);
     CHECK(second.request.kind != ActionKind::UseFeature);
 }
+
+// ---- Row 12 follow-ups: consume, speed_sub, ac_floor, per_turn, when, rider modifiers ----
+TEST_CASE("modifier follow-ups: new properties compile for spells and features; rider effects") {
+    auto def_of = [](Json m) {
+        auto r = rules5e_content::spell_from_json(spell({{"kind", "apply_modifier"}, {"modifier", m}}));
+        REQUIRE_MESSAGE(r.def, r.error);
+        return *r.def;
+    };
+    auto d = def_of({{"stat", "attack_roll"}, {"mode", "advantage"}, {"consume", "next_attack"}, {"duration", dur(1)}});   // True Strike
+    CHECK(d.modifier.consume == 1);
+    d = def_of({{"stat", "attacks_against"}, {"mode", "advantage"}, {"consume", "next_attack_against"}, {"duration", {{"kind", "until_start_of_caster_turn"}}}});
+    CHECK(d.modifier.consume == 2);
+    CHECK(d.modifier.until_caster_turn);
+    d = def_of({{"stat", "attack_roll"}, {"mode", "disadvantage"}, {"consume", "until_damaged"}, {"duration", dur(1)}});
+    CHECK(d.modifier.consume == 3);
+    d = def_of({{"stat", "speed"}, {"speed_scale", {{"num", 1}, {"den", 1}}}, {"speed_sub", 10}, {"duration", dur(1)}});   // Ray of Frost
+    CHECK(d.modifier.speed_sub == 10);
+    d = def_of({{"stat", "ac"}, {"ac_floor", 13}, {"ac_floor_dex", true}, {"duration", dur(480)}});   // Mage Armor
+    CHECK(d.modifier.ac_floor == 13);
+    CHECK(d.modifier.ac_floor_dex);
+    d = def_of({{"stat", "temp_hp"}, {"bonus", 10}, {"per_turn", true}, {"duration", dur(10)}});   // Heroism
+    CHECK(d.modifier.per_turn);
+    d = def_of({{"stat", "damage"}, {"bonus", 2}, {"duration", dur(10)},
+                {"when", Json::array({{{"kind", "weapon"}, {"is", "melee"}}, {{"kind", "not_crit"}}})}});
+    REQUIRE(d.modifier.when.size() == 2);
+    CHECK(d.modifier.when[0].kind == rules5e::PredicateKind::Weapon);
+    CHECK(d.modifier.when[1].kind == rules5e::PredicateKind::NotCrit);
+    for (Json bad : std::vector<Json>{
+             {{"stat", "attack_roll"}, {"mode", "advantage"}, {"consume", "sometimes"}, {"duration", dur(1)}},
+             {{"stat", "save"}, {"bonus", 1}, {"speed_sub", 5}, {"duration", dur(1)}},
+             {{"stat", "attack_roll"}, {"bonus", 1}, {"ac_floor", 13}, {"duration", dur(1)}},
+             {{"stat", "attack_roll"}, {"bonus", 1}, {"per_turn", true}, {"duration", dur(1)}},
+             {{"stat", "save"}, {"bonus", 1}, {"when", Json::array({{{"kind", "not_crit"}}})}, {"duration", dur(1)}},
+             {{"stat", "attack_roll"}, {"bonus", 1}, {"when", Json::array({{{"kind", "vibes"}}})}, {"duration", dur(1)}}}) {
+        CHECK_FALSE(rules5e_content::spell_from_json(spell({{"kind", "apply_modifier"}, {"modifier", bad}})).def);
+    }
+    // rider (Guiding Bolt): a spell attack, then apply_modifier on the affected only, with its own modifier id
+    Json gb = spell({{"kind", "spell_attack"}, {"melee", false}, {"damage", {{"dice", "4d6"}, {"type", "radiant"}}}});
+    gb["effects"].push_back({{"kind", "apply_modifier"}, {"applies_to", "affected"},
+                             {"modifier", {{"stat", "attacks_against"}, {"mode", "advantage"}, {"consume", "next_attack_against"},
+                                           {"duration", {{"kind", "until_start_of_caster_turn"}}}}}});
+    auto r = rules5e_content::spell_from_json(gb);
+    REQUIRE_MESSAGE(r.def, r.error);
+    REQUIRE(r.def->extra_effects.size() == 1);
+    CHECK(r.def->extra_effects[0].kind == rules5e::SpellEffectKind::ApplyModifier);
+    CHECK(r.def->extra_effects[0].affected_only);
+    CHECK(r.def->extra_effects[0].modifier.consume == 2);
+    CHECK(r.def->extra_effects[0].modifier.id == rules5e::spell_id_of(r.def->content_id + "#modifier1"));
+    // features take the same properties; a consume=1 self modifier is spent by the next attack (ModifierExpired reason 3)
+    ContentLibrary lib;
+    REQUIRE(lib.load(sample_set()).empty());
+    Json strike = {{"stat", "attack_roll"}, {"mode", "advantage"}, {"consume", "next_attack"}, {"applies_to", "self"}, {"duration", dur(5)}};
+    REQUIRE_FALSE(lib.add(leader("t.strike", {strike}), "character"));
+    Json gob = load_json("content/packs/srd51.core/monsters/goblin.json");
+    gob["hit_points"]["average"] = 400;
+    REQUIRE_FALSE(lib.add(gob, "monster"));
+    auto ch = arena({{"t.strike", Vec2i{5, 5}}, {"srd51.monster.goblin", Vec2i{6, 5}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 4);
+    REQUIRE(c);
+    const CombatantId me = ch.spawns[0].stable_id, foe = ch.spawns[1].stable_id;
+    for (int i = 0; i < 8 && rules5e::current_actor(c->state()) != me; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(c->state()), ActionKind::EndTurn};
+        REQUIRE(c->submit(e).ok);
+    }
+    Command u;
+    u.request = {me, ActionKind::UseFeature};
+    u.request.feature_id = c->archetype(me)->feature_modifiers.begin()->first;
+    REQUIRE(c->submit(u).ok);
+    REQUIRE(c->state().modifiers.size() == 1);
+    CHECK(c->state().modifiers[0].spec.consume == 1);
+    Command a;
+    a.request = {me, ActionKind::Attack, foe};
+    a.request.attack_index = 0;
+    REQUIRE(c->submit(a).ok);
+    c->settle(nullptr);
+    CHECK(c->state().modifiers.empty());
+    bool spent = false;
+    for (const auto& e : c->events())
+        if (e.kind == SimEvent::Kind::Rules && e.rules.kind == rules5e::EventKind::ModifierExpired && e.rules.b == 3) spent = true;
+    CHECK(spent);
+}
