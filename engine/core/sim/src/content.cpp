@@ -83,7 +83,18 @@ int owner_level(const Json& doc, const Json& per_levels) {
     return std::max(1, geti(doc, "level", 1));
 }
 
-std::optional<std::string> compile_rider(const std::string& where, const Json& r, const Json& doc,
+std::optional<std::string> compile_save_action(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
+                                               Archetype::SaveAction& sa, const Json& doc, bool& unsupported);
+
+// What a rider needs beyond its own JSON: the owner's attacks (bonus_attack resolves attack_id) and the list the
+// synthetic Save SpellDefs of area_save riders go to (registered in the SpellBook by ContentLibrary::add).
+struct RiderCtx {
+    const std::string& arch;
+    const std::vector<const Json*>& attacks;
+    std::vector<rules5e::SpellDef>& synth;
+};
+
+std::optional<std::string> compile_rider(const std::string& where, const Json& r, const Json& doc, const RiderCtx& rc,
                                          std::vector<rules5e::RiderEffect>& out) {
     if (!r.is_object() || !r.contains("kind") || !r["kind"].is_string()) return where + ": bad rider";
     const std::string k = r["kind"].get<std::string>();
@@ -124,10 +135,38 @@ std::optional<std::string> compile_rider(const std::string& where, const Json& r
         }
         return std::nullopt;
     }
-    // Every other rider kind is stored for its sub-PR (9b/9c) and does not fire yet.
+    if (k == "bonus_attack") {   // Rampage: value = index into the owner's attacks, resolved from attack_id
+        const std::string aid = r.contains("attack_id") && r["attack_id"].is_string() ? r["attack_id"].get<std::string>() : "";
+        for (std::size_t i = 0; i < rc.attacks.size(); ++i)
+            if (rc.attacks[i]->value("id", "") == aid && !aid.empty()) {
+                e.kind = RK::BonusAttack;
+                e.value = int16_t(i);
+                out.push_back(e);
+                return std::nullopt;
+            }
+        return where + ": bonus_attack names unknown attack_id '" + aid + "'";
+    }
+    if (k == "area_save") {   // Death Burst: a synthetic Save SpellDef (fixed DC, is_spell false) the rules resolve over the hook's targets
+        Json act = r;
+        act["kind"] = "save_effect";
+        act["id"] = "area_save." + std::to_string(rc.synth.size());
+        act.erase("origin");
+        rules5e::SpellDef d;
+        Archetype::SaveAction sa;
+        bool unsupported = false;
+        if (auto er = compile_save_action(rc.arch, act, d, sa, doc, unsupported)) return er;
+        if (unsupported) return where + ": area_save uses an unsupported usage or condition duration";
+        if (!sa.area) return where + ": area_save needs an area";
+        d.content_id = rc.arch + "#" + act["id"].get<std::string>();
+        e.kind = RK::AreaSave;
+        e.spell_id = d.id;
+        rc.synth.push_back(std::move(d));
+        out.push_back(e);
+        return std::nullopt;
+    }
+    // Every other rider kind is stored for its sub-PR (9c) and does not fire yet.
     static const std::pair<const char*, RK> kinds[] = {{"save_condition", RK::SaveCondition}, {"apply_condition", RK::ApplyCondition},
-        {"heal_self", RK::HealSelf}, {"temp_hp", RK::TempHp}, {"set_hp", RK::SetHp}, {"bonus_attack", RK::BonusAttack},
-        {"area_save", RK::AreaSave}, {"spend", RK::Spend}};
+        {"heal_self", RK::HealSelf}, {"temp_hp", RK::TempHp}, {"set_hp", RK::SetHp}, {"spend", RK::Spend}};
     for (const auto& [name, kind] : kinds)
         if (k == name) {
             e.kind = kind;
@@ -187,7 +226,17 @@ std::optional<std::string> compile_predicate(const std::string& where, const Jso
         out.kind = PK::SelfHpBelow;
         out.a = int16_t(n);
         out.b = int16_t(d);
-    } else if (k == "save") out.kind = PK::Save;   // reserved (9b): stored, never true yet
+    } else if (k == "save") {   // the owner rolls: a = ability, b = DC (or the base with dc_from_damage), mask bit 0 = dc_from_damage
+        auto ab = ability_of(p.contains("ability") && p["ability"].is_string() ? p["ability"].get<std::string>() : "");
+        const bool from_dmg = p.value("dc_from_damage", false);
+        if (!ab || p.contains("dc") == from_dmg) return where + ": bad save predicate";
+        const int dc = from_dmg ? geti(p, "base") : geti(p, "dc");
+        if (dc < 0 || dc > 30) return where + ": bad save DC";
+        out.kind = PK::Save;
+        out.a = int16_t(int(*ab));
+        out.b = int16_t(dc);
+        out.mask = from_dmg ? 1u : 0u;
+    }
     else return where + ": unknown predicate '" + k + "'";
     return std::nullopt;
 }
@@ -205,7 +254,7 @@ std::optional<std::string> add_trigger(const std::string& arch, const std::strin
 }
 
 // `effect` is an on_event effect object. Returns an error, or sets `unsupported` (listed, not compiled).
-std::optional<std::string> compile_on_event(const std::string& arch, const std::string& owner, const Json& effect, const Json& doc,
+std::optional<std::string> compile_on_event(const std::string& arch, const std::string& owner, const Json& effect, const Json& doc, const RiderCtx& rc,
                                             std::map<uint32_t, std::string>& ids, rules5e::Combatant& c, bool& unsupported) {
     const std::string where = arch + ": " + owner + " on_event";
     static const std::pair<const char*, rules5e::TriggerOn> ons[] = {{"hit", rules5e::TriggerOn::Hit}, {"crit", rules5e::TriggerOn::Crit},
@@ -237,7 +286,7 @@ std::optional<std::string> compile_on_event(const std::string& arch, const std::
     }
     auto ef = effect.find("effects");
     if (ef == effect.end() || !ef->is_array() || ef->empty()) return where + ": needs effects[]";
-    for (const Json& r : *ef) if (auto e = compile_rider(where, r, doc, t.effects)) return e;
+    for (const Json& r : *ef) if (auto e = compile_rider(where, r, doc, rc, t.effects)) return e;
     return add_trigger(arch, owner, 0, std::move(t), ids, c);
 }
 
@@ -613,6 +662,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     }
     // Feature hooks (data-driven by effect.kind; see features.hpp).
     a.features = declared_features(doc);
+    std::vector<rules5e::SpellDef> synth;   // synthetic SpellDefs: area_save riders first, then save_effect actions
+    const RiderCtx rider_ctx{a.id, attack_actions, synth};
     std::map<uint32_t, std::string> trigger_ids;   // numeric trigger id -> its string (duplicates are load errors)
     const FeatureBuildCtx fctx{*features_, doc, declared, attack_actions};
     for (std::size_t i = 0; i < a.features.size(); ++i) {
@@ -632,7 +683,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         }
         if (f.kind == "on_event") {   // event triggers (rules5e::Trigger): compiled here, the registry reserves the kind only
             bool unsupported = false;
-            if (auto e = compile_on_event(a.id, f.id, f.effect, doc, trigger_ids, c, unsupported)) return *e;
+            if (auto e = compile_on_event(a.id, f.id, f.effect, doc, rider_ctx, trigger_ids, c, unsupported)) return *e;
             if (unsupported) a.unsupported_features.push_back(f.id + " (on_event: unsupported usage)");
             continue;
         }
@@ -657,7 +708,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 pr.kind = rules5e::PredicateKind::AttackIs;
                 pr.a = int16_t(ai);
                 t.when.push_back(pr);
-                if (auto e = compile_rider(a.id + ": " + act.value("id", "?") + " on_hit", (*oh)[ri], doc, t.effects)) return *e;
+                if (auto e = compile_rider(a.id + ": " + act.value("id", "?") + " on_hit", (*oh)[ri], doc, rider_ctx, t.effects)) return *e;
                 if (auto e = add_trigger(a.id, act.value("id", "?"), ri, std::move(t), trigger_ids, c)) return *e;
             }
         }
@@ -667,8 +718,9 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         c.multiattacks.push_back({strings_.back(), m.attacks});
     }
     a.ai = assets::behavior_ai_script(doc);   // monster@2 / character@2
+    const std::size_t n_trigger_spells = synth.size();   // the area_save riders' defs come first
+    for (std::size_t i = 0; i < n_trigger_spells; ++i) a.trigger_spell_ids.push_back(synth[i].id);
     // monster@4 / character@4 save_effect actions -> synthetic SpellDefs (never for a file that declared < 4).
-    std::vector<rules5e::SpellDef> synth;
     if (declared == 0 || declared >= 4)
         for (const Json& act : doc.at("actions")) {
             if (act.value("kind", "") != "save_effect") continue;
@@ -686,9 +738,12 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     // Register in the shared SpellBook, replacing an overridden archetype's entries; all-or-nothing.
     if (!synth.empty() || by_id_.count(a.id)) {
         std::vector<rules5e::SpellDef> old;
-        if (auto prev = by_id_.find(a.id); prev != by_id_.end())
+        if (auto prev = by_id_.find(a.id); prev != by_id_.end()) {
             for (const auto& sa : prev->second.save_actions)
                 if (const auto* d = spells_->find(sa.spell_id)) old.push_back(*d);
+            for (uint32_t id : prev->second.trigger_spell_ids)
+                if (const auto* d = spells_->find(id)) old.push_back(*d);
+        }
         for (const auto& d : old) spells_->erase(d.id);
         std::vector<uint32_t> added;
         for (const auto& d : synth) {
