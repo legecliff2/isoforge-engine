@@ -95,6 +95,18 @@ TEST_CASE("grapple / shove: requests, the 5 ft push, drag, 0xA7 fold, log fold, 
         end_turn(*c);
     }
     REQUIRE(pushed);
+    {   // v8: the push's Moved carries the forced bit (and only that one); the stream now hashes as v8
+        int forced = 0;
+        for (const auto& e : c->events())
+            if (e.kind == SimEvent::Kind::Rules && e.rules.kind == rules5e::EventKind::Moved && e.rules.c != 0) {
+                CHECK(e.rules.c == kMovedForced);
+                CHECK(e.rules.actor == g);
+                CHECK(e.rules.target == f);
+                ++forced;
+            }
+        CHECK(forced >= 1);
+        CHECK(event_stream_version(c->events()) == 8);
+    }
     CHECK_FALSE(rules5e::has_sourced_conditions(c->state()));
     // step back next to it, then grapple until it holds
     to_turn(*c, f);
@@ -130,6 +142,20 @@ TEST_CASE("grapple / shove: requests, the 5 ft push, drag, 0xA7 fold, log fold, 
     CHECK(c->distance_tiles(f, g) <= 1);
     CHECK(c->pos(g) == Vec2i{6, 5});
     CHECK(has(*c, g, Condition::Grappled));
+    {   // v8: the dragged goblin gets a Moved{actor = goblin, target = fighter, a = 5, c = drag}, right before its TileMoved
+        const auto& ev = c->events();
+        std::size_t k = ev.size();
+        for (std::size_t i = 0; i < ev.size(); ++i)
+            if (ev[i].kind == SimEvent::Kind::Rules && ev[i].rules.kind == rules5e::EventKind::Moved && (ev[i].rules.c & kMovedDrag)) k = i;
+        REQUIRE(k + 1 < ev.size());
+        CHECK(ev[k].rules.c == kMovedDrag);
+        CHECK(ev[k].rules.actor == g);
+        CHECK(ev[k].rules.target == f);
+        CHECK(ev[k].rules.a == 5);
+        CHECK(ev[k + 1].kind == SimEvent::Kind::TileMoved);
+        CHECK(ev[k + 1].actor == g);
+        CHECK(ev[k + 1].tile == Vec2i{6, 5});
+    }
     ecs::Registry reg2;
     std::string err;
     auto rep = replay(reg2, ch, lib, 7, c->log(), &err);

@@ -578,7 +578,19 @@ std::optional<Vec2i> Combat::moving_to(CombatantId id) const {
 // rules Moved events, then sim bookkeeping (readied destinations).
 void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs, std::optional<Vec2i> to) {
     const auto& q = ls.request;
-    apply_rules_events(evs);
+    // v8: the 5 ft shove's Moved{actor = target, target = shover} is forced movement; sim flags it (rules emit c = 0).
+    auto is_shove_push = [&q](const rules5e::Event& e) {
+        return e.kind == rules5e::EventKind::Moved && q.kind == ActionKind::Attack && q.special == 3 && e.actor == q.target &&
+               e.target == q.actor;
+    };
+    if (std::any_of(evs.begin(), evs.end(), is_shove_push)) {
+        std::vector<rules5e::Event> flagged = evs;
+        for (auto& fe : flagged)
+            if (is_shove_push(fe)) fe.c |= kMovedForced;
+        apply_rules_events(flagged);
+    } else {
+        apply_rules_events(evs);
+    }
     // R-G8 helpers: put a creature on a tile (forced movement / drag), and end grapples whose holder and held creature are no
     // longer within 5 ft after an effect moved one of them (Grappled is removed from the target; the next step prunes the entry).
     auto place = [this](CombatantId id, Vec2i t) {
@@ -623,8 +635,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
     std::vector<CombatantId> fired;
     for (const auto& e : evs) {
         // R-G8 shove 5 ft away: Moved{actor = target, target = shover}; push one tile straight away from the shover if it is free.
-        if (e.kind == rules5e::EventKind::Moved && q.kind == ActionKind::Attack && q.special == 3 && e.actor == q.target &&
-            e.target == q.actor) {
+        if (is_shove_push(e)) {
             const Vec2i sp = pos(q.actor), tp = pos(e.actor);
             const Vec2i d{(tp.x > sp.x) - (tp.x < sp.x), (tp.y > sp.y) - (tp.y < sp.y)};
             const Vec2i dest{tp.x + d.x, tp.y + d.y};
@@ -640,8 +651,17 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
                 for (CombatantId held : rules5e::grappled_by(state_, q.actor)) {
                     const Vec2i hp = pos(held);
                     const Vec2i same{hp.x + to->x - from.x, hp.y + to->y - from.y};
-                    if (same != hp && free_for(held, same)) place(held, same);
-                    else if (distance_tiles(q.actor, held) > 1 && free_for(held, from)) place(held, from);
+                    std::optional<Vec2i> drag_to;
+                    if (same != hp && free_for(held, same)) drag_to = same;
+                    else if (distance_tiles(q.actor, held) > 1 && free_for(held, from)) drag_to = from;
+                    if (drag_to) {   // v8: a Moved{actor = held, target = grappler, a = feet, c = drag} precedes its TileMoved
+                        SimEvent dm;
+                        dm.kind = SimEvent::Kind::Rules;
+                        const int32_t ft = 5 * std::max(std::abs(drag_to->x - hp.x), std::abs(drag_to->y - hp.y));
+                        dm.rules = {rules5e::EventKind::Moved, held, q.actor, ft, 0, kMovedDrag, 0};
+                        events_.push_back(dm);
+                        place(held, *drag_to);
+                    }
                     release_out_of_reach(held);
                 }
             continue;
