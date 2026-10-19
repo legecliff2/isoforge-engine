@@ -14,9 +14,12 @@
 #include <doctest/doctest.h>
 
 #include <array>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -33,6 +36,16 @@ namespace fs = std::filesystem;
 using Json = nlohmann::json;
 
 namespace {
+// A per-run suffix for temp folders, so concurrent runs (gcc and ASan trees, other checkouts on the same machine) never
+// share or delete each other's fixture copies. Portable: no getpid.
+const std::string& run_suffix() {
+    static const std::string s = [] {
+        std::random_device rd;
+        const auto ticks = static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count());
+        return std::to_string(ticks) + "_" + std::to_string(rd());
+    }();
+    return s;
+}
 const std::string kFl1 = std::string(ENGINE_SOURCE_ROOT) + "/tests/compat/fl1/sample.vertical_slice";
 const std::string kGoblinId = "srd51.monster.goblin";
 
@@ -52,7 +65,7 @@ struct Decorated {
     fs::path root, dir;
     explicit Decorated(const std::string& tag, const char* monster_schema, const char* character_schema) {
         // Private parent: PackSet::from_pack_dir treats the pack's parent as the pack root.
-        root = fs::temp_directory_path() / ("isoforge_compat_defenses_" + tag);
+        root = fs::temp_directory_path() / ("isoforge_compat_defenses_" + tag + "_" + run_suffix());
         fs::remove_all(root);
         dir = root / "sample.vertical_slice";
         fs::create_directories(root);
@@ -86,7 +99,7 @@ struct Decorated {
                              {"pact", {{"level", 1}, {"slots", 2}}}, {"spells", Json::array({"srd51.spell.cure_wounds"})}};
         write_json(dir / "characters/fighter_1.json", f);
     }
-    ~Decorated() { fs::remove_all(root); }
+    ~Decorated() { std::error_code ec; fs::remove_all(root, ec); }
 };
 
 const rules5e::Combatant* first_foe(const Combat& c, CombatantId self) {
@@ -246,7 +259,8 @@ TEST_CASE("compat defenses: decorated pre-@3 fights reproduce the frozen fl1 dig
 //    same @3 fighter with the decoration (reactions, the on_event / apply_modifier features) removed.
 namespace {
 uint64_t digest_of_pack(const std::string& tag, const Json& goblin, const Json& fighter, uint64_t seed) {
-    const fs::path root = fs::temp_directory_path() / ("isoforge_compat_v4_" + tag);
+    const fs::path root = fs::temp_directory_path() / ("isoforge_compat_v4_" + tag + "_" + run_suffix());
+    struct Cleanup { fs::path p; ~Cleanup() { std::error_code ec; fs::remove_all(p, ec); } } cleanup{root};   // also on a failed REQUIRE
     fs::remove_all(root);
     const fs::path dir = root / "sample.vertical_slice";
     fs::create_directories(root);
