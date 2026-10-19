@@ -1,6 +1,7 @@
 #include "rules5e/encounter.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <array>
 
 #include "rules5e/abilities.hpp"
@@ -449,7 +450,134 @@ struct Ctx {
     bool spared_no_damage = false;                         //   Sculpt: no damage on a half-on-save spell
     CombatantId heighten = 0;                              // Heightened: disadvantage on this creature's first save
     int empower = 0;                                       // Empowered: damage dice rerolled (0 = off)
+    // R-G9: the cast's forced-move / teleport choices (set by cast_spell around resolve_spell only) and the forced moves
+    // queued by effects, turned into placeholders by defer_forced (before SpellResolved, else at the end of the step) and resolved by finalize_forced.
+    uint16_t forced_feet = 0, teleport_feet = 0;
+    bool has_teleport_dest = false; int32_t teleport_x = 0, teleport_y = 0;
+    std::vector<ForcedMoveQuery> forced_queue{};
+    // R-G9 deferral: every forced move / teleport of the step, in emission order, waiting for finalize_forced (after all of
+    // the step's decision points). flags = Moved.c; group = one effect's batch (forced_move_order sorts within a group).
+    struct Deferred { ForcedMoveQuery q; int32_t flags = 0; uint32_t group = 0; };
+    std::vector<Deferred> forced_deferred{};
+    uint32_t forced_groups = 0;
+    bool forced_resolved = false;
 };
+
+// R-G9: ends the grapple between `x` and `y` (either way round) after a forced move left them out of reach: the sourced entries
+// go, and Grappled goes from a creature no other grappler still holds (ConditionRemoved).
+void end_grapple_pair(EncounterState& s, CombatantId x, CombatantId y, std::vector<Event>& ev) {
+    std::vector<CombatantId> freed;
+    for (std::size_t i = 0; i < s.sourced.size();) {
+        const SourcedCondition& e = s.sourced[i];
+        if (e.condition == Condition::Grappled && ((e.source == x && e.target == y) || (e.source == y && e.target == x))) {
+            freed.push_back(e.target);
+            s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i));
+        } else ++i;
+    }
+    for (CombatantId id : freed) {
+        Combatant* c = find_mut(s, id);
+        if (!c || !c->has(Condition::Grappled)) continue;
+        const bool still = std::any_of(s.sourced.begin(), s.sourced.end(), [&](const SourcedCondition& e) {
+            return e.condition == Condition::Grappled && e.target == id; });
+        if (still) continue;
+        remove_condition(*c, Condition::Grappled);
+        emit(ev, EventKind::ConditionRemoved, id, 0, int32_t(Condition::Grappled));
+    }
+}
+
+// R-G9: emits a placeholder Moved{actor = mover, target = source, a = requested feet, b = 0, c = flags} for each queued forced
+// move / teleport (one group = one effect) and defers it. Ready triggers see these placeholders (the intent). The hook runs
+// later, in finalize_forced, once the step can no longer pause. A creature already dead is not moved.
+void defer_forced(EncounterState& s, Ctx& ctx, std::vector<Event>& ev, int32_t shove_flags = -1) {
+    if (ctx.forced_queue.empty()) return;
+    std::vector<ForcedMoveQuery> q = std::move(ctx.forced_queue);
+    ctx.forced_queue.clear();
+    const uint32_t group = ctx.forced_groups++;
+    for (ForcedMoveQuery& m : q) {
+        const Combatant* c = find_mut(s, m.mover);
+        if (!c || c->dead) continue;
+        const int32_t flags = shove_flags >= 0 ? shove_flags : (m.teleport ? kMovedTeleport : kMovedForced);
+        m.step_seq = uint32_t(ctx.forced_deferred.size());
+        ctx.forced_deferred.push_back(Ctx::Deferred{m, flags, group});
+        emit(ev, EventKind::Moved, m.mover, m.source, int32_t(m.feet), 0, flags);
+    }
+}
+
+// R-G9: resolves the step's deferred forced moves after every decision point of the step (the run can no longer be
+// discarded), so `forced_move` sees each (step, step_seq) exactly once. Each group is ordered by `forced_move_order` (a
+// permutation, else the given order); each placeholder Moved becomes Moved{a = feet actually moved} followed by
+// ConditionRemoved{Grappled} for every grapple the hook reports out of reach (same reaction depth). No hook: a = requested
+// feet and no grapple ends (the placeholder stands).
+void finalize_forced(EncounterState& s, Ctx& ctx, std::vector<Event>& events) {
+    assert(!ctx.forced_resolved && !ctx.need);   // once per step, and only in the run that is kept
+    ctx.forced_resolved = true;
+    if (ctx.forced_deferred.empty()) return;
+    const auto& D = ctx.forced_deferred;
+    // placeholders: the rules Moved events with a source (target != 0); voluntary and readied moves have target 0
+    std::vector<std::size_t> slot;
+    for (std::size_t i = 0; i < events.size(); ++i)
+        if (events[i].kind == EventKind::Moved && events[i].target != 0) slot.push_back(i);
+    assert(slot.size() == D.size());
+    if (slot.size() != D.size()) return;   // release builds: leave the intents as they are
+#ifndef NDEBUG
+    std::vector<bool> called(D.size(), false);
+#endif
+    std::vector<std::vector<Event>> replace(D.size());   // per placeholder: what it becomes (empty = dropped; group head holds all)
+    std::vector<bool> drop(D.size(), false);
+    for (std::size_t k = 0; k < D.size();) {
+        std::size_t e = k;
+        while (e < D.size() && D[e].group == D[k].group) ++e;
+        std::vector<ForcedMoveQuery> qs;
+        for (std::size_t i = k; i < e; ++i) qs.push_back(D[i].q);
+        std::vector<std::size_t> order(qs.size());
+        for (std::size_t i = 0; i < order.size(); ++i) order[i] = i;
+        if (s.hooks.forced_move_order && qs.size() > 1) {
+            std::vector<std::size_t> o = s.hooks.forced_move_order(s, std::span<const ForcedMoveQuery>(qs));
+            std::vector<bool> seen(qs.size(), false);
+            bool perm = o.size() == qs.size();
+            for (std::size_t x = 0; perm && x < o.size(); ++x) {
+                if (o[x] >= qs.size() || seen[o[x]]) perm = false;
+                else seen[o[x]] = true;
+            }
+            if (perm) order = std::move(o);
+        }
+        std::vector<Event>& out = replace[k];
+        for (std::size_t oi : order) {
+            const std::size_t at = k + oi;
+            const Ctx::Deferred& d = D[at];
+            const Event& ph = events[slot[at]];
+            ForcedMoveResult res;
+            Combatant* m = find_mut(s, d.q.mover);
+            if (m && !m->dead && s.hooks.forced_move) {
+#ifndef NDEBUG
+                assert(!called[at]);   // each (step, step_seq) reaches the hook once
+                called[at] = true;
+#endif
+                res = s.hooks.forced_move(s, d.q);
+            } else {
+                res.feet_moved = d.q.feet;
+            }
+            std::vector<Event> tail;
+            emit(tail, EventKind::Moved, d.q.mover, d.q.source, int32_t(res.feet_moved), 0, d.flags);
+            for (CombatantId other : res.out_of_reach_of) end_grapple_pair(s, d.q.mover, other, tail);
+            for (Event& t : tail) { t.reaction_depth = ph.reaction_depth; out.push_back(t); }
+        }
+        for (std::size_t i = k + 1; i < e; ++i) drop[i] = true;
+        k = e;
+    }
+    std::vector<Event> rebuilt;
+    rebuilt.reserve(events.size() + 4);
+    std::size_t next = 0;
+    for (std::size_t i = 0; i < events.size(); ++i) {
+        if (next < slot.size() && slot[next] == i) {
+            if (!drop[next]) rebuilt.insert(rebuilt.end(), replace[next].begin(), replace[next].end());
+            ++next;
+            continue;
+        }
+        rebuilt.push_back(events[i]);
+    }
+    events = std::move(rebuilt);
+}
 
 // R-G14 Empowered Spell: rolls each die, then rerolls up to `n` dice that rolled below the die's average, lowest first (earliest
 // on ties); the new rolls are kept. Same draws as roll_dice when no die is rerolled.
@@ -1656,6 +1784,24 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         if (def.concentration && applied) a.concentration_spell = def.id;
         break;
     }
+    case SpellEffectKind::ForcedMove: {   // R-G9: queued; deferred (defer_forced) after the effect's saves and damage
+        const uint16_t feet = def.forced.up_to && ctx.forced_feet > 0 ? std::min(ctx.forced_feet, def.forced.feet) : def.forced.feet;
+        for (Combatant* t : T) {
+            if (t->dead || t == &a) continue;
+            if (def.forced.max_size >= 0 && int(t->size) > int(def.forced.max_size)) continue;   // too big: only the push is skipped
+            ForcedMoveQuery q; q.mover = t->id; q.source = a.id; q.mode = def.forced.mode; q.feet = feet;
+            ctx.forced_queue.push_back(q);
+            affected.push_back(t);
+        }
+        break;
+    }
+    case SpellEffectKind::Teleport: {   // R-G9: the caster; the destination is sim's
+        ForcedMoveQuery q; q.mover = a.id; q.source = a.id; q.mode = 0; q.feet = ctx.teleport_feet; q.teleport = true;
+        q.has_dest = ctx.has_teleport_dest; q.dest_x = ctx.teleport_x; q.dest_y = ctx.teleport_y;
+        ctx.forced_queue.push_back(q);
+        affected.push_back(&a);
+        break;
+    }
     case SpellEffectKind::ApplyModifier: {   // timed modifier on each target (applies_to Self: the caster)
         ModifierSpec m = def.modifier;
         m.source = def.id; m.concentration = def.concentration;
@@ -1874,6 +2020,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     if ((!inn || inn->as_listed) && s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, def)) return fail("components unavailable");
     std::vector<CombatantId> ids = req.targets;
     if (ids.empty() && req.target != 0) ids.push_back(req.target);
+    if (ids.empty() && def.kind == SpellEffectKind::Teleport) ids.push_back(a.id);   // R-G9: self
     if (ids.empty()) return fail("target required");
     std::vector<Combatant*> T;
     for (CombatantId id : ids) {
@@ -1902,6 +2049,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     case SpellEffectKind::Save: case SpellEffectKind::Heal: case SpellEffectKind::ApplyCondition: case SpellEffectKind::ApplyModifier:
     case SpellEffectKind::HpPool: case SpellEffectKind::Dispel: case SpellEffectKind::Revive:
     case SpellEffectKind::EndCondition: case SpellEffectKind::DelayedDamage: case SpellEffectKind::SustainedDamage:
+    case SpellEffectKind::ForcedMove:
         if ((def.area == AreaShape::None && int(T.size()) > scaled_targets(def, lvl)) || !distinct())
             return fail("too many targets");
         break;
@@ -1915,6 +2063,21 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     }
     case SpellEffectKind::AcBonus: case SpellEffectKind::Counter:
         return fail("reaction spells are cast from reaction windows");
+    case SpellEffectKind::Teleport:   // R-G9: self only (Dimension Door companions are deferred)
+        if (T.size() != 1 || T[0] != &a) return fail("teleport: self only");
+        break;
+    }
+    if (req.forced_feet != 0) {   // R-G9: the chosen distance of an "up to N ft" forced move
+        int most = -1;
+        if (def.kind == SpellEffectKind::ForcedMove && def.forced.up_to) most = def.forced.feet;
+        for (const SpellEffect& x : def.extra_effects)
+            if (x.kind == SpellEffectKind::ForcedMove && x.forced.up_to) most = std::max(most, int(x.forced.feet));
+        if (most < 0) return fail("forced_feet: no 'up to' forced move in this spell");
+        if (req.forced_feet % 5 != 0 || int(req.forced_feet) > most) return fail("forced_feet: a multiple of 5 up to the effect's distance");
+    }
+    if (req.teleport_feet != 0 || req.has_teleport_dest) {   // R-G9: sim validated the destination; rules checks the distance budget
+        if (def.kind != SpellEffectKind::Teleport) return fail("teleport: not a teleport spell");
+        if (req.teleport_feet % 5 != 0 || req.teleport_feet > def.teleport.max_feet) return fail("teleport: beyond the spell's range");
     }
     if (def.max_spread_ft > 0 && ids.size() > 1 && s.hooks.targets_within && !s.hooks.targets_within(s, ids, def.max_spread_ft))
         return fail("targets too far apart");
@@ -1949,8 +2112,12 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (!req.spared.empty()) { ctx.spared = &req.spared; ctx.spared_no_damage = !careful; }
         ctx.heighten = (req.metamagic & kMetaHeightened) ? req.heighten_target : 0;
         ctx.empower = (req.metamagic & kMetaEmpowered) ? std::max(1, modifier(a.abilities, Ability::Cha)) : 0;
+        ctx.forced_feet = req.forced_feet; ctx.teleport_feet = req.teleport_feet;
+        ctx.has_teleport_dest = req.has_teleport_dest; ctx.teleport_x = req.teleport_x; ctx.teleport_y = req.teleport_y;
         resolve_spell(s, ctx, a, def, lvl, T, req.target_within_5ft, out.events);
         ctx.spared = nullptr; ctx.spared_no_damage = false; ctx.heighten = 0; ctx.empower = 0;
+        ctx.forced_feet = 0; ctx.teleport_feet = 0; ctx.has_teleport_dest = false; ctx.teleport_x = 0; ctx.teleport_y = 0;
+        defer_forced(s, ctx, out.events);   // R-G9: placeholders after every save and damage of the spell, before SpellResolved
     }
     emit(out.events, countered ? EventKind::SpellCountered : EventKind::SpellResolved, a.id, ids[0], int32_t(def.id), lvl);
     check_end(s, out.events);
@@ -2127,6 +2294,8 @@ StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vecto
     std::vector<ReactionRecord> records;
     Ctx ctx{records, &decided, 0, replay_only, false, std::nullopt, 0};
     StepResult r = step_impl(s, ctx, req);
+    if (r.ok) defer_forced(s, ctx, r.events);   // R-G9: forced moves queued outside a cast (on-hit riders), before Ready triggers
+    else { ctx.forced_queue.clear(); ctx.forced_deferred.clear(); }
     if (r.ok && req.kind != ActionKind::Ready) fire_readies(s, ctx, r.events);
     if (!r.ok) return r;
     process_deaths(s, r.events, &ctx);
@@ -2143,6 +2312,7 @@ StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vecto
         out.reactions = decided;
         return out;
     }
+    if (!ctx.need) finalize_forced(s, ctx, r.events);   // R-G9: after every decision point of the step
     r.status = StepStatus::Done;
     r.reactions = std::move(records);
     r.desync = ctx.desync || ctx.replay_pos != decided.size();
@@ -2261,7 +2431,7 @@ Skill best_defence(const Combatant& c) {
     return skill_modifier(c, Skill::Athletics) >= skill_modifier(c, Skill::Acrobatics) ? Skill::Athletics : Skill::Acrobatics;
 }
 
-StepResult special_action(EncounterState& s, Combatant& a, TurnBudget b, const ActionRequest& req) {
+StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const ActionRequest& req) {
     StepResult out{true, {}, {}};
     if (req.special == 5) {   // Wake: shake a sleeper awake (ends its ends_on_damage effects); uses the action
         if (req.as_bonus_action) return fail("not a bonus action");
@@ -2339,7 +2509,11 @@ StepResult special_action(EncounterState& s, Combatant& a, TurnBudget b, const A
                 add_condition(*t, Condition::Prone);
                 emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(Condition::Prone));
             }
-        } else emit(ev, EventKind::Moved, t->id, a.id, 5, 0);   // forced movement: a = feet, target = the shover; sim applies it
+        } else {   // forced movement (R-G9): a = feet, target = the shover; c = 1 only with hooks.shove_forced_flag (EC #104)
+            ForcedMoveQuery q; q.mover = t->id; q.source = a.id; q.mode = 1; q.feet = 5;
+            ctx.forced_queue.push_back(q);
+            defer_forced(s, ctx, ev, s.hooks.shove_forced_flag ? kMovedForced : 0);
+        }
     }
     check_end(s, ev);
     return out;
@@ -2352,6 +2526,8 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
                           req.kind != ActionKind::Heal && req.kind != ActionKind::AbilityCheck &&
                           req.kind != ActionKind::ReactionDecision && req.kind != ActionKind::OpportunityAttack;
     Combatant* a = own_turn ? find_mut(s, req.actor) : nullptr;
+    if ((req.forced_feet != 0 || req.teleport_feet != 0 || req.has_teleport_dest) && req.kind != ActionKind::CastSpell)
+        return fail("forced_feet / teleport: CastSpell only");
     if (!a || a->dead || req.kind == ActionKind::EndTurn) {
         if (req.haste_action) return fail("haste_action: not a turn action");
         if (req.reckless) return fail("reckless: Attack only");
@@ -2594,7 +2770,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         emit(out.events, EventKind::Dodged, a.id);
         return out;
     case ActionKind::Attack: {
-        if (req.special != 0) return special_action(s, a, b, req);
+        if (req.special != 0) return special_action(s, ctx, a, b, req);
         // A bonus-action attack is a granted trigger rider (Rampage: bonus_attack_grant = index + 1) or a compiled option
         // (bonus_option = 1 + index into bonus_attacks).
         const BonusAttack* bopt = nullptr;
@@ -2828,6 +3004,12 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
                 !can_spend(s, a.id, d->pool_id, d->pool_cost ? d->pool_cost : 1)) continue;
             for (uint8_t L = d->level; L <= (d->level == 0 ? 0 : 9); ++L) {
                 if (!has_slot(a, L)) continue;
+                if (d->kind == SpellEffectKind::Teleport) {   // R-G9: self; sim adds the destination (legal_teleport_tiles)
+                    ActionRequest r{a.id, ActionKind::CastSpell, a.id};
+                    r.spell_id = d->id; r.spell_level = L;
+                    out.push_back(r);
+                    continue;
+                }
                 for (const auto& t : s.combatants) {
                     if (t.dead) continue;
                     // Heal, and Invisibility-style conditions (the only beneficial SRD condition), go on allies.
@@ -2850,6 +3032,12 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             if (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !can_act) continue;
             if (is.as_listed && s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, *d)) continue;
+            if (d->kind == SpellEffectKind::Teleport) {   // R-G9: blink dog-style innate teleport, self
+                ActionRequest r{a.id, ActionKind::CastSpell, a.id};
+                r.spell_id = d->id; r.spell_level = d->level; r.innate = true;
+                out.push_back(r);
+                continue;
+            }
             for (const auto& t : s.combatants) {
                 if (t.dead) continue;
                 const bool heal = d->kind == SpellEffectKind::Heal ||

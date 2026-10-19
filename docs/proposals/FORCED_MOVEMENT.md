@@ -1,7 +1,8 @@
 # Forced movement and teleport (R-G9): rules / sim co-design proposal
 
 Status: **proposal, docs only.** The RULES section is written by Rules. The SIM CONTRACT section is a stub that carries Engine
-Core's starting design and is for Engine Core to complete. Nothing here is implemented yet. Tracks `docs/SRD_COMBAT_COVERAGE.md`
+Core's starting design and is for Engine Core to complete. **Rules side implemented** (pushes and self-teleport, Q10):
+`VERSION_BUMP_BATCH.md` §7.2k; the sim side (hook, paths, teleport tiles) is Engine Core's next PR. Tracks `docs/SRD_COMBAT_COVERAGE.md`
 §11.5 order 8 (R-G9) and the rows it unlocks: Thunderwave, Gust of Wind, Misty Step, Repelling Blast, Open Hand Technique, blink
 dog teleport, and the "Opportunity-attack exceptions" row.
 

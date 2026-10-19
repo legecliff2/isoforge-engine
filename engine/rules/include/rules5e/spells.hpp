@@ -36,6 +36,25 @@ enum class SpellEffectKind : uint8_t {
     EndCondition,   // ends one condition of `ends_conditions` on each target, the lowest Condition value present (Lesser Restoration)
     DelayedDamage,  // `dice` of `damage_type` when the effect's timer runs out (`expiry`; Acid Arrow: end of the target's next turn)
     SustainedDamage,// `dice` now, and again each time the caster sustains it with a bonus action (Heat Metal; concentration)
+    // appended (R-G9, docs/proposals/FORCED_MOVEMENT.md):
+    ForcedMove,     // push / pull each target (`forced`); mostly an `affected_only` rider (Thunderwave, Repelling Blast)
+    Teleport,       // the caster teleports (`teleport`; Misty Step); the destination is sim's (ActionRequest::teleport_*)
+};
+// R-G9 forced movement (push / pull) of an effect. mode 1 push (away from the source), 2 pull (toward it), 3 along a line
+// (Gust of Wind: sim's direction; not in R-G9's first scope). feet: exact distance, or the maximum when up_to (the caster
+// picks a multiple of 5 with ActionRequest::forced_feet). max_size: largest Size moved (-1 = no limit; over it: the push part
+// only is skipped). provokes_oa: SRD never; true is a content load error in R-G9.
+struct ForcedMoveSpec {
+    uint8_t  mode = 1;
+    uint16_t feet = 0;
+    bool     up_to = false;
+    int8_t   max_size = -1;
+    bool     provokes_oa = false;
+};
+// R-G9 self-teleport (Misty Step 30, blink dog 40). Companions (Dimension Door) and the occupied-destination damage are deferred.
+struct TeleportSpec {
+    uint16_t max_feet = 0;
+    bool     needs_sight = true;   // sim's destination check
 };
 enum class OnSave : uint8_t { None, Half };          // damage on a successful save
 enum class RepeatSave : uint8_t { None, EndOfTurn, StartOfTurn, OnDamage };   // condition: target repeats the save
@@ -60,6 +79,8 @@ struct SpellEffect {
     uint8_t expiry = 0;
     uint16_t duration_rounds = 0;      // expiry == 1
     ModifierSpec modifier{};           // appended (row 12 follow-up): kind ApplyModifier as a rider (Guiding Bolt, Ray of Frost, Vicious Mockery)
+    ForcedMoveSpec forced{};           // appended (R-G9): kind ForcedMove
+    TeleportSpec teleport{};           // appended (R-G9): kind Teleport
 };
 
 struct SpellDef {
@@ -135,6 +156,9 @@ struct SpellDef {
     // repeat save; failing that repeat save turns it into `escalate_to` (Petrified) for good. escalate_margin > 0: failing the
     // first save by that much or more applies `escalate_to` at once (medusa: 5).
     bool escalates = false; Condition escalate_to = Condition::Petrified; uint8_t escalate_margin = 0;
+    // appended (R-G9): primary-effect forced movement / teleport (extra effects carry their own).
+    ForcedMoveSpec forced{};
+    TeleportSpec teleport{};
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
