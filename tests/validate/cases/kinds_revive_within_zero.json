@@ -1,0 +1,40 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.kindsrevivewithinzero",
+  "name": "Revivify",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "You touch a creature that has died within the last minute. That creature returns to life with 1 hit point. It can't return to life if it died of old age, nor restore missing body parts (not modelled).",
+  "level": 3,
+  "school": "necromancy",
+  "classes": [
+    "cleric",
+    "paladin"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "diamonds worth 300 gp, which the spell consumes",
+      "cost_cp": 30000,
+      "consumed": true
+    }
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "revive",
+      "within_rounds": 0
+    }
+  ]
+}

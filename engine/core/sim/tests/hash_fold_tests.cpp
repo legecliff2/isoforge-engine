@@ -10,6 +10,7 @@
 namespace eng::sim {
 struct CombatTestAccess {
     static rules5e::EncounterState& state(Combat& c) { return c.state_; }
+    static std::vector<LogEntry>& log(Combat& c) { return c.log_; }
 };
 }  // namespace eng::sim
 
@@ -129,4 +130,91 @@ TEST_CASE("Combat::hash: R-G15 spell-kind effect state folds under tag 0xAC only
     CHECK(c3->hash() != h0);
     CombatTestAccess::state(*c3).effects.back().ends_on_damage = false;
     CHECK(c3->hash() == h0);
+}
+
+TEST_CASE("Combat::hash: small-leftover state (rules #111) folds under tag 0xAA only when present") {
+    ContentLibrary l;
+    REQUIRE(l.load(sample_set()).empty());
+    const auto ch = arena();
+    ecs::Registry r0, r1;
+    auto c0 = Combat::create(r0, ch, l, 9), c1 = Combat::create(r1, ch, l, 9);
+    REQUIRE(c0); REQUIRE(c1);
+    const CombatantId a = ch.spawns[0].stable_id, b = ch.spawns[1].stable_id;
+    const uint64_t h0 = c0->hash();
+    CHECK(c1->hash() == h0);
+    CHECK_FALSE(rules5e::has_leftover_state(c1->state()));
+    auto who = [&](CombatantId id) -> rules5e::Combatant& {
+        for (auto& k : CombatTestAccess::state(*c1).combatants) if (k.id == id) return k;
+        FAIL("no such combatant");
+        return CombatTestAccess::state(*c1).combatants.front();
+    };
+    // Each field is covered, and clearing it returns to the baseline (nothing is folded without leftover state).
+    who(a).hp_max_reduction = 4;
+    const uint64_t hd = c1->hash();
+    CHECK(hd != h0);
+    who(a).hp_max_reduction = 5;
+    CHECK(c1->hash() != hd);
+    who(a).hp_max_reduction = 0;
+    CHECK(c1->hash() == h0);
+    who(b).lethargy = 1;
+    const uint64_t hl = c1->hash();
+    CHECK(hl != h0);
+    who(b).lethargy = 2;
+    CHECK(c1->hash() != hl);
+    who(b).lethargy = 0;
+    who(a).reckless_active = true;
+    const uint64_t hr = c1->hash();
+    CHECK(hr != h0);
+    who(a).reckless_active = false;
+    who(b).reckless_active = true;
+    CHECK(c1->hash() != hr);   // the combatant id is covered
+    who(b).reckless_active = false;
+    CHECK(c1->hash() == h0);
+    // An escalating (Petrifying Gaze) effect alone: folded under 0xAA (it is untimed, so 0xA5 adds nothing).
+    CombatTestAccess::state(*c1).effects.push_back(rules5e::ActiveSpellEffect{
+        9, b, a, rules5e::Condition::Restrained, rules5e::Ability::Con, 12, rules5e::RepeatSave::EndOfTurn, false});
+    const uint64_t he0 = c1->hash();
+    CombatTestAccess::state(*c1).effects.back().escalates = true;
+    const uint64_t he = c1->hash();
+    CHECK(he != he0);
+    CombatTestAccess::state(*c1).effects.back().escalate_to = rules5e::Condition::Paralyzed;
+    CHECK(c1->hash() != he);
+    CHECK(rules5e::has_leftover_state(c1->state()));
+    CombatTestAccess::state(*c1).effects.back().escalates = false;
+    CHECK(c1->hash() == he0);
+}
+
+TEST_CASE("Combat::log_hash: small-leftover request flags (rules #111) fold under tag 0xB3 only when set") {
+    ContentLibrary l;
+    REQUIRE(l.load(sample_set()).empty());
+    const auto ch = arena();
+    ecs::Registry r0;
+    auto c0 = Combat::create(r0, ch, l, 9);
+    REQUIRE(c0);
+    for (int i = 0; i < 3; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(c0->state()), rules5e::ActionKind::EndTurn};
+        REQUIRE(c0->submit(e).ok);
+    }
+    auto& log = CombatTestAccess::log(*c0);
+    REQUIRE(log.size() == 3);
+    const uint64_t h0 = c0->log_hash();
+    rules5e::ActionRequest& q = log[1].step.request;
+    std::vector<uint64_t> seen{h0};
+    for (int bits = 1; bits < 8; ++bits) {   // every combination of bit0 haste_action, bit1 reckless, bit2 aggressive differs
+        q.haste_action = (bits & 1) != 0;
+        q.reckless = (bits & 2) != 0;
+        q.aggressive = (bits & 4) != 0;
+        const uint64_t h = c0->log_hash();
+        for (uint64_t o : seen) CHECK(h != o);
+        seen.push_back(h);
+    }
+    q.haste_action = q.reckless = q.aggressive = false;
+    CHECK(c0->log_hash() == h0);   // the byte is not folded when zero: older logs hash as before
+    // Which entry carries the flag is covered too.
+    q.aggressive = true;
+    const uint64_t h1 = c0->log_hash();
+    q.aggressive = false;
+    log[2].step.request.aggressive = true;
+    CHECK(c0->log_hash() != h1);
 }
