@@ -59,7 +59,7 @@ Things that apply to many rows (so they are not repeated):
 | Grapple and shove (contested Athletics/Acrobatics) | NEW (wiring) | Rules done (R-G8): `ActionRequest::special` 1-3, Athletics vs Athletics/Acrobatics, one-size limit, replaces one attack. The push goes through the R-G9 `forced_move` hook; `Moved.c` = 1 only with `EncounterHooks::shove_forced_flag` (sim turns it on with EC #104) (R-G9, VERSION_BUMP_BATCH 7.2k). Sim / AI wiring pending. |
 | Flying, swimming, climbing, burrowing movement | NEW | One `speed_ft`; sim reads `speed.walk` only (T&C-G12, T&C-G14). |
 | Creature size and space (large creatures occupy 2x2) | NEW | Size is loaded (`Archetype::size`, #49) but only stored; the grid is still one tile per creature (T&C-G12, T&C-G14; footprint model in flight). |
-| Dispel / end effects on a creature | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::Dispel` ends spell effects and spell modifiers on a target (check vs 10 + level above the slot). Loader done (EC #120, check form in #PRNUM): spell@1 effect `dispel {check: {ability: spellcasting, dc_base, plus: spell_level}}` (same object as `counter`; `dc_base` required, 1..99). No pack ships it yet; schema / validator pending (T&C). |
+| Dispel / end effects on a creature | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::Dispel` ends spell effects and spell modifiers on a target (check vs 10 + level above the slot). Loader done (EC #120, check form in #126): spell@1 effect `dispel {check: {ability: spellcasting, dc_base, plus: spell_level}}` (same object as `counter`; `dc_base` required, 1..99). No pack ships it yet; schema / validator pending (T&C). |
 
 ## 2. Weapons (properties)
 
@@ -397,7 +397,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Call Lightning | NEW | Zone + repeating action (R-G11). |
 | Conjure Animals | NEW | Summons (R-G12). |
 | Counterspell | DATA | Shipped (`counter`). |
-| Dispel Magic | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::Dispel` (auto at or below the slot level, else spellcasting check vs 10 + level). Loader done (EC #120, check form in #PRNUM): `dispel {check: {ability: spellcasting, dc_base, plus: spell_level}}` (same object as `counter`; `dc_base` required). No pack ships it yet; schema / validator pending (T&C). |
+| Dispel Magic | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::Dispel` (auto at or below the slot level, else spellcasting check vs 10 + level). Loader done (EC #120, check form in #126): `dispel {check: {ability: spellcasting, dc_base, plus: spell_level}}` (same object as `counter`; `dc_base` required). No pack ships it yet; schema / validator pending (T&C). |
 | Daylight | NEW | Light/obscurement dispelling (R-G13). |
 | Fear | NEW | Cone, frightened, drop items, forced Dash (R-G10, R-G8). |
 | Fireball | DATA | Sphere template computed by sim (#78); 8d6 DEX half, `upcast.dice 1` are data. |
