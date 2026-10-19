@@ -189,6 +189,13 @@ public:
     }
     // The set given to apply_surprise (combatant order), kept after the flags clear: replay input, like the seed.
     const std::vector<CombatantId>& surprised_at_start() const noexcept { return surprised_at_start_; }
+    // Petrifying Gaze (VERSION_BUMP_BATCH 7.2p): the gazers `viewer` can see now, in combatant order: every other living
+    // creature with a gaze that is within that gaze's range_ft (footprint distance), in line of sight, not Invisible, while
+    // the viewer is not Blinded. One visibility fact covers both directions (gazer sees viewer, viewer sees gazer) until
+    // R-G13. While TurnBudget::gaze_pending the turn accepts only Command{Rules, {actor, ActionKind::GazeResponse}} with
+    // avert_gaze as the caller's choice; submit fills ActionRequest::gaze_seen from this (a caller's list is replaced).
+    // A UI calls it to show which gazers threaten the actor before asking whether to avert.
+    std::vector<CombatantId> gaze_seen(CombatantId viewer) const;
     uint8_t feature_uses_left(CombatantId id, uint32_t feature_id) const;
     bool can_use_feature(CombatantId id, uint32_t feature_id) const;
 

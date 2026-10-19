@@ -340,6 +340,20 @@ bool Combat::ally_near_target(CombatantId attacker, CombatantId target) const {
 
 bool Combat::line_of_sight(CombatantId a, CombatantId b) const { return los_spots(spot(a), spot(b)); }
 
+std::vector<CombatantId> Combat::gaze_seen(CombatantId viewer) const {
+    std::vector<CombatantId> out;
+    const auto* v = rules5e::find(state_, viewer);
+    if (!v || v->has(rules5e::Condition::Blinded)) return out;
+    for (const auto& g : state_.combatants) {
+        if (g.id == viewer || g.dead || g.gazes.empty() || g.has(rules5e::Condition::Invisible)) continue;
+        int range_ft = 0;
+        for (const auto& gz : g.gazes) range_ft = std::max(range_ft, int(gz.range_ft));
+        if (distance_tiles(viewer, g.id) * kFeetPerTile > range_ft || !line_of_sight(viewer, g.id)) continue;
+        out.push_back(g.id);
+    }
+    return out;
+}
+
 std::vector<Vec2i> Combat::occupied_except(CombatantId id) const {
     std::vector<Vec2i> out;
     for (const auto& s : slots_) {
@@ -864,6 +878,11 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     if (req.kind == ActionKind::Move) { r.error = "use Step commands for movement (sim paths the grid)"; return r; }
     if (req.kind == ActionKind::OpportunityAttack) { r.error = "opportunity attacks come from reaction windows"; return r; }
     if (req.kind == ActionKind::ReactionDecision) { r.error = "use decide() for reaction decisions"; return r; }
+    if (req.kind == ActionKind::GazeResponse) {   // Petrifying Gaze (7.2p): gaze_seen is a sim fact, never caller input
+        req.gaze_seen = gaze_seen(actor);
+        step_to_.reset();
+        return finish(rules5e::step(state_, req));
+    }
     if (req.kind == ActionKind::UseFeature) {   // parameters come from content, not the caller
         const ActiveFeature* f = find_active(archetype(actor), req.feature_id);
         if (!f) { r.error = "no such active feature"; return r; }
@@ -986,6 +1005,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
 SubmitResult Combat::do_step(Vec2i to) {
     SubmitResult r;
     const CombatantId mover = rules5e::current_actor(state_);
+    if (state_.budget.gaze_pending) { r.error = "gaze pending: answer with GazeResponse first"; return r; }
     const Vec2i from = pos(mover);
     if (chebyshev(from, to) != 1) { r.error = "step must be to an adjacent tile"; return r; }
     // Every tile the footprint newly enters must be walkable and free (the tiles it keeps are its own).
@@ -1125,6 +1145,8 @@ uint64_t Combat::hash() const {
     }
     // 0xA8 (R-G16): surprised creatures, only while one is still surprised (round 1 of an ambush); never for other combats.
     if (rules5e::has_surprised(state_)) { h.byte(0xA8); h.u64(rules5e::surprised_digest(state_)); }
+    // 0xAE (Petrifying Gaze, 7.2p): ids of creatures with their eyes averted, only while some is; never for gazeless combats.
+    if (rules5e::has_gaze_state(state_)) { h.byte(0xAE); h.u64(rules5e::gaze_digest(state_)); }
     return h.value();
 }
 
@@ -1168,6 +1190,7 @@ uint64_t Combat::log_hash() const {
         if (q.bonus_option != 0) { h.byte(0xB0); h.byte(q.bonus_option); }   // R-G6 bonus attack option: folded only when set
         if (q.two_handed_grip) { h.byte(0xB6); h.byte(1); }   // R-G7 versatile weapon in two hands: folded only when set
         if (q.sustain) { h.byte(0xB8); h.byte(1); }   // R-G15 Heat Metal sustained with a bonus action: folded only when set
+        if (q.avert_gaze) { h.byte(0xBB); h.byte(1); }   // Petrifying Gaze averting the eyes: folded only when set (gaze_seen is derived, not folded)
         // Small leftovers (rules #111): bit0 haste_action, bit1 reckless, bit2 aggressive; folded only when some bit is set.
         if (const uint8_t lo = uint8_t((q.haste_action ? 1 : 0) | (q.reckless ? 2 : 0) | (q.aggressive ? 4 : 0)); lo != 0) {
             h.byte(0xB3);
