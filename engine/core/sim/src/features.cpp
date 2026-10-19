@@ -165,6 +165,77 @@ std::optional<std::string> apply_self_heal(Archetype& a, const FeatureDecl& f, u
     return std::nullopt;
 }
 
+// Row 13: `cost` and `usage` of a grant_action / heal_pool effect -> the ActiveFeature and its rules5e::FeatureSpec.
+// usage: at_will (none) | per_day / per_rest (uses, recharge) | pool (declared in resources[]; an `unlimited` pool
+// leaves FeatureSpec::pool = 0 so nothing is spent). cost: action (default) | bonus_action | free; reaction is not offered.
+std::optional<std::string> fill_spec(Archetype& a, const FeatureDecl& f, ActiveFeature& af, rules5e::FeatureSpec& spec) {
+    const std::string cost = f.effect.value("cost", "action");
+    if (cost == "action") { af.cost = FeatureCost::Action; spec.cost = 1; }
+    else if (cost == "bonus_action") { af.cost = FeatureCost::BonusAction; spec.cost = 2; }
+    else if (cost == "free") { af.cost = FeatureCost::Free; spec.cost = 4; }
+    else return f.id + ": " + f.kind + " cost '" + cost + "' is not supported (use action, bonus_action or free)";
+    const auto u = f.effect.find("usage");
+    if (u == f.effect.end()) return std::nullopt;
+    if (!u->is_object()) return f.id + ": bad usage";
+    const std::string k = u->value("kind", "");
+    if (k == "at_will") return std::nullopt;
+    if (k == "per_day" || k == "per_rest") {
+        const int uses = u->value("uses", 0);
+        if (uses < 1 || uses > 255) return f.id + ": bad uses";
+        af.uses = uint8_t(uses);
+        af.recharge = k == "per_day" || u->value("rest", "long") == "long" ? Recharge::LongRest : Recharge::ShortRest;
+        return std::nullopt;
+    }
+    if (k == "pool") {
+        const std::string pid = u->value("pool", "");
+        const int pc = u->value("cost", 1);
+        if (pc < 1 || pc > 65535) return f.id + ": bad pool cost";
+        bool unlimited = false, found = false;
+        for (const auto& r : a.resources) found = found || r.id == pid;
+        for (const auto& r : a.unlimited_resources) unlimited = unlimited || r == pid;
+        if (!found && !unlimited) return f.id + ": usage names unknown pool '" + pid + "'";
+        if (!unlimited) { spec.pool = rules5e::spell_id_of(pid); spec.pool_cost = uint16_t(pc); }
+        return std::nullopt;
+    }
+    return f.id + ": unsupported usage kind '" + k + "'";
+}
+
+// grant_action (Action Surge): UseFeature adds `count` extra actions to the turn's budget.
+std::optional<std::string> apply_grant_action(Archetype& a, const FeatureDecl& f, uint32_t fid, const FeatureBuildCtx&) {
+    ActiveFeature af;
+    af.feature_id = fid;
+    af.id = f.id;
+    af.kind = f.kind;
+    rules5e::FeatureSpec spec;
+    if (auto e = fill_spec(a, f, af, spec)) return e;
+    const int count = f.effect.value("count", 1);
+    if (count < 1 || count > 2) return f.id + ": grant_action count must be 1 or 2";
+    spec.grant_actions = uint8_t(count);
+    a.feature_specs[fid] = spec;
+    a.active.push_back(std::move(af));
+    return std::nullopt;
+}
+
+// heal_pool (Lay on Hands): the caller / AI sets ActionRequest::amount and target; the pool is charged the amount.
+std::optional<std::string> apply_heal_pool(Archetype& a, const FeatureDecl& f, uint32_t fid, const FeatureBuildCtx&) {
+    ActiveFeature af;
+    af.feature_id = fid;
+    af.id = f.id;
+    af.kind = f.kind;
+    rules5e::FeatureSpec spec;
+    if (auto e = fill_spec(a, f, af, spec)) return e;
+    const std::string pid = f.effect.value("pool", "");
+    bool found = false;
+    for (const auto& r : a.resources) found = found || r.id == pid;
+    if (!found) return f.id + ": heal_pool names unknown (or unlimited) pool '" + pid + "'";
+    spec.pool = rules5e::spell_id_of(pid);
+    spec.pool_cost = 0;
+    spec.heal_pool = true;
+    a.feature_specs[fid] = spec;
+    a.active.push_back(std::move(af));
+    return std::nullopt;
+}
+
 // apply_modifier (row 12): Rage, Bardic Inspiration token, Leadership. `modifier` or `modifiers[]` compile to rows the
 // feature_modifiers hook hands to rules when the feature is used (UseFeature). A damage `bonus_table` resolves against
 // the owner's level in `class` (else the total level). usage kind "pool" is row 13's; other usage shapes are listed
@@ -229,8 +300,10 @@ FeatureRegistry make_builtin() {
     r.add_hook("damage_mitigation", {apply_damage_mitigation});
     r.add_hook("magic_weapons", {apply_magic_weapons});
     r.add_hook("apply_modifier", {apply_apply_modifier}, 4);
+    r.add_hook("grant_action", {apply_grant_action}, 4);
+    r.add_hook("heal_pool", {apply_heal_pool}, 4);
     // Kinds the @4 schemas introduce (frozen list of the 3 -> 4 migration; hooks arrive with their rows).
-    for (const char* k : {"on_event", "grant_action", "heal_pool", "save_effect", "reaction"})
+    for (const char* k : {"on_event", "save_effect", "reaction"})
         r.reserve_kind(k, 4);
     // v0 wield model: a melee weapon without the two_handed property counts as wielded in one hand
     // with no other weapon (sim has no equipment/wield state yet).

@@ -174,9 +174,9 @@ class V4Validator(unittest.TestCase):
         self.assertEqual(len(checks_v4.check_spell_modifiers(spell)), 1)
         ok = {"effects": [{"kind": "apply_modifier", "modifier": {"stat": "attack_roll", "die": "1d4"}}, {"kind": "heal"}]}
         self.assertEqual(checks_v4.check_spell_modifiers(ok), [])
-        # spell@1 does not declare apply_modifier yet (row 12): today the schema rejects the kind outright.
+        # row 12 landed (sim #96): spell@1 declares the additive apply_modifier kind; check 18 still holds on top of the schema.
         _reg, by_tag = h.registry()
-        self.assertNotIn("apply_modifier", str(by_tag["spell@1"]["$defs"]["effect"]["properties"]["kind"]))
+        self.assertIn("apply_modifier", str(by_tag["spell@1"]["$defs"]["effect"]["properties"]["kind"]))
 
     def test_check_7_forward_compat_direct(self):
         doc = h.edit(self.base[D], [(["forward_compat"], ["elevation", "flying", "flying"])])
@@ -199,6 +199,100 @@ class V4Validator(unittest.TestCase):
         self.assertIn("/reactions/0: 'inert' is reserved", errs[0])
         e2, _ = h.validate_in_memory(doc, spell_ids={"srd51.spell.shield"})
         self.assertEqual([e for e in e2 if "reserved" in e], [])   # in-memory migration output: accepted
+
+
+# ---- timed modifier properties (sim #96) and bonus-attack feature conventions (sim #100) ----------------------
+EXTRA = h.FIXTURES / "extra"
+MOD = ["features", 0, "effect", "modifiers", 0]   # timed_modifiers_1.json: mage_armor_like's ac floor modifier
+MONK = "characters/monk_1.json"
+TIMED = "characters/timed_1.json"
+SPELL = "spells/guiding_bolt.json"
+
+
+def extra(name: str) -> dict:
+    import json
+    return json.loads((EXTRA / name).read_text(encoding="utf-8"))
+
+
+# (name, fixture file, rel path, sets, dels, expected substring); "warn_" cases must validate with that warning.
+EXTRA_CASES = [
+    ("mod_consume_bad_value", "timed_modifiers_1.json", TIMED, [(["features", 4, "effect", "modifier", "consume"], "forever")], [], "is not one of"),
+    ("mod_consume_float", "timed_modifiers_1.json", TIMED, [(["features", 4, "effect", "modifier", "consume"], 1)], [], "is not one of"),
+    ("mod_speed_sub_on_ac", "timed_modifiers_1.json", TIMED, [(MOD + ["speed_sub"], 5)], [], "'speed_sub' is not one of"),
+    ("mod_speed_sub_zero", "timed_modifiers_1.json", TIMED, [(["features", 2, "effect", "modifier", "speed_sub"], 0)], [], "less than the minimum"),
+    ("mod_speed_sub_float", "timed_modifiers_1.json", TIMED, [(["features", 2, "effect", "modifier", "speed_sub"], 10.0)], [], "float value"),
+    ("mod_ac_floor_zero", "timed_modifiers_1.json", TIMED, [(MOD + ["ac_floor"], 0)], [], "less than the minimum"),
+    ("mod_ac_floor_41", "timed_modifiers_1.json", TIMED, [(MOD + ["ac_floor"], 41)], [], "greater than the maximum"),
+    ("mod_ac_floor_on_damage", "timed_modifiers_1.json", TIMED, [(["features", 5, "effect", "modifiers", 1, "ac_floor"], 12)], [], "'ac_floor' is not one of"),
+    ("mod_ac_floor_dex_without_floor", "timed_modifiers_1.json", TIMED, [(MOD + ["bonus"], 1)], [["features", 0, "effect", "modifiers", 0, "ac_floor"]], "'ac_floor' is a dependency of 'ac_floor_dex'"),
+    ("mod_ac_needs_bonus_or_floor", "timed_modifiers_1.json", TIMED, [], [["features", 0, "effect", "modifiers", 0, "ac_floor"], ["features", 0, "effect", "modifiers", 0, "ac_floor_dex"]], "is not valid under any of the given schemas"),
+    ("mod_per_turn_on_ac", "timed_modifiers_1.json", TIMED, [(MOD + ["per_turn"], True)], [], "'per_turn' is not one of"),
+    ("mod_per_turn_not_boolean", "timed_modifiers_1.json", TIMED, [(["features", 3, "effect", "modifier", "per_turn"], 1)], [], "is not of type 'boolean'"),
+    ("mod_when_on_temp_hp", "timed_modifiers_1.json", TIMED, [(["features", 3, "effect", "modifier", "when"], [{"kind": "not_crit"}])], [], "'when' is not one of"),
+    ("mod_when_on_speed", "timed_modifiers_1.json", TIMED, [(["features", 2, "effect", "modifier", "when"], [{"kind": "not_crit"}])], [], "'when' is not one of"),
+    ("mod_when_unknown_predicate", "timed_modifiers_1.json", TIMED, [(["features", 5, "effect", "modifiers", 1, "when", 0, "kind"], "moon_is_full")], [], "is not one of"),
+    ("mod_unknown_property", "timed_modifiers_1.json", TIMED, [(MOD + ["floor"], 12)], [], "'floor' is not one of"),
+    ("spell_apply_modifier_needs_modifier", "guiding_bolt.json", SPELL, [(["effects", 1, "modifiers"], [])], [["effects", 1, "modifier"]], "'modifier' is a required property"),
+    ("spell_apply_modifier_bad_consume", "guiding_bolt.json", SPELL, [(["effects", 1, "modifier", "consume"], "x")], [], "is not one of"),
+    ("spell_apply_modifier_bonus_table", "guiding_bolt.json", SPELL, [(["effects", 1, "modifier"], {"stat": "damage", "bonus_table": {"by_level": [{"level": 1, "value": 1}]}, "duration": {"kind": "rounds", "n": 1}})], [], "(check 18)"),
+    ("spell_apply_modifier_unknown_field", "guiding_bolt.json", SPELL, [(["effects", 1, "range"], 5)], [], "Additional properties"),
+    # bonus-attack conventions (docs/CONTENT_CONVENTIONS.md section 2)
+    ("bonus_martial_arts_needs_unarmed", "monk_1.json", MONK, [(["actions", 0, "properties"], ["monk"])], [], "feature 'martial_arts' needs a melee_weapon_attack action with the 'unarmed' property"),
+    ("bonus_flurry_needs_unarmed_melee", "monk_1.json", MONK, [(["actions", 0, "kind"], "ranged_weapon_attack"), (["actions", 0, "range"], [20, 60]), (["actions", 0, "reach"], 5)], [["actions", 0, "reach"]], "feature 'flurry_of_blows' needs"),
+    ("bonus_frenzy_needs_rage", "monk_1.json", MONK, [(["features", 3], {"id": "frenzy", "name": "Frenzy", "description": "x"})], [], "feature 'frenzy' needs a feature with id 'rage'"),
+    ("warn_bonus_flurry_without_ki", "monk_1.json", MONK, [], [["resources", 0]], "declares no 'ki' pool"),
+]
+
+
+class TimedModifiersAndBonusAttacks(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.base = h.pack_fixtures()
+
+    def docs_with(self, rel: str, doc: dict) -> dict:
+        d = dict(self.base)
+        d[rel] = doc
+        return d
+
+    def test_positive_fixtures_validate_clean(self):
+        for name, rel in (("monk_1.json", MONK), ("timed_modifiers_1.json", TIMED), ("true_strike.json", "spells/true_strike.json"),
+                          ("guiding_bolt.json", SPELL)):
+            with self.subTest(name):
+                errs, warns = h.validate_docs(self.docs_with(rel, extra(name)))
+                self.assertEqual(errs, [])
+                self.assertEqual(warns, [])
+
+    def test_cases(self):
+        for name, fx, rel, sets, dels, expect in EXTRA_CASES:
+            with self.subTest(name):
+                errs, warns = h.validate_docs(self.docs_with(rel, h.edit(extra(fx), sets, dels)))
+                if EXPECT_WARNING(name):
+                    self.assertEqual(errs, [], errs)
+                    self.assertTrue(any(expect in w for w in warns), warns)
+                else:
+                    self.assertTrue(any(expect in e for e in errs), (expect, errs))
+
+    def test_frenzy_with_live_rage_is_clean_and_without_modifier_warns(self):
+        barb = self.base[B]
+        frenzy = {"id": "frenzy", "name": "Frenzy", "description": "x"}
+        ok = h.edit(barb, [(["features", 1], frenzy)])
+        errs, warns = h.validate_docs(self.docs_with(B, ok))
+        self.assertEqual((errs, warns), ([], []))
+        no_mod = h.edit(barb, [(["features", 1], frenzy), (["features", 0, "effect"], {"kind": "heal_pool", "pool": "rage"})])
+        errs, warns = h.validate_docs(self.docs_with(B, no_mod))
+        self.assertEqual(errs, [], errs)
+        self.assertTrue(any("'<id>#rage#m0'" in w or "#rage#m0" in w for w in warns), warns)
+
+    def test_two_weapon_fighting_and_light_weapons_need_nothing(self):
+        # No requirement is invented: two light weapons with or without the style validate (monk_1 has the style; drop it).
+        doc = h.edit(extra("monk_1.json"), [], [["features", 2]])
+        errs, warns = h.validate_docs(self.docs_with(MONK, doc))
+        self.assertEqual((errs, warns), ([], []))
+
+    def test_flurry_pool_id_ki_counts_as_referenced(self):
+        # check 12 must not call the ki pool declaration-only: the sim spends it by convention.
+        errs, warns = h.validate_docs(self.docs_with(MONK, extra("monk_1.json")))
+        self.assertFalse([w for w in warns if "(check 12)" in w], warns)
 
 
 if __name__ == "__main__":

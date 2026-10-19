@@ -38,6 +38,31 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
     const auto* t = target ? rules5e::find(s, *target) : nullptr;
     if (!me || !t || t->dead || !rules5e::is_conscious(*me) || rules5e::is_incapacitated(*me)) return end;
 
+    // Pool features (row 13). Lay on Hands (heal_pool): at or below half hp, heal self for min(pool, missing hp); the caller's
+    // `amount` and (default self) target come from here. Action Surge (grant_action): once the action is spent with a hostile
+    // adjacent, take the extra action. The AI never picks a pool feature whose pool is short.
+    if (const Archetype* arch = c.archetype(self))
+        for (const auto& f : arch->active) {
+            const auto sp = arch->feature_specs.find(f.feature_id);
+            if (sp == arch->feature_specs.end() || !c.can_use_feature(self, f.feature_id)) continue;
+            const rules5e::FeatureSpec& spec = sp->second;
+            const rules5e::ResourcePool* pool = spec.pool ? rules5e::find_pool(s, self, spec.pool) : nullptr;
+            if (spec.heal_pool) {
+                if (!pool || pool->cur == 0 || int(me->hp) * 2 > int(me->hp_max)) continue;
+                Command u;
+                u.request = {self, ActionKind::UseFeature};
+                u.request.feature_id = f.feature_id;
+                u.request.amount = int16_t(std::min<int>(pool->cur, me->hp_max - me->hp));
+                return u;
+            }
+            if (spec.grant_actions > 0 && !s.budget.action && s.budget.extra_actions == 0 && s.budget.attacks_remaining == 0 &&
+                c.distance_tiles(self, t->id) <= 1 && (!spec.pool || rules5e::can_spend(s, self, spec.pool, spec.pool_cost ? spec.pool_cost : 1))) {
+                Command u;
+                u.request = {self, ActionKind::UseFeature};
+                u.request.feature_id = f.feature_id;
+                return u;
+            }
+        }
     // Active features (data-driven: whatever the archetype's hooks registered). v0 tactic: a
     // self-heal when at or below its threshold.
     if (const Archetype* arch = c.archetype(self))
@@ -195,7 +220,7 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
     const int reach = reach_tiles(me->attacks[ai].reach_or_range_ft);
     const Vec2i mp = c.pos(self), tp = c.pos(t->id);
     const int mn = c.footprint_size(self), tn = c.footprint_size(t->id);
-    const bool can_attack = s.budget.action || s.budget.attacks_remaining > 0;
+    const bool can_attack = s.budget.action || s.budget.extra_actions > 0 || s.budget.attacks_remaining > 0;
     if (c.distance_tiles(self, t->id) <= reach) {
         if (can_attack && rules5e::is_conscious(*t)) {
             Command a;

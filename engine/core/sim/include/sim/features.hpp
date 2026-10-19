@@ -30,7 +30,7 @@ struct FeatureDecl {
     assets::Json effect;       // full effect object
 };
 
-enum class FeatureCost : uint8_t { Action, BonusAction };
+enum class FeatureCost : uint8_t { Action, BonusAction, Free };   // Free: no action economy (Action Surge)
 enum class Recharge : uint8_t { None, ShortRest, LongRest };
 
 // An active feature a combatant can use (rules5e ActionKind::UseFeature).

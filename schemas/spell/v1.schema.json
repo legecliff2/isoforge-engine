@@ -527,7 +527,8 @@
             "auto_hit",
             "ac_bonus",
             "counter",
-            "apply_condition"
+            "apply_condition",
+            "apply_modifier"
           ]
         }
       },
@@ -879,6 +880,40 @@
               },
               "description": {
                 "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "apply_modifier"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "modifier"
+            ],
+            "properties": {
+              "kind": {
+                "const": "apply_modifier"
+              },
+              "modifier": {
+                "$ref": "../common/v2.schema.json#/$defs/modifier"
+              },
+              "description": {
+                "type": "string"
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ],
+                "description": "Effects after the first only (a rider, Guiding Bolt): 'affected' resolves this effect only for the targets the previous effect affected. Default 'all'."
               }
             }
           }

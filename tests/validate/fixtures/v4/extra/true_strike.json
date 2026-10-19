@@ -1,0 +1,44 @@
+{
+  "$schema": "spell@1",
+  "id": "test.v4.spell.true_strike",
+  "name": "True Strike",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "True Strike",
+  "level": 0,
+  "school": "divination",
+  "classes": [
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "self"
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "rounds",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "attack_roll",
+        "mode": "advantage",
+        "consume": "next_attack",
+        "applies_to": "self",
+        "duration": {
+          "kind": "until_end_of_target_turn"
+        }
+      }
+    }
+  ]
+}

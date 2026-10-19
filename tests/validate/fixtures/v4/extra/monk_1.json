@@ -1,0 +1,133 @@
+{
+  "$schema": "character@4",
+  "id": "test.v4.character.monk_1",
+  "name": "Monk",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "neutral good",
+  "level": 2,
+  "classes": [
+    {
+      "class": "monk",
+      "level": 2,
+      "hit_die": "d8"
+    }
+  ],
+  "xp": 0,
+  "armor_class": {
+    "value": 14
+  },
+  "hit_points": {
+    "average": 10,
+    "formula": "1d8+2"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 10,
+    "dex": 16,
+    "con": 14,
+    "int": 12,
+    "wis": 12,
+    "cha": 10
+  },
+  "saving_throws": {
+    "dex": 5,
+    "int": 3
+  },
+  "senses": {
+    "passive_perception": 11
+  },
+  "languages": [
+    "Common"
+  ],
+  "proficiency_bonus": 2,
+  "actions": [
+    {
+      "id": "unarmed_strike",
+      "name": "Unarmed Strike",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "unarmed",
+        "monk"
+      ],
+      "damage": [
+        {
+          "dice": "1d4+3",
+          "type": "bludgeoning"
+        }
+      ]
+    },
+    {
+      "id": "shortsword",
+      "name": "Shortsword",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "finesse",
+        "light",
+        "monk"
+      ],
+      "damage": [
+        {
+          "dice": "1d6+3",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "dagger",
+      "name": "Dagger",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "finesse",
+        "light"
+      ],
+      "damage": [
+        {
+          "dice": "1d4+3",
+          "type": "piercing"
+        }
+      ]
+    }
+  ],
+  "features": [
+    {
+      "id": "martial_arts",
+      "name": "Martial Arts",
+      "description": "Bonus-action unarmed strike after the Attack action."
+    },
+    {
+      "id": "flurry_of_blows",
+      "name": "Flurry of Blows",
+      "description": "Spend 1 ki: two unarmed strikes as a bonus action."
+    },
+    {
+      "id": "two_weapon_fighting",
+      "name": "Two-Weapon Fighting",
+      "description": "Add the ability modifier to the off-hand damage."
+    }
+  ],
+  "resources": [
+    {
+      "id": "ki",
+      "name": "Ki Points",
+      "recharge": "short_rest",
+      "max": 2
+    }
+  ]
+}

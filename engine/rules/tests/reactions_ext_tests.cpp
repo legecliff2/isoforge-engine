@@ -87,7 +87,8 @@ TEST_CASE("enum values and defaults") {
     CHECK(uint8_t(ReactionTrigger::HitRider) == 4);
     CHECK(uint8_t(ReactionTrigger::Damaged) == 5);
     CHECK(uint8_t(ReactionTrigger::AllyAttacked) == 6);
-    CHECK(kReactionTriggerCount == 7);
+    CHECK(kReactionTriggerCount == 8);
+    CHECK(uint8_t(ReactionTrigger::AttackRolled) == 7);
     Combatant c{};
     CHECK(c.reactions.empty());
     for (auto p : c.reaction_policy) CHECK(p == ReactionPolicy::Ask);

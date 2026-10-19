@@ -48,15 +48,15 @@ RIDER = {("extra_damage",): (S({"kind", "damage"}), S({"scale"})),
          ("bonus_attack",): (S({"kind", "attack_id"}), S()),
          ("area_save",): (S({"kind", "area", "save", "damage", "on_success"}), S()),
          ("spend",): (S({"kind"}), S({"pool", "cost", "slot"}))}
-_M = {"applies_to", "stacks"}
-MODIFIER = {("attack_roll",): (S({"stat", "duration"}), S({"bonus", "die", "mode"} | _M)),
+_M = {"applies_to", "stacks", "consume"}   # consume: any stat (section 6.2b, docs/CONTENT_CONVENTIONS.md 1)
+MODIFIER = {("attack_roll",): (S({"stat", "duration"}), S({"bonus", "die", "mode", "when"} | _M)),
             ("save", "ability_check"): (S({"stat", "duration"}), S({"bonus", "die", "mode", "ability"} | _M)),
-            ("ac",): (S({"stat", "duration", "bonus"}), S(_M)),
-            ("speed",): (S({"stat", "duration", "speed_scale"}), S(_M)),
-            ("damage",): (S({"stat", "duration"}), S({"bonus", "bonus_table", "die", "damage_type"} | _M)),
-            ("temp_hp",): (S({"stat", "duration", "bonus"}), S(_M)),
+            ("ac",): (S({"stat", "duration"}), S({"bonus", "ac_floor", "ac_floor_dex", "when"} | _M)),   # bonus or ac_floor
+            ("speed",): (S({"stat", "duration", "speed_scale"}), S({"speed_sub"} | _M)),
+            ("damage",): (S({"stat", "duration"}), S({"bonus", "bonus_table", "die", "damage_type", "when"} | _M)),
+            ("temp_hp",): (S({"stat", "duration", "bonus"}), S({"per_turn"} | _M)),
             ("resistance",): (S({"stat", "duration", "damage_type"}), S(_M)),
-            ("attacks_against",): (S({"stat", "duration", "mode"}), S(_M))}
+            ("attacks_against",): (S({"stat", "duration", "mode"}), S({"when"} | _M))}
 REACTION_EFFECT = {("ac_bonus",): (S({"kind", "bonus"}), S()),
                    ("reduce_damage",): (S({"kind"}), S({"fraction", "dice"})),
                    ("impose_disadvantage",): (S({"kind"}), S()),

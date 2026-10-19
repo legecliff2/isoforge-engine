@@ -112,6 +112,7 @@ SaveResult save_roll_raw(EncounterState& s, const Combatant& t, Ability ab, int 
     const RollMode m = combine_modes(adv, dis);
     SaveResult r = src ? saving_throw(s.rng, t, ab, dc, m, *src) : saving_throw(s.rng, t, ab, dc, m);
     if (r.auto_fail) return r;
+    if ((t.reroll_ones & 4) && reroll_natural_one(s.rng, r.roll)) r.success = r.roll.total >= dc;   // Lucky
     const int add = modifier_flat(s, t.id, ModStat::Save, int(ab)) + mod_roll(s, t.id, ModStat::Save, int(ab));
     if (add != 0) { r.roll.total = int16_t(r.roll.total + add); r.success = r.roll.total >= dc; }
     return r;
@@ -438,11 +439,13 @@ bool in_range(const EncounterState& s, const ReactionWindow& w, const Combatant&
     return (w.trigger == ReactionTrigger::BeingHit || w.trigger == ReactionTrigger::Damaged) && r.id == w.target;
 }
 
-bool evaluate_hit(const D20Roll& roll, const Combatant& t, const AttackContext& ctx, bool& crit) {
+bool evaluate_hit(const D20Roll& roll, const Combatant& t, const AttackContext& ctx, bool& crit, int crit_min = 20) {
     crit = false;
     if (roll.natural == 20) { crit = true; return true; }
     if (roll.natural == 1) return false;
-    return roll.total >= int(t.ac) + int(ctx.cover_ac_bonus) + int(t.reaction_ac_bonus);
+    const bool hit = roll.total >= int(t.ac) + int(ctx.cover_ac_bonus) + int(t.reaction_ac_bonus);
+    crit = hit && roll.natural >= std::max(2, crit_min);
+    return hit;
 }
 
 // One attack roll, including Help and hidden-attacker advantage. Attacking reveals the attacker.
@@ -665,7 +668,8 @@ void process_deaths(EncounterState& s, std::vector<Event>& ev, Ctx* ctx = nullpt
 
 bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
                bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage = false,
-               uint32_t spell_id = 0, bool ally_near_target = false, const DiceExpr* damage_override = nullptr);
+               uint32_t spell_id = 0, bool ally_near_target = false, const DiceExpr* damage_override = nullptr,
+               bool two_handed_grip = false);
 
 // The options `r` has in window `w` from its compiled Combatant::reactions, then the hook options.
 std::vector<ReactionOption> reaction_options(const EncounterState& s, const Combatant& r, const ReactionWindow& w) {
@@ -690,9 +694,14 @@ std::vector<ReactionOption> reaction_options(const EncounterState& s, const Comb
         case ReactionEffectKind::Attack:
             if (w.trigger != ReactionTrigger::Damaged || !has_damager || rx.attack_index >= r.attacks.size()) continue;
             o.kind = ReactionOptionKind::Attack; o.attack_index = rx.attack_index; break;
+        case ReactionEffectKind::SubtractRoll:
+            if (w.trigger != ReactionTrigger::AttackRolled) continue;
+            if (rx.pool != 0 && !can_spend(s, r.id, rx.pool, rx.pool_cost ? rx.pool_cost : uint16_t(1))) continue;
+            o.kind = ReactionOptionKind::SubtractRoll; o.dice = rx.dice; break;
         }
         out.push_back(o);
     }
+    if (w.trigger != ReactionTrigger::Damaged && w.trigger != ReactionTrigger::AllyAttacked) return out;
     const auto& hook = w.trigger == ReactionTrigger::Damaged ? s.hooks.damaged_options : s.hooks.ally_attacked_options;
     if (hook) { auto extra = hook(s, w, r); out.insert(out.end(), extra.begin(), extra.end()); }
     return out;
@@ -731,6 +740,51 @@ bool ally_attacked_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& 
         if (o.kind == ReactionOptionKind::ImposeDisadvantage) return true;   // disadvantage does not stack
     }
     return false;
+}
+
+// AttackRolled (R-G7): after an attack roll (not a natural 1 or 20) and before hit or miss, each enemy of the attacker that
+// can react and is in range (hook: Engine Core; no hook = nobody) may subtract a die (Cutting Words). The first taker
+// ends the window. Auto takes it only when the largest roll of the die could turn a hit into a miss. Returns the amount.
+int attack_rolled_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, int total, int target_ac, bool ranged,
+                         uint32_t spell_id, std::vector<Event>& ev) {
+    ReactionWindow w = new_window(s, ctx, ReactionTrigger::AttackRolled, a.id);
+    w.target = t.id; w.ranged = ranged; w.spell_id = spell_id;
+    w.attack_total = int16_t(total); w.target_ac = int16_t(target_ac);
+    if (!may_open(s, w) || !s.hooks.in_range) return 0;
+    auto eligible = [&](const Combatant& r) {
+        return r.id != a.id && r.team != a.team && may_react(s, r, w.trigger) && in_range(s, w, r) && !reaction_options(s, r, w).empty();
+    };
+    bool any = false;
+    for (const auto& c : s.combatants) { if (eligible(c)) { any = true; break; } }
+    if (!any) return 0;
+    std::vector<CombatantId> cands;
+    for (CombatantId id : initiative_ids(s)) if (eligible(*find_mut(s, id))) cands.push_back(id);
+    bool opened = false;
+    for (CombatantId rid : poll_order(s, cands)) {
+        Combatant& r = *find_mut(s, rid);
+        if (!eligible(r)) continue;
+        auto opts = reaction_options(s, r, w);
+        if (!opened) {
+            opened = true; ++s.next_window_seq;
+            emit(ev, EventKind::ReactionWindowOpened, a.id, t.id, int32_t(w.trigger), int32_t(w.seq));
+        }
+        const DiceExpr& d0 = opts[0].dice;
+        const bool could_flip = total >= target_ac && total - (int(d0.count) * int(d0.sides) + int(d0.bonus)) < target_ac;
+        auto d = poll(s, ctx, w, r, opts, ev, could_flip);
+        if (!d.react) continue;
+        const ReactionOption o = opts[d.option];
+        if (o.uses_reaction) r.reaction_used = true;
+        if (o.kind != ReactionOptionKind::SubtractRoll) return 0;
+        for (const Reaction& rx : r.reactions) {
+            if (rx.id != o.option_id || rx.kind != ReactionEffectKind::SubtractRoll || rx.pool == 0) continue;
+            const uint16_t cost = rx.pool_cost ? rx.pool_cost : uint16_t(1);
+            if (spend_pool(s, r.id, rx.pool, cost))
+                emit(ev, EventKind::ResourceSpent, r.id, 0, int32_t(rx.pool), cost, find_pool(s, r.id, rx.pool)->cur);
+            break;
+        }
+        return std::max(0, roll_dice(s.rng, o.dice));
+    }
+    return 0;
 }
 
 // Damage plus the Damaged window, triggers and the concentration check (SRD: CON save, DC max(10, half the damage)).
@@ -918,7 +972,7 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
 
 bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
                bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage,
-               uint32_t spell_id, bool ally_near_target, const DiceExpr* damage_override) {
+               uint32_t spell_id, bool ally_near_target, const DiceExpr* damage_override, bool two_handed_grip) {
     bool adv = false;
     if (a.helped_vs == t.id) { adv = true; a.helped_vs = 0; a.helped_by = 0; }
     if (a.stealth_total > 0) { adv = true; a.stealth_total = 0; }   // unseen attacker; now revealed
@@ -948,7 +1002,9 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         actx.cover_ac_bonus = int8_t(std::clamp(int(actx.cover_ac_bonus) + modified_ac_bonus(s, t.id), -128, 127));
     }
     const RollMode atk_mode = attack_roll_mode(a, t, actx);
-    D20Roll roll = roll_d20(s.rng, int(atk.to_hit) + modifier_flat(s, a.id, ModStat::AttackRoll), atk_mode);
+    D20Roll roll = roll_d20(s.rng, int(atk.to_hit) + modifier_flat(s, a.id, ModStat::AttackRoll) +
+                                (spell_id != 0 ? 0 : atk.ranged ? int(a.attack_bonus_ranged) : int(a.attack_bonus_melee)), atk_mode);
+    if (a.reroll_ones & 1) reroll_natural_one(s.rng, roll);   // Lucky
     if (!s.modifiers.empty()) {
         roll.total = int16_t(roll.total + mod_roll(s, a.id, ModStat::AttackRoll, -1));
         consume_modifiers(s, 1, a.id, 3, ev);   // True Strike: spent by this attack roll
@@ -956,7 +1012,12 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         for (auto& m : s.modifiers) m.gated = false;
     }
     bool crit = false;
-    bool hit = evaluate_hit(roll, t, actx, crit);
+    if (roll.natural != 20 && roll.natural != 1) {   // Cutting Words-style subtraction, before hit or miss
+        const int tac = int(t.ac) + int(actx.cover_ac_bonus) + int(t.reaction_ac_bonus);
+        if (const int sub = attack_rolled_window(s, ctx, a, t, roll.total, tac, atk.ranged, spell_id, ev)) roll.total = int16_t(roll.total - sub);
+    }
+    const int crit_min = spell_id != 0 ? 20 : int(a.crit_min);   // Improved Critical: weapon attacks only
+    bool hit = evaluate_hit(roll, t, actx, crit, crit_min);
     if (hit) {
         ReactionWindow w = new_window(s, ctx, ReactionTrigger::BeingHit, a.id);
         w.target = t.id; w.attack_total = roll.total; w.attack_natural = roll.natural;
@@ -967,7 +1028,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
             return o.kind == ReactionOptionKind::AcBonus && roll.natural != 20 &&
                    roll.total < int(w.target_ac) + o.ac_bonus;
         };
-        if (being_hit_window(s, ctx, a, t, w, ev, would_miss)) hit = evaluate_hit(roll, t, actx, crit);
+        if (being_hit_window(s, ctx, a, t, w, ev, would_miss)) hit = evaluate_hit(roll, t, actx, crit, crit_min);
     }
     if (hit && within_5ft && (t.has(Condition::Paralyzed) || t.has(Condition::Unconscious))) crit = true;
     emit(ev, EventKind::AttackResolved, a.id, t.id, roll.natural, roll.total,
@@ -977,7 +1038,10 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         // Triggers that fire on this hit (Sneak Attack-style): their FeatureTriggered events come before the damage
         // dice; extra_damage riders are rolled with the attack's damage so a crit doubles them.
         const HitRiders riders = fire_hit_triggers(s, ctx, a, t, atk, spell_id != 0, atk_mode, ally_near_target, crit, roll, ev);
-        int dmg = roll_dice(s.rng, damage_override ? *damage_override : atk.damage, crit);
+        const DiceExpr& wdice = damage_override ? *damage_override : atk.damage;
+        const bool gwf = a.great_weapon_fighting && spell_id == 0 && !atk.ranged &&
+                         (has_property(atk, kWeaponTwoHanded) || (two_handed_grip && has_property(atk, kWeaponVersatile)));
+        int dmg = gwf ? roll_dice_reroll_low(s.rng, wdice, crit, 2) : roll_dice(s.rng, wdice, crit);
         if (dmg < 0) dmg = 0;
         std::vector<std::pair<int, DamageType>> modp;   // Damage modifiers (Rage, Hunter's Mark): weapon attacks only
         if (spell_id == 0 && !s.modifiers.empty()) {
@@ -1291,6 +1355,7 @@ CheckResult roll_check(EncounterState& s, Combatant& c, Skill k, int dc, RollMod
         mode = combine_modes(adv, dis);
     }
     auto r = skill_check(s.rng, c, k, dc, mode);
+    if ((c.reroll_ones & 2) && reroll_natural_one(s.rng, r.roll)) r.success = r.roll.total >= dc;   // Lucky
     if (const int add = modifier_flat(s, c.id, ModStat::AbilityCheck, int(skill_ability(k))) + mod_roll(s, c.id, ModStat::AbilityCheck, int(skill_ability(k)))) {
         r.roll.total = int16_t(r.roll.total + add);
         r.success = r.roll.total >= dc;
@@ -1379,6 +1444,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(def.save_ability), r.roll.natural, r.roll.total,
                  int32_t(r.success));
             int dealt = r.success ? (def.on_save == OnSave::Half ? dmg / 2 : 0) : dmg;
+            if (t->evasion && def.save_ability == Ability::Dex && def.on_save == OnSave::Half) dealt = r.success ? 0 : dmg / 2;   // Evasion
             if (dealt > 0) { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, apply_damage(*t, int16_t(dealt), def.damage_type, dq), false, ev, &ts, &ctx); }
             if (!r.success) affected.push_back(t);
             if (def.applies_condition && !r.success && !t->dead && !(t->condition_immunities & bit(def.condition))) {
@@ -2111,7 +2177,7 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
             emit(out.events, EventKind::ResourceSpent, a.id, 0, int32_t(pending_pool), pending_cost, find_pool(s, a.id, pending_pool)->cur);
         do_attack(s, ctx, a, *t, a.attacks[req.attack_index], req.target_within_5ft, out.events,
                   req.ranged_hostile_within_5ft || req.beyond_normal_range, 0, req.ally_near_target,
-                  bopt && bopt->has_damage ? &bopt->damage : nullptr);
+                  bopt && bopt->has_damage ? &bopt->damage : nullptr, req.two_handed_grip);
         check_end(s, out.events);
         return out;
     }

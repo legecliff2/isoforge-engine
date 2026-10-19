@@ -314,6 +314,26 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
             check_table(f"{path}/bonus_table", bt, errs, pool=False)
             if typ == "monster":
                 errs.append(f"{path}/bonus_table: level tables are character@4-only (check 16.4)")
+    # bonus-action attack option conventions (docs/CONTENT_CONVENTIONS.md section 2; sim content.cpp compile_bonus_attacks):
+    # the two errors are load errors in the sim, the two warnings are options that compile but can never be used.
+    feature_ids = {t.get("id") for key in ("traits", "features") for t in doc.get(key) or [] if isinstance(t, dict)}
+    unarmed = any(isinstance(a, dict) and a.get("kind") == "melee_weapon_attack" and "unarmed" in (a.get("properties") or [])
+                  for a in doc.get("actions") or [])
+    for fid in ("martial_arts", "flurry_of_blows"):
+        if fid in feature_ids and not unarmed:
+            errs.append(f"{doc.get('id')}: feature '{fid}' needs a melee_weapon_attack action with the 'unarmed' property (bonus attacks)")
+    if "frenzy" in feature_ids and "rage" not in feature_ids:
+        errs.append(f"{doc.get('id')}: feature 'frenzy' needs a feature with id 'rage' (bonus attacks)")
+    if "flurry_of_blows" in feature_ids:
+        referenced.add("ki")   # the sim spends it by convention (pool id 'ki'): not a declaration-only pool (check 12)
+    if "flurry_of_blows" in feature_ids and "ki" not in res_by_id:
+        warns.append(f"{doc.get('id')}: feature 'flurry_of_blows' spends 1 from the pool 'ki' but resources[] declares no 'ki' pool: "
+                     "the option can never be paid (bonus attacks)")
+    if "frenzy" in feature_ids and "rage" in feature_ids:
+        rage_live = {o: e for _p, o, e in live_effects(doc) if o == "rage"}
+        if rage_live.get("rage", {}).get("kind") != "apply_modifier":
+            warns.append(f"{doc.get('id')}: feature 'frenzy' requires the Rage modifier '<id>#rage#m0', but the 'rage' feature has no live "
+                         "apply_modifier effect: the option is never available (bonus attacks)")
     # check 12: declared but never referenced pools (Legendary Resistance is declaration-only until row 13)
     for i, r in enumerate(resources):
         if r.get("id") not in referenced:

@@ -641,6 +641,83 @@ std::optional<std::string> compile_reactions(Archetype& a, const Json& doc, cons
     }
     return std::nullopt;
 }
+
+// ---- resources[] (row 13): integer | per_level / plus_ability | table -> pool rows ----
+// `max` resolves against the owner's level in `class` (else the total level) and ability modifier at load time; a
+// table is a step function (last entry with level <= L, 0 below the first); an `unlimited` entry registers no pool.
+int level_in(const Json& doc, const std::string& cls) {
+    int level = 0;
+    if (!cls.empty()) {
+        for (const Json& c : doc.value("classes", Json::array()))
+            if (c.is_object() && c.value("class", "") == cls) level += geti(c, "level");
+        return level;
+    }
+    return std::max(1, geti(doc, "level", 1));
+}
+
+std::optional<std::string> compile_resources(Archetype& a, const Json& doc, bool is_character, rules5e::Combatant& c) {
+    auto rs = doc.find("resources");
+    if (rs == doc.end() || !rs->is_array()) return std::nullopt;
+    for (const Json& r : *rs) {
+        if (!r.is_object()) return a.id + ": bad resource";
+        const std::string rid = r.value("id", "");
+        const std::string where = a.id + ": resource '" + rid + "'";
+        if (rid.empty()) return where + ": needs an id";
+        for (const auto& o : a.resources) if (o.id == rid) return where + ": duplicate id";
+        for (const auto& o : a.unlimited_resources) if (o == rid) return where + ": duplicate id";
+        const auto mx = r.find("max");
+        if (mx == r.end()) return where + ": needs max";
+        long max = 0;
+        bool unlimited = false;
+        if (mx->is_number_integer()) max = mx->get<long>();
+        else if (mx->is_object() && mx->contains("table")) {
+            if (!is_character) return where + ": a monster pool must use an integer max";
+            const Json& t = (*mx)["table"];
+            const auto bl = t.is_object() ? t.find("by_level") : t.end();
+            if (!t.is_object() || bl == t.end() || !bl->is_array() || bl->empty()) return where + ": bad table";
+            const int lvl = level_in(doc, t.value("class", ""));
+            int best = 0;
+            for (const Json& e : *bl) {
+                if (!e.is_object()) return where + ": bad table entry";
+                const int el = geti(e, "level");
+                if (el < 1 || el > 20) return where + ": bad table level";
+                if (el <= lvl && el >= best) { best = el; unlimited = e.value("unlimited", false); max = geti(e, "value"); }
+            }
+            if (best == 0) { max = 0; unlimited = false; }
+        } else if (mx->is_object()) {
+            if (!is_character) return where + ": a monster pool must use an integer max";
+            if (!mx->contains("per_level") && !mx->contains("plus_ability")) return where + ": max needs per_level or plus_ability";
+            const int lvl = level_in(doc, mx->value("class", ""));
+            max = long(geti(*mx, "per_level")) * lvl;
+            if (mx->contains("plus_ability")) {
+                auto ab = ability_of((*mx)["plus_ability"].is_string() ? (*mx)["plus_ability"].get<std::string>() : "");
+                if (!ab) return where + ": bad plus_ability";
+                const int score = c.abilities.score[std::size_t(int(*ab))];
+                max += (score - 10) >= 0 ? (score - 10) / 2 : -((11 - score) / 2);
+            }
+            max = std::max<long>(max, geti(*mx, "min", 1));
+        } else return where + ": bad max";
+        if (max < 0 || max > 65535) return where + ": max out of range";
+        if (unlimited) { a.unlimited_resources.push_back(rid); continue; }
+        const std::string rc = r.value("recharge", "never");
+        if (rc != "short_rest" && rc != "long_rest" && rc != "dawn" && rc != "never") return where + ": bad recharge";
+        Archetype::Resource res;
+        res.id = rid;
+        res.pool_id = rules5e::spell_id_of(rid);
+        res.max = uint16_t(max);
+        res.start = uint16_t(max);
+        if (r.contains("start")) {
+            const int st = geti(r, "start", -1);
+            if (st < 0 || st > max) return where + ": bad start";
+            res.start = uint16_t(st);
+        }
+        res.recharge = uint8_t(rc == "short_rest" ? rules5e::FeatureRecharge::ShortRest
+                               : rc == "long_rest" || rc == "dawn" ? rules5e::FeatureRecharge::LongRest : rules5e::FeatureRecharge::None);
+        if (rid == "legendary_resistance") c.legendary_pool = res.pool_id;   // Legendary Resistance: rules auto-spend on a failed save
+        a.resources.push_back(res);
+    }
+    return std::nullopt;
+}
 } // namespace
 
 std::optional<rules5e::DamageType> damage_type_from_name(const std::string& s) { return damage_type(s); }
@@ -849,6 +926,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         a.long_range_ft.push_back(uint16_t(lng));
         attack_actions.push_back(&act);
     }
+    if (declared == 0 || declared >= 4)
+        if (auto e = compile_resources(a, doc, schema_type == "character", c)) return *e;
     // Feature hooks (data-driven by effect.kind; see features.hpp).
     a.features = declared_features(doc);
     std::vector<rules5e::SpellDef> synth;   // synthetic SpellDefs: area_save riders first, then save_effect actions
