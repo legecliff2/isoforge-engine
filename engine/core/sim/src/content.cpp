@@ -268,7 +268,8 @@ std::optional<std::string> compile_predicate(const std::string& where, const Jso
 //     feature; any melee attack while the Rage modifier, `<archetype>#rage#m0`, is in force).
 // Martial Arts / Flurry require the Attack action to have used an "unarmed" or "monk" action.
 std::optional<std::string> compile_bonus_attacks(const std::string& aid, const std::vector<FeatureDecl>& feats,
-                                                 const std::vector<const Json*>& acts, bool is_character, rules5e::Combatant& c) {
+                                                 const std::vector<const Json*>& acts, bool is_character, const Json& doc,
+                                                 rules5e::Combatant& c) {
     auto has_feature = [&](const char* id) {
         for (const auto& f : feats) if (f.id == id) return true;
         return false;
@@ -317,6 +318,10 @@ std::optional<std::string> compile_bonus_attacks(const std::string& aid, const s
         add("martial_arts", b);
     }
     if (flurry) {
+        bool ki = false;
+        if (auto rs = doc.find("resources"); rs != doc.end() && rs->is_array())
+            for (const Json& r : *rs) ki = ki || (r.is_object() && r.value("id", "") == "ki");
+        if (!ki) return aid + ": flurry_of_blows needs a declared 'ki' resource";
         rules5e::BonusAttack b;
         b.attack_index = uint8_t(first_unarmed);
         b.count = 2;
@@ -900,7 +905,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     if (declared == 0 || declared >= 4)
         if (auto e = compile_reactions(a, doc, rider_ctx, c)) return *e;
     if (declared == 0 || declared >= 4)
-        if (auto e = compile_bonus_attacks(a.id, a.features, attack_actions, schema_type == "character", c)) return *e;
+        if (auto e = compile_bonus_attacks(a.id, a.features, attack_actions, schema_type == "character", doc, c)) return *e;
     // multiattack options -> rules5e::AttackSequence (ids owned by the library, stable addresses).
     for (const auto& m : a.multiattack_decls) {
         strings_.push_back(m.id);

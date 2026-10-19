@@ -77,7 +77,10 @@ TEST_CASE("bonus attacks: two-weapon fighting, Martial Arts, Flurry and Frenzy c
     CHECK(lib.find("t.old")->base.bonus_attacks.empty());
     // monk
     const Json fist = weapon("unarmed_strike", "1d4+3", {"unarmed"}), staff = weapon("quarterstaff", "1d6+3", {"monk"});
-    REQUIRE_FALSE(lib.add(fighter("t.monk", {staff, fist}, {feat("martial_arts"), feat("flurry_of_blows")}), "character"));
+    CHECK(lib.add(fighter("t.noki", {staff, fist}, {feat("flurry_of_blows")}), "character"));   // no ki resource: load error
+    Json monk = fighter("t.monk", {staff, fist}, {feat("martial_arts"), feat("flurry_of_blows")});
+    monk["resources"] = Json::array({{{"id", "ki"}, {"max", 2}, {"recharge", "short_rest"}}});
+    REQUIRE_FALSE(lib.add(monk, "character"));
     const auto& mo = lib.find("t.monk")->base.bonus_attacks;
     REQUIRE(mo.size() == 2);
     CHECK(mo[0].attack_index == 1);
