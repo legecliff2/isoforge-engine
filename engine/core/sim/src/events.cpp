@@ -18,6 +18,8 @@ uint32_t event_stream_version(std::span<const SimEvent> events) {
                 // rules5e kinds appended after v6 (39..44 and anything later): a stream carrying one is
                 // newer than every stream that does not, and hashes at the current contract version (7).
                 if (uint8_t(e.rules.kind) > uint8_t(kLastRulesEventKindV6)) v = std::max<uint32_t>(v, 7);
+                // v8 (R-G9): Moved.c carries flags (forced / teleport / drag). c == 0 (every older stream) keeps its version.
+                if (e.rules.kind == rules5e::EventKind::Moved && e.rules.c != 0) v = std::max<uint32_t>(v, 8);
                 break;
             default: break;
         }
