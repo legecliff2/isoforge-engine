@@ -1,0 +1,31 @@
+{
+  "base": "characters/fighter_1.json",
+  "schema": "character@1",
+  "sets": [
+    [
+      [
+        "features",
+        0,
+        "effect"
+      ],
+      {
+        "kind": "reckless_attack"
+      }
+    ],
+    [
+      [
+        "features",
+        2
+      ],
+      {
+        "id": "reckless_attack_2",
+        "name": "reckless_attack",
+        "effect": {
+          "kind": "reckless_attack"
+        }
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "duplicate 'reckless_attack' effect"
+}
