@@ -33,14 +33,50 @@ std::vector<Vec2i> goal_anchors(Vec2i tp, int tn, int mn, int reach) {
 } // namespace
 
 namespace {
+// R-G15 hand-off (VERSION_BUMP_BATCH 7.2g b), only once such an effect is on the board (the AI never casts these spells itself):
+//  * Heat Metal again: a bonus action CastSpell{sustain} on a living creature (not my charmer) holding my sustained-damage
+//    effect, from the turn after the cast;
+//  * Wake: the action (special 5) on an ally within 5 ft held by an ends-on-damage effect (Sleep).
+std::optional<Command> spell_kind_command(const Combat& c, const rules5e::Combatant& me) {
+    const auto& s = c.state();
+    const CombatantId charmer = rules5e::condition_source(s, me.id, rules5e::Condition::Charmed);
+    if (s.budget.bonus_action && s.budget.sequence == 0) {
+        const uint32_t now = (uint32_t(s.round) << 16) | s.turn_index;
+        for (const auto& e : s.effects) {
+            if (e.caster != me.id || e.damage_when != 2 || e.cast_stamp == now || e.target == charmer || !c.spell_def(e.spell_id)) continue;
+            const auto* v = rules5e::find(s, e.target);
+            if (!v || v->dead) continue;
+            Command x;
+            x.request = {me.id, ActionKind::CastSpell, e.target};
+            x.request.spell_id = e.spell_id;
+            x.request.sustain = true;
+            return x;
+        }
+    }
+    if (s.budget.action && s.budget.attacks_remaining == 0 && s.budget.sequence == 0) {
+        for (const auto& e : s.effects) {
+            if (!e.ends_on_damage || e.target == me.id || c.hostile(me.id, e.target)) continue;
+            const auto* v = rules5e::find(s, e.target);
+            if (!v || v->dead || c.distance_tiles(me.id, e.target) > 1) continue;
+            Command x;
+            x.request = {me.id, ActionKind::Attack, e.target};
+            x.request.special = 5;
+            return x;
+        }
+    }
+    return std::nullopt;
+}
+
 Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     const auto& s = c.state();
     const CombatantId self = rules5e::current_actor(s);
     Command end;
     end.request = {self, ActionKind::EndTurn};
     const auto* me = rules5e::find(s, self);
+    if (!me || !rules5e::is_conscious(*me) || rules5e::is_incapacitated(*me)) return end;
+    if (auto x = spell_kind_command(c, *me)) return *x;
     const auto* t = target ? rules5e::find(s, *target) : nullptr;
-    if (!me || !t || t->dead || !rules5e::is_conscious(*me) || rules5e::is_incapacitated(*me)) return end;
+    if (!t || t->dead) return end;
     // R-G8 Charmed: the charmer is never attacked (rules refuse it) or targeted with a harmful spell (sim refuses it).
     if (rules5e::condition_source(s, self, rules5e::Condition::Charmed) == t->id) return end;
 
