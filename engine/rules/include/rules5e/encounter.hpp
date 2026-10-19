@@ -92,6 +92,8 @@ struct ActionRequest {
     // 1 Grapple (target), 2 Shove prone (target), 3 Shove 5 ft away (target), 4 Escape a grapple (target = the grappler, 0 = any;
     // `dc` > 0 is the escape DC when the grapple has none recorded). attack_index / multiattack are ignored (multiattack must be 0).
     uint8_t special = 0;
+    // appended (R-G7, Attack): the weapon is held in two hands (a versatile weapon); Great Weapon Fighting applies.
+    bool two_handed_grip = false;
     // appended (Attack / readied Attack, T&C-G7): sim fact for Combatant::roll_traits, e.g. Pack Tactics:
     // an ally of the actor, not incapacitated, is within 5 ft of the target.
     bool ally_near_target = false;
@@ -176,7 +178,7 @@ struct ReactionWindow {
     bool        ranged = false;
 };
 
-enum class ReactionOptionKind : uint8_t { Attack, AcBonus, Counter, FireReady, Rider, ReduceDamage, ImposeDisadvantage, Retaliate, SubtractRoll /* reserved (Q6) */ };   // Rider (9c): option_id = trigger id, slot_level = slot spent (0 none)
+enum class ReactionOptionKind : uint8_t { Attack, AcBonus, Counter, FireReady, Rider, ReduceDamage, ImposeDisadvantage, Retaliate, SubtractRoll /* R-G7: AttackRolled, `dice` subtracted from the roll */ };   // Rider (9c): option_id = trigger id, slot_level = slot spent (0 none)
 struct ReactionOption {
     uint8_t  attack_index = 0;        // Attack: index into reactor.attacks (first, so {idx} = an attack option)
     ReactionOptionKind kind = ReactionOptionKind::Attack;

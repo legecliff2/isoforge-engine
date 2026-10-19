@@ -67,4 +67,15 @@ int roll_dice(rng::Rng& r, DiceExpr e, bool critical) {
     return total;
 }
 
+int roll_dice_reroll_low(rng::Rng& r, DiceExpr e, bool critical, int low) {
+    int n = int(e.count) * (critical ? 2 : 1);
+    int total = e.bonus;
+    for (int k = 0; k < n; ++k) {
+        int d = r.d(e.sides);
+        if (d <= low) d = r.d(e.sides);
+        total += d;
+    }
+    return total;
+}
+
 } // namespace rules5e
