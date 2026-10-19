@@ -45,7 +45,7 @@ Things that apply to many rows (so they are not repeated):
 | Standing up from prone (half movement) | DATA | `ActionKind::StandUp`. |
 | Movement on a grid, difficult terrain (2x), LOS | DATA | sim `Grid`, `step_cost_ft`, supercover LOS. |
 | Crawling while prone (extra movement cost) | NEW (wiring) | Rules done: a Move while Prone costs double (already in `Move`); sim's own movement budget is not wired (R-G8). |
-| Opportunity-attack exceptions (Disengage, teleport, forced movement) | DATA | Disengage implemented; teleport/forced movement do not exist yet (R-G9). |
+| Opportunity-attack exceptions (Disengage, teleport, forced movement) | DATA | Disengage implemented; forced moves and teleports never open a `LeavingReach` window and spend no movement (R-G9, VERSION_BUMP_BATCH 7.2k). |
 | Surprise (skip first turn, no reactions) | NEW (wiring) | rules5e `Combatant::surprised` (only EndTurn on the first turn, no reactions until it ends), `surprised_by_stealth` (Stealth vs passive Perception), `apply_surprise` (R-G16, VERSION_BUMP_BATCH 7.2h); sim must supply the hiders / surprised set and fold 0xA8. |
 | Short / long rest: spell slots, Pact slots, feature uses | DATA | `recover_slots_short_rest/long_rest`, `recover_features`. |
 | Rests: Hit Dice spending, HP regained | NEW (wiring) | rules5e `Combatant::hit_die` / `hit_dice` / `hit_dice_max`, `spend_hit_dice`, `short_rest`, `long_rest` (rest.hpp, R-G16, 7.2h); no between-encounter rest flow in sim yet. |
@@ -56,7 +56,7 @@ Things that apply to many rows (so they are not repeated):
 | Lighting, darkness, obscurement, darkvision/blindsight/truesight | NEW | Not modelled; sim has LOS only (R-G13). |
 | Flanking | OOS | Optional rule, not SRD core. |
 | Two-weapon fighting | NEW (wiring) | Rules done (R-G6): `Combatant::bonus_attacks` option with `requires_attacks` (light weapons), `different_weapon` and off-hand `damage` dice; `ActionRequest::bonus_option`. Loader / AI pending. |
-| Grapple and shove (contested Athletics/Acrobatics) | NEW (wiring) | Rules done (R-G8): `ActionRequest::special` 1-3, Athletics vs Athletics/Acrobatics, one-size limit, replaces one attack. Sim / AI wiring pending. |
+| Grapple and shove (contested Athletics/Acrobatics) | NEW (wiring) | Rules done (R-G8): `ActionRequest::special` 1-3, Athletics vs Athletics/Acrobatics, one-size limit, replaces one attack. The push goes through the R-G9 `forced_move` hook; `Moved.c` = 1 only with `EncounterHooks::shove_forced_flag` (sim turns it on with EC #104) (R-G9, VERSION_BUMP_BATCH 7.2k). Sim / AI wiring pending. |
 | Flying, swimming, climbing, burrowing movement | NEW | One `speed_ft`; sim reads `speed.walk` only (T&C-G12, T&C-G14). |
 | Creature size and space (large creatures occupy 2x2) | NEW | Size is loaded (`Archetype::size`, #49) but only stored; the grid is still one tile per creature (T&C-G12, T&C-G14; footprint model in flight). |
 | Dispel / end effects on a creature | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::Dispel` ends spell effects and spell modifiers on a target (check vs 10 + level above the slot). Loader pending. |
@@ -128,7 +128,7 @@ Things that apply to many rows (so they are not repeated):
 | Critical hits double dice only | DATA | `roll_dice(..., crit)`. |
 | Temp HP | DATA | See section 1. |
 | Damage when hit by a save-based effect: full / half | DATA | `Save` effect with `on_success: half`. |
-| Evasion (no damage on success, half on fail) | NEW (wiring) | Rules done (R-G7): `Combatant::evasion` (Dex save vs half: none on success, half on failure). Loader pending. |
+| Evasion (no damage on success, half on fail) | NEW (wiring) | Rules done (R-G7): `Combatant::evasion` (Dex save vs half: none on success, half on failure). Loader done (EC #114): feature / trait kind `evasion`. |
 | Maximum HP reduction (wraith, vampire, specter life drain) | NEW (wiring) | rules5e `Attack::drain_max_hp` / `drain_save_dc`, `Combatant::hp_max_reduction` (death at 0 maximum, `long_rest` clears) (small leftovers, VERSION_BUMP_BATCH 7.2j). |
 
 ## 6. Class features, levels 1-5
@@ -143,7 +143,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Fighting Style: Dueling | 1 | DATA | `damage_bonus {amount:2, condition: one_handed_melee_no_other_weapon}` (shipped, `fighter_1`). |
 | Fighting Style: Archery (+2 ranged attack rolls) | 1 | NEW (wiring) | Rules done (R-G5): `Combatant::attack_bonus_ranged` (weapon attacks only). Loader kind `attack_bonus` pending. |
 | Fighting Style: Defense (+1 AC in armor) | 1 | NEW (wiring) | Rules done (R-G5): `AcInput::armored_bonus` in `compute_ac` (only while armor is worn). Loader kind `ac_bonus` pending. |
-| Fighting Style: Great Weapon Fighting (reroll 1-2 on damage dice) | 1 | NEW (wiring) | Rules done (R-G7): `Combatant::great_weapon_fighting`, two-handed or versatile with `ActionRequest::two_handed_grip`; weapon dice showing 1-2 rerolled once. |
+| Fighting Style: Great Weapon Fighting (reroll 1-2 on damage dice) | 1 | NEW (wiring) | Rules done (R-G7): `Combatant::great_weapon_fighting`, two-handed or versatile with `ActionRequest::two_handed_grip`; weapon dice showing 1-2 rerolled once. Loader done (EC #114): feature kind `great_weapon_fighting`, `two_handed` / `versatile` property bits; the AI sets `two_handed_grip` for a versatile melee weapon of a stat block without a shield (v0 wield model). |
 | Fighting Style: Protection (reaction, impose disadvantage on attack vs adjacent ally) | 1 | NEW (wiring) | Rules done (#87): `AllyAttacked` window + `ImposeDisadvantage` reaction (R-G7); no content/hook compile yet (Engine Core). |
 | Fighting Style: Two-Weapon Fighting (add mod to off-hand) | 1 | NEW (wiring) | Rules done (R-G6): omit the off-hand `damage` override so the baked ability modifier stays. Loader pending. |
 | Second Wind | 1 | DATA | `self_heal {dice 1d10, plus fighter_level, uses 1, recharge short_rest, cost bonus_action}` (shipped). |
@@ -198,7 +198,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Jack of All Trades (+half proficiency to checks) | 2 | NEW | Check modifier (R-G7/small). |
 | Song of Rest | 2 | OOS | Out of combat healing. |
 | Expertise | 3 | DATA | Authored skills. |
-| College of Lore: Cutting Words (reaction, subtract inspiration die from enemy roll) | 3 | NEW (wiring) | Rules done for attack rolls (R-G7): `AttackRolled` window, `Reaction{SubtractRoll, dice, pool}`; checks and damage rolls not covered. Sim `in_range` / loader pending. |
+| College of Lore: Cutting Words (reaction, subtract inspiration die from enemy roll) | 3 | NEW (wiring) | Rules done for attack rolls (R-G7): `AttackRolled` window, `Reaction{SubtractRoll, dice, pool}`; checks and damage rolls not covered. Loader and sim done (EC #114): `reactions[]` window `roll_attack` + `subtract_roll {dice}` + `usage {kind: pool}` (resources[] pool); `in_range` = within 60 ft of the attacker and sees it. The Python validator still lists `roll_attack` / `subtract_roll` as reserved. |
 | Font of Inspiration (short rest recharge) | 5 | NEW | Recharge change on the same pool (R-G5). |
 | **Druid** spellcasting (full caster) | 1 | DATA | |
 | Wild Shape (CR 1/4 at L2, no fly/swim; CR 1/2 at L4; CR 1 at L8) | 2 | NEW | Replace stat block temporarily; HP overflow carries over (R-G12). |
@@ -246,7 +246,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | **Warlock** Pact Magic (slots recharge on short rest, all same level) | 1 | DATA | `pact_slot_level`, `pact_slots`, short-rest recovery implemented. |
 | Otherworldly Patron: The Fiend, Dark One's Blessing (temp HP on kill) | 1 | NEW | On-kill trigger granting temp HP (T&C-G7/R-G3). |
 | Eldritch Invocations: Agonizing Blast (+Cha per beam) | 2 | NEW | Per-beam damage bonus on a spell (R-G4). |
-| Invocations: Armor of Shadows, Fiendish Vigor, Repelling Blast (push 10 ft), Devil's Sight | 2 | NEW | Mage Armor / False Life at will (R-G3), forced movement (R-G9), darkvision (R-G13). |
+| Invocations: Armor of Shadows, Fiendish Vigor, Repelling Blast (push 10 ft), Devil's Sight | 2 | NEW | Mage Armor / False Life at will (R-G3), darkvision (R-G13). Repelling Blast's push is done in rules: a `ForcedMove` rider `up_to` 10 ft per beam hit, `ActionRequest::forced_feet` (R-G9, VERSION_BUMP_BATCH 7.2k); the invocation-to-Eldritch-Blast wiring is loader work. |
 | Invocation: Eldritch Spear (Eldritch Blast range 300 ft) | 2 | NEW | Per-spell range modifier from a feature (R-G14). |
 | Invocations: Eldritch Sight, Beast Speech, Mask of Many Faces, Beguiling Influence, Book of Ancient Secrets, Misty Visions, etc. | 2 | OOS | Utility. |
 | Invocation: Thirsting Blade (Blade pact, attack twice with pact weapon) | 5 | NEW | Extra attack with a specific weapon (T&C-G1). |
@@ -262,7 +262,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Darkvision | NEW | R-G13. |
 | Dwarven Resilience (poison resistance; advantage vs poison) | NEW | Resistance is DATA (loaded by #45); save advantage vs source type is T&C-G7 style. |
 | Fey Ancestry (advantage vs charm) / Brave (halfling, vs frightened) | NEW (wiring) | Rules done: `{Save, Advantage, save_vs_conditions}` (Charmed / Frightened). Content loader is T&C's. |
-| Halfling Lucky (reroll natural 1) | NEW (wiring) | Rules done (R-G7): `Combatant::reroll_ones` (attack / check / save; not death saves). Loader pending. |
+| Halfling Lucky (reroll natural 1) | NEW (wiring) | Rules done (R-G7): `Combatant::reroll_ones` (attack / check / save; not death saves). Loader done (EC #114): feature kind `reroll_ones` (default all three = 7, optional `rolls`). |
 | Relentless Endurance (drop to 1 HP once per day) / Savage Attacks (extra crit die) | NEW | T&C-G7 / R-G7. |
 | Dragonborn breath weapon and resistance | NEW | Area save + limited use (R-G10, T&C-G7). |
 | Tiefling Hellish Resistance / Infernal Legacy (Thaumaturgy, Hellish Rebuke) | NEW | Resistance is DATA (loaded by #45); Hellish Rebuke trigger (R-G7). |
@@ -346,7 +346,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Shield | DATA | Shipped (`ac_bonus`). |
 | Shield of Faith | NEW (wiring) | Rules done (#89): +2 `Ac` modifier, concentration. Spell kind pending (R-G3). |
 | Sleep | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::HpPool` (lowest HP first, upcast dice, undead excluded, ends on damage). Loader pending. |
-| Thunderwave | NEW | Cube (R-G10) + push (R-G9); dice/save DATA. |
+| Thunderwave | NEW (wiring) | Cube (R-G10) + push: `ForcedMove` rider (10 ft, `affected_only`: failed saves only) (R-G9, VERSION_BUMP_BATCH 7.2k); dice/save DATA. Sim: path / blocking via `forced_move`. |
 
 ### 8.3 Level 2
 
@@ -372,7 +372,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Lesser Restoration | NEW (wiring) | rules5e `EndCondition` + `ends_conditions` (R-G15, 7.2g); lowest listed condition first; no disease model. |
 | Magic Weapon | NEW | Magic bonus (R-G17, T&C-G2/R-G3). |
 | Mirror Image | NEW | Duplicates that absorb attacks (R-G3). |
-| Misty Step | NEW | Teleport (R-G9). |
+| Misty Step | NEW (wiring) | `Teleport` effect (`max_feet` 30), bonus action, self; destination from the request, validated by sim (R-G9, VERSION_BUMP_BATCH 7.2k). |
 | Moonbeam | NEW | Zone (R-G11). |
 | Protection from Poison | NEW | R-G3. |
 | Ray of Enfeeblement | NEW | Attack + damage halving rider (R-G3). |
@@ -459,7 +459,7 @@ Stat-block data: `monster@3` carries abilities, AC, HP average, speed (walk, fly
 | Leadership (limited-use buff action: allies add 1d4 to attacks and saves for 1 minute) | knight | NEW (wiring) | Rules done (#89, #91): `AlliesWithin30` modifiers (1d4 on AttackRoll and Save, timed) through a `feature_modifiers` hook, with a per-day or pool use. Compile pending (T&C-G4, R-G3). |
 | Engulf / Swallow | gelatinous cube, giant toad | NEW | Contained state (R-G8). |
 | Petrifying Gaze / Touch (delayed condition progression) | basilisk, cockatrice | NEW (wiring) | `SpellDef::escalates` / `escalate_to` / `escalate_margin`: restrained, petrified on the failed repeat save (or at once when failing by the margin) (small leftovers, VERSION_BUMP_BATCH 7.2j). The gaze's start-of-turn-within-30-ft trigger and averting the eyes are sim's (positions / sight). |
-| Teleport bonus action | blink dog | NEW | R-G9. |
+| Teleport bonus action | blink dog | NEW (wiring) | Innate `Teleport` effect (`max_feet` 40) (R-G9, VERSION_BUMP_BATCH 7.2k); content wiring pending. |
 | Shapechanger | werewolf, doppelganger | NEW | Stat block swap (R-G12). |
 | Rust Metal / Corrode / Stench | rust monster, ghast | NEW | T&C-G5 and aura (R-G11). Disease itself OOS. |
 | Blood Frenzy (advantage vs damaged creatures) | sharks | NEW (wiring) | Rules done: `{Attack, Advantage, kWhenTargetDamaged}` (reads target HP). Content loader is T&C's. |
@@ -494,7 +494,7 @@ Row counts are over the tables in sections 1-9 (one row per mechanic or feature;
 | 9. Monsters: stat blocks, traits, actions | 13 | 26 | 5 | 44 |
 | **Total** | **129** | **192** | **31** | **352** |
 
-"NEW (wiring)" rows (rules5e models it, content-to-sim does not carry it) are counted under NEW. Counts are as of main after #91 (and #93 for row 15); after #45, #47, #48 and #49 the totals were DATA 112 / NEW 209 / OOS 31 = 352, and before those PRs DATA 104 / NEW 217 / OOS 31. The version-bump batch moved 17 rows NEW -> DATA (conditions with a duration, condition riders from actions, area templates, duration expiry, Divine Smite, Sneak Attack, Burning Hands, Shatter, Fireball, Lightning Bolt, on-hit save riders, Recharge breath weapons, Innate Spellcasting, Charge / Pounce, Rampage, Undead Fortitude, Death Burst). A further 26 rows moved NEW -> `NEW (wiring)` (rules done, still counted NEW): see 11.5; the bonus-action attack PR (R-G6) moved 5 more (two-weapon fighting and its style, Martial Arts, Flurry of Blows, Frenzy), still counted NEW; the grapple / shove PR (R-G8) moved 5 more (grapple and shove, Charmed, Frightened, Grappled, crawling), still counted NEW; the static-feature-kinds PR (R-G5) moved 3 more (Archery, Defense, Improved Critical), still counted NEW; the R-G7 roll-window PR moved 4 more (Lucky, Cutting Words, Great Weapon Fighting, Evasion), still counted NEW; the R-G15 spell-kinds PR moved 5 more (dispel / end effects, Color Spray, Sleep, Dispel Magic, Revivify), still counted NEW; the R-G15 follow-up moved 3 more (Lesser Restoration, Acid Arrow, Heat Metal), still counted NEW; the R-G16 PR moved 4 more (surprise, Hit Dice / rests, Arcane Recovery, Natural Recovery), still counted NEW; the R-G14 PR moved 3 more (Sculpt Spells, Metamagic, Blindness/Deafness), still counted NEW; the small-leftovers PR (7.2j) moved 8 more (Maximum HP reduction, Reckless Attack, Haste, Slow, Aggressive, Reckless, Life Drain, Petrifying Gaze), still counted NEW. This recount was produced by a script over the tables, which also reproduced the previous 112 / 209 / 31. "DATA (baked)" / "DATA (partial)" rows count as DATA.
+"NEW (wiring)" rows (rules5e models it, content-to-sim does not carry it) are counted under NEW. Counts are as of main after #91 (and #93 for row 15); after #45, #47, #48 and #49 the totals were DATA 112 / NEW 209 / OOS 31 = 352, and before those PRs DATA 104 / NEW 217 / OOS 31. The version-bump batch moved 17 rows NEW -> DATA (conditions with a duration, condition riders from actions, area templates, duration expiry, Divine Smite, Sneak Attack, Burning Hands, Shatter, Fireball, Lightning Bolt, on-hit save riders, Recharge breath weapons, Innate Spellcasting, Charge / Pounce, Rampage, Undead Fortitude, Death Burst). A further 26 rows moved NEW -> `NEW (wiring)` (rules done, still counted NEW): see 11.5; the bonus-action attack PR (R-G6) moved 5 more (two-weapon fighting and its style, Martial Arts, Flurry of Blows, Frenzy), still counted NEW; the grapple / shove PR (R-G8) moved 5 more (grapple and shove, Charmed, Frightened, Grappled, crawling), still counted NEW; the static-feature-kinds PR (R-G5) moved 3 more (Archery, Defense, Improved Critical), still counted NEW; the R-G7 roll-window PR moved 4 more (Lucky, Cutting Words, Great Weapon Fighting, Evasion), still counted NEW; the R-G15 spell-kinds PR moved 5 more (dispel / end effects, Color Spray, Sleep, Dispel Magic, Revivify), still counted NEW; the R-G15 follow-up moved 3 more (Lesser Restoration, Acid Arrow, Heat Metal), still counted NEW; the R-G16 PR moved 4 more (surprise, Hit Dice / rests, Arcane Recovery, Natural Recovery), still counted NEW; the R-G14 PR moved 3 more (Sculpt Spells, Metamagic, Blindness/Deafness), still counted NEW; the small-leftovers PR (7.2j) moved 8 more (Maximum HP reduction, Reckless Attack, Haste, Slow, Aggressive, Reckless, Life Drain, Petrifying Gaze), still counted NEW; the R-G9 rules PR (7.2k) moved 3 more (Thunderwave, Misty Step, blink dog teleport), still counted NEW. This recount was produced by a script over the tables, which also reproduced the previous 112 / 209 / 31. "DATA (baked)" / "DATA (partial)" rows count as DATA.
 
 ### 10.2 Spells, per spell (SRD 5.1 levels 0-3)
 
@@ -633,10 +633,10 @@ Gaps that need new rules mechanics (not just Engine Core / T&C wiring, which is 
 | 5 | R-G7 rest | **Done in rules**: Lucky (`reroll_ones`), Cutting Words on attack rolls (`AttackRolled` + `SubtractRoll`), Great Weapon Fighting, Evasion. Still open: Cutting Words on checks / damage, Bardic Inspiration spending by the ally, Guidance / Resistance, roller-chosen rerolls (Lucky feat, Indomitable, Portent) | Bard, Halfling, Fighter style, Rogue / Monk | M (done) |
 | 6 | R-G15 | **Done in rules**: HP-pool (Sleep, Color Spray), Dispel Magic, Revivify (7.2f); end-a-condition, delayed / sustained damage, Wake action (`special` 5) (7.2g). Remaining: loader / sim wiring | Sleep, Color Spray, Dispel Magic, Revivify, Lesser Restoration, Acid Arrow, Heat Metal done | - |
 | 7 | R-G16 | **Done in rules** (7.2h): surprise (`surprised`, Stealth vs passive Perception helper), Hit Dice, `short_rest` / `long_rest` over combatant and table state, Arcane / Natural Recovery (`recover_spell_slots`). Remaining: sim rest flow and surprise setup (wiring) | round-1 ambush, attrition | done |
-| 8 | R-G9 | Forced movement and teleport with OA rules (Engine Core owns positions). **Co-design proposal:** `docs/proposals/FORCED_MOVEMENT.md` (rules section done, sim contract for EC) | Thunderwave push, Repelling Blast, Misty Step, Open Hand | M |
+| 8 | R-G9 | **Done in rules** (7.2k): `ForcedMove` / `Teleport` effect kinds (per-effect `max_size`), the synchronous `forced_move` hook (+ `forced_move_order`), `Moved.c` flags with schema v8, grapples ending out of reach, shove through the hook. Spec: co-design proposal `docs/proposals/FORCED_MOVEMENT.md` (#110, merged). Still open: sim hook and paths (Engine Core), Open Hand Technique rider, Dimension Door companions and the 4d6 failure, Gust of Wind, falling / hazard damage (R-G11) | Thunderwave push, Repelling Blast, Misty Step, Open Hand | done (rules) |
 | 9 | R-G14 | **Done in rules** (7.2i): Metamagic (all eight options, sorcery-point pool), Sculpt Spells, cast-time damage type / condition choices. Still open: Eldritch Spear (feature range modifier), Font of Magic slot / point conversion, Empowered / Careful on non-Save effects beyond those listed | Sorcerer, Evocation Wizard, Blindness/Deafness, Chromatic Orb | done |
 | 10 | Large / elevation follow-ups | Multi-tile footprints landed in sim (#50, #51, #55); remaining: Large reach and OA edge cases in rules, size limits for grapple / swallow (with R-G8), swarm (Tiny sharing space, half damage), and elevation / fly / swim / climb (T&C-G12, deferred; today all non-walk speeds act as walk) with the Flyby OA exception and falling damage | owlbear, troll, swarms, bat, eagle, owl | M-L, mostly Engine Core |
-| 11 | R-G11 | Persistent zones and auras with enter / start-of-turn triggers | Spirit Guardians, Moonbeam, Web, Entangle, Rust Metal | L |
+| 11 | R-G11 | Persistent zones and auras with enter / start-of-turn triggers. **Co-design proposal:** `docs/proposals/ZONES_AURAS.md` (rules section done, sim contract stub for EC) | Spirit Guardians, Moonbeam, Web, Entangle, Rust Metal | L |
 | 12 | R-G12 | Summons, familiars, bonded weapons, transforms (Wild Shape, Shapechanger) | Druid, Warlock Chain, werewolf | L |
 | deferred | T&C-G11 | Legendary actions and lair actions (Legendary Resistance is already a pool, #91) | CR 10+ monsters, unicorn | L |
 
