@@ -109,6 +109,28 @@ The authoritative per-kind field meanings are in `rules5e/encounter.hpp`. If tha
 
 `event_stream_hash` records `event_stream_version(events)`, the lowest schema version that can express the stream, taken as the **maximum over every construct** in it, from both kind families: 7 for a rules event whose kind is past `kLastRulesEventKindV6` (the v7 kinds 39-44 and anything appended later), 6 for a `Footprint`, 5 for a `SpellTarget`, otherwise 4. No construct masks a later, newer one (the function has no early return). `kSimEventSchemaVersion` (7) is the contract version, and no stream's version exceeds it (tested). Streams without a `CastSpell` or a multi-tile creature therefore keep their v4 digests bit-identical, streams with spells but no multi-tile creature keep their v5 digests, and every locked digest from before v6 is unchanged. Only a stream with a multi-tile creature hashes as version 6, and only a stream with a v7 kind as version 7.
 
+## Hash tag registry
+
+Tag bytes are globally unique across `Combat::hash` and `Combat::log_hash` (separate streams, one registry). **Rule: a new tag is
+claimed in this table first**, in the PR that introduces it (or before), and is folded only when its section is non-empty, so every
+existing hash is unchanged. Next free: **0xA9** in `Combat::hash`, **0xB2** in `log_hash`. Status: *main* = verified in
+`engine/core/sim/src/combat.cpp` on main; *pending* = claimed by an open PR.
+
+| Tag | Stream | Section (rules5e function) | Folded when | Owner / PR | Status |
+|---|---|---|---|---|---|
+| (none) | `Combat::hash` | `feature_uses_digest` | `features` non-empty | pre-v7 | main (legacy, untagged) |
+| 0xA1 | `Combat::hash` | `action_uses_digest` (recharge actions) | `action_uses` non-empty | v7 | main |
+| 0xA2 | `Combat::hash` | `modifiers_digest` (timed modifiers, row 12 + follow-ups) | `has_modifier_state` | row 12 | main |
+| 0xA3 | `Combat::hash` | `pools_digest` (resource pools) | `pools` non-empty | v7 / row 13 | main |
+| 0xA4 | `Combat::hash` | `innate_digest` (innate uses, DC / attack overrides) | `has_innate_state` | row 8 | main |
+| 0xA4 | `log_hash` | one byte per logged `CastSpell` with `innate = true` (same feature as the `Combat::hash` 0xA4 section; same byte value, different stream) | `innate` set | row 8 | main |
+| 0xA5 | `Combat::hash` | `timed_effects_digest` (lasting effects with timers) | `has_timed_effects` | row 5 | main |
+| 0xA6 | `Combat::hash` | `triggers_digest` (once-per-turn / round bookkeeping, incl. `death_triggers_done`) | `has_trigger_state` | row 9a | main |
+| 0xA7 | `Combat::hash` | `sourced_digest` (conditions with a source; sim folds Grappled entries only) | `has_sourced_conditions` | R-G8, rules #99; sim fold EC #104 | pending (EC #104) |
+| 0xA8 | `Combat::hash` | `surprised_digest` (surprised creatures, round 1) | `has_surprised` | R-G16, rules #108 (merged); sim fold not yet written | pending (sim fold) |
+| 0xB0 | `log_hash` | `ActionRequest::bonus_option` byte | `bonus_option != 0` | R-G6, EC #100 | pending (EC #100) |
+| 0xB1 | `log_hash` | R-G14 per-cast options: `metamagic` byte, `spared` (count u32 + ids u32), `heighten_target` u32, `damage_choice` byte, `condition_choice` byte, in that order | any of them non-zero / non-empty | R-G14 (rules, this PR); sim fold not yet written | pending (sim fold) |
+
 ## Determinism guarantees
 
 - **Same inputs, same stream.** The same content, chunk, seed and command log produce a bit-identical stream on every platform and compiler. The sim and rules use integer math only, with fixed iteration orders (ARCHITECTURE §4).

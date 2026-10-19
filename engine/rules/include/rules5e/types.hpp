@@ -373,6 +373,11 @@ struct Combatant {
     bool surprised = false;
     // Hit Dice (rest.hpp): die size (6, 8, 10, 12; 0 = none), remaining and maximum (usually the character level).
     uint8_t hit_die = 0, hit_dice = 0, hit_dice_max = 0;
+    // R-G14 (appended): Metamagic options known (bitmask, kMeta* in spells.hpp) paid from pool `sorcery_pool` (sorcery points);
+    // sculpt_spells: Evocation Wizard's Sculpt Spells (ActionRequest::spared on an evocation spell).
+    uint8_t metamagic_known = 0;
+    uint32_t sorcery_pool = 0;
+    bool sculpt_spells = false;
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
