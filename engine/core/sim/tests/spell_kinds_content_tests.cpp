@@ -514,3 +514,72 @@ TEST_CASE("R-G15 sim: Revivify a creature that died this encounter; material cos
     CHECK(f.count(EventKind::Healed, gob) == healed + 1);
     f.check_replay();
 }
+
+TEST_CASE("Lesser Restoration: cast-time condition_choice (sim, folded under 0xB1 only when set), refusal, replay") {
+    const auto lib = make_lib();
+    const auto lr = def_of(restoration_doc());
+    CHECK(lr.condition_choices.empty());   // the choice indexes the listed conditions, not condition_choices
+    Fight f(lib, {{kWizard, 5, 5}, {"test.monster.gob60", 12, 5}, {"test.monster.gob20", 4, 5}});
+    const CombatantId wiz = f.id(0), b = f.id(2);
+    f.advance_to(wiz);
+    REQUIRE(f.cast("test.spell.hold", 2, b).ok);
+    REQUIRE(f.who(b).has(Condition::Paralyzed));
+    f.next_turn_of(wiz);
+    const uint64_t h0 = f.c->hash(), lh0 = f.c->log_hash();
+    const std::size_t n0 = f.c->log().size();
+    // listed in ascending Condition order: 1 blinded, 2 deafened, 3 paralyzed, 4 poisoned
+    for (uint8_t bad : {uint8_t(1), uint8_t(4), uint8_t(5)}) {   // not present / not listed: refused, nothing changes
+        Command cmd = f.cast_cmd("test.spell.lesser_restoration", 2, b);
+        cmd.request.condition_choice = bad;
+        CHECK_FALSE(f.settle(f.c->submit(cmd)).ok);
+        CHECK(f.c->hash() == h0);
+        CHECK(f.c->log_hash() == lh0);
+        CHECK(f.c->log().size() == n0);
+        CHECK(f.who(b).has(Condition::Paralyzed));
+    }
+    Command cmd = f.cast_cmd("test.spell.lesser_restoration", 2, b);
+    cmd.request.condition_choice = 3;   // paralyzed
+    REQUIRE(f.settle(f.c->submit(cmd)).ok);
+    CHECK_FALSE(f.who(b).has(Condition::Paralyzed));
+    f.check_replay();
+    // the choice is folded: the same log without it hashes differently (yet resolves the same: the lowest present)
+    auto log = f.c->log();
+    for (auto& e : log) e.step.request.condition_choice = 0;
+    ecs::Registry r2;
+    auto plain = replay(r2, f.chunk, lib, f.seed, log);
+    REQUIRE(plain);
+    CHECK(plain->hash() == f.c->hash());
+    CHECK(plain->log_hash() != f.c->log_hash());
+}
+
+TEST_CASE("Acid Arrow: the later damage scales with the slot (loaded from scaling.upcast.dice), replay") {
+    const auto aa = def_of(acid_arrow_doc());
+    REQUIRE(aa.extra_effects.size() == 1);
+    CHECK(aa.extra_effects[0].upcast_dice == 1);
+    Json flat = acid_arrow_doc(); flat.erase("scaling");
+    CHECK(def_of(flat).extra_effects[0].upcast_dice == 0);
+    const auto lib = make_lib();
+    for (uint8_t slot : {uint8_t(2), uint8_t(3)}) {   // the test wizard has slots up to 3rd (slot 4: rules5e tests)
+        bool seen = false;
+        for (uint64_t seed = 1; seed <= 40 && !seen; ++seed) {
+            Fight f(lib, {{kWizard, 5, 5}, {"test.monster.gob60", 12, 5}}, seed);
+            const CombatantId wiz = f.id(0), gob = f.id(1);
+            f.advance_to(wiz);
+            REQUIRE(f.cast("test.spell.acid_arrow", slot, gob).ok);
+            const rules5e::ActiveSpellEffect* later = nullptr;
+            for (const auto& e : f.c->state().effects) if (e.damage_when == 1 && e.target == gob) later = &e;
+            if (!later) continue;   // missed
+            seen = true;
+            CHECK(later->slot_level == slot);
+            CHECK(later->damage.count == slot);   // 2d4 at 2nd, 3d4 at 3rd
+            CHECK(later->damage.sides == 4);
+            f.check_replay();
+            const int hp = f.who(gob).hp;
+            f.next_turn_of(gob);
+            f.end_turn();
+            CHECK(hp - f.who(gob).hp >= slot);
+            f.check_replay();
+        }
+        CHECK(seen);
+    }
+}
