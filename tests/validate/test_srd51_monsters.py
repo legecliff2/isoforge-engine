@@ -138,11 +138,14 @@ class MonsterTable(unittest.TestCase):
             with self.subTest(monster=idx):
                 effs = [t["effect"] for t in load(idx)["traits"] if "effect" in t]
                 self.assertEqual(effs, [{"kind": "pack_tactics"}])
-        # bite knock-prone rider: Str save or prone (common@2 save_condition with apply, no damage)
-        for idx, dc in (("wolf", 11), ("dire-wolf", 13)):
+        # bite knock-prone rider: description only. An on_hit save_condition applying prone has no duration (prone lasts
+        # until the target stands up), which the sim loader rejects as an unsupported duration (load error); see
+        # docs/SRD_MONSTERS_DEFERRED.md
+        for idx in ("wolf", "dire-wolf"):
             with self.subTest(monster=idx):
-                self.assertEqual(load(idx)["actions"][0]["on_hit"],
-                                 [{"kind": "save_condition", "save": {"ability": "str", "dc": dc}, "apply": [{"condition": "prone"}]}])
+                bite = load(idx)["actions"][0]
+                self.assertNotIn("on_hit", bite)
+                self.assertIn("knocked prone", bite["description"])
         # Sunlight Sensitivity / Keen Hearing and Smell: descriptive (no light model, no perception checks in the sim)
         self.assertNotIn("effect", {t["id"]: t for t in load("kobold")["traits"]}["sunlight_sensitivity"])
 
