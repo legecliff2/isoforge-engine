@@ -394,6 +394,8 @@ bool predicate_holds(const EncounterState& s, const Combatant& owner, const Comb
     case PredicateKind::MovedAtLeastFt: return owner.id == current_actor(s) && s.budget.moved_ft >= p.a;   // own turn only
     case PredicateKind::SelfHpBelow: return int(owner.hp) * int(p.b) < int(owner.hp_max) * int(p.a);
     case PredicateKind::Save: return false;   // reserved (9b)
+    case PredicateKind::AttackIs: return !is_spell && &atk >= owner.attacks.data() && &atk < owner.attacks.data() + owner.attacks.size() &&
+                                         std::size_t(&atk - owner.attacks.data()) == std::size_t(p.a);
     }
     return false;
 }

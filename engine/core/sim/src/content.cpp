@@ -4,6 +4,7 @@
 #include <charconv>
 #include <cstdlib>
 #include <filesystem>
+#include <map>
 #include <set>
 
 #include "assets/content_migrations.hpp"
@@ -69,6 +70,176 @@ std::optional<rules5e::Ability> ability_of(const std::string& s) {
 // Compiles a monster@4 / character@4 `save_effect` action into a synthetic SpellDef (VERSION_BUMP_BATCH 2.3).
 // Returns an error message (load error), or nullopt. `unsupported` is set (and nothing compiled) for shapes
 // the engine cannot run yet (pool usage: needs resource pools, row 13).
+// ---- Triggers (row 9a sim side): on_event effects and on_hit[] riders -> rules5e::Trigger ----
+// Owner level for `scale.per_levels`: the named class's level (character `classes[]`), else the character `level`, else 1
+// (monsters have no level: no scaling). Extra dice = (level - 1) / every, so "every 2, add 1d6" on a level-1 base of 1d6 gives
+// 2d6 at level 3 and 3d6 at level 5 (Sneak Attack). The added dice must have the base's sides.
+int owner_level(const Json& doc, const Json& per_levels) {
+    if (per_levels.contains("class") && per_levels["class"].is_string())
+        if (auto cl = doc.find("classes"); cl != doc.end() && cl->is_array())
+            for (const Json& c : *cl)
+                if (c.is_object() && c.value("class", "") == per_levels["class"].get<std::string>()) return std::max(1, geti(c, "level", 1));
+    return std::max(1, geti(doc, "level", 1));
+}
+
+std::optional<std::string> compile_rider(const std::string& where, const Json& r, const Json& doc,
+                                         std::vector<rules5e::RiderEffect>& out) {
+    if (!r.is_object() || !r.contains("kind") || !r["kind"].is_string()) return where + ": bad rider";
+    const std::string k = r["kind"].get<std::string>();
+    using RK = rules5e::RiderKind;
+    rules5e::RiderEffect e;
+    if (k == "extra_damage") {
+        auto dm = r.find("damage");
+        if (dm == r.end() || !dm->is_array() || dm->empty()) return where + ": extra_damage needs damage[]";
+        int extra = 0;
+        std::optional<rules5e::DiceExpr> add;
+        if (auto sc = r.find("scale"); sc != r.end() && sc->is_object())
+            if (auto pl = sc->find("per_levels"); pl != sc->end() && pl->is_object()) {
+                add = parse_dice(pl->value("add_dice", ""));
+                const int every = geti(*pl, "every");
+                if (!add || every < 1) return where + ": bad scale.per_levels";
+                extra = (owner_level(doc, *pl) - 1) / every;
+            }
+        bool first = true;
+        for (const Json& d : *dm) {
+            auto dice = d.is_object() && d["dice"].is_string() ? parse_dice(d["dice"].get<std::string>()) : std::nullopt;
+            const std::string ty = d.is_object() && d["type"].is_string() ? d["type"].get<std::string>() : "";
+            if (!dice || ty.empty()) return where + ": bad rider damage";
+            rules5e::RiderEffect x;
+            x.kind = RK::ExtraDamage;
+            x.dice = *dice;
+            if (ty == "same_as_weapon") x.same_as_weapon = true;
+            else if (auto t = damage_type(ty)) x.type = *t;
+            else return where + ": bad rider damage type";
+            if (first && add && extra > 0) {   // scaling rides the first damage entry
+                if (add->sides != x.dice.sides) return where + ": scale add_dice sides differ from the base dice";
+                const int cnt = int(x.dice.count) + extra * int(add->count);
+                if (cnt > 255) return where + ": scaled dice too large";
+                x.dice.count = uint8_t(cnt);
+                x.dice.bonus = int16_t(x.dice.bonus + extra * add->bonus);
+            }
+            first = false;
+            out.push_back(x);
+        }
+        return std::nullopt;
+    }
+    // Every other rider kind is stored for its sub-PR (9b/9c) and does not fire yet.
+    static const std::pair<const char*, RK> kinds[] = {{"save_condition", RK::SaveCondition}, {"apply_condition", RK::ApplyCondition},
+        {"heal_self", RK::HealSelf}, {"temp_hp", RK::TempHp}, {"set_hp", RK::SetHp}, {"bonus_attack", RK::BonusAttack},
+        {"area_save", RK::AreaSave}, {"spend", RK::Spend}};
+    for (const auto& [name, kind] : kinds)
+        if (k == name) {
+            e.kind = kind;
+            e.value = int16_t(geti(r, "value", geti(r, "amount")));
+            if (auto d = r.find("dice"); d != r.end() && d->is_string())
+                if (auto pd = parse_dice(d->get<std::string>())) e.dice = *pd;
+            if (kind == RK::Spend && r.contains("pool") && r["pool"].is_string()) e.pool = rules5e::spell_id_of(r["pool"].get<std::string>());
+            out.push_back(e);
+            return std::nullopt;
+        }
+    return where + ": unknown rider kind '" + k + "'";
+}
+
+std::optional<std::string> compile_predicate(const std::string& where, const Json& p, rules5e::Predicate& out) {
+    if (!p.is_object() || !p.contains("kind") || !p["kind"].is_string()) return where + ": bad predicate";
+    const std::string k = p["kind"].get<std::string>();
+    using PK = rules5e::PredicateKind;
+    auto types_mask = [&](const char* key, bool creature) -> std::optional<uint32_t> {
+        auto it = p.find(key);
+        if (it == p.end() || !it->is_array() || it->empty()) return std::nullopt;
+        uint32_t m = 0;
+        for (const Json& t : *it) {
+            if (!t.is_string()) return std::nullopt;
+            if (creature) { auto c = creature_type_of(t.get<std::string>()); if (!c) return std::nullopt; m |= rules5e::bit(*c); }
+            else { auto d = damage_type(t.get<std::string>()); if (!d) return std::nullopt; m |= rules5e::bit(*d); }
+        }
+        return m;
+    };
+    if (k == "weapon") {
+        const std::string is = p.value("is", "");
+        out.kind = PK::Weapon;
+        if (is == "melee") out.a = int16_t(rules5e::WeaponIs::Melee);
+        else if (is == "ranged") out.a = int16_t(rules5e::WeaponIs::Ranged);
+        else if (is == "finesse") out.a = int16_t(rules5e::WeaponIs::Finesse);
+        else if (is == "finesse_or_ranged") out.a = int16_t(rules5e::WeaponIs::FinesseOrRanged);
+        else return where + ": bad weapon predicate";
+    } else if (k == "advantage_or_ally_adjacent") out.kind = PK::AdvantageOrAllyAdjacent;
+    else if (k == "target_creature_type" || k == "not_creature_type") {
+        auto m = types_mask("creature_types", true);
+        if (!m) return where + ": bad creature_types";
+        out.kind = k == "target_creature_type" ? PK::TargetCreatureType : PK::NotCreatureType;
+        out.mask = *m;
+    } else if (k == "damage_type_is" || k == "damage_type_not") {
+        auto m = types_mask("types", false);
+        if (!m) return where + ": bad damage types";
+        out.kind = k == "damage_type_is" ? PK::DamageTypeIs : PK::DamageTypeNot;
+        out.mask = *m;
+    } else if (k == "not_crit") out.kind = PK::NotCrit;
+    else if (k == "moved_at_least_ft") {
+        const int ft = geti(p, "ft");
+        if (ft < 5 || ft > 32767) return where + ": bad ft";
+        out.kind = PK::MovedAtLeastFt;
+        out.a = int16_t(ft);
+    } else if (k == "self_hp_below") {
+        const int n = geti(p, "num"), d = geti(p, "den");
+        if (n < 1 || d < 1 || n > 32767 || d > 32767) return where + ": bad self_hp_below";
+        out.kind = PK::SelfHpBelow;
+        out.a = int16_t(n);
+        out.b = int16_t(d);
+    } else if (k == "save") out.kind = PK::Save;   // reserved (9b): stored, never true yet
+    else return where + ": unknown predicate '" + k + "'";
+    return std::nullopt;
+}
+
+// Adds a trigger to the archetype's base combatant. `ids` maps numeric ids to their strings (duplicate = load error).
+std::optional<std::string> add_trigger(const std::string& arch, const std::string& owner, std::size_t index, rules5e::Trigger t,
+                                       std::map<uint32_t, std::string>& ids, rules5e::Combatant& c) {
+    const std::string name = arch + "#" + owner + "#" + std::to_string(index);
+    t.id = rules5e::spell_id_of(name);
+    if (auto [it, fresh] = ids.emplace(t.id, name); !fresh)
+        return arch + ": trigger id collision between '" + it->second + "' and '" + name + "'";
+    if (c.triggers.size() >= 32) return arch + ": too many triggers (max 32)";
+    c.triggers.push_back(std::move(t));
+    return std::nullopt;
+}
+
+// `effect` is an on_event effect object. Returns an error, or sets `unsupported` (listed, not compiled).
+std::optional<std::string> compile_on_event(const std::string& arch, const std::string& owner, const Json& effect, const Json& doc,
+                                            std::map<uint32_t, std::string>& ids, rules5e::Combatant& c, bool& unsupported) {
+    const std::string where = arch + ": " + owner + " on_event";
+    static const std::pair<const char*, rules5e::TriggerOn> ons[] = {{"hit", rules5e::TriggerOn::Hit}, {"crit", rules5e::TriggerOn::Crit},
+        {"damage_dealt", rules5e::TriggerOn::DamageDealt}, {"reduce_to_zero", rules5e::TriggerOn::ReduceToZero},
+        {"drop_to_zero", rules5e::TriggerOn::DropToZero}, {"death", rules5e::TriggerOn::Death},
+        {"turn_start", rules5e::TriggerOn::TurnStart}, {"turn_end", rules5e::TriggerOn::TurnEnd}};
+    rules5e::Trigger t;
+    const std::string on = effect.contains("on") && effect["on"].is_string() ? effect["on"].get<std::string>() : "";
+    bool found = false;
+    for (const auto& [n, v] : ons) if (on == n) { t.on = v; found = true; }
+    if (!found) return where + ": bad 'on'";
+    const std::string lim = effect.contains("limit") && effect["limit"].is_string() ? effect["limit"].get<std::string>() : "none";
+    if (lim == "none") t.limit = rules5e::TriggerLimit::None;
+    else if (lim == "once_per_turn") t.limit = rules5e::TriggerLimit::OncePerTurn;
+    else if (lim == "once_per_round") t.limit = rules5e::TriggerLimit::OncePerRound;
+    else if (lim == "once_per_attack") t.limit = rules5e::TriggerLimit::OncePerAttack;
+    else return where + ": bad limit";
+    const std::string ch = effect.contains("choice") && effect["choice"].is_string() ? effect["choice"].get<std::string>() : "auto";
+    t.choice = ch == "auto" ? 0 : ch == "ask" ? 1 : ch == "never" ? 2 : 255;
+    if (t.choice == 255) return where + ": bad choice";
+    if (effect.contains("usage")) { unsupported = true; return std::nullopt; }   // a use cost is a later sub-PR
+    if (auto w = effect.find("when"); w != effect.end()) {
+        if (!w->is_array()) return where + ": bad when";
+        for (const Json& p : *w) {
+            rules5e::Predicate pr;
+            if (auto e = compile_predicate(where, p, pr)) return e;
+            t.when.push_back(pr);
+        }
+    }
+    auto ef = effect.find("effects");
+    if (ef == effect.end() || !ef->is_array() || ef->empty()) return where + ": needs effects[]";
+    for (const Json& r : *ef) if (auto e = compile_rider(where, r, doc, t.effects)) return e;
+    return add_trigger(arch, owner, 0, std::move(t), ids, c);
+}
+
 std::optional<std::string> compile_save_action(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
                                                Archetype::SaveAction& sa, const Json& doc, bool& unsupported) {
     const std::string aid = act.value("id", "");
@@ -356,6 +527,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     if (declared == 0)
         if (auto s = doc.find("$schema"); s != doc.end() && s->is_string())
             if (auto ref = assets::parse_schema_ref(s->get<std::string>())) declared = ref->version;
+    std::map<uint32_t, std::string> trigger_ids;   // numeric trigger id -> its string (duplicates are load errors)
     const FeatureBuildCtx fctx{*features_, doc, declared, attack_actions};
     for (std::size_t i = 0; i < a.features.size(); ++i) {
         const FeatureDecl& f = a.features[i];
@@ -372,12 +544,37 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             a.inert_features.push_back(f.id + " (" + f.kind + ")");
             continue;
         }
+        if (f.kind == "on_event") {   // event triggers (rules5e::Trigger): compiled here, the registry reserves the kind only
+            bool unsupported = false;
+            if (auto e = compile_on_event(a.id, f.id, f.effect, doc, trigger_ids, c, unsupported)) return *e;
+            if (unsupported) a.unsupported_features.push_back(f.id + " (on_event: unsupported usage)");
+            continue;
+        }
         if (!h) {
             a.unsupported_features.push_back(f.id + " (" + (f.kind.empty() ? "no effect" : f.kind) + ")");
             continue;
         }
         if (auto e = h->apply(a, f, uint32_t(i + 1), fctx)) return a.id + ": " + *e;
     }
+    // on_hit[] riders on weapon attacks (monster@4 / character@4): one trigger per rider, bound to its attack by an AttackIs
+    // predicate so it fires only on that attack's hits. Owner = the action id, index = position in on_hit[].
+    if (declared == 0 || declared >= 4)
+        for (std::size_t ai = 0; ai < attack_actions.size(); ++ai) {
+            const Json& act = *attack_actions[ai];
+            auto oh = act.find("on_hit");
+            if (oh == act.end()) continue;
+            if (!oh->is_array()) return a.id + ": bad on_hit";
+            for (std::size_t ri = 0; ri < oh->size(); ++ri) {
+                rules5e::Trigger t;
+                t.on = rules5e::TriggerOn::Hit;
+                rules5e::Predicate pr;
+                pr.kind = rules5e::PredicateKind::AttackIs;
+                pr.a = int16_t(ai);
+                t.when.push_back(pr);
+                if (auto e = compile_rider(a.id + ": " + act.value("id", "?") + " on_hit", (*oh)[ri], doc, t.effects)) return *e;
+                if (auto e = add_trigger(a.id, act.value("id", "?"), ri, std::move(t), trigger_ids, c)) return *e;
+            }
+        }
     // multiattack options -> rules5e::AttackSequence (ids owned by the library, stable addresses).
     for (const auto& m : a.multiattack_decls) {
         strings_.push_back(m.id);
