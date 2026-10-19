@@ -359,6 +359,17 @@ SpellLoad spell_from_json(const Json& j) {
     }
 
     if (!j.contains("effects") || !j["effects"].is_array() || j["effects"].empty()) return err("effects missing");
+    // The spellcasting ability check of counter and dispel: {ability: spellcasting, dc_base, plus: spell_level}, required,
+    // dc_base 1..99 (DC = dc_base + the target spell's level). False on any other shape.
+    auto read_spell_check = [](const Json& fx, uint8_t& dc_base_out) -> bool {
+        const Json chk = fx.value("check", Json::object());
+        int base = 0;
+        if (chk.value("ability", "") != "spellcasting" || chk.value("plus", "") != "spell_level" ||
+            !chk.contains("dc_base") || !small_int(chk["dc_base"], 1, 99, base))
+            return false;
+        dc_base_out = uint8_t(base);
+        return true;
+    };
     // One effect object -> the per-effect fields of `t` (kind, damage, save, condition, ...). Returns "" or an error.
     auto parse_effect = [&](const Json& e, SpellDef& s, std::string& kind) -> std::string {
         kind = e.is_object() ? e.value("kind", "") : "";
@@ -432,12 +443,7 @@ SpellLoad spell_from_json(const Json& j) {
         } else if (kind == "counter") {
             s.kind = SpellEffectKind::Counter;
             if (e.value("auto_max_level", "") != "slot") return ("effect auto_max_level must be slot");
-            const Json chk = e.value("check", Json::object());
-            int b = 0;
-            if (chk.value("ability", "") != "spellcasting" || chk.value("plus", "") != "spell_level" ||
-                !chk.contains("dc_base") || !small_int(chk["dc_base"], 1, 99, b))
-                return ("effect check must be {ability: spellcasting, dc_base, plus: spell_level}");
-            s.counter_dc_base = uint8_t(b);
+            if (!read_spell_check(e, s.counter_dc_base)) return ("effect check must be {ability: spellcasting, dc_base, plus: spell_level}");
         } else if (kind == "apply_modifier") {   // row 12: a timed modifier; primary effect only, no bonus_table (no class level)
             s.kind = SpellEffectKind::ApplyModifier;
             if (!e.contains("modifier")) return ("effect modifier required");
@@ -465,13 +471,9 @@ SpellLoad spell_from_json(const Json& j) {
                     s.excluded_types |= bit(ct2);
                 }
             }
-        } else if (kind == "dispel") {   // R-G15 (7.2f): Dispel Magic; check DC = dc_base + the spell's level above the slot
+        } else if (kind == "dispel") {   // R-G15 (7.2f): Dispel Magic; spells above the slot end on the check (DC dc_base + level)
             s.kind = SpellEffectKind::Dispel;
-            if (e.contains("dc_base")) {
-                int b = 0;
-                if (!small_int(e["dc_base"], 1, 99, b)) return ("effect dc_base invalid");
-                s.dispel_dc_base = uint8_t(b);
-            }
+            if (!read_spell_check(e, s.dispel_dc_base)) return ("effect check must be {ability: spellcasting, dc_base, plus: spell_level}");
         } else if (kind == "revive") {   // R-G15 (7.2f): Revivify; dead for at most within_rounds rounds
             s.kind = SpellEffectKind::Revive;
             if (e.contains("within_rounds")) {
