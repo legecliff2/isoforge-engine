@@ -6,7 +6,7 @@ property of every arm; each arm is `if <discriminator> const ... then {required,
 <exactly the arm's allowed names>}}`. A test asserts for each arm that `allowed == required U optional`
 as documented. The documented sets below are written out by hand from the proposal (so a schema edit
 that widens or narrows an arm without the doc changing fails here), for every propertyNames union:
-common@2 usage, predicate, rider, modifier, reaction_effect, and item@1.
+common@2 usage, predicate, rider, modifier, reaction_effect, item@1, and spell@1 zone / zone_effect.
 """
 from __future__ import annotations
 
@@ -64,6 +64,13 @@ REACTION_EFFECT = {("ac_bonus",): (S({"kind", "bonus"}), S()),
                    ("attack",): (S({"kind", "attack_id"}), S()),
                    ("cast",): (S({"kind", "spell"}), S()),
                    ("subtract_roll",): (S({"kind", "dice"}), S())}
+# spell@1 R-G11 zones (docs/CONTENT_CONVENTIONS.md section 4).
+_ZOPT = {"flags", "move", "chooses_excluded", "triggers"}
+ZONE = {("sphere", "cube"): (S({"shape", "size_ft", "anchor"}), S(_ZOPT)),
+        ("cylinder",): (S({"shape", "size_ft", "height_ft", "anchor"}), S(_ZOPT))}
+ZONE_EFFECT = {("save",): (S({"kind", "ability"}), S({"damage", "on_success", "condition", "description"})),   # damage or condition
+               ("damage",): (S({"kind", "damage"}), S({"condition", "description"})),
+               ("apply_condition",): (S({"kind", "condition"}), S({"description"}))}
 _ICOMMON = {"source", "cost_cp", "weight_oz", "description"}
 _IBASE = S({"$schema", "id", "name", "category"})
 ITEM = {("weapon",): (_IBASE | {"weapon_class"}, S(_ICOMMON | {"reach", "range", "damage", "versatile_damage", "properties", "qualifiers", "magic_bonus", "on_hit"})),
@@ -76,7 +83,9 @@ def unions():
     return [("common@2 usage", c2["usage"], "kind", USAGE), ("common@2 predicate", c2["predicate"], "kind", PREDICATE),
             ("common@2 rider", c2["rider"], "kind", RIDER), ("common@2 modifier", c2["modifier"], "stat", MODIFIER),
             ("common@2 reaction_effect", c2["reaction_effect"], "kind", REACTION_EFFECT),
-            ("item@1", load("item/v1.schema.json"), "category", ITEM)]
+            ("item@1", load("item/v1.schema.json"), "category", ITEM),
+            ("spell@1 zone", load("spell/v1.schema.json")["$defs"]["zone"], "shape", ZONE),
+            ("spell@1 zone_effect", load("spell/v1.schema.json")["$defs"]["zone_effect"], "kind", ZONE_EFFECT)]
 
 
 def required_names(node):
