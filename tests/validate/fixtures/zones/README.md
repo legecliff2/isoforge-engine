@@ -9,3 +9,7 @@ Web (`own_turn_only`, `while_in_zone`), Grease (`zone_appear` / `zone_enter` / `
 
 They are not part of any shipped pack (srd51.core gets zone spells in a later PR) and are not
 under `tests/compat` (that corpus is frozen). `spell_loader_tests` loads them as positive loader fixtures.
+
+`spells_pr2/` (R-G11 rules PR 2 keys, CONTENT_CONVENTIONS 4.6): Stinking Cloud (`loses_action`, `auto_success_*`), Wall of Fire
+(`line`, `ring_size_ft`, `sided`, `side_ft`, `region`), Warding Aura (test-only D7 aura fields). Fog Cloud, Moonbeam and Spirit
+Guardians above also carry `upcast_size_ft`, `shapechanger_disadvantage` and `evil_damage_type`.

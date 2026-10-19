@@ -6,7 +6,7 @@
     "ref": "SRD 5.1",
     "license": "CC-BY-4.0"
   },
-  "description": "Spirits flit around you to a distance of 15 feet. You can designate any number of creatures to be unaffected. An affected creature's speed is halved in the area, and when it enters the area for the first time on a turn or starts its turn there it makes a Wisdom save: 3d8 radiant (necrotic if you are evil; this fixture is radiant), half on a success. At Higher Levels: +1d8 per slot level above 3rd.",
+  "description": "Spirits flit around you to a distance of 15 feet. You can designate any number of creatures to be unaffected. An affected creature's speed is halved in the area, and when it enters the area for the first time on a turn or starts its turn there it makes a Wisdom save: 3d8 radiant (necrotic if you are evil: evil_damage_type), half on a success. At Higher Levels: +1d8 per slot level above 3rd.",
   "level": 3,
   "school": "conjuration",
   "classes": [
@@ -52,7 +52,8 @@
                 "type": "radiant"
               },
               "on_success": "half"
-            }
+            },
+            "evil_damage_type": "necrotic"
           },
           {
             "on": "zone_start_turn",
@@ -64,7 +65,8 @@
                 "type": "radiant"
               },
               "on_success": "half"
-            }
+            },
+            "evil_damage_type": "necrotic"
           }
         ],
         "needs_conscious_owner": true
