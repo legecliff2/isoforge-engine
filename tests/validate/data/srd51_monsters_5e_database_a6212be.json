@@ -1545,6 +1545,60 @@
      ]
     }
    ]
+  },
+  "swarm-of-rats": {
+   "name": "Swarm of Rats",
+   "size": "Medium",
+   "type": "swarm of Tiny beasts",
+   "ac": [
+    10
+   ],
+   "hp": 24,
+   "hp_roll": "7d8-7",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    9,
+    11,
+    9,
+    2,
+    10,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+   ],
+   "attacks": [
+    {
+     "name": "Bites",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "2d6",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }

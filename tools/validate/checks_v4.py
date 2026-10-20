@@ -9,6 +9,7 @@ Everything is integer math; documents are plain json.load results.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 # ---- the per-tag table ----------------------------------------------------------------------------
@@ -639,6 +640,36 @@ def check_sim170(doc: dict) -> tuple[list[str], list[str]]:
                 warns.append(f"{where}/{i}: tag '{t}' is not lower case; content tags are case-folded, so it never matches (sim #170)")
     return errs, warns
 
+
+
+def check_sim172_174(doc: dict) -> tuple[list[str], list[str]]:
+    """sim #172 (swarms) / #174 (giant spider follow-up), @4 documents. Errors mirror the loader's refusals that the
+    schema cannot express: half_hp_damage needs at least one die ('<id>: bad half_hp_damage in action <aid>');
+    attack_effect long_range_ft ranged only and > range_ft ('bad long_range_ft (ranged, > range_ft)'); zero_hp needs
+    damage and condition != while ('zero_hp needs damage', 'bad zero_hp condition / while')."""
+    errs: list[str] = []
+    warns: list[str] = []
+    did = doc.get("id", "?")
+    for path, a in mechanical_actions(doc):
+        hh = a.get("half_hp_damage")
+        m = re.match(r"\s*(\d+)\s*d", hh) if isinstance(hh, str) else None
+        if isinstance(hh, str) and (m is None or int(m.group(1)) == 0):
+            errs.append(f"{path}: {did}: bad half_hp_damage in action {a.get('id', '?')} (needs at least one die) (sim #172)")
+        if a.get("kind") == "attack_effect" and "long_range_ft" in a:
+            lr, rng = a.get("long_range_ft"), a.get("range_ft", 5)
+            if a.get("attack", "ranged") == "melee" or not isinstance(lr, int) or not isinstance(rng, int) or lr <= rng:
+                errs.append(f"{path}: attack_effect '{a.get('id')}': bad long_range_ft (ranged, > range_ft) (sim #174)")
+    sites = [(p, a) for p, a in mechanical_actions(doc) if a.get("kind") == "save_effect"]
+    sites += [(p, r) for p, _o, _j, r in rider_sites(doc) if isinstance(r, dict) and r.get("kind") == "save_condition"]
+    for path, x in sites:
+        zh = x.get("zero_hp")
+        if not isinstance(zh, dict):
+            continue
+        if not x.get("damage"):
+            errs.append(f"{path}: zero_hp needs damage (sim #174)")
+        if zh.get("condition") == zh.get("while"):
+            errs.append(f"{path}: bad zero_hp condition / while (they must differ) (sim #174)")
+    return errs, warns
 
 
 
