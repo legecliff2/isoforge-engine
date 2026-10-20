@@ -1,0 +1,47 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.fmoa",
+  "name": "Shove Bolt",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "Test spell: a Dexterity save for 1d6 force damage; a creature that fails is pushed 10 feet away (the R-G9 forced_move rider, as on Thunderwave).",
+  "level": 1,
+  "school": "evocation",
+  "classes": [
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "save",
+      "ability": "dex",
+      "damage": {
+        "dice": "1d6",
+        "type": "force"
+      },
+      "on_success": "none"
+    },
+    {
+      "kind": "forced_move",
+      "applies_to": "affected",
+      "mode": "push",
+      "feet": 10,
+      "provokes_oa": true
+    }
+  ]
+}
