@@ -397,6 +397,90 @@
     }
    },
    "subclass_name": "Draconic"
+  },
+  "rogue": {
+   "name": "Rogue",
+   "hit_die": 8,
+   "saving_throws": [
+    "dex",
+    "int"
+   ],
+   "spellcasting_ability": null,
+   "subclass": "thief",
+   "subclass_name": "Thief",
+   "levels": {
+    "1": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "rogue-expertise-1": "Expertise",
+      "sneak-attack": "Sneak Attack",
+      "thieves-cant": "Thieves' Cant"
+     },
+     "class_specific": {
+      "sneak_attack": {
+       "dice_count": 1,
+       "dice_value": 6
+      }
+     }
+    },
+    "2": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "cunning-action": "Cunning Action"
+     },
+     "class_specific": {
+      "sneak_attack": {
+       "dice_count": 1,
+       "dice_value": 6
+      }
+     }
+    },
+    "3": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "roguish-archetype": "Roguish Archetype"
+     },
+     "class_specific": {
+      "sneak_attack": {
+       "dice_count": 2,
+       "dice_value": 6
+      }
+     },
+     "subclass_features": {
+      "fast-hands": "Fast Hands",
+      "second-story-work": "Second-Story Work"
+     }
+    },
+    "4": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 1,
+     "features": {
+      "rogue-ability-score-improvement-1": "Ability Score Improvement"
+     },
+     "class_specific": {
+      "sneak_attack": {
+       "dice_count": 2,
+       "dice_value": 6
+      }
+     }
+    },
+    "5": {
+     "prof_bonus": 3,
+     "ability_score_bonuses": 1,
+     "features": {
+      "uncanny-dodge": "Uncanny Dodge"
+     },
+     "class_specific": {
+      "sneak_attack": {
+       "dice_count": 3,
+       "dice_value": 6
+      }
+     }
+    }
+   }
   }
  },
  "spells": {

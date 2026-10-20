@@ -1,16 +1,16 @@
-# SRD 5.1 classes, first batch (Fighter, Cleric, Wizard, Sorcerer levels 1-5): authored vs deferred
+# SRD 5.1 classes (Fighter, Cleric, Wizard, Sorcerer, Rogue levels 1-5): authored vs deferred
 
 > This work includes material taken from the System Reference Document 5.1 ("SRD 5.1") by Wizards of the Coast LLC, available at <https://dnd.wizards.com/resources/systems-reference-document>. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License, <https://creativecommons.org/licenses/by/4.0/legalcode>.
 
 Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules, section 6), `docs/SRD_MONSTERS_DEFERRED.md` and `docs/SRD_SPELLS_DEFERRED.md`; pack `content/packs/srd51.core`.
 
-**Source.** Class, level, feature and subclass data come from [5e-bits/5e-database](https://github.com/5e-bits/5e-database) commit `a6212be` (`src/2014/en/5e-SRD-Classes.json`, `5e-SRD-Levels.json`, `5e-SRD-Features.json`, `5e-SRD-Subclasses.json`; spell levels and class lists from `5e-SRD-Spells.json`). The fields used are copied verbatim into `tests/validate/data/srd51_classes_5e_database_a6212be.json`, and `tests/validate/test_srd51_classes.py` (ctest `content_validate_srd51_classes`) checks every document against them. The SRD subclasses are Champion (Fighter), Life Domain (Cleric) and School of Evocation (Wizard).
+**Source.** Class, level, feature and subclass data come from [5e-bits/5e-database](https://github.com/5e-bits/5e-database) commit `a6212be` (`src/2014/en/5e-SRD-Classes.json`, `5e-SRD-Levels.json`, `5e-SRD-Features.json`, `5e-SRD-Subclasses.json`; spell levels and class lists from `5e-SRD-Spells.json`). The fields used are copied verbatim into `tests/validate/data/srd51_classes_5e_database_a6212be.json`, and `tests/validate/test_srd51_classes.py` (ctest `content_validate_srd51_classes`) checks every document against them. The SRD subclasses are Champion (Fighter), Life Domain (Cleric), School of Evocation (Wizard), Draconic Bloodline (Sorcerer) and Thief (Rogue).
 
 ## Representation
 
-`character@4` describes one creature: `classes[]` with a `level` and an optional `subclass`, a total `level`, and a stat block. There is no class or level-progression document type. A class level is therefore authored as **one pre-generated character per class per level**: 15 documents, `srd51.character.<class>_level_<n>` (`characters/<class>_level_<n>.json`). The `_level_` infix is deliberate: `srd51.character.fighter_1` already belongs to `sample.vertical_slice`, which depends on `srd51.core`, so a duplicate id would break the pack set.
+`character@4` describes one creature: `classes[]` with a `level` and an optional `subclass`, a total `level`, and a stat block. There is no class or level-progression document type. A class level is therefore authored as **one pre-generated character per class per level**: 25 documents, `srd51.character.<class>_level_<n>` (`characters/<class>_level_<n>.json`). The `_level_` infix is deliberate: `srd51.character.fighter_1` already belongs to `sample.vertical_slice`, which depends on `srd51.core`, so a duplicate id would break the pack set.
 
-Every PC is a human (SRD human: +1 to every ability score) built from the standard array (15, 14, 13, 12, 10, 8). The Ability Score Improvement at level 4 is +2 to the class's main ability (Str, Wis, Int), and level 5 carries it forward. Hit points are the maximum hit die at level 1, then the fixed average (6 / 5 / 4) plus Con for each later level. XP is the threshold for the level. Weapons, armor and shields are `{item, equipped}` references to the pack's `item@1` documents. AC and every attack are derived from those items (base damage, no feature bonus folded in; `docs/CONTENT_EFFECTS.md` section 2) and are pinned by the test. Packs, foci and ammunition stay descriptive strings.
+Every PC is a human (SRD human: +1 to every ability score) built from the standard array (15, 14, 13, 12, 10, 8). The Ability Score Improvement at level 4 is +2 to the class's main ability (Str, Wis, Int, Cha, Dex), and level 5 carries it forward. Hit points are the maximum hit die at level 1, then the fixed average (6 / 5 / 4) plus Con for each later level (d8 rogue: 5). XP is the threshold for the level. Weapons, armor and shields are `{item, equipped}` references to the pack's `item@1` documents. AC and every attack are derived from those items (base damage, no feature bonus folded in; `docs/CONTENT_EFFECTS.md` section 2) and are pinned by the test. Packs, foci and ammunition stay descriptive strings.
 
 | class | subclass (from) | build | AC | weapons |
 |---|---|---|---|---|
@@ -18,6 +18,7 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Cleric | Life Domain (1) | Wis 16 (18 at 4), Str 14, Con 15; Insight, Religion | 18: chain mail (heavy armor from Bonus Proficiency), shield | mace, light crossbow |
 | Wizard | School of Evocation (2) | Int 16 (18 at 4), Dex 15, Con 14; Arcana, History | 12: no armor | dagger (melee and thrown) |
 | Sorcerer | Draconic Bloodline (1), red (fire) ancestor | Cha 16 (18 at 4), Con 15, Dex 14; Arcana, Persuasion | 15: no armor, Draconic Resilience 13 + Dex | dagger (melee and thrown) |
+| Rogue | Thief (3) | Dex 16 (18 at 4), Con 15, Wis 14; Acrobatics, Perception, Sleight of Hand, Stealth (Expertise: Stealth, Perception); climb 30 from 3 (Second-Story Work) | 14 (15 at 4): leather armor | rapier (finesse), shortbow |
 
 ## Authored as data
 
@@ -41,12 +42,29 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Draconic Resilience (Draconic) | 1-5 | baked into the stat block: `hit_points` +1 per sorcerer level, `armor_class` 13 + Dex (no armor); descriptive feature, no `effect` | yes (static numbers) |
 | Font of Magic, Flexible Casting (both directions) | 2-5 | `font_of_magic {pool sorcery_points}` (VERSION_BUMP_BATCH 7.2o) + `resources[]` `sorcery_points {max = sorcerer level, recharge long_rest}` | yes (sim #152: pool, `FlexibleCasting` bonus action) |
 | Metamagic (Quickened Spell, Twinned Spell) | 3-5 | `metamagic {options [quickened, twinned], pool sorcery_points}` (R-G14), the same pool as Font of Magic | yes (sim #143) |
+| Sneak Attack (Rogue) | 1-5 | `on_event {on hit, limit once_per_turn, when [weapon finesse_or_ranged, advantage_or_ally_adjacent], effects [extra_damage 1d6 same_as_weapon, scale.per_levels {class rogue, every 2, add_dice 1d6}]}`: 1d6 / 2d6 / 3d6 at 1 / 3 / 5 (the mirror's column). `advantage_or_ally_adjacent` is net advantage, or an ally of the attacker within 5 ft of the target and no net disadvantage | yes (sim #158 triggers, `trigger_content_tests`) |
+| Cunning Action (Rogue) | 2-5 | `bonus_action_grant {actions [dash, disengage, hide]}` | yes |
+| Expertise (Rogue) | 1-5 | Stealth and Perception at double proficiency, baked into `skills` and passive Perception (the validator accepts mod + 2 x PB); descriptive feature, no `effect` | yes (static numbers) |
+| Roguish Archetype | 3 | `classes[0].subclass` = `thief` | descriptive |
+| Second-Story Work (Thief) | 3-5 | **partial**: "climbing no longer costs you extra movement" is `speed.climb` = walking speed (30; read as `Combatant::climb_ft`, #184). The running-jump bonus (+Dex mod feet) stays in the description: jumping is not simulated | climb: yes; jump: no |
+| Thieves' Cant (Rogue) | 1-5 | descriptive feature + `languages` entry (no combat rule) | n/a |
 
 The validator change in this batch: `attack_bonus`, `crit_range` and `ac_bonus` (sim #107 hooks) are now known effect kinds at `@4` in `tools/validate/checks_v4.py` (until now they produced an "unknown effect kind" warning). Their fields are checked the way the sim checks them at load. The `@<=3` rows are unchanged.
 
 **Extra Attack (done).** The fighter 5 feature `extra_attack` now carries the real kind `{"kind": "extra_attack", "attacks_per_action": 2}` (EC #179) instead of the earlier stand-in, a `multiattack` option `longsword_x2` (two longsword attacks). With the real kind, mixed weapons and grapple / shove replacing an attack are covered by the rules (`TurnBudget::attacks_remaining`). The kind is loaded only from `character@4` files: in a `character@3` (or older) file the sim lists it inert, and the 3 -> 4 migration does not carry it (the migration's kind list is frozen), so the validator gives the unknown-kind warning there.
 
 **Fighting style choice.** One style is picked: Dueling, which fits the shield build. The other SRD fighter styles would be: Archery `attack_bonus {ranged, 2}` and Defense `ac_bonus {1, requires_armor}` (expressible since #107); Two-Weapon Fighting via the `two_weapon_fighting` feature-id convention (`docs/CONTENT_CONVENTIONS.md` section 2); Protection, a `reactions[]` entry (`ally_attacked` / `impose_disadvantage`, shield required); Great Weapon Fighting, not expressible (rules have `Combatant::great_weapon_fighting`, R-G7 #103, but no content kind or loader sets it).
+
+## Descriptive only: mechanic missing (Rogue)
+
+The Rogue features below are kept as a `features[]` entry with the SRD text and **no `effect`**. Unlike the cleric rows further down, they are not left out: the SRD text documents the character, and nothing approximates the rule (the test checks the entries carry no `effect` and that no `reactions[]` stand-in exists).
+
+| feature (mirror index) | class / level | why it is not mechanical | gap id / owner |
+|---|---|---|---|
+| Uncanny Dodge (`uncanny-dodge`) | Rogue 5 | The only reduce-damage reaction window that is compiled is `damaged` (`compile_reactions`, sim). It opens for **any** damage after mitigation, including save spells, zones and riders, so `{window damaged, effect reduce_damage half}` would also halve a Fireball. `melee_only` / `ranged_only` do not exclude non-attack damage, `being_hit` is not compiled for `reduce_damage`, and `visible` is read only to refuse `false`. Needs either an `attack_only` flag on the `damaged` window (attack damage only, the attacker is the damager) plus a seen-attacker check, or `reduce_damage` compiled on `being_hit` | Rules / Engine Core (row 11 reactions, R-G7; vision 7.2x for "an attacker that you can see") |
+| Fast Hands (`fast-hands`) | Rogue (Thief) 3 | Adds Sleight of Hand checks, thieves' tools (traps, locks) and Use an Object to the Cunning Action bonus action. `bonus_action_grant.actions` is closed to dash / disengage / hide / dodge, and the sim has no Use an Object, Sleight of Hand or thieves' tools action | Rules (actions), T&C (enum value when an action exists) |
+| Expertise (`rogue-expertise-1`) | Rogue 1 | Not a gap: fully expressed as baked skill numbers; the entry has no `effect` because no hook reads it | n/a |
+| Second-Story Work, running jump | Rogue (Thief) 3 | Jump distance: the sim has no jumping | Rules (movement) |
 
 ## Deferred (feature not expressible today)
 
