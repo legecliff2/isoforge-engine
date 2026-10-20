@@ -69,7 +69,7 @@ void ChunkStreamer::pin(uint32_t owner, std::span<const ChunkCoord> chunks) {
 
 std::vector<ChunkCoord> ChunkStreamer::pinned() const {
     std::set<ChunkCoord> s;
-    for (const auto& [o, v] : pins_) s.insert(v.begin(), v.end());
+    for (const auto& kv : pins_) s.insert(kv.second.begin(), kv.second.end());
     return {s.begin(), s.end()};
 }
 
@@ -108,10 +108,12 @@ void ChunkStreamer::rebuild_wanted() {
     }
 }
 
+void ChunkStreamer::retry(ChunkCoord c) { failed_.erase(c); }
+void ChunkStreamer::retry_failed() { failed_.clear(); }
+
 bool ChunkStreamer::known_absent(ChunkCoord c) const {
     if (!root_.covers(c)) return true;
-    auto it = failed_.find(c);
-    return it != failed_.end() && it->second.empty();   // provider answered Empty
+    return empty_.count(c) != 0;   // provider answered Empty (pure in coord: kept even when unwanted)
 }
 
 HaloState ChunkStreamer::halo_state(ChunkCoord c) const {
@@ -120,7 +122,7 @@ HaloState ChunkStreamer::halo_state(ChunkCoord c) const {
         for (int dx = -1; dx <= 1; ++dx) {
             const ChunkCoord n{c.x + dx, c.y + dy, c.level};
             if (resident_.count(n) || known_absent(n)) continue;
-            if (auto it = failed_.find(n); it != failed_.end() && !it->second.empty()) return HaloState::Failed;
+            if (failed_.count(n)) return HaloState::Failed;
             pending = true;
         }
     return pending ? HaloState::Pending : HaloState::Complete;
@@ -141,7 +143,7 @@ void ChunkStreamer::integrate(ChunkCoord c, ChunkResult r) {
         resident_[c] = std::move(*r.chunk);
     } else if (r.status == ChunkStatus::Empty) {
         failed_.erase(c);   // nothing there: not resident, not an error
-        failed_[c];         // marks "done" with an empty message
+        empty_.insert(c);
     } else {
         failed_[c] = r.error.empty() ? std::string("load failed") : r.error;
     }
@@ -150,7 +152,7 @@ void ChunkStreamer::integrate(ChunkCoord c, ChunkResult r) {
 void ChunkStreamer::enqueue_missing() {
     std::vector<ChunkCoord> to_queue;
     for (ChunkCoord c : wanted_order_) {
-        if (resident_.count(c) || failed_.count(c) || in_flight_.count(c)) continue;
+        if (resident_.count(c) || failed_.count(c) || empty_.count(c) || in_flight_.count(c)) continue;
         if (auto it = cache_.find(c); it != cache_.end()) {   // cache hit: integrate now
             resident_[c] = std::move(it->second);
             cache_.erase(it);
@@ -231,7 +233,7 @@ StreamDelta ChunkStreamer::update() {
 
 bool ChunkStreamer::idle() const {
     for (ChunkCoord c : wanted_)
-        if (!resident_.count(c) && !failed_.count(c)) return false;
+        if (!resident_.count(c) && !failed_.count(c) && !empty_.count(c)) return false;
     return true;
 }
 
@@ -265,8 +267,7 @@ std::vector<ChunkCoord> ChunkStreamer::wanted() const { return {wanted_.begin(),
 
 std::vector<std::string> ChunkStreamer::errors() const {
     std::vector<std::string> out;
-    for (const auto& [c, e] : failed_)
-        if (!e.empty()) out.push_back(coord_str(c) + ": " + e);
+    for (const auto& [c, e] : failed_) out.push_back(coord_str(c) + ": " + e);
     return out;
 }
 
