@@ -92,6 +92,9 @@ struct SpellEffect {
     // appended: Save / ApplyCondition with expiry 0 and no repeat save, for a condition that ends by its own rules (prone: the
     // creature stands up). Applied like Shove's prone: the condition only, no ActiveSpellEffect entry.
     bool condition_untracked = false;
+    // appended (EC deferred monsters, flagged): ApplyCondition: the creature ends it with an action, a Strength check vs this DC
+    // (special 4, like a zone's Web); the condition lasts until then (no timer). 0 = none.
+    int8_t escape_dc = 0;
     // appended (#120 follow-up): + this many dice per slot level above the spell's level; set by the loader only on a
     // DelayedDamage extra effect (Acid Arrow), from the spell's scaling.upcast.dice. 0 = does not scale (every other effect).
     uint8_t upcast_dice = 0;
@@ -260,9 +263,16 @@ struct SpellDef {
     std::string material_item;
     // appended: see SpellEffect::condition_untracked (primary effect).
     bool condition_untracked = false;
+    int8_t escape_dc = 0;   // appended (EC deferred monsters): see SpellEffect::escape_dc
     // appended (#138): EndCondition's `ends_conditions` in spell@1 JSON list order; ActionRequest::condition_choice is 1 + an
     // index into it (stable across engine versions, unlike Condition enum order). Filled by the loader; empty = mask order.
     std::vector<Condition> ends_condition_list;
+    // appended (R-G12, CONTENT_CONVENTIONS §9): kind Polymorph. polymorph_forms = spell@1 `forms[]` (beast monster content ids;
+    // ActionRequest::form_archetype = 1 + index); polymorph_max_cr8 = fixed `max_cr` as CR*8 (0xFFFF = target_level, the
+    // default: sim's build_form checks it at cast); polymorph_save = the unwilling target's save (default Wis).
+    std::vector<std::string> polymorph_forms;
+    uint16_t polymorph_max_cr8 = 0xFFFF;
+    Ability polymorph_save = Ability::Wis;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
