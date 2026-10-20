@@ -188,9 +188,10 @@ TEST_CASE("transforms: 0 HP in a form reverts and the excess carries over") {
     REQUIRE(r.ok);
     const Event* rv = first(r.events, EventKind::Reverted);
     REQUIRE(rv); CHECK(rv->b == 2); CHECK(rv->c == 16);
-    int dealt = 0;
-    for (const auto& e : r.events) if (e.kind == EventKind::DamageDealt && e.target == 1) ++dealt;
-    CHECK(dealt == 2);   // the form's damage, then the carried damage
+    std::vector<int32_t> dealt;
+    for (const auto& e : r.events) if (e.kind == EventKind::DamageDealt && e.target == 1) dealt.push_back(e.a);
+    REQUIRE(dealt.size() == 2);   // the form's share (3 temp + 11 HP), then only the carried overflow: no double count
+    CHECK(dealt[0] == 14); CHECK(dealt[1] == 16); CHECK(dealt[0] + dealt[1] == 30);
     const Combatant& d = *find(s, 1);
     CHECK(d.form == FormKind::None); CHECK(d.hp == 12); CHECK(d.hp_max == 28); CHECK(d.temp_hp == 0);
     CHECK_FALSE(d.dead); CHECK_FALSE(d.has(Condition::Unconscious));

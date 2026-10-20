@@ -1893,8 +1893,9 @@ Rules:
   `no action available`, `incapacitated`, `not transformed`); Polymorph: `polymorph ends with the spell, not by choice`.
   `Reverted{b = 3}`. `legal_actions` lists it when affordable.
 - **HP overflow** (inside `after_damage`, the one place damage lands): when a Polymorph / Wild Shape form drops to 0 HP the
-  step emits the form's `DamageDealt{b = 0}`, then `Reverted{b = 2, c = overflow}` (overflow = damage past temp HP and the
-  form's HP), restores the normal form, and applies the overflow as a second `DamageDealt` with the normal drop / death-save /
+  step emits the form's `DamageDealt{a = what the form absorbed (temp HP + its remaining HP), b = 0}`, then `Reverted{b = 2,
+  c = overflow}` (overflow = damage past temp HP and the form's HP), restores the normal form, and applies the overflow as a
+  second `DamageDealt{a = overflow}` (the two sum to the hit, no double count) with the normal drop / death-save /
   **massive damage** logic against the **normal form's hp_max** (D12). No massive damage check against the form. A
   shapechanger has no overflow (one pool) and reverts on death.
 - **Other ends.** Death in any form (no 0-HP path): `Reverted{b = 4}` before `CombatantDied`. Wild Shape while Unconscious
