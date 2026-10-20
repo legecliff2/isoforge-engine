@@ -1,0 +1,29 @@
+{
+  "base": "characters/barbarian_level_5.json",
+  "sets": [
+    [
+      [
+        "features",
+        0,
+        "effect"
+      ],
+      {
+        "kind": "apply_modifier",
+        "scope": {
+          "attack": "spell"
+        },
+        "modifier": {
+          "stat": "damage",
+          "bonus": 2,
+          "applies_to": "self",
+          "duration": {
+            "kind": "rounds",
+            "n": 10
+          }
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "spell"
+}

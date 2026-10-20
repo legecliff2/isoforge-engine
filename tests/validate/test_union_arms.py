@@ -307,9 +307,50 @@ class ClassFeatureHooks72y(unittest.TestCase):
         c2 = load("common/v2.schema.json")["$defs"]
         sc = c2["apply_modifier_effect"]["properties"]["scope"]
         self.assertFalse(sc["additionalProperties"])
-        self.assertEqual(sc["required"], ["weapon"])
-        self.assertEqual(sc["properties"], {"weapon": {"enum": ["wielded"]}})
+        self.assertEqual(sc["minProperties"], 1)   # 7.2z: weapon / attack / ability, at least one
+        self.assertEqual(sc["properties"]["weapon"], {"enum": ["wielded"]})
         self.assertEqual(c2["reaction"]["properties"]["window"]["properties"]["requires_sight"]["type"], "boolean")
+
+
+class BarbarianHooks72z(unittest.TestCase):
+    """VERSION_BUMP_BATCH 7.2z: scope keys, ends_early / blocks / advantage_on / on_end / passive / when, bonus_attack."""
+    APPLY = S({"kind", "cost", "usage", "modifier", "modifiers", "scope", "ends_early", "blocks", "advantage_on", "on_end",
+               "passive", "when"})
+
+    def test_apply_modifier_keys(self):
+        am = load("common/v2.schema.json")["$defs"]["apply_modifier_effect"]
+        self.assertFalse(am["additionalProperties"])
+        self.assertEqual(set(am["properties"]), set(self.APPLY))
+        sc = am["properties"]["scope"]
+        self.assertFalse(sc["additionalProperties"])
+        self.assertEqual(sc["minProperties"], 1)
+        self.assertEqual({k: v["enum"] for k, v in sc["properties"].items()},
+                         {"weapon": ["wielded"], "attack": ["melee_weapon", "ranged_weapon"], "ability": ["str", "dex"]})
+        self.assertEqual(am["properties"]["ends_early"]["items"]["enum"], ["no_attack_or_damage_since_last_turn", "unconscious"])
+        self.assertEqual(am["properties"]["blocks"]["items"]["enum"], ["casting", "concentration"])
+        for k in ("ends_early", "blocks"):
+            self.assertTrue(am["properties"][k]["uniqueItems"])
+        self.assertEqual(set(am["properties"]["advantage_on"]["properties"]), {"checks", "saves"})
+        oe = am["properties"]["on_end"]
+        self.assertEqual((oe["required"], oe["properties"]["exhaustion"]["minimum"], oe["properties"]["exhaustion"]["maximum"]),
+                         (["exhaustion"], 1, 6))
+        w = am["properties"]["when"]
+        self.assertFalse(w["additionalProperties"])
+        self.assertEqual(set(w["properties"]), {"save", "source_seen", "not_conditions"})
+
+    def test_bonus_attack_arm(self):
+        c2 = load("common/v2.schema.json")["$defs"]
+        b = c2["bonus_attack_effect"]
+        self.assertFalse(b["additionalProperties"])
+        self.assertEqual(set(b["required"]), {"kind", "requires_effect"})
+        self.assertEqual(set(b["properties"]), {"kind", "requires_effect"})
+        arms = {a["$ref"].rsplit("/", 1)[1] for a in c2["effect"]["anyOf"][2]["oneOf"] if "$ref" in a}
+        self.assertIn("bonus_attack_effect", arms)
+        nots = [a["properties"]["kind"]["not"] for a in c2["effect_live"]["allOf"] if "properties" in a]
+        self.assertIn({"const": "bonus_attack"}, nots)
+        al = c2["ability_list"]
+        self.assertTrue(al["uniqueItems"])
+        self.assertEqual(al["items"]["enum"], ["str", "dex", "con", "int", "wis", "cha"])
 
 
 class SpellMaterialObject(unittest.TestCase):
