@@ -4,6 +4,7 @@
 #include <cctype>
 
 #include "rules5e/armor.hpp"
+#include "rules5e/font_of_magic.hpp"
 
 #include "rules5e_content/spell_loader.hpp"
 #include "sim/content.hpp"
@@ -435,6 +436,35 @@ std::optional<std::string> apply_metamagic(Archetype& a, const FeatureDecl& f, u
     a.base.sorcery_pool = pool;
     return std::nullopt;
 }
+// font_of_magic {pool} (Sorcerer 2+, VERSION_BUMP_BATCH 7.2o hand-off): the sorcery pool is the resources[] pool `pool`
+// (registered here when resources[] lacks it), resolved to max = start = sorcery_points_max(sorcerer level from classes[])
+// with recharge LongRest, and Combatant::sorcery_pool points at it even without a metamagic feature. A metamagic declaration
+// naming a different pool (either order) is a load error, as for two metamagic declarations.
+std::optional<std::string> apply_font_of_magic(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    const std::string pid = f.effect.value("pool", "");
+    if (pid.empty()) return f.id + ": font_of_magic needs pool";
+    for (const auto& u : a.unlimited_resources)
+        if (u == pid) return f.id + ": font_of_magic pool '" + pid + "' is unlimited";
+    int level = 0;
+    for (const Json& c : ctx.doc.value("classes", Json::array()))
+        if (c.is_object() && c.value("class", "") == "sorcerer") level += c.value("level", 0);
+    const int max = rules5e::sorcery_points_max(level);
+    if (max <= 0) return f.id + ": font_of_magic needs sorcerer level 2+ (sorcerer level " + std::to_string(level) + ")";
+    const uint32_t pool = rules5e::spell_id_of(pid);
+    if (a.base.sorcery_pool != 0 && a.base.sorcery_pool != pool) return f.id + ": font_of_magic and metamagic name different pools";
+    Archetype::Resource* res = nullptr;
+    for (auto& r : a.resources)
+        if (r.id == pid) res = &r;
+    if (!res) {
+        a.resources.push_back(Archetype::Resource{pid, pool, 0, 0, 0});
+        res = &a.resources.back();
+    }
+    res->max = uint16_t(max);
+    res->start = uint16_t(max);
+    res->recharge = uint8_t(rules5e::FeatureRecharge::LongRest);
+    a.base.sorcery_pool = pool;
+    return std::nullopt;
+}
 // sculpt_spells {} (Evocation Wizard): rules5e Combatant::sculpt_spells; the caller lists ActionRequest::spared.
 std::optional<std::string> apply_sculpt_spells(Archetype& a, const FeatureDecl&, uint32_t, const FeatureBuildCtx&) {
     a.base.sculpt_spells = true;
@@ -513,6 +543,7 @@ FeatureRegistry make_builtin() {
     r.add_hook("reckless_attack", {apply_reckless_attack});
     r.add_hook("pack_tactics", {apply_pack_tactics});
     r.add_hook("metamagic", {apply_metamagic});
+    r.add_hook("font_of_magic", {apply_font_of_magic});
     r.add_hook("sculpt_spells", {apply_sculpt_spells});
     r.add_hook("slot_recovery", {apply_slot_recovery});
     // Kinds the @4 schemas introduce (frozen list of the 3 -> 4 migration; hooks arrive with their rows).
