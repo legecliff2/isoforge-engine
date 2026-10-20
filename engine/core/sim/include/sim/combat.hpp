@@ -57,6 +57,7 @@ struct Command {
     // CastSpell of an area spell: `to` is the aim tile and sim derives the targets (the creatures inside the template)
     // when `request.targets` is empty. Opt-in: without it an area spell keeps the caller-supplied target list.
     bool aim = false;
+    // Step: request.squeeze == 1 opts in to SRD Squeezing (a Large+ fits a space one size smaller; feat/size-space).
 };
 // Replay log entry: rules5e's LoggedStep (request + Ask decisions) plus, for Moves, the tile.
 struct LogEntry {
@@ -141,6 +142,13 @@ public:
     // [pos.x, pos.x + n) x [pos.y, pos.y + n). Spawn tiles and Step destinations are anchors. n == 1 for
     // every pre-footprint creature, which then behaves exactly as before.
     int footprint_size(CombatantId id) const;
+    // feat/size-space: the size's side ignoring squeezing; may `mover` pass through `other`'s space; who covers a tile.
+    int natural_footprint(CombatantId id) const;
+    bool may_pass(CombatantId mover, CombatantId other) const;
+    CombatantId occupant_at(Vec2i t, CombatantId except) const;
+    bool overlaps_other(CombatantId id, Vec2i anchor, int n) const;
+    struct StepPlan { int n = 1; int cost = 5; uint8_t squeeze = 0; bool ends_in_other = false; };
+    std::optional<std::string> plan_step(CombatantId mover, Vec2i to, StepPlan& plan, bool allow_squeeze = false) const;
     std::vector<Vec2i> footprint_tiles(CombatantId id) const { return footprint_tiles_at(id, pos(id)); }
     std::vector<Vec2i> footprint_tiles_at(CombatantId id, Vec2i anchor) const;   // row-major (y, then x)
     // Nearest-tile distance in tiles between two creatures' footprints (chebyshev for 1x1), and line of
@@ -257,6 +265,7 @@ public:
     // Cost in feet of one step of `mover` from `from` to `to`: the grid's cost, at least 10 when it enters a kZoneDifficult zone
     // and doubled in a kZoneHalveSpeed zone (the mover not excluded), at most 20 ft per tile.
     int step_cost_ft(CombatantId mover, Vec2i from, Vec2i to) const;
+    int step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int footprint) const;
     // ---- R-G12 transforms (VERSION_BUMP_BATCH 7.2q hand-off, SUMMONS_TRANSFORMS.md §3) ----
     // The archetype form choice `index` (ActionRequest::form_archetype - 1) of transform `kind` from `source` resolves to:
     // Wild Shape: the feature's forms[index]; Polymorph (source = spell id): the index-th beast of the library (byte order of
@@ -298,7 +307,7 @@ private:
     std::vector<std::pair<CombatantId, Vec2i>> forced_placed_;   // hook commits of the step being resolved, in order
     SubmitResult finish(rules5e::StepResult sr);
     SubmitResult do_rules(rules5e::ActionRequest req, Vec2i to, bool aim = false);
-    SubmitResult do_step(Vec2i to);
+    SubmitResult do_step(Vec2i to, bool allow_squeeze = false);
     void complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs, std::optional<Vec2i> to,
                   std::optional<std::size_t> teardown_begin = std::nullopt);
     // R-G12 summons: push one rules event (counting TurnStarted), spawning the summon of a Summoned event (+ TokenSpawned).
