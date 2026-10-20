@@ -1001,6 +1001,142 @@
     }
    ]
   },
+  "warlock": {
+   "name": "Warlock",
+   "hit_die": 8,
+   "saving_throws": [
+    "wis",
+    "cha"
+   ],
+   "spellcasting_ability": "cha",
+   "subclass": "fiend",
+   "levels": {
+    "1": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "otherworldly-patron": "Otherworldly Patron",
+      "pact-magic": "Pact Magic"
+     },
+     "class_specific": {
+      "invocations_known": 0,
+      "mystic_arcanum_level_6": 0,
+      "mystic_arcanum_level_7": 0,
+      "mystic_arcanum_level_8": 0,
+      "mystic_arcanum_level_9": 0
+     },
+     "cantrips_known": 2,
+     "spells_known": 2,
+     "spell_slots": {
+      "1": 1
+     },
+     "subclass_features": {
+      "dark-ones-blessing": "Dark One's Blessing"
+     }
+    },
+    "2": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "eldritch-invocations": "Eldritch Invocations"
+     },
+     "class_specific": {
+      "invocations_known": 2,
+      "mystic_arcanum_level_6": 0,
+      "mystic_arcanum_level_7": 0,
+      "mystic_arcanum_level_8": 0,
+      "mystic_arcanum_level_9": 0
+     },
+     "cantrips_known": 2,
+     "spells_known": 3,
+     "spell_slots": {
+      "1": 2
+     }
+    },
+    "3": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "pact-boon": "Pact Boon"
+     },
+     "class_specific": {
+      "invocations_known": 2,
+      "mystic_arcanum_level_6": 0,
+      "mystic_arcanum_level_7": 0,
+      "mystic_arcanum_level_8": 0,
+      "mystic_arcanum_level_9": 0
+     },
+     "cantrips_known": 2,
+     "spells_known": 4,
+     "spell_slots": {
+      "2": 2
+     }
+    },
+    "4": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 1,
+     "features": {
+      "warlock-ability-score-improvement-1": "Ability Score Improvement"
+     },
+     "class_specific": {
+      "invocations_known": 3,
+      "mystic_arcanum_level_6": 0,
+      "mystic_arcanum_level_7": 0,
+      "mystic_arcanum_level_8": 0,
+      "mystic_arcanum_level_9": 0
+     },
+     "cantrips_known": 3,
+     "spells_known": 5,
+     "spell_slots": {
+      "2": 2
+     }
+    },
+    "5": {
+     "prof_bonus": 3,
+     "ability_score_bonuses": 1,
+     "features": {},
+     "class_specific": {
+      "invocations_known": 3,
+      "mystic_arcanum_level_6": 0,
+      "mystic_arcanum_level_7": 0,
+      "mystic_arcanum_level_8": 0,
+      "mystic_arcanum_level_9": 0
+     },
+     "cantrips_known": 3,
+     "spells_known": 6,
+     "spell_slots": {
+      "3": 2
+     }
+    }
+   },
+   "subclass_name": "Fiend",
+   "subclass_spells": [
+    {
+     "level": 1,
+     "spell": "burning-hands"
+    },
+    {
+     "level": 1,
+     "spell": "command"
+    },
+    {
+     "level": 3,
+     "spell": "blindness-deafness"
+    },
+    {
+     "level": 3,
+     "spell": "scorching-ray"
+    },
+    {
+     "level": 5,
+     "spell": "fireball"
+    },
+    {
+     "level": 5,
+     "spell": "stinking-cloud"
+    }
+   ]
+  },
   "monk": {
    "name": "Monk",
    "hit_die": 8,
@@ -1369,6 +1505,73 @@
    "school": "transmutation",
    "classes": [
     "cleric"
+   ]
+  },
+  "chill-touch": {
+   "name": "Chill Touch",
+   "level": 0,
+   "school": "necromancy",
+   "classes": [
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ]
+  },
+  "burning-hands": {
+   "name": "Burning Hands",
+   "level": 1,
+   "school": "evocation",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ]
+  },
+  "ray-of-frost": {
+   "name": "Ray of Frost",
+   "level": 0,
+   "school": "evocation",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ]
+  },
+  "misty-step": {
+   "name": "Misty Step",
+   "level": 2,
+   "school": "conjuration",
+   "classes": [
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ]
+  },
+  "fireball": {
+   "name": "Fireball",
+   "level": 3,
+   "school": "evocation",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ]
+  },
+  "command": {
+   "name": "Command",
+   "level": 1,
+   "school": "enchantment",
+   "classes": [
+    "cleric",
+    "paladin"
+   ]
+  },
+  "blindness-deafness": {
+   "name": "Blindness/Deafness",
+   "level": 2,
+   "school": "necromancy",
+   "classes": [
+    "bard",
+    "cleric",
+    "sorcerer",
+    "wizard"
    ]
   }
  }
