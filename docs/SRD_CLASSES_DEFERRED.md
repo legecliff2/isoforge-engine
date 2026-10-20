@@ -33,6 +33,7 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Domain Spells (Life) | 1-5 | Cure Wounds in `spellcasting.spells` (always prepared); the others are not shipped (below) | yes |
 | Divine Domain / Martial Archetype / Arcane Tradition | 1 / 3 / 2 | `classes[0].subclass` = `life` / `champion` / `evocation` | descriptive |
 | Bonus Proficiency (Life: heavy armor) | 1-5 | descriptive feature; its only combat effect is the worn chain mail, already in AC | n/a |
+| Arcane Recovery (Wizard) | 1-5 | `slot_recovery {class wizard, max_slot_level 5, uses 1}` (VERSION_BUMP_BATCH 7.2n); budget ceil(wizard level / 2) is derived from `classes[]`, the SRD text stays in `description` | yes (sim #148 `apply_slot_recovery`) |
 | Evocation Savant | 2-5 | descriptive feature (downtime spell copying cost, out of combat scope) | n/a |
 | Spellcasting (Sorcerer) | 1-5 | `spellcasting {ability cha, caster_level, slots, spells}` (spells known: the shipped sorcerer spells, below) | yes |
 | Sorcerous Origin | 1 | `classes[0].subclass` = `draconic` | descriptive |
@@ -58,8 +59,12 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 | Channel Divinity: Turn Undead (`channel-divinity-turn-undead`) | Cleric 2 | The "turned" condition (must move away, Dash only, no reactions, ends on damage) has no condition id or AI behaviour. `save_effect` also cannot spend a feature pool or filter by creature type (undead within 30 ft that can see or hear you) | R-G5, R-G8, R-G10 |
 | Channel Divinity: Preserve Life (`channel-divinity-preserve-life`) | Cleric (Life) 2 | Splits a pool of 5 x cleric level HP among any creatures within 30 ft, each capped at half its HP maximum, not undead or constructs. `heal_pool` heals one target from a pool that persists across uses; there is no split, cap, or per-use pool size | R-G5, R-G10, R-G15 |
 | Destroy Undead (`destroy-undead-cr-1-2-or-below`) | Cleric 5 | A Turn Undead outcome (destroy at CR 1/2 or lower); depends on Turn Undead | R-G5 |
-| Arcane Recovery (`arcane-recovery`) | Wizard 1 | Recovers slots on a short rest, once per day. Rules have `recover_spell_slots` / `recovery_budget` (#108), but no content kind or loader wires it, and slot choice belongs to the caller | R-G16 (wiring) |
-| Sculpt Spells (`sculpt-spells`) | Wizard (Evocation) 2 | Rules have `Combatant::sculpt_spells` and `ActionRequest::spared` (R-G14, #109), but no content kind or loader sets the flag | R-G14 (wiring) |
+
+### Other classes (no character in this batch)
+
+| feature | class / level | status | gap id |
+|---|---|---|---|
+| Natural Recovery (Circle of the Land) | Druid (Land) 2 | Expressible as `slot_recovery {class druid, max_slot_level 5, uses 1}` (VERSION_BUMP_BATCH 7.2n; the SRD "finish a long rest" reset is the kind's `uses` per long rest), but no druid character ships, so nothing carries it. Deferred to the druid documents. The loader (sim #148) already accepts `class druid` | R-G16 (wiring), 7.2n |
 
 ### Spells the documents cannot reference yet
 

@@ -1,0 +1,50 @@
+{
+  "base": "monsters/orc.json",
+  "sets": [
+    [
+      [
+        "resources"
+      ],
+      [
+        {
+          "id": "p",
+          "max": 3,
+          "recharge": "long_rest"
+        }
+      ]
+    ],
+    [
+      [
+        "traits",
+        1
+      ],
+      {
+        "id": "t",
+        "name": "T",
+        "description": "x",
+        "effect": {
+          "kind": "on_event",
+          "on": "hit",
+          "effects": [
+            {
+              "kind": "extra_damage",
+              "damage": [
+                {
+                  "dice": "2d6",
+                  "type": "same_as_weapon"
+                }
+              ]
+            }
+          ],
+          "usage": {
+            "kind": "pool",
+            "pool": "p",
+            "cost": 256
+          }
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "on_event: bad usage pool (cost must be 1..255, got 256)"
+}

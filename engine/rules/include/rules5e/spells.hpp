@@ -42,6 +42,16 @@ enum class SpellEffectKind : uint8_t {
     Teleport,       // the caster teleports (`teleport`; Misty Step); the destination is sim's (ActionRequest::teleport_*)
     // appended (R-G11, docs/proposals/ZONES_AURAS.md): a persistent zone or aura (`zone`; primary effect only)
     Zone,
+    // appended (R-G12 rules PR 1, docs/proposals/SUMMONS_TRANSFORMS.md): one creature becomes a beast (Polymorph): unwilling
+    // (another team) makes a Wisdom save; the form is ActionRequest::form_archetype through EncounterHooks::build_form; no effect
+    // on a shapechanger or a creature with 0 hit points (D13: refused). Ends at 0 HP (overflow carries), death or concentration.
+    Polymorph,
+    // appended (R-G12 rules PR 2): creatures appear (Conjure Animals, Find Familiar, Animate Dead); `summon`. Cast on the caster;
+    // the creatures are ActionRequest::summon_archetypes through EncounterHooks::build_summon, with ids from the encounter's counter.
+    Summon,
+    // appended (R-G12 rules PR 3, D3): Spiritual Weapon: a non-creature token (`ActiveSummonWeapon`) whose attack is a melee spell
+    // attack (dice + the spellcasting modifier when add_spellcasting_modifier) on the cast and as a later bonus action.
+    SummonWeapon,
 };
 // R-G9 forced movement (push / pull) of an effect. mode 1 push (away from the source), 2 pull (toward it), 3 along a line
 // (Gust of Wind: sim's direction; not in R-G9's first scope). feet: exact distance, or the maximum when up_to (the caster
@@ -88,6 +98,15 @@ struct SpellEffect {
     // appended: Save / ApplyCondition with expiry 0 and no repeat save, for a condition that ends by its own rules (prone: the
     // creature stands up). Applied like Shove's prone: the condition only, no ActiveSpellEffect entry.
     bool condition_untracked = false;
+    // appended (EC deferred monsters, flagged): ApplyCondition: the creature ends it with an action, a Strength check vs this DC
+    // (special 4, like a zone's Web); the condition lasts until then (no timer). 0 = none.
+    int8_t escape_dc = 0;
+    // appended (EC spider follow-up, flagged): ApplyCondition with escape_dc: the restraint is also a destructible object (the
+    // giant spider's web: AC 10, 5 HP, vulnerable to fire, immune to bludgeoning / poison / psychic). Attacking it is
+    // ActionRequest::special 6; at 0 HP the effect (and its condition) ends. Masks are DamageType bits. object_hp 0 = none.
+    int8_t object_ac = 0;
+    int16_t object_hp = 0;
+    uint32_t object_vulnerable = 0, object_immune = 0;
     // appended (#120 follow-up): + this many dice per slot level above the spell's level; set by the loader only on a
     // DelayedDamage extra effect (Acid Arrow), from the spell's scaling.upcast.dice. 0 = does not scale (every other effect).
     uint8_t upcast_dice = 0;
@@ -139,6 +158,26 @@ struct ZoneTriggerRow {
     // Spirit Guardians: the damage is evil_damage_type instead when the zone's owner is evil (Combatant::evil).
     bool has_evil_damage_type = false;
     DamageType evil_damage_type = DamageType::Necrotic;
+};
+// R-G12 rules PR 2 (SUMMONS_TRANSFORMS.md §2.2 A): how summoned creatures act. initiative: Own = each rolls (Find Familiar),
+// Group = one roll for the cast, consecutive turns ordered by id (conjure family, Animate Dead: D2). control: None = acts on
+// its own; Verbal (conjure: free command) / BonusAction (Animate Dead: the summoner's bonus action) = needs a command for its
+// turn, else it only Dodges (D4); Telepathic (familiar) = acts on its own. vanishes_at_zero_hp: disappears at 0 HP
+// (SummonEnded b = 3, no corpse) instead of dying. Concentration = the spell's.
+enum class SummonInitiative : uint8_t { Own = 0, Group = 1 };
+enum class SummonControl : uint8_t { None = 0, Verbal = 1, BonusAction = 2, Telepathic = 3 };
+struct SummonSpec {
+    uint8_t max_count = 1;   // creatures per cast (any count 1..max_count unless EncounterHooks::summon_choice_ok decides)
+    SummonInitiative initiative = SummonInitiative::Own;
+    SummonControl control = SummonControl::None;
+    bool vanishes_at_zero_hp = true;
+};
+// R-G12 rules PR 3: Spiritual Weapon. upcast_every: slot levels per upcast_dice extra dice (SRD: 1d8 per two levels above 2nd);
+// move_ft / reach_ft are sim's (the token's position), carried for content.
+struct SummonWeaponSpec {
+    uint8_t upcast_every = 2;
+    uint8_t reach_ft = 5;
+    uint16_t move_ft = 20;
 };
 struct ZoneSpec {
     AreaShape shape = AreaShape::None;       // Sphere, Cylinder, Cube, Line (walls)
@@ -251,14 +290,35 @@ struct SpellDef {
     TeleportSpec teleport{};
     // appended (R-G11): kind Zone (primary effect only; an extra effect of kind Zone is refused at cast).
     ZoneSpec zone{};
+    SummonSpec summon{};   // appended (R-G12 rules PR 2): kind Summon (primary effect only)
+    SummonWeaponSpec summon_weapon{};   // appended (R-G12 rules PR 3): kind SummonWeapon (primary effect only)
     // appended (priced materials, CONTENT_CONVENTIONS §7): components.m.item, the equipment content id that provides a priced
     // material ("" = none: a priced material without an item is unsatisfiable). rules5e never reads it (sim's components hook does).
     std::string material_item;
     // appended: see SpellEffect::condition_untracked (primary effect).
     bool condition_untracked = false;
+    int8_t escape_dc = 0;   // appended (EC deferred monsters): see SpellEffect::escape_dc
+    // appended (EC spider follow-up, flagged): see SpellEffect::object_*.
+    int8_t object_ac = 0;
+    int16_t object_hp = 0;
+    uint32_t object_vulnerable = 0, object_immune = 0;
+    // appended (EC spider follow-up, flagged): a non-spell ranged SpellAttack (attack_effect) with a long range: targets out
+    // to long_range_ft are legal, beyond range_ft (or with a hostile within 5 ft, ActionRequest facts) at disadvantage. 0 = none.
+    uint16_t long_range_ft = 0;
+    // appended (EC spider follow-up, flagged): Save with damage (giant spider bite): when this effect's damage drops a living
+    // target to 0 HP, it is stable and gains zero_hp_condition for zero_hp_rounds (one ActiveSpellEffect, timed, so it outlasts
+    // regained HP) and zero_hp_while for as long as that effect lasts. 0 = off.
+    uint16_t zero_hp_rounds = 0;
+    Condition zero_hp_condition = Condition::Poisoned, zero_hp_while = Condition::Paralyzed;
     // appended (#138): EndCondition's `ends_conditions` in spell@1 JSON list order; ActionRequest::condition_choice is 1 + an
     // index into it (stable across engine versions, unlike Condition enum order). Filled by the loader; empty = mask order.
     std::vector<Condition> ends_condition_list;
+    // appended (R-G12, CONTENT_CONVENTIONS §9): kind Polymorph. polymorph_forms = spell@1 `forms[]` (beast monster content ids;
+    // ActionRequest::form_archetype = 1 + index); polymorph_max_cr8 = fixed `max_cr` as CR*8 (0xFFFF = target_level, the
+    // default: sim's build_form checks it at cast); polymorph_save = the unwilling target's save (default Wis).
+    std::vector<std::string> polymorph_forms;
+    uint16_t polymorph_max_cr8 = 0xFFFF;
+    Ability polymorph_save = Ability::Wis;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered

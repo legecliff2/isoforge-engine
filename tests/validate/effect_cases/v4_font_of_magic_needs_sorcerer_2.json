@@ -31,5 +31,12 @@
     ]
   ],
   "severity": "error",
-  "expect": "font_of_magic: font_of_magic needs sorcerer level 2+ (sorcerer level 0)"
+  "expect": "font_of_magic: font_of_magic needs sorcerer level 2+ (sorcerer level 0)",
+  "dels": [
+    [
+      "features",
+      0,
+      "effect"
+    ]
+  ]
 }

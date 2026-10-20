@@ -65,5 +65,12 @@
     ]
   ],
   "severity": "error",
-  "expect": "font_of_magic: font_of_magic and metamagic name different pools ('sorcery_points' here, 'other'"
+  "expect": "font_of_magic: font_of_magic and metamagic name different pools ('sorcery_points' here, 'other'",
+  "dels": [
+    [
+      "features",
+      0,
+      "effect"
+    ]
+  ]
 }

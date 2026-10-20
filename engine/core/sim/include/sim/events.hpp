@@ -12,9 +12,11 @@
 namespace eng::sim {
 
 // Version of the event stream contract (SimEvent + rules5e::Event as surfaced by sim).
-inline constexpr uint32_t kSimEventSchemaVersion = 9;
+inline constexpr uint32_t kSimEventSchemaVersion = 10;
 // Last rules5e::EventKind surfaced under this schema version (rules appends; sim bumps).
-inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::ZoneEnded;
+inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::Commanded;
+// Last rules kind that existed at v9. A stream carrying a later kind (R-G12 kinds 48-52: Summoned .. Commanded) is a v10 stream.
+inline constexpr rules5e::EventKind kLastRulesEventKindV9 = rules5e::EventKind::ZoneEnded;
 // Last rules kind that existed at v8. A stream carrying a later kind (R-G11 ZoneCreated / ZoneMoved / ZoneEnded) is a v9 stream.
 inline constexpr rules5e::EventKind kLastRulesEventKindV8 = rules5e::EventKind::ActionUsed;
 // Last rules kind that existed at v6 and below. event_stream_version keys on this, not on kLastRulesEventKind:
@@ -39,6 +41,11 @@ struct SimEvent {
                          // rules events, in spawn order: `actor` = the creature, `tile` = its anchor
                          // (min-x/min-y tile, the frame of TileMoved), `rules.a` = footprint side in
                          // tiles (2 Large, 3 Huge, 4 Gargantuan). Its `TileMoved` tiles are anchors too.
+        TokenSpawned = 4, // v10 (R-G12 summons). Right after its own rules `Summoned`: `actor` = the summon, `tile` = its
+                          // anchor, `rules.a` = footprint side, `rules.b` = summoner id.
+        TokenRemoved = 5, // v10. A summon's token goes: `actor` = the summon, `tile` = its last anchor, `rules.a` = the
+                          // SummonEnded reason (b). After the step's sim events, except in the encounter-end teardown,
+                          // where each one directly follows its SummonEnded{b = 5}.
     };
     Kind kind = Kind::Rules;
     rules5e::Event rules{};          // Kind::Rules only; zero otherwise
@@ -46,7 +53,8 @@ struct SimEvent {
     Vec2i tile{};                    // TileMoved: destination; {0,0} otherwise
 };
 
-// Lowest schema version that can express the stream: 9 if it contains a rules kind past kLastRulesEventKindV8 (R-G11 zones),
+// Lowest schema version that can express the stream: 10 if it contains a rules kind past kLastRulesEventKindV9 (R-G12
+// summons / transforms) or a TokenSpawned / TokenRemoved, 9 if it contains a rules kind past kLastRulesEventKindV8 (R-G11 zones),
 // 8 if it contains a rules Moved with c != 0 (movement flags), 7 if
 // it contains a rules kind past kLastRulesEventKindV6, 6 if it contains a v6 construct (Footprint), else
 // 5 if it contains a v5 construct (SpellTarget), else 4. The digest records this, not
