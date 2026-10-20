@@ -3,7 +3,9 @@
 // 0xAF, the turn key that survives an insertion before the current actor, and replay.
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <fstream>
+#include <optional>
 #include <string>
 
 #include "sim/combat.hpp"
@@ -52,7 +54,7 @@ rules5e::SpellDef summon_def(const char* cid, uint8_t level, uint16_t range, rul
     d.summon = spec;
     return d;
 }
-ContentLibrary make_lib(int goblin_hp = 60, int wolf_hp = 11) {
+ContentLibrary make_lib(int goblin_hp = 60, int wolf_hp = 11, std::optional<uint8_t> conjure_cap = std::nullopt) {
     ContentLibrary lib;
     for (const char* n : {"fire_bolt", "hold_person"})
         REQUIRE_FALSE(lib.add_spell(load_json(std::string("content/packs/srd51.core/spells/") + n + ".json")));
@@ -63,11 +65,11 @@ ContentLibrary make_lib(int goblin_hp = 60, int wolf_hp = 11) {
     using rules5e::SummonControl;
     using rules5e::SummonInitiative;
     REQUIRE_FALSE(lib.add_summon_spell(summon_def("test.conjure_animals", 3, 60, {8, SummonInitiative::Group, SummonControl::Verbal, true}, true),
-                                       {{"t.wolf", "t.bear", "t.dragon", "t.elk"}, SummonOptions::Table::CrBand}));
+                                       {{"t.wolf", "t.bear", "t.dragon", "t.elk"}, SummonOptions::Table::CrBand, conjure_cap}));
     REQUIRE_FALSE(lib.add_summon_spell(summon_def("test.find_familiar", 1, 10, {1, SummonInitiative::Own, SummonControl::Telepathic, true}, false),
-                                       {{"t.wolf"}, SummonOptions::Table::Any}));
+                                       {{"t.wolf"}, SummonOptions::Table::Any, uint8_t(1)}));
     REQUIRE_FALSE(lib.add_summon_spell(summon_def("test.animate_dead", 3, 10, {4, SummonInitiative::Group, SummonControl::BonusAction, false}, false),
-                                       {{"t.wolf", "t.bear"}, SummonOptions::Table::Any}));
+                                       {{"t.wolf", "t.bear"}, SummonOptions::Table::Any, uint8_t(4)}));
     Json w = load_json("content/packs/sample.vertical_slice/characters/fighter_1.json");
     w["id"] = kWizard;
     w["abilities"]["int"] = 16;
@@ -151,11 +153,11 @@ TEST_CASE("summon counter: seeded above every spawn id (non-combatants too); a s
     CHECK(lib.find("t.bear")->cr_eighths == 8);
     CHECK(lib.find("t.dragon")->cr_eighths == 24);
     // add_summon_spell refusals
-    CHECK(lib.add_summon_spell(summon_def("test.x", 1, 10, {}, false), {{"t.nope"}, SummonOptions::Table::Any}).value_or("").find("unknown summon archetype") != std::string::npos);
+    CHECK(lib.add_summon_spell(summon_def("test.x", 1, 10, {}, false), {{"t.nope"}, SummonOptions::Table::Any, std::nullopt}).value_or("").find("unknown summon archetype") != std::string::npos);
     rules5e::SpellDef notsum;
     notsum.content_id = "test.y";
     notsum.id = spell_id_of("test.y");
-    CHECK(lib.add_summon_spell(notsum, {{"t.wolf"}, SummonOptions::Table::Any}).value_or("").find("not a Summon") != std::string::npos);
+    CHECK(lib.add_summon_spell(notsum, {{"t.wolf"}, SummonOptions::Table::Any, std::nullopt}).value_or("").find("not a Summon") != std::string::npos);
 }
 
 TEST_CASE("conjure: CR bands (D1), deterministic tiles, Summoned -> TokenSpawned, ids from the counter, 0xBC / 0xAF, replay") {
@@ -381,4 +383,50 @@ TEST_CASE("turn key: a summon joining before the current actor shifts turn_index
     for (const auto& e : c->events()) commanded += e.kind == SimEvent::Kind::Rules && e.rules.kind == EventKind::Commanded;
     CHECK(commanded >= 1);
     same_on_replay(*c, ch, lib, 9);
+}
+
+TEST_CASE("summon max_count: absent = no cap (SRD multipliers in full); a present cap that clips a band warns, unhashed") {
+    {
+        auto lib = make_lib();
+        CHECK(lib.warnings().empty());
+        const auto* d = lib.spells()->find(kConjure);
+        REQUIRE(d);
+        CHECK(d->summon.max_count == 255);
+        const auto ch = arena({{kWizard, Vec2i{10, 10}}, {"srd51.monster.goblin", Vec2i{25, 10}}});
+        const CombatantId w = ch.spawns[0].stable_id;
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, lib, 3);
+        REQUIRE(c);
+        CHECK(d->summon.max_count >= 32);   // slot 9: 8 x 4 CR 1/4 creatures fit under "no cap"
+        to_actor(*c, w);
+        auto r = submit(*c, summon(w, kConjure, std::vector<uint8_t>(16, 0), 5));   // slot 5: 16 wolves (8 x 2)
+        REQUIRE_MESSAGE(r.ok, r.error);
+        CHECK(summons_of(*c).size() == 16);
+        same_on_replay(*c, ch, lib, 3);
+    }
+    {
+        auto lib = make_lib(60, 11, uint8_t(8));
+        const auto* d = lib.spells()->find(kConjure);
+        REQUIRE(d);
+        CHECK(d->summon.max_count == 8);
+        const auto& wv = lib.warnings();
+        REQUIRE_FALSE(wv.empty());
+        CHECK(std::find(wv.begin(), wv.end(), "test.conjure_animals: summon max_count 8 clips the CR band count 16 at slot level 5") != wv.end());
+        for (const auto& line : wv) CHECK(line.find("band count 8 ") == std::string::npos);   // 8 itself is not clipped
+        const auto ch = arena({{kWizard, Vec2i{10, 10}}, {"srd51.monster.goblin", Vec2i{25, 10}}});
+        const CombatantId w = ch.spawns[0].stable_id;
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, lib, 3);
+        REQUIRE(c);
+        to_actor(*c, w);
+        CHECK_FALSE(submit(*c, summon(w, kConjure, std::vector<uint8_t>(16, 0), 5)).ok);
+        // the same encounter hashes the same with or without the warnings (they are not hashed)
+        auto lib2 = make_lib();
+        ecs::Registry r1, r2;
+        auto a = Combat::create(r1, ch, lib, 3);
+        auto b = Combat::create(r2, ch, lib2, 3);
+        REQUIRE(a);
+        REQUIRE(b);
+        CHECK(a->hash() == b->hash());
+    }
 }

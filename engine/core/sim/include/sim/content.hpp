@@ -112,10 +112,16 @@ struct Archetype {
 //  * CrBand (the conjure family, SRD Conjure Animals / Woodland Beings / Minor Elementals): 1 creature of CR 2 or lower, 2 of
 //    CR 1 or lower, 4 of CR 1/2 or lower or 8 of CR 1/4 or lower; times 2 / 3 / 4 at slot level 5 / 7 / 9. Every chosen
 //    creature must fit the band of the count (they may differ).
+// max_count (Director ruling on #175): absent = no cap, so the SRD multipliers apply in full (sim writes
+// SummonSpec::max_count = 255, above the largest band count 32); present = written to SummonSpec::max_count. When a present
+// cap is below a band count the table allows (CrBand: any count x multiplier at slot 1..9), add_summon_spell records one
+// deterministic line per clipped (count, slot level) in ContentLibrary::warnings(). Warnings are diagnostics only: never
+// hashed, never logged into the encounter (the cap itself reaches rules through the SpellDef, as before).
 struct SummonOptions {
     enum class Table : uint8_t { Any = 0, CrBand = 1 };
     std::vector<std::string> archetypes;
     Table table = Table::Any;
+    std::optional<uint8_t> max_count;
 };
 
 // Owns archetypes and the strings rules5e::Attack::id views into (stable addresses).
@@ -142,12 +148,15 @@ public:
     const Archetype* find(const std::string& id) const;
     const std::map<std::string, Archetype>& all() const noexcept { return by_id_; }
     // R-G12 summons: a Summon SpellDef (kind Summon) and its creature options. Until spell@1 has a `summon` arm (T&C) this is
-    // the way in; the def joins spells(). Errors: not a Summon def, empty or unknown archetypes, duplicate id.
+    // the way in; the def joins spells(). Errors: not a Summon def, empty or unknown archetypes, duplicate id, max_count 0.
     std::optional<std::string> add_summon_spell(const rules5e::SpellDef& def, SummonOptions options);
     const SummonOptions* summon_options(uint32_t spell_id) const;
+    // Deterministic load-time diagnostics (registration order; e.g. a summon max_count clipping a CR band). Not hashed.
+    const std::vector<std::string>& warnings() const { return warnings_; }
 
 private:
     std::map<uint32_t, SummonOptions> summons_;
+    std::vector<std::string> warnings_;
     std::map<std::string, Archetype> by_id_;
     std::deque<std::string> strings_;
     std::shared_ptr<rules5e::SpellBook> spells_ = std::make_shared<rules5e::SpellBook>();
