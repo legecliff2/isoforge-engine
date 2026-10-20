@@ -1,0 +1,21 @@
+{
+  "base": "characters/wizard_level_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        0
+      ],
+      {
+        "id": "arcane_recovery",
+        "name": "Arcane Recovery",
+        "effect": {
+          "kind": "slot_recovery",
+          "class": "cleric"
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "slot_recovery effect is invalid: /class: 'cleric' is not one of ['wizard', 'druid']"
+}

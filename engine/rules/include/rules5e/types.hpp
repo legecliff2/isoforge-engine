@@ -93,6 +93,9 @@ struct Attack {
     // took (Combatant::hp_max_reduction), after a Con save vs drain_save_dc when non-zero (success: no reduction).
     bool drain_max_hp = false;
     int8_t drain_save_dc = 0;
+    // appended (EC swarm, flagged): SRD swarm bites ("2d6, or 1d6 if the swarm has half of its hit points or fewer"): when
+    // half_hp_damage.count > 0 and the attacker's hp * 2 <= hp_max, it replaces `damage` (component 1). Default: unused.
+    DiceExpr half_hp_damage{};
 };
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
 constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
@@ -113,7 +116,9 @@ enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Re
                                   // appended: Petrifying Gaze turn-start response (ActionRequest::avert_gaze / gaze_seen)
                                   GazeResponse,
                                   // appended (R-G12 rules PR 1): end the actor's own transform (Wild Shape: bonus action; shapechanger: action)
-                                  Revert };
+                                  Revert,
+                                  // appended (R-G12 rules PR 2): command summons (ActionRequest::command / command_ids)
+                                  CommandSummons };
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
 
 // Reaction windows (encounter.hpp). Append-only.
@@ -208,6 +213,8 @@ enum class PredicateKind : uint8_t {
     AllyNearTarget,         // the sim fact ActionRequest::ally_near_target (no disadvantage clause): Martial Advantage
     DamageAtMost,           // a: the event's damage (TrigCtx dmg, after resistances) <= a; drop_to_zero / damage_dealt: Relentless
     WeaponAttack,           // appended (Director #158): a weapon attack (melee or ranged); false for spell attacks and no attack
+    // appended (EC deferred monsters, flagged): mask = spell_id_of(tag); the subject's Combatant::tags has / lacks it (ghoul: elves)
+    TargetTag, NotTargetTag,
 };
 enum class WeaponIs : uint8_t { Melee, Ranged, Finesse, FinesseOrRanged };
 struct Predicate { PredicateKind kind = PredicateKind::NotCrit; int16_t a = 0, b = 0; uint32_t mask = 0; };
@@ -233,6 +240,9 @@ struct Trigger {
     uint8_t choice = 0;                   // 0 auto (fires), 1 ask (hit/crit triggers: HitRider window, 9c), 2 never
     std::vector<Predicate> when;          // all must hold
     std::vector<RiderEffect> effects;
+    // appended (EC deferred monsters, flagged): usage recharge N-6. A registered ActionUse keyed (owner, id) gates it: firing
+    // expends it, the owner's turn start rolls a d6 like recharge actions (RechargeRolled). 0 = no recharge.
+    uint8_t recharge_min = 0;
 };
 
 // A mechanical reaction compiled from content (row 11): offered in the Damaged / AllyAttacked windows of its owner.
@@ -469,6 +479,22 @@ struct Combatant {
     uint32_t form_end_round = 0;
     std::optional<FormStats> base{};
     std::vector<uint32_t> form_blocked_features{};
+    // appended (EC deferred monsters, flagged): content tags (spell_id_of of monster `tags[]` and a character's race, plus
+    // "elf" for elf races), read only by PredicateKind::TargetTag / NotTargetTag. Content-derived: not hashed.
+    std::vector<uint32_t> tags{};
+    // appended (EC swarm, flagged): SRD swarm "can't regain hit points or gain temporary hit points". apply_healing heals 0
+    // and every temp HP grant is skipped. Content-derived (static per archetype): not hashed.
+    bool no_regain_hp = false;
+    // R-G12 summons (appended, VERSION_BUMP_BATCH 7.2r). summoner: who summoned it (0 = not a summon); summon_source: the spell id;
+    // summon_group: initiative group (the first id of its cast); summon_control: SummonControl; summon_vanishes: disappears at
+    // 0 HP; summon_concentration: ends with the summoner's concentration on summon_source; commanded: this turn's command (0
+    // none, 1 act, 2 defend; reset when its turn ends); gone: ended (SummonEnded): dead, skipped in the turn order, never acts again.
+    CombatantId summoner = 0;
+    uint32_t summon_source = 0, summon_group = 0;
+    uint8_t summon_control = 0;
+    bool summon_vanishes = false, summon_concentration = false;
+    uint8_t commanded = 0;
+    bool gone = false;
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };

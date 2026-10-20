@@ -168,11 +168,33 @@ bool charmed_by(const EncounterState& s, CombatantId actor, CombatantId other) {
     return false;
 }
 
+// R-G12 PR 2: summon `c` ends (reason 1 concentration, 3 0 HP, 5 encounter ended): SummonEnded, then it is dead and gone (no
+// CombatantDied of its own; a form it wears ends silently with it).
+void end_concentration(EncounterState& s, CombatantId caster, std::vector<Event>& ev);
+void end_summon(EncounterState& s, Combatant& c, int32_t reason, std::vector<Event>& ev) {
+    if (c.summoner == 0 || c.gone) return;
+    // its own concentration ends the usual way first (ConcentrationEnded; modifiers, zones, Polymorph links cleaned up)
+    if (c.concentration_spell != 0) end_concentration(s, c.id, ev);
+    c.form = FormKind::None; c.form_source = 0; c.form_caster = 0; c.form_archetype = 0; c.form_end_round = 0;
+    c.base.reset(); c.form_blocked_features.clear();
+    c.gone = true; c.dead = true; c.hp = 0; c.commanded = 0;
+    emit(ev, EventKind::SummonEnded, c.summoner, c.id, int32_t(c.summon_source), reason);
+}
+
 void check_end(EncounterState& s, std::vector<Event>& ev) {
     if (s.ended) return;
     auto o = s.hooks.end_condition ? s.hooks.end_condition(s) : default_end_condition(s);
     if (!o) return;
     s.ended = true;
+    if (s.summons != 0) {   // R-G12 PR 2 (D15): every summon ends first, ascending id (a transformed summon just ends: no Reverted)
+        std::vector<CombatantId> ids;
+        for (const auto& c : s.combatants) if (c.summoner != 0 && !c.gone) ids.push_back(c.id);
+        std::sort(ids.begin(), ids.end());
+        // their own concentration ends first, before the contiguous teardown block (teardown_begin stays one block)
+        for (CombatantId id : ids) if (find(s, id)->concentration_spell != 0) end_concentration(s, id, ev);
+        ids.erase(std::remove_if(ids.begin(), ids.end(), [&](CombatantId id) { return find(s, id)->gone; }), ids.end());
+        for (CombatantId id : ids) end_summon(s, *find_mut(s, id), 5, ev);
+    }
     // R-G12 (D15, SUMMONS_TRANSFORMS.md §3.5): every transform ends with the encounter, ascending id, before EncounterEnded
     if (s.transforms != 0) {
         std::vector<CombatantId> ids;
@@ -256,6 +278,33 @@ void end_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev) {
 // ---- R-G11 zones: lifetime (triggers are further down, after damage_creature) ----
 uint32_t turn_stamp(const EncounterState& s) { return (uint32_t(s.round) << 16) | s.turn_index; }
 
+// R-G12 PR 2: the ids the next `n` summons take: from the counter (seeded by sim), never at or below an existing id.
+std::vector<CombatantId> next_summon_ids(const EncounterState& s, std::size_t n) {
+    CombatantId top = 0;
+    for (const auto& c : s.combatants) top = std::max(top, c.id);
+    const CombatantId base = std::max<CombatantId>(s.next_summon_id, top + 1);
+    std::vector<CombatantId> ids;
+    for (std::size_t k = 0; k < n; ++k) ids.push_back(CombatantId(base + k));
+    return ids;
+}
+
+// R-G12 PR 2: a turn entry inserted at `pos` moves every later turn of this round one index on: every stored cast_stamp
+// (round << 16 | turn_index) of this round at or after `pos` follows its turn, so it still names the same turn.
+void shift_turn_stamps(EncounterState& s, std::size_t pos) {
+    auto fix = [&](uint32_t& st) {
+        if ((st >> 16) == s.round && (st & 0xFFFFu) >= pos) ++st;
+    };
+    for (auto& e : s.effects) fix(e.cast_stamp);
+    for (auto& z : s.zones) { fix(z.cast_stamp); for (auto& f : z.fired) fix(f.stamp); }
+    for (auto& c : s.combatants) fix(c.trigger_turn_stamp);
+}
+
+// Does summon `c` need a command to act this turn (else it only Dodges, D4)?
+bool awaits_command(const Combatant& c) {
+    return c.summoner != 0 && c.commanded != 1 &&
+           (c.summon_control == uint8_t(SummonControl::Verbal) || c.summon_control == uint8_t(SummonControl::BonusAction));
+}
+
 ActiveZone* find_zone_mut(EncounterState& s, uint32_t id) {
     for (auto& z : s.zones) if (z.zone_id == id) return &z;
     return nullptr;
@@ -291,6 +340,9 @@ void end_concentration(EncounterState& s, CombatantId caster, std::vector<Event>
     emit(ev, EventKind::ConcentrationEnded, caster, 0, int32_t(sp));
     for (auto& t : s.combatants)   // R-G12: Polymorph ends with its caster's concentration (Reverted b = 1)
         if (t.form == FormKind::Polymorph && t.form_caster == caster && t.form_source == sp) form_reverted(t, 1, 0, ev);
+    // TODO(R-G12 D5): Conjure Elemental's elemental turns hostile (its own turn, not controlled) instead of ending; later PR.
+    for (auto& t : s.combatants)   // R-G12 PR 2 (D10): concentration summons end with it (SummonEnded b = 1), ascending order
+        if (t.summoner == caster && t.summon_source == sp && t.summon_concentration && !t.gone) end_summon(s, t, 1, ev);
     drop_concentration_modifiers(s, caster, sp, ev);
     for (std::size_t i = 0; i < s.zones.size();) {   // R-G11: its zones end first (ZoneEnded reason 1)
         if (s.zones[i].owner == caster && s.zones[i].concentration && s.zones[i].spell_id == sp) end_zone(s, i, 1, ev);
@@ -642,6 +694,12 @@ struct Ctx {
     std::vector<std::pair<uint32_t, ForcedMoveResult>> forced_results{};
     bool zone_fired = false;   // a zone trigger resolved inside finalize_forced (deaths / concentration are swept again)
     uint8_t form_archetype = 0;   // R-G12: the cast's form choice (set by cast_spell around resolve_spell only)
+    // R-G12 PR 2: the cast's creature choices (set around resolve_spell only), the creatures built by the Summon effect (placed
+    // by attempt after the step: appending to combatants would move the step's Combatant references), and the ids they took.
+    const std::vector<uint8_t>* summon_archetypes = nullptr;
+    std::vector<std::pair<Combatant, uint8_t>> summons_pending{};
+    SummonSpec summon_spec{};
+    std::vector<CombatantId> assigned_summon_ids{};
 };
 
 // R-G11 zone triggers (defined after damage_creature).
@@ -936,6 +994,18 @@ struct DepthGuard {   // an area_save / damage_dealt chain cannot recurse withou
     ~DepthGuard() { --depth(); }
 };
 
+// EC deferred monsters (flagged): a trigger with usage recharge is gated by its ActionUse row (owner, trigger id); no row =
+// unlimited. Firing expends it; the owner's turn start rolls it back (start_turn, with the recharge actions).
+bool trigger_recharging(const EncounterState& s, const Combatant& owner, const Trigger& tr) {
+    if (tr.recharge_min == 0) return false;
+    const ActionUse* u = find_action_use(s, owner.id, tr.id);
+    return u && u->expended;
+}
+void expend_trigger(EncounterState& s, const Combatant& owner, const Trigger& tr) {
+    if (tr.recharge_min == 0) return;
+    for (auto& u : s.action_uses) if (u.actor == owner.id && u.spell_id == tr.id) u.expended = true;
+}
+
 // Evaluates one predicate. `failed_save` is set when a Save predicate was rolled and failed.
 bool predicate_holds(EncounterState& s, Combatant& owner, const Combatant& subject, const TrigCtx& x, const Predicate& p,
                      std::vector<Event>& ev, bool& failed_save) {
@@ -969,6 +1039,8 @@ bool predicate_holds(EncounterState& s, Combatant& owner, const Combatant& subje
     }
     case PredicateKind::TargetSurprised: return s.round == 1 && subject.surprised_at_start;   // EC monster predicates (flagged)
     case PredicateKind::WeaponAttack: return !x.is_spell && x.atk != nullptr;
+    case PredicateKind::TargetTag: return std::find(subject.tags.begin(), subject.tags.end(), p.mask) != subject.tags.end();
+    case PredicateKind::NotTargetTag: return std::find(subject.tags.begin(), subject.tags.end(), p.mask) == subject.tags.end();
     case PredicateKind::AllyNearTarget: return x.ally;
     case PredicateKind::DamageAtMost: return x.dmg <= p.a;
     case PredicateKind::AttackIs: return !x.is_spell && x.atk && x.atk >= owner.attacks.data() && x.atk < owner.attacks.data() + owner.attacks.size() &&
@@ -1023,6 +1095,7 @@ bool run_event_triggers(EncounterState& s, Combatant& owner, Combatant& subject,
         const uint32_t m = uint32_t(1) << i;
         if (tr.limit == TriggerLimit::OncePerTurn && (owner.trigger_turn_mask & m)) continue;
         if (tr.limit == TriggerLimit::OncePerRound && (owner.trigger_round_mask & m)) continue;
+        if (trigger_recharging(s, owner, tr)) continue;   // EC deferred monsters (flagged): usage recharge
         bool any = false;
         for (const RiderEffect& e : tr.effects) if (effect_applies(s, owner, on, e)) any = true;
         if (!any) continue;
@@ -1041,6 +1114,7 @@ bool run_event_triggers(EncounterState& s, Combatant& owner, Combatant& subject,
         if (pool_spend && find_pool(s, owner.id, pool_spend->pool) && !can_spend(s, owner.id, pool_spend->pool, pool_cost)) continue;
         if (pool_spend && find_pool(s, owner.id, pool_spend->pool) && spend_pool(s, owner.id, pool_spend->pool, pool_cost))
             emit(ev, EventKind::ResourceSpent, owner.id, 0, int32_t(pool_spend->pool), pool_cost, find_pool(s, owner.id, pool_spend->pool)->cur);
+        expend_trigger(s, owner, tr);   // EC deferred monsters (flagged)
         if (tr.limit == TriggerLimit::OncePerTurn) owner.trigger_turn_mask |= m;
         if (tr.limit == TriggerLimit::OncePerRound) owner.trigger_round_mask |= m;
         emit(ev, EventKind::FeatureTriggered, owner.id, subject.id, int32_t(tr.id), int32_t(on), 1);
@@ -1052,7 +1126,7 @@ bool run_event_triggers(EncounterState& s, Combatant& owner, Combatant& subject,
                 const int amt = (e.dice.count > 0 || e.dice.bonus > 0) ? std::max(0, roll_dice(s.rng, e.dice)) : int(e.value);
                 if (amt <= 0) break;
                 if (e.kind == RiderKind::TempHp) {   // temporary HP never stack: keep the larger pool
-                    if (amt > owner.temp_hp) owner.temp_hp = int16_t(amt);
+                    if (amt > owner.temp_hp && !owner.no_regain_hp) owner.temp_hp = int16_t(amt);
                 } else {
                     auto h = apply_healing(owner, int16_t(amt));
                     commit_healing(owner, h);
@@ -1387,6 +1461,7 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
         const uint32_t m = uint32_t(1) << i;
         if (tr.limit == TriggerLimit::OncePerTurn && (a.trigger_turn_mask & m)) continue;
         if (tr.limit == TriggerLimit::OncePerRound && (a.trigger_round_mask & m)) continue;
+        if (trigger_recharging(s, a, tr)) continue;   // EC deferred monsters (flagged): usage recharge
         bool any = false;
         for (const RiderEffect& e : tr.effects) if (hit_effect_ok(s, e)) any = true;
         if (!any) continue;                                            // no hit effect: other kinds do not fire here
@@ -1422,6 +1497,7 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
             }
             break;
         }
+        expend_trigger(s, a, tr);   // EC deferred monsters (flagged)
         if (tr.limit == TriggerLimit::OncePerTurn) a.trigger_turn_mask |= m;
         if (tr.limit == TriggerLimit::OncePerRound) a.trigger_round_mask |= m;
         emit(ev, EventKind::FeatureTriggered, a.id, t.id, int32_t(tr.id), int32_t(tr.on), 1);
@@ -1512,7 +1588,10 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         // Triggers that fire on this hit (Sneak Attack-style): their FeatureTriggered events come before the damage
         // dice; extra_damage riders are rolled with the attack's damage so a crit doubles them.
         const HitRiders riders = fire_hit_triggers(s, ctx, a, t, atk, spell_id != 0, atk_mode, ally_near_target, crit, roll, ev);
-        const DiceExpr& wdice = damage_override ? *damage_override : atk.damage;
+        // EC swarm: the half-HP damage variant (only when authored)
+        // Uses base max HP, not exhaustion-reduced max (Director ruling).
+        const DiceExpr& wdice = damage_override ? *damage_override
+                                : (atk.half_hp_damage.count > 0 && 2 * int(a.hp) <= int(a.hp_max)) ? atk.half_hp_damage : atk.damage;
         const bool gwf = a.great_weapon_fighting && spell_id == 0 && !atk.ranged &&
                          (has_property(atk, kWeaponTwoHanded) || (two_handed_grip && has_property(atk, kWeaponVersatile)));
         int dmg = gwf ? roll_dice_reroll_low(s.rng, wdice, crit, 2)
@@ -1879,7 +1958,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
     if (c.form != FormKind::None && c.form_end_round != 0 && s.round >= c.form_end_round) form_reverted(c, 0, 0, ev);   // R-G12
     drop_caster_turn_modifiers(s, c.id, ev);
     for (const auto& m : s.modifiers)   // Heroism: temp hp again at the start of each turn
-        if (m.target == c.id && m.spec.stat == ModStat::TempHp && m.spec.per_turn && !c.dead && m.spec.bonus > c.temp_hp) {
+        if (m.target == c.id && m.spec.stat == ModStat::TempHp && m.spec.per_turn && !c.dead && !c.no_regain_hp && m.spec.bonus > c.temp_hp) {
             c.temp_hp = m.spec.bonus;
             emit(ev, EventKind::ModifierApplied, m.caster, c.id, int32_t(m.spec.id), int32_t(m.spec.stat), m.spec.bonus);
         }
@@ -1912,7 +1991,9 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         for (auto& u : s.action_uses) {
             if (u.actor != c.id || !u.expended) continue;
             const SpellDef* d = spell_def(s, u.spell_id);
-            const int need = d && d->recharge_min ? d->recharge_min : 6;
+            int need = d && d->recharge_min ? d->recharge_min : 6;
+            if (!d)   // EC deferred monsters (flagged): a recharge trigger's row (spell_id = trigger id)
+                for (const Trigger& tr : c.triggers) if (tr.id == u.spell_id && tr.recharge_min) need = tr.recharge_min;
             const int roll = roll_dice(s.rng, DiceExpr{1, 6, 0}, false);
             const bool back = roll >= need;
             if (back) u.expended = false;
@@ -2225,11 +2306,13 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.condition));
             }
             note_source(s, def.condition, a.id, t->id);
-            if (!def.condition_untracked)   // ends by its own rules (prone): no effect entry, like Shove
+            if (!def.condition_untracked) {   // ends by its own rules (prone): no effect entry, like Shove
                 s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, Ability::Wis, 0, RepeatSave::None,
                                                       def.concentration,
                                                       make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
                                                       lvl, false});
+                if (def.escape_dc > 0) { s.effects.back().dc = def.escape_dc; s.effects.back().escape_check = true; }   // EC (flagged): Web
+            }
             affected.push_back(t);
             applied = true;
         }
@@ -2443,8 +2526,8 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (t->dead || t->hp <= 0 || t->shapechanger || t->form != FormKind::None || ctx.form_archetype == 0) continue;
             if (t->team != a.team) {
                 SaveSource src{def.magical, 0u, 0u};
-                const SaveResult r = save_roll(s, *t, Ability::Wis, spell_save_dc(a, def), RollMode::Normal, ev, &src);
-                emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(Ability::Wis), r.roll.natural, r.roll.total, int32_t(r.success));
+                const SaveResult r = save_roll(s, *t, def.polymorph_save, spell_save_dc(a, def), RollMode::Normal, ev, &src);
+                emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(def.polymorph_save), r.roll.natural, r.roll.total, int32_t(r.success));
                 if (r.success) continue;
             }
             const auto f = s.hooks.build_form ? s.hooks.build_form(s, *t, FormKind::Polymorph, def.id, uint8_t(ctx.form_archetype - 1))
@@ -2456,6 +2539,25 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             affected.push_back(t);
         }
         if (def.concentration && !affected.empty()) a.concentration_spell = def.id;
+        break;
+    }
+    case SpellEffectKind::Summon: {   // R-G12 PR 2: built now, placed in the order by attempt after the step (Summoned there)
+        if (!ctx.summon_archetypes || !s.hooks.build_summon) break;
+        const std::vector<CombatantId> ids = next_summon_ids(s, ctx.summon_archetypes->size());
+        ctx.assigned_summon_ids = ids;
+        ctx.summon_spec = def.summon;
+        for (std::size_t k = 0; k < ids.size(); ++k) {
+            const uint8_t arch = (*ctx.summon_archetypes)[k];
+            auto c = s.hooks.build_summon(s, a, def, lvl, arch);
+            if (!c) continue;   // validated before anything was spent
+            c->id = ids[k]; c->team = a.team;
+            c->summoner = a.id; c->summon_source = def.id;
+            c->summon_group = def.summon.initiative == SummonInitiative::Group ? ids[0] : ids[k];
+            c->summon_control = uint8_t(def.summon.control); c->summon_vanishes = def.summon.vanishes_at_zero_hp;
+            c->summon_concentration = def.concentration; c->commanded = 0; c->gone = false; c->dead = false;
+            ctx.summons_pending.emplace_back(std::move(*c), arch);
+        }
+        if (def.concentration && !ctx.summons_pending.empty()) a.concentration_spell = def.id;
         break;
     }
     case SpellEffectKind::AcBonus: case SpellEffectKind::Counter: break;   // reactions only
@@ -2615,6 +2717,18 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
             return fail("form not available");
         break;
     }
+    case SpellEffectKind::Summon: {   // R-G12 PR 2 (D1): the caster's choice of creatures; ids come from the counter
+        if (T.size() != 1 || T[0] != &a) return fail("summon: no creature targets");
+        const auto& ar = req.summon_archetypes;
+        if (ar.empty() || ar.size() > def.summon.max_count) return fail("summon: bad creature count");
+        if (s.hooks.summon_choice_ok && !s.hooks.summon_choice_ok(s, a, def, lvl, ar)) return fail("summon: choice not allowed");
+        for (uint8_t k : ar)
+            if (!s.hooks.build_summon || !s.hooks.build_summon(s, a, def, lvl, k)) return fail("summon not available");
+        if (!req.summon_tiles.empty() && req.summon_tiles.size() != ar.size()) return fail("summon_tiles: one per creature");
+        if (!ctx.replay_only && !req.summon_ids.empty()) return fail("summon_ids: assigned by rules (leave empty)");
+        if (ctx.replay_only && req.summon_ids != next_summon_ids(s, ar.size())) return fail("summon_ids: do not match the summon counter");
+        break;
+    }
     case SpellEffectKind::Zone:   // R-G11: cast at a point (zone_x / zone_y) or on the caster; no creature targets
         if (T.size() != 1 || T[0] != &a) return fail("zone: no creature targets");
         if (req.has_zone_dest && def.zone.anchor == ZoneAnchor::Creature) return fail("zone: an aura has no destination");
@@ -2624,6 +2738,10 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (x.kind == SpellEffectKind::Zone) return fail("zone: primary effect only");
     for (const SpellEffect& x : def.extra_effects)
         if (x.kind == SpellEffectKind::Polymorph) return fail("polymorph: primary effect only");
+    for (const SpellEffect& x : def.extra_effects)
+        if (x.kind == SpellEffectKind::Summon) return fail("summon: primary effect only");
+    if ((!req.summon_archetypes.empty() || !req.summon_ids.empty() || !req.summon_tiles.empty()) && def.kind != SpellEffectKind::Summon)
+        return fail("summon: not a summon spell");
     if (req.form_archetype != 0 && def.kind != SpellEffectKind::Polymorph) return fail("form_archetype: not a polymorph spell");
     if ((req.has_zone_dest || !req.zone_excluded.empty()) && def.kind != SpellEffectKind::Zone) return fail("zone: not a zone spell");
     if (!req.zone_excluded.empty() && !def.zone.chooses_excluded) return fail("zone_excluded: the spell does not let the caster choose");
@@ -2686,12 +2804,13 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         ctx.has_zone_end = req.has_zone_end; ctx.zone_x2 = req.zone_x2; ctx.zone_y2 = req.zone_y2;
         ctx.zone_side = req.zone_side; ctx.zone_ring = req.zone_ring;
         ctx.form_archetype = req.form_archetype;
+        ctx.summon_archetypes = &req.summon_archetypes;
         resolve_spell(s, ctx, a, def, lvl, T, req.target_within_5ft, out.events);
         ctx.spared = nullptr; ctx.spared_no_damage = false; ctx.heighten = 0; ctx.empower = 0;
         ctx.forced_feet = 0; ctx.teleport_feet = 0; ctx.has_teleport_dest = false; ctx.teleport_x = 0; ctx.teleport_y = 0;
         ctx.has_zone_dest = false; ctx.zone_x = 0; ctx.zone_y = 0; ctx.zone_excluded = nullptr;
         ctx.has_zone_end = false; ctx.zone_x2 = 0; ctx.zone_y2 = 0; ctx.zone_side = 0; ctx.zone_ring = false;
-        ctx.form_archetype = 0;
+        ctx.form_archetype = 0; ctx.summon_archetypes = nullptr;
         defer_forced(s, ctx, out.events);   // R-G9: placeholders after every save and damage of the spell, before SpellResolved
     }
     emit(out.events, countered ? EventKind::SpellCountered : EventKind::SpellResolved, a.id, ids[0], int32_t(def.id), lvl);
@@ -2875,6 +2994,43 @@ EncounterState begin_encounter(std::vector<Combatant> cs, uint64_t seed, std::ve
 
 namespace {
 
+// R-G12 PR 2: the creatures of this step's Summon cast join the encounter and the turn order. Initiative: d20 + Dex each (Own),
+// or one roll and one slot (the first creature's Dex, carried by every member) for the cast's group, members consecutive by id (D2). A creature goes after every entry
+// with a higher total, or an equal total and an equal or higher Dex modifier. Inserted at or before the current turn: the
+// current actor keeps its turn (turn_index + 1, stamps rewritten); a slot that has passed acts next round (D14).
+// Summoned actor=summoner target=creature a=spell b=archetype c=initiative total, in id order, after the cast's events.
+void place_summons(EncounterState& s, Ctx& ctx, CombatantId summoner, std::vector<Event>& ev) {
+    if (ctx.summons_pending.empty()) return;
+    const bool group = ctx.summon_spec.initiative == SummonInitiative::Group;
+    int16_t shared = 0;
+    const int8_t group_dex = int8_t(modifier(ctx.summons_pending[0].first.abilities, Ability::Dex));
+    if (group) shared = roll_d20(s.rng, group_dex, RollMode::Normal).total;
+    uint32_t source = 0;
+    for (auto& [c, arch] : ctx.summons_pending) {
+        // D2: a group shares one slot, so every member carries the group's Dex (mixed stat blocks stay consecutive by id)
+        const int8_t dex = group ? group_dex : int8_t(modifier(c.abilities, Ability::Dex));
+        const int16_t total = group ? shared : roll_d20(s.rng, dex, RollMode::Normal).total;
+        std::size_t pos = 0;
+        while (pos < s.order.size() && (s.order[pos].total > total || (s.order[pos].total == total && s.order[pos].dex_mod >= dex))) ++pos;
+        s.order.insert(s.order.begin() + std::ptrdiff_t(pos), InitiativeEntry{c.id, total, dex});
+        if (pos <= s.turn_index) { ++s.turn_index; shift_turn_stamps(s, pos); }
+        const CombatantId id = c.id;
+        source = c.summon_source;
+        s.combatants.push_back(std::move(c));
+        ++s.summons;
+        s.next_summon_id = id + 1;
+        emit(ev, EventKind::Summoned, summoner, id, int32_t(source), arch, total);
+    }
+    ctx.summons_pending.clear();
+}
+
+// R-G12 PR 2: a summon that disappears at 0 HP ends (SummonEnded b = 3) once it drops (it still dies first if killed outright).
+void sweep_summons(EncounterState& s, std::vector<Event>& ev) {
+    if (s.summons == 0) return;
+    for (auto& c : s.combatants)
+        if (c.summoner != 0 && !c.gone && c.summon_vanishes && (c.dead || c.hp <= 0)) end_summon(s, c, 3, ev);
+}
+
 // One deterministic attempt at `req` with the decisions known so far. If an Ask poll has no answer,
 // the state is restored to `before` and the pending decision is stored.
 StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vector<ReactionRecord>& decided,
@@ -2884,12 +3040,15 @@ StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vecto
     Ctx ctx{records, &decided, 0, replay_only, false, std::nullopt, 0};
     ctx.forced_recorded = forced_recorded;
     StepResult r = step_impl(s, ctx, req);
+    if (r.ok) place_summons(s, ctx, req.actor, r.events);   // R-G12 PR 2: after SpellResolved, before Ready triggers
+    else ctx.summons_pending.clear();
     if (r.ok) defer_forced(s, ctx, r.events);   // R-G9: forced moves queued outside a cast (on-hit riders), before Ready triggers
     else { ctx.forced_queue.clear(); ctx.forced_deferred.clear(); }
     if (r.ok && req.kind != ActionKind::Ready) fire_readies(s, ctx, r.events);
     if (!r.ok) return r;
     process_deaths(s, r.events, &ctx);
     sweep_concentration(s, r.events);
+    sweep_summons(s, r.events);
     prune_sourced(s, r.events);
     for (auto& c : s.combatants) if (c.dead && c.died_round == 0) c.died_round = s.round;   // R-G15: Revivify's window
     if (!ctx.need) {
@@ -2897,6 +3056,7 @@ StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vecto
         if (ctx.zone_fired) {   // R-G11: zone triggers of the forced moves (damage, conditions) settle like the step's own
             process_deaths(s, r.events, &ctx);
             sweep_concentration(s, r.events);
+            sweep_summons(s, r.events);
             prune_sourced(s, r.events);
             for (auto& c : s.combatants) if (c.dead && c.died_round == 0) c.died_round = s.round;
             check_end(s, r.events);
@@ -2918,7 +3078,8 @@ StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vecto
         for (std::size_t i = r.events.size(); i-- > 0;) {
             if (r.events[i].kind != EventKind::EncounterEnded) continue;
             std::size_t k = i;
-            while (k > 0 && r.events[k - 1].kind == EventKind::Reverted && r.events[k - 1].b == 5) --k;
+            while (k > 0 && (r.events[k - 1].kind == EventKind::Reverted || r.events[k - 1].kind == EventKind::SummonEnded) &&
+                   r.events[k - 1].b == 5) --k;
             if (k < i) r.teardown_begin = k;
             break;
         }
@@ -2926,6 +3087,7 @@ StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vecto
     r.reactions = std::move(records);
     r.desync = ctx.desync || ctx.replay_pos != decided.size();
     r.logged = LoggedStep{req, r.reactions};
+    if (!replay_only && !ctx.assigned_summon_ids.empty()) r.logged->request.summon_ids = ctx.assigned_summon_ids;   // 0xBC
     return r;
 }
 
@@ -3084,14 +3246,17 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
         if (req.spell_id != 0 || !a.has(Condition::Grappled))
             for (std::size_t i = 0; i < s.effects.size() && zi == s.effects.size(); ++i) {
                 const ActiveSpellEffect& e = s.effects[i];
-                if (e.zone_id != 0 && e.target == a.id && e.condition == Condition::Restrained && (req.spell_id == 0 || e.spell_id == req.spell_id)) zi = i;
+                if ((e.zone_id != 0 || e.escape_check) && e.target == a.id && e.condition == Condition::Restrained && (req.spell_id == 0 || e.spell_id == req.spell_id)) zi = i;   // EC (flagged): + escape_check
             }
         if (zi < s.effects.size()) {
             if (!spend_action(b, a, ActionKind::Attack, false)) return fail("no action available");
             s.budget = b;
             const int zdc = s.effects[zi].dc;
             const uint32_t zone = s.effects[zi].zone_id;
-            if (roll_ability_check(s, a, Ability::Str, zdc, out.events).success) end_zone_effects(s, zone, a.id, out.events);
+            if (roll_ability_check(s, a, Ability::Str, zdc, out.events).success) {
+                if (zone != 0) end_zone_effects(s, zone, a.id, out.events);
+                else end_effect(s, zi, out.events);   // EC (flagged): a Web escape_check effect, only that one
+            }
             check_end(s, out.events);
             return out;
         }
@@ -3278,6 +3443,13 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
     if (req.kind == ActionKind::GazeResponse) return gaze_response(s, a, req);   // Petrifying Gaze (7.2p): also while surprised
     if (s.budget.gaze_pending) return fail("gaze pending: answer with GazeResponse first");
     if (a.surprised && req.kind != ActionKind::EndTurn) return fail("surprised: can only end the turn");
+    if (req.kind != ActionKind::CommandSummons && (req.command != 0 || !req.command_ids.empty()))
+        return fail("command: CommandSummons only");
+    if (req.kind != ActionKind::CastSpell && (!req.summon_archetypes.empty() || !req.summon_ids.empty() || !req.summon_tiles.empty()))
+        return fail("summon: not a summon spell");
+    // R-G12 PR 2 (D4): an uncommanded (or told to defend) summon that takes commands only Dodges: SRD "it defends itself"
+    if (awaits_command(a) && req.kind != ActionKind::EndTurn && req.kind != ActionKind::Dodge)
+        return fail("summon not commanded: Dodge only");
     TurnBudget b = s.budget;               // mutate a copy; commit only on success
     StepResult out{true, {}, {}};
 
@@ -3300,6 +3472,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             run_event_triggers(s, a, a, TriggerOn::TurnEnd, x, out.events, nullptr, &ctx);
         }
         emit(out.events, EventKind::TurnEnded, a.id);
+        a.commanded = 0;   // R-G12 PR 2: a command lasts for the summon's one turn
         a.surprised = false;   // R-G16: surprise ends with the creature's first turn
         if (a.lethargy == 2) a.lethargy = 0;   // Haste lethargy lasts until after this turn
         advance_turn(s, out.events);
@@ -3430,6 +3603,35 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             }
         }
         check_end(s, out.events);
+        return out;
+    }
+    case ActionKind::CommandSummons: {   // R-G12 PR 2: verbal (conjure) / telepathic: free; Animate Dead: the bonus action
+        if (req.command != 1 && req.command != 2) return fail("command: 1 act or 2 defend");
+        if (is_incapacitated(a)) return fail("incapacitated");
+        std::vector<Combatant*> to;
+        if (req.command_ids.empty()) {
+            for (auto& c : s.combatants)
+                if (c.summoner == a.id && !c.gone && c.summon_control != uint8_t(SummonControl::None)) to.push_back(&c);
+        } else {
+            for (std::size_t i = 0; i < req.command_ids.size(); ++i) {
+                Combatant* c = find_mut(s, req.command_ids[i]);
+                if (!c || c->summoner != a.id || c->gone) return fail("command: not your summon");
+                if (c->summon_control == uint8_t(SummonControl::None)) return fail("command: it takes no commands");
+                for (std::size_t j = 0; j < i; ++j) if (req.command_ids[j] == req.command_ids[i]) return fail("command: duplicate id");
+                to.push_back(c);
+            }
+        }
+        if (to.empty()) return fail("command: no summons to command");
+        const bool costs = std::any_of(to.begin(), to.end(), [](const Combatant* c) {
+            return c->summon_control == uint8_t(SummonControl::BonusAction); });
+        if (costs) {
+            if (!b.bonus_action) return fail("no bonus action available");
+            b.bonus_action = false;
+        }
+        s.budget = b;
+        for (Combatant* c : to) c->commanded = req.command;
+        if (req.command_ids.empty()) emit(out.events, EventKind::Commanded, a.id, 0, req.command);
+        else for (Combatant* c : to) emit(out.events, EventKind::Commanded, a.id, c->id, req.command);
         return out;
     }
     case ActionKind::Revert: {   // R-G12: Wild Shape: a bonus action; shapechanger: an action; Polymorph: not by choice
@@ -3673,6 +3875,11 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
         return out;
     }
     if (a.surprised) { add(ActionKind::EndTurn); return out; }   // R-G16
+    if (awaits_command(a)) {   // R-G12 PR 2 (D4): Dodge until commanded
+        if ((b.action || b.extra_actions > 0) && !is_incapacitated(a)) add(ActionKind::Dodge);
+        add(ActionKind::EndTurn);
+        return out;
+    }
     const bool can_act = b.action || b.extra_actions > 0;   // row 13: an extra action counts
     if (can_act || b.attacks_remaining > 0) {
         for (const auto& t : s.combatants) {
@@ -3720,6 +3927,14 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (a.form == FormKind::WildShape ? b.bonus_action : (a.form == FormKind::Shapechanger && can_act)) {
         if (!is_incapacitated(a)) add(ActionKind::Revert, a.form == FormKind::WildShape);   // R-G12
     }
+    if (!is_incapacitated(a)) {   // R-G12 PR 2: command every summon that takes commands (act); bonus action if one needs it
+        bool any = false, costs = false;
+        for (const auto& c : s.combatants)
+            if (c.summoner == a.id && !c.gone && c.summon_control != uint8_t(SummonControl::None)) {
+                any = true; costs = costs || c.summon_control == uint8_t(SummonControl::BonusAction);
+            }
+        if (any && (!costs || b.bonus_action)) { ActionRequest r{a.id, ActionKind::CommandSummons}; r.command = 1; out.push_back(r); }
+    }
     if (b.bonus_action && a.aggressive) {   // Aggressive: bonus-action Dash (sim moves it toward a hostile)
         ActionRequest r{a.id, ActionKind::Dash};
         r.as_bonus_action = true; r.aggressive = true;
@@ -3755,7 +3970,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (s.hooks.spells && !is_incapacitated(a) && !no_casting) {
         for (uint32_t id : a.spells_known) {
             const SpellDef* d = s.hooks.spells->find(id);
-            if (d && d->kind == SpellEffectKind::Polymorph) continue;   // R-G12: sim builds Polymorph requests (form choice)
+            if (d && (d->kind == SpellEffectKind::Polymorph || d->kind == SpellEffectKind::Summon)) continue;   // R-G12: sim builds Polymorph requests (form choice)
             if (!d || (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction)) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !can_act) continue;
             if ((d->components & kComponentV) && silenced) continue;   // R-G11 PR 2: Silence
@@ -4076,7 +4291,7 @@ bool apply_modifier(EncounterState& s, CombatantId caster, CombatantId target, c
         magnitude = (spec.speed_num == spec.speed_den && spec.speed_sub > 0) ? int32_t(spec.speed_sub) : int32_t(spec.speed_num) * 100 + spec.speed_den;
     else if (magnitude == 0 && spec.stat == ModStat::Ac && spec.ac_floor > 0) magnitude = spec.ac_floor;
     if (spec.stat == ModStat::TempHp) {   // granted at once; the larger pool is kept; no record
-        if (spec.bonus > t->temp_hp) t->temp_hp = spec.bonus;
+        if (spec.bonus > t->temp_hp && !t->no_regain_hp) t->temp_hp = spec.bonus;   // EC swarm: no temp HP
         emit(ev, EventKind::ModifierApplied, caster, target, int32_t(spec.id), int32_t(spec.stat), magnitude);
         if (!spec.per_turn) return true;   // Heroism keeps a record and grants again each turn
     }
@@ -4341,13 +4556,18 @@ bool revert_form(Combatant& c) {
     return true;
 }
 
-bool has_summon_state(const EncounterState& s) { return s.transforms != 0; }
+bool has_summon_state(const EncounterState& s) { return s.summons != 0 || s.transforms != 0; }
 
 uint64_t summons_digest(const EncounterState& s, uint64_t h) {
     auto mix = [&](uint64_t v, int bytes) {
         for (int i = 0; i < bytes; ++i) { h ^= (v >> (8 * i)) & 0xFF; h *= 0x100000001B3ull; }
     };
-    mix(0, 4); mix(0, 4);   // summon id counter, summon count (rules PR 2)
+    mix(s.next_summon_id, 4); mix(s.summons, 4);
+    for (const auto& c : s.combatants) {   // R-G12 PR 2: summon records, combatants order
+        if (c.summoner == 0) continue;
+        mix(c.id, 4); mix(c.summoner, 4); mix(c.summon_source, 4); mix(c.summon_group, 4);
+        mix(uint8_t(c.gone), 1); mix(c.commanded, 1);
+    }
     mix(s.transforms, 4);
     for (const auto& c : s.combatants) {
         if (c.form == FormKind::None) continue;
