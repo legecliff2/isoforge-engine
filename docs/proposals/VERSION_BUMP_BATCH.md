@@ -2322,6 +2322,7 @@ additive in common@2 (no new cost shape: the existing `usage` pool arm `{kind: "
 | `apply_modifier` effect | `scope` | closed `{weapon: "wielded"}` (Sacred Weapon; light is left out) |
 | reaction `window` | `requires_sight` | boolean (Uncanny Dodge) |
 | `bonus_action_grant.actions[]` | `use_object` | Fast Hands |
+| predicate (`when`) | `target_below_max_hp` | kind only, the `target_surprised` arm group; `PredicateKind::TargetBelowMaxHp` (appended): the creature hit is below its hp maximum, read before the hit's damage (Colossus Slayer, once-per-turn weapon-hit extra damage) |
 
 A save_effect may now have only `control` (no damage / apply). Validator (`checks_v4.check_class_hooks`, effect cases
 `v4_target_creature_types_on_attack`, `v4_scope_on_wrong_host`): control keys on a non-save_effect host, scope on a

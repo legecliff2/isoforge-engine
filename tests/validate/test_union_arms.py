@@ -41,7 +41,7 @@ PREDICATE = {("weapon",): (S({"kind", "is"}), S()),
              ("moved_at_least_ft",): (S({"kind", "ft"}), S()),
              ("self_hp_below",): (S({"kind", "num", "den"}), S()),
              ("save",): (S({"kind", "ability"}), S({"dc", "dc_from_damage", "base"})),
-             ("target_surprised", "ally_near_target", "weapon_attack", "subject_is_caster"): (S({"kind"}), S()),
+             ("target_surprised", "ally_near_target", "weapon_attack", "subject_is_caster", "target_below_max_hp"): (S({"kind"}), S()),
              ("damage_at_most",): (S({"kind", "amount"}), S()),
              ("target_tag", "not_target_tag"): (S({"kind", "tag"}), S())}
 # when: rider-level predicates (sim #170), read only in on_hit[] of attack actions
