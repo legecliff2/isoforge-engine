@@ -191,6 +191,10 @@ struct ActionRequest {
     // appended (R-G12 rules PR 3, D6; log_hash 0xBE): Attack by a Pact of the Chain warlock: the familiar (its summon) makes
     // this attack with its reaction (attack_index into the familiar's attacks); it costs one of the warlock's attacks.
     CombatantId familiar_id = 0;
+    // appended (cover, VERSION_BUMP_BATCH 7.2t; log-relevant, SIM_EVENTS.md log_hash tag 0xC0, folded only when set): the
+    // aimed point of origin of an area CastSpell (sim's aim tile, opaque to rules), passed to EncounterHooks::cover as
+    // CoverQuery::origin_x / origin_y. Unset = the caster's space (self-centred areas, cones / lines from the caster).
+    bool has_area_origin = false; int32_t area_x = 0, area_y = 0;
 };
 
 enum class EventKind : uint8_t {
@@ -452,14 +456,18 @@ struct ForcedMoveQuery {
 // target pair. Half = +2 to AC and Dex saves, ThreeQuarters = +5, Total = can't be targeted directly (an area effect skips
 // the creature when it has total cover from the area's point of origin).
 enum class Cover : uint8_t { None = 0, Half = 1, ThreeQuarters = 2, Total = 3 };
-// source: the attacker, caster or save-action user. from_area: the effect is an area (SpellDef::area != None) and cover is
-// measured from its point of origin (sim's aim point for the cast being resolved; the caster for a self-centred area), not
-// from the source's space. spell_id: the spell / save action (0 = a weapon or natural attack).
+// source: the attacker, caster or save-action user. from_area: the effect is an area (SpellDef::area != None).
+// spell_id: the spell / save action (0 = a weapon or natural attack). has_origin / origin_x / origin_y: an explicit point
+// to measure from (a sim tile, opaque to rules): the Spiritual Weapon token's tile (after its move) for its attacks, and
+// ActionRequest::area_x / area_y for an aimed area. has_origin false = the source's space (for an area: the caster's space,
+// i.e. a self-centred area or a cone / line from the caster).
 struct CoverQuery {
     CombatantId source = 0;
     CombatantId target = 0;
     bool from_area = false;
     uint32_t spell_id = 0;
+    bool has_origin = false;
+    int32_t origin_x = 0, origin_y = 0;
 };
 constexpr int cover_bonus(Cover c) { return c == Cover::Half ? 2 : c == Cover::ThreeQuarters ? 5 : 0; }
 

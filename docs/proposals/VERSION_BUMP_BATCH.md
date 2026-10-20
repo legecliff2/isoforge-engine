@@ -2050,38 +2050,51 @@ though a creature can be affected by an area of effect only if the cover does no
 Rules:
 
 - **Types (encounter.hpp).** `enum class Cover : uint8_t { None, Half, ThreeQuarters, Total }`;
-  `struct CoverQuery { CombatantId source; CombatantId target; bool from_area; uint32_t spell_id; }`;
-  `constexpr int cover_bonus(Cover)` (Half 2, ThreeQuarters 5, else 0).
+  `struct CoverQuery { CombatantId source; CombatantId target; bool from_area; uint32_t spell_id; bool has_origin;
+  int32_t origin_x, origin_y; }`; `constexpr int cover_bonus(Cover)` (Half 2, ThreeQuarters 5, else 0).
 - **Hook (appended to `EncounterHooks`).**
   `std::function<Cover(const EncounterState&, const CoverQuery&)> cover;` Empty = `Cover::None` everywhere, so every
   existing golden and digest is unchanged. Never asked for `source == target`.
+- **Origin.** `has_origin` true = measure from the sim tile `origin_x / origin_y` (opaque to rules); false = the source's
+  space (for an area: the caster's space, i.e. a self-centred area or a cone / line from the caster). Rules fill it with:
+  - the Spiritual Weapon token's tile for its attacks: the cast's first attack from the spawn tile
+    (`summon_tiles[0]`), `SummonWeaponAttack` from the tile after its move (`summon_tiles[0]` when given, else the row's tile);
+  - an aimed area's `ActionRequest::has_area_origin / area_x / area_y` (appended, CastSpell; logged under **log_hash 0xC0**,
+    folded only when set: `has_area_origin` byte 1, `area_x` i32, `area_y` i32; sim fold added in `Combat` log_hash).
+    Refused on a non-area spell: `area_origin: area spells only`.
 - **When rules call it.**
   - Validation of `Attack` (`source` = attacker, `spell_id` 0), of a Pact of the Chain familiar attack (`source` = the
-    familiar), and of each target of a targeted `CastSpell` (`SpellDef::area == None`; `source` = caster or save-action
-    user, `from_area` false). `Total` refuses with `target has total cover` before anything is spent.
-  - Once per attack roll in `do_attack` (weapon, natural, spell attacks, opportunity / readied / reaction attacks):
-    the bonus goes into `AttackContext::cover_ac_bonus` (so `BeingHit.target_ac` and the `AttackRolled` window include it).
-    `Total` here (an attack that did not pass a targeted validation, e.g. an opportunity attack) makes no roll and no event.
-  - Area casts (`SpellDef::area != None`): once per listed target at resolution with `from_area` true; `Total` drops the
-    creature from every effect of the cast (no save, no event, no rng draw).
-  - Save spells and save actions: once per target; the Dex save total gets `cover_bonus` (other abilities: nothing).
-    `SpellDef::ignores_cover` (spell@1 top-level `ignores_cover: true`, Sacred Flame) drops Half / ThreeQuarters, never Total.
-- **Not covered here.** Zone / aura saves and `area_save` trigger riders (no origin defined for them yet); Spiritual Weapon
-  attacks ask with `source` = the caster (sim should measure from the token tile when `spell_id` is a SummonWeapon spell).
-- **Logging.** None: the answer is a pure function of the state and sim's positions, so replay recomputes it. No log_hash
-  tag claimed (0xC0 stays free), no event change, no `event_stream_version` bump.
+    familiar), of each target of a targeted `CastSpell` (`SpellDef::area == None`; the Spiritual Weapon cast from its spawn
+    tile), and of `SummonWeaponAttack` (from the tile after the move). `Total` refuses with `target has total cover`
+    before anything is spent (no slot, no action / bonus action, the weapon does not move).
+  - Eligibility of reactions: an opportunity attack reactor, or a readied `Attack`, whose target has total cover from it is
+    not offered (no window opens, no reaction is spent; the readied action is kept).
+  - Once per attack roll in `do_attack` (weapon, natural, spell, Spiritual Weapon, reaction attacks): the bonus goes into
+    `AttackContext::cover_ac_bonus` (so `BeingHit.target_ac` and the `AttackRolled` window include it). `Total` there (only
+    reachable by an attack no validation covered, e.g. a Retaliate reaction) makes no roll and no event.
+  - Area casts (`SpellDef::area != None`), spells and save actions alike: once per listed target at resolution with
+    `from_area` true and the area origin; `Total` drops the creature from every effect of the cast (no save, no event, no
+    rng draw).
+  - Save spells and save actions (monster breath weapons are save actions: `is_spell` false, same `resolve_effect` path;
+    tested with an aimed cone): once per target; the Dex save total gets `cover_bonus` (other abilities: nothing).
+    `SpellDef::ignores_cover` (spell@1 top-level `ignores_cover: true`, Sacred Flame; schema line OK'd by T&C) drops
+    Half / ThreeQuarters, never Total.
+- **Deferred: zones, auras, `area_save` riders.** Their saves get no cover yet. When picked up they use the same
+  `CoverQuery` origin fields: a point zone's anchor tile (`ActiveZone::anchor_x / anchor_y`), the owner's space for a
+  creature-anchored aura (has_origin false, source = owner), and the trigger's area origin for `area_save` riders.
+- **Logging.** The hook's answer is a pure function of the state, the logged request and sim's positions, so replay
+  recomputes it. Only the aimed origin is a new input (0xC0). No event change, no `event_stream_version` bump.
 
-Hand-off (Engine Core, sim): implement `EncounterHooks::cover` in `sim::Combat` from the grid, synchronous and pure (no rng,
-no mutation), using the positions at the moment of the call (replayed positions in replay):
+Hand-off (Engine Core, sim):
 
-- Origin: `from_area` false = the source's space (a footprint: pick the corner / tile that gives the target the least cover,
-  per SRD "the attacker's space"); `from_area` true = the aim point of the cast being resolved (the `Command::aim` tile; the
-  caster's space for a self-centred area or a cone / line from the caster).
-- Obstacles between origin and target (lines from the origin to the target's footprint tiles): creatures (any size, either
-  side) and low obstacles (low wall, furniture, narrow tree trunk) give **half**; heavier obstacles (portcullis, arrow slit,
-  thick tree trunk) give **three-quarters**; a complete obstruction (wall, closed door) gives **total**. Only the highest
-  degree counts; multiple sources do not add.
-- Content: spell@1 `ignores_cover` (schema updated here; T&C to add validator support if the Python validator lists keys).
+- Fill `ActionRequest::has_area_origin / area_x / area_y` from `Command::aim` for an aimed area (a point the caster
+  chooses: Fireball, Thunderwave is self so unset); the 0xC0 fold is in place.
+- Implement `EncounterHooks::cover` in `sim::Combat` from the grid, synchronous and pure (no rng, no mutation), using the
+  positions at the moment of the call (replayed positions in replay). Origin: `has_origin` = that tile; otherwise the source's
+  space (a footprint: the corner / tile that gives the target the least cover, per SRD "the attacker's space"). Lines run from
+  the origin to the target's footprint tiles. Creatures (any size, either side) and low obstacles (low wall, furniture,
+  narrow tree trunk) give **half**; heavier obstacles (portcullis, arrow slit, thick tree trunk) give **three-quarters**; a
+  complete obstruction (wall, closed door) gives **total**. Only the highest degree counts; sources do not add.
 
 ## 8. Migrations and inert markers
 
