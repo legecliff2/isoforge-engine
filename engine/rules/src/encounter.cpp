@@ -2465,8 +2465,8 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (t->dead || t->hp <= 0 || t->shapechanger || t->form != FormKind::None || ctx.form_archetype == 0) continue;
             if (t->team != a.team) {
                 SaveSource src{def.magical, 0u, 0u};
-                const SaveResult r = save_roll(s, *t, Ability::Wis, spell_save_dc(a, def), RollMode::Normal, ev, &src);
-                emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(Ability::Wis), r.roll.natural, r.roll.total, int32_t(r.success));
+                const SaveResult r = save_roll(s, *t, def.polymorph_save, spell_save_dc(a, def), RollMode::Normal, ev, &src);
+                emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(def.polymorph_save), r.roll.natural, r.roll.total, int32_t(r.success));
                 if (r.success) continue;
             }
             const auto f = s.hooks.build_form ? s.hooks.build_form(s, *t, FormKind::Polymorph, def.id, uint8_t(ctx.form_archetype - 1))
