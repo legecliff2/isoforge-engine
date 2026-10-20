@@ -12,11 +12,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 
 | level | in `srd51.core` | deferred: needs a mechanic | deferred: out of combat scope | total |
 |---|---|---|---|---|
-| 0 (cantrips) | 7 | 6 | 11 | 24 |
-| 1 | 8 | 22 | 19 | 49 |
-| 2 | 4 | 27 | 23 | 54 |
-| 3 | 4 | 19 | 19 | 42 |
-| **total** | **23** | **74** | **72** | **169** |
+| 0 (cantrips) | 10 | 3 | 11 | 24 |
+| 1 | 10 | 20 | 19 | 49 |
+| 2 | 8 | 23 | 23 | 54 |
+| 3 | 8 | 15 | 19 | 42 |
+| **total** | **36** | **61** | **72** | **169** |
 
 ## Authored in this change (9)
 
@@ -49,13 +49,32 @@ Area templates are computed by the sim (`Combat::area_targets`, #78: cone / line
 | Fireball | 3 | `save` DEX 8d6 fire half; `area` sphere 20 at a point within 150 ft; `upcast.dice 1` | spreads around corners: the sphere ignores line of sight; igniting objects OOS |
 | Lightning Bolt | 3 | `save` DEX 8d6 lightning half; `area` line 100 x 5 (self); `upcast.dice 1` | igniting objects OOS |
 
-## Deferred (146 spells; reasons re-checked against main at `6df51a2`)
+## Authored in spells batch 2 (13, main at `8b8d8c9`)
+
+Rules #183 (7.2u) added the next-roll rider keys (`docs/CONTENT_EFFECTS.md`, "Rules #183 additions"). The zone and R-G15 spells are the `tests/validate/fixtures` documents re-identified as `srd51.spell.*`, with the mirror's classes and material text. Pinned by `tests/validate/test_srd51_spells.py` (table rows added from the same mirror commit). Ray of Frost already had the #183 shape (`speed_sub` 10, `speed_scale` 1/1, `until_start_of_caster_turn`) and is unchanged.
+
+| spell | level | `spell@1` shape | notes |
+|---|---|---|---|
+| Vicious Mockery | 0 | `save` WIS 1d4 psychic, none on success + rider (`attack_roll` disadvantage, `consume: next_attack`, `until_end_of_target_turn`); cantrip dice | **partial**: "if the target can hear you" is not gated |
+| Shocking Grasp | 0 | melee `spell_attack` 1d8 lightning + rider `no_reactions`, `until_start_of_target_turn`; cantrip dice | **partial**: advantage vs metal armor not modelled (no armor material) |
+| Chill Touch | 0 | ranged `spell_attack` 1d8 necrotic + `no_healing` until the start of the caster's turn + `attack_roll` disadvantage `until_end_of_caster_next_turn` when `owner_creature_type [undead]` and `subject_is_caster`; cantrip dice | |
+| Guiding Bolt | 1 | ranged `spell_attack` 4d6 radiant + rider (`attacks_against` advantage, `consume: next_attack_against`, `until_end_of_caster_next_turn`); `upcast.dice 1` | |
+| Grease | 1 | point `zone` cube 10, difficult; Dex save or prone on `zone_appear` / `zone_enter` / `zone_end_turn` (group 0) | |
+| Lesser Restoration | 2 | `end_condition [blinded, deafened, paralyzed, poisoned]` | diseases OOS; the engine ends the first listed condition present (no per-cast choice) |
+| Silence | 2 | point `zone` sphere 20, `silence` flag (thunder immunity, deafened, no verbal components; rules PR 2); ritual | |
+| Spike Growth | 2 | point `zone` cylinder 20 (height 20), difficult, `zone_move_within` 2d4 piercing (group 0) | camouflage OOS; the fixture's sphere became the mirror's cylinder (same ground area) |
+| Web | 2 | point `zone` cube 20, difficult + lightly obscured; Dex save or restrained on start of turn / own-turn enter, `while_in_zone`; Str check to break free | anchoring and flammability OOS |
+| Dispel Magic | 3 | `dispel {check {spellcasting, dc_base 10, plus spell_level}}` | |
+| Revivify | 3 | `revive {within_rounds 10}`; `components.m` 300 gp diamond (`srd51.item.diamond`), consumed | |
+| Spirit Guardians | 3 | creature-anchored `zone` sphere 15, `halve_speed`, `chooses_excluded`, `needs_conscious_owner`; Wis save 3d8 radiant half on enter / start of turn (group 1: once per turn), `evil_damage_type` necrotic; `upcast.dice 1` | |
+| Stinking Cloud | 3 | point `zone` sphere 20, heavily obscured; start of turn completely within: Con save or `loses_action` (auto-success for poison-immune and no-breath) | wind dispersal OOS |
+
+## Deferred (133 spells; reasons re-checked against main at `8b8d8c9`)
 
 Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the first-draft ids in brackets: B1 = R-G2 effects array, B2 = R-G3 timed modifiers, B3 = R-G4 damage riders, B4 = R-G5 pools, B6 = R-G7 reactions / roll windows, C1 = R-G8 conditions with source, C2 = R-G9 forced movement / teleport, C3 = R-G10 area templates, C4 = R-G11 zones / auras, C5 = R-G12 summons, C7 = R-G13 cover / lighting / vision, C8 = R-G14 per-cast options, C9 = R-G15 spell kinds). `T&C-G12` / `T&C-G14` are movement modes and creature footprint. `OOS` rows have no gap id.
 
 | level | spell | kind | missing mechanic (from the coverage doc) | gap id |
 |---|---|---|---|---|
-| 0 | Chill Touch | NEW | Attack damage loads; "can't regain HP until the start of your next turn" has no timed modifier (`no_regain_hp` is the static swarm flag, sim #172), and "undead target has disadvantage on attacks against you" needs a caster-scoped attack predicate (modifier `when` has none). | R-G3 (B2) |
 | 0 | Dancing Lights | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Druidcraft | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Guidance | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
@@ -67,11 +86,9 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 0 | Prestidigitation | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Resistance | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Shillelagh | NEW | No modifier replaces a weapon's damage die or attack ability (`damage` modifiers only add). | R-G3 (B2) |
-| 0 | Shocking Grasp | NEW | Attack damage loads; advantage vs metal armor needs an armor-material predicate, and "can't take reactions" has no modifier stat. | R-G2, R-G3 (B1, B2) |
 | 0 | Spare the Dying | NEW | spell@1 has no stabilize effect kind; Rules models it only as `ActionKind::SpareTheDying` + `hooks.spare_the_dying` (coverage doc marks it DATA via that ActionKind, not via spell@1) | - |
 | 0 | Thaumaturgy | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | True Strike | NEW | `attack_roll` advantage with `consume: next_attack` loads, but the advantage applies to any target; the SRD limits it to the chosen target (no per-target modifier scope). | R-G3 (B2) |
-| 0 | Vicious Mockery | NEW | **next batch**: loads as `save` WIS 1d4 psychic + `apply_modifier` rider (`attack_roll` disadvantage, `consume: next_attack`, `until_end_of_target_turn`); **partial**: "if the target can hear you" (a deafened target is immune) is not gated. | R-G3 (B2) |
 | 1 | Alarm | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Animal Friendship | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Bane | NEW | `modifier.die` "-1d4" loads (`die_mult` -1), but common@2 `die` is the v1 dice pattern (no leading '-'), `apply_modifier` refuses `targets` ("targets not allowed on a apply_modifier effect") and a Cha save gate needs `save` with damage or condition. Needs an additive schema / loader change. | R-G3 (B2), T&C |
@@ -95,8 +112,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 1 | Floating Disk | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Fog Cloud | NEW | Zone loads (`kZoneHeavyObscured`); obscurement has no effect until R-G13. | R-G11, R-G13 (C4, C7) |
 | 1 | Goodberry | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
-| 1 | Grease | NEW | **next batch**: zone (10 ft cube, difficult terrain, Appear / Enter / EndTurn Dex save or prone) loads; fixture `tests/validate/fixtures/zones/spells/grease.json`. | R-G11 (C4) |
-| 1 | Guiding Bolt | NEW | Attack + `attacks_against` advantage rider (`consume: next_attack_against`) loads, but the timer is `until_start_of_caster_turn`; the SRD window is "before the end of your next turn". | R-G3 (B2) |
 | 1 | Hellish Rebuke | NEW | Rules reaction exists (#87) but spell@1 `casting_time.trigger` only has `being_hit` / `spell_cast` (no damaged trigger). | R-G7 (B6) |
 | 1 | Heroism | NEW | `temp_hp` `per_turn` loads with a fixed `bonus`; the SRD amount is the caster's spellcasting modifier, and frightened immunity is not modelled. | R-G3 (B2) |
 | 1 | Hideous Laughter | NEW | Prone + incapacitated (two conditions) and save-on-damage repeat (R-G2). | R-G2 (B1) |
@@ -140,7 +155,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Heat Metal | NEW | `sustained_damage` loads (EC #120); the held-object rider (drop it or disadvantage) is not modelled. | R-G15 (C9) |
 | 2 | Invisibility | NEW | `apply_condition` invisible loads (no save), but "ends when the target attacks or casts" is not wired for spell-applied invisibility. | R-G2, R-G3 (B1, B2) |
 | 2 | Knock | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Lesser Restoration | NEW | **next batch**: `end_condition {conditions: [blinded, deafened, paralyzed, poisoned]}` loads (EC #120); disease has no model (descriptive). | R-G15 (C9) |
 | 2 | Levitate | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Locate Animals or Plants | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Locate Object | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
@@ -155,13 +169,10 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Rope Trick | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | See Invisibility | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Shatter | NEW | **next batch**: sphere 10 ft, Con 3d8 thunder half, upcast loads; **partial**: inorganic-creature disadvantage not modelled. | R-G10 (C3) |
-| 2 | Silence | NEW | **next batch**: zone with `kZoneSilence` loads (#122); fixture exists. | R-G11 (C4) |
 | 2 | Spider Climb | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Spike Growth | NEW | **next batch**: zone (difficult terrain, 2d4 per 5 ft moved) loads; fixture exists. Camouflage OOS. | R-G11 (C4) |
 | 2 | Spiritual Weapon | NEW | Rules PR 3 (#173) `SummonWeapon` exists, but spell@1 has no summon-weapon key yet. | R-G12 (C5) |
 | 2 | Suggestion | NEW | Forced behavior (R-G8). | R-G8 (C1) |
 | 2 | Warding Bond | NEW | Shared damage (R-G3). | R-G3 (B2) |
-| 2 | Web | NEW | **next batch**: zone (20 ft cube, difficult terrain, Dex save or restrained, Str check to escape) loads; fixture exists. Flammability OOS. | R-G11 (C4) |
 | 2 | Zone of Truth | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 3 | Animate Dead | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Beacon of Hope | NEW | Save advantage, max healing (R-G3). | R-G3 (B2) |
@@ -172,7 +183,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 3 | Conjure Animals | NEW | Summons rules (R-G12 PR 2) exist, but spell@1 has no summon key yet. | R-G12 (C5) |
 | 3 | Create Food and Water | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Daylight | NEW | Light/obscurement dispelling (R-G13). | R-G13 (C7) |
-| 3 | Dispel Magic | NEW | **next batch**: `dispel {check: {ability: spellcasting, dc_base: 10, plus: spell_level}}` loads (EC #120, #126); fixture exists. | R-G15 (C9) |
 | 3 | Fear | NEW | Cone, frightened, drop items, forced Dash (R-G10, R-G8). | R-G8, R-G10 (C1, C3) |
 | 3 | Fly | NEW | Movement mode (T&C-G12, T&C-G14). | T&C-G12, T&C-G14 |
 | 3 | Gaseous Form | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
@@ -187,14 +197,11 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 3 | Plant Growth | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Protection From Energy | NEW | `resistance` modifier loads, but the damage type is chosen per cast (no spell@1 key). | R-G3, R-G14 (B2, C8) |
 | 3 | Remove Curse | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
-| 3 | Revivify | NEW | **next batch**: `revive {within_rounds: 10}` loads (EC #120); priced material (300 gp diamond, consumed) via `components.m {cost_cp, consumed, item}`. | R-G15 (C9) |
 | 3 | Sending | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Sleet Storm | NEW | Zone (R-G11). | R-G11 (C4) |
 | 3 | Slow | NEW | Rules have `ModStat::Slow`, but the common@2 modifier `stat` enum has no slow marker. | R-G3 (B2) |
 | 3 | Speak with Dead | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Speak with Plants | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
-| 3 | Spirit Guardians | NEW | **next batch**: caster-anchored zone (15 ft, Wis save 3d8 radiant / necrotic if evil, half speed) loads; fixture exists. | R-G11 (C4) |
-| 3 | Stinking Cloud | NEW | **next batch**: zone (StartTurn Con save or lose the action, `loses_action`) loads (PR 2 fixture). | R-G11 (C4) |
 | 3 | Tiny Hut | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Tongues | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Vampiric Touch | NEW | Attack damage DATA; heal half and repeat action need R-G2/R-G3. | R-G2, R-G3 (B1, B2) |
@@ -204,7 +211,7 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 
 ## Follow-ups when the mechanics land
 
-- Rows marked **next batch** load faithfully (or with the stated partial) today: Vicious Mockery, Mage Armor, Divine Favor, Grease, Acid Arrow, Lesser Restoration, Shatter, Silence, Spike Growth, Web, Moonbeam, Dispel Magic, Revivify, Spirit Guardians, Stinking Cloud.
+- Rows marked **next batch** load faithfully (or with the stated partial) today: Mage Armor, Divine Favor, Acid Arrow, Shatter, Moonbeam (the rest of the list shipped in batch 2).
 - Small additive changes that unblock more: `targets` on `apply_modifier` (Bless; with a signed `die` pattern also Bane), a save-only gate (Faerie Fire), a spell@1 condition / damage-type choice key (Blindness/Deafness, Protection from Energy), spell@1 summon keys (Spiritual Weapon, Conjure Animals), haste / slow modifier stats.
 - Every `NEW` row above is additive content once its row lands; ids are `srd51.spell.<snake_case_name>` and are not reserved yet.
 - Spare the Dying: `spell@1` has no stabilize effect, only the Rules `ActionKind::SpareTheDying` hook. If Rules adds an effect kind (additive), it is a one-file change.
