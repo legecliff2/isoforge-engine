@@ -82,7 +82,7 @@ Two independent mechanisms:
 - **Reverting with HP overflow** (Polymorph, Wild Shape): when form HP reaches 0, the creature reverts and **excess damage carries
   over** to the base HP (SRD: "any excess damage carries over to its normal form"); it does not die unless the base form drops to 0.
   Damage that would kill outright (massive damage) is checked against the form's maximum first, then the overflow against the
-  base. Rules implements this inside `damage_creature` (one place), emitting `Reverted` then the carried `DamageDealt`.
+  base. Rules implements this inside `damage_creature` (one place), emitting the form's `DamageDealt` (a = only what the form absorbed), `Reverted` (c = overflow), then the carried `DamageDealt` (a = the overflow), so the two `a` values sum to the hit.
 - Shapechanger forms do not use overflow: one HP pool.
 
 ### 2.3 Requests (proposed)
