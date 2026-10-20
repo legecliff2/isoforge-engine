@@ -579,8 +579,8 @@ def check_metamagic(doc: dict) -> tuple[list[str], list[str]]:
 # ---- R-G12 transforms (VERSION_BUMP_BATCH 7.2q, Rules #156) ------------------------------------------------------
 # polymorph (spell@1, rules spell loader), wild_shape / shapechanger (common@2, Engine Core build_form) and the trait flag
 # requires_humanoid_form. There is no RESERVED_EFFECT_KINDS table yet, so wild_shape / shapechanger stay out of the tag
-# table's effect_kinds and get the unknown-kind warning (the open-kind pattern) until their loader lands; polymorph gets
-# polymorph_spell_warnings' reserved warning. The messages below are the loaders' wording (Rules parses polymorph with them).
+# table's effect_kinds and get the unknown-kind warning (the open-kind pattern) until their loader lands; polymorph is
+# parsed by the rules spell loader since #171 (no reserved warning; polymorph_spell_warnings keeps above-max_cr). The messages below are the loaders' wording (Rules parses polymorph with them).
 CR_ORDER = ("0", "1/8", "1/4", "1/2") + tuple(str(i) for i in range(1, 31))
 
 
@@ -654,8 +654,7 @@ def polymorph_spell_warnings(doc: dict, ctx: dict) -> list[str]:
     if not effs or not isinstance(effs[0], dict) or effs[0].get("kind") != "polymorph":
         return []
     eff = effs[0]
-    out = ["effects[0]: polymorph is reserved: the rules spell loader does not parse it yet (R-G12 7.2q, "
-           "SpellEffectKind::Polymorph), so it has no effect until that loader lands"]
+    out: list[str] = []   # Rules #171 parses polymorph: no reserved warning
     lim = cr8(eff.get("max_cr", "target_level"))
     if lim is not None:   # fixed max_cr only (target_level is checked by sim build_form at cast time)
         for f, c in check_forms("polymorph", eff.get("forms"), ctx, []):
