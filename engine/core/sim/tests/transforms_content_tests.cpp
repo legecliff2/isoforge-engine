@@ -282,6 +282,20 @@ TEST_CASE("Wild Shape: unknown archetypes and out-of-limit forms are refused and
     }
 }
 
+TEST_CASE("loader: Combatant::size comes from the stat block (Medium and Large monster, character), footprints agree") {
+    ContentLibrary lib;
+    loaded(lib, druid(2));
+    CHECK(lib.find("test.monster.wolf")->base.size == rules5e::Size::Medium);
+    CHECK(lib.find("test.monster.bear")->base.size == rules5e::Size::Large);
+    CHECK(lib.find("test.monster.gob")->base.size == rules5e::Size::Small);
+    CHECK(lib.find(kDruid)->base.size == rules5e::Size::Medium);
+    Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.bear", {10, 10}}, {"test.monster.wolf", {20, 20}}});
+    CHECK(f.who(1).size == rules5e::Size::Large);
+    CHECK(f.c->footprint_size(f.id(1)) == 2);
+    CHECK(f.who(2).size == rules5e::Size::Medium);
+    CHECK(f.c->footprint_size(f.id(2)) == 1);
+}
+
 TEST_CASE("Wild Shape into a Large form: the footprint must fit at the anchor; Footprint events on the size change") {
     ContentLibrary lib;
     loaded(lib, druid(8));   // CR 1: the Large bear
@@ -298,6 +312,7 @@ TEST_CASE("Wild Shape into a Large form: the footprint must fit at the anchor; F
     const std::size_t from = f.c->events().size();
     REQUIRE(f.wild_shape(4).ok);
     CHECK(f.c->footprint_size(f.id(0)) == 2);
+    CHECK(f.who(0).size == rules5e::Size::Large);   // the form's size
     const auto& ev = f.c->events();
     bool fp = false;
     for (std::size_t i = from; i < ev.size(); ++i)
@@ -314,6 +329,7 @@ TEST_CASE("Wild Shape into a Large form: the footprint must fit at the anchor; F
     const std::size_t r0 = f.c->events().size();
     REQUIRE(f.settle(f.c->submit(rv)).ok);
     CHECK(f.c->footprint_size(f.id(0)) == 1);
+    CHECK(f.who(0).size == rules5e::Size::Medium);   // revert restores the stat block size
     CHECK(f.c->events().back().kind == SimEvent::Kind::Footprint);
     CHECK(f.c->events().back().rules.a == 1);
     CHECK(f.c->events().size() > r0);

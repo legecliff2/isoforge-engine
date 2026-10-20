@@ -298,9 +298,9 @@ bool Combat::spell_in_reach(const rules5e::SpellDef& def, CombatantId caster, Co
 int Combat::footprint_size(CombatantId id) const {
     const Slot* s = slot(id);
     if (!s) return 1;
-    // R-G12: a creature in a form occupies its form's size (only while transformed; its own block keeps Archetype::footprint).
-    if (const auto* k = rules5e::find(state_, id); k && k->form != rules5e::FormKind::None)
-        return int(footprint_of(CreatureSize(uint8_t(k->size))));
+    // The loader sets Combatant::size from the stat block (Medium when size is inert, so it matches Archetype::footprint);
+    // a transform sets the form's size and a revert restores it.
+    if (const auto* k = rules5e::find(state_, id)) return int(footprint_of(CreatureSize(uint8_t(k->size))));
     return int(s->archetype->footprint);
 }
 
@@ -1706,7 +1706,7 @@ std::optional<rules5e::FormStats> Combat::build_form(const rules5e::Combatant& w
         const auto& sh = ff->second.shapes[index];
         f = stats_of(who);   // "statistics other than size are the same"; equipment is not transformed (attacks kept)
         f.hp = who.hp;
-        f.size = rules5e::Size(uint8_t(own->size));   // the loader keeps the stat block size on the Archetype only
+        f.size = own->base.size;   // the stat block size (the creature may already be in another shape)
         if (sh.size) f.size = rules5e::Size(uint8_t(*sh.size));
         if (sh.ac >= 0) f.ac = int8_t(sh.ac);
         if (sh.speed_ft >= 0) f.speed_ft = uint8_t(sh.speed_ft);
@@ -1725,7 +1725,7 @@ std::optional<rules5e::FormStats> Combat::build_form(const rules5e::Combatant& w
             if (fa->cr_x8 > limit) return no("form above the target's level / CR");
         }
         f = stats_of(fa->base);   // natural weapons and AC only: gear melds (no equipment AC or attacks)
-        f.size = rules5e::Size(uint8_t(fa->size));   // the loader keeps the stat block size on the Archetype only
+        f.size = fa->base.size;
         if (kind == rules5e::FormKind::WildShape) f.blocked_features = own->humanoid_only_features;
     } else {
         return no("not a transform");

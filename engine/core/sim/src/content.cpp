@@ -966,6 +966,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         const std::string sz = doc.value("size", "medium");
         for (int i = 0; i < 6; ++i) if (sz == sizes[i]) a.size = CreatureSize(i);
         a.footprint = inert.count("size") ? uint8_t(1) : footprint_of(a.size);
+        // R-G12 sim: the creature itself carries its size (Heavy weapons, forms); an inert size stays Medium, matching footprint 1.
+        if (!inert.count("size")) c.size = rules5e::Size(uint8_t(a.size));
     }
     if (!inert.count("creature_type") && doc.contains("type")) {
         auto ct = creature_type_of(doc.value("type", ""));

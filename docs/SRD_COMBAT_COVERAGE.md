@@ -76,7 +76,7 @@ Things that apply to many rows (so they are not repeated):
 | Ammunition | DATA | Ranged attack; ammunition count is OOS (no inventory in sim). |
 | Light | NEW (wiring) | `kWeaponLight` bit in `Attack::properties` (rules done); only matters for two-weapon fighting (R-G6). |
 | Loading | NEW (wiring) | Rules done: `kWeaponLoading`; one shot per Attack action even with Extra Attack / multiattack (`TurnBudget::loading_fired`). Content/adapter must set the bit. |
-| Heavy (Small creatures disadvantage) | NEW (wiring) | Rules done: `kWeaponHeavy` + `Combatant::size` (Small/Tiny attacker = disadvantage). Adapter must set the bit and `Combatant::size` (sim stores `Archetype::size` only). |
+| Heavy (Small creatures disadvantage) | NEW (wiring) | Rules done: `kWeaponHeavy` + `Combatant::size` (Small/Tiny attacker = disadvantage). Sim loader sets `Combatant::size` from the stat block `size` (R-G12 sim PR 1, #165; inert size stays Medium); the adapter still sets the Heavy bit. |
 | Special: net (restrains; Large or smaller, DC 10 Str escape or 5 slashing vs AC 10; one attack per action), lance (disadvantage within 5 ft; two hands unless mounted) | NEW | Net = restrain rider (T&C-G5); lance: `kWeaponLance` gives disadvantage with the target within 5 ft (rules done; two-hands/mounted rule is not modelled). Low priority. |
 | Silvered / adamantine weapons, magic weapons vs nonmagical resistance | NEW (wiring) | Rules done (#47): `Attack::qualifiers` (magic / silvered / adamantine) and `Combatant::resist_qualified` / `immune_qualified`. Nothing loads them from content yet, and no weapon data sets the flags (R-G17, T&C-G2, T&C-G17). Magic bonuses themselves are baked: DATA. |
 | Improvised weapons, unarmed strike (1 + Str) | DATA | Authored as an action. |
