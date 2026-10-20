@@ -257,8 +257,7 @@
         },
         "cost": {
           "type": "integer",
-          "minimum": 1,
-          "maximum": 255
+          "minimum": 1
         }
       },
       "allOf": [

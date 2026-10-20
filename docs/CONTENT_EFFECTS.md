@@ -242,7 +242,7 @@ components, character@4 `equipment[].value_gp`).
 | `when[].kind` | `target_surprised`, `ally_near_target` (no other keys) | compiled |
 | `when[].kind` | `damage_at_most` with `amount` 1..32767 | `bad damage_at_most amount` otherwise |
 | `usage.kind` | `at_will`; `per_rest` (`uses` 1..255, `rest` short/long); `per_day` (`uses` 1..255) | `bad uses` / `bad rest` |
-| `usage.kind` | `pool` (`pool` must be a declared resource, `cost` 1..255) | `bad usage pool` |
+| `usage.kind` | `pool` (`pool` must be a declared resource, `cost` 1..255) | `bad usage pool` (validator: cost > 255 is an on_event error; the schema keeps the u16 reaction cost) |
 | `usage.kind` | `recharge` | not compiled; the trait is listed as unsupported, so the validator warns (does not error) |
 
 There is no `weapon_attack` predicate: #158 adds none, and the existing `weapon` predicate covers it.

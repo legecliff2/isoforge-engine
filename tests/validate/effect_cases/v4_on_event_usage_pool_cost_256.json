@@ -46,5 +46,5 @@
     ]
   ],
   "severity": "error",
-  "expect": "/usage/cost: 256 is greater than the maximum of 255"
+  "expect": "on_event: bad usage pool (cost must be 1..255, got 256)"
 }

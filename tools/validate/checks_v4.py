@@ -511,6 +511,9 @@ def check_on_event_usage(doc: dict) -> tuple[list[str], list[str]]:
         if eff.get("kind") != "on_event" or not isinstance(eff.get("usage"), dict):
             continue
         u = eff["usage"]
+        c = u.get("cost")
+        if u.get("kind") == "pool" and isinstance(c, int) and not isinstance(c, bool) and c > 255:
+            errs.append(f"{path}/usage: {owner} on_event: bad usage pool (cost must be 1..255, got {c}) (sim #158)")
         if u.get("kind") == "recharge":
             warns.append(f"{path}/usage: {owner} on_event: unsupported usage (recharge is not compiled yet; the sim lists the "
                          "trait in unsupported_features and never fires it) (sim #158)")
