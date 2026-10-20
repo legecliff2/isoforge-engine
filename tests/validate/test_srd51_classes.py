@@ -165,7 +165,7 @@ AUTHORED = {
     "stunning-strike": "feature:stunning_strike",            # descriptive: save_condition does not load until_end_of_caster_next_turn
     "otherworldly-patron": "subclass",
     "pact-magic": "spellcasting",                            # spellcasting.pact {level, slots}
-    "dark-ones-blessing": "feature:dark_ones_blessing",      # descriptive: the on_event temp_hp rider is reserved (does not fire)
+    "dark-ones-blessing": "feature:dark_ones_blessing",      # on_event reduce_to_zero / subject_hostile / temp_hp amount_from cha + warlock level (EC #212)
     "eldritch-invocations": "feature:eldritch_invocations",  # Agonizing Blast, Armor of Shadows (+ Repelling Blast at 5)
     "pact-boon": "feature:pact_of_the_tome",                 # Tome: three any-class cantrips in spellcasting.spells (TOME_CANTRIPS)
     "warlock-ability-score-improvement-1": "abilities",
@@ -179,7 +179,7 @@ DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_stor
                "druid": ["druidic", "bonus_cantrip", "circle_spells"],
                "monk": ["unarmored_defense", "martial_arts", "ki", "flurry_of_blows", "patient_defense", "step_of_the_wind",
                         "unarmored_movement", "deflect_missiles", "open_hand_technique", "slow_fall", "stunning_strike"],
-               "warlock": ["dark_ones_blessing", "eldritch_invocations", "agonizing_blast", "armor_of_shadows", "repelling_blast",
+               "warlock": ["eldritch_invocations", "agonizing_blast", "armor_of_shadows", "repelling_blast",
                            "pact_of_the_tome"]}
 # Not expressible today (docs/SRD_CLASSES_DEFERRED.md): mirror index -> the feature id it would get (must be absent).
 DEFERRED = {
@@ -585,6 +585,10 @@ class ClassTable(unittest.TestCase):
                 armor = [e for e in d["equipment"] if isinstance(e, dict) and e.get("equipped") and item(e["item"])["category"] == "armor"]
                 self.assertEqual(bool(armor), level < 2)   # Armor of Shadows replaces the leather armor from 2nd
                 self.assertEqual("pact_of_the_tome" in f, level >= 3)
+                self.assertEqual(f["dark_ones_blessing"]["effect"], {
+                    "kind": "on_event", "on": "reduce_to_zero", "when": [{"kind": "subject_hostile"}],
+                    "effects": [{"kind": "temp_hp", "amount_from": {"ability": "cha", "class": "warlock"}}]})   # Cha mod + warlock level, min 1
+                self.assertNotIn("does not fire", f["dark_ones_blessing"]["description"])
                 for fid in DESCRIPTIVE["warlock"]:
                     if fid in f:
                         self.assertNotIn("effect", f[fid], fid)

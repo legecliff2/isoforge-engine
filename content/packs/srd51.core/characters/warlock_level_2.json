@@ -59,7 +59,25 @@
     {
       "id": "dark_ones_blessing",
       "name": "Dark One's Blessing",
-      "description": "Starting at 1st level, when you reduce a hostile creature to 0 hit points, you gain temporary hit points equal to your Charisma modifier + your warlock level (minimum of 1) (5). (Descriptive: the on_event temp_hp rider is reserved in the sim and does not fire.)"
+      "description": "Starting at 1st level, when you reduce a hostile creature to 0 hit points, you gain temporary hit points equal to your Charisma modifier + your warlock level (minimum of 1) (5).",
+      "effect": {
+        "kind": "on_event",
+        "on": "reduce_to_zero",
+        "when": [
+          {
+            "kind": "subject_hostile"
+          }
+        ],
+        "effects": [
+          {
+            "kind": "temp_hp",
+            "amount_from": {
+              "ability": "cha",
+              "class": "warlock"
+            }
+          }
+        ]
+      }
     },
     {
       "id": "eldritch_invocations",
