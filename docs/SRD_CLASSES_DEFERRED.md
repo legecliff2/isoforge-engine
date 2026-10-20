@@ -1,16 +1,16 @@
-# SRD 5.1 classes (Fighter, Cleric, Wizard, Sorcerer, Rogue, Paladin, Ranger levels 1-5): authored vs deferred
+# SRD 5.1 classes (Fighter, Cleric, Wizard, Sorcerer, Rogue, Paladin, Ranger, Barbarian levels 1-5): authored vs deferred
 
 > This work includes material taken from the System Reference Document 5.1 ("SRD 5.1") by Wizards of the Coast LLC, available at <https://dnd.wizards.com/resources/systems-reference-document>. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License, <https://creativecommons.org/licenses/by/4.0/legalcode>.
 
 Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules, section 6), `docs/SRD_MONSTERS_DEFERRED.md` and `docs/SRD_SPELLS_DEFERRED.md`; pack `content/packs/srd51.core`.
 
-**Source.** Class, level, feature and subclass data come from [5e-bits/5e-database](https://github.com/5e-bits/5e-database) commit `a6212be` (`src/2014/en/5e-SRD-Classes.json`, `5e-SRD-Levels.json`, `5e-SRD-Features.json`, `5e-SRD-Subclasses.json`; spell levels and class lists from `5e-SRD-Spells.json`). The fields used are copied verbatim into `tests/validate/data/srd51_classes_5e_database_a6212be.json`, and `tests/validate/test_srd51_classes.py` (ctest `content_validate_srd51_classes`) checks every document against them. The SRD subclasses are Champion (Fighter), Life Domain (Cleric), School of Evocation (Wizard), Draconic Bloodline (Sorcerer), Thief (Rogue), Oath of Devotion (Paladin) and Hunter (Ranger).
+**Source.** Class, level, feature and subclass data come from [5e-bits/5e-database](https://github.com/5e-bits/5e-database) commit `a6212be` (`src/2014/en/5e-SRD-Classes.json`, `5e-SRD-Levels.json`, `5e-SRD-Features.json`, `5e-SRD-Subclasses.json`; spell levels and class lists from `5e-SRD-Spells.json`). The fields used are copied verbatim into `tests/validate/data/srd51_classes_5e_database_a6212be.json`, and `tests/validate/test_srd51_classes.py` (ctest `content_validate_srd51_classes`) checks every document against them. The SRD subclasses are Champion (Fighter), Life Domain (Cleric), School of Evocation (Wizard), Draconic Bloodline (Sorcerer), Thief (Rogue), Oath of Devotion (Paladin), Hunter (Ranger) and Path of the Berserker (Barbarian).
 
 ## Representation
 
-`character@4` describes one creature: `classes[]` with a `level` and an optional `subclass`, a total `level`, and a stat block. There is no class or level-progression document type. A class level is therefore authored as **one pre-generated character per class per level**: 35 documents, `srd51.character.<class>_level_<n>` (`characters/<class>_level_<n>.json`). The `_level_` infix is deliberate: `srd51.character.fighter_1` already belongs to `sample.vertical_slice`, which depends on `srd51.core`, so a duplicate id would break the pack set.
+`character@4` describes one creature: `classes[]` with a `level` and an optional `subclass`, a total `level`, and a stat block. There is no class or level-progression document type. A class level is therefore authored as **one pre-generated character per class per level**: 40 documents, `srd51.character.<class>_level_<n>` (`characters/<class>_level_<n>.json`). The `_level_` infix is deliberate: `srd51.character.fighter_1` already belongs to `sample.vertical_slice`, which depends on `srd51.core`, so a duplicate id would break the pack set.
 
-Every PC is a human (SRD human: +1 to every ability score) built from the standard array (15, 14, 13, 12, 10, 8). The Ability Score Improvement at level 4 is +2 to the class's main ability (Str, Wis, Int, Cha, Dex, Str, Dex), and level 5 carries it forward. Hit points are the maximum hit die at level 1, then the fixed average (6 / 5 / 4) plus Con for each later level (d8 rogue: 5). XP is the threshold for the level. Weapons, armor and shields are `{item, equipped}` references to the pack's `item@1` documents. AC and every attack are derived from those items (base damage, no feature bonus folded in; `docs/CONTENT_EFFECTS.md` section 2) and are pinned by the test. Packs, foci and ammunition stay descriptive strings.
+Every PC is a human (SRD human: +1 to every ability score) built from the standard array (15, 14, 13, 12, 10, 8). The Ability Score Improvement at level 4 is +2 to the class's main ability (Str, Wis, Int, Cha, Dex, Str, Dex, Str), and level 5 carries it forward. Hit points are the maximum hit die at level 1, then the fixed average (6 / 5 / 4) plus Con for each later level (d8 rogue: 5). XP is the threshold for the level. Weapons, armor and shields are `{item, equipped}` references to the pack's `item@1` documents. AC and every attack are derived from those items (base damage, no feature bonus folded in; `docs/CONTENT_EFFECTS.md` section 2) and are pinned by the test. Packs, foci and ammunition stay descriptive strings.
 
 | class | subclass (from) | build | AC | weapons |
 |---|---|---|---|---|
@@ -21,6 +21,7 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Rogue | Thief (3) | Dex 16 (18 at 4), Con 15, Wis 14; Acrobatics, Perception, Sleight of Hand, Stealth (Expertise: Stealth, Perception); climb 30 from 3 (Second-Story Work) | 14 (15 at 4): leather armor | rapier (finesse), shortbow |
 | Paladin | Oath of Devotion (3) | Str 16 (18 at 4), Cha 15, Con 14; Athletics, Persuasion | 18: chain mail, shield | longsword (one-handed, Dueling), javelin |
 | Ranger | Hunter (3) | Dex 16 (18 at 4), Wis 15, Con 14; Perception, Stealth, Survival | 14 (15 at 4): leather armor | longbow (Archery), shortsword |
+| Barbarian | Path of the Berserker (3) | Str 16 (18 at 4), Con 15, Dex 14; Athletics, Perception; walk 40 at 5 (Fast Movement) | 14: no armor, Unarmored Defense 10 + Dex + Con | greataxe, handaxe (thrown) |
 
 ## Authored as data
 
@@ -60,6 +61,11 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Spellcasting (Ranger) | 2-5 | `spellcasting {ability wis, caster_level, slots, spells}` from 2nd level. Spells known: Cure Wounds (the only shipped 1st-level ranger spell, so 1 of 2-3 known at 2-4); at 5 also Barkskin, Lesser Restoration, Spike Growth (4 of 4) | yes |
 | Ranger Archetype | 3 | `classes[0].subclass` = `hunter` | descriptive |
 | Extra Attack (Ranger) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
+| Unarmored Defense (Barbarian) | 1-5 | baked into `armor_class` (10 + Dex + Con, no armor; the test derives it); descriptive feature, no `effect` | yes (static number) |
+| Reckless Attack (Barbarian) | 2-5 | `reckless_attack` (sim #129: `ActionRequest::reckless` on the turn's first attack; advantage on Str melee weapon attacks, attacks against you have advantage until your next turn). The built-in AI never declares it | yes (caller-declared) |
+| Primal Path | 3 | `classes[0].subclass` = `berserker` | descriptive |
+| Extra Attack (Barbarian) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
+| Fast Movement (Barbarian) | 5 | baked into `speed.walk` 40 (no heavy armor is ever worn); descriptive feature, no `effect` | yes (static number) |
 
 The validator change in this batch: `attack_bonus`, `crit_range` and `ac_bonus` (sim #107 hooks) are now known effect kinds at `@4` in `tools/validate/checks_v4.py` (until now they produced an "unknown effect kind" warning). Their fields are checked the way the sim checks them at load. The `@<=3` rows are unchanged.
 
@@ -100,6 +106,16 @@ Kept as a `features[]` entry with the SRD text and no `effect` (the test pins th
 | Natural Explorer (`natural-explorer-1-terrain-type`) | Ranger 1 | Forest chosen. Doubled proficiency on Int / Wis checks about the terrain, travel pace, foraging, tracking, no getting lost: overland travel, not simulated | - (out of combat scope) |
 | Primeval Awareness (`primeval-awareness`) | Ranger 3 | Spend an action and a ranger slot to sense aberrations, celestials, dragons, elementals, fey, fiends and undead within 1 mile (6 in favored terrain) for 1 minute per slot level; no locations or numbers. Beyond any encounter map, and no feature key spends a spell slot outside an `on_event` trigger | Rules (vision 7.2x for a type reveal), Engine Core (a slot-spending active feature) |
 | Hunter's Prey: Colossus Slayer (`hunters-prey`, `hunters-prey-colossus-slayer`) | Ranger (Hunter) 3 | Fits `on_event {on hit, limit once_per_turn, when [weapon_attack, <target below its hit point maximum>], effects [extra_damage 1d8 same_as_weapon]}` except the predicate: no predicate tests the **target's** HP (`self_hp_below` is the owner's; rules has `kWhenTargetDamaged` only as a monster attack trait flag, not as a `when[]` kind). Giant Killer (a reaction to a Large+ attacker's attack, hit or miss) and Horde Breaker (an extra attack against a second target within 5 ft) are not chosen; neither has a key either | Rules (predicate `target_below_max_hp`; T&C adds the schema value) |
+
+## Descriptive only: mechanic missing (Barbarian)
+
+Kept as a `features[]` entry with the SRD text and no `effect` (the test pins that), same rule as the sections above. No `resources[]` rage pool is declared: nothing loaded would spend it (check 12).
+
+| feature (mirror index) | class / level | why it is not mechanical | gap id / owner |
+|---|---|---|---|
+| Rage (`rage`) | Barbarian 1 | The shape exists (the `tests/validate/fixtures/v4` barbarian: `apply_modifier {cost bonus_action, usage {pool rage}, modifiers [damage bonus_table 2/3/4, resistance bludgeoning / piercing / slashing], rounds 10}` + `resources[]` rage 2/3/4/...), but the sim lists an `apply_modifier` feature with `usage` as unsupported (`apply_apply_modifier`: "usage needs resource pools"), and without `usage` Rage would be unlimited. Also missing even with the pool: the damage bonus only on **melee weapon attacks using Strength** (a `damage` modifier adds to every damage roll), advantage on Strength checks and saves (`save` / `ability_check` modifiers with `mode advantage, ability str` would load), no spellcasting or concentration while raging, the early end (no attack or damage taken since your last turn, unconscious), ending it as a bonus action, and "not wearing heavy armor" | Engine Core (pool `usage` on `apply_modifier`), Rules (melee-Str damage scope, rage end conditions) |
+| Danger Sense (`danger-sense`) | Barbarian 2 | Advantage on Dexterity saves against effects you can see, unless blinded, deafened or incapacitated. No static (always-on) save modifier key: `apply_modifier` is an active feature (action / bonus action), and no predicate tests "the effect's source is visible" or the owner's conditions | Rules (static save advantage with condition gates; vision 7.2x) |
+| Frenzy (`frenzy`) | Barbarian (Berserker) 3 | A single melee weapon attack as a bonus action on each later turn of a rage, then one level of exhaustion when the rage ends. Depends on Rage; `grant_action` / `bonus_attack` cannot be tied to an active rage, and although `exhaustion` is a condition id content can apply, no trigger fires when a modifier effect ends (`on_event.on` has no effect-ended event) | Engine Core (Rage first), Rules (exhaustion on effect end) |
 
 ## Deferred (feature not expressible today)
 
