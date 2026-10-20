@@ -10,6 +10,7 @@
 #include "rules5e_content/spell_loader.hpp"
 #include "sim/combat.hpp"
 #include "sim/driver.hpp"
+#include "sim/rest.hpp"
 #include "world/chunk_codec.hpp"
 
 using namespace eng;
@@ -50,11 +51,14 @@ Json druid(int level, Json extra = Json::object()) {
     Json ws = {{"kind", "wild_shape"},
                {"forms", {"test.monster.wolf", "test.monster.hawk", "test.monster.croc", "test.monster.bear", "test.monster.missing",
                           "test.monster.gob", "test.monster.mouse"}},
-               {"cost", "action"}};
+               {"cost", "action"},
+               {"pool", "wild_shape"},
+               {"max_cr_by_level", Json::array({{{"level", 2}, {"max_cr", "1/4"}}, {{"level", 4}, {"max_cr", "1/2"}}, {{"level", 8}, {"max_cr", "1"}}})}};
     for (auto it = extra.begin(); it != extra.end(); ++it) ws[it.key()] = it.value();
-    Json hum = c["features"][1];   // Second Wind, marked as needing hands
+    c["resources"] = Json::array({{{"id", "wild_shape"}, {"max", 2}, {"recharge", "short_rest"}}});
+    Json hum = c["features"][1];   // Second Wind, marked as needing hands (common@2 trait flag: on the feature, not its effect)
     hum["id"] = "hum";
-    hum["effect"]["requires_humanoid_form"] = true;
+    hum["requires_humanoid_form"] = true;
     c["features"] = Json::array({{{"id", "ws"}, {"name", "Wild Shape"}, {"description", "x"}, {"effect", ws}}, hum});
     return c;
 }
@@ -167,7 +171,7 @@ std::size_t index_of(const std::vector<SimEvent>& ev, std::size_t from, EventKin
 }
 }  // namespace
 
-TEST_CASE("wild_shape content: FeatureSpec, uses, duration, blocked features, load errors") {
+TEST_CASE("wild_shape content: FeatureSpec, pool uses, duration, blocked features, load errors") {
     ContentLibrary lib;
     const Archetype& a = *loaded(lib, druid(4));
     const auto& spec = a.feature_specs.at(kWildShape);
@@ -175,9 +179,13 @@ TEST_CASE("wild_shape content: FeatureSpec, uses, duration, blocked features, lo
     CHECK(spec.form_choices == 7);
     CHECK(spec.form_rounds == 1200);   // 600 * (4 / 2): 2 hours
     CHECK(spec.cost == 1);
+    CHECK(spec.pool == spell_id_of("wild_shape"));   // uses and recharge come from the resources[] pool, 1 per use
+    CHECK(spec.pool_cost == 1);
     REQUIRE(a.active.size() >= 1);
-    CHECK(a.active[0].uses == 2);
-    CHECK(a.active[0].recharge == Recharge::ShortRest);
+    CHECK(a.active[0].uses == 0);
+    CHECK(a.active[0].recharge == Recharge::None);
+    CHECK(a.form_features.at(kWildShape).no_fly_below == 8);   // defaults
+    CHECK(a.form_features.at(kWildShape).no_swim_below == 4);
     CHECK(a.form_features.at(kWildShape).max_cr_x8 == 4);   // druid 4: CR 1/2
     CHECK(a.humanoid_only_features == std::vector<uint32_t>{kHumanoidOnly});
     CHECK(a.char_level == 4);
@@ -195,11 +203,49 @@ TEST_CASE("wild_shape content: FeatureSpec, uses, duration, blocked features, lo
         d["features"][0]["effect"].erase("forms");
         CHECK(build(l2, d));
     }
-    {   // bad ai / cost
-        ContentLibrary l2;
-        CHECK(build(l2, druid(2, {{"ai", "always"}})));
+    {   // bad cost
         ContentLibrary l3;
         CHECK(build(l3, druid(2, {{"cost", "free"}})));
+    }
+    auto err = [](const Json& d) {
+        ContentLibrary l;
+        return build(l, d).value_or("");
+    };
+    // the old sim-only keys and a duration key are unknown keys (common@2 wild_shape_effect is closed)
+    for (const char* k : {"uses", "recharge", "ai", "duration", "duration_hours"}) {
+        INFO(k);
+        CHECK(err(druid(2, {{k, 2}})).find(std::string("wild_shape effect: unknown key '") + k + "'") != std::string::npos);
+    }
+    CHECK(err(druid(2, {{"max_cr_by_level", Json::array({{{"level", 2}, {"cr", "1/4"}}})}})).find("unknown key 'cr'") != std::string::npos);
+    CHECK(err(druid(2, {{"max_cr_by_level", Json::array({{{"level", 2}, {"max_cr", Json::parse("0.25")}}})}})).find("CR string") != std::string::npos);
+    CHECK(err(druid(2, {{"max_cr_by_level", Json::array({{{"level", 4}, {"max_cr", "1/2"}}, {{"level", 2}, {"max_cr", "1/4"}}})}}))
+              .find("strictly ascending") != std::string::npos);
+    {
+        Json d = druid(2);
+        d["features"][0]["effect"].erase("max_cr_by_level");
+        CHECK(err(d).find("needs max_cr_by_level") != std::string::npos);
+        d = druid(2);
+        d["features"][0]["effect"].erase("pool");
+        CHECK(err(d).find("needs pool") != std::string::npos);
+        d = druid(2);
+        d["resources"][0]["recharge"] = "long_rest";
+        CHECK(err(d).find("must recharge on short_rest") != std::string::npos);
+        CHECK(err(druid(2, {{"pool", "nope"}})).find("unknown (or unlimited) pool 'nope'") != std::string::npos);
+        CHECK(err(druid(2, {{"no_fly_below", 0}})).find("no_fly_below must be 1..20") != std::string::npos);
+        d = druid(2);
+        d["features"][0]["requires_humanoid_form"] = true;
+        CHECK(err(d).find("requires_humanoid_form on the wild_shape feature itself") != std::string::npos);
+    }
+    {   // class: another class's level drives the limits; a druid-less class list fails
+        ContentLibrary l4;
+        Json d = druid(2, {{"class", "ranger"}});
+        d["classes"] = Json::array({{{"class", "ranger"}, {"level", 8}, {"hit_die", "d10"}}});
+        REQUIRE_FALSE(build(l4, d));
+        const Archetype& r = *l4.find(kDruid);
+        CHECK(r.form_features.at(kWildShape).level == 8);
+        CHECK(r.form_features.at(kWildShape).max_cr_x8 == 8);
+        CHECK(r.feature_specs.at(kWildShape).form_rounds == 2400);
+        CHECK(err(druid(4, {{"class", "ranger"}})).find("needs ranger level 2..20") != std::string::npos);
     }
 }
 
@@ -468,7 +514,7 @@ TEST_CASE("Polymorph choices: rated beasts in id order, capped by the target's C
     CHECK_FALSE(f.c->build_form(f.who(1), FormKind::Polymorph, poly, uint8_t(forms.size())));
 }
 
-TEST_CASE("AI: Wild Shape only when content asks (ai: prefer_beast), into the highest allowed CR; no spells in the form") {
+TEST_CASE("AI: Wild Shape only when asked (FormFeature::ai_prefer; common@2 has no content key), into the highest allowed CR") {
     {
         ContentLibrary lib;
         loaded(lib, druid(4));
@@ -478,7 +524,8 @@ TEST_CASE("AI: Wild Shape only when content asks (ai: prefer_beast), into the hi
         CHECK_FALSE((cmd.request.kind == ActionKind::UseFeature && cmd.request.feature_id == kWildShape));
     }
     ContentLibrary lib;
-    loaded(lib, druid(4, {{"ai", "prefer_beast"}}));
+    // No content key turns it on (wild_shape_effect is closed): set the archetype flag directly to cover the driver path.
+    const_cast<Archetype*>(loaded(lib, druid(4)))->form_features.at(kWildShape).ai_prefer = true;
     Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {20, 20}}});
     f.advance_to(f.id(0));
     const Command cmd = next_command(*f.c, f.id(1));
@@ -501,10 +548,11 @@ TEST_CASE("shapechanger trait: a listed form changes only the listed statistics,
     Json w = load_json("content/packs/srd51.core/monsters/goblin.json");
     w["id"] = "test.monster.were";
     w["hit_points"]["average"] = 30;
+    w["shapechanger"] = true;
     w["traits"] = Json::array({{{"id", "shape"}, {"name", "Shapechanger"}, {"description", "x"},
                                 {"effect", {{"kind", "shapechanger"},
-                                            {"forms", Json::array({{{"id", "wolf"}, {"armor_class", 12}, {"speed_walk", 40}},
-                                                                   {{"id", "hybrid"}, {"size", "large"}}})}}}}});
+                                            {"forms", Json::array({{{"id", "wolf"}, {"name", "Wolf"}, {"armor_class", 12}, {"speed", {{"walk", 40}}}},
+                                                                   {{"id", "hybrid"}, {"name", "Hybrid"}, {"size", "large"}}})}}}}});
     REQUIRE_FALSE(lib.add(w, "monster"));
     const Archetype& a = *lib.find("test.monster.were");
     CHECK(a.base.shapechanger);
@@ -527,4 +575,138 @@ TEST_CASE("shapechanger trait: a listed form changes only the listed statistics,
     CHECK(me.attacks.size() == a.base.attacks.size());   // equipment is not transformed
     CHECK(f.c->attack_archetype(f.id(0)) == &a);
     f.check_replay();
+}
+
+TEST_CASE("schema fixture: the validator's druid_4.json (common@2 wild_shape) loads; pool uses, short_rest recharge, max CR by level") {
+    // tests/validate/fixtures/v4/extra/druid_4.json is validated by test_v4_validator.py (RG12Transforms, CI content_validate_v4):
+    // loading the same file here keeps the sim loader and the schema on the same keys.
+    const Json doc = load_json("tests/validate/fixtures/v4/extra/druid_4.json");
+    const std::string id = doc["id"].get<std::string>();
+    auto lib_for = [&](int level) {
+        auto lib = std::make_unique<ContentLibrary>();
+        for (const char* m : {"jackal", "wolf", "black_bear", "dire_wolf", "goblin"})
+            REQUIRE_FALSE(lib->add(load_json(std::string("content/packs/srd51.core/monsters/") + m + ".json"), "monster"));
+        Json d = doc;
+        d["classes"][0]["level"] = level;
+        d["level"] = level;
+        const auto e = lib->add(d, "character");
+        INFO(e.value_or(""));
+        REQUIRE_FALSE(e);
+        return lib;
+    };
+    const auto lib = lib_for(4);
+    const Archetype& a = *lib->find(id);
+    const uint32_t ws = 1, focus = 2;   // features[] order
+    const auto& spec = a.feature_specs.at(ws);
+    CHECK(spec.form == uint8_t(FormKind::WildShape));
+    CHECK(spec.form_choices == 4);
+    CHECK(spec.form_rounds == 1200);
+    CHECK(spec.pool == spell_id_of("wild_shape"));
+    CHECK(spec.pool_cost == 1);
+    REQUIRE(a.resources.size() == 1);
+    CHECK(a.resources[0].max == 2);
+    CHECK(a.resources[0].recharge == uint8_t(rules5e::FeatureRecharge::ShortRest));
+    CHECK(a.humanoid_only_features == std::vector<uint32_t>{focus});
+    // max CR by level: the last row at or below the druid level (2: 1/4, 4: 1/2, 8: 1)
+    CHECK(a.form_features.at(ws).max_cr_x8 == 4);
+    CHECK(lib_for(2)->find(id)->form_features.at(ws).max_cr_x8 == 2);
+    CHECK(lib_for(7)->find(id)->form_features.at(ws).max_cr_x8 == 4);
+    CHECK(lib_for(8)->find(id)->form_features.at(ws).max_cr_x8 == 8);
+    CHECK(a.form_features.at(ws).no_fly_below == 8);
+    CHECK(a.form_features.at(ws).no_swim_below == 4);
+
+    Fight f(*lib, {{id, {2, 2}}, {"srd51.monster.goblin", {20, 20}}});
+    f.advance_to(f.id(0));
+    const auto pool = [&] { return rules5e::find_pool(f.c->state(), f.id(0), spell_id_of("wild_shape"))->cur; };
+    REQUIRE(rules5e::find_pool(f.c->state(), f.id(0), spell_id_of("wild_shape")));
+    CHECK(pool() == 2);
+    CHECK_FALSE(f.c->build_form(f.who(0), FormKind::WildShape, ws, 3));   // dire wolf: CR 1 > 1/2 at druid 4
+    auto use = [&](uint8_t form) {
+        Command u;
+        u.request = {f.id(0), ActionKind::UseFeature};
+        u.request.feature_id = ws;
+        u.request.form_archetype = form;
+        return f.settle(f.c->submit(u));
+    };
+    auto revert = [&] {
+        Command rv;
+        rv.request = {f.id(0), ActionKind::Revert};
+        rv.request.as_bonus_action = true;
+        REQUIRE(f.settle(f.c->submit(rv)).ok);
+    };
+    CHECK_FALSE(use(4).ok);   // the dire wolf is refused, and nothing is spent
+    CHECK(pool() == 2);
+    REQUIRE(use(3).ok);       // black bear, CR 1/2
+    CHECK(f.who(0).form == FormKind::WildShape);
+    CHECK(pool() == 1);
+    revert();
+    f.end_turn();
+    f.advance_to(f.id(0));
+    REQUIRE(use(2).ok);       // wolf
+    CHECK(pool() == 0);
+    revert();
+    f.end_turn();
+    f.advance_to(f.id(0));
+    CHECK_FALSE(use(1).ok);   // the pool is empty: no third use
+    CHECK(f.who(0).form == FormKind::None);
+    f.check_replay();
+    // a short rest refills the pool (recharge: short_rest)
+    rules5e::EncounterState roster = f.c->state();
+    rng::Rng rest_rng(3, 0);
+    REQUIRE(sim::short_rest(roster, f.id(0), rest_rng, 0).ok);
+    CHECK(rules5e::find_pool(roster, f.id(0), spell_id_of("wild_shape"))->cur == 2);
+}
+
+TEST_CASE("shapechanger content: common@2 keys only (speed object, creature_type, actions), the fact is required") {
+    ContentLibrary lib;
+    loaded(lib, druid(2));
+    Json w = load_json("content/packs/srd51.core/monsters/goblin.json");
+    w["id"] = "test.monster.were2";
+    w["shapechanger"] = true;
+    REQUIRE(w["actions"].size() >= 2);
+    const std::string keep = w["actions"][0]["id"].get<std::string>();
+    Json form = {{"id", "beast"}, {"name", "Beast"}, {"speed", {{"walk", 50}, {"climb", 20}}}, {"creature_type", "beast"},
+                 {"actions", Json::array({keep})}};
+    w["traits"] = Json::array({{{"id", "shape"}, {"name", "Shapechanger"}, {"description", "x"},
+                                {"effect", {{"kind", "shapechanger"}, {"forms", Json::array({form})}}}}});
+    auto err = [&](Json d) {
+        ContentLibrary l;
+        return l.add(d, "monster").value_or("");
+    };
+    {
+        Json d = w;
+        d["traits"][0]["effect"]["forms"][0]["speed_walk"] = 40;
+        CHECK(err(d).find("shapechanger form: unknown key 'speed_walk'") != std::string::npos);
+        d = w;
+        d["traits"][0]["effect"]["uses"] = 1;
+        CHECK(err(d).find("shapechanger effect: unknown key 'uses'") != std::string::npos);
+        d = w;
+        d.erase("shapechanger");
+        CHECK(err(d).find("requires shapechanger: true") != std::string::npos);
+        d = w;
+        d["traits"][0]["effect"]["forms"][0].erase("name");
+        CHECK(err(d).find("needs a name") != std::string::npos);
+        d = w;
+        d["traits"][0]["effect"]["forms"][0]["actions"] = Json::array({"howl"});
+        CHECK(err(d).find("names unknown action 'howl'") != std::string::npos);
+        d = w;
+        d["traits"][0]["effect"]["forms"][0]["creature_type"] = "rock";
+        CHECK(err(d).find("bad creature_type") != std::string::npos);
+    }
+    REQUIRE_FALSE(lib.add(w, "monster"));
+    const Archetype& a = *lib.find("test.monster.were2");
+    const uint32_t fid = uint32_t(a.features.size());
+    const auto& sh = a.form_features.at(fid).shapes.at(0);
+    CHECK(sh.speed_ft == 50);
+    CHECK(sh.creature_type == rules5e::CreatureType::Beast);
+    Fight f(lib, {{"test.monster.were2", {2, 2}}, {kDruid, {20, 20}}});
+    f.advance_to(f.id(0));
+    const auto fs = f.c->build_form(f.who(0), FormKind::Shapechanger, fid, 0);
+    REQUIRE(fs);
+    CHECK(fs->speed_ft == 50);
+    CHECK(fs->creature_type == rules5e::CreatureType::Beast);
+    for (const auto& at : fs->attacks) CHECK(at.id != std::string_view(w["actions"][1]["id"].get<std::string>()));
+    bool has_keep = false;
+    for (const auto& at : fs->attacks) has_keep = has_keep || at.id == keep;
+    CHECK(has_keep);
 }

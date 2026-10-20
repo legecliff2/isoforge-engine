@@ -24,3 +24,4 @@ These files are not part of any shipped pack and are not under `tests/compat` (t
   two_handed weapons, no shield).
   R-G8 (`RG8GrappleRider`, sim #104): `giant_crab_grappler.json` (monster@4: a claw with a `grapple` rider, `escape_dc` 11, and a
   pincer with a `grapple` rider without `escape_dc` (Athletics contest) followed by an `extra_damage` rider).
+- `druid_4.json` (R-G12 wild_shape, 7.2q): a schema-valid druid 4 with a `wild_shape` pool, forms, `max_cr_by_level` and a `requires_humanoid_form` feature; `RG12Transforms.test_druid_fixture_is_schema_valid` validates it and the sim test `transforms_content_tests.cpp` loads the same file.

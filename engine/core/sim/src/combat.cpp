@@ -672,6 +672,13 @@ bool Combat::can_use_feature(CombatantId id, uint32_t fid) const {
     const ActiveFeature* f = find_active(archetype(id), fid);
     if (!f || state_.ended || state_.pending || rules5e::current_actor(state_) != id) return false;
     if (feature_uses_left(id, fid) == 0) return false;
+    if (const Archetype* ar = archetype(id)) {   // R-G12 wild_shape: its uses are a resources[] pool (form features only)
+        const auto sp = ar->feature_specs.find(fid);
+        if (sp != ar->feature_specs.end() && sp->second.form != 0 && sp->second.pool != 0) {
+            const rules5e::ResourcePool* p = rules5e::find_pool(state_, id, sp->second.pool);
+            if (!p || p->cur < sp->second.pool_cost) return false;
+        }
+    }
     if (const auto* k = rules5e::find(state_, id))   // R-G12 (D7): a feature the form cannot physically use
         if (std::find(k->form_blocked_features.begin(), k->form_blocked_features.end(), fid) != k->form_blocked_features.end()) return false;
     if (f->cost == FeatureCost::Free) return true;
@@ -1960,6 +1967,29 @@ std::optional<rules5e::FormStats> Combat::build_form(const rules5e::Combatant& w
         if (sh.size) f.size = rules5e::Size(uint8_t(*sh.size));
         if (sh.ac >= 0) f.ac = int8_t(sh.ac);
         if (sh.speed_ft >= 0) f.speed_ft = uint8_t(sh.speed_ft);
+        if (sh.creature_type) f.creature_type = *sh.creature_type;
+        if (!sh.blocked_actions.empty()) {   // form actions[]: drop the other own actions' attacks (and multiattacks using them)
+            auto blocked = [&](std::string_view id) {
+                return std::find(sh.blocked_actions.begin(), sh.blocked_actions.end(), id) != sh.blocked_actions.end();
+            };
+            std::vector<rules5e::Attack> kept;
+            std::vector<int> remap(f.attacks.size(), -1);
+            for (std::size_t i = 0; i < f.attacks.size(); ++i)
+                if (!blocked(f.attacks[i].id)) { remap[i] = int(kept.size()); kept.push_back(f.attacks[i]); }
+            std::vector<rules5e::AttackSequence> seqs;
+            for (const auto& m : f.multiattacks) {
+                if (blocked(m.id)) continue;
+                rules5e::AttackSequence q{m.id, {}};
+                bool ok = true;
+                for (uint8_t ai : m.attacks) {
+                    if (ai >= remap.size() || remap[ai] < 0) { ok = false; break; }
+                    q.attacks.push_back(uint8_t(remap[ai]));
+                }
+                if (ok) seqs.push_back(std::move(q));
+            }
+            f.attacks = std::move(kept);
+            f.multiattacks = std::move(seqs);
+        }
     } else if (kind == rules5e::FormKind::WildShape || kind == rules5e::FormKind::Polymorph) {
         const Archetype* fa = form_archetype(who.id, kind, source, index);
         if (!fa) return no("unknown form archetype");

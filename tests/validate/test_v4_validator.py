@@ -738,6 +738,16 @@ class RG12Transforms(unittest.TestCase):
         d[base] = h.edit(h.edit(self.base[base], first, []), list(sets), list(dels))
         return d
 
+    def test_druid_fixture_is_schema_valid(self):
+        # extra/druid_4.json is the one wild_shape document the sim's end-to-end test (engine/core/sim/tests/
+        # transforms_content_tests.cpp, "schema fixture") also loads, so the validator and the loader read the same keys.
+        # Only the reserved-kind warning remains until wild_shape leaves the validator's reserved list.
+        d = dict(self.base)
+        d["characters/druid_4.json"] = extra("druid_4.json")
+        errs, warns = h.validate_docs(d)
+        self.assertEqual(errs, [])
+        self.assertEqual([w for w in warns if "unknown effect kind 'wild_shape'" not in w], [])
+
     def check(self, name, errs, warns, expect):
         if name.startswith("warn_"):
             self.assertEqual(errs, [], errs)
