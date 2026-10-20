@@ -204,8 +204,11 @@ def check_character(doc, errs, ctx):
     if doc["level"] == 1:  # 1st level: max hit die + CON mod
         hd = int(doc["classes"][0]["hit_die"][1:])
         want = hd + modifier(doc["abilities"]["con"])
-        if doc["hit_points"]["average"] != want:
-            errs.append(f"level-1 hit_points {doc['hit_points']['average']} != {want} (max hit die + CON)")
+        # SRD Draconic Resilience (Sorcerer, Draconic Bloodline): hit point maximum +1 per sorcerer level.
+        extra = sum(1 for c in doc["classes"] if c.get("class") == "sorcerer" and c.get("subclass") == "draconic")
+        if doc["hit_points"]["average"] != want + extra:
+            errs.append(f"level-1 hit_points {doc['hit_points']['average']} != {want + extra} (max hit die + CON"
+                        f"{' + 1 Draconic Resilience' if extra else ''})")
 
 
 # R-G16 chunk `surprise` (docs/CONTENT_CONVENTIONS.md section 8): reserved, no loader reads it yet.
