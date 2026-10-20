@@ -227,10 +227,10 @@ TEST_CASE("transforms: Polymorph refusals (D13), the save, and spellcasting off"
     auto s = start({druid(1), caster(2, 1), pc(3)});
     end_turns_until(s, 2);
     mut(s, 1).shapechanger = true;
-    CHECK(step(s, poly(2, 1)).error == "polymorph: no effect on a shapechanger");
+    CHECK(step(s, poly(2, 1)).error == "polymorph: target is a shapechanger");
     mut(s, 1).shapechanger = false;
     make_dying(mut(s, 3));
-    CHECK(step(s, poly(2, 3)).error == "polymorph: no effect on a creature with 0 hit points");
+    CHECK(step(s, poly(2, 3)).error == "polymorph: target has 0 hit points");
     CHECK(step(s, poly(2, 1, 0)).error == "form_archetype required");
     CHECK(step(s, poly(2, 1, 2)).error == "form not available");
     { auto r = cast(2, blast_id(5), 1, 1); r.form_archetype = 1; CHECK(step(s, r).error == "form_archetype: not a polymorph spell"); }
@@ -248,7 +248,7 @@ TEST_CASE("transforms: Polymorph refusals (D13), the save, and spellcasting off"
     CHECK(d.save_proficiencies == 0); CHECK(d.skill_proficiencies == 0x8u);
     CHECK(find(s, 2)->concentration_spell == kPolymorph);
     mut(s, 2).spell_slots[4] = 1;
-    CHECK(step(s, poly(2, 1)).error == "polymorph: the target is already transformed");
+    CHECK(step(s, poly(2, 1)).error == "polymorph: target already transformed");
     REQUIRE(step(s, {2, ActionKind::EndTurn}).ok);
     end_turns_until(s, 1);
     CHECK(step(s, {1, ActionKind::Revert}).error == "polymorph ends with the spell, not by choice");
