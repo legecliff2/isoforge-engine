@@ -366,7 +366,22 @@ std::optional<std::string> compile_bonus_attacks(const std::string& aid, const s
         b.pool_cost = 1;
         add("flurry_of_blows", b);
     }
-    if (has_feature("frenzy")) {
+    bool effect_frenzy = false;   // 7.2z: {kind: bonus_attack, requires_effect: "<feature id>"} (a melee weapon attack)
+    for (const auto& f : feats) {
+        if (f.kind != "bonus_attack") continue;
+        for (auto it = f.effect.begin(); it != f.effect.end(); ++it)
+            if (it.key() != "kind" && it.key() != "requires_effect") return aid + ": " + f.id + ": bonus_attack: unknown key '" + it.key() + "'";
+        const std::string req = f.effect.value("requires_effect", "");
+        bool found = false;
+        for (const auto& g : feats) found = found || (g.id == req && g.kind == "apply_modifier" && !g.effect.contains("passive"));
+        if (!found) return aid + ": " + f.id + ": requires_effect '" + req + "' is not an apply_modifier feature of this character";
+        rules5e::BonusAttack b;
+        b.any_melee = true;
+        b.requires_modifier = rules5e::spell_id_of(aid + "#" + req + "#m0");
+        add(f.id, b);
+        effect_frenzy = effect_frenzy || f.id == "frenzy";
+    }
+    if (has_feature("frenzy") && !effect_frenzy) {
         if (!has_feature("rage")) return aid + ": frenzy needs a 'rage' feature";
         rules5e::BonusAttack b;
         b.any_melee = true;
