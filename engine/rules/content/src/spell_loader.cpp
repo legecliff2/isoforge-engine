@@ -816,6 +816,42 @@ SpellLoad spell_from_json(const Json& j) {
             if (!only_keys(e, {"kind", "zone", "description"}, bad)) return ("zone effect: unknown key '" + bad + "'");
             if (!e.contains("zone")) return ("zone missing (kind zone needs a zone object)");
             if (auto m = parse_zone(e["zone"], s); !m.empty()) return m;
+        } else if (kind == "polymorph") {   // R-G12 (CONTENT_CONVENTIONS.md section 9): Polymorph; forms resolve in the validator
+            s.kind = SpellEffectKind::Polymorph;
+            std::string bad;
+            if (!only_keys(e, {"kind", "forms", "max_cr", "save"}, bad)) return ("polymorph effect: unknown key '" + bad + "'");
+            if (!e.contains("forms") || !e["forms"].is_array() || e["forms"].empty() || e["forms"].size() > 255)
+                return ("polymorph: forms must list 1..255 monster ids");
+            for (const Json& f : e["forms"]) {
+                if (!f.is_string() || f.get<std::string>().empty()) return ("polymorph: forms must list 1..255 monster ids");
+                const std::string id = f.get<std::string>();
+                if (std::find(s.polymorph_forms.begin(), s.polymorph_forms.end(), id) != s.polymorph_forms.end())
+                    return ("polymorph: duplicate form '" + id + "'");
+                s.polymorph_forms.push_back(id);
+            }
+            if (e.contains("max_cr")) {
+                const Json& m = e["max_cr"];
+                if (!m.is_string()) return ("polymorph: max_cr must be target_level or a CR string");
+                const std::string v = m.get<std::string>();
+                if (v == "target_level") s.polymorph_max_cr8 = 0xFFFF;
+                else if (v == "1/8") s.polymorph_max_cr8 = 1;
+                else if (v == "1/4") s.polymorph_max_cr8 = 2;
+                else if (v == "1/2") s.polymorph_max_cr8 = 4;
+                else {
+                    int n = -1;
+                    if (!v.empty() && v.size() <= 2 && std::all_of(v.begin(), v.end(), [](char ch) { return ch >= '0' && ch <= '9'; }) &&
+                        (v.size() == 1 || v[0] != '0'))
+                        n = std::stoi(v);
+                    if (n < 0 || n > 30) return ("polymorph: max_cr must be target_level or a CR string");
+                    s.polymorph_max_cr8 = uint16_t(n * 8);
+                }
+            }
+            if (e.contains("save")) {
+                const Json& sv = e["save"];
+                if (!sv.is_object() || !only_keys(sv, {"ability"}, bad) || !sv.contains("ability") ||
+                    !lookup(kAbility, sv["ability"], s.polymorph_save))
+                    return ("polymorph: save must be {ability}");
+            }
         } else return ("effect kind invalid");
         return "";
     };
@@ -826,6 +862,7 @@ SpellLoad spell_from_json(const Json& j) {
     const std::size_t n_effects = j["effects"].size();
     for (std::size_t i = 1; i < n_effects; ++i) {
         const Json& xe = j["effects"][i];
+        if (xe.is_object() && xe.value("kind", "") == "polymorph") return err("polymorph: primary effect only");
         if (xe.is_object() && xe.value("kind", "") == "zone")   // the cast refuses an extra effect of kind Zone
             return err("zone must be the primary effect (effects[" + std::to_string(i) + "] is a zone)");
         SpellDef x;
@@ -864,7 +901,11 @@ SpellLoad spell_from_json(const Json& j) {
         return err("effect kind " + kind + " needs casting_time.trigger.kind " + (s.kind == SpellEffectKind::AcBonus ? "being_hit" : "spell_cast"));
     if ((s.kind == SpellEffectKind::AcBonus) != (s.duration == SpellDuration::UntilStartOfCasterTurn))
         return err("ac_bonus effects last until_start_of_caster_turn (and only they use it)");
-    if (has_targets && s.kind != SpellEffectKind::Save && s.kind != SpellEffectKind::Heal && s.kind != SpellEffectKind::ApplyCondition)
+    if (s.kind == SpellEffectKind::Polymorph) {   // R-G12: one creature, a concentration spell (CONTENT_CONVENTIONS.md section 9)
+        if ((has_targets && s.targets != 1) || j.contains("area")) return err("polymorph: one target");
+        if (!s.concentration) return err("polymorph: needs concentration");
+    }
+    if (has_targets && s.kind != SpellEffectKind::Save && s.kind != SpellEffectKind::Polymorph && s.kind != SpellEffectKind::Heal && s.kind != SpellEffectKind::ApplyCondition)
         return err("targets not allowed on a " + kind + " effect (one target, per dart/beam, or self)");
     // R-G15: an HP pool's condition and a sustained effect last the spell's duration (Sleep 1 minute = 10 rounds; Color Spray
     // 1 round, the proposal's approximation of "until the end of your next turn"; Heat Metal 1 minute, and also ends with
