@@ -197,8 +197,8 @@ void after_damage(Combatant& t, const DamageApplied& d, bool critical, std::vect
         const int to_hp = int(d.dealt) - (int(t.temp_hp) - int(d.temp_hp_after));
         const int overflow = std::max(0, to_hp - int(t.hp));
         commit_damage(t, d);
-        emit(ev, EventKind::DamageDealt, 0, t.id, d.dealt, 0);
-        form_reverted(t, 2, overflow, ev);
+        emit(ev, EventKind::DamageDealt, 0, t.id, int32_t(d.dealt) - overflow, 0);   // what the form (and temp HP) absorbed
+        form_reverted(t, 2, overflow, ev);   // the carried DamageDealt below holds the overflow: the two sum to the hit
         if (overflow > 0) {
             const DamageApplied carried{int16_t(std::min(overflow, 32767)), t.temp_hp, t.hp, false, false, d.types_dealt};
             after_damage(t, reduce_applied(t, carried, 0), critical, ev);
