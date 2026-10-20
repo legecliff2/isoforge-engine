@@ -1,0 +1,58 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.guiding_bolt",
+  "name": "Guiding Bolt",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "A flash of light streaks toward a creature of your choice within range. Make a ranged spell attack against the target. On a hit, the target takes 4d6 radiant damage, and the next attack roll made against this target before the end of your next turn has advantage, thanks to the mystical dim light glittering on the target until then. At Higher Levels. When you cast this spell using a spell slot of 2nd level or higher, the damage increases by 1d6 for each slot level above 1st.",
+  "level": 1,
+  "school": "evocation",
+  "classes": [
+    "cleric"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 120
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "rounds",
+    "amount": 1
+  },
+  "effects": [
+    {
+      "kind": "spell_attack",
+      "attack": "ranged",
+      "damage": {
+        "dice": "4d6",
+        "type": "radiant"
+      }
+    },
+    {
+      "kind": "apply_modifier",
+      "applies_to": "affected",
+      "modifier": {
+        "stat": "attacks_against",
+        "mode": "advantage",
+        "consume": "next_attack_against",
+        "applies_to": "target",
+        "duration": {
+          "kind": "until_end_of_caster_next_turn"
+        }
+      }
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "dice": 1
+    }
+  }
+}
