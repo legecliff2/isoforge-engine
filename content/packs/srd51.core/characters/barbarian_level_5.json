@@ -1,0 +1,154 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.barbarian_level_5",
+  "name": "Barbarian, level 5 (Path of the Berserker)",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "chaotic neutral",
+  "level": 5,
+  "classes": [
+    {
+      "class": "barbarian",
+      "level": 5,
+      "hit_die": "d12",
+      "subclass": "berserker"
+    }
+  ],
+  "xp": 6500,
+  "armor_class": {
+    "value": 14,
+    "note": "Unarmored Defense"
+  },
+  "hit_points": {
+    "average": 50,
+    "formula": "5d12+10"
+  },
+  "speed": {
+    "walk": 40
+  },
+  "abilities": {
+    "str": 18,
+    "dex": 14,
+    "con": 15,
+    "int": 9,
+    "wis": 13,
+    "cha": 11
+  },
+  "saving_throws": {
+    "str": 7,
+    "con": 5
+  },
+  "skills": {
+    "athletics": 7,
+    "perception": 4
+  },
+  "senses": {
+    "passive_perception": 14
+  },
+  "languages": [
+    "Common",
+    "Giant"
+  ],
+  "proficiency_bonus": 3,
+  "features": [
+    {
+      "id": "rage",
+      "name": "Rage",
+      "description": "In battle, you fight with primal ferocity. On your turn, you can enter a rage as a bonus action. While raging, you gain the following benefits if you aren't wearing heavy armor: - You have advantage on Strength checks and Strength saving throws. - When you make a melee weapon Attack using Strength, you gain a +2 bonus to the damage roll. This bonus increases as you level. - You have Resistance to bludgeoning, piercing, and slashing damage. If you are able to cast Spells, you can't cast them or concentrate on them while raging. Your rage lasts for 1 minute. It ends early if you are knocked Unconscious or if Your Turn ends and you haven't attacked a hostile creature since your last turn or taken damage since then. You can also end your rage on Your Turn as a Bonus Action. Once you have raged the maximum number of times for your barbarian level, you must finish a Long Rest before you can rage again. You may rage 2 times at 1st level, 3 at 3rd, 4 at 6th, 5 at 12th, and 6 at 17th."
+    },
+    {
+      "id": "unarmored_defense",
+      "name": "Unarmored Defense",
+      "description": "While you are not wearing any armor, your Armor Class equals 10 + your Dexterity modifier + your Constitution modifier. You can use a shield and still gain this benefit. Baked into armor_class (10 + Dex + Con, no armor worn)."
+    },
+    {
+      "id": "reckless_attack",
+      "name": "Reckless Attack",
+      "description": "Starting at 2nd level, you can throw aside all concern for defense to attack with fierce desperation. When you make your first attack on your turn, you can decide to attack recklessly. Doing so gives you advantage on melee weapon attack rolls using Strength during this turn, but attack rolls against you have advantage until your next turn.",
+      "effect": {
+        "kind": "reckless_attack"
+      }
+    },
+    {
+      "id": "danger_sense",
+      "name": "Danger Sense",
+      "description": "At 2nd level, you gain an uncanny sense of when things nearby aren't as they should be, giving you an edge when you dodge away from danger. You have advantage on Dexterity saving throws against effects that you can see, such as traps and spells. To gain this benefit, you can't be blinded, deafened, or incapacitated."
+    },
+    {
+      "id": "frenzy",
+      "name": "Frenzy",
+      "description": "Starting when you choose this path at 3rd level, you can go into a frenzy when you rage. If you do so, for the duration of your rage you can make a single melee weapon attack as a bonus action on each of your turns after this one. When your rage ends, you suffer one level of exhaustion (as described in appendix A)."
+    },
+    {
+      "id": "extra_attack",
+      "name": "Extra Attack",
+      "description": "Beginning at 5th level, you can attack twice, instead of once, whenever you take the Attack action on your turn.",
+      "effect": {
+        "kind": "extra_attack",
+        "attacks_per_action": 2
+      }
+    },
+    {
+      "id": "fast_movement",
+      "name": "Fast Movement",
+      "description": "Starting at 5th level, your speed increases by 10 feet while you aren't wearing heavy armor. Baked into speed.walk (40; no heavy armor is worn)."
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.greataxe",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.handaxe"
+    },
+    "explorers_pack",
+    "javelins_4"
+  ],
+  "actions": [
+    {
+      "id": "greataxe",
+      "name": "Greataxe",
+      "kind": "melee_weapon_attack",
+      "to_hit": 7,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "heavy",
+        "two_handed"
+      ],
+      "damage": [
+        {
+          "dice": "1d12+4",
+          "type": "slashing"
+        }
+      ]
+    },
+    {
+      "id": "handaxe",
+      "name": "Handaxe",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 7,
+      "range": [
+        20,
+        60
+      ],
+      "targets": 1,
+      "properties": [
+        "light",
+        "thrown"
+      ],
+      "damage": [
+        {
+          "dice": "1d6+4",
+          "type": "slashing"
+        }
+      ]
+    }
+  ]
+}
