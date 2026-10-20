@@ -743,6 +743,7 @@ struct Ctx {
     std::vector<std::pair<uint32_t, ForcedMoveResult>> forced_results{};
     bool zone_fired = false;   // a zone trigger resolved inside finalize_forced (deaths / concentration are swept again)
     uint8_t form_archetype = 0;   // R-G12: the cast's form choice (set by cast_spell around resolve_spell only)
+    bool guess_miss = false;      // 7.2x: the Attack guessed the wrong tile for a hidden target (automatic miss)
     // R-G12 PR 2: the cast's creature choices (set around resolve_spell only), the creatures built by the Summon effect (placed
     // by attempt after the step: appending to combatants would move the step's Combatant references), and the ids they took.
     const std::vector<uint8_t>* summon_archetypes = nullptr;
@@ -1262,6 +1263,9 @@ void life_drain(EncounterState& s, Combatant& t, int taken, int dc, CombatantId 
     if (cap <= 0) { kill(t, ev); check_end(s, ev); }
 }
 
+// 7.2x: the start-of-step state the sight hook is asked about during a step (set by attempt while the hook exists).
+thread_local const EncounterState* g_sight_base = nullptr;
+
 bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
                bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage = false,
                uint32_t spell_id = 0, bool ally_near_target = false, const DiceExpr* damage_override = nullptr,
@@ -1586,6 +1590,14 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         !(atk.finesse && modifier(a.abilities, Ability::Dex) > modifier(a.abilities, Ability::Str))) adv = true;   // Str melee
     const int drain_before = int(t.hp) + int(t.temp_hp);   // Life Drain: damage taken by this hit
     if (a.stealth_total > 0) { adv = true; a.stealth_total = 0; }   // unseen attacker; now revealed
+    bool unseen_target = false;
+    if (s.hooks.sight) {   // 7.2x: unseen attackers and targets (start-of-step sight); attacking reveals the attacker
+        if (!sight(s, t.id, a.id).can_see || is_hidden_from(s, a.id, t.id)) adv = true;
+        if (!sight(s, a.id, t.id).can_see || is_hidden_from(s, t.id, a.id)) unseen_target = true;
+    }
+    if (!s.hidden.empty())
+        s.hidden.erase(std::remove_if(s.hidden.begin(), s.hidden.end(), [&](const EncounterState::Hidden& h) { return h.who == a.id; }),
+                       s.hidden.end());
     // 7.2t: cover from sim. Total: no attack at all (validation refuses it; this guards OA / Ready / reaction attacks)
     const Cover cov = cover_of(s, a.id, t.id, false, spell_id, ctx.has_cover_origin, ctx.cover_x, ctx.cover_y);
     if (cov == Cover::Total) return false;
@@ -1596,7 +1608,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     actx.ranged = atk.ranged;
     actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
     const bool protected_by_ally = ally_attacked_window(s, ctx, a, t, atk.ranged, spell_id, ev);   // Protection-style reactions
-    actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft) || protected_by_ally || gaze_dis || a.squeezing;   // combined with conditions in one place
+    actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft) || protected_by_ally || gaze_dis || a.squeezing || unseen_target;   // combined with conditions in one place
     if (!s.modifiers.empty()) {   // timed modifiers (row 12): sources merged into the one advantage/disadvantage resolution
         for (auto& m : s.modifiers) {   // `when` scope of roll-time modifiers (follow-up): gate the ones that do not hold
             m.gated = false;
@@ -1633,6 +1645,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     }
     const int crit_min = spell_id != 0 ? 20 : int(a.crit_min);   // Improved Critical: weapon attacks only
     bool hit = evaluate_hit(roll, t, actx, crit, crit_min);
+    if (ctx.guess_miss) { hit = false; crit = false; ctx.guess_miss = false; }   // 7.2x: wrong tile guessed
     if (hit) {
         ReactionWindow w = new_window(s, ctx, ReactionTrigger::BeingHit, a.id);
         w.target = t.id; w.attack_total = roll.total; w.attack_natural = roll.natural;
@@ -3213,6 +3226,11 @@ void sweep_summons(EncounterState& s, std::vector<Event>& ev) {
 StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vector<ReactionRecord>& decided,
                    bool replay_only, const std::vector<std::pair<uint32_t, ForcedMoveResult>>* forced_recorded = nullptr) {
     EncounterState before = s;
+    struct SightBase {   // 7.2x: sight answers come from the start-of-step state
+        const EncounterState* prev;
+        explicit SightBase(const EncounterState* b) : prev(g_sight_base) { if (b) g_sight_base = b; }
+        ~SightBase() { g_sight_base = prev; }
+    } sight_base(s.hooks.sight ? &before : nullptr);
     std::vector<ReactionRecord> records;
     Ctx ctx{records, &decided, 0, replay_only, false, std::nullopt, 0};
     ctx.forced_recorded = forced_recorded;
@@ -3223,6 +3241,13 @@ StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vecto
     else { ctx.forced_queue.clear(); ctx.forced_deferred.clear(); }
     if (r.ok && req.kind != ActionKind::Ready) fire_readies(s, ctx, r.events);
     if (!r.ok) return r;
+    if (!s.hidden.empty()) {   // 7.2x: hiding ends against an observer that could see the hider when the step began, or a dead one
+        s.hidden.erase(std::remove_if(s.hidden.begin(), s.hidden.end(), [&](const EncounterState::Hidden& h) {
+            const Combatant* w = find(s, h.who); const Combatant* f = find(s, h.from);
+            return !w || !f || w->dead || f->dead || (s.hooks.sight && find(before, h.who) && find(before, h.from) &&
+                                                      sight(before, h.from, h.who).can_see); }),
+            s.hidden.end());
+    }
     process_deaths(s, r.events, &ctx);
     sweep_concentration(s, r.events);
     sweep_summons(s, r.events);
@@ -3546,7 +3571,10 @@ StepResult gaze_response(EncounterState& s, Combatant& a, const ActionRequest& r
     for (const auto& slot : s.order) {
         Combatant* g = find_mut(s, slot.id);
         if (!g || g->id == a.id || g->dead || g->gazes.empty() || is_incapacitated(*g)) continue;
-        if (std::find(req.gaze_seen.begin(), req.gaze_seen.end(), g->id) == req.gaze_seen.end()) continue;
+        if (s.hooks.sight) {   // 7.2x: a gaze needs the actor to see the gazer with sight (not blindsight / tremorsense)
+            const Sight v = sight(s, a.id, g->id);
+            if (!v.can_see || v.sense != Sense::Sight) continue;
+        } else if (std::find(req.gaze_seen.begin(), req.gaze_seen.end(), g->id) == req.gaze_seen.end()) continue;
         for (const auto& gz : g->gazes) {
             const SpellDef* d = spell_def(s, gz.spell_id);
             if (!d || a.dead || a.hp <= 0) continue;
@@ -4004,6 +4032,10 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         if (t->dead) return fail("target is dead");
         if (cover_of(s, a.id, t->id, false, 0) == Cover::Total) return fail("target has total cover");
         if (charmed_by(s, a.id, t->id)) return fail("a charmed creature cannot attack its charmer");
+        if (is_hidden_from(s, t->id, a.id)) {   // 7.2x: its location is unknown: guess a tile
+            if (!req.has_guess) return fail("target is hidden: guess its tile (has_guess)");
+            ctx.guess_miss = s.hooks.guess_correct && !s.hooks.guess_correct(s, a, *t, req.guess_x, req.guess_y);
+        }
         if (req.attack_index >= a.attacks.size()) return fail("bad attack index");
         uint32_t pending_pool = 0; uint16_t pending_cost = 0;
         if (bopt) {
@@ -4078,8 +4110,20 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         if (!spend_action(b, a, req.kind, req.as_bonus_action)) return fail("no action available");
         s.budget = b;
         auto chk = roll_check(s, a, Skill::Stealth, 0, RollMode::Normal, out.events);
-        a.stealth_total = int16_t(chk.roll.total > 0 ? chk.roll.total : 1);
-        emit(out.events, EventKind::Hid, a.id, 0, a.stealth_total);
+        const int16_t total = int16_t(chk.roll.total > 0 ? chk.roll.total : 1);
+        if (s.hooks.sight) {   // 7.2x: hidden from each hostile that can't see it and whose passive Perception it beats
+            s.hidden.erase(std::remove_if(s.hidden.begin(), s.hidden.end(), [&](const EncounterState::Hidden& h) { return h.who == a.id; }),
+                           s.hidden.end());
+            for (const auto& o : s.combatants) {
+                if (o.id == a.id || o.dead || o.team == a.team) continue;
+                const Sight v = sight(s, o.id, a.id);
+                if (v.can_see) continue;   // can't hide from a creature that sees you
+                if (total >= passive_perception(o, passive_sight_penalty(v))) s.hidden.push_back({a.id, o.id, total});
+            }
+        } else {
+            a.stealth_total = total;
+        }
+        emit(out.events, EventKind::Hid, a.id, 0, total);
         return out;
     }
     case ActionKind::Ready: {
@@ -4794,6 +4838,32 @@ uint64_t surprised_digest(const EncounterState& s, uint64_t h) {
     auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
     for (const auto& c : s.combatants)
         if (c.surprised) for (int i = 0; i < 4; ++i) byte(uint8_t(uint32_t(c.id) >> (8 * i)));
+    return h;
+}
+
+Sight sight(const EncounterState& s, CombatantId viewer, CombatantId subject) {
+    if (!s.hooks.sight) return Sight{};
+    const EncounterState* b = g_sight_base ? g_sight_base : &s;
+    if (!find(*b, viewer) || !find(*b, subject)) b = &s;   // created during the step (a summon): its current state
+    const Combatant* v = find(*b, viewer); const Combatant* t = find(*b, subject);
+    if (!v || !t) return Sight{};
+    return s.hooks.sight(*b, *v, *t);
+}
+
+bool is_hidden_from(const EncounterState& s, CombatantId who, CombatantId from) {
+    return std::any_of(s.hidden.begin(), s.hidden.end(), [&](const EncounterState::Hidden& h) { return h.who == who && h.from == from; });
+}
+
+bool has_hidden_state(const EncounterState& s) { return !s.hidden.empty(); }
+
+uint64_t hidden_digest(const EncounterState& s, uint64_t h) {
+    auto byte = [&](uint8_t x) { h ^= x; h *= 0x100000001B3ull; };
+    for (int i = 0; i < 4; ++i) byte(uint8_t(uint32_t(s.hidden.size()) >> (8 * i)));
+    for (const auto& e : s.hidden) {
+        for (int i = 0; i < 4; ++i) byte(uint8_t(uint32_t(e.who) >> (8 * i)));
+        for (int i = 0; i < 4; ++i) byte(uint8_t(uint32_t(e.from) >> (8 * i)));
+        for (int i = 0; i < 2; ++i) byte(uint8_t(uint16_t(e.stealth) >> (8 * i)));
+    }
     return h;
 }
 

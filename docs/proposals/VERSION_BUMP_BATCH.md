@@ -2138,6 +2138,41 @@ Hand-off (sim, EC):
 - **Reactions.** Nothing to read: the marker is enforced inside rules' `may_react`. Sim's reaction UI / AI should not offer a
   reaction when rules wouldn't (it already polls rules' windows).
 
+### 7.2x Vision (rules side) and hand-off
+
+(Numbered after 7.2w.) SRD 5.1 "Vision and Light", "Unseen Attackers and Targets", "Hiding". Rules never interpret
+positions, light or senses: sim answers one query per viewer -> subject pair. All fields are appended; with no hook
+everything behaves as before (no golden moved).
+
+- **Hook.** `EncounterHooks::sight(state, viewer, subject) -> Sight`. Pure: a function of the state and sim's positions
+  as they were when the step began. During a step rules pass the start-of-step state (the copy `attempt` already keeps),
+  so answers do not change mid-step; never rng; nothing is logged. Public helper `rules5e::sight(s, viewer, subject)`.
+  **No hook = everyone sees everyone** (`Sight{}`).
+- **Sight.** `light_at_subject`, `light_at_viewer` (Light: bright | dim | dark), `obscured` (none | light | heavy),
+  `can_see`, `perceives` (can see or hear), `sense` (none | sight | blindsight | tremorsense | truesight). Sim folds
+  darkvision, heavy obscurement / darkness, blindness and special senses into `can_see` and `sense`.
+- **Unseen attackers and targets.** If the target can't see the attacker (or the attacker is hidden from it), the attack
+  has advantage. If the attacker can't see the target (or the target is hidden from it), disadvantage. They combine with
+  every other source in the one advantage / disadvantage resolution.
+- **Perception.** Dim light or light obscurement: disadvantage on Wisdom (Perception) checks that rely on sight, passive
+  -5 (`sight_perception_disadvantage`, `passive_sight_penalty`). A viewer with a special sense for the subject is exempt.
+- **Hide** (with the hook): the Stealth total is compared with each hostile's passive Perception (with the -5 above).
+  The creature is hidden only from those that can't see it (`EncounterState::hidden` {who, from, stealth}). Hiding ends when
+  it attacks (hit or miss), when the observer could see it when a step began, or when either dies. Without the hook the
+  legacy `Combatant::stealth_total` path is unchanged.
+- **Guessing.** An Attack on a creature hidden from the attacker needs `ActionRequest::has_guess` with `guess_x` /
+  `guess_y` (sim tile), else "target is hidden: guess its tile (has_guess)". `EncounterHooks::guess_correct` (empty = right)
+  decides; a wrong guess misses automatically (the d20 is still rolled, so dice order is unchanged).
+- **Gaze, Turn Undead, Command, Fear (migration).** With the hook, a gaze applies only if the actor sees the gazer with
+  `sense == sight`. `ActionRequest::gaze_seen` is still read when there is no hook, and stays until sim's callers move;
+  then it can be retired. Turn Undead and Command (7.2v, #188, not on main yet) will use `perceives` (sees or hears the
+  cleric / caster) once both land. Fear's "can't see" repeat-save arm keeps `EncounterHooks::can_see` until then, and then
+  reads `sight(...).can_see`. `can_see` (reaction `requires_sight`) also stays until callers move.
+- **Hashing.** The hidden set folds under Combat::hash **0xC5** (`hidden_digest`) only when non-empty. The guessed tile
+  folds under log_hash **0xC6** only when `has_guess`. Sight answers are derived, not folded. Next free: 0xC7.
+- **Not modelled.** Revealing by noise (sim may clear entries on a loud action), active Search (Perception vs Stealth),
+  invisibility as a condition source (sim folds it into `can_see`).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
