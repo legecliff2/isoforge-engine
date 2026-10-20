@@ -541,7 +541,14 @@ bool only_keys(const Json& o, std::initializer_list<const char*> keys, std::stri
 //   own. No duration key: form_rounds = 600 * (class level / 2) (hours = half the level). max_cr is CR * 8 in integer math
 //   (cr_x8_of). The forms' ids resolve when the transform is requested (build_form): content load order cannot see every
 //   pack yet. Features (features[] / traits[] entries) with requires_humanoid_form: true become the form's blocked_features.
+// Version gate (same mechanism as extra_attack / gaze): wild_shape is a common@2 kind, live at character@4 only, and not in the
+// frozen 3 -> 4 kind list, so a file that declared < 4 lists it inert (CONTENT_COMPAT.md: never a load error). @1 / @2 effects
+// are already inert through the 2 -> 3 migration; this covers @3.
 std::optional<std::string> apply_wild_shape(Archetype& a, const FeatureDecl& f, uint32_t fid, const FeatureBuildCtx& ctx) {
+    if (ctx.declared_version != 0 && ctx.declared_version < 4) {
+        a.inert_features.push_back(f.id + " (wild_shape)");
+        return std::nullopt;
+    }
     std::string bad;
     if (!only_keys(f.effect, {"kind", "pool", "cost", "class", "forms", "max_cr_by_level", "no_fly_below", "no_swim_below"}, bad))
         return f.id + ": wild_shape effect: unknown key '" + bad + "'";
@@ -627,7 +634,13 @@ std::optional<std::string> apply_wild_shape(Archetype& a, const FeatureDecl& f, 
 // lists them: speed replaces the speed object (sim keeps its walk speed: FormStats has one speed), actions = this
 // document's own actions[] ids usable in the form (omitted = all; the others' attacks / multiattacks are dropped),
 // creature_type replaces the type. One HP pool, no timer, no uses (at will).
+// Version gate as wild_shape: live at monster@4 / character@4 only; a file that declared < 4 lists it inert (no form swap;
+// the creature fact `shapechanger` is read as before).
 std::optional<std::string> apply_shapechanger(Archetype& a, const FeatureDecl& f, uint32_t fid, const FeatureBuildCtx& ctx) {
+    if (ctx.declared_version != 0 && ctx.declared_version < 4) {
+        a.inert_features.push_back(f.id + " (shapechanger)");
+        return std::nullopt;
+    }
     std::string bad;
     if (!only_keys(f.effect, {"kind", "cost", "forms"}, bad)) return f.id + ": shapechanger effect: unknown key '" + bad + "'";
     if (ctx.doc.value("shapechanger", Json()) != Json(true)) return f.id + ": shapechanger trait requires shapechanger: true";
