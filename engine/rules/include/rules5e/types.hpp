@@ -116,7 +116,9 @@ enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Re
                                   // appended: Petrifying Gaze turn-start response (ActionRequest::avert_gaze / gaze_seen)
                                   GazeResponse,
                                   // appended (R-G12 rules PR 1): end the actor's own transform (Wild Shape: bonus action; shapechanger: action)
-                                  Revert };
+                                  Revert,
+                                  // appended (R-G12 rules PR 2): command summons (ActionRequest::command / command_ids)
+                                  CommandSummons };
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
 
 // Reaction windows (encounter.hpp). Append-only.
@@ -483,6 +485,16 @@ struct Combatant {
     // appended (EC swarm, flagged): SRD swarm "can't regain hit points or gain temporary hit points". apply_healing heals 0
     // and every temp HP grant is skipped. Content-derived (static per archetype): not hashed.
     bool no_regain_hp = false;
+    // R-G12 summons (appended, VERSION_BUMP_BATCH 7.2r). summoner: who summoned it (0 = not a summon); summon_source: the spell id;
+    // summon_group: initiative group (the first id of its cast); summon_control: SummonControl; summon_vanishes: disappears at
+    // 0 HP; summon_concentration: ends with the summoner's concentration on summon_source; commanded: this turn's command (0
+    // none, 1 act, 2 defend; reset when its turn ends); gone: ended (SummonEnded): dead, skipped in the turn order, never acts again.
+    CombatantId summoner = 0;
+    uint32_t summon_source = 0, summon_group = 0;
+    uint8_t summon_control = 0;
+    bool summon_vanishes = false, summon_concentration = false;
+    uint8_t commanded = 0;
+    bool gone = false;
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
