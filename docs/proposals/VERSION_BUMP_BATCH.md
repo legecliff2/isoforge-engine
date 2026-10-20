@@ -2138,6 +2138,44 @@ Hand-off (sim, EC):
 - **Reactions.** Nothing to read: the marker is enforced inside rules' `may_react`. Sim's reaction UI / AI should not offer a
   reaction when rules wouldn't (it already polls rules' windows).
 
+### 7.2v Control conditions (rules side) and hand-off
+
+SRD 5.1 Turn Undead (with the Destroy Undead hook), Command, Fear and Hideous Laughter. Rules restricts the controlled
+creature's legal actions (`step` refuses, `legal_actions` drops); sim picks the path. All new fields are appended; content that
+uses none of them hashes and replays as before (no golden moved).
+
+- **Data (SpellDef, kind Save).** `control` (`ControlKind`: Turned, Fear, Laughter, Command), `control_excluded` (creature-type
+  mask, no save: Command's undead), `control_min_int` (Hideous Laughter 4: Intelligence 4 or less is unaffected),
+  `destroy_cr8_max` (Destroy Undead: CR × 8, CR 1/2 = 4). `Combatant::cr8` (-1 = unknown, never destroyed). New
+  `RepeatSave` arms: `EndOfTurnUnseen` (Fear) and `EndOfTurnOrDamageAdv` (Hideous Laughter).
+- **Turned** (Turn Undead: `target_types` undead, Wis save, 10 rounds, `ends_on_damage`). No SRD condition: the effect has
+  `no_condition`. Allowed: Move, Dash, Dodge, StandUp, Attack `special` 4 (escape), EndTurn; no reactions (`may_react`).
+  Sim: moves it away so it ends no closer than 30 ft when it can, only Dodges when there is nowhere to move, and supplies
+  the targets (undead within 30 ft that can see or hear the cleric).
+- **Destroy Undead.** On a failed save an undead with `cr8 <= destroy_cr8_max` is killed instead of turned. Hook only: T&C
+  wires the cleric 5 feature (a shipped-class leftover) and the CR table (1/2 at 5, 1 at 8, ...).
+- **Command.** `ActionRequest::command_word` (1 Approach, 2 Drop, 3 Flee, 4 Grovel, 5 Halt) is required on a Command cast
+  and refused elsewhere; log_hash **0xC4** (sim fold added). The effect lasts to the end of the target's next turn
+  (`EndOfTargetNextTurn`). On that turn: Approach / Flee = Move, Dash, StandUp, EndTurn (sim: toward the caster, stopping
+  within 5 ft, or away by the fastest means); Drop / Halt = EndTurn only (dropped items are not modelled); Grovel = prone at the
+  start of the turn, then EndTurn only. Undead are unaffected; language and "obviously harmful" commands are not modelled.
+  `legal_actions` lists a Command cast once per word.
+- **Fear.** Frightened (`applies_condition`), concentration, cone from data. While frightened by it: Move, Dash, Dodge, StandUp,
+  EndTurn (sim: Dash away by the safest route). End-of-turn Wis save only when `EncounterHooks::can_see(target, caster)` is
+  false; no hook = seen (no save). Dropped items are not modelled.
+- **Hideous Laughter.** Prone plus incapacitated (`has_also`, only when this effect added Incapacitated, so its end never strips another source's), can't StandUp; when it ends the creature stays prone (stands up as usual). Save at the end of each turn and each time it takes
+  damage, with advantage on the damage save.
+- **Hashing.** Control effects fold into `leftover_digest` (Combat::hash 0xAA) after a 0xFE separator, only while one exists:
+  `spell_id`, `caster`, `target` u32, `control`, `command_word` bytes. The rest of the effect (timer, dc, repeat save) is in
+  the existing effect digests. No new Combat::hash tag.
+- **Hand-off (EC / sim).** Path choice for Turned / Fear / Approach / Flee; the AI should pick a `command_word`; the Turn
+  Undead target list; `can_see` for Fear. **T&C:** loader keys (below) and the cleric's Channel Divinity / Destroy Undead.
+- **Schema keys (loaded; spell@1 save effect, defs in common@2, additive, no version bump):** `control` (`turned` | `fear` |
+  `laughter` | `command`; first effect only), `control_excludes_creature_types` (array), `control_min_int` (int 1-30),
+  `destroy_undead_max_cr8` (CR × 8: 4, 8, 16, 24, 32), `repeat_save` arms `end_of_turn_unseen` and
+  `end_of_turn_or_damage_advantage`. A save effect may carry `control` instead of damage / condition. Monster
+  `challenge.rating` maps to `Combatant::cr8` (sim content.cpp).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain

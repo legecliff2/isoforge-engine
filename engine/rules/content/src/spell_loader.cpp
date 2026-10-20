@@ -694,10 +694,40 @@ SpellLoad spell_from_json(const Json& j) {
             if (e.contains("repeat_save")) {
                 if (!s.applies_condition) return ("effect repeat_save needs condition ('condition' is a dependency of 'repeat_save')");
                 static const std::map<std::string, RepeatSave> kRep{{"start_of_turn", RepeatSave::StartOfTurn},
-                    {"end_of_turn", RepeatSave::EndOfTurn}, {"on_damage", RepeatSave::OnDamage}};
+                    {"end_of_turn", RepeatSave::EndOfTurn}, {"on_damage", RepeatSave::OnDamage},
+                    {"end_of_turn_unseen", RepeatSave::EndOfTurnUnseen},                  // 7.2v Fear
+                    {"end_of_turn_or_damage_advantage", RepeatSave::EndOfTurnOrDamageAdv}};   // 7.2v Hideous Laughter
                 if (!lookup(kRep, e["repeat_save"], s.repeat_save)) return ("effect repeat_save invalid");
             }
-            if (!e.contains("damage") && !s.applies_condition) return ("save effect needs damage or condition");
+            if (e.contains("control")) {   // 7.2v control conditions
+                static const std::map<std::string, ControlKind> kCtl{{"turned", ControlKind::Turned}, {"fear", ControlKind::Fear},
+                    {"laughter", ControlKind::Laughter}, {"command", ControlKind::Command}};
+                if (!lookup(kCtl, e["control"], s.control)) return ("effect control invalid");
+                if (e.contains("control_excludes_creature_types")) {
+                    const Json& a = e["control_excludes_creature_types"];
+                    if (!a.is_array() || a.empty()) return ("effect control_excludes_creature_types invalid");
+                    for (const Json& ty : a) {
+                        CreatureType ct2;
+                        if (!lookup(kCreatureType, ty, ct2)) return ("effect control_excludes_creature_types invalid");
+                        s.control_excluded |= bit(ct2);
+                    }
+                }
+                if (e.contains("control_min_int")) {
+                    int n = 0;
+                    if (!small_int(e["control_min_int"], 1, 30, n)) return ("effect control_min_int invalid");
+                    s.control_min_int = uint8_t(n);
+                }
+                if (e.contains("destroy_undead_max_cr8")) {
+                    int n = 0;
+                    if (!small_int(e["destroy_undead_max_cr8"], 4, 32, n) || (n != 4 && n != 8 && n != 16 && n != 24 && n != 32))
+                        return ("effect destroy_undead_max_cr8 invalid (4, 8, 16, 24 or 32)");
+                    s.destroy_cr8_max = uint16_t(n);
+                }
+            } else if (e.contains("control_excludes_creature_types") || e.contains("control_min_int") || e.contains("destroy_undead_max_cr8")) {
+                return ("effect control_* needs control ('control' is a dependency)");
+            }
+            if (!e.contains("damage") && !s.applies_condition && s.control == ControlKind::None)
+                return ("save effect needs damage, condition or control");
         } else if (kind == "heal") {
             s.kind = SpellEffectKind::Heal;
             auto d = e.contains("dice") && e["dice"].is_string() ? parse_dice(e["dice"].get<std::string>()) : std::nullopt;
@@ -889,6 +919,7 @@ SpellLoad spell_from_json(const Json& j) {
         if (x.kind == SpellEffectKind::HpPool || x.kind == SpellEffectKind::Dispel || x.kind == SpellEffectKind::Revive ||
             x.kind == SpellEffectKind::EndCondition || x.kind == SpellEffectKind::SustainedDamage || x.kind == SpellEffectKind::Teleport)
             return err("effects[" + std::to_string(i) + "]: " + xk + " is only allowed as the first effect");
+        if (x.control != ControlKind::None) return err("effects[" + std::to_string(i) + "]: control is only allowed on the first effect");
         SpellEffect fx;
         fx.kind = x.kind; fx.melee = x.melee; fx.beams = x.beams; fx.dice = x.dice; fx.damage_type = x.damage_type;
         fx.add_spellcasting_modifier = x.add_spellcasting_modifier; fx.excluded_types = x.excluded_types;

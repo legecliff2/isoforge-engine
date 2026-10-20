@@ -317,5 +317,27 @@ class UnionArms(unittest.TestCase):
             self.assertFalse(v.is_valid({**ok, "zzz": 1}), kind)
 
 
+class ControlConditionsArms(unittest.TestCase):
+    """VERSION_BUMP_BATCH 7.2v: additive save-effect keys (spell@1) and their common@2 defs."""
+    SAVE = (S({"kind", "ability"}), S({"damage", "on_success", "condition", "repeat_save", "control",
+                                         "control_excludes_creature_types", "control_min_int", "destroy_undead_max_cr8",
+                                         "description", "applies_to"}))
+
+    def test_save_arm_keys(self):
+        eff = load("spell/v1.schema.json")["$defs"]["effect"]
+        arm = [a["then"] for a in eff["allOf"] if a["if"]["properties"]["kind"].get("const") == "save"][0]
+        req, opt = self.SAVE
+        self.assertEqual(set(arm["required"]), set(req))
+        self.assertEqual(set(arm["properties"]), set(req | opt))
+        self.assertIn({"required": ["control"]}, arm["anyOf"])
+
+    def test_common_defs(self):
+        d = load("common/v2.schema.json")["$defs"]
+        self.assertEqual(d["control_kind"]["enum"], ["turned", "fear", "laughter", "command"])
+        self.assertEqual(d["control_repeat_save"]["enum"], ["end_of_turn_unseen", "end_of_turn_or_damage_advantage"])
+        self.assertEqual(d["destroy_undead_max_cr8"]["enum"], [4, 8, 16, 24, 32])
+
+
+
 if __name__ == "__main__":
     unittest.main()
