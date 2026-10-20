@@ -44,9 +44,9 @@ Json extra_2d6() { return Json::array({{{"kind", "extra_damage"}, {"damage", Jso
 Json surprise_attack() {
     return {{"kind", "on_event"}, {"on", "hit"}, {"when", Json::array({{{"kind", "target_surprised"}}})}, {"effects", extra_2d6()}};
 }
-Json martial_advantage() {
+Json martial_advantage() {   // `when` is all-of: a weapon attack and an ally within 5 ft of the target
     return {{"kind", "on_event"}, {"on", "hit"}, {"limit", "once_per_turn"},
-            {"when", Json::array({{{"kind", "ally_near_target"}}})}, {"effects", extra_2d6()}};
+            {"when", Json::array({{{"kind", "weapon_attack"}}, {{"kind", "ally_near_target"}}})}, {"effects", extra_2d6()}};
 }
 Json relentless(int amount) {
     return {{"kind", "on_event"}, {"on", "drop_to_zero"}, {"when", Json::array({{{"kind", "damage_at_most"}, {"amount", amount}}})},
@@ -115,7 +115,9 @@ TEST_CASE("monster predicates loader: keys, usage pools, errors") {
     CHECK(bug[0].when[0].kind == PredicateKind::TargetSurprised);
     const auto& hob = lib.find("t.hob")->base.triggers;
     REQUIRE(hob.size() == 1);
-    CHECK(hob[0].when[0].kind == PredicateKind::AllyNearTarget);
+    REQUIRE(hob[0].when.size() == 2);
+    CHECK(hob[0].when[0].kind == PredicateKind::WeaponAttack);
+    CHECK(hob[0].when[1].kind == PredicateKind::AllyNearTarget);
     CHECK(hob[0].limit == rules5e::TriggerLimit::OncePerTurn);
     const Archetype* boar = lib.find("t.boar");
     REQUIRE(boar->base.triggers.size() == 1);
@@ -147,31 +149,40 @@ TEST_CASE("monster predicates loader: keys, usage pools, errors") {
     CHECK_FALSE(lib.find("t.rech")->unsupported_features.empty());
 }
 
-TEST_CASE("Surprise Attack: extra damage only against a surprised target; replay") {
+TEST_CASE("Surprise Attack: round 1 against a target in the surprised set (even after its turn); not round 2 or unsurprised; replay") {
     auto lib = lib_with({monster("t.bug", {surprise_attack()})});
     const auto ch = arena({{kFighter, Vec2i{5, 5}}, {"t.bug", Vec2i{6, 5}}});
     const CombatantId f = ch.spawns[0].stable_id, g = ch.spawns[1].stable_id;
-    uint64_t seed = 0;
-    for (uint64_t s = 1; s < 200 && !seed; ++s) {   // a seed where the bugbear acts before the fighter's first turn
-        ecs::Registry reg;
-        auto c = Combat::create(reg, ch, lib, s);
-        if (rules5e::current_actor(c->state()) == g) seed = s;
-    }
-    REQUIRE(seed != 0);
-    for (bool surprised : {true, false}) {
-        CAPTURE(surprised);
-        ecs::Registry reg;
-        auto c = Combat::create(reg, ch, lib, seed);
-        REQUIRE(c);
-        if (surprised) REQUIRE(c->apply_surprise({f}));
-        REQUIRE(attack(*c, g, f).ok);
-        CHECK(fired(*c, tid("t.bug")) == (surprised ? 1 : 0));
-        end_turn(*c);   // the fighter's turn: surprise ends with it
-        end_turn(*c);
-        REQUIRE(rules5e::current_actor(c->state()) == g);
-        REQUIRE(attack(*c, g, f).ok);
-        CHECK(fired(*c, tid("t.bug")) == (surprised ? 1 : 0));   // round 2: no longer surprised
-        same_on_replay(*c, ch, lib, seed);
+    for (bool bug_first : {true, false}) {
+        uint64_t seed = 0;
+        for (uint64_t s = 1; s < 200 && !seed; ++s) {   // a seed with the wanted initiative order
+            ecs::Registry reg;
+            auto c = Combat::create(reg, ch, lib, s);
+            if ((rules5e::current_actor(c->state()) == g) == bug_first) seed = s;
+        }
+        REQUIRE(seed != 0);
+        for (bool surprised : {true, false}) {
+            CAPTURE(bug_first);
+            CAPTURE(surprised);
+            ecs::Registry reg;
+            auto c = Combat::create(reg, ch, lib, seed);
+            REQUIRE(c);
+            if (surprised) REQUIRE(c->apply_surprise({f}));
+            if (!bug_first) {
+                end_turn(*c);   // the fighter's (surprised) turn ends first: the flag clears, the set membership stays
+                CHECK_FALSE(rules5e::find(c->state(), f)->surprised);
+            }
+            REQUIRE(rules5e::current_actor(c->state()) == g);
+            REQUIRE(c->state().round == 1);
+            REQUIRE(attack(*c, g, f).ok);
+            CHECK(fired(*c, tid("t.bug")) == (surprised ? 1 : 0));
+            end_turn(*c);
+            to_actor(*c, g);
+            REQUIRE(c->state().round == 2);
+            REQUIRE(attack(*c, g, f).ok);
+            CHECK(fired(*c, tid("t.bug")) == (surprised ? 1 : 0));   // round 2: never
+            same_on_replay(*c, ch, lib, seed);
+        }
     }
 }
 
@@ -241,4 +252,45 @@ TEST_CASE("Relentless: 1 HP instead of 0 for damage <= N, once per rest; recharg
         }
         same_on_replay(*c, ch, lib, 7);
     }
+}
+
+TEST_CASE("weapon_attack: true for weapon attacks, false for spell attacks (Martial Advantage never fires on Fire Bolt)") {
+    Json weapon_only = {{"kind", "on_event"}, {"on", "hit"}, {"when", Json::array({{{"kind", "weapon_attack"}}})}, {"effects", extra_2d6()}};
+    Json mage = monster("t.hobmage", {martial_advantage(), weapon_only});
+    mage["spellcasting"] = {{"ability", "int"}, {"caster_level", 5}, {"spells", Json::array({"srd51.spell.fire_bolt"})}};
+    mage["abilities"]["int"] = 30;   // spell attack +12 or so: Fire Bolt hits the fighter most of the time
+    ContentLibrary lib;
+    REQUIRE(lib.load(sample_set()).empty());
+    Json tank = load_json("content/packs/sample.vertical_slice/characters/fighter_1.json");
+    tank["hit_points"]["average"] = 2000;
+    REQUIRE_FALSE(lib.add(tank, "character"));
+    REQUIRE_FALSE(lib.add(mage, "monster"));
+    REQUIRE_FALSE(lib.add(monster("t.pal", {}), "monster"));
+    const auto ch = arena({{kFighter, Vec2i{5, 5}}, {"t.hobmage", Vec2i{6, 5}}, {"t.pal", Vec2i{4, 5}}});
+    const CombatantId f = ch.spawns[0].stable_id, h = ch.spawns[1].stable_id;
+    const uint32_t ma = rules5e::spell_id_of("t.hobmage#t0#0"), wo = rules5e::spell_id_of("t.hobmage#t1#0");
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 5);
+    REQUIRE(c);
+    int hits = 0;
+    for (int turn = 0; turn < 4; ++turn) {   // spell attacks only
+        to_actor(*c, h);
+        Command cs;
+        cs.request = {h, ActionKind::CastSpell, f};
+        cs.request.spell_id = rules5e::spell_id_of("srd51.spell.fire_bolt");
+        auto r = c->submit(cs);
+        REQUIRE_MESSAGE(r.ok, r.error);
+        REQUIRE(c->settle(nullptr).ok);
+        end_turn(*c);
+    }
+    for (const auto& e : c->events())
+        if (e.kind == SimEvent::Kind::Rules && e.rules.kind == EventKind::AttackResolved && e.rules.actor == h && (e.rules.c & 1)) ++hits;
+    CHECK(hits >= 1);   // some Fire Bolt hit
+    CHECK(fired(*c, ma) == 0);
+    CHECK(fired(*c, wo) == 0);
+    to_actor(*c, h);
+    REQUIRE(attack(*c, h, f).ok);   // a weapon attack (scimitar, always hits): both fire
+    CHECK(fired(*c, wo) == 1);
+    CHECK(fired(*c, ma) == 1);
+    same_on_replay(*c, ch, lib, 5);
 }
