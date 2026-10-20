@@ -396,6 +396,9 @@ struct ActiveSpellEffect {
     // appended (EC spider follow-up, flagged): a second condition held for as long as this effect lasts (the spider bite's
     // "paralyzed while poisoned in this way"). Derived from the SpellDef: not hashed.
     bool has_also = false; Condition also = Condition::Paralyzed;
+    // appended (grab and contain, 7.2w): SpellDef::contain of the effect (1 engulfed, 2 swallowed); `caster` is the container.
+    // Derived from the SpellDef: not hashed (its damage rides damage_when 3: the start of the container's turn).
+    uint8_t contain = 0;
 };
 
 // A modifier in force on `target` (row 12). `timed` reuses the condition-duration machinery (Rounds / EndOfTargetNextTurn).
@@ -851,6 +854,9 @@ uint32_t add_feature_aura(EncounterState&, CombatantId owner, uint32_t spell_id,
 bool in_silence(const EncounterState&, CombatantId id);
 
 std::vector<ActionRequest> legal_actions(const EncounterState&);   // for AI + UI (current actor)
+// 7.2w: the creature that has engulfed / swallowed `id` (0 = none). Sim moves the contained creature with it; a swallowed
+// creature has total cover from everything but its container (rules applies it in cover_of, with or without the hook).
+CombatantId                container_of(const EncounterState&, CombatantId id);
 CombatantId                current_actor(const EncounterState&);
 const Combatant*           find(const EncounterState&, CombatantId);
 
