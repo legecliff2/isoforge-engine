@@ -3,6 +3,7 @@
 #include <doctest/doctest.h>
 
 #include "spell_util.hpp"
+#include <span>
 
 using namespace enc;
 
@@ -238,4 +239,81 @@ TEST_CASE("control: legal_actions lists a Command cast once per word, and each i
     CHECK(words % 5 == 0); CHECK(words > 0);
     for (const auto& r : legal_actions(s))
         if (r.kind == ActionKind::CastSpell && r.spell_id == kCommand) { auto t = s; CHECK(step(t, r).ok); }
+}
+
+// ---- EC review of #188 ----
+TEST_CASE("Turned: no reactions (no opportunity attack offered); not turned, the window opens") {
+    for (bool turned : {false, true}) {
+        EncounterHooks h = hooks(30);
+        h.in_range = [](const EncounterState&, const ReactionWindow&, const Combatant&) { return true; };
+        h.decide_reaction = [](const EncounterState&, const ReactionWindow&, const Combatant&, std::span<const ReactionOption>) {
+            return ReactionDecision{0, true, 0}; };
+        auto s = begin_encounter({caster(), target(2, CreatureType::Undead)}, 3, nullptr, h);
+        end_turns_until(s, 1);
+        if (turned) REQUIRE(step(s, cast(1, kTurn, 2, 1)).ok);
+        ActionRequest mv{1, ActionKind::Move}; mv.move_ft = 5; mv.leaves_reach = true;
+        auto r = step(s, mv);
+        REQUIRE(r.ok);
+        CHECK(count(r.events, EventKind::ReactionWindowOpened) == (turned ? 0 : 1));
+    }
+}
+
+TEST_CASE("Turned: the escape (Attack special 4) is allowed") {
+    auto s = start({caster(), target(2, CreatureType::Undead)});
+    REQUIRE(step(s, cast(1, kTurn, 2, 1)).ok);
+    end_turns_until(s, 2);
+    add_condition(mut(s, 2), Condition::Grappled);
+    ActionRequest esc{2, ActionKind::Attack}; esc.special = 4; esc.dc = 10;
+    CHECK(step(s, esc).ok);
+}
+
+TEST_CASE("Fear: no can_see hook means seen (no end-of-turn save)") {
+    auto s = start({caster(), target(2)});
+    REQUIRE(step(s, cast(1, kFear, 2, 1)).ok);
+    end_turns_until(s, 2);
+    auto e = step(s, {2, ActionKind::EndTurn});
+    REQUIRE(e.ok);
+    CHECK(count(e.events, EventKind::SavingThrowRolled) == 0);
+}
+
+TEST_CASE("Destroy Undead: a successful save leaves no effect and no kill") {
+    auto s = start({caster(), target(2, CreatureType::Undead, 30, 4)}, 1);
+    REQUIRE(step(s, cast(1, kDestroy, 2, 1)).ok);
+    CHECK_FALSE(find(s, 2)->dead);
+    CHECK(control_on(s, 2) == nullptr);
+}
+
+TEST_CASE("Hideous Laughter: the damage-triggered save has advantage (natural = the better of two d20s)") {
+    int greater = 0;
+    for (uint64_t seed = 1; seed <= 30; ++seed) {
+        auto natural_of = [&](bool adv) {
+            auto s = start({caster(), target(2)}, 30, -1, seed);
+            REQUIRE(step(s, cast(1, kLaugh, 2, 1)).ok);
+            REQUIRE(control_on(s, 2));
+            if (!adv) s.effects.back().repeat_save = RepeatSave::OnDamage;   // the same save without advantage
+            auto b = step(s, cast(1, kBlast, 2, 1));   // same turn: an extra action would fail, so use the spare budget
+            if (!b.ok) { end_turns_until(s, 1); b = step(s, cast(1, kBlast, 2, 1)); }
+            REQUIRE(b.ok);
+            int n = 0, k = 0;
+            for (const auto& e : b.events) if (e.kind == EventKind::SavingThrowRolled && e.actor == 2 && ++k == 2) n = e.a;
+            return n;
+        };
+        const int a = natural_of(true), n = natural_of(false);
+        CHECK(a >= n);
+        greater += a > n;
+    }
+    CHECK(greater > 0);
+}
+
+TEST_CASE("Hideous Laughter: an Incapacitated from another source is not its own and survives its end") {
+    auto s = start({caster(), target(2, CreatureType::Humanoid, 10)});
+    add_condition(mut(s, 2), Condition::Incapacitated);   // another source
+    REQUIRE(step(s, cast(1, kLaugh, 2, 1)).ok);
+    REQUIRE(control_on(s, 2));
+    CHECK_FALSE(control_on(s, 2)->has_also);
+    s.effects.back().dc = -20;
+    end_turns_until(s, 2);
+    REQUIRE(step(s, {2, ActionKind::EndTurn}).ok);
+    CHECK(control_on(s, 2) == nullptr);
+    CHECK(find(s, 2)->has(Condition::Incapacitated));
 }

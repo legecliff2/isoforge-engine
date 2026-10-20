@@ -16,7 +16,7 @@ Ranked by combat impact x frequency (audit of main at ac7e083, 2026-10-20). Size
 | 4 | Spell backlog plus a refresh of SRD_SPELLS_DEFERRED.md | L | T&C | Many "deferred" spells (Bless, Bane, Shield of Faith, Mage Armor, Burning Hands, Sleep, Hunter's Mark) are expressible now. |
 | 5 | Vision, lighting, obscurement (darkvision, Darkness, Fog Cloud, unseen attacker / target) | L | after; Render & Platform may help | R-G13; zone flags exist, sight is not driven by light. |
 | 6 | Large creatures with a 2x2 space, size limits | L | EC | One tile per creature today; reach, OA geometry, grapple / shove size checks. |
-| 7 | Control conditions (Turn Undead "turned", Command, forced Dash, Hideous Laughter) | M | Rules | Rules done (7.2v); sim paths (EC) and loader / Channel Divinity (T&C) pending. |
+| 7 | Control conditions (Turn Undead "turned", Command, forced Dash, Hideous Laughter) | M | Rules | Rules done (7.2v) and loader keys done; sim paths (EC) and Channel Divinity (T&C) pending. Gaps (not modelled): Command's "doesn't understand your language" and "directly harmful" exclusions; dropping held items for Command Drop and Fear; Turn Undead's 30 ft / see-or-hear target filter is sim's. |
 | 8 | Next-roll riders (Guiding Bolt, Vicious Mockery, Ray of Frost, Shocking Grasp, Chill Touch) | S-M | Rules | Largely expressible with timed modifiers; verify and fill the gaps. |
 | 9 | Fly / swim / climb speeds, Flyby | M | EC | Sim reads only `speed.walk`. |
 | 10 | Shipped-class leftovers (Disciple of Life, Preserve Life, Destroy Undead, Archery / Defense styles) | S-M | T&C | Small gaps on classes already shipped. |
@@ -341,7 +341,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Burning Hands | DATA | Cone template computed by sim (#78); dice/save/upcast are data. |
 | Charm Person | NEW | Charmed with source (R-G8). |
 | Color Spray | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::HpPool` with Blinded; end of the caster's next turn approximated by 1 round. Loader and sim done (EC #120): `hp_pool {dice, condition}`, the timer from the spell's `duration` (`rounds 1` = 1 round); area targets from an aimed `Command` (self cone). No pack ships it yet; schema / validator pending (T&C). |
-| Command | NEW (wiring) | Rules done (7.2v): `ActionRequest::command_word` (log_hash 0xC3), Approach / Drop / Flee / Grovel / Halt on the target's next turn, undead unaffected. Pending: sim path + AI word, loader (T&C). |
+| Command | NEW (wiring) | Rules done (7.2v): `ActionRequest::command_word` (log_hash 0xC4), Approach / Drop / Flee / Grovel / Halt on the target's next turn, undead unaffected. Pending: sim path + AI word, loader (T&C). |
 | Cure Wounds | DATA | Shipped (`heal`, excludes undead/construct). |
 | Divine Favor | NEW (wiring) | Rules done (#89): Damage modifier with `damage_type` radiant and a 1d4 die, concentration (weapon attacks only). Spell kind pending (R-G3). |
 | Entangle | NEW | Area zone + restrained (R-G10, R-G11). |
