@@ -49,6 +49,7 @@ EncounterState start(uint64_t seed = 3) { return begin_encounter({caster(1), foe
 ActionRequest weapon(CombatantId a, CombatantId t, uint8_t lvl = 2) {
     ActionRequest r = cast(a, kWeapon, t, lvl);
     r.as_bonus_action = true;
+    r.summon_tiles = {ActionRequest::SummonTile{2, 3}};   // the spawn tile (exactly one)
     return r;
 }
 ActionRequest weapon_attack(CombatantId a, CombatantId t) {
@@ -280,4 +281,41 @@ TEST_CASE("pact of the chain: a familiar cannot attack on its own turn") {
     const auto la = legal_actions(s);
     CHECK(std::none_of(la.begin(), la.end(), [](const ActionRequest& q) { return q.kind == ActionKind::Attack; }));
     CHECK(step(s, {4, ActionKind::Dodge}).ok);
+}
+
+TEST_CASE("spiritual weapon: the cast needs exactly one spawn tile") {
+    auto s = start();
+    end_turns_until(s, 1);
+    auto none = weapon(1, 2); none.summon_tiles.clear();
+    CHECK(step(s, none).error == "spiritual weapon: one tile");
+    auto two = weapon(1, 2); two.summon_tiles.push_back(ActionRequest::SummonTile{5, 5});
+    CHECK(step(s, two).error == "spiritual weapon: one tile");
+    CHECK(s.summon_weapons.empty());
+    REQUIRE(step(s, weapon(1, 2)).ok);
+    CHECK(s.summon_weapons[0].has_tile);
+    CHECK(step(s, weapon_attack(1, 2)).error == "no bonus action available");   // the move list may be empty (no move)
+}
+
+TEST_CASE("pact of the chain: a familiar takes no opportunity attack and cannot ready an attack") {
+    auto s = start();
+    end_turns_until(s, 1);
+    for (auto& e : s.order) e.total = 100;
+    ActionRequest fam = cast(1, kFamiliar, 1, 1); fam.summon_archetypes = {0};
+    REQUIRE(step(s, fam).ok);
+    Combatant& f = mut(s, 4);
+    f.reaction_policy.fill(ReactionPolicy::Auto);   // it would take any reaction offered
+    end_turns_until(s, 4);
+    REQUIRE(current_actor(s) == 4);
+    ActionRequest ready{4, ActionKind::Ready, 2, 0}; ready.ready_kind = ActionKind::Attack;
+    CHECK(step(s, ready).error == "familiar_attack: a familiar cannot ready an attack");
+    REQUIRE(step(s, {4, ActionKind::EndTurn}).ok);
+    end_turns_until(s, 2);
+    REQUIRE(current_actor(s) == 2);
+    ActionRequest mv{2, ActionKind::Move}; mv.move_ft = 5; mv.move_tiles = 1; mv.leaves_reach = true;
+    auto r = step(s, mv);
+    REQUIRE(r.ok);
+    for (const auto& e : r.events)
+        if (e.kind == EventKind::ReactionWindowOpened) CHECK(e.target != 4);   // no LeavingReach window for the familiar
+    CHECK_FALSE(find(s, 4)->reaction_used);
+    CHECK(count(r.events, EventKind::Moved) == 1);
 }
