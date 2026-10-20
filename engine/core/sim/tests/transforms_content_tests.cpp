@@ -514,32 +514,136 @@ TEST_CASE("Polymorph choices: rated beasts in id order, capped by the target's C
     CHECK_FALSE(f.c->build_form(f.who(1), FormKind::Polymorph, poly, uint8_t(forms.size())));
 }
 
-TEST_CASE("AI: Wild Shape only when asked (FormFeature::ai_prefer; common@2 has no content key), into the highest allowed CR") {
-    {
+// AI Wild Shape heuristic (driver.cpp; Director ruling (b): engine-side, no content key): usable (pool, economy), not
+// concentrating, and (a visible hostile within 2 tiles or no spell slots left); the highest-CR allowed form, ties by forms[] order.
+namespace {
+Json caster_druid(int level, int slots, Json extra = Json::object()) {
+    Json d = druid(level, std::move(extra));
+    d["abilities"]["wis"] = 20;
+    d["spellcasting"] = {{"ability", "wis"}, {"caster_level", level}, {"slots", {{"1", slots}}},
+                         {"spells", {"test.spell.zap", "srd51.spell.hold_person"}}};
+    return d;
+}
+std::optional<std::string> build_ai(ContentLibrary& lib, const Json& d) {
+    if (auto e = lib.add(beast("test.monster.wolf2", "1/4", 11, {{"walk", 40}}), "monster")) return e;
+    if (auto e = lib.add_spell(load_json("content/packs/srd51.core/spells/hold_person.json"))) return e;
+    return build(lib, d);
+}
+bool wild_shapes(const Command& cmd) { return cmd.request.kind == ActionKind::UseFeature && cmd.request.feature_id == kWildShape; }
+}  // namespace
+
+TEST_CASE("AI Wild Shape: in melee (a visible hostile within 2 tiles), into the highest allowed CR; replay") {
+    for (int gx : {4, 5}) {   // 2 tiles: transforms; 3 tiles (slots left): does not
         ContentLibrary lib;
-        loaded(lib, druid(4));
-        Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {20, 20}}});
+        REQUIRE_FALSE(build_ai(lib, caster_druid(4, 2)));
+        Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {gx, 2}}});
         f.advance_to(f.id(0));
         const Command cmd = next_command(*f.c, f.id(1));
-        CHECK_FALSE((cmd.request.kind == ActionKind::UseFeature && cmd.request.feature_id == kWildShape));
+        INFO(gx);
+        if (gx == 5) { CHECK_FALSE(wild_shapes(cmd)); continue; }
+        REQUIRE(wild_shapes(cmd));
+        CHECK(cmd.request.form_archetype == 3);   // croc, CR 1/2 (druid 4 swims; the hawk flies, the bear is CR 1)
+        REQUIRE(f.settle(f.c->submit(cmd)).ok);
+        CHECK(f.who(0).form == FormKind::WildShape);
+        NearestEnemyPolicy pol;   // in the form it does not transform again; no rejected command
+        const RunResult rr = run_to_end(*f.c, [&](CombatantId) -> IActorPolicy* { return &pol; }, 400);
+        INFO(rr.error);
+        CHECK(rr.error.empty());
+        f.check_replay();
+    }
+}
+
+TEST_CASE("AI Wild Shape: far away, it transforms only when its spell slots are spent; replay") {
+    {
+        ContentLibrary lib;
+        REQUIRE_FALSE(build_ai(lib, caster_druid(4, 1)));
+        Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {20, 20}}});
+        f.advance_to(f.id(0));
+        CHECK_FALSE(wild_shapes(next_command(*f.c, f.id(1))));   // a slot left, nobody near
     }
     ContentLibrary lib;
-    // No content key turns it on (wild_shape_effect is closed): set the archetype flag directly to cover the driver path.
-    const_cast<Archetype*>(loaded(lib, druid(4)))->form_features.at(kWildShape).ai_prefer = true;
-    Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {20, 20}}});
+    REQUIRE_FALSE(build_ai(lib, caster_druid(4, 1)));
+    Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {10, 2}}});   // 8 tiles: in zap range, far from melee
     f.advance_to(f.id(0));
+    CHECK_FALSE(wild_shapes(next_command(*f.c, f.id(1))));
+    Command z;   // spend the last slot
+    z.request = {f.id(0), ActionKind::CastSpell, f.id(1)};
+    z.request.spell_id = spell_id_of("test.spell.zap");
+    z.request.spell_level = 1;
+    z.request.targets = {f.id(1)};
+    REQUIRE(f.settle(f.c->submit(z)).ok);
+    f.end_turn();
+    f.advance_to(f.id(0));
+    REQUIRE(f.who(0).spell_slots[1] == 0);
+    REQUIRE(f.c->distance_tiles(f.id(0), f.id(1)) > 2);
     const Command cmd = next_command(*f.c, f.id(1));
-    CHECK(cmd.request.kind == ActionKind::UseFeature);
-    CHECK(cmd.request.feature_id == kWildShape);
-    CHECK(cmd.request.form_archetype == 3);   // croc, CR 1/2 (druid 4 swims; the hawk flies, the bear is CR 1)
+    REQUIRE(wild_shapes(cmd));
+    CHECK(cmd.request.form_archetype == 3);
     REQUIRE(f.settle(f.c->submit(cmd)).ok);
-    CHECK(f.who(0).form == FormKind::WildShape);
-    // in the form it does not transform again, and the run plays out with no rejected command
     NearestEnemyPolicy pol;
     const RunResult rr = run_to_end(*f.c, [&](CombatantId) -> IActorPolicy* { return &pol; }, 400);
     INFO(rr.error);
     CHECK(rr.error.empty());
     f.check_replay();
+    {   // no spellcasting at all counts as spent
+        ContentLibrary l2;
+        REQUIRE_FALSE(build_ai(l2, druid(4)));
+        Fight g(l2, {{kDruid, {2, 2}}, {"test.monster.gob", {20, 20}}});
+        g.advance_to(g.id(0));
+        CHECK(wild_shapes(next_command(*g.c, g.id(1))));
+    }
+}
+
+TEST_CASE("AI Wild Shape: not with an empty pool, not while concentrating") {
+    {   // empty pool, in melee and out of slots: no
+        ContentLibrary lib;
+        Json d = druid(4);   // no slots
+        d["resources"][0]["start"] = 0;
+        REQUIRE_FALSE(build_ai(lib, d));
+        Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {3, 2}}});
+        f.advance_to(f.id(0));
+        CHECK_FALSE(f.c->can_use_feature(f.id(0), kWildShape));
+        CHECK_FALSE(wild_shapes(next_command(*f.c, f.id(1))));
+    }
+    ContentLibrary lib;
+    Json cd = caster_druid(4, 1);
+    cd["spellcasting"]["slots"] = {{"2", 1}};   // Hold Person is level 2
+    REQUIRE_FALSE(build_ai(lib, cd));
+    Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {3, 2}}}, 3);
+    f.advance_to(f.id(0));
+    Command hp;
+    hp.request = {f.id(0), ActionKind::CastSpell, f.id(1)};
+    hp.request.spell_id = spell_id_of("srd51.spell.hold_person");
+    hp.request.spell_level = 2;
+    hp.request.targets = {f.id(1)};
+    const SubmitResult hr = f.settle(f.c->submit(hp));
+    INFO(hr.error);
+    REQUIRE(hr.ok);
+    f.end_turn();
+    f.advance_to(f.id(0));
+    if (f.who(0).concentration_spell != 0) {   // concentrating (slots now spent, hostile adjacent): still no
+        CHECK(f.who(0).spell_slots[2] == 0);
+        CHECK_FALSE(wild_shapes(next_command(*f.c, f.id(1))));
+    } else {
+        FAIL("hold_person concentration did not hold; pick another seed");
+    }
+    f.check_replay();
+}
+
+TEST_CASE("AI Wild Shape: equal-CR forms tie-break by forms[] order") {
+    for (int order = 0; order < 2; ++order) {
+        ContentLibrary lib;
+        Json forms = order == 0 ? Json::array({"test.monster.wolf", "test.monster.wolf2"}) : Json::array({"test.monster.wolf2", "test.monster.wolf"});
+        REQUIRE_FALSE(build_ai(lib, druid(2, {{"forms", forms}})));
+        Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {20, 20}}});
+        f.advance_to(f.id(0));
+        const Command cmd = next_command(*f.c, f.id(1));
+        REQUIRE(wild_shapes(cmd));
+        CHECK(cmd.request.form_archetype == 1);   // both CR 1/4: the first listed
+        REQUIRE(f.settle(f.c->submit(cmd)).ok);
+        CHECK(f.c->attack_archetype(f.id(0))->id == forms[0].get<std::string>());
+        f.check_replay();
+    }
 }
 
 TEST_CASE("shapechanger trait: a listed form changes only the listed statistics, one HP pool, Polymorph refuses it") {

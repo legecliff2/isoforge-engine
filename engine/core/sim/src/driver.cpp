@@ -93,21 +93,38 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         }
     }
     // R-G12 (SUMMONS_TRANSFORMS §3.4): a Polymorph / Wild Shape form cannot cast (rules refuse it), so no spell or save-action
-    // casts from the creature's own block while in it. Transform only when FormFeature::ai_prefer is set (no common@2 content key: off for loaded content), at the
-    // start of the turn, into the allowed form with the highest CR (ties: lowest form index). Never revert by choice: 0 HP,
-    // the timer, concentration or the encounter's end revert it.
+    // casts from the creature's own block while in it. Wild Shape is an engine heuristic (Director ruling (b): no content key).
+    // At the start of the turn (nothing spent or moved yet) the AI takes Wild Shape when ALL hold:
+    //   1. usable: can_use_feature (pool has a use, the feature's action / bonus action is free, not blocked);
+    //   2. not concentrating at all (concentration_spell == 0): every concentration spell counts as worth keeping, so the
+    //      simple rule is "never trade a running concentration spell for a form";
+    //   3. in or near melee (a living hostile it can see, not invisible, within kWildShapeMeleeTiles = 2 tiles Chebyshev),
+    //      OR no spell slots left (every spell_slots[1..9] and pact_slots 0; a creature with no slots at all counts as spent).
+    // Form: the highest CR among the forms build_form allows here; ties go to the earlier entry in the feature's forms[] list
+    // (ids are unique in that list, so the order is total). Shapechanger features are never used by the AI (spawn form kept).
+    // Never revert by choice: 0 HP, the timer, concentration or the encounter's end revert it.
     const bool beast_form = me->form == rules5e::FormKind::Polymorph || me->form == rules5e::FormKind::WildShape;
-    if (me->form == rules5e::FormKind::None && s.budget.sequence == 0 && s.budget.moved_ft == 0 && s.budget.attacks_used_mask == 0)
+    if (me->form == rules5e::FormKind::None && me->concentration_spell == 0 && s.budget.sequence == 0 && s.budget.moved_ft == 0 &&
+        s.budget.attacks_used_mask == 0)
         if (const Archetype* arch = c.archetype(self))
             for (const auto& [fid, ff] : arch->form_features) {
-                if (!ff.ai_prefer || !c.can_use_feature(self, fid)) continue;
+                if (ff.kind != uint8_t(rules5e::FormKind::WildShape) || !c.can_use_feature(self, fid)) continue;
                 const auto sp = arch->feature_specs.find(fid);
                 if (sp == arch->feature_specs.end() || (sp->second.cost == 2 ? !s.budget.bonus_action : !s.budget.action)) continue;
+                constexpr int kWildShapeMeleeTiles = 2;
+                bool near_melee = false;
+                for (const auto& o : s.combatants)
+                    if (o.id != self && o.team != me->team && !o.dead && !o.gone && !o.has(rules5e::Condition::Invisible) &&
+                        c.distance_tiles(self, o.id) <= kWildShapeMeleeTiles && c.line_of_sight(self, o.id))
+                        near_melee = true;
+                bool slots_left = me->pact_slots > 0;
+                for (int l = 1; l <= 9; ++l) slots_left = slots_left || me->spell_slots[std::size_t(l)] > 0;
+                if (!near_melee && slots_left) continue;
                 int best = -1, best_cr = -1;
                 for (std::size_t i = 0; i < ff.forms.size() && i < 255; ++i) {
                     const Archetype* fa = c.form_archetype(self, rules5e::FormKind(ff.kind), fid, uint8_t(i));
                     if (!fa || !c.build_form(*me, rules5e::FormKind(ff.kind), fid, uint8_t(i))) continue;
-                    if (fa->cr_x8 > best_cr) { best_cr = fa->cr_x8; best = int(i); }
+                    if (fa->cr_x8 > best_cr) { best_cr = fa->cr_x8; best = int(i); }   // strict >: the earlier entry wins ties
                 }
                 if (best < 0) continue;
                 Command w;

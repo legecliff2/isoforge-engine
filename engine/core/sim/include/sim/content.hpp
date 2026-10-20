@@ -126,7 +126,6 @@ struct Archetype {
             std::vector<std::string> blocked_actions;       // own actions[] ids not in the form's actions[] (attacks dropped)
         };
         std::vector<Shape> shapes;              // shapechanger forms (statistics other than these are the creature's own)
-        bool ai_prefer = false;                 // the built-in AI transforms (SUMMONS_TRANSFORMS 3.4). No content key (common@2 has none): off
     };
     std::map<uint32_t, FormFeature> form_features;
     // Feature ids whose effect sets requires_humanoid_form (Wild Shape blocks them in a beast form, D7).
