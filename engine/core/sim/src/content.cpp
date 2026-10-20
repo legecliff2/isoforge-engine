@@ -1000,6 +1000,18 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         for (int i = 0; i < 6; ++i) if (sz == sizes[i]) a.size = CreatureSize(i);
         a.footprint = inert.count("size") ? uint8_t(1) : footprint_of(a.size);
     }
+    // R-G12 summons (D1 CR bands): challenge.rating "1/8" | "1/4" | "1/2" | "N" (or an unsigned integer) in eighths; anything else stays 0.
+    if (auto ch = doc.find("challenge"); ch != doc.end() && ch->is_object())
+        if (auto rt = ch->find("rating"); rt != ch->end()) {
+            if (rt->is_number_unsigned() && rt->get<uint64_t>() < 1000) a.cr_eighths = uint32_t(rt->get<uint64_t>()) * 8;
+            else if (rt->is_string()) {
+                const std::string r = rt->get<std::string>();
+                if (r == "1/8") a.cr_eighths = 1;
+                else if (r == "1/4") a.cr_eighths = 2;
+                else if (r == "1/2") a.cr_eighths = 4;
+                else if (!r.empty() && r.find_first_not_of("0123456789") == std::string::npos && r.size() < 4) a.cr_eighths = uint32_t(std::stoi(r)) * 8;
+            }
+        }
     if (!inert.count("creature_type") && doc.contains("type")) {
         auto ct = creature_type_of(doc.value("type", ""));
         if (!ct) return a.id + ": bad creature type";
@@ -1404,6 +1416,22 @@ std::vector<std::string> ContentLibrary::load(const assets::PackSet& packs) {
 
 std::vector<std::string> ContentLibrary::load_pack(const std::string& pack_dir) {
     return load(assets::PackSet::from_pack_dir(pack_dir));
+}
+
+std::optional<std::string> ContentLibrary::add_summon_spell(const rules5e::SpellDef& def, SummonOptions options) {
+    if (def.kind != rules5e::SpellEffectKind::Summon) return def.content_id + ": not a Summon spell";
+    if (options.archetypes.empty() || options.archetypes.size() > 255) return def.content_id + ": summon needs 1..255 archetypes";
+    for (const auto& id : options.archetypes)
+        if (!find(id)) return def.content_id + ": unknown summon archetype '" + id + "'";
+    if (spells_->find(def.id) || summons_.count(def.id)) return def.content_id + ": duplicate spell id";
+    spells_->add(def);
+    summons_[def.id] = std::move(options);
+    return std::nullopt;
+}
+
+const SummonOptions* ContentLibrary::summon_options(uint32_t spell_id) const {
+    auto it = summons_.find(spell_id);
+    return it == summons_.end() ? nullptr : &it->second;
 }
 
 const Archetype* ContentLibrary::find(const std::string& id) const {

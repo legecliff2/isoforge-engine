@@ -88,6 +88,9 @@ struct Archetype {
     // Side of the footprint in tiles: footprint_of(size) for monster@3 / character@3, always 1 for
     // pre-@3 content (its size was descriptive; migration marker "size" in inert_mechanics).
     uint8_t footprint = 1;
+    // R-G12 summons (7.2r, D1): challenge rating in eighths (CR 1/8 = 1, 1/4 = 2, 1/2 = 4, 1 = 8, ...), from monster
+    // `challenge.rating`; 0 = CR 0 or none (characters). Read only by the CR-band summon table.
+    uint32_t cr_eighths = 0;
     std::vector<std::string> spell_ids;   // spellcasting.spells content ids (monster@3 / character@3)
     std::vector<std::string> innate_spell_ids;   // spellcasting.innate.* content ids (monster@4 / character@4); base.innate holds the rows
     // `multiattack` effect options as authored: option id + indices into base.attacks. ContentLibrary::add
@@ -101,6 +104,18 @@ struct Archetype {
         return assets::make_script_key(pack_id, *ai);
     }
     std::vector<EquipmentEntry> equipment;   // equipment[] in array order (priced materials; Combat copies it per combatant)
+};
+
+// R-G12 summons (VERSION_BUMP_BATCH 7.2r, SUMMONS_TRANSFORMS.md D1): which creatures a Summon spell may bring.
+// ActionRequest::summon_archetypes are indices into `archetypes` (content ids). Table:
+//  * Any: any 1..SummonSpec::max_count of the listed creatures (Find Familiar, Animate Dead);
+//  * CrBand (the conjure family, SRD Conjure Animals / Woodland Beings / Minor Elementals): 1 creature of CR 2 or lower, 2 of
+//    CR 1 or lower, 4 of CR 1/2 or lower or 8 of CR 1/4 or lower; times 2 / 3 / 4 at slot level 5 / 7 / 9. Every chosen
+//    creature must fit the band of the count (they may differ).
+struct SummonOptions {
+    enum class Table : uint8_t { Any = 0, CrBand = 1 };
+    std::vector<std::string> archetypes;
+    Table table = Table::Any;
 };
 
 // Owns archetypes and the strings rules5e::Attack::id views into (stable addresses).
@@ -126,8 +141,13 @@ public:
 
     const Archetype* find(const std::string& id) const;
     const std::map<std::string, Archetype>& all() const noexcept { return by_id_; }
+    // R-G12 summons: a Summon SpellDef (kind Summon) and its creature options. Until spell@1 has a `summon` arm (T&C) this is
+    // the way in; the def joins spells(). Errors: not a Summon def, empty or unknown archetypes, duplicate id.
+    std::optional<std::string> add_summon_spell(const rules5e::SpellDef& def, SummonOptions options);
+    const SummonOptions* summon_options(uint32_t spell_id) const;
 
 private:
+    std::map<uint32_t, SummonOptions> summons_;
     std::map<std::string, Archetype> by_id_;
     std::deque<std::string> strings_;
     std::shared_ptr<rules5e::SpellBook> spells_ = std::make_shared<rules5e::SpellBook>();
