@@ -2146,7 +2146,7 @@
         },
         "applies_to": {
           "$ref": "#/$defs/roll_kind_list",
-          "description": "7.3a subtract_roll: the creature's rolls it may answer (Cutting Words: attack, check, damage). Absent = attack."
+          "description": "7.2za subtract_roll: the creature's rolls it may answer (Cutting Words: attack, check, damage). Absent = attack."
         }
       },
       "allOf": [
@@ -3455,7 +3455,7 @@
           }
         },
         {
-          "description": "7.3a: a grant_die effect is checked by its closed arm only.",
+          "description": "7.2za: a grant_die effect is checked by its closed arm only.",
           "properties": {
             "kind": {
               "not": {
@@ -3465,7 +3465,7 @@
           }
         },
         {
-          "description": "7.3a: a half_proficiency effect is checked by its closed arm only.",
+          "description": "7.2za: a half_proficiency effect is checked by its closed arm only.",
           "properties": {
             "kind": {
               "not": {
@@ -4566,7 +4566,7 @@
           "damage"
         ]
       },
-      "description": "VERSION_BUMP_BATCH 7.3a: the rolls a die applies to (rules5e kRoll* bits): attack roll, saving throw, ability check, damage roll (the attack's weapon or spell damage dice). Shared by grant_die and the subtract_roll reaction."
+      "description": "VERSION_BUMP_BATCH 7.2za: the rolls a die applies to (rules5e kRoll* bits): attack roll, saving throw, ability check, damage roll (the attack's weapon or spell damage dice). Shared by grant_die and the subtract_roll reaction."
     },
     "grant_die_effect": {
       "type": "object",
@@ -4578,7 +4578,7 @@
         "duration",
         "applies_to"
       ],
-      "description": "VERSION_BUMP_BATCH 7.3a (T&C #202): SRD Bardic Inspiration (sim features.cpp apply_grant_die). Using the feature (UseFeature, target = an ally other than the user, within range_ft, not deafened) gives the target one held die (rules5e ModStat::HeldDie). Once, after it rolls a roll in applies_to and before the outcome, the holder may add the die; then it is gone. It lapses after duration; a new held die replaces an older one (one per creature). The die is the last scale entry whose level is at or below the owner's level in `class` (else the total level), else `die`. character@4 / monster@4 (inert below 4).",
+      "description": "VERSION_BUMP_BATCH 7.2za (T&C #202): SRD Bardic Inspiration (sim features.cpp apply_grant_die). Using the feature (UseFeature, target = an ally other than the user, within range_ft, not deafened) gives the target one held die (rules5e ModStat::HeldDie). Once, after it rolls a roll in applies_to and before the outcome, the holder may add the die; then it is gone. It lapses after duration; a new held die replaces an older one (one per creature). The die is the last scale entry whose level is at or below the owner's level in `class` (else the total level), else `die`. character@4 / monster@4 (inert below 4).",
       "properties": {
         "kind": {
           "const": "grant_die"
@@ -4657,7 +4657,7 @@
         "kind",
         "on"
       ],
-      "description": "VERSION_BUMP_BATCH 7.3a (T&C #202): SRD Jack of All Trades (sim features.cpp apply_half_proficiency; rules5e Combatant::half_proficiency). Static. checks: half the proficiency bonus, rounded down, on ability checks that do not already add it; initiative: the same on initiative rolls. Characters only (refused on monsters); inert below @4.",
+      "description": "VERSION_BUMP_BATCH 7.2za (T&C #202): SRD Jack of All Trades (sim features.cpp apply_half_proficiency; rules5e Combatant::half_proficiency). Static. checks: half the proficiency bonus, rounded down, on ability checks that do not already add it; initiative: the same on initiative rolls. Characters only (refused on monsters); inert below @4.",
       "properties": {
         "kind": {
           "const": "half_proficiency"

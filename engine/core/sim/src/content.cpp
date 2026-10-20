@@ -962,7 +962,7 @@ std::optional<std::string> compile_reactions(Archetype& a, const Json& doc, cons
             auto d = parse_dice(ef->contains("dice") && (*ef)["dice"].is_string() ? (*ef)["dice"].get<std::string>() : "");
             if (!d || d->count == 0) return where + ": subtract_roll needs dice";
             x.dice = *d;
-            if (auto ap = ef->find("applies_to"); ap != ef->end()) {   // 7.3a: attack | save | check | damage (unique); absent = attack
+            if (auto ap = ef->find("applies_to"); ap != ef->end()) {   // 7.2za: attack | save | check | damage (unique); absent = attack
                 static const char* const kinds[] = {"attack", "save", "check", "damage"};
                 bool ok = ap->is_array() && !ap->empty();
                 if (ok) for (const Json& v : *ap) {

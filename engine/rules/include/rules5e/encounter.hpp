@@ -298,13 +298,13 @@ struct ReactionWindow {
     int16_t     damage = 0;
     bool        ranged = false;
     bool        from_attack = false;  // appended (7.2y): Damaged: the damage came from an attack hit (weapon or spell attack)
-    // appended (7.3a): AttackRolled: the kind of roll (kRoll*; 0 = attack, as before). trigger_actor = the roller, target = the
+    // appended (7.2za): AttackRolled: the kind of roll (kRoll*; 0 = attack, as before). trigger_actor = the roller, target = the
     // creature attacked (attack) or 0; attack_total = the roll's total, target_ac = the AC / DC it is compared to (damage: 0).
     uint8_t     roll_kind = 0;
 };
 
 enum class ReactionOptionKind : uint8_t { Attack, AcBonus, Counter, FireReady, Rider, ReduceDamage, ImposeDisadvantage, Retaliate, SubtractRoll /* R-G7: AttackRolled, `dice` subtracted from the roll */,
-                                          AddHeldDie /* 7.3a: AttackRolled, the roller adds its HeldDie (no reaction spent) */ };   // Rider (9c): option_id = trigger id, slot_level = slot spent (0 none)
+                                          AddHeldDie /* 7.2za: AttackRolled, the roller adds its HeldDie (no reaction spent) */ };   // Rider (9c): option_id = trigger id, slot_level = slot spent (0 none)
 struct ReactionOption {
     uint8_t  attack_index = 0;        // Attack: index into reactor.attacks (first, so {idx} = an attack option)
     ReactionOptionKind kind = ReactionOptionKind::Attack;
