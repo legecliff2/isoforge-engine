@@ -602,6 +602,10 @@ SpellLoad spell_from_json(const Json& j) {
         if (m.contains("consumed") && !m.contains("cost_cp")) return err("'cost_cp' is a dependency of 'consumed'");
     }
     if (s.components == 0) return err("components: at least one of v, s, m");
+    if (j.contains("ignores_cover")) {   // 7.2t: no benefit from half / three-quarters cover (Sacred Flame)
+        if (!j["ignores_cover"].is_boolean()) return err("ignores_cover invalid");
+        s.ignores_cover = j["ignores_cover"].get<bool>();
+    }
 
     const Json du = j.value("duration", Json::object());
     static const std::map<std::string, SpellDuration> kDur{{"instantaneous", SpellDuration::Instantaneous},
