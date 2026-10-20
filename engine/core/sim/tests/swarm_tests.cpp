@@ -9,6 +9,7 @@
 #include "sample_set.hpp"
 #include "rules5e/healing.hpp"
 #include "sim/combat.hpp"
+#include "sim/driver.hpp"
 #include "world/chunk_codec.hpp"
 
 namespace eng::sim {
@@ -240,4 +241,111 @@ TEST_CASE("swarm: no healing and no temp HP (damage_dealt heal_self / temp_hp ri
         const auto h = rules5e::apply_healing(mut(st, s), 6);
         CHECK(h.healed == (swarm ? 0 : 6));
     }
+}
+
+namespace {
+// the swarm of rats' SRD bite: reach 0, "one target in the swarm's space"
+Json rats0(const std::string& id = "t.rats0", bool swarm = true) {
+    Json m = rats(id, swarm, "2d1", "1d1");
+    m["actions"][0]["reach"] = 0;
+    return m;
+}
+// drives the current actor with the AI until its turn ends; returns the rules events of those commands
+std::vector<rules5e::Event> ai_turn(Combat& c, CombatantId self, CombatantId target) {
+    std::vector<rules5e::Event> out;
+    REQUIRE(rules5e::current_actor(c.state()) == self);
+    for (int i = 0; i < 40 && rules5e::current_actor(c.state()) == self; ++i) {
+        const std::size_t from = c.events().size();
+        const Command cmd = next_command(c, target);
+        auto r = c.submit(cmd);
+        if (r.ok) r = c.settle(nullptr);
+        REQUIRE_MESSAGE(r.ok, r.error);
+        for (std::size_t k = from; k < c.events().size(); ++k)
+            if (c.events()[k].kind == SimEvent::Kind::Rules) out.push_back(c.events()[k].rules);
+    }
+    return out;
+}
+int count(const std::vector<rules5e::Event>& ev, EventKind k) {
+    int n = 0;
+    for (const auto& e : ev) n += e.kind == k;
+    return n;
+}
+}  // namespace
+
+TEST_CASE("reach 0: the bite loads with reach 0 and is legal only against a creature in the swarm's space") {
+    auto lib = lib_with({rats0()});
+    CHECK(lib.find("t.rats0")->base.attacks[0].reach_or_range_ft == 0);
+    const auto ch = arena({{kFighter, Vec2i{5, 5}}, {"t.rats0", Vec2i{6, 5}}});
+    const CombatantId f = ch.spawns[0].stable_id, s = ch.spawns[1].stable_id;
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 4);
+    REQUIRE(c);
+    to_actor(*c, s);
+    // adjacent (5 ft) is outside reach 0
+    CHECK(submit(*c, {s, ActionKind::Attack, f, 0}).error == "target out of reach");
+    REQUIRE(step(*c, {5, 5}).ok);   // into the fighter's space
+    REQUIRE(c->pos(s) == c->pos(f));
+    const auto r = submit(*c, {s, ActionKind::Attack, f, 0});
+    CHECK_MESSAGE(r.ok, r.error);
+    end_turn(*c);
+    same_on_replay(*c, ch, lib, 4);
+}
+
+TEST_CASE("reach 0 AI: a swarm paths into the target's space, bites, and stays there; deterministic; replay") {
+    auto lib = lib_with({rats0()});
+    const auto ch = arena({{kFighter, Vec2i{5, 5}}, {"t.rats0", Vec2i{9, 7}}});
+    const CombatantId f = ch.spawns[0].stable_id, s = ch.spawns[1].stable_id;
+    auto run = [&](Combat& c) {
+        std::vector<Vec2i> spots;
+        int bites = 0;
+        for (int round = 0; round < 3; ++round) {
+            to_actor(c, s);
+            const auto ev = ai_turn(c, s, f);
+            bites += count(ev, EventKind::AttackResolved);
+            spots.push_back(c.pos(s));
+            CHECK(c.pos(s) == c.pos(f));   // in the fighter's space at the end of every swarm turn
+            if (round == 0) CHECK(count(ev, EventKind::AttackResolved) == 1);
+        }
+        CHECK(bites == 3);
+        return spots;
+    };
+    ecs::Registry r1, r2;
+    auto a = Combat::create(r1, ch, lib, 7);
+    auto b = Combat::create(r2, ch, lib, 7);
+    REQUIRE(a); REQUIRE(b);
+    const auto pa = run(*a), pb = run(*b);
+    CHECK(pa == pb);
+    CHECK(a->hash() == b->hash());
+    same_on_replay(*a, ch, lib, 7);
+}
+
+TEST_CASE("reach 0: no opportunity attack from the swarm; a non-swarm with reach 0 cannot enter and ends its turn") {
+    auto lib = lib_with({rats0(), rats0("t.plain0", false)});
+    const auto ch = arena({{kFighter, Vec2i{5, 5}}, {"t.rats0", Vec2i{6, 5}}, {"t.plain0", Vec2i{8, 8}}});
+    const CombatantId f = ch.spawns[0].stable_id, s = ch.spawns[1].stable_id, g = ch.spawns[2].stable_id;
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 5);
+    REQUIRE(c);
+    to_actor(*c, s);
+    REQUIRE(step(*c, {5, 5}).ok);   // the swarm moves into the fighter's space
+    REQUIRE(c->pos(s) == c->pos(f));
+    end_turn(*c);
+    // the fighter walks out of the shared space and away: the swarm (reach 0) makes no opportunity attack
+    to_actor(*c, f);
+    const std::size_t from = c->events().size();
+    REQUIRE(step(*c, {4, 5}).ok);
+    REQUIRE(step(*c, {3, 5}).ok);
+    int windows = 0;
+    for (std::size_t k = from; k < c->events().size(); ++k)
+        windows += c->events()[k].kind == SimEvent::Kind::Rules && c->events()[k].rules.kind == EventKind::ReactionWindowOpened;
+    CHECK(windows == 0);
+    CHECK_FALSE(rules5e::find(c->state(), s)->reaction_used);
+    end_turn(*c);
+    // a reach-0 creature that is not a swarm has no goal it can stand on: it ends its turn without moving or attacking
+    to_actor(*c, g);
+    const Vec2i before = c->pos(g);
+    const auto ev = ai_turn(*c, g, f);
+    CHECK(count(ev, EventKind::AttackResolved) == 0);
+    CHECK(c->pos(g) == before);
+    same_on_replay(*c, ch, lib, 5);
 }
