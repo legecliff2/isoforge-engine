@@ -4,6 +4,7 @@
 #include <memory>
 #include <string_view>
 
+#include "iso2d/light_map.hpp"
 #include "iso2d/sprite_batch.hpp"
 #include "render/device.hpp"
 #include "view_model.hpp"
@@ -28,13 +29,18 @@ public:
 
     uint32_t world_sprites() const { return world_.sprite_count(); }
     uint32_t ui_sprites() const { return ui_.sprite_count(); }
+    const eng::iso2d::LightMaps& light_maps() const { return lights_; }
     uint32_t batches() const { return world_.batch_count() + ui_.batch_count(); }
 
 private:
     void text(std::string_view s, eng::Vec2f px, float scale, eng::Color c, int32_t layer = 20);
     void rect(eng::Vec2f px, eng::Vec2f size, eng::Color c, int32_t layer = 10);
 
+    void sync_lights(const LightView&);
+
     eng::iso2d::SpriteBatch world_, ui_;
+    eng::iso2d::LightMaps lights_;
+    uint64_t light_frame_ = 0;
     struct Textures;
     std::unique_ptr<Textures> tex_;
     uint32_t ui_seq_ = 0;
