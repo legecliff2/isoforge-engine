@@ -1,0 +1,63 @@
+name: Build and test
+description: Configure, lint, build and test one CMake CI preset (shared by every OS job in ci.yml).
+inputs:
+  preset: { description: Configure preset, required: true }
+  build:  { description: Build preset, required: true }
+  test:   { description: Test preset, required: true }
+runs:
+  using: composite
+  steps:
+    # content_validate: CMake creates a venv from this interpreter at configure time and
+    # pip-installs tools/validate/requirements.txt into it.
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: tools/validate/requirements.txt
+
+    - name: Install Linux deps (SDL3 video backends, Ninja)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+          libxi-dev libxss-dev libxfixes-dev libxtst-dev libxkbcommon-dev libwayland-dev \
+          wayland-protocols libegl-dev libgl-dev libvulkan-dev libudev-dev libdbus-1-dev
+
+    - name: MSVC dev environment
+      if: runner.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x64
+
+    - name: Install Windows deps (Ninja)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: choco install ninja -y --no-progress
+
+    - name: Install macOS deps
+      if: runner.os == 'macOS'
+      shell: bash
+      run: brew install ninja || true
+
+    - name: Configure
+      shell: bash
+      run: cmake --preset "${{ inputs.preset }}" -DPython3_EXECUTABLE="${{ env.pythonLocation }}/${{ runner.os == 'Windows' && 'python.exe' || 'bin/python' }}"
+
+    # ARCHITECTURE.md §2.2: module dependency graph (rule 1, 2) + SDL/src/backend include lint
+    # (rules 3-5). Configure-time data only, so run before the build to fail fast.
+    - name: Lint (depcheck + include_lint)
+      shell: bash
+      run: ctest --preset "${{ inputs.test }}" -R "^(depcheck|include_lint)" --no-tests=error
+
+    - name: Build
+      shell: bash
+      run: cmake --build --preset "${{ inputs.build }}" --parallel
+
+    - name: Require content_validate to be registered
+      shell: bash
+      run: ctest --preset "${{ inputs.test }}" -N | grep -q content_validate
+
+    - name: Test
+      shell: bash
+      run: ctest --preset "${{ inputs.test }}"
