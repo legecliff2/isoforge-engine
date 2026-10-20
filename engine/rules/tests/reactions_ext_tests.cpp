@@ -129,8 +129,8 @@ TEST_CASE("Uncanny Dodge: Damaged window halves the damage; declining or Never d
         CHECK(seen[0][0].kind == ReactionOptionKind::ReduceDamage);
         CHECK(seen[0][0].half);
         CHECK(seen[0][0].uses_reaction);
-        CHECK(dealt_to(r.events, 2) == D - D / 2);
-        CHECK(s.combatants[1].hp == 500 - (D - D / 2));
+        CHECK(dealt_to(r.events, 2) == D / 2);
+        CHECK(s.combatants[1].hp == 500 - (D / 2));
         CHECK(s.combatants[1].reaction_used);
         const int opened = idx_of(r.events, EventKind::ReactionWindowOpened);
         CHECK(opened >= 0);
@@ -322,4 +322,54 @@ TEST_CASE("Protection: not the target, not an enemy of the target, not twice") {
         CHECK(count(r.events, EventKind::ReactionTaken) == 1);
         CHECK((s.combatants[2].reaction_used != s.combatants[3].reaction_used));
     }
+}
+
+// 7.2y class feature hooks: Uncanny Dodge (SRD 5.1) only against an attack, only an attacker the reactor can see, and
+// the halved damage rounds down.
+TEST_CASE("7.2y Uncanny Dodge: requires_sight needs the attacker seen; rounding halves down") {
+    int seen_n = 0, odd = 0;
+    for (uint64_t seed = 0; seed < 60; ++seed) {
+        auto base = run({striker(1), defender(2, {})}, seed, hooks_with(-1));
+        if (!landed(base)) continue;
+        const int D = dealt_to(base.events, 2);
+        Reaction ud = reduce_half(); ud.requires_sight = true;
+        // seen (default sight: everyone sees everyone)
+        std::vector<std::vector<ReactionOption>> seen;
+        auto r = run({striker(1), defender(2, {ud})}, seed, hooks_with(0, &seen));
+        REQUIRE(seen.size() == 1);
+        CHECK(dealt_to(r.events, 2) == D / 2);
+        if (D % 2) ++odd;
+        // unseen attacker: no option, full damage
+        auto h = hooks_with(0);
+        h.sight_facts = [](const EncounterState&, const Combatant& viewer, const Combatant& subject) {
+            SightFacts f; if (viewer.id == 2 && subject.id == 1) f.subject_invisible = true; return f; };
+        auto bu = run({striker(1), defender(2, {})}, seed, h);   // unseen attacker: advantage, so its own baseline
+        if (!landed(bu)) continue;
+        const int Du = dealt_to(bu.events, 2);
+        auto u = run({striker(1), defender(2, {ud})}, seed, h);
+        CHECK(dealt_to(u.events, 2) == Du);
+        // without requires_sight the unseen attacker is still dodged (plain reduce_damage)
+        auto p = run({striker(1), defender(2, {reduce_half()})}, seed, h);
+        CHECK(dealt_to(p.events, 2) == Du / 2);
+        ++seen_n;
+    }
+    CHECK(seen_n > 0);
+    CHECK(odd > 0);
+}
+
+TEST_CASE("7.2y Uncanny Dodge: a save effect's damage (Hellish Rebuke) is not halved") {
+    int checked = 0;
+    for (uint64_t seed = 0; seed < 60; ++seed) {
+        std::vector<std::vector<ReactionOption>> seen;
+        auto st = striker(1);
+        st.reactions = {reduce_half()};
+        EncounterState s;
+        auto r = run({st, defender(2, {retaliate()})}, seed, hooks_with(0, &seen), &s);
+        if (!landed(r) || count(r.events, EventKind::ReactionTaken) == 0) continue;
+        for (const auto& opts : seen)
+            for (const auto& o : opts) CHECK(o.kind != ReactionOptionKind::ReduceDamage);   // the striker is never offered it
+        CHECK_FALSE(s.combatants[0].reaction_used);
+        ++checked;
+    }
+    CHECK(checked > 0);
 }

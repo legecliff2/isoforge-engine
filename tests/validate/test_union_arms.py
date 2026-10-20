@@ -255,6 +255,38 @@ class TransformArmsRG12(unittest.TestCase):
         self.assertLessEqual({"wild_shape", "shapechanger"}, set(c2["effect_live"]["allOf"][2]["properties"]["kind"]["not"]["enum"]))
 
 
+class ClassFeatureHooks72y(unittest.TestCase):
+    """VERSION_BUMP_BATCH 7.2y: bonus_vs (closed), the save_effect control keys, apply_modifier scope, requires_sight."""
+    BONUS_VS = (S({"creature_types", "dice"}), S())
+    CONTROL = S({"control", "control_excludes_creature_types", "destroy_undead_max_cr8", "target_creature_types", "duration"})
+
+    def test_bonus_vs_closed_on_both_damage_defs(self):
+        c2 = load("common/v2.schema.json")["$defs"]
+        b = c2["bonus_vs"]
+        self.assertFalse(b["additionalProperties"])
+        self.assertEqual(set(b["required"]), set(self.BONUS_VS[0]))
+        self.assertEqual(set(b["properties"]), set(self.BONUS_VS[0] | self.BONUS_VS[1]))
+        self.assertTrue(b["properties"]["dice"]["$ref"].endswith("/dice"))
+        for k in ("damage", "rider_damage"):
+            self.assertEqual(c2[k]["properties"]["bonus_vs"], {"$ref": "#/$defs/bonus_vs"})
+
+    def test_control_keys_save_effect_only(self):
+        a = load("common/v2.schema.json")["$defs"]["action"]
+        self.assertLessEqual(set(self.CONTROL), set(a["properties"]))
+        last = a["allOf"][-1]
+        self.assertEqual(last["if"]["properties"]["kind"]["const"], "save_effect")
+        self.assertEqual({r["required"][0] for r in last["else"]["not"]["anyOf"]}, set(self.CONTROL))
+        self.assertIn({"required": ["control"]}, a["allOf"][3]["then"]["anyOf"])
+
+    def test_scope_one_value_and_requires_sight(self):
+        c2 = load("common/v2.schema.json")["$defs"]
+        sc = c2["apply_modifier_effect"]["properties"]["scope"]
+        self.assertFalse(sc["additionalProperties"])
+        self.assertEqual(sc["required"], ["weapon"])
+        self.assertEqual(sc["properties"], {"weapon": {"enum": ["wielded"]}})
+        self.assertEqual(c2["reaction"]["properties"]["window"]["properties"]["requires_sight"]["type"], "boolean")
+
+
 class SpellMaterialObject(unittest.TestCase):
     def test_components_m_is_closed_with_the_documented_keys(self):
         # spell@1 components.m (priced materials, docs/CONTENT_CONVENTIONS.md section 7): a closed object, not a union.

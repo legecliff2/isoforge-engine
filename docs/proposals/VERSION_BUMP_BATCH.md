@@ -2237,6 +2237,48 @@ everything behaves as before (no golden moved).
 - **Not modelled.** Revealing by noise (sim may clear entries on a loud action), active Search (Perception vs Stealth),
   the Invisible condition as a source of `subject_invisible` (sim sets the fact).
 
+### 7.2y Class feature hooks (rules side) and hand-off
+
+SRD 5.1 rogue (Uncanny Dodge, Fast Hands) plus the T&C blockers for cleric / paladin features. All content keys are
+additive in common@2 (no new cost shape: the existing `usage` pool arm `{kind: "pool", pool, cost?}` is reused).
+
+**Rules (rules5e).**
+- *Uncanny Dodge.* `Reaction::requires_sight`: the Damaged window offers the option only when the reactor can see the
+  creature that dealt the damage (`rules5e::sight`, 7.2x; with no sight hook everyone sees everyone). A `half`
+  reduce_damage reaction is now offered only for damage from an **attack** (`ReactionWindow::from_attack`), never a save
+  effect. Halving leaves the damage rounded down (SRD: "halve the attack's damage"; was rounded up).
+- *Fast Hands.* `ActionKind::UseObject` (appended), `ActionRequest::object_use`: 1 Use an Object (no roll), 2 Dexterity
+  (Sleight of Hand) check, 3 thieves' tools (Dex check, + proficiency with `Combatant::thieves_tools`); 2 and 3 need
+  `dc`. An action, or the bonus action when `bonus_action_grants` has `UseObject`. log_hash **0xCB**.
+- *Weapon-bound modifiers.* `ModifierSpec::weapon_scope = 1` binds the modifier to the melee weapon
+  `ActionRequest::attack_index` of the UseFeature (refused: "feature: wield a weapon (attack_index) to bind it");
+  `ActiveModifier::weapon` (folded into `modifiers_digest` only when set). It applies only to attacks with that
+  weapon and ends (ModifierExpired reason 7) when the owner dies, drops to 0 hp, is unconscious, or is commanded to Drop.
+- *bonus_vs.* `Attack::vs_types / vs_dice`, `DamagePart` and `RiderEffect` likewise: extra dice of the entry's damage
+  type when the target's creature type is listed (crit doubles them).
+- *target_creature_types* on a non-spell save action: other creatures are skipped (no save, no effect).
+
+**Content keys (T&C), sim loader `content.cpp` / `features.cpp`.**
+| Host | Key | Shape |
+|---|---|---|
+| damage[] entry (weapon attacks) and on_hit `extra_damage` damage[] | `bonus_vs` | closed `{creature_types: [..], dice}` (`$defs/bonus_vs`) |
+| `save_effect` action | `control` | `turned` / `fear` / `laughter` (`command` is spell-only: load error) |
+| `save_effect` with control | `control_excludes_creature_types`, `destroy_undead_max_cr8` (4/8/16/24/32), `duration {kind: "rounds", n}` | as spell@1 |
+| `save_effect` action | `target_creature_types` | creature_types (Turn Undead [undead]; Turn the Unholy [fiend, undead]) |
+| `save_effect` / `apply_modifier` | `usage` | existing pool arm; empty pool: "not enough resource" |
+| `apply_modifier` effect | `scope` | closed `{weapon: "wielded"}` (Sacred Weapon; light is left out) |
+| reaction `window` | `requires_sight` | boolean (Uncanny Dodge) |
+| `bonus_action_grant.actions[]` | `use_object` | Fast Hands |
+
+A save_effect may now have only `control` (no damage / apply). Validator (`checks_v4.check_class_hooks`, effect cases
+`v4_target_creature_types_on_attack`, `v4_scope_on_wrong_host`): control keys on a non-save_effect host, scope on a
+non-apply_modifier host, scope other than wielded, bonus_vs not closed or off a weapon attack. Union / lint rows:
+`ClassFeatureHooks72y` (test_union_arms), `bonus_vs` in the common@2 def list (test_common2_lint). `thieves_tools`:
+a rogue character carrying `thieves_tools` (SRD class proficiency).
+
+**Not in this PR.** #197's `fast_hands` / `uncanny_dodge` entries stay descriptive; T&C adds the live effects
+(`bonus_action_grant [use_object]`, the reaction with `requires_sight`).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
