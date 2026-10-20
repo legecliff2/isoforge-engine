@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation), Sorcerer (Draconic Bloodline) and Rogue (Thief) levels 1-5 in srd51.core vs the 5e-database
+"""SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation), Sorcerer (Draconic Bloodline), Rogue (Thief) and Paladin (Oath of Devotion) levels 1-5 in srd51.core vs the 5e-database
 tables (ctest: content_validate_srd51_classes).
 
 `data/srd51_classes_5e_database_a6212be.json` holds fields copied verbatim from 5e-bits/5e-database commit a6212be
@@ -25,8 +25,9 @@ DATA = json.loads((Path(__file__).parent / "data/srd51_classes_5e_database_a6212
 TABLE, SPELLS = DATA["classes"], DATA["spells"]
 LEVELS = range(1, 6)
 XP = {1: 0, 2: 300, 3: 900, 4: 2700, 5: 6500}   # SRD 5.1 Character Advancement table
-SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2, "sorcerer": 1, "rogue": 3}
-MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int", "sorcerer": "cha", "rogue": "dex"}   # the ASI at level 4 goes here (+2)
+SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2, "sorcerer": 1, "rogue": 3, "paladin": 3}
+SPELLCASTING_FROM = {"paladin": 2}   # half caster: no spellcasting block at level 1
+MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int", "sorcerer": "cha", "rogue": "dex", "paladin": "str"}   # the ASI at level 4 goes here (+2)
 SKILLS = {"athletics": "str", "perception": "wis", "insight": "wis", "religion": "int", "arcana": "int", "history": "int",
           "persuasion": "cha", "acrobatics": "dex", "sleight_of_hand": "dex", "stealth": "dex"}
 # Rogue: four class skills (two for the others) and Expertise (doubled proficiency) on Stealth and Perception.
@@ -80,10 +81,24 @@ AUTHORED = {
     "rogue-ability-score-improvement-1": "abilities",
     "fast-hands": "feature:fast_hands",                      # descriptive: no Use an Object / Sleight of Hand / thieves' tools action
     "second-story-work": "feature:second_story_work",        # partial: climb speed in speed; the running-jump bonus is descriptive
-    "uncanny-dodge": "feature:uncanny_dodge",                # descriptive: the damaged window is not attack-only (SRD_CLASSES_DEFERRED)
+    "uncanny-dodge": "feature:uncanny_dodge",
+    "divine-sense": "feature:divine_sense",                  # descriptive: no sensing / reveal mechanic
+    "lay-on-hands": "feature:lay_on_hands",                  # heal_pool + resources[] lay_on_hands (5 x paladin level, long rest); partial
+    "paladin-fighting-style": "feature:fighting_style_dueling",
+    "spellcasting-paladin": "spellcasting",
+    "divine-smite": "feature:divine_smite",                  # on_event hit (melee weapon), ask, spend slot any, 2d8 + 1d8 / slot level; partial
+    "divine-health": "feature:divine_health",                # descriptive: diseases are not modelled
+    "sacred-oath": "subclass",
+    "oath-spells": "spellcasting",
+    "channel-divinity": "feature:channel_divinity",          # descriptive: no loaded effect spends the pool (SRD_CLASSES_DEFERRED)
+    "channel-divinity-sacred-weapon": "feature:sacred_weapon",      # descriptive: apply_modifier + usage pool is not loaded
+    "channel-divinity-turn-the-unholy": "feature:turn_the_unholy",  # descriptive: no character key reaches the 7.2v turned control
+    "paladin-ability-score-improvement-1": "abilities",
+    "paladin-extra-attack": "feature:extra_attack",                # descriptive: the damaged window is not attack-only (SRD_CLASSES_DEFERRED)
 }
 # Kept as a features[] entry with no effect: no combat rule, or a mechanic the engine lacks (docs/SRD_CLASSES_DEFERRED.md).
-DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_story_work", "uncanny_dodge"]}
+DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_story_work", "uncanny_dodge"],
+               "paladin": ["divine_sense", "divine_health", "channel_divinity", "sacred_weapon", "turn_the_unholy"]}
 # Not expressible today (docs/SRD_CLASSES_DEFERRED.md): mirror index -> the feature id it would get (must be absent).
 DEFERRED = {
     "disciple-of-life": "disciple_of_life",
@@ -93,7 +108,7 @@ DEFERRED = {
     "destroy-undead-cr-1-2-or-below": "destroy_undead",
 }
 # Life domain spells and class cantrips the pack does not ship yet (listed in the deferred doc).
-DEFERRED_SPELLS = ["bless", "spiritual-weapon", "beacon-of-hope"]   # Lesser Restoration, Revivify: spells batch 2
+DEFERRED_SPELLS = ["bless", "spiritual-weapon", "beacon-of-hope", "protection-from-evil-and-good", "sanctuary", "zone-of-truth"]   # Lesser Restoration, Revivify: spells batch 2
 
 
 def mod(score: int) -> int:
@@ -213,7 +228,7 @@ class ClassTable(unittest.TestCase):
             with self.subTest(cls=cls, level=level):
                 row, t = TABLE[cls]["levels"][str(level)], TABLE[cls]
                 sc = d.get("spellcasting")
-                if t["spellcasting_ability"] is None:
+                if t["spellcasting_ability"] is None or level < SPELLCASTING_FROM.get(cls, 1):
                     self.assertIsNone(sc)
                     continue
                 self.assertEqual((sc["ability"], sc["caster_level"]), (t["spellcasting_ability"], level))
@@ -230,7 +245,7 @@ class ClassTable(unittest.TestCase):
                     self.assertTrue(cls in sp["classes"] or idx in domain, ref)
                     self.assertLessEqual(sp["level"], top, ref)
                     cantrips += sp["level"] == 0
-                self.assertLessEqual(cantrips, row["cantrips_known"])
+                self.assertLessEqual(cantrips, row.get("cantrips_known", 0))
                 for s in domain:   # domain spells are always prepared: present unless deferred (not shipped)
                     self.assertTrue(f"srd51.spell.{s.replace('-', '_')}" in sc["spells"] or s in DEFERRED_SPELLS, s)
 
@@ -313,6 +328,31 @@ class ClassTable(unittest.TestCase):
                     if fid in f:
                         self.assertNotIn("effect", f[fid], fid)
 
+    def test_paladin(self):
+        smite = {"kind": "on_event", "on": "hit", "choice": "ask", "when": [{"kind": "weapon", "is": "melee"}],
+                 "effects": [{"kind": "spend", "slot": "any"},
+                             {"kind": "extra_damage", "damage": [{"dice": "2d8", "type": "radiant"}],
+                              "scale": {"per_slot_level": {"base_level": 1, "add_dice": "1d8"}}}]}
+        for level in LEVELS:
+            with self.subTest(level=level):
+                d = load("paladin", level)
+                f = features(d)
+                self.assertEqual(d["resources"], [{"id": "lay_on_hands", "name": "Lay on Hands", "max": {"per_level": 5, "class": "paladin"},
+                                                   "recharge": "long_rest"}])
+                self.assertEqual(f["lay_on_hands"]["effect"], {"kind": "heal_pool", "cost": "action", "pool": "lay_on_hands"})
+                self.assertEqual("divine_smite" in f, level >= 2)
+                self.assertEqual("fighting_style_dueling" in f, level >= 2)
+                if level >= 2:
+                    self.assertEqual(f["divine_smite"]["effect"], smite)
+                    self.assertEqual(f["fighting_style_dueling"]["effect"],
+                                     {"kind": "damage_bonus", "amount": 2, "condition": "one_handed_melee_no_other_weapon"})
+                self.assertEqual("extra_attack" in f, level >= 5)
+                if level >= 5:
+                    self.assertEqual(f["extra_attack"]["effect"], {"kind": "extra_attack", "attacks_per_action": 2})
+                for fid in DESCRIPTIVE["paladin"]:
+                    if fid in f:
+                        self.assertNotIn("effect", f[fid], fid)
+
     def test_arcane_recovery_slot_recovery(self):
         # VERSION_BUMP_BATCH 7.2n: budget ceil(wizard level / 2) is derived from classes[], not authored.
         for level in LEVELS:
@@ -345,8 +385,10 @@ class ClassTable(unittest.TestCase):
                         else:
                             self.assertIn(idx, DEFERRED)
                             self.assertIn(f"`{idx}`", doc)
-                for fid in DEFERRED.values():
-                    self.assertNotIn(fid, f)   # deferred, not approximated
+                own = {i for lv in TABLE[cls]["levels"].values() for i in list(lv["features"]) + list(lv.get("subclass_features", {}))}
+                for idx, fid in DEFERRED.items():   # deferred, not approximated (ids are per class: the paladin has its own channel_divinity)
+                    if idx in own:
+                        self.assertNotIn(fid, f)
         for s in DEFERRED_SPELLS:
             self.assertIn(f"srd51.spell.{s.replace('-', '_')}", doc)
             self.assertFalse((PACK / "spells" / f"{s.replace('-', '_')}.json").exists(), s)
