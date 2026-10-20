@@ -428,7 +428,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     errs += check_static_kinds(doc)
     check_grapple_riders(doc, errs, warns)
     check_untimed_save_condition_riders(doc, errs)
-    check_refused_condition_durations(doc, warns)
+    check_refused_condition_durations(doc, errs, warns)
     check_transforms(doc, ctx, errs, warns)
     # check 12: declared but never referenced pools (Legendary Resistance is declaration-only until row 13)
     for i, r in enumerate(resources):
@@ -1004,12 +1004,12 @@ def _refused_durations(apply_list):
                 yield k, dk
 
 
-def check_refused_condition_durations(doc: dict, warns: list[str]) -> None:
-    """Mirror of the sim loader for the condition durations it refuses (REFUSED_CONDITION_DURATIONS), with its wording:
-    a save_condition rider fails to load ("save_condition uses an unsupported duration"), an apply_condition rider fails
+def check_refused_condition_durations(doc: dict, errs: list[str], warns: list[str]) -> None:
+    """Mirror of the sim loader for the condition durations it refuses (REFUSED_CONDITION_DURATIONS), with its wording.
+    Errors (the whole document fails to load): a save_condition rider ("save_condition uses an unsupported duration"), an apply_condition rider fails
     to load ("unsupported apply_condition duration"), an area_save rider fails to load ("area_save uses an unsupported
-    usage or condition duration"); a save_effect / attack_effect action loads but is listed and never used
-    ("<id> (save_effect: unsupported usage or condition duration)")."""
+    usage or condition duration"). Warning (the document loads, only that action is skipped): a save_effect /
+    attack_effect action is listed and never used ("<id> (save_effect: unsupported usage or condition duration)")."""
     for path, _owner, _j, r in rider_sites(doc):
         if not isinstance(r, dict):
             continue
@@ -1020,7 +1020,7 @@ def check_refused_condition_durations(doc: dict, warns: list[str]) -> None:
         if msg is None:
             continue
         for k, dk in _refused_durations(r.get("apply")):
-            warns.append(f"{path}: {msg} (apply[{k}] duration '{dk}' has no rules5e expiry; the sim refuses to load this document)")
+            errs.append(f"{path}: {msg} (apply[{k}] duration '{dk}' has no rules5e expiry; the sim refuses to load this document)")
             break
     for path, a in mechanical_actions(doc):
         ak = a.get("kind")
