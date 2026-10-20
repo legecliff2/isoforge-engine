@@ -1882,8 +1882,8 @@ Rules:
   level / 2) rounds; 0 = none); it reverts at the start of the creature's turn in that round (`Reverted{b = 0}`, right after
   `TurnStarted`).
 - **Polymorph**: `SpellEffectKind::Polymorph` (appended), one target, `ActionRequest::form_archetype`. Refused (D13: "no effect on
-  a shapechanger or a creature with 0 hit points"): `polymorph: no effect on a shapechanger`, `polymorph: no effect on a creature
-  with 0 hit points`, also `polymorph: one target`, `polymorph: the target is already transformed`, `form_archetype required`,
+  a shapechanger or a creature with 0 hit points"): `polymorph: target is a shapechanger`, `polymorph: target has 0 hit points`,
+  also `polymorph: one target`, `polymorph: target already transformed`, `form_archetype required`,
   `form not available`, `polymorph: primary effect only`; `form_archetype` on another spell: `form_archetype: not a polymorph
   spell`; on another request kind: `form_archetype: UseFeature or CastSpell only`. Unwilling = another team: Wisdom save vs the
   spell DC (`SavingThrowRolled`), success = no effect (no concentration). Willing (same team, or self): no save. Then
