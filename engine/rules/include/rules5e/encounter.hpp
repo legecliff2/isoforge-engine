@@ -576,6 +576,10 @@ struct ActiveSummonWeapon {
     uint32_t spell_id = 0;
     uint8_t slot_level = 0;
     uint32_t end_round = 0;
+    // the token's tile (ActionRequest::summon_tiles[0] of the cast, then of each SummonWeaponAttack that moves it): stored and
+    // logged by rules (0xBC, 0xAF), validated by sim (20 ft move, reach). has_tile false = no tile given yet.
+    bool has_tile = false;
+    int32_t tile_x = 0, tile_y = 0;
 };
 
 struct EncounterState {

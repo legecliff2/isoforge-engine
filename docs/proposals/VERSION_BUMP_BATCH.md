@@ -2021,7 +2021,7 @@ Rules:
   `summon_ids`; live refused, replay checked). Events: `Summoned{actor = caster, target = token id, a = spell, b = 0, c = -1}`,
   then its melee spell attack (`AttackResolved` actor = caster), before `SpellResolved`. Later turns: `ActionKind::SummonWeaponAttack`
   (appended, `spell_id` names the row, target): the caster's bonus action (`spiritual weapon: none active`, `no bonus action
-  available`, `bad target`, `target is dead`, `incapacitated`); the 20 ft move is sim's. `legal_actions` lists it per hostile.
+  available`, `bad target`, `target is dead`, `incapacitated`); the 20 ft move is sim's. `legal_actions` lists it per hostile with no reach check: **sim filters weapon-attack reach** (5 ft of the token after its move) in its legal-action view. Tiles: the cast's `summon_tiles[0]` (spawn) and a `SummonWeaponAttack`'s `summon_tiles[0]` (move) are stored in the row (`has_tile`, `tile_x`, `tile_y`) and logged (0xBC); at most one (`spiritual weapon: one tile`); sim validates them. 0xAF adds the weapon rows only while `summon_weapons` is non-empty. A familiar never attacks on its own turn (`familiar_attack: a familiar cannot attack on its own turn`; `legal_actions` lists no Attack for it): the Pact trade is its only attack.
   Duration from the spell (1 minute = 10 rounds): `SummonEnded{b = 0}` at the start of the owner's turn in `end_round`. No
   concentration. Encounter end: in the same pass as summons, ascending by id (`SummonEnded{b = 5}`). `summons` counts it, so 0xAF
   folds; 0xAF layout gains the weapon rows after the summon records (SIM_EVENTS.md).
