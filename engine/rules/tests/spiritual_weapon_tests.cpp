@@ -207,3 +207,77 @@ TEST_CASE("pact of the chain: one attack traded for the familiar's reaction atta
     REQUIRE(step(s, trade).ok);
     CHECK(s.budget.attacks_remaining == 0);
 }
+
+namespace {
+// The PR 2 0xAF layout (no weapon rows), recomputed here: summon-only digests must not move with PR 3.
+uint64_t pr2_digest(const EncounterState& s) {
+    uint64_t h = 0xcbf29ce484222325ull;
+    auto mix = [&](uint64_t v, int bytes) { for (int i = 0; i < bytes; ++i) { h ^= (v >> (8 * i)) & 0xFF; h *= 0x100000001B3ull; } };
+    mix(s.next_summon_id, 4); mix(s.summons, 4);
+    for (const auto& c : s.combatants) {
+        if (c.summoner == 0) continue;
+        mix(c.id, 4); mix(c.summoner, 4); mix(c.summon_source, 4); mix(c.summon_group, 4); mix(uint8_t(c.gone), 1); mix(c.commanded, 1);
+    }
+    mix(s.transforms, 4);
+    return h;
+}
+}  // namespace
+
+TEST_CASE("spiritual weapon: 0xAF adds weapon rows only while one exists (summon-only digest pinned to PR 2)") {
+    auto s = start();
+    end_turns_until(s, 1);
+    for (auto& e : s.order) e.total = 100;
+    ActionRequest fam = cast(1, kFamiliar, 1, 1); fam.summon_archetypes = {0};
+    REQUIRE(step(s, fam).ok);
+    CHECK(summons_digest(s) == pr2_digest(s));
+    (void)step(s, {1, ActionKind::EndTurn});
+    end_turns_until(s, 1);
+    REQUIRE(step(s, weapon(1, 1)).ok);
+    CHECK(summons_digest(s) != pr2_digest(s));
+    s.summon_weapons.clear();
+    CHECK(summons_digest(s) == pr2_digest(s));
+}
+
+TEST_CASE("spiritual weapon: spawn and move tiles are stored, logged and replayed") {
+    auto make = [] { return start(13); };
+    auto a = make(); auto b = make();
+    end_turns_until(a, 1); end_turns_until(b, 1);
+    ActionLog log;
+    auto c = weapon(1, 2); c.summon_tiles = {ActionRequest::SummonTile{4, 7}};
+    REQUIRE(step_logged(a, c, log).ok);
+    REQUIRE(a.summon_weapons.size() == 1);
+    CHECK(a.summon_weapons[0].has_tile); CHECK(a.summon_weapons[0].tile_x == 4); CHECK(a.summon_weapons[0].tile_y == 7);
+    REQUIRE(step_logged(a, {1, ActionKind::EndTurn}, log).ok);
+    end_turns_until(a, 1);
+    auto m = weapon_attack(1, 3); m.summon_tiles = {ActionRequest::SummonTile{-3, 9}};
+    auto bad = m; bad.summon_tiles = {ActionRequest::SummonTile{1, 1}, ActionRequest::SummonTile{2, 2}};
+    CHECK(step(a, bad).error == "spiritual weapon: one tile");
+    REQUIRE(step_logged(a, m, log).ok);
+    CHECK(a.summon_weapons[0].tile_x == -3); CHECK(a.summon_weapons[0].tile_y == 9);
+    CHECK(log.back().request.summon_tiles == m.summon_tiles);
+    // replay b from the log; the turns between (other actors' EndTurn) were not logged in `a`, so mirror them
+    REQUIRE(replay_step(b, log[0]).ok);
+    REQUIRE(replay_step(b, log[1]).ok);
+    end_turns_until(b, 1);
+    auto r = replay_step(b, log[2]);
+    REQUIRE(r.ok); CHECK_FALSE(r.desync);
+    REQUIRE(b.summon_weapons.size() == 1);
+    CHECK(b.summon_weapons[0].tile_x == -3); CHECK(b.summon_weapons[0].tile_y == 9);
+    CHECK(summons_digest(a) == summons_digest(b));
+    auto moved = a; moved.summon_weapons[0].tile_x = 0;
+    CHECK(summons_digest(moved) != summons_digest(a));   // the tile is in 0xAF
+}
+
+TEST_CASE("pact of the chain: a familiar cannot attack on its own turn") {
+    auto s = start();
+    end_turns_until(s, 1);
+    for (auto& e : s.order) e.total = 100;
+    ActionRequest fam = cast(1, kFamiliar, 1, 1); fam.summon_archetypes = {0};
+    REQUIRE(step(s, fam).ok);
+    end_turns_until(s, 4);
+    REQUIRE(current_actor(s) == 4);
+    CHECK(step(s, {4, ActionKind::Attack, 2, 0}).error == "familiar_attack: a familiar cannot attack on its own turn");
+    const auto la = legal_actions(s);
+    CHECK(std::none_of(la.begin(), la.end(), [](const ActionRequest& q) { return q.kind == ActionKind::Attack; }));
+    CHECK(step(s, {4, ActionKind::Dodge}).ok);
+}

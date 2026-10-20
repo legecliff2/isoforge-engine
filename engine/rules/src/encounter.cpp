@@ -707,6 +707,7 @@ struct Ctx {
     // R-G12 PR 2: the cast's creature choices (set around resolve_spell only), the creatures built by the Summon effect (placed
     // by attempt after the step: appending to combatants would move the step's Combatant references), and the ids they took.
     const std::vector<uint8_t>* summon_archetypes = nullptr;
+    const std::vector<ActionRequest::SummonTile>* summon_tiles = nullptr;   // R-G12 PR 3: the weapon's spawn tile
     std::vector<std::pair<Combatant, uint8_t>> summons_pending{};
     SummonSpec summon_spec{};
     std::vector<CombatantId> assigned_summon_ids{};
@@ -2597,7 +2598,11 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         const CombatantId id = next_summon_ids(s, 1)[0];
         ctx.assigned_summon_ids = {id};
         const uint32_t rounds = spell_rounds(def);
-        s.summon_weapons.push_back(ActiveSummonWeapon{id, a.id, def.id, lvl, rounds ? uint32_t(s.round) + rounds : 0u});
+        ActiveSummonWeapon w{id, a.id, def.id, lvl, rounds ? uint32_t(s.round) + rounds : 0u};
+        if (ctx.summon_tiles && !ctx.summon_tiles->empty()) {
+            w.has_tile = true; w.tile_x = (*ctx.summon_tiles)[0].x; w.tile_y = (*ctx.summon_tiles)[0].y;
+        }
+        s.summon_weapons.push_back(w);
         s.next_summon_id = id + 1;
         ++s.summons;
         emit(ev, EventKind::Summoned, a.id, id, int32_t(def.id), 0, -1);
@@ -2776,6 +2781,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     case SpellEffectKind::SummonWeapon:   // R-G12 PR 3: target = the creature its first attack hits, or the caster (no attack)
         if (T.size() != 1) return fail("spiritual weapon: one target");
         if (T[0] != &a && T[0]->dead) return fail("target is dead");
+        if (req.summon_tiles.size() > 1) return fail("spiritual weapon: one tile");
         if (!ctx.replay_only && !req.summon_ids.empty()) return fail("summon_ids: assigned by rules (leave empty)");
         if (ctx.replay_only && req.summon_ids != next_summon_ids(s, 1)) return fail("summon_ids: do not match the summon counter");
         break;
@@ -2792,7 +2798,8 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (x.kind == SpellEffectKind::Summon) return fail("summon: primary effect only");
     for (const SpellEffect& x : def.extra_effects)
         if (x.kind == SpellEffectKind::SummonWeapon) return fail("spiritual weapon: primary effect only");
-    if ((!req.summon_archetypes.empty() || !req.summon_tiles.empty()) && def.kind != SpellEffectKind::Summon)
+    if (!req.summon_archetypes.empty() && def.kind != SpellEffectKind::Summon) return fail("summon: not a summon spell");
+    if (!req.summon_tiles.empty() && def.kind != SpellEffectKind::Summon && def.kind != SpellEffectKind::SummonWeapon)
         return fail("summon: not a summon spell");
     if (!req.summon_ids.empty() && def.kind != SpellEffectKind::Summon && def.kind != SpellEffectKind::SummonWeapon)
         return fail("summon: not a summon spell");
@@ -2858,13 +2865,13 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         ctx.has_zone_end = req.has_zone_end; ctx.zone_x2 = req.zone_x2; ctx.zone_y2 = req.zone_y2;
         ctx.zone_side = req.zone_side; ctx.zone_ring = req.zone_ring;
         ctx.form_archetype = req.form_archetype;
-        ctx.summon_archetypes = &req.summon_archetypes;
+        ctx.summon_archetypes = &req.summon_archetypes; ctx.summon_tiles = &req.summon_tiles;
         resolve_spell(s, ctx, a, def, lvl, T, req.target_within_5ft, out.events);
         ctx.spared = nullptr; ctx.spared_no_damage = false; ctx.heighten = 0; ctx.empower = 0;
         ctx.forced_feet = 0; ctx.teleport_feet = 0; ctx.has_teleport_dest = false; ctx.teleport_x = 0; ctx.teleport_y = 0;
         ctx.has_zone_dest = false; ctx.zone_x = 0; ctx.zone_y = 0; ctx.zone_excluded = nullptr;
         ctx.has_zone_end = false; ctx.zone_x2 = 0; ctx.zone_y2 = 0; ctx.zone_side = 0; ctx.zone_ring = false;
-        ctx.form_archetype = 0; ctx.summon_archetypes = nullptr;
+        ctx.form_archetype = 0; ctx.summon_archetypes = nullptr; ctx.summon_tiles = nullptr;
         defer_forced(s, ctx, out.events);   // R-G9: placeholders after every save and damage of the spell, before SpellResolved
     }
     emit(out.events, countered ? EventKind::SpellCountered : EventKind::SpellResolved, a.id, ids[0], int32_t(def.id), lvl);
@@ -3500,8 +3507,12 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
     if (req.kind != ActionKind::CommandSummons && (req.command != 0 || !req.command_ids.empty()))
         return fail("command: CommandSummons only");
     if (req.kind != ActionKind::Attack && req.familiar_id != 0) return fail("familiar_id: Attack only");
-    if (req.kind != ActionKind::CastSpell && (!req.summon_archetypes.empty() || !req.summon_ids.empty() || !req.summon_tiles.empty()))
+    if (req.kind != ActionKind::CastSpell && (!req.summon_archetypes.empty() || !req.summon_ids.empty() ||
+                                              (!req.summon_tiles.empty() && req.kind != ActionKind::SummonWeaponAttack)))
         return fail("summon: not a summon spell");
+    // R-G12 PR 3 (SRD Find Familiar): a familiar never attacks on its own turn; Pact of the Chain's trade is its only attack
+    if (a.summoner != 0 && a.summon_control == uint8_t(SummonControl::Telepathic) && req.kind == ActionKind::Attack)
+        return fail("familiar_attack: a familiar cannot attack on its own turn");
     // R-G12 PR 2 (D4): an uncommanded (or told to defend) summon that takes commands only Dodges: SRD "it defends itself"
     if (awaits_command(a) && req.kind != ActionKind::EndTurn && req.kind != ActionKind::Dodge)
         return fail("summon not commanded: Dodge only");
@@ -3661,8 +3672,9 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         return out;
     }
     case ActionKind::SummonWeaponAttack: {   // R-G12 PR 3 (D3): bonus action: the weapon moves (sim) and attacks
-        const ActiveSummonWeapon* w = nullptr;
-        for (const auto& x : s.summon_weapons) if (x.owner == a.id && x.spell_id == req.spell_id) { w = &x; break; }
+        ActiveSummonWeapon* w = nullptr;
+        for (auto& x : s.summon_weapons) if (x.owner == a.id && x.spell_id == req.spell_id) { w = &x; break; }
+        if (req.summon_tiles.size() > 1) return fail("spiritual weapon: one tile");
         if (!w) return fail("spiritual weapon: none active");
         if (is_incapacitated(a)) return fail("incapacitated");
         if (!b.bonus_action) return fail("no bonus action available");
@@ -3672,6 +3684,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         const SpellDef* def = spell_def(s, w->spell_id);
         if (!def) return fail("unknown spell");
         const uint8_t lvl = w->slot_level;
+        if (!req.summon_tiles.empty()) { w->has_tile = true; w->tile_x = req.summon_tiles[0].x; w->tile_y = req.summon_tiles[0].y; }
         b.bonus_action = false;
         s.budget = b;
         summon_weapon_attack(s, ctx, a, *def, lvl, *t, out.events);
@@ -3979,7 +3992,8 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
         return out;
     }
     const bool can_act = b.action || b.extra_actions > 0;   // row 13: an extra action counts
-    if (can_act || b.attacks_remaining > 0) {
+    const bool familiar = a.summoner != 0 && a.summon_control == uint8_t(SummonControl::Telepathic);   // R-G12 PR 3: no attacks
+    if (!familiar && (can_act || b.attacks_remaining > 0)) {
         for (const auto& t : s.combatants) {
             if (t.dead || t.id == a.id || t.team == a.team) continue;
             if (b.sequence != 0 && b.sequence <= a.multiattacks.size() &&
@@ -4677,9 +4691,12 @@ uint64_t summons_digest(const EncounterState& s, uint64_t h) {
         mix(c.id, 4); mix(c.summoner, 4); mix(c.summon_source, 4); mix(c.summon_group, 4);
         mix(uint8_t(c.gone), 1); mix(c.commanded, 1);
     }
-    mix(s.summon_weapons.size(), 4);   // R-G12 PR 3: Spiritual Weapon rows
-    for (const auto& w : s.summon_weapons) {
-        mix(w.token_id, 4); mix(w.owner, 4); mix(w.spell_id, 4); mix(w.slot_level, 1); mix(w.end_round, 4);
+    if (!s.summon_weapons.empty()) {   // R-G12 PR 3: Spiritual Weapon rows, only while one exists (other digests unchanged)
+        mix(s.summon_weapons.size(), 4);
+        for (const auto& w : s.summon_weapons) {
+            mix(w.token_id, 4); mix(w.owner, 4); mix(w.spell_id, 4); mix(w.slot_level, 1); mix(w.end_round, 4);
+            mix(uint8_t(w.has_tile), 1); mix(uint32_t(w.tile_x), 4); mix(uint32_t(w.tile_y), 4);
+        }
     }
     mix(s.transforms, 4);
     for (const auto& c : s.combatants) {
