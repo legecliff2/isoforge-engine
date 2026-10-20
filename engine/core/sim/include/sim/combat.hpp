@@ -141,6 +141,10 @@ public:
     // [pos.x, pos.x + n) x [pos.y, pos.y + n). Spawn tiles and Step destinations are anchors. n == 1 for
     // every pre-footprint creature, which then behaves exactly as before.
     int footprint_size(CombatantId id) const;
+    MoveCaps caps_of(CombatantId id) const;   // feat/move-modes: fly / swim / climb speeds present
+    // feat/move-modes: the speed a step from `from` to `to` costing `cost` ft uses (0 walk, 1 fly, 2 swim, 3 climb);
+    // 0xFF: no fitting speed has enough left; 0xFE: only flight fits and the mover is prone.
+    uint8_t step_mode(CombatantId mover, Vec2i from, Vec2i to, int cost) const;
     std::vector<Vec2i> footprint_tiles(CombatantId id) const { return footprint_tiles_at(id, pos(id)); }
     std::vector<Vec2i> footprint_tiles_at(CombatantId id, Vec2i anchor) const;   // row-major (y, then x)
     // Nearest-tile distance in tiles between two creatures' footprints (chebyshev for 1x1), and line of

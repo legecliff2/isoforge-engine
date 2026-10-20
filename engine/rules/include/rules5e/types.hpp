@@ -350,6 +350,9 @@ struct FormStats {
     std::vector<Trigger> triggers{};
     std::vector<Reaction> reactions{};
     std::vector<BonusAttack> bonus_attacks{};
+    // appended (SRD 5.1 movement modes, feat/move-modes): the form's fly / swim / climb speeds and hover.
+    uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0;
+    bool hover = false;
     // Wild Shape (D7): the creature's own features (feature ids) the form is not physically capable of using (content:
     // requires_humanoid_form). UseFeature refuses them while the form lasts. Not part of the saved base block.
     std::vector<uint32_t> blocked_features{};
@@ -500,6 +503,11 @@ struct Combatant {
     // appended (R-G12 rules PR 3, D6): Pact of the Chain: an Attack can trade one attack for the familiar's reaction attack
     // (ActionRequest::familiar_id). Content-derived: not hashed.
     bool pact_of_chain = false;
+    // appended (SRD 5.1 movement modes, feat/move-modes; sim fold Combat::hash 0xC3 when any is set): fly / swim / climb
+    // speeds (0 = none) and hover. A Move with ActionRequest::move_mode uses that speed: SRD "switching speeds" - the
+    // feet already spent this turn count against it (TurnBudget::movement_ft is shared; see move_allowance).
+    uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0;
+    bool hover = false;
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };

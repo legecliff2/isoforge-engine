@@ -73,7 +73,7 @@ def dice_average(expr: str) -> int:
 # ---- chunk@1 decode + hashing: mirrors engine/core/world/src/chunk_codec.cpp (PR #4) ----
 CELLS = CHUNK_SIZE * CHUNK_SIZE
 FLAG_BLOCKS_MOVE, FLAG_BLOCKS_SIGHT, FLAG_DIFFICULT, FLAG_WATER = 1, 2, 4, 8
-FLAG_KNOWN_MASK = 0x0F
+FLAG_KNOWN_MASK = 0x3F
 
 
 def compact_json(obj) -> str:
@@ -282,7 +282,7 @@ def check_chunk(doc, errs, ctx):
             if tile >= pal:
                 errs.append(f"{at}: tile {tile} outside palette ({pal})")
             if flags & ~FLAG_KNOWN_MASK:
-                errs.append(f"{at}: reserved flag bits 4-7 set ({flags:#x})")
+                errs.append(f"{at}: reserved flag bits 6-7 set ({flags:#x})")
             if tile == 0 and (elev or flags):
                 errs.append(f"{at}: empty tile with elevation/flags set")
     ids = [spawn_stable_id(doc["coord"]["x"], doc["coord"]["y"], doc["coord"]["level"], i)
