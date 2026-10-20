@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation) and Sorcerer (Draconic Bloodline) levels 1-5 in srd51.core vs the 5e-database
+"""SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation), Sorcerer (Draconic Bloodline) and Rogue (Thief) levels 1-5 in srd51.core vs the 5e-database
 tables (ctest: content_validate_srd51_classes).
 
 `data/srd51_classes_5e_database_a6212be.json` holds fields copied verbatim from 5e-bits/5e-database commit a6212be
@@ -25,10 +25,16 @@ DATA = json.loads((Path(__file__).parent / "data/srd51_classes_5e_database_a6212
 TABLE, SPELLS = DATA["classes"], DATA["spells"]
 LEVELS = range(1, 6)
 XP = {1: 0, 2: 300, 3: 900, 4: 2700, 5: 6500}   # SRD 5.1 Character Advancement table
-SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2, "sorcerer": 1}
-MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int", "sorcerer": "cha"}   # the ASI at level 4 goes here (+2)
+SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2, "sorcerer": 1, "rogue": 3}
+MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int", "sorcerer": "cha", "rogue": "dex"}   # the ASI at level 4 goes here (+2)
 SKILLS = {"athletics": "str", "perception": "wis", "insight": "wis", "religion": "int", "arcana": "int", "history": "int",
-          "persuasion": "cha"}
+          "persuasion": "cha", "acrobatics": "dex", "sleight_of_hand": "dex", "stealth": "dex"}
+# Rogue: four class skills (two for the others) and Expertise (doubled proficiency) on Stealth and Perception.
+SKILL_COUNT = {"rogue": 4}
+EXPERTISE = {"rogue": {"stealth", "perception"}}
+# Rogue (Thief) Second-Story Work from 3rd: climbing costs no extra movement = a climb speed equal to the walking speed.
+def speed(cls: str, level: int) -> dict:
+    return {"walk": 30, "climb": 30} if cls == "rogue" and level >= 3 else {"walk": 30}
 # Draconic Resilience (sorcerer, Draconic Bloodline): +1 hit point per sorcerer level, and AC 13 + Dex without armor.
 HP_PER_LEVEL = {"sorcerer": 1}
 UNARMORED_BASE = {"sorcerer": 13}
@@ -66,7 +72,18 @@ AUTHORED = {
     "flexible-casting-converting-spell-slot": "feature:font_of_magic",
     "metamagic-1": "feature:metamagic",                      # metamagic kind (R-G14, sim #143), the same pool
     "sorcerer-ability-score-improvement-1": "abilities",
+    "rogue-expertise-1": "feature:expertise",                # descriptive; baked into skills (EXPERTISE) and passive Perception
+    "sneak-attack": "feature:sneak_attack",                  # on_event hit, once_per_turn, finesse_or_ranged + advantage_or_ally_adjacent
+    "thieves-cant": "feature:thieves_cant",                  # descriptive (a language)
+    "cunning-action": "feature:cunning_action",              # bonus_action_grant [dash, disengage, hide]
+    "roguish-archetype": "subclass",
+    "rogue-ability-score-improvement-1": "abilities",
+    "fast-hands": "feature:fast_hands",                      # descriptive: no Use an Object / Sleight of Hand / thieves' tools action
+    "second-story-work": "feature:second_story_work",        # partial: climb speed in speed; the running-jump bonus is descriptive
+    "uncanny-dodge": "feature:uncanny_dodge",                # descriptive: the damaged window is not attack-only (SRD_CLASSES_DEFERRED)
 }
+# Kept as a features[] entry with no effect: no combat rule, or a mechanic the engine lacks (docs/SRD_CLASSES_DEFERRED.md).
+DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_story_work", "uncanny_dodge"]}
 # Not expressible today (docs/SRD_CLASSES_DEFERRED.md): mirror index -> the feature id it would get (must be absent).
 DEFERRED = {
     "disciple-of-life": "disciple_of_life",
@@ -120,7 +137,7 @@ class ClassTable(unittest.TestCase):
                 self.assertEqual(c.get("subclass"), t["subclass"] if level >= SUBCLASS_AT[cls] else None)
                 self.assertEqual(d["proficiency_bonus"], row["prof_bonus"])
                 self.assertEqual(d["xp"], XP[level])
-                self.assertEqual((d["race"], d["size"], d["type"], d["speed"]), ("human", "medium", "humanoid", {"walk": 30}))
+                self.assertEqual((d["race"], d["size"], d["type"], d["speed"]), ("human", "medium", "humanoid", speed(cls, level)))
                 self.assertEqual(d["source"], {"ref": "SRD 5.1", "license": "CC-BY-4.0"})
                 self.assertTrue(d["name"].startswith(f"{t['name']}, level {level}"))
 
@@ -148,9 +165,9 @@ class ClassTable(unittest.TestCase):
             with self.subTest(cls=cls, level=level):
                 ab, pb = d["abilities"], d["proficiency_bonus"]
                 self.assertEqual(d["saving_throws"], {s: mod(ab[s]) + pb for s in TABLE[cls]["saving_throws"]})
-                self.assertEqual(len(d["skills"]), 2)   # every class here picks two skills
+                self.assertEqual(len(d["skills"]), SKILL_COUNT.get(cls, 2))
                 for sk, v in d["skills"].items():
-                    self.assertEqual(v, mod(ab[SKILLS[sk]]) + pb, sk)
+                    self.assertEqual(v, mod(ab[SKILLS[sk]]) + pb * (2 if sk in EXPERTISE.get(cls, ()) else 1), sk)
                 self.assertEqual(d["senses"]["passive_perception"], 10 + d["skills"].get("perception", mod(ab["wis"])))
 
     def test_armor_class_from_items(self):
@@ -273,6 +290,28 @@ class ClassTable(unittest.TestCase):
                 f = features(load(cls, level))
                 if fid in f:
                     self.assertNotIn("effect", f[fid])
+
+    def test_rogue(self):
+        sneak = {"kind": "on_event", "on": "hit", "limit": "once_per_turn",
+                 "when": [{"kind": "weapon", "is": "finesse_or_ranged"}, {"kind": "advantage_or_ally_adjacent"}],
+                 "effects": [{"kind": "extra_damage", "damage": [{"dice": "1d6", "type": "same_as_weapon"}],
+                              "scale": {"per_levels": {"class": "rogue", "every": 2, "add_dice": "1d6"}}}]}
+        for level in LEVELS:
+            with self.subTest(level=level):
+                d = load("rogue", level)
+                f = features(d)
+                self.assertEqual(f["sneak_attack"]["effect"], sneak)
+                # the scale gives 1 + (level - 1) // 2 dice: the mirror's Sneak Attack column
+                sa = TABLE["rogue"]["levels"][str(level)]["class_specific"]["sneak_attack"]
+                self.assertEqual((1 + (level - 1) // 2, 6), (sa["dice_count"], sa["dice_value"]))
+                self.assertEqual("cunning_action" in f, level >= 2)
+                if level >= 2:
+                    self.assertEqual(f["cunning_action"]["effect"], {"kind": "bonus_action_grant", "actions": ["dash", "disengage", "hide"]})
+                self.assertIn("Thieves' Cant", d["languages"])
+                self.assertNotIn("reactions", d)   # Uncanny Dodge stays descriptive
+                for fid in DESCRIPTIVE["rogue"]:
+                    if fid in f:
+                        self.assertNotIn("effect", f[fid], fid)
 
     def test_arcane_recovery_slot_recovery(self):
         # VERSION_BUMP_BATCH 7.2n: budget ceil(wizard level / 2) is derived from classes[], not authored.
