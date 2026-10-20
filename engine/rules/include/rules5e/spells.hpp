@@ -42,6 +42,10 @@ enum class SpellEffectKind : uint8_t {
     Teleport,       // the caster teleports (`teleport`; Misty Step); the destination is sim's (ActionRequest::teleport_*)
     // appended (R-G11, docs/proposals/ZONES_AURAS.md): a persistent zone or aura (`zone`; primary effect only)
     Zone,
+    // appended (R-G12 rules PR 1, docs/proposals/SUMMONS_TRANSFORMS.md): one creature becomes a beast (Polymorph): unwilling
+    // (another team) makes a Wisdom save; the form is ActionRequest::form_archetype through EncounterHooks::build_form; no effect
+    // on a shapechanger or a creature with 0 hit points (D13: refused). Ends at 0 HP (overflow carries), death or concentration.
+    Polymorph,
 };
 // R-G9 forced movement (push / pull) of an effect. mode 1 push (away from the source), 2 pull (toward it), 3 along a line
 // (Gust of Wind: sim's direction; not in R-G9's first scope). feet: exact distance, or the maximum when up_to (the caster

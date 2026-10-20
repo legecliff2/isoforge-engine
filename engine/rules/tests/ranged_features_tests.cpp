@@ -42,7 +42,7 @@ Shot shoot(uint64_t seed, uint8_t attack_index, bool hostile_5ft, bool beyond, b
 }  // namespace
 
 TEST_CASE("EventKind::Count_ / kEventKindCount follows the last kind") {
-    CHECK(kEventKindCount == std::size_t(EventKind::ZoneEnded) + 1);
+    CHECK(kEventKindCount == std::size_t(EventKind::Commanded) + 1);
 }
 
 TEST_CASE("attack ranges: normal/long range widened past one byte; helpers") {
