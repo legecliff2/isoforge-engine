@@ -724,7 +724,6 @@ POLY_CASES = [
     ("pm_extra_key", [(EF + ["duration"], 1)], [], "duration"),
     ("pm_too_many_forms", [(EF + ["forms"], [f"srd51.monster.m{i}" for i in range(256)])], [], "is too long"),
     ("warn_pm_above_max_cr", [(EF + ["max_cr"], "1/4")], [], f"polymorph: form '{BEAR}' above max_cr"),
-    ("warn_pm_reserved", [], [], "polymorph is reserved"),
 ]
 
 
@@ -790,7 +789,7 @@ class RG12Transforms(unittest.TestCase):
         d[SPELL] = _poly_spell([(["max_cr"], "1/2"), (["save"], {"ability": "wis"})])
         errs, warns = h.validate_docs(d)
         self.assertEqual(errs, [])
-        self.assertEqual([w for w in warns if "polymorph" in w and "reserved" not in w], [])
+        self.assertEqual([w for w in warns if "polymorph" in w], [])   # Rules #171: no reserved warning
         d[SPELL] = _poly_spell([(["max_cr"], "target_level")])
         self.assertEqual(h.validate_docs(d)[0], [])
 

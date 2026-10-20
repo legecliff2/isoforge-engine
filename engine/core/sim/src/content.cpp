@@ -942,6 +942,24 @@ bool carries_shield(const Json& doc) {
 
 std::optional<rules5e::DamageType> damage_type_from_name(const std::string& s) { return damage_type(s); }
 
+std::optional<int> cr_x8_of(const Json& r) {
+    if (r.is_number_integer()) {
+        const int64_t v = r.get<int64_t>();
+        if (v < 0 || v > 30) return std::nullopt;
+        return int(v) * 8;
+    }
+    if (!r.is_string()) return std::nullopt;
+    const std::string t = r.get<std::string>();
+    if (t == "0") return 0;
+    if (t == "1/8") return 1;
+    if (t == "1/4") return 2;
+    if (t == "1/2") return 4;
+    if (t.empty() || t.size() > 2 || t.find_first_not_of("0123456789") != std::string::npos) return std::nullopt;
+    const int v = std::stoi(t);
+    if (v > 30) return std::nullopt;
+    return v * 8;
+}
+
 std::optional<std::string> ContentLibrary::add(const Json& doc, const std::string& schema_type, const std::string& pack_id,
                                                  uint32_t declared_version) {
     Archetype a;
@@ -956,6 +974,20 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     c.ac = int8_t(geti(doc.at("armor_class"), "value"));
     c.hp = c.hp_max = int16_t(geti(doc.at("hit_points"), "average"));
     c.speed_ft = uint8_t(geti(doc.at("speed"), "walk"));
+    // R-G12 (7.2q): facts build_form checks (CR, fly / swim speeds, character level). Data only: nothing reads them unless a
+    // transform is requested.
+    a.fly_ft = uint16_t(std::max(0, geti(doc.at("speed"), "fly", 0)));
+    a.swim_ft = uint16_t(std::max(0, geti(doc.at("speed"), "swim", 0)));
+    if (auto ch = doc.find("challenge"); ch != doc.end() && ch->is_object())
+        if (auto rt = ch->find("rating"); rt != ch->end())
+            if (auto x = cr_x8_of(*rt)) a.cr_x8 = int16_t(*x);
+    if (schema_type == "character") {
+        int lv = 0;
+        for (const Json& k : doc.value("classes", Json::array()))
+            if (k.is_object()) lv += std::max(0, geti(k, "level"));
+        if (lv == 0) lv = geti(doc, "level", 0);
+        a.char_level = uint8_t(std::clamp(lv, 0, 20));
+    }
     c.proficiency_bonus = int8_t(geti(doc, "proficiency_bonus", 2));
     // R-G11 rules PR 2 creature facts (CONTENT_CONVENTIONS 4.6; schema keys from #142): Stinking Cloud's no_breath automatic
     // success, Moonbeam's shapechanger disadvantage, Spirit Guardians' evil damage type. Default false.
@@ -999,19 +1031,9 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         const std::string sz = doc.value("size", "medium");
         for (int i = 0; i < 6; ++i) if (sz == sizes[i]) a.size = CreatureSize(i);
         a.footprint = inert.count("size") ? uint8_t(1) : footprint_of(a.size);
+        // R-G12 sim: the creature itself carries its size (Heavy weapons, forms); an inert size stays Medium, matching footprint 1.
+        if (!inert.count("size")) c.size = rules5e::Size(uint8_t(a.size));
     }
-    // R-G12 summons (D1 CR bands): challenge.rating "1/8" | "1/4" | "1/2" | "N" (or an unsigned integer) in eighths; anything else stays 0.
-    if (auto ch = doc.find("challenge"); ch != doc.end() && ch->is_object())
-        if (auto rt = ch->find("rating"); rt != ch->end()) {
-            if (rt->is_number_unsigned() && rt->get<uint64_t>() < 1000) a.cr_eighths = uint32_t(rt->get<uint64_t>()) * 8;
-            else if (rt->is_string()) {
-                const std::string r = rt->get<std::string>();
-                if (r == "1/8") a.cr_eighths = 1;
-                else if (r == "1/4") a.cr_eighths = 2;
-                else if (r == "1/2") a.cr_eighths = 4;
-                else if (!r.empty() && r.find_first_not_of("0123456789") == std::string::npos && r.size() < 4) a.cr_eighths = uint32_t(std::stoi(r)) * 8;
-            }
-        }
     if (!inert.count("creature_type") && doc.contains("type")) {
         auto ct = creature_type_of(doc.value("type", ""));
         if (!ct) return a.id + ": bad creature type";

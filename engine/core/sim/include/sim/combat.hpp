@@ -248,6 +248,21 @@ public:
     // Cost in feet of one step of `mover` from `from` to `to`: the grid's cost, at least 10 when it enters a kZoneDifficult zone
     // and doubled in a kZoneHalveSpeed zone (the mover not excluded), at most 20 ft per tile.
     int step_cost_ft(CombatantId mover, Vec2i from, Vec2i to) const;
+    // ---- R-G12 transforms (VERSION_BUMP_BATCH 7.2q hand-off, SUMMONS_TRANSFORMS.md §3) ----
+    // The archetype form choice `index` (ActionRequest::form_archetype - 1) of transform `kind` from `source` resolves to:
+    // Wild Shape: the feature's forms[index]; Polymorph (source = spell id): the index-th beast of the library (byte order of
+    // ids, beasts with a challenge rating). nullptr for an unknown id / index or a shapechanger (its forms are its own block).
+    const Archetype* form_archetype(CombatantId creature, rules5e::FormKind kind, uint32_t source, uint8_t index) const;
+    // EncounterHooks::build_form, also used by the AI: the form's statistics, or nullopt when the form is not allowed (unknown
+    // archetype, not a beast, above the CR limit, fly / swim below the druid level, or a bigger footprint that does not fit
+    // at the creature's anchor). A function of content, the arguments and the board (positions are replayed identically).
+    std::optional<rules5e::FormStats> build_form(const rules5e::Combatant& creature, rules5e::FormKind kind, uint32_t source,
+                                                 uint8_t index, std::string* why = nullptr) const;
+    // The archetype whose attack-indexed tables (ranges, grapple riders, two-handed grip) match the creature's current
+    // attacks: the form's archetype in a Polymorph / Wild Shape form, else its own.
+    const Archetype* attack_archetype(CombatantId id) const;
+    // Polymorph's choice list (beasts with a rating, id byte order), built at create.
+    const std::vector<const Archetype*>& polymorph_forms() const noexcept { return beasts_; }
 
 private:
     bool derived_area_ = false;   // targets of the request being resolved came from area_targets (skips the per-target range check)
@@ -282,6 +297,9 @@ private:
     void spawn_summon(const rules5e::Event& summoned, const rules5e::LoggedStep& ls);
     void register_rows(const Slot& sl);
     SimEvent token_removed(const rules5e::Event& ended);
+    // R-G12: footprint bookkeeping of one Transformed / Reverted event (side change: Footprint event, a growing revert that
+    // does not fit is moved to the nearest free anchor first); the events go to `out`.
+    void form_footprint(const rules5e::Event& e, std::vector<SimEvent>& out);
     std::optional<Vec2i> moving_to(CombatantId id) const;   // destination of a move being resolved
     // A footprint at a position: anchor + side.
     Spot spot(CombatantId id) const { return {pos(id), footprint_size(id)}; }
@@ -307,6 +325,9 @@ private:
     uint64_t seed_ = 0;
     rules5e::EncounterState state_{};
     std::vector<Slot> slots_;              // in spawn order
+    const ContentLibrary* content_ = nullptr;      // R-G12: form archetypes (Wild Shape / Polymorph) resolve against it; summon choices too
+    std::vector<const Archetype*> beasts_;         // R-G12: Polymorph choices (see polymorph_forms)
+    std::map<CombatantId, int> form_side_;         // R-G12: footprint side of each creature in a form (derived, not hashed)
     std::vector<SimEvent> events_;
     std::vector<LogEntry> log_;
     std::vector<std::string> team_names_;
@@ -325,7 +346,6 @@ private:
     // R-G12 summons: the content (build_summon / summon options; outlives the combat like the archetypes), the number of
     // create-time slots (the untagged per-slot hash fold covers only those), TurnStarted events so far, and whether the
     // spawn ids reached UINT32_MAX (every summon refused).
-    const ContentLibrary* content_ = nullptr;
     std::size_t created_count_ = 0;
     uint32_t turns_started_ = 0;
     bool summon_ids_exhausted_ = false;

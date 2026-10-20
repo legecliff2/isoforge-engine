@@ -225,22 +225,24 @@ unchanged in each sim PR).
 
 ### 3.0 Ids (Q11, sim side)
 
-- `Combat::next_summon_id_` (u32), set once at the end of `Combat::create` to `max(stable_id of **every** spawn in every chunk
-  of the combat, combatant or not) + 1` (not only combatants: non-combatant spawns also own a `StableId` in the registry).
-  Overflow (max = UINT32_MAX) makes `create` succeed but every summon is refused ("summon id space exhausted").
-- **As built (rules PR 2): rules fills `summon_ids`, not sim.** Sim seeds `EncounterState::next_summon_id` (from
-  `next_summon_id_` above) after `begin_encounter`; rules assigns `count` consecutive ids from it, writes them into the logged
+- **Owner (ruling, R-G12 sim PR 1):** the summon id counter is rules' (`EncounterState`, folded inside 0xAF by
+  `summons_digest`); sim has no counter of its own. Sim **seeds** it once at the end of `Combat::create` to `max(stable_id of
+  **every** spawn in every chunk of the combat, combatant or not) + 1` (not only combatants: non-combatant spawns also own a
+  `StableId` in the registry). Overflow (max = UINT32_MAX) makes `create` succeed but every summon is refused ("summon id
+  space exhausted"). The seed alone never makes 0xAF fold: `has_summon_state` keys on "something was summoned or transformed".
+- **As built (rules PR 2): rules fills `summon_ids`, not sim.** Sim seeds `EncounterState::next_summon_id` (the
+  seed above; sim keeps no `next_summon_id_` of its own); rules assigns `count` consecutive ids from it, writes them into the logged
   request (`StepResult::logged->request.summon_ids`), refuses a caller-supplied non-empty list live (`summon_ids: assigned by
   rules (leave empty)`) and refuses replayed ids that differ from the counter (`summon_ids: do not match the summon counter`);
   the counter lives in rules' 0xAF. Sim needs no id check of its own. The original sim-side draft follows for history:
-- (draft) At a summon request sim fills `summon_ids` itself: `count` consecutive ids `next_summon_id_ ...`, ascending; the counter
+- (draft) At a summon request sim fills `summon_ids` itself: `count` consecutive ids from the counter, ascending; the counter
   advances only when the request completes (`StepStatus::Done`). Rejected or paused requests consume nothing; a request
   that pauses for a reaction window keeps the ids it was given and commits them on completion. Ids are **never reused**,
   including after `SummonEnded` (the counter only grows; the `gone` slot keeps its id).
-- A caller-supplied non-empty `summon_ids` on a live `submit` is an error ("summon ids are assigned by sim"), so the only
+- (draft; superseded by rules' checks above) A caller-supplied non-empty `summon_ids` on a live `submit` is an error ("summon ids are assigned by sim"), so the only
   source of ids is the counter.
-- **Replay** (`sim::replay`): before `replay_step`, sim checks that the logged `summon_ids` equal exactly the ids the counter
-  would assign at that point (`next_summon_id_ ...`, count = spec count). A mismatch is a desync error ("replay desync at
+- (draft; superseded by rules' checks above) **Replay** (`sim::replay`): before `replay_step`, sim checks that the logged `summon_ids` equal exactly the ids the counter
+  would assign at that point (the rules counter, count = spec count). A mismatch is a desync error ("replay desync at
   entry i: summon ids"). Rules' own "id already present" check stays as the second line.
 - Registry clash: if `reg.find(id)` already exists when a summon would be created (another combat or system shares the
   registry and took that StableId), the request is refused with an error and nothing is consumed. This is deterministic
@@ -283,8 +285,9 @@ unchanged in each sim PR).
 - The existing per-slot fold in `Combat::hash` (id, pos, hp, dead per slot, untagged) runs over **create-time slots only**
   (`slots_[0, created_count_)`), byte-for-byte as today. Summon slots are folded only inside 0xAF, so their bytes are always
   behind a tag and a count (no ambiguity with later untagged sections).
-- **0xAF** (`Combat::hash`, folded when `next_summon_id_ != initial` or any `form != None` or any `ActiveSummonWeapon`):
-  `next_summon_id_` u32; rules' `summons_digest` u64 (2.8); sim part: count u32, then per summon slot (creation order) id u32,
+- **0xAF** (`Combat::hash`, folded when `has_summon_state`: something was summoned or transformed this encounter; the
+  seeded counter alone does not count): rules' `summons_digest` u64 (2.8; it holds the summon id counter, rules-owned, and
+  the transform records; no separate sim counter is folded). With summons (PR 2) the sim part follows: count u32, then per summon slot (creation order) id u32,
   pos x/y i32, footprint byte, `gone` byte, team byte; then count u32 + per weapon token (token id, owner, pos). Sim and rules
   share the one tag: sim folds `h.byte(0xAF); h.u64(rules5e::summons_digest(state_)); <sim part>` in one place.
 - **0xBC** (`log_hash`, folded when any of the fields is non-empty / non-zero): `summon_ids` (count u32 + u32 each),
