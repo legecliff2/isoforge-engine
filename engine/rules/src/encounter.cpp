@@ -97,6 +97,12 @@ bool has_marker(const EncounterState& s, CombatantId id, ModStat st) {
         return m.target == id && m.spec.stat == st; });
 }
 
+// 7.2u: Chill Touch: a NoHealing marker stops hit point regain on every path (temp HP is not regaining hit points).
+HealingApplied heal_hp(const EncounterState& s, const Combatant& c, int16_t amount) {
+    if (!s.modifiers.empty() && has_marker(s, c.id, ModStat::NoHealing)) return {0, c.hp, false};
+    return apply_healing(c, amount);
+}
+
 // reason: 0 duration ran out, 1 concentration ended, 2 replaced by a same-id modifier, 3 spent by an attack roll, 4 damaged, 5 dispelled (R-G15),
 // 6 repeat save succeeded (Slow)
 void tick_modifiers_round_start(EncounterState& s, std::vector<Event>& ev) {
@@ -111,7 +117,19 @@ void tick_modifiers_turn_end(EncounterState& s, CombatantId cid, std::vector<Eve
 }
 void drop_caster_turn_modifiers(EncounterState& s, CombatantId caster, std::vector<Event>& ev) {
     for (std::size_t i = 0; i < s.modifiers.size();) {
-        if (s.modifiers[i].caster == caster && s.modifiers[i].spec.until_caster_turn) remove_modifier(s, i, 0, ev); else ++i;
+        const auto& m = s.modifiers[i];
+        if ((m.caster == caster && m.spec.until_caster_turn) ||
+            (m.target == caster && m.timed.kind == Expiry::StartOfTargetNextTurn)) remove_modifier(s, i, 0, ev);   // 7.2u
+        else ++i;
+    }
+}
+// 7.2u: end of `cid`'s turn: EndOfCasterNextTurn timers of modifiers `cid` applied tick.
+void tick_caster_turn_end(EncounterState& s, CombatantId cid, std::vector<Event>& ev) {
+    for (std::size_t i = 0; i < s.modifiers.size();) {
+        auto& m = s.modifiers[i];
+        if (m.caster == cid && m.timed.kind == Expiry::EndOfCasterNextTurn && m.timed.rounds_left > 0 && --m.timed.rounds_left == 0)
+            remove_modifier(s, i, 0, ev);
+        else ++i;
     }
 }
 void drop_concentration_modifiers(EncounterState& s, CombatantId caster, uint32_t source, std::vector<Event>& ev) {
@@ -528,6 +546,7 @@ void tick_effects_turn_end(EncounterState& s, CombatantId cid, std::vector<Event
     for (const auto& e : due) deal_effect_damage(s, e, ev);
     expire_effects(s, gone, ev);
     tick_modifiers_turn_end(s, cid, ev);
+    if (!s.modifiers.empty()) tick_caster_turn_end(s, cid, ev);
 }
 
 // SRD: concentration ends when the caster is incapacitated or dies.
@@ -567,6 +586,7 @@ struct TrigCtx {                 // facts a predicate can read
     bool crit = false;
     uint32_t types = 0;          // damage types of the event (bitmask)
     int dmg = 0;                 // damage taken / dealt (Save predicate dc_from_damage)
+    CombatantId mod_caster = 0;  // 7.2u: the caster of the modifier whose `when` is evaluated (SubjectIsCaster)
 };
 struct Ctx;
 struct TrigOut { bool set_hp = false; int16_t hp = 0; };
@@ -900,7 +920,8 @@ std::vector<CombatantId> initiative_ids(const EncounterState& s) {
 }
 
 bool may_react(const EncounterState& s, const Combatant& c, ReactionTrigger t) {
-    if (c.lethargy != 0 || (!s.modifiers.empty() && has_marker(s, c.id, ModStat::Slow))) return false;   // Haste ended / Slow
+    if (c.lethargy != 0 || (!s.modifiers.empty() && (has_marker(s, c.id, ModStat::Slow) || has_marker(s, c.id, ModStat::NoReactions))))
+        return false;   // Haste ended / Slow / 7.2u Shocking Grasp
     // R-G12 PR 3 (SRD Find Familiar): a familiar never attacks, so it takes no opportunity attack (Pact's trade is its only one)
     if (t == ReactionTrigger::LeavingReach && c.summoner != 0 && c.summon_control == uint8_t(SummonControl::Telepathic)) return false;
     return !c.dead && !c.surprised && can_act(c) && !c.reaction_used &&
@@ -1064,6 +1085,8 @@ bool predicate_holds(EncounterState& s, Combatant& owner, const Combatant& subje
     case PredicateKind::TargetTag: return std::find(subject.tags.begin(), subject.tags.end(), p.mask) != subject.tags.end();
     case PredicateKind::NotTargetTag: return std::find(subject.tags.begin(), subject.tags.end(), p.mask) == subject.tags.end();
     case PredicateKind::AllyNearTarget: return x.ally;
+    case PredicateKind::SubjectIsCaster: return x.mod_caster != 0 && subject.id == x.mod_caster;   // 7.2u
+    case PredicateKind::OwnerCreatureType: return (p.mask & bit(owner.creature_type)) != 0;
     case PredicateKind::DamageAtMost: return x.dmg <= p.a;
     case PredicateKind::AttackIs: return !x.is_spell && x.atk && x.atk >= owner.attacks.data() && x.atk < owner.attacks.data() + owner.attacks.size() &&
                                          std::size_t(x.atk - owner.attacks.data()) == std::size_t(p.a);   // pointer identity into owner.attacks
@@ -1150,7 +1173,7 @@ bool run_event_triggers(EncounterState& s, Combatant& owner, Combatant& subject,
                 if (e.kind == RiderKind::TempHp) {   // temporary HP never stack: keep the larger pool
                     if (amt > owner.temp_hp && !owner.no_regain_hp) owner.temp_hp = int16_t(amt);
                 } else {
-                    auto h = apply_healing(owner, int16_t(amt));
+                    auto h = heal_hp(s, owner, int16_t(amt));
                     commit_healing(owner, h);
                     emit(ev, EventKind::Healed, owner.id, owner.id, h.healed, h.hp_after, h.from_zero);
                 }
@@ -1564,6 +1587,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
             else if ((m.spec.stat == ModStat::AttacksAgainst || m.spec.stat == ModStat::Ac) && m.target == t.id) { owner = &t; subject = &a; }
             if (!owner) continue;
             TrigCtx x; x.atk = &atk; x.is_spell = spell_id != 0; x.mode = actx.mode; x.ally = ally_near_target;
+            x.mod_caster = m.caster;
             m.gated = !when_ok(s, *owner, *subject, x, m.spec.when);
         }
         bool madv = false, mdis = false;
@@ -2010,7 +2034,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
             if (c.regen_down) { c.regen_down = false; kill(c, ev); }
         } else if (c.regen_down || c.hp < effective_hp_max(c)) {
             c.regen_down = false;
-            auto h = apply_healing(c, c.regeneration.amount);
+            auto h = heal_hp(s, c, c.regeneration.amount);
             commit_healing(c, h);
             emit(ev, EventKind::Healed, c.id, c.id, h.healed, h.hp_after, h.from_zero);
         }
@@ -2360,7 +2384,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             int amt = roll_dice(s.rng, dice) + (def.add_spellcasting_modifier ? modifier(a.abilities, a.spellcasting_ability) : 0);
             if (amt <= 0) continue;
             bool was_unconscious = t->has(Condition::Unconscious);
-            auto h = apply_healing(*t, int16_t(amt));
+            auto h = heal_hp(s, *t, int16_t(amt));
             commit_healing(*t, h);
             emit(ev, EventKind::Healed, a.id, t->id, h.healed, h.hp_after, h.from_zero);
             affected.push_back(t);
@@ -3568,7 +3592,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         if (req.amount <= 0) return fail("amount must be positive");
         StepResult out{true, {}, {}};
         bool was_unconscious = t->has(Condition::Unconscious);
-        auto h = apply_healing(*t, req.amount);
+        auto h = heal_hp(s, *t, req.amount);
         commit_healing(*t, h);
         emit(out.events, EventKind::Healed, 0, t->id, h.healed, h.hp_after, h.from_zero);
         if (h.from_zero && was_unconscious)
@@ -3727,7 +3751,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         if (pool_spend > 0 && spend_pool(s, a.id, fs->pool, pool_spend))
             emit(out.events, EventKind::ResourceSpent, a.id, 0, int32_t(fs->pool), pool_spend, find_pool(s, a.id, fs->pool)->cur);
         if (heal_to) {   // Lay on Hands: the spent amount is the healing
-            auto h = apply_healing(*heal_to, int16_t(pool_spend));
+            auto h = heal_hp(s, *heal_to, int16_t(pool_spend));
             commit_healing(*heal_to, h);
             emit(out.events, EventKind::Healed, a.id, heal_to->id, h.healed, h.hp_after, h.from_zero);
         }
@@ -3750,7 +3774,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         if (req.heal_dice.count > 0 || req.heal_dice.bonus > 0) {
             int amount = roll_dice(s.rng, req.heal_dice, false);
             if (amount > 0) {
-                auto h = apply_healing(a, int16_t(amount));
+                auto h = heal_hp(s, a, int16_t(amount));
                 commit_healing(a, h);
                 emit(out.events, EventKind::Healed, a.id, a.id, h.healed, h.hp_after, h.from_zero);
             }
@@ -4301,6 +4325,8 @@ Timed make_timed(Expiry kind, uint16_t rounds, bool target_acting) {
     switch (kind) {
     case Expiry::Rounds: return {kind, int16_t(std::min<int>(rounds, 32767))};
     case Expiry::EndOfTargetNextTurn: return {kind, int16_t(target_acting ? 2 : 1)};   // the acting target's current turn does not count
+    case Expiry::EndOfCasterNextTurn: return {kind, int16_t(target_acting ? 2 : 1)};   // here target_acting = the caster is acting
+    case Expiry::StartOfTargetNextTurn: return {kind, 1};
     default: return {};
     }
 }
@@ -4514,7 +4540,7 @@ bool apply_modifier(EncounterState& s, CombatantId caster, CombatantId target, c
     }
     ActiveModifier m;
     m.spec = spec; m.caster = caster; m.target = target;
-    m.timed = make_timed(Expiry(spec.expiry), spec.rounds, current_actor(s) == target);
+    m.timed = make_timed(Expiry(spec.expiry), spec.rounds, current_actor(s) == (spec.expiry == 3 ? caster : target));
     s.modifiers.push_back(m);
     if (spec.stat == ModStat::Resistance) refresh_mod_cache(s);
     if (spec.stat != ModStat::TempHp) emit(ev, EventKind::ModifierApplied, caster, target, int32_t(spec.id), int32_t(spec.stat), magnitude);
