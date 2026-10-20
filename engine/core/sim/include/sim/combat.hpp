@@ -196,6 +196,20 @@ public:
     // avert_gaze as the caller's choice; submit fills ActionRequest::gaze_seen from this (a caller's list is replaced).
     // A UI calls it to show which gazers threaten the actor before asking whether to avert.
     std::vector<CombatantId> gaze_seen(CombatantId viewer) const;
+    // R-G12 summons (7.2r, SUMMONS_TRANSFORMS.md §3.4): the key of the current turn, (round, current actor, TurnStarted
+    // count). Unlike (round, turn_index) it does not change when a summon joins the order before the current actor.
+    struct TurnKey {
+        uint16_t round = 0; CombatantId actor = 0; uint32_t starts = 0;
+        friend bool operator==(const TurnKey&, const TurnKey&) = default;
+    };
+    TurnKey turn_key() const { return {state_.round, rules5e::current_actor(state_), turns_started_}; }
+    // R-G12 summons: is `id` a summoned creature (live or gone), and has it ended (SummonEnded; dead, its token removed)?
+    bool summoned(CombatantId id) const { const Slot* s = slot(id); return s && s->summoned; }
+    bool gone(CombatantId id) const { const Slot* s = slot(id); return s && s->gone; }
+    // The anchors a summon cast's creatures would be placed on now (§3.1 deterministic choice), one per archetype index, or
+    // empty with *error ("no unoccupied space", ...). Submit fills ActionRequest::summon_tiles from this when it is empty.
+    std::vector<Vec2i> summon_tiles_for(CombatantId caster, const rules5e::SpellDef& def, const std::vector<uint8_t>& archetypes,
+                                        std::string* error = nullptr) const;
     uint8_t feature_uses_left(CombatantId id, uint32_t feature_id) const;
     bool can_use_feature(CombatantId id, uint32_t feature_id) const;
 
@@ -234,10 +248,27 @@ public:
     // Cost in feet of one step of `mover` from `from` to `to`: the grid's cost, at least 10 when it enters a kZoneDifficult zone
     // and doubled in a kZoneHalveSpeed zone (the mover not excluded), at most 20 ft per tile.
     int step_cost_ft(CombatantId mover, Vec2i from, Vec2i to) const;
+    // ---- R-G12 transforms (VERSION_BUMP_BATCH 7.2q hand-off, SUMMONS_TRANSFORMS.md §3) ----
+    // The archetype form choice `index` (ActionRequest::form_archetype - 1) of transform `kind` from `source` resolves to:
+    // Wild Shape: the feature's forms[index]; Polymorph (source = spell id): the index-th beast of the library (byte order of
+    // ids, beasts with a challenge rating). nullptr for an unknown id / index or a shapechanger (its forms are its own block).
+    const Archetype* form_archetype(CombatantId creature, rules5e::FormKind kind, uint32_t source, uint8_t index) const;
+    // EncounterHooks::build_form, also used by the AI: the form's statistics, or nullopt when the form is not allowed (unknown
+    // archetype, not a beast, above the CR limit, fly / swim below the druid level, or a bigger footprint that does not fit
+    // at the creature's anchor). A function of content, the arguments and the board (positions are replayed identically).
+    std::optional<rules5e::FormStats> build_form(const rules5e::Combatant& creature, rules5e::FormKind kind, uint32_t source,
+                                                 uint8_t index, std::string* why = nullptr) const;
+    // The archetype whose attack-indexed tables (ranges, grapple riders, two-handed grip) match the creature's current
+    // attacks: the form's archetype in a Polymorph / Wild Shape form, else its own.
+    const Archetype* attack_archetype(CombatantId id) const;
+    // Polymorph's choice list (beasts with a rating, id byte order), built at create.
+    const std::vector<const Archetype*>& polymorph_forms() const noexcept { return beasts_; }
 
 private:
     bool derived_area_ = false;   // targets of the request being resolved came from area_targets (skips the per-target range check)
-    struct Slot { CombatantId id; ecs::Entity entity; const Archetype* archetype; };
+    // summoned / gone (R-G12): a summon slot (appended after the create-time slots) and whether it ended; `last` = its anchor
+    // when it ended (its entity is destroyed at the end of that step).
+    struct Slot { CombatantId id; ecs::Entity entity; const Archetype* archetype; bool summoned = false; bool gone = false; Vec2i last{}; };
     Combat(ecs::Registry& reg, Grid grid) : reg_(&reg), grid_(std::move(grid)) {}
     void apply_rules_events(const std::vector<rules5e::Event>& evs);
     void sync_ecs();
@@ -259,12 +290,22 @@ private:
     SubmitResult finish(rules5e::StepResult sr);
     SubmitResult do_rules(rules5e::ActionRequest req, Vec2i to, bool aim = false);
     SubmitResult do_step(Vec2i to);
-    void complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs, std::optional<Vec2i> to);
+    void complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs, std::optional<Vec2i> to,
+                  std::optional<std::size_t> teardown_begin = std::nullopt);
+    // R-G12 summons: push one rules event (counting TurnStarted), spawning the summon of a Summoned event (+ TokenSpawned).
+    void push_rules_event(const rules5e::Event& e, const rules5e::LoggedStep* ls);
+    void spawn_summon(const rules5e::Event& summoned, const rules5e::LoggedStep& ls);
+    void register_rows(const Slot& sl);
+    SimEvent token_removed(const rules5e::Event& ended);
+    // R-G12: footprint bookkeeping of one Transformed / Reverted event (side change: Footprint event, a growing revert that
+    // does not fit is moved to the nearest free anchor first); the events go to `out`.
+    void form_footprint(const rules5e::Event& e, std::vector<SimEvent>& out);
     std::optional<Vec2i> moving_to(CombatantId id) const;   // destination of a move being resolved
     // A footprint at a position: anchor + side.
     Spot spot(CombatantId id) const { return {pos(id), footprint_size(id)}; }
     Spot spot_at(CombatantId id, Vec2i anchor) const { return {anchor, footprint_size(id)}; }
     bool los_spots(Spot a, Spot b) const;
+    bool summon_spot_ok(CombatantId caster, const rules5e::SpellDef& def, Spot sp, const std::vector<Spot>& placed) const;
     // Pack Tactics / Sneak Attack fact (ActionRequest::ally_near_target): a creature on the attacker's team,
     // other than the attacker, conscious and not incapacitated, within 5 ft (nearest tile) of `target`.
     bool ally_near(CombatantId attacker, Spot target) const;
@@ -284,6 +325,9 @@ private:
     uint64_t seed_ = 0;
     rules5e::EncounterState state_{};
     std::vector<Slot> slots_;              // in spawn order
+    const ContentLibrary* content_ = nullptr;      // R-G12: form archetypes (Wild Shape / Polymorph) resolve against it; summon choices too
+    std::vector<const Archetype*> beasts_;         // R-G12: Polymorph choices (see polymorph_forms)
+    std::map<CombatantId, int> form_side_;         // R-G12: footprint side of each creature in a form (derived, not hashed)
     std::vector<SimEvent> events_;
     std::vector<LogEntry> log_;
     std::vector<std::string> team_names_;
@@ -295,9 +339,17 @@ private:
     std::optional<Vec2i> step_to_;   // destination of the Move being resolved / paused (sim-only)
     // Aggressive Dash of the current turn (sim-only, derived from the log, not hashed): the turn stamp (round << 16 |
     // turn_index), the dasher, and the movement left from before the Dash (spent first by its Moves).
-    struct AggressiveDash { uint32_t stamp = 0; CombatantId actor = 0; int free_ft = 0; };
+    // R-G12: the stamp is the TurnKey (a summon inserted before the current actor shifts turn_index, not the key).
+    struct AggressiveDash { TurnKey stamp{}; CombatantId actor = 0; int free_ft = 0; };
     std::optional<AggressiveDash> aggressive_;
     std::map<CombatantId, std::vector<EquipmentEntry>> equipment_;   // combat-local (priced materials)
+    // R-G12 summons: the content (build_summon / summon options; outlives the combat like the archetypes), the number of
+    // create-time slots (the untagged per-slot hash fold covers only those), TurnStarted events so far, and whether the
+    // spawn ids reached UINT32_MAX (every summon refused).
+    std::size_t created_count_ = 0;
+    uint32_t turns_started_ = 0;
+    bool summon_ids_exhausted_ = false;
+    std::vector<rules5e::Event> pending_removed_;   // non-teardown SummonEnded of the step being completed (TokenRemoved after)
     std::vector<MaterialUse> materials_used_;   // consumed materials, in cast order (0xAD)
     int material_entry(CombatantId caster, const rules5e::SpellDef& d) const;   // -1 = no entry provides it
     std::vector<CombatantId> surprised_at_start_;   // R-G16: apply_surprise input (combatant order)

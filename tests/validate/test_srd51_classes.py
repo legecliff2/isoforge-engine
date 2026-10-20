@@ -49,7 +49,9 @@ AUTHORED = {
     "cleric-ability-score-improvement-1": "abilities",
     "spellcasting-wizard": "spellcasting",
     "arcane-tradition": "subclass",
+    "arcane-recovery": "feature:arcane_recovery",   # slot_recovery kind (7.2n, sim #148 loader)
     "evocation-savant": "feature:evocation_savant",
+    "sculpt-spells": "feature:sculpt_spells",   # R-G14 (sim #143): open kind sculpt_spells {}
     "wizard-ability-score-improvement-1": "abilities",
 }
 # Not expressible today (docs/SRD_CLASSES_DEFERRED.md): mirror index -> the feature id it would get (must be absent).
@@ -59,8 +61,6 @@ DEFERRED = {
     "channel-divinity-turn-undead": "turn_undead",
     "channel-divinity-preserve-life": "preserve_life",
     "destroy-undead-cr-1-2-or-below": "destroy_undead",
-    "arcane-recovery": "arcane_recovery",
-    "sculpt-spells": "sculpt_spells",
 }
 # Life domain spells and class cantrips the pack does not ship yet (listed in the deferred doc).
 DEFERRED_SPELLS = ["bless", "lesser-restoration", "spiritual-weapon", "beacon-of-hope", "revivify"]
@@ -221,12 +221,25 @@ class ClassTable(unittest.TestCase):
             if level >= 5:
                 self.assertEqual(f["extra_attack"]["effect"],
                                  {"kind": "multiattack", "options": [{"id": "longsword_x2", "attacks": ["longsword", "longsword"]}]})
+        for level in LEVELS:   # Evocation (Arcane Tradition at 2): Sculpt Spells is the fieldless sim #143 kind
+            f = features(load("wizard", level))
+            self.assertEqual("sculpt_spells" in f, level >= 2)
+            if level >= 2:
+                self.assertEqual(f["sculpt_spells"]["effect"], {"kind": "sculpt_spells"})
         # descriptive entries carry no effect (no combat rule; the heavy-armor proficiency is the worn chain mail)
         for cls, fid in (("cleric", "bonus_proficiency"), ("wizard", "evocation_savant")):
             for level in LEVELS:
                 f = features(load(cls, level))
                 if fid in f:
                     self.assertNotIn("effect", f[fid])
+
+    def test_arcane_recovery_slot_recovery(self):
+        # VERSION_BUMP_BATCH 7.2n: budget ceil(wizard level / 2) is derived from classes[], not authored.
+        for level in LEVELS:
+            with self.subTest(level=level):
+                f = features(load("wizard", level))["arcane_recovery"]
+                self.assertEqual(f["effect"], {"kind": "slot_recovery", "class": "wizard", "max_slot_level": 5, "uses": 1})
+                self.assertIn("half your wizard level (rounded up)", f["description"])
 
     def test_authored_and_deferred_split(self):
         doc = (ROOT / "docs/SRD_CLASSES_DEFERRED.md").read_text(encoding="utf-8")
