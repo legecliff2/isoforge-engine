@@ -383,7 +383,10 @@ RG7_CASES = [
     ("cw_needs_dice", "goblin_bard.json", BARD, [], [CW + ["effect", "dice"]], "'dice' is a required property"),
     ("cw_zero_dice", "goblin_bard.json", BARD, [(CW + ["effect", "dice"], "0d6")], [], "does not match"),
     ("cw_bad_dice", "goblin_bard.json", BARD, [(CW + ["effect", "dice"], "1d7")], [], "does not match"),
-    ("cw_extra_effect_field", "goblin_bard.json", BARD, [(CW + ["effect", "bonus"], 1)], [], "'bonus' is not one of ['kind', 'dice']"),
+    ("cw_extra_effect_field", "goblin_bard.json", BARD, [(CW + ["effect", "bonus"], 1)], [], "'bonus' is not one of ['kind', 'dice', 'applies_to']"),
+    ("cw_applies_to_bad_kind", "goblin_bard.json", BARD, [(CW + ["effect", "applies_to"], ["attack", "initiative"])], [], "'initiative' is not one of ['attack', 'save', 'check', 'damage']"),   # 7.3a
+    ("cw_applies_to_repeated", "goblin_bard.json", BARD, [(CW + ["effect", "applies_to"], ["check", "check"])], [], "has non-unique elements"),   # 7.3a
+    ("cw_applies_to_empty", "goblin_bard.json", BARD, [(CW + ["effect", "applies_to"], [])], [], "should be non-empty"),   # 7.3a
     ("cw_pool_usage_extra_field", "goblin_bard.json", BARD, [(CW + ["usage", "uses"], 1)], [], "'uses' is not one of ['kind', 'pool', 'cost']"),
     ("cw_pool_usage_needs_pool", "goblin_bard.json", BARD, [], [CW + ["usage", "pool"]], "'pool' is a required property"),
     ("cw_window_takes_only_subtract_roll", "goblin_bard.json", BARD, [(["reactions", 1, "effect"], {"kind": "impose_disadvantage"})], [], "the roll_attack window only takes subtract_roll, not 'impose_disadvantage'"),
