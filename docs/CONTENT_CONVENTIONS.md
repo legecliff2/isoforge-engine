@@ -540,11 +540,12 @@ the trait stays legal and keeps that warning.
 **`requires_humanoid_form`** (common@2 `$defs/trait`, optional boolean, default false): error `requires_humanoid_form on the
 wild_shape feature itself`; warning `requires_humanoid_form has no effect without wild_shape`.
 
-**Reserved treatment.** `RESERVED_EFFECT_KINDS` does not exist on main, so `wild_shape` / `shapechanger` stay out of the tag table's
-known kinds and get the existing unknown-kind warning (`unknown effect kind '<kind>'`) until each loader lands. `polymorph` is
-parsed by the rules spell loader since #171, so it gets no reserved warning (the unknown-form, not-a-beast and above-max_cr checks
-stay). The shape (schema) and the cross-checks above are already
-errors. When a loader lands, add its kind to the tag table and drop the warning.
+**Loaded kinds (EC #176).** The sim loaders for `wild_shape` / `shapechanger` read the common@2 keys above (#176), so both are
+known kinds of the `@4` rows of the tag table (`checks_v4.COMPILED_EFFECT_KINDS_AT_4`) and no longer get the unknown-kind
+warning there; below `@4` they keep it. The schema arms match the loader's key lists: shapechanger effect `{kind, cost, forms}`,
+form `{id, name, size, armor_class, speed, actions, creature_type}` (anything else, e.g. `speed_walk`, is refused: use
+`speed {walk}`), `requires_humanoid_form` on the feature object. `polymorph` is parsed by the rules spell loader since #171
+(no reserved warning; the unknown-form, not-a-beast and above-max_cr checks stay).
 
 **Cast-time refusals (rules only; documented, not validated):** `polymorph: target is a shapechanger`, `target has 0 hit points`,
 `target already transformed`, `feature not usable in this form`.
