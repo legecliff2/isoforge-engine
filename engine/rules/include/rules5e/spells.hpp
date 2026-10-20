@@ -263,6 +263,12 @@ struct SpellDef {
     // appended (#138): EndCondition's `ends_conditions` in spell@1 JSON list order; ActionRequest::condition_choice is 1 + an
     // index into it (stable across engine versions, unlike Condition enum order). Filled by the loader; empty = mask order.
     std::vector<Condition> ends_condition_list;
+    // appended (R-G12, CONTENT_CONVENTIONS §9): kind Polymorph. polymorph_forms = spell@1 `forms[]` (beast monster content ids;
+    // ActionRequest::form_archetype = 1 + index); polymorph_max_cr8 = fixed `max_cr` as CR*8 (0xFFFF = target_level, the
+    // default: sim's build_form checks it at cast); polymorph_save = the unwilling target's save (default Wis).
+    std::vector<std::string> polymorph_forms;
+    uint16_t polymorph_max_cr8 = 0xFFFF;
+    Ability polymorph_save = Ability::Wis;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
