@@ -176,13 +176,52 @@ built-in AI does not. A second declaration, or any field, adds nothing (the vali
 
 Example: `{ "kind": "sculpt_spells" }`
 
-These eight are open kinds (live at `@3` and `@4`); see `docs/CONTENT_CONVENTIONS.md` section 3.
+### `font_of_magic` (static, VERSION_BUMP_BATCH 7.2o)
+
+Field: `pool` (required, the `resources[].id` of the sorcery-point pool, the same pool as `metamagic.pool`). Sorcerer Font of Magic
+(sim #152 `apply_font_of_magic`): the sim resolves `pool` to max = start = the sorcerer level (sum of the `classes[]` entries with
+`class: sorcerer`), recharge `long_rest`, registering it when `resources[]` lacks it, and points `Combatant::sorcery_pool` at it even
+without Metamagic; the creature may then use Flexible Casting (rules5e `FlexibleCasting`, a bonus action). Load errors (validator
+errors, loader wording): sorcerer level below 2 (`font_of_magic needs sorcerer level 2+ (sorcerer level N)`), an unlimited pool
+(`font_of_magic pool '<pool>' is unlimited`), and a metamagic declaration naming a different pool, in either order
+(`font_of_magic and metamagic name different pools` / `metamagic declarations name different pools`). Validator warnings: the
+pool's `max` is not the sorcerer level, its `recharge` is not `long_rest` or its `start` differs (the sim overrides all three), or
+`resources[]` lacks it (declare it so the document shows the pool).
+
+Example: `{ "kind": "font_of_magic", "pool": "sorcery_points" }` with `resources: [{ "id": "sorcery_points", "max": 3, "recharge": "long_rest" }]` at sorcerer level 3.
+
+These nine are open kinds (live at `@3` and `@4`); see `docs/CONTENT_CONVENTIONS.md` section 3.
+
+### `wild_shape` (character feature, common@2, R-G12; reserved)
+
+Closed common@2 arm `$defs/wild_shape_effect` (`@4` only). Fields: `pool` (required, a `resources[]` pool recharging on
+`short_rest`, max 2), `cost` (default `action`), `class` (default `druid`), `forms` (required, 1..255 unique monster content ids,
+each a beast, resolved across the pack set including dependency packs; `form_archetype` = 1 + index), `max_cr_by_level` (required,
+`[{level 1..20, max_cr}]`, levels strictly ascending; CRs are monster@4 `challenge.rating` strings compared as CR*8),
+`no_fly_below` (1..20, default 8), `no_swim_below` (1..20, default 4). No duration key: the engine computes it (600 * (class
+level / 2) rounds). One declaration per document. Loader: Engine Core `build_form` / `feature_spec` (VERSION_BUMP_BATCH 7.2q).
+
+Example: `{ "kind": "wild_shape", "pool": "wild_shape", "forms": ["srd51.monster.wolf"], "max_cr_by_level": [{"level": 2, "max_cr": "1/4"}] }`
+
+### `shapechanger` (monster or character trait, common@2, R-G12; reserved)
+
+Closed common@2 arm `$defs/shapechanger_effect`. Fields: `cost` (default `action`), `forms` (required, 1..255 of `{id, name,
+size?, armor_class?, speed? (replaces the whole object), actions? (unique ids of this document's own actions[]; [] = none),
+creature_type?}`). Requires the R-G11 creature fact `shapechanger: true` (#141). One HP pool; one declaration per document.
+Loader: Engine Core `build_form`.
+
+Trait flag `requires_humanoid_form` (common@2 `$defs/trait`, optional boolean, default false): the feature is refused in a Wild
+Shape form. Error on the `wild_shape` feature itself; warning when the document has no `wild_shape`.
+
+Both kinds are reserved until their loader lands: there is no `RESERVED_EFFECT_KINDS` table on main, so they keep the
+unknown-kind warning (the open-kind pattern) while their shape and cross-checks are already errors. Details:
+`docs/CONTENT_CONVENTIONS.md` section 9.
 
 ### `slot_recovery` (open kind, VERSION_BUMP_BATCH 7.2n, sim #148)
 
 Arcane Recovery (wizard) and Natural Recovery (druid, Circle of the Land). Loaded by sim `features.cpp` `apply_slot_recovery`
 (#148) into a rules5e `SlotRecoverySpec`; an open kind (live at `@3` and `@4`, `checks_v4.OPEN_EFFECT_KINDS_RG7`). The
-validator mirrors the loader's errors: see `docs/CONTENT_CONVENTIONS.md` section 9.
+validator mirrors the loader's errors: see `docs/CONTENT_CONVENTIONS.md` section 10.
 
 | field | type | meaning |
 |---|---|---|
@@ -245,6 +284,7 @@ See `docs/CONTENT_CONVENTIONS.md` for the timed-modifier properties the sim comp
 | `end_condition` | EndCondition | yes | `conditions[]` |
 | `delayed_damage` | DelayedDamage | no (Acid Arrow rider) | `damage`, `expiry` |
 | `sustained_damage` | SustainedDamage | yes | `damage`; needs a rounds / minutes / hours duration; no `expiry` |
+| `polymorph` | Polymorph (R-G12, 7.2q; parsed by the rules spell loader since #171) | yes (`polymorph: primary effect only`) | `forms[]` (beast content ids), `max_cr` (`target_level` or a CR string), `save {ability}` (default wis); one target, concentration; `docs/CONTENT_CONVENTIONS.md` section 9 |
 | `zone` | Zone (`SpellDef::zone`, `ZoneSpec`) | yes (never an extra effect) | `zone {shape (sphere, cylinder, cube, line), size_ft, height_ft, length_ft, anchor, flags[], move, chooses_excluded, needs_conscious_owner, upcast_size_ft, ring_size_ft, sided, side_ft, aura_modifier, aura_bonus_ability, aura_immunity[], aura_allies_only, triggers[]}` (rows add `region`, `loses_action`, `auto_success_damage[]` / `_conditions[]` / `_no_breath`, `shapechanger_disadvantage`, `evil_damage_type`; rules PR 2 keys, section 4.6); needs a lasting duration (the zone's expiry timer); parsed by the loader since R-G11 rules PR 2 (#122); `docs/CONTENT_CONVENTIONS.md` section 4 |
 
 Details and loader messages: `docs/CONTENT_CONVENTIONS.md` section 4 (R-G11 zones), section 6 (R-G15 kinds, sim #120) and section 7 (priced material

@@ -172,10 +172,13 @@ TEST_CASE("triggers content: load errors and listed-not-compiled cases") {
         CHECK(er->find("t.bad") != std::string::npos);
         CHECK_FALSE(lib.find("t.bad"));
     }
-    // usage: listed, not compiled (a use cost is a later sub-PR); the file still loads
+    // usage (monster predicates PR): at_will compiles with no cost; recharge compiles too (deferred-monsters PR); the file still loads
     REQUIRE_FALSE(lib.add(goblin("t.usage", {sneak({{"usage", {{"kind", "at_will"}}}})}), "monster"));
-    CHECK(lib.find("t.usage")->base.triggers.empty());
-    CHECK(lib.find("t.usage")->unsupported_features.size() == 1);
+    CHECK(lib.find("t.usage")->base.triggers.size() == 1);
+    CHECK(lib.find("t.usage")->unsupported_features.empty());
+    REQUIRE_FALSE(lib.add(goblin("t.usage2", {sneak({{"usage", {{"kind", "recharge"}, {"min", 5}}}})}), "monster"));
+    CHECK(lib.find("t.usage2")->base.triggers.size() == 1);   // recharge compiles since the deferred-monsters PR
+    CHECK(lib.find("t.usage2")->unsupported_features.empty());
     // a file that declared < 4 carries no on_hit[]
     Json old = goblin("t.old", {}, Json::array({{{"kind", "set_hp"}, {"value", 1}}}));
     REQUIRE_FALSE(lib.add(old, "monster", "", 3));
