@@ -52,7 +52,6 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 | Channel Divinity: Turn Undead (`channel-divinity-turn-undead`) | Cleric 2 | The "turned" condition (must move away, Dash only, no reactions, ends on damage) has no condition id or AI behaviour. `save_effect` also cannot spend a feature pool or filter by creature type (undead within 30 ft that can see or hear you) | R-G5, R-G8, R-G10 |
 | Channel Divinity: Preserve Life (`channel-divinity-preserve-life`) | Cleric (Life) 2 | Splits a pool of 5 x cleric level HP among any creatures within 30 ft, each capped at half its HP maximum, not undead or constructs. `heal_pool` heals one target from a pool that persists across uses; there is no split, cap, or per-use pool size | R-G5, R-G10, R-G15 |
 | Destroy Undead (`destroy-undead-cr-1-2-or-below`) | Cleric 5 | A Turn Undead outcome (destroy at CR 1/2 or lower); depends on Turn Undead | R-G5 |
-| Sculpt Spells (`sculpt-spells`) | Wizard (Evocation) 2 | Rules have `Combatant::sculpt_spells` and `ActionRequest::spared` (R-G14, #109), but no content kind or loader sets the flag | R-G14 (wiring) |
 
 ### Other classes (no character in this batch)
 
