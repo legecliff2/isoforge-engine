@@ -387,6 +387,13 @@ std::string parse_predicate(const Json& p, Predicate& out) {
         out.a = int16_t(int(ab));
         out.b = int16_t(dc);
         out.mask = from_dmg ? 1u : 0u;
+    } else if (k == "target_surprised") out.kind = PK::TargetSurprised;   // EC monster predicates (flagged; schema arm pending, T&C)
+    else if (k == "ally_near_target") out.kind = PK::AllyNearTarget;
+    else if (k == "damage_at_most") {
+        const int n = geti("amount", 0);
+        if (n < 1 || n > 32767) return "bad damage_at_most amount";
+        out.kind = PK::DamageAtMost;
+        out.a = int16_t(n);
     } else return "unknown predicate '" + k + "'";
     return "";
 }
