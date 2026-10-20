@@ -110,8 +110,9 @@ Two independent mechanisms:
   same total, ordered by id; they act consecutively.
 - **Summoner's turn** (Spiritual Weapon): no entry.
 - **Rider's turn** (Find Steed when mounted): out of scope (Q9).
-- Removal: a summon that ends (0 HP, dismissed, concentration) is removed from `order` at the end of the current step; if it is
-  the current actor, its turn ends first (`TurnEnded`, then removal). `turn_index` is adjusted so the next actor is unchanged.
+- Ended summons (as built, rules PR 2): a summon that ends (0 HP, dismissed, concentration) **stays in `order`**, marked `gone`
+  (and dead); the turn loop skips it like any dead combatant. Nothing is removed, so ending never shifts `turn_index` or stamps
+  (only insertion does, below).
 - **Insertion before the current actor shifts `turn_index`.** A summon whose entry sorts before the current actor's slot moves
   the current actor one index later (per inserted entry). Rules adjusts `turn_index` in the same step so the **current actor's
   turn continues** (same budget, no new `TurnStarted`); the inserted creature first acts next round (D14). Removal before the
@@ -141,7 +142,7 @@ Two independent mechanisms:
   would assign (desync). Rules refuses an id already present as a second check.
 - **Turn order shifts**: see §2.4 (current actor's turn kept, `cast_stamp` rewritten).
 - **Roster growth**: `EncounterState::combatants` / `order` grow by append; nothing is erased mid-step (an ended summon is marked
-  `gone` and removed at the step boundary) so pointers / spans taken inside a step stay valid. Iteration order everywhere stays
+  `gone` and stays in `order`, skipped) so pointers / spans taken inside a step stay valid. Iteration order everywhere stays
   "combatants vector order" = creation order, which is deterministic.
 - **RNG**: initiative for summons draws from the encounter rng inside the casting step, after the spell's own rolls and before
   any reaction window of later effects (fixed position: documented ordering rule). Form building draws nothing.
@@ -224,7 +225,12 @@ unchanged in each sim PR).
 - `Combat::next_summon_id_` (u32), set once at the end of `Combat::create` to `max(stable_id of **every** spawn in every chunk
   of the combat, combatant or not) + 1` (not only combatants: non-combatant spawns also own a `StableId` in the registry).
   Overflow (max = UINT32_MAX) makes `create` succeed but every summon is refused ("summon id space exhausted").
-- At a summon request sim fills `summon_ids` itself: `count` consecutive ids `next_summon_id_ ...`, ascending; the counter
+- **As built (rules PR 2): rules fills `summon_ids`, not sim.** Sim seeds `EncounterState::next_summon_id` (from
+  `next_summon_id_` above) after `begin_encounter`; rules assigns `count` consecutive ids from it, writes them into the logged
+  request (`StepResult::logged->request.summon_ids`), refuses a caller-supplied non-empty list live (`summon_ids: assigned by
+  rules (leave empty)`) and refuses replayed ids that differ from the counter (`summon_ids: do not match the summon counter`);
+  the counter lives in rules' 0xAF. Sim needs no id check of its own. The original sim-side draft follows for history:
+- (draft) At a summon request sim fills `summon_ids` itself: `count` consecutive ids `next_summon_id_ ...`, ascending; the counter
   advances only when the request completes (`StepStatus::Done`). Rejected or paused requests consume nothing; a request
   that pauses for a reaction window keeps the ids it was given and commits them on completion. Ids are **never reused**,
   including after `SummonEnded` (the counter only grows; the `gone` slot keeps its id).
@@ -260,8 +266,8 @@ unchanged in each sim PR).
 - **Removal**: at `SummonEnded`, the slot is marked `gone`, its entity is destroyed at the end of `complete()` (never mid-step,
   matching 2.6), the slot stays in `slots_` (index stability, hashing below).
 - **Events** (SimEvent kinds appended, v10 like the rules kinds): `TokenSpawned = 4` (actor = id, tile = anchor,
-  rules.a = footprint side, rules.b = summoner id) one per summon right after the request's rules events, in id
-  order, before `SpellTarget`; `TokenRemoved = 5` (actor = id, tile = last anchor, rules.a = `SummonEnded.b` reason) after the
+  rules.a = footprint side, rules.b = summoner id) one per summon, **each right after its own `Summoned`** (rules PR 2 emits the
+  `Summoned` events after `SpellResolved`, id order), before `SpellTarget`; `TokenRemoved = 5` (actor = id, tile = last anchor, rules.a = `SummonEnded.b` reason) after the
   request's rules events (and after its `TileMoved`s). A Large+ summon needs no separate `Footprint` event (TokenSpawned
   carries the side). `event_stream_version` returns 10 for either kind. Spiritual Weapon's token is `TokenSpawned` with
   actor = the weapon's pseudo id from the same counter (it never becomes a Combatant; `ActiveSummonWeapon::token_id`), moves
@@ -290,7 +296,12 @@ unchanged in each sim PR).
 
 ### 3.3 `build_summon` / `build_form` hooks
 
-- Installed in `install_hooks()` (so live and replay get the same closures). `build_summon(state, spec, archetype_index, id)`
+- **As built (rules PR 2):** `build_summon(const EncounterState&, const Combatant& summoner, const SpellDef& def, uint8_t
+  slot_level, uint8_t archetype_index) -> std::optional<Combatant>`; **no id parameter**: rules sets `id` (from its counter),
+  `team`, `summoner`, `summon_source`, `summon_group` and the control fields on the returned record. Sim learns the id from
+  `Summoned.target` (one per creature, id order) and registers the archetype rows for it then. Optional
+  `summon_choice_ok(state, summoner, def, slot_level, archetypes) -> bool` is the D1 CR-band table. Draft text follows:
+- (draft) Installed in `install_hooks()` (so live and replay get the same closures). `build_summon(state, spec, archetype_index, id)`
   resolves `spec.archetypes[index]` to the content id, `ContentLibrary::find(id)` (null = request rejected, "unknown summon
   archetype"; the validator makes this unreachable for shipped content), copies `Archetype::base`, sets `id`, `team` (the
   summoner's), `summoner`, `summon_source`, `summon_group`, and returns it. Sim then registers that archetype's features,
@@ -312,7 +323,7 @@ unchanged in each sim PR).
   `events_`), which is identical today.
 - **cast_stamp** (`round << 16 | turn_index`, used by Heat Metal's sustain and the driver's `spell_kind_command`): same
   hazard. **Director ruling (accepted):** the encoding is kept; when rules shifts `turn_index` (summon inserted into or
-  removed from `order`), it rewrites the `cast_stamp` of every live effect in the same step so "cast this turn" stays true.
+  inserted into `order`; as built, ended summons stay in `order`, so removal never shifts it), it rewrites the `cast_stamp` of every live effect in the same step so "cast this turn" stays true.
   This happens only in combats with summons, so no golden moves. Sim's driver keeps comparing against `round << 16 | turn_index`
   unchanged. 0xAC folds the rewritten stamps (3.2).
 - **Policies**: `PolicyFor` is called with summon ids too; the default for a summon is `SummonPolicy` (built in):

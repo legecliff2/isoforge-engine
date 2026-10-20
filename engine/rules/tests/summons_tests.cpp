@@ -33,6 +33,7 @@ EncounterHooks hooks() {
         if (idx > 1) return std::nullopt;   // not in the CR band
         Combatant m = monster(0);
         m.hp = m.hp_max = int16_t(idx == 0 ? 11 : 26);
+        m.abilities.score[std::size_t(Ability::Dex)] = idx == 0 ? 8 : 20;   // mixed stat blocks (D2 group slot)
         return m;
     };
     h.summon_choice_ok = [](const EncounterState&, const Combatant&, const SpellDef& d, uint8_t, const std::vector<uint8_t>& ar) {
@@ -195,6 +196,7 @@ TEST_CASE("summons: Animate Dead: one initiative group per cast; the command cos
     const std::size_t p = slot_of(s, 4);
     CHECK(slot_of(s, 5) == p + 1); CHECK(slot_of(s, 6) == p + 2);
     for (CombatantId id : {4u, 5u, 6u}) CHECK(find(s, id)->summon_group == 4);
+    for (CombatantId id : {5u, 6u}) { CHECK(s.order[slot_of(s, id)].dex_mod == s.order[p].dex_mod); CHECK(s.order[slot_of(s, id)].total == s.order[p].total); }
     CHECK(find(s, 1)->concentration_spell == 0);
     auto la = legal_actions(s);
     CHECK(std::any_of(la.begin(), la.end(), [](const ActionRequest& q) { return q.kind == ActionKind::CommandSummons; }));
@@ -220,10 +222,14 @@ TEST_CASE("summons: concentration end and 0 HP end the summons") {
     set_totals(s, 100);
     REQUIRE(step(s, summon(1, kConjure, {0, 0, 0, 0})).ok);
     mut(s, 5).hp = 0;   // vanishes at 0 HP
+    mut(s, 5).concentration_spell = 4242;   // its own concentration ends the usual way
     auto v = step(s, poke(s));
     REQUIRE(v.ok);
     auto ve = all(v.events, EventKind::SummonEnded);
     REQUIRE(ve.size() == 1); CHECK(ve[0]->target == 5); CHECK(ve[0]->b == 3);
+    const auto vc = all(v.events, EventKind::ConcentrationEnded);
+    REQUIRE(vc.size() == 1); CHECK(vc[0]->actor == 5); CHECK(vc[0]->a == 4242); CHECK(vc[0] < ve[0]);
+    CHECK(find(s, 5)->concentration_spell == 0);
     CHECK(find(s, 5)->gone); CHECK(find(s, 5)->dead);
     add_condition(mut(s, 1), Condition::Incapacitated);
     auto r = step(s, {1, ActionKind::EndTurn});
@@ -246,6 +252,7 @@ TEST_CASE("summons: teardown at encounter end: SummonEnded b=5 ascending, then E
     FormStats fs; fs.hp_max = 9; fs.ac = 12; fs.abilities.score = {10, 10, 10, 2, 10, 4};
     REQUIRE(apply_form(mut(s, 4), FormKind::Polymorph, fs));   // a transformed summon just ends: no Reverted
     mut(s, 4).form_caster = 1; mut(s, 4).form_source = 77; ++s.transforms;
+    mut(s, 5).concentration_spell = 4343;   // a living summon's concentration ends through end_concentration
     mut(s, 2).dead = true; mut(s, 2).hp = 0;
     mut(s, 3).hp = 0; mut(s, 3).dead = true;
     auto r = step(s, poke(s));
@@ -254,6 +261,9 @@ TEST_CASE("summons: teardown at encounter end: SummonEnded b=5 ascending, then E
     const auto se = all(r.events, EventKind::SummonEnded);
     REQUIRE(se.size() == 2);
     CHECK(all(r.events, EventKind::Reverted).empty());
+    const auto tc = all(r.events, EventKind::ConcentrationEnded);
+    REQUIRE(tc.size() == 1); CHECK(tc[0]->actor == 5); CHECK(tc[0]->a == 4343); CHECK(tc[0] < se[0]);
+    CHECK(find(s, 5)->concentration_spell == 0);
     CHECK(find(s, 4)->form == FormKind::None);
     CHECK(se[0]->target == 4); CHECK(se[1]->target == 5);
     for (const Event* e : se) CHECK(e->b == 5);

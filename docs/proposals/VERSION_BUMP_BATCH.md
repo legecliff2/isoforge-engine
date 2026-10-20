@@ -1991,6 +1991,14 @@ Hand-off (sim / T&C):
   (CR band table, D1) and place the creatures on `summon_tiles`; read `teardown_begin`; drop `gone` combatants from views.
 - Content / T&C: `summon` effect kind (max_count, initiative, control, vanishes) for Conjure Animals / Woodland Beings / Minor
   Elementals, Find Familiar, Animate Dead; archetype lists per CR band.
+- Sim events: `TokenSpawned` comes right after its own `Summoned` (one per creature, id order).
+- **Sim stamps EC will fix** (they key on `turn_index`, which a summon inserted before the current actor shifts; rules rewrites
+  only its own stored stamps): `Combat::aggressive_` and `run_to_end`'s `(round, turn_index)` turn key (SUMMONS_TRANSFORMS.md
+  §3.4: key on `(round, current_actor, TurnStarted count)`).
+- Ended summons stay in `order` (`gone`, dead, skipped); nothing is removed, so ends never shift `turn_index`.
+- A group shares one slot: every member's `InitiativeEntry` carries the group roll and the first creature's Dex (D2).
+- An ending summon's own concentration goes through `end_concentration` (`ConcentrationEnded`, modifiers / zones / Polymorph
+  links cleaned up); at encounter end those come before the contiguous `SummonEnded{b = 5}` block.
 - Deviation: filling the 0xAF counter / count fields changes transform-only 0xAF bytes vs PR 1 (no golden folds 0xAF yet).
 
 ## 8. Migrations and inert markers
