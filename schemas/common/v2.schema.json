@@ -35,6 +35,9 @@
         },
         "type": {
           "$ref": "../common/v1.schema.json#/$defs/damage_type"
+        },
+        "bonus_vs": {
+          "$ref": "#/$defs/bonus_vs"
         }
       }
     },
@@ -61,6 +64,9 @@
         },
         "type": {
           "$ref": "#/$defs/rider_damage_type"
+        },
+        "bonus_vs": {
+          "$ref": "#/$defs/bonus_vs"
         }
       }
     },
@@ -2301,6 +2307,11 @@
             "visible": {
               "type": "boolean",
               "default": true
+            },
+            "requires_sight": {
+              "type": "boolean",
+              "default": false,
+              "description": "VERSION_BUMP_BATCH 7.2y: only when the reactor can see the creature that triggered the window (Uncanny Dodge: an attacker that you can see)."
             }
           }
         },
@@ -2870,6 +2881,41 @@
             }
           },
           "description": "save_effect / save_condition (sim #174): when the damage drops the target to 0 hit points it is stable and gains condition for duration.n rounds (600 = 1 hour, outlasts healing) and while for as long as that lasts (giant spider bite: poisoned 600 rounds, paralyzed while poisoned). Needs damage; condition and while must differ."
+        },
+        "control": {
+          "$ref": "#/$defs/control_kind",
+          "description": "VERSION_BUMP_BATCH 7.2y: save_effect only (class feature save actions: Turn Undead, Turn the Unholy). command is spell-only (load error)."
+        },
+        "control_excludes_creature_types": {
+          "$ref": "../common/v1.schema.json#/$defs/creature_types",
+          "description": "7.2y: save_effect with control only; creature types the control has no effect on."
+        },
+        "destroy_undead_max_cr8": {
+          "$ref": "#/$defs/destroy_undead_max_cr8",
+          "description": "7.2y: save_effect with control turned only (Destroy Undead)."
+        },
+        "target_creature_types": {
+          "$ref": "../common/v1.schema.json#/$defs/creature_types",
+          "description": "7.2y: save_effect only; only creatures of these types are targeted (others make no save and take nothing): Turn Undead [undead], Turn the Unholy [fiend, undead]."
+        },
+        "duration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "n"
+          ],
+          "properties": {
+            "kind": {
+              "const": "rounds"
+            },
+            "n": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          },
+          "description": "7.2y: save_effect with control only; the control lasts n rounds (Turn Undead: 1 minute = 10)."
         }
       },
       "allOf": [
@@ -2934,6 +2980,15 @@
             "dependentRequired": {
               "on_success": [
                 "damage"
+              ],
+              "control_excludes_creature_types": [
+                "control"
+              ],
+              "destroy_undead_max_cr8": [
+                "control"
+              ],
+              "duration": [
+                "control"
               ]
             },
             "anyOf": [
@@ -2945,6 +3000,11 @@
               {
                 "required": [
                   "apply"
+                ]
+              },
+              {
+                "required": [
+                  "control"
                 ]
               }
             ],
@@ -3175,6 +3235,50 @@
             }
           },
           "description": "sim #170 compile_attack_effect: an attack roll that only applies conditions (giant spider Web); every apply[] entry has a Strength escape."
+        },
+        {
+          "description": "VERSION_BUMP_BATCH 7.2y: the control / target_creature_types keys are save_effect only.",
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "save_effect"
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "control"
+                  ]
+                },
+                {
+                  "required": [
+                    "control_excludes_creature_types"
+                  ]
+                },
+                {
+                  "required": [
+                    "destroy_undead_max_cr8"
+                  ]
+                },
+                {
+                  "required": [
+                    "target_creature_types"
+                  ]
+                },
+                {
+                  "required": [
+                    "duration"
+                  ]
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -3283,6 +3387,21 @@
           "items": {
             "$ref": "#/$defs/modifier"
           }
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "weapon"
+          ],
+          "properties": {
+            "weapon": {
+              "enum": [
+                "wielded"
+              ]
+            }
+          },
+          "description": "VERSION_BUMP_BATCH 7.2y: binds every modifier to the melee weapon wielded at activation (ActionRequest::attack_index); it applies only to attacks with that weapon and ends if the weapon leaves the hand (owner dead, unconscious, or commanded to Drop). Sacred Weapon."
         }
       },
       "oneOf": [
@@ -4033,6 +4152,23 @@
         32
       ],
       "description": "VERSION_BUMP_BATCH 7.2v Destroy Undead threshold as CR x 8 (SRD: 1/2 = 4, 1 = 8, 2 = 16, 3 = 24, 4 = 32)."
+    },
+    "bonus_vs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "creature_types",
+        "dice"
+      ],
+      "properties": {
+        "creature_types": {
+          "$ref": "../common/v1.schema.json#/$defs/creature_types"
+        },
+        "dice": {
+          "$ref": "../common/v1.schema.json#/$defs/dice"
+        }
+      },
+      "description": "VERSION_BUMP_BATCH 7.2y: extra dice of the same damage type against a target of one of creature_types (Divine Smite +1d8 vs undead / fiend). Weapon attack damage[] entries and on_hit extra_damage entries; rolled with the entry and doubled on a critical."
     }
   }
 }

@@ -1,0 +1,26 @@
+{
+  "base": "characters/fighter_level_5.json",
+  "sets": [
+    [
+      [
+        "features",
+        5
+      ],
+      {
+        "id": "nimble",
+        "name": "Nimble",
+        "effect": {
+          "kind": "bonus_action_grant",
+          "actions": [
+            "use_object"
+          ],
+          "scope": {
+            "weapon": "wielded"
+          }
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "scope: apply_modifier effects only"
+}
