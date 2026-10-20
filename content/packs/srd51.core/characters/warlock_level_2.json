@@ -1,0 +1,166 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.warlock_level_2",
+  "name": "Warlock, level 2 (The Fiend)",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "neutral evil",
+  "level": 2,
+  "classes": [
+    {
+      "class": "warlock",
+      "level": 2,
+      "hit_die": "d8",
+      "subclass": "fiend"
+    }
+  ],
+  "xp": 300,
+  "armor_class": {
+    "value": 15,
+    "note": "Armor of Shadows (mage armor)"
+  },
+  "hit_points": {
+    "average": 17,
+    "formula": "2d8+4"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 9,
+    "dex": 15,
+    "con": 14,
+    "int": 11,
+    "wis": 13,
+    "cha": 16
+  },
+  "saving_throws": {
+    "wis": 3,
+    "cha": 5
+  },
+  "skills": {
+    "arcana": 2,
+    "deception": 5
+  },
+  "senses": {
+    "passive_perception": 11
+  },
+  "languages": [
+    "Common",
+    "Infernal"
+  ],
+  "proficiency_bonus": 2,
+  "features": [
+    {
+      "id": "dark_ones_blessing",
+      "name": "Dark One's Blessing",
+      "description": "Starting at 1st level, when you reduce a hostile creature to 0 hit points, you gain temporary hit points equal to your Charisma modifier + your warlock level (minimum of 1) (5).",
+      "effect": {
+        "kind": "on_event",
+        "on": "reduce_to_zero",
+        "when": [
+          {
+            "kind": "subject_hostile"
+          }
+        ],
+        "effects": [
+          {
+            "kind": "temp_hp",
+            "amount_from": {
+              "ability": "cha",
+              "class": "warlock"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "eldritch_invocations",
+      "name": "Eldritch Invocations",
+      "description": "You know 2 eldritch invocations: Agonizing Blast, Armor of Shadows. (Armor of Shadows is baked into armor_class; see those features.)"
+    },
+    {
+      "id": "agonizing_blast",
+      "name": "Agonizing Blast",
+      "description": "When you cast eldritch blast, add your Charisma modifier to the damage it deals on a hit. (Descriptive: no key adds a flat ability modifier to a spell's damage; damage_bonus touches weapon attacks only.)"
+    },
+    {
+      "id": "armor_of_shadows",
+      "name": "Armor of Shadows",
+      "description": "You can cast mage armor on yourself at will, without expending a spell slot or material components. (Baked: mage armor lasts 8 hours and costs nothing, so armor_class is 13 + Dex with no armor worn.)"
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.dagger",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.crossbow_light"
+    },
+    "crossbow_bolts_20",
+    "scholars_pack",
+    "arcane_focus"
+  ],
+  "actions": [
+    {
+      "id": "dagger",
+      "name": "Dagger",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "finesse",
+        "light",
+        "thrown"
+      ],
+      "damage": [
+        {
+          "dice": "1d4+2",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "light_crossbow",
+      "name": "Light Crossbow",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 4,
+      "range": [
+        80,
+        320
+      ],
+      "targets": 1,
+      "properties": [
+        "ammunition",
+        "loading",
+        "two_handed"
+      ],
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ]
+    }
+  ],
+  "spellcasting": {
+    "ability": "cha",
+    "caster_level": 2,
+    "pact": {
+      "level": 1,
+      "slots": 2
+    },
+    "spells": [
+      "srd51.spell.eldritch_blast",
+      "srd51.spell.chill_touch",
+      "srd51.spell.burning_hands"
+    ]
+  }
+}
