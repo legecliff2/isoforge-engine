@@ -152,7 +152,7 @@
       "required": ["kind"],
       "description": "Machine-readable feature effect, tagged by kind (contract: docs/CONTENT_EFFECTS.md). The engine FeatureRegistry maps kind to a hook. Unknown kinds are allowed: the validator warns and the engine reports them as unsupported and ignores them. Known kinds have their fields checked below. The object stays open (no additionalProperties: false), so v1 remains append-only and extra fields are ignored by the engine.",
       "properties": {
-        "kind": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "Hook id. Known: damage_bonus, bonus_action_grant, self_heal, damage_mitigation, magic_weapons, multiattack, reroll_ones, great_weapon_fighting, evasion, pack_tactics, aggressive, reckless_attack, metamagic, sculpt_spells." },
+        "kind": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "Hook id. Known: damage_bonus, bonus_action_grant, self_heal, damage_mitigation, magic_weapons, multiattack, reroll_ones, great_weapon_fighting, evasion, pack_tactics, aggressive, reckless_attack, metamagic, sculpt_spells, font_of_magic." },
         "cost": { "$ref": "#/$defs/effect_cost" }
       },
       "allOf": [
@@ -242,7 +242,14 @@
               "pool": { "type": "string", "description": "resources[].id of the sorcery-point pool (a limited pool: not unlimited at the document's level)." }
             } } },
         { "if": { "properties": { "kind": { "const": "sculpt_spells" } }, "required": ["kind"] },
-          "then": { "description": "Static (R-G14, Evocation Wizard Sculpt Spells; sim #143): when the creature casts an evocation spell (spell@1 school evocation) the caller may name creatures spared from its area (ActionRequest::spared). No parameters; a second declaration adds nothing." } }
+          "then": { "description": "Static (R-G14, Evocation Wizard Sculpt Spells; sim #143): when the creature casts an evocation spell (spell@1 school evocation) the caller may name creatures spared from its area (ActionRequest::spared). No parameters; a second declaration adds nothing." } },
+        { "if": { "properties": { "kind": { "const": "font_of_magic" } }, "required": ["kind"] },
+          "then": {
+            "description": "Static (VERSION_BUMP_BATCH 7.2o, Sorcerer Font of Magic; sim #152): the creature's sorcery points are the resources[] pool `pool` (the same pool as metamagic.pool when both are declared; different pools are a load error), resolved by the sim to max = start = sorcerer level (classes[] sorcerer entries; 2+ required, load error below) with recharge long_rest, and it may use Flexible Casting (rules5e FlexibleCasting, a bonus action). The pool must not be unlimited (load error). Validator warning when the pool's max is not the sorcerer level, its recharge is not long_rest, or resources[] lacks it (the sim then registers it).",
+            "required": ["pool"],
+            "properties": {
+              "pool": { "type": "string", "minLength": 1, "description": "resources[].id of the sorcery-point pool." }
+            } } }
       ]
     },
     "qualified_damage": {
