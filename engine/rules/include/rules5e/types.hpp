@@ -350,6 +350,9 @@ struct FormStats {
     std::vector<Trigger> triggers{};
     std::vector<Reaction> reactions{};
     std::vector<BonusAttack> bonus_attacks{};
+    // appended (SRD 5.1 movement modes, feat/move-modes): the form's fly / swim / climb speeds and hover.
+    uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0;
+    bool hover = false;
     // Wild Shape (D7): the creature's own features (feature ids) the form is not physically capable of using (content:
     // requires_humanoid_form). UseFeature refuses them while the form lasts. Not part of the saved base block.
     std::vector<uint32_t> blocked_features{};
@@ -504,6 +507,11 @@ struct Combatant {
     // attack rolls and Dexterity saving throws have disadvantage, attack rolls against it have advantage. Set / cleared by a
     // Move (ActionRequest::squeeze); sim shrinks the footprint and doubles the step cost.
     bool squeezing = false;
+    // appended (SRD 5.1 movement modes, feat/move-modes; static content, not folded): fly / swim / climb
+    // speeds (0 = none) and hover. A Move with ActionRequest::move_mode uses that speed: SRD "switching speeds" - the
+    // feet already spent this turn count against it (TurnBudget::movement_ft is shared; see move_allowance).
+    uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0;
+    bool hover = false;
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
     // appended (control conditions, 7.2v): challenge rating * 8 (CR 1/2 = 4) for Destroy Undead; -1 = unknown (never destroyed).
