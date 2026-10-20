@@ -55,10 +55,11 @@ enum class AmbientKind : uint8_t { None, Sun, Moon };            // None = under
 struct Ambient { AmbientKind kind = AmbientKind::None; Light level = Light::Dark; };
 struct AmbientClock { uint32_t minute_of_day = 720; };            // 0..1439, hashed only if non-default
 ```
-Content: map/region `ambient` (in `chunk@2`, §7, and in the map/region manifest): `{"profile": "outdoor" | "underground"
-| "fixed", "fixed_level": "bright|dim|dark"}`. The `outdoor` profile is a fixed integer table, minute -> level
-(06:00-18:59 bright Sun, 05:00-05:59 and 19:00-19:59 dim Sun, otherwise dim Moon or dark, open question R5). Default when
-absent: `underground` (= Dark, no sunlight), which is exactly today's behaviour (no light model).
+Content: map/region `ambient` (in `chunk@2`, §7, and in the map/region manifest) is a **data schedule** (R5, decided):
+`{"schedule": "<content id>" | "underground", "moon": "full" | "other"}`. A schedule is a sorted list of
+`{from_minute, level, sun}` rows (integers). Shipped default `srd51.core.ambient.outdoor`: day bright (Sun), dawn and
+dusk dim (Sun, twilight per SRD), night dim if `moon` is `full`, otherwise dark. Default when absent: `underground`
+(= Dark, no sunlight), exactly today's behaviour. Rules only consumes the resulting level.
 
 ### 3.3 Static point sources (authored)
 ```cpp
@@ -70,8 +71,11 @@ struct StaticLight {
     uint32_t stable_id;         // StableHash(coord, tile, index), like EntitySpawn; never in files
 };
 ```
+Item light states: `emits_light` may list `states: [{name, bright_ft, dim_ft}]` (default one state); the current state
+index is part of `AttachedLight` (`state` byte) and is toggled by a light command logged under 0xCA (op `set_state`). The
+bullseye lantern's 60 ft cone is **reserved** (`shape: cone`, later; validator rejects it for now).
 Content key `lights: [{ "tile": {x,y}, "preset": "lantern" }]` or explicit `bright_ft` / `dim_ft`. Presets are content
-(`srd51.core` light presets): `torch 20/20`, `lantern_hooded 30/30` (dim 5 when hooded, open R6), `brazier 20/20`, `candle 5/5`.
+(`srd51.core` light presets): `torch 20/20`, `lantern_hooded` (two item states, R6 decided: `open` bright 30 / dim +30, `hooded` dim 5 only), `brazier 20/20`, `candle 5/5`.
 Optional fields default to 0 / false; unknown preset = load error at validate time.
 
 ### 3.4 Attached sources (follow a token or item)
@@ -82,6 +86,7 @@ struct AttachedLight {
     Carrier  carrier; uint32_t carrier_id; Vec2i tile;  // tile used only when carrier == Tile
     uint16_t bright_ft, dim_ft;
     uint8_t  flags;              // bit0 magical, bit1 sunlight (Daylight), bit2 lit
+    uint8_t  state = 0;          // item light state index (hooded lantern: 0 open, 1 hooded)
     uint8_t  spell_level = 0;    // 0 = mundane; Light=0 cantrip marked magical, Daylight=3
     uint32_t spell_id = 0, caster_id = 0;   // for dispel / concentration
 };
@@ -109,10 +114,14 @@ Per tile `t`, fixed order (each step is a pure integer function):
    Sources are visited in `(kind, stable_id | id)` order; since max is commutative this only matters for the flags,
    which are OR'd (`sunlight` if any contributing source with the winning level is sunlight).
 2. **Zone overrides** (R-G11 zones covering `t`, ascending zone id):
-   - `magical_darkness`: set `magical_dark`; `L = Dark` **unless** a *magical* source of spell level > the Darkness
-     level reaches `t` (SRD: light from a spell of higher level is unaffected; non-magical light can't illuminate).
-     Daylight cast **overlapping** a Darkness of level <= 3 dispels that zone (SRD 5.1 Daylight), handled as a state
-     change at cast time, not here; likewise Darkness dispels overlapping light spells of level <= 2.
+   - `magical_darkness`: set `magical_dark`; `L = Dark` from every non-magical source, and from a magical source
+     only if it would be dispelled (below). Magical darkness always beats non-magical light; light from a spell of a
+     higher level than the Darkness is unaffected. The level comparison is the only rule (no partial override).
+   - **Dispel (R1, decided):** Darkness dispels the spell that created an overlapping light of **2nd level or lower**;
+     Daylight dispels the spell that created an overlapping darkness of **3rd level or lower** (SRD 5.1). Rules exposes
+     `dispels_light(darkness_level, light_level)`; sim does the overlap test **at cast time and whenever either area
+     moves** (both can be cast on a carried object), at the end of the moving step, in ascending (zone id, light id)
+     order. A dispel is a state change (`LightChanged` / zone end), not a per-tile override.
    - `light_obscured` / `heavy_obscured` (Fog Cloud = heavy): set the obscured flags only; they don't change `L`.
    - `opaque` (Wall of Fire): treated as `blocks_sight` for §5 tracing.
 3. **Ambient floor:** `L = max(L, ambient.level)` unless `magical_dark`; `sunlight` flag if the ambient is Sun and
@@ -130,8 +139,8 @@ The result is `LightSample`. Senses then map it per viewer (§6).
   torch are lit and walls behind them are not.
 - Phase 1 moves `segment_blocked` unchanged (a code move, no behaviour change, cover goldens untouched) from the
   anonymous namespace in `combat.cpp` to a shared sim header (`sim/trace.hpp`), called by both `cover_of` and light.
-- Zones with `opaque` and heavy-obscured zones **do not** block light (fog is lit, just not seeable through); only
-  `opaque` blocks it. Open question R4.
+- **Fog doesn't block light (R4, decided):** Fog Cloud and other obscuring zones are obscurement only, never occlusion;
+  they don't change the light level or block light passing through. Only `opaque` zones (Wall of Fire) block light.
 - One trace for cover and light, one golden test table for both; no second ray algorithm.
 
 ## 6. Sim API
@@ -146,24 +155,24 @@ public:
 };
 struct SenseRanges { uint16_t darkvision_ft, blindsight_ft, tremorsense_ft, truesight_ft; };
 Light perceived_light(LightSample, const SenseRanges&, int dist_ft) noexcept;
-bool in_sunlight(const LightWorld&, Vec2i tile) noexcept;              // LightFlags::sunlight
 }
 ```
 - `LightWorld` is a view: grid, ambient + clock, static lights of resident chunks, attached lights, zones.
 - The cache is built from start-of-step state and frozen for the step, matching #194's "start-of-step" contract. It
   holds no state of its own and is never hashed; a test asserts `cache.at == light_at` for every tile.
-- **Rules sight hook (#194):** sim installs `EncounterHooks::sight`. Per (viewer, subject):
-  `light_at_subject = cache.at(subject).level`, `light_at_viewer` likewise; `obscured` from the obscured flags plus
-  Dark = heavily obscured and Dim = lightly obscured (SRD); then per sense, in order truesight > blindsight >
-  tremorsense > sight:
+- **Rules sight hook (#194):** sim installs `EncounterHooks::sight` and supplies raw inputs per (viewer, subject):
+  `light_at_subject` / `light_at_viewer` = `cache.at(tile).level`, the flags (`magical_dark`, `sunlight`, obscured), the
+  viewer's senses and line of sight via the shared trace (§5). Senses, in order truesight > blindsight > tremorsense > sight:
   - darkvision within range: Dim -> Bright, Dark -> Dim, **not** inside `magical_dark`;
   - truesight within range: sees normally in magical and normal darkness;
-  - blindsight / tremorsense (tremorsense: subject on the ground, not flying) within range ignore light and obscurement;
-  - otherwise sight needs line of sight and a perceived level > Dark and no heavy obscurement.
-  `sense` reports the first that succeeds; blinded / invisible stay Rules' inputs.
-- **Sunlight facts:** `in_sunlight(tile)` feeds Sunlight Sensitivity (disadvantage on attacks and sight Perception) and
-  vampire weakness (Rules-owned effects; sim only supplies the fact as an `EncounterHooks::in_sunlight(state, id)`
-  hook proposal, default false = today's behaviour).
+  - blindsight / tremorsense (subject on the ground) within range ignore light and obscurement;
+  - otherwise sight needs line of sight, an effective level > Dark and no heavy obscurement.
+- **Obscurement (R2, decided):** computed **after** senses: effective Dim = lightly obscured, effective Dark = heavily
+  obscured; `Sight::obscured = max(that, zone obscurement such as Fog Cloud)`. Blindsight and truesight ignore it within
+  range. Rules derives this from the inputs; sim supplies raw levels and flags.
+- **Sunlight facts (R7, decided):** no `in_sunlight` hook. `Sight` gains `subject_in_sunlight` and `viewer_in_sunlight`,
+  taken from the tile `sunlight` flag. Rules applies Sunlight Sensitivity (the creature, its target or the perceived thing
+  in sunlight) and vampire weakness from those two bits.
 
 ## 7. Streaming and chunk format
 
@@ -185,14 +194,14 @@ bool in_sunlight(const LightWorld&, Vec2i tile) noexcept;              // LightF
 New sim commands (`Light`, `Douse`, `Drop`, `PickUp`) reuse the action log; events: `LightChanged {light_id, flags}`
 in the next `SimEvent` version (stream version bumps only for streams that carry one, as v7 did).
 
-Proposed tags (claimed in `SIM_EVENTS.md` in the PR that introduces them; 0xC5 / 0xC6 are Rules' #194):
+Tags (claimed in `SIM_EVENTS.md` by this PR, status proposed; 0xC5 / 0xC6 are Rules' #194; next free 0xCB):
 
 | Tag | Stream | Contents | Folded when |
 |---|---|---|---|
 | 0xC7 | `Combat::hash` | `lights_digest`: `next_light_id`, then each `AttachedLight` in id order (all fields) | any attached light exists or has existed (`next_light_id != 1`) |
 | 0xC8 | `Combat::hash` | `ambient_digest`: `AmbientKind`, profile, `minute_of_day` u32 | ambient differs from the default (underground, 720) |
 | 0xC9 | `Combat::hash` | static light overrides from deltas (stable_id, lit byte), sorted | any static light toggled |
-| 0xCA | `log_hash` | light command fields (`light_id` u32, op byte, target tile i32 x2) | the logged action is a light command |
+| 0xCA | `log_hash` | light command fields (`light_id` u32, op byte incl. `set_state`, state byte, target tile i32 x2) | the logged action is a light command |
 
 Not folded: per-tile levels, the cache, and `Sight` answers (all derived). Static lights themselves are content
 (covered by `content_hash`). Every existing golden is unchanged.
@@ -201,12 +210,12 @@ Not folded: per-tile levels, the cache, and `Sight` answers (all derived). Stati
 
 ```luau
 declare function light_at(tile: Vec2i): { level: "bright" | "dim" | "dark", sunlight: boolean, magical_dark: boolean }
-declare function in_sunlight(tile: Vec2i): boolean
 declare function light_sources_near(tile: Vec2i, radius_ft: number): { LightInfo }   -- read-only, sorted by id
 -- commands go through the normal action path (no direct mutation):
-declare function request_light(actor: Entity, op: "light" | "douse" | "drop" | "pickup", item: Entity?): boolean
+declare function request_light(actor: Entity, op: "light" | "douse" | "drop" | "pickup" | "set_state", item: Entity?): boolean
 ```
-Typed `LightInfo { id: number, kind: "static"|"attached", tile: Vec2i, bright_ft: number, dim_ft: number, magical: boolean }`.
+Typed `LightInfo { id: number, kind: "static"|"attached", tile: Vec2i, bright_ft: number, dim_ft: number, magical: boolean, state: number }`. Sunlight
+is read from `light_at(tile).sunlight` (the same flag `Sight` uses); there is no separate sunlight call.
 Existing levels untouched; added to `engine.level<N+1>.d.luau` only.
 
 ## 10. Render contract
@@ -218,15 +227,14 @@ Existing levels untouched; added to `engine.level<N+1>.d.luau` only.
 
 ## 11. Open questions
 
-Rules
-- R1. Darkness vs light: confirm "magical source of higher spell level than Darkness is unaffected" and dispel on
-  overlap at cast time (Daylight <= 3, Darkness <= 2 light spells), not continuous.
-- R2. Should Dark / Dim map to heavily / lightly obscured inside `Sight::obscured`, or stay separate from zone obscurement?
-- R3. (Settled, not open.) Light occlusion uses `segment_blocked`, the same trace as `Combat::cover_of` (§5).
-- R4. Does Fog Cloud (heavy obscurement) block light passing through it? Proposed: no.
-- R5. Outdoor day table and moonlight level (SRD treats moonlit nights as dim): fixed profile or content-defined?
-- R6. Hooded lantern and other modes: preset modes or out of scope?
-- R7. `in_sunlight` as a new hook (default false) vs a `Sight` field?
+Rules (all decided in the Rules review of #195; kept here as the record)
+- R1. Decided: dispel at cast and whenever either area moves; Darkness dispels light spells <= 2nd, Daylight dispels darkness <= 3rd (§4).
+- R2. Decided: effective Dim = lightly, Dark = heavily obscured, after senses, max with zone obscurement (§6).
+- R3. Decided: light occlusion uses `segment_blocked`, the same trace as `Combat::cover_of` (§5).
+- R4. Decided: fog is obscurement only and doesn't block light (§5).
+- R5. Decided: ambient is a data schedule (day bright, dawn / dusk dim, full-moon night dim, other nights dark) (§3.2).
+- R6. Decided: hooded lantern has two item states (open 30/+30, hooded dim 5) toggled via a 0xCA command; bullseye cone reserved (§3.3).
+- R7. Decided: `Sight::subject_in_sunlight` / `viewer_in_sunlight` from the tile sunlight flag; no hook (§6).
 
 Render & Platform
 - P1. Is a post-step `LightSample` grid + source list enough, or do you need per-source falloff in feet?
@@ -241,6 +249,6 @@ Render & Platform
 2. **P2 (EC + T&C):** `chunk@2`, `monster@5`, `item@2` schemas and identity migrations; validator radius check;
    compat fixtures stay green.
 3. **P3 (EC):** attached lights and commands, `LightChanged`, tags 0xC7-0xCA claimed in SIM_EVENTS first.
-4. **P4 (EC + Rules):** zone overrides, Daylight/Darkness dispel, sight hook implementation for #194, `in_sunlight`.
+4. **P4 (EC + Rules):** zone overrides, Daylight/Darkness dispel (cast and move), sight inputs for #194 incl. the sunlight bits.
 5. **P5 (EC):** streaming halo, invalidation, `ChunkDelta` for static toggles; streaming-order determinism tests.
 6. **P6 (EC + R&P):** Luau API level, render contract read path.
