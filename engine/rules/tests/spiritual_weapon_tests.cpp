@@ -319,3 +319,22 @@ TEST_CASE("pact of the chain: a familiar takes no opportunity attack and cannot 
     CHECK_FALSE(find(s, 4)->reaction_used);
     CHECK(count(r.events, EventKind::Moved) == 1);
 }
+
+TEST_CASE("spiritual weapon: SummonWeaponAttack with no tile = no move; the stored tile is kept") {
+    auto s = start();
+    end_turns_until(s, 1);
+    REQUIRE(step(s, weapon(1, 1)).ok);   // spawn tile (2, 3)
+    (void)step(s, {1, ActionKind::EndTurn});
+    end_turns_until(s, 1);
+    auto m = weapon_attack(1, 2);
+    REQUIRE(m.summon_tiles.empty());
+    auto r = step(s, m);
+    REQUIRE(r.ok);
+    REQUIRE(s.summon_weapons.size() == 1);
+    CHECK(s.summon_weapons[0].has_tile); CHECK(s.summon_weapons[0].tile_x == 2); CHECK(s.summon_weapons[0].tile_y == 3);
+    const auto at = all(r.events, EventKind::AttackResolved);
+    REQUIRE(at.size() == 1); CHECK(at[0]->actor == 1); CHECK(at[0]->target == 2);
+    for (EventKind k : {EventKind::Moved, EventKind::Summoned, EventKind::SummonEnded}) CHECK(all(r.events, k).empty());
+    REQUIRE(r.logged);
+    CHECK(r.logged->request.summon_tiles.empty());   // nothing to fold under 0xBC: no move logged
+}
