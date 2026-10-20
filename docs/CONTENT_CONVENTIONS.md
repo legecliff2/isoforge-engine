@@ -498,6 +498,8 @@ so no version bump (`docs/CONTENT_COMPAT.md`). Integers only: CRs are monster@4 
 (0, 1/8 = 1, 1/4 = 2, 1/2 = 4, n = 8n). `form_archetype` (ActionRequest) = 1 + index into `forms[]` (at most 255 forms).
 Form ids resolve across the pack set, dependency packs included; every form must be a beast.
 
+**Version gate (sim, EC fix/reach0-gates).** `wild_shape` and `shapechanger` are live at `character@4` / `monster@4` only. Like `extra_attack` and `gaze` (section 11) they are not in the frozen 3 -> 4 kind list, so the sim gates them in the loader hook: a file that declares `@3` or older lists the feature in `Archetype::inert_features` (`<fid> (wild_shape)` / `<fid> (shapechanger)`) and never parses it (no key errors, no FeatureSpec, no form swap); `@1` / `@2` effects are already inert through the 2 -> 3 migration. This is the CONTENT_COMPAT convention (a version below a kind's minimum is inert, never a load error). The `shapechanger` creature fact is read as before. Pinned by `transforms_content_tests.cpp` ("version gate").
+
 **spell@1 `polymorph`** `{kind, forms (required, 1..255), max_cr ("target_level" default, or a CR string), save {ability} (default wis)}`.
 Loader: rules spell loader key `polymorph` -> `SpellEffectKind::Polymorph`, concentration from the spell; Rules parses it with
 these exact strings.
