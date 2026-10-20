@@ -594,3 +594,42 @@ class CreatureFacts(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChunkFlagsMoveModes(unittest.TestCase):
+    """feat/move-modes: chunk@1 flag bits 4 (climbable) and 5 (open_air) are accepted; bits 6-7 stay reserved."""
+
+    run_docs = ChunkSurprise.run_docs
+
+    @classmethod
+    def setUpClass(cls):
+        ChunkSurprise.setUpClass.__func__(cls)
+
+    def with_flags(self, cells: dict[int, tuple[int, int]]) -> dict:
+        d = surprise_fixture(SPAWNS)
+        layer = d["layers"][0]
+        tiles = list(layer.get("tiles", [0] * vp.CELLS))
+        flags = [0] * vp.CELLS
+        for i, (tile, f) in cells.items():
+            tiles[i] = tile
+            flags[i] = f
+        layer["tiles"], layer["flags"] = tiles, flags
+        return d
+
+    def flag_errs(self, errs):
+        return [e for e in errs if "flag" in e or "empty tile" in e]
+
+    def test_bits_4_and_5_accepted(self):
+        d = self.with_flags({1000: (1, 0x10), 1001: (1, 0x11), 1002: (0, 0x20), 1003: (0, 0x22)})
+        errs, _ = self.run_docs({"flags": d})
+        self.assertEqual(self.flag_errs(errs), [])
+
+    def test_bit_6_is_reserved(self):
+        d = self.with_flags({1000: (1, 0x40)})
+        errs, _ = self.run_docs({"flags": d})
+        self.assertIn("chunks/flags.json: layers[0] cell 1000 (x=8,y=31): reserved flag bits 6-7 set", errs)
+
+    def test_empty_tile_takes_only_open_air(self):
+        d = self.with_flags({1000: (0, 0x10)})
+        errs, _ = self.run_docs({"flags": d})
+        self.assertIn("chunks/flags.json: layers[0] cell 1000 (x=8,y=31): empty tile with elevation/flags set", errs)

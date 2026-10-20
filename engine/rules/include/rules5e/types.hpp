@@ -350,6 +350,9 @@ struct FormStats {
     std::vector<Trigger> triggers{};
     std::vector<Reaction> reactions{};
     std::vector<BonusAttack> bonus_attacks{};
+    // appended (SRD 5.1 movement modes, feat/move-modes): the form's fly / swim / climb speeds and hover.
+    uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0;
+    bool hover = false;
     // Wild Shape (D7): the creature's own features (feature ids) the form is not physically capable of using (content:
     // requires_humanoid_form). UseFeature refuses them while the form lasts. Not part of the saved base block.
     std::vector<uint32_t> blocked_features{};
@@ -504,6 +507,11 @@ struct Combatant {
     // attack rolls and Dexterity saving throws have disadvantage, attack rolls against it have advantage. Set / cleared by a
     // Move (ActionRequest::squeeze); sim shrinks the footprint and doubles the step cost.
     bool squeezing = false;
+    // appended (SRD 5.1 movement modes, feat/move-modes; static content, not folded): fly / swim / climb
+    // speeds (0 = none) and hover. A Move with ActionRequest::move_mode uses that speed: SRD "switching speeds" - the
+    // feet already spent this turn count against it (TurnBudget::movement_ft is shared; see move_allowance).
+    uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0;
+    bool hover = false;
     // appended (grab and contain, 7.2w; content-derived, not hashed): SRD Transparent (gelatinous cube): the DC of the Wisdom
     // (Perception) check to spot it while it has neither moved nor attacked (15; 0 = not transparent). Sim reads it when it
     // sets up surprise (rules5e surprise helper: compare with the observer's Perception); rules does not track "moved".
