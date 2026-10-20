@@ -1,0 +1,37 @@
+{
+  "base": "monsters/giant_spider.json",
+  "sets": [
+    [
+      [
+        "actions",
+        0,
+        "on_hit",
+        0,
+        "apply"
+      ],
+      [
+        {
+          "condition": "poisoned"
+        }
+      ]
+    ]
+  ],
+  "dels": [
+    [
+      "actions",
+      0,
+      "on_hit",
+      0,
+      "on_success"
+    ],
+    [
+      "actions",
+      0,
+      "on_hit",
+      0,
+      "damage"
+    ]
+  ],
+  "severity": "error",
+  "expect": "/actions/0/on_hit/0: zero_hp needs damage"
+}

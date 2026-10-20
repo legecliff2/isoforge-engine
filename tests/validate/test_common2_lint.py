@@ -36,7 +36,9 @@ SECTION_1_1 = ["action", "legacy_action", "legacy_nonspecial_action", "legacy_sp
                "spellcasting", "trait", "trait_active", "stat_block",
                # R-G12 transforms (VERSION_BUMP_BATCH 7.2q, append-only additions; docs/CONTENT_CONVENTIONS.md section 9)
                "challenge_rating", "transform_forms", "wild_shape_level_row", "wild_shape_effect", "shapechanger_form",
-               "shapechanger_effect"]
+               "shapechanger_effect",
+               # EC #179 extra_attack (append-only addition; docs/CONTENT_EFFECTS.md)
+               "extra_attack_effect"]
 ITEM_FILE_DEFS = {"item_damage"}          # listed in 1.1 but declared in item@1's file, not common@2's
 COMMON2_DEFS = set(SECTION_1_1) - ITEM_FILE_DEFS
 
