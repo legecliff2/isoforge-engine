@@ -29,7 +29,9 @@ OPEN_EFFECT_KINDS_RG7 = frozenset({"reroll_ones", "great_weapon_fighting", "evas
                                    # T&C-G7 (sim #129): orc Aggressive, Reckless Attack / berserker Reckless; no fields
                                    "aggressive", "reckless_attack",
                                    # R-G14 (sim #143): Sorcerer Metamagic {options, pool}, Evocation Sculpt Spells {}
-                                   "metamagic", "sculpt_spells"})
+                                   "metamagic", "sculpt_spells",
+                                   # 7.2o (sim #152): Font of Magic {pool}, the sorcery-point pool without Metamagic
+                                   "font_of_magic"})
 # Open kinds whose second declaration in one document adds nothing (the sim dedupes): the validator warns.
 NO_STACK_EFFECT_KINDS = frozenset({"pack_tactics", "aggressive", "reckless_attack", "sculpt_spells"})
 # R-G14 (sim #143, features.cpp apply_metamagic kNames): the metamagic options, in rules5e kMeta* bit order.
@@ -287,10 +289,10 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     for path, _owner, eff in live_effects(doc):
         if eff.get("kind") == "heal_pool":
             need_pool(path, eff.get("pool"), None)
+        if eff.get("kind") in ("metamagic", "font_of_magic"):
+            referenced.add(eff.get("pool"))   # sorcery points: spent by the sim per option (check 12); resolved by check_metamagic (7.2o: font_of_magic resolves it)
         if eff.get("kind") == "wild_shape":
             referenced.add(eff.get("pool"))   # R-G12 uses pool: resolved by check_transforms
-        if eff.get("kind") == "metamagic":
-            referenced.add(eff.get("pool"))   # sorcery points: spent by the sim per option (check 12); resolved by check_metamagic
     # check 3: spell references
     spell_refs: list[tuple[str, str]] = []
     sc = doc.get("spellcasting")
@@ -471,15 +473,53 @@ def limited_pool_ids(doc: dict) -> set:
     return out
 
 
+def sorcery_points_max(level: int) -> int:
+    """rules5e font_of_magic.hpp: the sorcerer level from 2nd, 0 below."""
+    return level if level >= 2 else 0
+
+
+def sorcerer_level(doc: dict) -> int:
+    """features.cpp apply_font_of_magic: the summed level of the classes[] entries with class sorcerer (no fallback)."""
+    return sum(c.get("level", 0) for c in doc.get("classes") or []
+               if isinstance(c, dict) and c.get("class") == "sorcerer" and is_int(c.get("level", 0)))
+
+
+def pool_max_at_level(doc: dict, r: dict):
+    """A resources[] pool's max as the sim compiles it (content.cpp compile_resources), or None when it depends on an
+    ability score (plus_ability) or cannot be resolved here."""
+    mx = r.get("max")
+    if is_int(mx):
+        return mx
+    if isinstance(mx, dict) and "table" not in mx:
+        if "plus_ability" in mx or not is_int(mx.get("per_level")):
+            return None
+        return max(mx["per_level"] * _level_in(doc, mx.get("class", "") or ""), mx.get("min", 0) if is_int(mx.get("min")) else 0)
+    if isinstance(mx, dict) and isinstance(mx.get("table"), dict):
+        t = mx["table"]
+        lvl, best, val = _level_in(doc, t.get("class", "") or ""), 0, None
+        for e in t.get("by_level") or []:
+            el = e.get("level") if isinstance(e, dict) else None
+            if is_int(el) and best <= el <= lvl:
+                best, val = el, e.get("value")
+        return val if is_int(val) else None
+    return None
+
+
 def check_metamagic(doc: dict) -> tuple[list[str], list[str]]:
-    """R-G14 (sim #143, features.cpp apply_metamagic / apply_sculpt_spells), for documents whose effects are active.
+    """R-G14 / 7.2o (sim #143 / #152, features.cpp apply_metamagic / apply_font_of_magic / apply_sculpt_spells), for documents
+    whose effects are active. Effects are applied in document order, as the loader does.
     metamagic {options, pool}: the options shape is the schema arm (non-empty, METAMAGIC_OPTIONS names); the pool must be a
-    limited resources[] pool (load error, the loader's wording); several declarations OR their options but must name the
-    same pool (load error); an option listed twice adds nothing (warning). sculpt_spells {}: no fields (others ignored: warning)."""
+    limited resources[] pool, or one an earlier font_of_magic registered (load error, the loader's wording); several
+    declarations OR their options but must name the same pool (load error); an option listed twice adds nothing (warning).
+    font_of_magic {pool}: the pool must not be unlimited and the creature needs sorcerer level 2+ (load errors); it must be the
+    metamagic pool (load error either order). The loader resolves the pool to max = start = sorcerer level, recharge long_rest
+    (registering it when resources[] lacks it): a pool authored with another max or recharge, or no pool, is a warning.
+    sculpt_spells {}: no fields (others ignored: warning)."""
     errs: list[str] = []
     warns: list[str] = []
     limited = limited_pool_ids(doc)
-    first = None
+    pools = {r["id"]: r for r in doc.get("resources") or [] if isinstance(r, dict) and isinstance(r.get("id"), str)}
+    first = None    # (pool, path): the sorcery pool, set by the first metamagic or font_of_magic (Combatant::sorcery_pool)
     for path, owner, eff in live_effects(doc):
         kind = eff.get("kind")
         if kind == "metamagic":
@@ -497,6 +537,38 @@ def check_metamagic(doc: dict) -> tuple[list[str], list[str]]:
             elif pid != first[0]:
                 errs.append(f"{path}: {owner}: metamagic declarations name different pools ('{pid}' here, '{first[0]}' at "
                             f"{first[1]}) (R-G14)")
+        elif kind == "font_of_magic":
+            pid = eff.get("pool")
+            if not isinstance(pid, str) or not pid:
+                continue   # schema arm (required, minLength 1): "font_of_magic needs pool"
+            if pid in pools and pid not in limited:
+                errs.append(f"{path}: {owner}: font_of_magic pool '{pid}' is unlimited (7.2o)")
+                continue
+            lvl = sorcerer_level(doc)
+            want = sorcery_points_max(lvl)
+            if want <= 0:
+                errs.append(f"{path}: {owner}: font_of_magic needs sorcerer level 2+ (sorcerer level {lvl}) (7.2o)")
+                continue
+            if first is not None and first[0] != pid:
+                errs.append(f"{path}: {owner}: font_of_magic and metamagic name different pools ('{pid}' here, '{first[0]}' at "
+                            f"{first[1]}) (7.2o)")
+                continue
+            if pid not in pools:
+                warns.append(f"{path}: font_of_magic pool '{pid}' is not in resources[]; the sim registers it (max {want} = "
+                             "sorcerer level, recharge long_rest); declare it there so the document shows the pool (7.2o)")
+                limited.add(pid)   # registered: a later metamagic naming it loads
+            else:
+                got = pool_max_at_level(doc, pools[pid])
+                if got != want:
+                    warns.append(f"{path}: font_of_magic pool '{pid}' max is {got if got is not None else 'not a fixed number'}, "
+                                 f"not the sorcerer level {want}; the sim resets it to {want} (7.2o)")
+                if pools[pid].get("recharge") != "long_rest":
+                    warns.append(f"{path}: font_of_magic pool '{pid}' recharge is {pools[pid].get('recharge')!r}; the sim sets "
+                                 "long_rest (7.2o)")
+                if is_int(pools[pid].get("start")) and pools[pid]["start"] != want:
+                    warns.append(f"{path}: font_of_magic pool '{pid}' start is {pools[pid]['start']}; the sim sets {want} (7.2o)")
+            if first is None:
+                first = (pid, path)
         elif kind == "sculpt_spells":
             extra = sorted(k for k in eff if k != "kind")
             if extra:
@@ -507,8 +579,8 @@ def check_metamagic(doc: dict) -> tuple[list[str], list[str]]:
 # ---- R-G12 transforms (VERSION_BUMP_BATCH 7.2q, Rules #156) ------------------------------------------------------
 # polymorph (spell@1, rules spell loader), wild_shape / shapechanger (common@2, Engine Core build_form) and the trait flag
 # requires_humanoid_form. There is no RESERVED_EFFECT_KINDS table yet, so wild_shape / shapechanger stay out of the tag
-# table's effect_kinds and get the unknown-kind warning (the open-kind pattern) until their loader lands; polymorph gets
-# polymorph_spell_warnings' reserved warning. The messages below are the loaders' wording (Rules parses polymorph with them).
+# table's effect_kinds and get the unknown-kind warning (the open-kind pattern) until their loader lands; polymorph is
+# parsed by the rules spell loader since #171 (no reserved warning; polymorph_spell_warnings keeps above-max_cr). The messages below are the loaders' wording (Rules parses polymorph with them).
 CR_ORDER = ("0", "1/8", "1/4", "1/2") + tuple(str(i) for i in range(1, 31))
 
 
@@ -582,8 +654,7 @@ def polymorph_spell_warnings(doc: dict, ctx: dict) -> list[str]:
     if not effs or not isinstance(effs[0], dict) or effs[0].get("kind") != "polymorph":
         return []
     eff = effs[0]
-    out = ["effects[0]: polymorph is reserved: the rules spell loader does not parse it yet (R-G12 7.2q, "
-           "SpellEffectKind::Polymorph), so it has no effect until that loader lands"]
+    out: list[str] = []   # Rules #171 parses polymorph: no reserved warning
     lim = cr8(eff.get("max_cr", "target_level"))
     if lim is not None:   # fixed max_cr only (target_level is checked by sim build_form at cast time)
         for f, c in check_forms("polymorph", eff.get("forms"), ctx, []):
