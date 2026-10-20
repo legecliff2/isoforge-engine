@@ -813,7 +813,7 @@ SpellLoad spell_from_json(const Json& j) {
         } else if (kind == "polymorph") {   // R-G12 (CONTENT_CONVENTIONS.md section 9): Polymorph; forms resolve in the validator
             s.kind = SpellEffectKind::Polymorph;
             std::string bad;
-            if (!only_keys(e, {"kind", "forms", "max_cr", "save", "description"}, bad)) return ("polymorph effect: unknown key '" + bad + "'");
+            if (!only_keys(e, {"kind", "forms", "max_cr", "save"}, bad)) return ("polymorph effect: unknown key '" + bad + "'");
             if (!e.contains("forms") || !e["forms"].is_array() || e["forms"].empty() || e["forms"].size() > 255)
                 return ("polymorph: forms must list 1..255 monster ids");
             for (const Json& f : e["forms"]) {
