@@ -1448,6 +1448,34 @@ std::vector<std::string> ContentLibrary::load_pack(const std::string& pack_dir) 
     return load(assets::PackSet::from_pack_dir(pack_dir));
 }
 
+std::optional<std::string> ContentLibrary::add_summon_spell(const rules5e::SpellDef& def, SummonOptions options) {
+    if (def.kind != rules5e::SpellEffectKind::Summon) return def.content_id + ": not a Summon spell";
+    if (options.archetypes.empty() || options.archetypes.size() > 255) return def.content_id + ": summon needs 1..255 archetypes";
+    for (const auto& id : options.archetypes)
+        if (!find(id)) return def.content_id + ": unknown summon archetype '" + id + "'";
+    if (spells_->find(def.id) || summons_.count(def.id)) return def.content_id + ": duplicate spell id";
+    if (options.max_count && *options.max_count == 0) return def.content_id + ": summon max_count must be 1..255";
+    rules5e::SpellDef d = def;
+    d.summon.max_count = options.max_count ? *options.max_count : uint8_t(255);   // absent = no cap
+    if (options.max_count && options.table == SummonOptions::Table::CrBand)
+        for (unsigned lvl = std::max<unsigned>(def.level, 1); lvl <= 9; ++lvl) {
+            const unsigned mult = lvl >= 9 ? 4 : lvl >= 7 ? 3 : lvl >= 5 ? 2 : 1;
+            for (unsigned n : {1u, 2u, 4u, 8u})
+                if (n * mult > *options.max_count)
+                    warnings_.push_back(def.content_id + ": summon max_count " + std::to_string(*options.max_count) +
+                                        " clips the CR band count " + std::to_string(n * mult) + " at slot level " +
+                                        std::to_string(lvl));
+        }
+    spells_->add(d);
+    summons_[def.id] = std::move(options);
+    return std::nullopt;
+}
+
+const SummonOptions* ContentLibrary::summon_options(uint32_t spell_id) const {
+    auto it = summons_.find(spell_id);
+    return it == summons_.end() ? nullptr : &it->second;
+}
+
 const Archetype* ContentLibrary::find(const std::string& id) const {
     auto it = by_id_.find(id);
     return it == by_id_.end() ? nullptr : &it->second;
