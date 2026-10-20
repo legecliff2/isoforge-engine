@@ -320,3 +320,30 @@ TEST_CASE("Hideous Laughter: an Incapacitated from another source is not its own
     CHECK(control_on(s, 2) == nullptr);
     CHECK(find(s, 2)->has(Condition::Incapacitated));
 }
+
+// 7.2x: with the sight_facts hook, Turn Undead / Command need the target to perceive (see or hear) the user, and Fear's
+// end-of-turn save reads the derived can_see; without it the older paths (sim's targets, the can_see hook) stand.
+TEST_CASE("vision 7.2x: Turn Undead and Command use perceives; Fear uses the derived can_see") {
+    auto hidden_from = [](CombatantId viewer, bool audible) {
+        return [viewer, audible](const EncounterState&, const Combatant& v, const Combatant&) {
+            SightFacts f; f.distance_ft = 30;
+            if (v.id == viewer) { f.line_of_sight = false; f.audible = audible; }
+            return f;
+        };
+    };
+    for (bool audible : {false, true}) {
+        auto s = start({caster(), target(2, CreatureType::Undead)});
+        s.hooks.sight_facts = hidden_from(2, audible);
+        REQUIRE(step(s, cast(1, kTurn, 2, 1)).ok);
+        CHECK((control_on(s, 2) != nullptr) == audible);   // hears the cleric: still turned
+        auto c = start({caster(), target(2)});
+        c.hooks.sight_facts = hidden_from(2, audible);
+        REQUIRE(step(c, cmd(CommandWord::Halt)).ok);
+        CHECK((control_on(c, 2) != nullptr) == audible);
+    }
+    auto f = start({caster(), target(2, CreatureType::Humanoid, 10)}, 30, 1);   // old can_see hook says "sees"
+    f.hooks.sight_facts = hidden_from(2, true);                                // the derived answer wins: unseen
+    REQUIRE(step(f, cast(1, kFear, 2, 1)).ok);
+    end_turns_until(f, 2);
+    CHECK(count(step(f, {2, ActionKind::EndTurn}).events, EventKind::SavingThrowRolled) == 1);
+}
