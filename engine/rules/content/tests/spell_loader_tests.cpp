@@ -30,6 +30,11 @@ TEST_CASE("sample pack spells load into a SpellBook") {
     CHECK(scaled_dice(*fb, 0, 5).count == 2);
     CHECK(scaled_dice(*fb, 0, 17).count == 4);
 
+    CHECK_FALSE(fb->ignores_cover);
+    const SpellDef* sfl = r.book->find(spell_id_of("srd51.spell.sacred_flame"));   // 7.2t: ignores_cover
+    REQUIRE(sfl);
+    CHECK(sfl->ignores_cover);
+
     const SpellDef* mm = r.book->find(spell_id_of("srd51.spell.magic_missile"));
     REQUIRE(mm);
     CHECK(mm->kind == SpellEffectKind::AutoHit);
