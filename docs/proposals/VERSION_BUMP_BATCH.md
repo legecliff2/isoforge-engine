@@ -2333,6 +2333,35 @@ a rogue character carrying `thieves_tools` (SRD class proficiency).
 **Not in this PR.** #197's `fast_hands` / `uncanny_dodge` entries stay descriptive; T&C adds the live effects
 (`bonus_action_grant [use_object]`, the reaction with `requires_sight`).
 
+### 7.2z Barbarian hooks (rules side) and hand-off
+
+For T&C's barbarian content (#201, Rage / Danger Sense / Frenzy descriptive). Stacks on 7.2y (#200). All keys are additive in
+common@2 and T&C confirmed the shapes. **No hash tag is claimed**: the new modifier state folds into `modifiers_digest`
+(marker byte 0x58, inside the existing modifier fold) only when set, so every golden is unchanged. Danger Sense is static
+content (like senses) and is not folded.
+
+**Content keys (apply_modifier effect, sim `features.cpp`; `bonus_attack` in `content.cpp` compile_bonus_attacks).**
+| Key | Shape | Rules |
+|---|---|---|
+| `scope` | one closed object, at least one of `weapon: "wielded"` (7.2y), `attack: melee_weapon \| ranged_weapon`, `ability: str \| dex` | AttackRoll / Damage rows: `ModifierSpec::scope` 1 melee / 2 ranged, `scope_ability` 1 Str / 2 Dex (the attack's ability, `attack_ability`: finesse takes the higher). Rage: `{attack: melee_weapon, ability: str}` |
+| `ends_early` | unique enum array `no_attack_or_damage_since_last_turn`, `unconscious` | bit 0: at the end of the owner's turn the source ends unless it attacked a hostile (an attack roll against another team) or took damage since its last turn (`ActiveModifier::fought`, cleared at each turn end). bit 1: ends when it is unconscious, at 0 hp or dead (checked after every step). ModifierExpired reason 8 |
+| `blocks` | unique enum array `casting`, `concentration` | casting: CastSpell of a spell (`is_spell`; feature save actions are not spells) is refused; concentration: the owner's concentration ends when the effect starts |
+| `advantage_on` | `{checks?: [ability], saves?: [ability]}`, unique abilities str..cha | Save / AbilityCheck rows with mode advantage, timed like the effect's first modifier. An effect may consist of advantage_on alone |
+| `on_end` | closed `{exhaustion: 1..6}` | exhaustion levels when the source ends (ConditionAdded exhaustion, b = level; level 6 kills). If a bonus attack of the owner names this effect in `requires_effect`, only when that attack was made while it lasted (`ActiveModifier::frenzied`): the frenzy choice |
+| `passive` + `when` | `passive: true`; closed `when {save, source_seen?, not_conditions?}`; needs `advantage_on {saves}` with `when.save` in it | Danger Sense: `Combatant::save_advantages` (ability, source_seen, not_conditions). Advantage on that save unless the creature has one of the conditions, or (source_seen) it cannot see the creature whose effect forces the save (vision `sight`, 7.2x; the caster of a cast; no known source counts as seen). Refused with passive: cost, usage, duration, modifier(s), scope, ends_early, blocks, on_end |
+| effect `{kind: "bonus_attack", requires_effect}` | closed; `requires_effect` = an id of an apply_modifier feature of the same document (not passive) | Frenzy: `BonusAttack {any_melee, requires_modifier = <archetype>#<id>#m0}` |
+
+Rage example: `{kind: apply_modifier, cost: bonus_action, usage: {kind: pool, pool: rage}, scope: {attack: melee_weapon, ability: str},
+advantage_on: {checks: [str], saves: [str]}, ends_early: [no_attack_or_damage_since_last_turn, unconscious], blocks: [casting,
+concentration], on_end: {exhaustion: 1}, modifiers: [damage bonus_table, resistance x3]}`; Frenzy `{kind: bonus_attack,
+requires_effect: rage}`. Heavy armor is not checked (sim has no armor-worn model for this; the SRD party wears none).
+Not modelled: ending Rage voluntarily as a bonus action.
+
+Validator (`checks_v4.check_barbarian_hooks`; `check_class_hooks`' scope check is now keys / enums): requires_effect must name a
+live apply_modifier feature of the document; passive conflicts; when without passive; the 7.2z keys on other effect kinds.
+Effect cases `v4_requires_effect_unknown`, `v4_passive_with_cost`, `v4_scope_bad_value`. Union / lint rows: `BarbarianHooks72z`;
+`ability_list`, `bonus_attack_effect` in the common@2 def list.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
