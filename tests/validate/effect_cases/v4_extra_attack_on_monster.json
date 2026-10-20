@@ -1,0 +1,21 @@
+{
+  "base": "monsters/wolf.json",
+  "sets": [
+    [
+      [
+        "traits",
+        2
+      ],
+      {
+        "id": "extra_attack",
+        "name": "Extra Attack",
+        "effect": {
+          "kind": "extra_attack",
+          "attacks_per_action": 2
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "srd51.monster.wolf: extra_attack: only valid on characters"
+}

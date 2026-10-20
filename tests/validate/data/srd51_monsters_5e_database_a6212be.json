@@ -1427,6 +1427,178 @@
      ]
     }
    ]
+  },
+  "basilisk": {
+   "name": "Basilisk",
+   "size": "Medium",
+   "type": "monstrosity",
+   "ac": [
+    12
+   ],
+   "hp": 52,
+   "hp_roll": "8d8+16",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "20 ft."
+   },
+   "abilities": [
+    16,
+    8,
+    15,
+    2,
+    8,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "piercing"
+       ],
+       [
+        "2d6",
+        "poison"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "medusa": {
+   "name": "Medusa",
+   "size": "Medium",
+   "type": "monstrosity",
+   "ac": [
+    15
+   ],
+   "hp": 127,
+   "hp_roll": "17d8+51",
+   "cr": 6,
+   "xp": 2300,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    10,
+    15,
+    16,
+    12,
+    13,
+    15
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Snake Hair",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "piercing"
+       ],
+       [
+        "4d6",
+        "poison"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Shortsword",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Longbow",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d8+2",
+        "piercing"
+       ],
+       [
+        "2d6",
+        "poison"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "swarm-of-rats": {
+   "name": "Swarm of Rats",
+   "size": "Medium",
+   "type": "swarm of Tiny beasts",
+   "ac": [
+    10
+   ],
+   "hp": 24,
+   "hp_roll": "7d8-7",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    9,
+    11,
+    9,
+    2,
+    10,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+   ],
+   "attacks": [
+    {
+     "name": "Bites",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "2d6",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }

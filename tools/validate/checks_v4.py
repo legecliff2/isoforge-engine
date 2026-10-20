@@ -9,6 +9,7 @@ Everything is integer math; documents are plain json.load results.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 # ---- the per-tag table ----------------------------------------------------------------------------
@@ -49,7 +50,11 @@ NATIVE_EFFECT_KINDS_AT_4 = frozenset({"on_event", "apply_modifier", "grant_actio
 STATIC_EFFECT_KINDS_R_G5 = frozenset({"attack_bonus", "crit_range", "ac_bonus"})
 # VERSION_BUMP_BATCH 7.2p (sim #153 content.cpp compile_gaze): kinds the sim compiles itself, gated at @4 (a file that declares
 # an older version lists them inert: unknown-kind warning there). Shape: the closed inline gaze arm of common@2 $defs/effect.
-COMPILED_EFFECT_KINDS_AT_4 = frozenset({"gaze"})
+# Loaded at @4 since: wild_shape / shapechanger (EC #176, the common@2 keys of 7.2q; closed arms wild_shape_effect /
+# shapechanger_effect), extra_attack (EC #179 features.cpp apply_extra_attack; closed arm extra_attack_effect; characters
+# only). Below @4 they are inert in the sim (extra_attack: the hook's @4 gate, the frozen 3 -> 4 list cannot carry it), so a
+# @1..@3 file gets the unknown-kind warning.
+COMPILED_EFFECT_KINDS_AT_4 = frozenset({"gaze", "wild_shape", "shapechanger", "extra_attack"})
 # compile_gaze defaults for the optional fields the validator warns about when omitted.
 GAZE_DEFAULTS = {"condition": "restrained", "repeat_save": "end_of_turn", "escalate_to": "petrified"}
 # 7.2n (sim #148, features.cpp apply_slot_recovery): the classes slot_recovery accepts.
@@ -641,6 +646,36 @@ def check_sim170(doc: dict) -> tuple[list[str], list[str]]:
 
 
 
+def check_sim172_174(doc: dict) -> tuple[list[str], list[str]]:
+    """sim #172 (swarms) / #174 (giant spider follow-up), @4 documents. Errors mirror the loader's refusals that the
+    schema cannot express: half_hp_damage needs at least one die ('<id>: bad half_hp_damage in action <aid>');
+    attack_effect long_range_ft ranged only and > range_ft ('bad long_range_ft (ranged, > range_ft)'); zero_hp needs
+    damage and condition != while ('zero_hp needs damage', 'bad zero_hp condition / while')."""
+    errs: list[str] = []
+    warns: list[str] = []
+    did = doc.get("id", "?")
+    for path, a in mechanical_actions(doc):
+        hh = a.get("half_hp_damage")
+        m = re.match(r"\s*(\d+)\s*d", hh) if isinstance(hh, str) else None
+        if isinstance(hh, str) and (m is None or int(m.group(1)) == 0):
+            errs.append(f"{path}: {did}: bad half_hp_damage in action {a.get('id', '?')} (needs at least one die) (sim #172)")
+        if a.get("kind") == "attack_effect" and "long_range_ft" in a:
+            lr, rng = a.get("long_range_ft"), a.get("range_ft", 5)
+            if a.get("attack", "ranged") == "melee" or not isinstance(lr, int) or not isinstance(rng, int) or lr <= rng:
+                errs.append(f"{path}: attack_effect '{a.get('id')}': bad long_range_ft (ranged, > range_ft) (sim #174)")
+    sites = [(p, a) for p, a in mechanical_actions(doc) if a.get("kind") == "save_effect"]
+    sites += [(p, r) for p, _o, _j, r in rider_sites(doc) if isinstance(r, dict) and r.get("kind") == "save_condition"]
+    for path, x in sites:
+        zh = x.get("zero_hp")
+        if not isinstance(zh, dict):
+            continue
+        if not x.get("damage"):
+            errs.append(f"{path}: zero_hp needs damage (sim #174)")
+        if zh.get("condition") == zh.get("while"):
+            errs.append(f"{path}: bad zero_hp condition / while (they must differ) (sim #174)")
+    return errs, warns
+
+
 
 GAZE_KEYS = frozenset({"kind", "range_ft", "save", "condition", "repeat_save", "escalates", "escalate_to", "escalate_margin"})
 GAZE_CONDITIONS = frozenset({"blinded", "charmed", "deafened", "frightened", "grappled", "incapacitated", "invisible",
@@ -720,9 +755,8 @@ def check_slot_recovery(doc: dict) -> list[str]:
 
 # ---- R-G12 transforms (VERSION_BUMP_BATCH 7.2q, Rules #156) ------------------------------------------------------
 # polymorph (spell@1, rules spell loader), wild_shape / shapechanger (common@2, Engine Core build_form) and the trait flag
-# requires_humanoid_form. There is no RESERVED_EFFECT_KINDS table yet, so wild_shape / shapechanger stay out of the tag
-# table's effect_kinds and get the unknown-kind warning (the open-kind pattern) until their loader lands; polymorph is
-# parsed by the rules spell loader since #171 (no reserved warning; polymorph_spell_warnings keeps above-max_cr). The messages below are the loaders' wording (Rules parses polymorph with them).
+# requires_humanoid_form. wild_shape / shapechanger are loaded kinds at @4 since EC #176 (COMPILED_EFFECT_KINDS_AT_4: no
+# unknown-kind warning there); polymorph is parsed by the rules spell loader since #171 (no reserved warning; polymorph_spell_warnings keeps above-max_cr). The messages below are the loaders' wording (Rules parses polymorph with them).
 CR_ORDER = ("0", "1/8", "1/4", "1/2") + tuple(str(i) for i in range(1, 31))
 
 
@@ -867,6 +901,38 @@ def check_transforms(doc: dict, ctx: dict, errs: list[str], warns: list[str]) ->
                 errs.append(f"/{key}/{i}: requires_humanoid_form on the wild_shape feature itself")
             elif "wild_shape" not in seen:
                 warns.append(f"/{key}/{i}: requires_humanoid_form has no effect without wild_shape")
+
+
+# ---- extra_attack (EC #179, sim features.cpp apply_extra_attack) -------------------------------------------------
+EXTRA_ATTACK_KEYS = frozenset({"kind", "attacks_per_action"})
+
+
+def check_extra_attack(doc: dict, typ: str) -> tuple[list[str], list[str]]:
+    """@4 documents. Errors: the loader's refusals in its order and wording, prefixed with the document id as
+    ContentLibrary::add reports them ('<id>: extra_attack: unknown key '<k>'', '<id>: extra_attack: only valid on
+    characters', '<id>: extra_attack: attacks_per_action must be an integer 2..4'). Warning: several declarations (the
+    sim keeps the highest, no stacking)."""
+    errs: list[str] = []
+    warns: list[str] = []
+    did = doc.get("id", "?")
+    first: tuple[str, object] | None = None
+    for path, _owner, eff in live_effects(doc):
+        if eff.get("kind") != "extra_attack":
+            continue
+        extra = sorted(k for k in eff if k not in EXTRA_ATTACK_KEYS)
+        n = eff.get("attacks_per_action")
+        if extra:
+            errs.append(f"{path}: {did}: extra_attack: unknown key '{extra[0]}'")
+        elif typ != "character":
+            errs.append(f"{path}: {did}: extra_attack: only valid on characters")
+        elif not is_int(n) or not 2 <= n <= 4:
+            errs.append(f"{path}: {did}: extra_attack: attacks_per_action must be an integer 2..4")
+        if first is None:
+            first = (path, n)
+        else:
+            warns.append(f"{path}: extra_attack declared more than once (first at {first[0]}); the sim keeps the highest "
+                         "attacks_per_action, they do not stack (sim #179)")
+    return errs, warns
 
 
 # ---- untimed save_condition riders (sim content.cpp compile_rider -> compile_save_action) ----------------------
