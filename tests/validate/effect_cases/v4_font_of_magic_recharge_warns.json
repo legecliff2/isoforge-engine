@@ -1,0 +1,54 @@
+{
+  "base": "characters/wizard_level_3.json",
+  "sets": [
+    [
+      [
+        "classes"
+      ],
+      [
+        {
+          "class": "sorcerer",
+          "level": 3,
+          "hit_die": "d6"
+        }
+      ]
+    ],
+    [
+      [
+        "resources"
+      ],
+      [
+        {
+          "id": "sorcery_points",
+          "name": "Sorcery Points",
+          "max": 3,
+          "recharge": "short_rest"
+        }
+      ]
+    ],
+    [
+      [
+        "features",
+        1
+      ],
+      {
+        "id": "font_of_magic",
+        "name": "Font of Magic",
+        "description": "x",
+        "effect": {
+          "kind": "font_of_magic",
+          "pool": "sorcery_points"
+        }
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "font_of_magic pool 'sorcery_points' recharge is 'short_rest'; the sim sets long_rest",
+  "dels": [
+    [
+      "features",
+      0,
+      "effect"
+    ]
+  ]
+}

@@ -942,6 +942,24 @@ bool carries_shield(const Json& doc) {
 
 std::optional<rules5e::DamageType> damage_type_from_name(const std::string& s) { return damage_type(s); }
 
+std::optional<int> cr_x8_of(const Json& r) {
+    if (r.is_number_integer()) {
+        const int64_t v = r.get<int64_t>();
+        if (v < 0 || v > 30) return std::nullopt;
+        return int(v) * 8;
+    }
+    if (!r.is_string()) return std::nullopt;
+    const std::string t = r.get<std::string>();
+    if (t == "0") return 0;
+    if (t == "1/8") return 1;
+    if (t == "1/4") return 2;
+    if (t == "1/2") return 4;
+    if (t.empty() || t.size() > 2 || t.find_first_not_of("0123456789") != std::string::npos) return std::nullopt;
+    const int v = std::stoi(t);
+    if (v > 30) return std::nullopt;
+    return v * 8;
+}
+
 std::optional<std::string> ContentLibrary::add(const Json& doc, const std::string& schema_type, const std::string& pack_id,
                                                  uint32_t declared_version) {
     Archetype a;
@@ -956,6 +974,20 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     c.ac = int8_t(geti(doc.at("armor_class"), "value"));
     c.hp = c.hp_max = int16_t(geti(doc.at("hit_points"), "average"));
     c.speed_ft = uint8_t(geti(doc.at("speed"), "walk"));
+    // R-G12 (7.2q): facts build_form checks (CR, fly / swim speeds, character level). Data only: nothing reads them unless a
+    // transform is requested.
+    a.fly_ft = uint16_t(std::max(0, geti(doc.at("speed"), "fly", 0)));
+    a.swim_ft = uint16_t(std::max(0, geti(doc.at("speed"), "swim", 0)));
+    if (auto ch = doc.find("challenge"); ch != doc.end() && ch->is_object())
+        if (auto rt = ch->find("rating"); rt != ch->end())
+            if (auto x = cr_x8_of(*rt)) a.cr_x8 = int16_t(*x);
+    if (schema_type == "character") {
+        int lv = 0;
+        for (const Json& k : doc.value("classes", Json::array()))
+            if (k.is_object()) lv += std::max(0, geti(k, "level"));
+        if (lv == 0) lv = geti(doc, "level", 0);
+        a.char_level = uint8_t(std::clamp(lv, 0, 20));
+    }
     c.proficiency_bonus = int8_t(geti(doc, "proficiency_bonus", 2));
     // R-G11 rules PR 2 creature facts (CONTENT_CONVENTIONS 4.6; schema keys from #142): Stinking Cloud's no_breath automatic
     // success, Moonbeam's shapechanger disadvantage, Spirit Guardians' evil damage type. Default false.
@@ -999,6 +1031,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         const std::string sz = doc.value("size", "medium");
         for (int i = 0; i < 6; ++i) if (sz == sizes[i]) a.size = CreatureSize(i);
         a.footprint = inert.count("size") ? uint8_t(1) : footprint_of(a.size);
+        // R-G12 sim: the creature itself carries its size (Heavy weapons, forms); an inert size stays Medium, matching footprint 1.
+        if (!inert.count("size")) c.size = rules5e::Size(uint8_t(a.size));
     }
     if (!inert.count("creature_type") && doc.contains("type")) {
         auto ct = creature_type_of(doc.value("type", ""));
@@ -1020,6 +1054,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             add_tag(r);
             if (r != "half_elf" && r.size() >= 3 && r.compare(r.size() - 3, 3, "elf") == 0) add_tag("elf");
         }
+        // EC swarm: the "swarm" tag turns on the SRD Swarm trait
+        if (std::find(c.tags.begin(), c.tags.end(), rules5e::spell_id_of("swarm")) != c.tags.end()) a.swarm = c.no_regain_hp = true;
     }
     // 0 = parse the document's own $schema tag (never "latest"); a missing, unparsable or other-type tag means no refusal.
     uint32_t declared = declared_version;
@@ -1151,6 +1187,12 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         at.type = *type;
         at.ranged = ranged;
         at.finesse = false;
+        // EC swarm: "half_hp_damage": "1d6" replaces component 1's dice while the attacker has half its HP or fewer
+        if (auto hh = act.find("half_hp_damage"); hh != act.end()) {
+            auto hd = hh->is_string() ? parse_dice(hh->get<std::string>()) : std::nullopt;
+            if (!hd || hd->count == 0) return a.id + ": bad half_hp_damage in action " + act.value("id", "?");
+            at.half_hp_damage = *hd;
+        }
         // R-G7: only the grip bits Great Weapon Fighting reads (two_handed, versatile) are carried; other properties (loading,
         // heavy, finesse, ...) stay off so existing behaviour and goldens do not move.
         if (auto ps = act.find("properties"); ps != act.end() && ps->is_array())
@@ -1404,6 +1446,34 @@ std::vector<std::string> ContentLibrary::load(const assets::PackSet& packs) {
 
 std::vector<std::string> ContentLibrary::load_pack(const std::string& pack_dir) {
     return load(assets::PackSet::from_pack_dir(pack_dir));
+}
+
+std::optional<std::string> ContentLibrary::add_summon_spell(const rules5e::SpellDef& def, SummonOptions options) {
+    if (def.kind != rules5e::SpellEffectKind::Summon) return def.content_id + ": not a Summon spell";
+    if (options.archetypes.empty() || options.archetypes.size() > 255) return def.content_id + ": summon needs 1..255 archetypes";
+    for (const auto& id : options.archetypes)
+        if (!find(id)) return def.content_id + ": unknown summon archetype '" + id + "'";
+    if (spells_->find(def.id) || summons_.count(def.id)) return def.content_id + ": duplicate spell id";
+    if (options.max_count && *options.max_count == 0) return def.content_id + ": summon max_count must be 1..255";
+    rules5e::SpellDef d = def;
+    d.summon.max_count = options.max_count ? *options.max_count : uint8_t(255);   // absent = no cap
+    if (options.max_count && options.table == SummonOptions::Table::CrBand)
+        for (unsigned lvl = std::max<unsigned>(def.level, 1); lvl <= 9; ++lvl) {
+            const unsigned mult = lvl >= 9 ? 4 : lvl >= 7 ? 3 : lvl >= 5 ? 2 : 1;
+            for (unsigned n : {1u, 2u, 4u, 8u})
+                if (n * mult > *options.max_count)
+                    warnings_.push_back(def.content_id + ": summon max_count " + std::to_string(*options.max_count) +
+                                        " clips the CR band count " + std::to_string(n * mult) + " at slot level " +
+                                        std::to_string(lvl));
+        }
+    spells_->add(d);
+    summons_[def.id] = std::move(options);
+    return std::nullopt;
+}
+
+const SummonOptions* ContentLibrary::summon_options(uint32_t spell_id) const {
+    auto it = summons_.find(spell_id);
+    return it == summons_.end() ? nullptr : &it->second;
 }
 
 const Archetype* ContentLibrary::find(const std::string& id) const {
