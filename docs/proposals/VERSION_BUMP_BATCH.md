@@ -2138,6 +2138,97 @@ Hand-off (sim, EC):
 - **Reactions.** Nothing to read: the marker is enforced inside rules' `may_react`. Sim's reaction UI / AI should not offer a
   reaction when rules wouldn't (it already polls rules' windows).
 
+### 7.2v Control conditions (rules side) and hand-off
+
+SRD 5.1 Turn Undead (with the Destroy Undead hook), Command, Fear and Hideous Laughter. Rules restricts the controlled
+creature's legal actions (`step` refuses, `legal_actions` drops); sim picks the path. All new fields are appended; content that
+uses none of them hashes and replays as before (no golden moved).
+
+- **Data (SpellDef, kind Save).** `control` (`ControlKind`: Turned, Fear, Laughter, Command), `control_excluded` (creature-type
+  mask, no save: Command's undead), `control_min_int` (Hideous Laughter 4: Intelligence 4 or less is unaffected),
+  `destroy_cr8_max` (Destroy Undead: CR × 8, CR 1/2 = 4). `Combatant::cr8` (-1 = unknown, never destroyed). New
+  `RepeatSave` arms: `EndOfTurnUnseen` (Fear) and `EndOfTurnOrDamageAdv` (Hideous Laughter).
+- **Turned** (Turn Undead: `target_types` undead, Wis save, 10 rounds, `ends_on_damage`). No SRD condition: the effect has
+  `no_condition`. Allowed: Move, Dash, Dodge, StandUp, Attack `special` 4 (escape), EndTurn; no reactions (`may_react`).
+  Sim: moves it away so it ends no closer than 30 ft when it can, only Dodges when there is nowhere to move, and supplies
+  the targets (undead within 30 ft that can see or hear the cleric).
+- **Destroy Undead.** On a failed save an undead with `cr8 <= destroy_cr8_max` is killed instead of turned. Hook only: T&C
+  wires the cleric 5 feature (a shipped-class leftover) and the CR table (1/2 at 5, 1 at 8, ...).
+- **Command.** `ActionRequest::command_word` (1 Approach, 2 Drop, 3 Flee, 4 Grovel, 5 Halt) is required on a Command cast
+  and refused elsewhere; log_hash **0xC4** (sim fold added). The effect lasts to the end of the target's next turn
+  (`EndOfTargetNextTurn`). On that turn: Approach / Flee = Move, Dash, StandUp, EndTurn (sim: toward the caster, stopping
+  within 5 ft, or away by the fastest means); Drop / Halt = EndTurn only (dropped items are not modelled); Grovel = prone at the
+  start of the turn, then EndTurn only. Undead are unaffected; language and "obviously harmful" commands are not modelled.
+  `legal_actions` lists a Command cast once per word.
+- **Fear.** Frightened (`applies_condition`), concentration, cone from data. While frightened by it: Move, Dash, Dodge, StandUp,
+  EndTurn (sim: Dash away by the safest route). End-of-turn Wis save only when `EncounterHooks::can_see(target, caster)` is
+  false; no hook = seen (no save). Dropped items are not modelled.
+- **Hideous Laughter.** Prone plus incapacitated (`has_also`, only when this effect added Incapacitated, so its end never strips another source's), can't StandUp; when it ends the creature stays prone (stands up as usual). Save at the end of each turn and each time it takes
+  damage, with advantage on the damage save.
+- **Hashing.** Control effects fold into `leftover_digest` (Combat::hash 0xAA) after a 0xFE separator, only while one exists:
+  `spell_id`, `caster`, `target` u32, `control`, `command_word` bytes. The rest of the effect (timer, dc, repeat save) is in
+  the existing effect digests. No new Combat::hash tag.
+- **Hand-off (EC / sim).** Path choice for Turned / Fear / Approach / Flee; the AI should pick a `command_word`; the Turn
+  Undead target list; `can_see` for Fear. **T&C:** loader keys (below) and the cleric's Channel Divinity / Destroy Undead.
+- **Schema keys (loaded; spell@1 save effect, defs in common@2, additive, no version bump):** `control` (`turned` | `fear` |
+  `laughter` | `command`; first effect only), `control_excludes_creature_types` (array), `control_min_int` (int 1-30),
+  `destroy_undead_max_cr8` (CR × 8: 4, 8, 16, 24, 32), `repeat_save` arms `end_of_turn_unseen` and
+  `end_of_turn_or_damage_advantage`. A save effect may carry `control` instead of damage / condition. Monster
+  `challenge.rating` maps to `Combatant::cr8` (sim content.cpp).
+
+### 7.2w Grab and contain (rules side) and hand-off
+
+SRD 5.1 gelatinous cube (Engulf, Transparent), giant toad (Swallow), the Net, and the Web. Built on the existing restrain,
+escape (`ActionRequest::special` 4), destructible-object (special 6, EC #174) and delayed-damage machinery. No new hash tag.
+
+- **Data** (SpellDef and SpellEffect, appended): `contain` (1 engulf, 2 swallow), `contain_dice` / `contain_damage_type`
+  (damage at the start of each of the container's turns), `condition_max_size` (Size; -1 = any). A Save effect may now
+  carry `escape_dc` (Engulf), like ApplyCondition already did (Web).
+- **Engulf** (Save, Dex): fail = initial damage (the effect's dice) + restrained, contained (`ActiveSpellEffect::contain` 1,
+  `caster` = the cube), escape with an action, a Strength check vs 12. A target above `condition_max_size` gets no save and
+  no effect. Not blinded and no total cover. Sim: moves the engulfed creature with the cube and pushes a creature that
+  succeeds out of the cube's space (5 ft back or aside). "Can't breathe" (suffocation) is not modelled in an encounter.
+- **Swallow** (an ApplyCondition rider of the bite; Medium or smaller): restrained and blinded (blinded is the effect's own
+  only if the effect added it), no escape check. **Total cover from everything outside**: rules returns Cover::Total in
+  `cover_of` for any source other than the container (with or without `EncounterHooks::cover`), so attacks and
+  targeted effects are refused and areas skip it. Sim's cover hook needs no change, but should not draw the swallowed
+  creature's token. `container_of(s, id)` is public for sim.
+- **Turn-start acid / release.** At the start of the container's turn, each contained creature takes `contain_dice`
+  (damage_when 3, rolled at that moment). A dead container frees what it holds: from `check_end` after a step, and at the
+  start of each turn (when sim killed it outside a step).
+- **Net** (a ranged attack_effect with an apply rider): `max_size` large, `escape` DC 10, `object` AC 10, 5 HP, immune to
+  every type except slashing. This uses EC #174's object machinery with no rules change beyond `max_size`. The SRD's "one
+  attack per action with a net" belongs to the action's content.
+- **Web**: EC #174 already provides the escape check (DC 12) and break-free by damage (AC 10, 5 HP, fire vulnerability). No
+  change here.
+- **Transparent** (a common@2 trait, closed object `{kind: "transparent", dc}`; `dc` required, integer 1..30): the loader
+  sets `Combatant::transparent_dc` (highest wins). Monsters only: the loader and validator refuse it on a character; the
+  validator warns when a monster declares it more than once. Sim compares the dc with an observer's Perception when it sets
+  up surprise, while the cube has neither moved nor attacked. Rules does not track "moved".
+- **Regurgitation** (Swallow): damage the swallowed creature deals to its container is counted per turn
+  (`ActiveSpellEffect::container_damage`). At the end of every turn in which that damage occurred, if it reached `regurgitate_damage` (default
+  30), the container makes a Con save vs `regurgitate_dc` (behir 14, purple worm 21; 0 = never, e.g. the giant toad). On a
+  fail the effect ends and the creature is prone; sim places it in an unoccupied tile within 10 ft. The counter resets at
+  the end of each turn.
+- **One at a time**: a container with a Swallow already holding a creature refuses a second (no effect, no save).
+- **Exit markers**: `EncounterState::contain_exits` (container, creature, kind), cleared at the start of each step: 1 =
+  released because the container died (a swallowed creature is left prone), 2 = regurgitated (prone, within 10 ft), 3 =
+  succeeded on the Engulf save (sim pushes it 5 ft out of the cube's space). This is derived state, so no event schema bump.
+  Gap: the SRD lets the creature choose not to be pushed (and then be engulfed); sim always pushes.
+- **Formless**: the `formless` monster tag sets `Combatant::formless`; an apply with `excludes_formless` (the Net) has no
+  effect on it.
+- **Loader errors**: `max_size` on a save_effect without `contain` is an error; so is an invalid `contain` / `max_size`.
+- **Hashing**: containment is derived from the SpellDef. Its damage state (`damage_when` 3, dice, type) folds under the
+  existing Combat::hash 0xAC with the other damage-carrying effects, plus `container_damage` (u16) for `damage_when` 3. The
+  Engulf escape dc is derived from the SpellDef and not hashed, and restrained / blinded are combatant conditions. No
+  new tag; goldens are unchanged.
+- **Content keys** (common@2 `apply`, additive, no version bump): `max_size` (tiny ... gargantuan), `contain`
+  {`kind` engulf | swallow, `damage` {`dice`, `type`}, `regurgitate` {`dc`, `damage` (default 30)} (swallow only)},
+  `excludes_formless` (bool); `escape` is now read on save_effect apply[] too. A swallow entry needs no `escape`. New trait
+  arm `transparent_effect`. Validator updated (checks_v4).
+- **Schema changelog**: the common/v2 keys above are additive, so there is no `$id` or version bump. Older content still
+  loads unchanged, and no shipped save_effect carried `escape` before this.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain

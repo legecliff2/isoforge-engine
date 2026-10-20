@@ -1,0 +1,20 @@
+{
+  "base": "monsters/wolf.json",
+  "sets": [
+    [
+      [
+        "traits",
+        2
+      ],
+      {
+        "id": "transparent",
+        "name": "Transparent",
+        "effect": {
+          "kind": "transparent"
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "transparent: dc must be an integer 1..30"
+}

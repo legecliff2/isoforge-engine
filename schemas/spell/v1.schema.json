@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://isoforge.dev/schemas/spell/v1.schema.json",
   "title": "spell@1",
-  "description": "SRD 5.1 spell. Rules-facing data: rules5e_content maps it to rules5e::SpellDef (engine/rules/content). 'effects' is an array of one or more effects (reaction kinds stand alone; hp_pool, dispel, revive, end_condition and sustained_damage are first-effect only; a zone is the first effect only; extra effects resolve in order over the same targets and may use applies_to: affected). Cross-field rules are in tools/validate (check_spell) and mirrored by the loader. Integers only (\u00a74.3).",
+  "description": "SRD 5.1 spell. Rules-facing data: rules5e_content maps it to rules5e::SpellDef (engine/rules/content). 'effects' is an array of one or more effects (reaction kinds stand alone; hp_pool, dispel, revive, end_condition and sustained_damage are first-effect only; a zone is the first effect only; extra effects resolve in order over the same targets and may use applies_to: affected). Cross-field rules are in tools/validate (check_spell) and mirrored by the loader. Integers only (§4.3).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -621,6 +621,11 @@
                 "required": [
                   "condition"
                 ]
+              },
+              {
+                "required": [
+                  "control"
+                ]
               }
             ],
             "dependentRequired": {
@@ -632,6 +637,15 @@
               ],
               "repeat_save": [
                 "condition"
+              ],
+              "control_excludes_creature_types": [
+                "control"
+              ],
+              "control_min_int": [
+                "control"
+              ],
+              "destroy_undead_max_cr8": [
+                "control"
               ]
             },
             "properties": {
@@ -655,12 +669,35 @@
                 "$ref": "../common/v1.schema.json#/$defs/condition"
               },
               "repeat_save": {
-                "enum": [
-                  "start_of_turn",
-                  "end_of_turn",
-                  "on_damage"
+                "anyOf": [
+                  {
+                    "enum": [
+                      "start_of_turn",
+                      "end_of_turn",
+                      "on_damage"
+                    ]
+                  },
+                  {
+                    "$ref": "../common/v2.schema.json#/$defs/control_repeat_save"
+                  }
                 ],
                 "description": "When the target repeats the save; success ends the condition."
+              },
+              "control": {
+                "$ref": "../common/v2.schema.json#/$defs/control_kind"
+              },
+              "control_excludes_creature_types": {
+                "$ref": "../common/v1.schema.json#/$defs/creature_types",
+                "description": "7.2v: no save, no effect on these (Command: undead)."
+              },
+              "control_min_int": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 30,
+                "description": "7.2v: a target with Intelligence at most this is unaffected (Hideous Laughter 4)."
+              },
+              "destroy_undead_max_cr8": {
+                "$ref": "../common/v2.schema.json#/$defs/destroy_undead_max_cr8"
               },
               "description": {
                 "type": "string"

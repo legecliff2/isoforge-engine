@@ -1,0 +1,35 @@
+{
+  "base": "monsters/wolf.json",
+  "sets": [
+    [
+      [
+        "traits",
+        2
+      ],
+      {
+        "id": "transparent",
+        "name": "Transparent",
+        "effect": {
+          "kind": "transparent",
+          "dc": 15
+        }
+      }
+    ],
+    [
+      [
+        "traits",
+        3
+      ],
+      {
+        "id": "transparent_2",
+        "name": "Transparent",
+        "effect": {
+          "kind": "transparent",
+          "dc": 15
+        }
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "transparent declared more than once"
+}

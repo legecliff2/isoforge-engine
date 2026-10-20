@@ -1,0 +1,62 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.spike_growth",
+  "name": "Spike Growth",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "The ground in a 20-foot radius centered on a point within range twists and sprouts hard spikes and thorns. The area becomes difficult terrain for the duration. When a creature moves into or within the area, it takes 2d4 piercing damage for every 5 feet it travels. The transformation of the ground is camouflaged to look natural. Any creature that can't see the area at the time the spell is cast can make a Wisdom (Perception) check against your spell save DC to recognize the terrain as hazardous before entering it.",
+  "level": 2,
+  "school": "transmutation",
+  "classes": [
+    "druid",
+    "ranger"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 150
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "Seven sharp thorns or seven small twigs, each sharpened to a point"
+    }
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 10,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "zone",
+      "zone": {
+        "shape": "cylinder",
+        "size_ft": 20,
+        "height_ft": 20,
+        "anchor": "point",
+        "flags": [
+          "difficult"
+        ],
+        "triggers": [
+          {
+            "on": "zone_move_within",
+            "group": 0,
+            "effect": {
+              "kind": "damage",
+              "damage": {
+                "dice": "2d4",
+                "type": "piercing"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

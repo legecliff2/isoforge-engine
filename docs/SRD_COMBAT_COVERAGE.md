@@ -16,11 +16,11 @@ Ranked by combat impact x frequency (audit of main at ac7e083, 2026-10-20). Size
 | 4 | Spell backlog plus a refresh of SRD_SPELLS_DEFERRED.md | L | T&C | Many "deferred" spells (Bless, Bane, Shield of Faith, Mage Armor, Burning Hands, Sleep, Hunter's Mark) are expressible now. |
 | 5 | Vision, lighting, obscurement (darkvision, Darkness, Fog Cloud, unseen attacker / target) | L | after; Render & Platform may help | R-G13; zone flags exist, sight is not driven by light. |
 | 6 | Large creatures with a 2x2 space, size limits | L | EC | One tile per creature today; reach, OA geometry, grapple / shove size checks. |
-| 7 | Control conditions (Turn Undead "turned", Command, forced Dash, Hideous Laughter) | M | Rules | R-G8 leftovers; blocks Channel Divinity on the shipped cleric. |
+| 7 | Control conditions (Turn Undead "turned", Command, forced Dash, Hideous Laughter) | M | Rules | Rules done (7.2v) and loader keys done; sim paths (EC) and Channel Divinity (T&C) pending. Gaps (not modelled): Command's "doesn't understand your language" and "directly harmful" exclusions; dropping held items for Command Drop and Fear; Turn Undead's 30 ft / see-or-hear target filter is sim's. |
 | 8 | Next-roll riders (Guiding Bolt, Vicious Mockery, Ray of Frost, Shocking Grasp, Chill Touch) | S-M | Rules | Largely expressible with timed modifiers; verify and fill the gaps. |
 | 9 | Fly / swim / climb speeds, Flyby | M | EC | Sim reads only `speed.walk`. |
 | 10 | Shipped-class leftovers (Disciple of Life, Preserve Life, Destroy Undead, Archery / Defense styles) | S-M | T&C | Small gaps on classes already shipped. |
-| 11 | Grab and contain (Engulf, Swallow, net, web escape / break) | M | Rules | Moderately common at CR 0-5. |
+| 11 | Grab and contain (Engulf, Swallow, net, web escape / break) | M | Rules | Rules + content keys done (7.2w): `contain` engulf / swallow, `max_size`, save_effect `escape`; Web / Net reuse EC #174's escape + object. Also done: regurgitation (30+ damage from inside, Con save at a per-monster DC), one swallowed creature at a time, prone release on death, exit markers (`contain_exits`), Net excludes formless, Transparent trait (`{kind: transparent, dc}`, monsters only). Pending: sim moves contained creatures with the container, placement on regurgitation and the cube's push-back (EC), packs (T&C). Gaps: suffocation is not modelled within an encounter; the creature cannot choose to stay engulfed on a successful save. |
 | 12 | Mounted and underwater combat | L | last | Rare at levels 1-5. |
 
 ## 0. How to read this
@@ -182,9 +182,9 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Life domain spells always prepared (Bless, Cure Wounds, Lesser Restoration, Spiritual Weapon, Beacon of Hope, Revivify) | 1-5 | DATA | Authored `spells_known`; availability of each spell per section 8. |
 | Disciple of Life (healing spells heal an extra 2 + spell level) | 1 | NEW | Heal-spell bonus rider on the caster (R-G4). |
 | Channel Divinity (1/rest at L2, 2/rest at L6) | 2 | NEW (wiring) | Pool + `FeatureSpec` pool spend done in rules (#91, R-G5); feature compile and per-effect content pending. |
-| Channel Divinity: Turn Undead | 2 | NEW | WIS save or turned (frightened-like, must flee, cannot take reactions) for 1 minute; area 30 ft (R-G5, R-G8, R-G10). |
+| Channel Divinity: Turn Undead | 2 | NEW (wiring) | Rules done (7.2v): `ControlKind::Turned` (Wis save, 10 rounds, ends on damage; Move / Dash / Dodge / escape only, no reactions). Pending: sim path and target list (EC), Channel Divinity feature and loader keys (T&C). |
 | Channel Divinity: Preserve Life | 2 | NEW | Distribute a 5 x level HP pool among creatures within 30 ft, up to half max HP each (R-G5, R-G10, R-G15). |
-| Destroy Undead (CR 1/2 at L5) | 5 | NEW | Turn Undead outcome threshold (R-G5). |
+| Destroy Undead (CR 1/2 at L5) | 5 | NEW (wiring) | Rules hook done (7.2v): `SpellDef::destroy_cr8_max` vs `Combatant::cr8`. T&C wires the feature. |
 | Ability Score Improvement | 4 | DATA | Authored. |
 
 ### 6.3 Wizard (full; School of Evocation)
@@ -341,7 +341,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Burning Hands | DATA | Cone template computed by sim (#78); dice/save/upcast are data. |
 | Charm Person | NEW | Charmed with source (R-G8). |
 | Color Spray | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::HpPool` with Blinded; end of the caster's next turn approximated by 1 round. Loader and sim done (EC #120): `hp_pool {dice, condition}`, the timer from the spell's `duration` (`rounds 1` = 1 round); area targets from an aimed `Command` (self cone). No pack ships it yet; schema / validator pending (T&C). |
-| Command | NEW | Forced action next turn (R-G8). |
+| Command | NEW (wiring) | Rules done (7.2v): `ActionRequest::command_word` (log_hash 0xC4), Approach / Drop / Flee / Grovel / Halt on the target's next turn, undead unaffected. Pending: sim path + AI word, loader (T&C). |
 | Cure Wounds | DATA | Shipped (`heal`, excludes undead/construct). |
 | Divine Favor | NEW (wiring) | Rules done (#89): Damage modifier with `damage_type` radiant and a 1d4 die, concentration (weapon attacks only). Spell kind pending (R-G3). |
 | Entangle | NEW | Area zone + restrained (R-G10, R-G11). |
@@ -355,7 +355,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Healing Word | DATA | `heal`, `casting_time bonus_action`, range 60, `upcast.dice`. |
 | Hellish Rebuke | NEW (wiring) | Rules done (#87): `Damaged` window + `Retaliate` reaction resolving a synthetic Save SpellDef against the damager (R-G7). Content/hook compile pending. |
 | Heroism | NEW (wiring) | Rules done (follow-up): `TempHp` modifier with `per_turn`; the frightened immunity is not modelled (R-G3). |
-| Hideous Laughter | NEW | Prone + incapacitated (two conditions) and save-on-damage repeat (R-G2). |
+| Hideous Laughter | NEW (wiring) | Rules done (7.2v): prone + incapacitated, no standing, Int 4 or less unaffected, save at end of turn and on damage (advantage). Pending: loader (T&C). |
 | Hunter's Mark | NEW (wiring) | Rules done (#89, follow-up): Damage modifier (1d6, concentration, `applies_to` self) with the general `when` scope for conditions on the target; the "marked target only" scope and the move-the-mark option are not modelled (R-G4). |
 | Inflict Wounds | DATA | Melee `spell_attack`, 3d10 necrotic, `upcast.dice`. |
 | Mage Armor | NEW (wiring) | Rules done (follow-up): `Ac` modifier with `ac_floor` 13 + Dex (`ac_floor_dex`); the loader gates "not wearing armor". Spell kind pending (R-G3). |
@@ -420,7 +420,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Counterspell | DATA | Shipped (`counter`). |
 | Dispel Magic | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::Dispel` (auto at or below the slot level, else spellcasting check vs 10 + level). Loader done (EC #120, check form in #126): `dispel {check: {ability: spellcasting, dc_base, plus: spell_level}}` (same object as `counter`; `dc_base` required). No pack ships it yet; schema / validator pending (T&C). |
 | Daylight | NEW | Light/obscurement dispelling (R-G13). |
-| Fear | NEW | Cone, frightened, drop items, forced Dash (R-G10, R-G8). |
+| Fear | NEW (wiring) | Rules done (7.2v): frightened, Move / Dash / Dodge only, end-of-turn save only out of the caster's sight (`can_see`). Drop items not modelled. Pending: sim path, loader (T&C). |
 | Fireball | DATA | Sphere template computed by sim (#78); 8d6 DEX half, `upcast.dice 1` are data. |
 | Fly | NEW | Movement mode (T&C-G12, T&C-G14). |
 | Haste | NEW (wiring) | Marker `ModStat::Haste` + existing AC / Dex-save advantage / Speed x2 modifiers; extra action `TurnBudget::haste_action` / `ActionRequest::haste_action` (one weapon attack, Dash, Disengage, Hide); lethargy when it ends (small leftovers, VERSION_BUMP_BATCH 7.2j). Use an Object not modelled. |
@@ -481,7 +481,7 @@ Stat-block data: `monster@3` carries abilities, AC, HP average, speed (walk, fly
 | Incorporeal Movement | specter, ghost, will-o'-wisp | NEW | Movement through creatures/objects (T&C-G12, T&C-G14). |
 | Frightful gaze/visage (save or frightened) | ghost (Horrifying Visage), mummy (Dreadful Glare) | NEW | Save action + condition with source (T&C-G4, R-G8). |
 | Leadership (limited-use buff action: allies add 1d4 to attacks and saves for 1 minute) | knight | NEW (wiring) | Rules done (#89, #91): `AlliesWithin30` modifiers (1d4 on AttackRoll and Save, timed) through a `feature_modifiers` hook, with a per-day or pool use. Compile pending (T&C-G4, R-G3). |
-| Engulf / Swallow | gelatinous cube, giant toad | NEW | Contained state (R-G8). |
+| Engulf / Swallow | gelatinous cube, giant toad | NEW (wiring) | Rules done (7.2w): contained state (`ActiveSpellEffect::contain`, `container_of`), acid at the start of the container's turn (damage_when 3, 0xAC), freed (prone if swallowed) when it dies; regurgitation; one at a time; Engulf escape DC 12 (special 4), Swallow blinded + total cover from outside (rules `cover_of`). Content keys done; sim movement / push-back pending (EC). |
 | Petrifying Gaze / Touch (delayed condition progression) | basilisk, cockatrice | NEW (wiring) | `SpellDef::escalates` / `escalate_to` / `escalate_margin`: restrained, petrified on the failed repeat save (or at once when failing by the margin) (small leftovers, VERSION_BUMP_BATCH 7.2j). Gaze trigger (7.2p): `Combatant::gazes`, turn-start `GazeResponse` (`gaze_seen` sim fact, `avert_gaze` caller input, log_hash 0xBB; averted state Combat::hash 0xAE), averted eyes = gazer unseen (disadvantage against it, its attacks with advantage). Medusa (margin 5) and basilisk covered. Sim (7.2p EC): loader `gaze` feature kind (synthetic Save SpellDef + `Combatant::Gaze`), `Combat::gaze_seen` (line of sight, within `range_ft`, not Blinded, gazer not Invisible; one fact for both directions until R-G13) filled at submit, folds 0xBB / 0xAE, AI / headless driver answer without averting (surprised turn: `GazeResponse`, then `EndTurn`). Pending: schema (T&C). Cockatrice's touch is an on-hit rider, not a gaze. |
 | Teleport bonus action | blink dog | NEW (wiring) | Innate `Teleport` effect (`max_feet` 40) (R-G9, VERSION_BUMP_BATCH 7.2k); content wiring pending. |
 | Shapechanger | werewolf, doppelganger | NEW (wiring) | R-G12 rules PR 1 (7.2q): `FeatureSpec{form = Shapechanger}` form swap with one HP pool, action `Revert`, reverts on death; Polymorph refuses shapechangers (D13). Sim done (R-G12 sim PR 1): trait kind `shapechanger {cost, forms: [{id, name, size?, armor_class?, speed?, actions?, creature_type?}]}` (needs the fact `shapechanger: true`; `speed` keeps its walk, `actions` drops the other own actions' attacks), `build_form` from the creature's own block with the listed overrides, one HP pool; the AI keeps the spawn form. T&C schema: #163. |
