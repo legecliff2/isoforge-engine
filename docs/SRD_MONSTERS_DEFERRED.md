@@ -13,11 +13,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | | count |
 |---|---|
 | inventory candidates | 30 |
-| authored now as `monster@4` | 30 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153) |
+| authored now as `monster@4` | 31 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172) |
 | goblin (already shipped, left at `monster@3`) | 1 |
-| deferred (mechanic not expressible) | 1 |
+| deferred (mechanic not expressible) | 0 |
 
-## Authored (30, all `monster@4`)
+## Authored (31, all `monster@4`)
 
 | monster | CR | mechanics carried as data | notes |
 |---|---|---|---|
@@ -48,7 +48,8 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Hobgoblin | 1/2 | Martial Advantage as `on_event hit` once per turn (`weapon_attack` + `ally_near_target`, +2d6) (#158); longsword (1h / 2h), longbow | the sim's ally fact skips incapacitated allies (the SRD's "isn't incapacitated" clause) |
 | Bugbear | 1 | Surprise Attack as `on_event hit` (`target_surprised`, +2d6) (#158); morningstar, javelin (melee and thrown) | Brute is baked into the printed dice (description only). **partial**: "during the first round" relies on surprise lasting only for round 1 |
 | Ghoul | 1 | claws `on_hit save_condition` (Con DC 10, paralyzed 10 rounds, repeat at end of turn) gated by rider `when` [`not_creature_type undead`, `not_target_tag elf`] (#170: a character race ending in `elf` adds the `elf` tag, `half_elf` does not); bite | |
-| Giant Spider | 1 | Web as `attack_effect` (ranged +5, 30 ft, restrained with a Str DC 12 escape, recharge 5-6) (#170); bite + `on_hit save_condition` (Con DC 11, 2d8 poison, half) | **partial**: Web's long range (60 ft, disadvantage) isn't modelled (one `range_ft`); the webbing's own AC/hp/vulnerabilities, the bite's "stable but poisoned 1 hour and paralyzed" at 0 hp, and Spider Climb / Web Sense / Web Walker are description only |
+| Giant Spider | 1 | Web as `attack_effect` (ranged +5, 30/60 ft via `long_range_ft` (#174), restrained with a Str DC 12 escape, recharge 5-6) (#170); the webbing as `apply[].object` (AC 10, hp 5, vulnerable fire, immune bludgeoning / poison / psychic) (#174); bite + `on_hit save_condition` (Con DC 11, 2d8 poison, half) with `zero_hp` (stable, poisoned 600 rounds = 1 hour, paralyzed while poisoned) (#174) | Spider Climb / Web Sense / Web Walker are description only |
+| Swarm of Rats | 1/4 | `tags: ["swarm"]` (#172: shares spaces both ways, no healing / temp HP), `type: beast` (T&C-G15 convention for "swarm of Tiny beasts"), BPS resistances, 8 condition immunities; bites 2d6 with `half_hp_damage: "1d6"` (#172), reach 0 ft (SRD: a target in the swarm's space) | Keen Smell descriptive; Tiny openings: nothing to model (no sub-tile openings) |
 | Basilisk | 3 | Petrifying Gaze as trait effect `gaze` (7.2p, sim #153): 30 ft, Con DC 12, restrained, repeat save at the end of its turn, petrified on a failed repeat save (`escalates`, `escalate_margin` 0); bite with two damage components (piercing + poison) | **partial**: the reflection clause (it targets itself when it sees its reflection in bright light) and "until freed by greater restoration" are description only (no mirror / light model, no Greater Restoration). Averting the eyes and the sight check are the sim's (`GazeResponse`, `gaze_seen`) |
 | Medusa | 6 | Petrifying Gaze as `gaze` (Con DC 14, 30 ft, `escalate_margin` 5: failing by 5 or more petrifies at once; otherwise restrained, then petrified on a failed repeat save); Multiattack: snake hair + 2 shortswords, or 2 longbows; snake hair and longbow with a poison damage component | **partial**: as basilisk, the reflection curse is description only; proficiency bonus +3 (CR 6) |
 
@@ -61,13 +62,9 @@ Not set: `presentation` (the goblin has none; sprite assets for these monsters d
 Played: stats, attacks with every `damage[]` entry (#45), resistances / immunities / vulnerabilities / condition immunities (#45), `multiattack` options (#48/#59), `damage_mitigation` (#47/#58), `bonus_action_grant`, size footprint (#50/#55).
 Carried and validated but **not applied** (the registry reserves the `@4` kinds; the archetype lists them in `unsupported_features` and ignores them): `on_event` (Undead Fortitude, Rampage, Sneak Attack), `on_hit[]` riders (snake poison), `save_effect` actions with `usage` (Acid Breath). Until Engine Core lands the row 6 compile / row 9-10 trigger hooks these monsters play without those effects. No content change is needed when the hooks land.
 
-## Deferred (1)
+## Deferred (0)
 
-Gap ids: `T&C-Gn` = Tools & Content, `R-Gn` = Rules (see the crosswalk in the coverage doc).
-
-| monster (`srd51.monster.<id>`) | CR | missing mechanic (re-checked at `cfb5eed`) | gap id |
-|---|---|---|---|
-| `srd51.monster.swarm_of_rats` | 1/4 | Swarm: shares space with other creatures (T&C-G14), cannot regain HP / gain temp HP; bite damage 2d6 or 1d6 at half HP or fewer (no HP-conditional damage swap; `self_hp_below` is strict and has no negation); creature type "swarm of Tiny beasts" is not in the `creature_type` enum (`beast` + tag `swarm` is the convention, T&C-G15) | T&C-G7, T&C-G14, T&C-G15 |
+None. The last deferred monster, `srd51.monster.swarm_of_rats` (T&C-G7, T&C-G14, T&C-G15), was authored after sim #172 (swarm tag, `half_hp_damage`).
 
 ### Re-check at `cfb5eed` (2026-10-19)
 
