@@ -1,0 +1,15 @@
+{
+  "base": "monsters/giant_spider.json",
+  "sets": [
+    [
+      [
+        "actions",
+        1,
+        "half_hp_damage"
+      ],
+      "1d6"
+    ]
+  ],
+  "severity": "error",
+  "expect": "/actions/1: 'half_hp_damage' is not one of ['id', 'name', 'kind', 'attack'"
+}

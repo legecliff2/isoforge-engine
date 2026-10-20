@@ -672,7 +672,6 @@ RG12_CASES = [
     ("ws_bad_cr", B, [(WSF + ["max_cr_by_level", 0, "max_cr"], "1/3")], [], "'1/3'"),
     ("ws_no_fly_below_0", B, [(WSF + ["no_fly_below"], 0)], [], "0 is less than the minimum of 1"),
     ("ws_humanoid_flag_on_itself", B, [(["features", 1, "requires_humanoid_form"], True)], [], "requires_humanoid_form on the wild_shape feature itself"),
-    ("warn_ws_reserved", B, [], [], "unknown effect kind 'wild_shape'"),
     ("warn_ws_pool_max", B, [(["resources", 1, "max"], 3)], [], "wild_shape: pool 'wild_shape' max should be 2"),
     ("warn_ws_above_every_row", B, [(WSF + ["forms", 3], "srd51.monster.axe_beak"), (WSF + ["max_cr_by_level"], [{"level": 2, "max_cr": "1/8"}]),
                                     (WSF + ["forms"], [WOLF])], [], f"wild_shape: form '{WOLF}' above every max_cr_by_level row"),
@@ -690,7 +689,9 @@ RG12_CASES = [
     ("sc_form_needs_name", D, [], [SCF + ["forms", 0, "name"]], "'name' is a required property"),
     ("warn_sc_changes_nothing", D, [(SCF + ["forms", 1], {"id": "same", "name": "Same"})], [], "shapechanger: form 'same' changes nothing"),
     ("warn_sc_no_actions", D, [(SCF + ["forms", 0, "actions"], [])], [], "shapechanger: form 'wolf' allows no actions"),
-    ("warn_sc_reserved", D, [], [], "unknown effect kind 'shapechanger'"),
+    # EC #176: the loader's form key list (id, name, size, armor_class, speed, actions, creature_type); speed_walk is refused
+    ("sc_form_speed_walk", D, [(SCF + ["forms", 0, "speed_walk"], 30)], [], "speed_walk"),
+    ("sc_effect_extra_key", D, [(SCF + ["uses"], 1)], [], "uses"),
     # requires_humanoid_form
     ("warn_rhf_without_wild_shape", D, [(["traits", 0, "requires_humanoid_form"], True)], [], "requires_humanoid_form has no effect without wild_shape"),
     ("rhf_not_boolean", B, [(["features", 0, "requires_humanoid_form"], 1)], [], "is not of type 'boolean'"),
@@ -741,12 +742,12 @@ class RG12Transforms(unittest.TestCase):
     def test_druid_fixture_is_schema_valid(self):
         # extra/druid_4.json is the one wild_shape document the sim's end-to-end test (engine/core/sim/tests/
         # transforms_content_tests.cpp, "schema fixture") also loads, so the validator and the loader read the same keys.
-        # Only the reserved-kind warning remains until wild_shape leaves the validator's reserved list.
+        # wild_shape is a loaded kind since EC #176: no warning at all.
         d = dict(self.base)
         d["characters/druid_4.json"] = extra("druid_4.json")
         errs, warns = h.validate_docs(d)
         self.assertEqual(errs, [])
-        self.assertEqual([w for w in warns if "unknown effect kind 'wild_shape'" not in w], [])
+        self.assertEqual(warns, [])
 
     def check(self, name, errs, warns, expect):
         if name.startswith("warn_"):
@@ -760,15 +761,15 @@ class RG12Transforms(unittest.TestCase):
             with self.subTest(name):
                 self.check(name, *h.validate_docs(self.docs(base, sets, dels)), expect)
 
-    def test_positive_only_reserved_warnings(self):
+    def test_positive_no_unknown_kind_warnings(self):
         # forms resolve in the dependency pack (srd51.core); the uses pool counts as referenced (no check-12 warning)
         errs, warns = h.validate_docs(self.docs(B, [(["features", 0, "requires_humanoid_form"], True)]))
         self.assertEqual(errs, [])
-        self.assertEqual([w for w in warns if "barbarian_1" in w and "unknown effect kind 'wild_shape'" not in w], [])
+        self.assertEqual([w for w in warns if "barbarian_1" in w], [])   # EC #176: wild_shape is loaded, no unknown-kind warning
         errs, warns = h.validate_docs(self.docs(D))
         self.assertEqual(errs, [])
         dw = [w for w in warns if "red_dragon" in w]
-        self.assertTrue(any("unknown effect kind 'shapechanger'" in w for w in dw))
+        self.assertFalse(any("unknown effect kind" in w for w in dw), dw)   # EC #176: shapechanger is loaded
         # the trait reads the #141 boolean: its reserved warning is dropped
         self.assertFalse(any("shapechanger is reserved" in w for w in dw), dw)
 
@@ -806,6 +807,75 @@ class RG12Transforms(unittest.TestCase):
     def test_cr8(self):
         self.assertEqual([checks_v4.cr8(c) for c in ("0", "1/8", "1/4", "1/2", "1", "30")], [0, 1, 2, 4, 8, 240])
         self.assertIsNone(checks_v4.cr8("1/3"))
+
+
+
+
+# ---- extra_attack (EC #179, sim features.cpp apply_extra_attack) -----------------------------------------------------
+XA = ["features", 1]   # appended after the fixture's rage feature
+# (name, base, sets, dels, expected substring); "warn_" = valid with that warning
+XA_CASES = [
+    ("xa_missing", B, [(XA, _feat("extra_attack", {"kind": "extra_attack"}))], [], "test.v4.character.barbarian_1: extra_attack: attacks_per_action must be an integer 2..4"),
+    ("xa_one", B, [(XA, _feat("extra_attack", {"kind": "extra_attack", "attacks_per_action": 1}))], [], "extra_attack: attacks_per_action must be an integer 2..4"),
+    ("xa_five", B, [(XA, _feat("extra_attack", {"kind": "extra_attack", "attacks_per_action": 5}))], [], "extra_attack: attacks_per_action must be an integer 2..4"),
+    ("xa_string", B, [(XA, _feat("extra_attack", {"kind": "extra_attack", "attacks_per_action": "2"}))], [], "extra_attack: attacks_per_action must be an integer 2..4"),
+    ("xa_bool", B, [(XA, _feat("extra_attack", {"kind": "extra_attack", "attacks_per_action": True}))], [], "extra_attack: attacks_per_action must be an integer 2..4"),
+    ("xa_float", B, [(XA, _feat("extra_attack", {"kind": "extra_attack", "attacks_per_action": 2.5}))], [], "extra_attack: attacks_per_action must be an integer 2..4"),
+    ("xa_unknown_key", B, [(XA, _feat("extra_attack", {"kind": "extra_attack", "attacks_per_action": 2, "count": 2}))], [], "extra_attack: unknown key 'count'"),
+    ("xa_monster", D, [(["traits", 6], _feat("extra_attack", {"kind": "extra_attack", "attacks_per_action": 2}))], [], "extra_attack: only valid on characters"),
+    ("warn_xa_twice", B, [(XA, _feat("extra_attack", {"kind": "extra_attack", "attacks_per_action": 2})),
+                          (["features", 2], _feat("xa3", {"kind": "extra_attack", "attacks_per_action": 3}))], [],
+     "extra_attack declared more than once"),
+]
+
+
+class ExtraAttack(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.base = h.pack_fixtures()
+
+    def docs(self, base, sets=(), dels=()):
+        d = dict(self.base)
+        d[base] = h.edit(self.base[base], list(sets), list(dels))
+        return d
+
+    def test_valid_2_3_4(self):
+        for n in (2, 3, 4):
+            with self.subTest(n=n):
+                errs, warns = h.validate_docs(self.docs(B, [(XA, _feat("extra_attack", {"kind": "extra_attack", "attacks_per_action": n}))]))
+                self.assertEqual(errs, [])
+                self.assertFalse(any("extra_attack" in w for w in warns), warns)
+
+    def test_cases(self):
+        for name, base, sets, dels, expect in XA_CASES:
+            with self.subTest(name):
+                errs, warns = h.validate_docs(self.docs(base, sets, dels))
+                if name.startswith("warn_"):
+                    self.assertEqual(errs, [], errs)
+                    self.assertTrue(any(expect in w for w in warns), (expect, warns))
+                else:
+                    self.assertTrue(any(expect in e for e in errs), (expect, errs))
+
+    def test_inert_below_4(self):
+        # character@3: inert in the sim (hook's @4 gate; the frozen 3 -> 4 list cannot carry it): unknown-kind warning + hint
+        self.assertIn("extra_attack", checks_v4.TAG_TABLE["character@4"].effect_kinds)
+        self.assertNotIn("extra_attack", checks_v4.TAG_TABLE["character@3"].effect_kinds)
+        self.assertNotIn("extra_attack", checks_v4.NEW_EFFECT_KINDS_AT_4)   # the frozen migration list is untouched
+
+    def test_kinds_are_loaded_at_4(self):
+        for k in ("wild_shape", "shapechanger", "extra_attack"):
+            for typ in ("monster", "character"):
+                with self.subTest(kind=k, typ=typ):
+                    self.assertIn(k, checks_v4.TAG_TABLE[f"{typ}@4"].effect_kinds)
+
+    def test_arm_mirrors_the_loader(self):
+        d = json.loads((h.ROOT / "schemas/common/v2.schema.json").read_text(encoding="utf-8"))["$defs"]
+        arm = d["extra_attack_effect"]
+        self.assertEqual(set(arm["properties"]), set(checks_v4.EXTRA_ATTACK_KEYS))
+        self.assertEqual((arm["properties"]["attacks_per_action"]["minimum"], arm["properties"]["attacks_per_action"]["maximum"]), (2, 4))
+        self.assertEqual(set(d["shapechanger_form"]["properties"]),
+                         {"id", "name", "size", "armor_class", "speed", "actions", "creature_type"})   # EC #176 only_keys
+        self.assertEqual(set(d["shapechanger_effect"]["properties"]), {"kind", "cost", "forms"})
 
 
 if __name__ == "__main__":

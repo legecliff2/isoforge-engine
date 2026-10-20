@@ -1,0 +1,149 @@
+{
+  "$schema": "monster@4",
+  "id": "srd51.monster.medusa",
+  "name": "Medusa",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "monstrosity",
+  "alignment": "lawful evil",
+  "armor_class": {
+    "value": 15,
+    "note": "natural armor"
+  },
+  "hit_points": {
+    "average": 127,
+    "formula": "17d8+51"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 10,
+    "dex": 15,
+    "con": 16,
+    "int": 12,
+    "wis": 13,
+    "cha": 15
+  },
+  "skills": {
+    "deception": 5,
+    "insight": 4,
+    "perception": 4,
+    "stealth": 5
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 14
+  },
+  "languages": [
+    "Common"
+  ],
+  "challenge": {
+    "rating": "6",
+    "xp": 2300
+  },
+  "proficiency_bonus": 3,
+  "traits": [
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The medusa makes either three melee attacks -- one with its snake hair and two with its shortsword -- or two ranged attacks with its longbow.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "melee",
+            "attacks": [
+              "snake_hair",
+              "shortsword",
+              "shortsword"
+            ]
+          },
+          {
+            "id": "ranged",
+            "attacks": [
+              "longbow",
+              "longbow"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "petrifying_gaze",
+      "name": "Petrifying Gaze",
+      "description": "When a creature that can see the medusa's eyes starts its turn within 30 ft. of the medusa, the medusa can force it to make a DC 14 Constitution saving throw if the medusa isn't incapacitated and can see the creature. If the saving throw fails by 5 or more, the creature is instantly petrified. Otherwise, a creature that fails the save begins to turn to stone and is restrained. The restrained creature must repeat the saving throw at the end of its next turn, becoming petrified on a failure or ending the effect on a success. The petrification lasts until the creature is freed by the greater restoration spell or other magic.\n\nUnless surprised, a creature can avert its eyes to avoid the saving throw at the start of its turn. If the creature does so, it can't see the medusa until the start of its next turn, when it can avert its eyes again. If the creature looks at the medusa in the meantime, it must immediately make the save.\n\nIf the medusa sees itself reflected on a polished surface within 30 ft. of it and in an area of bright light, the medusa is, due to its curse, affected by its own gaze.",
+      "effect": {
+        "kind": "gaze",
+        "range_ft": 30,
+        "save": {
+          "ability": "con",
+          "dc": 14
+        },
+        "condition": "restrained",
+        "repeat_save": "end_of_turn",
+        "escalates": true,
+        "escalate_to": "petrified",
+        "escalate_margin": 5
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "snake_hair",
+      "name": "Snake Hair",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d4+2",
+          "type": "piercing"
+        },
+        {
+          "dice": "4d6",
+          "type": "poison"
+        }
+      ]
+    },
+    {
+      "id": "shortsword",
+      "name": "Shortsword",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "longbow",
+      "name": "Longbow",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 5,
+      "range": [
+        150,
+        600
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        },
+        {
+          "dice": "2d6",
+          "type": "poison"
+        }
+      ]
+    }
+  ]
+}

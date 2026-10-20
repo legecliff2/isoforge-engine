@@ -1739,6 +1739,7 @@ uint64_t Combat::log_hash() const {
         if (q.forced_feet != 0 || q.teleport_feet != 0) { h.byte(0xB4); h.u16(q.forced_feet); h.u16(q.teleport_feet); }
         if (q.has_teleport_dest) { h.byte(0xB2); h.i32(q.teleport_x); h.i32(q.teleport_y); }
         if (q.form_archetype != 0) { h.byte(0xBD); h.byte(q.form_archetype); }   // R-G12 form choice: folded only when set
+        if (q.has_area_origin) { h.byte(0xC0); h.byte(1); h.i32(q.area_x); h.i32(q.area_y); }   // 7.2t cover: aimed area origin, only when set
         // 0xB7 (R-G11): caller-chosen zone inputs, only when set (membership lists / zone_move_ft are sim-derived, not folded).
         if (q.zone_move != 0 || q.has_zone_dest || !q.zone_excluded.empty()) {
             h.byte(0xB7);
