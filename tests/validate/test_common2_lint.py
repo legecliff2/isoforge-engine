@@ -39,6 +39,8 @@ SECTION_1_1 = ["action", "legacy_action", "legacy_nonspecial_action", "legacy_sp
                "shapechanger_effect",
                # EC #179 extra_attack (append-only addition; docs/CONTENT_EFFECTS.md)
                "extra_attack_effect",
+               # Rules 7.2v control conditions (append-only additions; spell@1 save effect)
+               "control_kind", "control_repeat_save", "destroy_undead_max_cr8",
                # Rules 7.2w grab and contain (append-only addition; T&C spec)
                "transparent_effect"]
 ITEM_FILE_DEFS = {"item_damage"}          # listed in 1.1 but declared in item@1's file, not common@2's

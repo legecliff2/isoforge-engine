@@ -1083,6 +1083,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     if (auto ch = doc.find("challenge"); ch != doc.end() && ch->is_object())
         if (auto rt = ch->find("rating"); rt != ch->end())
             if (auto x = cr_x8_of(*rt)) a.cr_x8 = int16_t(*x);
+    a.base.cr8 = a.cr_x8;   // 7.2v Destroy Undead reads Combatant::cr8 (-1 = no challenge rating)
     if (schema_type == "character") {
         int lv = 0;
         for (const Json& k : doc.value("classes", Json::array()))

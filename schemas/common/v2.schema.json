@@ -4089,6 +4089,32 @@
         }
       }
     },
+    "control_kind": {
+      "enum": [
+        "turned",
+        "fear",
+        "laughter",
+        "command"
+      ],
+      "description": "VERSION_BUMP_BATCH 7.2v control conditions on a spell@1 save effect: turned (Turn Undead; no condition, ends on damage), fear (with condition frightened), laughter (Hideous Laughter, with condition prone), command (no condition; ActionRequest::command_word)."
+    },
+    "control_repeat_save": {
+      "enum": [
+        "end_of_turn_unseen",
+        "end_of_turn_or_damage_advantage"
+      ],
+      "description": "VERSION_BUMP_BATCH 7.2v additive repeat_save arms: end_of_turn_unseen (Fear: only while the target can't see the caster), end_of_turn_or_damage_advantage (Hideous Laughter: end of each turn, and on damage with advantage)."
+    },
+    "destroy_undead_max_cr8": {
+      "enum": [
+        4,
+        8,
+        16,
+        24,
+        32
+      ],
+      "description": "VERSION_BUMP_BATCH 7.2v Destroy Undead threshold as CR x 8 (SRD: 1/2 = 4, 1 = 8, 2 = 16, 3 = 24, 4 = 32).",
+    },
     "transparent_effect": {
       "type": "object",
       "additionalProperties": false,
