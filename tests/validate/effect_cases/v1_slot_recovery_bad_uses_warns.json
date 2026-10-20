@@ -1,0 +1,23 @@
+{
+  "base": "characters/fighter_1.json",
+  "schema": "character@1",
+  "sets": [
+    [
+      [
+        "features",
+        2
+      ],
+      {
+        "id": "arcane_recovery",
+        "name": "Arcane Recovery",
+        "effect": {
+          "kind": "slot_recovery",
+          "class": "wizard",
+          "uses": 0
+        }
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "slot_recovery.uses: 0 is less than the minimum of 1 (inert in character@1"
+}

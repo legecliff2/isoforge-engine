@@ -522,6 +522,131 @@ std::optional<std::string> apply_pack_tactics(Archetype& a, const FeatureDecl&, 
     return std::nullopt;
 }
 
+// R-G12 transforms (VERSION_BUMP_BATCH 7.2q hand-off, sim side; docs/proposals/SUMMONS_TRANSFORMS.md).
+// wild_shape {forms: [beast archetype ids] (1..255), uses 1..255 = 2, recharge: short_rest (default) | long_rest,
+//   cost: action (default, SRD Land druid) | bonus_action, max_cr_by_level: [{level, cr}] (default SRD 2: 1/4, 4: 1/2, 8: 1),
+//   no_fly_below = 8, no_swim_below = 4, ai: "prefer_beast" (optional)}: druid level from classes[] (2+). The FeatureSpec has
+//   form 2, form_rounds 600 * (druid level / 2) (hours = half the level), form_choices = forms.size(). The forms' ids resolve
+//   when the transform is requested (build_form): content load order cannot see every pack yet. Features whose effect sets
+//   requires_humanoid_form become the form's blocked_features.
+std::optional<std::string> apply_wild_shape(Archetype& a, const FeatureDecl& f, uint32_t fid, const FeatureBuildCtx& ctx) {
+    Archetype::FormFeature ff;
+    ff.kind = uint8_t(rules5e::FormKind::WildShape);
+    const auto fl = f.effect.find("forms");
+    if (fl == f.effect.end() || !fl->is_array() || fl->empty() || fl->size() > 255) return f.id + ": wild_shape needs forms[] (1..255 ids)";
+    for (const Json& x : *fl) {
+        if (!x.is_string() || x.get<std::string>().empty()) return f.id + ": wild_shape forms[] must be archetype ids";
+        ff.forms.push_back(x.get<std::string>());
+    }
+    int level = 0;
+    for (const Json& c : ctx.doc.value("classes", Json::array()))
+        if (c.is_object() && c.value("class", "") == "druid") level += c.value("level", 0);
+    if (level < 2 || level > 20) return f.id + ": wild_shape needs druid level 2..20 in classes[]";
+    ff.level = uint8_t(level);
+    std::vector<std::pair<int, int>> table = {{2, 2}, {4, 4}, {8, 8}};
+    if (auto t = f.effect.find("max_cr_by_level"); t != f.effect.end()) {
+        if (!t->is_array() || t->empty()) return f.id + ": wild_shape max_cr_by_level must be a non-empty array";
+        table.clear();
+        for (const Json& e : *t) {
+            if (!e.is_object() || !e.contains("level") || !e.contains("cr") || !e["level"].is_number_integer())
+                return f.id + ": wild_shape max_cr_by_level entries need level and cr";
+            const auto cr = cr_x8_of(e["cr"]);
+            if (!cr) return f.id + ": wild_shape bad cr in max_cr_by_level";
+            table.push_back({e["level"].get<int>(), *cr});
+        }
+    }
+    int best_level = -1;
+    ff.max_cr_x8 = -1;
+    for (const auto& [lv, cr] : table)
+        if (lv <= level && lv >= best_level) { best_level = lv; ff.max_cr_x8 = int16_t(cr); }
+    if (ff.max_cr_x8 < 0) return f.id + ": wild_shape max_cr_by_level has no row at or below druid level " + std::to_string(level);
+    auto lvl_key = [&](const char* k, uint8_t& out) -> std::optional<std::string> {
+        const auto it = f.effect.find(k);
+        if (it == f.effect.end()) return std::nullopt;
+        if (!it->is_number_integer() || it->get<int64_t>() < 0 || it->get<int64_t>() > 21) return f.id + ": wild_shape " + k + " must be 0..21";
+        out = uint8_t(it->get<int64_t>());
+        return std::nullopt;
+    };
+    if (auto e = lvl_key("no_fly_below", ff.no_fly_below)) return e;
+    if (auto e = lvl_key("no_swim_below", ff.no_swim_below)) return e;
+    const std::string ai = f.effect.value("ai", "");
+    if (!ai.empty() && ai != "prefer_beast") return f.id + ": wild_shape ai must be prefer_beast";
+    ff.ai_prefer = ai == "prefer_beast";
+    ActiveFeature af;
+    af.feature_id = fid;
+    af.id = f.id;
+    af.kind = f.kind;
+    rules5e::FeatureSpec spec;
+    const std::string cost = f.effect.value("cost", "action");
+    if (cost == "action") { af.cost = FeatureCost::Action; spec.cost = 1; }
+    else if (cost == "bonus_action") { af.cost = FeatureCost::BonusAction; spec.cost = 2; }
+    else return f.id + ": wild_shape cost must be action or bonus_action";
+    const int uses = f.effect.value("uses", 2);
+    if (uses < 1 || uses > 255) return f.id + ": wild_shape uses must be 1..255";
+    af.uses = uint8_t(uses);
+    const std::string rc = f.effect.value("recharge", "short_rest");
+    if (rc == "short_rest") af.recharge = Recharge::ShortRest;
+    else if (rc == "long_rest") af.recharge = Recharge::LongRest;
+    else return f.id + ": wild_shape recharge must be short_rest or long_rest";
+    spec.form = uint8_t(rules5e::FormKind::WildShape);
+    spec.form_rounds = uint16_t(600 * (level / 2));
+    spec.form_choices = uint8_t(ff.forms.size());
+    for (std::size_t i = 0; i < a.features.size(); ++i)
+        if (a.features[i].effect.is_object() && a.features[i].effect.value("requires_humanoid_form", false))
+            a.humanoid_only_features.push_back(uint32_t(i + 1));
+    a.feature_specs[fid] = spec;
+    a.form_features[fid] = std::move(ff);
+    a.active.push_back(std::move(af));
+    return std::nullopt;
+}
+
+// shapechanger {forms: [{id, size?, armor_class?, speed_walk?}] (1..255), cost: action (default) | bonus_action}: the SRD
+// Shapechanger trait (werewolf, doppelganger, ...). "Statistics other than size are the same" unless the form lists them;
+// one HP pool, no timer, no uses (at will). Sets Combatant::shapechanger (Polymorph refuses it, Moonbeam's disadvantage).
+std::optional<std::string> apply_shapechanger(Archetype& a, const FeatureDecl& f, uint32_t fid, const FeatureBuildCtx&) {
+    Archetype::FormFeature ff;
+    ff.kind = uint8_t(rules5e::FormKind::Shapechanger);
+    const auto fl = f.effect.find("forms");
+    if (fl == f.effect.end() || !fl->is_array() || fl->empty() || fl->size() > 255) return f.id + ": shapechanger needs forms[] (1..255)";
+    static const char* sizes[] = {"tiny", "small", "medium", "large", "huge", "gargantuan"};
+    for (const Json& x : *fl) {
+        if (!x.is_object() || x.value("id", "").empty()) return f.id + ": shapechanger forms[] entries need an id";
+        Archetype::FormFeature::Shape sh;
+        sh.id = x.value("id", "");
+        if (auto sz = x.find("size"); sz != x.end()) {
+            const std::string n = sz->is_string() ? sz->get<std::string>() : std::string();
+            for (int i = 0; i < 6; ++i) if (n == sizes[i]) sh.size = CreatureSize(i);
+            if (!sh.size) return f.id + ": shapechanger form '" + sh.id + "' has a bad size";
+        }
+        if (auto ac = x.find("armor_class"); ac != x.end()) {
+            if (!ac->is_number_integer() || ac->get<int>() < 0 || ac->get<int>() > 40) return f.id + ": shapechanger bad armor_class";
+            sh.ac = int16_t(ac->get<int>());
+        }
+        if (auto sp = x.find("speed_walk"); sp != x.end()) {
+            if (!sp->is_number_integer() || sp->get<int>() < 0 || sp->get<int>() > 255) return f.id + ": shapechanger bad speed_walk";
+            sh.speed_ft = int16_t(sp->get<int>());
+        }
+        ff.shapes.push_back(std::move(sh));
+    }
+    ActiveFeature af;
+    af.feature_id = fid;
+    af.id = f.id;
+    af.kind = f.kind;
+    rules5e::FeatureSpec spec;
+    const std::string cost = f.effect.value("cost", "action");
+    if (cost == "action") { af.cost = FeatureCost::Action; spec.cost = 1; }
+    else if (cost == "bonus_action") { af.cost = FeatureCost::BonusAction; spec.cost = 2; }
+    else return f.id + ": shapechanger cost must be action or bonus_action";
+    spec.form = uint8_t(rules5e::FormKind::Shapechanger);
+    spec.form_rounds = 0;
+    spec.form_choices = uint8_t(ff.shapes.size());
+    a.base.shapechanger = true;
+    a.feature_specs[fid] = spec;
+    a.form_features[fid] = std::move(ff);
+    a.active.push_back(std::move(af));
+    return std::nullopt;
+}
+
 FeatureRegistry make_builtin() {
     FeatureRegistry r;
     r.add_hook("damage_bonus", {apply_damage_bonus});
@@ -546,6 +671,8 @@ FeatureRegistry make_builtin() {
     r.add_hook("font_of_magic", {apply_font_of_magic});
     r.add_hook("sculpt_spells", {apply_sculpt_spells});
     r.add_hook("slot_recovery", {apply_slot_recovery});
+    r.add_hook("wild_shape", {apply_wild_shape});     // R-G12 (7.2q)
+    r.add_hook("shapechanger", {apply_shapechanger}); // R-G12 (7.2q)
     // Kinds the @4 schemas introduce (frozen list of the 3 -> 4 migration; hooks arrive with their rows).
     for (const char* k : {"on_event", "save_effect", "reaction"})
         r.reserve_kind(k, 4);
