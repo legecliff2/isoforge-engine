@@ -506,6 +506,8 @@ struct Combatant {
     bool squeezing = false;
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
+    // appended (control conditions, 7.2v): challenge rating * 8 (CR 1/2 = 4) for Destroy Undead; -1 = unknown (never destroyed).
+    int16_t cr8 = -1;
 };
 
 void add_condition(Combatant&, Condition);

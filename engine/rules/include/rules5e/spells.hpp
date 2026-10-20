@@ -70,7 +70,19 @@ struct TeleportSpec {
     bool     needs_sight = true;   // sim's destination check
 };
 enum class OnSave : uint8_t { None, Half };          // damage on a successful save
-enum class RepeatSave : uint8_t { None, EndOfTurn, StartOfTurn, OnDamage };   // condition: target repeats the save
+enum class RepeatSave : uint8_t { None, EndOfTurn, StartOfTurn, OnDamage,
+                                  // appended (7.2v control conditions): EndOfTurnUnseen = at the end of the target's turn, only
+                                  // while it can't see the caster (Fear; EncounterHooks::can_see, no hook = seen, no save);
+                                  // EndOfTurnOrDamageAdv = at the end of each turn, and each time it takes damage with advantage
+                                  // (Hideous Laughter).
+                                  EndOfTurnUnseen, EndOfTurnOrDamageAdv };
+// appended (7.2v): a control effect restricts what its target may do (rules: the legal actions; sim: the path).
+//   Turned (Turn Undead): Move, Dash, Dodge, StandUp, escape (Attack special 4); no reactions; ends on damage.
+//   Fear: while frightened by it, Move, Dash, Dodge, StandUp (sim moves it away from the caster).
+//   Laughter (Hideous Laughter): prone and incapacitated; can't stand up.
+//   Command: on the target's next turn, by ActionRequest::command_word (CommandWord).
+enum class ControlKind : uint8_t { None, Turned, Fear, Laughter, Command };
+enum class CommandWord : uint8_t { None, Approach, Drop, Flee, Grovel, Halt };   // condition: target repeats the save
 
 // One further effect of a multi-effect spell (SpellDef::extra_effects; effects 2..n of spell@1 `effects`).
 // Mirrors the per-effect fields of SpellDef. Extra effects resolve in order over the same targets as the
@@ -322,6 +334,15 @@ struct SpellDef {
     // appended (cover, 7.2t): the target gains no benefit from half / three-quarters cover (Sacred Flame). Total cover still
     // refuses targeting.
     bool ignores_cover = false;
+    // appended (control conditions, 7.2v): kind Save. control = ControlKind of the effect a failed save leaves (Turned and
+    // Command carry no SRD condition: the effect has no_condition). control_excluded: creature types the spell has no effect
+    // on (no save; Command: undead). control_min_int: a target with Intelligence at most this is unaffected (Hideous Laughter
+    // 4; 0 = none). destroy_cr8_max: Destroy Undead, an undead with Combatant::cr8 at most this (CR * 8; CR 1/2 = 4) that
+    // fails the save is destroyed instead (0 = off; the cleric 5 hook, wired by T&C).
+    ControlKind control = ControlKind::None;
+    uint32_t control_excluded = 0;
+    uint8_t control_min_int = 0;
+    uint16_t destroy_cr8_max = 0;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
