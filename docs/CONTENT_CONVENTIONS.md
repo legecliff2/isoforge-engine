@@ -471,3 +471,63 @@ schema rejected the key (chunk@1 is closed), and no shipped or `tests/compat` ch
 `test_no_shipped_or_compat_chunk_carries_surprise`), so nothing existing changes meaning when the loader lands. A chunk that carries it
 today is authored with that intent (the warning says so). Fixtures: `tests/validate/fixtures/surprise/`; cases:
 `tools/validate/test_validate_packs.py` `SURPRISE_CASES`.
+
+## 9. R-G12 transforms: spell@1 `polymorph`, common@2 `wild_shape` / `shapechanger`, `requires_humanoid_form`
+
+Agreed with Rules (PR #156, `docs/proposals/VERSION_BUMP_BATCH.md` 7.2q). Additive optional schema keys and new closed arms only,
+so no version bump (`docs/CONTENT_COMPAT.md`). Integers only: CRs are monster@4 `challenge.rating` strings compared as CR*8
+(0, 1/8 = 1, 1/4 = 2, 1/2 = 4, n = 8n). `form_archetype` (ActionRequest) = 1 + index into `forms[]` (at most 255 forms).
+Form ids resolve across the pack set, dependency packs included; every form must be a beast.
+
+**spell@1 `polymorph`** `{kind, forms (required, 1..255), max_cr ("target_level" default, or a CR string), save {ability} (default wis)}`.
+Loader: rules spell loader key `polymorph` -> `SpellEffectKind::Polymorph`, concentration from the spell; Rules parses it with
+these exact strings.
+
+| finding | severity |
+|---|---|
+| `polymorph: primary effect only` | error (polymorph in effects[1..]) |
+| `polymorph: one target` | error (`targets.count` != 1 or an `area`) |
+| `polymorph: needs concentration` | error |
+| `polymorph: unknown form '<id>'` / `polymorph: form '<id>' is not a beast` / `polymorph: duplicate form '<id>'` | error |
+| `polymorph: form '<id>' above max_cr` | warning (fixed `max_cr` only; `target_level` is sim's cast-time check) |
+
+**common@2 `wild_shape`** (character feature) `{kind, pool (required), cost (action), class (druid), forms (required),
+max_cr_by_level (required), no_fly_below (8), no_swim_below (4)}`; no duration key (the engine computes it). Loader: Engine Core
+`build_form`.
+
+| finding | severity |
+|---|---|
+| `wild_shape: unknown pool '<id>'` / `wild_shape: pool '<id>' must recharge on short_rest` | error |
+| `wild_shape: max_cr_by_level levels must be strictly ascending` | error |
+| `wild_shape: unknown form '<id>'` / `wild_shape: form '<id>' is not a beast` / `wild_shape: duplicate form '<id>'` | error |
+| `wild_shape: one declaration per document` | error |
+| `wild_shape: pool '<id>' max should be 2` | warning |
+| `wild_shape: form '<id>' above every max_cr_by_level row` | warning |
+| `wild_shape: class '<c>' not in classes[]` | warning |
+
+**common@2 `shapechanger`** (monster or character trait) `{kind, cost (action), forms: [{id, name, size?, armor_class?, speed?
+(replaces the whole object), actions? (own actions[] ids, unique), creature_type?}] (1..255)}`. Loader: Engine Core `build_form`.
+
+| finding | severity |
+|---|---|
+| `shapechanger trait requires shapechanger: true` (the #141 creature fact) | error |
+| `shapechanger: duplicate form id '<id>'` / `shapechanger: form '<f>' names unknown action '<a>'` | error |
+| `shapechanger: one declaration per document` | error |
+| `shapechanger: form '<f>' changes nothing` / `shapechanger: form '<f>' allows no actions` (empty list) | warning |
+
+With the trait present, the #141 `shapechanger is reserved` warning is dropped (the trait reads the boolean); the boolean without
+the trait stays legal and keeps that warning.
+
+**`requires_humanoid_form`** (common@2 `$defs/trait`, optional boolean, default false): error `requires_humanoid_form on the
+wild_shape feature itself`; warning `requires_humanoid_form has no effect without wild_shape`.
+
+**Reserved treatment.** `RESERVED_EFFECT_KINDS` does not exist on main, so `wild_shape` / `shapechanger` stay out of the tag table's
+known kinds and get the existing unknown-kind warning (`unknown effect kind '<kind>'`) until each loader lands; `polymorph` gets
+`polymorph is reserved: the rules spell loader does not parse it yet`. The shape (schema) and the cross-checks above are already
+errors. When a loader lands, add its kind to the tag table and drop the warning.
+
+**Cast-time refusals (rules only; documented, not validated):** `polymorph: target is a shapechanger`, `target has 0 hit points`,
+`target already transformed`, `feature not usable in this form`.
+
+Tests: `tests/validate/test_v4_validator.py` `RG12Transforms`, `tests/validate/cases/polymorph_*`,
+`tests/validate/effect_cases/v4_wild_shape_*` / `v4_shapechanger_*`, `tests/validate/test_union_arms.py` `TransformArmsRG12`.

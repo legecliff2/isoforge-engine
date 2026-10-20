@@ -287,6 +287,8 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     for path, _owner, eff in live_effects(doc):
         if eff.get("kind") == "heal_pool":
             need_pool(path, eff.get("pool"), None)
+        if eff.get("kind") == "wild_shape":
+            referenced.add(eff.get("pool"))   # R-G12 uses pool: resolved by check_transforms
         if eff.get("kind") == "metamagic":
             referenced.add(eff.get("pool"))   # sorcery points: spent by the sim per option (check 12); resolved by check_metamagic
     # check 3: spell references
@@ -408,6 +410,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     errs += check_static_kinds(doc)
     check_grapple_riders(doc, errs, warns)
     check_untimed_save_condition_riders(doc, errs)
+    check_transforms(doc, ctx, errs, warns)
     # check 12: declared but never referenced pools (Legendary Resistance is declaration-only until row 13)
     for i, r in enumerate(resources):
         if r.get("id") not in referenced:
@@ -518,6 +521,158 @@ def check_on_event_usage(doc: dict) -> tuple[list[str], list[str]]:
             warns.append(f"{path}/usage: {owner} on_event: unsupported usage (recharge is not compiled yet; the sim lists the "
                          "trait in unsupported_features and never fires it) (sim #158)")
     return errs, warns
+
+
+# ---- R-G12 transforms (VERSION_BUMP_BATCH 7.2q, Rules #156) ------------------------------------------------------
+# polymorph (spell@1, rules spell loader), wild_shape / shapechanger (common@2, Engine Core build_form) and the trait flag
+# requires_humanoid_form. There is no RESERVED_EFFECT_KINDS table yet, so wild_shape / shapechanger stay out of the tag
+# table's effect_kinds and get the unknown-kind warning (the open-kind pattern) until their loader lands; polymorph gets
+# polymorph_spell_warnings' reserved warning. The messages below are the loaders' wording (Rules parses polymorph with them).
+CR_ORDER = ("0", "1/8", "1/4", "1/2") + tuple(str(i) for i in range(1, 31))
+
+
+def cr8(cr) -> int | None:
+    """A challenge.rating string as CR*8 (integer math: 1/8 -> 1, 1/4 -> 2, 1/2 -> 4, n -> 8n)."""
+    if not isinstance(cr, str) or cr not in CR_ORDER:
+        return None
+    return {"0": 0, "1/8": 1, "1/4": 2, "1/2": 4}.get(cr, 8 * int(cr) if cr.isdigit() else None)
+
+
+def monster_facts(doc) -> tuple | None:
+    """(creature type, challenge.rating) of a monster document, for form resolution."""
+    if not isinstance(doc, dict):
+        return None
+    ch = doc.get("challenge")
+    return doc.get("type"), ch.get("rating") if isinstance(ch, dict) else None
+
+
+def has_effect_kind(doc: dict, kind: str) -> bool:
+    return any(e.get("kind") == kind for _p, _o, e in live_effects(doc))
+
+
+def check_forms(label: str, forms, ctx: dict, errs: list[str]) -> list[tuple[str, int]]:
+    """Errors for a beast forms[] list (unknown / not a beast / duplicate); returns [(id, CR*8)] of the resolved beasts.
+    srd51.* ids under the deprecated escape hatch (no srd51.core dependency) are accepted unresolved."""
+    monsters = ctx.get("monsters") or {}
+    ext = ctx.get("external_ok") or (lambda _a: False)
+    seen, out = set(), []
+    for f in forms if isinstance(forms, list) else []:
+        if not isinstance(f, str):
+            continue
+        if f in seen:
+            errs.append(f"{label}: duplicate form '{f}'")
+            continue
+        seen.add(f)
+        facts = monsters.get(f)
+        if facts is None:
+            if not ext(f):
+                errs.append(f"{label}: unknown form '{f}'")
+            continue
+        if facts[0] != "beast":
+            errs.append(f"{label}: form '{f}' is not a beast")
+            continue
+        c = cr8(facts[1])
+        if c is not None:
+            out.append((f, c))
+    return out
+
+
+def check_polymorph_spell(doc: dict, ctx: dict) -> list[str]:
+    """spell@1 polymorph (the rules spell loader's load errors, same wording)."""
+    errs: list[str] = []
+    effs = doc.get("effects") or []
+    for i, e in enumerate(effs[1:], 1):
+        if isinstance(e, dict) and e.get("kind") == "polymorph":
+            errs.append("polymorph: primary effect only")
+            return errs
+    if not effs or effs[0].get("kind") != "polymorph":
+        return errs
+    tg = doc.get("targets")
+    if "area" in doc or (isinstance(tg, dict) and tg.get("count", 1) != 1):
+        errs.append("polymorph: one target")
+    if (doc.get("duration") or {}).get("concentration") is not True:
+        errs.append("polymorph: needs concentration")
+    check_forms("polymorph", effs[0].get("forms"), ctx, errs)
+    return errs
+
+
+def polymorph_spell_warnings(doc: dict, ctx: dict) -> list[str]:
+    effs = doc.get("effects") or []
+    if not effs or not isinstance(effs[0], dict) or effs[0].get("kind") != "polymorph":
+        return []
+    eff = effs[0]
+    out = ["effects[0]: polymorph is reserved: the rules spell loader does not parse it yet (R-G12 7.2q, "
+           "SpellEffectKind::Polymorph), so it has no effect until that loader lands"]
+    lim = cr8(eff.get("max_cr", "target_level"))
+    if lim is not None:   # fixed max_cr only (target_level is checked by sim build_form at cast time)
+        for f, c in check_forms("polymorph", eff.get("forms"), ctx, []):
+            if c > lim:
+                out.append(f"polymorph: form '{f}' above max_cr")
+    return out
+
+
+def check_transforms(doc: dict, ctx: dict, errs: list[str], warns: list[str]) -> None:
+    """common@2 wild_shape / shapechanger and requires_humanoid_form (monster@4 / character@4)."""
+    res = {r.get("id"): r for r in doc.get("resources") or [] if isinstance(r, dict)}
+    action_ids = {a.get("id") for a in doc.get("actions") or [] if isinstance(a, dict)}
+    classes = {c.get("class") for c in doc.get("classes") or [] if isinstance(c, dict)}
+    seen: dict[str, str] = {}
+    for path, _owner, eff in live_effects(doc):
+        kind = eff.get("kind")
+        if kind not in ("wild_shape", "shapechanger"):
+            continue
+        if kind in seen:
+            errs.append(f"{path}: {kind}: one declaration per document")
+            continue
+        seen[kind] = path
+        if kind == "wild_shape":
+            pid = eff.get("pool")
+            r = res.get(pid)
+            if r is None:
+                errs.append(f"{path}: wild_shape: unknown pool '{pid}'")
+            else:
+                if r.get("recharge") != "short_rest":
+                    errs.append(f"{path}: wild_shape: pool '{pid}' must recharge on short_rest")
+                if not (is_int(r.get("max")) and r.get("max") == 2):
+                    warns.append(f"{path}: wild_shape: pool '{pid}' max should be 2")
+            rows = [x for x in eff.get("max_cr_by_level") or [] if isinstance(x, dict)]
+            lv = [x.get("level") for x in rows]
+            if any(not (a < b) for a, b in zip(lv, lv[1:])):
+                errs.append(f"{path}: wild_shape: max_cr_by_level levels must be strictly ascending")
+            top = max((cr8(x.get("max_cr")) or 0 for x in rows), default=0)
+            for f, c in check_forms(f"{path}: wild_shape", eff.get("forms"), ctx, errs):
+                if c > top:
+                    warns.append(f"{path}: wild_shape: form '{f}' above every max_cr_by_level row")
+            cls = eff.get("class", "druid")
+            if cls not in classes:
+                warns.append(f"{path}: wild_shape: class '{cls}' not in classes[]")
+        else:
+            if doc.get("shapechanger") is not True:
+                errs.append(f"{path}: shapechanger trait requires shapechanger: true")
+            ids = set()
+            for j, fm in enumerate(eff.get("forms") or []):
+                if not isinstance(fm, dict):
+                    continue
+                fid = fm.get("id")
+                if fid in ids:
+                    errs.append(f"{path}/forms/{j}: shapechanger: duplicate form id '{fid}'")
+                ids.add(fid)
+                for a in fm.get("actions") or []:
+                    if a not in action_ids:
+                        errs.append(f"{path}/forms/{j}: shapechanger: form '{fid}' names unknown action '{a}'")
+                if not set(fm) - {"id", "name"}:
+                    warns.append(f"{path}/forms/{j}: shapechanger: form '{fid}' changes nothing")
+                if fm.get("actions") == []:
+                    warns.append(f"{path}/forms/{j}: shapechanger: form '{fid}' allows no actions")
+    for key in ("traits", "features"):
+        for i, t in enumerate(doc.get(key) or []):
+            if not isinstance(t, dict) or t.get("requires_humanoid_form") is not True:
+                continue
+            eff = t.get("effect") if isinstance(t.get("effect"), dict) else {}
+            if eff.get("kind") == "wild_shape":
+                errs.append(f"/{key}/{i}: requires_humanoid_form on the wild_shape feature itself")
+            elif "wild_shape" not in seen:
+                warns.append(f"/{key}/{i}: requires_humanoid_form has no effect without wild_shape")
 
 
 # ---- untimed save_condition riders (sim content.cpp compile_rider -> compile_save_action) ----------------------
