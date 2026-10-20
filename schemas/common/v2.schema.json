@@ -3438,6 +3438,16 @@
               }
             }
           }
+        },
+        {
+          "description": "7.2z: a bonus_attack effect is checked by its closed arm only.",
+          "properties": {
+            "kind": {
+              "not": {
+                "const": "bonus_attack"
+              }
+            }
+          }
         }
       ]
     },
@@ -3471,29 +3481,234 @@
         "scope": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "weapon"
-          ],
+          "minProperties": 1,
           "properties": {
             "weapon": {
               "enum": [
                 "wielded"
               ]
+            },
+            "attack": {
+              "enum": [
+                "melee_weapon",
+                "ranged_weapon"
+              ]
+            },
+            "ability": {
+              "enum": [
+                "str",
+                "dex"
+              ]
             }
           },
-          "description": "VERSION_BUMP_BATCH 7.2y: binds every modifier to the melee weapon wielded at activation (ActionRequest::attack_index); it applies only to attacks with that weapon and ends if the weapon leaves the hand (owner dead, unconscious, or commanded to Drop). Sacred Weapon."
+          "description": "VERSION_BUMP_BATCH 7.2y / 7.2z: one closed object, at least one key. weapon wielded: bound to the melee weapon wielded at activation (Sacred Weapon). attack / ability: the attack-roll and damage rows apply only to that kind of weapon attack using that ability (Rage: {attack: melee_weapon, ability: str})."
+        },
+        "ends_early": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "no_attack_or_damage_since_last_turn",
+              "unconscious"
+            ]
+          },
+          "description": "7.2z (Rage): no_attack_or_damage_since_last_turn: ends at the end of the owner's turn unless it attacked a hostile or took damage since its last turn; unconscious: ends at once when it falls unconscious."
+        },
+        "blocks": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "casting",
+              "concentration"
+            ]
+          },
+          "description": "7.2z (Rage): casting: casting spells is refused while it lasts; concentration: the owner's concentration breaks when it starts."
+        },
+        "advantage_on": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "checks": {
+              "$ref": "#/$defs/ability_list"
+            },
+            "saves": {
+              "$ref": "#/$defs/ability_list"
+            }
+          },
+          "description": "7.2z: advantage on ability checks / saving throws of these abilities while it lasts (Rage: Str); on a passive effect: the saves (Danger Sense)."
+        },
+        "on_end": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "exhaustion"
+          ],
+          "properties": {
+            "exhaustion": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 6
+            }
+          },
+          "description": "7.2z (Frenzy): exhaustion levels gained when the effect ends. When a bonus_attack names this effect in requires_effect, only if that bonus attack was made while it lasted."
+        },
+        "passive": {
+          "const": true,
+          "description": "7.2z (Danger Sense): always on, nothing to activate. Needs advantage_on {saves} and when; no cost, usage, duration, modifier(s), scope, ends_early, blocks or on_end."
+        },
+        "when": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "save"
+          ],
+          "properties": {
+            "save": {
+              "enum": [
+                "str",
+                "dex",
+                "con",
+                "int",
+                "wis",
+                "cha"
+              ]
+            },
+            "source_seen": {
+              "type": "boolean"
+            },
+            "not_conditions": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "../common/v1.schema.json#/$defs/condition"
+              }
+            }
+          },
+          "description": "7.2z passive only: the save it applies to, against effects the creature can see (source_seen, vision 7.2x), not while it has any of not_conditions (Danger Sense: dex, true, [blinded, deafened, incapacitated])."
         }
       },
       "oneOf": [
         {
           "required": [
             "modifier"
-          ]
+          ],
+          "not": {
+            "required": [
+              "modifiers"
+            ]
+          }
         },
         {
           "required": [
             "modifiers"
-          ]
+          ],
+          "not": {
+            "required": [
+              "modifier"
+            ]
+          }
+        },
+        {
+          "required": [
+            "advantage_on"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "modifier"
+                ]
+              },
+              {
+                "required": [
+                  "modifiers"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "allOf": [
+        {
+          "description": "7.2z: when only on a passive effect.",
+          "if": {
+            "required": [
+              "when"
+            ]
+          },
+          "then": {
+            "required": [
+              "passive"
+            ]
+          }
+        },
+        {
+          "description": "7.2z: a passive effect: advantage_on and when, nothing activated.",
+          "if": {
+            "required": [
+              "passive"
+            ]
+          },
+          "then": {
+            "required": [
+              "advantage_on",
+              "when"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "cost"
+                  ]
+                },
+                {
+                  "required": [
+                    "usage"
+                  ]
+                },
+                {
+                  "required": [
+                    "duration"
+                  ]
+                },
+                {
+                  "required": [
+                    "modifier"
+                  ]
+                },
+                {
+                  "required": [
+                    "modifiers"
+                  ]
+                },
+                {
+                  "required": [
+                    "scope"
+                  ]
+                },
+                {
+                  "required": [
+                    "ends_early"
+                  ]
+                },
+                {
+                  "required": [
+                    "blocks"
+                  ]
+                },
+                {
+                  "required": [
+                    "on_end"
+                  ]
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -3873,6 +4088,9 @@
                   "description": "Failing the first save by this much or more gives escalate_to at once (medusa: 5). 0 = never (default)."
                 }
               }
+            },
+            {
+              "$ref": "#/$defs/bonus_attack_effect"
             }
           ]
         }
@@ -4271,6 +4489,39 @@
           "maximum": 30
         }
       }
+    },
+    "ability_list": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "str",
+          "dex",
+          "con",
+          "int",
+          "wis",
+          "cha"
+        ]
+      },
+      "description": "VERSION_BUMP_BATCH 7.2z: abilities (unique)."
+    },
+    "bonus_attack_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "requires_effect"
+      ],
+      "properties": {
+        "kind": {
+          "const": "bonus_attack"
+        },
+        "requires_effect": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        }
+      },
+      "description": "VERSION_BUMP_BATCH 7.2z (Frenzy): one melee weapon attack as a bonus action while the apply_modifier feature requires_effect (an id of a feature of the same document) is in force."
     }
   }
 }

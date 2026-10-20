@@ -1,0 +1,18 @@
+{
+  "base": "characters/barbarian_level_5.json",
+  "sets": [
+    [
+      [
+        "features",
+        4,
+        "effect"
+      ],
+      {
+        "kind": "bonus_attack",
+        "requires_effect": "no_such"
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "requires_effect 'no_such' is not an apply_modifier feature"
+}

@@ -55,7 +55,7 @@ STATIC_EFFECT_KINDS_R_G5 = frozenset({"attack_bonus", "crit_range", "ac_bonus"})
 # only). Below @4 they are inert in the sim (extra_attack: the hook's @4 gate, the frozen 3 -> 4 list cannot carry it), so a
 # @1..@3 file gets the unknown-kind warning.
 # transparent (7.2w, features.cpp apply_transparent; closed arm transparent_effect; monsters only) likewise.
-COMPILED_EFFECT_KINDS_AT_4 = frozenset({"gaze", "wild_shape", "shapechanger", "extra_attack", "transparent"})
+COMPILED_EFFECT_KINDS_AT_4 = frozenset({"gaze", "wild_shape", "shapechanger", "extra_attack", "transparent", "bonus_attack"})
 # compile_gaze defaults for the optional fields the validator warns about when omitted.
 GAZE_DEFAULTS = {"condition": "restrained", "repeat_save": "end_of_turn", "escalate_to": "petrified"}
 # 7.2n (sim #148, features.cpp apply_slot_recovery): the classes slot_recovery accepts.
@@ -430,6 +430,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     check_untimed_save_condition_riders(doc, errs)
     check_transforms(doc, ctx, errs, warns)
     errs += check_class_hooks(doc)   # 7.2y
+    errs += check_barbarian_hooks(doc)   # 7.2z
     # check 12: declared but never referenced pools (Legendary Resistance is declaration-only until row 13)
     for i, r in enumerate(resources):
         if r.get("id") not in referenced:
@@ -1002,13 +1003,54 @@ def check_class_hooks(doc: dict) -> list[str]:
             continue
         if eff.get("kind") != "apply_modifier":
             errs.append(f"{path}: {did}: scope: apply_modifier effects only (7.2y)")
-        elif eff["scope"] != {"weapon": "wielded"}:
-            errs.append(f'{path}: {did}: scope must be {{weapon: "wielded"}} (7.2y)')
+        else:   # 7.2z: one closed object, at least one key, each key's enum
+            sc = eff["scope"]
+            allowed = {"weapon": ("wielded",), "attack": ("melee_weapon", "ranged_weapon"), "ability": ("str", "dex")}
+            if not isinstance(sc, dict) or not sc:
+                errs.append(f"{path}: {did}: scope needs at least one of weapon, attack, ability (7.2z)")
+            else:
+                for k, v in sc.items():
+                    if k not in allowed or v not in allowed[k]:
+                        errs.append(f"{path}: {did}: scope: bad key or value '{k}' (7.2z)")
     for path, a, bv in _bonus_vs_sites(doc):
         if a is not None and a.get("kind") not in ("melee_weapon_attack", "ranged_weapon_attack"):
             errs.append(f"{path}: {did}: bonus_vs: weapon attack damage only (7.2y)")
         if not isinstance(bv, dict) or set(bv) != {"creature_types", "dice"}:
             errs.append(f"{path}: {did}: bonus_vs needs exactly creature_types and dice (7.2y)")
+    return errs
+
+
+PASSIVE_FORBIDDEN_7_2Z = ("cost", "usage", "duration", "modifier", "modifiers", "scope", "ends_early", "blocks", "on_end")
+
+
+def check_barbarian_hooks(doc: dict) -> list[str]:
+    """7.2z (sim features.cpp apply_apply_modifier / content.cpp compile_bonus_attacks): requires_effect names an
+    apply_modifier feature of this document; a passive effect has advantage_on {saves} and when and nothing activated."""
+    errs: list[str] = []
+    did = doc.get("id", "?")
+    live = {owner: eff for _p, owner, eff in live_effects(doc)}
+    for path, owner, eff in live_effects(doc):
+        if eff.get("kind") == "bonus_attack":
+            req = eff.get("requires_effect")
+            tgt = live.get(req)
+            if not isinstance(tgt, dict) or tgt.get("kind") != "apply_modifier" or tgt.get("passive") is True:
+                errs.append(f"{path}: {did}: requires_effect '{req}' is not an apply_modifier feature of this document (7.2z)")
+        if eff.get("kind") != "apply_modifier":
+            for k in ("passive", "ends_early", "blocks", "advantage_on", "on_end"):   # `when` is on_event's too
+                if k in eff:
+                    errs.append(f"{path}: {did}: {k}: apply_modifier effects only (7.2z)")
+            continue
+        if eff.get("passive") is True:
+            for k in PASSIVE_FORBIDDEN_7_2Z:
+                if k in eff:
+                    errs.append(f"{path}: {did}: passive: '{k}' is not allowed (7.2z)")
+            ao, w = eff.get("advantage_on"), eff.get("when")
+            if not isinstance(ao, dict) or set(ao) != {"saves"} or not isinstance(w, dict):
+                errs.append(f"{path}: {did}: passive needs advantage_on {{saves}} only and when (7.2z)")
+            elif w.get("save") not in (ao.get("saves") or []):
+                errs.append(f"{path}: {did}: when.save must be one of advantage_on.saves (7.2z)")
+        elif "when" in eff:
+            errs.append(f"{path}: {did}: when needs passive (7.2z)")
     return errs
 
 
