@@ -75,6 +75,7 @@ AttackResult resolve_attack(rng::Rng& r, const Combatant& attacker, const Attack
         crit = true;
     int dmg = 0;
     if (hit) {
+        // Uses base max HP, not exhaustion-reduced max (Director ruling).
         dmg = roll_dice(r, (atk.half_hp_damage.count > 0 && 2 * int(attacker.hp) <= int(attacker.hp_max)) ? atk.half_hp_damage : atk.damage, crit);   // EC swarm
         if (dmg < 0) dmg = 0;
     }
