@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <map>
 #include <span>
+#include <vector>
 
 #include "base/math.hpp"
 #include "base/present_math.hpp"
@@ -68,6 +69,7 @@ public:
     render::TextureId texture(LightChunkKey) const;   // invalid handle if not resident
     uint8_t sample(LightChunkKey, Vec2i local) const;  // 0 (Dark) if not resident
     size_t chunks() const noexcept { return maps_.size(); }
+    std::vector<LightChunkKey> keys() const;          // coord order
     uint64_t bytes_uploaded() const noexcept { return bytes_uploaded_; }
     uint32_t uploads() const noexcept { return uploads_; }
 
