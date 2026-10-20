@@ -1589,6 +1589,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         // dice; extra_damage riders are rolled with the attack's damage so a crit doubles them.
         const HitRiders riders = fire_hit_triggers(s, ctx, a, t, atk, spell_id != 0, atk_mode, ally_near_target, crit, roll, ev);
         // EC swarm: the half-HP damage variant (only when authored)
+        // Uses base max HP, not exhaustion-reduced max (Director ruling).
         const DiceExpr& wdice = damage_override ? *damage_override
                                 : (atk.half_hp_damage.count > 0 && 2 * int(a.hp) <= int(a.hp_max)) ? atk.half_hp_damage : atk.damage;
         const bool gwf = a.great_weapon_fighting && spell_id == 0 && !atk.ranged &&
