@@ -1,4 +1,4 @@
-# SRD 5.1 classes (Fighter, Cleric, Wizard, Sorcerer, Rogue, Paladin, Ranger, Barbarian, Bard, Druid levels 1-5): authored vs deferred
+# SRD 5.1 classes (Fighter, Cleric, Wizard, Sorcerer, Rogue, Paladin, Ranger, Barbarian, Bard, Druid, Monk levels 1-5): authored vs deferred
 
 > This work includes material taken from the System Reference Document 5.1 ("SRD 5.1") by Wizards of the Coast LLC, available at <https://dnd.wizards.com/resources/systems-reference-document>. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License, <https://creativecommons.org/licenses/by/4.0/legalcode>.
 
@@ -8,9 +8,9 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules, secti
 
 ## Representation
 
-`character@4` describes one creature: `classes[]` with a `level` and an optional `subclass`, a total `level`, and a stat block. There is no class or level-progression document type. A class level is therefore authored as **one pre-generated character per class per level**: 50 documents, `srd51.character.<class>_level_<n>` (`characters/<class>_level_<n>.json`). The `_level_` infix is deliberate: `srd51.character.fighter_1` already belongs to `sample.vertical_slice`, which depends on `srd51.core`, so a duplicate id would break the pack set.
+`character@4` describes one creature: `classes[]` with a `level` and an optional `subclass`, a total `level`, and a stat block. There is no class or level-progression document type. A class level is therefore authored as **one pre-generated character per class per level**: 55 documents, `srd51.character.<class>_level_<n>` (`characters/<class>_level_<n>.json`). The `_level_` infix is deliberate: `srd51.character.fighter_1` already belongs to `sample.vertical_slice`, which depends on `srd51.core`, so a duplicate id would break the pack set.
 
-Every PC is a human (SRD human: +1 to every ability score) built from the standard array (15, 14, 13, 12, 10, 8). The Ability Score Improvement at level 4 is +2 to the class's main ability (Str, Wis, Int, Cha, Dex, Str, Dex, Str, Cha, Wis), and level 5 carries it forward. Hit points are the maximum hit die at level 1, then the fixed average (6 / 5 / 4) plus Con for each later level (d8 rogue: 5). XP is the threshold for the level. Weapons, armor and shields are `{item, equipped}` references to the pack's `item@1` documents. AC and every attack are derived from those items (base damage, no feature bonus folded in; `docs/CONTENT_EFFECTS.md` section 2) and are pinned by the test. Packs, foci and ammunition stay descriptive strings.
+Every PC is a human (SRD human: +1 to every ability score) built from the standard array (15, 14, 13, 12, 10, 8). The Ability Score Improvement at level 4 is +2 to the class's main ability (Str, Wis, Int, Cha, Dex, Str, Dex, Str, Cha, Wis, Dex), and level 5 carries it forward. Hit points are the maximum hit die at level 1, then the fixed average (6 / 5 / 4) plus Con for each later level (d8 rogue: 5). XP is the threshold for the level. Weapons, armor and shields are `{item, equipped}` references to the pack's `item@1` documents. AC and every attack are derived from those items (base damage, no feature bonus folded in; `docs/CONTENT_EFFECTS.md` section 2) and are pinned by the test. Packs, foci and ammunition stay descriptive strings.
 
 | class | subclass (from) | build | AC | weapons |
 |---|---|---|---|---|
@@ -24,6 +24,7 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Barbarian | Path of the Berserker (3) | Str 16 (18 at 4), Con 15, Dex 14; Athletics, Perception; walk 40 at 5 (Fast Movement) | 14: no armor, Unarmored Defense 10 + Dex + Con | greataxe, handaxe (thrown) |
 | Bard | College of Lore (3) | Cha 16 (18 at 4), Dex 15, Con 14; Deception, Performance, Persuasion (+ Arcana, Insight, Perception at 3; Expertise: Performance, Persuasion at 3) | 13: leather armor | rapier |
 | Druid | Circle of the Land: Mountain (2) | Wis 16 (18 at 4), Dex 15, Con 14; Insight, Perception | 15: leather armor, shield (no metal) | scimitar |
+| Monk | Way of the Open Hand (3) | Dex 16 (18 at 4), Wis 15, Con 14; Acrobatics, Insight; walk 40 from 2 (Unarmored Movement) | 15 (16 at 4): no armor, Unarmored Defense 10 + Dex + Wis | unarmed strike (martial arts die), shortsword (monk weapon) |
 
 ## Authored as data
 
@@ -79,6 +80,12 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Wild Shape (Druid) | 2-5 | `wild_shape {pool wild_shape, forms [jackal, wolf, boar, axe_beak, giant_poisonous_snake, black_bear], max_cr_by_level [{2, 1/4}, {4, 1/2}]}` (R-G12, EC #176) + `resources[]` `wild_shape {max 2, recharge short_rest}`. `no_fly_below` 8 / `no_swim_below` 4 are left at the engine defaults (= SRD). Forms: every shipped beast of CR 1/2 or below without a fly speed; the engine refuses the giant poisonous snake (swim 30, #184) and the black bear (CR 1/2) below 4th. Not listed: the swarm of rats (a swarm of Tiny beasts, not a single beast you have seen), the dire wolf and giant spider (CR 1: from 8th). Duration (half druid level in hours), revert at 0 HP and no casting in beast form are engine-side | yes |
 | Natural Recovery (Land) | 2-5 | `slot_recovery {class druid, max_slot_level 5, uses 1}` (sim #148); budget ceil(druid level / 2) derived | yes |
 | Druid Circle | 2 | `classes[0].subclass` = `land` | descriptive |
+| Unarmored Defense, Unarmored Movement (Monk) | 1-5, 2-5 | baked into `armor_class` (10 + Dex + Wis; no armor or shield is worn) and `speed.walk` 40; descriptive features, no `effect` | yes (static numbers) |
+| Martial Arts (Monk) | 1-5 | Dex and the martial arts die (1d4, 1d6 at 5) baked into the `unarmed_strike` action (`properties [unarmed, monk]`); the shortsword is tagged `monk` (a monk weapon). The bonus-action unarmed strike after an Attack action made with either is the sim's `martial_arts` feature-id convention (`docs/CONTENT_CONVENTIONS.md` section 2). The shortsword keeps its own d6 (no better than the die at 1-4, equal at 5) | yes |
+| Ki, Flurry of Blows (Monk) | 2-5 | `resources[]` `ki {max = monk level, recharge short_rest}`; Flurry of Blows is the `flurry_of_blows` convention (2 unarmed strikes as a bonus action after the Attack action, 1 ki). Ki save DC (8 + proficiency + Wis) is in the feature text; nothing loaded uses it (see Stunning Strike) | yes |
+| Deflect Missiles (Monk) | 3-5 | `reactions[]` `{window {damaged, ranged_only}, effect {reduce_damage, dice 1d10 + Dex + monk level}}` (baked: +6 at 3, +8 at 4, +9 at 5). **Partial**: catching the missile and throwing it back for 1 ki is not modelled; and the rules set `ranged` on the Damaged window for any ranged attack, so a ranged **spell** attack (Fire Bolt, Eldritch Blast, Scorching Ray) also opens it, where the SRD says ranged weapon attack. The reduction applies after resistances (the window comes after mitigation) | yes (Rules: a weapon-only filter) |
+| Extra Attack (Monk) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
+| Monastic Tradition | 3 | `classes[0].subclass` = `open-hand` | descriptive |
 
 The validator change in this batch: `attack_bonus`, `crit_range` and `ac_bonus` (sim #107 hooks) are now known effect kinds at `@4` in `tools/validate/checks_v4.py` (until now they produced an "unknown effect kind" warning). Their fields are checked the way the sim checks them at load. The `@<=3` rows are unchanged.
 
@@ -145,6 +152,18 @@ Kept as a `features[]` entry with the SRD text and no `effect` (the test pins th
 | Druidic (`druidic`) | Druid 1 | A secret language and hidden messages (DC 15 Perception to spot): no combat rule. `Druidic` is also in `languages` | - (out of combat scope) |
 | Bonus Cantrip (`bonus-cantrip`) | Druid (Land) 2 | One extra druid cantrip. Both shipped druid cantrips (Produce Flame, Poison Spray) are already known from 1st; Druidcraft, Guidance, Mending, Resistance and Shillelagh are not shipped, so there is nothing to add | T&C (author a druid cantrip, e.g. Shillelagh) |
 | Circle of the Land terrain (`circle-of-the-land-mountain`) | Druid (Land) 2 | The land choice only selects the Circle Spells list; no rule of its own | - |
+
+## Descriptive only: mechanic missing (Monk)
+
+Kept as a `features[]` entry with the SRD text and no `effect` (the test pins that).
+
+| feature (mirror index) | class / level | why it is not mechanical | gap id / owner |
+|---|---|---|---|
+| Patient Defense (`patient-defense`) | Monk 2 | Dodge as a bonus action for 1 ki. `bonus_action_grant {actions [dodge]}` has no `usage`, so it would be free every turn; `grant_action {cost bonus_action, usage pool ki}` grants a whole action (it could Attack), not just Dodge | Engine Core / Rules (a pool-paid bonus-action grant restricted to named actions, e.g. `bonus_action_grant` + `usage`) |
+| Step of the Wind (`step-of-the-wind`) | Monk 2 | Dash or Disengage as a bonus action for 1 ki, plus doubled jump distance: same gap as Patient Defense; jumping is not simulated | same as Patient Defense |
+| Open Hand Technique (`open-hand-technique`) | Monk (Open Hand) 3 | On a hit with a Flurry of Blows strike: Dex save or prone, Str save or pushed 15 ft, or no reactions until the end of your next turn. The riders exist (`save_condition` prone, `forced_move` push), but no `on_event` predicate tells a Flurry strike from any other hit (the bonus attack's id is not a `when[]` kind), and the push needs a Str save gate the rider lacks; "no reactions" has no condition / modifier | Rules (predicate `from_bonus_attack: flurry_of_blows`, a reactions-denied effect), Engine Core |
+| Slow Fall (`slow-fall`) | Monk 4 | Reduce falling damage by 5 x monk level: falling and fall damage are not simulated (#184 deferred falling: the grid has no altitude) | - (out of scope until falling) |
+| Stunning Strike (`stunning-strike`) | Monk 5 | Expressible as `on_event {on hit, choice ask, when [weapon is melee], usage {pool ki, cost 1}, effects [save_condition {save con DC 8 + pb + Wis, apply [stunned, duration until_end_of_caster_next_turn]}]}`, and the schema accepts it, but the sim's condition-duration parser (`content.cpp`, save-action `apply[]`) maps only `rounds`, `until_end_of_target_next_turn` and `until_save`, so the document fails to load (`stunning_strike on_event: save_condition uses an unsupported duration`; checked with the direct load). `rounds 1` ends at the next round start (a target that acts before the monk keeps its turn) and `until_end_of_target_next_turn` (not in the schema enum for conditions) ends the stun before the monk's next turn. Rules already has `Expiry::EndOfCasterNextTurn`; the validator does not catch the load error | Engine Core (map `until_end_of_caster_next_turn` for conditions; one-line loader change), T&C (validator check) |
 
 ## Deferred (feature not expressible today)
 
