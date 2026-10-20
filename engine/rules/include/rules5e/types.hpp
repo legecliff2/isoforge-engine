@@ -200,6 +200,10 @@ enum class PredicateKind : uint8_t {
     SelfHpBelow,            // a/b = num/den: hp * den < hp_max * num
     Save,                   // the owner rolls a save: a = Ability, b = DC (mask bit 0: dc_from_damage, DC = b + damage taken)
     AttackIs,               // appended (sim loader, `on_hit[]` riders): a = index into the owner's `attacks`; false for spell attacks
+    // appended (EC monster predicates: bugbear, boar, hobgoblin; flagged rules5e edit, VERSION_BUMP_BATCH hand-off pending):
+    TargetSurprised,        // the subject (the creature hit) is surprised (Combatant::surprised, R-G16): Surprise Attack
+    AllyNearTarget,         // the sim fact ActionRequest::ally_near_target (no disadvantage clause): Martial Advantage
+    DamageAtMost,           // a: the event's damage (TrigCtx dmg, after resistances) <= a; drop_to_zero / damage_dealt: Relentless
 };
 enum class WeaponIs : uint8_t { Melee, Ranged, Finesse, FinesseOrRanged };
 struct Predicate { PredicateKind kind = PredicateKind::NotCrit; int16_t a = 0, b = 0; uint32_t mask = 0; };
