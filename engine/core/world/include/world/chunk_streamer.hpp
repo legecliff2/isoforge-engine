@@ -89,6 +89,12 @@ public:
     HaloState halo_state_of_tile(Vec2i world_tile, int16_t level) const {
         return halo_state(chunk_of_tile(world_tile, level));
     }
+    // Failed loads stay failed (no silent auto-retry, which would make the resident set depend on
+    // timing) until retried explicitly or the chunk stops being wanted. retry() clears the failure so
+    // the next update() reloads it (halo: Failed -> Pending -> Complete on success). This is the way
+    // out for pinned chunks, which are always wanted. Both are no-ops for coords that didn't fail.
+    void retry(ChunkCoord c);
+    void retry_failed();
     // Known-absent: not covered by the provider, or covered but the provider returned Empty.
     bool known_absent(ChunkCoord c) const;
     // Caller's thread: integrate finished loads (coord order), evict, queue missing chunks.
@@ -126,7 +132,8 @@ private:
     std::set<ChunkCoord> wanted_;
     std::vector<ChunkCoord> wanted_order_;   // queue order for wanted_ (ring or shuffled)
     std::map<ChunkCoord, Chunk> resident_;
-    std::map<ChunkCoord, std::string> failed_;
+    std::map<ChunkCoord, std::string> failed_;   // error message (never empty)
+    std::set<ChunkCoord> empty_;                 // provider answered Empty (pure: kept when unwanted)
     std::set<ChunkCoord> in_flight_;
     std::map<ChunkCoord, Chunk> cache_;
     std::list<ChunkCoord> cache_lru_;        // front = most recent

@@ -389,3 +389,107 @@ TEST_CASE("halo gate: complete with uncovered and Empty neighbours; pending; fai
     CHECK(s.halo_state({6, 6, 0}) == HaloState::Failed);
     CHECK(s.halo_state({5, 5, 0}) == HaloState::Pending);
 }
+
+namespace {
+// Synth, but (3,3) fails until `heal` is set (a transient fault, e.g. a flaky disk).
+class FlakyProvider final : public IChunkProvider {
+public:
+    std::string_view name() const override { return "flaky"; }
+    bool covers(ChunkCoord c) const override { return inner.covers(c); }
+    ChunkResult load(const ChunkRequest& r) override {
+        if (r.coord.x == 3 && r.coord.y == 3 && !heal.load()) return {ChunkStatus::Error, std::nullopt, "io error"};
+        return inner.load(r);
+    }
+    std::atomic<bool> heal{false};
+    SynthProvider inner{false};
+};
+} // namespace
+
+TEST_CASE("retry: a failed load in a pinned halo goes Failed -> Pending -> Complete without unpinning") {
+    for (uint32_t threads : {0u, 3u}) {
+        CAPTURE(threads);
+        FlakyProvider p;
+        ChunkStreamer s(p, threads);
+        s.pin(7, std::vector<ChunkCoord>{{2, 2, 0}});
+        s.wait_idle();
+        CHECK(s.halo_state({2, 2, 0}) == HaloState::Failed);
+        CHECK(s.errors().size() == 1);
+        s.wait_idle();                      // still failed: no silent retry
+        CHECK(s.halo_state({2, 2, 0}) == HaloState::Failed);
+
+        p.heal = true;
+        s.retry({3, 3, 0});
+        CHECK(s.errors().empty());
+        CHECK(s.halo_state({2, 2, 0}) == HaloState::Pending);
+        s.wait_idle();
+        CHECK(s.halo_state({2, 2, 0}) == HaloState::Complete);
+        CHECK(s.get({3, 3, 0}) != nullptr);
+        CHECK(s.pinned() == std::vector<ChunkCoord>{{2, 2, 0}});
+
+        s.retry({3, 3, 0});                 // no-op on a resident chunk
+        s.retry_failed();                   // no-op with nothing failed
+        CHECK(s.wait_idle().empty());
+    }
+}
+
+TEST_CASE("empty answers stay known-absent after the chunk leaves the wanted set") {
+    GappyProvider p;
+    ChunkStreamer s(p, 0);
+    s.set_focus({2 * 32, 2 * 32}, 0, 0);
+    s.wait_idle();
+    CHECK(s.known_absent({2, 2, 0}));
+    std::vector<Focus> f;   // (3,3)'s halo except (2,2): (2,2) is no longer wanted
+    for (int y = 2; y <= 4; ++y)
+        for (int x = 2; x <= 4; ++x)
+            if (x != 2 || y != 2) f.push_back({{x * 32, y * 32}, 0, 0});
+    s.set_foci(f);
+    s.wait_idle();
+    CHECK(s.wanted().size() == 8);
+    CHECK(s.known_absent({2, 2, 0}));
+    CHECK(s.errors().empty());
+    CHECK(s.halo_state({3, 3, 0}) == HaloState::Complete);   // Empty answer still counts while unwanted
+    CHECK(s.halo_state({4, 4, 0}) == HaloState::Pending);
+}
+
+TEST_CASE("pinning under pressure: worker threads, many focus moves, level != 0, unknown owner") {
+    class LevelProvider final : public IChunkProvider {   // synth content on level 2
+    public:
+        std::string_view name() const override { return "lvl"; }
+        bool covers(ChunkCoord c) const override { return c.level == 2 && c.x >= -8 && c.x < 8 && c.y >= -8 && c.y < 8; }
+        ChunkResult load(const ChunkRequest& r) override {
+            ChunkRequest q = r;
+            q.coord.level = 0;
+            ChunkResult res = inner.load(q);
+            if (res.chunk) { res.chunk->coord = r.coord; res.chunk->content_hash = compute_content_hash(*res.chunk); }
+            return res;
+        }
+        SynthProvider inner{true};
+    } p;
+    StreamerConfig cfg;
+    cfg.cache_chunks = 2;   // small cache: evictions really happen
+    ChunkStreamer s(p, 4, cfg);
+    const std::vector<ChunkCoord> pins{{-3, -3, 2}};
+    s.pin(1, pins);
+    s.unpin(99);   // unknown owner: no-op
+    CHECK(s.pinned() == pins);
+    s.wait_idle();
+    const std::set<ChunkCoord> halo = [] {
+        std::set<ChunkCoord> h;
+        for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) h.insert({-3 + dx, -3 + dy, 2});
+        return h;
+    }();
+    for (int i = 0; i < 25; ++i) {
+        const Focus f{{(i * 97) % 480 - 240, (i * 61) % 480 - 240}, 2, i % 3};
+        s.set_foci(std::span<const Focus>(&f, 1));
+        const StreamDelta d = (i % 2) ? s.update() : s.wait_idle();
+        for (ChunkCoord c : d.removed) CHECK(halo.count(c) == 0);
+        for (ChunkCoord c : halo) CHECK(s.get(c) != nullptr);
+        CHECK(s.halo_state({-3, -3, 2}) == HaloState::Complete);
+    }
+    CHECK(s.halo_state({-3, -3, 0}) == HaloState::Complete);   // level 0 uncovered: all known-absent
+    s.unpin(1);
+    const Focus far{{200, 200}, 2, 0};
+    s.set_foci(std::span<const Focus>(&far, 1));
+    s.wait_idle();
+    for (ChunkCoord c : halo) CHECK(s.get(c) == nullptr);
+}
