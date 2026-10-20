@@ -63,7 +63,7 @@ class MonsterTable(unittest.TestCase):
                 if idx != "gargoyle":
                     self.assertEqual(d.get("damage_resistances", []), t["damage_resistances"])
                 self.assertEqual(d.get("condition_immunities", []), t["condition_immunities"])
-                self.assertEqual(d["proficiency_bonus"], 2)
+                self.assertEqual(d["proficiency_bonus"], 2 if t["cr"] <= 4 else 3)   # SRD: CR 0-4 +2, CR 5-8 +3 (medusa, CR 6)
 
     def test_every_attack_matches_the_table(self):
         for idx in AUTHORED:
@@ -150,6 +150,18 @@ class MonsterTable(unittest.TestCase):
         for idx, kind in (("orc", "aggressive"), ("berserker", "reckless_attack")):
             with self.subTest(monster=idx):
                 self.assertEqual([t["effect"] for t in load(idx)["traits"] if "effect" in t], [{"kind": kind}])
+        # Petrifying Gaze (common@2 gaze arm, 7.2p, sim #153): basilisk DC 12 Con, medusa DC 14 Con with the 5-point instant
+        # petrification margin; both restrained, repeat save at the end of the turn, petrified on a failed repeat save.
+        for idx, dc, margin in (("basilisk", 12, 0), ("medusa", 14, 5)):
+            with self.subTest(monster=idx):
+                g = {t["id"]: t for t in load(idx)["traits"]}["petrifying_gaze"]
+                self.assertEqual(g["effect"], {"kind": "gaze", "range_ft": 30, "save": {"ability": "con", "dc": dc},
+                                               "condition": "restrained", "repeat_save": "end_of_turn", "escalates": True,
+                                               "escalate_to": "petrified", "escalate_margin": margin})
+                self.assertIn(f"DC {dc} Constitution saving throw", g["description"])
+        med = {t["id"]: t for t in load("medusa")["traits"]}["multiattack"]["effect"]
+        self.assertEqual(med["options"], [{"id": "melee", "attacks": ["snake_hair", "shortsword", "shortsword"]},
+                                          {"id": "ranged", "attacks": ["longbow", "longbow"]}])
         # Sunlight Sensitivity / Keen Hearing and Smell: descriptive (no light model, no perception checks in the sim)
         self.assertNotIn("effect", {t["id"]: t for t in load("kobold")["traits"]}["sunlight_sensitivity"])
 
