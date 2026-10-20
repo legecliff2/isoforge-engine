@@ -35,6 +35,10 @@
     "description": {
       "type": "string"
     },
+    "ignores_cover": {
+      "type": "boolean",
+      "description": "The target gains no benefit from half or three-quarters cover (Sacred Flame). Total cover still blocks targeting."
+    },
     "level": {
       "type": "integer",
       "minimum": 0,
