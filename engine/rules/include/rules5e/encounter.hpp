@@ -206,6 +206,9 @@ struct ActionRequest {
     // appended (control conditions, 7.2v; log_hash 0xC4 when non-zero): CastSpell of a Command spell (SpellDef::control
     // Command): the CommandWord, 1 Approach, 2 Drop, 3 Flee, 4 Grovel, 5 Halt. Required there; 0 otherwise.
     uint8_t command_word = 0;
+    // appended (vision 7.2x; log_hash 0xC6 when set): on an Attack against a creature hidden from the attacker, the tile the
+    // attacker guesses (sim tile, opaque to rules; EncounterHooks::guess_correct). Required then; ignored otherwise.
+    bool has_guess = false; int32_t guess_x = 0, guess_y = 0;
 };
 
 enum class EventKind : uint8_t {
@@ -502,6 +505,71 @@ struct CoverQuery {
 };
 constexpr int cover_bonus(Cover c) { return c == Cover::Half ? 2 : c == Cover::ThreeQuarters ? 5 : 0; }
 
+// Vision (SRD 5.1 "Vision and Light", "Unseen Attackers and Targets", "Hiding"; VERSION_BUMP_BATCH 7.2x). Lighting is
+// modular (docs/proposals/LIGHTING.md): sim / the lighting module resolves every source (ambient sun / moon, static map
+// lights, attached sources such as torches or Light on an item) into a per-tile level, and answers per-pair facts
+// (EncounterHooks::sight_facts). Rules never see a light source; they derive what the viewer perceives from the tile
+// levels, the viewer's senses (Combatant::darkvision_ft ... truesight_ft) and Blinded / Deafened.
+enum class Light : uint8_t { Bright = 0, Dim = 1, Dark = 2 };
+enum class Obscured : uint8_t { None = 0, Light = 1, Heavy = 2 };
+// The sense the viewer perceives the subject with: Sight (normal vision or darkvision), a special sense, or None.
+enum class Sense : uint8_t { None = 0, Sight = 1, Blindsight = 2, Tremorsense = 3, Truesight = 4 };
+// One tile's lighting, as sim / the lighting module resolved it from every source (LIGHTING.md).
+struct TileLight {
+    Light light = Light::Bright;
+    bool magical_darkness = false;            // darkvision can't see through it (SRD Darkness)
+    bool sunlight = false;                    // direct sunlight (Sunlight Sensitivity)
+    Obscured obscured = Obscured::None;       // zone obscurement (Fog Cloud...), not darkness: that is `light`
+};
+// Sim's facts for one viewer -> subject pair (positions, tiles; no source types).
+struct SightFacts {
+    TileLight subject{};                      // the subject's tile
+    TileLight viewer{};                       // the viewer's tile
+    Obscured between = Obscured::None;        // zone obscurement on the line between them
+    uint16_t distance_ft = 0;
+    bool line_of_sight = true;                // no total cover / wall in between
+    bool subject_invisible = false;
+    bool subject_grounded = true;             // touching the same surface as the viewer (tremorsense)
+    bool audible = true;                      // the viewer could hear it (rules adds Deafened)
+};
+// Rules' answer (derive_sight).
+struct Sight {
+    Light light_at_subject = Light::Bright;   // effective: after darkvision
+    Light light_at_viewer = Light::Bright;
+    Obscured obscured = Obscured::None;       // effective: max(from effective light, zone); None for blindsight / truesight
+    bool can_see = true;                      // perceives it with sight or a special sense
+    bool perceives = true;                    // can see or hear it
+    Sense sense = Sense::Sight;
+    bool subject_in_sunlight = false;
+    bool viewer_in_sunlight = false;
+    friend constexpr bool operator==(const Sight&, const Sight&) = default;
+};
+// SRD derivation. Effective light: darkvision within range makes dim bright and dark dim, except in magical darkness.
+// Obscured = max(dim -> light / dark -> heavy, the subject tile's and the line's zone obscurement). Sight needs: not Blinded,
+// line of sight, not heavily obscured, subject not invisible. Truesight (range, line of sight, not Blinded) and blindsight
+// (range; also ignores Blinded) ignore light, obscurement and invisibility. Tremorsense (range) needs subject_grounded. Order:
+// Sight, Truesight, Blindsight, Tremorsense. perceives = can_see, or audible and not Deafened.
+Sight derive_sight(const Combatant& viewer, const SightFacts& f);
+// Light obscurement (dim light included): disadvantage on Wisdom (Perception) checks that rely on sight; passive -5. A
+// check relies on sight unless the viewer perceives the subject with a special sense (sense None: it is still looking).
+constexpr bool sight_perception_disadvantage(const Sight& v) {
+    return (v.sense == Sense::Sight || v.sense == Sense::None) && v.obscured == Obscured::Light;
+}
+// SRD Sunlight Sensitivity: in sunlight (the creature, or its target / what it tries to perceive), disadvantage on attack
+// rolls and on sight-based Perception.
+constexpr bool sunlight_disadvantage(bool sensitive, const Sight& v) {
+    return sensitive && (v.viewer_in_sunlight || v.subject_in_sunlight);
+}
+// Passive Perception adjustment from sight: -5 for either disadvantage (they don't stack).
+constexpr int passive_sight_penalty(const Sight& v, bool sunlight_sensitive = false) {
+    const bool sight_based = v.sense == Sense::Sight || v.sense == Sense::None;
+    return sight_perception_disadvantage(v) || (sight_based && sunlight_disadvantage(sunlight_sensitive, v)) ? -5 : 0;
+}
+// SRD Darkness / Daylight (LIGHTING.md R1): does darkness from a spell of `darkness_level` dispel light from a spell of
+// `light_level` (0 = non-magical light: always overcome)? Light from a higher-level spell is not. Mirror for Daylight:
+// dispels_light(light, darkness) with the roles swapped by the caller. Sim does the overlap test.
+constexpr bool dispels_light(uint8_t darkness_level, uint8_t light_level) { return light_level <= darkness_level; }
+
 struct EncounterHooks {
     // Checked after every state change. Empty = default_end_condition.
     EndConditionFn end_condition;
@@ -604,6 +672,14 @@ struct EncounterHooks {
     // bonus; area: Total skips the target). SpellDef::ignores_cover drops Half / ThreeQuarters (Sacred Flame), never Total.
     // Empty = Cover::None everywhere (pre-7.2t behaviour, goldens unchanged).
     std::function<Cover(const EncounterState&, const CoverQuery&)> cover;
+    // appended (vision, 7.2x): the facts for `viewer` -> `subject` (per-tile light from any source, distance, line of sight,
+    // invisibility...); rules derive the answer (derive_sight). Pure: a function of the state and sim's positions as they
+    // were when the step began (rules passes the start-of-step state during a step), never of rng; nothing is logged.
+    // Empty = everyone sees everyone (Sight{}; pre-7.2x behaviour, goldens unchanged).
+    std::function<SightFacts(const EncounterState&, const Combatant& viewer, const Combatant& subject)> sight_facts;
+    // appended (7.2x): an Attack on a creature hidden from the attacker names a tile (ActionRequest::has_guess). Is the
+    // target there? Pure like `sight`. Empty = yes. A wrong guess misses automatically (the d20 is still rolled).
+    std::function<bool(const EncounterState&, const Combatant& attacker, const Combatant& target, int32_t x, int32_t y)> guess_correct;
 };
 
 // R-G11: a live zone or aura (ZONES_AURAS.md §2.6). anchor_x / anchor_y: a point zone's sim tile, opaque to rules (Q1).
@@ -677,6 +753,10 @@ struct EncounterState {
     uint32_t next_summon_id = 0;
     uint32_t summons = 0;
     std::vector<ActiveSummonWeapon> summon_weapons{};   // appended (R-G12 PR 3), creation order; counted in `summons`
+    // appended (vision 7.2x; Combat::hash 0xC5 while non-empty): `who` is hidden from `from` (Hide succeeded: unseen by
+    // `from` and Stealth >= its passive Perception). Ends when `who` attacks, or when `from` can see it at a step's start.
+    struct Hidden { CombatantId who = 0, from = 0; int16_t stealth = 0; friend bool operator==(const Hidden&, const Hidden&) = default; };
+    std::vector<Hidden> hidden{};
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call
@@ -810,6 +890,12 @@ uint64_t surprised_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222
 // Haste / Slow themselves are modifiers (modifiers_digest, 0xA2, which folds repeat_save fields only when set).
 // Petrifying Gaze (Combat::hash 0xAE): some creature has its eyes averted / their ids.
 bool has_gaze_state(const EncounterState&);
+// Vision (7.2x). sight(): derive_sight over the hook's facts (the start-of-step state during a step), or Sight{} without a
+// hook / for an unknown id.
+Sight sight(const EncounterState&, CombatantId viewer, CombatantId subject);
+bool is_hidden_from(const EncounterState&, CombatantId who, CombatantId from);
+bool has_hidden_state(const EncounterState&);   // Combat::hash 0xC5 folds hidden_digest only while true
+uint64_t hidden_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 uint64_t gaze_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 // R-G12 (Combat::hash 0xAF): summon / transform state. has_summon_state: something was transformed (or, rules PR 2, summoned)
 // this encounter. summons_digest: summon id counter u32, summon count u32 (0 / 0 until rules PR 2), transforms u32, then per
