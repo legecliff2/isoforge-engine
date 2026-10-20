@@ -1054,6 +1054,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             add_tag(r);
             if (r != "half_elf" && r.size() >= 3 && r.compare(r.size() - 3, 3, "elf") == 0) add_tag("elf");
         }
+        // EC swarm: the "swarm" tag turns on the SRD Swarm trait
+        if (std::find(c.tags.begin(), c.tags.end(), rules5e::spell_id_of("swarm")) != c.tags.end()) a.swarm = c.no_regain_hp = true;
     }
     // 0 = parse the document's own $schema tag (never "latest"); a missing, unparsable or other-type tag means no refusal.
     uint32_t declared = declared_version;
@@ -1185,6 +1187,12 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         at.type = *type;
         at.ranged = ranged;
         at.finesse = false;
+        // EC swarm: "half_hp_damage": "1d6" replaces component 1's dice while the attacker has half its HP or fewer
+        if (auto hh = act.find("half_hp_damage"); hh != act.end()) {
+            auto hd = hh->is_string() ? parse_dice(hh->get<std::string>()) : std::nullopt;
+            if (!hd || hd->count == 0) return a.id + ": bad half_hp_damage in action " + act.value("id", "?");
+            at.half_hp_damage = *hd;
+        }
         // R-G7: only the grip bits Great Weapon Fighting reads (two_handed, versatile) are carried; other properties (loading,
         // heavy, finesse, ...) stay off so existing behaviour and goldens do not move.
         if (auto ps = act.find("properties"); ps != act.end() && ps->is_array())
