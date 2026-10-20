@@ -1,0 +1,119 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.bard_level_2",
+  "name": "Bard, level 2",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "chaotic good",
+  "level": 2,
+  "classes": [
+    {
+      "class": "bard",
+      "level": 2,
+      "hit_die": "d8"
+    }
+  ],
+  "xp": 300,
+  "armor_class": {
+    "value": 13,
+    "note": "leather armor"
+  },
+  "hit_points": {
+    "average": 17,
+    "formula": "2d8+4"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 9,
+    "dex": 15,
+    "con": 14,
+    "int": 11,
+    "wis": 13,
+    "cha": 16
+  },
+  "saving_throws": {
+    "dex": 4,
+    "cha": 5
+  },
+  "skills": {
+    "deception": 5,
+    "performance": 5,
+    "persuasion": 5
+  },
+  "senses": {
+    "passive_perception": 11
+  },
+  "languages": [
+    "Common",
+    "Halfling"
+  ],
+  "proficiency_bonus": 2,
+  "spellcasting": {
+    "ability": "cha",
+    "caster_level": 2,
+    "slots": {
+      "1": 3
+    },
+    "spells": [
+      "srd51.spell.vicious_mockery",
+      "srd51.spell.cure_wounds",
+      "srd51.spell.healing_word",
+      "srd51.spell.thunderwave"
+    ]
+  },
+  "features": [
+    {
+      "id": "bardic_inspiration",
+      "name": "Bardic Inspiration",
+      "description": "You can inspire others through stirring words or music. To do so, you use a bonus action on your turn to choose one creature other than yourself within 60 feet of you who can hear you. That creature gains one Bardic Inspiration die, a d6. Once within the next 10 minutes, the creature can roll the die and add the number rolled to one ability check, attack roll, or saving throw it makes. The creature can wait until after it rolls the d20 before deciding to use the Bardic Inspiration die, but must decide before the GM says whether the roll succeeds or fails. Once the Bardic Inspiration die is rolled, it is lost. A creature can have only one Bardic Inspiration die at a time. You can use this feature a number of times equal to your Charisma modifier (a minimum of once). You regain any expended uses when you finish a long rest.  Your Bardic Inspiration die changes when you reach certain levels in this class. The die becomes a d8 at 5th level, a d10 at 10th level, and a d12 at 15th level. Die: d6. Uses: Charisma modifier per long rest. Granting the die to an ally is not modelled (no key); from 3rd level the resources[] pool bardic_inspiration is spent by Cutting Words."
+    },
+    {
+      "id": "jack_of_all_trades",
+      "name": "Jack of All Trades",
+      "description": "Starting at 2nd level, you can add half your proficiency bonus, rounded down, to any ability check you make that doesn't already include your proficiency bonus."
+    },
+    {
+      "id": "song_of_rest",
+      "name": "Song of Rest",
+      "description": "Beginning at 2nd level, you can use soothing music or oration to help revitalize your wounded allies during a short rest. If you or any friendly creatures who can hear your performance regain hit points at the end of the short rest by spending one or more Hit Dice, each of those creatures regains an extra 1d6 hit points.  The extra hit points increase when you reach certain levels in this class: to 1d8 at 9th level, to 1d10 at 13th level, and to 1d12 at 17th level."
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.leather_armor",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.rapier",
+      "equipped": true
+    },
+    "lute",
+    "entertainers_pack"
+  ],
+  "actions": [
+    {
+      "id": "rapier",
+      "name": "Rapier",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "finesse"
+      ],
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ]
+    }
+  ]
+}
