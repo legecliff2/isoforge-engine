@@ -369,7 +369,8 @@ std::optional<std::string> add_trigger(const std::string& arch, const std::strin
 
 // `effect` is an on_event effect object. Returns an error, or sets `unsupported` (listed, not compiled).
 std::optional<std::string> compile_on_event(const std::string& arch, const std::string& owner, const Json& effect, const Json& doc, const RiderCtx& rc,
-                                            std::map<uint32_t, std::string>& ids, rules5e::Combatant& c, bool& unsupported) {
+                                            std::map<uint32_t, std::string>& ids, rules5e::Combatant& c, bool& unsupported,
+                                            std::vector<Archetype::Resource>& usage_pools) {
     const std::string where = arch + ": " + owner + " on_event";
     static const std::pair<const char*, rules5e::TriggerOn> ons[] = {{"hit", rules5e::TriggerOn::Hit}, {"crit", rules5e::TriggerOn::Crit},
         {"damage_dealt", rules5e::TriggerOn::DamageDealt}, {"reduce_to_zero", rules5e::TriggerOn::ReduceToZero},
@@ -389,7 +390,43 @@ std::optional<std::string> compile_on_event(const std::string& arch, const std::
     const std::string ch = effect.contains("choice") && effect["choice"].is_string() ? effect["choice"].get<std::string>() : "auto";
     t.choice = ch == "auto" ? 0 : ch == "ask" ? 1 : ch == "never" ? 2 : 255;
     if (t.choice == 255) return where + ": bad choice";
-    if (effect.contains("usage")) { unsupported = true; return std::nullopt; }   // a use cost is a later sub-PR
+    // usage (common@2 $defs/usage): at_will = none; per_day / per_rest {uses, rest} = a trigger-owned pool
+    // "<owner>#usage" (registered by Combat::create like resources[], recharged by rests, folded with the pools, 0xA3) paid by a
+    // Spend rider; pool {pool, cost} = Spend from a declared resources[] pool. recharge stays unsupported (listed, not compiled).
+    std::optional<rules5e::RiderEffect> usage_spend;
+    if (auto u = effect.find("usage"); u != effect.end()) {
+        if (!u->is_object()) return where + ": bad usage";
+        const std::string k = u->value("kind", "");
+        if (k == "per_day" || k == "per_rest") {
+            const int uses = geti(*u, "uses");
+            if (uses < 1 || uses > 255) return where + ": bad uses";
+            const std::string rest = u->value("rest", "long");
+            if (k == "per_rest" && rest != "short" && rest != "long") return where + ": bad rest";
+            Archetype::Resource r;
+            r.id = owner + "#usage";
+            r.pool_id = rules5e::spell_id_of(arch + "#" + r.id);
+            r.max = r.start = uint16_t(uses);
+            r.recharge = uint8_t(k == "per_rest" && rest == "short" ? rules5e::FeatureRecharge::ShortRest : rules5e::FeatureRecharge::LongRest);
+            rules5e::RiderEffect sp;
+            sp.kind = rules5e::RiderKind::Spend;
+            sp.pool = r.pool_id;
+            sp.value = 1;
+            usage_spend = sp;
+            usage_pools.push_back(std::move(r));
+        } else if (k == "pool") {
+            const std::string pid = u->value("pool", "");
+            const int cost = geti(*u, "cost", 1);
+            if (pid.empty() || cost < 1 || cost > 255) return where + ": bad usage pool";
+            bool declared_pool = false;
+            for (const auto& r : usage_pools) declared_pool = declared_pool || r.id == pid;
+            if (!declared_pool) return where + ": usage pool '" + pid + "' is not a declared resource";
+            rules5e::RiderEffect sp;
+            sp.kind = rules5e::RiderKind::Spend;
+            sp.pool = rules5e::spell_id_of(pid);
+            sp.value = int16_t(cost);
+            usage_spend = sp;
+        } else if (k != "at_will") { unsupported = true; return std::nullopt; }   // recharge: a later sub-PR
+    }
     if (auto w = effect.find("when"); w != effect.end()) {
         if (!w->is_array()) return where + ": bad when";
         for (const Json& p : *w) {
@@ -401,6 +438,7 @@ std::optional<std::string> compile_on_event(const std::string& arch, const std::
     auto ef = effect.find("effects");
     if (ef == effect.end() || !ef->is_array() || ef->empty()) return where + ": needs effects[]";
     for (const Json& r : *ef) if (auto e = compile_rider(where, r, doc, rc, t.effects)) return e;
+    if (usage_spend) t.effects.push_back(*usage_spend);
     return add_trigger(arch, owner, 0, std::move(t), ids, c);
 }
 
@@ -1127,7 +1165,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         }
         if (f.kind == "on_event") {   // event triggers (rules5e::Trigger): compiled here, the registry reserves the kind only
             bool unsupported = false;
-            if (auto e = compile_on_event(a.id, f.id, f.effect, doc, rider_ctx, trigger_ids, c, unsupported)) return *e;
+            if (auto e = compile_on_event(a.id, f.id, f.effect, doc, rider_ctx, trigger_ids, c, unsupported, a.resources)) return *e;
             if (unsupported) a.unsupported_features.push_back(f.id + " (on_event: unsupported usage)");
             continue;
         }

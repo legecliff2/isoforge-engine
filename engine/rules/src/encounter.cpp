@@ -967,6 +967,10 @@ bool predicate_holds(EncounterState& s, Combatant& owner, const Combatant& subje
         if (!r.success) failed_save = true;
         return r.success;
     }
+    case PredicateKind::TargetSurprised: return s.round == 1 && subject.surprised_at_start;   // EC monster predicates (flagged)
+    case PredicateKind::WeaponAttack: return !x.is_spell && x.atk != nullptr;
+    case PredicateKind::AllyNearTarget: return x.ally;
+    case PredicateKind::DamageAtMost: return x.dmg <= p.a;
     case PredicateKind::AttackIs: return !x.is_spell && x.atk && x.atk >= owner.attacks.data() && x.atk < owner.attacks.data() + owner.attacks.size() &&
                                          std::size_t(x.atk - owner.attacks.data()) == std::size_t(p.a);   // pointer identity into owner.attacks
     }
@@ -1029,6 +1033,14 @@ bool run_event_triggers(EncounterState& s, Combatant& owner, Combatant& subject,
             if (failed_save) emit(ev, EventKind::FeatureTriggered, owner.id, subject.id, int32_t(tr.id), int32_t(on), 3);
             continue;
         }
+        // EC monster predicates (flagged rules5e edit): a pool Spend gates and pays an event trigger too (per-rest usage, Relentless).
+        // No registered pool = unlimited, as for hit triggers; slot spends stay hit-only.
+        const RiderEffect* pool_spend = nullptr;
+        for (const RiderEffect& e : tr.effects) if (e.kind == RiderKind::Spend && e.slot == 0) { pool_spend = &e; break; }
+        const uint16_t pool_cost = pool_spend && pool_spend->value > 0 ? uint16_t(pool_spend->value) : uint16_t(1);
+        if (pool_spend && find_pool(s, owner.id, pool_spend->pool) && !can_spend(s, owner.id, pool_spend->pool, pool_cost)) continue;
+        if (pool_spend && find_pool(s, owner.id, pool_spend->pool) && spend_pool(s, owner.id, pool_spend->pool, pool_cost))
+            emit(ev, EventKind::ResourceSpent, owner.id, 0, int32_t(pool_spend->pool), pool_cost, find_pool(s, owner.id, pool_spend->pool)->cur);
         if (tr.limit == TriggerLimit::OncePerTurn) owner.trigger_turn_mask |= m;
         if (tr.limit == TriggerLimit::OncePerRound) owner.trigger_round_mask |= m;
         emit(ev, EventKind::FeatureTriggered, owner.id, subject.id, int32_t(tr.id), int32_t(on), 1);
@@ -4236,7 +4248,7 @@ std::vector<CombatantId> surprised_by_stealth(const std::vector<Combatant>& cs, 
 
 void apply_surprise(std::vector<Combatant>& cs, const std::vector<CombatantId>& ids) {
     for (auto& c : cs)
-        for (CombatantId id : ids) if (c.id == id) c.surprised = true;
+        for (CombatantId id : ids) if (c.id == id) { c.surprised = true; c.surprised_at_start = true; }   // #158: the set kept
 }
 
 bool has_surprised(const EncounterState& s) {
