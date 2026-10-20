@@ -479,6 +479,18 @@
     "cleric"
    ]
   },
+  "lesser-restoration": {
+   "name": "Lesser Restoration",
+   "level": 2,
+   "school": "abjuration",
+   "classes": [
+    "bard",
+    "cleric",
+    "druid",
+    "paladin",
+    "ranger"
+   ]
+  },
   "magic-missile": {
    "name": "Magic Missile",
    "level": 1,
@@ -513,6 +525,15 @@
    "school": "conjuration",
    "classes": [
     "druid"
+   ]
+  },
+  "revivify": {
+   "name": "Revivify",
+   "level": 3,
+   "school": "conjuration",
+   "classes": [
+    "cleric",
+    "paladin"
    ]
   },
   "sacred-flame": {
