@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation), Sorcerer (Draconic Bloodline), Rogue (Thief), Paladin (Oath of Devotion) and Ranger (Hunter) levels 1-5 in srd51.core vs the 5e-database
+"""SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation), Sorcerer (Draconic Bloodline), Rogue (Thief), Paladin (Oath of Devotion), Ranger (Hunter) and Barbarian (Path of the Berserker) levels 1-5 in srd51.core vs the 5e-database
 tables (ctest: content_validate_srd51_classes).
 
 `data/srd51_classes_5e_database_a6212be.json` holds fields copied verbatim from 5e-bits/5e-database commit a6212be
@@ -25,20 +25,25 @@ DATA = json.loads((Path(__file__).parent / "data/srd51_classes_5e_database_a6212
 TABLE, SPELLS = DATA["classes"], DATA["spells"]
 LEVELS = range(1, 6)
 XP = {1: 0, 2: 300, 3: 900, 4: 2700, 5: 6500}   # SRD 5.1 Character Advancement table
-SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2, "sorcerer": 1, "rogue": 3, "paladin": 3, "ranger": 3}
+SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2, "sorcerer": 1, "rogue": 3, "paladin": 3, "ranger": 3, "barbarian": 3}
 SPELLCASTING_FROM = {"paladin": 2, "ranger": 2}   # half caster: no spellcasting block at level 1
-MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int", "sorcerer": "cha", "rogue": "dex", "paladin": "str", "ranger": "dex"}   # the ASI at level 4 goes here (+2)
+MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int", "sorcerer": "cha", "rogue": "dex", "paladin": "str", "ranger": "dex", "barbarian": "str"}   # the ASI at level 4 goes here (+2)
 SKILLS = {"athletics": "str", "perception": "wis", "insight": "wis", "religion": "int", "arcana": "int", "history": "int",
           "persuasion": "cha", "acrobatics": "dex", "sleight_of_hand": "dex", "stealth": "dex", "survival": "wis"}
 # Rogue: four class skills (two for the others) and Expertise (doubled proficiency) on Stealth and Perception.
 SKILL_COUNT = {"rogue": 4, "ranger": 3}
 EXPERTISE = {"rogue": {"stealth", "perception"}}
 # Rogue (Thief) Second-Story Work from 3rd: climbing costs no extra movement = a climb speed equal to the walking speed.
+# Barbarian Fast Movement from 5th: +10 ft walking speed (no heavy armor), baked.
 def speed(cls: str, level: int) -> dict:
+    if cls == "barbarian":
+        return {"walk": 40 if level >= 5 else 30}
     return {"walk": 30, "climb": 30} if cls == "rogue" and level >= 3 else {"walk": 30}
 # Draconic Resilience (sorcerer, Draconic Bloodline): +1 hit point per sorcerer level, and AC 13 + Dex without armor.
 HP_PER_LEVEL = {"sorcerer": 1}
 UNARMORED_BASE = {"sorcerer": 13}
+# Barbarian Unarmored Defense: 10 + Dex + Con with no armor (a shield still allowed), baked into armor_class.
+UNARMORED_CON = {"barbarian"}
 
 # Every class / subclass feature of levels 1-5 (mirror index) -> where it lives. "feature:<id>" = a features[] entry;
 # "subclass" = classes[0].subclass; "spellcasting" = the spellcasting block; "abilities" = baked into the scores.
@@ -103,12 +108,22 @@ AUTHORED = {
     "primeval-awareness": "feature:primeval_awareness",      # descriptive: 1-6 mile creature-type sensing, no slot-spending feature key
     "ranger-ability-score-improvement-1": "abilities",
     "ranger-extra-attack": "feature:extra_attack",
-    "hunters-prey": "feature:colossus_slayer",               # Colossus Slayer chosen; descriptive: no "target below its hit point maximum" predicate                # descriptive: the damaged window is not attack-only (SRD_CLASSES_DEFERRED)
+    "hunters-prey": "feature:colossus_slayer",
+    "rage": "feature:rage",                                  # descriptive: apply_modifier + usage pool is not loaded (SRD_CLASSES_DEFERRED)
+    "barbarian-unarmored-defense": "feature:unarmored_defense",   # baked into armor_class (UNARMORED_CON); no effect
+    "reckless-attack": "feature:reckless_attack",            # reckless_attack kind (sim #129)
+    "danger-sense": "feature:danger_sense",                  # descriptive: no static save-advantage key with a "can see" gate
+    "primal-path": "subclass",
+    "barbarian-ability-score-improvement-1": "abilities",
+    "barbarian-extra-attack": "feature:extra_attack",
+    "fast-movement": "feature:fast_movement",                # baked into speed.walk 40 (speed()); no effect
+    "frenzy": "feature:frenzy",                              # descriptive: needs Rage, a bonus-action attack while raging, exhaustion on end               # Colossus Slayer chosen; descriptive: no "target below its hit point maximum" predicate                # descriptive: the damaged window is not attack-only (SRD_CLASSES_DEFERRED)
 }
 # Kept as a features[] entry with no effect: no combat rule, or a mechanic the engine lacks (docs/SRD_CLASSES_DEFERRED.md).
 DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_story_work", "uncanny_dodge"],
                "paladin": ["divine_sense", "divine_health", "channel_divinity", "sacred_weapon", "turn_the_unholy"],
-               "ranger": ["favored_enemy", "natural_explorer", "primeval_awareness", "colossus_slayer"]}
+               "ranger": ["favored_enemy", "natural_explorer", "primeval_awareness", "colossus_slayer"],
+               "barbarian": ["rage", "unarmored_defense", "danger_sense", "fast_movement", "frenzy"]}
 # Not expressible today (docs/SRD_CLASSES_DEFERRED.md): mirror index -> the feature id it would get (must be absent).
 DEFERRED = {
     "disciple-of-life": "disciple_of_life",
@@ -206,7 +221,7 @@ class ClassTable(unittest.TestCase):
                     ac = a["base_ac"] + (min(dex, a.get("dex_cap", dex)) if a["dex_bonus"] else 0)
                     self.assertLessEqual(a.get("str_min", 0), d["abilities"]["str"])
                 else:
-                    ac = UNARMORED_BASE.get(cls, 10) + dex
+                    ac = UNARMORED_BASE.get(cls, 10) + dex + (mod(d["abilities"]["con"]) if cls in UNARMORED_CON else 0)
                 ac += sum(i["ac_bonus"] for i in worn if i["category"] == "shield")
                 self.assertEqual(d["armor_class"]["value"], ac)
 
@@ -378,6 +393,23 @@ class ClassTable(unittest.TestCase):
                     self.assertEqual(f["extra_attack"]["effect"], {"kind": "extra_attack", "attacks_per_action": 2})
                 self.assertNotIn("resources", d)
                 for fid in DESCRIPTIVE["ranger"]:
+                    if fid in f:
+                        self.assertNotIn("effect", f[fid], fid)
+
+    def test_barbarian(self):
+        for level in LEVELS:
+            with self.subTest(level=level):
+                d = load("barbarian", level)
+                f = features(d)
+                self.assertFalse([e for e in d["equipment"] if isinstance(e, dict) and item(e["item"])["category"] == "armor"])
+                self.assertEqual("reckless_attack" in f, level >= 2)
+                if level >= 2:
+                    self.assertEqual(f["reckless_attack"]["effect"], {"kind": "reckless_attack"})
+                self.assertEqual("extra_attack" in f, level >= 5)
+                if level >= 5:
+                    self.assertEqual(f["extra_attack"]["effect"], {"kind": "extra_attack", "attacks_per_action": 2})
+                self.assertNotIn("resources", d)   # no rage pool: nothing loaded would spend it (check 12)
+                for fid in DESCRIPTIVE["barbarian"]:
                     if fid in f:
                         self.assertNotIn("effect", f[fid], fid)
 

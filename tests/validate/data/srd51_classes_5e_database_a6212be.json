@@ -676,6 +676,85 @@
      "spells_known": 4
     }
    }
+  },
+  "barbarian": {
+   "name": "Barbarian",
+   "hit_die": 12,
+   "saving_throws": [
+    "str",
+    "con"
+   ],
+   "spellcasting_ability": null,
+   "subclass": "berserker",
+   "subclass_name": "Berserker",
+   "levels": {
+    "1": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "rage": "Rage",
+      "barbarian-unarmored-defense": "Unarmored Defense"
+     },
+     "class_specific": {
+      "rage_count": 2,
+      "rage_damage_bonus": 2,
+      "brutal_critical_dice": 0
+     }
+    },
+    "2": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "reckless-attack": "Reckless Attack",
+      "danger-sense": "Danger Sense"
+     },
+     "class_specific": {
+      "rage_count": 2,
+      "rage_damage_bonus": 2,
+      "brutal_critical_dice": 0
+     }
+    },
+    "3": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "primal-path": "Primal Path"
+     },
+     "class_specific": {
+      "rage_count": 3,
+      "rage_damage_bonus": 2,
+      "brutal_critical_dice": 0
+     },
+     "subclass_features": {
+      "frenzy": "Frenzy"
+     }
+    },
+    "4": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 1,
+     "features": {
+      "barbarian-ability-score-improvement-1": "Ability Score Improvement"
+     },
+     "class_specific": {
+      "rage_count": 3,
+      "rage_damage_bonus": 2,
+      "brutal_critical_dice": 0
+     }
+    },
+    "5": {
+     "prof_bonus": 3,
+     "ability_score_bonuses": 1,
+     "features": {
+      "barbarian-extra-attack": "Extra Attack",
+      "fast-movement": "Fast Movement"
+     },
+     "class_specific": {
+      "rage_count": 3,
+      "rage_damage_bonus": 2,
+      "brutal_critical_dice": 0
+     }
+    }
+   }
   }
  },
  "spells": {
