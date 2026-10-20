@@ -176,7 +176,21 @@ built-in AI does not. A second declaration, or any field, adds nothing (the vali
 
 Example: `{ "kind": "sculpt_spells" }`
 
-These eight are open kinds (live at `@3` and `@4`); see `docs/CONTENT_CONVENTIONS.md` section 3.
+### `font_of_magic` (static, VERSION_BUMP_BATCH 7.2o)
+
+Field: `pool` (required, the `resources[].id` of the sorcery-point pool, the same pool as `metamagic.pool`). Sorcerer Font of Magic
+(sim #152 `apply_font_of_magic`): the sim resolves `pool` to max = start = the sorcerer level (sum of the `classes[]` entries with
+`class: sorcerer`), recharge `long_rest`, registering it when `resources[]` lacks it, and points `Combatant::sorcery_pool` at it even
+without Metamagic; the creature may then use Flexible Casting (rules5e `FlexibleCasting`, a bonus action). Load errors (validator
+errors, loader wording): sorcerer level below 2 (`font_of_magic needs sorcerer level 2+ (sorcerer level N)`), an unlimited pool
+(`font_of_magic pool '<pool>' is unlimited`), and a metamagic declaration naming a different pool, in either order
+(`font_of_magic and metamagic name different pools` / `metamagic declarations name different pools`). Validator warnings: the
+pool's `max` is not the sorcerer level, its `recharge` is not `long_rest` or its `start` differs (the sim overrides all three), or
+`resources[]` lacks it (declare it so the document shows the pool).
+
+Example: `{ "kind": "font_of_magic", "pool": "sorcery_points" }` with `resources: [{ "id": "sorcery_points", "max": 3, "recharge": "long_rest" }]` at sorcerer level 3.
+
+These nine are open kinds (live at `@3` and `@4`); see `docs/CONTENT_CONVENTIONS.md` section 3.
 
 ### 1.1 Condition ids
 
