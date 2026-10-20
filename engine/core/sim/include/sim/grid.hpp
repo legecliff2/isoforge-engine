@@ -20,6 +20,11 @@ namespace eng::sim {
 
 inline constexpr int kFeetPerTile = 5;
 
+// SRD 5.1 movement modes (feat/move-modes): which non-walking speeds a mover has. Default: a walker only.
+struct MoveCaps {
+    bool fly = false, swim = false, climb = false;
+};
+
 class Grid {
 public:
     // One chunk in its chunk-local frame (as if at coord (0,0)); v0 behaviour.
@@ -54,6 +59,17 @@ public:
     // dearest step_cost_ft over the tiles it newly enters (just step_cost_ft(to) when n == 1).
     int  move_cost_ft(Vec2i from, Vec2i to, int n) const noexcept;
 
+    // feat/move-modes terrain (chunk flags water / climbable / open_air). Maps without them behave as before.
+    bool water(Vec2i p) const noexcept;
+    bool climbable(Vec2i p) const noexcept;   // climb terrain (even when it blocks walking)
+    bool open_air(Vec2i p) const noexcept;    // no footing, nothing blocks: only flyers enter
+    // May a mover with `caps` occupy p: walkable, or climbable (anyone may climb), or open air for a flyer.
+    bool enterable(Vec2i p, const MoveCaps& caps) const noexcept;
+    // Feet to enter p: 5 (10 difficult); SRD "climbing, swimming": without a climb / swim speed (or flight) each foot
+    // costs 1 extra foot (2 in difficult terrain). Open air costs 5 for a flyer.
+    int  tile_cost_ft(Vec2i p, const MoveCaps& caps) const noexcept;
+    int  move_cost_ft(Vec2i from, Vec2i to, int n, const MoveCaps& caps) const noexcept;
+
     // Shortest path (by feet, ties broken by fixed neighbour order) from `from` to any tile in
     // `goals`, avoiding `occupied`. Excludes `from`; empty if unreachable or already at a goal.
     // `footprint` > 1 paths an n x n creature: `from`, `goals` and the result are anchors, a node is
@@ -62,15 +78,22 @@ public:
     // does not fit a one-tile gap. footprint == 1 is the v0 search, unchanged.
     std::vector<Vec2i> path(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied,
                             int footprint = 1) const;
+    // feat/move-modes: the same search over enterable(caps) tiles priced by tile_cost_ft(caps).
+    std::vector<Vec2i> path(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied,
+                            int footprint, const MoveCaps& caps) const;
 
 private:
     struct Cells {
         std::array<uint8_t, world::kChunkSize * world::kChunkSize> walk{};   // 0 blocked, 1 normal, 2 difficult
         std::array<uint8_t, world::kChunkSize * world::kChunkSize> sight{};  // 1 = blocks sight
+        std::array<uint8_t, world::kChunkSize * world::kChunkSize> terrain{}; // bit0 water, bit1 climbable, bit2 open air
     };
     void add_chunk(const world::Chunk& c);
+    std::vector<Vec2i> path_impl(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied,
+                                 int footprint, const MoveCaps* caps) const;
     const uint8_t* walk_at(Vec2i p) const noexcept;
     const uint8_t* sight_at(Vec2i p) const noexcept;
+    uint8_t terrain_at(Vec2i p) const noexcept;
 
     std::map<std::pair<int32_t, int32_t>, Cells> chunks_;   // by chunk (x, y)
     int16_t level_ = 0;

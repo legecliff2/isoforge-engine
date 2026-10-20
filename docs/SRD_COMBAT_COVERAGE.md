@@ -659,7 +659,22 @@ Gaps that need new rules mechanics (not just Engine Core / T&C wiring, which is 
 
 Also open but small: Hide opposed by passive Perception (R-G1 / T&C-G16, sim; rules now has `passive_perception`). **Done in rules** (7.2j): Haste / Slow as full spells and the monster one-offs (Life Drain max-HP reduction, Reckless, Aggressive's bonus-action move, Petrifying Gaze progression); still open from that list: Slow's spell-casting delay, Haste's Use an Object, ability drain, and the gaze trigger (rules and sim wiring done in 7.2p; schema key pending).
 
-## 12. Source notes and verification
+### 11.7 Movement modes (SRD 5.1 "Movement", "Special Types of Movement", "Flying Movement"; feat/move-modes)
+
+| Rule | Status |
+|---|---|
+| Fly / swim / climb speeds from stat blocks (`speed.fly/swim/climb/hover`) and Wild Shape / shapechanger forms | done: rules5e `Combatant::fly_ft/swim_ft/climb_ft/hover`, `FormStats` likewise |
+| Terrain: water (existing chunk flag bit 3), climbable (new bit 4), open air / chasm (new bit 5) | done: `Grid::water/climbable/open_air/enterable` |
+| A creature uses the speed that fits the terrain | done: sim `step_mode` (open air: fly; climb: climb > fly > walk; water: swim > fly > walk; ground: walk, then fly) |
+| Climbing / swimming without the speed: +1 ft per ft (+2 in difficult terrain) | done: `Grid::tile_cost_ft` |
+| Switching speeds subtracts the distance already moved | done: rules `move_allowance` (shared budget; Dash grants every speed again) |
+| A prone creature cannot fly | done (rules refuses `move_mode` 1 while prone) |
+| AI pathing over the modes | done: `Grid::path(..., MoveCaps)`, same deterministic Dijkstra; AI steps only while `step_mode` fits |
+| Falling (prone / speed 0 while flying without hover) and fall damage 1d6 per 10 ft | deferred: the grid has no altitude; a flyer over open air knocked prone stays put (cannot fly) until it stands |
+| Climbing / swimming ability checks (Athletics for hard surfaces, rough water) | deferred |
+| Wild Shape `no_fly_below` / `no_swim_below` | unchanged (build_form, #176) |
+
+ and verification
 
 - **SRD source**: SRD 5.1 (CC-BY-4.0) as mirrored by <https://github.com/5e-bits/5e-database> at commit `a6212be` (`src/2014/en`: Spells, Monsters, Features, Subclasses, Classes, Conditions, Equipment, Weapon-Properties, Rule-Sections, Traits). The published PDF was **not** re-read; the first draft's statement that it was checked against the PDF was inaccurate and is removed.
 - **Verified against the mirror in this revision**: spell names, levels, casting times and the 0-3 spell list (all 169); class and subclass features through level 5, fighting styles per class, eldritch invocations; conditions (including Petrified's poison/disease immunity); weapon properties and special rules (lance, net); armor stealth disadvantage and Strength requirements; cover bonuses and crawling cost; Hit Dice and surprise rules; every monster named in section 9 (existence, CR, and the trait or action cited), plus population counts (monsters, CR bands, multiattack, legendary, weapons, armor).
