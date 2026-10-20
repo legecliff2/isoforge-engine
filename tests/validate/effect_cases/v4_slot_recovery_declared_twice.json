@@ -1,0 +1,21 @@
+{
+  "base": "characters/wizard_level_3.json",
+  "sets": [
+    [
+      [
+        "features",
+        2
+      ],
+      {
+        "id": "arcane_recovery_2",
+        "name": "Arcane Recovery (again)",
+        "effect": {
+          "kind": "slot_recovery",
+          "class": "wizard"
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "arcane_recovery_2: slot_recovery declared twice for class 'wizard'"
+}

@@ -379,9 +379,14 @@ std::vector<CombatantId> Combat::gaze_seen(CombatantId viewer) const {
 
 std::vector<Vec2i> Combat::occupied_except(CombatantId id) const {
     std::vector<Vec2i> out;
+    bool mover_swarm = false;
+    for (const auto& s : slots_) if (s.id == id) mover_swarm = s.archetype->swarm;
     for (const auto& s : slots_) {
         const auto* c = rules5e::find(state_, s.id);
         if (s.id == id || !c || c->dead) continue;
+        // EC swarm (SRD Swarm): a swarm can occupy another creature's space and vice versa, so a swarm mover sees no other
+        // creature's tiles and a swarm's tiles block no one. Without swarms this is the old list.
+        if (s.archetype->swarm || mover_swarm) continue;
         if (footprint_size(s.id) == 1) { out.push_back(pos(s.id)); continue; }
         for (Vec2i t : footprint_tiles(s.id)) out.push_back(t);
     }
