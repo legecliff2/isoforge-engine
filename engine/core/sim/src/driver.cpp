@@ -92,7 +92,32 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             return up;
         }
     }
-    if (auto x = spell_kind_command(c, *me)) return *x;
+    // R-G12 (SUMMONS_TRANSFORMS §3.4): a Polymorph / Wild Shape form cannot cast (rules refuse it), so no spell or save-action
+    // casts from the creature's own block while in it. Transform only when content asks (wild_shape ai: prefer_beast), at the
+    // start of the turn, into the allowed form with the highest CR (ties: lowest form index). Never revert by choice: 0 HP,
+    // the timer, concentration or the encounter's end revert it.
+    const bool beast_form = me->form == rules5e::FormKind::Polymorph || me->form == rules5e::FormKind::WildShape;
+    if (me->form == rules5e::FormKind::None && s.budget.sequence == 0 && s.budget.moved_ft == 0 && s.budget.attacks_used_mask == 0)
+        if (const Archetype* arch = c.archetype(self))
+            for (const auto& [fid, ff] : arch->form_features) {
+                if (!ff.ai_prefer || !c.can_use_feature(self, fid)) continue;
+                const auto sp = arch->feature_specs.find(fid);
+                if (sp == arch->feature_specs.end() || (sp->second.cost == 2 ? !s.budget.bonus_action : !s.budget.action)) continue;
+                int best = -1, best_cr = -1;
+                for (std::size_t i = 0; i < ff.forms.size() && i < 255; ++i) {
+                    const Archetype* fa = c.form_archetype(self, rules5e::FormKind(ff.kind), fid, uint8_t(i));
+                    if (!fa || !c.build_form(*me, rules5e::FormKind(ff.kind), fid, uint8_t(i))) continue;
+                    if (fa->cr_x8 > best_cr) { best_cr = fa->cr_x8; best = int(i); }
+                }
+                if (best < 0) continue;
+                Command w;
+                w.request = {self, ActionKind::UseFeature};
+                w.request.feature_id = fid;
+                w.request.form_archetype = uint8_t(best + 1);
+                return w;
+            }
+    if (!beast_form)
+        if (auto x = spell_kind_command(c, *me)) return *x;
     const auto* t = target ? rules5e::find(s, *target) : nullptr;
     if (!t || t->dead) return end;
     // R-G8 Charmed: the charmer is never attacked (rules refuse it) or targeted with a harmful spell (sim refuses it).
@@ -157,7 +182,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // is available and in reach goes before a multiattack or a plain attack. Availability is read from the rules
     // state (recharge row expended, uses left); the AI never rolls or keeps its own flag. Area actions are the
     // area-template row's business.
-    if (const Archetype* arch = c.archetype(self); arch && s.budget.action && s.budget.sequence == 0 &&
+    if (const Archetype* arch = c.archetype(self); arch && !beast_form && s.budget.action && s.budget.sequence == 0 &&
                                                    s.budget.attacks_remaining == 0 && rules5e::is_conscious(*t))
         for (const auto& sa : arch->save_actions) {
             if (sa.usage_kind == 1) {
@@ -410,7 +435,7 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
     if (me->reckless_attack && !me->reckless_active && !me->attacks[q.attack_index].ranged && !q.haste_action && b.action &&
         b.attacks_used_mask == 0 && b.sequence == 0)
         q.reckless = true;
-    const Archetype* arch = c.archetype(q.actor);
+    const Archetype* arch = c.attack_archetype(q.actor);   // R-G12: a form's natural weapons are its archetype's
     if (!arch || q.attack_index >= 32) return cmd;
     if (!(arch->two_handed_grip >> q.attack_index & 1u)) return cmd;
     for (const auto& bo : me->bonus_attacks)

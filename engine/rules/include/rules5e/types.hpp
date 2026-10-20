@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <string_view>
+#include <optional>
 #include <vector>
 
 namespace rules5e {
@@ -92,6 +93,9 @@ struct Attack {
     // took (Combatant::hp_max_reduction), after a Con save vs drain_save_dc when non-zero (success: no reduction).
     bool drain_max_hp = false;
     int8_t drain_save_dc = 0;
+    // appended (EC swarm, flagged): SRD swarm bites ("2d6, or 1d6 if the swarm has half of its hit points or fewer"): when
+    // half_hp_damage.count > 0 and the attacker's hp * 2 <= hp_max, it replaces `damage` (component 1). Default: unused.
+    DiceExpr half_hp_damage{};
 };
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
 constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
@@ -110,7 +114,11 @@ enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Re
                                   // appended: Font of Magic, Flexible Casting (bonus action; ActionRequest::flexible)
                                   FlexibleCasting,
                                   // appended: Petrifying Gaze turn-start response (ActionRequest::avert_gaze / gaze_seen)
-                                  GazeResponse };
+                                  GazeResponse,
+                                  // appended (R-G12 rules PR 1): end the actor's own transform (Wild Shape: bonus action; shapechanger: action)
+                                  Revert,
+                                  // appended (R-G12 rules PR 2): command summons (ActionRequest::command / command_ids)
+                                  CommandSummons };
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
 
 // Reaction windows (encounter.hpp). Append-only.
@@ -200,6 +208,13 @@ enum class PredicateKind : uint8_t {
     SelfHpBelow,            // a/b = num/den: hp * den < hp_max * num
     Save,                   // the owner rolls a save: a = Ability, b = DC (mask bit 0: dc_from_damage, DC = b + damage taken)
     AttackIs,               // appended (sim loader, `on_hit[]` riders): a = index into the owner's `attacks`; false for spell attacks
+    // appended (EC monster predicates: bugbear, boar, hobgoblin; flagged rules5e edit, VERSION_BUMP_BATCH hand-off pending):
+    TargetSurprised,        // round 1 and the subject (the creature hit) is in the surprised set (Combatant::surprised_at_start): Surprise Attack
+    AllyNearTarget,         // the sim fact ActionRequest::ally_near_target (no disadvantage clause): Martial Advantage
+    DamageAtMost,           // a: the event's damage (TrigCtx dmg, after resistances) <= a; drop_to_zero / damage_dealt: Relentless
+    WeaponAttack,           // appended (Director #158): a weapon attack (melee or ranged); false for spell attacks and no attack
+    // appended (EC deferred monsters, flagged): mask = spell_id_of(tag); the subject's Combatant::tags has / lacks it (ghoul: elves)
+    TargetTag, NotTargetTag,
 };
 enum class WeaponIs : uint8_t { Melee, Ranged, Finesse, FinesseOrRanged };
 struct Predicate { PredicateKind kind = PredicateKind::NotCrit; int16_t a = 0, b = 0; uint32_t mask = 0; };
@@ -225,6 +240,9 @@ struct Trigger {
     uint8_t choice = 0;                   // 0 auto (fires), 1 ask (hit/crit triggers: HitRider window, 9c), 2 never
     std::vector<Predicate> when;          // all must hold
     std::vector<RiderEffect> effects;
+    // appended (EC deferred monsters, flagged): usage recharge N-6. A registered ActionUse keyed (owner, id) gates it: firing
+    // expends it, the owner's turn start rolls a d6 like recharge actions (RechargeRolled). 0 = no recharge.
+    uint8_t recharge_min = 0;
 };
 
 // A mechanical reaction compiled from content (row 11): offered in the Damaged / AllyAttacked windows of its owner.
@@ -305,6 +323,34 @@ struct BonusAttack {
     uint32_t pool = 0; uint16_t pool_cost = 0;   // spend from this pool when the bonus action is spent (Flurry: ki, 1); 0 cost = 1
     bool has_damage = false;            // the off-hand attack rolls `damage` instead of the attack's dice
     DiceExpr damage{0, 0, 0};           //   (two-weapon fighting without the style: the dice without the ability modifier)
+};
+
+// R-G12 transforms (appended; docs/proposals/SUMMONS_TRANSFORMS.md, VERSION_BUMP_BATCH 7.2q). FormKind: what a creature is
+// transformed by. FormStats: the statistics a form replaces; sim's EncounterHooks::build_form fills one from content (the beast's
+// monster stat block, or a shapechanger trait's form), and rules saves the creature's own values in the same shape
+// (Combatant::base) while the form lasts. Rules owns which fields each kind replaces and which it keeps (apply_form).
+enum class FormKind : uint8_t { None = 0, Polymorph = 1, WildShape = 2, Shapechanger = 3 };
+struct FormStats {
+    AbilityScores abilities{};
+    int16_t hp = 0, hp_max = 0;          // build_form: the form's hit points (fixed content HP; hp is ignored: a fresh pool)
+    int8_t ac = 10;
+    int8_t proficiency_bonus = 2;
+    uint8_t speed_ft = 30;
+    uint32_t save_proficiencies = 0, skill_proficiencies = 0;
+    uint32_t resistances = 0, immunities = 0, vulnerabilities = 0, condition_immunities = 0;
+    QualifiedDamageMask resist_qualified{}, immune_qualified{};
+    std::vector<Attack> attacks{};       // natural weapons; gear melds into Polymorph / Wild Shape forms (no gear AC or attacks)
+    std::vector<AttackSequence> multiattacks{};
+    uint8_t attacks_per_action = 1;
+    Size size = Size::Medium;
+    CreatureType creature_type = CreatureType::Beast;
+    std::vector<RollTrait> roll_traits{};
+    std::vector<Trigger> triggers{};
+    std::vector<Reaction> reactions{};
+    std::vector<BonusAttack> bonus_attacks{};
+    // Wild Shape (D7): the creature's own features (feature ids) the form is not physically capable of using (content:
+    // requires_humanoid_form). UseFeature refuses them while the form lasts. Not part of the saved base block.
+    std::vector<uint32_t> blocked_features{};
 };
 
 struct Combatant {
@@ -392,6 +438,9 @@ struct Combatant {
     // R-G16 (appended). surprised: set by the caller before begin_encounter (or apply_surprise); while set the creature can
     // only end its turn (no move, action, bonus action or other request) and cannot react; rules clear it when its first turn ends.
     bool surprised = false;
+    // appended (EC monster predicates #158, flagged): in the encounter's surprised set (apply_surprise); never cleared, not
+    // hashed (replay input like the set itself). Read by PredicateKind::TargetSurprised together with round == 1.
+    bool surprised_at_start = false;
     // Hit Dice (rest.hpp): die size (6, 8, 10, 12; 0 = none), remaining and maximum (usually the character level).
     uint8_t hit_die = 0, hit_dice = 0, hit_dice_max = 0;
     // R-G14 (appended): Metamagic options known (bitmask, kMeta* in spells.hpp) paid from pool `sorcery_pool` (sorcery points);
@@ -418,6 +467,34 @@ struct Combatant {
     struct Gaze { uint32_t spell_id = 0; uint16_t range_ft = 0; };
     std::vector<Gaze> gazes{};
     bool gaze_averted = false;
+    // R-G12 transforms (appended, VERSION_BUMP_BATCH 7.2q). form: None = its own statistics. base: its own statistics, saved
+    // when the form began (hp / hp_max = its normal-form hit points; temp HP stay on the creature, D8). form_source: the spell
+    // (Polymorph) or feature (Wild Shape, shapechanger) id; form_caster: Polymorph's caster (0 otherwise); form_archetype:
+    // ActionRequest::form_archetype (1 + index); form_end_round: the form ends at the start of the creature's turn in this
+    // round (0 = no timer: Polymorph ends with concentration). form_blocked_features: the form's FormStats::blocked_features.
+    FormKind form = FormKind::None;
+    uint32_t form_source = 0;
+    CombatantId form_caster = 0;
+    uint8_t form_archetype = 0;
+    uint32_t form_end_round = 0;
+    std::optional<FormStats> base{};
+    std::vector<uint32_t> form_blocked_features{};
+    // appended (EC deferred monsters, flagged): content tags (spell_id_of of monster `tags[]` and a character's race, plus
+    // "elf" for elf races), read only by PredicateKind::TargetTag / NotTargetTag. Content-derived: not hashed.
+    std::vector<uint32_t> tags{};
+    // appended (EC swarm, flagged): SRD swarm "can't regain hit points or gain temporary hit points". apply_healing heals 0
+    // and every temp HP grant is skipped. Content-derived (static per archetype): not hashed.
+    bool no_regain_hp = false;
+    // R-G12 summons (appended, VERSION_BUMP_BATCH 7.2r). summoner: who summoned it (0 = not a summon); summon_source: the spell id;
+    // summon_group: initiative group (the first id of its cast); summon_control: SummonControl; summon_vanishes: disappears at
+    // 0 HP; summon_concentration: ends with the summoner's concentration on summon_source; commanded: this turn's command (0
+    // none, 1 act, 2 defend; reset when its turn ends); gone: ended (SummonEnded): dead, skipped in the turn order, never acts again.
+    CombatantId summoner = 0;
+    uint32_t summon_source = 0, summon_group = 0;
+    uint8_t summon_control = 0;
+    bool summon_vanishes = false, summon_concentration = false;
+    uint8_t commanded = 0;
+    bool gone = false;
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };

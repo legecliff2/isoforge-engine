@@ -1,4 +1,4 @@
-# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G11 zones, R-G8 grapple rider, R-G15 spell kinds, priced materials, R-G16 encounter surprise)
+# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G11 zones, R-G8 grapple rider, R-G15 spell kinds, priced materials, R-G16 encounter surprise, slot recovery)
 
 Owner: Tools & Content. Source of truth is the C++ loader; this file records what it reads and what the validator checks.
 All numbers are integers.
@@ -74,7 +74,7 @@ takes option 0. Check 9 (`roll_attack` / `subtract_roll` reserved, Q6) is lifted
 | `window.source` / `visible` | `source` other than `self` or `visible: false`: listed as unsupported | warning on `roll_attack` / `subtract_roll` reactions |
 | `melee_only` + `ranged_only` | both true: **load error** | error on `roll_attack` reactions |
 
-### 3.2 Feature / trait effect kinds `reroll_ones`, `great_weapon_fighting`, `evasion`, `pack_tactics`, `aggressive`, `reckless_attack`, `metamagic`, `sculpt_spells`
+### 3.2 Feature / trait effect kinds `reroll_ones`, `great_weapon_fighting`, `evasion`, `pack_tactics`, `aggressive`, `reckless_attack`, `metamagic`, `sculpt_spells`, `font_of_magic`
 
 | kind | fields | compiles to |
 |---|---|---|
@@ -86,10 +86,11 @@ takes option 0. Check 9 (`roll_attack` / `subtract_roll` reserved, Q6) is lifted
 | `reckless_attack` | none | rules5e `Combatant::reckless_attack` (sim #129; the caller declares `ActionRequest::reckless`, the built-in AI does not). Duplicate: validator **warning** |
 | `metamagic` | `options` (required): non-empty array of `careful`, `distant`, `empowered`, `extended`, `heightened`, `quickened`, `subtle`, `twinned`; `pool` (required): a `resources[].id` | rules5e `Combatant::metamagic_known` (kMeta* bits) and `sorcery_pool` (sim #143; the caller sets `ActionRequest::metamagic`, one option per cast, log_hash 0xB1). `pool` must be a **limited** `resources[]` pool of the document (absent, or a `max.table` entry that is `unlimited` at the document's level: **load error** `<id>: metamagic pool '<pool>' is not a limited resources[] pool`; so a `@3` document, which has no `resources[]`, can never declare it). Several declarations OR their options and must name the same pool (else **load error** `metamagic declarations name different pools`). Empty `options` or an unknown name: **load error** (schema). A repeated option adds nothing: validator **warning**. The pool counts as referenced (check 12) |
 | `sculpt_spells` | none | rules5e `Combatant::sculpt_spells` (sim #143; Evocation Wizard: the caller lists `ActionRequest::spared` for its evocation spells, spell@1 `school: "evocation"`). Fields are ignored by the loader: validator **warning**. Duplicate: validator **warning** |
+| `font_of_magic` | `pool` (required): a `resources[].id` (VERSION_BUMP_BATCH 7.2o) | sim #152: the pool becomes max = start = sorcerer level (`classes[]` sorcerer entries), recharge `long_rest` (registered when `resources[]` lacks it), and `sorcery_pool` (Flexible Casting, log_hash 0xBA). **Load errors**: `<id>: font_of_magic needs sorcerer level 2+ (sorcerer level N)`, `font_of_magic pool '<pool>' is unlimited`, `font_of_magic and metamagic name different pools` (either order; metamagic after it: `metamagic declarations name different pools`). A metamagic after it may name the pool even when `resources[]` lacks it (the loader registered it). Validator **warnings**: max not the sorcerer level, recharge not `long_rest`, start not the max, pool not in `resources[]`. The pool counts as referenced (check 12) |
 
 They are **open kinds** (registered with no minimum version, like the sim's R-G5 kinds): the sim applies them in every document
 whose effects are active (`character@3`/`@4`, `monster@3`/`@4`; `@1`/`@2` effects are inert through the 2 -> 3 migration) and they
-are not in the frozen 3 -> 4 list, so the migration never stamps them. Schema: eight appended arms of `common@1 $defs/effect` (the
+are not in the frozen 3 -> 4 list, so the migration never stamps them. Schema: nine appended arms of `common@1 $defs/effect` (the
 open, append-only effect contract that `@3` `trait_active` and `@4` `effect_live` both use, so the rule is the same at `@3` and
 `@4`); the object stays open (the loader ignores fields it does not read). Validator: `checks_v4.OPEN_EFFECT_KINDS_RG7` joins every
 row of the tag table (no unknown-kind warning; shape violations are errors at `@3`/`@4`, warnings at `@1`/`@2`).
@@ -351,6 +352,24 @@ Shapes the #120 description gave that the loader does not use (loader wins): `hp
 Versioning: additive spell@1 kinds and a new `$defs`; no tag change, no migration, no api_level gate (the old schema rejected
 these kinds, so no existing file carries them; `tests/compat` and both shipped packs validate unchanged).
 
+### 6.1 R-G9 spell@1 kinds `forced_move` and `teleport` (sim #144)
+
+Compiled by `rules5e_content::spell_from_json` (`spell_loader.cpp`, R-G9 / VERSION_BUMP_BATCH 7.2k; sim wiring #144). Schema: two
+closed arms of spell@1 `$defs/effect` (propertyNames allow-lists, `tests/validate/test_union_arms.py` `SPELL_EFFECT_RG9`).
+Fixtures: `tests/validate/fixtures/spell_forced/spells/` (Misty Step, a save + push test spell; test namespace).
+
+| kind | keys (required **bold**) | compiles to | loader errors |
+|---|---|---|---|
+| `forced_move` | **`feet`** integer, positive multiple of 5 (5..65530); `mode` `push` (default) \| `pull`; `up_to` boolean (default false); `max_size` tiny..gargantuan (omitted = any); `provokes_oa` `false` only; `applies_to` (effects after the first) | `ForcedMove` (`SpellDef::forced` / `SpellEffect::forced`): the sim walks each target tile by tile, farthest first, stopping at the last free tile | `effect mode must be push or pull` (`line`, Gust of Wind, is data only in R-G9), `effect feet must be a positive multiple of 5`, `effect max_size invalid`, `effect provokes_oa: true is not supported (R-G9: forced moves never provoke)` |
+| `teleport` | **`max_feet`** integer, positive multiple of 5; `needs_sight` boolean (default true) | `Teleport` (`SpellDef::teleport`): the caster moves to the request's destination, re-validated by the sim (Misty Step) | `effect max_feet must be a positive multiple of 5`; `effects[N]: teleport is only allowed as the first effect` |
+
+Both arms also take `description`. Cross-field rules (validator `check_spell`, loader wording): `teleport` is first-effect only
+(`FIRST_EFFECT_ONLY`); `targets` is not allowed on either (`targets not allowed on a forced_move effect`); `scaling.upcast` has no
+key for them. Shape errors (feet, mode, max_size, provokes_oa) are the schema's, so the negative cases
+(`tests/validate/cases/forced_*`, `teleport_*`) expect the schema wording, which does not start with a loader-compared prefix.
+
+Versioning: additive spell@1 kinds; no tag change, no migration (the old schema rejected these kinds).
+
 ## 7. Priced material components (Director ruling; contract agreed with Engine Core)
 
 Content keys (all integers; additive, no tag change, no migration):
@@ -472,7 +491,92 @@ schema rejected the key (chunk@1 is closed), and no shipped or `tests/compat` ch
 today is authored with that intent (the warning says so). Fixtures: `tests/validate/fixtures/surprise/`; cases:
 `tools/validate/test_validate_packs.py` `SURPRISE_CASES`.
 
-## 10. Feature kind `gaze` (Petrifying Gaze, VERSION_BUMP_BATCH 7.2p, sim #153)
+## 9. R-G12 transforms: spell@1 `polymorph`, common@2 `wild_shape` / `shapechanger`, `requires_humanoid_form`
+
+Agreed with Rules (PR #156, `docs/proposals/VERSION_BUMP_BATCH.md` 7.2q). Additive optional schema keys and new closed arms only,
+so no version bump (`docs/CONTENT_COMPAT.md`). Integers only: CRs are monster@4 `challenge.rating` strings compared as CR*8
+(0, 1/8 = 1, 1/4 = 2, 1/2 = 4, n = 8n). `form_archetype` (ActionRequest) = 1 + index into `forms[]` (at most 255 forms).
+Form ids resolve across the pack set, dependency packs included; every form must be a beast.
+
+**spell@1 `polymorph`** `{kind, forms (required, 1..255), max_cr ("target_level" default, or a CR string), save {ability} (default wis)}`.
+Loader: rules spell loader key `polymorph` -> `SpellEffectKind::Polymorph`, concentration from the spell; Rules parses it with
+these exact strings.
+
+| finding | severity |
+|---|---|
+| `polymorph: primary effect only` | error (polymorph in effects[1..]) |
+| `polymorph: one target` | error (`targets.count` != 1 or an `area`) |
+| `polymorph: needs concentration` | error |
+| `polymorph: unknown form '<id>'` / `polymorph: form '<id>' is not a beast` / `polymorph: duplicate form '<id>'` | error |
+| `polymorph: form '<id>' above max_cr` | warning (fixed `max_cr` only; `target_level` is sim's cast-time check) |
+
+**common@2 `wild_shape`** (character feature) `{kind, pool (required), cost (action), class (druid), forms (required),
+max_cr_by_level (required), no_fly_below (8), no_swim_below (4)}`; no duration key (the engine computes it). Loader: Engine Core
+`build_form`.
+
+| finding | severity |
+|---|---|
+| `wild_shape: unknown pool '<id>'` / `wild_shape: pool '<id>' must recharge on short_rest` | error |
+| `wild_shape: max_cr_by_level levels must be strictly ascending` | error |
+| `wild_shape: unknown form '<id>'` / `wild_shape: form '<id>' is not a beast` / `wild_shape: duplicate form '<id>'` | error |
+| `wild_shape: one declaration per document` | error |
+| `wild_shape: pool '<id>' max should be 2` | warning |
+| `wild_shape: form '<id>' above every max_cr_by_level row` | warning |
+| `wild_shape: class '<c>' not in classes[]` | warning |
+
+**common@2 `shapechanger`** (monster or character trait) `{kind, cost (action), forms: [{id, name, size?, armor_class?, speed?
+(replaces the whole object), actions? (own actions[] ids, unique), creature_type?}] (1..255)}`. Loader: Engine Core `build_form`.
+
+| finding | severity |
+|---|---|
+| `shapechanger trait requires shapechanger: true` (the #141 creature fact) | error |
+| `shapechanger: duplicate form id '<id>'` / `shapechanger: form '<f>' names unknown action '<a>'` | error |
+| `shapechanger: one declaration per document` | error |
+| `shapechanger: form '<f>' changes nothing` / `shapechanger: form '<f>' allows no actions` (empty list) | warning |
+
+With the trait present, the #141 `shapechanger is reserved` warning is dropped (the trait reads the boolean); the boolean without
+the trait stays legal and keeps that warning.
+
+**`requires_humanoid_form`** (common@2 `$defs/trait`, optional boolean, default false): error `requires_humanoid_form on the
+wild_shape feature itself`; warning `requires_humanoid_form has no effect without wild_shape`.
+
+**Reserved treatment.** `RESERVED_EFFECT_KINDS` does not exist on main, so `wild_shape` / `shapechanger` stay out of the tag table's
+known kinds and get the existing unknown-kind warning (`unknown effect kind '<kind>'`) until each loader lands. `polymorph` is
+parsed by the rules spell loader since #171, so it gets no reserved warning (the unknown-form, not-a-beast and above-max_cr checks
+stay). The shape (schema) and the cross-checks above are already
+errors. When a loader lands, add its kind to the tag table and drop the warning.
+
+**Cast-time refusals (rules only; documented, not validated):** `polymorph: target is a shapechanger`, `target has 0 hit points`,
+`target already transformed`, `feature not usable in this form`.
+
+Tests: `tests/validate/test_v4_validator.py` `RG12Transforms`, `tests/validate/cases/polymorph_*`,
+`tests/validate/effect_cases/v4_wild_shape_*` / `v4_shapechanger_*`, `tests/validate/test_union_arms.py` `TransformArmsRG12`.
+
+## 10. Feature kind `slot_recovery` (open kind, VERSION_BUMP_BATCH 7.2n, sim #148)
+
+**Status: loaded.** sim #148 (`features.cpp` `apply_slot_recovery`) reads it, so it is an open kind like the R-G7 / R-G14 kinds
+(`checks_v4.OPEN_EFFECT_KINDS_RG7`; no minimum version, active at @3/@4, inert at @1/@2). The former reserved warning is gone.
+The schema arm checks the shape; `checks_v4.check_slot_recovery` mirrors the loader errors the arm cannot express.
+
+```json
+"effect": { "kind": "slot_recovery", "class": "wizard", "max_slot_level": 5, "uses": 1 }
+```
+
+| part | rule | schema / validator |
+|---|---|---|
+| `class` | `wizard` \| `druid`, required | schema enum (loader: `slot_recovery class must be wizard or druid`); validator error `<id>: slot_recovery class '...' is not in classes[]` when no `classes[]` entry has that class (always on a monster), `slot_recovery class level out of range 1..20` when the summed class level is outside 1..20, and `slot_recovery declared twice for class '...'` for a second declaration of one class (all loader wording) |
+| `max_slot_level` | integer 1..9, default 5 | schema + float rejection |
+| `uses` | integer 1..255, default 1 | schema + float rejection |
+| other keys | ignored (the effect object is open, append-only) | none |
+
+**Loader** (sim #148): `SlotRecoverySpec { feature_id, class_level = summed level of the classes[] entries named by class,
+max_slot_level, uses }`; after a successful `sim::short_rest` the caller's choice goes to `rules5e::apply_slot_recovery`. The budget,
+ceil(class level / 2), is derived, not authored.
+
+Content: `srd51.character.wizard_level_1..5` carry `arcane_recovery`. No druid character ships yet, so Natural Recovery is listed in
+`docs/SRD_CLASSES_DEFERRED.md`. Cases: `tests/validate/effect_cases/*slot_recovery*`.
+
+## 11. Feature kind `gaze` (Petrifying Gaze, VERSION_BUMP_BATCH 7.2p, sim #153)
 
 `monster@4` / `character@4` trait or feature effect, compiled by sim `content.cpp` `compile_gaze` (#153) into a synthetic Save
 `SpellDef` and a `Combatant::Gaze{spell_id, range_ft}`. Not a registry kind and not in the frozen 3 -> 4 list: the sim gates it at
