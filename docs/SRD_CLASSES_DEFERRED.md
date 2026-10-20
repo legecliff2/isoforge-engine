@@ -1,4 +1,4 @@
-# SRD 5.1 classes, first batch (Fighter, Cleric, Wizard levels 1-5): authored vs deferred
+# SRD 5.1 classes, first batch (Fighter, Cleric, Wizard, Sorcerer levels 1-5): authored vs deferred
 
 > This work includes material taken from the System Reference Document 5.1 ("SRD 5.1") by Wizards of the Coast LLC, available at <https://dnd.wizards.com/resources/systems-reference-document>. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License, <https://creativecommons.org/licenses/by/4.0/legalcode>.
 
@@ -17,6 +17,7 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Fighter | Champion (3) | Str 16 (18 at 4), Dex 14, Con 15; Athletics, Perception | 18: chain mail, shield | longsword (one-handed, Dueling), light crossbow |
 | Cleric | Life Domain (1) | Wis 16 (18 at 4), Str 14, Con 15; Insight, Religion | 18: chain mail (heavy armor from Bonus Proficiency), shield | mace, light crossbow |
 | Wizard | School of Evocation (2) | Int 16 (18 at 4), Dex 15, Con 14; Arcana, History | 12: no armor | dagger (melee and thrown) |
+| Sorcerer | Draconic Bloodline (1), red (fire) ancestor | Cha 16 (18 at 4), Con 15, Dex 14; Arcana, Persuasion | 15: no armor, Draconic Resilience 13 + Dex | dagger (melee and thrown) |
 
 ## Authored as data
 
@@ -26,7 +27,7 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Second Wind | 1-5 | `self_heal {1d10, plus fighter_level, uses 1, short_rest, bonus_action}` | yes |
 | Action Surge (1 use) | 2-5 | `grant_action {cost free, usage per_rest 1 short}` | yes (row 13, #97) |
 | Improved Critical (Champion) | 3-5 | `crit_range {min 19}` | yes (R-G5, #107) |
-| Extra Attack | 5 | `multiattack` option `longsword_x2` = two longsword attacks with one Attack action | yes (declared sequence, #48); see the partial note below |
+| Extra Attack | 5 | `extra_attack {attacks_per_action 2}` (character@4, EC #179): the Attack action makes two weapon attacks, any weapon, grapple / shove may replace one | yes (sim #179 `apply_extra_attack`, `Combatant::attacks_per_action`) |
 | Ability Score Improvement | 4-5 | baked into `abilities` (and every derived number) | yes |
 | Spellcasting (Cleric, Wizard) | 1-5 | `spellcasting {ability, caster_level, slots, spells}`; DC and attack bonus derived, no override | yes |
 | Domain Spells (Life) | 1-5 | Cure Wounds in `spellcasting.spells` (always prepared); the others are not shipped (below) | yes |
@@ -34,10 +35,16 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Bonus Proficiency (Life: heavy armor) | 1-5 | descriptive feature; its only combat effect is the worn chain mail, already in AC | n/a |
 | Arcane Recovery (Wizard) | 1-5 | `slot_recovery {class wizard, max_slot_level 5, uses 1}` (VERSION_BUMP_BATCH 7.2n); budget ceil(wizard level / 2) is derived from `classes[]`, the SRD text stays in `description` | yes (sim #148 `apply_slot_recovery`) |
 | Evocation Savant | 2-5 | descriptive feature (downtime spell copying cost, out of combat scope) | n/a |
+| Spellcasting (Sorcerer) | 1-5 | `spellcasting {ability cha, caster_level, slots, spells}` (spells known: the shipped sorcerer spells, below) | yes |
+| Sorcerous Origin | 1 | `classes[0].subclass` = `draconic` | descriptive |
+| Dragon Ancestor (Draconic) | 1-5 | descriptive feature (red, fire; the damage type is used only by features of 6th level and higher; Draconic is in `languages`) | n/a |
+| Draconic Resilience (Draconic) | 1-5 | baked into the stat block: `hit_points` +1 per sorcerer level, `armor_class` 13 + Dex (no armor); descriptive feature, no `effect` | yes (static numbers) |
+| Font of Magic, Flexible Casting (both directions) | 2-5 | `font_of_magic {pool sorcery_points}` (VERSION_BUMP_BATCH 7.2o) + `resources[]` `sorcery_points {max = sorcerer level, recharge long_rest}` | yes (sim #152: pool, `FlexibleCasting` bonus action) |
+| Metamagic (Quickened Spell, Twinned Spell) | 3-5 | `metamagic {options [quickened, twinned], pool sorcery_points}` (R-G14), the same pool as Font of Magic | yes (sim #143) |
 
 The validator change in this batch: `attack_bonus`, `crit_range` and `ac_bonus` (sim #107 hooks) are now known effect kinds at `@4` in `tools/validate/checks_v4.py` (until now they produced an "unknown effect kind" warning). Their fields are checked the way the sim checks them at load. The `@<=3` rows are unchanged.
 
-**Partial: Extra Attack.** The sim loads no PC Extra Attack kind (`Combatant::attacks_per_action` exists in rules, but no loader sets it; T&C-G1, content side). The fighter declares the equivalent multiattack sequence for its main weapon, two longsword attacks (reactions and movement are allowed between them, #48). These are not offered: mixed sequences (longsword then crossbow, which `loading` would limit to one shot anyway), replacing an attack with a grapple or shove (R-G8), and the attack count rising with level. Once a loader kind for `attacks_per_action` lands, swap this effect for it.
+**Extra Attack (done).** The fighter 5 feature `extra_attack` now carries the real kind `{"kind": "extra_attack", "attacks_per_action": 2}` (EC #179) instead of the earlier stand-in, a `multiattack` option `longsword_x2` (two longsword attacks). With the real kind, mixed weapons and grapple / shove replacing an attack are covered by the rules (`TurnBudget::attacks_remaining`). The kind is loaded only from `character@4` files: in a `character@3` (or older) file the sim lists it inert, and the 3 -> 4 migration does not carry it (the migration's kind list is frozen), so the validator gives the unknown-kind warning there.
 
 **Fighting style choice.** One style is picked: Dueling, which fits the shield build. The other SRD fighter styles would be: Archery `attack_bonus {ranged, 2}` and Defense `ac_bonus {1, requires_armor}` (expressible since #107); Two-Weapon Fighting via the `two_weapon_fighting` feature-id convention (`docs/CONTENT_CONVENTIONS.md` section 2); Protection, a `reactions[]` entry (`ally_attacked` / `impose_disadvantage`, shield required); Great Weapon Fighting, not expressible (rules have `Combatant::great_weapon_fighting`, R-G7 #103, but no content kind or loader sets it).
 
@@ -71,15 +78,18 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 | Wizard | 1-2 | Acid Splash, Fire Bolt, Poison Spray; Magic Missile, Shield |
 | Wizard | 3-4 | + Hold Person, Scorching Ray |
 | Wizard | 5 | + Counterspell |
+| Sorcerer | 1-2 | Acid Splash, Fire Bolt, Poison Spray; Magic Missile, Shield |
+| Sorcerer | 3-4 | + Hold Person, Scorching Ray |
+| Sorcerer | 5 | + Counterspell |
 
 Deferred until the spells are authored (`docs/SRD_SPELLS_DEFERRED.md` gives the reason for each):
 
 - **Life domain spells** (always prepared): `srd51.spell.bless` (1), `srd51.spell.lesser_restoration` (3), `srd51.spell.spiritual_weapon` (3), `srd51.spell.beacon_of_hope` (5), `srd51.spell.revivify` (5).
-- **Cantrips known**: the Cleric knows 3 (4 from level 4) but the pack ships one cleric cantrip (Sacred Flame). The Wizard knows 3 (4 from level 4), and the pack ships three wizard cantrips. Missing: Guidance, Light, Mending, Resistance, Spare the Dying, Thaumaturgy (cleric); Chill Touch, Ray of Frost, Shocking Grasp, True Strike and the utility cantrips (wizard).
+- **Cantrips known**: the Cleric knows 3 (4 from level 4) but the pack ships one cleric cantrip (Sacred Flame). The Wizard knows 3 (4 from level 4), and the pack ships three wizard cantrips. Missing: Guidance, Light, Mending, Resistance, Spare the Dying, Thaumaturgy (cleric); Chill Touch, Ray of Frost, Shocking Grasp, True Strike and the utility cantrips (wizard). The Sorcerer knows 4 cantrips (5 from level 4) and 2-6 spells; the pack ships three sorcerer cantrips and five leveled sorcerer spells (Chill Touch, Ray of Frost, Shocking Grasp, Burning Hands, Chromatic Orb, Sleep, Thunderwave, Misty Step and the rest are not shipped), so each document lists fewer.
 - **Spellbook and prepared spells**: a level 1 wizard's spellbook holds six 1st-level spells, plus two per level after that; a cleric prepares Wis modifier + level spells. The documents list fewer because the rest are not shipped (Burning Hands, Mage Armor, Sleep, Thunderwave, Misty Step, Fireball, Lightning Bolt, Bless, Guiding Bolt, Shield of Faith, Spiritual Weapon, Spirit Guardians, ...). The `spells` list doubles as the prepared list. `character@4` has no separate spellbook.
 
 ## Notes for Rules / Engine Core
 
-* The 15 documents load through the sim's `ContentLibrary` without errors. They use the constructs of the shipped fighter plus `grant_action`, `crit_range` and `multiattack`, all of which the sim already compiles (`static_feature_tests`, `features_tests`, `multiattack_content_tests`). One C++ test hardcodes pack ownership: `engine/core/sim/tests/packset_tests.cpp` assumes every unlisted id that is not `srd51.monster.*` belongs to `sample.vertical_slice`. It needs `srd51.character.*` added to the `srd51.core` default (one-line test change, Engine Core).
+* The 20 documents load through the sim's `ContentLibrary` without errors. They use the constructs of the shipped fighter plus `grant_action`, `crit_range` and `multiattack`, all of which the sim already compiles (`static_feature_tests`, `features_tests`, `multiattack_content_tests`). One C++ test hardcodes pack ownership: `engine/core/sim/tests/packset_tests.cpp` assumes every unlisted id that is not `srd51.monster.*` belongs to `sample.vertical_slice`. It needs `srd51.character.*` added to the `srd51.core` default (one-line test change, Engine Core).
 * `procgen::spawn_archetypes` and the vertical-slice spawns still name only `srd51.monster.goblin` and `srd51.character.fighter_1`, so procgen outputs and goldens are untouched.
 * The cleric's `bonus_proficiency` and the wizard's `evocation_savant` have no `effect`. The sim lists them in `Archetype::unsupported_features` as "(no effect)", the same as descriptive monster traits.

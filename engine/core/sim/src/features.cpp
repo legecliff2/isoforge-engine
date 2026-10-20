@@ -701,6 +701,26 @@ std::optional<std::string> apply_shapechanger(Archetype& a, const FeatureDecl& f
     return std::nullopt;
 }
 
+// extra_attack {attacks_per_action: 2..4} (character@4 features[]; contract agreed with T&C): the Attack action makes N weapon
+// attacks (rules5e Combatant::attacks_per_action, TurnBudget::attacks_remaining; grapple / shove replace one of them, moving
+// between them is allowed). N is required, no default. Several declarations: the highest wins (no stacking, no error).
+// Characters only. Error strings are the contract's exact text.
+// Like gaze, it is not in the migration's frozen 3 -> 4 kind list, so the @4 gate is here: a file that declared < 4 lists it inert.
+std::optional<std::string> apply_extra_attack(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    if (ctx.declared_version != 0 && ctx.declared_version < 4) {
+        a.inert_features.push_back(f.id + " (extra_attack)");
+        return std::nullopt;
+    }
+    for (auto it = f.effect.begin(); it != f.effect.end(); ++it)
+        if (it.key() != "kind" && it.key() != "attacks_per_action") return "extra_attack: unknown key '" + it.key() + "'";
+    if (a.schema_type != "character") return std::string("extra_attack: only valid on characters");
+    const auto n = f.effect.find("attacks_per_action");
+    if (n == f.effect.end() || !n->is_number_integer() || n->get<int64_t>() < 2 || n->get<int64_t>() > 4)
+        return std::string("extra_attack: attacks_per_action must be an integer 2..4");
+    a.base.attacks_per_action = std::max<uint8_t>(a.base.attacks_per_action, uint8_t(n->get<int64_t>()));
+    return std::nullopt;
+}
+
 FeatureRegistry make_builtin() {
     FeatureRegistry r;
     r.add_hook("damage_bonus", {apply_damage_bonus});
@@ -727,6 +747,7 @@ FeatureRegistry make_builtin() {
     r.add_hook("slot_recovery", {apply_slot_recovery});
     r.add_hook("wild_shape", {apply_wild_shape});     // R-G12 (7.2q)
     r.add_hook("shapechanger", {apply_shapechanger}); // R-G12 (7.2q)
+    r.add_hook("extra_attack", {apply_extra_attack});   // character@4: gated in the hook (the 3 -> 4 kind list is frozen)
     // Kinds the @4 schemas introduce (frozen list of the 3 -> 4 migration; hooks arrive with their rows).
     for (const char* k : {"on_event", "save_effect", "reaction"})
         r.reserve_kind(k, 4);

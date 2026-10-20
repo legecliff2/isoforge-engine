@@ -152,6 +152,41 @@
             }
           },
           "description": "attack_effect (sim #170): the condition ends when the creature wins a Strength check (an action) against dc."
+        },
+        "object": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ac",
+            "hp"
+          ],
+          "properties": {
+            "ac": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            },
+            "hp": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "vulnerable": {
+              "type": "array",
+              "items": {
+                "$ref": "../common/v1.schema.json#/$defs/damage_type"
+              },
+              "uniqueItems": true
+            },
+            "immune": {
+              "type": "array",
+              "items": {
+                "$ref": "../common/v1.schema.json#/$defs/damage_type"
+              },
+              "uniqueItems": true
+            }
+          },
+          "description": "attack_effect (sim #174): the restraint is a destructible object (the web: AC 10, 5 hp, vulnerable fire, immune bludgeoning / poison / psychic). Any creature in reach or range may attack it; at 0 hp the condition ends."
         }
       }
     },
@@ -928,6 +963,42 @@
             "$ref": "#/$defs/predicate"
           },
           "description": "sim #170: rider-level predicates, read only in on_hit[] of an attack action (every one must hold)."
+        },
+        "zero_hp": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "while",
+            "duration"
+          ],
+          "properties": {
+            "condition": {
+              "$ref": "../common/v1.schema.json#/$defs/condition"
+            },
+            "while": {
+              "$ref": "../common/v1.schema.json#/$defs/condition"
+            },
+            "duration": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "n"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "rounds"
+                },
+                "n": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                }
+              }
+            }
+          },
+          "description": "save_effect / save_condition (sim #174): when the damage drops the target to 0 hit points it is stable and gains condition for duration.n rounds (600 = 1 hour, outlasts healing) and while for as long as that lasts (giant spider bite: poisoned 600 rounds, paralyzed while poisoned). Needs damage; condition and while must differ."
         }
       },
       "allOf": [
@@ -998,7 +1069,8 @@
                 "apply",
                 "damage",
                 "on_success",
-                "when"
+                "when",
+                "zero_hp"
               ]
             }
           }
@@ -2754,6 +2826,50 @@
             "melee"
           ],
           "description": "attack_effect (sim #170): the attack roll's mode; default ranged."
+        },
+        "half_hp_damage": {
+          "$ref": "../common/v1.schema.json#/$defs/dice",
+          "description": "Swarm (sim #172): weapon attacks only; replaces the dice of damage[0] while the attacker has half its hit points or fewer (SRD swarm bites: 2d6, or 1d6 at half HP or fewer). Needs at least one die."
+        },
+        "long_range_ft": {
+          "$ref": "../common/v1.schema.json#/$defs/range_ft",
+          "description": "attack_effect (sim #174): ranged only; long range in feet, greater than range_ft. Legal out to long_range_ft, at disadvantage beyond range_ft (giant spider Web 30/60)."
+        },
+        "zero_hp": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "while",
+            "duration"
+          ],
+          "properties": {
+            "condition": {
+              "$ref": "../common/v1.schema.json#/$defs/condition"
+            },
+            "while": {
+              "$ref": "../common/v1.schema.json#/$defs/condition"
+            },
+            "duration": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "n"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "rounds"
+                },
+                "n": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                }
+              }
+            }
+          },
+          "description": "save_effect / save_condition (sim #174): when the damage drops the target to 0 hit points it is stable and gains condition for duration.n rounds (600 = 1 hour, outlasts healing) and while for as long as that lasts (giant spider bite: poisoned 600 rounds, paralyzed while poisoned). Needs damage; condition and while must differ."
         }
       },
       "allOf": [
@@ -2858,6 +2974,16 @@
                   "required": [
                     "on_hit"
                   ]
+                },
+                {
+                  "required": [
+                    "long_range_ft"
+                  ]
+                },
+                {
+                  "required": [
+                    "half_hp_damage"
+                  ]
                 }
               ]
             }
@@ -2914,6 +3040,32 @@
                   {
                     "required": [
                       "magical"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "long_range_ft"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "zero_hp"
+                    ]
+                  }
+                ]
+              }
+            },
+            "then": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "zero_hp"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "half_hp_damage"
                     ]
                   }
                 ]
@@ -3015,6 +3167,7 @@
                 "attack",
                 "to_hit",
                 "range_ft",
+                "long_range_ft",
                 "apply",
                 "usage",
                 "description"
@@ -3088,6 +3241,16 @@
             "kind": {
               "not": {
                 "const": "gaze"
+              }
+            }
+          }
+        },
+        {
+          "description": "sim #179: an extra_attack effect is checked by its closed arm ($defs/extra_attack_effect) only.",
+          "properties": {
+            "kind": {
+              "not": {
+                "const": "extra_attack"
               }
             }
           }
@@ -3408,6 +3571,25 @@
         }
       }
     },
+    "extra_attack_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "attacks_per_action"
+      ],
+      "description": "sim #179 (features.cpp apply_extra_attack): SRD Extra Attack. The Attack action makes attacks_per_action weapon attacks (rules5e Combatant::attacks_per_action; grapple / shove replace one, movement between them allowed). Required, no default. Several declarations: the highest wins (no stacking; the validator warns). Characters only (character@4 features[]); in a file that declares character@3 or older the sim lists it inert (the 3 -> 4 migration's kind list is frozen).",
+      "properties": {
+        "kind": {
+          "const": "extra_attack"
+        },
+        "attacks_per_action": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 4
+        }
+      }
+    },
     "effect": {
       "anyOf": [
         {
@@ -3435,6 +3617,9 @@
             },
             {
               "$ref": "#/$defs/shapechanger_effect"
+            },
+            {
+              "$ref": "#/$defs/extra_attack_effect"
             },
             {
               "type": "object",
