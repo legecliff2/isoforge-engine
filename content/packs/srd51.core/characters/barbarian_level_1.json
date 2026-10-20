@@ -1,0 +1,121 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.barbarian_level_1",
+  "name": "Barbarian, level 1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "chaotic neutral",
+  "level": 1,
+  "classes": [
+    {
+      "class": "barbarian",
+      "level": 1,
+      "hit_die": "d12"
+    }
+  ],
+  "xp": 0,
+  "armor_class": {
+    "value": 14,
+    "note": "Unarmored Defense"
+  },
+  "hit_points": {
+    "average": 14,
+    "formula": "1d12+2"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 16,
+    "dex": 14,
+    "con": 15,
+    "int": 9,
+    "wis": 13,
+    "cha": 11
+  },
+  "saving_throws": {
+    "str": 5,
+    "con": 4
+  },
+  "skills": {
+    "athletics": 5,
+    "perception": 3
+  },
+  "senses": {
+    "passive_perception": 13
+  },
+  "languages": [
+    "Common",
+    "Giant"
+  ],
+  "proficiency_bonus": 2,
+  "features": [
+    {
+      "id": "rage",
+      "name": "Rage",
+      "description": "In battle, you fight with primal ferocity. On your turn, you can enter a rage as a bonus action. While raging, you gain the following benefits if you aren't wearing heavy armor: - You have advantage on Strength checks and Strength saving throws. - When you make a melee weapon Attack using Strength, you gain a +2 bonus to the damage roll. This bonus increases as you level. - You have Resistance to bludgeoning, piercing, and slashing damage. If you are able to cast Spells, you can't cast them or concentrate on them while raging. Your rage lasts for 1 minute. It ends early if you are knocked Unconscious or if Your Turn ends and you haven't attacked a hostile creature since your last turn or taken damage since then. You can also end your rage on Your Turn as a Bonus Action. Once you have raged the maximum number of times for your barbarian level, you must finish a Long Rest before you can rage again. You may rage 2 times at 1st level, 3 at 3rd, 4 at 6th, 5 at 12th, and 6 at 17th."
+    },
+    {
+      "id": "unarmored_defense",
+      "name": "Unarmored Defense",
+      "description": "While you are not wearing any armor, your Armor Class equals 10 + your Dexterity modifier + your Constitution modifier. You can use a shield and still gain this benefit. Baked into armor_class (10 + Dex + Con, no armor worn)."
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.greataxe",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.handaxe"
+    },
+    "explorers_pack",
+    "javelins_4"
+  ],
+  "actions": [
+    {
+      "id": "greataxe",
+      "name": "Greataxe",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "heavy",
+        "two_handed"
+      ],
+      "damage": [
+        {
+          "dice": "1d12+3",
+          "type": "slashing"
+        }
+      ]
+    },
+    {
+      "id": "handaxe",
+      "name": "Handaxe",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 5,
+      "range": [
+        20,
+        60
+      ],
+      "targets": 1,
+      "properties": [
+        "light",
+        "thrown"
+      ],
+      "damage": [
+        {
+          "dice": "1d6+3",
+          "type": "slashing"
+        }
+      ]
+    }
+  ]
+}
