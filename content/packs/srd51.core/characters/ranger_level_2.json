@@ -1,0 +1,148 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.ranger_level_2",
+  "name": "Ranger, level 2",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "neutral good",
+  "level": 2,
+  "classes": [
+    {
+      "class": "ranger",
+      "level": 2,
+      "hit_die": "d10"
+    }
+  ],
+  "xp": 300,
+  "armor_class": {
+    "value": 14,
+    "note": "leather armor"
+  },
+  "hit_points": {
+    "average": 20,
+    "formula": "2d10+4"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 13,
+    "dex": 16,
+    "con": 14,
+    "int": 11,
+    "wis": 15,
+    "cha": 9
+  },
+  "saving_throws": {
+    "str": 3,
+    "dex": 5
+  },
+  "skills": {
+    "perception": 4,
+    "stealth": 5,
+    "survival": 4
+  },
+  "senses": {
+    "passive_perception": 14
+  },
+  "languages": [
+    "Common",
+    "Elvish"
+  ],
+  "proficiency_bonus": 2,
+  "spellcasting": {
+    "ability": "wis",
+    "caster_level": 2,
+    "slots": {
+      "1": 2
+    },
+    "spells": [
+      "srd51.spell.cure_wounds"
+    ]
+  },
+  "features": [
+    {
+      "id": "favored_enemy",
+      "name": "Favored Enemy",
+      "description": "Beginning at 1st level, you have significant experience studying, tracking, hunting, and even talking to a certain type of enemy. Choose a type of favored enemy: aberrations, beasts, celestials, constructs, dragons, elementals, fey, fiends, giants, monstrosities, oozes, plants, or undead. Alternatively, you can select two races of humanoid (such as gnolls and orcs) as favored enemies. You have advantage on Wisdom (Survival) checks to track your favored enemies, as well as on Intelligence checks to recall information about them. When you gain this feature, you also learn one language of your choice that is spoken by your favored enemies, if they speak one at all. You choose one additional favored enemy, as well as an associated language, at 6th and 14th level. As you gain levels, your choices should reflect the types of monsters you have encountered on your adventures. Chosen: beasts (no language)."
+    },
+    {
+      "id": "natural_explorer",
+      "name": "Natural Explorer",
+      "description": "You are particularly familiar with one type of natural environment and are adept at traveling and surviving in such regions. Choose one type of favored terrain: arctic, coast, desert, forest, grassland, mountain, or swamp. When you make an Intelligence or Wisdom check related to your favored terrain, your proficiency bonus is doubled if you are using a skill that you're proficient in. While traveling for an hour or more in your favored terrain, you gain the following benefits: - Difficult terrain doesn't slow your group's travel. - Your group can't become lost except by magical means. - Even when you are engaged in another activity while traveling (such as foraging, navigating, or tracking), you remain alert to danger. - If you are traveling alone, you can move stealthily at a normal pace. - When you forage, you find twice as much food as you normally would. - While tracking other creatures, you also learn their exact number, their sizes, and how long ago they passed through the area. You choose additional favored terrain types at 6th and 10th level. Chosen: forest."
+    },
+    {
+      "id": "fighting_style_archery",
+      "name": "Fighting Style: Archery",
+      "description": "You gain a +2 bonus to attack rolls you make with ranged weapons.",
+      "effect": {
+        "kind": "attack_bonus",
+        "attacks": "ranged",
+        "amount": 2
+      }
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.leather_armor",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.longbow",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.shortsword"
+    },
+    "arrows_20",
+    "explorers_pack"
+  ],
+  "actions": [
+    {
+      "id": "longbow",
+      "name": "Longbow",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 5,
+      "range": [
+        150,
+        600
+      ],
+      "targets": 1,
+      "properties": [
+        "ammunition",
+        "heavy",
+        "two_handed"
+      ],
+      "description": "Base attack bonus; Fighting Style: Archery (+2 to ranged attack rolls) is applied by its feature effect.",
+      "damage": [
+        {
+          "dice": "1d8+3",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "shortsword",
+      "name": "Shortsword",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "finesse",
+        "light"
+      ],
+      "damage": [
+        {
+          "dice": "1d6+3",
+          "type": "piercing"
+        }
+      ]
+    }
+  ]
+}

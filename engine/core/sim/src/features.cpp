@@ -734,6 +734,24 @@ std::optional<std::string> apply_extra_attack(Archetype& a, const FeatureDecl& f
     return std::nullopt;
 }
 
+// transparent {dc: 1..30} (monster@4 traits[]; T&C spec, 7.2w): SRD Transparent (gelatinous cube): rules5e
+// Combatant::transparent_dc, read by sim's surprise setup. Monsters only; several declarations: the highest wins (the
+// validator warns). Like extra_attack it is not in the frozen 3 -> 4 kind list, so the @4 gate is here.
+std::optional<std::string> apply_transparent(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    if (ctx.declared_version != 0 && ctx.declared_version < 4) {
+        a.inert_features.push_back(f.id + " (transparent)");
+        return std::nullopt;
+    }
+    for (auto it = f.effect.begin(); it != f.effect.end(); ++it)
+        if (it.key() != "kind" && it.key() != "dc") return "transparent: unknown key '" + it.key() + "'";
+    if (a.schema_type != "monster") return std::string("transparent: only valid on monsters");
+    const auto n = f.effect.find("dc");
+    if (n == f.effect.end() || !n->is_number_integer() || n->get<int64_t>() < 1 || n->get<int64_t>() > 30)
+        return std::string("transparent: dc must be an integer 1..30");
+    a.base.transparent_dc = std::max<int8_t>(a.base.transparent_dc, int8_t(n->get<int64_t>()));
+    return std::nullopt;
+}
+
 FeatureRegistry make_builtin() {
     FeatureRegistry r;
     r.add_hook("damage_bonus", {apply_damage_bonus});
@@ -761,6 +779,7 @@ FeatureRegistry make_builtin() {
     r.add_hook("wild_shape", {apply_wild_shape});     // R-G12 (7.2q)
     r.add_hook("shapechanger", {apply_shapechanger}); // R-G12 (7.2q)
     r.add_hook("extra_attack", {apply_extra_attack});   // character@4: gated in the hook (the 3 -> 4 kind list is frozen)
+    r.add_hook("transparent", {apply_transparent});     // monster@4 (7.2w): gated in the hook, like extra_attack
     // Kinds the @4 schemas introduce (frozen list of the 3 -> 4 migration; hooks arrive with their rows).
     for (const char* k : {"on_event", "save_effect", "reaction"})
         r.reserve_kind(k, 4);
