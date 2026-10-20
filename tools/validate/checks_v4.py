@@ -44,7 +44,7 @@ NATIVE_EFFECT_KINDS_AT_4 = frozenset({"on_event", "apply_modifier", "grant_actio
 # check_static_kinds below, mirroring the sim's load errors (sim/src/features.cpp apply_attack_bonus / _crit_range / _ac_bonus).
 STATIC_EFFECT_KINDS_R_G5 = frozenset({"attack_bonus", "crit_range", "ac_bonus"})
 # VERSION_BUMP_BATCH 7.2p (sim #153 content.cpp compile_gaze): kinds the sim compiles itself, gated at @4 (a file that declares
-# an older version lists them inert: unknown-kind warning there). Shape: common@2 $defs/gaze_effect (closed).
+# an older version lists them inert: unknown-kind warning there). Shape: the closed inline gaze arm of common@2 $defs/effect.
 COMPILED_EFFECT_KINDS_AT_4 = frozenset({"gaze"})
 # compile_gaze defaults for the optional fields the validator warns about when omitted.
 GAZE_DEFAULTS = {"condition": "restrained", "repeat_save": "end_of_turn", "escalate_to": "petrified"}
