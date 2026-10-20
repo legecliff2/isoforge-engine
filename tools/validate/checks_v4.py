@@ -501,6 +501,22 @@ def check_metamagic(doc: dict) -> tuple[list[str], list[str]]:
     return errs, warns
 
 
+def check_on_event_usage(doc: dict) -> tuple[list[str], list[str]]:
+    """sim #158 compile_on_event usage: at_will = no cost; per_day / per_rest {uses 1..255} = a trigger-owned pool
+    '<trait id>#usage' recharged by rests; pool {pool, cost 1..255} = a Spend from a declared resources[] pool (check 2 / schema);
+    recharge is not compiled: the sim lists the trait as unsupported ('on_event: unsupported usage') -> warning."""
+    errs: list[str] = []
+    warns: list[str] = []
+    for path, owner, eff in live_effects(doc):
+        if eff.get("kind") != "on_event" or not isinstance(eff.get("usage"), dict):
+            continue
+        u = eff["usage"]
+        if u.get("kind") == "recharge":
+            warns.append(f"{path}/usage: {owner} on_event: unsupported usage (recharge is not compiled yet; the sim lists the "
+                         "trait in unsupported_features and never fires it) (sim #158)")
+    return errs, warns
+
+
 # ---- untimed save_condition riders (sim content.cpp compile_rider -> compile_save_action) ----------------------
 # Conditions an on_hit / on_event save_condition rider may apply with no duration and no repeat_save: the sim loader's
 # kEndsByOwnRules (#133), conditions that end by their own rules and are applied untracked, like Shove. Every other such

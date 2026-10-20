@@ -234,3 +234,15 @@ See `docs/CONTENT_CONVENTIONS.md` for the timed-modifier properties the sim comp
 
 Details and loader messages: `docs/CONTENT_CONVENTIONS.md` section 4 (R-G11 zones), section 6 (R-G15 kinds, sim #120) and section 7 (priced material
 components, character@4 `equipment[].value_gp`).
+
+## on_event predicates and usage (mirrors sim #158)
+
+| field | values | loader behaviour |
+|---|---|---|
+| `when[].kind` | `target_surprised`, `ally_near_target` (no other keys) | compiled |
+| `when[].kind` | `damage_at_most` with `amount` 1..32767 | `bad damage_at_most amount` otherwise |
+| `usage.kind` | `at_will`; `per_rest` (`uses` 1..255, `rest` short/long); `per_day` (`uses` 1..255) | `bad uses` / `bad rest` |
+| `usage.kind` | `pool` (`pool` must be a declared resource, `cost` 1..255) | `bad usage pool` |
+| `usage.kind` | `recharge` | not compiled; the trait is listed as unsupported, so the validator warns (does not error) |
+
+There is no `weapon_attack` predicate: #158 adds none, and the existing `weapon` predicate covers it.

@@ -580,6 +580,10 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         m_errs, m_warns = c4.check_metamagic(doc)
         errs += [f"{rel}: {m}" for m in m_errs]
         warns += [f"{rel}: {m}" for m in m_warns]
+        if row.legacy_stamps:   # @4: on_event usage (sim #158)
+            u_errs, u_warns = c4.check_on_event_usage(doc)
+            errs += [f"{rel}: {m}" for m in u_errs]
+            warns += [f"{rel}: {m}" for m in u_warns]
     return errs, warns
 
 
