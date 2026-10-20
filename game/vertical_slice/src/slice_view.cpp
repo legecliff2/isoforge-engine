@@ -187,19 +187,40 @@ struct SliceView::Textures {
 SliceView::SliceView(IRenderDevice& dev)
     : world_(dev, 8192), ui_(dev, 8192), lights_(dev), tex_(std::make_unique<Textures>(dev)) {}
 
-// Mirrors the LightFrame into per-chunk R8 light maps: StreamDelta added/removed, then dirty rects.
+// Mirrors the LightFrame into per-chunk R8 light maps. The resident set is reconciled against the
+// snapshot's chunk list (robust to skipped frames); the upload per dirty chunk is shrunk to the
+// bounding box of texels that really changed (the sim's dirty set is per chunk).
 void SliceView::sync_lights(const LightView& L) {
     if (!L.present || L.frame == light_frame_) return;
+    const bool gap = light_frame_ != 0 && L.frame != light_frame_ + 1;   // missed frames: re-check every chunk
     light_frame_ = L.frame;
     std::vector<iso2d::LightChunkKey> add, rem;
-    for (const auto& c : L.added) add.push_back({c.cx, c.cy, c.level});
-    for (const auto& c : L.removed) rem.push_back({c.cx, c.cy, c.level});
+    auto in_frame = [&](const iso2d::LightChunkKey& k) {
+        for (const auto& c : L.chunks) if (c.cx == k.x && c.cy == k.y && c.level == k.level) return true;
+        return false;
+    };
+    for (const auto& k : lights_.keys()) if (!in_frame(k)) rem.push_back(k);
+    for (const auto& c : L.chunks)
+        if (!lights_.texture({c.cx, c.cy, c.level}).valid()) add.push_back({c.cx, c.cy, c.level});
     lights_.on_stream_delta(add, rem);
-    for (const LightDirtyView& d : L.dirty)
-        for (const LightChunkView& c : L.chunks)
-            if (c.cx == d.chunk.cx && c.cy == d.chunk.cy && c.level == d.chunk.level)
-                lights_.update({c.cx, c.cy, c.level}, std::span<const uint8_t, iso2d::kLightTiles>(c.samples), d.rect);
+    for (const LightChunkView& c : L.chunks) {
+        const iso2d::LightChunkKey k{c.cx, c.cy, c.level};
+        bool dirty = gap || std::find(add.begin(), add.end(), k) != add.end();
+        for (const LightDirtyView& d : L.dirty)
+            if (d.chunk.cx == c.cx && d.chunk.cy == c.cy && d.chunk.level == c.level) dirty = true;
+        if (!dirty) continue;
+        int x0 = 32, y0 = 32, x1 = -1, y1 = -1;
+        const bool fresh = std::find(add.begin(), add.end(), k) != add.end();
+        for (int y = 0; y < 32; ++y)
+            for (int x = 0; x < 32; ++x)
+                if (fresh || lights_.sample(k, {x, y}) != c.samples[size_t(y * 32 + x)]) {
+                    x0 = std::min(x0, x); x1 = std::max(x1, x); y0 = std::min(y0, y); y1 = std::max(y1, y);
+                }
+        const RectI r = x1 < 0 ? RectI{} : RectI{x0, y0, x1 - x0 + 1, y1 - y0 + 1};
+        lights_.update(k, std::span<const uint8_t, iso2d::kLightTiles>(c.samples), r);
+    }
 }
+
 SliceView::~SliceView() = default;
 
 Vec2f SliceView::tile_center_px(float x, float y) const {
@@ -287,7 +308,7 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
             for (const ActorView& a : vm.actors) if (ls.carrier == 1 && a.id == ls.carrier_id) at = a.tile;
             iso2d::Sprite g{tex_->ring, float(kTileW), float(kTileH), kTileW / 2.f, 0};
             g.tint = glow_for(ls);
-            world_.draw(g, {float(at.x), float(at.y)}, 0, uint32_t(ls.id), 8);
+            world_.draw(g, {float(at.x), float(at.y)}, 0, ls.sort_key(), 8);
         }
     for (const ActorView& a : vm.actors) {
         if (!visible(a)) continue;
