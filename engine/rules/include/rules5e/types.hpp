@@ -342,6 +342,15 @@ struct ModifierSpec {
     // it, and the modifier ends (ModifierExpired reason 7) when the weapon leaves the hand (the owner drops, dies, falls
     // unconscious, or is commanded to Drop).
     uint8_t weapon_scope = 0;
+    // appended (7.2z barbarian hooks; every row of one feature effect carries the same values, rules act on the source):
+    // scope_ability: AttackRoll / Damage only for an attack using 1 Str or 2 Dex (ranged: Dex; finesse: the higher; else Str).
+    // ends_early: bit 0 at the end of the owner's turn unless it attacked a hostile or took damage since its last turn,
+    // bit 1 when it falls unconscious. blocks: bit 0 casting spells is refused, bit 1 concentration breaks when it starts.
+    // on_end_exhaustion: exhaustion levels gained when the source ends (with a requires_effect bonus attack: only if used).
+    uint8_t scope_ability = 0;
+    uint8_t ends_early = 0;
+    uint8_t blocks = 0;
+    uint8_t on_end_exhaustion = 0;
 };
 
 // Row R-G6: a bonus-action attack option (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy). Requested with
@@ -389,6 +398,10 @@ struct FormStats {
     // requires_humanoid_form). UseFeature refuses them while the form lasts. Not part of the saved base block.
     std::vector<uint32_t> blocked_features{};
 };
+
+// 7.2z Danger Sense: advantage on `ability` saves against effects the creature can see (source_seen: the effect's creature is
+// seen, `sight`; no known source counts as seen), not while it has any of `not_conditions` (bitmask over Condition).
+struct SaveAdvantage { Ability ability = Ability::Dex; bool source_seen = true; uint32_t not_conditions = 0; };
 
 struct Combatant {
     CombatantId id;
@@ -555,6 +568,7 @@ struct Combatant {
     // these, Blinded / Deafened and sim's per-pair SightFacts (per-tile light from any source; LIGHTING.md).
     uint16_t darkvision_ft = 0, blindsight_ft = 0, tremorsense_ft = 0, truesight_ft = 0;
     bool sunlight_sensitive = false;   // SRD Sunlight Sensitivity (drow, kobold...)
+    std::vector<SaveAdvantage> save_advantages;   // appended (7.2z, static content, not folded): Danger Sense
     bool thieves_tools = false;        // appended (7.2y): proficient with thieves' tools (UseObject 3 adds the proficiency bonus)
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
     // appended (control conditions, 7.2v): challenge rating * 8 (CR 1/2 = 4) for Destroy Undead; -1 = unknown (never destroyed).

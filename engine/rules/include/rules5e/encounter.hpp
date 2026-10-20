@@ -439,6 +439,8 @@ struct ActiveModifier {
     Timed timed{};
     bool gated = false;   // transient: a `when` that does not hold for the roll in progress (never set between steps)
     uint8_t slot_level = 0;   // appended (R-G15): level of the spell that applied it (Dispel Magic); 0 = unknown / not a spell
+    bool fought = false;      // appended (7.2z): ends_early bit 0: the owner attacked a hostile or took damage since its last turn
+    bool frenzied = false;    // appended (7.2z): a requires_effect bonus attack was made while this source was in force
     uint8_t weapon = 0;       // appended (7.2y): ModifierSpec::weapon_scope: the bound attack index + 1 (0 = not bound)
 };
 
