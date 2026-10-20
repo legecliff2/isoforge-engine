@@ -319,6 +319,9 @@ struct SpellDef {
     std::vector<std::string> polymorph_forms;
     uint16_t polymorph_max_cr8 = 0xFFFF;
     Ability polymorph_save = Ability::Wis;
+    // appended (cover, 7.2t): the target gains no benefit from half / three-quarters cover (Sacred Flame). Total cover still
+    // refuses targeting.
+    bool ignores_cover = false;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
