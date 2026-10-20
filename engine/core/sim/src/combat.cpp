@@ -334,6 +334,84 @@ int Combat::distance_tiles(CombatantId a, CombatantId b) const {
     return rect_distance(sa.p, sa.n, sb.p, sb.n);
 }
 
+namespace {
+// Does the segment between lattice points p and q (tile corners; tile (x, y) spans [x, x+1] x [y, y+1]) pass an obstruction?
+// Integer only. The breakpoints t = i / |dx| and j / |dy| (scaled by L = |dx| * |dy|) split it into pieces that each lie
+// inside one tile, or along a grid edge (axis-aligned). A piece inside a tile is blocked when that tile blocks; a piece along
+// an edge, or the segment passing exactly through a corner, only when both tiles beside it block (as Grid::line_of_sight: a
+// line grazing a lone obstruction, or slipping between two diagonal ones, is not blocked).
+template <class F> bool segment_blocked(Vec2i p, Vec2i q, F&& blocks) {
+    const int64_t dx = q.x - p.x, dy = q.y - p.y, ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
+    if (ax == 0 && ay == 0) return false;
+    const int sx = dx > 0 ? 1 : -1, sy = dy > 0 ? 1 : -1;
+    const int64_t L = (ax ? ax : 1) * (ay ? ay : 1), L2 = 2 * L;
+    std::vector<int64_t> br{0, L};
+    for (int64_t i = 1; i < ax; ++i) br.push_back(i * (L / ax));
+    for (int64_t j = 1; j < ay; ++j) br.push_back(j * (L / ay));
+    std::sort(br.begin(), br.end());
+    br.erase(std::unique(br.begin(), br.end()), br.end());
+    auto fdiv = [](int64_t v, int64_t d) { return v >= 0 ? v / d : -((-v + d - 1) / d); };
+    for (std::size_t k = 0; k + 1 < br.size(); ++k) {
+        if (k > 0 && ax && ay) {   // exactly through a lattice corner?
+            const int64_t X = L * p.x + dx * br[k], Y = L * p.y + dy * br[k];
+            if (X % L == 0 && Y % L == 0) {
+                const int cx = int(X / L), cy = int(Y / L), bx = sx > 0 ? cx - 1 : cx, by = sy > 0 ? cy - 1 : cy;
+                if (blocks(Vec2i{bx + sx, by}) && blocks(Vec2i{bx, by + sy})) return true;
+            }
+        }
+        const int64_t m = br[k] + br[k + 1];                                // midpoint parameter, units of 1 / (2L)
+        const int64_t X = L2 * p.x + dx * m, Y = L2 * p.y + dy * m;         // midpoint * 2L
+        const int tx = int(fdiv(X, L2)), ty = int(fdiv(Y, L2));
+        if (X % L2 == 0) { if (blocks(Vec2i{tx - 1, ty}) && blocks(Vec2i{tx, ty})) return true; }   // along a vertical edge
+        else if (Y % L2 == 0) { if (blocks(Vec2i{tx, ty - 1}) && blocks(Vec2i{tx, ty})) return true; }   // horizontal edge
+        else if (blocks(Vec2i{tx, ty})) return true;
+    }
+    return false;
+}
+}
+
+rules5e::Cover Combat::cover_of(const rules5e::CoverQuery& q) const {
+    using rules5e::Cover;
+    if (!rules5e::find(state_, q.target) || q.source == q.target) return Cover::None;
+    const Spot ts = spot(q.target);
+    Spot os{q.has_origin ? Vec2i{q.origin_x, q.origin_y} : pos(q.source), q.has_origin ? 1 : footprint_size(q.source)};
+    if (!q.has_origin && !rules5e::find(state_, q.source)) return Cover::None;
+    // Creature tiles that give half cover (living, present, neither source nor target), sorted for lookup.
+    std::vector<std::pair<int, int>> crowd;
+    for (const auto& sl : slots_) {
+        if (sl.gone || sl.id == q.source || sl.id == q.target) continue;
+        const auto* c = rules5e::find(state_, sl.id);
+        if (!c || c->dead) continue;
+        const Spot s = spot(sl.id);
+        for (int y = 0; y < s.n; ++y)
+            for (int x = 0; x < s.n; ++x) crowd.push_back({s.p.x + x, s.p.y + y});
+    }
+    std::sort(crowd.begin(), crowd.end());
+    auto inside = [](Spot s, Vec2i t) { return t.x >= s.p.x && t.x < s.p.x + s.n && t.y >= s.p.y && t.y < s.p.y + s.n; };
+    auto wall = [&](Vec2i t) { return !inside(ts, t) && !inside(os, t) && grid_.blocks_sight(t); };
+    auto body = [&](Vec2i t) {
+        return wall(t) || (!inside(ts, t) && !inside(os, t) &&
+                           std::binary_search(crowd.begin(), crowd.end(), std::pair<int, int>{t.x, t.y}));
+    };
+    const int lines = (ts.n + 1) * (ts.n + 1);
+    Cover best = Cover::Total;
+    for (int oy = 0; oy <= os.n && best != Cover::None; ++oy)
+        for (int ox = 0; ox <= os.n && best != Cover::None; ++ox) {
+            const Vec2i o{os.p.x + ox, os.p.y + oy};
+            int walls = 0, any = 0;
+            for (int ty = 0; ty <= ts.n; ++ty)
+                for (int tx = 0; tx <= ts.n; ++tx) {
+                    const Vec2i t{ts.p.x + tx, ts.p.y + ty};
+                    if (segment_blocked(o, t, wall)) { ++walls; ++any; }
+                    else if (segment_blocked(o, t, body)) ++any;
+                }
+            const Cover c = walls == lines ? Cover::Total : 4 * walls >= 3 * lines ? Cover::ThreeQuarters
+                          : any > 0 ? Cover::Half : Cover::None;
+            if (uint8_t(c) < uint8_t(best)) best = c;
+        }
+    return best;
+}
+
 bool Combat::los_spots(Spot a, Spot b) const {
     if (a.n == 1 && b.n == 1) return grid_.line_of_sight(a.p, b.p);   // v0 test
     for (int ay = 0; ay < a.n; ++ay)
@@ -484,6 +562,8 @@ void Combat::install_hooks() {
     // Row 13: what UseFeature spends / grants (usage.pool + cost, grant_action, heal_pool).
     // R-G9 (FORCED_MOVEMENT.md §3): forced moves and teleports resolve on sim's grid and commit at once. The shove push keeps
     // EC #104's placement in complete() (the hook only reports its 5 ft), and rules flags it (shove_forced_flag).
+    // 7.2t cover: pure geometry over the current positions (replay recomputes it from the replayed board).
+    state_.hooks.cover = [this](const rules5e::EncounterState&, const rules5e::CoverQuery& q) { return cover_of(q); };
     state_.hooks.forced_move = [this](const rules5e::EncounterState&, const rules5e::ForcedMoveQuery& q) { return resolve_forced(q); };
     state_.hooks.forced_move_order = [this](const rules5e::EncounterState&, std::span<const rules5e::ForcedMoveQuery> qs) {
         std::vector<std::size_t> idx(qs.size());
@@ -1261,6 +1341,10 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
             req.target = req.targets[0];
             derived_area_ = true;
             aim_to_ = to;
+            // 7.2t: an aimed point of origin (not self-centred, not a cone / line from the caster) is the cover origin
+            if (def->range_ft != 0 && def->area != rules5e::AreaShape::Cone && def->area != rules5e::AreaShape::Line) {
+                req.has_area_origin = true; req.area_x = to.x; req.area_y = to.y;
+            }
         }
         // R-G8 Charmed: no harmful spell (attack or save) may include the recorded charmer.
         if (const CombatantId charmer = rules5e::condition_source(state_, actor, rules5e::Condition::Charmed)) {
