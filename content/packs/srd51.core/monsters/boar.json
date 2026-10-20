@@ -1,0 +1,128 @@
+{
+  "$schema": "monster@4",
+  "id": "srd51.monster.boar",
+  "name": "Boar",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 11,
+    "note": "natural armor"
+  },
+  "hit_points": {
+    "average": 11,
+    "formula": "2d8+2"
+  },
+  "speed": {
+    "walk": 40
+  },
+  "abilities": {
+    "str": 13,
+    "dex": 11,
+    "con": 12,
+    "int": 2,
+    "wis": 9,
+    "cha": 5
+  },
+  "senses": {
+    "passive_perception": 9
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "1/4",
+    "xp": 50
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "charge",
+      "name": "Charge",
+      "description": "If the boar moves at least 20 feet straight toward a target and then hits it with a tusk attack on the same turn, the target takes an extra 3 (1d6) slashing damage. If the target is a creature, it must succeed on a DC 11 Strength saving throw or be knocked prone.",
+      "effect": {
+        "kind": "on_event",
+        "on": "hit",
+        "limit": "once_per_turn",
+        "when": [
+          {
+            "kind": "weapon",
+            "is": "melee"
+          },
+          {
+            "kind": "moved_at_least_ft",
+            "ft": 20
+          }
+        ],
+        "effects": [
+          {
+            "kind": "extra_damage",
+            "damage": [
+              {
+                "dice": "1d6",
+                "type": "slashing"
+              }
+            ]
+          },
+          {
+            "kind": "save_condition",
+            "save": {
+              "ability": "str",
+              "dc": 11
+            },
+            "apply": [
+              {
+                "condition": "prone"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "relentless",
+      "name": "Relentless (Recharges after a Short or Long Rest)",
+      "description": "If the boar takes 7 damage or less that would reduce it to 0 hit points, it is reduced to 1 hit point instead.",
+      "effect": {
+        "kind": "on_event",
+        "on": "drop_to_zero",
+        "when": [
+          {
+            "kind": "damage_at_most",
+            "amount": 7
+          }
+        ],
+        "usage": {
+          "kind": "per_rest",
+          "uses": 1,
+          "rest": "short"
+        },
+        "effects": [
+          {
+            "kind": "set_hp",
+            "value": 1
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "tusk",
+      "name": "Tusk",
+      "kind": "melee_weapon_attack",
+      "to_hit": 3,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+1",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +3 to hit, reach 5 ft., one target. Hit: 4 (1d6 + 1) slashing damage."
+    }
+  ]
+}

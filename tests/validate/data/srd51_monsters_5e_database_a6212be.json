@@ -1173,6 +1173,165 @@
      ]
     }
    ]
+  },
+  "boar": {
+   "name": "Boar",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    11
+   ],
+   "hp": 11,
+   "hp_roll": "2d8+2",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    13,
+    11,
+    12,
+    2,
+    9,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Tusk",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "hobgoblin": {
+   "name": "Hobgoblin",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    18
+   ],
+   "hp": 11,
+   "hp_roll": "2d8+2",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    13,
+    12,
+    12,
+    10,
+    10,
+    9
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Longsword",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d8+1",
+        "slashing"
+       ]
+      ],
+      [
+       [
+        "1d10+1",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Longbow",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d8+1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "bugbear": {
+   "name": "Bugbear",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    16
+   ],
+   "hp": 27,
+   "hp_roll": "5d8+5",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    15,
+    14,
+    13,
+    8,
+    11,
+    9
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Morningstar",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d8+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Javelin",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d6+2",
+        "piercing"
+       ]
+      ],
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
