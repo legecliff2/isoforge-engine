@@ -564,6 +564,12 @@ std::optional<std::string> compile_attack_effect(const std::string& arch_id, con
     const int range = geti(act, "range_ft", 5);
     if (range < 5 || range > 65535) return where + ": bad range_ft";
     d.range_ft = uint16_t(range);
+    // EC spider follow-up: long range (ranged only): legal out to long_range_ft, at disadvantage beyond range_ft
+    if (act.contains("long_range_ft")) {
+        const int lr = geti(act, "long_range_ft");
+        if (d.melee || lr <= range || lr > 65535) return where + ": bad long_range_ft (ranged, > range_ft)";
+        d.long_range_ft = uint16_t(lr);
+    }
     sa = {};
     sa.id = aid;
     sa.spell_id = d.id;
@@ -584,6 +590,25 @@ std::optional<std::string> compile_attack_effect(const std::string& arch_id, con
         e.condition = *cond;
         e.affected_only = true;   // only a creature the attack hit
         e.escape_dc = int8_t(dc);
+        // EC spider follow-up: object {ac, hp, vulnerable[], immune[]}: the restraint is a destructible object (special 6)
+        if (const auto ob = x.find("object"); ob != x.end()) {
+            if (!ob->is_object()) return where + ": bad object";
+            const int oac = geti(*ob, "ac"), ohp = geti(*ob, "hp");
+            if (oac < 1 || oac > 30 || ohp < 1 || ohp > 1000) return where + ": bad object ac / hp";
+            e.object_ac = int8_t(oac);
+            e.object_hp = int16_t(ohp);
+            for (const char* key : {"vulnerable", "immune"}) {
+                uint32_t& m = key[0] == 'v' ? e.object_vulnerable : e.object_immune;
+                if (auto ls = ob->find(key); ls != ob->end()) {
+                    if (!ls->is_array()) return where + ": bad object " + key;
+                    for (const Json& n : *ls) {
+                        auto ty = damage_type(n.is_string() ? n.get<std::string>() : "");
+                        if (!ty) return where + ": bad damage type in object " + key;
+                        m |= 1u << unsigned(*ty);
+                    }
+                }
+            }
+        }
         d.extra_effects.push_back(e);
     }
     return compile_action_usage(where, act, doc, d, sa, unsupported);
@@ -658,6 +683,19 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 d.extra_effects.push_back(e);
             }
         }
+    }
+    // EC spider follow-up: zero_hp {condition, while, duration {kind rounds, n}}: when the (first) damage drops the target to
+    // 0 HP it is stable and gains `condition` for n rounds (600 = 1 hour) and `while` for as long as that lasts.
+    if (auto zh = act.find("zero_hp"); zh != act.end()) {
+        if (!zh->is_object() || (d.dice.count == 0 && d.dice.bonus == 0)) return where + ": zero_hp needs damage";
+        auto c1 = condition_of(zh->value("condition", "")), c2 = condition_of(zh->value("while", ""));
+        if (!c1 || !c2 || *c1 == *c2) return where + ": bad zero_hp condition / while";
+        const auto du = zh->find("duration");
+        const int n = du != zh->end() && du->is_object() && du->value("kind", "") == "rounds" ? geti(*du, "n") : 0;
+        if (n < 1 || n > 65535) return where + ": bad zero_hp duration (rounds 1..65535)";
+        d.zero_hp_rounds = uint16_t(n);
+        d.zero_hp_condition = *c1;
+        d.zero_hp_while = *c2;
     }
     if (auto ap = act.find("apply"); ap != act.end() && ap->is_array()) {
         auto repeat_of = [](const std::string& r) {
