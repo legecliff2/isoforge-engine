@@ -576,8 +576,8 @@ The schema arm checks the shape; `checks_v4.check_slot_recovery` mirrors the loa
 max_slot_level, uses }`; after a successful `sim::short_rest` the caller's choice goes to `rules5e::apply_slot_recovery`. The budget,
 ceil(class level / 2), is derived, not authored.
 
-Content: `srd51.character.wizard_level_1..5` carry `arcane_recovery`. No druid character ships yet, so Natural Recovery is listed in
-`docs/SRD_CLASSES_DEFERRED.md`. Cases: `tests/validate/effect_cases/*slot_recovery*`.
+Content: `srd51.character.wizard_level_1..5` carry `arcane_recovery`; `srd51.character.druid_level_2..5` carry `natural_recovery`
+(`class druid`). Cases: `tests/validate/effect_cases/*slot_recovery*`.
 
 ## 11. Feature kind `gaze` (Petrifying Gaze, VERSION_BUMP_BATCH 7.2p, sim #153)
 

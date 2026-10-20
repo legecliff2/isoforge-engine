@@ -1,0 +1,176 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.druid_level_3",
+  "name": "Druid, level 3 (Circle of the Land: Mountain)",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "neutral",
+  "level": 3,
+  "classes": [
+    {
+      "class": "druid",
+      "level": 3,
+      "hit_die": "d8",
+      "subclass": "land"
+    }
+  ],
+  "xp": 900,
+  "armor_class": {
+    "value": 15,
+    "note": "leather armor, shield"
+  },
+  "hit_points": {
+    "average": 24,
+    "formula": "3d8+6"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 9,
+    "dex": 15,
+    "con": 14,
+    "int": 13,
+    "wis": 16,
+    "cha": 11
+  },
+  "saving_throws": {
+    "int": 3,
+    "wis": 5
+  },
+  "skills": {
+    "insight": 5,
+    "perception": 5
+  },
+  "senses": {
+    "passive_perception": 15
+  },
+  "languages": [
+    "Common",
+    "Druidic"
+  ],
+  "proficiency_bonus": 2,
+  "features": [
+    {
+      "id": "druidic",
+      "name": "Druidic",
+      "description": "You know Druidic, the secret language of druids. You can speak the language and use it to leave hidden messages; others spot such a message's presence with a successful DC 15 Wisdom (Perception) check but can't decipher it without magic. (Descriptive: language and hidden messages have no combat effect.)"
+    },
+    {
+      "id": "wild_shape",
+      "name": "Wild Shape",
+      "description": "Starting at 2nd level, you can use your action to magically assume the shape of a beast that you have seen before. You can use this feature twice, regaining expended uses when you finish a short or long rest. Max CR 1/4 with no flying or swimming speed at 2nd level; CR 1/2 with no flying speed at 4th level. You can stay in a beast shape for a number of hours equal to half your druid level (rounded down), then revert unless you expend another use. Forms: jackal, wolf, boar, axe beak, giant poisonous snake (swim: from 4th), black bear (CR 1/2: from 4th).",
+      "effect": {
+        "kind": "wild_shape",
+        "pool": "wild_shape",
+        "forms": [
+          "srd51.monster.jackal",
+          "srd51.monster.wolf",
+          "srd51.monster.boar",
+          "srd51.monster.axe_beak",
+          "srd51.monster.giant_poisonous_snake",
+          "srd51.monster.black_bear"
+        ],
+        "max_cr_by_level": [
+          {
+            "level": 2,
+            "max_cr": "1/4"
+          },
+          {
+            "level": 4,
+            "max_cr": "1/2"
+          }
+        ]
+      }
+    },
+    {
+      "id": "bonus_cantrip",
+      "name": "Bonus Cantrip",
+      "description": "When you choose this circle at 2nd level, you learn one additional druid cantrip of your choice. (Descriptive: every shipped druid cantrip, Produce Flame and Poison Spray, is already known; no other druid cantrip ships in srd51.core.)"
+    },
+    {
+      "id": "natural_recovery",
+      "name": "Natural Recovery",
+      "description": "Starting at 2nd level, you can regain some of your magical energy by sitting in meditation and communing with nature. During a short rest, you choose expended spell slots to recover. The spell slots can have a combined level that is equal to or less than half your druid level (rounded up), and none of the slots can be 6th level or higher. You can't use this feature again until you finish a long rest.",
+      "effect": {
+        "kind": "slot_recovery",
+        "class": "druid",
+        "max_slot_level": 5,
+        "uses": 1
+      }
+    },
+    {
+      "id": "circle_spells",
+      "name": "Circle Spells (Mountain)",
+      "description": "Your mystical connection to the land infuses you with the ability to cast certain spells. Mountain: Spider Climb, Spike Growth (3rd); Lightning Bolt, Meld into Stone (5th). These spells are always prepared and don't count against the number of spells you can prepare. Spike Growth and Lightning Bolt are in spellcasting.spells; Spider Climb and Meld into Stone are not shipped in srd51.core."
+    }
+  ],
+  "resources": [
+    {
+      "id": "wild_shape",
+      "name": "Wild Shape",
+      "max": 2,
+      "recharge": "short_rest"
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.scimitar",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.leather_armor",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.shield",
+      "equipped": true
+    },
+    "explorers_pack",
+    "druidic_focus"
+  ],
+  "actions": [
+    {
+      "id": "scimitar",
+      "name": "Scimitar",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "finesse",
+        "light"
+      ],
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "slashing"
+        }
+      ]
+    }
+  ],
+  "spellcasting": {
+    "ability": "wis",
+    "caster_level": 3,
+    "slots": {
+      "1": 4,
+      "2": 2
+    },
+    "spells": [
+      "srd51.spell.produce_flame",
+      "srd51.spell.poison_spray",
+      "srd51.spell.cure_wounds",
+      "srd51.spell.healing_word",
+      "srd51.spell.thunderwave",
+      "srd51.spell.barkskin",
+      "srd51.spell.hold_person",
+      "srd51.spell.lesser_restoration",
+      "srd51.spell.spike_growth"
+    ]
+  }
+}
