@@ -150,7 +150,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Action Surge | 2 | NEW (wiring) | Rules done (#91): `FeatureSpec::grant_actions` -> `TurnBudget::extra_actions` (R-G5). Needs the `grant_action` feature compile and a `feature_spec` hook (Engine Core). |
 | Martial Archetype: Champion, Improved Critical (crit on 19-20) | 3 | NEW (wiring) | Rules done (R-G5): `Combatant::crit_min` (19 / 18); a non-20 crit must still hit. Loader kind `crit_range` pending. |
 | Ability Score Improvement | 4 | DATA | Authored stats. |
-| Extra Attack | 5 | DONE (sim) | character@4 `extra_attack {attacks_per_action: 2}` sets `attacks_per_action` (sim loader); content still to adopt it (T&C). |
+| Extra Attack | 5 | DONE | character@4 `extra_attack {attacks_per_action: 2}` sets `attacks_per_action` (sim loader); srd51 fighter 5 uses it (T&C; validator `check_extra_attack`). |
 
 ### 6.2 Cleric (full; Life domain)
 

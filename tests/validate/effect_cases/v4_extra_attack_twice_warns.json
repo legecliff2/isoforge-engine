@@ -1,0 +1,21 @@
+{
+  "base": "characters/fighter_level_5.json",
+  "sets": [
+    [
+      [
+        "features",
+        5
+      ],
+      {
+        "id": "extra_attack_3",
+        "name": "Extra Attack",
+        "effect": {
+          "kind": "extra_attack",
+          "attacks_per_action": 3
+        }
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "extra_attack declared more than once"
+}
