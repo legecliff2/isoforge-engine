@@ -585,6 +585,97 @@
      }
     }
    }
+  },
+  "ranger": {
+   "name": "Ranger",
+   "hit_die": 10,
+   "saving_throws": [
+    "str",
+    "dex"
+   ],
+   "spellcasting_ability": "wis",
+   "subclass": "hunter",
+   "subclass_name": "Hunter",
+   "levels": {
+    "1": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "favored-enemy-1-type": "Favored Enemy (1 type)",
+      "natural-explorer-1-terrain-type": "Natural Explorer (1 terrain type)"
+     },
+     "class_specific": {
+      "favored_enemies": 1,
+      "favored_terrain": 1
+     }
+    },
+    "2": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "ranger-fighting-style": "Fighting Style",
+      "spellcasting-ranger": "Spellcasting: Ranger"
+     },
+     "class_specific": {
+      "favored_enemies": 1,
+      "favored_terrain": 1
+     },
+     "spell_slots": {
+      "1": 2
+     },
+     "spells_known": 2
+    },
+    "3": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "ranger-archetype": "Ranger Archetype",
+      "primeval-awareness": "Primeval Awareness"
+     },
+     "class_specific": {
+      "favored_enemies": 1,
+      "favored_terrain": 1
+     },
+     "spell_slots": {
+      "1": 3
+     },
+     "spells_known": 3,
+     "subclass_features": {
+      "hunters-prey": "Hunter's Prey"
+     }
+    },
+    "4": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 1,
+     "features": {
+      "ranger-ability-score-improvement-1": "Ability Score Improvement"
+     },
+     "class_specific": {
+      "favored_enemies": 1,
+      "favored_terrain": 1
+     },
+     "spell_slots": {
+      "1": 3
+     },
+     "spells_known": 3
+    },
+    "5": {
+     "prof_bonus": 3,
+     "ability_score_bonuses": 1,
+     "features": {
+      "ranger-extra-attack": "Extra Attack"
+     },
+     "class_specific": {
+      "favored_enemies": 1,
+      "favored_terrain": 1
+     },
+     "spell_slots": {
+      "1": 4,
+      "2": 2
+     },
+     "spells_known": 4
+    }
+   }
   }
  },
  "spells": {
@@ -595,6 +686,15 @@
    "classes": [
     "sorcerer",
     "wizard"
+   ]
+  },
+  "barkskin": {
+   "name": "Barkskin",
+   "level": 2,
+   "school": "transmutation",
+   "classes": [
+    "druid",
+    "ranger"
    ]
   },
   "counterspell": {
@@ -757,6 +857,15 @@
    "classes": [
     "cleric",
     "paladin"
+   ]
+  },
+  "spike-growth": {
+   "name": "Spike Growth",
+   "level": 2,
+   "school": "transmutation",
+   "classes": [
+    "druid",
+    "ranger"
    ]
   }
  }
