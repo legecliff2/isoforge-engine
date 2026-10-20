@@ -1,0 +1,159 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.ranger_level_3",
+  "name": "Ranger, level 3 (Hunter)",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "neutral good",
+  "level": 3,
+  "classes": [
+    {
+      "class": "ranger",
+      "level": 3,
+      "hit_die": "d10",
+      "subclass": "hunter"
+    }
+  ],
+  "xp": 900,
+  "armor_class": {
+    "value": 14,
+    "note": "leather armor"
+  },
+  "hit_points": {
+    "average": 28,
+    "formula": "3d10+6"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 13,
+    "dex": 16,
+    "con": 14,
+    "int": 11,
+    "wis": 15,
+    "cha": 9
+  },
+  "saving_throws": {
+    "str": 3,
+    "dex": 5
+  },
+  "skills": {
+    "perception": 4,
+    "stealth": 5,
+    "survival": 4
+  },
+  "senses": {
+    "passive_perception": 14
+  },
+  "languages": [
+    "Common",
+    "Elvish"
+  ],
+  "proficiency_bonus": 2,
+  "spellcasting": {
+    "ability": "wis",
+    "caster_level": 3,
+    "slots": {
+      "1": 3
+    },
+    "spells": [
+      "srd51.spell.cure_wounds"
+    ]
+  },
+  "features": [
+    {
+      "id": "favored_enemy",
+      "name": "Favored Enemy",
+      "description": "Beginning at 1st level, you have significant experience studying, tracking, hunting, and even talking to a certain type of enemy. Choose a type of favored enemy: aberrations, beasts, celestials, constructs, dragons, elementals, fey, fiends, giants, monstrosities, oozes, plants, or undead. Alternatively, you can select two races of humanoid (such as gnolls and orcs) as favored enemies. You have advantage on Wisdom (Survival) checks to track your favored enemies, as well as on Intelligence checks to recall information about them. When you gain this feature, you also learn one language of your choice that is spoken by your favored enemies, if they speak one at all. You choose one additional favored enemy, as well as an associated language, at 6th and 14th level. As you gain levels, your choices should reflect the types of monsters you have encountered on your adventures. Chosen: beasts (no language)."
+    },
+    {
+      "id": "natural_explorer",
+      "name": "Natural Explorer",
+      "description": "You are particularly familiar with one type of natural environment and are adept at traveling and surviving in such regions. Choose one type of favored terrain: arctic, coast, desert, forest, grassland, mountain, or swamp. When you make an Intelligence or Wisdom check related to your favored terrain, your proficiency bonus is doubled if you are using a skill that you're proficient in. While traveling for an hour or more in your favored terrain, you gain the following benefits: - Difficult terrain doesn't slow your group's travel. - Your group can't become lost except by magical means. - Even when you are engaged in another activity while traveling (such as foraging, navigating, or tracking), you remain alert to danger. - If you are traveling alone, you can move stealthily at a normal pace. - When you forage, you find twice as much food as you normally would. - While tracking other creatures, you also learn their exact number, their sizes, and how long ago they passed through the area. You choose additional favored terrain types at 6th and 10th level. Chosen: forest."
+    },
+    {
+      "id": "fighting_style_archery",
+      "name": "Fighting Style: Archery",
+      "description": "You gain a +2 bonus to attack rolls you make with ranged weapons.",
+      "effect": {
+        "kind": "attack_bonus",
+        "attacks": "ranged",
+        "amount": 2
+      }
+    },
+    {
+      "id": "primeval_awareness",
+      "name": "Primeval Awareness",
+      "description": "Beginning at 3rd level, you can use your action and expend one ranger spell slot to focus your awareness on the region around you. For 1 minute per level of the spell slot you expend, you can sense whether the following types of creatures are present within 1 mile of you (or within up to 6 miles if you are in your favored terrain): aberrations, celestials, dragons, elementals, fey, fiends, and undead. This feature doesn't reveal the creatures' location or number."
+    },
+    {
+      "id": "colossus_slayer",
+      "name": "Hunter's Prey: Colossus Slayer",
+      "description": "Your tenacity can wear down the most potent foes. When you hit a creature with a weapon attack, the creature takes an extra 1d8 damage if it's below its hit point maximum. You can deal this extra damage only once per turn."
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.leather_armor",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.longbow",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.shortsword"
+    },
+    "arrows_20",
+    "explorers_pack"
+  ],
+  "actions": [
+    {
+      "id": "longbow",
+      "name": "Longbow",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 5,
+      "range": [
+        150,
+        600
+      ],
+      "targets": 1,
+      "properties": [
+        "ammunition",
+        "heavy",
+        "two_handed"
+      ],
+      "description": "Base attack bonus; Fighting Style: Archery (+2 to ranged attack rolls) is applied by its feature effect.",
+      "damage": [
+        {
+          "dice": "1d8+3",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "shortsword",
+      "name": "Shortsword",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "finesse",
+        "light"
+      ],
+      "damage": [
+        {
+          "dice": "1d6+3",
+          "type": "piercing"
+        }
+      ]
+    }
+  ]
+}

@@ -563,6 +563,42 @@ std::optional<std::string> compile_action_usage(const std::string& where, const 
 // usage }. Compiles to a synthetic SpellAttack SpellDef (is_spell false, not magical, fixed_attack, no damage) whose
 // ApplyCondition riders resolve on a hit; `escape` = rules5e escape_dc (an action, a Strength check: special 4). Every apply[]
 // entry needs `escape` (no other duration yet). New content keys (T&C schema pending).
+// 7.2w grab and contain: an apply[] entry's optional `contain` {kind engulf | swallow, damage {dice, type}} and `max_size`
+// (tiny .. gargantuan: the condition skips a larger target). Filled into the effect-shaped fields of `T` (SpellDef or SpellEffect).
+template <class T>
+std::optional<std::string> read_contain(const Json& x, const std::string& where, T& e) {
+    if (auto ms = x.find("max_size"); ms != x.end()) {
+        static const char* kSizes[] = {"tiny", "small", "medium", "large", "huge", "gargantuan"};
+        int k = -1;
+        for (int i = 0; i < 6; ++i) if (ms->is_string() && ms->get<std::string>() == kSizes[i]) k = i;
+        if (k < 0) return where + ": bad max_size in apply[]";
+        e.condition_max_size = int8_t(k);
+    }
+    if (auto ct = x.find("contain"); ct != x.end()) {
+        if (!ct->is_object()) return where + ": bad contain";
+        const std::string k = ct->value("kind", "");
+        if (k != "engulf" && k != "swallow") return where + ": contain kind must be engulf or swallow";
+        e.contain = k == "engulf" ? 1 : 2;
+        const auto dm = ct->find("damage");
+        if (dm == ct->end() || !dm->is_object()) return where + ": contain needs damage {dice, type}";
+        auto dice = parse_dice(dm->value("dice", ""));
+        auto ty = damage_type(dm->value("type", ""));
+        if (!dice || !ty) return where + ": bad contain damage";
+        e.contain_dice = *dice; e.contain_damage_type = *ty;
+        if (auto rg = ct->find("regurgitate"); rg != ct->end()) {   // behir / purple worm: {dc, damage (default 30)}
+            if (k != "swallow" || !rg->is_object()) return where + ": regurgitate is a swallow option {dc, damage}";
+            const int dc = geti(*rg, "dc"), dm2 = geti(*rg, "damage", 30);
+            if (dc < 1 || dc > 30 || dm2 < 1 || dm2 > 255) return where + ": bad regurgitate (dc 1..30, damage 1..255)";
+            e.regurgitate_dc = int8_t(dc); e.regurgitate_damage = uint8_t(dm2);
+        }
+    }
+    if (auto ef = x.find("excludes_formless"); ef != x.end()) {   // the Net: no effect on a formless creature
+        if (!ef->is_boolean()) return where + ": bad excludes_formless";
+        e.excludes_formless = ef->get<bool>();
+    }
+    return std::nullopt;
+}
+
 std::optional<std::string> compile_attack_effect(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
                                                  Archetype::SaveAction& sa, const Json& doc, bool& unsupported) {
     const std::string aid = act.value("id", "");
@@ -602,11 +638,18 @@ std::optional<std::string> compile_attack_effect(const std::string& arch_id, con
         auto cond = condition_of(x.is_object() ? x.value("condition", "") : "");
         if (!cond) return where + ": bad condition in apply[]";
         const auto es = x.find("escape");
-        if (es == x.end() || !es->is_object()) { unsupported = true; return std::nullopt; }
-        if (es->value("ability", "") != "str") return where + ": escape ability must be str";
-        const int dc = geti(*es, "dc");
-        if (dc < 1 || dc > 30) return where + ": bad escape dc";
+        const bool swallow = x.contains("contain") && x["contain"].is_object() && x["contain"].value("kind", "") == "swallow";
+        if (rules5e::SpellEffect probe; x.contains("contain") || x.contains("max_size"))   // 7.2w: bad keys are errors first
+            if (auto m = read_contain(x, where, probe)) return m;
+        if ((es == x.end() || !es->is_object()) && !swallow) { unsupported = true; return std::nullopt; }
+        int dc = 0;
+        if (es != x.end()) {
+            if (!es->is_object() || es->value("ability", "") != "str") return where + ": escape ability must be str";
+            dc = geti(*es, "dc");
+            if (dc < 1 || dc > 30) return where + ": bad escape dc";
+        }
         rules5e::SpellEffect e;
+        if (auto m = read_contain(x, where, e)) return m;   // 7.2w: Swallow (no escape: freed when the swallower dies), Net max_size
         e.kind = rules5e::SpellEffectKind::ApplyCondition;
         e.applies_condition = true;
         e.condition = *cond;
@@ -736,6 +779,13 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             const std::string rs = x.value("repeat_save", "");
             const bool has_dur = x.contains("duration");
             const bool untracked = untimed_ok && !has_dur && rs.empty() && ends_by_own_rules(*cond);
+            // 7.2w: an escape {ability str, dc} (Engulf) lasts until the creature escapes: no duration needed
+            int esc = 0;
+            if (auto es = x.find("escape"); es != x.end()) {
+                if (!es->is_object() || es->value("ability", "") != "str") return where + ": escape ability must be str";
+                esc = geti(*es, "dc");
+                if (esc < 1 || esc > 30) return where + ": bad escape dc";
+            }
             if (has_dur && !x["duration"].is_object()) return where + ": bad duration in apply[]";
             const Json dur = has_dur ? x["duration"] : Json::object();
             const std::string dk = dur.is_object() && dur.contains("kind") && dur["kind"].is_string() ? dur["kind"].get<std::string>() : "";
@@ -748,7 +798,7 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 rounds = uint16_t(n);
             } else if (dk == "until_end_of_target_next_turn") {
                 expiry = uint8_t(rules5e::Expiry::EndOfTargetNextTurn);
-            } else if (dk != "until_save" && (has_dur || rs.empty()) && !untracked) {
+            } else if (dk != "until_save" && (has_dur || rs.empty()) && !untracked && !(esc > 0 && !has_dur)) {
                 unsupported = true;   // an unknown duration kind (or none at all, without a repeat save)
                 return std::nullopt;
             }
@@ -761,6 +811,10 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 d.expiry = expiry;
                 d.duration_rounds = rounds;
                 d.condition_untracked = untracked;
+                d.escape_dc = int8_t(esc);
+                if (x.contains("max_size") && !x.contains("contain"))
+                    return where + ": max_size on a save_effect needs contain (only a containing condition skips a larger target)";
+                if (auto m = read_contain(x, where, d)) return m;
                 first = false;
             } else {       // further conditions: ApplyCondition on the creatures that failed the save
                 rules5e::SpellEffect e;
@@ -772,6 +826,10 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 e.duration_rounds = rounds;
                 e.condition_untracked = untracked;
                 e.affected_only = true;
+                e.escape_dc = int8_t(esc);
+                if (x.contains("max_size") && !x.contains("contain"))
+                    return where + ": max_size on a save_effect needs contain (only a containing condition skips a larger target)";
+                if (auto m = read_contain(x, where, e)) return m;
                 d.extra_effects.push_back(e);
             }
         }
@@ -1163,6 +1221,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         }
         // EC swarm: the "swarm" tag turns on the SRD Swarm trait
         if (std::find(c.tags.begin(), c.tags.end(), rules5e::spell_id_of("swarm")) != c.tags.end()) a.swarm = c.no_regain_hp = true;
+        // 7.2w: the "formless" tag (SRD: the Net has no effect on it)
+        if (std::find(c.tags.begin(), c.tags.end(), rules5e::spell_id_of("formless")) != c.tags.end()) c.formless = true;
     }
     // 0 = parse the document's own $schema tag (never "latest"); a missing, unparsable or other-type tag means no refusal.
     uint32_t declared = declared_version;

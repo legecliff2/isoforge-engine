@@ -417,7 +417,21 @@ struct ActiveSpellEffect {
     // appended (control conditions, 7.2v; leftover_digest when control != 0): the ControlKind of the spell and, for Command,
     // the CommandWord chosen at cast (ActionRequest::command_word).
     uint8_t control = 0, command_word = 0;
+    // appended (grab and contain, 7.2w): SpellDef::contain of the effect (1 engulfed, 2 swallowed); `caster` is the container.
+    // Derived from the SpellDef: not hashed (its damage rides damage_when 3: the start of the container's turn).
+    uint8_t contain = 0;
+    // appended (7.2w Swallow regurgitation): damage the container took this turn from the swallowed creature (reset at every
+    // EndTurn; always 0 between turns, so not hashed beyond 0xAC's per-effect record, where sim folds it).
+    uint16_t container_damage = 0;
+    int8_t regurgitate_dc = 0; uint8_t regurgitate_damage = 30;   // derived from the SpellDef
 };
+
+// 7.2w: a creature leaving its container in the last step (EncounterState::contain_exits; cleared when each step starts).
+// kind 1 released (the container died: exits prone, sim spends 5 ft of its movement / places it in the container's space);
+// 2 regurgitated (exits prone, sim places it within 10 ft of the container); 3 avoided an Engulf with a successful save
+// (sim pushes it 5 ft back or to a side, out of the cube's space).
+struct ContainExit { CombatantId container = 0, creature = 0; uint8_t kind = 0;
+                     friend bool operator==(const ContainExit&, const ContainExit&) = default; };
 
 // A modifier in force on `target` (row 12). `timed` reuses the condition-duration machinery (Rounds / EndOfTargetNextTurn).
 struct ActiveModifier {
@@ -729,6 +743,7 @@ struct EncounterState {
     uint32_t next_window_seq = 0;        // reaction windows opened so far
     std::optional<PendingDecision> pending;   // set while an action waits for a reaction decision
     std::vector<ActiveSpellEffect> effects;   // lasting spell effects, in the order applied
+    std::vector<ContainExit> contain_exits;   // 7.2w (appended in place of use; see ContainExit): output of the last step only
     std::vector<ActiveModifier> modifiers;    // row 12 (appended): timed modifiers in application order; empty for old content
     EncounterHooks hooks;                // behaviour, not state: never serialized/hashed
     std::vector<FeatureUses> features;   // appended: limited-use features (register_feature)
@@ -961,6 +976,9 @@ uint32_t add_feature_aura(EncounterState&, CombatantId owner, uint32_t spell_id,
 bool in_silence(const EncounterState&, CombatantId id);
 
 std::vector<ActionRequest> legal_actions(const EncounterState&);   // for AI + UI (current actor)
+// 7.2w: the creature that has engulfed / swallowed `id` (0 = none). Sim moves the contained creature with it; a swallowed
+// creature has total cover from everything but its container (rules applies it in cover_of, with or without the hook).
+CombatantId                container_of(const EncounterState&, CombatantId id);
 CombatantId                current_actor(const EncounterState&);
 const Combatant*           find(const EncounterState&, CombatantId);
 

@@ -541,6 +541,12 @@ struct Combatant {
     // feet already spent this turn count against it (TurnBudget::movement_ft is shared; see move_allowance).
     uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0;
     bool hover = false;
+    // appended (grab and contain, 7.2w; content-derived, not hashed): SRD Transparent (gelatinous cube): the DC of the Wisdom
+    // (Perception) check to spot it while it has neither moved nor attacked (15; 0 = not transparent). Sim reads it when it
+    // sets up surprise (rules5e surprise helper: compare with the observer's Perception); rules does not track "moved".
+    int8_t transparent_dc = 0;
+    // appended (7.2w; content-derived, not hashed): SRD "formless" (the Net has no effect on it). Content tag "formless".
+    bool formless = false;
 
     // appended (vision 7.2x; static content, not folded): senses, in feet (0 = none). Rules derive can_see / perceives from
     // these, Blinded / Deafened and sim's per-pair SightFacts (per-tile light from any source; LIGHTING.md).
