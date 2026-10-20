@@ -1,0 +1,18 @@
+{
+  "base": "monsters/giant_spider.json",
+  "sets": [
+    [
+      [
+        "actions",
+        0,
+        "on_hit",
+        0,
+        "zero_hp",
+        "while"
+      ],
+      "poisoned"
+    ]
+  ],
+  "severity": "error",
+  "expect": "/actions/0/on_hit/0: bad zero_hp condition / while"
+}

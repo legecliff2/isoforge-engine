@@ -23,11 +23,14 @@ std::optional<CombatantId> NearestEnemyPolicy::choose_target(const Combat& c, Co
 namespace {
 // Anchors from which a creature of side `mn` stands within `reach` tiles of the `tn`-side creature at
 // `tp`, excluding anchors that overlap it. For 1x1 vs 1x1 this is the 8 * reach-ring around `tp`.
+// Reach 0 (a swarm's bite, SRD: "one target in the swarm's space"): only the anchors whose footprint overlaps the target's
+// (row-major, so the path search stays deterministic). They are reachable only for a mover that may share spaces
+// (Combat::occupied_except: a swarm, or a target that is one); for anyone else the path is empty and the AI ends its turn.
 std::vector<Vec2i> goal_anchors(Vec2i tp, int tn, int mn, int reach) {
     std::vector<Vec2i> g;
     for (int y = tp.y - reach - mn + 1; y <= tp.y + tn - 1 + reach; ++y)
         for (int x = tp.x - reach - mn + 1; x <= tp.x + tn - 1 + reach; ++x)
-            if (rect_distance({x, y}, mn, tp, tn) > 0) g.push_back({x, y});
+            if (reach == 0 ? rect_distance({x, y}, mn, tp, tn) == 0 : rect_distance({x, y}, mn, tp, tn) > 0) g.push_back({x, y});
     return g;
 }
 } // namespace

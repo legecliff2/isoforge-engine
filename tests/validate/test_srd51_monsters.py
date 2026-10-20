@@ -21,7 +21,7 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (all monster@4). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-DEFERRED = ["swarm-of-rats"]
+DEFERRED: list[str] = []   # swarm of rats authored after sim #172 (docs/SRD_MONSTERS_DEFERRED.md: 31 / 0)
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -29,6 +29,7 @@ DEVIATIONS = {
     "lizardfolk": "AC: the table lists 13 (natural armor) and 15 (with shield); the SRD line is 15 and the Spiked Shield attack needs the shield.",
     "black-bear": "skills: the table omits Perception +3 although passive Perception is 13 (SRD block); the validator requires 10 + skill.",
     "gargoyle": "damage_resistances stays empty: the qualified resistance lives in the damage_mitigation trait effect.",
+    "swarm-of-rats": "type: the table says 'swarm of Tiny beasts', not in the creature_type enum; convention is beast + tag swarm (T&C-G15, sim #172).",
 }
 
 
@@ -49,7 +50,10 @@ class MonsterTable(unittest.TestCase):
                 self.assertEqual(d["id"], "srd51.monster." + idx.replace("-", "_"))
                 self.assertEqual(d["name"], t["name"])
                 self.assertEqual(d["size"], t["size"].lower())
-                self.assertEqual(d["type"], t["type"])
+                if idx == "swarm-of-rats":
+                    self.assertEqual((d["type"], d["tags"]), ("beast", ["swarm"]))
+                else:
+                    self.assertEqual(d["type"], t["type"])
                 self.assertIn(d["armor_class"]["value"], t["ac"])
                 if idx != "lizardfolk":
                     self.assertEqual(d["armor_class"]["value"], t["ac"][0])
@@ -174,12 +178,25 @@ class MonsterTable(unittest.TestCase):
                                   "apply": [{"condition": "paralyzed", "duration": {"kind": "rounds", "n": 10}, "repeat_save": "end_of_turn"}],
                                   "when": [{"kind": "not_creature_type", "creature_types": ["undead"]}, {"kind": "not_target_tag", "tag": "elf"}]}])
         web = {a["id"]: a for a in load("giant-spider")["actions"]}["web"]
-        self.assertEqual((web["kind"], web["attack"], web["to_hit"], web["range_ft"]), ("attack_effect", "ranged", 5, 30))
-        self.assertEqual(web["apply"], [{"condition": "restrained", "escape": {"ability": "str", "dc": 12}}])
+        self.assertEqual((web["kind"], web["attack"], web["to_hit"], web["range_ft"], web["long_range_ft"]),
+                         ("attack_effect", "ranged", 5, 30, 60))   # sim #174: Web 30/60
+        # sim #174: the webbing is a destructible object (AC 10; hp 5; vulnerable fire; immune bludgeoning, poison, psychic)
+        self.assertEqual(web["apply"], [{"condition": "restrained", "escape": {"ability": "str", "dc": 12},
+                                         "object": {"ac": 10, "hp": 5, "vulnerable": ["fire"],
+                                                    "immune": ["bludgeoning", "poison", "psychic"]}}])
         self.assertEqual(web["usage"], {"kind": "recharge", "min": 5})
         sbite = {a["id"]: a for a in load("giant-spider")["actions"]}["bite"]["on_hit"]
         self.assertEqual(sbite, [{"kind": "save_condition", "save": {"ability": "con", "dc": 11},
-                                  "damage": [{"dice": "2d8", "type": "poison"}], "on_success": "half"}])
+                                  "damage": [{"dice": "2d8", "type": "poison"}], "on_success": "half",
+                                  # sim #174: 0 HP from the poison -> stable, poisoned 1 hour (600 rounds), paralyzed while poisoned
+                                  "zero_hp": {"condition": "poisoned", "while": "paralyzed", "duration": {"kind": "rounds", "n": 600}}}])
+        # sim #172: swarm of rats: tag swarm (shared spaces, no healing / temp HP), bites 2d6 or 1d6 at half HP or fewer
+        rats = load("swarm-of-rats")
+        self.assertEqual(rats["tags"], ["swarm"])
+        bites = rats["actions"][0]
+        self.assertEqual((bites["id"], bites["reach"], bites["damage"], bites["half_hp_damage"]),
+                         ("bites", 0, [{"dice": "2d6", "type": "piercing"}], "1d6"))
+        self.assertNotIn("effect", {t["id"]: t for t in rats["traits"]}["swarm"])   # the tag carries the trait
         # Petrifying Gaze (common@2 gaze arm, 7.2p, sim #153): basilisk DC 12 Con, medusa DC 14 Con with the 5-point instant
         # petrification margin; both restrained, repeat save at the end of the turn, petrified on a failed repeat save.
         for idx, dc, margin in (("basilisk", 12, 0), ("medusa", 14, 5)):

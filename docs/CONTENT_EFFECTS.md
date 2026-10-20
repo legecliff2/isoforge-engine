@@ -192,7 +192,7 @@ Example: `{ "kind": "font_of_magic", "pool": "sorcery_points" }` with `resources
 
 These nine are open kinds (live at `@3` and `@4`); see `docs/CONTENT_CONVENTIONS.md` section 3.
 
-### `wild_shape` (character feature, common@2, R-G12; reserved)
+### `wild_shape` (character feature, common@2, R-G12; loaded since EC #176)
 
 Closed common@2 arm `$defs/wild_shape_effect` (`@4` only). Fields: `pool` (required, a `resources[]` pool recharging on
 `short_rest`, max 2), `cost` (default `action`), `class` (default `druid`), `forms` (required, 1..255 unique monster content ids,
@@ -203,7 +203,7 @@ level / 2) rounds). One declaration per document. Loader: Engine Core `build_for
 
 Example: `{ "kind": "wild_shape", "pool": "wild_shape", "forms": ["srd51.monster.wolf"], "max_cr_by_level": [{"level": 2, "max_cr": "1/4"}] }`
 
-### `shapechanger` (monster or character trait, common@2, R-G12; reserved)
+### `shapechanger` (monster or character trait, common@2, R-G12; loaded since EC #176)
 
 Closed common@2 arm `$defs/shapechanger_effect`. Fields: `cost` (default `action`), `forms` (required, 1..255 of `{id, name,
 size?, armor_class?, speed? (replaces the whole object), actions? (unique ids of this document's own actions[]; [] = none),
@@ -213,9 +213,27 @@ Loader: Engine Core `build_form`.
 Trait flag `requires_humanoid_form` (common@2 `$defs/trait`, optional boolean, default false): the feature is refused in a Wild
 Shape form. Error on the `wild_shape` feature itself; warning when the document has no `wild_shape`.
 
-Both kinds are reserved until their loader lands: there is no `RESERVED_EFFECT_KINDS` table on main, so they keep the
-unknown-kind warning (the open-kind pattern) while their shape and cross-checks are already errors. Details:
+Both kinds are loaded at `@4` since EC #176 (the sim's `apply_wild_shape` / `apply_shapechanger` read exactly these keys:
+an unknown effect key, an unknown form key such as `speed_walk` (use `speed {walk}`), or `requires_humanoid_form` on the
+`wild_shape` feature itself are load errors; `requires_humanoid_form` is read from the feature object, not the effect), so the
+validator no longer gives them the unknown-kind warning at `@4`; below `@4` they keep it. Details:
 `docs/CONTENT_CONVENTIONS.md` section 9.
+
+### `extra_attack` (character feature, common@2, EC #179)
+
+Closed common@2 arm `$defs/extra_attack_effect` (`@4` only): `{ "kind": "extra_attack", "attacks_per_action": 2 }`.
+`attacks_per_action` is required (integer 2..4, no default): the Attack action makes that many weapon attacks
+(`Combatant::attacks_per_action`; grapple / shove may replace one; moving between them is allowed). Several declarations:
+the highest wins, they do not stack (validator warning). Characters only. Loader errors (sim `features.cpp`
+`apply_extra_attack`, prefixed with the document id; the validator prints the same text):
+
+* `<id>: extra_attack: unknown key '<k>'`
+* `<id>: extra_attack: only valid on characters`
+* `<id>: extra_attack: attacks_per_action must be an integer 2..4`
+
+In a `character@3` (or older) file the kind is inert: the hook's `@4` gate lists it in `inert_features`, and the frozen
+3 -> 4 migration kind list cannot carry it. The validator gives the unknown-kind warning there with that hint; declare
+`character@4` to use it. SRD fighter 5 (`srd51.character.fighter_level_5`) uses it with `attacks_per_action: 2`.
 
 ### `slot_recovery` (open kind, VERSION_BUMP_BATCH 7.2n, sim #148)
 
@@ -312,3 +330,15 @@ components, character@4 `equipment[].value_gp`).
 | `on_hit[].when` | array of predicates on any on_hit rider of an attack action | every predicate must hold. A rider `when` inside on_event `effects[]` is ignored (warning) |
 | action `kind: attack_effect` | `id`, `attack` ranged/melee (default ranged), `to_hit` -20..30 and non-zero, `range_ft` (>= 5, default 5), `apply[]` with `escape {ability: str, dc 1..30}`, `usage` | an apply[] entry without `escape` makes the loader list the action as unsupported (warning). There is no damage key. Shares the check-4 id space with `save_effect` |
 | monster `tags[]` | strings | read by `target_tag` (already in `monster@4`) |
+
+## sim #172 / #174 additions (swarm of rats, giant spider follow-up)
+
+Additive optional keys in `common@2` (no version bump). Validator: `checks_v4.check_sim172_174` mirrors the loader refusals the schema cannot express.
+
+| key | shape | loader behaviour |
+|---|---|---|
+| monster `tags[]` value `swarm` | string | SRD Swarm trait (#172): shares spaces both ways, cannot regain HP or gain temp HP. The trait itself stays descriptive |
+| weapon action `half_hp_damage` | dice with at least one die | replaces `damage[0]`'s dice while the attacker has half its HP or fewer (base max HP); `<id>: bad half_hp_damage in action <aid>` otherwise. Not allowed on `save_effect` / `attack_effect` |
+| `attack_effect` `long_range_ft` | integer > `range_ft`, ranged only | legal out to long range, disadvantage beyond `range_ft`; `bad long_range_ft (ranged, > range_ft)` otherwise |
+| `attack_effect` `apply[].object` | `{ac 1..30, hp 1..1000, vulnerable[], immune[]}` (damage types) | the restraint is a destructible object (`ActionRequest::special` 6); at 0 hp the condition ends |
+| `save_effect` / `save_condition` `zero_hp` | `{condition, while, duration {kind: rounds, n 1..65535}}` | when the damage drops the target to 0 HP: stable, `condition` for n rounds, `while` as long as that lasts. `zero_hp needs damage`; `bad zero_hp condition / while` when they are equal; `bad zero_hp duration (rounds 1..65535)` |

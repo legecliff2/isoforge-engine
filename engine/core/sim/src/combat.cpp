@@ -316,8 +316,97 @@ int Combat::footprint_size(CombatantId id) const {
     if (!s) return 1;
     // The loader sets Combatant::size from the stat block (Medium when size is inert, so it matches Archetype::footprint);
     // a transform sets the form's size and a revert restores it.
+    // SRD Squeezing (feat/size-space): a squeezing creature occupies a space one size smaller.
+    if (const auto* k = rules5e::find(state_, id)) {
+        const int n = int(footprint_of(CreatureSize(uint8_t(k->size))));
+        return k->squeezing ? std::max(1, n - 1) : n;
+    }
+    return int(s->archetype->footprint);
+}
+
+int Combat::natural_footprint(CombatantId id) const {
+    const Slot* s = slot(id);
+    if (!s) return 1;
     if (const auto* k = rules5e::find(state_, id)) return int(footprint_of(CreatureSize(uint8_t(k->size))));
     return int(s->archetype->footprint);
+}
+
+// SRD 5.1 Moving Around Other Creatures (feat/size-space): a creature may move through an ally's space, and through a
+// hostile's space only when the hostile is at least two sizes larger or smaller. Swarms already ignore spaces (occupied_except).
+bool Combat::may_pass(CombatantId mover, CombatantId other) const {
+    if (!hostile(mover, other)) return true;
+    const auto* a = rules5e::find(state_, mover);
+    const auto* b = rules5e::find(state_, other);
+    return a && b && std::abs(int(a->size) - int(b->size)) >= 2;
+}
+
+// The living creature (other than `except`, swarms excluded like occupied_except) whose footprint covers `t`; 0 = none.
+CombatantId Combat::occupant_at(Vec2i t, CombatantId except) const {
+    bool mover_swarm = false;
+    for (const auto& s : slots_) if (s.id == except) mover_swarm = s.archetype->swarm;
+    if (mover_swarm) return 0;
+    for (const auto& s : slots_) {
+        const auto* c = rules5e::find(state_, s.id);
+        if (s.id == except || !c || c->dead || s.archetype->swarm) continue;
+        const Spot sp = spot(s.id);
+        if (t.x >= sp.p.x && t.x < sp.p.x + sp.n && t.y >= sp.p.y && t.y < sp.p.y + sp.n) return s.id;
+    }
+    return 0;
+}
+
+// Does `id`'s footprint at `anchor` (side n) share a tile with another living creature's space?
+bool Combat::overlaps_other(CombatantId id, Vec2i anchor, int n) const {
+    for (int dy = 0; dy < n; ++dy)
+        for (int dx = 0; dx < n; ++dx)
+            if (occupant_at({anchor.x + dx, anchor.y + dy}, id)) return true;
+    return false;
+}
+
+// One 5 ft step of the current mover (Step command), checked without side effects. Every tile the footprint newly enters
+// must be walkable; an occupied one only when may_pass (and it is difficult terrain: 10 ft). The full footprint is tried
+// first; a Large+ creature that does not fit squeezes into a space one size smaller (side n - 1: every foot costs one extra
+// foot). A squeezing creature stops squeezing on the first step where its full footprint fits.
+std::optional<std::string> Combat::plan_step(CombatantId mover, Vec2i to, StepPlan& plan, bool allow_squeeze) const {
+    const Vec2i from = pos(mover);
+    if (chebyshev(from, to) != 1) return std::string("step must be to an adjacent tile");
+    const int cur = footprint_size(mover), full = natural_footprint(mover);
+    const auto* me = rules5e::find(state_, mover);
+    const bool squeezing = me && me->squeezing;
+    const MoveCaps caps = caps_of(mover);
+    auto fits = [&](int n, bool& through) -> std::optional<std::string> {
+        through = false;
+        for (int dy = 0; dy < n; ++dy)
+            for (int dx = 0; dx < n; ++dx) {
+                const Vec2i t{to.x + dx, to.y + dy};
+                if (t.x >= from.x && t.x < from.x + cur && t.y >= from.y && t.y < from.y + cur) continue;
+                if (!grid_.enterable(t, caps)) return std::string("tile not walkable");   // feat/move-modes
+                if (const CombatantId o = occupant_at(t, mover)) {
+                    if (!may_pass(mover, o)) return std::string("tile occupied");
+                    through = true;
+                }
+            }
+        return std::nullopt;
+    };
+    bool through = false;
+    auto err = fits(full, through);
+    plan.n = full;
+    plan.squeeze = squeezing ? 2 : 0;
+    if (err && full >= 2 && (allow_squeeze || squeezing)) {
+        bool t2 = false;
+        if (!fits(full - 1, t2)) {
+            err.reset();
+            through = t2;
+            plan.n = full - 1;
+            plan.squeeze = squeezing ? 0 : 1;
+        }
+    }
+    if (err) return err;
+    int cost = step_cost_ft(mover, from, to, plan.n);
+    if (through || overlaps_other(mover, to, plan.n)) cost = std::max(cost, 10);   // another creature's space: difficult terrain
+    if (plan.n < full) cost *= 2;                                                 // squeezing: +1 ft per ft
+    plan.cost = cost;
+    plan.ends_in_other = overlaps_other(mover, to, plan.n);
+    return std::nullopt;
 }
 
 std::vector<Vec2i> Combat::footprint_tiles_at(CombatantId id, Vec2i anchor) const {
@@ -821,6 +910,15 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
         }
         if (e.kind == rules5e::EventKind::Moved && e.reaction_depth == 0 && q.kind == ActionKind::Move && e.actor == q.actor && to) {
             const Vec2i from = pos(q.actor);
+            if (q.squeeze != 0 && !std::any_of(evs.begin(), evs.end(), [&](const rules5e::Event& x) {
+                    return x.kind == rules5e::EventKind::MoveInterrupted && x.actor == q.actor; })) {
+                SimEvent fe;   // SRD Squeezing: the footprint shrinks / grows back (side a, at the new anchor), before its TileMoved
+                fe.kind = SimEvent::Kind::Footprint;
+                fe.actor = q.actor;
+                fe.tile = *to;
+                fe.rules.a = footprint_size(q.actor);
+                events_.push_back(fe);
+            }
             if (move_tile(q.actor, *to, evs))   // drag: creatures the mover holds come along (same step, else into the vacated tile)
                 for (CombatantId held : rules5e::grappled_by(state_, q.actor)) {
                     const Vec2i hp = pos(held);
@@ -1099,7 +1197,7 @@ SubmitResult Combat::submit(const Command& cmd) {
     if (state_.pending) { r.error = "a reaction window is waiting for a decision"; r.needs = pending(); return r; }
     if (state_.ended) { r.error = "encounter ended"; return r; }
     install_hooks();
-    return cmd.kind == CommandKind::Step ? do_step(cmd.to) : do_rules(cmd.request, cmd.to, cmd.aim);
+    return cmd.kind == CommandKind::Step ? do_step(cmd.to, cmd.request.squeeze == 1) : do_rules(cmd.request, cmd.to, cmd.aim);
 }
 
 SubmitResult Combat::decide(const ReactionDecision& d) {
@@ -1133,6 +1231,20 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     const CombatantId actor = rules5e::current_actor(state_);
     if (req.actor != actor) { r.error = "not this combatant's turn"; return r; }
     if (req.kind == ActionKind::Move) { r.error = "use Step commands for movement (sim paths the grid)"; return r; }
+    // SRD (feat/size-space): a creature can't willingly end its move in another creature's space. The turn may not end
+    // while it overlaps one, unless no step out is possible (then it stays: unwilling).
+    if (req.kind == ActionKind::EndTurn && overlaps_other(actor, pos(actor), footprint_size(actor))) {
+        const Vec2i p = pos(actor);
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx) {
+                StepPlan sp;
+                if ((dx || dy) && !plan_step(actor, {p.x + dx, p.y + dy}, sp) &&
+                    step_mode(actor, p, {p.x + dx, p.y + dy}, sp.cost, sp.n) < 0xFE) {
+                    r.error = "cannot end movement in another creature's space";
+                    return r;
+                }
+            }
+    }
     if (req.kind == ActionKind::OpportunityAttack) { r.error = "opportunity attacks come from reaction windows"; return r; }
     if (req.kind == ActionKind::ReactionDecision) { r.error = "use decide() for reaction decisions"; return r; }
     if (req.kind == ActionKind::GazeResponse) {   // Petrifying Gaze (7.2p): gaze_seen is a sim fact, never caller input
@@ -1335,42 +1447,40 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     return finish(rules5e::step(state_, req));
 }
 
-SubmitResult Combat::do_step(Vec2i to) {
+SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze) {
     SubmitResult r;
     const CombatantId mover = rules5e::current_actor(state_);
     if (state_.budget.gaze_pending) { r.error = "gaze pending: answer with GazeResponse first"; return r; }
     const Vec2i from = pos(mover);
-    if (chebyshev(from, to) != 1) { r.error = "step must be to an adjacent tile"; return r; }
-    // Every tile the footprint newly enters must be walkable and free (the tiles it keeps are its own).
-    const int fp = footprint_size(mover);
-    const auto occ = occupied_except(mover);
-    const MoveCaps caps = caps_of(mover);
-    for (int dy = 0; dy < fp; ++dy)
-        for (int dx = 0; dx < fp; ++dx) {
-            const Vec2i t{to.x + dx, to.y + dy};
-            if (t.x >= from.x && t.x < from.x + fp && t.y >= from.y && t.y < from.y + fp) continue;
-            if (!grid_.enterable(t, caps)) { r.error = "tile not walkable"; return r; }
-            if (std::find(occ.begin(), occ.end(), t) != occ.end()) { r.error = "tile occupied"; return r; }
-        }
+    StepPlan plan;
+    if (auto e = plan_step(mover, to, plan, allow_squeeze)) { r.error = *e; return r; }
+    const int fp = plan.n;
     // R-G8 Frightened: no step that ends closer to the recorded source of the fear.
     if (const CombatantId src = rules5e::condition_source(state_, mover, rules5e::Condition::Frightened)) {
         const Spot ss = spot(src);
         if (rect_distance(to, fp, ss.p, ss.n) < rect_distance(from, fp, ss.p, ss.n)) { r.error = "frightened: cannot move closer to the source"; return r; }
     }
-    int cost = step_cost_ft(mover, from, to);   // R-G11: zone terrain overlays
+    const int cost = plan.cost;   // R-G11 zone overlays, another creature's space, squeezing, terrain (feat/move-modes)
     // feat/move-modes: the speed that fits the terrain (SRD "using different speeds"); the rules check the allowance.
-    const uint8_t mode = step_mode(mover, from, to, cost);
+    const uint8_t mode = step_mode(mover, from, to, cost, fp);
     if (mode == 0xFF) { r.error = "not enough movement"; return r; }
     if (mode == 0xFE) { r.error = "cannot fly while prone"; return r; }
+    // SRD: a creature can't willingly end its move in another creature's space: a step into one needs movement left (in
+    // the step's speed) for another 5 ft step (actions other than Step are refused while it overlaps, see do_rules).
+    if (plan.ends_in_other && rules5e::move_allowance(state_, *rules5e::find(state_, mover), mode) - cost < 5) {
+        r.error = "cannot end movement in another creature's space";
+        return r;
+    }
     if (!aggressive_step_ok(mover, to)) { r.error = "aggressive: the Dash's movement must go toward a hostile it can see"; return r; }
     ActionRequest mv{mover, ActionKind::Move};
     mv.move_ft = int16_t(cost);
     mv.move_tiles = 1;
     mv.move_mode = mode;
     mv.leaves_reach = leaves_reach(mover, from, to);
+    mv.squeeze = plan.squeeze;
     if (!state_.zones.empty()) {   // R-G11: membership facts, sim-derived (Q2 / Q8)
-        zone_lists(mover, spot(mover), spot_at(mover, to), mv);
-        mv.zone_changes = zone_changes_for(mover, spot(mover), spot_at(mover, to));
+        zone_lists(mover, spot(mover), Spot{to, fp}, mv);
+        mv.zone_changes = zone_changes_for(mover, spot(mover), Spot{to, fp});
     }
     step_to_ = to;
     set_step_context(mv);
@@ -1548,6 +1658,14 @@ uint64_t Combat::hash() const {
     if (rules5e::has_zone_state(state_)) { h.byte(0xAB); h.u64(rules5e::zones_digest(state_)); }
     // 0xAE (Petrifying Gaze, 7.2p): ids of creatures with their eyes averted, only while some is; never for gazeless combats.
     if (rules5e::has_gaze_state(state_)) { h.byte(0xAE); h.u64(rules5e::gaze_digest(state_)); }
+    {   // SRD Squeezing (feat/size-space): folded only when some creature squeezes
+        bool any = false;
+        for (const auto& c : state_.combatants) any = any || c.squeezing;
+        if (any) {
+            h.byte(0xC1);
+            for (const auto& c : state_.combatants) if (c.squeezing) h.u64(c.id);
+        }
+    }
     // 0xAF (R-G12, SUMMONS_TRANSFORMS.md §3.2): rules' summons_digest, then sim's part: summon slot count, then per summon slot
     // (creation order) id, anchor x / y, footprint side, gone, team. Only while has_summon_state (something was summoned or
     // transformed); no older combat does either.
@@ -1608,6 +1726,7 @@ uint64_t Combat::log_hash() const {
         if (q.sustain) { h.byte(0xB8); h.byte(1); }   // R-G15 Heat Metal sustained with a bonus action: folded only when set
         // 0xBA Font of Magic Flexible Casting (rules #147, VERSION_BUMP_BATCH 7.2o): folded only when flexible != 0.
         if (q.flexible != 0) { h.byte(0xBA); h.byte(q.flexible); h.byte(q.flexible_level); }
+        if (q.squeeze != 0) { h.byte(0xC2); h.byte(q.squeeze); }   // SRD Squeezing on a Move (feat/size-space)
         if (q.move_mode != 0) { h.byte(0xC3); h.byte(q.move_mode); }   // feat/move-modes: the speed a Move used
         if (q.avert_gaze) { h.byte(0xBB); h.byte(1); }   // Petrifying Gaze averting the eyes: folded only when set (gaze_seen is derived, not folded)
         // Small leftovers (rules #111): bit0 haste_action, bit1 reckless, bit2 aggressive; folded only when some bit is set.
@@ -1630,6 +1749,7 @@ uint64_t Combat::log_hash() const {
         if (q.forced_feet != 0 || q.teleport_feet != 0) { h.byte(0xB4); h.u16(q.forced_feet); h.u16(q.teleport_feet); }
         if (q.has_teleport_dest) { h.byte(0xB2); h.i32(q.teleport_x); h.i32(q.teleport_y); }
         if (q.form_archetype != 0) { h.byte(0xBD); h.byte(q.form_archetype); }   // R-G12 form choice: folded only when set
+        if (q.has_area_origin) { h.byte(0xC0); h.byte(1); h.i32(q.area_x); h.i32(q.area_y); }   // 7.2t cover: aimed area origin, only when set
         // 0xB7 (R-G11): caller-chosen zone inputs, only when set (membership lists / zone_move_ft are sim-derived, not folded).
         if (q.zone_move != 0 || q.has_zone_dest || !q.zone_excluded.empty()) {
             h.byte(0xB7);
@@ -1779,10 +1899,10 @@ MoveCaps Combat::caps_of(CombatantId id) const {
 // feet left, 0xFE when only flight fits and the mover is prone. The terrain picks the speed: open air needs flight; climb
 // terrain uses a climb speed, else flight, else walking (extra cost already priced); water likewise with a swim speed.
 // On plain ground the walking speed, or flight when walking has too little left.
-uint8_t Combat::step_mode(CombatantId mover, Vec2i from, Vec2i to, int cost) const {
+uint8_t Combat::step_mode(CombatantId mover, Vec2i from, Vec2i to, int cost, int fp_in) const {
     const auto* c = rules5e::find(state_, mover);
     if (!c) return 0xFF;
-    const int fp = footprint_size(mover);
+    const int fp = fp_in > 0 ? fp_in : footprint_size(mover);
     bool air = false, climb = false, water = false;
     for (int dy = 0; dy < fp; ++dy)
         for (int dx = 0; dx < fp; ++dx) {
@@ -1808,8 +1928,8 @@ uint8_t Combat::step_mode(CombatantId mover, Vec2i from, Vec2i to, int cost) con
     return fly_blocked && air ? 0xFE : 0xFF;
 }
 
-int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to) const {
-    const int fp = footprint_size(mover);
+int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to) const { return step_cost_ft(mover, from, to, footprint_size(mover)); }
+int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int fp) const {
     int cost = grid_.move_cost_ft(from, to, fp, caps_of(mover));   // feat/move-modes: water / climb / open air
     if (state_.zones.empty() || !spells_) return cost;
     bool difficult = false, halve = false;

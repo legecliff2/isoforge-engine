@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <fstream>
+#include <optional>
 #include <string>
 
 #include "sim/combat.hpp"
@@ -32,11 +33,14 @@ ContentLibrary lib() {
     REQUIRE_FALSE(l.add(goblin("swimmer", Json::parse(R"({"walk":30,"swim":30})")), "monster"));
     REQUIRE_FALSE(l.add(goblin("climber", Json::parse(R"({"walk":30,"climb":30})")), "monster"));
     REQUIRE_FALSE(l.add(goblin("foe", Json::parse(R"({"walk":30})")), "monster"));
+    Json big = goblin("large_swimmer", Json::parse(R"({"walk":30,"swim":30})"));
+    big["size"] = "large";
+    REQUIRE_FALSE(l.add(big, "monster"));
     return l;
 }
 struct Cell { Vec2i p; uint8_t flags; bool ground = true; };
 // 32x32 floor; `cells` set flags (and remove the ground for open air). The mover (spawn 0) faces a foe far away.
-world::Chunk arena(const std::string& who, const std::vector<Cell>& cells) {
+world::Chunk arena(const std::string& who, const std::vector<Cell>& cells, std::optional<Vec2i> ally = std::nullopt) {
     world::Chunk c{};
     c.coord = {5, 5, 0};
     c.origin = world::Chunk::Origin::Handcrafted;
@@ -49,6 +53,7 @@ world::Chunk arena(const std::string& who, const std::vector<Cell>& cells) {
     }
     c.spawns.push_back({"test.monster." + who, Vec2i{4, 4}, world::spawn_stable_id(c.coord, 0), R"({"team":"a"})"});
     c.spawns.push_back({"test.monster.foe", Vec2i{28, 28}, world::spawn_stable_id(c.coord, 1), R"({"team":"b"})"});
+    if (ally) c.spawns.push_back({"test.monster.walker", *ally, world::spawn_stable_id(c.coord, 2), R"({"team":"a"})"});
     c.content_hash = world::compute_content_hash(c);
     return c;
 }
@@ -58,11 +63,12 @@ struct Fight {
     ContentLibrary l = lib();
     std::optional<Combat> c;
     CombatantId me = 0;
-    Fight(const std::string& who, const std::vector<Cell>& cells) : chunk(arena(who, cells)) {
+    Fight(const std::string& who, const std::vector<Cell>& cells, std::optional<Vec2i> ally = std::nullopt)
+        : chunk(arena(who, cells, ally)) {
         c = Combat::create(reg, chunk, l, 1);
         REQUIRE(c);
         me = chunk.spawns[0].stable_id;
-        for (int i = 0; i < 4 && rules5e::current_actor(c->state()) != me; ++i) {
+        for (int i = 0; i < 6 && rules5e::current_actor(c->state()) != me; ++i) {
             Command e;
             e.request = {rules5e::current_actor(c->state()), rules5e::ActionKind::EndTurn};
             REQUIRE(c->submit(e).ok);
@@ -170,4 +176,25 @@ TEST_CASE("move modes: pathing - a flyer crosses a chasm, a walker goes around; 
     REQUIRE_FALSE(walk.empty());
     CHECK(walk.size() > 20);
     CHECK(walk == g.path({4, 4}, {{12, 4}}, {}, 1));   // no water on the way: the caps search equals the old one
+}
+
+TEST_CASE("move modes x size space: a Large swimmer swims through an ally's space (difficult) and can't end there") {
+    std::vector<Cell> pool;
+    for (int x = 6; x <= 9; ++x) for (int y = 4; y <= 5; ++y) pool.push_back({{x, y}, tf::kWater});
+    Fight f("large_swimmer", pool, Vec2i{7, 4});   // a Medium ally in the water
+    REQUIRE(f.step({5, 4}).ok);   // enters x 6 (water): swimming, 5 ft
+    CHECK(f.last_mode() == 2);
+    CHECK(f.left() == 25);
+    REQUIRE(f.step({6, 4}).ok);   // enters x 7: water + the ally's space: difficult, 10 ft, still swimming
+    CHECK(f.last_mode() == 2);
+    CHECK(f.left() == 15);
+    Command e;
+    e.request = {f.me, rules5e::ActionKind::EndTurn};
+    CHECK(f.c->submit(e).error == "cannot end movement in another creature's space");
+    REQUIRE(f.step({7, 4}).ok);   // x 7..8: still over the ally, 10 ft, 5 left for the way out
+    CHECK(f.left() == 5);
+    REQUIRE(f.step({8, 4}).ok);   // x 8..9: out of the ally, water: 5 ft
+    CHECK(f.last_mode() == 2);
+    CHECK(f.left() == 0);
+    f.check_replay();
 }
