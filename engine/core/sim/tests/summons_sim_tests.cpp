@@ -149,9 +149,9 @@ TEST_CASE("summon counter: seeded above every spawn id (non-combatants too); a s
     CHECK_FALSE(rules5e::has_summon_state(c->state()));
     CHECK(event_stream_version(c->events()) < 10);
     // the CR from challenge.rating
-    CHECK(lib.find("t.wolf")->cr_eighths == 2);
-    CHECK(lib.find("t.bear")->cr_eighths == 8);
-    CHECK(lib.find("t.dragon")->cr_eighths == 24);
+    CHECK(lib.find("t.wolf")->cr_x8 == 2);
+    CHECK(lib.find("t.bear")->cr_x8 == 8);
+    CHECK(lib.find("t.dragon")->cr_x8 == 24);
     // add_summon_spell refusals
     CHECK(lib.add_summon_spell(summon_def("test.x", 1, 10, {}, false), {{"t.nope"}, SummonOptions::Table::Any, std::nullopt}).value_or("").find("unknown summon archetype") != std::string::npos);
     rules5e::SpellDef notsum;
