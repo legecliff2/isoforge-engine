@@ -5,6 +5,7 @@
 
 #include <fstream>
 #include <string>
+#include <initializer_list>
 
 #include "rules5e_content/spell_loader.hpp"
 #include "sim/combat.hpp"
@@ -264,7 +265,7 @@ TEST_CASE("Wild Shape: unknown archetypes and out-of-limit forms are refused and
         CHECK(why == "unknown form archetype");
         CHECK_FALSE(f.c->build_form(f.who(0), FormKind::WildShape, kWildShape, 5, &why));
         CHECK(why == "form is not a beast");
-        for (uint8_t form : {2, 3, 4, 5, 6, 8}) {   // hawk, croc, bear, missing, goblin, past the list
+        for (uint8_t form : std::initializer_list<uint8_t>{2, 3, 4, 5, 6, 8}) {   // hawk, croc, bear, missing, goblin, past the list
             CAPTURE(int(form));
             f.refused(form);
         }
