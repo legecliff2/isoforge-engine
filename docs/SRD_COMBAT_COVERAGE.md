@@ -31,7 +31,7 @@ Things that apply to many rows (so they are not repeated):
 | Initiative (d20 + Dex, ties) | DATA | `roll_initiative`, `begin_encounter`. |
 | Turn structure: action, bonus action, movement, reaction budgets | DATA | `TurnBudget`; `bonus_action_grants` bitmask per combatant. |
 | Attack action, crit (nat 20 doubles dice), nat 1 miss | DATA | `ActionKind::Attack`, `resolve_attack`. |
-| Extra Attack (several attacks per action) | DATA | `Combatant::attacks_per_action` (rules); not loaded from content (T&C-G1 content side). Declared multiattack sequences exist in rules (#48), see section 9. |
+| Extra Attack (several attacks per action) | DONE (sim) | `Combatant::attacks_per_action` (rules), loaded from the character@4 feature `extra_attack {attacks_per_action: 2..4}` (required; highest wins; characters only; feat/extra-attack). Declared multiattack sequences exist in rules (#48), see section 9. |
 | Dash, Disengage, Dodge, Help, Ready | DATA | Matching `ActionKind`s. |
 | Hide | DATA (partial) | `ActionKind::Hide` rolls an ability check and stores `stealth_total` (> 0 = hidden), granting advantage on the next attack and then clearing. **Nothing compares it to a Perception score**: grep of `engine/` shows no passive-Perception or search code, the sim adapter maps neither skills nor passive Perception (T&C-G16, R-G1), and `Combatant::stealth_total`'s "sim compares to perception" comment (types.hpp) is aspirational. Corrected from the first draft. |
 | Search, Use an Object, Influence | OOS | Exploration/social actions; no combat effect to resolve. |
@@ -150,7 +150,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Action Surge | 2 | NEW (wiring) | Rules done (#91): `FeatureSpec::grant_actions` -> `TurnBudget::extra_actions` (R-G5). Needs the `grant_action` feature compile and a `feature_spec` hook (Engine Core). |
 | Martial Archetype: Champion, Improved Critical (crit on 19-20) | 3 | NEW (wiring) | Rules done (R-G5): `Combatant::crit_min` (19 / 18); a non-20 crit must still hit. Loader kind `crit_range` pending. |
 | Ability Score Improvement | 4 | DATA | Authored stats. |
-| Extra Attack | 5 | NEW (wiring) | `attacks_per_action=2` exists in rules; no effect kind or loader sets it (T&C-G1 content side). |
+| Extra Attack | 5 | DONE (sim) | character@4 `extra_attack {attacks_per_action: 2}` sets `attacks_per_action` (sim loader); content still to adopt it (T&C). |
 
 ### 6.2 Cleric (full; Life domain)
 
