@@ -162,7 +162,7 @@ AUTHORED = {
     "monk-ability-score-improvement-1": "abilities",
     "slow-fall": "feature:slow_fall",                        # descriptive: falling is not simulated
     "monk-extra-attack": "feature:extra_attack",
-    "stunning-strike": "feature:stunning_strike",            # descriptive: save_condition does not load until_end_of_caster_next_turn
+    "stunning-strike": "feature:stunning_strike",            # on_event hit / save_condition stunned until_end_of_caster_next_turn, 1 ki (EC #212)
 }
 # Kept as a features[] entry with no effect: no combat rule, or a mechanic the engine lacks (docs/SRD_CLASSES_DEFERRED.md).
 DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_story_work", "uncanny_dodge"],
@@ -172,7 +172,7 @@ DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_stor
                "bard": ["bardic_inspiration", "jack_of_all_trades", "song_of_rest", "expertise", "bonus_proficiencies", "font_of_inspiration"],
                "druid": ["druidic", "bonus_cantrip", "circle_spells"],
                "monk": ["unarmored_defense", "martial_arts", "ki", "flurry_of_blows", "patient_defense", "step_of_the_wind",
-                        "unarmored_movement", "deflect_missiles", "open_hand_technique", "slow_fall", "stunning_strike"]}
+                        "unarmored_movement", "deflect_missiles", "open_hand_technique", "slow_fall"]}
 # Not expressible today (docs/SRD_CLASSES_DEFERRED.md): mirror index -> the feature id it would get (must be absent).
 DEFERRED = {
     "disciple-of-life": "disciple_of_life",
@@ -548,6 +548,12 @@ class ClassTable(unittest.TestCase):
                 self.assertEqual("extra_attack" in f, level >= 5)
                 if level >= 5:
                     self.assertEqual(f["extra_attack"]["effect"], {"kind": "extra_attack", "attacks_per_action": 2})
+                    dc = 8 + pb + mod(ab["wis"])   # ki save DC
+                    self.assertEqual(f["stunning_strike"]["effect"], {
+                        "kind": "on_event", "on": "hit", "choice": "ask", "when": [{"kind": "weapon", "is": "melee"}],
+                        "usage": {"kind": "pool", "pool": "ki", "cost": 1},
+                        "effects": [{"kind": "save_condition", "save": {"ability": "con", "dc": dc},
+                                     "apply": [{"condition": "stunned", "duration": {"kind": "until_end_of_caster_next_turn"}}]}]})
                 for fid in DESCRIPTIVE["monk"]:
                     if fid in f:
                         self.assertNotIn("effect", f[fid], fid)
