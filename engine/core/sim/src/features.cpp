@@ -872,7 +872,7 @@ FeatureRegistry make_builtin() {
     r.add_hook("magic_weapons", {apply_magic_weapons});
     r.add_hook("apply_modifier", {apply_apply_modifier}, 4);
     r.add_hook("bonus_attack", {[](Archetype&, const FeatureDecl&, uint32_t, const FeatureBuildCtx&) -> std::optional<std::string> {
-        return std::nullopt; }}, 4);   // 7.2z Frenzy: compiled by content.cpp compile_bonus_attacks (requires_effect)
+        return std::nullopt; }});   // 7.2z Frenzy (no minimum: like gaze / transparent, the @4 gate is compile_bonus_attacks': compiled by content.cpp compile_bonus_attacks (requires_effect)
     r.add_hook("attack_bonus", {apply_attack_bonus});
     r.add_hook("crit_range", {apply_crit_range});
     r.add_hook("ac_bonus", {apply_ac_bonus});
