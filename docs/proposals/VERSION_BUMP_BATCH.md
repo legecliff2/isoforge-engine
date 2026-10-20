@@ -2121,7 +2121,7 @@ uses none of them hashes and replays as before (no golden moved).
 - **Fear.** Frightened (`applies_condition`), concentration, cone from data. While frightened by it: Move, Dash, Dodge, StandUp,
   EndTurn (sim: Dash away by the safest route). End-of-turn Wis save only when `EncounterHooks::can_see(target, caster)` is
   false; no hook = seen (no save). Dropped items are not modelled.
-- **Hideous Laughter.** Prone plus incapacitated (`has_also`), can't StandUp. Save at the end of each turn and each time it takes
+- **Hideous Laughter.** Prone plus incapacitated (`has_also`), can't StandUp; when it ends the creature stays prone (stands up as usual). Save at the end of each turn and each time it takes
   damage, with advantage on the damage save.
 - **Hashing.** Control effects fold into `leftover_digest` (Combat::hash 0xAA) after a 0xFE separator, only while one exists:
   `spell_id`, `caster`, `target` u32, `control`, `command_word` bytes. The rest of the effect (timer, dc, repeat save) is in

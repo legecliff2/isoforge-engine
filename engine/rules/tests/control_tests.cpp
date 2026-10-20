@@ -189,7 +189,7 @@ TEST_CASE("Hideous Laughter: prone + incapacitated, can't stand; Int 4 or less u
     CHECK(saves == 2);   // the blast's Dex save, then the laughter's repeat save on damage
 }
 
-TEST_CASE("Hideous Laughter: a successful repeat save ends prone and incapacitated") {
+TEST_CASE("Hideous Laughter: a successful repeat save ends incapacitated; it stays prone and may stand up") {
     auto s = start({caster(), target(2, CreatureType::Humanoid, 10)});
     REQUIRE(step(s, cast(1, kLaugh, 2, 1)).ok);
     REQUIRE(control_on(s, 2));
@@ -198,7 +198,9 @@ TEST_CASE("Hideous Laughter: a successful repeat save ends prone and incapacitat
     REQUIRE(step(s, {2, ActionKind::EndTurn}).ok);
     CHECK(control_on(s, 2) == nullptr);
     CHECK_FALSE(find(s, 2)->has(Condition::Incapacitated));
-    CHECK_FALSE(find(s, 2)->has(Condition::Prone));
+    CHECK(find(s, 2)->has(Condition::Prone));
+    end_turns_until(s, 2);
+    CHECK(step(s, {2, ActionKind::StandUp}).ok);
 }
 
 TEST_CASE("control: leftover_digest folds control effects only while one exists; replay with a command word matches") {
