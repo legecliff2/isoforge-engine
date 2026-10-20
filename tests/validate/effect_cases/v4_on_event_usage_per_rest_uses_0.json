@@ -1,0 +1,38 @@
+{
+  "base": "monsters/orc.json",
+  "sets": [
+    [
+      [
+        "traits",
+        1
+      ],
+      {
+        "id": "t",
+        "name": "T",
+        "description": "x",
+        "effect": {
+          "kind": "on_event",
+          "on": "hit",
+          "effects": [
+            {
+              "kind": "extra_damage",
+              "damage": [
+                {
+                  "dice": "2d6",
+                  "type": "same_as_weapon"
+                }
+              ]
+            }
+          ],
+          "usage": {
+            "kind": "per_rest",
+            "uses": 0,
+            "rest": "short"
+          }
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "/usage/uses: 0 is less than the minimum of 1"
+}

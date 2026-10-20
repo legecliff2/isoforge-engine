@@ -1,0 +1,39 @@
+{
+  "base": "monsters/orc.json",
+  "sets": [
+    [
+      [
+        "traits",
+        1
+      ],
+      {
+        "id": "t",
+        "name": "T",
+        "description": "x",
+        "effect": {
+          "kind": "on_event",
+          "on": "hit",
+          "effects": [
+            {
+              "kind": "extra_damage",
+              "damage": [
+                {
+                  "dice": "2d6",
+                  "type": "same_as_weapon"
+                }
+              ]
+            }
+          ],
+          "when": [
+            {
+              "kind": "ally_near_target",
+              "ft": 5
+            }
+          ]
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "/when/0: 'ft' is not one of ['kind']"
+}
