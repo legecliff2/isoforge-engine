@@ -144,9 +144,9 @@ TEST_CASE("monster predicates loader: keys, usage pools, errors") {
     CHECK(lib.add(monster("t.bad3", {bad}), "monster").value_or("").find("not a declared resource") != std::string::npos);
     bad = relentless(7);
     bad["usage"] = {{"kind", "recharge"}, {"min", 5}};
-    REQUIRE_FALSE(lib.add(monster("t.rech", {bad}), "monster"));   // recharge: listed unsupported, not compiled
-    CHECK(lib.find("t.rech")->base.triggers.empty());
-    CHECK_FALSE(lib.find("t.rech")->unsupported_features.empty());
+    REQUIRE_FALSE(lib.add(monster("t.rech", {bad}), "monster"));   // recharge: supported since the deferred-monsters PR
+    REQUIRE(lib.find("t.rech")->base.triggers.size() == 1);
+    CHECK(lib.find("t.rech")->base.triggers[0].recharge_min == 5);
 }
 
 TEST_CASE("Surprise Attack: round 1 against a target in the surprised set (even after its turn); not round 2 or unsurprised; replay") {
