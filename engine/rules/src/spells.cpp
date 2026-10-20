@@ -55,6 +55,7 @@ SpellDef effect_view(const SpellDef& base, const SpellEffect& e) {
     v.darts = e.darts; v.distribution = e.distribution; v.simultaneous = e.simultaneous;
     v.forced = e.forced; v.teleport = e.teleport;   // R-G9
     v.condition_untracked = e.condition_untracked;
+    v.escape_dc = e.escape_dc;   // EC deferred monsters (flagged)
     v.cantrip_scales = false; v.cantrip_adds_beams = false;
     v.upcast_beams = 0; v.upcast_dice = e.upcast_dice; v.upcast_darts = 0; v.upcast_targets = 0;   // upcast_dice: delayed_damage only
     return v;
