@@ -1,4 +1,4 @@
-# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G11 zones, R-G8 grapple rider, R-G15 spell kinds, priced materials, R-G16 encounter surprise)
+# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G11 zones, R-G8 grapple rider, R-G15 spell kinds, priced materials, R-G16 encounter surprise, slot recovery)
 
 Owner: Tools & Content. Source of truth is the C++ loader; this file records what it reads and what the validator checks.
 All numbers are integers.
@@ -533,3 +533,27 @@ errors. When a loader lands, add its kind to the tag table and drop the warning.
 
 Tests: `tests/validate/test_v4_validator.py` `RG12Transforms`, `tests/validate/cases/polymorph_*`,
 `tests/validate/effect_cases/v4_wild_shape_*` / `v4_shapechanger_*`, `tests/validate/test_union_arms.py` `TransformArmsRG12`.
+
+## 10. Feature kind `slot_recovery` (open kind, VERSION_BUMP_BATCH 7.2n, sim #148)
+
+**Status: loaded.** sim #148 (`features.cpp` `apply_slot_recovery`) reads it, so it is an open kind like the R-G7 / R-G14 kinds
+(`checks_v4.OPEN_EFFECT_KINDS_RG7`; no minimum version, active at @3/@4, inert at @1/@2). The former reserved warning is gone.
+The schema arm checks the shape; `checks_v4.check_slot_recovery` mirrors the loader errors the arm cannot express.
+
+```json
+"effect": { "kind": "slot_recovery", "class": "wizard", "max_slot_level": 5, "uses": 1 }
+```
+
+| part | rule | schema / validator |
+|---|---|---|
+| `class` | `wizard` \| `druid`, required | schema enum (loader: `slot_recovery class must be wizard or druid`); validator error `<id>: slot_recovery class '...' is not in classes[]` when no `classes[]` entry has that class (always on a monster), `slot_recovery class level out of range 1..20` when the summed class level is outside 1..20, and `slot_recovery declared twice for class '...'` for a second declaration of one class (all loader wording) |
+| `max_slot_level` | integer 1..9, default 5 | schema + float rejection |
+| `uses` | integer 1..255, default 1 | schema + float rejection |
+| other keys | ignored (the effect object is open, append-only) | none |
+
+**Loader** (sim #148): `SlotRecoverySpec { feature_id, class_level = summed level of the classes[] entries named by class,
+max_slot_level, uses }`; after a successful `sim::short_rest` the caller's choice goes to `rules5e::apply_slot_recovery`. The budget,
+ceil(class level / 2), is derived, not authored.
+
+Content: `srd51.character.wizard_level_1..5` carry `arcane_recovery`. No druid character ships yet, so Natural Recovery is listed in
+`docs/SRD_CLASSES_DEFERRED.md`. Cases: `tests/validate/effect_cases/*slot_recovery*`.
