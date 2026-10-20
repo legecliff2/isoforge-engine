@@ -3906,7 +3906,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         return out;
     }
     case ActionKind::StandUp: {
-        int speed = effective_speed(a);
+        int speed = modified_speed(s, a);   // fix/sim-modified-speed (rules5e, flagged): half the speed after modifiers, as sim
         if (!a.has(Condition::Prone)) return fail("not prone");
         if (speed == 0 || b.movement_ft < speed / 2) return fail("not enough movement");
         b.movement_ft = int16_t(b.movement_ft - speed / 2);
@@ -4255,7 +4255,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             out.push_back(r);
         }
     }
-    int speed = effective_speed(a);
+    int speed = modified_speed(s, a);   // fix/sim-modified-speed (rules5e, flagged): matches StandUp
     if (a.has(Condition::Prone) && speed > 0 && b.movement_ft >= speed / 2) add(ActionKind::StandUp);
     if (b.movement_ft >= (a.has(Condition::Prone) ? 10 : 5)) {
         ActionRequest r{a.id, ActionKind::Move};

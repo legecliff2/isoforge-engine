@@ -88,7 +88,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // half its speed. Otherwise it stays prone and acts as before (crawls, attacks with disadvantage).
     if (me->has(rules5e::Condition::Prone) && !me->has(rules5e::Condition::Grappled) && s.budget.action && s.budget.bonus_action &&
         s.budget.moved_ft == 0 && s.budget.attacks_used_mask == 0 && s.budget.sequence == 0) {
-        const int speed = rules5e::effective_speed(*me);
+        const int speed = rules5e::modified_speed(s, *me);   // 7.2u: half the speed after modifiers (Ray of Frost, exhaustion)
         if (speed > 0 && s.budget.movement_ft >= speed / 2) {
             Command up;
             up.request = {self, ActionKind::StandUp};
@@ -384,7 +384,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         if (need > s.budget.movement_ft && need < (1 << 20)) {
             bool shoot = false;
             for (uint8_t i = 0; i < me->attacks.size() && !shoot; ++i) shoot = me->attacks[i].ranged && c.can_shoot(self, i, t->id);
-            if (!can_attack || !shoot || need <= s.budget.movement_ft + rules5e::effective_speed(*me)) {
+            if (!can_attack || !shoot || need <= s.budget.movement_ft + rules5e::modified_speed(s, *me)) {   // 7.2u: what the Dash adds
                 Command d;
                 d.request = {self, ActionKind::Dash};
                 d.request.as_bonus_action = true;
