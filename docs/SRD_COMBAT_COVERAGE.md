@@ -659,6 +659,27 @@ Gaps that need new rules mechanics (not just Engine Core / T&C wiring, which is 
 
 Also open but small: Hide opposed by passive Perception (R-G1 / T&C-G16, sim; rules now has `passive_perception`). **Done in rules** (7.2j): Haste / Slow as full spells and the monster one-offs (Life Drain max-HP reduction, Reckless, Aggressive's bonus-action move, Petrifying Gaze progression); still open from that list: Slow's spell-casting delay, Haste's Use an Object, ability drain, and the gaze trigger (rules and sim wiring done in 7.2p; schema key pending).
 
+### 11.6 Size and space audit (SRD 5.1 "Size", "Space", "Squeezing"; feat/size-space)
+
+Audit of #165's footprints against the SRD size rules.
+
+| Rule | Status |
+|---|---|
+| Space by size: Tiny/Small/Medium 1 tile, Large 2x2, Huge 3x3, Gargantuan 4x4 | done (#165) |
+| Occupancy, pathing, diagonal steps (every new tile free and in bounds) | done (#165) |
+| Reach, adjacency, opportunity attacks, ranges from the nearest occupied tile | done (#165) |
+| Grapple / shove: target at most one size larger | done (rules `size_within_one`) |
+| Forced movement and teleport with footprints; summon and revert placement | done (#165 / R-G12) |
+| Areas and zones hit any occupied tile | done (#165 / R-G11) |
+| Size changes (forms) keep the footprint in sync | done (#165) |
+| Move through an ally's space; through a hostile's only if 2+ sizes apart; that space is difficult terrain; can't end the move there | **fixed here** (sim `plan_step`; a Step or EndTurn that would end in another space is refused unless no step out is possible) |
+| Squeezing: a Large+ fits a space one size smaller; +1 ft per ft; disadvantage on its attacks and Dex saves; advantage on attacks against it | **fixed here** (opt-in Step `request.squeeze = 1`; rules5e `Combatant::squeezing`, `ActionRequest::squeeze`; tags 0xC0 / 0xC1) |
+| Tiny creatures sharing a space (several Tiny in one tile) | deferred: the grid holds one creature per tile |
+| Medium squeezing into a Small space | deferred: below one tile, not representable |
+| Enlarge / Reduce | deferred: no such spell in content yet |
+| Teleport range measured from the anchor, not the nearest tile | deferred (minor) |
+| AI moving through spaces or squeezing | deferred: the AI paths with occupied tiles blocked (keeps goldens) |
+
 ## 12. Source notes and verification
 
 - **SRD source**: SRD 5.1 (CC-BY-4.0) as mirrored by <https://github.com/5e-bits/5e-database> at commit `a6212be` (`src/2014/en`: Spells, Monsters, Features, Subclasses, Classes, Conditions, Equipment, Weapon-Properties, Rule-Sections, Traits). The published PDF was **not** re-read; the first draft's statement that it was checked against the PDF was inaccurate and is removed.
