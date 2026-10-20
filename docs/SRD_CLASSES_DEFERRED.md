@@ -1,16 +1,16 @@
-# SRD 5.1 classes (Fighter, Cleric, Wizard, Sorcerer, Rogue, Paladin levels 1-5): authored vs deferred
+# SRD 5.1 classes (Fighter, Cleric, Wizard, Sorcerer, Rogue, Paladin, Ranger levels 1-5): authored vs deferred
 
 > This work includes material taken from the System Reference Document 5.1 ("SRD 5.1") by Wizards of the Coast LLC, available at <https://dnd.wizards.com/resources/systems-reference-document>. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License, <https://creativecommons.org/licenses/by/4.0/legalcode>.
 
 Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules, section 6), `docs/SRD_MONSTERS_DEFERRED.md` and `docs/SRD_SPELLS_DEFERRED.md`; pack `content/packs/srd51.core`.
 
-**Source.** Class, level, feature and subclass data come from [5e-bits/5e-database](https://github.com/5e-bits/5e-database) commit `a6212be` (`src/2014/en/5e-SRD-Classes.json`, `5e-SRD-Levels.json`, `5e-SRD-Features.json`, `5e-SRD-Subclasses.json`; spell levels and class lists from `5e-SRD-Spells.json`). The fields used are copied verbatim into `tests/validate/data/srd51_classes_5e_database_a6212be.json`, and `tests/validate/test_srd51_classes.py` (ctest `content_validate_srd51_classes`) checks every document against them. The SRD subclasses are Champion (Fighter), Life Domain (Cleric), School of Evocation (Wizard), Draconic Bloodline (Sorcerer), Thief (Rogue) and Oath of Devotion (Paladin).
+**Source.** Class, level, feature and subclass data come from [5e-bits/5e-database](https://github.com/5e-bits/5e-database) commit `a6212be` (`src/2014/en/5e-SRD-Classes.json`, `5e-SRD-Levels.json`, `5e-SRD-Features.json`, `5e-SRD-Subclasses.json`; spell levels and class lists from `5e-SRD-Spells.json`). The fields used are copied verbatim into `tests/validate/data/srd51_classes_5e_database_a6212be.json`, and `tests/validate/test_srd51_classes.py` (ctest `content_validate_srd51_classes`) checks every document against them. The SRD subclasses are Champion (Fighter), Life Domain (Cleric), School of Evocation (Wizard), Draconic Bloodline (Sorcerer), Thief (Rogue), Oath of Devotion (Paladin) and Hunter (Ranger).
 
 ## Representation
 
-`character@4` describes one creature: `classes[]` with a `level` and an optional `subclass`, a total `level`, and a stat block. There is no class or level-progression document type. A class level is therefore authored as **one pre-generated character per class per level**: 30 documents, `srd51.character.<class>_level_<n>` (`characters/<class>_level_<n>.json`). The `_level_` infix is deliberate: `srd51.character.fighter_1` already belongs to `sample.vertical_slice`, which depends on `srd51.core`, so a duplicate id would break the pack set.
+`character@4` describes one creature: `classes[]` with a `level` and an optional `subclass`, a total `level`, and a stat block. There is no class or level-progression document type. A class level is therefore authored as **one pre-generated character per class per level**: 35 documents, `srd51.character.<class>_level_<n>` (`characters/<class>_level_<n>.json`). The `_level_` infix is deliberate: `srd51.character.fighter_1` already belongs to `sample.vertical_slice`, which depends on `srd51.core`, so a duplicate id would break the pack set.
 
-Every PC is a human (SRD human: +1 to every ability score) built from the standard array (15, 14, 13, 12, 10, 8). The Ability Score Improvement at level 4 is +2 to the class's main ability (Str, Wis, Int, Cha, Dex, Str), and level 5 carries it forward. Hit points are the maximum hit die at level 1, then the fixed average (6 / 5 / 4) plus Con for each later level (d8 rogue: 5). XP is the threshold for the level. Weapons, armor and shields are `{item, equipped}` references to the pack's `item@1` documents. AC and every attack are derived from those items (base damage, no feature bonus folded in; `docs/CONTENT_EFFECTS.md` section 2) and are pinned by the test. Packs, foci and ammunition stay descriptive strings.
+Every PC is a human (SRD human: +1 to every ability score) built from the standard array (15, 14, 13, 12, 10, 8). The Ability Score Improvement at level 4 is +2 to the class's main ability (Str, Wis, Int, Cha, Dex, Str, Dex), and level 5 carries it forward. Hit points are the maximum hit die at level 1, then the fixed average (6 / 5 / 4) plus Con for each later level (d8 rogue: 5). XP is the threshold for the level. Weapons, armor and shields are `{item, equipped}` references to the pack's `item@1` documents. AC and every attack are derived from those items (base damage, no feature bonus folded in; `docs/CONTENT_EFFECTS.md` section 2) and are pinned by the test. Packs, foci and ammunition stay descriptive strings.
 
 | class | subclass (from) | build | AC | weapons |
 |---|---|---|---|---|
@@ -20,6 +20,7 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Sorcerer | Draconic Bloodline (1), red (fire) ancestor | Cha 16 (18 at 4), Con 15, Dex 14; Arcana, Persuasion | 15: no armor, Draconic Resilience 13 + Dex | dagger (melee and thrown) |
 | Rogue | Thief (3) | Dex 16 (18 at 4), Con 15, Wis 14; Acrobatics, Perception, Sleight of Hand, Stealth (Expertise: Stealth, Perception); climb 30 from 3 (Second-Story Work) | 14 (15 at 4): leather armor | rapier (finesse), shortbow |
 | Paladin | Oath of Devotion (3) | Str 16 (18 at 4), Cha 15, Con 14; Athletics, Persuasion | 18: chain mail, shield | longsword (one-handed, Dueling), javelin |
+| Ranger | Hunter (3) | Dex 16 (18 at 4), Wis 15, Con 14; Perception, Stealth, Survival | 14 (15 at 4): leather armor | longbow (Archery), shortsword |
 
 ## Authored as data
 
@@ -55,6 +56,10 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Divine Smite (Paladin) | 2-5 | `on_event {on hit, choice ask, when [weapon melee], effects [spend slot any, extra_damage 2d8 radiant, scale.per_slot_level {base_level 1, add_dice 1d8}]}`. **Partial**: the extra 1d8 against an undead or a fiend is not modelled (a rider `when` inside `on_event effects[]` is ignored, and a second `on_event` cannot know the smite fired). The 5d8 cap is unreachable at these levels | yes (sim #158, `choice: ask` = HitRider window) |
 | Sacred Oath (Paladin) | 3 | `classes[0].subclass` = `devotion` | descriptive |
 | Extra Attack (Paladin) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
+| Fighting Style: Archery (Ranger) | 2-5 | `attack_bonus {attacks ranged, amount 2}` (R-G5); the longbow `to_hit` stays unbaked (dex + proficiency) | yes (sim #107) |
+| Spellcasting (Ranger) | 2-5 | `spellcasting {ability wis, caster_level, slots, spells}` from 2nd level. Spells known: Cure Wounds (the only shipped 1st-level ranger spell, so 1 of 2-3 known at 2-4); at 5 also Barkskin, Lesser Restoration, Spike Growth (4 of 4) | yes |
+| Ranger Archetype | 3 | `classes[0].subclass` = `hunter` | descriptive |
+| Extra Attack (Ranger) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
 
 The validator change in this batch: `attack_bonus`, `crit_range` and `ac_bonus` (sim #107 hooks) are now known effect kinds at `@4` in `tools/validate/checks_v4.py` (until now they produced an "unknown effect kind" warning). Their fields are checked the way the sim checks them at load. The `@<=3` rows are unchanged.
 
@@ -85,6 +90,17 @@ Kept as a `features[]` entry with the SRD text and no `effect` (the test pins th
 | Channel Divinity: Sacred Weapon (`channel-divinity-sacred-weapon`) | Paladin (Devotion) 3 | `apply_modifier {attack_roll, bonus = Cha mod (min 1), rounds 10}` would fit, but the sim lists an `apply_modifier` feature with `usage` as unsupported (`apply_apply_modifier`: "usage needs resource pools"), and without `usage` it would be unlimited. Also: no weapon scope (any attack roll), the weapon does not become magical, the light is out of scope | Engine Core (pool `usage` on `apply_modifier`), Rules (weapon-scoped modifier) |
 | Channel Divinity: Turn the Unholy (`channel-divinity-turn-the-unholy`) | Paladin (Devotion) 3 | Rules #188 (7.2v) added `control: turned` on the spell@1 `save` effect only. A character feature has no key that reaches it: `save_effect` actions do not take `control`, cannot spend a `resources[]` pool, and cannot filter fiends / undead; the "within 30 ft that can see or hear you" target list is the pending sim hand-off (EC) | Rules / Engine Core (character key for a 7.2v control save, pool usage, creature-type target filter) |
 
+## Descriptive only: mechanic missing (Ranger)
+
+Kept as a `features[]` entry with the SRD text and no `effect` (the test pins that), same rule as the Rogue and Paladin sections.
+
+| feature (mirror index) | class / level | why it is not mechanical | gap id / owner |
+|---|---|---|---|
+| Favored Enemy (`favored-enemy-1-type`) | Ranger 1 | Beasts chosen. Advantage on Wisdom (Survival) checks to track and Intelligence checks to recall information about them, plus a language: exploration / social only. No combat rule in SRD 5.1 (no damage bonus), so nothing is missing for combat | - (out of combat scope) |
+| Natural Explorer (`natural-explorer-1-terrain-type`) | Ranger 1 | Forest chosen. Doubled proficiency on Int / Wis checks about the terrain, travel pace, foraging, tracking, no getting lost: overland travel, not simulated | - (out of combat scope) |
+| Primeval Awareness (`primeval-awareness`) | Ranger 3 | Spend an action and a ranger slot to sense aberrations, celestials, dragons, elementals, fey, fiends and undead within 1 mile (6 in favored terrain) for 1 minute per slot level; no locations or numbers. Beyond any encounter map, and no feature key spends a spell slot outside an `on_event` trigger | Rules (vision 7.2x for a type reveal), Engine Core (a slot-spending active feature) |
+| Hunter's Prey: Colossus Slayer (`hunters-prey`, `hunters-prey-colossus-slayer`) | Ranger (Hunter) 3 | Fits `on_event {on hit, limit once_per_turn, when [weapon_attack, <target below its hit point maximum>], effects [extra_damage 1d8 same_as_weapon]}` except the predicate: no predicate tests the **target's** HP (`self_hp_below` is the owner's; rules has `kWhenTargetDamaged` only as a monster attack trait flag, not as a `when[]` kind). Giant Killer (a reaction to a Large+ attacker's attack, hit or miss) and Horde Breaker (an extra attack against a second target within 5 ft) are not chosen; neither has a key either | Rules (predicate `target_below_max_hp`; T&C adds the schema value) |
+
 ## Deferred (feature not expressible today)
 
 Each listed feature is **left out of `features[]`**: no descriptive stand-in, same rule as the monster batch. The test checks that none of these ids appear in the documents.
@@ -114,6 +130,8 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 | Cleric | 5 | + Mass Healing Word, Revivify (domain) |
 | Paladin | 2-4 | Cure Wounds, Shield of Faith |
 | Paladin | 5 | + Lesser Restoration (oath) |
+| Ranger | 2-4 | Cure Wounds |
+| Ranger | 5 | + Barkskin, Lesser Restoration, Spike Growth |
 | Wizard | 1-2 | Acid Splash, Fire Bolt, Poison Spray; Magic Missile, Shield |
 | Wizard | 3-4 | + Hold Person, Scorching Ray |
 | Wizard | 5 | + Counterspell |

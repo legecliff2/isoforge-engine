@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation), Sorcerer (Draconic Bloodline), Rogue (Thief) and Paladin (Oath of Devotion) levels 1-5 in srd51.core vs the 5e-database
+"""SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation), Sorcerer (Draconic Bloodline), Rogue (Thief), Paladin (Oath of Devotion) and Ranger (Hunter) levels 1-5 in srd51.core vs the 5e-database
 tables (ctest: content_validate_srd51_classes).
 
 `data/srd51_classes_5e_database_a6212be.json` holds fields copied verbatim from 5e-bits/5e-database commit a6212be
@@ -25,13 +25,13 @@ DATA = json.loads((Path(__file__).parent / "data/srd51_classes_5e_database_a6212
 TABLE, SPELLS = DATA["classes"], DATA["spells"]
 LEVELS = range(1, 6)
 XP = {1: 0, 2: 300, 3: 900, 4: 2700, 5: 6500}   # SRD 5.1 Character Advancement table
-SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2, "sorcerer": 1, "rogue": 3, "paladin": 3}
-SPELLCASTING_FROM = {"paladin": 2}   # half caster: no spellcasting block at level 1
-MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int", "sorcerer": "cha", "rogue": "dex", "paladin": "str"}   # the ASI at level 4 goes here (+2)
+SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2, "sorcerer": 1, "rogue": 3, "paladin": 3, "ranger": 3}
+SPELLCASTING_FROM = {"paladin": 2, "ranger": 2}   # half caster: no spellcasting block at level 1
+MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int", "sorcerer": "cha", "rogue": "dex", "paladin": "str", "ranger": "dex"}   # the ASI at level 4 goes here (+2)
 SKILLS = {"athletics": "str", "perception": "wis", "insight": "wis", "religion": "int", "arcana": "int", "history": "int",
-          "persuasion": "cha", "acrobatics": "dex", "sleight_of_hand": "dex", "stealth": "dex"}
+          "persuasion": "cha", "acrobatics": "dex", "sleight_of_hand": "dex", "stealth": "dex", "survival": "wis"}
 # Rogue: four class skills (two for the others) and Expertise (doubled proficiency) on Stealth and Perception.
-SKILL_COUNT = {"rogue": 4}
+SKILL_COUNT = {"rogue": 4, "ranger": 3}
 EXPERTISE = {"rogue": {"stealth", "perception"}}
 # Rogue (Thief) Second-Story Work from 3rd: climbing costs no extra movement = a climb speed equal to the walking speed.
 def speed(cls: str, level: int) -> dict:
@@ -94,11 +94,21 @@ AUTHORED = {
     "channel-divinity-sacred-weapon": "feature:sacred_weapon",      # descriptive: apply_modifier + usage pool is not loaded
     "channel-divinity-turn-the-unholy": "feature:turn_the_unholy",  # descriptive: no character key reaches the 7.2v turned control
     "paladin-ability-score-improvement-1": "abilities",
-    "paladin-extra-attack": "feature:extra_attack",                # descriptive: the damaged window is not attack-only (SRD_CLASSES_DEFERRED)
+    "paladin-extra-attack": "feature:extra_attack",
+    "favored-enemy-1-type": "feature:favored_enemy",         # descriptive: tracking / recall checks and a language, no combat rule
+    "natural-explorer-1-terrain-type": "feature:natural_explorer",  # descriptive: travel and exploration in the favored terrain
+    "ranger-fighting-style": "feature:fighting_style_archery",      # attack_bonus {ranged, 2} (R-G5, sim #107)
+    "spellcasting-ranger": "spellcasting",
+    "ranger-archetype": "subclass",
+    "primeval-awareness": "feature:primeval_awareness",      # descriptive: 1-6 mile creature-type sensing, no slot-spending feature key
+    "ranger-ability-score-improvement-1": "abilities",
+    "ranger-extra-attack": "feature:extra_attack",
+    "hunters-prey": "feature:colossus_slayer",               # Colossus Slayer chosen; descriptive: no "target below its hit point maximum" predicate                # descriptive: the damaged window is not attack-only (SRD_CLASSES_DEFERRED)
 }
 # Kept as a features[] entry with no effect: no combat rule, or a mechanic the engine lacks (docs/SRD_CLASSES_DEFERRED.md).
 DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_story_work", "uncanny_dodge"],
-               "paladin": ["divine_sense", "divine_health", "channel_divinity", "sacred_weapon", "turn_the_unholy"]}
+               "paladin": ["divine_sense", "divine_health", "channel_divinity", "sacred_weapon", "turn_the_unholy"],
+               "ranger": ["favored_enemy", "natural_explorer", "primeval_awareness", "colossus_slayer"]}
 # Not expressible today (docs/SRD_CLASSES_DEFERRED.md): mirror index -> the feature id it would get (must be absent).
 DEFERRED = {
     "disciple-of-life": "disciple_of_life",
@@ -350,6 +360,24 @@ class ClassTable(unittest.TestCase):
                 if level >= 5:
                     self.assertEqual(f["extra_attack"]["effect"], {"kind": "extra_attack", "attacks_per_action": 2})
                 for fid in DESCRIPTIVE["paladin"]:
+                    if fid in f:
+                        self.assertNotIn("effect", f[fid], fid)
+
+    def test_ranger(self):
+        for level in LEVELS:
+            with self.subTest(level=level):
+                d = load("ranger", level)
+                f = features(d)
+                row = TABLE["ranger"]["levels"][str(level)]
+                self.assertEqual("fighting_style_archery" in f, level >= 2)
+                if level >= 2:   # base to_hit stays unbaked (test_attacks_from_items); the +2 is the feature
+                    self.assertEqual(f["fighting_style_archery"]["effect"], {"kind": "attack_bonus", "attacks": "ranged", "amount": 2})
+                    self.assertLessEqual(len(d["spellcasting"]["spells"]), row["spells_known"])
+                self.assertEqual("extra_attack" in f, level >= 5)
+                if level >= 5:
+                    self.assertEqual(f["extra_attack"]["effect"], {"kind": "extra_attack", "attacks_per_action": 2})
+                self.assertNotIn("resources", d)
+                for fid in DESCRIPTIVE["ranger"]:
                     if fid in f:
                         self.assertNotIn("effect", f[fid], fid)
 
