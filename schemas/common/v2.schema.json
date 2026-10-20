@@ -257,7 +257,8 @@
         },
         "cost": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 255
         }
       },
       "allOf": [
@@ -440,7 +441,10 @@
             "not_crit",
             "moved_at_least_ft",
             "self_hp_below",
-            "save"
+            "save",
+            "target_surprised",
+            "ally_near_target",
+            "damage_at_most"
           ]
         },
         "is": {
@@ -495,6 +499,12 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 30
+        },
+        "amount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32767,
+          "description": "damage_at_most: the event's damage (after resistances) is at most this (sim #158; loader: bad damage_at_most amount)."
         }
       },
       "allOf": [
@@ -714,6 +724,51 @@
                 }
               }
             ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "target_surprised",
+                  "ally_near_target"
+                ]
+              }
+            }
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "kind"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "damage_at_most"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "amount"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "amount"
+              ]
+            }
           }
         }
       ]
