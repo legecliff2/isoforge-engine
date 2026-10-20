@@ -369,7 +369,8 @@ std::optional<std::string> add_trigger(const std::string& arch, const std::strin
 
 // `effect` is an on_event effect object. Returns an error, or sets `unsupported` (listed, not compiled).
 std::optional<std::string> compile_on_event(const std::string& arch, const std::string& owner, const Json& effect, const Json& doc, const RiderCtx& rc,
-                                            std::map<uint32_t, std::string>& ids, rules5e::Combatant& c, bool& unsupported) {
+                                            std::map<uint32_t, std::string>& ids, rules5e::Combatant& c, bool& unsupported,
+                                            std::vector<Archetype::Resource>& usage_pools) {
     const std::string where = arch + ": " + owner + " on_event";
     static const std::pair<const char*, rules5e::TriggerOn> ons[] = {{"hit", rules5e::TriggerOn::Hit}, {"crit", rules5e::TriggerOn::Crit},
         {"damage_dealt", rules5e::TriggerOn::DamageDealt}, {"reduce_to_zero", rules5e::TriggerOn::ReduceToZero},
@@ -389,7 +390,47 @@ std::optional<std::string> compile_on_event(const std::string& arch, const std::
     const std::string ch = effect.contains("choice") && effect["choice"].is_string() ? effect["choice"].get<std::string>() : "auto";
     t.choice = ch == "auto" ? 0 : ch == "ask" ? 1 : ch == "never" ? 2 : 255;
     if (t.choice == 255) return where + ": bad choice";
-    if (effect.contains("usage")) { unsupported = true; return std::nullopt; }   // a use cost is a later sub-PR
+    // usage (common@2 $defs/usage): at_will = none; per_day / per_rest {uses, rest} = a trigger-owned pool
+    // "<owner>#usage" (registered by Combat::create like resources[], recharged by rests, folded with the pools, 0xA3) paid by a
+    // Spend rider; pool {pool, cost} = Spend from a declared resources[] pool. recharge stays unsupported (listed, not compiled).
+    std::optional<rules5e::RiderEffect> usage_spend;
+    if (auto u = effect.find("usage"); u != effect.end()) {
+        if (!u->is_object()) return where + ": bad usage";
+        const std::string k = u->value("kind", "");
+        if (k == "per_day" || k == "per_rest") {
+            const int uses = geti(*u, "uses");
+            if (uses < 1 || uses > 255) return where + ": bad uses";
+            const std::string rest = u->value("rest", "long");
+            if (k == "per_rest" && rest != "short" && rest != "long") return where + ": bad rest";
+            Archetype::Resource r;
+            r.id = owner + "#usage";
+            r.pool_id = rules5e::spell_id_of(arch + "#" + r.id);
+            r.max = r.start = uint16_t(uses);
+            r.recharge = uint8_t(k == "per_rest" && rest == "short" ? rules5e::FeatureRecharge::ShortRest : rules5e::FeatureRecharge::LongRest);
+            rules5e::RiderEffect sp;
+            sp.kind = rules5e::RiderKind::Spend;
+            sp.pool = r.pool_id;
+            sp.value = 1;
+            usage_spend = sp;
+            usage_pools.push_back(std::move(r));
+        } else if (k == "pool") {
+            const std::string pid = u->value("pool", "");
+            const int cost = geti(*u, "cost", 1);
+            if (pid.empty() || cost < 1 || cost > 255) return where + ": bad usage pool";
+            bool declared_pool = false;
+            for (const auto& r : usage_pools) declared_pool = declared_pool || r.id == pid;
+            if (!declared_pool) return where + ": usage pool '" + pid + "' is not a declared resource";
+            rules5e::RiderEffect sp;
+            sp.kind = rules5e::RiderKind::Spend;
+            sp.pool = rules5e::spell_id_of(pid);
+            sp.value = int16_t(cost);
+            usage_spend = sp;
+        } else if (k == "recharge") {   // EC deferred monsters: an ActionUse row keyed (owner, trigger id), Combat::create
+            const int mn = geti(*u, "min");
+            if (mn < 2 || mn > 6) return where + ": bad recharge min";
+            t.recharge_min = uint8_t(mn);
+        } else if (k != "at_will") { unsupported = true; return std::nullopt; }
+    }
     if (auto w = effect.find("when"); w != effect.end()) {
         if (!w->is_array()) return where + ": bad when";
         for (const Json& p : *w) {
@@ -401,6 +442,7 @@ std::optional<std::string> compile_on_event(const std::string& arch, const std::
     auto ef = effect.find("effects");
     if (ef == effect.end() || !ef->is_array() || ef->empty()) return where + ": needs effects[]";
     for (const Json& r : *ef) if (auto e = compile_rider(where, r, doc, rc, t.effects)) return e;
+    if (usage_spend) t.effects.push_back(*usage_spend);
     return add_trigger(arch, owner, 0, std::move(t), ids, c);
 }
 
@@ -449,6 +491,102 @@ std::optional<std::string> compile_gaze(const std::string& arch_id, const std::s
     d.escalate_margin = uint8_t(margin);
     out = rules5e::Combatant::Gaze{d.id, uint16_t(range)};
     return std::nullopt;
+}
+
+// Action usage (save_effect, attack_effect): at_will, recharge N-6 (ActionUse rows, rolled at the creature's turn start), per
+// day / rest (FeatureUses), pool. Pools need resource rows: such actions are listed (unsupported), not compiled.
+std::optional<std::string> compile_action_usage(const std::string& where, const Json& act, const Json& doc, rules5e::SpellDef& d,
+                                                Archetype::SaveAction& sa, bool& unsupported) {
+    if (auto u = act.find("usage"); u != act.end() && u->is_object()) {
+        const std::string k = u->value("kind", "");
+        if (k == "at_will") d.usage_kind = 0;
+        else if (k == "recharge") {
+            const int mn = geti(*u, "min");
+            if (mn < 2 || mn > 6) return where + ": bad recharge min";
+            d.usage_kind = 1;
+            d.recharge_min = uint8_t(mn);
+        } else if (k == "per_day" || k == "per_rest") {
+            const int uses = geti(*u, "uses");
+            if (uses < 1 || uses > 255) return where + ": bad uses";
+            d.usage_kind = 2;
+            sa.uses = uint8_t(uses);
+            sa.recharge = k == "per_day" || u->value("rest", "long") == "long" ? Recharge::LongRest : Recharge::ShortRest;
+        } else if (k == "pool") {
+            // The pool comes from the document's resources[]; integer max only until class pools (row 13).
+            const std::string pid = u->value("pool", "");
+            const Json* res = nullptr;
+            if (auto rs = doc.find("resources"); rs != doc.end() && rs->is_array())
+                for (const Json& r : *rs) if (r.is_object() && r.value("id", "") == pid) res = &r;
+            if (!res || !(*res)["max"].is_number_integer()) { unsupported = true; return std::nullopt; }
+            const int mx = (*res)["max"].get<int>(), cost = geti(*u, "cost", 1);
+            const int start = geti(*res, "start", mx);
+            if (mx < 1 || mx > 65535 || cost < 1 || cost > 255 || start < 0 || start > mx) return where + ": bad pool";
+            const std::string rc = res->value("recharge", "never");
+            d.usage_kind = 3;
+            d.pool_id = rules5e::spell_id_of(pid);
+            d.pool_cost = uint8_t(cost);
+            sa.pool_id = d.pool_id;
+            sa.pool_cost = d.pool_cost;
+            sa.pool_max = uint16_t(mx);
+            sa.pool_start = uint16_t(start);
+            sa.pool_recharge = rc == "short_rest" ? Recharge::ShortRest : rc == "long_rest" ? Recharge::LongRest : Recharge::None;
+        } else return where + ": bad usage kind";
+    }
+    sa.usage_kind = d.usage_kind;
+    return std::nullopt;
+}
+
+// EC deferred monsters (giant spider Web): a monster@4 / character@4 `attack_effect` action, an attack roll that only applies
+// conditions: { id, attack: "ranged" | "melee", to_hit, range_ft, apply: [{ condition, escape: { ability: "str", dc } }],
+// usage }. Compiles to a synthetic SpellAttack SpellDef (is_spell false, not magical, fixed_attack, no damage) whose
+// ApplyCondition riders resolve on a hit; `escape` = rules5e escape_dc (an action, a Strength check: special 4). Every apply[]
+// entry needs `escape` (no other duration yet). New content keys (T&C schema pending).
+std::optional<std::string> compile_attack_effect(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
+                                                 Archetype::SaveAction& sa, const Json& doc, bool& unsupported) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch_id + ": attack_effect '" + aid + "'";
+    if (aid.empty() || aid.find('#') != std::string::npos) return where + ": id must be non-empty and contain no '#'";
+    d = rules5e::SpellDef{};
+    d.content_id = arch_id + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.casting_time = rules5e::CastingTime::Action;
+    d.kind = rules5e::SpellEffectKind::SpellAttack;
+    d.is_spell = false;
+    d.magical = false;
+    d.targets = 1;
+    const std::string mode = act.value("attack", "ranged");
+    if (mode != "ranged" && mode != "melee") return where + ": bad attack";
+    d.melee = mode == "melee";
+    const int hit = geti(act, "to_hit", -100);
+    if (hit < -20 || hit > 30 || hit == 0) return where + ": bad to_hit (non-zero, -20..30)";
+    d.fixed_attack = int8_t(hit);
+    const int range = geti(act, "range_ft", 5);
+    if (range < 5 || range > 65535) return where + ": bad range_ft";
+    d.range_ft = uint16_t(range);
+    sa = {};
+    sa.id = aid;
+    sa.spell_id = d.id;
+    sa.range_ft = d.range_ft;
+    const auto ap = act.find("apply");
+    if (ap == act.end() || !ap->is_array() || ap->empty()) return where + ": needs apply[]";
+    for (const Json& x : *ap) {
+        auto cond = condition_of(x.is_object() ? x.value("condition", "") : "");
+        if (!cond) return where + ": bad condition in apply[]";
+        const auto es = x.find("escape");
+        if (es == x.end() || !es->is_object()) { unsupported = true; return std::nullopt; }
+        if (es->value("ability", "") != "str") return where + ": escape ability must be str";
+        const int dc = geti(*es, "dc");
+        if (dc < 1 || dc > 30) return where + ": bad escape dc";
+        rules5e::SpellEffect e;
+        e.kind = rules5e::SpellEffectKind::ApplyCondition;
+        e.applies_condition = true;
+        e.condition = *cond;
+        e.affected_only = true;   // only a creature the attack hit
+        e.escape_dc = int8_t(dc);
+        d.extra_effects.push_back(e);
+    }
+    return compile_action_usage(where, act, doc, d, sa, unsupported);
 }
 
 std::optional<std::string> compile_save_action(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
@@ -579,42 +717,7 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
         }
     }
     if (d.dice.count == 0 && d.dice.bonus == 0 && !d.applies_condition) return where + ": needs damage[] or apply[]";
-    // Usage. Pools need resource rows (a later row): such actions are listed, not compiled.
-    if (auto u = act.find("usage"); u != act.end() && u->is_object()) {
-        const std::string k = u->value("kind", "");
-        if (k == "at_will") d.usage_kind = 0;
-        else if (k == "recharge") {
-            const int mn = geti(*u, "min");
-            if (mn < 2 || mn > 6) return where + ": bad recharge min";
-            d.usage_kind = 1;
-            d.recharge_min = uint8_t(mn);
-        } else if (k == "per_day" || k == "per_rest") {
-            const int uses = geti(*u, "uses");
-            if (uses < 1 || uses > 255) return where + ": bad uses";
-            d.usage_kind = 2;
-            sa.uses = uint8_t(uses);
-            sa.recharge = k == "per_day" || u->value("rest", "long") == "long" ? Recharge::LongRest : Recharge::ShortRest;
-        } else if (k == "pool") {
-            // The pool comes from the document's resources[]; integer max only until class pools (row 13).
-            const std::string pid = u->value("pool", "");
-            const Json* res = nullptr;
-            if (auto rs = doc.find("resources"); rs != doc.end() && rs->is_array())
-                for (const Json& r : *rs) if (r.is_object() && r.value("id", "") == pid) res = &r;
-            if (!res || !(*res)["max"].is_number_integer()) { unsupported = true; return std::nullopt; }
-            const int mx = (*res)["max"].get<int>(), cost = geti(*u, "cost", 1);
-            const int start = geti(*res, "start", mx);
-            if (mx < 1 || mx > 65535 || cost < 1 || cost > 255 || start < 0 || start > mx) return where + ": bad pool";
-            const std::string rc = res->value("recharge", "never");
-            d.usage_kind = 3;
-            d.pool_id = rules5e::spell_id_of(pid);
-            d.pool_cost = uint8_t(cost);
-            sa.pool_id = d.pool_id;
-            sa.pool_cost = d.pool_cost;
-            sa.pool_max = uint16_t(mx);
-            sa.pool_start = uint16_t(start);
-            sa.pool_recharge = rc == "short_rest" ? Recharge::ShortRest : rc == "long_rest" ? Recharge::LongRest : Recharge::None;
-        } else return where + ": bad usage kind";
-    }
+    if (auto e = compile_action_usage(where, act, doc, d, sa, unsupported); e || unsupported) return e;
     sa.usage_kind = d.usage_kind;
     return std::nullopt;
 }
@@ -839,6 +942,24 @@ bool carries_shield(const Json& doc) {
 
 std::optional<rules5e::DamageType> damage_type_from_name(const std::string& s) { return damage_type(s); }
 
+std::optional<int> cr_x8_of(const Json& r) {
+    if (r.is_number_integer()) {
+        const int64_t v = r.get<int64_t>();
+        if (v < 0 || v > 30) return std::nullopt;
+        return int(v) * 8;
+    }
+    if (!r.is_string()) return std::nullopt;
+    const std::string t = r.get<std::string>();
+    if (t == "0") return 0;
+    if (t == "1/8") return 1;
+    if (t == "1/4") return 2;
+    if (t == "1/2") return 4;
+    if (t.empty() || t.size() > 2 || t.find_first_not_of("0123456789") != std::string::npos) return std::nullopt;
+    const int v = std::stoi(t);
+    if (v > 30) return std::nullopt;
+    return v * 8;
+}
+
 std::optional<std::string> ContentLibrary::add(const Json& doc, const std::string& schema_type, const std::string& pack_id,
                                                  uint32_t declared_version) {
     Archetype a;
@@ -853,6 +974,20 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     c.ac = int8_t(geti(doc.at("armor_class"), "value"));
     c.hp = c.hp_max = int16_t(geti(doc.at("hit_points"), "average"));
     c.speed_ft = uint8_t(geti(doc.at("speed"), "walk"));
+    // R-G12 (7.2q): facts build_form checks (CR, fly / swim speeds, character level). Data only: nothing reads them unless a
+    // transform is requested.
+    a.fly_ft = uint16_t(std::max(0, geti(doc.at("speed"), "fly", 0)));
+    a.swim_ft = uint16_t(std::max(0, geti(doc.at("speed"), "swim", 0)));
+    if (auto ch = doc.find("challenge"); ch != doc.end() && ch->is_object())
+        if (auto rt = ch->find("rating"); rt != ch->end())
+            if (auto x = cr_x8_of(*rt)) a.cr_x8 = int16_t(*x);
+    if (schema_type == "character") {
+        int lv = 0;
+        for (const Json& k : doc.value("classes", Json::array()))
+            if (k.is_object()) lv += std::max(0, geti(k, "level"));
+        if (lv == 0) lv = geti(doc, "level", 0);
+        a.char_level = uint8_t(std::clamp(lv, 0, 20));
+    }
     c.proficiency_bonus = int8_t(geti(doc, "proficiency_bonus", 2));
     // R-G11 rules PR 2 creature facts (CONTENT_CONVENTIONS 4.6; schema keys from #142): Stinking Cloud's no_breath automatic
     // success, Moonbeam's shapechanger disadvantage, Spirit Guardians' evil damage type. Default false.
@@ -896,11 +1031,29 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         const std::string sz = doc.value("size", "medium");
         for (int i = 0; i < 6; ++i) if (sz == sizes[i]) a.size = CreatureSize(i);
         a.footprint = inert.count("size") ? uint8_t(1) : footprint_of(a.size);
+        // R-G12 sim: the creature itself carries its size (Heavy weapons, forms); an inert size stays Medium, matching footprint 1.
+        if (!inert.count("size")) c.size = rules5e::Size(uint8_t(a.size));
     }
     if (!inert.count("creature_type") && doc.contains("type")) {
         auto ct = creature_type_of(doc.value("type", ""));
         if (!ct) return a.id + ": bad creature type";
         c.creature_type = *ct;
+    }
+    // EC deferred monsters: content tags for TargetTag / NotTargetTag (monster tags[], a character's race; elf races add "elf",
+    // half_elf does not). Strings are case-folded.
+    {
+        auto add_tag = [&](std::string t) {
+            for (auto& ch : t) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+            const uint32_t id = rules5e::spell_id_of(t);
+            if (std::find(c.tags.begin(), c.tags.end(), id) == c.tags.end()) c.tags.push_back(id);
+        };
+        if (auto tg = doc.find("tags"); tg != doc.end() && tg->is_array())
+            for (const Json& t : *tg) if (t.is_string()) add_tag(t.get<std::string>());
+        if (auto rc = doc.find("race"); rc != doc.end() && rc->is_string()) {
+            const std::string r = rc->get<std::string>();
+            add_tag(r);
+            if (r != "half_elf" && r.size() >= 3 && r.compare(r.size() - 3, 3, "elf") == 0) add_tag("elf");
+        }
     }
     // 0 = parse the document's own $schema tag (never "latest"); a missing, unparsable or other-type tag means no refusal.
     uint32_t declared = declared_version;
@@ -1095,7 +1248,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         }
         if (f.kind == "on_event") {   // event triggers (rules5e::Trigger): compiled here, the registry reserves the kind only
             bool unsupported = false;
-            if (auto e = compile_on_event(a.id, f.id, f.effect, doc, rider_ctx, trigger_ids, c, unsupported)) return *e;
+            if (auto e = compile_on_event(a.id, f.id, f.effect, doc, rider_ctx, trigger_ids, c, unsupported, a.resources)) return *e;
             if (unsupported) a.unsupported_features.push_back(f.id + " (on_event: unsupported usage)");
             continue;
         }
@@ -1142,7 +1295,17 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 pr.kind = rules5e::PredicateKind::AttackIs;
                 pr.a = int16_t(ai);
                 t.when.push_back(pr);
-                if (auto e = compile_rider(a.id + ": " + act.value("id", "?") + " on_hit", (*oh)[ri], doc, rider_ctx, t.effects)) return *e;
+                Json rider = (*oh)[ri];
+                if (auto rw = rider.find("when"); rw != rider.end()) {   // EC deferred monsters: rider-level predicates (ghoul claws)
+                    if (!rw->is_array()) return a.id + ": " + act.value("id", "?") + " on_hit: bad when";
+                    for (const Json& p : *rw) {
+                        rules5e::Predicate rp;
+                        if (auto e = compile_predicate(a.id + ": " + act.value("id", "?") + " on_hit", p, rp)) return *e;
+                        t.when.push_back(rp);
+                    }
+                    rider.erase("when");
+                }
+                if (auto e = compile_rider(a.id + ": " + act.value("id", "?") + " on_hit", rider, doc, rider_ctx, t.effects)) return *e;
                 if (auto e = add_trigger(a.id, act.value("id", "?"), ri, std::move(t), trigger_ids, c)) return *e;
             }
         }
@@ -1162,10 +1325,21 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     // monster@4 / character@4 save_effect actions -> synthetic SpellDefs (never for a file that declared < 4).
     if (declared == 0 || declared >= 4)
         for (const Json& act : doc.at("actions")) {
-            if (act.value("kind", "") != "save_effect") continue;
+            const std::string ak = act.value("kind", "");
+            if (ak != "save_effect" && ak != "attack_effect") continue;
             rules5e::SpellDef d;
             Archetype::SaveAction sa;
             bool unsupported = false;
+            if (ak == "attack_effect") {   // EC deferred monsters: giant spider Web
+                if (auto e = compile_attack_effect(a.id, act, d, sa, doc, unsupported)) return e;
+                if (unsupported) { a.unsupported_features.push_back(act.value("id", "?") + " (attack_effect: unsupported usage or condition duration)"); continue; }
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": attack_effect ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
             if (auto e = compile_save_action(a.id, act, d, sa, doc, unsupported)) return e;
             if (unsupported) { a.unsupported_features.push_back(act.value("id", "?") + " (save_effect: unsupported usage or condition duration)"); continue; }
             for (const auto& prev : synth)

@@ -89,6 +89,14 @@ SPELL_EFFECT_R120 = {"hp_pool": (S({"kind", "dice", "condition"}), S({"ends_on_d
 # R-G9 spell@1 arms (sim #144, spell_loader.cpp forced_move / teleport): same closed if/then pattern.
 SPELL_EFFECT_RG9 = {"forced_move": (S({"kind", "feet"}), S({"mode", "up_to", "max_size", "provokes_oa", "applies_to", "description"})),
                     "teleport": (S({"kind", "max_feet"}), S({"needs_sight", "description"}))}
+# R-G12 transforms (VERSION_BUMP_BATCH 7.2q; docs/CONTENT_CONVENTIONS.md section 9): closed objects with a propertyNames
+# allow-list. spell@1 polymorph is an arm of the file's if/then effect union; the common@2 ones are $defs of their own.
+SPELL_EFFECT_RG12 = {"polymorph": (S({"kind", "forms"}), S({"max_cr", "save"}))}
+COMMON2_RG12 = {"wild_shape_effect": (S({"kind", "pool", "forms", "max_cr_by_level"}),
+                                      S({"cost", "class", "no_fly_below", "no_swim_below"})),
+                "wild_shape_level_row": (S({"level", "max_cr"}), S()),
+                "shapechanger_effect": (S({"kind", "forms"}), S({"cost"})),
+                "shapechanger_form": (S({"id", "name"}), S({"size", "armor_class", "speed", "actions", "creature_type"}))}
 _ICOMMON = {"source", "cost_cp", "weight_oz", "description"}
 _IBASE = S({"$schema", "id", "name", "category"})
 ITEM = {("weapon",): (_IBASE | {"weapon_class"}, S(_ICOMMON | {"reach", "range", "damage", "versatile_damage", "properties", "qualifiers", "magic_bonus", "on_hit"})),
@@ -212,6 +220,34 @@ class SpellEffectArmsR120(unittest.TestCase):
                 self.assertEqual(set(then["properties"]), set(req) | set(opt))
                 self.assertEqual(set(then["required"]), set(req))
                 self.assertIn(k, eff["properties"]["kind"]["enum"])
+
+
+class TransformArmsRG12(unittest.TestCase):
+    def check_closed(self, node, req, opt):
+        self.assertIs(node["additionalProperties"], False)
+        self.assertEqual(set(node["propertyNames"]["enum"]), set(req) | set(opt))
+        self.assertEqual(set(node["properties"]), set(req) | set(opt))
+        self.assertEqual(set(node["required"]), set(req))
+
+    def test_spell_polymorph_arm(self):
+        eff = load("spell/v1.schema.json")["$defs"]["effect"]
+        found = {sub["if"]["properties"]["kind"]["const"]: sub["then"] for sub in eff["allOf"]
+                 if sub["if"]["properties"]["kind"]["const"] in SPELL_EFFECT_RG12}
+        self.assertEqual(set(found), set(SPELL_EFFECT_RG12))
+        for k, then in found.items():
+            with self.subTest(k):
+                self.check_closed(then, *SPELL_EFFECT_RG12[k])
+                self.assertIn(k, eff["properties"]["kind"]["enum"])
+
+    def test_common2_transform_defs(self):
+        c2 = load("common/v2.schema.json")["$defs"]
+        for name, (req, opt) in COMMON2_RG12.items():
+            with self.subTest(name):
+                self.check_closed(c2[name], req, opt)
+        arms = {a["$ref"].rsplit("/", 1)[1] for a in c2["effect"]["anyOf"][2]["oneOf"]}
+        self.assertLessEqual({"wild_shape_effect", "shapechanger_effect"}, arms)
+        # closed: not reachable through the open effect_live arm
+        self.assertLessEqual({"wild_shape", "shapechanger"}, set(c2["effect_live"]["allOf"][2]["properties"]["kind"]["not"]["enum"]))
 
 
 class SpellMaterialObject(unittest.TestCase):

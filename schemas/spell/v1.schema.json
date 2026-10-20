@@ -540,6 +540,7 @@
             "end_condition",
             "delayed_damage",
             "sustained_damage",
+            "polymorph",
             "forced_move",
             "teleport"
           ]
@@ -1221,6 +1222,63 @@
               },
               "description": {
                 "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "polymorph"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "forms"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "forms",
+                "max_cr",
+                "save"
+              ]
+            },
+            "description": "R-G12 (VERSION_BUMP_BATCH 7.2q) Polymorph: the primary effect only, one target, a concentration spell. The target becomes one of forms (ActionRequest::form_archetype = 1 + index). Unwilling targets save. Rules spell loader key polymorph -> SpellEffectKind::Polymorph (reserved until it parses it).",
+            "properties": {
+              "kind": {
+                "const": "polymorph"
+              },
+              "forms": {
+                "$ref": "../common/v2.schema.json#/$defs/transform_forms"
+              },
+              "max_cr": {
+                "oneOf": [
+                  {
+                    "const": "target_level"
+                  },
+                  {
+                    "$ref": "../common/v2.schema.json#/$defs/challenge_rating"
+                  }
+                ],
+                "description": "target_level (default): CR at most the target's level or CR (sim build_form). A fixed CR string: forms above it warn."
+              },
+              "save": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ability"
+                ],
+                "properties": {
+                  "ability": {
+                    "$ref": "../common/v1.schema.json#/$defs/ability"
+                  }
+                },
+                "description": "Unwilling target's save vs the spell DC. Default {ability: wis}."
               }
             }
           }

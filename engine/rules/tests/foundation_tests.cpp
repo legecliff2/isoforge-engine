@@ -61,7 +61,11 @@ TEST_CASE("event kinds 39-44 are appended after SpellCheckRolled") {
     CHECK(int(EventKind::ModifierExpired) == 43);
     CHECK(int(EventKind::ActionUsed) == 44);
     CHECK(int(EventKind::ZoneEnded) == 47);   // R-G11 appended 45-47
-    CHECK(kEventKindCount == 48);
+    CHECK(int(EventKind::Summoned) == 48);   // R-G12 appended 48-52
+    CHECK(int(EventKind::Transformed) == 50);
+    CHECK(int(EventKind::Reverted) == 51);
+    CHECK(int(EventKind::Commanded) == 52);
+    CHECK(kEventKindCount == 53);
 }
 
 TEST_CASE("defaults preserve every existing spell and reaction option") {

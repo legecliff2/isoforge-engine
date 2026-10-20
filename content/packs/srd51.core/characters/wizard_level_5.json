@@ -56,9 +56,28 @@
   "proficiency_bonus": 3,
   "features": [
     {
+      "id": "arcane_recovery",
+      "name": "Arcane Recovery",
+      "description": "You have learned to regain some of your magical energy by studying your spellbook. Once per day when you finish a short rest, you can choose expended spell slots to recover. The spell slots can have a combined level that is equal to or less than half your wizard level (rounded up), and none of the slots can be 6th level or higher. For example, if you're a 4th-level wizard, you can recover up to two levels worth of spell slots. You can recover either a 2nd-level spell slot or two 1st-level spell slots.",
+      "effect": {
+        "kind": "slot_recovery",
+        "class": "wizard",
+        "max_slot_level": 5,
+        "uses": 1
+      }
+    },
+    {
       "id": "evocation_savant",
       "name": "Evocation Savant",
       "description": "The gold and time you must spend to copy an evocation spell into your spellbook is halved."
+    },
+    {
+      "id": "sculpt_spells",
+      "name": "Sculpt Spells",
+      "description": "When you cast an evocation spell that affects other creatures that you can see, you can choose a number of them equal to 1 + the spell's level. The chosen creatures automatically succeed on their saving throws against the spell, and they take no damage if they would normally take half damage on a successful save.",
+      "effect": {
+        "kind": "sculpt_spells"
+      }
     }
   ],
   "equipment": [

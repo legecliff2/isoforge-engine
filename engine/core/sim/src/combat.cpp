@@ -59,6 +59,10 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
         for (const auto& sp : ch->spawns) spawns.push_back({&sp, Grid::to_world(ch->coord, sp.tile)});
     Combat c(reg, std::move(grid));
     c.seed_ = seed;
+    c.content_ = &content;   // R-G12: forms resolve against the library (archetype pointers already live as long)
+    for (const auto& [aid, arch] : content.all())   // Polymorph's choices: rated beasts, byte order of ids
+        if (arch.schema_type == "monster" && arch.cr_x8 >= 0 && arch.base.creature_type == rules5e::CreatureType::Beast)
+            c.beasts_.push_back(&arch);
     // Team names -> ids by byte order of the distinct names (spawn-order independent).
     std::vector<std::string> spawn_teams;
     for (const auto& ws : spawns) {
@@ -144,6 +148,11 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
                                           sa.recharge == Recharge::ShortRest ? rules5e::FeatureRecharge::ShortRest
                                                                              : rules5e::FeatureRecharge::LongRest);
         }
+    // EC deferred monsters: on_event triggers with usage recharge N-6 get an ActionUse row (owner, trigger id), only for creatures
+    // that have one (action_uses folds under 0xA1 only when non-empty, so every other combat hashes as before).
+    for (const auto& sl : c.slots_)
+        for (const auto& tr : sl.archetype->base.triggers)
+            if (tr.recharge_min != 0) rules5e::register_action_use(c.state_, sl.id, tr.id, false);
     c.apply_rules_events(opening);
     // v6: where each multi-tile creature stands, once, in spawn order (nothing for 1x1-only combats).
     for (const auto& sl : c.slots_)
@@ -293,7 +302,11 @@ bool Combat::spell_in_reach(const rules5e::SpellDef& def, CombatantId caster, Co
 
 int Combat::footprint_size(CombatantId id) const {
     const Slot* s = slot(id);
-    return s ? int(s->archetype->footprint) : 1;
+    if (!s) return 1;
+    // The loader sets Combatant::size from the stat block (Medium when size is inert, so it matches Archetype::footprint);
+    // a transform sets the form's size and a revert restores it.
+    if (const auto* k = rules5e::find(state_, id)) return int(footprint_of(CreatureSize(uint8_t(k->size))));
+    return int(s->archetype->footprint);
 }
 
 std::vector<Vec2i> Combat::footprint_tiles_at(CombatantId id, Vec2i anchor) const {
@@ -359,7 +372,7 @@ std::vector<Vec2i> Combat::occupied_except(CombatantId id) const {
     for (const auto& s : slots_) {
         const auto* c = rules5e::find(state_, s.id);
         if (s.id == id || !c || c->dead) continue;
-        if (s.archetype->footprint == 1) { out.push_back(pos(s.id)); continue; }
+        if (footprint_size(s.id) == 1) { out.push_back(pos(s.id)); continue; }
         for (Vec2i t : footprint_tiles(s.id)) out.push_back(t);
     }
     return out;
@@ -472,6 +485,10 @@ void Combat::install_hooks() {
         return z && rules5e::find(st, id) && zone_holds(*z, id, spot(id), completely);
     };
     state_.hooks.shove_forced_flag = true;   // rules flags the shove push (c = 1); sim no longer flags its copy (same events)
+    // R-G12 (7.2q): transform forms. Live play and replay install the same closure; it reads content, its arguments and the
+    // (replayed) board only.
+    state_.hooks.build_form = [this](const rules5e::EncounterState&, const rules5e::Combatant& who, rules5e::FormKind kind,
+                                     uint32_t source, uint8_t index) { return build_form(who, kind, source, index); };
     state_.hooks.feature_spec = [this](const rules5e::EncounterState&, const rules5e::Combatant& actor, uint32_t feature_id)
         -> std::optional<rules5e::FeatureSpec> {
         if (const Archetype* arch = archetype(actor.id))
@@ -561,7 +578,7 @@ void Combat::install_hooks() {
             const Spot ts = ra.response.target == e.actor ? ms : spot(ra.response.target);
             const int td = rect_distance(rs.p, rs.n, ts.p, ts.n);
             if (a->attacks[ra.response.attack_index].ranged) {
-                const Archetype* arch = archetype(ra.actor);
+                const Archetype* arch = attack_archetype(ra.actor);
                 const int lt = arch ? reach_tiles(arch->long_range_ft[ra.response.attack_index]) : 0;
                 return td <= lt && los_spots(rs, ts);
             }
@@ -613,6 +630,8 @@ bool Combat::can_use_feature(CombatantId id, uint32_t fid) const {
     const ActiveFeature* f = find_active(archetype(id), fid);
     if (!f || state_.ended || state_.pending || rules5e::current_actor(state_) != id) return false;
     if (feature_uses_left(id, fid) == 0) return false;
+    if (const auto* k = rules5e::find(state_, id))   // R-G12 (D7): a feature the form cannot physically use
+        if (std::find(k->form_blocked_features.begin(), k->form_blocked_features.end(), fid) != k->form_blocked_features.end()) return false;
     if (f->cost == FeatureCost::Free) return true;
     return f->cost == FeatureCost::BonusAction ? state_.budget.bonus_action : state_.budget.action || state_.budget.extra_actions > 0;
 }
@@ -642,8 +661,10 @@ int Combat::material_entry(CombatantId caster, const rules5e::SpellDef& d) const
     return -1;
 }
 
-void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs, std::optional<Vec2i> to) {
+void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs, std::optional<Vec2i> to,
+                      std::optional<std::size_t> teardown_begin) {
     const auto& q = ls.request;
+    const std::size_t rules_begin = events_.size();   // R-G12: this step's rules events are events_[rules_begin, + evs.size())
     struct ClearPlaced { std::vector<std::pair<CombatantId, Vec2i>>& v; ~ClearPlaced() { v.clear(); } } clear_placed{forced_placed_};
     // Priced material consumed by a completed cast (rule 4): the entry that satisfied it, one per cast. Rules checked the
     // components for this cast unless it was a sustain or an innate spell not cast as listed; replay runs the same code.
@@ -772,7 +793,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
     }
     // R-G8 monster grapple riders (on_hit kind "grapple"): a hit by the actor's own Attack with that attack grapples the target.
     if (q.kind == ActionKind::Attack && q.special == 0)
-        if (const Archetype* arch = archetype(q.actor))
+        if (const Archetype* arch = attack_archetype(q.actor))
             if (auto g = arch->grapple_on_hit.find(q.attack_index); g != arch->grapple_on_hit.end())
                 for (const auto& e : evs)
                     if (e.kind == rules5e::EventKind::AttackResolved && e.reaction_depth == 0 && e.actor == q.actor && (e.c & 1)) {
@@ -801,6 +822,47 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
             }
         }
     }
+    // R-G12 (7.2q): footprints of forms. A side change emits a Footprint (the v6 kind, mid-combat in v10 streams) after the
+    // step's rules events; a growing revert that does not fit is first moved to the nearest free anchor (TileMoved). The
+    // teardown's reverts (index >= teardown_begin) keep theirs aside: they follow their own Reverted (below).
+    const bool ended_now = state_.ended && std::any_of(evs.begin(), evs.end(), [](const rules5e::Event& e) {
+        return e.kind == rules5e::EventKind::EncounterEnded;
+    });
+    std::size_t tb = evs.size();
+    if (ended_now) {
+        for (std::size_t i = 0; i < evs.size(); ++i)
+            if (evs[i].kind == rules5e::EventKind::EncounterEnded) { tb = i; break; }
+        if (teardown_begin && *teardown_begin < tb) tb = *teardown_begin;
+    }
+    std::vector<std::vector<SimEvent>> teardown_sim(evs.size() - tb);
+    for (std::size_t i = 0; i < evs.size(); ++i) {
+        const auto& e = evs[i];
+        if (e.kind != rules5e::EventKind::Transformed && e.kind != rules5e::EventKind::Reverted) continue;
+        if (i >= tb) {
+            form_footprint(e, teardown_sim[i - tb]);
+        } else {
+            std::vector<SimEvent> fe;
+            form_footprint(e, fe);
+            events_.insert(events_.end(), fe.begin(), fe.end());
+        }
+    }
+    // R-G12 v10 rule-7 gate (SUMMONS_TRANSFORMS.md §3.5, SIM_EVENTS.md rule 7): in a v10 stream every sim event of the ending
+    // step precedes EncounterEnded. The step's rules events from teardown_begin on (the teardown Reverteds, then
+    // EncounterEnded) move behind its sim events, each teardown Reverted directly followed by its own sim events. The gate
+    // reads the stream's contents (event_stream_version), which the reorder does not change; pre-v10 streams keep today's
+    // order byte for byte.
+    if (ended_now && event_stream_version(events_) >= 10) {
+        const auto first = events_.begin() + std::ptrdiff_t(rules_begin + tb);
+        const auto last = events_.begin() + std::ptrdiff_t(rules_begin + evs.size());
+        std::vector<SimEvent> tail(first, last);
+        events_.erase(first, last);
+        for (std::size_t k = 0; k < tail.size(); ++k) {
+            events_.push_back(tail[k]);
+            events_.insert(events_.end(), teardown_sim[k].begin(), teardown_sim[k].end());
+        }
+    } else {
+        for (const auto& v : teardown_sim) events_.insert(events_.end(), v.begin(), v.end());
+    }
     // Aggressive (rules #111): remember the movement from before the bonus-action Dash; the actor's Moves this turn spend it first.
     {
         const uint32_t now = (uint32_t(state_.round) << 16) | state_.turn_index;
@@ -822,7 +884,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
 
 bool Combat::ranged_attack_facts(CombatantId actor, uint8_t ai, Spot from, Spot tp, ActionRequest& req,
                                  std::string* error) const {
-    const Archetype* arch = archetype(actor);
+    const Archetype* arch = attack_archetype(actor);
     if (!arch || ai >= arch->long_range_ft.size()) { if (error) *error = "bad attack"; return false; }
     const int d = rect_distance(from.p, from.n, tp.p, tp.n);
     if (d > reach_tiles(arch->long_range_ft[ai])) { if (error) *error = "target beyond long range"; return false; }
@@ -872,7 +934,7 @@ SubmitResult Combat::finish(rules5e::StepResult sr) {
     if (ls.request.kind == ActionKind::Ready) to = ready_to_;
     if (ls.request.kind == ActionKind::CastSpell && derived_area_) to = aim_to_;   // the aim tile (log_hash folds it)
     derived_area_ = false;
-    complete(ls, sr.events, to);
+    complete(ls, sr.events, to, sr.teardown_begin);
     log_.push_back({ls, to});
     r.reactions = std::move(sr.reactions);
     return r;
@@ -1041,7 +1103,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
             if (!t || req.attack_index >= a->attacks.size() || !hostile(actor, req.target)) { r.error = "bad readied attack"; return r; }
             if (kind == ReadyTriggerKind::HostileWithin) { r.error = "a readied attack needs a TargetWithin trigger"; return r; }
             const auto& at = a->attacks[req.attack_index];
-            const Archetype* arch = archetype(actor);
+            const Archetype* arch = attack_archetype(actor);
             if (at.ranged) {
                 if (tiles > reach_tiles(arch->long_range_ft[req.attack_index])) { r.error = "trigger beyond long range"; return r; }
                 req.beyond_normal_range = tiles > reach_tiles(arch->normal_range_ft[req.attack_index]);
@@ -1229,6 +1291,9 @@ uint64_t Combat::hash() const {
     if (rules5e::has_zone_state(state_)) { h.byte(0xAB); h.u64(rules5e::zones_digest(state_)); }
     // 0xAE (Petrifying Gaze, 7.2p): ids of creatures with their eyes averted, only while some is; never for gazeless combats.
     if (rules5e::has_gaze_state(state_)) { h.byte(0xAE); h.u64(rules5e::gaze_digest(state_)); }
+    // 0xAF (R-G12, 7.2q): summon / transform state (rules5e summons_digest; rules owns the summon counter inside it, which sim
+    // seeds with summons in rules PR 2), only once something was transformed (or summoned) this encounter; never otherwise.
+    if (rules5e::has_summon_state(state_)) { h.byte(0xAF); h.u64(rules5e::summons_digest(state_)); }
     return h.value();
 }
 
@@ -1294,6 +1359,7 @@ uint64_t Combat::log_hash() const {
         // R-G9: 0xB4 forced_feet / teleport_feet, 0xB2 the teleport destination; each folded only when set.
         if (q.forced_feet != 0 || q.teleport_feet != 0) { h.byte(0xB4); h.u16(q.forced_feet); h.u16(q.teleport_feet); }
         if (q.has_teleport_dest) { h.byte(0xB2); h.i32(q.teleport_x); h.i32(q.teleport_y); }
+        if (q.form_archetype != 0) { h.byte(0xBD); h.byte(q.form_archetype); }   // R-G12 form choice: folded only when set
         // 0xB7 (R-G11): caller-chosen zone inputs, only when set (membership lists / zone_move_ft are sim-derived, not folded).
         if (q.zone_move != 0 || q.has_zone_dest || !q.zone_excluded.empty()) {
             h.byte(0xB7);
@@ -1573,10 +1639,159 @@ std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* c
             return std::nullopt;
         }
         c->derived_area_ = false;
-        c->complete(*sr.logged, sr.events, e.to);
+        c->complete(*sr.logged, sr.events, e.to, sr.teardown_begin);
         c->log_.push_back({*sr.logged, e.to});
     }
     return c;
+}
+
+// ---- R-G12 transforms (VERSION_BUMP_BATCH 7.2q hand-off) ----
+
+const Archetype* Combat::form_archetype(CombatantId creature, rules5e::FormKind kind, uint32_t source, uint8_t index) const {
+    if (!content_) return nullptr;
+    if (kind == rules5e::FormKind::Polymorph) return index < beasts_.size() ? beasts_[index] : nullptr;
+    if (kind != rules5e::FormKind::WildShape) return nullptr;
+    const Archetype* own = archetype(creature);
+    if (!own) return nullptr;
+    const auto ff = own->form_features.find(source);
+    if (ff == own->form_features.end() || ff->second.kind != uint8_t(kind) || index >= ff->second.forms.size()) return nullptr;
+    return content_->find(ff->second.forms[index]);
+}
+
+const Archetype* Combat::attack_archetype(CombatantId id) const {
+    const auto* k = rules5e::find(state_, id);
+    if (k && (k->form == rules5e::FormKind::Polymorph || k->form == rules5e::FormKind::WildShape) && k->form_archetype != 0)
+        if (const Archetype* f = form_archetype(id, k->form, k->form_source, uint8_t(k->form_archetype - 1))) return f;
+    return archetype(id);
+}
+
+namespace {
+rules5e::FormStats stats_of(const rules5e::Combatant& c) {
+    rules5e::FormStats f;
+    f.abilities = c.abilities;
+    f.hp = c.hp_max;
+    f.hp_max = c.hp_max;
+    f.ac = c.ac;
+    f.proficiency_bonus = c.proficiency_bonus;
+    f.speed_ft = c.speed_ft;
+    f.save_proficiencies = c.save_proficiencies;
+    f.skill_proficiencies = c.skill_proficiencies;
+    f.resistances = c.resistances;
+    f.immunities = c.immunities;
+    f.vulnerabilities = c.vulnerabilities;
+    f.condition_immunities = c.condition_immunities;
+    f.resist_qualified = c.resist_qualified;
+    f.immune_qualified = c.immune_qualified;
+    f.attacks = c.attacks;
+    f.multiattacks = c.multiattacks;
+    f.attacks_per_action = c.attacks_per_action;
+    f.size = c.size;
+    f.creature_type = c.creature_type;
+    f.roll_traits = c.roll_traits;
+    f.triggers = c.triggers;
+    f.reactions = c.reactions;
+    f.bonus_attacks = c.bonus_attacks;
+    return f;
+}
+}  // namespace
+
+std::optional<rules5e::FormStats> Combat::build_form(const rules5e::Combatant& who, rules5e::FormKind kind, uint32_t source,
+                                                     uint8_t index, std::string* why) const {
+    auto no = [why](const char* m) -> std::optional<rules5e::FormStats> {
+        if (why) *why = m;
+        return std::nullopt;
+    };
+    const Archetype* own = archetype(who.id);
+    if (!own) return no("unknown creature");
+    rules5e::FormStats f;
+    if (kind == rules5e::FormKind::Shapechanger) {
+        const auto ff = own->form_features.find(source);
+        if (ff == own->form_features.end() || ff->second.kind != uint8_t(kind) || index >= ff->second.shapes.size())
+            return no("unknown shapechanger form");
+        const auto& sh = ff->second.shapes[index];
+        f = stats_of(who);   // "statistics other than size are the same"; equipment is not transformed (attacks kept)
+        f.hp = who.hp;
+        f.size = own->base.size;   // the stat block size (the creature may already be in another shape)
+        if (sh.size) f.size = rules5e::Size(uint8_t(*sh.size));
+        if (sh.ac >= 0) f.ac = int8_t(sh.ac);
+        if (sh.speed_ft >= 0) f.speed_ft = uint8_t(sh.speed_ft);
+    } else if (kind == rules5e::FormKind::WildShape || kind == rules5e::FormKind::Polymorph) {
+        const Archetype* fa = form_archetype(who.id, kind, source, index);
+        if (!fa) return no("unknown form archetype");
+        if (fa->schema_type != "monster" || fa->base.creature_type != rules5e::CreatureType::Beast) return no("form is not a beast");
+        if (fa->cr_x8 < 0) return no("form has no challenge rating");
+        if (kind == rules5e::FormKind::WildShape) {
+            const auto& ff = own->form_features.at(source);
+            if (fa->cr_x8 > ff.max_cr_x8) return no("form above the druid's max CR");
+            if (fa->fly_ft > 0 && ff.level < ff.no_fly_below) return no("flying form below the druid level");
+            if (fa->swim_ft > 0 && ff.level < ff.no_swim_below) return no("swimming form below the druid level");
+        } else {   // Polymorph: CR <= the target's CR, or its level for a character
+            const int limit = own->cr_x8 >= 0 ? own->cr_x8 : int(own->char_level) * 8;
+            if (fa->cr_x8 > limit) return no("form above the target's level / CR");
+        }
+        f = stats_of(fa->base);   // natural weapons and AC only: gear melds (no equipment AC or attacks)
+        f.size = fa->base.size;
+        if (kind == rules5e::FormKind::WildShape) f.blocked_features = own->humanoid_only_features;
+    } else {
+        return no("not a transform");
+    }
+    // Footprint (SUMMONS_TRANSFORMS §3.1 checks at the creature's own anchor): a bigger form must fit where it stands, every
+    // new tile walkable and free of other creatures; otherwise the form is not available. A smaller form always fits.
+    const int side = int(footprint_of(CreatureSize(uint8_t(f.size))));
+    if (side > footprint_size(who.id)) {
+        const Vec2i at = pos(who.id);
+        if (!grid_.footprint_walkable(at, side)) return no("form does not fit here");
+        const auto occ = occupied_except(who.id);
+        for (int dy = 0; dy < side; ++dy)
+            for (int dx = 0; dx < side; ++dx)
+                if (std::find(occ.begin(), occ.end(), Vec2i{at.x + dx, at.y + dy}) != occ.end()) return no("form does not fit here");
+    }
+    return f;
+}
+
+void Combat::form_footprint(const rules5e::Event& e, std::vector<SimEvent>& out) {
+    const CombatantId id = e.actor;
+    const Slot* sl = slot(id);
+    if (!sl) return;
+    int before = int(sl->archetype->footprint);
+    if (auto it = form_side_.find(id); it != form_side_.end()) before = it->second;
+    const int after = footprint_size(id);
+    if (e.kind == rules5e::EventKind::Transformed) form_side_[id] = after;
+    else form_side_.erase(id);
+    if (after == before) return;
+    if (after > before) {   // only a revert grows unchecked: move to the nearest free anchor (Chebyshev ring, row-major ties)
+        auto fits = [&](Vec2i t) {
+            if (!grid_.footprint_walkable(t, after)) return false;
+            const auto occ = occupied_except(id);
+            for (int dy = 0; dy < after; ++dy)
+                for (int dx = 0; dx < after; ++dx)
+                    if (std::find(occ.begin(), occ.end(), Vec2i{t.x + dx, t.y + dy}) != occ.end()) return false;
+            return true;
+        };
+        const Vec2i at = pos(id);
+        if (!fits(at)) {
+            std::optional<Vec2i> best;
+            for (int r = 1; r <= 8 && !best; ++r)
+                for (int y = at.y - r; y <= at.y + r && !best; ++y)
+                    for (int x = at.x - r; x <= at.x + r && !best; ++x)
+                        if (std::max(std::abs(x - at.x), std::abs(y - at.y)) == r && grid_.in_bounds({x, y}) && fits({x, y}))
+                            best = Vec2i{x, y};
+            if (best) {   // none within 8 tiles: it stays where it is (overlap tolerated)
+                if (TilePos* p = reg_->get<TilePos>(sl->entity)) { p->x = best->x; p->y = best->y; }
+                SimEvent mv;
+                mv.kind = SimEvent::Kind::TileMoved;
+                mv.actor = id;
+                mv.tile = *best;
+                out.push_back(mv);
+            }
+        }
+    }
+    SimEvent fe;
+    fe.kind = SimEvent::Kind::Footprint;
+    fe.actor = id;
+    fe.tile = pos(id);
+    fe.rules.a = after;
+    out.push_back(fe);
 }
 
 } // namespace eng::sim
