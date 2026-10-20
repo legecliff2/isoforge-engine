@@ -476,8 +476,8 @@ today is authored with that intent (the warning says so). Fixtures: `tests/valid
 
 `monster@4` / `character@4` trait or feature effect, compiled by sim `content.cpp` `compile_gaze` (#153) into a synthetic Save
 `SpellDef` and a `Combatant::Gaze{spell_id, range_ft}`. Not a registry kind and not in the frozen 3 -> 4 list: the sim gates it at
-@4 itself, so a file that declares `@3` or older lists it inert (validator: unknown-kind warning there). Schema: the closed
-`common@2 $defs/gaze_effect` arm of `$defs/effect` (`effect_live` excludes `gaze`, so only the closed arm accepts it).
+@4 itself, so a file that declares `@3` or older lists it inert (validator: unknown-kind warning there). Schema: the closed inline
+`gaze` arm of `common@2 $defs/effect` (no new `$defs` entry: the VERSION_BUMP_BATCH 1.1 def list is unchanged) (`effect_live` excludes `gaze`, so only the closed arm accepts it).
 
 ```json
 "effect": { "kind": "gaze", "range_ft": 30, "save": { "ability": "con", "dc": 12 }, "condition": "restrained",
