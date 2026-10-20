@@ -30,5 +30,12 @@
     ]
   ],
   "severity": "warning",
-  "expect": "font_of_magic pool 'sorcery_points' is not in resources[]; the sim registers it"
+  "expect": "font_of_magic pool 'sorcery_points' is not in resources[]; the sim registers it",
+  "dels": [
+    [
+      "features",
+      0,
+      "effect"
+    ]
+  ]
 }
