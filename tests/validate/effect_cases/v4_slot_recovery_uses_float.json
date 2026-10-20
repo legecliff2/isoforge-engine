@@ -1,0 +1,22 @@
+{
+  "base": "characters/wizard_level_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        0
+      ],
+      {
+        "id": "arcane_recovery",
+        "name": "Arcane Recovery",
+        "effect": {
+          "kind": "slot_recovery",
+          "class": "wizard",
+          "uses": 1.0
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "/features/0/effect/uses: float value 1.0 not allowed"
+}

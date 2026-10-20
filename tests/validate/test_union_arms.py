@@ -40,16 +40,20 @@ PREDICATE = {("weapon",): (S({"kind", "is"}), S()),
              ("not_crit",): (S({"kind"}), S()),
              ("moved_at_least_ft",): (S({"kind", "ft"}), S()),
              ("self_hp_below",): (S({"kind", "num", "den"}), S()),
-             ("save",): (S({"kind", "ability"}), S({"dc", "dc_from_damage", "base"}))}
-RIDER = {("extra_damage",): (S({"kind", "damage"}), S({"scale"})),
-         ("save_condition",): (S({"kind", "save"}), S({"apply", "damage", "on_success"})),
-         ("apply_condition",): (S({"kind", "apply"}), S()),
-         ("heal_self", "temp_hp"): (S({"kind"}), S({"dice", "amount"})),
-         ("set_hp",): (S({"kind", "value"}), S()),
-         ("bonus_attack",): (S({"kind", "attack_id"}), S()),
-         ("area_save",): (S({"kind", "area", "save", "damage", "on_success"}), S()),
-         ("spend",): (S({"kind"}), S({"pool", "cost", "slot"})),
-         ("grapple",): (S({"kind"}), S({"escape_dc"}))}   # R-G8 hit rider (sim #104); on_hit[] of actions[] weapon attacks only
+             ("save",): (S({"kind", "ability"}), S({"dc", "dc_from_damage", "base"})),
+             ("target_surprised", "ally_near_target", "weapon_attack"): (S({"kind"}), S()),
+             ("damage_at_most",): (S({"kind", "amount"}), S()),
+             ("target_tag", "not_target_tag"): (S({"kind", "tag"}), S())}
+# when: rider-level predicates (sim #170), read only in on_hit[] of attack actions
+RIDER = {("extra_damage",): (S({"kind", "damage"}), S({"scale", "when"})),
+         ("save_condition",): (S({"kind", "save"}), S({"apply", "damage", "on_success", "when"})),
+         ("apply_condition",): (S({"kind", "apply"}), S({"when"})),
+         ("heal_self", "temp_hp"): (S({"kind"}), S({"dice", "amount", "when"})),
+         ("set_hp",): (S({"kind", "value"}), S({"when"})),
+         ("bonus_attack",): (S({"kind", "attack_id"}), S({"when"})),
+         ("area_save",): (S({"kind", "area", "save", "damage", "on_success"}), S({"when"})),
+         ("spend",): (S({"kind"}), S({"pool", "cost", "slot", "when"})),
+         ("grapple",): (S({"kind"}), S({"escape_dc", "when"}))}   # R-G8 hit rider (sim #104); on_hit[] of actions[] weapon attacks only
 _M = {"applies_to", "stacks", "consume"}   # consume: any stat (section 6.2b, docs/CONTENT_CONVENTIONS.md 1)
 MODIFIER = {("attack_roll",): (S({"stat", "duration"}), S({"bonus", "die", "mode", "when"} | _M)),
             ("save", "ability_check"): (S({"stat", "duration"}), S({"bonus", "die", "mode", "ability"} | _M)),
@@ -86,6 +90,17 @@ SPELL_EFFECT_R120 = {"hp_pool": (S({"kind", "dice", "condition"}), S({"ends_on_d
                      "end_condition": (S({"kind", "conditions"}), S({"description"})),
                      "delayed_damage": (S({"kind", "damage", "expiry"}), S({"applies_to", "description"})),
                      "sustained_damage": (S({"kind", "damage"}), S({"description"}))}
+# R-G9 spell@1 arms (sim #144, spell_loader.cpp forced_move / teleport): same closed if/then pattern.
+SPELL_EFFECT_RG9 = {"forced_move": (S({"kind", "feet"}), S({"mode", "up_to", "max_size", "provokes_oa", "applies_to", "description"})),
+                    "teleport": (S({"kind", "max_feet"}), S({"needs_sight", "description"}))}
+# R-G12 transforms (VERSION_BUMP_BATCH 7.2q; docs/CONTENT_CONVENTIONS.md section 9): closed objects with a propertyNames
+# allow-list. spell@1 polymorph is an arm of the file's if/then effect union; the common@2 ones are $defs of their own.
+SPELL_EFFECT_RG12 = {"polymorph": (S({"kind", "forms"}), S({"max_cr", "save"}))}
+COMMON2_RG12 = {"wild_shape_effect": (S({"kind", "pool", "forms", "max_cr_by_level"}),
+                                      S({"cost", "class", "no_fly_below", "no_swim_below"})),
+                "wild_shape_level_row": (S({"level", "max_cr"}), S()),
+                "shapechanger_effect": (S({"kind", "forms"}), S({"cost"})),
+                "shapechanger_form": (S({"id", "name"}), S({"size", "armor_class", "speed", "actions", "creature_type"}))}
 _ICOMMON = {"source", "cost_cp", "weight_oz", "description"}
 _IBASE = S({"$schema", "id", "name", "category"})
 ITEM = {("weapon",): (_IBASE | {"weapon_class"}, S(_ICOMMON | {"reach", "range", "damage", "versatile_damage", "properties", "qualifiers", "magic_bonus", "on_hit"})),
@@ -195,6 +210,48 @@ class SpellEffectArmsR120(unittest.TestCase):
                 self.assertEqual(set(then["properties"]), set(req) | set(opt))
                 self.assertEqual(set(then["required"]), set(req))
                 self.assertIn(k, eff["properties"]["kind"]["enum"])
+
+    def test_rg9_arms_are_closed_allow_lists(self):
+        eff = load("spell/v1.schema.json")["$defs"]["effect"]
+        found = {sub["if"]["properties"]["kind"]["const"]: sub["then"] for sub in eff["allOf"]
+                 if sub["if"]["properties"]["kind"]["const"] in SPELL_EFFECT_RG9}
+        self.assertEqual(set(found), set(SPELL_EFFECT_RG9))
+        for k, then in found.items():
+            with self.subTest(k):
+                req, opt = SPELL_EFFECT_RG9[k]
+                self.assertIs(then["additionalProperties"], False)
+                self.assertEqual(set(then["propertyNames"]["enum"]), set(req) | set(opt))
+                self.assertEqual(set(then["properties"]), set(req) | set(opt))
+                self.assertEqual(set(then["required"]), set(req))
+                self.assertIn(k, eff["properties"]["kind"]["enum"])
+
+
+class TransformArmsRG12(unittest.TestCase):
+    def check_closed(self, node, req, opt):
+        self.assertIs(node["additionalProperties"], False)
+        self.assertEqual(set(node["propertyNames"]["enum"]), set(req) | set(opt))
+        self.assertEqual(set(node["properties"]), set(req) | set(opt))
+        self.assertEqual(set(node["required"]), set(req))
+
+    def test_spell_polymorph_arm(self):
+        eff = load("spell/v1.schema.json")["$defs"]["effect"]
+        found = {sub["if"]["properties"]["kind"]["const"]: sub["then"] for sub in eff["allOf"]
+                 if sub["if"]["properties"]["kind"]["const"] in SPELL_EFFECT_RG12}
+        self.assertEqual(set(found), set(SPELL_EFFECT_RG12))
+        for k, then in found.items():
+            with self.subTest(k):
+                self.check_closed(then, *SPELL_EFFECT_RG12[k])
+                self.assertIn(k, eff["properties"]["kind"]["enum"])
+
+    def test_common2_transform_defs(self):
+        c2 = load("common/v2.schema.json")["$defs"]
+        for name, (req, opt) in COMMON2_RG12.items():
+            with self.subTest(name):
+                self.check_closed(c2[name], req, opt)
+        arms = {a["$ref"].rsplit("/", 1)[1] for a in c2["effect"]["anyOf"][2]["oneOf"] if "$ref" in a}   # gaze (7.2p) is inline
+        self.assertLessEqual({"wild_shape_effect", "shapechanger_effect"}, arms)
+        # closed: not reachable through the open effect_live arm
+        self.assertLessEqual({"wild_shape", "shapechanger"}, set(c2["effect_live"]["allOf"][2]["properties"]["kind"]["not"]["enum"]))
 
 
 class SpellMaterialObject(unittest.TestCase):

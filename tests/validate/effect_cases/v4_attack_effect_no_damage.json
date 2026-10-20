@@ -1,0 +1,20 @@
+{
+  "base": "monsters/giant_spider.json",
+  "sets": [
+    [
+      [
+        "actions",
+        1,
+        "damage"
+      ],
+      [
+        {
+          "dice": "1d6",
+          "type": "acid"
+        }
+      ]
+    ]
+  ],
+  "severity": "error",
+  "expect": "/actions/1: 'damage' is not one of ['id', 'name', 'kind', 'attack'"
+}

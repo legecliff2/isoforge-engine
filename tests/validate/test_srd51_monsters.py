@@ -21,8 +21,9 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (all monster@4). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-DEFERRED = ["boar", "hobgoblin", "bugbear", "ghoul", "giant-spider",
-            "swarm-of-rats"]
+DEFERRED = ["swarm-of-rats"]
+# Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
+EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
 DEVIATIONS = {
     "lizardfolk": "AC: the table lists 13 (natural armor) and 15 (with shield); the SRD line is 15 and the Spiked Shield attack needs the shield.",
@@ -79,6 +80,8 @@ class MonsterTable(unittest.TestCase):
             # no invented attack: every authored attack action matches some table option
             known = [(ta["attack_bonus"], [{"dice": x, "type": y} for x, y in opt]) for ta in t["attacks"] for opt in ta["damage_options"]]
             for a in attacks:
+                if (idx, a["id"]) in EXTRA_ATTACKS:
+                    continue
                 with self.subTest(monster=idx, action=a["id"]):
                     self.assertIn((a["to_hit"], a["damage"]), known)
 
@@ -150,6 +153,33 @@ class MonsterTable(unittest.TestCase):
         for idx, kind in (("orc", "aggressive"), ("berserker", "reckless_attack")):
             with self.subTest(monster=idx):
                 self.assertEqual([t["effect"] for t in load(idx)["traits"] if "effect" in t], [{"kind": kind}])
+        # sim #158 predicates / on_event usage
+        eff = lambda idx, tid: {t["id"]: t.get("effect") for t in load(idx)["traits"]}[tid]
+        sa = eff("bugbear", "surprise_attack")
+        self.assertEqual((sa["on"], sa["when"]), ("hit", [{"kind": "target_surprised"}]))
+        self.assertEqual(sa["effects"], [{"kind": "extra_damage", "damage": [{"dice": "2d6", "type": "same_as_weapon"}]}])
+        self.assertIsNone(eff("bugbear", "brute"))   # baked into the printed dice
+        ma = eff("hobgoblin", "martial_advantage")
+        self.assertEqual((ma["on"], ma["limit"]), ("hit", "once_per_turn"))
+        self.assertEqual(ma["when"], [{"kind": "weapon_attack"}, {"kind": "ally_near_target"}])
+        rl = eff("boar", "relentless")
+        self.assertEqual((rl["on"], rl["when"]), ("drop_to_zero", [{"kind": "damage_at_most", "amount": 7}]))
+        self.assertEqual((rl["usage"], rl["effects"]), ({"kind": "per_rest", "uses": 1, "rest": "short"}, [{"kind": "set_hp", "value": 1}]))
+        ch = eff("boar", "charge")
+        self.assertIn({"kind": "moved_at_least_ft", "ft": 20}, ch["when"])
+        self.assertEqual(ch["effects"][1], {"kind": "save_condition", "save": {"ability": "str", "dc": 11}, "apply": [{"condition": "prone"}]})
+        # sim #170: ghoul claws (rider when[]: undead and elves exempt; a half-elf race has no "elf" tag), giant spider Web
+        claws = {a["id"]: a for a in load("ghoul")["actions"]}["claws"]["on_hit"]
+        self.assertEqual(claws, [{"kind": "save_condition", "save": {"ability": "con", "dc": 10},
+                                  "apply": [{"condition": "paralyzed", "duration": {"kind": "rounds", "n": 10}, "repeat_save": "end_of_turn"}],
+                                  "when": [{"kind": "not_creature_type", "creature_types": ["undead"]}, {"kind": "not_target_tag", "tag": "elf"}]}])
+        web = {a["id"]: a for a in load("giant-spider")["actions"]}["web"]
+        self.assertEqual((web["kind"], web["attack"], web["to_hit"], web["range_ft"]), ("attack_effect", "ranged", 5, 30))
+        self.assertEqual(web["apply"], [{"condition": "restrained", "escape": {"ability": "str", "dc": 12}}])
+        self.assertEqual(web["usage"], {"kind": "recharge", "min": 5})
+        sbite = {a["id"]: a for a in load("giant-spider")["actions"]}["bite"]["on_hit"]
+        self.assertEqual(sbite, [{"kind": "save_condition", "save": {"ability": "con", "dc": 11},
+                                  "damage": [{"dice": "2d8", "type": "poison"}], "on_success": "half"}])
         # Petrifying Gaze (common@2 gaze arm, 7.2p, sim #153): basilisk DC 12 Con, medusa DC 14 Con with the 5-point instant
         # petrification margin; both restrained, repeat save at the end of the turn, petrified on a failed repeat save.
         for idx, dc, margin in (("basilisk", 12, 0), ("medusa", 14, 5)):

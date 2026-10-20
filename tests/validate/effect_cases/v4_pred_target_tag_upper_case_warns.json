@@ -1,0 +1,21 @@
+{
+  "base": "monsters/ghoul.json",
+  "sets": [
+    [
+      [
+        "actions",
+        1,
+        "on_hit",
+        0,
+        "when",
+        1
+      ],
+      {
+        "kind": "not_target_tag",
+        "tag": "Elf"
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "tag 'Elf' is not lower case"
+}
