@@ -1,6 +1,6 @@
 // Vertical slice viewer: sample.vertical_slice chunk via world, goblin vs fighter via sim,
 // drawn with iso2d on SDL_GPU. The view only reads ViewModel snapshots.
-//   vertical_slice [--config FILE] [--pack-root DIR]... [--pack ID]... [--seed N] [--static] [--steps K] [--frames N] [--zoom Z] [--debug] [--demo-light]
+//   vertical_slice [--config FILE] [--pack-root DIR]... [--pack ID]... [--seed N] [--static] [--steps K] [--frames N] [--zoom Z] [--debug] [--no-torches]
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -17,7 +17,6 @@
 #include "platform/window.hpp"
 #include "render/device.hpp"
 #include "session.hpp"
-#include "light_standin.hpp"
 #include "slice_view.hpp"
 
 using namespace eng;
@@ -34,8 +33,6 @@ int main(int argc, char** argv) {
     std::vector<std::string> roots, packs;
     const char* config = nullptr;
     int max_frames = -1, pre_steps = 0;
-    bool demo_light = false;
-    slice::LightStandinState light_state;
     float zoom = 1.25f;
     bool debug = false;
     for (int i = 1; i < argc; ++i) {
@@ -49,7 +46,7 @@ int main(int argc, char** argv) {
         else if (arg("--zoom")) zoom = float(std::atof(argv[++i]));
         else if (!std::strcmp(argv[i], "--static")) opt.with_sim = false;
         else if (!std::strcmp(argv[i], "--debug")) debug = true;
-        else if (!std::strcmp(argv[i], "--demo-light")) demo_light = true;   // stand-in LightFrame (light_standin.hpp)
+        else if (!std::strcmp(argv[i], "--no-torches")) opt.pc_torches = false;
     }
 
     // Defaults, then the config file, then the command line (last wins per field).
@@ -113,8 +110,7 @@ int main(int argc, char** argv) {
             if (autoplay && ++auto_timer % 20 == 0) session->step();
         }
 
-        slice::ViewModel vm = session->view();
-        if (demo_light) slice::fill_standin_light(vm, light_state);
+        const slice::ViewModel vm = session->view();
         const Vec2f target = view->actors_focus_px(vm);
         focus = {focus.x + (target.x - focus.x) * 0.15f, focus.y + (target.y - focus.y) * 0.15f};   // smooth follow
         const Vec2i px = window->size_in_pixels();

@@ -21,6 +21,10 @@ public:
         std::vector<std::string> packs;
         uint64_t    seed = 1;
         bool        with_sim = true;   // false: static chunk + spawns only
+        // Interim scenario input until lighting phase 3 (attached lights / items from content): give each
+        // PC a lit torch (sim::AttachedLight 20/20 ft, preset srd51.core.light.torch). The sim computes
+        // all light; this only decides who carries a source. Off = ambient only (underground: Dark).
+        bool        pc_torches = true;
     };
     // Config-file shape {"pack_roots": [...], "packs": [...]} (both optional) -> o. False + *error
     // on malformed input.
