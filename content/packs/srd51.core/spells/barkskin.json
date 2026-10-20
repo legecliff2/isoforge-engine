@@ -1,0 +1,47 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.barkskin",
+  "name": "Barkskin",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "You touch a willing creature. Until the spell ends, the target's skin has a rough, bark-like appearance, and the target's AC can't be less than 16, regardless of what kind of armor it is wearing.",
+  "level": 2,
+  "school": "transmutation",
+  "classes": [
+    "druid",
+    "ranger"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "a handful of oak bark"
+    }
+  },
+  "duration": {
+    "kind": "hours",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "ac",
+        "ac_floor": 16,
+        "applies_to": "target",
+        "duration": {
+          "kind": "concentration"
+        }
+      }
+    }
+  ]
+}

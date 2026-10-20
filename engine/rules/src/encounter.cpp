@@ -153,6 +153,7 @@ SaveResult save_roll_raw(EncounterState& s, const Combatant& t, Ability ab, int 
                          int cover = 0) {
     bool adv = mode == RollMode::Advantage, dis = mode == RollMode::Disadvantage;
     mod_modes(s, t.id, ModStat::Save, int(ab), adv, dis);
+    if (t.squeezing && ab == Ability::Dex) dis = true;   // SRD Squeezing
     const RollMode m = combine_modes(adv, dis);
     SaveResult r = src ? saving_throw(s.rng, t, ab, dc, m, *src) : saving_throw(s.rng, t, ab, dc, m);
     if (r.auto_fail) return r;
@@ -1579,6 +1580,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     if (a.helped_vs == t.id) { adv = true; a.helped_vs = 0; a.helped_by = 0; }
     if (t.reckless_active) adv = true;   // Reckless Attack: attacks against it have advantage
     const bool gaze_dis = a.gaze_averted && !t.gazes.empty();   // Petrifying Gaze: eyes averted, the gazer is unseen
+    if (t.squeezing) adv = true;                                  // SRD Squeezing: attacks against it have advantage
     if (t.gaze_averted && !a.gazes.empty()) adv = true;         // ... and the gazer is an unseen attacker to it
     if (a.reckless_active && !atk.ranged && spell_id == 0 &&
         !(atk.finesse && modifier(a.abilities, Ability::Dex) > modifier(a.abilities, Ability::Str))) adv = true;   // Str melee
@@ -1594,7 +1596,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     actx.ranged = atk.ranged;
     actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
     const bool protected_by_ally = ally_attacked_window(s, ctx, a, t, atk.ranged, spell_id, ev);   // Protection-style reactions
-    actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft) || protected_by_ally || gaze_dis;   // combined with conditions in one place
+    actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft) || protected_by_ally || gaze_dis || a.squeezing;   // combined with conditions in one place
     if (!s.modifiers.empty()) {   // timed modifiers (row 12): sources merged into the one advantage/disadvantage resolution
         for (auto& m : s.modifiers) {   // `when` scope of roll-time modifiers (follow-up): gate the ones that do not hold
             m.gated = false;
@@ -3703,7 +3705,13 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         if (req.move_ft <= 0) return fail("move_ft must be positive");
         int cost = req.move_ft * (a.has(Condition::Prone) ? 2 : 1);   // crawling
         if (drags_grappled(s, a)) cost *= 2;                           // SRD: half speed while moving a grappled creature
-        if (cost > b.movement_ft) return fail("not enough movement");
+        if (req.move_mode > 3) return fail("bad move_mode");
+        if (req.move_mode != 0) {   // feat/move-modes: fly / swim / climb speed; the shared budget may go below 0
+            const int allow = move_allowance(s, a, req.move_mode);
+            if (allow < 0) return fail("no such speed");
+            if (req.move_mode == 1 && a.has(Condition::Prone)) return fail("cannot fly while prone");
+            if (cost > allow) return fail("not enough movement");
+        } else if (cost > b.movement_ft) return fail("not enough movement");
         // Pause before leaving reach; opportunity attacks may stop the move.
         if (req.leaves_reach && !leaving_reach_window(s, ctx, a, out.events)) {
             emit(out.events, EventKind::MoveInterrupted, a.id, 0, req.move_ft);
@@ -3712,6 +3720,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         }
         b.movement_ft = int16_t(b.movement_ft - cost);
         b.moved_ft = uint16_t(b.moved_ft + 5 * req.move_tiles);   // only a completed move counts
+        if (req.squeeze == 1) a.squeezing = true;    // SRD Squeezing (sim fact)
+        else if (req.squeeze == 2) a.squeezing = false;
         s.budget = b;
         emit(out.events, EventKind::Moved, a.id, 0, req.move_ft, b.movement_ft);
         if (!s.zones.empty()) {   // R-G11: the step's zone membership (sim's facts), then other creatures' changes (aura move)
@@ -3931,6 +3941,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             b.bonus_action = false; b.aggressive_dash = true;
         } else if (!spend_action(b, a, req.kind, req.as_bonus_action)) return fail("no action available");
         b.movement_ft = int16_t(b.movement_ft + modified_speed(s, a));   // 7.2u: Dash adds the speed after modifiers (Ray of Frost)
+        if (b.dashes < 255) ++b.dashes;
         s.budget = b;
         emit(out.events, EventKind::Dashed, a.id, 0, b.movement_ft);
         return out;
@@ -4619,6 +4630,24 @@ int modified_ac_bonus(const EncounterState& s, CombatantId id) {
     return bonus + std::max(0, floor_ac - int(c->ac));
 }
 
+int mode_speed(const EncounterState& s, const Combatant& c, uint8_t mode) {
+    if (mode == 0) return modified_speed(s, c);
+    const uint8_t base = mode == 1 ? c.fly_ft : mode == 2 ? c.swim_ft : mode == 3 ? c.climb_ft : 0;
+    if (base == 0) return -1;
+    Combatant k = c;
+    k.speed_ft = base;
+    return modified_speed(s, k);
+}
+
+int move_allowance(const EncounterState& s, const Combatant& c, uint8_t mode) {
+    if (mode == 0) return s.budget.movement_ft;
+    if (c.hp <= 0 || c.lethargy == 2) return std::min<int>(s.budget.movement_ft, 0);   // no movement this turn at all
+    const int m = mode_speed(s, c, mode);
+    if (m < 0) return -1;
+    const int w = modified_speed(s, c);
+    return int(s.budget.movement_ft) + (m - w) * (1 + int(s.budget.dashes));
+}
+
 int modified_speed(const EncounterState& s, const Combatant& c) {
     int sp = effective_speed(c);
     if (sp <= 0) return sp;
@@ -4791,6 +4820,7 @@ FormStats own_stats(const Combatant& c) {
     f.attacks = c.attacks; f.multiattacks = c.multiattacks; f.attacks_per_action = c.attacks_per_action; f.size = c.size;
     f.creature_type = c.creature_type; f.roll_traits = c.roll_traits; f.triggers = c.triggers; f.reactions = c.reactions;
     f.bonus_attacks = c.bonus_attacks;
+    f.fly_ft = c.fly_ft; f.swim_ft = c.swim_ft; f.climb_ft = c.climb_ft; f.hover = c.hover;   // feat/move-modes
     return f;
 }
 void put_stats(Combatant& c, const FormStats& f) {   // everything but hp / hp_max
@@ -4801,6 +4831,7 @@ void put_stats(Combatant& c, const FormStats& f) {   // everything but hp / hp_m
     c.attacks = f.attacks; c.multiattacks = f.multiattacks; c.attacks_per_action = f.attacks_per_action; c.size = f.size;
     c.creature_type = f.creature_type; c.roll_traits = f.roll_traits; c.triggers = f.triggers; c.reactions = f.reactions;
     c.bonus_attacks = f.bonus_attacks;
+    c.fly_ft = f.fly_ft; c.swim_ft = f.swim_ft; c.climb_ft = f.climb_ft; c.hover = f.hover;   // feat/move-modes
 }
 template <class T> void append_all(std::vector<T>& to, const std::vector<T>& from) { to.insert(to.end(), from.begin(), from.end()); }
 }  // namespace

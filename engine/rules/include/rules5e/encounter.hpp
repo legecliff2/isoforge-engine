@@ -49,6 +49,8 @@ struct TurnBudget {
     bool action_lost = false;
     // Petrifying Gaze (appended): the turn started with a gazer present; the actor must answer with GazeResponse first.
     bool gaze_pending = false;
+    // appended (SRD 5.1 movement modes, feat/move-modes): Dash actions taken this turn (a Dash grants each speed once more).
+    uint8_t dashes = 0;
 };
 
 // Answer to a reaction window (names/layout shared with sim::Combat).
@@ -195,6 +197,12 @@ struct ActionRequest {
     // aimed point of origin of an area CastSpell (sim's aim tile, opaque to rules), passed to EncounterHooks::cover as
     // CoverQuery::origin_x / origin_y. Unset = the caster's space (self-centred areas, cones / lines from the caster).
     bool has_area_origin = false; int32_t area_x = 0, area_y = 0;
+    // appended (SRD 5.1 Squeezing, feat/size-space; log_hash 0xC2 when non-zero): on a Move, 1 = start squeezing, 2 = stop
+    // (Combatant::squeezing). Sim fact derived from the footprint fit; 0 = unchanged.
+    uint8_t squeeze = 0;
+    // appended (SRD 5.1 movement modes, feat/move-modes; log_hash 0xC3 when non-zero): on a Move, the speed used:
+    // 0 walk, 1 fly, 2 swim, 3 climb. The mode needs a speed (else "no such speed"); see move_allowance.
+    uint8_t move_mode = 0;
 };
 
 enum class EventKind : uint8_t {
@@ -709,6 +717,11 @@ EncounterState begin_encounter(std::vector<Combatant>, uint64_t seed,
 
 // Validates and applies one action. Invalid requests change nothing (ok = false).
 StepResult step(EncounterState&, const ActionRequest&);
+// SRD 5.1 movement modes (feat/move-modes): feet the current actor may still move this turn with `mode` (0 walk, 1 fly,
+// 2 swim, 3 climb): movement_ft plus, for another speed, (its turn-start speed - the walking one) * (1 + Dashes). -1 when the
+// creature has no such speed. Speed modifiers (Slow, Ray of Frost) and conditions apply to every speed alike.
+int move_allowance(const EncounterState&, const Combatant&, uint8_t mode);
+int mode_speed(const EncounterState&, const Combatant&, uint8_t mode);   // modified speed of that mode (walk = modified_speed)
 
 // step() and, when a request completes (Done), append {request, decisions} to `log`.
 // Use it for every request, including ReactionDecision answers; only completed requests are logged.

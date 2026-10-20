@@ -23,11 +23,14 @@ std::optional<CombatantId> NearestEnemyPolicy::choose_target(const Combat& c, Co
 namespace {
 // Anchors from which a creature of side `mn` stands within `reach` tiles of the `tn`-side creature at
 // `tp`, excluding anchors that overlap it. For 1x1 vs 1x1 this is the 8 * reach-ring around `tp`.
+// Reach 0 (a swarm's bite, SRD: "one target in the swarm's space"): only the anchors whose footprint overlaps the target's
+// (row-major, so the path search stays deterministic). They are reachable only for a mover that may share spaces
+// (Combat::occupied_except: a swarm, or a target that is one); for anyone else the path is empty and the AI ends its turn.
 std::vector<Vec2i> goal_anchors(Vec2i tp, int tn, int mn, int reach) {
     std::vector<Vec2i> g;
     for (int y = tp.y - reach - mn + 1; y <= tp.y + tn - 1 + reach; ++y)
         for (int x = tp.x - reach - mn + 1; x <= tp.x + tn - 1 + reach; ++x)
-            if (rect_distance({x, y}, mn, tp, tn) > 0) g.push_back({x, y});
+            if (reach == 0 ? rect_distance({x, y}, mn, tp, tn) == 0 : rect_distance({x, y}, mn, tp, tn) > 0) g.push_back({x, y});
     return g;
 }
 } // namespace
@@ -365,7 +368,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // Can't get into melee reach this turn: shoot if a ranged attack is legal (range + LOS),
     // preferring one without disadvantage.
     auto melee_path_cost = [&]() {
-        const auto p = c.grid().path(mp, goal_anchors(tp, tn, mn, reach), c.occupied_except(self), mn);
+        const auto p = c.grid().path(mp, goal_anchors(tp, tn, mn, reach), c.occupied_except(self), mn, c.caps_of(self));
         if (p.empty()) return 1 << 20;
         int cost = 0;
         Vec2i prev = mp;
@@ -406,8 +409,9 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         }
     }
     // Goals: tiles within reach of the target.
-    const auto path = c.grid().path(mp, goal_anchors(tp, tn, mn, reach), c.occupied_except(self), mn);
-    if (path.empty() || c.step_cost_ft(self, mp, path[0]) > s.budget.movement_ft) return end;
+    const auto path = c.grid().path(mp, goal_anchors(tp, tn, mn, reach), c.occupied_except(self), mn, c.caps_of(self));
+    if (path.empty()) return end;
+    if (const uint8_t m = c.step_mode(self, mp, path[0], c.step_cost_ft(self, mp, path[0])); m >= 0xFE) return end;   // feat/move-modes
     // About to leave a hostile's reach: Disengage first if a bonus Disengage is available
     // (granted by content, e.g. a bonus_action_grant feature).
     if (s.budget.bonus_action && !me->disengaged &&
