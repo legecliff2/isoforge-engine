@@ -295,6 +295,7 @@ void end_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev) {
         emit(ev, EventKind::ConditionRemoved, t->id, 0, int32_t(e.also));
     }
     bool still = held(e.condition);
+    if (e.control == uint8_t(ControlKind::Laughter)) still = true;   // 7.2v: it fell prone; it stays prone (stands up as usual)
     if (!e.no_condition && !still && t->has(e.condition)) {
         remove_condition(*t, e.condition);
         emit(ev, EventKind::SpellEffectEnded, t->id, 0, int32_t(e.spell_id), int32_t(e.condition));
