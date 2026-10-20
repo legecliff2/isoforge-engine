@@ -290,9 +290,12 @@ TEST_CASE("Hideous Laughter: the damage-triggered save has advantage (natural = 
             auto s = start({caster(), target(2)}, 30, -1, seed);
             REQUIRE(step(s, cast(1, kLaugh, 2, 1)).ok);
             REQUIRE(control_on(s, 2));
-            if (!adv) s.effects.back().repeat_save = RepeatSave::OnDamage;   // the same save without advantage
-            auto b = step(s, cast(1, kBlast, 2, 1));   // same turn: an extra action would fail, so use the spare budget
-            if (!b.ok) { end_turns_until(s, 1); b = step(s, cast(1, kBlast, 2, 1)); }
+            REQUIRE(step(s, {1, ActionKind::EndTurn}).ok);
+            end_turns_until(s, 1);   // the target's end-of-turn save is the same (normal) in both runs
+            REQUIRE(control_on(s, 2));
+            if (!adv) for (auto& e : s.effects) if (e.control != 0) e.repeat_save = RepeatSave::OnDamage;   // same save, no advantage
+            auto b = step(s, cast(1, kBlast, 2, 1));
+            INFO(b.error);
             REQUIRE(b.ok);
             int n = 0, k = 0;
             for (const auto& e : b.events) if (e.kind == EventKind::SavingThrowRolled && e.actor == 2 && ++k == 2) n = e.a;
