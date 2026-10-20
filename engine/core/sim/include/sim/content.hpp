@@ -88,6 +88,9 @@ struct Archetype {
     // Side of the footprint in tiles: footprint_of(size) for monster@3 / character@3, always 1 for
     // pre-@3 content (its size was descriptive; migration marker "size" in inert_mechanics).
     uint8_t footprint = 1;
+    // EC swarm: a monster tagged "swarm" (SRD "Swarm" trait): shares spaces both ways (Combat::occupied_except) and cannot regain
+    // HP or gain temp HP (Combatant::no_regain_hp). Squeezing through Tiny openings needs no grid change (no sub-tile openings).
+    bool swarm = false;
     std::vector<std::string> spell_ids;   // spellcasting.spells content ids (monster@3 / character@3)
     std::vector<std::string> innate_spell_ids;   // spellcasting.innate.* content ids (monster@4 / character@4); base.innate holds the rows
     // `multiattack` effect options as authored: option id + indices into base.attacks. ContentLibrary::add
@@ -100,6 +103,27 @@ struct Archetype {
         if (!ai) return std::nullopt;
         return assets::make_script_key(pack_id, *ai);
     }
+    // R-G12 transforms (VERSION_BUMP_BATCH 7.2q hand-off, sim side). Stat-block facts build_form checks: challenge.rating
+    // times 8 (1/8 -> 1, 1/4 -> 2, 1/2 -> 4, 1 -> 8; -1 = no rating, e.g. characters), speed.fly / speed.swim in feet, and
+    // the character level (sum of classes[] levels, else `level`; 0 for monsters).
+    int16_t cr_x8 = -1;
+    uint16_t fly_ft = 0, swim_ft = 0;
+    uint8_t char_level = 0;
+    // Transform features (effect kinds wild_shape / shapechanger), by feature_id. Form choice i (ActionRequest::form_archetype
+    // = i + 1) is forms[i] (Wild Shape: a beast archetype id) or shapes[i] (shapechanger: a form of the creature's own block).
+    struct FormFeature {
+        uint8_t kind = 0;                       // rules5e::FormKind: 2 Wild Shape, 3 shapechanger
+        std::vector<std::string> forms;         // Wild Shape: beast archetype ids, in content order
+        int16_t max_cr_x8 = 0;                  // Wild Shape: the druid level's max CR (x 8)
+        uint8_t level = 0;                      // Wild Shape: druid level
+        uint8_t no_fly_below = 8, no_swim_below = 4;   // Wild Shape: no fly / swim speed below these druid levels
+        struct Shape { std::string id; std::optional<CreatureSize> size; int16_t ac = -1; int16_t speed_ft = -1; };
+        std::vector<Shape> shapes;              // shapechanger forms (statistics other than these are the creature's own)
+        bool ai_prefer = false;                 // effect.ai == "prefer_beast": the built-in AI transforms (SUMMONS_TRANSFORMS 3.4)
+    };
+    std::map<uint32_t, FormFeature> form_features;
+    // Feature ids whose effect sets requires_humanoid_form (Wild Shape blocks them in a beast form, D7).
+    std::vector<uint32_t> humanoid_only_features;
     std::vector<EquipmentEntry> equipment;   // equipment[] in array order (priced materials; Combat copies it per combatant)
 };
 
@@ -133,6 +157,9 @@ private:
     std::shared_ptr<rules5e::SpellBook> spells_ = std::make_shared<rules5e::SpellBook>();
     const FeatureRegistry* features_ = &FeatureRegistry::builtin();
 };
+
+// challenge.rating ("1/8", "1/4", "1/2" or an integer / integer string) times 8; nullopt if malformed.
+std::optional<int> cr_x8_of(const assets::Json& rating);
 
 // Content damage type name ("fire") -> rules5e::DamageType; nullopt if unknown.
 std::optional<rules5e::DamageType> damage_type_from_name(const std::string& s);

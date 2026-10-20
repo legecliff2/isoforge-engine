@@ -254,10 +254,13 @@ CREATURE_FACTS = ("no_breath", "shapechanger", "evil")
 
 
 def creature_fact_warnings(doc) -> list[str]:
+    """R-G12 (7.2q): with a shapechanger trait present the boolean is read (the trait requires it), so its reserved
+    warning is dropped; the boolean without the trait stays legal and keeps the warning."""
     if not isinstance(doc, dict):
         return []
+    read = {"shapechanger"} if c4.has_effect_kind(doc, "shapechanger") else set()
     return [f"/{k}: {k} is reserved: the sim archetype loader does not read it yet (R-G11 creature fact, Combatant::{k}; "
-            "Engine Core), so it has no effect until that loader lands" for k in CREATURE_FACTS if k in doc]
+            "Engine Core), so it has no effect until that loader lands" for k in CREATURE_FACTS if k in doc and k not in read]
 
 
 def chunk_warnings(doc) -> list[str]:
@@ -337,7 +340,8 @@ UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "zone", "
                   "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition")}
 
 
-FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_damage")   # R-G15, spell_loader.cpp
+FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_damage",   # R-G15, spell_loader.cpp
+                     "teleport")   # R-G9 (sim #144)
 TIMED_BY_DURATION = ("hp_pool", "sustained_damage")   # their timer is the spell's duration in rounds
 
 
@@ -383,11 +387,12 @@ def check_spell(doc, errs, ctx):
         errs.append("casting_time.trigger.or_targeted_by is only for being_hit")
     if (kind == "ac_bonus") != (doc["duration"]["kind"] == "until_start_of_caster_turn"):
         errs.append("ac_bonus effects last until_start_of_caster_turn (and only they use it)")
-    if "targets" in doc and kind not in ("save", "heal", "apply_condition"):
+    if "targets" in doc and kind not in ("save", "heal", "apply_condition", "polymorph"):   # polymorph: its own wording
         errs.append(f"targets not allowed on a {kind} effect (one target, per dart/beam, or self)")
     if kind in TIMED_BY_DURATION and doc["duration"]["kind"] not in ("rounds", "minutes", "hours"):
         errs.append(f"{kind} needs a rounds, minutes or hours duration")
     check_spell_zone(doc, errs)
+    errs += c4.check_polymorph_spell(doc, ctx)
     refs = [("effect blocks_spell", eff.get("blocks_spell"))] + \
            [("casting_time.trigger.or_targeted_by", r) for r in ct.get("trigger", {}).get("or_targeted_by", [])]
     for where, ref in refs:
@@ -580,6 +585,7 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         m_errs, m_warns = c4.check_metamagic(doc)
         errs += [f"{rel}: {m}" for m in m_errs]
         warns += [f"{rel}: {m}" for m in m_warns]
+        errs += [f"{rel}: {m}" for m in c4.check_slot_recovery(doc)]   # 7.2n slot_recovery (sim #148 load errors)
         if "gaze" in row.effect_kinds:   # 7.2p gaze (@4): loader defaults left implicit
             g_errs, g_warns = c4.check_gaze(doc)
             errs += [f"{rel}: {m}" for m in g_errs]
@@ -603,7 +609,8 @@ def authored_inert_findings(doc: dict, tag: str) -> list[str]:
 
 COMMON2_ID = "https://isoforge.dev/schemas/common/v2.schema.json"
 NATIVE_EFFECT_ARMS = {"on_event": "on_event_effect", "apply_modifier": "apply_modifier_effect",
-                      "grant_action": "grant_action_effect", "heal_pool": "heal_pool_effect"}
+                      "grant_action": "grant_action_effect", "heal_pool": "heal_pool_effect",
+                      "wild_shape": "wild_shape_effect", "shapechanger": "shapechanger_effect"}   # R-G12 7.2q
 
 
 def schema_message(e, registry: Registry | None = None, drill: bool = True) -> str:
@@ -675,6 +682,7 @@ def validate_doc(rel: str, doc: dict, tag: str, registry: Registry, by_tag: dict
         warns += [f"{rel}: {w}" for w in chunk_warnings(doc)]
     if not schema_errs and typ == "spell":
         warns += [f"{rel}: {w}" for w in spell_material_warnings(doc)]
+        warns += [f"{rel}: {w}" for w in c4.polymorph_spell_warnings(doc, ctx)]
     if not schema_errs and typ in ("monster", "character"):
         warns += [f"{rel}: {w}" for w in creature_fact_warnings(doc)]
     row = c4.tag_row(tag)
@@ -748,7 +756,19 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[s
         if dep.id != pid:
             for cid, rel in dep.content_ids.items():
                 types.setdefault(cid, _schema_type(dep.dir / rel))
-    ctx = {"ids": ids, "spell_ids": spell_ids, "items": item_ids, "external_ok": external_ok, "types": types}
+    # R-G12 (7.2q) transform forms: monster content id -> (creature type, challenge.rating), dependency packs included
+    monsters = {d.get("id"): c4.monster_facts(d) for r, d in docs.items()
+                if r != "manifest.json" and isinstance(d, dict) and str(d.get("$schema", "")).startswith("monster@")}
+    for dep in order:
+        if dep.id != pid:
+            for cid, rel in dep.content_ids.items():
+                if cid not in monsters and (rel.startswith("monsters/") or _schema_type(dep.dir / rel) == "monster"):
+                    try:
+                        monsters[cid] = c4.monster_facts(json.loads((dep.dir / rel).read_text(encoding="utf-8")))
+                    except (OSError, ValueError):
+                        pass
+    ctx = {"ids": ids, "spell_ids": spell_ids, "items": item_ids, "external_ok": external_ok, "types": types,
+           "monsters": monsters}
     scripts = {f.relative_to(pack).as_posix() for f in pack.glob("scripts/**/*.luau")}
     script_re = re.compile(r"^scripts/.+\.luau$")
 
