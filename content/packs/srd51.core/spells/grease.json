@@ -1,0 +1,75 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.grease",
+  "name": "Grease",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "Slick grease covers the ground in a 10-foot square centered on a point within range and turns it into difficult terrain for the duration. When the grease appears, each creature standing in its area must succeed on a dexterity saving throw or fall prone. A creature that enters the area or ends its turn there must also succeed on a dexterity saving throw or fall prone.",
+  "level": 1,
+  "school": "conjuration",
+  "classes": [
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "A bit of pork rind or butter"
+    }
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1
+  },
+  "effects": [
+    {
+      "kind": "zone",
+      "zone": {
+        "shape": "cube",
+        "size_ft": 10,
+        "anchor": "point",
+        "flags": [
+          "difficult"
+        ],
+        "triggers": [
+          {
+            "on": "zone_appear",
+            "group": 0,
+            "effect": {
+              "kind": "save",
+              "ability": "dex",
+              "condition": "prone"
+            }
+          },
+          {
+            "on": "zone_enter",
+            "group": 0,
+            "effect": {
+              "kind": "save",
+              "ability": "dex",
+              "condition": "prone"
+            }
+          },
+          {
+            "on": "zone_end_turn",
+            "group": 0,
+            "effect": {
+              "kind": "save",
+              "ability": "dex",
+              "condition": "prone"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

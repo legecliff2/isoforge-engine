@@ -132,7 +132,8 @@
       "srd51.spell.cure_wounds",
       "srd51.spell.healing_word",
       "srd51.spell.inflict_wounds",
-      "srd51.spell.hold_person"
+      "srd51.spell.hold_person",
+      "srd51.spell.lesser_restoration"
     ]
   }
 }
