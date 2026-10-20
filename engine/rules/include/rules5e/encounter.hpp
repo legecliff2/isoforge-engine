@@ -203,6 +203,9 @@ struct ActionRequest {
     // appended (SRD 5.1 movement modes, feat/move-modes; log_hash 0xC3 when non-zero): on a Move, the speed used:
     // 0 walk, 1 fly, 2 swim, 3 climb. The mode needs a speed (else "no such speed"); see move_allowance.
     uint8_t move_mode = 0;
+    // appended (vision 7.2x; log_hash 0xC6 when set): on an Attack against a creature hidden from the attacker, the tile the
+    // attacker guesses (sim tile, opaque to rules; EncounterHooks::guess_correct). Required then; ignored otherwise.
+    bool has_guess = false; int32_t guess_x = 0, guess_y = 0;
 };
 
 enum class EventKind : uint8_t {
@@ -482,6 +485,28 @@ struct CoverQuery {
 };
 constexpr int cover_bonus(Cover c) { return c == Cover::Half ? 2 : c == Cover::ThreeQuarters ? 5 : 0; }
 
+// Vision (SRD 5.1 "Vision and Light", "Unseen Attackers and Targets", "Hiding"; VERSION_BUMP_BATCH 7.2x). Sim answers
+// EncounterHooks::sight per viewer -> subject pair from positions, light and senses; rules never interpret positions.
+enum class Light : uint8_t { Bright = 0, Dim = 1, Dark = 2 };
+enum class Obscured : uint8_t { None = 0, Light = 1, Heavy = 2 };
+// The sense the viewer perceives the subject with: Sight (normal vision or darkvision), a special sense, or None.
+enum class Sense : uint8_t { None = 0, Sight = 1, Blindsight = 2, Tremorsense = 3, Truesight = 4 };
+struct Sight {
+    Light light_at_subject = Light::Bright;
+    Light light_at_viewer = Light::Bright;
+    Obscured obscured = Obscured::None;   // between viewer and subject, or around the subject
+    bool can_see = true;                  // sees it (any sense counted as seeing: sight, blindsight, truesight, tremorsense)
+    bool perceives = true;                // can see or hear it
+    Sense sense = Sense::Sight;
+    friend constexpr bool operator==(const Sight&, const Sight&) = default;
+};
+// Dim light or light obscurement: disadvantage on Wisdom (Perception) checks that rely on sight; passive -5. A check
+// relies on sight unless the viewer perceives the subject with a special sense (sense None: it is still looking).
+constexpr bool sight_perception_disadvantage(const Sight& v) {
+    return (v.sense == Sense::Sight || v.sense == Sense::None) && (v.light_at_subject == Light::Dim || v.obscured == Obscured::Light);
+}
+constexpr int passive_sight_penalty(const Sight& v) { return sight_perception_disadvantage(v) ? -5 : 0; }
+
 struct EncounterHooks {
     // Checked after every state change. Empty = default_end_condition.
     EndConditionFn end_condition;
@@ -584,6 +609,13 @@ struct EncounterHooks {
     // bonus; area: Total skips the target). SpellDef::ignores_cover drops Half / ThreeQuarters (Sacred Flame), never Total.
     // Empty = Cover::None everywhere (pre-7.2t behaviour, goldens unchanged).
     std::function<Cover(const EncounterState&, const CoverQuery&)> cover;
+    // appended (vision, 7.2x): what `viewer` perceives of `subject`. Pure: a function of the state and sim's positions as
+    // they were when the step began (rules passes the start-of-step state during a step), never of rng; nothing is logged.
+    // Empty = everyone sees everyone (Sight{} defaults; pre-7.2x behaviour, goldens unchanged).
+    std::function<Sight(const EncounterState&, const Combatant& viewer, const Combatant& subject)> sight;
+    // appended (7.2x): an Attack on a creature hidden from the attacker names a tile (ActionRequest::has_guess). Is the
+    // target there? Pure like `sight`. Empty = yes. A wrong guess misses automatically (the d20 is still rolled).
+    std::function<bool(const EncounterState&, const Combatant& attacker, const Combatant& target, int32_t x, int32_t y)> guess_correct;
 };
 
 // R-G11: a live zone or aura (ZONES_AURAS.md §2.6). anchor_x / anchor_y: a point zone's sim tile, opaque to rules (Q1).
@@ -656,6 +688,10 @@ struct EncounterState {
     uint32_t next_summon_id = 0;
     uint32_t summons = 0;
     std::vector<ActiveSummonWeapon> summon_weapons{};   // appended (R-G12 PR 3), creation order; counted in `summons`
+    // appended (vision 7.2x; Combat::hash 0xC5 while non-empty): `who` is hidden from `from` (Hide succeeded: unseen by
+    // `from` and Stealth >= its passive Perception). Ends when `who` attacks, or when `from` can see it at a step's start.
+    struct Hidden { CombatantId who = 0, from = 0; int16_t stealth = 0; friend bool operator==(const Hidden&, const Hidden&) = default; };
+    std::vector<Hidden> hidden{};
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call
@@ -789,6 +825,11 @@ uint64_t surprised_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222
 // Haste / Slow themselves are modifiers (modifiers_digest, 0xA2, which folds repeat_save fields only when set).
 // Petrifying Gaze (Combat::hash 0xAE): some creature has its eyes averted / their ids.
 bool has_gaze_state(const EncounterState&);
+// Vision (7.2x). sight(): the hook's answer (the start-of-step state during a step), or Sight{} without a hook / an unknown id.
+Sight sight(const EncounterState&, CombatantId viewer, CombatantId subject);
+bool is_hidden_from(const EncounterState&, CombatantId who, CombatantId from);
+bool has_hidden_state(const EncounterState&);   // Combat::hash 0xC5 folds hidden_digest only while true
+uint64_t hidden_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 uint64_t gaze_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 // R-G12 (Combat::hash 0xAF): summon / transform state. has_summon_state: something was transformed (or, rules PR 2, summoned)
 // this encounter. summons_digest: summon id counter u32, summon count u32 (0 / 0 until rules PR 2), transforms u32, then per
