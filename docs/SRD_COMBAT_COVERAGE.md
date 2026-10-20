@@ -673,7 +673,7 @@ Audit of #165's footprints against the SRD size rules.
 | Areas and zones hit any occupied tile | done (#165 / R-G11) |
 | Size changes (forms) keep the footprint in sync | done (#165) |
 | Move through an ally's space; through a hostile's only if 2+ sizes apart; that space is difficult terrain; can't end the move there | **fixed here** (sim `plan_step`; a Step or EndTurn that would end in another space is refused unless no step out is possible) |
-| Squeezing: a Large+ fits a space one size smaller; +1 ft per ft; disadvantage on its attacks and Dex saves; advantage on attacks against it | **fixed here** (opt-in Step `request.squeeze = 1`; rules5e `Combatant::squeezing`, `ActionRequest::squeeze`; tags 0xC0 / 0xC1) |
+| Squeezing: a Large+ fits a space one size smaller; +1 ft per ft; disadvantage on its attacks and Dex saves; advantage on attacks against it | **fixed here** (opt-in Step `request.squeeze = 1`; rules5e `Combatant::squeezing`, `ActionRequest::squeeze`; tags 0xC1 / 0xC2) |
 | Tiny creatures sharing a space (several Tiny in one tile) | deferred: the grid holds one creature per tile |
 | Medium squeezing into a Small space | deferred: below one tile, not representable |
 | Enlarge / Reduce | deferred: no such spell in content yet |

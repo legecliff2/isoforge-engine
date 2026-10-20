@@ -191,7 +191,7 @@ struct ActionRequest {
     // appended (R-G12 rules PR 3, D6; log_hash 0xBE): Attack by a Pact of the Chain warlock: the familiar (its summon) makes
     // this attack with its reaction (attack_index into the familiar's attacks); it costs one of the warlock's attacks.
     CombatantId familiar_id = 0;
-    // appended (SRD 5.1 Squeezing, feat/size-space; log_hash 0xC1 when non-zero): on a Move, 1 = start squeezing, 2 = stop
+    // appended (SRD 5.1 Squeezing, feat/size-space; log_hash 0xC2 when non-zero): on a Move, 1 = start squeezing, 2 = stop
     // (Combatant::squeezing). Sim fact derived from the footprint fit; 0 = unchanged.
     uint8_t squeeze = 0;
 };
