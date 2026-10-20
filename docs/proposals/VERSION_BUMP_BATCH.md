@@ -2006,6 +2006,41 @@ Hand-off (sim / T&C):
   links cleaned up); at encounter end those come before the contiguous `SummonEnded{b = 5}` block.
 - Deviation: filling the 0xAF counter / count fields changes transform-only 0xAF bytes vs PR 1 (no golden folds 0xAF yet).
 
+### 7.2s R-G12 rules PR 3: Spiritual Weapon and Pact of the Chain (rules side) and hand-off
+
+(Numbered after 7.2r.) Spec: `docs/proposals/SUMMONS_TRANSFORMS.md` D3, D6, PR split §2.10 item 3.
+
+Rules:
+
+- **Spiritual Weapon (D3).** `SpellEffectKind::SummonWeapon` (appended) with `SpellDef::summon_weapon` = `SummonWeaponSpec{
+  upcast_every (2), reach_ft (5), move_ft (20)}`; the attack uses `dice`, `damage_type`, `add_spellcasting_modifier`,
+  `upcast_dice` (per `upcast_every` levels above the spell's; SRD +1d8 per two). Not a combatant: `EncounterState::summon_weapons`
+  (appended) rows `ActiveSummonWeapon{token_id, owner, spell_id, slot_level, end_round}`; no HP, no turn, not a target. The cast
+  (content: bonus action) targets the creature of its first attack, or the caster for none (`spiritual weapon: one target`,
+  `spiritual weapon: primary effect only`). The token id comes from the summon counter like PR 2's ids (filled into the logged
+  `summon_ids`; live refused, replay checked). Events: `Summoned{actor = caster, target = token id, a = spell, b = 0, c = -1}`,
+  then its melee spell attack (`AttackResolved` actor = caster), before `SpellResolved`. Later turns: `ActionKind::SummonWeaponAttack`
+  (appended, `spell_id` names the row, target): the caster's bonus action (`spiritual weapon: none active`, `no bonus action
+  available`, `bad target`, `target is dead`, `incapacitated`); the 20 ft move is sim's. `legal_actions` lists it per hostile with no reach check: **sim filters weapon-attack reach** (5 ft of the token after its move) in its legal-action view. Tiles: the cast's `summon_tiles[0]` (spawn) and a `SummonWeaponAttack`'s `summon_tiles[0]` (move) are stored in the row (`has_tile`, `tile_x`, `tile_y`) and logged (0xBC); tile contract (EC, SUMMONS_TRANSFORMS.md §3.2): the cast needs exactly one spawn tile (zero or several: `spiritual weapon: one
+tile`), any in-bounds tile within 60 ft of the caster, the token occupying nothing; `SummonWeaponAttack`: empty = no move, else
+one tile at most 20 ft from the stored tile (several: `spiritual weapon: one tile`), reach 5 ft from the tile after the move.
+Sim validates live; on replay sim re-checks the logged tiles (failure = replay desync error); rules trusts the log. 0xAF adds the weapon rows only while `summon_weapons` is non-empty. A familiar never attacks on its own turn (`familiar_attack: a familiar cannot attack on its own turn`; `legal_actions` lists no Attack for it): the Pact trade is its only attack. It also takes no opportunity attack (`may_react` excludes a familiar from LeavingReach windows, so no window is offered) and cannot ready an attack (`familiar_attack: a familiar cannot ready an attack`).
+  Duration from the spell (1 minute = 10 rounds): `SummonEnded{b = 0}` at the start of the owner's turn in `end_round`. No
+  concentration. Encounter end: in the same pass as summons, ascending by id (`SummonEnded{b = 5}`). `summons` counts it, so 0xAF
+  folds; 0xAF layout gains the weapon rows after the summon records (SIM_EVENTS.md).
+- **Pact of the Chain (D6).** `Combatant::pact_of_chain` (appended, content). `ActionRequest::familiar_id` (appended, `log_hash`
+  0xBE): an `Attack` whose attack is made by the warlock's familiar (its Telepathic summon) with the familiar's attack
+  `attack_index`, spending one of the warlock's attacks (an Extra Attack remaining, or the Attack action) and the familiar's
+  reaction (`reaction_used`). Refusals: `familiar_attack: needs Pact of the Chain`, `familiar_attack: one attack of the Attack
+  action` (bonus / multiattack), `familiar_attack: not your familiar`, `familiar_attack: the familiar cannot react`, `bad
+  target`, `bad attack index`, `no action available`; on another kind `familiar_id: Attack only`. Events: the familiar's
+  `AttackResolved` (actor = familiar); no reaction window is opened (the trade is the warlock's choice).
+
+Hand-off: sim folds 0xBE (non-zero only) and the 0xAF weapon rows; spawns / moves / removes the weapon token (`TokenSpawned` /
+`TileMoved` / `TokenRemoved`, ids from `Summoned.target`); content: spell@1 `summon_weapon` kind and the Chain feature flag.
+Deviation: the proposal's "reuse `sustain` with a weapon flag" is a dedicated `SummonWeaponAttack` kind instead (clearer
+validation, no Heat Metal coupling).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain

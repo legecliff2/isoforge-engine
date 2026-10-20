@@ -189,11 +189,21 @@ void check_end(EncounterState& s, std::vector<Event>& ev) {
     if (s.summons != 0) {   // R-G12 PR 2 (D15): every summon ends first, ascending id (a transformed summon just ends: no Reverted)
         std::vector<CombatantId> ids;
         for (const auto& c : s.combatants) if (c.summoner != 0 && !c.gone) ids.push_back(c.id);
+        for (const auto& w : s.summon_weapons) ids.push_back(w.token_id);   // PR 3: weapon tokens in the same pass, by token id
         std::sort(ids.begin(), ids.end());
         // their own concentration ends first, before the contiguous teardown block (teardown_begin stays one block)
-        for (CombatantId id : ids) if (find(s, id)->concentration_spell != 0) end_concentration(s, id, ev);
-        ids.erase(std::remove_if(ids.begin(), ids.end(), [&](CombatantId id) { return find(s, id)->gone; }), ids.end());
-        for (CombatantId id : ids) end_summon(s, *find_mut(s, id), 5, ev);
+        for (CombatantId id : ids) if (const Combatant* c = find(s, id); c && c->concentration_spell != 0) end_concentration(s, id, ev);
+        ids.erase(std::remove_if(ids.begin(), ids.end(), [&](CombatantId id) { const Combatant* c = find(s, id); return c && c->gone; }), ids.end());
+        for (CombatantId id : ids) {
+            if (Combatant* c = find_mut(s, id)) { end_summon(s, *c, 5, ev); continue; }
+            for (std::size_t k = 0; k < s.summon_weapons.size(); ++k) {
+                if (s.summon_weapons[k].token_id != id) continue;
+                const ActiveSummonWeapon w = s.summon_weapons[k];
+                s.summon_weapons.erase(s.summon_weapons.begin() + std::ptrdiff_t(k));
+                emit(ev, EventKind::SummonEnded, w.owner, w.token_id, int32_t(w.spell_id), 5);
+                break;
+            }
+        }
     }
     // R-G12 (D15, SUMMONS_TRANSFORMS.md §3.5): every transform ends with the encounter, ascending id, before EncounterEnded
     if (s.transforms != 0) {
@@ -705,6 +715,7 @@ struct Ctx {
     // R-G12 PR 2: the cast's creature choices (set around resolve_spell only), the creatures built by the Summon effect (placed
     // by attempt after the step: appending to combatants would move the step's Combatant references), and the ids they took.
     const std::vector<uint8_t>* summon_archetypes = nullptr;
+    const std::vector<ActionRequest::SummonTile>* summon_tiles = nullptr;   // R-G12 PR 3: the weapon's spawn tile
     std::vector<std::pair<Combatant, uint8_t>> summons_pending{};
     SummonSpec summon_spec{};
     std::vector<CombatantId> assigned_summon_ids{};
@@ -890,6 +901,8 @@ std::vector<CombatantId> initiative_ids(const EncounterState& s) {
 
 bool may_react(const EncounterState& s, const Combatant& c, ReactionTrigger t) {
     if (c.lethargy != 0 || (!s.modifiers.empty() && has_marker(s, c.id, ModStat::Slow))) return false;   // Haste ended / Slow
+    // R-G12 PR 3 (SRD Find Familiar): a familiar never attacks, so it takes no opportunity attack (Pact's trade is its only one)
+    if (t == ReactionTrigger::LeavingReach && c.summoner != 0 && c.summon_control == uint8_t(SummonControl::Telepathic)) return false;
     return !c.dead && !c.surprised && can_act(c) && !c.reaction_used &&
            c.reaction_policy[std::size_t(t)] != ReactionPolicy::Never;
 }
@@ -1965,6 +1978,12 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
     }
     emit(ev, EventKind::TurnStarted, c.id, 0, s.round);
     if (c.form != FormKind::None && c.form_end_round != 0 && s.round >= c.form_end_round) form_reverted(c, 0, 0, ev);   // R-G12
+    for (std::size_t k = 0; k < s.summon_weapons.size();) {   // R-G12 PR 3: a Spiritual Weapon's minute ends (SummonEnded b = 0)
+        const ActiveSummonWeapon w = s.summon_weapons[k];
+        if (w.owner != c.id || w.end_round == 0 || s.round < w.end_round) { ++k; continue; }
+        s.summon_weapons.erase(s.summon_weapons.begin() + std::ptrdiff_t(k));
+        emit(ev, EventKind::SummonEnded, w.owner, w.token_id, int32_t(w.spell_id), 0);
+    }
     drop_caster_turn_modifiers(s, c.id, ev);
     for (const auto& m : s.modifiers)   // Heroism: temp hp again at the start of each turn
         if (m.target == c.id && m.spec.stat == ModStat::TempHp && m.spec.per_turn && !c.dead && !c.no_regain_hp && m.spec.bonus > c.temp_hp) {
@@ -2194,6 +2213,26 @@ bool spend_action(TurnBudget& b, const Combatant& c, ActionKind k, bool bonus) {
 StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req);
 
 // Resolves ONE effect (def.kind and its fields) over T. Returns the targets it affected (for rider effects).
+// R-G12 rules PR 3 (D3): the Spiritual Weapon's melee spell attack (the cast's, and each later bonus action): dice + upcast
+// (upcast_dice per summon_weapon.upcast_every levels above the spell's) + the spellcasting modifier, magical force (content).
+bool summon_weapon_attack(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& def, uint8_t lvl, Combatant& t,
+                          std::vector<Event>& ev) {
+    DiceExpr d = def.dice;
+    const int every = def.summon_weapon.upcast_every == 0 ? 1 : def.summon_weapon.upcast_every;
+    if (lvl > def.level) d.count = uint8_t(std::min(255, int(d.count) + int(def.upcast_dice) * ((lvl - def.level) / every)));
+    if (def.add_spellcasting_modifier) d.bonus = int16_t(d.bonus + modifier(a.abilities, a.spellcasting_ability));
+    Attack atk{def.content_id, int8_t(spell_attack_bonus(a, def)), d, def.damage_type, def.summon_weapon.reach_ft, false, false};
+    atk.qualifiers = def.magical ? kAttackMagical : 0;
+    return do_attack(s, ctx, a, t, atk, false, ev, false, def.id);
+}
+
+uint32_t spell_rounds(const SpellDef& d) {
+    if (d.duration == SpellDuration::Rounds) return d.duration_amount;
+    if (d.duration == SpellDuration::Minutes) return uint32_t(d.duration_amount) * 10u;
+    if (d.duration == SpellDuration::Hours) return uint32_t(d.duration_amount) * 600u;
+    return 0;
+}
+
 // EC spider follow-up (flagged): the giant spider bite's 0-HP clause (SpellDef::zero_hp_*): stable, then one timed effect
 // (zero_hp_condition for zero_hp_rounds; 600 = 1 hour) that also holds zero_hp_while. Immunity to either skips that condition.
 void zero_hp_clause(EncounterState& s, const Combatant& a, Combatant& t, const SpellDef& def, std::vector<Event>& ev) {
@@ -2598,6 +2637,21 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         if (def.concentration && !ctx.summons_pending.empty()) a.concentration_spell = def.id;
         break;
     }
+    case SpellEffectKind::SummonWeapon: {   // R-G12 PR 3 (D3): the token, then (a creature target) its first attack
+        const CombatantId id = next_summon_ids(s, 1)[0];
+        ctx.assigned_summon_ids = {id};
+        const uint32_t rounds = spell_rounds(def);
+        ActiveSummonWeapon w{id, a.id, def.id, lvl, rounds ? uint32_t(s.round) + rounds : 0u};
+        if (ctx.summon_tiles && !ctx.summon_tiles->empty()) {
+            w.has_tile = true; w.tile_x = (*ctx.summon_tiles)[0].x; w.tile_y = (*ctx.summon_tiles)[0].y;
+        }
+        s.summon_weapons.push_back(w);
+        s.next_summon_id = id + 1;
+        ++s.summons;
+        emit(ev, EventKind::Summoned, a.id, id, int32_t(def.id), 0, -1);
+        if (T.size() == 1 && T[0] != &a && !T[0]->dead && summon_weapon_attack(s, ctx, a, def, lvl, *T[0], ev)) affected.push_back(T[0]);
+        break;
+    }
     case SpellEffectKind::AcBonus: case SpellEffectKind::Counter: break;   // reactions only
     }
     return affected;
@@ -2767,6 +2821,13 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (ctx.replay_only && req.summon_ids != next_summon_ids(s, ar.size())) return fail("summon_ids: do not match the summon counter");
         break;
     }
+    case SpellEffectKind::SummonWeapon:   // R-G12 PR 3: target = the creature its first attack hits, or the caster (no attack)
+        if (T.size() != 1) return fail("spiritual weapon: one target");
+        if (T[0] != &a && T[0]->dead) return fail("target is dead");
+        if (req.summon_tiles.size() != 1) return fail("spiritual weapon: one tile");   // the spawn tile (sim checks 60 ft)
+        if (!ctx.replay_only && !req.summon_ids.empty()) return fail("summon_ids: assigned by rules (leave empty)");
+        if (ctx.replay_only && req.summon_ids != next_summon_ids(s, 1)) return fail("summon_ids: do not match the summon counter");
+        break;
     case SpellEffectKind::Zone:   // R-G11: cast at a point (zone_x / zone_y) or on the caster; no creature targets
         if (T.size() != 1 || T[0] != &a) return fail("zone: no creature targets");
         if (req.has_zone_dest && def.zone.anchor == ZoneAnchor::Creature) return fail("zone: an aura has no destination");
@@ -2778,7 +2839,12 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (x.kind == SpellEffectKind::Polymorph) return fail("polymorph: primary effect only");
     for (const SpellEffect& x : def.extra_effects)
         if (x.kind == SpellEffectKind::Summon) return fail("summon: primary effect only");
-    if ((!req.summon_archetypes.empty() || !req.summon_ids.empty() || !req.summon_tiles.empty()) && def.kind != SpellEffectKind::Summon)
+    for (const SpellEffect& x : def.extra_effects)
+        if (x.kind == SpellEffectKind::SummonWeapon) return fail("spiritual weapon: primary effect only");
+    if (!req.summon_archetypes.empty() && def.kind != SpellEffectKind::Summon) return fail("summon: not a summon spell");
+    if (!req.summon_tiles.empty() && def.kind != SpellEffectKind::Summon && def.kind != SpellEffectKind::SummonWeapon)
+        return fail("summon: not a summon spell");
+    if (!req.summon_ids.empty() && def.kind != SpellEffectKind::Summon && def.kind != SpellEffectKind::SummonWeapon)
         return fail("summon: not a summon spell");
     if (req.form_archetype != 0 && def.kind != SpellEffectKind::Polymorph) return fail("form_archetype: not a polymorph spell");
     if ((req.has_zone_dest || !req.zone_excluded.empty()) && def.kind != SpellEffectKind::Zone) return fail("zone: not a zone spell");
@@ -2842,7 +2908,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         ctx.has_zone_end = req.has_zone_end; ctx.zone_x2 = req.zone_x2; ctx.zone_y2 = req.zone_y2;
         ctx.zone_side = req.zone_side; ctx.zone_ring = req.zone_ring;
         ctx.form_archetype = req.form_archetype;
-        ctx.summon_archetypes = &req.summon_archetypes;
+        ctx.summon_archetypes = &req.summon_archetypes; ctx.summon_tiles = &req.summon_tiles;
         ctx.ranged_disadvantage = req.beyond_normal_range || req.ranged_hostile_within_5ft;   // EC spider follow-up (flagged)
         resolve_spell(s, ctx, a, def, lvl, T, req.target_within_5ft, out.events);
         ctx.ranged_disadvantage = false;
@@ -2850,7 +2916,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         ctx.forced_feet = 0; ctx.teleport_feet = 0; ctx.has_teleport_dest = false; ctx.teleport_x = 0; ctx.teleport_y = 0;
         ctx.has_zone_dest = false; ctx.zone_x = 0; ctx.zone_y = 0; ctx.zone_excluded = nullptr;
         ctx.has_zone_end = false; ctx.zone_x2 = 0; ctx.zone_y2 = 0; ctx.zone_side = 0; ctx.zone_ring = false;
-        ctx.form_archetype = 0; ctx.summon_archetypes = nullptr;
+        ctx.form_archetype = 0; ctx.summon_archetypes = nullptr; ctx.summon_tiles = nullptr;
         defer_forced(s, ctx, out.events);   // R-G9: placeholders after every save and damage of the spell, before SpellResolved
     }
     emit(out.events, countered ? EventKind::SpellCountered : EventKind::SpellResolved, a.id, ids[0], int32_t(def.id), lvl);
@@ -3527,8 +3593,13 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
     if (a.surprised && req.kind != ActionKind::EndTurn) return fail("surprised: can only end the turn");
     if (req.kind != ActionKind::CommandSummons && (req.command != 0 || !req.command_ids.empty()))
         return fail("command: CommandSummons only");
-    if (req.kind != ActionKind::CastSpell && (!req.summon_archetypes.empty() || !req.summon_ids.empty() || !req.summon_tiles.empty()))
+    if (req.kind != ActionKind::Attack && req.familiar_id != 0) return fail("familiar_id: Attack only");
+    if (req.kind != ActionKind::CastSpell && (!req.summon_archetypes.empty() || !req.summon_ids.empty() ||
+                                              (!req.summon_tiles.empty() && req.kind != ActionKind::SummonWeaponAttack)))
         return fail("summon: not a summon spell");
+    // R-G12 PR 3 (SRD Find Familiar): a familiar never attacks on its own turn; Pact of the Chain's trade is its only attack
+    if (a.summoner != 0 && a.summon_control == uint8_t(SummonControl::Telepathic) && req.kind == ActionKind::Attack)
+        return fail("familiar_attack: a familiar cannot attack on its own turn");
     // R-G12 PR 2 (D4): an uncommanded (or told to defend) summon that takes commands only Dodges: SRD "it defends itself"
     if (awaits_command(a) && req.kind != ActionKind::EndTurn && req.kind != ActionKind::Dodge)
         return fail("summon not commanded: Dodge only");
@@ -3687,6 +3758,26 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         check_end(s, out.events);
         return out;
     }
+    case ActionKind::SummonWeaponAttack: {   // R-G12 PR 3 (D3): bonus action: the weapon moves (sim) and attacks
+        ActiveSummonWeapon* w = nullptr;
+        for (auto& x : s.summon_weapons) if (x.owner == a.id && x.spell_id == req.spell_id) { w = &x; break; }
+        if (req.summon_tiles.size() > 1) return fail("spiritual weapon: one tile");
+        if (!w) return fail("spiritual weapon: none active");
+        if (is_incapacitated(a)) return fail("incapacitated");
+        if (!b.bonus_action) return fail("no bonus action available");
+        Combatant* t = find_mut(s, req.target);
+        if (!t || t == &a) return fail("bad target");
+        if (t->dead) return fail("target is dead");
+        const SpellDef* def = spell_def(s, w->spell_id);
+        if (!def) return fail("unknown spell");
+        const uint8_t lvl = w->slot_level;
+        if (!req.summon_tiles.empty()) { w->has_tile = true; w->tile_x = req.summon_tiles[0].x; w->tile_y = req.summon_tiles[0].y; }
+        b.bonus_action = false;
+        s.budget = b;
+        summon_weapon_attack(s, ctx, a, *def, lvl, *t, out.events);
+        check_end(s, out.events);
+        return out;
+    }
     case ActionKind::CommandSummons: {   // R-G12 PR 2: verbal (conjure) / telepathic: free; Animate Dead: the bonus action
         if (req.command != 1 && req.command != 2) return fail("command: 1 act or 2 defend");
         if (is_incapacitated(a)) return fail("incapacitated");
@@ -3780,6 +3871,31 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         return out;
     case ActionKind::Attack: {
         if (req.special != 0) return special_action(s, ctx, a, b, req);
+        if (req.familiar_id != 0) {   // R-G12 PR 3 (D6): Pact of the Chain: one of the Attack action's attacks, made by the familiar
+            if (!a.pact_of_chain) return fail("familiar_attack: needs Pact of the Chain");
+            if (req.as_bonus_action || req.bonus_option != 0 || req.multiattack != 0 || b.sequence != 0)
+                return fail("familiar_attack: one attack of the Attack action");
+            Combatant* f = find_mut(s, req.familiar_id);
+            if (!f || f->summoner != a.id || f->gone || f->summon_control != uint8_t(SummonControl::Telepathic))
+                return fail("familiar_attack: not your familiar");
+            if (f->reaction_used || f->dead || f->hp <= 0 || is_incapacitated(*f)) return fail("familiar_attack: the familiar cannot react");
+            Combatant* t = find_mut(s, req.target);
+            if (!t || t == &a || t == f) return fail("bad target");
+            if (t->dead) return fail("target is dead");
+            if (charmed_by(s, f->id, t->id)) return fail("a charmed creature cannot attack its charmer");
+            if (req.attack_index >= f->attacks.size()) return fail("bad attack index");
+            if (b.attacks_remaining > 0) --b.attacks_remaining;
+            else if (spend_action(b, a, req.kind, false)) {
+                b.loading_fired = 0;
+                b.attacks_remaining = uint8_t(a.attacks_per_action > 1 ? a.attacks_per_action - 1 : 0);
+            } else return fail("no action available");
+            s.budget = b;
+            f->reaction_used = true;
+            do_attack(s, ctx, *f, *t, f->attacks[req.attack_index], req.target_within_5ft, out.events,
+                      req.ranged_hostile_within_5ft || req.beyond_normal_range, 0, req.ally_near_target, nullptr, false);
+            check_end(s, out.events);
+            return out;
+        }
         // A bonus-action attack is a granted trigger rider (Rampage: bonus_attack_grant = index + 1) or a compiled option
         // (bonus_option = 1 + index into bonus_attacks).
         const BonusAttack* bopt = nullptr;
@@ -3881,6 +3997,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
     case ActionKind::Ready: {
         const auto& rk = req.ready_kind;
         if (req.multiattack != 0) return fail("a readied action is a single attack");
+        if (rk == ActionKind::Attack && a.summoner != 0 && a.summon_control == uint8_t(SummonControl::Telepathic))
+            return fail("familiar_attack: a familiar cannot ready an attack");
         if (rk == ActionKind::Attack) {
             Combatant* t = find_mut(s, req.target);
             if (!t || t == &a || t->dead) return fail("bad target");
@@ -3963,7 +4081,8 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
         return out;
     }
     const bool can_act = b.action || b.extra_actions > 0;   // row 13: an extra action counts
-    if (can_act || b.attacks_remaining > 0) {
+    const bool familiar = a.summoner != 0 && a.summon_control == uint8_t(SummonControl::Telepathic);   // R-G12 PR 3: no attacks
+    if (!familiar && (can_act || b.attacks_remaining > 0)) {
         for (const auto& t : s.combatants) {
             if (t.dead || t.id == a.id || t.team == a.team) continue;
             if (b.sequence != 0 && b.sequence <= a.multiattacks.size() &&
@@ -4009,6 +4128,17 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (a.form == FormKind::WildShape ? b.bonus_action : (a.form == FormKind::Shapechanger && can_act)) {
         if (!is_incapacitated(a)) add(ActionKind::Revert, a.form == FormKind::WildShape);   // R-G12
     }
+    if (b.bonus_action && !is_incapacitated(a))   // R-G12 PR 3: Spiritual Weapon attacks (sim moves the token first)
+        for (const auto& w : s.summon_weapons) {
+            if (w.owner != a.id) continue;
+            for (const auto& t : s.combatants) {
+                if (t.dead || t.id == a.id || t.team == a.team) continue;
+                ActionRequest r{a.id, ActionKind::SummonWeaponAttack, t.id};
+                r.spell_id = w.spell_id; r.as_bonus_action = true;
+                out.push_back(r);
+            }
+            break;
+        }
     if (!is_incapacitated(a)) {   // R-G12 PR 2: command every summon that takes commands (act); bonus action if one needs it
         bool any = false, costs = false;
         for (const auto& c : s.combatants)
@@ -4052,7 +4182,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (s.hooks.spells && !is_incapacitated(a) && !no_casting) {
         for (uint32_t id : a.spells_known) {
             const SpellDef* d = s.hooks.spells->find(id);
-            if (d && (d->kind == SpellEffectKind::Polymorph || d->kind == SpellEffectKind::Summon)) continue;   // R-G12: sim builds Polymorph requests (form choice)
+            if (d && (d->kind == SpellEffectKind::Polymorph || d->kind == SpellEffectKind::Summon || d->kind == SpellEffectKind::SummonWeapon)) continue;   // R-G12: sim builds Polymorph requests (form choice)
             if (!d || (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction)) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !can_act) continue;
             if ((d->components & kComponentV) && silenced) continue;   // R-G11 PR 2: Silence
@@ -4649,6 +4779,13 @@ uint64_t summons_digest(const EncounterState& s, uint64_t h) {
         if (c.summoner == 0) continue;
         mix(c.id, 4); mix(c.summoner, 4); mix(c.summon_source, 4); mix(c.summon_group, 4);
         mix(uint8_t(c.gone), 1); mix(c.commanded, 1);
+    }
+    if (!s.summon_weapons.empty()) {   // R-G12 PR 3: Spiritual Weapon rows, only while one exists (other digests unchanged)
+        mix(s.summon_weapons.size(), 4);
+        for (const auto& w : s.summon_weapons) {
+            mix(w.token_id, 4); mix(w.owner, 4); mix(w.spell_id, 4); mix(w.slot_level, 1); mix(w.end_round, 4);
+            mix(uint8_t(w.has_tile), 1); mix(uint32_t(w.tile_x), 4); mix(uint32_t(w.tile_y), 4);
+        }
     }
     mix(s.transforms, 4);
     for (const auto& c : s.combatants) {
