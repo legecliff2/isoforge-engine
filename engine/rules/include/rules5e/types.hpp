@@ -115,7 +115,9 @@ enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Re
                                   // appended (R-G12 rules PR 1): end the actor's own transform (Wild Shape: bonus action; shapechanger: action)
                                   Revert,
                                   // appended (R-G12 rules PR 2): command summons (ActionRequest::command / command_ids)
-                                  CommandSummons };
+                                  CommandSummons,
+                                  // appended (R-G12 rules PR 3): the bonus-action attack of the actor's Spiritual Weapon (spell_id)
+                                  SummonWeaponAttack };
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
 
 // Reaction windows (encounter.hpp). Append-only.
@@ -489,6 +491,9 @@ struct Combatant {
     bool summon_vanishes = false, summon_concentration = false;
     uint8_t commanded = 0;
     bool gone = false;
+    // appended (R-G12 rules PR 3, D6): Pact of the Chain: an Attack can trade one attack for the familiar's reaction attack
+    // (ActionRequest::familiar_id). Content-derived: not hashed.
+    bool pact_of_chain = false;
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
