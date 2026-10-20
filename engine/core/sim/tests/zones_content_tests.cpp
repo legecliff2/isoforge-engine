@@ -99,14 +99,19 @@ ContentLibrary make_lib() {
     o["id"] = "test.monster.zodd";
     o["no_breath"] = true; o["shapechanger"] = true; o["evil"] = true;
     REQUIRE_FALSE(lib.add(o, "monster"));
+    Json w = g;   // fix/zone-terrain-in-water: a goblin with a swim speed
+    w["id"] = "test.monster.zswim";
+    w["speed"] = Json::parse(R"({"walk":30,"swim":30})");
+    REQUIRE_FALSE(lib.add(w, "monster"));
     return lib;
 }
-world::Chunk arena(const std::vector<std::pair<std::string, Vec2i>>& spawns) {
+world::Chunk arena(const std::vector<std::pair<std::string, Vec2i>>& spawns, const std::vector<Vec2i>& water = {}) {
     world::Chunk c{};
     c.coord = {5, 5, 0};
     c.origin = world::Chunk::Origin::Handcrafted;
     c.palette = {"", "floor"};
     for (auto& cell : c.layers[0]) cell.tile = 1;
+    for (Vec2i p : water) c.layers[0][std::size_t(p.y * 32 + p.x)].flags = world::tile_flags::kWater;
     for (std::size_t i = 0; i < spawns.size(); ++i)
         c.spawns.push_back({spawns[i].first, spawns[i].second, world::spawn_stable_id(c.coord, uint32_t(i)), ""});
     c.content_hash = world::compute_content_hash(c);
@@ -118,8 +123,9 @@ struct Fight {
     const ContentLibrary* lib;
     uint64_t seed;
     std::optional<Combat> c;
-    Fight(const ContentLibrary& l, const std::vector<std::pair<std::string, Vec2i>>& spawns, uint64_t s = 1) : lib(&l), seed(s) {
-        chunk = arena(spawns);
+    Fight(const ContentLibrary& l, const std::vector<std::pair<std::string, Vec2i>>& spawns, uint64_t s = 1,
+          const std::vector<Vec2i>& water = {}) : lib(&l), seed(s) {
+        chunk = arena(spawns, water);
         c = Combat::create(reg, chunk, l, s);
         REQUIRE(c);
     }
@@ -334,5 +340,29 @@ TEST_CASE("R-G9 deferred (#144): a frightened creature cannot teleport closer to
     f.refused(to(12, 5));
     REQUIRE(f.settle(f.c->submit(to(18, 5))).ok);
     CHECK(f.c->pos(me) == Vec2i{18, 5});
+    f.check_replay();
+}
+
+TEST_CASE("zone terrain in water: a difficult zone stacks with swimming for a non-swimmer (15 ft), once with a creature; replay") {
+    const auto lib = make_lib();
+    std::vector<Vec2i> pool;
+    for (int x = 8; x <= 12; ++x) pool.push_back({x, 5});
+    Fight f(lib, {{kMage, {2, 5}}, {"test.monster.zgob", {8, 5}}, {"test.monster.zgob", {9, 5}}, {"test.monster.zswim", {8, 6}}},
+            1, pool);
+    const CombatantId me = f.id(0), gob = f.id(1), sw = f.id(3);
+    CHECK(f.c->step_cost_ft(gob, {9, 6}, {10, 5}) == 10);         // water, no swim speed
+    CHECK(f.c->step_cost_ft(sw, {8, 6}, {9, 5}) == 5);            // swimmer in water
+    f.advance_to(me);
+    REQUIRE(f.settle(f.c->submit(f.zone_at("testz.spell.spike", 2, {10, 5}))).ok);   // difficult over x 9..11
+    CHECK(f.c->step_cost_ft(gob, {9, 6}, {10, 5}) == 15);         // 5 + 5 (swimming) + 5 (difficult)
+    CHECK(f.c->step_cost_ft(gob, {8, 5}, {9, 5}, 1, true) == 15); // zone + a creature's space: difficult once
+    CHECK(f.c->step_cost_ft(sw, {8, 6}, {9, 5}) == 10);           // swimmer: difficult only
+    CHECK(f.c->step_cost_ft(gob, {7, 6}, {8, 6}) == 5);           // dry, outside the zone
+    f.check_replay();
+    f.advance_to(gob);
+    REQUIRE(f.step({9, 5}).ok);                                   // water + zone + the ally's space: still 15
+    CHECK(f.c->state().budget.movement_ft == rules5e::find(f.c->state(), gob)->speed_ft - 15);
+    REQUIRE(f.step({10, 5}).ok);                                  // water + zone: 15
+    CHECK(f.c->state().budget.movement_ft == rules5e::find(f.c->state(), gob)->speed_ft - 30);
     f.check_replay();
 }
