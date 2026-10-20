@@ -261,3 +261,26 @@ TEST_CASE("spell riders: replay recomputes the same state (cast-based)") {
     for (std::size_t i = 0; i < a.combatants.size(); ++i) CHECK(a.combatants[i].hp == b.combatants[i].hp);
     CHECK(a.budget.movement_ft == b.budget.movement_ft);
 }
+
+TEST_CASE("Dash adds the speed after modifiers: Ray of Frost 40 ft, grappled 0, exhaustion") {
+    ModifierSpec ray = mod(9300, ModStat::Speed); ray.speed_sub = 10; ray.until_caster_turn = true;
+    auto dash_total = [&](bool frost, bool grappled, uint8_t exhaustion) {
+        auto d = dummy(2);
+        d.exhaustion_level = exhaustion;
+        auto s = start({striker(1), d});
+        if (frost) apply(s, 1, 2, ray);
+        if (grappled) add_condition(mut(s, 2), Condition::Grappled);
+        end_turn(s);
+        REQUIRE(current_actor(s) == 2);
+        auto r = step(s, {2, ActionKind::Dash});
+        REQUIRE(r.ok);
+        return int(s.budget.movement_ft);
+    };
+    CHECK(dash_total(false, false, 0) == 60);
+    CHECK(dash_total(true, false, 0) == 40);    // 20 + 20, not 20 + 30
+    CHECK(dash_total(false, true, 0) == 0);     // grappled: speed 0
+    CHECK(dash_total(true, true, 0) == 0);
+    CHECK(dash_total(false, false, 2) == 30);   // exhaustion 2: half speed (15 + 15)
+    CHECK(dash_total(true, false, 2) == 10);    // (15 - 10) twice
+    CHECK(dash_total(true, false, 5) == 0);     // exhaustion 5: speed 0
+}

@@ -3930,7 +3930,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             if (!b.bonus_action || !req.as_bonus_action) return fail("Aggressive needs the bonus action");
             b.bonus_action = false; b.aggressive_dash = true;
         } else if (!spend_action(b, a, req.kind, req.as_bonus_action)) return fail("no action available");
-        b.movement_ft = int16_t(b.movement_ft + effective_speed(a));
+        b.movement_ft = int16_t(b.movement_ft + modified_speed(s, a));   // 7.2u: Dash adds the speed after modifiers (Ray of Frost)
         s.budget = b;
         emit(out.events, EventKind::Dashed, a.id, 0, b.movement_ft);
         return out;
