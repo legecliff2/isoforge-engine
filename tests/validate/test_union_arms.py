@@ -46,7 +46,7 @@ PREDICATE = {("weapon",): (S({"kind", "is"}), S()),
              ("target_tag", "not_target_tag"): (S({"kind", "tag"}), S())}
 # when: rider-level predicates (sim #170), read only in on_hit[] of attack actions
 RIDER = {("extra_damage",): (S({"kind", "damage"}), S({"scale", "when"})),
-         ("save_condition",): (S({"kind", "save"}), S({"apply", "damage", "on_success", "when"})),
+         ("save_condition",): (S({"kind", "save"}), S({"apply", "damage", "on_success", "when", "zero_hp"})),
          ("apply_condition",): (S({"kind", "apply"}), S({"when"})),
          ("heal_self", "temp_hp"): (S({"kind"}), S({"dice", "amount", "when"})),
          ("set_hp",): (S({"kind", "value"}), S({"when"})),

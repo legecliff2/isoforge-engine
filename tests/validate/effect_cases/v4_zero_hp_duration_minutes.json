@@ -1,0 +1,21 @@
+{
+  "base": "monsters/giant_spider.json",
+  "sets": [
+    [
+      [
+        "actions",
+        0,
+        "on_hit",
+        0,
+        "zero_hp",
+        "duration"
+      ],
+      {
+        "kind": "minutes",
+        "n": 60
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "'rounds' was expected"
+}

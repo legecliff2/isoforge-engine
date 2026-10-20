@@ -312,3 +312,15 @@ components, character@4 `equipment[].value_gp`).
 | `on_hit[].when` | array of predicates on any on_hit rider of an attack action | every predicate must hold. A rider `when` inside on_event `effects[]` is ignored (warning) |
 | action `kind: attack_effect` | `id`, `attack` ranged/melee (default ranged), `to_hit` -20..30 and non-zero, `range_ft` (>= 5, default 5), `apply[]` with `escape {ability: str, dc 1..30}`, `usage` | an apply[] entry without `escape` makes the loader list the action as unsupported (warning). There is no damage key. Shares the check-4 id space with `save_effect` |
 | monster `tags[]` | strings | read by `target_tag` (already in `monster@4`) |
+
+## sim #172 / #174 additions (swarm of rats, giant spider follow-up)
+
+Additive optional keys in `common@2` (no version bump). Validator: `checks_v4.check_sim172_174` mirrors the loader refusals the schema cannot express.
+
+| key | shape | loader behaviour |
+|---|---|---|
+| monster `tags[]` value `swarm` | string | SRD Swarm trait (#172): shares spaces both ways, cannot regain HP or gain temp HP. The trait itself stays descriptive |
+| weapon action `half_hp_damage` | dice with at least one die | replaces `damage[0]`'s dice while the attacker has half its HP or fewer (base max HP); `<id>: bad half_hp_damage in action <aid>` otherwise. Not allowed on `save_effect` / `attack_effect` |
+| `attack_effect` `long_range_ft` | integer > `range_ft`, ranged only | legal out to long range, disadvantage beyond `range_ft`; `bad long_range_ft (ranged, > range_ft)` otherwise |
+| `attack_effect` `apply[].object` | `{ac 1..30, hp 1..1000, vulnerable[], immune[]}` (damage types) | the restraint is a destructible object (`ActionRequest::special` 6); at 0 hp the condition ends |
+| `save_effect` / `save_condition` `zero_hp` | `{condition, while, duration {kind: rounds, n 1..65535}}` | when the damage drops the target to 0 HP: stable, `condition` for n rounds, `while` as long as that lasts. `zero_hp needs damage`; `bad zero_hp condition / while` when they are equal; `bad zero_hp duration (rounds 1..65535)` |
