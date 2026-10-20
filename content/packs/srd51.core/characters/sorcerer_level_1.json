@@ -1,0 +1,138 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.sorcerer_level_1",
+  "name": "Sorcerer, level 1 (Draconic Bloodline)",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "chaotic good",
+  "level": 1,
+  "classes": [
+    {
+      "class": "sorcerer",
+      "level": 1,
+      "hit_die": "d6",
+      "subclass": "draconic"
+    }
+  ],
+  "xp": 0,
+  "armor_class": {
+    "value": 15,
+    "note": "Draconic Resilience (13 + Dex, no armor)"
+  },
+  "hit_points": {
+    "average": 9,
+    "formula": "1d6+3"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 9,
+    "dex": 14,
+    "con": 15,
+    "int": 11,
+    "wis": 13,
+    "cha": 16
+  },
+  "saving_throws": {
+    "con": 4,
+    "cha": 5
+  },
+  "skills": {
+    "arcana": 2,
+    "persuasion": 5
+  },
+  "senses": {
+    "passive_perception": 11
+  },
+  "languages": [
+    "Common",
+    "Draconic"
+  ],
+  "proficiency_bonus": 2,
+  "features": [
+    {
+      "id": "dragon_ancestor",
+      "name": "Dragon Ancestor (Red)",
+      "description": "Red dragon ancestor (fire). At 1st level, you choose one type of dragon as your ancestor. The damage type associated with each dragon is used by features you gain later. You can speak, read, and write Draconic. Additionally, whenever you make a Charisma check when interacting with dragons, your proficiency bonus is doubled if it applies to the check. The damage type matters only for features of 6th level and higher; the Draconic language is in languages."
+    },
+    {
+      "id": "draconic_resilience",
+      "name": "Draconic Resilience",
+      "description": "As magic flows through your body, it causes physical traits of your dragon ancestors to emerge. At 1st level, your hit point maximum increases by 1 and increases by 1 again whenever you gain a level in this class. Additionally, parts of your skin are covered by a thin sheen of dragon-like scales. When you aren't wearing armor, your AC equals 13 + your Dexterity modifier. Baked into the data: hit points include +1 per sorcerer level, and armor_class is 13 + Dex (no armor worn)."
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.dagger",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.dagger"
+    },
+    "component_pouch",
+    "explorers_pack"
+  ],
+  "actions": [
+    {
+      "id": "dagger",
+      "name": "Dagger",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "finesse",
+        "light",
+        "thrown"
+      ],
+      "damage": [
+        {
+          "dice": "1d4+2",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "dagger_thrown",
+      "name": "Dagger (thrown)",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 4,
+      "range": [
+        20,
+        60
+      ],
+      "targets": 1,
+      "properties": [
+        "finesse",
+        "light",
+        "thrown"
+      ],
+      "damage": [
+        {
+          "dice": "1d4+2",
+          "type": "piercing"
+        }
+      ]
+    }
+  ],
+  "spellcasting": {
+    "ability": "cha",
+    "caster_level": 1,
+    "slots": {
+      "1": 2
+    },
+    "spells": [
+      "srd51.spell.acid_splash",
+      "srd51.spell.fire_bolt",
+      "srd51.spell.poison_spray",
+      "srd51.spell.magic_missile",
+      "srd51.spell.shield"
+    ]
+  }
+}
