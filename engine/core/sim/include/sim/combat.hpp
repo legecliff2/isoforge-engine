@@ -269,7 +269,8 @@ public:
     // Cost in feet of one step of `mover` from `from` to `to`: the grid's cost, at least 10 when it enters a kZoneDifficult zone
     // and doubled in a kZoneHalveSpeed zone (the mover not excluded), at most 20 ft per tile.
     int step_cost_ft(CombatantId mover, Vec2i from, Vec2i to) const;
-    int step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int footprint) const;
+    // through_creature: the step enters another creature's space (difficult terrain, SRD Moving Around Other Creatures).
+    int step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int footprint, bool through_creature = false) const;
     // ---- R-G12 transforms (VERSION_BUMP_BATCH 7.2q hand-off, SUMMONS_TRANSFORMS.md §3) ----
     // The archetype form choice `index` (ActionRequest::form_archetype - 1) of transform `kind` from `source` resolves to:
     // Wild Shape: the feature's forms[index]; Polymorph (source = spell id): the index-th beast of the library (byte order of
