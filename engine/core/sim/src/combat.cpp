@@ -118,6 +118,15 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
     std::vector<rules5e::Event> opening;
     if (!content.spells()->all().empty()) c.spells_ = content.spells();
     c.state_ = rules5e::begin_encounter(std::move(cs), seed, &opening);
+    // R-G12 summons (7.2r, §3.0): seed rules' summon counter above every spawn id of every chunk (combatant or not). A seeded
+    // counter alone never folds (has_summon_state), so this hashes as before.
+    {
+        uint32_t top = 0;
+        for (const auto& ws : spawns) top = std::max<uint32_t>(top, ws.sp->stable_id);
+        c.summon_ids_exhausted_ = top == UINT32_MAX;
+        c.state_.next_summon_id = c.summon_ids_exhausted_ ? UINT32_MAX : top + 1;
+    }
+    c.created_count_ = c.slots_.size();
     // Limited-use features live in the rules state (hashed, rebuilt by replay).
     for (const auto& sl : c.slots_)
         for (const auto& f : sl.archetype->active)
@@ -176,6 +185,7 @@ const Archetype* Combat::archetype(CombatantId id) const { const Slot* s = slot(
 Vec2i Combat::pos(CombatantId id) const {
     const Slot* s = slot(id);
     if (!s) return {};
+    if (s->gone) return s->last;   // R-G12: where it stood when it ended
     const TilePos* p = reg_->get<TilePos>(s->entity);
     return p ? Vec2i{p->x, p->y} : Vec2i{};
 }
@@ -386,6 +396,7 @@ std::vector<Vec2i> Combat::occupied_except(CombatantId id) const {
 
 void Combat::apply_rules_events(const std::vector<rules5e::Event>& evs) {
     for (const auto& e : evs) {
+        if (e.kind == rules5e::EventKind::TurnStarted) ++turns_started_;
         SimEvent se;
         se.kind = SimEvent::Kind::Rules;
         se.rules = e;
@@ -396,7 +407,7 @@ void Combat::apply_rules_events(const std::vector<rules5e::Event>& evs) {
 
 void Combat::sync_ecs() {
     for (const auto& s : slots_)
-        if (const auto* c = rules5e::find(state_, s.id))
+        if (const auto* c = rules5e::find(state_, s.id); c && !s.gone)   // R-G12: a gone summon's entity is destroyed
             if (Health* h = reg_->get<Health>(s.entity)) { h->hp = c->hp; h->hp_max = c->hp_max; }
 }
 
@@ -489,6 +500,32 @@ void Combat::install_hooks() {
     state_.hooks.zone_contains = [this](const rules5e::EncounterState& st, uint32_t zone_id, CombatantId id, bool completely) {
         const rules5e::ActiveZone* z = rules5e::find_zone(st, zone_id);
         return z && rules5e::find(st, id) && zone_holds(*z, id, spot(id), completely);
+    };
+    // R-G12 summons (7.2r, §3.3 / D1): the creature of option `idx` of a Summon spell (content only, pure), and the CR-band
+    // count table. A spell without sim summon options summons nothing.
+    state_.hooks.build_summon = [this](const rules5e::EncounterState&, const rules5e::Combatant&, const rules5e::SpellDef& def, uint8_t,
+                                       uint8_t idx) -> std::optional<rules5e::Combatant> {
+        const SummonOptions* o = content_ ? content_->summon_options(def.id) : nullptr;
+        if (!o || idx >= o->archetypes.size()) return std::nullopt;
+        const Archetype* a = content_->find(o->archetypes[idx]);
+        if (!a) return std::nullopt;
+        return a->base;
+    };
+    state_.hooks.summon_choice_ok = [this](const rules5e::EncounterState&, const rules5e::Combatant&, const rules5e::SpellDef& def,
+                                           uint8_t slot_level, const std::vector<uint8_t>& ar) {
+        const SummonOptions* o = content_ ? content_->summon_options(def.id) : nullptr;
+        if (!o) return false;
+        for (uint8_t k : ar) if (k >= o->archetypes.size() || !content_->find(o->archetypes[k])) return false;
+        if (o->table == SummonOptions::Table::Any) return true;
+        const std::size_t mult = slot_level >= 9 ? 4 : slot_level >= 7 ? 3 : slot_level >= 5 ? 2 : 1;
+        uint32_t cap = 0;   // CR cap in eighths for the count: 1 -> CR 2, 2 -> CR 1, 4 -> CR 1/2, 8 -> CR 1/4 (times mult)
+        if (ar.size() == mult) cap = 16;
+        else if (ar.size() == 2 * mult) cap = 8;
+        else if (ar.size() == 4 * mult) cap = 4;
+        else if (ar.size() == 8 * mult) cap = 2;
+        else return false;
+        for (uint8_t k : ar) if (content_->find(o->archetypes[k])->cr_x8 < 0 || uint32_t(content_->find(o->archetypes[k])->cr_x8) > cap) return false;
+        return true;
     };
     state_.hooks.shove_forced_flag = true;   // rules flags the shove push (c = 1); sim no longer flags its copy (same events)
     // R-G12 (7.2q): transform forms. Live play and replay install the same closure; it reads content, its arguments and the
@@ -670,7 +707,16 @@ int Combat::material_entry(CombatantId caster, const rules5e::SpellDef& d) const
 void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs, std::optional<Vec2i> to,
                       std::optional<std::size_t> teardown_begin) {
     const auto& q = ls.request;
-    const std::size_t rules_begin = events_.size();   // R-G12: this step's rules events are events_[rules_begin, + evs.size())
+    // R-G12 (SUMMONS_TRANSFORMS.md §3.5, v10 gate): in a v10 stream the step that ends the encounter places its sim events before
+    // the teardown block and EncounterEnded: rules events [0, split) now, the rest after the sim events. Every older stream
+    // (no R-G12 construct) keeps split = size, today's order byte for byte.
+    std::size_t split = evs.size();
+    if (!evs.empty() && evs.back().kind == rules5e::EventKind::EncounterEnded) {
+        bool v10 = event_stream_version(events_) >= 10;
+        for (const auto& e : evs) v10 = v10 || uint8_t(e.kind) > uint8_t(kLastRulesEventKindV9);
+        if (v10) split = teardown_begin ? std::min(*teardown_begin, evs.size() - 1) : evs.size() - 1;
+    }
+    pending_removed_.clear();
     struct ClearPlaced { std::vector<std::pair<CombatantId, Vec2i>>& v; ~ClearPlaced() { v.clear(); } } clear_placed{forced_placed_};
     // Priced material consumed by a completed cast (rule 4): the entry that satisfied it, one per cast. Rules checked the
     // components for this cast unless it was a sustain or an innate spell not cast as listed; replay runs the same code.
@@ -693,7 +739,10 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
         return e.kind == rules5e::EventKind::Moved && q.kind == ActionKind::Attack && q.special == 3 && e.actor == q.target &&
                e.target == q.actor;
     };
-    apply_rules_events(evs);   // the shove push arrives flagged c = 1 from rules (EncounterHooks::shove_forced_flag)
+    // the shove push arrives flagged c = 1 from rules (EncounterHooks::shove_forced_flag). R-G12: a Summoned spawns its slot and
+    // TokenSpawned right after it; a SummonEnded marks the slot gone (TokenRemoved after the step's sim events, see below).
+    for (std::size_t i = 0; i < split; ++i) push_rules_event(evs[i], &ls);
+    sync_ecs();
     // R-G8 helpers: put a creature on a tile (forced movement / drag), and end grapples whose holder and held creature are no
     // longer within 5 ft after an effect moved one of them (Grappled is removed from the target; the next step prunes the entry).
     auto place = [this](CombatantId id, Vec2i t) {
@@ -852,26 +901,15 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
             events_.insert(events_.end(), fe.begin(), fe.end());
         }
     }
-    // R-G12 v10 rule-7 gate (SUMMONS_TRANSFORMS.md §3.5, SIM_EVENTS.md rule 7): in a v10 stream every sim event of the ending
-    // step precedes EncounterEnded. The step's rules events from teardown_begin on (the teardown Reverteds, then
-    // EncounterEnded) move behind its sim events, each teardown Reverted directly followed by its own sim events. The gate
-    // reads the stream's contents (event_stream_version), which the reorder does not change; pre-v10 streams keep today's
-    // order byte for byte.
-    if (ended_now && event_stream_version(events_) >= 10) {
-        const auto first = events_.begin() + std::ptrdiff_t(rules_begin + tb);
-        const auto last = events_.begin() + std::ptrdiff_t(rules_begin + evs.size());
-        std::vector<SimEvent> tail(first, last);
-        events_.erase(first, last);
-        for (std::size_t k = 0; k < tail.size(); ++k) {
-            events_.push_back(tail[k]);
-            events_.insert(events_.end(), teardown_sim[k].begin(), teardown_sim[k].end());
-        }
-    } else {
+    // R-G12 v10 rule-7 gate (SUMMONS_TRANSFORMS.md §3.5, SIM_EVENTS.md rule 7): in a v10 stream the step's rules events from
+    // `split` on (= tb: the teardown block, then EncounterEnded) are pushed at the end of this step, behind its sim events, each
+    // teardown Reverted directly followed by its own form sim events and each teardown SummonEnded by its TokenRemoved (below).
+    // Pre-v10 streams have split = size and keep today's order byte for byte (the teardown form events follow the step's).
+    if (split == evs.size())
         for (const auto& v : teardown_sim) events_.insert(events_.end(), v.begin(), v.end());
-    }
     // Aggressive (rules #111): remember the movement from before the bonus-action Dash; the actor's Moves this turn spend it first.
     {
-        const uint32_t now = (uint32_t(state_.round) << 16) | state_.turn_index;
+        const TurnKey now = turn_key();   // R-G12: not (round, turn_index), which a summon joining before the actor shifts
         if (aggressive_ && aggressive_->stamp != now) aggressive_.reset();
         const auto* actor = rules5e::find(state_, q.actor);
         bool dashed = false;
@@ -884,8 +922,111 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
     for (const auto& e : evs)
         if (e.kind == rules5e::EventKind::ReadyTriggered || e.kind == rules5e::EventKind::ReadyExpired) readied_dest_.erase(e.actor);
     if (q.kind == ActionKind::Ready && q.ready_kind == ActionKind::Move && to) readied_dest_[q.actor] = *to;
+    // R-G12: TokenRemoved for the summons that ended in the step's own events (0 HP, concentration), after its sim events;
+    // then the teardown block (each SummonEnded b = 5 followed at once by its TokenRemoved, then Reverted) and EncounterEnded.
+    for (const auto& e : pending_removed_) events_.push_back(token_removed(e));
+    pending_removed_.clear();
+    for (std::size_t i = split; i < evs.size(); ++i) {
+        push_rules_event(evs[i], &ls);
+        if (evs[i].kind == rules5e::EventKind::SummonEnded && !pending_removed_.empty()) {
+            events_.push_back(token_removed(pending_removed_.back()));
+            pending_removed_.pop_back();
+        }
+        if (i >= tb) events_.insert(events_.end(), teardown_sim[i - tb].begin(), teardown_sim[i - tb].end());
+    }
+    for (const auto& e : pending_removed_) events_.push_back(token_removed(e));   // none expected (every teardown one is inline)
+    pending_removed_.clear();
+    if (split < evs.size()) sync_ecs();
+    for (auto& sl : slots_)   // gone summons: the entity goes at the end of the step (never mid-step)
+        if (sl.gone && reg_->alive(sl.entity)) { reg_->destroy(sl.entity); sl.entity = ecs::kNullEntity; }
     step_to_.reset();
     ready_to_.reset();
+}
+
+void Combat::push_rules_event(const rules5e::Event& e, const rules5e::LoggedStep* ls) {
+    if (e.kind == rules5e::EventKind::TurnStarted) ++turns_started_;
+    SimEvent se;
+    se.kind = SimEvent::Kind::Rules;
+    se.rules = e;
+    events_.push_back(se);
+    if (e.kind == rules5e::EventKind::Summoned && ls) spawn_summon(e, *ls);
+    if (e.kind == rules5e::EventKind::SummonEnded)
+        for (auto& sl : slots_)
+            if (sl.id == e.target && sl.summoned && !sl.gone) {
+                sl.last = pos(sl.id);
+                sl.gone = true;
+                pending_removed_.push_back(e);
+            }
+}
+
+SimEvent Combat::token_removed(const rules5e::Event& ended) {
+    SimEvent se;   // v10: actor = the summon, tile = its last anchor, rules.a = SummonEnded.b (reason)
+    se.kind = SimEvent::Kind::TokenRemoved;
+    se.actor = ended.target;
+    se.tile = pos(ended.target);
+    se.rules.a = ended.b;
+    return se;
+}
+
+void Combat::register_rows(const Slot& sl) {   // the create-time registration loops, for one (summoned) slot
+    for (const auto& f : sl.archetype->active)
+        if (f.uses > 0)
+            rules5e::register_feature(state_, sl.id, f.feature_id, f.uses,
+                                      f.recharge == Recharge::ShortRest  ? rules5e::FeatureRecharge::ShortRest
+                                      : f.recharge == Recharge::LongRest ? rules5e::FeatureRecharge::LongRest
+                                                                         : rules5e::FeatureRecharge::None);
+    for (const auto& r : sl.archetype->resources)
+        rules5e::register_pool(state_, sl.id, r.pool_id, r.max, r.start,
+                               r.recharge == uint8_t(rules5e::FeatureRecharge::ShortRest)  ? rules5e::FeatureRecharge::ShortRest
+                               : r.recharge == uint8_t(rules5e::FeatureRecharge::LongRest) ? rules5e::FeatureRecharge::LongRest
+                                                                                          : rules5e::FeatureRecharge::None);
+    for (const auto& sa : sl.archetype->save_actions) {
+        if (sa.usage_kind == 3 && !rules5e::find_pool(state_, sl.id, sa.pool_id))
+            rules5e::register_pool(state_, sl.id, sa.pool_id, sa.pool_max, sa.pool_start,
+                                   sa.pool_recharge == Recharge::ShortRest  ? rules5e::FeatureRecharge::ShortRest
+                                   : sa.pool_recharge == Recharge::LongRest ? rules5e::FeatureRecharge::LongRest
+                                                                            : rules5e::FeatureRecharge::None);
+        else if (sa.usage_kind == 1) rules5e::register_action_use(state_, sl.id, sa.spell_id, false);
+        else if (sa.usage_kind == 2)
+            rules5e::register_feature(state_, sl.id, sa.spell_id, sa.uses,
+                                      sa.recharge == Recharge::ShortRest ? rules5e::FeatureRecharge::ShortRest
+                                                                         : rules5e::FeatureRecharge::LongRest);
+    }
+    for (const auto& tr : sl.archetype->base.triggers)
+        if (tr.recharge_min != 0) rules5e::register_action_use(state_, sl.id, tr.id, false);
+}
+
+void Combat::spawn_summon(const rules5e::Event& ev, const rules5e::LoggedStep& ls) {
+    const auto& q = ls.request;
+    const CombatantId id = ev.target;
+    std::size_t k = 0;
+    while (k < q.summon_ids.size() && q.summon_ids[k] != id) ++k;
+    const SummonOptions* opts = content_ ? content_->summon_options(q.spell_id) : nullptr;
+    if (k >= q.summon_ids.size() || k >= q.summon_archetypes.size() || k >= q.summon_tiles.size() || !opts ||
+        q.summon_archetypes[k] >= opts->archetypes.size())
+        return;   // unreachable: do_rules filled the tiles and build_summon resolved the archetype
+    const Archetype* a = content_->find(opts->archetypes[q.summon_archetypes[k]]);
+    const auto* c = rules5e::find(state_, id);
+    if (!a || !c || reg_->find(id)) return;
+    const Vec2i at{q.summon_tiles[k].x, q.summon_tiles[k].y};
+    const ecs::Entity e = reg_->create(id);
+    reg_->emplace(e, Health{c->hp, c->hp_max});
+    reg_->emplace(e, Team{c->team});
+    reg_->emplace(e, TilePos{at.x, at.y});
+    if (a->footprint > 1) reg_->emplace(e, Footprint{uint8_t(a->footprint)});
+    reg_->emplace(e, CombatantLink{id});
+    Slot sl{id, e, a};
+    sl.summoned = true;
+    slots_.push_back(sl);
+    if (!a->equipment.empty()) equipment_[id] = a->equipment;
+    register_rows(slots_.back());
+    SimEvent se;   // v10: right after its own Summoned; actor = id, tile = anchor, rules.a = footprint side, rules.b = summoner
+    se.kind = SimEvent::Kind::TokenSpawned;
+    se.actor = id;
+    se.tile = at;
+    se.rules.a = a->footprint;
+    se.rules.b = int32_t(ev.actor);
+    events_.push_back(se);
 }
 
 bool Combat::ranged_attack_facts(CombatantId actor, uint8_t ai, Spot from, Spot tp, ActionRequest& req,
@@ -1035,6 +1176,35 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
                 if (sl.id == actor || !c || c->dead || !hostile(sl.id, actor) || !rules5e::is_conscious(*c) || rules5e::is_incapacitated(*c)) continue;
                 const Spot hs = spot(sl.id);
                 if (rect_distance(from.p, from.n, hs.p, hs.n) <= 1) req.ranged_hostile_within_5ft = true;
+            }
+        }
+        // R-G12 summons (§3.0 / §3.1): ids come from rules' counter; sim refuses an exhausted id space or ids another system
+        // already took in the registry, then validates caller tiles or fills them deterministically (logged, 0xBC).
+        if (const auto* sdef = spells_->find(req.spell_id); sdef->kind == rules5e::SpellEffectKind::Summon && !req.summon_archetypes.empty()) {
+            if (summon_ids_exhausted_) { r.error = "summon id space exhausted"; return r; }
+            CombatantId top = 0;
+            for (const auto& k : state_.combatants) top = std::max(top, k.id);
+            const uint64_t base = std::max<uint64_t>(state_.next_summon_id, uint64_t(top) + 1);
+            if (base + req.summon_archetypes.size() - 1 > UINT32_MAX) { r.error = "summon id space exhausted"; return r; }
+            for (std::size_t k = 0; k < req.summon_archetypes.size(); ++k)
+                if (reg_->find(CombatantId(base + k))) { r.error = "summon id already taken in the registry"; return r; }
+            const SummonOptions* o = content_ ? content_->summon_options(sdef->id) : nullptr;
+            bool known = o != nullptr;
+            for (uint8_t k : req.summon_archetypes) known = known && k < o->archetypes.size() && content_->find(o->archetypes[k]);
+            if (known) {   // otherwise rules refuses (summon not available)
+                std::string err;
+                const auto tiles = summon_tiles_for(actor, *sdef, req.summon_archetypes, &err);
+                if (req.summon_tiles.empty()) {
+                    if (tiles.empty()) { r.error = err; return r; }
+                    for (Vec2i t : tiles) req.summon_tiles.push_back({t.x, t.y});
+                } else if (req.summon_tiles.size() == req.summon_archetypes.size()) {
+                    std::vector<Spot> placed;
+                    for (std::size_t k = 0; k < req.summon_tiles.size(); ++k) {
+                        const Spot sp{{req.summon_tiles[k].x, req.summon_tiles[k].y}, content_->find(o->archetypes[req.summon_archetypes[k]])->footprint};
+                        if (!summon_spot_ok(actor, *sdef, sp, placed)) { r.error = "summon_tiles: illegal tile"; return r; }
+                        placed.push_back(sp);
+                    }
+                }
             }
         }
         // R-G9 teleport (Misty Step): the caller's destination, re-validated here; sim fills teleport_feet. The request's
@@ -1196,8 +1366,51 @@ SubmitResult Combat::do_step(Vec2i to) {
     return finish(rules5e::step(state_, mv));
 }
 
+// R-G12 summons (§3.1): may a summon footprint `sp` appear for `caster`'s `def`: in bounds and walkable, not on a living
+// creature nor on a footprint placed earlier in the same request, within the spell's range (footprint to footprint; range 0
+// counts as 5 ft) and in the caster's line of sight.
+bool Combat::summon_spot_ok(CombatantId caster, const rules5e::SpellDef& def, Spot sp, const std::vector<Spot>& placed) const {
+    if (!grid_.footprint_walkable(sp.p, sp.n)) return false;
+    const auto occ = occupied_except(0);
+    for (int dy = 0; dy < sp.n; ++dy)
+        for (int dx = 0; dx < sp.n; ++dx)
+            if (std::find(occ.begin(), occ.end(), Vec2i{sp.p.x + dx, sp.p.y + dy}) != occ.end()) return false;
+    for (const Spot& o : placed) if (rect_distance(sp.p, sp.n, o.p, o.n) == 0) return false;
+    const Spot cs = spot(caster);
+    if (rect_distance(sp.p, sp.n, cs.p, cs.n) > std::max(1, int(def.range_ft) / kFeetPerTile)) return false;
+    return los_spots(cs, sp);
+}
+
+std::vector<Vec2i> Combat::summon_tiles_for(CombatantId caster, const rules5e::SpellDef& def, const std::vector<uint8_t>& ar,
+                                            std::string* error) const {
+    auto fail = [&](const char* m) { if (error) *error = m; return std::vector<Vec2i>{}; };
+    const SummonOptions* o = content_ ? content_->summon_options(def.id) : nullptr;
+    if (!o || !rules5e::find(state_, caster)) return fail("summon not available");
+    const Spot cs = spot(caster);
+    const int r = std::max(1, int(def.range_ft) / kFeetPerTile);
+    std::vector<Spot> placed;
+    std::vector<Vec2i> out;
+    for (uint8_t k : ar) {   // id order = request order; nearest to the caster, then row-major (y, then x)
+        if (k >= o->archetypes.size() || !content_->find(o->archetypes[k])) return fail("summon not available");
+        const int n = content_->find(o->archetypes[k])->footprint;
+        std::optional<Spot> best;
+        int best_d = 0;
+        for (int y = cs.p.y - r - n; y <= cs.p.y + cs.n + r; ++y)
+            for (int x = cs.p.x - r - n; x <= cs.p.x + cs.n + r; ++x) {
+                const Spot sp{{x, y}, n};
+                if (!summon_spot_ok(caster, def, sp, placed)) continue;
+                const int d = rect_distance(sp.p, sp.n, cs.p, cs.n);
+                if (!best || d < best_d) { best = sp; best_d = d; }
+            }
+        if (!best) return fail("no unoccupied space");
+        placed.push_back(*best);
+        out.push_back(best->p);
+    }
+    return out;
+}
+
 bool Combat::aggressive_step_ok(CombatantId mover, Vec2i to) const {
-    const uint32_t now = (uint32_t(state_.round) << 16) | state_.turn_index;
+    const TurnKey now = turn_key();
     if (!aggressive_ || aggressive_->stamp != now || aggressive_->actor != mover) return true;
     const Vec2i from = pos(mover);
     const int fp = footprint_size(mover);
@@ -1230,7 +1443,8 @@ uint64_t Combat::hash() const {
         h.i32(e.tile.x);
         h.i32(e.tile.y);
     }
-    for (const auto& s : slots_) {
+    for (std::size_t si = 0; si < created_count_ && si < slots_.size(); ++si) {   // R-G12: create-time slots only (summons: 0xAF)
+        const Slot& s = slots_[si];
         h.u32(s.id);
         const Vec2i p = pos(s.id);
         h.i32(p.x);
@@ -1322,9 +1536,21 @@ uint64_t Combat::hash() const {
     if (rules5e::has_zone_state(state_)) { h.byte(0xAB); h.u64(rules5e::zones_digest(state_)); }
     // 0xAE (Petrifying Gaze, 7.2p): ids of creatures with their eyes averted, only while some is; never for gazeless combats.
     if (rules5e::has_gaze_state(state_)) { h.byte(0xAE); h.u64(rules5e::gaze_digest(state_)); }
-    // 0xAF (R-G12, 7.2q): summon / transform state (rules5e summons_digest; rules owns the summon counter inside it, which sim
-    // seeds with summons in rules PR 2), only once something was transformed (or summoned) this encounter; never otherwise.
-    if (rules5e::has_summon_state(state_)) { h.byte(0xAF); h.u64(rules5e::summons_digest(state_)); }
+    // 0xAF (R-G12, SUMMONS_TRANSFORMS.md §3.2): rules' summons_digest, then sim's part: summon slot count, then per summon slot
+    // (creation order) id, anchor x / y, footprint side, gone, team. Only while has_summon_state (something was summoned or
+    // transformed); no older combat does either.
+    if (rules5e::has_summon_state(state_)) {
+        h.byte(0xAF);
+        h.u64(rules5e::summons_digest(state_));
+        h.u32(uint32_t(slots_.size() - created_count_));
+        for (std::size_t si = created_count_; si < slots_.size(); ++si) {
+            const Slot& s = slots_[si];
+            const Vec2i p = pos(s.id);
+            const auto* c = rules5e::find(state_, s.id);
+            h.u32(s.id); h.i32(p.x); h.i32(p.y);
+            h.byte(uint8_t(s.archetype->footprint)); h.byte(s.gone ? 1 : 0); h.byte(c ? c->team : 0);
+        }
+    }
     return h.value();
 }
 
@@ -1400,6 +1626,20 @@ uint64_t Combat::log_hash() const {
             h.i32(q.zone_y);
             h.u32(uint32_t(q.zone_excluded.size()));
             for (const auto zx : q.zone_excluded) h.u32(zx);
+        }
+        // 0xBC (R-G12 summons, SIM_EVENTS.md): summon_ids, summon_archetypes, summon_tiles, command, command_ids, from the
+        // logged request (rules filled the ids), only when one is set.
+        if (!q.summon_ids.empty() || !q.summon_archetypes.empty() || !q.summon_tiles.empty() || q.command != 0 || !q.command_ids.empty()) {
+            h.byte(0xBC);
+            h.u32(uint32_t(q.summon_ids.size()));
+            for (const auto id : q.summon_ids) h.u32(id);
+            h.u32(uint32_t(q.summon_archetypes.size()));
+            for (const auto k : q.summon_archetypes) h.byte(k);
+            h.u32(uint32_t(q.summon_tiles.size()));
+            for (const auto& t : q.summon_tiles) { h.i32(t.x); h.i32(t.y); }
+            h.byte(q.command);
+            h.u32(uint32_t(q.command_ids.size()));
+            for (const auto id : q.command_ids) h.u32(id);
         }
         h.byte(q.heal_dice.count);
         h.byte(q.heal_dice.sides);

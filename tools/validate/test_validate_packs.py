@@ -390,6 +390,59 @@ class SpellKindsR120(unittest.TestCase):
                 self.assertTrue(any(expect in e for e in errs), (expect, errs))
 
 
+FORCED_FIXTURES = vp.ROOT / "tests" / "validate" / "fixtures" / "spell_forced" / "spells"
+MISTY, SHOVE = "misty_step", "shove_bolt"
+# R-G9 spell@1 kinds forced_move / teleport (sim #144, spell_loader.cpp). (name, fixture, sets, dels, expected substring).
+# Cross-field messages are the loader's verbatim; shape errors are the schema's.
+FORCED_CASES = [
+    ("forced_needs_feet", SHOVE, [], [E1 + ["feet"]], "'feet' is a required property"),
+    ("forced_feet_not_5", SHOVE, [(E1 + ["feet"], 7)], [], "7 is not a multiple of 5"),
+    ("forced_feet_zero", SHOVE, [(E1 + ["feet"], 0)], [], "0 is less than the minimum of 5"),
+    ("forced_feet_float", SHOVE, [(E1 + ["feet"], 10.0)], [], "float value 10.0 not allowed"),
+    ("forced_mode_line", SHOVE, [(E1 + ["mode"], "line")], [], "'line' is not one of ['push', 'pull']"),
+    ("forced_max_size_bad", SHOVE, [(E1 + ["max_size"], "colossal")], [], "'colossal' is not one of"),
+    ("forced_provokes_oa", SHOVE, [(E1 + ["provokes_oa"], True)], [], "False was expected"),
+    ("forced_up_to_int", SHOVE, [(E1 + ["up_to"], 1)], [], "1 is not of type 'boolean'"),
+    ("forced_unknown_key", SHOVE, [(E1 + ["distance"], 10)], [], "'distance' is not one of"),
+    ("teleport_needs_max_feet", MISTY, [], [E0 + ["max_feet"]], "'max_feet' is a required property"),
+    ("teleport_max_feet_not_5", MISTY, [(E0 + ["max_feet"], 32)], [], "32 is not a multiple of 5"),
+    ("teleport_needs_sight_int", MISTY, [(E0 + ["needs_sight"], 0)], [], "0 is not of type 'boolean'"),
+    ("teleport_applies_to", MISTY, [(E0 + ["applies_to"], "all")], [], "'applies_to' is not one of"),
+    ("teleport_as_extra", SHOVE, [(E1, {"kind": "teleport", "max_feet": 30})], [], "effects[1]: teleport is only allowed as the first effect"),
+    ("forced_targets", SHOVE, [(E0, {"kind": "forced_move", "feet": 10}), (["targets"], {"count": 2})], [],
+     "targets not allowed on a forced_move effect"),
+]
+
+
+class SpellForcedRG9(unittest.TestCase):
+    """R-G9 spell@1 kinds (sim #144): positive fixtures (tests/validate/fixtures/spell_forced) and FORCED_CASES."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.registry, cls.by_tag = vp.load_registry()
+        cls.attribution = json.loads((CORE / "manifest.json").read_text(encoding="utf-8"))["attribution"]
+
+    run_docs = SpellKindsR120.run_docs
+
+    def fx(self, name):
+        return json.loads((FORCED_FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
+
+    def test_positive_fixtures_validate_clean(self):
+        self.assertEqual(self.run_docs({MISTY: self.fx(MISTY), SHOVE: self.fx(SHOVE)}), ([], []))
+
+    def test_optional_keys_accepted(self):
+        full = _edit(self.fx(SHOVE), [(E1 + ["mode"], "pull"), (E1 + ["up_to"], True), (E1 + ["max_size"], "large"),
+                                      (E1 + ["provokes_oa"], False)], [E1 + ["applies_to"]])
+        sight = _edit(self.fx(MISTY), [(E0 + ["needs_sight"], False)], [])
+        self.assertEqual(self.run_docs({SHOVE: full, MISTY: sight}), ([], []))
+
+    def test_cases(self):
+        for name, fx, sets, dels, expect in FORCED_CASES:
+            with self.subTest(name):
+                errs, _ = self.run_docs({fx: _edit(self.fx(fx), sets, dels)})
+                self.assertTrue(any(expect in e for e in errs), (expect, errs))
+
+
 def _edit(doc: dict, sets, dels) -> dict:
     import copy
     d = copy.deepcopy(doc)
