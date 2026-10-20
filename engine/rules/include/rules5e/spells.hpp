@@ -122,6 +122,12 @@ struct SpellEffect {
     // appended (#120 follow-up): + this many dice per slot level above the spell's level; set by the loader only on a
     // DelayedDamage extra effect (Acid Arrow), from the spell's scaling.upcast.dice. 0 = does not scale (every other effect).
     uint8_t upcast_dice = 0;
+    // appended (grab and contain, 7.2w): see SpellDef::contain / contain_dice / contain_damage_type / condition_max_size.
+    uint8_t contain = 0;
+    DiceExpr contain_dice{0, 0, 0}; DamageType contain_damage_type = DamageType::Acid;
+    int8_t condition_max_size = -1;
+    int8_t regurgitate_dc = 0; uint8_t regurgitate_damage = 30;   // 7.2w: see SpellDef
+    bool excludes_formless = false;                                // 7.2w: see SpellDef
 };
 
 // ---- R-G11 persistent zones and auras (docs/proposals/ZONES_AURAS.md §2.6) ----
@@ -343,6 +349,20 @@ struct SpellDef {
     uint32_t control_excluded = 0;
     uint8_t control_min_int = 0;
     uint16_t destroy_cr8_max = 0;
+    // appended (grab and contain, 7.2w). contain: the condition puts the target inside the creature using this effect,
+    // 1 Engulf (gelatinous cube: restrained, escape_dc), 2 Swallow (giant toad: restrained and blinded, total cover against
+    // everything outside). The contained target takes contain_dice of contain_damage_type at the start of each of the
+    // container's turns, and is freed when the container dies. condition_max_size: the condition (and, with contain, the
+    // whole effect: no save) skips a target larger than this Size (Net, Engulf: Large; -1 = any).
+    uint8_t contain = 0;
+    DiceExpr contain_dice{0, 0, 0}; DamageType contain_damage_type = DamageType::Acid;
+    int8_t condition_max_size = -1;
+    // 7.2w, Swallow: regurgitate_dc > 0 (behir 14, purple worm 21; the giant toad has none): when the container takes at least
+    // regurgitate_damage (30) in one turn from the swallowed creature, it makes a Con save vs regurgitate_dc at the end of
+    // that turn; on a failure the creature exits prone (EncounterState::contain_exits, sim picks a tile within 10 ft).
+    // excludes_formless: the condition skips a Combatant::formless target (the Net).
+    int8_t regurgitate_dc = 0; uint8_t regurgitate_damage = 30;
+    bool excludes_formless = false;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
