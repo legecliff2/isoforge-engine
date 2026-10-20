@@ -323,7 +323,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Fire Bolt | DATA | Shipped. Ignites objects: OOS. |
 | Poison Spray | DATA | `save` CON, 1d12 poison, range 10, `on_success none`. |
 | Produce Flame | DATA | Thrown `spell_attack` 1d8 fire (the light effect is OOS). |
-| Ray of Frost | NEW (wiring) | Rules done (follow-up): `Speed` modifier with `speed_sub` 10 and `until_end_of_target_next_turn` as an `ApplyModifier` rider on the spell attack; damage is DATA. Spell kind / loader pending (R-G3). |
+| Ray of Frost | DATA | Rules done (follow-up): `Speed` modifier with `speed_sub` 10 and `until_end_of_target_next_turn` as an `ApplyModifier` rider on the spell attack; damage is DATA. Spell kind / loader pending (R-G3). Shipped in `srd51.core` (T&C spells refresh). |
 | Sacred Flame | DATA | `save` DEX, 1d8 radiant, none on success; `ignores_cover: true` (7.2t: no half / three-quarters bonus; total cover still blocks targeting). |
 | Shillelagh | NEW | Weapon-damage buff (R-G3). |
 | Shocking Grasp | NEW | Melee spell attack DATA; advantage vs metal armor and "no reactions" rider R-G2/R-G3. |
@@ -363,9 +363,9 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Protection from Evil and Good | NEW | R-G3. |
 | Sanctuary | NEW | Attackers must save to target (R-G3/R-G7). |
 | Shield | DATA | Shipped (`ac_bonus`). |
-| Shield of Faith | NEW (wiring) | Rules done (#89): +2 `Ac` modifier, concentration. Spell kind pending (R-G3). |
+| Shield of Faith | DATA | Rules done (#89): +2 `Ac` modifier, concentration. Spell kind pending (R-G3). Shipped in `srd51.core` (T&C spells refresh). |
 | Sleep | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::HpPool` (lowest HP first, upcast dice, undead excluded, ends on damage). Loader and sim done (EC #120): `hp_pool {dice, condition, ends_on_damage, excludes_creature_type}`, `scaling.upcast.dice`, timer from `duration` (1 minute = 10 rounds), area targets from an aimed `Command`; the AI wakes a sleeping ally within 5 ft (Wake, `special` 5). No pack ships it yet; schema / validator pending (T&C). |
-| Thunderwave | NEW (wiring) | Cube (R-G10) + push: `ForcedMove` rider (10 ft, `affected_only`: failed saves only) (R-G9, VERSION_BUMP_BATCH 7.2k); dice/save DATA. Sim done (R-G9 sim PR): spell@1 `forced_move {mode, feet, up_to, max_size}` rider; sim's `forced_move` hook walks the push tile by tile (8-way, stops at the last free tile, farthest first) and ends grapples out of reach. No pack ships Thunderwave yet; schema / validator arm pending (T&C). |
+| Thunderwave | DATA | Cube (R-G10) + push: `ForcedMove` rider (10 ft, `affected_only`: failed saves only) (R-G9, VERSION_BUMP_BATCH 7.2k); dice/save DATA. Sim done (R-G9 sim PR): spell@1 `forced_move {mode, feet, up_to, max_size}` rider; sim's `forced_move` hook walks the push tile by tile (8-way, stops at the last free tile, farthest first) and ends grapples out of reach. No pack ships Thunderwave yet; schema / validator arm pending (T&C). Shipped in `srd51.core` (T&C spells refresh). |
 
 ### 8.3 Level 2
 
@@ -373,7 +373,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 |---|---|---|
 | Aid | NEW | Max HP and HP increase (R-G3). |
 | Alter Self, Animal Messenger, Arcane Lock, Augury, Continual Flame, Darkvision, Gentle Repose, Knock, Levitate, Locate Animals or Plants, Locate Object, Magic Mouth, Pass without Trace, Prayer of Healing (10 min), Rope Trick, See Invisibility, Spider Climb, Zone of Truth, Find Traps, Arcanist's Magic Aura, Detect Thoughts, Enthrall, Find Steed (10 minutes) | OOS | Utility / out of encounter casting time. |
-| Barkskin | NEW (wiring) | Rules done (follow-up): `Ac` modifier with `ac_floor` 16, concentration. Spell kind pending (R-G3). |
+| Barkskin | DATA | Rules done (follow-up): `Ac` modifier with `ac_floor` 16, concentration. Spell kind pending (R-G3). Shipped in `srd51.core` (T&C spells refresh). |
 | Blindness/Deafness | NEW (wiring) | rules5e `SpellDef::condition_choices` + `ActionRequest::condition_choice` (R-G14, 7.2i). |
 | Blur | NEW (wiring) | Rules done (#89): `AttacksAgainst` disadvantage modifier on self, concentration (the blindsight/truesight exception is not modelled). |
 | Branding Smite | NEW | R-G4. |
@@ -391,7 +391,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Lesser Restoration | NEW (wiring) | rules5e `EndCondition` + `ends_conditions` (R-G15, 7.2g); the caster chooses which listed condition ends (`ActionRequest::condition_choice` = 1 + index into the spell's `conditions` in JSON list order; not listed / not on the target = refused, no state change; no choice and the AI = the lowest listed condition present); no disease model. Loader done (EC #120): `end_condition {conditions[]}` (one def; no per-condition defs). No pack ships it yet; schema / validator pending (T&C). |
 | Magic Weapon | NEW | Magic bonus (R-G17, T&C-G2/R-G3). |
 | Mirror Image | NEW | Duplicates that absorb attacks (R-G3). |
-| Misty Step | NEW (wiring) | `Teleport` effect (`max_feet` 30), bonus action, self; destination from the request, validated by sim (R-G9, VERSION_BUMP_BATCH 7.2k). Sim done (R-G9 sim PR): spell@1 `teleport {max_feet, needs_sight}`; `Combat::legal_teleport_tiles`; submit re-validates (range, free footprint, sight, Frightened not closer) and fills `teleport_feet`; log_hash 0xB2 / 0xB4. The built-in AI does not cast it; schema / validator arm pending (T&C). |
+| Misty Step | DATA | `Teleport` effect (`max_feet` 30), bonus action, self; destination from the request, validated by sim (R-G9, VERSION_BUMP_BATCH 7.2k). Sim done (R-G9 sim PR): spell@1 `teleport {max_feet, needs_sight}`; `Combat::legal_teleport_tiles`; submit re-validates (range, free footprint, sight, Frightened not closer) and fills `teleport_feet`; log_hash 0xB2 / 0xB4. The built-in AI does not cast it; schema / validator arm pending (T&C). Shipped in `srd51.core` (T&C spells refresh). |
 | Polymorph (L4) | NEW (wiring) | R-G12 rules PR 1 (7.2q): `SpellEffectKind::Polymorph`, unwilling Wis save, beast form via `build_form` (all stats replaced, fresh HP, can't cast), reverts at 0 HP with overflow carried (D12), on death or when concentration ends; refused on a shapechanger or a 0-HP creature (D13). Sim: `build_form` for Polymorph done (R-G12 sim PR 1: choices = rated beasts in id order, CR <= the target's CR or character level, footprint fit). Pending: T&C `polymorph` effect kind / rules loader key, AI. |
 | Moonbeam | NEW (wiring) | `Zone` (point cylinder): Enter / StartTurn once per turn, Con save, 2d10 radiant half, upcast; the action move up to 60 ft on later turns (`zone_move`, D3) (R-G11, 7.2l). Shapechanger disadvantage done (`shapechanger_disadvantage`, PR 2); reverting the form is not modelled (R-G12). Sim: geometry, `legal_zone_tiles`. Sim done (zones sim PR): geometry / `zone_contains`, membership lists, `legal_zone_tiles` destination checks, terrain overlays, 0xAB / 0xB7. |
 | Protection from Poison | NEW | R-G3. |
