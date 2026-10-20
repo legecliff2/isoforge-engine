@@ -420,7 +420,7 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
 }
 
 namespace {
-// R-G12 summons (§3.4, built-in, before the policy): an uncommanded summon that takes commands (Verbal / BonusAction, D4)
+// R-G12 summons (§3.4, built-in, before the policy; default approved by the Director, SUMMONS_TRANSFORMS Q4): an uncommanded summon that takes commands (Verbal / BonusAction, D4)
 // Dodges, then ends its turn; a summoner commands its uncommanded Verbal summons to act (free) and, with its bonus action
 // still free, its BonusAction ones (Animate Dead). Telepathic / None summons act on their own. Nothing without summons.
 std::optional<Command> summon_turn_command(const Combat& c, CombatantId self) {
