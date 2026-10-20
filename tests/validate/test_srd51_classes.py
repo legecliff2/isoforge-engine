@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation), Sorcerer (Draconic Bloodline), Rogue (Thief), Paladin (Oath of Devotion), Ranger (Hunter), Barbarian (Path of the Berserker) and Bard (College of Lore) levels 1-5 in srd51.core vs the 5e-database
+"""SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation), Sorcerer (Draconic Bloodline), Rogue (Thief), Paladin (Oath of Devotion), Ranger (Hunter), Barbarian (Path of the Berserker), Bard (College of Lore) and Druid (Circle of the Land: Mountain) levels 1-5 in srd51.core vs the 5e-database
 tables (ctest: content_validate_srd51_classes).
 
 `data/srd51_classes_5e_database_a6212be.json` holds fields copied verbatim from 5e-bits/5e-database commit a6212be
@@ -25,9 +25,9 @@ DATA = json.loads((Path(__file__).parent / "data/srd51_classes_5e_database_a6212
 TABLE, SPELLS = DATA["classes"], DATA["spells"]
 LEVELS = range(1, 6)
 XP = {1: 0, 2: 300, 3: 900, 4: 2700, 5: 6500}   # SRD 5.1 Character Advancement table
-SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2, "sorcerer": 1, "rogue": 3, "paladin": 3, "ranger": 3, "barbarian": 3, "bard": 3}
+SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2, "sorcerer": 1, "rogue": 3, "paladin": 3, "ranger": 3, "barbarian": 3, "bard": 3, "druid": 2}
 SPELLCASTING_FROM = {"paladin": 2, "ranger": 2}   # half caster: no spellcasting block at level 1
-MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int", "sorcerer": "cha", "rogue": "dex", "paladin": "str", "ranger": "dex", "barbarian": "str", "bard": "cha"}   # the ASI at level 4 goes here (+2)
+MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int", "sorcerer": "cha", "rogue": "dex", "paladin": "str", "ranger": "dex", "barbarian": "str", "bard": "cha", "druid": "wis"}   # the ASI at level 4 goes here (+2)
 SKILLS = {"athletics": "str", "perception": "wis", "insight": "wis", "religion": "int", "arcana": "int", "history": "int",
           "persuasion": "cha", "acrobatics": "dex", "sleight_of_hand": "dex", "stealth": "dex", "survival": "wis", "deception": "cha", "performance": "cha"}
 # Rogue: four class skills (two for the others) and Expertise (doubled proficiency) on Stealth and Perception.
@@ -132,14 +132,27 @@ AUTHORED = {
     "bonus-proficiencies": "feature:bonus_proficiencies",    # baked into skills (skill_count)
     "cutting-words": "reactions",                            # reactions[] roll_attack / subtract_roll 1d6 (1d8 at 5), pool bardic_inspiration
     "bard-ability-score-improvement-1": "abilities",
-    "font-of-inspiration": "feature:font_of_inspiration",    # the pool's recharge short_rest at 5                              # descriptive: needs Rage, a bonus-action attack while raging, exhaustion on end               # Colossus Slayer chosen; descriptive: no "target below its hit point maximum" predicate                # descriptive: the damaged window is not attack-only (SRD_CLASSES_DEFERRED)
+    "font-of-inspiration": "feature:font_of_inspiration",    # the pool's recharge short_rest at 5
+    "spellcasting-druid": "spellcasting",
+    "druidic": "feature:druidic",                            # descriptive: a secret language, no combat rule
+    "wild-shape-cr-1-4-or-below-no-flying-or-swim-speed": "feature:wild_shape",   # wild_shape kind (R-G12, EC #176) + pool
+    "wild-shape-cr-1-2-or-below-no-flying-speed": "feature:wild_shape",
+    "druid-circle": "subclass",
+    "circle-of-the-land": "subclass",
+    "circle-of-the-land-mountain": "subclass",
+    "bonus-cantrip": "feature:bonus_cantrip",                # descriptive: both shipped druid cantrips are already known
+    "natural-recovery": "feature:natural_recovery",          # slot_recovery {class druid} (sim #148)
+    "circle-spells-1": "feature:circle_spells",              # the shipped circle spells are in spellcasting.spells (subclass_spells)
+    "circle-spells-2": "feature:circle_spells",
+    "druid-ability-score-improvement-1": "abilities",
 }
 # Kept as a features[] entry with no effect: no combat rule, or a mechanic the engine lacks (docs/SRD_CLASSES_DEFERRED.md).
 DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_story_work", "uncanny_dodge"],
                "paladin": ["divine_sense", "divine_health", "channel_divinity", "sacred_weapon", "turn_the_unholy"],
                "ranger": ["favored_enemy", "natural_explorer", "primeval_awareness", "colossus_slayer"],
                "barbarian": ["rage", "unarmored_defense", "danger_sense", "fast_movement", "frenzy"],
-               "bard": ["bardic_inspiration", "jack_of_all_trades", "song_of_rest", "expertise", "bonus_proficiencies", "font_of_inspiration"]}
+               "bard": ["bardic_inspiration", "jack_of_all_trades", "song_of_rest", "expertise", "bonus_proficiencies", "font_of_inspiration"],
+               "druid": ["druidic", "bonus_cantrip", "circle_spells"]}
 # Not expressible today (docs/SRD_CLASSES_DEFERRED.md): mirror index -> the feature id it would get (must be absent).
 DEFERRED = {
     "disciple-of-life": "disciple_of_life",
@@ -149,7 +162,8 @@ DEFERRED = {
     "destroy-undead-cr-1-2-or-below": "destroy_undead",
 }
 # Life domain spells and class cantrips the pack does not ship yet (listed in the deferred doc).
-DEFERRED_SPELLS = ["bless", "spiritual-weapon", "beacon-of-hope", "protection-from-evil-and-good", "sanctuary", "zone-of-truth"]   # Lesser Restoration, Revivify: spells batch 2
+DEFERRED_SPELLS = ["bless", "spiritual-weapon", "beacon-of-hope", "protection-from-evil-and-good", "sanctuary", "zone-of-truth",
+                   "spider-climb", "meld-into-stone"]   # Mountain circle spells not shipped;   # Lesser Restoration, Revivify: spells batch 2
 
 
 def mod(score: int) -> int:
@@ -451,6 +465,32 @@ class ClassTable(unittest.TestCase):
                     self.assertNotIn("reactions", d)
                 self.assertEqual("font_of_inspiration" in f, level >= 5)
                 for fid in DESCRIPTIVE["bard"]:
+                    if fid in f:
+                        self.assertNotIn("effect", f[fid], fid)
+
+    def test_druid(self):
+        forms = ["srd51.monster." + m for m in ("jackal", "wolf", "boar", "axe_beak", "giant_poisonous_snake", "black_bear")]
+        for level in LEVELS:
+            with self.subTest(level=level):
+                d = load("druid", level)
+                f = features(d)
+                if level < 2:
+                    self.assertNotIn("resources", d)
+                    self.assertNotIn("wild_shape", f)
+                    self.assertNotIn("natural_recovery", f)
+                    continue
+                self.assertEqual(d["resources"], [{"id": "wild_shape", "name": "Wild Shape", "max": 2, "recharge": "short_rest"}])
+                # SRD: CR 1/4, no fly / swim at 2; CR 1/2, no fly at 4 (engine defaults no_swim_below 4, no_fly_below 8)
+                self.assertEqual(f["wild_shape"]["effect"], {"kind": "wild_shape", "pool": "wild_shape", "forms": forms,
+                                                             "max_cr_by_level": [{"level": 2, "max_cr": "1/4"}, {"level": 4, "max_cr": "1/2"}]})
+                for ref in forms:   # shipped beasts, CR <= 1/2, no fly speed (swim only on the giant poisonous snake)
+                    m = json.loads((PACK / "monsters" / f"{ref.removeprefix('srd51.monster.')}.json").read_text(encoding="utf-8"))
+                    self.assertIn(m["challenge"]["rating"], ("0", "1/8", "1/4", "1/2"), ref)
+                    self.assertNotIn("fly", m["speed"], ref)
+                self.assertEqual(f["natural_recovery"]["effect"], {"kind": "slot_recovery", "class": "druid", "max_slot_level": 5, "uses": 1})
+                self.assertIn("half your druid level (rounded up)", f["natural_recovery"]["description"])
+                self.assertEqual("circle_spells" in f, level >= 3)
+                for fid in DESCRIPTIVE["druid"]:
                     if fid in f:
                         self.assertNotIn("effect", f[fid], fid)
 
