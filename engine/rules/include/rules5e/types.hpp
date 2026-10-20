@@ -525,6 +525,8 @@ struct Combatant {
     uint16_t darkvision_ft = 0, blindsight_ft = 0, tremorsense_ft = 0, truesight_ft = 0;
     bool sunlight_sensitive = false;   // SRD Sunlight Sensitivity (drow, kobold...)
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
+    // appended (control conditions, 7.2v): challenge rating * 8 (CR 1/2 = 4) for Destroy Undead; -1 = unknown (never destroyed).
+    int16_t cr8 = -1;
 };
 
 void add_condition(Combatant&, Condition);

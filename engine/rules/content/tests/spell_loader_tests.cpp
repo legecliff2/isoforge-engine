@@ -15,7 +15,14 @@ TEST_CASE("sample pack spells load into a SpellBook") {
     auto r = load_spellbook(kSpells);
     REQUIRE(r.errors.empty());
     REQUIRE(r.book);
-    CHECK(r.book->all().size() == 23);
+    // Expected: the spell@1 files the srd51.core manifest lists, so new spell batches need no edit.
+    std::ifstream mf(kSpells.parent_path() / "manifest.json");
+    const auto manifest = eng::assets::Json::parse(std::string(std::istreambuf_iterator<char>(mf), std::istreambuf_iterator<char>()));
+    size_t listed = 0;
+    for (const auto& c : manifest["contents"])
+        listed += c.get<std::string>().rfind("spells/", 0) == 0 ? 1 : 0;
+    CHECK(listed > 0);
+    CHECK(r.book->all().size() == listed);
 
     const SpellDef* fb = r.book->find(spell_id_of("srd51.spell.fire_bolt"));
     REQUIRE(fb);
@@ -594,4 +601,43 @@ TEST_CASE("loader 7.2u: rider keys (durations 3 / 4, no_reactions / no_healing, 
     CHECK(d.when[1].kind == PredicateKind::SubjectIsCaster);
     CHECK(r.def->extra_effects[2].modifier.stat == ModStat::NoReactions);
     CHECK(r.def->extra_effects[2].modifier.expiry == 4);
+}
+
+TEST_CASE("loader: 7.2v control keys on a save effect (control, control_excludes_creature_types, control_min_int, destroy_undead_max_cr8)") {
+    auto base = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"test.spell.command","name":"Command","level":1,
+        "school":"enchantment","source":{"ref":"SRD 5.1","license":"CC-BY-4.0"},
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":60},"components":{"v":true},
+        "duration":{"kind":"rounds","amount":1},
+        "effects":[{"kind":"save","ability":"wis","control":"command","control_excludes_creature_types":["undead"]}]})");
+    auto c = spell_from_json(base);
+    REQUIRE(c.def);
+    CHECK(c.def->control == ControlKind::Command);
+    CHECK(c.def->control_excluded == bit(CreatureType::Undead));
+    CHECK_FALSE(c.def->applies_condition);
+
+    auto j = base; j["effects"][0] = {{"kind", "save"}, {"ability", "wis"}, {"condition", "prone"}, {"control", "laughter"},
+                                      {"control_min_int", 4}, {"repeat_save", "end_of_turn_or_damage_advantage"}};
+    auto l = spell_from_json(j); REQUIRE(l.def);
+    CHECK(l.def->control == ControlKind::Laughter); CHECK(l.def->control_min_int == 4);
+    CHECK(l.def->repeat_save == RepeatSave::EndOfTurnOrDamageAdv);
+    j["effects"][0]["control"] = "fear"; j["effects"][0]["condition"] = "frightened"; j["effects"][0]["repeat_save"] = "end_of_turn_unseen";
+    j["effects"][0].erase("control_min_int");
+    auto f = spell_from_json(j); REQUIRE(f.def);
+    CHECK(f.def->control == ControlKind::Fear); CHECK(f.def->repeat_save == RepeatSave::EndOfTurnUnseen);
+    j = base; j["effects"][0] = {{"kind", "save"}, {"ability", "wis"}, {"control", "turned"}, {"destroy_undead_max_cr8", 8}};
+    auto t = spell_from_json(j); REQUIRE(t.def);
+    CHECK(t.def->control == ControlKind::Turned); CHECK(t.def->destroy_cr8_max == 8);
+
+    auto bad = [](eng::assets::Json x, const std::string& want) {
+        auto r = spell_from_json(x); INFO(want); CHECK_FALSE(r.def); CHECK(r.error.find(want) != std::string::npos);
+    };
+    j = base; j["effects"][0]["control"] = "charm"; bad(j, "effect control invalid");
+    j = base; j["effects"][0]["control_excludes_creature_types"] = {"ghost"}; bad(j, "control_excludes_creature_types invalid");
+    j = base; j["effects"][0]["control_min_int"] = 0; bad(j, "control_min_int invalid");
+    j = base; j["effects"][0]["destroy_undead_max_cr8"] = 12; bad(j, "destroy_undead_max_cr8 invalid");
+    j = base; j["effects"][0].erase("control"); bad(j, "needs control");
+    j = base; j["effects"][0].erase("control"); j["effects"][0].erase("control_excludes_creature_types");
+    bad(j, "save effect needs damage, condition or control");
+    j = base; j["effects"] = eng::assets::Json::array({{{"kind", "save"}, {"ability", "wis"}, {"condition", "prone"}}, base["effects"][0]});
+    bad(j, "control is only allowed on the first effect");
 }

@@ -73,8 +73,8 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 | class | levels | spells listed |
 |---|---|---|
 | Cleric | 1-2 | Sacred Flame; Cure Wounds (domain), Healing Word, Inflict Wounds |
-| Cleric | 3-4 | + Hold Person |
-| Cleric | 5 | + Mass Healing Word |
+| Cleric | 3-4 | + Hold Person, Lesser Restoration (domain) |
+| Cleric | 5 | + Mass Healing Word, Revivify (domain) |
 | Wizard | 1-2 | Acid Splash, Fire Bolt, Poison Spray; Magic Missile, Shield |
 | Wizard | 3-4 | + Hold Person, Scorching Ray |
 | Wizard | 5 | + Counterspell |
@@ -84,7 +84,7 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 
 Deferred until the spells are authored (`docs/SRD_SPELLS_DEFERRED.md` gives the reason for each):
 
-- **Life domain spells** (always prepared): `srd51.spell.bless` (1), `srd51.spell.lesser_restoration` (3), `srd51.spell.spiritual_weapon` (3), `srd51.spell.beacon_of_hope` (5), `srd51.spell.revivify` (5).
+- **Life domain spells** (always prepared): `srd51.spell.bless` (1), `srd51.spell.spiritual_weapon` (3), `srd51.spell.beacon_of_hope` (5). Lesser Restoration (3) and Revivify (5) ship since spells batch 2 and are listed in the cleric documents.
 - **Cantrips known**: the Cleric knows 3 (4 from level 4) but the pack ships one cleric cantrip (Sacred Flame). The Wizard knows 3 (4 from level 4), and the pack ships three wizard cantrips. Missing: Guidance, Light, Mending, Resistance, Spare the Dying, Thaumaturgy (cleric); Chill Touch, Ray of Frost, Shocking Grasp, True Strike and the utility cantrips (wizard). The Sorcerer knows 4 cantrips (5 from level 4) and 2-6 spells; the pack ships three sorcerer cantrips and five leveled sorcerer spells (Chill Touch, Ray of Frost, Shocking Grasp, Burning Hands, Chromatic Orb, Sleep, Thunderwave, Misty Step and the rest are not shipped), so each document lists fewer.
 - **Spellbook and prepared spells**: a level 1 wizard's spellbook holds six 1st-level spells, plus two per level after that; a cleric prepares Wis modifier + level spells. The documents list fewer because the rest are not shipped (Burning Hands, Mage Armor, Sleep, Thunderwave, Misty Step, Fireball, Lightning Bolt, Bless, Guiding Bolt, Shield of Faith, Spiritual Weapon, Spirit Guardians, ...). The `spells` list doubles as the prepared list. `character@4` has no separate spellbook.
 

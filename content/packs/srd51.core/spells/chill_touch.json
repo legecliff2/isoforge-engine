@@ -1,0 +1,86 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.chill_touch",
+  "name": "Chill Touch",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "You create a ghostly, skeletal hand in the space of a creature within range. Make a ranged spell attack against the creature to assail it with the chill of the grave. On a hit, the target takes 1d8 necrotic damage, and it can't regain hit points until the start of your next turn. Until then, the hand clings to the target. If you hit an undead target, it also has disadvantage on attack rolls against you until the end of your next turn. This spell's damage increases by 1d8 when you reach 5th level (2d8), 11th level (3d8), and 17th level (4d8).",
+  "level": 0,
+  "school": "necromancy",
+  "classes": [
+    "sorcerer",
+    "warlock",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 120
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "rounds",
+    "amount": 1
+  },
+  "effects": [
+    {
+      "kind": "spell_attack",
+      "attack": "ranged",
+      "damage": {
+        "dice": "1d8",
+        "type": "necrotic"
+      }
+    },
+    {
+      "kind": "apply_modifier",
+      "applies_to": "affected",
+      "modifier": {
+        "stat": "no_healing",
+        "applies_to": "target",
+        "duration": {
+          "kind": "until_start_of_caster_turn"
+        }
+      }
+    },
+    {
+      "kind": "apply_modifier",
+      "applies_to": "affected",
+      "modifier": {
+        "stat": "attack_roll",
+        "mode": "disadvantage",
+        "applies_to": "target",
+        "duration": {
+          "kind": "until_end_of_caster_next_turn"
+        },
+        "when": [
+          {
+            "kind": "owner_creature_type",
+            "creature_types": [
+              "undead"
+            ]
+          },
+          {
+            "kind": "subject_is_caster"
+          }
+        ]
+      }
+    }
+  ],
+  "scaling": {
+    "cantrip": {
+      "levels": [
+        5,
+        11,
+        17
+      ],
+      "adds": "dice"
+    }
+  }
+}

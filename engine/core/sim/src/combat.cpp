@@ -401,20 +401,7 @@ std::optional<std::string> Combat::plan_step(CombatantId mover, Vec2i to, StepPl
         }
     }
     if (err) return err;
-    int cost = step_cost_ft(mover, from, to, plan.n);
-    if (through || overlaps_other(mover, to, plan.n)) {
-        // Another creature's space is difficult terrain (+1 ft per ft). It does not stack with other difficult terrain, but
-        // it does stack with swimming without a swim speed (+1 ft per ft): 5 + 5 + 5 = 15 ft (SRD 5.1 Movement).
-        int swim_extra = 0;
-        if (!caps.swim && !caps.fly)
-            for (int sy = 0; sy < plan.n; ++sy)
-                for (int sx = 0; sx < plan.n; ++sx) {
-                    const Vec2i w{to.x + sx, to.y + sy};
-                    const bool inside = w.x >= from.x && w.x < from.x + cur && w.y >= from.y && w.y < from.y + cur;
-                    if (!inside && grid_.walkable(w) && grid_.water(w)) swim_extra = std::max(swim_extra, cost / 2);
-                }
-        cost = std::max(cost - swim_extra, 10) + swim_extra;
-    }
+    int cost = step_cost_ft(mover, from, to, plan.n, through || overlaps_other(mover, to, plan.n));
     if (plan.n < full) cost *= 2;                                                 // squeezing: +1 ft per ft
     plan.cost = cost;
     plan.ends_in_other = overlaps_other(mover, to, plan.n);
@@ -1112,7 +1099,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
         bool dashed = false;
         for (const auto& e : evs) dashed = dashed || (e.kind == rules5e::EventKind::Dashed && e.reaction_depth == 0 && e.actor == q.actor);
         if (q.kind == ActionKind::Dash && q.aggressive && dashed && actor)
-            aggressive_ = AggressiveDash{now, q.actor, std::max(0, int(state_.budget.movement_ft) - rules5e::effective_speed(*actor))};
+            aggressive_ = AggressiveDash{now, q.actor, std::max(0, int(state_.budget.movement_ft) - rules5e::modified_speed(state_, *actor))};   // 7.2u: Dash adds modified_speed
         else if (aggressive_ && q.kind == ActionKind::Move && q.actor == aggressive_->actor)
             aggressive_->free_ft = std::max(0, aggressive_->free_ft - int(q.move_ft));
     }
@@ -1527,7 +1514,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
             int cost = 0;
             Vec2i prev = from;
             for (Vec2i p : path) { cost += step_cost_ft(actor, prev, p); prev = p; }
-            if (cost > int(a->speed_ft)) { r.error = "readied move longer than speed"; return r; }
+            if (cost > rules5e::modified_speed(state_, *a)) { r.error = "readied move longer than speed"; return r; }   // 7.2u: effective speed
             req.move_ft = int16_t(cost);
             req.move_tiles = uint8_t(std::min<std::size_t>(path.size(), 255));   // path length (rules counts it only when it fires on the readier's own turn)
             req.leaves_reach = true;   // rules polls; sim's in_range decides who is actually left
@@ -1567,7 +1554,7 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze) {
         r.error = "cannot end movement in another creature's space";
         return r;
     }
-    if (!aggressive_step_ok(mover, to)) { r.error = "aggressive: the Dash's movement must go toward a hostile it can see"; return r; }
+    if (!aggressive_step_ok(mover, to, cost, fp)) { r.error = "aggressive: the Dash's movement must go toward a hostile it can see"; return r; }
     ActionRequest mv{mover, ActionKind::Move};
     mv.move_ft = int16_t(cost);
     mv.move_tiles = 1;
@@ -1628,11 +1615,17 @@ std::vector<Vec2i> Combat::summon_tiles_for(CombatantId caster, const rules5e::S
 }
 
 bool Combat::aggressive_step_ok(CombatantId mover, Vec2i to) const {
+    // Priced like the Step itself (plan_step -> step_cost_ft): move modes, zones, another creature's space, squeezing.
+    StepPlan plan;
+    if (!plan_step(mover, to, plan)) return aggressive_step_ok(mover, to, plan.cost, plan.n);
+    const int fp = footprint_size(mover);
+    return aggressive_step_ok(mover, to, step_cost_ft(mover, pos(mover), to, fp, overlaps_other(mover, to, fp)), fp);
+}
+bool Combat::aggressive_step_ok(CombatantId mover, Vec2i to, int cost, int fp) const {
     const TurnKey now = turn_key();
     if (!aggressive_ || aggressive_->stamp != now || aggressive_->actor != mover) return true;
     const Vec2i from = pos(mover);
-    const int fp = footprint_size(mover);
-    if (grid_.move_cost_ft(from, to, fp) <= aggressive_->free_ft) return true;   // the creature's own movement
+    if (cost <= aggressive_->free_ft) return true;   // the creature's own movement
     const auto* m = rules5e::find(state_, mover);
     if (!m || m->has(rules5e::Condition::Blinded)) return false;
     for (const auto& sl : slots_) {
@@ -1826,6 +1819,7 @@ uint64_t Combat::log_hash() const {
         if (q.flexible != 0) { h.byte(0xBA); h.byte(q.flexible); h.byte(q.flexible_level); }
         if (q.squeeze != 0) { h.byte(0xC2); h.byte(q.squeeze); }   // SRD Squeezing on a Move (feat/size-space)
         if (q.move_mode != 0) { h.byte(0xC3); h.byte(q.move_mode); }   // feat/move-modes: the speed a Move used
+        if (q.command_word != 0) { h.byte(0xC4); h.byte(q.command_word); }   // 7.2v Command's word on a CastSpell: folded only when set
         if (q.has_guess) { h.byte(0xC6); h.i32(q.guess_x); h.i32(q.guess_y); }   // vision 7.2x: guessed tile of a hidden target
         if (q.avert_gaze) { h.byte(0xBB); h.byte(1); }   // Petrifying Gaze averting the eyes: folded only when set (gaze_seen is derived, not folded)
         // Small leftovers (rules #111): bit0 haste_action, bit1 reckless, bit2 aggressive; folded only when some bit is set.
@@ -2028,21 +2022,44 @@ uint8_t Combat::step_mode(CombatantId mover, Vec2i from, Vec2i to, int cost, int
 }
 
 int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to) const { return step_cost_ft(mover, from, to, footprint_size(mover)); }
-int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int fp) const {
-    int cost = grid_.move_cost_ft(from, to, fp, caps_of(mover));   // feat/move-modes: water / climb / open air
-    if (state_.zones.empty() || !spells_) return cost;
-    bool difficult = false, halve = false;
-    for (const auto& z : state_.zones) {
-        const rules5e::SpellDef* d = spells_->find(z.spell_id);
-        if (!d || !(d->zone.flags & (rules5e::kZoneDifficult | rules5e::kZoneHalveSpeed))) continue;
-        if (std::binary_search(z.excluded.begin(), z.excluded.end(), mover)) continue;
-        if (!zone_holds(z, mover, Spot{to, fp}, false)) continue;
-        difficult = difficult || (d->zone.flags & rules5e::kZoneDifficult);
-        halve = halve || (d->zone.flags & rules5e::kZoneHalveSpeed);
+int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int fp, bool through_creature) const {
+    const MoveCaps caps = caps_of(mover);
+    bool difficult = through_creature, halve = false, zoned = false;
+    if (!state_.zones.empty() && spells_)
+        for (const auto& z : state_.zones) {
+            const rules5e::SpellDef* d = spells_->find(z.spell_id);
+            if (!d || !(d->zone.flags & (rules5e::kZoneDifficult | rules5e::kZoneHalveSpeed))) continue;
+            if (std::binary_search(z.excluded.begin(), z.excluded.end(), mover)) continue;
+            if (!zone_holds(z, mover, Spot{to, fp}, false)) continue;
+            zoned = true;
+            difficult = difficult || (d->zone.flags & rules5e::kZoneDifficult);
+            halve = halve || (d->zone.flags & rules5e::kZoneHalveSpeed);
+        }
+    int cost = 0;
+    if (!difficult) {
+        cost = grid_.move_cost_ft(from, to, fp, caps);   // feat/move-modes: water / climb / open air
+    } else {
+        // Difficult terrain (a zone, another creature's space, a difficult tile) is +1 ft per ft once: it never stacks with
+        // itself, but it stacks with swimming without a swim speed (+1 ft per ft), priced per newly entered tile: plain water
+        // under a zone or a creature is 5 + 5 + 5 = 15 ft (SRD 5.1 Movement). Swimmers and flyers pay 10.
+        for (int ty = 0; ty < fp; ++ty)
+            for (int tx = 0; tx < fp; ++tx) {
+                const Vec2i t{to.x + tx, to.y + ty};
+                const bool was_inside = fp > 1 && t.x >= from.x && t.x < from.x + fp && t.y >= from.y && t.y < from.y + fp;
+                if (was_inside) continue;
+                int tile = 0;
+                if (!grid_.walkable(t)) {
+                    tile = std::max(grid_.tile_cost_ft(t, caps), 2 * kFeetPerTile);
+                } else {
+                    const int base = grid_.step_cost_ft(t);
+                    const int swim_extra = (grid_.water(t) && !caps.swim && !caps.fly) ? base : 0;   // as Grid::tile_cost_ft
+                    tile = std::max(base, 2 * kFeetPerTile) + swim_extra;
+                }
+                cost = std::max(cost, tile);
+            }
     }
-    if (difficult) cost = std::max(cost, 10);   // difficult terrain does not stack with itself
     if (halve) cost *= 2;
-    return std::min(cost, 20);
+    return zoned ? std::min(cost, 20) : cost;
 }
 
 // ---- R-G9 forced movement / teleport (FORCED_MOVEMENT.md §3) ----

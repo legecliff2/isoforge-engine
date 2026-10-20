@@ -1,0 +1,81 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.spirit_guardians",
+  "name": "Spirit Guardians",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "You call forth spirits to protect you. They flit around you to a distance of 15 feet for the duration. If you are good or neutral, their spectral form appears angelic or fey (your choice). If you are evil, they appear fiendish. When you cast this spell, you can designate any number of creatures you can see to be unaffected by it. An affected creature's speed is halved in the area, and when the creature enters the area for the first time on a turn or starts its turn there, it must make a wisdom saving throw. On a failed save, the creature takes 3d8 radiant damage (if you are good or neutral) or 3d8 necrotic damage (if you are evil). On a successful save, the creature takes half as much damage. At Higher Levels. When you cast this spell using a spell slot of 4th level or higher, the damage increases by 1d8 for each slot level above 3rd.",
+  "level": 3,
+  "school": "conjuration",
+  "classes": [
+    "cleric"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "self"
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "A holy symbol"
+    }
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 10,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "zone",
+      "zone": {
+        "shape": "sphere",
+        "size_ft": 15,
+        "anchor": "creature",
+        "flags": [
+          "halve_speed"
+        ],
+        "chooses_excluded": true,
+        "triggers": [
+          {
+            "on": "zone_enter",
+            "effect": {
+              "kind": "save",
+              "ability": "wis",
+              "damage": {
+                "dice": "3d8",
+                "type": "radiant"
+              },
+              "on_success": "half"
+            },
+            "evil_damage_type": "necrotic"
+          },
+          {
+            "on": "zone_start_turn",
+            "effect": {
+              "kind": "save",
+              "ability": "wis",
+              "damage": {
+                "dice": "3d8",
+                "type": "radiant"
+              },
+              "on_success": "half"
+            },
+            "evil_damage_type": "necrotic"
+          }
+        ],
+        "needs_conscious_owner": true
+      }
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "dice": 1
+    }
+  }
+}

@@ -76,7 +76,7 @@ DEFERRED = {
     "destroy-undead-cr-1-2-or-below": "destroy_undead",
 }
 # Life domain spells and class cantrips the pack does not ship yet (listed in the deferred doc).
-DEFERRED_SPELLS = ["bless", "lesser-restoration", "spiritual-weapon", "beacon-of-hope", "revivify"]
+DEFERRED_SPELLS = ["bless", "spiritual-weapon", "beacon-of-hope"]   # Lesser Restoration, Revivify: spells batch 2
 
 
 def mod(score: int) -> int:
