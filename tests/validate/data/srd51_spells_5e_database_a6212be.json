@@ -1,0 +1,243 @@
+{
+ "_source": "5e-bits/5e-database commit a6212be, src/2014/en/5e-SRD-Spells.json (fields copied verbatim; damage_type / dc ability / school / classes flattened to their index)",
+ "spells": {
+  "barkskin": {
+   "name": "Barkskin",
+   "level": 2,
+   "range": "Touch",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 hour",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "transmutation",
+   "classes": [
+    "druid",
+    "ranger"
+   ],
+   "material": "A handful of oak bark."
+  },
+  "burning-hands": {
+   "name": "Burning Hands",
+   "level": 1,
+   "range": "Self",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Instantaneous",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "evocation",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ],
+   "damage_type": "fire",
+   "damage_at": {
+    "1": "3d6",
+    "2": "4d6",
+    "3": "5d6",
+    "4": "6d6",
+    "5": "7d6",
+    "6": "8d6",
+    "7": "9d6",
+    "8": "10d6",
+    "9": "11d6"
+   },
+   "dc": {
+    "ability": "dex",
+    "success": "half"
+   },
+   "area_of_effect": {
+    "type": "cone",
+    "size": 15
+   }
+  },
+  "fireball": {
+   "name": "Fireball",
+   "level": 3,
+   "range": "150 feet",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Instantaneous",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "evocation",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ],
+   "material": "A tiny ball of bat guano and sulfur.",
+   "damage_type": "fire",
+   "damage_at": {
+    "3": "8d6",
+    "4": "9d6",
+    "5": "10d6",
+    "6": "11d6",
+    "7": "12d6",
+    "8": "13d6",
+    "9": "14d6"
+   },
+   "dc": {
+    "ability": "dex",
+    "success": "half"
+   },
+   "area_of_effect": {
+    "type": "sphere",
+    "size": 20
+   }
+  },
+  "lightning-bolt": {
+   "name": "Lightning Bolt",
+   "level": 3,
+   "range": "Self",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Instantaneous",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "evocation",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ],
+   "material": "A bit of fur and a rod of amber, crystal, or glass.",
+   "damage_type": "lightning",
+   "damage_at": {
+    "3": "8d6",
+    "4": "9d6",
+    "5": "10d6",
+    "6": "11d6",
+    "7": "12d6",
+    "8": "13d6",
+    "9": "14d6"
+   },
+   "dc": {
+    "ability": "dex",
+    "success": "half"
+   },
+   "area_of_effect": {
+    "type": "line",
+    "size": 100
+   }
+  },
+  "misty-step": {
+   "name": "Misty Step",
+   "level": 2,
+   "range": "Self",
+   "components": [
+    "V"
+   ],
+   "ritual": false,
+   "duration": "Instantaneous",
+   "concentration": false,
+   "casting_time": "1 bonus action",
+   "school": "conjuration",
+   "classes": [
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ]
+  },
+  "ray-of-frost": {
+   "name": "Ray of Frost",
+   "level": 0,
+   "range": "60 feet",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Instantaneous",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "evocation",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ],
+   "attack_type": "ranged",
+   "damage_type": "cold",
+   "damage_at": {
+    "1": "1d8",
+    "5": "2d8",
+    "11": "3d8",
+    "17": "4d8"
+   }
+  },
+  "shield-of-faith": {
+   "name": "Shield of Faith",
+   "level": 1,
+   "range": "60 feet",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Up to 10 minutes",
+   "concentration": true,
+   "casting_time": "1 bonus action",
+   "school": "abjuration",
+   "classes": [
+    "cleric",
+    "paladin"
+   ],
+   "material": "A small parchment with a bit of holy text written on it."
+  },
+  "thunderwave": {
+   "name": "Thunderwave",
+   "level": 1,
+   "range": "Self",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Instantaneous",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "evocation",
+   "classes": [
+    "bard",
+    "druid",
+    "sorcerer",
+    "wizard"
+   ],
+   "damage_type": "thunder",
+   "damage_at": {
+    "1": "2d8",
+    "2": "3d8",
+    "3": "4d8",
+    "4": "5d8",
+    "5": "6d8",
+    "6": "7d8",
+    "7": "8d8",
+    "8": "9d8",
+    "9": "10d8"
+   },
+   "dc": {
+    "ability": "con",
+    "success": "half"
+   },
+   "area_of_effect": {
+    "type": "cube",
+    "size": 15
+   }
+  }
+ }
+}

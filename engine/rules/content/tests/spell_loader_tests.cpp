@@ -15,7 +15,7 @@ TEST_CASE("sample pack spells load into a SpellBook") {
     auto r = load_spellbook(kSpells);
     REQUIRE(r.errors.empty());
     REQUIRE(r.book);
-    CHECK(r.book->all().size() == 15);
+    CHECK(r.book->all().size() == 23);
 
     const SpellDef* fb = r.book->find(spell_id_of("srd51.spell.fire_bolt"));
     REQUIRE(fb);

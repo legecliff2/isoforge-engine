@@ -570,3 +570,87 @@ TEST_CASE("footprint golden: Huge (3x3) and Gargantuan (4x4) vs a goblin pack") 
     CHECK(d.log == 5232406441536582572ull);
     CHECK(d.count == 359u);
 }
+
+// ---- SRD 5.1 size rules (feat/size-space): moving through other creatures' spaces, squeezing ----
+namespace {
+SubmitResult squeeze_step(Fight& f, Vec2i to) {
+    Command s;
+    s.kind = CommandKind::Step;
+    s.to = to;
+    s.request.squeeze = 1;
+    return f.settle(f.c->submit(s));
+}
+SubmitResult end_turn(Fight& f, CombatantId who) {
+    Command e;
+    e.request = {who, rules5e::ActionKind::EndTurn};
+    return f.settle(f.c->submit(e));
+}
+}  // namespace
+
+TEST_CASE("size space: a Huge passes through a Medium hostile (2 sizes apart) as difficult terrain, can't end there") {
+    auto lib = make_lib({"huge", "medium"});
+    Fight f(lib, {{"test.monster.huge", 4, 4}, {"test.monster.medium", 8, 5}});
+    const CombatantId H = f.id(0);
+    f.advance_to(H);
+    REQUIRE(f.step({5, 4}).ok);   // x 5..7: free, 5 ft
+    REQUIRE(f.step({6, 4}).ok);   // x 6..8 covers the goblin at (8,5): 10 ft
+    CHECK(f.c->state().budget.movement_ft == 15);
+    auto r = end_turn(f, H);
+    CHECK_FALSE(r.ok);
+    CHECK(r.error == "cannot end movement in another creature's space");
+    REQUIRE(f.step({5, 4}).ok);   // back out: 5 ft
+    CHECK(f.c->state().budget.movement_ft == 10);
+    CHECK(end_turn(f, H).ok);
+    ecs::Registry reg;
+    std::string err;
+    auto again = replay(reg, f.chunk, lib, 1, f.c->log(), &err);
+    REQUIRE_MESSAGE(again, err);
+    CHECK(again->hash() == f.c->hash());
+    CHECK(again->log_hash() == f.c->log_hash());
+}
+
+TEST_CASE("size space: a Large can't pass a Medium hostile (1 size apart) but passes an ally; a step that would strand it is refused") {
+    auto lib = make_lib({"large", "huge", "medium"});
+    Fight f(lib, {{"test.monster.large", 4, 4}, {"test.monster.huge", 7, 4}, {"test.monster.medium", 4, 7}});
+    const CombatantId L = f.id(0);
+    f.advance_to(L);
+    REQUIRE(f.step({4, 5}).ok);
+    auto r = f.step({4, 6});
+    CHECK(r.error == "tile occupied");   // the hostile goblin
+    REQUIRE(f.step({5, 5}).ok);          // x 5..6: free (25 -> 20 left)
+    CHECK(f.c->state().budget.movement_ft == 20);
+    REQUIRE(f.step({6, 5}).ok);          // into the allied Huge's space (x 7): 10 ft
+    CHECK(f.c->state().budget.movement_ft == 10);
+    r = f.step({7, 5});                  // still inside the ally with 0 ft left after: refused
+    CHECK(r.error == "cannot end movement in another creature's space");
+    CHECK(f.c->state().budget.movement_ft == 10);
+}
+
+TEST_CASE("size space: squeezing is opt-in, halves the footprint side, doubles the cost and ends once the full space fits") {
+    auto lib = make_lib({"large", "medium"});
+    // A 1-tile gap at (6,4): walls at (6,3) and (6,5).
+    Fight f(lib, {{"test.monster.large", 4, 4}, {"test.monster.medium", 20, 20}}, {{6, 3}, {6, 5}});
+    const CombatantId L = f.id(0);
+    f.advance_to(L);
+    CHECK(f.step({5, 4}).error == "tile not walkable");   // no squeeze asked: as before
+    REQUIRE(squeeze_step(f, {5, 4}).ok);                  // squeezes into 1x1: 10 ft
+    CHECK(rules5e::find(f.c->state(), L)->squeezing);
+    CHECK(f.c->footprint_size(L) == 1);
+    CHECK(f.c->state().budget.movement_ft == 20);
+    bool fe = false;
+    for (const auto& e : f.c->events()) fe = fe || e.kind == SimEvent::Kind::Footprint;
+    CHECK(fe);
+    REQUIRE(f.step({6, 4}).ok);   // through the gap, still squeezed: 10 ft
+    CHECK(rules5e::find(f.c->state(), L)->squeezing);
+    CHECK(f.c->state().budget.movement_ft == 10);
+    REQUIRE(f.step({7, 4}).ok);   // full 2x2 fits again: stops squeezing, 5 ft
+    CHECK_FALSE(rules5e::find(f.c->state(), L)->squeezing);
+    CHECK(f.c->footprint_size(L) == 2);
+    CHECK(f.c->state().budget.movement_ft == 5);
+    ecs::Registry reg;
+    std::string err;
+    auto again = replay(reg, f.chunk, lib, 1, f.c->log(), &err);
+    REQUIRE_MESSAGE(again, err);
+    CHECK(again->hash() == f.c->hash());
+    CHECK(again->log_hash() == f.c->log_hash());
+}

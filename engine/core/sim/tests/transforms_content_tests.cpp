@@ -650,6 +650,7 @@ TEST_CASE("shapechanger trait: a listed form changes only the listed statistics,
     ContentLibrary lib;
     loaded(lib, druid(2));
     Json w = load_json("content/packs/srd51.core/monsters/goblin.json");
+    w["$schema"] = "monster@4";   // shapechanger is live at @4 only (a @3 file lists it inert)
     w["id"] = "test.monster.were";
     w["hit_points"]["average"] = 30;
     w["shapechanger"] = true;
@@ -765,6 +766,7 @@ TEST_CASE("shapechanger content: common@2 keys only (speed object, creature_type
     ContentLibrary lib;
     loaded(lib, druid(2));
     Json w = load_json("content/packs/srd51.core/monsters/goblin.json");
+    w["$schema"] = "monster@4";
     w["id"] = "test.monster.were2";
     w["shapechanger"] = true;
     REQUIRE(w["actions"].size() >= 2);
@@ -813,4 +815,46 @@ TEST_CASE("shapechanger content: common@2 keys only (speed object, creature_type
     bool has_keep = false;
     for (const auto& at : fs->attacks) has_keep = has_keep || at.id == keep;
     CHECK(has_keep);
+}
+
+TEST_CASE("version gate: wild_shape / shapechanger in pre-@4 files are inert (listed, never applied), like extra_attack") {
+    // character@3 druid: the feature is listed inert, no FeatureSpec, no form features; the same file at @4 applies it
+    for (const char* v : {"character@3", "character@2", "character@1"}) {
+        ContentLibrary lib;
+        Json d = druid(4);
+        d["$schema"] = v;
+        const auto e = build(lib, d);
+        INFO(v << ": " << e.value_or(""));
+        REQUIRE_FALSE(e);
+        const Archetype& a = *lib.find(kDruid);
+        CHECK(a.feature_specs.count(kWildShape) == 0);
+        CHECK(a.form_features.count(kWildShape) == 0);
+        bool listed = false;
+        for (const auto& s : a.inert_features) listed = listed || s.find("ws") == 0;
+        CHECK(listed);
+    }
+    {   // character@3 with keys @4 would refuse still loads (inert: never parsed)
+        ContentLibrary lib;
+        Json d = druid(4, {{"uses", 2}});
+        d["$schema"] = "character@3";
+        CHECK_FALSE(build(lib, d));
+    }
+    // monster@3 / @2 shapechanger: inert, no form swap feature; the creature fact is still read at @4 only as before
+    for (const char* v : {"monster@3", "monster@2", "monster@1"}) {
+        ContentLibrary lib;
+        Json w = load_json("content/packs/srd51.core/monsters/goblin.json");
+        w["$schema"] = v;
+        w["id"] = "test.monster.oldwere";
+        w["traits"] = Json::array({{{"id", "shape"}, {"name", "Shapechanger"}, {"description", "x"},
+                                    {"effect", {{"kind", "shapechanger"}, {"forms", Json::array({{{"id", "wolf"}, {"name", "Wolf"}}})}}}}});
+        const auto e = lib.add(w, "monster");
+        INFO(v << ": " << e.value_or(""));
+        REQUIRE_FALSE(e);   // no "requires shapechanger: true" error either: the trait is not parsed
+        const Archetype& a = *lib.find("test.monster.oldwere");
+        CHECK(a.feature_specs.empty());
+        CHECK(a.form_features.empty());
+        bool listed = false;
+        for (const auto& s : a.inert_features) listed = listed || s.find("shape") == 0;
+        CHECK(listed);
+    }
 }
