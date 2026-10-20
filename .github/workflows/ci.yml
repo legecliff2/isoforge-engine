@@ -1,76 +1,171 @@
 name: CI
 
+# Cost policy (macOS minutes bill at 10x Linux):
+# - Linux + Windows: every PR and every push to main (skipped for docs-only changes).
+# - macOS: nightly on main (07:00 UTC = 2 AM US Central), on manual dispatch, and on PRs whose
+#   changes touch platform / render or determinism-sensitive code (see the `mac` filter below).
+# - `ci-required` is the single aggregate gate for branch protection: it always runs and
+#   succeeds when every needed job passed or was skipped on purpose.
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
-  # Branches/PRs: a new push cancels the previous run. main: every push gets its own group
-  # (keyed by sha) and is never cancelled, so each merge gets a complete run.
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  # Branches/PRs: a new push cancels the previous run. main (push, schedule, dispatch): every run
+  # gets its own group (keyed by sha + event) and is never cancelled.
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && format('{0}-{1}', github.sha, github.event_name) || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.code.outputs.code }}
+      mac: ${{ steps.mac.outputs.mac }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name != 'pull_request'
+      # code = anything outside docs/** and Markdown files.
+      - id: code
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        uses: dorny/paths-filter@v3
+        with:
+          predicate-quantifier: every
+          filters: |
+            code:
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
+      # mac = platform / render, or determinism-sensitive code whose results must match on every OS.
+      - id: mac
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            mac:
+              - 'engine/platform/**'
+              - 'engine/render/**'
+              - 'engine/iso2d/**'
+              - 'engine/base/**'
+              - 'engine/detmath/**'
+              - 'engine/procgen/**'
+              - 'engine/core/sim/**'
+              - 'engine/core/world/**'
+              - 'engine/rules/**'
+              - 'tests/goldens/**'
+              - 'tests/compat/**'
+              - '**/golden*'
+              - 'CMakeLists.txt'
+              - 'CMakePresets.json'
+              - 'cmake/**'
+              - '.github/workflows/ci.yml'
+              - '.github/actions/**'
+
   build-test:
     name: ${{ matrix.name }}
+    needs: changes
+    if: (github.event_name == 'push' || github.event_name == 'pull_request') && needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { name: "Linux GCC Debug",       os: ubuntu-latest,  preset: ci-linux-gcc,     build: ci-linux-gcc,        test: ci-linux-gcc }
-          - { name: "Linux Clang Release",   os: ubuntu-latest,  preset: ci-linux-clang,   build: ci-linux-clang,      test: ci-linux-clang }
-          - { name: "macOS AppleClang Debug", os: macos-latest,  preset: ci-mac-clang,     build: ci-mac-clang,        test: ci-mac-clang }
-          - { name: "Windows MSVC Debug",    os: windows-latest, preset: ci-win-msvc,      build: ci-win-msvc-debug,   test: ci-win-msvc-debug }
-          - { name: "Windows MSVC Release",  os: windows-latest, preset: ci-win-msvc,      build: ci-win-msvc-release, test: ci-win-msvc-release }
+          - { name: "Linux GCC Debug",       os: ubuntu-latest,  preset: ci-linux-gcc,   build: ci-linux-gcc,        test: ci-linux-gcc }
+          - { name: "Linux Clang Release",   os: ubuntu-latest,  preset: ci-linux-clang, build: ci-linux-clang,      test: ci-linux-clang }
+          - { name: "Windows MSVC Debug",    os: windows-latest, preset: ci-win-msvc,    build: ci-win-msvc-debug,   test: ci-win-msvc-debug }
+          - { name: "Windows MSVC Release",  os: windows-latest, preset: ci-win-msvc,    build: ci-win-msvc-release, test: ci-win-msvc-release }
     steps:
       - uses: actions/checkout@v4
-
-      # content_validate: CMake creates a venv from this interpreter at configure time and
-      # pip-installs tools/validate/requirements.txt into it.
-      - uses: actions/setup-python@v5
+      - uses: ./.github/actions/cmake-ci
         with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: tools/validate/requirements.txt
+          preset: ${{ matrix.preset }}
+          build: ${{ matrix.build }}
+          test: ${{ matrix.test }}
 
-      - name: Install Linux deps (SDL3 video backends, Ninja)
-        if: runner.os == 'Linux'
+  macos:
+    name: macOS AppleClang Debug
+    needs: changes
+    if: >-
+      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && needs.changes.outputs.mac == 'true')
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cmake-ci
+        with:
+          preset: ci-mac-clang
+          build: ci-mac-clang
+          test: ci-mac-clang
+
+  # The one check to mark required. Skipped jobs (docs-only PR, macOS not needed) count as OK;
+  # failed or cancelled ones fail the gate.
+  ci-required:
+    name: ci-required
+    needs: [changes, build-test, macos]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        env:
+          RESULTS: ${{ needs.changes.result }} ${{ needs.build-test.result }} ${{ needs.macos.result }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
-            libxi-dev libxss-dev libxfixes-dev libxtst-dev libxkbcommon-dev libwayland-dev \
-            wayland-protocols libegl-dev libgl-dev libvulkan-dev libudev-dev libdbus-1-dev
+          echo "changes build-test macos: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::a required job ended as '$r'"; exit 1 ;;
+            esac
+          done
 
-      - name: MSVC dev environment
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
-      - name: Install Windows deps (Ninja)
-        if: runner.os == 'Windows'
-        run: choco install ninja -y --no-progress
-
-      - name: Install macOS deps
-        if: runner.os == 'macOS'
-        run: brew install ninja || true
-
-      - name: Configure
-        run: cmake --preset ${{ matrix.preset }} -DPython3_EXECUTABLE="${{ env.pythonLocation }}/${{ runner.os == 'Windows' && 'python.exe' || 'bin/python' }}"
-
-      # ARCHITECTURE.md §2.2: module dependency graph (rule 1, 2) + SDL/src/backend include lint
-      # (rules 3-5). Configure-time data only, so run before the build to fail fast.
-      - name: Lint (depcheck + include_lint)
-        run: ctest --preset ${{ matrix.test }} -R "^(depcheck|include_lint)" --no-tests=error
-
-      - name: Build
-        run: cmake --build --preset ${{ matrix.build }} --parallel
-
-      - name: Require content_validate to be registered
-        shell: bash
-        run: ctest --preset ${{ matrix.test }} -N | grep -q content_validate
-
-      - name: Test
-        run: ctest --preset ${{ matrix.test }}
+  # Nightly macOS failure -> open or update one tracking issue (last green sha vs current sha).
+  nightly-report:
+    name: Report nightly macOS failure
+    needs: macos
+    if: always() && github.event_name == 'schedule' && needs.macos.result == 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      actions: read
+    steps:
+      - name: Open or update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          title="Nightly macOS CI failing on main"
+          # Last scheduled run of this workflow on main whose macOS job succeeded.
+          last_green=""
+          for id in $(gh run list --workflow ci.yml --branch main --event schedule --limit 30 \
+                        --json databaseId,headSha -q '.[].databaseId'); do
+            ok=$(gh run view "$id" --json jobs -q '[.jobs[] | select(.name == "macOS AppleClang Debug" and .conclusion == "success")] | length')
+            if [ "$ok" != "0" ]; then last_green=$(gh run view "$id" --json headSha -q .headSha); break; fi
+          done
+          if [ -n "$last_green" ]; then
+            compare="$SERVER/$GH_REPO/compare/$last_green...$SHA"
+            range="Last green: \`$last_green\`. Current: \`$SHA\`. Compare: $compare"
+          else
+            range="Last green: none in the last 30 nightly runs. Current: \`$SHA\`."
+          fi
+          body=$(printf 'The nightly **macOS AppleClang Debug** job failed.\n\n%s\n\nRun: %s\n\n_Opened/updated by the nightly-report job in ci.yml._' "$range" "$RUN_URL")
+          gh label create ci-nightly --color B60205 --description "Nightly CI failure" 2>/dev/null || true
+          num=$(gh issue list --state open --label ci-nightly --search "in:title \"$title\"" --json number -q '.[0].number // empty')
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --body "$body"
+          else
+            gh issue create --title "$title" --label ci-nightly --body "$body"
+          fi

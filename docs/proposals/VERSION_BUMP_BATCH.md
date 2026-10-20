@@ -2229,6 +2229,67 @@ escape (`ActionRequest::special` 4), destructible-object (special 6, EC #174) an
 - **Schema changelog**: the common/v2 keys above are additive, so there is no `$id` or version bump. Older content still
   loads unchanged, and no shipped save_effect carried `escape` before this.
 
+### 7.2x Vision (rules side) and hand-off
+
+(Numbered after 7.2w.) SRD 5.1 "Vision and Light", "Unseen Attackers and Targets", "Hiding". Rules never interpret
+positions, light or senses: sim answers one query per viewer -> subject pair. All fields are appended; with no hook
+everything behaves as before (no golden moved).
+
+- **Modular lighting** (docs/proposals/LIGHTING.md, EC #195; Rules review R1-R7). Rules do not assume any light source
+  type. Sim, or EC's lighting module, resolves every source (global / ambient sun and moon from a content schedule, static
+  map point sources, attached sources such as torches or Light on an item) into **per-tile** data: `TileLight {light
+  dark | dim | bright, magical_darkness, sunlight, obscured none | light | heavy}`. Zone obscurement (Fog Cloud) is
+  obscurement only and does not change the light level. Rules take only that and the viewer's senses.
+- **Hook.** `EncounterHooks::sight_facts(state, viewer, subject) -> SightFacts`. Pure: a function of the state and sim's
+  positions as they were when the step began. During a step rules pass the start-of-step state (the copy `attempt` already
+  keeps), so answers do not change mid-step; never rng; nothing is logged. `SightFacts`: `subject` / `viewer` (the two
+  tiles' TileLight), `between` (zone obscurement on the line), `distance_ft`, `line_of_sight`, `subject_invisible`,
+  `subject_grounded` (tremorsense), `audible`. No light source and no computed answer crosses the hook. **No hook =
+  everyone sees everyone** (`Sight{}`).
+- **Senses** (Combatant, appended, static content, not folded): `darkvision_ft`, `blindsight_ft`, `tremorsense_ft`,
+  `truesight_ft` (0 = none), `sunlight_sensitive`, plus the Blinded / Deafened conditions.
+- **Derivation** (rules, `derive_sight`; `rules5e::sight(s, viewer, subject)` applies it to the hook's facts) gives
+  `Sight {light_at_subject (effective), light_at_viewer, obscured (effective), can_see, perceives, sense,
+  subject_in_sunlight, viewer_in_sunlight}`:
+  - Effective light: darkvision within range makes dim bright and dark dim, except in magical darkness.
+  - Effective obscured (computed after senses) = max(level from the effective light: dim = light, dark = heavy; the
+    subject tile's zone obscurement; `between`).
+  - Sight: not Blinded, line of sight, not heavily obscured, subject not invisible.
+  - Truesight (range, line of sight, not Blinded) and blindsight (range; also ignores Blinded) ignore light, obscurement
+    and invisibility within range; their `obscured` reads none.
+  - Tremorsense (range): the subject touches the same surface.
+  - `sense` is the first that applies (sight, truesight, blindsight, tremorsense, else none). `can_see` = sense != none.
+    `perceives` = can_see, or audible and not Deafened.
+- **Sunlight Sensitivity** (SRD): when the creature or its target / the thing perceived is in sunlight
+  (`viewer_in_sunlight` / `subject_in_sunlight` from the tiles' flags): disadvantage on its attack rolls and on its
+  sight-based Perception (passive -5; it does not stack with the light-obscurement -5). `sunlight_disadvantage`.
+- **Darkness vs light** (R1): `dispels_light(darkness_level, light_level)` = light_level <= darkness_level (0 = non-magical
+  light, always overcome; Daylight vs Darkness by swapping the roles). Sim does the overlap test at cast time and whenever
+  either area moves.
+- **Unseen attackers and targets.** If the target can't see the attacker (or the attacker is hidden from it), the attack
+  has advantage. If the attacker can't see the target (or the target is hidden from it), disadvantage. They combine with
+  every other source in the one advantage / disadvantage resolution.
+- **Perception.** Light obscurement (dim light included): disadvantage on Wisdom (Perception) checks that rely on sight,
+  passive -5 (`sight_perception_disadvantage`, `passive_sight_penalty`). A viewer with a special sense for the subject is exempt.
+- **Hide** (with the hook): the Stealth total is compared with each hostile's passive Perception (with the -5 above).
+  The creature is hidden only from those that can't see it (`EncounterState::hidden` {who, from, stealth}). Hiding ends when
+  it attacks (hit or miss), when the observer could see it when a step began, or when either dies. Without the hook the
+  legacy `Combatant::stealth_total` path is unchanged.
+- **Guessing.** An Attack on a creature hidden from the attacker needs `ActionRequest::has_guess` with `guess_x` /
+  `guess_y` (sim tile), else "target is hidden: guess its tile (has_guess)". `EncounterHooks::guess_correct` (empty = right)
+  decides; a wrong guess misses automatically (the d20 is still rolled, so dice order is unchanged).
+- **Gaze, Turn Undead, Command, Fear (migration).** With the hook:
+  - A gaze applies only if the actor sees the gazer with `sense == sight`.
+  - Turn Undead and Command (7.2v) have no effect, and no save, on a target that doesn't `perceives` (see or hear) the user.
+  - Fear's "can't see" repeat-save arm reads `sight(...).can_see`.
+  - Without the hook the older paths stand: `ActionRequest::gaze_seen`, sim's target list, and `EncounterHooks::can_see`
+    (also used for reaction `requires_sight`). They are retired once sim's callers move.
+- **Hashing.** The hidden set folds under Combat::hash **0xC5** (`hidden_digest`) only when non-empty. The guessed tile
+  folds under log_hash **0xC6** only when `has_guess`. Sight answers are derived, not folded. 0xC7-0xCA are EC's
+  lighting tags (#195); whichever PR lands second updates the next-free line (with a merge commit).
+- **Not modelled.** Revealing by noise (sim may clear entries on a loud action), active Search (Perception vs Stealth),
+  the Invisible condition as a source of `subject_invisible` (sim sets the fact).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
