@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation), Sorcerer (Draconic Bloodline), Rogue (Thief), Paladin (Oath of Devotion), Ranger (Hunter), Barbarian (Path of the Berserker), Bard (College of Lore) and Druid (Circle of the Land: Mountain) levels 1-5 in srd51.core vs the 5e-database
+"""SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation), Sorcerer (Draconic Bloodline), Rogue (Thief), Paladin (Oath of Devotion), Ranger (Hunter), Barbarian (Path of the Berserker), Bard (College of Lore) Druid (Circle of the Land: Mountain) and Warlock (The Fiend) levels 1-5 in srd51.core vs the 5e-database
 tables (ctest: content_validate_srd51_classes).
 
 `data/srd51_classes_5e_database_a6212be.json` holds fields copied verbatim from 5e-bits/5e-database commit a6212be
@@ -25,9 +25,9 @@ DATA = json.loads((Path(__file__).parent / "data/srd51_classes_5e_database_a6212
 TABLE, SPELLS = DATA["classes"], DATA["spells"]
 LEVELS = range(1, 6)
 XP = {1: 0, 2: 300, 3: 900, 4: 2700, 5: 6500}   # SRD 5.1 Character Advancement table
-SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2, "sorcerer": 1, "rogue": 3, "paladin": 3, "ranger": 3, "barbarian": 3, "bard": 3, "druid": 2}
+SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2, "sorcerer": 1, "rogue": 3, "paladin": 3, "ranger": 3, "barbarian": 3, "bard": 3, "druid": 2, "warlock": 1}
 SPELLCASTING_FROM = {"paladin": 2, "ranger": 2}   # half caster: no spellcasting block at level 1
-MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int", "sorcerer": "cha", "rogue": "dex", "paladin": "str", "ranger": "dex", "barbarian": "str", "bard": "cha", "druid": "wis"}   # the ASI at level 4 goes here (+2)
+MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int", "sorcerer": "cha", "rogue": "dex", "paladin": "str", "ranger": "dex", "barbarian": "str", "bard": "cha", "druid": "wis", "warlock": "cha"}   # the ASI at level 4 goes here (+2)
 SKILLS = {"athletics": "str", "perception": "wis", "insight": "wis", "religion": "int", "arcana": "int", "history": "int",
           "persuasion": "cha", "acrobatics": "dex", "sleight_of_hand": "dex", "stealth": "dex", "survival": "wis", "deception": "cha", "performance": "cha"}
 # Rogue: four class skills (two for the others) and Expertise (doubled proficiency) on Stealth and Perception.
@@ -45,7 +45,7 @@ def speed(cls: str, level: int) -> dict:
     return {"walk": 30, "climb": 30} if cls == "rogue" and level >= 3 else {"walk": 30}
 # Draconic Resilience (sorcerer, Draconic Bloodline): +1 hit point per sorcerer level, and AC 13 + Dex without armor.
 HP_PER_LEVEL = {"sorcerer": 1}
-UNARMORED_BASE = {"sorcerer": 13}
+UNARMORED_BASE = {"sorcerer": 13, "warlock": 13}   # warlock: Armor of Shadows (mage armor at will) from 2nd, no armor worn
 # Barbarian Unarmored Defense: 10 + Dex + Con with no armor (a shield still allowed), baked into armor_class.
 UNARMORED_CON = {"barbarian"}
 
@@ -145,6 +145,12 @@ AUTHORED = {
     "circle-spells-1": "feature:circle_spells",              # the shipped circle spells are in spellcasting.spells (subclass_spells)
     "circle-spells-2": "feature:circle_spells",
     "druid-ability-score-improvement-1": "abilities",
+    "otherworldly-patron": "subclass",
+    "pact-magic": "spellcasting",                            # spellcasting.pact {level, slots}
+    "dark-ones-blessing": "feature:dark_ones_blessing",      # descriptive: the on_event temp_hp rider is reserved (does not fire)
+    "eldritch-invocations": "feature:eldritch_invocations",  # Agonizing Blast, Armor of Shadows (+ Repelling Blast at 5)
+    "pact-boon": "feature:pact_of_the_tome",                 # Tome: three any-class cantrips in spellcasting.spells (TOME_CANTRIPS)
+    "warlock-ability-score-improvement-1": "abilities",
 }
 # Kept as a features[] entry with no effect: no combat rule, or a mechanic the engine lacks (docs/SRD_CLASSES_DEFERRED.md).
 DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_story_work", "uncanny_dodge"],
@@ -152,7 +158,9 @@ DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_stor
                "ranger": ["favored_enemy", "natural_explorer", "primeval_awareness", "colossus_slayer"],
                "barbarian": ["rage", "unarmored_defense", "danger_sense", "fast_movement", "frenzy"],
                "bard": ["bardic_inspiration", "jack_of_all_trades", "song_of_rest", "expertise", "bonus_proficiencies", "font_of_inspiration"],
-               "druid": ["druidic", "bonus_cantrip", "circle_spells"]}
+               "druid": ["druidic", "bonus_cantrip", "circle_spells"],
+               "warlock": ["dark_ones_blessing", "eldritch_invocations", "agonizing_blast", "armor_of_shadows", "repelling_blast",
+                           "pact_of_the_tome"]}
 # Not expressible today (docs/SRD_CLASSES_DEFERRED.md): mirror index -> the feature id it would get (must be absent).
 DEFERRED = {
     "disciple-of-life": "disciple_of_life",
@@ -162,6 +170,8 @@ DEFERRED = {
     "destroy-undead-cr-1-2-or-below": "destroy_undead",
 }
 # Life domain spells and class cantrips the pack does not ship yet (listed in the deferred doc).
+# Warlock Pact of the Tome (3rd): three cantrips from any class list, known on top of cantrips_known.
+TOME_CANTRIPS = {"fire-bolt", "ray-of-frost", "sacred-flame"}
 DEFERRED_SPELLS = ["bless", "spiritual-weapon", "beacon-of-hope", "protection-from-evil-and-good", "sanctuary", "zone-of-truth",
                    "spider-climb", "meld-into-stone"]   # Mountain circle spells not shipped;   # Lesser Restoration, Revivify: spells batch 2
 
@@ -288,7 +298,12 @@ class ClassTable(unittest.TestCase):
                     self.assertIsNone(sc)
                     continue
                 self.assertEqual((sc["ability"], sc["caster_level"]), (t["spellcasting_ability"], level))
-                self.assertEqual(sc["slots"], row["spell_slots"])
+                if cls == "warlock":   # Pact Magic: every slot of one level, short-rest recovery (the mirror lists them as spell_slots)
+                    self.assertNotIn("slots", sc)
+                    (lv, n), = row["spell_slots"].items()
+                    self.assertEqual(sc["pact"], {"level": int(lv), "slots": n})
+                else:
+                    self.assertEqual(sc["slots"], row["spell_slots"])
                 self.assertNotIn("dc", sc)              # derived: 8 + proficiency + modifier
                 self.assertNotIn("attack_bonus", sc)
                 top = max(int(k) for k in row["spell_slots"])
@@ -298,10 +313,13 @@ class ClassTable(unittest.TestCase):
                     idx = ref.removeprefix("srd51.spell.").replace("_", "-")
                     self.assertTrue((PACK / "spells" / f"{ref.removeprefix('srd51.spell.')}.json").exists(), ref)
                     sp = SPELLS[idx]
-                    self.assertTrue(cls in sp["classes"] or idx in domain, ref)
+                    tome = cls == "warlock" and level >= 3 and idx in TOME_CANTRIPS
+                    self.assertTrue(cls in sp["classes"] or idx in domain or tome, ref)
                     self.assertLessEqual(sp["level"], top, ref)
                     cantrips += sp["level"] == 0
-                self.assertLessEqual(cantrips, row.get("cantrips_known", 0))
+                self.assertLessEqual(cantrips, row.get("cantrips_known", 0) + (len(TOME_CANTRIPS) if cls == "warlock" and level >= 3 else 0))
+                if cls == "warlock":   # Fiend expanded spells are options for spells known, not always prepared
+                    continue
                 for s in domain:   # domain spells are always prepared: present unless deferred (not shipped)
                     self.assertTrue(f"srd51.spell.{s.replace('-', '_')}" in sc["spells"] or s in DEFERRED_SPELLS, s)
 
@@ -491,6 +509,25 @@ class ClassTable(unittest.TestCase):
                 self.assertIn("half your druid level (rounded up)", f["natural_recovery"]["description"])
                 self.assertEqual("circle_spells" in f, level >= 3)
                 for fid in DESCRIPTIVE["druid"]:
+                    if fid in f:
+                        self.assertNotIn("effect", f[fid], fid)
+
+    def test_warlock(self):
+        for level in LEVELS:
+            with self.subTest(level=level):
+                d = load("warlock", level)
+                f = features(d)
+                row = TABLE["warlock"]["levels"][str(level)]
+                leveled = [r for r in d["spellcasting"]["spells"] if SPELLS[r.removeprefix("srd51.spell.").replace("_", "-")]["level"] > 0]
+                self.assertLessEqual(len(leveled), row["spells_known"])
+                self.assertIn("srd51.spell.eldritch_blast", d["spellcasting"]["spells"])
+                # SRD 5.1 Warlock table: 2 invocations at 2nd, 3 at 5th (the mirror's invocations_known says 3 from 4th)
+                inv = [i for i in ("agonizing_blast", "armor_of_shadows", "repelling_blast") if i in f]
+                self.assertEqual(len(inv), 0 if level < 2 else 3 if level >= 5 else 2)
+                armor = [e for e in d["equipment"] if isinstance(e, dict) and e.get("equipped") and item(e["item"])["category"] == "armor"]
+                self.assertEqual(bool(armor), level < 2)   # Armor of Shadows replaces the leather armor from 2nd
+                self.assertEqual("pact_of_the_tome" in f, level >= 3)
+                for fid in DESCRIPTIVE["warlock"]:
                     if fid in f:
                         self.assertNotIn("effect", f[fid], fid)
 

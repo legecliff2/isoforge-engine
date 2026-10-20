@@ -1,0 +1,137 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.warlock_level_1",
+  "name": "Warlock, level 1 (The Fiend)",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "neutral evil",
+  "level": 1,
+  "classes": [
+    {
+      "class": "warlock",
+      "level": 1,
+      "hit_die": "d8",
+      "subclass": "fiend"
+    }
+  ],
+  "xp": 0,
+  "armor_class": {
+    "value": 13,
+    "note": "leather armor"
+  },
+  "hit_points": {
+    "average": 10,
+    "formula": "1d8+2"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 9,
+    "dex": 15,
+    "con": 14,
+    "int": 11,
+    "wis": 13,
+    "cha": 16
+  },
+  "saving_throws": {
+    "wis": 3,
+    "cha": 5
+  },
+  "skills": {
+    "arcana": 2,
+    "deception": 5
+  },
+  "senses": {
+    "passive_perception": 11
+  },
+  "languages": [
+    "Common",
+    "Infernal"
+  ],
+  "proficiency_bonus": 2,
+  "features": [
+    {
+      "id": "dark_ones_blessing",
+      "name": "Dark One's Blessing",
+      "description": "Starting at 1st level, when you reduce a hostile creature to 0 hit points, you gain temporary hit points equal to your Charisma modifier + your warlock level (minimum of 1) (4). (Descriptive: the on_event temp_hp rider is reserved in the sim and does not fire.)"
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.dagger",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.leather_armor",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.crossbow_light"
+    },
+    "crossbow_bolts_20",
+    "scholars_pack",
+    "arcane_focus"
+  ],
+  "actions": [
+    {
+      "id": "dagger",
+      "name": "Dagger",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "finesse",
+        "light",
+        "thrown"
+      ],
+      "damage": [
+        {
+          "dice": "1d4+2",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "light_crossbow",
+      "name": "Light Crossbow",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 4,
+      "range": [
+        80,
+        320
+      ],
+      "targets": 1,
+      "properties": [
+        "ammunition",
+        "loading",
+        "two_handed"
+      ],
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ]
+    }
+  ],
+  "spellcasting": {
+    "ability": "cha",
+    "caster_level": 1,
+    "pact": {
+      "level": 1,
+      "slots": 1
+    },
+    "spells": [
+      "srd51.spell.eldritch_blast",
+      "srd51.spell.chill_touch",
+      "srd51.spell.burning_hands"
+    ]
+  }
+}

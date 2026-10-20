@@ -1,4 +1,4 @@
-# SRD 5.1 classes (Fighter, Cleric, Wizard, Sorcerer, Rogue, Paladin, Ranger, Barbarian, Bard, Druid levels 1-5): authored vs deferred
+# SRD 5.1 classes (Fighter, Cleric, Wizard, Sorcerer, Rogue, Paladin, Ranger, Barbarian, Bard, Druid, Warlock levels 1-5): authored vs deferred
 
 > This work includes material taken from the System Reference Document 5.1 ("SRD 5.1") by Wizards of the Coast LLC, available at <https://dnd.wizards.com/resources/systems-reference-document>. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License, <https://creativecommons.org/licenses/by/4.0/legalcode>.
 
@@ -8,9 +8,9 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules, secti
 
 ## Representation
 
-`character@4` describes one creature: `classes[]` with a `level` and an optional `subclass`, a total `level`, and a stat block. There is no class or level-progression document type. A class level is therefore authored as **one pre-generated character per class per level**: 50 documents, `srd51.character.<class>_level_<n>` (`characters/<class>_level_<n>.json`). The `_level_` infix is deliberate: `srd51.character.fighter_1` already belongs to `sample.vertical_slice`, which depends on `srd51.core`, so a duplicate id would break the pack set.
+`character@4` describes one creature: `classes[]` with a `level` and an optional `subclass`, a total `level`, and a stat block. There is no class or level-progression document type. A class level is therefore authored as **one pre-generated character per class per level**: 55 documents, `srd51.character.<class>_level_<n>` (`characters/<class>_level_<n>.json`). The `_level_` infix is deliberate: `srd51.character.fighter_1` already belongs to `sample.vertical_slice`, which depends on `srd51.core`, so a duplicate id would break the pack set.
 
-Every PC is a human (SRD human: +1 to every ability score) built from the standard array (15, 14, 13, 12, 10, 8). The Ability Score Improvement at level 4 is +2 to the class's main ability (Str, Wis, Int, Cha, Dex, Str, Dex, Str, Cha, Wis), and level 5 carries it forward. Hit points are the maximum hit die at level 1, then the fixed average (6 / 5 / 4) plus Con for each later level (d8 rogue: 5). XP is the threshold for the level. Weapons, armor and shields are `{item, equipped}` references to the pack's `item@1` documents. AC and every attack are derived from those items (base damage, no feature bonus folded in; `docs/CONTENT_EFFECTS.md` section 2) and are pinned by the test. Packs, foci and ammunition stay descriptive strings.
+Every PC is a human (SRD human: +1 to every ability score) built from the standard array (15, 14, 13, 12, 10, 8). The Ability Score Improvement at level 4 is +2 to the class's main ability (Str, Wis, Int, Cha, Dex, Str, Dex, Str, Cha, Wis, Cha), and level 5 carries it forward. Hit points are the maximum hit die at level 1, then the fixed average (6 / 5 / 4) plus Con for each later level (d8 rogue: 5). XP is the threshold for the level. Weapons, armor and shields are `{item, equipped}` references to the pack's `item@1` documents. AC and every attack are derived from those items (base damage, no feature bonus folded in; `docs/CONTENT_EFFECTS.md` section 2) and are pinned by the test. Packs, foci and ammunition stay descriptive strings.
 
 | class | subclass (from) | build | AC | weapons |
 |---|---|---|---|---|
@@ -24,6 +24,7 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Barbarian | Path of the Berserker (3) | Str 16 (18 at 4), Con 15, Dex 14; Athletics, Perception; walk 40 at 5 (Fast Movement) | 14: no armor, Unarmored Defense 10 + Dex + Con | greataxe, handaxe (thrown) |
 | Bard | College of Lore (3) | Cha 16 (18 at 4), Dex 15, Con 14; Deception, Performance, Persuasion (+ Arcana, Insight, Perception at 3; Expertise: Performance, Persuasion at 3) | 13: leather armor | rapier |
 | Druid | Circle of the Land: Mountain (2) | Wis 16 (18 at 4), Dex 15, Con 14; Insight, Perception | 15: leather armor, shield (no metal) | scimitar |
+| Warlock | The Fiend (1) | Cha 16 (18 at 4), Dex 15, Con 14; Arcana, Deception | 13: leather armor at 1; 15 from 2: no armor, Armor of Shadows (mage armor, 13 + Dex) | dagger, light crossbow |
 
 ## Authored as data
 
@@ -79,6 +80,10 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Wild Shape (Druid) | 2-5 | `wild_shape {pool wild_shape, forms [jackal, wolf, boar, axe_beak, giant_poisonous_snake, black_bear], max_cr_by_level [{2, 1/4}, {4, 1/2}]}` (R-G12, EC #176) + `resources[]` `wild_shape {max 2, recharge short_rest}`. `no_fly_below` 8 / `no_swim_below` 4 are left at the engine defaults (= SRD). Forms: every shipped beast of CR 1/2 or below without a fly speed; the engine refuses the giant poisonous snake (swim 30, #184) and the black bear (CR 1/2) below 4th. Not listed: the swarm of rats (a swarm of Tiny beasts, not a single beast you have seen), the dire wolf and giant spider (CR 1: from 8th). Duration (half druid level in hours), revert at 0 HP and no casting in beast form are engine-side | yes |
 | Natural Recovery (Land) | 2-5 | `slot_recovery {class druid, max_slot_level 5, uses 1}` (sim #148); budget ceil(druid level / 2) derived | yes |
 | Druid Circle | 2 | `classes[0].subclass` = `land` | descriptive |
+| Pact Magic (Warlock) | 1-5 | `spellcasting {ability cha, caster_level, pact {level, slots}, spells}`: 1 slot of 1st at 1, 2 of 1st at 2, 2 of 2nd at 3-4, 2 of 3rd at 5 (short-rest recovery is the rules' pact-slot rest path). Spells: Eldritch Blast, Chill Touch (+ Poison Spray at 4); Burning Hands (Fiend expanded); + Hold Person, Misty Step, Scorching Ray (expanded) at 3; + Fireball (expanded), Counterspell at 5, within spells known (2-6). At 1-2 the only shipped 1st-level option is Burning Hands, so fewer spells than known are listed | yes |
+| Pact Boon: Pact of the Tome | 3-5 | three cantrips from any list in `spellcasting.spells`: Fire Bolt, Ray of Frost, Sacred Flame. Tome is chosen because it is the only boon that is data today: Pact of the Blade needs a summoned, bonded magic weapon (R-G12 / R-G17), and Pact of the Chain needs a familiar the sim cannot load (`pact_of_chain` is rules-only, 7.2s). Descriptive feature, no `effect` | yes (spell list) |
+| Armor of Shadows (invocation) | 2-5 | baked into `armor_class` 13 + Dex with no armor worn (mage armor at will, 8 hours, no slot: always on). Mage Armor itself is not shipped. Descriptive feature, no `effect` | yes (static number) |
+| Otherworldly Patron | 1 | `classes[0].subclass` = `fiend` | descriptive |
 
 The validator change in this batch: `attack_bonus`, `crit_range` and `ac_bonus` (sim #107 hooks) are now known effect kinds at `@4` in `tools/validate/checks_v4.py` (until now they produced an "unknown effect kind" warning). Their fields are checked the way the sim checks them at load. The `@<=3` rows are unchanged.
 
@@ -146,6 +151,17 @@ Kept as a `features[]` entry with the SRD text and no `effect` (the test pins th
 | Bonus Cantrip (`bonus-cantrip`) | Druid (Land) 2 | One extra druid cantrip. Both shipped druid cantrips (Produce Flame, Poison Spray) are already known from 1st; Druidcraft, Guidance, Mending, Resistance and Shillelagh are not shipped, so there is nothing to add | T&C (author a druid cantrip, e.g. Shillelagh) |
 | Circle of the Land terrain (`circle-of-the-land-mountain`) | Druid (Land) 2 | The land choice only selects the Circle Spells list; no rule of its own | - |
 
+## Descriptive only: mechanic missing (Warlock)
+
+Kept as a `features[]` entry with the SRD text and no `effect` (the test pins that). Invocations chosen: Agonizing Blast and Armor of Shadows at 2, Repelling Blast at 5 (SRD 5.1 table: 2 invocations at 2nd, 3 at 5th; the mirror's `invocations_known` lists 3 from 4th, which the documents do not follow).
+
+| feature (mirror index) | class / level | why it is not mechanical | gap id / owner |
+|---|---|---|---|
+| Dark One's Blessing (`dark-ones-blessing`) | Warlock (Fiend) 1 | Temporary HP = Cha modifier + warlock level when you reduce a hostile creature to 0 HP. The trigger exists (`on_event {on reduce_to_zero}`), but the `temp_hp` rider is stored as reserved and does not fire (`compile_rider`, sim) and has no "Cha + level" amount form | Engine Core (fire `temp_hp`, an ability + class-level amount) |
+| Agonizing Blast (invocation) | Warlock 2 | + Cha modifier to each Eldritch Blast beam that hits. `damage_bonus` adds to weapon attacks only (`a.base.attacks`); an `on_event {on hit}` `extra_damage` rider needs at least one die (`parse_dice`: count >= 1, no flat-only amount) and no `when[]` predicate names a spell (only a damage-type proxy, which would also catch any other force damage). Neither is faithful | Rules / Engine Core (a per-spell damage bonus, R-G4; or a `spell_is` predicate plus a flat rider amount) |
+| Repelling Blast (invocation) | Warlock 5 | Push up to 10 ft on each Eldritch Blast hit. `forced_move` exists as a **spell** effect (Thunderwave), but no feature key adds an effect to another spell, and `on_event` riders have no `forced_move` | Rules (rules side done: `ForcedMove` `up_to` per beam; content key missing), T&C |
+| Eldritch Invocations (`eldritch-invocations`) | Warlock 2 | Container for the chosen invocations above; no rule of its own | - |
+
 ## Deferred (feature not expressible today)
 
 Each listed feature is **left out of `features[]`**: no descriptive stand-in, same rule as the monster batch. The test checks that none of these ids appear in the documents.
@@ -177,6 +193,10 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 | Druid | 1-2 | Produce Flame, Poison Spray; Cure Wounds, Healing Word, Thunderwave |
 | Druid | 3-4 | + Barkskin, Hold Person, Lesser Restoration, Spike Growth (circle) |
 | Druid | 5 | + Dispel Magic, Lightning Bolt (circle) |
+| Warlock | 1-2 | Eldritch Blast, Chill Touch; Burning Hands (expanded) |
+| Warlock | 3 | + Fire Bolt, Ray of Frost, Sacred Flame (Tome); Hold Person, Misty Step, Scorching Ray (expanded) |
+| Warlock | 4 | + Poison Spray |
+| Warlock | 5 | + Fireball (expanded), Counterspell |
 | Sorcerer | 1-2 | Acid Splash, Fire Bolt, Poison Spray; Magic Missile, Shield |
 | Sorcerer | 3-4 | + Hold Person, Scorching Ray |
 | Sorcerer | 5 | + Counterspell |
@@ -186,6 +206,7 @@ Deferred until the spells are authored (`docs/SRD_SPELLS_DEFERRED.md` gives the 
 - **Life domain spells** (always prepared): `srd51.spell.bless` (1), `srd51.spell.spiritual_weapon` (3), `srd51.spell.beacon_of_hope` (5). Lesser Restoration (3) and Revivify (5) ship since spells batch 2 and are listed in the cleric documents.
 - **Oath of Devotion spells** (always prepared): `srd51.spell.protection_from_evil_and_good` (3), `srd51.spell.sanctuary` (3), `srd51.spell.zone_of_truth` (5) are not authored; Lesser Restoration (5) ships and is listed.
 - **Circle of the Land (Mountain) spells** (always prepared): `srd51.spell.spider_climb` (3), `srd51.spell.meld_into_stone` (5) are not authored; Spike Growth (3) and Lightning Bolt (5) ship and are listed.
+- **Fiend expanded spells** (choices for spells known, not always prepared): Command (1) and Blindness/Deafness (3) are not shipped; Stinking Cloud (5) ships but is not picked (six known at 5th).
 - **Cantrips known**: the Cleric knows 3 (4 from level 4) but the pack ships one cleric cantrip (Sacred Flame). The Wizard knows 3 (4 from level 4), and the pack ships three wizard cantrips. Missing: Guidance, Light, Mending, Resistance, Spare the Dying, Thaumaturgy (cleric); Chill Touch, Ray of Frost, Shocking Grasp, True Strike and the utility cantrips (wizard). The Sorcerer knows 4 cantrips (5 from level 4) and 2-6 spells; the pack ships three sorcerer cantrips and five leveled sorcerer spells (Chill Touch, Ray of Frost, Shocking Grasp, Burning Hands, Chromatic Orb, Sleep, Thunderwave, Misty Step and the rest are not shipped), so each document lists fewer.
 - **Spellbook and prepared spells**: a level 1 wizard's spellbook holds six 1st-level spells, plus two per level after that; a cleric prepares Wis modifier + level spells. The documents list fewer because the rest are not shipped (Burning Hands, Mage Armor, Sleep, Thunderwave, Misty Step, Fireball, Lightning Bolt, Bless, Guiding Bolt, Shield of Faith, Spiritual Weapon, Spirit Guardians, ...). The `spells` list doubles as the prepared list. `character@4` has no separate spellbook.
 
