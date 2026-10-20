@@ -95,6 +95,12 @@ struct SpellEffect {
     // appended (EC deferred monsters, flagged): ApplyCondition: the creature ends it with an action, a Strength check vs this DC
     // (special 4, like a zone's Web); the condition lasts until then (no timer). 0 = none.
     int8_t escape_dc = 0;
+    // appended (EC spider follow-up, flagged): ApplyCondition with escape_dc: the restraint is also a destructible object (the
+    // giant spider's web: AC 10, 5 HP, vulnerable to fire, immune to bludgeoning / poison / psychic). Attacking it is
+    // ActionRequest::special 6; at 0 HP the effect (and its condition) ends. Masks are DamageType bits. object_hp 0 = none.
+    int8_t object_ac = 0;
+    int16_t object_hp = 0;
+    uint32_t object_vulnerable = 0, object_immune = 0;
     // appended (#120 follow-up): + this many dice per slot level above the spell's level; set by the loader only on a
     // DelayedDamage extra effect (Acid Arrow), from the spell's scaling.upcast.dice. 0 = does not scale (every other effect).
     uint8_t upcast_dice = 0;
@@ -264,6 +270,18 @@ struct SpellDef {
     // appended: see SpellEffect::condition_untracked (primary effect).
     bool condition_untracked = false;
     int8_t escape_dc = 0;   // appended (EC deferred monsters): see SpellEffect::escape_dc
+    // appended (EC spider follow-up, flagged): see SpellEffect::object_*.
+    int8_t object_ac = 0;
+    int16_t object_hp = 0;
+    uint32_t object_vulnerable = 0, object_immune = 0;
+    // appended (EC spider follow-up, flagged): a non-spell ranged SpellAttack (attack_effect) with a long range: targets out
+    // to long_range_ft are legal, beyond range_ft (or with a hostile within 5 ft, ActionRequest facts) at disadvantage. 0 = none.
+    uint16_t long_range_ft = 0;
+    // appended (EC spider follow-up, flagged): Save with damage (giant spider bite): when this effect's damage drops a living
+    // target to 0 HP, it is stable and gains zero_hp_condition for zero_hp_rounds (one ActiveSpellEffect, timed, so it outlasts
+    // regained HP) and zero_hp_while for as long as that effect lasts. 0 = off.
+    uint16_t zero_hp_rounds = 0;
+    Condition zero_hp_condition = Condition::Poisoned, zero_hp_while = Condition::Paralyzed;
     // appended (#138): EndCondition's `ends_conditions` in spell@1 JSON list order; ActionRequest::condition_choice is 1 + an
     // index into it (stable across engine versions, unlike Condition enum order). Filled by the loader; empty = mask order.
     std::vector<Condition> ends_condition_list;

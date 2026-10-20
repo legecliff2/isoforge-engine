@@ -242,8 +242,16 @@ void end_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev) {
     s.effects.erase(s.effects.begin() + std::ptrdiff_t(i));
     Combatant* t = find_mut(s, e.target);
     if (!t) return;
-    bool still = std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
-        return o.target == e.target && !o.no_condition && o.condition == e.condition; });
+    // EC spider follow-up (flagged): an effect's `also` condition holds the condition too, and ends with its effect
+    auto held = [&](Condition k) {
+        return std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
+            return o.target == e.target && ((!o.no_condition && o.condition == k) || (o.has_also && o.also == k)); });
+    };
+    if (e.has_also && !held(e.also) && t->has(e.also)) {
+        remove_condition(*t, e.also);
+        emit(ev, EventKind::ConditionRemoved, t->id, 0, int32_t(e.also));
+    }
+    bool still = held(e.condition);
     if (!e.no_condition && !still && t->has(e.condition)) {
         remove_condition(*t, e.condition);
         emit(ev, EventKind::SpellEffectEnded, t->id, 0, int32_t(e.spell_id), int32_t(e.condition));
@@ -642,6 +650,7 @@ struct Ctx {
     std::vector<std::pair<uint32_t, ForcedMoveResult>> forced_results{};
     bool zone_fired = false;   // a zone trigger resolved inside finalize_forced (deaths / concentration are swept again)
     uint8_t form_archetype = 0;   // R-G12: the cast's form choice (set by cast_spell around resolve_spell only)
+    bool ranged_disadvantage = false;   // EC spider follow-up (flagged): the cast's ranged facts (cast_spell around resolve_spell)
 };
 
 // R-G11 zone triggers (defined after damage_creature).
@@ -2124,6 +2133,25 @@ bool spend_action(TurnBudget& b, const Combatant& c, ActionKind k, bool bonus) {
 StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req);
 
 // Resolves ONE effect (def.kind and its fields) over T. Returns the targets it affected (for rider effects).
+// EC spider follow-up (flagged): the giant spider bite's 0-HP clause (SpellDef::zero_hp_*): stable, then one timed effect
+// (zero_hp_condition for zero_hp_rounds; 600 = 1 hour) that also holds zero_hp_while. Immunity to either skips that condition.
+void zero_hp_clause(EncounterState& s, const Combatant& a, Combatant& t, const SpellDef& def, std::vector<Event>& ev) {
+    if (!t.death.stable) stabilize(t, ev);
+    const bool main_ok = !immune_to(s, t, def.zero_hp_condition), also_ok = !immune_to(s, t, def.zero_hp_while);
+    if (!main_ok && !also_ok) return;
+    for (Condition k : {def.zero_hp_condition, def.zero_hp_while}) {
+        if ((k == def.zero_hp_condition ? main_ok : also_ok) && !t.has(k)) {
+            add_condition(t, k);
+            emit(ev, EventKind::ConditionAdded, t.id, 0, int32_t(k));
+        }
+    }
+    ActiveSpellEffect e{def.id, a.id, t.id, def.zero_hp_condition, def.save_ability, 0, RepeatSave::None, false,
+                        make_timed(Expiry::Rounds, def.zero_hp_rounds, current_actor(s) == t.id), 0, false};
+    e.no_condition = !main_ok;
+    e.has_also = also_ok; e.also = def.zero_hp_while;
+    s.effects.push_back(e);
+}
+
 std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& def, uint8_t lvl,
                                        const std::vector<Combatant*>& T, bool within_5ft, std::vector<Event>& ev) {
     std::vector<Combatant*> affected;
@@ -2135,7 +2163,9 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         const int beams = scaled_beams(def, lvl, a.caster_level);
         for (int i = 0; i < beams; ++i) {   // one attack roll per beam: one target, or one per beam
             Combatant* t = T.size() == 1 ? T[0] : T[std::size_t(i)];
-            if (!t->dead && do_attack(s, ctx, a, *t, atk, within_5ft, ev, false, def.id)) affected.push_back(t);   // TODO: ranged facts for spell attacks
+            // EC spider follow-up (flagged): a non-spell ranged attack_effect (Web) takes the ranged facts sim filled
+            const bool rdis = !def.is_spell && !def.melee && ctx.ranged_disadvantage;
+            if (!t->dead && do_attack(s, ctx, a, *t, atk, within_5ft, ev, rdis, def.id)) affected.push_back(t);   // TODO: ranged facts for spell attacks
         }
         break;
     }
@@ -2196,7 +2226,10 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             int dealt = r.success ? (def.on_save == OnSave::Half ? dmg / 2 : 0) : dmg;
             if (spared && ctx.spared_no_damage) dealt = 0;
             if (t->evasion && def.save_ability == Ability::Dex && def.on_save == OnSave::Half) dealt = r.success ? 0 : dmg / 2;   // Evasion
+            const int16_t hp_before = t->hp;
             if (dealt > 0) { const TrigSrc ts{&a, nullptr, true}; damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(dealt), def.damage_type, dq), false, ev, &ts, &ctx); }
+            if (def.zero_hp_rounds > 0 && dealt > 0 && hp_before > 0 && t->hp <= 0 && !t->dead)   // EC spider follow-up (flagged)
+                zero_hp_clause(s, a, *t, def, ev);
             if (!r.success) affected.push_back(t);
             // Petrifying Gaze: failing by escalate_margin or more applies escalate_to at once, with no repeat save
             const bool at_once = def.escalates && def.escalate_margin > 0 && !r.success && int(r.roll.total) <= dc - int(def.escalate_margin);
@@ -2251,6 +2284,11 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                                                       make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
                                                       lvl, false});
                 if (def.escape_dc > 0) { s.effects.back().dc = def.escape_dc; s.effects.back().escape_check = true; }   // EC (flagged): Web
+                if (def.escape_dc > 0 && def.object_hp > 0) {   // EC spider follow-up (flagged): the web as an object
+                    auto& w = s.effects.back();
+                    w.object_hp = def.object_hp; w.object_ac = def.object_ac;
+                    w.object_vulnerable = def.object_vulnerable; w.object_immune = def.object_immune;
+                }
             }
             affected.push_back(t);
             applied = true;
@@ -2708,7 +2746,9 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         ctx.has_zone_end = req.has_zone_end; ctx.zone_x2 = req.zone_x2; ctx.zone_y2 = req.zone_y2;
         ctx.zone_side = req.zone_side; ctx.zone_ring = req.zone_ring;
         ctx.form_archetype = req.form_archetype;
+        ctx.ranged_disadvantage = req.beyond_normal_range || req.ranged_hostile_within_5ft;   // EC spider follow-up (flagged)
         resolve_spell(s, ctx, a, def, lvl, T, req.target_within_5ft, out.events);
+        ctx.ranged_disadvantage = false;
         ctx.spared = nullptr; ctx.spared_no_damage = false; ctx.heighten = 0; ctx.empower = 0;
         ctx.forced_feet = 0; ctx.teleport_feet = 0; ctx.has_teleport_dest = false; ctx.teleport_x = 0; ctx.teleport_y = 0;
         ctx.has_zone_dest = false; ctx.zone_x = 0; ctx.zone_y = 0; ctx.zone_excluded = nullptr;
@@ -3078,6 +3118,48 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
         for (std::size_t i = 0; i < s.effects.size();) {
             if (s.effects[i].target == t->id && s.effects[i].ends_on_damage) end_effect(s, i, out.events); else ++i;
         }
+        return out;
+    }
+    if (req.special == 6) {   // EC spider follow-up (flagged): attack the web (an object) restraining req.target (itself too)
+        Combatant* t = find_mut(s, req.target);
+        if (!t || t->dead) return fail("bad target");
+        if (req.as_bonus_action || req.multiattack != 0 || b.sequence != 0) return fail("an action's attack, no multiattack");
+        std::size_t wi = s.effects.size();
+        for (std::size_t i = 0; i < s.effects.size() && wi == s.effects.size(); ++i)
+            if (s.effects[i].target == t->id && s.effects[i].object_hp > 0 && (req.spell_id == 0 || s.effects[i].spell_id == req.spell_id)) wi = i;
+        if (wi == s.effects.size()) return fail("no web on that creature");
+        if (req.attack_index >= a.attacks.size()) return fail("bad attack");
+        const Attack& atk = a.attacks[req.attack_index];
+        if (!atk.ranged && !req.target_within_5ft && t != &a) return fail("target must be within 5 ft");   // sim checks reach / range
+        if (b.attacks_remaining > 0) --b.attacks_remaining;
+        else if (spend_action(b, a, ActionKind::Attack, false)) {
+            b.loading_fired = 0;
+            b.attacks_remaining = uint8_t(a.attacks_per_action > 1 ? a.attacks_per_action - 1 : 0);
+        } else return fail("no action available");
+        s.budget = b;
+        // an object: no target conditions, no reactions, no triggers. The attacker's own disadvantage: poisoned, restrained,
+        // blinded, prone (melee too: simplified), and the ranged facts.
+        const bool dis = a.has(Condition::Poisoned) || a.has(Condition::Restrained) || a.has(Condition::Blinded) || a.has(Condition::Prone) ||
+                         (atk.ranged && (req.beyond_normal_range || req.ranged_hostile_within_5ft));
+        const D20Roll roll = roll_d20(s.rng, atk.to_hit + (atk.ranged ? a.attack_bonus_ranged : a.attack_bonus_melee),
+                                      dis ? RollMode::Disadvantage : RollMode::Normal);
+        ActiveSpellEffect& w = s.effects[wi];
+        const bool crit = roll.natural == 20, hit = crit || (roll.natural != 1 && roll.total >= int(w.object_ac));
+        // AttackResolved c bit 2 (4): the target was the web, not the creature
+        emit(out.events, EventKind::AttackResolved, a.id, t->id, roll.natural, roll.total, int32_t(hit) | (int32_t(crit) << 1) | 4);
+        if (hit) {
+            auto part = [&](const DiceExpr& d, DamageType ty) {
+                int n = std::max(0, roll_dice(s.rng, d, crit));
+                if (w.object_immune & (1u << unsigned(ty))) return 0;
+                if (w.object_vulnerable & (1u << unsigned(ty))) n *= 2;
+                return n;
+            };
+            int dmg = part(atk.damage, atk.type);
+            for (const DamagePart& p : atk.extra_damage) dmg += part(p.dice, p.type);
+            w.object_hp = int16_t(std::max(0, int(w.object_hp) - dmg));
+            if (w.object_hp == 0) end_effect(s, wi, out.events);   // destroyed: the restraint ends
+        }
+        check_end(s, out.events);
         return out;
     }
     if (req.special > 4) return fail("bad special attack");
