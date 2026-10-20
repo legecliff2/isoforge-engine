@@ -1,0 +1,513 @@
+// R-G12 transforms, sim side (VERSION_BUMP_BATCH 7.2q hand-off; SUMMONS_TRANSFORMS.md §3): wild_shape / shapechanger feature
+// kinds, the build_form hook (CR / fly / swim limits, unknown archetypes, footprint fit), Combat::hash 0xAF, log_hash 0xBD, the
+// 0 HP revert order, the encounter-end teardown and the v10 rule-7 gate, replay, and the AI's content-driven Wild Shape.
+#include <doctest/doctest.h>
+
+#include <fstream>
+#include <string>
+
+#include "rules5e_content/spell_loader.hpp"
+#include "sim/combat.hpp"
+#include "sim/driver.hpp"
+#include "world/chunk_codec.hpp"
+
+using namespace eng;
+using namespace eng::sim;
+using rules5e::ActionKind;
+using rules5e::EventKind;
+using rules5e::FormKind;
+using rules5e::spell_id_of;
+using Json = assets::Json;
+
+namespace {
+const std::string kRoot = ENGINE_SOURCE_ROOT;
+const char* kDruid = "test.character.druid";
+constexpr uint32_t kWildShape = 1;   // feature ids: features[] order
+constexpr uint32_t kHumanoidOnly = 2;
+
+Json load_json(const std::string& rel) {
+    std::ifstream f(kRoot + "/" + rel);
+    REQUIRE(f.good());
+    return Json::parse(f);
+}
+Json beast(const std::string& id, const char* cr, int hp, Json speed, const char* size = "medium") {
+    Json w = load_json("content/packs/srd51.core/monsters/wolf.json");
+    w["id"] = id;
+    w["challenge"]["rating"] = cr;
+    w["hit_points"]["average"] = hp;
+    w["speed"] = std::move(speed);
+    w["size"] = size;
+    return w;
+}
+// forms: 0 wolf (1/4), 1 hawk (1/8, fly), 2 croc (1/2, swim), 3 bear (1, Large), 4 missing, 5 goblin (not a beast), 6 mouse (0, hp 1)
+Json druid(int level, Json extra = Json::object()) {
+    Json c = load_json("content/packs/sample.vertical_slice/characters/fighter_1.json");
+    c["$schema"] = "character@4";
+    c["id"] = kDruid;
+    c["classes"] = Json::array({{{"class", "druid"}, {"level", level}, {"hit_die", "d8"}}});
+    c["hit_points"]["average"] = 40;
+    Json ws = {{"kind", "wild_shape"},
+               {"forms", {"test.monster.wolf", "test.monster.hawk", "test.monster.croc", "test.monster.bear", "test.monster.missing",
+                          "test.monster.gob", "test.monster.mouse"}},
+               {"cost", "action"}};
+    for (auto it = extra.begin(); it != extra.end(); ++it) ws[it.key()] = it.value();
+    Json hum = c["features"][1];   // Second Wind, marked as needing hands
+    hum["id"] = "hum";
+    hum["effect"]["requires_humanoid_form"] = true;
+    c["features"] = Json::array({{{"id", "ws"}, {"name", "Wild Shape"}, {"description", "x"}, {"effect", ws}}, hum});
+    return c;
+}
+Json caster() {
+    Json c = load_json("content/packs/sample.vertical_slice/characters/fighter_1.json");
+    c["$schema"] = "character@4";
+    c["id"] = "test.character.mage";
+    c["classes"] = Json::array({{{"class", "wizard"}, {"level", 3}, {"hit_die", "d6"}}});
+    c["abilities"]["int"] = 16;
+    c["hit_points"]["average"] = 40;
+    c["spellcasting"] = {{"ability", "int"}, {"caster_level", 3}, {"slots", {{"1", 4}}}, {"spells", {"test.spell.zap"}}};
+    return c;
+}
+Json zap() {   // a save spell that always deals at least 1 (half of 2d6, floor)
+    return {{"$schema", "spell@1"}, {"id", "test.spell.zap"}, {"name", "zap"}, {"level", 1}, {"school", "evocation"},
+            {"casting_time", {{"kind", "action"}}}, {"range", {{"kind", "ranged"}, {"feet", 60}}},
+            {"components", {{"v", true}, {"s", true}}}, {"duration", {{"kind", "instantaneous"}}},
+            {"effects", Json::array({{{"kind", "save"}, {"ability", "dex"}, {"on_success", "half"},
+                                      {"damage", {{"dice", "2d6"}, {"type", "fire"}}}}})}};
+}
+std::optional<std::string> build(ContentLibrary& lib, const Json& d, int gob_hp = 300) {
+    for (const Json& b : {beast("test.monster.wolf", "1/4", 11, {{"walk", 40}}), beast("test.monster.hawk", "1/8", 5, {{"walk", 10}, {"fly", 60}}),
+                          beast("test.monster.croc", "1/2", 19, {{"walk", 20}, {"swim", 30}}),
+                          beast("test.monster.bear", "1", 34, {{"walk", 40}}, "large"), beast("test.monster.mouse", "0", 1, {{"walk", 20}})})
+        if (auto e = lib.add(b, "monster")) return e;
+    Json g = load_json("content/packs/srd51.core/monsters/goblin.json");
+    g["id"] = "test.monster.gob";
+    g["hit_points"]["average"] = gob_hp;
+    if (auto e = lib.add(g, "monster")) return e;
+    if (auto e = lib.add_spell(zap())) return e;
+    if (auto e = lib.add(caster(), "character")) return e;
+    return lib.add(d, "character");
+}
+
+world::Chunk arena(const std::vector<std::pair<std::string, Vec2i>>& spawns) {
+    world::Chunk c{};
+    c.coord = {5, 5, 0};
+    c.origin = world::Chunk::Origin::Handcrafted;
+    c.palette = {"", "floor"};
+    for (auto& cell : c.layers[0]) cell.tile = 1;
+    for (std::size_t i = 0; i < spawns.size(); ++i)
+        c.spawns.push_back({spawns[i].first, spawns[i].second, world::spawn_stable_id(c.coord, uint32_t(i)), ""});
+    c.content_hash = world::compute_content_hash(c);
+    return c;
+}
+
+struct Fight {
+    ecs::Registry reg;
+    world::Chunk chunk;
+    const ContentLibrary* lib;
+    std::optional<Combat> c;
+    Fight(const ContentLibrary& l, const std::vector<std::pair<std::string, Vec2i>>& spawns, uint64_t seed = 1) : lib(&l) {
+        chunk = arena(spawns);
+        c = Combat::create(reg, chunk, l, seed);
+        REQUIRE(c);
+    }
+    CombatantId id(std::size_t i) const { return chunk.spawns[i].stable_id; }
+    const rules5e::Combatant& who(std::size_t i) const { return *rules5e::find(c->state(), id(i)); }
+    SubmitResult settle(SubmitResult r) {
+        while (r.ok && r.needs) r = c->decide({r.needs->window_seq, false, 0});
+        return r;
+    }
+    void end_turn() {
+        Command e;
+        e.request = {rules5e::current_actor(c->state()), ActionKind::EndTurn};
+        REQUIRE(settle(c->submit(e)).ok);
+    }
+    void advance_to(CombatantId w) {
+        for (int i = 0; i < 16 && rules5e::current_actor(c->state()) != w; ++i) end_turn();
+        REQUIRE(rules5e::current_actor(c->state()) == w);
+    }
+    SubmitResult wild_shape(uint8_t form) {
+        Command u;
+        u.request = {id(0), ActionKind::UseFeature};
+        u.request.feature_id = kWildShape;
+        u.request.form_archetype = form;
+        return settle(c->submit(u));
+    }
+    void check_replay() {
+        ecs::Registry r2;
+        std::string err;
+        auto again = replay(r2, chunk, *lib, c->seed(), c->log(), &err);
+        INFO(err);
+        REQUIRE(again);
+        CHECK(again->hash() == c->hash());
+        CHECK(again->log_hash() == c->log_hash());
+        CHECK(event_stream_hash(again->events()) == event_stream_hash(c->events()));
+    }
+    void refused(uint8_t form) {
+        const uint64_t h = c->hash(), lh = c->log_hash();
+        const std::size_t n = c->log().size(), ne = c->events().size();
+        CHECK_FALSE(wild_shape(form).ok);
+        CHECK(c->hash() == h);
+        CHECK(c->log_hash() == lh);
+        CHECK(c->log().size() == n);
+        CHECK(c->events().size() == ne);
+        CHECK(who(0).form == FormKind::None);
+    }
+};
+const Archetype* loaded(ContentLibrary& lib, const Json& d) {
+    auto e = build(lib, d);
+    if (e) MESSAGE(*e);
+    REQUIRE_FALSE(e);
+    return lib.find(kDruid);
+}
+std::size_t index_of(const std::vector<SimEvent>& ev, std::size_t from, EventKind k) {
+    for (std::size_t i = from; i < ev.size(); ++i)
+        if (ev[i].kind == SimEvent::Kind::Rules && ev[i].rules.kind == k) return i;
+    return ev.size();
+}
+}  // namespace
+
+TEST_CASE("wild_shape content: FeatureSpec, uses, duration, blocked features, load errors") {
+    ContentLibrary lib;
+    const Archetype& a = *loaded(lib, druid(4));
+    const auto& spec = a.feature_specs.at(kWildShape);
+    CHECK(spec.form == uint8_t(FormKind::WildShape));
+    CHECK(spec.form_choices == 7);
+    CHECK(spec.form_rounds == 1200);   // 600 * (4 / 2): 2 hours
+    CHECK(spec.cost == 1);
+    REQUIRE(a.active.size() >= 1);
+    CHECK(a.active[0].uses == 2);
+    CHECK(a.active[0].recharge == Recharge::ShortRest);
+    CHECK(a.form_features.at(kWildShape).max_cr_x8 == 4);   // druid 4: CR 1/2
+    CHECK(a.humanoid_only_features == std::vector<uint32_t>{kHumanoidOnly});
+    CHECK(a.char_level == 4);
+    CHECK(lib.find("test.monster.croc")->cr_x8 == 4);
+    CHECK(lib.find("test.monster.croc")->swim_ft == 30);
+    CHECK(lib.find("test.monster.hawk")->fly_ft == 60);
+    CHECK(lib.find("test.monster.gob")->cr_x8 == 2);
+    {   // druid level 1: no Wild Shape
+        ContentLibrary l2;
+        CHECK(build(l2, druid(1)));
+    }
+    {   // no forms
+        ContentLibrary l2;
+        Json d = druid(2);
+        d["features"][0]["effect"].erase("forms");
+        CHECK(build(l2, d));
+    }
+    {   // bad ai / cost
+        ContentLibrary l2;
+        CHECK(build(l2, druid(2, {{"ai", "always"}})));
+        ContentLibrary l3;
+        CHECK(build(l3, druid(2, {{"cost", "free"}})));
+    }
+}
+
+TEST_CASE("Wild Shape: transform and revert, 0xAF / 0xBD folds, v10 stream, replay") {
+    ContentLibrary lib;
+    loaded(lib, druid(2));
+    Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {20, 20}}});
+    f.advance_to(f.id(0));
+    const uint64_t h0 = f.c->hash(), lh0 = f.c->log_hash();
+    CHECK_FALSE(rules5e::has_summon_state(f.c->state()));
+    CHECK(event_stream_version(f.c->events()) < 10);
+    const std::size_t from = f.c->events().size();
+    REQUIRE(f.wild_shape(1).ok);   // wolf
+    const auto& me = f.who(0);
+    CHECK(me.form == FormKind::WildShape);
+    CHECK(me.hp == 11);
+    CHECK(me.hp_max == 11);
+    CHECK(me.speed_ft == 40);
+    CHECK(me.abilities.score[4] == lib.find(kDruid)->base.abilities.score[4]);   // Wis kept
+    const auto& ev = f.c->events();
+    const std::size_t fu = index_of(ev, from, EventKind::FeatureUsed), tr = index_of(ev, from, EventKind::Transformed);
+    REQUIRE(tr < ev.size());
+    CHECK(fu < tr);
+    CHECK(ev[tr].rules.b == 0);
+    CHECK(ev[tr].rules.c == int32_t(FormKind::WildShape));
+    CHECK(event_stream_version(ev) == 10);
+    CHECK(rules5e::has_summon_state(f.c->state()));
+    CHECK(f.c->hash() != h0);
+    CHECK(f.c->log_hash() != lh0);
+    CHECK(f.c->attack_archetype(f.id(0)) == lib.find("test.monster.wolf"));
+    // the humanoid-only feature is blocked in the form
+    Command hum;
+    hum.request = {f.id(0), ActionKind::UseFeature};
+    hum.request.feature_id = kHumanoidOnly;
+    CHECK_FALSE(f.settle(f.c->submit(hum)).ok);
+    // revert by choice: a bonus action
+    Command rv;
+    rv.request = {f.id(0), ActionKind::Revert};
+    rv.request.as_bonus_action = true;
+    const std::size_t before_rv = f.c->events().size();
+    REQUIRE(f.settle(f.c->submit(rv)).ok);
+    CHECK(f.who(0).form == FormKind::None);
+    CHECK(f.who(0).hp == 40);
+    const std::size_t r = index_of(f.c->events(), before_rv, EventKind::Reverted);
+    REQUIRE(r < f.c->events().size());
+    CHECK(f.c->events()[r].rules.b == 3);
+    CHECK(rules5e::has_summon_state(f.c->state()));   // stays folded after the revert
+    f.check_replay();
+}
+
+TEST_CASE("Wild Shape: unknown archetypes and out-of-limit forms are refused and change nothing") {
+    {
+        ContentLibrary lib;
+        loaded(lib, druid(2));   // max CR 1/4, no fly, no swim
+        Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {20, 20}}});
+        f.advance_to(f.id(0));
+        std::string why;
+        CHECK_FALSE(f.c->build_form(f.who(0), FormKind::WildShape, kWildShape, 1, &why));
+        CHECK(why == "flying form below the druid level");
+        CHECK_FALSE(f.c->build_form(f.who(0), FormKind::WildShape, kWildShape, 2, &why));
+        CHECK(why == "form above the druid's max CR");
+        CHECK_FALSE(f.c->build_form(f.who(0), FormKind::WildShape, kWildShape, 4, &why));
+        CHECK(why == "unknown form archetype");
+        CHECK_FALSE(f.c->build_form(f.who(0), FormKind::WildShape, kWildShape, 5, &why));
+        CHECK(why == "form is not a beast");
+        for (uint8_t form : {2, 3, 4, 5, 6, 8}) {   // hawk, croc, bear, missing, goblin, past the list
+            CAPTURE(int(form));
+            f.refused(form);
+        }
+        f.refused(0);   // form_archetype required
+        REQUIRE(f.wild_shape(1).ok);   // the wolf is fine
+    }
+    {   // druid 4: swimming allowed (croc, CR 1/2), still no flying
+        ContentLibrary lib;
+        loaded(lib, druid(4));
+        Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {20, 20}}});
+        f.advance_to(f.id(0));
+        f.refused(2);
+        REQUIRE(f.wild_shape(3).ok);
+    }
+}
+
+TEST_CASE("Wild Shape into a Large form: the footprint must fit at the anchor; Footprint events on the size change") {
+    ContentLibrary lib;
+    loaded(lib, druid(8));   // CR 1: the Large bear
+    {   // a creature on a tile the 2x2 would need: not available
+        Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {3, 3}}});
+        f.advance_to(f.id(0));
+        std::string why;
+        CHECK_FALSE(f.c->build_form(f.who(0), FormKind::WildShape, kWildShape, 3, &why));
+        CHECK(why == "form does not fit here");
+        f.refused(4);
+    }
+    Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {20, 20}}});
+    f.advance_to(f.id(0));
+    const std::size_t from = f.c->events().size();
+    REQUIRE(f.wild_shape(4).ok);
+    CHECK(f.c->footprint_size(f.id(0)) == 2);
+    const auto& ev = f.c->events();
+    bool fp = false;
+    for (std::size_t i = from; i < ev.size(); ++i)
+        if (ev[i].kind == SimEvent::Kind::Footprint && ev[i].actor == f.id(0)) {
+            fp = true;
+            CHECK(ev[i].rules.a == 2);
+            CHECK(ev[i].tile == Vec2i{2, 2});
+            CHECK(i > index_of(ev, from, EventKind::Transformed));   // sim events after the step's rules events
+        }
+    CHECK(fp);
+    Command rv;
+    rv.request = {f.id(0), ActionKind::Revert};
+    rv.request.as_bonus_action = true;
+    const std::size_t r0 = f.c->events().size();
+    REQUIRE(f.settle(f.c->submit(rv)).ok);
+    CHECK(f.c->footprint_size(f.id(0)) == 1);
+    CHECK(f.c->events().back().kind == SimEvent::Kind::Footprint);
+    CHECK(f.c->events().back().rules.a == 1);
+    CHECK(f.c->events().size() > r0);
+    f.check_replay();
+}
+
+TEST_CASE("0 HP in a form: DamageDealt (what the form absorbed), Reverted{b = 2, c = overflow}, DamageDealt (the overflow)") {
+    ContentLibrary lib;
+    loaded(lib, druid(2));
+    bool seen = false;
+    for (uint64_t seed = 1; seed < 40 && !seen; ++seed) {
+        Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {3, 2}}}, seed);
+        f.advance_to(f.id(0));
+        REQUIRE(f.wild_shape(7).ok);   // mouse: 1 hp
+        for (int round = 0; round < 12 && f.who(0).form != FormKind::None; ++round) {
+            f.advance_to(f.id(1));
+            Command a;
+            a.request = {f.id(1), ActionKind::Attack, f.id(0)};
+            const std::size_t from = f.c->events().size();
+            REQUIRE(f.settle(f.c->submit(a)).ok);
+            const auto& ev = f.c->events();
+            const std::size_t r = index_of(ev, from, EventKind::Reverted);
+            if (r == ev.size()) continue;
+            seen = true;
+            REQUIRE(r >= 1);
+            const auto& first = ev[r - 1].rules;
+            CHECK(first.kind == EventKind::DamageDealt);
+            CHECK(first.target == f.id(0));
+            CHECK(first.a == 1);   // all the mouse had
+            CHECK(first.b == 0);
+            CHECK(ev[r].rules.b == 2);
+            const int overflow = ev[r].rules.c;
+            if (overflow > 0) {
+                REQUIRE(r + 1 < ev.size());
+                CHECK(ev[r + 1].rules.kind == EventKind::DamageDealt);
+                CHECK(ev[r + 1].rules.a == overflow);
+                CHECK(ev[r + 1].rules.b == 40 - overflow);
+                CHECK(f.who(0).hp == 40 - overflow);
+            } else {
+                CHECK(f.who(0).hp == 40);
+            }
+            CHECK(f.who(0).form == FormKind::None);
+            f.check_replay();
+            break;
+        }
+    }
+    CHECK(seen);
+}
+
+TEST_CASE("encounter end: teardown Reverted{b = 5} in ascending id, sim events before EncounterEnded (v10 gate)") {
+    ContentLibrary lib;
+    REQUIRE_FALSE(build(lib, druid(8), 1));   // the goblin has 1 hp
+    // two druids (ids ascending by spawn order) transform; the mage's zap ends the fight
+    Fight f(lib, {{kDruid, {2, 2}}, {kDruid, {8, 2}}, {"test.character.mage", {5, 8}}, {"test.monster.gob", {5, 14}}});
+    for (std::size_t d : {std::size_t(0), std::size_t(1)}) {
+        f.advance_to(f.id(d));
+        Command u;
+        u.request = {f.id(d), ActionKind::UseFeature};
+        u.request.feature_id = kWildShape;
+        u.request.form_archetype = d == 0 ? 4 : 1;   // bear (Large) and wolf
+        REQUIRE(f.settle(f.c->submit(u)).ok);
+    }
+    f.advance_to(f.id(2));
+    Command z;
+    z.request = {f.id(2), ActionKind::CastSpell, f.id(3)};
+    z.request.spell_id = spell_id_of("test.spell.zap");
+    z.request.spell_level = 1;
+    z.request.targets = {f.id(3)};
+    const std::size_t from = f.c->events().size();
+    REQUIRE(f.settle(f.c->submit(z)).ok);
+    REQUIRE(f.c->ended());
+    const auto& ev = f.c->events();
+    REQUIRE(ev.back().kind == SimEvent::Kind::Rules);
+    CHECK(ev.back().rules.kind == EventKind::EncounterEnded);   // rule 7: last
+    std::vector<CombatantId> reverted;
+    std::size_t spell_target = ev.size(), first_teardown = ev.size();
+    for (std::size_t i = from; i < ev.size(); ++i) {
+        if (ev[i].kind == SimEvent::Kind::SpellTarget) spell_target = i;
+        if (ev[i].kind == SimEvent::Kind::Rules && ev[i].rules.kind == EventKind::Reverted) {
+            CHECK(ev[i].rules.b == 5);
+            CHECK(ev[i].rules.c == 0);
+            reverted.push_back(ev[i].rules.actor);
+            if (first_teardown == ev.size()) first_teardown = i;
+        }
+    }
+    const CombatantId lo = std::min(f.id(0), f.id(1)), hi = std::max(f.id(0), f.id(1));
+    CHECK(reverted == std::vector<CombatantId>{lo, hi});
+    REQUIRE(spell_target < ev.size());
+    CHECK(spell_target < first_teardown);   // the step's own sim events come before the teardown
+    // the bear's shrink is inline: Footprint{a = 1} directly after the bear's Reverted, and before EncounterEnded
+    std::size_t bear_rev = ev.size();
+    for (std::size_t i = first_teardown; i < ev.size(); ++i)
+        if (ev[i].kind == SimEvent::Kind::Rules && ev[i].rules.kind == EventKind::Reverted && ev[i].rules.actor == f.id(0)) bear_rev = i;
+    REQUIRE(bear_rev + 1 < ev.size() - 1);
+    CHECK(ev[bear_rev + 1].kind == SimEvent::Kind::Footprint);
+    CHECK(ev[bear_rev + 1].actor == f.id(0));
+    CHECK(ev[bear_rev + 1].rules.a == 1);
+    for (std::size_t i = 0; i < 2; ++i) CHECK(f.who(i).form == FormKind::None);
+    f.check_replay();
+}
+
+TEST_CASE("pre-v10 streams keep today's ending order (sim events after EncounterEnded), no 0xAF / 0xBD") {
+    ContentLibrary lib;
+    REQUIRE_FALSE(build(lib, druid(8), 1));
+    Fight f(lib, {{"test.character.mage", {5, 8}}, {"test.monster.gob", {5, 14}}});
+    f.advance_to(f.id(0));
+    Command z;
+    z.request = {f.id(0), ActionKind::CastSpell, f.id(1)};
+    z.request.spell_id = spell_id_of("test.spell.zap");
+    z.request.spell_level = 1;
+    z.request.targets = {f.id(1)};
+    REQUIRE(f.settle(f.c->submit(z)).ok);
+    REQUIRE(f.c->ended());
+    const auto& ev = f.c->events();
+    CHECK(event_stream_version(ev) < 10);
+    CHECK(ev.back().kind == SimEvent::Kind::SpellTarget);   // the known exception (SIM_EVENTS.md rule 7), unchanged
+    CHECK(ev[ev.size() - 2].rules.kind == EventKind::EncounterEnded);
+    CHECK_FALSE(rules5e::has_summon_state(f.c->state()));
+    f.check_replay();
+}
+
+TEST_CASE("Polymorph choices: rated beasts in id order, capped by the target's CR / level") {
+    ContentLibrary lib;
+    loaded(lib, druid(2));
+    Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {20, 20}}});
+    const auto& forms = f.c->polymorph_forms();
+    REQUIRE(forms.size() >= 5);
+    for (std::size_t i = 1; i < forms.size(); ++i) CHECK(forms[i - 1]->id < forms[i]->id);
+    const uint32_t poly = spell_id_of("test.spell.polymorph");
+    for (std::size_t i = 0; i < forms.size(); ++i) {
+        CAPTURE(forms[i]->id);
+        // the goblin is CR 1/4; the level 2 druid character counts as 2
+        CHECK(bool(f.c->build_form(f.who(1), FormKind::Polymorph, poly, uint8_t(i))) == (forms[i]->cr_x8 <= 2));
+        CHECK(bool(f.c->build_form(f.who(0), FormKind::Polymorph, poly, uint8_t(i))) == (forms[i]->cr_x8 <= 16));
+    }
+    CHECK_FALSE(f.c->build_form(f.who(1), FormKind::Polymorph, poly, uint8_t(forms.size())));
+}
+
+TEST_CASE("AI: Wild Shape only when content asks (ai: prefer_beast), into the highest allowed CR; no spells in the form") {
+    {
+        ContentLibrary lib;
+        loaded(lib, druid(4));
+        Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {20, 20}}});
+        f.advance_to(f.id(0));
+        const Command cmd = next_command(*f.c, f.id(1));
+        CHECK_FALSE((cmd.request.kind == ActionKind::UseFeature && cmd.request.feature_id == kWildShape));
+    }
+    ContentLibrary lib;
+    loaded(lib, druid(4, {{"ai", "prefer_beast"}}));
+    Fight f(lib, {{kDruid, {2, 2}}, {"test.monster.gob", {20, 20}}});
+    f.advance_to(f.id(0));
+    const Command cmd = next_command(*f.c, f.id(1));
+    CHECK(cmd.request.kind == ActionKind::UseFeature);
+    CHECK(cmd.request.feature_id == kWildShape);
+    CHECK(cmd.request.form_archetype == 3);   // croc, CR 1/2 (druid 4 swims; the hawk flies, the bear is CR 1)
+    REQUIRE(f.settle(f.c->submit(cmd)).ok);
+    CHECK(f.who(0).form == FormKind::WildShape);
+    // in the form it does not transform again, and the run plays out with no rejected command
+    NearestEnemyPolicy pol;
+    const RunResult rr = run_to_end(*f.c, [&](CombatantId) -> IActorPolicy* { return &pol; }, 400);
+    INFO(rr.error);
+    CHECK(rr.error.empty());
+    f.check_replay();
+}
+
+TEST_CASE("shapechanger trait: a listed form changes only the listed statistics, one HP pool, Polymorph refuses it") {
+    ContentLibrary lib;
+    loaded(lib, druid(2));
+    Json w = load_json("content/packs/srd51.core/monsters/goblin.json");
+    w["id"] = "test.monster.were";
+    w["hit_points"]["average"] = 30;
+    w["traits"] = Json::array({{{"id", "shape"}, {"name", "Shapechanger"}, {"description", "x"},
+                                {"effect", {{"kind", "shapechanger"},
+                                            {"forms", Json::array({{{"id", "wolf"}, {"armor_class", 12}, {"speed_walk", 40}},
+                                                                   {{"id", "hybrid"}, {"size", "large"}}})}}}}});
+    REQUIRE_FALSE(lib.add(w, "monster"));
+    const Archetype& a = *lib.find("test.monster.were");
+    CHECK(a.base.shapechanger);
+    const uint32_t fid = uint32_t(a.features.size());   // traits come after features
+    REQUIRE(a.feature_specs.count(fid));
+    CHECK(a.feature_specs.at(fid).form == uint8_t(FormKind::Shapechanger));
+    CHECK(a.feature_specs.at(fid).form_choices == 2);
+    Fight f(lib, {{"test.monster.were", {2, 2}}, {kDruid, {20, 20}}});
+    f.advance_to(f.id(0));
+    Command u;
+    u.request = {f.id(0), ActionKind::UseFeature};
+    u.request.feature_id = fid;
+    u.request.form_archetype = 1;
+    REQUIRE(f.settle(f.c->submit(u)).ok);
+    const auto& me = f.who(0);
+    CHECK(me.form == FormKind::Shapechanger);
+    CHECK(me.ac == 12);
+    CHECK(me.speed_ft == 40);
+    CHECK(me.hp == 30);
+    CHECK(me.attacks.size() == a.base.attacks.size());   // equipment is not transformed
+    CHECK(f.c->attack_archetype(f.id(0)) == &a);
+    f.check_replay();
+}
