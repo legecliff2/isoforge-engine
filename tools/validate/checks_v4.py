@@ -47,6 +47,11 @@ NATIVE_EFFECT_KINDS_AT_4 = frozenset({"on_event", "apply_modifier", "grant_actio
 # common@1 kinds (no schema arm, not in the frozen 3 -> 4 list): known at @4, their fields are checked by
 # check_static_kinds below, mirroring the sim's load errors (sim/src/features.cpp apply_attack_bonus / _crit_range / _ac_bonus).
 STATIC_EFFECT_KINDS_R_G5 = frozenset({"attack_bonus", "crit_range", "ac_bonus"})
+# VERSION_BUMP_BATCH 7.2p (sim #153 content.cpp compile_gaze): kinds the sim compiles itself, gated at @4 (a file that declares
+# an older version lists them inert: unknown-kind warning there). Shape: the closed inline gaze arm of common@2 $defs/effect.
+COMPILED_EFFECT_KINDS_AT_4 = frozenset({"gaze"})
+# compile_gaze defaults for the optional fields the validator warns about when omitted.
+GAZE_DEFAULTS = {"condition": "restrained", "repeat_save": "end_of_turn", "escalate_to": "petrified"}
 # 7.2n (sim #148, features.cpp apply_slot_recovery): the classes slot_recovery accepts.
 SLOT_RECOVERY_CLASSES = frozenset({"wizard", "druid"})
 EFFECT_COST_V1 = frozenset({"action", "bonus_action"})            # reaction is reserved up to @3
@@ -82,7 +87,8 @@ for _typ, _keys in (("monster", _SB_KEYS | _MONSTER_KEYS), ("character", _SB_KEY
     TAG_TABLE[f"{_typ}@1"] = TagRow(False, V1_ACTION_KINDS, _OPEN, EFFECT_COST_V1, _keys - {"spellcasting"})
     TAG_TABLE[f"{_typ}@2"] = TagRow(False, V1_ACTION_KINDS, _OPEN, EFFECT_COST_V1, _keys - {"spellcasting"})
     TAG_TABLE[f"{_typ}@3"] = TagRow(True, V1_ACTION_KINDS, _OPEN, EFFECT_COST_V1, _keys, cross_refs=False)
-    TAG_TABLE[f"{_typ}@4"] = TagRow(True, V2_ACTION_KINDS, _OPEN | NATIVE_EFFECT_KINDS_AT_4 | STATIC_EFFECT_KINDS_R_G5,
+    TAG_TABLE[f"{_typ}@4"] = TagRow(True, V2_ACTION_KINDS, _OPEN | NATIVE_EFFECT_KINDS_AT_4 | STATIC_EFFECT_KINDS_R_G5
+                                    | COMPILED_EFFECT_KINDS_AT_4,
                                     EFFECT_COST_V2, _keys | _AT4_KEYS, cross_refs=True, needs_api_level=2,
                                     legacy_stamps=True)
 TAG_TABLE["item@1"] = TagRow(False, frozenset(), frozenset(), frozenset(), frozenset(), cross_refs=True,
@@ -577,6 +583,56 @@ def check_metamagic(doc: dict) -> tuple[list[str], list[str]]:
             extra = sorted(k for k in eff if k != "kind")
             if extra:
                 warns.append(f"{path}: sculpt_spells takes no fields; {extra} are ignored by the sim (R-G14)")
+    return errs, warns
+
+
+GAZE_KEYS = frozenset({"kind", "range_ft", "save", "condition", "repeat_save", "escalates", "escalate_to", "escalate_margin"})
+GAZE_CONDITIONS = frozenset({"blinded", "charmed", "deafened", "frightened", "grappled", "incapacitated", "invisible",
+                             "paralyzed", "petrified", "poisoned", "prone", "restrained", "stunned", "unconscious",
+                             "exhaustion"})   # content.cpp condition_of
+GAZE_ABILITIES = frozenset({"str", "dex", "con", "int", "wis", "cha"})
+
+
+def check_gaze(doc: dict) -> tuple[list[str], list[str]]:
+    """7.2p (sim #153 content.cpp compile_gaze), @4 documents. Errors: compile_gaze's refusals in its wording
+    (`gaze '<id>': bad range_ft` / `missing save` / `bad save` / `bad condition` / `bad repeat_save` / `bad escalate_to` /
+    `bad escalate_margin`), which the closed common@2 arm also rejects (its anyOf message names no field), plus keys outside
+    the arm. Warnings: condition, repeat_save or escalate_to left to the loader's defaults (restrained, end_of_turn,
+    petrified), so the authored data says what the sim does."""
+    errs: list[str] = []
+    warns: list[str] = []
+    for path, owner, eff in live_effects(doc):
+        if eff.get("kind") != "gaze":
+            continue
+        where = f"{path}: gaze '{owner}'"
+        bad = []
+        r = eff.get("range_ft")
+        if not is_int(r) or not 5 <= r <= 65530 or r % 5:
+            bad.append("bad range_ft (an integer multiple of 5 in 5..65530)")
+        sv = eff.get("save")
+        if not isinstance(sv, dict):
+            bad.append("missing save")
+        elif sv.get("ability") not in GAZE_ABILITIES or not is_int(sv.get("dc")) or not 1 <= sv["dc"] <= 30 or set(sv) - {"ability", "dc"}:
+            bad.append("bad save ({ability, dc 1..30})")
+        if "condition" in eff and eff["condition"] not in GAZE_CONDITIONS:
+            bad.append("bad condition")
+        if "repeat_save" in eff and eff["repeat_save"] not in ("end_of_turn", "start_of_turn", "none"):
+            bad.append("bad repeat_save (end_of_turn, start_of_turn or none)")
+        if "escalates" in eff and not isinstance(eff["escalates"], bool):
+            bad.append("escalates must be a boolean")
+        if "escalate_to" in eff and eff["escalate_to"] not in GAZE_CONDITIONS:
+            bad.append("bad escalate_to")
+        m = eff.get("escalate_margin", 0)
+        if not is_int(m) or not 0 <= m <= 30:
+            bad.append("bad escalate_margin (0..30)")
+        extra = sorted(set(eff) - GAZE_KEYS)
+        if extra:
+            bad.append(f"unknown key(s) {extra} (the common@2 gaze arm is closed)")
+        errs += [f"{where}: {m} (7.2p)" for m in bad]
+        missing = [k for k in GAZE_DEFAULTS if k not in eff]
+        if missing:
+            warns.append(f"{path}: gaze '{owner}' omits {', '.join(missing)}; the sim uses "
+                         f"{', '.join(f'{k} {GAZE_DEFAULTS[k]}' for k in missing)} (7.2p)")
     return errs, warns
 
 

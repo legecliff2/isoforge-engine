@@ -25,7 +25,7 @@ schemas accept it so an in-memory migration result validates; a file on disk tha
 
 | document | effects | validator |
 |---|---|---|
-| `character@4`, `monster@4` | the `@3` kinds unchanged, plus `on_event`, `apply_modifier`, `grant_action`, `heal_pool` (closed arms of `common@2 $defs/effect`); `cost: reaction` is legal | `checks_v4.TAG_TABLE` row; cross-reference checks 1-18 of the proposal's section 8.3 |
+| `character@4`, `monster@4` | the `@3` kinds unchanged, plus `on_event`, `apply_modifier`, `grant_action`, `heal_pool`, `gaze` (closed arms of `common@2 $defs/effect`; `gaze`: VERSION_BUMP_BATCH 7.2p, `docs/CONTENT_CONVENTIONS.md` section 11); `cost: reaction` is legal | `checks_v4.TAG_TABLE` row; cross-reference checks 1-18 of the proposal's section 8.3 |
 | a `3 -> 4` migrated file | effects of the frozen new-kind list (`on_event`, `apply_modifier`, `grant_action`, `heal_pool`, `save_effect`, `reaction`) carry `"inert": true`; parameters are **not** validated | accepted in memory; an authored `inert` is an error |
 
 The engine does not apply any `@4`-only construct yet (loader: row 3); until then these documents are
@@ -284,8 +284,10 @@ See `docs/CONTENT_CONVENTIONS.md` for the timed-modifier properties the sim comp
 | `end_condition` | EndCondition | yes | `conditions[]` |
 | `delayed_damage` | DelayedDamage | no (Acid Arrow rider) | `damage`, `expiry` |
 | `sustained_damage` | SustainedDamage | yes | `damage`; needs a rounds / minutes / hours duration; no `expiry` |
+| `forced_move` | ForcedMove | no (Thunderwave / Repelling Blast rider, `applies_to`) | **`feet`** (positive multiple of 5), `mode` push \| pull, `up_to`, `max_size`, `provokes_oa` (false only); R-G9, sim #144 |
+| `teleport` | Teleport | yes | **`max_feet`** (positive multiple of 5), `needs_sight` (default true); self (Misty Step); R-G9, sim #144 |
 | `polymorph` | Polymorph (R-G12, 7.2q; parsed by the rules spell loader since #171) | yes (`polymorph: primary effect only`) | `forms[]` (beast content ids), `max_cr` (`target_level` or a CR string), `save {ability}` (default wis); one target, concentration; `docs/CONTENT_CONVENTIONS.md` section 9 |
 | `zone` | Zone (`SpellDef::zone`, `ZoneSpec`) | yes (never an extra effect) | `zone {shape (sphere, cylinder, cube, line), size_ft, height_ft, length_ft, anchor, flags[], move, chooses_excluded, needs_conscious_owner, upcast_size_ft, ring_size_ft, sided, side_ft, aura_modifier, aura_bonus_ability, aura_immunity[], aura_allies_only, triggers[]}` (rows add `region`, `loses_action`, `auto_success_damage[]` / `_conditions[]` / `_no_breath`, `shapechanger_disadvantage`, `evil_damage_type`; rules PR 2 keys, section 4.6); needs a lasting duration (the zone's expiry timer); parsed by the loader since R-G11 rules PR 2 (#122); `docs/CONTENT_CONVENTIONS.md` section 4 |
 
-Details and loader messages: `docs/CONTENT_CONVENTIONS.md` section 4 (R-G11 zones), section 6 (R-G15 kinds, sim #120) and section 7 (priced material
+Details and loader messages: `docs/CONTENT_CONVENTIONS.md` section 4 (R-G11 zones), section 6 (R-G15 kinds, sim #120), section 6.1 (R-G9 forced_move / teleport, sim #144) and section 7 (priced material
 components, character@4 `equipment[].value_gp`).
