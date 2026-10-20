@@ -295,6 +295,108 @@
     }
    },
    "subclass_name": "Evocation"
+  },
+  "sorcerer": {
+   "name": "Sorcerer",
+   "hit_die": 6,
+   "saving_throws": [
+    "con",
+    "cha"
+   ],
+   "spellcasting_ability": "cha",
+   "subclass": "draconic",
+   "levels": {
+    "1": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "spellcasting-sorcerer": "Spellcasting: Sorcerer",
+      "sorcerous-origin": "Sorcerous Origin"
+     },
+     "class_specific": {
+      "sorcery_points": 0,
+      "metamagic_known": 0
+     },
+     "cantrips_known": 4,
+     "spells_known": 2,
+     "spell_slots": {
+      "1": 2
+     },
+     "subclass_features": {
+      "dragon-ancestor": "Dragon Ancestor",
+      "draconic-resilience": "Draconic Resilience"
+     }
+    },
+    "2": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "font-of-magic": "Font of Magic",
+      "flexible-casting-creating-spell-slots": "Flexible Casting: Creating Spell Slots",
+      "flexible-casting-converting-spell-slot": "Flexible Casting: Converting Spell Slot"
+     },
+     "class_specific": {
+      "sorcery_points": 2,
+      "metamagic_known": 0
+     },
+     "cantrips_known": 4,
+     "spells_known": 3,
+     "spell_slots": {
+      "1": 3
+     }
+    },
+    "3": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "metamagic-1": "Metamagic"
+     },
+     "class_specific": {
+      "sorcery_points": 3,
+      "metamagic_known": 2
+     },
+     "cantrips_known": 4,
+     "spells_known": 4,
+     "spell_slots": {
+      "1": 4,
+      "2": 2
+     }
+    },
+    "4": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 1,
+     "features": {
+      "sorcerer-ability-score-improvement-1": "Ability Score Improvement"
+     },
+     "class_specific": {
+      "sorcery_points": 4,
+      "metamagic_known": 2
+     },
+     "cantrips_known": 5,
+     "spells_known": 5,
+     "spell_slots": {
+      "1": 4,
+      "2": 3
+     }
+    },
+    "5": {
+     "prof_bonus": 3,
+     "ability_score_bonuses": 1,
+     "features": {},
+     "class_specific": {
+      "sorcery_points": 5,
+      "metamagic_known": 2
+     },
+     "cantrips_known": 5,
+     "spells_known": 6,
+     "spell_slots": {
+      "1": 4,
+      "2": 3,
+      "3": 2
+     }
+    }
+   },
+   "subclass_name": "Draconic"
   }
  },
  "spells": {
