@@ -586,6 +586,25 @@ def check_metamagic(doc: dict) -> tuple[list[str], list[str]]:
     return errs, warns
 
 
+def check_on_event_usage(doc: dict) -> tuple[list[str], list[str]]:
+    """sim #158 compile_on_event usage: at_will = no cost; per_day / per_rest {uses 1..255} = a trigger-owned pool
+    '<trait id>#usage' recharged by rests; pool {pool, cost 1..255} = a Spend from a declared resources[] pool (check 2 / schema);
+    recharge is not compiled: the sim lists the trait as unsupported ('on_event: unsupported usage') -> warning."""
+    errs: list[str] = []
+    warns: list[str] = []
+    for path, owner, eff in live_effects(doc):
+        if eff.get("kind") != "on_event" or not isinstance(eff.get("usage"), dict):
+            continue
+        u = eff["usage"]
+        c = u.get("cost")
+        if u.get("kind") == "pool" and isinstance(c, int) and not isinstance(c, bool) and c > 255:
+            errs.append(f"{path}/usage: {owner} on_event: bad usage pool (cost must be 1..255, got {c}) (sim #158)")
+        if u.get("kind") == "recharge":
+            warns.append(f"{path}/usage: {owner} on_event: unsupported usage (recharge is not compiled yet; the sim lists the "
+                         "trait in unsupported_features and never fires it) (sim #158)")
+    return errs, warns
+
+
 GAZE_KEYS = frozenset({"kind", "range_ft", "save", "condition", "repeat_save", "escalates", "escalate_to", "escalate_margin"})
 GAZE_CONDITIONS = frozenset({"blinded", "charmed", "deafened", "frightened", "grappled", "incapacitated", "invisible",
                              "paralyzed", "petrified", "poisoned", "prone", "restrained", "stunned", "unconscious",

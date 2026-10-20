@@ -585,6 +585,10 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         m_errs, m_warns = c4.check_metamagic(doc)
         errs += [f"{rel}: {m}" for m in m_errs]
         warns += [f"{rel}: {m}" for m in m_warns]
+        if row.legacy_stamps:   # @4: on_event usage (sim #158)
+            u_errs, u_warns = c4.check_on_event_usage(doc)
+            errs += [f"{rel}: {m}" for m in u_errs]
+            warns += [f"{rel}: {m}" for m in u_warns]
         errs += [f"{rel}: {m}" for m in c4.check_slot_recovery(doc)]   # 7.2n slot_recovery (sim #148 load errors)
         if "gaze" in row.effect_kinds:   # 7.2p gaze (@4): loader defaults left implicit
             g_errs, g_warns = c4.check_gaze(doc)
