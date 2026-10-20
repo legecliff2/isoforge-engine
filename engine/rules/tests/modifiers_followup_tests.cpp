@@ -53,7 +53,7 @@ SpellDef guiding_def() {
     d.kind = SpellEffectKind::SpellAttack; d.dice = DiceExpr{1, 6, 0}; d.damage_type = DamageType::Radiant;
     SpellEffect fx; fx.kind = SpellEffectKind::ApplyModifier; fx.affected_only = true;
     fx.modifier = mod(9100, ModStat::AttacksAgainst);
-    fx.modifier.mode = RollMode::Advantage; fx.modifier.consume = 2; fx.modifier.until_caster_turn = true;
+    fx.modifier.mode = RollMode::Advantage; fx.modifier.consume = 2; fx.modifier.expiry = 3;   // 7.2u: end of the caster's next turn
     d.extra_effects.push_back(fx);
     return d;
 }
