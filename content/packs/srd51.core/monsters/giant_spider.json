@@ -1,0 +1,118 @@
+{
+  "$schema": "monster@4",
+  "id": "srd51.monster.giant_spider",
+  "name": "Giant Spider",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 14,
+    "note": "natural armor"
+  },
+  "hit_points": {
+    "average": 26,
+    "formula": "4d10+4"
+  },
+  "speed": {
+    "walk": 30,
+    "climb": 30
+  },
+  "abilities": {
+    "str": 14,
+    "dex": 16,
+    "con": 12,
+    "int": 2,
+    "wis": 11,
+    "cha": 4
+  },
+  "skills": {
+    "stealth": 7
+  },
+  "senses": {
+    "blindsight": 10,
+    "darkvision": 60,
+    "passive_perception": 10
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "1",
+    "xp": 200
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "spider_climb",
+      "name": "Spider Climb",
+      "description": "The spider can climb difficult surfaces, including upside down on ceilings, without needing to make an ability check."
+    },
+    {
+      "id": "web_sense",
+      "name": "Web Sense",
+      "description": "While in contact with a web, the spider knows the exact location of any other creature in contact with the same web."
+    },
+    {
+      "id": "web_walker",
+      "name": "Web Walker",
+      "description": "The spider ignores movement restrictions caused by webbing."
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+3",
+          "type": "piercing"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "con",
+            "dc": 11
+          },
+          "damage": [
+            {
+              "dice": "2d8",
+              "type": "poison"
+            }
+          ],
+          "on_success": "half"
+        }
+      ],
+      "description": "Melee Weapon Attack: +5 to hit, reach 5 ft., one creature. Hit: 7 (1d8 + 3) piercing damage, and the target must make a DC 11 Constitution saving throw, taking 9 (2d8) poison damage on a failed save, or half as much damage on a successful one. If the poison damage reduces the target to 0 hit points, the target is stable but poisoned for 1 hour, even after regaining hit points, and is paralyzed while poisoned in this way."
+    },
+    {
+      "id": "web",
+      "name": "Web (Recharge 5-6)",
+      "kind": "attack_effect",
+      "attack": "ranged",
+      "to_hit": 5,
+      "range_ft": 30,
+      "apply": [
+        {
+          "condition": "restrained",
+          "escape": {
+            "ability": "str",
+            "dc": 12
+          }
+        }
+      ],
+      "usage": {
+        "kind": "recharge",
+        "min": 5
+      },
+      "description": "Ranged Weapon Attack: +5 to hit, range 30/60 ft., one creature. Hit: The target is restrained by webbing. As an action, the restrained target can make a DC 12 Strength check, bursting the webbing on a success. The webbing can also be attacked and destroyed (AC 10; hp 5; vulnerability to fire damage; immunity to bludgeoning, poison, and psychic damage)."
+    }
+  ]
+}

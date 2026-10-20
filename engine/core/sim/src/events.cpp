@@ -14,6 +14,7 @@ uint32_t event_stream_version(std::span<const SimEvent> events) {
         switch (e.kind) {
             case SimEvent::Kind::Footprint: v = std::max<uint32_t>(v, 6); break;
             case SimEvent::Kind::SpellTarget: v = std::max<uint32_t>(v, 5); break;
+            case SimEvent::Kind::TokenSpawned: case SimEvent::Kind::TokenRemoved: v = std::max<uint32_t>(v, 10); break;   // R-G12
             case SimEvent::Kind::Rules:
                 // rules5e kinds appended after v6 (39..44 and anything later): a stream carrying one is
                 // newer than every stream that does not, and hashes at the current contract version (7).
@@ -25,6 +26,8 @@ uint32_t event_stream_version(std::span<const SimEvent> events) {
                 if (uint8_t(e.rules.kind) > uint8_t(kLastRulesEventKindV8) ||
                     (e.rules.kind == rules5e::EventKind::FeatureTriggered && e.rules.b >= int32_t(rules5e::TriggerOn::ZoneAppear)))
                     v = std::max<uint32_t>(v, 9);
+                // v10: R-G12 summon / transform kinds (Summoned .. Commanded, 48-52)
+                if (uint8_t(e.rules.kind) > uint8_t(kLastRulesEventKindV9)) v = std::max<uint32_t>(v, 10);
                 break;
             default: break;
         }

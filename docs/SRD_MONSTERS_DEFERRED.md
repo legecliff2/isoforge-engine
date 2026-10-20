@@ -13,11 +13,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | | count |
 |---|---|
 | inventory candidates | 30 |
-| authored now as `monster@4` | 25 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, basilisk and medusa after #153) |
+| authored now as `monster@4` | 30 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153) |
 | goblin (already shipped, left at `monster@3`) | 1 |
-| deferred (mechanic not expressible) | 6 |
+| deferred (mechanic not expressible) | 1 |
 
-## Authored (25, all `monster@4`)
+## Authored (30, all `monster@4`)
 
 | monster | CR | mechanics carried as data | notes |
 |---|---|---|---|
@@ -44,6 +44,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Dire Wolf | 1 | Pack Tactics (`pack_tactics`), bite (knock-prone rider) | authored, as wolf (Str DC 13, prone untimed). Keen Hearing and Smell descriptive |
 | Orc | 1/2 | Aggressive as trait effect `{ "kind": "aggressive" }` (sim #129: bonus-action Dash toward a visible hostile; the built-in AI uses it), greataxe, javelin (melee and thrown) | |
 | Berserker | 2 | Reckless as trait effect `{ "kind": "reckless_attack" }` (sim #129), greataxe | the sim applies Reckless when the caller declares `ActionRequest::reckless` on the first attack; the built-in AI never declares it, so an AI-driven berserker attacks without it (a choice the AI does not make yet, not a content gap) |
+| Boar | 1/4 | Charge as `on_event hit` once per turn (`weapon melee` + `moved_at_least_ft 20`: +1d6 slashing, Str DC 11 prone untimed); Relentless as `on_event drop_to_zero` (`damage_at_most 7`, `usage per_rest 1 short`, `set_hp 1`) (#158), tusk | **partial**: "straight toward the target" isn't checked (the predicate counts movement only) |
+| Hobgoblin | 1/2 | Martial Advantage as `on_event hit` once per turn (`weapon_attack` + `ally_near_target`, +2d6) (#158); longsword (1h / 2h), longbow | the sim's ally fact skips incapacitated allies (the SRD's "isn't incapacitated" clause) |
+| Bugbear | 1 | Surprise Attack as `on_event hit` (`target_surprised`, +2d6) (#158); morningstar, javelin (melee and thrown) | Brute is baked into the printed dice (description only). **partial**: "during the first round" relies on surprise lasting only for round 1 |
+| Ghoul | 1 | claws `on_hit save_condition` (Con DC 10, paralyzed 10 rounds, repeat at end of turn) gated by rider `when` [`not_creature_type undead`, `not_target_tag elf`] (#170: a character race ending in `elf` adds the `elf` tag, `half_elf` does not); bite | |
+| Giant Spider | 1 | Web as `attack_effect` (ranged +5, 30 ft, restrained with a Str DC 12 escape, recharge 5-6) (#170); bite + `on_hit save_condition` (Con DC 11, 2d8 poison, half) | **partial**: Web's long range (60 ft, disadvantage) isn't modelled (one `range_ft`); the webbing's own AC/hp/vulnerabilities, the bite's "stable but poisoned 1 hour and paralyzed" at 0 hp, and Spider Climb / Web Sense / Web Walker are description only |
 | Basilisk | 3 | Petrifying Gaze as trait effect `gaze` (7.2p, sim #153): 30 ft, Con DC 12, restrained, repeat save at the end of its turn, petrified on a failed repeat save (`escalates`, `escalate_margin` 0); bite with two damage components (piercing + poison) | **partial**: the reflection clause (it targets itself when it sees its reflection in bright light) and "until freed by greater restoration" are description only (no mirror / light model, no Greater Restoration). Averting the eyes and the sight check are the sim's (`GazeResponse`, `gaze_seen`) |
 | Medusa | 6 | Petrifying Gaze as `gaze` (Con DC 14, 30 ft, `escalate_margin` 5: failing by 5 or more petrifies at once; otherwise restrained, then petrified on a failed repeat save); Multiattack: snake hair + 2 shortswords, or 2 longbows; snake hair and longbow with a poison damage component | **partial**: as basilisk, the reflection curse is description only; proficiency bonus +3 (CR 6) |
 
@@ -56,17 +61,12 @@ Not set: `presentation` (the goblin has none; sprite assets for these monsters d
 Played: stats, attacks with every `damage[]` entry (#45), resistances / immunities / vulnerabilities / condition immunities (#45), `multiattack` options (#48/#59), `damage_mitigation` (#47/#58), `bonus_action_grant`, size footprint (#50/#55).
 Carried and validated but **not applied** (the registry reserves the `@4` kinds; the archetype lists them in `unsupported_features` and ignores them): `on_event` (Undead Fortitude, Rampage, Sneak Attack), `on_hit[]` riders (snake poison), `save_effect` actions with `usage` (Acid Breath). Until Engine Core lands the row 6 compile / row 9-10 trigger hooks these monsters play without those effects. No content change is needed when the hooks land.
 
-## Deferred (6)
+## Deferred (1)
 
 Gap ids: `T&C-Gn` = Tools & Content, `R-Gn` = Rules (see the crosswalk in the coverage doc).
 
 | monster (`srd51.monster.<id>`) | CR | missing mechanic (re-checked at `cfb5eed`) | gap id |
 |---|---|---|---|
-| `srd51.monster.boar` | 1/4 | Relentless: `drop_to_zero` only when the damage is 7 or less (no damage-threshold predicate; the loader's predicates are `weapon`, `advantage_or_ally_adjacent`, `target_creature_type`, `not_creature_type`, `damage_type_is/not`, `not_crit`, `moved_at_least_ft`, `self_hp_below`, `save`), once per short/long rest (`on_event` with `usage` is listed unsupported by the loader, "a use cost is a later sub-PR"). Charge (`moved_at_least_ft` 20, 1d6, Str DC 11 prone) is expressible but is not worth shipping without Relentless | T&C-G7 (predicate: damage taken <= N; `on_event` usage) |
-| `srd51.monster.hobgoblin` | 1/2 | Martial Advantage: +2d6 once per turn only if an ally (not incapacitated) is within 5 ft of the target. The only ally predicate is still `advantage_or_ally_adjacent` (advantage OR ally, the Sneak Attack gate), which would also fire with advantage and no ally | T&C-G7 (predicate: ally adjacent only) |
-| `srd51.monster.bugbear` | 1 | Surprise Attack: +2d6 when it hits a surprised creature in round 1. Rules has surprise since #108 (R-G16, `Combatant::surprised`), but there is no `surprised` predicate (target state) in the loader or `common@2`. (Brute is already baked into the printed attack dice per SRD text) | T&C-G7 (predicate: target surprised) |
-| `srd51.monster.ghoul` | 1 | Claws paralysis (Con DC 10, 1 minute, repeat end of turn) applies only to creatures other than elves and undead. `on_hit` riders still have no `when`; an `on_event hit` with `not_creature_type [undead]` could gate undead, but there is no predicate for elves (a race, not a creature type) and no predicate naming one attack (claws vs bite) | T&C-G5 (rider target predicate; race / attack-id predicate) |
-| `srd51.monster.giant_spider` | 1 | Web: a ranged *attack roll* that only restrains (no damage; `ranged_weapon_attack` requires `damage`, `save_effect` is a save not an attack) with Recharge 5-6; Strength-check escape (DC 12) and destructible web (AC 10, 5 HP). The R-G8 `grapple` hit rider (sim #104) is grappled-only and not in the `common@2` rider enum. Also the bite's "stable but poisoned and paralyzed at 0 HP" clause | T&C-G4 / T&C-G5 (+ R-G8 for restrain source) |
 | `srd51.monster.swarm_of_rats` | 1/4 | Swarm: shares space with other creatures (T&C-G14), cannot regain HP / gain temp HP; bite damage 2d6 or 1d6 at half HP or fewer (no HP-conditional damage swap; `self_hp_below` is strict and has no negation); creature type "swarm of Tiny beasts" is not in the `creature_type` enum (`beast` + tag `swarm` is the convention, T&C-G15) | T&C-G7, T&C-G14, T&C-G15 |
 
 ### Re-check at `cfb5eed` (2026-10-19)
@@ -77,14 +77,14 @@ All 12 stayed deferred at that point; jackal, kobold, wolf and dire wolf were au
 |---|---|---|---|
 | Undead Fortitude | yes | `on_event drop_to_zero` + `save` predicate (`dc_from_damage`) + `set_hp` | (zombie, already authored) |
 | Rampage | yes | `on_event reduce_to_zero` + `bonus_attack` rider | (gnoll, already authored) |
-| Sneak Attack | yes | `on_event hit` + `advantage_or_ally_adjacent`, `limit once_per_turn` | not Martial Advantage (hobgoblin): ally-only gate missing |
+| Sneak Attack | yes | `on_event hit` + `advantage_or_ally_adjacent`, `limit once_per_turn` | Martial Advantage (hobgoblin) uses `weapon_attack` + `ally_near_target` (#158) |
 | breath weapons | yes | `save_effect` with `area`, `usage recharge` | (wyrmling, already authored); not Web (attack roll) |
 | reactions | yes | `reactions[]` (#114/#115) | none of the 12 |
 | grapple | sim only | `on_hit [{"kind":"grapple","escape_dc":N}]` (#104); not in the `common@2` rider enum (validator rejects it) | none of the 12 (Web restrains) |
 | timed modifiers, Metamagic, Haste/Slow, Sleep, dispel | spell / `apply_modifier` mechanics | not used by any of the 12 stat blocks | none of the 12 |
 | Pack Tactics | **yes** (#127) | trait effect `{ "kind": "pack_tactics" }` (common@1 open kind) | jackal, kobold, wolf, dire wolf: authored (kobold partial, Sunlight Sensitivity descriptive) |
 | Aggressive, Reckless (#111) | **yes** (#129) | trait effects `{ "kind": "aggressive" }` / `{ "kind": "reckless_attack" }` (common@1 open kinds) | orc, berserker: authored |
-| surprise (#108) | **no** (as a predicate) | rules state only | bugbear blocked |
+| surprise (#108) | yes (`target_surprised`, #158) | | bugbear Surprise Attack |
 
 ## Other notes for Rules / Engine Core
 

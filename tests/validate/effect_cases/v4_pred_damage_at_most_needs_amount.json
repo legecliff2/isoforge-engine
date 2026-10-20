@@ -1,0 +1,33 @@
+{
+  "base": "monsters/orc.json",
+  "sets": [
+    [
+      [
+        "traits",
+        1
+      ],
+      {
+        "id": "t",
+        "name": "T",
+        "description": "x",
+        "effect": {
+          "kind": "on_event",
+          "on": "drop_to_zero",
+          "effects": [
+            {
+              "kind": "set_hp",
+              "value": 1
+            }
+          ],
+          "when": [
+            {
+              "kind": "damage_at_most"
+            }
+          ]
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "/when/0: 'amount' is a required property"
+}

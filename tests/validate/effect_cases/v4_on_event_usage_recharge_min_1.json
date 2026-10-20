@@ -1,0 +1,37 @@
+{
+  "base": "monsters/orc.json",
+  "sets": [
+    [
+      [
+        "traits",
+        1
+      ],
+      {
+        "id": "t",
+        "name": "T",
+        "description": "x",
+        "effect": {
+          "kind": "on_event",
+          "on": "hit",
+          "effects": [
+            {
+              "kind": "extra_damage",
+              "damage": [
+                {
+                  "dice": "2d6",
+                  "type": "same_as_weapon"
+                }
+              ]
+            }
+          ],
+          "usage": {
+            "kind": "recharge",
+            "min": 1
+          }
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "/usage/min: 1 is not one of [2, 3, 4, 5, 6]"
+}
