@@ -27,7 +27,7 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Second Wind | 1-5 | `self_heal {1d10, plus fighter_level, uses 1, short_rest, bonus_action}` | yes |
 | Action Surge (1 use) | 2-5 | `grant_action {cost free, usage per_rest 1 short}` | yes (row 13, #97) |
 | Improved Critical (Champion) | 3-5 | `crit_range {min 19}` | yes (R-G5, #107) |
-| Extra Attack | 5 | `multiattack` option `longsword_x2` = two longsword attacks with one Attack action | yes (declared sequence, #48); see the partial note below |
+| Extra Attack | 5 | `extra_attack {attacks_per_action 2}` (character@4, EC #179): the Attack action makes two weapon attacks, any weapon, grapple / shove may replace one | yes (sim #179 `apply_extra_attack`, `Combatant::attacks_per_action`) |
 | Ability Score Improvement | 4-5 | baked into `abilities` (and every derived number) | yes |
 | Spellcasting (Cleric, Wizard) | 1-5 | `spellcasting {ability, caster_level, slots, spells}`; DC and attack bonus derived, no override | yes |
 | Domain Spells (Life) | 1-5 | Cure Wounds in `spellcasting.spells` (always prepared); the others are not shipped (below) | yes |
@@ -44,7 +44,7 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 
 The validator change in this batch: `attack_bonus`, `crit_range` and `ac_bonus` (sim #107 hooks) are now known effect kinds at `@4` in `tools/validate/checks_v4.py` (until now they produced an "unknown effect kind" warning). Their fields are checked the way the sim checks them at load. The `@<=3` rows are unchanged.
 
-**Partial: Extra Attack.** The sim now loads the character@4 kind `extra_attack {attacks_per_action: 2..4}` into `Combatant::attacks_per_action` (feat/extra-attack); the shipped fighter still uses the multiattack sequence below until T&C switches it. The fighter declares the equivalent multiattack sequence for its main weapon, two longsword attacks (reactions and movement are allowed between them, #48). These are not offered: mixed sequences (longsword then crossbow, which `loading` would limit to one shot anyway), replacing an attack with a grapple or shove (R-G8), and the attack count rising with level. Once a loader kind for `attacks_per_action` lands, swap this effect for it.
+**Extra Attack (done).** The fighter 5 feature `extra_attack` now carries the real kind `{"kind": "extra_attack", "attacks_per_action": 2}` (EC #179) instead of the earlier stand-in, a `multiattack` option `longsword_x2` (two longsword attacks). With the real kind, mixed weapons and grapple / shove replacing an attack are covered by the rules (`TurnBudget::attacks_remaining`). The kind is loaded only from `character@4` files: in a `character@3` (or older) file the sim lists it inert, and the 3 -> 4 migration does not carry it (the migration's kind list is frozen), so the validator gives the unknown-kind warning there.
 
 **Fighting style choice.** One style is picked: Dueling, which fits the shield build. The other SRD fighter styles would be: Archery `attack_bonus {ranged, 2}` and Defense `ac_bonus {1, requires_armor}` (expressible since #107); Two-Weapon Fighting via the `two_weapon_fighting` feature-id convention (`docs/CONTENT_CONVENTIONS.md` section 2); Protection, a `reactions[]` entry (`ally_attacked` / `impose_disadvantage`, shield required); Great Weapon Fighting, not expressible (rules have `Combatant::great_weapon_fighting`, R-G7 #103, but no content kind or loader sets it).
 

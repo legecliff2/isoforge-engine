@@ -1,0 +1,13 @@
+{
+  "base": "characters/fighter_level_5.json",
+  "dels": [
+    [
+      "features",
+      4,
+      "effect",
+      "attacks_per_action"
+    ]
+  ],
+  "severity": "error",
+  "expect": "srd51.character.fighter_level_5: extra_attack: attacks_per_action must be an integer 2..4"
+}

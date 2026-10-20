@@ -3210,6 +3210,16 @@
               }
             }
           }
+        },
+        {
+          "description": "sim #179: an extra_attack effect is checked by its closed arm ($defs/extra_attack_effect) only.",
+          "properties": {
+            "kind": {
+              "not": {
+                "const": "extra_attack"
+              }
+            }
+          }
         }
       ]
     },
@@ -3527,6 +3537,25 @@
         }
       }
     },
+    "extra_attack_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "attacks_per_action"
+      ],
+      "description": "sim #179 (features.cpp apply_extra_attack): SRD Extra Attack. The Attack action makes attacks_per_action weapon attacks (rules5e Combatant::attacks_per_action; grapple / shove replace one, movement between them allowed). Required, no default. Several declarations: the highest wins (no stacking; the validator warns). Characters only (character@4 features[]); in a file that declares character@3 or older the sim lists it inert (the 3 -> 4 migration's kind list is frozen).",
+      "properties": {
+        "kind": {
+          "const": "extra_attack"
+        },
+        "attacks_per_action": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 4
+        }
+      }
+    },
     "effect": {
       "anyOf": [
         {
@@ -3554,6 +3583,9 @@
             },
             {
               "$ref": "#/$defs/shapechanger_effect"
+            },
+            {
+              "$ref": "#/$defs/extra_attack_effect"
             },
             {
               "type": "object",

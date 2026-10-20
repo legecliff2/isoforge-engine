@@ -1,0 +1,16 @@
+{
+  "base": "characters/fighter_level_5.json",
+  "sets": [
+    [
+      [
+        "features",
+        4,
+        "effect",
+        "count"
+      ],
+      2
+    ]
+  ],
+  "severity": "error",
+  "expect": "srd51.character.fighter_level_5: extra_attack: unknown key 'count'"
+}
