@@ -198,3 +198,15 @@ TEST_CASE("move modes x size space: a Large swimmer swims through an ally's spac
     CHECK(f.left() == 0);
     f.check_replay();
 }
+
+TEST_CASE("move modes x size space: a walker wading through an ally's space in water pays 15 ft (swim + difficult stack)") {
+    std::vector<Cell> pool;
+    for (int x = 5; x <= 7; ++x) pool.push_back({{x, 4}, tf::kWater});
+    Fight f("walker", pool, Vec2i{6, 4});   // a Medium ally in the water
+    REQUIRE(f.step({5, 4}).ok);   // water, no swim speed: 10 ft
+    CHECK(f.left() == 20);
+    REQUIRE(f.step({6, 4}).ok);   // water + the ally's space: 5 + 5 (swimming) + 5 (difficult) = 15 ft
+    CHECK(f.left() == 5);
+    CHECK(f.step({7, 4}).error.size() > 0);   // 10 ft of water left to pay with 5 ft
+    f.check_replay();
+}
