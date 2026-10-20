@@ -242,3 +242,150 @@ TEST_CASE("stream delta: wait_idle net deltas are identical across thread counts
             CHECK(run(threads, shuffle) == ref);
         }
 }
+
+namespace {
+std::set<ChunkCoord> ring(ChunkCoord f, int r) {
+    std::set<ChunkCoord> out;
+    for (int dy = -r; dy <= r; ++dy)
+        for (int dx = -r; dx <= r; ++dx) {
+            const ChunkCoord c{f.x + dx, f.y + dy, f.level};
+            if (c.x >= -8 && c.x < 8 && c.y >= -8 && c.y < 8 && c.level == 0) out.insert(c);
+        }
+    return out;
+}
+// Synth, but (2,2) answers Empty (covered, nothing there = known-absent).
+class GappyProvider final : public IChunkProvider {
+public:
+    std::string_view name() const override { return "gappy"; }
+    bool covers(ChunkCoord c) const override { return inner.covers(c); }
+    ChunkResult load(const ChunkRequest& r) override {
+        if (r.coord.x == 2 && r.coord.y == 2) return {ChunkStatus::Empty, std::nullopt, ""};
+        return inner.load(r);
+    }
+    SynthProvider inner{false};
+};
+} // namespace
+
+TEST_CASE("multi-focus: wanted set is the union; set_focus == one-element set_foci") {
+    SynthProvider p(false);
+    ChunkStreamer s(p, 0);
+    const std::vector<Focus> foci{{{-40, 5}, 0, 1}, {{100, 100}, 0, 0}, {{10, 10}, 0, 2}};
+    s.set_foci(foci);
+    std::set<ChunkCoord> want = ring({-2, 0, 0}, 1);
+    for (auto c : ring({3, 3, 0}, 0)) want.insert(c);
+    for (auto c : ring({0, 0, 0}, 2)) want.insert(c);
+    const auto w = s.wanted();
+    CHECK(std::set<ChunkCoord>(w.begin(), w.end()) == want);
+
+    ChunkStreamer a(p, 0), b(p, 0);
+    a.set_focus({-5, 40}, 0, 2);
+    const Focus one{{-5, 40}, 0, 2};
+    b.set_foci(std::span<const Focus>(&one, 1));
+    CHECK(a.wanted() == b.wanted());
+    a.wait_idle();
+    b.wait_idle();
+    CHECK(a.digest() == b.digest());
+
+    s.set_foci({});   // no foci, no pins: everything goes
+    s.wait_idle();
+    CHECK(s.resident(0).empty());
+}
+
+TEST_CASE("multi-focus: settled digest independent of foci order, duplicates, threads, shuffle and walk") {
+    const std::vector<Focus> base{{{-40, 5}, 0, 1}, {{70, 70}, 0, 1}, {{3, -60}, 0, 0}};
+    auto run = [&](std::vector<Focus> f, uint32_t threads, uint64_t shuffle, bool walk) {
+        SynthProvider p;
+        StreamerConfig cfg;
+        cfg.world_seed = 42;
+        cfg.request_shuffle_seed = shuffle;
+        ChunkStreamer s(p, threads, cfg);
+        if (walk) {   // reach the same foci through a different history
+            const Focus far{{-200, -200}, 0, 2};
+            s.set_foci(std::span<const Focus>(&far, 1));
+            s.wait_idle();
+            s.set_foci(std::span<const Focus>(f.data(), 1));
+            s.update();
+        }
+        s.set_foci(f);
+        s.wait_idle();
+        return s.digest();
+    };
+    const uint64_t ref = run(base, 0, 0, false);
+    std::vector<Focus> rev(base.rbegin(), base.rend());
+    std::vector<Focus> dup = base;
+    dup.push_back(base[1]);
+    dup.push_back({{-33, 1}, 0, 0});   // inside base[0]'s ring: no change
+    for (uint32_t threads : {0u, 3u})
+        for (uint64_t shuffle : {0ull, 5ull, 99ull})
+            for (bool walk : {false, true}) {
+                CAPTURE(threads);
+                CAPTURE(shuffle);
+                CAPTURE(walk);
+                CHECK(run(base, threads, shuffle, walk) == ref);
+                CHECK(run(rev, threads, shuffle, walk) == ref);
+                CHECK(run(dup, threads, shuffle, walk) == ref);
+            }
+}
+
+TEST_CASE("pinning: pinned chunks and their 3x3 halo survive any focus change until unpinned") {
+    SynthProvider p(false);
+    ChunkStreamer s(p, 0);
+    s.set_focus({0, 0}, 0, 0);
+    const std::vector<ChunkCoord> combat{{4, 4, 0}, {5, 4, 0}};
+    s.pin(1, combat);
+    s.wait_idle();
+    std::set<ChunkCoord> halo = ring({4, 4, 0}, 1);
+    for (auto c : ring({5, 4, 0}, 1)) halo.insert(c);
+    for (auto c : halo) CHECK(s.get(c) != nullptr);
+    CHECK(s.halo_state({4, 4, 0}) == HaloState::Complete);
+    CHECK(s.halo_state({5, 4, 0}) == HaloState::Complete);
+
+    s.set_focus({-200, -200}, 0, 1);   // focus far away: pins stay, the old focus chunk goes
+    const StreamDelta d = s.wait_idle();
+    for (auto c : halo) CHECK(s.get(c) != nullptr);
+    CHECK(s.get({0, 0, 0}) == nullptr);
+    for (auto c : d.removed) CHECK(halo.count(c) == 0);
+
+    s.pin(2, std::vector<ChunkCoord>{{5, 4, 0}});   // second owner overlapping
+    s.unpin(1);
+    s.wait_idle();
+    CHECK(s.get({5, 4, 0}) != nullptr);
+    CHECK(s.get({3, 4, 0}) == nullptr);   // only in owner 1's halo
+    CHECK(s.pinned() == std::vector<ChunkCoord>{{5, 4, 0}});
+    s.unpin(2);
+    s.wait_idle();
+    CHECK(s.pinned().empty());
+    CHECK(s.get({5, 4, 0}) == nullptr);
+}
+
+TEST_CASE("halo gate: complete with uncovered and Empty neighbours; pending; failed load is an error state") {
+    GappyProvider p;
+    ChunkStreamer s(p, 0);
+    // World edge: (-8,-8)'s halo is 4 covered + 5 uncovered chunks -> known-absent, complete.
+    s.set_focus({-8 * 32, -8 * 32}, 0, 1);
+    CHECK(s.halo_state({-8, -8, 0}) == HaloState::Pending);   // nothing integrated yet
+    s.wait_idle();
+    CHECK(s.known_absent({-9, -8, 0}));
+    CHECK(s.halo_state({-8, -8, 0}) == HaloState::Complete);
+    CHECK(s.halo_state_of_tile({-8 * 32 + 5, -8 * 32 + 31}, 0) == HaloState::Complete);
+    CHECK(s.halo_state({-7, -7, 0}) == HaloState::Pending);   // (-6,*) not wanted / not resident
+
+    // Empty answer = known-absent, not an error.
+    s.set_focus({2 * 32, 2 * 32}, 0, 1);
+    s.wait_idle();
+    CHECK(s.get({2, 2, 0}) == nullptr);
+    CHECK(s.known_absent({2, 2, 0}));
+    CHECK(s.errors().empty());
+    CHECK(s.halo_state({2, 2, 0}) == HaloState::Complete);
+    CHECK(s.halo_state({3, 3, 0}) == HaloState::Pending);
+
+    // (7,7) fails: every halo touching it is Failed (even if other neighbours are still pending).
+    s.set_focus({7 * 32, 7 * 32}, 0, 1);
+    CHECK(s.halo_state({7, 7, 0}) != HaloState::Complete);
+    s.wait_idle();
+    CHECK(s.errors().size() == 1);
+    CHECK_FALSE(s.known_absent({7, 7, 0}));
+    CHECK(s.halo_state({7, 7, 0}) == HaloState::Failed);
+    CHECK(s.halo_state({6, 6, 0}) == HaloState::Failed);
+    CHECK(s.halo_state({5, 5, 0}) == HaloState::Pending);
+}

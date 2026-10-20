@@ -19,6 +19,7 @@
 #include <mutex>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <thread>
 #include <vector>
@@ -46,6 +47,20 @@ struct StreamDelta {
     bool empty() const noexcept { return added.empty() && removed.empty(); }
 };
 
+// One interest point for set_foci: covered chunks within Chebyshev chunk distance radius_chunks
+// of chunk_of_tile(world_tile, level) are wanted.
+struct Focus {
+    Vec2i   world_tile{};
+    int16_t level = 0;
+    int     radius_chunks = 0;
+};
+
+// Halo of a chunk = the chunk and its 8 neighbours on the same level (LIGHTING.md §7, P2).
+// Complete: each of the 9 is resident or known-absent (not covered by the provider, or the provider
+// answered Empty). Failed: at least one load failed (error state, never treated as empty).
+// Pending: otherwise (some still loading or not wanted). Failed wins over Pending.
+enum class HaloState : uint8_t { Complete, Pending, Failed };
+
 // Chunk coord containing a world tile (floor division by kChunkSize).
 ChunkCoord chunk_of_tile(Vec2i world_tile, int16_t level) noexcept;
 
@@ -59,7 +74,23 @@ public:
 
     // Wanted set: chunks (cx, cy, level) with Chebyshev chunk distance <= radius_chunks from the
     // focus chunk and covered by the provider. Out-of-set chunks are evicted at the next update().
+    // One-element wrapper over set_foci.
     void set_focus(Vec2i world_tile, int16_t level, int radius_chunks);
+    // Wanted set = union over foci (plus pinned halos). Pure function of the foci *set*: order and
+    // duplicates don't change it (nor the settled resident set / digest()).
+    void set_foci(std::span<const Focus> foci);
+    // Combat pinning: `owner`'s chunks plus their 3x3 halo (covered chunks) are always wanted, so
+    // they are never evicted whatever the foci. Replaces owner's previous pins; empty = unpin.
+    void pin(uint32_t owner, std::span<const ChunkCoord> chunks);
+    void unpin(uint32_t owner) { pin(owner, {}); }
+    std::vector<ChunkCoord> pinned() const;   // pinned chunks (not halos), coord order, deduped
+    // Halo gate (see HaloState). Reflects integrated state only (call after update/wait_idle).
+    HaloState halo_state(ChunkCoord c) const;
+    HaloState halo_state_of_tile(Vec2i world_tile, int16_t level) const {
+        return halo_state(chunk_of_tile(world_tile, level));
+    }
+    // Known-absent: not covered by the provider, or covered but the provider returned Empty.
+    bool known_absent(ChunkCoord c) const;
     // Caller's thread: integrate finished loads (coord order), evict, queue missing chunks.
     // Returns the resident-set change it made (also readable via last_delta()).
     StreamDelta update();
@@ -83,12 +114,15 @@ private:
     struct Done { ChunkCoord coord; ChunkResult result; };
     void worker();
     void enqueue_missing();
+    void rebuild_wanted();
     void integrate(ChunkCoord c, ChunkResult r);
     std::set<ChunkCoord> resident_keys() const;
     StreamDelta diff_from(const std::set<ChunkCoord>& before) const;
 
     IChunkProvider& root_;
     StreamerConfig cfg_;
+    std::vector<Focus> foci_;
+    std::map<uint32_t, std::vector<ChunkCoord>> pins_;
     std::set<ChunkCoord> wanted_;
     std::vector<ChunkCoord> wanted_order_;   // queue order for wanted_ (ring or shuffled)
     std::map<ChunkCoord, Chunk> resident_;

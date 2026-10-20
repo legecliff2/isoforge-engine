@@ -6,10 +6,14 @@ This is the code-level companion to ARCHITECTURE.md §4 ("Streaming") and §5.2.
 - **`LayeredProvider`:** the first layer whose `covers()` is true serves the coord. For example, `{FileChunkProvider (handcrafted), ProceduralProvider (eng::procgen_world)}`.
 - **`ChunkStreamer(provider, worker_threads, StreamerConfig)`:**
   - `set_focus(world_tile, level, radius)` sets the wanted chunks: covered chunks within Chebyshev chunk distance `radius` of the focus chunk.
+  - `set_foci(span<const Focus>)` (LIGHTING.md §7, P2): `Focus{world_tile, level, radius_chunks}`; the wanted set is the union of each focus's covered ring. It is a pure function of the foci *set*: argument order and duplicates don't matter. `set_focus` is a one-element wrapper.
+  - `pin(owner, chunks)` / `unpin(owner)`: combat pinning. Each pinned chunk plus its 3×3 halo (covered chunks) is always wanted, so it is never evicted whatever the foci. Pins are per owner; a new `pin` replaces that owner's set.
+  - `halo_state(chunk)` / `halo_state_of_tile(tile, level)` → `HaloState::{Complete, Pending, Failed}`. Complete: each of the 9 chunks is resident or **known-absent** (`known_absent(c)`: not covered by the provider, or the provider answered `Empty`). Failed: any of the 9 failed to load (error state, never treated as empty; Failed wins over Pending). Pending: otherwise. Sim computes light only on Complete, and blocks the step on Pending or Failed.
   - `update()` runs on the caller's thread. It evicts unwanted chunks to a bounded LRU cache, queues missing chunks (nearest first, or shuffled with `request_shuffle_seed` for tests), and integrates finished loads **in ChunkCoord order**.
   - `wait_idle()` loops until every wanted chunk is resident or has failed.
   - Accessors: `get`, `resident(level)` (coord order), `errors`, and `digest`.
   - `worker_threads = 0` loads synchronously inside `update()`.
+- Multi-focus goldens: none yet. The golden format is one focus per line, and the multi-focus digest is the plain resident-set digest of the union, which `world_tests` pins against equivalent single-focus runs across foci order, duplicates, threads, shuffle seeds and walks. A multi-focus line format can follow once a consumer drives real foci (EC lighting phase 2).
 - **`chunk_of_tile`** converts a world tile to its chunk with floor division, so `-1` is in chunk `-1`.
 
 ## StreamDelta (for Render & Platform)
