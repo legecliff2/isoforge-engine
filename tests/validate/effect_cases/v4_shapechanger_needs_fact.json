@@ -1,0 +1,28 @@
+{
+  "base": "monsters/wolf.json",
+  "sets": [
+    [
+      [
+        "traits",
+        2
+      ],
+      {
+        "id": "shapechanger",
+        "name": "Shapechanger",
+        "description": "x",
+        "effect": {
+          "kind": "shapechanger",
+          "forms": [
+            {
+              "id": "bat",
+              "name": "Bat",
+              "size": "tiny"
+            }
+          ]
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "shapechanger trait requires shapechanger: true"
+}
