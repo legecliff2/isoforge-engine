@@ -354,7 +354,7 @@ unchanged in each sim PR).
   (0xBC), so replay needs no policy.
 - **Summoning**: the AI casts a summon spell only from content priority lists (none by default, like conversions in #152);
   archetype choice per Q1 (highest CR, then lowest content-id byte order); tiles by 3.1's deterministic choice.
-- **Transforms**: AI Wild Shapes only when `FormFeature::ai_prefer` is set (as built: common@2 `wild_shape` has no `ai` key, so loaded content leaves it off), into the highest-CR allowed form (then id);
+- **Transforms**: AI Wild Shapes by an engine heuristic (Director ruling (b), no content key; `driver.cpp`): at the start of its turn when the feature is usable (pool use left, action economy free), it is not concentrating at all, and either a visible living hostile is within 2 tiles or it has no spell slots left (pact slots included; no slots at all counts as spent), into the highest-CR allowed form (ties: the earlier forms[] entry);
   reverts by bonus action never (it lets 0 HP revert it); shapechangers stay in their spawn form. Polymorph as an ordinary
   save spell aimed at the highest-CR hostile.
 - **Headless driver**: a summon's turn is driven like any creature; a `gone` combatant never becomes current (rules removes
