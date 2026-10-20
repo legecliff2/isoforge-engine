@@ -12,6 +12,7 @@
 #include "sim/combat.hpp"
 #include "sim/content.hpp"
 #include "sim/driver.hpp"
+#include "sim/light.hpp"
 #include "world/file_chunk_provider.hpp"
 
 #include <span>
@@ -41,6 +42,42 @@ std::string display_name(const std::string& archetype) {
 }
 } // namespace
 
+// sim::LightFrame -> plain-data LightView (packed samples, flattened ids). No light is computed here.
+static void copy_light(const sim::LightFrame& f, const sim::LightFrame* prev, LightView& L) {
+    L.present = true;
+    L.frame = f.step;
+    for (const sim::ChunkLightMap& m : f.chunks) {
+        LightChunkView c;
+        c.cx = m.coord.x; c.cy = m.coord.y; c.level = m.coord.level;
+        for (size_t i = 0; i < m.samples.size(); ++i)
+            c.samples[i] = uint8_t((uint8_t(m.samples[i].level) & 3u) | ((m.samples[i].flags & 0x0Fu) << 2));
+        c.has_fog = false;   // LightFrame carries no visibility masks yet (contract gap)
+        L.chunks.push_back(c);
+    }
+    auto has = [](const sim::LightFrame* fr, const world::ChunkCoord& k) {
+        if (!fr) return false;
+        for (const auto& m : fr->chunks) if (m.coord == k) return true;
+        return false;
+    };
+    for (const auto& m : f.chunks) if (!has(prev, m.coord)) L.added.push_back({m.coord.x, m.coord.y, m.coord.level});
+    if (prev) for (const auto& m : prev->chunks) if (!has(&f, m.coord)) L.removed.push_back({m.coord.x, m.coord.y, m.coord.level});
+    for (const auto& k : f.dirty_chunks) L.dirty.push_back({{k.x, k.y, k.level}, eng::RectI{0, 0, 32, 32}});
+    for (const sim::LightSource& s : f.sources) {
+        LightSourceView v;
+        v.attached = s.id.kind == sim::LightKind::Attached;
+        v.cx = s.id.cx; v.cy = s.id.cy; v.level = s.id.level; v.index = s.id.index;
+        v.tile = s.tile;
+        v.carrier = s.carrier == sim::Carrier::Creature ? 1 : s.carrier == sim::Carrier::Item ? 2 : 0;
+        v.carrier_id = s.carrier_id;
+        v.bright_ft = s.bright_ft; v.dim_ft = s.dim_ft;
+        v.lit = s.lit;
+        v.magical = (s.flags & sim::light_src::kMagical) != 0;
+        v.sunlight = (s.flags & sim::light_src::kSunlight) != 0;
+        v.preset = s.preset;
+        L.sources.push_back(std::move(v));
+    }
+}
+
 struct Session::Impl {
     Options opt;
     std::unique_ptr<world::Chunk> chunk;
@@ -54,6 +91,35 @@ struct Session::Impl {
     FeedState feed;
     std::string error;
     std::vector<TileView> tiles;
+    sim::LightCache light_cache;
+    std::shared_ptr<const sim::LightFrame> light, light_prev;
+    uint64_t light_step = 0;
+
+    // Publishes the sim's LightFrame for the current committed state (start of the next step).
+    void publish_light() {
+        sim::LightWorld w;
+        w.grid = &combat->grid();
+        uint32_t next_id = 1;
+        if (opt.pc_torches)
+            for (const rules5e::Combatant& cb : combat->state().combatants) {
+                const sim::Archetype* a = combat->archetype(cb.id);
+                if (!a || a->schema_type != "character" || cb.dead) continue;
+                sim::AttachedLight l;
+                l.id = next_id++;
+                l.carrier = sim::Carrier::Creature;
+                l.carrier_id = cb.id;
+                l.bright_ft = 20;
+                l.dim_ft = 20;
+                l.flags = sim::light_src::kLit;
+                w.sources.push_back(sim::attached_source(
+                    l, sim::carrier_centre(combat->pos(cb.id), combat->footprint_size(cb.id)), "srd51.core.light.torch"));
+            }
+        w.normalise();
+        light_cache.begin_step(std::move(w));
+        const world::ChunkCoord coords[] = {chunk->coord};
+        light_prev = light;
+        light = sim::publish_light_frame(light_cache, coords, ++light_step, light_prev.get());
+    }
 
     std::string name_of(sim::CombatantId id) const {
         const sim::Archetype* a = combat ? combat->archetype(id) : nullptr;
@@ -139,6 +205,7 @@ std::unique_ptr<Session> Session::open(const Options& o, std::string* error) {
         if (!m.combat) return fail("sim create failed: " + err);
         for (const rules5e::Combatant& cb : m.combat->state().combatants) m.feed.tiles[cb.id] = m.combat->pos(cb.id);
         m.drain_events();
+        m.publish_light();
     }
     return s;
 }
@@ -167,6 +234,7 @@ bool Session::step() {
     }
     if (!r.ok) m.error = r.error;
     m.drain_events();   // a paused request appended nothing; its events arrive when it completes
+    if (!c.pending()) m.publish_light();   // light follows committed state only
     return r.ok;
 }
 
@@ -220,6 +288,7 @@ ViewModel Session::view() const {
             v.actors.push_back(std::move(a));
         }
     }
+    if (m.light) copy_light(*m.light, m.light_prev.get(), v.light);
     if (!m.error.empty()) v.status = "SIM ERROR: " + m.error;
     return v;
 }
