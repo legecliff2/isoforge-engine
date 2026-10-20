@@ -2167,11 +2167,11 @@ escape (`ActionRequest::special` 4), destructible-object (special 6, EC #174) an
   sets `Combatant::transparent_dc` (highest wins). Monsters only: the loader and validator refuse it on a character; the
   validator warns when a monster declares it more than once. Sim compares the dc with an observer's Perception when it sets
   up surprise, while the cube has neither moved nor attacked. Rules does not track "moved".
-- **Regurgitation** (Swallow): damage the swallowed creature deals to its container is counted per container turn
-  (`ActiveSpellEffect::container_damage`). At the end of the container's turn, if it reached `regurgitate_damage` (default
+- **Regurgitation** (Swallow): damage the swallowed creature deals to its container is counted per turn
+  (`ActiveSpellEffect::container_damage`). At the end of every turn in which that damage occurred, if it reached `regurgitate_damage` (default
   30), the container makes a Con save vs `regurgitate_dc` (behir 14, purple worm 21; 0 = never, e.g. the giant toad). On a
   fail the effect ends and the creature is prone; sim places it in an unoccupied tile within 10 ft. The counter resets at
-  the end of each container turn.
+  the end of each turn.
 - **One at a time**: a container with a Swallow already holding a creature refuses a second (no effect, no save).
 - **Exit markers**: `EncounterState::contain_exits` (container, creature, kind), cleared at the start of each step: 1 =
   released because the container died (a swallowed creature is left prone), 2 = regurgitated (prone, within 10 ft), 3 =
