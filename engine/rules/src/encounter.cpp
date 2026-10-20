@@ -134,6 +134,7 @@ DamageApplied zone_apply_damage(const EncounterState& s, const Combatant& t, int
 SaveResult save_roll_raw(EncounterState& s, const Combatant& t, Ability ab, int dc, RollMode mode, const SaveSource* src) {
     bool adv = mode == RollMode::Advantage, dis = mode == RollMode::Disadvantage;
     mod_modes(s, t.id, ModStat::Save, int(ab), adv, dis);
+    if (t.squeezing && ab == Ability::Dex) dis = true;   // SRD Squeezing
     const RollMode m = combine_modes(adv, dis);
     SaveResult r = src ? saving_throw(s.rng, t, ab, dc, m, *src) : saving_throw(s.rng, t, ab, dc, m);
     if (r.auto_fail) return r;
@@ -1543,6 +1544,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     if (a.helped_vs == t.id) { adv = true; a.helped_vs = 0; a.helped_by = 0; }
     if (t.reckless_active) adv = true;   // Reckless Attack: attacks against it have advantage
     const bool gaze_dis = a.gaze_averted && !t.gazes.empty();   // Petrifying Gaze: eyes averted, the gazer is unseen
+    if (t.squeezing) adv = true;                                  // SRD Squeezing: attacks against it have advantage
     if (t.gaze_averted && !a.gazes.empty()) adv = true;         // ... and the gazer is an unseen attacker to it
     if (a.reckless_active && !atk.ranged && spell_id == 0 &&
         !(atk.finesse && modifier(a.abilities, Ability::Dex) > modifier(a.abilities, Ability::Str))) adv = true;   // Str melee
@@ -1554,7 +1556,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     actx.ranged = atk.ranged;
     actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
     const bool protected_by_ally = ally_attacked_window(s, ctx, a, t, atk.ranged, spell_id, ev);   // Protection-style reactions
-    actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft) || protected_by_ally || gaze_dis;   // combined with conditions in one place
+    actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft) || protected_by_ally || gaze_dis || a.squeezing;   // combined with conditions in one place
     if (!s.modifiers.empty()) {   // timed modifiers (row 12): sources merged into the one advantage/disadvantage resolution
         for (auto& m : s.modifiers) {   // `when` scope of roll-time modifiers (follow-up): gate the ones that do not hold
             m.gated = false;
@@ -3643,6 +3645,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         }
         b.movement_ft = int16_t(b.movement_ft - cost);
         b.moved_ft = uint16_t(b.moved_ft + 5 * req.move_tiles);   // only a completed move counts
+        if (req.squeeze == 1) a.squeezing = true;    // SRD Squeezing (sim fact)
+        else if (req.squeeze == 2) a.squeezing = false;
         s.budget = b;
         emit(out.events, EventKind::Moved, a.id, 0, req.move_ft, b.movement_ft);
         if (!s.zones.empty()) {   // R-G11: the step's zone membership (sim's facts), then other creatures' changes (aura move)
