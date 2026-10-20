@@ -198,6 +198,9 @@ struct ActionRequest {
     // appended (SRD 5.1 Squeezing, feat/size-space; log_hash 0xC2 when non-zero): on a Move, 1 = start squeezing, 2 = stop
     // (Combatant::squeezing). Sim fact derived from the footprint fit; 0 = unchanged.
     uint8_t squeeze = 0;
+    // appended (control conditions, 7.2v; log_hash 0xC3 when non-zero): CastSpell of a Command spell (SpellDef::control
+    // Command): the CommandWord, 1 Approach, 2 Drop, 3 Flee, 4 Grovel, 5 Halt. Required there; 0 otherwise.
+    uint8_t command_word = 0;
 };
 
 enum class EventKind : uint8_t {
@@ -396,6 +399,9 @@ struct ActiveSpellEffect {
     // appended (EC spider follow-up, flagged): a second condition held for as long as this effect lasts (the spider bite's
     // "paralyzed while poisoned in this way"). Derived from the SpellDef: not hashed.
     bool has_also = false; Condition also = Condition::Paralyzed;
+    // appended (control conditions, 7.2v; leftover_digest when control != 0): the ControlKind of the spell and, for Command,
+    // the CommandWord chosen at cast (ActionRequest::command_word).
+    uint8_t control = 0, command_word = 0;
 };
 
 // A modifier in force on `target` (row 12). `timed` reuses the condition-duration machinery (Rounds / EndOfTargetNextTurn).
