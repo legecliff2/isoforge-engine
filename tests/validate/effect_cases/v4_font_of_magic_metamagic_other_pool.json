@@ -65,5 +65,12 @@
     ]
   ],
   "severity": "error",
-  "expect": "metamagic: metamagic declarations name different pools ('other' here, 'sorcery_points'"
+  "expect": "metamagic: metamagic declarations name different pools ('other' here, 'sorcery_points'",
+  "dels": [
+    [
+      "features",
+      0,
+      "effect"
+    ]
+  ]
 }

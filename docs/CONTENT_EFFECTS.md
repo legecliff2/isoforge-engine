@@ -217,6 +217,21 @@ Both kinds are reserved until their loader lands: there is no `RESERVED_EFFECT_K
 unknown-kind warning (the open-kind pattern) while their shape and cross-checks are already errors. Details:
 `docs/CONTENT_CONVENTIONS.md` section 9.
 
+### `slot_recovery` (open kind, VERSION_BUMP_BATCH 7.2n, sim #148)
+
+Arcane Recovery (wizard) and Natural Recovery (druid, Circle of the Land). Loaded by sim `features.cpp` `apply_slot_recovery`
+(#148) into a rules5e `SlotRecoverySpec`; an open kind (live at `@3` and `@4`, `checks_v4.OPEN_EFFECT_KINDS_RG7`). The
+validator mirrors the loader's errors: see `docs/CONTENT_CONVENTIONS.md` section 10.
+
+| field | type | meaning |
+|---|---|---|
+| `class` | `"wizard"` \| `"druid"` (required) | whose level sets the budget; must name a `classes[]` entry (load error `slot_recovery class '...' is not in classes[]`); one declaration per class |
+| `max_slot_level` | integer 1..9, default 5 | no recovered slot above this level (SRD: none 6th or higher) |
+| `uses` | integer 1..255, default 1 | uses per long rest; a short rest does not reset it ("once per day") |
+
+The budget, combined slot levels <= ceil(class level / 2), is derived from `classes[]` by the rules (`slot_recovery_budget`); it is
+not a field. Which slots come back is the caller's choice at short-rest time (sim AI / UI), not content.
+
 ### 1.1 Condition ids
 
 Named predicates over an attack action, registered in the FeatureRegistry:
