@@ -25,7 +25,7 @@ schemas accept it so an in-memory migration result validates; a file on disk tha
 
 | document | effects | validator |
 |---|---|---|
-| `character@4`, `monster@4` | the `@3` kinds unchanged, plus `on_event`, `apply_modifier`, `grant_action`, `heal_pool` (closed arms of `common@2 $defs/effect`); `cost: reaction` is legal | `checks_v4.TAG_TABLE` row; cross-reference checks 1-18 of the proposal's section 8.3 |
+| `character@4`, `monster@4` | the `@3` kinds unchanged, plus `on_event`, `apply_modifier`, `grant_action`, `heal_pool`, `gaze` (closed arms of `common@2 $defs/effect`; `gaze`: VERSION_BUMP_BATCH 7.2p, `docs/CONTENT_CONVENTIONS.md` section 10); `cost: reaction` is legal | `checks_v4.TAG_TABLE` row; cross-reference checks 1-18 of the proposal's section 8.3 |
 | a `3 -> 4` migrated file | effects of the frozen new-kind list (`on_event`, `apply_modifier`, `grant_action`, `heal_pool`, `save_effect`, `reaction`) carry `"inert": true`; parameters are **not** validated | accepted in memory; an authored `inert` is an error |
 
 The engine does not apply any `@4`-only construct yet (loader: row 3); until then these documents are

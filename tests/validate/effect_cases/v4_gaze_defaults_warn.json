@@ -1,0 +1,27 @@
+{
+  "base": "monsters/orc.json",
+  "sets": [
+    [
+      [
+        "traits",
+        1
+      ],
+      {
+        "id": "petrifying_gaze",
+        "name": "Petrifying Gaze",
+        "description": "x",
+        "effect": {
+          "kind": "gaze",
+          "range_ft": 30,
+          "save": {
+            "ability": "con",
+            "dc": 12
+          },
+          "escalates": true
+        }
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "gaze 'petrifying_gaze' omits condition, repeat_save, escalate_to; the sim uses condition restrained, repeat_save end_of_turn, escalate_to petrified"
+}
