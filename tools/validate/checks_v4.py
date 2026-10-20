@@ -30,6 +30,8 @@ OPEN_EFFECT_KINDS_RG7 = frozenset({"reroll_ones", "great_weapon_fighting", "evas
                                    "aggressive", "reckless_attack",
                                    # R-G14 (sim #143): Sorcerer Metamagic {options, pool}, Evocation Sculpt Spells {}
                                    "metamagic", "sculpt_spells",
+                                   # 7.2n (sim #148): Arcane Recovery / Natural Recovery {class, max_slot_level, uses}
+                                   "slot_recovery",
                                    # 7.2o (sim #152): Font of Magic {pool}, the sorcery-point pool without Metamagic
                                    "font_of_magic"})
 # Open kinds whose second declaration in one document adds nothing (the sim dedupes): the validator warns.
@@ -45,6 +47,8 @@ NATIVE_EFFECT_KINDS_AT_4 = frozenset({"on_event", "apply_modifier", "grant_actio
 # common@1 kinds (no schema arm, not in the frozen 3 -> 4 list): known at @4, their fields are checked by
 # check_static_kinds below, mirroring the sim's load errors (sim/src/features.cpp apply_attack_bonus / _crit_range / _ac_bonus).
 STATIC_EFFECT_KINDS_R_G5 = frozenset({"attack_bonus", "crit_range", "ac_bonus"})
+# 7.2n (sim #148, features.cpp apply_slot_recovery): the classes slot_recovery accepts.
+SLOT_RECOVERY_CLASSES = frozenset({"wizard", "druid"})
 EFFECT_COST_V1 = frozenset({"action", "bonus_action"})            # reaction is reserved up to @3
 EFFECT_COST_V2 = frozenset({"action", "bonus_action", "reaction"})  # grant_action additionally accepts "free"
 
@@ -574,6 +578,32 @@ def check_metamagic(doc: dict) -> tuple[list[str], list[str]]:
             if extra:
                 warns.append(f"{path}: sculpt_spells takes no fields; {extra} are ignored by the sim (R-G14)")
     return errs, warns
+
+
+def check_slot_recovery(doc: dict) -> list[str]:
+    """7.2n (sim #148, features.cpp apply_slot_recovery), for documents whose effects are active. The class / integer /
+    range shape is the schema arm; this mirrors the loader errors the arm cannot express: the class must be in classes[]
+    (a monster has none), its summed level must be 1..20, and a second declaration for one class fails to load."""
+    errs: list[str] = []
+    seen: dict = {}
+    for path, owner, eff in live_effects(doc):
+        if eff.get("kind") != "slot_recovery":
+            continue
+        cls = eff.get("class")
+        if cls not in SLOT_RECOVERY_CLASSES:
+            continue   # schema arm (enum): "slot_recovery class must be wizard or druid"
+        rows = [c for c in doc.get("classes") or [] if isinstance(c, dict) and c.get("class") == cls]
+        if not rows:
+            errs.append(f"{path}: {owner}: slot_recovery class '{cls}' is not in classes[] (7.2n)")
+            continue
+        level = sum(c.get("level") for c in rows if is_int(c.get("level")))
+        if level < 1 or level > 20:
+            errs.append(f"{path}: {owner}: slot_recovery class level out of range 1..20 ({cls} level {level}) (7.2n)")
+        if cls in seen:
+            errs.append(f"{path}: {owner}: slot_recovery declared twice for class '{cls}' (first at {seen[cls]}) (7.2n)")
+        else:
+            seen[cls] = path
+    return errs
 
 
 # ---- R-G12 transforms (VERSION_BUMP_BATCH 7.2q, Rules #156) ------------------------------------------------------

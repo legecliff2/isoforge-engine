@@ -52,5 +52,12 @@
     ]
   ],
   "severity": "error",
-  "expect": "font_of_magic: font_of_magic pool 'sorcery_points' is unlimited"
+  "expect": "font_of_magic: font_of_magic pool 'sorcery_points' is unlimited",
+  "dels": [
+    [
+      "features",
+      0,
+      "effect"
+    ]
+  ]
 }

@@ -88,6 +88,9 @@ struct Archetype {
     // Side of the footprint in tiles: footprint_of(size) for monster@3 / character@3, always 1 for
     // pre-@3 content (its size was descriptive; migration marker "size" in inert_mechanics).
     uint8_t footprint = 1;
+    // EC swarm: a monster tagged "swarm" (SRD "Swarm" trait): shares spaces both ways (Combat::occupied_except) and cannot regain
+    // HP or gain temp HP (Combatant::no_regain_hp). Squeezing through Tiny openings needs no grid change (no sub-tile openings).
+    bool swarm = false;
     std::vector<std::string> spell_ids;   // spellcasting.spells content ids (monster@3 / character@3)
     std::vector<std::string> innate_spell_ids;   // spellcasting.innate.* content ids (monster@4 / character@4); base.innate holds the rows
     // `multiattack` effect options as authored: option id + indices into base.attacks. ContentLibrary::add

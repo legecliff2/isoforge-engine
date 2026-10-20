@@ -5,7 +5,7 @@
 namespace rules5e {
 
 HealingApplied apply_healing(const Combatant& c, int16_t amount) {
-    if (c.dead || amount <= 0) return {0, c.hp, false};
+    if (c.dead || amount <= 0 || c.no_regain_hp) return {0, c.hp, false};   // EC swarm: no_regain_hp heals 0
     int cap = effective_hp_max(c);
     int hp = c.hp + amount;
     if (hp > cap) hp = cap;
