@@ -1,0 +1,148 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.monk_level_2",
+  "name": "Monk, level 2",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "lawful neutral",
+  "level": 2,
+  "classes": [
+    {
+      "class": "monk",
+      "level": 2,
+      "hit_die": "d8"
+    }
+  ],
+  "xp": 300,
+  "armor_class": {
+    "value": 15,
+    "note": "Unarmored Defense"
+  },
+  "hit_points": {
+    "average": 17,
+    "formula": "2d8+4"
+  },
+  "speed": {
+    "walk": 40
+  },
+  "abilities": {
+    "str": 13,
+    "dex": 16,
+    "con": 14,
+    "int": 11,
+    "wis": 15,
+    "cha": 9
+  },
+  "saving_throws": {
+    "str": 3,
+    "dex": 5
+  },
+  "skills": {
+    "acrobatics": 5,
+    "insight": 4
+  },
+  "senses": {
+    "passive_perception": 12
+  },
+  "languages": [
+    "Common",
+    "Dwarvish"
+  ],
+  "proficiency_bonus": 2,
+  "features": [
+    {
+      "id": "unarmored_defense",
+      "name": "Unarmored Defense",
+      "description": "While you are wearing no armor and not wielding a shield, your AC equals 10 + your Dexterity modifier + your Wisdom modifier. (Baked into armor_class.)"
+    },
+    {
+      "id": "martial_arts",
+      "name": "Martial Arts",
+      "description": "While unarmed or wielding only monk weapons (shortswords and simple melee weapons without two-handed or heavy) and no armor or shield: you can use Dexterity instead of Strength for unarmed strikes and monk weapons; you can roll a d4 in place of the normal damage of your unarmed strike or monk weapon; and when you use the Attack action with an unarmed strike or a monk weapon, you can make one unarmed strike as a bonus action. (Dexterity and the martial arts die are baked into the unarmed_strike / shortsword actions; the bonus-action strike is the sim's martial_arts convention.)"
+    },
+    {
+      "id": "ki",
+      "name": "Ki",
+      "description": "You have 2 ki points, regained on a short or long rest (resources[] ki). Some ki features require your target to make a saving throw: Ki save DC = 8 + your proficiency bonus + your Wisdom modifier (12)."
+    },
+    {
+      "id": "flurry_of_blows",
+      "name": "Flurry of Blows",
+      "description": "Immediately after you take the Attack action on your turn, you can spend 1 ki point to make two unarmed strikes as a bonus action. (The sim's flurry_of_blows convention, paid from the ki pool.)"
+    },
+    {
+      "id": "patient_defense",
+      "name": "Patient Defense",
+      "description": "You can spend 1 ki point to take the Dodge action as a bonus action on your turn. (Descriptive: no key grants a bonus-action Dodge paid from a pool.)"
+    },
+    {
+      "id": "step_of_the_wind",
+      "name": "Step of the Wind",
+      "description": "You can spend 1 ki point to take the Disengage or Dash action as a bonus action on your turn, and your jump distance is doubled for the turn. (Descriptive: no key grants a bonus-action Dash / Disengage paid from a pool; jumping is not simulated.)"
+    },
+    {
+      "id": "unarmored_movement",
+      "name": "Unarmored Movement",
+      "description": "Your speed increases by 10 feet while you are not wearing armor or wielding a shield. (Baked into speed.walk 40.)"
+    }
+  ],
+  "resources": [
+    {
+      "id": "ki",
+      "name": "Ki",
+      "max": 2,
+      "recharge": "short_rest"
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.shortsword",
+      "equipped": true
+    },
+    "dungeoneers_pack"
+  ],
+  "actions": [
+    {
+      "id": "unarmed_strike",
+      "name": "Unarmed Strike",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "unarmed",
+        "monk"
+      ],
+      "damage": [
+        {
+          "dice": "1d4+3",
+          "type": "bludgeoning"
+        }
+      ]
+    },
+    {
+      "id": "shortsword",
+      "name": "Shortsword",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "finesse",
+        "light",
+        "monk"
+      ],
+      "damage": [
+        {
+          "dice": "1d6+3",
+          "type": "piercing"
+        }
+      ]
+    }
+  ]
+}
