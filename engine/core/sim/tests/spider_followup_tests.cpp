@@ -1,6 +1,6 @@
 // Giant spider follow-up (Director): Web range 30/60 (long range at disadvantage, like ranged weapon attacks), the bite's 0-HP
 // clause (stable, poisoned 600 rounds = 1 hour, paralyzed while that lasts), and the web as a destructible object (AC 10,
-// 5 HP, fire vulnerable, immune to bludgeoning / poison / psychic; ActionRequest::special 6; Combat::hash 0xBE).
+// 5 HP, fire vulnerable, immune to bludgeoning / poison / psychic; ActionRequest::special 6; Combat::hash 0xBF).
 #include <doctest/doctest.h>
 
 #include <fstream>
@@ -255,7 +255,7 @@ TEST_CASE("spider bite 0-HP clause: not when the poison leaves HP, not when the 
     CHECK(lib.add(spider(30, 30, web_object(), b), "monster").value_or("").find("bad zero_hp duration") != std::string::npos);
 }
 
-TEST_CASE("the web as an object: AC 10, 5 HP, damage modifiers; destroying it ends restrained; special 6 refusals; 0xBE; replay") {
+TEST_CASE("the web as an object: AC 10, 5 HP, damage modifiers; destroying it ends restrained; special 6 refusals; 0xBF; replay") {
     // the restrained fighter hacks at its own web (longsword, slashing: no modifier); 5 HP falls to one or two hits
     auto lib = lib_with({spider()});
     const auto ch = arena({{kFighter, Vec2i{5, 5}}, {"t.spider", Vec2i{10, 5}}});
@@ -279,7 +279,7 @@ TEST_CASE("the web as an object: AC 10, 5 HP, damage modifiers; destroying it en
     REQUIRE(web_on(*c, f));
     CHECK(web_on(*c, f)->object_hp == 5);
     CHECK(web_on(*c, f)->object_ac == 10);
-    // 0xBE: the web's HP is in Combat::hash
+    // 0xBF: the web's HP is in Combat::hash
     {
         const uint64_t h0 = c->hash();
         for (auto& x : CombatTestAccess::state(*c).effects) if (x.object_hp > 0) x.object_hp = 4;

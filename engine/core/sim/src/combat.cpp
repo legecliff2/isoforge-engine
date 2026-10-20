@@ -1190,13 +1190,13 @@ uint64_t Combat::hash() const {
     if (rules5e::has_modifier_state(state_)) { h.byte(0xA2); h.u64(rules5e::modifiers_digest(state_)); }
     // 0xA5: timed lasting effects (condition durations). 0xA2 (modifiers) stays reserved for row 12; 0xA4 (innate) is Engine Core's.
     if (rules5e::has_timed_effects(state_)) { h.byte(0xA5); h.u64(rules5e::timed_effects_digest(state_)); }
-    // 0xBE (EC spider follow-up): destructible restraints (the web) with HP left: target, spell, object_hp, in effect order.
+    // 0xBF (EC spider follow-up): destructible restraints (the web) with HP left: target, spell, object_hp, in effect order.
     // Only when one is on the board, so every existing hash is unchanged.
     {
         bool any = false;
         for (const auto& e : state_.effects) any = any || e.object_hp > 0;
         if (any) {
-            h.byte(0xBE);
+            h.byte(0xBF);
             for (const auto& e : state_.effects)
                 if (e.object_hp > 0) { h.u32(e.target); h.u32(e.spell_id); h.i16(e.object_hp); }
         }
