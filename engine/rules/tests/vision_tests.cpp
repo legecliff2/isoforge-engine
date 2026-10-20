@@ -13,19 +13,19 @@ using namespace enc;
 
 namespace {
 
-using SightMap = std::map<std::pair<CombatantId, CombatantId>, Sight>;   // (viewer, subject) -> answer; missing = Sight{}
+using SightMap = std::map<std::pair<CombatantId, CombatantId>, SightFacts>;   // (viewer, subject) -> facts; missing = SightFacts{}
 
-std::function<Sight(const EncounterState&, const Combatant&, const Combatant&)> sight_hook(std::shared_ptr<SightMap> m) {
+std::function<SightFacts(const EncounterState&, const Combatant&, const Combatant&)> sight_hook(std::shared_ptr<SightMap> m) {
     return [m](const EncounterState&, const Combatant& v, const Combatant& t) {
         auto it = m->find({v.id, t.id});
-        return it == m->end() ? Sight{} : it->second;
+        return it == m->end() ? SightFacts{} : it->second;
     };
 }
-Sight unseen() { Sight v; v.can_see = false; v.sense = Sense::None; return v; }
+SightFacts unseen() { SightFacts f; f.subject.light = Light::Dark; f.distance_ft = 30; return f; }   // in darkness
 
 EncounterState fresh(uint64_t seed, std::shared_ptr<SightMap> m, CombatantId who = 1) {
     auto s = begin_encounter({pc(1, 200), monster(2)}, seed);
-    if (m) s.hooks.sight = sight_hook(m);
+    if (m) s.hooks.sight_facts = sight_hook(m);
     end_turns_until(s, who);
     return s;
 }
@@ -77,7 +77,8 @@ TEST_CASE("vision: an unseen attacker has advantage (as a hidden one), an unseen
 
 TEST_CASE("vision: dim light / light obscurement: sight-based Perception at disadvantage, passive -5") {
     Sight v; CHECK(passive_sight_penalty(v) == 0);
-    v.light_at_subject = Light::Dim; CHECK(sight_perception_disadvantage(v)); CHECK(passive_sight_penalty(v) == -5);
+    { SightFacts f; f.subject.light = Light::Dim; const Sight d = derive_sight(pc(1), f);   // dim = lightly obscured
+      CHECK(d.obscured == Obscured::Light); CHECK(sight_perception_disadvantage(d)); CHECK(passive_sight_penalty(d) == -5); }
     v.light_at_subject = Light::Bright; v.obscured = Obscured::Light; CHECK(passive_sight_penalty(v) == -5);
     v.sense = Sense::Blindsight; CHECK(passive_sight_penalty(v) == 0);   // not a sight-based check
 }
@@ -106,7 +107,7 @@ TEST_CASE("vision: Hide only while unseen; Stealth vs passive Perception (with t
         auto r = step(u, {1, ActionKind::Hide}); REQUIRE(r.ok);
         const int total = first(r.events, EventKind::Hid)->a;
         CHECK(is_hidden_from(u, 1, 2) == (total >= 20));
-        Sight dim = unseen(); dim.light_at_subject = Light::Dim;
+        SightFacts dim = unseen(); dim.line_of_sight = false; dim.subject.light = Light::Dim;   // behind a wall, dim tile
         auto md = std::make_shared<SightMap>(SightMap{{{2, 1}, dim}});
         auto w = fresh(seed, md); mut(w, 1).abilities.score[size_t(Ability::Dex)] = 10; mut(w, 2).abilities.score[size_t(Ability::Wis)] = 30;
         REQUIRE(step(w, {1, ActionKind::Hide}).ok);
@@ -171,15 +172,131 @@ TEST_CASE("vision: a gaze needs the actor to see the gazer with sight; the hook 
     for (Sense sense : {Sense::Sight, Sense::Blindsight, Sense::Tremorsense}) {
         auto h = spell_hooks(); h.spells = book;
         auto v = pc(1, 200);
+        if (sense == Sense::Blindsight) v.blindsight_ft = 60;
+        if (sense == Sense::Tremorsense) v.tremorsense_ft = 60;
         auto g = monster(2); g.hp = g.hp_max = 200; g.gazes = {Combatant::Gaze{kGaze, 30}};
         auto s = begin_encounter({v, g}, 5, nullptr, h);
         end_turns_until(s, 2); end_turns_until(s, 1);
         if (!s.budget.gaze_pending) { end_turns_until(s, 2); end_turns_until(s, 1); }
         REQUIRE(s.budget.gaze_pending);
-        auto m = std::make_shared<SightMap>(); Sight sv; sv.sense = sense; (*m)[{1, 2}] = sv;
-        s.hooks.sight = sight_hook(m);
+        auto m = std::make_shared<SightMap>();
+        SightFacts f; f.distance_ft = 30; if (sense != Sense::Sight) f.subject.light = Light::Dark; (*m)[{1, 2}] = f;
+        s.hooks.sight_facts = sight_hook(m);
+        REQUIRE(sight(s, 1, 2).sense == sense);
         ActionRequest r{1, ActionKind::GazeResponse};   // no gaze_seen: the hook decides
         REQUIRE(step(s, r).ok);
         CHECK(find(s, 1)->has(Condition::Restrained) == (sense == Sense::Sight));
     }
+}
+
+TEST_CASE("vision senses: darkvision (dim -> bright, dark -> dim within range)") {
+    Combatant v = pc(1); v.darkvision_ft = 60;
+    SightFacts f; f.distance_ft = 60; f.subject.light = Light::Dim;
+    auto r = derive_sight(v, f);
+    CHECK(r.sense == Sense::Sight); CHECK(r.light_at_subject == Light::Bright); CHECK(passive_sight_penalty(r) == 0);
+    f.subject.light = Light::Dark; r = derive_sight(v, f);
+    CHECK(r.can_see); CHECK(r.light_at_subject == Light::Dim); CHECK(passive_sight_penalty(r) == -5);
+    f.distance_ft = 65; r = derive_sight(v, f);   // out of range: darkness
+    CHECK_FALSE(r.can_see); CHECK(r.sense == Sense::None); CHECK(r.perceives);   // still hears it
+    Combatant n = pc(2); f.distance_ft = 10; f.subject.light = Light::Dim;   // no darkvision: dim stays dim
+    r = derive_sight(n, f); CHECK(r.can_see); CHECK(passive_sight_penalty(r) == -5);
+    f.subject.light = Light::Bright; f.viewer.light = Light::Dark;   // a lit subject seen from darkness
+    r = derive_sight(n, f); CHECK(r.sense == Sense::Sight); CHECK(r.light_at_viewer == Light::Dark);
+}
+
+TEST_CASE("vision senses: normal sight blocked by Blinded, line of sight, heavy obscurement, invisibility; light obscurement penalty") {
+    Combatant v = pc(1); SightFacts f; f.distance_ft = 10;
+    CHECK(derive_sight(v, f) == Sight{});
+    { SightFacts g = f; g.line_of_sight = false; CHECK_FALSE(derive_sight(v, g).can_see); }
+    { SightFacts g = f; g.subject.obscured = Obscured::Heavy; CHECK_FALSE(derive_sight(v, g).can_see); }
+    { SightFacts g = f; g.subject_invisible = true; CHECK_FALSE(derive_sight(v, g).can_see); CHECK(derive_sight(v, g).perceives); }
+    { SightFacts g = f; g.subject.obscured = Obscured::Light; auto r = derive_sight(v, g); CHECK(r.can_see); CHECK(passive_sight_penalty(r) == -5); }
+    Combatant b = v; add_condition(b, Condition::Blinded);
+    CHECK_FALSE(derive_sight(b, f).can_see);
+    Combatant d = b; add_condition(d, Condition::Deafened);
+    CHECK_FALSE(derive_sight(d, f).perceives);
+    SightFacts quiet = f; quiet.audible = false; CHECK_FALSE(derive_sight(b, quiet).perceives);
+}
+
+TEST_CASE("vision senses: truesight (darkness, invisible; not Blinded, needs line of sight, range)") {
+    Combatant v = pc(1); v.truesight_ft = 120;
+    SightFacts f; f.distance_ft = 100; f.subject.light = Light::Dark; f.subject_invisible = true;
+    CHECK(derive_sight(v, f).sense == Sense::Truesight);
+    f.distance_ft = 130; CHECK(derive_sight(v, f).sense == Sense::None);
+    f.distance_ft = 100; f.line_of_sight = false; CHECK(derive_sight(v, f).sense == Sense::None);
+    f.line_of_sight = true; add_condition(v, Condition::Blinded); CHECK(derive_sight(v, f).sense == Sense::None);
+}
+
+TEST_CASE("vision senses: blindsight (ignores light, obscurement, invisibility and Blinded; range); not sight-based Perception") {
+    Combatant v = pc(1); v.blindsight_ft = 10; add_condition(v, Condition::Blinded);
+    SightFacts f; f.distance_ft = 10; f.subject.light = Light::Dim; f.subject.obscured = Obscured::Heavy; f.subject_invisible = true;
+    auto r = derive_sight(v, f);
+    CHECK(r.sense == Sense::Blindsight); CHECK(r.can_see); CHECK(passive_sight_penalty(r) == 0);
+    f.distance_ft = 15; CHECK(derive_sight(v, f).sense == Sense::None);
+}
+
+TEST_CASE("vision senses: tremorsense (range, the subject touching the same surface)") {
+    Combatant v = pc(1); v.tremorsense_ft = 60;
+    SightFacts f; f.distance_ft = 40; f.line_of_sight = false;
+    CHECK(derive_sight(v, f).sense == Sense::Tremorsense);
+    f.subject_grounded = false; CHECK(derive_sight(v, f).sense == Sense::None);   // flying
+    f.subject_grounded = true; f.distance_ft = 70; CHECK(derive_sight(v, f).sense == Sense::None);
+    f.distance_ft = 40; f.line_of_sight = true; CHECK(derive_sight(v, f).sense == Sense::Sight);   // sight first
+}
+
+TEST_CASE("vision senses: the derived answer drives attacks (darkvision sees a creature in darkness: no disadvantage)") {
+    auto m = std::make_shared<SightMap>(SightMap{{{1, 2}, unseen()}});
+    for (uint64_t seed = 0; seed < 30; ++seed) {
+        auto dv = fresh(seed, m); mut(dv, 1).darkvision_ft = 60;
+        auto plain = fresh(seed, nullptr);
+        CHECK(same(step(dv, attack(1, 2)), step(plain, attack(1, 2))));
+    }
+}
+
+TEST_CASE("vision lighting: magical darkness defeats darkvision, not truesight / blindsight; obscured = max(light, zones)") {
+    Combatant v = pc(1); v.darkvision_ft = 60;
+    SightFacts f; f.distance_ft = 20; f.subject.light = Light::Dark; f.subject.magical_darkness = true;
+    auto r = derive_sight(v, f);
+    CHECK_FALSE(r.can_see); CHECK(r.light_at_subject == Light::Dark); CHECK(r.obscured == Obscured::Heavy);
+    Combatant t = v; t.truesight_ft = 30; CHECK(derive_sight(t, f).sense == Sense::Truesight); CHECK(derive_sight(t, f).obscured == Obscured::None);
+    Combatant b = v; b.blindsight_ft = 30; CHECK(derive_sight(b, f).sense == Sense::Blindsight);
+    SightFacts g; g.distance_ft = 20;   // bright tile inside a fog cloud: heavily obscured, light level unchanged
+    g.subject.obscured = Obscured::Heavy;
+    r = derive_sight(v, g); CHECK_FALSE(r.can_see); CHECK(r.light_at_subject == Light::Bright); CHECK(r.obscured == Obscured::Heavy);
+    g.subject.obscured = Obscured::None; g.between = Obscured::Light;   // light fog on the line
+    r = derive_sight(v, g); CHECK(r.can_see); CHECK(r.obscured == Obscured::Light); CHECK(passive_sight_penalty(r) == -5);
+    g.between = Obscured::None; g.subject.light = Light::Dim;   // dim = lightly obscured (darkvision lifts it to bright)
+    CHECK(derive_sight(pc(2), g).obscured == Obscured::Light);
+    CHECK(derive_sight(v, g).obscured == Obscured::None);
+}
+
+TEST_CASE("vision lighting: Sunlight Sensitivity (attacks and sight-based Perception at disadvantage in sunlight)") {
+    SightFacts f; f.distance_ft = 5; f.viewer.sunlight = true;
+    Combatant drow = pc(1); drow.sunlight_sensitive = true;
+    auto r = derive_sight(drow, f);
+    CHECK(r.viewer_in_sunlight); CHECK_FALSE(r.subject_in_sunlight);
+    CHECK(sunlight_disadvantage(true, r)); CHECK_FALSE(sunlight_disadvantage(false, r));
+    CHECK(passive_sight_penalty(r, true) == -5); CHECK(passive_sight_penalty(r, false) == 0);
+    SightFacts g; g.subject.sunlight = true; CHECK(sunlight_disadvantage(true, derive_sight(drow, g)));
+    Combatant bs = drow; bs.blindsight_ft = 30;
+    SightFacts dark = f; dark.subject.light = Light::Dark;   // perceived by blindsight only: not sight-based
+    CHECK(derive_sight(bs, dark).sense == Sense::Blindsight); CHECK(passive_sight_penalty(derive_sight(bs, dark), true) == 0);
+    auto m = std::make_shared<SightMap>(SightMap{{{1, 2}, f}});
+    for (uint64_t seed = 0; seed < 30; ++seed) {   // the same disadvantage as a blinded attacker
+        auto s = fresh(seed, m); mut(s, 1).sunlight_sensitive = true;
+        auto bl = fresh(seed, nullptr); add_condition(mut(bl, 1), Condition::Blinded);
+        CHECK(same(step(s, attack(1, 2)), step(bl, attack(1, 2))));
+        auto ok = fresh(seed, m);   // not sensitive: unaffected
+        auto plain = fresh(seed, nullptr);
+        CHECK(same(step(ok, attack(1, 2)), step(plain, attack(1, 2))));
+    }
+}
+
+TEST_CASE("vision lighting: dispels_light (SRD Darkness / Daylight level comparison)") {
+    CHECK(dispels_light(2, 0));    // non-magical light
+    CHECK(dispels_light(2, 1));    // Light (cantrip 0 / 1st)
+    CHECK(dispels_light(2, 2));
+    CHECK_FALSE(dispels_light(2, 3));   // Daylight is not dispelled by Darkness
+    CHECK(dispels_light(3, 2));    // mirror: Daylight (3) dispels Darkness (2)
+    CHECK_FALSE(dispels_light(3, 4));
 }

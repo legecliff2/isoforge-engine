@@ -1591,9 +1591,11 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     const int drain_before = int(t.hp) + int(t.temp_hp);   // Life Drain: damage taken by this hit
     if (a.stealth_total > 0) { adv = true; a.stealth_total = 0; }   // unseen attacker; now revealed
     bool unseen_target = false;
-    if (s.hooks.sight) {   // 7.2x: unseen attackers and targets (start-of-step sight); attacking reveals the attacker
+    if (s.hooks.sight_facts) {   // 7.2x: unseen attackers and targets (start-of-step sight); attacking reveals the attacker
         if (!sight(s, t.id, a.id).can_see || is_hidden_from(s, a.id, t.id)) adv = true;
-        if (!sight(s, a.id, t.id).can_see || is_hidden_from(s, t.id, a.id)) unseen_target = true;
+        const Sight at = sight(s, a.id, t.id);
+        if (!at.can_see || is_hidden_from(s, t.id, a.id)) unseen_target = true;
+        if (sunlight_disadvantage(a.sunlight_sensitive, at)) unseen_target = true;   // SRD Sunlight Sensitivity (same disadvantage)
     }
     if (!s.hidden.empty())
         s.hidden.erase(std::remove_if(s.hidden.begin(), s.hidden.end(), [&](const EncounterState::Hidden& h) { return h.who == a.id; }),
@@ -3230,7 +3232,7 @@ StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vecto
         const EncounterState* prev;
         explicit SightBase(const EncounterState* b) : prev(g_sight_base) { if (b) g_sight_base = b; }
         ~SightBase() { g_sight_base = prev; }
-    } sight_base(s.hooks.sight ? &before : nullptr);
+    } sight_base(s.hooks.sight_facts ? &before : nullptr);
     std::vector<ReactionRecord> records;
     Ctx ctx{records, &decided, 0, replay_only, false, std::nullopt, 0};
     ctx.forced_recorded = forced_recorded;
@@ -3244,7 +3246,7 @@ StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vecto
     if (!s.hidden.empty()) {   // 7.2x: hiding ends against an observer that could see the hider when the step began, or a dead one
         s.hidden.erase(std::remove_if(s.hidden.begin(), s.hidden.end(), [&](const EncounterState::Hidden& h) {
             const Combatant* w = find(s, h.who); const Combatant* f = find(s, h.from);
-            return !w || !f || w->dead || f->dead || (s.hooks.sight && find(before, h.who) && find(before, h.from) &&
+            return !w || !f || w->dead || f->dead || (s.hooks.sight_facts && find(before, h.who) && find(before, h.from) &&
                                                       sight(before, h.from, h.who).can_see); }),
             s.hidden.end());
     }
@@ -3571,7 +3573,7 @@ StepResult gaze_response(EncounterState& s, Combatant& a, const ActionRequest& r
     for (const auto& slot : s.order) {
         Combatant* g = find_mut(s, slot.id);
         if (!g || g->id == a.id || g->dead || g->gazes.empty() || is_incapacitated(*g)) continue;
-        if (s.hooks.sight) {   // 7.2x: a gaze needs the actor to see the gazer with sight (not blindsight / tremorsense)
+        if (s.hooks.sight_facts) {   // 7.2x: a gaze needs the actor to see the gazer with sight (not blindsight / tremorsense)
             const Sight v = sight(s, a.id, g->id);
             if (!v.can_see || v.sense != Sense::Sight) continue;
         } else if (std::find(req.gaze_seen.begin(), req.gaze_seen.end(), g->id) == req.gaze_seen.end()) continue;
@@ -4111,14 +4113,14 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         s.budget = b;
         auto chk = roll_check(s, a, Skill::Stealth, 0, RollMode::Normal, out.events);
         const int16_t total = int16_t(chk.roll.total > 0 ? chk.roll.total : 1);
-        if (s.hooks.sight) {   // 7.2x: hidden from each hostile that can't see it and whose passive Perception it beats
+        if (s.hooks.sight_facts) {   // 7.2x: hidden from each hostile that can't see it and whose passive Perception it beats
             s.hidden.erase(std::remove_if(s.hidden.begin(), s.hidden.end(), [&](const EncounterState::Hidden& h) { return h.who == a.id; }),
                            s.hidden.end());
             for (const auto& o : s.combatants) {
                 if (o.id == a.id || o.dead || o.team == a.team) continue;
                 const Sight v = sight(s, o.id, a.id);
                 if (v.can_see) continue;   // can't hide from a creature that sees you
-                if (total >= passive_perception(o, passive_sight_penalty(v))) s.hidden.push_back({a.id, o.id, total});
+                if (total >= passive_perception(o, passive_sight_penalty(v, o.sunlight_sensitive))) s.hidden.push_back({a.id, o.id, total});
             }
         } else {
             a.stealth_total = total;
@@ -4841,13 +4843,37 @@ uint64_t surprised_digest(const EncounterState& s, uint64_t h) {
     return h;
 }
 
+Sight derive_sight(const Combatant& v, const SightFacts& f) {
+    Sight out;
+    out.light_at_viewer = f.viewer.light;
+    out.subject_in_sunlight = f.subject.sunlight;
+    out.viewer_in_sunlight = f.viewer.sunlight;
+    const auto within = [&](uint16_t r) { return r != 0 && f.distance_ft <= r; };
+    Light l = f.subject.light;
+    if (within(v.darkvision_ft) && !f.subject.magical_darkness && l != Light::Bright) l = Light(uint8_t(l) - 1);
+    out.light_at_subject = l;
+    const Obscured from_light = l == Light::Dark ? Obscured::Heavy : l == Light::Dim ? Obscured::Light : Obscured::None;
+    out.obscured = std::max({from_light, f.subject.obscured, f.between});
+    const bool blind = v.has(Condition::Blinded);
+    if (!blind && f.line_of_sight && out.obscured != Obscured::Heavy && !f.subject_invisible) out.sense = Sense::Sight;
+    else if (!blind && f.line_of_sight && within(v.truesight_ft)) out.sense = Sense::Truesight;
+    else if (within(v.blindsight_ft)) out.sense = Sense::Blindsight;
+    else if (within(v.tremorsense_ft) && f.subject_grounded) out.sense = Sense::Tremorsense;
+    else out.sense = Sense::None;
+    if (out.sense == Sense::Sight && (within(v.truesight_ft) || within(v.blindsight_ft))) out.obscured = Obscured::None;
+    if (out.sense == Sense::Truesight || out.sense == Sense::Blindsight) out.obscured = Obscured::None;
+    out.can_see = out.sense != Sense::None;
+    out.perceives = out.can_see || (f.audible && !v.has(Condition::Deafened));
+    return out;
+}
+
 Sight sight(const EncounterState& s, CombatantId viewer, CombatantId subject) {
-    if (!s.hooks.sight) return Sight{};
+    if (!s.hooks.sight_facts) return Sight{};
     const EncounterState* b = g_sight_base ? g_sight_base : &s;
     if (!find(*b, viewer) || !find(*b, subject)) b = &s;   // created during the step (a summon): its current state
     const Combatant* v = find(*b, viewer); const Combatant* t = find(*b, subject);
     if (!v || !t) return Sight{};
-    return s.hooks.sight(*b, *v, *t);
+    return derive_sight(*v, s.hooks.sight_facts(*b, *v, *t));
 }
 
 bool is_hidden_from(const EncounterState& s, CombatantId who, CombatantId from) {

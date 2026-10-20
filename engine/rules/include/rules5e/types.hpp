@@ -520,6 +520,10 @@ struct Combatant {
     uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0;
     bool hover = false;
 
+    // appended (vision 7.2x; static content, not folded): senses, in feet (0 = none). Rules derive can_see / perceives from
+    // these, Blinded / Deafened and sim's per-pair SightFacts (per-tile light from any source; LIGHTING.md).
+    uint16_t darkvision_ft = 0, blindsight_ft = 0, tremorsense_ft = 0, truesight_ft = 0;
+    bool sunlight_sensitive = false;   // SRD Sunlight Sensitivity (drow, kobold...)
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
 
