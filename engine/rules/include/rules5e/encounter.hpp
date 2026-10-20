@@ -198,7 +198,7 @@ struct ActionRequest {
     // appended (SRD 5.1 Squeezing, feat/size-space; log_hash 0xC2 when non-zero): on a Move, 1 = start squeezing, 2 = stop
     // (Combatant::squeezing). Sim fact derived from the footprint fit; 0 = unchanged.
     uint8_t squeeze = 0;
-    // appended (control conditions, 7.2v; log_hash 0xC3 when non-zero): CastSpell of a Command spell (SpellDef::control
+    // appended (control conditions, 7.2v; log_hash 0xC4 when non-zero): CastSpell of a Command spell (SpellDef::control
     // Command): the CommandWord, 1 Approach, 2 Drop, 3 Flee, 4 Grovel, 5 Halt. Required there; 0 otherwise.
     uint8_t command_word = 0;
 };

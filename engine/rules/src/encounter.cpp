@@ -2433,7 +2433,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                                     def.concentration, make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
                                     lvl, def.control == ControlKind::Turned};
                 x.no_condition = true; x.control = uint8_t(def.control);
-                x.command_word = def.control == ControlKind::Command ? ctx.command_word : 0;
+                x.command_word = def.control == ControlKind::Command ? ctx.command_word : uint8_t(0);
                 s.effects.push_back(x);
                 applied = true;
                 continue;
@@ -2455,12 +2455,12 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                                                       lvl, false});
                 if (def.escalates && !at_once) { s.effects.back().escalates = true; s.effects.back().escalate_to = def.escalate_to; }
                 s.effects.back().control = uint8_t(def.control);
-                if (def.control == ControlKind::Laughter && !t->has(Condition::Incapacitated)) {   // 7.2v: prone and incapacitated
+                // 7.2v: prone and incapacitated. Incapacitated is this effect's own only if it added it, so ending the
+                // laughter never strips an Incapacitated from another source.
+                if (def.control == ControlKind::Laughter && !t->has(Condition::Incapacitated)) {
                     s.effects.back().has_also = true; s.effects.back().also = Condition::Incapacitated;
                     add_condition(*t, Condition::Incapacitated);
                     emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(Condition::Incapacitated));
-                } else if (def.control == ControlKind::Laughter) {
-                    s.effects.back().has_also = true; s.effects.back().also = Condition::Incapacitated;
                 }
             }
         }

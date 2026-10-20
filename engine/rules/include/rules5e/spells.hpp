@@ -82,7 +82,7 @@ enum class RepeatSave : uint8_t { None, EndOfTurn, StartOfTurn, OnDamage,
 //   Laughter (Hideous Laughter): prone and incapacitated; can't stand up.
 //   Command: on the target's next turn, by ActionRequest::command_word (CommandWord).
 enum class ControlKind : uint8_t { None, Turned, Fear, Laughter, Command };
-enum class CommandWord : uint8_t { None, Approach, Drop, Flee, Grovel, Halt };   // condition: target repeats the save
+enum class CommandWord : uint8_t { None, Approach, Drop, Flee, Grovel, Halt };   // ActionRequest::command_word (log_hash 0xC4)
 
 // One further effect of a multi-effect spell (SpellDef::extra_effects; effects 2..n of spell@1 `effects`).
 // Mirrors the per-effect fields of SpellDef. Extra effects resolve in order over the same targets as the
