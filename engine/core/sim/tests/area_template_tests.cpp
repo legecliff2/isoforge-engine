@@ -269,3 +269,32 @@ TEST_CASE("area AI: aims at two hostiles, never catches an ally, one hostile onl
         CHECK(cmd.request.kind != ActionKind::CastSpell);
     }
 }
+
+TEST_CASE("cover 7.2t: log_hash 0xC0 folds the aimed area origin only when set, and its x / y") {
+    auto lib = sample_lib();
+    REQUIRE_FALSE(lib.add(drake("t.drake", cone_breath()), "monster"));
+    auto ch = arena({{kFighter, 8, 5}, {kFighter, 9, 6}, {"t.drake", 5, 5}, {kFighter, 5, 12}});
+    const CombatantId d = ch.spawns[2].stable_id;
+    auto run = [&](int mode, int32_t x, int32_t y) {   // mode 0: no origin, 1: origin (x, y)
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, lib, 5);
+        REQUIRE(c);
+        advance_to(*c, d);
+        Command cmd;
+        cmd.request = {d, ActionKind::CastSpell, ch.spawns[0].stable_id};
+        cmd.request.spell_id = rules5e::spell_id_of("t.drake#breath");
+        cmd.aim = true;
+        cmd.to = {9, 5};
+        if (mode == 1) { cmd.request.has_area_origin = true; cmd.request.area_x = x; cmd.request.area_y = y; }
+        auto r = c->submit(cmd);
+        REQUIRE_MESSAGE(r.ok, r.error);
+        return std::pair<uint64_t, uint64_t>{c->log_hash(), c->hash()};
+    };
+    const auto none = run(0, 0, 0), none2 = run(0, 0, 0);
+    const auto a = run(1, 9, 5), b = run(1, 9, 6), b2 = run(1, 9, 6);
+    CHECK(none.first == none2.first);   // unset: nothing folded (the pre-0xC0 hash)
+    CHECK(a.first != none.first);       // set: folded
+    CHECK(a.first != b.first);          // x / y folded
+    CHECK(b.first == b2.first);
+    CHECK(a.second == none.second);     // no cover hook in sim yet: the state is the same, only the log differs
+}

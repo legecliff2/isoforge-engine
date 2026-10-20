@@ -503,7 +503,11 @@ struct Combatant {
     // appended (R-G12 rules PR 3, D6): Pact of the Chain: an Attack can trade one attack for the familiar's reaction attack
     // (ActionRequest::familiar_id). Content-derived: not hashed.
     bool pact_of_chain = false;
-    // appended (SRD 5.1 movement modes, feat/move-modes; sim fold Combat::hash 0xC3 when any is set): fly / swim / climb
+    // appended (SRD 5.1 Squeezing, feat/size-space; sim fold Combat::hash 0xC1): it occupies a space one size smaller. Its
+    // attack rolls and Dexterity saving throws have disadvantage, attack rolls against it have advantage. Set / cleared by a
+    // Move (ActionRequest::squeeze); sim shrinks the footprint and doubles the step cost.
+    bool squeezing = false;
+    // appended (SRD 5.1 movement modes, feat/move-modes; static content, not folded): fly / swim / climb
     // speeds (0 = none) and hover. A Move with ActionRequest::move_mode uses that speed: SRD "switching speeds" - the
     // feet already spent this turn count against it (TurnBudget::movement_ft is shared; see move_allowance).
     uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0;

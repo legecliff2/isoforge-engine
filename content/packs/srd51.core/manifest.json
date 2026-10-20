@@ -114,6 +114,7 @@
     "monsters/scout.json",
     "monsters/skeleton.json",
     "monsters/spy.json",
+    "monsters/swarm_of_rats.json",
     "monsters/wolf.json",
     "monsters/zombie.json",
     "scripts/ai/skirmisher.luau",

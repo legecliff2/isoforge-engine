@@ -233,8 +233,8 @@ class ClassTable(unittest.TestCase):
                 self.assertEqual(f["improved_critical"]["effect"], {"kind": "crit_range", "min": 19})
             self.assertEqual("extra_attack" in f, level >= 5)
             if level >= 5:
-                self.assertEqual(f["extra_attack"]["effect"],
-                                 {"kind": "multiattack", "options": [{"id": "longsword_x2", "attacks": ["longsword", "longsword"]}]})
+                # EC #179: the real Extra Attack kind (Combatant::attacks_per_action), not a declared multiattack sequence
+                self.assertEqual(f["extra_attack"]["effect"], {"kind": "extra_attack", "attacks_per_action": 2})
         for level in LEVELS:   # Evocation (Arcane Tradition at 2): Sculpt Spells is the fieldless sim #143 kind
             f = features(load("wizard", level))
             self.assertEqual("sculpt_spells" in f, level >= 2)

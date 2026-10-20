@@ -562,8 +562,10 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
             if not isinstance(kind, str):
                 continue
             if kind not in row.effect_kinds:
+                hint = (f"; '{kind}' is loaded only from @4 documents: the sim lists it inert here (the 3 -> 4 migration's "
+                        "kind list is frozen, so migrating does not carry it)") if kind in c4.COMPILED_EFFECT_KINDS_AT_4 else ""
                 warns.append(f"{where}: unknown effect kind '{kind}' "
-                             f"(engine ignores it; known: {', '.join(sorted(row.effect_kinds))})")
+                             f"(engine ignores it; known: {', '.join(sorted(row.effect_kinds))}){hint}")
                 continue
             if kind in c4.NO_STACK_EFFECT_KINDS and "inert" not in eff:
                 if kind in seen_once:
@@ -595,11 +597,18 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
             t_errs, t_warns = c4.check_sim170(doc)   # sim #170
             errs += [f"{rel}: {m}" for m in t_errs]
             warns += [f"{rel}: {m}" for m in t_warns]
+            s_errs, s_warns = c4.check_sim172_174(doc)   # sim #172 swarm / #174 giant spider follow-up
+            errs += [f"{rel}: {m}" for m in s_errs]
+            warns += [f"{rel}: {m}" for m in s_warns]
         errs += [f"{rel}: {m}" for m in c4.check_slot_recovery(doc)]   # 7.2n slot_recovery (sim #148 load errors)
         if "gaze" in row.effect_kinds:   # 7.2p gaze (@4): loader defaults left implicit
             g_errs, g_warns = c4.check_gaze(doc)
             errs += [f"{rel}: {m}" for m in g_errs]
             warns += [f"{rel}: {m}" for m in g_warns]
+        if "extra_attack" in row.effect_kinds:   # EC #179 extra_attack (@4): loader refusals, highest-wins warning
+            x_errs, x_warns = c4.check_extra_attack(doc, tag.split("@")[0])
+            errs += [f"{rel}: {m}" for m in x_errs]
+            warns += [f"{rel}: {m}" for m in x_warns]
     return errs, warns
 
 
@@ -620,7 +629,8 @@ def authored_inert_findings(doc: dict, tag: str) -> list[str]:
 COMMON2_ID = "https://isoforge.dev/schemas/common/v2.schema.json"
 NATIVE_EFFECT_ARMS = {"on_event": "on_event_effect", "apply_modifier": "apply_modifier_effect",
                       "grant_action": "grant_action_effect", "heal_pool": "heal_pool_effect",
-                      "wild_shape": "wild_shape_effect", "shapechanger": "shapechanger_effect"}   # R-G12 7.2q
+                      "wild_shape": "wild_shape_effect", "shapechanger": "shapechanger_effect",   # R-G12 7.2q
+                      "extra_attack": "extra_attack_effect"}   # EC #179
 
 
 def schema_message(e, registry: Registry | None = None, drill: bool = True) -> str:

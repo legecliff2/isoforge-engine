@@ -1,0 +1,21 @@
+{
+  "base": "characters/fighter_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        2
+      ],
+      {
+        "id": "extra_attack",
+        "name": "Extra Attack",
+        "effect": {
+          "kind": "extra_attack",
+          "attacks_per_action": 2
+        }
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "unknown effect kind 'extra_attack'"
+}

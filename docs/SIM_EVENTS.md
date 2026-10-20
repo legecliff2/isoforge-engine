@@ -165,6 +165,7 @@ existing hash is unchanged. Next free: **0xC4** in `Combat::hash` (one shared re
 | 0xBD | `log_hash` | R-G12 transform form choice: `form_archetype` byte (1 + index into the form choices sim's `build_form` hook resolves; 0 = none) on a `UseFeature` (Wild Shape, shapechanger) or a `CastSpell` (Polymorph) | `form_archetype != 0` | R-G12 rules PR 1 (VERSION_BUMP_BATCH 7.2q); sim fold in `Combat::log_hash` (R-G12 sim PR 1) | this PR (rules in main, #156) |
 | 0xBE | `log_hash` | R-G12 Pact of the Chain (D6): `ActionRequest::familiar_id` u32 of an `Attack` that trades one of the warlock's attacks for the familiar's reaction attack | non-zero only | R-G12 rules PR 3 (VERSION_BUMP_BATCH 7.2s); sim fold not yet written | pending (sim fold) |
 | 0xBF | `Combat::hash` | destructible restraints (the giant spider's web, `ActiveSpellEffect::object_hp`): per effect with `object_hp > 0`, in effect order: `target` u32, `spell_id` u32, `object_hp` i16. Attacking it is `ActionRequest::special` 6 (logged under 0xB5); `AttackResolved.c` bit 2 (4) marks an attack on the web, not the creature | some effect has `object_hp > 0` | EC spider follow-up (Director) | pending |
+| 0xC0 | `log_hash` | Cover (VERSION_BUMP_BATCH 7.2t): the aimed area origin of a `CastSpell`: `has_area_origin` byte (1), `area_x` i32, `area_y` i32, in that order. Opaque to rules; passed to `EncounterHooks::cover` as `CoverQuery::origin_x/y` for area targets | `has_area_origin` true | Rules #178 (7.2t) | pending |
 
 ## Determinism guarantees
 

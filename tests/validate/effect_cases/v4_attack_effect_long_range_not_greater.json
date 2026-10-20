@@ -1,0 +1,15 @@
+{
+  "base": "monsters/giant_spider.json",
+  "sets": [
+    [
+      [
+        "actions",
+        1,
+        "long_range_ft"
+      ],
+      30
+    ]
+  ],
+  "severity": "error",
+  "expect": "attack_effect 'web': bad long_range_ft (ranged, > range_ft)"
+}
