@@ -170,11 +170,14 @@ bool charmed_by(const EncounterState& s, CombatantId actor, CombatantId other) {
 
 // R-G12 PR 2: summon `c` ends (reason 1 concentration, 3 0 HP, 5 encounter ended): SummonEnded, then it is dead and gone (no
 // CombatantDied of its own; a form it wears ends silently with it).
-void end_summon(Combatant& c, int32_t reason, std::vector<Event>& ev) {
+void end_concentration(EncounterState& s, CombatantId caster, std::vector<Event>& ev);
+void end_summon(EncounterState& s, Combatant& c, int32_t reason, std::vector<Event>& ev) {
     if (c.summoner == 0 || c.gone) return;
+    // its own concentration ends the usual way first (ConcentrationEnded; modifiers, zones, Polymorph links cleaned up)
+    if (c.concentration_spell != 0) end_concentration(s, c.id, ev);
     c.form = FormKind::None; c.form_source = 0; c.form_caster = 0; c.form_archetype = 0; c.form_end_round = 0;
     c.base.reset(); c.form_blocked_features.clear();
-    c.gone = true; c.dead = true; c.hp = 0; c.commanded = 0; c.concentration_spell = 0;
+    c.gone = true; c.dead = true; c.hp = 0; c.commanded = 0;
     emit(ev, EventKind::SummonEnded, c.summoner, c.id, int32_t(c.summon_source), reason);
 }
 
@@ -187,7 +190,10 @@ void check_end(EncounterState& s, std::vector<Event>& ev) {
         std::vector<CombatantId> ids;
         for (const auto& c : s.combatants) if (c.summoner != 0 && !c.gone) ids.push_back(c.id);
         std::sort(ids.begin(), ids.end());
-        for (CombatantId id : ids) end_summon(*find_mut(s, id), 5, ev);
+        // their own concentration ends first, before the contiguous teardown block (teardown_begin stays one block)
+        for (CombatantId id : ids) if (find(s, id)->concentration_spell != 0) end_concentration(s, id, ev);
+        ids.erase(std::remove_if(ids.begin(), ids.end(), [&](CombatantId id) { return find(s, id)->gone; }), ids.end());
+        for (CombatantId id : ids) end_summon(s, *find_mut(s, id), 5, ev);
     }
     // R-G12 (D15, SUMMONS_TRANSFORMS.md §3.5): every transform ends with the encounter, ascending id, before EncounterEnded
     if (s.transforms != 0) {
@@ -336,7 +342,7 @@ void end_concentration(EncounterState& s, CombatantId caster, std::vector<Event>
         if (t.form == FormKind::Polymorph && t.form_caster == caster && t.form_source == sp) form_reverted(t, 1, 0, ev);
     // TODO(R-G12 D5): Conjure Elemental's elemental turns hostile (its own turn, not controlled) instead of ending; later PR.
     for (auto& t : s.combatants)   // R-G12 PR 2 (D10): concentration summons end with it (SummonEnded b = 1), ascending order
-        if (t.summoner == caster && t.summon_source == sp && t.summon_concentration && !t.gone) end_summon(t, 1, ev);
+        if (t.summoner == caster && t.summon_source == sp && t.summon_concentration && !t.gone) end_summon(s, t, 1, ev);
     drop_concentration_modifiers(s, caster, sp, ev);
     for (std::size_t i = 0; i < s.zones.size();) {   // R-G11: its zones end first (ZoneEnded reason 1)
         if (s.zones[i].owner == caster && s.zones[i].concentration && s.zones[i].spell_id == sp) end_zone(s, i, 1, ev);
@@ -2952,7 +2958,7 @@ EncounterState begin_encounter(std::vector<Combatant> cs, uint64_t seed, std::ve
 namespace {
 
 // R-G12 PR 2: the creatures of this step's Summon cast join the encounter and the turn order. Initiative: d20 + Dex each (Own),
-// or one roll (the first creature's Dex) for the cast's group, members consecutive by id (D2). A creature goes after every entry
+// or one roll and one slot (the first creature's Dex, carried by every member) for the cast's group, members consecutive by id (D2). A creature goes after every entry
 // with a higher total, or an equal total and an equal or higher Dex modifier. Inserted at or before the current turn: the
 // current actor keeps its turn (turn_index + 1, stamps rewritten); a slot that has passed acts next round (D14).
 // Summoned actor=summoner target=creature a=spell b=archetype c=initiative total, in id order, after the cast's events.
@@ -2960,10 +2966,12 @@ void place_summons(EncounterState& s, Ctx& ctx, CombatantId summoner, std::vecto
     if (ctx.summons_pending.empty()) return;
     const bool group = ctx.summon_spec.initiative == SummonInitiative::Group;
     int16_t shared = 0;
-    if (group) shared = roll_d20(s.rng, modifier(ctx.summons_pending[0].first.abilities, Ability::Dex), RollMode::Normal).total;
+    const int8_t group_dex = int8_t(modifier(ctx.summons_pending[0].first.abilities, Ability::Dex));
+    if (group) shared = roll_d20(s.rng, group_dex, RollMode::Normal).total;
     uint32_t source = 0;
     for (auto& [c, arch] : ctx.summons_pending) {
-        const int8_t dex = int8_t(modifier(c.abilities, Ability::Dex));
+        // D2: a group shares one slot, so every member carries the group's Dex (mixed stat blocks stay consecutive by id)
+        const int8_t dex = group ? group_dex : int8_t(modifier(c.abilities, Ability::Dex));
         const int16_t total = group ? shared : roll_d20(s.rng, dex, RollMode::Normal).total;
         std::size_t pos = 0;
         while (pos < s.order.size() && (s.order[pos].total > total || (s.order[pos].total == total && s.order[pos].dex_mod >= dex))) ++pos;
@@ -2983,7 +2991,7 @@ void place_summons(EncounterState& s, Ctx& ctx, CombatantId summoner, std::vecto
 void sweep_summons(EncounterState& s, std::vector<Event>& ev) {
     if (s.summons == 0) return;
     for (auto& c : s.combatants)
-        if (c.summoner != 0 && !c.gone && c.summon_vanishes && (c.dead || c.hp <= 0)) end_summon(c, 3, ev);
+        if (c.summoner != 0 && !c.gone && c.summon_vanishes && (c.dead || c.hp <= 0)) end_summon(s, c, 3, ev);
 }
 
 // One deterministic attempt at `req` with the decisions known so far. If an Ask poll has no answer,
