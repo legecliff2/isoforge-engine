@@ -1,0 +1,15 @@
+{
+  "base": "monsters/giant_spider.json",
+  "sets": [
+    [
+      [
+        "actions",
+        1,
+        "to_hit"
+      ],
+      0
+    ]
+  ],
+  "severity": "error",
+  "expect": "/actions/1/to_hit: 0 should not be valid under"
+}

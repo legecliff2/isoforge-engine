@@ -269,6 +269,15 @@ components, character@4 `equipment[].value_gp`).
 | `when[].kind` | `damage_at_most` with `amount` 1..32767 | `bad damage_at_most amount` otherwise |
 | `usage.kind` | `at_will`; `per_rest` (`uses` 1..255, `rest` short/long); `per_day` (`uses` 1..255) | `bad uses` / `bad rest` |
 | `usage.kind` | `pool` (`pool` must be a declared resource, `cost` 1..255) | `bad usage pool` (validator: cost > 255 is an on_event error; the schema keeps the u16 reaction cost) |
-| `usage.kind` | `recharge` | not compiled; the trait is listed as unsupported, so the validator warns (does not error) |
+| `usage.kind` | `recharge` (`min` 2..6) | compiled since sim #170 (a d6 rolled at the owner's turn start); before #170 it was listed unsupported |
 
 `weapon_attack` holds for any weapon attack; `weapon {is}` stays for melee/ranged-specific tests.
+
+## sim #170 additions (EC deferred monsters)
+
+| key | shape | loader behaviour |
+|---|---|---|
+| `when[].kind` | `target_tag` / `not_target_tag` with `tag` (non-empty) | `bad tag` otherwise. Content tags (monster `tags[]`, character `race`) are case-folded and the predicate tag is not, so the validator warns on a tag that isn't lower case. A race ending in `elf` adds `elf`; `half_elf` does not |
+| `on_hit[].when` | array of predicates on any on_hit rider of an attack action | every predicate must hold. A rider `when` inside on_event `effects[]` is ignored (warning) |
+| action `kind: attack_effect` | `id`, `attack` ranged/melee (default ranged), `to_hit` -20..30 and non-zero, `range_ft` (>= 5, default 5), `apply[]` with `escape {ability: str, dc 1..30}`, `usage` | an apply[] entry without `escape` makes the loader list the action as unsupported (warning). There is no damage key. Shares the check-4 id space with `save_effect` |
+| monster `tags[]` | strings | read by `target_tag` (already in `monster@4`) |

@@ -588,6 +588,9 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
             u_errs, u_warns = c4.check_on_event_usage(doc)
             errs += [f"{rel}: {m}" for m in u_errs]
             warns += [f"{rel}: {m}" for m in u_warns]
+            t_errs, t_warns = c4.check_sim170(doc)   # sim #170
+            errs += [f"{rel}: {m}" for m in t_errs]
+            warns += [f"{rel}: {m}" for m in t_warns]
     return errs, warns
 
 

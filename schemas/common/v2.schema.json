@@ -131,6 +131,25 @@
             "end_of_turn",
             "on_damage"
           ]
+        },
+        "escape": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ability",
+            "dc"
+          ],
+          "properties": {
+            "ability": {
+              "const": "str"
+            },
+            "dc": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            }
+          },
+          "description": "attack_effect (sim #170): the condition ends when the creature wins a Strength check (an action) against dc."
         }
       }
     },
@@ -444,7 +463,9 @@
             "target_surprised",
             "ally_near_target",
             "weapon_attack",
-            "damage_at_most"
+            "damage_at_most",
+            "target_tag",
+            "not_target_tag"
           ]
         },
         "is": {
@@ -505,6 +526,11 @@
           "minimum": 1,
           "maximum": 32767,
           "description": "damage_at_most: the event's damage (after resistances) is at most this (sim #158; loader: bad damage_at_most amount)."
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1,
+          "description": "target_tag / not_target_tag (sim #170): a content tag (monster tags[], case-folded; a character race adds itself and 'elf' for every *elf race except half_elf)."
         }
       },
       "allOf": [
@@ -771,6 +797,32 @@
               ]
             }
           }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "target_tag",
+                  "not_target_tag"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "tag"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "tag"
+              ]
+            }
+          }
         }
       ]
     },
@@ -862,6 +914,14 @@
           "minimum": 0,
           "maximum": 30,
           "description": "grapple (R-G8, sim #104): escape DC of the Grappled condition the hit applies; 0 or omitted = escape by a contest against the grappler's Athletics. Read only in on_hit[] of monster@4 / character@4 actions[] weapon attacks."
+        },
+        "when": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/predicate"
+          },
+          "description": "sim #170: rider-level predicates, read only in on_hit[] of an attack action (every one must hold)."
         }
       },
       "allOf": [
@@ -884,7 +944,8 @@
               "enum": [
                 "kind",
                 "damage",
-                "scale"
+                "scale",
+                "when"
               ]
             }
           }
@@ -930,7 +991,8 @@
                 "save",
                 "apply",
                 "damage",
-                "on_success"
+                "on_success",
+                "when"
               ]
             }
           }
@@ -953,7 +1015,8 @@
             "propertyNames": {
               "enum": [
                 "kind",
-                "apply"
+                "apply",
+                "when"
               ]
             }
           }
@@ -989,7 +1052,8 @@
               "enum": [
                 "kind",
                 "dice",
-                "amount"
+                "amount",
+                "when"
               ]
             }
           }
@@ -1012,7 +1076,8 @@
             "propertyNames": {
               "enum": [
                 "kind",
-                "value"
+                "value",
+                "when"
               ]
             }
           }
@@ -1035,7 +1100,8 @@
             "propertyNames": {
               "enum": [
                 "kind",
-                "attack_id"
+                "attack_id",
+                "when"
               ]
             }
           }
@@ -1064,7 +1130,8 @@
                 "area",
                 "save",
                 "damage",
-                "on_success"
+                "on_success",
+                "when"
               ]
             }
           }
@@ -1117,7 +1184,8 @@
                 "kind",
                 "pool",
                 "cost",
-                "slot"
+                "slot",
+                "when"
               ]
             }
           }
@@ -1137,7 +1205,8 @@
             "propertyNames": {
               "enum": [
                 "kind",
-                "escape_dc"
+                "escape_dc",
+                "when"
               ]
             }
           }
@@ -2541,7 +2610,8 @@
             "melee_spell_attack",
             "ranged_spell_attack",
             "special",
-            "save_effect"
+            "save_effect",
+            "attack_effect"
           ]
         },
         "to_hit": {
@@ -2643,6 +2713,13 @@
           "items": {
             "$ref": "#/$defs/rider"
           }
+        },
+        "attack": {
+          "enum": [
+            "ranged",
+            "melee"
+          ],
+          "description": "attack_effect (sim #170): the attack roll's mode; default ranged."
         }
       },
       "allOf": [
@@ -2752,49 +2829,61 @@
             }
           },
           "else": {
-            "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "save"
-                  ]
-                },
-                {
-                  "required": [
-                    "area"
-                  ]
-                },
-                {
-                  "required": [
-                    "origin"
-                  ]
-                },
-                {
-                  "required": [
-                    "range_ft"
-                  ]
-                },
-                {
-                  "required": [
-                    "apply"
-                  ]
-                },
-                {
-                  "required": [
-                    "on_success"
-                  ]
-                },
-                {
-                  "required": [
-                    "usage"
-                  ]
-                },
-                {
-                  "required": [
-                    "magical"
-                  ]
+            "if": {
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "attack_effect"
                 }
-              ]
+              }
+            },
+            "else": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "save"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "area"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "origin"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "range_ft"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "apply"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "on_success"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "usage"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "magical"
+                    ]
+                  }
+                ]
+              }
             }
           }
         },
@@ -2854,6 +2943,51 @@
               ]
             }
           }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "attack_effect"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "id",
+              "to_hit",
+              "apply"
+            ],
+            "properties": {
+              "to_hit": {
+                "minimum": -20,
+                "maximum": 30,
+                "not": {
+                  "const": 0
+                }
+              },
+              "range_ft": {
+                "minimum": 5
+              }
+            },
+            "propertyNames": {
+              "enum": [
+                "id",
+                "name",
+                "kind",
+                "attack",
+                "to_hit",
+                "range_ft",
+                "apply",
+                "usage",
+                "description"
+              ]
+            }
+          },
+          "description": "sim #170 compile_attack_effect: an attack roll that only applies conditions (giant spider Web); every apply[] entry has a Strength escape."
         }
       ]
     },

@@ -1,0 +1,40 @@
+{
+  "base": "monsters/ghoul.json",
+  "sets": [
+    [
+      [
+        "traits"
+      ],
+      [
+        {
+          "id": "t",
+          "name": "T",
+          "description": "x",
+          "effect": {
+            "kind": "on_event",
+            "on": "hit",
+            "effects": [
+              {
+                "kind": "extra_damage",
+                "damage": [
+                  {
+                    "dice": "1d6",
+                    "type": "necrotic"
+                  }
+                ],
+                "when": [
+                  {
+                    "kind": "target_tag",
+                    "tag": "elf"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    ]
+  ],
+  "severity": "warning",
+  "expect": "rider when[] is read only in on_hit[] of an attack action"
+}
