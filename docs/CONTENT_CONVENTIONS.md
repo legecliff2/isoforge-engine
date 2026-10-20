@@ -74,7 +74,7 @@ takes option 0. Check 9 (`roll_attack` / `subtract_roll` reserved, Q6) is lifted
 | `window.source` / `visible` | `source` other than `self` or `visible: false`: listed as unsupported | warning on `roll_attack` / `subtract_roll` reactions |
 | `melee_only` + `ranged_only` | both true: **load error** | error on `roll_attack` reactions |
 
-### 3.2 Feature / trait effect kinds `reroll_ones`, `great_weapon_fighting`, `evasion`, `pack_tactics`, `aggressive`, `reckless_attack`, `metamagic`, `sculpt_spells`
+### 3.2 Feature / trait effect kinds `reroll_ones`, `great_weapon_fighting`, `evasion`, `pack_tactics`, `aggressive`, `reckless_attack`, `metamagic`, `sculpt_spells`, `font_of_magic`
 
 | kind | fields | compiles to |
 |---|---|---|
@@ -86,10 +86,11 @@ takes option 0. Check 9 (`roll_attack` / `subtract_roll` reserved, Q6) is lifted
 | `reckless_attack` | none | rules5e `Combatant::reckless_attack` (sim #129; the caller declares `ActionRequest::reckless`, the built-in AI does not). Duplicate: validator **warning** |
 | `metamagic` | `options` (required): non-empty array of `careful`, `distant`, `empowered`, `extended`, `heightened`, `quickened`, `subtle`, `twinned`; `pool` (required): a `resources[].id` | rules5e `Combatant::metamagic_known` (kMeta* bits) and `sorcery_pool` (sim #143; the caller sets `ActionRequest::metamagic`, one option per cast, log_hash 0xB1). `pool` must be a **limited** `resources[]` pool of the document (absent, or a `max.table` entry that is `unlimited` at the document's level: **load error** `<id>: metamagic pool '<pool>' is not a limited resources[] pool`; so a `@3` document, which has no `resources[]`, can never declare it). Several declarations OR their options and must name the same pool (else **load error** `metamagic declarations name different pools`). Empty `options` or an unknown name: **load error** (schema). A repeated option adds nothing: validator **warning**. The pool counts as referenced (check 12) |
 | `sculpt_spells` | none | rules5e `Combatant::sculpt_spells` (sim #143; Evocation Wizard: the caller lists `ActionRequest::spared` for its evocation spells, spell@1 `school: "evocation"`). Fields are ignored by the loader: validator **warning**. Duplicate: validator **warning** |
+| `font_of_magic` | `pool` (required): a `resources[].id` (VERSION_BUMP_BATCH 7.2o) | sim #152: the pool becomes max = start = sorcerer level (`classes[]` sorcerer entries), recharge `long_rest` (registered when `resources[]` lacks it), and `sorcery_pool` (Flexible Casting, log_hash 0xBA). **Load errors**: `<id>: font_of_magic needs sorcerer level 2+ (sorcerer level N)`, `font_of_magic pool '<pool>' is unlimited`, `font_of_magic and metamagic name different pools` (either order; metamagic after it: `metamagic declarations name different pools`). A metamagic after it may name the pool even when `resources[]` lacks it (the loader registered it). Validator **warnings**: max not the sorcerer level, recharge not `long_rest`, start not the max, pool not in `resources[]`. The pool counts as referenced (check 12) |
 
 They are **open kinds** (registered with no minimum version, like the sim's R-G5 kinds): the sim applies them in every document
 whose effects are active (`character@3`/`@4`, `monster@3`/`@4`; `@1`/`@2` effects are inert through the 2 -> 3 migration) and they
-are not in the frozen 3 -> 4 list, so the migration never stamps them. Schema: eight appended arms of `common@1 $defs/effect` (the
+are not in the frozen 3 -> 4 list, so the migration never stamps them. Schema: nine appended arms of `common@1 $defs/effect` (the
 open, append-only effect contract that `@3` `trait_active` and `@4` `effect_live` both use, so the rule is the same at `@3` and
 `@4`); the object stays open (the loader ignores fields it does not read). Validator: `checks_v4.OPEN_EFFECT_KINDS_RG7` joins every
 row of the tag table (no unknown-kind warning; shape violations are errors at `@3`/`@4`, warnings at `@1`/`@2`).
@@ -522,8 +523,9 @@ the trait stays legal and keeps that warning.
 wild_shape feature itself`; warning `requires_humanoid_form has no effect without wild_shape`.
 
 **Reserved treatment.** `RESERVED_EFFECT_KINDS` does not exist on main, so `wild_shape` / `shapechanger` stay out of the tag table's
-known kinds and get the existing unknown-kind warning (`unknown effect kind '<kind>'`) until each loader lands; `polymorph` gets
-`polymorph is reserved: the rules spell loader does not parse it yet`. The shape (schema) and the cross-checks above are already
+known kinds and get the existing unknown-kind warning (`unknown effect kind '<kind>'`) until each loader lands. `polymorph` is
+parsed by the rules spell loader since #171, so it gets no reserved warning (the unknown-form, not-a-beast and above-max_cr checks
+stay). The shape (schema) and the cross-checks above are already
 errors. When a loader lands, add its kind to the tag table and drop the warning.
 
 **Cast-time refusals (rules only; documented, not validated):** `polymorph: target is a shapechanger`, `target has 0 hit points`,
