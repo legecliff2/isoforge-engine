@@ -1,0 +1,167 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.bard_level_3",
+  "name": "Bard, level 3 (College of Lore)",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "chaotic good",
+  "level": 3,
+  "classes": [
+    {
+      "class": "bard",
+      "level": 3,
+      "hit_die": "d8",
+      "subclass": "lore"
+    }
+  ],
+  "xp": 900,
+  "armor_class": {
+    "value": 13,
+    "note": "leather armor"
+  },
+  "hit_points": {
+    "average": 24,
+    "formula": "3d8+6"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 9,
+    "dex": 15,
+    "con": 14,
+    "int": 11,
+    "wis": 13,
+    "cha": 16
+  },
+  "saving_throws": {
+    "dex": 4,
+    "cha": 5
+  },
+  "skills": {
+    "arcana": 2,
+    "deception": 5,
+    "insight": 3,
+    "perception": 3,
+    "performance": 7,
+    "persuasion": 7
+  },
+  "senses": {
+    "passive_perception": 13
+  },
+  "languages": [
+    "Common",
+    "Halfling"
+  ],
+  "proficiency_bonus": 2,
+  "spellcasting": {
+    "ability": "cha",
+    "caster_level": 3,
+    "slots": {
+      "1": 4,
+      "2": 2
+    },
+    "spells": [
+      "srd51.spell.vicious_mockery",
+      "srd51.spell.cure_wounds",
+      "srd51.spell.healing_word",
+      "srd51.spell.thunderwave",
+      "srd51.spell.hold_person",
+      "srd51.spell.lesser_restoration",
+      "srd51.spell.silence"
+    ]
+  },
+  "resources": [
+    {
+      "id": "bardic_inspiration",
+      "name": "Bardic Inspiration",
+      "max": {
+        "plus_ability": "cha",
+        "min": 1
+      },
+      "recharge": "long_rest"
+    }
+  ],
+  "features": [
+    {
+      "id": "bardic_inspiration",
+      "name": "Bardic Inspiration",
+      "description": "You can inspire others through stirring words or music. To do so, you use a bonus action on your turn to choose one creature other than yourself within 60 feet of you who can hear you. That creature gains one Bardic Inspiration die, a d6. Once within the next 10 minutes, the creature can roll the die and add the number rolled to one ability check, attack roll, or saving throw it makes. The creature can wait until after it rolls the d20 before deciding to use the Bardic Inspiration die, but must decide before the GM says whether the roll succeeds or fails. Once the Bardic Inspiration die is rolled, it is lost. A creature can have only one Bardic Inspiration die at a time. You can use this feature a number of times equal to your Charisma modifier (a minimum of once). You regain any expended uses when you finish a long rest.  Your Bardic Inspiration die changes when you reach certain levels in this class. The die becomes a d8 at 5th level, a d10 at 10th level, and a d12 at 15th level. Die: d6. Uses: Charisma modifier per long rest. Granting the die to an ally is not modelled (no key); from 3rd level the resources[] pool bardic_inspiration is spent by Cutting Words."
+    },
+    {
+      "id": "jack_of_all_trades",
+      "name": "Jack of All Trades",
+      "description": "Starting at 2nd level, you can add half your proficiency bonus, rounded down, to any ability check you make that doesn't already include your proficiency bonus."
+    },
+    {
+      "id": "song_of_rest",
+      "name": "Song of Rest",
+      "description": "Beginning at 2nd level, you can use soothing music or oration to help revitalize your wounded allies during a short rest. If you or any friendly creatures who can hear your performance regain hit points at the end of the short rest by spending one or more Hit Dice, each of those creatures regains an extra 1d6 hit points.  The extra hit points increase when you reach certain levels in this class: to 1d8 at 9th level, to 1d10 at 13th level, and to 1d12 at 17th level."
+    },
+    {
+      "id": "expertise",
+      "name": "Expertise",
+      "description": "At 3rd level, choose two of your skill proficiencies. Your proficiency bonus is doubled for any ability check you make that uses either of the chosen proficiencies. At 10th level, you can choose another two skill proficiencies to gain this benefit. Chosen: Performance and Persuasion (doubled proficiency baked into skills)."
+    },
+    {
+      "id": "bonus_proficiencies",
+      "name": "Bonus Proficiencies",
+      "description": "When you join the College of Lore at 3rd level, you gain proficiency with three skills of your choice. Chosen: Arcana, Insight, Perception (baked into skills)."
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.leather_armor",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.rapier",
+      "equipped": true
+    },
+    "lute",
+    "entertainers_pack"
+  ],
+  "actions": [
+    {
+      "id": "rapier",
+      "name": "Rapier",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "finesse"
+      ],
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ]
+    }
+  ],
+  "reactions": [
+    {
+      "id": "cutting_words",
+      "name": "Cutting Words",
+      "description": "Also at 3rd level, you learn how to use your wit to distract, confuse, and otherwise sap the confidence and competence of others. When a creature that you can see within 60 feet of you makes an attack roll, an ability check, or a damage roll, you can use your reaction to expend one of your uses of Bardic Inspiration, rolling a Bardic Inspiration die and subtracting the number rolled from the creature's roll. You can choose to use this feature after the creature makes its roll, but before the GM determines whether the attack roll or ability check succeeds or fails, or before the creature deals its damage. The creature is immune if it can't hear you or if it's immune to being charmed. Modelled: attack rolls only (the roll_attack window); ability checks, damage rolls and the charm-immunity exception are not.",
+      "window": {
+        "kind": "roll_attack"
+      },
+      "effect": {
+        "kind": "subtract_roll",
+        "dice": "1d6"
+      },
+      "usage": {
+        "kind": "pool",
+        "pool": "bardic_inspiration",
+        "cost": 1
+      }
+    }
+  ]
+}
