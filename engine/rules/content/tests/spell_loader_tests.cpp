@@ -93,6 +93,11 @@ TEST_CASE("loader rejects every validator negative case (tests/validate/cases)")
         std::filesystem::remove_all(dir);
         std::filesystem::create_directories(dir);
         std::filesystem::copy_file(f, dir / f.filename());
+        // R-G12: form ids resolve across the pack set (monster data): validator checks, not the spell loader's (alone, well formed).
+        std::ifstream pre(std::filesystem::path(f).replace_extension(".expect"));
+        std::string pre_expect;
+        std::getline(pre, pre_expect);
+        if (pre_expect.find("polymorph: unknown form") == 0 || pre_expect.find("polymorph: form '") == 0) continue;
         auto r = load_spellbook(dir);
         INFO(f.filename().string());
         CHECK_FALSE(r.book);
@@ -104,7 +109,8 @@ TEST_CASE("loader rejects every validator negative case (tests/validate/cases)")
         const bool cross_field = expect.find("scaling.") == 0 || expect.find("effect") == 0 || expect.find("targets not") == 0 ||
                                  expect.find("ac_bonus") == 0 || expect.find("casting_time") == 0 || expect.find("disagree") == 0 ||
                                  expect.find("is not a spell@1") == 0 || expect.find("'") == 0 || expect.find("until_start") == 0 ||
-                                 expect.find("zone") == 0;   // R-G11: the loader parses zones (CONTENT_CONVENTIONS.md section 4)
+                                 expect.find("zone") == 0 ||   // R-G11: the loader parses zones (CONTENT_CONVENTIONS.md section 4)
+                                 expect.find("polymorph") == 0;   // R-G12 (section 9)
         const std::string first_error = r.errors.empty() ? std::string() : r.errors[0];
         INFO(first_error);
         if (cross_field && !r.errors.empty()) CHECK(r.errors[0].find(expect) != std::string::npos);
@@ -517,4 +523,42 @@ TEST_CASE("loader: R-G11 PR 2 fixtures (tests/validate/fixtures/zones/spells_pr2
     }
     j = base; j["effects"][0]["zone"]["size_ft"] = 65530; CHECK(spell_from_json(j).def);
     j = base; j["effects"][0]["zone"]["upcast_size_ft"] = J::parse("20.0"); CHECK_FALSE(spell_from_json(j).def);   // floats are rejected
+}
+
+TEST_CASE("loader: R-G12 polymorph (spell@1, CONTENT_CONVENTIONS.md section 9)") {
+    // The SRD Polymorph shape of T&C #163 (its negative cases with one target and concentration).
+    auto pm = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.polymorph","name":"Polymorph","level":4,
+        "school":"transmutation","source":{"ref":"SRD 5.1","license":"CC-BY-4.0"},
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":60},
+        "components":{"v":true,"s":true,"m":{"text":"a caterpillar cocoon"}},
+        "duration":{"kind":"hours","amount":1,"concentration":true},
+        "effects":[{"kind":"polymorph","forms":["srd51.monster.wolf","srd51.monster.ape","srd51.monster.giant_eagle"]}]})");
+    auto ok = spell_from_json(pm);
+    REQUIRE(ok.def);
+    CHECK(ok.def->kind == SpellEffectKind::Polymorph);
+    CHECK(ok.def->concentration);
+    CHECK(ok.def->polymorph_forms == std::vector<std::string>{"srd51.monster.wolf", "srd51.monster.ape", "srd51.monster.giant_eagle"});
+    CHECK(ok.def->polymorph_max_cr8 == 0xFFFF);   // target_level
+    CHECK(ok.def->polymorph_save == Ability::Wis);
+    auto j = pm; j["targets"] = {{"count", 1}}; j["effects"][0]["max_cr"] = "1/2"; j["effects"][0]["save"] = {{"ability", "cha"}};
+    auto ok2 = spell_from_json(j);
+    REQUIRE(ok2.def);
+    CHECK(ok2.def->polymorph_max_cr8 == 4); CHECK(ok2.def->polymorph_save == Ability::Cha);
+    j = pm; j["effects"][0]["max_cr"] = "4"; REQUIRE(spell_from_json(j).def); CHECK(spell_from_json(j).def->polymorph_max_cr8 == 32);
+    auto bad = [](eng::assets::Json x, const std::string& want) {
+        auto r = spell_from_json(x);
+        INFO(want);
+        CHECK_FALSE(r.def);
+        CHECK(r.error.find(want) != std::string::npos);
+    };
+    j = pm; j["targets"] = {{"count", 2}}; bad(j, "polymorph: one target");
+    j = pm; j["area"] = {{"shape", "sphere"}, {"size_ft", 10}}; bad(j, "polymorph: one target");
+    j = pm; j["duration"] = {{"kind", "hours"}, {"amount", 1}}; bad(j, "polymorph: needs concentration");
+    j = pm; j["effects"][0]["forms"].push_back("srd51.monster.wolf"); bad(j, "polymorph: duplicate form 'srd51.monster.wolf'");
+    j = pm; j["effects"] = eng::assets::Json::array({{{"kind", "save"}, {"ability", "wis"}, {"condition", "paralyzed"}}, pm["effects"][0]});
+    bad(j, "polymorph: primary effect only");
+    j = pm; j["effects"][0]["forms"] = eng::assets::Json::array(); bad(j, "polymorph: forms must list");
+    j = pm; j["effects"][0]["max_cr"] = "1/3"; bad(j, "polymorph: max_cr");
+    j = pm; j["effects"][0]["save"] = {{"ability", "luck"}}; bad(j, "polymorph: save");
+    j = pm; j["effects"][0]["shape"] = 1; bad(j, "polymorph effect: unknown key 'shape'");
 }

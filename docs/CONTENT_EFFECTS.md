@@ -192,6 +192,31 @@ Example: `{ "kind": "font_of_magic", "pool": "sorcery_points" }` with `resources
 
 These nine are open kinds (live at `@3` and `@4`); see `docs/CONTENT_CONVENTIONS.md` section 3.
 
+### `wild_shape` (character feature, common@2, R-G12; reserved)
+
+Closed common@2 arm `$defs/wild_shape_effect` (`@4` only). Fields: `pool` (required, a `resources[]` pool recharging on
+`short_rest`, max 2), `cost` (default `action`), `class` (default `druid`), `forms` (required, 1..255 unique monster content ids,
+each a beast, resolved across the pack set including dependency packs; `form_archetype` = 1 + index), `max_cr_by_level` (required,
+`[{level 1..20, max_cr}]`, levels strictly ascending; CRs are monster@4 `challenge.rating` strings compared as CR*8),
+`no_fly_below` (1..20, default 8), `no_swim_below` (1..20, default 4). No duration key: the engine computes it (600 * (class
+level / 2) rounds). One declaration per document. Loader: Engine Core `build_form` / `feature_spec` (VERSION_BUMP_BATCH 7.2q).
+
+Example: `{ "kind": "wild_shape", "pool": "wild_shape", "forms": ["srd51.monster.wolf"], "max_cr_by_level": [{"level": 2, "max_cr": "1/4"}] }`
+
+### `shapechanger` (monster or character trait, common@2, R-G12; reserved)
+
+Closed common@2 arm `$defs/shapechanger_effect`. Fields: `cost` (default `action`), `forms` (required, 1..255 of `{id, name,
+size?, armor_class?, speed? (replaces the whole object), actions? (unique ids of this document's own actions[]; [] = none),
+creature_type?}`). Requires the R-G11 creature fact `shapechanger: true` (#141). One HP pool; one declaration per document.
+Loader: Engine Core `build_form`.
+
+Trait flag `requires_humanoid_form` (common@2 `$defs/trait`, optional boolean, default false): the feature is refused in a Wild
+Shape form. Error on the `wild_shape` feature itself; warning when the document has no `wild_shape`.
+
+Both kinds are reserved until their loader lands: there is no `RESERVED_EFFECT_KINDS` table on main, so they keep the
+unknown-kind warning (the open-kind pattern) while their shape and cross-checks are already errors. Details:
+`docs/CONTENT_CONVENTIONS.md` section 9.
+
 ### 1.1 Condition ids
 
 Named predicates over an attack action, registered in the FeatureRegistry:
@@ -244,6 +269,7 @@ See `docs/CONTENT_CONVENTIONS.md` for the timed-modifier properties the sim comp
 | `end_condition` | EndCondition | yes | `conditions[]` |
 | `delayed_damage` | DelayedDamage | no (Acid Arrow rider) | `damage`, `expiry` |
 | `sustained_damage` | SustainedDamage | yes | `damage`; needs a rounds / minutes / hours duration; no `expiry` |
+| `polymorph` | Polymorph (R-G12, 7.2q; reserved: the rules loader does not parse it yet) | yes (`polymorph: primary effect only`) | `forms[]` (beast content ids), `max_cr` (`target_level` or a CR string), `save {ability}` (default wis); one target, concentration; `docs/CONTENT_CONVENTIONS.md` section 9 |
 | `zone` | Zone (`SpellDef::zone`, `ZoneSpec`) | yes (never an extra effect) | `zone {shape (sphere, cylinder, cube, line), size_ft, height_ft, length_ft, anchor, flags[], move, chooses_excluded, needs_conscious_owner, upcast_size_ft, ring_size_ft, sided, side_ft, aura_modifier, aura_bonus_ability, aura_immunity[], aura_allies_only, triggers[]}` (rows add `region`, `loses_action`, `auto_success_damage[]` / `_conditions[]` / `_no_breath`, `shapechanger_disadvantage`, `evil_damage_type`; rules PR 2 keys, section 4.6); needs a lasting duration (the zone's expiry timer); parsed by the loader since R-G11 rules PR 2 (#122); `docs/CONTENT_CONVENTIONS.md` section 4 |
 
 Details and loader messages: `docs/CONTENT_CONVENTIONS.md` section 4 (R-G11 zones), section 6 (R-G15 kinds, sim #120) and section 7 (priced material
