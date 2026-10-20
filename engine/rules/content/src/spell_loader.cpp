@@ -391,6 +391,7 @@ std::string parse_predicate(const Json& p, Predicate& out) {
     else if (k == "ally_near_target") out.kind = PK::AllyNearTarget;
     else if (k == "weapon_attack") out.kind = PK::WeaponAttack;
     else if (k == "subject_is_caster") out.kind = PK::SubjectIsCaster;   // 7.2u
+    else if (k == "subject_hostile") out.kind = PK::SubjectHostile;     // EC loader temp HP (flagged)
     else if (k == "owner_creature_type") {                               // 7.2u
         auto m = types_mask("creature_types", true);
         if (!m) return "bad creature_types";
