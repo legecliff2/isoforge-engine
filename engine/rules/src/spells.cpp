@@ -56,6 +56,9 @@ SpellDef effect_view(const SpellDef& base, const SpellEffect& e) {
     v.forced = e.forced; v.teleport = e.teleport;   // R-G9
     v.condition_untracked = e.condition_untracked;
     v.escape_dc = e.escape_dc;   // EC deferred monsters (flagged)
+    v.contain = e.contain; v.contain_dice = e.contain_dice; v.contain_damage_type = e.contain_damage_type;   // 7.2w
+    v.condition_max_size = e.condition_max_size;
+    v.regurgitate_dc = e.regurgitate_dc; v.regurgitate_damage = e.regurgitate_damage; v.excludes_formless = e.excludes_formless;
     v.object_ac = e.object_ac; v.object_hp = e.object_hp;   // EC spider follow-up (flagged)
     v.object_vulnerable = e.object_vulnerable; v.object_immune = e.object_immune;
     v.cantrip_scales = false; v.cantrip_adds_beams = false;

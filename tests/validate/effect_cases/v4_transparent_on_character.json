@@ -1,0 +1,21 @@
+{
+  "base": "characters/fighter_level_5.json",
+  "sets": [
+    [
+      [
+        "features",
+        5
+      ],
+      {
+        "id": "transparent",
+        "name": "Transparent",
+        "effect": {
+          "kind": "transparent",
+          "dc": 15
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "transparent: only valid on monsters"
+}
