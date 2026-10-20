@@ -242,3 +242,28 @@ TEST_CASE("Combat::hash: consumed priced materials fold under 0xAD only when som
     CombatTestAccess::materials(*c1).clear();
     CHECK(c1->hash() == h0);
 }
+
+TEST_CASE("Combat::log_hash: Command's word (7.2v) folds under tag 0xC4 only when set") {
+    ContentLibrary l;
+    REQUIRE(l.load(sample_set()).empty());
+    const auto ch = arena();
+    ecs::Registry r0;
+    auto c0 = Combat::create(r0, ch, l, 9);
+    REQUIRE(c0);
+    for (int i = 0; i < 2; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(c0->state()), rules5e::ActionKind::EndTurn};
+        REQUIRE(c0->submit(e).ok);
+    }
+    auto& log = CombatTestAccess::log(*c0);
+    const uint64_t h0 = c0->log_hash();
+    std::vector<uint64_t> seen{h0};
+    for (uint8_t w = 1; w <= 5; ++w) {
+        log[1].step.request.command_word = w;
+        const uint64_t h = c0->log_hash();
+        for (uint64_t o : seen) CHECK(h != o);
+        seen.push_back(h);
+    }
+    log[1].step.request.command_word = 0;
+    CHECK(c0->log_hash() == h0);   // not folded when zero: older logs hash as before
+}
