@@ -180,10 +180,18 @@ Light perceived_light(LightSample, const SenseRanges&, int dist_ft) noexcept;
   `content_hash` covers the new fields only when non-empty (old chunks hash identically, cf. `docs/CHUNK_HASH.md`).
 - **Max radius halo:** `kMaxLightFt = 120` (=> 24 tiles, < `kChunkSize` 32). A tile's light depends only on sources
   within 24 tiles, i.e. its chunk and the 8 neighbours. The validator rejects `bright_ft + dim_ft > kMaxLightFt`.
-- **Unloaded neighbours:** sim already never observes partially loaded chunks. Light at tile `t` is only *defined* when
-  all chunks within the halo are resident; `ChunkStreamer`'s resident ring for sim must be >= 1 chunk around any chunk
-  that holds a creature (STREAMING.md already keeps a ring; we require it to be >= 1, open R&P question). Outside that,
-  `light_at` returns ambient only, and nothing in sim reads it.
+- **Halo gate (P2, decided):** light at tile `t` is computed only when its chunk and all 8 neighbours (the full
+  24-tile halo, 3 x 3 chunks) are each **resident or known-absent** (not covered by the provider: no sources, ambient
+  only; a property of the world, not of timing). A **failed or pending** load never yields partial light: the step
+  blocks deterministically until the halo is complete, and a failed load is an error state, not an empty chunk.
+- **Streamer (R&P owns):** `ChunkStreamer::set_foci(span<const Focus>)`, `Focus{world_tile, level, radius_chunks}`, wanted
+  set = union of foci (pure in the foci set; `set_focus` becomes a one-element wrapper). Sim passes one focus per creature
+  or combat bounding box with `radius_chunks = 1`, plus the camera focus. **Combat pins its chunks** (and their halo) for
+  its whole duration: eviction is deferred while a combat references them (needed for cover too).
+- A ring of 1 suffices only because `kMaxLightFt = 120` (24 tiles) < `kChunkSize` (32); the validator rule stays, and
+  raising the max past 32 tiles would require a ring of 2.
+- Test: identical light digests when the same foci are reached by different walks / `request_shuffle_seed` values;
+  multi-focus golden lines in `STREAMING.md`.
 - **Invalidation:** on integrate / evict of chunk C, invalidate C and its 8 neighbours' rects; on attached-source move
   or toggle, invalidate the source's halo rect (old and new tile); on zone create/end/move, its bounds + halo; on clock
   minute change crossing a table boundary, invalidate all.
@@ -214,16 +222,31 @@ declare function light_sources_near(tile: Vec2i, radius_ft: number): { LightInfo
 -- commands go through the normal action path (no direct mutation):
 declare function request_light(actor: Entity, op: "light" | "douse" | "drop" | "pickup" | "set_state", item: Entity?): boolean
 ```
-Typed `LightInfo { id: number, kind: "static"|"attached", tile: Vec2i, bright_ft: number, dim_ft: number, magical: boolean, state: number }`. Sunlight
+Typed `LightInfo { id: LightId, kind: "static"|"attached", preset: string, tile: Vec2i, bright_ft: number, dim_ft: number, magical: boolean, state: number }`. Sunlight
 is read from `light_at(tile).sunlight` (the same flag `Sight` uses); there is no separate sunlight call.
 Existing levels untouched; added to `engine.level<N+1>.d.luau` only.
 
-## 10. Render contract
+## 10. Render contract (P1, P3 decided)
 
-- Render reads, per visible chunk, `LightSample[32*32]` from the cache after the step, plus the source list
-  (`LightInfo`, for flicker / glow sprites). It never computes gameplay light or writes back.
-- Anything cosmetic (smooth gradients, colour, flicker, fog-of-war per player) is presentation, exempt from
-  determinism (ARCHITECTURE §4). A headless build has no render dependency on light.
+- **`LightFrame`:** after each step sim publishes an immutable `LightFrame`: for each resident visible chunk a
+  `LightSample[32*32]`, the source list, and the **dirty set** (chunk coords / tile rects whose samples changed, plus
+  source ids added, removed or changed). Render copies it into its `ViewModel`; it reads only the `LightFrame`, never
+  `LightCache`, and never forces evaluation from the render thread.
+- **Source record:** `LightId` stable and unique across kinds (static: chunk coord + index in the chunk's `lights`;
+  attached: the sim's deterministic `next_light_id`, kind-tagged so the two never collide); world tile; carrier kind and
+  id (so glows follow the token's interpolated position); `bright_ft`, `dim_ft`, `lit`, `magical`, `sunlight`; and a
+  `preset` key (content id) that render maps to visuals.
+- **Presentation fields** (colour, flicker profile, glow sprite) live only in content (a `visual` block on the preset or
+  item), are excluded from `content_hash`, every hash, `ChunkDelta` and all sim logic. Changing a torch's colour moves no golden.
+- **Never lit when Dark:** render may brighten or smooth across tile edges, but never shows a tile as lit when the sim
+  says `Dark`, nor anything visible that the visibility mask says is unseen.
+- **Fog of war:** sim/rules own visibility as per-team bitmasks per chunk (`seen_now`, `explored`; 1024 bits each),
+  computed at step start from the `sight` inputs and published with the `LightFrame`. They are **derived, not hashed**,
+  unless a rule comes to read them (then it gets a tag, claimed first). Render owns the fog visual (shading, edges,
+  remembered-tile style, hiding unseen sprites) and which team's mask to show; it never computes visibility or queries `sight`.
+- **Cost:** ~18 KiB of samples per 3 x 3 step; render packs one R8 light-map texture per chunk (1 KiB), updated by
+  dirty rect. Render-internal choices (borders, atlas, tint vs shader) don't affect this contract.
+- A headless build has no render dependency on light.
 
 ## 11. Open questions
 
@@ -236,19 +259,30 @@ Rules (all decided in the Rules review of #195; kept here as the record)
 - R6. Decided: hooded lantern has two item states (open 30/+30, hooded dim 5) toggled via a 0xCA command; bullseye cone reserved (§3.3).
 - R7. Decided: `Sight::subject_in_sunlight` / `viewer_in_sunlight` from the tile sunlight flag; no hook (§6).
 
-Render & Platform
-- P1. Is a post-step `LightSample` grid + source list enough, or do you need per-source falloff in feet?
-- P2. Streaming ring: can sim's resident ring guarantee >= 1 chunk halo around creatures?
-- P3. Fog-of-war per player view: computed by render from `sight`, or a sim API?
-- P4. Budget: 9 chunks x 1024 tiles cache per step; acceptable for your frame budget on the target CPUs?
+Render & Platform (all decided in the R&P review of #195)
+- P1. Decided: immutable per-step `LightFrame` (samples, sources, dirty set); cross-kind `LightId`, carrier, preset key;
+  presentation in content only, unhashed; render never shows `Dark` as lit (§10).
+- P2. Decided: R&P adds multi-focus streaming (`set_foci`); sim computes light only with a complete halo, blocks the step
+  on pending / failed loads, and combat pins its chunks (§7). Hard dependency for phase 2.
+- P3. Decided: sim/rules own visibility (per-team `seen_now` / `explored` bitmasks, derived, unhashed unless rules read
+  them); render owns the fog visual (§10).
+- P4. Decided: render cost is fine (~18 KiB / step, R8 light maps). Sim LOS cost is benchmarked in phase 1 (§12).
 
 ## 12. Phased plan
 
-1. **P1 (EC):** `Light`/`LightSample`, `light_at` over ambient + static sources, occlusion via `segment_blocked` (moved to `sim/trace.hpp`, shared with `cover_of`),
-   `LightCache`; unit and determinism tests (all three OSes). No hash change.
-2. **P2 (EC + T&C):** `chunk@2`, `monster@5`, `item@2` schemas and identity migrations; validator radius check;
-   compat fixtures stay green.
-3. **P3 (EC):** attached lights and commands, `LightChanged`, tags 0xC7-0xCA claimed in SIM_EVENTS first.
-4. **P4 (EC + Rules):** zone overrides, Daylight/Darkness dispel (cast and move), sight inputs for #194 incl. the sunlight bits.
-5. **P5 (EC):** streaming halo, invalidation, `ChunkDelta` for static toggles; streaming-order determinism tests.
-6. **P6 (EC + R&P):** Luau API level, render contract read path.
+1. **Phase 1 (EC):** `Light` / `LightSample`, `light_at` over ambient + static sources, occlusion via `segment_blocked`
+   (moved to `sim/trace.hpp`, shared with `cover_of`), `LightCache`, `LightFrame` publication; unit and determinism tests
+   (all three OSes). No hash change.
+   **Benchmark (P4):** worst case N sources x tiles in radius x 16 segments (e.g. 20 torches in a 3 x 3 = 9,216 tiles x
+   S x 16 traces) on the CI machines. Budget: full rebuild <= 2 ms per step (Release); if exceeded, fall back to
+   incremental invalidation only (full rebuild only on chunk integrate / evict and clock-boundary steps; a source move
+   or toggle rebuilds just its halo rect), and per-source visibility caching keyed by source tile.
+2. **Phase 2 (EC + T&C), blocked on R&P `set_foci` + combat pinning (P2):** `chunk@2`, `monster@5`, `item@2` schemas
+   and identity migrations; validator radius check; halo gate (resident or known-absent, pending / failed blocks the
+   step); multi-focus determinism tests. Compat fixtures stay green.
+3. **Phase 3 (EC):** attached lights and commands, `LightChanged`, tags 0xC7-0xCA (requires the phase 2 halo gate,
+   since carried sources cross chunk edges).
+4. **Phase 4 (EC + Rules):** zone overrides, Daylight / Darkness dispel (cast and move), sight inputs for #194 incl. the
+   sunlight bits; per-team visibility bitmasks.
+5. **Phase 5 (EC):** `ChunkDelta` for static toggles, invalidation tuning, dirty set; streaming-order determinism tests.
+6. **Phase 6 (EC + R&P):** Luau API level; R&P light-map textures, fog visual and `LightFrame` read path.
