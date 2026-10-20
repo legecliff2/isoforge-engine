@@ -70,7 +70,7 @@ REACTION_EFFECT = {("ac_bonus",): (S({"kind", "bonus"}), S()),
                    ("retaliate",): (S({"kind", "damage"}), S({"save", "on_success"})),
                    ("attack",): (S({"kind", "attack_id"}), S()),
                    ("cast",): (S({"kind", "spell"}), S()),
-                   ("subtract_roll",): (S({"kind", "dice"}), S())}
+                   ("subtract_roll",): (S({"kind", "dice"}), S({"applies_to"}))   # 7.3a applies_to}
 # spell@1 R-G11 zones (docs/CONTENT_CONVENTIONS.md section 4).
 _ZOPT = {"flags", "move", "chooses_excluded", "needs_conscious_owner", "triggers",
          "aura_modifier", "aura_bonus_ability", "aura_immunity", "aura_allies_only"}   # + R-G11 PR 2 D7 aura keys (4.6)
@@ -351,6 +351,39 @@ class BarbarianHooks72z(unittest.TestCase):
         al = c2["ability_list"]
         self.assertTrue(al["uniqueItems"])
         self.assertEqual(al["items"]["enum"], ["str", "dex", "con", "int", "wis", "cha"])
+
+
+class BardHooks73a(unittest.TestCase):
+    """VERSION_BUMP_BATCH 7.3a: closed grant_die / half_proficiency arms and the shared roll_kind_list."""
+    GRANT = (S({"kind", "die", "range_ft", "duration", "applies_to"}), S({"scale", "class", "cost", "usage"}))
+    HALF = (S({"kind", "on"}), S())
+
+    def test_arms_closed(self):
+        c2 = load("common/v2.schema.json")["$defs"]
+        arms = {a["$ref"].rsplit("/", 1)[1] for a in c2["effect"]["anyOf"][2]["oneOf"] if "$ref" in a}
+        nots = [a["properties"]["kind"]["not"] for a in c2["effect_live"]["allOf"] if "properties" in a]
+        for name, (req, opt), kind in (("grant_die_effect", self.GRANT, "grant_die"), ("half_proficiency_effect", self.HALF, "half_proficiency")):
+            t = c2[name]
+            self.assertFalse(t["additionalProperties"])
+            self.assertEqual(set(t["required"]), set(req))
+            self.assertEqual(set(t["properties"]), set(req | opt))
+            self.assertIn(name, arms)
+            self.assertIn({"const": kind}, nots)
+        self.assertEqual(c2["half_proficiency_effect"]["properties"]["on"]["items"]["enum"], ["checks", "initiative"])
+        self.assertTrue(c2["half_proficiency_effect"]["properties"]["on"]["uniqueItems"])
+        sc = c2["grant_die_effect"]["properties"]["scale"]["items"]
+        self.assertFalse(sc["additionalProperties"])
+        self.assertEqual(set(sc["properties"]), {"level", "die"})
+
+    def test_roll_kind_list_shared(self):
+        c2 = load("common/v2.schema.json")["$defs"]
+        r = c2["roll_kind_list"]
+        self.assertEqual(r["items"]["enum"], ["attack", "save", "check", "damage"])
+        self.assertTrue(r["uniqueItems"])
+        self.assertEqual(c2["grant_die_effect"]["properties"]["applies_to"]["$ref"], "#/$defs/roll_kind_list")
+        self.assertEqual(c2["reaction_effect"]["properties"]["applies_to"]["$ref"], "#/$defs/roll_kind_list")
+        sub = [a for a in c2["reaction_effect"]["allOf"] if a["if"]["properties"]["kind"].get("const") == "subtract_roll"][0]
+        self.assertEqual(set(sub["then"]["propertyNames"]["enum"]), {"kind", "dice", "applies_to"})
 
 
 class SpellMaterialObject(unittest.TestCase):

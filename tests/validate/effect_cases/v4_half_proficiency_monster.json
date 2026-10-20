@@ -1,0 +1,20 @@
+{
+  "base": "monsters/animated_armor.json",
+  "sets": [
+    [
+      [
+        "traits",
+        0,
+        "effect"
+      ],
+      {
+        "kind": "half_proficiency",
+        "on": [
+          "checks"
+        ]
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "half_proficiency: not valid on monsters"
+}
