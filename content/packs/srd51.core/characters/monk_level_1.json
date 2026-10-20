@@ -1,0 +1,115 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.monk_level_1",
+  "name": "Monk, level 1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "lawful neutral",
+  "level": 1,
+  "classes": [
+    {
+      "class": "monk",
+      "level": 1,
+      "hit_die": "d8"
+    }
+  ],
+  "xp": 0,
+  "armor_class": {
+    "value": 15,
+    "note": "Unarmored Defense"
+  },
+  "hit_points": {
+    "average": 10,
+    "formula": "1d8+2"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 13,
+    "dex": 16,
+    "con": 14,
+    "int": 11,
+    "wis": 15,
+    "cha": 9
+  },
+  "saving_throws": {
+    "str": 3,
+    "dex": 5
+  },
+  "skills": {
+    "acrobatics": 5,
+    "insight": 4
+  },
+  "senses": {
+    "passive_perception": 12
+  },
+  "languages": [
+    "Common",
+    "Dwarvish"
+  ],
+  "proficiency_bonus": 2,
+  "features": [
+    {
+      "id": "unarmored_defense",
+      "name": "Unarmored Defense",
+      "description": "While you are wearing no armor and not wielding a shield, your AC equals 10 + your Dexterity modifier + your Wisdom modifier. (Baked into armor_class.)"
+    },
+    {
+      "id": "martial_arts",
+      "name": "Martial Arts",
+      "description": "While unarmed or wielding only monk weapons (shortswords and simple melee weapons without two-handed or heavy) and no armor or shield: you can use Dexterity instead of Strength for unarmed strikes and monk weapons; you can roll a d4 in place of the normal damage of your unarmed strike or monk weapon; and when you use the Attack action with an unarmed strike or a monk weapon, you can make one unarmed strike as a bonus action. (Dexterity and the martial arts die are baked into the unarmed_strike / shortsword actions; the bonus-action strike is the sim's martial_arts convention.)"
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.shortsword",
+      "equipped": true
+    },
+    "dungeoneers_pack"
+  ],
+  "actions": [
+    {
+      "id": "unarmed_strike",
+      "name": "Unarmed Strike",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "unarmed",
+        "monk"
+      ],
+      "damage": [
+        {
+          "dice": "1d4+3",
+          "type": "bludgeoning"
+        }
+      ]
+    },
+    {
+      "id": "shortsword",
+      "name": "Shortsword",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "finesse",
+        "light",
+        "monk"
+      ],
+      "damage": [
+        {
+          "dice": "1d6+3",
+          "type": "piercing"
+        }
+      ]
+    }
+  ]
+}
