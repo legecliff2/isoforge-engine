@@ -280,7 +280,7 @@ range they are illegal. Melee attacks use `reach` (feet) instead.
 ## 4. Tile flags are independent
 
 Chunk palette flags (u8): bit0 `blocks_move`, bit1 `blocks_sight`, bit2 `difficult`, bit3
-`water`; bits 4-7 are reserved and must be 0. Any combination is valid. In particular,
+`water`; bit 4 `climbable` (climb terrain, enterable by climbing even with `blocks_move`), bit 5 `open_air` (no footing: only flyers enter); bits 6-7 are reserved and must be 0. Any combination is valid. In particular,
 `blocks_sight` without `blocks_move` is a valid, intended tile (curtains, fog, tall grass),
 as is `blocks_move` without `blocks_sight` (glass, low fences). Line of sight checks only
 `blocks_sight`, and pathing checks only `blocks_move`.

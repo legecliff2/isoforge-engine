@@ -41,6 +41,16 @@ void Grid::add_chunk(const world::Chunk& c) {
         const auto ui = std::size_t(i);
         for (const auto& layer : c.layers)
             if (layer[ui].flags & world::tile_flags::kBlocksSight) cells.sight[ui] = 1;
+        {   // feat/move-modes terrain bits
+            bool water = false, climb = false, air = false, blocks = false;
+            for (const auto& layer : c.layers) {
+                water |= (layer[ui].flags & world::tile_flags::kWater) != 0;
+                climb |= (layer[ui].flags & world::tile_flags::kClimbable) != 0;
+                air |= (layer[ui].flags & world::tile_flags::kOpenAir) != 0;
+                blocks |= (layer[ui].flags & world::tile_flags::kBlocksMove) != 0;
+            }
+            cells.terrain[ui] = uint8_t((water ? 1 : 0) | (climb ? 2 : 0) | (air && !blocks ? 4 : 0));
+        }
         if (c.layers[0][ui].tile == 0) continue;
         bool blocked = false, diff = false;
         for (const auto& layer : c.layers) {
@@ -70,6 +80,38 @@ bool Grid::in_bounds(Vec2i p) const noexcept { return walk_at(p) != nullptr; }
 bool Grid::walkable(Vec2i p) const noexcept { const uint8_t* w = walk_at(p); return w && *w != 0; }
 bool Grid::difficult(Vec2i p) const noexcept { const uint8_t* w = walk_at(p); return w && *w == 2; }
 bool Grid::blocks_sight(Vec2i p) const noexcept { const uint8_t* s = sight_at(p); return s && *s != 0; }
+
+uint8_t Grid::terrain_at(Vec2i p) const noexcept {
+    const auto k = chunk_of(p);
+    auto it = chunks_.find(k);
+    if (it == chunks_.end()) return 0;
+    return it->second.terrain[std::size_t((p.y - k.second * N) * N + (p.x - k.first * N))];
+}
+bool Grid::water(Vec2i p) const noexcept { return (terrain_at(p) & 1) != 0 && walkable(p); }
+bool Grid::climbable(Vec2i p) const noexcept { return (terrain_at(p) & 2) != 0; }
+bool Grid::open_air(Vec2i p) const noexcept { return (terrain_at(p) & 4) != 0 && !walkable(p) && !climbable(p); }
+bool Grid::enterable(Vec2i p, const MoveCaps& caps) const noexcept {
+    return walkable(p) || climbable(p) || (caps.fly && open_air(p));
+}
+int Grid::tile_cost_ft(Vec2i p, const MoveCaps& caps) const noexcept {
+    if (!walkable(p)) {
+        if (climbable(p)) return (caps.climb || caps.fly) ? kFeetPerTile : 2 * kFeetPerTile;
+        return kFeetPerTile;   // open air (flyer)
+    }
+    const int base = step_cost_ft(p);
+    if (water(p) && !caps.swim && !caps.fly) return 2 * base;
+    return base;
+}
+int Grid::move_cost_ft(Vec2i from, Vec2i to, int n, const MoveCaps& caps) const noexcept {
+    int cost = 0;
+    for (int dy = 0; dy < n; ++dy)
+        for (int dx = 0; dx < n; ++dx) {
+            const Vec2i t{to.x + dx, to.y + dy};
+            const bool was_inside = n > 1 && t.x >= from.x && t.x < from.x + n && t.y >= from.y && t.y < from.y + n;
+            if (!was_inside) cost = std::max(cost, tile_cost_ft(t, caps));
+        }
+    return cost;
+}
 
 bool Grid::footprint_walkable(Vec2i anchor, int n) const noexcept {
     for (int dy = 0; dy < n; ++dy)
@@ -110,6 +152,15 @@ bool Grid::line_of_sight(Vec2i a, Vec2i b) const noexcept {
 
 std::vector<Vec2i> Grid::path(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied,
                               int footprint) const {
+    return path_impl(from, goals, occupied, footprint, nullptr);
+}
+std::vector<Vec2i> Grid::path(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied,
+                              int footprint, const MoveCaps& caps) const {
+    return path_impl(from, goals, occupied, footprint, &caps);
+}
+std::vector<Vec2i> Grid::path_impl(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied,
+                                   int footprint, const MoveCaps* caps) const {
+    auto ok = [&](Vec2i t) { return caps ? enterable(t, *caps) : walkable(t); };
     // Same search as v0 (Dijkstra, ordered set (cost, y, x), fixed neighbour order), over world
     // tiles with sparse bookkeeping so paths cross chunk boundaries.
     using Key = std::pair<int32_t, int32_t>;   // (y, x)
@@ -137,17 +188,17 @@ std::vector<Vec2i> Grid::path(Vec2i from, const std::vector<Vec2i>& goals, const
         for (Vec2i dxy : kDirs) {
             const Vec2i q{p.x + dxy.x, p.y + dxy.y};
             if (footprint <= 1) {
-                if (!walkable(q) || blocked.count(key(q))) continue;
+                if (!ok(q) || blocked.count(key(q))) continue;
             } else {
                 bool fits = true;
                 for (int fy = 0; fy < footprint && fits; ++fy)
                     for (int fx = 0; fx < footprint && fits; ++fx) {
                         const Vec2i t{q.x + fx, q.y + fy};
-                        fits = walkable(t) && !blocked.count(key(t));
+                        fits = ok(t) && !blocked.count(key(t));
                     }
                 if (!fits) continue;
             }
-            const int nd = d + move_cost_ft(p, q, footprint);
+            const int nd = d + (caps ? move_cost_ft(p, q, footprint, *caps) : move_cost_ft(p, q, footprint));
             auto it = dist.find(key(q));
             if (it == dist.end() || nd < it->second) {
                 dist[key(q)] = nd;
