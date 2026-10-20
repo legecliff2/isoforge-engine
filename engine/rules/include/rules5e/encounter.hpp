@@ -18,6 +18,8 @@
 
 namespace rules5e {
 
+struct SpellDef;
+
 struct TurnBudget {
     bool action = true, bonus_action = true, reaction = true; int16_t movement_ft = 0;
     uint8_t attacks_remaining = 0;     // Extra Attack / multiattack: further attacks from the Attack action taken this turn
@@ -176,6 +178,16 @@ struct ActionRequest {
     // EncounterHooks::build_form resolves (Wild Shape / shapechanger: UseFeature of a FeatureSpec with `form`; Polymorph:
     // CastSpell). 0 = none.
     uint8_t form_archetype = 0;
+    // appended (R-G12 rules PR 2; log-relevant, SIM_EVENTS.md log_hash tag 0xBC). Summon cast: summon_archetypes = the creatures
+    // (indices for build_summon, the caster's choice, D1); summon_ids = their ids, filled by rules from the counter (a live caller
+    // must leave it empty; a replayed entry must match the counter); summon_tiles = sim's anchors (opaque). CommandSummons:
+    // command (1 act, 2 defend) for command_ids (empty = every summon of the actor that takes commands).
+    struct SummonTile { int32_t x = 0, y = 0; friend bool operator==(const SummonTile&, const SummonTile&) = default; };
+    std::vector<CombatantId> summon_ids = {};
+    std::vector<uint8_t> summon_archetypes = {};
+    std::vector<SummonTile> summon_tiles = {};
+    uint8_t command = 0;
+    std::vector<CombatantId> command_ids = {};
 };
 
 enum class EventKind : uint8_t {
@@ -221,6 +233,8 @@ inline constexpr std::size_t kEventKindCount = std::size_t(EventKind::Count_);
 //   SpellCast/Resolved/Countered: actor=caster target=first target, b=slot level (0 = cantrip).
 //   v10 (R-G12): Transformed actor=creature a=source id b=form archetype index c=FormKind; Reverted actor=creature a=source id
 //   b=reason (0 duration, 1 concentration, 2 0 HP / unconscious, 3 chose, 4 died, 5 encounter ended) c=overflow damage carried.
+//   Summoned actor=summoner target=creature a=spell id b=archetype index c=initiative total; SummonEnded actor=summoner target=creature
+//   a=spell id b=reason (1 concentration, 3 0 HP, 5 encounter ended); Commanded actor=summoner target=creature (0 = all) a=command.
 //   v7: RechargeRolled actor a=action/spell id b=d6 natural c=recharged(0/1); FeatureTriggered actor=owner
 //   target=subject a=trigger id b=TriggerOn c=outcome (0 none, 1 applied, 2 declined, 3 failed save);
 //   ResourceSpent actor a=pool id b=amount c=remaining; ModifierApplied actor=caster target a=modifier id
@@ -515,6 +529,15 @@ struct EncounterHooks {
     // replaced and what is kept. Empty = no forms: every transform is refused.
     std::function<std::optional<FormStats>(const EncounterState&, const Combatant& creature, FormKind kind, uint32_t source,
                                            uint8_t archetype_index)> build_form;
+    // R-G12 rules PR 2: the stat block of creature `archetype_index` (ActionRequest::summon_archetypes) of summon spell `def`
+    // cast at `slot_level` by `summoner` (pure, content only; nullopt = not allowed). Rules sets the id, team and summon fields.
+    // Empty = nothing can be summoned.
+    std::function<std::optional<Combatant>(const EncounterState&, const Combatant& summoner, const SpellDef& def, uint8_t slot_level,
+                                           uint8_t archetype_index)> build_summon;
+    // Is this set of creatures a valid choice (Conjure Animals: one CR 2, two CR 1, four CR 1/2 or eight CR 1/4, by slot level)?
+    // Empty = any 1..SummonSpec::max_count.
+    std::function<bool(const EncounterState&, const Combatant& summoner, const SpellDef& def, uint8_t slot_level,
+                       const std::vector<uint8_t>& archetypes)> summon_choice_ok;
 };
 
 // R-G11: a live zone or aura (ZONES_AURAS.md §2.6). anchor_x / anchor_y: a point zone's sim tile, opaque to rules (Q1).
@@ -569,6 +592,10 @@ struct EncounterState {
     std::vector<ActiveZone> zones;            // appended (R-G11): live zones in creation order; empty unless a zone exists
     uint32_t next_zone_id = 1;                // appended (R-G11): id of the next zone (ids start at 1)
     uint32_t transforms = 0;                  // appended (R-G12): transforms begun this encounter (0xAF folds while non-zero)
+    // appended (R-G12 PR 2): the next summon id (rules-owned; sim seeds it after begin_encounter above every chunk spawn id; 0 =
+    // unseeded: above every combatant id) and the creatures summoned so far. Ids are never reused.
+    uint32_t next_summon_id = 0;
+    uint32_t summons = 0;
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call
