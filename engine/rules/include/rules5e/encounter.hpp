@@ -195,6 +195,9 @@ struct ActionRequest {
     // aimed point of origin of an area CastSpell (sim's aim tile, opaque to rules), passed to EncounterHooks::cover as
     // CoverQuery::origin_x / origin_y. Unset = the caster's space (self-centred areas, cones / lines from the caster).
     bool has_area_origin = false; int32_t area_x = 0, area_y = 0;
+    // appended (SRD 5.1 Squeezing, feat/size-space; log_hash 0xC2 when non-zero): on a Move, 1 = start squeezing, 2 = stop
+    // (Combatant::squeezing). Sim fact derived from the footprint fit; 0 = unchanged.
+    uint8_t squeeze = 0;
 };
 
 enum class EventKind : uint8_t {
