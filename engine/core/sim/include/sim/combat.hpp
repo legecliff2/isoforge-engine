@@ -149,6 +149,10 @@ public:
     bool overlaps_other(CombatantId id, Vec2i anchor, int n) const;
     struct StepPlan { int n = 1; int cost = 5; uint8_t squeeze = 0; bool ends_in_other = false; };
     std::optional<std::string> plan_step(CombatantId mover, Vec2i to, StepPlan& plan, bool allow_squeeze = false) const;
+    MoveCaps caps_of(CombatantId id) const;   // feat/move-modes: fly / swim / climb speeds present
+    // feat/move-modes: the speed a step from `from` to `to` costing `cost` ft uses (0 walk, 1 fly, 2 swim, 3 climb);
+    // 0xFF: no fitting speed has enough left; 0xFE: only flight fits and the mover is prone.
+    uint8_t step_mode(CombatantId mover, Vec2i from, Vec2i to, int cost, int fp = 0) const;   // fp 0: the current footprint
     std::vector<Vec2i> footprint_tiles(CombatantId id) const { return footprint_tiles_at(id, pos(id)); }
     std::vector<Vec2i> footprint_tiles_at(CombatantId id, Vec2i anchor) const;   // row-major (y, then x)
     // Nearest-tile distance in tiles between two creatures' footprints (chebyshev for 1x1), and line of

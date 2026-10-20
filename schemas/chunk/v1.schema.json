@@ -115,9 +115,9 @@
           "items": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 15
+            "maximum": 255
           },
-          "description": "Tile flags (u8): bit0 blocks_move, bit1 blocks_sight, bit2 difficult, bit3 water; bits 4-7 reserved, must be 0. Flags are independent: blocks_sight without blocks_move is valid (curtains, fog, tall grass), as is blocks_move without blocks_sight (glass, low fences)."
+          "description": "Tile flags (u8): bit0 blocks_move, bit1 blocks_sight, bit2 difficult, bit3 water, bit4 climbable (climb terrain: enterable by climbing even with blocks_move), bit5 open_air (no footing, flyers only); bits 6-7 reserved, must be 0 (checked by the loader and validate_packs: 'reserved flag bits 6-7 set', not by this schema). Flags are independent: blocks_sight without blocks_move is valid (curtains, fog, tall grass), as is blocks_move without blocks_sight (glass, low fences)."
         }
       }
     },
