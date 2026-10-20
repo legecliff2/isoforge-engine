@@ -231,6 +231,8 @@ enum class PredicateKind : uint8_t {
     // appended (7.2u spell riders): SubjectIsCaster = the subject is the creature that applied the modifier (only meaningful
     // in a modifier's `when`; false elsewhere); OwnerCreatureType = mask over CreatureType, the owner is one of them.
     SubjectIsCaster, OwnerCreatureType,
+    // appended (EC loader temp HP, flagged): the subject is on another team than the owner (a hostile creature): Dark One's Blessing
+    SubjectHostile,
     // appended (7.2y, T&C Colossus Slayer): the subject (the creature hit) is below its hit point maximum. Hit triggers run
     // before the hit's damage, so this reads the hp the target had when it was hit.
     TargetBelowMaxHp,

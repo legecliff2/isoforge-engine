@@ -31,7 +31,7 @@ struct ActorView {
     bool        dead = false;
 };
 
-// ---- Light (LIGHTING.md §10): a plain-data copy of the sim's published LightFrame. ----
+// ---- Light (LIGHTING.md §10): a plain-data copy of the sim's published sim::LightFrame. ----
 // Samples are packed bytes (iso2d::pack_light layout: bits 0-1 level Dark|Dim|Bright,
 // bits 2-5 sim LightFlags). Render never computes gameplay light; it only shades these.
 struct LightChunkView {
@@ -47,10 +47,14 @@ struct LightChunkView {
 struct LightChunkRef { int32_t cx = 0, cy = 0; int16_t level = 0; };
 struct LightDirtyView { LightChunkRef chunk; eng::RectI rect; };   // chunk-local tiles
 struct LightSourceView {
-    uint64_t    id = 0;            // LightId: stable, unique across static / attached
+    // sim::LightId, flattened: stable and unique across kinds (static: chunk + index; attached: sim id).
     bool        attached = false;  // false = static (chunk) source
+    int32_t     cx = 0, cy = 0;    // static only
+    int16_t     level = 0;         // static only
+    uint32_t    index = 0;
+    uint32_t sort_key() const { return (attached ? 0x80000000u : 0u) ^ index ^ uint32_t(cx * 73856093) ^ uint32_t(cy * 19349663); }
     eng::Vec2i  tile;              // world tile
-    uint8_t     carrier = 0;       // 0 none/tile, 1 creature, 2 item
+    uint8_t     carrier = 0;       // 0 tile, 1 creature, 2 item
     uint32_t    carrier_id = 0;    // so the glow can follow the token's drawn position
     uint16_t    bright_ft = 0, dim_ft = 0;
     bool        lit = true, magical = false, sunlight = false;
@@ -60,8 +64,8 @@ struct LightView {
     bool present = false;          // false: no LightFrame (old content / sim without light): unlit view
     uint64_t frame = 0;            // sim step the frame belongs to
     std::vector<LightChunkView>  chunks;    // resident visible chunks
-    std::vector<LightChunkRef>   added, removed;   // StreamDelta since the previous frame
-    std::vector<LightDirtyView>  dirty;     // rects whose samples changed this frame
+    std::vector<LightChunkRef>   added, removed;   // chunk-set change vs the previous frame
+    std::vector<LightDirtyView>  dirty;     // chunks whose samples changed (sim: whole-chunk rects)
     std::vector<LightSourceView> sources;
     bool        fog = false;       // any chunk carries fog masks
     const LightChunkView* chunk_of_tile(eng::Vec2i t) const {
