@@ -390,6 +390,13 @@ std::string parse_predicate(const Json& p, Predicate& out) {
     } else if (k == "target_surprised") out.kind = PK::TargetSurprised;   // EC monster predicates (flagged; schema arm pending, T&C)
     else if (k == "ally_near_target") out.kind = PK::AllyNearTarget;
     else if (k == "weapon_attack") out.kind = PK::WeaponAttack;
+    else if (k == "subject_is_caster") out.kind = PK::SubjectIsCaster;   // 7.2u
+    else if (k == "owner_creature_type") {                               // 7.2u
+        auto m = types_mask("creature_types", true);
+        if (!m) return "bad creature_types";
+        out.kind = PK::OwnerCreatureType;
+        out.mask = *m;
+    }
     else if (k == "target_tag" || k == "not_target_tag") {   // EC deferred monsters (flagged; schema arm pending, T&C): ghoul
         const std::string tag = p.value("tag", "");
         if (tag.empty()) return "bad tag";
@@ -409,7 +416,8 @@ std::string parse_modifier(const Json& m, ModifierSpec& out, const Json** table)
     if (!m.is_object()) return "modifier must be an object";
     static const std::map<std::string, ModStat> kStat{{"attack_roll", ModStat::AttackRoll}, {"save", ModStat::Save},
         {"ability_check", ModStat::AbilityCheck}, {"ac", ModStat::Ac}, {"speed", ModStat::Speed}, {"damage", ModStat::Damage},
-        {"temp_hp", ModStat::TempHp}, {"resistance", ModStat::Resistance}, {"attacks_against", ModStat::AttacksAgainst}};
+        {"temp_hp", ModStat::TempHp}, {"resistance", ModStat::Resistance}, {"attacks_against", ModStat::AttacksAgainst},
+        {"no_reactions", ModStat::NoReactions}, {"no_healing", ModStat::NoHealing}};   // 7.2u markers
     out = ModifierSpec{};
     if (!lookup(kStat, m.value("stat", Json()), out.stat)) return "modifier stat invalid";
     if (m.contains("bonus")) { int b = 0; if (!small_int(m["bonus"], -32767, 32767, b)) return "modifier bonus invalid"; out.bonus = int16_t(b); }
@@ -467,6 +475,8 @@ std::string parse_modifier(const Json& m, ModifierSpec& out, const Json** table)
         out.rounds = uint16_t(n);
     } else if (dk == "until_start_of_caster_turn") out.until_caster_turn = true;
     else if (dk == "until_end_of_target_turn") out.expiry = 2;
+    else if (dk == "until_end_of_caster_next_turn") out.expiry = 3;   // 7.2u (Guiding Bolt, Chill Touch)
+    else if (dk == "until_start_of_target_turn") out.expiry = 4;      // 7.2u (Shocking Grasp)
     else if (dk == "concentration") out.concentration = true;
     else if (dk != "until_rest") return "modifier duration kind invalid";
     if (m.contains("consume")) {   // next_attack | next_attack_against | until_damaged

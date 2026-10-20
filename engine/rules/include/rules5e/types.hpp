@@ -217,6 +217,9 @@ enum class PredicateKind : uint8_t {
     WeaponAttack,           // appended (Director #158): a weapon attack (melee or ranged); false for spell attacks and no attack
     // appended (EC deferred monsters, flagged): mask = spell_id_of(tag); the subject's Combatant::tags has / lacks it (ghoul: elves)
     TargetTag, NotTargetTag,
+    // appended (7.2u spell riders): SubjectIsCaster = the subject is the creature that applied the modifier (only meaningful
+    // in a modifier's `when`; false elsewhere); OwnerCreatureType = mask over CreatureType, the owner is one of them.
+    SubjectIsCaster, OwnerCreatureType,
 };
 enum class WeaponIs : uint8_t { Melee, Ranged, Finesse, FinesseOrRanged };
 struct Predicate { PredicateKind kind = PredicateKind::NotCrit; int16_t a = 0, b = 0; uint32_t mask = 0; };
@@ -270,7 +273,10 @@ enum class ModStat : uint8_t { AttackRoll, Save, AbilityCheck, Ac, Speed, Damage
                                // Haste: the restricted extra action (TurnBudget::haste_action), lethargy when it ends;
                                // Slow: no reactions, action or bonus action, one attack per turn;
                                // MaxHp: event-only stat value for Life Drain (ModifierApplied b = MaxHp, c = -reduction).
-                               Haste, Slow, MaxHp };
+                               Haste, Slow, MaxHp,
+                               // appended (7.2u spell riders): markers. NoReactions: the target can't take reactions (Shocking
+                               // Grasp); NoHealing: the target can't regain hit points (Chill Touch; temp HP unaffected).
+                               NoReactions, NoHealing };
 enum class ModAppliesTo : uint8_t { Self, Target, AlliesWithin30 };
 struct ModifierSpec {
     uint32_t id = 0;                     // stable id of this modifier (the a of ModifierApplied / ModifierExpired)
@@ -287,7 +293,8 @@ struct ModifierSpec {
     bool has_ability = false;            // Save / AbilityCheck scope (else all)
     uint8_t scope = 0;                   // Damage: 0 any weapon attack, 1 melee only (Rage), 2 ranged only
     ModAppliesTo applies_to = ModAppliesTo::Target;
-    uint8_t expiry = 0;                  // 0 none (until rest / concentration), 1 rounds, 2 end of the target's next turn
+    uint8_t expiry = 0;                  // 0 none (until rest / concentration), 1 rounds, 2 end of the target's next turn,
+                                         // 3 end of the caster's next turn, 4 start of the target's next turn (7.2u)
     uint16_t rounds = 0;                 // expiry == 1
     bool until_caster_turn = false;      // ends at the start of the caster's next turn (Shield-like durations)
     bool concentration = false;          // ends when the caster's concentration on `source` ends
