@@ -66,6 +66,12 @@ bool LightMaps::update(LightChunkKey k, std::span<const uint8_t, kLightTiles> sa
     return true;
 }
 
+std::vector<LightChunkKey> LightMaps::keys() const {
+    std::vector<LightChunkKey> out;
+    for (const auto& kv : maps_) out.push_back(kv.first);
+    return out;
+}
+
 render::TextureId LightMaps::texture(LightChunkKey k) const {
     auto it = maps_.find(k);
     return it == maps_.end() ? render::TextureId{} : it->second.tex;
