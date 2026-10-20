@@ -365,6 +365,12 @@ struct ActiveSpellEffect {
     // appended (EC deferred monsters, flagged): ends when the target escapes (special 4: Strength check vs `dc`), a giant
     // spider's Web. Derived from the SpellDef (escape_dc): not hashed.
     bool escape_check = false;
+    // appended (EC spider follow-up, flagged): a destructible restraint (the web, SpellDef::object_*): AC, the hit points left
+    // (Combat::hash 0xBE while > 0) and its damage-type masks. ActionRequest::special 6 attacks it; 0 HP ends the effect.
+    int16_t object_hp = 0; int8_t object_ac = 0; uint32_t object_vulnerable = 0, object_immune = 0;
+    // appended (EC spider follow-up, flagged): a second condition held for as long as this effect lasts (the spider bite's
+    // "paralyzed while poisoned in this way"). Derived from the SpellDef: not hashed.
+    bool has_also = false; Condition also = Condition::Paralyzed;
 };
 
 // A modifier in force on `target` (row 12). `timed` reuses the condition-duration machinery (Rounds / EndOfTargetNextTurn).
