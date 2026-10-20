@@ -29,9 +29,11 @@ Non-goals
   symmetric, corner rule: blocked only if both side tiles block).
 - R-G11 zone flags in `rules5e/spells.hpp`: `kZoneLightObscured 2`, `kZoneHeavyObscured 4`, `kZoneMagicalDarkness 8`,
   `kZoneOpaque 64`, stored only "until R-G13" (ZONES_AURAS §Q6). `ZoneAnchor` is `Point | Creature` (Object later).
-- **No cover hook exists on main yet** (`attack.hpp` has only `cover_ac_bonus`; no `EncounterHooks::cover` / `CoverQuery`).
-  This doc therefore names `Grid::line_of_sight` as the shared trace; when the cover hook lands it must use the same
-  trace (one function, two callers), see §10 R3.
+- Cover exists on main (#178, #187): `EncounterHooks::cover` + `CoverQuery` (`rules5e/encounter.hpp`), implemented by
+  sim as `Combat::cover_of` (`sim/src/combat.cpp`). `cover_of` traces corner-to-corner segments between the two spots'
+  tile corners with `segment_blocked(p, q, blocks)` (file-local in `combat.cpp`: integer breakpoints, a piece inside a tile
+  is blocked by that tile, a piece along an edge or through a corner only when both tiles beside it block, as
+  `Grid::line_of_sight`), with a `wall` predicate = `grid_.blocks_sight` excluding the source and target spots.
 - Rules #194 (open): `EncounterHooks::sight(state, viewer, subject) -> Sight`, pure, start-of-step; no hook = everyone
   sees everyone. Hash tags 0xC5 / 0xC6 reserved by Rules; next free **0xC7**.
 - Renderer (`engine/render`, `engine/iso2d`): **no lighting today**. No contract to break.
@@ -120,13 +122,17 @@ The result is `LightSample`. Senses then map it per viewer (§6).
 
 ## 5. Occlusion
 
-- Light from source tile `s` reaches `t` iff `Grid::line_of_sight(s, t)` (same integer supercover trace, same corner
-  rule) and `t` is within range. The source tile itself always counts. A `blocks_sight` wall tile is lit if the line to
-  it is clear (so walls facing a torch are lit, walls behind them are not), matching what a viewer sees.
+- Light reuses **the cover trace**: `segment_blocked` from `Combat::cover_of`, with the same `wall` predicate
+  (`blocks_sight`, excluding the source and target tiles) and no creature crowd (creatures don't block light). Source
+  tile `s` lights tile `t` iff at least one of the 4 x 4 corner-to-corner segments between `s` (1 x 1 spot) and `t` is
+  not blocked, i.e. exactly when `cover_of` would *not* report `Cover::Total` from `s` to `t` ignoring creatures. The
+  source tile itself always counts. A `blocks_sight` wall tile is lit when the trace to it is clear, so walls facing a
+  torch are lit and walls behind them are not.
+- Phase 1 moves `segment_blocked` unchanged (a code move, no behaviour change, cover goldens untouched) from the
+  anonymous namespace in `combat.cpp` to a shared sim header (`sim/trace.hpp`), called by both `cover_of` and light.
 - Zones with `opaque` and heavy-obscured zones **do not** block light (fog is lit, just not seeable through); only
   `opaque` blocks it. Open question R4.
-- This is the **same trace as cover**. The cover hook, when it lands, must call the same `Grid` function; no second
-  ray algorithm is allowed (one golden test table for both).
+- One trace for cover and light, one golden test table for both; no second ray algorithm.
 
 ## 6. Sim API
 
@@ -216,7 +222,7 @@ Rules
 - R1. Darkness vs light: confirm "magical source of higher spell level than Darkness is unaffected" and dispel on
   overlap at cast time (Daylight <= 3, Darkness <= 2 light spells), not continuous.
 - R2. Should Dark / Dim map to heavily / lightly obscured inside `Sight::obscured`, or stay separate from zone obscurement?
-- R3. Cover hook (`EncounterHooks::cover` / `CoverQuery`) isn't on main: confirm it will share `Grid::line_of_sight`.
+- R3. (Settled, not open.) Light occlusion uses `segment_blocked`, the same trace as `Combat::cover_of` (§5).
 - R4. Does Fog Cloud (heavy obscurement) block light passing through it? Proposed: no.
 - R5. Outdoor day table and moonlight level (SRD treats moonlit nights as dim): fixed profile or content-defined?
 - R6. Hooded lantern and other modes: preset modes or out of scope?
@@ -230,7 +236,7 @@ Render & Platform
 
 ## 12. Phased plan
 
-1. **P1 (EC):** `Light`/`LightSample`, `light_at` over ambient + static sources, occlusion via `Grid::line_of_sight`,
+1. **P1 (EC):** `Light`/`LightSample`, `light_at` over ambient + static sources, occlusion via `segment_blocked` (moved to `sim/trace.hpp`, shared with `cover_of`),
    `LightCache`; unit and determinism tests (all three OSes). No hash change.
 2. **P2 (EC + T&C):** `chunk@2`, `monster@5`, `item@2` schemas and identity migrations; validator radius check;
    compat fixtures stay green.
