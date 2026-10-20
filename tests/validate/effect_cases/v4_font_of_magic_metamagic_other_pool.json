@@ -1,0 +1,69 @@
+{
+  "base": "characters/wizard_level_3.json",
+  "sets": [
+    [
+      [
+        "classes"
+      ],
+      [
+        {
+          "class": "sorcerer",
+          "level": 3,
+          "hit_die": "d6"
+        }
+      ]
+    ],
+    [
+      [
+        "resources"
+      ],
+      [
+        {
+          "id": "sorcery_points",
+          "max": 3,
+          "recharge": "long_rest"
+        },
+        {
+          "id": "other",
+          "max": 3,
+          "recharge": "long_rest"
+        }
+      ]
+    ],
+    [
+      [
+        "features",
+        1
+      ],
+      {
+        "id": "font_of_magic",
+        "name": "Font of Magic",
+        "description": "x",
+        "effect": {
+          "kind": "font_of_magic",
+          "pool": "sorcery_points"
+        }
+      }
+    ],
+    [
+      [
+        "features",
+        2
+      ],
+      {
+        "id": "metamagic",
+        "name": "Metamagic",
+        "description": "x",
+        "effect": {
+          "kind": "metamagic",
+          "options": [
+            "quickened"
+          ],
+          "pool": "other"
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "metamagic: metamagic declarations name different pools ('other' here, 'sorcery_points'"
+}
