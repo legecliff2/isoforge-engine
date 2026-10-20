@@ -203,6 +203,11 @@ enum class PredicateKind : uint8_t {
     SelfHpBelow,            // a/b = num/den: hp * den < hp_max * num
     Save,                   // the owner rolls a save: a = Ability, b = DC (mask bit 0: dc_from_damage, DC = b + damage taken)
     AttackIs,               // appended (sim loader, `on_hit[]` riders): a = index into the owner's `attacks`; false for spell attacks
+    // appended (EC monster predicates: bugbear, boar, hobgoblin; flagged rules5e edit, VERSION_BUMP_BATCH hand-off pending):
+    TargetSurprised,        // round 1 and the subject (the creature hit) is in the surprised set (Combatant::surprised_at_start): Surprise Attack
+    AllyNearTarget,         // the sim fact ActionRequest::ally_near_target (no disadvantage clause): Martial Advantage
+    DamageAtMost,           // a: the event's damage (TrigCtx dmg, after resistances) <= a; drop_to_zero / damage_dealt: Relentless
+    WeaponAttack,           // appended (Director #158): a weapon attack (melee or ranged); false for spell attacks and no attack
 };
 enum class WeaponIs : uint8_t { Melee, Ranged, Finesse, FinesseOrRanged };
 struct Predicate { PredicateKind kind = PredicateKind::NotCrit; int16_t a = 0, b = 0; uint32_t mask = 0; };
@@ -423,6 +428,9 @@ struct Combatant {
     // R-G16 (appended). surprised: set by the caller before begin_encounter (or apply_surprise); while set the creature can
     // only end its turn (no move, action, bonus action or other request) and cannot react; rules clear it when its first turn ends.
     bool surprised = false;
+    // appended (EC monster predicates #158, flagged): in the encounter's surprised set (apply_surprise); never cleared, not
+    // hashed (replay input like the set itself). Read by PredicateKind::TargetSurprised together with round == 1.
+    bool surprised_at_start = false;
     // Hit Dice (rest.hpp): die size (6, 8, 10, 12; 0 = none), remaining and maximum (usually the character level).
     uint8_t hit_die = 0, hit_dice = 0, hit_dice_max = 0;
     // R-G14 (appended): Metamagic options known (bitmask, kMeta* in spells.hpp) paid from pool `sorcery_pool` (sorcery points);
