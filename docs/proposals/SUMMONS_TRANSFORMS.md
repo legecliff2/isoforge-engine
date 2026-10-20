@@ -103,11 +103,12 @@ Two independent mechanisms:
 ### 2.4 Initiative placement
 
 - **Own initiative** (Find Familiar, Animate Dead per Q2): rules rolls `d20 + Dex mod` for the new creature at summon time from
-  the encounter rng (same stream, after the cast's own rolls) and inserts it into `order` by the existing sort (total, then
-  dex_mod, then id); it takes its first turn when its slot comes up. If its slot is earlier in the current round than the
+  the encounter rng (same stream, after the cast's own rolls) and inserts it into `order` **after every entry with a higher
+  total, or an equal total and a Dex modifier at least as high** (as built, rules PR 2); it takes its first turn when its slot
+  comes up. If its slot is earlier in the current round than the
   current actor, its first turn is next round (no extra turn this round).
-- **Shared group** (Conjure Animals and the conjure family): one roll for the group; one `InitiativeEntry` per creature with the
-  same total, ordered by id; they act consecutively.
+- **Shared group** (Conjure Animals, the conjure family, Animate Dead per cast, D2): one roll for the group; one `InitiativeEntry`
+  per creature with the same total and the first creature's Dex modifier (one slot), ordered by id; they act consecutively.
 - **Summoner's turn** (Spiritual Weapon): no entry.
 - **Rider's turn** (Find Steed when mounted): out of scope (Q9).
 - Ended summons (as built, rules PR 2): a summon that ends (0 HP, dismissed, concentration) **stays in `order`**, marked `gone`
@@ -115,8 +116,8 @@ Two independent mechanisms:
   (only insertion does, below).
 - **Insertion before the current actor shifts `turn_index`.** A summon whose entry sorts before the current actor's slot moves
   the current actor one index later (per inserted entry). Rules adjusts `turn_index` in the same step so the **current actor's
-  turn continues** (same budget, no new `TurnStarted`); the inserted creature first acts next round (D14). Removal before the
-  current actor shifts it back the same way. Engine Core changes `run_to_end`'s turn detector to key on the current actor and
+  turn continues** (same budget, no new `TurnStarted`); the inserted creature first acts next round (D14). Ended summons stay in
+  `order` (skipped), so nothing shifts it back. Engine Core changes `run_to_end`'s turn detector to key on the current actor and
   the count of `TurnStarted` events instead of `(round, turn_index)` (§3.4).
 - **Decision: `cast_stamp` rewrite.** `cast_stamp` (`round << 16 | turn_index`, folded under `Combat::hash` 0xAC; read by Heat
   Metal's sustain check and the driver's `spell_kind_command`) would go stale on such a shift. When an insert or removal shifts
@@ -135,10 +136,11 @@ Two independent mechanisms:
 
 ### 2.6 Determinism, ids and replay
 
-- **Ids** (D11 as refined with Engine Core, §3.0): sim assigns summon ids from a monotonic per-Combat counter that starts above
+- **Ids** (D11 as refined with Engine Core, §3.0; as built in rules PR 2): **rules** assigns summon ids from a monotonic counter
+  (`EncounterState::next_summon_id`, seeded by sim at create) that starts above
   **every chunk spawn id** (combatant or not), not just combatants; +1 per summon, **never reused** (also after `SummonEnded`).
   The counter is folded in `Combat::hash` 0xAF. Ids travel in the logged request (`summon_ids`); a caller-supplied
-  `summon_ids` is refused in live play (sim fills it), and **replay rejects** logged ids that differ from what the counter
+  `summon_ids` is refused in live play (rules fills it into the logged request), and **replay rejects** logged ids that differ from what the counter
   would assign (desync). Rules refuses an id already present as a second check.
 - **Turn order shifts**: see §2.4 (current actor's turn kept, `cast_stamp` rewritten).
 - **Roster growth**: `EncounterState::combatants` / `order` grow by append; nothing is erased mid-step (an ended summon is marked
@@ -162,11 +164,12 @@ Appended rules5e `EventKind`s (after `ZoneEnded` = 47; numbers proposed):
 | `Reverted` (51) | actor = creature, a = source id, b = reason (0 duration, 1 concentration, 2 0 HP, 3 chose, 4 died, 5 encounter ended), c = overflow damage carried |
 | `Commanded` (52) | actor = summoner, target = creature (0 = all), a = command |
 
-**Encounter end (D15, §3.5):** in the ending step rules emits, in order, `SummonEnded{b = 5}` per summon in ascending id (a
+**Encounter end (D15, §3.5):** in the ending step rules emits, in order, `ConcentrationEnded` for each summon that was
+concentrating (ascending summon id, with that concentration's own end events), then `SummonEnded{b = 5}` per summon in ascending id (a
 transformed summon just ends, with no separate `Reverted`), then `Reverted{b = 5, c = 0}` per remaining transformed creature in
 ascending id, then `EncounterEnded`, which stays the last event of the stream. **Settled (Director, #155):** SIM_EVENTS.md
 ordering rule 7 is unchanged; rules reports the start of the teardown block with `StepResult::teardown_begin` (index into the
-step's events, or none), and sim places each `TokenRemoved` right after its `SummonEnded` and every sim event of the ending
+step's events of the first `SummonEnded{b = 5}`, or the first `Reverted{b = 5}` without summons, or none), and sim places each `TokenRemoved` right after its `SummonEnded` and every sim event of the ending
 step before `EncounterEnded` (v10-gated; a documented rule-4 exception), per §3.5.
 
 `event_stream_version` returns 10 only for streams that carry one of them (SIM_EVENTS.md versioning policy), so no existing digest
@@ -353,6 +356,7 @@ ones, with the normal end events. Nothing is carried into another Combat for now
   of that step, so replay reproduces it from the log alone. No log entry or request field is added.
 - **Order (deterministic).** SIM_EVENTS.md ordering rule 7 is unchanged (Director): `EncounterEnded` is the last event of
   the stream.
+  0. **Concentrating summons' `ConcentrationEnded`** (ascending summon id), before the block (rules PR 2).
   1. **Summons end** in ascending summon id. Each one emits `SummonEnded{actor = summoner, target = id, a = source, b = 5}`.
      Reason 5 means "encounter ended" (2.5). Spiritual Weapon rows (`ActiveSummonWeapon`) end in the same pass, by token id.
      A transformed summon just ends, with no separate `Reverted`.
@@ -389,8 +393,9 @@ ones, with the normal end events. Nothing is carried into another Combat for now
   Live play and replay share `complete`, so both produce the same order. Sim tests lock it, and SIM_EVENTS.md
   gets the rule-4 exception in the implementation PR.
 - Concentration links do not fire separately. Teardown ends the summons first, and the summoner's concentration is not
-  ended by sim. So there is no duplicate `SummonEnded{b = 1}`, and rules' `ConcentrationEnded` behaviour at encounter end is
-  unchanged.
+  ended by sim. So there is no duplicate `SummonEnded{b = 1}`. One change (rules PR 2): a **summon that is itself
+  concentrating** has that concentration ended through `end_concentration` (`ConcentrationEnded`, with its modifiers / zones /
+  Polymorph links) right before the `SummonEnded{b = 5}` block; other combatants' concentration at encounter end is as before.
 - **Hash:** after teardown every summon slot is `gone` and every `form` is None. 0xAF still folds (the counter has moved),
   so the final `Combat::hash` records the teardown. Combats without summons or transforms emit nothing and fold nothing.
 - `Combat::state()` after the end is therefore free of summons and forms. A caller that copies it into the rest roster
