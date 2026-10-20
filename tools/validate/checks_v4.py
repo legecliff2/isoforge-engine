@@ -428,6 +428,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     errs += check_static_kinds(doc)
     check_grapple_riders(doc, errs, warns)
     check_untimed_save_condition_riders(doc, errs)
+    check_refused_condition_durations(doc, warns)
     check_transforms(doc, ctx, errs, warns)
     # check 12: declared but never referenced pools (Legendary Resistance is declaration-only until row 13)
     for i, r in enumerate(resources):
@@ -985,6 +986,50 @@ def check_untimed_save_condition_riders(doc: dict, errs: list[str]) -> None:
                 errs.append(f"{path}: save_condition uses an unsupported duration (apply condition {x.get('condition')} has "
                             "no duration and no repeat_save; the sim fails to load it)")
                 break
+
+
+# ---- refused condition durations (sim content.cpp compile_save_action / compile_rider, EC #212) -----------------
+# Condition apply[].duration kinds the schema accepts but the sim loader has no rules5e expiry for (docs/CONTENT_EFFECTS.md,
+# "Engine Core loader durations and temp HP"). Loaded since #212: rounds, until_end_of_caster_next_turn,
+# until_start_of_target_turn (and until_save / until_end_of_target_next_turn where the schema allows them).
+REFUSED_CONDITION_DURATIONS: frozenset = frozenset({"until_start_of_caster_turn", "until_end_of_target_turn",
+                                                    "concentration", "until_rest"})
+
+
+def _refused_durations(apply_list):
+    for k, x in enumerate(apply_list or []):
+        if isinstance(x, dict) and isinstance(x.get("duration"), dict):
+            dk = x["duration"].get("kind")
+            if dk in REFUSED_CONDITION_DURATIONS:
+                yield k, dk
+
+
+def check_refused_condition_durations(doc: dict, warns: list[str]) -> None:
+    """Mirror of the sim loader for the condition durations it refuses (REFUSED_CONDITION_DURATIONS), with its wording:
+    a save_condition rider fails to load ("save_condition uses an unsupported duration"), an apply_condition rider fails
+    to load ("unsupported apply_condition duration"), an area_save rider fails to load ("area_save uses an unsupported
+    usage or condition duration"); a save_effect / attack_effect action loads but is listed and never used
+    ("<id> (save_effect: unsupported usage or condition duration)")."""
+    for path, _owner, _j, r in rider_sites(doc):
+        if not isinstance(r, dict):
+            continue
+        rk = r.get("kind")
+        msg = {"save_condition": "save_condition uses an unsupported duration",
+               "apply_condition": "unsupported apply_condition duration",
+               "area_save": "area_save uses an unsupported usage or condition duration"}.get(rk)
+        if msg is None:
+            continue
+        for k, dk in _refused_durations(r.get("apply")):
+            warns.append(f"{path}: {msg} (apply[{k}] duration '{dk}' has no rules5e expiry; the sim refuses to load this document)")
+            break
+    for path, a in mechanical_actions(doc):
+        ak = a.get("kind")
+        if ak not in ("save_effect", "attack_effect"):
+            continue
+        for k, dk in _refused_durations(a.get("apply")):
+            warns.append(f"{path}: {a.get('id', '?')} ({ak}: unsupported usage or condition duration) (apply[{k}] duration "
+                         f"'{dk}' has no rules5e expiry; the sim lists the action and never uses it)")
+            break
 
 
 # ---- R-G8 grapple hit rider (sim #104, docs/CONTENT_CONVENTIONS.md section 5) ---------------------------
