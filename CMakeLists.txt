@@ -192,5 +192,10 @@ include(DetLint)
 # Vertical slice viewer (session/view libs + tests always; executable needs SDL).
 add_subdirectory(game/vertical_slice)
 
+# R-G13 light rebuild benchmark (tools/light_bench).
+if(ENGINE_BUILD_TESTS)
+    add_subdirectory(tools/light_bench)
+endif()
+
 # Module dependency graph + include lint (§2.2 rules 1, 3-5). Must come after all modules.
 include(DepCheck)
