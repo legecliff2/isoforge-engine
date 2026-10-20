@@ -1,0 +1,47 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.silence",
+  "name": "Silence",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "For the duration, no sound can be created within or pass through a 20-foot-radius sphere centered on a point you choose within range. Any creature or object entirely inside the sphere is immune to thunder damage, and creatures are deafened while entirely inside it. Casting a spell that includes a verbal component is impossible there.",
+  "level": 2,
+  "school": "illusion",
+  "classes": [
+    "bard",
+    "cleric",
+    "ranger"
+  ],
+  "ritual": true,
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 120
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 10,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "zone",
+      "zone": {
+        "shape": "sphere",
+        "size_ft": 20,
+        "anchor": "point",
+        "flags": [
+          "silence"
+        ]
+      }
+    }
+  ]
+}

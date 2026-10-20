@@ -15,7 +15,14 @@ TEST_CASE("sample pack spells load into a SpellBook") {
     auto r = load_spellbook(kSpells);
     REQUIRE(r.errors.empty());
     REQUIRE(r.book);
-    CHECK(r.book->all().size() == 23);
+    // Expected: the spell@1 files the srd51.core manifest lists, so new spell batches need no edit.
+    std::ifstream mf(kSpells.parent_path() / "manifest.json");
+    const auto manifest = eng::assets::Json::parse(std::string(std::istreambuf_iterator<char>(mf), std::istreambuf_iterator<char>()));
+    size_t listed = 0;
+    for (const auto& c : manifest["contents"])
+        listed += c.get<std::string>().rfind("spells/", 0) == 0 ? 1 : 0;
+    CHECK(listed > 0);
+    CHECK(r.book->all().size() == listed);
 
     const SpellDef* fb = r.book->find(spell_id_of("srd51.spell.fire_bolt"));
     REQUIRE(fb);
