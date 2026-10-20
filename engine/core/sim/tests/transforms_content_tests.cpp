@@ -343,7 +343,7 @@ TEST_CASE("0 HP in a form: DamageDealt (what the form absorbed), Reverted{b = 2,
             CHECK(first.kind == EventKind::DamageDealt);
             CHECK(first.target == f.id(0));
             CHECK(first.a == 1);   // all the mouse had
-            CHECK(first.b == 0);
+            CHECK(first.a == 1);   // what the form absorbed (mouse hp 1, no temp HP); first.a + Reverted.c = the whole hit
             CHECK(ev[r].rules.b == 2);
             const int overflow = ev[r].rules.c;
             if (overflow > 0) {
