@@ -1943,6 +1943,69 @@ replaced (rest-only). The sim event-version files (`engine/core/sim/include/sim/
 `tests/events_tests.cpp`) and the vertical-slice feed test were edited for v10, as #118 did for v9, because the new rules kinds
 otherwise fail sim's layout lock; no other sim file was touched.
 
+### 7.2r R-G12 rules PR 2: summons (Conjure Animals, Find Familiar, Animate Dead) (rules side) and hand-off
+
+(Numbered after 7.2q.) Spec: `docs/proposals/SUMMONS_TRANSFORMS.md` (D1-D15), PR split §2.10 item 2. Spiritual Weapon and Pact
+of the Chain are rules PR 3. Conjure Elemental's hostile turn (D5) is not in this PR (TODO in `end_concentration`).
+
+Rules:
+
+- **Data.** `SpellEffectKind::Summon` (appended) with `SpellDef::summon` = `SummonSpec{max_count, initiative (Own / Group),
+  control (None / Verbal / BonusAction / Telepathic), vanishes_at_zero_hp}`. `Combatant` (appended): `summoner`,
+  `summon_source`, `summon_group`, `summon_control`, `summon_vanishes`, `summon_concentration`, `commanded`, `gone`.
+  `EncounterState` (appended): `next_summon_id` (rules-owned counter, sim seeds it), `summons` (count made). `ActionRequest`
+  (appended, `log_hash` 0xBC): `summon_ids`, `summon_archetypes`, `summon_tiles` (opaque, sim's anchors), `command`,
+  `command_ids`. `ActionKind::CommandSummons` (appended). Hooks: `build_summon(state, summoner, def, slot_level,
+  archetype)` -> `optional<Combatant>` (pure; rules sets id, team and the summon fields) and optional `summon_choice_ok`
+  (the CR-band count table; empty = any 1..max_count).
+- **Cast (D1).** Cast on the caster (no creature targets). The caster's request picks the creatures (`summon_archetypes`).
+  Refused before anything is spent: `summon: no creature targets`, `summon: bad creature count`, `summon: choice not allowed`,
+  `summon not available` (no hook / nullopt), `summon_tiles: one per creature`, `summon: primary effect only`, summon fields
+  on another spell or request: `summon: not a summon spell`.
+- **Ids.** Rules assigns ids from `next_summon_id` (never at or below an existing id; unseeded 0 = above every combatant) and
+  writes them into the logged request (`StepResult::logged->request.summon_ids`). Live: a non-empty `summon_ids` is refused
+  (`summon_ids: assigned by rules (leave empty)`). Replay: the logged ids must equal what the counter assigns, else
+  `summon_ids: do not match the summon counter`. Ids are never reused.
+- **Initiative (D2, D14).** After the step's own events (after `SpellResolved`, before Ready triggers), each creature joins:
+  `Own` = its own d20 + Dex; `Group` = one roll for the cast (first creature's Dex), members consecutive by id, `summon_group` =
+  the first id. Placed after every entry with a higher total, or an equal total and an equal or higher Dex modifier. Placed at
+  or before the current turn: `turn_index` + 1 (the current actor keeps its turn) and every stored stamp of this round at or
+  after the slot (`ActiveSpellEffect::cast_stamp`, `ActiveZone::cast_stamp`, `ZoneFired::stamp`, `trigger_turn_stamp`) + 1,
+  so it names the same turn; a slot that has passed acts next round. `Summoned{actor = summoner, target = creature, a = spell,
+  b = archetype, c = initiative total}` per creature, id order. Concentration spells set the caster's concentration.
+- **Commands (D4).** `CommandSummons{command 1 act / 2 defend, command_ids (empty = all its summons that take commands)}`:
+  Verbal / Telepathic free, any BonusAction summon in the set costs the summoner's bonus action (`no bonus action available`).
+  Refusals: `command: 1 act or 2 defend`, `command: not your summon`, `command: it takes no commands`, `command: duplicate
+  id`, `command: no summons to command`, `incapacitated`; `command` fields on another kind: `command: CommandSummons only`.
+  `Commanded{actor, target (0 = all), a = command}`. A Verbal / BonusAction summon not commanded to act may only Dodge or
+  end its turn (`summon not commanded: Dodge only`; `legal_actions` = Dodge, EndTurn); reactions unchanged (SRD: "defends
+  itself"). The command clears when the summon's turn ends. Telepathic (familiar) / None act on their own.
+- **Ends (D10, D15).** 0 HP with `vanishes_at_zero_hp`: `SummonEnded{b = 3}` at the end of the step (after `CombatantDied` if
+  killed outright). Concentration: `ConcentrationEnded`, then `SummonEnded{b = 1}` per summon (combatants order). Encounter
+  end: `SummonEnded{b = 5}` ascending id, then the `Reverted{b = 5}` block, then `EncounterEnded`; `teardown_begin` covers
+  both. A transformed summon just ends (form cleared, no `Reverted`). An ended summon is `gone` and `dead`, skipped in the turn
+  order, never acts again. Animate Dead (no vanish) drops as a monster.
+- **0xAF.** `summons_digest`: counter u32, count u32, then per summon (`summoner != 0`, combatants order) id, summoner,
+  summon_source, summon_group (u32), gone, commanded (byte), then the PR 1 transform fields. `has_summon_state` = summons != 0
+  || transforms != 0 (a seeded counter alone never folds).
+
+Hand-off (sim / T&C):
+
+- Sim: seed `next_summon_id` after `begin_encounter` above every chunk spawn id; fold 0xAF while `has_summon_state` and 0xBC
+  (summon_ids, archetypes, tiles, command, command_ids) per SIM_EVENTS.md; implement `build_summon` / `summon_choice_ok`
+  (CR band table, D1) and place the creatures on `summon_tiles`; read `teardown_begin`; drop `gone` combatants from views.
+- Content / T&C: `summon` effect kind (max_count, initiative, control, vanishes) for Conjure Animals / Woodland Beings / Minor
+  Elementals, Find Familiar, Animate Dead; archetype lists per CR band.
+- Sim events: `TokenSpawned` comes right after its own `Summoned` (one per creature, id order).
+- **Sim stamps EC will fix** (they key on `turn_index`, which a summon inserted before the current actor shifts; rules rewrites
+  only its own stored stamps): `Combat::aggressive_` and `run_to_end`'s `(round, turn_index)` turn key (SUMMONS_TRANSFORMS.md
+  §3.4: key on `(round, current_actor, TurnStarted count)`).
+- Ended summons stay in `order` (`gone`, dead, skipped); nothing is removed, so ends never shift `turn_index`.
+- A group shares one slot: every member's `InitiativeEntry` carries the group roll and the first creature's Dex (D2).
+- An ending summon's own concentration goes through `end_concentration` (`ConcentrationEnded`, modifiers / zones / Polymorph
+  links cleaned up); at encounter end those come before the contiguous `SummonEnded{b = 5}` block.
+- Deviation: filling the 0xAF counter / count fields changes transform-only 0xAF bytes vs PR 1 (no golden folds 0xAF yet).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
