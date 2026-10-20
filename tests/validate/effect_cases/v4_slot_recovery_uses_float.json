@@ -18,5 +18,5 @@
     ]
   ],
   "severity": "error",
-  "expect": "uses"
+  "expect": "/features/0/effect/uses: float value 1.0 not allowed"
 }

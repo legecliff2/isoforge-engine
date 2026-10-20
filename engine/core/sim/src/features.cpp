@@ -4,6 +4,7 @@
 #include <cctype>
 
 #include "rules5e/armor.hpp"
+#include "rules5e/font_of_magic.hpp"
 
 #include "rules5e_content/spell_loader.hpp"
 #include "sim/content.hpp"
@@ -435,9 +436,72 @@ std::optional<std::string> apply_metamagic(Archetype& a, const FeatureDecl& f, u
     a.base.sorcery_pool = pool;
     return std::nullopt;
 }
+// font_of_magic {pool} (Sorcerer 2+, VERSION_BUMP_BATCH 7.2o hand-off): the sorcery pool is the resources[] pool `pool`
+// (registered here when resources[] lacks it), resolved to max = start = sorcery_points_max(sorcerer level from classes[])
+// with recharge LongRest, and Combatant::sorcery_pool points at it even without a metamagic feature. A metamagic declaration
+// naming a different pool (either order) is a load error, as for two metamagic declarations.
+std::optional<std::string> apply_font_of_magic(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    const std::string pid = f.effect.value("pool", "");
+    if (pid.empty()) return f.id + ": font_of_magic needs pool";
+    for (const auto& u : a.unlimited_resources)
+        if (u == pid) return f.id + ": font_of_magic pool '" + pid + "' is unlimited";
+    int level = 0;
+    for (const Json& c : ctx.doc.value("classes", Json::array()))
+        if (c.is_object() && c.value("class", "") == "sorcerer") level += c.value("level", 0);
+    const int max = rules5e::sorcery_points_max(level);
+    if (max <= 0) return f.id + ": font_of_magic needs sorcerer level 2+ (sorcerer level " + std::to_string(level) + ")";
+    const uint32_t pool = rules5e::spell_id_of(pid);
+    if (a.base.sorcery_pool != 0 && a.base.sorcery_pool != pool) return f.id + ": font_of_magic and metamagic name different pools";
+    Archetype::Resource* res = nullptr;
+    for (auto& r : a.resources)
+        if (r.id == pid) res = &r;
+    if (!res) {
+        a.resources.push_back(Archetype::Resource{pid, pool, 0, 0, 0});
+        res = &a.resources.back();
+    }
+    res->max = uint16_t(max);
+    res->start = uint16_t(max);
+    res->recharge = uint8_t(rules5e::FeatureRecharge::LongRest);
+    a.base.sorcery_pool = pool;
+    return std::nullopt;
+}
 // sculpt_spells {} (Evocation Wizard): rules5e Combatant::sculpt_spells; the caller lists ActionRequest::spared.
 std::optional<std::string> apply_sculpt_spells(Archetype& a, const FeatureDecl&, uint32_t, const FeatureBuildCtx&) {
     a.base.sculpt_spells = true;
+    return std::nullopt;
+}
+
+// slot_recovery {class: wizard | druid, max_slot_level 1..9 = 5, uses 1..255 = 1} (Arcane Recovery / Natural Recovery,
+// VERSION_BUMP_BATCH 7.2n hand-off 1): a rules5e SlotRecoverySpec with the class level from classes[]. Load errors: unknown
+// class, class missing from classes[], non-integer or out-of-range max_slot_level / uses, two declarations for one class.
+std::optional<std::string> apply_slot_recovery(Archetype& a, const FeatureDecl& f, uint32_t feature_id, const FeatureBuildCtx& ctx) {
+    const std::string cls = f.effect.value("class", "");
+    if (cls != "wizard" && cls != "druid") return f.id + ": slot_recovery class must be wizard or druid";
+    int level = 0;
+    bool listed = false;
+    for (const Json& c : ctx.doc.value("classes", Json::array()))
+        if (c.is_object() && c.value("class", "") == cls) {
+            listed = true;
+            level += c.value("level", 0);
+        }
+    if (!listed) return f.id + ": slot_recovery class '" + cls + "' is not in classes[]";
+    if (level < 1 || level > 20) return f.id + ": slot_recovery class level out of range 1..20";
+    auto int_key = [&](const char* key, int def, int lo, int hi, int& out) -> std::optional<std::string> {
+        const auto it = f.effect.find(key);
+        if (it == f.effect.end()) { out = def; return std::nullopt; }
+        if (!it->is_number_integer()) return f.id + ": slot_recovery " + key + " must be an integer";
+        const int64_t v = it->get<int64_t>();
+        if (v < lo || v > hi) return f.id + ": slot_recovery " + key + " out of range " + std::to_string(lo) + ".." + std::to_string(hi);
+        out = int(v);
+        return std::nullopt;
+    };
+    int max_level = 5, uses = 1;
+    if (auto e = int_key("max_slot_level", 5, 1, 9, max_level)) return e;
+    if (auto e = int_key("uses", 1, 1, 255, uses)) return e;
+    for (const auto& prev : a.slot_recovery)
+        if (a.features[prev.feature_id - 1].effect.value("class", "") == cls)
+            return f.id + ": slot_recovery declared twice for class '" + cls + "'";
+    a.slot_recovery.push_back(rules5e::SlotRecoverySpec{feature_id, uint8_t(level), uint8_t(max_level), uint8_t(uses)});
     return std::nullopt;
 }
 
@@ -479,7 +543,9 @@ FeatureRegistry make_builtin() {
     r.add_hook("reckless_attack", {apply_reckless_attack});
     r.add_hook("pack_tactics", {apply_pack_tactics});
     r.add_hook("metamagic", {apply_metamagic});
+    r.add_hook("font_of_magic", {apply_font_of_magic});
     r.add_hook("sculpt_spells", {apply_sculpt_spells});
+    r.add_hook("slot_recovery", {apply_slot_recovery});
     // Kinds the @4 schemas introduce (frozen list of the 3 -> 4 migration; hooks arrive with their rows).
     for (const char* k : {"on_event", "save_effect", "reaction"})
         r.reserve_kind(k, 4);

@@ -17,5 +17,5 @@
     ]
   ],
   "severity": "error",
-  "expect": "/features/0/effect: {'kind': 'slot_recovery', 'class': 'cleric'} is not valid"
+  "expect": "slot_recovery effect is invalid: /class: 'cleric' is not one of ['wizard', 'druid']"
 }

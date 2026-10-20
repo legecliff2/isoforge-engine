@@ -49,7 +49,7 @@ AUTHORED = {
     "cleric-ability-score-improvement-1": "abilities",
     "spellcasting-wizard": "spellcasting",
     "arcane-tradition": "subclass",
-    "arcane-recovery": "feature:arcane_recovery",   # slot_recovery kind (reserved until the sim loader lands, 7.2n)
+    "arcane-recovery": "feature:arcane_recovery",   # slot_recovery kind (7.2n, sim #148 loader)
     "evocation-savant": "feature:evocation_savant",
     "wizard-ability-score-improvement-1": "abilities",
 }

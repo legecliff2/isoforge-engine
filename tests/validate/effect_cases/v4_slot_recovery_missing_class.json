@@ -16,5 +16,5 @@
     ]
   ],
   "severity": "error",
-  "expect": "'class' is a required property"
+  "expect": "slot_recovery effect is invalid: 'class' is a required property"
 }

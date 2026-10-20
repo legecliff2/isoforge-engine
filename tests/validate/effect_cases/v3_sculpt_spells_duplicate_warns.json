@@ -1,0 +1,35 @@
+{
+  "base": "characters/fighter_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        2
+      ],
+      {
+        "id": "sculpt_1",
+        "name": "sculpt_1",
+        "description": "x",
+        "effect": {
+          "kind": "sculpt_spells"
+        }
+      }
+    ],
+    [
+      [
+        "features",
+        3
+      ],
+      {
+        "id": "sculpt_2",
+        "name": "sculpt_2",
+        "description": "x",
+        "effect": {
+          "kind": "sculpt_spells"
+        }
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "duplicate 'sculpt_spells' effect"
+}

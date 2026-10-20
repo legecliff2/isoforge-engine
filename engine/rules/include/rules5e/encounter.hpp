@@ -45,6 +45,8 @@ struct TurnBudget {
     // R-G11 rules PR 2 (appended): a zone row with loses_action took this turn's action (Stinking Cloud, D9); set together
     // with action = false, gone with the turn.
     bool action_lost = false;
+    // Petrifying Gaze (appended): the turn started with a gazer present; the actor must answer with GazeResponse first.
+    bool gaze_pending = false;
 };
 
 // Answer to a reaction window (names/layout shared with sim::Combat).
@@ -160,6 +162,16 @@ struct ActionRequest {
     bool has_zone_end = false; int32_t zone_x2 = 0, zone_y2 = 0;
     int8_t zone_side = 0;
     bool zone_ring = false;
+    // appended (Font of Magic, ActionKind::FlexibleCasting; log-relevant, SIM_EVENTS.md log_hash tag 0xBA): flexible = 1
+    // expend a spell slot of flexible_level (1..9) for that many sorcery points, 2 spend flexible_casting_cost(level)
+    // points for a slot of flexible_level (1..5). Paid from / into Combatant::sorcery_pool. A bonus action.
+    uint8_t flexible = 0, flexible_level = 0;
+    // appended (Petrifying Gaze, ActionKind::GazeResponse, VERSION_BUMP_BATCH 7.2p): the turn-start answer while
+    // TurnBudget::gaze_pending. avert_gaze (caller input, log_hash 0xBB): avert the eyes (refused while surprised): no save,
+    // gazers unseen until its next turn starts. gaze_seen (sim fact, not folded): the gazers it can see now (line of sight,
+    // within the gaze's range_ft, not Blinded, the gazer not invisible to it); rules treats the list as opaque.
+    bool avert_gaze = false;
+    std::vector<CombatantId> gaze_seen = {};
 };
 
 enum class EventKind : uint8_t {
@@ -647,6 +659,9 @@ uint64_t surprised_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222
 // Small leftovers: Life Drain max-HP reductions, Haste lethargy, active Reckless Attack, and escalating (Petrifying Gaze)
 // effects. sim folds leftover_digest under tag 0xAA only when has_leftover_state (nothing for content that uses none).
 // Haste / Slow themselves are modifiers (modifiers_digest, 0xA2, which folds repeat_save fields only when set).
+// Petrifying Gaze (Combat::hash 0xAE): some creature has its eyes averted / their ids.
+bool has_gaze_state(const EncounterState&);
+uint64_t gaze_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 bool has_leftover_state(const EncounterState&);
 uint64_t leftover_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 

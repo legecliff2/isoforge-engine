@@ -18,5 +18,5 @@
     ]
   ],
   "severity": "error",
-  "expect": "'max_slot_level': 10} is not valid"
+  "expect": "slot_recovery effect is invalid: /max_slot_level: 10 is greater than the maximum of 9"
 }
