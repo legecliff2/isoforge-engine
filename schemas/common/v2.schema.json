@@ -76,6 +76,8 @@
             "rounds",
             "until_start_of_caster_turn",
             "until_end_of_target_turn",
+            "until_end_of_caster_next_turn",
+            "until_start_of_target_turn",
             "concentration",
             "until_rest"
           ]
@@ -465,7 +467,9 @@
             "weapon_attack",
             "damage_at_most",
             "target_tag",
-            "not_target_tag"
+            "not_target_tag",
+            "subject_is_caster",
+            "owner_creature_type"
           ]
         },
         "is": {
@@ -585,7 +589,8 @@
               "kind": {
                 "enum": [
                   "target_creature_type",
-                  "not_creature_type"
+                  "not_creature_type",
+                  "owner_creature_type"
                 ]
               }
             }
@@ -762,7 +767,8 @@
                 "enum": [
                   "target_surprised",
                   "ally_near_target",
-                  "weapon_attack"
+                  "weapon_attack",
+                  "subject_is_caster"
                 ]
               }
             }
@@ -1502,7 +1508,9 @@
             "damage",
             "temp_hp",
             "resistance",
-            "attacks_against"
+            "attacks_against",
+            "no_reactions",
+            "no_healing"
           ]
         },
         "bonus": {
