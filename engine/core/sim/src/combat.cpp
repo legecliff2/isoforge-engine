@@ -306,7 +306,8 @@ bool Combat::spell_in_reach(const rules5e::SpellDef& def, CombatantId caster, Co
         return distance_tiles(caster, target) * kFeetPerTile <= int(def.area_size_ft) && line_of_sight(caster, target);
     }
     if (def.range_ft == 0) return caster == target;   // self
-    if (distance_tiles(caster, target) * kFeetPerTile > int(def.range_ft)) return false;
+    // EC spider follow-up: a long range (attack_effect Web) extends the legal range (disadvantage beyond range_ft)
+    if (distance_tiles(caster, target) * kFeetPerTile > std::max<int>(def.range_ft, def.long_range_ft)) return false;
     return caster == target || line_of_sight(caster, target);
 }
 
@@ -1139,7 +1140,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
         req.as_bonus_action = f->cost == FeatureCost::BonusAction;   // rules read FeatureSpec::cost when a spec exists
         req.heal_dice = f->heal;   // zero unless the hook set a heal
     }
-    if (req.kind == ActionKind::Attack && req.special != 0) {   // R-G8 grapple / shove / escape: a creature within 5 ft
+    if (req.kind == ActionKind::Attack && req.special != 0 && req.special != 6) {   // 6 (attack a web) takes the weapon facts below   // R-G8 grapple / shove / escape: a creature within 5 ft
         if (req.special != 4 || req.target != 0) {
             if (!rules5e::find(state_, req.target)) { r.error = "bad target"; return r; }
             req.target_within_5ft = distance_tiles(actor, req.target) <= 1;
@@ -1163,6 +1164,20 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     }
     if (req.kind == ActionKind::CastSpell) {
         if (!spells_ || !spells_->find(req.spell_id)) { r.error = "unknown spell"; return r; }
+        // EC spider follow-up: a non-spell ranged attack_effect (Web) gets the ranged attack facts (beyond its normal range,
+        // a hostile within 5 ft); spells are unchanged (rules ignores the facts for them).
+        if (const auto* adef = spells_->find(req.spell_id); adef->kind == rules5e::SpellEffectKind::SpellAttack && !adef->is_spell &&
+                                                           !adef->melee && rules5e::find(state_, req.target)) {
+            const Spot from = spot(actor);
+            req.beyond_normal_range = distance_tiles(actor, req.target) > reach_tiles(adef->range_ft);
+            req.ranged_hostile_within_5ft = false;
+            for (const auto& sl : slots_) {
+                const auto* c = rules5e::find(state_, sl.id);
+                if (sl.id == actor || !c || c->dead || !hostile(sl.id, actor) || !rules5e::is_conscious(*c) || rules5e::is_incapacitated(*c)) continue;
+                const Spot hs = spot(sl.id);
+                if (rect_distance(from.p, from.n, hs.p, hs.n) <= 1) req.ranged_hostile_within_5ft = true;
+            }
+        }
         // R-G12 summons (§3.0 / §3.1): ids come from rules' counter; sim refuses an exhausted id space or ids another system
         // already took in the registry, then validates caller tiles or fills them deterministically (logged, 0xBC).
         if (const auto* sdef = spells_->find(req.spell_id); sdef->kind == rules5e::SpellEffectKind::Summon && !req.summon_archetypes.empty()) {
@@ -1451,6 +1466,17 @@ uint64_t Combat::hash() const {
     if (rules5e::has_modifier_state(state_)) { h.byte(0xA2); h.u64(rules5e::modifiers_digest(state_)); }
     // 0xA5: timed lasting effects (condition durations). 0xA2 (modifiers) stays reserved for row 12; 0xA4 (innate) is Engine Core's.
     if (rules5e::has_timed_effects(state_)) { h.byte(0xA5); h.u64(rules5e::timed_effects_digest(state_)); }
+    // 0xBF (EC spider follow-up): destructible restraints (the web) with HP left: target, spell, object_hp, in effect order.
+    // Only when one is on the board, so every existing hash is unchanged.
+    {
+        bool any = false;
+        for (const auto& e : state_.effects) any = any || e.object_hp > 0;
+        if (any) {
+            h.byte(0xBF);
+            for (const auto& e : state_.effects)
+                if (e.object_hp > 0) { h.u32(e.target); h.u32(e.spell_id); h.i16(e.object_hp); }
+        }
+    }
     // 0xA6: event triggers' once-per-turn / round bookkeeping (row 9a), only when some combatant has triggers.
     if (rules5e::has_trigger_state(state_)) { h.byte(0xA6); h.u64(rules5e::triggers_digest(state_)); }
     // 0xA7 (R-G8, Director): sourced conditions, only the entries that carry Grappled (spell-applied Charmed / Frightened entries
