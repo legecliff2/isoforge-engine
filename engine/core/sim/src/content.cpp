@@ -979,6 +979,7 @@ bool carries_shield(const Json& doc) {
 } // namespace
 
 std::optional<rules5e::DamageType> damage_type_from_name(const std::string& s) { return damage_type(s); }
+std::optional<rules5e::CreatureType> creature_type_from_name(const std::string& s) { return creature_type_of(s); }
 
 std::optional<int> cr_x8_of(const Json& r) {
     if (r.is_number_integer()) {

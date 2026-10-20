@@ -1,0 +1,115 @@
+{
+  "$schema": "character@4",
+  "id": "test.v4.character.druid_4",
+  "name": "Druid",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "neutral good",
+  "level": 4,
+  "classes": [
+    {
+      "class": "druid",
+      "level": 4,
+      "hit_die": "d8"
+    }
+  ],
+  "xp": 2700,
+  "armor_class": {
+    "value": 13
+  },
+  "hit_points": {
+    "average": 27,
+    "formula": "4d8+8"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 10,
+    "dex": 14,
+    "con": 14,
+    "int": 12,
+    "wis": 16,
+    "cha": 10
+  },
+  "saving_throws": {
+    "int": 3,
+    "wis": 5
+  },
+  "senses": {
+    "passive_perception": 13
+  },
+  "languages": [
+    "Common"
+  ],
+  "proficiency_bonus": 2,
+  "actions": [
+    {
+      "id": "quarterstaff",
+      "name": "Quarterstaff",
+      "kind": "melee_weapon_attack",
+      "to_hit": 2,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6",
+          "type": "bludgeoning"
+        }
+      ]
+    }
+  ],
+  "features": [
+    {
+      "id": "wild_shape",
+      "name": "Wild Shape",
+      "description": "SRD 5.1 Druid: Wild Shape (2 uses per short rest).",
+      "effect": {
+        "kind": "wild_shape",
+        "pool": "wild_shape",
+        "cost": "action",
+        "class": "druid",
+        "forms": [
+          "srd51.monster.jackal",
+          "srd51.monster.wolf",
+          "srd51.monster.black_bear",
+          "srd51.monster.dire_wolf"
+        ],
+        "max_cr_by_level": [
+          {
+            "level": 2,
+            "max_cr": "1/4"
+          },
+          {
+            "level": 4,
+            "max_cr": "1/2"
+          },
+          {
+            "level": 8,
+            "max_cr": "1"
+          }
+        ],
+        "no_fly_below": 8,
+        "no_swim_below": 4
+      }
+    },
+    {
+      "id": "druidic_focus",
+      "name": "Druidic Focus",
+      "description": "Uses a druidic focus held in the hands.",
+      "requires_humanoid_form": true
+    }
+  ],
+  "resources": [
+    {
+      "id": "wild_shape",
+      "max": 2,
+      "recharge": "short_rest"
+    }
+  ]
+}
