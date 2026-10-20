@@ -284,7 +284,7 @@ struct Reaction {
     // appended (7.2y Uncanny Dodge): offered only when the reactor can see the damager (rules5e::sight; no sight hook = sees).
     // A `half` ReduceDamage is offered only for damage from an attack hit (never a save effect such as Fireball).
     bool requires_sight = false;
-    // appended (7.3a): SubtractRoll: the roll kinds (kRoll* bits) of the creature's roll it may answer; 0 = attack only (R-G7).
+    // appended (7.2za): SubtractRoll: the roll kinds (kRoll* bits) of the creature's roll it may answer; 0 = attack only (R-G7).
     uint8_t applies = 0;
 };
 
@@ -299,11 +299,11 @@ enum class ModStat : uint8_t { AttackRoll, Save, AbilityCheck, Ac, Speed, Damage
                                // appended (7.2u spell riders): markers. NoReactions: the target can't take reactions (Shocking
                                // Grasp); NoHealing: the target can't regain hit points (Chill Touch; temp HP unaffected).
                                NoReactions, NoHealing,
-                               // appended (7.3a Bardic Inspiration): one held die (`die`) the owner may add to one roll of a kind in
+                               // appended (7.2za Bardic Inspiration): one held die (`die`) the owner may add to one roll of a kind in
                                // ModifierSpec::held_applies, after the roll and before the outcome (ReactionOptionKind::AddHeldDie).
                                // Spent (ModifierExpired reason 9) or lapsed at expiry; at most one per creature (a new one replaces it).
                                HeldDie };
-// appended (7.3a): roll kinds for HeldDie and SubtractRoll (`applies_to` in content: attack, save, check, damage).
+// appended (7.2za): roll kinds for HeldDie and SubtractRoll (`applies_to` in content: attack, save, check, damage).
 inline constexpr uint8_t kRollAttack = 1, kRollSave = 2, kRollCheck = 4, kRollDamage = 8;
 enum class ModAppliesTo : uint8_t { Self, Target, AlliesWithin30 };
 struct ModifierSpec {
@@ -359,7 +359,7 @@ struct ModifierSpec {
     uint8_t ends_early = 0;
     uint8_t blocks = 0;
     uint8_t on_end_exhaustion = 0;
-    // appended (7.3a): HeldDie: the roll kinds (kRoll* bits) the die may be added to. range_ft: Target only, the target must be
+    // appended (7.2za): HeldDie: the roll kinds (kRoll* bits) the die may be added to. range_ft: Target only, the target must be
     // an ally other than the user, within this range (EncounterHooks::targets_within; no hook = in range) and not deafened.
     uint8_t held_applies = 0;
     uint16_t range_ft = 0;
@@ -581,7 +581,7 @@ struct Combatant {
     uint16_t darkvision_ft = 0, blindsight_ft = 0, tremorsense_ft = 0, truesight_ft = 0;
     bool sunlight_sensitive = false;   // SRD Sunlight Sensitivity (drow, kobold...)
     std::vector<SaveAdvantage> save_advantages;   // appended (7.2z, static content, not folded): Danger Sense
-    // appended (7.3a, static content, not folded): Jack of All Trades. Bit 0: half the proficiency bonus (rounded down) on
+    // appended (7.2za, static content, not folded): Jack of All Trades. Bit 0: half the proficiency bonus (rounded down) on
     // ability checks without proficiency; bit 1: on initiative.
     uint8_t half_proficiency = 0;
     bool thieves_tools = false;        // appended (7.2y): proficient with thieves' tools (UseObject 3 adds the proficiency bonus)

@@ -70,7 +70,7 @@ REACTION_EFFECT = {("ac_bonus",): (S({"kind", "bonus"}), S()),
                    ("retaliate",): (S({"kind", "damage"}), S({"save", "on_success"})),
                    ("attack",): (S({"kind", "attack_id"}), S()),
                    ("cast",): (S({"kind", "spell"}), S()),
-                   ("subtract_roll",): (S({"kind", "dice"}), S({"applies_to"}))}   # 7.3a applies_to
+                   ("subtract_roll",): (S({"kind", "dice"}), S({"applies_to"}))}   # 7.2za applies_to
 # spell@1 R-G11 zones (docs/CONTENT_CONVENTIONS.md section 4).
 _ZOPT = {"flags", "move", "chooses_excluded", "needs_conscious_owner", "triggers",
          "aura_modifier", "aura_bonus_ability", "aura_immunity", "aura_allies_only"}   # + R-G11 PR 2 D7 aura keys (4.6)
@@ -353,8 +353,8 @@ class BarbarianHooks72z(unittest.TestCase):
         self.assertEqual(al["items"]["enum"], ["str", "dex", "con", "int", "wis", "cha"])
 
 
-class BardHooks73a(unittest.TestCase):
-    """VERSION_BUMP_BATCH 7.3a: closed grant_die / half_proficiency arms and the shared roll_kind_list."""
+class BardHooks72za(unittest.TestCase):
+    """VERSION_BUMP_BATCH 7.2za: closed grant_die / half_proficiency arms and the shared roll_kind_list."""
     GRANT = (S({"kind", "die", "range_ft", "duration", "applies_to"}), S({"scale", "class", "cost", "usage"}))
     HALF = (S({"kind", "on"}), S())
 

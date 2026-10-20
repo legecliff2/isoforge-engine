@@ -151,7 +151,7 @@ DamageApplied zone_apply_damage(const EncounterState& s, const Combatant& t, int
 
 // 7.2z: the creature whose effect forces the save in progress (a cast's caster; 0 = unknown: a trap, a zone's later turn).
 thread_local CombatantId g_save_from = 0;
-int roll_window(EncounterState& s, Combatant& a, uint8_t kind, int total, int dc, std::vector<Event>& ev);   // 7.3a, below
+int roll_window(EncounterState& s, Combatant& a, uint8_t kind, int total, int dc, std::vector<Event>& ev);   // 7.2za, below
 struct SaveFromGuard {
     CombatantId prev;
     explicit SaveFromGuard(CombatantId id) : prev(g_save_from) { g_save_from = id; }
@@ -184,7 +184,7 @@ SaveResult save_roll_raw(EncounterState& s, const Combatant& t, Ability ab, int 
 SaveResult save_roll(EncounterState& s, const Combatant& t, Ability ab, int dc, RollMode mode, std::vector<Event>& ev,
                      const SaveSource* src = nullptr, int cover = 0) {
     SaveResult r = save_roll_raw(s, t, ab, dc, mode, src, cover);
-    if (!r.auto_fail) {   // 7.3a: Bardic Inspiration (the roller's held die)
+    if (!r.auto_fail) {   // 7.2za: Bardic Inspiration (the roller's held die)
         if (Combatant* tm = find_mut(s, t.id))
             if (const int chg = roll_window(s, *tm, kRollSave, r.roll.total, dc, ev)) {
                 r.roll.total = int16_t(r.roll.total + chg); r.success = r.roll.total >= dc;
@@ -1518,7 +1518,7 @@ std::vector<ReactionOption> reaction_options(const EncounterState& s, const Comb
             o.kind = ReactionOptionKind::Attack; o.attack_index = rx.attack_index; break;
         case ReactionEffectKind::SubtractRoll:
             if (w.trigger != ReactionTrigger::AttackRolled) continue;
-            if (((rx.applies ? rx.applies : kRollAttack) & (w.roll_kind ? w.roll_kind : kRollAttack)) == 0) continue;   // 7.3a
+            if (((rx.applies ? rx.applies : kRollAttack) & (w.roll_kind ? w.roll_kind : kRollAttack)) == 0) continue;   // 7.2za
             if (rx.pool != 0 && !can_spend(s, r.id, rx.pool, rx.pool_cost ? rx.pool_cost : uint16_t(1))) continue;
             o.kind = ReactionOptionKind::SubtractRoll; o.dice = rx.dice; break;
         }
@@ -1565,12 +1565,12 @@ bool ally_attacked_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& 
     return false;
 }
 
-// AttackRolled (R-G7, widened 7.3a): after a roll (attack: not a natural 1 or 20; save: not an automatic failure) and before
+// AttackRolled (R-G7, widened 7.2za): after a roll (attack: not a natural 1 or 20; save: not an automatic failure) and before
 // its outcome. First each enemy of the roller that can react and is in range (hook: Engine Core; no hook = nobody) may subtract a
 // die if its SubtractRoll reaction applies to `kind` (Cutting Words); the first taker ends that part. Then the roller may add its
 // HeldDie (Bardic Inspiration) if it applies to `kind`; no reaction is spent and the die is gone (ModifierExpired reason 9).
 // Auto takes an option only when the largest roll of the die could change the outcome (damage: always). Returns the change.
-thread_local Ctx* g_ctx = nullptr;   // 7.3a: the step in progress (attempt), for rolls made without a Ctx at hand
+thread_local Ctx* g_ctx = nullptr;   // 7.2za: the step in progress (attempt), for rolls made without a Ctx at hand
 int roll_window(EncounterState& s, Ctx& ctx, Combatant& a, CombatantId target, uint8_t kind, int total, int dc, bool ranged,
                 uint32_t spell_id, std::vector<Event>& ev) {
     ReactionWindow w = new_window(s, ctx, ReactionTrigger::AttackRolled, a.id);
@@ -1618,7 +1618,7 @@ int roll_window(EncounterState& s, Ctx& ctx, Combatant& a, CombatantId target, u
             }
         }
     }
-    // the roller's held die (7.3a)
+    // the roller's held die (7.2za)
     std::size_t held = s.modifiers.size();
     for (std::size_t i = 0; i < s.modifiers.size(); ++i)
         if (s.modifiers[i].target == a.id && s.modifiers[i].spec.stat == ModStat::HeldDie && (s.modifiers[i].spec.held_applies & kind)) { held = i; break; }
@@ -1943,7 +1943,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         int dmg = gwf ? roll_dice_reroll_low(s.rng, wdice, crit, 2)
                       : (spell_id != 0 && ctx.empower > 0 ? roll_empowered(s.rng, wdice, crit, ctx.empower)
                                                           : roll_dice(s.rng, wdice, crit));
-        dmg += roll_window(s, ctx, a, t.id, kRollDamage, dmg, 0, atk.ranged, spell_id, ev);   // 7.3a: the attack's damage roll
+        dmg += roll_window(s, ctx, a, t.id, kRollDamage, dmg, 0, atk.ranged, spell_id, ev);   // 7.2za: the attack's damage roll
         if (dmg < 0) dmg = 0;
         std::vector<std::pair<int, DamageType>> modp;   // Damage modifiers (Rage, Hunter's Mark): weapon attacks only
         if (spell_id == 0 && !s.modifiers.empty()) {
@@ -2519,7 +2519,7 @@ CheckResult roll_check(EncounterState& s, Combatant& c, Skill k, int dc, RollMod
         r.roll.total = int16_t(r.roll.total + add);
         r.success = r.roll.total >= dc;
     }
-    if (const int chg = roll_window(s, c, kRollCheck, r.roll.total, dc, ev)) {   // 7.3a: Cutting Words, Bardic Inspiration
+    if (const int chg = roll_window(s, c, kRollCheck, r.roll.total, dc, ev)) {   // 7.2za: Cutting Words, Bardic Inspiration
         r.roll.total = int16_t(r.roll.total + chg); r.success = r.roll.total >= dc;
     }
     emit(ev, EventKind::CheckRolled, c.id, CombatantId(k), r.roll.natural, r.roll.total,
@@ -2541,7 +2541,7 @@ CheckResult roll_ability_check(EncounterState& s, Combatant& c, Ability ab, int 
         r.roll.total = int16_t(r.roll.total + add);
         r.success = r.roll.total >= dc;
     }
-    if (const int chg = roll_window(s, c, kRollCheck, r.roll.total, dc, ev)) {   // 7.3a: Cutting Words, Bardic Inspiration
+    if (const int chg = roll_window(s, c, kRollCheck, r.roll.total, dc, ev)) {   // 7.2za: Cutting Words, Bardic Inspiration
         r.roll.total = int16_t(r.roll.total + chg); r.success = r.roll.total >= dc;
     }
     emit(ev, EventKind::CheckRolled, c.id, CombatantId(0x100u | uint32_t(ab)), r.roll.natural, r.roll.total,
@@ -3573,7 +3573,7 @@ StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vecto
     std::vector<ReactionRecord> records;
     Ctx ctx{records, &decided, 0, replay_only, false, std::nullopt, 0};
     ctx.forced_recorded = forced_recorded;
-    struct CtxGuard {   // 7.3a: roll_window for saves / checks / damage rolled without a Ctx
+    struct CtxGuard {   // 7.2za: roll_window for saves / checks / damage rolled without a Ctx
         Ctx* prev;
         explicit CtxGuard(Ctx* c) : prev(g_ctx) { g_ctx = c; }
         ~CtxGuard() { g_ctx = prev; }
@@ -4156,7 +4156,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         if (binds && (req.attack_index >= a.attacks.size() || a.attacks[req.attack_index].ranged ||
                       a.has(Condition::Unconscious)))
             return fail("feature: wield a weapon (attack_index) to bind it");
-        if (s.hooks.feature_modifiers)   // 7.3a Bardic Inspiration: an ally other than the user, in range, who can hear
+        if (s.hooks.feature_modifiers)   // 7.2za Bardic Inspiration: an ally other than the user, in range, who can hear
             for (const ModifierSpec& m : s.hooks.feature_modifiers(s, a, req.feature_id)) {
                 if (m.stat != ModStat::HeldDie) continue;
                 const Combatant* h = req.target != 0 ? find(s, req.target) : nullptr;
@@ -5044,7 +5044,7 @@ bool apply_modifier(EncounterState& s, CombatantId caster, CombatantId target, c
             if (s.modifiers[i].spec.id == spec.id && s.modifiers[i].target == target) remove_modifier(s, i, 2, ev); else ++i;
         }
     }
-    if (spec.stat == ModStat::HeldDie)   // 7.3a: one held die per creature; a new one replaces it
+    if (spec.stat == ModStat::HeldDie)   // 7.2za: one held die per creature; a new one replaces it
         for (std::size_t i = 0; i < s.modifiers.size();) {
             if (s.modifiers[i].target == target && s.modifiers[i].spec.stat == ModStat::HeldDie) remove_modifier(s, i, 2, ev); else ++i;
         }
@@ -5126,7 +5126,7 @@ uint64_t modifiers_digest(const EncounterState& s, uint64_t h) {
             byte(0x58); byte(p.scope_ability); byte(p.ends_early); byte(p.blocks); byte(p.on_end_exhaustion);
             byte(uint8_t(m.fought)); byte(uint8_t(m.frenzied));
         }
-        if (p.held_applies != 0 || p.range_ft != 0) { byte(0x59); byte(p.held_applies); u32(p.range_ft); }   // 7.3a held die   // 7.2y wielded-scope binding: only when bound (older digests unchanged)
+        if (p.held_applies != 0 || p.range_ft != 0) { byte(0x59); byte(p.held_applies); u32(p.range_ft); }   // 7.2za held die   // 7.2y wielded-scope binding: only when bound (older digests unchanged)
     }
     return h;
 }

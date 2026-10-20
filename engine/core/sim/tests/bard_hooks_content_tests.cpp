@@ -1,4 +1,4 @@
-// VERSION_BUMP_BATCH 7.3a: bard hooks content (T&C #202 shapes): grant_die (Bardic Inspiration), half_proficiency (Jack of
+// VERSION_BUMP_BATCH 7.2za: bard hooks content (T&C #202 shapes): grant_die (Bardic Inspiration), half_proficiency (Jack of
 // All Trades), subtract_roll applies_to (Cutting Words), load errors, and a sim replay with a held die.
 #include <doctest/doctest.h>
 
@@ -65,7 +65,7 @@ world::Chunk arena(std::vector<std::pair<std::string, Vec2i>> spawns) {
 }
 }  // namespace
 
-TEST_CASE("7.3a content: grant_die compiles one HeldDie row; the die follows the bard level") {
+TEST_CASE("7.2za content: grant_die compiles one HeldDie row; the die follows the bard level") {
     auto lib = lib0();
     for (auto [lv, sides] : {std::pair{1, 6}, {4, 6}, {5, 8}, {9, 8}, {10, 10}, {15, 12}, {20, 12}}) {
         const std::string id = "t.bard" + std::to_string(lv);
@@ -88,7 +88,7 @@ TEST_CASE("7.3a content: grant_die compiles one HeldDie row; the die follows the
     }
 }
 
-TEST_CASE("7.3a content: load errors") {
+TEST_CASE("7.2za content: load errors") {
     auto lib = lib0();
     auto bad = [&](const char* id, auto edit, const char* expect) {
         Json d = bard(id); edit(d);
@@ -113,7 +113,7 @@ TEST_CASE("7.3a content: load errors") {
     CHECK(e->find("half_proficiency: not valid on monsters") != std::string::npos);
 }
 
-TEST_CASE("7.3a content: subtract_roll applies_to compiles to roll-kind bits; absent = attack only") {
+TEST_CASE("7.2za content: subtract_roll applies_to compiles to roll-kind bits; absent = attack only") {
     auto goblin = [](const std::string& id, Json applies) {
         Json m = load_json("content/packs/srd51.core/monsters/goblin.json");
         m["$schema"] = "monster@4"; m["id"] = id;
@@ -134,7 +134,7 @@ TEST_CASE("7.3a content: subtract_roll applies_to compiles to roll-kind bits; ab
     CHECK(lib.add(goblin("t.cw3", Json::array({"initiative"})), "monster"));
 }
 
-TEST_CASE("7.3a sim: Bardic Inspiration on an ally through Combat; the log replays to the same hash") {
+TEST_CASE("7.2za sim: Bardic Inspiration on an ally through Combat; the log replays to the same hash") {
     auto lib = lib0();
     REQUIRE_FALSE(lib.add(bard("t.bard"), "character"));
     Json ally = load_json("content/packs/sample.vertical_slice/characters/fighter_1.json");

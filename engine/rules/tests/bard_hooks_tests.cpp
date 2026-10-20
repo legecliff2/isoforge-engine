@@ -1,4 +1,4 @@
-// VERSION_BUMP_BATCH 7.3a: bard hooks. Held die (Bardic Inspiration: grant, spend on attack / save / check, lapse, replace),
+// VERSION_BUMP_BATCH 7.2za: bard hooks. Held die (Bardic Inspiration: grant, spend on attack / save / check, lapse, replace),
 // subtract_roll applies (Cutting Words on checks and damage), half proficiency (Jack of All Trades), digest and replay.
 #include <doctest/doctest.h>
 
@@ -90,7 +90,7 @@ int dealt_to(const std::vector<Event>& ev, CombatantId id) {
 
 }  // namespace
 
-TEST_CASE("7.3a grant_die: bonus action, pool cost; an ally other than the user, in range, who can hear") {
+TEST_CASE("7.2za grant_die: bonus action, pool cost; an ally other than the user, in range, who can hear") {
     auto s = start({hero(1), hero(2), dummy(3)}, 1);
     CHECK_FALSE(step(s, inspire(1)).ok);   // self
     CHECK_FALSE(step(s, inspire(3)).ok);   // hostile
@@ -109,7 +109,7 @@ TEST_CASE("7.3a grant_die: bonus action, pool cost; an ally other than the user,
     CHECK(s.budget.action);
 }
 
-TEST_CASE("7.3a held die on a check: Auto adds it only when it could turn a failure into a success; then it is gone") {
+TEST_CASE("7.2za held die on a check: Auto adds it only when it could turn a failure into a success; then it is gone") {
     int taken = 0;
     for (uint64_t seed = 0; seed < 80; ++seed) {
         auto a = start({hero(1), hero(2), dummy(3)}, seed), b = start({hero(1), hero(2), dummy(3)}, seed);
@@ -133,7 +133,7 @@ TEST_CASE("7.3a held die on a check: Auto adds it only when it could turn a fail
     CHECK(taken > 0);
 }
 
-TEST_CASE("7.3a held die: applies_to filters the roll kind; attack and save rolls") {
+TEST_CASE("7.2za held die: applies_to filters the roll kind; attack and save rolls") {
     int atk = 0, sav = 0;
     for (uint64_t seed = 0; seed < 80; ++seed) {
         auto only_atk = start({hero(1), hero(2), dummy(3)}, seed, hk(kRollAttack));
@@ -164,7 +164,7 @@ TEST_CASE("7.3a held die: applies_to filters the roll kind; attack and save roll
     CHECK(atk > 0); CHECK(sav > 0);
 }
 
-TEST_CASE("7.3a held die: a new grant replaces the old one; it lapses at expiry; Never and Ask") {
+TEST_CASE("7.2za held die: a new grant replaces the old one; it lapses at expiry; Never and Ask") {
     auto s = start({hero(1), hero(2), dummy(3)}, 3, hk(kRollCheck, 1));
     std::vector<Event> sink;
     ModifierSpec other = held_row(kRollCheck, 50); other.id = kHeld + 50;   // another bard's die
@@ -200,7 +200,7 @@ TEST_CASE("7.3a held die: a new grant replaces the old one; it lapses at expiry;
     CHECK(paused);
 }
 
-TEST_CASE("7.3a subtract_roll applies: Cutting Words on ability checks and damage rolls; absent = attack only") {
+TEST_CASE("7.2za subtract_roll applies: Cutting Words on ability checks and damage rolls; absent = attack only") {
     int chk = 0, dmg = 0;
     for (uint64_t seed = 0; seed < 80; ++seed) {
         auto a = start({hero(1), cutter(2, kRollCheck | kRollDamage)}, seed), b = start({hero(1), cutter(2, 0)}, seed);
@@ -221,7 +221,7 @@ TEST_CASE("7.3a subtract_roll applies: Cutting Words on ability checks and damag
     CHECK(chk > 0); CHECK(dmg > 0);
 }
 
-TEST_CASE("7.3a half proficiency: checks without proficiency (rounded down) and initiative") {
+TEST_CASE("7.2za half proficiency: checks without proficiency (rounded down) and initiative") {
     auto c = hero(1);
     c.skill_proficiencies = bit(Skill::Athletics);
     const int prof = skill_modifier(c, Skill::Athletics), plain = skill_modifier(c, Skill::Arcana);
@@ -237,7 +237,7 @@ TEST_CASE("7.3a half proficiency: checks without proficiency (rounded down) and 
     }
 }
 
-TEST_CASE("7.3a digest folds the held die; replay is deterministic") {
+TEST_CASE("7.2za digest folds the held die; replay is deterministic") {
     auto s = start({hero(1), hero(2), dummy(3)}, 4);
     const uint64_t d0 = modifiers_digest(s);
     REQUIRE(step(s, inspire(2)).ok);

@@ -47,7 +47,7 @@ SECTION_1_1 = ["action", "legacy_action", "legacy_nonspecial_action", "legacy_sp
                "ability_list", "bonus_attack_effect",
                # Rules 7.2w grab and contain (append-only addition; T&C spec)
                "transparent_effect",
-               # Rules 7.3a bard hooks (append-only additions; T&C #202)
+               # Rules 7.2za bard hooks (append-only additions; T&C #202)
                "roll_kind_list", "grant_die_effect", "half_proficiency_effect"]
 ITEM_FILE_DEFS = {"item_damage"}          # listed in 1.1 but declared in item@1's file, not common@2's
 COMMON2_DEFS = set(SECTION_1_1) - ITEM_FILE_DEFS

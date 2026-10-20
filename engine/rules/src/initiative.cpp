@@ -11,7 +11,7 @@ std::vector<InitiativeEntry> roll_initiative(rng::Rng& r, std::span<const Combat
     rows.reserve(cs.size());
     for (const auto& c : cs) {
         int dex = modifier(c.abilities, Ability::Dex);
-        int total = r.d(20) + dex + ((c.half_proficiency & 2) ? c.proficiency_bonus / 2 : 0);   // 7.3a Jack of All Trades
+        int total = r.d(20) + dex + ((c.half_proficiency & 2) ? c.proficiency_bonus / 2 : 0);   // 7.2za Jack of All Trades
         rows.push_back({{c.id, int16_t(total), int8_t(dex)}, 0});
     }
     for (auto& row : rows) row.tiebreak = r.next_u32();
