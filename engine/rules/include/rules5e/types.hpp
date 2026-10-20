@@ -220,6 +220,8 @@ enum class PredicateKind : uint8_t {
     // appended (7.2u spell riders): SubjectIsCaster = the subject is the creature that applied the modifier (only meaningful
     // in a modifier's `when`; false elsewhere); OwnerCreatureType = mask over CreatureType, the owner is one of them.
     SubjectIsCaster, OwnerCreatureType,
+    // appended (EC loader temp HP, flagged): the subject is on another team than the owner (a hostile creature): Dark One's Blessing
+    SubjectHostile,
 };
 enum class WeaponIs : uint8_t { Melee, Ranged, Finesse, FinesseOrRanged };
 struct Predicate { PredicateKind kind = PredicateKind::NotCrit; int16_t a = 0, b = 0; uint32_t mask = 0; };

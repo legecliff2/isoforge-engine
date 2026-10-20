@@ -246,6 +246,8 @@ std::optional<std::string> compile_rider(const std::string& where, const Json& r
             d.expiry = uint8_t(rules5e::Expiry::Rounds);
             d.duration_rounds = uint16_t(n);
         } else if (dk == "until_end_of_target_next_turn") d.expiry = uint8_t(rules5e::Expiry::EndOfTargetNextTurn);
+        else if (dk == "until_end_of_caster_next_turn") d.expiry = uint8_t(rules5e::Expiry::EndOfCasterNextTurn);   // #183 expiry
+        else if (dk == "until_start_of_target_turn") d.expiry = uint8_t(rules5e::Expiry::StartOfTargetNextTurn);    // #183 expiry
         else return where + ": unsupported apply_condition duration";
         e.kind = RK::ApplyCondition;
         e.spell_id = d.id;
@@ -253,12 +255,28 @@ std::optional<std::string> compile_rider(const std::string& where, const Json& r
         out.push_back(e);
         return std::nullopt;
     }
-    // Every other rider kind is stored (reserved) and does not fire.
+    // heal_self / temp_hp / set_hp: fired by rules5e run_event_triggers on the event triggers effect_applies allows
+    // (heal_self / temp_hp: every event but hit / crit; set_hp: drop_to_zero); temp HP keeps the larger pool (SRD: no stacking).
     static const std::pair<const char*, RK> kinds[] = {{"heal_self", RK::HealSelf}, {"temp_hp", RK::TempHp}, {"set_hp", RK::SetHp}};
     for (const auto& [name, kind] : kinds)
         if (k == name) {
             e.kind = kind;
             e.value = int16_t(geti(r, "value", geti(r, "amount")));
+            // common@2 additive `amount_from` {ability, class, min} (Dark One's Blessing): ability modifier + that class's level
+            // (owner_level rules, like scale.per_levels), at least `min` (default 1); computed at load, integer math.
+            if (auto af = r.find("amount_from"); af != r.end()) {
+                if (kind == RK::SetHp || !af->is_object()) return where + ": amount_from needs heal_self / temp_hp and an object";
+                const auto ab = ability_of(af->value("ability", ""));
+                if (!ab) return where + ": bad amount_from ability";
+                static const char* abn[] = {"str", "dex", "con", "int", "wis", "cha"};
+                const auto abil = doc.find("abilities");
+                const int score = abil != doc.end() && abil->is_object() ? geti(*abil, abn[int(*ab)], 10) : 10;
+                const int mod = (score >= 10 ? score - 10 : score - 11) / 2;   // floor((score - 10) / 2)
+                const int mn = geti(*af, "min", 1);
+                if (mn < 0 || mn > 32767) return where + ": bad amount_from min";
+                const int lvl = af->contains("class") ? owner_level(doc, *af) : 0;
+                e.value = int16_t(std::min(32767, std::max(mn, mod + lvl)));
+            }
             if (auto d = r.find("dice"); d != r.end() && d->is_string())
                 if (auto pd = parse_dice(d->get<std::string>())) e.dice = *pd;
             if (kind == RK::Spend && r.contains("pool") && r["pool"].is_string()) e.pool = rules5e::spell_id_of(r["pool"].get<std::string>());
@@ -776,6 +794,10 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 rounds = uint16_t(n);
             } else if (dk == "until_end_of_target_next_turn") {
                 expiry = uint8_t(rules5e::Expiry::EndOfTargetNextTurn);
+            } else if (dk == "until_end_of_caster_next_turn") {   // common@2 modifier_duration; rules5e Expiry since #183
+                expiry = uint8_t(rules5e::Expiry::EndOfCasterNextTurn);
+            } else if (dk == "until_start_of_target_turn") {      // likewise (ends as the target's next turn starts)
+                expiry = uint8_t(rules5e::Expiry::StartOfTargetNextTurn);
             } else if (dk != "until_save" && (has_dur || rs.empty()) && !untracked && !(esc > 0 && !has_dur)) {
                 unsupported = true;   // an unknown duration kind (or none at all, without a repeat save)
                 return std::nullopt;

@@ -572,7 +572,8 @@
             "target_tag",
             "not_target_tag",
             "subject_is_caster",
-            "owner_creature_type"
+            "owner_creature_type",
+            "subject_hostile"
           ]
         },
         "is": {
@@ -871,7 +872,8 @@
                   "target_surprised",
                   "ally_near_target",
                   "weapon_attack",
-                  "subject_is_caster"
+                  "subject_is_caster",
+                  "subject_hostile"
                 ]
               }
             }
@@ -1067,6 +1069,29 @@
             }
           },
           "description": "save_effect / save_condition (sim #174): when the damage drops the target to 0 hit points it is stable and gains condition for duration.n rounds (600 = 1 hour, outlasts healing) and while for as long as that lasts (giant spider bite: poisoned 600 rounds, paralyzed while poisoned). Needs damage; condition and while must differ."
+        },
+        "amount_from": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ability"
+          ],
+          "properties": {
+            "ability": {
+              "$ref": "../common/v1.schema.json#/$defs/ability"
+            },
+            "class": {
+              "type": "string",
+              "minLength": 1
+            },
+            "min": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 32767,
+              "default": 1
+            }
+          },
+          "description": "heal_self / temp_hp only (additive, Engine Core loader-duration-temphp; older content unaffected): amount = the owner's `ability` modifier + its level in `class` (omitted = no level term; the class level follows scale.per_levels: classes[] entry, else level), at least `min` (default 1). Computed at load (integers). Dark One's Blessing: {\"ability\": \"cha\", \"class\": \"warlock\"}."
         }
       },
       "allOf": [
@@ -1192,6 +1217,11 @@
                 "required": [
                   "amount"
                 ]
+              },
+              {
+                "required": [
+                  "amount_from"
+                ]
               }
             ],
             "propertyNames": {
@@ -1199,6 +1229,7 @@
                 "kind",
                 "dice",
                 "amount",
+                "amount_from",
                 "when"
               ]
             }
