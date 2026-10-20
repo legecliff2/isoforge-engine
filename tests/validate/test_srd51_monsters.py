@@ -21,8 +21,7 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (all monster@4). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-DEFERRED = ["boar", "hobgoblin", "bugbear", "ghoul", "giant-spider",
-            "swarm-of-rats"]
+DEFERRED = ["ghoul", "giant-spider", "swarm-of-rats"]
 # Documented deviations: monster -> why the content differs from the raw table.
 DEVIATIONS = {
     "lizardfolk": "AC: the table lists 13 (natural armor) and 15 (with shield); the SRD line is 15 and the Spiked Shield attack needs the shield.",
@@ -63,7 +62,7 @@ class MonsterTable(unittest.TestCase):
                 if idx != "gargoyle":
                     self.assertEqual(d.get("damage_resistances", []), t["damage_resistances"])
                 self.assertEqual(d.get("condition_immunities", []), t["condition_immunities"])
-                self.assertEqual(d["proficiency_bonus"], 2)
+                self.assertEqual(d["proficiency_bonus"], 2)   # CR <= 4
 
     def test_every_attack_matches_the_table(self):
         for idx in AUTHORED:
@@ -150,6 +149,21 @@ class MonsterTable(unittest.TestCase):
         for idx, kind in (("orc", "aggressive"), ("berserker", "reckless_attack")):
             with self.subTest(monster=idx):
                 self.assertEqual([t["effect"] for t in load(idx)["traits"] if "effect" in t], [{"kind": kind}])
+        # sim #158 predicates / on_event usage
+        eff = lambda idx, tid: {t["id"]: t.get("effect") for t in load(idx)["traits"]}[tid]
+        sa = eff("bugbear", "surprise_attack")
+        self.assertEqual((sa["on"], sa["when"]), ("hit", [{"kind": "target_surprised"}]))
+        self.assertEqual(sa["effects"], [{"kind": "extra_damage", "damage": [{"dice": "2d6", "type": "same_as_weapon"}]}])
+        self.assertIsNone(eff("bugbear", "brute"))   # baked into the printed dice
+        ma = eff("hobgoblin", "martial_advantage")
+        self.assertEqual((ma["on"], ma["limit"]), ("hit", "once_per_turn"))
+        self.assertEqual(ma["when"], [{"kind": "weapon_attack"}, {"kind": "ally_near_target"}])
+        rl = eff("boar", "relentless")
+        self.assertEqual((rl["on"], rl["when"]), ("drop_to_zero", [{"kind": "damage_at_most", "amount": 7}]))
+        self.assertEqual((rl["usage"], rl["effects"]), ({"kind": "per_rest", "uses": 1, "rest": "short"}, [{"kind": "set_hp", "value": 1}]))
+        ch = eff("boar", "charge")
+        self.assertIn({"kind": "moved_at_least_ft", "ft": 20}, ch["when"])
+        self.assertEqual(ch["effects"][1], {"kind": "save_condition", "save": {"ability": "str", "dc": 11}, "apply": [{"condition": "prone"}]})
         # Sunlight Sensitivity / Keen Hearing and Smell: descriptive (no light model, no perception checks in the sim)
         self.assertNotIn("effect", {t["id"]: t for t in load("kobold")["traits"]}["sunlight_sensitivity"])
 
