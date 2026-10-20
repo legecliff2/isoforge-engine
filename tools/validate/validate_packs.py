@@ -584,6 +584,7 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         m_errs, m_warns = c4.check_metamagic(doc)
         errs += [f"{rel}: {m}" for m in m_errs]
         warns += [f"{rel}: {m}" for m in m_warns]
+        errs += [f"{rel}: {m}" for m in c4.check_slot_recovery(doc)]   # 7.2n slot_recovery (sim #148 load errors)
     return errs, warns
 
 

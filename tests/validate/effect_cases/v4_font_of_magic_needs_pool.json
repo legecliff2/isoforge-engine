@@ -29,5 +29,12 @@
     ]
   ],
   "severity": "error",
-  "expect": "font_of_magic effect is invalid: 'pool' is a required property"
+  "expect": "font_of_magic effect is invalid: 'pool' is a required property",
+  "dels": [
+    [
+      "features",
+      0,
+      "effect"
+    ]
+  ]
 }

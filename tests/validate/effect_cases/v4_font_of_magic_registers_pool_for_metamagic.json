@@ -48,5 +48,12 @@
     ]
   ],
   "severity": "warning",
-  "expect": "font_of_magic pool 'sorcery_points' is not in resources[]"
+  "expect": "font_of_magic pool 'sorcery_points' is not in resources[]",
+  "dels": [
+    [
+      "features",
+      0,
+      "effect"
+    ]
+  ]
 }

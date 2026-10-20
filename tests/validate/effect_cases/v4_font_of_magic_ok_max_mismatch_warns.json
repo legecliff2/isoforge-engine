@@ -43,5 +43,12 @@
     ]
   ],
   "severity": "warning",
-  "expect": "font_of_magic pool 'sorcery_points' max is 4, not the sorcerer level 3; the sim resets it to 3"
+  "expect": "font_of_magic pool 'sorcery_points' max is 4, not the sorcerer level 3; the sim resets it to 3",
+  "dels": [
+    [
+      "features",
+      0,
+      "effect"
+    ]
+  ]
 }
