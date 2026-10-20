@@ -1,0 +1,40 @@
+{
+  "base": "characters/wizard_level_3.json",
+  "sets": [
+    [
+      [
+        "classes"
+      ],
+      [
+        {
+          "class": "sorcerer",
+          "level": 3,
+          "hit_die": "d6"
+        }
+      ]
+    ],
+    [
+      [
+        "features",
+        1
+      ],
+      {
+        "id": "font_of_magic",
+        "name": "Font of Magic",
+        "description": "x",
+        "effect": {
+          "kind": "font_of_magic"
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "font_of_magic effect is invalid: 'pool' is a required property",
+  "dels": [
+    [
+      "features",
+      0,
+      "effect"
+    ]
+  ]
+}

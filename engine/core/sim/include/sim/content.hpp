@@ -88,6 +88,9 @@ struct Archetype {
     // Side of the footprint in tiles: footprint_of(size) for monster@3 / character@3, always 1 for
     // pre-@3 content (its size was descriptive; migration marker "size" in inert_mechanics).
     uint8_t footprint = 1;
+    // EC swarm: a monster tagged "swarm" (SRD "Swarm" trait): shares spaces both ways (Combat::occupied_except) and cannot regain
+    // HP or gain temp HP (Combatant::no_regain_hp). Squeezing through Tiny openings needs no grid change (no sub-tile openings).
+    bool swarm = false;
     std::vector<std::string> spell_ids;   // spellcasting.spells content ids (monster@3 / character@3)
     std::vector<std::string> innate_spell_ids;   // spellcasting.innate.* content ids (monster@4 / character@4); base.innate holds the rows
     // `multiattack` effect options as authored: option id + indices into base.attacks. ContentLibrary::add
@@ -100,7 +103,46 @@ struct Archetype {
         if (!ai) return std::nullopt;
         return assets::make_script_key(pack_id, *ai);
     }
+    // R-G12 transforms (VERSION_BUMP_BATCH 7.2q hand-off, sim side). Stat-block facts build_form checks: challenge.rating
+    // times 8 (1/8 -> 1, 1/4 -> 2, 1/2 -> 4, 1 -> 8; -1 = no rating, e.g. characters), speed.fly / speed.swim in feet, and
+    // the character level (sum of classes[] levels, else `level`; 0 for monsters).
+    int16_t cr_x8 = -1;
+    uint16_t fly_ft = 0, swim_ft = 0;
+    uint8_t char_level = 0;
+    // Transform features (effect kinds wild_shape / shapechanger), by feature_id. Form choice i (ActionRequest::form_archetype
+    // = i + 1) is forms[i] (Wild Shape: a beast archetype id) or shapes[i] (shapechanger: a form of the creature's own block).
+    struct FormFeature {
+        uint8_t kind = 0;                       // rules5e::FormKind: 2 Wild Shape, 3 shapechanger
+        std::vector<std::string> forms;         // Wild Shape: beast archetype ids, in content order
+        int16_t max_cr_x8 = 0;                  // Wild Shape: the druid level's max CR (x 8)
+        uint8_t level = 0;                      // Wild Shape: druid level
+        uint8_t no_fly_below = 8, no_swim_below = 4;   // Wild Shape: no fly / swim speed below these druid levels
+        struct Shape { std::string id; std::optional<CreatureSize> size; int16_t ac = -1; int16_t speed_ft = -1; };
+        std::vector<Shape> shapes;              // shapechanger forms (statistics other than these are the creature's own)
+        bool ai_prefer = false;                 // effect.ai == "prefer_beast": the built-in AI transforms (SUMMONS_TRANSFORMS 3.4)
+    };
+    std::map<uint32_t, FormFeature> form_features;
+    // Feature ids whose effect sets requires_humanoid_form (Wild Shape blocks them in a beast form, D7).
+    std::vector<uint32_t> humanoid_only_features;
     std::vector<EquipmentEntry> equipment;   // equipment[] in array order (priced materials; Combat copies it per combatant)
+};
+
+// R-G12 summons (VERSION_BUMP_BATCH 7.2r, SUMMONS_TRANSFORMS.md D1): which creatures a Summon spell may bring.
+// ActionRequest::summon_archetypes are indices into `archetypes` (content ids). Table:
+//  * Any: any 1..SummonSpec::max_count of the listed creatures (Find Familiar, Animate Dead);
+//  * CrBand (the conjure family, SRD Conjure Animals / Woodland Beings / Minor Elementals): 1 creature of CR 2 or lower, 2 of
+//    CR 1 or lower, 4 of CR 1/2 or lower or 8 of CR 1/4 or lower; times 2 / 3 / 4 at slot level 5 / 7 / 9. Every chosen
+//    creature must fit the band of the count (they may differ).
+// max_count (Director ruling on #175): absent = no cap, so the SRD multipliers apply in full (sim writes
+// SummonSpec::max_count = 255, above the largest band count 32); present = written to SummonSpec::max_count. When a present
+// cap is below a band count the table allows (CrBand: any count x multiplier at slot 1..9), add_summon_spell records one
+// deterministic line per clipped (count, slot level) in ContentLibrary::warnings(). Warnings are diagnostics only: never
+// hashed, never logged into the encounter (the cap itself reaches rules through the SpellDef, as before).
+struct SummonOptions {
+    enum class Table : uint8_t { Any = 0, CrBand = 1 };
+    std::vector<std::string> archetypes;
+    Table table = Table::Any;
+    std::optional<uint8_t> max_count;
 };
 
 // Owns archetypes and the strings rules5e::Attack::id views into (stable addresses).
@@ -126,13 +168,24 @@ public:
 
     const Archetype* find(const std::string& id) const;
     const std::map<std::string, Archetype>& all() const noexcept { return by_id_; }
+    // R-G12 summons: a Summon SpellDef (kind Summon) and its creature options. Until spell@1 has a `summon` arm (T&C) this is
+    // the way in; the def joins spells(). Errors: not a Summon def, empty or unknown archetypes, duplicate id, max_count 0.
+    std::optional<std::string> add_summon_spell(const rules5e::SpellDef& def, SummonOptions options);
+    const SummonOptions* summon_options(uint32_t spell_id) const;
+    // Deterministic load-time diagnostics (registration order; e.g. a summon max_count clipping a CR band). Not hashed.
+    const std::vector<std::string>& warnings() const { return warnings_; }
 
 private:
+    std::map<uint32_t, SummonOptions> summons_;
+    std::vector<std::string> warnings_;
     std::map<std::string, Archetype> by_id_;
     std::deque<std::string> strings_;
     std::shared_ptr<rules5e::SpellBook> spells_ = std::make_shared<rules5e::SpellBook>();
     const FeatureRegistry* features_ = &FeatureRegistry::builtin();
 };
+
+// challenge.rating ("1/8", "1/4", "1/2" or an integer / integer string) times 8; nullopt if malformed.
+std::optional<int> cr_x8_of(const assets::Json& rating);
 
 // Content damage type name ("fire") -> rules5e::DamageType; nullopt if unknown.
 std::optional<rules5e::DamageType> damage_type_from_name(const std::string& s);

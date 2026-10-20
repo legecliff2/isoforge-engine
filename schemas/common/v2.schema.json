@@ -3047,6 +3047,16 @@
               }
             }
           }
+        },
+        {
+          "description": "VERSION_BUMP_BATCH 7.2p: a gaze effect is checked by its closed arm (the inline gaze arm of $defs/effect) only.",
+          "properties": {
+            "kind": {
+              "not": {
+                "const": "gaze"
+              }
+            }
+          }
         }
       ]
     },
@@ -3391,6 +3401,57 @@
             },
             {
               "$ref": "#/$defs/shapechanger_effect"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "range_ft",
+                "save"
+              ],
+              "description": "VERSION_BUMP_BATCH 7.2p Petrifying Gaze (sim #153 content.cpp compile_gaze; basilisk, medusa). At the start of each other creature's turn, if it sees the gazer within range_ft and does not avert its eyes, it makes the save; on a failure it gains `condition` (repeat save per `repeat_save`); with `escalates`, a failed repeat save (or failing the first save by escalate_margin or more, when escalate_margin > 0) gives `escalate_to`. monster@4 / character@4 only (the sim lists it inert in a file that declares an older version). Loader defaults: condition restrained, repeat_save end_of_turn, escalates false, escalate_to petrified, escalate_margin 0 (the validator warns when condition, repeat_save or escalate_to is omitted).",
+              "properties": {
+                "kind": {
+                  "const": "gaze"
+                },
+                "range_ft": {
+                  "type": "integer",
+                  "minimum": 5,
+                  "maximum": 65530,
+                  "multipleOf": 5,
+                  "description": "Gaze range in feet (sim gaze_seen)."
+                },
+                "save": {
+                  "$ref": "#/$defs/save"
+                },
+                "condition": {
+                  "$ref": "../common/v1.schema.json#/$defs/condition",
+                  "description": "Condition on a failed save. Loader default restrained."
+                },
+                "repeat_save": {
+                  "enum": [
+                    "end_of_turn",
+                    "start_of_turn",
+                    "none"
+                  ],
+                  "description": "When the affected creature repeats the save (success ends it). Loader default end_of_turn."
+                },
+                "escalates": {
+                  "type": "boolean",
+                  "description": "A failed repeat save turns the condition into escalate_to. Default false."
+                },
+                "escalate_to": {
+                  "$ref": "../common/v1.schema.json#/$defs/condition",
+                  "description": "The escalated condition. Loader default petrified."
+                },
+                "escalate_margin": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 30,
+                  "description": "Failing the first save by this much or more gives escalate_to at once (medusa: 5). 0 = never (default)."
+                }
+              }
             }
           ]
         }

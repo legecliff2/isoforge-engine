@@ -46,6 +46,9 @@ enum class SpellEffectKind : uint8_t {
     // (another team) makes a Wisdom save; the form is ActionRequest::form_archetype through EncounterHooks::build_form; no effect
     // on a shapechanger or a creature with 0 hit points (D13: refused). Ends at 0 HP (overflow carries), death or concentration.
     Polymorph,
+    // appended (R-G12 rules PR 2): creatures appear (Conjure Animals, Find Familiar, Animate Dead); `summon`. Cast on the caster;
+    // the creatures are ActionRequest::summon_archetypes through EncounterHooks::build_summon, with ids from the encounter's counter.
+    Summon,
 };
 // R-G9 forced movement (push / pull) of an effect. mode 1 push (away from the source), 2 pull (toward it), 3 along a line
 // (Gust of Wind: sim's direction; not in R-G9's first scope). feet: exact distance, or the maximum when up_to (the caster
@@ -146,6 +149,19 @@ struct ZoneTriggerRow {
     // Spirit Guardians: the damage is evil_damage_type instead when the zone's owner is evil (Combatant::evil).
     bool has_evil_damage_type = false;
     DamageType evil_damage_type = DamageType::Necrotic;
+};
+// R-G12 rules PR 2 (SUMMONS_TRANSFORMS.md §2.2 A): how summoned creatures act. initiative: Own = each rolls (Find Familiar),
+// Group = one roll for the cast, consecutive turns ordered by id (conjure family, Animate Dead: D2). control: None = acts on
+// its own; Verbal (conjure: free command) / BonusAction (Animate Dead: the summoner's bonus action) = needs a command for its
+// turn, else it only Dodges (D4); Telepathic (familiar) = acts on its own. vanishes_at_zero_hp: disappears at 0 HP
+// (SummonEnded b = 3, no corpse) instead of dying. Concentration = the spell's.
+enum class SummonInitiative : uint8_t { Own = 0, Group = 1 };
+enum class SummonControl : uint8_t { None = 0, Verbal = 1, BonusAction = 2, Telepathic = 3 };
+struct SummonSpec {
+    uint8_t max_count = 1;   // creatures per cast (any count 1..max_count unless EncounterHooks::summon_choice_ok decides)
+    SummonInitiative initiative = SummonInitiative::Own;
+    SummonControl control = SummonControl::None;
+    bool vanishes_at_zero_hp = true;
 };
 struct ZoneSpec {
     AreaShape shape = AreaShape::None;       // Sphere, Cylinder, Cube, Line (walls)
@@ -258,6 +274,7 @@ struct SpellDef {
     TeleportSpec teleport{};
     // appended (R-G11): kind Zone (primary effect only; an extra effect of kind Zone is refused at cast).
     ZoneSpec zone{};
+    SummonSpec summon{};   // appended (R-G12 rules PR 2): kind Summon (primary effect only)
     // appended (priced materials, CONTENT_CONVENTIONS §7): components.m.item, the equipment content id that provides a priced
     // material ("" = none: a priced material without an item is unsatisfiable). rules5e never reads it (sim's components hook does).
     std::string material_item;
@@ -267,6 +284,12 @@ struct SpellDef {
     // appended (#138): EndCondition's `ends_conditions` in spell@1 JSON list order; ActionRequest::condition_choice is 1 + an
     // index into it (stable across engine versions, unlike Condition enum order). Filled by the loader; empty = mask order.
     std::vector<Condition> ends_condition_list;
+    // appended (R-G12, CONTENT_CONVENTIONS §9): kind Polymorph. polymorph_forms = spell@1 `forms[]` (beast monster content ids;
+    // ActionRequest::form_archetype = 1 + index); polymorph_max_cr8 = fixed `max_cr` as CR*8 (0xFFFF = target_level, the
+    // default: sim's build_form checks it at cast); polymorph_save = the unwilling target's save (default Wis).
+    std::vector<std::string> polymorph_forms;
+    uint16_t polymorph_max_cr8 = 0xFFFF;
+    Ability polymorph_save = Ability::Wis;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered

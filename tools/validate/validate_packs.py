@@ -340,7 +340,8 @@ UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "zone", "
                   "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition")}
 
 
-FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_damage")   # R-G15, spell_loader.cpp
+FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_damage",   # R-G15, spell_loader.cpp
+                     "teleport")   # R-G9 (sim #144)
 TIMED_BY_DURATION = ("hp_pool", "sustained_damage")   # their timer is the spell's duration in rounds
 
 
@@ -591,6 +592,11 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
             t_errs, t_warns = c4.check_sim170(doc)   # sim #170
             errs += [f"{rel}: {m}" for m in t_errs]
             warns += [f"{rel}: {m}" for m in t_warns]
+        errs += [f"{rel}: {m}" for m in c4.check_slot_recovery(doc)]   # 7.2n slot_recovery (sim #148 load errors)
+        if "gaze" in row.effect_kinds:   # 7.2p gaze (@4): loader defaults left implicit
+            g_errs, g_warns = c4.check_gaze(doc)
+            errs += [f"{rel}: {m}" for m in g_errs]
+            warns += [f"{rel}: {m}" for m in g_warns]
     return errs, warns
 
 
