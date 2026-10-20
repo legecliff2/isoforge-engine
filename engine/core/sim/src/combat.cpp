@@ -372,13 +372,14 @@ std::optional<std::string> Combat::plan_step(CombatantId mover, Vec2i to, StepPl
     const int cur = footprint_size(mover), full = natural_footprint(mover);
     const auto* me = rules5e::find(state_, mover);
     const bool squeezing = me && me->squeezing;
+    const MoveCaps caps = caps_of(mover);
     auto fits = [&](int n, bool& through) -> std::optional<std::string> {
         through = false;
         for (int dy = 0; dy < n; ++dy)
             for (int dx = 0; dx < n; ++dx) {
                 const Vec2i t{to.x + dx, to.y + dy};
                 if (t.x >= from.x && t.x < from.x + cur && t.y >= from.y && t.y < from.y + cur) continue;
-                if (!grid_.walkable(t)) return std::string("tile not walkable");
+                if (!grid_.enterable(t, caps)) return std::string("tile not walkable");   // feat/move-modes
                 if (const CombatantId o = occupant_at(t, mover)) {
                     if (!may_pass(mover, o)) return std::string("tile occupied");
                     through = true;
@@ -401,7 +402,19 @@ std::optional<std::string> Combat::plan_step(CombatantId mover, Vec2i to, StepPl
     }
     if (err) return err;
     int cost = step_cost_ft(mover, from, to, plan.n);
-    if (through || overlaps_other(mover, to, plan.n)) cost = std::max(cost, 10);   // another creature's space: difficult terrain
+    if (through || overlaps_other(mover, to, plan.n)) {
+        // Another creature's space is difficult terrain (+1 ft per ft). It does not stack with other difficult terrain, but
+        // it does stack with swimming without a swim speed (+1 ft per ft): 5 + 5 + 5 = 15 ft (SRD 5.1 Movement).
+        int swim_extra = 0;
+        if (!caps.swim && !caps.fly)
+            for (int sy = 0; sy < plan.n; ++sy)
+                for (int sx = 0; sx < plan.n; ++sx) {
+                    const Vec2i w{to.x + sx, to.y + sy};
+                    const bool inside = w.x >= from.x && w.x < from.x + cur && w.y >= from.y && w.y < from.y + cur;
+                    if (!inside && grid_.walkable(w) && grid_.water(w)) swim_extra = std::max(swim_extra, cost / 2);
+                }
+        cost = std::max(cost - swim_extra, 10) + swim_extra;
+    }
     if (plan.n < full) cost *= 2;                                                 // squeezing: +1 ft per ft
     plan.cost = cost;
     plan.ends_in_other = overlaps_other(mover, to, plan.n);
@@ -1317,7 +1330,8 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
         for (int dy = -1; dy <= 1; ++dy)
             for (int dx = -1; dx <= 1; ++dx) {
                 StepPlan sp;
-                if ((dx || dy) && !plan_step(actor, {p.x + dx, p.y + dy}, sp) && sp.cost <= state_.budget.movement_ft) {
+                if ((dx || dy) && !plan_step(actor, {p.x + dx, p.y + dy}, sp) &&
+                    step_mode(actor, p, {p.x + dx, p.y + dy}, sp.cost, sp.n) < 0xFE) {
                     r.error = "cannot end movement in another creature's space";
                     return r;
                 }
@@ -1508,7 +1522,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
             const Vec2i from = pos(actor);
             const int fp = footprint_size(actor);
             if (!grid_.footprint_walkable(to, fp) || to == from) { r.error = "bad readied move destination"; return r; }
-            const auto path = grid_.path(from, {to}, occupied_except(actor), fp);
+            const auto path = grid_.path(from, {to}, occupied_except(actor), fp, caps_of(actor));
             if (path.empty()) { r.error = "readied move destination unreachable"; return r; }
             int cost = 0;
             Vec2i prev = from;
@@ -1542,15 +1556,22 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze) {
         const Spot ss = spot(src);
         if (rect_distance(to, fp, ss.p, ss.n) < rect_distance(from, fp, ss.p, ss.n)) { r.error = "frightened: cannot move closer to the source"; return r; }
     }
-    const int cost = plan.cost;   // R-G11 zone overlays, another creature's space, squeezing
-    if (cost > state_.budget.movement_ft) { r.error = "not enough movement"; return r; }
-    // SRD: a creature can't willingly end its move in another creature's space: a step into one needs movement left for
-    // another 5 ft step (actions other than Step are refused while it overlaps, see do_rules).
-    if (plan.ends_in_other && state_.budget.movement_ft - cost < 5) { r.error = "cannot end movement in another creature's space"; return r; }
+    const int cost = plan.cost;   // R-G11 zone overlays, another creature's space, squeezing, terrain (feat/move-modes)
+    // feat/move-modes: the speed that fits the terrain (SRD "using different speeds"); the rules check the allowance.
+    const uint8_t mode = step_mode(mover, from, to, cost, fp);
+    if (mode == 0xFF) { r.error = "not enough movement"; return r; }
+    if (mode == 0xFE) { r.error = "cannot fly while prone"; return r; }
+    // SRD: a creature can't willingly end its move in another creature's space: a step into one needs movement left (in
+    // the step's speed) for another 5 ft step (actions other than Step are refused while it overlaps, see do_rules).
+    if (plan.ends_in_other && rules5e::move_allowance(state_, *rules5e::find(state_, mover), mode) - cost < 5) {
+        r.error = "cannot end movement in another creature's space";
+        return r;
+    }
     if (!aggressive_step_ok(mover, to)) { r.error = "aggressive: the Dash's movement must go toward a hostile it can see"; return r; }
     ActionRequest mv{mover, ActionKind::Move};
     mv.move_ft = int16_t(cost);
     mv.move_tiles = 1;
+    mv.move_mode = mode;
     mv.leaves_reach = leaves_reach(mover, from, to);
     mv.squeeze = plan.squeeze;
     if (!state_.zones.empty()) {   // R-G11: membership facts, sim-derived (Q2 / Q8)
@@ -1803,6 +1824,7 @@ uint64_t Combat::log_hash() const {
         // 0xBA Font of Magic Flexible Casting (rules #147, VERSION_BUMP_BATCH 7.2o): folded only when flexible != 0.
         if (q.flexible != 0) { h.byte(0xBA); h.byte(q.flexible); h.byte(q.flexible_level); }
         if (q.squeeze != 0) { h.byte(0xC2); h.byte(q.squeeze); }   // SRD Squeezing on a Move (feat/size-space)
+        if (q.move_mode != 0) { h.byte(0xC3); h.byte(q.move_mode); }   // feat/move-modes: the speed a Move used
         if (q.avert_gaze) { h.byte(0xBB); h.byte(1); }   // Petrifying Gaze averting the eyes: folded only when set (gaze_seen is derived, not folded)
         // Small leftovers (rules #111): bit0 haste_action, bit1 reckless, bit2 aggressive; folded only when some bit is set.
         if (const uint8_t lo = uint8_t((q.haste_action ? 1 : 0) | (q.reckless ? 2 : 0) | (q.aggressive ? 4 : 0)); lo != 0) {
@@ -1964,9 +1986,48 @@ std::vector<Vec2i> Combat::legal_zone_tiles(CombatantId actor, const rules5e::Sp
     return out;
 }
 
+MoveCaps Combat::caps_of(CombatantId id) const {
+    MoveCaps m;
+    if (const auto* c = rules5e::find(state_, id)) { m.fly = c->fly_ft > 0; m.swim = c->swim_ft > 0; m.climb = c->climb_ft > 0; }
+    return m;
+}
+
+// feat/move-modes: the move mode for one step (0 walk, 1 fly, 2 swim, 3 climb), 0xFF when no fitting speed has `cost`
+// feet left, 0xFE when only flight fits and the mover is prone. The terrain picks the speed: open air needs flight; climb
+// terrain uses a climb speed, else flight, else walking (extra cost already priced); water likewise with a swim speed.
+// On plain ground the walking speed, or flight when walking has too little left.
+uint8_t Combat::step_mode(CombatantId mover, Vec2i from, Vec2i to, int cost, int fp_in) const {
+    const auto* c = rules5e::find(state_, mover);
+    if (!c) return 0xFF;
+    const int fp = fp_in > 0 ? fp_in : footprint_size(mover);
+    bool air = false, climb = false, water = false;
+    for (int dy = 0; dy < fp; ++dy)
+        for (int dx = 0; dx < fp; ++dx) {
+            const Vec2i t{to.x + dx, to.y + dy};
+            if (fp > 1 && t.x >= from.x && t.x < from.x + fp && t.y >= from.y && t.y < from.y + fp) continue;
+            if (grid_.open_air(t)) air = true;
+            else if (!grid_.walkable(t) && grid_.climbable(t)) climb = true;
+            else if (grid_.water(t)) water = true;
+        }
+    std::vector<uint8_t> order;
+    if (air) order = {1};
+    else if (climb) order = {3, 1, 0};
+    else if (water) order = {2, 1, 0};
+    else order = {0, 1};
+    const bool prone = c->has(rules5e::Condition::Prone);
+    bool fly_blocked = false;
+    for (uint8_t m : order) {
+        if (m == 1 && prone) { fly_blocked = true; continue; }
+        const int allow = rules5e::move_allowance(state_, *c, m);
+        if (allow < 0) continue;
+        if (cost <= allow) return m;   // crawling / dragging multipliers: the rules' check (as before)
+    }
+    return fly_blocked && air ? 0xFE : 0xFF;
+}
+
 int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to) const { return step_cost_ft(mover, from, to, footprint_size(mover)); }
 int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int fp) const {
-    int cost = grid_.move_cost_ft(from, to, fp);
+    int cost = grid_.move_cost_ft(from, to, fp, caps_of(mover));   // feat/move-modes: water / climb / open air
     if (state_.zones.empty() || !spells_) return cost;
     bool difficult = false, halve = false;
     for (const auto& z : state_.zones) {
@@ -2170,6 +2231,7 @@ rules5e::FormStats stats_of(const rules5e::Combatant& c) {
     f.triggers = c.triggers;
     f.reactions = c.reactions;
     f.bonus_attacks = c.bonus_attacks;
+    f.fly_ft = c.fly_ft; f.swim_ft = c.swim_ft; f.climb_ft = c.climb_ft; f.hover = c.hover;   // feat/move-modes
     return f;
 }
 }  // namespace
