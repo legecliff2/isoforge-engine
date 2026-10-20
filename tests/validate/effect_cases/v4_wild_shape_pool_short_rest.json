@@ -1,0 +1,64 @@
+{
+  "base": "characters/cleric_level_5.json",
+  "sets": [
+    [
+      [
+        "classes",
+        0,
+        "class"
+      ],
+      "druid"
+    ],
+    [
+      [
+        "resources"
+      ],
+      [
+        {
+          "id": "wild_shape",
+          "max": 2,
+          "recharge": "short_rest"
+        }
+      ]
+    ],
+    [
+      [
+        "features",
+        1
+      ],
+      {
+        "id": "wild_shape",
+        "name": "Wild Shape",
+        "description": "x",
+        "effect": {
+          "kind": "wild_shape",
+          "pool": "wild_shape",
+          "forms": [
+            "srd51.monster.wolf",
+            "srd51.monster.black_bear"
+          ],
+          "max_cr_by_level": [
+            {
+              "level": 2,
+              "max_cr": "1/4"
+            },
+            {
+              "level": 4,
+              "max_cr": "1/2"
+            }
+          ]
+        }
+      }
+    ],
+    [
+      [
+        "resources",
+        0,
+        "recharge"
+      ],
+      "long_rest"
+    ]
+  ],
+  "severity": "error",
+  "expect": "wild_shape: pool 'wild_shape' must recharge on short_rest"
+}

@@ -2844,6 +2844,19 @@
               }
             }
           }
+        },
+        {
+          "description": "R-G12 (7.2q) closed kinds: wild_shape / shapechanger are validated only by their own arms (not the open v1 effect). Kept apart from the frozen 3 -> 4 list above.",
+          "properties": {
+            "kind": {
+              "not": {
+                "enum": [
+                  "wild_shape",
+                  "shapechanger"
+                ]
+              }
+            }
+          }
         }
       ]
     },
@@ -2940,6 +2953,227 @@
         }
       }
     },
+    "challenge_rating": {
+      "enum": [
+        "0",
+        "1/8",
+        "1/4",
+        "1/2",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
+        "17",
+        "18",
+        "19",
+        "20",
+        "21",
+        "22",
+        "23",
+        "24",
+        "25",
+        "26",
+        "27",
+        "28",
+        "29",
+        "30"
+      ],
+      "description": "A monster@4 challenge.rating string (no floats). Compared as CR*8 (0, 1/8 = 1, 1/4 = 2, 1/2 = 4, n = 8n)."
+    },
+    "transform_forms": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 255,
+      "items": {
+        "$ref": "../common/v1.schema.json#/$defs/content_id"
+      },
+      "description": "R-G12 (7.2q) beast forms: monster@N content ids resolved across the pack set (dependency packs included); each must be a beast. form_archetype = 1 + index into this list (u8, so at most 255). A repeat is a validator error (not uniqueItems, so the message names it)."
+    },
+    "wild_shape_level_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "level",
+        "max_cr"
+      ],
+      "propertyNames": {
+        "enum": [
+          "level",
+          "max_cr"
+        ]
+      },
+      "properties": {
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Class level from which this row applies."
+        },
+        "max_cr": {
+          "$ref": "#/$defs/challenge_rating"
+        }
+      }
+    },
+    "wild_shape_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "pool",
+        "forms",
+        "max_cr_by_level"
+      ],
+      "propertyNames": {
+        "enum": [
+          "kind",
+          "pool",
+          "cost",
+          "class",
+          "forms",
+          "max_cr_by_level",
+          "no_fly_below",
+          "no_swim_below"
+        ]
+      },
+      "description": "R-G12 (VERSION_BUMP_BATCH 7.2q) Druid Wild Shape, a character feature. Loader: Engine Core build_form / feature_spec (FeatureSpec form 2). Reserved until that loader lands (the validator's unknown-kind warning). No duration key: the engine computes it (600 * (class level / 2) rounds).",
+      "properties": {
+        "kind": {
+          "const": "wild_shape"
+        },
+        "pool": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id",
+          "description": "resources[].id of the uses pool; must recharge on short_rest (max 2 expected)."
+        },
+        "cost": {
+          "$ref": "../common/v1.schema.json#/$defs/effect_cost",
+          "description": "Default action."
+        },
+        "class": {
+          "$ref": "../common/v1.schema.json#/$defs/class_name",
+          "description": "Class whose level drives max_cr_by_level and the duration. Default druid."
+        },
+        "forms": {
+          "$ref": "#/$defs/transform_forms"
+        },
+        "max_cr_by_level": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/wild_shape_level_row"
+          },
+          "description": "Highest beast CR per class level; levels strictly ascending. The row with the largest level <= the class level applies."
+        },
+        "no_fly_below": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "description": "No form with a fly speed below this class level. Default 8."
+        },
+        "no_swim_below": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "description": "No form with a swim speed below this class level. Default 4."
+        }
+      }
+    },
+    "shapechanger_form": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ],
+      "propertyNames": {
+        "enum": [
+          "id",
+          "name",
+          "size",
+          "armor_class",
+          "speed",
+          "actions",
+          "creature_type"
+        ]
+      },
+      "properties": {
+        "id": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "size": {
+          "$ref": "../common/v1.schema.json#/$defs/size"
+        },
+        "armor_class": {
+          "$ref": "../common/v1.schema.json#/$defs/armor_class"
+        },
+        "speed": {
+          "$ref": "../common/v1.schema.json#/$defs/speed",
+          "description": "Replaces the whole speed object (not merged)."
+        },
+        "actions": {
+          "type": "array",
+          "maxItems": 255,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/local_id"
+          },
+          "description": "ids of this document's own actions[] usable in the form; omitted = all; [] = none (warning)."
+        },
+        "creature_type": {
+          "$ref": "../common/v1.schema.json#/$defs/creature_type"
+        }
+      }
+    },
+    "shapechanger_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "forms"
+      ],
+      "propertyNames": {
+        "enum": [
+          "kind",
+          "cost",
+          "forms"
+        ]
+      },
+      "description": "R-G12 (VERSION_BUMP_BATCH 7.2q) shapechanger trait (monster or character): the forms listed are merged over the creature's own block, one HP pool. Needs the #141 creature fact shapechanger: true. Loader: Engine Core build_form (FeatureSpec form 3). Reserved until that loader lands.",
+      "properties": {
+        "kind": {
+          "const": "shapechanger"
+        },
+        "cost": {
+          "$ref": "../common/v1.schema.json#/$defs/effect_cost",
+          "description": "Default action."
+        },
+        "forms": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 255,
+          "items": {
+            "$ref": "#/$defs/shapechanger_form"
+          },
+          "description": "form_archetype = 1 + index into this list."
+        }
+      }
+    },
     "effect": {
       "anyOf": [
         {
@@ -2961,6 +3195,12 @@
             },
             {
               "$ref": "#/$defs/heal_pool_effect"
+            },
+            {
+              "$ref": "#/$defs/wild_shape_effect"
+            },
+            {
+              "$ref": "#/$defs/shapechanger_effect"
             }
           ]
         }
@@ -2985,6 +3225,10 @@
         },
         "effect": {
           "$ref": "#/$defs/effect"
+        },
+        "requires_humanoid_form": {
+          "type": "boolean",
+          "description": "R-G12 (7.2q), default false: the feature is not usable while in a Wild Shape form (rules UseFeature refuses: 'feature not usable in this form'). Error on the wild_shape feature itself; warning without a wild_shape feature in the document."
         }
       }
     },
