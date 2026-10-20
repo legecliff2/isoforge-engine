@@ -86,6 +86,9 @@ SPELL_EFFECT_R120 = {"hp_pool": (S({"kind", "dice", "condition"}), S({"ends_on_d
                      "end_condition": (S({"kind", "conditions"}), S({"description"})),
                      "delayed_damage": (S({"kind", "damage", "expiry"}), S({"applies_to", "description"})),
                      "sustained_damage": (S({"kind", "damage"}), S({"description"}))}
+# R-G9 spell@1 arms (sim #144, spell_loader.cpp forced_move / teleport): same closed if/then pattern.
+SPELL_EFFECT_RG9 = {"forced_move": (S({"kind", "feet"}), S({"mode", "up_to", "max_size", "provokes_oa", "applies_to", "description"})),
+                    "teleport": (S({"kind", "max_feet"}), S({"needs_sight", "description"}))}
 _ICOMMON = {"source", "cost_cp", "weight_oz", "description"}
 _IBASE = S({"$schema", "id", "name", "category"})
 ITEM = {("weapon",): (_IBASE | {"weapon_class"}, S(_ICOMMON | {"reach", "range", "damage", "versatile_damage", "properties", "qualifiers", "magic_bonus", "on_hit"})),
@@ -190,6 +193,20 @@ class SpellEffectArmsR120(unittest.TestCase):
         for k, then in found.items():
             with self.subTest(k):
                 req, opt = SPELL_EFFECT_R120[k]
+                self.assertIs(then["additionalProperties"], False)
+                self.assertEqual(set(then["propertyNames"]["enum"]), set(req) | set(opt))
+                self.assertEqual(set(then["properties"]), set(req) | set(opt))
+                self.assertEqual(set(then["required"]), set(req))
+                self.assertIn(k, eff["properties"]["kind"]["enum"])
+
+    def test_rg9_arms_are_closed_allow_lists(self):
+        eff = load("spell/v1.schema.json")["$defs"]["effect"]
+        found = {sub["if"]["properties"]["kind"]["const"]: sub["then"] for sub in eff["allOf"]
+                 if sub["if"]["properties"]["kind"]["const"] in SPELL_EFFECT_RG9}
+        self.assertEqual(set(found), set(SPELL_EFFECT_RG9))
+        for k, then in found.items():
+            with self.subTest(k):
+                req, opt = SPELL_EFFECT_RG9[k]
                 self.assertIs(then["additionalProperties"], False)
                 self.assertEqual(set(then["propertyNames"]["enum"]), set(req) | set(opt))
                 self.assertEqual(set(then["properties"]), set(req) | set(opt))

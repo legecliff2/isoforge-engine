@@ -337,7 +337,8 @@ UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "zone", "
                   "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition")}
 
 
-FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_damage")   # R-G15, spell_loader.cpp
+FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_damage",   # R-G15, spell_loader.cpp
+                     "teleport")   # R-G9 (sim #144)
 TIMED_BY_DURATION = ("hp_pool", "sustained_damage")   # their timer is the spell's duration in rounds
 
 

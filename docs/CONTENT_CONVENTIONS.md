@@ -351,6 +351,24 @@ Shapes the #120 description gave that the loader does not use (loader wins): `hp
 Versioning: additive spell@1 kinds and a new `$defs`; no tag change, no migration, no api_level gate (the old schema rejected
 these kinds, so no existing file carries them; `tests/compat` and both shipped packs validate unchanged).
 
+### 6.1 R-G9 spell@1 kinds `forced_move` and `teleport` (sim #144)
+
+Compiled by `rules5e_content::spell_from_json` (`spell_loader.cpp`, R-G9 / VERSION_BUMP_BATCH 7.2k; sim wiring #144). Schema: two
+closed arms of spell@1 `$defs/effect` (propertyNames allow-lists, `tests/validate/test_union_arms.py` `SPELL_EFFECT_RG9`).
+Fixtures: `tests/validate/fixtures/spell_forced/spells/` (Misty Step, a save + push test spell; test namespace).
+
+| kind | keys (required **bold**) | compiles to | loader errors |
+|---|---|---|---|
+| `forced_move` | **`feet`** integer, positive multiple of 5 (5..65530); `mode` `push` (default) \| `pull`; `up_to` boolean (default false); `max_size` tiny..gargantuan (omitted = any); `provokes_oa` `false` only; `applies_to` (effects after the first) | `ForcedMove` (`SpellDef::forced` / `SpellEffect::forced`): the sim walks each target tile by tile, farthest first, stopping at the last free tile | `effect mode must be push or pull` (`line`, Gust of Wind, is data only in R-G9), `effect feet must be a positive multiple of 5`, `effect max_size invalid`, `effect provokes_oa: true is not supported (R-G9: forced moves never provoke)` |
+| `teleport` | **`max_feet`** integer, positive multiple of 5; `needs_sight` boolean (default true) | `Teleport` (`SpellDef::teleport`): the caster moves to the request's destination, re-validated by the sim (Misty Step) | `effect max_feet must be a positive multiple of 5`; `effects[N]: teleport is only allowed as the first effect` |
+
+Both arms also take `description`. Cross-field rules (validator `check_spell`, loader wording): `teleport` is first-effect only
+(`FIRST_EFFECT_ONLY`); `targets` is not allowed on either (`targets not allowed on a forced_move effect`); `scaling.upcast` has no
+key for them. Shape errors (feet, mode, max_size, provokes_oa) are the schema's, so the negative cases
+(`tests/validate/cases/forced_*`, `teleport_*`) expect the schema wording, which does not start with a loader-compared prefix.
+
+Versioning: additive spell@1 kinds; no tag change, no migration (the old schema rejected these kinds).
+
 ## 7. Priced material components (Director ruling; contract agreed with Engine Core)
 
 Content keys (all integers; additive, no tag change, no migration):
