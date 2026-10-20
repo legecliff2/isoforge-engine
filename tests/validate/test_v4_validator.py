@@ -883,3 +883,23 @@ class ExtraAttack(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BardHooks72za(unittest.TestCase):
+    """7.2za: the Bardic Inspiration / Jack of All Trades shapes from the hand-off pass check_bard_hooks."""
+    GD = {"kind": "grant_die", "die": "1d6", "class": "bard", "scale": [{"level": 5, "die": "1d8"}, {"level": 10, "die": "1d10"},
+          {"level": 15, "die": "1d12"}], "range_ft": 60, "duration": {"kind": "rounds", "n": 100},
+          "applies_to": ["attack", "save", "check"], "cost": "bonus_action", "usage": {"kind": "pool", "pool": "bardic_inspiration"}}
+    JACK = {"kind": "half_proficiency", "on": ["checks", "initiative"]}
+
+    def doc(self, schema="character@4"):
+        return {"$schema": schema, "id": "t.bard", "features": [{"id": "bi", "effect": self.GD}, {"id": "jack", "effect": self.JACK}]}
+
+    def test_valid_shapes(self):
+        self.assertEqual(checks_v4.check_bard_hooks(self.doc()), [])
+
+    def test_monster_and_order(self):
+        self.assertTrue(any("not valid on monsters" in e for e in checks_v4.check_bard_hooks(self.doc("monster@4"))))
+        d = self.doc()
+        d["features"][0]["effect"] = dict(self.GD, scale=[{"level": 5, "die": "1d8"}, {"level": 5, "die": "1d10"}])
+        self.assertTrue(any("must ascend" in e for e in checks_v4.check_bard_hooks(d)))
