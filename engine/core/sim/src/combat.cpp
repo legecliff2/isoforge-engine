@@ -1099,7 +1099,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
         bool dashed = false;
         for (const auto& e : evs) dashed = dashed || (e.kind == rules5e::EventKind::Dashed && e.reaction_depth == 0 && e.actor == q.actor);
         if (q.kind == ActionKind::Dash && q.aggressive && dashed && actor)
-            aggressive_ = AggressiveDash{now, q.actor, std::max(0, int(state_.budget.movement_ft) - rules5e::effective_speed(*actor))};
+            aggressive_ = AggressiveDash{now, q.actor, std::max(0, int(state_.budget.movement_ft) - rules5e::modified_speed(state_, *actor))};   // 7.2u: Dash adds modified_speed
         else if (aggressive_ && q.kind == ActionKind::Move && q.actor == aggressive_->actor)
             aggressive_->free_ft = std::max(0, aggressive_->free_ft - int(q.move_ft));
     }
@@ -1514,7 +1514,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
             int cost = 0;
             Vec2i prev = from;
             for (Vec2i p : path) { cost += step_cost_ft(actor, prev, p); prev = p; }
-            if (cost > int(a->speed_ft)) { r.error = "readied move longer than speed"; return r; }
+            if (cost > rules5e::modified_speed(state_, *a)) { r.error = "readied move longer than speed"; return r; }   // 7.2u: effective speed
             req.move_ft = int16_t(cost);
             req.move_tiles = uint8_t(std::min<std::size_t>(path.size(), 255));   // path length (rules counts it only when it fires on the readier's own turn)
             req.leaves_reach = true;   // rules polls; sim's in_range decides who is actually left
