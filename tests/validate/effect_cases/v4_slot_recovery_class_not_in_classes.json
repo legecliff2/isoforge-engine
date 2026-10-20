@@ -17,5 +17,5 @@
     ]
   ],
   "severity": "error",
-  "expect": "slot_recovery.class 'druid' matches no classes[] entry"
+  "expect": "arcane_recovery: slot_recovery class 'druid' is not in classes[]"
 }

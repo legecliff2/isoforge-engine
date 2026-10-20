@@ -157,18 +157,36 @@ caller with `ActionRequest::reckless` on the turn's first attack (advantage on S
 against the creature have advantage until its next turn). The built-in AI never declares it. A second declaration adds nothing
 (the validator warns).
 
-These six are open kinds (live at `@3` and `@4`); see `docs/CONTENT_CONVENTIONS.md` section 3.
+### `metamagic` (static, R-G14)
 
-### `slot_recovery` (reserved, VERSION_BUMP_BATCH 7.2n)
+Fields: `options` (required, non-empty array of `careful`, `distant`, `empowered`, `extended`, `heightened`, `quickened`,
+`subtle`, `twinned`) and `pool` (required, the `resources[].id` of the sorcery-point pool). Sorcerer Metamagic (sim #143: rules5e
+`Combatant::metamagic_known` / `sorcery_pool`): the caller picks at most one known option per cast with
+`ActionRequest::metamagic` and its sorcery-point cost is spent from `pool` (Distant also widens an aimed area's range). `pool` must
+be a limited `resources[]` pool of the document (load error otherwise, so only `@4` documents can declare it). Several declarations
+add options and must name the same pool (load error otherwise); a repeated option adds nothing (the validator warns).
 
-**Reserved: no loader reads it yet.** Arcane Recovery (wizard) and Natural Recovery (druid, Circle of the Land). The schema arm
-and the validator checks are live; the kind is in no `TAG_TABLE` row, so instead of the unknown-kind warning the validator warns
-`effect kind 'slot_recovery' is reserved: no loader reads it yet ...` on every use (the pattern of chunk `surprise`,
-`docs/CONTENT_CONVENTIONS.md` section 8). Contract for the loader: `docs/CONTENT_CONVENTIONS.md` section 9.
+Example: `{ "kind": "metamagic", "options": ["quickened", "twinned"], "pool": "sorcery_points" }`
+
+### `sculpt_spells` (static, R-G14)
+
+No fields. Evocation Wizard Sculpt Spells (sim #143: rules5e `Combatant::sculpt_spells`): when the creature casts an evocation
+spell (spell@1 `school: "evocation"`), the caller may name creatures spared from its area with `ActionRequest::spared`. The
+built-in AI does not. A second declaration, or any field, adds nothing (the validator warns).
+
+Example: `{ "kind": "sculpt_spells" }`
+
+These eight are open kinds (live at `@3` and `@4`); see `docs/CONTENT_CONVENTIONS.md` section 3.
+
+### `slot_recovery` (open kind, VERSION_BUMP_BATCH 7.2n, sim #148)
+
+Arcane Recovery (wizard) and Natural Recovery (druid, Circle of the Land). Loaded by sim `features.cpp` `apply_slot_recovery`
+(#148) into a rules5e `SlotRecoverySpec`; an open kind (live at `@3` and `@4`, `checks_v4.OPEN_EFFECT_KINDS_RG7`). The
+validator mirrors the loader's errors: see `docs/CONTENT_CONVENTIONS.md` section 9.
 
 | field | type | meaning |
 |---|---|---|
-| `class` | `"wizard"` \| `"druid"` (required) | whose level sets the budget; must name a `classes[]` entry (validator error otherwise: the level would be 0 and `apply_slot_recovery` refuses `NoFeature`) |
+| `class` | `"wizard"` \| `"druid"` (required) | whose level sets the budget; must name a `classes[]` entry (load error `slot_recovery class '...' is not in classes[]`); one declaration per class |
 | `max_slot_level` | integer 1..9, default 5 | no recovered slot above this level (SRD: none 6th or higher) |
 | `uses` | integer 1..255, default 1 | uses per long rest; a short rest does not reset it ("once per day") |
 
@@ -227,7 +245,7 @@ See `docs/CONTENT_CONVENTIONS.md` for the timed-modifier properties the sim comp
 | `end_condition` | EndCondition | yes | `conditions[]` |
 | `delayed_damage` | DelayedDamage | no (Acid Arrow rider) | `damage`, `expiry` |
 | `sustained_damage` | SustainedDamage | yes | `damage`; needs a rounds / minutes / hours duration; no `expiry` |
-| `zone` | Zone (`SpellDef::zone`, `ZoneSpec`) | yes (never an extra effect) | `zone {shape, size_ft, height_ft, anchor, flags[], move, chooses_excluded, needs_conscious_owner, triggers[]}`; needs a lasting duration (the zone's expiry timer); parsed by the loader since R-G11 rules PR 2 (#122); `docs/CONTENT_CONVENTIONS.md` section 4 |
+| `zone` | Zone (`SpellDef::zone`, `ZoneSpec`) | yes (never an extra effect) | `zone {shape (sphere, cylinder, cube, line), size_ft, height_ft, length_ft, anchor, flags[], move, chooses_excluded, needs_conscious_owner, upcast_size_ft, ring_size_ft, sided, side_ft, aura_modifier, aura_bonus_ability, aura_immunity[], aura_allies_only, triggers[]}` (rows add `region`, `loses_action`, `auto_success_damage[]` / `_conditions[]` / `_no_breath`, `shapechanger_disadvantage`, `evil_damage_type`; rules PR 2 keys, section 4.6); needs a lasting duration (the zone's expiry timer); parsed by the loader since R-G11 rules PR 2 (#122); `docs/CONTENT_CONVENTIONS.md` section 4 |
 
 Details and loader messages: `docs/CONTENT_CONVENTIONS.md` section 4 (R-G11 zones), section 6 (R-G15 kinds, sim #120) and section 7 (priced material
 components, character@4 `equipment[].value_gp`).

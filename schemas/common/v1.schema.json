@@ -152,7 +152,7 @@
       "required": ["kind"],
       "description": "Machine-readable feature effect, tagged by kind (contract: docs/CONTENT_EFFECTS.md). The engine FeatureRegistry maps kind to a hook. Unknown kinds are allowed: the validator warns and the engine reports them as unsupported and ignores them. Known kinds have their fields checked below. The object stays open (no additionalProperties: false), so v1 remains append-only and extra fields are ignored by the engine.",
       "properties": {
-        "kind": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "Hook id. Known: damage_bonus, bonus_action_grant, self_heal, damage_mitigation, magic_weapons, multiattack, reroll_ones, great_weapon_fighting, evasion, pack_tactics, aggressive, reckless_attack. Reserved (no loader yet, validator warns): slot_recovery." },
+        "kind": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "Hook id. Known: damage_bonus, bonus_action_grant, self_heal, damage_mitigation, magic_weapons, multiattack, reroll_ones, great_weapon_fighting, evasion, pack_tactics, aggressive, reckless_attack, metamagic, sculpt_spells, slot_recovery." },
         "cost": { "$ref": "#/$defs/effect_cost" }
       },
       "allOf": [
@@ -232,8 +232,19 @@
           "then": { "description": "Static (T&C-G7, SRD orc Aggressive): as a bonus action the creature can Dash, and the movement past its own speed must take it toward a hostile creature it can see. No parameters; a second declaration adds nothing." } },
         { "if": { "properties": { "kind": { "const": "reckless_attack" } }, "required": ["kind"] },
           "then": { "description": "Static (T&C-G7, Barbarian Reckless Attack / SRD berserker Reckless): on its first attack of a turn the creature can choose advantage on Strength melee weapon attack rolls that turn; attack rolls against it then have advantage until its next turn. No parameters; a second declaration adds nothing." } },
+        { "if": { "properties": { "kind": { "const": "metamagic" } }, "required": ["kind"] },
+          "then": {
+            "description": "Static (R-G14, Sorcerer Metamagic; sim #143): the creature knows the listed Metamagic options and pays them in sorcery points from the resources[] pool `pool`, which must be a limited pool of this document (load error otherwise). Several declarations add options and must name the same pool. The caller picks one option per cast (ActionRequest::metamagic).",
+            "required": ["options", "pool"],
+            "properties": {
+              "options": { "type": "array", "minItems": 1, "items": { "enum": ["careful", "distant", "empowered", "extended", "heightened", "quickened", "subtle", "twinned"] },
+                           "description": "Known Metamagic options (rules5e kMeta* bits). A repeat adds nothing (validator warning)." },
+              "pool": { "type": "string", "description": "resources[].id of the sorcery-point pool (a limited pool: not unlimited at the document's level)." }
+            } } },
+        { "if": { "properties": { "kind": { "const": "sculpt_spells" } }, "required": ["kind"] },
+          "then": { "description": "Static (R-G14, Evocation Wizard Sculpt Spells; sim #143): when the creature casts an evocation spell (spell@1 school evocation) the caller may name creatures spared from its area (ActionRequest::spared). No parameters; a second declaration adds nothing." } },
         { "if": { "properties": { "kind": { "const": "slot_recovery" } }, "required": ["kind"] },
-          "then": { "description": "RESERVED (VERSION_BUMP_BATCH 7.2n, docs/CONTENT_EFFECTS.md): Arcane Recovery (wizard) / Natural Recovery (druid, Circle of the Land). After a short rest the creature may recover expended spell slots with a combined level of at most ceil(class level / 2) (rules5e slot_recovery_budget), none above max_slot_level, `uses` times per long rest (short rests do not reset it). The class level is the level of the classes[] entry named by `class` (the validator requires one). The slots to recover are the caller's choice at short-rest time. No loader reads this kind yet (Engine Core: sim/content.cpp -> rules5e SlotRecoverySpec); the validator warns that it has no effect until that loader lands.",
+          "then": { "description": "Static (VERSION_BUMP_BATCH 7.2n, sim #148 features.cpp apply_slot_recovery): Arcane Recovery (wizard) / Natural Recovery (druid, Circle of the Land). After a short rest the creature may recover expended spell slots with a combined level of at most ceil(class level / 2) (rules5e slot_recovery_budget), none above max_slot_level, `uses` times per long rest (short rests do not reset it). The class level is the level of the classes[] entry named by `class` (the validator requires one). The slots to recover are the caller's choice at short-rest time. A second declaration for the same class is a load error.",
             "required": ["class"],
             "properties": {
               "class": { "enum": ["wizard", "druid"], "description": "Whose level sets the budget: wizard (Arcane Recovery) or druid (Natural Recovery). Must name a classes[] entry." },

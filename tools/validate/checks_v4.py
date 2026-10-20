@@ -27,9 +27,15 @@ OPEN_EFFECT_KINDS_RG7 = frozenset({"reroll_ones", "great_weapon_fighting", "evas
                                    # T&C-G7 (sim #127): SRD Pack Tactics; no fields, a duplicate adds nothing (warned)
                                    "pack_tactics",
                                    # T&C-G7 (sim #129): orc Aggressive, Reckless Attack / berserker Reckless; no fields
-                                   "aggressive", "reckless_attack"})
+                                   "aggressive", "reckless_attack",
+                                   # R-G14 (sim #143): Sorcerer Metamagic {options, pool}, Evocation Sculpt Spells {}
+                                   "metamagic", "sculpt_spells",
+                                   # 7.2n (sim #148): Arcane Recovery / Natural Recovery {class, max_slot_level, uses}
+                                   "slot_recovery"})
 # Open kinds whose second declaration in one document adds nothing (the sim dedupes): the validator warns.
-NO_STACK_EFFECT_KINDS = frozenset({"pack_tactics", "aggressive", "reckless_attack"})
+NO_STACK_EFFECT_KINDS = frozenset({"pack_tactics", "aggressive", "reckless_attack", "sculpt_spells"})
+# R-G14 (sim #143, features.cpp apply_metamagic kNames): the metamagic options, in rules5e kMeta* bit order.
+METAMAGIC_OPTIONS = ("careful", "distant", "empowered", "extended", "heightened", "quickened", "subtle", "twinned")
 # The kinds @4 adds; also the frozen literal list of the 3 -> 4 migration (VERSION_BUMP_BATCH 8.2 step 4).
 # save_effect and reaction are action / reaction kinds, not trait effect kinds: they exist in the list so
 # a stamped one validates (effect_inert) but a native one is a schema error.
@@ -39,16 +45,8 @@ NATIVE_EFFECT_KINDS_AT_4 = frozenset({"on_event", "apply_modifier", "grant_actio
 # common@1 kinds (no schema arm, not in the frozen 3 -> 4 list): known at @4, their fields are checked by
 # check_static_kinds below, mirroring the sim's load errors (sim/src/features.cpp apply_attack_bonus / _crit_range / _ac_bonus).
 STATIC_EFFECT_KINDS_R_G5 = frozenset({"attack_bonus", "crit_range", "ac_bonus"})
-# Reserved feature kinds (VERSION_BUMP_BATCH 7.2n): the rules side exists and common@1 $defs/effect has the arm, but no sim
-# loader reads them yet. Like chunk `surprise` (R-G16), they are not in any row's effect_kinds; the validator checks the
-# shape (schema arm + check_reserved_kind) as for a live kind and replaces the generic unknown-kind warning with a
-# "reserved" one. When Engine Core's loader lands, move the kind into a row set and drop the warning.
+# 7.2n (sim #148, features.cpp apply_slot_recovery): the classes slot_recovery accepts.
 SLOT_RECOVERY_CLASSES = frozenset({"wizard", "druid"})
-RESERVED_EFFECT_KINDS = {
-    "slot_recovery": ("effect kind 'slot_recovery' is reserved: no loader reads it yet (VERSION_BUMP_BATCH 7.2n; Engine Core "
-                      "wires it in sim/content.cpp to rules5e SlotRecoverySpec / apply_slot_recovery), so it has no effect "
-                      "until that loader lands"),
-}
 EFFECT_COST_V1 = frozenset({"action", "bonus_action"})            # reaction is reserved up to @3
 EFFECT_COST_V2 = frozenset({"action", "bonus_action", "reaction"})  # grant_action additionally accepts "free"
 
@@ -59,7 +57,8 @@ _SB_KEYS = frozenset({"$schema", "id", "name", "source", "size", "type", "tags",
 _MONSTER_KEYS = frozenset({"challenge", "behavior", "legendary_actions", "spellcasting"})
 _CHARACTER_KEYS = frozenset({"race", "background", "level", "classes", "xp", "features", "equipment", "behavior",
                              "spellcasting"})
-_AT4_KEYS = frozenset({"resources", "forward_compat", "inert_mechanics"})
+_AT4_KEYS = frozenset({"resources", "forward_compat", "inert_mechanics",
+                       "no_breath", "shapechanger", "evil"})   # R-G11 creature facts (reserved, CONTENT_CONVENTIONS 4.6)
 
 
 @dataclass(frozen=True)
@@ -292,6 +291,8 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     for path, _owner, eff in live_effects(doc):
         if eff.get("kind") == "heal_pool":
             need_pool(path, eff.get("pool"), None)
+        if eff.get("kind") == "metamagic":
+            referenced.add(eff.get("pool"))   # sorcery points: spent by the sim per option (check 12); resolved by check_metamagic
     # check 3: spell references
     spell_refs: list[tuple[str, str]] = []
     sc = doc.get("spellcasting")
@@ -441,20 +442,93 @@ def check_static_kinds(doc: dict) -> list[str]:
     return errs
 
 
-def check_reserved_kind(doc: dict, eff: dict) -> list[str]:
-    """Findings (messages without the path) for a reserved kind the schema arm cannot express. slot_recovery: the
-    class level comes from classes[] (7.2n hand-off item 1), and a class the creature does not have gives class_level 0,
-    which apply_slot_recovery refuses (NoFeature): the feature could never be used."""
-    out = []
-    if eff.get("kind") == "slot_recovery":
-        cls = eff.get("class")
-        have = [c.get("class") for c in doc.get("classes") or [] if isinstance(c, dict)]
-        if cls in SLOT_RECOVERY_CLASSES and cls not in have:
-            out.append(f"slot_recovery.class '{cls}' matches no classes[] entry (has: {', '.join(map(str, have)) or 'none'}); "
-                       "the class level would be 0 and the feature never usable (7.2n)")
-        if doc.get("$schema", "").startswith("monster@"):
-            out.append("slot_recovery is a character feature kind (the class level comes from classes[]) (7.2n)")
+def _level_in(doc: dict, cls: str) -> int:
+    """Mirror of the sim's level_in (content.cpp): the summed level of class `cls`, or the document level (min 1)."""
+    if cls:
+        return sum(c.get("level", 0) for c in doc.get("classes") or []
+                   if isinstance(c, dict) and c.get("class") == cls and is_int(c.get("level", 0)))
+    lvl = doc.get("level", 1)
+    return max(1, lvl if is_int(lvl) else 1)
+
+
+def limited_pool_ids(doc: dict) -> set:
+    """resources[] ids the sim compiles into limited pools (content.cpp compile_resources -> Archetype::resources): every
+    pool except one whose max.table entry at the document's level is `unlimited` (Archetype::unlimited_resources)."""
+    out = set()
+    for r in doc.get("resources") or []:
+        if not isinstance(r, dict) or not isinstance(r.get("id"), str):
+            continue
+        mx = r.get("max")
+        unlimited = False
+        if isinstance(mx, dict) and isinstance(mx.get("table"), dict):
+            t = mx["table"]
+            lvl, best = _level_in(doc, t.get("class", "") or ""), 0
+            for e in t.get("by_level") or []:
+                el = e.get("level") if isinstance(e, dict) else None
+                if is_int(el) and el <= lvl and el >= best:
+                    best, unlimited = el, e.get("unlimited", False) is True
+        if not unlimited:
+            out.add(r["id"])
     return out
+
+
+def check_metamagic(doc: dict) -> tuple[list[str], list[str]]:
+    """R-G14 (sim #143, features.cpp apply_metamagic / apply_sculpt_spells), for documents whose effects are active.
+    metamagic {options, pool}: the options shape is the schema arm (non-empty, METAMAGIC_OPTIONS names); the pool must be a
+    limited resources[] pool (load error, the loader's wording); several declarations OR their options but must name the
+    same pool (load error); an option listed twice adds nothing (warning). sculpt_spells {}: no fields (others ignored: warning)."""
+    errs: list[str] = []
+    warns: list[str] = []
+    limited = limited_pool_ids(doc)
+    first = None
+    for path, owner, eff in live_effects(doc):
+        kind = eff.get("kind")
+        if kind == "metamagic":
+            opts = eff.get("options")
+            if isinstance(opts, list):
+                dups = sorted({o for o in opts if isinstance(o, str) and opts.count(o) > 1})
+                if dups:
+                    warns.append(f"{path}: metamagic option(s) {dups} listed more than once; a repeat adds nothing (R-G14)")
+            pid = eff.get("pool")
+            if pid not in limited:
+                errs.append(f"{path}: {owner}: metamagic pool '{pid if isinstance(pid, str) else ''}' is not a limited "
+                            "resources[] pool (R-G14)")
+            if first is None:
+                first = (pid, path)
+            elif pid != first[0]:
+                errs.append(f"{path}: {owner}: metamagic declarations name different pools ('{pid}' here, '{first[0]}' at "
+                            f"{first[1]}) (R-G14)")
+        elif kind == "sculpt_spells":
+            extra = sorted(k for k in eff if k != "kind")
+            if extra:
+                warns.append(f"{path}: sculpt_spells takes no fields; {extra} are ignored by the sim (R-G14)")
+    return errs, warns
+
+
+def check_slot_recovery(doc: dict) -> list[str]:
+    """7.2n (sim #148, features.cpp apply_slot_recovery), for documents whose effects are active. The class / integer /
+    range shape is the schema arm; this mirrors the loader errors the arm cannot express: the class must be in classes[]
+    (a monster has none), its summed level must be 1..20, and a second declaration for one class fails to load."""
+    errs: list[str] = []
+    seen: dict = {}
+    for path, owner, eff in live_effects(doc):
+        if eff.get("kind") != "slot_recovery":
+            continue
+        cls = eff.get("class")
+        if cls not in SLOT_RECOVERY_CLASSES:
+            continue   # schema arm (enum): "slot_recovery class must be wizard or druid"
+        rows = [c for c in doc.get("classes") or [] if isinstance(c, dict) and c.get("class") == cls]
+        if not rows:
+            errs.append(f"{path}: {owner}: slot_recovery class '{cls}' is not in classes[] (7.2n)")
+            continue
+        level = sum(c.get("level") for c in rows if is_int(c.get("level")))
+        if level < 1 or level > 20:
+            errs.append(f"{path}: {owner}: slot_recovery class level out of range 1..20 ({cls} level {level}) (7.2n)")
+        if cls in seen:
+            errs.append(f"{path}: {owner}: slot_recovery declared twice for class '{cls}' (first at {seen[cls]}) (7.2n)")
+        else:
+            seen[cls] = path
+    return errs
 
 
 # ---- untimed save_condition riders (sim content.cpp compile_rider -> compile_save_action) ----------------------

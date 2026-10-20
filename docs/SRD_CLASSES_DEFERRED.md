@@ -32,7 +32,7 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Domain Spells (Life) | 1-5 | Cure Wounds in `spellcasting.spells` (always prepared); the others are not shipped (below) | yes |
 | Divine Domain / Martial Archetype / Arcane Tradition | 1 / 3 / 2 | `classes[0].subclass` = `life` / `champion` / `evocation` | descriptive |
 | Bonus Proficiency (Life: heavy armor) | 1-5 | descriptive feature; its only combat effect is the worn chain mail, already in AC | n/a |
-| Arcane Recovery (Wizard) | 1-5 | `slot_recovery {class wizard, max_slot_level 5, uses 1}` (VERSION_BUMP_BATCH 7.2n); budget ceil(wizard level / 2) is derived from `classes[]`, the SRD text stays in `description` | no: reserved kind, the sim loader is pending (Engine Core); the validator warns |
+| Arcane Recovery (Wizard) | 1-5 | `slot_recovery {class wizard, max_slot_level 5, uses 1}` (VERSION_BUMP_BATCH 7.2n); budget ceil(wizard level / 2) is derived from `classes[]`, the SRD text stays in `description` | yes (sim #148 `apply_slot_recovery`) |
 | Evocation Savant | 2-5 | descriptive feature (downtime spell copying cost, out of combat scope) | n/a |
 
 The validator change in this batch: `attack_bonus`, `crit_range` and `ac_bonus` (sim #107 hooks) are now known effect kinds at `@4` in `tools/validate/checks_v4.py` (until now they produced an "unknown effect kind" warning). Their fields are checked the way the sim checks them at load. The `@<=3` rows are unchanged.
@@ -58,7 +58,7 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 
 | feature | class / level | status | gap id |
 |---|---|---|---|
-| Natural Recovery (Circle of the Land) | Druid (Land) 2 | Expressible as `slot_recovery {class druid, max_slot_level 5, uses 1}` (VERSION_BUMP_BATCH 7.2n; the SRD "finish a long rest" reset is the kind's `uses` per long rest), but no druid character ships, so nothing carries it. Deferred to the druid documents. Same loader dependency as Arcane Recovery | R-G16 (wiring), 7.2n |
+| Natural Recovery (Circle of the Land) | Druid (Land) 2 | Expressible as `slot_recovery {class druid, max_slot_level 5, uses 1}` (VERSION_BUMP_BATCH 7.2n; the SRD "finish a long rest" reset is the kind's `uses` per long rest), but no druid character ships, so nothing carries it. Deferred to the druid documents. The loader (sim #148) already accepts `class druid` | R-G16 (wiring), 7.2n |
 
 ### Spells the documents cannot reference yet
 
