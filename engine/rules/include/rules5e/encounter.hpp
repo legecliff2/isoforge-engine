@@ -188,6 +188,9 @@ struct ActionRequest {
     std::vector<SummonTile> summon_tiles = {};
     uint8_t command = 0;
     std::vector<CombatantId> command_ids = {};
+    // appended (R-G12 rules PR 3, D6; log_hash 0xBE): Attack by a Pact of the Chain warlock: the familiar (its summon) makes
+    // this attack with its reaction (attack_index into the familiar's attacks); it costs one of the warlock's attacks.
+    CombatantId familiar_id = 0;
 };
 
 enum class EventKind : uint8_t {
@@ -234,7 +237,8 @@ inline constexpr std::size_t kEventKindCount = std::size_t(EventKind::Count_);
 //   v10 (R-G12): Transformed actor=creature a=source id b=form archetype index c=FormKind; Reverted actor=creature a=source id
 //   b=reason (0 duration, 1 concentration, 2 0 HP / unconscious, 3 chose, 4 died, 5 encounter ended) c=overflow damage carried.
 //   Summoned actor=summoner target=creature a=spell id b=archetype index c=initiative total; SummonEnded actor=summoner target=creature
-//   a=spell id b=reason (1 concentration, 3 0 HP, 5 encounter ended); Commanded actor=summoner target=creature (0 = all) a=command.
+//   a=spell id b=reason (0 duration, 1 concentration, 3 0 HP, 5 encounter ended); a Spiritual Weapon: Summoned target=token id
+//   b=0 c=-1, SummonEnded b=0 / 5; Commanded actor=summoner target=creature (0 = all) a=command.
 //   v7: RechargeRolled actor a=action/spell id b=d6 natural c=recharged(0/1); FeatureTriggered actor=owner
 //   target=subject a=trigger id b=TriggerOn c=outcome (0 none, 1 applied, 2 declined, 3 failed save);
 //   ResourceSpent actor a=pool id b=amount c=remaining; ModifierApplied actor=caster target a=modifier id
@@ -571,6 +575,19 @@ struct SourcedCondition {
     int16_t escape_dc = 0;   // Grappled: 0 = escape by a contest against the grappler's Athletics
 };
 
+// R-G12 rules PR 3 (D3): a Spiritual Weapon: not a combatant (no HP, not a target, no turn). token_id comes from the summon
+// counter (sim's token); end_round 0 = no limit, else it ends at the start of the owner's turn in that round.
+struct ActiveSummonWeapon {
+    CombatantId token_id = 0, owner = 0;
+    uint32_t spell_id = 0;
+    uint8_t slot_level = 0;
+    uint32_t end_round = 0;
+    // the token's tile (ActionRequest::summon_tiles[0] of the cast, then of each SummonWeaponAttack that moves it): stored and
+    // logged by rules (0xBC, 0xAF), validated by sim (20 ft move, reach). has_tile false = no tile given yet.
+    bool has_tile = false;
+    int32_t tile_x = 0, tile_y = 0;
+};
+
 struct EncounterState {
     std::vector<Combatant>       combatants;
     std::vector<InitiativeEntry> order;
@@ -596,6 +613,7 @@ struct EncounterState {
     // unseeded: above every combatant id) and the creatures summoned so far. Ids are never reused.
     uint32_t next_summon_id = 0;
     uint32_t summons = 0;
+    std::vector<ActiveSummonWeapon> summon_weapons{};   // appended (R-G12 PR 3), creation order; counted in `summons`
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call

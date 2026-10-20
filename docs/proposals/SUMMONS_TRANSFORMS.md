@@ -282,6 +282,16 @@ unchanged in each sim PR).
 
 ### 3.2 Hashing of summoned slots
 
+- **Spiritual Weapon token (rules PR 3, as built):** its `TokenSpawned` (actor = token id from `Summoned.target`, tile = the
+  cast's `summon_tiles[0]`) goes right after its `Summoned`, which rules emits inside the cast before `SpellResolved` (so before
+  the weapon's first `AttackResolved`); a `SummonWeaponAttack` with a move tile gets its `TileMoved` before the attack's events.
+  The token id is not a combatant. Rules stores the tile in the 0xAF weapon row and logs it (0xBC `summon_tiles`).
+- **Tile contract (EC, #173):** (a) the cast carries **exactly one** spawn tile (`summon_tiles`), any in-bounds tile within 60 ft
+  of the caster; the token occupies nothing. Rules refuses zero or several (`spiritual weapon: one tile`). (b)
+  `SummonWeaponAttack`: an empty tile list = no move; otherwise one tile at most 20 ft from the stored tile; the attack's reach
+  is 5 ft, measured from the tile after the move. (c) Sim validates live; on replay sim re-checks the logged tiles and a failure
+  is a replay desync error. Rules trusts the log (it checks only the count).
+
 - The existing per-slot fold in `Combat::hash` (id, pos, hp, dead per slot, untagged) runs over **create-time slots only**
   (`slots_[0, created_count_)`), byte-for-byte as today. Summon slots are folded only inside 0xAF, so their bytes are always
   behind a tag and a count (no ambiguity with later untagged sections).
