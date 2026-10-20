@@ -2595,9 +2595,9 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     case SpellEffectKind::Polymorph: {   // R-G12 (D13): no effect on a shapechanger or a creature with 0 hit points: refused
         if (T.size() != 1) return fail("polymorph: one target");
         const Combatant& t = *T[0];
-        if (t.shapechanger) return fail("polymorph: no effect on a shapechanger");
-        if (t.hp <= 0) return fail("polymorph: no effect on a creature with 0 hit points");
-        if (t.form != FormKind::None) return fail("polymorph: the target is already transformed");
+        if (t.shapechanger) return fail("polymorph: target is a shapechanger");
+        if (t.hp <= 0) return fail("polymorph: target has 0 hit points");
+        if (t.form != FormKind::None) return fail("polymorph: target already transformed");
         if (req.form_archetype == 0) return fail("form_archetype required");
         if (!s.hooks.build_form || !s.hooks.build_form(s, t, FormKind::Polymorph, def.id, uint8_t(req.form_archetype - 1)))
             return fail("form not available");
