@@ -112,7 +112,7 @@ TEST_CASE("decode errors") {
     j = minimal(); j["layers"] = Json::array({Json::object()}); err(j);
     j = minimal(); j["layers"][0]["tiles"] = Json::array({1}); err(j);       // wrong length
     j = minimal(); j["layers"][0]["tiles"] = std::vector<int>(1024, 1); CHECK(err(j).find("out of range") != std::string::npos);
-    j = minimal(); j["layers"][0]["flags"] = std::vector<int>(1024, 0x10); err(j);   // reserved bit
+    j = minimal(); j["layers"][0]["flags"] = std::vector<int>(1024, 0x40); err(j);   // reserved bit (bits 4-5: climbable / open_air, feat/move-modes)
     j = minimal(); j["layers"][0]["cells"] = Json::array(); err(j);           // unknown field
     j = minimal(); j["origin"] = "Handcrafted";                              err(j);
     j = minimal(); j["coord"]["level"] = 40000;                              err(j);

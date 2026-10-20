@@ -3680,7 +3680,13 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         if (req.move_ft <= 0) return fail("move_ft must be positive");
         int cost = req.move_ft * (a.has(Condition::Prone) ? 2 : 1);   // crawling
         if (drags_grappled(s, a)) cost *= 2;                           // SRD: half speed while moving a grappled creature
-        if (cost > b.movement_ft) return fail("not enough movement");
+        if (req.move_mode > 3) return fail("bad move_mode");
+        if (req.move_mode != 0) {   // feat/move-modes: fly / swim / climb speed; the shared budget may go below 0
+            const int allow = move_allowance(s, a, req.move_mode);
+            if (allow < 0) return fail("no such speed");
+            if (req.move_mode == 1 && a.has(Condition::Prone)) return fail("cannot fly while prone");
+            if (cost > allow) return fail("not enough movement");
+        } else if (cost > b.movement_ft) return fail("not enough movement");
         // Pause before leaving reach; opportunity attacks may stop the move.
         if (req.leaves_reach && !leaving_reach_window(s, ctx, a, out.events)) {
             emit(out.events, EventKind::MoveInterrupted, a.id, 0, req.move_ft);
@@ -3910,6 +3916,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             b.bonus_action = false; b.aggressive_dash = true;
         } else if (!spend_action(b, a, req.kind, req.as_bonus_action)) return fail("no action available");
         b.movement_ft = int16_t(b.movement_ft + effective_speed(a));
+        if (b.dashes < 255) ++b.dashes;
         s.budget = b;
         emit(out.events, EventKind::Dashed, a.id, 0, b.movement_ft);
         return out;
@@ -4596,6 +4603,24 @@ int modified_ac_bonus(const EncounterState& s, CombatantId id) {
     return bonus + std::max(0, floor_ac - int(c->ac));
 }
 
+int mode_speed(const EncounterState& s, const Combatant& c, uint8_t mode) {
+    if (mode == 0) return modified_speed(s, c);
+    const uint8_t base = mode == 1 ? c.fly_ft : mode == 2 ? c.swim_ft : mode == 3 ? c.climb_ft : 0;
+    if (base == 0) return -1;
+    Combatant k = c;
+    k.speed_ft = base;
+    return modified_speed(s, k);
+}
+
+int move_allowance(const EncounterState& s, const Combatant& c, uint8_t mode) {
+    if (mode == 0) return s.budget.movement_ft;
+    if (c.hp <= 0 || c.lethargy == 2) return std::min<int>(s.budget.movement_ft, 0);   // no movement this turn at all
+    const int m = mode_speed(s, c, mode);
+    if (m < 0) return -1;
+    const int w = modified_speed(s, c);
+    return int(s.budget.movement_ft) + (m - w) * (1 + int(s.budget.dashes));
+}
+
 int modified_speed(const EncounterState& s, const Combatant& c) {
     int sp = effective_speed(c);
     if (sp <= 0) return sp;
@@ -4768,6 +4793,7 @@ FormStats own_stats(const Combatant& c) {
     f.attacks = c.attacks; f.multiattacks = c.multiattacks; f.attacks_per_action = c.attacks_per_action; f.size = c.size;
     f.creature_type = c.creature_type; f.roll_traits = c.roll_traits; f.triggers = c.triggers; f.reactions = c.reactions;
     f.bonus_attacks = c.bonus_attacks;
+    f.fly_ft = c.fly_ft; f.swim_ft = c.swim_ft; f.climb_ft = c.climb_ft; f.hover = c.hover;   // feat/move-modes
     return f;
 }
 void put_stats(Combatant& c, const FormStats& f) {   // everything but hp / hp_max
@@ -4778,6 +4804,7 @@ void put_stats(Combatant& c, const FormStats& f) {   // everything but hp / hp_m
     c.attacks = f.attacks; c.multiattacks = f.multiattacks; c.attacks_per_action = f.attacks_per_action; c.size = f.size;
     c.creature_type = f.creature_type; c.roll_traits = f.roll_traits; c.triggers = f.triggers; c.reactions = f.reactions;
     c.bonus_attacks = f.bonus_attacks;
+    c.fly_ft = f.fly_ft; c.swim_ft = f.swim_ft; c.climb_ft = f.climb_ft; c.hover = f.hover;   // feat/move-modes
 }
 template <class T> void append_all(std::vector<T>& to, const std::vector<T>& from) { to.insert(to.end(), from.begin(), from.end()); }
 }  // namespace
