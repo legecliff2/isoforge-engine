@@ -178,3 +178,183 @@ TEST_CASE("cover: replay recomputes cover from the hook (no log field) and match
     }
     CHECK(a.turn_index == b.turn_index);
 }
+
+// ---- EC review of #178: explicit origins, aimed areas, save actions, reactions ----
+namespace {
+
+const uint32_t kWeapon = spell_id_of("test.spiritual_weapon");
+const uint32_t kCone = spell_id_of("test.dragon#cone_breath");
+
+struct Recorder { std::vector<CoverQuery> q; };
+
+// Total when the query's explicit origin is (9, 9) and the target is 2; Half for target 3 from any explicit origin.
+EncounterHooks origin_hooks(std::shared_ptr<Recorder> rec) {
+    EncounterHooks h = spell_hooks();
+    auto b = std::make_shared<SpellBook>(*srd_spellbook());
+    SpellDef w; w.id = kWeapon; w.content_id = "test.spiritual_weapon"; w.level = 2; w.range_ft = 60;
+    w.casting_time = CastingTime::BonusAction; w.kind = SpellEffectKind::SummonWeapon; w.melee = true;
+    w.dice = DiceExpr{1, 8, 0}; w.damage_type = DamageType::Force; w.add_spellcasting_modifier = true;
+    w.duration = SpellDuration::Minutes; w.duration_amount = 1; w.components = kComponentV;
+    REQUIRE(b->add(w));
+    for (const auto& d : all_defs()) REQUIRE(b->add(d));
+    SpellDef cone = save_def(kCone, "test.dragon#cone_breath", Ability::Dex, AreaShape::Cone);
+    REQUIRE(b->add(cone));
+    h.spells = b;
+    h.cover = [rec](const EncounterState&, const CoverQuery& q) {
+        rec->q.push_back(q);
+        if (q.has_origin && q.origin_x == 9 && q.origin_y == 9 && q.target == 2) return Cover::Total;
+        if (q.has_origin && q.target == 3) return Cover::Half;
+        return Cover::None;
+    };
+    return h;
+}
+
+EncounterState origin_start(std::shared_ptr<Recorder> rec, uint64_t seed = 3) {
+    auto c = caster(1, {kWeapon, kBreath, kSacred, kBall, kWisBlast, kCone});
+    never_react(c);
+    auto m2 = monster(2), m3 = monster(3);
+    m2.hp = m2.hp_max = 200; m3.hp = m3.hp_max = 200; never_react(m2); never_react(m3);
+    return begin_encounter({c, m2, m3}, seed, nullptr, origin_hooks(rec));
+}
+
+ActionRequest weapon_cast(CombatantId t, int32_t x, int32_t y) {
+    ActionRequest r = cast(1, kWeapon, t, 2);
+    r.as_bonus_action = true;
+    r.summon_tiles = {ActionRequest::SummonTile{x, y}};
+    return r;
+}
+ActionRequest weapon_attack(CombatantId t, int32_t x, int32_t y) {
+    ActionRequest r{1, ActionKind::SummonWeaponAttack, t};
+    r.spell_id = kWeapon; r.as_bonus_action = true;
+    r.summon_tiles = {ActionRequest::SummonTile{x, y}};
+    return r;
+}
+ActionRequest aimed_ball(int32_t x, int32_t y) {
+    ActionRequest r = cast(1, kBall, 0); r.targets = {2, 3};
+    r.has_area_origin = true; r.area_x = x; r.area_y = y;
+    return r;
+}
+
+}  // namespace
+
+TEST_CASE("cover: Spiritual Weapon measures from its tile; total cover refuses the cast and SummonWeaponAttack before spending") {
+    auto rec = std::make_shared<Recorder>();
+    auto s = origin_start(rec);
+    end_turns_until(s, 1);
+    const auto slots = find(s, 1)->spell_slots;
+    CHECK(step(s, weapon_cast(2, 9, 9)).error == "target has total cover");   // from the spawn tile, not the caster
+    CHECK(find(s, 1)->spell_slots == slots);
+    CHECK(s.budget.bonus_action);
+    CHECK(s.summon_weapons.empty());
+    rec->q.clear();
+    REQUIRE(step(s, weapon_cast(2, 2, 3)).ok);
+    bool attack_from_tile = false;
+    for (const auto& q : rec->q) attack_from_tile |= q.target == 2 && q.has_origin && q.origin_x == 2 && q.origin_y == 3;
+    CHECK(attack_from_tile);
+    REQUIRE(step(s, {1, ActionKind::EndTurn}).ok);
+    end_turns_until(s, 1);
+    CHECK(step(s, weapon_attack(2, 9, 9)).error == "target has total cover");
+    CHECK(s.budget.bonus_action);
+    CHECK(s.summon_weapons[0].tile_x == 2); CHECK(s.summon_weapons[0].tile_y == 3);   // not moved
+    rec->q.clear();
+    auto r = step(s, weapon_attack(2, 4, 4));
+    REQUIRE(r.ok);
+    CHECK(count(r.events, EventKind::AttackResolved) == 1);
+    bool after_move = false;
+    for (const auto& q : rec->q) after_move |= q.has_origin && q.origin_x == 4 && q.origin_y == 4;
+    CHECK(after_move);
+    CHECK_FALSE(s.budget.bonus_action);
+}
+
+TEST_CASE("cover: an aimed area passes its origin; no origin = the caster's space; area_origin only on area spells") {
+    auto rec = std::make_shared<Recorder>();
+    auto s = origin_start(rec);
+    end_turns_until(s, 1);
+    ActionRequest bad = cast(1, kBreath, 2); bad.has_area_origin = true;
+    CHECK(step(s, bad).error == "area_origin: area spells only");
+    auto r = step(s, aimed_ball(9, 9));
+    REQUIRE(r.ok);
+    CHECK(first(r.events, EventKind::SavingThrowRolled, 2) == nullptr);   // total cover from (9, 9)
+    CHECK(first(r.events, EventKind::SavingThrowRolled, 3) != nullptr);
+    for (const auto& q : rec->q) if (q.from_area) { CHECK(q.has_origin); CHECK(q.origin_x == 9); CHECK(q.origin_y == 9); }
+    auto s2 = origin_start(rec);
+    end_turns_until(s2, 1);
+    rec->q.clear();
+    ActionRequest self = cast(1, kBall, 0); self.targets = {2, 3};
+    auto r2 = step(s2, self);
+    REQUIRE(r2.ok);
+    CHECK(first(r2.events, EventKind::SavingThrowRolled, 2) != nullptr);
+    for (const auto& q : rec->q) if (q.from_area) CHECK_FALSE(q.has_origin);
+}
+
+TEST_CASE("cover: replay of an aimed area recomputes the same cover from the logged origin") {
+    auto rec = std::make_shared<Recorder>();
+    auto a = origin_start(rec, 21), b = origin_start(rec, 21);
+    ActionLog log;
+    end_turns_until(a, 1); end_turns_until(b, 1);
+    REQUIRE(step_logged(a, aimed_ball(9, 9), log).ok);
+    REQUIRE(step_logged(a, {1, ActionKind::EndTurn}, log).ok);
+    REQUIRE(log[0].request.has_area_origin);
+    CHECK(log[0].request.area_x == 9);
+    for (const auto& ls : log) { auto r = replay_step(b, ls); REQUIRE(r.ok); CHECK_FALSE(r.desync); }
+    for (std::size_t i = 0; i < a.combatants.size(); ++i) CHECK(a.combatants[i].hp == b.combatants[i].hp);
+    CHECK(find(b, 2)->hp == 200);   // skipped in the replay too
+}
+
+TEST_CASE("cover: a monster's area breath weapon (save action) gets the Dex bonus and skips total cover") {
+    auto rec = std::make_shared<Recorder>();
+    for (uint64_t seed = 0; seed < 20; ++seed) {
+        auto s = origin_start(rec, seed);
+        end_turns_until(s, 1);
+        ActionRequest r = cast(1, kCone, 0); r.targets = {2, 3}; r.has_area_origin = true; r.area_x = 9; r.area_y = 9;
+        auto out = step(s, r);
+        REQUIRE(out.ok);
+        CHECK(first(out.events, EventKind::ActionUsed) != nullptr);   // not a spell
+        CHECK(first(out.events, EventKind::SavingThrowRolled, 2) == nullptr);
+        const Event* sv = first(out.events, EventKind::SavingThrowRolled, 3);
+        REQUIRE(sv);
+        // same rolls without cover: a hookless run casting at 3 alone
+        auto plain = begin_encounter({caster(1, {kCone}), monster(2), monster(3)}, seed, nullptr, hooks(nullptr, {save_def(kCone, "test.dragon#cone_breath", Ability::Dex, AreaShape::Cone)}));
+        end_turns_until(plain, 1);
+        ActionRequest only3 = cast(1, kCone, 0); only3.targets = {3};
+        auto po = step(plain, only3);
+        REQUIRE(po.ok);
+        const Event* p3 = first(po.events, EventKind::SavingThrowRolled, 3);
+        REQUIRE(p3);
+        CHECK(sv->b == p3->b + 2);
+    }
+}
+
+TEST_CASE("cover: opportunity and readied attacks into total cover are not offered (no reaction spent)") {
+    auto m = std::make_shared<CoverMap>(CoverMap{{{1, 2, false}, Cover::Total}});
+    EncounterHooks h = hooks(m);
+    h.in_range = [](const EncounterState&, const ReactionWindow&, const Combatant&) { return true; };
+    h.decide_reaction = [](const EncounterState&, const ReactionWindow&, const Combatant&, std::span<const ReactionOption>) {
+        return ReactionDecision{0, true, 0}; };
+    h.ready_trigger = [](const EncounterState&, const ReadiedAction&, const Event& e) { return e.kind == EventKind::Moved && e.actor == 2; };
+    {   // opportunity attack
+        auto s = begin_encounter({pc(1), monster(2)}, 5, nullptr, h);
+        mut(s, 2).hp = mut(s, 2).hp_max = 200;
+        end_turns_until(s, 2);
+        ActionRequest mv{2, ActionKind::Move}; mv.move_ft = 5; mv.leaves_reach = true;
+        auto r = step(s, mv);
+        REQUIRE(r.ok);
+        CHECK(count(r.events, EventKind::ReactionWindowOpened) == 0);
+        CHECK_FALSE(find(s, 1)->reaction_used);
+    }
+    {   // readied attack
+        auto s = begin_encounter({pc(1), monster(2)}, 5, nullptr, h);
+        mut(s, 2).hp = mut(s, 2).hp_max = 200;
+        end_turns_until(s, 1);
+        ActionRequest ready{1, ActionKind::Ready, 2};
+        ready.ready_kind = ActionKind::Attack; ready.trigger_id = 3; ready.target_within_5ft = true;
+        REQUIRE(step(s, ready).ok);
+        REQUIRE(step(s, {1, ActionKind::EndTurn}).ok);
+        end_turns_until(s, 2);
+        auto r = step(s, {2, ActionKind::Move, 0, 0, 5});
+        REQUIRE(r.ok);
+        CHECK(count(r.events, EventKind::ReactionWindowOpened) == 0);
+        CHECK(find(s, 1)->has_readied);   // kept
+        CHECK_FALSE(find(s, 1)->reaction_used);
+    }
+}
