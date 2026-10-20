@@ -13,11 +13,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | | count |
 |---|---|
 | inventory candidates | 30 |
-| authored now as `monster@4` | 26 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158) |
+| authored now as `monster@4` | 28 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170) |
 | goblin (already shipped, left at `monster@3`) | 1 |
-| deferred (mechanic not expressible) | 3 |
+| deferred (mechanic not expressible) | 1 |
 
-## Authored (26, all `monster@4`)
+## Authored (28, all `monster@4`)
 
 | monster | CR | mechanics carried as data | notes |
 |---|---|---|---|
@@ -47,6 +47,8 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Boar | 1/4 | Charge as `on_event hit` once per turn (`weapon melee` + `moved_at_least_ft 20`: +1d6 slashing, Str DC 11 prone untimed); Relentless as `on_event drop_to_zero` (`damage_at_most 7`, `usage per_rest 1 short`, `set_hp 1`) (#158), tusk | **partial**: "straight toward the target" isn't checked (the predicate counts movement only) |
 | Hobgoblin | 1/2 | Martial Advantage as `on_event hit` once per turn (`weapon_attack` + `ally_near_target`, +2d6) (#158); longsword (1h / 2h), longbow | the sim's ally fact skips incapacitated allies (the SRD's "isn't incapacitated" clause) |
 | Bugbear | 1 | Surprise Attack as `on_event hit` (`target_surprised`, +2d6) (#158); morningstar, javelin (melee and thrown) | Brute is baked into the printed dice (description only). **partial**: "during the first round" relies on surprise lasting only for round 1 |
+| Ghoul | 1 | claws `on_hit save_condition` (Con DC 10, paralyzed 10 rounds, repeat at end of turn) gated by rider `when` [`not_creature_type undead`, `not_target_tag elf`] (#170: a character race ending in `elf` adds the `elf` tag, `half_elf` does not); bite | |
+| Giant Spider | 1 | Web as `attack_effect` (ranged +5, 30 ft, restrained with a Str DC 12 escape, recharge 5-6) (#170); bite + `on_hit save_condition` (Con DC 11, 2d8 poison, half) | **partial**: Web's long range (60 ft, disadvantage) isn't modelled (one `range_ft`); the webbing's own AC/hp/vulnerabilities, the bite's "stable but poisoned 1 hour and paralyzed" at 0 hp, and Spider Climb / Web Sense / Web Walker are description only |
 
 The goblin keeps `$schema: monster@3`, its id (`srd51.monster.goblin`, stable id derived from it) and bytes. It is referenced by C++ tests that assert its `@3` form (`content_migration_tests`, `pack_set_tests`, compat goblin tests) and by the fl1 compat corpus, and a schema change could shift digests and goldens; migrating it buys nothing until a `@4`-only feature is needed.
 
@@ -57,14 +59,12 @@ Not set: `presentation` (the goblin has none; sprite assets for these monsters d
 Played: stats, attacks with every `damage[]` entry (#45), resistances / immunities / vulnerabilities / condition immunities (#45), `multiattack` options (#48/#59), `damage_mitigation` (#47/#58), `bonus_action_grant`, size footprint (#50/#55).
 Carried and validated but **not applied** (the registry reserves the `@4` kinds; the archetype lists them in `unsupported_features` and ignores them): `on_event` (Undead Fortitude, Rampage, Sneak Attack), `on_hit[]` riders (snake poison), `save_effect` actions with `usage` (Acid Breath). Until Engine Core lands the row 6 compile / row 9-10 trigger hooks these monsters play without those effects. No content change is needed when the hooks land.
 
-## Deferred (3)
+## Deferred (1)
 
 Gap ids: `T&C-Gn` = Tools & Content, `R-Gn` = Rules (see the crosswalk in the coverage doc).
 
 | monster (`srd51.monster.<id>`) | CR | missing mechanic (re-checked at `cfb5eed`) | gap id |
 |---|---|---|---|
-| `srd51.monster.ghoul` | 1 | Claws paralysis (Con DC 10, 1 minute, repeat end of turn) applies only to creatures other than elves and undead. `on_hit` riders still have no `when`; an `on_event hit` with `not_creature_type [undead]` could gate undead, but there is no predicate for elves (a race, not a creature type) and no predicate naming one attack (claws vs bite) | T&C-G5 (rider target predicate; race / attack-id predicate) |
-| `srd51.monster.giant_spider` | 1 | Web: a ranged *attack roll* that only restrains (no damage; `ranged_weapon_attack` requires `damage`, `save_effect` is a save not an attack) with Recharge 5-6; Strength-check escape (DC 12) and destructible web (AC 10, 5 HP). The R-G8 `grapple` hit rider (sim #104) is grappled-only and not in the `common@2` rider enum. Also the bite's "stable but poisoned and paralyzed at 0 HP" clause | T&C-G4 / T&C-G5 (+ R-G8 for restrain source) |
 | `srd51.monster.swarm_of_rats` | 1/4 | Swarm: shares space with other creatures (T&C-G14), cannot regain HP / gain temp HP; bite damage 2d6 or 1d6 at half HP or fewer (no HP-conditional damage swap; `self_hp_below` is strict and has no negation); creature type "swarm of Tiny beasts" is not in the `creature_type` enum (`beast` + tag `swarm` is the convention, T&C-G15) | T&C-G7, T&C-G14, T&C-G15 |
 
 ### Re-check at `cfb5eed` (2026-10-19)

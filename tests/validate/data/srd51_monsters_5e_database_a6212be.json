@@ -1322,10 +1322,105 @@
         "2d6+2",
         "piercing"
        ]
-      ],
+      ]
+     ]
+    }
+   ]
+  },
+  "ghoul": {
+   "name": "Ghoul",
+   "size": "Medium",
+   "type": "undead",
+   "ac": [
+    12
+   ],
+   "hp": 22,
+   "hp_roll": "5d8",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    13,
+    15,
+    10,
+    7,
+    10,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "poison"
+   ],
+   "condition_immunities": [
+    "poisoned",
+    "charmed",
+    "exhaustion"
+   ],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 2,
+     "damage_options": [
       [
        [
-        "1d6+2",
+        "2d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d4+2",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-spider": {
+   "name": "Giant Spider",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    14
+   ],
+   "hp": 26,
+   "hp_roll": "4d10+4",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "30 ft.",
+    "climb": "30 ft."
+   },
+   "abilities": [
+    14,
+    16,
+    12,
+    2,
+    11,
+    4
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
         "piercing"
        ]
       ]
