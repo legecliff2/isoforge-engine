@@ -82,7 +82,7 @@ Two independent mechanisms:
 - **Reverting with HP overflow** (Polymorph, Wild Shape): when form HP reaches 0, the creature reverts and **excess damage carries
   over** to the base HP (SRD: "any excess damage carries over to its normal form"); it does not die unless the base form drops to 0.
   Damage that would kill outright (massive damage) is checked against the form's maximum first, then the overflow against the
-  base. Rules implements this inside `damage_creature` (one place), emitting `Reverted` then the carried `DamageDealt`.
+  base. Rules implements this inside `damage_creature` (one place), emitting the form's `DamageDealt` (a = only what the form absorbed), `Reverted` (c = overflow), then the carried `DamageDealt` (a = the overflow), so the two `a` values sum to the hit.
 - Shapechanger forms do not use overflow: one HP pool.
 
 ### 2.3 Requests (proposed)
@@ -103,19 +103,21 @@ Two independent mechanisms:
 ### 2.4 Initiative placement
 
 - **Own initiative** (Find Familiar, Animate Dead per Q2): rules rolls `d20 + Dex mod` for the new creature at summon time from
-  the encounter rng (same stream, after the cast's own rolls) and inserts it into `order` by the existing sort (total, then
-  dex_mod, then id); it takes its first turn when its slot comes up. If its slot is earlier in the current round than the
+  the encounter rng (same stream, after the cast's own rolls) and inserts it into `order` **after every entry with a higher
+  total, or an equal total and a Dex modifier at least as high** (as built, rules PR 2); it takes its first turn when its slot
+  comes up. If its slot is earlier in the current round than the
   current actor, its first turn is next round (no extra turn this round).
-- **Shared group** (Conjure Animals and the conjure family): one roll for the group; one `InitiativeEntry` per creature with the
-  same total, ordered by id; they act consecutively.
+- **Shared group** (Conjure Animals, the conjure family, Animate Dead per cast, D2): one roll for the group; one `InitiativeEntry`
+  per creature with the same total and the first creature's Dex modifier (one slot), ordered by id; they act consecutively.
 - **Summoner's turn** (Spiritual Weapon): no entry.
 - **Rider's turn** (Find Steed when mounted): out of scope (Q9).
-- Removal: a summon that ends (0 HP, dismissed, concentration) is removed from `order` at the end of the current step; if it is
-  the current actor, its turn ends first (`TurnEnded`, then removal). `turn_index` is adjusted so the next actor is unchanged.
+- Ended summons (as built, rules PR 2): a summon that ends (0 HP, dismissed, concentration) **stays in `order`**, marked `gone`
+  (and dead); the turn loop skips it like any dead combatant. Nothing is removed, so ending never shifts `turn_index` or stamps
+  (only insertion does, below).
 - **Insertion before the current actor shifts `turn_index`.** A summon whose entry sorts before the current actor's slot moves
   the current actor one index later (per inserted entry). Rules adjusts `turn_index` in the same step so the **current actor's
-  turn continues** (same budget, no new `TurnStarted`); the inserted creature first acts next round (D14). Removal before the
-  current actor shifts it back the same way. Engine Core changes `run_to_end`'s turn detector to key on the current actor and
+  turn continues** (same budget, no new `TurnStarted`); the inserted creature first acts next round (D14). Ended summons stay in
+  `order` (skipped), so nothing shifts it back. Engine Core changes `run_to_end`'s turn detector to key on the current actor and
   the count of `TurnStarted` events instead of `(round, turn_index)` (§3.4).
 - **Decision: `cast_stamp` rewrite.** `cast_stamp` (`round << 16 | turn_index`, folded under `Combat::hash` 0xAC; read by Heat
   Metal's sustain check and the driver's `spell_kind_command`) would go stale on such a shift. When an insert or removal shifts
@@ -134,14 +136,15 @@ Two independent mechanisms:
 
 ### 2.6 Determinism, ids and replay
 
-- **Ids** (D11 as refined with Engine Core, §3.0): sim assigns summon ids from a monotonic per-Combat counter that starts above
+- **Ids** (D11 as refined with Engine Core, §3.0; as built in rules PR 2): **rules** assigns summon ids from a monotonic counter
+  (`EncounterState::next_summon_id`, seeded by sim at create) that starts above
   **every chunk spawn id** (combatant or not), not just combatants; +1 per summon, **never reused** (also after `SummonEnded`).
   The counter is folded in `Combat::hash` 0xAF. Ids travel in the logged request (`summon_ids`); a caller-supplied
-  `summon_ids` is refused in live play (sim fills it), and **replay rejects** logged ids that differ from what the counter
+  `summon_ids` is refused in live play (rules fills it into the logged request), and **replay rejects** logged ids that differ from what the counter
   would assign (desync). Rules refuses an id already present as a second check.
 - **Turn order shifts**: see §2.4 (current actor's turn kept, `cast_stamp` rewritten).
 - **Roster growth**: `EncounterState::combatants` / `order` grow by append; nothing is erased mid-step (an ended summon is marked
-  `gone` and removed at the step boundary) so pointers / spans taken inside a step stay valid. Iteration order everywhere stays
+  `gone` and stays in `order`, skipped) so pointers / spans taken inside a step stay valid. Iteration order everywhere stays
   "combatants vector order" = creation order, which is deterministic.
 - **RNG**: initiative for summons draws from the encounter rng inside the casting step, after the spell's own rolls and before
   any reaction window of later effects (fixed position: documented ordering rule). Form building draws nothing.
@@ -161,11 +164,12 @@ Appended rules5e `EventKind`s (after `ZoneEnded` = 47; numbers proposed):
 | `Reverted` (51) | actor = creature, a = source id, b = reason (0 duration, 1 concentration, 2 0 HP, 3 chose, 4 died, 5 encounter ended), c = overflow damage carried |
 | `Commanded` (52) | actor = summoner, target = creature (0 = all), a = command |
 
-**Encounter end (D15, §3.5):** in the ending step rules emits, in order, `SummonEnded{b = 5}` per summon in ascending id (a
+**Encounter end (D15, §3.5):** in the ending step rules emits, in order, `ConcentrationEnded` for each summon that was
+concentrating (ascending summon id, with that concentration's own end events), then `SummonEnded{b = 5}` per summon in ascending id (a
 transformed summon just ends, with no separate `Reverted`), then `Reverted{b = 5, c = 0}` per remaining transformed creature in
 ascending id, then `EncounterEnded`, which stays the last event of the stream. **Settled (Director, #155):** SIM_EVENTS.md
 ordering rule 7 is unchanged; rules reports the start of the teardown block with `StepResult::teardown_begin` (index into the
-step's events, or none), and sim places each `TokenRemoved` right after its `SummonEnded` and every sim event of the ending
+step's events of the first `SummonEnded{b = 5}`, or the first `Reverted{b = 5}` without summons, or none), and sim places each `TokenRemoved` right after its `SummonEnded` and every sim event of the ending
 step before `EncounterEnded` (v10-gated; a documented rule-4 exception), per §3.5.
 
 `event_stream_version` returns 10 only for streams that carry one of them (SIM_EVENTS.md versioning policy), so no existing digest
@@ -221,17 +225,24 @@ unchanged in each sim PR).
 
 ### 3.0 Ids (Q11, sim side)
 
-- `Combat::next_summon_id_` (u32), set once at the end of `Combat::create` to `max(stable_id of **every** spawn in every chunk
-  of the combat, combatant or not) + 1` (not only combatants: non-combatant spawns also own a `StableId` in the registry).
-  Overflow (max = UINT32_MAX) makes `create` succeed but every summon is refused ("summon id space exhausted").
-- At a summon request sim fills `summon_ids` itself: `count` consecutive ids `next_summon_id_ ...`, ascending; the counter
+- **Owner (ruling, R-G12 sim PR 1):** the summon id counter is rules' (`EncounterState`, folded inside 0xAF by
+  `summons_digest`); sim has no counter of its own. Sim **seeds** it once at the end of `Combat::create` to `max(stable_id of
+  **every** spawn in every chunk of the combat, combatant or not) + 1` (not only combatants: non-combatant spawns also own a
+  `StableId` in the registry). Overflow (max = UINT32_MAX) makes `create` succeed but every summon is refused ("summon id
+  space exhausted"). The seed alone never makes 0xAF fold: `has_summon_state` keys on "something was summoned or transformed".
+- **As built (rules PR 2): rules fills `summon_ids`, not sim.** Sim seeds `EncounterState::next_summon_id` (the
+  seed above; sim keeps no `next_summon_id_` of its own); rules assigns `count` consecutive ids from it, writes them into the logged
+  request (`StepResult::logged->request.summon_ids`), refuses a caller-supplied non-empty list live (`summon_ids: assigned by
+  rules (leave empty)`) and refuses replayed ids that differ from the counter (`summon_ids: do not match the summon counter`);
+  the counter lives in rules' 0xAF. Sim needs no id check of its own. The original sim-side draft follows for history:
+- (draft) At a summon request sim fills `summon_ids` itself: `count` consecutive ids from the counter, ascending; the counter
   advances only when the request completes (`StepStatus::Done`). Rejected or paused requests consume nothing; a request
   that pauses for a reaction window keeps the ids it was given and commits them on completion. Ids are **never reused**,
   including after `SummonEnded` (the counter only grows; the `gone` slot keeps its id).
-- A caller-supplied non-empty `summon_ids` on a live `submit` is an error ("summon ids are assigned by sim"), so the only
+- (draft; superseded by rules' checks above) A caller-supplied non-empty `summon_ids` on a live `submit` is an error ("summon ids are assigned by sim"), so the only
   source of ids is the counter.
-- **Replay** (`sim::replay`): before `replay_step`, sim checks that the logged `summon_ids` equal exactly the ids the counter
-  would assign at that point (`next_summon_id_ ...`, count = spec count). A mismatch is a desync error ("replay desync at
+- (draft; superseded by rules' checks above) **Replay** (`sim::replay`): before `replay_step`, sim checks that the logged `summon_ids` equal exactly the ids the counter
+  would assign at that point (the rules counter, count = spec count). A mismatch is a desync error ("replay desync at
   entry i: summon ids"). Rules' own "id already present" check stays as the second line.
 - Registry clash: if `reg.find(id)` already exists when a summon would be created (another combat or system shares the
   registry and took that StableId), the request is refused with an error and nothing is consumed. This is deterministic
@@ -260,8 +271,8 @@ unchanged in each sim PR).
 - **Removal**: at `SummonEnded`, the slot is marked `gone`, its entity is destroyed at the end of `complete()` (never mid-step,
   matching 2.6), the slot stays in `slots_` (index stability, hashing below).
 - **Events** (SimEvent kinds appended, v10 like the rules kinds): `TokenSpawned = 4` (actor = id, tile = anchor,
-  rules.a = footprint side, rules.b = summoner id) one per summon right after the request's rules events, in id
-  order, before `SpellTarget`; `TokenRemoved = 5` (actor = id, tile = last anchor, rules.a = `SummonEnded.b` reason) after the
+  rules.a = footprint side, rules.b = summoner id) one per summon, **each right after its own `Summoned`** (rules PR 2 emits the
+  `Summoned` events after `SpellResolved`, id order), before `SpellTarget`; `TokenRemoved = 5` (actor = id, tile = last anchor, rules.a = `SummonEnded.b` reason) after the
   request's rules events (and after its `TileMoved`s). A Large+ summon needs no separate `Footprint` event (TokenSpawned
   carries the side). `event_stream_version` returns 10 for either kind. Spiritual Weapon's token is `TokenSpawned` with
   actor = the weapon's pseudo id from the same counter (it never becomes a Combatant; `ActiveSummonWeapon::token_id`), moves
@@ -271,11 +282,22 @@ unchanged in each sim PR).
 
 ### 3.2 Hashing of summoned slots
 
+- **Spiritual Weapon token (rules PR 3, as built):** its `TokenSpawned` (actor = token id from `Summoned.target`, tile = the
+  cast's `summon_tiles[0]`) goes right after its `Summoned`, which rules emits inside the cast before `SpellResolved` (so before
+  the weapon's first `AttackResolved`); a `SummonWeaponAttack` with a move tile gets its `TileMoved` before the attack's events.
+  The token id is not a combatant. Rules stores the tile in the 0xAF weapon row and logs it (0xBC `summon_tiles`).
+- **Tile contract (EC, #173):** (a) the cast carries **exactly one** spawn tile (`summon_tiles`), any in-bounds tile within 60 ft
+  of the caster; the token occupies nothing. Rules refuses zero or several (`spiritual weapon: one tile`). (b)
+  `SummonWeaponAttack`: an empty tile list = no move; otherwise one tile at most 20 ft from the stored tile; the attack's reach
+  is 5 ft, measured from the tile after the move. (c) Sim validates live; on replay sim re-checks the logged tiles and a failure
+  is a replay desync error. Rules trusts the log (it checks only the count).
+
 - The existing per-slot fold in `Combat::hash` (id, pos, hp, dead per slot, untagged) runs over **create-time slots only**
   (`slots_[0, created_count_)`), byte-for-byte as today. Summon slots are folded only inside 0xAF, so their bytes are always
   behind a tag and a count (no ambiguity with later untagged sections).
-- **0xAF** (`Combat::hash`, folded when `next_summon_id_ != initial` or any `form != None` or any `ActiveSummonWeapon`):
-  `next_summon_id_` u32; rules' `summons_digest` u64 (2.8); sim part: count u32, then per summon slot (creation order) id u32,
+- **0xAF** (`Combat::hash`, folded when `has_summon_state`: something was summoned or transformed this encounter; the
+  seeded counter alone does not count): rules' `summons_digest` u64 (2.8; it holds the summon id counter, rules-owned, and
+  the transform records; no separate sim counter is folded). With summons (PR 2) the sim part follows: count u32, then per summon slot (creation order) id u32,
   pos x/y i32, footprint byte, `gone` byte, team byte; then count u32 + per weapon token (token id, owner, pos). Sim and rules
   share the one tag: sim folds `h.byte(0xAF); h.u64(rules5e::summons_digest(state_)); <sim part>` in one place.
 - **0xBC** (`log_hash`, folded when any of the fields is non-empty / non-zero): `summon_ids` (count u32 + u32 each),
@@ -290,7 +312,12 @@ unchanged in each sim PR).
 
 ### 3.3 `build_summon` / `build_form` hooks
 
-- Installed in `install_hooks()` (so live and replay get the same closures). `build_summon(state, spec, archetype_index, id)`
+- **As built (rules PR 2):** `build_summon(const EncounterState&, const Combatant& summoner, const SpellDef& def, uint8_t
+  slot_level, uint8_t archetype_index) -> std::optional<Combatant>`; **no id parameter**: rules sets `id` (from its counter),
+  `team`, `summoner`, `summon_source`, `summon_group` and the control fields on the returned record. Sim learns the id from
+  `Summoned.target` (one per creature, id order) and registers the archetype rows for it then. Optional
+  `summon_choice_ok(state, summoner, def, slot_level, archetypes) -> bool` is the D1 CR-band table. Draft text follows:
+- (draft) Installed in `install_hooks()` (so live and replay get the same closures). `build_summon(state, spec, archetype_index, id)`
   resolves `spec.archetypes[index]` to the content id, `ContentLibrary::find(id)` (null = request rejected, "unknown summon
   archetype"; the validator makes this unreachable for shipped content), copies `Archetype::base`, sets `id`, `team` (the
   summoner's), `summoner`, `summon_source`, `summon_group`, and returns it. Sim then registers that archetype's features,
@@ -312,7 +339,7 @@ unchanged in each sim PR).
   `events_`), which is identical today.
 - **cast_stamp** (`round << 16 | turn_index`, used by Heat Metal's sustain and the driver's `spell_kind_command`): same
   hazard. **Director ruling (accepted):** the encoding is kept; when rules shifts `turn_index` (summon inserted into or
-  removed from `order`), it rewrites the `cast_stamp` of every live effect in the same step so "cast this turn" stays true.
+  inserted into `order`; as built, ended summons stay in `order`, so removal never shifts it), it rewrites the `cast_stamp` of every live effect in the same step so "cast this turn" stays true.
   This happens only in combats with summons, so no golden moves. Sim's driver keeps comparing against `round << 16 | turn_index`
   unchanged. 0xAC folds the rewritten stamps (3.2).
 - **Policies**: `PolicyFor` is called with summon ids too; the default for a summon is `SummonPolicy` (built in):
@@ -327,7 +354,7 @@ unchanged in each sim PR).
   (0xBC), so replay needs no policy.
 - **Summoning**: the AI casts a summon spell only from content priority lists (none by default, like conversions in #152);
   archetype choice per Q1 (highest CR, then lowest content-id byte order); tiles by 3.1's deterministic choice.
-- **Transforms**: AI Wild Shapes only when content marks it (`ai: prefer_beast`), into the highest-CR allowed form (then id);
+- **Transforms**: AI Wild Shapes only when `FormFeature::ai_prefer` is set (as built: common@2 `wild_shape` has no `ai` key, so loaded content leaves it off), into the highest-CR allowed form (then id);
   reverts by bonus action never (it lets 0 HP revert it); shapechangers stay in their spawn form. Polymorph as an ordinary
   save spell aimed at the highest-CR hostile.
 - **Headless driver**: a summon's turn is driven like any creature; a `gone` combatant never becomes current (rules removes
@@ -342,6 +369,7 @@ ones, with the normal end events. Nothing is carried into another Combat for now
   of that step, so replay reproduces it from the log alone. No log entry or request field is added.
 - **Order (deterministic).** SIM_EVENTS.md ordering rule 7 is unchanged (Director): `EncounterEnded` is the last event of
   the stream.
+  0. **Concentrating summons' `ConcentrationEnded`** (ascending summon id), before the block (rules PR 2).
   1. **Summons end** in ascending summon id. Each one emits `SummonEnded{actor = summoner, target = id, a = source, b = 5}`.
      Reason 5 means "encounter ended" (2.5). Spiritual Weapon rows (`ActiveSummonWeapon`) end in the same pass, by token id.
      A transformed summon just ends, with no separate `Reverted`.
@@ -378,8 +406,9 @@ ones, with the normal end events. Nothing is carried into another Combat for now
   Live play and replay share `complete`, so both produce the same order. Sim tests lock it, and SIM_EVENTS.md
   gets the rule-4 exception in the implementation PR.
 - Concentration links do not fire separately. Teardown ends the summons first, and the summoner's concentration is not
-  ended by sim. So there is no duplicate `SummonEnded{b = 1}`, and rules' `ConcentrationEnded` behaviour at encounter end is
-  unchanged.
+  ended by sim. So there is no duplicate `SummonEnded{b = 1}`. One change (rules PR 2): a **summon that is itself
+  concentrating** has that concentration ended through `end_concentration` (`ConcentrationEnded`, with its modifiers / zones /
+  Polymorph links) right before the `SummonEnded{b = 5}` block; other combatants' concentration at encounter end is as before.
 - **Hash:** after teardown every summon slot is `gone` and every `form` is None. 0xAF still folds (the counter has moved),
   so the final `Combat::hash` records the teardown. Combats without summons or transforms emit nothing and fold nothing.
 - `Combat::state()` after the end is therefore free of summons and forms. A caller that copies it into the rest roster
@@ -397,7 +426,8 @@ ones, with the normal end events. Nothing is carried into another Combat for now
 - spell@1 effect kind `summon_weapon { attack: {dice, type, reach_ft}, move_ft, bonus_action_attack }` (Spiritual Weapon).
 - spell@1 effect kind `polymorph { max_cr: "target_level" | n, save: {ability: wis}, unwilling_save, excludes_shapechangers }`.
 - character@N feature kind `wild_shape { uses, recharge: short_rest, max_cr_by_level: [...], no_fly_below, no_swim_below,
-  duration_hours: "half_level" }`.
+  duration_hours: "half_level" }`. (Draft. As merged in #163 / 7.2q and read by the sim loader: `wild_shape { pool, cost, class, forms,
+  max_cr_by_level: [{level, max_cr}], no_fly_below, no_swim_below }`, no duration key; uses / recharge come from the pool.)
 - monster@4 trait `shapechanger { forms: [{id, name, size, ac, speed, attacks: [...], ...overrides}] }` (statistics other than
   size are the same unless listed).
 - creature archetypes for familiars / steeds / conjured beasts: already monster@4 stat blocks (bat, cat, owl, wolf, warhorse,

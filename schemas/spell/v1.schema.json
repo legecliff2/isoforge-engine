@@ -539,7 +539,10 @@
             "revive",
             "end_condition",
             "delayed_damage",
-            "sustained_damage"
+            "sustained_damage",
+            "polymorph",
+            "forced_move",
+            "teleport"
           ]
         }
       },
@@ -1216,6 +1219,184 @@
               },
               "damage": {
                 "$ref": "#/$defs/damage"
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "polymorph"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "forms"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "forms",
+                "max_cr",
+                "save"
+              ]
+            },
+            "description": "R-G12 (VERSION_BUMP_BATCH 7.2q) Polymorph: the primary effect only, one target, a concentration spell. The target becomes one of forms (ActionRequest::form_archetype = 1 + index). Unwilling targets save. Rules spell loader key polymorph -> SpellEffectKind::Polymorph (reserved until it parses it).",
+            "properties": {
+              "kind": {
+                "const": "polymorph"
+              },
+              "forms": {
+                "$ref": "../common/v2.schema.json#/$defs/transform_forms"
+              },
+              "max_cr": {
+                "oneOf": [
+                  {
+                    "const": "target_level"
+                  },
+                  {
+                    "$ref": "../common/v2.schema.json#/$defs/challenge_rating"
+                  }
+                ],
+                "description": "target_level (default): CR at most the target's level or CR (sim build_form). A fixed CR string: forms above it warn."
+              },
+              "save": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ability"
+                ],
+                "properties": {
+                  "ability": {
+                    "$ref": "../common/v1.schema.json#/$defs/ability"
+                  }
+                },
+                "description": "Unwilling target's save vs the spell DC. Default {ability: wis}."
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "forced_move"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "feet"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "mode",
+                "feet",
+                "up_to",
+                "max_size",
+                "provokes_oa",
+                "applies_to",
+                "description"
+              ]
+            },
+            "description": "R-G9 ForcedMove (VERSION_BUMP_BATCH 7.2k, sim #144; Thunderwave, Repelling Blast): pushes the targets straight away from the caster (push) or pulls them toward it (pull), tile by tile, stopping at the last free tile. Forced moves never provoke opportunity attacks. May ride another effect (applies_to 'affected': only the creatures that failed the save / were hit).",
+            "properties": {
+              "kind": {
+                "const": "forced_move"
+              },
+              "mode": {
+                "enum": [
+                  "push",
+                  "pull"
+                ],
+                "description": "Default push. 'line' (Gust of Wind) is not supported by the loader (R-G9)."
+              },
+              "feet": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 65530,
+                "multipleOf": 5,
+                "description": "Distance in feet: a positive multiple of 5 (loader: 'effect feet must be a positive multiple of 5')."
+              },
+              "up_to": {
+                "type": "boolean",
+                "description": "true: up to feet (the caller may choose less). Default false (exactly feet, as far as the tiles allow)."
+              },
+              "max_size": {
+                "enum": [
+                  "tiny",
+                  "small",
+                  "medium",
+                  "large",
+                  "huge",
+                  "gargantuan"
+                ],
+                "description": "Only creatures of this size or smaller are moved. Omitted = any size."
+              },
+              "provokes_oa": {
+                "const": false,
+                "description": "Forced moves never provoke (R-G9): only false is accepted; true is a load error."
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ],
+                "description": "Effects after the first only. Default 'all'."
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "teleport"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "max_feet"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "max_feet",
+                "needs_sight",
+                "description"
+              ]
+            },
+            "description": "R-G9 Teleport (VERSION_BUMP_BATCH 7.2k, sim #144; Misty Step): the caster teleports up to max_feet to an unoccupied space the caller picks (the sim re-validates it). First effect only.",
+            "properties": {
+              "kind": {
+                "const": "teleport"
+              },
+              "max_feet": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 65530,
+                "multipleOf": 5,
+                "description": "Maximum teleport distance in feet: a positive multiple of 5 (loader: 'effect max_feet must be a positive multiple of 5')."
+              },
+              "needs_sight": {
+                "type": "boolean",
+                "description": "The destination must be a space the caster can see. Default true."
               },
               "description": {
                 "type": "string"

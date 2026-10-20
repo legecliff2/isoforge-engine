@@ -18,6 +18,8 @@
 
 namespace rules5e {
 
+struct SpellDef;
+
 struct TurnBudget {
     bool action = true, bonus_action = true, reaction = true; int16_t movement_ft = 0;
     uint8_t attacks_remaining = 0;     // Extra Attack / multiattack: further attacks from the Attack action taken this turn
@@ -172,6 +174,23 @@ struct ActionRequest {
     // within the gaze's range_ft, not Blinded, the gazer not invisible to it); rules treats the list as opaque.
     bool avert_gaze = false;
     std::vector<CombatantId> gaze_seen = {};
+    // appended (R-G12 rules PR 1; log-relevant, SIM_EVENTS.md log_hash tag 0xBD): the form, 1 + index into the choices sim's
+    // EncounterHooks::build_form resolves (Wild Shape / shapechanger: UseFeature of a FeatureSpec with `form`; Polymorph:
+    // CastSpell). 0 = none.
+    uint8_t form_archetype = 0;
+    // appended (R-G12 rules PR 2; log-relevant, SIM_EVENTS.md log_hash tag 0xBC). Summon cast: summon_archetypes = the creatures
+    // (indices for build_summon, the caster's choice, D1); summon_ids = their ids, filled by rules from the counter (a live caller
+    // must leave it empty; a replayed entry must match the counter); summon_tiles = sim's anchors (opaque). CommandSummons:
+    // command (1 act, 2 defend) for command_ids (empty = every summon of the actor that takes commands).
+    struct SummonTile { int32_t x = 0, y = 0; friend bool operator==(const SummonTile&, const SummonTile&) = default; };
+    std::vector<CombatantId> summon_ids = {};
+    std::vector<uint8_t> summon_archetypes = {};
+    std::vector<SummonTile> summon_tiles = {};
+    uint8_t command = 0;
+    std::vector<CombatantId> command_ids = {};
+    // appended (R-G12 rules PR 3, D6; log_hash 0xBE): Attack by a Pact of the Chain warlock: the familiar (its summon) makes
+    // this attack with its reaction (attack_index into the familiar's attacks); it costs one of the warlock's attacks.
+    CombatantId familiar_id = 0;
 };
 
 enum class EventKind : uint8_t {
@@ -191,6 +210,9 @@ enum class EventKind : uint8_t {
     RechargeRolled, FeatureTriggered, ResourceSpent, ModifierApplied, ModifierExpired, ActionUsed,
     // appended (R-G11 zones, event schema v9):
     ZoneCreated, ZoneMoved, ZoneEnded,
+    // appended (R-G12 summons and transforms, event schema v10; SUMMONS_TRANSFORMS.md §2.7, numbered 48-52). Rules PR 1 emits
+    // Transformed / Reverted; Summoned, SummonEnded and Commanded are reserved for rules PR 2 (never emitted yet).
+    Summoned, SummonEnded, Transformed, Reverted, Commanded,
     // Not an event: the number of kinds. Append new kinds ABOVE this line; consumers that lock the
     // numeric layout (sim's "event layout" test) compare against kEventKindCount.
     Count_ };
@@ -212,6 +234,11 @@ inline constexpr std::size_t kEventKindCount = std::size_t(EventKind::Count_);
 //   ConcentrationEnded actor=caster a=spell_id; SpellEffectEnded actor=affected creature a=spell_id
 //   b=Condition removed (-1 none); SpellCheckRolled actor=counterer a=natural b=total c=success (vs DC).
 //   SpellCast/Resolved/Countered: actor=caster target=first target, b=slot level (0 = cantrip).
+//   v10 (R-G12): Transformed actor=creature a=source id b=form archetype index c=FormKind; Reverted actor=creature a=source id
+//   b=reason (0 duration, 1 concentration, 2 0 HP / unconscious, 3 chose, 4 died, 5 encounter ended) c=overflow damage carried.
+//   Summoned actor=summoner target=creature a=spell id b=archetype index c=initiative total; SummonEnded actor=summoner target=creature
+//   a=spell id b=reason (0 duration, 1 concentration, 3 0 HP, 5 encounter ended); a Spiritual Weapon: Summoned target=token id
+//   b=0 c=-1, SummonEnded b=0 / 5; Commanded actor=summoner target=creature (0 = all) a=command.
 //   v7: RechargeRolled actor a=action/spell id b=d6 natural c=recharged(0/1); FeatureTriggered actor=owner
 //   target=subject a=trigger id b=TriggerOn c=outcome (0 none, 1 applied, 2 declined, 3 failed save);
 //   ResourceSpent actor a=pool id b=amount c=remaining; ModifierApplied actor=caster target a=modifier id
@@ -353,6 +380,15 @@ struct ActiveSpellEffect {
     // appended (R-G11): the zone that applied this effect "while in the zone" (Web's restraint), 0 = none. It ends when the
     // target leaves the zone, escapes (special 4: Strength check vs `dc`) or the zone ends.
     uint32_t zone_id = 0;
+    // appended (EC deferred monsters, flagged): ends when the target escapes (special 4: Strength check vs `dc`), a giant
+    // spider's Web. Derived from the SpellDef (escape_dc): not hashed.
+    bool escape_check = false;
+    // appended (EC spider follow-up, flagged): a destructible restraint (the web, SpellDef::object_*): AC, the hit points left
+    // (Combat::hash 0xBF while > 0) and its damage-type masks. ActionRequest::special 6 attacks it; 0 HP ends the effect.
+    int16_t object_hp = 0; int8_t object_ac = 0; uint32_t object_vulnerable = 0, object_immune = 0;
+    // appended (EC spider follow-up, flagged): a second condition held for as long as this effect lasts (the spider bite's
+    // "paralyzed while poisoned in this way"). Derived from the SpellDef: not hashed.
+    bool has_also = false; Condition also = Condition::Paralyzed;
 };
 
 // A modifier in force on `target` (row 12). `timed` reuses the condition-duration machinery (Rounds / EndOfTargetNextTurn).
@@ -393,6 +429,12 @@ struct FeatureSpec {
     uint8_t cost = 0;           // 0 follow ActionRequest::as_bonus_action, 1 action, 2 bonus action, 3 reaction, 4 free
     uint8_t grant_actions = 0;  // grant_action: TurnBudget::extra_actions += this (Action Surge: 1)
     bool heal_pool = false;     // Lay on Hands: spend `amount` from `pool`, heal ActionRequest::target (0 = self) by that much
+    // appended (R-G12 rules PR 1): a transform feature. form = FormKind (2 Wild Shape, 3 shapechanger; 0 = not a transform);
+    // form_rounds = how long it lasts (Wild Shape: 600 * (druid level / 2); 0 = until reverted); form_choices = how many forms
+    // build_form offers (legal_actions lists form_archetype 1..form_choices). The request needs ActionRequest::form_archetype.
+    uint8_t form = 0;
+    uint16_t form_rounds = 0;
+    uint8_t form_choices = 0;
 };
 
 // v8 Moved.c flag bits (the one definition; sim's kMoved* alias these).
@@ -484,6 +526,22 @@ struct EncounterHooks {
     // R-G11 rules PR 2 (appended): is `creature` within the damaging side of a sided zone (Wall of Fire: within side_ft of a
     // wall tile on the chosen side, wall tiles excluded; Q4)? Asked only by region 1 rows. Empty = nobody is.
     std::function<bool(const EncounterState&, uint32_t zone_id, CombatantId creature)> zone_side_contains;
+    // ---- R-G12 transforms (appended; SUMMONS_TRANSFORMS.md §2.3, §3.3) ----
+    // The statistics of form `archetype_index` (ActionRequest::form_archetype - 1) of transform `kind` from `source` (the spell or
+    // feature id) for `creature`: the beast's stat block (Polymorph / Wild Shape: sim checks the CR / level limits and returns
+    // nullopt for a form not allowed) or a shapechanger trait's form. Pure (content only, no rng). Rules decides what is
+    // replaced and what is kept. Empty = no forms: every transform is refused.
+    std::function<std::optional<FormStats>(const EncounterState&, const Combatant& creature, FormKind kind, uint32_t source,
+                                           uint8_t archetype_index)> build_form;
+    // R-G12 rules PR 2: the stat block of creature `archetype_index` (ActionRequest::summon_archetypes) of summon spell `def`
+    // cast at `slot_level` by `summoner` (pure, content only; nullopt = not allowed). Rules sets the id, team and summon fields.
+    // Empty = nothing can be summoned.
+    std::function<std::optional<Combatant>(const EncounterState&, const Combatant& summoner, const SpellDef& def, uint8_t slot_level,
+                                           uint8_t archetype_index)> build_summon;
+    // Is this set of creatures a valid choice (Conjure Animals: one CR 2, two CR 1, four CR 1/2 or eight CR 1/4, by slot level)?
+    // Empty = any 1..SummonSpec::max_count.
+    std::function<bool(const EncounterState&, const Combatant& summoner, const SpellDef& def, uint8_t slot_level,
+                       const std::vector<uint8_t>& archetypes)> summon_choice_ok;
 };
 
 // R-G11: a live zone or aura (ZONES_AURAS.md §2.6). anchor_x / anchor_y: a point zone's sim tile, opaque to rules (Q1).
@@ -517,6 +575,19 @@ struct SourcedCondition {
     int16_t escape_dc = 0;   // Grappled: 0 = escape by a contest against the grappler's Athletics
 };
 
+// R-G12 rules PR 3 (D3): a Spiritual Weapon: not a combatant (no HP, not a target, no turn). token_id comes from the summon
+// counter (sim's token); end_round 0 = no limit, else it ends at the start of the owner's turn in that round.
+struct ActiveSummonWeapon {
+    CombatantId token_id = 0, owner = 0;
+    uint32_t spell_id = 0;
+    uint8_t slot_level = 0;
+    uint32_t end_round = 0;
+    // the token's tile (ActionRequest::summon_tiles[0] of the cast, then of each SummonWeaponAttack that moves it): stored and
+    // logged by rules (0xBC, 0xAF), validated by sim (20 ft move, reach). has_tile false = no tile given yet.
+    bool has_tile = false;
+    int32_t tile_x = 0, tile_y = 0;
+};
+
 struct EncounterState {
     std::vector<Combatant>       combatants;
     std::vector<InitiativeEntry> order;
@@ -537,6 +608,12 @@ struct EncounterState {
     std::vector<SourcedCondition> sourced;   // appended (R-G8): who a condition came from; empty for old content
     std::vector<ActiveZone> zones;            // appended (R-G11): live zones in creation order; empty unless a zone exists
     uint32_t next_zone_id = 1;                // appended (R-G11): id of the next zone (ids start at 1)
+    uint32_t transforms = 0;                  // appended (R-G12): transforms begun this encounter (0xAF folds while non-zero)
+    // appended (R-G12 PR 2): the next summon id (rules-owned; sim seeds it after begin_encounter above every chunk spawn id; 0 =
+    // unseeded: above every combatant id) and the creatures summoned so far. Ids are never reused.
+    uint32_t next_summon_id = 0;
+    uint32_t summons = 0;
+    std::vector<ActiveSummonWeapon> summon_weapons{};   // appended (R-G12 PR 3), creation order; counted in `summons`
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call
@@ -573,6 +650,10 @@ struct StepResult {
     StepStatus status = StepStatus::Rejected;     // ok == (status != Rejected)
     std::optional<NeedsDecision> needs = {};      // NeedsDecision: what to ask; `events` are provisional
     std::optional<LoggedStep> logged = {};        // Done: the entry to append to the action log
+    // appended (R-G12, D15 / SUMMONS_TRANSFORMS.md §3.5): in the step that ends the encounter, the index into `events` of the
+    // first teardown event (Reverted{b = 5}; SummonEnded{b = 5} with rules PR 2), which run up to EncounterEnded. nullopt = no
+    // teardown (nothing transformed or summoned, or the encounter did not end in this step).
+    std::optional<std::size_t> teardown_begin = {};
 };
 
 bool is_conscious(const Combatant&);
@@ -662,6 +743,18 @@ uint64_t surprised_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222
 // Petrifying Gaze (Combat::hash 0xAE): some creature has its eyes averted / their ids.
 bool has_gaze_state(const EncounterState&);
 uint64_t gaze_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
+// R-G12 (Combat::hash 0xAF): summon / transform state. has_summon_state: something was transformed (or, rules PR 2, summoned)
+// this encounter. summons_digest: summon id counter u32, summon count u32 (0 / 0 until rules PR 2), transforms u32, then per
+// combatant with a form (combatants order): id, FormKind, form_source, form_caster, form_archetype, form_end_round, base hp,
+// base hp_max.
+bool has_summon_state(const EncounterState&);
+uint64_t summons_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
+// R-G12 pure helpers (also used by the encounter). apply_form saves `c`'s own statistics in `base` and puts on form `f` of
+// `kind` (what is replaced vs kept: VERSION_BUMP_BATCH 7.2q). revert_form restores them; Polymorph / Wild Shape come back with
+// the saved hp, a shapechanger keeps its one HP pool. Both are no-ops on a wrong state (apply_form returns false when already
+// transformed or kind is None; revert_form returns false when not transformed). They emit no events.
+bool apply_form(Combatant& c, FormKind kind, const FormStats& f);
+bool revert_form(Combatant& c);
 bool has_leftover_state(const EncounterState&);
 uint64_t leftover_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 

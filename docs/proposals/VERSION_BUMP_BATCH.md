@@ -1846,6 +1846,201 @@ folded into the one sim fact `gaze_seen`. Averting applies to all gazers at once
 creature follows SRD unseen-attacker rules (the ruling named only the disadvantage). Gaze saves hit every other creature
 (allies too), as the SRD text has no team limit.
 
+### 7.2q R-G12 rules PR 1: transforms (Wild Shape, Polymorph, shapechanger forms) (rules side) and hand-off
+
+(Numbered after 7.2p, Petrifying Gaze, #149.) Spec: `docs/proposals/SUMMONS_TRANSFORMS.md` (D1-D15), PR split §2.10 item 1.
+Transforms only: no roster growth, no summons (rules PR 2). True Polymorph is not in PR 1 (§2.1: outside our levels).
+
+Rules:
+
+- **Data.** `FormKind` (None 0, Polymorph 1, WildShape 2, Shapechanger 3) and `FormStats` (abilities, hp / hp_max, AC,
+  proficiency bonus, speed, save / skill proficiencies, resistances / immunities / vulnerabilities / condition immunities and
+  the qualified masks, attacks, multiattacks, attacks_per_action, size, creature type, roll traits, triggers, reactions, bonus
+  attacks, and `blocked_features`) in `types.hpp`. `Combatant` (appended): `form`, `form_source`, `form_caster` (Polymorph),
+  `form_archetype`, `form_end_round`, `base` (the saved own `FormStats`), `form_blocked_features`. `EncounterState::transforms`
+  counts transforms begun. Pure helpers `apply_form(Combatant&, FormKind, const FormStats&)` / `revert_form(Combatant&)`.
+- **Replaced vs kept** (§2.2 table). Polymorph: every `FormStats` field (mental scores and proficiencies too), a fresh HP pool
+  (`hp = hp_max = form hp_max`), features from the form only. Wild Shape: physical stats, AC, speed, attacks, size, type and
+  defences from the beast; Int / Wis / Cha kept; save and skill proficiencies = own | beast's; proficiency bonus the higher;
+  its own roll traits / triggers / reactions / bonus attacks kept (D7: "if the new form is physically capable"), the beast's
+  appended after them; `blocked_features` (content `requires_humanoid_form`) refused by `UseFeature` while in the form
+  (`feature not usable in this form`). Shapechanger: every `FormStats` field as sim builds it ("statistics other than size are
+  the same", content lists the differences), **one HP pool** (hp / hp_max unchanged). All kinds keep conditions, exhaustion,
+  concentration, temp HP (D8: they stay on the creature and are not part of `base`), spell slots, feature uses and pools.
+- **Gear.** Polymorph / Wild Shape: equipment melds; the form's `attacks` and `ac` are the beast's natural ones, so no gear
+  attack or armour applies (sim's `build_form` must not add any). Shapechanger: equipment is not transformed (sim keeps the
+  creature's weapons in the form's `attacks` when the form can use them). Rules has no equipment model; this is a `build_form`
+  contract.
+- **Spellcasting.** In a Polymorph or Wild Shape form `CastSpell` (incl. innate) is refused (`cannot cast spells in this
+  form`) and `legal_actions` lists no spell; concentration on a spell cast before continues (D7). A shapechanger can cast.
+- **Wild Shape / shapechanger**: `UseFeature` of a feature whose `FeatureSpec::form` is 2 / 3 (appended fields `form`,
+  `form_rounds`, `form_choices`) with `ActionRequest::form_archetype` (1 + index; logged, `log_hash` 0xBD). Refusals before any
+  change: `form_archetype required`, `bad form_archetype` (above `form_choices`), `already transformed`, `incapacitated`,
+  `form not available` (no hook, or `build_form` returns nullopt: CR / level / fly / swim limits are sim's). Cost: the
+  FeatureSpec `cost` (SRD Land druid: 1 = action). Uses: the usual `FeatureUses` row (Wild Shape: 2, `ShortRest`).
+  Events: `FeatureUsed`, then `Transformed`. Duration: `form_end_round = round + form_rounds` (Wild Shape: 600 * (druid
+  level / 2) rounds; 0 = none); it reverts at the start of the creature's turn in that round (`Reverted{b = 0}`, right after
+  `TurnStarted`).
+- **Polymorph**: `SpellEffectKind::Polymorph` (appended), one target, `ActionRequest::form_archetype`. Refused (D13: "no effect on
+  a shapechanger or a creature with 0 hit points"): `polymorph: target is a shapechanger`, `polymorph: target has 0 hit points`,
+  also `polymorph: one target`, `polymorph: target already transformed`, `form_archetype required`,
+  `form not available`, `polymorph: primary effect only`; `form_archetype` on another spell: `form_archetype: not a polymorph
+  spell`; on another request kind: `form_archetype: UseFeature or CastSpell only`. Unwilling = another team: Wisdom save vs the
+  spell DC (`SavingThrowRolled`), success = no effect (no concentration). Willing (same team, or self): no save. Then
+  `Transformed`; concentration is set only when someone transformed. `legal_actions` does not list Polymorph casts (the form
+  choice is sim's, like teleport destinations).
+- **Revert** (`ActionKind::Revert`, appended): Wild Shape a bonus action, shapechanger an action (`no bonus action available` /
+  `no action available`, `incapacitated`, `not transformed`); Polymorph: `polymorph ends with the spell, not by choice`.
+  `Reverted{b = 3}`. `legal_actions` lists it when affordable.
+- **HP overflow** (inside `after_damage`, the one place damage lands): when a Polymorph / Wild Shape form drops to 0 HP the
+  step emits the form's `DamageDealt{a = what the form absorbed (temp HP + its remaining HP), b = 0}`, then `Reverted{b = 2,
+  c = overflow}` (overflow = damage past temp HP and the form's HP), restores the normal form, and applies the overflow as a
+  second `DamageDealt{a = overflow}` (the two sum to the hit, no double count) with the normal drop / death-save /
+  **massive damage** logic against the **normal form's hp_max** (D12). No massive damage check against the form. A
+  shapechanger has no overflow (one pool) and reverts on death.
+- **Other ends.** Death in any form (no 0-HP path): `Reverted{b = 4}` before `CombatantDied`. Wild Shape while Unconscious
+  (Sleep): `Reverted{b = 2}` at the end of the step. Polymorph: the caster's concentration ending reverts the target
+  (`ConcentrationEnded`, then `Reverted{b = 1}`); the target reverting for any other reason ends the spell, so the caster's
+  concentration ends at the end of that step.
+- **Encounter end (D15).** In the step that ends the encounter, `check_end` reverts every transformed creature in ascending id
+  (`Reverted{b = 5, c = 0}`) right before `EncounterEnded`; `StepResult::teardown_begin` (appended) is the index of the first
+  of them (nullopt when there are none). `Combat::state()` after the end has no forms.
+- **Events (schema v10).** `EventKind` appends `Summoned` 48, `SummonEnded` 49, `Transformed` 50, `Reverted` 51, `Commanded`
+  52 (the proposal's numbering); PR 1 emits only 50 / 51. Payloads: SIM_EVENTS.md table and v10 changelog.
+- **Hash.** `has_summon_state` (`transforms != 0`, stays true after the revert) / `summons_digest` (Combat::hash **0xAF**):
+  summon id counter u32 and summon count u32 (both 0 until PR 2, which fills them and appends its records), `transforms` u32,
+  then per transformed combatant in `combatants` order: id, FormKind, form_source, form_caster, form_archetype,
+  form_end_round, base hp, base hp_max. `log_hash` **0xBD** + `form_archetype` byte when non-zero. 0xBC stays reserved for
+  summons. Fight without a transform: nothing emitted or folded, so every golden is unchanged.
+
+Hand-off:
+
+- **Engine Core (sim)**: install `EncounterHooks::build_form(state, creature, kind, source, archetype_index)` in
+  `install_hooks()` (pure: content only). Polymorph: the beast monster@4 stat block, nullopt above the target's level / CR.
+  Wild Shape: the beast block, nullopt above the druid's max CR or for fly / swim forms below the level; fill
+  `blocked_features` from `requires_humanoid_form`. Shapechanger: the trait's `forms[i]` merged over the creature's own block.
+  No gear AC / attacks in Polymorph / Wild Shape forms. Return a `FeatureSpec` with `form` / `form_rounds` / `form_choices`
+  from `feature_spec` for Wild Shape (cost 1, rounds 600 * (level / 2)) and shapechanger features (cost 1, rounds 0), register
+  Wild Shape uses (2, ShortRest). Fold `Combat::hash` 0xAF + `summons_digest` when `has_summon_state`; `log_hash` 0xBD +
+  `form_archetype` when non-zero. Bump `kSimEventSchemaVersion` to 10 (done in this PR in `events.hpp` / `events.cpp`, see
+  deviations) and apply §3.5's v10 placement of the ending step's sim events (`teardown_begin`). The token keeps its id; a size
+  change (shapechanger Small / Large forms) needs the footprint update when it lands (sim). AI per §3.4.
+- **Tools & Content** (as agreed and merged in T&C #163, `docs/CONTENT_CONVENTIONS.md` §9): spell@1 effect kind
+  `polymorph { forms: [monster content id] (required, 1..255, unique, each a beast), max_cr: "target_level" (default) | CR
+  string, save: {ability} (default wis) }` (primary effect only, one target, a concentration spell; `form_archetype` = 1 + index
+  into `forms[]`); common@2 feature kind `wild_shape { pool (required, a short_rest pool), cost (action), class (druid), forms
+  (required), max_cr_by_level (required, levels strictly ascending), no_fly_below (8), no_swim_below (4) }` with **no duration
+  key** (the engine computes it); common@2 trait `shapechanger { cost, forms: [{id, name, size?, armor_class?, speed?, actions?,
+  creature_type?}] }`, which **requires the creature fact `shapechanger: true`** (without it: hard error); trait flag
+  `requires_humanoid_form` (refused in a Wild Shape form: `feature not usable in this form`). Refusal strings as above. The rules
+  spell loader parses `polymorph` (loader key `polymorph` -> `SpellEffectKind::Polymorph`, concentration from the spell; the
+  loader PR after #168); the unknown-form / not-a-beast checks need monster data and stay with the validator.
+
+Deviations / readings: willingness is "same team" (a request flag can come later). Wild Shape's "higher of each" proficiency is
+a union of the bitmasks (proficiency bonus the higher). The Wild Shape "falls unconscious" end uses reason 2. Polymorph's 1-hour
+cap is its concentration (no separate timer). A Polymorph on an already transformed creature is refused. Hit Dice are not
+replaced (rest-only). The sim event-version files (`engine/core/sim/include/sim/events.hpp`, `src/events.cpp`,
+`tests/events_tests.cpp`) and the vertical-slice feed test were edited for v10, as #118 did for v9, because the new rules kinds
+otherwise fail sim's layout lock; no other sim file was touched.
+
+### 7.2r R-G12 rules PR 2: summons (Conjure Animals, Find Familiar, Animate Dead) (rules side) and hand-off
+
+(Numbered after 7.2q.) Spec: `docs/proposals/SUMMONS_TRANSFORMS.md` (D1-D15), PR split §2.10 item 2. Spiritual Weapon and Pact
+of the Chain are rules PR 3. Conjure Elemental's hostile turn (D5) is not in this PR (TODO in `end_concentration`).
+
+Rules:
+
+- **Data.** `SpellEffectKind::Summon` (appended) with `SpellDef::summon` = `SummonSpec{max_count, initiative (Own / Group),
+  control (None / Verbal / BonusAction / Telepathic), vanishes_at_zero_hp}`. `Combatant` (appended): `summoner`,
+  `summon_source`, `summon_group`, `summon_control`, `summon_vanishes`, `summon_concentration`, `commanded`, `gone`.
+  `EncounterState` (appended): `next_summon_id` (rules-owned counter, sim seeds it), `summons` (count made). `ActionRequest`
+  (appended, `log_hash` 0xBC): `summon_ids`, `summon_archetypes`, `summon_tiles` (opaque, sim's anchors), `command`,
+  `command_ids`. `ActionKind::CommandSummons` (appended). Hooks: `build_summon(state, summoner, def, slot_level,
+  archetype)` -> `optional<Combatant>` (pure; rules sets id, team and the summon fields) and optional `summon_choice_ok`
+  (the CR-band count table; empty = any 1..max_count).
+- **Cast (D1).** Cast on the caster (no creature targets). The caster's request picks the creatures (`summon_archetypes`).
+  Refused before anything is spent: `summon: no creature targets`, `summon: bad creature count`, `summon: choice not allowed`,
+  `summon not available` (no hook / nullopt), `summon_tiles: one per creature`, `summon: primary effect only`, summon fields
+  on another spell or request: `summon: not a summon spell`.
+- **Ids.** Rules assigns ids from `next_summon_id` (never at or below an existing id; unseeded 0 = above every combatant) and
+  writes them into the logged request (`StepResult::logged->request.summon_ids`). Live: a non-empty `summon_ids` is refused
+  (`summon_ids: assigned by rules (leave empty)`). Replay: the logged ids must equal what the counter assigns, else
+  `summon_ids: do not match the summon counter`. Ids are never reused.
+- **Initiative (D2, D14).** After the step's own events (after `SpellResolved`, before Ready triggers), each creature joins:
+  `Own` = its own d20 + Dex; `Group` = one roll for the cast (first creature's Dex), members consecutive by id, `summon_group` =
+  the first id. Placed after every entry with a higher total, or an equal total and an equal or higher Dex modifier. Placed at
+  or before the current turn: `turn_index` + 1 (the current actor keeps its turn) and every stored stamp of this round at or
+  after the slot (`ActiveSpellEffect::cast_stamp`, `ActiveZone::cast_stamp`, `ZoneFired::stamp`, `trigger_turn_stamp`) + 1,
+  so it names the same turn; a slot that has passed acts next round. `Summoned{actor = summoner, target = creature, a = spell,
+  b = archetype, c = initiative total}` per creature, id order. Concentration spells set the caster's concentration.
+- **Commands (D4).** `CommandSummons{command 1 act / 2 defend, command_ids (empty = all its summons that take commands)}`:
+  Verbal / Telepathic free, any BonusAction summon in the set costs the summoner's bonus action (`no bonus action available`).
+  Refusals: `command: 1 act or 2 defend`, `command: not your summon`, `command: it takes no commands`, `command: duplicate
+  id`, `command: no summons to command`, `incapacitated`; `command` fields on another kind: `command: CommandSummons only`.
+  `Commanded{actor, target (0 = all), a = command}`. A Verbal / BonusAction summon not commanded to act may only Dodge or
+  end its turn (`summon not commanded: Dodge only`; `legal_actions` = Dodge, EndTurn); reactions unchanged (SRD: "defends
+  itself"). The command clears when the summon's turn ends. Telepathic (familiar) / None act on their own.
+- **Ends (D10, D15).** 0 HP with `vanishes_at_zero_hp`: `SummonEnded{b = 3}` at the end of the step (after `CombatantDied` if
+  killed outright). Concentration: `ConcentrationEnded`, then `SummonEnded{b = 1}` per summon (combatants order). Encounter
+  end: `SummonEnded{b = 5}` ascending id, then the `Reverted{b = 5}` block, then `EncounterEnded`; `teardown_begin` covers
+  both. A transformed summon just ends (form cleared, no `Reverted`). An ended summon is `gone` and `dead`, skipped in the turn
+  order, never acts again. Animate Dead (no vanish) drops as a monster.
+- **0xAF.** `summons_digest`: counter u32, count u32, then per summon (`summoner != 0`, combatants order) id, summoner,
+  summon_source, summon_group (u32), gone, commanded (byte), then the PR 1 transform fields. `has_summon_state` = summons != 0
+  || transforms != 0 (a seeded counter alone never folds).
+
+Hand-off (sim / T&C):
+
+- Sim: seed `next_summon_id` after `begin_encounter` above every chunk spawn id; fold 0xAF while `has_summon_state` and 0xBC
+  (summon_ids, archetypes, tiles, command, command_ids) per SIM_EVENTS.md; implement `build_summon` / `summon_choice_ok`
+  (CR band table, D1) and place the creatures on `summon_tiles`; read `teardown_begin`; drop `gone` combatants from views.
+- Content / T&C: `summon` effect kind (max_count, initiative, control, vanishes) for Conjure Animals / Woodland Beings / Minor
+  Elementals, Find Familiar, Animate Dead; archetype lists per CR band.
+- Sim events: `TokenSpawned` comes right after its own `Summoned` (one per creature, id order).
+- **Sim stamps EC will fix** (they key on `turn_index`, which a summon inserted before the current actor shifts; rules rewrites
+  only its own stored stamps): `Combat::aggressive_` and `run_to_end`'s `(round, turn_index)` turn key (SUMMONS_TRANSFORMS.md
+  §3.4: key on `(round, current_actor, TurnStarted count)`).
+- Ended summons stay in `order` (`gone`, dead, skipped); nothing is removed, so ends never shift `turn_index`.
+- A group shares one slot: every member's `InitiativeEntry` carries the group roll and the first creature's Dex (D2).
+- An ending summon's own concentration goes through `end_concentration` (`ConcentrationEnded`, modifiers / zones / Polymorph
+  links cleaned up); at encounter end those come before the contiguous `SummonEnded{b = 5}` block.
+- Deviation: filling the 0xAF counter / count fields changes transform-only 0xAF bytes vs PR 1 (no golden folds 0xAF yet).
+
+### 7.2s R-G12 rules PR 3: Spiritual Weapon and Pact of the Chain (rules side) and hand-off
+
+(Numbered after 7.2r.) Spec: `docs/proposals/SUMMONS_TRANSFORMS.md` D3, D6, PR split §2.10 item 3.
+
+Rules:
+
+- **Spiritual Weapon (D3).** `SpellEffectKind::SummonWeapon` (appended) with `SpellDef::summon_weapon` = `SummonWeaponSpec{
+  upcast_every (2), reach_ft (5), move_ft (20)}`; the attack uses `dice`, `damage_type`, `add_spellcasting_modifier`,
+  `upcast_dice` (per `upcast_every` levels above the spell's; SRD +1d8 per two). Not a combatant: `EncounterState::summon_weapons`
+  (appended) rows `ActiveSummonWeapon{token_id, owner, spell_id, slot_level, end_round}`; no HP, no turn, not a target. The cast
+  (content: bonus action) targets the creature of its first attack, or the caster for none (`spiritual weapon: one target`,
+  `spiritual weapon: primary effect only`). The token id comes from the summon counter like PR 2's ids (filled into the logged
+  `summon_ids`; live refused, replay checked). Events: `Summoned{actor = caster, target = token id, a = spell, b = 0, c = -1}`,
+  then its melee spell attack (`AttackResolved` actor = caster), before `SpellResolved`. Later turns: `ActionKind::SummonWeaponAttack`
+  (appended, `spell_id` names the row, target): the caster's bonus action (`spiritual weapon: none active`, `no bonus action
+  available`, `bad target`, `target is dead`, `incapacitated`); the 20 ft move is sim's. `legal_actions` lists it per hostile with no reach check: **sim filters weapon-attack reach** (5 ft of the token after its move) in its legal-action view. Tiles: the cast's `summon_tiles[0]` (spawn) and a `SummonWeaponAttack`'s `summon_tiles[0]` (move) are stored in the row (`has_tile`, `tile_x`, `tile_y`) and logged (0xBC); tile contract (EC, SUMMONS_TRANSFORMS.md §3.2): the cast needs exactly one spawn tile (zero or several: `spiritual weapon: one
+tile`), any in-bounds tile within 60 ft of the caster, the token occupying nothing; `SummonWeaponAttack`: empty = no move, else
+one tile at most 20 ft from the stored tile (several: `spiritual weapon: one tile`), reach 5 ft from the tile after the move.
+Sim validates live; on replay sim re-checks the logged tiles (failure = replay desync error); rules trusts the log. 0xAF adds the weapon rows only while `summon_weapons` is non-empty. A familiar never attacks on its own turn (`familiar_attack: a familiar cannot attack on its own turn`; `legal_actions` lists no Attack for it): the Pact trade is its only attack. It also takes no opportunity attack (`may_react` excludes a familiar from LeavingReach windows, so no window is offered) and cannot ready an attack (`familiar_attack: a familiar cannot ready an attack`).
+  Duration from the spell (1 minute = 10 rounds): `SummonEnded{b = 0}` at the start of the owner's turn in `end_round`. No
+  concentration. Encounter end: in the same pass as summons, ascending by id (`SummonEnded{b = 5}`). `summons` counts it, so 0xAF
+  folds; 0xAF layout gains the weapon rows after the summon records (SIM_EVENTS.md).
+- **Pact of the Chain (D6).** `Combatant::pact_of_chain` (appended, content). `ActionRequest::familiar_id` (appended, `log_hash`
+  0xBE): an `Attack` whose attack is made by the warlock's familiar (its Telepathic summon) with the familiar's attack
+  `attack_index`, spending one of the warlock's attacks (an Extra Attack remaining, or the Attack action) and the familiar's
+  reaction (`reaction_used`). Refusals: `familiar_attack: needs Pact of the Chain`, `familiar_attack: one attack of the Attack
+  action` (bonus / multiattack), `familiar_attack: not your familiar`, `familiar_attack: the familiar cannot react`, `bad
+  target`, `bad attack index`, `no action available`; on another kind `familiar_id: Attack only`. Events: the familiar's
+  `AttackResolved` (actor = familiar); no reaction window is opened (the trade is the warlock's choice).
+
+Hand-off: sim folds 0xBE (non-zero only) and the 0xAF weapon rows; spawns / moves / removes the weapon token (`TokenSpawned` /
+`TileMoved` / `TokenRemoved`, ids from `Summoned.target`); content: spell@1 `summon_weapon` kind and the Chain feature flag.
+Deviation: the proposal's "reuse `sustain` with a weapon flag" is a dedicated `SummonWeaponAttack` kind instead (clearer
+validation, no Heat Metal coupling).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain

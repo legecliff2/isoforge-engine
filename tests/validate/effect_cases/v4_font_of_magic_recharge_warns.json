@@ -43,5 +43,12 @@
     ]
   ],
   "severity": "warning",
-  "expect": "font_of_magic pool 'sorcery_points' recharge is 'short_rest'; the sim sets long_rest"
+  "expect": "font_of_magic pool 'sorcery_points' recharge is 'short_rest'; the sim sets long_rest",
+  "dels": [
+    [
+      "features",
+      0,
+      "effect"
+    ]
+  ]
 }

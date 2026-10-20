@@ -30,6 +30,8 @@ OPEN_EFFECT_KINDS_RG7 = frozenset({"reroll_ones", "great_weapon_fighting", "evas
                                    "aggressive", "reckless_attack",
                                    # R-G14 (sim #143): Sorcerer Metamagic {options, pool}, Evocation Sculpt Spells {}
                                    "metamagic", "sculpt_spells",
+                                   # 7.2n (sim #148): Arcane Recovery / Natural Recovery {class, max_slot_level, uses}
+                                   "slot_recovery",
                                    # 7.2o (sim #152): Font of Magic {pool}, the sorcery-point pool without Metamagic
                                    "font_of_magic"})
 # Open kinds whose second declaration in one document adds nothing (the sim dedupes): the validator warns.
@@ -45,6 +47,13 @@ NATIVE_EFFECT_KINDS_AT_4 = frozenset({"on_event", "apply_modifier", "grant_actio
 # common@1 kinds (no schema arm, not in the frozen 3 -> 4 list): known at @4, their fields are checked by
 # check_static_kinds below, mirroring the sim's load errors (sim/src/features.cpp apply_attack_bonus / _crit_range / _ac_bonus).
 STATIC_EFFECT_KINDS_R_G5 = frozenset({"attack_bonus", "crit_range", "ac_bonus"})
+# VERSION_BUMP_BATCH 7.2p (sim #153 content.cpp compile_gaze): kinds the sim compiles itself, gated at @4 (a file that declares
+# an older version lists them inert: unknown-kind warning there). Shape: the closed inline gaze arm of common@2 $defs/effect.
+COMPILED_EFFECT_KINDS_AT_4 = frozenset({"gaze"})
+# compile_gaze defaults for the optional fields the validator warns about when omitted.
+GAZE_DEFAULTS = {"condition": "restrained", "repeat_save": "end_of_turn", "escalate_to": "petrified"}
+# 7.2n (sim #148, features.cpp apply_slot_recovery): the classes slot_recovery accepts.
+SLOT_RECOVERY_CLASSES = frozenset({"wizard", "druid"})
 EFFECT_COST_V1 = frozenset({"action", "bonus_action"})            # reaction is reserved up to @3
 EFFECT_COST_V2 = frozenset({"action", "bonus_action", "reaction"})  # grant_action additionally accepts "free"
 
@@ -78,7 +87,8 @@ for _typ, _keys in (("monster", _SB_KEYS | _MONSTER_KEYS), ("character", _SB_KEY
     TAG_TABLE[f"{_typ}@1"] = TagRow(False, V1_ACTION_KINDS, _OPEN, EFFECT_COST_V1, _keys - {"spellcasting"})
     TAG_TABLE[f"{_typ}@2"] = TagRow(False, V1_ACTION_KINDS, _OPEN, EFFECT_COST_V1, _keys - {"spellcasting"})
     TAG_TABLE[f"{_typ}@3"] = TagRow(True, V1_ACTION_KINDS, _OPEN, EFFECT_COST_V1, _keys, cross_refs=False)
-    TAG_TABLE[f"{_typ}@4"] = TagRow(True, V2_ACTION_KINDS, _OPEN | NATIVE_EFFECT_KINDS_AT_4 | STATIC_EFFECT_KINDS_R_G5,
+    TAG_TABLE[f"{_typ}@4"] = TagRow(True, V2_ACTION_KINDS, _OPEN | NATIVE_EFFECT_KINDS_AT_4 | STATIC_EFFECT_KINDS_R_G5
+                                    | COMPILED_EFFECT_KINDS_AT_4,
                                     EFFECT_COST_V2, _keys | _AT4_KEYS, cross_refs=True, needs_api_level=2,
                                     legacy_stamps=True)
 TAG_TABLE["item@1"] = TagRow(False, frozenset(), frozenset(), frozenset(), frozenset(), cross_refs=True,
@@ -291,6 +301,8 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
             need_pool(path, eff.get("pool"), None)
         if eff.get("kind") in ("metamagic", "font_of_magic"):
             referenced.add(eff.get("pool"))   # sorcery points: spent by the sim per option (check 12); resolved by check_metamagic (7.2o: font_of_magic resolves it)
+        if eff.get("kind") == "wild_shape":
+            referenced.add(eff.get("pool"))   # R-G12 uses pool: resolved by check_transforms
     # check 3: spell references
     spell_refs: list[tuple[str, str]] = []
     sc = doc.get("spellcasting")
@@ -410,6 +422,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     errs += check_static_kinds(doc)
     check_grapple_riders(doc, errs, warns)
     check_untimed_save_condition_riders(doc, errs)
+    check_transforms(doc, ctx, errs, warns)
     # check 12: declared but never referenced pools (Legendary Resistance is declaration-only until row 13)
     for i, r in enumerate(resources):
         if r.get("id") not in referenced:
@@ -571,6 +584,252 @@ def check_metamagic(doc: dict) -> tuple[list[str], list[str]]:
             if extra:
                 warns.append(f"{path}: sculpt_spells takes no fields; {extra} are ignored by the sim (R-G14)")
     return errs, warns
+
+
+def check_on_event_usage(doc: dict) -> tuple[list[str], list[str]]:
+    """sim #158 compile_on_event usage: at_will = no cost; per_day / per_rest {uses 1..255} = a trigger-owned pool
+    '<trait id>#usage' recharged by rests; pool {pool, cost 1..255} = a Spend from a declared resources[] pool (check 2 / schema);
+    recharge is not compiled: the sim lists the trait as unsupported ('on_event: unsupported usage') -> warning."""
+    errs: list[str] = []
+    warns: list[str] = []
+    for path, owner, eff in live_effects(doc):
+        if eff.get("kind") != "on_event" or not isinstance(eff.get("usage"), dict):
+            continue
+        u = eff["usage"]
+        c = u.get("cost")
+        if u.get("kind") == "pool" and isinstance(c, int) and not isinstance(c, bool) and c > 255:
+            errs.append(f"{path}/usage: {owner} on_event: bad usage pool (cost must be 1..255, got {c}) (sim #158)")
+        if u.get("kind") == "recharge":
+            warns.append(f"{path}/usage: {owner} on_event: unsupported usage (recharge is not compiled yet; the sim lists the "
+                         "trait in unsupported_features and never fires it) (sim #158)")
+    return errs, warns
+
+
+GAZE_KEYS = frozenset({"kind", "range_ft", "save", "condition", "repeat_save", "escalates", "escalate_to", "escalate_margin"})
+GAZE_CONDITIONS = frozenset({"blinded", "charmed", "deafened", "frightened", "grappled", "incapacitated", "invisible",
+                             "paralyzed", "petrified", "poisoned", "prone", "restrained", "stunned", "unconscious",
+                             "exhaustion"})   # content.cpp condition_of
+GAZE_ABILITIES = frozenset({"str", "dex", "con", "int", "wis", "cha"})
+
+
+def check_gaze(doc: dict) -> tuple[list[str], list[str]]:
+    """7.2p (sim #153 content.cpp compile_gaze), @4 documents. Errors: compile_gaze's refusals in its wording
+    (`gaze '<id>': bad range_ft` / `missing save` / `bad save` / `bad condition` / `bad repeat_save` / `bad escalate_to` /
+    `bad escalate_margin`), which the closed common@2 arm also rejects (its anyOf message names no field), plus keys outside
+    the arm. Warnings: condition, repeat_save or escalate_to left to the loader's defaults (restrained, end_of_turn,
+    petrified), so the authored data says what the sim does."""
+    errs: list[str] = []
+    warns: list[str] = []
+    for path, owner, eff in live_effects(doc):
+        if eff.get("kind") != "gaze":
+            continue
+        where = f"{path}: gaze '{owner}'"
+        bad = []
+        r = eff.get("range_ft")
+        if not is_int(r) or not 5 <= r <= 65530 or r % 5:
+            bad.append("bad range_ft (an integer multiple of 5 in 5..65530)")
+        sv = eff.get("save")
+        if not isinstance(sv, dict):
+            bad.append("missing save")
+        elif sv.get("ability") not in GAZE_ABILITIES or not is_int(sv.get("dc")) or not 1 <= sv["dc"] <= 30 or set(sv) - {"ability", "dc"}:
+            bad.append("bad save ({ability, dc 1..30})")
+        if "condition" in eff and eff["condition"] not in GAZE_CONDITIONS:
+            bad.append("bad condition")
+        if "repeat_save" in eff and eff["repeat_save"] not in ("end_of_turn", "start_of_turn", "none"):
+            bad.append("bad repeat_save (end_of_turn, start_of_turn or none)")
+        if "escalates" in eff and not isinstance(eff["escalates"], bool):
+            bad.append("escalates must be a boolean")
+        if "escalate_to" in eff and eff["escalate_to"] not in GAZE_CONDITIONS:
+            bad.append("bad escalate_to")
+        m = eff.get("escalate_margin", 0)
+        if not is_int(m) or not 0 <= m <= 30:
+            bad.append("bad escalate_margin (0..30)")
+        extra = sorted(set(eff) - GAZE_KEYS)
+        if extra:
+            bad.append(f"unknown key(s) {extra} (the common@2 gaze arm is closed)")
+        errs += [f"{where}: {m} (7.2p)" for m in bad]
+        missing = [k for k in GAZE_DEFAULTS if k not in eff]
+        if missing:
+            warns.append(f"{path}: gaze '{owner}' omits {', '.join(missing)}; the sim uses "
+                         f"{', '.join(f'{k} {GAZE_DEFAULTS[k]}' for k in missing)} (7.2p)")
+    return errs, warns
+
+
+def check_slot_recovery(doc: dict) -> list[str]:
+    """7.2n (sim #148, features.cpp apply_slot_recovery), for documents whose effects are active. The class / integer /
+    range shape is the schema arm; this mirrors the loader errors the arm cannot express: the class must be in classes[]
+    (a monster has none), its summed level must be 1..20, and a second declaration for one class fails to load."""
+    errs: list[str] = []
+    seen: dict = {}
+    for path, owner, eff in live_effects(doc):
+        if eff.get("kind") != "slot_recovery":
+            continue
+        cls = eff.get("class")
+        if cls not in SLOT_RECOVERY_CLASSES:
+            continue   # schema arm (enum): "slot_recovery class must be wizard or druid"
+        rows = [c for c in doc.get("classes") or [] if isinstance(c, dict) and c.get("class") == cls]
+        if not rows:
+            errs.append(f"{path}: {owner}: slot_recovery class '{cls}' is not in classes[] (7.2n)")
+            continue
+        level = sum(c.get("level") for c in rows if is_int(c.get("level")))
+        if level < 1 or level > 20:
+            errs.append(f"{path}: {owner}: slot_recovery class level out of range 1..20 ({cls} level {level}) (7.2n)")
+        if cls in seen:
+            errs.append(f"{path}: {owner}: slot_recovery declared twice for class '{cls}' (first at {seen[cls]}) (7.2n)")
+        else:
+            seen[cls] = path
+    return errs
+
+
+# ---- R-G12 transforms (VERSION_BUMP_BATCH 7.2q, Rules #156) ------------------------------------------------------
+# polymorph (spell@1, rules spell loader), wild_shape / shapechanger (common@2, Engine Core build_form) and the trait flag
+# requires_humanoid_form. There is no RESERVED_EFFECT_KINDS table yet, so wild_shape / shapechanger stay out of the tag
+# table's effect_kinds and get the unknown-kind warning (the open-kind pattern) until their loader lands; polymorph is
+# parsed by the rules spell loader since #171 (no reserved warning; polymorph_spell_warnings keeps above-max_cr). The messages below are the loaders' wording (Rules parses polymorph with them).
+CR_ORDER = ("0", "1/8", "1/4", "1/2") + tuple(str(i) for i in range(1, 31))
+
+
+def cr8(cr) -> int | None:
+    """A challenge.rating string as CR*8 (integer math: 1/8 -> 1, 1/4 -> 2, 1/2 -> 4, n -> 8n)."""
+    if not isinstance(cr, str) or cr not in CR_ORDER:
+        return None
+    return {"0": 0, "1/8": 1, "1/4": 2, "1/2": 4}.get(cr, 8 * int(cr) if cr.isdigit() else None)
+
+
+def monster_facts(doc) -> tuple | None:
+    """(creature type, challenge.rating) of a monster document, for form resolution."""
+    if not isinstance(doc, dict):
+        return None
+    ch = doc.get("challenge")
+    return doc.get("type"), ch.get("rating") if isinstance(ch, dict) else None
+
+
+def has_effect_kind(doc: dict, kind: str) -> bool:
+    return any(e.get("kind") == kind for _p, _o, e in live_effects(doc))
+
+
+def check_forms(label: str, forms, ctx: dict, errs: list[str]) -> list[tuple[str, int]]:
+    """Errors for a beast forms[] list (unknown / not a beast / duplicate); returns [(id, CR*8)] of the resolved beasts.
+    srd51.* ids under the deprecated escape hatch (no srd51.core dependency) are accepted unresolved."""
+    monsters = ctx.get("monsters") or {}
+    ext = ctx.get("external_ok") or (lambda _a: False)
+    seen, out = set(), []
+    for f in forms if isinstance(forms, list) else []:
+        if not isinstance(f, str):
+            continue
+        if f in seen:
+            errs.append(f"{label}: duplicate form '{f}'")
+            continue
+        seen.add(f)
+        facts = monsters.get(f)
+        if facts is None:
+            if not ext(f):
+                errs.append(f"{label}: unknown form '{f}'")
+            continue
+        if facts[0] != "beast":
+            errs.append(f"{label}: form '{f}' is not a beast")
+            continue
+        c = cr8(facts[1])
+        if c is not None:
+            out.append((f, c))
+    return out
+
+
+def check_polymorph_spell(doc: dict, ctx: dict) -> list[str]:
+    """spell@1 polymorph (the rules spell loader's load errors, same wording)."""
+    errs: list[str] = []
+    effs = doc.get("effects") or []
+    for i, e in enumerate(effs[1:], 1):
+        if isinstance(e, dict) and e.get("kind") == "polymorph":
+            errs.append("polymorph: primary effect only")
+            return errs
+    if not effs or effs[0].get("kind") != "polymorph":
+        return errs
+    tg = doc.get("targets")
+    if "area" in doc or (isinstance(tg, dict) and tg.get("count", 1) != 1):
+        errs.append("polymorph: one target")
+    if (doc.get("duration") or {}).get("concentration") is not True:
+        errs.append("polymorph: needs concentration")
+    check_forms("polymorph", effs[0].get("forms"), ctx, errs)
+    return errs
+
+
+def polymorph_spell_warnings(doc: dict, ctx: dict) -> list[str]:
+    effs = doc.get("effects") or []
+    if not effs or not isinstance(effs[0], dict) or effs[0].get("kind") != "polymorph":
+        return []
+    eff = effs[0]
+    out: list[str] = []   # Rules #171 parses polymorph: no reserved warning
+    lim = cr8(eff.get("max_cr", "target_level"))
+    if lim is not None:   # fixed max_cr only (target_level is checked by sim build_form at cast time)
+        for f, c in check_forms("polymorph", eff.get("forms"), ctx, []):
+            if c > lim:
+                out.append(f"polymorph: form '{f}' above max_cr")
+    return out
+
+
+def check_transforms(doc: dict, ctx: dict, errs: list[str], warns: list[str]) -> None:
+    """common@2 wild_shape / shapechanger and requires_humanoid_form (monster@4 / character@4)."""
+    res = {r.get("id"): r for r in doc.get("resources") or [] if isinstance(r, dict)}
+    action_ids = {a.get("id") for a in doc.get("actions") or [] if isinstance(a, dict)}
+    classes = {c.get("class") for c in doc.get("classes") or [] if isinstance(c, dict)}
+    seen: dict[str, str] = {}
+    for path, _owner, eff in live_effects(doc):
+        kind = eff.get("kind")
+        if kind not in ("wild_shape", "shapechanger"):
+            continue
+        if kind in seen:
+            errs.append(f"{path}: {kind}: one declaration per document")
+            continue
+        seen[kind] = path
+        if kind == "wild_shape":
+            pid = eff.get("pool")
+            r = res.get(pid)
+            if r is None:
+                errs.append(f"{path}: wild_shape: unknown pool '{pid}'")
+            else:
+                if r.get("recharge") != "short_rest":
+                    errs.append(f"{path}: wild_shape: pool '{pid}' must recharge on short_rest")
+                if not (is_int(r.get("max")) and r.get("max") == 2):
+                    warns.append(f"{path}: wild_shape: pool '{pid}' max should be 2")
+            rows = [x for x in eff.get("max_cr_by_level") or [] if isinstance(x, dict)]
+            lv = [x.get("level") for x in rows]
+            if any(not (a < b) for a, b in zip(lv, lv[1:])):
+                errs.append(f"{path}: wild_shape: max_cr_by_level levels must be strictly ascending")
+            top = max((cr8(x.get("max_cr")) or 0 for x in rows), default=0)
+            for f, c in check_forms(f"{path}: wild_shape", eff.get("forms"), ctx, errs):
+                if c > top:
+                    warns.append(f"{path}: wild_shape: form '{f}' above every max_cr_by_level row")
+            cls = eff.get("class", "druid")
+            if cls not in classes:
+                warns.append(f"{path}: wild_shape: class '{cls}' not in classes[]")
+        else:
+            if doc.get("shapechanger") is not True:
+                errs.append(f"{path}: shapechanger trait requires shapechanger: true")
+            ids = set()
+            for j, fm in enumerate(eff.get("forms") or []):
+                if not isinstance(fm, dict):
+                    continue
+                fid = fm.get("id")
+                if fid in ids:
+                    errs.append(f"{path}/forms/{j}: shapechanger: duplicate form id '{fid}'")
+                ids.add(fid)
+                for a in fm.get("actions") or []:
+                    if a not in action_ids:
+                        errs.append(f"{path}/forms/{j}: shapechanger: form '{fid}' names unknown action '{a}'")
+                if not set(fm) - {"id", "name"}:
+                    warns.append(f"{path}/forms/{j}: shapechanger: form '{fid}' changes nothing")
+                if fm.get("actions") == []:
+                    warns.append(f"{path}/forms/{j}: shapechanger: form '{fid}' allows no actions")
+    for key in ("traits", "features"):
+        for i, t in enumerate(doc.get(key) or []):
+            if not isinstance(t, dict) or t.get("requires_humanoid_form") is not True:
+                continue
+            eff = t.get("effect") if isinstance(t.get("effect"), dict) else {}
+            if eff.get("kind") == "wild_shape":
+                errs.append(f"/{key}/{i}: requires_humanoid_form on the wild_shape feature itself")
+            elif "wild_shape" not in seen:
+                warns.append(f"/{key}/{i}: requires_humanoid_form has no effect without wild_shape")
 
 
 # ---- untimed save_condition riders (sim content.cpp compile_rider -> compile_save_action) ----------------------

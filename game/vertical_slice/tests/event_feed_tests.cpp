@@ -98,12 +98,22 @@ TEST_CASE("v9 zone kinds 45-47 are known (not counted as unknown, not shown)") {
     slice::apply_events(evs, st, nm);
     CHECK(st.skipped_unknown == 0);
     CHECK(st.log.empty());
-    CHECK(sim::kLastRulesEventKind == EventKind::ZoneEnded);
+    CHECK(sim::kLastRulesEventKindV9 == EventKind::ZoneEnded);
+}
+
+TEST_CASE("v10 summon / transform kinds 48-52 are known (not counted as unknown, not shown)") {
+    std::vector<SimEvent> evs;
+    for (int k = 48; k <= 52; ++k) evs.push_back(rules(EventKind(k), 1, 0, 1, 2, 3));
+    FeedState st;
+    slice::apply_events(evs, st, nm);
+    CHECK(st.skipped_unknown == 0);
+    CHECK(st.log.empty());
+    CHECK(sim::kLastRulesEventKind == EventKind::Commanded);
 }
 
 TEST_CASE("unknown event kinds are skipped (above kLastRulesEventKind, future sim kinds)") {
     std::vector<SimEvent> evs;
-    for (int k = 48; k <= 51; ++k) evs.push_back(rules(EventKind(k), 1, 2, 1, 2, 3));   // past v9's last kind (47)
+    for (int k = 53; k <= 56; ++k) evs.push_back(rules(EventKind(k), 1, 2, 1, 2, 3));   // past v10's last kind (52)
     evs.push_back(rules(EventKind(250), 1));
     SimEvent future;
     future.kind = SimEvent::Kind(7);
