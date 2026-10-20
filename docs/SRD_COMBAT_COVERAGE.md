@@ -298,19 +298,19 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Spell | Status | Notes |
 |---|---|---|
 | Acid Splash | DATA | `save` DEX, 1d6 acid, `on_success none`, `targets {count 2, max_spread_ft 5}`. |
-| Chill Touch | NEW | Attack damage is DATA; "can't regain HP, undead disadvantage" rider needs R-G2/R-G3. |
+| Chill Touch | NEW (wiring) | Rules done (7.2u): `no_healing` marker (`ModStat::NoHealing`) checked on every hit point regain path (Heal spells, Heal request, regeneration, heal_self riders, Lay on Hands-style pools, feature heal dice, a natural-20 death save), `until_start_of_caster_turn`; undead disadvantage: AttackRoll disadvantage with `when` [`owner_creature_type` undead, `subject_is_caster`], `until_end_of_caster_next_turn`. Content (T&C) pending. |
 | Dancing Lights, Light, Mage Hand, Mending, Message, Minor Illusion, Prestidigitation, Thaumaturgy, Druidcraft, Guidance, Resistance | OOS | Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. |
 | Eldritch Blast | DATA | `spell_attack` with `scaling.cantrip {adds: beams}`; range 120. Agonizing Blast: R-G4. |
 | Fire Bolt | DATA | Shipped. Ignites objects: OOS. |
 | Poison Spray | DATA | `save` CON, 1d12 poison, range 10, `on_success none`. |
 | Produce Flame | DATA | Thrown `spell_attack` 1d8 fire (the light effect is OOS). |
-| Ray of Frost | NEW (wiring) | Rules done (follow-up): `Speed` modifier with `speed_sub` 10 and `until_end_of_target_next_turn` as an `ApplyModifier` rider on the spell attack; damage is DATA. Spell kind / loader pending (R-G3). |
+| Ray of Frost | NEW (wiring) | Rules done (verified, 7.2u tests): `Speed` modifier `speed_sub` 10 (with `speed_scale` 1/1; schema requires it), `until_start_of_caster_turn`, `affected` rider on the spell attack. Rules fold it into `TurnBudget::movement_ft` at the target's turn start, which sim reads. Content (T&C) pending. |
 | Sacred Flame | DATA | `save` DEX, 1d8 radiant, none on success. "Target gains no benefit from cover" is R-G13. |
 | Shillelagh | NEW | Weapon-damage buff (R-G3). |
-| Shocking Grasp | NEW | Melee spell attack DATA; advantage vs metal armor and "no reactions" rider R-G2/R-G3. |
+| Shocking Grasp | NEW (wiring) | Rules done (7.2u): `no_reactions` marker (`ModStat::NoReactions`, `may_react` refuses), duration `until_start_of_target_turn` (expiry 4), `affected` rider on the melee spell attack. Advantage vs metal armor: not modelled (no armor material in content or rules; a `TargetTag`-style predicate could carry it later). Content (T&C) pending. |
 | Spare the Dying | DATA | `ActionKind::SpareTheDying` (hook `spare_the_dying`). |
 | True Strike | NEW (wiring) | Rules done (follow-up): AttackRoll advantage modifier with `consume` 1 (spent by the next attack roll). Spell kind pending (R-G3). |
-| Vicious Mockery | NEW (wiring) | Rules done (follow-up): AttackRoll disadvantage modifier, `consume` 1, as a rider on the save effect. Spell kind pending (R-G3). |
+| Vicious Mockery | NEW (wiring) | Rules done (verified, 7.2u tests): AttackRoll disadvantage, `consume` 1, `until_end_of_target_turn` (expiry 2), as an `affected` rider on the Wis save effect. Content (T&C) pending. |
 
 ### 8.2 Level 1
 
@@ -332,7 +332,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Faerie Fire | NEW (wiring) | Rules done (#89): `AttacksAgainst` advantage modifier applied to each target in the area (sim computes the area, #78). Spell kind pending; the Dex save gate rides the existing Save effect (R-G3). |
 | False Life | NEW (wiring) | Rules done (#89): `ModStat::TempHp` (the larger pool is kept; no record); the 1d4 + 4 roll is fixed by the loader as `bonus` today. Spell kind pending (R-G3). |
 | Grease | NEW (wiring) | `Zone` (point, 10 ft cube, difficult terrain, 1 min timer, no concentration): Appear / Enter / EndTurn rows, Dex save or prone (R-G11, VERSION_BUMP_BATCH 7.2l). Sim: geometry, membership, terrain overlay. Sim done (zones sim PR): geometry / `zone_contains`, membership lists, `legal_zone_tiles` destination checks, terrain overlays, 0xAB / 0xB7. |
-| Guiding Bolt | NEW (wiring) | Rules done (follow-up): `ApplyModifier` rider (`affected_only`) with AttacksAgainst advantage, `consume` 2 and `until_caster_turn`; covered by a test. Spell kind pending (R-G3). |
+| Guiding Bolt | NEW (wiring) | Rules done (7.2u): `ApplyModifier` rider (`affected_only`), AttacksAgainst advantage, `consume` 2 (first attack roll against the target), duration `until_end_of_caster_next_turn` (`ModifierSpec::expiry` 3, `Expiry::EndOfCasterNextTurn`; was `until_caster_turn`, too short per SRD). Content (T&C) pending. |
 | Healing Word | DATA | `heal`, `casting_time bonus_action`, range 60, `upcast.dice`. |
 | Hellish Rebuke | NEW (wiring) | Rules done (#87): `Damaged` window + `Retaliate` reaction resolving a synthetic Save SpellDef against the damager (R-G7). Content/hook compile pending. |
 | Heroism | NEW (wiring) | Rules done (follow-up): `TempHp` modifier with `per_turn`; the frightened immunity is not modelled (R-G3). |
