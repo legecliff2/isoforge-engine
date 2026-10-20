@@ -144,6 +144,11 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
                                           sa.recharge == Recharge::ShortRest ? rules5e::FeatureRecharge::ShortRest
                                                                              : rules5e::FeatureRecharge::LongRest);
         }
+    // EC deferred monsters: on_event triggers with usage recharge N-6 get an ActionUse row (owner, trigger id), only for creatures
+    // that have one (action_uses folds under 0xA1 only when non-empty, so every other combat hashes as before).
+    for (const auto& sl : c.slots_)
+        for (const auto& tr : sl.archetype->base.triggers)
+            if (tr.recharge_min != 0) rules5e::register_action_use(c.state_, sl.id, tr.id, false);
     c.apply_rules_events(opening);
     // v6: where each multi-tile creature stands, once, in spawn order (nothing for 1x1-only combats).
     for (const auto& sl : c.slots_)

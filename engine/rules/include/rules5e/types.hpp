@@ -208,6 +208,8 @@ enum class PredicateKind : uint8_t {
     AllyNearTarget,         // the sim fact ActionRequest::ally_near_target (no disadvantage clause): Martial Advantage
     DamageAtMost,           // a: the event's damage (TrigCtx dmg, after resistances) <= a; drop_to_zero / damage_dealt: Relentless
     WeaponAttack,           // appended (Director #158): a weapon attack (melee or ranged); false for spell attacks and no attack
+    // appended (EC deferred monsters, flagged): mask = spell_id_of(tag); the subject's Combatant::tags has / lacks it (ghoul: elves)
+    TargetTag, NotTargetTag,
 };
 enum class WeaponIs : uint8_t { Melee, Ranged, Finesse, FinesseOrRanged };
 struct Predicate { PredicateKind kind = PredicateKind::NotCrit; int16_t a = 0, b = 0; uint32_t mask = 0; };
@@ -233,6 +235,9 @@ struct Trigger {
     uint8_t choice = 0;                   // 0 auto (fires), 1 ask (hit/crit triggers: HitRider window, 9c), 2 never
     std::vector<Predicate> when;          // all must hold
     std::vector<RiderEffect> effects;
+    // appended (EC deferred monsters, flagged): usage recharge N-6. A registered ActionUse keyed (owner, id) gates it: firing
+    // expends it, the owner's turn start rolls a d6 like recharge actions (RechargeRolled). 0 = no recharge.
+    uint8_t recharge_min = 0;
 };
 
 // A mechanical reaction compiled from content (row 11): offered in the Damaged / AllyAttacked windows of its owner.
@@ -469,6 +474,9 @@ struct Combatant {
     uint32_t form_end_round = 0;
     std::optional<FormStats> base{};
     std::vector<uint32_t> form_blocked_features{};
+    // appended (EC deferred monsters, flagged): content tags (spell_id_of of monster `tags[]` and a character's race, plus
+    // "elf" for elf races), read only by PredicateKind::TargetTag / NotTargetTag. Content-derived: not hashed.
+    std::vector<uint32_t> tags{};
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
