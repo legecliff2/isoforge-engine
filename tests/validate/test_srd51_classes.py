@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SRD 5.1 Fighter (Champion), Cleric (Life) and Wizard (Evocation) levels 1-5 in srd51.core vs the 5e-database
+"""SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation) and Sorcerer (Draconic Bloodline) levels 1-5 in srd51.core vs the 5e-database
 tables (ctest: content_validate_srd51_classes).
 
 `data/srd51_classes_5e_database_a6212be.json` holds fields copied verbatim from 5e-bits/5e-database commit a6212be
@@ -25,9 +25,13 @@ DATA = json.loads((Path(__file__).parent / "data/srd51_classes_5e_database_a6212
 TABLE, SPELLS = DATA["classes"], DATA["spells"]
 LEVELS = range(1, 6)
 XP = {1: 0, 2: 300, 3: 900, 4: 2700, 5: 6500}   # SRD 5.1 Character Advancement table
-SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2}
-MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int"}   # the ASI at level 4 goes here (+2)
-SKILLS = {"athletics": "str", "perception": "wis", "insight": "wis", "religion": "int", "arcana": "int", "history": "int"}
+SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2, "sorcerer": 1}
+MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int", "sorcerer": "cha"}   # the ASI at level 4 goes here (+2)
+SKILLS = {"athletics": "str", "perception": "wis", "insight": "wis", "religion": "int", "arcana": "int", "history": "int",
+          "persuasion": "cha"}
+# Draconic Resilience (sorcerer, Draconic Bloodline): +1 hit point per sorcerer level, and AC 13 + Dex without armor.
+HP_PER_LEVEL = {"sorcerer": 1}
+UNARMORED_BASE = {"sorcerer": 13}
 
 # Every class / subclass feature of levels 1-5 (mirror index) -> where it lives. "feature:<id>" = a features[] entry;
 # "subclass" = classes[0].subclass; "spellcasting" = the spellcasting block; "abilities" = baked into the scores.
@@ -51,6 +55,15 @@ AUTHORED = {
     "arcane-tradition": "subclass",
     "evocation-savant": "feature:evocation_savant",
     "wizard-ability-score-improvement-1": "abilities",
+    "spellcasting-sorcerer": "spellcasting",
+    "sorcerous-origin": "subclass",
+    "dragon-ancestor": "feature:dragon_ancestor",            # descriptive (Draconic language; the damage type matters at 6+)
+    "draconic-resilience": "feature:draconic_resilience",    # baked into hit_points / armor_class (HP_PER_LEVEL, UNARMORED_BASE)
+    "font-of-magic": "feature:font_of_magic",                # font_of_magic kind (7.2o, sim #152) + resources[] sorcery_points
+    "flexible-casting-creating-spell-slots": "feature:font_of_magic",   # rules5e FlexibleCasting, enabled by font_of_magic
+    "flexible-casting-converting-spell-slot": "feature:font_of_magic",
+    "metamagic-1": "feature:metamagic",                      # metamagic kind (R-G14, sim #143), the same pool
+    "sorcerer-ability-score-improvement-1": "abilities",
 }
 # Not expressible today (docs/SRD_CLASSES_DEFERRED.md): mirror index -> the feature id it would get (must be absent).
 DEFERRED = {
@@ -115,8 +128,9 @@ class ClassTable(unittest.TestCase):
         for cls, level, d in docs():
             with self.subTest(cls=cls, level=level):
                 hd, con = TABLE[cls]["hit_die"], mod(d["abilities"]["con"])
-                self.assertEqual(d["hit_points"]["average"], hd + con + (level - 1) * (hd // 2 + 1 + con))
-                self.assertEqual(d["hit_points"]["formula"], f"{level}d{hd}+{level * con}")
+                extra = HP_PER_LEVEL.get(cls, 0)
+                self.assertEqual(d["hit_points"]["average"], hd + con + extra + (level - 1) * (hd // 2 + 1 + con + extra))
+                self.assertEqual(d["hit_points"]["formula"], f"{level}d{hd}+{level * (con + extra)}")
 
     def test_abilities_and_asi(self):
         for cls in TABLE:
@@ -150,7 +164,7 @@ class ClassTable(unittest.TestCase):
                     ac = a["base_ac"] + (min(dex, a.get("dex_cap", dex)) if a["dex_bonus"] else 0)
                     self.assertLessEqual(a.get("str_min", 0), d["abilities"]["str"])
                 else:
-                    ac = 10 + dex
+                    ac = UNARMORED_BASE.get(cls, 10) + dex
                 ac += sum(i["ac_bonus"] for i in worn if i["category"] == "shield")
                 self.assertEqual(d["armor_class"]["value"], ac)
 
@@ -221,8 +235,35 @@ class ClassTable(unittest.TestCase):
             if level >= 5:
                 self.assertEqual(f["extra_attack"]["effect"],
                                  {"kind": "multiattack", "options": [{"id": "longsword_x2", "attacks": ["longsword", "longsword"]}]})
+        # Sorcerer (Draconic): font_of_magic (7.2o) from 2nd, metamagic (R-G14) from 3rd, both on the one limited resources[] pool
+        # sorcery_points whose max is the sorcerer level (the mirror's sorcery_points column); level 1 has neither.
+        for level in LEVELS:
+            with self.subTest(sorcerer=level):
+                d = load("sorcerer", level)
+                f = features(d)
+                pts = TABLE["sorcerer"]["levels"][str(level)]["class_specific"]["sorcery_points"]
+                if level >= 2:
+                    self.assertEqual(d["resources"], [{"id": "sorcery_points", "name": "Sorcery Points", "max": pts,
+                                                       "recharge": "long_rest"}])
+                    self.assertEqual(pts, level)
+                    self.assertEqual(f["font_of_magic"]["effect"], {"kind": "font_of_magic", "pool": "sorcery_points"})
+                else:
+                    self.assertNotIn("resources", d)
+                    self.assertNotIn("font_of_magic", f)
+                self.assertEqual("metamagic" in f, level >= 3)
+                if level >= 3:
+                    eff = f["metamagic"]["effect"]
+                    self.assertEqual(eff, {"kind": "metamagic", "options": ["quickened", "twinned"], "pool": "sorcery_points"})
+                    self.assertEqual(len(eff["options"]), TABLE["sorcerer"]["levels"][str(level)]["class_specific"]["metamagic_known"])
+                ids = [x["id"] for x in d["features"]]
+                if level >= 3:
+                    self.assertLess(ids.index("font_of_magic"), ids.index("metamagic"))
+                leveled = [r for r in d["spellcasting"]["spells"]
+                           if SPELLS[r.removeprefix("srd51.spell.").replace("_", "-")]["level"] > 0]
+                self.assertLessEqual(len(leveled), TABLE["sorcerer"]["levels"][str(level)]["spells_known"])
         # descriptive entries carry no effect (no combat rule; the heavy-armor proficiency is the worn chain mail)
-        for cls, fid in (("cleric", "bonus_proficiency"), ("wizard", "evocation_savant")):
+        for cls, fid in (("cleric", "bonus_proficiency"), ("wizard", "evocation_savant"), ("sorcerer", "dragon_ancestor"),
+                         ("sorcerer", "draconic_resilience")):
             for level in LEVELS:
                 f = features(load(cls, level))
                 if fid in f:
