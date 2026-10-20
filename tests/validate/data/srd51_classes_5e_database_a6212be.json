@@ -1136,6 +1136,105 @@
      "spell": "stinking-cloud"
     }
    ]
+  },
+  "monk": {
+   "name": "Monk",
+   "hit_die": 8,
+   "saving_throws": [
+    "str",
+    "dex"
+   ],
+   "spellcasting_ability": null,
+   "subclass": "open-hand",
+   "levels": {
+    "1": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "monk-unarmored-defense": "Unarmored Defense",
+      "martial-arts": "Martial Arts"
+     },
+     "class_specific": {
+      "martial_arts": {
+       "dice_count": 1,
+       "dice_value": 4
+      },
+      "ki_points": 0,
+      "unarmored_movement": 0
+     }
+    },
+    "2": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "ki": "Ki",
+      "flurry-of-blows": "Flurry of Blows",
+      "patient-defense": "Patient Defense",
+      "step-of-the-wind": "Step of the Wind",
+      "unarmored-movement-1": "Unarmored Movement"
+     },
+     "class_specific": {
+      "martial_arts": {
+       "dice_count": 1,
+       "dice_value": 4
+      },
+      "ki_points": 2,
+      "unarmored_movement": 10
+     }
+    },
+    "3": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "monastic-tradition": "Monastic Tradition",
+      "deflect-missiles": "Deflect Missiles"
+     },
+     "class_specific": {
+      "martial_arts": {
+       "dice_count": 1,
+       "dice_value": 4
+      },
+      "ki_points": 3,
+      "unarmored_movement": 10
+     },
+     "subclass_features": {
+      "open-hand-technique": "Open Hand Technique"
+     }
+    },
+    "4": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 1,
+     "features": {
+      "monk-ability-score-improvement-1": "Ability Score Improvement",
+      "slow-fall": "Slow Fall"
+     },
+     "class_specific": {
+      "martial_arts": {
+       "dice_count": 1,
+       "dice_value": 4
+      },
+      "ki_points": 4,
+      "unarmored_movement": 10
+     }
+    },
+    "5": {
+     "prof_bonus": 3,
+     "ability_score_bonuses": 1,
+     "features": {
+      "monk-extra-attack": "Extra Attack",
+      "stunning-strike": "Stunning Strike"
+     },
+     "class_specific": {
+      "martial_arts": {
+       "dice_count": 1,
+       "dice_value": 6
+      },
+      "ki_points": 5,
+      "unarmored_movement": 10
+     }
+    }
+   },
+   "subclass_name": "Open Hand"
   }
  },
  "spells": {
