@@ -45,7 +45,7 @@
         "consume": "next_attack_against",
         "applies_to": "target",
         "duration": {
-          "kind": "until_start_of_caster_turn"
+          "kind": "until_end_of_caster_next_turn"
         }
       }
     }

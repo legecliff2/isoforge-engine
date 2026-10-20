@@ -362,7 +362,10 @@ struct ReadiedAction { CombatantId actor; ActionRequest response; uint32_t trigg
 //                         (applied in round R with n = 1: gone when round R + 1 starts; independent of who is alive).
 //   EndOfTargetNextTurn:  ends at the end of the target's next turn (when applied during the target's own turn,
 //                         that turn does not count; make_timed counts it).
-enum class Expiry : uint8_t { None, Rounds, EndOfTargetNextTurn };
+//   EndOfCasterNextTurn (7.2u): ends at the end of the caster's next turn (applied during the caster's turn: that turn
+//                         does not count). StartOfTargetNextTurn (7.2u): ends when the target's next turn starts.
+//                         Both are used by modifiers only (ActiveModifier::timed; the caster is ActiveModifier::caster).
+enum class Expiry : uint8_t { None, Rounds, EndOfTargetNextTurn, EndOfCasterNextTurn, StartOfTargetNextTurn };
 struct Timed { Expiry kind = Expiry::None; int16_t rounds_left = 0;
                friend bool operator==(const Timed&, const Timed&) = default; };
 // `target_acting`: the target is the current actor when the effect is applied.
