@@ -1925,11 +1925,16 @@ Hand-off:
   `form_archetype` when non-zero. Bump `kSimEventSchemaVersion` to 10 (done in this PR in `events.hpp` / `events.cpp`, see
   deviations) and apply §3.5's v10 placement of the ending step's sim events (`teardown_begin`). The token keeps its id; a size
   change (shapechanger Small / Large forms) needs the footprint update when it lands (sim). AI per §3.4.
-- **Tools & Content**: spell@1 effect kind `polymorph { max_cr: "target_level" | n, save: {ability: wis} }` (no other fields
-  needed: shapechangers and 0 HP are refused by rules); character@N feature kind `wild_shape { uses, recharge: short_rest,
-  max_cr_by_level, no_fly_below, no_swim_below, duration_hours: "half_level" }`; monster@4 trait `shapechanger { forms: [...] }`;
-  feature flag `requires_humanoid_form`. The rules spell loader (`engine/rules/content`) does not parse `polymorph` yet: it
-  lands with T&C's schema key (loader key `polymorph` → `SpellEffectKind::Polymorph`, concentration from the spell).
+- **Tools & Content** (as agreed and merged in T&C #163, `docs/CONTENT_CONVENTIONS.md` §9): spell@1 effect kind
+  `polymorph { forms: [monster content id] (required, 1..255, unique, each a beast), max_cr: "target_level" (default) | CR
+  string, save: {ability} (default wis) }` (primary effect only, one target, a concentration spell; `form_archetype` = 1 + index
+  into `forms[]`); common@2 feature kind `wild_shape { pool (required, a short_rest pool), cost (action), class (druid), forms
+  (required), max_cr_by_level (required, levels strictly ascending), no_fly_below (8), no_swim_below (4) }` with **no duration
+  key** (the engine computes it); common@2 trait `shapechanger { cost, forms: [{id, name, size?, armor_class?, speed?, actions?,
+  creature_type?}] }`, which **requires the creature fact `shapechanger: true`** (without it: hard error); trait flag
+  `requires_humanoid_form` (refused in a Wild Shape form: `feature not usable in this form`). Refusal strings as above. The rules
+  spell loader parses `polymorph` (loader key `polymorph` -> `SpellEffectKind::Polymorph`, concentration from the spell; the
+  loader PR after #168); the unknown-form / not-a-beast checks need monster data and stay with the validator.
 
 Deviations / readings: willingness is "same team" (a request flag can come later). Wild Shape's "higher of each" proficiency is
 a union of the bitmasks (proficiency bonus the higher). The Wild Shape "falls unconscious" end uses reason 2. Polymorph's 1-hour
