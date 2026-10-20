@@ -607,6 +607,10 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
             g_errs, g_warns = c4.check_gaze(doc)
             errs += [f"{rel}: {m}" for m in g_errs]
             warns += [f"{rel}: {m}" for m in g_warns]
+        if "transparent" in row.effect_kinds:   # 7.2w transparent (@4): loader refusals, highest-wins warning
+            t_errs, t_warns = c4.check_transparent(doc, tag.split("@")[0])
+            errs += [f"{rel}: {m}" for m in t_errs]
+            warns += [f"{rel}: {m}" for m in t_warns]
         if "extra_attack" in row.effect_kinds:   # EC #179 extra_attack (@4): loader refusals, highest-wins warning
             x_errs, x_warns = c4.check_extra_attack(doc, tag.split("@")[0])
             errs += [f"{rel}: {m}" for m in x_errs]

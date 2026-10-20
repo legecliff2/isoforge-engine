@@ -1738,6 +1738,7 @@ uint64_t Combat::hash() const {
                 h.byte(uint8_t(e.damage_type));
                 h.u32(e.cast_stamp);
                 h.byte(e.slot_level);
+                if (e.damage_when == 3 && e.container_damage != 0) h.u16(e.container_damage);   // 7.2w Swallow: damage taken this turn (regurgitation), only when non-zero
             }
         }
     }
