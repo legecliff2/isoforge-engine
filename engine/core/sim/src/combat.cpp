@@ -1554,7 +1554,7 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze) {
         r.error = "cannot end movement in another creature's space";
         return r;
     }
-    if (!aggressive_step_ok(mover, to)) { r.error = "aggressive: the Dash's movement must go toward a hostile it can see"; return r; }
+    if (!aggressive_step_ok(mover, to, cost, fp)) { r.error = "aggressive: the Dash's movement must go toward a hostile it can see"; return r; }
     ActionRequest mv{mover, ActionKind::Move};
     mv.move_ft = int16_t(cost);
     mv.move_tiles = 1;
@@ -1615,11 +1615,17 @@ std::vector<Vec2i> Combat::summon_tiles_for(CombatantId caster, const rules5e::S
 }
 
 bool Combat::aggressive_step_ok(CombatantId mover, Vec2i to) const {
+    // Priced like the Step itself (plan_step -> step_cost_ft): move modes, zones, another creature's space, squeezing.
+    StepPlan plan;
+    if (!plan_step(mover, to, plan)) return aggressive_step_ok(mover, to, plan.cost, plan.n);
+    const int fp = footprint_size(mover);
+    return aggressive_step_ok(mover, to, step_cost_ft(mover, pos(mover), to, fp, overlaps_other(mover, to, fp)), fp);
+}
+bool Combat::aggressive_step_ok(CombatantId mover, Vec2i to, int cost, int fp) const {
     const TurnKey now = turn_key();
     if (!aggressive_ || aggressive_->stamp != now || aggressive_->actor != mover) return true;
     const Vec2i from = pos(mover);
-    const int fp = footprint_size(mover);
-    if (grid_.move_cost_ft(from, to, fp) <= aggressive_->free_ft) return true;   // the creature's own movement
+    if (cost <= aggressive_->free_ft) return true;   // the creature's own movement
     const auto* m = rules5e::find(state_, mover);
     if (!m || m->has(rules5e::Condition::Blinded)) return false;
     for (const auto& sl : slots_) {
