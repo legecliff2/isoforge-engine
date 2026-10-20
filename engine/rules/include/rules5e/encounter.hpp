@@ -448,6 +448,21 @@ struct ForcedMoveQuery {
     CombatantId mover = 0, source = 0; uint8_t mode = 0; uint16_t feet = 0; bool teleport = false; uint32_t step_seq = 0;
     bool has_dest = false; int32_t dest_x = 0, dest_y = 0;
 };
+// Cover (SRD 5.1 "Cover"; VERSION_BUMP_BATCH 7.2t). Rules never interpret positions: sim answers one query per source ->
+// target pair. Half = +2 to AC and Dex saves, ThreeQuarters = +5, Total = can't be targeted directly (an area effect skips
+// the creature when it has total cover from the area's point of origin).
+enum class Cover : uint8_t { None = 0, Half = 1, ThreeQuarters = 2, Total = 3 };
+// source: the attacker, caster or save-action user. from_area: the effect is an area (SpellDef::area != None) and cover is
+// measured from its point of origin (sim's aim point for the cast being resolved; the caster for a self-centred area), not
+// from the source's space. spell_id: the spell / save action (0 = a weapon or natural attack).
+struct CoverQuery {
+    CombatantId source = 0;
+    CombatantId target = 0;
+    bool from_area = false;
+    uint32_t spell_id = 0;
+};
+constexpr int cover_bonus(Cover c) { return c == Cover::Half ? 2 : c == Cover::ThreeQuarters ? 5 : 0; }
+
 struct EncounterHooks {
     // Checked after every state change. Empty = default_end_condition.
     EndConditionFn end_condition;
@@ -542,6 +557,14 @@ struct EncounterHooks {
     // Empty = any 1..SummonSpec::max_count.
     std::function<bool(const EncounterState&, const Combatant& summoner, const SpellDef& def, uint8_t slot_level,
                        const std::vector<uint8_t>& archetypes)> summon_choice_ok;
+    // ---- Cover (appended; VERSION_BUMP_BATCH 7.2t) ----
+    // The cover `q.target` has against `q.source` (or against the area's origin when q.from_area). Pure and synchronous: a
+    // function of the state and sim's (replayed) positions, never of rng, so replay recomputes it and nothing is logged.
+    // Asked when an Attack / familiar attack / targeted CastSpell is validated (Total refuses: "target has total cover"),
+    // once per attack roll (do_attack: the AC bonus), and once per target of a Save spell or save action (Dex saves: the
+    // bonus; area: Total skips the target). SpellDef::ignores_cover drops Half / ThreeQuarters (Sacred Flame), never Total.
+    // Empty = Cover::None everywhere (pre-7.2t behaviour, goldens unchanged).
+    std::function<Cover(const EncounterState&, const CoverQuery&)> cover;
 };
 
 // R-G11: a live zone or aura (ZONES_AURAS.md §2.6). anchor_x / anchor_y: a point zone's sim tile, opaque to rules (Q1).

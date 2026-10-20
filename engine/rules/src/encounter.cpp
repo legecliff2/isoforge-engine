@@ -131,7 +131,8 @@ void consume_modifiers(EncounterState& s, int kind, CombatantId id, int reason, 
 int aura_save_bonus(const EncounterState& s, const Combatant& t, Ability ab);   // R-G11 PR 2 (D7), below spell_def
 DamageApplied zone_apply_damage(const EncounterState& s, const Combatant& t, int16_t amount, DamageType type, uint8_t qualifiers);
 
-SaveResult save_roll_raw(EncounterState& s, const Combatant& t, Ability ab, int dc, RollMode mode, const SaveSource* src) {
+SaveResult save_roll_raw(EncounterState& s, const Combatant& t, Ability ab, int dc, RollMode mode, const SaveSource* src,
+                         int cover = 0) {
     bool adv = mode == RollMode::Advantage, dis = mode == RollMode::Disadvantage;
     mod_modes(s, t.id, ModStat::Save, int(ab), adv, dis);
     const RollMode m = combine_modes(adv, dis);
@@ -139,7 +140,7 @@ SaveResult save_roll_raw(EncounterState& s, const Combatant& t, Ability ab, int 
     if (r.auto_fail) return r;
     if ((t.reroll_ones & 4) && reroll_natural_one(s.rng, r.roll)) r.success = r.roll.total >= dc;   // Lucky
     const int add = modifier_flat(s, t.id, ModStat::Save, int(ab)) + mod_roll(s, t.id, ModStat::Save, int(ab)) +
-                    (s.zones.empty() ? 0 : aura_save_bonus(s, t, ab));
+                    (s.zones.empty() ? 0 : aura_save_bonus(s, t, ab)) + (ab == Ability::Dex ? cover : 0);   // 7.2t cover
     if (add != 0) { r.roll.total = int16_t(r.roll.total + add); r.success = r.roll.total >= dc; }
     return r;
 }
@@ -148,14 +149,22 @@ SaveResult save_roll_raw(EncounterState& s, const Combatant& t, Ability ab, int 
 // Row 13, Legendary Resistance: a failed save turns into a success by spending 1 from Combatant::legendary_pool
 // (ResourceSpent is emitted before the caller's SavingThrowRolled, which then reports success).
 SaveResult save_roll(EncounterState& s, const Combatant& t, Ability ab, int dc, RollMode mode, std::vector<Event>& ev,
-                     const SaveSource* src = nullptr) {
-    SaveResult r = save_roll_raw(s, t, ab, dc, mode, src);
+                     const SaveSource* src = nullptr, int cover = 0) {
+    SaveResult r = save_roll_raw(s, t, ab, dc, mode, src, cover);
     if (!r.success && t.legendary_pool != 0 && can_spend(s, t.id, t.legendary_pool, 1) && spend_pool(s, t.id, t.legendary_pool, 1)) {
         r.success = true;
         emit(ev, EventKind::ResourceSpent, t.id, 0, int32_t(t.legendary_pool), 1, find_pool(s, t.id, t.legendary_pool)->cur);
     }
     return r;
 }
+
+// 7.2t cover: sim's answer for one source -> target pair (Cover::None without the hook).
+Cover cover_of(const EncounterState& s, CombatantId source, CombatantId target, bool from_area, uint32_t spell_id) {
+    if (!s.hooks.cover || source == target) return Cover::None;
+    return s.hooks.cover(s, CoverQuery{source, target, from_area, spell_id});
+}
+// The AC / Dex save bonus, after SpellDef::ignores_cover (`def` may be null: a weapon attack).
+int cover_bonus_for(Cover c, const SpellDef* def) { return def && def->ignores_cover ? 0 : cover_bonus(c); }
 
 // R-G8: record the source of a spell-applied Charmed / Frightened (other conditions carry no source).
 void note_source(EncounterState& s, Condition c, CombatantId source, CombatantId target) {
@@ -1548,7 +1557,11 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         !(atk.finesse && modifier(a.abilities, Ability::Dex) > modifier(a.abilities, Ability::Str))) adv = true;   // Str melee
     const int drain_before = int(t.hp) + int(t.temp_hp);   // Life Drain: damage taken by this hit
     if (a.stealth_total > 0) { adv = true; a.stealth_total = 0; }   // unseen attacker; now revealed
+    // 7.2t: cover from sim. Total: no attack at all (validation refuses it; this guards OA / Ready / reaction attacks)
+    const Cover cov = cover_of(s, a.id, t.id, false, spell_id);
+    if (cov == Cover::Total) return false;
     AttackContext actx;
+    actx.cover_ac_bonus = int8_t(cover_bonus_for(cov, spell_id != 0 ? spell_def(s, spell_id) : nullptr));
     actx.target_within_5ft = within_5ft;
     actx.ally_near_target = ally_near_target;
     actx.ranged = atk.ranged;
@@ -2309,8 +2322,11 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                             ? std::max(0, ctx.empower > 0 ? roll_empowered(s.rng, sdice, false, ctx.empower)
                                                           : roll_dice(s.rng, sdice)) : 0;   // one roll for all targets
         bool applied = false;
+        const bool area = def.area != AreaShape::None;
         for (Combatant* t : T) {
             if (t->dead) continue;
+            const Cover cov = cover_of(s, a.id, t->id, area, def.id);   // 7.2t: per target (Dex saves only)
+            if (cov == Cover::Total) continue;   // an area skips a creature with total cover from its origin (no save, no event)
             SaveSource src{def.magical, def.applies_condition ? bit(def.condition) : 0u,
                            (def.dice.count > 0 || def.dice.bonus > 0) ? bit(def.damage_type) : 0u};
             const bool spared = ctx.spared && std::find(ctx.spared->begin(), ctx.spared->end(), t->id) != ctx.spared->end();
@@ -2319,7 +2335,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 r.success = true;
             } else {
                 r = save_roll(s, *t, def.save_ability, dc, ctx.heighten == t->id ? RollMode::Disadvantage : RollMode::Normal,
-                              ev, &src);
+                              ev, &src, cover_bonus_for(cov, &def));
             }
             emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(def.save_ability), r.roll.natural, r.roll.total,
                  int32_t(r.success));
@@ -2660,7 +2676,11 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
 // Applies a resolved (not countered) spell: the first effect, then each extra effect in order. A rider
 // (affected_only) resolves over the targets the previous effect affected; others over every target.
 void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& def, uint8_t lvl,
-                   const std::vector<Combatant*>& T, bool within_5ft, std::vector<Event>& ev) {
+                   const std::vector<Combatant*>& T_in, bool within_5ft, std::vector<Event>& ev) {
+    // 7.2t: an area skips every creature with total cover from its point of origin (all effects of the spell)
+    std::vector<Combatant*> T;
+    for (Combatant* t : T_in)
+        if (def.area == AreaShape::None || cover_of(s, a.id, t->id, true, def.id) != Cover::Total) T.push_back(t);
     std::vector<Combatant*> affected = resolve_effect(s, ctx, a, def, lvl, T, within_5ft, ev);
     for (const SpellEffect& e : def.extra_effects) {
         const std::vector<Combatant*>& targets = e.affected_only ? affected : T;
@@ -2764,6 +2784,8 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         }
         if (!valid_target_type(def, *t)) return fail("invalid creature type for this spell");
         if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, a, def, *t)) return fail("invalid spell target");
+        // 7.2t: a creature with total cover can't be targeted directly (an area skips it at resolution instead)
+        if (def.area == AreaShape::None && cover_of(s, a.id, t->id, false, def.id) == Cover::Total) return fail("target has total cover");
         T.push_back(t);
     }
     auto distinct = [&] {
@@ -3882,6 +3904,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             Combatant* t = find_mut(s, req.target);
             if (!t || t == &a || t == f) return fail("bad target");
             if (t->dead) return fail("target is dead");
+            if (cover_of(s, f->id, t->id, false, 0) == Cover::Total) return fail("target has total cover");
             if (charmed_by(s, f->id, t->id)) return fail("a charmed creature cannot attack its charmer");
             if (req.attack_index >= f->attacks.size()) return fail("bad attack index");
             if (b.attacks_remaining > 0) --b.attacks_remaining;
@@ -3915,6 +3938,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         Combatant* t = find_mut(s, req.target);
         if (!t || t == &a) return fail("bad target");
         if (t->dead) return fail("target is dead");
+        if (cover_of(s, a.id, t->id, false, 0) == Cover::Total) return fail("target has total cover");
         if (charmed_by(s, a.id, t->id)) return fail("a charmed creature cannot attack its charmer");
         if (req.attack_index >= a.attacks.size()) return fail("bad attack index");
         uint32_t pending_pool = 0; uint16_t pending_cost = 0;
