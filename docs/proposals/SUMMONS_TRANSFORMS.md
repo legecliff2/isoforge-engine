@@ -344,7 +344,7 @@ unchanged in each sim PR).
   (0xBC), so replay needs no policy.
 - **Summoning**: the AI casts a summon spell only from content priority lists (none by default, like conversions in #152);
   archetype choice per Q1 (highest CR, then lowest content-id byte order); tiles by 3.1's deterministic choice.
-- **Transforms**: AI Wild Shapes only when content marks it (`ai: prefer_beast`), into the highest-CR allowed form (then id);
+- **Transforms**: AI Wild Shapes only when `FormFeature::ai_prefer` is set (as built: common@2 `wild_shape` has no `ai` key, so loaded content leaves it off), into the highest-CR allowed form (then id);
   reverts by bonus action never (it lets 0 HP revert it); shapechangers stay in their spawn form. Polymorph as an ordinary
   save spell aimed at the highest-CR hostile.
 - **Headless driver**: a summon's turn is driven like any creature; a `gone` combatant never becomes current (rules removes
@@ -416,7 +416,8 @@ ones, with the normal end events. Nothing is carried into another Combat for now
 - spell@1 effect kind `summon_weapon { attack: {dice, type, reach_ft}, move_ft, bonus_action_attack }` (Spiritual Weapon).
 - spell@1 effect kind `polymorph { max_cr: "target_level" | n, save: {ability: wis}, unwilling_save, excludes_shapechangers }`.
 - character@N feature kind `wild_shape { uses, recharge: short_rest, max_cr_by_level: [...], no_fly_below, no_swim_below,
-  duration_hours: "half_level" }`.
+  duration_hours: "half_level" }`. (Draft. As merged in #163 / 7.2q and read by the sim loader: `wild_shape { pool, cost, class, forms,
+  max_cr_by_level: [{level, max_cr}], no_fly_below, no_swim_below }`, no duration key; uses / recharge come from the pool.)
 - monster@4 trait `shapechanger { forms: [{id, name, size, ac, speed, attacks: [...], ...overrides}] }` (statistics other than
   size are the same unless listed).
 - creature archetypes for familiars / steeds / conjured beasts: already monster@4 stat blocks (bat, cat, owl, wolf, warhorse,
