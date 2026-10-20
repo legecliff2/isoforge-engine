@@ -86,6 +86,9 @@ SPELL_EFFECT_R120 = {"hp_pool": (S({"kind", "dice", "condition"}), S({"ends_on_d
                      "end_condition": (S({"kind", "conditions"}), S({"description"})),
                      "delayed_damage": (S({"kind", "damage", "expiry"}), S({"applies_to", "description"})),
                      "sustained_damage": (S({"kind", "damage"}), S({"description"}))}
+# R-G9 spell@1 arms (sim #144, spell_loader.cpp forced_move / teleport): same closed if/then pattern.
+SPELL_EFFECT_RG9 = {"forced_move": (S({"kind", "feet"}), S({"mode", "up_to", "max_size", "provokes_oa", "applies_to", "description"})),
+                    "teleport": (S({"kind", "max_feet"}), S({"needs_sight", "description"}))}
 # R-G12 transforms (VERSION_BUMP_BATCH 7.2q; docs/CONTENT_CONVENTIONS.md section 9): closed objects with a propertyNames
 # allow-list. spell@1 polymorph is an arm of the file's if/then effect union; the common@2 ones are $defs of their own.
 SPELL_EFFECT_RG12 = {"polymorph": (S({"kind", "forms"}), S({"max_cr", "save"}))}
@@ -204,6 +207,20 @@ class SpellEffectArmsR120(unittest.TestCase):
                 self.assertEqual(set(then["required"]), set(req))
                 self.assertIn(k, eff["properties"]["kind"]["enum"])
 
+    def test_rg9_arms_are_closed_allow_lists(self):
+        eff = load("spell/v1.schema.json")["$defs"]["effect"]
+        found = {sub["if"]["properties"]["kind"]["const"]: sub["then"] for sub in eff["allOf"]
+                 if sub["if"]["properties"]["kind"]["const"] in SPELL_EFFECT_RG9}
+        self.assertEqual(set(found), set(SPELL_EFFECT_RG9))
+        for k, then in found.items():
+            with self.subTest(k):
+                req, opt = SPELL_EFFECT_RG9[k]
+                self.assertIs(then["additionalProperties"], False)
+                self.assertEqual(set(then["propertyNames"]["enum"]), set(req) | set(opt))
+                self.assertEqual(set(then["properties"]), set(req) | set(opt))
+                self.assertEqual(set(then["required"]), set(req))
+                self.assertIn(k, eff["properties"]["kind"]["enum"])
+
 
 class TransformArmsRG12(unittest.TestCase):
     def check_closed(self, node, req, opt):
@@ -227,7 +244,7 @@ class TransformArmsRG12(unittest.TestCase):
         for name, (req, opt) in COMMON2_RG12.items():
             with self.subTest(name):
                 self.check_closed(c2[name], req, opt)
-        arms = {a["$ref"].rsplit("/", 1)[1] for a in c2["effect"]["anyOf"][2]["oneOf"]}
+        arms = {a["$ref"].rsplit("/", 1)[1] for a in c2["effect"]["anyOf"][2]["oneOf"] if "$ref" in a}   # gaze (7.2p) is inline
         self.assertLessEqual({"wild_shape_effect", "shapechanger_effect"}, arms)
         # closed: not reachable through the open effect_live arm
         self.assertLessEqual({"wild_shape", "shapechanger"}, set(c2["effect_live"]["allOf"][2]["properties"]["kind"]["not"]["enum"]))
