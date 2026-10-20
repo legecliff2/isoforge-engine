@@ -59,6 +59,49 @@
     "size": 15
    }
   },
+  "chill-touch": {
+   "name": "Chill Touch",
+   "level": 0,
+   "range": "120 feet",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "1 round",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "necromancy",
+   "classes": [
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ],
+   "attack_type": "ranged"
+  },
+  "dispel-magic": {
+   "name": "Dispel Magic",
+   "level": 3,
+   "range": "120 feet",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Instantaneous",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "abjuration",
+   "classes": [
+    "bard",
+    "cleric",
+    "druid",
+    "paladin",
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ]
+  },
   "fireball": {
    "name": "Fireball",
    "level": 3,
@@ -96,6 +139,72 @@
     "type": "sphere",
     "size": 20
    }
+  },
+  "grease": {
+   "name": "Grease",
+   "level": 1,
+   "range": "60 feet",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "1 minute",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "conjuration",
+   "classes": [
+    "wizard"
+   ],
+   "material": "A bit of pork rind or butter.",
+   "dc": {
+    "ability": "dex",
+    "success": "none"
+   },
+   "area_of_effect": {
+    "type": "cube",
+    "size": 10
+   }
+  },
+  "guiding-bolt": {
+   "name": "Guiding Bolt",
+   "level": 1,
+   "range": "120 feet",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "1 round",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "evocation",
+   "classes": [
+    "cleric"
+   ],
+   "attack_type": "ranged"
+  },
+  "lesser-restoration": {
+   "name": "Lesser Restoration",
+   "level": 2,
+   "range": "Touch",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Instantaneous",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "abjuration",
+   "classes": [
+    "bard",
+    "cleric",
+    "druid",
+    "paladin",
+    "ranger"
+   ]
   },
   "lightning-bolt": {
    "name": "Lightning Bolt",
@@ -179,6 +288,26 @@
     "17": "4d8"
    }
   },
+  "revivify": {
+   "name": "Revivify",
+   "level": 3,
+   "range": "Touch",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Instantaneous",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "conjuration",
+   "classes": [
+    "cleric",
+    "paladin"
+   ],
+   "material": "Diamonds worth 300gp, which the spell consumes."
+  },
   "shield-of-faith": {
    "name": "Shield of Faith",
    "level": 1,
@@ -198,6 +327,120 @@
     "paladin"
    ],
    "material": "A small parchment with a bit of holy text written on it."
+  },
+  "shocking-grasp": {
+   "name": "Shocking Grasp",
+   "level": 0,
+   "range": "Touch",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Instantaneous",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "evocation",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ],
+   "attack_type": "melee"
+  },
+  "silence": {
+   "name": "Silence",
+   "level": 2,
+   "range": "120 feet",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": true,
+   "duration": "Up to 10 minutes",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "illusion",
+   "classes": [
+    "bard",
+    "cleric",
+    "ranger"
+   ],
+   "area_of_effect": {
+    "type": "sphere",
+    "size": 20
+   }
+  },
+  "spike-growth": {
+   "name": "Spike Growth",
+   "level": 2,
+   "range": "150 feet",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Up to 10 minutes",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "transmutation",
+   "classes": [
+    "druid",
+    "ranger"
+   ],
+   "material": "Seven sharp thorns or seven small twigs, each sharpened to a point.",
+   "area_of_effect": {
+    "type": "cylinder",
+    "size": 20
+   }
+  },
+  "spirit-guardians": {
+   "name": "Spirit Guardians",
+   "level": 3,
+   "range": "Self",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Up to 10 minutes",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "conjuration",
+   "classes": [
+    "cleric"
+   ],
+   "material": "A holy symbol."
+  },
+  "stinking-cloud": {
+   "name": "Stinking Cloud",
+   "level": 3,
+   "range": "90 feet",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 minute",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "conjuration",
+   "classes": [
+    "bard",
+    "sorcerer",
+    "wizard"
+   ],
+   "material": "A rotten egg or several skunk cabbage leaves.",
+   "dc": {
+    "ability": "con",
+    "success": "none"
+   },
+   "area_of_effect": {
+    "type": "sphere",
+    "size": 20
+   }
   },
   "thunderwave": {
    "name": "Thunderwave",
@@ -237,6 +480,50 @@
    "area_of_effect": {
     "type": "cube",
     "size": 15
+   }
+  },
+  "vicious-mockery": {
+   "name": "Vicious Mockery",
+   "level": 0,
+   "range": "60 feet",
+   "components": [
+    "V"
+   ],
+   "ritual": false,
+   "duration": "Instantaneous",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "enchantment",
+   "classes": [
+    "bard"
+   ],
+   "dc": {
+    "ability": "wis",
+    "success": "none"
+   }
+  },
+  "web": {
+   "name": "Web",
+   "level": 2,
+   "range": "60 feet",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 hour",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "conjuration",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ],
+   "material": "A bit of spiderweb.",
+   "area_of_effect": {
+    "type": "cube",
+    "size": 20
    }
   }
  }

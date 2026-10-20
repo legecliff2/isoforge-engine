@@ -1,0 +1,41 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.revivify",
+  "name": "Revivify",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "You touch a creature that has died within the last minute. That creature returns to life with 1 hit point. This spell can't return to life a creature that has died of old age, nor can it restore any missing body parts.",
+  "level": 3,
+  "school": "conjuration",
+  "classes": [
+    "cleric",
+    "paladin"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "Diamonds worth 300gp, which the spell consumes",
+      "item": "srd51.item.diamond",
+      "cost_cp": 30000,
+      "consumed": true
+    }
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "revive",
+      "within_rounds": 10
+    }
+  ]
+}

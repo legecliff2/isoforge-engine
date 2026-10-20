@@ -342,3 +342,19 @@ Additive optional keys in `common@2` (no version bump). Validator: `checks_v4.ch
 | `attack_effect` `long_range_ft` | integer > `range_ft`, ranged only | legal out to long range, disadvantage beyond `range_ft`; `bad long_range_ft (ranged, > range_ft)` otherwise |
 | `attack_effect` `apply[].object` | `{ac 1..30, hp 1..1000, vulnerable[], immune[]}` (damage types) | the restraint is a destructible object (`ActionRequest::special` 6); at 0 hp the condition ends |
 | `save_effect` / `save_condition` `zero_hp` | `{condition, while, duration {kind: rounds, n 1..65535}}` | when the damage drops the target to 0 HP: stable, `condition` for n rounds, `while` as long as that lasts. `zero_hp needs damage`; `bad zero_hp condition / while` when they are equal; `bad zero_hp duration (rounds 1..65535)` |
+
+## Rules #183 additions (7.2u, next-roll spell riders)
+
+Additive optional values in `common@2` (no version bump; `docs/proposals/VERSION_BUMP_BATCH.md` §7.2u). Loader: `rules5e_content` `parse_modifier` / `parse_predicate`. Shipped by `srd51.core` Guiding Bolt, Vicious Mockery, Shocking Grasp and Chill Touch.
+
+| key | value | loader / engine behaviour |
+|---|---|---|
+| modifier `duration.kind` | `until_end_of_caster_next_turn` | `ModifierSpec::expiry` 3 (`Expiry::EndOfCasterNextTurn`): ends at the end of the caster's next turn. Applied during the caster's own turn, that turn does not count (Guiding Bolt, Chill Touch) |
+| modifier `duration.kind` | `until_start_of_target_turn` | expiry 4 (`Expiry::StartOfTargetNextTurn`): ends when the affected creature's next turn starts (Shocking Grasp) |
+| modifier `stat` | `no_reactions` | `ModStat::NoReactions` marker: `may_react` refuses, so no reaction window opens and no reaction is spent |
+| modifier `stat` | `no_healing` | `ModStat::NoHealing` marker: blocks every hit-point regain (heal spells, Heal request, regeneration, `heal_self` riders, pool / feature heal dice, a natural-20 death save). Temporary HP is unaffected |
+| `no_reactions` / `no_healing` arm | closed | required `stat`, `duration`; optional `applies_to`, `stacks`, `consume`. Any other key (`bonus`, `mode`, `when`, ...) is a schema error |
+| predicate `kind` | `subject_is_caster` | kind only: the roll's subject (the attack's target) is the modifier's caster |
+| predicate `kind` | `owner_creature_type` with `creature_types[]` | the modifier's owner (the creature carrying it) has one of the types; `bad creature_types` otherwise |
+
+`modifiers_digest` folds all of it under the existing tag 0xA2; no new tag, no log field. Not modelled: Shocking Grasp's advantage against metal armor (no armor material exists) and Vicious Mockery's "if the target can hear you".
