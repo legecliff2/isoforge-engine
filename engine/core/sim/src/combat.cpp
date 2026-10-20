@@ -402,7 +402,19 @@ std::optional<std::string> Combat::plan_step(CombatantId mover, Vec2i to, StepPl
     }
     if (err) return err;
     int cost = step_cost_ft(mover, from, to, plan.n);
-    if (through || overlaps_other(mover, to, plan.n)) cost = std::max(cost, 10);   // another creature's space: difficult terrain
+    if (through || overlaps_other(mover, to, plan.n)) {
+        // Another creature's space is difficult terrain (+1 ft per ft). It does not stack with other difficult terrain, but
+        // it does stack with swimming without a swim speed (+1 ft per ft): 5 + 5 + 5 = 15 ft (SRD 5.1 Movement).
+        int swim_extra = 0;
+        if (!caps.swim && !caps.fly)
+            for (int sy = 0; sy < plan.n; ++sy)
+                for (int sx = 0; sx < plan.n; ++sx) {
+                    const Vec2i w{to.x + sx, to.y + sy};
+                    const bool inside = w.x >= from.x && w.x < from.x + cur && w.y >= from.y && w.y < from.y + cur;
+                    if (!inside && grid_.walkable(w) && grid_.water(w)) swim_extra = std::max(swim_extra, cost / 2);
+                }
+        cost = std::max(cost - swim_extra, 10) + swim_extra;
+    }
     if (plan.n < full) cost *= 2;                                                 // squeezing: +1 ft per ft
     plan.cost = cost;
     plan.ends_in_other = overlaps_other(mover, to, plan.n);
