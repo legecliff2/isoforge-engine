@@ -1,0 +1,18 @@
+{
+  "base": "monsters/giant_spider.json",
+  "sets": [
+    [
+      [
+        "actions",
+        1,
+        "apply",
+        0
+      ],
+      {
+        "condition": "restrained"
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "attack_effect 'web': unsupported (attack_effect: unsupported usage or condition duration)"
+}

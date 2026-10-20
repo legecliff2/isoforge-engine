@@ -42,16 +42,18 @@ PREDICATE = {("weapon",): (S({"kind", "is"}), S()),
              ("self_hp_below",): (S({"kind", "num", "den"}), S()),
              ("save",): (S({"kind", "ability"}), S({"dc", "dc_from_damage", "base"})),
              ("target_surprised", "ally_near_target", "weapon_attack"): (S({"kind"}), S()),
-             ("damage_at_most",): (S({"kind", "amount"}), S())}
-RIDER = {("extra_damage",): (S({"kind", "damage"}), S({"scale"})),
-         ("save_condition",): (S({"kind", "save"}), S({"apply", "damage", "on_success"})),
-         ("apply_condition",): (S({"kind", "apply"}), S()),
-         ("heal_self", "temp_hp"): (S({"kind"}), S({"dice", "amount"})),
-         ("set_hp",): (S({"kind", "value"}), S()),
-         ("bonus_attack",): (S({"kind", "attack_id"}), S()),
-         ("area_save",): (S({"kind", "area", "save", "damage", "on_success"}), S()),
-         ("spend",): (S({"kind"}), S({"pool", "cost", "slot"})),
-         ("grapple",): (S({"kind"}), S({"escape_dc"}))}   # R-G8 hit rider (sim #104); on_hit[] of actions[] weapon attacks only
+             ("damage_at_most",): (S({"kind", "amount"}), S()),
+             ("target_tag", "not_target_tag"): (S({"kind", "tag"}), S())}
+# when: rider-level predicates (sim #170), read only in on_hit[] of attack actions
+RIDER = {("extra_damage",): (S({"kind", "damage"}), S({"scale", "when"})),
+         ("save_condition",): (S({"kind", "save"}), S({"apply", "damage", "on_success", "when"})),
+         ("apply_condition",): (S({"kind", "apply"}), S({"when"})),
+         ("heal_self", "temp_hp"): (S({"kind"}), S({"dice", "amount", "when"})),
+         ("set_hp",): (S({"kind", "value"}), S({"when"})),
+         ("bonus_attack",): (S({"kind", "attack_id"}), S({"when"})),
+         ("area_save",): (S({"kind", "area", "save", "damage", "on_success"}), S({"when"})),
+         ("spend",): (S({"kind"}), S({"pool", "cost", "slot", "when"})),
+         ("grapple",): (S({"kind"}), S({"escape_dc", "when"}))}   # R-G8 hit rider (sim #104); on_hit[] of actions[] weapon attacks only
 _M = {"applies_to", "stacks", "consume"}   # consume: any stat (section 6.2b, docs/CONTENT_CONVENTIONS.md 1)
 MODIFIER = {("attack_roll",): (S({"stat", "duration"}), S({"bonus", "die", "mode", "when"} | _M)),
             ("save", "ability_check"): (S({"stat", "duration"}), S({"bonus", "die", "mode", "ability"} | _M)),

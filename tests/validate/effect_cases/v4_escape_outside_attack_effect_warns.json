@@ -1,0 +1,22 @@
+{
+  "base": "monsters/ghoul.json",
+  "sets": [
+    [
+      [
+        "actions",
+        1,
+        "on_hit",
+        0,
+        "apply",
+        0,
+        "escape"
+      ],
+      {
+        "ability": "str",
+        "dc": 10
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "escape is read only by attack_effect actions; ignored in a rider"
+}

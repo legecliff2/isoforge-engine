@@ -589,6 +589,9 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
             u_errs, u_warns = c4.check_on_event_usage(doc)
             errs += [f"{rel}: {m}" for m in u_errs]
             warns += [f"{rel}: {m}" for m in u_warns]
+            t_errs, t_warns = c4.check_sim170(doc)   # sim #170
+            errs += [f"{rel}: {m}" for m in t_errs]
+            warns += [f"{rel}: {m}" for m in t_warns]
         errs += [f"{rel}: {m}" for m in c4.check_slot_recovery(doc)]   # 7.2n slot_recovery (sim #148 load errors)
         if "gaze" in row.effect_kinds:   # 7.2p gaze (@4): loader defaults left implicit
             g_errs, g_warns = c4.check_gaze(doc)

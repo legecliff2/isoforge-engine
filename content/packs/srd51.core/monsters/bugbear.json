@@ -1,0 +1,136 @@
+{
+  "$schema": "monster@4",
+  "id": "srd51.monster.bugbear",
+  "name": "Bugbear",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "goblinoid"
+  ],
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 16,
+    "note": "hide armor, shield"
+  },
+  "hit_points": {
+    "average": 27,
+    "formula": "5d8+5"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 15,
+    "dex": 14,
+    "con": 13,
+    "int": 8,
+    "wis": 11,
+    "cha": 9
+  },
+  "skills": {
+    "stealth": 6,
+    "survival": 2
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 10
+  },
+  "languages": [
+    "Common",
+    "Goblin"
+  ],
+  "challenge": {
+    "rating": "1",
+    "xp": 200
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "brute",
+      "name": "Brute",
+      "description": "A melee weapon deals one extra die of its damage when the bugbear hits with it (included in the attack)."
+    },
+    {
+      "id": "surprise_attack",
+      "name": "Surprise Attack",
+      "description": "If the bugbear surprises a creature and hits it with an attack during the first round of combat, the target takes an extra 7 (2d6) damage from the attack.",
+      "effect": {
+        "kind": "on_event",
+        "on": "hit",
+        "when": [
+          {
+            "kind": "target_surprised"
+          }
+        ],
+        "effects": [
+          {
+            "kind": "extra_damage",
+            "damage": [
+              {
+                "dice": "2d6",
+                "type": "same_as_weapon"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "morningstar",
+      "name": "Morningstar",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d8+2",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 11 (2d8 + 2) piercing damage."
+    },
+    {
+      "id": "javelin",
+      "name": "Javelin",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+2",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 30/120 ft., one target. Hit: 9 (2d6 + 2) piercing damage in melee or 5 (1d6 + 2) piercing damage at range."
+    },
+    {
+      "id": "javelin_thrown",
+      "name": "Javelin (thrown)",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 4,
+      "range": [
+        30,
+        120
+      ],
+      "targets": 1,
+      "properties": [
+        "thrown"
+      ],
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 30/120 ft., one target. Hit: 9 (2d6 + 2) piercing damage in melee or 5 (1d6 + 2) piercing damage at range."
+    }
+  ]
+}

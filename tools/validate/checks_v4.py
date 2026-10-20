@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 V1_ACTION_KINDS = frozenset({"melee_weapon_attack", "ranged_weapon_attack", "melee_spell_attack",
                              "ranged_spell_attack", "special"})
-V2_ACTION_KINDS = V1_ACTION_KINDS | {"save_effect"}
+V2_ACTION_KINDS = V1_ACTION_KINDS | {"save_effect", "attack_effect"}   # attack_effect: sim #170 (giant spider Web)
 # Effect kinds with a registered engine hook at @3 (eng::sim::FeatureRegistry::builtin()): live at @3,
 # carried unchanged by @4, never marked inert by the 3 -> 4 migration.
 LIVE_AT_3_EFFECT_KINDS = frozenset({"damage_bonus", "bonus_action_grant", "self_heal", "damage_mitigation",
@@ -323,10 +323,10 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     # check 4: save_effect ids (one '#' in "<archetype id>#<id>")
     seen: dict[str, str] = {}
     for path, a in mechanical_actions(doc):
-        if a.get("kind") == "save_effect":
+        if a.get("kind") in ("save_effect", "attack_effect"):   # one synthetic-spell id space (sim #170)
             sid = str(a.get("id"))
             if sid in seen:
-                errs.append(f"{path}: save_effect id '{sid}' is already used by {seen[sid]} (check 4)")
+                errs.append(f"{path}: {a.get('kind')} id '{sid}' is already used by {seen[sid]} (check 4)")
             seen.setdefault(sid, path)
             if f"{doc.get('id')}#{sid}".count("#") != 1:
                 errs.append(f"{path}: '{doc.get('id')}#{sid}' must contain exactly one '#' (check 4)")
@@ -589,7 +589,7 @@ def check_metamagic(doc: dict) -> tuple[list[str], list[str]]:
 def check_on_event_usage(doc: dict) -> tuple[list[str], list[str]]:
     """sim #158 compile_on_event usage: at_will = no cost; per_day / per_rest {uses 1..255} = a trigger-owned pool
     '<trait id>#usage' recharged by rests; pool {pool, cost 1..255} = a Spend from a declared resources[] pool (check 2 / schema);
-    recharge is not compiled: the sim lists the trait as unsupported ('on_event: unsupported usage') -> warning."""
+    recharge {min 2..6}: compiled since sim #170, no finding."""
     errs: list[str] = []
     warns: list[str] = []
     for path, owner, eff in live_effects(doc):
@@ -599,10 +599,47 @@ def check_on_event_usage(doc: dict) -> tuple[list[str], list[str]]:
         c = u.get("cost")
         if u.get("kind") == "pool" and isinstance(c, int) and not isinstance(c, bool) and c > 255:
             errs.append(f"{path}/usage: {owner} on_event: bad usage pool (cost must be 1..255, got {c}) (sim #158)")
-        if u.get("kind") == "recharge":
-            warns.append(f"{path}/usage: {owner} on_event: unsupported usage (recharge is not compiled yet; the sim lists the "
-                         "trait in unsupported_features and never fires it) (sim #158)")
+        # recharge {min 2..6, schema}: compiled since sim #170 (rolled at the owner's turn start), no finding
     return errs, warns
+
+
+def _predicates(when):
+    return [p for p in (when if isinstance(when, list) else []) if isinstance(p, dict)]
+
+
+def check_sim170(doc: dict) -> tuple[list[str], list[str]]:
+    """sim #170 (EC deferred monsters): attack_effect actions, on_hit rider when[], target_tag / not_target_tag.
+    Findings mirror the loader: an attack_effect apply[] entry without escape is listed unsupported (warning); a rider
+    when[] outside on_hit[] and an escape outside attack_effect are ignored (warning); a predicate tag that is not lower
+    case never matches (content tags are case-folded, predicate tags are not) (warning)."""
+    errs: list[str] = []
+    warns: list[str] = []
+    for path, a in mechanical_actions(doc):
+        is_ae = a.get("kind") == "attack_effect"
+        for j, x in enumerate(a.get("apply") or []):
+            if not isinstance(x, dict):
+                continue
+            if is_ae and "escape" not in x:
+                warns.append(f"{path}/apply/{j}: attack_effect '{a.get('id')}': unsupported (attack_effect: unsupported usage or "
+                             "condition duration): every apply[] entry needs escape; the sim lists the action and never uses it (sim #170)")
+            if not is_ae and "escape" in x:
+                warns.append(f"{path}/apply/{j}: escape is read only by attack_effect actions; ignored here (sim #170)")
+    for path, owner, j, r in rider_sites(doc):
+        if isinstance(r, dict) and "when" in r and "/on_hit/" not in path:
+            warns.append(f"{path}: rider when[] is read only in on_hit[] of an attack action; ignored in on_event effects[] (sim #170)")
+        for x in (r.get("apply") or []) if isinstance(r, dict) else []:
+            if isinstance(x, dict) and "escape" in x:
+                warns.append(f"{path}: escape is read only by attack_effect actions; ignored in a rider (sim #170)")
+    sites = [(f"{p}/when", e.get("when")) for p, _o, e in live_effects(doc) if e.get("kind") == "on_event"]
+    sites += [(f"{p}/when", r.get("when")) for p, _o, _j, r in rider_sites(doc) if isinstance(r, dict)]
+    for where, when in sites:
+        for i, pr in enumerate(_predicates(when)):
+            t = pr.get("tag")
+            if pr.get("kind") in ("target_tag", "not_target_tag") and isinstance(t, str) and t != t.lower():
+                warns.append(f"{where}/{i}: tag '{t}' is not lower case; content tags are case-folded, so it never matches (sim #170)")
+    return errs, warns
+
+
 
 
 GAZE_KEYS = frozenset({"kind", "range_ft", "save", "condition", "repeat_save", "escalates", "escalate_to", "escalate_margin"})

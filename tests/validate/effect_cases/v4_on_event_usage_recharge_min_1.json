@@ -26,12 +26,12 @@
           ],
           "usage": {
             "kind": "recharge",
-            "min": 5
+            "min": 1
           }
         }
       }
     ]
   ],
-  "severity": "warning",
-  "expect": "t on_event: unsupported usage (recharge is not compiled yet"
+  "severity": "error",
+  "expect": "/usage/min: 1 is not one of [2, 3, 4, 5, 6]"
 }

@@ -1,0 +1,20 @@
+{
+  "base": "monsters/ghoul.json",
+  "sets": [
+    [
+      [
+        "actions",
+        1,
+        "on_hit",
+        0,
+        "when",
+        1
+      ],
+      {
+        "kind": "not_target_tag"
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "/when/1: 'tag' is a required property"
+}
