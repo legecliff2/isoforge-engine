@@ -52,24 +52,80 @@ void ChunkStreamer::worker() {
 }
 
 void ChunkStreamer::set_focus(Vec2i world_tile, int16_t level, int radius) {
-    const ChunkCoord f = chunk_of_tile(world_tile, level);
-    if (radius < 0) radius = 0;
+    const Focus f{world_tile, level, radius};
+    set_foci(std::span<const Focus>(&f, 1));
+}
+
+void ChunkStreamer::set_foci(std::span<const Focus> foci) {
+    foci_.assign(foci.begin(), foci.end());
+    rebuild_wanted();
+}
+
+void ChunkStreamer::pin(uint32_t owner, std::span<const ChunkCoord> chunks) {
+    if (chunks.empty()) pins_.erase(owner);
+    else pins_[owner].assign(chunks.begin(), chunks.end());
+    rebuild_wanted();
+}
+
+std::vector<ChunkCoord> ChunkStreamer::pinned() const {
+    std::set<ChunkCoord> s;
+    for (const auto& kv : pins_) s.insert(kv.second.begin(), kv.second.end());
+    return {s.begin(), s.end()};
+}
+
+void ChunkStreamer::rebuild_wanted() {
     wanted_.clear();
     wanted_order_.clear();
-    // Ring order: by Chebyshev distance, then coord order (nearest first).
-    for (int d = 0; d <= radius; ++d)
-        for (int dy = -d; dy <= d; ++dy)
-            for (int dx = -d; dx <= d; ++dx) {
-                if (std::max(dx < 0 ? -dx : dx, dy < 0 ? -dy : dy) != d) continue;
-                const ChunkCoord c{f.x + dx, f.y + dy, level};
-                if (!root_.covers(c)) continue;
-                wanted_.insert(c);
-                wanted_order_.push_back(c);
-            }
+    auto add = [&](ChunkCoord c) {
+        if (!root_.covers(c) || !wanted_.insert(c).second) return;
+        wanted_order_.push_back(c);
+    };
+    // Queue order: pinned halos first (combat needs them), then each focus in ring order
+    // (Chebyshev distance, then coord order; nearest first). Foci are visited sorted so the
+    // order, like the set, doesn't depend on argument order.
+    for (ChunkCoord p : pinned())
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx) add({p.x + dx, p.y + dy, p.level});
+    std::vector<Focus> fs = foci_;
+    std::sort(fs.begin(), fs.end(), [](const Focus& a, const Focus& b) {
+        const ChunkCoord ca = chunk_of_tile(a.world_tile, a.level), cb = chunk_of_tile(b.world_tile, b.level);
+        if (!(ca == cb)) return ca < cb;
+        return a.radius_chunks < b.radius_chunks;
+    });
+    for (const Focus& fo : fs) {
+        const ChunkCoord f = chunk_of_tile(fo.world_tile, fo.level);
+        const int radius = std::max(fo.radius_chunks, 0);
+        for (int d = 0; d <= radius; ++d)
+            for (int dy = -d; dy <= d; ++dy)
+                for (int dx = -d; dx <= d; ++dx) {
+                    if (std::max(dx < 0 ? -dx : dx, dy < 0 ? -dy : dy) != d) continue;
+                    add({f.x + dx, f.y + dy, fo.level});
+                }
+    }
     if (cfg_.request_shuffle_seed) {
         rng::Pcg32 r(cfg_.request_shuffle_seed, 7);
         r.shuffle(std::span<ChunkCoord>(wanted_order_));
     }
+}
+
+void ChunkStreamer::retry(ChunkCoord c) { failed_.erase(c); }
+void ChunkStreamer::retry_failed() { failed_.clear(); }
+
+bool ChunkStreamer::known_absent(ChunkCoord c) const {
+    if (!root_.covers(c)) return true;
+    return empty_.count(c) != 0;   // provider answered Empty (pure in coord: kept even when unwanted)
+}
+
+HaloState ChunkStreamer::halo_state(ChunkCoord c) const {
+    bool pending = false;
+    for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx) {
+            const ChunkCoord n{c.x + dx, c.y + dy, c.level};
+            if (resident_.count(n) || known_absent(n)) continue;
+            if (failed_.count(n)) return HaloState::Failed;
+            pending = true;
+        }
+    return pending ? HaloState::Pending : HaloState::Complete;
 }
 
 void ChunkStreamer::integrate(ChunkCoord c, ChunkResult r) {
@@ -87,7 +143,7 @@ void ChunkStreamer::integrate(ChunkCoord c, ChunkResult r) {
         resident_[c] = std::move(*r.chunk);
     } else if (r.status == ChunkStatus::Empty) {
         failed_.erase(c);   // nothing there: not resident, not an error
-        failed_[c];         // marks "done" with an empty message
+        empty_.insert(c);
     } else {
         failed_[c] = r.error.empty() ? std::string("load failed") : r.error;
     }
@@ -96,7 +152,7 @@ void ChunkStreamer::integrate(ChunkCoord c, ChunkResult r) {
 void ChunkStreamer::enqueue_missing() {
     std::vector<ChunkCoord> to_queue;
     for (ChunkCoord c : wanted_order_) {
-        if (resident_.count(c) || failed_.count(c) || in_flight_.count(c)) continue;
+        if (resident_.count(c) || failed_.count(c) || empty_.count(c) || in_flight_.count(c)) continue;
         if (auto it = cache_.find(c); it != cache_.end()) {   // cache hit: integrate now
             resident_[c] = std::move(it->second);
             cache_.erase(it);
@@ -177,7 +233,7 @@ StreamDelta ChunkStreamer::update() {
 
 bool ChunkStreamer::idle() const {
     for (ChunkCoord c : wanted_)
-        if (!resident_.count(c) && !failed_.count(c)) return false;
+        if (!resident_.count(c) && !failed_.count(c) && !empty_.count(c)) return false;
     return true;
 }
 
@@ -211,8 +267,7 @@ std::vector<ChunkCoord> ChunkStreamer::wanted() const { return {wanted_.begin(),
 
 std::vector<std::string> ChunkStreamer::errors() const {
     std::vector<std::string> out;
-    for (const auto& [c, e] : failed_)
-        if (!e.empty()) out.push_back(coord_str(c) + ": " + e);
+    for (const auto& [c, e] : failed_) out.push_back(coord_str(c) + ": " + e);
     return out;
 }
 
