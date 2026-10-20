@@ -105,18 +105,10 @@
     {
       "id": "extra_attack",
       "name": "Extra Attack",
-      "description": "You can attack twice, instead of once, whenever you take the Attack action on your turn. Declared as one multiattack option (two longsword attacks); see docs/SRD_CLASSES_DEFERRED.md.",
+      "description": "You can attack twice, instead of once, whenever you take the Attack action on your turn.",
       "effect": {
-        "kind": "multiattack",
-        "options": [
-          {
-            "id": "longsword_x2",
-            "attacks": [
-              "longsword",
-              "longsword"
-            ]
-          }
-        ]
+        "kind": "extra_attack",
+        "attacks_per_action": 2
       }
     }
   ],
