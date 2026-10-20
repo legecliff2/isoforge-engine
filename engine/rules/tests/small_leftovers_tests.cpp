@@ -147,7 +147,7 @@ TEST_CASE("Haste: Dash with the extra action adds movement; legal_actions lists 
     const auto legal = legal_actions(s);
     CHECK(std::count_if(legal.begin(), legal.end(), [](const ActionRequest& r) { return r.haste_action; }) == 2 + 3);
     REQUIRE(step(s, haste({1, ActionKind::Dash})).ok);
-    CHECK(s.budget.movement_ft == 90);
+    CHECK(s.budget.movement_ft == 120);   // 7.2u: Dash adds the hasted (doubled) speed, SRD Haste; was 90 (unmodified speed)
     CHECK(s.budget.action);
 }
 

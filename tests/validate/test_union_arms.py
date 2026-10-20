@@ -35,13 +35,13 @@ USAGE = {("at_will",): (S("kind".split()), S()),
          ("pool",): (S({"kind", "pool"}), S({"cost"}))}
 PREDICATE = {("weapon",): (S({"kind", "is"}), S()),
              ("advantage_or_ally_adjacent",): (S({"kind"}), S()),
-             ("target_creature_type", "not_creature_type"): (S({"kind", "creature_types"}), S()),
+             ("target_creature_type", "not_creature_type", "owner_creature_type"): (S({"kind", "creature_types"}), S()),
              ("damage_type_is", "damage_type_not"): (S({"kind", "types"}), S()),
              ("not_crit",): (S({"kind"}), S()),
              ("moved_at_least_ft",): (S({"kind", "ft"}), S()),
              ("self_hp_below",): (S({"kind", "num", "den"}), S()),
              ("save",): (S({"kind", "ability"}), S({"dc", "dc_from_damage", "base"})),
-             ("target_surprised", "ally_near_target", "weapon_attack"): (S({"kind"}), S()),
+             ("target_surprised", "ally_near_target", "weapon_attack", "subject_is_caster"): (S({"kind"}), S()),
              ("damage_at_most",): (S({"kind", "amount"}), S()),
              ("target_tag", "not_target_tag"): (S({"kind", "tag"}), S())}
 # when: rider-level predicates (sim #170), read only in on_hit[] of attack actions
@@ -62,7 +62,8 @@ MODIFIER = {("attack_roll",): (S({"stat", "duration"}), S({"bonus", "die", "mode
             ("damage",): (S({"stat", "duration"}), S({"bonus", "bonus_table", "die", "damage_type", "when"} | _M)),
             ("temp_hp",): (S({"stat", "duration", "bonus"}), S({"per_turn"} | _M)),
             ("resistance",): (S({"stat", "duration", "damage_type"}), S(_M)),
-            ("attacks_against",): (S({"stat", "duration", "mode"}), S({"when"} | _M))}
+            ("attacks_against",): (S({"stat", "duration", "mode"}), S({"when"} | _M)),
+            ("no_reactions", "no_healing"): (S({"stat", "duration"}), S(_M))}   # 7.2u markers
 REACTION_EFFECT = {("ac_bonus",): (S({"kind", "bonus"}), S()),
                    ("reduce_damage",): (S({"kind"}), S({"fraction", "dice"})),
                    ("impose_disadvantage",): (S({"kind"}), S()),

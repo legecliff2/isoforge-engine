@@ -567,3 +567,31 @@ TEST_CASE("loader: R-G12 polymorph (spell@1, CONTENT_CONVENTIONS.md section 9)")
     j = pm; j["effects"][0]["save"] = {{"ability", "luck"}}; bad(j, "polymorph: save");
     j = pm; j["effects"][0]["shape"] = 1; bad(j, "polymorph effect: unknown key 'shape'");
 }
+
+TEST_CASE("loader 7.2u: rider keys (durations 3 / 4, no_reactions / no_healing, subject_is_caster / owner_creature_type)") {
+    auto j = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.chill_touch_t","level":0,"name":"x",
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":120},"components":{"v":true,"s":true},
+        "duration":{"kind":"rounds","amount":1},
+        "effects":[{"kind":"spell_attack","attack":"ranged","damage":{"dice":"1d8","type":"necrotic"}},
+          {"kind":"apply_modifier","applies_to":"affected","modifier":{"stat":"no_healing","applies_to":"target",
+            "duration":{"kind":"until_start_of_caster_turn"}}},
+          {"kind":"apply_modifier","applies_to":"affected","modifier":{"stat":"attack_roll","mode":"disadvantage","applies_to":"target",
+            "duration":{"kind":"until_end_of_caster_next_turn"},
+            "when":[{"kind":"owner_creature_type","creature_types":["undead"]},{"kind":"subject_is_caster"}]}},
+          {"kind":"apply_modifier","applies_to":"affected","modifier":{"stat":"no_reactions","applies_to":"target",
+            "duration":{"kind":"until_start_of_target_turn"}}}]})");
+    auto r = spell_from_json(j);
+    INFO(r.error);
+    REQUIRE(r.def);
+    REQUIRE(r.def->extra_effects.size() == 3);
+    CHECK(r.def->extra_effects[0].modifier.stat == ModStat::NoHealing);
+    CHECK(r.def->extra_effects[0].modifier.until_caster_turn);
+    const ModifierSpec& d = r.def->extra_effects[1].modifier;
+    CHECK(d.expiry == 3);
+    REQUIRE(d.when.size() == 2);
+    CHECK(d.when[0].kind == PredicateKind::OwnerCreatureType);
+    CHECK(d.when[0].mask == bit(CreatureType::Undead));
+    CHECK(d.when[1].kind == PredicateKind::SubjectIsCaster);
+    CHECK(r.def->extra_effects[2].modifier.stat == ModStat::NoReactions);
+    CHECK(r.def->extra_effects[2].modifier.expiry == 4);
+}
