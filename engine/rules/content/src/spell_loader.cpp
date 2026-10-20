@@ -389,7 +389,13 @@ std::string parse_predicate(const Json& p, Predicate& out) {
         out.mask = from_dmg ? 1u : 0u;
     } else if (k == "target_surprised") out.kind = PK::TargetSurprised;   // EC monster predicates (flagged; schema arm pending, T&C)
     else if (k == "ally_near_target") out.kind = PK::AllyNearTarget;
-    else if (k == "weapon_attack") out.kind = PK::WeaponAttack;   // Director #158 (flagged; schema arm pending, T&C)
+    else if (k == "weapon_attack") out.kind = PK::WeaponAttack;
+    else if (k == "target_tag" || k == "not_target_tag") {   // EC deferred monsters (flagged; schema arm pending, T&C): ghoul
+        const std::string tag = p.value("tag", "");
+        if (tag.empty()) return "bad tag";
+        out.kind = k == "target_tag" ? PK::TargetTag : PK::NotTargetTag;
+        out.mask = spell_id_of(tag);
+    }   // Director #158 (flagged; schema arm pending, T&C)
     else if (k == "damage_at_most") {
         const int n = geti("amount", 0);
         if (n < 1 || n > 32767) return "bad damage_at_most amount";

@@ -936,6 +936,18 @@ struct DepthGuard {   // an area_save / damage_dealt chain cannot recurse withou
     ~DepthGuard() { --depth(); }
 };
 
+// EC deferred monsters (flagged): a trigger with usage recharge is gated by its ActionUse row (owner, trigger id); no row =
+// unlimited. Firing expends it; the owner's turn start rolls it back (start_turn, with the recharge actions).
+bool trigger_recharging(const EncounterState& s, const Combatant& owner, const Trigger& tr) {
+    if (tr.recharge_min == 0) return false;
+    const ActionUse* u = find_action_use(s, owner.id, tr.id);
+    return u && u->expended;
+}
+void expend_trigger(EncounterState& s, const Combatant& owner, const Trigger& tr) {
+    if (tr.recharge_min == 0) return;
+    for (auto& u : s.action_uses) if (u.actor == owner.id && u.spell_id == tr.id) u.expended = true;
+}
+
 // Evaluates one predicate. `failed_save` is set when a Save predicate was rolled and failed.
 bool predicate_holds(EncounterState& s, Combatant& owner, const Combatant& subject, const TrigCtx& x, const Predicate& p,
                      std::vector<Event>& ev, bool& failed_save) {
@@ -969,6 +981,8 @@ bool predicate_holds(EncounterState& s, Combatant& owner, const Combatant& subje
     }
     case PredicateKind::TargetSurprised: return s.round == 1 && subject.surprised_at_start;   // EC monster predicates (flagged)
     case PredicateKind::WeaponAttack: return !x.is_spell && x.atk != nullptr;
+    case PredicateKind::TargetTag: return std::find(subject.tags.begin(), subject.tags.end(), p.mask) != subject.tags.end();
+    case PredicateKind::NotTargetTag: return std::find(subject.tags.begin(), subject.tags.end(), p.mask) == subject.tags.end();
     case PredicateKind::AllyNearTarget: return x.ally;
     case PredicateKind::DamageAtMost: return x.dmg <= p.a;
     case PredicateKind::AttackIs: return !x.is_spell && x.atk && x.atk >= owner.attacks.data() && x.atk < owner.attacks.data() + owner.attacks.size() &&
@@ -1023,6 +1037,7 @@ bool run_event_triggers(EncounterState& s, Combatant& owner, Combatant& subject,
         const uint32_t m = uint32_t(1) << i;
         if (tr.limit == TriggerLimit::OncePerTurn && (owner.trigger_turn_mask & m)) continue;
         if (tr.limit == TriggerLimit::OncePerRound && (owner.trigger_round_mask & m)) continue;
+        if (trigger_recharging(s, owner, tr)) continue;   // EC deferred monsters (flagged): usage recharge
         bool any = false;
         for (const RiderEffect& e : tr.effects) if (effect_applies(s, owner, on, e)) any = true;
         if (!any) continue;
@@ -1041,6 +1056,7 @@ bool run_event_triggers(EncounterState& s, Combatant& owner, Combatant& subject,
         if (pool_spend && find_pool(s, owner.id, pool_spend->pool) && !can_spend(s, owner.id, pool_spend->pool, pool_cost)) continue;
         if (pool_spend && find_pool(s, owner.id, pool_spend->pool) && spend_pool(s, owner.id, pool_spend->pool, pool_cost))
             emit(ev, EventKind::ResourceSpent, owner.id, 0, int32_t(pool_spend->pool), pool_cost, find_pool(s, owner.id, pool_spend->pool)->cur);
+        expend_trigger(s, owner, tr);   // EC deferred monsters (flagged)
         if (tr.limit == TriggerLimit::OncePerTurn) owner.trigger_turn_mask |= m;
         if (tr.limit == TriggerLimit::OncePerRound) owner.trigger_round_mask |= m;
         emit(ev, EventKind::FeatureTriggered, owner.id, subject.id, int32_t(tr.id), int32_t(on), 1);
@@ -1387,6 +1403,7 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
         const uint32_t m = uint32_t(1) << i;
         if (tr.limit == TriggerLimit::OncePerTurn && (a.trigger_turn_mask & m)) continue;
         if (tr.limit == TriggerLimit::OncePerRound && (a.trigger_round_mask & m)) continue;
+        if (trigger_recharging(s, a, tr)) continue;   // EC deferred monsters (flagged): usage recharge
         bool any = false;
         for (const RiderEffect& e : tr.effects) if (hit_effect_ok(s, e)) any = true;
         if (!any) continue;                                            // no hit effect: other kinds do not fire here
@@ -1422,6 +1439,7 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
             }
             break;
         }
+        expend_trigger(s, a, tr);   // EC deferred monsters (flagged)
         if (tr.limit == TriggerLimit::OncePerTurn) a.trigger_turn_mask |= m;
         if (tr.limit == TriggerLimit::OncePerRound) a.trigger_round_mask |= m;
         emit(ev, EventKind::FeatureTriggered, a.id, t.id, int32_t(tr.id), int32_t(tr.on), 1);
@@ -1912,7 +1930,9 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         for (auto& u : s.action_uses) {
             if (u.actor != c.id || !u.expended) continue;
             const SpellDef* d = spell_def(s, u.spell_id);
-            const int need = d && d->recharge_min ? d->recharge_min : 6;
+            int need = d && d->recharge_min ? d->recharge_min : 6;
+            if (!d)   // EC deferred monsters (flagged): a recharge trigger's row (spell_id = trigger id)
+                for (const Trigger& tr : c.triggers) if (tr.id == u.spell_id && tr.recharge_min) need = tr.recharge_min;
             const int roll = roll_dice(s.rng, DiceExpr{1, 6, 0}, false);
             const bool back = roll >= need;
             if (back) u.expended = false;
@@ -2225,11 +2245,13 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.condition));
             }
             note_source(s, def.condition, a.id, t->id);
-            if (!def.condition_untracked)   // ends by its own rules (prone): no effect entry, like Shove
+            if (!def.condition_untracked) {   // ends by its own rules (prone): no effect entry, like Shove
                 s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, Ability::Wis, 0, RepeatSave::None,
                                                       def.concentration,
                                                       make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
                                                       lvl, false});
+                if (def.escape_dc > 0) { s.effects.back().dc = def.escape_dc; s.effects.back().escape_check = true; }   // EC (flagged): Web
+            }
             affected.push_back(t);
             applied = true;
         }
@@ -3084,14 +3106,17 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
         if (req.spell_id != 0 || !a.has(Condition::Grappled))
             for (std::size_t i = 0; i < s.effects.size() && zi == s.effects.size(); ++i) {
                 const ActiveSpellEffect& e = s.effects[i];
-                if (e.zone_id != 0 && e.target == a.id && e.condition == Condition::Restrained && (req.spell_id == 0 || e.spell_id == req.spell_id)) zi = i;
+                if ((e.zone_id != 0 || e.escape_check) && e.target == a.id && e.condition == Condition::Restrained && (req.spell_id == 0 || e.spell_id == req.spell_id)) zi = i;   // EC (flagged): + escape_check
             }
         if (zi < s.effects.size()) {
             if (!spend_action(b, a, ActionKind::Attack, false)) return fail("no action available");
             s.budget = b;
             const int zdc = s.effects[zi].dc;
             const uint32_t zone = s.effects[zi].zone_id;
-            if (roll_ability_check(s, a, Ability::Str, zdc, out.events).success) end_zone_effects(s, zone, a.id, out.events);
+            if (roll_ability_check(s, a, Ability::Str, zdc, out.events).success) {
+                if (zone != 0) end_zone_effects(s, zone, a.id, out.events);
+                else end_effect(s, zi, out.events);   // EC (flagged): a Web escape_check effect, only that one
+            }
             check_end(s, out.events);
             return out;
         }
