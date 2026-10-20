@@ -892,6 +892,8 @@ std::vector<CombatantId> initiative_ids(const EncounterState& s) {
 
 bool may_react(const EncounterState& s, const Combatant& c, ReactionTrigger t) {
     if (c.lethargy != 0 || (!s.modifiers.empty() && has_marker(s, c.id, ModStat::Slow))) return false;   // Haste ended / Slow
+    // R-G12 PR 3 (SRD Find Familiar): a familiar never attacks, so it takes no opportunity attack (Pact's trade is its only one)
+    if (t == ReactionTrigger::LeavingReach && c.summoner != 0 && c.summon_control == uint8_t(SummonControl::Telepathic)) return false;
     return !c.dead && !c.surprised && can_act(c) && !c.reaction_used &&
            c.reaction_policy[std::size_t(t)] != ReactionPolicy::Never;
 }
@@ -2781,7 +2783,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     case SpellEffectKind::SummonWeapon:   // R-G12 PR 3: target = the creature its first attack hits, or the caster (no attack)
         if (T.size() != 1) return fail("spiritual weapon: one target");
         if (T[0] != &a && T[0]->dead) return fail("target is dead");
-        if (req.summon_tiles.size() > 1) return fail("spiritual weapon: one tile");
+        if (req.summon_tiles.size() != 1) return fail("spiritual weapon: one tile");   // the spawn tile (sim checks 60 ft)
         if (!ctx.replay_only && !req.summon_ids.empty()) return fail("summon_ids: assigned by rules (leave empty)");
         if (ctx.replay_only && req.summon_ids != next_summon_ids(s, 1)) return fail("summon_ids: do not match the summon counter");
         break;
@@ -3910,6 +3912,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
     case ActionKind::Ready: {
         const auto& rk = req.ready_kind;
         if (req.multiattack != 0) return fail("a readied action is a single attack");
+        if (rk == ActionKind::Attack && a.summoner != 0 && a.summon_control == uint8_t(SummonControl::Telepathic))
+            return fail("familiar_attack: a familiar cannot ready an attack");
         if (rk == ActionKind::Attack) {
             Combatant* t = find_mut(s, req.target);
             if (!t || t == &a || t->dead) return fail("bad target");
