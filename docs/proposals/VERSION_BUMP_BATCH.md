@@ -2041,6 +2041,44 @@ Hand-off: sim folds 0xBE (non-zero only) and the 0xAF weapon rows; spawns / move
 Deviation: the proposal's "reuse `sustain` with a weapon flag" is a dedicated `SummonWeaponAttack` kind instead (clearer
 validation, no Heat Metal coupling).
 
+### 7.2u Next-roll spell riders (rules side) and hand-off
+
+(Numbered after 7.2t.) Gap list item 8. SRD 5.1 Guiding Bolt, Vicious Mockery, Ray of Frost, Shocking Grasp, Chill Touch.
+
+Already expressible (verified with tests, no change): Vicious Mockery (AttackRoll disadvantage, `consume` 1, expiry 2) and
+Ray of Frost (`Speed` `speed_sub` 10, `until_caster_turn`).
+
+Rules (all appended; defaults keep every existing digest and golden):
+
+- **Durations.** `Expiry::EndOfCasterNextTurn` (`ModifierSpec::expiry` 3): ends at the end of the caster's (`ActiveModifier::caster`)
+  next turn; applied during the caster's own turn, that turn does not count. `Expiry::StartOfTargetNextTurn` (expiry 4): ends
+  when the target's next turn starts. Modifiers only. ModifierExpired reason 0.
+- **Guiding Bolt** uses expiry 3 with `consume` 2 (was `until_caster_turn`, which dropped it at the start of the caster's next
+  turn; the test and the v4 validator fixture `guiding_bolt.json` are fixed; no golden moved).
+- **Markers.** `ModStat::NoReactions`: `may_react` refuses (no window offered, no reaction spent) - Shocking Grasp with expiry 4.
+  `ModStat::NoHealing`: every hit point regain returns 0 healed (`Healed` with a = 0 still emitted where it was): spell / feature
+  healing, the Heal request, regeneration, heal_self riders, pool healing, feature heal dice; a natural-20 death save regains no
+  hit point (its counts still reset). Temporary hit points are not hit point regain and are unaffected. Chill Touch with
+  `until_caster_turn`.
+- **Predicates.** `SubjectIsCaster` (the subject is the modifier's caster; `TrigCtx::mod_caster`, set for `when` gating of
+  modifiers in `do_attack`), `OwnerCreatureType` (mask over CreatureType, the owner). Chill Touch's undead clause: AttackRoll
+  disadvantage, `when` [OwnerCreatureType undead, SubjectIsCaster], expiry 3.
+- **Shocking Grasp vs metal armor:** not modelled (no armor material anywhere); documented, no rule added.
+- **Loader (spell@1 / common@2 modifier).** Stats `no_reactions`, `no_healing`; duration kinds `until_end_of_caster_next_turn`,
+  `until_start_of_target_turn`; predicate kinds `subject_is_caster`, `owner_creature_type {creature_types}`. Schema arms added in
+  `schemas/common/v2.schema.json` and `tests/validate/test_union_arms.py` (T&C to confirm).
+- **Hashing.** Everything lives in `EncounterState::modifiers`, folded by `modifiers_digest` under the existing `Combat::hash`
+  tag 0xA2 (stat, predicate kinds and `timed.kind` / `rounds_left` are already folded). No new tag; no log field.
+
+Hand-off (sim, EC):
+
+- **Speed.** Sim reads the movement budget (`TurnBudget::movement_ft`, from `modified_speed` at turn start), so Ray of Frost
+  needs nothing new. Two paths still use the unmodified `effective_speed`: rules' Dash (`movement_ft += effective_speed`) and
+  sim's Aggressive dash bookkeeping (`AggressiveDash`). Per SRD, Dash adds the creature's speed after modifiers; a rules
+  follow-up (Rules) will switch Dash to `modified_speed`, with sim's Aggressive path following (EC).
+- **Reactions.** Nothing to read: the marker is enforced inside rules' `may_react`. Sim's reaction UI / AI should not offer a
+  reaction when rules wouldn't (it already polls rules' windows).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain

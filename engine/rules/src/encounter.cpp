@@ -2073,6 +2073,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
             case DeathSaveOutcome::Died: kill(c, ev); break;
             case DeathSaveOutcome::Stabilized: emit(ev, EventKind::Stabilized, c.id); break;
             case DeathSaveOutcome::RegainedHp:
+                if (!s.modifiers.empty() && has_marker(s, c.id, ModStat::NoHealing)) break;   // 7.2u Chill Touch: no regain (counts reset)
                 c.hp = 1;
                 remove_condition(c, Condition::Unconscious);   // stays Prone
                 emit(ev, EventKind::RegainedHp, c.id, 0, 1);

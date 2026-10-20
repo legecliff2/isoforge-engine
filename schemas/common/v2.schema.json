@@ -1911,6 +1911,32 @@
               ]
             }
           }
+        },
+        {
+          "if": {
+            "required": [
+              "stat"
+            ],
+            "properties": {
+              "stat": {
+                "enum": [
+                  "no_reactions",
+                  "no_healing"
+                ]
+              }
+            }
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "stat",
+                "applies_to",
+                "duration",
+                "stacks",
+                "consume"
+              ]
+            }
+          }
         }
       ],
       "dependentRequired": {
