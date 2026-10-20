@@ -471,3 +471,31 @@ schema rejected the key (chunk@1 is closed), and no shipped or `tests/compat` ch
 `test_no_shipped_or_compat_chunk_carries_surprise`), so nothing existing changes meaning when the loader lands. A chunk that carries it
 today is authored with that intent (the warning says so). Fixtures: `tests/validate/fixtures/surprise/`; cases:
 `tools/validate/test_validate_packs.py` `SURPRISE_CASES`.
+
+## 10. Feature kind `gaze` (Petrifying Gaze, VERSION_BUMP_BATCH 7.2p, sim #153)
+
+`monster@4` / `character@4` trait or feature effect, compiled by sim `content.cpp` `compile_gaze` (#153) into a synthetic Save
+`SpellDef` and a `Combatant::Gaze{spell_id, range_ft}`. Not a registry kind and not in the frozen 3 -> 4 list: the sim gates it at
+@4 itself, so a file that declares `@3` or older lists it inert (validator: unknown-kind warning there). Schema: the closed
+`common@2 $defs/gaze_effect` arm of `$defs/effect` (`effect_live` excludes `gaze`, so only the closed arm accepts it).
+
+```json
+"effect": { "kind": "gaze", "range_ft": 30, "save": { "ability": "con", "dc": 12 }, "condition": "restrained",
+            "repeat_save": "end_of_turn", "escalates": true, "escalate_to": "petrified" }
+```
+
+| key | rule | loader default / error (`<id>: gaze '<fid>': ...`) |
+|---|---|---|
+| `range_ft` | required, integer multiple of 5 in 5..65530 | `bad range_ft` |
+| `save` | required, `{ability, dc 1..30}` (common@2 `$defs/save`) | `missing save` / `bad save` |
+| `condition` | common@1 condition | default `restrained`; `bad condition` |
+| `repeat_save` | `end_of_turn` \| `start_of_turn` \| `none` | default `end_of_turn`; `bad repeat_save` |
+| `escalates` | boolean | default false: a failed repeat save turns `condition` into `escalate_to` |
+| `escalate_to` | common@1 condition | default `petrified`; `bad escalate_to` |
+| `escalate_margin` | integer 0..30 | default 0; failing the first save by this much or more gives `escalate_to` at once (medusa 5); `bad escalate_margin` |
+
+Validator (`checks_v4.check_gaze`, @4 rows only): the loader's refusals above as errors in its wording (the closed arm also rejects
+them, but its `anyOf` message names no field), keys outside the arm as errors, and a **warning** when `condition`, `repeat_save` or
+`escalate_to` is omitted (the loader's defaults restrained / end_of_turn / petrified then apply silently). The averting choice, the
+sight check (`gaze_seen`) and the turn-start `GazeResponse` are the sim's (7.2p hand-off), not content. Cases:
+`tests/validate/effect_cases/*gaze*`.

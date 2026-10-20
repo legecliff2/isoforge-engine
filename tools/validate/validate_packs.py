@@ -580,6 +580,10 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         m_errs, m_warns = c4.check_metamagic(doc)
         errs += [f"{rel}: {m}" for m in m_errs]
         warns += [f"{rel}: {m}" for m in m_warns]
+        if "gaze" in row.effect_kinds:   # 7.2p gaze (@4): loader defaults left implicit
+            g_errs, g_warns = c4.check_gaze(doc)
+            errs += [f"{rel}: {m}" for m in g_errs]
+            warns += [f"{rel}: {m}" for m in g_warns]
     return errs, warns
 
 

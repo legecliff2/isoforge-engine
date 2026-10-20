@@ -1,0 +1,30 @@
+{
+  "base": "monsters/orc.json",
+  "sets": [
+    [
+      [
+        "traits",
+        1
+      ],
+      {
+        "id": "petrifying_gaze",
+        "name": "Petrifying Gaze",
+        "description": "x",
+        "effect": {
+          "kind": "gaze",
+          "range_ft": 30,
+          "save": {
+            "ability": "con",
+            "dc": 31
+          },
+          "condition": "restrained",
+          "repeat_save": "end_of_turn",
+          "escalates": true,
+          "escalate_to": "petrified"
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "gaze 'petrifying_gaze': bad save"
+}
