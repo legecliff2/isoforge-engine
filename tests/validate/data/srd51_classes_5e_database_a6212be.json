@@ -875,6 +875,230 @@
      }
     }
    }
+  },
+  "druid": {
+   "name": "Druid",
+   "hit_die": 8,
+   "saving_throws": [
+    "int",
+    "wis"
+   ],
+   "spellcasting_ability": "wis",
+   "subclass": "land",
+   "levels": {
+    "1": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "spellcasting-druid": "Spellcasting: Druid",
+      "druidic": "Druidic"
+     },
+     "class_specific": {
+      "wild_shape_max_cr": 0,
+      "wild_shape_swim": false,
+      "wild_shape_fly": false
+     },
+     "cantrips_known": 2,
+     "spell_slots": {
+      "1": 2
+     }
+    },
+    "2": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "wild-shape-cr-1-4-or-below-no-flying-or-swim-speed": "Wild Shape (CR 1/4 or below, no flying or swim speed)",
+      "druid-circle": "Druid Circle"
+     },
+     "class_specific": {
+      "wild_shape_max_cr": 0.25,
+      "wild_shape_swim": false,
+      "wild_shape_fly": false
+     },
+     "cantrips_known": 2,
+     "spell_slots": {
+      "1": 3
+     },
+     "subclass_features": {
+      "bonus-cantrip": "Bonus Cantrip",
+      "natural-recovery": "Natural Recovery",
+      "circle-of-the-land-mountain": "Circle of the Land: Mountain"
+     }
+    },
+    "3": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {},
+     "class_specific": {
+      "wild_shape_max_cr": 0.25,
+      "wild_shape_swim": false,
+      "wild_shape_fly": false
+     },
+     "cantrips_known": 2,
+     "spell_slots": {
+      "1": 4,
+      "2": 2
+     },
+     "subclass_features": {
+      "circle-spells-1": "Circle Spells"
+     }
+    },
+    "4": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 1,
+     "features": {
+      "wild-shape-cr-1-2-or-below-no-flying-speed": "Wild Shape (CR 1/2 or below, no flying speed)",
+      "druid-ability-score-improvement-1": "Ability Score Improvement"
+     },
+     "class_specific": {
+      "wild_shape_max_cr": 0.5,
+      "wild_shape_swim": true,
+      "wild_shape_fly": false
+     },
+     "cantrips_known": 3,
+     "spell_slots": {
+      "1": 4,
+      "2": 3
+     }
+    },
+    "5": {
+     "prof_bonus": 3,
+     "ability_score_bonuses": 1,
+     "features": {},
+     "class_specific": {
+      "wild_shape_max_cr": 0.5,
+      "wild_shape_swim": true,
+      "wild_shape_fly": false
+     },
+     "cantrips_known": 3,
+     "spell_slots": {
+      "1": 4,
+      "2": 3,
+      "3": 2
+     },
+     "subclass_features": {
+      "circle-spells-2": "Circle Spells"
+     }
+    }
+   },
+   "subclass_name": "Land (Mountain)",
+   "subclass_spells": [
+    {
+     "level": 3,
+     "spell": "spider-climb"
+    },
+    {
+     "level": 3,
+     "spell": "spike-growth"
+    },
+    {
+     "level": 5,
+     "spell": "lightning-bolt"
+    },
+    {
+     "level": 5,
+     "spell": "meld-into-stone"
+    }
+   ]
+  },
+  "monk": {
+   "name": "Monk",
+   "hit_die": 8,
+   "saving_throws": [
+    "str",
+    "dex"
+   ],
+   "spellcasting_ability": null,
+   "subclass": "open-hand",
+   "levels": {
+    "1": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "monk-unarmored-defense": "Unarmored Defense",
+      "martial-arts": "Martial Arts"
+     },
+     "class_specific": {
+      "martial_arts": {
+       "dice_count": 1,
+       "dice_value": 4
+      },
+      "ki_points": 0,
+      "unarmored_movement": 0
+     }
+    },
+    "2": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "ki": "Ki",
+      "flurry-of-blows": "Flurry of Blows",
+      "patient-defense": "Patient Defense",
+      "step-of-the-wind": "Step of the Wind",
+      "unarmored-movement-1": "Unarmored Movement"
+     },
+     "class_specific": {
+      "martial_arts": {
+       "dice_count": 1,
+       "dice_value": 4
+      },
+      "ki_points": 2,
+      "unarmored_movement": 10
+     }
+    },
+    "3": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 0,
+     "features": {
+      "monastic-tradition": "Monastic Tradition",
+      "deflect-missiles": "Deflect Missiles"
+     },
+     "class_specific": {
+      "martial_arts": {
+       "dice_count": 1,
+       "dice_value": 4
+      },
+      "ki_points": 3,
+      "unarmored_movement": 10
+     },
+     "subclass_features": {
+      "open-hand-technique": "Open Hand Technique"
+     }
+    },
+    "4": {
+     "prof_bonus": 2,
+     "ability_score_bonuses": 1,
+     "features": {
+      "monk-ability-score-improvement-1": "Ability Score Improvement",
+      "slow-fall": "Slow Fall"
+     },
+     "class_specific": {
+      "martial_arts": {
+       "dice_count": 1,
+       "dice_value": 4
+      },
+      "ki_points": 4,
+      "unarmored_movement": 10
+     }
+    },
+    "5": {
+     "prof_bonus": 3,
+     "ability_score_bonuses": 1,
+     "features": {
+      "monk-extra-attack": "Extra Attack",
+      "stunning-strike": "Stunning Strike"
+     },
+     "class_specific": {
+      "martial_arts": {
+       "dice_count": 1,
+       "dice_value": 6
+      },
+      "ki_points": 5,
+      "unarmored_movement": 10
+     }
+    }
+   },
+   "subclass_name": "Open Hand"
   }
  },
  "spells": {
@@ -1118,6 +1342,33 @@
    "school": "enchantment",
    "classes": [
     "bard"
+   ]
+  },
+  "lightning-bolt": {
+   "name": "Lightning Bolt",
+   "level": 3,
+   "school": "evocation",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ]
+  },
+  "spider-climb": {
+   "name": "Spider Climb",
+   "level": 2,
+   "school": "transmutation",
+   "classes": [
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ]
+  },
+  "meld-into-stone": {
+   "name": "Meld Into Stone",
+   "level": 3,
+   "school": "transmutation",
+   "classes": [
+    "cleric"
    ]
   }
  }

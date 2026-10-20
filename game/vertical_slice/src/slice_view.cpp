@@ -114,6 +114,28 @@ Image font_atlas() {
     return im;
 }
 
+Color mul(Color a, Color b) { return {a.r * b.r, a.g * b.g, a.b * b.b, a.a * b.a}; }
+
+// Presentation table: light preset (content key) -> glow colour. Never read by sim.
+Color glow_for(const LightSourceView& s) {
+    if (s.preset.find("torch") != std::string::npos) return Color::rgba8(255, 170, 70, 170);
+    if (s.magical) return Color::rgba8(190, 210, 255, 170);
+    return Color::rgba8(255, 230, 160, 150);
+}
+
+int floor_mod32(int v) { return ((v % 32) + 32) % 32; }
+
+// Per-tile light tint + fog (Visible when there is no LightFrame).
+Color tile_light(const LightView& L, Vec2i t, iso2d::Fog* fog_out = nullptr) {
+    if (!L.present) { if (fog_out) *fog_out = iso2d::Fog::Visible; return {1, 1, 1, 1}; }
+    const LightChunkView* c = L.chunk_of_tile(t);
+    if (!c) { if (fog_out) *fog_out = iso2d::Fog::Unexplored; return iso2d::light_tint(0, iso2d::Fog::Unexplored); }
+    const int lx = floor_mod32(t.x), ly = floor_mod32(t.y);
+    const iso2d::Fog f = iso2d::fog_of(c->seen(lx, ly), c->known(lx, ly));
+    if (fog_out) *fog_out = f;
+    return iso2d::light_tint(c->samples[size_t(ly * 32 + lx)], f);
+}
+
 Color tint_for(const ActorView& a) {
     Color c = a.is_pc ? Color::rgba8(90, 150, 255) : Color::rgba8(110, 200, 80);
     if (a.dead) c = Color::rgba8(90, 90, 90, 200);
@@ -163,7 +185,21 @@ struct SliceView::Textures {
 };
 
 SliceView::SliceView(IRenderDevice& dev)
-    : world_(dev, 8192), ui_(dev, 8192), tex_(std::make_unique<Textures>(dev)) {}
+    : world_(dev, 8192), ui_(dev, 8192), lights_(dev), tex_(std::make_unique<Textures>(dev)) {}
+
+// Mirrors the LightFrame into per-chunk R8 light maps: StreamDelta added/removed, then dirty rects.
+void SliceView::sync_lights(const LightView& L) {
+    if (!L.present || L.frame == light_frame_) return;
+    light_frame_ = L.frame;
+    std::vector<iso2d::LightChunkKey> add, rem;
+    for (const auto& c : L.added) add.push_back({c.cx, c.cy, c.level});
+    for (const auto& c : L.removed) rem.push_back({c.cx, c.cy, c.level});
+    lights_.on_stream_delta(add, rem);
+    for (const LightDirtyView& d : L.dirty)
+        for (const LightChunkView& c : L.chunks)
+            if (c.cx == d.chunk.cx && c.cy == d.chunk.cy && c.level == d.chunk.level)
+                lights_.update({c.cx, c.cy, c.level}, std::span<const uint8_t, iso2d::kLightTiles>(c.samples), d.rect);
+}
 SliceView::~SliceView() = default;
 
 Vec2f SliceView::tile_center_px(float x, float y) const {
@@ -214,6 +250,13 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
     world_.begin();
     ui_.begin();
     ui_seq_ = 0;
+    sync_lights(vm.light);
+    const LightView& L = vm.light;
+    auto visible = [&](const ActorView& a) {
+        iso2d::Fog f;
+        tile_light(L, a.tile, &f);
+        return f == iso2d::Fog::Visible || a.is_pc;   // never draw what the team can't see
+    };
 
     // ---- world: tiles ----
     for (const TileView& t : vm.tiles) {
@@ -222,19 +265,32 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         const uint32_t key = uint32_t(t.tile.y * 32 + t.tile.x);
         if (t.kind == TileKind::Wall || t.layer >= 2) {
             iso2d::Sprite s{tex_->wall, float(kTileW), float(kTileH + kWallH), kTileW / 2.f, float(kWallH) + lift};
+            s.tint = tile_light(L, t.tile);
             world_.draw(s, iso, 1, key, 0);
         } else if (t.elevation > 0 && t.layer == 0) {
             // Raised ground: a short block so the step has visible sides.
             iso2d::Sprite s{tex_->raised_block, float(kTileW), float(kTileH + kElevPx), kTileW / 2.f, lift};
             s.h = float(kTileH) + lift;   // stretch the side faces for multi-step elevation
+            s.tint = tile_light(L, t.tile);
             world_.draw(s, iso, 0, key, t.layer);
         } else {
             iso2d::Sprite s{tex_->ground(t.kind), float(kTileW), float(kTileH), kTileW / 2.f, lift};
+            s.tint = tile_light(L, t.tile);
             world_.draw(s, iso, 0, key, t.layer);
         }
     }
     // ---- world: actors (placeholder pawns), current-turn ring ----
+    if (L.present)   // glow under lit sources (presentation; follows the carrier's drawn tile)
+        for (const LightSourceView& ls : L.sources) {
+            if (!ls.lit) continue;
+            Vec2i at = ls.tile;
+            for (const ActorView& a : vm.actors) if (ls.carrier == 1 && a.id == ls.carrier_id) at = a.tile;
+            iso2d::Sprite g{tex_->ring, float(kTileW), float(kTileH), kTileW / 2.f, 0};
+            g.tint = glow_for(ls);
+            world_.draw(g, {float(at.x), float(at.y)}, 0, uint32_t(ls.id), 8);
+        }
     for (const ActorView& a : vm.actors) {
+        if (!visible(a)) continue;
         const Vec2f iso{float(a.tile.x), float(a.tile.y)};
         if (a.current) {
             iso2d::Sprite r{tex_->ring, float(kTileW), float(kTileH), kTileW / 2.f, 0};
@@ -243,7 +299,10 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         }
         // Pawn feet at the tile centre; drawn on the wall layer so walls in front occlude it.
         iso2d::Sprite p{tex_->pawn, float(kPawnW), float(kPawnH), kPawnW / 2.f, float(kPawnH) - kTileH / 2.f - 4.f};
-        p.tint = tint_for(a);
+        p.tint = mul(tint_for(a), L.present ? iso2d::light_tint(
+                                       L.chunk_of_tile(a.tile) ? L.chunk_of_tile(a.tile)->samples[size_t(floor_mod32(a.tile.y) * 32 + floor_mod32(a.tile.x))] : 0,
+                                       iso2d::Fog::Visible) : Color{1, 1, 1, 1});
+        if (L.present) p.tint = mul(p.tint, {1.6f, 1.6f, 1.6f, 1.f});   // tokens stay readable in dim light (presentation)
         world_.draw(p, iso, 1, a.id, 1);
     }
     world_.prepare(cam);
@@ -252,6 +311,7 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
     const Color white{1, 1, 1, 1}, dim = Color::rgba8(170, 175, 190), gold = Color::rgba8(255, 220, 60);
     // HP bars + names above each actor.
     for (const ActorView& a : vm.actors) {
+        if (!visible(a)) continue;
         const Vec2f head = cam.world_to_screen({tile_center_px(float(a.tile.x), float(a.tile.y)).x,
                                                 tile_center_px(float(a.tile.x), float(a.tile.y)).y - (kPawnH - 4) });
         const float bw = 40.f, bh = 5.f;
@@ -278,6 +338,7 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         text(vm.pending, {320, 16}, s2, Color::rgba8(255, 140, 60));
     }
     for (const ActorView& a : vm.actors) {
+        if (!visible(a)) continue;
         std::string line = (a.current ? "> " : "  ") + a.name + " HP " + std::to_string(a.hp) + "/" + std::to_string(a.hp_max);
         if (a.dead) line += " DEAD";
         else if (a.down) line += " DOWN";

@@ -1,0 +1,114 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.druid_level_1",
+  "name": "Druid, level 1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "human",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "neutral",
+  "level": 1,
+  "classes": [
+    {
+      "class": "druid",
+      "level": 1,
+      "hit_die": "d8"
+    }
+  ],
+  "xp": 0,
+  "armor_class": {
+    "value": 15,
+    "note": "leather armor, shield"
+  },
+  "hit_points": {
+    "average": 10,
+    "formula": "1d8+2"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 9,
+    "dex": 15,
+    "con": 14,
+    "int": 13,
+    "wis": 16,
+    "cha": 11
+  },
+  "saving_throws": {
+    "int": 3,
+    "wis": 5
+  },
+  "skills": {
+    "insight": 5,
+    "perception": 5
+  },
+  "senses": {
+    "passive_perception": 15
+  },
+  "languages": [
+    "Common",
+    "Druidic"
+  ],
+  "proficiency_bonus": 2,
+  "features": [
+    {
+      "id": "druidic",
+      "name": "Druidic",
+      "description": "You know Druidic, the secret language of druids. You can speak the language and use it to leave hidden messages; others spot such a message's presence with a successful DC 15 Wisdom (Perception) check but can't decipher it without magic. (Descriptive: language and hidden messages have no combat effect.)"
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.scimitar",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.leather_armor",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.shield",
+      "equipped": true
+    },
+    "explorers_pack",
+    "druidic_focus"
+  ],
+  "actions": [
+    {
+      "id": "scimitar",
+      "name": "Scimitar",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "finesse",
+        "light"
+      ],
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "slashing"
+        }
+      ]
+    }
+  ],
+  "spellcasting": {
+    "ability": "wis",
+    "caster_level": 1,
+    "slots": {
+      "1": 2
+    },
+    "spells": [
+      "srd51.spell.produce_flame",
+      "srd51.spell.poison_spray",
+      "srd51.spell.cure_wounds",
+      "srd51.spell.healing_word",
+      "srd51.spell.thunderwave"
+    ]
+  }
+}

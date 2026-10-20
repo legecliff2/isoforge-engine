@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation), Sorcerer (Draconic Bloodline), Rogue (Thief), Paladin (Oath of Devotion), Ranger (Hunter), Barbarian (Path of the Berserker) and Bard (College of Lore) levels 1-5 in srd51.core vs the 5e-database
+"""SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation), Sorcerer (Draconic Bloodline), Rogue (Thief), Paladin (Oath of Devotion), Ranger (Hunter), Barbarian (Path of the Berserker), Bard (College of Lore) Druid (Circle of the Land: Mountain) and Monk (Way of the Open Hand) levels 1-5 in srd51.core vs the 5e-database
 tables (ctest: content_validate_srd51_classes).
 
 `data/srd51_classes_5e_database_a6212be.json` holds fields copied verbatim from 5e-bits/5e-database commit a6212be
@@ -25,9 +25,9 @@ DATA = json.loads((Path(__file__).parent / "data/srd51_classes_5e_database_a6212
 TABLE, SPELLS = DATA["classes"], DATA["spells"]
 LEVELS = range(1, 6)
 XP = {1: 0, 2: 300, 3: 900, 4: 2700, 5: 6500}   # SRD 5.1 Character Advancement table
-SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2, "sorcerer": 1, "rogue": 3, "paladin": 3, "ranger": 3, "barbarian": 3, "bard": 3}
+SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2, "sorcerer": 1, "rogue": 3, "paladin": 3, "ranger": 3, "barbarian": 3, "bard": 3, "druid": 2, "monk": 3}
 SPELLCASTING_FROM = {"paladin": 2, "ranger": 2}   # half caster: no spellcasting block at level 1
-MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int", "sorcerer": "cha", "rogue": "dex", "paladin": "str", "ranger": "dex", "barbarian": "str", "bard": "cha"}   # the ASI at level 4 goes here (+2)
+MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int", "sorcerer": "cha", "rogue": "dex", "paladin": "str", "ranger": "dex", "barbarian": "str", "bard": "cha", "druid": "wis", "monk": "dex"}   # the ASI at level 4 goes here (+2)
 SKILLS = {"athletics": "str", "perception": "wis", "insight": "wis", "religion": "int", "arcana": "int", "history": "int",
           "persuasion": "cha", "acrobatics": "dex", "sleight_of_hand": "dex", "stealth": "dex", "survival": "wis", "deception": "cha", "performance": "cha"}
 # Rogue: four class skills (two for the others) and Expertise (doubled proficiency) on Stealth and Perception.
@@ -42,12 +42,16 @@ EXPERTISE = {"rogue": {"stealth", "perception"}, "bard": {"performance", "persua
 def speed(cls: str, level: int) -> dict:
     if cls == "barbarian":
         return {"walk": 40 if level >= 5 else 30}
+    if cls == "monk":   # Unarmored Movement from 2nd: +10 ft (no armor, no shield), baked
+        return {"walk": 40 if level >= 2 else 30}
     return {"walk": 30, "climb": 30} if cls == "rogue" and level >= 3 else {"walk": 30}
 # Draconic Resilience (sorcerer, Draconic Bloodline): +1 hit point per sorcerer level, and AC 13 + Dex without armor.
 HP_PER_LEVEL = {"sorcerer": 1}
 UNARMORED_BASE = {"sorcerer": 13}
 # Barbarian Unarmored Defense: 10 + Dex + Con with no armor (a shield still allowed), baked into armor_class.
 UNARMORED_CON = {"barbarian"}
+# Monk Unarmored Defense: 10 + Dex + Wis (no armor, no shield), baked into armor_class.
+UNARMORED_WIS = {"monk"}
 
 # Every class / subclass feature of levels 1-5 (mirror index) -> where it lives. "feature:<id>" = a features[] entry;
 # "subclass" = classes[0].subclass; "spellcasting" = the spellcasting block; "abilities" = baked into the scores.
@@ -132,14 +136,43 @@ AUTHORED = {
     "bonus-proficiencies": "feature:bonus_proficiencies",    # baked into skills (skill_count)
     "cutting-words": "reactions",                            # reactions[] roll_attack / subtract_roll 1d6 (1d8 at 5), pool bardic_inspiration
     "bard-ability-score-improvement-1": "abilities",
-    "font-of-inspiration": "feature:font_of_inspiration",    # the pool's recharge short_rest at 5                              # descriptive: needs Rage, a bonus-action attack while raging, exhaustion on end               # Colossus Slayer chosen; descriptive: no "target below its hit point maximum" predicate                # descriptive: the damaged window is not attack-only (SRD_CLASSES_DEFERRED)
+    "font-of-inspiration": "feature:font_of_inspiration",    # the pool's recharge short_rest at 5
+    "spellcasting-druid": "spellcasting",
+    "druidic": "feature:druidic",                            # descriptive: a secret language, no combat rule
+    "wild-shape-cr-1-4-or-below-no-flying-or-swim-speed": "feature:wild_shape",   # wild_shape kind (R-G12, EC #176) + pool
+    "wild-shape-cr-1-2-or-below-no-flying-speed": "feature:wild_shape",
+    "druid-circle": "subclass",
+    "circle-of-the-land": "subclass",
+    "circle-of-the-land-mountain": "subclass",
+    "bonus-cantrip": "feature:bonus_cantrip",                # descriptive: both shipped druid cantrips are already known
+    "natural-recovery": "feature:natural_recovery",          # slot_recovery {class druid} (sim #148)
+    "circle-spells-1": "feature:circle_spells",              # the shipped circle spells are in spellcasting.spells (subclass_spells)
+    "circle-spells-2": "feature:circle_spells",
+    "druid-ability-score-improvement-1": "abilities",
+    "monk-unarmored-defense": "feature:unarmored_defense",   # baked into armor_class (UNARMORED_WIS); no effect
+    "martial-arts": "feature:martial_arts",                  # sim convention: bonus unarmed strike; Dex + martial arts die baked into actions
+    "ki": "feature:ki",                                      # resources[] ki {max monk level, short_rest}; the feature text only
+    "flurry-of-blows": "feature:flurry_of_blows",            # sim convention: 2 unarmed strikes for 1 ki
+    "patient-defense": "feature:patient_defense",            # descriptive: no pool-paid bonus-action Dodge key
+    "step-of-the-wind": "feature:step_of_the_wind",          # descriptive: no pool-paid bonus-action Dash / Disengage key
+    "unarmored-movement-1": "feature:unarmored_movement",    # baked into speed.walk 40 (speed()); no effect
+    "monastic-tradition": "subclass",
+    "deflect-missiles": "reactions",                         # reactions[] damaged (ranged_only) / reduce_damage 1d10 + Dex + level
+    "open-hand-technique": "feature:open_hand_technique",    # descriptive: no predicate selects the Flurry of Blows strikes
+    "monk-ability-score-improvement-1": "abilities",
+    "slow-fall": "feature:slow_fall",                        # descriptive: falling is not simulated
+    "monk-extra-attack": "feature:extra_attack",
+    "stunning-strike": "feature:stunning_strike",            # descriptive: save_condition does not load until_end_of_caster_next_turn
 }
 # Kept as a features[] entry with no effect: no combat rule, or a mechanic the engine lacks (docs/SRD_CLASSES_DEFERRED.md).
 DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_story_work", "uncanny_dodge"],
                "paladin": ["divine_sense", "divine_health", "channel_divinity", "sacred_weapon", "turn_the_unholy"],
                "ranger": ["favored_enemy", "natural_explorer", "primeval_awareness", "colossus_slayer"],
                "barbarian": ["rage", "unarmored_defense", "danger_sense", "fast_movement", "frenzy"],
-               "bard": ["bardic_inspiration", "jack_of_all_trades", "song_of_rest", "expertise", "bonus_proficiencies", "font_of_inspiration"]}
+               "bard": ["bardic_inspiration", "jack_of_all_trades", "song_of_rest", "expertise", "bonus_proficiencies", "font_of_inspiration"],
+               "druid": ["druidic", "bonus_cantrip", "circle_spells"],
+               "monk": ["unarmored_defense", "martial_arts", "ki", "flurry_of_blows", "patient_defense", "step_of_the_wind",
+                        "unarmored_movement", "deflect_missiles", "open_hand_technique", "slow_fall", "stunning_strike"]}
 # Not expressible today (docs/SRD_CLASSES_DEFERRED.md): mirror index -> the feature id it would get (must be absent).
 DEFERRED = {
     "disciple-of-life": "disciple_of_life",
@@ -149,7 +182,8 @@ DEFERRED = {
     "destroy-undead-cr-1-2-or-below": "destroy_undead",
 }
 # Life domain spells and class cantrips the pack does not ship yet (listed in the deferred doc).
-DEFERRED_SPELLS = ["bless", "spiritual-weapon", "beacon-of-hope", "protection-from-evil-and-good", "sanctuary", "zone-of-truth"]   # Lesser Restoration, Revivify: spells batch 2
+DEFERRED_SPELLS = ["bless", "spiritual-weapon", "beacon-of-hope", "protection-from-evil-and-good", "sanctuary", "zone-of-truth",
+                   "spider-climb", "meld-into-stone"]   # Mountain circle spells not shipped;   # Lesser Restoration, Revivify: spells batch 2
 
 
 def mod(score: int) -> int:
@@ -238,7 +272,8 @@ class ClassTable(unittest.TestCase):
                     ac = a["base_ac"] + (min(dex, a.get("dex_cap", dex)) if a["dex_bonus"] else 0)
                     self.assertLessEqual(a.get("str_min", 0), d["abilities"]["str"])
                 else:
-                    ac = UNARMORED_BASE.get(cls, 10) + dex + (mod(d["abilities"]["con"]) if cls in UNARMORED_CON else 0)
+                    ac = UNARMORED_BASE.get(cls, 10) + dex + (mod(d["abilities"]["con"]) if cls in UNARMORED_CON else 0) \
+                        + (mod(d["abilities"]["wis"]) if cls in UNARMORED_WIS else 0)
                 ac += sum(i["ac_bonus"] for i in worn if i["category"] == "shield")
                 self.assertEqual(d["armor_class"]["value"], ac)
 
@@ -248,6 +283,8 @@ class ClassTable(unittest.TestCase):
         for cls, level, d in docs():
             items = {i["id"].removeprefix("srd51.item."): i for i in (item(e["item"]) for e in d["equipment"] if isinstance(e, dict))}
             for a in d["actions"]:
+                if a["id"] == "unarmed_strike":   # no item: Martial Arts (test_monk)
+                    continue
                 with self.subTest(cls=cls, level=level, action=a["id"]):
                     key = {"light_crossbow": "crossbow_light", "dagger_thrown": "dagger"}.get(a["id"], a["id"])
                     it = items[key]
@@ -259,7 +296,7 @@ class ClassTable(unittest.TestCase):
                         m = mod(ab["dex"]) if a["kind"] == "ranged_weapon_attack" and "thrown" not in props else mod(ab["str"])
                     self.assertEqual(a["to_hit"], m + d["proficiency_bonus"])
                     self.assertEqual(a["damage"], [{"dice": dice_plus(it["damage"][0]["dice"], m), "type": it["damage"][0]["type"]}])
-                    self.assertEqual(a.get("properties", []), props)
+                    self.assertEqual([p for p in a.get("properties", []) if p != "monk" or cls != "monk"], props)   # "monk": monk weapon (Martial Arts bonus strike prerequisite)
                     if a["kind"] == "melee_weapon_attack":
                         self.assertEqual(a["reach"], it["reach"])
                     else:
@@ -451,6 +488,67 @@ class ClassTable(unittest.TestCase):
                     self.assertNotIn("reactions", d)
                 self.assertEqual("font_of_inspiration" in f, level >= 5)
                 for fid in DESCRIPTIVE["bard"]:
+                    if fid in f:
+                        self.assertNotIn("effect", f[fid], fid)
+
+    def test_druid(self):
+        forms = ["srd51.monster." + m for m in ("jackal", "wolf", "boar", "axe_beak", "giant_poisonous_snake", "black_bear")]
+        for level in LEVELS:
+            with self.subTest(level=level):
+                d = load("druid", level)
+                f = features(d)
+                if level < 2:
+                    self.assertNotIn("resources", d)
+                    self.assertNotIn("wild_shape", f)
+                    self.assertNotIn("natural_recovery", f)
+                    continue
+                self.assertEqual(d["resources"], [{"id": "wild_shape", "name": "Wild Shape", "max": 2, "recharge": "short_rest"}])
+                # SRD: CR 1/4, no fly / swim at 2; CR 1/2, no fly at 4 (engine defaults no_swim_below 4, no_fly_below 8)
+                self.assertEqual(f["wild_shape"]["effect"], {"kind": "wild_shape", "pool": "wild_shape", "forms": forms,
+                                                             "max_cr_by_level": [{"level": 2, "max_cr": "1/4"}, {"level": 4, "max_cr": "1/2"}]})
+                for ref in forms:   # shipped beasts, CR <= 1/2, no fly speed (swim only on the giant poisonous snake)
+                    m = json.loads((PACK / "monsters" / f"{ref.removeprefix('srd51.monster.')}.json").read_text(encoding="utf-8"))
+                    self.assertIn(m["challenge"]["rating"], ("0", "1/8", "1/4", "1/2"), ref)
+                    self.assertNotIn("fly", m["speed"], ref)
+                self.assertEqual(f["natural_recovery"]["effect"], {"kind": "slot_recovery", "class": "druid", "max_slot_level": 5, "uses": 1})
+                self.assertIn("half your druid level (rounded up)", f["natural_recovery"]["description"])
+                self.assertEqual("circle_spells" in f, level >= 3)
+                for fid in DESCRIPTIVE["druid"]:
+                    if fid in f:
+                        self.assertNotIn("effect", f[fid], fid)
+
+    def test_monk(self):
+        for level in LEVELS:
+            with self.subTest(level=level):
+                d = load("monk", level)
+                f = features(d)
+                ab, pb = d["abilities"], d["proficiency_bonus"]
+                row = TABLE["monk"]["levels"][str(level)]["class_specific"]
+                die = f"{row['martial_arts']['dice_count']}d{row['martial_arts']['dice_value']}"
+                dex = mod(ab["dex"])
+                us = d["actions"][0]   # Martial Arts: Dex for unarmed strikes, the martial arts die
+                self.assertEqual((us["id"], us["kind"], us["to_hit"], us["properties"], us["damage"]),
+                                 ("unarmed_strike", "melee_weapon_attack", dex + pb, ["unarmed", "monk"],
+                                  [{"dice": dice_plus(die, dex), "type": "bludgeoning"}]))
+                self.assertIn("monk", d["actions"][1]["properties"])   # shortsword: a monk weapon
+                worn = {item(e["item"])["category"] for e in d["equipment"] if isinstance(e, dict) and e.get("equipped")}
+                self.assertFalse(worn & {"armor", "shield"})   # Unarmored Defense / Movement / Martial Arts need no armor, no shield
+                self.assertIn("martial_arts", f)
+                if level >= 2:
+                    self.assertEqual(d["resources"], [{"id": "ki", "name": "Ki", "max": row["ki_points"], "recharge": "short_rest"}])
+                    self.assertIn("flurry_of_blows", f)
+                else:
+                    self.assertNotIn("resources", d)
+                if level >= 3:
+                    self.assertEqual(d["reactions"], [{"id": "deflect_missiles", "name": "Deflect Missiles",
+                                                       "window": {"kind": "damaged", "ranged_only": True},
+                                                       "effect": {"kind": "reduce_damage", "dice": f"1d10+{dex + level}"}}])
+                else:
+                    self.assertNotIn("reactions", d)
+                self.assertEqual("extra_attack" in f, level >= 5)
+                if level >= 5:
+                    self.assertEqual(f["extra_attack"]["effect"], {"kind": "extra_attack", "attacks_per_action": 2})
+                for fid in DESCRIPTIVE["monk"]:
                     if fid in f:
                         self.assertNotIn("effect", f[fid], fid)
 
