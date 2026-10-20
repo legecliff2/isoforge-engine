@@ -41,6 +41,11 @@ struct SimEvent {
                          // rules events, in spawn order: `actor` = the creature, `tile` = its anchor
                          // (min-x/min-y tile, the frame of TileMoved), `rules.a` = footprint side in
                          // tiles (2 Large, 3 Huge, 4 Gargantuan). Its `TileMoved` tiles are anchors too.
+        TokenSpawned = 4, // v10 (R-G12 summons). Right after its own rules `Summoned`: `actor` = the summon, `tile` = its
+                          // anchor, `rules.a` = footprint side, `rules.b` = summoner id.
+        TokenRemoved = 5, // v10. A summon's token goes: `actor` = the summon, `tile` = its last anchor, `rules.a` = the
+                          // SummonEnded reason (b). After the step's sim events, except in the encounter-end teardown,
+                          // where each one directly follows its SummonEnded{b = 5}.
     };
     Kind kind = Kind::Rules;
     rules5e::Event rules{};          // Kind::Rules only; zero otherwise
@@ -49,7 +54,7 @@ struct SimEvent {
 };
 
 // Lowest schema version that can express the stream: 10 if it contains a rules kind past kLastRulesEventKindV9 (R-G12
-// summons / transforms), 9 if it contains a rules kind past kLastRulesEventKindV8 (R-G11 zones),
+// summons / transforms) or a TokenSpawned / TokenRemoved, 9 if it contains a rules kind past kLastRulesEventKindV8 (R-G11 zones),
 // 8 if it contains a rules Moved with c != 0 (movement flags), 7 if
 // it contains a rules kind past kLastRulesEventKindV6, 6 if it contains a v6 construct (Footprint), else
 // 5 if it contains a v5 construct (SpellTarget), else 4. The digest records this, not
