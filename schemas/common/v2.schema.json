@@ -443,6 +443,7 @@
             "save",
             "target_surprised",
             "ally_near_target",
+            "weapon_attack",
             "damage_at_most"
           ]
         },
@@ -734,7 +735,8 @@
               "kind": {
                 "enum": [
                   "target_surprised",
-                  "ally_near_target"
+                  "ally_near_target",
+                  "weapon_attack"
                 ]
               }
             }

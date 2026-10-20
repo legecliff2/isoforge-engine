@@ -41,7 +41,7 @@ PREDICATE = {("weapon",): (S({"kind", "is"}), S()),
              ("moved_at_least_ft",): (S({"kind", "ft"}), S()),
              ("self_hp_below",): (S({"kind", "num", "den"}), S()),
              ("save",): (S({"kind", "ability"}), S({"dc", "dc_from_damage", "base"})),
-             ("target_surprised", "ally_near_target"): (S({"kind"}), S()),
+             ("target_surprised", "ally_near_target", "weapon_attack"): (S({"kind"}), S()),
              ("damage_at_most",): (S({"kind", "amount"}), S())}
 RIDER = {("extra_damage",): (S({"kind", "damage"}), S({"scale"})),
          ("save_condition",): (S({"kind", "save"}), S({"apply", "damage", "on_success"})),
