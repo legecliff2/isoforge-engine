@@ -358,3 +358,17 @@ Additive optional values in `common@2` (no version bump; `docs/proposals/VERSION
 | predicate `kind` | `owner_creature_type` with `creature_types[]` | the modifier's owner (the creature carrying it) has one of the types; `bad creature_types` otherwise |
 
 `modifiers_digest` folds all of it under the existing tag 0xA2; no new tag, no log field. Not modelled: Shocking Grasp's advantage against metal armor (no armor material exists) and Vicious Mockery's "if the target can hear you".
+
+## Engine Core loader durations and temp HP (fix/loader-duration-temphp)
+
+Additive optional values in `common@2` (no version bump; older content loads and hashes unchanged). Loader: sim `content.cpp` (`compile_save_action`, `apply_condition`, `compile_rider`) and `rules5e_content` `parse_predicate`. Engine: flagged rules5e edits in `encounter.cpp`.
+
+| key | value | loader / engine behaviour |
+|---|---|---|
+| condition `apply[].duration.kind` (save_effect, save_condition, area_save, apply_condition) | `until_end_of_caster_next_turn` | `SpellDef::expiry` 3: the condition ends at the end of the applier's next turn (its own current turn does not count). Was refused as unsupported |
+| condition `apply[].duration.kind` | `until_start_of_target_turn` | expiry 4: the condition ends as the affected creature's next turn starts. Was refused as unsupported |
+| rider `amount_from` (heal_self / temp_hp only) | `{ability, class?, min?}` | amount = `ability` modifier + level in `class` (omitted: no level term), at least `min` (default 1), computed at load. One of `dice` / `amount` / `amount_from`. Dark One's Blessing: `{"kind": "on_event", "on": "reduce_to_zero", "when": [{"kind": "subject_hostile"}], "effects": [{"kind": "temp_hp", "amount_from": {"ability": "cha", "class": "warlock"}}]}` |
+| predicate `kind` | `subject_hostile` | kind only: the event's subject is on another team than the owner |
+
+`heal_self` / `temp_hp` riders of `on_event` triggers fire on every event but `hit` / `crit` (rules5e `run_event_triggers`); temporary HP never stacks: the larger pool is kept. Still refused for conditions (no rules5e expiry): `until_start_of_caster_turn`, `until_end_of_target_turn`, `concentration`, `until_rest`. No new hashed state, no new tag.
+
