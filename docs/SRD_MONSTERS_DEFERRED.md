@@ -13,11 +13,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | | count |
 |---|---|
 | inventory candidates | 30 |
-| authored now as `monster@4` | 23 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129) |
+| authored now as `monster@4` | 25 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, basilisk and medusa after #153) |
 | goblin (already shipped, left at `monster@3`) | 1 |
 | deferred (mechanic not expressible) | 6 |
 
-## Authored (23, all `monster@4`)
+## Authored (25, all `monster@4`)
 
 | monster | CR | mechanics carried as data | notes |
 |---|---|---|---|
@@ -44,6 +44,8 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Dire Wolf | 1 | Pack Tactics (`pack_tactics`), bite (knock-prone rider) | authored, as wolf (Str DC 13, prone untimed). Keen Hearing and Smell descriptive |
 | Orc | 1/2 | Aggressive as trait effect `{ "kind": "aggressive" }` (sim #129: bonus-action Dash toward a visible hostile; the built-in AI uses it), greataxe, javelin (melee and thrown) | |
 | Berserker | 2 | Reckless as trait effect `{ "kind": "reckless_attack" }` (sim #129), greataxe | the sim applies Reckless when the caller declares `ActionRequest::reckless` on the first attack; the built-in AI never declares it, so an AI-driven berserker attacks without it (a choice the AI does not make yet, not a content gap) |
+| Basilisk | 3 | Petrifying Gaze as trait effect `gaze` (7.2p, sim #153): 30 ft, Con DC 12, restrained, repeat save at the end of its turn, petrified on a failed repeat save (`escalates`, `escalate_margin` 0); bite with two damage components (piercing + poison) | **partial**: the reflection clause (it targets itself when it sees its reflection in bright light) and "until freed by greater restoration" are description only (no mirror / light model, no Greater Restoration). Averting the eyes and the sight check are the sim's (`GazeResponse`, `gaze_seen`) |
+| Medusa | 6 | Petrifying Gaze as `gaze` (Con DC 14, 30 ft, `escalate_margin` 5: failing by 5 or more petrifies at once; otherwise restrained, then petrified on a failed repeat save); Multiattack: snake hair + 2 shortswords, or 2 longbows; snake hair and longbow with a poison damage component | **partial**: as basilisk, the reflection curse is description only; proficiency bonus +3 (CR 6) |
 
 The goblin keeps `$schema: monster@3`, its id (`srd51.monster.goblin`, stable id derived from it) and bytes. It is referenced by C++ tests that assert its `@3` form (`content_migration_tests`, `pack_set_tests`, compat goblin tests) and by the fl1 compat corpus, and a schema change could shift digests and goldens; migrating it buys nothing until a `@4`-only feature is needed.
 
