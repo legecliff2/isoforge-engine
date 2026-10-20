@@ -2128,9 +2128,13 @@ Rules (all appended; defaults keep every existing digest and golden):
 Hand-off (sim, EC):
 
 - **Speed.** Sim reads the movement budget (`TurnBudget::movement_ft`, from `modified_speed` at turn start), so Ray of Frost
-  needs nothing new. Two paths still use the unmodified `effective_speed`: rules' Dash (`movement_ft += effective_speed`) and
-  sim's Aggressive dash bookkeeping (`AggressiveDash`). Per SRD, Dash adds the creature's speed after modifiers; a rules
-  follow-up (Rules) will switch Dash to `modified_speed`, with sim's Aggressive path following (EC).
+  needs nothing new for normal movement. **Rules' Dash is fixed here** (EC review): it adds `modified_speed(s, a)` (speed after
+  conditions, exhaustion and Speed modifiers), so Ray of Frost gives 20 + 20 = 40 ft, grappled 0, exhaustion 2 half; tested.
+  `int modified_speed(const EncounterState&, const Combatant&)` is public in `rules5e/encounter.hpp` for sim. **EC is
+  switching the sim side** to it: the Aggressive dash bookkeeping (`AggressiveDash`, which still reads `effective_speed`), AI
+  Dash planning, stand-up cost, and a readied Move's distance. (Rules' own StandUp still uses `effective_speed` for its half-
+  speed cost; it follows with the sim change.) Haste follows from the same fix: a hasted Dash adds the doubled speed (60 + 60), and the small-leftovers Haste test
+  expectation moved from 90 to 120 (no golden moved).
 - **Reactions.** Nothing to read: the marker is enforced inside rules' `may_react`. Sim's reaction UI / AI should not offer a
   reaction when rules wouldn't (it already polls rules' windows).
 
