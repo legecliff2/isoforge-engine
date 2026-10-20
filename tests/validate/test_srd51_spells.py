@@ -55,6 +55,16 @@ class SpellTable(unittest.TestCase):
                     n, unit = t["duration"].replace("Up to ", "").split()
                     self.assertEqual((du["kind"], du["amount"]), (unit.rstrip("s") + "s", int(n)))
                 eff = d["effects"][0]
+                zone = eff.get("zone") if eff["kind"] == "zone" else None
+                if zone is not None:   # zone spells: the save sits in the triggers, the area is the zone's shape
+                    if "dc" in t:
+                        saves = {tr["effect"]["ability"] for tr in zone["triggers"] if tr["effect"]["kind"] == "save"}
+                        self.assertEqual(saves, {t["dc"]["ability"]})
+                    if "area_of_effect" in t:
+                        a = t["area_of_effect"]
+                        self.assertEqual((zone["shape"], zone["size_ft"]), (a["type"], a["size"]))
+                    self.assertNotIn("area", d)
+                    continue
                 if "damage_type" in t:
                     lv = t["damage_at"]
                     base = lv[str(min(int(k) for k in lv))]
@@ -93,6 +103,31 @@ class SpellTable(unittest.TestCase):
                          {"stat": "ac", "bonus": 2, "applies_to": "target", "duration": {"kind": "concentration"}})
         self.assertEqual(load("barkskin")["effects"][0]["modifier"],
                          {"stat": "ac", "ac_floor": 16, "applies_to": "target", "duration": {"kind": "concentration"}})
+
+    def test_next_roll_riders(self):
+        # Rules #183 (7.2u): duration kinds 3 / 4, no_reactions / no_healing markers, subject_is_caster / owner_creature_type
+        self.assertEqual(load("guiding-bolt")["effects"][1]["modifier"],
+                         {"stat": "attacks_against", "mode": "advantage", "consume": "next_attack_against", "applies_to": "target",
+                          "duration": {"kind": "until_end_of_caster_next_turn"}})
+        self.assertEqual(load("vicious-mockery")["effects"][1]["modifier"],
+                         {"stat": "attack_roll", "mode": "disadvantage", "consume": "next_attack", "applies_to": "target",
+                          "duration": {"kind": "until_end_of_target_turn"}})
+        self.assertEqual(load("shocking-grasp")["effects"][1]["modifier"],
+                         {"stat": "no_reactions", "applies_to": "target", "duration": {"kind": "until_start_of_target_turn"}})
+        ct = load("chill-touch")["effects"]
+        self.assertEqual(ct[1]["modifier"], {"stat": "no_healing", "applies_to": "target", "duration": {"kind": "until_start_of_caster_turn"}})
+        self.assertEqual(ct[2]["modifier"]["duration"], {"kind": "until_end_of_caster_next_turn"})
+        self.assertEqual(ct[2]["modifier"]["when"], [{"kind": "owner_creature_type", "creature_types": ["undead"]}, {"kind": "subject_is_caster"}])
+        for idx in ("guiding-bolt", "vicious-mockery", "shocking-grasp", "chill-touch"):
+            self.assertTrue(all(e["applies_to"] == "affected" for e in load(idx)["effects"][1:]), idx)
+
+    def test_zone_and_kind_spells(self):
+        self.assertEqual(load("silence")["effects"][0]["zone"]["flags"], ["silence"])
+        self.assertEqual(load("spirit-guardians")["effects"][0]["zone"]["anchor"], "creature")
+        self.assertEqual(load("dispel-magic")["effects"], [{"kind": "dispel", "check": {"ability": "spellcasting", "dc_base": 10, "plus": "spell_level"}}])
+        self.assertEqual(load("revivify")["effects"], [{"kind": "revive", "within_rounds": 10}])
+        self.assertEqual(load("revivify")["components"]["m"]["cost_cp"], 30000)
+        self.assertEqual(load("lesser-restoration")["effects"][0]["conditions"], ["blinded", "deafened", "paralyzed", "poisoned"])
 
 
 if __name__ == "__main__":

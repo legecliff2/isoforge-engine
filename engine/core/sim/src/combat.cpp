@@ -1554,7 +1554,7 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze) {
         r.error = "cannot end movement in another creature's space";
         return r;
     }
-    if (!aggressive_step_ok(mover, to)) { r.error = "aggressive: the Dash's movement must go toward a hostile it can see"; return r; }
+    if (!aggressive_step_ok(mover, to, cost, fp)) { r.error = "aggressive: the Dash's movement must go toward a hostile it can see"; return r; }
     ActionRequest mv{mover, ActionKind::Move};
     mv.move_ft = int16_t(cost);
     mv.move_tiles = 1;
@@ -1615,11 +1615,17 @@ std::vector<Vec2i> Combat::summon_tiles_for(CombatantId caster, const rules5e::S
 }
 
 bool Combat::aggressive_step_ok(CombatantId mover, Vec2i to) const {
+    // Priced like the Step itself (plan_step -> step_cost_ft): move modes, zones, another creature's space, squeezing.
+    StepPlan plan;
+    if (!plan_step(mover, to, plan)) return aggressive_step_ok(mover, to, plan.cost, plan.n);
+    const int fp = footprint_size(mover);
+    return aggressive_step_ok(mover, to, step_cost_ft(mover, pos(mover), to, fp, overlaps_other(mover, to, fp)), fp);
+}
+bool Combat::aggressive_step_ok(CombatantId mover, Vec2i to, int cost, int fp) const {
     const TurnKey now = turn_key();
     if (!aggressive_ || aggressive_->stamp != now || aggressive_->actor != mover) return true;
     const Vec2i from = pos(mover);
-    const int fp = footprint_size(mover);
-    if (grid_.move_cost_ft(from, to, fp) <= aggressive_->free_ft) return true;   // the creature's own movement
+    if (cost <= aggressive_->free_ft) return true;   // the creature's own movement
     const auto* m = rules5e::find(state_, mover);
     if (!m || m->has(rules5e::Condition::Blinded)) return false;
     for (const auto& sl : slots_) {
@@ -1732,6 +1738,7 @@ uint64_t Combat::hash() const {
                 h.byte(uint8_t(e.damage_type));
                 h.u32(e.cast_stamp);
                 h.byte(e.slot_level);
+                if (e.damage_when == 3 && e.container_damage != 0) h.u16(e.container_damage);   // 7.2w Swallow: damage taken this turn (regurgitation), only when non-zero
             }
         }
     }
@@ -1811,6 +1818,7 @@ uint64_t Combat::log_hash() const {
         if (q.flexible != 0) { h.byte(0xBA); h.byte(q.flexible); h.byte(q.flexible_level); }
         if (q.squeeze != 0) { h.byte(0xC2); h.byte(q.squeeze); }   // SRD Squeezing on a Move (feat/size-space)
         if (q.move_mode != 0) { h.byte(0xC3); h.byte(q.move_mode); }   // feat/move-modes: the speed a Move used
+        if (q.command_word != 0) { h.byte(0xC4); h.byte(q.command_word); }   // 7.2v Command's word on a CastSpell: folded only when set
         if (q.avert_gaze) { h.byte(0xBB); h.byte(1); }   // Petrifying Gaze averting the eyes: folded only when set (gaze_seen is derived, not folded)
         // Small leftovers (rules #111): bit0 haste_action, bit1 reckless, bit2 aggressive; folded only when some bit is set.
         if (const uint8_t lo = uint8_t((q.haste_action ? 1 : 0) | (q.reckless ? 2 : 0) | (q.aggressive ? 4 : 0)); lo != 0) {

@@ -255,6 +255,33 @@ class TransformArmsRG12(unittest.TestCase):
         self.assertLessEqual({"wild_shape", "shapechanger"}, set(c2["effect_live"]["allOf"][2]["properties"]["kind"]["not"]["enum"]))
 
 
+class GrabContainArms(unittest.TestCase):
+    """VERSION_BUMP_BATCH 7.2w: the closed transparent arm and the additive apply keys."""
+    TRANSPARENT = (S({"kind", "dc"}), S())
+    APPLY = (S({"condition"}), S({"duration", "repeat_save", "escape", "object", "max_size", "contain", "excludes_formless"}))
+    CONTAIN = (S({"kind", "damage"}), S({"regurgitate"}))
+
+    def test_transparent_arm(self):
+        c2 = load("common/v2.schema.json")["$defs"]
+        t = c2["transparent_effect"]
+        self.assertFalse(t["additionalProperties"])
+        self.assertEqual(set(t["required"]), set(self.TRANSPARENT[0]))
+        self.assertEqual(set(t["properties"]), set(self.TRANSPARENT[0] | self.TRANSPARENT[1]))
+        self.assertEqual((t["properties"]["dc"]["minimum"], t["properties"]["dc"]["maximum"]), (1, 30))
+        arms = {a["$ref"].rsplit("/", 1)[1] for a in c2["effect"]["anyOf"][2]["oneOf"] if "$ref" in a}
+        self.assertIn("transparent_effect", arms)
+        nots = [a["properties"]["kind"]["not"] for a in c2["effect_live"]["allOf"] if "properties" in a]
+        self.assertIn({"const": "transparent"}, nots)
+
+    def test_apply_keys(self):
+        a = load("common/v2.schema.json")["$defs"]["apply"]
+        self.assertEqual(set(a["required"]), set(self.APPLY[0]))
+        self.assertEqual(set(a["properties"]), set(self.APPLY[0] | self.APPLY[1]))
+        c = a["properties"]["contain"]
+        self.assertEqual(set(c["required"]), set(self.CONTAIN[0]))
+        self.assertEqual(set(c["properties"]), set(self.CONTAIN[0] | self.CONTAIN[1]))
+
+
 class SpellMaterialObject(unittest.TestCase):
     def test_components_m_is_closed_with_the_documented_keys(self):
         # spell@1 components.m (priced materials, docs/CONTENT_CONVENTIONS.md section 7): a closed object, not a union.
@@ -315,6 +342,28 @@ class UnionArms(unittest.TestCase):
             ok = {"kind": kind, **extra}
             self.assertTrue(v.is_valid(ok), kind)
             self.assertFalse(v.is_valid({**ok, "zzz": 1}), kind)
+
+
+class ControlConditionsArms(unittest.TestCase):
+    """VERSION_BUMP_BATCH 7.2v: additive save-effect keys (spell@1) and their common@2 defs."""
+    SAVE = (S({"kind", "ability"}), S({"damage", "on_success", "condition", "repeat_save", "control",
+                                         "control_excludes_creature_types", "control_min_int", "destroy_undead_max_cr8",
+                                         "description", "applies_to"}))
+
+    def test_save_arm_keys(self):
+        eff = load("spell/v1.schema.json")["$defs"]["effect"]
+        arm = [a["then"] for a in eff["allOf"] if a["if"]["properties"]["kind"].get("const") == "save"][0]
+        req, opt = self.SAVE
+        self.assertEqual(set(arm["required"]), set(req))
+        self.assertEqual(set(arm["properties"]), set(req | opt))
+        self.assertIn({"required": ["control"]}, arm["anyOf"])
+
+    def test_common_defs(self):
+        d = load("common/v2.schema.json")["$defs"]
+        self.assertEqual(d["control_kind"]["enum"], ["turned", "fear", "laughter", "command"])
+        self.assertEqual(d["control_repeat_save"]["enum"], ["end_of_turn_unseen", "end_of_turn_or_damage_advantage"])
+        self.assertEqual(d["destroy_undead_max_cr8"]["enum"], [4, 8, 16, 24, 32])
+
 
 
 if __name__ == "__main__":

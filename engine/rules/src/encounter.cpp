@@ -180,7 +180,10 @@ SaveResult save_roll(EncounterState& s, const Combatant& t, Ability ab, int dc, 
 // 7.2t cover: sim's answer for one source -> target pair (Cover::None without the hook).
 Cover cover_of(const EncounterState& s, CombatantId source, CombatantId target, bool from_area, uint32_t spell_id,
                bool has_origin = false, int32_t ox = 0, int32_t oy = 0) {
-    if (!s.hooks.cover || source == target) return Cover::None;
+    if (source == target) return Cover::None;
+    for (const auto& e : s.effects)   // 7.2w: swallowed: total cover against everything outside its container
+        if (e.contain == 2 && e.target == target && e.caster != source) return Cover::Total;
+    if (!s.hooks.cover) return Cover::None;
     return s.hooks.cover(s, CoverQuery{source, target, from_area, spell_id, has_origin, ox, oy});
 }
 // The AC / Dex save bonus, after SpellDef::ignores_cover (`def` may be null: a weapon attack).
@@ -210,7 +213,80 @@ void end_summon(EncounterState& s, Combatant& c, int32_t reason, std::vector<Eve
     emit(ev, EventKind::SummonEnded, c.summoner, c.id, int32_t(c.summon_source), reason);
 }
 
+void end_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev);
+// 7.2w: a dead container frees what it engulfed / swallowed (SRD giant toad: the creature is no longer restrained).
+void release_contained(EncounterState& s, std::vector<Event>& ev) {
+    for (std::size_t i = 0; i < s.effects.size();) {
+        const ActiveSpellEffect& e = s.effects[i];
+        const Combatant* c = e.contain != 0 ? find(s, e.caster) : nullptr;
+        if (e.contain != 0 && (!c || c->dead)) {
+            const CombatantId who = e.target, box = e.caster;
+            const bool swallowed = e.contain == 2;
+            end_effect(s, i, ev);
+            Combatant* t = find_mut(s, who);
+            if (swallowed && t && !t->dead && !t->has(Condition::Prone) && !(t->condition_immunities & bit(Condition::Prone))) {
+                add_condition(*t, Condition::Prone);   // SRD: it escapes, exiting prone (sim spends 5 ft / 15 ft of its movement)
+                emit(ev, EventKind::ConditionAdded, who, 0, int32_t(Condition::Prone));
+            }
+            s.contain_exits.push_back({box, who, 1});
+        } else ++i;
+    }
+}
+
+// 7.2w: fill the containment of the effect just pushed for `t` (and Swallow's blindness, owned only if it added it).
+void set_contain(ActiveSpellEffect& e, const SpellDef& def, Combatant& t, std::vector<Event>& ev) {
+    if (def.contain == 0) return;
+    e.contain = def.contain; e.damage_when = 3; e.damage = def.contain_dice; e.damage_type = def.contain_damage_type;
+    e.magical = def.magical;
+    e.regurgitate_dc = def.regurgitate_dc; e.regurgitate_damage = def.regurgitate_damage;
+    if (def.contain == 2 && !t.has(Condition::Blinded) && !(t.condition_immunities & bit(Condition::Blinded))) {
+        e.has_also = true; e.also = Condition::Blinded;
+        add_condition(t, Condition::Blinded);
+        emit(ev, EventKind::ConditionAdded, t.id, 0, int32_t(Condition::Blinded));
+    }
+}
+
+// 7.2w: `t` can't receive this containing condition from `a`: too large, formless (Net), or `a` already holds a swallowed
+// creature (SRD: one at a time).
+bool contain_refused(const EncounterState& s, const Combatant& a, const Combatant& t, const SpellDef& def) {
+    if (def.condition_max_size >= 0 && int(t.size) > int(def.condition_max_size)) return true;
+    if (def.excludes_formless && t.formless) return true;
+    if (def.contain == 2)
+        for (const auto& e : s.effects) if (e.contain == 2 && e.caster == a.id) return true;
+    return false;
+}
+
+// 7.2w: at the end of each turn, a container that took regurgitate_damage or more from what it swallowed makes a Con save;
+// on a failure it regurgitates the creature (prone, sim places it within 10 ft). Every container_damage resets.
+void regurgitation(EncounterState& s, std::vector<Event>& ev) {
+    std::vector<std::pair<CombatantId, CombatantId>> due;
+    for (auto& e : s.effects) {
+        if (e.contain == 2 && e.regurgitate_dc > 0 && e.container_damage >= e.regurgitate_damage) due.emplace_back(e.caster, e.target);
+        e.container_damage = 0;
+    }
+    for (auto [box, who] : due) {
+        Combatant* c = find_mut(s, box);
+        if (!c || c->dead) continue;
+        std::size_t i = s.effects.size();
+        for (std::size_t k = 0; k < s.effects.size(); ++k)
+            if (s.effects[k].contain == 2 && s.effects[k].caster == box && s.effects[k].target == who) i = k;
+        if (i == s.effects.size()) continue;
+        const int dc = s.effects[i].regurgitate_dc;
+        auto r = save_roll(s, *c, Ability::Con, dc, RollMode::Normal, ev, nullptr, 0);
+        emit(ev, EventKind::SavingThrowRolled, box, CombatantId(Ability::Con), r.roll.natural, r.roll.total, int32_t(r.success));
+        if (r.success) continue;
+        end_effect(s, i, ev);
+        Combatant* t = find_mut(s, who);
+        if (t && !t->dead && !t->has(Condition::Prone) && !(t->condition_immunities & bit(Condition::Prone))) {
+            add_condition(*t, Condition::Prone);
+            emit(ev, EventKind::ConditionAdded, who, 0, int32_t(Condition::Prone));
+        }
+        s.contain_exits.push_back({box, who, 2});
+    }
+}
+
 void check_end(EncounterState& s, std::vector<Event>& ev) {
+    if (!s.effects.empty()) release_contained(s, ev);
     if (s.ended) return;
     auto o = s.hooks.end_condition ? s.hooks.end_condition(s) : default_end_condition(s);
     if (!o) return;
@@ -313,6 +389,7 @@ void end_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev) {
         emit(ev, EventKind::ConditionRemoved, t->id, 0, int32_t(e.also));
     }
     bool still = held(e.condition);
+    if (e.control == uint8_t(ControlKind::Laughter)) still = true;   // 7.2v: it fell prone; it stays prone (stands up as usual)
     if (!e.no_condition && !still && t->has(e.condition)) {
         remove_condition(*t, e.condition);
         emit(ev, EventKind::SpellEffectEnded, t->id, 0, int32_t(e.spell_id), int32_t(e.condition));
@@ -426,7 +503,18 @@ void escalate_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev) {
 // effect; the caster's concentration ends once none of its effects from that spell remain.
 void repeat_saves(EncounterState& s, CombatantId cid, RepeatSave timing, std::vector<Event>& ev) {
     std::vector<ActiveSpellEffect> due;
-    for (const auto& e : s.effects) if (e.target == cid && e.repeat_save == timing) due.push_back(e);
+    const Combatant* who = find(s, cid);
+    auto due_now = [&](const ActiveSpellEffect& e) {
+        if (e.repeat_save == timing) return true;
+        if (timing == RepeatSave::EndOfTurn && e.repeat_save == RepeatSave::EndOfTurnOrDamageAdv) return true;
+        if (timing == RepeatSave::OnDamage && e.repeat_save == RepeatSave::EndOfTurnOrDamageAdv) return true;
+        if (timing == RepeatSave::EndOfTurn && e.repeat_save == RepeatSave::EndOfTurnUnseen) {   // Fear: no line of sight
+            const Combatant* caster = find(s, e.caster);
+            return who && caster && s.hooks.can_see && !s.hooks.can_see(s, *who, *caster);
+        }
+        return false;
+    };
+    for (const auto& e : s.effects) if (e.target == cid && due_now(e)) due.push_back(e);
     std::vector<std::pair<uint32_t, CombatantId>> done;   // one save per (spell, caster) even if it left several effects
     for (const auto& e : due) {
         Combatant* c = find_mut(s, cid);
@@ -437,7 +525,9 @@ void repeat_saves(EncounterState& s, CombatantId cid, RepeatSave timing, std::ve
             return o.spell_id == e.spell_id && o.caster == e.caster && o.target == e.target; });
         if (it == s.effects.end()) continue;
         const SaveSource ssrc{true, 0, 0};
-        auto r = save_roll(s, *c, e.save_ability, e.dc, RollMode::Normal, ev, &ssrc);   // an ongoing spell effect
+        const RollMode rm = timing == RepeatSave::OnDamage && e.repeat_save == RepeatSave::EndOfTurnOrDamageAdv
+                                ? RollMode::Advantage : RollMode::Normal;   // Hideous Laughter: advantage when damage triggers it
+        auto r = save_roll(s, *c, e.save_ability, e.dc, rm, ev, &ssrc);   // an ongoing spell effect
         emit(ev, EventKind::SavingThrowRolled, cid, CombatantId(e.save_ability), r.roll.natural, r.roll.total, int32_t(r.success));
         if (!r.success) {
             if (it->escalates) escalate_effect(s, std::size_t(it - s.effects.begin()), ev);   // Petrifying Gaze: second failure
@@ -742,6 +832,7 @@ struct Ctx {
     const std::vector<std::pair<uint32_t, ForcedMoveResult>>* forced_recorded = nullptr;
     std::vector<std::pair<uint32_t, ForcedMoveResult>> forced_results{};
     bool zone_fired = false;   // a zone trigger resolved inside finalize_forced (deaths / concentration are swept again)
+    uint8_t command_word = 0;     // 7.2v: Command's word (set by cast_spell around resolve_spell only)
     uint8_t form_archetype = 0;   // R-G12: the cast's form choice (set by cast_spell around resolve_spell only)
     // R-G12 PR 2: the cast's creature choices (set around resolve_spell only), the creatures built by the Summon effect (placed
     // by attempt after the step: appending to combatants would move the step's Combatant references), and the ids they took.
@@ -933,9 +1024,45 @@ std::vector<CombatantId> initiative_ids(const EncounterState& s) {
     return ids;
 }
 
+// 7.2v control conditions: the reason `req` is refused for actor `a`, or nullptr. Rules restricts the legal actions; sim
+// picks the path (away from the caster, toward it for Approach). Not-turn requests (ReactionDecision, Heal, AbilityCheck,
+// GazeResponse) are never refused.
+const char* control_refuses(const EncounterState& s, const Combatant& a, const ActionRequest& req) {
+    if (s.effects.empty()) return nullptr;
+    const ActionKind k = req.kind;
+    if (k == ActionKind::ReactionDecision || k == ActionKind::Heal || k == ActionKind::AbilityCheck ||
+        k == ActionKind::GazeResponse || k == ActionKind::EndTurn) return nullptr;
+    const bool moving = k == ActionKind::Move || k == ActionKind::Dash || k == ActionKind::StandUp;
+    for (const auto& e : s.effects) {
+        if (e.target != a.id || e.control == 0) continue;
+        switch (ControlKind(e.control)) {
+        case ControlKind::Turned:   // SRD Turn Undead: only Dash or escape; Dodge when there is nowhere to move (sim's call)
+            if (!(moving || k == ActionKind::Dodge || (k == ActionKind::Attack && req.special == 4))) return "turned: move, Dash, escape or Dodge only";
+            break;
+        case ControlKind::Fear:     // SRD Fear: Dash away; Dodge only with nowhere to move. Only while frightened by it
+            if (a.has(Condition::Frightened) && !(moving || k == ActionKind::Dodge)) return "fear: Dash away or Dodge only";
+            break;
+        case ControlKind::Laughter:
+            if (k == ActionKind::StandUp) return "hideous laughter: can't stand up";
+            break;
+        case ControlKind::Command: {
+            if (current_actor(s) != a.id) break;
+            const auto w = CommandWord(e.command_word);
+            if ((w == CommandWord::Approach || w == CommandWord::Flee) && !moving) return "command: move only";
+            if (w == CommandWord::Drop || w == CommandWord::Grovel || w == CommandWord::Halt) return "command: the turn ends";
+            break;
+        }
+        default: break;
+        }
+    }
+    return nullptr;
+}
+
 bool may_react(const EncounterState& s, const Combatant& c, ReactionTrigger t) {
     if (c.lethargy != 0 || (!s.modifiers.empty() && (has_marker(s, c.id, ModStat::Slow) || has_marker(s, c.id, ModStat::NoReactions))))
         return false;   // Haste ended / Slow / 7.2u Shocking Grasp
+    if (std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& e) {
+            return e.target == c.id && e.control == uint8_t(ControlKind::Turned); })) return false;   // 7.2v: turned
     // R-G12 PR 3 (SRD Find Familiar): a familiar never attacks, so it takes no opportunity attack (Pact's trade is its only one)
     if (t == ReactionTrigger::LeavingReach && c.summoner != 0 && c.summon_control == uint8_t(SummonControl::Telepathic)) return false;
     return !c.dead && !c.surprised && can_act(c) && !c.reaction_used &&
@@ -1425,6 +1552,10 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
             applied.dropped_to_zero = false;
         }
     }
+    if (applied.dealt > 0 && attacker && !s.effects.empty())   // 7.2w: damage from inside a container counts toward regurgitation
+        for (auto& e : s.effects)
+            if (e.contain == 2 && e.caster == t.id && e.target == attacker->id)
+                e.container_damage = uint16_t(std::min(65535, int(e.container_damage) + int(applied.dealt)));
     if (applied.dealt > 0 && !s.effects.empty()) {   // R-G15: Sleep-style effects end when the creature takes damage
         for (std::size_t i = 0; i < s.effects.size();) {
             if (s.effects[i].ends_on_damage && s.effects[i].target == t.id) end_effect(s, i, ev); else ++i;
@@ -2045,6 +2176,18 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         action_lost = s.budget.action_lost;
     }
     repeat_saves(s, c.id, RepeatSave::StartOfTurn, ev);
+    for (const auto& e : s.effects)   // 7.2v Command "Grovel": falls prone (then ends its turn)
+        if (e.target == c.id && e.control == uint8_t(ControlKind::Command) && e.command_word == uint8_t(CommandWord::Grovel) &&
+            !c.dead && !c.has(Condition::Prone) && !(c.condition_immunities & bit(Condition::Prone))) {
+            add_condition(c, Condition::Prone);
+            emit(ev, EventKind::ConditionAdded, c.id, 0, int32_t(Condition::Prone));
+        }
+    if (!s.effects.empty()) release_contained(s, ev);   // 7.2w: a container that died out of a step (sim) frees first
+    if (!c.dead && !s.effects.empty()) {   // 7.2w: what it has engulfed / swallowed takes its acid now
+        std::vector<ActiveSpellEffect> inside;
+        for (const auto& e : s.effects) if (e.contain != 0 && e.caster == c.id && e.damage_when == 3) inside.push_back(e);
+        for (const auto& e : inside) deal_effect_damage(s, e, ev);
+    }
     if (dies_of_exhaustion(c) && !c.dead) kill(c, ev);
     if (!c.dead && c.regeneration.amount > 0) {   // Regeneration (troll, vampire spawn)
         const bool suppressed = c.regen_suppressed;
@@ -2368,6 +2511,10 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             const Cover cov = area ? cover_of(s, a.id, t->id, true, def.id, ctx.has_area_origin, ctx.area_x, ctx.area_y)
                                    : cover_of(s, a.id, t->id, false, def.id);   // 7.2t: per target (Dex saves only)
             if (cov == Cover::Total) continue;   // an area skips a creature with total cover from its origin (no save, no event)
+            if (def.control != ControlKind::None && ((def.control_excluded & bit(t->creature_type)) ||
+                                                     (def.control_min_int > 0 && t->abilities[Ability::Int] <= def.control_min_int)))
+                continue;   // 7.2v: unaffected (Command: undead; Hideous Laughter: Intelligence 4 or less): no save
+            if (def.contain != 0 && contain_refused(s, a, *t, def)) continue;   // 7.2w: too large / already holding one: no save
             SaveSource src{def.magical, def.applies_condition ? bit(def.condition) : 0u,
                            (def.dice.count > 0 || def.dice.bonus > 0) ? bit(def.damage_type) : 0u};
             const bool spared = ctx.spared && std::find(ctx.spared->begin(), ctx.spared->end(), t->id) != ctx.spared->end();
@@ -2388,6 +2535,22 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (def.zero_hp_rounds > 0 && dealt > 0 && hp_before > 0 && t->hp <= 0 && !t->dead)   // EC spider follow-up (flagged)
                 zero_hp_clause(s, a, *t, def, ev);
             if (!r.success) affected.push_back(t);
+            if (r.success && def.contain == 1 && !t->dead) s.contain_exits.push_back({a.id, t->id, 3});   // 7.2w: sim pushes it 5 ft
+            if (!r.success && !t->dead && def.destroy_cr8_max > 0 && t->creature_type == CreatureType::Undead && t->cr8 >= 0 &&
+                t->cr8 <= int(def.destroy_cr8_max)) {   // 7.2v Destroy Undead: destroyed instead of turned
+                kill(*t, ev);
+                continue;
+            }
+            if (def.control != ControlKind::None && !def.applies_condition && !r.success && !t->dead) {   // Turned / Command
+                ActiveSpellEffect x{def.id, a.id, t->id, Condition::Paralyzed, def.save_ability, int16_t(dc), def.repeat_save,
+                                    def.concentration, make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
+                                    lvl, def.control == ControlKind::Turned};
+                x.no_condition = true; x.control = uint8_t(def.control);
+                x.command_word = def.control == ControlKind::Command ? ctx.command_word : uint8_t(0);
+                s.effects.push_back(x);
+                applied = true;
+                continue;
+            }
             // Petrifying Gaze: failing by escalate_margin or more applies escalate_to at once, with no repeat save
             const bool at_once = def.escalates && def.escalate_margin > 0 && !r.success && int(r.roll.total) <= dc - int(def.escalate_margin);
             const Condition cond = at_once ? def.escalate_to : def.condition;
@@ -2404,6 +2567,16 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                                                       at_once ? Timed{} : make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
                                                       lvl, false});
                 if (def.escalates && !at_once) { s.effects.back().escalates = true; s.effects.back().escalate_to = def.escalate_to; }
+                s.effects.back().control = uint8_t(def.control);
+                // 7.2v: prone and incapacitated. Incapacitated is this effect's own only if it added it, so ending the
+                // laughter never strips an Incapacitated from another source.
+                if (def.control == ControlKind::Laughter && !t->has(Condition::Incapacitated)) {
+                    s.effects.back().has_also = true; s.effects.back().also = Condition::Incapacitated;
+                    add_condition(*t, Condition::Incapacitated);
+                    emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(Condition::Incapacitated));
+                }
+                if (def.escape_dc > 0) { s.effects.back().dc = def.escape_dc; s.effects.back().escape_check = true; }   // 7.2w: Engulf
+                set_contain(s.effects.back(), def, *t, ev);
             }
         }
         if (def.concentration && applied) a.concentration_spell = def.id;
@@ -2430,6 +2603,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         bool applied = false;
         for (Combatant* t : T) {
             if (t->dead || immune_to(s, *t, def.condition)) continue;
+            if (contain_refused(s, a, *t, def)) continue;   // 7.2w: Net (size, formless), Swallow (size, one at a time)
             if (!t->has(def.condition)) {
                 add_condition(*t, def.condition);
                 emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.condition));
@@ -2446,6 +2620,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                     w.object_hp = def.object_hp; w.object_ac = def.object_ac;
                     w.object_vulnerable = def.object_vulnerable; w.object_immune = def.object_immune;
                 }
+                set_contain(s.effects.back(), def, *t, ev);   // 7.2w: Swallow (a rider of the bite)
             }
             affected.push_back(t);
             applied = true;
@@ -2828,6 +3003,8 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, a, def, *t)) return fail("invalid spell target");
         // 7.2t: a creature with total cover can't be targeted directly (an area skips it at resolution instead)
         if (req.has_area_origin && def.area == AreaShape::None) return fail("area_origin: area spells only");
+        if (def.control == ControlKind::Command ? (req.command_word < 1 || req.command_word > 5) : req.command_word != 0)
+            return fail("command_word: 1..5 for a Command spell only");
         if (def.area == AreaShape::None && t != &a) {
             const bool sw = def.kind == SpellEffectKind::SummonWeapon && !req.summon_tiles.empty();   // from the spawn tile
             if (cover_of(s, a.id, t->id, false, def.id, sw, sw ? req.summon_tiles[0].x : 0, sw ? req.summon_tiles[0].y : 0) == Cover::Total)
@@ -2976,7 +3153,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         ctx.zone_excluded = req.zone_excluded.empty() ? nullptr : &req.zone_excluded;
         ctx.has_zone_end = req.has_zone_end; ctx.zone_x2 = req.zone_x2; ctx.zone_y2 = req.zone_y2;
         ctx.zone_side = req.zone_side; ctx.zone_ring = req.zone_ring;
-        ctx.form_archetype = req.form_archetype;
+        ctx.form_archetype = req.form_archetype; ctx.command_word = req.command_word;
         ctx.summon_archetypes = &req.summon_archetypes; ctx.summon_tiles = &req.summon_tiles;
         ctx.has_area_origin = req.has_area_origin; ctx.area_x = req.area_x; ctx.area_y = req.area_y;
         ctx.ranged_disadvantage = req.beyond_normal_range || req.ranged_hostile_within_5ft;   // EC spider follow-up (flagged)
@@ -2986,7 +3163,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         ctx.forced_feet = 0; ctx.teleport_feet = 0; ctx.has_teleport_dest = false; ctx.teleport_x = 0; ctx.teleport_y = 0;
         ctx.has_zone_dest = false; ctx.zone_x = 0; ctx.zone_y = 0; ctx.zone_excluded = nullptr;
         ctx.has_zone_end = false; ctx.zone_x2 = 0; ctx.zone_y2 = 0; ctx.zone_side = 0; ctx.zone_ring = false;
-        ctx.form_archetype = 0; ctx.summon_archetypes = nullptr; ctx.summon_tiles = nullptr;
+        ctx.form_archetype = 0; ctx.command_word = 0; ctx.summon_archetypes = nullptr; ctx.summon_tiles = nullptr;
         ctx.has_area_origin = false; ctx.area_x = 0; ctx.area_y = 0;
         defer_forced(s, ctx, out.events);   // R-G9: placeholders after every save and damage of the spell, before SpellResolved
     }
@@ -3100,6 +3277,11 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
 const Combatant* find(const EncounterState& s, CombatantId id) {
     for (const auto& c : s.combatants) if (c.id == id) return &c;
     return nullptr;
+}
+
+CombatantId container_of(const EncounterState& s, CombatantId id) {
+    for (const auto& e : s.effects) if (e.contain != 0 && e.target == id) return e.caster;
+    return 0;
 }
 
 CombatantId current_actor(const EncounterState& s) {
@@ -3564,6 +3746,7 @@ StepResult gaze_response(EncounterState& s, Combatant& a, const ActionRequest& r
 // Small leftovers around the per-request core: Reckless Attack's declaration, Haste's extra action and Slow's limits.
 StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req);
 StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
+    s.contain_exits.clear();   // 7.2w: the exits of this step only
     const bool own_turn = !s.ended && !s.order.empty() && req.actor == current_actor(s) &&
                           req.kind != ActionKind::Heal && req.kind != ActionKind::AbilityCheck &&
                           req.kind != ActionKind::ReactionDecision && req.kind != ActionKind::OpportunityAttack;
@@ -3674,6 +3857,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
     // R-G12 PR 2 (D4): an uncommanded (or told to defend) summon that takes commands only Dodges: SRD "it defends itself"
     if (awaits_command(a) && req.kind != ActionKind::EndTurn && req.kind != ActionKind::Dodge)
         return fail("summon not commanded: Dodge only");
+    if (const char* why = control_refuses(s, a, req)) return fail(why);   // 7.2v control conditions
     TurnBudget b = s.budget;               // mutate a copy; commit only on success
     StepResult out{true, {}, {}};
 
@@ -3689,6 +3873,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
     case ActionKind::EndTurn:
         if (!s.zones.empty() && !a.dead) zone_turn_triggers(s, &ctx, a.id, ZoneTrigger::EndTurn, out.events);   // R-G11
         repeat_saves(s, a.id, RepeatSave::EndOfTurn, out.events);
+        if (!s.effects.empty()) regurgitation(s, out.events);   // 7.2w: end of this turn
         if (!s.modifiers.empty()) repeat_modifier_saves(s, a.id, out.events);   // Slow
         tick_effects_turn_end(s, a.id, out.events);
         if (!a.dead && !a.triggers.empty()) {   // turn_end triggers
@@ -4339,6 +4524,18 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             out.push_back(r);
         }
     add(ActionKind::EndTurn);
+    {   // 7.2v: a Command cast is listed once per word (step requires one)
+        std::vector<ActionRequest> x; x.reserve(out.size());
+        for (auto& r : out) {
+            const SpellDef* d = r.kind == ActionKind::CastSpell && r.zone_move == 0 && !r.sustain ? spell_def(s, r.spell_id) : nullptr;
+            if (d && d->control == ControlKind::Command && r.command_word == 0)
+                for (uint8_t w = 1; w <= 5; ++w) { x.push_back(r); x.back().command_word = w; }
+            else x.push_back(std::move(r));
+        }
+        out = std::move(x);
+    }
+    if (!s.effects.empty())   // 7.2v: drop what a control condition refuses
+        std::erase_if(out, [&](const ActionRequest& r) { return control_refuses(s, a, r) != nullptr; });
     return out;
 }
 
@@ -4910,7 +5107,7 @@ uint64_t summons_digest(const EncounterState& s, uint64_t h) {
 bool has_leftover_state(const EncounterState& s) {
     return std::any_of(s.combatants.begin(), s.combatants.end(), [](const Combatant& c) {
                return c.hp_max_reduction != 0 || c.lethargy != 0 || c.reckless_active; }) ||
-           std::any_of(s.effects.begin(), s.effects.end(), [](const ActiveSpellEffect& e) { return e.escalates; });
+           std::any_of(s.effects.begin(), s.effects.end(), [](const ActiveSpellEffect& e) { return e.escalates || e.control != 0; });
 }
 
 uint64_t leftover_digest(const EncounterState& s, uint64_t h) {
@@ -4923,6 +5120,11 @@ uint64_t leftover_digest(const EncounterState& s, uint64_t h) {
     byte(0xFF);   // separator: combatant records / escalating effects
     for (const auto& e : s.effects)
         if (e.escalates) { u32(e.spell_id); u32(e.caster); u32(e.target); byte(uint8_t(e.escalate_to)); }
+    if (std::any_of(s.effects.begin(), s.effects.end(), [](const ActiveSpellEffect& e) { return e.control != 0; })) {
+        byte(0xFE);   // 7.2v control effects: only when one exists (older digests unchanged)
+        for (const auto& e : s.effects)
+            if (e.control != 0) { u32(e.spell_id); u32(e.caster); u32(e.target); byte(e.control); byte(e.command_word); }
+    }
     return h;
 }
 

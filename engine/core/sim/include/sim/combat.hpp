@@ -187,6 +187,7 @@ public:
     // must end nearer (footprint distance) to a hostile, not dead, that it can see from where it stands (not Blinded, line of
     // sight). False only for such a step (submit refuses it); true for every other step.
     bool aggressive_step_ok(CombatantId mover, Vec2i to) const;
+    bool aggressive_step_ok(CombatantId mover, Vec2i to, int cost, int footprint) const;   // a step already priced by plan_step
     // R-G16 surprise (VERSION_BUMP_BATCH 7.2h hand-off (b)). Marks `ids` surprised (rules5e::apply_surprise) for round 1:
     // each takes only EndTurn on its first turn and cannot react until that turn ends. Setup only: refused (false, *error)
     // once any command was logged or a decision is pending, or after the encounter ended; unknown or dead ids are refused
