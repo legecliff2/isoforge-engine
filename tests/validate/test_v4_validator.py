@@ -641,5 +641,163 @@ class RG14MetamagicSculpt(unittest.TestCase):
         self.assertNotIn("metamagic", checks_v4.NO_STACK_EFFECT_KINDS)   # several declarations add options
 
 
+# ---- R-G12 transforms (VERSION_BUMP_BATCH 7.2q, Rules #156): polymorph / wild_shape / shapechanger / requires_humanoid_form --
+WOLF, BEAR, DIRE, SNAKE = "srd51.monster.wolf", "srd51.monster.black_bear", "srd51.monster.dire_wolf", "srd51.monster.giant_poisonous_snake"
+WS_POOL = {"id": "wild_shape", "max": 2, "recharge": "short_rest"}
+WS = {"kind": "wild_shape", "pool": "wild_shape", "forms": [WOLF, BEAR, SNAKE],
+      "max_cr_by_level": [{"level": 2, "max_cr": "1/4"}, {"level": 4, "max_cr": "1/2"}, {"level": 8, "max_cr": "1"}]}
+DRUID = [(["classes", 0, "class"], "druid"), (["resources", 1], WS_POOL), (["features", 1], _feat("wild_shape", WS))]
+SC = {"kind": "shapechanger", "forms": [{"id": "wolf", "name": "Wolf form", "size": "medium", "actions": ["bite"]},
+                                        {"id": "bat", "name": "Bat form", "speed": {"walk": 5, "fly": 30}}]}
+SHAPER = [(["shapechanger"], True), (["traits", 6], _feat("shapechanger", SC))]
+WSF = ["features", 1, "effect"]
+SCF = ["traits", 6, "effect"]
+# (name, base, sets, dels, expected substring); "warn_" = valid with that warning
+RG12_CASES = [
+    # wild_shape (character feature)
+    ("ws_unknown_pool", B, [(WSF + ["pool"], "nope")], [], "wild_shape: unknown pool 'nope'"),
+    ("ws_pool_long_rest", B, [(["resources", 1, "recharge"], "long_rest")], [], "wild_shape: pool 'wild_shape' must recharge on short_rest"),
+    ("ws_levels_not_ascending", B, [(WSF + ["max_cr_by_level", 1, "level"], 2)], [], "wild_shape: max_cr_by_level levels must be strictly ascending"),
+    ("ws_levels_descending", B, [(WSF + ["max_cr_by_level", 1, "level"], 1)], [], "wild_shape: max_cr_by_level levels must be strictly ascending"),
+    ("ws_unknown_form", B, [(WSF + ["forms", 3], "srd51.monster.unicorn")], [], "wild_shape: unknown form 'srd51.monster.unicorn'"),
+    ("ws_not_a_beast", B, [(WSF + ["forms", 3], "srd51.monster.ogre")], [], "wild_shape: form 'srd51.monster.ogre' is not a beast"),
+    ("ws_duplicate_form", B, [(WSF + ["forms", 3], WOLF)], [], f"wild_shape: duplicate form '{WOLF}'"),
+    ("ws_two_declarations", B, [(["features", 2], _feat("ws2", WS))], [], "wild_shape: one declaration per document"),
+    ("ws_needs_pool", B, [], [WSF + ["pool"]], "'pool' is a required property"),
+    ("ws_needs_forms", B, [], [WSF + ["forms"]], "'forms' is a required property"),
+    ("ws_needs_rows", B, [], [WSF + ["max_cr_by_level"]], "'max_cr_by_level' is a required property"),
+    ("ws_empty_forms", B, [(WSF + ["forms"], [])], [], "should be non-empty"),
+    ("ws_no_duration_key", B, [(WSF + ["duration_hours"], "half_level")], [], "duration_hours"),
+    ("ws_level_21", B, [(WSF + ["max_cr_by_level", 2, "level"], 21)], [], "21 is greater than the maximum of 20"),
+    ("ws_bad_cr", B, [(WSF + ["max_cr_by_level", 0, "max_cr"], "1/3")], [], "'1/3'"),
+    ("ws_no_fly_below_0", B, [(WSF + ["no_fly_below"], 0)], [], "0 is less than the minimum of 1"),
+    ("ws_humanoid_flag_on_itself", B, [(["features", 1, "requires_humanoid_form"], True)], [], "requires_humanoid_form on the wild_shape feature itself"),
+    ("warn_ws_reserved", B, [], [], "unknown effect kind 'wild_shape'"),
+    ("warn_ws_pool_max", B, [(["resources", 1, "max"], 3)], [], "wild_shape: pool 'wild_shape' max should be 2"),
+    ("warn_ws_above_every_row", B, [(WSF + ["forms", 3], "srd51.monster.axe_beak"), (WSF + ["max_cr_by_level"], [{"level": 2, "max_cr": "1/8"}]),
+                                    (WSF + ["forms"], [WOLF])], [], f"wild_shape: form '{WOLF}' above every max_cr_by_level row"),
+    ("warn_ws_class_missing", B, [(["classes", 0, "class"], "barbarian")], [], "wild_shape: class 'druid' not in classes[]"),
+    ("warn_ws_class_named_missing", B, [(WSF + ["class"], "ranger")], [], "wild_shape: class 'ranger' not in classes[]"),
+    # shapechanger (monster trait)
+    ("sc_needs_fact", D, [], [["shapechanger"]], "shapechanger trait requires shapechanger: true"),
+    ("sc_fact_false", D, [(["shapechanger"], False)], [], "shapechanger trait requires shapechanger: true"),
+    ("sc_duplicate_form_id", D, [(SCF + ["forms", 1, "id"], "wolf")], [], "shapechanger: duplicate form id 'wolf'"),
+    ("sc_unknown_action", D, [(SCF + ["forms", 0, "actions"], ["bite", "howl"])], [], "shapechanger: form 'wolf' names unknown action 'howl'"),
+    ("sc_two_declarations", D, [(["traits", 7], _feat("sc2", SC))], [], "shapechanger: one declaration per document"),
+    ("sc_duplicate_action", D, [(SCF + ["forms", 0, "actions"], ["bite", "bite"])], [], "has non-unique elements"),
+    ("sc_empty_forms", D, [(SCF + ["forms"], [])], [], "should be non-empty"),
+    ("sc_form_extra_key", D, [(SCF + ["forms", 0, "hit_points"], {"average": 1})], [], "hit_points"),
+    ("sc_form_needs_name", D, [], [SCF + ["forms", 0, "name"]], "'name' is a required property"),
+    ("warn_sc_changes_nothing", D, [(SCF + ["forms", 1], {"id": "same", "name": "Same"})], [], "shapechanger: form 'same' changes nothing"),
+    ("warn_sc_no_actions", D, [(SCF + ["forms", 0, "actions"], [])], [], "shapechanger: form 'wolf' allows no actions"),
+    ("warn_sc_reserved", D, [], [], "unknown effect kind 'shapechanger'"),
+    # requires_humanoid_form
+    ("warn_rhf_without_wild_shape", D, [(["traits", 0, "requires_humanoid_form"], True)], [], "requires_humanoid_form has no effect without wild_shape"),
+    ("rhf_not_boolean", B, [(["features", 0, "requires_humanoid_form"], 1)], [], "is not of type 'boolean'"),
+]
+
+
+def _poly_spell(eff_sets=(), sets=(), dels=()):
+    d = json.loads((h.CORE / "spells" / "hold_person.json").read_text(encoding="utf-8"))
+    d.update(id="test.v4.spell.polymorph", name="Polymorph", level=4, school="transmutation")
+    d["targets"] = {"count": 1}
+    d["duration"] = {"kind": "hours", "amount": 1, "concentration": True}
+    d["effects"] = [{"kind": "polymorph", "forms": [WOLF, BEAR]}]
+    del d["scaling"]
+    return h.edit(h.edit(d, [(["effects", 0] + p, v) for p, v in eff_sets]), list(sets), list(dels))
+
+
+SPELL = "spells/polymorph.json"
+EF = ["effects", 0]
+# (name, sets, dels, expected): spell@1 polymorph
+POLY_CASES = [
+    ("pm_secondary", [(["effects"], [{"kind": "save", "ability": "wis", "condition": "paralyzed"}, {"kind": "polymorph", "forms": [WOLF]}])], [], "polymorph: primary effect only"),
+    ("pm_two_targets", [(["targets", "count"], 2)], [], "polymorph: one target"),
+    ("pm_area", [(["area"], {"shape": "sphere", "size_ft": 20})], [], "polymorph: one target"),
+    ("pm_no_concentration", [(["duration"], {"kind": "hours", "amount": 1})], [], "polymorph: needs concentration"),
+    ("pm_unknown_form", [(EF + ["forms", 2], "srd51.monster.t_rex")], [], "polymorph: unknown form 'srd51.monster.t_rex'"),
+    ("pm_not_a_beast", [(EF + ["forms", 2], "srd51.monster.ogre")], [], "polymorph: form 'srd51.monster.ogre' is not a beast"),
+    ("pm_duplicate", [(EF + ["forms", 2], WOLF)], [], f"polymorph: duplicate form '{WOLF}'"),
+    ("pm_needs_forms", [], [EF + ["forms"]], "'forms' is a required property"),
+    ("pm_bad_max_cr", [(EF + ["max_cr"], "level")], [], "max_cr"),
+    ("pm_bad_save", [(EF + ["save"], {"ability": "wis", "dc": 12})], [], "save"),
+    ("pm_extra_key", [(EF + ["duration"], 1)], [], "duration"),
+    ("pm_too_many_forms", [(EF + ["forms"], [f"srd51.monster.m{i}" for i in range(256)])], [], "is too long"),
+    ("warn_pm_above_max_cr", [(EF + ["max_cr"], "1/4")], [], f"polymorph: form '{BEAR}' above max_cr"),
+    ("warn_pm_reserved", [], [], "polymorph is reserved"),
+]
+
+
+class RG12Transforms(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.base = h.pack_fixtures()
+
+    def docs(self, base, sets=(), dels=()):
+        d = dict(self.base)
+        first = DRUID if base == B else SHAPER
+        d[base] = h.edit(h.edit(self.base[base], first, []), list(sets), list(dels))
+        return d
+
+    def check(self, name, errs, warns, expect):
+        if name.startswith("warn_"):
+            self.assertEqual(errs, [], errs)
+            self.assertTrue(any(expect in w for w in warns), (expect, warns))
+        else:
+            self.assertTrue(any(expect in e for e in errs), (expect, errs))
+
+    def test_cases(self):
+        for name, base, sets, dels, expect in RG12_CASES:
+            with self.subTest(name):
+                self.check(name, *h.validate_docs(self.docs(base, sets, dels)), expect)
+
+    def test_positive_only_reserved_warnings(self):
+        # forms resolve in the dependency pack (srd51.core); the uses pool counts as referenced (no check-12 warning)
+        errs, warns = h.validate_docs(self.docs(B, [(["features", 0, "requires_humanoid_form"], True)]))
+        self.assertEqual(errs, [])
+        self.assertEqual([w for w in warns if "barbarian_1" in w and "unknown effect kind 'wild_shape'" not in w], [])
+        errs, warns = h.validate_docs(self.docs(D))
+        self.assertEqual(errs, [])
+        dw = [w for w in warns if "red_dragon" in w]
+        self.assertTrue(any("unknown effect kind 'shapechanger'" in w for w in dw))
+        # the trait reads the #141 boolean: its reserved warning is dropped
+        self.assertFalse(any("shapechanger is reserved" in w for w in dw), dw)
+
+    def test_boolean_without_trait_stays_legal_and_reserved(self):
+        d = dict(self.base)
+        d[D] = h.edit(self.base[D], [(["shapechanger"], True)])
+        errs, warns = h.validate_docs(d)
+        self.assertEqual(errs, [])
+        self.assertTrue(any("/shapechanger: shapechanger is reserved" in w for w in warns))
+
+    def test_local_form_resolves(self):
+        wolf = json.loads((h.CORE / "monsters" / "wolf.json").read_text(encoding="utf-8"))
+        wolf["id"] = "test.v4.monster.wolf"
+        d = self.docs(B, [(WSF + ["forms"], ["test.v4.monster.wolf"])])
+        d["monsters/wolf.json"] = wolf
+        errs, _ = h.validate_docs(d)
+        self.assertEqual(errs, [])
+
+    def test_polymorph_cases(self):
+        for name, sets, dels, expect in POLY_CASES:
+            with self.subTest(name):
+                d = dict(self.base)
+                d[SPELL] = _poly_spell((), sets, dels)
+                self.check(name, *h.validate_docs(d), expect)
+
+    def test_polymorph_positive(self):
+        d = dict(self.base)
+        d[SPELL] = _poly_spell([(["max_cr"], "1/2"), (["save"], {"ability": "wis"})])
+        errs, warns = h.validate_docs(d)
+        self.assertEqual(errs, [])
+        self.assertEqual([w for w in warns if "polymorph" in w and "reserved" not in w], [])
+        d[SPELL] = _poly_spell([(["max_cr"], "target_level")])
+        self.assertEqual(h.validate_docs(d)[0], [])
+
+    def test_cr8(self):
+        self.assertEqual([checks_v4.cr8(c) for c in ("0", "1/8", "1/4", "1/2", "1", "30")], [0, 1, 2, 4, 8, 240])
+        self.assertIsNone(checks_v4.cr8("1/3"))
+
+
 if __name__ == "__main__":
     unittest.main()

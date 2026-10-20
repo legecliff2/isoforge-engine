@@ -376,6 +376,9 @@ struct ActiveSpellEffect {
     // appended (R-G11): the zone that applied this effect "while in the zone" (Web's restraint), 0 = none. It ends when the
     // target leaves the zone, escapes (special 4: Strength check vs `dc`) or the zone ends.
     uint32_t zone_id = 0;
+    // appended (EC deferred monsters, flagged): ends when the target escapes (special 4: Strength check vs `dc`), a giant
+    // spider's Web. Derived from the SpellDef (escape_dc): not hashed.
+    bool escape_check = false;
 };
 
 // A modifier in force on `target` (row 12). `timed` reuses the condition-duration machinery (Rounds / EndOfTargetNextTurn).
