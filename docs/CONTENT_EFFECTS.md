@@ -355,6 +355,7 @@ Additive optional values in `common@2` (no version bump; `docs/proposals/VERSION
 | modifier `stat` | `no_healing` | `ModStat::NoHealing` marker: blocks every hit-point regain (heal spells, Heal request, regeneration, `heal_self` riders, pool / feature heal dice, a natural-20 death save). Temporary HP is unaffected |
 | `no_reactions` / `no_healing` arm | closed | required `stat`, `duration`; optional `applies_to`, `stacks`, `consume`. Any other key (`bonus`, `mode`, `when`, ...) is a schema error |
 | predicate `kind` | `subject_is_caster` | kind only: the roll's subject (the attack's target) is the modifier's caster |
+| predicate `kind` | `target_below_max_hp` | kind only (7.2y, same arm as `target_surprised`): the creature hit is below its hit point maximum, read before the hit's damage. For once-per-turn weapon-hit extra damage (Colossus Slayer: `on_event` hit, `limit: once_per_turn`, `when: [weapon_attack, target_below_max_hp]`) |
 | predicate `kind` | `owner_creature_type` with `creature_types[]` | the modifier's owner (the creature carrying it) has one of the types; `bad creature_types` otherwise |
 
 `modifiers_digest` folds all of it under the existing tag 0xA2; no new tag, no log field. Not modelled: Shocking Grasp's advantage against metal armor (no armor material exists) and Vicious Mockery's "if the target can hear you".

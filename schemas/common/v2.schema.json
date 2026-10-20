@@ -578,7 +578,8 @@
             "target_tag",
             "not_target_tag",
             "subject_is_caster",
-            "owner_creature_type"
+            "owner_creature_type",
+            "target_below_max_hp"
           ]
         },
         "is": {
@@ -877,7 +878,8 @@
                   "target_surprised",
                   "ally_near_target",
                   "weapon_attack",
-                  "subject_is_caster"
+                  "subject_is_caster",
+                  "target_below_max_hp"
                 ]
               }
             }

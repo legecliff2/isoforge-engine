@@ -1230,6 +1230,7 @@ bool predicate_holds(EncounterState& s, Combatant& owner, const Combatant& subje
     case PredicateKind::NotTargetTag: return std::find(subject.tags.begin(), subject.tags.end(), p.mask) == subject.tags.end();
     case PredicateKind::AllyNearTarget: return x.ally;
     case PredicateKind::SubjectIsCaster: return x.mod_caster != 0 && subject.id == x.mod_caster;   // 7.2u
+    case PredicateKind::TargetBelowMaxHp: return subject.hp < subject.hp_max;   // 7.2y Colossus Slayer
     case PredicateKind::OwnerCreatureType: return (p.mask & bit(owner.creature_type)) != 0;
     case PredicateKind::DamageAtMost: return x.dmg <= p.a;
     case PredicateKind::AttackIs: return !x.is_spell && x.atk && x.atk >= owner.attacks.data() && x.atk < owner.attacks.data() + owner.attacks.size() &&

@@ -189,3 +189,25 @@ TEST_CASE("7.2y replay determinism: the same seed and requests give the same eve
         CHECK(a.second == b.second);
     }
 }
+
+TEST_CASE("7.2y target_below_max_hp (Colossus Slayer): once-per-turn hit extra damage only on a wounded target") {
+    int fired = 0;
+    for (uint64_t seed = 0; seed < 20; ++seed) {
+        auto r = rogue(1);
+        Trigger t; t.id = 4242; t.on = TriggerOn::Hit; t.limit = TriggerLimit::OncePerTurn;
+        t.when = {Predicate{PredicateKind::TargetBelowMaxHp}};
+        RiderEffect x; x.kind = RiderKind::ExtraDamage; x.dice = DiceExpr{0, 0, 40}; x.same_as_weapon = true;
+        t.effects = {x};
+        r.triggers = {t};
+        auto plain = rogue(1);
+        // unhurt target: no extra damage (hit triggers read the hp before this hit's damage)
+        auto sa = start({r, dummy(2)}, seed), sp = start({plain, dummy(2)}, seed);
+        CHECK(dealt_to(step(sa, hit(1, 2)).events, 2) == dealt_to(step(sp, hit(1, 2)).events, 2));
+        // wounded target: +40 once
+        auto sw = start({r, dummy(2)}, seed), sq = start({plain, dummy(2)}, seed);
+        mut(sw, 2).hp = 499; mut(sq, 2).hp = 499;
+        const int w = dealt_to(step(sw, hit(1, 2)).events, 2), q = dealt_to(step(sq, hit(1, 2)).events, 2);
+        if (q > 0) { CHECK(w == q + 40); ++fired; }
+    }
+    CHECK(fired > 0);
+}
