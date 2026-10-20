@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation), Sorcerer (Draconic Bloodline), Rogue (Thief), Paladin (Oath of Devotion), Ranger (Hunter) and Barbarian (Path of the Berserker) levels 1-5 in srd51.core vs the 5e-database
+"""SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation), Sorcerer (Draconic Bloodline), Rogue (Thief), Paladin (Oath of Devotion), Ranger (Hunter), Barbarian (Path of the Berserker) and Bard (College of Lore) levels 1-5 in srd51.core vs the 5e-database
 tables (ctest: content_validate_srd51_classes).
 
 `data/srd51_classes_5e_database_a6212be.json` holds fields copied verbatim from 5e-bits/5e-database commit a6212be
@@ -25,14 +25,18 @@ DATA = json.loads((Path(__file__).parent / "data/srd51_classes_5e_database_a6212
 TABLE, SPELLS = DATA["classes"], DATA["spells"]
 LEVELS = range(1, 6)
 XP = {1: 0, 2: 300, 3: 900, 4: 2700, 5: 6500}   # SRD 5.1 Character Advancement table
-SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2, "sorcerer": 1, "rogue": 3, "paladin": 3, "ranger": 3, "barbarian": 3}
+SUBCLASS_AT = {"fighter": 3, "cleric": 1, "wizard": 2, "sorcerer": 1, "rogue": 3, "paladin": 3, "ranger": 3, "barbarian": 3, "bard": 3}
 SPELLCASTING_FROM = {"paladin": 2, "ranger": 2}   # half caster: no spellcasting block at level 1
-MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int", "sorcerer": "cha", "rogue": "dex", "paladin": "str", "ranger": "dex", "barbarian": "str"}   # the ASI at level 4 goes here (+2)
+MAIN = {"fighter": "str", "cleric": "wis", "wizard": "int", "sorcerer": "cha", "rogue": "dex", "paladin": "str", "ranger": "dex", "barbarian": "str", "bard": "cha"}   # the ASI at level 4 goes here (+2)
 SKILLS = {"athletics": "str", "perception": "wis", "insight": "wis", "religion": "int", "arcana": "int", "history": "int",
-          "persuasion": "cha", "acrobatics": "dex", "sleight_of_hand": "dex", "stealth": "dex", "survival": "wis"}
+          "persuasion": "cha", "acrobatics": "dex", "sleight_of_hand": "dex", "stealth": "dex", "survival": "wis", "deception": "cha", "performance": "cha"}
 # Rogue: four class skills (two for the others) and Expertise (doubled proficiency) on Stealth and Perception.
 SKILL_COUNT = {"rogue": 4, "ranger": 3}
-EXPERTISE = {"rogue": {"stealth", "perception"}}
+# Bard: three class skills, plus three from College of Lore Bonus Proficiencies at 3rd; Expertise (Performance, Persuasion) at 3rd.
+def skill_count(cls: str, level: int) -> int:
+    return (6 if level >= 3 else 3) if cls == "bard" else SKILL_COUNT.get(cls, 2)
+EXPERTISE_FROM = {"bard": 3}
+EXPERTISE = {"rogue": {"stealth", "perception"}, "bard": {"performance", "persuasion"}}
 # Rogue (Thief) Second-Story Work from 3rd: climbing costs no extra movement = a climb speed equal to the walking speed.
 # Barbarian Fast Movement from 5th: +10 ft walking speed (no heavy armor), baked.
 def speed(cls: str, level: int) -> dict:
@@ -117,13 +121,25 @@ AUTHORED = {
     "barbarian-ability-score-improvement-1": "abilities",
     "barbarian-extra-attack": "feature:extra_attack",
     "fast-movement": "feature:fast_movement",                # baked into speed.walk 40 (speed()); no effect
-    "frenzy": "feature:frenzy",                              # descriptive: needs Rage, a bonus-action attack while raging, exhaustion on end               # Colossus Slayer chosen; descriptive: no "target below its hit point maximum" predicate                # descriptive: the damaged window is not attack-only (SRD_CLASSES_DEFERRED)
+    "frenzy": "feature:frenzy",
+    "spellcasting-bard": "spellcasting",
+    "bardic-inspiration-d6": "feature:bardic_inspiration",   # descriptive (no key grants a die to an ally); pool from 3rd for Cutting Words
+    "bardic-inspiration-d8": "feature:bardic_inspiration",
+    "jack-of-all-trades": "feature:jack_of_all_trades",      # descriptive: no half-proficiency key (initiative, unproficient checks)
+    "song-of-rest-d6": "feature:song_of_rest",               # descriptive: short-rest hit dice healing, out of combat scope
+    "bard-expertise-1": "feature:expertise",                 # baked into skills (EXPERTISE / EXPERTISE_FROM)
+    "bard-college": "subclass",
+    "bonus-proficiencies": "feature:bonus_proficiencies",    # baked into skills (skill_count)
+    "cutting-words": "reactions",                            # reactions[] roll_attack / subtract_roll 1d6 (1d8 at 5), pool bardic_inspiration
+    "bard-ability-score-improvement-1": "abilities",
+    "font-of-inspiration": "feature:font_of_inspiration",    # the pool's recharge short_rest at 5                              # descriptive: needs Rage, a bonus-action attack while raging, exhaustion on end               # Colossus Slayer chosen; descriptive: no "target below its hit point maximum" predicate                # descriptive: the damaged window is not attack-only (SRD_CLASSES_DEFERRED)
 }
 # Kept as a features[] entry with no effect: no combat rule, or a mechanic the engine lacks (docs/SRD_CLASSES_DEFERRED.md).
 DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_story_work", "uncanny_dodge"],
                "paladin": ["divine_sense", "divine_health", "channel_divinity", "sacred_weapon", "turn_the_unholy"],
                "ranger": ["favored_enemy", "natural_explorer", "primeval_awareness", "colossus_slayer"],
-               "barbarian": ["rage", "unarmored_defense", "danger_sense", "fast_movement", "frenzy"]}
+               "barbarian": ["rage", "unarmored_defense", "danger_sense", "fast_movement", "frenzy"],
+               "bard": ["bardic_inspiration", "jack_of_all_trades", "song_of_rest", "expertise", "bonus_proficiencies", "font_of_inspiration"]}
 # Not expressible today (docs/SRD_CLASSES_DEFERRED.md): mirror index -> the feature id it would get (must be absent).
 DEFERRED = {
     "disciple-of-life": "disciple_of_life",
@@ -205,9 +221,10 @@ class ClassTable(unittest.TestCase):
             with self.subTest(cls=cls, level=level):
                 ab, pb = d["abilities"], d["proficiency_bonus"]
                 self.assertEqual(d["saving_throws"], {s: mod(ab[s]) + pb for s in TABLE[cls]["saving_throws"]})
-                self.assertEqual(len(d["skills"]), SKILL_COUNT.get(cls, 2))
+                self.assertEqual(len(d["skills"]), skill_count(cls, level))
+                expert = EXPERTISE.get(cls, set()) if level >= EXPERTISE_FROM.get(cls, 1) else set()
                 for sk, v in d["skills"].items():
-                    self.assertEqual(v, mod(ab[SKILLS[sk]]) + pb * (2 if sk in EXPERTISE.get(cls, ()) else 1), sk)
+                    self.assertEqual(v, mod(ab[SKILLS[sk]]) + pb * (2 if sk in expert else 1), sk)
                 self.assertEqual(d["senses"]["passive_perception"], 10 + d["skills"].get("perception", mod(ab["wis"])))
 
     def test_armor_class_from_items(self):
@@ -413,6 +430,30 @@ class ClassTable(unittest.TestCase):
                     if fid in f:
                         self.assertNotIn("effect", f[fid], fid)
 
+    def test_bard(self):
+        for level in LEVELS:
+            with self.subTest(level=level):
+                d = load("bard", level)
+                f = features(d)
+                row = TABLE["bard"]["levels"][str(level)]
+                die = f"1d{row['class_specific']['bardic_inspiration_die']}"
+                self.assertLessEqual(len(d["spellcasting"]["spells"]), row["spells_known"] + row["cantrips_known"])
+                if level >= 3:   # the pool exists only where something spends it (check 12): Cutting Words
+                    self.assertEqual(d["resources"], [{"id": "bardic_inspiration", "name": "Bardic Inspiration",
+                                                       "max": {"plus_ability": "cha", "min": 1},
+                                                       "recharge": "short_rest" if level >= 5 else "long_rest"}])   # Font of Inspiration
+                    cw = d["reactions"][0]
+                    self.assertEqual((cw["id"], cw["window"], cw["effect"], cw["usage"]),
+                                     ("cutting_words", {"kind": "roll_attack"}, {"kind": "subtract_roll", "dice": die},
+                                      {"kind": "pool", "pool": "bardic_inspiration", "cost": 1}))
+                else:
+                    self.assertNotIn("resources", d)
+                    self.assertNotIn("reactions", d)
+                self.assertEqual("font_of_inspiration" in f, level >= 5)
+                for fid in DESCRIPTIVE["bard"]:
+                    if fid in f:
+                        self.assertNotIn("effect", f[fid], fid)
+
     def test_arcane_recovery_slot_recovery(self):
         # VERSION_BUMP_BATCH 7.2n: budget ceil(wizard level / 2) is derived from classes[], not authored.
         for level in LEVELS:
@@ -440,6 +481,8 @@ class ClassTable(unittest.TestCase):
                             self.assertIn("subclass", d["classes"][0])
                         elif where == "spellcasting":
                             self.assertIn("spellcasting", d)
+                        elif where == "reactions":
+                            self.assertTrue(d.get("reactions"))
                         elif where == "abilities":
                             pass   # pinned by test_abilities_and_asi
                         else:
