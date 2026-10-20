@@ -444,9 +444,43 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
     return cmd;
 }
 
+namespace {
+// R-G12 summons (§3.4, built-in, before the policy; default approved by the Director, SUMMONS_TRANSFORMS Q4): an uncommanded summon that takes commands (Verbal / BonusAction, D4)
+// Dodges, then ends its turn; a summoner commands its uncommanded Verbal summons to act (free) and, with its bonus action
+// still free, its BonusAction ones (Animate Dead). Telepathic / None summons act on their own. Nothing without summons.
+std::optional<Command> summon_turn_command(const Combat& c, CombatantId self) {
+    const auto& s = c.state();
+    const auto* me = rules5e::find(s, self);
+    if (!me || me->dead) return std::nullopt;
+    using rules5e::SummonControl;
+    const bool takes = me->summon_control == uint8_t(SummonControl::Verbal) || me->summon_control == uint8_t(SummonControl::BonusAction);
+    if (me->summoner != 0 && takes && me->commanded != 1) {
+        Command x;
+        x.request = {self, s.budget.action ? ActionKind::Dodge : ActionKind::EndTurn};
+        return x;
+    }
+    if (rules5e::is_incapacitated(*me)) return std::nullopt;
+    std::vector<CombatantId> verbal, bonus;
+    for (const auto& k : s.combatants) {
+        if (k.summoner != self || k.gone || k.dead || k.commanded == 1) continue;
+        if (k.summon_control == uint8_t(SummonControl::Verbal)) verbal.push_back(k.id);
+        if (k.summon_control == uint8_t(SummonControl::BonusAction) && s.budget.bonus_action && s.budget.sequence == 0) bonus.push_back(k.id);
+    }
+    for (const auto* ids : {&verbal, &bonus}) {
+        if (ids->empty()) continue;
+        Command x;
+        x.request = {self, ActionKind::CommandSummons};
+        x.request.command = 1;
+        x.request.command_ids = *ids;
+        return x;
+    }
+    return std::nullopt;
+}
+}  // namespace
+
 RunResult run_to_end(Combat& c, const PolicyFor& policy_for, uint32_t max_commands) {
     RunResult rr;
-    uint16_t round = 0, turn = 0xFFFF;
+    std::optional<Combat::TurnKey> turn;   // R-G12 (§3.4): (round, current actor, TurnStarted count), not (round, turn_index)
     std::optional<CombatantId> target;
     // Sync adapter: answer each NeedsDecision with the reactor's policy.
     const ReactionDeciderFn decider = [&](const Combat& cc, const NeedsDecision& n) {
@@ -455,13 +489,13 @@ RunResult run_to_end(Combat& c, const PolicyFor& policy_for, uint32_t max_comman
     };
     while (!c.ended() && rr.commands < max_commands) {
         const CombatantId self = rules5e::current_actor(c.state());
-        if (c.state().round != round || c.state().turn_index != turn) {
-            round = c.state().round;
-            turn = c.state().turn_index;
+        if (!turn || !(*turn == c.turn_key())) {
+            turn = c.turn_key();
             IActorPolicy* p = policy_for(self);
             target = p ? p->choose_target(c, self) : std::nullopt;
         }
-        const Command cmd = next_command(c, target);
+        const auto sc = summon_turn_command(c, self);
+        const Command cmd = sc ? *sc : next_command(c, target);
         auto r = c.submit(cmd);
         if (r.ok && r.status == StepStatus::NeedsDecision) r = c.settle(decider);
         ++rr.commands;
