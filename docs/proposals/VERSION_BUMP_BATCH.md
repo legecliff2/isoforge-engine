@@ -2096,6 +2096,40 @@ Hand-off (Engine Core, sim):
   narrow tree trunk) give **half**; heavier obstacles (portcullis, arrow slit, thick tree trunk) give **three-quarters**; a
   complete obstruction (wall, closed door) gives **total**. Only the highest degree counts; sources do not add.
 
+### 7.2w Grab and contain (rules side) and hand-off
+
+SRD 5.1 gelatinous cube (Engulf, Transparent), giant toad (Swallow), the Net, and the Web. Built on the existing restrain,
+escape (`ActionRequest::special` 4), destructible-object (special 6, EC #174) and delayed-damage machinery. No new hash tag.
+
+- **Data** (SpellDef and SpellEffect, appended): `contain` (1 engulf, 2 swallow), `contain_dice` / `contain_damage_type`
+  (damage at the start of each of the container's turns), `condition_max_size` (Size; -1 = any). A Save effect may now
+  carry `escape_dc` (Engulf), like ApplyCondition already did (Web).
+- **Engulf** (Save, Dex): fail = initial damage (the effect's dice) + restrained, contained (`ActiveSpellEffect::contain` 1,
+  `caster` = the cube), escape with an action, a Strength check vs 12. A target above `condition_max_size` gets no save and
+  no effect. Not blinded and no total cover. Sim: moves the engulfed creature with the cube and pushes a creature that
+  succeeds out of the cube's space (5 ft back or aside). "Can't breathe" (suffocation) is not modelled in an encounter.
+- **Swallow** (an ApplyCondition rider of the bite; Medium or smaller): restrained and blinded (blinded is the effect's own
+  only if the effect added it), no escape check. **Total cover from everything outside**: rules returns Cover::Total in
+  `cover_of` for any source other than the container (with or without `EncounterHooks::cover`), so attacks and
+  targeted effects are refused and areas skip it. Sim's cover hook needs no change, but should not draw the swallowed
+  creature's token. `container_of(s, id)` is public for sim.
+- **Turn-start acid / release.** At the start of the container's turn, each contained creature takes `contain_dice`
+  (damage_when 3, rolled at that moment). A dead container frees what it holds: from `check_end` after a step, and at the
+  start of each turn (when sim killed it outside a step).
+- **Net** (a ranged attack_effect with an apply rider): `max_size` large, `escape` DC 10, `object` AC 10, 5 HP, immune to
+  every type except slashing. This uses EC #174's object machinery with no rules change beyond `max_size`. The SRD's "one
+  attack per action with a net" belongs to the action's content.
+- **Web**: EC #174 already provides the escape check (DC 12) and break-free by damage (AC 10, 5 HP, fire vulnerability). No
+  change here.
+- **Transparent**: `Combatant::transparent_dc` (15; data only). Sim compares it with an observer's Perception when it sets up
+  surprise, while the cube has neither moved nor attacked. Rules does not track "moved".
+- **Hashing**: containment is derived from the SpellDef. Its damage state (`damage_when` 3, dice, type) folds under the
+  existing Combat::hash 0xAC with the other damage-carrying effects, and restrained / blinded are combatant conditions. No
+  new tag; goldens are unchanged.
+- **Content keys** (common@2 `apply`, additive, no version bump): `max_size` (tiny ... gargantuan), `contain`
+  {`kind` engulf | swallow, `damage` {`dice`, `type`}}; `escape` is now read on save_effect apply[] too. A swallow entry needs
+  no `escape`. Validator updated (checks_v4).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain

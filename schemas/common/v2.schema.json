@@ -185,6 +185,50 @@
             }
           },
           "description": "attack_effect (sim #174): the restraint is a destructible object (the web: AC 10, 5 hp, vulnerable fire, immune bludgeoning / poison / psychic). Any creature in reach or range may attack it; at 0 hp the condition ends."
+        },
+        "max_size": {
+          "enum": [
+            "tiny",
+            "small",
+            "medium",
+            "large",
+            "huge",
+            "gargantuan"
+          ],
+          "description": "VERSION_BUMP_BATCH 7.2w: the condition skips a target larger than this (Net, Engulf: large)."
+        },
+        "contain": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "damage"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "engulf",
+                "swallow"
+              ]
+            },
+            "damage": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "dice",
+                "type"
+              ],
+              "properties": {
+                "dice": {
+                  "$ref": "../common/v1.schema.json#/$defs/dice"
+                },
+                "type": {
+                  "$ref": "../common/v1.schema.json#/$defs/damage_type"
+                }
+              }
+            }
+          },
+          "description": "VERSION_BUMP_BATCH 7.2w grab and contain: the target is inside the user (engulf: gelatinous cube, with escape; swallow: giant toad, also blinded, total cover from outside, no escape). It takes `damage` at the start of each of the user's turns and is freed when the user dies."
         }
       }
     },

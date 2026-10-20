@@ -624,10 +624,11 @@ def check_sim170(doc: dict) -> tuple[list[str], list[str]]:
         for j, x in enumerate(a.get("apply") or []):
             if not isinstance(x, dict):
                 continue
-            if is_ae and "escape" not in x:
+            swallow = isinstance(x.get("contain"), dict) and x["contain"].get("kind") == "swallow"   # 7.2w: no escape
+            if is_ae and "escape" not in x and not swallow:
                 warns.append(f"{path}/apply/{j}: attack_effect '{a.get('id')}': unsupported (attack_effect: unsupported usage or "
                              "condition duration): every apply[] entry needs escape; the sim lists the action and never uses it (sim #170)")
-            if not is_ae and "escape" in x:
+            if not is_ae and "escape" in x and a.get("kind") != "save_effect":   # 7.2w: save_effect reads escape (Engulf)
                 warns.append(f"{path}/apply/{j}: escape is read only by attack_effect actions; ignored here (sim #170)")
     for path, owner, j, r in rider_sites(doc):
         if isinstance(r, dict) and "when" in r and "/on_hit/" not in path:

@@ -110,6 +110,10 @@ struct SpellEffect {
     // appended (#120 follow-up): + this many dice per slot level above the spell's level; set by the loader only on a
     // DelayedDamage extra effect (Acid Arrow), from the spell's scaling.upcast.dice. 0 = does not scale (every other effect).
     uint8_t upcast_dice = 0;
+    // appended (grab and contain, 7.2w): see SpellDef::contain / contain_dice / contain_damage_type / condition_max_size.
+    uint8_t contain = 0;
+    DiceExpr contain_dice{0, 0, 0}; DamageType contain_damage_type = DamageType::Acid;
+    int8_t condition_max_size = -1;
 };
 
 // ---- R-G11 persistent zones and auras (docs/proposals/ZONES_AURAS.md §2.6) ----
@@ -322,6 +326,14 @@ struct SpellDef {
     // appended (cover, 7.2t): the target gains no benefit from half / three-quarters cover (Sacred Flame). Total cover still
     // refuses targeting.
     bool ignores_cover = false;
+    // appended (grab and contain, 7.2w). contain: the condition puts the target inside the creature using this effect,
+    // 1 Engulf (gelatinous cube: restrained, escape_dc), 2 Swallow (giant toad: restrained and blinded, total cover against
+    // everything outside). The contained target takes contain_dice of contain_damage_type at the start of each of the
+    // container's turns, and is freed when the container dies. condition_max_size: the condition (and, with contain, the
+    // whole effect: no save) skips a target larger than this Size (Net, Engulf: Large; -1 = any).
+    uint8_t contain = 0;
+    DiceExpr contain_dice{0, 0, 0}; DamageType contain_damage_type = DamageType::Acid;
+    int8_t condition_max_size = -1;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered

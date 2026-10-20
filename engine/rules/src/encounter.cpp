@@ -162,7 +162,10 @@ SaveResult save_roll(EncounterState& s, const Combatant& t, Ability ab, int dc, 
 // 7.2t cover: sim's answer for one source -> target pair (Cover::None without the hook).
 Cover cover_of(const EncounterState& s, CombatantId source, CombatantId target, bool from_area, uint32_t spell_id,
                bool has_origin = false, int32_t ox = 0, int32_t oy = 0) {
-    if (!s.hooks.cover || source == target) return Cover::None;
+    if (source == target) return Cover::None;
+    for (const auto& e : s.effects)   // 7.2w: swallowed: total cover against everything outside its container
+        if (e.contain == 2 && e.target == target && e.caster != source) return Cover::Total;
+    if (!s.hooks.cover) return Cover::None;
     return s.hooks.cover(s, CoverQuery{source, target, from_area, spell_id, has_origin, ox, oy});
 }
 // The AC / Dex save bonus, after SpellDef::ignores_cover (`def` may be null: a weapon attack).
@@ -192,7 +195,30 @@ void end_summon(EncounterState& s, Combatant& c, int32_t reason, std::vector<Eve
     emit(ev, EventKind::SummonEnded, c.summoner, c.id, int32_t(c.summon_source), reason);
 }
 
+void end_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev);
+// 7.2w: a dead container frees what it engulfed / swallowed (SRD giant toad: the creature is no longer restrained).
+void release_contained(EncounterState& s, std::vector<Event>& ev) {
+    for (std::size_t i = 0; i < s.effects.size();) {
+        const ActiveSpellEffect& e = s.effects[i];
+        const Combatant* c = e.contain != 0 ? find(s, e.caster) : nullptr;
+        if (e.contain != 0 && (!c || c->dead)) end_effect(s, i, ev); else ++i;
+    }
+}
+
+// 7.2w: fill the containment of the effect just pushed for `t` (and Swallow's blindness, owned only if it added it).
+void set_contain(ActiveSpellEffect& e, const SpellDef& def, Combatant& t, std::vector<Event>& ev) {
+    if (def.contain == 0) return;
+    e.contain = def.contain; e.damage_when = 3; e.damage = def.contain_dice; e.damage_type = def.contain_damage_type;
+    e.magical = def.magical;
+    if (def.contain == 2 && !t.has(Condition::Blinded) && !(t.condition_immunities & bit(Condition::Blinded))) {
+        e.has_also = true; e.also = Condition::Blinded;
+        add_condition(t, Condition::Blinded);
+        emit(ev, EventKind::ConditionAdded, t.id, 0, int32_t(Condition::Blinded));
+    }
+}
+
 void check_end(EncounterState& s, std::vector<Event>& ev) {
+    if (!s.effects.empty()) release_contained(s, ev);
     if (s.ended) return;
     auto o = s.hooks.end_condition ? s.hooks.end_condition(s) : default_end_condition(s);
     if (!o) return;
@@ -2021,6 +2047,12 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         action_lost = s.budget.action_lost;
     }
     repeat_saves(s, c.id, RepeatSave::StartOfTurn, ev);
+    if (!s.effects.empty()) release_contained(s, ev);   // 7.2w: a container that died out of a step (sim) frees first
+    if (!c.dead && !s.effects.empty()) {   // 7.2w: what it has engulfed / swallowed takes its acid now
+        std::vector<ActiveSpellEffect> inside;
+        for (const auto& e : s.effects) if (e.contain != 0 && e.caster == c.id && e.damage_when == 3) inside.push_back(e);
+        for (const auto& e : inside) deal_effect_damage(s, e, ev);
+    }
     if (dies_of_exhaustion(c) && !c.dead) kill(c, ev);
     if (!c.dead && c.regeneration.amount > 0) {   // Regeneration (troll, vampire spawn)
         const bool suppressed = c.regen_suppressed;
@@ -2343,6 +2375,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             const Cover cov = area ? cover_of(s, a.id, t->id, true, def.id, ctx.has_area_origin, ctx.area_x, ctx.area_y)
                                    : cover_of(s, a.id, t->id, false, def.id);   // 7.2t: per target (Dex saves only)
             if (cov == Cover::Total) continue;   // an area skips a creature with total cover from its origin (no save, no event)
+            if (def.contain != 0 && def.condition_max_size >= 0 && int(t->size) > int(def.condition_max_size)) continue;   // 7.2w
             SaveSource src{def.magical, def.applies_condition ? bit(def.condition) : 0u,
                            (def.dice.count > 0 || def.dice.bonus > 0) ? bit(def.damage_type) : 0u};
             const bool spared = ctx.spared && std::find(ctx.spared->begin(), ctx.spared->end(), t->id) != ctx.spared->end();
@@ -2379,6 +2412,8 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                                                       at_once ? Timed{} : make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
                                                       lvl, false});
                 if (def.escalates && !at_once) { s.effects.back().escalates = true; s.effects.back().escalate_to = def.escalate_to; }
+                if (def.escape_dc > 0) { s.effects.back().dc = def.escape_dc; s.effects.back().escape_check = true; }   // 7.2w: Engulf
+                set_contain(s.effects.back(), def, *t, ev);
             }
         }
         if (def.concentration && applied) a.concentration_spell = def.id;
@@ -2405,6 +2440,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         bool applied = false;
         for (Combatant* t : T) {
             if (t->dead || immune_to(s, *t, def.condition)) continue;
+            if (def.condition_max_size >= 0 && int(t->size) > int(def.condition_max_size)) continue;   // 7.2w: Net, Large or smaller
             if (!t->has(def.condition)) {
                 add_condition(*t, def.condition);
                 emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.condition));
@@ -2421,6 +2457,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                     w.object_hp = def.object_hp; w.object_ac = def.object_ac;
                     w.object_vulnerable = def.object_vulnerable; w.object_immune = def.object_immune;
                 }
+                set_contain(s.effects.back(), def, *t, ev);   // 7.2w: Swallow (a rider of the bite)
             }
             affected.push_back(t);
             applied = true;
@@ -3075,6 +3112,11 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
 const Combatant* find(const EncounterState& s, CombatantId id) {
     for (const auto& c : s.combatants) if (c.id == id) return &c;
     return nullptr;
+}
+
+CombatantId container_of(const EncounterState& s, CombatantId id) {
+    for (const auto& e : s.effects) if (e.contain != 0 && e.target == id) return e.caster;
+    return 0;
 }
 
 CombatantId current_actor(const EncounterState& s) {
