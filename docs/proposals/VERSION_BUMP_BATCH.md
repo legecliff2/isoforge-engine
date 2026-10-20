@@ -1846,6 +1846,98 @@ folded into the one sim fact `gaze_seen`. Averting applies to all gazers at once
 creature follows SRD unseen-attacker rules (the ruling named only the disadvantage). Gaze saves hit every other creature
 (allies too), as the SRD text has no team limit.
 
+### 7.2q R-G12 rules PR 1: transforms (Wild Shape, Polymorph, shapechanger forms) (rules side) and hand-off
+
+(Numbered after 7.2p, Petrifying Gaze, #149.) Spec: `docs/proposals/SUMMONS_TRANSFORMS.md` (D1-D15), PR split §2.10 item 1.
+Transforms only: no roster growth, no summons (rules PR 2). True Polymorph is not in PR 1 (§2.1: outside our levels).
+
+Rules:
+
+- **Data.** `FormKind` (None 0, Polymorph 1, WildShape 2, Shapechanger 3) and `FormStats` (abilities, hp / hp_max, AC,
+  proficiency bonus, speed, save / skill proficiencies, resistances / immunities / vulnerabilities / condition immunities and
+  the qualified masks, attacks, multiattacks, attacks_per_action, size, creature type, roll traits, triggers, reactions, bonus
+  attacks, and `blocked_features`) in `types.hpp`. `Combatant` (appended): `form`, `form_source`, `form_caster` (Polymorph),
+  `form_archetype`, `form_end_round`, `base` (the saved own `FormStats`), `form_blocked_features`. `EncounterState::transforms`
+  counts transforms begun. Pure helpers `apply_form(Combatant&, FormKind, const FormStats&)` / `revert_form(Combatant&)`.
+- **Replaced vs kept** (§2.2 table). Polymorph: every `FormStats` field (mental scores and proficiencies too), a fresh HP pool
+  (`hp = hp_max = form hp_max`), features from the form only. Wild Shape: physical stats, AC, speed, attacks, size, type and
+  defences from the beast; Int / Wis / Cha kept; save and skill proficiencies = own | beast's; proficiency bonus the higher;
+  its own roll traits / triggers / reactions / bonus attacks kept (D7: "if the new form is physically capable"), the beast's
+  appended after them; `blocked_features` (content `requires_humanoid_form`) refused by `UseFeature` while in the form
+  (`feature not usable in this form`). Shapechanger: every `FormStats` field as sim builds it ("statistics other than size are
+  the same", content lists the differences), **one HP pool** (hp / hp_max unchanged). All kinds keep conditions, exhaustion,
+  concentration, temp HP (D8: they stay on the creature and are not part of `base`), spell slots, feature uses and pools.
+- **Gear.** Polymorph / Wild Shape: equipment melds; the form's `attacks` and `ac` are the beast's natural ones, so no gear
+  attack or armour applies (sim's `build_form` must not add any). Shapechanger: equipment is not transformed (sim keeps the
+  creature's weapons in the form's `attacks` when the form can use them). Rules has no equipment model; this is a `build_form`
+  contract.
+- **Spellcasting.** In a Polymorph or Wild Shape form `CastSpell` (incl. innate) is refused (`cannot cast spells in this
+  form`) and `legal_actions` lists no spell; concentration on a spell cast before continues (D7). A shapechanger can cast.
+- **Wild Shape / shapechanger**: `UseFeature` of a feature whose `FeatureSpec::form` is 2 / 3 (appended fields `form`,
+  `form_rounds`, `form_choices`) with `ActionRequest::form_archetype` (1 + index; logged, `log_hash` 0xBD). Refusals before any
+  change: `form_archetype required`, `bad form_archetype` (above `form_choices`), `already transformed`, `incapacitated`,
+  `form not available` (no hook, or `build_form` returns nullopt: CR / level / fly / swim limits are sim's). Cost: the
+  FeatureSpec `cost` (SRD Land druid: 1 = action). Uses: the usual `FeatureUses` row (Wild Shape: 2, `ShortRest`).
+  Events: `FeatureUsed`, then `Transformed`. Duration: `form_end_round = round + form_rounds` (Wild Shape: 600 * (druid
+  level / 2) rounds; 0 = none); it reverts at the start of the creature's turn in that round (`Reverted{b = 0}`, right after
+  `TurnStarted`).
+- **Polymorph**: `SpellEffectKind::Polymorph` (appended), one target, `ActionRequest::form_archetype`. Refused (D13: "no effect on
+  a shapechanger or a creature with 0 hit points"): `polymorph: target is a shapechanger`, `polymorph: target has 0 hit points`,
+  also `polymorph: one target`, `polymorph: target already transformed`, `form_archetype required`,
+  `form not available`, `polymorph: primary effect only`; `form_archetype` on another spell: `form_archetype: not a polymorph
+  spell`; on another request kind: `form_archetype: UseFeature or CastSpell only`. Unwilling = another team: Wisdom save vs the
+  spell DC (`SavingThrowRolled`), success = no effect (no concentration). Willing (same team, or self): no save. Then
+  `Transformed`; concentration is set only when someone transformed. `legal_actions` does not list Polymorph casts (the form
+  choice is sim's, like teleport destinations).
+- **Revert** (`ActionKind::Revert`, appended): Wild Shape a bonus action, shapechanger an action (`no bonus action available` /
+  `no action available`, `incapacitated`, `not transformed`); Polymorph: `polymorph ends with the spell, not by choice`.
+  `Reverted{b = 3}`. `legal_actions` lists it when affordable.
+- **HP overflow** (inside `after_damage`, the one place damage lands): when a Polymorph / Wild Shape form drops to 0 HP the
+  step emits the form's `DamageDealt{a = what the form absorbed (temp HP + its remaining HP), b = 0}`, then `Reverted{b = 2,
+  c = overflow}` (overflow = damage past temp HP and the form's HP), restores the normal form, and applies the overflow as a
+  second `DamageDealt{a = overflow}` (the two sum to the hit, no double count) with the normal drop / death-save /
+  **massive damage** logic against the **normal form's hp_max** (D12). No massive damage check against the form. A
+  shapechanger has no overflow (one pool) and reverts on death.
+- **Other ends.** Death in any form (no 0-HP path): `Reverted{b = 4}` before `CombatantDied`. Wild Shape while Unconscious
+  (Sleep): `Reverted{b = 2}` at the end of the step. Polymorph: the caster's concentration ending reverts the target
+  (`ConcentrationEnded`, then `Reverted{b = 1}`); the target reverting for any other reason ends the spell, so the caster's
+  concentration ends at the end of that step.
+- **Encounter end (D15).** In the step that ends the encounter, `check_end` reverts every transformed creature in ascending id
+  (`Reverted{b = 5, c = 0}`) right before `EncounterEnded`; `StepResult::teardown_begin` (appended) is the index of the first
+  of them (nullopt when there are none). `Combat::state()` after the end has no forms.
+- **Events (schema v10).** `EventKind` appends `Summoned` 48, `SummonEnded` 49, `Transformed` 50, `Reverted` 51, `Commanded`
+  52 (the proposal's numbering); PR 1 emits only 50 / 51. Payloads: SIM_EVENTS.md table and v10 changelog.
+- **Hash.** `has_summon_state` (`transforms != 0`, stays true after the revert) / `summons_digest` (Combat::hash **0xAF**):
+  summon id counter u32 and summon count u32 (both 0 until PR 2, which fills them and appends its records), `transforms` u32,
+  then per transformed combatant in `combatants` order: id, FormKind, form_source, form_caster, form_archetype,
+  form_end_round, base hp, base hp_max. `log_hash` **0xBD** + `form_archetype` byte when non-zero. 0xBC stays reserved for
+  summons. Fight without a transform: nothing emitted or folded, so every golden is unchanged.
+
+Hand-off:
+
+- **Engine Core (sim)**: install `EncounterHooks::build_form(state, creature, kind, source, archetype_index)` in
+  `install_hooks()` (pure: content only). Polymorph: the beast monster@4 stat block, nullopt above the target's level / CR.
+  Wild Shape: the beast block, nullopt above the druid's max CR or for fly / swim forms below the level; fill
+  `blocked_features` from `requires_humanoid_form`. Shapechanger: the trait's `forms[i]` merged over the creature's own block.
+  No gear AC / attacks in Polymorph / Wild Shape forms. Return a `FeatureSpec` with `form` / `form_rounds` / `form_choices`
+  from `feature_spec` for Wild Shape (cost 1, rounds 600 * (level / 2)) and shapechanger features (cost 1, rounds 0), register
+  Wild Shape uses (2, ShortRest). Fold `Combat::hash` 0xAF + `summons_digest` when `has_summon_state`; `log_hash` 0xBD +
+  `form_archetype` when non-zero. Bump `kSimEventSchemaVersion` to 10 (done in this PR in `events.hpp` / `events.cpp`, see
+  deviations) and apply §3.5's v10 placement of the ending step's sim events (`teardown_begin`). The token keeps its id; a size
+  change (shapechanger Small / Large forms) needs the footprint update when it lands (sim). AI per §3.4.
+- **Tools & Content**: spell@1 effect kind `polymorph { max_cr: "target_level" | n, save: {ability: wis} }` (no other fields
+  needed: shapechangers and 0 HP are refused by rules); character@N feature kind `wild_shape { uses, recharge: short_rest,
+  max_cr_by_level, no_fly_below, no_swim_below, duration_hours: "half_level" }`; monster@4 trait `shapechanger { forms: [...] }`;
+  feature flag `requires_humanoid_form`. The rules spell loader (`engine/rules/content`) does not parse `polymorph` yet: it
+  lands with T&C's schema key (loader key `polymorph` → `SpellEffectKind::Polymorph`, concentration from the spell).
+
+Deviations / readings: willingness is "same team" (a request flag can come later). Wild Shape's "higher of each" proficiency is
+a union of the bitmasks (proficiency bonus the higher). The Wild Shape "falls unconscious" end uses reason 2. Polymorph's 1-hour
+cap is its concentration (no separate timer). A Polymorph on an already transformed creature is refused. Hit Dice are not
+replaced (rest-only). The sim event-version files (`engine/core/sim/include/sim/events.hpp`, `src/events.cpp`,
+`tests/events_tests.cpp`) and the vertical-slice feed test were edited for v10, as #118 did for v9, because the new rules kinds
+otherwise fail sim's layout lock; no other sim file was touched.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
