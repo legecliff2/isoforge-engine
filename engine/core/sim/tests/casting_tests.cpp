@@ -227,7 +227,13 @@ TEST_CASE("casting content: PackSet load builds the SpellBook and rejects unreso
     // Count authored spells only: monster@4 save_effect actions (row 6) add synthetic SpellDefs (is_spell == false).
     size_t authored = 0;
     for (const auto& sd : live.spells()->all()) authored += sd.is_spell ? 1 : 0;
-    CHECK(authored == 15);
+    // Expected: the spell@1 files the srd51.core manifest lists (the sample pack ships none), so new spell batches need no edit.
+    const Json manifest = load_json("content/packs/srd51.core/manifest.json");
+    size_t listed = 0;
+    for (const auto& c : manifest["contents"])
+        listed += c.get<std::string>().rfind("spells/", 0) == 0 ? 1 : 0;
+    CHECK(listed > 0);
+    CHECK(authored == listed);
 }
 
 TEST_CASE("cast: Fire Bolt spends no slot, rolls a spell attack, emits SpellTarget (stream v5)") {

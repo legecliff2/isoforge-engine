@@ -1,0 +1,48 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.shield_of_faith",
+  "name": "Shield of Faith",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "A shimmering field appears and surrounds a creature of your choice within range, granting it a +2 bonus to AC for the duration.",
+  "level": 1,
+  "school": "abjuration",
+  "classes": [
+    "cleric",
+    "paladin"
+  ],
+  "casting_time": {
+    "kind": "bonus_action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "a small parchment with a bit of holy text written on it"
+    }
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 10,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "ac",
+        "bonus": 2,
+        "applies_to": "target",
+        "duration": {
+          "kind": "concentration"
+        }
+      }
+    }
+  ]
+}
