@@ -594,6 +594,7 @@ TEST_CASE("loader 7.2u: rider keys (durations 3 / 4, no_reactions / no_healing, 
     CHECK(d.when[1].kind == PredicateKind::SubjectIsCaster);
     CHECK(r.def->extra_effects[2].modifier.stat == ModStat::NoReactions);
     CHECK(r.def->extra_effects[2].modifier.expiry == 4);
+}
 
 TEST_CASE("loader: 7.2v control keys on a save effect (control, control_excludes_creature_types, control_min_int, destroy_undead_max_cr8)") {
     auto base = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"test.spell.command","name":"Command","level":1,
