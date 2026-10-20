@@ -52,7 +52,6 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 | Channel Divinity: Preserve Life (`channel-divinity-preserve-life`) | Cleric (Life) 2 | Splits a pool of 5 x cleric level HP among any creatures within 30 ft, each capped at half its HP maximum, not undead or constructs. `heal_pool` heals one target from a pool that persists across uses; there is no split, cap, or per-use pool size | R-G5, R-G10, R-G15 |
 | Destroy Undead (`destroy-undead-cr-1-2-or-below`) | Cleric 5 | A Turn Undead outcome (destroy at CR 1/2 or lower); depends on Turn Undead | R-G5 |
 | Arcane Recovery (`arcane-recovery`) | Wizard 1 | Recovers slots on a short rest, once per day. Rules have `recover_spell_slots` / `recovery_budget` (#108), but no content kind or loader wires it, and slot choice belongs to the caller | R-G16 (wiring) |
-| Sculpt Spells (`sculpt-spells`) | Wizard (Evocation) 2 | Rules have `Combatant::sculpt_spells` and `ActionRequest::spared` (R-G14, #109), but no content kind or loader sets the flag | R-G14 (wiring) |
 
 ### Spells the documents cannot reference yet
 
