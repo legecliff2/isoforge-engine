@@ -13,7 +13,7 @@ This is the code-level companion to ARCHITECTURE.md §4 ("Streaming") and §5.2.
   - `wait_idle()` loops until every wanted chunk is resident or has failed.
   - Accessors: `get`, `resident(level)` (coord order), `errors`, and `digest`.
   - `worker_threads = 0` loads synchronously inside `update()`.
-- Multi-focus goldens: none yet. The golden format is one focus per line, and the multi-focus digest is the plain resident-set digest of the union, which `world_tests` pins against equivalent single-focus runs across foci order, duplicates, threads, shuffle seeds and walks. A multi-focus line format can follow once a consumer drives real foci (EC lighting phase 2).
+- Multi-focus goldens: none yet. The golden format is one focus per line, and the multi-focus digest is the plain resident-set digest of the union, which `world_tests` pins against equivalent single-focus runs across foci order, duplicates, threads, shuffle seeds and walks. A multi-focus line format can follow once a consumer drives real foci (EC lighting phase 2). Tracked in [#208](https://github.com/legecliff2/isoforge-engine/issues/208).
 - **`chunk_of_tile`** converts a world tile to its chunk with floor division, so `-1` is in chunk `-1`.
 
 ## StreamDelta (for Render & Platform)
