@@ -49,6 +49,9 @@ enum class SpellEffectKind : uint8_t {
     // appended (R-G12 rules PR 2): creatures appear (Conjure Animals, Find Familiar, Animate Dead); `summon`. Cast on the caster;
     // the creatures are ActionRequest::summon_archetypes through EncounterHooks::build_summon, with ids from the encounter's counter.
     Summon,
+    // appended (R-G12 rules PR 3, D3): Spiritual Weapon: a non-creature token (`ActiveSummonWeapon`) whose attack is a melee spell
+    // attack (dice + the spellcasting modifier when add_spellcasting_modifier) on the cast and as a later bonus action.
+    SummonWeapon,
 };
 // R-G9 forced movement (push / pull) of an effect. mode 1 push (away from the source), 2 pull (toward it), 3 along a line
 // (Gust of Wind: sim's direction; not in R-G9's first scope). feet: exact distance, or the maximum when up_to (the caster
@@ -163,6 +166,13 @@ struct SummonSpec {
     SummonControl control = SummonControl::None;
     bool vanishes_at_zero_hp = true;
 };
+// R-G12 rules PR 3: Spiritual Weapon. upcast_every: slot levels per upcast_dice extra dice (SRD: 1d8 per two levels above 2nd);
+// move_ft / reach_ft are sim's (the token's position), carried for content.
+struct SummonWeaponSpec {
+    uint8_t upcast_every = 2;
+    uint8_t reach_ft = 5;
+    uint16_t move_ft = 20;
+};
 struct ZoneSpec {
     AreaShape shape = AreaShape::None;       // Sphere, Cylinder, Cube, Line (walls)
     uint16_t size_ft = 0, height_ft = 0, length_ft = 0;
@@ -275,6 +285,7 @@ struct SpellDef {
     // appended (R-G11): kind Zone (primary effect only; an extra effect of kind Zone is refused at cast).
     ZoneSpec zone{};
     SummonSpec summon{};   // appended (R-G12 rules PR 2): kind Summon (primary effect only)
+    SummonWeaponSpec summon_weapon{};   // appended (R-G12 rules PR 3): kind SummonWeapon (primary effect only)
     // appended (priced materials, CONTENT_CONVENTIONS §7): components.m.item, the equipment content id that provides a priced
     // material ("" = none: a priced material without an item is unsatisfiable). rules5e never reads it (sim's components hook does).
     std::string material_item;
