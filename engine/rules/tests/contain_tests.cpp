@@ -33,6 +33,7 @@ std::vector<SpellDef> defs() {
     SpellEffect r; r.kind = SpellEffectKind::ApplyCondition; r.applies_condition = true; r.condition = Condition::Restrained;
     r.affected_only = true; r.escape_dc = 10; r.object_ac = 10; r.object_hp = 5; r.condition_max_size = int8_t(Size::Large);
     r.object_immune = ~(1u << unsigned(DamageType::Slashing));   // SRD: 5 slashing damage to the net
+    r.excludes_formless = true;
     net.extra_effects.push_back(r);
     return {en, sw, net};
 }
@@ -189,4 +190,103 @@ TEST_CASE("contain: replay of an engulf and the cube's turn-start acid matches")
     CHECK(a.combatants[1].hp == b.combatants[1].hp);
     CHECK(container_of(b, 2) == 1);
     CHECK(timed_effects_digest(a) == timed_effects_digest(b));
+}
+
+// ---- EC review of #189 ----
+namespace {
+const uint32_t kWorm = spell_id_of("test.worm#swallow");
+EncounterHooks worm_hooks() {
+    EncounterHooks h = hooks();
+    auto b = std::make_shared<SpellBook>(*h.spells);
+    SpellDef w = defs()[1]; w.id = kWorm; w.content_id = "test.worm#swallow";
+    w.extra_effects[0].regurgitate_dc = 30; w.extra_effects[0].regurgitate_damage = 30;   // DC 30: the save fails
+    REQUIRE(b->add(w));
+    h.spells = b;
+    return h;
+}
+}  // namespace
+
+TEST_CASE("Swallow: one creature at a time (a second hit doesn't swallow)") {
+    auto s = hit_with(kSwallow, {user(Size::Large), victim(2), victim(3)});
+    REQUIRE(held(s, 2));
+    for (int i = 0; i < 5; ++i) {
+        REQUIRE(step(s, {current_actor(s), ActionKind::EndTurn}).ok);
+        end_turns_until(s, 1);
+        REQUIRE(step(s, cast(1, kSwallow, 3, 0)).ok);
+    }
+    CHECK(held(s, 3) == nullptr);
+    CHECK(container_of(s, 3) == 0);
+}
+
+TEST_CASE("Swallow: released when the toad dies: prone, and a contain_exits marker (kind 1)") {
+    auto s = hit_with(kSwallow, {user(Size::Large), victim(2)});
+    REQUIRE(held(s, 2));
+    mut(s, 1).hp = 0; mut(s, 1).dead = true;
+    REQUIRE(step(s, {current_actor(s), ActionKind::EndTurn}).ok);
+    CHECK(container_of(s, 2) == 0);
+    CHECK(find(s, 2)->has(Condition::Prone));
+    REQUIRE(s.contain_exits.size() == 1);
+    CHECK(s.contain_exits[0] == ContainExit{1, 2, 1});
+}
+
+TEST_CASE("Engulf: a successful save leaves no effect and marks the push (contain_exits kind 3)") {
+    // DC 30 with Dex 30 (+10) and no proficiency: a natural 20 is needed; search seeds for a success
+    for (uint64_t seed = 1; seed < 200; ++seed) {
+        auto t = start({user(), [] { auto v = victim(2); v.abilities.score[1] = 30; return v; }()}, seed);
+        auto r = step(t, cast(1, kEngulf, 2, 0));
+        REQUIRE(r.ok);
+        if (held(t, 2)) { CHECK(t.contain_exits.empty()); continue; }
+        CHECK(container_of(t, 2) == 0);
+        REQUIRE(t.contain_exits.size() == 1);
+        CHECK(t.contain_exits[0] == ContainExit{1, 2, 3});
+        CHECK(find(t, 2)->hp == 200);
+        return;
+    }
+    FAIL("no successful save found");
+}
+
+TEST_CASE("Swallow regurgitation: 30+ damage from inside in one turn, a failed Con save: exits prone (kind 2)") {
+    for (uint64_t seed = 1;; ++seed) {
+        auto s = begin_encounter({[] { auto c = user(Size::Huge); c.spells_known.push_back(kWorm); return c; }(), victim(2)}, seed,
+                                 nullptr, worm_hooks());
+        end_turns_until(s, 1);
+        REQUIRE(step(s, cast(1, kWorm, 2, 0)).ok);
+        if (!held(s, 2)) { REQUIRE(seed < 40); continue; }
+        REQUIRE(step(s, {1, ActionKind::EndTurn}).ok);
+        end_turns_until(s, 2);
+        mut(s, 2).attacks = {Attack{"blade", 30, {1, 1, 39}, DamageType::Slashing, 5, false, false}};   // 40 a hit
+        mut(s, 1).reaction_used = true;   // no Shield prompt
+        ActionRequest atk{2, ActionKind::Attack, 1}; atk.target_within_5ft = true;
+        auto a = step(s, atk);
+        REQUIRE(a.ok);
+        REQUIRE(a.status == StepStatus::Done);
+        if (s.effects.empty() || held(s, 2)->container_damage < 30) { REQUIRE(seed < 40); continue; }   // missed: try again
+        auto e = step(s, {2, ActionKind::EndTurn});
+        REQUIRE(e.ok);
+        CHECK(container_of(s, 2) == 0);
+        CHECK(find(s, 2)->has(Condition::Prone));
+        REQUIRE(s.contain_exits.size() == 1);
+        CHECK(s.contain_exits[0] == ContainExit{1, 2, 2});
+        return;
+    }
+}
+
+TEST_CASE("Swallow regurgitation: below the threshold, no save; the counter resets at the end of the turn") {
+    auto s = begin_encounter({[] { auto c = user(Size::Huge); c.spells_known.push_back(kWorm); return c; }(), victim(2)}, 2,
+                             nullptr, worm_hooks());
+    end_turns_until(s, 1);
+    for (uint64_t i = 0; i < 40 && !held(s, 2); ++i) { (void)step(s, cast(1, kWorm, 2, 0)); if (!held(s, 2)) { (void)step(s, {1, ActionKind::EndTurn}); end_turns_until(s, 1); } }
+    REQUIRE(held(s, 2));
+    for (auto& e : s.effects) if (e.contain == 2) e.container_damage = 29;
+    end_turns_until(s, 2);
+    auto e = step(s, {2, ActionKind::EndTurn});
+    CHECK(count(e.events, EventKind::SavingThrowRolled) == 0);
+    REQUIRE(held(s, 2));
+    CHECK(held(s, 2)->container_damage == 0);
+}
+
+TEST_CASE("Net: no effect on a formless creature") {
+    auto v = victim(2); v.formless = true;
+    auto s = hit_with(kNet, {user(Size::Medium), v});
+    CHECK(held(s, 2) == nullptr);
 }

@@ -508,6 +508,8 @@ struct Combatant {
     // (Perception) check to spot it while it has neither moved nor attacked (15; 0 = not transparent). Sim reads it when it
     // sets up surprise (rules5e surprise helper: compare with the observer's Perception); rules does not track "moved".
     int8_t transparent_dc = 0;
+    // appended (7.2w; content-derived, not hashed): SRD "formless" (the Net has no effect on it). Content tag "formless".
+    bool formless = false;
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };

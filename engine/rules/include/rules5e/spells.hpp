@@ -114,6 +114,8 @@ struct SpellEffect {
     uint8_t contain = 0;
     DiceExpr contain_dice{0, 0, 0}; DamageType contain_damage_type = DamageType::Acid;
     int8_t condition_max_size = -1;
+    int8_t regurgitate_dc = 0; uint8_t regurgitate_damage = 30;   // 7.2w: see SpellDef
+    bool excludes_formless = false;                                // 7.2w: see SpellDef
 };
 
 // ---- R-G11 persistent zones and auras (docs/proposals/ZONES_AURAS.md §2.6) ----
@@ -334,6 +336,12 @@ struct SpellDef {
     uint8_t contain = 0;
     DiceExpr contain_dice{0, 0, 0}; DamageType contain_damage_type = DamageType::Acid;
     int8_t condition_max_size = -1;
+    // 7.2w, Swallow: regurgitate_dc > 0 (behir 14, purple worm 21; the giant toad has none): when the container takes at least
+    // regurgitate_damage (30) in one turn from the swallowed creature, it makes a Con save vs regurgitate_dc at the end of
+    // that turn; on a failure the creature exits prone (EncounterState::contain_exits, sim picks a tile within 10 ft).
+    // excludes_formless: the condition skips a Combatant::formless target (the Net).
+    int8_t regurgitate_dc = 0; uint8_t regurgitate_damage = 30;
+    bool excludes_formless = false;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered

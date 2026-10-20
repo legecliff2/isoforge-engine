@@ -2121,14 +2121,33 @@ escape (`ActionRequest::special` 4), destructible-object (special 6, EC #174) an
   attack per action with a net" belongs to the action's content.
 - **Web**: EC #174 already provides the escape check (DC 12) and break-free by damage (AC 10, 5 HP, fire vulnerability). No
   change here.
-- **Transparent**: `Combatant::transparent_dc` (15; data only). Sim compares it with an observer's Perception when it sets up
-  surprise, while the cube has neither moved nor attacked. Rules does not track "moved".
+- **Transparent** (a common@2 trait, closed object `{kind: "transparent", dc}`; `dc` required, integer 1..30): the loader
+  sets `Combatant::transparent_dc` (highest wins). Monsters only: the loader and validator refuse it on a character; the
+  validator warns when a monster declares it more than once. Sim compares the dc with an observer's Perception when it sets
+  up surprise, while the cube has neither moved nor attacked. Rules does not track "moved".
+- **Regurgitation** (Swallow): damage the swallowed creature deals to its container is counted per container turn
+  (`ActiveSpellEffect::container_damage`). At the end of the container's turn, if it reached `regurgitate_damage` (default
+  30), the container makes a Con save vs `regurgitate_dc` (behir 14, purple worm 21; 0 = never, e.g. the giant toad). On a
+  fail the effect ends and the creature is prone; sim places it in an unoccupied tile within 10 ft. The counter resets at
+  the end of each container turn.
+- **One at a time**: a container with a Swallow already holding a creature refuses a second (no effect, no save).
+- **Exit markers**: `EncounterState::contain_exits` (container, creature, kind), cleared at the start of each step: 1 =
+  released because the container died (a swallowed creature is left prone), 2 = regurgitated (prone, within 10 ft), 3 =
+  succeeded on the Engulf save (sim pushes it 5 ft out of the cube's space). This is derived state, so no event schema bump.
+  Gap: the SRD lets the creature choose not to be pushed (and then be engulfed); sim always pushes.
+- **Formless**: the `formless` monster tag sets `Combatant::formless`; an apply with `excludes_formless` (the Net) has no
+  effect on it.
+- **Loader errors**: `max_size` on a save_effect without `contain` is an error; so is an invalid `contain` / `max_size`.
 - **Hashing**: containment is derived from the SpellDef. Its damage state (`damage_when` 3, dice, type) folds under the
-  existing Combat::hash 0xAC with the other damage-carrying effects, and restrained / blinded are combatant conditions. No
+  existing Combat::hash 0xAC with the other damage-carrying effects, plus `container_damage` (u16) for `damage_when` 3. The
+  Engulf escape dc is derived from the SpellDef and not hashed, and restrained / blinded are combatant conditions. No
   new tag; goldens are unchanged.
 - **Content keys** (common@2 `apply`, additive, no version bump): `max_size` (tiny ... gargantuan), `contain`
-  {`kind` engulf | swallow, `damage` {`dice`, `type`}}; `escape` is now read on save_effect apply[] too. A swallow entry needs
-  no `escape`. Validator updated (checks_v4).
+  {`kind` engulf | swallow, `damage` {`dice`, `type`}, `regurgitate` {`dc`, `damage` (default 30)} (swallow only)},
+  `excludes_formless` (bool); `escape` is now read on save_effect apply[] too. A swallow entry needs no `escape`. New trait
+  arm `transparent_effect`. Validator updated (checks_v4).
+- **Schema changelog**: the common/v2 keys above are additive, so there is no `$id` or version bump. Older content still
+  loads unchanged, and no shipped save_effect carried `escape` before this.
 
 ## 8. Migrations and inert markers
 

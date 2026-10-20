@@ -226,9 +226,33 @@
                   "$ref": "../common/v1.schema.json#/$defs/damage_type"
                 }
               }
+            },
+            "regurgitate": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "dc"
+              ],
+              "properties": {
+                "dc": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 30
+                },
+                "damage": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 255
+                }
+              },
+              "description": "Swallow only (behir 14, purple worm 21): if the swallower takes `damage` (default 30) or more in one turn from the swallowed creature, it makes a Con save vs dc at the end of that turn; on a failure the creature exits prone within 10 ft (sim places it)."
             }
           },
           "description": "VERSION_BUMP_BATCH 7.2w grab and contain: the target is inside the user (engulf: gelatinous cube, with escape; swallow: giant toad, also blinded, total cover from outside, no escape). It takes `damage` at the start of each of the user's turns and is freed when the user dies."
+        },
+        "excludes_formless": {
+          "type": "boolean",
+          "description": "VERSION_BUMP_BATCH 7.2w: the condition has no effect on a creature tagged formless (the Net). Default false."
         }
       }
     },
@@ -3264,6 +3288,16 @@
               }
             }
           }
+        },
+        {
+          "description": "7.2w: a transparent effect is checked by its closed arm ($defs/transparent_effect) only.",
+          "properties": {
+            "kind": {
+              "not": {
+                "const": "transparent"
+              }
+            }
+          }
         }
       ]
     },
@@ -3630,6 +3664,9 @@
             },
             {
               "$ref": "#/$defs/extra_attack_effect"
+            },
+            {
+              "$ref": "#/$defs/transparent_effect"
             },
             {
               "type": "object",
@@ -4015,6 +4052,25 @@
           "items": {
             "$ref": "#/$defs/resource"
           }
+        }
+      }
+    },
+    "transparent_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "dc"
+      ],
+      "description": "VERSION_BUMP_BATCH 7.2w (T&C spec): SRD Transparent (gelatinous cube). Even in plain sight, spotting the creature while it has neither moved nor attacked takes a Wisdom (Perception) check vs dc (rules5e Combatant::transparent_dc, read by sim's surprise setup). Monsters only (monster@4 traits[]; the validator refuses it on characters); declared more than once: the highest dc wins (the validator warns). In a file that declares monster@3 or older the sim lists it inert.",
+      "properties": {
+        "kind": {
+          "const": "transparent"
+        },
+        "dc": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
         }
       }
     }
