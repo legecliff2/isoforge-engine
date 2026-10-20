@@ -610,6 +610,13 @@ void deal_effect_damage(EncounterState& s, const ActiveSpellEffect& e, std::vect
     damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(dmg), e.damage_type, e.magical ? uint8_t(kAttackMagical) : uint8_t(0)), false, ev, nullptr, nullptr);
 }
 
+// EC loader durations (flagged rules5e edit): a condition effect's timer. EndOfCasterNextTurn counts the caster's turns
+// (make_timed's acting flag is then "the caster is acting", as for modifiers); every other kind counts the target's.
+Timed effect_timed(const EncounterState& s, const SpellDef& def, CombatantId caster, CombatantId target) {
+    const Expiry k = Expiry(def.expiry);
+    return make_timed(k, def.duration_rounds, current_actor(s) == (k == Expiry::EndOfCasterNextTurn ? caster : target));
+}
+
 void tick_effects_round_start(EncounterState& s, std::vector<Event>& ev) {
     std::vector<GoneEffect> gone;
     std::vector<ActiveSpellEffect> due;
@@ -645,7 +652,17 @@ void tick_effects_turn_end(EncounterState& s, CombatantId cid, std::vector<Event
     std::vector<GoneEffect> gone;
     std::vector<ActiveSpellEffect> due;
     for (auto& e : s.effects)
-        if (e.target == cid && tick_target_turn_end(e.timed)) { gone.push_back({e.spell_id, {e.caster, e.target}}); if (e.damage_when == 1) due.push_back(e); }
+        if (e.target == cid && e.timed.kind != Expiry::EndOfCasterNextTurn && tick_target_turn_end(e.timed)) {
+            gone.push_back({e.spell_id, {e.caster, e.target}});
+            if (e.damage_when == 1) due.push_back(e);
+        }
+    // Guard (Rules review #212): EndOfCasterNextTurn is handled only by the caster loop below, so a self-targeted effect
+    // (caster == target == cid) is decremented and pushed to `gone` once per turn end.
+    for (auto& e : s.effects)   // EC loader durations (flagged): EndOfCasterNextTurn effects `cid` applied tick at its turn end
+        if (e.caster == cid && e.timed.kind == Expiry::EndOfCasterNextTurn && e.timed.rounds_left > 0 && --e.timed.rounds_left == 0) {
+            gone.push_back({e.spell_id, {e.caster, e.target}});
+            if (e.damage_when == 1) due.push_back(e);
+        }
     for (const auto& e : due) deal_effect_damage(s, e, ev);
     expire_effects(s, gone, ev);
     tick_modifiers_turn_end(s, cid, ev);
@@ -1232,6 +1249,7 @@ bool predicate_holds(EncounterState& s, Combatant& owner, const Combatant& subje
     case PredicateKind::SubjectIsCaster: return x.mod_caster != 0 && subject.id == x.mod_caster;   // 7.2u
     case PredicateKind::TargetBelowMaxHp: return subject.hp < subject.hp_max;   // 7.2y Colossus Slayer
     case PredicateKind::OwnerCreatureType: return (p.mask & bit(owner.creature_type)) != 0;
+    case PredicateKind::SubjectHostile: return subject.team != owner.team;   // EC loader temp HP (flagged)
     case PredicateKind::DamageAtMost: return x.dmg <= p.a;
     case PredicateKind::AttackIs: return !x.is_spell && x.atk && x.atk >= owner.attacks.data() && x.atk < owner.attacks.data() + owner.attacks.size() &&
                                          std::size_t(x.atk - owner.attacks.data()) == std::size_t(p.a);   // pointer identity into owner.attacks
@@ -2212,6 +2230,12 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         emit(ev, EventKind::SummonEnded, w.owner, w.token_id, int32_t(w.spell_id), 0);
     }
     drop_caster_turn_modifiers(s, c.id, ev);
+    if (!s.effects.empty()) {   // EC loader durations (flagged): StartOfTargetNextTurn effects on `c` end as its turn starts
+        std::vector<GoneEffect> gone;
+        for (const auto& e : s.effects)
+            if (e.target == c.id && e.timed.kind == Expiry::StartOfTargetNextTurn) gone.push_back({e.spell_id, {e.caster, e.target}});
+        if (!gone.empty()) expire_effects(s, gone, ev);
+    }
     for (const auto& m : s.modifiers)   // Heroism: temp hp again at the start of each turn
         if (m.target == c.id && m.spec.stat == ModStat::TempHp && m.spec.per_turn && !c.dead && !c.no_regain_hp && m.spec.bonus > c.temp_hp) {
             c.temp_hp = m.spec.bonus;
@@ -2601,7 +2625,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             }
             if (def.control != ControlKind::None && !def.applies_condition && !r.success && !t->dead) {   // Turned / Command
                 ActiveSpellEffect x{def.id, a.id, t->id, Condition::Paralyzed, def.save_ability, int16_t(dc), def.repeat_save,
-                                    def.concentration, make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
+                                    def.concentration, effect_timed(s, def, a.id, t->id),
                                     lvl, def.control == ControlKind::Turned};
                 x.no_condition = true; x.control = uint8_t(def.control);
                 x.command_word = def.control == ControlKind::Command ? ctx.command_word : uint8_t(0);
@@ -2622,7 +2646,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 if (def.condition_untracked && !at_once) continue;   // ends by its own rules (prone): no effect entry, like Shove
                 s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, cond, def.save_ability,
                                                       int16_t(dc), at_once ? RepeatSave::None : def.repeat_save, def.concentration,
-                                                      at_once ? Timed{} : make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
+                                                      at_once ? Timed{} : effect_timed(s, def, a.id, t->id),
                                                       lvl, false});
                 if (def.escalates && !at_once) { s.effects.back().escalates = true; s.effects.back().escalate_to = def.escalate_to; }
                 s.effects.back().control = uint8_t(def.control);
@@ -2670,7 +2694,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (!def.condition_untracked) {   // ends by its own rules (prone): no effect entry, like Shove
                 s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, Ability::Wis, 0, RepeatSave::None,
                                                       def.concentration,
-                                                      make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
+                                                      effect_timed(s, def, a.id, t->id),
                                                       lvl, false});
                 if (def.escape_dc > 0) { s.effects.back().dc = def.escape_dc; s.effects.back().escape_check = true; }   // EC (flagged): Web
                 if (def.escape_dc > 0 && def.object_hp > 0) {   // EC spider follow-up (flagged): the web as an object
@@ -2748,7 +2772,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.condition));
             s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, Ability::Wis, 0, RepeatSave::None,
                                                   def.concentration,
-                                                  make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id),
+                                                  effect_timed(s, def, a.id, t->id),
                                                   lvl, def.ends_on_damage});
             affected.push_back(t);
         }
@@ -2843,7 +2867,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(dmg), def.damage_type, def.magical ? uint8_t(kAttackMagical) : uint8_t(0)), false, ev);
             }
             ActiveSpellEffect e{def.id, a.id, t->id, Condition::Blinded, Ability::Wis, 0, RepeatSave::None, def.concentration,
-                                make_timed(Expiry(def.expiry), def.duration_rounds, current_actor(s) == t->id), lvl, false};
+                                effect_timed(s, def, a.id, t->id), lvl, false};
             e.no_condition = true; e.damage_when = sustained ? 2 : 1; e.damage = dice; e.damage_type = def.damage_type;
             e.magical = def.magical; e.cast_stamp = (uint32_t(s.round) << 16) | s.turn_index;
             s.effects.push_back(e);

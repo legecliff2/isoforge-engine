@@ -1,6 +1,6 @@
 # game/vertical_slice: M1 slice viewer. world + sim (Engine Core) feed a plain-data ViewModel;
 # SliceView (iso2d/render_api only) draws it. No game state on the render side.
-add_library(vertical_slice_session STATIC src/session.cpp src/event_feed.cpp src/light_standin.cpp)
+add_library(vertical_slice_session STATIC src/session.cpp src/event_feed.cpp)
 target_include_directories(vertical_slice_session PUBLIC src)
 target_link_libraries(vertical_slice_session PUBLIC eng::base eng::sim PRIVATE eng::world eng::ecs eng::rules5e eng::assets)
 _engine_warnings(vertical_slice_session)
