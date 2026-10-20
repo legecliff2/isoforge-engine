@@ -244,7 +244,7 @@ class TransformArmsRG12(unittest.TestCase):
         for name, (req, opt) in COMMON2_RG12.items():
             with self.subTest(name):
                 self.check_closed(c2[name], req, opt)
-        arms = {a["$ref"].rsplit("/", 1)[1] for a in c2["effect"]["anyOf"][2]["oneOf"]}
+        arms = {a["$ref"].rsplit("/", 1)[1] for a in c2["effect"]["anyOf"][2]["oneOf"] if "$ref" in a}   # gaze (7.2p) is inline
         self.assertLessEqual({"wild_shape_effect", "shapechanger_effect"}, arms)
         # closed: not reachable through the open effect_live arm
         self.assertLessEqual({"wild_shape", "shapechanger"}, set(c2["effect_live"]["allOf"][2]["properties"]["kind"]["not"]["enum"]))
