@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <string_view>
+#include <optional>
 #include <vector>
 
 namespace rules5e {
@@ -110,7 +111,9 @@ enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Re
                                   // appended: Font of Magic, Flexible Casting (bonus action; ActionRequest::flexible)
                                   FlexibleCasting,
                                   // appended: Petrifying Gaze turn-start response (ActionRequest::avert_gaze / gaze_seen)
-                                  GazeResponse };
+                                  GazeResponse,
+                                  // appended (R-G12 rules PR 1): end the actor's own transform (Wild Shape: bonus action; shapechanger: action)
+                                  Revert };
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
 
 // Reaction windows (encounter.hpp). Append-only.
@@ -307,6 +310,34 @@ struct BonusAttack {
     DiceExpr damage{0, 0, 0};           //   (two-weapon fighting without the style: the dice without the ability modifier)
 };
 
+// R-G12 transforms (appended; docs/proposals/SUMMONS_TRANSFORMS.md, VERSION_BUMP_BATCH 7.2q). FormKind: what a creature is
+// transformed by. FormStats: the statistics a form replaces; sim's EncounterHooks::build_form fills one from content (the beast's
+// monster stat block, or a shapechanger trait's form), and rules saves the creature's own values in the same shape
+// (Combatant::base) while the form lasts. Rules owns which fields each kind replaces and which it keeps (apply_form).
+enum class FormKind : uint8_t { None = 0, Polymorph = 1, WildShape = 2, Shapechanger = 3 };
+struct FormStats {
+    AbilityScores abilities{};
+    int16_t hp = 0, hp_max = 0;          // build_form: the form's hit points (fixed content HP; hp is ignored: a fresh pool)
+    int8_t ac = 10;
+    int8_t proficiency_bonus = 2;
+    uint8_t speed_ft = 30;
+    uint32_t save_proficiencies = 0, skill_proficiencies = 0;
+    uint32_t resistances = 0, immunities = 0, vulnerabilities = 0, condition_immunities = 0;
+    QualifiedDamageMask resist_qualified{}, immune_qualified{};
+    std::vector<Attack> attacks{};       // natural weapons; gear melds into Polymorph / Wild Shape forms (no gear AC or attacks)
+    std::vector<AttackSequence> multiattacks{};
+    uint8_t attacks_per_action = 1;
+    Size size = Size::Medium;
+    CreatureType creature_type = CreatureType::Beast;
+    std::vector<RollTrait> roll_traits{};
+    std::vector<Trigger> triggers{};
+    std::vector<Reaction> reactions{};
+    std::vector<BonusAttack> bonus_attacks{};
+    // Wild Shape (D7): the creature's own features (feature ids) the form is not physically capable of using (content:
+    // requires_humanoid_form). UseFeature refuses them while the form lasts. Not part of the saved base block.
+    std::vector<uint32_t> blocked_features{};
+};
+
 struct Combatant {
     CombatantId id;
     uint8_t  team;
@@ -418,6 +449,18 @@ struct Combatant {
     struct Gaze { uint32_t spell_id = 0; uint16_t range_ft = 0; };
     std::vector<Gaze> gazes{};
     bool gaze_averted = false;
+    // R-G12 transforms (appended, VERSION_BUMP_BATCH 7.2q). form: None = its own statistics. base: its own statistics, saved
+    // when the form began (hp / hp_max = its normal-form hit points; temp HP stay on the creature, D8). form_source: the spell
+    // (Polymorph) or feature (Wild Shape, shapechanger) id; form_caster: Polymorph's caster (0 otherwise); form_archetype:
+    // ActionRequest::form_archetype (1 + index); form_end_round: the form ends at the start of the creature's turn in this
+    // round (0 = no timer: Polymorph ends with concentration). form_blocked_features: the form's FormStats::blocked_features.
+    FormKind form = FormKind::None;
+    uint32_t form_source = 0;
+    CombatantId form_caster = 0;
+    uint8_t form_archetype = 0;
+    uint32_t form_end_round = 0;
+    std::optional<FormStats> base{};
+    std::vector<uint32_t> form_blocked_features{};
 
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
 };
