@@ -139,9 +139,9 @@ Closed object, discriminated by `shape`; each arm is a propertyNames allow-list 
 
 | key | shape | maps to | notes |
 |---|---|---|---|
-| `shape` | `sphere` \| `cylinder` \| `cube` | `ZoneSpec::shape` (`AreaShape::Sphere` / `Cylinder` / `Cube`) | required. `line` (walls, rules PR 2) is appended later |
-| `size_ft` | integer 5..65530, multiple of 5 | `size_ft` | required. Sphere / cylinder radius, cube side |
-| `height_ft` | integer 5..65530, multiple of 5 | `height_ft` | required on `cylinder`, refused on the other shapes |
+| `shape` | `sphere` \| `cylinder` \| `cube` | `ZoneSpec::shape` (`AreaShape::Sphere` / `Cylinder` / `Cube`) | required. `line` (walls, Wall of Fire): appended by rules PR 2, see 4.6 |
+| `size_ft` | integer 5..65530, multiple of 5 | `size_ft` | required (forbidden on `line`, 4.6). Sphere / cylinder radius, cube side |
+| `height_ft` | integer 5..65530, multiple of 5 | `height_ft` | required on `cylinder` and `line` (4.6), refused on the other shapes |
 | `anchor` | `point` \| `creature` | `ZoneAnchor::Point` / `Creature` | required. `creature` = an aura centred on the caster |
 | `flags` | non-empty array of unique names | `flags` bitmask, OR of `kZone*` | `difficult` 1, `light_obscured` 2, `heavy_obscured` 4, `magical_darkness` 8, `silence` 16, `halve_speed` 32, `opaque` 64. Named strings, never a raw integer. Omitted = 0 |
 | `move` | `{cost, feet}`, both required | `move_cost`, `move_ft` | `cost`: `action` = 1 (Moonbeam, D3), `bonus_action` = 2. `feet`: integer 5..65530, multiple of 5. Omitted = `move_cost` 0 (cannot move) |
@@ -149,7 +149,7 @@ Closed object, discriminated by `shape`; each arm is a propertyNames allow-list 
 | `needs_conscious_owner` | boolean | `needs_conscious_owner` | the zone / aura only functions while its owner is conscious (D7; rules R-G11 PR 2). Default false. The Spirit Guardians fixture sets it |
 | `triggers` | non-empty array of trigger rows (4.2), in order | `triggers` | omitted = no rows (Fog Cloud, Darkness, Silence) |
 
-`length_ft` arrives with `line` (append-only).
+`length_ft` arrived with `line` (append-only); the PR 2 keys are in 4.6.
 
 ### 4.2 `zone.triggers[]` rows (`ZoneTriggerRow`)
 
@@ -206,24 +206,75 @@ Every rule in the table below has a `tests/validate/cases/zone_*` case (loader-c
 Ranges are integers only (floats are rejected: the content spec's integers-only rule, §4.3 in the schema descriptions). Loader mapping for the fixed parts:
 `SpellDef::kind = Zone`; `targets` stays 1 (rules uses the caster); the spell's `duration` / `concentration` as for any spell.
 
-### 4.5 Not expressible yet (no key; content keeps it in `description`)
+### 4.5 Rules PR 2 keys: specified (formerly pending)
 
-Rules PR 2 (#122, `docs/proposals/VERSION_BUMP_BATCH.md` 7.2m) models these in `ZoneSpec` / `ZoneTriggerRow`, but its loader
-parses only the section 4.1-4.3 keys and refuses any other key as `zone: unknown key '...'` /
-`zone.triggers[N]: unknown key '...'`. They get schema keys together with the loader change (a C++ PR), not before: a schema-only
-key would validate content the loader refuses. Pending keys: `ZoneSpec` `upcast_size_ft`, `ring_size_ft`, `sided`, `side_ft`, a
-`line` shape (`length_ft`), the D7 aura fields (`aura_modifier`, `aura_bonus_ability`, `aura_immunity`, `aura_allies_only`);
-row `region`, `loses_action`, `auto_success_damage` / `_conditions` / `_no_breath`, `shapechanger_disadvantage`,
-`evil_damage_type`; and the archetype facts `no_breath`, `shapechanger`, `evil`. Silence needs none: `flags: ["silence"]` is
-enough (rules derives the V block, thunder immunity and deafness from the flag).
+The keys this section used to list as pending (`ZoneSpec` `upcast_size_ft`, `ring_size_ft`, `sided`, `side_ft`, the `line` shape
+with `length_ft`, the D7 aura fields `aura_modifier` / `aura_bonus_ability` / `aura_immunity` / `aura_allies_only`; row `region`,
+`loses_action`, `auto_success_damage` / `_conditions` / `_no_breath`, `shapechanger_disadvantage`, `evil_damage_type`) are now
+specified in 4.6 and accepted by `schemas/spell/v1.schema.json` (`$defs/zone`, `$defs/zone_aura_modifier`, `$defs/zone_trigger`;
+the `line` arm is its own propertyNames allow-list) and `check_spell_zone`, together with the loader (`parse_zone`) in the same PR.
+Optional additive keys: no tag change (docs/CONTENT_COMPAT.md). Type, range, enum and shape-arm errors are the schema's (the
+validator prints jsonschema wording; the loader its own 4.6 wording); the cross-field rules print the 4.6 loader messages verbatim
+and each has a `tests/validate/cases/zone_*` case. Fixtures: `tests/validate/fixtures/zones/spells` `fog_cloud` (upcast_size_ft),
+`moonbeam` (shapechanger_disadvantage), `spirit_guardians` (evil_damage_type) (still the loader's 8-spell book), and
+`tests/validate/fixtures/zones/spells_pr2` `stinking_cloud`, `wall_of_fire`, `warding_aura` (test-only D7 aura). The creature
+facts `no_breath`, `shapechanger`, `evil` (booleans, default false) are accepted on `monster@4` / `character@4` but are
+**reserved**: their reader is the sim archetype loader (`engine/core/sim/src/content.cpp`, Engine Core), not wired yet, so
+the validator warns (`/<key>: <key> is reserved: the sim archetype loader does not read it yet ...`, not an error) and they have
+no effect until Engine Core lands it. Silence needs none of these: `flags: ["silence"]`.
 
-
-Fog Cloud's +20 ft radius per slot level (no upcast size), Darkness on an object, Spirit Guardians' necrotic for an evil caster
-(the fixture uses radiant), Moonbeam's shapechanger rules, Stinking Cloud's lost action (D9: no effect kind), Silence's
-deafened / thunder immunity (the `silence` flag only, R-G13), walls (`line`, Wall of Fire), feature auras (D7: the paladin auras are features, not spells; spell zones take `needs_conscious_owner`).
+Formerly not expressible, now expressed by those keys: Fog Cloud's +20 ft radius per slot level, Spirit Guardians' necrotic
+for an evil caster, Moonbeam's shapechanger disadvantage, Stinking Cloud's lost action (D9), walls (`line`, Wall of Fire) and
+the D7 aura fields (the paladin aura content itself stays deferred). Silence's deafened / thunder immunity come from the
+`silence` flag alone. Still not expressible: see the end of 4.6.
 
 Versioning: an additive spell@1 effect kind with new closed `$defs`. No tag change, no migration, no api_level gate: the old
 schema rejected kind `zone`, so no existing file can carry it (`tests/compat` and both shipped packs validate unchanged).
+
+### 4.6 R-G11 rules PR 2 keys (loader `parse_zone`, branch `feat/rules-zone-loader-keys`; supersedes the 4.5 pending list)
+
+All keys optional; absent = the default. Feet are integers 5..65530, multiples of 5 (floats rejected). Enum values are the
+existing common@1 names (`damage_type`, `condition`, `ability`). The loader checks in table order; the first failure is the error.
+
+**`zone` (`ZoneSpec`)**
+
+| key | JSON type / range | default | maps to | loader error |
+|---|---|---|---|---|
+| `shape` | adds `"line"` (sphere, cylinder, cube, line) | — | `AreaShape::Line` | `zone.shape must be sphere, cylinder, cube or line` |
+| `size_ft` | feet; **required except** for `line`, **forbidden** on `line` | — | `size_ft` | `zone.size_ft invalid (5..65530, a multiple of 5)` / `zone.size_ft not allowed on a line (length_ft / height_ft give a wall's geometry)` |
+| `length_ft` | feet; required for (and only for) `line` | 0 | `length_ft` | `zone.length_ft is required for (and only for) lines` / `zone.length_ft invalid (5..65530, a multiple of 5)` |
+| `height_ft` | feet; now required for `cylinder` **and** `line` | 0 | `height_ft` | `zone.height_ft is required for (and only for) cylinders and lines` |
+| `upcast_size_ft` | feet; not on `line` | 0 | `upcast_size_ft` (+ per slot level above) | `zone.upcast_size_ft invalid (5..65530, a multiple of 5)` / `zone: upcast_size_ft not allowed on a line` |
+| `ring_size_ft` | feet; only on `line` | 0 | `ring_size_ft` | `zone.ring_size_ft invalid (5..65530, a multiple of 5)` / `zone: ring_size_ft needs shape line` |
+| `sided` | boolean; only on `line` | false | `sided` | `zone.sided must be a boolean` / `zone: sided needs shape line` |
+| `side_ft` | feet; required iff `sided: true` | 0 | `side_ft` | `zone.side_ft invalid (5..65530, a multiple of 5)` / `zone: side_ft is required for (and only for) sided zones` |
+| `aura_modifier` | closed object `{stat, bonus, ability}`: `stat` must be `"save"`; `bonus` integer -30..30 (default 0); `ability` an ability (scope; absent = all saves). No duration (the aura lasts while in the zone) | absent | `aura_modifier` (stat Save, id = `spell_id_of(content_id + "#aura")`) | `zone.aura_modifier must be {stat, bonus, ability}` / `zone.aura_modifier stat must be save` / `zone.aura_modifier bonus invalid (-30..30)` / `zone.aura_modifier ability invalid` |
+| `aura_bonus_ability` | ability enum | absent | `has_aura_bonus_ability` + `aura_bonus_ability` | `zone.aura_bonus_ability invalid` / `zone: aura_bonus_ability needs aura_modifier` |
+| `aura_immunity` | non-empty array of unique conditions | [] | `aura_immunity` (bit mask) | `zone.aura_immunity must be a non-empty array of unique conditions` |
+| `aura_allies_only` | boolean | false | `aura_allies_only` | `zone.aura_allies_only must be a boolean` |
+| (cross) | `aura_modifier` / `aura_immunity` / `aura_allies_only` need `anchor: creature` | | | `zone: aura fields need anchor creature` |
+
+`zone: needs triggers or flags (it would do nothing)` also accepts a zone with `aura_modifier` or `aura_immunity` (D7 auras).
+
+**`zone.triggers[N]` (`ZoneTriggerRow`)**
+
+| key | JSON type / range | default | maps to | loader error (`where` = `zone.triggers[N]`) |
+|---|---|---|---|---|
+| `region` | `"zone"` \| `"zone_or_side"` | `"zone"` | `region` 0 / 1 | `where.region must be zone or zone_or_side` |
+| (cross) | `zone_or_side` needs a `sided` zone and `on` in zone_appear / zone_start_turn / zone_end_turn | | | `where: region zone_or_side needs a sided zone` / `where: region zone_or_side is only for zone_appear / zone_start_turn / zone_end_turn` |
+| `loses_action` | boolean | false | `loses_action` | `where: flags must be booleans` |
+| `auto_success_damage` | non-empty array of unique damage types; row effect `save` only | [] | `auto_success_damage` (mask) | `where.auto_success_damage must be a non-empty array of unique damage types` |
+| `auto_success_conditions` | non-empty array of unique conditions; `save` only | [] | `auto_success_conditions` (mask) | `where.auto_success_conditions must be a non-empty array of unique conditions` |
+| `auto_success_no_breath` | boolean; `save` only | false | `auto_success_no_breath` | `where: flags must be booleans` |
+| `shapechanger_disadvantage` | boolean; `save` only | false | `shapechanger_disadvantage` | `where: flags must be booleans` |
+| (cross) | the four above on a non-`save` row | | | `where: auto_success / shapechanger_disadvantage need effect kind save` |
+| `evil_damage_type` | damage type; the row effect needs `damage` | absent | `has_evil_damage_type` + `evil_damage_type` | `where.evil_damage_type invalid` / `where: evil_damage_type needs effect damage` |
+
+**Creature facts** (`monster@4` / `character@4` top level): `no_breath`, `shapechanger`, `evil`, booleans, default false, map to
+`Combatant::no_breath / shapechanger / evil`. They are read by the sim archetype loader (`engine/core/sim/src/content.cpp`, Engine
+Core's), not by this PR: until EC wires them the schema should accept them but they have no effect (tracked for EC).
+
+Still not expressible: Darkness on an object, Moonbeam's form revert, the Paladin auras' content (fields exist, content deferred, D7).
 
 ## 5. R-G8 grapple hit rider: `common@2 $defs/rider` kind `grapple` (sim #104)
 
