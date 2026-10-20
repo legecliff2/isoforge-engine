@@ -93,7 +93,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         }
     }
     // R-G12 (SUMMONS_TRANSFORMS §3.4): a Polymorph / Wild Shape form cannot cast (rules refuse it), so no spell or save-action
-    // casts from the creature's own block while in it. Transform only when content asks (wild_shape ai: prefer_beast), at the
+    // casts from the creature's own block while in it. Transform only when FormFeature::ai_prefer is set (no common@2 content key: off for loaded content), at the
     // start of the turn, into the allowed form with the highest CR (ties: lowest form index). Never revert by choice: 0 HP,
     // the timer, concentration or the encounter's end revert it.
     const bool beast_form = me->form == rules5e::FormKind::Polymorph || me->form == rules5e::FormKind::WildShape;

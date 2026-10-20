@@ -117,9 +117,16 @@ struct Archetype {
         int16_t max_cr_x8 = 0;                  // Wild Shape: the druid level's max CR (x 8)
         uint8_t level = 0;                      // Wild Shape: druid level
         uint8_t no_fly_below = 8, no_swim_below = 4;   // Wild Shape: no fly / swim speed below these druid levels
-        struct Shape { std::string id; std::optional<CreatureSize> size; int16_t ac = -1; int16_t speed_ft = -1; };
+        struct Shape {
+            std::string id;
+            std::optional<CreatureSize> size;
+            int16_t ac = -1;
+            int16_t speed_ft = -1;                          // speed.walk; -1 = the creature's own
+            std::optional<rules5e::CreatureType> creature_type;
+            std::vector<std::string> blocked_actions;       // own actions[] ids not in the form's actions[] (attacks dropped)
+        };
         std::vector<Shape> shapes;              // shapechanger forms (statistics other than these are the creature's own)
-        bool ai_prefer = false;                 // effect.ai == "prefer_beast": the built-in AI transforms (SUMMONS_TRANSFORMS 3.4)
+        bool ai_prefer = false;                 // the built-in AI transforms (SUMMONS_TRANSFORMS 3.4). No content key (common@2 has none): off
     };
     std::map<uint32_t, FormFeature> form_features;
     // Feature ids whose effect sets requires_humanoid_form (Wild Shape blocks them in a beast form, D7).
@@ -189,6 +196,7 @@ std::optional<int> cr_x8_of(const assets::Json& rating);
 
 // Content damage type name ("fire") -> rules5e::DamageType; nullopt if unknown.
 std::optional<rules5e::DamageType> damage_type_from_name(const std::string& s);
+std::optional<rules5e::CreatureType> creature_type_from_name(const std::string& s);
 
 // "1d6+2" -> DiceExpr; nullopt if malformed.
 std::optional<rules5e::DiceExpr> parse_dice(std::string_view s);
