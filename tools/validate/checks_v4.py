@@ -54,7 +54,8 @@ STATIC_EFFECT_KINDS_R_G5 = frozenset({"attack_bonus", "crit_range", "ac_bonus"})
 # shapechanger_effect), extra_attack (EC #179 features.cpp apply_extra_attack; closed arm extra_attack_effect; characters
 # only). Below @4 they are inert in the sim (extra_attack: the hook's @4 gate, the frozen 3 -> 4 list cannot carry it), so a
 # @1..@3 file gets the unknown-kind warning.
-COMPILED_EFFECT_KINDS_AT_4 = frozenset({"gaze", "wild_shape", "shapechanger", "extra_attack"})
+# transparent (7.2w, features.cpp apply_transparent; closed arm transparent_effect; monsters only) likewise.
+COMPILED_EFFECT_KINDS_AT_4 = frozenset({"gaze", "wild_shape", "shapechanger", "extra_attack", "transparent"})
 # compile_gaze defaults for the optional fields the validator warns about when omitted.
 GAZE_DEFAULTS = {"condition": "restrained", "repeat_save": "end_of_turn", "escalate_to": "petrified"}
 # 7.2n (sim #148, features.cpp apply_slot_recovery): the classes slot_recovery accepts.
@@ -933,6 +934,34 @@ def check_extra_attack(doc: dict, typ: str) -> tuple[list[str], list[str]]:
         else:
             warns.append(f"{path}: extra_attack declared more than once (first at {first[0]}); the sim keeps the highest "
                          "attacks_per_action, they do not stack (sim #179)")
+    return errs, warns
+
+
+TRANSPARENT_KEYS = frozenset({"kind", "dc"})
+
+
+def check_transparent(doc: dict, typ: str) -> tuple[list[str], list[str]]:
+    """7.2w transparent {dc 1..30} (sim features.cpp apply_transparent): the loader's refusals as errors (same text), and a
+    warning when it is declared more than once (the sim keeps the highest dc)."""
+    errs: list[str] = []
+    warns: list[str] = []
+    did = doc.get("id", "?")
+    first: str | None = None
+    for path, _owner, eff in live_effects(doc):
+        if eff.get("kind") != "transparent":
+            continue
+        extra = sorted(k for k in eff if k not in TRANSPARENT_KEYS)
+        dc = eff.get("dc")
+        if extra:
+            errs.append(f"{path}: {did}: transparent: unknown key '{extra[0]}'")
+        elif typ != "monster":
+            errs.append(f"{path}: {did}: transparent: only valid on monsters")
+        elif not is_int(dc) or not 1 <= dc <= 30:
+            errs.append(f"{path}: {did}: transparent: dc must be an integer 1..30")
+        if first is None:
+            first = path
+        else:
+            warns.append(f"{path}: transparent declared more than once (first at {first}); the sim keeps the highest dc (7.2w)")
     return errs, warns
 
 

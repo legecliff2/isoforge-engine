@@ -563,6 +563,16 @@ std::optional<std::string> read_contain(const Json& x, const std::string& where,
         auto ty = damage_type(dm->value("type", ""));
         if (!dice || !ty) return where + ": bad contain damage";
         e.contain_dice = *dice; e.contain_damage_type = *ty;
+        if (auto rg = ct->find("regurgitate"); rg != ct->end()) {   // behir / purple worm: {dc, damage (default 30)}
+            if (k != "swallow" || !rg->is_object()) return where + ": regurgitate is a swallow option {dc, damage}";
+            const int dc = geti(*rg, "dc"), dm2 = geti(*rg, "damage", 30);
+            if (dc < 1 || dc > 30 || dm2 < 1 || dm2 > 255) return where + ": bad regurgitate (dc 1..30, damage 1..255)";
+            e.regurgitate_dc = int8_t(dc); e.regurgitate_damage = uint8_t(dm2);
+        }
+    }
+    if (auto ef = x.find("excludes_formless"); ef != x.end()) {   // the Net: no effect on a formless creature
+        if (!ef->is_boolean()) return where + ": bad excludes_formless";
+        e.excludes_formless = ef->get<bool>();
     }
     return std::nullopt;
 }
@@ -780,6 +790,8 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 d.duration_rounds = rounds;
                 d.condition_untracked = untracked;
                 d.escape_dc = int8_t(esc);
+                if (x.contains("max_size") && !x.contains("contain"))
+                    return where + ": max_size on a save_effect needs contain (only a containing condition skips a larger target)";
                 if (auto m = read_contain(x, where, d)) return m;
                 first = false;
             } else {       // further conditions: ApplyCondition on the creatures that failed the save
@@ -793,6 +805,8 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 e.condition_untracked = untracked;
                 e.affected_only = true;
                 e.escape_dc = int8_t(esc);
+                if (x.contains("max_size") && !x.contains("contain"))
+                    return where + ": max_size on a save_effect needs contain (only a containing condition skips a larger target)";
                 if (auto m = read_contain(x, where, e)) return m;
                 d.extra_effects.push_back(e);
             }
@@ -1139,6 +1153,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         }
         // EC swarm: the "swarm" tag turns on the SRD Swarm trait
         if (std::find(c.tags.begin(), c.tags.end(), rules5e::spell_id_of("swarm")) != c.tags.end()) a.swarm = c.no_regain_hp = true;
+        // 7.2w: the "formless" tag (SRD: the Net has no effect on it)
+        if (std::find(c.tags.begin(), c.tags.end(), rules5e::spell_id_of("formless")) != c.tags.end()) c.formless = true;
     }
     // 0 = parse the document's own $schema tag (never "latest"); a missing, unparsable or other-type tag means no refusal.
     uint32_t declared = declared_version;
