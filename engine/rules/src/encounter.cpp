@@ -1139,7 +1139,7 @@ bool run_event_triggers(EncounterState& s, Combatant& owner, Combatant& subject,
                 const int amt = (e.dice.count > 0 || e.dice.bonus > 0) ? std::max(0, roll_dice(s.rng, e.dice)) : int(e.value);
                 if (amt <= 0) break;
                 if (e.kind == RiderKind::TempHp) {   // temporary HP never stack: keep the larger pool
-                    if (amt > owner.temp_hp) owner.temp_hp = int16_t(amt);
+                    if (amt > owner.temp_hp && !owner.no_regain_hp) owner.temp_hp = int16_t(amt);
                 } else {
                     auto h = apply_healing(owner, int16_t(amt));
                     commit_healing(owner, h);
@@ -1601,7 +1601,10 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         // Triggers that fire on this hit (Sneak Attack-style): their FeatureTriggered events come before the damage
         // dice; extra_damage riders are rolled with the attack's damage so a crit doubles them.
         const HitRiders riders = fire_hit_triggers(s, ctx, a, t, atk, spell_id != 0, atk_mode, ally_near_target, crit, roll, ev);
-        const DiceExpr& wdice = damage_override ? *damage_override : atk.damage;
+        // EC swarm: the half-HP damage variant (only when authored)
+        // Uses base max HP, not exhaustion-reduced max (Director ruling).
+        const DiceExpr& wdice = damage_override ? *damage_override
+                                : (atk.half_hp_damage.count > 0 && 2 * int(a.hp) <= int(a.hp_max)) ? atk.half_hp_damage : atk.damage;
         const bool gwf = a.great_weapon_fighting && spell_id == 0 && !atk.ranged &&
                          (has_property(atk, kWeaponTwoHanded) || (two_handed_grip && has_property(atk, kWeaponVersatile)));
         int dmg = gwf ? roll_dice_reroll_low(s.rng, wdice, crit, 2)
@@ -1974,7 +1977,7 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
     }
     drop_caster_turn_modifiers(s, c.id, ev);
     for (const auto& m : s.modifiers)   // Heroism: temp hp again at the start of each turn
-        if (m.target == c.id && m.spec.stat == ModStat::TempHp && m.spec.per_turn && !c.dead && m.spec.bonus > c.temp_hp) {
+        if (m.target == c.id && m.spec.stat == ModStat::TempHp && m.spec.per_turn && !c.dead && !c.no_regain_hp && m.spec.bonus > c.temp_hp) {
             c.temp_hp = m.spec.bonus;
             emit(ev, EventKind::ModifierApplied, m.caster, c.id, int32_t(m.spec.id), int32_t(m.spec.stat), m.spec.bonus);
         }
@@ -4418,7 +4421,7 @@ bool apply_modifier(EncounterState& s, CombatantId caster, CombatantId target, c
         magnitude = (spec.speed_num == spec.speed_den && spec.speed_sub > 0) ? int32_t(spec.speed_sub) : int32_t(spec.speed_num) * 100 + spec.speed_den;
     else if (magnitude == 0 && spec.stat == ModStat::Ac && spec.ac_floor > 0) magnitude = spec.ac_floor;
     if (spec.stat == ModStat::TempHp) {   // granted at once; the larger pool is kept; no record
-        if (spec.bonus > t->temp_hp) t->temp_hp = spec.bonus;
+        if (spec.bonus > t->temp_hp && !t->no_regain_hp) t->temp_hp = spec.bonus;   // EC swarm: no temp HP
         emit(ev, EventKind::ModifierApplied, caster, target, int32_t(spec.id), int32_t(spec.stat), magnitude);
         if (!spec.per_turn) return true;   // Heroism keeps a record and grants again each turn
     }

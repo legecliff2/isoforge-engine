@@ -93,6 +93,9 @@ struct Attack {
     // took (Combatant::hp_max_reduction), after a Con save vs drain_save_dc when non-zero (success: no reduction).
     bool drain_max_hp = false;
     int8_t drain_save_dc = 0;
+    // appended (EC swarm, flagged): SRD swarm bites ("2d6, or 1d6 if the swarm has half of its hit points or fewer"): when
+    // half_hp_damage.count > 0 and the attacker's hp * 2 <= hp_max, it replaces `damage` (component 1). Default: unused.
+    DiceExpr half_hp_damage{};
 };
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
 constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
@@ -481,6 +484,9 @@ struct Combatant {
     // appended (EC deferred monsters, flagged): content tags (spell_id_of of monster `tags[]` and a character's race, plus
     // "elf" for elf races), read only by PredicateKind::TargetTag / NotTargetTag. Content-derived: not hashed.
     std::vector<uint32_t> tags{};
+    // appended (EC swarm, flagged): SRD swarm "can't regain hit points or gain temporary hit points". apply_healing heals 0
+    // and every temp HP grant is skipped. Content-derived (static per archetype): not hashed.
+    bool no_regain_hp = false;
     // R-G12 summons (appended, VERSION_BUMP_BATCH 7.2r). summoner: who summoned it (0 = not a summon); summon_source: the spell id;
     // summon_group: initiative group (the first id of its cast); summon_control: SummonControl; summon_vanishes: disappears at
     // 0 HP; summon_concentration: ends with the summoner's concentration on summon_source; commanded: this turn's command (0
