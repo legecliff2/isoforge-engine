@@ -650,7 +650,12 @@ void tick_effects_turn_end(EncounterState& s, CombatantId cid, std::vector<Event
     std::vector<GoneEffect> gone;
     std::vector<ActiveSpellEffect> due;
     for (auto& e : s.effects)
-        if (e.target == cid && tick_target_turn_end(e.timed)) { gone.push_back({e.spell_id, {e.caster, e.target}}); if (e.damage_when == 1) due.push_back(e); }
+        if (e.target == cid && e.timed.kind != Expiry::EndOfCasterNextTurn && tick_target_turn_end(e.timed)) {
+            gone.push_back({e.spell_id, {e.caster, e.target}});
+            if (e.damage_when == 1) due.push_back(e);
+        }
+    // Guard (Rules review #212): EndOfCasterNextTurn is handled only by the caster loop below, so a self-targeted effect
+    // (caster == target == cid) is decremented and pushed to `gone` once per turn end.
     for (auto& e : s.effects)   // EC loader durations (flagged): EndOfCasterNextTurn effects `cid` applied tick at its turn end
         if (e.caster == cid && e.timed.kind == Expiry::EndOfCasterNextTurn && e.timed.rounds_left > 0 && --e.timed.rounds_left == 0) {
             gone.push_back({e.spell_id, {e.caster, e.target}});
