@@ -393,6 +393,12 @@ std::string parse_predicate(const Json& p, Predicate& out) {
     else if (k == "subject_is_caster") out.kind = PK::SubjectIsCaster;   // 7.2u
     else if (k == "subject_hostile") out.kind = PK::SubjectHostile;     // EC loader temp HP (flagged)
     else if (k == "target_below_max_hp") out.kind = PK::TargetBelowMaxHp;   // 7.2y Colossus Slayer
+    else if (k == "attack_from_feature") {   // 7.2zb Open Hand: sim resolves `feature` to its compiled bonus attack id
+        const std::string f = p.value("feature", "");
+        if (f.empty()) return "bad attack_from_feature feature";
+        out.kind = PK::AttackFromFeature;
+        out.mask = spell_id_of(f);
+    }
     else if (k == "owner_creature_type") {                               // 7.2u
         auto m = types_mask("creature_types", true);
         if (!m) return "bad creature_types";

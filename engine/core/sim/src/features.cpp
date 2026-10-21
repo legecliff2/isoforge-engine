@@ -1,8 +1,8 @@
-#include <set>
 #include "sim/features.hpp"
 
 #include <algorithm>
 #include <cctype>
+#include <set>
 
 #include "rules5e/armor.hpp"
 #include "rules5e/font_of_magic.hpp"
@@ -60,9 +60,10 @@ std::optional<std::string> apply_damage_bonus(Archetype& a, const FeatureDecl& f
     return std::nullopt;
 }
 
-std::optional<std::string> apply_bonus_action_grant(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx&) {
+std::optional<std::string> apply_bonus_action_grant(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
     const auto acts = f.effect.find("actions");
     if (acts == f.effect.end() || !acts->is_array()) return f.id + ": bonus_action_grant needs actions[]";
+    std::vector<rules5e::ActionKind> ks;
     for (const auto& v : *acts) {
         const std::string s = v.is_string() ? v.get<std::string>() : "";
         rules5e::ActionKind k;
@@ -72,8 +73,72 @@ std::optional<std::string> apply_bonus_action_grant(Archetype& a, const FeatureD
         else if (s == "dodge") k = rules5e::ActionKind::Dodge;
         else if (s == "use_object") k = rules5e::ActionKind::UseObject;   // 7.2y Fast Hands (UseObject 1..3)
         else return f.id + ": bonus_action_grant: unsupported action '" + s + "'";
+        ks.push_back(k);
+    }
+    // 7.2zb (Patient Defense / Step of the Wind): `usage` {kind: pool, pool, cost?} makes each listed action cost pool points
+    // as a bonus action (rules5e::BonusActionCost). Dash / disengage / dodge only; @4 files only (an older file is refused,
+    // never silently free). An action another grant already gives for free stays free (no cost entry).
+    rules5e::BonusActionCost cost{};
+    bool costed = false;
+    if (const auto u = f.effect.find("usage"); u != f.effect.end()) {
+        if (ctx.declared_version != 0 && ctx.declared_version < 4) return f.id + ": bonus_action_grant: usage needs a @4 file";
+        if (!u->is_object() || u->value("kind", "") != "pool") return f.id + ": bonus_action_grant: usage must be {kind: pool, pool, cost?}";
+        for (auto it = u->begin(); it != u->end(); ++it)
+            if (it.key() != "kind" && it.key() != "pool" && it.key() != "cost") return f.id + ": bonus_action_grant: usage: unknown key '" + it.key() + "'";
+        const std::string pid = u->value("pool", "");
+        const int pc = u->value("cost", 1);
+        if (pc < 1 || pc > 65535) return f.id + ": bonus_action_grant: bad pool cost";
+        bool found = false;
+        for (const auto& r : a.resources) found = found || r.id == pid;
+        if (!found) return f.id + ": bonus_action_grant: usage names unknown (or unlimited) pool '" + pid + "'";
+        cost.pool = rules5e::spell_id_of(pid); cost.cost = uint16_t(pc); costed = true;
+    }
+    for (rules5e::ActionKind k : ks) {
+        if (costed) {
+            if (k != rules5e::ActionKind::Dash && k != rules5e::ActionKind::Disengage && k != rules5e::ActionKind::Dodge)
+                return f.id + ": bonus_action_grant: usage covers dash, disengage and dodge only";
+            const bool free_already = (a.base.bonus_action_grants & rules5e::bit(k)) != 0 &&
+                std::none_of(a.base.bonus_action_costs.begin(), a.base.bonus_action_costs.end(), [&](const auto& c) { return c.kind == k; });
+            if (!free_already) { cost.kind = k; a.base.bonus_action_costs.push_back(cost); }
+        } else   // a free grant replaces an earlier costed one
+            std::erase_if(a.base.bonus_action_costs, [&](const auto& c) { return c.kind == k; });
         a.base.bonus_action_grants |= rules5e::bit(k);
     }
+    return std::nullopt;
+}
+
+// 7.2zb (T&C Agonizing / Repelling Blast): static {kind: spell_mod, spell, damage_bonus_ability?, on_hit_push_ft?}: each attack
+// hit (beam) of that spell adds the ability's modifier to its damage and/or pushes the target (rules5e::SpellMod, forced movement).
+// Characters only; @4 files only (an older file lists it inert). A spell the creature never casts is harmless (never matches);
+// the validator warns when it is not in the document's spells and errors when the pack does not define it.
+std::optional<std::string> apply_spell_mod(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    for (auto it = f.effect.begin(); it != f.effect.end(); ++it)
+        if (it.key() != "kind" && it.key() != "spell" && it.key() != "damage_bonus_ability" && it.key() != "on_hit_push_ft")
+            return f.id + ": spell_mod: unknown key '" + it.key() + "'";
+    if (a.schema_type == "monster") return f.id + ": spell_mod: not valid on monsters";
+    if (ctx.declared_version != 0 && ctx.declared_version < 4) {
+        a.inert_features.push_back(f.id + " (spell_mod)");
+        return std::nullopt;
+    }
+    rules5e::SpellMod m{};
+    const auto sp = f.effect.find("spell");
+    if (sp == f.effect.end() || !sp->is_string() || sp->get<std::string>().empty()) return f.id + ": spell_mod needs spell";
+    m.spell_id = rules5e::spell_id_of(sp->get<std::string>());
+    bool any = false;
+    if (const auto ab = f.effect.find("damage_bonus_ability"); ab != f.effect.end()) {
+        static const char* const names[] = {"str", "dex", "con", "int", "wis", "cha"};
+        const std::string s = ab->is_string() ? ab->get<std::string>() : "";
+        for (uint8_t i = 0; i < 6; ++i) if (s == names[i]) m.damage_ability = i;
+        if (m.damage_ability == 0xFF) return f.id + ": spell_mod: bad damage_bonus_ability";
+        any = true;
+    }
+    if (const auto pu = f.effect.find("on_hit_push_ft"); pu != f.effect.end()) {
+        const int ft = pu->is_number_integer() ? pu->get<int>() : 0;
+        if (ft < 5 || ft > 30 || ft % 5 != 0) return f.id + ": spell_mod: on_hit_push_ft must be 5..30, a multiple of 5";
+        m.push_ft = uint16_t(ft); any = true;
+    }
+    if (!any) return f.id + ": spell_mod needs damage_bonus_ability or on_hit_push_ft";
+    a.base.spell_mods.push_back(m);
     return std::nullopt;
 }
 
@@ -431,7 +496,10 @@ std::optional<std::string> apply_grant_die(Archetype& a, const FeatureDecl& f, u
         return std::nullopt;
     }
     const auto die_of = [](const Json& j) -> std::optional<rules5e::DiceExpr> {
-        return j.is_string() ? parse_dice(j.get<std::string>()) : std::nullopt;
+        // #214 follow-up: plain NdM only (no +modifier), like the schema pattern
+        auto d = j.is_string() ? parse_dice(j.get<std::string>()) : std::nullopt;
+        if (d && (d->count == 0 || d->bonus != 0)) d = std::nullopt;
+        return d;
     };
     const auto base = f.effect.find("die");
     if (base == f.effect.end() || !die_of(*base)) return f.id + ": grant_die needs die";
@@ -440,6 +508,11 @@ std::optional<std::string> apply_grant_die(Archetype& a, const FeatureDecl& f, u
     const std::string cls = f.effect.value("class", "");
     for (const Json& c : ctx.doc.value("classes", Json::array()))
         if (c.value("class", "") == cls) level += c.value("level", 0);
+    if (!cls.empty()) {   // #214 follow-up: a class the document does not have is an error, not a fallback
+        bool has = false;
+        for (const Json& c : ctx.doc.value("classes", Json::array())) has = has || c.value("class", "") == cls;
+        if (!has) return f.id + ": grant_die class '" + cls + "' is not one of the document's classes";
+    }
     if (level == 0 && cls.empty()) level = ctx.doc.value("level", 0);
     if (auto sc = f.effect.find("scale"); sc != f.effect.end()) {
         if (!sc->is_array() || sc->empty() || sc->size() > 20) return f.id + ": grant_die scale must be 1..20 entries";
@@ -954,6 +1027,7 @@ FeatureRegistry make_builtin() {
     FeatureRegistry r;
     r.add_hook("damage_bonus", {apply_damage_bonus});
     r.add_hook("bonus_action_grant", {apply_bonus_action_grant});
+    r.add_hook("spell_mod", {apply_spell_mod});   // 7.2zb Agonizing / Repelling Blast: gated in the hook
     r.add_hook("self_heal", {apply_self_heal});
     r.add_hook("multiattack", {apply_multiattack});
     r.add_hook("damage_mitigation", {apply_damage_mitigation});

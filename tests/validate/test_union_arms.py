@@ -43,7 +43,8 @@ PREDICATE = {("weapon",): (S({"kind", "is"}), S()),
              ("save",): (S({"kind", "ability"}), S({"dc", "dc_from_damage", "base"})),
              ("target_surprised", "ally_near_target", "weapon_attack", "subject_is_caster", "subject_hostile", "target_below_max_hp"): (S({"kind"}), S()),
              ("damage_at_most",): (S({"kind", "amount"}), S()),
-             ("target_tag", "not_target_tag"): (S({"kind", "tag"}), S())}
+             ("target_tag", "not_target_tag"): (S({"kind", "tag"}), S()),
+             ("attack_from_feature",): (S({"kind", "feature"}), S())}   # 7.2zb Open Hand
 # when: rider-level predicates (sim #170), read only in on_hit[] of attack actions
 RIDER = {("extra_damage",): (S({"kind", "damage"}), S({"scale", "when"})),
          ("save_condition",): (S({"kind", "save"}), S({"apply", "damage", "on_success", "when", "zero_hp"})),
@@ -53,6 +54,8 @@ RIDER = {("extra_damage",): (S({"kind", "damage"}), S({"scale", "when"})),
          ("bonus_attack",): (S({"kind", "attack_id"}), S({"when"})),
          ("area_save",): (S({"kind", "area", "save", "damage", "on_success"}), S({"when"})),
          ("spend",): (S({"kind"}), S({"pool", "cost", "slot", "when"})),
+         ("forced_move",): (S({"kind", "mode", "feet"}), S({"save", "when"})),   # 7.2zb Open Hand
+         ("apply_modifier",): (S({"kind", "modifier"}), S({"when"})),            # 7.2zb Open Hand
          ("grapple",): (S({"kind"}), S({"escape_dc", "when"}))}   # R-G8 hit rider (sim #104); on_hit[] of actions[] weapon attacks only
 _M = {"applies_to", "stacks", "consume"}   # consume: any stat (section 6.2b, docs/CONTENT_CONVENTIONS.md 1)
 MODIFIER = {("attack_roll",): (S({"stat", "duration"}), S({"bonus", "die", "mode", "when"} | _M)),
@@ -65,7 +68,7 @@ MODIFIER = {("attack_roll",): (S({"stat", "duration"}), S({"bonus", "die", "mode
             ("attacks_against",): (S({"stat", "duration", "mode"}), S({"when"} | _M)),
             ("no_reactions", "no_healing"): (S({"stat", "duration"}), S(_M))}   # 7.2u markers
 REACTION_EFFECT = {("ac_bonus",): (S({"kind", "bonus"}), S()),
-                   ("reduce_damage",): (S({"kind"}), S({"fraction", "dice"})),
+                   ("reduce_damage",): (S({"kind"}), S({"fraction", "dice", "applies_to_attack"})),   # 7.2zb applies_to_attack
                    ("impose_disadvantage",): (S({"kind"}), S()),
                    ("retaliate",): (S({"kind", "damage"}), S({"save", "on_success"})),
                    ("attack",): (S({"kind", "attack_id"}), S()),
@@ -384,6 +387,45 @@ class BardHooks72za(unittest.TestCase):
         self.assertEqual(c2["reaction_effect"]["properties"]["applies_to"]["$ref"], "#/$defs/roll_kind_list")
         sub = [a for a in c2["reaction_effect"]["allOf"] if a["if"]["properties"]["kind"].get("const") == "subtract_roll"][0]
         self.assertEqual(set(sub["then"]["propertyNames"]["enum"]), {"kind", "dice", "applies_to"})
+
+
+class MonkWarlockHooks72zb(unittest.TestCase):
+    """VERSION_BUMP_BATCH 7.2zb: the closed spell_mod arm, applies_to_attack, pick_one and the bonus_action_grant usage pool arm."""
+    SPELL_MOD = (S({"kind", "spell"}), S({"damage_bonus_ability", "on_hit_push_ft"}))
+
+    def test_spell_mod_closed(self):
+        c2 = load("common/v2.schema.json")["$defs"]
+        t = c2["spell_mod_effect"]
+        self.assertFalse(t["additionalProperties"])
+        self.assertEqual(set(t["required"]), self.SPELL_MOD[0])
+        self.assertEqual(set(t["properties"]), self.SPELL_MOD[0] | self.SPELL_MOD[1])
+        self.assertEqual(t["anyOf"], [{"required": ["damage_bonus_ability"]}, {"required": ["on_hit_push_ft"]}])
+        push = t["properties"]["on_hit_push_ft"]
+        self.assertEqual((push["minimum"], push["maximum"], push["multipleOf"]), (5, 30, 5))
+        arms = {a["$ref"].rsplit("/", 1)[1] for a in c2["effect"]["anyOf"][2]["oneOf"] if "$ref" in a}
+        self.assertIn("spell_mod_effect", arms)
+        nots = [a["properties"]["kind"]["not"] for a in c2["effect_live"]["allOf"] if "properties" in a]
+        self.assertIn({"const": "spell_mod"}, nots)
+
+    def test_applies_to_attack_and_pick_one(self):
+        c2 = load("common/v2.schema.json")["$defs"]
+        at = c2["reaction_effect"]["properties"]["applies_to_attack"]
+        self.assertEqual(at["items"]["enum"], ["melee_weapon", "ranged_weapon", "melee_spell", "ranged_spell"])
+        self.assertTrue(at["uniqueItems"])
+        self.assertEqual(at["minItems"], 1)
+        self.assertEqual(c2["on_event_effect"]["properties"]["pick_one"]["type"], "boolean")
+
+    def test_bonus_action_grant_usage_is_the_pool_arm(self):
+        c1 = load("common/v1.schema.json")["$defs"]
+        c2 = load("common/v2.schema.json")["$defs"]
+        arm = [a for a in c1["effect"]["allOf"] if a["if"]["properties"]["kind"].get("const") == "bonus_action_grant"][0]
+        u = arm["then"]["properties"]["usage"]
+        self.assertFalse(u["additionalProperties"])
+        self.assertEqual(set(u["properties"]), {"kind", "pool", "cost"})
+        self.assertEqual(set(u["required"]), {"kind", "pool"})
+        pool = [a for a in c2["usage"]["allOf"] if a["if"]["properties"]["kind"].get("const") == "pool"][0]
+        self.assertEqual(set(pool["then"]["propertyNames"]["enum"]), set(u["properties"]))
+        self.assertEqual(u["properties"]["cost"], c2["usage"]["properties"]["cost"])
 
 
 class SpellMaterialObject(unittest.TestCase):

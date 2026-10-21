@@ -236,10 +236,14 @@ enum class PredicateKind : uint8_t {
     // appended (7.2y, T&C Colossus Slayer): the subject (the creature hit) is below its hit point maximum. Hit triggers run
     // before the hit's damage, so this reads the hp the target had when it was hit.
     TargetBelowMaxHp,
+    // appended (7.2zb, T&C Open Hand Technique): the hit comes from the compiled bonus attack whose BonusAttack::id is `mask`
+    // (Flurry of Blows: spell_id_of("<archetype>#bonus#flurry_of_blows")). False for every other attack and outside hits.
+    AttackFromFeature,
 };
 enum class WeaponIs : uint8_t { Melee, Ranged, Finesse, FinesseOrRanged };
 struct Predicate { PredicateKind kind = PredicateKind::NotCrit; int16_t a = 0, b = 0; uint32_t mask = 0; };
-enum class RiderKind : uint8_t { ExtraDamage, SaveCondition, ApplyCondition, HealSelf, TempHp, SetHp, BonusAttack, AreaSave, Spend };
+enum class RiderKind : uint8_t { ExtraDamage, SaveCondition, ApplyCondition, HealSelf, TempHp, SetHp, BonusAttack, AreaSave, Spend,
+                                Effect /* 7.2zb: any synthetic SpellDef `spell_id`, resolved with its extra effects (forced_move, apply_modifier riders) */ };
 struct RiderEffect {
     RiderKind kind = RiderKind::ExtraDamage;
     DiceExpr dice{0, 0, 0};               // ExtraDamage: final dice (the loader resolves `scale.per_levels` for the owner's level)
@@ -267,6 +271,9 @@ struct Trigger {
     // appended (EC deferred monsters, flagged): usage recharge N-6. A registered ActionUse keyed (owner, id) gates it: firing
     // expends it, the owner's turn start rolls a d6 like recharge actions (RechargeRolled). 0 = no recharge.
     uint8_t recharge_min = 0;
+    // appended (7.2zb, Open Hand Technique): with choice ask (hit triggers), the HitRider window offers one option per
+    // non-Spend effect and only the chosen one applies (ReactionOption::slot_level = 1 + effect index). Auto picks the first.
+    bool pick_one = false;
 };
 
 // A mechanical reaction compiled from content (row 11): offered in the Damaged / AllyAttacked windows of its owner.
@@ -288,7 +295,17 @@ struct Reaction {
     bool requires_sight = false;
     // appended (7.2za): SubtractRoll: the roll kinds (kRoll* bits) of the creature's roll it may answer; 0 = attack only (R-G7).
     uint8_t applies = 0;
+    // appended (7.2zb Deflect Missiles): ReduceDamage only for damage from an attack hit of these kinds (kAttackKind* bits);
+    // 0 = any damage, as before.
+    uint8_t attack_kinds = 0;
 };
+constexpr uint8_t kAttackKindMeleeWeapon = 1, kAttackKindRangedWeapon = 2, kAttackKindMeleeSpell = 4, kAttackKindRangedSpell = 8;
+// appended (7.2zb, T&C Patient Defense / Step of the Wind): a bonus-action grant that costs pool points. Combatant::bonus_action_costs:
+// taking `kind` as a bonus action needs `cost` from `pool` and spends it (ResourceSpent). The grant bit is in bonus_action_grants.
+struct BonusActionCost { ActionKind kind = ActionKind::Dash; uint32_t pool = 0; uint16_t cost = 1; };
+// appended (7.2zb, T&C Agonizing / Repelling Blast): a per-spell modification for each attack hit (beam) of spell `spell_id`:
+// add the modifier of `damage_ability` (0xFF none) to its damage, push the target `push_ft` (0 none) away (forced movement).
+struct SpellMod { uint32_t spell_id = 0; uint8_t damage_ability = 0xFF; uint16_t push_ft = 0; };
 
 // ---- Timed modifiers (version-bump batch, row 12; docs/proposals/VERSION_BUMP_BATCH.md section 6) ----
 // A sourced, timed change to one number or roll. Integers only. `bonus_table` is resolved by the loader into `bonus`.
@@ -590,6 +607,9 @@ struct Combatant {
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
     // appended (control conditions, 7.2v): challenge rating * 8 (CR 1/2 = 4) for Destroy Undead; -1 = unknown (never destroyed).
     int16_t cr8 = -1;
+    // appended (7.2zb, static content, not folded): costed bonus-action grants and per-spell modifications (see the structs).
+    std::vector<BonusActionCost> bonus_action_costs;
+    std::vector<SpellMod> spell_mods;
 };
 
 void add_condition(Combatant&, Condition);

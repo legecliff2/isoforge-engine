@@ -1,0 +1,22 @@
+{
+  "base": "monsters/wolf.json",
+  "sets": [
+    [
+      [
+        "traits",
+        2
+      ],
+      {
+        "id": "agonizing_blast",
+        "name": "x",
+        "effect": {
+          "kind": "spell_mod",
+          "spell": "srd51.spell.eldritch_blast",
+          "damage_bonus_ability": "cha"
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "spell_mod: not valid on monsters"
+}

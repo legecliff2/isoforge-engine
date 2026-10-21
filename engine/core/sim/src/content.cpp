@@ -227,6 +227,50 @@ std::optional<std::string> compile_rider(const std::string& where, const Json& r
         out.push_back(e);
         return std::nullopt;
     }
+    if (k == "forced_move") {   // 7.2zb Open Hand: a synthetic SpellDef: [Save (fixed DC) ->] ForcedMove push (forced-movement path)
+        for (auto it = r.begin(); it != r.end(); ++it)
+            if (it.key() != "kind" && it.key() != "save" && it.key() != "mode" && it.key() != "feet" && it.key() != "when")
+                return where + ": forced_move: unknown key '" + it.key() + "'";
+        if (r.value("mode", "") != "push") return where + ": forced_move: mode must be push";
+        const int ft = geti(r, "feet");
+        if (ft < 5 || ft > 60 || ft % 5 != 0) return where + ": forced_move: feet must be 5..60, a multiple of 5";
+        rules5e::SpellDef d;
+        d.content_id = rc.arch + "#forced_move." + std::to_string(rc.synth.size());
+        d.id = rules5e::spell_id_of(d.content_id);
+        d.level = 0; d.casting_time = rules5e::CastingTime::Action; d.is_spell = false; d.magical = false; d.targets = 1;
+        rules5e::ForcedMoveSpec fm{}; fm.mode = 1; fm.feet = uint16_t(ft);
+        if (auto sv = r.find("save"); sv != r.end()) {
+            const auto ab = sv->is_object() ? ability_of(sv->value("ability", "")) : std::nullopt;
+            const int dc = sv->is_object() ? geti(*sv, "dc") : 0;
+            if (!ab || dc < 1 || dc > 30) return where + ": forced_move: bad save";
+            d.kind = rules5e::SpellEffectKind::Save; d.save_ability = *ab; d.fixed_dc = int8_t(dc); d.on_save = rules5e::OnSave::None;
+            rules5e::SpellEffect x; x.kind = rules5e::SpellEffectKind::ForcedMove; x.forced = fm; x.affected_only = true;   // failed savers
+            d.extra_effects.push_back(x);
+        } else { d.kind = rules5e::SpellEffectKind::ForcedMove; d.forced = fm; }
+        e.kind = RK::Effect; e.spell_id = d.id;
+        rc.synth.push_back(std::move(d));
+        out.push_back(e);
+        return std::nullopt;
+    }
+    if (k == "apply_modifier") {   // 7.2zb Open Hand: a synthetic ApplyModifier SpellDef on the creature hit (no_reactions)
+        for (auto it = r.begin(); it != r.end(); ++it)
+            if (it.key() != "kind" && it.key() != "modifier" && it.key() != "when")
+                return where + ": apply_modifier: unknown key '" + it.key() + "'";
+        const auto m = r.find("modifier");
+        if (m == r.end()) return where + ": apply_modifier needs modifier";
+        rules5e::SpellDef d;
+        d.content_id = rc.arch + "#apply_modifier." + std::to_string(rc.synth.size());
+        d.id = rules5e::spell_id_of(d.content_id);
+        d.level = 0; d.casting_time = rules5e::CastingTime::Action; d.is_spell = false; d.magical = false; d.targets = 1;
+        d.kind = rules5e::SpellEffectKind::ApplyModifier;
+        if (auto er = rules5e_content::parse_modifier(*m, d.modifier); !er.empty()) return where + ": apply_modifier: " + er;
+        if (d.modifier.applies_to == rules5e::ModAppliesTo::Self) return where + ": apply_modifier: applies to the creature hit, not self";
+        d.modifier.id = rules5e::spell_id_of(d.content_id + "#modifier");
+        e.kind = RK::Effect; e.spell_id = d.id;
+        rc.synth.push_back(std::move(d));
+        out.push_back(e);
+        return std::nullopt;
+    }
     if (k == "save_condition") {   // a synthetic Save SpellDef (fixed DC, damage, condition); same_as_weapon is a load error (bad damage type)
         Json act = r;
         act["kind"] = "save_effect";
@@ -445,6 +489,12 @@ std::optional<std::string> compile_on_event(const std::string& arch, const std::
     const std::string ch = effect.contains("choice") && effect["choice"].is_string() ? effect["choice"].get<std::string>() : "auto";
     t.choice = ch == "auto" ? 0 : ch == "ask" ? 1 : ch == "never" ? 2 : 255;
     if (t.choice == 255) return where + ": bad choice";
+    if (auto po = effect.find("pick_one"); po != effect.end()) {   // 7.2zb Open Hand: the attacker applies one of effects[]
+        if (!po->is_boolean()) return where + ": pick_one must be a boolean";
+        t.pick_one = po->get<bool>();
+        if (t.pick_one && (t.choice != 1 || (t.on != rules5e::TriggerOn::Hit && t.on != rules5e::TriggerOn::Crit)))
+            return where + ": pick_one needs choice ask on a hit trigger";
+    }
     // usage (common@2 $defs/usage): at_will = none; per_day / per_rest {uses, rest} = a trigger-owned pool
     // "<owner>#usage" (registered by Combat::create like resources[], recharged by rests, folded with the pools, 0xA3) paid by a
     // Spend rider; pool {pool, cost} = Spend from a declared resources[] pool. recharge stays unsupported (listed, not compiled).
@@ -491,6 +541,14 @@ std::optional<std::string> compile_on_event(const std::string& arch, const std::
         for (const Json& p : *w) {
             rules5e::Predicate pr;
             if (auto e = compile_predicate(where, p, pr)) return e;
+            if (pr.kind == rules5e::PredicateKind::AttackFromFeature) {   // 7.2zb: the compiled bonus attack of that feature
+                const std::string fid = p.value("feature", "");
+                bool feature_found = false;
+                if (auto fs = doc.find("features"); fs != doc.end() && fs->is_array())
+                    for (const Json& f : *fs) feature_found = feature_found || (f.is_object() && f.value("id", "") == fid);
+                if (!feature_found) return where + ": attack_from_feature names unknown feature '" + fid + "'";
+                pr.mask = rules5e::spell_id_of(arch + "#bonus#" + fid);
+            }
             t.when.push_back(pr);
         }
     }
@@ -498,6 +556,8 @@ std::optional<std::string> compile_on_event(const std::string& arch, const std::
     if (ef == effect.end() || !ef->is_array() || ef->empty()) return where + ": needs effects[]";
     for (const Json& r : *ef) if (auto e = compile_rider(where, r, doc, rc, t.effects)) return e;
     if (usage_spend) t.effects.push_back(*usage_spend);
+    if (t.pick_one)
+        for (const auto& e : t.effects) if (e.kind == rules5e::RiderKind::Spend && e.slot != 0) return where + ": pick_one cannot spend a spell slot";
     return add_trigger(arch, owner, 0, std::move(t), ids, c);
 }
 
@@ -978,6 +1038,16 @@ std::optional<std::string> compile_reactions(Archetype& a, const Json& doc, cons
             if (ef->contains("fraction")) x.half = true;
             else if (auto d = parse_dice(ef->contains("dice") && (*ef)["dice"].is_string() ? (*ef)["dice"].get<std::string>() : "")) x.dice = *d;
             else return where + ": reduce_damage needs fraction or dice";
+            if (auto at = ef->find("applies_to_attack"); at != ef->end()) {   // 7.2zb Deflect Missiles
+                if (!at->is_array() || at->empty()) return where + ": applies_to_attack must be a non-empty list";
+                for (const Json& v : *at) {
+                    const std::string n = v.is_string() ? v.get<std::string>() : "";
+                    const uint8_t b = n == "melee_weapon" ? rules5e::kAttackKindMeleeWeapon : n == "ranged_weapon" ? rules5e::kAttackKindRangedWeapon
+                                    : n == "melee_spell" ? rules5e::kAttackKindMeleeSpell : n == "ranged_spell" ? rules5e::kAttackKindRangedSpell : 0;
+                    if (b == 0 || (x.attack_kinds & b)) return where + ": applies_to_attack: bad or repeated '" + n + "'";
+                    x.attack_kinds = uint8_t(x.attack_kinds | b);
+                }
+            }
         } else if (ek == "subtract_roll") {   // R-G7 Cutting Words: subtract `dice` (the bardic die) from an enemy's attack roll
             if (!attack_rolled) return where + ": subtract_roll needs the roll_attack window";
             x.kind = RE::SubtractRoll;
