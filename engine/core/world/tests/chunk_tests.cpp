@@ -123,7 +123,7 @@ TEST_CASE("decode errors") {
     j = minimal(); j["triggers"] = Json::parse(R"([{"id":"t"}])");          err(j);   // kind required
     j = minimal(); j["triggers"] = Json::parse(R"(["raw string"])");        err(j);
     j = minimal(); j["content_hash"] = "deadbeefdeadbeef";                   CHECK(err(j).find("mismatch") != std::string::npos);
-    j = minimal(); j["format_version"] = 2;                                  err(j);
+    j = minimal(); j["format_version"] = 3;                                  err(j);
 }
 
 TEST_CASE("provider errors: missing file, coord mismatch, wrong origin, uncovered coord") {
@@ -166,6 +166,7 @@ TEST_CASE("content_hash test vectors match tools/chunk_hash/chunk_hash.py") {
     const std::pair<const char*, const char*> vectors[] = {
         {"v1_minimal.json", "01fa4a2fde49834b"},
         {"v2_small.json", "963a7d22563ff71a"},
+        {"v3_lights.json", "cb3d7a42055e8f52"},   // chunk@2: lights (one with a 'visual' block) + ambient
     };
     for (auto [file, hex] : vectors) {
         auto lr = reg.load_file(std::string(CHUNK_HASH_VECTORS) + "/" + file);
@@ -192,4 +193,44 @@ TEST_CASE("sample.vertical_slice chunk 0_0_0 (pack and frozen fl1 copy) loads vi
         CHECK(r.chunk->spawns[0].stable_id == 0xE9CA1F53u);
         CHECK(r.chunk->spawns[1].stable_id == 0x8654AAD2u);
     }
+}
+
+TEST_CASE("chunk@2: lights + ambient decode; visual is dropped and never hashed; chunk@1 hashes unchanged; migration") {
+    auto j = minimal();
+    const uint64_t h1 = chunk_from_json(j).chunk->content_hash;
+    j["$schema"] = "chunk@2";
+    j["format_version"] = 2;
+    CHECK(chunk_from_json(j).chunk->content_hash == h1);   // no chunk@2 fields: same hash as chunk@1
+    j["lights"] = Json::parse(R"([{"tile":{"x":3,"y":4},"bright_ft":20,"dim_ft":20,"preset":"srd51.core.light.torch",
+                                  "visual":{"colour":[255,160,64]}}])");
+    j["ambient"] = Json::parse(R"({"kind":"sun","level":"bright"})");
+    auto c = chunk_from_json(j);
+    REQUIRE_MESSAGE(c.chunk, c.error);
+    REQUIRE(c.chunk->lights.size() == 1);
+    CHECK(c.chunk->lights[0].tile == eng::Vec2i{3, 4});
+    CHECK(c.chunk->lights[0].stable_id == chunk_light_stable_id(c.chunk->coord, 0));
+    CHECK(c.chunk->lights[0].preset == "srd51.core.light.torch");
+    CHECK(c.chunk->ambient == Chunk::Ambient{1, 2});
+    CHECK(c.chunk->content_hash != h1);
+    auto j2 = j;
+    j2["lights"][0]["visual"] = Json::parse(R"({"colour":[0,0,255],"flicker":"none"})");
+    CHECK(chunk_from_json(j2).chunk->content_hash == c.chunk->content_hash);   // presentation moves no hash
+    j2["lights"][0].erase("visual");
+    CHECK(chunk_from_json(j2).chunk->content_hash == c.chunk->content_hash);
+    auto err = [](Json x) { auto r = chunk_from_json(x); CHECK(r.status == ChunkStatus::Error); return r.error; };
+    auto k = j; k["lights"][0]["bright_ft"] = 105;                 err(k);   // 105 + 20 > 120
+    k = j; k["lights"][0]["dim_ft"] = 7;                            err(k);   // not a multiple of 5
+    k = j; k["lights"][0]["stable_id"] = 1;                         err(k);
+    k = j; k["lights"][0]["colour"] = 1;                            err(k);   // presentation only inside 'visual'
+    k = j; k["ambient"]["kind"] = "lava";                           err(k);
+    k = j; k["format_version"] = 1;                                 err(k);   // chunk@1 can't carry lights
+    // The registry migrates chunk@1 documents (format_version follows).
+    eng::assets::SchemaRegistry reg;
+    register_chunk_schema(reg);
+    auto m = minimal();
+    m["format_version"] = 1;
+    auto lr = reg.load(m);
+    REQUIRE_MESSAGE(lr.ok, lr.error);
+    CHECK(lr.data["format_version"] == 2);
+    CHECK(chunk_from_json(lr.data).chunk->content_hash == h1);
 }
