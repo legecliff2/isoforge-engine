@@ -71,8 +71,9 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Extra Attack (Barbarian) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
 | Fast Movement (Barbarian) | 5 | baked into `speed.walk` 40 (no heavy armor is ever worn); descriptive feature, no `effect` | yes (static number) |
 | Spellcasting (Bard) | 1-5 | `spellcasting {ability cha, caster_level, slots, spells}`: Vicious Mockery; Cure Wounds, Healing Word, Thunderwave; + Hold Person, Lesser Restoration, Silence at 3; + Dispel Magic, Stinking Cloud at 5 (every shipped bard spell up to the top slot; 1 of 2-3 cantrips) | yes |
-| Cutting Words (Lore) | 3-5 | `reactions[]` `{window roll_attack, effect subtract_roll 1d6 (1d8 at 5), usage {pool bardic_inspiration, cost 1}}` (R-G7, sim #114). **Partial**: attack rolls only; subtracting from an ability check or a damage roll, and the charm-immunity exception, are not modelled | yes |
-| Bardic Inspiration pool (Bard) | 3-5 | `resources[]` `bardic_inspiration {max {plus_ability cha, min 1}, recharge long_rest}` (short_rest at 5). Declared from 3rd only, where Cutting Words spends it (a pool nothing spends is a check-12 warning) | yes |
+| Cutting Words (Lore) | 3-5 | `reactions[]` `{window roll_attack, effect {subtract_roll 1d6 (1d8 at 5), applies_to [attack, check, damage]}, usage {pool bardic_inspiration, cost 1}}` (R-G7, sim #114; applies_to 7.3a, #214). **Partial**: the can't-hear and charm-immunity exceptions are not modelled | yes |
+| Bardic Inspiration (Bard) | 1-5 | `features[]` `bardic_inspiration` `{grant_die, die 1d6, scale [{5, 1d8}], class bard, range_ft 60, duration {rounds, 100}, applies_to [attack, save, check], cost bonus_action, usage {pool bardic_inspiration, cost 1}}` (7.3a, #214: an ally other than you, not deafened; one held die per creature) + `resources[]` `bardic_inspiration {max {plus_ability cha, min 1}, recharge long_rest}` (short_rest at 5), also spent by Cutting Words from 3rd | yes |
+| Jack of All Trades (Bard) | 2-5 | `half_proficiency {on [checks, initiative]}` (7.3a, #214) | yes |
 | Font of Inspiration (Bard) | 5 | the pool's `recharge: short_rest`; descriptive feature, no `effect` | yes (pool recharge) |
 | Expertise, Bonus Proficiencies (Bard, Lore) | 3-5 | baked into `skills` (Performance and Persuasion doubled; Arcana, Insight, Perception added); descriptive features, no `effect` | yes (static numbers) |
 | Bard College | 3 | `classes[0].subclass` = `lore` | descriptive |
@@ -148,8 +149,6 @@ Kept as a `features[]` entry with the SRD text and no `effect` (the test pins th
 
 | feature (mirror index) | class / level | why it is not mechanical | gap id / owner |
 |---|---|---|---|
-| Bardic Inspiration, granting the die (`bardic-inspiration-d6`, `-d8`) | Bard 1, 5 | A bonus action gives one creature within 60 ft that can hear you a d6 (d8 at 5) to add to one ability check, attack roll or save within 10 minutes, after seeing the d20. No content key grants a held die to another creature: `apply_modifier {stat attack_roll / save, die 1d6, consume next_attack}` would apply it unconditionally and to one roll kind per row, not as the ally's choice; and `apply_modifier` with a pool `usage` is not loaded (same blocker as Rage). So levels 1-2 declare no pool | Engine Core (pool `usage` on `apply_modifier`), Rules (an inspiration token: held die, any of three roll kinds, spent by choice) |
-| Jack of All Trades (`jack-of-all-trades`) | Bard 2 | Half proficiency (rounded down) on ability checks without proficiency. Its only combat effect is initiative (a Dexterity check) and contested checks such as escaping a grapple; no content key adds to unproficient checks or initiative | Rules (check bonus / initiative bonus key) |
 | Song of Rest (`song-of-rest-d6`) | Bard 2 | Extra 1d6 HP to allies who spend Hit Dice during a short rest: rests and Hit Dice are not simulated inside an encounter | - (out of combat scope) |
 
 ## Descriptive only: no combat rule (Druid)
