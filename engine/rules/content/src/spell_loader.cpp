@@ -625,7 +625,8 @@ SpellLoad spell_from_json(const Json& j) {
             if (!m["item"].is_string() || m["item"].get<std::string>().empty()) return err("components.m.item invalid");
             s.material_item = m["item"].get<std::string>();
         }
-        if (m.contains("consumed") && !m.contains("cost_cp")) return err("'cost_cp' is a dependency of 'consumed'");
+        // consumed without cost_cp loads (Protection from Evil and Good); it has no effect: the sim consumes a material only
+        // when material_cost_cp > 0 (combat.cpp), so nothing is checked or removed.
     }
     if (s.components == 0) return err("components: at least one of v, s, m");
     if (j.contains("ignores_cover")) {   // 7.2t: no benefit from half / three-quarters cover (Sacred Flame)
