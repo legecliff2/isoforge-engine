@@ -109,3 +109,75 @@ TEST_CASE("light map: one R8 texture per chunk from stream deltas; dirty-rect up
     CHECK(dev.null.live_textures() == 0);
     CHECK(dev.null.errors() == 0);
 }
+
+TEST_CASE("fog: mask decode follows the sim::TileMask layout (bit = y*32+x, word = bit/64, LSB-first)") {
+    FogMask m{};
+    m[0] |= uint64_t(1) << 0;    // (0, 0)
+    m[0] |= uint64_t(1) << 63;   // (31, 1): last bit of word 0
+    m[1] |= uint64_t(1) << 0;    // (0, 2): first bit of word 1
+    m[7] |= uint64_t(1) << 37;   // bit 485 = (5, 15)
+    m[15] |= uint64_t(1) << 63;  // (31, 31)
+    int set = 0;
+    for (int y = 0; y < 32; ++y)
+        for (int x = 0; x < 32; ++x) set += fog_mask_test(m, x, y);
+    CHECK(set == 5);
+    CHECK(fog_mask_test(m, 0, 0));
+    CHECK(fog_mask_test(m, 31, 1));
+    CHECK_FALSE(fog_mask_test(m, 31, 0));
+    CHECK(fog_mask_test(m, 0, 2));
+    CHECK(fog_mask_test(m, 5, 15));
+    CHECK(fog_mask_test(m, 31, 31));
+
+    std::array<uint8_t, kLightTiles> t{};
+    decode_fog(m, m, t);   // seen + explored
+    CHECK(t[0] == fog_texel::kSeen);
+    CHECK(t[size_t(1 * 32 + 31)] == fog_texel::kSeen);
+    CHECK(t[size_t(15 * 32 + 5)] == fog_texel::kSeen);
+    CHECK(t[1] == fog_texel::kUnseen);
+}
+
+TEST_CASE("fog: three states (unseen black, explored dimmed, seen normal) and tints") {
+    FogMask seen{}, explored{};
+    seen[0] = 1;                       // (0,0) seen now
+    explored[0] = 1 | 2;               // (1,0) explored only
+    std::array<uint8_t, kLightTiles> t{};
+    decode_fog(seen, explored, t);
+    CHECK(fog_of_texel(t[0]) == Fog::Visible);
+    CHECK(fog_of_texel(t[1]) == Fog::Remembered);
+    CHECK(fog_of_texel(t[2]) == Fog::Unexplored);
+    const uint8_t bright = pack_light(LightLevel::Bright, 0);
+    const Color v = light_tint(bright, Fog::Visible), r = light_tint(bright, Fog::Remembered), u = light_tint(bright, Fog::Unexplored);
+    CHECK(v.r == 1.f);
+    CHECK(r.r > 0.f);
+    CHECK(r.r < v.r);
+    CHECK(u.r == 0.f); CHECK(u.g == 0.f); CHECK(u.b == 0.f);
+}
+
+TEST_CASE("fog maps: one R8 texture per chunk, changed-texel uploads only, removed frees") {
+    RecDevice dev;
+    {
+        FogMaps f(dev);
+        const LightChunkKey k{0, 0, 0}, k2{1, 0, 0};
+        f.on_stream_delta(std::array{k, k2}, {});
+        CHECK(f.chunks() == 2);
+        CHECK(dev.last_fmt == render::Format::R8_UNORM);
+        CHECK(f.fog(k, {3, 3}) == Fog::Unexplored);
+        FogMask seen{}, explored{};
+        seen[1] = uint64_t(1) << 4;   // (4, 2)
+        explored = seen;
+        explored[1] |= uint64_t(1) << 5;   // (5, 2)
+        CHECK(f.update(k, seen, explored));
+        REQUIRE(dev.rects.size() == 1);
+        CHECK(dev.rects[0] == RectI{4, 2, 2, 1});
+        CHECK(f.fog(k, {4, 2}) == Fog::Visible);
+        CHECK(f.fog(k, {5, 2}) == Fog::Remembered);
+        CHECK(f.update(k, seen, explored));   // unchanged: no upload
+        CHECK(dev.rects.size() == 1);
+        CHECK_FALSE(f.update({9, 9, 0}, seen, explored));
+        f.on_stream_delta({}, std::array{k2});
+        CHECK(f.chunks() == 1);
+        CHECK(dev.destroyed == 1);
+        CHECK(f.fog(k2, {0, 0}) == Fog::Unexplored);
+    }
+    CHECK(dev.destroyed == 2);
+}
