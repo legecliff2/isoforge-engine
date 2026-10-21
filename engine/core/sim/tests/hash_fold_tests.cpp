@@ -296,3 +296,33 @@ TEST_CASE("Combat::log_hash: the mark inputs (7.2zc mark_ability / move_mark) fo
     log[1].step.request.move_mark = false;
     CHECK(c0->log_hash() == h0);   // not folded when unset: older logs hash as before
 }
+
+TEST_CASE("Combat::log_hash: ward_alternate (0xCD) and heal_split (0xCE), 7.2zd, fold only when set") {
+    ContentLibrary l;
+    REQUIRE(l.load(sample_set()).empty());
+    const auto ch = arena();
+    ecs::Registry r0;
+    auto c0 = Combat::create(r0, ch, l, 9);
+    REQUIRE(c0);
+    for (int i = 0; i < 2; ++i) {
+        Command e;
+        e.request = {rules5e::current_actor(c0->state()), rules5e::ActionKind::EndTurn};
+        REQUIRE(c0->submit(e).ok);
+    }
+    auto& log = CombatTestAccess::log(*c0);
+    const uint64_t h0 = c0->log_hash();
+    log[1].step.request.ward_alternate = 3;
+    const uint64_t hw = c0->log_hash();
+    CHECK(hw != h0);
+    log[1].step.request.ward_alternate = 4;
+    CHECK(c0->log_hash() != hw);
+    log[1].step.request.ward_alternate = 0;
+    CHECK(c0->log_hash() == h0);
+    log[1].step.request.heal_split = {{3, 6}};
+    const uint64_t hs = c0->log_hash();
+    CHECK(hs != h0);
+    log[1].step.request.heal_split = {{3, 5}, {4, 1}};
+    CHECK(c0->log_hash() != hs);
+    log[1].step.request.heal_split.clear();
+    CHECK(c0->log_hash() == h0);   // not folded when empty: older logs hash as before
+}

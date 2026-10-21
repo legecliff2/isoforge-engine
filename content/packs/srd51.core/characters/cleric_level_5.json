@@ -70,6 +70,42 @@
         "flat": 2,
         "per_spell_level": true
       }
+    },
+    {
+      "id": "channel_divinity",
+      "name": "Channel Divinity",
+      "description": "At 2nd level, you gain the ability to channel divine energy directly from your deity, using that energy to fuel magical effects. You start with two such effects: Turn Undead and an effect determined by your domain. Some domains grant you additional effects as you advance in levels, as noted in the domain description. When you use your Channel Divinity, you choose which effect to create. You must then finish a short or long rest to use your Channel Divinity again. Some Channel Divinity effects require saving throws. When you use such an effect from this class, the DC equals your cleric spell save DC. Beginning at 6th level, you can use your Channel Divinity twice between rests, and beginning at 18th level, you can use it three times between rests. When you finish a short or long rest, you regain your expended uses. (Modelled: resources[] channel_divinity, 1 use per short or long rest, spent by Turn Undead or Preserve Life.)"
+    },
+    {
+      "id": "turn_undead",
+      "name": "Channel Divinity: Turn Undead",
+      "description": "As an action, you present your holy symbol and speak a prayer censuring the undead. Each undead that can see or hear you within 30 feet of you must make a Wisdom saving throw. If the creature fails its saving throw, it is turned for 1 minute or until it takes any damage. A turned creature must spend its turns trying to move as far away from you as it can, and it can't willingly move to a space within 30 feet of you. It also can't take reactions. For its action, it can use only the Dash action or try to escape from an effect that prevents it from moving. If there's nowhere to move, the creature can use the Dodge action. (Modelled: actions[] turn_undead, a save_effect with control turned on undead within 30 ft.)"
+    },
+    {
+      "id": "preserve_life",
+      "name": "Channel Divinity: Preserve Life",
+      "description": "Starting at 2nd level, you can use your Channel Divinity to heal the badly injured. As an action, you present your holy symbol and evoke healing energy that can restore a number of hit points equal to five times your cleric level. Choose any creatures within 30 feet of you, and divide those hit points among them. This feature can restore a creature to no more than half of its hit point maximum. You can't use this feature on an undead or a construct. (Modelled: heal_pool split form, 5 x cleric level divided at use, range 30 ft, cap half_max, excludes undead and construct, spends channel_divinity.)",
+      "effect": {
+        "kind": "heal_pool",
+        "cost": "action",
+        "usage": {
+          "kind": "pool",
+          "pool": "channel_divinity"
+        },
+        "per_class_level": 5,
+        "class": "cleric",
+        "range_ft": 30,
+        "cap": "half_max",
+        "excludes_types": [
+          "undead",
+          "construct"
+        ]
+      }
+    },
+    {
+      "id": "destroy_undead",
+      "name": "Destroy Undead",
+      "description": "Starting at 5th level, when an undead fails its saving throw against your Turn Undead feature, the creature is instantly destroyed if its challenge rating is at or below a certain threshold. CR 1/2 or lower at 5th level. (Modelled: destroy_undead_max_cr8 4 on the turn_undead action.)"
     }
   ],
   "equipment": [
@@ -128,6 +164,30 @@
           "type": "piercing"
         }
       ]
+    },
+    {
+      "id": "turn_undead",
+      "name": "Channel Divinity: Turn Undead",
+      "kind": "save_effect",
+      "save": {
+        "ability": "wis",
+        "dc": 15
+      },
+      "range_ft": 30,
+      "control": "turned",
+      "target_creature_types": [
+        "undead"
+      ],
+      "duration": {
+        "kind": "rounds",
+        "n": 10
+      },
+      "usage": {
+        "kind": "pool",
+        "pool": "channel_divinity",
+        "cost": 1
+      },
+      "destroy_undead_max_cr8": 4
     }
   ],
   "spellcasting": {
@@ -143,10 +203,19 @@
       "srd51.spell.cure_wounds",
       "srd51.spell.healing_word",
       "srd51.spell.inflict_wounds",
+      "srd51.spell.sanctuary",
       "srd51.spell.hold_person",
       "srd51.spell.lesser_restoration",
       "srd51.spell.mass_healing_word",
       "srd51.spell.revivify"
     ]
-  }
+  },
+  "resources": [
+    {
+      "id": "channel_divinity",
+      "name": "Channel Divinity",
+      "max": 1,
+      "recharge": "short_rest"
+    }
+  ]
 }
