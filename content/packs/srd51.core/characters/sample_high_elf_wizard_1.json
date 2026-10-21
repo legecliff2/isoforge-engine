@@ -1,0 +1,174 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.sample_high_elf_wizard_1",
+  "name": "High Elf Wizard, level 1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "high_elf",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "chaotic good",
+  "level": 1,
+  "classes": [
+    {
+      "class": "wizard",
+      "level": 1,
+      "hit_die": "d6"
+    }
+  ],
+  "xp": 0,
+  "armor_class": {
+    "value": 13
+  },
+  "hit_points": {
+    "average": 7,
+    "formula": "1d6+1"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 8,
+    "dex": 16,
+    "con": 13,
+    "int": 16,
+    "wis": 12,
+    "cha": 10
+  },
+  "saving_throws": {
+    "int": 5,
+    "wis": 3
+  },
+  "skills": {
+    "arcana": 5,
+    "history": 5,
+    "perception": 3
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 13
+  },
+  "languages": [
+    "Common",
+    "Elvish",
+    "Draconic"
+  ],
+  "proficiency_bonus": 2,
+  "features": [
+    {
+      "id": "arcane_recovery",
+      "name": "Arcane Recovery",
+      "description": "You have learned to regain some of your magical energy by studying your spellbook. Once per day when you finish a short rest, you can choose expended spell slots to recover. The spell slots can have a combined level that is equal to or less than half your wizard level (rounded up), and none of the slots can be 6th level or higher. For example, if you're a 4th-level wizard, you can recover up to two levels worth of spell slots. You can recover either a 2nd-level spell slot or two 1st-level spell slots.",
+      "effect": {
+        "kind": "slot_recovery",
+        "class": "wizard",
+        "max_slot_level": 5,
+        "uses": 1
+      }
+    },
+    {
+      "id": "darkvision",
+      "name": "Darkvision",
+      "description": "You can see in dim light within 60 feet of you as if it were bright light, and in darkness as if it were dim light. You can't discern color in darkness, only shades of gray. (Modelled: senses.darkvision 60.)"
+    },
+    {
+      "id": "keen_senses",
+      "name": "Keen Senses",
+      "description": "You have proficiency in the Perception skill. (Modelled: skills.perception.)"
+    },
+    {
+      "id": "fey_ancestry",
+      "name": "Fey Ancestry",
+      "description": "You have advantage on saving throws against being charmed, and magic can't put you to sleep. (Description only.)"
+    },
+    {
+      "id": "trance",
+      "name": "Trance",
+      "description": "Elves don't need to sleep. Instead, they meditate deeply, remaining semiconscious, for 4 hours a day."
+    },
+    {
+      "id": "elf_weapon_training",
+      "name": "Elf Weapon Training",
+      "description": "You have proficiency with the longsword, shortsword, shortbow, and longbow."
+    },
+    {
+      "id": "cantrip",
+      "name": "Cantrip",
+      "description": "You know one cantrip of your choice from the wizard spell list. Intelligence is your spellcasting ability for it. (Modelled: ray of frost in spellcasting.spells.)"
+    },
+    {
+      "id": "extra_language",
+      "name": "Extra Language",
+      "description": "You can speak, read, and write one extra language of your choice. (Draconic.)"
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.dagger",
+      "equipped": true
+    },
+    "component_pouch",
+    "scholars_pack",
+    "spellbook"
+  ],
+  "actions": [
+    {
+      "id": "dagger",
+      "name": "Dagger",
+      "kind": "melee_weapon_attack",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "finesse",
+        "light",
+        "thrown"
+      ],
+      "damage": [
+        {
+          "dice": "1d4+3",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "dagger_thrown",
+      "name": "Dagger (thrown)",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 5,
+      "range": [
+        20,
+        60
+      ],
+      "targets": 1,
+      "properties": [
+        "finesse",
+        "light",
+        "thrown"
+      ],
+      "damage": [
+        {
+          "dice": "1d4+3",
+          "type": "piercing"
+        }
+      ]
+    }
+  ],
+  "spellcasting": {
+    "ability": "int",
+    "caster_level": 1,
+    "slots": {
+      "1": 2
+    },
+    "spells": [
+      "srd51.spell.acid_splash",
+      "srd51.spell.fire_bolt",
+      "srd51.spell.poison_spray",
+      "srd51.spell.ray_of_frost",
+      "srd51.spell.magic_missile",
+      "srd51.spell.shield"
+    ]
+  }
+}
