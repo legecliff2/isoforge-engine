@@ -60,7 +60,7 @@ public:
 private:
     // Memoised line of sight (an optimisation only: answers equal light_reaches). 0 unknown, 1 clear, 2 blocked.
     struct LosMemo {
-        Vec2i lo{}, hi{};
+        Vec2i lo, hi;   // no default member initialisers: clang rejects optional<LosMemo>::emplace() in the enclosing class
         std::vector<uint8_t> wall;
         std::map<Vec2i, std::vector<uint8_t>> by_tile;
     };
