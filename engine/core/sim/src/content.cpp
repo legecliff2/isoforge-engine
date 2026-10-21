@@ -1714,6 +1714,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                         return a.id + ": equipment value_gp must be a non-negative integer";
                     ent.value_gp = uint32_t(v->get<int64_t>());
                 }
+            if (e.is_object())
+                if (auto q = e.find("equipped"); q != e.end() && q->is_boolean()) ent.equipped = q->get<bool>();
             a.equipment.push_back(std::move(ent));
         }
     by_id_[a.id] = std::move(a);
@@ -1736,6 +1738,16 @@ std::vector<std::string> ContentLibrary::load(const assets::PackSet& packs) {
         const std::string& pack_id = packs.packs()[d.pack].id;
         try {
             if (auto e = add_spell(d.doc.data)) errors.push_back(pack_id + ":" + d.path + ": " + *e);
+        } catch (const std::exception& ex) {
+            errors.push_back(pack_id + ":" + d.path + ": " + ex.what());
+        }
+    }
+    // item@1 (EQUIPMENT.md 9): the def table; no archetype reads it (only Combat with CombatOptions::equipment on).
+    for (const assets::PackDocument& d : packs.documents()) {
+        if (!d.doc.ok || d.doc.current.type != "item") continue;
+        const std::string& pack_id = packs.packs()[d.pack].id;
+        try {
+            if (auto e = add_item(d.doc.data)) errors.push_back(pack_id + ":" + d.path + ": " + *e);
         } catch (const std::exception& ex) {
             errors.push_back(pack_id + ":" + d.path + ": " + ex.what());
         }
