@@ -93,7 +93,7 @@ TEST_CASE("7.2za content: load errors") {
     auto bad = [&](const char* id, auto edit, const char* expect) {
         Json d = bard(id); edit(d);
         const auto e = lib.add(d, "character");
-        REQUIRE(e);
+        REQUIRE_MESSAGE(e, std::string(id));
         CHECK_MESSAGE(e->find(expect) != std::string::npos, *e);
     };
     bad("b1", [](Json& d) { feature(d, "bardic_inspiration")["effect"]["scale"] = Json::parse(R"([{"level": 10, "die": "1d10"}, {"level": 5, "die": "1d8"}])"); }, "scale levels must ascend");
@@ -103,6 +103,8 @@ TEST_CASE("7.2za content: load errors") {
     bad("b5", [](Json& d) { feature(d, "bardic_inspiration")["effect"]["bonus"] = 1; }, "unknown key 'bonus'");
     bad("b6", [](Json& d) { feature(d, "bardic_inspiration")["effect"]["cost"] = "free"; }, "cost must be action or bonus_action");
     bad("b7", [](Json& d) { feature(d, "bardic_inspiration")["effect"].erase("range_ft"); }, "range_ft must be");
+    bad("b8", [](Json& d) { feature(d, "bardic_inspiration")["effect"]["die"] = "1d6+1"; }, "grant_die needs die");   // #214 follow-up: plain NdM
+    bad("b9", [](Json& d) { feature(d, "bardic_inspiration")["effect"]["scale"][0]["die"] = "1d8+2"; }, "scale entries are {level, die}");
     bad("b8", [](Json& d) { feature(d, "jack_of_all_trades")["effect"]["on"] = Json::array({"checks", "checks"}); }, "half_proficiency: bad on");
     bad("b9", [](Json& d) { feature(d, "jack_of_all_trades")["effect"]["on"] = Json::array({"saves"}); }, "half_proficiency: bad on");
     Json m = load_json("content/packs/srd51.core/monsters/goblin.json");
