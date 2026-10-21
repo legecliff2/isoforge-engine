@@ -183,7 +183,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Disciple of Life (healing spells heal an extra 2 + spell level) | 1 | Done (7.2zc) | `heal_bonus` feature effect (`flat` 2, `per_spell_level` true); slot casts of level 1+ only. |
 | Channel Divinity (1/rest at L2, 2/rest at L6) | 2 | NEW (wiring) | Pool + `FeatureSpec` pool spend done in rules (#91, R-G5); feature compile and per-effect content pending. |
 | Channel Divinity: Turn Undead | 2 | NEW (wiring) | Rules done (7.2v): `ControlKind::Turned` (Wis save, 10 rounds, ends on damage; Move / Dash / Dodge / escape only, no reactions). Pending: sim path and target list (EC), Channel Divinity feature and loader keys (T&C). |
-| Channel Divinity: Preserve Life | 2 | NEW | Distribute a 5 x level HP pool among creatures within 30 ft, up to half max HP each (R-G5, R-G10, R-G15). |
+| Channel Divinity: Preserve Life | 2 | Done (7.2zd) | `heal_pool` split form: `per_class_level` 5, `range_ft` 30, `cap` half_max, `excludes_types` undead / construct, cost via `usage` pool (Channel Divinity); `ActionRequest::heal_split`, `check_heal_split` (index + reason). |
 | Destroy Undead (CR 1/2 at L5) | 5 | NEW (wiring) | Rules hook done (7.2v): `SpellDef::destroy_cr8_max` vs `Combatant::cr8`. T&C wires the feature. |
 | Ability Score Improvement | 4 | DATA | Authored. |
 
@@ -361,8 +361,8 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Inflict Wounds | DATA | Melee `spell_attack`, 3d10 necrotic, `upcast.dice`. |
 | Mage Armor | NEW (wiring) | Rules done (follow-up): `Ac` modifier with `ac_floor` 13 + Dex (`ac_floor_dex`); the loader gates "not wearing armor". Spell kind pending (R-G3). |
 | Magic Missile | DATA | Shipped (`auto_hit`). |
-| Protection from Evil and Good | NEW | R-G3. |
-| Sanctuary | NEW | Attackers must save to target (R-G3/R-G7). |
+| Protection from Evil and Good | Done (7.2zd) | `apply_modifier` attack_roll disadvantage, `applies_to: attackers`, `scope.from_types` (aberration, celestial, elemental, fey, fiend, undead) + `condition_immunity_from` charmed / frightened; rounds 100, concentration. Not modelled: advantage on a new save when already charmed / frightened, and possession. |
+| Sanctuary | Done (7.2zd) | `apply_condition` warded with `ward {save: wis, on_fail: retarget_or_lose}`, `ends_on: [attack, harmful_cast]`, rounds 10; areas are not blocked; `ActionRequest::ward_alternate`, `ward_alternate_targets` (sorted by id). |
 | Shield | DATA | Shipped (`ac_bonus`). |
 | Shield of Faith | DATA | Rules done (#89): +2 `Ac` modifier, concentration. Spell kind pending (R-G3). Shipped in `srd51.core` (T&C spells refresh). |
 | Sleep | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::HpPool` (lowest HP first, upcast dice, undead excluded, ends on damage). Loader and sim done (EC #120): `hp_pool {dice, condition, ends_on_damage, excludes_creature_type}`, `scaling.upcast.dice`, timer from `duration` (1 minute = 10 rounds), area targets from an aimed `Command`; the AI wakes a sleeping ally within 5 ft (Wake, `special` 5). No pack ships it yet; schema / validator pending (T&C). |
@@ -372,7 +372,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 
 | Spell | Status | Notes |
 |---|---|---|
-| Aid | NEW | Max HP and HP increase (R-G3). |
+| Aid | Done (7.2zd) | `max_hp_bonus {flat 5, per_slot_above 5}`, up to 3 targets, rounds 4800; current HP rises by the same amount; at the end the maximum drops and current HP clamps. |
 | Alter Self, Animal Messenger, Arcane Lock, Augury, Continual Flame, Darkvision, Gentle Repose, Knock, Levitate, Locate Animals or Plants, Locate Object, Magic Mouth, Pass without Trace, Prayer of Healing (10 min), Rope Trick, See Invisibility, Spider Climb, Zone of Truth, Find Traps, Arcanist's Magic Aura, Detect Thoughts, Enthrall, Find Steed (10 minutes) | OOS | Utility / out of encounter casting time. |
 | Barkskin | DATA | Rules done (follow-up): `Ac` modifier with `ac_floor` 16, concentration. Spell kind pending (R-G3). Shipped in `srd51.core` (T&C spells refresh). |
 | Blindness/Deafness | NEW (wiring) | rules5e `SpellDef::condition_choices` + `ActionRequest::condition_choice` (R-G14, 7.2i). |

@@ -1,0 +1,38 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.a",
+  "name": "Aid",
+  "level": 2,
+  "school": "abjuration",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "classes": [
+    "cleric"
+  ],
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 30
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "targets": {
+    "count": 3
+  },
+  "effects": [
+    {
+      "kind": "max_hp_bonus",
+      "flat": 5,
+      "per_slot_above": 5
+    }
+  ]
+}
