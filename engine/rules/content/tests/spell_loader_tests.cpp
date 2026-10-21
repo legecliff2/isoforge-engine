@@ -122,7 +122,8 @@ TEST_CASE("loader rejects every validator negative case (tests/validate/cases)")
                                  expect.find("ac_bonus") == 0 || expect.find("casting_time") == 0 || expect.find("disagree") == 0 ||
                                  expect.find("is not a spell@1") == 0 || expect.find("'") == 0 || expect.find("until_start") == 0 ||
                                  expect.find("zone") == 0 ||   // R-G11: the loader parses zones (CONTENT_CONVENTIONS.md section 4)
-                                 expect.find("polymorph") == 0;   // R-G12 (section 9)
+                                 expect.find("polymorph") == 0 ||   // R-G12 (section 9)
+                                 expect.find("move_mark") == 0;   // 7.2zc
         const std::string first_error = r.errors.empty() ? std::string() : r.errors[0];
         INFO(first_error);
         if (cross_field && !r.errors.empty()) CHECK(r.errors[0].find(expect) != std::string::npos);
@@ -640,4 +641,48 @@ TEST_CASE("loader: 7.2v control keys on a save effect (control, control_excludes
     bad(j, "save effect needs damage, condition or control");
     j = base; j["effects"] = eng::assets::Json::array({{{"kind", "save"}, {"ability", "wis"}, {"condition", "prone"}}, base["effects"][0]});
     bad(j, "control is only allowed on the first effect");
+}
+
+TEST_CASE("loader 7.2zc: ends_on, scope target marked, ability chosen, move_mark") {
+    auto inv = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.invisibility","level":2,"name":"Invisibility",
+        "casting_time":{"kind":"action"},"range":{"kind":"touch"},"components":{"v":true,"s":true},
+        "duration":{"kind":"hours","amount":1,"concentration":true},
+        "effects":[{"kind":"apply_condition","condition":"invisible","ends_on":["attack","cast"]}]})");
+    auto i = spell_from_json(inv); REQUIRE(i.def);
+    CHECK(i.def->ends_on == (kEndsOnAttack | kEndsOnCast));
+    auto hex = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.hex","level":1,"name":"Hex",
+        "casting_time":{"kind":"bonus_action"},"range":{"kind":"ranged","feet":90},"components":{"v":true,"s":true,"m":{"text":"eye"}},
+        "duration":{"kind":"hours","amount":1,"concentration":true},"move_mark":{"action":"bonus_action"},
+        "effects":[{"kind":"apply_modifier","scope":{"target":"marked"},
+                    "modifier":{"stat":"damage","die":"1d6","damage_type":"necrotic","applies_to":"self","duration":{"kind":"concentration"}}},
+                   {"kind":"apply_modifier","scope":{"target":"marked"},
+                    "modifier":{"stat":"ability_check","mode":"disadvantage","ability":"chosen","applies_to":"target","duration":{"kind":"concentration"}}}]})");
+    auto h = spell_from_json(hex); REQUIRE(h.def);
+    CHECK(h.def->move_mark == 1);
+    CHECK(h.def->modifier.mark_scope == 1);
+    CHECK(h.def->modifier.stat == ModStat::Damage);
+    REQUIRE(h.def->extra_effects.size() == 1);
+    CHECK(h.def->extra_effects[0].modifier.mark_scope == 1);
+    CHECK(h.def->extra_effects[0].modifier.chosen_ability);
+    CHECK_FALSE(h.def->extra_effects[0].modifier.has_ability);
+
+    auto bad = [](eng::assets::Json x, const std::string& want) {
+        auto r = spell_from_json(x); INFO(want); INFO(r.error); CHECK_FALSE(r.def); CHECK(r.error.find(want) != std::string::npos);
+    };
+    auto j = inv; j["effects"][0]["ends_on"] = {"attack", "attack"}; bad(j, "effect ends_on items must be unique");
+    j = inv; j["effects"][0]["ends_on"] = {"move"}; bad(j, "effect ends_on must be a non-empty list of attack, cast");
+    j = inv; j["effects"][0]["ends_on"] = eng::assets::Json::array(); bad(j, "effect ends_on must be a non-empty list of attack, cast");
+    j = inv; j["duration"] = {{"kind", "instantaneous"}}; bad(j, "effect ends_on needs concentration or a rounds, minutes or hours duration");
+    j = inv; j["duration"] = {{"kind", "minutes"}, {"amount", 1}}; CHECK(spell_from_json(j).def);   // a duration without concentration
+    j = hex; j["effects"][0]["scope"] = {{"target", "self"}}; bad(j, "effect scope must be {target: marked}");
+    j = hex; j["effects"][0]["modifier"]["applies_to"] = "target"; bad(j, "effect scope target marked: a damage modifier needs applies_to self");
+    j = hex; j["effects"][0]["modifier"] = {{"stat", "attack_roll"}, {"bonus", 1}, {"applies_to", "self"}, {"duration", {{"kind", "concentration"}}}};
+    bad(j, "effect scope target marked: damage or ability_check modifiers only");
+    j = hex; j["effects"][1].erase("scope"); bad(j, "effect modifier ability chosen needs scope target marked");
+    j = hex; j["effects"][1]["modifier"]["stat"] = "save"; bad(j, "effect modifier ability chosen: ability_check modifiers only");
+    j = hex; j["effects"][1]["modifier"]["applies_to"] = "allies_within_30"; bad(j, "effect scope target marked: applies_to self or target");
+    j = hex; j["duration"].erase("concentration"); bad(j, "move_mark needs a concentration spell");
+    j = hex; j["move_mark"] = {{"action", "action"}}; bad(j, "move_mark must be {action: bonus_action}");
+    j = hex; j["effects"] = eng::assets::Json::array({inv["effects"][0]}); j["effects"][0].erase("ends_on");
+    bad(j, "move_mark needs an apply_modifier with scope target marked");
 }
