@@ -336,8 +336,8 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Spell | Status | Notes |
 |---|---|---|
 | Alarm, Animal Friendship, Comprehend Languages, Create or Destroy Water, Detect Evil and Good, Detect Magic, Detect Poison and Disease, Disguise Self, Feather Fall, Goodberry, Identify, Illusory Script, Jump, Longstrider, Purify Food and Drink, Silent Image, Speak with Animals, Unseen Servant, Floating Disk | OOS | Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). |
-| Bane | NEW (wiring) | Rules done (#89): negative die (`die_mult` -1) on AttackRoll and Save, concentration. Needs a `spell@1` `apply_modifier` kind / loader (R-G3, T&C adds the kind). |
-| Bless | NEW (wiring) | Rules done (#89): 1d4 die on AttackRoll and Save, concentration, up to 3 targets. Needs a `spell@1` `apply_modifier` kind / loader (R-G3). |
+| Bane | Done (7.2ze) | `apply_modifier` `{stat: attack_roll, die: 1d4, sign: minus, applies_to: [attack, save]}` gated by `save {ability: cha, dc: caster}` (a creature that fails is affected for the duration); `targets {count: 3}` + `scaling.upcast.targets: 1`, concentration, rounds 10. |
+| Bless | Done (7.2ze) | `apply_modifier` `{stat: attack_roll, die: 1d4, sign: plus, applies_to: [attack, save]}` (`ModifierSpec::also_rolls`); `targets {count: 3}` + `scaling.upcast.targets: 1`, concentration, rounds 10. |
 | Burning Hands | DATA | Cone template computed by sim (#78); dice/save/upcast are data. |
 | Charm Person | NEW | Charmed with source (R-G8). |
 | Color Spray | NEW (wiring) | Rules done (R-G15): `SpellEffectKind::HpPool` with Blinded; end of the caster's next turn approximated by 1 round. Loader and sim done (EC #120): `hp_pool {dice, condition}`, the timer from the spell's `duration` (`rounds 1` = 1 round); area targets from an aimed `Command` (self cone). No pack ships it yet; schema / validator pending (T&C). |
@@ -375,7 +375,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Aid | Done (7.2zd) | `max_hp_bonus {flat 5, per_slot_above 5}`, up to 3 targets, rounds 4800; current HP rises by the same amount; at the end the maximum drops and current HP clamps. |
 | Alter Self, Animal Messenger, Arcane Lock, Augury, Continual Flame, Darkvision, Gentle Repose, Knock, Levitate, Locate Animals or Plants, Locate Object, Magic Mouth, Pass without Trace, Prayer of Healing (10 min), Rope Trick, See Invisibility, Spider Climb, Zone of Truth, Find Traps, Arcanist's Magic Aura, Detect Thoughts, Enthrall, Find Steed (10 minutes) | OOS | Utility / out of encounter casting time. |
 | Barkskin | DATA | Rules done (follow-up): `Ac` modifier with `ac_floor` 16, concentration. Spell kind pending (R-G3). Shipped in `srd51.core` (T&C spells refresh). |
-| Blindness/Deafness | NEW (wiring) | rules5e `SpellDef::condition_choices` + `ActionRequest::condition_choice` (R-G14, 7.2i). |
+| Blindness/Deafness | Done (7.2ze) | `save {ability: con, condition: chosen, choices: [blinded, deafened], repeat_save: end_of_turn}`: the caster picks at cast (`ActionRequest::condition_choice`, log_hash 0xCF); 1 target + `scaling.upcast.targets: 1`, rounds 10, no concentration. |
 | Blur | NEW (wiring) | Rules done (#89): `AttacksAgainst` disadvantage modifier on self, concentration (the blindsight/truesight exception is not modelled). |
 | Branding Smite | NEW | R-G4. |
 | Branding Smite | NEW | Weapon-attack rider: extra radiant damage, reveals invisible, concentration (R-G4, T&C-G5). SRD level 2 (the earlier draft also listed it at level 1). |

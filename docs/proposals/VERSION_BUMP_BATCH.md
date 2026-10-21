@@ -2471,6 +2471,19 @@ Additive (T&C batch 2 shapes). No golden changes, integer math only. SRD 5.1 con
 - Duration note: spell@1's duration key is `amount` (the shapes' `n` is the modifier_duration key); content uses `amount`.
 - Hand-off (EC): the sim AI does not yet choose `ward_alternate` or build `heal_split`.
 
+### 7.2ze Spell batch 3 (rules side)
+
+Additive (T&C batch 3 shapes). No golden changes, integer math only. SRD 5.1 content stays CC-BY-4.0 (attribution unchanged).
+
+- **Targets**: the existing spell-level `targets {count}` and `scaling.upcast.targets` carry `apply_modifier` (allowed now, loader and tools/validate; no new key). Bless / Bane `{count: 3}` + upcast 1; Blindness/Deafness one target (default) + upcast 1.
+- **Bless / Bane** (common@2 `modifier`, used by spell@1 apply_modifier): `sign` (closed `plus | minus`, default plus; needs `die`; the loader also refuses it with a leading `-` die, which the schema pattern never allows). `applies_to` may be a list of roll kinds (`roll_kind_list` values, here only `attack`, `save`; unique, non-empty) instead of the subject enum: the row sits on the spell's targets and its die also applies to the listed rolls (`ModifierSpec::also_rolls`, kRollAttack / kRollSave bits, appended; modifiers_digest sub-tag **0x5C** only when non-zero). attack_roll or save modifiers with a die only, and the list includes the modifier's own stat. Content: `{stat: attack_roll, die: 1d4, sign: plus|minus, applies_to: [attack, save], duration: {kind: concentration}}`, spell duration `{kind: rounds, amount: 10, concentration: true}`.
+  - Bane's gate: apply_modifier `save {ability, dc: caster}` (closed; first effect only; the modifier must be on the targets). Each target saves against the caster's spell save DC (`SavingThrowRolled` with `c` bit 3 set); a success resists, a failure is affected for the duration (`SpellDef::has_modifier_save` / `modifier_save`, appended).
+- **Blindness/Deafness** (spell@1 `save` effect): `condition: "chosen"` with `choices` (closed condition enum, 2..4 unique; only with chosen, and chosen needs it: schema if/then, loader the same). The caster picks at cast with `ActionRequest::condition_choice` (1 + index; the existing R-G14 path: "choose a condition" / "bad condition choice"); the initial Con save resists, `repeat_save: end_of_turn` ends it. First effect only. `log_hash` **0xCF** = the picked `Condition` (u8) for such casts (0xB1 still folds the index).
+- Loader and validator: same wording, no suffixes; schema-path `.expect` files for shape errors (14 cases: `bless_*`, `bane_*`, `choices_*`, `chosen_no_choices`); positive specimens `tests/validate/fixtures/spell_batch3/`.
+- Deviation: the shapes named apply_condition + save_condition for Blindness/Deafness; spell@1 has no save_condition (a common@2 rider), and its `save` effect already is "apply a condition unless the target saves, repeat_save to end it", so `condition: chosen` + `choices` sit on the `save` effect (an apply_condition never saves).
+- Deviation: the modifier keeps `stat` (required); a roll list must include the stat's own roll (Bless: `stat: attack_roll`, `applies_to: [attack, save]`).
+- Hand-off (EC / T&C): no srd51.core spell documents are added here; the sim AI casts these with the existing choice default (condition_choice 1).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
