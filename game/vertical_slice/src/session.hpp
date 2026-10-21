@@ -53,6 +53,8 @@ public:
     // answers it. Nothing from the paused request is in the view until it completes.
     bool paused() const;
     const std::string& error() const;
+    // Non-fatal load warnings (e.g. two items styling one light preset differently).
+    const std::vector<std::string>& warnings() const;
 
     ViewModel view() const;
 

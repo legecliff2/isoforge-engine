@@ -127,7 +127,8 @@ struct Session::Impl {
     sim::LightCache light_cache;
     std::shared_ptr<const sim::LightFrame> light, light_prev;
     uint64_t light_step = 0;
-    std::map<std::string, eng::iso2d::GlowStyle, std::less<>> visuals;   // content id -> glow style
+    std::map<std::string, eng::iso2d::GlowStyle, std::less<>> visuals;   // light preset -> glow style
+    std::vector<std::string> warnings;   // load-time, non-fatal (e.g. conflicting visuals)
 
     // Producers of carried lights for this step, in a fixed order (light ids follow it): the interim
     // pc_torches, then Options::carried_lights. Sim attached lights (phase 3) replace this list.
@@ -237,11 +238,41 @@ std::unique_ptr<Session> Session::open(const Options& o, std::string* error) {
 
     // Presentation-only visuals (item@1 `visual`), read straight from the pack documents. The sim never
     // sees them (ContentLibrary doesn't load item@1), so they can't reach Combat::hash or log_hash.
-    for (const assets::PackDocument& d : set.documents()) {
-        if (!d.doc.ok || !d.doc.data.is_object() || !d.doc.data.contains("visual")) continue;
-        if (d.doc.current.type != "item" || d.content_id.empty()) continue;
-        eng::iso2d::GlowStyle st;
-        if (parse_visual(d.doc.data["visual"], st, nullptr)) m.visuals[d.content_id] = st;
+    // Keyed by the item's `light.preset` (the preset its light uses), not by the item id. Items with a
+    // `visual` but no `light.preset` are skipped (nothing to attach the style to; the preset default
+    // stays). Several items styling one preset: lowest content id wins, deterministic in any pack
+    // order, with a warning per differing loser.
+    {
+        std::map<std::string, std::map<std::string, eng::iso2d::GlowStyle>> by_preset;   // preset -> item id -> style
+        for (const assets::PackDocument& d : set.documents()) {
+            if (!d.doc.ok || !d.doc.data.is_object() || !d.doc.data.contains("visual")) continue;
+            if (d.doc.current.type != "item" || d.content_id.empty()) continue;
+            const auto& j = d.doc.data;
+            if (!j.contains("light") || !j["light"].is_object() || !j["light"].contains("preset") ||
+                !j["light"]["preset"].is_string() || j["light"]["preset"].get<std::string>().empty()) {
+                m.warnings.push_back("item " + d.content_id + ": visual ignored (no light.preset)");
+                continue;
+            }
+            eng::iso2d::GlowStyle st;
+            std::string why;
+            if (!parse_visual(j["visual"], st, &why)) {
+                m.warnings.push_back("item " + d.content_id + ": visual ignored (" + why + ")");
+                continue;
+            }
+            by_preset[j["light"]["preset"].get<std::string>()][d.content_id] = st;
+        }
+        auto same = [](const eng::iso2d::GlowStyle& a, const eng::iso2d::GlowStyle& b) {
+            return a.color.r == b.color.r && a.color.g == b.color.g && a.color.b == b.color.b && a.color.a == b.color.a &&
+                   a.intensity == b.intensity && a.flicker == b.flicker;
+        };
+        for (const auto& [preset, items] : by_preset) {
+            const auto& [winner, style] = *items.begin();   // lowest content id
+            for (auto it = std::next(items.begin()); it != items.end(); ++it)
+                if (!same(it->second, style))
+                    m.warnings.push_back("light preset " + preset + ": conflicting visual from item " + it->first +
+                                         " ignored; using " + winner + " (lowest content id)");
+            m.visuals[preset] = style;
+        }
     }
 
     m.content = std::make_unique<sim::ContentLibrary>();
@@ -303,6 +334,7 @@ bool Session::step() {
 bool Session::paused() const { return impl_->combat && impl_->combat->pending().has_value(); }
 
 bool Session::ended() const { return impl_->combat && impl_->combat->ended(); }
+const std::vector<std::string>& Session::warnings() const { return impl_->warnings; }
 const std::string& Session::error() const { return impl_->error; }
 
 ViewModel Session::view() const {

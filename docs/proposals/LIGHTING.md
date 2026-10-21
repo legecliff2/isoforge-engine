@@ -281,8 +281,13 @@ are content-only visuals and stay out of every sim hash.
    `additionalProperties: false` at every level, integers only (no floats, no hex). Schema:
    `schemas/item/v1.schema.json`. It is excluded from `content_hash` and never read by sim, so it never feeds
    `log_hash` or any golden. The game converts it once at load (`iso2d::glow_style_from_visual`: channel / 255,
-   permille / 1000) and the `GlowPalette` uses it for that content id over the built-in defaults, which stay the
-   fallback. `flicker` is carried through but not animated yet.
+   permille / 1000) and registers it under the item's **`light.preset`** (the preset its light uses; the item id need
+   not match). The `GlowPalette` uses it for that preset over the built-in defaults, which stay the fallback.
+   An item with `visual` but no `light.preset` is skipped with a load warning (no fallback to the item id, so a
+   style can never silently attach to the wrong key). If several items style one preset, the lowest content id
+   wins (independent of pack / file order) and each differing loser logs a warning (`Session::warnings()`, printed
+   by `vertical_slice`). Preset-exists checking is a validator rule Tools & Content adds in `checks_v4`.
+   `flicker` is carried through but not animated yet.
 
 ## 11. Open questions
 
