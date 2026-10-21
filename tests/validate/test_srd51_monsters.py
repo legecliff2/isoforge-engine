@@ -212,6 +212,24 @@ class MonsterTable(unittest.TestCase):
         # Sunlight Sensitivity / Keen Hearing and Smell: descriptive (no light model, no perception checks in the sim)
         self.assertNotIn("effect", {t["id"]: t for t in load("kobold")["traits"]}["sunlight_sensitivity"])
 
+    def test_engulf_swallow_transparent(self):
+        # Rules 7.2w (#189): Engulf (save_effect + contain engulf, Str DC 12 escape, Large or smaller), Transparent DC 15
+        cube = load("gelatinous-cube")
+        en = {a["id"]: a for a in cube["actions"]}["engulf"]
+        self.assertEqual((en["kind"], en["save"], en["damage"], en["on_success"]),
+                         ("save_effect", {"ability": "dex", "dc": 12}, [{"dice": "3d6", "type": "acid"}], "none"))
+        self.assertEqual(en["apply"], [{"condition": "restrained", "escape": {"ability": "str", "dc": 12}, "max_size": "large",
+                                        "contain": {"kind": "engulf", "damage": {"dice": "6d6", "type": "acid"}}}])
+        self.assertEqual({t["id"]: t.get("effect") for t in cube["traits"]},
+                         {"ooze_cube": None, "transparent": {"kind": "transparent", "dc": 15}})
+        # Swallow (attack_effect + contain swallow: blinded, total cover, no escape; Medium or smaller); bite grapples (escape DC 13)
+        toad = {a["id"]: a for a in load("giant-toad")["actions"]}
+        self.assertEqual(toad["bite"]["on_hit"], [{"kind": "grapple", "escape_dc": 13}])
+        sw = toad["swallow"]
+        self.assertEqual((sw["kind"], sw["attack"], sw["to_hit"], sw["range_ft"]), ("attack_effect", "melee", 4, 5))
+        self.assertEqual(sw["apply"], [{"condition": "restrained", "max_size": "medium",
+                                        "contain": {"kind": "swallow", "damage": {"dice": "3d6", "type": "acid"}}}])
+
     def test_authored_and_deferred_split(self):
         have = sorted(p.stem for p in (PACK / "monsters").glob("*.json"))
         self.assertEqual(have, sorted([i.replace("-", "_") for i in AUTHORED] + ["goblin"]))
