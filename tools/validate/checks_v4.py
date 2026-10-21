@@ -1070,6 +1070,9 @@ def check_bard_hooks(doc: dict) -> list[str]:
             levels = [e.get("level") for e in eff.get("scale") or [] if isinstance(e, dict)]
             if any(not is_int(b) or not is_int(a) or b <= a for a, b in zip([1] + levels, levels)):
                 errs.append(f"{path}: {did}: grant_die scale levels must ascend (2..20)")
+            cls = eff.get("class")
+            if isinstance(cls, str) and cls not in {c.get("class") for c in doc.get("classes") or [] if isinstance(c, dict)}:
+                errs.append(f"{path}: {did}: grant_die class '{cls}' is not one of the document's classes (#214 follow-up)")
         elif k == "half_proficiency" and str(doc.get("$schema", "")).split("@")[0] == "monster":
             errs.append(f"{path}: {did}: half_proficiency: not valid on monsters")
     return errs
