@@ -3,42 +3,12 @@
   "sets": [
     [
       [
-        "resources"
-      ],
-      [
-        {
-          "id": "channel_divinity",
-          "name": "Channel Divinity",
-          "max": 1,
-          "recharge": "short_rest"
-        }
-      ]
-    ],
-    [
-      [
         "features",
-        2
+        4,
+        "effect",
+        "class"
       ],
-      {
-        "id": "preserve_life",
-        "name": "x",
-        "effect": {
-          "kind": "heal_pool",
-          "cost": "action",
-          "usage": {
-            "kind": "pool",
-            "pool": "channel_divinity"
-          },
-          "per_class_level": 5,
-          "range_ft": 30,
-          "cap": "half_max",
-          "class": "paladin",
-          "excludes_types": [
-            "undead",
-            "construct"
-          ]
-        }
-      }
+      "paladin"
     ]
   ],
   "severity": "error",
