@@ -9,6 +9,7 @@
 
 #include "assets/pack_set.hpp"
 #include "assets/schema_registry.hpp"
+#include "sim/equipment.hpp"
 #include "sim/features.hpp"
 #include "rules5e/spells.hpp"
 #include "rules5e/encounter.hpp"
@@ -30,6 +31,7 @@ constexpr uint8_t footprint_of(CreatureSize s) noexcept {
 struct EquipmentEntry {
     std::string id;
     uint32_t value_gp = 0;
+    bool equipped = false;   // appended (EQUIPMENT.md 9): {"item": ..., "equipped": true}; read only by CombatOptions::equipment
 };
 
 struct Archetype {
@@ -171,6 +173,10 @@ public:
     const std::shared_ptr<rules5e::SpellBook>& spells() const noexcept { return spells_; }
     // Adds one already-migrated spell@1 document. Returns an error message or nullopt.
     std::optional<std::string> add_spell(const assets::Json& doc);
+    // item@1 definitions of every item document loaded by load() (EQUIPMENT.md 9, Engine Core). Read by Combat only when
+    // CombatOptions::equipment is on. add_item: one already-migrated item@1 document.
+    const std::shared_ptr<ItemDefTable>& items() const noexcept { return items_; }
+    std::optional<std::string> add_item(const assets::Json& doc) { return items_->add(doc); }
 
     const Archetype* find(const std::string& id) const;
     const std::map<std::string, Archetype>& all() const noexcept { return by_id_; }
@@ -187,6 +193,7 @@ private:
     std::map<std::string, Archetype> by_id_;
     std::deque<std::string> strings_;
     std::shared_ptr<rules5e::SpellBook> spells_ = std::make_shared<rules5e::SpellBook>();
+    std::shared_ptr<ItemDefTable> items_ = std::make_shared<ItemDefTable>();
     const FeatureRegistry* features_ = &FeatureRegistry::builtin();
 };
 

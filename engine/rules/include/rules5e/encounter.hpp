@@ -13,6 +13,7 @@
 #include "rules5e/attack.hpp"
 #include "rules5e/initiative.hpp"
 #include "rules5e/item.hpp"
+#include "rules5e/loadout.hpp"
 #include "rules5e/saves.hpp"
 #include "rules5e/spells.hpp"
 #include "rules5e/types.hpp"
@@ -821,6 +822,12 @@ struct EncounterState {
     // `from` and Stealth >= its passive Perception). Ends when `who` attacks, or when `from` can see it at a step's start.
     struct Hidden { CombatantId who = 0, from = 0; int16_t stealth = 0; friend bool operator==(const Hidden&, const Hidden&) = default; };
     std::vector<Hidden> hidden{};
+    // appended (EQUIPMENT.md 9, Engine Core): equipment state, empty unless CombatOptions::equipment built loadouts. Combat::hash
+    // folds `loadouts` + `next_item_id` under 0xD0 when non-empty and `ground_items` under 0xD2 once `ground_items_seen`.
+    std::vector<Loadout> loadouts{};          // combatant (setup) order
+    std::vector<GroundItem> ground_items{};   // instance order
+    uint32_t next_item_id = 1;                // item instance ids start at 1 (0 = empty hand)
+    bool ground_items_seen = false;           // sticky: a ground item has existed (0xD2 keeps folding after a pick-up)
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call
