@@ -13,7 +13,10 @@ enum class DamageType : uint8_t { Acid, Bludgeoning, Cold, Fire, Force, Lightnin
                                   Necrotic, Piercing, Poison, Psychic, Radiant, Slashing, Thunder };
 enum class Condition : uint8_t { Blinded, Charmed, Deafened, Frightened, Grappled, Incapacitated,
                                  Invisible, Paralyzed, Petrified, Poisoned, Prone, Restrained,
-                                 Stunned, Unconscious, Exhaustion };
+                                 Stunned, Unconscious, Exhaustion,
+                                 // appended (7.2zd Sanctuary): spell@1 apply_condition `warded` with a `ward`. Not an SRD condition:
+                                 // creatures targeting the warded one with an attack or a harmful spell save first (ward_alternate_targets).
+                                 Warded };
 // SRD 5.1 skills (Chapter 7). Append-only.
 enum class Skill : uint8_t { Acrobatics, AnimalHandling, Arcana, Athletics, Deception, History, Insight,
                              Intimidation, Investigation, Medicine, Nature, Perception, Performance,
@@ -324,7 +327,10 @@ enum class ModStat : uint8_t { AttackRoll, Save, AbilityCheck, Ac, Speed, Damage
                                HeldDie };
 // appended (7.2za): roll kinds for HeldDie and SubtractRoll (`applies_to` in content: attack, save, check, damage).
 inline constexpr uint8_t kRollAttack = 1, kRollSave = 2, kRollCheck = 4, kRollDamage = 8;
-enum class ModAppliesTo : uint8_t { Self, Target, AlliesWithin30 };
+enum class ModAppliesTo : uint8_t { Self, Target, AlliesWithin30,
+                                    // appended (7.2zd Protection from Evil and Good): an AttackRoll row on the target that applies to
+                                    // the attack rolls of creatures attacking it (ModifierSpec::from_types filters their type).
+                                    Attackers };
 struct ModifierSpec {
     uint32_t id = 0;                     // stable id of this modifier (the a of ModifierApplied / ModifierExpired)
     uint32_t source = 0;                 // spell / feature id (concentration ends modifiers of the source)
@@ -389,6 +395,10 @@ struct ModifierSpec {
     // choice (ActionRequest::mark_ability), written into `ability` / `has_ability` of the applied row.
     uint8_t mark_scope = 0;
     bool chosen_ability = false;
+    // appended (7.2zd `scope: {from_types: [...]}`; Protection from Evil and Good): bitmask over CreatureType of the attackers an
+    // `applies_to: attackers` row applies to (0 = any attacker). Derived from content: hashed with the row's spec bytes only via
+    // modifiers_digest sub-tag 0x5B when non-zero.
+    uint32_t from_types = 0;
 };
 
 // Row R-G6: a bonus-action attack option (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy). Requested with
