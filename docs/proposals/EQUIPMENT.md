@@ -1,6 +1,6 @@
 # Proposal: equipment and items (derived AC and weapon attacks, hand slots, equip actions, monster reverse calculation, carried lights)
 
-Status: **proposal only** (Rules, `feat/rules-equipment-proposal`, off main `7f156c2`). No rules, schema, loader or sim code changes
+Status: **approved by Director 2026-10-21** (section 10); this PR is docs only (Rules, `feat/rules-equipment-proposal`, off main `7f156c2`). No rules, schema, loader or sim code changes
 in this PR; the only code is the read-only audit script `tools/audit/equipment_monster_audit.py` (section 5.7). Priority from Zach
 via Director. Inputs: this repo's survey (section 0) and T&C's equipment / items audit on main `7f156c2` (SRD 5.1 via 5e-bits
 5e-database `a6212be`), reconciled in section 5.8.
@@ -217,9 +217,9 @@ somatic components." A focus replaces non-costly materials; a costly material (`
 
 Rule (exact): a spell with S needs one hand that is empty **or** holds the focus / material used for M (the shared-hand clause)
 when the spell also has M; S without M needs an empty hand. M needs a hand that holds the focus / component pouch or a hand
-that is empty (to reach the pouch), or a holy symbol worn / on a wielded shield (cleric, paladin). V needs nothing. **War Caster is
-not SRD 5.1** and is not modelled; a sword-and-board cleric therefore casts S-only spells only after a free interaction to stow or
-drop something (or by bearing the symbol on the shield for S+M spells, see open question Q4). New refusal strings:
+that is empty (to reach the pouch), or a holy symbol worn / on a wielded shield (cleric, paladin). **A holy symbol on a shield is a
+focus** (Director, Q4, decided): the shield hand covers S+M spells whose material is the focus (no `cost_cp` material); S-only
+spells still need an empty hand. V needs nothing. **War Caster is not SRD 5.1** and is not modelled. New refusal strings:
 `cast: somatic needs a free hand`, `cast: material needs a free hand or a focus`.
 
 ### 3.3 Rules API
@@ -246,8 +246,7 @@ bool components_ok(const EncounterState&, CombatantId, const SpellDef&);
   when you want to interact with more than one object on your turn."
 - *Donning and Doffing Armor* table: Light 1 minute / 1 minute; Medium 5 minutes / 1 minute; Heavy 10 minutes / 5 minutes; Shield
   1 action / 1 action.
-- Dropping an item: **not in SRD 5.1 text**. The common reading (and Director's brief) is that letting go costs nothing; this
-  proposal makes it free and not an interaction, flagged as a ruling (Q1).
+- Dropping an item: **not in SRD 5.1 text**. Ruling (Director, Q1, decided): free, not an interaction.
 
 ### 4.2 Operations
 
@@ -266,25 +265,25 @@ bool components_ok(const EncounterState&, CombatantId, const SpellDef&);
 `equip: no free hand`, `equip: no object interaction left`, `equip: the item is not carried`, `equip: the item is out of reach`,
 `equip: armor cannot be changed in combat`.
 
-Attacking with a weapon not in hand is refused (`attack: the weapon is not in hand`), except the thrown re-draw case: drawing a
-thrown weapon is part of the attack **only** for the free interaction (*Other Activity*), so a creature with Extra Attack throwing
-two javelins uses the free interaction for the second draw; a third needs Use an Object. (The SRD gives no "draw as part of the
-attack" rule for thrown weapons; that is the strict reading, Q2.)
+Attacking with a weapon not in hand is refused (`attack: the weapon is not in hand`), except thrown weapons: **drawing a thrown
+weapon is part of each attack** (Director, Q2, decided), so Extra Attack can throw two javelins without spending the free
+interaction; the draw needs a free hand (or the hand the previous throw emptied) and a carried weapon of that kind.
 
 ### 4.3 Armor timing (integer rounds)
 
 1 minute = 10 rounds. Don / doff in rounds: Light 10 / 10, Medium 50 / 10, Heavy 100 / 50, Shield: one action. A `Combat` refuses
 armor don / doff (`equip: armor cannot be changed in combat`), because the shortest change (10 rounds) exceeds any action; the
-exploration layer runs it as a timed task (`armor_task {op, rounds_left}`, integer, decremented per exploration round). Sleeping in
-armor and the *help halves the time* clause are out of scope (Q6).
+exploration layer runs it as a timed task (`armor_task {op, rounds_left}`, integer, decremented per exploration round). **A helper
+halves the time** (Director, Q6, decided): `rounds / 2` (all table values are even). Sleeping in armor is not SRD and is out.
 
 ### 4.4 Item instances
 
 Equipment state needs identities: `ItemInstance { uint32_t id; uint32_t def; uint16_t count; uint8_t flags; }` (flags: lit,
 hooded, magical) allocated by sim from a monotonic `next_item_id` in setup order (combatant order, then `equipment[]` order). A
 ground item is `GroundItem { uint32_t instance; Vec2i tile; }`. Thrown weapons and dropped items become ground items; death drops
-**nothing** automatically (the corpse keeps its loadout; looting is exploration, not combat), except that held light sources keep
-their light on the corpse's tile (`Carrier::Tile`, LIGHTING section 3.4).
+**nothing** automatically (the corpse keeps its loadout), except that held light sources keep their light on the corpse's tile
+(`Carrier::Tile`, LIGHTING section 3.4). Basic ground items (drop, pick up, a dropped torch stays lit) are in scope now (Director,
+Q7, decided); a full looting UI comes later.
 
 ## 5. Monsters: reverse calculation
 
@@ -494,7 +493,8 @@ LIGHTING already plans `item@2` and `monster@5` (`emits_light`). This proposal j
   so turning `derive` on for srd51.core changes no number (38/38, 111/111, 34/34 with the fields above).
 - Hand state, the free interaction, ammunition counts and ground items exist only for creatures with a registered loadout (`derive`
   true **and** the encounter opts into equipment play, `CombatOptions::equipment`, default off). So even a derived srd51.core PC
-  plays exactly as today until a scenario enables equipment play.
+  plays exactly as today until a scenario enables equipment play. `CombatOptions::equipment` becomes default-on **only** after
+  T&C's character / monster migrations land with every golden byte-identical (Director, Q3, decided); until then it stays off.
 
 ### 7.3 Attack order
 
@@ -524,7 +524,7 @@ Plus one new compat test per bump PR: load every srd51.core PC and monster with 
   weights in ounces, costs in copper. No division anywhere else; `floor(spent / 2)` for ammunition recovery (out of combat).
 - RNG: no new draws. Derivation and equip operations are deterministic; the only roll added is the Light spell's existing Dex save
   path (spell machinery).
-- **No hash tags are claimed by this proposal.** Proposed for the implementation PRs, from the next free **0xD0**:
+- **Tags 0xD0..0xD2 are claimed** in `docs/SIM_EVENTS.md` (Director-approved; status pending until the sim folds them):
 
 | Tag | Stream | Contents | Folded when |
 |---|---|---|---|
@@ -548,29 +548,32 @@ Plus one new compat test per bump PR: load every srd51.core PC and monster with 
 
 ## 10. Open questions
 
-**Director**
+Director answered Q1..Q4, Q6, Q7 (2026-10-21) and approved the three monster adjustments with their reasons (5.5, 5.7) and tags
+0xD0..0xD2 (8). T&C's questions are pending.
 
-- Q1. Dropping an item is not in SRD 5.1 text. Proposal: free, not an interaction, own turn only. Accept?
-- Q2. Thrown weapons with Extra Attack: strict reading (one free draw per turn, then Use an Object) vs the common "draw as part of
-  the attack" ruling. Proposal: strict (SRD text).
-- Q3. `CombatOptions::equipment` default off: should srd51.core encounters turn hand / ammunition play on once T&C has stacks, and
-  for which scenarios first?
-- Q4. Holy symbol on a shield: does it satisfy only M, or also S for an S+M spell (the shared-hand clause speaks of a free hand)?
-  Proposal: S+M spells yes (the hand bearing the symbol performs both), S-only spells need an empty hand. War Caster stays out
-  (not SRD).
-- Q6. Armor timing extras: the "help halves doffing time" clause and sleeping in armor: needed for exploration, or out of scope?
-- Q7. Corpse looting and ground items outside combat: in scope for this bump or a later inventory proposal?
+**Director (decided)**
 
-**T&C**
+- Q1. Dropping an item: **free**, not an interaction (4.1, 4.2).
+- Q2. Thrown weapons: **drawn as part of each attack**; Extra Attack can throw two javelins (4.2).
+- Q3. `CombatOptions::equipment`: default-on **only** once T&C's character / monster migrations land and the goldens are
+  byte-identical; off until then (7.2).
+- Q4. A holy symbol on a shield **counts as a focus**: the shield hand covers S+M spells whose material is the focus; S-only spells
+  still need a free hand (3.2).
+- Q6. A helper **halves** don / doff time; sleeping in armor is not SRD and is out (4.3).
+- Q7. Basic ground items (drop, pick up, a dropped torch stays lit) are **in scope now**; a full looting UI later (4.4).
+- Monster adjustments (Skeleton `ac_adjust` +1, Black Bear Bite / Claws `attack_bonus` +3, Ghoul Bite `attack_bonus` +2) and their
+  reasons: **approved**. Tags 0xD0..0xD2: **approved**, claimed.
 
-- Q5. Proficiencies: author `weapon_proficiencies` / `armor_proficiencies` on each `character@5`, or derive them from class / race
+**T&C (pending)**
+
+- Q5 (pending). Proficiencies: author `weapon_proficiencies` / `armor_proficiencies` on each `character@5`, or derive them from class / race
   data (needs class documents)? Proposal: authored now, derived later.
-- Q8. Light gear: lighting a torch / lamp is proposed as the free object interaction (no SRD text found); confirm before authoring;
+- Q8 (pending). Light gear: lighting a torch / lamp is proposed as the free object interaction (no SRD text found); confirm before authoring;
   the bullseye cone needs LIGHTING's reserved cone and a facing rule (Engine Core); oil flask's splash effect is a separate item effect.
-- Q9. `hands: 0|2` defaults by creature type (beasts 0) and exceptions (e.g. an ape-like beast with hands): who authors the list?
-- Q10. Ammunition: when do srd51.core PCs get explicit stacks (`count`), and is "no stack = unlimited" acceptable as the permanent
+- Q9 (pending). `hands: 0|2` defaults by creature type (beasts 0) and exceptions (e.g. an ape-like beast with hands): who authors the list?
+- Q10 (pending). Ammunition: when do srd51.core PCs get explicit stacks (`count`), and is "no stack = unlimited" acceptable as the permanent
   default for monsters?
-- Q11. The 3 adjusted monsters (Black Bear, Ghoul Bite, Skeleton): confirm the reasons against the SRD text you used (5e-bits
+- Q11 (pending). The 3 adjusted monsters (Black Bear, Ghoul Bite, Skeleton): confirm the reasons against the SRD text you used (5e-bits
   `a6212be`) so the reason strings quote the right source.
-- Q12. Size dice: keep `weapon_dice_multiplier` explicit per monster (proposal) or derive it from `size` for Large+ humanoid
+- Q12 (pending). Size dice: keep `weapon_dice_multiplier` explicit per monster (proposal) or derive it from `size` for Large+ humanoid
   wielders with a per-monster opt-out?
