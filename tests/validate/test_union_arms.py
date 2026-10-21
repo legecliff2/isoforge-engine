@@ -327,7 +327,7 @@ class BarbarianHooks72z(unittest.TestCase):
         sc = am["properties"]["scope"]
         self.assertFalse(sc["additionalProperties"])
         self.assertEqual(sc["minProperties"], 1)
-        self.assertEqual({k: v["enum"] for k, v in sc["properties"].items()},
+        self.assertEqual({k: v["enum"] for k, v in sc["properties"].items() if k != "from_types"},   # 7.2zd: a type list
                          {"weapon": ["wielded"], "attack": ["melee_weapon", "ranged_weapon"], "ability": ["str", "dex"],
                           "target": ["marked"]})  # 7.2zc adds target
         self.assertEqual(am["properties"]["ends_early"]["items"]["enum"], ["no_attack_or_damage_since_last_turn", "unconscious"])
@@ -537,6 +537,52 @@ class SpellGaps72zc(unittest.TestCase):
         eff = json.dumps(sp["$defs"]["effect"])
         self.assertIn('"ends_on"', eff)
         self.assertIn('"marked"', eff)
+
+
+class SpellBatch2_72zd(unittest.TestCase):
+    """VERSION_BUMP_BATCH 7.2zd: warded + ward, ends_on harmful_cast, scope from_types, applies_to attackers,
+    condition_immunity_from, max_hp_bonus (spell@1) and the heal_pool split form (common@2)."""
+
+    def arm(self, kind):
+        eff = load("spell/v1.schema.json")["$defs"]["effect"]
+        return [a["then"] for a in eff["allOf"] if a["if"]["properties"]["kind"].get("const") == kind][0]
+
+    def test_spell_arms(self):
+        sp = load("spell/v1.schema.json")
+        kinds = sp["$defs"]["effect"]["properties"]["kind"]["enum"]
+        self.assertIn("condition_immunity_from", kinds)
+        self.assertIn("max_hp_bonus", kinds)
+        imm = self.arm("condition_immunity_from")
+        self.assertFalse(imm["additionalProperties"])
+        self.assertEqual(set(imm["required"]), {"kind", "conditions", "types"})
+        self.assertEqual(imm["properties"]["conditions"]["items"]["enum"], ["charmed", "frightened"])
+        hp = self.arm("max_hp_bonus")
+        self.assertFalse(hp["additionalProperties"])
+        self.assertEqual(set(hp["required"]), {"kind", "flat"})
+        for k in ("flat", "per_slot_above"):
+            self.assertEqual((hp["properties"][k]["minimum"], hp["properties"][k]["maximum"]), (0, 50))
+        ac = self.arm("apply_condition")
+        self.assertEqual(ac["properties"]["ends_on"]["items"]["enum"], ["attack", "cast", "harmful_cast"])
+        w = ac["properties"]["ward"]
+        self.assertFalse(w["additionalProperties"])
+        self.assertEqual(set(w["required"]), {"save", "on_fail"})
+        self.assertEqual(w["properties"]["on_fail"]["enum"], ["retarget_or_lose"])
+        self.assertIn({"const": "warded"}, ac["properties"]["condition"]["anyOf"])
+        sc = self.arm("apply_modifier")["properties"]["scope"]
+        self.assertFalse(sc["additionalProperties"])
+        self.assertEqual(sc["minProperties"], 1)
+        self.assertEqual(set(sc["properties"]), {"target", "from_types"})
+
+    def test_common_keys(self):
+        d = load("common/v2.schema.json")["$defs"]
+        self.assertIn("attackers", d["modifier"]["properties"]["applies_to"]["enum"])
+        self.assertIn("from_types", d["apply_modifier_effect"]["properties"]["scope"]["properties"])
+        hp = d["heal_pool_effect"]
+        self.assertFalse(hp["additionalProperties"])
+        self.assertEqual(set(hp["properties"]), {"kind", "cost", "pool", "usage", "per_class_level", "class", "range_ft", "cap",
+                                                 "excludes_types"})
+        self.assertEqual(hp["properties"]["cap"]["enum"], ["half_max"])
+        self.assertEqual(set(hp["then"]["required"]), {"per_class_level", "range_ft", "cap", "usage"})
 
 
 if __name__ == "__main__":
