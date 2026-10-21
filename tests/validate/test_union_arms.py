@@ -58,11 +58,11 @@ RIDER = {("extra_damage",): (S({"kind", "damage"}), S({"scale", "when"})),
          ("apply_modifier",): (S({"kind", "modifier"}), S({"when"})),            # 7.2zb Open Hand
          ("grapple",): (S({"kind"}), S({"escape_dc", "when"}))}   # R-G8 hit rider (sim #104); on_hit[] of actions[] weapon attacks only
 _M = {"applies_to", "stacks", "consume"}   # consume: any stat (section 6.2b, docs/CONTENT_CONVENTIONS.md 1)
-MODIFIER = {("attack_roll",): (S({"stat", "duration"}), S({"bonus", "die", "mode", "when"} | _M)),
-            ("save", "ability_check"): (S({"stat", "duration"}), S({"bonus", "die", "mode", "ability"} | _M)),
+MODIFIER = {("attack_roll",): (S({"stat", "duration"}), S({"bonus", "die", "sign", "mode", "when"} | _M)),   # 7.2ze sign
+            ("save", "ability_check"): (S({"stat", "duration"}), S({"bonus", "die", "sign", "mode", "ability"} | _M)),
             ("ac",): (S({"stat", "duration"}), S({"bonus", "ac_floor", "ac_floor_dex", "when"} | _M)),   # bonus or ac_floor
             ("speed",): (S({"stat", "duration", "speed_scale"}), S({"speed_sub"} | _M)),
-            ("damage",): (S({"stat", "duration"}), S({"bonus", "bonus_table", "die", "damage_type", "when"} | _M)),
+            ("damage",): (S({"stat", "duration"}), S({"bonus", "bonus_table", "die", "sign", "damage_type", "when"} | _M)),
             ("temp_hp",): (S({"stat", "duration", "bonus"}), S({"per_turn"} | _M)),
             ("resistance",): (S({"stat", "duration", "damage_type"}), S(_M)),
             ("attacks_against",): (S({"stat", "duration", "mode"}), S({"when"} | _M)),
@@ -495,7 +495,7 @@ class ControlConditionsArms(unittest.TestCase):
     """VERSION_BUMP_BATCH 7.2v: additive save-effect keys (spell@1) and their common@2 defs."""
     SAVE = (S({"kind", "ability"}), S({"damage", "on_success", "condition", "repeat_save", "control",
                                          "control_excludes_creature_types", "control_min_int", "destroy_undead_max_cr8",
-                                         "description", "applies_to"}))
+                                         "description", "applies_to", "choices"}))   # 7.2ze choices
 
     def test_save_arm_keys(self):
         eff = load("spell/v1.schema.json")["$defs"]["effect"]
@@ -575,7 +575,7 @@ class SpellBatch2_72zd(unittest.TestCase):
 
     def test_common_keys(self):
         d = load("common/v2.schema.json")["$defs"]
-        self.assertIn("attackers", d["modifier"]["properties"]["applies_to"]["enum"])
+        self.assertIn("attackers", d["modifier"]["properties"]["applies_to"]["anyOf"][0]["enum"])   # 7.2ze: anyOf with the roll list
         self.assertIn("from_types", d["apply_modifier_effect"]["properties"]["scope"]["properties"])
         hp = d["heal_pool_effect"]
         self.assertFalse(hp["additionalProperties"])
@@ -587,3 +587,33 @@ class SpellBatch2_72zd(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SpellBatch3_72ze(unittest.TestCase):
+    """VERSION_BUMP_BATCH 7.2ze: modifier sign + applies_to roll list (Bless / Bane), apply_modifier save {ability, dc: caster}
+    (Bane), save condition chosen + choices (Blindness/Deafness)."""
+
+    def arm(self, kind):
+        eff = load("spell/v1.schema.json")["$defs"]["effect"]
+        return [a["then"] for a in eff["allOf"] if a["if"]["properties"]["kind"].get("const") == kind][0]
+
+    def test_modifier(self):
+        m = load("common/v2.schema.json")["$defs"]["modifier"]
+        self.assertEqual(m["properties"]["sign"]["enum"], ["plus", "minus"])
+        self.assertEqual(m["properties"]["sign"]["default"], "plus")
+        self.assertEqual(m["dependentRequired"]["sign"], ["die"])
+        rolls = m["properties"]["applies_to"]["anyOf"][1]
+        self.assertEqual(rolls["items"]["enum"], ["attack", "save"])
+        self.assertTrue(set(rolls["items"]["enum"]) <= set(load("common/v2.schema.json")["$defs"]["roll_kind_list"]["items"]["enum"]))
+
+    def test_spell_arms(self):
+        sv = self.arm("apply_modifier")["properties"]["save"]
+        self.assertFalse(sv["additionalProperties"])
+        self.assertEqual(sv["properties"]["dc"], {"const": "caster"})
+        save = self.arm("save")
+        ch = save["properties"]["choices"]
+        self.assertEqual((ch["minItems"], ch["maxItems"], ch["uniqueItems"]), (2, 4, True))
+        self.assertIn({"const": "chosen"}, save["properties"]["condition"]["anyOf"])
+        pair = [a for a in save["allOf"] if a["if"]["properties"].get("condition", {}).get("const") == "chosen"][0]
+        self.assertEqual(pair["then"], {"required": ["choices"]})
+        self.assertEqual(pair["else"], {"not": {"required": ["choices"]}})
