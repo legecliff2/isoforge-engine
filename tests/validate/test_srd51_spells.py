@@ -79,7 +79,9 @@ class SpellTable(unittest.TestCase):
                     else:
                         step = dice_count(lv[str(d["level"] + 1)]) - dice_count(base)
                         self.assertEqual(d["scaling"]["upcast"], {"dice": step})
-                if "dc" in t:
+                if "dc" in t and eff["kind"] == "apply_modifier":   # 7.2ze Bane: the save gates the modifier (no damage, none on success)
+                    self.assertEqual((eff["save"]["ability"], eff["save"]["dc"], t["dc"]["success"]), (t["dc"]["ability"], "caster", "none"))
+                elif "dc" in t:
                     self.assertEqual((eff["kind"], eff["ability"], eff.get("on_success", "none")), ("save", t["dc"]["ability"], t["dc"]["success"]))   # none: the default (condition / control saves)
                 if "attack_type" in t:
                     self.assertEqual((eff["kind"], eff["attack"]), ("spell_attack", t["attack_type"]))
@@ -165,10 +167,25 @@ class SpellTable(unittest.TestCase):
                                               "modifier": {"stat": "attack_roll", "mode": "disadvantage", "applies_to": "attackers",
                                                            "duration": {"kind": "concentration"}}})
         self.assertEqual(pfeg["effects"][1], {"kind": "condition_immunity_from", "conditions": ["charmed", "frightened"], "types": types})
-        self.assertNotIn("consumed", pfeg["components"]["m"])   # no cost_cp in the SRD: consumed stays in the text (deviation)
+        self.assertTrue(pfeg["components"]["m"]["consumed"])   # consumed with no cost_cp (#234): nothing is checked or removed
+        self.assertNotIn("cost_cp", pfeg["components"]["m"])
         aid = load("aid")
         self.assertEqual(aid["effects"], [{"kind": "max_hp_bonus", "flat": 5, "per_slot_above": 5}])
         self.assertEqual(aid["targets"], {"count": 3})
+
+    def test_spell_batch3(self):
+        # Rules #237 (7.2ze): Bless / Bane sign + applies_to rolls (Bane's Cha save gate), Blindness/Deafness condition chosen
+        for idx, sign in (("bless", "plus"), ("bane", "minus")):
+            d = load(idx)
+            self.assertEqual(d["effects"][0]["modifier"], {"stat": "attack_roll", "die": "1d4", "sign": sign, "applies_to": ["attack", "save"],
+                                                           "duration": {"kind": "concentration"}})
+            self.assertEqual((d["targets"], d["scaling"]), ({"count": 3}, {"upcast": {"targets": 1}}))
+        self.assertEqual(load("bane")["effects"][0]["save"], {"ability": "cha", "dc": "caster"})
+        self.assertNotIn("save", load("bless")["effects"][0])
+        bd = load("blindness-deafness")
+        self.assertEqual(bd["effects"], [{"kind": "save", "ability": "con", "condition": "chosen", "choices": ["blinded", "deafened"],
+                                          "repeat_save": "end_of_turn"}])
+        self.assertEqual(bd["scaling"], {"upcast": {"targets": 1}})
 
     def test_zone_and_kind_spells(self):
         self.assertEqual(load("silence")["effects"][0]["zone"]["flags"], ["silence"])
