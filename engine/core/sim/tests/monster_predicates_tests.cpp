@@ -294,3 +294,14 @@ TEST_CASE("weapon_attack: true for weapon attacks, false for spell attacks (Mart
     CHECK(fired(*c, ma) == 1);
     same_on_replay(*c, ch, lib, 5);
 }
+
+TEST_CASE("7.2y predicate target_below_max_hp loads (Colossus Slayer)") {
+    Json cs = {{"kind", "on_event"}, {"on", "hit"}, {"limit", "once_per_turn"},
+               {"when", Json::array({{{"kind", "weapon_attack"}}, {{"kind", "target_below_max_hp"}}})}, {"effects", extra_2d6()}};
+    auto lib = lib_with({monster("t.cs", {cs})});
+    const auto& tr = lib.find("t.cs")->base.triggers;
+    REQUIRE(tr.size() == 1);
+    REQUIRE(tr[0].when.size() == 2);
+    CHECK(tr[0].when[1].kind == PredicateKind::TargetBelowMaxHp);
+    CHECK(tr[0].limit == rules5e::TriggerLimit::OncePerTurn);
+}

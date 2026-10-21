@@ -1,0 +1,17 @@
+{
+  "base": "characters/fighter_level_5.json",
+  "sets": [
+    [
+      [
+        "actions",
+        0,
+        "target_creature_types"
+      ],
+      [
+        "undead"
+      ]
+    ]
+  ],
+  "severity": "error",
+  "expect": "/actions/0: {...} should not be valid under {'anyOf': [{'required': ['control']}"
+}

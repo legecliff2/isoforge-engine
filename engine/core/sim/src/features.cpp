@@ -69,6 +69,7 @@ std::optional<std::string> apply_bonus_action_grant(Archetype& a, const FeatureD
         else if (s == "disengage") k = rules5e::ActionKind::Disengage;
         else if (s == "hide") k = rules5e::ActionKind::Hide;
         else if (s == "dodge") k = rules5e::ActionKind::Dodge;
+        else if (s == "use_object") k = rules5e::ActionKind::UseObject;   // 7.2y Fast Hands (UseObject 1..3)
         else return f.id + ": bonus_action_grant: unsupported action '" + s + "'";
         a.base.bonus_action_grants |= rules5e::bit(k);
     }
@@ -265,9 +266,20 @@ std::optional<std::string> apply_apply_modifier(Archetype& a, const FeatureDecl&
     const std::string cost = f.effect.value("cost", "action");
     if (cost == "bonus_action") af.cost = FeatureCost::BonusAction;
     else if (cost != "action") return f.id + ": apply_modifier cost '" + cost + "' is not supported (use action or bonus_action)";
-    if (f.effect.contains("usage")) {
-        a.unsupported_features.push_back(f.id + " (apply_modifier: usage needs resource pools)");
-        return std::nullopt;
+    rules5e::FeatureSpec pool_spec;   // 7.2y: usage {kind: pool, pool, cost?} spends from resources[] (refused when empty)
+    if (auto u = f.effect.find("usage"); u != f.effect.end()) {
+        if (!u->is_object() || u->value("kind", "") != "pool") {
+            a.unsupported_features.push_back(f.id + " (apply_modifier: usage other than pool)");
+            return std::nullopt;
+        }
+        ActiveFeature tmp; tmp.feature_id = fid;
+        if (auto e = fill_spec(a, f, tmp, pool_spec)) return e;
+    }
+    uint8_t weapon_scope = 0;   // 7.2y scope: {weapon: "wielded"} (Sacred Weapon)
+    if (auto sc = f.effect.find("scope"); sc != f.effect.end()) {
+        if (!sc->is_object() || sc->size() != 1 || sc->value("weapon", "") != "wielded")
+            return f.id + ": scope must be {weapon: \"wielded\"}";
+        weapon_scope = 1;
     }
     std::vector<rules5e::ModifierSpec> rows;
     const uint32_t source = rules5e::spell_id_of(a.id + "#" + f.id);
@@ -296,9 +308,11 @@ std::optional<std::string> apply_apply_modifier(Archetype& a, const FeatureDecl&
         }
         m.source = source;
         m.id = rules5e::spell_id_of(a.id + "#" + f.id + "#m" + std::to_string(i));
+        m.weapon_scope = weapon_scope;
         rows.push_back(m);
     }
     a.feature_modifiers[fid] = std::move(rows);
+    if (f.effect.contains("usage")) a.feature_specs[fid] = pool_spec;   // 7.2y: the pool gates UseFeature ("not enough resource")
     a.active.push_back(std::move(af));
     return std::nullopt;
 }

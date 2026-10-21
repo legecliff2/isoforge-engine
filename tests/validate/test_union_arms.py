@@ -41,7 +41,7 @@ PREDICATE = {("weapon",): (S({"kind", "is"}), S()),
              ("moved_at_least_ft",): (S({"kind", "ft"}), S()),
              ("self_hp_below",): (S({"kind", "num", "den"}), S()),
              ("save",): (S({"kind", "ability"}), S({"dc", "dc_from_damage", "base"})),
-             ("target_surprised", "ally_near_target", "weapon_attack", "subject_is_caster", "subject_hostile"): (S({"kind"}), S()),
+             ("target_surprised", "ally_near_target", "weapon_attack", "subject_is_caster", "subject_hostile", "target_below_max_hp"): (S({"kind"}), S()),
              ("damage_at_most",): (S({"kind", "amount"}), S()),
              ("target_tag", "not_target_tag"): (S({"kind", "tag"}), S())}
 # when: rider-level predicates (sim #170), read only in on_hit[] of attack actions
@@ -280,6 +280,36 @@ class GrabContainArms(unittest.TestCase):
         c = a["properties"]["contain"]
         self.assertEqual(set(c["required"]), set(self.CONTAIN[0]))
         self.assertEqual(set(c["properties"]), set(self.CONTAIN[0] | self.CONTAIN[1]))
+class ClassFeatureHooks72y(unittest.TestCase):
+    """VERSION_BUMP_BATCH 7.2y: bonus_vs (closed), the save_effect control keys, apply_modifier scope, requires_sight."""
+    BONUS_VS = (S({"creature_types", "dice"}), S())
+    CONTROL = S({"control", "control_excludes_creature_types", "destroy_undead_max_cr8", "target_creature_types", "duration"})
+
+    def test_bonus_vs_closed_on_both_damage_defs(self):
+        c2 = load("common/v2.schema.json")["$defs"]
+        b = c2["bonus_vs"]
+        self.assertFalse(b["additionalProperties"])
+        self.assertEqual(set(b["required"]), set(self.BONUS_VS[0]))
+        self.assertEqual(set(b["properties"]), set(self.BONUS_VS[0] | self.BONUS_VS[1]))
+        self.assertTrue(b["properties"]["dice"]["$ref"].endswith("/dice"))
+        for k in ("damage", "rider_damage"):
+            self.assertEqual(c2[k]["properties"]["bonus_vs"], {"$ref": "#/$defs/bonus_vs"})
+
+    def test_control_keys_save_effect_only(self):
+        a = load("common/v2.schema.json")["$defs"]["action"]
+        self.assertLessEqual(set(self.CONTROL), set(a["properties"]))
+        last = a["allOf"][-1]
+        self.assertEqual(last["if"]["properties"]["kind"]["const"], "save_effect")
+        self.assertEqual({r["required"][0] for r in last["else"]["not"]["anyOf"]}, set(self.CONTROL))
+        self.assertIn({"required": ["control"]}, a["allOf"][3]["then"]["anyOf"])
+
+    def test_scope_one_value_and_requires_sight(self):
+        c2 = load("common/v2.schema.json")["$defs"]
+        sc = c2["apply_modifier_effect"]["properties"]["scope"]
+        self.assertFalse(sc["additionalProperties"])
+        self.assertEqual(sc["required"], ["weapon"])
+        self.assertEqual(sc["properties"], {"weapon": {"enum": ["wielded"]}})
+        self.assertEqual(c2["reaction"]["properties"]["window"]["properties"]["requires_sight"]["type"], "boolean")
 
 
 class SpellMaterialObject(unittest.TestCase):

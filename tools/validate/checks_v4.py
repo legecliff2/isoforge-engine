@@ -429,6 +429,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     check_grapple_riders(doc, errs, warns)
     check_untimed_save_condition_riders(doc, errs)
     check_transforms(doc, ctx, errs, warns)
+    errs += check_class_hooks(doc)   # 7.2y
     # check 12: declared but never referenced pools (Legendary Resistance is declaration-only until row 13)
     for i, r in enumerate(resources):
         if r.get("id") not in referenced:
@@ -963,6 +964,52 @@ def check_transparent(doc: dict, typ: str) -> tuple[list[str], list[str]]:
         else:
             warns.append(f"{path}: transparent declared more than once (first at {first}); the sim keeps the highest dc (7.2w)")
     return errs, warns
+
+
+CONTROL_KEYS_7_2Y = ("control", "control_excludes_creature_types", "destroy_undead_max_cr8", "target_creature_types", "duration")
+
+
+def _bonus_vs_sites(doc: dict):
+    for path, a in mechanical_actions(doc):
+        for j, d in enumerate(a.get("damage") or []):
+            if isinstance(d, dict) and "bonus_vs" in d:
+                yield f"{path}/damage/{j}", a, d["bonus_vs"]
+    for path, _owner, _j, r in rider_sites(doc):
+        for j, d in enumerate((r.get("damage") or []) if isinstance(r, dict) else []):
+            if isinstance(d, dict) and "bonus_vs" in d:
+                yield f"{path}/damage/{j}", None, d["bonus_vs"]
+
+
+def check_class_hooks(doc: dict) -> list[str]:
+    """7.2y class feature hooks (sim content.cpp / features.cpp): the loader's refusals for the keys on the wrong host,
+    with the same meaning. control / target_creature_types / duration: save_effect actions only; scope: apply_modifier
+    effects only, exactly {weapon: "wielded"}; bonus_vs: weapon attack damage and rider damage only."""
+    errs: list[str] = []
+    did = doc.get("id", "?")
+    for path, a in mechanical_actions(doc):
+        if a.get("kind") != "save_effect":
+            for k in CONTROL_KEYS_7_2Y:
+                if k in a:
+                    errs.append(f"{path}: {did}: {k}: save_effect actions only (7.2y)")
+        elif "control" not in a:
+            for k in ("control_excludes_creature_types", "destroy_undead_max_cr8", "duration"):
+                if k in a:
+                    errs.append(f"{path}: {did}: {k} needs control (7.2y)")
+        elif a.get("control") == "command":
+            errs.append(f"{path}: {did}: control command needs a spell (the word is a cast choice) (7.2y)")
+    for path, _owner, eff in live_effects(doc):
+        if "scope" not in eff:
+            continue
+        if eff.get("kind") != "apply_modifier":
+            errs.append(f"{path}: {did}: scope: apply_modifier effects only (7.2y)")
+        elif eff["scope"] != {"weapon": "wielded"}:
+            errs.append(f'{path}: {did}: scope must be {{weapon: "wielded"}} (7.2y)')
+    for path, a, bv in _bonus_vs_sites(doc):
+        if a is not None and a.get("kind") not in ("melee_weapon_attack", "ranged_weapon_attack"):
+            errs.append(f"{path}: {did}: bonus_vs: weapon attack damage only (7.2y)")
+        if not isinstance(bv, dict) or set(bv) != {"creature_types", "dice"}:
+            errs.append(f"{path}: {did}: bonus_vs needs exactly creature_types and dice (7.2y)")
+    return errs
 
 
 # ---- untimed save_condition riders (sim content.cpp compile_rider -> compile_save_action) ----------------------

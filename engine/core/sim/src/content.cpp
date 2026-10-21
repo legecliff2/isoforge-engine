@@ -69,6 +69,27 @@ std::optional<rules5e::CreatureType> creature_type_of(const std::string& s) {
         if (s == names[i]) return rules5e::CreatureType(i);
     return std::nullopt;
 }
+
+// 7.2y `bonus_vs: {creature_types: [..], dice}` on a damage entry (closed; T&C keys). Absent = nothing. Error string or empty.
+std::string read_bonus_vs(const Json& dmg, uint32_t& types, rules5e::DiceExpr& dice) {
+    types = 0; dice = {0, 0, 0};
+    auto bv = dmg.is_object() ? dmg.find("bonus_vs") : dmg.end();
+    if (!dmg.is_object() || bv == dmg.end()) return {};
+    if (!bv->is_object()) return "bad bonus_vs";
+    for (auto it = bv->begin(); it != bv->end(); ++it)
+        if (it.key() != "creature_types" && it.key() != "dice") return "bonus_vs: unknown key '" + it.key() + "'";
+    const auto ct = bv->find("creature_types");
+    if (ct == bv->end() || !ct->is_array() || ct->empty()) return "bonus_vs needs creature_types[]";
+    for (const Json& t : *ct) {
+        auto c = creature_type_of(t.is_string() ? t.get<std::string>() : "");
+        if (!c) return "bonus_vs: bad creature type";
+        types |= rules5e::bit(*c);
+    }
+    auto d = bv->contains("dice") && (*bv)["dice"].is_string() ? parse_dice((*bv)["dice"].get<std::string>()) : std::nullopt;
+    if (!d || d->count == 0) return "bonus_vs needs dice";
+    dice = *d;
+    return {};
+}
 int geti(const Json& j, const char* k, int def = 0) {
     auto it = j.find(k);
     return (it != j.end() && it->is_number_integer()) ? it->get<int>() : def;
@@ -147,6 +168,7 @@ std::optional<std::string> compile_rider(const std::string& where, const Json& r
             if (ty == "same_as_weapon") x.same_as_weapon = true;
             else if (auto t = damage_type(ty)) x.type = *t;
             else return where + ": bad rider damage type";
+            if (auto er = read_bonus_vs(d, x.vs_types, x.vs_dice); !er.empty()) return where + ": " + er;   // 7.2y
             if (first && slot_add) { x.slot_dice = *slot_add; x.slot_base = slot_base; }
             if (first && add && extra > 0) {   // scaling rides the first damage entry
                 if (add->sides != x.dice.sides) return where + ": scale add_dice sides differ from the base dice";
@@ -834,7 +856,46 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             }
         }
     }
-    if (d.dice.count == 0 && d.dice.bonus == 0 && !d.applies_condition) return where + ": needs damage[] or apply[]";
+    // 7.2y class feature hooks (T&C): the spell@1 control keys, target_creature_types and a control duration.
+    if (auto tt = act.find("target_creature_types"); tt != act.end()) {
+        if (!tt->is_array() || tt->empty()) return where + ": bad target_creature_types";
+        for (const Json& t : *tt) {
+            auto c = creature_type_of(t.is_string() ? t.get<std::string>() : "");
+            if (!c) return where + ": bad target_creature_types";
+            d.target_types |= rules5e::bit(*c);
+        }
+    }
+    if (auto ck = act.find("control"); ck != act.end()) {
+        const std::string k = ck->is_string() ? ck->get<std::string>() : "";
+        d.control = k == "turned" ? rules5e::ControlKind::Turned : k == "fear" ? rules5e::ControlKind::Fear
+                  : k == "laughter" ? rules5e::ControlKind::Laughter : k == "command" ? rules5e::ControlKind::Command
+                  : rules5e::ControlKind::None;
+        if (d.control == rules5e::ControlKind::None) return where + ": bad control";
+        if (d.control == rules5e::ControlKind::Command) return where + ": control command needs a spell (the word is a cast choice)";
+        if (auto ex = act.find("control_excludes_creature_types"); ex != act.end()) {
+            if (!ex->is_array() || ex->empty()) return where + ": bad control_excludes_creature_types";
+            for (const Json& t : *ex) {
+                auto c = creature_type_of(t.is_string() ? t.get<std::string>() : "");
+                if (!c) return where + ": bad control_excludes_creature_types";
+                d.control_excluded |= rules5e::bit(*c);
+            }
+        }
+        if (auto du = act.find("destroy_undead_max_cr8"); du != act.end()) {
+            const int n = du->is_number_integer() ? du->get<int>() : 0;
+            if (n != 4 && n != 8 && n != 16 && n != 24 && n != 32) return where + ": destroy_undead_max_cr8 must be 4, 8, 16, 24 or 32";
+            d.destroy_cr8_max = uint16_t(n);
+        }
+        if (auto du = act.find("duration"); du != act.end()) {   // the control effect's duration: rounds n (Turn Undead: 10)
+            const int n = du->is_object() && du->value("kind", "") == "rounds" ? geti(*du, "n") : 0;
+            if (n < 1 || n > 65535) return where + ": bad control duration (rounds 1..65535)";
+            d.expiry = uint8_t(rules5e::Expiry::Rounds);
+            d.duration_rounds = uint16_t(n);
+        }
+    } else if (act.contains("control_excludes_creature_types") || act.contains("destroy_undead_max_cr8") || act.contains("duration")) {
+        return where + ": control_excludes_creature_types / destroy_undead_max_cr8 / duration need control";
+    }
+    if (d.dice.count == 0 && d.dice.bonus == 0 && !d.applies_condition && d.control == rules5e::ControlKind::None)
+        return where + ": needs damage[], apply[] or control";
     if (auto e = compile_action_usage(where, act, doc, d, sa, unsupported); e || unsupported) return e;
     sa.usage_kind = d.usage_kind;
     return std::nullopt;
@@ -891,6 +952,7 @@ std::optional<std::string> compile_reactions(Archetype& a, const Json& doc, cons
             a.unsupported_features.push_back(rid + " (reaction: unsupported usage / source / visible)");
             continue;
         }
+        x.requires_sight = w->value("requires_sight", false);   // 7.2y Uncanny Dodge: an attacker the reactor can see
         x.melee_only = w->value("melee_only", false);
         x.ranged_only = w->value("ranged_only", false);
         if (x.melee_only && x.ranged_only) return where + ": melee_only and ranged_only together";
@@ -1297,6 +1359,14 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 c.hit_dice = c.hit_dice_max = uint8_t(std::clamp(total, 0, 255));
             }
         }
+    {   // 7.2y: thieves' tools proficiency (UseObject 3): a rogue (SRD class proficiency) carrying thieves_tools
+        bool rogue = false, tools = false;
+        for (const Json& cl : doc.value("classes", Json::array())) rogue = rogue || (cl.is_object() && cl.value("class", "").find("rogue") != std::string::npos);
+        if (auto eq = doc.find("equipment"); eq != doc.end() && eq->is_array())
+            for (const Json& e : *eq) tools = tools || (e.is_string() && e.get<std::string>() == "thieves_tools") ||
+                                             (e.is_object() && e.value("item", "").find("thieves_tools") != std::string::npos);
+        c.thieves_tools = rogue && tools;
+    }
     std::vector<const Json*> attack_actions;   // content action per c.attacks[i]
     for (const Json& act : doc.at("actions")) {
         const std::string kind = act.value("kind", "");
@@ -1312,6 +1382,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         at.to_hit = int8_t(geti(act, "to_hit"));
         at.damage = *dice;
         at.type = *type;
+        if (auto er = read_bonus_vs(dmg, at.vs_types, at.vs_dice); !er.empty()) return a.id + ": action " + act.value("id", "?") + ": " + er;
         at.ranged = ranged;
         at.finesse = false;
         // EC swarm: "half_hp_damage": "1d6" replaces component 1's dice while the attacker has half its HP or fewer
@@ -1342,7 +1413,9 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 auto xd = parse_dice(extra.value("dice", ""));
                 auto xt = damage_type(extra.value("type", ""));
                 if (!xd || !xt) return a.id + ": bad damage in action " + act.value("id", "?");
-                at.extra_damage.push_back({*xd, *xt});
+                rules5e::DamagePart part{*xd, *xt};
+                if (auto er = read_bonus_vs(extra, part.vs_types, part.vs_dice); !er.empty()) return a.id + ": action " + act.value("id", "?") + ": " + er;
+                at.extra_damage.push_back(part);
             }
         int normal = 0, lng = 0;
         if (ranged) {

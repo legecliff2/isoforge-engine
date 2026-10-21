@@ -93,6 +93,7 @@ TEST_CASE("reactions content: damaged / ally_attacked entries compile; the rest 
     CHECK(rx[1].dice.sides == 10);
     CHECK(rx[1].dice.bonus == 5);
     CHECK(rx[1].ranged_only);
+    CHECK_FALSE(rx[0].requires_sight);
     CHECK(rx[2].window == ReactionTrigger::AllyAttacked);
     CHECK(rx[2].kind == ReactionEffectKind::ImposeDisadvantage);
     CHECK(rx[2].melee_only);
@@ -183,4 +184,13 @@ TEST_CASE("reactions in a fight: Damaged halves a hit; AllyAttacked only opens f
             CHECK_FALSE(r.needs);
         }
     }
+}
+
+TEST_CASE("7.2y reactions content: requires_sight on the window (Uncanny Dodge)") {
+    ContentLibrary lib;
+    REQUIRE(lib.load(sample_set()).empty());
+    REQUIRE_FALSE(lib.add(goblin("t.ud", {reaction("uncanny", "damaged", {{"kind", "reduce_damage"}, {"fraction", "half"}},
+                                                   {{"requires_sight", true}})}), "monster"));
+    REQUIRE(lib.find("t.ud")->base.reactions.size() == 1);
+    CHECK(lib.find("t.ud")->base.reactions[0].requires_sight);
 }
