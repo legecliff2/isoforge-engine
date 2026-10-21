@@ -193,8 +193,8 @@ out-of-combat step (`recover_ammunition`, `floor(spent / 2)`), never during `Com
 ### 3.1 Model
 
 Every creature with hands has two hand slots, `main` and `off` (creatures without hands, e.g. beasts, have none and use natural
-attacks only: `monster@5 hands: 0|2`, default 2 for humanoid / giant / fiend / celestial types, 0 for beasts, oozes, swarms; T&C
-authors exceptions). Held objects occupy slots:
+attacks only: `monster@5 hands: 0|2`, explicit; if omitted, 2 when the monster holds a weapon or shield, else 0;
+more held items than hands is an error; never inferred from creature type, Q9). Held objects occupy slots:
 
 | Object | Slots | Notes |
 |---|---|---|
@@ -281,8 +281,8 @@ halves the time** (Director, Q6, decided): `rounds / 2` (all table values are ev
 Equipment state needs identities: `ItemInstance { uint32_t id; uint32_t def; uint16_t count; uint8_t flags; }` (flags: lit,
 hooded, magical) allocated by sim from a monotonic `next_item_id` in setup order (combatant order, then `equipment[]` order). A
 ground item is `GroundItem { uint32_t instance; Vec2i tile; }`. Thrown weapons and dropped items become ground items; death drops
-**nothing** automatically (the corpse keeps its loadout), except that held light sources keep their light on the corpse's tile
-(`Carrier::Tile`, LIGHTING section 3.4). Basic ground items (drop, pick up, a dropped torch stays lit) are in scope now (Director,
+**nothing** automatically (the corpse keeps its loadout), and a held light source stays lit where it lies: it follows #233 (carrier
+stays `Item`, `holder_id` 0, tile = the owner's tile; `Carrier::Tile` is for unowned objects only). Basic ground items (drop, pick up, a dropped torch stays lit) are in scope now (Director,
 Q7, decided); a full looting UI comes later.
 
 ## 5. Monsters: reverse calculation
@@ -344,15 +344,31 @@ is wrong (T&C's audit shows that mismatch); the SRD text is a distinct weapon.
 
 - `ac_adjust {value: integer, reason: string (minLength 1)}`: added in step 4 of 1.2.
 - `attack_bonus {value: integer, reason}`: **overrides the total to-hit** (not a delta), so the printed number is the value.
-- `damage_adjust {value, reason}`: flat damage term added after the ability term (none needed in the 34; kept for completeness).
+- No `damage_adjust` (T&C review): none of the 34 needs one, and fields are hard to remove later. Added only when a monster needs it.
 - Validator: every adjustment needs a non-empty `reason`; a warning lists every adjusted monster (so the set stays visible);
-  an adjustment that is not needed (derivation already matches) is an **error** (`<id>: ac_adjust is not needed`).
+  an adjustment that is not needed (derivation already matches) is an **error**.
 
 ### 5.6 Load-time assertion
 
 At `monster@5` with `derive: true`, the loader derives AC and each derived action and requires equality with the printed
-`armor_class.value`, `to_hit` and `damage[0].dice` (exact error: `<id>: derived AC 14 != printed 15`). The validator runs the same
-check with the same strings. A file that fails cannot load, so a derivation bug can never change a fight silently.
+`armor_class.value`, `to_hit` and `damage[0].dice`. The validator runs the same check with the same strings (one shared case file
+keeps the C++ loader and the Python validator in sync). A file that fails cannot load, so a derivation bug can never change a fight
+silently. Exact strings (`<id>` = the content id, `<action>` = the action id; to-hit signed, dice as `NdM+K` / `NdM-K` / `NdM` /
+a bare flat integer), produced by `rules5e::derive_monster`:
+
+| Case | String |
+|---|---|
+| AC mismatch | `<id>: derived AC 14 != printed 15` |
+| to-hit mismatch | `<id>.<action>: derived to-hit +4 != printed +3` |
+| damage mismatch | `<id>.<action>: derived damage 1d8+4 != printed 2d8+4`, with the suffix ` (weapon_dice_multiplier 2 would match)` when a multiplier 2..4 reproduces it |
+| adjustment not needed | `<id>: ac_adjust is not needed`, `<id>.<action>: attack_bonus is not needed` |
+| structure not needed | `<id>: weapon_dice_multiplier is not needed` (every weapon derives with 1), `<id>: natural_armor is not needed` (armor is worn, or 10 + Dex already matches) |
+| missing reason | `<id>: ac_adjust needs a reason`, `<id>.<action>: attack_bonus needs a reason` |
+| PB off the CR table | `<id>: proficiency_bonus 3 != CR table 2` (unless `proficiency_bonus_reason` is given) |
+
+**Second damage components stay authored and unchecked in v1** (T&C review): Basilisk 2d6 poison, Black Dragon Wyrmling 1d4 acid,
+Giant Toad 1d10 poison, Medusa Snake Hair 4d6 and Longbow 2d6 poison, Grimlock 1d4 piercing. Only `damage[0]` is derived and
+asserted; `damage[1..]` load as written.
 
 ### 5.7 Audit script and results
 
@@ -427,7 +443,7 @@ Light attachment stays **generic** (LIGHTING section 3.4, #233's producer list).
 
 | Producer | Carrier | Lifetime |
 |---|---|---|
-| **Equipment** (this proposal): a held or worn item whose `item@2` carries a `light` block and is lit | `Item` (holder = the creature holding it) | while lit and fuelled; dropped => `Tile`; picked up => `Item` again, **same light id** |
+| **Equipment** (this proposal): a held or worn item whose `item@2` carries a `light` block and is lit | `Item` (`holder_id` = the creature holding it) | while lit and fuelled; dropped => still `Item`, `holder_id` 0, the owner's tile (#233); picked up => `holder_id` = the new holder, **same light id** |
 | Light spell: any object, held, worn or lying on a tile | `Item` for an item instance, `Tile` for an unowned object, `Creature` never (SRD: an object) | 600 rounds (1 hour), recast ends the previous, dismissal is an action |
 | Daylight, Produce Flame, Dancing Lights, glowing monsters (`monster@5 emits_light`) | as LIGHTING | as LIGHTING |
 | `pc_torches`, `Session::Options::carried_lights` (#233, vertical slice) | Creature | session option; to be replaced by equipment once torches are items (no behaviour change for the slice: the option stays until T&C ships torch items on the slice PC) |
@@ -446,28 +462,29 @@ light on the same item (two rows, composition takes the brighter, LIGHTING secti
   "light": { "bright_ft": 30, "dim_ft": 30, "shape": "radius",
              "duration_rounds": 3600, "fuel": "srd51.item.oil_flask",
              "lit_by_default": false,
-             "states": [ {"id": "open", "bright_ft": 30, "dim_ft": 30},
-                         {"id": "hooded", "bright_ft": 0, "dim_ft": 5, "toggle": "action"} ] } }
+             "states": [ {"id": "hooded", "bright_ft": 0, "dim_ft": 5, "toggle": "action"} ] } }
 ```
 
-- `bright_ft`, `dim_ft` (dim is **additional** beyond bright, as chunk@2; sum <= 120), `shape` `radius | cone` (`cone_ft` = the
-  bright length; bullseye 60 + 60; facing = the holder's facing, which needs LIGHTING's reserved cone, Q8), `duration_rounds`
+- `bright_ft`, `dim_ft` (dim is **additional** beyond bright, as chunk@2; sum <= 120), `shape` `radius | cone` (a cone's length is
+  `bright_ft`, its width equals its length, the SRD cone template; bullseye 60 + 60; facing per Q8), `duration_rounds`
   (integer; torch / candle 600, lamp / lantern 3600 per flask), `fuel` (an item id consumed to refill to `duration_rounds`;
-  absent for torches and candles, which are consumed), `lit_by_default`, `states[]` (state index = `AttachedLight::state`;
-  hooded lantern per LIGHTING R6, "As an action, you can lower the hood, reducing the light to dim light in a 5-foot radius").
-- `torch_attack`: a torch also carries an improvised melee profile `{"dice": null, "flat": 1, "type": "fire", "requires_lit": true}`
+  absent for torches and candles, which are consumed), `lit_by_default`, `states[]` (only the *other* states: state 0 is the
+  top-level radii, `states[i]` is `AttachedLight::state` i + 1; hooded lantern per LIGHTING R6, "As an action, you can lower the hood, reducing the light to dim light in a 5-foot radius").
+- `torch_attack`: a torch also carries an improvised melee profile in the existing `item_damage` shape (as the blowgun):
+  `{"damage": [{"flat": 1, "type": "fire"}], "requires_lit": true}`
   (*Torch*: "1 fire damage").
 - SRD light gear to author (T&C): torch (20 / 20, 1 hour), candle (5 / 5, 1 hour), lamp (15 / 30, 6 hours per flask), hooded
   lantern (30 / 30; hooded dim 5), bullseye lantern (cone 60 / 60), oil flask (fuel, plus its own splash / throw effect, later).
 - Burn-down is counted in rounds during combat and in exploration rounds outside it, integer; reaching 0 clears `kLit` and emits
-  `LightChanged` (LIGHTING section 8). The cost of lighting a torch or lamp is not fixed here (SRD 5.1's gear text does not state it
-  for these items; proposal: the free object interaction, Q8); lowering the hooded lantern's hood is an action (SRD text above).
+  `LightChanged` (LIGHTING section 8). **Lighting takes an action** (*Adventuring Gear, Tinderbox*: "Using it to light a torch--or anything
+  else with abundant, exposed fuel--takes an action. Lighting any other fire takes 1 minute."): torch, candle, lamp and lanterns,
+  with a tinderbox carried or a lit source adjacent (Q8); raising or lowering the hooded lantern's hood is an action (SRD text above).
 
 ### 6.3 Hand interaction
 
 A held light occupies a hand (section 3.1); stowing it in a pack douses nothing but moves the light carrier to the creature with
 the light blocked (*Light*: "Completely covering the object with something opaque blocks the light"): the row stays, flag `lit`
-cleared while stowed, restored when drawn (no new id). Dropping keeps it lit on the tile.
+cleared while stowed, restored when drawn (no new id). Dropping keeps it lit where it lies (#233: carrier `Item`, `holder_id` 0).
 
 ## 7. Versioning and migration
 
@@ -478,7 +495,7 @@ LIGHTING already plans `item@2` and `monster@5` (`emits_light`). This proposal j
 | Schema | Adds (all optional) |
 |---|---|
 | `item@2` | categories `gear` (with `light`, `hands`), `ammunition` (`ammo_kind`, `magic_bonus`); weapon `ammo_kind`, `attack_magic`, `damage_magic`, `improvised`; `unarmed` is an engine built-in, not an item |
-| `monster@5` | `derive`, `equipment[]` (as character@4 plus `count`), `natural_armor`, `weapon_dice_multiplier`, `weapons[]` (local), action `weapon` / `natural`, `ac_adjust`, `attack_bonus`, `damage_adjust`, `hands`, `proficiency_bonus` optional; LIGHTING's `emits_light` |
+| `monster@5` | `derive`, `equipment[]` (as character@4 plus `count`), `natural_armor`, `weapon_dice_multiplier`, `weapons[]` (local), action `weapon` / `natural`, `ac_adjust`, `attack_bonus`, `hands`, `proficiency_bonus` optional; LIGHTING's `emits_light` |
 | `character@5` | `derive`, equipment `hand` (`main`/`off`) and `count`, `weapon_proficiencies` / `armor_proficiencies` (or derived from class data, Q5) |
 | `common@2` | unchanged (no shared def moves) |
 
@@ -535,21 +552,47 @@ Plus one new compat test per bump PR: load every srd51.core PC and monster with 
   Light rows produced by equipment stay under LIGHTING's 0xC7 (no new light tag). `TurnBudget::object_interaction` is not hashed
   (TurnBudget is not, 9.3).
 
-## 9. Implementation order (sketch)
+## 9. Boundary and implementation order
 
-1. Rules: `compute_ac` candidates / rows / floors / adjust (pure, unit tests, `ac_floor` refactor test); `derive_weapon_attack`
-   (pure); off-hand negative-mod fix in the derivation.
-2. T&C: `item@2`, `monster@5`, `character@5` schemas, migrations, validator (assertions, adjustment reasons, unneeded-adjustment
-   error); audit script becomes a validator check.
-3. Engine Core: loader derivation behind `derive`; compat test (7.4).
-4. Rules: `Loadout`, hands, components check, `equip_op`, free interaction (behind `CombatOptions::equipment`); tags 0xD0..0xD2
-   claimed then.
-5. Engine Core + R&P: equipment as a light producer; torches / lanterns as items; retire `pc_torches` when the slice PC carries one.
+### 9.1 Boundary (agreed with Engine Core)
+
+**Rules owns predicates and math only:**
+- `compute_ac` (signature unchanged; every new `AcInput` field defaults to today's result), `derive_weapon_attack`;
+- `free_hands`, `can_attack_with`, `components_ok`; `equip_legal(state, req)` returning `Free` / `Interaction` / `Action` /
+  `Refused` plus the exact refusal string; `legal_actions` entries for equip ops, appended after the existing entries;
+- the POD `rules5e::ItemDef` (weapon / armor / shield / light data) in a rules header; EC's `ItemDefTable` stores them and passes a
+  lookup in;
+- the monster derivation (`derive_monster`: PB table, natural armor, local weapons, multiplier, Brute, adjustments, the 5.6 strings).
+
+**Engine Core owns state and mechanics:** `CombatOptions` (Rules does not add it), `Loadout` / `ItemInstance` / `GroundItem` state,
+`recompute_derived`, `apply_equip`, ground-item entities, the free-interaction bookkeeping, thrown weapons landing, ammunition
+decrement, and the 0xD0..0xD2 folds. Rules builds **no** ground-item or loadout state.
+
+**Rules decisions** (recorded for EC):
+- A stowed weapon's attack **stays listed** in `Combatant::attacks` (fixed order, 7.3) and is refused at attack time
+  (`attack: the weapon is not in hand`).
+- Drop is free **on the actor's own turn only**.
+- Ammunition: **unlimited when there is no stack** (monsters permanently, Q10).
+- `recompute_derived` triggers (EC calls it on each): an equip change (draw, stow, drop, pick up, don / doff shield, hand over);
+  an AC effect starting or ending (`ModStat::Ac` modifiers: Mage Armor, Barkskin, Shield, Shield of Faith, Haste); a change to Str,
+  Dex, Con or Wis; a proficiency or level change.
+
+### 9.2 Sequencing (T&C review)
+
+1. **Rules:** the derivation and its messages (5.6) and the predicates (9.1).
+2. **Engine Core (`engine/core/assets`):** `kItemSchemaVersion` 2, `kMonsterSchemaVersion` 5, `kCharacterSchemaVersion` 5 and identity
+   migrations (`derive` absent); then the loader derivation and assertions behind `derive`, the forced-derive compat test (7.4),
+   `CombatOptions`, loadouts, `apply_equip` and the 0xD0..0xD2 folds.
+3. **T&C:** the `item@2` / `monster@5` / `character@5` schemas and the validator (the loader's strings; the audit script becomes the
+   check), then content in this order: light gear (torch, candle, lamp, hooded and bullseye lanterns, oil flask, tinderbox), then
+   the 34 monsters at `monster@5`, then the PCs at `character@5` (proficiencies, ammunition stacks).
+4. **Engine Core + R&P:** equipment as a light producer. **Lights render only after #244**; before that, torch items validate but
+   shed no light.
 
 ## 10. Open questions
 
 Director answered Q1..Q4, Q6, Q7 (2026-10-21) and approved the three monster adjustments with their reasons (5.5, 5.7) and tags
-0xD0..0xD2 (8). T&C's questions are pending.
+0xD0..0xD2 (8). T&C answered Q5, Q8..Q12 in the #245 review.
 
 **Director (decided)**
 
@@ -564,16 +607,18 @@ Director answered Q1..Q4, Q6, Q7 (2026-10-21) and approved the three monster adj
 - Monster adjustments (Skeleton `ac_adjust` +1, Black Bear Bite / Claws `attack_bonus` +3, Ghoul Bite `attack_bonus` +2) and their
   reasons: **approved**. Tags 0xD0..0xD2: **approved**, claimed.
 
-**T&C (pending)**
+**T&C (answered in the #245 review)**
 
-- Q5 (pending). Proficiencies: author `weapon_proficiencies` / `armor_proficiencies` on each `character@5`, or derive them from class / race
-  data (needs class documents)? Proposal: authored now, derived later.
-- Q8 (pending). Light gear: lighting a torch / lamp is proposed as the free object interaction (no SRD text found); confirm before authoring;
-  the bullseye cone needs LIGHTING's reserved cone and a facing rule (Engine Core); oil flask's splash effect is a separate item effect.
-- Q9 (pending). `hands: 0|2` defaults by creature type (beasts 0) and exceptions (e.g. an ape-like beast with hands): who authors the list?
-- Q10 (pending). Ammunition: when do srd51.core PCs get explicit stacks (`count`), and is "no stack = unlimited" acceptable as the permanent
-  default for monsters?
-- Q11 (pending). The 3 adjusted monsters (Black Bear, Ghoul Bite, Skeleton): confirm the reasons against the SRD text you used (5e-bits
-  `a6212be`) so the reason strings quote the right source.
-- Q12 (pending). Size dice: keep `weapon_dice_multiplier` explicit per monster (proposal) or derive it from `size` for Large+ humanoid
-  wielders with a per-monster opt-out?
+- Q5. Proficiencies are **authored** on `character@5` (`weapon_proficiencies` / `armor_proficiencies`) and cross-checked by the
+  validator against the class mirror (5e-database `5e-SRD-Classes.json`, plus race weapon training): a missing SRD-granted
+  proficiency is an error, an extra one is a warning (a documented override). Class documents become the default later.
+- Q8. Lighting a torch, candle, lamp or lantern takes **an action** with a tinderbox or an adjacent flame (*Tinderbox*); the hood is
+  an action. The bullseye cone uses the SRD cone template (width = length). Facing is an integer 8-direction value on the light row,
+  set when lit, defaulting to the holder's last move direction, else toward its current target; hashed with the row (0xC7).
+- Q9. `monster@5` declares `hands` explicitly; if omitted, 2 when it holds a weapon or shield, else 0. Equipped held items needing
+  more hands than declared is an error. **Never inferred from creature type.**
+- Q10. PC ammunition uses the SRD starting counts (20 arrows, 20 bolts, 20 sling bullets, 50 blowgun needles) in the later
+  PC-derivation PR; monsters stay **unlimited permanently** (an explicit `count` is opt-in).
+- Q11. The three reason strings are **verified** against 5e-database `a6212be`. The Ghoul's reads "SRD Ghoul Bite prints +2;
+  damage 2d6 + 2 fits Dex 15 (+2), Dex + PB 2 = +4 (Str + PB = +3)".
+- Q12. `weapon_dice_multiplier` stays **explicit per monster**; the damage-mismatch error hints at it (5.6) and the audit suggests it.
