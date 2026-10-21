@@ -4516,6 +4516,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
                 std::vector<CombatantId> to;
                 if (m.applies_to == ModAppliesTo::Self) to.push_back(a.id);
                 else if (m.applies_to == ModAppliesTo::Target) { if (req.target != 0) to.push_back(req.target); }
+                else if (m.applies_to == ModAppliesTo::Attackers) to.push_back(req.target != 0 ? req.target : a.id);   // 7.2zd: on the protected creature
                 else if (s.hooks.area_targets) {
                     SpellDef area; area.area = AreaShape::Sphere; area.area_size_ft = 30;
                     for (CombatantId id : s.hooks.area_targets(s, a, area)) {
