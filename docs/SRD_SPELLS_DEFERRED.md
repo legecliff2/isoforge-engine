@@ -13,10 +13,10 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 | level | in `srd51.core` | deferred: needs a mechanic | deferred: out of combat scope | total |
 |---|---|---|---|---|
 | 0 (cantrips) | 10 | 3 | 11 | 24 |
-| 1 | 18 | 12 | 19 | 49 |
-| 2 | 12 | 19 | 23 | 54 |
+| 1 | 20 | 10 | 19 | 49 |
+| 2 | 13 | 18 | 23 | 54 |
 | 3 | 9 | 14 | 19 | 42 |
-| **total** | **49** | **48** | **72** | **169** |
+| **total** | **52** | **45** | **72** | **169** |
 
 ## Authored in this change (9)
 
@@ -99,11 +99,21 @@ Spell batch 2 rules (7.2zd). Pinned by `tests/validate/test_srd51_spells.py` (ta
 
 | spell | level | `spell@1` shape | notes |
 |---|---|---|---|
-| Protection from Evil and Good | 1 | `apply_modifier` `scope {from_types [aberration, celestial, elemental, fey, fiend, undead]}` attack_roll disadvantage `applies_to attackers`; `condition_immunity_from {conditions [charmed, frightened], types}`; touch, concentration 10 minutes | **partial**: possession and the advantage on a new save are not modelled. **Deviation**: the material is consumed but has no cost, and spell@1 requires `cost_cp` with `consumed`, so "consumed" is kept in the text only |
+| Protection from Evil and Good | 1 | `apply_modifier` `scope {from_types [aberration, celestial, elemental, fey, fiend, undead]}` attack_roll disadvantage `applies_to attackers`; `condition_immunity_from {conditions [charmed, frightened], types}`; touch, concentration 10 minutes | **partial**: possession and the advantage on a new save are not modelled. `components.m.consumed` with no `cost_cp` (#234): nothing is checked or removed |
 | Sanctuary | 1 | `apply_condition` warded, `ward {save wis, on_fail retarget_or_lose}`, `ends_on [attack, harmful_cast]`; bonus action, range 30, 1 minute | areas are not blocked (SRD); a "harmful spell" is one cast by a creature of another team |
 | Aid | 2 | `max_hp_bonus {flat 5, per_slot_above 5}`; `targets {count 3}`, range 30, 8 hours | |
 
-## Deferred (120 spells; reasons re-checked against main at `8b8d8c9`)
+## Authored after Rules #237 (3)
+
+Spell batch 3 rules (7.2ze). Pinned by `tests/validate/test_srd51_spells.py` (table rows and `test_spell_batch3`).
+
+| spell | level | `spell@1` shape | notes |
+|---|---|---|---|
+| Bane | 1 | `apply_modifier` `save {ability cha, dc caster}`, modifier `{stat attack_roll, die 1d4, sign minus, applies_to [attack, save]}`; `targets {count 3}`, `upcast.targets 1`; concentration 1 minute | a target that succeeds is not affected |
+| Bless | 1 | `apply_modifier` modifier `{stat attack_roll, die 1d4, sign plus, applies_to [attack, save]}`; `targets {count 3}`, `upcast.targets 1`; concentration 1 minute | Life domain spell (cleric 1-5) |
+| Blindness/Deafness | 2 | `save` CON, `condition chosen`, `choices [blinded, deafened]`, `repeat_save end_of_turn`; range 30, 1 minute; `upcast.targets 1` | the caster picks at cast (`condition_choice`) |
+
+## Deferred (117 spells; reasons re-checked against main at `8b8d8c9`)
 
 Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the first-draft ids in brackets: B1 = R-G2 effects array, B2 = R-G3 timed modifiers, B3 = R-G4 damage riders, B4 = R-G5 pools, B6 = R-G7 reactions / roll windows, C1 = R-G8 conditions with source, C2 = R-G9 forced movement / teleport, C3 = R-G10 area templates, C4 = R-G11 zones / auras, C5 = R-G12 summons, C7 = R-G13 cover / lighting / vision, C8 = R-G14 per-cast options, C9 = R-G15 spell kinds). `T&C-G12` / `T&C-G14` are movement modes and creature footprint. `OOS` rows have no gap id.
 
@@ -125,8 +135,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 0 | True Strike | NEW | `attack_roll` advantage with `consume: next_attack` loads, but the advantage applies to any target; the SRD limits it to the chosen target (no per-target modifier scope). | R-G3 (B2) |
 | 1 | Alarm | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Animal Friendship | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
-| 1 | Bane | NEW | `modifier.die` "-1d4" loads (`die_mult` -1), but common@2 `die` is the v1 dice pattern (no leading '-'), `apply_modifier` refuses `targets` ("targets not allowed on a apply_modifier effect") and a Cha save gate needs `save` with damage or condition. Needs an additive schema / loader change. | R-G3 (B2), T&C |
-| 1 | Bless | NEW | 1d4 `attack_roll` + `save` modifiers load (second as a rider), but `apply_modifier` refuses `targets` (up to three creatures). | R-G3 (B2), T&C |
 | 1 | Charm Person | NEW | Charmed with source (R-G8). | R-G8 (C1) |
 | 1 | Color Spray | NEW | `hp_pool` (blinded) loads (EC #120) with a self cone; "until the end of your next turn" is approximated by `rounds 1`, not faithful. | R-G15 (C9) |
 | 1 | Comprehend Languages | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
@@ -160,7 +168,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Arcane Lock | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Arcanist's Magic Aura | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Augury | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Blindness/Deafness | NEW | Rules have `condition_choices` (R-G14) but spell@1 has no key for a per-cast condition choice. | R-G14 (C8) |
 | 2 | Blur | NEW | `attacks_against` disadvantage on self loads; **partial**: blindsight / truesight attackers are not exempted. | R-G3 (B2) |
 | 2 | Branding Smite | NEW | Weapon-attack rider: extra radiant damage, reveals invisible, concentration (R-G4, T&C-G5). SRD level 2 (the earlier draft also listed it at level 1). | R-G4, T&C-G5 (B3) |
 | 2 | Calm Emotions | NEW | Area + suppress condition (R-G10, R-G3). | R-G3, R-G10 (B2, C3) |
