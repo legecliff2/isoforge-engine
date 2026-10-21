@@ -94,7 +94,7 @@
     {
       "id": "divine_smite",
       "name": "Divine Smite",
-      "description": "Starting at 2nd level, when you hit a creature with a melee weapon attack, you can expend one spell slot to deal radiant damage to the target, in addition to the weapon's damage. The extra damage is 2d8 for a 1st-level spell slot, plus 1d8 for each spell level higher than 1st, to a maximum of 5d8. The damage increases by 1d8 if the target is an undead or a fiend. Modelled: the slot spend (any level) and 2d8 radiant + 1d8 per slot level above 1st on a melee weapon hit. Not modelled: the extra 1d8 against an undead or a fiend (an on_event rider cannot carry its own target-type predicate). The 5d8 cap is out of reach below 9th level (2nd-level slots at most here).",
+      "description": "Starting at 2nd level, when you hit a creature with a melee weapon attack, you can expend one spell slot to deal radiant damage to the target, in addition to the weapon's damage. The extra damage is 2d8 for a 1st-level spell slot, plus 1d8 for each spell level higher than 1st, to a maximum of 5d8. The damage increases by 1d8 if the target is an undead or a fiend. Modelled: the slot spend (any level) and 2d8 radiant + 1d8 per slot level above 1st on a melee weapon hit. The extra 1d8 against an undead or a fiend is the damage entry's bonus_vs. The 5d8 cap is out of reach below 9th level (2nd-level slots at most here).",
       "effect": {
         "kind": "on_event",
         "on": "hit",
@@ -115,7 +115,14 @@
             "damage": [
               {
                 "dice": "2d8",
-                "type": "radiant"
+                "type": "radiant",
+                "bonus_vs": {
+                  "creature_types": [
+                    "undead",
+                    "fiend"
+                  ],
+                  "dice": "1d8"
+                }
               }
             ],
             "scale": {

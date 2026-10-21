@@ -64,6 +64,12 @@
         "class": "paladin"
       },
       "recharge": "long_rest"
+    },
+    {
+      "id": "channel_divinity",
+      "name": "Channel Divinity",
+      "max": 1,
+      "recharge": "short_rest"
     }
   ],
   "features": [
@@ -95,7 +101,7 @@
     {
       "id": "divine_smite",
       "name": "Divine Smite",
-      "description": "Starting at 2nd level, when you hit a creature with a melee weapon attack, you can expend one spell slot to deal radiant damage to the target, in addition to the weapon's damage. The extra damage is 2d8 for a 1st-level spell slot, plus 1d8 for each spell level higher than 1st, to a maximum of 5d8. The damage increases by 1d8 if the target is an undead or a fiend. Modelled: the slot spend (any level) and 2d8 radiant + 1d8 per slot level above 1st on a melee weapon hit. Not modelled: the extra 1d8 against an undead or a fiend (an on_event rider cannot carry its own target-type predicate). The 5d8 cap is out of reach below 9th level (2nd-level slots at most here).",
+      "description": "Starting at 2nd level, when you hit a creature with a melee weapon attack, you can expend one spell slot to deal radiant damage to the target, in addition to the weapon's damage. The extra damage is 2d8 for a 1st-level spell slot, plus 1d8 for each spell level higher than 1st, to a maximum of 5d8. The damage increases by 1d8 if the target is an undead or a fiend. Modelled: the slot spend (any level) and 2d8 radiant + 1d8 per slot level above 1st on a melee weapon hit. The extra 1d8 against an undead or a fiend is the damage entry's bonus_vs. The 5d8 cap is out of reach below 9th level (2nd-level slots at most here).",
       "effect": {
         "kind": "on_event",
         "on": "hit",
@@ -116,7 +122,14 @@
             "damage": [
               {
                 "dice": "2d8",
-                "type": "radiant"
+                "type": "radiant",
+                "bonus_vs": {
+                  "creature_types": [
+                    "undead",
+                    "fiend"
+                  ],
+                  "dice": "1d8"
+                }
               }
             ],
             "scale": {
@@ -137,17 +150,38 @@
     {
       "id": "channel_divinity",
       "name": "Channel Divinity",
-      "description": "Your oath allows you to channel divine energy to fuel magical effects. Each Channel Divinity option provided by your oath explains how to use it. When you use your Channel Divinity, you choose which option to use. You must then finish a short or long rest to use your Channel Divinity again. Some Channel Divinity effects require saving throws. When you use such an effect from this class, the DC equals your paladin spell save DC."
+      "description": "Your oath allows you to channel divine energy to fuel magical effects. Each Channel Divinity option provided by your oath explains how to use it. When you use your Channel Divinity, you choose which option to use. You must then finish a short or long rest to use your Channel Divinity again. Some Channel Divinity effects require saving throws. When you use such an effect from this class, the DC equals your paladin spell save DC. (Modelled: resources[] channel_divinity, 1 use per short or long rest, spent by Sacred Weapon and Turn the Unholy.)"
     },
     {
       "id": "sacred_weapon",
       "name": "Channel Divinity: Sacred Weapon",
-      "description": "As an action, you can imbue one weapon that you are holding with positive energy, using your Channel Divinity. For 1 minute, you add your Charisma modifier to attack rolls made with that weapon (with a minimum bonus of +1). The weapon also emits bright light in a 20-foot radius and dim light 20 feet beyond that. If the weapon is not already magical, it becomes magical for the duration. You can end this effect on your turn as part of any other action. If you are no longer holding or carrying this weapon, or if you fall unconscious, this effect ends."
+      "description": "As an action, you can imbue one weapon that you are holding with positive energy, using your Channel Divinity. For 1 minute, you add your Charisma modifier to attack rolls made with that weapon (with a minimum bonus of +1). The weapon also emits bright light in a 20-foot radius and dim light 20 feet beyond that. If the weapon is not already magical, it becomes magical for the duration. You can end this effect on your turn as part of any other action. If you are no longer holding or carrying this weapon, or if you fall unconscious, this effect ends. (Modelled: apply_modifier, an action spending 1 channel_divinity: + Charisma modifier (min 1) to attack rolls with the wielded melee weapon for 10 rounds, ending if it leaves your hand or you fall unconscious. Not modelled: the weapon becoming magical, the light, ending it early.)",
+      "effect": {
+        "kind": "apply_modifier",
+        "cost": "action",
+        "usage": {
+          "kind": "pool",
+          "pool": "channel_divinity",
+          "cost": 1
+        },
+        "scope": {
+          "weapon": "wielded"
+        },
+        "modifier": {
+          "stat": "attack_roll",
+          "bonus": 2,
+          "applies_to": "self",
+          "duration": {
+            "kind": "rounds",
+            "n": 10
+          }
+        }
+      }
     },
     {
       "id": "turn_the_unholy",
       "name": "Channel Divinity: Turn the Unholy",
-      "description": "As an action, you present your holy symbol and speak a prayer censuring fiends and undead, using your Channel Divinity. Each fiend or undead that can see or hear you within 30 feet of you must make a Wisdom saving throw. If the creature fails its saving throw, it is turned for 1 minute or until it takes damage. A turned creature must spend its turns trying to move as far away from you as it can, and it can't willingly move to a space within 30 feet of you. It also can't take reactions. For its action, it can use only the Dash action or try to escape from an effect that prevents it from moving. If there's nowhere to move, the creature can use the Dodge action."
+      "description": "As an action, you present your holy symbol and speak a prayer censuring fiends and undead, using your Channel Divinity. Each fiend or undead that can see or hear you within 30 feet of you must make a Wisdom saving throw. If the creature fails its saving throw, it is turned for 1 minute or until it takes damage. A turned creature must spend its turns trying to move as far away from you as it can, and it can't willingly move to a space within 30 feet of you. It also can't take reactions. For its action, it can use only the Dash action or try to escape from an effect that prevents it from moving. If there's nowhere to move, the creature can use the Dodge action. (Modelled: actions[] turn_the_unholy, a save_effect with control turned on fiends and undead within 30 ft, spending 1 channel_divinity.)"
     }
   ],
   "equipment": [
@@ -207,6 +241,30 @@
           "type": "piercing"
         }
       ]
+    },
+    {
+      "id": "turn_the_unholy",
+      "name": "Channel Divinity: Turn the Unholy",
+      "kind": "save_effect",
+      "save": {
+        "ability": "wis",
+        "dc": 12
+      },
+      "range_ft": 30,
+      "control": "turned",
+      "target_creature_types": [
+        "fiend",
+        "undead"
+      ],
+      "duration": {
+        "kind": "rounds",
+        "n": 10
+      },
+      "usage": {
+        "kind": "pool",
+        "pool": "channel_divinity",
+        "cost": 1
+      }
     }
   ],
   "spellcasting": {
