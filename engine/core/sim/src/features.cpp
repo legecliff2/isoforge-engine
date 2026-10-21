@@ -508,6 +508,11 @@ std::optional<std::string> apply_grant_die(Archetype& a, const FeatureDecl& f, u
     const std::string cls = f.effect.value("class", "");
     for (const Json& c : ctx.doc.value("classes", Json::array()))
         if (c.value("class", "") == cls) level += c.value("level", 0);
+    if (!cls.empty()) {   // #214 follow-up: a class the document does not have is an error, not a fallback
+        bool has = false;
+        for (const Json& c : ctx.doc.value("classes", Json::array())) has = has || c.value("class", "") == cls;
+        if (!has) return f.id + ": grant_die class '" + cls + "' is not one of the document's classes";
+    }
     if (level == 0 && cls.empty()) level = ctx.doc.value("level", 0);
     if (auto sc = f.effect.find("scale"); sc != f.effect.end()) {
         if (!sc->is_array() || sc->empty() || sc->size() > 20) return f.id + ": grant_die scale must be 1..20 entries";

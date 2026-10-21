@@ -105,6 +105,7 @@ TEST_CASE("7.2za content: load errors") {
     bad("b7", [](Json& d) { feature(d, "bardic_inspiration")["effect"].erase("range_ft"); }, "range_ft must be");
     bad("b8", [](Json& d) { feature(d, "bardic_inspiration")["effect"]["die"] = "1d6+1"; }, "grant_die needs die");   // #214 follow-up: plain NdM
     bad("b9", [](Json& d) { feature(d, "bardic_inspiration")["effect"]["scale"][0]["die"] = "1d8+2"; }, "scale entries are {level, die}");
+    bad("b10", [](Json& d) { feature(d, "bardic_inspiration")["effect"]["class"] = "wizard"; }, "class 'wizard' is not one of the document's classes");
     bad("b8", [](Json& d) { feature(d, "jack_of_all_trades")["effect"]["on"] = Json::array({"checks", "checks"}); }, "half_proficiency: bad on");
     bad("b9", [](Json& d) { feature(d, "jack_of_all_trades")["effect"]["on"] = Json::array({"saves"}); }, "half_proficiency: bad on");
     Json m = load_json("content/packs/srd51.core/monsters/goblin.json");

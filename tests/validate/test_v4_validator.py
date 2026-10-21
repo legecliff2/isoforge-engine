@@ -906,7 +906,8 @@ class BardHooks72za(unittest.TestCase):
     JACK = {"kind": "half_proficiency", "on": ["checks", "initiative"]}
 
     def doc(self, schema="character@4"):
-        return {"$schema": schema, "id": "t.bard", "features": [{"id": "bi", "effect": self.GD}, {"id": "jack", "effect": self.JACK}]}
+        return {"$schema": schema, "id": "t.bard", "classes": [{"class": "bard", "level": 5}],
+                "features": [{"id": "bi", "effect": self.GD}, {"id": "jack", "effect": self.JACK}]}
 
     def test_valid_shapes(self):
         self.assertEqual(checks_v4.check_bard_hooks(self.doc()), [])
@@ -954,3 +955,13 @@ class MonkWarlockHooks72zb(unittest.TestCase):
         self.assertTrue(any("never applies" in x for x in w))
         self.assertTrue(any("is not a spell@1" in x for x in self.run_checks(self.doc(ab=sm("srd51.spell.nope")))[0]))
         self.assertTrue(any("not valid on monsters" in x for x in self.run_checks(self.doc("monster@4", ab=sm("srd51.spell.eldritch_blast")))[0]))
+
+
+class BardFollowups214(unittest.TestCase):
+    """#214 follow-up: grant_die.class must be one of the document's classes."""
+    def test_class_not_in_doc(self):
+        d = {"$schema": "character@4", "id": "t.b", "classes": [{"class": "bard", "level": 5}],
+             "features": [{"id": "bi", "effect": dict(BardHooks72za.GD, **{"class": "wizard"})}]}
+        self.assertTrue(any("is not one of the document's classes" in e for e in checks_v4.check_bard_hooks(d)))
+        d["features"][0]["effect"]["class"] = "bard"
+        self.assertEqual(checks_v4.check_bard_hooks(d), [])
