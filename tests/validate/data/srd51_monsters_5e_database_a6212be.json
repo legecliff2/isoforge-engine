@@ -1599,6 +1599,100 @@
      ]
     }
    ]
+  },
+  "gelatinous-cube": {
+   "name": "Gelatinous Cube",
+   "size": "Large",
+   "type": "ooze",
+   "ac": [
+    6
+   ],
+   "hp": 84,
+   "hp_roll": "8d10+40",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "15 ft."
+   },
+   "abilities": [
+    14,
+    3,
+    20,
+    1,
+    6,
+    1
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "blinded",
+    "charmed",
+    "deafened",
+    "exhaustion",
+    "frightened",
+    "prone"
+   ],
+   "attacks": [
+    {
+     "name": "Pseudopod",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "3d6",
+        "acid"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-toad": {
+   "name": "Giant Toad",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    11
+   ],
+   "hp": 39,
+   "hp_roll": "6d10+6",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "20 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    15,
+    13,
+    13,
+    2,
+    10,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d10+2",
+        "piercing"
+       ],
+       [
+        "1d10",
+        "poison"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }

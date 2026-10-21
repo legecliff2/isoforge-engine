@@ -80,7 +80,7 @@ class SpellTable(unittest.TestCase):
                         step = dice_count(lv[str(d["level"] + 1)]) - dice_count(base)
                         self.assertEqual(d["scaling"]["upcast"], {"dice": step})
                 if "dc" in t:
-                    self.assertEqual((eff["kind"], eff["ability"], eff["on_success"]), ("save", t["dc"]["ability"], t["dc"]["success"]))
+                    self.assertEqual((eff["kind"], eff["ability"], eff.get("on_success", "none")), ("save", t["dc"]["ability"], t["dc"]["success"]))   # none: the default (condition / control saves)
                 if "attack_type" in t:
                     self.assertEqual((eff["kind"], eff["attack"]), ("spell_attack", t["attack_type"]))
                 if "area_of_effect" in t:
@@ -142,6 +142,17 @@ class SpellTable(unittest.TestCase):
         self.assertEqual(ct[2]["modifier"]["when"], [{"kind": "owner_creature_type", "creature_types": ["undead"]}, {"kind": "subject_is_caster"}])
         for idx in ("guiding-bolt", "vicious-mockery", "shocking-grasp", "chill-touch"):
             self.assertTrue(all(e["applies_to"] == "affected" for e in load(idx)["effects"][1:]), idx)
+
+    def test_control_spells(self):
+        # Rules #188 (7.2v): control saves (Command word chosen at cast, Fear, Hideous Laughter)
+        self.assertEqual(load("command")["effects"], [{"kind": "save", "ability": "wis", "control": "command",
+                                                       "control_excludes_creature_types": ["undead"]}])
+        self.assertEqual(load("command")["targets"], {"count": 1, "max_spread_ft": 30})
+        self.assertEqual(load("command")["scaling"], {"upcast": {"targets": 1}})
+        self.assertEqual(load("fear")["effects"], [{"kind": "save", "ability": "wis", "condition": "frightened", "control": "fear",
+                                                    "repeat_save": "end_of_turn_unseen"}])
+        self.assertEqual(load("hideous-laughter")["effects"], [{"kind": "save", "ability": "wis", "condition": "prone", "control": "laughter",
+                                                                "control_min_int": 4, "repeat_save": "end_of_turn_or_damage_advantage"}])
 
     def test_zone_and_kind_spells(self):
         self.assertEqual(load("silence")["effects"][0]["zone"]["flags"], ["silence"])
