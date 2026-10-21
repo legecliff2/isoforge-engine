@@ -1155,6 +1155,15 @@ def check_spell_batch2_hooks(doc: dict, errs: list[str], warns: list[str]) -> No
             u = eff.get("usage") if isinstance(eff.get("usage"), dict) else {}
             if u.get("kind") != "pool":
                 errs.append(f"{path}: {did}: heal_pool per_class_level needs a usage pool (Channel Divinity)")
+            # features.cpp apply_heal_pool: `class` sums that class's classes[] levels; absent, every entry (fallback: level).
+            cls = eff.get("class")
+            rows = [c for c in doc.get("classes") or [] if isinstance(c, dict)]
+            level = sum(c.get("level", 0) for c in rows if cls is None or c.get("class") == cls
+                        if isinstance(c.get("level", 0), int))
+            if level == 0 and cls is None and isinstance(doc.get("level"), int):
+                level = doc["level"]
+            if level < 1:
+                errs.append(f"{path}: {did}: heal_pool per_class_level has no class level to resolve against")
             if "excludes_types" not in eff:
                 warns.append(f"{path}: {did}: heal_pool per_class_level without excludes_types heals every creature type "
                              "(Preserve Life: undead, construct)")
