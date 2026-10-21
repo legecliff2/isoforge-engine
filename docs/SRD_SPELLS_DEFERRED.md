@@ -13,10 +13,10 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 | level | in `srd51.core` | deferred: needs a mechanic | deferred: out of combat scope | total |
 |---|---|---|---|---|
 | 0 (cantrips) | 10 | 3 | 11 | 24 |
-| 1 | 15 | 15 | 19 | 49 |
-| 2 | 10 | 21 | 23 | 54 |
+| 1 | 18 | 12 | 19 | 49 |
+| 2 | 12 | 19 | 23 | 54 |
 | 3 | 9 | 14 | 19 | 42 |
-| **total** | **44** | **53** | **72** | **169** |
+| **total** | **49** | **48** | **72** | **169** |
 
 ## Authored in this change (9)
 
@@ -81,6 +81,18 @@ Hunter's Mark and Invisibility shipped in content #223 (Rules #222, 7.2zc); Comm
 | Invisibility | 2 | `apply_condition` invisible, `ends_on [attack, cast]`; touch, concentration 1 hour; `upcast.targets 1` | the spell ends per target (SRD) |
 | Fear | 3 | `save` WIS frightened, `control fear` (Dash away), `repeat_save end_of_turn_unseen`; `area` cone 30 (self); concentration 1 minute | **partial**: dropping held items is not modelled |
 
+## Authored in spells batch 3 (5, main at `1a172d5`)
+
+Pinned by the table rows and `test_batch_3_mechanics` in `tests/validate/test_srd51_spells.py`.
+
+| spell | level | `spell@1` shape | notes |
+|---|---|---|---|
+| Mage Armor | 1 | `apply_modifier` `ac` `ac_floor 13` + `ac_floor_dex`, touch, 8 hours (modifier `rounds 4800`) | **partial**: "not wearing armor", ending on donning armor and dismissal are not checked |
+| Divine Favor | 1 | `apply_modifier` `damage` 1d4 radiant, `applies_to self`, `when [weapon_attack]`, concentration; bonus action | |
+| Sleep | 1 | `hp_pool` 5d8 unconscious, `ends_on_damage`, `excludes_creature_type [undead]`; sphere 20 ft; `upcast.dice 2` | **partial**: creatures immune to charmed are not skipped; waking by an action is not modelled |
+| Shatter | 2 | `save` Con 3d8 thunder, half; sphere 10 ft; `upcast.dice 1` | **partial**: inorganic-creature disadvantage and object damage are not modelled |
+| Moonbeam | 2 | `zone` cylinder 5 ft x 40 ft, point; Enter + StartTurn Con save 2d10 radiant half (`shapechanger_disadvantage`); `move {action, 60}`; `upcast.dice 1` | **partial**: dim light and forced reversion of shapechangers are not modelled |
+
 ## Authored after Rules #228 (3)
 
 Spell batch 2 rules (7.2zd). Pinned by `tests/validate/test_srd51_spells.py` (table rows and `test_spell_batch2`).
@@ -91,7 +103,7 @@ Spell batch 2 rules (7.2zd). Pinned by `tests/validate/test_srd51_spells.py` (ta
 | Sanctuary | 1 | `apply_condition` warded, `ward {save wis, on_fail retarget_or_lose}`, `ends_on [attack, harmful_cast]`; bonus action, range 30, 1 minute | areas are not blocked (SRD); a "harmful spell" is one cast by a creature of another team |
 | Aid | 2 | `max_hp_bonus {flat 5, per_slot_above 5}`; `targets {count 3}`, range 30, 8 hours | |
 
-## Deferred (125 spells; reasons re-checked against main at `8b8d8c9`)
+## Deferred (120 spells; reasons re-checked against main at `8b8d8c9`)
 
 Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the first-draft ids in brackets: B1 = R-G2 effects array, B2 = R-G3 timed modifiers, B3 = R-G4 damage riders, B4 = R-G5 pools, B6 = R-G7 reactions / roll windows, C1 = R-G8 conditions with source, C2 = R-G9 forced movement / teleport, C3 = R-G10 area templates, C4 = R-G11 zones / auras, C5 = R-G12 summons, C7 = R-G13 cover / lighting / vision, C8 = R-G14 per-cast options, C9 = R-G15 spell kinds). `T&C-G12` / `T&C-G14` are movement modes and creature footprint. `OOS` rows have no gap id.
 
@@ -123,7 +135,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 1 | Detect Magic | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Detect Poison and Disease | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Disguise Self | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
-| 1 | Divine Favor | NEW | **next batch**: `apply_modifier` `damage` 1d4 radiant, `applies_to: self`, concentration, bonus action (rules #89); confirm the modifier is weapon-attack only before authoring. | R-G3 (B2) |
 | 1 | Entangle | NEW | Zones load (R-G11, #122) but no shipped zone fixture covers Entangle's square + Str check vs restrained; author with Web's zone rows after a fixture. | R-G11 (C4) |
 | 1 | Expeditious Retreat | NEW | No spell@1 way to grant a bonus-action Dash for the duration (`grant_action` is a feature effect). | R-G3 (B2) |
 | 1 | Faerie Fire | NEW | Area loads, `attacks_against` advantage loads as a rider, but the Dex save gate needs a `save` with no damage or condition (schema requires one), and "can't benefit from invisible" is not modelled. | R-G3 (B2) |
@@ -139,13 +150,11 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 1 | Illusory Script | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Jump | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Longstrider | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
-| 1 | Mage Armor | NEW | **next batch**: `ac` modifier `ac_floor` 13 + `ac_floor_dex`, 8 hours (4800 rounds); **partial**: "target not wearing armor" and "ends if it dons armor" are not checked (author's concern per the schema). | R-G3 (B2) |
 | 1 | Purify Food and Drink | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Silent Image | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
-| 1 | Sleep | NEW | `hp_pool` 5d8 unconscious, upcast 2d8, undead excluded, loads (EC #120); creatures immune to *charmed* are not excluded (the rules skip only `unconscious`-immune targets). | R-G15 (C9) |
 | 1 | Speak with Animals | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Unseen Servant | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
-| 2 | Acid Arrow | NEW | **next batch**: `spell_attack` 4d4 acid + `delayed_damage` 2d4 rider (`applies_to: affected`, end of the target's next turn), upcast both (EC #120); the miss case (half initial, no later damage) needs checking. | R-G15 (C9) |
+| 2 | Acid Arrow | NEW | `spell_attack` 4d4 acid + `delayed_damage` 2d4 rider (`applies_to: affected`, end of the target's next turn), upcast both (EC #120); **blocked**: the miss case (half the initial damage) needs a `spell_attack` miss branch. | R-G15 (C9) |
 | 2 | Alter Self | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Animal Messenger | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Arcane Lock | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
@@ -176,14 +185,12 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Magic Mouth | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Magic Weapon | NEW | Magic bonus (R-G17, T&C-G2/R-G3). | R-G3, R-G17, T&C-G2 (B2) |
 | 2 | Mirror Image | NEW | Duplicates that absorb attacks (R-G3). | R-G3 (B2) |
-| 2 | Moonbeam | NEW | **next batch**: zone (cylinder, Enter / StartTurn Con save 2d10 radiant half, move 60 ft) loads; fixture exists. **partial**: forcing a shapechanger to revert is not modelled. | R-G11 (C4) |
 | 2 | Pass Without Trace | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Prayer of Healing | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Protection from Poison | NEW | R-G3. | R-G3 (B2) |
 | 2 | Ray of Enfeeblement | NEW | Attack + damage halving rider (R-G3). | R-G3 (B2) |
 | 2 | Rope Trick | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | See Invisibility | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Shatter | NEW | **next batch**: sphere 10 ft, Con 3d8 thunder half, upcast loads; **partial**: inorganic-creature disadvantage not modelled. | R-G10 (C3) |
 | 2 | Spider Climb | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Spiritual Weapon | NEW | Rules PR 3 (#173) `SummonWeapon` exists, but spell@1 has no summon-weapon key yet. | R-G12 (C5) |
 | 2 | Suggestion | NEW | Forced behavior (R-G8). | R-G8 (C1) |
@@ -225,7 +232,7 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 
 ## Follow-ups when the mechanics land
 
-- Rows marked **next batch** load faithfully (or with the stated partial) today: Mage Armor, Divine Favor, Acid Arrow, Shatter, Moonbeam (the rest of the list shipped in batch 2).
+- Acid Arrow stays deferred: `spell_attack` has no miss branch, so "half the initial damage on a miss" cannot be expressed (the `delayed_damage` rider already follows only a hit).
 - Small additive changes that unblock more: `targets` on `apply_modifier` (Bless; with a signed `die` pattern also Bane), a save-only gate (Faerie Fire), a spell@1 condition / damage-type choice key (Blindness/Deafness, Protection from Energy), spell@1 summon keys (Spiritual Weapon, Conjure Animals), haste / slow modifier stats.
 - Every `NEW` row above is additive content once its row lands; ids are `srd51.spell.<snake_case_name>` and are not reserved yet.
 - Spare the Dying: `spell@1` has no stabilize effect, only the Rules `ActionKind::SpareTheDying` hook. If Rules adds an effect kind (additive), it is a one-file change.

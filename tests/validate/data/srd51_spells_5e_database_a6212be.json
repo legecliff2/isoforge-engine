@@ -143,6 +143,27 @@
     "wizard"
    ]
   },
+  "divine-favor": {
+   "name": "Divine Favor",
+   "level": 1,
+   "range": "Self",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 minute",
+   "concentration": true,
+   "casting_time": "1 bonus action",
+   "school": "evocation",
+   "classes": [
+    "paladin"
+   ],
+   "damage_type": "radiant",
+   "damage_at": {
+    "1": "1d4"
+   }
+  },
   "fear": {
    "name": "Fear",
    "level": 3,
@@ -377,6 +398,26 @@
     "size": 100
    }
   },
+  "mage-armor": {
+   "name": "Mage Armor",
+   "level": 1,
+   "range": "Touch",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "8 hours",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "abjuration",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ],
+   "material": "A piece of cured leather."
+  },
   "misty-step": {
    "name": "Misty Step",
    "level": 2,
@@ -394,6 +435,44 @@
     "warlock",
     "wizard"
    ]
+  },
+  "moonbeam": {
+   "name": "Moonbeam",
+   "level": 2,
+   "range": "120 feet",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 minute",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "evocation",
+   "classes": [
+    "druid"
+   ],
+   "material": "Several seeds of any moonseed plant and a piece of opalescent feldspar.",
+   "damage_type": "radiant",
+   "damage_at": {
+    "2": "2d10",
+    "3": "3d10",
+    "4": "4d10",
+    "5": "5d10",
+    "6": "6d10",
+    "7": "7d10",
+    "8": "8d10",
+    "9": "9d10"
+   },
+   "dc": {
+    "ability": "con",
+    "success": "half"
+   },
+   "area_of_effect": {
+    "type": "cylinder",
+    "size": 5
+   }
   },
   "protection-from-evil-and-good": {
    "name": "Protection from Evil and Good",
@@ -482,6 +561,47 @@
    ],
    "material": "A small silver mirror."
   },
+  "shatter": {
+   "name": "Shatter",
+   "level": 2,
+   "range": "60 feet",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Instantaneous",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "evocation",
+   "classes": [
+    "bard",
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ],
+   "material": "A burst of mica.",
+   "damage_type": "thunder",
+   "damage_at": {
+    "2": "3d8",
+    "3": "4d8",
+    "4": "5d8",
+    "5": "6d8",
+    "6": "7d8",
+    "7": "8d8",
+    "8": "9d8",
+    "9": "10d8"
+   },
+   "dc": {
+    "ability": "con",
+    "success": "half"
+   },
+   "area_of_effect": {
+    "type": "sphere",
+    "size": 10
+   }
+  },
   "shield-of-faith": {
    "name": "Shield of Faith",
    "level": 1,
@@ -539,6 +659,34 @@
     "cleric",
     "ranger"
    ],
+   "area_of_effect": {
+    "type": "sphere",
+    "size": 20
+   }
+  },
+  "sleep": {
+   "name": "Sleep",
+   "level": 1,
+   "range": "90 feet",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "1 minute",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "enchantment",
+   "classes": [
+    "bard",
+    "sorcerer",
+    "wizard"
+   ],
+   "material": "A pinch of fine sand, rose petals, or a cricket.",
+   "damage_at": {
+    "1": "5d8"
+   },
    "area_of_effect": {
     "type": "sphere",
     "size": 20

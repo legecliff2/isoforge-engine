@@ -68,6 +68,11 @@ class SpellTable(unittest.TestCase):
                 if "damage_type" in t:
                     lv = t["damage_at"]
                     base = lv[str(min(int(k) for k in lv))]
+                    if eff["kind"] == "apply_modifier":   # a damage rider (Divine Favor): no upcast in the SRD
+                        m = eff["modifier"]
+                        self.assertEqual((m["stat"], m["die"], m["damage_type"]), ("damage", base, t["damage_type"]))
+                        self.assertNotIn("scaling", d)
+                        continue
                     self.assertEqual(eff["damage"], {"dice": base, "type": t["damage_type"]})
                     if d["level"] == 0:
                         self.assertEqual(d["scaling"]["cantrip"], {"levels": [int(k) for k in sorted(lv, key=int)][1:], "adds": "dice"})
@@ -88,6 +93,23 @@ class SpellTable(unittest.TestCase):
         man = json.loads((PACK / "manifest.json").read_text(encoding="utf-8"))
         for idx in TABLE:
             self.assertIn(f"spells/{idx.replace('-', '_')}.json", man["contents"])
+
+    def test_batch_3_mechanics(self):
+        # Mage Armor: base AC 13 + Dex (ac_floor), 8 hours = 4800 rounds
+        self.assertEqual(load("mage-armor")["effects"][0]["modifier"], {"stat": "ac", "ac_floor": 13, "ac_floor_dex": True,
+                                                                     "applies_to": "target", "duration": {"kind": "rounds", "n": 4800}})
+        # Divine Favor: weapon attacks only
+        self.assertEqual(load("divine-favor")["effects"][0]["modifier"]["when"], [{"kind": "weapon_attack"}])
+        # Moonbeam: Enter + StartTurn (one per turn, default group), shapechanger disadvantage, movable 60 ft for an action
+        z = load("moonbeam")["effects"][0]["zone"]
+        self.assertEqual((z["anchor"], z["height_ft"], z["move"]), ("point", 40, {"cost": "action", "feet": 60}))
+        self.assertEqual([(tr["on"], tr["shapechanger_disadvantage"]) for tr in z["triggers"]],
+                         [("zone_enter", True), ("zone_start_turn", True)])
+        # Sleep: 5d8 pool (+2d8 per slot), unconscious, wakes on damage, undead skipped
+        sl = load("sleep")
+        self.assertEqual(sl["effects"], [{"kind": "hp_pool", "dice": "5d8", "condition": "unconscious", "ends_on_damage": True,
+                                          "excludes_creature_type": ["undead"]}])
+        self.assertEqual(sl["scaling"], {"upcast": {"dice": 2}})
 
     def test_mechanics(self):
         # Thunderwave: push 10 ft, failed saves only (R-G9 forced_move rider)
