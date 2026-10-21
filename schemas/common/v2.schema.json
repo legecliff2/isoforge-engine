@@ -4747,7 +4747,9 @@
           "const": "grant_die"
         },
         "die": {
-          "$ref": "../common/v1.schema.json#/$defs/dice"
+          "type": "string",
+          "pattern": "^[1-9][0-9]*d(4|6|8|10|12|20|100)$",
+          "description": "#214 follow-up: a plain die 'NdM' (no +modifier)."
         },
         "scale": {
           "type": "array",
@@ -4767,7 +4769,9 @@
                 "maximum": 20
               },
               "die": {
-                "$ref": "../common/v1.schema.json#/$defs/dice"
+                "type": "string",
+                "pattern": "^[1-9][0-9]*d(4|6|8|10|12|20|100)$",
+                "description": "#214 follow-up: a plain die 'NdM' (no +modifier)."
               }
             }
           },

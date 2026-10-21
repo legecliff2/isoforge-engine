@@ -496,7 +496,10 @@ std::optional<std::string> apply_grant_die(Archetype& a, const FeatureDecl& f, u
         return std::nullopt;
     }
     const auto die_of = [](const Json& j) -> std::optional<rules5e::DiceExpr> {
-        return j.is_string() ? parse_dice(j.get<std::string>()) : std::nullopt;
+        // #214 follow-up: plain NdM only (no +modifier), like the schema pattern
+        auto d = j.is_string() ? parse_dice(j.get<std::string>()) : std::nullopt;
+        if (d && (d->count == 0 || d->bonus != 0)) d = std::nullopt;
+        return d;
     };
     const auto base = f.effect.find("die");
     if (base == f.effect.end() || !die_of(*base)) return f.id + ": grant_die needs die";
