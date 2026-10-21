@@ -40,3 +40,28 @@ TEST_CASE("glow: radius from SRD feet, palette by preset, tint capped by intensi
     s.intensity = -1.f;
     CHECK(glow_tint(s).a == doctest::Approx(0.f));
 }
+
+TEST_CASE("glow: content visual integers convert to float colour / intensity and override the defaults") {
+    GlowVisual v;
+    v.r = 255; v.g = 0; v.b = 51;
+    v.intensity_permille = 250;
+    v.flicker = GlowFlicker::Candle;
+    const GlowStyle s = glow_style_from_visual(v);
+    CHECK(s.color.r == doctest::Approx(1.f));
+    CHECK(s.color.g == doctest::Approx(0.f));
+    CHECK(s.color.b == doctest::Approx(0.2f));
+    CHECK(s.color.a == doctest::Approx(kGlowDefaultAlpha));
+    CHECK(s.intensity == doctest::Approx(0.25f));
+    CHECK(s.flicker == GlowFlicker::Candle);
+    v.intensity_permille = 5000;
+    CHECK(glow_style_from_visual(v).intensity == doctest::Approx(1.f));
+    v.intensity_permille = 0;
+    CHECK(glow_style_from_visual(v).intensity == doctest::Approx(0.f));
+
+    GlowPalette p;
+    const GlowStyle torch_default = p.style_for("srd51.core.light.torch", false);
+    p.set_override("test.item.torch_blue", s);
+    CHECK(p.override_count() == 1);
+    CHECK(p.style_for("test.item.torch_blue", false).color.b == doctest::Approx(0.2f));   // exact id wins over "torch"
+    CHECK(p.style_for("srd51.core.light.torch", false).color.g == doctest::Approx(torch_default.color.g));   // fallback kept
+}

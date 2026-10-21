@@ -8,6 +8,9 @@
 // from the LightFrame's source list (the interim pc_torches are one producer of attached sources);
 // sim attached lights (phase 3) and static chunk lights flow through the same list unchanged.
 #include <cstdint>
+#include <functional>
+#include <map>
+#include <string>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -37,10 +40,24 @@ struct GlowAnchor {
 };
 
 // Presentation for a light preset (content key). Lives only in render/content, never hashed.
+enum class GlowFlicker : uint8_t { None = 0, Torch = 1, Candle = 2 };
 struct GlowStyle {
     Color color{1.f, 0.9f, 0.63f, 0.6f};
     float intensity = 1.f;
+    GlowFlicker flicker = GlowFlicker::None;
 };
+
+// Content `visual` block (item@1, later light presets; LIGHTING.md 10.1), integers as authored:
+// color channels 0..255, intensity in permille 0..1000. Presentation only: never hashed, never read by sim.
+struct GlowVisual {
+    uint8_t     r = 255, g = 255, b = 255;
+    uint16_t    intensity_permille = 1000;
+    GlowFlicker flicker = GlowFlicker::None;
+};
+// Integers -> render-side style (done once at load). Alpha of `color` is the palette default glow alpha
+// (kGlowDefaultAlpha); intensity scales it at draw time (glow_tint). Out-of-range intensity is clamped.
+GlowStyle glow_style_from_visual(const GlowVisual& v) noexcept;
+inline constexpr float kGlowDefaultAlpha = 170.f / 255.f;
 
 // Preset key -> style. Prefix/substring match on the key's last segment ("…light.torch" -> torch).
 // Unknown presets get `fallback` (magical sources get the cool fallback).
@@ -49,9 +66,13 @@ public:
     struct Entry { std::string_view match; GlowStyle style; };
     GlowPalette();   // built-in defaults: torch, lantern, candle, brazier
     explicit GlowPalette(std::vector<Entry> entries, GlowStyle fallback, GlowStyle magical_fallback);
+    // Exact preset / item id -> style from content `visual` blocks; wins over the built-in entries.
+    void set_override(std::string id, GlowStyle style);
+    std::size_t override_count() const noexcept { return overrides_.size(); }
     GlowStyle style_for(std::string_view preset, bool magical) const;
 
 private:
+    std::map<std::string, GlowStyle, std::less<>> overrides_;
     std::vector<Entry> entries_;
     GlowStyle fallback_, magical_;
 };

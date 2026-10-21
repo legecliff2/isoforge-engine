@@ -42,6 +42,39 @@ std::string display_name(const std::string& archetype) {
 }
 } // namespace
 
+// item@1 `visual` block (schema: schemas/item/v1.schema.json) -> render style. Validated content is
+// assumed; anything malformed is skipped (keeps the built-in default) and reported in *why.
+static bool parse_visual(const assets::Json& j, eng::iso2d::GlowStyle& out, std::string* why) {
+    auto bad = [&](const char* w) { if (why) *why = w; return false; };
+    if (!j.is_object() || !j.contains("color") || !j.contains("intensity")) return bad("visual needs color and intensity");
+    const auto& c = j["color"];
+    if (!c.is_object()) return bad("visual.color must be an object");
+    eng::iso2d::GlowVisual v;
+    uint8_t* ch[3] = {&v.r, &v.g, &v.b};
+    const char* names[3] = {"r", "g", "b"};
+    for (int i = 0; i < 3; ++i) {
+        if (!c.contains(names[i]) || !c[names[i]].is_number_integer()) return bad("visual.color channels must be integers");
+        const auto n = c[names[i]].get<int64_t>();
+        if (n < 0 || n > 255) return bad("visual.color channel out of 0..255");
+        *ch[i] = uint8_t(n);
+    }
+    if (!j["intensity"].is_number_integer()) return bad("visual.intensity must be an integer");
+    const auto in = j["intensity"].get<int64_t>();
+    if (in < 0 || in > 1000) return bad("visual.intensity out of 0..1000");
+    v.intensity_permille = uint16_t(in);
+    if (j.contains("flicker")) {
+        const auto& f = j["flicker"];
+        if (!f.is_string()) return bad("visual.flicker must be a string");
+        const std::string fs = f.get<std::string>();
+        if (fs == "none") v.flicker = eng::iso2d::GlowFlicker::None;
+        else if (fs == "torch") v.flicker = eng::iso2d::GlowFlicker::Torch;
+        else if (fs == "candle") v.flicker = eng::iso2d::GlowFlicker::Candle;
+        else return bad("visual.flicker must be none|torch|candle");
+    }
+    out = eng::iso2d::glow_style_from_visual(v);
+    return true;
+}
+
 // sim::LightFrame -> plain-data LightView (packed samples, flattened ids). No light is computed here.
 static void copy_light(const sim::LightFrame& f, const sim::LightFrame* prev, LightView& L) {
     L.present = true;
@@ -94,6 +127,7 @@ struct Session::Impl {
     sim::LightCache light_cache;
     std::shared_ptr<const sim::LightFrame> light, light_prev;
     uint64_t light_step = 0;
+    std::map<std::string, eng::iso2d::GlowStyle, std::less<>> visuals;   // content id -> glow style
 
     // Producers of carried lights for this step, in a fixed order (light ids follow it): the interim
     // pc_torches, then Options::carried_lights. Sim attached lights (phase 3) replace this list.
@@ -200,6 +234,15 @@ std::unique_ptr<Session> Session::open(const Options& o, std::string* error) {
     world::ChunkResult r = provider.load(world::ChunkRequest{coord, o.seed, 1});
     if (r.status != world::ChunkStatus::Ready || !r.chunk) return fail("chunk load failed: " + r.error);
     m.chunk = std::make_unique<world::Chunk>(std::move(*r.chunk));
+
+    // Presentation-only visuals (item@1 `visual`), read straight from the pack documents. The sim never
+    // sees them (ContentLibrary doesn't load item@1), so they can't reach Combat::hash or log_hash.
+    for (const assets::PackDocument& d : set.documents()) {
+        if (!d.doc.ok || !d.doc.data.is_object() || !d.doc.data.contains("visual")) continue;
+        if (d.doc.current.type != "item" || d.content_id.empty()) continue;
+        eng::iso2d::GlowStyle st;
+        if (parse_visual(d.doc.data["visual"], st, nullptr)) m.visuals[d.content_id] = st;
+    }
 
     m.content = std::make_unique<sim::ContentLibrary>();
     auto errs = m.content->load(set);
@@ -308,6 +351,7 @@ ViewModel Session::view() const {
         }
     }
     if (m.light) copy_light(*m.light, m.light_prev.get(), v.light);
+    v.light.visuals = m.visuals;
     if (!m.error.empty()) v.status = "SIM ERROR: " + m.error;
     return v;
 }

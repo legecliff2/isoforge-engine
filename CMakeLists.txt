@@ -125,6 +125,10 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
         add_test(NAME content_validate_lint
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_common2_lint.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        # item@1 optional `visual` block (LIGHTING.md 10.1): accept / reject cases, content_hash unchanged.
+        add_test(NAME content_validate_item_visual
+                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_item_visual.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         add_test(NAME content_validate_arms
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_union_arms.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")

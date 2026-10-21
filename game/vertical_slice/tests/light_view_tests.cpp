@@ -1,6 +1,9 @@
 #include <doctest/doctest.h>
 
+#include <filesystem>
+#include <fstream>
 #include <memory>
+#include <string>
 
 #include "render_null/null_device.hpp"
 #include "session.hpp"
@@ -191,4 +194,86 @@ TEST_CASE("carried lights: pc_torches is one producer of a generic list; glows a
 
     // No LightFrame -> no glows.
     CHECK(glows_from(LightView{}, pal).empty());
+}
+
+namespace {
+// Temp pack "test.visual": the sample pack (same chunk, same fighter) plus one item@1, with or without a
+// `visual` block. Resolved next to the real packs root (srd51.core comes from there).
+std::filesystem::path make_visual_pack(const std::string& tag, bool with_visual) {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / ("isoforge_visual_" + tag);
+    fs::remove_all(root);
+    const fs::path pack = root / "test.visual";
+    fs::create_directories(root);
+    fs::copy(fs::path(SLICE_PACK_ROOT) / SLICE_PACK, pack, fs::copy_options::recursive);
+    std::ifstream mi(pack / "manifest.json");
+    std::string man((std::istreambuf_iterator<char>(mi)), {});
+    mi.close();
+    man.replace(man.find("\"sample.vertical_slice\""), 23, "\"test.visual\"");
+    man.replace(man.find("\"chunks/0_0_0.json\""), 19, "\"chunks/0_0_0.json\",\n    \"items/lantern.json\"");
+    std::ofstream(pack / "manifest.json") << man;
+    fs::create_directories(pack / "items");
+    std::ofstream(pack / "items/lantern.json")
+        << "{\"$schema\": \"item@1\", \"id\": \"test.visual.item.lantern\", \"name\": \"Lantern\", "
+           "\"category\": \"valuable\", \"cost_cp\": 500"
+        << (with_visual ? ", \"visual\": {\"color\": {\"r\": 51, \"g\": 102, \"b\": 255}, \"intensity\": 400, \"flicker\": \"candle\"}" : "")
+        << "}";
+    return root;
+}
+std::unique_ptr<Session> open_visual(const std::filesystem::path& root) {
+    Session::Options o{{root.string(), SLICE_PACK_ROOT}, {"test.visual"}, 1, true};
+    CarriedLight l;
+    l.preset = "test.visual.item.lantern";
+    o.carried_lights.push_back(l);
+    std::string err;
+    {
+        Session::Options probe = o;
+        probe.carried_lights.clear();
+        auto p = Session::open(probe, &err);
+        REQUIRE_MESSAGE(p, err);
+        for (const auto& a : p->view().actors) if (a.is_pc) o.carried_lights[0].carrier_id = a.id;
+    }
+    auto s = Session::open(o, &err);
+    REQUIRE_MESSAGE(s, err);
+    return s;
+}
+} // namespace
+
+TEST_CASE("item@1 visual: integers converted at load, used over the preset default, sim untouched") {
+    const auto with = make_visual_pack("with", true), without = make_visual_pack("without", false);
+    auto a = open_visual(with), b = open_visual(without);
+    ViewModel va = a->view(), vb = b->view();
+
+    REQUIRE(va.light.visuals.count("test.visual.item.lantern") == 1);
+    const iso2d::GlowStyle& st = va.light.visuals.find("test.visual.item.lantern")->second;
+    CHECK(st.color.r == doctest::Approx(0.2f));
+    CHECK(st.color.g == doctest::Approx(0.4f));
+    CHECK(st.color.b == doctest::Approx(1.f));
+    CHECK(st.intensity == doctest::Approx(0.4f));
+    CHECK(st.flicker == iso2d::GlowFlicker::Candle);
+    CHECK(vb.light.visuals.empty());
+
+    iso2d::GlowPalette pa, pb;
+    for (const auto& [id, s] : va.light.visuals) pa.set_override(id, s);
+    const auto ga = glows_from(va.light, pa), gb = glows_from(vb.light, pb);
+    bool found = false;
+    for (const auto& g : ga)
+        if (g.color.b == doctest::Approx(1.f) && g.intensity == doctest::Approx(0.4f)) found = true;
+    CHECK(found);   // content visual used
+    for (const auto& g : gb) CHECK(g.intensity != doctest::Approx(0.4f));   // no visual: built-in default kept
+
+    // Presentation only: the fight and the published light samples are identical with and without it.
+    for (int i = 0; i < 30 && a->step(); ++i) REQUIRE(b->step());
+    va = a->view();
+    vb = b->view();
+    CHECK(va.log == vb.log);
+    REQUIRE(va.actors.size() == vb.actors.size());
+    for (size_t i = 0; i < va.actors.size(); ++i) {
+        CHECK(va.actors[i].tile == vb.actors[i].tile);
+        CHECK(va.actors[i].hp == vb.actors[i].hp);
+    }
+    REQUIRE(va.light.chunks.size() == vb.light.chunks.size());
+    for (size_t i = 0; i < va.light.chunks.size(); ++i) CHECK(va.light.chunks[i].samples == vb.light.chunks[i].samples);
+    std::filesystem::remove_all(with);
+    std::filesystem::remove_all(without);
 }
