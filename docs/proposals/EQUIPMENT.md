@@ -577,6 +577,25 @@ decrement, and the 0xD0..0xD2 folds. Rules builds **no** ground-item or loadout 
   an AC effect starting or ending (`ModStat::Ac` modifiers: Mage Armor, Barkskin, Shield, Shield of Faith, Haste); a change to Str,
   Dex, Con or Wis; a proficiency or level change.
 
+### 9.1a Rules API as implemented (`feat/rules-equipment-core`) and hand-off
+
+Headers: `rules5e/armor.hpp` (extended), `rules5e/item.hpp` (new, POD data + the read-only loadout view), `rules5e/equipment.hpp`
+(new, functions). No state, no hash tag, no schema; goldens unchanged (every check is gated on `EncounterHooks::loadout_of`).
+
+| API | For | Notes |
+|---|---|---|
+| `compute_ac(AcInput)` | EC `recompute_derived` | Signature unchanged. Appended `AcInput::bases` (`AcBaseCandidate {kind Natural / UnarmoredDefense / FixedPlusDex, fixed, ability, natural_dex, forbids_shield}`), `bonuses` (`AcBonusRow {source, amount, requires_armor}`, same source = highest), `ac_adjust`, `floor`, `armor_proficient`; `AcResult::base`, `shield_counted`, `nonproficient_armor`. Defaults reproduce the old result (test). |
+| `ItemDef`, `WeaponDef`, `LightDef`, `ItemKind`, `AmmoKind` | EC `ItemDefTable` | POD filled from item@N; EC owns storage (`WeaponDef::id` is a `string_view` into it). |
+| `LoadoutView {hand_count, main, off, armor_def, carried[], attacks[], interaction_used}`, `HeldItem {instance, def, count, flags kHeldLit / kHeldEmblem / kHeldWorn}`, `AttackLink {def, use}` | EC | What EC's `Loadout` state exposes to rules. `attacks[i]` maps `Combatant::attacks[i]` to its weapon (def 0 = not gated). |
+| `EncounterHooks::loadout_of(state, id) -> const LoadoutView*`, `item_def(def) -> const ItemDef*`, `apply_equip(state, req, cost_kind, events)` | EC | Empty / nullptr = legacy (no check, no equip legal action). |
+| `derive_weapon_attack(WeaponDef, WielderView, WeaponUse) -> {Attack, error}`, `weapon_ability`, `unarmed_strike` | EC `recompute_derived`, loader | `WielderView {abilities, pb, proficient, attack_rows, damage_rows, dice_multiplier, extra_melee_dice, twf_style, ability?, damage_ability_none, to_hit_override?, ammo_magic}`. Errors: `weapon: a two-handed weapon needs both hands`, `weapon: not a versatile weapon`, `weapon: not a thrown weapon`, `weapon: the off-hand weapon must be a light melee weapon`. |
+| `free_hands`, `can_attack_with`, `attack_refusal(state, id, attack_index)` | step (wired), EC, AI | `attack: the weapon is not in hand`, `attack: needs both hands`, `attack: loading needs a free hand`, `attack: no ammunition`, `attack: nothing to throw`, `attack: the torch is not lit`. Thrown: drawn per attack (held, or carried with a free hand). No ammunition stack = unlimited. |
+| `components_ok`, `components_refusal(state, id, SpellDef)` | step (wired, after `can_provide_components`) | `cast: somatic needs a free hand`, `cast: material needs a free hand or a focus`; a held focus or a shield with `kHeldEmblem` covers S+M with a non-priced material; a worn holy symbol (`kHeldWorn`) covers M only. |
+| `equip_legal(state, req) -> EquipCost {Free / Interaction / Action / Refused, refusal}`, `EquipOp` | step (wired), EC | `ActionRequest` appended `equip_op, equip_item, equip_hand, equip_to, equip_in_reach` (on `UseObject`). Interaction falls back to Action (Use an Object) once `interaction_used`. Refusals: `equip: equipment play is off`, `equip: unknown equip op`, `equip: not your turn`, `equip: the creature cannot act`, `equip: armor cannot be changed in combat`, `equip: no object interaction left`, `equip: the item is already in hand`, `equip: the item is not carried`, `equip: the item is not in hand`, `equip: use don_shield for a shield`, `equip: use doff_shield for a shield`, `equip: no free hand`, `equip: the item is already carried`, `equip: the item is out of reach`, `equip: not a shield`, `equip: a shield is already wielded`, `equip: no action left`, `equip: bad recipient`, `equip: the recipient has no free hand`. In step: Refused fails with the string; no `apply_equip` hook fails `equip: equipment play is off`; Action cost spends the action, then `apply_equip` runs (Interaction / Free bookkeeping is EC's). |
+| `equip_legal_actions(state)` | `legal_actions` (wired) | Draw, Stow, Drop, DonShield, DoffShield for the current actor, order op / instance / hand, appended after every existing entry. PickUp / HandOver need positions: EC lists them. |
+| `armor_change_rounds(category, don, helper)` | EC exploration layer | 10 / 10, 50 / 10, 100 / 50 rounds; a helper halves. |
+| `derive_monster(MonsterSpec) -> {pb, ac, attacks, errors}`, `proficiency_for_cr`, `format_dice` | EC loader, T&C validator (same strings) | `MonsterSpec` / `MonsterAttackSpec` carry the 5.3..5.5 fields; `errors` are the 5.6 strings in check order. |
+
 ### 9.2 Sequencing (T&C review)
 
 1. **Rules:** the derivation and its messages (5.6) and the predicates (9.1).
