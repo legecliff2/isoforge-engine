@@ -70,6 +70,7 @@ AUTHORED = {
     "domain-spells-2": "spellcasting",
     "domain-spells-3": "spellcasting",
     "bonus-proficiency": "feature:bonus_proficiency",
+    "disciple-of-life": "feature:disciple_of_life",          # heal_bonus {flat 2, per_spell_level} (7.2zc, #222)
     "cleric-ability-score-improvement-1": "abilities",
     "spellcasting-wizard": "spellcasting",
     "arcane-tradition": "subclass",
@@ -182,7 +183,6 @@ DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_stor
                "warlock": ["eldritch_invocations", "armor_of_shadows", "pact_of_the_tome"]}
 # Not expressible today (docs/SRD_CLASSES_DEFERRED.md): mirror index -> the feature id it would get (must be absent).
 DEFERRED = {
-    "disciple-of-life": "disciple_of_life",
     "channel-divinity-1-rest": "channel_divinity",
     "channel-divinity-turn-undead": "turn_undead",
     "channel-divinity-preserve-life": "preserve_life",
@@ -448,6 +448,21 @@ class ClassTable(unittest.TestCase):
                 for fid in DESCRIPTIVE["paladin"]:
                     if fid in f:
                         self.assertNotIn("effect", f[fid], fid)
+
+    def test_disciple_of_life(self):
+        # 7.2zc (#222): 2 + the slot level per creature healed by a slot cast, cleric (Life) 1-5
+        for level in LEVELS:
+            with self.subTest(level=level):
+                self.assertEqual(features(load("cleric", level))["disciple_of_life"]["effect"],
+                                 {"kind": "heal_bonus", "flat": 2, "per_spell_level": True})
+
+    def test_hunters_mark(self):
+        # 7.2zc (#222): Hunter's Mark known from ranger 2 (Spike Growth swapped out at 5 to stay within 4 known)
+        for level in LEVELS:
+            with self.subTest(level=level):
+                sc = load("ranger", level).get("spellcasting") or {"spells": []}
+                self.assertEqual("srd51.spell.hunters_mark" in sc["spells"], level >= 2)
+                self.assertNotIn("srd51.spell.spike_growth", sc["spells"])
 
     def test_ranger(self):
         for level in LEVELS:
