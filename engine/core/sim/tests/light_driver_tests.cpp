@@ -63,7 +63,17 @@ TEST_CASE("light driver: senses come from monster content (darkvision etc.), zer
     CHECK(gob->base.blindsight_ft == 0);
     const Archetype* fighter = lib().find("srd51.character.fighter_1");
     REQUIRE(fighter);
-    CHECK(fighter->base.darkvision_ft == 0);   // characters: no senses block (race darkvision is a gap)
+    CHECK(fighter->base.darkvision_ft == 0);   // human: the character's senses block declares no darkvision
+}
+
+TEST_CASE("light driver: PC darkvision comes from the character's senses block (non-human SRD sample PCs)") {
+    for (const char* id : {"srd51.character.sample_hill_dwarf_cleric_1", "srd51.character.sample_high_elf_wizard_1",
+                           "srd51.character.sample_tiefling_warlock_1"}) {
+        const Archetype* pc = lib().find(id);
+        REQUIRE(pc);
+        CHECK(pc->base.darkvision_ft == 60);   // SRD racial Darkvision (validator: checks_v4.check_race_senses)
+        CHECK(pc->base.blindsight_ft == 0);
+    }
 }
 
 TEST_CASE("light driver: publishes at attach and after each committed step; viewers; hashes unchanged") {

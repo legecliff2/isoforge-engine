@@ -807,6 +807,20 @@ uint8_t Combat::feature_uses_left(CombatantId id, uint32_t fid) const {
     return rules5e::feature_uses_left(state_, id, fid);
 }
 
+// The hook table is a derived binding to `this` (not hashed, not logged; submit re-installs it before every rules call), so
+// re-binding it from a const query changes nothing observable. It must be bound here: before the first submit it is empty, and
+// after a move of the Combat it points at the old object.
+std::vector<CombatantId> Combat::ward_alternates(CombatantId actor, CombatantId warded, uint32_t spell_id, uint8_t attack_index) const {
+    const_cast<Combat*>(this)->install_hooks();
+    return rules5e::ward_alternate_targets(state_, actor, warded, spell_id, attack_index);
+}
+rules5e::HealSplitCheck Combat::heal_split_check(CombatantId user, const rules5e::FeatureSpec& spec,
+                                                 const std::vector<rules5e::HealShare>& split) const {
+    const auto* u = rules5e::find(state_, user);
+    if (!u) return {0, rules5e::HealSplitReason::BadTarget};
+    const_cast<Combat*>(this)->install_hooks();
+    return rules5e::check_heal_split(state_, *u, spec, split);
+}
 bool Combat::can_use_feature(CombatantId id, uint32_t fid) const {
     const ActiveFeature* f = find_active(archetype(id), fid);
     if (!f || state_.ended || state_.pending || rules5e::current_actor(state_) != id) return false;

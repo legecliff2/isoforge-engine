@@ -224,6 +224,11 @@ public:
     // empty with *error ("no unoccupied space", ...). Submit fills ActionRequest::summon_tiles from this when it is empty.
     std::vector<Vec2i> summon_tiles_for(CombatantId caster, const rules5e::SpellDef& def, const std::vector<uint8_t>& archetypes,
                                         std::string* error = nullptr) const;
+    // AI queries of rules helpers that read positions through EncounterHooks (targets_within, spell_target_ok): the hooks are
+    // re-bound to this Combat first (as submit does), so the answer matches what rules will check on submit.
+    std::vector<CombatantId> ward_alternates(CombatantId actor, CombatantId warded, uint32_t spell_id, uint8_t attack_index) const;
+    rules5e::HealSplitCheck heal_split_check(CombatantId user, const rules5e::FeatureSpec& spec,
+                                             const std::vector<rules5e::HealShare>& split) const;
     uint8_t feature_uses_left(CombatantId id, uint32_t feature_id) const;
     bool can_use_feature(CombatantId id, uint32_t feature_id) const;
 
