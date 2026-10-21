@@ -137,3 +137,58 @@ TEST_CASE("render without a LightFrame and fog masks (when present) still behave
     CHECK(v.world_sprites() == vm.tiles.size() + vm.light.sources.size() + vm.actors.size() - size_t(far_foes) + 1);   // +1 current-turn ring
     CHECK(iso2d::light_tint(0xFF, iso2d::Fog::Unexplored).r == 0.f);
 }
+
+TEST_CASE("carried lights: pc_torches is one producer of a generic list; glows anchor to the carrier") {
+    // Torches off, one non-PC carrier with a non-torch preset: the same path as the torches.
+    Session::Options o{{SLICE_PACK_ROOT}, {SLICE_PACK}, 1, true};
+    o.pc_torches = false;
+    std::string err;
+    uint32_t foe = 0;
+    {
+        auto probe = Session::open(o, &err);
+        REQUIRE_MESSAGE(probe, err);
+        for (const auto& a : probe->view().actors) if (!a.is_pc) { foe = a.id; break; }
+    }
+    REQUIRE(foe != 0);
+    CarriedLight lantern;
+    lantern.carrier_id = foe;
+    lantern.bright_ft = 30;
+    lantern.dim_ft = 30;
+    lantern.preset = "srd51.core.light.lantern_hooded";
+    o.carried_lights.push_back(lantern);
+    auto s = Session::open(o, &err);
+    REQUIRE_MESSAGE(s, err);
+    ViewModel vm = s->view();
+    REQUIRE(vm.light.present);
+    REQUIRE(vm.light.sources.size() == 1);
+    const LightSourceView& src = vm.light.sources[0];
+    CHECK(src.attached);
+    CHECK(src.carrier == 1);
+    CHECK(src.carrier_id == foe);
+    CHECK(src.preset == "srd51.core.light.lantern_hooded");
+
+    const iso2d::GlowPalette pal;
+    auto glows = glows_from(vm.light, pal);
+    REQUIRE(glows.size() == 1);
+    CHECK(glows[0].anchor == iso2d::GlowAnchorKind::Entity);
+    CHECK(glows[0].anchor_id == foe);
+    CHECK(glows[0].radius_tiles == doctest::Approx(9.f));
+    CHECK(glows[0].intensity == doctest::Approx(pal.style_for("x.lantern", false).intensity));
+    const iso2d::GlowAnchor moved[] = {{foe, {3.5f, 4.5f}}};
+    iso2d::follow_anchors(glows, moved);
+    CHECK(glows[0].tile.x == 3.5f);
+
+    // pc_torches + the extra light: both producers feed the list (torches first).
+    o.pc_torches = true;
+    auto both = Session::open(o, &err);
+    REQUIRE_MESSAGE(both, err);
+    const ViewModel vb = both->view();
+    size_t torches = 0, lanterns = 0;
+    for (const auto& ls : vb.light.sources) (ls.preset == "srd51.core.light.torch" ? torches : lanterns)++;
+    CHECK(torches >= 1);
+    CHECK(lanterns == 1);
+    CHECK(glows_from(vb.light, pal).size() == vb.light.sources.size());
+
+    // No LightFrame -> no glows.
+    CHECK(glows_from(LightView{}, pal).empty());
+}

@@ -248,6 +248,35 @@ Existing levels untouched; added to `engine.level<N+1>.d.luau` only.
   dirty rect. Render-internal choices (borders, atlas, tint vs shader) don't affect this contract.
 - A headless build has no render dependency on light.
 
+### 10.1 Phase 3 render prep: attached-light glows (R&P proposal, needs EC answer)
+
+Render now consumes a generic list of light sources (`iso2d::GlowSource`: stable key, optional entity anchor, world
+tile, visual radius, colour, intensity), built from `LightFrame::sources` by `slice::glows_from`. Entity-anchored glows
+follow the carrier's *drawn* position (`iso2d::follow_anchors`); colour / intensity come from a render-side
+`iso2d::GlowPalette` keyed by `preset` (presentation only, unhashed, §10). The glow is a capped, token-local halo: the
+lit area itself is always the sim's light map, so a glow never shows a `Dark` tile as lit.
+
+Until phase 3, `vertical_slice` keeps the interim producers in the game session: `pc_torches` (`--no-torches`) and
+`Session::Options::carried_lights`, both turned into `sim::AttachedLight{Carrier::Creature}` and published through
+`publish_light_frame`. No sim code changes. When phase 3 lands, the session stops building `AttachedLight`s and the
+same render path reads the sim's sources.
+
+What render needs from Engine Core for phase 3 (proposal; please confirm or amend):
+
+1. **Ownership of the source list.** `Combat` (and later the world session) owns `AttachedLight`s and publishes the
+   `LightFrame` itself, e.g. `std::shared_ptr<const LightFrame> Combat::light_frame() const` after each committed step,
+   so the game stops calling `publish_light_frame` and stops constructing `AttachedLight`s.
+2. **Item carriers.** For `Carrier::Item`, `LightSource` carries the item id, but render can only anchor to tokens. Proposal:
+   add `uint32_t holder_id` (creature holding the item, 0 = none / on the ground) to `LightSource`, filled by sim, so a
+   carried lantern follows its holder. Without it, item glows stay at the published tile until the next step.
+3. **Lifetime and identity.** `LightId` for attached lights stays stable while a light is lit, doused, dropped and picked
+   up (one `next_light_id` per light, not per carrier), so render can keep per-light flicker state across those changes.
+4. **Dead / removed carriers.** Carrier death converts to `Carrier::Tile` at the death tile (§3.4) in the same frame the
+   token is removed, so the glow never anchors to a missing token.
+5. **Presentation data.** Colour / intensity / flicker stay out of the sim contract; Tools/Content to confirm the `visual`
+   block (§10) on light presets and items. Until then render uses the built-in `GlowPalette` (torch, brazier, lantern,
+   candle; magical and mundane fallbacks).
+
 ## 11. Open questions
 
 Rules (all decided in the Rules review of #195; kept here as the record)

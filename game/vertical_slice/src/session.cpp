@@ -95,25 +95,44 @@ struct Session::Impl {
     std::shared_ptr<const sim::LightFrame> light, light_prev;
     uint64_t light_step = 0;
 
+    // Producers of carried lights for this step, in a fixed order (light ids follow it): the interim
+    // pc_torches, then Options::carried_lights. Sim attached lights (phase 3) replace this list.
+    std::vector<CarriedLight> carried_lights() const {
+        std::vector<CarriedLight> out;
+        auto alive = [&](uint32_t id) {
+            for (const rules5e::Combatant& cb : combat->state().combatants)
+                if (cb.id == id) return !cb.dead;
+            return false;
+        };
+        if (opt.pc_torches)
+            for (const rules5e::Combatant& cb : combat->state().combatants) {
+                const sim::Archetype* a = combat->archetype(cb.id);
+                if (!a || a->schema_type != "character" || cb.dead) continue;
+                CarriedLight t;
+                t.carrier_id = cb.id;
+                out.push_back(t);
+            }
+        for (const CarriedLight& cl : opt.carried_lights)
+            if (alive(cl.carrier_id)) out.push_back(cl);
+        return out;
+    }
+
     // Publishes the sim's LightFrame for the current committed state (start of the next step).
     void publish_light() {
         sim::LightWorld w;
         w.grid = &combat->grid();
         uint32_t next_id = 1;
-        if (opt.pc_torches)
-            for (const rules5e::Combatant& cb : combat->state().combatants) {
-                const sim::Archetype* a = combat->archetype(cb.id);
-                if (!a || a->schema_type != "character" || cb.dead) continue;
-                sim::AttachedLight l;
-                l.id = next_id++;
-                l.carrier = sim::Carrier::Creature;
-                l.carrier_id = cb.id;
-                l.bright_ft = 20;
-                l.dim_ft = 20;
-                l.flags = sim::light_src::kLit;
-                w.sources.push_back(sim::attached_source(
-                    l, sim::carrier_centre(combat->pos(cb.id), combat->footprint_size(cb.id)), "srd51.core.light.torch"));
-            }
+        for (const CarriedLight& cl : carried_lights()) {
+            sim::AttachedLight l;
+            l.id = next_id++;
+            l.carrier = sim::Carrier::Creature;
+            l.carrier_id = cl.carrier_id;
+            l.bright_ft = cl.bright_ft;
+            l.dim_ft = cl.dim_ft;
+            l.flags = uint8_t(sim::light_src::kLit | (cl.magical ? sim::light_src::kMagical : 0));
+            w.sources.push_back(sim::attached_source(
+                l, sim::carrier_centre(combat->pos(cl.carrier_id), combat->footprint_size(cl.carrier_id)), cl.preset));
+        }
         w.normalise();
         light_cache.begin_step(std::move(w));
         const world::ChunkCoord coords[] = {chunk->coord};
