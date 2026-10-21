@@ -1,0 +1,38 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.a",
+  "name": "Invisibility",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "level": 2,
+  "school": "illusion",
+  "classes": [
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "hours",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "apply_condition",
+      "condition": "invisible",
+      "ends_on": [
+        "move"
+      ]
+    }
+  ]
+}

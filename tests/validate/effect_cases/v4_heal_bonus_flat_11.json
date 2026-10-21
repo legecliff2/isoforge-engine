@@ -1,0 +1,22 @@
+{
+  "base": "characters/cleric_level_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        1
+      ],
+      {
+        "id": "disciple_of_life",
+        "name": "x",
+        "effect": {
+          "kind": "heal_bonus",
+          "flat": 11,
+          "per_spell_level": true
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "/flat: 11 is greater than the maximum of 10"
+}
