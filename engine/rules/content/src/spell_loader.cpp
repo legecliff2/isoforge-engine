@@ -472,9 +472,12 @@ std::string parse_modifier(const Json& m, ModifierSpec& out, const Json** table)
         }
     }
     static const std::map<std::string, ModAppliesTo> kApplies{{"self", ModAppliesTo::Self}, {"target", ModAppliesTo::Target},
-                                                              {"allies_within_30", ModAppliesTo::AlliesWithin30}};
+                                                              {"allies_within_30", ModAppliesTo::AlliesWithin30},
+                                                              {"attackers", ModAppliesTo::Attackers}};   // 7.2zd
     out.applies_to = ModAppliesTo::Target;
     if (m.contains("applies_to") && !lookup(kApplies, m["applies_to"], out.applies_to)) return "modifier applies_to invalid";
+    if (out.applies_to == ModAppliesTo::Attackers && out.stat != ModStat::AttackRoll)
+        return "modifier applies_to attackers: attack_roll modifiers only";
     const std::string st = m.value("stacks", "replace");
     if (st != "replace" && st != "stack") return "modifier stacks invalid";
     out.stack = st == "stack";
@@ -786,12 +789,25 @@ SpellLoad spell_from_json(const Json& j) {
             if (!e.contains("modifier")) return ("effect modifier required");
             if (auto m = parse_modifier(e["modifier"], s.modifier); !m.empty()) return ("effect " + m);
             s.modifier.id = spell_id_of(s.content_id + "#modifier");
-            if (e.contains("scope")) {   // 7.2zc generic mark: the closed scope object, {target: marked} on a spell
+            if (e.contains("scope")) {   // 7.2zc generic mark {target: marked}; 7.2zd {from_types: [...]}: one closed object
                 const Json& sc = e["scope"];
-                const bool ok = sc.is_object() && sc.size() == 1 && sc.contains("target") && sc["target"].is_string() &&
-                                sc["target"].get<std::string>() == "marked";
-                if (!ok) return ("effect scope must be {target: marked}");
-                s.modifier.mark_scope = 1;
+                bool ok = sc.is_object() && !sc.empty();
+                if (ok) for (auto it = sc.begin(); it != sc.end(); ++it) ok = ok && (it.key() == "target" || it.key() == "from_types");
+                if (ok && sc.contains("target"))
+                    ok = sc["target"].is_string() && sc["target"].get<std::string>() == "marked";
+                if (!ok) return ("effect scope must be {target: marked} and/or {from_types: [creature types]}");
+                if (sc.contains("target")) s.modifier.mark_scope = 1;
+                if (sc.contains("from_types")) {
+                    const Json& ft = sc["from_types"];
+                    if (!ft.is_array() || ft.empty()) return ("effect scope from_types must be a non-empty list of creature types");
+                    for (const Json& ty : ft) {
+                        CreatureType ct2;
+                        if (!lookup(kCreatureType, ty, ct2)) return ("effect scope from_types must be a non-empty list of creature types");
+                        if (s.modifier.from_types & bit(ct2)) return ("effect scope from_types items must be unique");
+                        s.modifier.from_types |= bit(ct2);
+                    }
+                    if (s.modifier.applies_to != ModAppliesTo::Attackers) return ("effect scope from_types needs applies_to attackers");
+                }
             }
             if (s.modifier.chosen_ability && s.modifier.mark_scope == 0) return ("effect modifier ability chosen needs scope target marked");
             if (s.modifier.mark_scope != 0) {
@@ -804,15 +820,28 @@ SpellLoad spell_from_json(const Json& j) {
             }
         } else if (kind == "apply_condition") {
             s.kind = SpellEffectKind::ApplyCondition;
-            if (!e.contains("condition") || !lookup(kCondition, e["condition"], s.condition)) return ("effect condition invalid");
+            const bool warded = e.contains("condition") && e["condition"].is_string() && e["condition"].get<std::string>() == "warded";
+            if (warded) s.condition = Condition::Warded;   // 7.2zd Sanctuary (spell@1 apply_condition only)
+            else if (!e.contains("condition") || !lookup(kCondition, e["condition"], s.condition)) return ("effect condition invalid");
             s.applies_condition = true;
-            if (e.contains("ends_on")) {   // 7.2zc Invisibility: [attack, cast], unique, non-empty
+            if (e.contains("ward")) {   // 7.2zd: {save: <ability>, on_fail: retarget_or_lose}
+                if (!warded) return ("effect ward needs condition warded");
+                const Json& w = e["ward"];
+                const bool ok = w.is_object() && w.size() == 2 && w.contains("save") && lookup(kAbility, w["save"], s.ward_save) &&
+                                w.contains("on_fail") && w["on_fail"].is_string() && w["on_fail"].get<std::string>() == "retarget_or_lose";
+                if (!ok) return ("effect ward must be {save: <ability>, on_fail: retarget_or_lose}");
+                s.has_ward = true; s.ward_on_fail = 1;
+            } else if (warded) {
+                return ("effect condition warded needs ward");
+            }
+            if (e.contains("ends_on")) {   // 7.2zc Invisibility: [attack, cast]; 7.2zd Sanctuary: harmful_cast; unique, non-empty
                 const Json& eo = e["ends_on"];
-                if (!eo.is_array() || eo.empty()) return ("effect ends_on must be a non-empty list of attack, cast");
+                if (!eo.is_array() || eo.empty()) return ("effect ends_on must be a non-empty list of attack, cast, harmful_cast");
                 for (const Json& v : eo) {
                     const std::string w = v.is_string() ? v.get<std::string>() : "";
-                    const uint8_t b = w == "attack" ? kEndsOnAttack : w == "cast" ? kEndsOnCast : uint8_t(0);
-                    if (b == 0) return ("effect ends_on must be a non-empty list of attack, cast");
+                    const uint8_t b = w == "attack" ? kEndsOnAttack : w == "cast" ? kEndsOnCast
+                                    : w == "harmful_cast" ? kEndsOnHarmfulCast : uint8_t(0);
+                    if (b == 0) return ("effect ends_on must be a non-empty list of attack, cast, harmful_cast");
                     if (s.ends_on & b) return ("effect ends_on items must be unique");
                     s.ends_on = uint8_t(s.ends_on | b);
                 }
@@ -853,6 +882,32 @@ SpellLoad spell_from_json(const Json& j) {
                 s.forced.max_size = int8_t(sz);
             }
             if (e.value("provokes_oa", false)) return ("effect provokes_oa: true is not supported (R-G9: forced moves never provoke)");
+        } else if (kind == "condition_immunity_from") {   // 7.2zd Protection from Evil and Good
+            s.kind = SpellEffectKind::ConditionImmunityFrom;
+            const Json cs = e.value("conditions", Json());
+            if (!cs.is_array() || cs.empty()) return ("effect conditions must be a non-empty list of charmed, frightened");
+            for (const Json& v : cs) {
+                const std::string w = v.is_string() ? v.get<std::string>() : "";
+                const uint32_t b = w == "charmed" ? bit(Condition::Charmed) : w == "frightened" ? bit(Condition::Frightened) : 0u;
+                if (b == 0) return ("effect conditions must be a non-empty list of charmed, frightened");
+                if (s.immune_conditions & b) return ("effect conditions items must be unique");
+                s.immune_conditions |= b;
+            }
+            const Json ts = e.value("types", Json());
+            if (!ts.is_array() || ts.empty()) return ("effect types must be a non-empty list of creature types");
+            for (const Json& ty : ts) {
+                CreatureType ct2;
+                if (!lookup(kCreatureType, ty, ct2)) return ("effect types must be a non-empty list of creature types");
+                if (s.immune_from_types & bit(ct2)) return ("effect types items must be unique");
+                s.immune_from_types |= bit(ct2);
+            }
+        } else if (kind == "max_hp_bonus") {   // 7.2zd Aid
+            s.kind = SpellEffectKind::MaxHpBonus;
+            int f = 0, p = 0;
+            if (!e.contains("flat") || !small_int(e["flat"], 0, 50, f)) return ("effect flat must be an integer 0..50");
+            if (e.contains("per_slot_above") && !small_int(e["per_slot_above"], 0, 50, p)) return ("effect per_slot_above must be an integer 0..50");
+            if (f == 0 && p == 0) return ("effect max_hp_bonus needs flat or per_slot_above above 0");
+            s.hp_bonus_flat = int16_t(f); s.hp_bonus_per_slot = int16_t(p);
         } else if (kind == "teleport") {   // R-G9 (7.2k): self-teleport (Misty Step); the destination is the caller's (sim)
             s.kind = SpellEffectKind::Teleport;
             int ft = 0;
@@ -973,6 +1028,9 @@ SpellLoad spell_from_json(const Json& j) {
             fx.modifier.id = spell_id_of(s.content_id + "#modifier" + std::to_string(i));
         }
         fx.ends_on = x.ends_on;   // 7.2zc
+        fx.has_ward = x.has_ward; fx.ward_save = x.ward_save; fx.ward_on_fail = x.ward_on_fail;   // 7.2zd
+        fx.immune_conditions = x.immune_conditions; fx.immune_from_types = x.immune_from_types;
+        fx.hp_bonus_flat = x.hp_bonus_flat; fx.hp_bonus_per_slot = x.hp_bonus_per_slot;
         fx.affected_only = j["effects"][i].value("applies_to", "all") == "affected";
         s.extra_effects.push_back(fx);
     }
@@ -986,9 +1044,18 @@ SpellLoad spell_from_json(const Json& j) {
             ends = ends || x.ends_on != 0;
             marked = marked || (x.kind == SpellEffectKind::ApplyModifier && x.modifier.mark_scope != 0);
         }
-        if (ends && !s.concentration && s.duration != SpellDuration::Rounds && s.duration != SpellDuration::Minutes &&
-            s.duration != SpellDuration::Hours)
-            return err("effect ends_on needs concentration or a rounds, minutes or hours duration");
+        const bool lasting = s.concentration || s.duration == SpellDuration::Rounds || s.duration == SpellDuration::Minutes ||
+                             s.duration == SpellDuration::Hours;
+        if (ends && !lasting) return err("effect ends_on needs concentration or a rounds, minutes or hours duration");
+        bool ward = s.has_ward, immunity = s.kind == SpellEffectKind::ConditionImmunityFrom, hp_bonus = s.kind == SpellEffectKind::MaxHpBonus;
+        for (const SpellEffect& x : s.extra_effects) {   // 7.2zd: these last with the spell too
+            ward = ward || x.has_ward;
+            immunity = immunity || x.kind == SpellEffectKind::ConditionImmunityFrom;
+            hp_bonus = hp_bonus || x.kind == SpellEffectKind::MaxHpBonus;
+        }
+        if (ward && !lasting) return err("effect ward needs concentration or a rounds, minutes or hours duration");
+        if (immunity && !lasting) return err("effect condition_immunity_from needs concentration or a rounds, minutes or hours duration");
+        if (hp_bonus && !lasting) return err("effect max_hp_bonus needs concentration or a rounds, minutes or hours duration");
         if (j.contains("move_mark")) {
             const Json& mm = j["move_mark"];
             if (!mm.is_object() || mm.size() != 1 || !mm.contains("action") || !mm["action"].is_string() ||
@@ -1010,7 +1077,8 @@ SpellLoad spell_from_json(const Json& j) {
         if ((has_targets && s.targets != 1) || j.contains("area")) return err("polymorph: one target");
         if (!s.concentration) return err("polymorph: needs concentration");
     }
-    if (has_targets && s.kind != SpellEffectKind::Save && s.kind != SpellEffectKind::Polymorph && s.kind != SpellEffectKind::Heal && s.kind != SpellEffectKind::ApplyCondition)
+    if (has_targets && s.kind != SpellEffectKind::Save && s.kind != SpellEffectKind::Polymorph && s.kind != SpellEffectKind::Heal && s.kind != SpellEffectKind::ApplyCondition &&
+        s.kind != SpellEffectKind::MaxHpBonus)   // 7.2zd Aid: up to three creatures
         return err("targets not allowed on a " + kind + " effect (one target, per dart/beam, or self)");
     // R-G15: an HP pool's condition and a sustained effect last the spell's duration (Sleep 1 minute = 10 rounds; Color Spray
     // 1 round, the proposal's approximation of "until the end of your next turn"; Heat Metal 1 minute, and also ends with

@@ -686,3 +686,62 @@ TEST_CASE("loader 7.2zc: ends_on, scope target marked, ability chosen, move_mark
     j = hex; j["effects"] = eng::assets::Json::array({inv["effects"][0]}); j["effects"][0].erase("ends_on");
     bad(j, "move_mark needs an apply_modifier with scope target marked");
 }
+
+TEST_CASE("loader 7.2zd: warded + ward, ends_on harmful_cast, scope from_types + applies_to attackers, condition_immunity_from, max_hp_bonus") {
+    auto sanct = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.sanctuary","level":1,"name":"Sanctuary",
+        "casting_time":{"kind":"bonus_action"},"range":{"kind":"ranged","feet":30},"components":{"v":true,"s":true},
+        "duration":{"kind":"rounds","amount":10},
+        "effects":[{"kind":"apply_condition","condition":"warded","ward":{"save":"wis","on_fail":"retarget_or_lose"},
+                    "ends_on":["attack","harmful_cast"]}]})");
+    auto s = spell_from_json(sanct); REQUIRE(s.def);
+    CHECK(s.def->condition == Condition::Warded);
+    CHECK(s.def->has_ward); CHECK(s.def->ward_save == Ability::Wis);
+    CHECK(s.def->ends_on == (kEndsOnAttack | kEndsOnHarmfulCast));
+    auto pfeg = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.protection_from_evil_and_good","level":1,
+        "name":"Protection from Evil and Good","casting_time":{"kind":"action"},"range":{"kind":"touch"},"components":{"v":true,"s":true},
+        "duration":{"kind":"rounds","amount":100,"concentration":true},
+        "effects":[{"kind":"apply_modifier","scope":{"from_types":["aberration","celestial","elemental","fey","fiend","undead"]},
+                    "modifier":{"stat":"attack_roll","mode":"disadvantage","applies_to":"attackers","duration":{"kind":"concentration"}}},
+                   {"kind":"condition_immunity_from","conditions":["charmed","frightened"],
+                    "types":["aberration","celestial","elemental","fey","fiend","undead"]}]})");
+    auto p = spell_from_json(pfeg); REQUIRE(p.def);
+    CHECK(p.def->modifier.applies_to == ModAppliesTo::Attackers);
+    CHECK(p.def->modifier.from_types == (bit(CreatureType::Aberration) | bit(CreatureType::Celestial) | bit(CreatureType::Elemental) |
+                                         bit(CreatureType::Fey) | bit(CreatureType::Fiend) | bit(CreatureType::Undead)));
+    REQUIRE(p.def->extra_effects.size() == 1);
+    CHECK(p.def->extra_effects[0].kind == SpellEffectKind::ConditionImmunityFrom);
+    CHECK(p.def->extra_effects[0].immune_conditions == (bit(Condition::Charmed) | bit(Condition::Frightened)));
+    auto aid = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.aid","level":2,"name":"Aid",
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":30},"components":{"v":true,"s":true,"m":{"text":"strip"}},
+        "duration":{"kind":"rounds","amount":4800},"targets":{"count":3},
+        "effects":[{"kind":"max_hp_bonus","flat":5,"per_slot_above":5}]})");
+    auto a = spell_from_json(aid); INFO(a.error); REQUIRE(a.def);
+    CHECK(a.def->kind == SpellEffectKind::MaxHpBonus);
+    CHECK(a.def->hp_bonus_flat == 5); CHECK(a.def->hp_bonus_per_slot == 5); CHECK(a.def->targets == 3);
+
+    auto bad = [](eng::assets::Json x, const std::string& want) {
+        auto r = spell_from_json(x); INFO(want); INFO(r.error); CHECK_FALSE(r.def); CHECK(r.error == want);   // exact, no suffix
+    };
+    auto j = sanct; j["effects"][0].erase("ward"); bad(j, "effect condition warded needs ward");
+    j = sanct; j["effects"][0]["condition"] = "invisible"; bad(j, "effect ward needs condition warded");
+    j = sanct; j["effects"][0]["ward"] = {{"save", "wis"}}; bad(j, "effect ward must be {save: <ability>, on_fail: retarget_or_lose}");
+    j = sanct; j["effects"][0]["ends_on"] = {"harmful_cast", "harmful_cast"}; bad(j, "effect ends_on items must be unique");
+    j = sanct; j["effects"][0]["ends_on"] = {"spell"}; bad(j, "effect ends_on must be a non-empty list of attack, cast, harmful_cast");
+    j = sanct; j["effects"][0].erase("ends_on"); j["duration"] = {{"kind", "instantaneous"}};
+    bad(j, "effect ward needs concentration or a rounds, minutes or hours duration");
+    j = pfeg; j["effects"][0]["modifier"]["stat"] = "save"; bad(j, "effect modifier applies_to attackers: attack_roll modifiers only");
+    j = pfeg; j["effects"][0]["modifier"]["applies_to"] = "target"; bad(j, "effect scope from_types needs applies_to attackers");
+    j = pfeg; j["effects"][0]["scope"]["from_types"] = {"fiend", "fiend"}; bad(j, "effect scope from_types items must be unique");
+    j = pfeg; j["effects"][0]["scope"]["from_types"] = {"devil"}; bad(j, "effect scope from_types must be a non-empty list of creature types");
+    j = pfeg; j["effects"][0]["scope"] = {{"weapon", "wielded"}}; bad(j, "effect scope must be {target: marked} and/or {from_types: [creature types]}");
+    j = pfeg; j["effects"][1]["conditions"] = {"charmed", "stunned"}; bad(j, "effects[1]: effect conditions must be a non-empty list of charmed, frightened");
+    j = pfeg; j["effects"][1]["conditions"] = {"charmed", "charmed"}; bad(j, "effects[1]: effect conditions items must be unique");
+    j = pfeg; j["effects"][1]["types"] = eng::assets::Json::array(); bad(j, "effects[1]: effect types must be a non-empty list of creature types");
+    j = pfeg; j["effects"][1]["types"] = {"undead", "undead"}; bad(j, "effects[1]: effect types items must be unique");
+    j = pfeg; j["duration"] = {{"kind", "instantaneous"}}; j["effects"].erase(0);
+    bad(j, "effect condition_immunity_from needs concentration or a rounds, minutes or hours duration");
+    j = aid; j["effects"][0]["flat"] = 51; bad(j, "effect flat must be an integer 0..50");
+    j = aid; j["effects"][0]["per_slot_above"] = -1; bad(j, "effect per_slot_above must be an integer 0..50");
+    j = aid; j["effects"][0]["flat"] = 0; j["effects"][0]["per_slot_above"] = 0; bad(j, "effect max_hp_bonus needs flat or per_slot_above above 0");
+    j = aid; j["duration"] = {{"kind", "instantaneous"}}; bad(j, "effect max_hp_bonus needs concentration or a rounds, minutes or hours duration");
+}

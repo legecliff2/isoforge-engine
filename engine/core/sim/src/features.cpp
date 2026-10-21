@@ -321,13 +321,50 @@ std::optional<std::string> apply_grant_action(Archetype& a, const FeatureDecl& f
 }
 
 // heal_pool (Lay on Hands): the caller / AI sets ActionRequest::amount and target; the pool is charged the amount.
-std::optional<std::string> apply_heal_pool(Archetype& a, const FeatureDecl& f, uint32_t fid, const FeatureBuildCtx&) {
+std::optional<std::string> apply_heal_pool(Archetype& a, const FeatureDecl& f, uint32_t fid, const FeatureBuildCtx& ctx) {
     ActiveFeature af;
     af.feature_id = fid;
     af.id = f.id;
     af.kind = f.kind;
     rules5e::FeatureSpec spec;
     if (auto e = fill_spec(a, f, af, spec)) return e;
+    if (f.effect.contains("per_class_level")) {   // 7.2zd Preserve Life: a split heal paid from the usage pool
+        if (f.effect.contains("pool")) return f.id + ": heal_pool: pool and per_class_level don't mix";
+        const auto u = f.effect.find("usage");
+        if (u == f.effect.end() || !u->is_object() || u->value("kind", "") != "pool" || spec.pool == 0)
+            return f.id + ": heal_pool per_class_level needs a usage pool (Channel Divinity)";
+        const Json& pcl = f.effect["per_class_level"];
+        if (!pcl.is_number_integer() || pcl.get<int>() < 1 || pcl.get<int>() > 10) return f.id + ": heal_pool per_class_level must be an integer 1..10";
+        const auto rg = f.effect.find("range_ft");
+        if (rg == f.effect.end() || !rg->is_number_integer() || rg->get<int>() < 5 || rg->get<int>() > 120 || rg->get<int>() % 5 != 0)
+            return f.id + ": heal_pool range_ft must be a multiple of 5 in 5..120";
+        if (f.effect.value("cap", "") != "half_max") return f.id + ": heal_pool cap must be half_max";
+        uint32_t excluded = 0;
+        if (auto ex = f.effect.find("excludes_types"); ex != f.effect.end()) {
+            static const char* names[] = {"aberration", "beast", "celestial", "construct", "dragon", "elemental", "fey",
+                                          "fiend", "giant", "humanoid", "monstrosity", "ooze", "plant", "undead"};
+            if (!ex->is_array()) return f.id + ": heal_pool excludes_types must be a list of unique creature types";
+            for (const Json& t : *ex) {
+                uint32_t b = 0;
+                for (int k = 0; k < 14; ++k) if (t.is_string() && t.get<std::string>() == names[k]) b = 1u << k;
+                if (b == 0 || (excluded & b)) return f.id + ": heal_pool excludes_types must be a list of unique creature types";
+                excluded |= b;
+            }
+        }
+        int level = 0;   // `class` (optional): that class's level; absent: the total character level
+        const std::string cls = f.effect.value("class", "");
+        for (const Json& c : ctx.doc.value("classes", Json::array()))
+            if (c.is_object() && (cls.empty() || c.value("class", "") == cls)) level += c.value("level", 0);
+        if (level == 0 && cls.empty()) level = ctx.doc.value("level", 0);
+        if (level < 1) return f.id + ": heal_pool per_class_level has no class level to resolve against";
+        spec.split_pool = uint16_t(std::min(65535, pcl.get<int>() * level));
+        spec.split_range_ft = uint16_t(rg->get<int>());
+        spec.split_cap_half = true;
+        spec.split_excluded = excluded;
+        a.feature_specs[fid] = spec;
+        a.active.push_back(std::move(af));
+        return std::nullopt;
+    }
     const std::string pid = f.effect.value("pool", "");
     bool found = false;
     for (const auto& r : a.resources) found = found || r.id == pid;
@@ -420,10 +457,24 @@ std::optional<std::string> apply_apply_modifier(Archetype& a, const FeatureDecl&
     // scope (7.2y / 7.2z, closed, at least one key): weapon "wielded" (Sacred Weapon), attack melee_weapon | ranged_weapon,
     // ability str | dex (Rage: melee_weapon + str). Read by AttackRoll / Damage rows.
     uint8_t weapon_scope = 0, attack_scope = 0, ability_scope = 0;
+    uint32_t from_types = 0;   // 7.2zd scope from_types (Protection from Evil and Good shape): rows with applies_to attackers
     if (auto sc = f.effect.find("scope"); sc != f.effect.end()) {
         if (!sc->is_object() || sc->empty()) return f.id + ": scope needs at least one of weapon, attack, ability";
         for (auto it = sc->begin(); it != sc->end(); ++it) {
             const std::string v = it.value().is_string() ? it.value().get<std::string>() : "";
+            if (it.key() == "from_types") {
+                static const char* names[] = {"aberration", "beast", "celestial", "construct", "dragon", "elemental", "fey",
+                                              "fiend", "giant", "humanoid", "monstrosity", "ooze", "plant", "undead"};
+                if (!it.value().is_array() || it.value().empty()) return f.id + ": scope from_types must be a non-empty list of creature types";
+                for (const Json& t : it.value()) {
+                    uint32_t b = 0;
+                    for (int k = 0; k < 14; ++k) if (t.is_string() && t.get<std::string>() == names[k]) b = 1u << k;
+                    if (b == 0) return f.id + ": scope from_types must be a non-empty list of creature types";
+                    if (from_types & b) return f.id + ": scope from_types items must be unique";
+                    from_types |= b;
+                }
+                continue;
+            }
             if (it.key() == "weapon" && v == "wielded") weapon_scope = 1;
             else if (it.key() == "attack" && (v == "melee_weapon" || v == "ranged_weapon")) attack_scope = v == "melee_weapon" ? 1 : 2;
             else if (it.key() == "ability" && (v == "str" || v == "dex")) ability_scope = v == "str" ? 1 : 2;
@@ -493,6 +544,8 @@ std::optional<std::string> apply_apply_modifier(Archetype& a, const FeatureDecl&
         }
     }
     for (auto& m : rows) {   // 7.2z: the effect-level keys on every row (rules act on the source)
+        if (from_types != 0 && m.applies_to != rules5e::ModAppliesTo::Attackers) return f.id + ": scope from_types needs applies_to attackers";
+        m.from_types = from_types;   // 7.2zd
         m.weapon_scope = weapon_scope;
         if (m.stat == rules5e::ModStat::Damage || m.stat == rules5e::ModStat::AttackRoll) {
             if (attack_scope) m.scope = attack_scope;

@@ -1,0 +1,49 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.fear",
+  "name": "Fear",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "You project a phantasmal image of a creature's worst fears. Each creature in a 30-foot cone must succeed on a wisdom saving throw or drop whatever it is holding and become frightened for the duration. While frightened by this spell, a creature must take the Dash action and move away from you by the safest available route on each of its turns, unless there is nowhere to move. If the creature ends its turn in a location where it doesn't have line of sight to you, the creature can make a wisdom saving throw. On a successful save, the spell ends for that creature. (Modelled: frightened with control fear (Dash away by the safest route), a Wisdom save at the end of a turn without line of sight to you. Not modelled: dropping held items.)",
+  "level": 3,
+  "school": "illusion",
+  "classes": [
+    "bard",
+    "sorcerer",
+    "warlock",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "self"
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "a white feather or the heart of a hen"
+    }
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "area": {
+    "shape": "cone",
+    "size_ft": 30
+  },
+  "effects": [
+    {
+      "kind": "save",
+      "ability": "wis",
+      "condition": "frightened",
+      "control": "fear",
+      "repeat_save": "end_of_turn_unseen"
+    }
+  ]
+}

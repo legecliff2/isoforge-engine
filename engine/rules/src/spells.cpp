@@ -60,6 +60,9 @@ SpellDef effect_view(const SpellDef& base, const SpellEffect& e) {
     v.condition_max_size = e.condition_max_size;
     v.regurgitate_dc = e.regurgitate_dc; v.regurgitate_damage = e.regurgitate_damage; v.excludes_formless = e.excludes_formless;
     v.ends_on = e.ends_on;   // 7.2zc
+    v.has_ward = e.has_ward; v.ward_save = e.ward_save; v.ward_on_fail = e.ward_on_fail;   // 7.2zd
+    v.immune_conditions = e.immune_conditions; v.immune_from_types = e.immune_from_types;
+    v.hp_bonus_flat = e.hp_bonus_flat; v.hp_bonus_per_slot = e.hp_bonus_per_slot;
     v.object_ac = e.object_ac; v.object_hp = e.object_hp;   // EC spider follow-up (flagged)
     v.object_vulnerable = e.object_vulnerable; v.object_immune = e.object_immune;
     v.cantrip_scales = false; v.cantrip_adds_beams = false;

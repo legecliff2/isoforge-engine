@@ -66,12 +66,24 @@ c0ffee 5 5 2 16848166243755828085
 
 Fields are separated by whitespace, and extra fields are an error.
 
+Multi-focus form (`ChunkStreamer::set_foci` plus combat pins):
+
+```
+<world_seed_hex> <x>,<y>,<r>[;<x>,<y>,<r>...] [pins=<cx>,<cy>[;<cx>,<cy>...]] <digest_u64>
+c0ffee 5,5,2;130,5,1;-100,30,1 10108002417281370582
+c0ffee 5,5,2;20,20,1 pins=4,4 12102609649684100446
+```
+
+- Each `x,y,r` is one `Focus` (world tile, radius in chunks) at the current `@level`. Order and duplicates are allowed and must not change the digest.
+- `pins=` lists chunk coords (at the current `@level`) pinned under a single owner before `set_foci`; the test also checks every pinned chunk's `halo_state` is `Complete`.
+- No spaces inside the foci list or the pin list. A single focus written as `x,y,r` must give the same digest as the legacy line.
+
 `@world` selects the provider:
 
 - `sample_layered` is the sample pack's `chunks/0_0_0.json` (FileChunkProvider) layered over `ProceduralProvider`. It is used by `sample_layered_gen1.txt`.
 - `procgen` is `ProceduralProvider` only. It is used by `procgen_gen1.txt`.
 
-**Adding goldens:** append a line to any file, or add a new `*.txt` file. The test picks up every data line automatically; no code change is needed. To get a digest, run `procgen_world_tests -tc="stream golden files reproduce"` with a placeholder digest (for example `0`). The test fails and prints the actual value as `MESSAGE: <file>: <seed> <x> <y> <radius> <digest>`. Every OS must reproduce every line. A digest changes only on purpose, when the chunk content, gen_version output, or the digest definition changes. Explain any such change in the PR.
+**Adding goldens:** append a line to any file, or add a new `*.txt` file. The test picks up every data line automatically; no code change is needed. To get a digest, run `procgen_world_tests -tc="stream golden files reproduce"` with a placeholder digest (for example `0`). The test fails and prints the actual value as `MESSAGE: <file>: <seed> <fields...> <digest>`. Every OS must reproduce every line. A digest changes only on purpose, when the chunk content, gen_version output, or the digest definition changes. Explain any such change in the PR.
 
 ## Known limitations
 - **Procgen-to-handcrafted edge connectivity is not guaranteed.** gen_version 1 (v0) chunks keep an empty outer ring, so a corridor never runs into a neighbour, handcrafted or procedural. Connectivity across chunk edges arrives with the milestone 3 region passes. Until then, a combat or path spanning a procedural/handcrafted border may find no route.
