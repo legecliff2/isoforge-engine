@@ -10,3 +10,14 @@
 c0ffee 5 5 2 16848166243755828085
 c0ffee -50 -60 2 15176518323533859903
 c0ffee -130 70 2 16911436643138033795
+# Multi-focus (set_foci) and pins (#208). Format: docs/STREAMING.md "Stream golden files".
+# <world_seed_hex> <x>,<y>,<r>[;<x>,<y>,<r>...] [pins=<cx>,<cy>[;...]] <digest_u64>
+# Single focus in the multi form must equal the legacy line "c0ffee 5 5 2" above.
+c0ffee 5,5,2 16848166243755828085
+# Camera focus r=2 plus creature foci r=1 (lighting phase 2 shape), duplicate focus included.
+c0ffee 5,5,2;130,5,1;-100,30,1;130,5,1 10108002417281370582
+# Disjoint foci, one across the handcrafted chunk and one far out in the wilds.
+c0ffee 5,5,1;-130,70,1 2619896282511263598
+# Combat pin far from the foci: pinned chunk + 3x3 halo stay wanted.
+c0ffee 5,5,2;20,20,1 pins=4,4 12102609649684100446
+c0ffee -50,-60,1 pins=0,0;-3,-3 1490720907555348724
