@@ -328,7 +328,8 @@ class BarbarianHooks72z(unittest.TestCase):
         self.assertFalse(sc["additionalProperties"])
         self.assertEqual(sc["minProperties"], 1)
         self.assertEqual({k: v["enum"] for k, v in sc["properties"].items()},
-                         {"weapon": ["wielded"], "attack": ["melee_weapon", "ranged_weapon"], "ability": ["str", "dex"]})
+                         {"weapon": ["wielded"], "attack": ["melee_weapon", "ranged_weapon"], "ability": ["str", "dex"],
+                          "target": ["marked"]})  # 7.2zc adds target
         self.assertEqual(am["properties"]["ends_early"]["items"]["enum"], ["no_attack_or_damage_since_last_turn", "unconscious"])
         self.assertEqual(am["properties"]["blocks"]["items"]["enum"], ["casting", "concentration"])
         for k in ("ends_early", "blocks"):
@@ -510,6 +511,32 @@ class ControlConditionsArms(unittest.TestCase):
         self.assertEqual(d["control_repeat_save"]["enum"], ["end_of_turn_unseen", "end_of_turn_or_damage_advantage"])
         self.assertEqual(d["destroy_undead_max_cr8"]["enum"], [4, 8, 16, 24, 32])
 
+
+class SpellGaps72zc(unittest.TestCase):
+    """VERSION_BUMP_BATCH 7.2zc: heal_bonus arm, marked scope, chosen ability, ends_on and move_mark."""
+
+    def test_heal_bonus_arm(self):
+        d = load("common/v2.schema.json")["$defs"]
+        arm = d["heal_bonus_effect"]
+        self.assertFalse(arm["additionalProperties"])
+        self.assertEqual(set(arm["required"]), {"kind", "per_spell_level"})
+        self.assertEqual(set(arm["properties"]), {"kind", "flat", "per_spell_level"})
+        self.assertEqual((arm["properties"]["flat"]["minimum"], arm["properties"]["flat"]["maximum"]), (0, 10))
+        self.assertIn("heal_bonus_effect", json.dumps(d["effect"]))
+        self.assertIn('"heal_bonus"', json.dumps(d["effect_live"]))
+
+    def test_marked_scope_and_chosen(self):
+        d = load("common/v2.schema.json")["$defs"]
+        self.assertEqual(d["apply_modifier_effect"]["properties"]["scope"]["properties"]["target"]["enum"], ["marked"])
+        self.assertIn('"chosen"', json.dumps(d["modifier"]["properties"]["ability"]))
+
+    def test_spell_keys(self):
+        sp = load("spell/v1.schema.json")
+        self.assertEqual(sp["properties"]["move_mark"]["properties"]["action"]["const"], "bonus_action")
+        self.assertFalse(sp["properties"]["move_mark"]["additionalProperties"])
+        eff = json.dumps(sp["$defs"]["effect"])
+        self.assertIn('"ends_on"', eff)
+        self.assertIn('"marked"', eff)
 
 
 if __name__ == "__main__":

@@ -355,6 +355,7 @@ def check_spell(doc, errs, ctx):
     enforces the same rules with the same wording; keep them in sync."""
     lvl, effs, ct = doc["level"], doc["effects"], doc["casting_time"]
     errs += c4.check_spell_modifiers(doc)
+    errs += c4.check_spell_gaps(doc)   # 7.2zc
     eff = effs[0]   # the first effect carries targeting, scaling and the reaction/duration rules
     if len(effs) > 1 and any(e["kind"] in REACTION_EFFECT_TRIGGER for e in effs):
         errs.append("effects: ac_bonus and counter reactions cannot be combined with other effects")
@@ -637,7 +638,8 @@ NATIVE_EFFECT_ARMS = {"on_event": "on_event_effect", "apply_modifier": "apply_mo
                       "grant_action": "grant_action_effect", "heal_pool": "heal_pool_effect",
                       "wild_shape": "wild_shape_effect", "shapechanger": "shapechanger_effect",   # R-G12 7.2q
                       "extra_attack": "extra_attack_effect",   # EC #179
-                      "spell_mod": "spell_mod_effect"}         # 7.2zb
+                      "spell_mod": "spell_mod_effect",         # 7.2zb
+                      "heal_bonus": "heal_bonus_effect"}       # 7.2zc
 
 
 def schema_message(e, registry: Registry | None = None, drill: bool = True) -> str:

@@ -1,0 +1,22 @@
+{
+  "base": "monsters/wolf.json",
+  "sets": [
+    [
+      [
+        "traits",
+        2
+      ],
+      {
+        "id": "disciple_of_life",
+        "name": "x",
+        "effect": {
+          "kind": "heal_bonus",
+          "flat": 2,
+          "per_spell_level": true
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "heal_bonus: not valid on monsters"
+}

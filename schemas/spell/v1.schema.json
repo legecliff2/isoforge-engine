@@ -406,6 +406,19 @@
         }
       ]
     },
+    "move_mark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "const": "bonus_action"
+        }
+      },
+      "description": "VERSION_BUMP_BATCH 7.2zc generic mark: once the marked creature drops to 0 hit points, the caster may move the mark to a new creature with a bonus action (ActionRequest::move_mark: no slot, no recast); the same modifier rows follow it. Concentration spells with a scope {target: marked} apply_modifier only."
+    },
     "targets": {
       "type": "object",
       "additionalProperties": false,
@@ -935,6 +948,18 @@
               },
               "description": {
                 "type": "string"
+              },
+              "ends_on": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "attack",
+                    "cast"
+                  ]
+                },
+                "description": "VERSION_BUMP_BATCH 7.2zc (Invisibility): the effect on a creature ends once it makes any attack (after the attack resolves) or casts any spell (after the spell is cast), whatever the target; when nothing of the spell is left the caster's concentration on it ends too. Needs concentration or a rounds / minutes / hours duration (tools/validate and the loader, same wording)."
               }
             }
           }
@@ -969,6 +994,21 @@
                   "affected"
                 ],
                 "description": "Effects after the first only (a rider, Guiding Bolt): 'affected' resolves this effect only for the targets the previous effect affected. Default 'all'."
+              },
+              "scope": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "target"
+                ],
+                "properties": {
+                  "target": {
+                    "enum": [
+                      "marked"
+                    ]
+                  }
+                },
+                "description": "VERSION_BUMP_BATCH 7.2zc generic mark (Hunter's Mark, Hex): the common@2 closed scope object's target key. The row follows the spell's one target (the marked creature): a damage row (applies_to self) adds to the caster's attack hits on it (combine with when weapon_attack for Hunter's Mark); an ability_check row (ability may be \"chosen\") sits on the caster (self) or the marked creature (target)."
               }
             }
           }

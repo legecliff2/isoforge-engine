@@ -1845,7 +1845,15 @@
           "$ref": "../common/v1.schema.json#/$defs/damage_type"
         },
         "ability": {
-          "$ref": "../common/v1.schema.json#/$defs/ability"
+          "anyOf": [
+            {
+              "$ref": "../common/v1.schema.json#/$defs/ability"
+            },
+            {
+              "const": "chosen"
+            }
+          ],
+          "description": "Save / AbilityCheck scope (else all). 7.2zc: \"chosen\" = the caster picks the ability at cast (ActionRequest::mark_ability; Hex); ability_check modifiers of a spell apply_modifier with scope {target: marked} only."
         },
         "applies_to": {
           "enum": [
@@ -3633,6 +3641,16 @@
               }
             }
           }
+        },
+        {
+          "description": "7.2zc: a heal_bonus effect is checked by its closed arm only.",
+          "properties": {
+            "kind": {
+              "not": {
+                "const": "heal_bonus"
+              }
+            }
+          }
         }
       ]
     },
@@ -3684,9 +3702,15 @@
                 "str",
                 "dex"
               ]
+            },
+            "target": {
+              "enum": [
+                "marked"
+              ],
+              "description": "7.2zc generic mark: spells only (spell@1 apply_modifier scope); on a feature it is a load error."
             }
           },
-          "description": "VERSION_BUMP_BATCH 7.2y / 7.2z: one closed object, at least one key. weapon wielded: bound to the melee weapon wielded at activation (Sacred Weapon). attack / ability: the attack-roll and damage rows apply only to that kind of weapon attack using that ability (Rage: {attack: melee_weapon, ability: str})."
+          "description": "VERSION_BUMP_BATCH 7.2y / 7.2z: one closed object, at least one key. weapon wielded: bound to the melee weapon wielded at activation (Sacred Weapon). attack / ability: the attack-roll and damage rows apply only to that kind of weapon attack using that ability (Rage: {attack: melee_weapon, ability: str}). 7.2zc: target marked is the spell@1 generic mark key; a feature refuses it."
         },
         "ends_early": {
           "type": "array",
@@ -4285,6 +4309,9 @@
             },
             {
               "$ref": "#/$defs/spell_mod_effect"
+            },
+            {
+              "$ref": "#/$defs/heal_bonus_effect"
             }
           ]
         }
@@ -4882,6 +4909,31 @@
         }
       ],
       "description": "VERSION_BUMP_BATCH 7.2zb (Agonizing / Repelling Blast): static per-spell modification, per attack hit of that spell. Characters only (the loader refuses it on monsters); character@4 only (older files list it inert)."
+    },
+    "heal_bonus_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "per_spell_level"
+      ],
+      "properties": {
+        "kind": {
+          "const": "heal_bonus"
+        },
+        "flat": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "default": 0,
+          "description": "Extra hit points per creature healed (Disciple of Life: 2). Default 0."
+        },
+        "per_spell_level": {
+          "type": "boolean",
+          "description": "Also add the level of the slot the spell was cast with (Disciple of Life: true)."
+        }
+      },
+      "description": "VERSION_BUMP_BATCH 7.2zc (Disciple of Life): static. Each creature a healing spell cast with a spell slot of 1st level or higher heals regains flat (+ the slot level when per_spell_level) more hit points (rules5e Combatant::heal_bonus_*). Healing riders, pools (Lay on Hands) and feature heals do not count, nor innate casts. Characters only (the loader refuses it on monsters); character@4 only (older files list it inert)."
     }
   }
 }
