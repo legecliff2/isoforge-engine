@@ -1,0 +1,181 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.sample_hill_dwarf_cleric_1",
+  "name": "Hill Dwarf Cleric, level 1 (Life Domain)",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "hill_dwarf",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "lawful good",
+  "level": 1,
+  "classes": [
+    {
+      "class": "cleric",
+      "level": 1,
+      "hit_die": "d8",
+      "subclass": "life"
+    }
+  ],
+  "xp": 0,
+  "armor_class": {
+    "value": 18,
+    "note": "chain mail, shield"
+  },
+  "hit_points": {
+    "average": 12,
+    "formula": "1d8+4"
+  },
+  "speed": {
+    "walk": 25
+  },
+  "abilities": {
+    "str": 13,
+    "dex": 10,
+    "con": 16,
+    "int": 8,
+    "wis": 16,
+    "cha": 12
+  },
+  "saving_throws": {
+    "wis": 5,
+    "cha": 3
+  },
+  "skills": {
+    "insight": 5,
+    "religion": 1
+  },
+  "damage_resistances": [
+    "poison"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 13
+  },
+  "languages": [
+    "Common",
+    "Dwarvish"
+  ],
+  "proficiency_bonus": 2,
+  "features": [
+    {
+      "id": "bonus_proficiency",
+      "name": "Bonus Proficiency",
+      "description": "You gain proficiency with heavy armor (worn: chain mail, baked into armor_class)."
+    },
+    {
+      "id": "disciple_of_life",
+      "name": "Disciple of Life",
+      "description": "Your healing spells are more effective. Whenever you use a spell of 1st level or higher to restore hit points to a creature, the creature regains additional hit points equal to 2 + the spell's level. (Modelled: heal_bonus flat 2 + the slot level, per creature healed by a slot cast.)",
+      "effect": {
+        "kind": "heal_bonus",
+        "flat": 2,
+        "per_spell_level": true
+      }
+    },
+    {
+      "id": "darkvision",
+      "name": "Darkvision",
+      "description": "You can see in dim light within 60 feet of you as if it were bright light, and in darkness as if it were dim light. You can't discern color in darkness, only shades of gray. (Modelled: senses.darkvision 60.)"
+    },
+    {
+      "id": "dwarven_resilience",
+      "name": "Dwarven Resilience",
+      "description": "You have advantage on saving throws against poison, and you have resistance against poison damage. (Modelled: poison resistance; the save advantage is description only.)"
+    },
+    {
+      "id": "dwarven_combat_training",
+      "name": "Dwarven Combat Training",
+      "description": "You have proficiency with the battleaxe, handaxe, light hammer, and warhammer."
+    },
+    {
+      "id": "stonecunning",
+      "name": "Stonecunning",
+      "description": "Whenever you make an Intelligence (History) check related to the origin of stonework, you are considered proficient in the History skill and add double your proficiency bonus to the check, instead of your normal proficiency bonus."
+    },
+    {
+      "id": "dwarven_toughness",
+      "name": "Dwarven Toughness",
+      "description": "Your hit point maximum increases by 1, and it increases by 1 every time you gain a level. (Modelled: baked into hit_points.)"
+    },
+    {
+      "id": "speed_not_reduced",
+      "name": "Speed",
+      "description": "Your speed is not reduced by wearing heavy armor."
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.mace",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.chain_mail",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.shield",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.crossbow_light"
+    },
+    "crossbow_bolts_20",
+    "priests_pack",
+    "holy_symbol"
+  ],
+  "actions": [
+    {
+      "id": "mace",
+      "name": "Mace",
+      "kind": "melee_weapon_attack",
+      "to_hit": 3,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+1",
+          "type": "bludgeoning"
+        }
+      ]
+    },
+    {
+      "id": "light_crossbow",
+      "name": "Light Crossbow",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 2,
+      "range": [
+        80,
+        320
+      ],
+      "targets": 1,
+      "properties": [
+        "ammunition",
+        "loading",
+        "two_handed"
+      ],
+      "damage": [
+        {
+          "dice": "1d8",
+          "type": "piercing"
+        }
+      ]
+    }
+  ],
+  "spellcasting": {
+    "ability": "wis",
+    "caster_level": 1,
+    "slots": {
+      "1": 2
+    },
+    "spells": [
+      "srd51.spell.sacred_flame",
+      "srd51.spell.cure_wounds",
+      "srd51.spell.healing_word",
+      "srd51.spell.inflict_wounds",
+      "srd51.spell.sanctuary"
+    ]
+  }
+}
