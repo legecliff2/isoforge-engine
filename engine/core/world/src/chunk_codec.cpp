@@ -18,9 +18,21 @@ uint32_t spawn_stable_id(ChunkCoord coord, uint32_t spawn_index) {
     return uint32_t(v) ^ uint32_t(v >> 32);
 }
 
+uint32_t chunk_light_stable_id(ChunkCoord coord, uint32_t light_index) {
+    CanonicalHasher h;
+    h.i32(coord.x);
+    h.i32(coord.y);
+    h.i16(coord.level);
+    h.u32(light_index);
+    h.byte(uint8_t('L'));
+    const uint64_t v = h.value();
+    return uint32_t(v) ^ uint32_t(v >> 32);
+}
+
 uint64_t compute_content_hash(const Chunk& c) {
     CanonicalHasher h;
-    h.u16(c.format_version);
+    const bool v2 = !c.lights.empty() || c.ambient.has_value();
+    h.u16(v2 ? uint16_t(2) : uint16_t(1));   // chunk@1 content (no lights, no ambient) keeps its chunk@1 hash
     h.i32(c.coord.x);
     h.i32(c.coord.y);
     h.i16(c.coord.level);
@@ -42,6 +54,20 @@ uint64_t compute_content_hash(const Chunk& c) {
     }
     h.u32(uint32_t(c.triggers.size()));
     for (const auto& t : c.triggers) h.str(t);
+    if (v2) {   // chunk@2 fields, only when present
+        h.u32(uint32_t(c.lights.size()));
+        for (const auto& l : c.lights) {
+            h.i32(l.tile.x);
+            h.i32(l.tile.y);
+            h.u16(l.bright_ft);
+            h.u16(l.dim_ft);
+            h.byte(l.flags);
+            h.str(l.preset);
+            h.u32(l.stable_id);
+        }
+        h.byte(c.ambient ? 1 : 0);
+        if (c.ambient) { h.byte(c.ambient->kind); h.byte(c.ambient->level); }
+    }
     return h.value();
 }
 
@@ -70,6 +96,10 @@ std::string hash_to_hex(uint64_t h) {
 
 void register_chunk_schema(assets::SchemaRegistry& reg) {
     reg.register_type("chunk", kChunkFormatVersion);
+    // chunk@1 -> chunk@2: identity (no lights, no ambient); an explicit format_version follows the document.
+    reg.register_migration("chunk", 1, 2, [](Json& j, assets::MigrationCtx&) {
+        if (auto fv = j.find("format_version"); fv != j.end()) *fv = 2;
+    });
 }
 
 namespace {
@@ -108,9 +138,13 @@ template <class F> void dense_array(const Json& layer, const char* key, int l, i
 
 Chunk decode(const Json& doc) {
     Chunk c{};   // value-init: all cells zero
-    if (auto fv = doc.find("format_version"); fv != doc.end())
-        if (!fv->is_number_integer() || fv->get<int64_t>() != kChunkFormatVersion)
-            throw DecodeError{"format_version must be " + std::to_string(kChunkFormatVersion)};
+    // 1 (chunk@1, e.g. procgen output decoded directly) or 2; chunk@1 has no lights / ambient.
+    int64_t declared = kChunkFormatVersion;
+    if (auto fv = doc.find("format_version"); fv != doc.end()) {
+        if (!fv->is_number_integer() || (fv->get<int64_t>() != 1 && fv->get<int64_t>() != kChunkFormatVersion))
+            throw DecodeError{"format_version must be 1 or " + std::to_string(kChunkFormatVersion)};
+        declared = fv->get<int64_t>();
+    }
     c.format_version = kChunkFormatVersion;
 
     const Json& coord = field(doc, "coord", &Json::is_object, "an object");
@@ -174,6 +208,61 @@ Chunk decode(const Json& doc) {
         field(t, "id", &Json::is_string, "a string");
         field(t, "kind", &Json::is_string, "a string");
         c.triggers.push_back(t.dump());
+    }
+
+    if (declared == 1 && (doc.contains("lights") || doc.contains("ambient")))
+        throw DecodeError{"lights / ambient need format_version 2 (chunk@2)"};
+    if (auto ls = doc.find("lights"); ls != doc.end()) {
+        if (!ls->is_array()) throw DecodeError{"'lights' must be an array"};
+        for (std::size_t i = 0; i < ls->size(); ++i) {
+            const Json& l = (*ls)[i];
+            const std::string where = "lights[" + std::to_string(i) + "]";
+            if (!l.is_object()) throw DecodeError{where + " must be an object"};
+            for (auto it = l.begin(); it != l.end(); ++it)
+                if (it.key() != "tile" && it.key() != "bright_ft" && it.key() != "dim_ft" && it.key() != "magical" &&
+                    it.key() != "sunlight" && it.key() != "starts_unlit" && it.key() != "preset" && it.key() != "visual")
+                    throw DecodeError{where + ": unknown field '" + it.key() + "'"};
+            if (l.contains("stable_id")) throw DecodeError{where + ": stable_id is computed by the loader"};
+            Chunk::Light out;
+            const Json& tile = field(l, "tile", &Json::is_object, "an object");
+            out.tile.x = int_field<int32_t>(tile, "x", 0, kChunkSize - 1);
+            out.tile.y = int_field<int32_t>(tile, "y", 0, kChunkSize - 1);
+            out.bright_ft = int_field<uint16_t>(l, "bright_ft", 0, kMaxLightFt);
+            out.dim_ft = l.contains("dim_ft") ? int_field<uint16_t>(l, "dim_ft", 0, kMaxLightFt) : uint16_t(0);
+            if (out.bright_ft % 5 || out.dim_ft % 5) throw DecodeError{where + ": radii must be multiples of 5 ft"};
+            if (int(out.bright_ft) + int(out.dim_ft) > kMaxLightFt)
+                throw DecodeError{where + ": bright_ft + dim_ft exceeds " + std::to_string(kMaxLightFt) + " ft"};
+            auto flag = [&](const char* key, uint8_t bit) {
+                auto it = l.find(key);
+                if (it == l.end()) return;
+                if (!it->is_boolean()) throw DecodeError{where + "." + key + " must be a boolean"};
+                if (it->get<bool>()) out.flags = uint8_t(out.flags | bit);
+            };
+            flag("magical", 1);
+            flag("sunlight", 2);
+            flag("starts_unlit", 4);
+            if (auto pr = l.find("preset"); pr != l.end()) {
+                if (!pr->is_string()) throw DecodeError{where + ".preset must be a string"};
+                out.preset = pr->get<std::string>();
+            }
+            // "visual" (colour, flicker, glow sprite): presentation, accepted and dropped; never hashed or stored.
+            if (auto vi = l.find("visual"); vi != l.end() && !vi->is_object()) throw DecodeError{where + ".visual must be an object"};
+            out.stable_id = chunk_light_stable_id(c.coord, uint32_t(i));
+            c.lights.push_back(std::move(out));
+        }
+    }
+    if (auto am = doc.find("ambient"); am != doc.end()) {
+        if (!am->is_object()) throw DecodeError{"'ambient' must be an object"};
+        Chunk::Ambient a;
+        const std::string kind = field(*am, "kind", &Json::is_string, "a string").get<std::string>();
+        const std::string level = field(*am, "level", &Json::is_string, "a string").get<std::string>();
+        if (kind == "none") a.kind = 0; else if (kind == "sun") a.kind = 1; else if (kind == "moon") a.kind = 2;
+        else throw DecodeError{"ambient.kind must be none|sun|moon"};
+        if (level == "dark") a.level = 0; else if (level == "dim") a.level = 1; else if (level == "bright") a.level = 2;
+        else throw DecodeError{"ambient.level must be dark|dim|bright"};
+        for (auto it = am->begin(); it != am->end(); ++it)
+            if (it.key() != "kind" && it.key() != "level") throw DecodeError{"ambient: unknown field '" + it.key() + "'"};
+        c.ambient = a;
     }
 
     c.content_hash = compute_content_hash(c);
