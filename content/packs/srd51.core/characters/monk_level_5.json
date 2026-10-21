@@ -118,7 +118,40 @@
     {
       "id": "stunning_strike",
       "name": "Stunning Strike",
-      "description": "When you hit another creature with a melee weapon attack, you can spend 1 ki point to attempt a stunning strike. The target must succeed on a Constitution saving throw (DC 13) or be stunned until the end of your next turn. (Descriptive: the sim's save_condition rider does not load the duration until_end_of_caster_next_turn, and its other durations end the stun at the wrong time.)"
+      "description": "When you hit another creature with a melee weapon attack, you can spend 1 ki point to attempt a stunning strike. The target must succeed on a Constitution saving throw (DC 13) or be stunned until the end of your next turn.",
+      "effect": {
+        "kind": "on_event",
+        "on": "hit",
+        "choice": "ask",
+        "when": [
+          {
+            "kind": "weapon",
+            "is": "melee"
+          }
+        ],
+        "usage": {
+          "kind": "pool",
+          "pool": "ki",
+          "cost": 1
+        },
+        "effects": [
+          {
+            "kind": "save_condition",
+            "save": {
+              "ability": "con",
+              "dc": 13
+            },
+            "apply": [
+              {
+                "condition": "stunned",
+                "duration": {
+                  "kind": "until_end_of_caster_next_turn"
+                }
+              }
+            ]
+          }
+        ]
+      }
     }
   ],
   "resources": [
