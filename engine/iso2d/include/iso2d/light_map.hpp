@@ -53,6 +53,59 @@ constexpr Fog fog_of(bool seen_now, bool explored) noexcept {
 // shown lit (its multiplier is the darkest), and non-visible tiles show no current light at all.
 Color light_tint(uint8_t packed, Fog fog) noexcept;
 
+// ---- Fog of war (LIGHTING.md §10). Render owns only the visual and the choice of team; the masks
+// come from the sim. Mask layout (sim::TileMask, pinned there by a test): 16 u64 words, tile
+// (x, y) of a chunk is bit = y * 32 + x, word = bit / 64, LSB-first within the word.
+using FogMask = std::array<uint64_t, 16>;
+constexpr bool fog_mask_test(const FogMask& m, int lx, int ly) noexcept {
+    const int b = ly * kLightChunk + lx;
+    return ((m[size_t(b >> 6)] >> (b & 63)) & 1u) != 0;
+}
+// R8 fog texel per tile: 0 unseen (black), 128 explored-not-seen (dimmed), 255 seen now.
+namespace fog_texel {
+inline constexpr uint8_t kUnseen = 0, kExplored = 128, kSeen = 255;
+}
+constexpr uint8_t fog_texel_of(Fog f) noexcept {
+    return f == Fog::Visible ? fog_texel::kSeen : f == Fog::Remembered ? fog_texel::kExplored : fog_texel::kUnseen;
+}
+constexpr Fog fog_of_texel(uint8_t t) noexcept {
+    return t >= fog_texel::kSeen ? Fog::Visible : t >= fog_texel::kExplored ? Fog::Remembered : Fog::Unexplored;
+}
+// Decode one team's masks for a chunk into texels. seen_now wins even if explored lacks the bit.
+void decode_fog(const FogMask& seen_now, const FogMask& explored, std::span<uint8_t, kLightTiles> out) noexcept;
+
+// One R8_UNORM 32x32 fog texture per tracked chunk (same lifecycle as LightMaps). Chunks the sim
+// reports as blocked are simply not updated: their texture and CPU copy are held as-is.
+class FogMaps {
+public:
+    explicit FogMaps(render::IRenderDevice&);
+    ~FogMaps();
+    FogMaps(const FogMaps&) = delete;
+    FogMaps& operator=(const FogMaps&) = delete;
+
+    // Create an all-unseen map per added chunk, destroy per removed.
+    void on_stream_delta(std::span<const LightChunkKey> added, std::span<const LightChunkKey> removed);
+    // Replace chunk `k`'s texels and upload the bounding rect of those that changed. False if not resident.
+    bool update(LightChunkKey k, std::span<const uint8_t, kLightTiles> texels);
+    // Convenience: decode + update.
+    bool update(LightChunkKey k, const FogMask& seen_now, const FogMask& explored);
+
+    render::TextureId texture(LightChunkKey) const;
+    Fog fog(LightChunkKey, Vec2i local) const;   // Unexplored if not resident
+    bool resident(LightChunkKey k) const { return maps_.count(k) != 0; }
+    size_t chunks() const noexcept { return maps_.size(); }
+    std::vector<LightChunkKey> keys() const;
+    uint64_t bytes_uploaded() const noexcept { return bytes_uploaded_; }
+    uint32_t uploads() const noexcept { return uploads_; }
+
+private:
+    struct Map { render::TextureId tex; std::array<uint8_t, kLightTiles> cpu{}; };
+    render::IRenderDevice& dev_;
+    std::map<LightChunkKey, Map> maps_;
+    uint64_t bytes_uploaded_ = 0;
+    uint32_t uploads_ = 0;
+};
+
 class LightMaps {
 public:
     explicit LightMaps(render::IRenderDevice&);
