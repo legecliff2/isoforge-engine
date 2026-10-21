@@ -93,9 +93,9 @@ AUTHORED = {
     "cunning-action": "feature:cunning_action",              # bonus_action_grant [dash, disengage, hide]
     "roguish-archetype": "subclass",
     "rogue-ability-score-improvement-1": "abilities",
-    "fast-hands": "feature:fast_hands",                      # descriptive: no Use an Object / Sleight of Hand / thieves' tools action
+    "fast-hands": "feature:fast_hands",                      # bonus_action_grant use_object (7.2y)
     "second-story-work": "feature:second_story_work",        # partial: climb speed in speed; the running-jump bonus is descriptive
-    "uncanny-dodge": "feature:uncanny_dodge",
+    "uncanny-dodge": "feature:uncanny_dodge",                # feature text; reactions[] damaged + requires_sight, half (7.2y)
     "divine-sense": "feature:divine_sense",                  # descriptive: no sensing / reveal mechanic
     "lay-on-hands": "feature:lay_on_hands",                  # heal_pool + resources[] lay_on_hands (5 x paladin level, long rest); partial
     "paladin-fighting-style": "feature:fighting_style_dueling",
@@ -117,16 +117,16 @@ AUTHORED = {
     "primeval-awareness": "feature:primeval_awareness",      # descriptive: 1-6 mile creature-type sensing, no slot-spending feature key
     "ranger-ability-score-improvement-1": "abilities",
     "ranger-extra-attack": "feature:extra_attack",
-    "hunters-prey": "feature:colossus_slayer",
-    "rage": "feature:rage",                                  # descriptive: apply_modifier + usage pool is not loaded (SRD_CLASSES_DEFERRED)
+    "hunters-prey": "feature:colossus_slayer",               # on_event weapon hit, target_below_max_hp, 1d8 (7.2y)
+    "rage": "feature:rage",                                  # apply_modifier + usage pool rage + 7.2z scope / ends_early / blocks / advantage_on
     "barbarian-unarmored-defense": "feature:unarmored_defense",   # baked into armor_class (UNARMORED_CON); no effect
     "reckless-attack": "feature:reckless_attack",            # reckless_attack kind (sim #129)
-    "danger-sense": "feature:danger_sense",                  # descriptive: no static save-advantage key with a "can see" gate
+    "danger-sense": "feature:danger_sense",                  # passive advantage_on dex saves, source_seen, not blinded / deafened / incapacitated (7.2z)
     "primal-path": "subclass",
     "barbarian-ability-score-improvement-1": "abilities",
     "barbarian-extra-attack": "feature:extra_attack",
     "fast-movement": "feature:fast_movement",                # baked into speed.walk 40 (speed()); no effect
-    "frenzy": "feature:frenzy",
+    "frenzy": "feature:frenzy",                              # bonus_attack requires_effect rage; Rage on_end exhaustion 1 (7.2z)
     "spellcasting-bard": "spellcasting",
     "bardic-inspiration-d6": "feature:bardic_inspiration",   # grant_die 1d6, scale d8 at 5 (7.3a, #214) + resources[] bardic_inspiration
     "bardic-inspiration-d8": "feature:bardic_inspiration",
@@ -172,10 +172,10 @@ AUTHORED = {
     "warlock-ability-score-improvement-1": "abilities",
 }
 # Kept as a features[] entry with no effect: no combat rule, or a mechanic the engine lacks (docs/SRD_CLASSES_DEFERRED.md).
-DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_story_work", "uncanny_dodge"],
+DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "second_story_work", "uncanny_dodge"],
                "paladin": ["divine_sense", "divine_health", "channel_divinity", "sacred_weapon", "turn_the_unholy"],
-               "ranger": ["favored_enemy", "natural_explorer", "primeval_awareness", "colossus_slayer"],
-               "barbarian": ["rage", "unarmored_defense", "danger_sense", "fast_movement", "frenzy"],
+               "ranger": ["favored_enemy", "natural_explorer", "primeval_awareness"],
+               "barbarian": ["unarmored_defense", "fast_movement"],
                "bard": ["song_of_rest", "expertise", "bonus_proficiencies", "font_of_inspiration"],
                "druid": ["druidic", "bonus_cantrip", "circle_spells"],
                "monk": ["unarmored_defense", "martial_arts", "ki", "flurry_of_blows",
@@ -419,7 +419,15 @@ class ClassTable(unittest.TestCase):
                 if level >= 2:
                     self.assertEqual(f["cunning_action"]["effect"], {"kind": "bonus_action_grant", "actions": ["dash", "disengage", "hide"]})
                 self.assertIn("Thieves' Cant", d["languages"])
-                self.assertNotIn("reactions", d)   # Uncanny Dodge stays descriptive
+                self.assertEqual("fast_hands" in f, level >= 3)
+                if level >= 3:   # 7.2y Fast Hands: Use an Object as the Cunning Action bonus action
+                    self.assertEqual(f["fast_hands"]["effect"], {"kind": "bonus_action_grant", "actions": ["use_object"]})
+                if level >= 5:   # 7.2y Uncanny Dodge: attack damage only (rules), attacker seen (requires_sight)
+                    self.assertEqual(d["reactions"], [{"id": "uncanny_dodge", "name": "Uncanny Dodge",
+                                                       "window": {"kind": "damaged", "requires_sight": True},
+                                                       "effect": {"kind": "reduce_damage", "fraction": "half"}}])
+                else:
+                    self.assertNotIn("reactions", d)
                 for fid in DESCRIPTIVE["rogue"]:
                     if fid in f:
                         self.assertNotIn("effect", f[fid], fid)
@@ -478,6 +486,12 @@ class ClassTable(unittest.TestCase):
                 if level >= 5:
                     self.assertEqual(f["extra_attack"]["effect"], {"kind": "extra_attack", "attacks_per_action": 2})
                 self.assertNotIn("resources", d)
+                self.assertEqual("colossus_slayer" in f, level >= 3)
+                if level >= 3:   # 7.2y target_below_max_hp
+                    self.assertEqual(f["colossus_slayer"]["effect"], {
+                        "kind": "on_event", "on": "hit", "limit": "once_per_turn",
+                        "when": [{"kind": "weapon_attack"}, {"kind": "target_below_max_hp"}],
+                        "effects": [{"kind": "extra_damage", "damage": [{"dice": "1d8", "type": "same_as_weapon"}]}]})
                 for fid in DESCRIPTIVE["ranger"]:
                     if fid in f:
                         self.assertNotIn("effect", f[fid], fid)
@@ -494,7 +508,30 @@ class ClassTable(unittest.TestCase):
                 self.assertEqual("extra_attack" in f, level >= 5)
                 if level >= 5:
                     self.assertEqual(f["extra_attack"]["effect"], {"kind": "extra_attack", "attacks_per_action": 2})
-                self.assertNotIn("resources", d)   # no rage pool: nothing loaded would spend it (check 12)
+                rage = TABLE["barbarian"]["levels"][str(level)]["class_specific"]["rage_count"]
+                self.assertEqual(d["resources"], [{"id": "rage", "name": "Rage", "max": rage, "recharge": "long_rest"}])
+                r10 = {"kind": "rounds", "n": 10}
+                want = {"kind": "apply_modifier", "cost": "bonus_action", "usage": {"kind": "pool", "pool": "rage", "cost": 1},
+                        "scope": {"attack": "melee_weapon", "ability": "str"},
+                        "ends_early": ["no_attack_or_damage_since_last_turn", "unconscious"], "blocks": ["casting", "concentration"],
+                        "advantage_on": {"checks": ["str"], "saves": ["str"]},
+                        "modifiers": [{"stat": "damage", "applies_to": "self", "duration": r10,
+                                       "bonus_table": {"class": "barbarian", "by_level": [{"level": 1, "value": 2}, {"level": 9, "value": 3},
+                                                                                          {"level": 16, "value": 4}]}}] +
+                                     [{"stat": "resistance", "damage_type": t, "applies_to": "self", "duration": r10}
+                                      for t in ("bludgeoning", "piercing", "slashing")]}
+                if level >= 3:
+                    want["on_end"] = {"exhaustion": 1}   # Frenzy's exhaustion (only after a frenzied rage)
+                self.assertEqual(f["rage"]["effect"], want)   # 7.2z
+                self.assertEqual(TABLE["barbarian"]["levels"][str(level)]["class_specific"]["rage_damage_bonus"], 2)
+                self.assertEqual("danger_sense" in f, level >= 2)
+                if level >= 2:
+                    self.assertEqual(f["danger_sense"]["effect"], {"kind": "apply_modifier", "passive": True, "advantage_on": {"saves": ["dex"]},
+                                                                   "when": {"save": "dex", "source_seen": True,
+                                                                            "not_conditions": ["blinded", "deafened", "incapacitated"]}})
+                self.assertEqual("frenzy" in f, level >= 3)
+                if level >= 3:
+                    self.assertEqual(f["frenzy"]["effect"], {"kind": "bonus_attack", "requires_effect": "rage"})
                 for fid in DESCRIPTIVE["barbarian"]:
                     if fid in f:
                         self.assertNotIn("effect", f[fid], fid)
