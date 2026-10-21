@@ -1,0 +1,14 @@
+{
+  "base": "characters/sample_tiefling_warlock_1.json",
+  "sets": [
+    [
+      [
+        "senses",
+        "darkvision"
+      ],
+      30
+    ]
+  ],
+  "severity": "error",
+  "expect": "race 'tiefling': senses.darkvision must be 60 (SRD racial Darkvision), got 30"
+}

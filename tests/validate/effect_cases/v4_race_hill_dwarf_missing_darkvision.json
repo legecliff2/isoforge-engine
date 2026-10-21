@@ -1,0 +1,11 @@
+{
+  "base": "characters/sample_hill_dwarf_cleric_1.json",
+  "dels": [
+    [
+      "senses",
+      "darkvision"
+    ]
+  ],
+  "severity": "error",
+  "expect": "race 'hill_dwarf': senses.darkvision must be 60 (SRD racial Darkvision), got None"
+}

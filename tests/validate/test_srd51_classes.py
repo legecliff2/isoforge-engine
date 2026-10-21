@@ -193,6 +193,11 @@ TOME_CANTRIPS = {"fire-bolt", "ray-of-frost", "sacred-flame"}
 DEFERRED_SPELLS = ["bless", "spiritual-weapon", "beacon-of-hope", "zone-of-truth",
                    "spider-climb", "meld-into-stone"]   # Mountain circle spells not shipped;   # Lesser Restoration, Revivify: spells batch 2
 
+# Non-human SRD sample PCs (race -> senses.darkvision, checks_v4.check_race_senses; EC #236 loads it as darkvision_ft).
+SAMPLE_PCS = {"sample_hill_dwarf_cleric_1": ("hill_dwarf", 25, ["poison"]),
+              "sample_high_elf_wizard_1": ("high_elf", 30, []),
+              "sample_tiefling_warlock_1": ("tiefling", 30, ["fire"])}
+
 
 def mod(score: int) -> int:
     return (score - 10) // 2
@@ -758,10 +763,25 @@ class ClassTable(unittest.TestCase):
             self.assertIn(f"srd51.spell.{s.replace('-', '_')}", doc)
             self.assertFalse((PACK / "spells" / f"{s.replace('-', '_')}.json").exists(), s)
 
+    def test_sample_pcs_racial_traits(self):
+        for stem, (race, walk, resist) in SAMPLE_PCS.items():
+            with self.subTest(pc=stem):
+                d = json.loads((PACK / "characters" / f"{stem}.json").read_text(encoding="utf-8"))
+                self.assertEqual((d["$schema"], d["id"], d["race"]), ("character@4", f"srd51.character.{stem}", race))
+                self.assertEqual(d["senses"]["darkvision"], 60)
+                perc = d.get("skills", {}).get("perception", mod(d["abilities"]["wis"]))
+                self.assertEqual(d["senses"]["passive_perception"], 10 + perc)
+                self.assertEqual(d["speed"], {"walk": walk})
+                self.assertEqual(d.get("damage_resistances", []), resist)
+                self.assertIn("darkvision", {f["id"] for f in d["features"]})
+        # every human pre-generated PC has no darkvision
+        for _c, _l, d in docs():
+            self.assertNotIn("darkvision", d["senses"])
+
     def test_manifest_and_ids(self):
         man = json.loads((PACK / "manifest.json").read_text(encoding="utf-8"))
         have = sorted(p.name for p in (PACK / "characters").glob("*.json"))
-        self.assertEqual(have, sorted(f"{c}_level_{n}.json" for c in TABLE for n in LEVELS))
+        self.assertEqual(have, sorted([f"{c}_level_{n}.json" for c in TABLE for n in LEVELS] + [f"{s}.json" for s in SAMPLE_PCS]))
         for p in have:
             self.assertIn(f"characters/{p}", man["contents"])
         self.assertEqual(man["contents"], sorted(man["contents"]))

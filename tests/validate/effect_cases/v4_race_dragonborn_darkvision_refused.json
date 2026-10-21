@@ -1,0 +1,13 @@
+{
+  "base": "characters/sample_high_elf_wizard_1.json",
+  "sets": [
+    [
+      [
+        "race"
+      ],
+      "dragonborn"
+    ]
+  ],
+  "severity": "error",
+  "expect": "race 'dragonborn': senses.darkvision 60 not allowed (the race has no Darkvision in SRD 5.1)"
+}
