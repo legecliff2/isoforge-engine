@@ -1,8 +1,8 @@
-#include <set>
 #include "sim/features.hpp"
 
 #include <algorithm>
 #include <cctype>
+#include <set>
 
 #include "rules5e/armor.hpp"
 #include "rules5e/font_of_magic.hpp"
