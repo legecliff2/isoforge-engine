@@ -1,0 +1,59 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "school": "enchantment",
+  "classes": [
+    "cleric"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 30
+  },
+  "id": "test.neg.spell.bless",
+  "name": "Bless",
+  "description": "Bless (7.2ze positive specimen).",
+  "level": 1,
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "a sprinkling of holy water"
+    }
+  },
+  "duration": {
+    "kind": "rounds",
+    "amount": 10,
+    "concentration": true
+  },
+  "targets": {
+    "count": 3
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "attack_roll",
+        "die": "1d4",
+        "sign": "plus",
+        "applies_to": [
+          "attack",
+          "save"
+        ],
+        "duration": {
+          "kind": "concentration"
+        }
+      }
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "targets": 1
+    }
+  }
+}

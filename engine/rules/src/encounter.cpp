@@ -56,7 +56,10 @@ void refresh_mod_cache(EncounterState& s) {
 }
 
 bool mod_in_scope(const ModifierSpec& m, ModStat st, int ability) {
-    if (m.stat != st) return false;
+    // 7.2ze: a Bless / Bane row also applies to the rolls in also_rolls (attack rolls, saving throws)
+    const bool also = (st == ModStat::AttackRoll && (m.also_rolls & kRollAttack) != 0) ||
+                      (st == ModStat::Save && (m.also_rolls & kRollSave) != 0);
+    if (m.stat != st && !also) return false;
     return !(m.has_ability && ability >= 0 && int(m.ability) != ability);
 }
 
@@ -2979,6 +2982,13 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         bool applied = false;
         for (Combatant* t : to) {
             if (t->dead) continue;
+            if (def.has_modifier_save) {   // 7.2ze Bane: a success resists (no modifier, not affected)
+                const SaveSource src{def.magical, 0, 0};
+                auto r = save_roll(s, *t, def.modifier_save, spell_save_dc(a, def), RollMode::Normal, ev, &src);
+                emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(def.modifier_save), r.roll.natural, r.roll.total,
+                     int32_t(r.success) | 8);
+                if (r.success) continue;
+            }
             if (apply_modifier(s, a.id, t->id, m, ev)) {
                 affected.push_back(t); applied = true;
                 for (auto& am : s.modifiers) if (am.spec.id == m.id && am.target == t->id && am.caster == a.id) {
@@ -5460,7 +5470,8 @@ uint64_t modifiers_digest(const EncounterState& s, uint64_t h) {
             byte(uint8_t(m.fought)); byte(uint8_t(m.frenzied));
         }
         if (p.held_applies != 0 || p.range_ft != 0) { byte(0x59); byte(p.held_applies); u32(p.range_ft); }
-        if (p.applies_to == ModAppliesTo::Attackers) { byte(0x5B); u32(p.from_types); }   // 7.2zd: only for such rows
+        if (p.applies_to == ModAppliesTo::Attackers) { byte(0x5B); u32(p.from_types); }
+        if (p.also_rolls != 0) { byte(0x5C); byte(p.also_rolls); }   // 7.2ze Bless / Bane: only for such rows   // 7.2zd: only for such rows
         if (m.mark != 0) { byte(0x5A); u32(m.mark); byte(p.mark_scope); byte(uint8_t(p.chosen_ability)); }   // 7.2zc mark: only when set   // 7.2za held die   // 7.2y wielded-scope binding: only when bound (older digests unchanged)
     }
     return h;
