@@ -162,7 +162,15 @@ TEST_CASE("loader: R6 rules match the validator") {
     j["effects"][0]["damage"] = {{"dice", "1d6"}, {"type", "fire"}}; j["effects"][0]["on_success"] = "none";
     bad(j, "repeat_save needs condition");
     j = hp; j["effects"][0]["damage"] = {{"dice", "1d6"}, {"type", "fire"}}; bad(j, "'on_success' is a dependency of 'damage'");
-    j = hp; j["components"]["m"] = {{"text", "x"}, {"consumed", true}}; bad(j, "cost_cp");
+    {   // consumed without cost_cp loads (spell@1 no longer requires cost_cp) and has no effect: no price, nothing to consume
+        j = hp; j["components"]["m"] = {{"text", "holy water"}, {"consumed", true}};
+        auto r = spell_from_json(j); INFO(r.error); REQUIRE(r.def);
+        CHECK(r.def->material_consumed);
+        CHECK(r.def->material_cost_cp == 0);
+        CHECK(r.def->material_item.empty());
+        const bool consumes = r.def->material_cost_cp > 0 && r.def->material_consumed;   // combat.cpp's consume condition: never true
+        CHECK_FALSE(consumes);
+    }
     j = fb; j["casting_time"] = {{"kind", "reaction"}, {"trigger", {{"kind", "being_hit"}}}}; bad(j, "disagree");
 }
 
