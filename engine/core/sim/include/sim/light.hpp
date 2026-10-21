@@ -168,6 +168,52 @@ private:
     std::vector<Field> fields_;
 };
 
+// §10 fog of war (phase 2): one bit per tile of a chunk. Layout (pinned by a test; render reads the words directly):
+// bit = y * 32 + x (chunk-local, row-major like ChunkLightMap::samples), word = bit / 64, LSB-first within the word
+// (mask = uint64_t(1) << (bit & 63)). So words[0] holds rows 0-1, words[15] rows 30-31.
+struct TileMask {
+    std::array<uint64_t, 16> words{};
+    static constexpr int bit_of(int lx, int ly) noexcept { return ly * world::kChunkSize + lx; }
+    bool test(int lx, int ly) const noexcept {
+        const int b = bit_of(lx, ly);
+        return ((words[std::size_t(b >> 6)] >> (b & 63)) & 1u) != 0;
+    }
+    void set(int lx, int ly) noexcept {
+        const int b = bit_of(lx, ly);
+        words[std::size_t(b >> 6)] |= uint64_t(1) << (b & 63);
+    }
+    bool any() const noexcept {
+        for (uint64_t w : words)
+            if (w) return true;
+        return false;
+    }
+    TileMask& operator|=(const TileMask& o) noexcept {
+        for (std::size_t i = 0; i < words.size(); ++i) words[i] |= o.words[i];
+        return *this;
+    }
+    bool operator==(const TileMask&) const = default;
+};
+// Team id = index into Combat::team_names() (rules5e::Combatant::team).
+using TeamId = uint8_t;
+struct ChunkVisibility {
+    world::ChunkCoord coord;
+    TileMask seen_now;   // perceived at the start of this step by some viewer of the team
+    TileMask explored;   // perceived at any step so far (always a superset of seen_now)
+    bool operator==(const ChunkVisibility&) const = default;
+};
+struct TeamVisibility {
+    TeamId team = 0;
+    std::vector<ChunkVisibility> chunks;   // ascending coord; frame chunks with explored.any() only (missing = all unseen)
+    bool operator==(const TeamVisibility&) const = default;
+};
+// §2 a changed region of one chunk: chunk-local, inclusive bounds (0..31). One rect per chunk: the bounding box of the
+// samples that differ from the previous frame (the whole chunk when it has no samples there).
+struct DirtyRect {
+    world::ChunkCoord coord;
+    uint8_t x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    bool operator==(const DirtyRect&) const = default;
+};
+
 // §10 the immutable per-step frame render reads (never the cache).
 struct ChunkLightMap {
     world::ChunkCoord coord;
@@ -179,9 +225,27 @@ struct LightFrame {
     std::vector<LightSource> sources;           // ascending id, lit and unlit
     std::vector<world::ChunkCoord> dirty_chunks;   // chunks whose samples differ from the previous frame (or are new)
     std::vector<LightId> dirty_sources;         // sources added, removed or changed since the previous frame
+    // Phase 2 (all ascending; derived, never hashed). "Tracked" = chunks + blocked_chunks.
+    std::vector<DirtyRect> dirty_rects;         // one per dirty_chunks entry, same order
+    std::vector<world::ChunkCoord> added_chunks;     // tracked now, not tracked in the previous frame
+    std::vector<world::ChunkCoord> removed_chunks;   // tracked in the previous frame, not now (render frees them)
+    std::vector<world::ChunkCoord> blocked_chunks;   // wanted, but the 3x3 halo is Pending or Failed: no samples here,
+                                                     // render keeps the last light it had
+    std::vector<TeamVisibility> visibility;          // ascending team (empty without a VisibilityState)
+    std::vector<world::ChunkCoord> dirty_vis_chunks; // frame chunks whose seen_now / explored changed for some team
 };
 // Evaluate `chunks` through the cache and publish a frame. `prev` (may be null) is the previous frame for the dirty set.
 std::shared_ptr<const LightFrame> publish_light_frame(LightCache& cache, std::span<const world::ChunkCoord> chunks,
                                                       uint64_t step, const LightFrame* prev);
+
+class VisibilityState;   // sim/visibility.hpp
+struct LightFrameInputs {
+    std::span<const world::ChunkCoord> chunks;    // halo Complete: evaluated
+    std::span<const world::ChunkCoord> blocked;   // halo Pending / Failed: listed only (split_by_halo)
+    const VisibilityState* visibility = nullptr;  // its current masks are published (after VisibilityState::begin_step)
+};
+// Phase 2 form. The 4-argument form above is this one with no blocked chunks and no visibility.
+std::shared_ptr<const LightFrame> publish_light_frame(LightCache& cache, const LightFrameInputs& in, uint64_t step,
+                                                      const LightFrame* prev);
 
 } // namespace eng::sim

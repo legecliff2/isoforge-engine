@@ -244,6 +244,12 @@ Existing levels untouched; added to `engine.level<N+1>.d.luau` only.
   computed at step start from the `sight` inputs and published with the `LightFrame`. They are **derived, not hashed**,
   unless a rule comes to read them (then it gets a tag, claimed first). Render owns the fog visual (shading, edges,
   remembered-tile style, hiding unseen sprites) and which team's mask to show; it never computes visibility or queries `sight`.
+- **Mask layout (phase 2, pinned by a test):** `sim::TileMask` is `std::array<uint64_t, 16>`; tile (x, y) of a chunk is
+  bit = `y * 32 + x`, word = `bit / 64`, LSB-first within the word (`1ull << (bit & 63)`), so `words[0]` holds rows 0-1.
+  `LightFrame` (phase 2, all ascending, derived, unhashed) adds `visibility` (per team: frame chunks with a non-empty
+  `explored`), `dirty_rects` (one bounding rect of changed samples per dirty chunk), `added_chunks` / `removed_chunks`
+  (tracked = sampled + blocked, against the previous frame), `blocked_chunks` (wanted, halo Pending / Failed, no samples:
+  render keeps their last light) and `dirty_vis_chunks`.
 - **Cost:** ~18 KiB of samples per 3 x 3 step; render packs one R8 light-map texture per chunk (1 KiB), updated by
   dirty rect. Render-internal choices (borders, atlas, tint vs shader) don't affect this contract.
 - A headless build has no render dependency on light.
@@ -285,4 +291,7 @@ Render & Platform (all decided in the R&P review of #195)
 4. **Phase 4 (EC + Rules):** zone overrides, Daylight / Darkness dispel (cast and move), sight inputs for #194 incl. the
    sunlight bits; per-team visibility bitmasks.
 5. **Phase 5 (EC):** `ChunkDelta` for static toggles, invalidation tuning, dirty set; streaming-order determinism tests.
+   *Order note (approved via Director, Oct 2026):* the per-team visibility masks (phase 4) and the per-rect dirty set
+   (phase 5) are pulled forward into phase 2 (PR 1, with added / removed / blocked chunks), ahead of the schemas and the
+   sim-driven publishing (phase 2 PR 2). Their contents are unchanged.
 6. **Phase 6 (EC + R&P):** Luau API level; R&P light-map textures, fog visual and `LightFrame` read path.
