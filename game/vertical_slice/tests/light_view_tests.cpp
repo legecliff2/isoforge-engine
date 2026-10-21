@@ -48,7 +48,8 @@ TEST_CASE("session copies the sim LightFrame: samples, dirty set, sources with s
     CHECK(vm.light.added.size() == 1);
     REQUIRE(vm.light.dirty.size() == 1);   // first frame: the chunk is new
     CHECK(vm.light.dirty[0].rect == RectI{0, 0, 32, 32});
-    CHECK_FALSE(vm.light.chunks[0].has_fog);   // LightFrame has no visibility masks yet
+    CHECK(vm.light.fog);                    // fog on by default; masks come from the frame
+    CHECK(vm.light.chunks[0].has_fog);
     const ActorView& p = pc(vm);
     REQUIRE(vm.light.sources.size() == 1);
     const LightSourceView& src = vm.light.sources[0];
@@ -121,6 +122,8 @@ TEST_CASE("render without a LightFrame and fog masks (when present) still behave
     ViewModel vm = open_sim()->view();
     LightChunkView& c = vm.light.chunks[0];
     c.has_fog = true;
+    c.seen_now = {};
+    c.explored = {};
     const Vec2i p = pc(vm).tile;
     for (int y = p.y - 2; y <= p.y + 2; ++y)
         for (int x = p.x - 2; x <= p.x + 2; ++x)
@@ -136,4 +139,127 @@ TEST_CASE("render without a LightFrame and fog masks (when present) still behave
         if (!a.is_pc && std::max(std::abs(a.tile.x - p.x), std::abs(a.tile.y - p.y)) > 2) ++far_foes;
     CHECK(v.world_sprites() == vm.tiles.size() + vm.light.sources.size() + vm.actors.size() - size_t(far_foes) + 1);   // +1 current-turn ring
     CHECK(iso2d::light_tint(0xFF, iso2d::Fog::Unexplored).r == 0.f);
+}
+
+namespace {
+iso2d::Fog fog_at(const SliceView& v, const ViewModel& vm, Vec2i t) {
+    iso2d::Fog f{};
+    v.tile_tint(vm.light, t, &f);
+    return f;
+}
+void set_bit(std::array<uint64_t, 16>& m, int x, int y) { m[size_t((y * 32 + x) / 64)] |= uint64_t(1) << ((y * 32 + x) % 64); }
+} // namespace
+
+TEST_CASE("fog: shown team defaults to the player team; team choice and fog off are options") {
+    auto s = open_sim();
+    const ViewModel vm = s->view();
+    const ActorView& p = pc(vm);
+    CHECK(vm.light.fog_team == p.team);
+    REQUIRE(vm.light.fog);
+    const LightChunkView& c = vm.light.chunks[0];
+    CHECK(c.seen(p.tile.x, p.tile.y));    // a viewer sees its own (torch-lit) tile
+    CHECK(c.known(p.tile.x, p.tile.y));
+    bool any_unseen = false;
+    for (int y = 0; y < 32; ++y) for (int x = 0; x < 32; ++x) any_unseen |= !c.known(x, y);
+    CHECK(any_unseen);                    // underground: the far dark stays unexplored
+
+    uint8_t foe_team = p.team;
+    for (const auto& a : vm.actors) if (a.team != p.team) foe_team = a.team;
+    REQUIRE(foe_team != p.team);
+    Session::Options o{{SLICE_PACK_ROOT}, {SLICE_PACK}, 1, true};
+    o.fog_team = foe_team;
+    std::string err;
+    auto sf = Session::open(o, &err);
+    REQUIRE(sf);
+    const ViewModel vf = sf->view();
+    CHECK(vf.light.fog_team == foe_team);
+    CHECK(vf.light.chunks[0].seen_now != c.seen_now);   // a different team's mask
+    // (Interim normal sight: the foes stand in unlit dark, so they may see nothing; only the mask choice is checked.)
+
+    o.fog_team.reset();
+    o.fog = false;
+    auto so = Session::open(o, &err);
+    REQUIRE(so);
+    const ViewModel vo = so->view();
+    CHECK_FALSE(vo.light.fog);
+    CHECK_FALSE(vo.light.chunks[0].has_fog);
+    render::NullDevice dev;
+    SliceView v(dev);
+    frame(dev, v, vo);
+    for (int y = 0; y < 32; ++y) for (int x = 0; x < 32; ++x) REQUIRE(fog_at(v, vo, {x, y}) == iso2d::Fog::Visible);
+    // Switching the shown team / turning fog on re-uploads every fog map without a new sim frame.
+    frame(dev, v, vm);
+    CHECK(fog_at(v, vm, {p.tile.x, p.tile.y}) == iso2d::Fog::Visible);
+    CHECK(dev.errors() == 0);
+}
+
+TEST_CASE("fog: three states render (unseen black, explored dimmed, seen normal); a missing team entry is unseen") {
+    ViewModel vm = open_sim()->view();
+    LightChunkView& c = vm.light.chunks[0];
+    REQUIRE(c.has_fog);
+    c.seen_now = {}; c.explored = {};
+    set_bit(c.seen_now, 3, 3); set_bit(c.explored, 3, 3);
+    set_bit(c.explored, 4, 3);
+    for (auto& b : c.samples) b = iso2d::pack_light(iso2d::LightLevel::Bright, 0);
+    render::NullDevice dev;
+    SliceView v(dev);
+    frame(dev, v, vm);
+    iso2d::Fog f{};
+    const Color seen = v.tile_tint(vm.light, {3, 3}, &f);
+    CHECK(f == iso2d::Fog::Visible);
+    CHECK(seen.r == 1.f);
+    const Color expl = v.tile_tint(vm.light, {4, 3}, &f);
+    CHECK(f == iso2d::Fog::Remembered);
+    CHECK(expl.r > 0.f); CHECK(expl.r < seen.r);
+    const Color none = v.tile_tint(vm.light, {5, 3}, &f);
+    CHECK(f == iso2d::Fog::Unexplored);
+    CHECK(none.r == 0.f); CHECK(none.g == 0.f); CHECK(none.b == 0.f);
+    CHECK(fog_at(v, vm, {40, 3}) == iso2d::Fog::Unexplored);   // untracked chunk
+    CHECK(v.fog_maps().chunks() == 1);
+}
+
+TEST_CASE("fog: a blocked chunk holds its last light and fog textures; removal frees them") {
+    ViewModel vm = open_sim()->view();
+    REQUIRE(vm.light.chunks.size() == 1);
+    LightChunkView& c = vm.light.chunks[0];
+    c.seen_now = {}; c.explored = {};
+    set_bit(c.seen_now, 2, 2); set_bit(c.explored, 2, 2); set_bit(c.explored, 6, 6);
+    render::NullDevice dev;
+    SliceView v(dev);
+    frame(dev, v, vm);
+    const auto tex_l = v.light_maps().texture({0, 0, 0});
+    const auto tex_f = v.fog_maps().texture({0, 0, 0});
+    const uint8_t s22 = v.light_maps().sample({0, 0, 0}, {2, 2});
+    const uint32_t lu = v.light_maps().uploads(), fu = v.fog_maps().uploads();
+
+    // Next frame: the chunk's halo is pending, so it is tracked but blocked (no samples, no masks).
+    ViewModel b = vm;
+    b.light.frame = vm.light.frame + 1;
+    b.light.chunks.clear();
+    b.light.added.clear();
+    b.light.dirty.clear();
+    b.light.vis_dirty = {{0, 0, 0}};   // even if listed, a blocked chunk is not refreshed
+    b.light.blocked = {{0, 0, 0}};
+    frame(dev, v, b);
+    CHECK(v.light_maps().chunks() == 1);
+    CHECK(v.fog_maps().chunks() == 1);
+    CHECK(v.light_maps().texture({0, 0, 0}) == tex_l);
+    CHECK(v.fog_maps().texture({0, 0, 0}) == tex_f);
+    CHECK(v.light_maps().uploads() == lu);
+    CHECK(v.fog_maps().uploads() == fu);
+    CHECK(v.light_maps().sample({0, 0, 0}, {2, 2}) == s22);
+    CHECK(fog_at(v, b, {2, 2}) == iso2d::Fog::Visible);
+    CHECK(fog_at(v, b, {6, 6}) == iso2d::Fog::Remembered);
+    CHECK(fog_at(v, b, {9, 9}) == iso2d::Fog::Unexplored);
+
+    // Then it leaves the tracked set: both maps are freed.
+    ViewModel r = b;
+    r.light.frame = b.light.frame + 1;
+    r.light.blocked.clear();
+    r.light.vis_dirty.clear();
+    r.light.removed = {{0, 0, 0}};
+    frame(dev, v, r);
+    CHECK(v.light_maps().chunks() == 0);
+    CHECK(v.fog_maps().chunks() == 0);
+    CHECK(dev.errors() == 0);
 }
