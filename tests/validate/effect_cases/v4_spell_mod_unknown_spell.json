@@ -18,5 +18,5 @@
     ]
   ],
   "severity": "error",
-  "expect": "'srd51.spell.nope' is not a spell@1 in this pack or its depends (7.2zb)"
+  "expect": "'srd51.spell.nope' is not a spell@1 in this pack or its depends"
 }

@@ -1072,7 +1072,7 @@ def check_bard_hooks(doc: dict) -> list[str]:
                 errs.append(f"{path}: {did}: grant_die scale levels must ascend (2..20)")
             cls = eff.get("class")
             if isinstance(cls, str) and cls not in {c.get("class") for c in doc.get("classes") or [] if isinstance(c, dict)}:
-                errs.append(f"{path}: {did}: grant_die class '{cls}' is not one of the document's classes (#214 follow-up)")
+                errs.append(f"{path}: {did}: grant_die class '{cls}' is not one of the document's classes")
         elif k == "half_proficiency" and str(doc.get("$schema", "")).split("@")[0] == "monster":
             errs.append(f"{path}: {did}: half_proficiency: not valid on monsters")
     return errs
@@ -1084,7 +1084,7 @@ BONUS_ATTACK_FEATURE_IDS = frozenset({"martial_arts", "flurry_of_blows", "frenzy
 
 def check_monk_warlock_hooks(doc: dict, ctx: dict, errs: list[str], warns: list[str]) -> None:
     """7.2zb (T&C #207 / #210; sim content.cpp compile_on_event / features.cpp apply_spell_mod): attack_from_feature names a
-    bonus-attack feature of this document; pick_one needs choice ask on a hit / crit trigger; spell_mod is characters-only, its
+    bonus-attack feature of this document; pick_one needs choice ask on a hit or crit trigger; spell_mod is characters-only, its
     spell must be a spell@1 of the pack (error) and should be one the document casts (warning)."""
     did = doc.get("id", "?")
     is_monster = str(doc.get("$schema", "")).split("@")[0] == "monster"
@@ -1097,20 +1097,23 @@ def check_monk_warlock_hooks(doc: dict, ctx: dict, errs: list[str], warns: list[
         k = eff.get("kind")
         if k == "on_event":
             for j, p in enumerate(eff.get("when") or []):
-                if isinstance(p, dict) and p.get("kind") == "attack_from_feature" and p.get("feature") not in bonus_ids:
-                    errs.append(f"{path}/when/{j}: {did}: attack_from_feature '{p.get('feature')}' is not a bonus-attack feature of this "
-                                "document (7.2zb)")
+                if isinstance(p, dict) and p.get("kind") == "attack_from_feature":   # same strings as the sim loader
+                    fid = p.get("feature")
+                    if fid not in feature_ids:
+                        errs.append(f"{path}/when/{j}: {did}: attack_from_feature names unknown feature '{fid}'")
+                    elif fid not in bonus_ids:
+                        errs.append(f"{path}/when/{j}: {did}: attack_from_feature '{fid}' is not a bonus-attack feature of this document")
             if eff.get("pick_one") is True and (eff.get("choice") != "ask" or eff.get("on") not in ("hit", "crit")):
-                errs.append(f"{path}: {did}: pick_one needs choice ask on a hit / crit trigger (7.2zb)")
+                errs.append(f"{path}: {did}: pick_one needs choice ask on a hit or crit trigger")
         elif k == "spell_mod":
             if is_monster:
-                errs.append(f"{path}: {did}: spell_mod: not valid on monsters (7.2zb)")
+                errs.append(f"{path}: {did}: spell_mod: not valid on monsters")
             ref = eff.get("spell")
             if isinstance(ref, str):
                 if ref not in ctx.get("spell_ids", set()) and not ctx.get("external_ok", lambda _r: False)(ref):
-                    errs.append(f"{path}/spell: '{ref}' is not a spell@1 in this pack or its depends (7.2zb)")
+                    errs.append(f"{path}/spell: '{ref}' is not a spell@1 in this pack or its depends")
                 elif ref not in cast:
-                    warns.append(f"{path}/spell: {did}: spell_mod spell '{ref}' is not in spellcasting.spells / known: it never applies (7.2zb)")
+                    warns.append(f"{path}/spell: {did}: spell_mod spell '{ref}' is not in spellcasting.spells / known: it never applies")
 
 
 # ---- untimed save_condition riders (sim content.cpp compile_rider -> compile_save_action) ----------------------
