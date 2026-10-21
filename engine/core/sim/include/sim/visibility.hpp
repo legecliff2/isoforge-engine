@@ -35,9 +35,17 @@ struct Viewer {
     Vec2i tile;             // the eye tile: carrier_centre(anchor, footprint)
     SenseRanges senses;
     bool blinded = false;   // Blinded: only blindsight / tremorsense remain
+    // The viewer's own footprint (square, side `footprint`, min corner `anchor`) is always seen_now, even in darkness or
+    // when blinded (R&P #238). footprint 0 = 1 x 1 on `tile`.
+    Vec2i anchor;
+    int footprint = 0;
+    bool on_footprint(Vec2i t) const noexcept {
+        if (footprint <= 0) return t == tile;
+        return t.x >= anchor.x && t.y >= anchor.y && t.x < anchor.x + footprint && t.y < anchor.y + footprint;
+    }
 };
 
-// Does `v` perceive tile `t`? The tile rule of rules5e::derive_sight with the subject a visible, grounded thing on `t` and no
+// Does `v` perceive tile `t`? Its own footprint always; otherwise the tile rule of rules5e::derive_sight with the subject a visible, grounded thing on `t` and no
 // zone obscurement between: distance = Chebyshev tiles * 5 ft; sight needs not blinded, line of sight (light_reaches: the
 // shared 16-segment trace, walls and opaque zones) and the perceived level not heavily obscured (Dark or a heavy zone);
 // truesight in range sees heavy obscurement with line of sight; blindsight / tremorsense in range need neither.
