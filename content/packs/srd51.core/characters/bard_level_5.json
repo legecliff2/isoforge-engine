@@ -94,12 +94,46 @@
     {
       "id": "bardic_inspiration",
       "name": "Bardic Inspiration",
-      "description": "You can inspire others through stirring words or music. To do so, you use a bonus action on your turn to choose one creature other than yourself within 60 feet of you who can hear you. That creature gains one Bardic Inspiration die, a d6. Once within the next 10 minutes, the creature can roll the die and add the number rolled to one ability check, attack roll, or saving throw it makes. The creature can wait until after it rolls the d20 before deciding to use the Bardic Inspiration die, but must decide before the GM says whether the roll succeeds or fails. Once the Bardic Inspiration die is rolled, it is lost. A creature can have only one Bardic Inspiration die at a time. You can use this feature a number of times equal to your Charisma modifier (a minimum of once). You regain any expended uses when you finish a long rest.  Your Bardic Inspiration die changes when you reach certain levels in this class. The die becomes a d8 at 5th level, a d10 at 10th level, and a d12 at 15th level. Die: d8. Uses: Charisma modifier per short or long rest (Font of Inspiration). Granting the die to an ally is not modelled (no key); from 3rd level the resources[] pool bardic_inspiration is spent by Cutting Words."
+      "description": "You can inspire others through stirring words or music. To do so, you use a bonus action on your turn to choose one creature other than yourself within 60 feet of you who can hear you. That creature gains one Bardic Inspiration die, a d6. Once within the next 10 minutes, the creature can roll the die and add the number rolled to one ability check, attack roll, or saving throw it makes. The creature can wait until after it rolls the d20 before deciding to use the Bardic Inspiration die, but must decide before the GM says whether the roll succeeds or fails. Once the Bardic Inspiration die is rolled, it is lost. A creature can have only one Bardic Inspiration die at a time. You can use this feature a number of times equal to your Charisma modifier (a minimum of once). You regain any expended uses when you finish a long rest.  Your Bardic Inspiration die changes when you reach certain levels in this class. The die becomes a d8 at 5th level, a d10 at 10th level, and a d12 at 15th level. Die: d8. Uses: Charisma modifier per short or long rest (Font of Inspiration). Modelled: grant_die (bonus action; a creature other than you within 60 ft that is not deafened; held for 100 rounds, one die per creature) spends the resources[] pool bardic_inspiration, which Cutting Words also spends from 3rd level.",
+      "effect": {
+        "kind": "grant_die",
+        "die": "1d6",
+        "scale": [
+          {
+            "level": 5,
+            "die": "1d8"
+          }
+        ],
+        "class": "bard",
+        "range_ft": 60,
+        "duration": {
+          "kind": "rounds",
+          "n": 100
+        },
+        "applies_to": [
+          "attack",
+          "save",
+          "check"
+        ],
+        "cost": "bonus_action",
+        "usage": {
+          "kind": "pool",
+          "pool": "bardic_inspiration",
+          "cost": 1
+        }
+      }
     },
     {
       "id": "jack_of_all_trades",
       "name": "Jack of All Trades",
-      "description": "Starting at 2nd level, you can add half your proficiency bonus, rounded down, to any ability check you make that doesn't already include your proficiency bonus."
+      "description": "Starting at 2nd level, you can add half your proficiency bonus, rounded down, to any ability check you make that doesn't already include your proficiency bonus. Modelled: half_proficiency on ability checks without proficiency and on initiative.",
+      "effect": {
+        "kind": "half_proficiency",
+        "on": [
+          "checks",
+          "initiative"
+        ]
+      }
     },
     {
       "id": "song_of_rest",
@@ -157,13 +191,18 @@
     {
       "id": "cutting_words",
       "name": "Cutting Words",
-      "description": "Also at 3rd level, you learn how to use your wit to distract, confuse, and otherwise sap the confidence and competence of others. When a creature that you can see within 60 feet of you makes an attack roll, an ability check, or a damage roll, you can use your reaction to expend one of your uses of Bardic Inspiration, rolling a Bardic Inspiration die and subtracting the number rolled from the creature's roll. You can choose to use this feature after the creature makes its roll, but before the GM determines whether the attack roll or ability check succeeds or fails, or before the creature deals its damage. The creature is immune if it can't hear you or if it's immune to being charmed. Modelled: attack rolls only (the roll_attack window); ability checks, damage rolls and the charm-immunity exception are not.",
+      "description": "Also at 3rd level, you learn how to use your wit to distract, confuse, and otherwise sap the confidence and competence of others. When a creature that you can see within 60 feet of you makes an attack roll, an ability check, or a damage roll, you can use your reaction to expend one of your uses of Bardic Inspiration, rolling a Bardic Inspiration die and subtracting the number rolled from the creature's roll. You can choose to use this feature after the creature makes its roll, but before the GM determines whether the attack roll or ability check succeeds or fails, or before the creature deals its damage. The creature is immune if it can't hear you or if it's immune to being charmed. Modelled: attack rolls, ability checks and damage rolls (applies_to); the can't-hear and charm-immunity exceptions are not.",
       "window": {
         "kind": "roll_attack"
       },
       "effect": {
         "kind": "subtract_roll",
-        "dice": "1d8"
+        "dice": "1d8",
+        "applies_to": [
+          "attack",
+          "check",
+          "damage"
+        ]
       },
       "usage": {
         "kind": "pool",

@@ -127,14 +127,14 @@ AUTHORED = {
     "fast-movement": "feature:fast_movement",                # baked into speed.walk 40 (speed()); no effect
     "frenzy": "feature:frenzy",
     "spellcasting-bard": "spellcasting",
-    "bardic-inspiration-d6": "feature:bardic_inspiration",   # descriptive (no key grants a die to an ally); pool from 3rd for Cutting Words
+    "bardic-inspiration-d6": "feature:bardic_inspiration",   # grant_die 1d6, scale d8 at 5 (7.3a, #214) + resources[] bardic_inspiration
     "bardic-inspiration-d8": "feature:bardic_inspiration",
-    "jack-of-all-trades": "feature:jack_of_all_trades",      # descriptive: no half-proficiency key (initiative, unproficient checks)
+    "jack-of-all-trades": "feature:jack_of_all_trades",      # half_proficiency on checks + initiative (7.3a, #214)
     "song-of-rest-d6": "feature:song_of_rest",               # descriptive: short-rest hit dice healing, out of combat scope
     "bard-expertise-1": "feature:expertise",                 # baked into skills (EXPERTISE / EXPERTISE_FROM)
     "bard-college": "subclass",
     "bonus-proficiencies": "feature:bonus_proficiencies",    # baked into skills (skill_count)
-    "cutting-words": "reactions",                            # reactions[] roll_attack / subtract_roll 1d6 (1d8 at 5), pool bardic_inspiration
+    "cutting-words": "reactions",                            # reactions[] roll_attack / subtract_roll 1d6 (1d8 at 5), applies_to attack/check/damage, pool bardic_inspiration
     "bard-ability-score-improvement-1": "abilities",
     "font-of-inspiration": "feature:font_of_inspiration",    # the pool's recharge short_rest at 5
     "spellcasting-druid": "spellcasting",
@@ -175,7 +175,7 @@ DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_stor
                "paladin": ["divine_sense", "divine_health", "channel_divinity", "sacred_weapon", "turn_the_unholy"],
                "ranger": ["favored_enemy", "natural_explorer", "primeval_awareness", "colossus_slayer"],
                "barbarian": ["rage", "unarmored_defense", "danger_sense", "fast_movement", "frenzy"],
-               "bard": ["bardic_inspiration", "jack_of_all_trades", "song_of_rest", "expertise", "bonus_proficiencies", "font_of_inspiration"],
+               "bard": ["song_of_rest", "expertise", "bonus_proficiencies", "font_of_inspiration"],
                "druid": ["druidic", "bonus_cantrip", "circle_spells"],
                "monk": ["unarmored_defense", "martial_arts", "ki", "flurry_of_blows", "patient_defense", "step_of_the_wind",
                         "unarmored_movement", "deflect_missiles", "open_hand_technique", "slow_fall"],
@@ -493,16 +493,25 @@ class ClassTable(unittest.TestCase):
                 row = TABLE["bard"]["levels"][str(level)]
                 die = f"1d{row['class_specific']['bardic_inspiration_die']}"
                 self.assertLessEqual(len(d["spellcasting"]["spells"]), row["spells_known"] + row["cantrips_known"])
-                if level >= 3:   # the pool exists only where something spends it (check 12): Cutting Words
-                    self.assertEqual(d["resources"], [{"id": "bardic_inspiration", "name": "Bardic Inspiration",
-                                                       "max": {"plus_ability": "cha", "min": 1},
-                                                       "recharge": "short_rest" if level >= 5 else "long_rest"}])   # Font of Inspiration
+                self.assertEqual(d["resources"], [{"id": "bardic_inspiration", "name": "Bardic Inspiration",
+                                                   "max": {"plus_ability": "cha", "min": 1},
+                                                   "recharge": "short_rest" if level >= 5 else "long_rest"}])   # Font of Inspiration
+                gd = f["bardic_inspiration"]["effect"]   # 7.3a grant_die (#214): the loader picks d8 from bard 5
+                self.assertEqual(gd, {"kind": "grant_die", "die": "1d6", "scale": [{"level": 5, "die": "1d8"}], "class": "bard",
+                                      "range_ft": 60, "duration": {"kind": "rounds", "n": 100},
+                                      "applies_to": ["attack", "save", "check"], "cost": "bonus_action",
+                                      "usage": {"kind": "pool", "pool": "bardic_inspiration", "cost": 1}})
+                self.assertEqual(die, "1d8" if level >= 5 else "1d6")   # the table die the scale encodes
+                self.assertEqual("jack_of_all_trades" in f, level >= 2)
+                if level >= 2:
+                    self.assertEqual(f["jack_of_all_trades"]["effect"], {"kind": "half_proficiency", "on": ["checks", "initiative"]})
+                if level >= 3:
                     cw = d["reactions"][0]
                     self.assertEqual((cw["id"], cw["window"], cw["effect"], cw["usage"]),
-                                     ("cutting_words", {"kind": "roll_attack"}, {"kind": "subtract_roll", "dice": die},
+                                     ("cutting_words", {"kind": "roll_attack"},
+                                      {"kind": "subtract_roll", "dice": die, "applies_to": ["attack", "check", "damage"]},
                                       {"kind": "pool", "pool": "bardic_inspiration", "cost": 1}))
                 else:
-                    self.assertNotIn("resources", d)
                     self.assertNotIn("reactions", d)
                 self.assertEqual("font_of_inspiration" in f, level >= 5)
                 for fid in DESCRIPTIVE["bard"]:
