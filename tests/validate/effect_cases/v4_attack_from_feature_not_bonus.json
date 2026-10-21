@@ -57,5 +57,5 @@
     ]
   ],
   "severity": "error",
-  "expect": "attack_from_feature 'patient_defense' is not a bonus-attack feature"
+  "expect": "attack_from_feature 'patient_defense' is not a bonus-attack feature of this document"
 }
