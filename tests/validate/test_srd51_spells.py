@@ -132,6 +132,22 @@ class SpellTable(unittest.TestCase):
         self.assertEqual(load("hideous-laughter")["effects"], [{"kind": "save", "ability": "wis", "condition": "prone", "control": "laughter",
                                                                 "control_min_int": 4, "repeat_save": "end_of_turn_or_damage_advantage"}])
 
+    def test_spell_batch2(self):
+        # Rules #228 (7.2zd): Sanctuary ward, Protection from Evil and Good attackers / condition_immunity_from, Aid max_hp_bonus
+        self.assertEqual(load("sanctuary")["effects"], [{"kind": "apply_condition", "condition": "warded",
+                                                         "ward": {"save": "wis", "on_fail": "retarget_or_lose"},
+                                                         "ends_on": ["attack", "harmful_cast"]}])
+        types = ["aberration", "celestial", "elemental", "fey", "fiend", "undead"]
+        pfeg = load("protection-from-evil-and-good")
+        self.assertEqual(pfeg["effects"][0], {"kind": "apply_modifier", "scope": {"from_types": types},
+                                              "modifier": {"stat": "attack_roll", "mode": "disadvantage", "applies_to": "attackers",
+                                                           "duration": {"kind": "concentration"}}})
+        self.assertEqual(pfeg["effects"][1], {"kind": "condition_immunity_from", "conditions": ["charmed", "frightened"], "types": types})
+        self.assertNotIn("consumed", pfeg["components"]["m"])   # no cost_cp in the SRD: consumed stays in the text (deviation)
+        aid = load("aid")
+        self.assertEqual(aid["effects"], [{"kind": "max_hp_bonus", "flat": 5, "per_slot_above": 5}])
+        self.assertEqual(aid["targets"], {"count": 3})
+
     def test_zone_and_kind_spells(self):
         self.assertEqual(load("silence")["effects"][0]["zone"]["flags"], ["silence"])
         self.assertEqual(load("spirit-guardians")["effects"][0]["zone"]["anchor"], "creature")
