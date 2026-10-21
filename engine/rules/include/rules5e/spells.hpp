@@ -393,6 +393,9 @@ struct SpellDef {
     uint32_t immune_conditions = 0, immune_from_types = 0;
     // appended (7.2zd Aid): MaxHpBonus amounts (integers 0..50).
     int16_t hp_bonus_flat = 0, hp_bonus_per_slot = 0;
+    // appended (7.2ze Bane): ApplyModifier (primary effect) gated per target by a saving throw against the caster's spell save
+    // DC; a creature that succeeds is not affected (SavingThrowRolled, c bit 3 set).
+    bool has_modifier_save = false; Ability modifier_save = Ability::Cha;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered

@@ -399,6 +399,9 @@ struct ModifierSpec {
     // `applies_to: attackers` row applies to (0 = any attacker). Derived from content: hashed with the row's spec bytes only via
     // modifiers_digest sub-tag 0x5B when non-zero.
     uint32_t from_types = 0;
+    // appended (7.2ze Bless / Bane, `applies_to: [attack, save]`): kRollAttack / kRollSave bits of the rolls the row applies to
+    // besides its own stat (0 = its stat only). Hashed via modifiers_digest sub-tag 0x5C only when non-zero.
+    uint8_t also_rolls = 0;
 };
 
 // Row R-G6: a bonus-action attack option (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy). Requested with
