@@ -212,6 +212,12 @@ struct ActionRequest {
     // appended (7.2y Fast Hands; log_hash 0xCB when non-zero): UseObject: 1 Use an Object, 2 Dexterity (Sleight of Hand)
     // check vs `dc`, 3 thieves' tools (disarm a trap / open a lock: Dexterity check + proficiency if Combatant::thieves_tools) vs `dc`.
     uint8_t object_use = 0;
+    // appended (7.2zc generic mark; log_hash 0xCC when either is set). CastSpell: mark_ability = 1 + Ability (1 Str .. 6 Cha), the
+    // ability a marked `ability: "chosen"` check row uses (Hex); required by such a spell, refused otherwise. move_mark: instead of
+    // casting, move the mark of the actor's concentration spell `spell_id` (SpellDef::move_mark) to `target`: a bonus action, no
+    // slot, no SpellCast window, only once the marked creature has dropped to 0 hit points.
+    uint8_t mark_ability = 0;
+    bool move_mark = false;
 };
 
 enum class EventKind : uint8_t {
@@ -428,6 +434,9 @@ struct ActiveSpellEffect {
     // EndTurn; always 0 between turns, so not hashed beyond 0xAC's per-effect record, where sim folds it).
     uint16_t container_damage = 0;
     int8_t regurgitate_dc = 0; uint8_t regurgitate_damage = 30;   // derived from the SpellDef
+    // appended (7.2zc Invisibility): SpellEffect::ends_on of the ApplyCondition that made it (kEndsOn* bits); derived from the
+    // SpellDef: not hashed.
+    uint8_t ends_on = 0;
 };
 
 // 7.2w: a creature leaving its container in the last step (EncounterState::contain_exits; cleared when each step starts).
@@ -446,6 +455,9 @@ struct ActiveModifier {
     bool fought = false;      // appended (7.2z): ends_early bit 0: the owner attacked a hostile or took damage since its last turn
     bool frenzied = false;    // appended (7.2z): a requires_effect bonus attack was made while this source was in force
     uint8_t weapon = 0;       // appended (7.2y): ModifierSpec::weapon_scope: the bound attack index + 1 (0 = not bound)
+    // appended (7.2zc; modifiers_digest sub-tag 0x5A when non-zero): ModifierSpec::mark_scope: the marked creature (0 = none).
+    // Moving the mark (ActionRequest::move_mark) rewrites it, and `target` too on a row that sat on the old mark.
+    CombatantId mark = 0;
 };
 
 // Limited-use features (Second Wind, ...), keyed by (actor, feature_id). Part of the encounter state,
@@ -960,6 +972,8 @@ bool has_timed_effects(const EncounterState&);
 // c = magnitude: bonus, else die count*100+sides, else the RollMode, else speed num*100+den, else 0). Returns false
 // if the target does not exist.
 bool apply_modifier(EncounterState&, CombatantId caster, CombatantId target, const ModifierSpec& spec, std::vector<Event>& ev);
+// ModifierApplied's c for `spec` (7.2zc: shared with the mark move's re-announcement).
+int32_t modifier_magnitude(const ModifierSpec& spec);
 // Pure queries over the active modifiers of `id` (ability < 0: no ability scope check).
 int modifier_flat(const EncounterState&, CombatantId id, ModStat, int ability = -1);   // sum of flat bonuses
 int modified_ac_bonus(const EncounterState& s, CombatantId id);

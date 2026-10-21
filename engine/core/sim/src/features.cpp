@@ -142,6 +142,31 @@ std::optional<std::string> apply_spell_mod(Archetype& a, const FeatureDecl& f, u
     return std::nullopt;
 }
 
+// 7.2zc (T&C Disciple of Life): static {kind: heal_bonus, flat?: 0..10, per_spell_level: bool}: every creature a Heal effect of a
+// spell cast with a slot of level 1+ heals regains flat (+ the slot level) more (rules5e::Combatant::heal_bonus_*). Characters
+// only; @4 files only (an older file lists it inert). Two declarations add their flat parts (the per-level part does not stack).
+std::optional<std::string> apply_heal_bonus(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    for (auto it = f.effect.begin(); it != f.effect.end(); ++it)
+        if (it.key() != "kind" && it.key() != "flat" && it.key() != "per_spell_level")
+            return f.id + ": heal_bonus: unknown key '" + it.key() + "'";
+    if (a.schema_type == "monster") return f.id + ": heal_bonus: not valid on monsters";
+    if (ctx.declared_version != 0 && ctx.declared_version < 4) {
+        a.inert_features.push_back(f.id + " (heal_bonus)");
+        return std::nullopt;
+    }
+    const auto pl = f.effect.find("per_spell_level");
+    if (pl == f.effect.end() || !pl->is_boolean()) return f.id + ": heal_bonus needs per_spell_level (true or false)";
+    int flat = 0;
+    if (const auto fl = f.effect.find("flat"); fl != f.effect.end()) {
+        flat = fl->is_number_integer() ? fl->get<int>() : -1;
+        if (flat < 0 || flat > 10) return f.id + ": heal_bonus: flat must be an integer 0..10";
+    }
+    a.base.has_heal_bonus = true;
+    a.base.heal_bonus_flat = int8_t(std::min(127, int(a.base.heal_bonus_flat) + flat));
+    a.base.heal_bonus_per_level = a.base.heal_bonus_per_level || pl->get<bool>();
+    return std::nullopt;
+}
+
 // Multiattack (static): declared options, each an ordered list of this creature's attack action ids made
 // with one Attack action. `options: [{id, attacks: [...]}]`, or the shorthand `attacks: [...]` = one option
 // named "multiattack". Option order is the order content declares them (the AI prefers earlier ones).
@@ -402,6 +427,7 @@ std::optional<std::string> apply_apply_modifier(Archetype& a, const FeatureDecl&
             if (it.key() == "weapon" && v == "wielded") weapon_scope = 1;
             else if (it.key() == "attack" && (v == "melee_weapon" || v == "ranged_weapon")) attack_scope = v == "melee_weapon" ? 1 : 2;
             else if (it.key() == "ability" && (v == "str" || v == "dex")) ability_scope = v == "str" ? 1 : 2;
+            else if (it.key() == "target" && v == "marked") return f.id + ": scope: target marked is for spells only";   // 7.2zc
             else return f.id + ": scope: bad key or value '" + it.key() + "'";
         }
     }
@@ -423,6 +449,7 @@ std::optional<std::string> apply_apply_modifier(Archetype& a, const FeatureDecl&
         rules5e::ModifierSpec m;
         const Json* table = nullptr;
         if (auto e = rules5e_content::parse_modifier(*mods[i], m, &table); !e.empty()) return f.id + ": " + e;
+        if (m.chosen_ability) return f.id + ": modifier ability chosen needs scope target marked";   // 7.2zc: spells only
         if (table) {
             if (m.stat != rules5e::ModStat::Damage) return f.id + ": bonus_table only applies to damage modifiers";
             int level = 0;
@@ -1028,6 +1055,7 @@ FeatureRegistry make_builtin() {
     r.add_hook("damage_bonus", {apply_damage_bonus});
     r.add_hook("bonus_action_grant", {apply_bonus_action_grant});
     r.add_hook("spell_mod", {apply_spell_mod});   // 7.2zb Agonizing / Repelling Blast: gated in the hook
+    r.add_hook("heal_bonus", {apply_heal_bonus});   // 7.2zc Disciple of Life: gated in the hook
     r.add_hook("self_heal", {apply_self_heal});
     r.add_hook("multiattack", {apply_multiattack});
     r.add_hook("damage_mitigation", {apply_damage_mitigation});

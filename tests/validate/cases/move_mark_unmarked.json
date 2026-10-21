@@ -1,0 +1,39 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.a",
+  "name": "Hex",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "level": 1,
+  "school": "enchantment",
+  "classes": [
+    "warlock"
+  ],
+  "casting_time": {
+    "kind": "bonus_action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 90
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "hours",
+    "amount": 1,
+    "concentration": true
+  },
+  "move_mark": {
+    "action": "bonus_action"
+  },
+  "effects": [
+    {
+      "kind": "apply_condition",
+      "condition": "invisible"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "base": "characters/cleric_level_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        1
+      ],
+      {
+        "id": "m",
+        "name": "x",
+        "effect": {
+          "kind": "apply_modifier",
+          "scope": {
+            "target": "marked"
+          },
+          "modifier": {
+            "stat": "ability_check",
+            "mode": "disadvantage",
+            "ability": "str",
+            "applies_to": "target",
+            "duration": {
+              "kind": "rounds",
+              "n": 1
+            }
+          }
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "scope: target marked is for spells only"
+}

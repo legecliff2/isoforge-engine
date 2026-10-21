@@ -1,0 +1,30 @@
+{
+  "base": "characters/cleric_level_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        1
+      ],
+      {
+        "id": "m",
+        "name": "x",
+        "effect": {
+          "kind": "apply_modifier",
+          "modifier": {
+            "stat": "ability_check",
+            "mode": "disadvantage",
+            "ability": "chosen",
+            "applies_to": "target",
+            "duration": {
+              "kind": "rounds",
+              "n": 1
+            }
+          }
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "modifier ability chosen needs scope target marked"
+}
