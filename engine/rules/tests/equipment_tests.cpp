@@ -264,10 +264,36 @@ TEST_CASE("equip_legal: costs, refusals, armor rounds, the step path and legal_a
     CHECK(equip_legal(s, equip(1, EquipOp::DonShield, 31)).refusal == "equip: a shield is already wielded");
     auto pick = equip(1, EquipOp::PickUp, 50);
     CHECK(equip_legal(s, pick).refusal == "equip: the item is out of reach");
+    pick.equip_in_reach = true;
+    CHECK(equip_legal(s, pick).refusal == "equip: unknown ground item");   // no ground_item_def hook
+    s.hooks.ground_item_def = [](uint32_t inst) -> const ItemDef* {
+        static const ItemDef gs = [] { ItemDef d; d.id = dGreatsword; d.kind = ItemKind::Weapon; d.hands = 2; return d; }();
+        static const ItemDef ls = [] { ItemDef d; d.id = dLongsword; d.kind = ItemKind::Weapon; d.hands = 1; return d; }();
+        return inst == 50 ? &gs : inst == 51 ? &ls : nullptr;
+    };
+    w->views[1].main = HeldItem{}; w->views[1].off = HeldItem{}; w->views[1].interaction_used = false;
+    CHECK(equip_legal(s, pick).kind == EquipCost::Interaction);              // two-handed, both hands free
+    w->views[1].main = item(40, dLongsword); w->views[1].off = HeldItem{};
+    CHECK(equip_legal(s, pick).refusal == "equip: no free hand");            // two-handed, one free hand
+    auto pick1 = equip(1, EquipOp::PickUp, 51); pick1.equip_in_reach = true;
+    CHECK(equip_legal(s, pick1).kind == EquipCost::Interaction);             // one-handed, one free hand
+    auto pick_ghost = equip(1, EquipOp::PickUp, 52); pick_ghost.equip_in_reach = true;
+    CHECK(equip_legal(s, pick_ghost).refusal == "equip: unknown ground item");
+    auto pick_def = equip(1, EquipOp::PickUp, dGreatsword); pick_def.equip_in_reach = true;
+    CHECK(equip_legal(s, pick_def).refusal == "equip: unknown ground item");  // a def id is not a ground instance
+    w->views[1].off = item(41, dShieldDef); w->views[1].interaction_used = true;
     auto hand = equip(1, EquipOp::HandOver, 40); hand.equip_to = 2; hand.equip_in_reach = true;
     CHECK(equip_legal(s, hand).kind == EquipCost::Action);
     w->views[2].main = item(60, dLongsword); w->views[2].off = item(61, dShieldDef);
     CHECK(equip_legal(s, hand).refusal == "equip: the recipient has no free hand");
+    w->views[2].off = HeldItem{};
+    CHECK(equip_legal(s, hand).kind == EquipCost::Action);                   // longsword, one free hand
+    w->views[1].main = item(42, dGreatsword);
+    auto hand2 = equip(1, EquipOp::HandOver, 42); hand2.equip_to = 2; hand2.equip_in_reach = true;
+    CHECK(equip_legal(s, hand2).refusal == "equip: the recipient has no free hand");   // two-handed by its def, not instance
+    w->views[2].main = HeldItem{};
+    CHECK(equip_legal(s, hand2).kind == EquipCost::Action);
+    w->views[1].main = item(40, dLongsword); w->views[2].main = item(60, dLongsword); w->views[2].off = item(61, dShieldDef);
     CHECK(armor_change_rounds(ArmorCategory::Light, true, false) == 10);
     CHECK(armor_change_rounds(ArmorCategory::Medium, true, false) == 50);
     CHECK(armor_change_rounds(ArmorCategory::Medium, false, false) == 10);

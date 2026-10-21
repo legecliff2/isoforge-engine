@@ -744,6 +744,9 @@ struct EncounterHooks {
     std::function<const LoadoutView*(const EncounterState&, CombatantId)> loadout_of;
     std::function<const ItemDef*(uint32_t def)> item_def;
     std::function<void(EncounterState&, const ActionRequest&, uint8_t cost_kind, std::vector<Event>&)> apply_equip;
+    // ground_item_def: the ItemDef of a ground item *instance* (ActionRequest::equip_item on PickUp is a ground instance id,
+    // not a def id); nullptr / empty = unknown, and PickUp is refused `equip: unknown ground item`.
+    std::function<const ItemDef*(uint32_t instance)> ground_item_def;
 };
 
 // R-G11: a live zone or aura (ZONES_AURAS.md §2.6). anchor_x / anchor_y: a point zone's sim tile, opaque to rules (Q1).
