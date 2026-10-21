@@ -1412,3 +1412,25 @@ def check_spell_modifiers(doc: dict) -> list[str]:
             if isinstance(m, dict) and "bonus_table" in m:
                 errs.append(f"effects[{i}]: modifier.bonus_table is forbidden in spell@1 apply_modifier (check 18)")
     return errs
+
+
+# ---- race -> darkvision (character@2+; EC #236 reads senses.darkvision into Combatant::darkvision_ft) -----------------
+# SRD 5.1 races. Darkvision 60 ft: dwarf (hill), elf (high), gnome (rock), half-elf, half-orc, tiefling.
+# No darkvision: human, halfling (lightfoot), dragonborn. Other race strings are not checked.
+RACE_DARKVISION = {r: 60 for r in ("dwarf", "hill_dwarf", "elf", "high_elf", "gnome", "rock_gnome", "half_elf", "half_orc", "tiefling")}
+RACE_DARKVISION.update({r: 0 for r in ("human", "halfling", "lightfoot_halfling", "dragonborn")})
+
+
+def check_race_senses(doc: dict) -> list[str]:
+    """character@2+ (stat block with senses): a race with SRD Darkvision needs senses.darkvision 60; a race without it
+    must not declare darkvision."""
+    race, senses = doc.get("race"), doc.get("senses")
+    if not isinstance(race, str) or not isinstance(senses, dict) or race not in RACE_DARKVISION:
+        return []
+    want, have = RACE_DARKVISION[race], senses.get("darkvision")
+    if want and have != want:
+        return [f"race '{race}': senses.darkvision must be {want} (SRD racial Darkvision), got {have}"]
+    if not want and have is not None:
+        return [f"race '{race}': senses.darkvision {have} not allowed (the race has no Darkvision in SRD 5.1)"]
+    return []
+

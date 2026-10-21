@@ -1,0 +1,174 @@
+{
+  "$schema": "character@4",
+  "id": "srd51.character.sample_tiefling_warlock_1",
+  "name": "Tiefling Warlock, level 1 (The Fiend)",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "race": "tiefling",
+  "size": "medium",
+  "type": "humanoid",
+  "alignment": "chaotic neutral",
+  "level": 1,
+  "classes": [
+    {
+      "class": "warlock",
+      "level": 1,
+      "hit_die": "d8",
+      "subclass": "fiend"
+    }
+  ],
+  "xp": 0,
+  "armor_class": {
+    "value": 13,
+    "note": "leather armor"
+  },
+  "hit_points": {
+    "average": 9,
+    "formula": "1d8+1"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 8,
+    "dex": 14,
+    "con": 13,
+    "int": 11,
+    "wis": 12,
+    "cha": 17
+  },
+  "saving_throws": {
+    "wis": 3,
+    "cha": 5
+  },
+  "skills": {
+    "arcana": 2,
+    "deception": 5
+  },
+  "damage_resistances": [
+    "fire"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 11
+  },
+  "languages": [
+    "Common",
+    "Infernal"
+  ],
+  "proficiency_bonus": 2,
+  "features": [
+    {
+      "id": "dark_ones_blessing",
+      "name": "Dark One's Blessing",
+      "description": "Starting at 1st level, when you reduce a hostile creature to 0 hit points, you gain temporary hit points equal to your Charisma modifier + your warlock level (minimum of 1) (4).",
+      "effect": {
+        "kind": "on_event",
+        "on": "reduce_to_zero",
+        "when": [
+          {
+            "kind": "subject_hostile"
+          }
+        ],
+        "effects": [
+          {
+            "kind": "temp_hp",
+            "amount_from": {
+              "ability": "cha",
+              "class": "warlock"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "darkvision",
+      "name": "Darkvision",
+      "description": "You can see in dim light within 60 feet of you as if it were bright light, and in darkness as if it were dim light. You can't discern color in darkness, only shades of gray. (Modelled: senses.darkvision 60.)"
+    },
+    {
+      "id": "hellish_resistance",
+      "name": "Hellish Resistance",
+      "description": "You have resistance to fire damage. (Modelled: damage_resistances.)"
+    },
+    {
+      "id": "infernal_legacy",
+      "name": "Infernal Legacy",
+      "description": "You know the thaumaturgy cantrip. Once you reach 3rd level, you can cast the hellish rebuke spell as a 2nd-level spell; you must finish a long rest in order to cast the spell again with this trait. Once you reach 5th level, you can also cast the darkness spell; you must finish a long rest in order to cast the spell again with this trait. Charisma is your spellcasting ability for these spells. (Description only: thaumaturgy is not shipped, out of combat scope.)"
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.dagger",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.leather_armor",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.crossbow_light"
+    },
+    "crossbow_bolts_20",
+    "scholars_pack",
+    "arcane_focus"
+  ],
+  "actions": [
+    {
+      "id": "dagger",
+      "name": "Dagger",
+      "kind": "melee_weapon_attack",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "finesse",
+        "light",
+        "thrown"
+      ],
+      "damage": [
+        {
+          "dice": "1d4+2",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "light_crossbow",
+      "name": "Light Crossbow",
+      "kind": "ranged_weapon_attack",
+      "to_hit": 4,
+      "range": [
+        80,
+        320
+      ],
+      "targets": 1,
+      "properties": [
+        "ammunition",
+        "loading",
+        "two_handed"
+      ],
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ]
+    }
+  ],
+  "spellcasting": {
+    "ability": "cha",
+    "caster_level": 1,
+    "pact": {
+      "level": 1,
+      "slots": 1
+    },
+    "spells": [
+      "srd51.spell.eldritch_blast",
+      "srd51.spell.chill_touch",
+      "srd51.spell.burning_hands"
+    ]
+  }
+}
