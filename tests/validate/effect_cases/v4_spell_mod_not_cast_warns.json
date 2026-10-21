@@ -1,0 +1,22 @@
+{
+  "base": "characters/warlock_level_5.json",
+  "sets": [
+    [
+      [
+        "features",
+        2
+      ],
+      {
+        "id": "agonizing_blast",
+        "name": "agonizing_blast",
+        "effect": {
+          "kind": "spell_mod",
+          "spell": "srd51.spell.magic_missile",
+          "damage_bonus_ability": "cha"
+        }
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "spell_mod spell 'srd51.spell.magic_missile' is not in spellcasting.spells"
+}

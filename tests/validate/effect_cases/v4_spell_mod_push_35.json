@@ -1,0 +1,22 @@
+{
+  "base": "characters/warlock_level_5.json",
+  "sets": [
+    [
+      [
+        "features",
+        4
+      ],
+      {
+        "id": "repelling_blast",
+        "name": "repelling_blast",
+        "effect": {
+          "kind": "spell_mod",
+          "spell": "srd51.spell.eldritch_blast",
+          "on_hit_push_ft": 35
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "spell_mod effect is invalid: /on_hit_push_ft: 35 is greater than the maximum of 30"
+}

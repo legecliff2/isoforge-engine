@@ -1,0 +1,18 @@
+{
+  "base": "characters/monk_level_5.json",
+  "sets": [
+    [
+      [
+        "reactions",
+        0,
+        "effect",
+        "applies_to_attack"
+      ],
+      [
+        "thrown"
+      ]
+    ]
+  ],
+  "severity": "error",
+  "expect": "[reaction: /effect/applies_to_attack/0: 'thrown' is not one of ['melee_weapon', 'ranged_weapon', 'melee_spell', 'ranged_spell']]"
+}
