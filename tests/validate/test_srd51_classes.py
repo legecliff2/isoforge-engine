@@ -73,6 +73,7 @@ AUTHORED = {
     "disciple-of-life": "feature:disciple_of_life",
     "channel-divinity-1-rest": "feature:channel_divinity",   # resources[] channel_divinity (1, short rest), spent by Turn Undead
     "channel-divinity-turn-undead": "feature:turn_undead",   # feature text; actions[] save_effect control turned [undead] (7.2y)
+    "channel-divinity-preserve-life": "feature:preserve_life",   # heal_pool split form, per_class_level 5, cap half_max (7.2zd)
     "destroy-undead-cr-1-2-or-below": "feature:destroy_undead",   # destroy_undead_max_cr8 4 on turn_undead (CR 1/2)          # heal_bonus {flat 2, per_spell_level} (7.2zc, #222)
     "cleric-ability-score-improvement-1": "abilities",
     "spellcasting-wizard": "spellcasting",
@@ -185,13 +186,11 @@ DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_stor
                         "unarmored_movement", "deflect_missiles", "slow_fall"],
                "warlock": ["eldritch_invocations", "armor_of_shadows", "pact_of_the_tome"]}
 # Not expressible today (docs/SRD_CLASSES_DEFERRED.md): mirror index -> the feature id it would get (must be absent).
-DEFERRED = {
-    "channel-divinity-preserve-life": "preserve_life",
-}
+DEFERRED: dict[str, str] = {}
 # Life domain spells and class cantrips the pack does not ship yet (listed in the deferred doc).
 # Warlock Pact of the Tome (3rd): three cantrips from any class list, known on top of cantrips_known.
 TOME_CANTRIPS = {"fire-bolt", "ray-of-frost", "sacred-flame"}
-DEFERRED_SPELLS = ["bless", "spiritual-weapon", "beacon-of-hope", "protection-from-evil-and-good", "sanctuary", "zone-of-truth",
+DEFERRED_SPELLS = ["bless", "spiritual-weapon", "beacon-of-hope", "zone-of-truth",
                    "spider-climb", "meld-into-stone"]   # Mountain circle spells not shipped;   # Lesser Restoration, Revivify: spells batch 2
 
 

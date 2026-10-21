@@ -1,6 +1,26 @@
 {
  "_source": "5e-bits/5e-database commit a6212be, src/2014/en/5e-SRD-Spells.json (fields copied verbatim; damage_type / dc ability / school / classes flattened to their index)",
  "spells": {
+  "aid": {
+   "name": "Aid",
+   "level": 2,
+   "range": "30 feet",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "8 hours",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "abjuration",
+   "classes": [
+    "cleric",
+    "paladin"
+   ],
+   "material": "A tiny strip of white cloth."
+  },
   "barkskin": {
    "name": "Barkskin",
    "level": 2,
@@ -375,6 +395,28 @@
     "wizard"
    ]
   },
+  "protection-from-evil-and-good": {
+   "name": "Protection from Evil and Good",
+   "level": 1,
+   "range": "Touch",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Up to 10 minutes",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "abjuration",
+   "classes": [
+    "cleric",
+    "paladin",
+    "warlock",
+    "wizard"
+   ],
+   "material": "Holy water or powdered silver and iron, which the spell consumes."
+  },
   "ray-of-frost": {
    "name": "Ray of Frost",
    "level": 0,
@@ -420,6 +462,25 @@
     "paladin"
    ],
    "material": "Diamonds worth 300gp, which the spell consumes."
+  },
+  "sanctuary": {
+   "name": "Sanctuary",
+   "level": 1,
+   "range": "30 feet",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "1 minute",
+   "concentration": false,
+   "casting_time": "1 bonus action",
+   "school": "abjuration",
+   "classes": [
+    "cleric"
+   ],
+   "material": "A small silver mirror."
   },
   "shield-of-faith": {
    "name": "Shield of Faith",

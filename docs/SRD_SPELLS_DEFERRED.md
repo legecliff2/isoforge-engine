@@ -13,10 +13,10 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 | level | in `srd51.core` | deferred: needs a mechanic | deferred: out of combat scope | total |
 |---|---|---|---|---|
 | 0 (cantrips) | 10 | 3 | 11 | 24 |
-| 1 | 13 | 17 | 19 | 49 |
-| 2 | 9 | 22 | 23 | 54 |
+| 1 | 15 | 15 | 19 | 49 |
+| 2 | 10 | 21 | 23 | 54 |
 | 3 | 9 | 14 | 19 | 42 |
-| **total** | **41** | **56** | **72** | **169** |
+| **total** | **44** | **53** | **72** | **169** |
 
 ## Authored in this change (9)
 
@@ -81,7 +81,17 @@ Hunter's Mark and Invisibility shipped in content #223 (Rules #222, 7.2zc); Comm
 | Invisibility | 2 | `apply_condition` invisible, `ends_on [attack, cast]`; touch, concentration 1 hour; `upcast.targets 1` | the spell ends per target (SRD) |
 | Fear | 3 | `save` WIS frightened, `control fear` (Dash away), `repeat_save end_of_turn_unseen`; `area` cone 30 (self); concentration 1 minute | **partial**: dropping held items is not modelled |
 
-## Deferred (128 spells; reasons re-checked against main at `8b8d8c9`)
+## Authored after Rules #228 (3)
+
+Spell batch 2 rules (7.2zd). Pinned by `tests/validate/test_srd51_spells.py` (table rows and `test_spell_batch2`).
+
+| spell | level | `spell@1` shape | notes |
+|---|---|---|---|
+| Protection from Evil and Good | 1 | `apply_modifier` `scope {from_types [aberration, celestial, elemental, fey, fiend, undead]}` attack_roll disadvantage `applies_to attackers`; `condition_immunity_from {conditions [charmed, frightened], types}`; touch, concentration 10 minutes | **partial**: possession and the advantage on a new save are not modelled. **Deviation**: the material is consumed but has no cost, and spell@1 requires `cost_cp` with `consumed`, so "consumed" is kept in the text only |
+| Sanctuary | 1 | `apply_condition` warded, `ward {save wis, on_fail retarget_or_lose}`, `ends_on [attack, harmful_cast]`; bonus action, range 30, 1 minute | areas are not blocked (SRD); a "harmful spell" is one cast by a creature of another team |
+| Aid | 2 | `max_hp_bonus {flat 5, per_slot_above 5}`; `targets {count 3}`, range 30, 8 hours | |
+
+## Deferred (125 spells; reasons re-checked against main at `8b8d8c9`)
 
 Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the first-draft ids in brackets: B1 = R-G2 effects array, B2 = R-G3 timed modifiers, B3 = R-G4 damage riders, B4 = R-G5 pools, B6 = R-G7 reactions / roll windows, C1 = R-G8 conditions with source, C2 = R-G9 forced movement / teleport, C3 = R-G10 area templates, C4 = R-G11 zones / auras, C5 = R-G12 summons, C7 = R-G13 cover / lighting / vision, C8 = R-G14 per-cast options, C9 = R-G15 spell kinds). `T&C-G12` / `T&C-G14` are movement modes and creature footprint. `OOS` rows have no gap id.
 
@@ -130,15 +140,12 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 1 | Jump | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Longstrider | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Mage Armor | NEW | **next batch**: `ac` modifier `ac_floor` 13 + `ac_floor_dex`, 8 hours (4800 rounds); **partial**: "target not wearing armor" and "ends if it dons armor" are not checked (author's concern per the schema). | R-G3 (B2) |
-| 1 | Protection from Evil and Good | NEW | R-G3. | R-G3 (B2) |
 | 1 | Purify Food and Drink | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
-| 1 | Sanctuary | NEW | Attackers must save to target (R-G3/R-G7). | R-G3, R-G7 (B2, B6) |
 | 1 | Silent Image | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Sleep | NEW | `hp_pool` 5d8 unconscious, upcast 2d8, undead excluded, loads (EC #120); creatures immune to *charmed* are not excluded (the rules skip only `unconscious`-immune targets). | R-G15 (C9) |
 | 1 | Speak with Animals | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Unseen Servant | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 2 | Acid Arrow | NEW | **next batch**: `spell_attack` 4d4 acid + `delayed_damage` 2d4 rider (`applies_to: affected`, end of the target's next turn), upcast both (EC #120); the miss case (half initial, no later damage) needs checking. | R-G15 (C9) |
-| 2 | Aid | NEW | No max-HP modifier stat. | R-G3 (B2) |
 | 2 | Alter Self | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Animal Messenger | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Arcane Lock | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |

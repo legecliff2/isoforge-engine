@@ -42,7 +42,7 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Divine Domain / Martial Archetype / Arcane Tradition | 1 / 3 / 2 | `classes[0].subclass` = `life` / `champion` / `evocation` | descriptive |
 | Bonus Proficiency (Life: heavy armor) | 1-5 | descriptive feature; its only combat effect is the worn chain mail, already in AC | n/a |
 | Disciple of Life (Life) | 1-5 | `heal_bonus {flat 2, per_spell_level true}` (7.2zc, #222): 2 + the slot level more per creature a slot-cast healing spell heals (Cure Wounds, Healing Word, Mass Healing Word). Innate casts do not count (SRD: any spell of 1st level or higher; no innate healing on our documents) | yes |
-| Channel Divinity, Turn Undead, Destroy Undead (Cleric) | 2-5, 2-5, 5 | `resources[]` `channel_divinity {max 1, recharge short_rest}`; `actions[]` `turn_undead` `save_effect {save wis vs the cleric spell save DC, range_ft 30, control turned, target_creature_types [undead], duration rounds 10, usage {pool channel_divinity}}`, plus `destroy_undead_max_cr8 4` (CR 1/2) at 5 (7.2v / 7.2y). The features carry the SRD text, no `effect`. Preserve Life, the Life domain option, stays deferred | yes |
+| Channel Divinity, Turn Undead, Destroy Undead (Cleric) | 2-5, 2-5, 5 | `resources[]` `channel_divinity {max 1, recharge short_rest}`; `actions[]` `turn_undead` `save_effect {save wis vs the cleric spell save DC, range_ft 30, control turned, target_creature_types [undead], duration rounds 10, usage {pool channel_divinity}}`, plus `destroy_undead_max_cr8 4` (CR 1/2) at 5 (7.2v / 7.2y). The features carry the SRD text, no `effect`. Preserve Life (Life domain option, 2-5): `features[]` `preserve_life` `heal_pool {usage {pool channel_divinity}, per_class_level 5, class cleric, range_ft 30, cap half_max, excludes_types [undead, construct]}` (split form, 7.2zd, Rules #228) | yes |
 | Arcane Recovery (Wizard) | 1-5 | `slot_recovery {class wizard, max_slot_level 5, uses 1}` (VERSION_BUMP_BATCH 7.2n); budget ceil(wizard level / 2) is derived from `classes[]`, the SRD text stays in `description` | yes (sim #148 `apply_slot_recovery`) |
 | Evocation Savant | 2-5 | descriptive feature (downtime spell copying cost, out of combat scope) | n/a |
 | Spellcasting (Sorcerer) | 1-5 | `spellcasting {ability cha, caster_level, slots, spells}` (spells known: the shipped sorcerer spells, below) | yes |
@@ -59,7 +59,7 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Thieves' Cant (Rogue) | 1-5 | descriptive feature + `languages` entry (no combat rule) | n/a |
 | Lay on Hands (Paladin) | 1-5 | `resources[]` `lay_on_hands {max {per_level 5, class paladin}, recharge long_rest}` + `heal_pool {cost action, pool lay_on_hands}`. **Partial**: rules do not check touch range or refuse undead / construct targets (`heal_pool` takes any living target), and the 5-point disease / poison cure stays in the description | yes (sim row 13 `apply_heal_pool`) |
 | Fighting Style: Dueling (Paladin) | 2-5 | as the fighter. Defense (`ac_bonus {1, requires_armor}`) also loads; Dueling matches the one-handed longsword + shield build | yes |
-| Spellcasting (Paladin) + Oath Spells | 2-5 | `spellcasting {ability cha, caster_level, slots, spells}` from 2nd level (no block at 1st: the half caster has no slots). Spells: Cure Wounds, Shield of Faith; Lesser Restoration (oath, always prepared) at 5 | yes |
+| Spellcasting (Paladin) + Oath Spells | 2-5 | `spellcasting {ability cha, caster_level, slots, spells}` from 2nd level (no block at 1st: the half caster has no slots). Spells: Cure Wounds, Shield of Faith; Protection from Evil and Good, Sanctuary (oath, always prepared) from 3; Lesser Restoration (oath) at 5 | yes |
 | Divine Smite (Paladin) | 2-5 | `on_event {on hit, choice ask, when [weapon melee], effects [spend slot any, extra_damage 2d8 radiant with bonus_vs {creature_types [undead, fiend], dice 1d8}, scale.per_slot_level {base_level 1, add_dice 1d8}]}` (bonus_vs 7.2y, #200). The 5d8 cap is unreachable below 9th level | yes |
 | Sacred Oath (Paladin) | 3 | `classes[0].subclass` = `devotion` | descriptive |
 | Channel Divinity (Paladin, Devotion) | 3-5 | `resources[]` `channel_divinity {max 1, recharge short_rest}`. Sacred Weapon: `apply_modifier {cost action, usage {pool channel_divinity}, scope {weapon wielded}, modifier {attack_roll + Cha mod (min 1), self, rounds 10}}` (7.2y; ends when the weapon leaves the hand or at 0 HP / unconscious). Turn the Unholy: `actions[]` `save_effect {save wis vs the paladin spell save DC, range_ft 30, control turned, target_creature_types [fiend, undead], duration rounds 10, usage {pool channel_divinity}}` (7.2v / 7.2y). **Partial**: Sacred Weapon's magical weapon and light, and ending it early, are not modelled | yes |
@@ -184,7 +184,7 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 
 | feature (mirror index) | class / level | missing mechanic | gap id |
 |---|---|---|---|
-| Channel Divinity: Preserve Life (`channel-divinity-preserve-life`) | Cleric (Life) 2 | Splits a pool of 5 x cleric level HP among any creatures within 30 ft, each capped at half its HP maximum, not undead or constructs. `heal_pool` heals one target from a pool that persists across uses; there is no split, cap, or per-use pool size | R-G5, R-G10, R-G15 |
+| (none) | | Channel Divinity: Preserve Life ships since Rules #228 (7.2zd, `heal_pool` split form); see Authored as data | |
 
 ### Spells the documents cannot reference yet
 
@@ -192,10 +192,11 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 
 | class | levels | spells listed |
 |---|---|---|
-| Cleric | 1-2 | Sacred Flame; Cure Wounds (domain), Healing Word, Inflict Wounds |
+| Cleric | 1-2 | Sacred Flame; Cure Wounds (domain), Healing Word, Inflict Wounds, Sanctuary |
 | Cleric | 3-4 | + Hold Person, Lesser Restoration (domain) |
 | Cleric | 5 | + Mass Healing Word, Revivify (domain) |
-| Paladin | 2-4 | Cure Wounds, Shield of Faith |
+| Paladin | 2 | Cure Wounds, Shield of Faith |
+| Paladin | 3-4 | + Protection from Evil and Good, Sanctuary (oath) |
 | Paladin | 5 | + Lesser Restoration (oath) |
 | Ranger | 2-4 | Cure Wounds, Hunter's Mark |
 | Ranger | 5 | + Barkskin, Lesser Restoration (Spike Growth swapped out for Hunter's Mark) |
@@ -216,7 +217,8 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 Deferred until the spells are authored (`docs/SRD_SPELLS_DEFERRED.md` gives the reason for each):
 
 - **Life domain spells** (always prepared): `srd51.spell.bless` (1), `srd51.spell.spiritual_weapon` (3), `srd51.spell.beacon_of_hope` (5). Lesser Restoration (3) and Revivify (5) ship since spells batch 2 and are listed in the cleric documents.
-- **Oath of Devotion spells** (always prepared): `srd51.spell.protection_from_evil_and_good` (3), `srd51.spell.sanctuary` (3), `srd51.spell.zone_of_truth` (5) are not authored; Lesser Restoration (5) ships and is listed.
+- **Oath of Devotion spells** (always prepared): `srd51.spell.zone_of_truth` (5) is not authored; Protection from Evil and Good (3), Sanctuary (3) (spells batch 2, Rules #228) and Lesser Restoration (5) ship and are listed.
+- **Spells batch 2 (Rules #228) on the cleric**: Sanctuary is listed at 1-5 (within Wis modifier + level prepared; domain spells don't count). Protection from Evil and Good and Aid ship in the pack but are not yet in the cleric (or wizard / warlock) lists.
 - **Circle of the Land (Mountain) spells** (always prepared): `srd51.spell.spider_climb` (3), `srd51.spell.meld_into_stone` (5) are not authored; Spike Growth (3) and Lightning Bolt (5) ship and are listed.
 - **Fiend expanded spells** (choices for spells known, not always prepared): Command (1) and Blindness/Deafness (3) are not shipped; Stinking Cloud (5) ships but is not picked (six known at 5th).
 - **Cantrips known**: the Cleric knows 3 (4 from level 4) but the pack ships one cleric cantrip (Sacred Flame). The Wizard knows 3 (4 from level 4), and the pack ships three wizard cantrips. Missing: Guidance, Light, Mending, Resistance, Spare the Dying, Thaumaturgy (cleric); Chill Touch, Ray of Frost, Shocking Grasp, True Strike and the utility cantrips (wizard). The Sorcerer knows 4 cantrips (5 from level 4) and 2-6 spells; the pack ships three sorcerer cantrips and five leveled sorcerer spells (Chill Touch, Ray of Frost, Shocking Grasp, Burning Hands, Chromatic Orb, Sleep, Thunderwave, Misty Step and the rest are not shipped), so each document lists fewer.
