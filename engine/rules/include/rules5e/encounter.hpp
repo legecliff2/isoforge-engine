@@ -12,6 +12,7 @@
 #include "rng/rng.hpp"
 #include "rules5e/attack.hpp"
 #include "rules5e/initiative.hpp"
+#include "rules5e/item.hpp"
 #include "rules5e/saves.hpp"
 #include "rules5e/spells.hpp"
 #include "rules5e/types.hpp"
@@ -227,6 +228,15 @@ struct ActionRequest {
     // appended (7.2zd Preserve Life; log_hash 0xCE when non-empty): UseFeature of a split heal_pool feature: how the pool is
     // divided (check_heal_split validates it before anything changes).
     std::vector<HealShare> heal_split{};
+    // appended (docs/proposals/EQUIPMENT.md 4.2; log_hash 0xD1 when equip_op != 0, folded by Engine Core): UseObject with an
+    // equip op (rules5e::EquipOp: 1 draw, 2 stow, 3 drop, 4 pick up, 5 don shield, 6 doff shield, 7 hand over, 8 / 9 armor).
+    // equip_item: the item instance; equip_hand: 1 main, 2 off, 0 any free; equip_to: HandOver recipient; equip_in_reach: sim's
+    // answer for PickUp / HandOver (rules never reads positions). Rules checks legality (equip_legal); Engine Core applies it.
+    uint8_t equip_op = 0;
+    uint32_t equip_item = 0;
+    uint8_t equip_hand = 0;
+    CombatantId equip_to = 0;
+    bool equip_in_reach = false;
 };
 
 enum class EventKind : uint8_t {
@@ -726,6 +736,14 @@ struct EncounterHooks {
     // appended (7.2x): an Attack on a creature hidden from the attacker names a tile (ActionRequest::has_guess). Is the
     // target there? Pure like `sight`. Empty = yes. A wrong guess misses automatically (the d20 is still rolled).
     std::function<bool(const EncounterState&, const Combatant& attacker, const Combatant& target, int32_t x, int32_t y)> guess_correct;
+    // appended (EQUIPMENT.md 9.1): Engine Core's equipment state, read-only. loadout_of: the creature's loadout view, nullptr for a
+    // creature without one (legacy content, CombatOptions::equipment off: no equipment check, no equip legal action). item_def:
+    // the ItemDef for a def id (nullptr = unknown). apply_equip: called by step after equip_legal allows a UseObject equip op
+    // (rules has already spent the action for EquipCost::Action); Engine Core applies the op and the free-interaction bookkeeping.
+    // All empty = pre-equipment behaviour, goldens unchanged.
+    std::function<const LoadoutView*(const EncounterState&, CombatantId)> loadout_of;
+    std::function<const ItemDef*(uint32_t def)> item_def;
+    std::function<void(EncounterState&, const ActionRequest&, uint8_t cost_kind, std::vector<Event>&)> apply_equip;
 };
 
 // R-G11: a live zone or aura (ZONES_AURAS.md §2.6). anchor_x / anchor_y: a point zone's sim tile, opaque to rules (Q1).
