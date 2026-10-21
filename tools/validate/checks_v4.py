@@ -306,7 +306,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
         if u.get("kind") == "pool":
             need_pool(path, u.get("pool"), u.get("cost"))
     for path, _owner, eff in live_effects(doc):
-        if eff.get("kind") == "heal_pool":
+        if eff.get("kind") == "heal_pool" and "per_class_level" not in eff:   # 7.2zd split form: its usage pool (above)
             need_pool(path, eff.get("pool"), None)
         if eff.get("kind") in ("metamagic", "font_of_magic"):
             referenced.add(eff.get("pool"))   # sorcery points: spent by the sim per option (check 12); resolved by check_metamagic (7.2o: font_of_magic resolves it)
@@ -438,6 +438,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     errs += check_bard_hooks(doc)   # 7.2za
     check_monk_warlock_hooks(doc, ctx, errs, warns)   # 7.2zb
     errs += check_spell_gap_hooks(doc)   # 7.2zc
+    check_spell_batch2_hooks(doc, errs, warns)   # 7.2zd
     # check 12: declared but never referenced pools (Legendary Resistance is declaration-only until row 13)
     for i, r in enumerate(resources):
         if r.get("id") not in referenced:
@@ -1018,6 +1019,8 @@ def check_class_hooks(doc: dict) -> list[str]:
                 errs.append(f"{path}: {did}: scope needs at least one of weapon, attack, ability (7.2z)")
             else:
                 for k, v in sc.items():
+                    if k == "from_types":   # 7.2zd: a creature-type list (schema); rows need applies_to attackers (check_spell_batch2_hooks)
+                        continue
                     if k not in allowed or v not in allowed[k]:
                         errs.append(f"{path}: {did}: scope: bad key or value '{k}' (7.2z)")
     for path, a, bv in _bonus_vs_sites(doc):
@@ -1142,7 +1145,65 @@ def check_spell_gap_hooks(doc: dict) -> list[str]:
     return errs
 
 
+def check_spell_batch2_hooks(doc: dict, errs: list[str], warns: list[str]) -> None:
+    """7.2zd (sim features.cpp apply_heal_pool / apply_apply_modifier, same wording): Preserve Life's split heal_pool (a usage
+    pool; omitted excludes_types warns) and a feature scope from_types (rows need applies_to attackers, attack_roll only)."""
+    did = doc.get("id", "?")
+    for path, _owner, eff in live_effects(doc):
+        k = eff.get("kind")
+        if k == "heal_pool" and "per_class_level" in eff:
+            u = eff.get("usage") if isinstance(eff.get("usage"), dict) else {}
+            if u.get("kind") != "pool":
+                errs.append(f"{path}: {did}: heal_pool per_class_level needs a usage pool (Channel Divinity)")
+            if "excludes_types" not in eff:
+                warns.append(f"{path}: {did}: heal_pool per_class_level without excludes_types heals every creature type "
+                             "(Preserve Life: undead, construct)")
+        if k != "apply_modifier":
+            continue
+        mods = ([eff["modifier"]] if isinstance(eff.get("modifier"), dict) else []) + list(eff.get("modifiers") or [])
+        mods = [m for m in mods if isinstance(m, dict)]
+        bad = next((m for m in mods if m.get("applies_to") == "attackers" and m.get("stat") != "attack_roll"), None)
+        if bad is not None:
+            errs.append(f"{path}: {did}: modifier applies_to attackers: attack_roll modifiers only")
+        elif isinstance(eff.get("scope"), dict) and "from_types" in eff["scope"] and \
+                any(m.get("applies_to", "target") != "attackers" for m in mods):
+            errs.append(f"{path}: {did}: scope from_types needs applies_to attackers")
+
+
 SPELL_TIMED_DURATIONS = ("rounds", "minutes", "hours")
+
+
+def check_spell_batch2(doc: dict) -> list[str]:
+    """7.2zd spell@1 cross-field rules (rules5e_content spell_loader.cpp, same wording and order): applies_to attackers and
+    scope from_types (Protection from Evil and Good), max_hp_bonus amounts (Aid), and the lasting-duration rule of ward,
+    condition_immunity_from and max_hp_bonus. Shapes (ward / warded pairing, enums, uniqueness) are the schema's."""
+    errs: list[str] = []
+    effs = [e for e in (doc.get("effects") or []) if isinstance(e, dict)]
+    for i, e in enumerate(effs):
+        pre = f"effects[{i}]: " if i > 0 else ""
+        k = e.get("kind")
+        if k == "apply_modifier":
+            m = e.get("modifier") if isinstance(e.get("modifier"), dict) else {}
+            applies = m.get("applies_to", "target")
+            if applies == "attackers" and m.get("stat") != "attack_roll":
+                errs.append(f"{pre}effect modifier applies_to attackers: attack_roll modifiers only")
+            elif isinstance(e.get("scope"), dict) and "from_types" in e["scope"] and applies != "attackers":
+                errs.append(f"{pre}effect scope from_types needs applies_to attackers")
+        elif k == "max_hp_bonus" and e.get("flat", 0) == 0 and e.get("per_slot_above", 0) == 0:
+            errs.append(f"{pre}effect max_hp_bonus needs flat or per_slot_above above 0")
+    if errs:
+        return errs
+    du = doc.get("duration") if isinstance(doc.get("duration"), dict) else {}
+    lasting = du.get("concentration") is True or du.get("kind") in SPELL_TIMED_DURATIONS
+    if lasting or any(e.get("kind") == "apply_condition" and "ends_on" in e for e in effs):
+        return errs   # ends_on without a lasting duration is check_spell_gaps' (it comes first in the loader too)
+    if any(e.get("kind") == "apply_condition" and "ward" in e for e in effs):
+        errs.append("effect ward needs concentration or a rounds, minutes or hours duration")
+    elif any(e.get("kind") == "condition_immunity_from" for e in effs):
+        errs.append("effect condition_immunity_from needs concentration or a rounds, minutes or hours duration")
+    elif any(e.get("kind") == "max_hp_bonus" for e in effs):
+        errs.append("effect max_hp_bonus needs concentration or a rounds, minutes or hours duration")
+    return errs
 
 
 def check_spell_gaps(doc: dict) -> list[str]:

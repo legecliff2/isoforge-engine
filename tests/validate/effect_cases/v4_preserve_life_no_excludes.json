@@ -1,0 +1,41 @@
+{
+  "base": "characters/cleric_level_2.json",
+  "sets": [
+    [
+      [
+        "resources"
+      ],
+      [
+        {
+          "id": "channel_divinity",
+          "name": "Channel Divinity",
+          "max": 1,
+          "recharge": "short_rest"
+        }
+      ]
+    ],
+    [
+      [
+        "features",
+        2
+      ],
+      {
+        "id": "preserve_life",
+        "name": "x",
+        "effect": {
+          "kind": "heal_pool",
+          "cost": "action",
+          "usage": {
+            "kind": "pool",
+            "pool": "channel_divinity"
+          },
+          "per_class_level": 5,
+          "range_ft": 30,
+          "cap": "half_max"
+        }
+      }
+    ]
+  ],
+  "severity": "warning",
+  "expect": "heal_pool per_class_level without excludes_types heals every creature type"
+}
