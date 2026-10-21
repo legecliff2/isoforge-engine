@@ -52,6 +52,12 @@ enum class SpellEffectKind : uint8_t {
     // appended (R-G12 rules PR 3, D3): Spiritual Weapon: a non-creature token (`ActiveSummonWeapon`) whose attack is a melee spell
     // attack (dice + the spellcasting modifier when add_spellcasting_modifier) on the cast and as a later bonus action.
     SummonWeapon,
+    // appended (7.2zd): immunity of each target to `immune_conditions` from creatures of `immune_from_types` while the spell
+    // lasts (Protection from Evil and Good: charmed, frightened); no condition of its own.
+    ConditionImmunityFrom,
+    // appended (7.2zd Aid): each target's hit point maximum and current hit points rise by hp_bonus_flat + hp_bonus_per_slot
+    // per slot level above the spell's; when the effect ends the maximum drops back and current HP clamps to it.
+    MaxHpBonus,
 };
 // R-G9 forced movement (push / pull) of an effect. mode 1 push (away from the source), 2 pull (toward it), 3 along a line
 // (Gust of Wind: sim's direction; not in R-G9's first scope). feet: exact distance, or the maximum when up_to (the caster
@@ -129,9 +135,13 @@ struct SpellEffect {
     int8_t regurgitate_dc = 0; uint8_t regurgitate_damage = 30;   // 7.2w: see SpellDef
     bool excludes_formless = false;                                // 7.2w: see SpellDef
     uint8_t ends_on = 0;                                           // 7.2zc: see SpellDef::ends_on
+    bool has_ward = false; Ability ward_save = Ability::Wis; uint8_t ward_on_fail = 1;   // 7.2zd: see SpellDef
+    uint32_t immune_conditions = 0, immune_from_types = 0;                              // 7.2zd: see SpellDef
+    int16_t hp_bonus_flat = 0, hp_bonus_per_slot = 0;                                   // 7.2zd: see SpellDef
 };
 // 7.2zc (Invisibility): apply_condition `ends_on` bits: the effect ends when its target makes an attack / casts a spell.
-inline constexpr uint8_t kEndsOnAttack = 1, kEndsOnCast = 2;
+// kEndsOnHarmfulCast (7.2zd Sanctuary): a spell it cast affected a creature of another team.
+inline constexpr uint8_t kEndsOnAttack = 1, kEndsOnCast = 2, kEndsOnHarmfulCast = 4;
 
 // ---- R-G11 persistent zones and auras (docs/proposals/ZONES_AURAS.md §2.6) ----
 // Point: fixed at a sim tile (ActionRequest::zone_x / zone_y, kept opaque in ActiveZone); Creature: an aura centred on the
@@ -374,6 +384,15 @@ struct SpellDef {
     // concentration spell's marked rows (ModifierSpec::mark_scope) with a bonus action once the marked creature has dropped to
     // 0 hit points (ActionRequest::move_mark). 0 = the mark never moves.
     uint8_t move_mark = 0;
+    // appended (7.2zd Sanctuary): ApplyCondition `warded` with spell@1 `ward {save, on_fail: retarget_or_lose}`. A creature
+    // targeting the warded creature with an attack, or (on another team) with a spell without an area, makes a `ward_save`
+    // saving throw against the caster's spell save DC first (ActiveSpellEffect::dc / save_ability); on a failure it must
+    // choose a new target (ActionRequest::ward_alternate, one of ward_alternate_targets) or lose the attack or spell.
+    bool has_ward = false; Ability ward_save = Ability::Wis; uint8_t ward_on_fail = 1;   // 1 = retarget_or_lose
+    // appended (7.2zd Protection from Evil and Good): ConditionImmunityFrom masks (over Condition / CreatureType).
+    uint32_t immune_conditions = 0, immune_from_types = 0;
+    // appended (7.2zd Aid): MaxHpBonus amounts (integers 0..50).
+    int16_t hp_bonus_flat = 0, hp_bonus_per_slot = 0;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered

@@ -559,7 +559,9 @@
             "sustained_damage",
             "polymorph",
             "forced_move",
-            "teleport"
+            "teleport",
+            "condition_immunity_from",
+            "max_hp_bonus"
           ]
         }
       },
@@ -936,8 +938,34 @@
                 "const": "apply_condition"
               },
               "condition": {
-                "$ref": "../common/v1.schema.json#/$defs/condition",
-                "description": "Applied to each target with no saving throw; lasts with the spell's duration (Invisibility)."
+                "anyOf": [
+                  {
+                    "$ref": "../common/v1.schema.json#/$defs/condition"
+                  },
+                  {
+                    "const": "warded"
+                  }
+                ],
+                "description": "Applied to each target with no saving throw; lasts with the spell's duration (Invisibility). 7.2zd: 'warded' (Sanctuary; needs ward), apply_condition only."
+              },
+              "ward": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "save",
+                  "on_fail"
+                ],
+                "properties": {
+                  "save": {
+                    "$ref": "../common/v1.schema.json#/$defs/ability"
+                  },
+                  "on_fail": {
+                    "enum": [
+                      "retarget_or_lose"
+                    ]
+                  }
+                },
+                "description": "7.2zd Sanctuary: a creature targeting the warded creature with an attack or a harmful spell (no area) saves first against the caster's spell save DC; on a failure it must choose a new target or lose the attack or spell. Only with condition warded (which needs it)."
               },
               "applies_to": {
                 "enum": [
@@ -956,12 +984,39 @@
                 "items": {
                   "enum": [
                     "attack",
-                    "cast"
+                    "cast",
+                    "harmful_cast"
                   ]
                 },
-                "description": "VERSION_BUMP_BATCH 7.2zc (Invisibility): the effect on a creature ends once it makes any attack (after the attack resolves) or casts any spell (after the spell is cast), whatever the target; when nothing of the spell is left the caster's concentration on it ends too. Needs concentration or a rounds / minutes / hours duration (tools/validate and the loader, same wording)."
+                "description": "VERSION_BUMP_BATCH 7.2zc (Invisibility): the effect on a creature ends once it makes any attack (after the attack resolves) or casts any spell (after the spell is cast), whatever the target; when nothing of the spell is left the caster's concentration on it ends too. Needs concentration or a rounds / minutes / hours duration (tools/validate and the loader, same wording). 7.2zd harmful_cast (Sanctuary): the subject casts a spell that affects a creature of another team."
               }
-            }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "required": [
+                    "condition"
+                  ],
+                  "properties": {
+                    "condition": {
+                      "const": "warded"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "ward"
+                  ]
+                },
+                "else": {
+                  "not": {
+                    "required": [
+                      "ward"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         },
         {
@@ -998,17 +1053,18 @@
               "scope": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "target"
-                ],
                 "properties": {
                   "target": {
                     "enum": [
                       "marked"
                     ]
+                  },
+                  "from_types": {
+                    "$ref": "../common/v1.schema.json#/$defs/creature_types"
                   }
                 },
-                "description": "VERSION_BUMP_BATCH 7.2zc generic mark (Hunter's Mark, Hex): the common@2 closed scope object's target key. The row follows the spell's one target (the marked creature): a damage row (applies_to self) adds to the caster's attack hits on it (combine with when weapon_attack for Hunter's Mark); an ability_check row (ability may be \"chosen\") sits on the caster (self) or the marked creature (target)."
+                "description": "VERSION_BUMP_BATCH 7.2zc generic mark (Hunter's Mark, Hex): the common@2 closed scope object's target key. The row follows the spell's one target (the marked creature): a damage row (applies_to self) adds to the caster's attack hits on it (combine with when weapon_attack for Hunter's Mark); an ability_check row (ability may be \"chosen\") sits on the caster (self) or the marked creature (target). 7.2zd: from_types (Protection from Evil and Good) for an applies_to attackers row.",
+                "minProperties": 1
               }
             }
           }
@@ -1483,6 +1539,94 @@
                 "type": "string"
               }
             }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "condition_immunity_from"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "conditions",
+              "types"
+            ],
+            "properties": {
+              "kind": {
+                "const": "condition_immunity_from"
+              },
+              "conditions": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "charmed",
+                    "frightened"
+                  ]
+                }
+              },
+              "types": {
+                "$ref": "../common/v1.schema.json#/$defs/creature_types"
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ]
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "description": "VERSION_BUMP_BATCH 7.2zd (Protection from Evil and Good): while the spell lasts each target can't be charmed or frightened (conditions) by creatures of these types. The 'advantage on a new save if already charmed / frightened' clause and possession are not modelled. Needs concentration or a rounds / minutes / hours duration."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "max_hp_bonus"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "flat"
+            ],
+            "properties": {
+              "kind": {
+                "const": "max_hp_bonus"
+              },
+              "flat": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "per_slot_above": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 50,
+                "default": 0
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ]
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "description": "VERSION_BUMP_BATCH 7.2zd (Aid): each target's hit point maximum and current hit points rise by flat + per_slot_above per slot level above the spell's; when the spell ends the maximum drops back and current hit points clamp to it. The same spell keeps the higher bonus. Needs concentration or a rounds / minutes / hours duration."
           }
         }
       ],
