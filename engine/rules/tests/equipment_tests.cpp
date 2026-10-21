@@ -158,7 +158,7 @@ TEST_CASE("derive_weapon_attack: off-hand modifier only when negative, TWF style
     auto none = wielder(scores(14, 3)); none.damage_ability_none = true;
     auto pseudo = weapon("pseudopod", {3, 6, 0}, 0); pseudo.natural = true;
     CHECK(derive_weapon_attack(pseudo, none, WeaponUse::OneHand).attack.damage == DiceExpr{3, 6, 0});
-    auto ov = wielder(scores(15, 10)); ov.to_hit_override = 3;
+    auto ov = wielder(scores(15, 10)); ov.to_hit_override = int8_t{3};
     CHECK(derive_weapon_attack(bite, ov, WeaponUse::OneHand).attack.to_hit == 3);
 }
 
