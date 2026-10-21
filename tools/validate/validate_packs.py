@@ -116,7 +116,7 @@ def decode_layers(doc: dict) -> list[list[tuple[int, int, int]]]:
 def compute_content_hash(doc: dict) -> int:
     """compute_content_hash(Chunk) over the decoded chunk; origin and content_hash excluded."""
     c, h = doc["coord"], Canon()
-    h.u16(1)  # format_version (kChunkFormatVersion)
+    h.u16(2 if (doc.get("lights") or "ambient" in doc) else 1)  # format_version: 1 unless chunk@2 fields are present
     h.i32(c["x"]); h.i32(c["y"]); h.i16(c["level"])
     h.u32(len(doc["palette"]))
     for p in doc["palette"]:
@@ -133,7 +133,34 @@ def compute_content_hash(doc: dict) -> int:
     h.u32(len(doc["triggers"]))
     for t in doc["triggers"]:
         h.str(compact_json(t))
+    chunk2_tail(doc, h)
     return h.value()
+
+
+AMBIENT_KIND = {"none": 0, "sun": 1, "moon": 2}
+AMBIENT_LEVEL = {"dark": 0, "dim": 1, "bright": 2}
+
+
+def chunk_light_stable_id(x: int, y: int, level: int, index: int) -> int:
+    h = Canon(); h.i32(x); h.i32(y); h.i16(level); h.u32(index); h.u8(ord("L"))
+    v = h.value()
+    return (v & 0xFFFFFFFF) ^ (v >> 32)
+
+
+def chunk2_tail(doc: dict, h: Canon) -> None:
+    """chunk@2 lights + ambient (R-G13), folded only when present; 'visual' is never hashed."""
+    lights, amb = doc.get("lights", []), doc.get("ambient")
+    if not lights and amb is None:
+        return
+    c = doc["coord"]
+    h.u32(len(lights))
+    for i, l in enumerate(lights):
+        flags = (1 if l.get("magical") else 0) | (2 if l.get("sunlight") else 0) | (4 if l.get("starts_unlit") else 0)
+        h.i32(l["tile"]["x"]); h.i32(l["tile"]["y"]); h.u16(l["bright_ft"]); h.u16(l.get("dim_ft", 0)); h.u8(flags)
+        h.str(l.get("preset", "")); h.u32(chunk_light_stable_id(c["x"], c["y"], c["level"], i))
+    h.u8(1 if amb is not None else 0)
+    if amb is not None:
+        h.u8(AMBIENT_KIND[amb["kind"]]); h.u8(AMBIENT_LEVEL[amb["level"]])
 
 
 def hash_hex(v: int) -> str:

@@ -38,7 +38,9 @@ struct LightChunkView {
     int32_t cx = 0, cy = 0;
     int16_t level = 0;
     std::array<uint8_t, 32 * 32>  samples{};
-    // Fog for the shown team: 1024-bit masks, bit i = tile (i % 32, i / 32). has_fog=false -> all visible.
+    // Fog for the shown team (sim::TileMask layout: bit = y * 32 + x, word = bit / 64, LSB-first).
+    // has_fog=false -> all visible (fog off, or the frame has no visibility). With fog on, a chunk
+    // the team has no entry for carries all-zero masks (entirely unseen).
     bool has_fog = false;
     std::array<uint64_t, 16> seen_now{}, explored{};
     bool seen(int lx, int ly) const { return !has_fog || (seen_now[size_t((ly * 32 + lx) / 64)] >> ((ly * 32 + lx) % 64)) & 1u; }
@@ -64,10 +66,13 @@ struct LightView {
     bool present = false;          // false: no LightFrame (old content / sim without light): unlit view
     uint64_t frame = 0;            // sim step the frame belongs to
     std::vector<LightChunkView>  chunks;    // resident visible chunks
-    std::vector<LightChunkRef>   added, removed;   // chunk-set change vs the previous frame
-    std::vector<LightDirtyView>  dirty;     // chunks whose samples changed (sim: whole-chunk rects)
+    std::vector<LightChunkRef>   added, removed;   // tracked-set change vs the previous frame (sim added/removed_chunks)
+    std::vector<LightChunkRef>   blocked;   // tracked but unsampled (halo pending/failed): render holds last light + fog
+    std::vector<LightDirtyView>  dirty;     // sim dirty_rects (bounding rect of changed samples per chunk)
+    std::vector<LightChunkRef>   vis_dirty; // sim dirty_vis_chunks: masks changed for some team
     std::vector<LightSourceView> sources;
-    bool        fog = false;       // any chunk carries fog masks
+    bool        fog = false;       // fog of war shown (option on and the frame carries visibility)
+    uint8_t     fog_team = 0;      // team whose masks are shown (game option)
     const LightChunkView* chunk_of_tile(eng::Vec2i t) const {
         const int32_t cx = t.x >= 0 ? t.x / 32 : -((-t.x + 31) / 32), cy = t.y >= 0 ? t.y / 32 : -((-t.y + 31) / 32);
         for (const auto& c : chunks) if (c.cx == cx && c.cy == cy) return &c;
