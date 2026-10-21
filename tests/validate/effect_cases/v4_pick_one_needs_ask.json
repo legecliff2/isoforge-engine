@@ -57,5 +57,5 @@
     ]
   ],
   "severity": "error",
-  "expect": "pick_one needs choice ask on a hit / crit trigger"
+  "expect": "pick_one needs choice ask on a hit or crit trigger"
 }

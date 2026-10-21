@@ -493,7 +493,7 @@ std::optional<std::string> compile_on_event(const std::string& arch, const std::
         if (!po->is_boolean()) return where + ": pick_one must be a boolean";
         t.pick_one = po->get<bool>();
         if (t.pick_one && (t.choice != 1 || (t.on != rules5e::TriggerOn::Hit && t.on != rules5e::TriggerOn::Crit)))
-            return where + ": pick_one needs choice ask on a hit trigger";
+            return where + ": pick_one needs choice ask on a hit or crit trigger";
     }
     // usage (common@2 $defs/usage): at_will = none; per_day / per_rest {uses, rest} = a trigger-owned pool
     // "<owner>#usage" (registered by Combat::create like resources[], recharged by rests, folded with the pools, 0xA3) paid by a
@@ -543,10 +543,18 @@ std::optional<std::string> compile_on_event(const std::string& arch, const std::
             if (auto e = compile_predicate(where, p, pr)) return e;
             if (pr.kind == rules5e::PredicateKind::AttackFromFeature) {   // 7.2zb: the compiled bonus attack of that feature
                 const std::string fid = p.value("feature", "");
-                bool feature_found = false;
-                if (auto fs = doc.find("features"); fs != doc.end() && fs->is_array())
-                    for (const Json& f : *fs) feature_found = feature_found || (f.is_object() && f.value("id", "") == fid);
+                bool feature_found = false, is_bonus = false;   // the validator's check_monk_warlock_hooks uses the same strings
+                for (const char* key : {"traits", "features"})
+                    if (auto fs = doc.find(key); fs != doc.end() && fs->is_array())
+                        for (const Json& f : *fs) {
+                            if (!f.is_object() || f.value("id", "") != fid) continue;
+                            feature_found = true;
+                            const auto ef = f.find("effect");
+                            is_bonus = is_bonus || fid == "martial_arts" || fid == "flurry_of_blows" || fid == "frenzy" ||
+                                       (ef != f.end() && ef->is_object() && ef->value("kind", "") == "bonus_attack" && !ef->value("inert", false));
+                        }
                 if (!feature_found) return where + ": attack_from_feature names unknown feature '" + fid + "'";
+                if (!is_bonus) return where + ": attack_from_feature '" + fid + "' is not a bonus-attack feature of this document";
                 pr.mask = rules5e::spell_id_of(arch + "#bonus#" + fid);
             }
             t.when.push_back(pr);

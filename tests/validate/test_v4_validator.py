@@ -941,12 +941,15 @@ class MonkWarlockHooks72zb(unittest.TestCase):
 
     def test_attack_from_feature_and_pick_one(self):
         bad = dict(self.OH, when=[{"kind": "attack_from_feature", "feature": "patient_defense"}])
-        self.assertTrue(any("not a bonus-attack feature" in e for e in self.run_checks(self.doc(oh=bad))[0]))
+        self.assertTrue(any(e.endswith(": attack_from_feature 'patient_defense' is not a bonus-attack feature of this document")
+                            for e in self.run_checks(self.doc(oh=bad))[0]))
+        nf = dict(self.OH, when=[{"kind": "attack_from_feature", "feature": "nope"}])
+        self.assertTrue(any(e.endswith(": attack_from_feature names unknown feature 'nope'") for e in self.run_checks(self.doc(oh=nf))[0]))
         frenzy_like = {"kind": "bonus_attack", "requires_effect": "x"}
         ok = dict(self.OH, when=[{"kind": "attack_from_feature", "feature": "fz"}])
         self.assertEqual(self.run_checks(self.doc(fz=frenzy_like, oh=ok))[0], [])
-        self.assertTrue(any("pick_one needs choice ask" in e for e in self.run_checks(self.doc(oh=dict(self.OH, choice="auto")))[0]))
-        self.assertTrue(any("pick_one needs choice ask" in e for e in self.run_checks(self.doc(oh=dict(self.OH, on="turn_start")))[0]))
+        self.assertTrue(any(e.endswith(": pick_one needs choice ask on a hit or crit trigger") for e in self.run_checks(self.doc(oh=dict(self.OH, choice="auto")))[0]))
+        self.assertTrue(any(e.endswith(": pick_one needs choice ask on a hit or crit trigger") for e in self.run_checks(self.doc(oh=dict(self.OH, on="turn_start")))[0]))
 
     def test_spell_mod(self):
         def sm(spell): return {"kind": "spell_mod", "spell": spell, "on_hit_push_ft": 10}
@@ -965,3 +968,22 @@ class BardFollowups214(unittest.TestCase):
         self.assertTrue(any("is not one of the document's classes" in e for e in checks_v4.check_bard_hooks(d)))
         d["features"][0]["effect"]["class"] = "bard"
         self.assertEqual(checks_v4.check_bard_hooks(d), [])
+
+
+class LoaderValidatorStrings(unittest.TestCase):
+    """fix/rules-loader-validator-strings: each loader / validator error pair of #214 / #218 carries one identical string."""
+    PAIRS = ["pick_one needs choice ask on a hit or crit trigger",
+             "attack_from_feature names unknown feature '",
+             "' is not a bonus-attack feature of this document",
+             "spell_mod: not valid on monsters",
+             "' is not one of the document's classes"]
+
+    def test_loader_and_validator_share_strings(self):
+        root = Path(__file__).resolve().parents[2]
+        loader = (root / "engine/core/sim/src/content.cpp").read_text() + (root / "engine/core/sim/src/features.cpp").read_text()
+        validator = (root / "tools/validate/checks_v4.py").read_text()
+        for s in self.PAIRS:
+            self.assertIn(s, loader)
+            self.assertIn(s, validator)
+        for suffix in ("(7.2zb)", "(#214 follow-up)"):
+            self.assertNotIn(suffix + '"', validator)
