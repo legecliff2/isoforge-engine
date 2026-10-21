@@ -197,8 +197,10 @@ TEST_CASE("carried lights: pc_torches is one producer of a generic list; glows a
 }
 
 namespace {
-// Temp pack "test.visual": the sample pack (same chunk, same fighter) plus one item@1, with or without a
-// `visual` block. Resolved next to the real packs root (srd51.core comes from there).
+// Temp pack "test.visual": the sample pack (same chunk, same fighter) plus item@1 docs. With `with_visual`,
+// two items style the same preset "test.visual.light.lantern" (ids differ from the preset; lowest id wins)
+// and one item has a visual but no light.preset (skipped). Resolved next to the real packs root.
+const char* kPreset = "test.visual.light.lantern";
 std::filesystem::path make_visual_pack(const std::string& tag, bool with_visual) {
     namespace fs = std::filesystem;
     const fs::path root = fs::temp_directory_path() / ("isoforge_visual_" + tag);
@@ -210,20 +212,27 @@ std::filesystem::path make_visual_pack(const std::string& tag, bool with_visual)
     std::string man((std::istreambuf_iterator<char>(mi)), {});
     mi.close();
     man.replace(man.find("\"sample.vertical_slice\""), 23, "\"test.visual\"");
-    man.replace(man.find("\"chunks/0_0_0.json\""), 19, "\"chunks/0_0_0.json\",\n    \"items/lantern.json\"");
+    man.replace(man.find("\"chunks/0_0_0.json\""), 19,
+                "\"chunks/0_0_0.json\",\n    \"items/b_lantern.json\",\n    \"items/a_lantern.json\",\n    \"items/glowstone.json\"");
     std::ofstream(pack / "manifest.json") << man;
     fs::create_directories(pack / "items");
-    std::ofstream(pack / "items/lantern.json")
-        << "{\"$schema\": \"item@1\", \"id\": \"test.visual.item.lantern\", \"name\": \"Lantern\", "
-           "\"category\": \"valuable\", \"cost_cp\": 500"
-        << (with_visual ? ", \"visual\": {\"color\": {\"r\": 51, \"g\": 102, \"b\": 255}, \"intensity\": 400, \"flicker\": \"candle\"}" : "")
-        << "}";
+    auto item = [&](const char* file, const char* id, bool preset, const char* visual) {
+        std::ofstream(pack / "items" / file)
+            << "{\"$schema\": \"item@1\", \"id\": \"" << id << "\", \"name\": \"Lantern\", \"category\": \"valuable\", "
+            << "\"cost_cp\": 500" << (preset ? std::string(", \"light\": {\"preset\": \"") + kPreset + "\"}" : std::string())
+            << (with_visual ? std::string(", \"visual\": ") + visual : std::string()) << "}";
+    };
+    // a_lantern (lowest id) wins over b_lantern, whatever the file / manifest order.
+    item("b_lantern.json", "test.visual.item.lantern_b", true, "{\"color\": {\"r\": 255, \"g\": 0, \"b\": 0}, \"intensity\": 900}");
+    item("a_lantern.json", "test.visual.item.lantern_a", true,
+         "{\"color\": {\"r\": 51, \"g\": 102, \"b\": 255}, \"intensity\": 400, \"flicker\": \"candle\"}");
+    item("glowstone.json", "test.visual.item.glowstone", false, "{\"color\": {\"r\": 0, \"g\": 255, \"b\": 0}, \"intensity\": 700}");
     return root;
 }
 std::unique_ptr<Session> open_visual(const std::filesystem::path& root) {
     Session::Options o{{root.string(), SLICE_PACK_ROOT}, {"test.visual"}, 1, true};
     CarriedLight l;
-    l.preset = "test.visual.item.lantern";
+    l.preset = kPreset;   // the light preset, not an item id
     o.carried_lights.push_back(l);
     std::string err;
     {
@@ -239,27 +248,38 @@ std::unique_ptr<Session> open_visual(const std::filesystem::path& root) {
 }
 } // namespace
 
-TEST_CASE("item@1 visual: integers converted at load, used over the preset default, sim untouched") {
+TEST_CASE("item@1 visual: keyed by light.preset, lowest id wins, converted at load, sim untouched") {
     const auto with = make_visual_pack("with", true), without = make_visual_pack("without", false);
     auto a = open_visual(with), b = open_visual(without);
     ViewModel va = a->view(), vb = b->view();
 
-    REQUIRE(va.light.visuals.count("test.visual.item.lantern") == 1);
-    const iso2d::GlowStyle& st = va.light.visuals.find("test.visual.item.lantern")->second;
-    CHECK(st.color.r == doctest::Approx(0.2f));
+    REQUIRE(va.light.visuals.size() == 1);   // only the preset; no entry under item ids, glowstone skipped
+    REQUIRE(va.light.visuals.count(kPreset) == 1);
+    const iso2d::GlowStyle& st = va.light.visuals.find(kPreset)->second;
+    CHECK(st.color.r == doctest::Approx(0.2f));   // lantern_a (lowest content id), not lantern_b
     CHECK(st.color.g == doctest::Approx(0.4f));
     CHECK(st.color.b == doctest::Approx(1.f));
     CHECK(st.intensity == doctest::Approx(0.4f));
     CHECK(st.flicker == iso2d::GlowFlicker::Candle);
     CHECK(vb.light.visuals.empty());
+    bool conflict = false, skipped = false;
+    for (const auto& w : a->warnings()) {
+        if (w.find("conflicting visual from item test.visual.item.lantern_b") != std::string::npos &&
+            w.find("using test.visual.item.lantern_a") != std::string::npos) conflict = true;
+        if (w.find("test.visual.item.glowstone") != std::string::npos && w.find("no light.preset") != std::string::npos) skipped = true;
+    }
+    CHECK(conflict);
+    CHECK(skipped);
+    CHECK(b->warnings().empty());
 
+    // The item id differs from the preset, yet the preset's glow is overridden.
     iso2d::GlowPalette pa, pb;
     for (const auto& [id, s] : va.light.visuals) pa.set_override(id, s);
     const auto ga = glows_from(va.light, pa), gb = glows_from(vb.light, pb);
     bool found = false;
     for (const auto& g : ga)
         if (g.color.b == doctest::Approx(1.f) && g.intensity == doctest::Approx(0.4f)) found = true;
-    CHECK(found);   // content visual used
+    CHECK(found);
     for (const auto& g : gb) CHECK(g.intensity != doctest::Approx(0.4f));   // no visual: built-in default kept
 
     // Presentation only: the fight and the published light samples are identical with and without it.

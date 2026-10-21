@@ -68,6 +68,7 @@ int main(int argc, char** argv) {
     std::string err;
     auto session = slice::Session::open(opt, &err);
     if (!session) { std::fprintf(stderr, "vertical_slice: %s\n", err.c_str()); return 1; }
+    for (const std::string& w : session->warnings()) std::fprintf(stderr, "vertical_slice: warning: %s\n", w.c_str());
     for (int i = 0; i < pre_steps && session->step(); ++i) {}
 
     if (!platform::init()) return 2;

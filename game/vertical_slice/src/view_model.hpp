@@ -71,7 +71,7 @@ struct LightView {
     std::vector<LightSourceView> sources;
     bool        fog = false;       // any chunk carries fog masks
     // Content `visual` blocks (item@1 / light presets), converted to render floats at load, keyed by
-    // content id (== a source's preset). Presentation only: not part of the LightFrame or any hash.
+    // light preset (an item's `light.preset`, == a source's preset). Presentation only: not part of the LightFrame or any hash.
     std::map<std::string, eng::iso2d::GlowStyle, std::less<>> visuals;
     const LightChunkView* chunk_of_tile(eng::Vec2i t) const {
         const int32_t cx = t.x >= 0 ? t.x / 32 : -((-t.x + 31) / 32), cy = t.y >= 0 ? t.y / 32 : -((-t.y + 31) / 32);
