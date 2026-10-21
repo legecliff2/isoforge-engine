@@ -13,6 +13,7 @@
 #include "sim/content.hpp"
 #include "sim/driver.hpp"
 #include "sim/light.hpp"
+#include "sim/light_driver.hpp"
 #include "world/file_chunk_provider.hpp"
 
 #include <span>
@@ -61,7 +62,8 @@ static void copy_light(const sim::LightFrame& f, const sim::LightFrame* prev, Li
     };
     for (const auto& m : f.chunks) if (!has(prev, m.coord)) L.added.push_back({m.coord.x, m.coord.y, m.coord.level});
     if (prev) for (const auto& m : prev->chunks) if (!has(&f, m.coord)) L.removed.push_back({m.coord.x, m.coord.y, m.coord.level});
-    for (const auto& k : f.dirty_chunks) L.dirty.push_back({{k.x, k.y, k.level}, eng::RectI{0, 0, 32, 32}});
+    for (const auto& r : f.dirty_rects)   // one bounding rect per dirty chunk (LIGHTING.md §10)
+        L.dirty.push_back({{r.coord.x, r.coord.y, r.coord.level}, eng::RectI{r.x0, r.y0, r.x1 - r.x0 + 1, r.y1 - r.y0 + 1}});
     for (const sim::LightSource& s : f.sources) {
         LightSourceView v;
         v.attached = s.id.kind == sim::LightKind::Attached;
@@ -91,34 +93,40 @@ struct Session::Impl {
     FeedState feed;
     std::string error;
     std::vector<TileView> tiles;
-    sim::LightCache light_cache;
+    // R-G13 phase 2: the sim publishes the frames (attach + every committed step); the game only supplies PC torches.
+    std::unique_ptr<sim::LightDriver> light_driver;
     std::shared_ptr<const sim::LightFrame> light, light_prev;
-    uint64_t light_step = 0;
 
-    // Publishes the sim's LightFrame for the current committed state (start of the next step).
-    void publish_light() {
-        sim::LightWorld w;
-        w.grid = &combat->grid();
-        uint32_t next_id = 1;
+    void attach_light() {
+        sim::LightProviderInputs in;
+        in.chunks = {chunk.get()};
         if (opt.pc_torches)
-            for (const rules5e::Combatant& cb : combat->state().combatants) {
-                const sim::Archetype* a = combat->archetype(cb.id);
-                if (!a || a->schema_type != "character" || cb.dead) continue;
-                sim::AttachedLight l;
-                l.id = next_id++;
-                l.carrier = sim::Carrier::Creature;
-                l.carrier_id = cb.id;
-                l.bright_ft = 20;
-                l.dim_ft = 20;
-                l.flags = sim::light_src::kLit;
-                w.sources.push_back(sim::attached_source(
-                    l, sim::carrier_centre(combat->pos(cb.id), combat->footprint_size(cb.id)), "srd51.core.light.torch"));
-            }
-        w.normalise();
-        light_cache.begin_step(std::move(w));
-        const world::ChunkCoord coords[] = {chunk->coord};
+            in.attached_sources = [](const sim::Combat& c, std::vector<sim::LightSource>& out) {
+                uint32_t next_id = 1;
+                for (const rules5e::Combatant& cb : c.state().combatants) {
+                    const sim::Archetype* a = c.archetype(cb.id);
+                    if (!a || a->schema_type != "character" || cb.dead) continue;
+                    sim::AttachedLight l;
+                    l.id = next_id++;
+                    l.carrier = sim::Carrier::Creature;
+                    l.carrier_id = cb.id;
+                    l.bright_ft = 20;
+                    l.dim_ft = 20;
+                    l.flags = sim::light_src::kLit;
+                    out.push_back(sim::attached_source(
+                        l, sim::carrier_centre(c.pos(cb.id), c.footprint_size(cb.id)), "srd51.core.light.torch"));
+                }
+            };
+        light_driver = std::make_unique<sim::LightDriver>(std::move(in));
+        combat->attach_light_driver(light_driver.get());
+        pull_light();
+    }
+    // Picks up the driver's latest frame (new only after a committed step).
+    void pull_light() {
+        auto f = light_driver ? light_driver->latest() : nullptr;
+        if (f == light) return;
         light_prev = light;
-        light = sim::publish_light_frame(light_cache, coords, ++light_step, light_prev.get());
+        light = std::move(f);
     }
 
     std::string name_of(sim::CombatantId id) const {
@@ -205,7 +213,7 @@ std::unique_ptr<Session> Session::open(const Options& o, std::string* error) {
         if (!m.combat) return fail("sim create failed: " + err);
         for (const rules5e::Combatant& cb : m.combat->state().combatants) m.feed.tiles[cb.id] = m.combat->pos(cb.id);
         m.drain_events();
-        m.publish_light();
+        m.attach_light();
     }
     return s;
 }
@@ -234,7 +242,7 @@ bool Session::step() {
     }
     if (!r.ok) m.error = r.error;
     m.drain_events();   // a paused request appended nothing; its events arrive when it completes
-    if (!c.pending()) m.publish_light();   // light follows committed state only
+    m.pull_light();   // the driver publishes on committed steps only
     return r.ok;
 }
 

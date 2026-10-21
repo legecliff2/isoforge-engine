@@ -1,4 +1,5 @@
 #include "sim/combat.hpp"
+#include "sim/light_driver.hpp"
 #include "sim/trace.hpp"
 
 #include <algorithm>
@@ -44,7 +45,9 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, const world::Chunk& chu
     local.coord.x = 0;
     local.coord.y = 0;
     const world::Chunk* one[] = {&local};
-    return create(reg, std::span<const world::Chunk* const>(one), content, seed, error);
+    auto c = create(reg, std::span<const world::Chunk* const>(one), content, seed, error);
+    if (c) c->frame_offset_ = world::ChunkCoord{chunk.coord.x, chunk.coord.y, 0};
+    return c;
 }
 
 std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::Chunk* const> chunks_in,
@@ -59,6 +62,7 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
     for (const world::Chunk* ch : chunks)
         for (const auto& sp : ch->spawns) spawns.push_back({&sp, Grid::to_world(ch->coord, sp.tile)});
     Combat c(reg, std::move(grid));
+    for (const world::Chunk* ch : chunks) c.frame_chunks_.push_back(ch->coord);
     c.seed_ = seed;
     c.content_ = &content;   // R-G12: forms resolve against the library (archetype pointers already live as long)
     for (const auto& [aid, arch] : content.all())   // Polymorph's choices: rated beasts, byte order of ids
@@ -1234,13 +1238,23 @@ SubmitResult Combat::finish(rules5e::StepResult sr) {
     complete(ls, sr.events, to, sr.teardown_begin);
     log_.push_back({ls, to});
     r.reactions = std::move(sr.reactions);
+    if (light_.d) light_.d->step(*this);   // R-G13: the committed state's light frame
     return r;
+}
+
+void Combat::attach_light_driver(LightDriver* d) {
+    light_.d = d;
+    if (d) d->step(*this);
 }
 
 SubmitResult Combat::submit(const Command& cmd) {
     SubmitResult r;
     if (state_.pending) { r.error = "a reaction window is waiting for a decision"; r.needs = pending(); return r; }
     if (state_.ended) { r.error = "encounter ended"; return r; }
+    if (light_.d && light_.d->halted()) {   // R-G13 §7: never step on a partial halo; re-check once (the streamer may have loaded)
+        light_.d->step(*this);
+        if (light_.d->halted()) { r.error = light_.d->failed().empty() ? "light halo pending" : "light halo failed"; return r; }
+    }
     install_hooks();
     return cmd.kind == CommandKind::Step ? do_step(cmd.to, cmd.request.squeeze == 1) : do_rules(cmd.request, cmd.to, cmd.aim);
 }

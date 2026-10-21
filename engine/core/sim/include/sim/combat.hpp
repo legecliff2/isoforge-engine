@@ -27,6 +27,7 @@
 #include "world/chunk.hpp"
 
 namespace eng::sim {
+class LightDriver;   // sim/light_driver.hpp
 
 using rules5e::CombatantId;
 
@@ -226,6 +227,16 @@ public:
     uint8_t feature_uses_left(CombatantId id, uint32_t feature_id) const;
     bool can_use_feature(CombatantId id, uint32_t feature_id) const;
 
+    // R-G13 phase 2 (LIGHTING.md §7, §10): the chunks of this combat in its own tile frame (ascending), and the offset to
+    // world chunk coords (world = frame + offset; zero except for the single-chunk overload, which keeps the chunk-local frame).
+    const std::vector<world::ChunkCoord>& frame_chunks() const noexcept { return frame_chunks_; }
+    world::ChunkCoord frame_offset() const noexcept { return frame_offset_; }
+    // Attach a light driver (not owned; null detaches). It publishes a frame now (the create-time frame) and after every
+    // committed step. While its last step left a wanted halo Pending or Failed, submit() re-evaluates once and refuses
+    // ("light halo pending" / "light halo failed") until the halo completes. Copies of a Combat never carry the driver.
+    void attach_light_driver(LightDriver* d);
+    LightDriver* light_driver() const noexcept { return light_.d; }
+
     // Canonical hash (StableHash) of the event stream + final positions. Golden material.
     uint64_t hash() const;
     // Canonical hash of the command log alone.
@@ -294,6 +305,18 @@ private:
     // when it ended (its entity is destroyed at the end of that step).
     struct Slot { CombatantId id; ecs::Entity entity; const Archetype* archetype; bool summoned = false; bool gone = false; Vec2i last{}; };
     Combat(ecs::Registry& reg, Grid grid) : reg_(&reg), grid_(std::move(grid)) {}
+    // Non-owning; a copy (lookahead, replay) starts detached so only the attached Combat drives the light frames.
+    struct LightLink {
+        LightDriver* d = nullptr;
+        LightLink() = default;
+        LightLink(const LightLink&) noexcept {}
+        LightLink& operator=(const LightLink&) noexcept { d = nullptr; return *this; }
+        LightLink(LightLink&& o) noexcept : d(o.d) { o.d = nullptr; }
+        LightLink& operator=(LightLink&& o) noexcept { d = o.d; o.d = nullptr; return *this; }
+    };
+    LightLink light_;
+    std::vector<world::ChunkCoord> frame_chunks_;
+    world::ChunkCoord frame_offset_{0, 0, 0};
     void apply_rules_events(const std::vector<rules5e::Event>& evs);
     void sync_ecs();
     void install_hooks();
