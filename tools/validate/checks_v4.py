@@ -1155,6 +1155,15 @@ def check_spell_batch2_hooks(doc: dict, errs: list[str], warns: list[str]) -> No
             u = eff.get("usage") if isinstance(eff.get("usage"), dict) else {}
             if u.get("kind") != "pool":
                 errs.append(f"{path}: {did}: heal_pool per_class_level needs a usage pool (Channel Divinity)")
+            # features.cpp apply_heal_pool: `class` sums that class's classes[] levels; absent, every entry (fallback: level).
+            cls = eff.get("class")
+            rows = [c for c in doc.get("classes") or [] if isinstance(c, dict)]
+            level = sum(c.get("level", 0) for c in rows if cls is None or c.get("class") == cls
+                        if isinstance(c.get("level", 0), int))
+            if level == 0 and cls is None and isinstance(doc.get("level"), int):
+                level = doc["level"]
+            if level < 1:
+                errs.append(f"{path}: {did}: heal_pool per_class_level has no class level to resolve against")
             if "excludes_types" not in eff:
                 warns.append(f"{path}: {did}: heal_pool per_class_level without excludes_types heals every creature type "
                              "(Preserve Life: undead, construct)")
@@ -1203,6 +1212,42 @@ def check_spell_batch2(doc: dict) -> list[str]:
         errs.append("effect condition_immunity_from needs concentration or a rounds, minutes or hours duration")
     elif any(e.get("kind") == "max_hp_bonus" for e in effs):
         errs.append("effect max_hp_bonus needs concentration or a rounds, minutes or hours duration")
+    return errs
+
+
+def check_spell_batch3(doc: dict) -> list[str]:
+    """7.2ze spell@1 cross-field rules (rules5e_content spell_loader.cpp parse_modifier / parse_effect, same wording and order):
+    the modifier sign (Bless / Bane) and an applies_to roll list, the apply_modifier save gate (Bane), and choices (with
+    condition chosen, Blindness/Deafness) on the first effect only. Shapes (enums, sizes, the chosen / choices pairing) are the
+    schema's."""
+    errs: list[str] = []
+    effs = [e for e in (doc.get("effects") or []) if isinstance(e, dict)]
+    for i, e in enumerate(effs):
+        pre = f"effects[{i}]: " if i > 0 else ""
+        k = e.get("kind")
+        if i > 0 and k == "save" and "choices" in e:
+            errs.append(f"effects[{i}]: choices is only allowed on the first effect")
+        if k != "apply_modifier":
+            continue
+        m = e.get("modifier") if isinstance(e.get("modifier"), dict) else {}
+        die = m.get("die")
+        rolls = m.get("applies_to")
+        if isinstance(rolls, list):
+            stat = m.get("stat")
+            if stat not in ("attack_roll", "save"):
+                errs.append(f"{pre}effect modifier applies_to rolls: attack_roll or save modifiers only")
+                continue
+            if ("attack" if stat == "attack_roll" else "save") not in rolls:
+                errs.append(f"{pre}effect modifier applies_to rolls must include the modifier's own stat")
+                continue
+            if "die" not in m:
+                errs.append(f"{pre}effect modifier applies_to rolls needs die")
+                continue
+        if "save" in e:
+            if i > 0:
+                errs.append(f"effects[{i}]: an apply_modifier save is only allowed on the first effect")
+            elif not isinstance(rolls, list) and m.get("applies_to", "target") != "target":
+                errs.append("effect save needs a modifier on the targets (applies_to target or rolls)")
     return errs
 
 

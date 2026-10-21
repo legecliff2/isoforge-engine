@@ -1,0 +1,46 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "school": "necromancy",
+  "classes": [
+    "cleric"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 30
+  },
+  "id": "test.neg.spell.blindness_deafness",
+  "name": "Blindness/Deafness",
+  "description": "Blindness/Deafness (7.2ze positive specimen).",
+  "level": 2,
+  "components": {
+    "v": true
+  },
+  "duration": {
+    "kind": "rounds",
+    "amount": 10
+  },
+  "effects": [
+    {
+      "kind": "save",
+      "ability": "con",
+      "condition": "chosen",
+      "choices": [
+        "blinded",
+        "deafened"
+      ],
+      "repeat_save": "end_of_turn"
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "targets": 1
+    }
+  }
+}
