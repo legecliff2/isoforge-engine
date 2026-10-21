@@ -1,10 +1,12 @@
 #include "sim/light.hpp"
 
 #include <algorithm>
+#include <iterator>
 #include <utility>
 
 #include "rules5e/spells.hpp"
 #include "sim/trace.hpp"
+#include "sim/visibility.hpp"
 
 namespace eng::sim {
 
@@ -243,8 +245,46 @@ LightSample LightCache::at(Vec2i t) {
 
 std::shared_ptr<const LightFrame> publish_light_frame(LightCache& cache, std::span<const world::ChunkCoord> chunks,
                                                       uint64_t step, const LightFrame* prev) {
+    LightFrameInputs in;
+    in.chunks = chunks;
+    return publish_light_frame(cache, in, step, prev);
+}
+
+namespace {
+std::vector<world::ChunkCoord> sorted_unique(std::span<const world::ChunkCoord> in) {
+    std::vector<world::ChunkCoord> v(in.begin(), in.end());
+    std::sort(v.begin(), v.end());
+    v.erase(std::unique(v.begin(), v.end()), v.end());
+    return v;
+}
+// Bounding rect of the samples that differ (`old` null: the whole chunk). Precondition: they differ.
+DirtyRect dirty_rect_of(const ChunkLightMap& m, const ChunkLightMap* old) {
+    constexpr int N = world::kChunkSize;
+    DirtyRect r{m.coord, 0, 0, uint8_t(N - 1), uint8_t(N - 1)};
+    if (!old) return r;
+    int x0 = N, y0 = N, x1 = -1, y1 = -1;
+    for (int y = 0; y < N; ++y)
+        for (int x = 0; x < N; ++x)
+            if (m.samples[std::size_t(y * N + x)] != old->samples[std::size_t(y * N + x)]) {
+                x0 = std::min(x0, x); y0 = std::min(y0, y); x1 = std::max(x1, x); y1 = std::max(y1, y);
+            }
+    r.x0 = uint8_t(x0); r.y0 = uint8_t(y0); r.x1 = uint8_t(x1); r.y1 = uint8_t(y1);
+    return r;
+}
+const ChunkVisibility* find_vis(const std::vector<TeamVisibility>& teams, std::size_t ti, world::ChunkCoord c) {
+    if (ti >= teams.size()) return nullptr;
+    const auto& cs = teams[ti].chunks;
+    auto it = std::lower_bound(cs.begin(), cs.end(), c,
+                               [](const ChunkVisibility& a, const world::ChunkCoord& b) { return a.coord < b; });
+    return it != cs.end() && it->coord == c ? &*it : nullptr;
+}
+} // namespace
+
+std::shared_ptr<const LightFrame> publish_light_frame(LightCache& cache, const LightFrameInputs& in, uint64_t step,
+                                                      const LightFrame* prev) {
     auto f = std::make_shared<LightFrame>();
     f->step = step;
+    const std::span<const world::ChunkCoord> chunks = in.chunks;
     std::vector<world::ChunkCoord> coords(chunks.begin(), chunks.end());
     std::sort(coords.begin(), coords.end());
     coords.erase(std::unique(coords.begin(), coords.end()), coords.end());
@@ -267,7 +307,56 @@ std::shared_ptr<const LightFrame> publish_light_frame(LightCache& cache, std::sp
                                        [](const ChunkLightMap& a, const world::ChunkCoord& b) { return a.coord < b; });
             if (it != prev->chunks.end() && it->coord == m.coord) old = &*it;
         }
-        if (!old || old->samples != m.samples) f->dirty_chunks.push_back(m.coord);
+        if (!old || old->samples != m.samples) {
+            f->dirty_chunks.push_back(m.coord);
+            f->dirty_rects.push_back(dirty_rect_of(m, old));
+        }
+    }
+
+    // Tracked chunks (samples or blocked) against the previous frame. A chunk both ready and blocked counts as ready.
+    {
+        std::vector<world::ChunkCoord> blocked = sorted_unique(in.blocked), b2;
+        std::set_difference(blocked.begin(), blocked.end(), coords.begin(), coords.end(), std::back_inserter(b2));
+        f->blocked_chunks = std::move(b2);
+    }
+    std::vector<world::ChunkCoord> now, before;
+    std::set_union(coords.begin(), coords.end(), f->blocked_chunks.begin(), f->blocked_chunks.end(), std::back_inserter(now));
+    if (prev) {
+        std::vector<world::ChunkCoord> pc;
+        for (const auto& m : prev->chunks) pc.push_back(m.coord);
+        std::set_union(pc.begin(), pc.end(), prev->blocked_chunks.begin(), prev->blocked_chunks.end(),
+                       std::back_inserter(before));
+    }
+    std::set_difference(now.begin(), now.end(), before.begin(), before.end(), std::back_inserter(f->added_chunks));
+    std::set_difference(before.begin(), before.end(), now.begin(), now.end(), std::back_inserter(f->removed_chunks));
+
+    // Visibility: the state's masks restricted to this frame's chunks, and the chunks whose masks changed.
+    if (in.visibility) {
+        for (const auto& tv : in.visibility->teams()) {
+            TeamVisibility out;
+            out.team = tv.team;
+            for (const auto& cv : tv.chunks)
+                if (std::binary_search(coords.begin(), coords.end(), cv.coord)) out.chunks.push_back(cv);
+            f->visibility.push_back(std::move(out));
+        }
+    }
+    {
+        const std::vector<TeamVisibility> no_teams;
+        const auto& pv = prev ? prev->visibility : no_teams;
+        for (const auto& c : coords) {
+            bool changed = false;
+            std::size_t i = 0, j = 0;   // merge the two team lists (both ascending)
+            while (!changed && (i < f->visibility.size() || j < pv.size())) {
+                const ChunkVisibility *a = nullptr, *b = nullptr;
+                if (j == pv.size() || (i < f->visibility.size() && f->visibility[i].team < pv[j].team)) a = find_vis(f->visibility, i++, c);
+                else if (i == f->visibility.size() || pv[j].team < f->visibility[i].team) b = find_vis(pv, j++, c);
+                else { a = find_vis(f->visibility, i++, c); b = find_vis(pv, j++, c); }
+                const ChunkVisibility empty{c, {}, {}};
+                changed = !((a ? *a : empty).seen_now == (b ? *b : empty).seen_now &&
+                            (a ? *a : empty).explored == (b ? *b : empty).explored);
+            }
+            if (changed) f->dirty_vis_chunks.push_back(c);
+        }
     }
     auto same = [](const LightSource& a, const LightSource& b) {
         return a.tile == b.tile && a.bright_ft == b.bright_ft && a.dim_ft == b.dim_ft && a.flags == b.flags &&

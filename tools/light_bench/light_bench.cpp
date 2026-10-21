@@ -12,6 +12,7 @@
 
 #include "sim/grid.hpp"
 #include "sim/light.hpp"
+#include "sim/visibility.hpp"
 #include "world/chunk.hpp"
 #include "world/chunk_codec.hpp"
 
@@ -39,7 +40,7 @@ std::vector<world::Chunk> window(bool walls) {
     return cs;
 }
 
-struct Result { double median_ms, max_ms; long long pairs; double incr_median_ms; };
+struct Result { double median_ms, max_ms; long long pairs; double incr_median_ms, vis_median_ms, vis_warm_ms, vis_moved_ms, frame_median_ms; };
 
 Result run(const Grid& g, int sources, uint16_t bright, uint16_t dim, int reps) {
     LightWorld w;
@@ -90,7 +91,52 @@ Result run(const Grid& g, int sources, uint16_t bright, uint16_t dim, int reps) 
         if (sink == 0xFFFFFFFFu) std::puts("");
     }
     std::sort(inc.begin(), inc.end());
-    return {ms[ms.size() / 2], ms.back(), pairs, inc[inc.size() / 2]};
+    // Phase 2 fog of war: 8 viewers (2 teams; 4 normal sight, 4 darkvision 60 ft) over the 9 chunks, on a warm cache, then
+    // the frame publication (samples, dirty rects, added / removed, visibility) against an identical previous frame.
+    std::vector<Viewer> viewers;
+    for (int i = 0; i < 8; ++i) {
+        Viewer v;
+        v.id = uint32_t(i + 1); v.team = TeamId(i % 2);
+        v.tile = Vec2i{-N + 7 + (i * 41) % (3 * N - 14), -N + 9 + (i * 29) % (3 * N - 18)};
+        if (i >= 4) v.senses.darkvision_ft = 60;
+        viewers.push_back(v);
+    }
+    std::vector<world::ChunkCoord> coords;
+    for (int cy = -1; cy <= 1; ++cy)
+        for (int cx = -1; cx <= 1; ++cx) coords.push_back({cx, cy, 0});
+    std::vector<double> vis_ms, warm_ms, moved_ms, frame_ms;
+    for (int r = 0; r < reps; ++r) {
+        LightCache cache(w);
+        for (int y = -N; y < 2 * N; ++y)
+            for (int x = -N; x < 2 * N; ++x) (void)cache.at({x, y});
+        VisibilityState vis;
+        const auto t0 = std::chrono::steady_clock::now();
+        vis.begin_step(cache, viewers, coords);
+        const auto t1 = std::chrono::steady_clock::now();
+        vis.begin_step(cache, viewers, coords);   // next step, nobody moved: line of sight from the memo
+        const auto tw = std::chrono::steady_clock::now();
+        std::vector<Viewer> moved_v = viewers;
+        moved_v[0].tile.x += 1;                    // one viewer stepped
+        vis.begin_step(cache, moved_v, coords);
+        const auto tm = std::chrono::steady_clock::now();
+        warm_ms.push_back(std::chrono::duration<double, std::milli>(tw - t1).count());
+        moved_ms.push_back(std::chrono::duration<double, std::milli>(tm - tw).count());
+        LightFrameInputs in;
+        in.chunks = coords;
+        in.visibility = &vis;
+        auto prev = publish_light_frame(cache, in, 1, nullptr);
+        const auto t2 = std::chrono::steady_clock::now();
+        auto next = publish_light_frame(cache, in, 2, prev.get());
+        const auto t3 = std::chrono::steady_clock::now();
+        vis_ms.push_back(std::chrono::duration<double, std::milli>(t1 - t0).count());
+        frame_ms.push_back(std::chrono::duration<double, std::milli>(t3 - t2).count());
+        if (next->dirty_chunks.size() == 0xFFFFu) std::puts("");
+    }
+    std::sort(vis_ms.begin(), vis_ms.end());
+    std::sort(frame_ms.begin(), frame_ms.end());
+    std::sort(warm_ms.begin(), warm_ms.end());
+    std::sort(moved_ms.begin(), moved_ms.end());
+    return {ms[ms.size() / 2], ms.back(), pairs, inc[inc.size() / 2], vis_ms[vis_ms.size() / 2], warm_ms[warm_ms.size() / 2], moved_ms[moved_ms.size() / 2], frame_ms[frame_ms.size() / 2]};
 }
 } // namespace
 
@@ -120,6 +166,8 @@ int main(int argc, char** argv) {
         std::printf("  %-40s full median %8.3f ms (max %8.3f)  one-source-moved incremental %7.3f ms  pairs %lld (<= %lld traces)%s\n",
                     c.name, r.median_ms, r.max_ms, r.incr_median_ms, r.pairs, r.pairs * 16,
                     c.budgeted && r.median_ms > 2.0 ? "  FULL OVER BUDGET" : "");
+        std::printf("  %-40s visibility (8 viewers, 2 teams) cold %7.3f ms  warm %7.3f ms  one viewer moved %7.3f ms  frame publish %7.3f ms  (report only)\n",
+                    "", r.vis_median_ms, r.vis_warm_ms, r.vis_moved_ms, r.frame_median_ms);
         if (c.budgeted && r.incr_median_ms > 2.0) over = true;   // the per-step path (full rebuilds only on chunk / clock events)
     }
     return enforce && over ? 1 : 0;
