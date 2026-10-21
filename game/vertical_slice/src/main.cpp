@@ -1,6 +1,7 @@
 // Vertical slice viewer: sample.vertical_slice chunk via world, goblin vs fighter via sim,
 // drawn with iso2d on SDL_GPU. The view only reads ViewModel snapshots.
 //   vertical_slice [--config FILE] [--pack-root DIR]... [--pack ID]... [--seed N] [--static] [--steps K] [--frames N] [--zoom Z] [--debug] [--no-torches]
+//                  [--fog-team T] [--no-fog]
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -47,6 +48,8 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--static")) opt.with_sim = false;
         else if (!std::strcmp(argv[i], "--debug")) debug = true;
         else if (!std::strcmp(argv[i], "--no-torches")) opt.pc_torches = false;
+        else if (arg("--fog-team")) opt.fog_team = uint8_t(std::atoi(argv[++i]));   // default: player team
+        else if (!std::strcmp(argv[i], "--no-fog")) opt.fog = false;
     }
 
     // Defaults, then the config file, then the command line (last wins per field).

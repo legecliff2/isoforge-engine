@@ -38,6 +38,10 @@ public:
         // Extra carried lights (scenario / tests), merged with the pc_torches producer. Same path as the
         // torches: sim::AttachedLight -> sim::LightFrame -> ViewModel::light.sources -> glows.
         std::vector<CarriedLight> carried_lights{};
+        // Fog of war (LIGHTING.md §10): show this team's sim visibility masks. Unset = the player
+        // team (the team of the first character combatant). fog = false shows everything.
+        bool        fog = true;
+        std::optional<uint8_t> fog_team = std::nullopt;
     };
     // Config-file shape {"pack_roots": [...], "packs": [...]} (both optional) -> o. False + *error
     // on malformed input.

@@ -121,17 +121,6 @@ constexpr float kGlowMaxScale = 1.5f;   // glow sprite size cap, in tiles
 
 int floor_mod32(int v) { return ((v % 32) + 32) % 32; }
 
-// Per-tile light tint + fog (Visible when there is no LightFrame).
-Color tile_light(const LightView& L, Vec2i t, iso2d::Fog* fog_out = nullptr) {
-    if (!L.present) { if (fog_out) *fog_out = iso2d::Fog::Visible; return {1, 1, 1, 1}; }
-    const LightChunkView* c = L.chunk_of_tile(t);
-    if (!c) { if (fog_out) *fog_out = iso2d::Fog::Unexplored; return iso2d::light_tint(0, iso2d::Fog::Unexplored); }
-    const int lx = floor_mod32(t.x), ly = floor_mod32(t.y);
-    const iso2d::Fog f = iso2d::fog_of(c->seen(lx, ly), c->known(lx, ly));
-    if (fog_out) *fog_out = f;
-    return iso2d::light_tint(c->samples[size_t(ly * 32 + lx)], f);
-}
-
 Color tint_for(const ActorView& a) {
     Color c = a.is_pc ? Color::rgba8(90, 150, 255) : Color::rgba8(110, 200, 80);
     if (a.dead) c = Color::rgba8(90, 90, 90, 200);
@@ -181,32 +170,41 @@ struct SliceView::Textures {
 };
 
 SliceView::SliceView(IRenderDevice& dev)
-    : world_(dev, 8192), ui_(dev, 8192), lights_(dev), tex_(std::make_unique<Textures>(dev)) {}
+    : world_(dev, 8192), ui_(dev, 8192), lights_(dev), fogs_(dev), tex_(std::make_unique<Textures>(dev)) {}
 
-// Mirrors the LightFrame into per-chunk R8 light maps. The resident set is reconciled against the
-// snapshot's chunk list (robust to skipped frames); the upload per dirty chunk is shrunk to the
-// bounding box of texels that really changed (the sim's dirty set is per chunk).
+// Mirrors the LightFrame into per-chunk R8 light and fog maps. The tracked set (sampled + blocked
+// chunks) is reconciled against the snapshot (robust to skipped frames). Blocked chunks are kept
+// but never updated: they hold last frame's light and fog. Light uploads are shrunk to the texels
+// that really changed; fog maps refresh on dirty_vis_chunks, new chunks, gaps or a team / on-off change.
 void SliceView::sync_lights(const LightView& L) {
-    if (!L.present || L.frame == light_frame_) return;
+    const int fog_key = L.fog ? int(L.fog_team) : 256;
+    if (!L.present || (L.frame == light_frame_ && fog_key == fog_key_)) return;
     const bool gap = light_frame_ != 0 && L.frame != light_frame_ + 1;   // missed frames: re-check every chunk
+    const bool refog = gap || fog_key != fog_key_;
     light_frame_ = L.frame;
-    std::vector<iso2d::LightChunkKey> add, rem;
-    auto in_frame = [&](const iso2d::LightChunkKey& k) {
-        for (const auto& c : L.chunks) if (c.cx == k.x && c.cy == k.y && c.level == k.level) return true;
+    fog_key_ = fog_key;
+    auto same = [](const auto& a, const iso2d::LightChunkKey& k) { return a.cx == k.x && a.cy == k.y && a.level == k.level; };
+    auto listed = [&](const auto& v, const iso2d::LightChunkKey& k) {
+        for (const auto& c : v) if (same(c, k)) return true;
         return false;
     };
-    for (const auto& k : lights_.keys()) if (!in_frame(k)) rem.push_back(k);
+    std::vector<iso2d::LightChunkKey> add, rem;
+    for (const auto& k : lights_.keys()) if (!listed(L.chunks, k) && !listed(L.blocked, k)) rem.push_back(k);
     for (const auto& c : L.chunks)
         if (!lights_.texture({c.cx, c.cy, c.level}).valid()) add.push_back({c.cx, c.cy, c.level});
     lights_.on_stream_delta(add, rem);
+    fogs_.on_stream_delta(add, rem);
     for (const LightChunkView& c : L.chunks) {
         const iso2d::LightChunkKey k{c.cx, c.cy, c.level};
-        bool dirty = gap || std::find(add.begin(), add.end(), k) != add.end();
-        for (const LightDirtyView& d : L.dirty)
-            if (d.chunk.cx == c.cx && d.chunk.cy == c.cy && d.chunk.level == c.level) dirty = true;
+        const bool fresh = std::find(add.begin(), add.end(), k) != add.end();
+        if (fresh || refog || listed(L.vis_dirty, k)) {
+            if (c.has_fog) fogs_.update(k, c.seen_now, c.explored);
+            else { std::array<uint8_t, iso2d::kLightTiles> all; all.fill(iso2d::fog_texel::kSeen); fogs_.update(k, all); }
+        }
+        bool dirty = gap || fresh;
+        for (const LightDirtyView& d : L.dirty) if (same(d.chunk, k)) dirty = true;
         if (!dirty) continue;
         int x0 = 32, y0 = 32, x1 = -1, y1 = -1;
-        const bool fresh = std::find(add.begin(), add.end(), k) != add.end();
         for (int y = 0; y < 32; ++y)
             for (int x = 0; x < 32; ++x)
                 if (fresh || lights_.sample(k, {x, y}) != c.samples[size_t(y * 32 + x)]) {
@@ -215,6 +213,21 @@ void SliceView::sync_lights(const LightView& L) {
         const RectI r = x1 < 0 ? RectI{} : RectI{x0, y0, x1 - x0 + 1, y1 - y0 + 1};
         lights_.update(k, std::span<const uint8_t, iso2d::kLightTiles>(c.samples), r);
     }
+}
+
+// Per-tile light tint + fog (Visible when there is no LightFrame). Reads the retained maps, so a
+// blocked chunk shows what it showed last frame; an untracked tile is unseen.
+Color SliceView::tile_tint(const LightView& L, Vec2i t, iso2d::Fog* fog_out) const {
+    if (!L.present) { if (fog_out) *fog_out = iso2d::Fog::Visible; return {1, 1, 1, 1}; }
+    const int32_t cx = t.x >= 0 ? t.x / 32 : -((-t.x + 31) / 32), cy = t.y >= 0 ? t.y / 32 : -((-t.y + 31) / 32);
+    int16_t level = 0;
+    for (const auto& c : L.chunks) if (c.cx == cx && c.cy == cy) level = c.level;
+    for (const auto& c : L.blocked) if (c.cx == cx && c.cy == cy) level = c.level;
+    const iso2d::LightChunkKey k{cx, cy, level};
+    const Vec2i local{floor_mod32(t.x), floor_mod32(t.y)};
+    const iso2d::Fog f = fogs_.fog(k, local);
+    if (fog_out) *fog_out = f;
+    return iso2d::light_tint(lights_.sample(k, local), f);
 }
 
 SliceView::~SliceView() = default;
@@ -271,8 +284,8 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
     const LightView& L = vm.light;
     auto visible = [&](const ActorView& a) {
         iso2d::Fog f;
-        tile_light(L, a.tile, &f);
-        return f == iso2d::Fog::Visible || a.is_pc;   // never draw what the team can't see
+        tile_tint(L, a.tile, &f);
+        return f == iso2d::Fog::Visible || (L.fog && a.team == L.fog_team);   // never draw what the shown team can't see
     };
 
     // ---- world: tiles ----
@@ -282,17 +295,17 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         const uint32_t key = uint32_t(t.tile.y * 32 + t.tile.x);
         if (t.kind == TileKind::Wall || t.layer >= 2) {
             iso2d::Sprite s{tex_->wall, float(kTileW), float(kTileH + kWallH), kTileW / 2.f, float(kWallH) + lift};
-            s.tint = tile_light(L, t.tile);
+            s.tint = tile_tint(L, t.tile);
             world_.draw(s, iso, 1, key, 0);
         } else if (t.elevation > 0 && t.layer == 0) {
             // Raised ground: a short block so the step has visible sides.
             iso2d::Sprite s{tex_->raised_block, float(kTileW), float(kTileH + kElevPx), kTileW / 2.f, lift};
             s.h = float(kTileH) + lift;   // stretch the side faces for multi-step elevation
-            s.tint = tile_light(L, t.tile);
+            s.tint = tile_tint(L, t.tile);
             world_.draw(s, iso, 0, key, t.layer);
         } else {
             iso2d::Sprite s{tex_->ground(t.kind), float(kTileW), float(kTileH), kTileW / 2.f, lift};
-            s.tint = tile_light(L, t.tile);
+            s.tint = tile_tint(L, t.tile);
             world_.draw(s, iso, 0, key, t.layer);
         }
     }
@@ -305,6 +318,9 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         for (const ActorView& a : vm.actors) anchors.push_back({a.id, {float(a.tile.x), float(a.tile.y)}});
         iso2d::follow_anchors(glows, anchors);
         for (const iso2d::GlowSource& gs : glows) {
+            iso2d::Fog gf;
+            tile_tint(L, {int(std::floor(gs.tile.x)), int(std::floor(gs.tile.y))}, &gf);
+            if (gf != iso2d::Fog::Visible) continue;   // no glow where the shown team sees nothing now
             // Token-local halo: grows with the source radius but stays capped, so it never paints
             // over tiles the sim's light map leaves Dark (the light map carries the actual area).
             const float k = std::clamp(gs.radius_tiles / 4.f, 1.f, kGlowMaxScale);
@@ -323,9 +339,10 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         }
         // Pawn feet at the tile centre; drawn on the wall layer so walls in front occlude it.
         iso2d::Sprite p{tex_->pawn, float(kPawnW), float(kPawnH), kPawnW / 2.f, float(kPawnH) - kTileH / 2.f - 4.f};
-        p.tint = mul(tint_for(a), L.present ? iso2d::light_tint(
-                                       L.chunk_of_tile(a.tile) ? L.chunk_of_tile(a.tile)->samples[size_t(floor_mod32(a.tile.y) * 32 + floor_mod32(a.tile.x))] : 0,
-                                       iso2d::Fog::Visible) : Color{1, 1, 1, 1});
+        iso2d::Fog af;
+        const Color at = tile_tint(L, a.tile, &af);
+        // Own-team tokens in remembered/unseen tiles still draw, lit as Dark (presentation).
+        p.tint = mul(tint_for(a), af == iso2d::Fog::Visible ? at : iso2d::light_tint(0, iso2d::Fog::Visible));
         if (L.present) p.tint = mul(p.tint, {1.6f, 1.6f, 1.6f, 1.f});   // tokens stay readable in dim light (presentation)
         world_.draw(p, iso, 1, a.id, 1);
     }
