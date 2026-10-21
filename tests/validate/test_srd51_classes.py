@@ -70,7 +70,10 @@ AUTHORED = {
     "domain-spells-2": "spellcasting",
     "domain-spells-3": "spellcasting",
     "bonus-proficiency": "feature:bonus_proficiency",
-    "disciple-of-life": "feature:disciple_of_life",          # heal_bonus {flat 2, per_spell_level} (7.2zc, #222)
+    "disciple-of-life": "feature:disciple_of_life",
+    "channel-divinity-1-rest": "feature:channel_divinity",   # resources[] channel_divinity (1, short rest), spent by Turn Undead
+    "channel-divinity-turn-undead": "feature:turn_undead",   # feature text; actions[] save_effect control turned [undead] (7.2y)
+    "destroy-undead-cr-1-2-or-below": "feature:destroy_undead",   # destroy_undead_max_cr8 4 on turn_undead (CR 1/2)          # heal_bonus {flat 2, per_spell_level} (7.2zc, #222)
     "cleric-ability-score-improvement-1": "abilities",
     "spellcasting-wizard": "spellcasting",
     "arcane-tradition": "subclass",
@@ -104,9 +107,9 @@ AUTHORED = {
     "divine-health": "feature:divine_health",                # descriptive: diseases are not modelled
     "sacred-oath": "subclass",
     "oath-spells": "spellcasting",
-    "channel-divinity": "feature:channel_divinity",          # descriptive: no loaded effect spends the pool (SRD_CLASSES_DEFERRED)
-    "channel-divinity-sacred-weapon": "feature:sacred_weapon",      # descriptive: apply_modifier + usage pool is not loaded
-    "channel-divinity-turn-the-unholy": "feature:turn_the_unholy",  # descriptive: no character key reaches the 7.2v turned control
+    "channel-divinity": "feature:channel_divinity",          # resources[] channel_divinity (1, short rest), spent by Sacred Weapon / Turn the Unholy
+    "channel-divinity-sacred-weapon": "feature:sacred_weapon",      # apply_modifier + usage pool + scope weapon wielded (7.2y)
+    "channel-divinity-turn-the-unholy": "feature:turn_the_unholy",  # feature text; actions[] save_effect control turned [fiend, undead] (7.2y)
     "paladin-ability-score-improvement-1": "abilities",
     "paladin-extra-attack": "feature:extra_attack",
     "favored-enemy-1-type": "feature:favored_enemy",         # descriptive: tracking / recall checks and a language, no combat rule
@@ -173,7 +176,7 @@ AUTHORED = {
 }
 # Kept as a features[] entry with no effect: no combat rule, or a mechanic the engine lacks (docs/SRD_CLASSES_DEFERRED.md).
 DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_story_work", "uncanny_dodge"],
-               "paladin": ["divine_sense", "divine_health", "channel_divinity", "sacred_weapon", "turn_the_unholy"],
+               "paladin": ["divine_sense", "divine_health", "channel_divinity", "turn_the_unholy"],
                "ranger": ["favored_enemy", "natural_explorer", "primeval_awareness", "colossus_slayer"],
                "barbarian": ["rage", "unarmored_defense", "danger_sense", "fast_movement", "frenzy"],
                "bard": ["song_of_rest", "expertise", "bonus_proficiencies", "font_of_inspiration"],
@@ -183,10 +186,7 @@ DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_stor
                "warlock": ["eldritch_invocations", "armor_of_shadows", "pact_of_the_tome"]}
 # Not expressible today (docs/SRD_CLASSES_DEFERRED.md): mirror index -> the feature id it would get (must be absent).
 DEFERRED = {
-    "channel-divinity-1-rest": "channel_divinity",
-    "channel-divinity-turn-undead": "turn_undead",
     "channel-divinity-preserve-life": "preserve_life",
-    "destroy-undead-cr-1-2-or-below": "destroy_undead",
 }
 # Life domain spells and class cantrips the pack does not ship yet (listed in the deferred doc).
 # Warlock Pact of the Tome (3rd): three cantrips from any class list, known on top of cantrips_known.
@@ -292,7 +292,7 @@ class ClassTable(unittest.TestCase):
         for cls, level, d in docs():
             items = {i["id"].removeprefix("srd51.item."): i for i in (item(e["item"]) for e in d["equipment"] if isinstance(e, dict))}
             for a in d["actions"]:
-                if a["id"] == "unarmed_strike":   # no item: Martial Arts (test_monk)
+                if a["id"] == "unarmed_strike" or a.get("kind") == "save_effect":   # no item: Martial Arts (test_monk); Channel Divinity
                     continue
                 with self.subTest(cls=cls, level=level, action=a["id"]):
                     key = {"light_crossbow": "crossbow_light", "dagger_thrown": "dagger"}.get(a["id"], a["id"])
@@ -427,14 +427,29 @@ class ClassTable(unittest.TestCase):
     def test_paladin(self):
         smite = {"kind": "on_event", "on": "hit", "choice": "ask", "when": [{"kind": "weapon", "is": "melee"}],
                  "effects": [{"kind": "spend", "slot": "any"},
-                             {"kind": "extra_damage", "damage": [{"dice": "2d8", "type": "radiant"}],
+                             {"kind": "extra_damage", "damage": [{"dice": "2d8", "type": "radiant",
+                                                                  "bonus_vs": {"creature_types": ["undead", "fiend"], "dice": "1d8"}}],
                               "scale": {"per_slot_level": {"base_level": 1, "add_dice": "1d8"}}}]}
         for level in LEVELS:
             with self.subTest(level=level):
                 d = load("paladin", level)
                 f = features(d)
+                cd = [{"id": "channel_divinity", "name": "Channel Divinity", "max": 1, "recharge": "short_rest"}] if level >= 3 else []
                 self.assertEqual(d["resources"], [{"id": "lay_on_hands", "name": "Lay on Hands", "max": {"per_level": 5, "class": "paladin"},
-                                                   "recharge": "long_rest"}])
+                                                   "recharge": "long_rest"}] + cd)
+                pool = {"kind": "pool", "pool": "channel_divinity", "cost": 1}
+                dc = 8 + d["proficiency_bonus"] + mod(d["abilities"]["cha"])   # paladin spell save DC
+                tu = [a for a in d["actions"] if a["id"] == "turn_the_unholy"]
+                self.assertEqual(len(tu), int(level >= 3))
+                if level >= 3:
+                    self.assertEqual(f["sacred_weapon"]["effect"], {
+                        "kind": "apply_modifier", "cost": "action", "usage": pool, "scope": {"weapon": "wielded"},
+                        "modifier": {"stat": "attack_roll", "bonus": max(1, mod(d["abilities"]["cha"])), "applies_to": "self",
+                                     "duration": {"kind": "rounds", "n": 10}}})
+                    self.assertEqual(tu[0], {"id": "turn_the_unholy", "name": "Channel Divinity: Turn the Unholy", "kind": "save_effect",
+                                             "save": {"ability": "wis", "dc": dc}, "range_ft": 30, "control": "turned",
+                                             "target_creature_types": ["fiend", "undead"], "duration": {"kind": "rounds", "n": 10},
+                                             "usage": pool})
                 self.assertEqual(f["lay_on_hands"]["effect"], {"kind": "heal_pool", "cost": "action", "pool": "lay_on_hands"})
                 self.assertEqual("divine_smite" in f, level >= 2)
                 self.assertEqual("fighting_style_dueling" in f, level >= 2)
@@ -446,6 +461,30 @@ class ClassTable(unittest.TestCase):
                 if level >= 5:
                     self.assertEqual(f["extra_attack"]["effect"], {"kind": "extra_attack", "attacks_per_action": 2})
                 for fid in DESCRIPTIVE["paladin"]:
+                    if fid in f:
+                        self.assertNotIn("effect", f[fid], fid)
+
+    def test_cleric_channel_divinity(self):
+        # 7.2y (#200): Turn Undead from cleric 2 (Wis save vs the cleric spell save DC), Destroy Undead (CR 1/2) at 5
+        for level in LEVELS:
+            with self.subTest(level=level):
+                d = load("cleric", level)
+                f = features(d)
+                tu = [a for a in d["actions"] if a["id"] == "turn_undead"]
+                self.assertEqual(("channel_divinity" in f, "turn_undead" in f, len(tu)), (level >= 2, level >= 2, int(level >= 2)))
+                self.assertEqual("destroy_undead" in f, level >= 5)
+                if level < 2:
+                    self.assertNotIn("resources", d)
+                    continue
+                self.assertEqual(d["resources"], [{"id": "channel_divinity", "name": "Channel Divinity", "max": 1, "recharge": "short_rest"}])
+                want = {"id": "turn_undead", "name": "Channel Divinity: Turn Undead", "kind": "save_effect",
+                        "save": {"ability": "wis", "dc": 8 + d["proficiency_bonus"] + mod(d["abilities"]["wis"])}, "range_ft": 30,
+                        "control": "turned", "target_creature_types": ["undead"], "duration": {"kind": "rounds", "n": 10},
+                        "usage": {"kind": "pool", "pool": "channel_divinity", "cost": 1}}
+                if level >= 5:
+                    want["destroy_undead_max_cr8"] = 4
+                self.assertEqual(tu[0], want)
+                for fid in ("channel_divinity", "turn_undead", "destroy_undead"):
                     if fid in f:
                         self.assertNotIn("effect", f[fid], fid)
 

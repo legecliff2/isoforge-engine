@@ -1790,6 +1790,11 @@ uint64_t Combat::log_hash() const {
         if (q.has_guess) { h.byte(0xC6); h.i32(q.guess_x); h.i32(q.guess_y); }   // vision 7.2x: guessed tile of a hidden target
         if (q.object_use != 0) { h.byte(0xCB); h.byte(q.object_use); h.i16(q.dc); }   // 7.2y UseObject (Fast Hands): folded only when set
         if (q.mark_ability != 0 || q.move_mark) { h.byte(0xCC); h.byte(q.mark_ability); h.byte(q.move_mark ? 1 : 0); }   // 7.2zc mark: only when set
+        if (q.ward_alternate != 0) { h.byte(0xCD); h.u32(q.ward_alternate); }   // 7.2zd Sanctuary ward resolution: only when set
+        if (!q.heal_split.empty()) {   // 7.2zd Preserve Life split: only when set
+            h.byte(0xCE); h.u32(uint32_t(q.heal_split.size()));
+            for (const auto& x : q.heal_split) { h.u32(x.target); h.u32(uint32_t(uint16_t(x.amount))); }
+        }
         if (q.avert_gaze) { h.byte(0xBB); h.byte(1); }   // Petrifying Gaze averting the eyes: folded only when set (gaze_seen is derived, not folded)
         // Small leftovers (rules #111): bit0 haste_action, bit1 reckless, bit2 aggressive; folded only when some bit is set.
         if (const uint8_t lo = uint8_t((q.haste_action ? 1 : 0) | (q.reckless ? 2 : 0) | (q.aggressive ? 4 : 0)); lo != 0) {

@@ -356,6 +356,7 @@ def check_spell(doc, errs, ctx):
     lvl, effs, ct = doc["level"], doc["effects"], doc["casting_time"]
     errs += c4.check_spell_modifiers(doc)
     errs += c4.check_spell_gaps(doc)   # 7.2zc
+    errs += c4.check_spell_batch2(doc)   # 7.2zd
     eff = effs[0]   # the first effect carries targeting, scaling and the reaction/duration rules
     if len(effs) > 1 and any(e["kind"] in REACTION_EFFECT_TRIGGER for e in effs):
         errs.append("effects: ac_bonus and counter reactions cannot be combined with other effects")
@@ -393,7 +394,7 @@ def check_spell(doc, errs, ctx):
         errs.append("casting_time.trigger.or_targeted_by is only for being_hit")
     if (kind == "ac_bonus") != (doc["duration"]["kind"] == "until_start_of_caster_turn"):
         errs.append("ac_bonus effects last until_start_of_caster_turn (and only they use it)")
-    if "targets" in doc and kind not in ("save", "heal", "apply_condition", "polymorph"):   # polymorph: its own wording
+    if "targets" in doc and kind not in ("save", "heal", "apply_condition", "polymorph", "max_hp_bonus"):   # polymorph: its own wording; 7.2zd Aid
         errs.append(f"targets not allowed on a {kind} effect (one target, per dart/beam, or self)")
     if kind in TIMED_BY_DURATION and doc["duration"]["kind"] not in ("rounds", "minutes", "hours"):
         errs.append(f"{kind} needs a rounds, minutes or hours duration")

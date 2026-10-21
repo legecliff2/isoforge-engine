@@ -65,6 +65,9 @@ struct ReactionDecision {
 // position counts (Q10). Filled by sim inside Combat::submit, like the Move membership lists.
 struct ZoneChange { CombatantId creature = 0; uint32_t zone_id = 0; bool entered = false; };
 
+// 7.2zd Preserve Life: one entry of ActionRequest::heal_split.
+struct HealShare { CombatantId target = 0; int16_t amount = 0; };
+
 struct ActionRequest {
     CombatantId actor; ActionKind kind; CombatantId target = 0;
     uint8_t attack_index = 0; int16_t move_ft = 0;
@@ -218,6 +221,12 @@ struct ActionRequest {
     // slot, no SpellCast window, only once the marked creature has dropped to 0 hit points.
     uint8_t mark_ability = 0;
     bool move_mark = false;
+    // appended (7.2zd Sanctuary; log_hash 0xCD when non-zero): Attack / CastSpell: the creature to target instead when the ward
+    // save against a warded target fails (one of ward_alternate_targets; 0 = lose the attack, or the spell on that target).
+    CombatantId ward_alternate = 0;
+    // appended (7.2zd Preserve Life; log_hash 0xCE when non-empty): UseFeature of a split heal_pool feature: how the pool is
+    // divided (check_heal_split validates it before anything changes).
+    std::vector<HealShare> heal_split{};
 };
 
 enum class EventKind : uint8_t {
@@ -437,6 +446,10 @@ struct ActiveSpellEffect {
     // appended (7.2zc Invisibility): SpellEffect::ends_on of the ApplyCondition that made it (kEndsOn* bits); derived from the
     // SpellDef: not hashed.
     uint8_t ends_on = 0;
+    // appended (7.2zd): ConditionImmunityFrom masks (Protection from Evil and Good) and the MaxHpBonus applied (Aid; undone
+    // when the effect ends). Derived from the SpellDef and slot level: not hashed (hp_max itself is).
+    uint32_t immune_conditions = 0, immune_from_types = 0;
+    int16_t max_hp_bonus = 0;
 };
 
 // 7.2w: a creature leaving its container in the last step (EncounterState::contain_exits; cleared when each step starts).
@@ -496,6 +509,13 @@ struct FeatureSpec {
     uint8_t form = 0;
     uint16_t form_rounds = 0;
     uint8_t form_choices = 0;
+    // appended (7.2zd Preserve Life: heal_pool with per_class_level): a split heal. split_pool = the hit points to divide
+    // (per_class_level x class level, from sim); split_range_ft from the user; split_cap_half: nobody above half its hit point
+    // maximum (one already at or above it gets nothing); split_excluded = bitmask over CreatureType that cannot be healed. The
+    // cost is the usage pool (`pool` / `pool_cost`: Channel Divinity); ActionRequest::heal_split says who gets what.
+    uint16_t split_pool = 0, split_range_ft = 0;
+    bool split_cap_half = false;
+    uint32_t split_excluded = 0;
 };
 
 // v8 Moved.c flag bits (the one definition; sim's kMoved* alias these).
@@ -974,6 +994,22 @@ bool has_timed_effects(const EncounterState&);
 bool apply_modifier(EncounterState&, CombatantId caster, CombatantId target, const ModifierSpec& spec, std::vector<Event>& ev);
 // ModifierApplied's c for `spec` (7.2zc: shared with the mark move's re-announcement).
 int32_t modifier_magnitude(const ModifierSpec& spec);
+
+// 7.2zd Sanctuary: the creatures `actor` may target instead of `warded` after failing the ward save, sorted by id. spell_id != 0:
+// for that spell (alive, not the actor, the warded creature or another warded one, a valid target type, spell_target_ok, no
+// total cover); 0: for attack `attack_index` (alive, not warded, no total cover, not its charmer, not hidden, within the
+// attack's reach / long range when EncounterHooks::targets_within is set).
+std::vector<CombatantId> ward_alternate_targets(const EncounterState& s, CombatantId actor, CombatantId warded, uint32_t spell_id,
+                                                uint8_t attack_index);
+
+// 7.2zd Preserve Life: validates a split against the user's FeatureSpec. index = the first failing entry (-1 = valid);
+// reason: OverCap (more than up to half its maximum, or any healing for one already at or above half), OutOfRange,
+// ExcludedType, OverPool (the running total passes split_pool), BadTarget (unknown, dead, duplicate, or amount < 1).
+enum class HealSplitReason : uint8_t { None, OverCap, OutOfRange, ExcludedType, OverPool, BadTarget };
+struct HealSplitCheck { int index = -1; HealSplitReason reason = HealSplitReason::None; };
+HealSplitCheck check_heal_split(const EncounterState& s, const Combatant& user, const FeatureSpec& spec,
+                                const std::vector<HealShare>& split);
+const char* heal_split_reason_text(HealSplitReason r);
 // Pure queries over the active modifiers of `id` (ability < 0: no ability scope check).
 int modifier_flat(const EncounterState&, CombatantId id, ModStat, int ability = -1);   // sum of flat bonuses
 int modified_ac_bonus(const EncounterState& s, CombatantId id);
