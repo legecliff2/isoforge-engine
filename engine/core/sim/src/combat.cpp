@@ -1812,6 +1812,13 @@ uint64_t Combat::log_hash() const {
             h.byte(q.damage_choice);
             h.byte(q.condition_choice);
         }
+        // 0xCF (7.2ze Blindness/Deafness, `condition: chosen`): the condition the caster picked, only for such spells.
+        if (q.kind == rules5e::ActionKind::CastSpell && q.condition_choice != 0)
+            if (const rules5e::SpellDef* cd = spell_def(q.spell_id);
+                cd && std::size_t(q.condition_choice) <= cd->condition_choices.size()) {
+                h.byte(0xCF);
+                h.byte(uint8_t(cd->condition_choices[std::size_t(q.condition_choice - 1)]));
+            }
         // R-G9: 0xB4 forced_feet / teleport_feet, 0xB2 the teleport destination; each folded only when set.
         if (q.forced_feet != 0 || q.teleport_feet != 0) { h.byte(0xB4); h.u16(q.forced_feet); h.u16(q.teleport_feet); }
         if (q.has_teleport_dest) { h.byte(0xB2); h.i32(q.teleport_x); h.i32(q.teleport_y); }
