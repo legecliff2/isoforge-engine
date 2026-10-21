@@ -318,17 +318,13 @@
               "description": "Cost in copper pieces (integers only)."
             },
             "consumed": {
-              "type": "boolean"
+              "type": "boolean",
+              "description": "The material is used up by the cast. Without cost_cp nothing is checked or removed (e.g. Protection from Evil and Good's holy water); with cost_cp the sim removes the providing equipment entry (CONTENT_CONVENTIONS section 7)."
             },
             "item": {
               "$ref": "../common/v1.schema.json#/$defs/content_id",
               "description": "Priced material: the equipment[] entry id that provides it (e.g. 'srd51.item.diamond'; docs/CONTENT_CONVENTIONS.md section 7). Matched exactly against the caster's equipment ids together with value_gp * 100 >= cost_cp; no item@1 document is required. Ignored without cost_cp. Contract only: no loader reads it yet."
             }
-          },
-          "dependentRequired": {
-            "consumed": [
-              "cost_cp"
-            ]
           }
         }
       }
