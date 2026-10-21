@@ -2440,6 +2440,19 @@ cast (spellcasting spells / known) is a warning. `spell_mod_effect` is in the na
 `v4_attack_from_feature_*`, `v4_pick_one_needs_ask`, `v4_forced_move_*`, `v4_applies_to_attack_*`, `v4_spell_mod_*`. Union / lint
 rows: `MonkWarlockHooks72zb`; `spell_mod_effect` in the common@2 def list.
 
+### 7.2zc Spell and feature gaps, batch 1 (rules side)
+
+Additive (T&C batch 1 shapes). No golden changes, integer math only.
+
+- **Disciple of Life** (common@2 feature effect, static): `{kind: "heal_bonus", flat: 0..10 (default 0), per_spell_level: bool (required)}`. Refused on monsters (`heal_bonus: not valid on monsters`). Once per creature healed by a spell cast with a slot of level 1+, the caster adds `flat` (+ the slot level when `per_spell_level`). Innate / slot-free casts, riders, pools and non-spell heals do not count. Two declarations add their flats; `per_spell_level` is ORed. Inert at character@<4.
+- **Invisibility** (spell@1 `apply_condition.ends_on: [attack, cast]`, closed unique enum, `minItems` 1). The effect ends after any attack the subject makes resolves, or after any spell it casts (including Shield / Counterspell reactions) is cast; the spell's own cast does not end what it created. Only that apply_condition ends; when nothing of the spell is left (effects, modifiers, zones) its concentration ends too. Grapple / shove are not attacks here. Needs concentration or a rounds / minutes / hours duration.
+- **Generic mark** (Hunter's Mark / Hex): apply_modifier `scope: {target: "marked"}` (closed scope object). The spell's single cast target (not the caster) is the mark, stored on `ActiveModifier::mark` and folded into `modifiers_digest` (local sub-tag 0x5A) when non-zero. Marked rows: `stat: damage` (needs `applies_to: self`; applies on the caster's hits on the mark, spell attacks included, so Hunter's Mark adds `when: weapon_attack`) and `stat: ability_check` (`applies_to: self | target`). `modifier.ability: "chosen"` (ability_check only, marked scope only) takes `ActionRequest::mark_ability` (1..6) at cast.
+- **move_mark** (spell@1 top level, `{action: "bonus_action"}`): concentration spells with a marked apply_modifier only. `ActionRequest::move_mark` on a CastSpell of the same spell: allowed only when the current mark is at 0 HP or dead; retargets every marked row (and `target` rows that followed the mark) with no slot and no SpellCast window; emits ModifierExpired (reason 10) then ModifierApplied.
+- **Hash**: `log_hash` 0xCC = `mark_ability` byte, `move_mark` byte, when either is set. No new EventKind.
+- Features refuse `scope target marked` (`scope: target marked is for spells only`) and `ability: chosen`.
+- Validator messages equal the loader's (no suffixes); negatives in `tests/validate/cases/{ends_on_*,mark_*,move_mark_*}` and `effect_cases/v4_heal_bonus_*`, `v4_mark_*_on_feature`.
+- Hand-off (EC): the sim AI does not yet choose `mark_ability` or offer `move_mark`.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
