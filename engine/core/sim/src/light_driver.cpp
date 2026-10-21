@@ -19,7 +19,9 @@ std::vector<Viewer> combat_viewers(const Combat& combat) {
         Viewer v;
         v.id = cb.id;
         v.team = cb.team;
-        v.tile = carrier_centre(combat.pos(cb.id), combat.footprint_size(cb.id));
+        v.anchor = combat.pos(cb.id);
+        v.footprint = combat.footprint_size(cb.id);
+        v.tile = carrier_centre(v.anchor, v.footprint);
         v.senses = senses_of(cb);
         v.blinded = cb.has(rules5e::Condition::Blinded);
         out.push_back(v);
