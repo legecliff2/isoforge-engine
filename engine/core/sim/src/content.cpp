@@ -1350,6 +1350,22 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         // 7.2w: the "formless" tag (SRD: the Net has no effect on it)
         if (std::find(c.tags.begin(), c.tags.end(), rules5e::spell_id_of("formless")) != c.tags.end()) c.formless = true;
     }
+    // R-G13 phase 2: senses (static content, not folded into any hash; 0 = none). The schema's range_ft is a non-negative
+    // multiple of 5; values above 65535 are refused.
+    if (auto se = doc.find("senses"); se != doc.end() && se->is_object()) {
+        struct SenseKey { const char* key; uint16_t rules5e::Combatant::*field; };
+        static const SenseKey keys[] = {{"darkvision", &rules5e::Combatant::darkvision_ft},
+                                        {"blindsight", &rules5e::Combatant::blindsight_ft},
+                                        {"tremorsense", &rules5e::Combatant::tremorsense_ft},
+                                        {"truesight", &rules5e::Combatant::truesight_ft}};
+        for (const SenseKey& k : keys) {
+            auto it = se->find(k.key);
+            if (it == se->end()) continue;
+            if (!it->is_number_integer() || it->get<int64_t>() < 0 || it->get<int64_t>() > 65535)
+                return a.id + ": bad senses." + k.key;
+            c.*k.field = static_cast<uint16_t>(it->get<int64_t>());
+        }
+    }
     // 0 = parse the document's own $schema tag (never "latest"); a missing, unparsable or other-type tag means no refusal.
     uint32_t declared = declared_version;
     if (declared == 0)

@@ -167,7 +167,9 @@ TEST_CASE("visibility: masks equal the brute-force reference and rules5e::derive
                             ref = ref || tile_visible(w, cache, v, t);
                             rules = rules || rules_can_see(w, v, t);
                         }
-                    REQUIRE_MESSAGE(ref == rules, "team " << int(team) << " t = (" << t.x << ", " << t.y << ")");
+                    bool own = false;
+                    for (const auto& v : vs) own = own || (v.team == team && v.on_footprint(t));
+                    if (!own) REQUIRE_MESSAGE(ref == rules, "team " << int(team) << " t = (" << t.x << ", " << t.y << ")");
                     REQUIRE_MESSAGE(bit(vis.teams(), team, c, x, y) == ref, "team " << int(team) << " t = (" << t.x << ", " << t.y << ")");
                     REQUIRE(bit(vis.teams(), team, c, x, y, true) == ref);   // first step: explored == seen_now
                     (ref ? seen : unseen) += 1;
@@ -179,7 +181,12 @@ TEST_CASE("visibility: masks equal the brute-force reference and rules5e::derive
     const Viewer blind[] = {vs[5]};
     only_blind.begin_step(cache, blind, chunks);
     REQUIRE(only_blind.teams().size() == 1);
-    CHECK(only_blind.teams()[0].chunks.empty());
+    REQUIRE(only_blind.teams()[0].chunks.size() == 1);   // the blinded viewer sees only its own tile (R&P #238)
+    int own_bits = 0;
+    for (int y = 0; y < 32; ++y)
+        for (int x = 0; x < 32; ++x) own_bits += only_blind.teams()[0].chunks[0].seen_now.test(x, y) ? 1 : 0;
+    CHECK(own_bits == 1);
+    CHECK(only_blind.teams()[0].chunks[0].seen_now.test(4, 4));
     CHECK(bit(vis.teams(), 1, {0, 0, 0}, 30, 30));
 }
 
@@ -416,4 +423,95 @@ TEST_CASE("visibility: memoised line of sight across steps equals a fresh state 
     walled.normalise();
     step(walled, {viewer(1, 0, {3, 5}), viewer(2, 0, {25, 25})});
     step(w, {viewer(1, 0, {3, 5}), viewer(2, 0, {25, 25})});        // the zone ends
+}
+
+TEST_CASE("visibility: a viewer's own footprint is seen in darkness; neighbours stay rules-driven (R&P #238)") {
+    LightWorld w;   // no grid, no light: everything Dark
+    w.normalise();
+    LightCache cache(w);
+    Viewer v = viewer(1, 0, {6, 6});
+    v.anchor = {5, 5};
+    v.footprint = 2;   // Large: tiles (5..6, 5..6)
+    v.tile = carrier_centre(v.anchor, v.footprint);
+    const world::ChunkCoord c0[] = {{0, 0, 0}};
+    VisibilityState vis;
+    const Viewer vs[] = {v};
+    vis.begin_step(cache, vs, c0);
+    REQUIRE(vis.teams().size() == 1);
+    REQUIRE(vis.teams()[0].chunks.size() == 1);
+    const TileMask& m = vis.teams()[0].chunks[0].seen_now;
+    for (int y = 0; y < 32; ++y)
+        for (int x = 0; x < 32; ++x) {
+            const bool own = x >= 5 && x <= 6 && y >= 5 && y <= 6;
+            CHECK_MESSAGE(m.test(x, y) == own, "(" << x << ", " << y << ")");
+            CHECK(tile_visible(w, cache, v, {x, y}) == own);
+        }
+}
+
+TEST_CASE("visibility: a chunk that leaves the frame and returns is added again with its full stored explored mask") {
+    LightWorld w;
+    w.ambient = Ambient{AmbientKind::Sun, Light::Bright};
+    w.normalise();
+    LightCache cache(w);
+    const world::ChunkCoord c00{0, 0, 0}, c10{1, 0, 0};
+    VisibilityState vis;
+    LightFrameInputs in;
+    in.visibility = &vis;
+    const world::ChunkCoord both[] = {c00, c10}, only0[] = {c00};
+    const Viewer v[] = {viewer(1, 0, {30, 5})};   // sees into both chunks in daylight
+    vis.begin_step(cache, v, both);
+    in.chunks = both;
+    auto f1 = publish_light_frame(cache, in, 1, nullptr);
+    const TileMask stored = vis.explored(0, c10);
+    REQUIRE(stored.any());
+    // c10 leaves the frame (evicted; not blocked).
+    vis.begin_step(cache, v, only0);
+    in.chunks = only0;
+    auto f2 = publish_light_frame(cache, in, 2, f1.get());
+    CHECK(f2->removed_chunks == std::vector<world::ChunkCoord>{c10});
+    for (const auto& c : f2->dirty_vis_chunks) CHECK(c != c10);
+    // It returns, with nobody seeing it now: added, dirty, and the full stored explored mask is published.
+    Viewer blind = viewer(1, 0, {2, 5});   // blinded: sees only its own tile (in c00), nothing of c10
+    blind.blinded = true;
+    const Viewer bl[] = {blind};
+    vis.begin_step(cache, bl, both);
+    in.chunks = both;
+    auto f3 = publish_light_frame(cache, in, 3, f2.get());
+    CHECK(f3->added_chunks == std::vector<world::ChunkCoord>{c10});
+    CHECK(std::find(f3->dirty_vis_chunks.begin(), f3->dirty_vis_chunks.end(), c10) != f3->dirty_vis_chunks.end());
+    REQUIRE(f3->visibility.size() == 1);
+    const ChunkVisibility* cv = nullptr;
+    for (const auto& x : f3->visibility[0].chunks)
+        if (x.coord == c10) cv = &x;
+    REQUIRE(cv);
+    CHECK(cv->explored == stored);
+    CHECK_FALSE(cv->seen_now.any());
+}
+
+TEST_CASE("visibility: dirty_vis_chunks never lists a blocked chunk") {
+    LightWorld w;
+    w.ambient = Ambient{AmbientKind::Sun, Light::Bright};
+    w.normalise();
+    LightCache cache(w);
+    const world::ChunkCoord c00{0, 0, 0}, c10{1, 0, 0};
+    VisibilityState vis;
+    LightFrameInputs in;
+    in.visibility = &vis;
+    const world::ChunkCoord both[] = {c00, c10}, only0[] = {c00}, blk[] = {c10};
+    const Viewer v[] = {viewer(1, 0, {30, 5})};
+    vis.begin_step(cache, v, both);
+    in.chunks = both;
+    auto f1 = publish_light_frame(cache, in, 1, nullptr);
+    // c10's halo goes Pending and the viewer moves (c00's masks change).
+    const Viewer v2[] = {viewer(1, 0, {10, 20})};
+    vis.begin_step(cache, v2, only0);
+    in.chunks = only0;
+    in.blocked = blk;
+    auto f2 = publish_light_frame(cache, in, 2, f1.get());
+    CHECK(f2->blocked_chunks == std::vector<world::ChunkCoord>{c10});
+    for (const auto* f : {f1.get(), f2.get()})
+        for (const auto& c : f->dirty_vis_chunks)
+            CHECK_FALSE(std::binary_search(f->blocked_chunks.begin(), f->blocked_chunks.end(), c));
+    for (const auto& tv : f2->visibility)
+        for (const auto& cv : tv.chunks) CHECK(cv.coord != c10);   // no masks for a blocked chunk either
 }
