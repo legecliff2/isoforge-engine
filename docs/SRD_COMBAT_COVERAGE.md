@@ -357,7 +357,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Heroism | NEW (wiring) | Rules done (follow-up): `TempHp` modifier with `per_turn`; the frightened immunity is not modelled (R-G3). |
 | Hideous Laughter | NEW (wiring) | Rules done (7.2v): prone + incapacitated, no standing, Int 4 or less unaffected, save at end of turn and on damage (advantage). Pending: loader (T&C). |
 | Hunter's Mark | Done (7.2zc) | `scope: {target: marked}` damage modifier (1d6, `applies_to` self, `when` weapon_attack), `move_mark` bonus action after the mark drops to 0 HP. |
-| Hex | Done (7.2zc) | Marked 1d6 necrotic damage (any attack) plus disadvantage on the target's checks of a `chosen` ability (`mark_ability` at cast); `move_mark`. |
+| Hex | not SRD 5.1; generic mark is covered by Hunter's Mark | - |
 | Inflict Wounds | DATA | Melee `spell_attack`, 3d10 necrotic, `upcast.dice`. |
 | Mage Armor | NEW (wiring) | Rules done (follow-up): `Ac` modifier with `ac_floor` 13 + Dex (`ac_floor_dex`); the loader gates "not wearing armor". Spell kind pending (R-G3). |
 | Magic Missile | DATA | Shipped (`auto_hit`). |
