@@ -261,18 +261,20 @@ Until phase 3, `vertical_slice` keeps the interim producers in the game session:
 `publish_light_frame`. No sim code changes. When phase 3 lands, the session stops building `AttachedLight`s and the
 same render path reads the sim's sources.
 
-What render needs from Engine Core for phase 3 (proposal; please confirm or amend):
+**Engine Core's answers (2026-10-21), resolved.** Only attachment and position belong to the sim; colour and intensity
+are content-only visuals and stay out of every sim hash.
 
-1. **Ownership of the source list.** `Combat` (and later the world session) owns `AttachedLight`s and publishes the
-   `LightFrame` itself, e.g. `std::shared_ptr<const LightFrame> Combat::light_frame() const` after each committed step,
-   so the game stops calling `publish_light_frame` and stops constructing `AttachedLight`s.
-2. **Item carriers.** For `Carrier::Item`, `LightSource` carries the item id, but render can only anchor to tokens. Proposal:
-   add `uint32_t holder_id` (creature holding the item, 0 = none / on the ground) to `LightSource`, filled by sim, so a
-   carried lantern follows its holder. Without it, item glows stay at the published tile until the next step.
-3. **Lifetime and identity.** `LightId` for attached lights stays stable while a light is lit, doused, dropped and picked
-   up (one `next_light_id` per light, not per carrier), so render can keep per-light flicker state across those changes.
-4. **Dead / removed carriers.** Carrier death converts to `Carrier::Tile` at the death tile (§3.4) in the same frame the
-   token is removed, so the glow never anchors to a missing token.
+1. **Ownership (resolved).** `Combat` owns its attached lights. It calls `LightDriver::step` once when created and after
+   each committed step, so every committed step publishes exactly one frame. Render only reads `driver.latest()`. The
+   driver lands in phase 2 PR 2; attached-light ownership arrives in phase 3.
+2. **Item carriers (resolved).** `holder_id` (entity id; 0 = on the ground / unheld) is added to the attached source
+   record. It joins the 0xC7 fold in phase 3, folded only when non-default.
+3. **Lifetime and identity (resolved).** `LightId`s are stable. Each light-capable item gets its `LightId` once, at spawn
+   or load, in deterministic id order. Lit / doused changes only its state; drop / pick-up changes only `holder_id` and
+   position. An id is never reused within a session.
+4. **Dead carriers (resolved).** When the carrier dies the light drops in the same step: it keeps its `LightId`, gets
+   `holder_id` 0, and its position becomes the carrier's tile, in the same frame that removes the token. It stays lit
+   unless content marks it as going out on drop.
 5. **Presentation data.** Colour / intensity / flicker stay out of the sim contract; Tools/Content to confirm the `visual`
    block (§10) on light presets and items. Until then render uses the built-in `GlowPalette` (torch, brazier, lantern,
    candle; magical and mundane fallbacks).
