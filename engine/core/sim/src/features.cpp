@@ -1,3 +1,4 @@
+#include <set>
 #include "sim/features.hpp"
 
 #include <algorithm>
@@ -475,6 +476,93 @@ std::optional<std::string> apply_apply_modifier(Archetype& a, const FeatureDecl&
     a.feature_modifiers[fid] = std::move(rows);
     if (f.effect.contains("usage")) a.feature_specs[fid] = pool_spec;   // 7.2y: the pool gates UseFeature ("not enough resource")
     a.active.push_back(std::move(af));
+    return std::nullopt;
+}
+
+// 7.2za: the shared closed roll-kind enum (`applies_to`, unique items) of grant_die and the subtract_roll reaction.
+constexpr std::initializer_list<const char*> kRollKinds72za = {"attack", "save", "check", "damage"};   // = rules5e kRoll* bits
+
+// grant_die (7.2za, Bardic Inspiration): {die, scale?: [{level, die}] (closed, levels strictly ascending, each above 1),
+// class?, range_ft: 1..300, duration: {kind: rounds, n}, applies_to: [attack | save | check | damage], cost?, usage?}.
+// Compiles to one HeldDie modifier row the feature_modifiers hook hands to rules on UseFeature (target: an ally, not self).
+// The die is the last scale entry at or below the owner's level in `class` (else the total level); below every entry, `die`.
+std::optional<std::string> apply_grant_die(Archetype& a, const FeatureDecl& f, uint32_t fid, const FeatureBuildCtx& ctx) {
+    for (auto it = f.effect.begin(); it != f.effect.end(); ++it) {
+        static const std::set<std::string> keys = {"kind", "die", "scale", "class", "range_ft", "duration", "applies_to", "cost", "usage"};
+        if (!keys.count(it.key())) return f.id + ": grant_die: unknown key '" + it.key() + "'";
+    }
+    if (ctx.declared_version != 0 && ctx.declared_version < 4) {
+        a.inert_features.push_back(f.id + " (grant_die)");
+        return std::nullopt;
+    }
+    const auto die_of = [](const Json& j) -> std::optional<rules5e::DiceExpr> {
+        return j.is_string() ? parse_dice(j.get<std::string>()) : std::nullopt;
+    };
+    const auto base = f.effect.find("die");
+    if (base == f.effect.end() || !die_of(*base)) return f.id + ": grant_die needs die";
+    rules5e::DiceExpr die = *die_of(*base);
+    int level = 0;
+    const std::string cls = f.effect.value("class", "");
+    for (const Json& c : ctx.doc.value("classes", Json::array()))
+        if (c.value("class", "") == cls) level += c.value("level", 0);
+    if (level == 0 && cls.empty()) level = ctx.doc.value("level", 0);
+    if (auto sc = f.effect.find("scale"); sc != f.effect.end()) {
+        if (!sc->is_array() || sc->empty() || sc->size() > 20) return f.id + ": grant_die scale must be 1..20 entries";
+        int prev = 1;
+        for (const Json& e : *sc) {
+            if (!e.is_object() || e.size() != 2 || !e.contains("level") || !e["level"].is_number_integer() || !e.contains("die") || !die_of(e["die"]))
+                return f.id + ": grant_die scale entries are {level, die}";
+            const int lv = e["level"].get<int>();
+            if (lv <= prev || lv > 20) return f.id + ": grant_die scale levels must ascend (2..20)";
+            prev = lv;
+            if (lv <= level) die = *die_of(e["die"]);
+        }
+    }
+    const auto r = f.effect.find("range_ft");
+    if (r == f.effect.end() || !r->is_number_integer() || r->get<int>() < 1 || r->get<int>() > 300)
+        return f.id + ": grant_die range_ft must be 1..300";
+    uint32_t applies = 0;
+    if (auto ap = f.effect.find("applies_to"); ap == f.effect.end() || !enum_bits(*ap, kRollKinds72za, applies))
+        return f.id + ": grant_die: bad applies_to";
+    const auto du = f.effect.find("duration");
+    if (du == f.effect.end() || !du->is_object() || du->size() != 2 || du->value("kind", "") != "rounds" || !du->contains("n") ||
+        !(*du)["n"].is_number_integer() || (*du)["n"].get<int>() < 1 || (*du)["n"].get<int>() > 65535)
+        return f.id + ": grant_die duration must be {kind: rounds, n: 1..65535}";
+    ActiveFeature af;
+    af.feature_id = fid;
+    af.id = f.id;
+    af.kind = f.kind;
+    rules5e::FeatureSpec spec;
+    if (auto e = fill_spec(a, f, af, spec)) return e;
+    if (spec.cost == 4) return f.id + ": grant_die cost must be action or bonus_action";
+    rules5e::ModifierSpec m;
+    m.stat = rules5e::ModStat::HeldDie;
+    m.die = die;
+    m.applies_to = rules5e::ModAppliesTo::Target;
+    m.expiry = 1; m.rounds = uint16_t((*du)["n"].get<int>());
+    m.held_applies = uint8_t(applies);
+    m.range_ft = uint16_t(r->get<int>());
+    m.source = rules5e::spell_id_of(a.id + "#" + f.id);
+    m.id = rules5e::spell_id_of(a.id + "#" + f.id + "#m0");
+    a.feature_modifiers[fid] = {m};
+    a.feature_specs[fid] = spec;
+    a.active.push_back(std::move(af));
+    return std::nullopt;
+}
+
+// half_proficiency (7.2za, Jack of All Trades): static {on: [checks | initiative]} (closed, unique). Characters only.
+std::optional<std::string> apply_half_proficiency(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    for (auto it = f.effect.begin(); it != f.effect.end(); ++it)
+        if (it.key() != "kind" && it.key() != "on") return f.id + ": half_proficiency: unknown key '" + it.key() + "'";
+    if (a.schema_type == "monster") return f.id + ": half_proficiency: not valid on monsters";
+    if (ctx.declared_version != 0 && ctx.declared_version < 4) {
+        a.inert_features.push_back(f.id + " (half_proficiency)");
+        return std::nullopt;
+    }
+    uint32_t on = 0;
+    if (auto o = f.effect.find("on"); o == f.effect.end() || !enum_bits(*o, {"checks", "initiative"}, on))
+        return f.id + ": half_proficiency: bad on";
+    a.base.half_proficiency = uint8_t(a.base.half_proficiency | on);
     return std::nullopt;
 }
 
@@ -958,6 +1046,8 @@ FeatureRegistry make_builtin() {
     r.add_hook("shapechanger", {apply_shapechanger}); // R-G12 (7.2q)
     r.add_hook("extra_attack", {apply_extra_attack});   // character@4: gated in the hook (the 3 -> 4 kind list is frozen)
     r.add_hook("transparent", {apply_transparent});     // monster@4 (7.2w): gated in the hook, like extra_attack
+    r.add_hook("grant_die", {apply_grant_die});         // 7.2za Bardic Inspiration: gated in the hook
+    r.add_hook("half_proficiency", {apply_half_proficiency});   // 7.2za Jack of All Trades: gated in the hook
     // Kinds the @4 schemas introduce (frozen list of the 3 -> 4 migration; hooks arrive with their rows).
     for (const char* k : {"on_event", "save_effect", "reaction"})
         r.reserve_kind(k, 4);

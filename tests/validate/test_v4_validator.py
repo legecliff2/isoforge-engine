@@ -383,7 +383,10 @@ RG7_CASES = [
     ("cw_needs_dice", "goblin_bard.json", BARD, [], [CW + ["effect", "dice"]], "'dice' is a required property"),
     ("cw_zero_dice", "goblin_bard.json", BARD, [(CW + ["effect", "dice"], "0d6")], [], "does not match"),
     ("cw_bad_dice", "goblin_bard.json", BARD, [(CW + ["effect", "dice"], "1d7")], [], "does not match"),
-    ("cw_extra_effect_field", "goblin_bard.json", BARD, [(CW + ["effect", "bonus"], 1)], [], "'bonus' is not one of ['kind', 'dice']"),
+    ("cw_extra_effect_field", "goblin_bard.json", BARD, [(CW + ["effect", "bonus"], 1)], [], "'bonus' is not one of ['kind', 'dice', 'applies_to']"),
+    ("cw_applies_to_bad_kind", "goblin_bard.json", BARD, [(CW + ["effect", "applies_to"], ["attack", "initiative"])], [], "'initiative' is not one of ['attack', 'save', 'check', 'damage']"),   # 7.2za
+    ("cw_applies_to_repeated", "goblin_bard.json", BARD, [(CW + ["effect", "applies_to"], ["check", "check"])], [], "has non-unique elements"),   # 7.2za
+    ("cw_applies_to_empty", "goblin_bard.json", BARD, [(CW + ["effect", "applies_to"], [])], [], "should be non-empty"),   # 7.2za
     ("cw_pool_usage_extra_field", "goblin_bard.json", BARD, [(CW + ["usage", "uses"], 1)], [], "'uses' is not one of ['kind', 'pool', 'cost']"),
     ("cw_pool_usage_needs_pool", "goblin_bard.json", BARD, [], [CW + ["usage", "pool"]], "'pool' is a required property"),
     ("cw_window_takes_only_subtract_roll", "goblin_bard.json", BARD, [(["reactions", 1, "effect"], {"kind": "impose_disadvantage"})], [], "the roll_attack window only takes subtract_roll, not 'impose_disadvantage'"),
@@ -893,6 +896,26 @@ class ExtraAttack(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BardHooks72za(unittest.TestCase):
+    """7.2za: the Bardic Inspiration / Jack of All Trades shapes from the hand-off pass check_bard_hooks."""
+    GD = {"kind": "grant_die", "die": "1d6", "class": "bard", "scale": [{"level": 5, "die": "1d8"}, {"level": 10, "die": "1d10"},
+          {"level": 15, "die": "1d12"}], "range_ft": 60, "duration": {"kind": "rounds", "n": 100},
+          "applies_to": ["attack", "save", "check"], "cost": "bonus_action", "usage": {"kind": "pool", "pool": "bardic_inspiration"}}
+    JACK = {"kind": "half_proficiency", "on": ["checks", "initiative"]}
+
+    def doc(self, schema="character@4"):
+        return {"$schema": schema, "id": "t.bard", "features": [{"id": "bi", "effect": self.GD}, {"id": "jack", "effect": self.JACK}]}
+
+    def test_valid_shapes(self):
+        self.assertEqual(checks_v4.check_bard_hooks(self.doc()), [])
+
+    def test_monster_and_order(self):
+        self.assertTrue(any("not valid on monsters" in e for e in checks_v4.check_bard_hooks(self.doc("monster@4"))))
+        d = self.doc()
+        d["features"][0]["effect"] = dict(self.GD, scale=[{"level": 5, "die": "1d8"}, {"level": 5, "die": "1d10"}])
+        self.assertTrue(any("must ascend" in e for e in checks_v4.check_bard_hooks(d)))
 
 
 class MonkWarlockHooks72zb(unittest.TestCase):
