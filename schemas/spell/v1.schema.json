@@ -681,7 +681,15 @@
                 "description": "Damage on a successful save."
               },
               "condition": {
-                "$ref": "../common/v1.schema.json#/$defs/condition"
+                "anyOf": [
+                  {
+                    "$ref": "../common/v1.schema.json#/$defs/condition"
+                  },
+                  {
+                    "const": "chosen"
+                  }
+                ],
+                "description": "7.2ze: 'chosen' (Blindness/Deafness) = the caster picks one of choices at cast (ActionRequest::condition_choice); needs choices."
               },
               "repeat_save": {
                 "anyOf": [
@@ -723,8 +731,44 @@
                   "affected"
                 ],
                 "description": "Effects after the first only: 'affected' resolves this effect only for the targets the previous effect affected (spell attack: hit; save: failed; heal: healed; auto_hit: struck; apply_condition: received it). Default 'all'."
+              },
+              "choices": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 4,
+                "uniqueItems": true,
+                "items": {
+                  "$ref": "../common/v1.schema.json#/$defs/condition"
+                },
+                "description": "7.2ze: the conditions the caster picks from at cast; only with condition chosen (which needs it). First effect only."
               }
-            }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "required": [
+                    "condition"
+                  ],
+                  "properties": {
+                    "condition": {
+                      "const": "chosen"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "choices"
+                  ]
+                },
+                "else": {
+                  "not": {
+                    "required": [
+                      "choices"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         },
         {
@@ -1065,6 +1109,23 @@
                 },
                 "description": "VERSION_BUMP_BATCH 7.2zc generic mark (Hunter's Mark, Hex): the common@2 closed scope object's target key. The row follows the spell's one target (the marked creature): a damage row (applies_to self) adds to the caster's attack hits on it (combine with when weapon_attack for Hunter's Mark); an ability_check row (ability may be \"chosen\") sits on the caster (self) or the marked creature (target). 7.2zd: from_types (Protection from Evil and Good) for an applies_to attackers row.",
                 "minProperties": 1
+              },
+              "save": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ability",
+                  "dc"
+                ],
+                "properties": {
+                  "ability": {
+                    "$ref": "../common/v1.schema.json#/$defs/ability"
+                  },
+                  "dc": {
+                    "const": "caster"
+                  }
+                },
+                "description": "7.2ze Bane: each target saves against the caster's spell save DC; a creature that succeeds is not affected. First effect only; the modifier must be on the targets."
               }
             }
           }
