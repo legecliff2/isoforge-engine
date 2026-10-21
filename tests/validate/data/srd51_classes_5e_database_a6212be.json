@@ -1592,6 +1592,34 @@
     "warlock",
     "wizard"
    ]
+  },
+  "aid": {
+   "name": "Aid",
+   "level": 2,
+   "school": "abjuration",
+   "classes": [
+    "cleric",
+    "paladin"
+   ]
+  },
+  "protection-from-evil-and-good": {
+   "name": "Protection from Evil and Good",
+   "level": 1,
+   "school": "abjuration",
+   "classes": [
+    "cleric",
+    "paladin",
+    "warlock",
+    "wizard"
+   ]
+  },
+  "sanctuary": {
+   "name": "Sanctuary",
+   "level": 1,
+   "school": "abjuration",
+   "classes": [
+    "cleric"
+   ]
   }
  }
 }

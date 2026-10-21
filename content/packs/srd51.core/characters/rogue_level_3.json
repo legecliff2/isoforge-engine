@@ -123,7 +123,13 @@
     {
       "id": "fast_hands",
       "name": "Fast Hands",
-      "description": "Starting at 3rd level, you can use the bonus action granted by your Cunning Action to make a Dexterity (Sleight of Hand) check, use your thieves' tools to disarm a trap or open a lock, or take the Use an Object action."
+      "description": "Starting at 3rd level, you can use the bonus action granted by your Cunning Action to make a Dexterity (Sleight of Hand) check, use your thieves' tools to disarm a trap or open a lock, or take the Use an Object action. (Modelled: Use an Object as a Cunning Action bonus action (bonus_action_grant use_object); the Sleight of Hand and thieves' tools checks are Use an Object variants of the same action.)",
+      "effect": {
+        "kind": "bonus_action_grant",
+        "actions": [
+          "use_object"
+        ]
+      }
     },
     {
       "id": "second_story_work",
