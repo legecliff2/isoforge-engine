@@ -13,11 +13,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | | count |
 |---|---|
 | inventory candidates | 30 |
-| authored now as `monster@4` | 31 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172) |
+| authored now as `monster@4` | 33 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189) |
 | goblin (already shipped, left at `monster@3`) | 1 |
 | deferred (mechanic not expressible) | 0 |
 
-## Authored (31, all `monster@4`)
+## Authored (33, all `monster@4`)
 
 | monster | CR | mechanics carried as data | notes |
 |---|---|---|---|
@@ -52,6 +52,8 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Swarm of Rats | 1/4 | `tags: ["swarm"]` (#172: shares spaces both ways, no healing / temp HP), `type: beast` (T&C-G15 convention for "swarm of Tiny beasts"), BPS resistances, 8 condition immunities; bites 2d6 with `half_hp_damage: "1d6"` (#172), reach 0 ft (SRD: a target in the swarm's space) | Keen Smell descriptive; Tiny openings: nothing to model (no sub-tile openings) |
 | Basilisk | 3 | Petrifying Gaze as trait effect `gaze` (7.2p, sim #153): 30 ft, Con DC 12, restrained, repeat save at the end of its turn, petrified on a failed repeat save (`escalates`, `escalate_margin` 0); bite with two damage components (piercing + poison) | **partial**: the reflection clause (it targets itself when it sees its reflection in bright light) and "until freed by greater restoration" are description only (no mirror / light model, no Greater Restoration). Averting the eyes and the sight check are the sim's (`GazeResponse`, `gaze_seen`) |
 | Medusa | 6 | Petrifying Gaze as `gaze` (Con DC 14, 30 ft, `escalate_margin` 5: failing by 5 or more petrifies at once; otherwise restrained, then petrified on a failed repeat save); Multiattack: snake hair + 2 shortswords, or 2 longbows; snake hair and longbow with a poison damage component | **partial**: as basilisk, the reflection curse is description only; proficiency bonus +3 (CR 6) |
+| Gelatinous Cube | 2 | Engulf as `save_effect` (Dex DC 12, 3d6 acid, no effect on a success) + `apply` restrained, `escape` Str DC 12, `max_size large`, `contain {engulf, 6d6 acid}` (Rules #189, 7.2w: acid at the start of the cube's turns, freed when it dies); Transparent as trait effect `{kind: transparent, dc: 15}`; pseudopod; 6 condition immunities, blindsight 60 | **partial**: the cube's move through spaces, the "pushed instead" choice on a success, the Ooze Cube trait (entering its space, pulling a creature out, capacity of one Large or four Medium) and moving engulfed creatures with the cube are description only (sim movement pending, coverage row 11) |
+| Giant Toad | 1 | bite with two damage components + `on_hit [{kind: grapple, escape_dc: 13}]`; Swallow as `attack_effect` (melee +4, 5 ft) + `apply` restrained, `max_size medium`, `contain {swallow, 3d6 acid}` (Rules #189: blinded, total cover from outside, one at a time, exits prone when the toad dies) | **partial**: "restrained while grappled", "can't bite another target", Swallow being a bite against the creature it is grappling (with the bite's damage) are not modelled (no grappled-by-self predicate; attack_effect carries no damage). Amphibious / Standing Leap descriptive |
 
 The goblin keeps `$schema: monster@3`, its id (`srd51.monster.goblin`, stable id derived from it) and bytes. It is referenced by C++ tests that assert its `@3` form (`content_migration_tests`, `pack_set_tests`, compat goblin tests) and by the fl1 compat corpus, and a schema change could shift digests and goldens; migrating it buys nothing until a `@4`-only feature is needed.
 
