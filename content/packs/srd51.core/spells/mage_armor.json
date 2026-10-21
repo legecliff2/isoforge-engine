@@ -1,0 +1,48 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.mage_armor",
+  "name": "Mage Armor",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "You touch a willing creature who isn't wearing armor, and a protective magical force surrounds it until the spell ends. The target's base AC becomes 13 + its Dexterity modifier. The spell ends if the target dons armor or if you dismiss the spell as an action. (Modelled: base AC 13 + Dex for 8 hours; the not-wearing-armor requirement, ending on donning armor and dismissal are not checked.)",
+  "level": 1,
+  "school": "abjuration",
+  "classes": [
+    "sorcerer",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "A piece of cured leather"
+    }
+  },
+  "duration": {
+    "kind": "hours",
+    "amount": 8
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "ac",
+        "ac_floor": 13,
+        "ac_floor_dex": true,
+        "applies_to": "target",
+        "duration": {
+          "kind": "rounds",
+          "n": 4800
+        }
+      }
+    }
+  ]
+}
