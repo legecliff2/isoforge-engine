@@ -2,7 +2,7 @@ name: CI
 
 # Cost policy (macOS minutes bill at 10x Linux):
 # - Linux + Windows: every PR and every push to main (skipped for docs-only changes).
-# - macOS: nightly on main (07:00 UTC = 2 AM US Central), on manual dispatch, and on PRs whose
+# - macOS: nightly on main (07:17 UTC, off the hour to avoid GitHub dropping top-of-hour schedules), on manual dispatch, and on PRs whose
 #   changes touch platform / render or determinism-sensitive code (see the `mac` filter below).
 # - `ci-required` is the single aggregate gate for branch protection: it always runs and
 #   succeeds when every needed job passed or was skipped on purpose.
@@ -11,7 +11,7 @@ on:
     branches: [main]
   pull_request:
   schedule:
-    - cron: "0 7 * * *"
+    - cron: "17 7 * * *"
   workflow_dispatch:
 
 permissions:
