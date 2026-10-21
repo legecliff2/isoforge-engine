@@ -79,12 +79,35 @@
     {
       "id": "patient_defense",
       "name": "Patient Defense",
-      "description": "You can spend 1 ki point to take the Dodge action as a bonus action on your turn. (Descriptive: no key grants a bonus-action Dodge paid from a pool.)"
+      "description": "You can spend 1 ki point to take the Dodge action as a bonus action on your turn. (Modelled: bonus_action_grant dodge, usage 1 ki.)",
+      "effect": {
+        "kind": "bonus_action_grant",
+        "actions": [
+          "dodge"
+        ],
+        "usage": {
+          "kind": "pool",
+          "pool": "ki",
+          "cost": 1
+        }
+      }
     },
     {
       "id": "step_of_the_wind",
       "name": "Step of the Wind",
-      "description": "You can spend 1 ki point to take the Disengage or Dash action as a bonus action on your turn, and your jump distance is doubled for the turn. (Descriptive: no key grants a bonus-action Dash / Disengage paid from a pool; jumping is not simulated.)"
+      "description": "You can spend 1 ki point to take the Disengage or Dash action as a bonus action on your turn, and your jump distance is doubled for the turn. (Modelled: bonus_action_grant dash / disengage, usage 1 ki; the doubled jump distance is not modelled.)",
+      "effect": {
+        "kind": "bonus_action_grant",
+        "actions": [
+          "dash",
+          "disengage"
+        ],
+        "usage": {
+          "kind": "pool",
+          "pool": "ki",
+          "cost": 1
+        }
+      }
     },
     {
       "id": "unarmored_movement",
@@ -94,12 +117,57 @@
     {
       "id": "deflect_missiles",
       "name": "Deflect Missiles",
-      "description": "You can use your reaction to deflect or catch the missile when you are hit by a ranged weapon attack. When you do so, the damage you take from the attack is reduced by 1d10 + your Dexterity modifier + your monk level (8). If you reduce the damage to 0, you can catch the missile and spend 1 ki point to make a ranged attack with it. (The reduction is reactions[] deflect_missiles; catching and throwing back the missile is not modelled.)"
+      "description": "You can use your reaction to deflect or catch the missile when you are hit by a ranged weapon attack. When you do so, the damage you take from the attack is reduced by 1d10 + your Dexterity modifier + your monk level (8). If you reduce the damage to 0, you can catch the missile and spend 1 ki point to make a ranged attack with it. (The reduction is reactions[] deflect_missiles, ranged weapon attacks only (applies_to_attack); catching and throwing back the missile is not modelled.)"
     },
     {
       "id": "open_hand_technique",
       "name": "Open Hand Technique",
-      "description": "Whenever you hit a creature with one of the attacks granted by your Flurry of Blows, you can impose one of: it must succeed on a Dexterity saving throw or be knocked prone; it must make a Strength saving throw or be pushed up to 15 feet away from you; it can't take reactions until the end of your next turn. (Descriptive: no on_event predicate selects the Flurry of Blows strikes.)"
+      "description": "Whenever you hit a creature with one of the attacks granted by your Flurry of Blows, you can impose one of: it must succeed on a Dexterity saving throw or be knocked prone; it must make a Strength saving throw or be pushed up to 15 feet away from you; it can't take reactions until the end of your next turn. (Modelled: on_event on Flurry of Blows hits (attack_from_feature), choice ask, pick_one of the three; the push is a fixed 15 ft.)",
+      "effect": {
+        "kind": "on_event",
+        "on": "hit",
+        "choice": "ask",
+        "pick_one": true,
+        "when": [
+          {
+            "kind": "attack_from_feature",
+            "feature": "flurry_of_blows"
+          }
+        ],
+        "effects": [
+          {
+            "kind": "save_condition",
+            "save": {
+              "ability": "dex",
+              "dc": 12
+            },
+            "apply": [
+              {
+                "condition": "prone"
+              }
+            ]
+          },
+          {
+            "kind": "forced_move",
+            "save": {
+              "ability": "str",
+              "dc": 12
+            },
+            "mode": "push",
+            "feet": 15
+          },
+          {
+            "kind": "apply_modifier",
+            "modifier": {
+              "stat": "no_reactions",
+              "applies_to": "target",
+              "duration": {
+                "kind": "until_end_of_caster_next_turn"
+              }
+            }
+          }
+        ]
+      }
     },
     {
       "id": "slow_fall",
@@ -125,7 +193,10 @@
       },
       "effect": {
         "kind": "reduce_damage",
-        "dice": "1d10+8"
+        "dice": "1d10+8",
+        "applies_to_attack": [
+          "ranged_weapon"
+        ]
       }
     }
   ],
