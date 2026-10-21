@@ -57,7 +57,8 @@ STATIC_EFFECT_KINDS_R_G5 = frozenset({"attack_bonus", "crit_range", "ac_bonus"})
 # transparent (7.2w, features.cpp apply_transparent; closed arm transparent_effect; monsters only) likewise.
 COMPILED_EFFECT_KINDS_AT_4 = frozenset({"gaze", "wild_shape", "shapechanger", "extra_attack", "transparent", "bonus_attack",
                                        "grant_die", "half_proficiency",   # 7.2za: gated in their hooks
-                                       "spell_mod"})   # 7.2zb: gated in its hook
+                                       "spell_mod",   # 7.2zb: gated in its hook
+                                       "heal_bonus"})   # 7.2zc: gated in its hook
 # compile_gaze defaults for the optional fields the validator warns about when omitted.
 GAZE_DEFAULTS = {"condition": "restrained", "repeat_save": "end_of_turn", "escalate_to": "petrified"}
 # 7.2n (sim #148, features.cpp apply_slot_recovery): the classes slot_recovery accepts.
@@ -436,6 +437,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     errs += check_barbarian_hooks(doc)   # 7.2z
     errs += check_bard_hooks(doc)   # 7.2za
     check_monk_warlock_hooks(doc, ctx, errs, warns)   # 7.2zb
+    errs += check_spell_gap_hooks(doc)   # 7.2zc
     # check 12: declared but never referenced pools (Legendary Resistance is declaration-only until row 13)
     for i, r in enumerate(resources):
         if r.get("id") not in referenced:
@@ -1010,7 +1012,8 @@ def check_class_hooks(doc: dict) -> list[str]:
             errs.append(f"{path}: {did}: scope: apply_modifier effects only (7.2y)")
         else:   # 7.2z: one closed object, at least one key, each key's enum
             sc = eff["scope"]
-            allowed = {"weapon": ("wielded",), "attack": ("melee_weapon", "ranged_weapon"), "ability": ("str", "dex")}
+            allowed = {"weapon": ("wielded",), "attack": ("melee_weapon", "ranged_weapon"), "ability": ("str", "dex"),
+                       "target": ("marked",)}   # 7.2zc: a feature refuses target marked (check_spell_gap_hooks)
             if not isinstance(sc, dict) or not sc:
                 errs.append(f"{path}: {did}: scope needs at least one of weapon, attack, ability (7.2z)")
             else:
@@ -1114,6 +1117,76 @@ def check_monk_warlock_hooks(doc: dict, ctx: dict, errs: list[str], warns: list[
                     errs.append(f"{path}/spell: '{ref}' is not a spell@1 in this pack or its depends")
                 elif ref not in cast:
                     warns.append(f"{path}/spell: {did}: spell_mod spell '{ref}' is not in spellcasting.spells / known: it never applies")
+
+
+def check_spell_gap_hooks(doc: dict) -> list[str]:
+    """7.2zc (sim features.cpp apply_heal_bonus / apply_apply_modifier): heal_bonus is characters-only; the generic mark keys
+    (scope target marked, modifier ability chosen) are spell@1 keys, refused on a feature with the loader's wording."""
+    errs: list[str] = []
+    did = doc.get("id", "?")
+    is_monster = str(doc.get("$schema", "")).split("@")[0] == "monster"
+    for path, _owner, eff in live_effects(doc):
+        k = eff.get("kind")
+        if k == "heal_bonus" and is_monster:
+            errs.append(f"{path}: {did}: heal_bonus: not valid on monsters")
+        if k != "apply_modifier":
+            continue
+        sc = eff.get("scope")
+        if isinstance(sc, dict) and sc.get("target") == "marked":
+            errs.append(f"{path}: {did}: scope: target marked is for spells only")
+        mods = ([eff["modifier"]] if isinstance(eff.get("modifier"), dict) else []) + list(eff.get("modifiers") or [])
+        for m in mods:
+            if isinstance(m, dict) and m.get("ability") == "chosen":
+                errs.append(f"{path}: {did}: modifier ability chosen needs scope target marked")
+                break
+    return errs
+
+
+SPELL_TIMED_DURATIONS = ("rounds", "minutes", "hours")
+
+
+def check_spell_gaps(doc: dict) -> list[str]:
+    """7.2zc spell@1 cross-field rules (rules5e_content spell_loader.cpp parse_effect / spell_from_json, same wording and
+    order): the generic mark (scope target marked, ability chosen, move_mark) and Invisibility's ends_on."""
+    errs: list[str] = []
+    effs = [e for e in (doc.get("effects") or []) if isinstance(e, dict)]
+    marked = False
+    for i, e in enumerate(effs):
+        pre = f"effects[{i}]: " if i > 0 else ""
+        if e.get("kind") != "apply_modifier":
+            continue
+        m = e.get("modifier") if isinstance(e.get("modifier"), dict) else {}
+        chosen = m.get("ability") == "chosen"
+        stat = m.get("stat")
+        applies = m.get("applies_to", "target")
+        if chosen and stat != "ability_check":
+            errs.append(f"{pre}effect modifier ability chosen: ability_check modifiers only")
+            continue
+        has_scope = isinstance(e.get("scope"), dict) and e["scope"].get("target") == "marked"
+        if chosen and not has_scope:
+            errs.append(f"{pre}effect modifier ability chosen needs scope target marked")
+            continue
+        if not has_scope:
+            continue
+        marked = True
+        if stat not in ("damage", "ability_check"):
+            errs.append(f"{pre}effect scope target marked: damage or ability_check modifiers only")
+        elif stat == "damage" and applies != "self":
+            errs.append(f"{pre}effect scope target marked: a damage modifier needs applies_to self")
+        elif applies == "allies_within_30":
+            errs.append(f"{pre}effect scope target marked: applies_to self or target")
+    if errs:
+        return errs
+    du = doc.get("duration") if isinstance(doc.get("duration"), dict) else {}
+    conc = du.get("concentration") is True
+    if any(e.get("kind") == "apply_condition" and "ends_on" in e for e in effs) and not conc and du.get("kind") not in SPELL_TIMED_DURATIONS:
+        errs.append("effect ends_on needs concentration or a rounds, minutes or hours duration")
+    elif "move_mark" in doc:
+        if not conc:
+            errs.append("move_mark needs a concentration spell")
+        elif not marked:
+            errs.append("move_mark needs an apply_modifier with scope target marked")
+    return errs
 
 
 # ---- untimed save_condition riders (sim content.cpp compile_rider -> compile_save_action) ----------------------

@@ -1,0 +1,21 @@
+{
+  "base": "characters/cleric_level_1.json",
+  "sets": [
+    [
+      [
+        "features",
+        1
+      ],
+      {
+        "id": "disciple_of_life",
+        "name": "x",
+        "effect": {
+          "kind": "heal_bonus",
+          "flat": 2
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "'per_spell_level' is a required property"
+}

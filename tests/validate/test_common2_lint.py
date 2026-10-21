@@ -50,7 +50,9 @@ SECTION_1_1 = ["action", "legacy_action", "legacy_nonspecial_action", "legacy_sp
                # Rules 7.2za bard hooks (append-only additions; T&C #202)
                "roll_kind_list", "grant_die_effect", "half_proficiency_effect",
                # Rules 7.2zb monk / warlock hooks (append-only addition; T&C #207 / #210)
-               "spell_mod_effect"]
+               "spell_mod_effect",
+               # Rules 7.2zc spell and feature gaps (append-only addition; T&C batch 1)
+               "heal_bonus_effect"]
 ITEM_FILE_DEFS = {"item_damage"}          # listed in 1.1 but declared in item@1's file, not common@2's
 COMMON2_DEFS = set(SECTION_1_1) - ITEM_FILE_DEFS
 

@@ -180,7 +180,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | Ritual casting | 1 | OOS | Rituals take 10 extra minutes; not in an encounter. |
 | Divine Domain: Life, bonus proficiency (heavy armor) | 1 | DATA | Baked AC. |
 | Life domain spells always prepared (Bless, Cure Wounds, Lesser Restoration, Spiritual Weapon, Beacon of Hope, Revivify) | 1-5 | DATA | Authored `spells_known`; availability of each spell per section 8. |
-| Disciple of Life (healing spells heal an extra 2 + spell level) | 1 | NEW | Heal-spell bonus rider on the caster (R-G4). |
+| Disciple of Life (healing spells heal an extra 2 + spell level) | 1 | Done (7.2zc) | `heal_bonus` feature effect (`flat` 2, `per_spell_level` true); slot casts of level 1+ only. |
 | Channel Divinity (1/rest at L2, 2/rest at L6) | 2 | NEW (wiring) | Pool + `FeatureSpec` pool spend done in rules (#91, R-G5); feature compile and per-effect content pending. |
 | Channel Divinity: Turn Undead | 2 | NEW (wiring) | Rules done (7.2v): `ControlKind::Turned` (Wis save, 10 rounds, ends on damage; Move / Dash / Dodge / escape only, no reactions). Pending: sim path and target list (EC), Channel Divinity feature and loader keys (T&C). |
 | Channel Divinity: Preserve Life | 2 | NEW | Distribute a 5 x level HP pool among creatures within 30 ft, up to half max HP each (R-G5, R-G10, R-G15). |
@@ -246,7 +246,7 @@ Existing feature machinery: `damage_bonus` (static), `bonus_action_grant` (stati
 | **Ranger** Favored Enemy / Natural Explorer | 1 | OOS | Tracking, languages, travel. |
 | Fighting Style | 2 | NEW / DATA | Ranger options per SRD: Archery, Defense, Dueling, Two-Weapon Fighting (no Great Weapon Fighting or Protection). Only Dueling is DATA; Archery needs `attack_bonus` (R-G5). Paladin options: Defense, Dueling, Great Weapon Fighting, Protection. |
 | Spellcasting (half caster) | 2 | DATA | |
-| Ranger Archetype: Hunter, Colossus Slayer (+1d8 once per turn vs a creature below max HP) | 3 | NEW | Once-per-turn rider (R-G4). |
+| Ranger Archetype: Hunter, Colossus Slayer (+1d8 once per turn vs a creature below max HP) | 3 | Done (7.2y) | Once-per-turn rider with the `target_below_max_hp` predicate. |
 | Hunter: Giant Killer, Horde Breaker (alternatives) | 3 | NEW | Reaction/extra attack rider (R-G7, R-G4). |
 | Primeval Awareness | 3 | OOS | Detection. |
 | Extra Attack | 5 | NEW (wiring) | T&C-G1. |
@@ -356,7 +356,8 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Hellish Rebuke | NEW (wiring) | Rules done (#87): `Damaged` window + `Retaliate` reaction resolving a synthetic Save SpellDef against the damager (R-G7). Content/hook compile pending. |
 | Heroism | NEW (wiring) | Rules done (follow-up): `TempHp` modifier with `per_turn`; the frightened immunity is not modelled (R-G3). |
 | Hideous Laughter | NEW (wiring) | Rules done (7.2v): prone + incapacitated, no standing, Int 4 or less unaffected, save at end of turn and on damage (advantage). Pending: loader (T&C). |
-| Hunter's Mark | NEW (wiring) | Rules done (#89, follow-up): Damage modifier (1d6, concentration, `applies_to` self) with the general `when` scope for conditions on the target; the "marked target only" scope and the move-the-mark option are not modelled (R-G4). |
+| Hunter's Mark | Done (7.2zc) | `scope: {target: marked}` damage modifier (1d6, `applies_to` self, `when` weapon_attack), `move_mark` bonus action after the mark drops to 0 HP. |
+| Hex | Done (7.2zc) | Marked 1d6 necrotic damage (any attack) plus disadvantage on the target's checks of a `chosen` ability (`mark_ability` at cast); `move_mark`. |
 | Inflict Wounds | DATA | Melee `spell_attack`, 3d10 necrotic, `upcast.dice`. |
 | Mage Armor | NEW (wiring) | Rules done (follow-up): `Ac` modifier with `ac_floor` 13 + Dex (`ac_floor_dex`); the loader gates "not wearing armor". Spell kind pending (R-G3). |
 | Magic Missile | DATA | Shipped (`auto_hit`). |
@@ -387,7 +388,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Gust of Wind | NEW | Line + push (R-G9, R-G10). |
 | Heat Metal | NEW (wiring) | rules5e `SustainedDamage` + `CastSpell sustain` bonus action (R-G15, VERSION_BUMP_BATCH 7.2g); object rider not modelled. Loader and sim done (EC #120): `sustained_damage {damage}` (+ `scaling.upcast.dice`, `duration.concentration`, timer from `duration`); the AI sustains its own Heat Metal with the bonus action from the next turn; `log_hash` folds `sustain` (0xB8). No pack ships it yet; schema / validator pending (T&C). |
 | Hold Person | DATA | Shipped (`save` WIS, paralyzed, repeat end_of_turn, humanoid, upcast targets). |
-| Invisibility | NEW | Condition applied with no save, ends on attack/cast; `save` kind requires a save (R-G2/R-G3). |
+| Invisibility | Done (7.2zc) | `apply_condition` invisible with `ends_on: [attack, cast]`; concentration ends when nothing of the spell is left. |
 | Lesser Restoration | NEW (wiring) | rules5e `EndCondition` + `ends_conditions` (R-G15, 7.2g); the caster chooses which listed condition ends (`ActionRequest::condition_choice` = 1 + index into the spell's `conditions` in JSON list order; not listed / not on the target = refused, no state change; no choice and the AI = the lowest listed condition present); no disease model. Loader done (EC #120): `end_condition {conditions[]}` (one def; no per-condition defs). No pack ships it yet; schema / validator pending (T&C). |
 | Magic Weapon | NEW | Magic bonus (R-G17, T&C-G2/R-G3). |
 | Mirror Image | NEW | Duplicates that absorb attacks (R-G3). |

@@ -463,8 +463,13 @@ std::string parse_modifier(const Json& m, ModifierSpec& out, const Json** table)
         out.has_damage_type = true;
     } else if (out.stat == ModStat::Resistance) return "resistance modifier needs damage_type";
     if (m.contains("ability")) {
-        if (!lookup(kAbility, m["ability"], out.ability)) return "modifier ability invalid";
-        out.has_ability = true;
+        if (m["ability"].is_string() && m["ability"].get<std::string>() == "chosen") {   // 7.2zc: the caster's cast-time choice
+            if (out.stat != ModStat::AbilityCheck) return "modifier ability chosen: ability_check modifiers only";
+            out.chosen_ability = true;
+        } else {
+            if (!lookup(kAbility, m["ability"], out.ability)) return "modifier ability invalid";
+            out.has_ability = true;
+        }
     }
     static const std::map<std::string, ModAppliesTo> kApplies{{"self", ModAppliesTo::Self}, {"target", ModAppliesTo::Target},
                                                               {"allies_within_30", ModAppliesTo::AlliesWithin30}};
@@ -781,10 +786,37 @@ SpellLoad spell_from_json(const Json& j) {
             if (!e.contains("modifier")) return ("effect modifier required");
             if (auto m = parse_modifier(e["modifier"], s.modifier); !m.empty()) return ("effect " + m);
             s.modifier.id = spell_id_of(s.content_id + "#modifier");
+            if (e.contains("scope")) {   // 7.2zc generic mark: the closed scope object, {target: marked} on a spell
+                const Json& sc = e["scope"];
+                const bool ok = sc.is_object() && sc.size() == 1 && sc.contains("target") && sc["target"].is_string() &&
+                                sc["target"].get<std::string>() == "marked";
+                if (!ok) return ("effect scope must be {target: marked}");
+                s.modifier.mark_scope = 1;
+            }
+            if (s.modifier.chosen_ability && s.modifier.mark_scope == 0) return ("effect modifier ability chosen needs scope target marked");
+            if (s.modifier.mark_scope != 0) {
+                if (s.modifier.stat != ModStat::Damage && s.modifier.stat != ModStat::AbilityCheck)
+                    return ("effect scope target marked: damage or ability_check modifiers only");
+                if (s.modifier.stat == ModStat::Damage && s.modifier.applies_to != ModAppliesTo::Self)
+                    return ("effect scope target marked: a damage modifier needs applies_to self");
+                if (s.modifier.applies_to == ModAppliesTo::AlliesWithin30)
+                    return ("effect scope target marked: applies_to self or target");
+            }
         } else if (kind == "apply_condition") {
             s.kind = SpellEffectKind::ApplyCondition;
             if (!e.contains("condition") || !lookup(kCondition, e["condition"], s.condition)) return ("effect condition invalid");
             s.applies_condition = true;
+            if (e.contains("ends_on")) {   // 7.2zc Invisibility: [attack, cast], unique, non-empty
+                const Json& eo = e["ends_on"];
+                if (!eo.is_array() || eo.empty()) return ("effect ends_on must be a non-empty list of attack, cast");
+                for (const Json& v : eo) {
+                    const std::string w = v.is_string() ? v.get<std::string>() : "";
+                    const uint8_t b = w == "attack" ? kEndsOnAttack : w == "cast" ? kEndsOnCast : uint8_t(0);
+                    if (b == 0) return ("effect ends_on must be a non-empty list of attack, cast");
+                    if (s.ends_on & b) return ("effect ends_on items must be unique");
+                    s.ends_on = uint8_t(s.ends_on | b);
+                }
+            }
         } else if (kind == "hp_pool") {   // R-G15 (VERSION_BUMP_BATCH 7.2f): Sleep, Color Spray; timer from the spell's duration
             s.kind = SpellEffectKind::HpPool;
             auto d = e.contains("dice") && e["dice"].is_string() ? parse_dice(e["dice"].get<std::string>()) : std::nullopt;
@@ -940,6 +972,7 @@ SpellLoad spell_from_json(const Json& j) {
             fx.modifier = x.modifier;
             fx.modifier.id = spell_id_of(s.content_id + "#modifier" + std::to_string(i));
         }
+        fx.ends_on = x.ends_on;   // 7.2zc
         fx.affected_only = j["effects"][i].value("applies_to", "all") == "affected";
         s.extra_effects.push_back(fx);
     }
@@ -947,6 +980,25 @@ SpellLoad spell_from_json(const Json& j) {
         return err("effects: ac_bonus and counter reactions cannot be combined with other effects");
     if (j["effects"][0].value("applies_to", "all") != "all")
         return err("effects[0].applies_to needs a previous effect");
+    {   // 7.2zc: ends_on needs a lasting spell; move_mark needs concentration and a marked row (tools/validate, same wording)
+        bool ends = s.ends_on != 0, marked = s.kind == SpellEffectKind::ApplyModifier && s.modifier.mark_scope != 0;
+        for (const SpellEffect& x : s.extra_effects) {
+            ends = ends || x.ends_on != 0;
+            marked = marked || (x.kind == SpellEffectKind::ApplyModifier && x.modifier.mark_scope != 0);
+        }
+        if (ends && !s.concentration && s.duration != SpellDuration::Rounds && s.duration != SpellDuration::Minutes &&
+            s.duration != SpellDuration::Hours)
+            return err("effect ends_on needs concentration or a rounds, minutes or hours duration");
+        if (j.contains("move_mark")) {
+            const Json& mm = j["move_mark"];
+            if (!mm.is_object() || mm.size() != 1 || !mm.contains("action") || !mm["action"].is_string() ||
+                mm["action"].get<std::string>() != "bonus_action")
+                return err("move_mark must be {action: bonus_action}");
+            if (!s.concentration) return err("move_mark needs a concentration spell");
+            if (!marked) return err("move_mark needs an apply_modifier with scope target marked");
+            s.move_mark = 1;
+        }
+    }
     const bool reaction_kind = s.kind == SpellEffectKind::AcBonus || s.kind == SpellEffectKind::Counter;
     if (reaction_kind != (s.casting_time == CastingTime::Reaction))
         return err("effect kind " + kind + " and casting_time.kind " + ck + " disagree (ac_bonus/counter are reactions, and only they)");

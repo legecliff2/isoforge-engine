@@ -499,6 +499,37 @@ void end_concentration(EncounterState& s, CombatantId caster, std::vector<Event>
     }
 }
 
+// 7.2zc Invisibility (SpellEffect::ends_on): `who` made an attack (kEndsOnAttack) or cast a spell (kEndsOnCast): its effects
+// with that bit end (only those of the (spell, caster) pairs in `only`, when given: a cast keeps the effects it made itself).
+// A caster's concentration on such a spell ends too once nothing of the spell is left (effects, modifiers, zones).
+void end_on_own_action(EncounterState& s, CombatantId who, uint8_t bitv, std::vector<Event>& ev,
+                       const std::vector<std::pair<uint32_t, CombatantId>>* only = nullptr) {
+    std::vector<std::pair<uint32_t, CombatantId>> ended;
+    for (std::size_t i = 0; i < s.effects.size();) {
+        const ActiveSpellEffect& e = s.effects[i];
+        const std::pair<uint32_t, CombatantId> key{e.spell_id, e.caster};
+        if (e.target == who && (e.ends_on & bitv) != 0 && (!only || std::find(only->begin(), only->end(), key) != only->end())) {
+            ended.push_back(key);
+            end_effect(s, i, ev);
+        } else ++i;
+    }
+    for (const auto& k : ended) {
+        Combatant* c = find_mut(s, k.second);
+        if (!c || c->concentration_spell != k.first) continue;
+        bool left = zone_alive(s, k.second, k.first);
+        for (const auto& e : s.effects) left = left || (e.spell_id == k.first && e.caster == k.second);
+        for (const auto& m : s.modifiers) left = left || (m.spec.source == k.first && m.caster == k.second);
+        if (!left) end_concentration(s, k.second, ev);
+    }
+}
+
+// The (spell, caster) pairs of `who`'s effects with ends_on bit `bitv` in force now (a cast ends only these, 7.2zc).
+std::vector<std::pair<uint32_t, CombatantId>> ends_on_keys(const EncounterState& s, CombatantId who, uint8_t bitv) {
+    std::vector<std::pair<uint32_t, CombatantId>> out;
+    for (const auto& e : s.effects) if (e.target == who && (e.ends_on & bitv) != 0) out.push_back({e.spell_id, e.caster});
+    return out;
+}
+
 // Petrifying Gaze: the effect's condition becomes its escalate_to condition for good (no more saves, no timer). Same
 // events as any condition change: ConditionRemoved for the old one (unless something else still imposes it), ConditionAdded.
 void escalate_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev) {
@@ -887,6 +918,10 @@ struct Ctx {
     // 7.2t cover: the explicit origin for the attack / area in progress (Spiritual Weapon tile; ActionRequest area origin)
     bool has_cover_origin = false; int32_t cover_x = 0, cover_y = 0;
     bool has_area_origin = false; int32_t area_x = 0, area_y = 0;   // set by cast_spell around resolve_spell only
+    // 7.2zc (set by cast_spell_impl around resolve_spell only): the cast spent a spell slot (not innate: Disciple of Life), and
+    // ActionRequest::mark_ability (a marked `ability: "chosen"` row).
+    bool slot_cast = false;
+    uint8_t mark_ability = 0;
 };
 
 // R-G11 zone triggers (defined after damage_creature).
@@ -1198,6 +1233,7 @@ bool being_hit_window(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, c
         emit(ev, EventKind::SpellCast, t.id, a.id, int32_t(def->id), o.slot_level);
         bool countered = spell_cast_window(s, ctx, t, def->id, o.slot_level, a.id, ev);
         emit(ev, countered ? EventKind::SpellCountered : EventKind::SpellResolved, t.id, a.id, int32_t(def->id), o.slot_level);
+        if (!s.effects.empty()) end_on_own_action(s, t.id, kEndsOnCast, ev);   // 7.2zc: casting ends Invisibility
         --ctx.depth;
         mark_depth(ev, from, uint8_t(ctx.depth + 1));
         if (countered) return true;
@@ -1986,15 +2022,16 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
                                                           : roll_dice(s.rng, wdice, crit));
         dmg += roll_window(s, ctx, a, t.id, kRollDamage, dmg, 0, atk.ranged, spell_id, ev);   // 7.2za: the attack's damage roll
         if (dmg < 0) dmg = 0;
-        std::vector<std::pair<int, DamageType>> modp;   // Damage modifiers (Rage, Hunter's Mark): weapon attacks only
-        if (spell_id == 0 && !s.modifiers.empty()) {
+        std::vector<std::pair<int, DamageType>> modp;   // Damage modifiers (Rage): weapon attacks only; marked rows: any attack
+        if (!s.modifiers.empty()) {
             for (const auto& m : s.modifiers) {
                 if (m.target != a.id || m.spec.stat != ModStat::Damage) continue;
+                if (m.spec.mark_scope != 0 ? m.mark != t.id : spell_id != 0) continue;   // 7.2zc: a marked row: hits on the mark only
                 if (m.weapon != 0 && !wields(a, m, atk)) continue;   // 7.2y: bound to another weapon
                 if ((m.spec.scope == 1 && atk.ranged) || (m.spec.scope == 2 && !atk.ranged)) continue;
                 if (m.spec.scope_ability != 0 && m.spec.scope_ability != scope_ability_of(a, atk)) continue;   // 7.2z Rage: Str
                 if (!m.spec.when.empty()) {
-                    TrigCtx x; x.atk = &atk; x.is_spell = false; x.mode = atk_mode; x.ally = ally_near_target; x.crit = crit;
+                    TrigCtx x; x.atk = &atk; x.is_spell = spell_id != 0; x.mode = atk_mode; x.ally = ally_near_target; x.crit = crit;
                     x.types = bit(m.spec.has_damage_type ? m.spec.damage_type : atk.type);
                     if (!when_ok(s, a, t, x, m.spec.when)) continue;
                 }
@@ -2031,6 +2068,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
             if (const SpellDef* d = spell_def(s, sid)) resolve_spell(s, ctx, a, *d, 0, std::vector<Combatant*>{&t}, within_5ft, ev);   // 7.2zb: + extra effects
         }
     }
+    if (!s.effects.empty()) end_on_own_action(s, a.id, kEndsOnAttack, ev);   // 7.2zc Invisibility: after the attack resolves
     return hit;
 }
 
@@ -2123,6 +2161,7 @@ bool spell_cast_window(EncounterState& s, Ctx& ctx, Combatant& caster, uint32_t 
             success = roll.total >= int(def->counter_dc_base) + int(level);
             emit(ev, EventKind::SpellCheckRolled, r.id, caster.id, roll.natural, roll.total, int32_t(success));
         }
+        if (!s.effects.empty()) end_on_own_action(s, r.id, kEndsOnCast, ev);   // 7.2zc: casting ends Invisibility
         --ctx.depth;
         mark_depth(ev, from, uint8_t(ctx.depth + 1));
         if (counter_countered) {
@@ -2831,6 +2870,8 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         for (Combatant* t : T) {
             if (t->dead || (def.excluded_types & bit(t->creature_type))) continue;   // no effect (Cure Wounds: undead)
             int amt = roll_dice(s.rng, dice) + (def.add_spellcasting_modifier ? modifier(a.abilities, a.spellcasting_ability) : 0);
+            if (a.has_heal_bonus && def.is_spell && ctx.slot_cast && lvl >= 1)   // 7.2zc Disciple of Life: a spell cast with a slot of level 1+
+                amt += int(a.heal_bonus_flat) + (a.heal_bonus_per_level ? int(lvl) : 0);
             if (amt <= 0) continue;
             bool was_unconscious = t->has(Condition::Unconscious);
             auto h = heal_hp(s, *t, int16_t(amt));
@@ -2857,6 +2898,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                                                       def.concentration,
                                                       effect_timed(s, def, a.id, t->id),
                                                       lvl, false});
+                s.effects.back().ends_on = def.ends_on;   // 7.2zc Invisibility
                 if (def.escape_dc > 0) { s.effects.back().dc = def.escape_dc; s.effects.back().escape_check = true; }   // EC (flagged): Web
                 if (def.escape_dc > 0 && def.object_hp > 0) {   // EC spider follow-up (flagged): the web as an object
                     auto& w = s.effects.back();
@@ -2892,6 +2934,9 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
     case SpellEffectKind::ApplyModifier: {   // timed modifier on each target (applies_to Self: the caster)
         ModifierSpec m = def.modifier;
         m.source = def.id; m.concentration = def.concentration;
+        // 7.2zc: a marked row follows the spell's one target (cast_spell_impl checked it); a chosen ability is the cast's
+        const CombatantId marked = m.mark_scope != 0 && !T.empty() ? T[0]->id : 0;
+        if (m.chosen_ability && ctx.mark_ability >= 1 && ctx.mark_ability <= 6) { m.ability = Ability(ctx.mark_ability - 1); m.has_ability = true; }
         std::vector<Combatant*> to = T;
         if (m.applies_to == ModAppliesTo::Self) to = {&a};
         else if (m.applies_to == ModAppliesTo::AlliesWithin30 && s.hooks.area_targets) {
@@ -2909,6 +2954,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 affected.push_back(t); applied = true;
                 for (auto& am : s.modifiers) if (am.spec.id == m.id && am.target == t->id && am.caster == a.id) {
                     am.slot_level = lvl;
+                    am.mark = marked;   // 7.2zc
                     if (am.spec.repeat_save != 0 && am.spec.repeat_dc == 0) am.spec.repeat_dc = int16_t(spell_save_dc(a, def));   // Slow
                 }
             }
@@ -3179,6 +3225,34 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         return out;
     }
     if (req.zone_move_ft != 0) return fail("zone_move_ft: zone_move only");
+    if (req.move_mark) {   // 7.2zc: move the mark of the actor's concentration spell; a bonus action, no slot, no SpellCast window
+        if (req.sustain || req.innate || req.metamagic != 0 || !req.spared.empty() || !req.targets.empty() || req.mark_ability != 0)
+            return fail("move_mark: not a cast");
+        if (def.move_mark == 0) return fail("move_mark: the spell's mark cannot be moved");
+        if (a.concentration_spell != def.id) return fail("move_mark: not concentrating on that spell");
+        CombatantId old_mark = 0;
+        for (const auto& m : s.modifiers)
+            if (m.caster == a.id && m.spec.source == def.id && m.spec.mark_scope != 0 && m.mark != 0) { old_mark = m.mark; break; }
+        if (old_mark == 0) return fail("move_mark: no mark of that spell");
+        const Combatant* om = find(s, old_mark);
+        if (om && !om->dead && om->hp > 0) return fail("move_mark: the marked creature has not dropped to 0 hit points");
+        Combatant* t = find_mut(s, req.target);
+        if (!t || t->dead || t == &a || t->id == old_mark) return fail("bad target");
+        if (is_incapacitated(a)) return fail("incapacitated");
+        if (!b.bonus_action) return fail("no bonus action available");
+        b.bonus_action = false;
+        s.budget = b;
+        StepResult out{true, {}, {}};
+        for (auto& m : s.modifiers) {   // the same rows, retargeted: ModifierExpired reason 10 (moved), then ModifierApplied
+            if (m.caster != a.id || m.spec.source != def.id || m.spec.mark_scope == 0 || m.mark != old_mark) continue;
+            emit(out.events, EventKind::ModifierExpired, m.caster, m.target, int32_t(m.spec.id), 10);
+            if (m.target == old_mark) m.target = t->id;   // a row on the marked creature (Hex's check) follows the mark
+            m.mark = t->id;
+            emit(out.events, EventKind::ModifierApplied, m.caster, m.target, int32_t(m.spec.id), int32_t(m.spec.stat), modifier_magnitude(m.spec));
+        }
+        check_end(s, out.events);
+        return out;
+    }
     if (req.sustain) {   // R-G15: Heat Metal's repeat damage with a bonus action, no slot, no SpellCast window
         Combatant* t = find_mut(s, req.target);
         if (!t || t->dead) return fail("bad target");
@@ -3322,6 +3396,15 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (req.has_zone_dest && def.zone.anchor == ZoneAnchor::Creature) return fail("zone: an aura has no destination");
         break;
     }
+    {   // 7.2zc generic mark: one marked creature other than the caster; mark_ability only for (and required by) a chosen ability
+        bool marked = def.kind == SpellEffectKind::ApplyModifier && def.modifier.mark_scope != 0;
+        bool chosen = def.kind == SpellEffectKind::ApplyModifier && def.modifier.chosen_ability;
+        for (const SpellEffect& x : def.extra_effects)
+            if (x.kind == SpellEffectKind::ApplyModifier) { marked = marked || x.modifier.mark_scope != 0; chosen = chosen || x.modifier.chosen_ability; }
+        if (marked && (T.size() != 1 || T[0] == &a)) return fail("marked: one creature other than the caster");
+        if (chosen ? (req.mark_ability < 1 || req.mark_ability > 6) : req.mark_ability != 0)
+            return fail(chosen ? "mark_ability: 1..6 (Str..Cha) for this spell" : "mark_ability: the spell has no chosen ability");
+    }
     for (const SpellEffect& x : def.extra_effects)
         if (x.kind == SpellEffectKind::Zone) return fail("zone: primary effect only");
     for (const SpellEffect& x : def.extra_effects)
@@ -3384,6 +3467,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         emit(out.events, EventKind::ResourceSpent, a.id, 0, int32_t(def.pool_id), pcost, find_pool(s, a.id, def.pool_id)->cur);
     if (meta_cost > 0 && spend_pool(s, a.id, a.sorcery_pool, uint16_t(meta_cost)))   // R-G14: sorcery points for Metamagic
         emit(out.events, EventKind::ResourceSpent, a.id, 0, int32_t(a.sorcery_pool), meta_cost, find_pool(s, a.id, a.sorcery_pool)->cur);
+    const auto ends_keys = def.is_spell ? ends_on_keys(s, a.id, kEndsOnCast) : std::vector<std::pair<uint32_t, CombatantId>>{};   // 7.2zc
     bool countered = def.is_spell && spell_cast_window(s, ctx, a, def.id, lvl, ids[0], out.events);
     if (!countered) {
         const bool careful = (req.metamagic & kMetaCareful) != 0;
@@ -3400,7 +3484,9 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         ctx.summon_archetypes = &req.summon_archetypes; ctx.summon_tiles = &req.summon_tiles;
         ctx.has_area_origin = req.has_area_origin; ctx.area_x = req.area_x; ctx.area_y = req.area_y;
         ctx.ranged_disadvantage = req.beyond_normal_range || req.ranged_hostile_within_5ft;   // EC spider follow-up (flagged)
+        ctx.slot_cast = inn == nullptr && lvl >= 1; ctx.mark_ability = req.mark_ability;   // 7.2zc
         resolve_spell(s, ctx, a, def, lvl, T, req.target_within_5ft, out.events);
+        ctx.slot_cast = false; ctx.mark_ability = 0;
         ctx.ranged_disadvantage = false;
         ctx.spared = nullptr; ctx.spared_no_damage = false; ctx.heighten = 0; ctx.empower = 0;
         ctx.forced_feet = 0; ctx.teleport_feet = 0; ctx.has_teleport_dest = false; ctx.teleport_x = 0; ctx.teleport_y = 0;
@@ -3411,6 +3497,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         defer_forced(s, ctx, out.events);   // R-G9: placeholders after every save and damage of the spell, before SpellResolved
     }
     emit(out.events, countered ? EventKind::SpellCountered : EventKind::SpellResolved, a.id, ids[0], int32_t(def.id), lvl);
+    if (!ends_keys.empty()) end_on_own_action(s, a.id, kEndsOnCast, out.events, &ends_keys);   // 7.2zc: after the spell is cast
     check_end(s, out.events);
     return out;
 }
@@ -5108,15 +5195,21 @@ uint64_t triggers_digest(const EncounterState& s, uint64_t h) {
 
 namespace rules5e {
 
-bool apply_modifier(EncounterState& s, CombatantId caster, CombatantId target, const ModifierSpec& spec, std::vector<Event>& ev) {
-    Combatant* t = find_mut(s, target);
-    if (!t) return false;
+// ModifierApplied's c: the bonus, else the die (count * 100 + sides), the roll mode, the speed change or the AC floor.
+int32_t modifier_magnitude(const ModifierSpec& spec) {
     int32_t magnitude = spec.bonus;
     if (magnitude == 0 && spec.die.count > 0) magnitude = int32_t(spec.die.count) * 100 + spec.die.sides;
     else if (magnitude == 0 && spec.mode != RollMode::Normal) magnitude = int32_t(spec.mode);
     else if (magnitude == 0 && spec.stat == ModStat::Speed)
         magnitude = (spec.speed_num == spec.speed_den && spec.speed_sub > 0) ? int32_t(spec.speed_sub) : int32_t(spec.speed_num) * 100 + spec.speed_den;
     else if (magnitude == 0 && spec.stat == ModStat::Ac && spec.ac_floor > 0) magnitude = spec.ac_floor;
+    return magnitude;
+}
+
+bool apply_modifier(EncounterState& s, CombatantId caster, CombatantId target, const ModifierSpec& spec, std::vector<Event>& ev) {
+    Combatant* t = find_mut(s, target);
+    if (!t) return false;
+    const int32_t magnitude = modifier_magnitude(spec);
     if (spec.stat == ModStat::TempHp) {   // granted at once; the larger pool is kept; no record
         if (spec.bonus > t->temp_hp && !t->no_regain_hp) t->temp_hp = spec.bonus;   // EC swarm: no temp HP
         emit(ev, EventKind::ModifierApplied, caster, target, int32_t(spec.id), int32_t(spec.stat), magnitude);
@@ -5209,7 +5302,8 @@ uint64_t modifiers_digest(const EncounterState& s, uint64_t h) {
             byte(0x58); byte(p.scope_ability); byte(p.ends_early); byte(p.blocks); byte(p.on_end_exhaustion);
             byte(uint8_t(m.fought)); byte(uint8_t(m.frenzied));
         }
-        if (p.held_applies != 0 || p.range_ft != 0) { byte(0x59); byte(p.held_applies); u32(p.range_ft); }   // 7.2za held die   // 7.2y wielded-scope binding: only when bound (older digests unchanged)
+        if (p.held_applies != 0 || p.range_ft != 0) { byte(0x59); byte(p.held_applies); u32(p.range_ft); }
+        if (m.mark != 0) { byte(0x5A); u32(m.mark); byte(p.mark_scope); byte(uint8_t(p.chosen_ability)); }   // 7.2zc mark: only when set   // 7.2za held die   // 7.2y wielded-scope binding: only when bound (older digests unchanged)
     }
     return h;
 }

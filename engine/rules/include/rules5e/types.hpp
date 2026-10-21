@@ -382,6 +382,13 @@ struct ModifierSpec {
     // an ally other than the user, within this range (EncounterHooks::targets_within; no hook = in range) and not deafened.
     uint8_t held_applies = 0;
     uint16_t range_ft = 0;
+    // appended (7.2zc generic mark; Hunter's Mark, Hex): mark_scope 1 = `scope: {target: "marked"}`: the row follows the creature
+    // the caster marked at cast (ActiveModifier::mark, the spell's one target). Damage rows sit on the caster and add to its
+    // attack hits (weapon or spell) on the marked creature only; check rows sit on the caster (applies_to self) or on the marked
+    // creature (applies_to target). chosen_ability: AbilityCheck `ability: "chosen"`: the ability is the caster's cast-time
+    // choice (ActionRequest::mark_ability), written into `ability` / `has_ability` of the applied row.
+    uint8_t mark_scope = 0;
+    bool chosen_ability = false;
 };
 
 // Row R-G6: a bonus-action attack option (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy). Requested with
@@ -610,6 +617,12 @@ struct Combatant {
     // appended (7.2zb, static content, not folded): costed bonus-action grants and per-spell modifications (see the structs).
     std::vector<BonusActionCost> bonus_action_costs;
     std::vector<SpellMod> spell_mods;
+    // appended (7.2zc Disciple of Life, static content, not folded): every creature a Heal effect of a spell cast with a slot of
+    // level 1 or higher heals regains heal_bonus_flat more, plus the slot level when heal_bonus_per_level. Riders, pools and
+    // feature heals do not count. has_heal_bonus = the feature is present (flat may be 0).
+    bool has_heal_bonus = false;
+    int8_t heal_bonus_flat = 0;
+    bool heal_bonus_per_level = false;
 };
 
 void add_condition(Combatant&, Condition);
