@@ -471,7 +471,7 @@ namespace eng::world {
 
 inline constexpr int kChunkSize = 32;          // 32x32 tiles, 1 tile = 5 ft
 inline constexpr int kChunkLayers = 4;         // ground, detail, walls, roof
-inline constexpr uint16_t kChunkFormatVersion = 1;
+inline constexpr uint16_t kChunkFormatVersion = 2;   // chunk@2: lights + ambient (R-G13)
 
 struct ChunkCoord {
     int32_t x, y; int16_t level;               // level = floor / dungeon depth
@@ -502,7 +502,23 @@ struct Chunk {
     std::vector<EntitySpawn> spawns;
     std::vector<std::string> triggers;          // script hooks / regions (serialized)
     enum class Origin : uint8_t { Handcrafted, Streamed, Procedural } origin;
+    // chunk@2 (R-G13 LIGHTING.md §3.3 / §7), appended. Presentation (colour, flicker, glow) is never stored here.
+    struct Light {
+        Vec2i       tile;                       // local to chunk
+        uint16_t    bright_ft = 0, dim_ft = 0;  // multiples of 5; bright + dim <= kMaxLightFt
+        uint8_t     flags = 0;                  // 1 magical, 2 sunlight, 4 starts unlit (sim::light_src values)
+        std::string preset;                     // content key render maps to visuals ("" = none)
+        uint32_t    stable_id = 0;              // computed by the loader (chunk_light_stable_id); never authored
+    };
+    struct Ambient {
+        uint8_t kind = 0;                       // 0 none (underground), 1 sun, 2 moon (sim::AmbientKind)
+        uint8_t level = 0;                      // 0 dark, 1 dim, 2 bright (sim::Light)
+        auto operator<=>(const Ambient&) const = default;
+    };
+    std::vector<Light>     lights;
+    std::optional<Ambient> ambient;
 };
+inline constexpr uint16_t kMaxLightFt = 120;    // 24 tiles < kChunkSize: a 1-chunk halo suffices (LIGHTING.md §7)
 
 struct ChunkRequest {
     ChunkCoord coord;
@@ -540,6 +556,8 @@ public:
 
 } // namespace eng::world
 ```
+
+**chunk@2 versioning.** `kChunkFormatVersion` is 2. chunk@2 (R-G13, `docs/proposals/LIGHTING.md` §3.3/§7) appends `lights` and `ambient` to `Chunk`; chunk@1 data is migrated at load time (no lights, no ambient). `content_hash` folds `lights` and `ambient` only when they are non-empty, so chunk@1-equivalent chunks keep their hash. Visual presentation (light colour, flicker, glow) is render-side via `preset` and is excluded from both the struct and the hash.
 
 ### 5.3 Rules module entry points — `rules5e/include/rules5e/rules.hpp`
 
