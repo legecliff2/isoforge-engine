@@ -1,0 +1,48 @@
+{
+  "base": "characters/bard_level_5.json",
+  "sets": [
+    [
+      [
+        "features",
+        0,
+        "effect"
+      ],
+      {
+        "kind": "grant_die",
+        "die": "1d6+1",
+        "scale": [
+          {
+            "level": 5,
+            "die": "1d8"
+          },
+          {
+            "level": 10,
+            "die": "1d10"
+          },
+          {
+            "level": 15,
+            "die": "1d12"
+          }
+        ],
+        "class": "bard",
+        "duration": {
+          "kind": "rounds",
+          "n": 100
+        },
+        "applies_to": [
+          "attack",
+          "save",
+          "check"
+        ],
+        "cost": "bonus_action",
+        "usage": {
+          "kind": "pool",
+          "pool": "bardic_inspiration"
+        },
+        "range_ft": 60
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "/features/0/effect: {...} is not valid under any of the given schemas"
+}

@@ -21,6 +21,12 @@ std::optional<CombatantId> NearestEnemyPolicy::choose_target(const Combat& c, Co
 }
 
 namespace {
+// 7.2zb: a costed bonus-action grant (Step of the Wind) is only taken when its pool can pay (else the step would be refused).
+bool bonus_cost_affordable(const rules5e::EncounterState& s, const rules5e::Combatant& me, rules5e::ActionKind k) {
+    for (const auto& bc : me.bonus_action_costs)
+        if (bc.kind == k) return rules5e::can_spend(s, me.id, bc.pool, bc.cost);
+    return true;
+}
 // Anchors from which a creature of side `mn` stands within `reach` tiles of the `tn`-side creature at
 // `tp`, excluding anchors that overlap it. For 1x1 vs 1x1 this is the 8 * reach-ring around `tp`.
 // Reach 0 (a swarm's bite, SRD: "one target in the swarm's space"): only the anchors whose footprint overlaps the target's
@@ -415,7 +421,8 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // About to leave a hostile's reach: Disengage first if a bonus Disengage is available
     // (granted by content, e.g. a bonus_action_grant feature).
     if (s.budget.bonus_action && !me->disengaged &&
-        (me->bonus_action_grants & rules5e::bit(ActionKind::Disengage)) && c.would_leave_reach(self, mp, path[0])) {
+        (me->bonus_action_grants & rules5e::bit(ActionKind::Disengage)) && bonus_cost_affordable(s, *me, ActionKind::Disengage) &&
+        c.would_leave_reach(self, mp, path[0])) {
         Command d;
         d.request = {self, ActionKind::Disengage};
         d.request.as_bonus_action = true;

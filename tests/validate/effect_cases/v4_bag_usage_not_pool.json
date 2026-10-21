@@ -1,0 +1,27 @@
+{
+  "base": "characters/monk_level_5.json",
+  "sets": [
+    [
+      [
+        "features",
+        4
+      ],
+      {
+        "id": "patient_defense",
+        "name": "Patient Defense",
+        "effect": {
+          "kind": "bonus_action_grant",
+          "actions": [
+            "dodge"
+          ],
+          "usage": {
+            "kind": "per_day",
+            "pool": "ki"
+          }
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "bonus_action_grant effect is invalid: /usage/kind: 'pool' was expected"
+}

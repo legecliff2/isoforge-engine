@@ -1,0 +1,61 @@
+{
+  "base": "characters/monk_level_5.json",
+  "sets": [
+    [
+      [
+        "features",
+        8
+      ],
+      {
+        "id": "open_hand_technique",
+        "name": "Open Hand Technique",
+        "effect": {
+          "kind": "on_event",
+          "on": "hit",
+          "choice": "ask",
+          "pick_one": true,
+          "when": [
+            {
+              "kind": "attack_from_feature",
+              "feature": "patient_defense"
+            }
+          ],
+          "effects": [
+            {
+              "kind": "save_condition",
+              "save": {
+                "ability": "dex",
+                "dc": 13
+              },
+              "apply": [
+                {
+                  "condition": "prone"
+                }
+              ]
+            },
+            {
+              "kind": "forced_move",
+              "save": {
+                "ability": "str",
+                "dc": 13
+              },
+              "mode": "push",
+              "feet": 15
+            },
+            {
+              "kind": "apply_modifier",
+              "modifier": {
+                "stat": "no_reactions",
+                "duration": {
+                  "kind": "until_end_of_caster_next_turn"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "attack_from_feature 'patient_defense' is not a bonus-attack feature"
+}

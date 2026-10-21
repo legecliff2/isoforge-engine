@@ -1,0 +1,19 @@
+{
+  "base": "characters/monk_level_5.json",
+  "sets": [
+    [
+      [
+        "reactions",
+        0,
+        "effect",
+        "applies_to_attack"
+      ],
+      [
+        "ranged_weapon",
+        "ranged_weapon"
+      ]
+    ]
+  ],
+  "severity": "error",
+  "expect": "[reaction: /effect/applies_to_attack: ['ranged_weapon', 'ranged_weapon'] has non-unique elements]"
+}

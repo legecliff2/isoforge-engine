@@ -580,7 +580,8 @@
             "subject_is_caster",
             "owner_creature_type",
             "subject_hostile",
-            "target_below_max_hp"
+            "target_below_max_hp",
+            "attack_from_feature"
           ]
         },
         "is": {
@@ -646,6 +647,10 @@
           "type": "string",
           "minLength": 1,
           "description": "target_tag / not_target_tag (sim #170): a content tag (monster tags[], case-folded; a character race adds itself and 'elf' for every *elf race except half_elf)."
+        },
+        "feature": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id",
+          "description": "7.2zb attack_from_feature: the id of a bonus-attack feature of the same document (flurry_of_blows, martial_arts, or a bonus_attack effect). True only for hits of that feature's bonus attack (Open Hand Technique)."
         }
       },
       "allOf": [
@@ -942,6 +947,30 @@
               ]
             }
           }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "attack_from_feature"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "feature"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "feature"
+              ]
+            }
+          },
+          "description": "VERSION_BUMP_BATCH 7.2zb (Open Hand Technique): a flag predicate of the target_surprised group plus its feature id."
         }
       ]
     },
@@ -963,7 +992,9 @@
             "bonus_attack",
             "area_save",
             "spend",
-            "grapple"
+            "grapple",
+            "forced_move",
+            "apply_modifier"
           ]
         },
         "damage": {
@@ -1100,6 +1131,21 @@
             }
           },
           "description": "heal_self / temp_hp only (additive, Engine Core loader-duration-temphp; older content unaffected): amount = the owner's `ability` modifier + its level in `class` (omitted = no level term; the class level follows scale.per_levels: classes[] entry, else level), at least `min` (default 1). Computed at load (integers). Dark One's Blessing: {\"ability\": \"cha\", \"class\": \"warlock\"}."
+        },
+        "mode": {
+          "const": "push",
+          "description": "7.2zb forced_move: push away from the attacker (the forced-movement path, FORCED_MOVEMENT.md)."
+        },
+        "feet": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 60,
+          "multipleOf": 5,
+          "description": "7.2zb forced_move: distance in feet."
+        },
+        "modifier": {
+          "$ref": "#/$defs/modifier",
+          "description": "7.2zb apply_modifier: a timed modifier on the creature hit (Open Hand: no_reactions until_end_of_caster_next_turn). applies_to self is a load error."
         }
       },
       "allOf": [
@@ -1395,6 +1441,59 @@
               ]
             }
           }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "forced_move"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "mode",
+              "feet"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "save",
+                "mode",
+                "feet",
+                "when"
+              ]
+            }
+          },
+          "description": "VERSION_BUMP_BATCH 7.2zb: push the creature hit `feet` away; with save, only on a failed save (Open Hand: Str save or pushed 15 ft)."
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "apply_modifier"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "modifier"
+            ],
+            "propertyNames": {
+              "enum": [
+                "kind",
+                "modifier",
+                "when"
+              ]
+            }
+          },
+          "description": "VERSION_BUMP_BATCH 7.2zb: apply one modifier to the creature hit (Open Hand: no reactions until the end of your next turn)."
         }
       ]
     },
@@ -1453,6 +1552,11 @@
           "items": {
             "$ref": "#/$defs/rider"
           }
+        },
+        "pick_one": {
+          "type": "boolean",
+          "default": false,
+          "description": "VERSION_BUMP_BATCH 7.2zb (Open Hand Technique): with choice ask on a hit / crit trigger, the attacker applies exactly one of effects[] (the HitRider window offers one option per effect). Cannot spend a spell slot."
         }
       }
     },
@@ -2178,6 +2282,20 @@
         "applies_to": {
           "$ref": "#/$defs/roll_kind_list",
           "description": "7.2za subtract_roll: the creature's rolls it may answer (Cutting Words: attack, check, damage). Absent = attack."
+        },
+        "applies_to_attack": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "melee_weapon",
+              "ranged_weapon",
+              "melee_spell",
+              "ranged_spell"
+            ]
+          },
+          "description": "VERSION_BUMP_BATCH 7.2zb reduce_damage (Deflect Missiles): only damage from an attack hit of these kinds. Absent = any damage, as before."
         }
       },
       "allOf": [
@@ -2232,7 +2350,8 @@
               "enum": [
                 "kind",
                 "fraction",
-                "dice"
+                "dice",
+                "applies_to_attack"
               ]
             }
           }
@@ -3504,6 +3623,16 @@
               }
             }
           }
+        },
+        {
+          "description": "7.2zb: a spell_mod effect is checked by its closed arm only.",
+          "properties": {
+            "kind": {
+              "not": {
+                "const": "spell_mod"
+              }
+            }
+          }
         }
       ]
     },
@@ -4153,6 +4282,9 @@
             },
             {
               "$ref": "#/$defs/bonus_attack_effect"
+            },
+            {
+              "$ref": "#/$defs/spell_mod_effect"
             }
           ]
         }
@@ -4615,7 +4747,9 @@
           "const": "grant_die"
         },
         "die": {
-          "$ref": "../common/v1.schema.json#/$defs/dice"
+          "type": "string",
+          "pattern": "^[1-9][0-9]*d(4|6|8|10|12|20|100)$",
+          "description": "#214 follow-up: a plain die 'NdM' (no +modifier)."
         },
         "scale": {
           "type": "array",
@@ -4635,7 +4769,9 @@
                 "maximum": 20
               },
               "die": {
-                "$ref": "../common/v1.schema.json#/$defs/dice"
+                "type": "string",
+                "pattern": "^[1-9][0-9]*d(4|6|8|10|12|20|100)$",
+                "description": "#214 follow-up: a plain die 'NdM' (no +modifier)."
               }
             }
           },
@@ -4705,6 +4841,47 @@
           }
         }
       }
+    },
+    "spell_mod_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "spell"
+      ],
+      "properties": {
+        "kind": {
+          "const": "spell_mod"
+        },
+        "spell": {
+          "$ref": "../common/v1.schema.json#/$defs/content_id",
+          "description": "The spell modified (a content id the pack defines; the validator warns when the document's spellcasting does not list it)."
+        },
+        "damage_bonus_ability": {
+          "$ref": "../common/v1.schema.json#/$defs/ability",
+          "description": "Add this ability's modifier to the damage of each attack hit (beam) of the spell (Agonizing Blast: cha)."
+        },
+        "on_hit_push_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 30,
+          "multipleOf": 5,
+          "description": "Push the creature hit this far away per hit beam (Repelling Blast: 10), on the forced-movement path."
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "damage_bonus_ability"
+          ]
+        },
+        {
+          "required": [
+            "on_hit_push_ft"
+          ]
+        }
+      ],
+      "description": "VERSION_BUMP_BATCH 7.2zb (Agonizing / Repelling Blast): static per-spell modification, per attack hit of that spell. Characters only (the loader refuses it on monsters); character@4 only (older files list it inert)."
     }
   }
 }

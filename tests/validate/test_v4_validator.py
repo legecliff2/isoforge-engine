@@ -906,7 +906,8 @@ class BardHooks72za(unittest.TestCase):
     JACK = {"kind": "half_proficiency", "on": ["checks", "initiative"]}
 
     def doc(self, schema="character@4"):
-        return {"$schema": schema, "id": "t.bard", "features": [{"id": "bi", "effect": self.GD}, {"id": "jack", "effect": self.JACK}]}
+        return {"$schema": schema, "id": "t.bard", "classes": [{"class": "bard", "level": 5}],
+                "features": [{"id": "bi", "effect": self.GD}, {"id": "jack", "effect": self.JACK}]}
 
     def test_valid_shapes(self):
         self.assertEqual(checks_v4.check_bard_hooks(self.doc()), [])
@@ -916,3 +917,51 @@ class BardHooks72za(unittest.TestCase):
         d = self.doc()
         d["features"][0]["effect"] = dict(self.GD, scale=[{"level": 5, "die": "1d8"}, {"level": 5, "die": "1d10"}])
         self.assertTrue(any("must ascend" in e for e in checks_v4.check_bard_hooks(d)))
+
+
+class MonkWarlockHooks72zb(unittest.TestCase):
+    """7.2zb: attack_from_feature / pick_one / spell_mod checks (check_monk_warlock_hooks)."""
+    CTX = {"spell_ids": {"srd51.spell.eldritch_blast", "srd51.spell.fire_bolt"}, "external_ok": lambda _r: False}
+    OH = {"kind": "on_event", "on": "hit", "choice": "ask", "pick_one": True,
+          "when": [{"kind": "attack_from_feature", "feature": "flurry_of_blows"}],
+          "effects": [{"kind": "forced_move", "mode": "push", "feet": 15}]}
+
+    def run_checks(self, doc):
+        errs, warns = [], []
+        checks_v4.check_monk_warlock_hooks(doc, self.CTX, errs, warns)
+        return errs, warns
+
+    def doc(self, schema="character@4", **effects):
+        feats = [{"id": "flurry_of_blows"}, {"id": "patient_defense"}] + [{"id": k, "effect": v} for k, v in effects.items()]
+        return {"$schema": schema, "id": "t.m", "features": feats, "spellcasting": {"spells": ["srd51.spell.eldritch_blast"]}}
+
+    def test_valid(self):
+        sm = {"kind": "spell_mod", "spell": "srd51.spell.eldritch_blast", "damage_bonus_ability": "cha"}
+        self.assertEqual(self.run_checks(self.doc(oh=self.OH, ab=sm)), ([], []))
+
+    def test_attack_from_feature_and_pick_one(self):
+        bad = dict(self.OH, when=[{"kind": "attack_from_feature", "feature": "patient_defense"}])
+        self.assertTrue(any("not a bonus-attack feature" in e for e in self.run_checks(self.doc(oh=bad))[0]))
+        frenzy_like = {"kind": "bonus_attack", "requires_effect": "x"}
+        ok = dict(self.OH, when=[{"kind": "attack_from_feature", "feature": "fz"}])
+        self.assertEqual(self.run_checks(self.doc(fz=frenzy_like, oh=ok))[0], [])
+        self.assertTrue(any("pick_one needs choice ask" in e for e in self.run_checks(self.doc(oh=dict(self.OH, choice="auto")))[0]))
+        self.assertTrue(any("pick_one needs choice ask" in e for e in self.run_checks(self.doc(oh=dict(self.OH, on="turn_start")))[0]))
+
+    def test_spell_mod(self):
+        def sm(spell): return {"kind": "spell_mod", "spell": spell, "on_hit_push_ft": 10}
+        e, w = self.run_checks(self.doc(ab=sm("srd51.spell.fire_bolt")))
+        self.assertEqual(e, [])
+        self.assertTrue(any("never applies" in x for x in w))
+        self.assertTrue(any("is not a spell@1" in x for x in self.run_checks(self.doc(ab=sm("srd51.spell.nope")))[0]))
+        self.assertTrue(any("not valid on monsters" in x for x in self.run_checks(self.doc("monster@4", ab=sm("srd51.spell.eldritch_blast")))[0]))
+
+
+class BardFollowups214(unittest.TestCase):
+    """#214 follow-up: grant_die.class must be one of the document's classes."""
+    def test_class_not_in_doc(self):
+        d = {"$schema": "character@4", "id": "t.b", "classes": [{"class": "bard", "level": 5}],
+             "features": [{"id": "bi", "effect": dict(BardHooks72za.GD, **{"class": "wizard"})}]}
+        self.assertTrue(any("is not one of the document's classes" in e for e in checks_v4.check_bard_hooks(d)))
+        d["features"][0]["effect"]["class"] = "bard"
+        self.assertEqual(checks_v4.check_bard_hooks(d), [])

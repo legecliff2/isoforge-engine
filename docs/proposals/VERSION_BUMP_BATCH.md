@@ -2402,6 +2402,44 @@ Validator (`checks_v4.check_bard_hooks`): scale order, half_proficiency on a mon
 `v4_half_proficiency_*`; `cw_applies_to_*` RG7 cases. Union / lint rows: `BardHooks72za`; `roll_kind_list`, `grant_die_effect`,
 `half_proficiency_effect` in the common@2 def list; subtract_roll's union row gains `applies_to`.
 
+### 7.2zb Monk and warlock hooks (rules side) and hand-off
+
+For T&C's monk / warlock content (#207, #210: Patient Defense, Step of the Wind, Open Hand Technique, Deflect Missiles, Agonizing
+and Repelling Blast). Follows 7.2za (#214); independent of it. All keys are additive and T&C agreed
+the shapes (with the two naming notes below). **No hash tag is claimed**: costs spend existing pools (pools are folded already),
+pushes go through the existing forced-movement path, and the new Combatant fields (`bonus_action_costs`, `spell_mods`) are static
+content that is not folded. Every golden is unchanged.
+
+**Content keys.**
+| Key | Shape | Rules |
+|---|---|---|
+| `bonus_action_grant.usage` (common@1 arm) | the common@2 usage pool arm, closed: `{kind: "pool", pool, cost?}` (cost default 1) | `Combatant::bonus_action_costs` {ActionKind, pool, cost}: a bonus Dash (not Aggressive), Disengage or Dodge with a cost entry needs `cost` from the pool (refused otherwise) and spends it (ResourceSpent). The action form stays free. dash / disengage / dodge only (hide / use_object with usage is a load error). An action another feature grants for free stays free. A file older than @4 with usage is a load error (never silently free). Sim AI takes a costed bonus Disengage only when it can pay |
+| predicate `{kind: "attack_from_feature", feature}` | closed; `feature` = local id | `PredicateKind::AttackFromFeature` (appended), `mask` = the compiled `BonusAttack::id` (`<archetype>#bonus#<feature>`): true only for hits of that bonus attack (Flurry of Blows). Set from `ActionRequest::bonus_option` around the bonus attack's roll. Loader: the feature must exist; validator: it must be a bonus-attack feature of the document (martial_arts, flurry_of_blows, frenzy, or a `bonus_attack` effect) |
+| on_event `pick_one` | boolean, default false | `Trigger::pick_one`: with `choice: ask` on a hit / crit trigger the HitRider window offers one option per effect (ReactionOption `slot_level` = 1 + effect index) and only the chosen effect applies (auto policy: the first). It cannot spend a spell slot. Open Hand's "one of the following" |
+| rider `{kind: "forced_move", save?, mode: "push", feet}` | closed; feet 5..60 step 5 | new minimal rider: a synthetic SpellDef `<archetype>#forced_move.<n>`, Save (fixed DC) with an affected-only ForcedMove push extra effect (no save: a plain ForcedMove). `RiderKind::Effect` (appended). On-hit riders now resolve with `resolve_spell` so extra effects run (no change for the existing single-effect synth defs) |
+| rider `{kind: "apply_modifier", modifier}` | closed; `modifier` = common@2 modifier | new minimal rider: a synthetic ApplyModifier SpellDef on the creature hit (applies_to self is a load error). Open Hand: `{stat: no_reactions, duration: {kind: until_end_of_caster_next_turn}}` (expiry 3) |
+| reaction `reduce_damage.applies_to_attack` | unique, non-empty `[melee_weapon \| ranged_weapon \| melee_spell \| ranged_spell]` | `Reaction::attack_kinds` (kAttackKind* bits): offered only for damage from an attack hit of these kinds. Absent = any damage, as before |
+| effect `{kind: "spell_mod", spell, damage_bonus_ability?, on_hit_push_ft?}` | closed arm `spell_mod_effect`, at least one optional key; ability str..cha; push 5..30 step 5 | `Combatant::spell_mods` {spell_id, damage_ability, push_ft}: per attack hit (beam) of that spell, the ability modifier is added to the damage and the target is pushed (ForcedMoveQuery mode 1, deferred like other pushes). Characters only (refused on monsters); @4 only (older files list it inert) |
+
+Open Hand example: `{kind: on_event, on: hit, choice: ask, pick_one: true, when: [{kind: attack_from_feature, feature:
+flurry_of_blows}], effects: [{kind: save_condition, save: {ability: dex, dc: 13}, apply: [{condition: prone}]}, {kind:
+forced_move, save: {ability: str, dc: 13}, mode: push, feet: 15}, {kind: apply_modifier, modifier: {stat: no_reactions,
+duration: {kind: until_end_of_caster_next_turn}}}]}`. Patient Defense `{kind: bonus_action_grant, actions: [dodge], usage: {kind:
+pool, pool: ki}}`; Step of the Wind `actions: [dash, disengage]`, same usage. Deflect Missiles adds `applies_to_attack:
+[ranged_weapon]`. Agonizing Blast `{kind: spell_mod, spell: srd51.spell.eldritch_blast, damage_bonus_ability: cha}`; Repelling
+Blast `{..., on_hit_push_ft: 10}`.
+
+Naming notes for T&C: the pool cost key is `usage`, not `cost`, because `cost` is already the common@1 action-economy key
+(action / bonus_action) on every effect; the value is the common@2 usage pool arm exactly. The predicate has its own schema arm
+(it carries `feature`); it sits next to the target_surprised flag group. Not modelled: Step of the Wind's doubled jump, Deflect
+Missiles' catch-and-throw.
+
+Validator (`checks_v4.check_monk_warlock_hooks`): attack_from_feature must name a bonus-attack feature; pick_one needs choice ask
+on hit / crit; spell_mod on a monster is an error, a spell that is not a spell@1 of the pack is an error, one the document does not
+cast (spellcasting spells / known) is a warning. `spell_mod_effect` is in the native-arm message map. Effect cases `v4_bag_usage_*`,
+`v4_attack_from_feature_*`, `v4_pick_one_needs_ask`, `v4_forced_move_*`, `v4_applies_to_attack_*`, `v4_spell_mod_*`. Union / lint
+rows: `MonkWarlockHooks72zb`; `spell_mod_effect` in the common@2 def list.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain

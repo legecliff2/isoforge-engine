@@ -1,0 +1,28 @@
+{
+  "base": "characters/monk_level_5.json",
+  "sets": [
+    [
+      [
+        "features",
+        4
+      ],
+      {
+        "id": "patient_defense",
+        "name": "Patient Defense",
+        "effect": {
+          "kind": "bonus_action_grant",
+          "actions": [
+            "dodge"
+          ],
+          "usage": {
+            "kind": "pool",
+            "pool": "ki",
+            "uses": 1
+          }
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "bonus_action_grant effect is invalid: /usage: Additional properties are not allowed ('uses' was unexpected)"
+}
