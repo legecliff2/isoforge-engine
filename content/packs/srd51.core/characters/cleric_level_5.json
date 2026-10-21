@@ -60,6 +60,16 @@
       "id": "bonus_proficiency",
       "name": "Bonus Proficiency",
       "description": "You gain proficiency with heavy armor (worn: chain mail, baked into armor_class)."
+    },
+    {
+      "id": "disciple_of_life",
+      "name": "Disciple of Life",
+      "description": "Your healing spells are more effective. Whenever you use a spell of 1st level or higher to restore hit points to a creature, the creature regains additional hit points equal to 2 + the spell's level. (Modelled: heal_bonus flat 2 + the slot level, per creature healed by a slot cast.)",
+      "effect": {
+        "kind": "heal_bonus",
+        "flat": 2,
+        "per_spell_level": true
+      }
     }
   ],
   "equipment": [
