@@ -543,10 +543,10 @@ std::optional<std::string> compile_on_event(const std::string& arch, const std::
             if (auto e = compile_predicate(where, p, pr)) return e;
             if (pr.kind == rules5e::PredicateKind::AttackFromFeature) {   // 7.2zb: the compiled bonus attack of that feature
                 const std::string fid = p.value("feature", "");
-                bool found = false;
+                bool feature_found = false;
                 if (auto fs = doc.find("features"); fs != doc.end() && fs->is_array())
-                    for (const Json& f : *fs) found = found || (f.is_object() && f.value("id", "") == fid);
-                if (!found) return where + ": attack_from_feature names unknown feature '" + fid + "'";
+                    for (const Json& f : *fs) feature_found = feature_found || (f.is_object() && f.value("id", "") == fid);
+                if (!feature_found) return where + ": attack_from_feature names unknown feature '" + fid + "'";
                 pr.mask = rules5e::spell_id_of(arch + "#bonus#" + fid);
             }
             t.when.push_back(pr);
