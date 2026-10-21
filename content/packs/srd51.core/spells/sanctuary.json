@@ -6,7 +6,7 @@
     "ref": "SRD 5.1",
     "license": "CC-BY-4.0"
   },
-  "description": "You ward a creature within range against attack. Until the spell ends, any creature who targets the warded creature with an attack or a harmful spell must first make a wisdom saving throw. On a failed save, the creature must choose a new target or lose the attack or spell. This spell doesn't protect the warded creature from area effects, such as the explosion of a fireball. If the warded creature makes an attack or casts a spell that affects an enemy creature, this spell ends. (Modelled: apply_condition warded with ward {save wis, on_fail retarget_or_lose} and ends_on [attack, harmful_cast]; areas are not blocked. Deviation: a harmful spell is a spell from a creature of another team, so an ally's harmful spell is not checked.)",
+  "description": "You ward a creature within range against attack. Until the spell ends, any creature who targets the warded creature with an attack or a harmful spell must first make a wisdom saving throw. On a failed save, the creature must choose a new target or lose the attack or spell. This spell doesn't protect the warded creature from area effects, such as the explosion of a fireball. If the warded creature makes an attack or casts a spell that affects an enemy creature, this spell ends. (Modelled: apply_condition warded with ward {save wis, on_fail retarget_or_lose} and ends_on [attack, harmful_cast]; any creature but the warded one meets the ward with an attack, a Grapple / Shove, or a harmful spell without an area (damage, a save, or a negative condition or modifier); areas are not blocked.)",
   "level": 1,
   "school": "abjuration",
   "classes": [
