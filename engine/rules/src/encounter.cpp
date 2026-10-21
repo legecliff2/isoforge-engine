@@ -149,9 +149,22 @@ void consume_modifiers(EncounterState& s, int kind, CombatantId id, int reason, 
 int aura_save_bonus(const EncounterState& s, const Combatant& t, Ability ab);   // R-G11 PR 2 (D7), below spell_def
 DamageApplied zone_apply_damage(const EncounterState& s, const Combatant& t, int16_t amount, DamageType type, uint8_t qualifiers);
 
+// 7.2z: the creature whose effect forces the save in progress (a cast's caster; 0 = unknown: a trap, a zone's later turn).
+thread_local CombatantId g_save_from = 0;
+struct SaveFromGuard {
+    CombatantId prev;
+    explicit SaveFromGuard(CombatantId id) : prev(g_save_from) { g_save_from = id; }
+    ~SaveFromGuard() { g_save_from = prev; }
+};
+
 SaveResult save_roll_raw(EncounterState& s, const Combatant& t, Ability ab, int dc, RollMode mode, const SaveSource* src,
                          int cover = 0) {
     bool adv = mode == RollMode::Advantage, dis = mode == RollMode::Disadvantage;
+    for (const SaveAdvantage& sa : t.save_advantages) {   // 7.2z Danger Sense
+        if (sa.ability != ab || (t.conditions & sa.not_conditions) != 0) continue;
+        if (sa.source_seen && g_save_from != 0 && g_save_from != t.id && !sight(s, t.id, g_save_from).can_see) continue;
+        adv = true;
+    }
     mod_modes(s, t.id, ModStat::Save, int(ab), adv, dis);
     if (t.squeezing && ab == Ability::Dex) dis = true;   // SRD Squeezing
     const RollMode m = combine_modes(adv, dis);
@@ -1415,6 +1428,46 @@ void life_drain(EncounterState& s, Combatant& t, int taken, int dc, CombatantId 
 thread_local const EncounterState* g_sight_base = nullptr;
 
 // 7.2y: is `atk` the weapon a wielded-scope modifier is bound to?
+// 7.2z: scope_ability's code for the ability an attack uses (rules5e::attack_ability): 1 Str, 2 Dex, 0 other.
+uint8_t scope_ability_of(const Combatant& a, const Attack& atk) {
+    const Ability ab = attack_ability(a, atk);
+    return ab == Ability::Str ? uint8_t(1) : ab == Ability::Dex ? uint8_t(2) : uint8_t(0);
+}
+
+// 7.2z: end every modifier of `source` on `target` (ModifierExpired reason 8), then on_end exhaustion: the largest
+// on_end_exhaustion of the removed rows; when a bonus attack of the owner requires one of them (Frenzy), only if it was used.
+void end_source(EncounterState& s, CombatantId target, uint32_t source, std::vector<Event>& ev) {
+    uint8_t exh = 0; bool frenzied = false, needs = false;
+    Combatant* c = find_mut(s, target);
+    for (std::size_t i = 0; i < s.modifiers.size();) {
+        const ActiveModifier& m = s.modifiers[i];
+        if (m.target != target || m.spec.source != source) { ++i; continue; }
+        exh = std::max(exh, m.spec.on_end_exhaustion);
+        frenzied = frenzied || m.frenzied;
+        if (c) for (const BonusAttack& b : c->bonus_attacks) needs = needs || (b.requires_modifier != 0 && b.requires_modifier == m.spec.id);
+        remove_modifier(s, i, 8, ev);
+    }
+    if (exh == 0 || !c || c->dead || (needs && !frenzied)) return;
+    c->exhaustion_level = uint8_t(std::min(6, int(c->exhaustion_level) + int(exh)));
+    add_condition(*c, Condition::Exhaustion);
+    emit(ev, EventKind::ConditionAdded, target, 0, int32_t(Condition::Exhaustion), c->exhaustion_level);   // b = the new level
+    if (dies_of_exhaustion(*c)) kill(*c, ev);
+}
+
+// 7.2z ends_early bit 0, at the end of `who`'s turn.
+void ends_early_turn_end(EncounterState& s, CombatantId who, std::vector<Event>& ev) {
+    std::vector<uint32_t> end;
+    for (auto& m : s.modifiers) {
+        if (m.target != who || !(m.spec.ends_early & 1)) continue;
+        if (!m.fought) { if (std::find(end.begin(), end.end(), m.spec.source) == end.end()) end.push_back(m.spec.source); }
+        else m.fought = false;
+    }
+    for (uint32_t src : end) end_source(s, who, src, ev);
+}
+void mark_fought(EncounterState& s, CombatantId who) {
+    for (auto& m : s.modifiers) if (m.target == who && (m.spec.ends_early & 1)) m.fought = true;
+}
+
 bool wields(const Combatant& a, const ActiveModifier& m, const Attack& atk) {
     return m.weapon != 0 && std::size_t(m.weapon - 1) < a.attacks.size() && &a.attacks[std::size_t(m.weapon - 1)] == &atk;
 }
@@ -1433,6 +1486,14 @@ void sweep_wielded(EncounterState& s, std::vector<Event>& ev) {
                               e.command_word == uint8_t(CommandWord::Drop); });
         }
         if (gone) remove_modifier(s, i, 7, ev); else ++i;
+    }
+    for (std::size_t i = 0; i < s.modifiers.size(); ++i) {   // 7.2z ends_early bit 1: unconscious (or 0 hp / dead)
+        const ActiveModifier& m = s.modifiers[i];
+        if (!(m.spec.ends_early & 2)) continue;
+        const Combatant* c = find(s, m.target);
+        if (c && !c->dead && c->hp > 0 && !c->has(Condition::Unconscious)) continue;
+        end_source(s, m.target, m.spec.source, ev);
+        i = std::size_t(-1);   // restart: end_source erased rows
     }
 }
 
@@ -1614,6 +1675,7 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
     }
     after_damage(t, applied, critical, ev);
     if (applied.dealt > 0 && !s.modifiers.empty()) consume_modifiers(s, 3, t.id, 4, ev);   // "until damaged"
+    if (applied.dealt > 0 && !s.modifiers.empty()) mark_fought(s, t.id);   // 7.2z ends_early: took damage
     if (attacker && !attacker->triggers.empty() && applied.dealt > 0) {
         TrigCtx x; x.atk = src->atk; x.is_spell = src->is_spell; x.mode = src->mode; x.ally = src->ally; x.crit = critical;
         x.types = applied.types_dealt; x.dmg = applied.dealt;
@@ -1794,6 +1856,9 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         for (auto& m : s.modifiers) {   // `when` scope of roll-time modifiers (follow-up): gate the ones that do not hold
             m.gated = false;
             if (m.weapon != 0 && m.target == a.id && (spell_id != 0 || !wields(a, m, atk))) { m.gated = true; continue; }   // 7.2y
+            if (m.target == a.id && m.spec.stat == ModStat::AttackRoll && (m.spec.scope != 0 || m.spec.scope_ability != 0) &&
+                (spell_id != 0 || (m.spec.scope == 1 && atk.ranged) || (m.spec.scope == 2 && !atk.ranged) ||
+                 (m.spec.scope_ability != 0 && m.spec.scope_ability != scope_ability_of(a, atk)))) { m.gated = true; continue; }   // 7.2z
             if (m.spec.when.empty()) continue;
             Combatant* owner = nullptr; const Combatant* subject = nullptr;
             if (m.spec.stat == ModStat::AttackRoll && m.target == a.id) { owner = &a; subject = &t; }
@@ -1843,6 +1908,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     if (hit && within_5ft && (t.has(Condition::Paralyzed) || t.has(Condition::Unconscious))) crit = true;
     emit(ev, EventKind::AttackResolved, a.id, t.id, roll.natural, roll.total,
          int32_t(hit) | (int32_t(crit) << 1));
+    if (t.team != a.team && !s.modifiers.empty()) mark_fought(s, a.id);   // 7.2z ends_early: attacked a hostile
     const TrigSrc tsrc{&a, &atk, spell_id != 0, atk_mode, ally_near_target};
     if (hit) {
         // Triggers that fire on this hit (Sneak Attack-style): their FeatureTriggered events come before the damage
@@ -1864,6 +1930,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
                 if (m.target != a.id || m.spec.stat != ModStat::Damage) continue;
                 if (m.weapon != 0 && !wields(a, m, atk)) continue;   // 7.2y: bound to another weapon
                 if ((m.spec.scope == 1 && atk.ranged) || (m.spec.scope == 2 && !atk.ranged)) continue;
+                if (m.spec.scope_ability != 0 && m.spec.scope_ability != scope_ability_of(a, atk)) continue;   // 7.2z Rage: Str
                 if (!m.spec.when.empty()) {
                     TrigCtx x; x.atk = &atk; x.is_spell = false; x.mode = atk_mode; x.ally = ally_near_target; x.crit = crit;
                     x.types = bit(m.spec.has_damage_type ? m.spec.damage_type : atk.type);
@@ -3973,6 +4040,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         repeat_saves(s, a.id, RepeatSave::EndOfTurn, out.events);
         if (!s.effects.empty()) regurgitation(s, out.events);   // 7.2w: end of this turn
         if (!s.modifiers.empty()) repeat_modifier_saves(s, a.id, out.events);   // Slow
+        if (!s.modifiers.empty()) ends_early_turn_end(s, a.id, out.events);   // 7.2z Rage
         tick_effects_turn_end(s, a.id, out.events);
         if (!a.dead && !a.triggers.empty()) {   // turn_end triggers
             TrigCtx x;
@@ -4017,7 +4085,11 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
     case ActionKind::CastSpell: {
         if (req.spell_id == 0) return fail("spell_id required");
         if (a.form == FormKind::Polymorph || a.form == FormKind::WildShape) return fail("cannot cast spells in this form");   // R-G12
-        if (const SpellDef* def = spell_def(s, req.spell_id)) return cast_spell(s, ctx, a, b, *def, req);
+        const SpellDef* def = spell_def(s, req.spell_id);
+        if ((!def || def->is_spell) && std::any_of(s.modifiers.begin(), s.modifiers.end(), [&](const ActiveModifier& m) {
+                return m.target == a.id && (m.spec.blocks & 1); }))
+            return fail("cannot cast spells while this effect lasts (blocks casting)");   // 7.2z Rage
+        if (def) { SaveFromGuard g(a.id); return cast_spell(s, ctx, a, b, *def, req); }   // 7.2z: the save's source (Danger Sense)
         if (req.innate) return fail("innate spells must be in the spell book");
         // Opaque spell (not in the SpellBook): only the SpellCast window; sim/content resolve it.
         if (!spend_action(b, a, req.kind, false)) return fail("no action available");
@@ -4310,6 +4382,11 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
                 b.bonus_action = false;
                 if (bopt->count > 1) { b.bonus_option = req.bonus_option; b.bonus_remaining = uint8_t(bopt->count - 1); }
                 if (bopt->pool != 0) { pending_pool = bopt->pool; pending_cost = bopt->pool_cost ? bopt->pool_cost : uint16_t(1); }
+                if (bopt->requires_modifier != 0)   // 7.2z Frenzy: the required source's on_end now applies
+                    for (auto& m : s.modifiers) if (m.target == a.id && m.spec.id == bopt->requires_modifier) {
+                        for (auto& o : s.modifiers) if (o.target == a.id && o.spec.source == m.spec.source) o.frenzied = true;
+                        break;
+                    }
             }
         } else if (granted) {
             b.bonus_action = false;
@@ -4932,6 +5009,7 @@ bool apply_modifier(EncounterState& s, CombatantId caster, CombatantId target, c
             if (s.modifiers[i].spec.id == spec.id && s.modifiers[i].target == target) remove_modifier(s, i, 2, ev); else ++i;
         }
     }
+    if (spec.blocks & 2) end_concentration(s, target, ev);   // 7.2z Rage: concentration breaks when it starts
     ActiveModifier m;
     m.spec = spec; m.caster = caster; m.target = target;
     m.timed = make_timed(Expiry(spec.expiry), spec.rounds, current_actor(s) == (spec.expiry == 3 ? caster : target));
@@ -5004,7 +5082,11 @@ uint64_t modifiers_digest(const EncounterState& s, uint64_t h) {
         for (const Predicate& w : p.when) { byte(uint8_t(w.kind)); u32(uint32_t(uint16_t(w.a))); u32(uint32_t(uint16_t(w.b))); u32(w.mask); }
         byte(uint8_t(m.timed.kind)); u32(uint32_t(uint16_t(m.timed.rounds_left)));
         if (p.repeat_save != 0) { byte(p.repeat_save); byte(uint8_t(p.repeat_ability)); u32(uint32_t(uint16_t(p.repeat_dc))); }   // Slow
-        if (m.weapon != 0) { byte(0x57); byte(m.weapon); }   // 7.2y wielded-scope binding: only when bound (older digests unchanged)
+        if (m.weapon != 0) { byte(0x57); byte(m.weapon); }
+        if (p.scope_ability != 0 || p.ends_early != 0 || p.blocks != 0 || p.on_end_exhaustion != 0 || m.fought || m.frenzied) {   // 7.2z
+            byte(0x58); byte(p.scope_ability); byte(p.ends_early); byte(p.blocks); byte(p.on_end_exhaustion);
+            byte(uint8_t(m.fought)); byte(uint8_t(m.frenzied));
+        }   // 7.2y wielded-scope binding: only when bound (older digests unchanged)
     }
     return h;
 }

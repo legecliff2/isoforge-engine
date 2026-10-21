@@ -253,12 +253,63 @@ std::optional<std::string> apply_heal_pool(Archetype& a, const FeatureDecl& f, u
 // feature_modifiers hook hands to rules when the feature is used (UseFeature). A damage `bonus_table` resolves against
 // the owner's level in `class` (else the total level). usage kind "pool" is row 13's; other usage shapes are listed
 // as unsupported and the feature is not offered.
+// 7.2z helpers: closed string-enum arrays (unique items) -> bitmask; false on a bad / repeated entry.
+bool enum_bits(const Json& arr, std::initializer_list<const char*> names, uint32_t& out) {
+    out = 0;
+    if (!arr.is_array() || arr.empty()) return false;
+    for (const Json& v : arr) {
+        const std::string s = v.is_string() ? v.get<std::string>() : "";
+        uint32_t i = 0, hit = 0;
+        for (const char* n : names) { if (s == n) hit = 1u << i; ++i; }
+        if (hit == 0 || (out & hit)) return false;
+        out |= hit;
+    }
+    return true;
+}
+constexpr std::initializer_list<const char*> kAbilities7z = {"str", "dex", "con", "int", "wis", "cha"};
+constexpr std::initializer_list<const char*> kConditions7z = {"blinded", "charmed", "deafened", "frightened", "grappled",
+    "incapacitated", "invisible", "paralyzed", "petrified", "poisoned", "prone", "restrained", "stunned", "unconscious", "exhaustion"};
+
+// 7.2z Danger Sense: apply_modifier {passive: true, advantage_on: {saves: [..]}, when: {save, source_seen?, not_conditions?}}:
+// a static Combatant::save_advantages entry per listed save; nothing to activate.
+std::optional<std::string> apply_passive_advantage(Archetype& a, const FeatureDecl& f) {
+    for (const char* k : {"modifier", "modifiers", "cost", "usage", "duration", "scope", "ends_early", "blocks", "on_end"})
+        if (f.effect.contains(k)) return f.id + ": passive: '" + std::string(k) + "' is not allowed";
+    const auto ao = f.effect.find("advantage_on");
+    const auto w = f.effect.find("when");
+    if (ao == f.effect.end() || !ao->is_object() || !ao->contains("saves") || ao->contains("checks") || ao->size() != 1)
+        return f.id + ": passive needs advantage_on {saves} only";
+    uint32_t saves = 0, when_save = 0, notc = 0;
+    if (!enum_bits((*ao)["saves"], kAbilities7z, saves)) return f.id + ": bad advantage_on.saves";
+    if (w == f.effect.end() || !w->is_object()) return f.id + ": passive needs when";
+    for (auto it = w->begin(); it != w->end(); ++it)
+        if (it.key() != "save" && it.key() != "source_seen" && it.key() != "not_conditions") return f.id + ": when: unknown key '" + it.key() + "'";
+    if (!enum_bits(Json::array({w->value("save", "")}), kAbilities7z, when_save) || !(saves & when_save))
+        return f.id + ": when.save must be one of advantage_on.saves";
+    if (auto nc = w->find("not_conditions"); nc != w->end() && !enum_bits(*nc, kConditions7z, notc)) return f.id + ": bad when.not_conditions";
+    const auto ss = w->find("source_seen");
+    if (ss != w->end() && !ss->is_boolean()) return f.id + ": bad when.source_seen";
+    rules5e::SaveAdvantage sa;
+    for (int i = 0; i < 6; ++i) if (when_save & (1u << i)) sa.ability = rules5e::Ability(i);
+    sa.source_seen = ss == w->end() ? false : ss->get<bool>();
+    sa.not_conditions = notc;
+    a.base.save_advantages.push_back(sa);
+    return std::nullopt;
+}
+
 std::optional<std::string> apply_apply_modifier(Archetype& a, const FeatureDecl& f, uint32_t fid, const FeatureBuildCtx& ctx) {
+    if (auto p = f.effect.find("passive"); p != f.effect.end()) {
+        if (!p->is_boolean() || !p->get<bool>()) return f.id + ": passive must be true";
+        return apply_passive_advantage(a, f);
+    }
+    if (f.effect.contains("when")) return f.id + ": when needs passive";
     std::vector<const Json*> mods;
     if (auto m = f.effect.find("modifier"); m != f.effect.end()) mods.push_back(&*m);
     if (auto ms = f.effect.find("modifiers"); ms != f.effect.end() && ms->is_array())
         for (const Json& m : *ms) mods.push_back(&m);
-    if (mods.empty() || mods.size() > 16) return f.id + ": apply_modifier needs modifier or 1..16 modifiers[]";
+    const auto adv_on = f.effect.find("advantage_on");   // 7.2z Rage: advantage on Str checks and saves
+    if ((mods.empty() && adv_on == f.effect.end()) || mods.size() > 16)
+        return f.id + ": apply_modifier needs modifier, 1..16 modifiers[] or advantage_on";
     ActiveFeature af;
     af.feature_id = fid;
     af.id = f.id;
@@ -275,11 +326,30 @@ std::optional<std::string> apply_apply_modifier(Archetype& a, const FeatureDecl&
         ActiveFeature tmp; tmp.feature_id = fid;
         if (auto e = fill_spec(a, f, tmp, pool_spec)) return e;
     }
-    uint8_t weapon_scope = 0;   // 7.2y scope: {weapon: "wielded"} (Sacred Weapon)
+    // scope (7.2y / 7.2z, closed, at least one key): weapon "wielded" (Sacred Weapon), attack melee_weapon | ranged_weapon,
+    // ability str | dex (Rage: melee_weapon + str). Read by AttackRoll / Damage rows.
+    uint8_t weapon_scope = 0, attack_scope = 0, ability_scope = 0;
     if (auto sc = f.effect.find("scope"); sc != f.effect.end()) {
-        if (!sc->is_object() || sc->size() != 1 || sc->value("weapon", "") != "wielded")
-            return f.id + ": scope must be {weapon: \"wielded\"}";
-        weapon_scope = 1;
+        if (!sc->is_object() || sc->empty()) return f.id + ": scope needs at least one of weapon, attack, ability";
+        for (auto it = sc->begin(); it != sc->end(); ++it) {
+            const std::string v = it.value().is_string() ? it.value().get<std::string>() : "";
+            if (it.key() == "weapon" && v == "wielded") weapon_scope = 1;
+            else if (it.key() == "attack" && (v == "melee_weapon" || v == "ranged_weapon")) attack_scope = v == "melee_weapon" ? 1 : 2;
+            else if (it.key() == "ability" && (v == "str" || v == "dex")) ability_scope = v == "str" ? 1 : 2;
+            else return f.id + ": scope: bad key or value '" + it.key() + "'";
+        }
+    }
+    uint32_t ends = 0, blocks = 0;
+    if (auto e = f.effect.find("ends_early"); e != f.effect.end() && !enum_bits(*e, {"no_attack_or_damage_since_last_turn", "unconscious"}, ends))
+        return f.id + ": bad ends_early";
+    if (auto e = f.effect.find("blocks"); e != f.effect.end() && !enum_bits(*e, {"casting", "concentration"}, blocks))
+        return f.id + ": bad blocks";
+    int exhaustion = 0;
+    if (auto e = f.effect.find("on_end"); e != f.effect.end()) {
+        if (!e->is_object() || e->size() != 1 || !e->contains("exhaustion") || !(*e)["exhaustion"].is_number_integer())
+            return f.id + ": on_end must be {exhaustion: 1..6}";
+        exhaustion = (*e)["exhaustion"].get<int>();
+        if (exhaustion < 1 || exhaustion > 6) return f.id + ": on_end must be {exhaustion: 1..6}";
     }
     std::vector<rules5e::ModifierSpec> rows;
     const uint32_t source = rules5e::spell_id_of(a.id + "#" + f.id);
@@ -310,6 +380,32 @@ std::optional<std::string> apply_apply_modifier(Archetype& a, const FeatureDecl&
         m.id = rules5e::spell_id_of(a.id + "#" + f.id + "#m" + std::to_string(i));
         m.weapon_scope = weapon_scope;
         rows.push_back(m);
+    }
+    if (adv_on != f.effect.end()) {   // 7.2z: Save / AbilityCheck advantage rows, timed like the first modifier (else untimed)
+        if (!adv_on->is_object() || adv_on->empty()) return f.id + ": bad advantage_on";
+        for (auto it = adv_on->begin(); it != adv_on->end(); ++it) {
+            uint32_t bits = 0;
+            if ((it.key() != "checks" && it.key() != "saves") || !enum_bits(it.value(), kAbilities7z, bits)) return f.id + ": bad advantage_on";
+            for (int ab = 0; ab < 6; ++ab) {
+                if (!(bits & (1u << ab))) continue;
+                rules5e::ModifierSpec m = rows.empty() ? rules5e::ModifierSpec{} : rows.front();
+                m.stat = it.key() == "saves" ? rules5e::ModStat::Save : rules5e::ModStat::AbilityCheck;
+                m.bonus = 0; m.die = {0, 0, 0}; m.mode = rules5e::RollMode::Advantage;
+                m.has_ability = true; m.ability = rules5e::Ability(ab); m.has_damage_type = false; m.when.clear();
+                if (rows.empty()) m.applies_to = rules5e::ModAppliesTo::Self;
+                m.source = source;
+                m.id = rules5e::spell_id_of(a.id + "#" + f.id + "#m" + std::to_string(rows.size()));
+                rows.push_back(m);
+            }
+        }
+    }
+    for (auto& m : rows) {   // 7.2z: the effect-level keys on every row (rules act on the source)
+        m.weapon_scope = weapon_scope;
+        if (m.stat == rules5e::ModStat::Damage || m.stat == rules5e::ModStat::AttackRoll) {
+            if (attack_scope) m.scope = attack_scope;
+            m.scope_ability = ability_scope;
+        }
+        m.ends_early = uint8_t(ends); m.blocks = uint8_t(blocks); m.on_end_exhaustion = uint8_t(exhaustion);
     }
     a.feature_modifiers[fid] = std::move(rows);
     if (f.effect.contains("usage")) a.feature_specs[fid] = pool_spec;   // 7.2y: the pool gates UseFeature ("not enough resource")
@@ -775,6 +871,8 @@ FeatureRegistry make_builtin() {
     r.add_hook("damage_mitigation", {apply_damage_mitigation});
     r.add_hook("magic_weapons", {apply_magic_weapons});
     r.add_hook("apply_modifier", {apply_apply_modifier}, 4);
+    r.add_hook("bonus_attack", {[](Archetype&, const FeatureDecl&, uint32_t, const FeatureBuildCtx&) -> std::optional<std::string> {
+        return std::nullopt; }});   // 7.2z Frenzy (no minimum: like gaze / transparent, the @4 gate is compile_bonus_attacks': compiled by content.cpp compile_bonus_attacks (requires_effect)
     r.add_hook("attack_bonus", {apply_attack_bonus});
     r.add_hook("crit_range", {apply_crit_range});
     r.add_hook("ac_bonus", {apply_ac_bonus});

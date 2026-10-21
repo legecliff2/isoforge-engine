@@ -1,0 +1,27 @@
+{
+  "base": "characters/barbarian_level_5.json",
+  "sets": [
+    [
+      [
+        "features",
+        3,
+        "effect"
+      ],
+      {
+        "kind": "apply_modifier",
+        "passive": true,
+        "cost": "bonus_action",
+        "advantage_on": {
+          "saves": [
+            "dex"
+          ]
+        },
+        "when": {
+          "save": "dex"
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "should not be valid under"
+}
