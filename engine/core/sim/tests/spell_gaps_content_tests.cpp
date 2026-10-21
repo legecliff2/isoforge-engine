@@ -22,6 +22,8 @@ Json load_json(const std::string& rel) {
 Json cleric(const std::string& id, Json effect) {
     Json d = load_json("content/packs/srd51.core/characters/cleric_level_1.json");
     d["id"] = id;
+    for (auto it = d["features"].begin(); it != d["features"].end();)   // the shipped document already declares it (content #222 follow-up)
+        it = (*it).value("id", "") == "disciple_of_life" ? d["features"].erase(it) : it + 1;
     d["features"].push_back({{"id", "disciple_of_life"}, {"name", "Disciple of Life"}, {"description", "x"}, {"effect", effect}});
     return d;
 }
@@ -53,7 +55,8 @@ TEST_CASE("7.2zc content: Disciple of Life heal_bonus compiles to the static Com
     REQUIRE(z);
     CHECK(z->base.has_heal_bonus); CHECK(z->base.heal_bonus_flat == 0);
     REQUIRE_FALSE(lib.add(load_json("content/packs/srd51.core/characters/cleric_level_1.json"), "character"));
-    CHECK_FALSE(lib.find("srd51.character.cleric_level_1")->base.has_heal_bonus);
+    CHECK(lib.find("srd51.character.cleric_level_1")->base.has_heal_bonus);   // shipped Disciple of Life
+    CHECK(lib.find("srd51.character.cleric_level_1")->base.heal_bonus_flat == 2);
 }
 
 TEST_CASE("7.2zc content: heal_bonus in an older file is inert") {

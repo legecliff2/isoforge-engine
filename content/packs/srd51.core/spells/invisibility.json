@@ -1,0 +1,51 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.invisibility",
+  "name": "Invisibility",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "A creature you touch becomes invisible until the spell ends. Anything the target is wearing or carrying is invisible as long as it is on the target's person. The spell ends for a target that attacks or casts a spell. At Higher Levels: you can target one additional creature for each slot level above 2nd. (Modelled: apply_condition invisible with ends_on [attack, cast]; the spell ends per target, and concentration ends when no target is left.)",
+  "level": 2,
+  "school": "illusion",
+  "classes": [
+    "bard",
+    "sorcerer",
+    "warlock",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "an eyelash encased in gum arabic"
+    }
+  },
+  "duration": {
+    "kind": "hours",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "apply_condition",
+      "condition": "invisible",
+      "ends_on": [
+        "attack",
+        "cast"
+      ]
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "targets": 1
+    }
+  }
+}

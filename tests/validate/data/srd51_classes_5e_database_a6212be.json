@@ -1573,6 +1573,25 @@
     "sorcerer",
     "wizard"
    ]
+  },
+  "hunters-mark": {
+   "name": "Hunter's Mark",
+   "level": 1,
+   "school": "divination",
+   "classes": [
+    "ranger"
+   ]
+  },
+  "invisibility": {
+   "name": "Invisibility",
+   "level": 2,
+   "school": "illusion",
+   "classes": [
+    "bard",
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ]
   }
  }
 }
