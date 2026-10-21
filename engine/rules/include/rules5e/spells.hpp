@@ -128,7 +128,10 @@ struct SpellEffect {
     int8_t condition_max_size = -1;
     int8_t regurgitate_dc = 0; uint8_t regurgitate_damage = 30;   // 7.2w: see SpellDef
     bool excludes_formless = false;                                // 7.2w: see SpellDef
+    uint8_t ends_on = 0;                                           // 7.2zc: see SpellDef::ends_on
 };
+// 7.2zc (Invisibility): apply_condition `ends_on` bits: the effect ends when its target makes an attack / casts a spell.
+inline constexpr uint8_t kEndsOnAttack = 1, kEndsOnCast = 2;
 
 // ---- R-G11 persistent zones and auras (docs/proposals/ZONES_AURAS.md §2.6) ----
 // Point: fixed at a sim tile (ActionRequest::zone_x / zone_y, kept opaque in ActiveZone); Creature: an aura centred on the
@@ -363,6 +366,14 @@ struct SpellDef {
     // excludes_formless: the condition skips a Combatant::formless target (the Net).
     int8_t regurgitate_dc = 0; uint8_t regurgitate_damage = 30;
     bool excludes_formless = false;
+    // appended (7.2zc Invisibility): ApplyCondition: kEndsOn* bits. The effect on a creature ends once that creature has made an
+    // attack (after the attack resolves) or cast a spell (after the spell resolves), whatever the target; the spell's
+    // concentration ends with it when nothing of the spell is left. 0 = never early.
+    uint8_t ends_on = 0;
+    // appended (7.2zc generic mark): spell@1 `move_mark {action: bonus_action}`: 1 = the caster may move the mark of this
+    // concentration spell's marked rows (ModifierSpec::mark_scope) with a bonus action once the marked creature has dropped to
+    // 0 hit points (ActionRequest::move_mark). 0 = the mark never moves.
+    uint8_t move_mark = 0;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
