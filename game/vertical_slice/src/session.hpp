@@ -25,6 +25,10 @@ public:
         // PC a lit torch (sim::AttachedLight 20/20 ft, preset srd51.core.light.torch). The sim computes
         // all light; this only decides who carries a source. Off = ambient only (underground: Dark).
         bool        pc_torches = true;
+        // Fog of war (LIGHTING.md §10): show this team's sim visibility masks. Unset = the player
+        // team (the team of the first character combatant). fog = false shows everything.
+        bool        fog = true;
+        std::optional<uint8_t> fog_team = std::nullopt;
     };
     // Config-file shape {"pack_roots": [...], "packs": [...]} (both optional) -> o. False + *error
     // on malformed input.
