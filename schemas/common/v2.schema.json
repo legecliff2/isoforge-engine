@@ -1859,8 +1859,10 @@
           "enum": [
             "self",
             "target",
-            "allies_within_30"
-          ]
+            "allies_within_30",
+            "attackers"
+          ],
+          "description": "7.2zd attackers (Protection from Evil and Good): an attack_roll row on the target that applies to the attack rolls of creatures attacking it; scope from_types filters their creature type."
         },
         "duration": {
           "$ref": "#/$defs/modifier_duration"
@@ -3708,9 +3710,13 @@
                 "marked"
               ],
               "description": "7.2zc generic mark: spells only (spell@1 apply_modifier scope); on a feature it is a load error."
+            },
+            "from_types": {
+              "$ref": "../common/v1.schema.json#/$defs/creature_types",
+              "description": "7.2zd: the attackers an applies_to attackers row applies to (rows of any other applies_to: a load error)."
             }
           },
-          "description": "VERSION_BUMP_BATCH 7.2y / 7.2z: one closed object, at least one key. weapon wielded: bound to the melee weapon wielded at activation (Sacred Weapon). attack / ability: the attack-roll and damage rows apply only to that kind of weapon attack using that ability (Rage: {attack: melee_weapon, ability: str}). 7.2zc: target marked is the spell@1 generic mark key; a feature refuses it."
+          "description": "VERSION_BUMP_BATCH 7.2y / 7.2z: one closed object, at least one key. weapon wielded: bound to the melee weapon wielded at activation (Sacred Weapon). attack / ability: the attack-roll and damage rows apply only to that kind of weapon attack using that ability (Rage: {attack: melee_weapon, ability: str}). 7.2zc: target marked is the spell@1 generic mark key; a feature refuses it. 7.2zd: from_types (creature types, unique) for applies_to attackers rows."
         },
         "ends_early": {
           "type": "array",
@@ -3958,8 +3964,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "kind",
-        "pool"
+        "kind"
       ],
       "properties": {
         "kind": {
@@ -3970,8 +3975,70 @@
         },
         "pool": {
           "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "usage": {
+          "$ref": "#/$defs/usage",
+          "description": "7.2zd split form: the cost (Channel Divinity: {kind: pool, pool: channel_divinity})."
+        },
+        "per_class_level": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "7.2zd Preserve Life: the hit points to divide = per_class_level x the level in `class` (absent: the total level)."
+        },
+        "class": {
+          "type": "string",
+          "description": "7.2zd split form: whose class level per_class_level counts (absent: the total character level)."
+        },
+        "range_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 120,
+          "multipleOf": 5,
+          "description": "7.2zd split form: every creature healed is within this distance of the user."
+        },
+        "cap": {
+          "enum": [
+            "half_max"
+          ],
+          "description": "7.2zd split form: no creature above half its hit point maximum; one already at or above half gets nothing."
+        },
+        "excludes_types": {
+          "$ref": "../common/v1.schema.json#/$defs/creature_types",
+          "description": "7.2zd split form: creature types that cannot be healed (Preserve Life: undead, construct). Omitted: tools/validate warns."
         }
-      }
+      },
+      "if": {
+        "required": [
+          "per_class_level"
+        ]
+      },
+      "then": {
+        "required": [
+          "per_class_level",
+          "range_ft",
+          "cap",
+          "usage"
+        ],
+        "not": {
+          "required": [
+            "pool"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "pool"
+        ],
+        "propertyNames": {
+          "enum": [
+            "kind",
+            "cost",
+            "pool"
+          ]
+        }
+      },
+      "description": "Row 13 Lay on Hands: {pool} (spend ActionRequest::amount from the pool). 7.2zd Preserve Life split form: {per_class_level, range_ft, cap, usage, excludes_types?, class?} (ActionRequest::heal_split; the two forms don't mix)."
     },
     "challenge_rating": {
       "enum": [
