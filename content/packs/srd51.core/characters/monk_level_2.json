@@ -78,12 +78,35 @@
     {
       "id": "patient_defense",
       "name": "Patient Defense",
-      "description": "You can spend 1 ki point to take the Dodge action as a bonus action on your turn. (Descriptive: no key grants a bonus-action Dodge paid from a pool.)"
+      "description": "You can spend 1 ki point to take the Dodge action as a bonus action on your turn. (Modelled: bonus_action_grant dodge, usage 1 ki.)",
+      "effect": {
+        "kind": "bonus_action_grant",
+        "actions": [
+          "dodge"
+        ],
+        "usage": {
+          "kind": "pool",
+          "pool": "ki",
+          "cost": 1
+        }
+      }
     },
     {
       "id": "step_of_the_wind",
       "name": "Step of the Wind",
-      "description": "You can spend 1 ki point to take the Disengage or Dash action as a bonus action on your turn, and your jump distance is doubled for the turn. (Descriptive: no key grants a bonus-action Dash / Disengage paid from a pool; jumping is not simulated.)"
+      "description": "You can spend 1 ki point to take the Disengage or Dash action as a bonus action on your turn, and your jump distance is doubled for the turn. (Modelled: bonus_action_grant dash / disengage, usage 1 ki; the doubled jump distance is not modelled.)",
+      "effect": {
+        "kind": "bonus_action_grant",
+        "actions": [
+          "dash",
+          "disengage"
+        ],
+        "usage": {
+          "kind": "pool",
+          "pool": "ki",
+          "cost": 1
+        }
+      }
     },
     {
       "id": "unarmored_movement",

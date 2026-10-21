@@ -153,12 +153,12 @@ AUTHORED = {
     "martial-arts": "feature:martial_arts",                  # sim convention: bonus unarmed strike; Dex + martial arts die baked into actions
     "ki": "feature:ki",                                      # resources[] ki {max monk level, short_rest}; the feature text only
     "flurry-of-blows": "feature:flurry_of_blows",            # sim convention: 2 unarmed strikes for 1 ki
-    "patient-defense": "feature:patient_defense",            # descriptive: no pool-paid bonus-action Dodge key
-    "step-of-the-wind": "feature:step_of_the_wind",          # descriptive: no pool-paid bonus-action Dash / Disengage key
+    "patient-defense": "feature:patient_defense",            # bonus_action_grant dodge + usage 1 ki (7.2zb, #218)
+    "step-of-the-wind": "feature:step_of_the_wind",          # bonus_action_grant dash / disengage + usage 1 ki (7.2zb); jump not modelled
     "unarmored-movement-1": "feature:unarmored_movement",    # baked into speed.walk 40 (speed()); no effect
     "monastic-tradition": "subclass",
-    "deflect-missiles": "reactions",                         # reactions[] damaged (ranged_only) / reduce_damage 1d10 + Dex + level
-    "open-hand-technique": "feature:open_hand_technique",    # descriptive: no predicate selects the Flurry of Blows strikes
+    "deflect-missiles": "reactions",                         # reactions[] damaged (ranged_only) / reduce_damage 1d10 + Dex + level, applies_to_attack ranged_weapon (7.2zb)
+    "open-hand-technique": "feature:open_hand_technique",    # on_event hit, attack_from_feature flurry_of_blows, pick_one (7.2zb, #218)
     "monk-ability-score-improvement-1": "abilities",
     "slow-fall": "feature:slow_fall",                        # descriptive: falling is not simulated
     "monk-extra-attack": "feature:extra_attack",
@@ -177,10 +177,9 @@ DESCRIPTIVE = {"rogue": ["expertise", "thieves_cant", "fast_hands", "second_stor
                "barbarian": ["rage", "unarmored_defense", "danger_sense", "fast_movement", "frenzy"],
                "bard": ["song_of_rest", "expertise", "bonus_proficiencies", "font_of_inspiration"],
                "druid": ["druidic", "bonus_cantrip", "circle_spells"],
-               "monk": ["unarmored_defense", "martial_arts", "ki", "flurry_of_blows", "patient_defense", "step_of_the_wind",
-                        "unarmored_movement", "deflect_missiles", "open_hand_technique", "slow_fall"],
-               "warlock": ["eldritch_invocations", "agonizing_blast", "armor_of_shadows", "repelling_blast",
-                           "pact_of_the_tome"]}
+               "monk": ["unarmored_defense", "martial_arts", "ki", "flurry_of_blows",
+                        "unarmored_movement", "deflect_missiles", "slow_fall"],
+               "warlock": ["eldritch_invocations", "armor_of_shadows", "pact_of_the_tome"]}
 # Not expressible today (docs/SRD_CLASSES_DEFERRED.md): mirror index -> the feature id it would get (must be absent).
 DEFERRED = {
     "disciple-of-life": "disciple_of_life",
@@ -564,14 +563,27 @@ class ClassTable(unittest.TestCase):
                 if level >= 2:
                     self.assertEqual(d["resources"], [{"id": "ki", "name": "Ki", "max": row["ki_points"], "recharge": "short_rest"}])
                     self.assertIn("flurry_of_blows", f)
+                    ki = {"kind": "pool", "pool": "ki", "cost": 1}   # 7.2zb pool-paid bonus actions
+                    self.assertEqual(f["patient_defense"]["effect"], {"kind": "bonus_action_grant", "actions": ["dodge"], "usage": ki})
+                    self.assertEqual(f["step_of_the_wind"]["effect"], {"kind": "bonus_action_grant", "actions": ["dash", "disengage"], "usage": ki})
                 else:
                     self.assertNotIn("resources", d)
                 if level >= 3:
                     self.assertEqual(d["reactions"], [{"id": "deflect_missiles", "name": "Deflect Missiles",
                                                        "window": {"kind": "damaged", "ranged_only": True},
-                                                       "effect": {"kind": "reduce_damage", "dice": f"1d10+{dex + level}"}}])
+                                                       "effect": {"kind": "reduce_damage", "dice": f"1d10+{dex + level}",
+                                                                  "applies_to_attack": ["ranged_weapon"]}}])   # 7.2zb: weapon attacks only
+                    dc = 8 + pb + mod(ab["wis"])   # ki save DC
+                    self.assertEqual(f["open_hand_technique"]["effect"], {   # 7.2zb: one of three on a Flurry of Blows hit
+                        "kind": "on_event", "on": "hit", "choice": "ask", "pick_one": True,
+                        "when": [{"kind": "attack_from_feature", "feature": "flurry_of_blows"}],
+                        "effects": [{"kind": "save_condition", "save": {"ability": "dex", "dc": dc}, "apply": [{"condition": "prone"}]},
+                                    {"kind": "forced_move", "save": {"ability": "str", "dc": dc}, "mode": "push", "feet": 15},
+                                    {"kind": "apply_modifier", "modifier": {"stat": "no_reactions", "applies_to": "target",
+                                                                            "duration": {"kind": "until_end_of_caster_next_turn"}}}]})
                 else:
                     self.assertNotIn("reactions", d)
+                    self.assertNotIn("open_hand_technique", f)
                 self.assertEqual("extra_attack" in f, level >= 5)
                 if level >= 5:
                     self.assertEqual(f["extra_attack"]["effect"], {"kind": "extra_attack", "attacks_per_action": 2})
@@ -600,6 +612,12 @@ class ClassTable(unittest.TestCase):
                 armor = [e for e in d["equipment"] if isinstance(e, dict) and e.get("equipped") and item(e["item"])["category"] == "armor"]
                 self.assertEqual(bool(armor), level < 2)   # Armor of Shadows replaces the leather armor from 2nd
                 self.assertEqual("pact_of_the_tome" in f, level >= 3)
+                eb = "srd51.spell.eldritch_blast"   # 7.2zb spell_mod, per beam
+                if level >= 2:
+                    self.assertEqual(f["agonizing_blast"]["effect"], {"kind": "spell_mod", "spell": eb, "damage_bonus_ability": "cha"})
+                self.assertEqual("repelling_blast" in f, level >= 5)
+                if level >= 5:
+                    self.assertEqual(f["repelling_blast"]["effect"], {"kind": "spell_mod", "spell": eb, "on_hit_push_ft": 10})
                 self.assertEqual(f["dark_ones_blessing"]["effect"], {
                     "kind": "on_event", "on": "reduce_to_zero", "when": [{"kind": "subject_hostile"}],
                     "effects": [{"kind": "temp_hp", "amount_from": {"ability": "cha", "class": "warlock"}}]})   # Cha mod + warlock level, min 1
