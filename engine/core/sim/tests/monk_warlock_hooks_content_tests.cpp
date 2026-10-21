@@ -127,7 +127,9 @@ TEST_CASE("7.2zb loader refusals") {
     {   Json d = monk("t.m4"); feature(d, "open_hand_technique")["effect"]["when"][0]["feature"] = "nope";
         CHECK(err_of(d).find("attack_from_feature names unknown feature 'nope'") != std::string::npos); }
     {   Json d = monk("t.m5"); feature(d, "open_hand_technique")["effect"]["choice"] = "auto";
-        CHECK(err_of(d).find("pick_one needs choice ask") != std::string::npos); }
+        CHECK(err_of(d).find("pick_one needs choice ask on a hit or crit trigger") != std::string::npos); }
+    {   Json d = monk("t.m4b"); feature(d, "open_hand_technique")["effect"]["when"][0]["feature"] = "patient_defense";
+        CHECK(err_of(d).find("attack_from_feature 'patient_defense' is not a bonus-attack feature of this document") != std::string::npos); }
     {   Json d = monk("t.m6"); feature(d, "open_hand_technique")["effect"]["effects"][1]["feet"] = 12;
         CHECK(err_of(d).find("feet must be 5..60") != std::string::npos); }
     {   Json d = monk("t.m7"); feature(d, "open_hand_technique")["effect"]["effects"][1]["mode"] = "pull";
