@@ -1231,9 +1231,6 @@ def check_spell_batch3(doc: dict) -> list[str]:
             continue
         m = e.get("modifier") if isinstance(e.get("modifier"), dict) else {}
         die = m.get("die")
-        if "sign" in m and isinstance(die, str) and die.startswith("-"):
-            errs.append(f"{pre}effect modifier sign and a negative die together")
-            continue
         rolls = m.get("applies_to")
         if isinstance(rolls, list):
             stat = m.get("stat")
