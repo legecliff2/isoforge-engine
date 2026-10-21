@@ -32,6 +32,9 @@ public:
     uint32_t world_sprites() const { return world_.sprite_count(); }
     uint32_t ui_sprites() const { return ui_.sprite_count(); }
     const eng::iso2d::LightMaps& light_maps() const { return lights_; }
+    const eng::iso2d::FogMaps& fog_maps() const { return fogs_; }
+    // Tint + fog state of a world tile from the retained light / fog maps (held for blocked chunks).
+    eng::Color tile_tint(const LightView&, eng::Vec2i tile, eng::iso2d::Fog* fog_out = nullptr) const;
     uint32_t batches() const { return world_.batch_count() + ui_.batch_count(); }
 
 private:
@@ -43,7 +46,9 @@ private:
     eng::iso2d::SpriteBatch world_, ui_;
     eng::iso2d::LightMaps lights_;
     eng::iso2d::GlowPalette palette_;   // light preset -> glow colour / intensity (presentation only)
+    eng::iso2d::FogMaps fogs_;
     uint64_t light_frame_ = 0;
+    int fog_key_ = -1;   // (fog on, team) last uploaded; a change refreshes every fog map
     struct Textures;
     std::unique_ptr<Textures> tex_;
     uint32_t ui_seq_ = 0;
