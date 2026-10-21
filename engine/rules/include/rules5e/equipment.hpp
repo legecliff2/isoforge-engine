@@ -1,0 +1,103 @@
+#pragma once
+// docs/proposals/EQUIPMENT.md (Director-approved): rules-side predicates and math for equipment. Pure functions of the
+// EncounterState plus Engine Core's read-only views (EncounterHooks::loadout_of, item_def); rules builds no loadout or ground-item
+// state (9.1). With no loadout_of hook, or a nullptr view for a creature (legacy content, CombatOptions::equipment off), every
+// predicate answers "no constraint" and nothing changes. Integer math only.
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+#include "rules5e/encounter.hpp"
+#include "rules5e/item.hpp"
+
+namespace rules5e {
+
+// ---- Weapon attacks (2.1) ----
+struct WielderView {
+    AbilityScores abilities{};
+    int8_t pb = 2;
+    bool proficient = true;            // weapon proficiency (monsters: always)
+    int8_t attack_rows = 0;            // Archery +2 (ranged), other additive attack bonuses
+    int8_t damage_rows = 0;            // Dueling +2, other additive damage bonuses
+    uint8_t dice_multiplier = 1;       // monster@5 weapon_dice_multiplier (weapons only, never natural attacks)
+    uint8_t extra_melee_dice = 0;      // Brute: extra weapon dice on melee (not thrown) weapon hits
+    bool twf_style = false;            // Two-Weapon Fighting style: the off-hand attack adds a positive modifier
+    std::optional<Ability> ability{};  // explicit ability (natural attacks; a finesse choice)
+    bool damage_ability_none = false;  // the stat block prints no modifier (Gelatinous Cube Pseudopod)
+    std::optional<int8_t> to_hit_override{};   // monster attack_bonus (the total, with a reason)
+    int8_t ammo_magic = 0;             // magic ammunition: + attack and damage
+};
+struct DerivedAttack { Attack attack{}; std::string_view error{}; };
+// Errors (exact): "weapon: a two-handed weapon needs both hands", "weapon: not a versatile weapon",
+// "weapon: not a thrown weapon", "weapon: the off-hand weapon must be a light melee weapon".
+DerivedAttack derive_weapon_attack(const WeaponDef&, const WielderView&, WeaponUse);
+// Unarmed strike (SRD "Melee Attacks"): Str + PB to hit, 1 + Str bludgeoning (flat), no hand needed.
+Attack unarmed_strike(const AbilityScores&, int pb);
+// Ability the derivation uses: explicit, else finesse -> higher of Str / Dex (ties Str), pure ranged -> Dex, else Str.
+Ability weapon_ability(const WeaponDef&, const WielderView&);
+
+// ---- Hands and components (3) ----
+const LoadoutView* loadout_view(const EncounterState&, CombatantId);   // nullptr = not equipment-gated
+int free_hands(const EncounterState&, CombatantId);                     // no view: 2 (unconstrained)
+// Attack-time check of Combatant::attacks[attack_index] (via LoadoutView::attacks). "" = allowed. Strings (exact):
+// "attack: the weapon is not in hand", "attack: needs both hands", "attack: loading needs a free hand",
+// "attack: no ammunition", "attack: nothing to throw", "attack: the torch is not lit".
+std::string_view attack_refusal(const EncounterState&, CombatantId, uint8_t attack_index);
+bool can_attack_with(const EncounterState&, CombatantId, uint32_t instance, WeaponUse);
+// "" = the components can be provided. Strings: "cast: somatic needs a free hand", "cast: material needs a free hand or a focus".
+std::string_view components_refusal(const EncounterState&, CombatantId, const SpellDef&);
+bool components_ok(const EncounterState&, CombatantId, const SpellDef&);
+
+// ---- Equip operations (4) ----
+enum class EquipOp : uint8_t { None, Draw, Stow, Drop, PickUp, DonShield, DoffShield, HandOver, DonArmor, DoffArmor };
+struct EquipCost {
+    enum Kind : uint8_t { Free, Interaction, Action, Refused } kind = Refused;
+    std::string_view refusal{};
+};
+// The cost of ActionRequest{UseObject, equip_op, equip_item, equip_hand, equip_to, equip_in_reach} for the current actor, or the
+// refusal (exact strings in EQUIPMENT.md 4.2 and equipment.cpp). Interaction = the free object interaction if unspent; when it is
+// spent the same op costs the Use an Object action (Action); Free = drop; shield don / doff = Action; armor = refused in combat.
+EquipCost equip_legal(const EncounterState&, const ActionRequest&);
+// Armor don / doff time in rounds (SRD "Donning and Doffing Armor": 1 minute = 10 rounds); a helper halves it.
+uint16_t armor_change_rounds(ArmorCategory, bool don, bool helper);
+// Equip entries for the current actor, in order op, instance, hand (Draw, Stow, Drop, DonShield, DoffShield); legal_actions
+// appends them after every existing entry. PickUp / HandOver need positions and are listed by Engine Core.
+std::vector<ActionRequest> equip_legal_actions(const EncounterState&);
+
+// ---- Monster reverse calculation (5) ----
+int proficiency_for_cr(int cr_num, int cr_den);   // SRD CR table: 0..4 +2, 5..8 +3, ... 29..30 +9
+std::string format_dice(DiceExpr);                // "2d8+4", "1d4-1", "3d6", "1"
+struct Reasoned { bool present = false; int8_t value = 0; std::string reason{}; };
+struct MonsterAttackSpec {
+    std::string id;                    // the action id
+    WeaponDef weapon{};                // item, monster-local or natural (weapon.natural)
+    WeaponUse use = WeaponUse::OneHand;
+    std::optional<Ability> ability{};  // natural attacks: explicit
+    bool damage_ability_none = false;
+    Reasoned attack_bonus{};           // overrides the total to-hit
+    int8_t printed_to_hit = 0;
+    DiceExpr printed_damage{0, 0, 0};  // damage[0] only; damage[1..] stay authored and unchecked (5.6)
+};
+struct MonsterSpec {
+    std::string id;                    // content id
+    AbilityScores abilities{};
+    int cr_num = 0, cr_den = 1;
+    bool has_pb = false; int8_t pb = 2; std::string pb_reason{};
+    bool has_armor = false; ArmorPiece armor{};
+    bool has_shield = false; ShieldPiece shield{};
+    bool has_natural_armor = false; int8_t natural_base = 10; bool natural_dex = true;
+    uint8_t dice_multiplier = 1;       // explicit, never from size (Q12)
+    uint8_t brute_dice = 0;            // weapon_extra_dice trait (melee only)
+    Reasoned ac_adjust{};
+    int16_t printed_ac = 10;
+    std::vector<MonsterAttackSpec> attacks{};
+};
+struct MonsterDerivation {
+    int8_t pb = 2; int16_t ac = 10;
+    std::vector<Attack> attacks{};     // parallel to MonsterSpec::attacks
+    std::vector<std::string> errors{}; // the 5.6 strings, in check order; empty = loads
+};
+MonsterDerivation derive_monster(const MonsterSpec&);
+
+} // namespace rules5e
