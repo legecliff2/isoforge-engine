@@ -745,3 +745,48 @@ TEST_CASE("loader 7.2zd: warded + ward, ends_on harmful_cast, scope from_types +
     j = aid; j["effects"][0]["flat"] = 0; j["effects"][0]["per_slot_above"] = 0; bad(j, "effect max_hp_bonus needs flat or per_slot_above above 0");
     j = aid; j["duration"] = {{"kind", "instantaneous"}}; bad(j, "effect max_hp_bonus needs concentration or a rounds, minutes or hours duration");
 }
+
+TEST_CASE("loader 7.2ze: modifier sign + applies_to rolls, apply_modifier save gate, save condition chosen + choices") {
+    auto bless = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.bless","level":1,"name":"Bless",
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":30},"components":{"v":true,"s":true,"m":{"text":"holy water"}},
+        "duration":{"kind":"rounds","amount":10,"concentration":true},"targets":{"count":3},
+        "effects":[{"kind":"apply_modifier","modifier":{"stat":"attack_roll","die":"1d4","sign":"plus","applies_to":["attack","save"],
+                    "duration":{"kind":"concentration"}}}],"scaling":{"upcast":{"targets":1}}})");
+    auto b = spell_from_json(bless); INFO(b.error); REQUIRE(b.def);
+    CHECK(b.def->modifier.die_mult == 1); CHECK(b.def->modifier.also_rolls == kRollSave);
+    CHECK(b.def->modifier.applies_to == ModAppliesTo::Target);
+    CHECK(b.def->targets == 3); CHECK(b.def->upcast_targets == 1); CHECK_FALSE(b.def->has_modifier_save);
+    auto bane = bless;
+    bane["id"] = "srd51.spell.bane"; bane["effects"][0]["modifier"]["sign"] = "minus";
+    bane["effects"][0]["save"] = {{"ability", "cha"}, {"dc", "caster"}};
+    auto n = spell_from_json(bane); INFO(n.error); REQUIRE(n.def);
+    CHECK(n.def->modifier.die_mult == -1); CHECK(n.def->has_modifier_save); CHECK(n.def->modifier_save == Ability::Cha);
+    auto blind = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.blindness_deafness","level":2,
+        "name":"Blindness/Deafness","casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":30},"components":{"v":true},
+        "duration":{"kind":"rounds","amount":10},
+        "effects":[{"kind":"save","ability":"con","condition":"chosen","choices":["blinded","deafened"],"repeat_save":"end_of_turn"}],
+        "scaling":{"upcast":{"targets":1}}})");
+    auto d = spell_from_json(blind); INFO(d.error); REQUIRE(d.def);
+    CHECK(d.def->condition_choices == std::vector<Condition>{Condition::Blinded, Condition::Deafened});
+    CHECK(d.def->applies_condition); CHECK(d.def->repeat_save == RepeatSave::EndOfTurn); CHECK_FALSE(d.def->concentration);
+
+    auto bad = [](eng::assets::Json x, const std::string& want) {
+        auto r = spell_from_json(x); INFO(want); INFO(r.error); CHECK_FALSE(r.def); CHECK(r.error == want);   // exact, no suffix
+    };
+    auto j = bless; j["effects"][0]["modifier"]["sign"] = "neg"; bad(j, "effect modifier sign must be plus or minus");
+    j = bless; j["effects"][0]["modifier"].erase("die"); bad(j, "effect modifier sign needs die");
+    j = bless; j["effects"][0]["modifier"]["die"] = "-1d4"; bad(j, "effect modifier sign and a negative die together");
+    j = bless; j["effects"][0]["modifier"]["applies_to"] = eng::assets::Json::array(); bad(j, "effect modifier applies_to rolls must be a non-empty list of attack, save");
+    j = bless; j["effects"][0]["modifier"]["applies_to"] = {"attack", "check"}; bad(j, "effect modifier applies_to rolls must be a non-empty list of attack, save");
+    j = bless; j["effects"][0]["modifier"]["applies_to"] = {"attack", "attack"}; bad(j, "effect modifier applies_to rolls items must be unique");
+    j = bless; j["effects"][0]["modifier"]["applies_to"] = {"save"}; bad(j, "effect modifier applies_to rolls must include the modifier's own stat");
+    j = bless; j["effects"][0]["modifier"]["stat"] = "ac"; j["effects"][0]["modifier"].erase("die"); j["effects"][0]["modifier"].erase("sign");
+    j["effects"][0]["modifier"]["bonus"] = 1; bad(j, "effect modifier applies_to rolls: attack_roll or save modifiers only");
+    j = bane; j["effects"][0]["save"] = {{"ability", "cha"}, {"dc", 13}}; bad(j, "effect save must be {ability: <ability>, dc: caster}");
+    j = bane; j["effects"][0]["modifier"]["applies_to"] = "self"; bad(j, "effect save needs a modifier on the targets (applies_to target or rolls)");
+    j = blind; j["effects"][0].erase("choices"); bad(j, "effect condition chosen needs choices");
+    j = blind; j["effects"][0]["condition"] = "blinded"; bad(j, "effect choices needs condition chosen");
+    j = blind; j["effects"][0]["choices"] = {"blinded"}; bad(j, "effect choices must be a list of 2..4 conditions");
+    j = blind; j["effects"][0]["choices"] = {"blinded", "warded"}; bad(j, "effect choices must be a list of 2..4 conditions");
+    j = blind; j["effects"][0]["choices"] = {"blinded", "blinded"}; bad(j, "effect choices items must be unique");
+}

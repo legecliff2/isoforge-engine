@@ -442,6 +442,13 @@ std::string parse_modifier(const Json& m, ModifierSpec& out, const Json** table)
         if (!pd) return "modifier die invalid";
         out.die = *pd;
     }
+    if (m.contains("sign")) {   // 7.2ze Bless (plus) / Bane (minus); default plus
+        const std::string sg = m["sign"].is_string() ? m["sign"].get<std::string>() : "";
+        if (sg != "plus" && sg != "minus") return "modifier sign must be plus or minus";
+        if (!m.contains("die")) return "modifier sign needs die";
+        if (out.die_mult < 0) return "modifier sign and a negative die together";
+        if (sg == "minus") out.die_mult = -1;
+    }
     if (m.contains("mode")) {
         const std::string md = m["mode"].is_string() ? m["mode"].get<std::string>() : "";
         if (md == "advantage") out.mode = RollMode::Advantage;
@@ -475,7 +482,23 @@ std::string parse_modifier(const Json& m, ModifierSpec& out, const Json** table)
                                                               {"allies_within_30", ModAppliesTo::AlliesWithin30},
                                                               {"attackers", ModAppliesTo::Attackers}};   // 7.2zd
     out.applies_to = ModAppliesTo::Target;
-    if (m.contains("applies_to") && !lookup(kApplies, m["applies_to"], out.applies_to)) return "modifier applies_to invalid";
+    if (m.contains("applies_to") && m["applies_to"].is_array()) {   // 7.2ze: the rolls a target's row applies to (Bless / Bane)
+        uint8_t rolls = 0;
+        const Json& rl = m["applies_to"];
+        if (rl.empty()) return "modifier applies_to rolls must be a non-empty list of attack, save";
+        for (const Json& r : rl) {
+            const std::string rk = r.is_string() ? r.get<std::string>() : "";
+            const uint8_t b = rk == "attack" ? kRollAttack : rk == "save" ? kRollSave : uint8_t(0);
+            if (b == 0) return "modifier applies_to rolls must be a non-empty list of attack, save";
+            if (rolls & b) return "modifier applies_to rolls items must be unique";
+            rolls = uint8_t(rolls | b);
+        }
+        if (out.stat != ModStat::AttackRoll && out.stat != ModStat::Save) return "modifier applies_to rolls: attack_roll or save modifiers only";
+        const uint8_t own = out.stat == ModStat::AttackRoll ? kRollAttack : kRollSave;
+        if (!(rolls & own)) return "modifier applies_to rolls must include the modifier's own stat";
+        if (out.die.count == 0) return "modifier applies_to rolls needs die";
+        out.also_rolls = uint8_t(rolls & ~own);
+    } else if (m.contains("applies_to") && !lookup(kApplies, m["applies_to"], out.applies_to)) return "modifier applies_to invalid";
     if (out.applies_to == ModAppliesTo::Attackers && out.stat != ModStat::AttackRoll)
         return "modifier applies_to attackers: attack_roll modifiers only";
     const std::string st = m.value("stacks", "replace");
@@ -703,7 +726,23 @@ SpellLoad spell_from_json(const Json& j) {
                 if (os != "half" && os != "none") return ("effect on_success must be half or none");
                 s.on_save = os == "half" ? OnSave::Half : OnSave::None;
             }
-            if (e.contains("condition")) {
+            const bool chosen = e.contains("condition") && e["condition"] == Json("chosen");
+            if (chosen != e.contains("choices"))   // 7.2ze Blindness/Deafness: the caster picks at cast (ActionRequest::condition_choice)
+                return (chosen ? "effect condition chosen needs choices" : "effect choices needs condition chosen");
+            if (chosen) {
+                const Json& ch = e["choices"];
+                if (!ch.is_array() || ch.size() < 2 || ch.size() > 4) return ("effect choices must be a list of 2..4 conditions");
+                uint32_t seen = 0;
+                for (const Json& c : ch) {
+                    Condition cd;
+                    if (!lookup(kCondition, c, cd)) return ("effect choices must be a list of 2..4 conditions");
+                    if (seen & bit(cd)) return ("effect choices items must be unique");
+                    seen |= bit(cd);
+                    s.condition_choices.push_back(cd);
+                }
+                s.condition = s.condition_choices[0];
+                s.applies_condition = true;
+            } else if (e.contains("condition")) {
                 if (!lookup(kCondition, e["condition"], s.condition)) return ("effect condition invalid");
                 s.applies_condition = true;
             }
@@ -789,6 +828,14 @@ SpellLoad spell_from_json(const Json& j) {
             if (!e.contains("modifier")) return ("effect modifier required");
             if (auto m = parse_modifier(e["modifier"], s.modifier); !m.empty()) return ("effect " + m);
             s.modifier.id = spell_id_of(s.content_id + "#modifier");
+            if (e.contains("save")) {   // 7.2ze Bane: {ability, dc: caster}
+                const Json& sv = e["save"];
+                bool ok = sv.is_object() && sv.size() == 2 && sv.contains("ability") && sv.value("dc", Json()) == Json("caster");
+                if (ok) ok = lookup(kAbility, sv["ability"], s.modifier_save);
+                if (!ok) return ("effect save must be {ability: <ability>, dc: caster}");
+                if (s.modifier.applies_to != ModAppliesTo::Target) return ("effect save needs a modifier on the targets (applies_to target or rolls)");
+                s.has_modifier_save = true;
+            }
             if (e.contains("scope")) {   // 7.2zc generic mark {target: marked}; 7.2zd {from_types: [...]}: one closed object
                 const Json& sc = e["scope"];
                 bool ok = sc.is_object() && !sc.empty();
@@ -1015,6 +1062,8 @@ SpellLoad spell_from_json(const Json& j) {
             x.kind == SpellEffectKind::EndCondition || x.kind == SpellEffectKind::SustainedDamage || x.kind == SpellEffectKind::Teleport)
             return err("effects[" + std::to_string(i) + "]: " + xk + " is only allowed as the first effect");
         if (x.control != ControlKind::None) return err("effects[" + std::to_string(i) + "]: control is only allowed on the first effect");
+        if (!x.condition_choices.empty()) return err("effects[" + std::to_string(i) + "]: choices is only allowed on the first effect");
+        if (x.has_modifier_save) return err("effects[" + std::to_string(i) + "]: an apply_modifier save is only allowed on the first effect");
         SpellEffect fx;
         fx.kind = x.kind; fx.melee = x.melee; fx.beams = x.beams; fx.dice = x.dice; fx.damage_type = x.damage_type;
         fx.add_spellcasting_modifier = x.add_spellcasting_modifier; fx.excluded_types = x.excluded_types;
@@ -1078,7 +1127,7 @@ SpellLoad spell_from_json(const Json& j) {
         if (!s.concentration) return err("polymorph: needs concentration");
     }
     if (has_targets && s.kind != SpellEffectKind::Save && s.kind != SpellEffectKind::Polymorph && s.kind != SpellEffectKind::Heal && s.kind != SpellEffectKind::ApplyCondition &&
-        s.kind != SpellEffectKind::MaxHpBonus)   // 7.2zd Aid: up to three creatures
+        s.kind != SpellEffectKind::MaxHpBonus && s.kind != SpellEffectKind::ApplyModifier)   // 7.2zd Aid; 7.2ze Bless / Bane
         return err("targets not allowed on a " + kind + " effect (one target, per dart/beam, or self)");
     // R-G15: an HP pool's condition and a sustained effect last the spell's duration (Sleep 1 minute = 10 rounds; Color Spray
     // 1 round, the proposal's approximation of "until the end of your next turn"; Heat Metal 1 minute, and also ends with
@@ -1130,7 +1179,8 @@ SpellLoad spell_from_json(const Json& j) {
                                     s.kind == SpellEffectKind::SustainedDamage || s.kind == SpellEffectKind::Zone;
             if (k == "darts") return s.kind == SpellEffectKind::AutoHit;
             if (k == "beams") return s.kind == SpellEffectKind::SpellAttack;
-            return s.kind == SpellEffectKind::Save || s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::ApplyCondition;   // targets
+            return s.kind == SpellEffectKind::Save || s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::ApplyCondition ||
+                   s.kind == SpellEffectKind::ApplyModifier;   // targets (7.2ze Bless / Bane)
         };
         for (const char* key : {"beams", "darts", "dice", "targets"}) {   // sorted, like the validator
             if (!u.contains(key)) continue;
