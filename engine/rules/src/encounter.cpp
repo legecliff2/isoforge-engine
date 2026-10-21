@@ -720,6 +720,7 @@ struct TrigCtx {                 // facts a predicate can read
     uint32_t types = 0;          // damage types of the event (bitmask)
     int dmg = 0;                 // damage taken / dealt (Save predicate dc_from_damage)
     CombatantId mod_caster = 0;  // 7.2u: the caster of the modifier whose `when` is evaluated (SubjectIsCaster)
+    uint32_t bonus_attack = 0;   // 7.2zb: BonusAttack::id of the compiled bonus attack making this hit (AttackFromFeature)
 };
 struct Ctx;
 struct TrigOut { bool set_hp = false; int16_t hp = 0; };
@@ -844,6 +845,7 @@ struct Ctx {
     bool spared_no_damage = false;                         //   Sculpt: no damage on a half-on-save spell
     CombatantId heighten = 0;                              // Heightened: disadvantage on this creature's first save
     int empower = 0;                                       // Empowered: damage dice rerolled (0 = off)
+    uint32_t bonus_attack_id = 0;                          // 7.2zb: the compiled bonus attack being made (set around its do_attack)
     // R-G9: the cast's forced-move / teleport choices (set by cast_spell around resolve_spell only) and the forced moves
     // queued by effects, turned into placeholders by defer_forced (before SpellResolved, else at the end of the step) and resolved by finalize_forced.
     uint16_t forced_feet = 0, teleport_feet = 0;
@@ -1261,6 +1263,7 @@ bool predicate_holds(EncounterState& s, Combatant& owner, const Combatant& subje
     case PredicateKind::AllyNearTarget: return x.ally;
     case PredicateKind::SubjectIsCaster: return x.mod_caster != 0 && subject.id == x.mod_caster;   // 7.2u
     case PredicateKind::TargetBelowMaxHp: return subject.hp < subject.hp_max;   // 7.2y Colossus Slayer
+    case PredicateKind::AttackFromFeature: return p.mask != 0 && x.bonus_attack == p.mask;   // 7.2zb Open Hand Technique
     case PredicateKind::OwnerCreatureType: return (p.mask & bit(owner.creature_type)) != 0;
     case PredicateKind::SubjectHostile: return subject.team != owner.team;   // EC loader temp HP (flagged)
     case PredicateKind::DamageAtMost: return x.dmg <= p.a;
@@ -1497,6 +1500,8 @@ void sweep_wielded(EncounterState& s, std::vector<Event>& ev) {
     }
 }
 
+void resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& def, uint8_t lvl,
+                   const std::vector<Combatant*>& T_in, bool within_5ft, std::vector<Event>& ev);
 bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
                bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage = false,
                uint32_t spell_id = 0, bool ally_near_target = false, const DiceExpr* damage_override = nullptr,
@@ -1517,6 +1522,10 @@ std::vector<ReactionOption> reaction_options(const EncounterState& s, const Comb
         case ReactionEffectKind::ReduceDamage:
             if (w.trigger != ReactionTrigger::Damaged) continue;
             if (rx.half && !w.from_attack) continue;   // 7.2y Uncanny Dodge: an attack's damage, never a save effect
+            if (rx.attack_kinds != 0) {   // 7.2zb Deflect Missiles: only these attack kinds
+                const uint8_t k = uint8_t(1u << ((w.spell_id != 0 ? 2 : 0) + (w.ranged ? 1 : 0)));
+                if (!w.from_attack || !(rx.attack_kinds & k)) continue;
+            }
             o.kind = ReactionOptionKind::ReduceDamage; o.half = rx.half; o.dice = rx.dice; break;
         case ReactionEffectKind::ImposeDisadvantage:
             if (w.trigger != ReactionTrigger::AllyAttacked) continue;
@@ -1722,6 +1731,7 @@ bool hit_effect_ok(const EncounterState& s, const RiderEffect& e) {
         const SpellDef* d = spell_def(s, e.spell_id);
         return d && d->kind == (e.kind == RiderKind::SaveCondition ? SpellEffectKind::Save : SpellEffectKind::ApplyCondition);
     }
+    case RiderKind::Effect: return spell_def(s, e.spell_id) != nullptr;   // 7.2zb forced_move / apply_modifier riders
     default: return false;
     }
 }
@@ -1754,6 +1764,7 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
     HitRiders out;
     if (a.triggers.empty()) return out;
     TrigCtx x; x.atk = &atk; x.is_spell = is_spell; x.mode = mode; x.ally = ally_near; x.crit = crit; x.types = bit(atk.type);
+    x.bonus_attack = ctx.bonus_attack_id;
     const uint32_t turn_stamp = uint32_t(s.round) << 16 | s.turn_index;
     if (a.trigger_turn_stamp != turn_stamp) { a.trigger_turn_stamp = turn_stamp; a.trigger_turn_mask = 0; }
     if (a.trigger_round_stamp != s.round) { a.trigger_round_stamp = s.round; a.trigger_round_mask = 0; }
@@ -1775,9 +1786,18 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
         const std::vector<uint8_t> levels = spend_levels(s, a, tr);
         if (levels.empty()) continue;                                  // cannot pay
         uint8_t level = levels[0];
+        int picked = -1;   // 7.2zb pick_one: the chosen effect index (auto: the first applicable)
+        if (tr.pick_one)
+            for (std::size_t k = 0; k < tr.effects.size(); ++k)
+                if (tr.effects[k].kind != RiderKind::Spend && hit_effect_ok(s, tr.effects[k])) { picked = int(k); break; }
         if (tr.choice == 1) {                                          // ask: HitRider window, the attacker decides
             if (a.dead || a.reaction_policy[std::size_t(ReactionTrigger::HitRider)] == ReactionPolicy::Never) continue;
             std::vector<ReactionOption> opts;
+            if (tr.pick_one) {   // 7.2zb: one option per effect (slot_level = 1 + effect index)
+                for (std::size_t k = 0; k < tr.effects.size() && k < 255; ++k)
+                    if (tr.effects[k].kind != RiderKind::Spend && hit_effect_ok(s, tr.effects[k]))
+                        opts.push_back(ReactionOption{uint8_t(i), ReactionOptionKind::Rider, 0, tr.id, uint8_t(k + 1), false});
+            } else
             for (uint8_t L : levels) opts.push_back(ReactionOption{uint8_t(i), ReactionOptionKind::Rider, 0, tr.id, L, false});
             ReactionWindow w = new_window(s, ctx, ReactionTrigger::HitRider, a.id);
             w.target = t.id; w.attack_total = roll.total; w.attack_natural = roll.natural;
@@ -1788,7 +1808,8 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
                 emit(ev, EventKind::FeatureTriggered, a.id, t.id, int32_t(tr.id), int32_t(tr.on), 2);
                 continue;
             }
-            level = opts[d.option].slot_level;
+            if (tr.pick_one) picked = int(opts[d.option].slot_level) - 1;
+            else level = opts[d.option].slot_level;
         }
         for (const RiderEffect& e : tr.effects) {                      // pay
             if (e.kind != RiderKind::Spend) continue;
@@ -1804,8 +1825,10 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
         if (tr.limit == TriggerLimit::OncePerTurn) a.trigger_turn_mask |= m;
         if (tr.limit == TriggerLimit::OncePerRound) a.trigger_round_mask |= m;
         emit(ev, EventKind::FeatureTriggered, a.id, t.id, int32_t(tr.id), int32_t(tr.on), 1);
-        for (const RiderEffect& e : tr.effects) {
+        for (std::size_t k = 0; k < tr.effects.size(); ++k) {
+            const RiderEffect& e = tr.effects[k];
             if (!hit_effect_ok(s, e)) continue;
+            if (tr.pick_one && int(k) != picked) continue;
             if (e.kind == RiderKind::ExtraDamage) {
                 out.pieces.push_back({e.dice, e.type, e.same_as_weapon});
                 if (e.vs_types & bit(t.creature_type)) out.pieces.push_back({e.vs_dice, e.type, e.same_as_weapon});   // 7.2y bonus_vs
@@ -1966,7 +1989,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         if (atk.drain_max_hp && !t.dead) life_drain(s, t, drain_before - (int(t.hp) + int(t.temp_hp)), atk.drain_save_dc, a.id, ev);
         for (uint32_t sid : riders.after) {   // save_condition / apply_condition riders: after the damage, if it still stands
             if (t.dead) break;
-            if (const SpellDef* d = spell_def(s, sid)) resolve_effect(s, ctx, a, *d, 0, std::vector<Combatant*>{&t}, within_5ft, ev);
+            if (const SpellDef* d = spell_def(s, sid)) resolve_spell(s, ctx, a, *d, 0, std::vector<Combatant*>{&t}, within_5ft, ev);   // 7.2zb: + extra effects
         }
     }
     return hit;
@@ -2528,6 +2551,22 @@ CheckResult roll_ability_check(EncounterState& s, Combatant& c, Ability ab, int 
     return r;
 }
 
+// 7.2zb (Patient Defense / Step of the Wind): the pool cost of taking req.kind as a bonus action (nullptr = free).
+const BonusActionCost* bonus_cost_of(const Combatant& a, const ActionRequest& req) {
+    if (!req.as_bonus_action) return nullptr;
+    for (const BonusActionCost& c : a.bonus_action_costs) if (c.kind == req.kind) return &c;
+    return nullptr;
+}
+bool bonus_cost_ok(const EncounterState& s, const Combatant& a, const TurnBudget& b, const ActionRequest& req) {
+    const BonusActionCost* c = bonus_cost_of(a, req);
+    return !c || !b.bonus_action || can_spend(s, a.id, c->pool, c->cost);   // no bonus action left: spend_action refuses
+}
+void pay_bonus_cost(EncounterState& s, const Combatant& a, const ActionRequest& req, std::vector<Event>& ev) {
+    const BonusActionCost* c = bonus_cost_of(a, req);
+    if (c && spend_pool(s, a.id, c->pool, c->cost))
+        emit(ev, EventKind::ResourceSpent, a.id, 0, int32_t(c->pool), c->cost, find_pool(s, a.id, c->pool)->cur);
+}
+
 bool spend_action(TurnBudget& b, const Combatant& c, ActionKind k, bool bonus) {
     if (bonus) {
         if (!b.bonus_action || !(c.bonus_action_grants & bit(k))) return false;
@@ -2605,7 +2644,17 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             Combatant* t = T.size() == 1 ? T[0] : T[std::size_t(i)];
             // EC spider follow-up (flagged): a non-spell ranged attack_effect (Web) takes the ranged facts sim filled
             const bool rdis = !def.is_spell && !def.melee && ctx.ranged_disadvantage;
-            if (!t->dead && do_attack(s, ctx, a, *t, atk, within_5ft, ev, rdis, def.id)) affected.push_back(t);   // TODO: ranged facts for spell attacks
+            const SpellMod* sm = nullptr;   // 7.2zb Agonizing / Repelling Blast: per beam hit
+            for (const SpellMod& m : a.spell_mods) if (m.spell_id == def.id && def.is_spell) { sm = &m; break; }
+            Attack batk = atk;
+            if (sm && sm->damage_ability < 6) batk.damage.bonus = int16_t(batk.damage.bonus + modifier(a.abilities, Ability(sm->damage_ability)));
+            if (!t->dead && do_attack(s, ctx, a, *t, batk, within_5ft, ev, rdis, def.id)) {   // TODO: ranged facts for spell attacks
+                affected.push_back(t);
+                if (sm && sm->push_ft > 0 && !t->dead) {
+                    ForcedMoveQuery q; q.mover = t->id; q.source = a.id; q.mode = 1; q.feet = sm->push_ft;
+                    ctx.forced_queue.push_back(q);
+                }
+            }
         }
         break;
     }
@@ -4304,19 +4353,27 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             if (!a.aggressive) return fail("no Aggressive");
             if (!b.bonus_action || !req.as_bonus_action) return fail("Aggressive needs the bonus action");
             b.bonus_action = false; b.aggressive_dash = true;
-        } else if (!spend_action(b, a, req.kind, req.as_bonus_action)) return fail("no action available");
+        } else {
+            if (!bonus_cost_ok(s, a, b, req)) return fail("not enough resource for this bonus action");
+            if (!spend_action(b, a, req.kind, req.as_bonus_action)) return fail("no action available");
+            pay_bonus_cost(s, a, req, out.events);
+        }
         b.movement_ft = int16_t(b.movement_ft + modified_speed(s, a));   // 7.2u: Dash adds the speed after modifiers (Ray of Frost)
         if (b.dashes < 255) ++b.dashes;
         s.budget = b;
         emit(out.events, EventKind::Dashed, a.id, 0, b.movement_ft);
         return out;
     case ActionKind::Disengage:
+        if (!bonus_cost_ok(s, a, b, req)) return fail("not enough resource for this bonus action");
         if (!spend_action(b, a, req.kind, req.as_bonus_action)) return fail("no action available");
+        pay_bonus_cost(s, a, req, out.events);
         s.budget = b; a.disengaged = true;
         emit(out.events, EventKind::Disengaged, a.id);
         return out;
     case ActionKind::Dodge:
+        if (!bonus_cost_ok(s, a, b, req)) return fail("not enough resource for this bonus action");
         if (!spend_action(b, a, req.kind, req.as_bonus_action)) return fail("no action available");
+        pay_bonus_cost(s, a, req, out.events);
         s.budget = b; a.dodging = true;
         emit(out.events, EventKind::Dodged, a.id);
         return out;
@@ -4423,9 +4480,11 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         s.budget = b;
         if (pending_pool != 0 && spend_pool(s, a.id, pending_pool, pending_cost))
             emit(out.events, EventKind::ResourceSpent, a.id, 0, int32_t(pending_pool), pending_cost, find_pool(s, a.id, pending_pool)->cur);
+        ctx.bonus_attack_id = bopt ? bopt->id : 0;   // 7.2zb AttackFromFeature
         do_attack(s, ctx, a, *t, a.attacks[req.attack_index], req.target_within_5ft, out.events,
                   req.ranged_hostile_within_5ft || req.beyond_normal_range, 0, req.ally_near_target,
                   bopt && bopt->has_damage ? &bopt->damage : nullptr, req.two_handed_grip);
+        ctx.bonus_attack_id = 0;
         check_end(s, out.events);
         return out;
     }
