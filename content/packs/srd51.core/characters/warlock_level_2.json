@@ -87,7 +87,12 @@
     {
       "id": "agonizing_blast",
       "name": "Agonizing Blast",
-      "description": "When you cast eldritch blast, add your Charisma modifier to the damage it deals on a hit. (Descriptive: no key adds a flat ability modifier to a spell's damage; damage_bonus touches weapon attacks only.)"
+      "description": "When you cast eldritch blast, add your Charisma modifier to the damage it deals on a hit. (Modelled: spell_mod eldritch_blast, + Cha modifier per beam that hits.)",
+      "effect": {
+        "kind": "spell_mod",
+        "spell": "srd51.spell.eldritch_blast",
+        "damage_bonus_ability": "cha"
+      }
     },
     {
       "id": "armor_of_shadows",
