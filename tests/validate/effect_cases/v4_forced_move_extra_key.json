@@ -1,0 +1,66 @@
+{
+  "base": "characters/monk_level_5.json",
+  "sets": [
+    [
+      [
+        "features",
+        8
+      ],
+      {
+        "id": "open_hand_technique",
+        "name": "Open Hand Technique",
+        "effect": {
+          "kind": "on_event",
+          "on": "hit",
+          "choice": "ask",
+          "pick_one": true,
+          "when": [
+            {
+              "kind": "attack_from_feature",
+              "feature": "flurry_of_blows"
+            }
+          ],
+          "effects": [
+            {
+              "kind": "save_condition",
+              "save": {
+                "ability": "dex",
+                "dc": 13
+              },
+              "apply": [
+                {
+                  "condition": "prone"
+                }
+              ]
+            },
+            {
+              "kind": "forced_move",
+              "save": {
+                "ability": "str",
+                "dc": 13
+              },
+              "mode": "push",
+              "feet": 15,
+              "apply": [
+                {
+                  "condition": "prone"
+                }
+              ]
+            },
+            {
+              "kind": "apply_modifier",
+              "modifier": {
+                "stat": "no_reactions",
+                "duration": {
+                  "kind": "until_end_of_caster_next_turn"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "on_event effect is invalid: /effects/1: 'apply' is not one of ['kind', 'save', 'mode', 'feet', 'when']"
+}

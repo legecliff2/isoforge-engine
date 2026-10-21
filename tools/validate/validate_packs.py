@@ -636,7 +636,8 @@ COMMON2_ID = "https://isoforge.dev/schemas/common/v2.schema.json"
 NATIVE_EFFECT_ARMS = {"on_event": "on_event_effect", "apply_modifier": "apply_modifier_effect",
                       "grant_action": "grant_action_effect", "heal_pool": "heal_pool_effect",
                       "wild_shape": "wild_shape_effect", "shapechanger": "shapechanger_effect",   # R-G12 7.2q
-                      "extra_attack": "extra_attack_effect"}   # EC #179
+                      "extra_attack": "extra_attack_effect",   # EC #179
+                      "spell_mod": "spell_mod_effect"}         # 7.2zb
 
 
 def schema_message(e, registry: Registry | None = None, drill: bool = True) -> str:
@@ -654,6 +655,10 @@ def schema_message(e, registry: Registry | None = None, drill: bool = True) -> s
         # the @4 effect is an anyOf of three arms: report the failure inside the arm its `kind` selects
         arm = Draft202012Validator({"$ref": f"{COMMON2_ID}#/$defs/{NATIVE_EFFECT_ARMS[inst['kind']]}"}, registry=registry)
         deepest = best_match(arm.iter_errors(inst))
+        if deepest is not None and deepest.instance is inst and deepest.validator in ("anyOf", "oneOf"):
+            # the arm's own top-level alternatives (7.2zb spell_mod: at least one optional key): name the closest one
+            inner = best_match(deepest.context) if deepest.context else None
+            return f"{inst['kind']} effect is invalid: {(inner or deepest).message[:200]}"[:300]
         if deepest is not None:
             where = "/".join(map(str, deepest.absolute_path))
             return f"{inst['kind']} effect is invalid: {'/' + where + ': ' if where else ''}{schema_message(deepest, registry)}"[:300]

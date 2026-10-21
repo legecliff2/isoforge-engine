@@ -170,7 +170,10 @@
             "required": ["actions"],
             "properties": {
               "actions": { "type": "array", "items": { "enum": ["dash", "disengage", "hide", "dodge", "use_object"] },
-                           "description": "rules5e ActionKind ids grantable as bonus actions." }
+                           "description": "rules5e ActionKind ids grantable as bonus actions." },
+              "usage": { "type": "object", "additionalProperties": false, "required": ["kind", "pool"],
+                         "properties": { "kind": { "const": "pool" }, "pool": { "$ref": "#/$defs/local_id" }, "cost": { "type": "integer", "minimum": 1 } },
+                         "description": "VERSION_BUMP_BATCH 7.2zb (Patient Defense / Step of the Wind): the common@2 usage pool arm {kind: pool, pool, cost?} (cost default 1): each listed action taken as a bonus action spends cost from the pool. dash / disengage / dodge only; character@4 / monster@4 files only (an older file is a load error). Absent = free, as before." }
             } } },
         { "if": { "properties": { "kind": { "const": "multiattack" } }, "required": ["kind"] },
           "then": {
