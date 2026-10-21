@@ -131,6 +131,10 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
         add_test(NAME content_validate_migrations
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_migrations_v4.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        # item@2 / monster@5 / character@5 (docs/proposals/EQUIPMENT.md 7): identity re-stamps, new shapes, structural checks.
+        add_test(NAME content_validate_equip_v5
+                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_equip_schemas_v5.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # srd51.core monster@4 batch: key stats vs the 5e-database table (tests/validate/data/).
         add_test(NAME content_validate_srd51_monsters
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_srd51_monsters.py"

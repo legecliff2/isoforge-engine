@@ -195,10 +195,12 @@ def reject_floats(obj, where: str, errs: list[str]) -> None:
             reject_floats(v, f"{where}/{i}", errs)
 
 
-def check_stat_block(doc: dict, errs: list[str], pb_expected: int, rolled_hp: bool = True) -> None:
+def check_stat_block(doc: dict, errs: list[str], pb_expected: int, rolled_hp: bool = True, pb_checked: bool = False) -> None:
     ab = doc["abilities"]
-    pb = doc["proficiency_bonus"]
-    if pb != pb_expected:
+    pb = doc.get("proficiency_bonus", pb_expected)   # optional at monster@5 (default: the CR table, EQUIPMENT 5.2)
+    if pb_checked:   # monster@5: checks_v4.check_equipment_v5 reports a mismatch (or accepts proficiency_bonus_reason)
+        pass
+    elif pb != pb_expected:
         errs.append(f"proficiency_bonus {pb} != expected {pb_expected}")
     for a, v in sorted(doc.get("saving_throws", {}).items()):
         if v != modifier(ab[a]) + pb:
@@ -222,7 +224,7 @@ def check_monster(doc, errs, ctx):
     ch = doc["challenge"]
     if CR_XP[ch["rating"]] != ch["xp"]:
         errs.append(f"challenge.xp {ch['xp']} != {CR_XP[ch['rating']]} for CR {ch['rating']}")
-    check_stat_block(doc, errs, cr_proficiency(ch["rating"]))
+    check_stat_block(doc, errs, cr_proficiency(ch["rating"]), pb_checked=doc.get("$schema") == "monster@5")
 
 
 def check_character(doc, errs, ctx):
@@ -757,6 +759,9 @@ def validate_doc(rel: str, doc: dict, tag: str, registry: Registry, by_tag: dict
             e4, w4 = c4.check_item(doc, ctx)
         else:
             e4, w4 = c4.check_stat_block_v4(typ, doc, ctx)
+            if tag in ("monster@5", "character@5"):
+                e5, w5 = c4.check_equipment_v5(typ, doc, ctx)
+                e4, w4 = e4 + e5, w4 + w5
         errs += e4
         warns += [f"{rel}: {w}" for w in w4]
     if typ in ("monster", "character") and isinstance(doc, dict):
@@ -834,7 +839,18 @@ def validate_pack(pack: Path, registry: Registry, by_tag: dict, warnings: list[s
                     except (OSError, ValueError):
                         pass
     ctx = {"ids": ids, "spell_ids": spell_ids, "items": item_ids, "external_ok": external_ok, "types": types,
-           "monsters": monsters}
+           "monsters": monsters,
+           # item@2 documents of this pack (EQUIPMENT 3.1 hand slots: the category / hands of an equipped item)
+           "item_docs": {d.get("id"): d for r, d in docs.items()
+                         if isinstance(d, dict) and str(d.get("$schema", "")).startswith("item@")}}
+    for dep in order:   # dependency packs' items (srd51.item.shield equipped by a test pack's monster)
+        if dep.id != pid:
+            for cid, rel in dep.content_ids.items():
+                if cid not in ctx["item_docs"] and rel.startswith("items/"):
+                    try:
+                        ctx["item_docs"][cid] = json.loads((dep.dir / rel).read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        pass
     scripts = {f.relative_to(pack).as_posix() for f in pack.glob("scripts/**/*.luau")}
     script_re = re.compile(r"^scripts/.+\.luau$")
 
