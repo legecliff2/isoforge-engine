@@ -91,6 +91,7 @@ Light perceived_light(LightSample s, const SenseRanges& senses, int d) noexcept 
 }
 
 bool tile_visible(const LightWorld& w, LightCache& cache, const Viewer& v, Vec2i t) {
+    if (v.on_footprint(t)) return true;
     return visible_rule(v, cache.at(t), dist_ft(v.tile, t), [&] { return light_reaches(w, v.tile, t); });
 }
 
@@ -164,7 +165,7 @@ void VisibilityState::begin_step(LightCache& cache, std::span<const Viewer> view
                     for (int x = 0; x < N; ++x) {
                         if (cv.seen_now.test(x, y)) continue;
                         const Vec2i t = Grid::to_world(coords[ci], {x, y});
-                        if (visible_rule(v, samples[ci][std::size_t(y * N + x)], dist_ft(v.tile, t),
+                        if (v.on_footprint(t) || visible_rule(v, samples[ci][std::size_t(y * N + x)], dist_ft(v.tile, t),
                                          [&] { return los(v, t); }))
                             cv.seen_now.set(x, y);
                     }
