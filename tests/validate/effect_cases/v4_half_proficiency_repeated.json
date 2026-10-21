@@ -1,0 +1,21 @@
+{
+  "base": "characters/bard_level_5.json",
+  "sets": [
+    [
+      [
+        "features",
+        1,
+        "effect"
+      ],
+      {
+        "kind": "half_proficiency",
+        "on": [
+          "checks",
+          "checks"
+        ]
+      }
+    ]
+  ],
+  "severity": "error",
+  "expect": "is not valid under"
+}

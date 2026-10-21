@@ -984,6 +984,17 @@ std::optional<std::string> compile_reactions(Archetype& a, const Json& doc, cons
             auto d = parse_dice(ef->contains("dice") && (*ef)["dice"].is_string() ? (*ef)["dice"].get<std::string>() : "");
             if (!d || d->count == 0) return where + ": subtract_roll needs dice";
             x.dice = *d;
+            if (auto ap = ef->find("applies_to"); ap != ef->end()) {   // 7.2za: attack | save | check | damage (unique); absent = attack
+                static const char* const kinds[] = {"attack", "save", "check", "damage"};
+                bool ok = ap->is_array() && !ap->empty();
+                if (ok) for (const Json& v : *ap) {
+                    uint8_t hit = 0;
+                    for (int i = 0; i < 4; ++i) if (v.is_string() && v.get<std::string>() == kinds[i]) hit = uint8_t(1u << i);
+                    if (hit == 0 || (x.applies & hit)) { ok = false; break; }
+                    x.applies = uint8_t(x.applies | hit);
+                }
+                if (!ok) return where + ": subtract_roll: bad applies_to";
+            }
         } else if (attack_rolled) {
             return where + ": the roll_attack window only takes subtract_roll";
         } else if (ek == "impose_disadvantage") {

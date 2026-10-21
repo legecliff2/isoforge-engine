@@ -55,7 +55,8 @@ STATIC_EFFECT_KINDS_R_G5 = frozenset({"attack_bonus", "crit_range", "ac_bonus"})
 # only). Below @4 they are inert in the sim (extra_attack: the hook's @4 gate, the frozen 3 -> 4 list cannot carry it), so a
 # @1..@3 file gets the unknown-kind warning.
 # transparent (7.2w, features.cpp apply_transparent; closed arm transparent_effect; monsters only) likewise.
-COMPILED_EFFECT_KINDS_AT_4 = frozenset({"gaze", "wild_shape", "shapechanger", "extra_attack", "transparent", "bonus_attack"})
+COMPILED_EFFECT_KINDS_AT_4 = frozenset({"gaze", "wild_shape", "shapechanger", "extra_attack", "transparent", "bonus_attack",
+                                       "grant_die", "half_proficiency"})   # 7.2za: gated in their hooks
 # compile_gaze defaults for the optional fields the validator warns about when omitted.
 GAZE_DEFAULTS = {"condition": "restrained", "repeat_save": "end_of_turn", "escalate_to": "petrified"}
 # 7.2n (sim #148, features.cpp apply_slot_recovery): the classes slot_recovery accepts.
@@ -432,6 +433,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     check_transforms(doc, ctx, errs, warns)
     errs += check_class_hooks(doc)   # 7.2y
     errs += check_barbarian_hooks(doc)   # 7.2z
+    errs += check_bard_hooks(doc)   # 7.2za
     # check 12: declared but never referenced pools (Legendary Resistance is declaration-only until row 13)
     for i, r in enumerate(resources):
         if r.get("id") not in referenced:
@@ -1052,6 +1054,22 @@ def check_barbarian_hooks(doc: dict) -> list[str]:
                 errs.append(f"{path}: {did}: when.save must be one of advantage_on.saves (7.2z)")
         elif "when" in eff:
             errs.append(f"{path}: {did}: when needs passive (7.2z)")
+    return errs
+
+
+def check_bard_hooks(doc: dict) -> list[str]:
+    """7.2za (sim features.cpp apply_grant_die / apply_half_proficiency): grant_die scale levels strictly ascend, grant_die
+    half_proficiency only on characters (the loader's wording)."""
+    errs: list[str] = []
+    did = doc.get("id", "?")
+    for path, _owner, eff in live_effects(doc):
+        k = eff.get("kind")
+        if k == "grant_die":
+            levels = [e.get("level") for e in eff.get("scale") or [] if isinstance(e, dict)]
+            if any(not is_int(b) or not is_int(a) or b <= a for a, b in zip([1] + levels, levels)):
+                errs.append(f"{path}: {did}: grant_die scale levels must ascend (2..20)")
+        elif k == "half_proficiency" and str(doc.get("$schema", "")).split("@")[0] == "monster":
+            errs.append(f"{path}: {did}: half_proficiency: not valid on monsters")
     return errs
 
 

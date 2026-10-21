@@ -2362,6 +2362,46 @@ live apply_modifier feature of the document; passive conflicts; when without pas
 Effect cases `v4_requires_effect_unknown`, `v4_passive_with_cost`, `v4_scope_bad_value`. Union / lint rows: `BarbarianHooks72z`;
 `ability_list`, `bonus_attack_effect` in the common@2 def list.
 
+### 7.2za Bard hooks (rules side) and hand-off
+
+For T&C's bard content (#202). Stacks on 7.2z (#211). All keys are additive in common@2. **No hash tag is claimed**: a held
+die is a modifier row (`ModStat::HeldDie`, appended) and its new fields fold into `modifiers_digest` (marker byte 0x59, inside
+the existing modifier fold, like 0x57 / 0x58) only when set; `Combatant::half_proficiency` and `Reaction::applies` are static
+content (not folded). Every golden is unchanged. Song of Rest is out of scope.
+
+**Shared roll-kind enum.** `$defs/roll_kind_list`: unique, closed `attack | save | check | damage` (rules5e `kRollAttack 1,
+kRollSave 2, kRollCheck 4, kRollDamage 8`). `damage` is the attack's damage roll (weapon or spell-attack dice, before riders and
+modifiers). Used by `grant_die.applies_to` and `subtract_roll.applies_to`.
+
+**Roll window.** The R-G7 `AttackRolled` window now opens after attack rolls (not a natural 1 / 20), saving throws (not an
+automatic failure), ability checks (skill or plain) and an attack's damage roll; `ReactionWindow::roll_kind` (appended) names
+the kind (0 = attack, as before), `attack_total` / `target_ac` carry the total and the AC / DC (damage: 0). Order: first each
+enemy of the roller whose `subtract_roll` reaction applies to the kind (Cutting Words; sim `in_range`: 60 ft and sees the
+roller); then the roller itself if it holds a die for the kind (`ReactionOptionKind::AddHeldDie`, appended; no reaction spent).
+Reaction policy is the `AttackRolled` entry for both. Auto takes an option only when the die's largest roll could change the
+outcome (damage: always). The window emits nothing and draws nothing when nobody has an option, so existing logs are unchanged.
+
+**Content keys.**
+| Key | Shape | Rules |
+|---|---|---|
+| effect `{kind: grant_die}` | closed: `die` (dice), `scale?: [{level 2..20, die}]` (closed entries, levels strictly ascending; the validator and loader check the order), `class?`, `range_ft 1..300`, `duration {kind: rounds, n}` (closed), `applies_to` (roll_kind_list), `cost? action \| bonus_action`, `usage?` | No existing die-by-level key fits (`scaling.per_levels` adds dice, `level_table` holds integers), so `scale` is new. The die is the last entry at or below the owner's level in `class` (else the total level), else `die`. UseFeature compiles to one `HeldDie` row (`held_applies`, `range_ft`, expiry rounds). Target: an ally other than the user, not deafened ("can hear you"), within `range_ft` (`targets_within`; refused before any state change). One held die per creature: a new one replaces any other (ModifierExpired reason 2). Spent: ModifierExpired reason 9; lapses at expiry (reason 0) |
+| `subtract_roll.applies_to` | roll_kind_list, optional | `Reaction::applies` (appended); absent = attack only (R-G7 behaviour). Cutting Words: `[attack, check, damage]` |
+| effect `{kind: half_proficiency, on}` | closed; `on`: unique `checks \| initiative` | `Combatant::half_proficiency` bit 0: half the proficiency bonus, rounded down, on ability checks that do not add it (skill checks without the skill, plain ability checks); bit 1: on initiative (the total, not the tie-break Dex). Characters only (refused on monsters); several declarations OR together |
+
+Bardic Inspiration example: `{kind: grant_die, die: "1d6", class: bard, scale: [{level: 5, die: "1d8"}, {level: 10, die: "1d10"},
+{level: 15, die: "1d12"}], range_ft: 60, duration: {kind: rounds, n: 100}, applies_to: [attack, save, check], cost: bonus_action,
+usage: {kind: pool, pool: bardic_inspiration}}`. Jack of All Trades: `{kind: half_proficiency, on: [checks, initiative]}`.
+Cutting Words: add `applies_to: [attack, check, damage]` to the existing `subtract_roll`. Both new kinds are inert below @4
+(gated in their hooks; the frozen 3 -> 4 kind list cannot carry them).
+
+Not modelled: the holder choosing after the GM says whether the roll succeeds (the window is before the outcome, as the SRD
+allows); the AI deciding when to spend a die (Auto uses the "could change the outcome" rule; Ask pauses as usual); contests
+(dc 0 for the first roller: Auto never spends there).
+
+Validator (`checks_v4.check_bard_hooks`): scale order, half_proficiency on a monster. Effect cases `v4_grant_die_*`,
+`v4_half_proficiency_*`; `cw_applies_to_*` RG7 cases. Union / lint rows: `BardHooks72za`; `roll_kind_list`, `grant_die_effect`,
+`half_proficiency_effect` in the common@2 def list; subtract_roll's union row gains `applies_to`.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain

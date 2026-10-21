@@ -2174,6 +2174,10 @@
         },
         "spell": {
           "$ref": "../common/v1.schema.json#/$defs/content_id"
+        },
+        "applies_to": {
+          "$ref": "#/$defs/roll_kind_list",
+          "description": "7.2za subtract_roll: the creature's rolls it may answer (Cutting Words: attack, check, damage). Absent = attack."
         }
       },
       "allOf": [
@@ -2349,7 +2353,8 @@
             "propertyNames": {
               "enum": [
                 "kind",
-                "dice"
+                "dice",
+                "applies_to"
               ]
             }
           }
@@ -3479,6 +3484,26 @@
               }
             }
           }
+        },
+        {
+          "description": "7.2za: a grant_die effect is checked by its closed arm only.",
+          "properties": {
+            "kind": {
+              "not": {
+                "const": "grant_die"
+              }
+            }
+          }
+        },
+        {
+          "description": "7.2za: a half_proficiency effect is checked by its closed arm only.",
+          "properties": {
+            "kind": {
+              "not": {
+                "const": "half_proficiency"
+              }
+            }
+          }
         }
       ]
     },
@@ -4070,6 +4095,12 @@
               "$ref": "#/$defs/transparent_effect"
             },
             {
+              "$ref": "#/$defs/grant_die_effect"
+            },
+            {
+              "$ref": "#/$defs/half_proficiency_effect"
+            },
+            {
               "type": "object",
               "additionalProperties": false,
               "required": [
@@ -4553,6 +4584,127 @@
         }
       },
       "description": "VERSION_BUMP_BATCH 7.2z (Frenzy): one melee weapon attack as a bonus action while the apply_modifier feature requires_effect (an id of a feature of the same document) is in force."
+    },
+    "roll_kind_list": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "attack",
+          "save",
+          "check",
+          "damage"
+        ]
+      },
+      "description": "VERSION_BUMP_BATCH 7.2za: the rolls a die applies to (rules5e kRoll* bits): attack roll, saving throw, ability check, damage roll (the attack's weapon or spell damage dice). Shared by grant_die and the subtract_roll reaction."
+    },
+    "grant_die_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "die",
+        "range_ft",
+        "duration",
+        "applies_to"
+      ],
+      "description": "VERSION_BUMP_BATCH 7.2za (T&C #202): SRD Bardic Inspiration (sim features.cpp apply_grant_die). Using the feature (UseFeature, target = an ally other than the user, within range_ft, not deafened) gives the target one held die (rules5e ModStat::HeldDie). Once, after it rolls a roll in applies_to and before the outcome, the holder may add the die; then it is gone. It lapses after duration; a new held die replaces an older one (one per creature). The die is the last scale entry whose level is at or below the owner's level in `class` (else the total level), else `die`. character@4 / monster@4 (inert below 4).",
+      "properties": {
+        "kind": {
+          "const": "grant_die"
+        },
+        "die": {
+          "$ref": "../common/v1.schema.json#/$defs/dice"
+        },
+        "scale": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "level",
+              "die"
+            ],
+            "properties": {
+              "level": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 20
+              },
+              "die": {
+                "$ref": "../common/v1.schema.json#/$defs/dice"
+              }
+            }
+          },
+          "description": "Levels strictly ascending (the validator checks the order)."
+        },
+        "class": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "range_ft": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300
+        },
+        "duration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "n"
+          ],
+          "properties": {
+            "kind": {
+              "const": "rounds"
+            },
+            "n": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          }
+        },
+        "applies_to": {
+          "$ref": "#/$defs/roll_kind_list"
+        },
+        "cost": {
+          "enum": [
+            "action",
+            "bonus_action"
+          ]
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        }
+      }
+    },
+    "half_proficiency_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "on"
+      ],
+      "description": "VERSION_BUMP_BATCH 7.2za (T&C #202): SRD Jack of All Trades (sim features.cpp apply_half_proficiency; rules5e Combatant::half_proficiency). Static. checks: half the proficiency bonus, rounded down, on ability checks that do not already add it; initiative: the same on initiative rolls. Characters only (refused on monsters); inert below @4.",
+      "properties": {
+        "kind": {
+          "const": "half_proficiency"
+        },
+        "on": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "checks",
+              "initiative"
+            ]
+          }
+        }
+      }
     }
   }
 }
