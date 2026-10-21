@@ -116,12 +116,8 @@ Image font_atlas() {
 
 Color mul(Color a, Color b) { return {a.r * b.r, a.g * b.g, a.b * b.b, a.a * b.a}; }
 
-// Presentation table: light preset (content key) -> glow colour. Never read by sim.
-Color glow_for(const LightSourceView& s) {
-    if (s.preset.find("torch") != std::string::npos) return Color::rgba8(255, 170, 70, 170);
-    if (s.magical) return Color::rgba8(190, 210, 255, 170);
-    return Color::rgba8(255, 230, 160, 150);
-}
+
+constexpr float kGlowMaxScale = 1.5f;   // glow sprite size cap, in tiles
 
 int floor_mod32(int v) { return ((v % 32) + 32) % 32; }
 
@@ -301,15 +297,21 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         }
     }
     // ---- world: actors (placeholder pawns), current-turn ring ----
-    if (L.present)   // glow under lit sources (presentation; follows the carrier's drawn tile)
-        for (const LightSourceView& ls : L.sources) {
-            if (!ls.lit) continue;
-            Vec2i at = ls.tile;
-            for (const ActorView& a : vm.actors) if (ls.carrier == 1 && a.id == ls.carrier_id) at = a.tile;
-            iso2d::Sprite g{tex_->ring, float(kTileW), float(kTileH), kTileW / 2.f, 0};
-            g.tint = glow_for(ls);
-            world_.draw(g, {float(at.x), float(at.y)}, 0, ls.sort_key(), 8);
+    if (L.present) {   // glows under lit sources (presentation; entity-anchored ones follow the drawn token)
+        std::vector<iso2d::GlowSource> glows = glows_from(L, palette_);
+        std::vector<iso2d::GlowAnchor> anchors;
+        anchors.reserve(vm.actors.size());
+        for (const ActorView& a : vm.actors) anchors.push_back({a.id, {float(a.tile.x), float(a.tile.y)}});
+        iso2d::follow_anchors(glows, anchors);
+        for (const iso2d::GlowSource& gs : glows) {
+            // Token-local halo: grows with the source radius but stays capped, so it never paints
+            // over tiles the sim's light map leaves Dark (the light map carries the actual area).
+            const float k = std::clamp(gs.radius_tiles / 4.f, 1.f, kGlowMaxScale);
+            iso2d::Sprite g{tex_->ring, kTileW * k, kTileH * k, kTileW * k / 2.f, kTileH * (k - 1.f) / 2.f};
+            g.tint = iso2d::glow_tint(gs);
+            world_.draw(g, gs.tile, 0, gs.key, 8);
         }
+    }
     for (const ActorView& a : vm.actors) {
         if (!visible(a)) continue;
         const Vec2f iso{float(a.tile.x), float(a.tile.y)};
@@ -382,4 +384,27 @@ void SliceView::submit(ICommandList& cl) {
     ui_.submit(cl);
 }
 
+} // namespace slice
+
+namespace slice {
+std::vector<eng::iso2d::GlowSource> glows_from(const LightView& L, const eng::iso2d::GlowPalette& palette) {
+    std::vector<eng::iso2d::GlowSource> out;
+    if (!L.present) return out;
+    for (const LightSourceView& ls : L.sources) {
+        if (!ls.lit) continue;
+        eng::iso2d::GlowSource g;
+        g.key = ls.sort_key();
+        if (ls.carrier == 1) {
+            g.anchor = eng::iso2d::GlowAnchorKind::Entity;
+            g.anchor_id = ls.carrier_id;
+        }
+        g.tile = {float(ls.tile.x), float(ls.tile.y)};
+        g.radius_tiles = eng::iso2d::glow_radius_tiles(ls.bright_ft, ls.dim_ft);
+        const eng::iso2d::GlowStyle st = palette.style_for(ls.preset, ls.magical);
+        g.color = st.color;
+        g.intensity = st.intensity;
+        out.push_back(g);
+    }
+    return out;
+}
 } // namespace slice
