@@ -357,6 +357,7 @@ def check_spell(doc, errs, ctx):
     errs += c4.check_spell_modifiers(doc)
     errs += c4.check_spell_gaps(doc)   # 7.2zc
     errs += c4.check_spell_batch2(doc)   # 7.2zd
+    errs += c4.check_spell_batch3(doc)   # 7.2ze
     eff = effs[0]   # the first effect carries targeting, scaling and the reaction/duration rules
     if len(effs) > 1 and any(e["kind"] in REACTION_EFFECT_TRIGGER for e in effs):
         errs.append("effects: ac_bonus and counter reactions cannot be combined with other effects")

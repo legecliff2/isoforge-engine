@@ -1206,6 +1206,45 @@ def check_spell_batch2(doc: dict) -> list[str]:
     return errs
 
 
+def check_spell_batch3(doc: dict) -> list[str]:
+    """7.2ze spell@1 cross-field rules (rules5e_content spell_loader.cpp parse_modifier / parse_effect, same wording and order):
+    the modifier sign (Bless / Bane) and an applies_to roll list, the apply_modifier save gate (Bane), and choices (with
+    condition chosen, Blindness/Deafness) on the first effect only. Shapes (enums, sizes, the chosen / choices pairing) are the
+    schema's."""
+    errs: list[str] = []
+    effs = [e for e in (doc.get("effects") or []) if isinstance(e, dict)]
+    for i, e in enumerate(effs):
+        pre = f"effects[{i}]: " if i > 0 else ""
+        k = e.get("kind")
+        if i > 0 and k == "save" and "choices" in e:
+            errs.append(f"effects[{i}]: choices is only allowed on the first effect")
+        if k != "apply_modifier":
+            continue
+        m = e.get("modifier") if isinstance(e.get("modifier"), dict) else {}
+        die = m.get("die")
+        if "sign" in m and isinstance(die, str) and die.startswith("-"):
+            errs.append(f"{pre}effect modifier sign and a negative die together")
+            continue
+        rolls = m.get("applies_to")
+        if isinstance(rolls, list):
+            stat = m.get("stat")
+            if stat not in ("attack_roll", "save"):
+                errs.append(f"{pre}effect modifier applies_to rolls: attack_roll or save modifiers only")
+                continue
+            if ("attack" if stat == "attack_roll" else "save") not in rolls:
+                errs.append(f"{pre}effect modifier applies_to rolls must include the modifier's own stat")
+                continue
+            if "die" not in m:
+                errs.append(f"{pre}effect modifier applies_to rolls needs die")
+                continue
+        if "save" in e:
+            if i > 0:
+                errs.append(f"effects[{i}]: an apply_modifier save is only allowed on the first effect")
+            elif not isinstance(rolls, list) and m.get("applies_to", "target") != "target":
+                errs.append("effect save needs a modifier on the targets (applies_to target or rolls)")
+    return errs
+
+
 def check_spell_gaps(doc: dict) -> list[str]:
     """7.2zc spell@1 cross-field rules (rules5e_content spell_loader.cpp parse_effect / spell_from_json, same wording and
     order): the generic mark (scope target marked, ability chosen, move_mark) and Invisibility's ends_on."""

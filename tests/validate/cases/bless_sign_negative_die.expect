@@ -1,0 +1,1 @@
+/effects/0/modifier/die: '-1d4' does not match '^[1-9][0-9]*d(4|6|8|10|12|20|100)([+-][0-9]+)?$'
