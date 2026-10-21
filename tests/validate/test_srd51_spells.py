@@ -68,6 +68,11 @@ class SpellTable(unittest.TestCase):
                 if "damage_type" in t:
                     lv = t["damage_at"]
                     base = lv[str(min(int(k) for k in lv))]
+                    if eff["kind"] == "apply_modifier":   # a damage rider (Divine Favor): no upcast in the SRD
+                        m = eff["modifier"]
+                        self.assertEqual((m["stat"], m["die"], m["damage_type"]), ("damage", base, t["damage_type"]))
+                        self.assertNotIn("scaling", d)
+                        continue
                     self.assertEqual(eff["damage"], {"dice": base, "type": t["damage_type"]})
                     if d["level"] == 0:
                         self.assertEqual(d["scaling"]["cantrip"], {"levels": [int(k) for k in sorted(lv, key=int)][1:], "adds": "dice"})
@@ -75,7 +80,7 @@ class SpellTable(unittest.TestCase):
                         step = dice_count(lv[str(d["level"] + 1)]) - dice_count(base)
                         self.assertEqual(d["scaling"]["upcast"], {"dice": step})
                 if "dc" in t:
-                    self.assertEqual((eff["kind"], eff["ability"], eff["on_success"]), ("save", t["dc"]["ability"], t["dc"]["success"]))
+                    self.assertEqual((eff["kind"], eff["ability"], eff.get("on_success", "none")), ("save", t["dc"]["ability"], t["dc"]["success"]))   # none: the default (condition / control saves)
                 if "attack_type" in t:
                     self.assertEqual((eff["kind"], eff["attack"]), ("spell_attack", t["attack_type"]))
                 if "area_of_effect" in t:
@@ -88,6 +93,23 @@ class SpellTable(unittest.TestCase):
         man = json.loads((PACK / "manifest.json").read_text(encoding="utf-8"))
         for idx in TABLE:
             self.assertIn(f"spells/{idx.replace('-', '_')}.json", man["contents"])
+
+    def test_batch_3_mechanics(self):
+        # Mage Armor: base AC 13 + Dex (ac_floor), 8 hours = 4800 rounds
+        self.assertEqual(load("mage-armor")["effects"][0]["modifier"], {"stat": "ac", "ac_floor": 13, "ac_floor_dex": True,
+                                                                     "applies_to": "target", "duration": {"kind": "rounds", "n": 4800}})
+        # Divine Favor: weapon attacks only
+        self.assertEqual(load("divine-favor")["effects"][0]["modifier"]["when"], [{"kind": "weapon_attack"}])
+        # Moonbeam: Enter + StartTurn (one per turn, default group), shapechanger disadvantage, movable 60 ft for an action
+        z = load("moonbeam")["effects"][0]["zone"]
+        self.assertEqual((z["anchor"], z["height_ft"], z["move"]), ("point", 40, {"cost": "action", "feet": 60}))
+        self.assertEqual([(tr["on"], tr["shapechanger_disadvantage"]) for tr in z["triggers"]],
+                         [("zone_enter", True), ("zone_start_turn", True)])
+        # Sleep: 5d8 pool (+2d8 per slot), unconscious, wakes on damage, undead skipped
+        sl = load("sleep")
+        self.assertEqual(sl["effects"], [{"kind": "hp_pool", "dice": "5d8", "condition": "unconscious", "ends_on_damage": True,
+                                          "excludes_creature_type": ["undead"]}])
+        self.assertEqual(sl["scaling"], {"upcast": {"dice": 2}})
 
     def test_mechanics(self):
         # Thunderwave: push 10 ft, failed saves only (R-G9 forced_move rider)
@@ -120,6 +142,17 @@ class SpellTable(unittest.TestCase):
         self.assertEqual(ct[2]["modifier"]["when"], [{"kind": "owner_creature_type", "creature_types": ["undead"]}, {"kind": "subject_is_caster"}])
         for idx in ("guiding-bolt", "vicious-mockery", "shocking-grasp", "chill-touch"):
             self.assertTrue(all(e["applies_to"] == "affected" for e in load(idx)["effects"][1:]), idx)
+
+    def test_control_spells(self):
+        # Rules #188 (7.2v): control saves (Command word chosen at cast, Fear, Hideous Laughter)
+        self.assertEqual(load("command")["effects"], [{"kind": "save", "ability": "wis", "control": "command",
+                                                       "control_excludes_creature_types": ["undead"]}])
+        self.assertEqual(load("command")["targets"], {"count": 1, "max_spread_ft": 30})
+        self.assertEqual(load("command")["scaling"], {"upcast": {"targets": 1}})
+        self.assertEqual(load("fear")["effects"], [{"kind": "save", "ability": "wis", "condition": "frightened", "control": "fear",
+                                                    "repeat_save": "end_of_turn_unseen"}])
+        self.assertEqual(load("hideous-laughter")["effects"], [{"kind": "save", "ability": "wis", "condition": "prone", "control": "laughter",
+                                                                "control_min_int": 4, "repeat_save": "end_of_turn_or_damage_advantage"}])
 
     def test_zone_and_kind_spells(self):
         self.assertEqual(load("silence")["effects"][0]["zone"]["flags"], ["silence"])

@@ -1,0 +1,55 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.shatter",
+  "name": "Shatter",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "A sudden loud ringing noise, painfully intense, erupts from a point of your choice within range. Each creature in a 10-foot-radius sphere centered on that point must make a Constitution saving throw. A creature takes 3d8 thunder damage on a failed save, or half as much damage on a successful one. A creature made of inorganic material such as stone, crystal, or metal has disadvantage on this saving throw. A non-magical item that is not worn or carried also suffers damage if it is in the area of the spell. At Higher Levels: When you cast this spell using a 3 or higher level spell slot, the damage of the spell increases by 1d8 for each level of higher spell slot 2. (Modelled: the Con save for 3d8 thunder, half on a success; disadvantage for inorganic creatures and damage to objects are not.)",
+  "level": 2,
+  "school": "evocation",
+  "classes": [
+    "bard",
+    "sorcerer",
+    "warlock",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "A burst of mica"
+    }
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "area": {
+    "shape": "sphere",
+    "size_ft": 10
+  },
+  "effects": [
+    {
+      "kind": "save",
+      "ability": "con",
+      "damage": {
+        "dice": "3d8",
+        "type": "thunder"
+      },
+      "on_success": "half"
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "dice": 1
+    }
+  }
+}
