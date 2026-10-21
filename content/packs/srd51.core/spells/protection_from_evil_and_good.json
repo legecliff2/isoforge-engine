@@ -6,7 +6,7 @@
     "ref": "SRD 5.1",
     "license": "CC-BY-4.0"
   },
-  "description": "Until the spell ends, one willing creature you touch is protected against certain types of creatures: aberrations, celestials, elementals, fey, fiends, and undead. The protection grants several benefits. Creatures of those types have disadvantage on attack rolls against the target. The target also can't be charmed, frightened, or possessed by them. If the target is already charmed, frightened, or possessed by such a creature, the target has advantage on any new saving throw against the relevant effect. (Modelled: apply_modifier attack_roll disadvantage applies_to attackers with scope from_types, and condition_immunity_from [charmed, frightened]. Not modelled: possession and the advantage on a new saving throw. Deviation: the material is consumed but has no cost; spell@1 requires cost_cp with consumed, so 'consumed' is kept in the text only.)",
+  "description": "Until the spell ends, one willing creature you touch is protected against certain types of creatures: aberrations, celestials, elementals, fey, fiends, and undead. The protection grants several benefits. Creatures of those types have disadvantage on attack rolls against the target. The target also can't be charmed, frightened, or possessed by them. If the target is already charmed, frightened, or possessed by such a creature, the target has advantage on any new saving throw against the relevant effect. (Modelled: apply_modifier attack_roll disadvantage applies_to attackers with scope from_types, and condition_immunity_from [charmed, frightened]. Not modelled: possession and the advantage on a new saving throw.)",
   "level": 1,
   "school": "abjuration",
   "classes": [
@@ -25,7 +25,8 @@
     "v": true,
     "s": true,
     "m": {
-      "text": "holy water or powdered silver and iron, which the spell consumes"
+      "text": "holy water or powdered silver and iron, which the spell consumes",
+      "consumed": true
     }
   },
   "duration": {

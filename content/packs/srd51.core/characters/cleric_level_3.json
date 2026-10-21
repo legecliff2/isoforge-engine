@@ -193,6 +193,7 @@
     },
     "spells": [
       "srd51.spell.sacred_flame",
+      "srd51.spell.bless",
       "srd51.spell.cure_wounds",
       "srd51.spell.healing_word",
       "srd51.spell.inflict_wounds",
