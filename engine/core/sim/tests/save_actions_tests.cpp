@@ -335,3 +335,39 @@ TEST_CASE("save_effect timed durations compile to expiry / duration_rounds and e
     REQUIRE_MESSAGE(rep, err);
     CHECK(rep->hash() == c->hash());
 }
+
+TEST_CASE("7.2y save_effect control keys, target_creature_types, duration; bonus_vs on attack damage") {
+    auto lib = sample_lib();
+    Json turn = {{"kind", "save_effect"}, {"id", "turn_undead"}, {"name", "Turn Undead"},
+                 {"save", {{"ability", "wis"}, {"dc", 13}}}, {"range_ft", 30}, {"on_success", "none"},
+                 {"control", "turned"}, {"destroy_undead_max_cr8", 4}, {"target_creature_types", Json::array({"undead"})},
+                 {"duration", {{"kind", "rounds"}, {"n", 10}}}};
+    REQUIRE_FALSE(lib.add(drake("t.cleric", turn), "monster"));
+    const rules5e::SpellDef* d = lib.spells()->find(rules5e::spell_id_of("t.cleric#turn_undead"));
+    REQUIRE(d);
+    CHECK(d->control == rules5e::ControlKind::Turned);
+    CHECK(d->destroy_cr8_max == 4);
+    CHECK(d->target_types == rules5e::bit(rules5e::CreatureType::Undead));
+    CHECK(d->duration_rounds == 10);
+    Json bad = turn; bad["target_creature_types"] = Json::array({"dragonish"});
+    CHECK(lib.add(drake("t.bad1", bad), "monster"));
+    bad = turn; bad.erase("control");
+    CHECK(lib.add(drake("t.bad2", bad), "monster"));   // destroy / duration need control
+    bad = turn; bad["destroy_undead_max_cr8"] = 3;
+    CHECK(lib.add(drake("t.bad3", bad), "monster"));
+    bad = turn; bad["control"] = "command";
+    CHECK(lib.add(drake("t.bad4", bad), "monster"));
+    // bonus_vs on the scimitar
+    Json g = drake("t.smiter", breath());
+    for (auto& act : g["actions"])
+        if (act.value("kind", "") == "melee_weapon_attack")
+            act["damage"][0]["bonus_vs"] = {{"creature_types", Json::array({"undead", "fiend"})}, {"dice", "1d8"}};
+    REQUIRE_FALSE(lib.add(g, "monster"));
+    const auto& at = lib.find("t.smiter")->base.attacks.at(0);
+    CHECK(at.vs_types == (rules5e::bit(rules5e::CreatureType::Undead) | rules5e::bit(rules5e::CreatureType::Fiend)));
+    CHECK(at.vs_dice == rules5e::DiceExpr{1, 8, 0});
+    for (auto& act : g["actions"])
+        if (act.value("kind", "") == "melee_weapon_attack") act["damage"][0]["bonus_vs"]["light"] = true;
+    g["id"] = "t.smiter2";
+    CHECK(lib.add(g, "monster"));   // closed object
+}

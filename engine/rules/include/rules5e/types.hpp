@@ -57,7 +57,12 @@ struct AbilityScores {
 // One extra damage component of an attack (SRD "damage dice + type"; e.g. a flame tongue's +2d6 fire).
 // Attack::damage/type stay the first component; extra_damage holds components 2..n. Each is rolled
 // (and doubled on a critical hit) separately and gets immunity/resistance/vulnerability for ITS type.
-struct DamagePart { DiceExpr dice; DamageType type; };
+struct DamagePart {
+    DiceExpr dice; DamageType type;
+    // appended (class feature hooks, 7.2y; content `bonus_vs`): extra dice of the same type against a target whose creature type
+    // is in `vs_types` (bitmask over CreatureType; 0 = none). Rolled right after `dice` (doubled on a crit).
+    uint32_t vs_types = 0; DiceExpr vs_dice{0, 0, 0};
+};
 
 // Facts about an attack's damage source that qualified resistances/immunities care about (SRD 5.1:
 // "bludgeoning, piercing, and slashing from nonmagical attacks [that aren't silvered / adamantine]").
@@ -96,6 +101,8 @@ struct Attack {
     // appended (EC swarm, flagged): SRD swarm bites ("2d6, or 1d6 if the swarm has half of its hit points or fewer"): when
     // half_hp_damage.count > 0 and the attacker's hp * 2 <= hp_max, it replaces `damage` (component 1). Default: unused.
     DiceExpr half_hp_damage{};
+    // appended (7.2y `bonus_vs` on damage[0]): as DamagePart::vs_types / vs_dice for component 1.
+    uint32_t vs_types = 0; DiceExpr vs_dice{0, 0, 0};
 };
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
 constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
@@ -120,7 +127,11 @@ enum class ActionKind : uint8_t { Attack, Dash, Disengage, Dodge, Help, Hide, Re
                                   // appended (R-G12 rules PR 2): command summons (ActionRequest::command / command_ids)
                                   CommandSummons,
                                   // appended (R-G12 rules PR 3): the bonus-action attack of the actor's Spiritual Weapon (spell_id)
-                                  SummonWeaponAttack };
+                                  SummonWeaponAttack,
+                                  // appended (7.2y Fast Hands): Use an Object, a Dexterity (Sleight of Hand) check, or thieves' tools
+                                  // (disarm a trap / open a lock): ActionRequest::object_use 1 / 2 / 3, with `dc` for 2 and 3. An
+                                  // action, or the bonus action when bonus_action_grants has it (Fast Hands).
+                                  UseObject };
 constexpr uint32_t bit(ActionKind k) { return uint32_t(1) << uint32_t(k); }
 
 // Reaction windows (encounter.hpp). Append-only.
@@ -222,6 +233,9 @@ enum class PredicateKind : uint8_t {
     SubjectIsCaster, OwnerCreatureType,
     // appended (EC loader temp HP, flagged): the subject is on another team than the owner (a hostile creature): Dark One's Blessing
     SubjectHostile,
+    // appended (7.2y, T&C Colossus Slayer): the subject (the creature hit) is below its hit point maximum. Hit triggers run
+    // before the hit's damage, so this reads the hp the target had when it was hit.
+    TargetBelowMaxHp,
 };
 enum class WeaponIs : uint8_t { Melee, Ranged, Finesse, FinesseOrRanged };
 struct Predicate { PredicateKind kind = PredicateKind::NotCrit; int16_t a = 0, b = 0; uint32_t mask = 0; };
@@ -239,6 +253,9 @@ struct RiderEffect {
     // ExtraDamage scale.per_slot_level: `slot_dice` per slot level above `slot_base` (Divine Smite: 1d8, base 1).
     DiceExpr slot_dice{0, 0, 0};
     uint8_t slot_base = 0;
+    // appended (7.2y `bonus_vs`): ExtraDamage: + vs_dice when the target's creature type is in vs_types (Divine Smite +1d8 vs
+    // undead / fiend).
+    uint32_t vs_types = 0; DiceExpr vs_dice{0, 0, 0};
 };
 struct Trigger {
     uint32_t id = 0;                      // spell_id_of("<archetype>#<owner>#<index>"); the trigger_id of FeatureTriggered
@@ -266,6 +283,9 @@ struct Reaction {
     // appended (R-G7): SubtractRoll rolls `dice` and subtracts it from an enemy's attack roll (Cutting Words: the bardic
     // inspiration die). Offered only while `pool` (0 = none) can pay `pool_cost` (0 = 1); spent when taken (ResourceSpent).
     uint32_t pool = 0; uint16_t pool_cost = 0;
+    // appended (7.2y Uncanny Dodge): offered only when the reactor can see the damager (rules5e::sight; no sight hook = sees).
+    // A `half` ReduceDamage is offered only for damage from an attack hit (never a save effect such as Fireball).
+    bool requires_sight = false;
 };
 
 // ---- Timed modifiers (version-bump batch, row 12; docs/proposals/VERSION_BUMP_BATCH.md section 6) ----
@@ -319,6 +339,11 @@ struct ModifierSpec {
     uint8_t repeat_save = 0;
     Ability repeat_ability = Ability::Wis;
     int16_t repeat_dc = 0;
+    // appended (7.2y `scope: {weapon: "wielded"}`; Sacred Weapon): 1 = bound to the weapon wielded when the feature is used
+    // (ActionRequest::attack_index on the UseFeature; ActiveModifier::weapon): AttackRoll / Damage apply only to attacks with
+    // it, and the modifier ends (ModifierExpired reason 7) when the weapon leaves the hand (the owner drops, dies, falls
+    // unconscious, or is commanded to Drop).
+    uint8_t weapon_scope = 0;
 };
 
 // Row R-G6: a bonus-action attack option (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy). Requested with
@@ -532,6 +557,7 @@ struct Combatant {
     // these, Blinded / Deafened and sim's per-pair SightFacts (per-tile light from any source; LIGHTING.md).
     uint16_t darkvision_ft = 0, blindsight_ft = 0, tremorsense_ft = 0, truesight_ft = 0;
     bool sunlight_sensitive = false;   // SRD Sunlight Sensitivity (drow, kobold...)
+    bool thieves_tools = false;        // appended (7.2y): proficient with thieves' tools (UseObject 3 adds the proficiency bonus)
     constexpr bool has(Condition c) const { return (conditions & bit(c)) != 0; }
     // appended (control conditions, 7.2v): challenge rating * 8 (CR 1/2 = 4) for Destroy Undead; -1 = unknown (never destroyed).
     int16_t cr8 = -1;

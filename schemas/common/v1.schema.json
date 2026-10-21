@@ -169,7 +169,7 @@
             "description": "Static: the creature may take each listed action as a bonus action (e.g. Nimble Escape).",
             "required": ["actions"],
             "properties": {
-              "actions": { "type": "array", "items": { "enum": ["dash", "disengage", "hide", "dodge"] },
+              "actions": { "type": "array", "items": { "enum": ["dash", "disengage", "hide", "dodge", "use_object"] },
                            "description": "rules5e ActionKind ids grantable as bonus actions." }
             } } },
         { "if": { "properties": { "kind": { "const": "multiattack" } }, "required": ["kind"] },

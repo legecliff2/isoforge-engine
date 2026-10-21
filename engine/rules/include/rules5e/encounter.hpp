@@ -209,6 +209,9 @@ struct ActionRequest {
     // appended (vision 7.2x; log_hash 0xC6 when set): on an Attack against a creature hidden from the attacker, the tile the
     // attacker guesses (sim tile, opaque to rules; EncounterHooks::guess_correct). Required then; ignored otherwise.
     bool has_guess = false; int32_t guess_x = 0, guess_y = 0;
+    // appended (7.2y Fast Hands; log_hash 0xCB when non-zero): UseObject: 1 Use an Object, 2 Dexterity (Sleight of Hand)
+    // check vs `dc`, 3 thieves' tools (disarm a trap / open a lock: Dexterity check + proficiency if Combatant::thieves_tools) vs `dc`.
+    uint8_t object_use = 0;
 };
 
 enum class EventKind : uint8_t {
@@ -294,6 +297,7 @@ struct ReactionWindow {
     // `ranged`: the attack that caused the window was ranged.
     int16_t     damage = 0;
     bool        ranged = false;
+    bool        from_attack = false;  // appended (7.2y): Damaged: the damage came from an attack hit (weapon or spell attack)
 };
 
 enum class ReactionOptionKind : uint8_t { Attack, AcBonus, Counter, FireReady, Rider, ReduceDamage, ImposeDisadvantage, Retaliate, SubtractRoll /* R-G7: AttackRolled, `dice` subtracted from the roll */ };   // Rider (9c): option_id = trigger id, slot_level = slot spent (0 none)
@@ -435,6 +439,7 @@ struct ActiveModifier {
     Timed timed{};
     bool gated = false;   // transient: a `when` that does not hold for the roll in progress (never set between steps)
     uint8_t slot_level = 0;   // appended (R-G15): level of the spell that applied it (Dispel Magic); 0 = unknown / not a spell
+    uint8_t weapon = 0;       // appended (7.2y): ModifierSpec::weapon_scope: the bound attack index + 1 (0 = not bound)
 };
 
 // Limited-use features (Second Wind, ...), keyed by (actor, feature_id). Part of the encounter state,

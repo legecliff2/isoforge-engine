@@ -97,11 +97,29 @@ TEST_CASE("modifier content: features compile (bonus_table resolves by level) an
     CHECK(rows[0].source == rows[1].source);
     CHECK(rows[0].id != rows[1].id);
     CHECK(a->active.size() >= 1);
-    // usage: listed, not offered
+    // 7.2y usage pool: an unknown pool is a load error; a declared one loads and gates UseFeature
     Json usage = leader("t.pooled", {res});
     usage["features"].back()["effect"]["usage"] = {{"kind", "pool"}, {"pool", "rage"}, {"cost", 1}};
+    REQUIRE(lib.add(usage, "character"));
+    usage["id"] = "t.pooled2";
+    usage["resources"] = Json::array({{{"id", "rage"}, {"max", 2}, {"recharge", "long_rest"}}});
     REQUIRE_FALSE(lib.add(usage, "character"));
-    CHECK(lib.find("t.pooled")->feature_modifiers.empty());
+    {
+        const auto* p = lib.find("t.pooled2");
+        REQUIRE(p);
+        CHECK(p->feature_modifiers.size() == 1);
+        REQUIRE(p->feature_specs.size() == 1);
+        CHECK(p->feature_specs.begin()->second.pool == rules5e::spell_id_of("rage"));
+        CHECK(p->feature_specs.begin()->second.pool_cost == 1);
+    }
+    // 7.2y scope {weapon: wielded}: every row bound; any other shape is a load error
+    Json sw = leader("t.sacred", {res});
+    sw["features"].back()["effect"]["scope"] = {{"weapon", "wielded"}};
+    REQUIRE_FALSE(lib.add(sw, "character"));
+    for (const auto& m : lib.find("t.sacred")->feature_modifiers.begin()->second) CHECK(m.weapon_scope == 1);
+    sw["id"] = "t.sacred_bad";
+    sw["features"].back()["effect"]["scope"] = {{"weapon", "offhand"}};
+    REQUIRE(lib.add(sw, "character"));
     // load errors
     Json bad = res;
     bad.erase("damage_type");

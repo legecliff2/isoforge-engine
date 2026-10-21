@@ -1247,6 +1247,7 @@ bool predicate_holds(EncounterState& s, Combatant& owner, const Combatant& subje
     case PredicateKind::NotTargetTag: return std::find(subject.tags.begin(), subject.tags.end(), p.mask) == subject.tags.end();
     case PredicateKind::AllyNearTarget: return x.ally;
     case PredicateKind::SubjectIsCaster: return x.mod_caster != 0 && subject.id == x.mod_caster;   // 7.2u
+    case PredicateKind::TargetBelowMaxHp: return subject.hp < subject.hp_max;   // 7.2y Colossus Slayer
     case PredicateKind::OwnerCreatureType: return (p.mask & bit(owner.creature_type)) != 0;
     case PredicateKind::SubjectHostile: return subject.team != owner.team;   // EC loader temp HP (flagged)
     case PredicateKind::DamageAtMost: return x.dmg <= p.a;
@@ -1413,6 +1414,28 @@ void life_drain(EncounterState& s, Combatant& t, int taken, int dc, CombatantId 
 // 7.2x: the start-of-step state the sight hook is asked about during a step (set by attempt while the hook exists).
 thread_local const EncounterState* g_sight_base = nullptr;
 
+// 7.2y: is `atk` the weapon a wielded-scope modifier is bound to?
+bool wields(const Combatant& a, const ActiveModifier& m, const Attack& atk) {
+    return m.weapon != 0 && std::size_t(m.weapon - 1) < a.attacks.size() && &a.attacks[std::size_t(m.weapon - 1)] == &atk;
+}
+
+// 7.2y: a wielded-scope modifier ends when the weapon leaves the hand: the owner died, fell unconscious, or was commanded
+// to Drop (ModifierExpired reason 7).
+void sweep_wielded(EncounterState& s, std::vector<Event>& ev) {
+    for (std::size_t i = 0; i < s.modifiers.size();) {
+        const ActiveModifier& m = s.modifiers[i];
+        bool gone = false;
+        if (m.weapon != 0) {
+            const Combatant* c = find(s, m.target);
+            gone = !c || c->dead || c->hp <= 0 || c->has(Condition::Unconscious) ||
+                   std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& e) {
+                       return e.target == m.target && e.control == uint8_t(ControlKind::Command) &&
+                              e.command_word == uint8_t(CommandWord::Drop); });
+        }
+        if (gone) remove_modifier(s, i, 7, ev); else ++i;
+    }
+}
+
 bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
                bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage = false,
                uint32_t spell_id = 0, bool ally_near_target = false, const DiceExpr* damage_override = nullptr,
@@ -1426,11 +1449,13 @@ std::vector<ReactionOption> reaction_options(const EncounterState& s, const Comb
     for (const Reaction& rx : r.reactions) {
         if (rx.window != w.trigger) continue;
         if ((rx.melee_only && w.ranged) || (rx.ranged_only && !w.ranged)) continue;
+        if (rx.requires_sight && (w.trigger_actor == 0 || !sight(s, r.id, w.trigger_actor).can_see)) continue;   // 7.2y: a seen attacker
         ReactionOption o{};
         o.option_id = rx.id; o.uses_reaction = true;
         switch (rx.kind) {
         case ReactionEffectKind::ReduceDamage:
             if (w.trigger != ReactionTrigger::Damaged) continue;
+            if (rx.half && !w.from_attack) continue;   // 7.2y Uncanny Dodge: an attack's damage, never a save effect
             o.kind = ReactionOptionKind::ReduceDamage; o.half = rx.half; o.dice = rx.dice; break;
         case ReactionEffectKind::ImposeDisadvantage:
             if (w.trigger != ReactionTrigger::AllyAttacked) continue;
@@ -1547,6 +1572,7 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
         ReactionWindow w = new_window(s, *ctx, ReactionTrigger::Damaged, attacker ? attacker->id : 0);
         w.target = t.id; w.damage = d.dealt; w.ranged = src && src->atk && src->atk->ranged;
         w.spell_id = src && src->is_spell ? 1u : 0u;
+        w.from_attack = src && src->atk != nullptr;
         if (may_open(s, w) && may_react(s, t, w.trigger) && in_range(s, w, t)) {
             auto opts = reaction_options(s, t, w);
             if (!opts.empty()) {
@@ -1557,7 +1583,8 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
                     const ReactionOption o = opts[dec.option];
                     if (o.uses_reaction) t.reaction_used = true;
                     if (o.kind == ReactionOptionKind::ReduceDamage) {
-                        const int red = o.half ? d.dealt / 2 : std::max(0, roll_dice(s.rng, o.dice));
+                        // halve: SRD rounds the halved damage down, so the reduction is the larger half
+                        const int red = o.half ? d.dealt - d.dealt / 2 : std::max(0, roll_dice(s.rng, o.dice));
                         applied = reduce_applied(t, d, red);
                     } else if (o.kind == ReactionOptionKind::Retaliate || o.kind == ReactionOptionKind::Attack) {
                         after_reaction = o;
@@ -1719,6 +1746,7 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
             if (!hit_effect_ok(s, e)) continue;
             if (e.kind == RiderKind::ExtraDamage) {
                 out.pieces.push_back({e.dice, e.type, e.same_as_weapon});
+                if (e.vs_types & bit(t.creature_type)) out.pieces.push_back({e.vs_dice, e.type, e.same_as_weapon});   // 7.2y bonus_vs
                 if (e.slot_dice.count > 0 && level > e.slot_base)      // scale.per_slot_level: +add_dice per level above base
                     out.pieces.push_back({DiceExpr{uint8_t(e.slot_dice.count * (level - e.slot_base)), e.slot_dice.sides, 0},
                                           e.type, e.same_as_weapon});
@@ -1765,6 +1793,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     if (!s.modifiers.empty()) {   // timed modifiers (row 12): sources merged into the one advantage/disadvantage resolution
         for (auto& m : s.modifiers) {   // `when` scope of roll-time modifiers (follow-up): gate the ones that do not hold
             m.gated = false;
+            if (m.weapon != 0 && m.target == a.id && (spell_id != 0 || !wields(a, m, atk))) { m.gated = true; continue; }   // 7.2y
             if (m.spec.when.empty()) continue;
             Combatant* owner = nullptr; const Combatant* subject = nullptr;
             if (m.spec.stat == ModStat::AttackRoll && m.target == a.id) { owner = &a; subject = &t; }
@@ -1833,6 +1862,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         if (spell_id == 0 && !s.modifiers.empty()) {
             for (const auto& m : s.modifiers) {
                 if (m.target != a.id || m.spec.stat != ModStat::Damage) continue;
+                if (m.weapon != 0 && !wields(a, m, atk)) continue;   // 7.2y: bound to another weapon
                 if ((m.spec.scope == 1 && atk.ranged) || (m.spec.scope == 2 && !atk.ranged)) continue;
                 if (!m.spec.when.empty()) {
                     TrigCtx x; x.atk = &atk; x.is_spell = false; x.mode = atk_mode; x.ally = ally_near_target; x.crit = crit;
@@ -1844,10 +1874,16 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
                 modp.push_back({std::max(0, amt), m.spec.has_damage_type ? m.spec.damage_type : atk.type});
             }
         }
-        if (!riders.pieces.empty() || !modp.empty()) {
+        const uint32_t tbit = bit(t.creature_type);   // 7.2y bonus_vs
+        bool vs_any = (atk.vs_types & tbit) != 0;
+        for (const DamagePart& p : atk.extra_damage) vs_any = vs_any || (p.vs_types & tbit) != 0;
+        if (!riders.pieces.empty() || !modp.empty() || vs_any) {
             std::vector<DamagePiece> parts{{int16_t(dmg), atk.type}};
-            for (const DamagePart& p : atk.extra_damage)
+            if (atk.vs_types & tbit) parts.push_back({int16_t(std::max(0, roll_dice(s.rng, atk.vs_dice, crit))), atk.type});
+            for (const DamagePart& p : atk.extra_damage) {
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.dice, crit))), p.type});
+                if (p.vs_types & tbit) parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.vs_dice, crit))), p.type});
+            }
             for (const HitRiderPiece& r : riders.pieces)
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, r.dice, crit))), r.same_as_weapon ? atk.type : r.type});
             for (const auto& mp : modp) parts.push_back({int16_t(mp.first), mp.second});
@@ -2408,12 +2444,12 @@ CheckResult roll_check(EncounterState& s, Combatant& c, Skill k, int dc, RollMod
 
 // R-G11: a plain ability check (no skill; Web's Strength check to break free), same rules as roll_check. CheckRolled target =
 // 0x100 | Ability (a Skill value otherwise).
-CheckResult roll_ability_check(EncounterState& s, Combatant& c, Ability ab, int dc, std::vector<Event>& ev) {
+CheckResult roll_ability_check(EncounterState& s, Combatant& c, Ability ab, int dc, std::vector<Event>& ev, int bonus = 0) {
     const bool helped = c.check_helped_by != 0;
     if (helped) c.check_helped_by = 0;
     bool adv = helped, dis = false;
     mod_modes(s, c.id, ModStat::AbilityCheck, int(ab), adv, dis);
-    const D20Roll roll = roll_d20(s.rng, modifier(c.abilities, ab), check_roll_mode(c, combine_modes(adv, dis)));
+    const D20Roll roll = roll_d20(s.rng, modifier(c.abilities, ab) + bonus, check_roll_mode(c, combine_modes(adv, dis)));
     CheckResult r{roll, roll.total >= dc};
     if ((c.reroll_ones & 2) && reroll_natural_one(s.rng, r.roll)) r.success = r.roll.total >= dc;   // Lucky
     if (const int add = modifier_flat(s, c.id, ModStat::AbilityCheck, int(ab)) + mod_roll(s, c.id, ModStat::AbilityCheck, int(ab))) {
@@ -2556,6 +2592,8 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                                                      (def.control_min_int > 0 && t->abilities[Ability::Int] <= def.control_min_int)))
                 continue;   // 7.2v: unaffected (Command: undead; Hideous Laughter: Intelligence 4 or less): no save
             if (def.contain != 0 && contain_refused(s, a, *t, def)) continue;   // 7.2w: too large / already holding one: no save
+            if (!def.is_spell && def.target_types != 0 && !valid_target_type(def, *t))
+                continue;   // 7.2y target_creature_types (Turn Undead: undead): others are not affected and make no save
             if ((def.control == ControlKind::Turned || def.control == ControlKind::Command) && s.hooks.sight_facts &&
                 !sight(s, t->id, a.id).perceives)
                 continue;   // 7.2x: Turn Undead / Command need the target to see or hear the user (no hook: sim's target list)
@@ -3464,6 +3502,7 @@ StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vecto
     process_deaths(s, r.events, &ctx);
     sweep_concentration(s, r.events);
     sweep_summons(s, r.events);
+    if (!s.modifiers.empty()) sweep_wielded(s, r.events);   // 7.2y
     prune_sourced(s, r.events);
     for (auto& c : s.combatants) if (c.dead && c.died_round == 0) c.died_round = s.round;   // R-G15: Revivify's window
     if (!ctx.need) {
@@ -4013,6 +4052,12 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         } else if (req.form_archetype != 0) {
             return fail("form_archetype: not a transform feature");
         }
+        bool binds = false;   // 7.2y: a wielded-scope modifier needs the weapon (attack_index) now, before any state changes
+        if (s.hooks.feature_modifiers)
+            for (const ModifierSpec& m : s.hooks.feature_modifiers(s, a, req.feature_id)) binds = binds || m.weapon_scope == 1;
+        if (binds && (req.attack_index >= a.attacks.size() || a.attacks[req.attack_index].ranged ||
+                      a.has(Condition::Unconscious)))
+            return fail("feature: wield a weapon (attack_index) to bind it");
         uint16_t pool_spend = 0;
         Combatant* heal_to = nullptr;
         if (fs && fs->pool != 0) {   // validate everything before any state changes
@@ -4067,7 +4112,11 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
                         if (c && !c->dead && c->id != a.id && c->team == a.team) to.push_back(id);
                     }
                 }
-                for (CombatantId id : to) apply_modifier(s, a.id, id, m, out.events);
+                for (CombatantId id : to) {
+                    const bool put = apply_modifier(s, a.id, id, m, out.events);
+                    if (put && m.weapon_scope == 1 && m.stat != ModStat::TempHp && !s.modifiers.empty() && id == a.id)
+                        s.modifiers.back().weapon = uint8_t(req.attack_index + 1);   // 7.2y: bound to the wielded weapon
+                }
             }
         }
         if (req.heal_dice.count > 0 || req.heal_dice.bonus > 0) {
@@ -4321,6 +4370,15 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         ally->helped_vs = foe->id; ally->helped_by = a.id;
         emit(out.events, EventKind::Helped, a.id, ally->id, int32_t(foe->id));
         return out;
+    }
+    case ActionKind::UseObject: {   // 7.2y: Use an Object; Fast Hands also via the bonus action (bonus_action_grants)
+        if (req.object_use < 1 || req.object_use > 3) return fail("object_use: 1 use an object, 2 sleight of hand, 3 thieves' tools");
+        if (req.object_use != 1 && req.dc <= 0) return fail("object_use: a check needs dc");
+        if (!spend_action(b, a, req.kind, req.as_bonus_action)) return fail(req.as_bonus_action ? "no bonus action for this (Fast Hands)" : "no action available");
+        s.budget = b;
+        if (req.object_use == 2) roll_check(s, a, Skill::SleightOfHand, req.dc, RollMode::Normal, out.events);
+        else if (req.object_use == 3) roll_ability_check(s, a, Ability::Dex, req.dc, out.events, a.thieves_tools ? int(a.proficiency_bonus) : 0);
+        return out;   // 1: Use an Object: no roll; sim / content resolves the object (no event)
     }
     case ActionKind::Hide: {
         if (!spend_action(b, a, req.kind, req.as_bonus_action)) return fail("no action available");
@@ -4946,6 +5004,7 @@ uint64_t modifiers_digest(const EncounterState& s, uint64_t h) {
         for (const Predicate& w : p.when) { byte(uint8_t(w.kind)); u32(uint32_t(uint16_t(w.a))); u32(uint32_t(uint16_t(w.b))); u32(w.mask); }
         byte(uint8_t(m.timed.kind)); u32(uint32_t(uint16_t(m.timed.rounds_left)));
         if (p.repeat_save != 0) { byte(p.repeat_save); byte(uint8_t(p.repeat_ability)); u32(uint32_t(uint16_t(p.repeat_dc))); }   // Slow
+        if (m.weapon != 0) { byte(0x57); byte(m.weapon); }   // 7.2y wielded-scope binding: only when bound (older digests unchanged)
     }
     return h;
 }
