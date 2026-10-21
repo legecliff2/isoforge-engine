@@ -42,7 +42,7 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Divine Domain / Martial Archetype / Arcane Tradition | 1 / 3 / 2 | `classes[0].subclass` = `life` / `champion` / `evocation` | descriptive |
 | Bonus Proficiency (Life: heavy armor) | 1-5 | descriptive feature; its only combat effect is the worn chain mail, already in AC | n/a |
 | Disciple of Life (Life) | 1-5 | `heal_bonus {flat 2, per_spell_level true}` (7.2zc, #222): 2 + the slot level more per creature a slot-cast healing spell heals (Cure Wounds, Healing Word, Mass Healing Word). Innate casts do not count (SRD: any spell of 1st level or higher; no innate healing on our documents) | yes |
-| Channel Divinity, Turn Undead, Destroy Undead (Cleric) | 2-5, 2-5, 5 | `resources[]` `channel_divinity {max 1, recharge short_rest}`; `actions[]` `turn_undead` `save_effect {save wis vs the cleric spell save DC, range_ft 30, control turned, target_creature_types [undead], duration rounds 10, usage {pool channel_divinity}}`, plus `destroy_undead_max_cr8 4` (CR 1/2) at 5 (7.2v / 7.2y). The features carry the SRD text, no `effect`. Preserve Life, the Life domain option, stays deferred | yes |
+| Channel Divinity, Turn Undead, Destroy Undead (Cleric) | 2-5, 2-5, 5 | `resources[]` `channel_divinity {max 1, recharge short_rest}`; `actions[]` `turn_undead` `save_effect {save wis vs the cleric spell save DC, range_ft 30, control turned, target_creature_types [undead], duration rounds 10, usage {pool channel_divinity}}`, plus `destroy_undead_max_cr8 4` (CR 1/2) at 5 (7.2v / 7.2y). The features carry the SRD text, no `effect`. Preserve Life (Life domain option, 2-5): `features[]` `preserve_life` `heal_pool {usage {pool channel_divinity}, per_class_level 5, class cleric, range_ft 30, cap half_max, excludes_types [undead, construct]}` (split form, 7.2zd, Rules #228) | yes |
 | Arcane Recovery (Wizard) | 1-5 | `slot_recovery {class wizard, max_slot_level 5, uses 1}` (VERSION_BUMP_BATCH 7.2n); budget ceil(wizard level / 2) is derived from `classes[]`, the SRD text stays in `description` | yes (sim #148 `apply_slot_recovery`) |
 | Evocation Savant | 2-5 | descriptive feature (downtime spell copying cost, out of combat scope) | n/a |
 | Spellcasting (Sorcerer) | 1-5 | `spellcasting {ability cha, caster_level, slots, spells}` (spells known: the shipped sorcerer spells, below) | yes |
@@ -53,23 +53,29 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Metamagic (Quickened Spell, Twinned Spell) | 3-5 | `metamagic {options [quickened, twinned], pool sorcery_points}` (R-G14), the same pool as Font of Magic | yes (sim #143) |
 | Sneak Attack (Rogue) | 1-5 | `on_event {on hit, limit once_per_turn, when [weapon finesse_or_ranged, advantage_or_ally_adjacent], effects [extra_damage 1d6 same_as_weapon, scale.per_levels {class rogue, every 2, add_dice 1d6}]}`: 1d6 / 2d6 / 3d6 at 1 / 3 / 5 (the mirror's column). `advantage_or_ally_adjacent` is net advantage, or an ally of the attacker within 5 ft of the target and no net disadvantage | yes (sim #158 triggers, `trigger_content_tests`) |
 | Cunning Action (Rogue) | 2-5 | `bonus_action_grant {actions [dash, disengage, hide]}` | yes |
+| Fast Hands (Thief) | 3-5 | `bonus_action_grant {actions [use_object]}` (7.2y, #200): Use an Object as the Cunning Action bonus action; the Sleight of Hand and thieves' tools checks are Use an Object variants (`ActionRequest::object_use`, thieves' tools proficiency from the carried `thieves_tools`) | yes |
+| Uncanny Dodge (Rogue) | 5 | `reactions[]` `{window {damaged, requires_sight}, effect {reduce_damage, fraction half}}` (7.2y): attack damage only, from an attacker you can see, rounded down | yes |
 | Expertise (Rogue) | 1-5 | Stealth and Perception at double proficiency, baked into `skills` and passive Perception (the validator accepts mod + 2 x PB); descriptive feature, no `effect` | yes (static numbers) |
 | Roguish Archetype | 3 | `classes[0].subclass` = `thief` | descriptive |
 | Second-Story Work (Thief) | 3-5 | **partial**: "climbing no longer costs you extra movement" is `speed.climb` = walking speed (30; read as `Combatant::climb_ft`, #184). The running-jump bonus (+Dex mod feet) stays in the description: jumping is not simulated | climb: yes; jump: no |
 | Thieves' Cant (Rogue) | 1-5 | descriptive feature + `languages` entry (no combat rule) | n/a |
 | Lay on Hands (Paladin) | 1-5 | `resources[]` `lay_on_hands {max {per_level 5, class paladin}, recharge long_rest}` + `heal_pool {cost action, pool lay_on_hands}`. **Partial**: rules do not check touch range or refuse undead / construct targets (`heal_pool` takes any living target), and the 5-point disease / poison cure stays in the description | yes (sim row 13 `apply_heal_pool`) |
 | Fighting Style: Dueling (Paladin) | 2-5 | as the fighter. Defense (`ac_bonus {1, requires_armor}`) also loads; Dueling matches the one-handed longsword + shield build | yes |
-| Spellcasting (Paladin) + Oath Spells | 2-5 | `spellcasting {ability cha, caster_level, slots, spells}` from 2nd level (no block at 1st: the half caster has no slots). Spells: Cure Wounds, Shield of Faith; Lesser Restoration (oath, always prepared) at 5 | yes |
+| Spellcasting (Paladin) + Oath Spells | 2-5 | `spellcasting {ability cha, caster_level, slots, spells}` from 2nd level (no block at 1st: the half caster has no slots). Spells: Cure Wounds, Shield of Faith; Protection from Evil and Good, Sanctuary (oath, always prepared) from 3; Lesser Restoration (oath) at 5 | yes |
 | Divine Smite (Paladin) | 2-5 | `on_event {on hit, choice ask, when [weapon melee], effects [spend slot any, extra_damage 2d8 radiant with bonus_vs {creature_types [undead, fiend], dice 1d8}, scale.per_slot_level {base_level 1, add_dice 1d8}]}` (bonus_vs 7.2y, #200). The 5d8 cap is unreachable below 9th level | yes |
 | Sacred Oath (Paladin) | 3 | `classes[0].subclass` = `devotion` | descriptive |
 | Channel Divinity (Paladin, Devotion) | 3-5 | `resources[]` `channel_divinity {max 1, recharge short_rest}`. Sacred Weapon: `apply_modifier {cost action, usage {pool channel_divinity}, scope {weapon wielded}, modifier {attack_roll + Cha mod (min 1), self, rounds 10}}` (7.2y; ends when the weapon leaves the hand or at 0 HP / unconscious). Turn the Unholy: `actions[]` `save_effect {save wis vs the paladin spell save DC, range_ft 30, control turned, target_creature_types [fiend, undead], duration rounds 10, usage {pool channel_divinity}}` (7.2v / 7.2y). **Partial**: Sacred Weapon's magical weapon and light, and ending it early, are not modelled | yes |
 | Extra Attack (Paladin) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
 | Fighting Style: Archery (Ranger) | 2-5 | `attack_bonus {attacks ranged, amount 2}` (R-G5); the longbow `to_hit` stays unbaked (dex + proficiency) | yes (sim #107) |
 | Spellcasting (Ranger) | 2-5 | `spellcasting {ability wis, caster_level, slots, spells}` from 2nd level. Spells known: Cure Wounds, Hunter's Mark (the only shipped 1st-level ranger spells, so 2 of 2-3 known at 2-4); at 5 also Barkskin, Lesser Restoration (4 of 4; Spike Growth swapped out for Hunter's Mark). Hunter's Mark (7.2zc, #222): the extra 1d6 on weapon hits against the marked creature and the bonus-action move after it drops to 0 are data; the Perception / Survival advantage and the 8 / 24 hour upcast durations are not | yes |
+| Hunter's Prey: Colossus Slayer (Hunter) | 3-5 | `on_event {on hit, limit once_per_turn, when [weapon_attack, target_below_max_hp], effects [extra_damage 1d8 same_as_weapon]}` (7.2y, #200) | yes |
 | Ranger Archetype | 3 | `classes[0].subclass` = `hunter` | descriptive |
 | Extra Attack (Ranger) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
 | Unarmored Defense (Barbarian) | 1-5 | baked into `armor_class` (10 + Dex + Con, no armor; the test derives it); descriptive feature, no `effect` | yes (static number) |
 | Reckless Attack (Barbarian) | 2-5 | `reckless_attack` (sim #129: `ActionRequest::reckless` on the turn's first attack; advantage on Str melee weapon attacks, attacks against you have advantage until your next turn). The built-in AI never declares it | yes (caller-declared) |
+| Rage (Barbarian) | 1-5 | `resources[]` `rage {max 2 (3 at 3), recharge long_rest}` + `apply_modifier {cost bonus_action, usage {pool rage}, scope {attack melee_weapon, ability str}, ends_early [no_attack_or_damage_since_last_turn, unconscious], blocks [casting, concentration], advantage_on {checks [str], saves [str]}, modifiers [damage bonus_table 2/3/4, resistance bludgeoning / piercing / slashing], rounds 10}` (7.2z, #211). **Partial**: the heavy armor check (none is worn) and ending it as a bonus action are not modelled | yes |
+| Danger Sense (Barbarian) | 2-5 | `apply_modifier {passive, advantage_on {saves [dex]}, when {save dex, source_seen, not_conditions [blinded, deafened, incapacitated]}}` (7.2z) | yes |
+| Frenzy (Berserker) | 3-5 | `bonus_attack {requires_effect rage}` plus Rage's `on_end {exhaustion 1}` from 3rd: one level of exhaustion when a rage in which you frenzied ends (7.2z). The choice to frenzy is taking the bonus attack | yes |
 | Primal Path | 3 | `classes[0].subclass` = `berserker` | descriptive |
 | Extra Attack (Barbarian) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
 | Fast Movement (Barbarian) | 5 | baked into `speed.walk` 40 (no heavy armor is ever worn); descriptive feature, no `effect` | yes (static number) |
@@ -113,8 +119,6 @@ The Rogue features below are kept as a `features[]` entry with the SRD text and 
 
 | feature (mirror index) | class / level | why it is not mechanical | gap id / owner |
 |---|---|---|---|
-| Uncanny Dodge (`uncanny-dodge`) | Rogue 5 | The only reduce-damage reaction window that is compiled is `damaged` (`compile_reactions`, sim). It opens for **any** damage after mitigation, including save spells, zones and riders, so `{window damaged, effect reduce_damage half}` would also halve a Fireball. `melee_only` / `ranged_only` do not exclude non-attack damage, `being_hit` is not compiled for `reduce_damage`, and `visible` is read only to refuse `false`. Needs either an `attack_only` flag on the `damaged` window (attack damage only, the attacker is the damager) plus a seen-attacker check, or `reduce_damage` compiled on `being_hit` | Rules / Engine Core (row 11 reactions, R-G7; vision 7.2x for "an attacker that you can see") |
-| Fast Hands (`fast-hands`) | Rogue (Thief) 3 | Adds Sleight of Hand checks, thieves' tools (traps, locks) and Use an Object to the Cunning Action bonus action. `bonus_action_grant.actions` is closed to dash / disengage / hide / dodge, and the sim has no Use an Object, Sleight of Hand or thieves' tools action | Rules (actions), T&C (enum value when an action exists) |
 | Expertise (`rogue-expertise-1`) | Rogue 1 | Not a gap: fully expressed as baked skill numbers; the entry has no `effect` because no hook reads it | n/a |
 | Second-Story Work, running jump | Rogue (Thief) 3 | Jump distance: the sim has no jumping | Rules (movement) |
 
@@ -136,17 +140,6 @@ Kept as a `features[]` entry with the SRD text and no `effect` (the test pins th
 | Favored Enemy (`favored-enemy-1-type`) | Ranger 1 | Beasts chosen. Advantage on Wisdom (Survival) checks to track and Intelligence checks to recall information about them, plus a language: exploration / social only. No combat rule in SRD 5.1 (no damage bonus), so nothing is missing for combat | - (out of combat scope) |
 | Natural Explorer (`natural-explorer-1-terrain-type`) | Ranger 1 | Forest chosen. Doubled proficiency on Int / Wis checks about the terrain, travel pace, foraging, tracking, no getting lost: overland travel, not simulated | - (out of combat scope) |
 | Primeval Awareness (`primeval-awareness`) | Ranger 3 | Spend an action and a ranger slot to sense aberrations, celestials, dragons, elementals, fey, fiends and undead within 1 mile (6 in favored terrain) for 1 minute per slot level; no locations or numbers. Beyond any encounter map, and no feature key spends a spell slot outside an `on_event` trigger | Rules (vision 7.2x for a type reveal), Engine Core (a slot-spending active feature) |
-| Hunter's Prey: Colossus Slayer (`hunters-prey`, `hunters-prey-colossus-slayer`) | Ranger (Hunter) 3 | Fits `on_event {on hit, limit once_per_turn, when [weapon_attack, <target below its hit point maximum>], effects [extra_damage 1d8 same_as_weapon]}` except the predicate: no predicate tests the **target's** HP (`self_hp_below` is the owner's; rules has `kWhenTargetDamaged` only as a monster attack trait flag, not as a `when[]` kind). Giant Killer (a reaction to a Large+ attacker's attack, hit or miss) and Horde Breaker (an extra attack against a second target within 5 ft) are not chosen; neither has a key either | Rules (predicate `target_below_max_hp`; T&C adds the schema value) |
-
-## Descriptive only: mechanic missing (Barbarian)
-
-Kept as a `features[]` entry with the SRD text and no `effect` (the test pins that), same rule as the sections above. No `resources[]` rage pool is declared: nothing loaded would spend it (check 12).
-
-| feature (mirror index) | class / level | why it is not mechanical | gap id / owner |
-|---|---|---|---|
-| Rage (`rage`) | Barbarian 1 | The shape exists (the `tests/validate/fixtures/v4` barbarian: `apply_modifier {cost bonus_action, usage {pool rage}, modifiers [damage bonus_table 2/3/4, resistance bludgeoning / piercing / slashing], rounds 10}` + `resources[]` rage 2/3/4/...), but the sim lists an `apply_modifier` feature with `usage` as unsupported (`apply_apply_modifier`: "usage needs resource pools"), and without `usage` Rage would be unlimited. Also missing even with the pool: the damage bonus only on **melee weapon attacks using Strength** (a `damage` modifier adds to every damage roll), advantage on Strength checks and saves (`save` / `ability_check` modifiers with `mode advantage, ability str` would load), no spellcasting or concentration while raging, the early end (no attack or damage taken since your last turn, unconscious), ending it as a bonus action, and "not wearing heavy armor" | Engine Core (pool `usage` on `apply_modifier`), Rules (melee-Str damage scope, rage end conditions) |
-| Danger Sense (`danger-sense`) | Barbarian 2 | Advantage on Dexterity saves against effects you can see, unless blinded, deafened or incapacitated. No static (always-on) save modifier key: `apply_modifier` is an active feature (action / bonus action), and no predicate tests "the effect's source is visible" or the owner's conditions | Rules (static save advantage with condition gates; vision 7.2x) |
-| Frenzy (`frenzy`) | Barbarian (Berserker) 3 | A single melee weapon attack as a bonus action on each later turn of a rage, then one level of exhaustion when the rage ends. **Note:** `frenzy` is also a sim feature-id convention (`docs/CONTENT_CONVENTIONS.md` section 2: a bonus melee attack while the `rage` feature's first modifier is in force), so the descriptive entry already compiles that option, but it is never available while Rage has no live `apply_modifier` (the validator warns, by design). It turns on by itself once Rage is mechanical. Still missing then: the exhaustion when the rage ends (`exhaustion` is a condition id, but `on_event.on` has no effect-ended event) | Engine Core (Rage first), Rules (exhaustion on effect end) |
 
 ## Descriptive only: mechanic missing (Bard)
 
@@ -184,7 +177,7 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 
 | feature (mirror index) | class / level | missing mechanic | gap id |
 |---|---|---|---|
-| Channel Divinity: Preserve Life (`channel-divinity-preserve-life`) | Cleric (Life) 2 | Splits a pool of 5 x cleric level HP among any creatures within 30 ft, each capped at half its HP maximum, not undead or constructs. `heal_pool` heals one target from a pool that persists across uses; there is no split, cap, or per-use pool size | R-G5, R-G10, R-G15 |
+| (none) | | Channel Divinity: Preserve Life ships since Rules #228 (7.2zd, `heal_pool` split form); see Authored as data | |
 
 ### Spells the documents cannot reference yet
 
@@ -192,10 +185,11 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 
 | class | levels | spells listed |
 |---|---|---|
-| Cleric | 1-2 | Sacred Flame; Cure Wounds (domain), Healing Word, Inflict Wounds |
+| Cleric | 1-2 | Sacred Flame; Cure Wounds (domain), Healing Word, Inflict Wounds, Sanctuary |
 | Cleric | 3-4 | + Hold Person, Lesser Restoration (domain) |
 | Cleric | 5 | + Mass Healing Word, Revivify (domain) |
-| Paladin | 2-4 | Cure Wounds, Shield of Faith |
+| Paladin | 2 | Cure Wounds, Shield of Faith |
+| Paladin | 3-4 | + Protection from Evil and Good, Sanctuary (oath) |
 | Paladin | 5 | + Lesser Restoration (oath) |
 | Ranger | 2-4 | Cure Wounds, Hunter's Mark |
 | Ranger | 5 | + Barkskin, Lesser Restoration (Spike Growth swapped out for Hunter's Mark) |
@@ -216,7 +210,8 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 Deferred until the spells are authored (`docs/SRD_SPELLS_DEFERRED.md` gives the reason for each):
 
 - **Life domain spells** (always prepared): `srd51.spell.bless` (1), `srd51.spell.spiritual_weapon` (3), `srd51.spell.beacon_of_hope` (5). Lesser Restoration (3) and Revivify (5) ship since spells batch 2 and are listed in the cleric documents.
-- **Oath of Devotion spells** (always prepared): `srd51.spell.protection_from_evil_and_good` (3), `srd51.spell.sanctuary` (3), `srd51.spell.zone_of_truth` (5) are not authored; Lesser Restoration (5) ships and is listed.
+- **Oath of Devotion spells** (always prepared): `srd51.spell.zone_of_truth` (5) is not authored; Protection from Evil and Good (3), Sanctuary (3) (spells batch 2, Rules #228) and Lesser Restoration (5) ship and are listed.
+- **Spells batch 2 (Rules #228) on the cleric**: Sanctuary is listed at 1-5 (within Wis modifier + level prepared; domain spells don't count). Protection from Evil and Good and Aid ship in the pack but are not yet in the cleric (or wizard / warlock) lists.
 - **Circle of the Land (Mountain) spells** (always prepared): `srd51.spell.spider_climb` (3), `srd51.spell.meld_into_stone` (5) are not authored; Spike Growth (3) and Lightning Bolt (5) ship and are listed.
 - **Fiend expanded spells** (choices for spells known, not always prepared): Command (1) and Blindness/Deafness (3) are not shipped; Stinking Cloud (5) ships but is not picked (six known at 5th).
 - **Cantrips known**: the Cleric knows 3 (4 from level 4) but the pack ships one cleric cantrip (Sacred Flame). The Wizard knows 3 (4 from level 4), and the pack ships three wizard cantrips. Missing: Guidance, Light, Mending, Resistance, Spare the Dying, Thaumaturgy (cleric); Chill Touch, Ray of Frost, Shocking Grasp, True Strike and the utility cantrips (wizard). The Sorcerer knows 4 cantrips (5 from level 4) and 2-6 spells; the pack ships three sorcerer cantrips and five leveled sorcerer spells (Chill Touch, Ray of Frost, Shocking Grasp, Burning Hands, Chromatic Orb, Sleep, Thunderwave, Misty Step and the rest are not shipped), so each document lists fewer.
