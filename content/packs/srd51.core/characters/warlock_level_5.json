@@ -87,7 +87,12 @@
     {
       "id": "agonizing_blast",
       "name": "Agonizing Blast",
-      "description": "When you cast eldritch blast, add your Charisma modifier to the damage it deals on a hit. (Descriptive: no key adds a flat ability modifier to a spell's damage; damage_bonus touches weapon attacks only.)"
+      "description": "When you cast eldritch blast, add your Charisma modifier to the damage it deals on a hit. (Modelled: spell_mod eldritch_blast, + Cha modifier per beam that hits.)",
+      "effect": {
+        "kind": "spell_mod",
+        "spell": "srd51.spell.eldritch_blast",
+        "damage_bonus_ability": "cha"
+      }
     },
     {
       "id": "armor_of_shadows",
@@ -97,7 +102,12 @@
     {
       "id": "repelling_blast",
       "name": "Repelling Blast",
-      "description": "When you hit a creature with eldritch blast, you can push the creature up to 10 feet away from you in a straight line. (Descriptive: the push is a forced_move spell effect; no feature key adds it to Eldritch Blast.)"
+      "description": "When you hit a creature with eldritch blast, you can push the creature up to 10 feet away from you in a straight line. (Modelled: spell_mod eldritch_blast, 10 ft push per beam that hits.)",
+      "effect": {
+        "kind": "spell_mod",
+        "spell": "srd51.spell.eldritch_blast",
+        "on_hit_push_ft": 10
+      }
     },
     {
       "id": "pact_of_the_tome",
