@@ -41,6 +41,7 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Domain Spells (Life) | 1-5 | Cure Wounds in `spellcasting.spells` (always prepared); the others are not shipped (below) | yes |
 | Divine Domain / Martial Archetype / Arcane Tradition | 1 / 3 / 2 | `classes[0].subclass` = `life` / `champion` / `evocation` | descriptive |
 | Bonus Proficiency (Life: heavy armor) | 1-5 | descriptive feature; its only combat effect is the worn chain mail, already in AC | n/a |
+| Disciple of Life (Life) | 1-5 | `heal_bonus {flat 2, per_spell_level true}` (7.2zc, #222): 2 + the slot level more per creature a slot-cast healing spell heals (Cure Wounds, Healing Word, Mass Healing Word). Innate casts do not count (SRD: any spell of 1st level or higher; no innate healing on our documents) | yes |
 | Arcane Recovery (Wizard) | 1-5 | `slot_recovery {class wizard, max_slot_level 5, uses 1}` (VERSION_BUMP_BATCH 7.2n); budget ceil(wizard level / 2) is derived from `classes[]`, the SRD text stays in `description` | yes (sim #148 `apply_slot_recovery`) |
 | Evocation Savant | 2-5 | descriptive feature (downtime spell copying cost, out of combat scope) | n/a |
 | Spellcasting (Sorcerer) | 1-5 | `spellcasting {ability cha, caster_level, slots, spells}` (spells known: the shipped sorcerer spells, below) | yes |
@@ -62,7 +63,7 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Sacred Oath (Paladin) | 3 | `classes[0].subclass` = `devotion` | descriptive |
 | Extra Attack (Paladin) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
 | Fighting Style: Archery (Ranger) | 2-5 | `attack_bonus {attacks ranged, amount 2}` (R-G5); the longbow `to_hit` stays unbaked (dex + proficiency) | yes (sim #107) |
-| Spellcasting (Ranger) | 2-5 | `spellcasting {ability wis, caster_level, slots, spells}` from 2nd level. Spells known: Cure Wounds (the only shipped 1st-level ranger spell, so 1 of 2-3 known at 2-4); at 5 also Barkskin, Lesser Restoration, Spike Growth (4 of 4) | yes |
+| Spellcasting (Ranger) | 2-5 | `spellcasting {ability wis, caster_level, slots, spells}` from 2nd level. Spells known: Cure Wounds, Hunter's Mark (the only shipped 1st-level ranger spells, so 2 of 2-3 known at 2-4); at 5 also Barkskin, Lesser Restoration (4 of 4; Spike Growth swapped out for Hunter's Mark). Hunter's Mark (7.2zc, #222): the extra 1d6 on weapon hits against the marked creature and the bonus-action move after it drops to 0 are data; the Perception / Survival advantage and the 8 / 24 hour upcast durations are not | yes |
 | Ranger Archetype | 3 | `classes[0].subclass` = `hunter` | descriptive |
 | Extra Attack (Ranger) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
 | Unarmored Defense (Barbarian) | 1-5 | baked into `armor_class` (10 + Dex + Con, no armor; the test derives it); descriptive feature, no `effect` | yes (static number) |
@@ -184,7 +185,6 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 
 | feature (mirror index) | class / level | missing mechanic | gap id |
 |---|---|---|---|
-| Disciple of Life (`disciple-of-life`) | Cleric (Life) 1 | Heal bonus of 2 + spell level on the caster's healing spells (level 1+). Nothing in `common@2` adds to a spell's healing; `on_event` has no "cast a heal spell" trigger | R-G4 (heal-spell rider) |
 | Channel Divinity (`channel-divinity-1-rest`) | Cleric 2 | The pool itself fits (`resources[]` 1 per short rest), but both of its effects below are deferred. A pool no feature spends would be a check-12 warning and would do nothing | R-G5 |
 | Channel Divinity: Turn Undead (`channel-divinity-turn-undead`) | Cleric 2 | The "turned" condition (must move away, Dash only, no reactions, ends on damage) has no condition id or AI behaviour. `save_effect` also cannot spend a feature pool or filter by creature type (undead within 30 ft that can see or hear you) | R-G5, R-G8, R-G10 |
 | Channel Divinity: Preserve Life (`channel-divinity-preserve-life`) | Cleric (Life) 2 | Splits a pool of 5 x cleric level HP among any creatures within 30 ft, each capped at half its HP maximum, not undead or constructs. `heal_pool` heals one target from a pool that persists across uses; there is no split, cap, or per-use pool size | R-G5, R-G10, R-G15 |
@@ -201,8 +201,8 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 | Cleric | 5 | + Mass Healing Word, Revivify (domain) |
 | Paladin | 2-4 | Cure Wounds, Shield of Faith |
 | Paladin | 5 | + Lesser Restoration (oath) |
-| Ranger | 2-4 | Cure Wounds |
-| Ranger | 5 | + Barkskin, Lesser Restoration, Spike Growth |
+| Ranger | 2-4 | Cure Wounds, Hunter's Mark |
+| Ranger | 5 | + Barkskin, Lesser Restoration (Spike Growth swapped out for Hunter's Mark) |
 | Wizard | 1-2 | Acid Splash, Fire Bolt, Poison Spray; Magic Missile, Shield |
 | Wizard | 3-4 | + Hold Person, Scorching Ray |
 | Wizard | 5 | + Counterspell |
