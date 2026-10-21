@@ -100,7 +100,7 @@ Spell batch 2 rules (7.2zd). Pinned by `tests/validate/test_srd51_spells.py` (ta
 | spell | level | `spell@1` shape | notes |
 |---|---|---|---|
 | Protection from Evil and Good | 1 | `apply_modifier` `scope {from_types [aberration, celestial, elemental, fey, fiend, undead]}` attack_roll disadvantage `applies_to attackers`; `condition_immunity_from {conditions [charmed, frightened], types}`; touch, concentration 10 minutes | **partial**: possession and the advantage on a new save are not modelled. `components.m.consumed` with no `cost_cp` (#234): nothing is checked or removed |
-| Sanctuary | 1 | `apply_condition` warded, `ward {save wis, on_fail retarget_or_lose}`, `ends_on [attack, harmful_cast]`; bonus action, range 30, 1 minute | areas are not blocked (SRD); a "harmful spell" is one cast by a creature of another team |
+| Sanctuary | 1 | `apply_condition` warded, `ward {save wis, on_fail retarget_or_lose}`, `ends_on [attack, harmful_cast]`; bonus action, range 30, 1 minute | any creature but the warded one meets the ward with an attack, a Grapple / Shove, or a harmful spell without an area (damage, a save, or a negative condition or modifier); areas are not blocked (SRD) |
 | Aid | 2 | `max_hp_bonus {flat 5, per_slot_above 5}`; `targets {count 3}`, range 30, 8 hours | |
 
 ## Authored after Rules #237 (3)
