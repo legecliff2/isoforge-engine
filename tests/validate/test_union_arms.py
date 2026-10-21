@@ -105,7 +105,7 @@ COMMON2_RG12 = {"wild_shape_effect": (S({"kind", "pool", "forms", "max_cr_by_lev
                 "wild_shape_level_row": (S({"level", "max_cr"}), S()),
                 "shapechanger_effect": (S({"kind", "forms"}), S({"cost"})),
                 "shapechanger_form": (S({"id", "name"}), S({"size", "armor_class", "speed", "actions", "creature_type"}))}
-_ICOMMON = {"source", "cost_cp", "weight_oz", "description"}
+_ICOMMON = {"source", "cost_cp", "weight_oz", "description", "visual"}   # visual: presentation only (LIGHTING.md 10.1)
 _IBASE = S({"$schema", "id", "name", "category"})
 ITEM = {("weapon",): (_IBASE | {"weapon_class"}, S(_ICOMMON | {"reach", "range", "damage", "versatile_damage", "properties", "qualifiers", "magic_bonus", "on_hit"})),
         ("armor",): (_IBASE | {"armor_category", "base_ac", "dex_bonus"}, S(_ICOMMON | {"dex_cap", "str_min", "stealth_disadvantage", "magic_bonus"})),

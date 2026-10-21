@@ -275,9 +275,14 @@ are content-only visuals and stay out of every sim hash.
 4. **Dead carriers (resolved).** When the carrier dies the light drops in the same step: it keeps its `LightId`, gets
    `holder_id` 0, and its position becomes the carrier's tile, in the same frame that removes the token. It stays lit
    unless content marks it as going out on drop.
-5. **Presentation data.** Colour / intensity / flicker stay out of the sim contract; Tools/Content to confirm the `visual`
-   block (§10) on light presets and items. Until then render uses the built-in `GlowPalette` (torch, brazier, lantern,
-   candle; magical and mundane fallbacks).
+5. **Presentation data (resolved, Tools & Content 2026-10-21).** Optional `visual` block on `item@1` (later on the
+   light-preset schema too), additive, no version bump: `visual: {color: {r, g, b}, intensity, flicker?}` with each
+   channel an integer 0..255, `intensity` an integer 0..1000 (permille) and `flicker` one of `none|torch|candle`;
+   `additionalProperties: false` at every level, integers only (no floats, no hex). Schema:
+   `schemas/item/v1.schema.json`. It is excluded from `content_hash` and never read by sim, so it never feeds
+   `log_hash` or any golden. The game converts it once at load (`iso2d::glow_style_from_visual`: channel / 255,
+   permille / 1000) and the `GlowPalette` uses it for that content id over the built-in defaults, which stay the
+   fallback. `flicker` is carried through but not animated yet.
 
 ## 11. Open questions
 

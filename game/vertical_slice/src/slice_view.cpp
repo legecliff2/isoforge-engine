@@ -298,6 +298,7 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
     }
     // ---- world: actors (placeholder pawns), current-turn ring ----
     if (L.present) {   // glows under lit sources (presentation; entity-anchored ones follow the drawn token)
+        for (const auto& [id, st] : L.visuals) palette_.set_override(id, st);   // content visual wins; defaults stay the fallback
         std::vector<iso2d::GlowSource> glows = glows_from(L, palette_);
         std::vector<iso2d::GlowAnchor> anchors;
         anchors.reserve(vm.actors.size());

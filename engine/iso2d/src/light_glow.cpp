@@ -15,7 +15,18 @@ GlowPalette::GlowPalette()
 GlowPalette::GlowPalette(std::vector<Entry> entries, GlowStyle fallback, GlowStyle magical_fallback)
     : entries_(std::move(entries)), fallback_(fallback), magical_(magical_fallback) {}
 
+void GlowPalette::set_override(std::string id, GlowStyle style) { overrides_[std::move(id)] = style; }
+
+GlowStyle glow_style_from_visual(const GlowVisual& v) noexcept {
+    GlowStyle s;
+    s.color = Color{v.r / 255.f, v.g / 255.f, v.b / 255.f, kGlowDefaultAlpha};
+    s.intensity = float(std::min<uint16_t>(v.intensity_permille, 1000)) / 1000.f;
+    s.flicker = v.flicker;
+    return s;
+}
+
 GlowStyle GlowPalette::style_for(std::string_view preset, bool magical) const {
+    if (auto it = overrides_.find(preset); it != overrides_.end()) return it->second;
     const auto dot = preset.rfind('.');
     const std::string_view last = dot == std::string_view::npos ? preset : preset.substr(dot + 1);
     for (const Entry& e : entries_)
