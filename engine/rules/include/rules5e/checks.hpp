@@ -11,7 +11,7 @@ struct CheckResult { D20Roll roll; bool success; };
 // Ability modifier + proficiency bonus if proficient in the skill.
 constexpr int skill_modifier(const Combatant& c, Skill k) {
     return modifier(c.abilities, skill_ability(k)) +
-           ((c.skill_proficiencies & bit(k)) ? c.proficiency_bonus : 0);
+           ((c.skill_proficiencies & bit(k)) ? c.proficiency_bonus : (c.half_proficiency & 1) ? c.proficiency_bonus / 2 : 0);
 }
 
 // R-G16: passive score = 10 + skill modifier + `bonus` (the caller passes +5 for advantage, -5 for disadvantage, SRD 5.1).
