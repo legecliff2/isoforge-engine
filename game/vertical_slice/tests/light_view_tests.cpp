@@ -263,3 +263,45 @@ TEST_CASE("fog: a blocked chunk holds its last light and fog textures; removal f
     CHECK(v.fog_maps().chunks() == 0);
     CHECK(dev.errors() == 0);
 }
+
+TEST_CASE("fog: a chunk that leaves and returns takes the frame's explored mask whole (no merge with the old copy)") {
+    ViewModel vm = open_sim()->view();
+    LightChunkView& c = vm.light.chunks[0];
+    c.seen_now = {}; c.explored = {};
+    set_bit(c.explored, 1, 1); set_bit(c.explored, 8, 8);
+    render::NullDevice dev;
+    SliceView v(dev);
+    frame(dev, v, vm);
+    REQUIRE(fog_at(v, vm, {8, 8}) == iso2d::Fog::Remembered);
+
+    ViewModel gone = vm;   // the chunk leaves the tracked set
+    gone.light.frame = vm.light.frame + 1;
+    gone.light.chunks.clear();
+    gone.light.added.clear(); gone.light.dirty.clear(); gone.light.vis_dirty.clear();
+    gone.light.removed = {{0, 0, 0}};
+    frame(dev, v, gone);
+    CHECK(v.fog_maps().chunks() == 0);
+
+    ViewModel back = vm;   // it returns: added + dirty_vis, with the sim's stored explored (differs from ours)
+    back.light.frame = gone.light.frame + 1;
+    back.light.removed.clear();
+    back.light.added = {{0, 0, 0}};
+    back.light.vis_dirty = {{0, 0, 0}};
+    LightChunkView& b = back.light.chunks[0];
+    b.seen_now = {}; b.explored = {};
+    set_bit(b.explored, 1, 1); set_bit(b.explored, 20, 20);
+    frame(dev, v, back);
+    CHECK(fog_at(v, back, {1, 1}) == iso2d::Fog::Remembered);
+    CHECK(fog_at(v, back, {20, 20}) == iso2d::Fog::Remembered);
+    CHECK(fog_at(v, back, {8, 8}) == iso2d::Fog::Unexplored);   // our old bit is not OR-ed back in
+
+    ViewModel shrink = back;   // a later dirty_vis update with a smaller mask also replaces
+    shrink.light.frame = back.light.frame + 1;
+    shrink.light.added.clear();
+    shrink.light.chunks[0].explored = {};
+    set_bit(shrink.light.chunks[0].explored, 20, 20);
+    frame(dev, v, shrink);
+    CHECK(fog_at(v, shrink, {1, 1}) == iso2d::Fog::Unexplored);
+    CHECK(fog_at(v, shrink, {20, 20}) == iso2d::Fog::Remembered);
+    CHECK(dev.errors() == 0);
+}

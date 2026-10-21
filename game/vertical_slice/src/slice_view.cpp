@@ -201,6 +201,9 @@ void SliceView::sync_lights(const LightView& L) {
     for (const LightChunkView& c : L.chunks) {
         const iso2d::LightChunkKey k{c.cx, c.cy, c.level};
         const bool fresh = std::find(add.begin(), add.end(), k) != add.end();
+        // Replace, never merge: the frame's masks are authoritative. A returning chunk arrives in
+        // added + dirty_vis with the sim's full stored explored mask, which overwrites the texture whole
+        // (FogMaps::update copies, no OR with the cached copy). Blocked chunks never appear here: held.
         if (fresh || refog || listed(L.vis_dirty, k)) {
             if (c.has_fog) fogs_.update(k, c.seen_now, c.explored);
             else { std::array<uint8_t, iso2d::kLightTiles> all; all.fill(iso2d::fog_texel::kSeen); fogs_.update(k, all); }

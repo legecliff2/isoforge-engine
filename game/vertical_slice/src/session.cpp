@@ -127,8 +127,10 @@ struct Session::Impl {
         w.normalise();
         light_cache.begin_step(std::move(w));
         const world::ChunkCoord coords[] = {chunk->coord};
-        // Viewers for the sim's visibility pass. Interim: everyone has normal sight (SenseRanges{})
-        // until Engine Core wires creature senses into the frame; the game never decides what is seen.
+        // Viewers for the sim's visibility pass. Interim: everyone has normal sight (SenseRanges{}).
+        // TODO(EC lighting phase 2 PR 2): game code stops calling VisibilityState::begin_step and reads the
+        // frame from LightDriver::latest(); the sim then builds viewers itself, and each viewer always sees
+        // its own footprint tiles. The game never decides what is seen.
         std::vector<sim::Viewer> viewers;
         for (const rules5e::Combatant& cb : combat->state().combatants) {
             if (cb.dead) continue;
