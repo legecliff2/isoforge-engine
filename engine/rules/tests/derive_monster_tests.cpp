@@ -37,8 +37,8 @@ TEST_CASE("derive_monster: every srd51.core derive: true monster derives with 0 
         CHECK(d.ac == m.printed_ac);
         REQUIRE(d.attacks.size() == m.attacks.size());
         for (std::size_t i = 0; i < m.attacks.size(); ++i) {
-            CHECK_MESSAGE(d.attacks[i].to_hit == m.attacks[i].printed_to_hit, m.id + "." + m.attacks[i].id);
-            CHECK_MESSAGE(d.attacks[i].damage == m.attacks[i].printed_damage, m.id + "." + m.attacks[i].id);
+            CHECK_MESSAGE(d.attacks[i].to_hit == m.attacks[i].printed_to_hit, (m.id + "." + m.attacks[i].id));
+            CHECK_MESSAGE(d.attacks[i].damage == m.attacks[i].printed_damage, (m.id + "." + m.attacks[i].id));
         }
         clean += d.errors.empty();
     }
