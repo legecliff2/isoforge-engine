@@ -20,6 +20,10 @@ struct Loadout {
     int8_t ac_adjust = 0;
     std::vector<int8_t> hit_adjust{}, dmg_adjust{};
     uint32_t interaction_turn = 0;      // sim's TurnStarted count when the free object interaction was spent (0 = never)
+    // EQUIPMENT.md 2.5.1: ammunition spent this encounter per ammunition def (def order), +1 per shot from a stack, hit or
+    // miss (thrown weapons and stackless / monster ammunition are not counted). recovered_ammo(count) returns at the end.
+    struct Expended { uint32_t def = 0; uint16_t count = 0; };
+    std::vector<Expended> expended{};
 };
 
 // An item lying on the battlefield (EQUIPMENT.md 4.4): dropped, or left by a creature. The tile is the sim's (world tile).
