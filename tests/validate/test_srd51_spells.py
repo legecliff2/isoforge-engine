@@ -217,6 +217,41 @@ class SpellTable(unittest.TestCase):
             if case.stem.startswith(("weapon_imbue_", "duplicates_")) and not case.read_text(encoding="utf-8").startswith("/"):
                 self.assertIn(case.read_text(encoding="utf-8").strip(), loader, case.name)
 
+    def test_spell_batch_zg(self):
+        # Rules #263 (7.2zg): haste / slow, summon_weapon, temp_hp, spell_attack on_miss
+        self.assertEqual(load("haste")["effects"], [{"kind": "haste"}])
+        sl = load("slow")
+        self.assertEqual(sl["effects"], [{"kind": "slow", "ability": "wis"}])
+        self.assertEqual((sl["targets"], sl["area"]), ({"count": 6}, {"shape": "cube", "size_ft": 40}))
+        for idx in ("haste", "slow", "heroism"):
+            self.assertTrue(load(idx)["duration"]["concentration"])
+        sw = load("spiritual-weapon")
+        self.assertEqual(sw["effects"], [{"kind": "summon_weapon", "damage": {"dice": "1d8", "type": "force"}, "add_spellcasting_modifier": True,
+                                          "upcast_every": 2, "reach_ft": 5, "move_ft": 20}])
+        self.assertEqual((sw["casting_time"], sw["duration"], sw["scaling"]),
+                         ({"kind": "bonus_action"}, {"kind": "minutes", "amount": 1}, {"upcast": {"dice": 1}}))
+        self.assertEqual(load("false-life")["effects"], [{"kind": "temp_hp", "dice": "1d4+4", "per_slot_above": 5}])
+        he = load("heroism")
+        self.assertEqual(he["effects"], [{"kind": "temp_hp", "ability": "spellcasting", "per_turn": True, "condition_immunity": ["frightened"]}])
+        self.assertEqual(he["scaling"], {"upcast": {"targets": 1}})
+        aa = load("acid-arrow")
+        self.assertEqual(aa["effects"][0]["on_miss"], "half")
+        self.assertEqual(aa["effects"][1], {"kind": "delayed_damage", "applies_to": "affected", "damage": {"dice": "2d4", "type": "acid"},
+                                            "expiry": {"kind": "until_end_of_target_next_turn"}})
+        loader = (ROOT / "engine/rules/content/src/spell_loader.cpp").read_text(encoding="utf-8")
+        for msg in ("effect haste needs concentration", "effect slow needs ability", "effect haste takes no ability",   # built as "effect " + kind
+                    "effect on_miss must be half", "on_miss is only allowed on the first effect", "effect upcast_every must be an integer 1..9",
+                    "effect reach_ft must be a positive multiple of 5", "effect move_ft must be a positive multiple of 5",
+                    "effect summon_weapon needs concentration or a rounds, minutes or hours duration",
+                    "effect temp_hp needs exactly one of dice or ability", "effect dice invalid", "effect ability must be spellcasting",
+                    "effect per_slot_above must be an integer 1..50", "effect per_turn must be a boolean",
+                    "effect condition_immunity must be a non-empty list of conditions", "effect condition_immunity items must be unique",
+                    "effect temp_hp per_turn or condition_immunity needs concentration or a rounds, minutes or hours duration"):
+            if msg == "effect haste needs concentration":
+                self.assertIn('"effect " + kind + " needs concentration"', loader)
+            else:
+                self.assertIn(msg, loader, msg)
+
     def test_zone_and_kind_spells(self):
         self.assertEqual(load("silence")["effects"][0]["zone"]["flags"], ["silence"])
         self.assertEqual(load("spirit-guardians")["effects"][0]["zone"]["anchor"], "creature")

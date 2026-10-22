@@ -13,10 +13,10 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 | level | in `srd51.core` | deferred: needs a mechanic | deferred: out of combat scope | total |
 |---|---|---|---|---|
 | 0 (cantrips) | 11 | 2 | 11 | 24 |
-| 1 | 20 | 10 | 19 | 49 |
-| 2 | 15 | 16 | 23 | 54 |
-| 3 | 9 | 14 | 19 | 42 |
-| **total** | **55** | **42** | **72** | **169** |
+| 1 | 22 | 8 | 19 | 49 |
+| 2 | 17 | 14 | 23 | 54 |
+| 3 | 11 | 12 | 19 | 42 |
+| **total** | **61** | **36** | **72** | **169** |
 
 ## Authored in this change (9)
 
@@ -123,7 +123,20 @@ Spell imbue / mirror rules (7.2zf). Pinned by `tests/validate/test_srd51_spells.
 | Magic Weapon | 2 | `weapon_imbue {magical, magic_bonus {base 1, at_slot [[4, 2], [6, 3]]}, requires_nonmagical}`; bonus action, touch, concentration up to 1 hour | paladin, wizard; refused on a magical weapon (`magic_weapon: the weapon is already magical`) |
 | Mirror Image | 2 | `duplicates {count 3, thresholds [11, 8, 6], ac {base 10, ability dex}}`; self, 1 minute | sorcerer, warlock, wizard; thresholds indexed by remaining - 1; attackers that can't see, rely on blindsight, or have truesight are unaffected; the dismiss action is not modelled |
 
-## Deferred (114 spells; reasons re-checked against main at `8b8d8c9`)
+## Authored after Rules #263 (6)
+
+Spell batch zg rules (7.2zg; groups Haste / Slow, Spiritual Weapon, False Life / Heroism, Acid Arrow). Pinned by `tests/validate/test_srd51_spells.py` (table rows and `test_spell_batch_zg`) and `tests/validate/test_spell_batch_zg.py`. Hellish Rebuke, Protection from Energy, Blur, Faerie Fire and Hypnotic Pattern (the rest of 7.2zg) follow in a later change.
+
+| spell | level | `spell@1` shape | notes |
+|---|---|---|---|
+| False Life | 1 | `temp_hp {dice 1d4+4, per_slot_above 5}`; self, 1 hour | sorcerer, wizard |
+| Heroism | 1 | `temp_hp {ability spellcasting, per_turn, condition_immunity [frightened]}`; touch, concentration 1 minute; `upcast.targets 1` | bard, paladin; also granted at the cast; the larger temp HP pool is kept |
+| Acid Arrow | 2 | `spell_attack` ranged 4d4 acid `on_miss half` + `delayed_damage` 2d4 `applies_to affected`, `expiry until_end_of_target_next_turn`; range 90; `upcast.dice 1` | a miss halves only the initial damage; the 2d4 needs a hit |
+| Spiritual Weapon | 2 | `summon_weapon {damage 1d8 force, add_spellcasting_modifier, upcast_every 2, reach_ft 5, move_ft 20}`; bonus action, range 60, 1 minute; `upcast.dice 1` | cleric (Life domain, 3-5); a token, not a creature; later attacks take a bonus action |
+| Haste | 3 | `haste`; range 30, concentration 1 minute | sorcerer, wizard; +2 AC, advantage on Dex saves, speed x2, extra action, lethargy (Rules' marker) |
+| Slow | 3 | `slow {ability wis}`; `area cube 40`, `targets {count 6}`, range 120, concentration 1 minute | sorcerer, wizard; save repeats at the end of each turn; the spell-failure d20 loses the spell (v1; the SRD's next-turn completion is deferred) |
+
+## Deferred (108 spells; reasons re-checked against main at `8b8d8c9`)
 
 Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the first-draft ids in brackets: B1 = R-G2 effects array, B2 = R-G3 timed modifiers, B3 = R-G4 damage riders, B4 = R-G5 pools, B6 = R-G7 reactions / roll windows, C1 = R-G8 conditions with source, C2 = R-G9 forced movement / teleport, C3 = R-G10 area templates, C4 = R-G11 zones / auras, C5 = R-G12 summons, C7 = R-G13 cover / lighting / vision, C8 = R-G14 per-cast options, C9 = R-G15 spell kinds). `T&C-G12` / `T&C-G14` are movement modes and creature footprint. `OOS` rows have no gap id.
 
@@ -155,14 +168,12 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 1 | Entangle | NEW | Zones load (R-G11, #122) but no shipped zone fixture covers Entangle's square + Str check vs restrained; author with Web's zone rows after a fixture. | R-G11 (C4) |
 | 1 | Expeditious Retreat | NEW | No spell@1 way to grant a bonus-action Dash for the duration (`grant_action` is a feature effect). | R-G3 (B2) |
 | 1 | Faerie Fire | NEW | Area loads, `attacks_against` advantage loads as a rider, but the Dex save gate needs a `save` with no damage or condition (schema requires one), and "can't benefit from invisible" is not modelled. | R-G3 (B2) |
-| 1 | False Life | NEW | `temp_hp` takes a fixed `bonus`; 1d4 + 4 (+5 per slot) is not rolled. | R-G3 (B2) |
 | 1 | Feather Fall | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Find Familiar | NEW | Summons rules (R-G12 PR 2) exist but spell@1 has no summon key; 1-hour cast. | R-G12 (C5) |
 | 1 | Floating Disk | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Fog Cloud | NEW | Zone loads (`kZoneHeavyObscured`); obscurement has no effect until R-G13. | R-G11, R-G13 (C4, C7) |
 | 1 | Goodberry | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Hellish Rebuke | NEW | Rules reaction exists (#87) but spell@1 `casting_time.trigger` only has `being_hit` / `spell_cast` (no damaged trigger). | R-G7 (B6) |
-| 1 | Heroism | NEW | `temp_hp` `per_turn` loads with a fixed `bonus`; the SRD amount is the caster's spellcasting modifier, and frightened immunity is not modelled. | R-G3 (B2) |
 | 1 | Identify | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Illusory Script | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Jump | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
@@ -171,7 +182,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 1 | Silent Image | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Speak with Animals | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Unseen Servant | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
-| 2 | Acid Arrow | NEW | `spell_attack` 4d4 acid + `delayed_damage` 2d4 rider (`applies_to: affected`, end of the target's next turn), upcast both (EC #120); **blocked**: the miss case (half the initial damage) needs a `spell_attack` miss branch. | R-G15 (C9) |
 | 2 | Alter Self | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Animal Messenger | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Arcane Lock | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
@@ -206,7 +216,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Rope Trick | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | See Invisibility | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Spider Climb | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Spiritual Weapon | NEW | Rules PR 3 (#173) `SummonWeapon` exists, but spell@1 has no summon-weapon key yet. | R-G12 (C5) |
 | 2 | Suggestion | NEW | Forced behavior (R-G8). | R-G8 (C1) |
 | 2 | Warding Bond | NEW | Shared damage (R-G3). | R-G3 (B2) |
 | 2 | Zone of Truth | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
@@ -222,7 +231,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 3 | Fly | NEW | Movement mode (T&C-G12, T&C-G14). | T&C-G12, T&C-G14 |
 | 3 | Gaseous Form | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Glyph of Warding | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
-| 3 | Haste | NEW | Rules have `ModStat::Haste`, but the common@2 modifier `stat` enum has no haste marker (extra action, lethargy). | R-G3, R-G5 (B2, B4) |
 | 3 | Hypnotic Pattern | NEW | Area, charmed + incapacitated (R-G10, R-G8). | R-G8, R-G10 (C1, C3) |
 | 3 | Magic Circle | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Major Image | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
@@ -234,7 +242,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 3 | Remove Curse | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Sending | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Sleet Storm | NEW | Zone (R-G11). | R-G11 (C4) |
-| 3 | Slow | NEW | Rules have `ModStat::Slow`, but the common@2 modifier `stat` enum has no slow marker. | R-G3 (B2) |
 | 3 | Speak with Dead | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Speak with Plants | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Tiny Hut | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |

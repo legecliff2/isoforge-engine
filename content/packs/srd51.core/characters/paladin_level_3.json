@@ -275,6 +275,7 @@
     },
     "spells": [
       "srd51.spell.cure_wounds",
+      "srd51.spell.heroism",
       "srd51.spell.shield_of_faith",
       "srd51.spell.protection_from_evil_and_good",
       "srd51.spell.sanctuary"

@@ -1665,6 +1665,58 @@
     "warlock",
     "wizard"
    ]
+  },
+  "haste": {
+   "name": "Haste",
+   "level": 3,
+   "school": "transmutation",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ]
+  },
+  "slow": {
+   "name": "Slow",
+   "level": 3,
+   "school": "transmutation",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ]
+  },
+  "spiritual-weapon": {
+   "name": "Spiritual Weapon",
+   "level": 2,
+   "school": "evocation",
+   "classes": [
+    "cleric"
+   ]
+  },
+  "false-life": {
+   "name": "False Life",
+   "level": 1,
+   "school": "necromancy",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ]
+  },
+  "heroism": {
+   "name": "Heroism",
+   "level": 1,
+   "school": "enchantment",
+   "classes": [
+    "bard",
+    "paladin"
+   ]
+  },
+  "acid-arrow": {
+   "name": "Acid Arrow",
+   "level": 2,
+   "school": "evocation",
+   "classes": [
+    "wizard"
+   ]
   }
  }
 }
