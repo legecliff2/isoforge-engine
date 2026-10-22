@@ -1,0 +1,12 @@
+{
+  "$schema": "item@2",
+  "id": "srd51.item.sling_bullet",
+  "name": "Sling bullet",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "ammunition",
+  "description": "One piece of ammunition; count it with an equipment[] entry's count (EQUIPMENT 2.5). SRD price: Sling bullets (20): 4 cp, 1 1/2 lb. Per-piece weight is not an integer number of ounces, so weight_oz is omitted, and so is cost_cp (0.2 cp per bullet).",
+  "ammo_kind": "sling_bullet"
+}

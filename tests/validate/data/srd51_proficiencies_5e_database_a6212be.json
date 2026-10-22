@@ -1,0 +1,116 @@
+{
+  "_source": "5e-bits/5e-database a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f src/2014/en/5e-SRD-Classes.json (proficiencies) and 5e-SRD-Traits.json (traits with proficiencies); verbatim indexes, armor / weapon entries only",
+  "classes": {
+    "barbarian": [
+      "light-armor",
+      "medium-armor",
+      "shields",
+      "simple-weapons",
+      "martial-weapons"
+    ],
+    "bard": [
+      "light-armor",
+      "simple-weapons",
+      "longswords",
+      "rapiers",
+      "shortswords",
+      "hand-crossbows"
+    ],
+    "cleric": [
+      "light-armor",
+      "medium-armor",
+      "shields",
+      "simple-weapons"
+    ],
+    "druid": [
+      "light-armor",
+      "medium-armor",
+      "shields",
+      "clubs",
+      "daggers",
+      "javelins",
+      "maces",
+      "quarterstaffs",
+      "sickles",
+      "spears",
+      "darts",
+      "slings",
+      "scimitars"
+    ],
+    "fighter": [
+      "all-armor",
+      "shields",
+      "simple-weapons",
+      "martial-weapons"
+    ],
+    "monk": [
+      "simple-weapons",
+      "shortswords"
+    ],
+    "paladin": [
+      "all-armor",
+      "shields",
+      "simple-weapons",
+      "martial-weapons"
+    ],
+    "ranger": [
+      "light-armor",
+      "medium-armor",
+      "shields",
+      "simple-weapons",
+      "martial-weapons"
+    ],
+    "rogue": [
+      "light-armor",
+      "simple-weapons",
+      "longswords",
+      "rapiers",
+      "shortswords",
+      "hand-crossbows"
+    ],
+    "sorcerer": [
+      "daggers",
+      "darts",
+      "slings",
+      "quarterstaffs",
+      "crossbows-light"
+    ],
+    "warlock": [
+      "light-armor",
+      "simple-weapons"
+    ],
+    "wizard": [
+      "daggers",
+      "darts",
+      "slings",
+      "quarterstaffs",
+      "crossbows-light"
+    ]
+  },
+  "traits": {
+    "dwarven-combat-training": {
+      "races": [
+        "dwarf"
+      ],
+      "subraces": [],
+      "proficiencies": [
+        "battleaxes",
+        "handaxes",
+        "light-hammers",
+        "warhammers"
+      ]
+    },
+    "elf-weapon-training": {
+      "races": [],
+      "subraces": [
+        "high-elf"
+      ],
+      "proficiencies": [
+        "longswords",
+        "shortswords",
+        "shortbows",
+        "longbows"
+      ]
+    }
+  }
+}
