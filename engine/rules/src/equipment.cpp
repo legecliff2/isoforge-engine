@@ -237,12 +237,19 @@ uint16_t armor_change_rounds(ArmorCategory c, bool don, bool helper) {
     return uint16_t(helper ? r / 2 : r);
 }
 
+LightState light_radii(const ItemDef& d, const HeldItem& h) {
+    if ((h.flags & kHeldLit) == 0) return {};
+    const std::size_t i = light_state_index(h.flags);
+    if (i >= d.light.states.size()) return {};
+    return d.light.states[i];
+}
+
 EquipCost equip_legal(const EncounterState& s, const ActionRequest& r) {
     auto no = [](std::string_view why) { return EquipCost{EquipCost::Refused, why}; };
     const LoadoutView* v = loadout_view(s, r.actor);
     if (!v) return no("equip: equipment play is off");
     const auto op = EquipOp(r.equip_op);
-    if (op == EquipOp::None || r.equip_op > uint8_t(EquipOp::DoffArmor)) return no("equip: unknown equip op");
+    if (op == EquipOp::None || r.equip_op > uint8_t(EquipOp::SetLightState)) return no("equip: unknown equip op");
     if (s.ended || s.order.empty() || current_actor(s) != r.actor) return no("equip: not your turn");
     const Combatant* a = combatant(s, r.actor);
     if (!a || a->dead || a->hp <= 0 || is_incapacitated(*a)) return no("equip: the creature cannot act");
@@ -319,6 +326,19 @@ EquipCost equip_legal(const EncounterState& s, const ActionRequest& r) {
         const ItemDef* d = def_of(s, h->def);
         const int need = hands_needed(d);
         if (!tv || empty_hands(*tv) < need) return no("equip: the recipient has no free hand");
+        return interaction();
+    }
+    case EquipOp::SetLightState: {
+        if (!h) return no("equip: the item is not in hand");
+        const ItemDef* d = def_of(s, h->def);
+        if (!d || d->light.states.empty()) return no("equip: not a light source");
+        const bool lit = (h->flags & kHeldLit) != 0;
+        if (r.equip_state == kLightDouse) {
+            if (!lit) return no("equip: the light is already in that state");
+            return interaction();
+        }
+        if (r.equip_state >= d->light.states.size() || r.equip_state >= kMaxLightStates) return no("equip: unknown light state");
+        if (lit && light_state_index(h->flags) == r.equip_state) return no("equip: the light is already in that state");
         return interaction();
     }
     default: break;
