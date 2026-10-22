@@ -1,0 +1,44 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.exempt_senses_not_attacks_against",
+  "name": "Haste",
+  "level": 2,
+  "school": "transmutation",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "classes": [
+    "wizard"
+  ],
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "self"
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "ac",
+        "bonus": 1,
+        "duration": {
+          "kind": "concentration"
+        }
+      },
+      "exempt_senses": [
+        "blindsight"
+      ]
+    }
+  ]
+}

@@ -324,13 +324,20 @@ enum class ModStat : uint8_t { AttackRoll, Save, AbilityCheck, Ac, Speed, Damage
                                // appended (7.2za Bardic Inspiration): one held die (`die`) the owner may add to one roll of a kind in
                                // ModifierSpec::held_applies, after the roll and before the outcome (ReactionOptionKind::AddHeldDie).
                                // Spent (ModifierExpired reason 9) or lapsed at expiry; at most one per creature (a new one replaces it).
-                               HeldDie };
+                               HeldDie,
+                               // appended (7.2zg Faerie Fire `outlined`, a state): attack rolls against the creature have
+                               // advantage when the attacker can see it, and it gains no benefit from being invisible.
+                               Outlined };
 // appended (7.2za): roll kinds for HeldDie and SubtractRoll (`applies_to` in content: attack, save, check, damage).
 inline constexpr uint8_t kRollAttack = 1, kRollSave = 2, kRollCheck = 4, kRollDamage = 8;
 enum class ModAppliesTo : uint8_t { Self, Target, AlliesWithin30,
                                     // appended (7.2zd Protection from Evil and Good): an AttackRoll row on the target that applies to
                                     // the attack rolls of creatures attacking it (ModifierSpec::from_types filters their type).
                                     Attackers };
+// 7.2zg `exempt_senses` (Blur, Mirror Image; one key, one list): an attacker that perceives the creature through one of these
+// senses (within that sense's range), or cannot see it at all, is not fooled by the illusion.
+enum : uint8_t { kSenseBlindsight = 1, kSenseTremorsense = 2, kSenseTruesight = 4 };
+
 struct ModifierSpec {
     uint32_t id = 0;                     // stable id of this modifier (the a of ModifierApplied / ModifierExpired)
     uint32_t source = 0;                 // spell / feature id (concentration ends modifiers of the source)
@@ -402,6 +409,9 @@ struct ModifierSpec {
     // appended (7.2ze Bless / Bane, `applies_to: [attack, save]`): kRollAttack / kRollSave bits of the rolls the row applies to
     // besides its own stat (0 = its stat only). Hashed via modifiers_digest sub-tag 0x5C only when non-zero.
     uint8_t also_rolls = 0;
+    // appended (7.2zg Blur): AttacksAgainst only: kSense* bits; an attacker not fooled (fooled_by_illusion) ignores the row.
+    // Hashed in modifiers_digest (sub-byte 0x5E) only when non-zero.
+    uint8_t exempt_senses = 0;
 };
 
 // Row R-G6: a bonus-action attack option (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy). Requested with

@@ -15,6 +15,6 @@ inline constexpr const char* kOnMiss = "on_miss";                 // spell_attac
 inline constexpr const char* kTriggerDamaged = "damaged";         // casting_time.trigger
 inline constexpr const char* kDamageTypeChoices = "damage_type_choices";  // apply_modifier (resistance): per-cast choice
 inline constexpr const char* kExemptSenses = "exempt_senses";     // attacks_against modifier / duplicates
-inline constexpr const char* kOutlined = "outlined";              // save effect: the outlined state (Faerie Fire)
+inline constexpr const char* kOutlined = "outlined";              // modifier stat: the outlined state (Faerie Fire)
 inline constexpr const char* kShakeAwake = "shake_awake";         // ends_on: another creature's action
 }  // namespace rules5e_content::zg

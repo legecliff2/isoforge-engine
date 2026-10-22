@@ -101,7 +101,8 @@
             "kind": {
               "enum": [
                 "being_hit",
-                "spell_cast"
+                "spell_cast",
+                "damaged"
               ]
             },
             "or_targeted_by": {
@@ -747,6 +748,21 @@
                   "$ref": "../common/v1.schema.json#/$defs/condition"
                 },
                 "description": "7.2ze: the conditions the caster picks from at cast; only with condition chosen (which needs it). First effect only."
+              },
+              "ends_on": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "attack",
+                    "cast",
+                    "harmful_cast",
+                    "damage",
+                    "shake_awake"
+                  ]
+                },
+                "description": "VERSION_BUMP_BATCH 7.2zg (Hypnotic Pattern): ends_on on a save effect that applies a condition; same vocabulary and rules as apply_condition ends_on."
               }
             },
             "allOf": [
@@ -1035,10 +1051,12 @@
                   "enum": [
                     "attack",
                     "cast",
-                    "harmful_cast"
+                    "harmful_cast",
+                    "damage",
+                    "shake_awake"
                   ]
                 },
-                "description": "VERSION_BUMP_BATCH 7.2zc (Invisibility): the effect on a creature ends once it makes any attack (after the attack resolves) or casts any spell (after the spell is cast), whatever the target; when nothing of the spell is left the caster's concentration on it ends too. Needs concentration or a rounds / minutes / hours duration (tools/validate and the loader, same wording). 7.2zd harmful_cast (Sanctuary): the subject casts a spell that affects a creature of another team."
+                "description": "VERSION_BUMP_BATCH 7.2zc (Invisibility): the effect on a creature ends once it makes any attack (after the attack resolves) or casts any spell (after the spell is cast), whatever the target; when nothing of the spell is left the caster's concentration on it ends too. Needs concentration or a rounds / minutes / hours duration (tools/validate and the loader, same wording). 7.2zd harmful_cast (Sanctuary): the subject casts a spell that affects a creature of another team. 7.2zg (Hypnotic Pattern): damage (ends when the target takes damage) and shake_awake (another creature within 5 ft ends it with its action: the Wake action)."
               }
             },
             "allOf": [
@@ -1132,6 +1150,19 @@
                   }
                 },
                 "description": "7.2ze Bane: each target saves against the caster's spell save DC; a creature that succeeds is not affected. First effect only; the modifier must be on the targets."
+              },
+              "damage_type_choices": {
+                "type": "array",
+                "items": {
+                  "$ref": "../common/v1.schema.json#/$defs/damage_type"
+                },
+                "minItems": 2,
+                "maxItems": 13,
+                "uniqueItems": true,
+                "description": "VERSION_BUMP_BATCH 7.2zg (Protection from Energy): a resistance modifier whose type is the caster's cast-time choice (ActionRequest::damage_choice, 1 + index in this order); must include the modifier's damage_type. First effect only."
+              },
+              "exempt_senses": {
+                "$ref": "#/$defs/exempt_senses"
               }
             }
           }
@@ -1887,9 +1918,12 @@
               },
               "description": {
                 "type": "string"
+              },
+              "exempt_senses": {
+                "$ref": "#/$defs/exempt_senses"
               }
             },
-            "description": "VERSION_BUMP_BATCH 7.2zf (Mirror Image): illusory duplicates on the caster. Each attack that targets the caster rolls a d20 first (our PRNG; only when duplicates remain and the attacker is affected); at or above thresholds[remaining - 1] the attack targets a duplicate instead (AC per ac); a hit destroys one duplicate (no damage), a miss does nothing. The effect ends when none remain. Unaffected attackers: no sight of the caster (Blinded or otherwise), blindsight in range, or truesight in range. No dismissal action. Self only; needs a rounds / minutes / hours duration."
+            "description": "VERSION_BUMP_BATCH 7.2zf (Mirror Image): illusory duplicates on the caster. Each attack that targets the caster rolls a d20 first (our PRNG; only when duplicates remain and the attacker is affected); at or above thresholds[remaining - 1] the attack targets a duplicate instead (AC per ac); a hit destroys one duplicate (no damage), a miss does nothing. The effect ends when none remain. Unaffected attackers: no sight of the caster (Blinded or otherwise), or an exempt_senses sense in range (7.2zg; default blindsight and truesight). No dismissal action. Self only; needs a rounds / minutes / hours duration."
           }
         },
         {
@@ -2654,6 +2688,19 @@
           "description": "Scope: saves of this ability only. Absent: every save."
         }
       }
+    },
+    "exempt_senses": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "blindsight",
+          "tremorsense",
+          "truesight"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "VERSION_BUMP_BATCH 7.2zg: one key and one list for illusions that fool sight (Blur, Mirror Image). An attacker that perceives the creature through one of these senses within its range, or cannot see it, is unaffected. duplicates: default [blindsight, truesight]; apply_modifier: attacks_against modifiers only."
     }
   }
 }
