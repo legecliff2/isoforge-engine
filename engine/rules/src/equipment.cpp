@@ -20,12 +20,16 @@ bool pure_ranged(const WeaponDef& w) { return w.reach_ft == 0 && w.range_ft > 0;
 bool has(const WeaponDef& w, WeaponProperty p) { return (w.properties & p) != 0; }
 // Hands to hold an item: ItemDef::hands, and never fewer than 2 for a two-handed weapon (the property is authoritative even
 // if content left `hands` at its default 1). Unknown def = 1.
+} // namespace
+
 int hands_needed(const ItemDef* d) {
     if (!d) return 1;
     int need = std::max<int>(1, d->hands);
     if (d->kind == ItemKind::Weapon && (d->weapon.properties & kWeaponTwoHanded) != 0) need = std::max(need, 2);
     return need;
 }
+
+namespace {
 int empty_hands(const LoadoutView& v) {
     if (v.hand_count == 0) return 0;
     return int(v.main.instance == 0) + int(v.off.instance == 0);
@@ -280,7 +284,7 @@ EquipCost equip_legal(const EncounterState& s, const ActionRequest& r) {
         if (h || c) return no("equip: the item is already carried");
         if (!r.equip_in_reach) return no("equip: the item is out of reach");
         // equip_item is a ground instance id: resolve its def through Engine Core, never through item_def
-        const ItemDef* d = s.hooks.ground_item_def ? s.hooks.ground_item_def(r.equip_item) : nullptr;
+        const ItemDef* d = s.hooks.ground_item_def ? s.hooks.ground_item_def(s, r.equip_item) : nullptr;
         if (!d) return no("equip: unknown ground item");
         if (!hand_ok(d)) return no("equip: no free hand");
         return interaction();
@@ -372,6 +376,8 @@ bool blank(const std::string& r) {
     return true;
 }
 }
+
+int recovered_ammo(int expended) { return expended > 0 ? expended / 2 : 0; }
 
 std::string hands_overfull_error(std::string_view id, int held, int hands) {
     return std::string(id) + ": holds " + std::to_string(held) + " items but has " + std::to_string(hands) + " hands";
