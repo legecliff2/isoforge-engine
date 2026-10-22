@@ -3707,7 +3707,18 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         emit(out.events, EventKind::ResourceSpent, a.id, 0, int32_t(a.sorcery_pool), meta_cost, find_pool(s, a.id, a.sorcery_pool)->cur);
     const auto ends_keys = def.is_spell ? ends_on_keys(s, a.id, kEndsOnCast) : std::vector<std::pair<uint32_t, CombatantId>>{};   // 7.2zc
     const auto harm_keys = def.is_spell ? ends_on_keys(s, a.id, kEndsOnHarmfulCast) : std::vector<std::pair<uint32_t, CombatantId>>{};   // 7.2zd
-    bool countered = def.is_spell && spell_cast_window(s, ctx, a, def.id, lvl, ids[0], out.events);
+    // 7.2zg Slow: a slowed caster of a 1-action spell rolls a d20 (PRNG, only then); on 11+ the spell doesn't take effect
+    // (FeatureTriggered{caster, caster, Slow's spell id, d20, 1}). v1: the slot and action are spent and the spell is lost; the
+    // SRD's completion on the next turn is deferred.
+    bool slow_lost = false;
+    if (def.is_spell && def.casting_time == CastingTime::Action && !s.modifiers.empty() && has_marker(s, a.id, ModStat::Slow)) {
+        uint32_t src = 0;
+        for (const auto& m : s.modifiers) if (m.target == a.id && m.spec.stat == ModStat::Slow) { src = m.spec.source; break; }
+        const int d20 = roll_d20(s.rng, 0, RollMode::Normal).natural;
+        slow_lost = d20 >= 11;
+        emit(out.events, EventKind::FeatureTriggered, a.id, a.id, int32_t(src), d20, int32_t(slow_lost));
+    }
+    bool countered = slow_lost || (def.is_spell && spell_cast_window(s, ctx, a, def.id, lvl, ids[0], out.events));
     bool harmful = false;
     if (!countered && !warded_at.empty()) {   // 7.2zd: each ward save in target order; a failure retargets once, else that target is lost
         std::vector<Combatant*> kept;

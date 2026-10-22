@@ -2530,6 +2530,23 @@ Additive (gap list; T&C approved the shapes). No golden changes, integer math on
   hours duration`, `effect duplicates is self only`, `effects[<i>]: weapon_imbue is only allowed as the first effect` (and duplicates).
   Negative cases: `tests/validate/cases/duplicates_*`, `weapon_imbue_*` (8).
 
+### 7.2zg Spell batch zg (rules side)
+
+Additive (11 spells; key names frozen by T&C, all defined once in `engine/rules/content/src/spell_keys_zg.hpp` and
+`tools/validate/checks_v4.py` `ZG_KEYS`). No golden changes, integer math only. Groups land one commit each.
+
+- **Haste / Slow** (spell@1 kinds `haste`, `slow`; first effect only; concentration required). The loader expands each into a
+  marker row (`ModStat::Haste` / `ModStat::Slow`, the rules' existing markers) plus three number rows on the same targets:
+  Haste +2 AC, advantage on Dex saves, speed x2 (the restricted extra action and lethargy when it ends are the marker's); Slow
+  -2 AC, -2 on Dex saves, speed x1/2 (no reactions, an action or a bonus action, one attack per turn are the marker's). `slow`
+  takes `ability` (Wis): one save per target gates every row (the Bane gate, 7.2ze; extra rows no longer inherit the gate,
+  `effect_view`), and the save repeats at the end of each of the target's turns. **Spell-failure roll**: a slowed creature that
+  casts a 1-action spell rolls a d20 from the PRNG (only then): `FeatureTriggered{actor = target = the caster, a = Slow's spell
+  id, b = d20, c = 1 if 11+}`; on 11+ the spell doesn't take effect and the stream shows `SpellCountered` (v1: slot and action
+  spent, the SRD's completion on the next turn is deferred).
+  Strings: `effect haste needs concentration`, `effect slow needs concentration`, `effect slow needs ability`,
+  `effect haste takes no ability`, `effects[<i>]: haste is only allowed as the first effect` (same for `slow`).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain

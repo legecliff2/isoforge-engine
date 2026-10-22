@@ -8,6 +8,7 @@
 
 #include "assets/content_migrations.hpp"
 #include "rules5e/dice.hpp"
+#include "spell_keys_zg.hpp"
 
 namespace rules5e_content {
 
@@ -1018,6 +1019,32 @@ SpellLoad spell_from_json(const Json& j) {
                 !lookup(kAbility, ac["ability"], d.ac_ability))
                 return ("effect ac must be {base 0..30, ability}");
             d.ac_base = int8_t(base);
+        } else if (kind == zg::kHaste || kind == zg::kSlow) {   // 7.2zg: dedicated kinds, expanded into marker + number rows
+            const bool haste = kind == zg::kHaste;
+            if (!s.concentration) return ("effect " + kind + " needs concentration");
+            Ability save_ab = Ability::Wis;
+            if (!haste) {
+                if (!e.contains("ability") || !lookup(kAbility, e["ability"], save_ab)) return ("effect slow needs ability");
+            } else if (e.contains("ability")) return ("effect haste takes no ability");
+            auto row = [&](ModStat st, const char* tag) {
+                ModifierSpec m; m.stat = st; m.applies_to = ModAppliesTo::Target; m.concentration = true;
+                m.id = spell_id_of(s.content_id + "#" + kind + "_" + tag);
+                return m;
+            };
+            s.kind = SpellEffectKind::ApplyModifier;
+            s.modifier = row(haste ? ModStat::Haste : ModStat::Slow, "marker");   // Haste: extra action + lethargy; Slow: limits
+            if (!haste) {   // Slow: the target's Wis save resists; repeats at the end of each of its turns (rules fill the DC)
+                s.has_modifier_save = true; s.modifier_save = save_ab;
+                s.modifier.repeat_save = 1; s.modifier.repeat_ability = save_ab;
+            }
+            ModifierSpec ac = row(ModStat::Ac, "ac"); ac.bonus = int16_t(haste ? 2 : -2);
+            ModifierSpec sv = row(ModStat::Save, "dex_save"); sv.ability = Ability::Dex; sv.has_ability = true;
+            if (haste) sv.mode = RollMode::Advantage; else sv.bonus = -2;
+            ModifierSpec sp = row(ModStat::Speed, "speed"); sp.speed_num = uint8_t(haste ? 2 : 1); sp.speed_den = uint8_t(haste ? 1 : 2);
+            for (const ModifierSpec& m : {ac, sv, sp}) {
+                SpellEffect fx; fx.kind = SpellEffectKind::ApplyModifier; fx.modifier = m; fx.affected_only = true;
+                s.extra_effects.push_back(fx);
+            }
         } else if (kind == "teleport") {   // R-G9 (7.2k): self-teleport (Misty Step); the destination is the caller's (sim)
             s.kind = SpellEffectKind::Teleport;
             int ft = 0;
@@ -1114,6 +1141,8 @@ SpellLoad spell_from_json(const Json& j) {
         if (xe.is_object() && xe.value("kind", "") == "polymorph") return err("polymorph: primary effect only");
         if (xe.is_object() && xe.value("kind", "") == "zone")   // the cast refuses an extra effect of kind Zone
             return err("zone must be the primary effect (effects[" + std::to_string(i) + "] is a zone)");
+        if (xe.is_object() && (xe.value("kind", "") == zg::kHaste || xe.value("kind", "") == zg::kSlow))   // 7.2zg
+            return err("effects[" + std::to_string(i) + "]: " + xe.value("kind", "") + " is only allowed as the first effect");
         SpellDef x;
         std::string xk;
         if (auto m = parse_effect(j["effects"][i], x, xk); !m.empty()) return err("effects[" + std::to_string(i) + "]: " + m);
