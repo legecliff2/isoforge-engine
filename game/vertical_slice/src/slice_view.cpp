@@ -405,11 +405,13 @@ void SliceView::submit(ICommandList& cl) {
 } // namespace slice
 
 namespace slice {
+constexpr float kDimOnlyGlow = 0.5f;
 std::vector<eng::iso2d::GlowSource> glows_from(const LightView& L, const eng::iso2d::GlowPalette& palette) {
     std::vector<eng::iso2d::GlowSource> out;
     if (!L.present) return out;
     for (const LightSourceView& ls : L.sources) {
         if (!ls.lit) continue;
+        if (ls.bright_ft == 0 && ls.dim_ft == 0) continue;   // lit but emitting nothing (a state with no light)
         eng::iso2d::GlowSource g;
         g.key = ls.sort_key();
         if (ls.carrier == 1) {
@@ -421,6 +423,7 @@ std::vector<eng::iso2d::GlowSource> glows_from(const LightView& L, const eng::is
         const eng::iso2d::GlowStyle st = palette.style_for(ls.preset, ls.magical);
         g.color = st.color;
         g.intensity = st.intensity;
+        if (ls.bright_ft == 0) g.intensity *= kDimOnlyGlow;   // dim-only (hooded lantern 0/5): small, faint glow
         out.push_back(g);
     }
     return out;

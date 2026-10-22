@@ -11,7 +11,7 @@
 
 #include "view_model.hpp"
 
-namespace eng::sim { class ContentLibrary; }
+namespace eng::sim { class ContentLibrary; struct EquipmentLight; struct LightSource; }
 
 namespace slice {
 
@@ -86,6 +86,9 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
+
+// Equipment producer, one entry (exposed for tests): sized from the entry's state radii; held -> on the holder.
+eng::sim::LightSource equipment_source(const eng::sim::EquipmentLight& e, eng::Vec2i holder_centre, std::string preset);
 
 // Palette asset id -> placeholder tile kind ("tiles.dungeon.wall_01" -> Wall).
 TileKind classify_tile(const std::string& asset_id);

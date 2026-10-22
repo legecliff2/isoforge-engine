@@ -100,16 +100,18 @@ ContentLibrary& library() {
                                    {"damage", J::array({J{{"dice", "1d8+2"}, {"type", "piercing"}}})}}});
         REQUIRE_FALSE(l.add(a, "character", "", 4));
         // item@2 gear lights as in #250 (content/light-gear), fed straight to the table (item@2 loads via #246).
-        REQUIRE_FALSE(l.items()->add(J::parse(R"({"$schema": "item@2", "id": "srd51.item.torch", "name": "Torch", "category": "gear",
+        // Stacked with #250 the real srd51 gear is already loaded from the pack: keep that copy (same light blocks).
+        auto add_gear = [&](const J& d) { if (!l.items()->find(d["id"].get<std::string>())) REQUIRE_FALSE(l.items()->add(d)); };
+        add_gear(J::parse(R"({"$schema": "item@2", "id": "srd51.item.torch", "name": "Torch", "category": "gear",
             "hands": 1, "light": {"bright_ft": 20, "dim_ft": 20, "shape": "radius", "duration_rounds": 600, "lit_by_default": false,
-            "preset": "srd51.core.light.torch"}, "torch_attack": {"damage": [{"flat": 1, "type": "fire"}], "requires_lit": true}})")));
-        REQUIRE_FALSE(l.items()->add(J::parse(R"({"$schema": "item@2", "id": "srd51.item.lantern_hooded", "name": "Lantern, hooded",
+            "preset": "srd51.core.light.torch"}, "torch_attack": {"damage": [{"flat": 1, "type": "fire"}], "requires_lit": true}})"));
+        add_gear(J::parse(R"({"$schema": "item@2", "id": "srd51.item.lantern_hooded", "name": "Lantern, hooded",
             "category": "gear", "hands": 1, "light": {"bright_ft": 30, "dim_ft": 30, "shape": "radius", "duration_rounds": 3600,
             "fuel": "srd51.item.oil_flask", "lit_by_default": false, "states": [{"id": "hooded", "bright_ft": 0, "dim_ft": 5,
-            "toggle": "action"}], "preset": "srd51.core.light.lantern_hooded"}})")));
-        REQUIRE_FALSE(l.items()->add(J::parse(R"({"$schema": "item@2", "id": "srd51.item.lantern_bullseye", "name": "Lantern, bullseye",
+            "toggle": "action"}], "preset": "srd51.core.light.lantern_hooded"}})"));
+        add_gear(J::parse(R"({"$schema": "item@2", "id": "srd51.item.lantern_bullseye", "name": "Lantern, bullseye",
             "category": "gear", "hands": 1, "light": {"bright_ft": 60, "dim_ft": 60, "shape": "cone", "duration_rounds": 3600,
-            "fuel": "srd51.item.oil_flask", "lit_by_default": false, "preset": "srd51.core.light.lantern_bullseye"}})")));
+            "fuel": "srd51.item.oil_flask", "lit_by_default": false, "preset": "srd51.core.light.lantern_bullseye"}})"));
         J g = fighter_doc();
         g["id"] = kLanterns;
         g["equipment"] = J::array({J{{"item", "srd51.item.lantern_hooded"}, {"equipped", true}},

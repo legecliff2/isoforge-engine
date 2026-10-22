@@ -301,7 +301,7 @@ Equipment comes before held lights (Director, 2026-10-21). `vertical_slice` (`Se
 equipment producer to the same generic attached-source list: one source per `Combat::equipment_lights()` entry, keyed by
 the sim light id. Held or carried: `Carrier::Creature` on `holder_id`, so the glow anchors to the holder's token. On the
 ground (drop, throw, death drop): `Carrier::Tile` at the item's tile, unanchored. Stowed (covered) or unlit: `lit = false`,
-no glow. Bright / dim come from the item def. The glow preset is the item doc's `light.preset` when it names one, else
+no glow. Bright / dim come from the entry's current state (`EquipmentLight::bright_ft` / `dim_ft`; a hooded lantern is 30/30 open, 0/5 hooded), never the item default. A lit source with 0/0 draws no glow; a dim-only one (bright 0) draws a small, half-intensity glow. **TODO:** cones (bullseye lantern) are drawn as a radius glow until the sim exposes a facing / cone direction. Real srd51 gear is `lit_by_default: false` and stays dark until Rules adds a light / hood op. The glow preset is the item doc's `light.preset` when it names one, else
 the item content id; `visual` styles resolve through it (10.1, item 5). The producer reads the equip state, not
 `ItemMoved` events, so a skipped frame can't desync it. The interim pc_torches / `carried_lights` ids moved to
 `kInterimLightIdBase` (0x40000000) and up, so they never collide with sim light ids.
