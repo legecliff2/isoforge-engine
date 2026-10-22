@@ -22,6 +22,12 @@ namespace eng::sim {
 // error (ItemDefTable::add).
 uint32_t item_def_id(std::string_view content_id);
 
+// HeldItem::flags bits 4..6 (sim-owned, like kHeldRelight): the light state index (0 = the top-level radii, k = item@2
+// light.states[k - 1], e.g. a hooded lantern's "hooded"). Non-zero only after a state change; folded with the flags (0xD0 /
+// 0xD2), so the default state hashes as before.
+inline constexpr uint8_t kHeldStateShift = 4, kHeldStateMask = 0x70;
+constexpr uint8_t held_light_state(uint8_t flags) { return uint8_t((flags & kHeldStateMask) >> kHeldStateShift); }
+
 // item@N definitions keyed by def id. Owns the strings WeaponDef::id views into (not copyable: share it by pointer).
 class ItemDefTable {
 public:
@@ -29,6 +35,8 @@ public:
     ItemDefTable(const ItemDefTable&) = delete;
     ItemDefTable& operator=(const ItemDefTable&) = delete;
     // One already-migrated item@1 document (weapon / armor / shield / valuable). Error message or nullopt.
+    // item@2 `gear` with a `light` block becomes ItemKind::Light (LightDef: radii, shape, duration, lit_by_default,
+    // extra_states = states.size()); `torch_attack` adds the improvised weapon profile (requires_lit). Other gear: Other.
     std::optional<std::string> add(const assets::Json& doc);
     // A definition built in code (tests; item@2 light / ammunition kinds before their loader). def.id is set from content_id;
     // def.weapon.id is re-pointed at owned storage (the attack id is the content id's last segment).
@@ -36,11 +44,16 @@ public:
     const rules5e::ItemDef* find(uint32_t def) const;
     const rules5e::ItemDef* find(std::string_view content_id) const { return find(item_def_id(content_id)); }
     const std::string* content_id(uint32_t def) const;
+    // Radii of a light item's state (0 = LightDef bright / dim; k = item@2 light.states[k - 1]). nullopt: not a light, or
+    // no such state. (rules5e::LightDef carries only the state count, so the per-state radii live here.)
+    struct LightRadii { uint16_t bright_ft = 0, dim_ft = 0; };
+    std::optional<LightRadii> light_radii(uint32_t def, uint8_t state) const;
     bool empty() const noexcept { return by_id_.empty(); }
     std::size_t size() const noexcept { return by_id_.size(); }
 
 private:
-    struct Entry { std::string content_id; rules5e::ItemDef def; };
+    struct Entry { std::string content_id; rules5e::ItemDef def; std::vector<LightRadii> states{}; };
+    std::vector<LightRadii> pending_states_;   // add(doc) -> add(id, def) hand-off
     std::map<uint32_t, Entry> by_id_;
     std::deque<std::string> strings_;
 };
@@ -62,9 +75,6 @@ bool build_loadout(rules5e::EncounterState& st, rules5e::CombatantId owner, cons
                    const ItemDefTable& items, uint32_t two_handed_grip, std::string_view content_id = {},
                    std::vector<std::string>* errors = nullptr);
 
-// Hands to hold an item, as rules5e's equip_legal counts them (equipment.cpp `hands_needed`, not exported): ItemDef::hands,
-// at least 1, and at least 2 for a two-handed weapon. Unknown def = 1.
-int hands_needed(const rules5e::ItemDef* d);
 
 rules5e::Loadout* find_loadout(rules5e::EncounterState& st, rules5e::CombatantId id);
 const rules5e::Loadout* find_loadout(const rules5e::EncounterState& st, rules5e::CombatantId id);

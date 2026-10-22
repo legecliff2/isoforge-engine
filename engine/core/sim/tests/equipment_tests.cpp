@@ -32,6 +32,9 @@ constexpr const char* kFighter = "srd51.character.fighter_level_1";
 constexpr const char* kTorchbearer = "test.character.torchbearer";
 constexpr const char* kThrower = "test.character.thrower";
 constexpr const char* kArcher = "test.character.archer";
+constexpr const char* kLanterns = "test.character.lanterns";
+constexpr const char* kKitted = "test.character.kitted";
+constexpr const char* kGoblinKit = "test.monster.goblin_kit";
 
 assets::Json fighter_doc() {
     std::ifstream f(std::filesystem::path(ENGINE_SOURCE_ROOT) / "content/packs/srd51.core/characters/fighter_level_1.json");
@@ -96,6 +99,41 @@ ContentLibrary& library() {
                                    {"properties", J::array({"ammunition", "heavy", "two_handed"})},
                                    {"damage", J::array({J{{"dice", "1d8+2"}, {"type", "piercing"}}})}}});
         REQUIRE_FALSE(l.add(a, "character", "", 4));
+        // item@2 gear lights as in #250 (content/light-gear), fed straight to the table (item@2 loads via #246).
+        REQUIRE_FALSE(l.items()->add(J::parse(R"({"$schema": "item@2", "id": "srd51.item.torch", "name": "Torch", "category": "gear",
+            "hands": 1, "light": {"bright_ft": 20, "dim_ft": 20, "shape": "radius", "duration_rounds": 600, "lit_by_default": false,
+            "preset": "srd51.core.light.torch"}, "torch_attack": {"damage": [{"flat": 1, "type": "fire"}], "requires_lit": true}})")));
+        REQUIRE_FALSE(l.items()->add(J::parse(R"({"$schema": "item@2", "id": "srd51.item.lantern_hooded", "name": "Lantern, hooded",
+            "category": "gear", "hands": 1, "light": {"bright_ft": 30, "dim_ft": 30, "shape": "radius", "duration_rounds": 3600,
+            "fuel": "srd51.item.oil_flask", "lit_by_default": false, "states": [{"id": "hooded", "bright_ft": 0, "dim_ft": 5,
+            "toggle": "action"}], "preset": "srd51.core.light.lantern_hooded"}})")));
+        REQUIRE_FALSE(l.items()->add(J::parse(R"({"$schema": "item@2", "id": "srd51.item.lantern_bullseye", "name": "Lantern, bullseye",
+            "category": "gear", "hands": 1, "light": {"bright_ft": 60, "dim_ft": 60, "shape": "cone", "duration_rounds": 3600,
+            "fuel": "srd51.item.oil_flask", "lit_by_default": false, "preset": "srd51.core.light.lantern_bullseye"}})")));
+        J g = fighter_doc();
+        g["id"] = kLanterns;
+        g["equipment"] = J::array({J{{"item", "srd51.item.lantern_hooded"}, {"equipped", true}},
+                                   J{{"item", "srd51.item.torch"}, {"equipped", true}},
+                                   J{{"item", "srd51.item.lantern_bullseye"}}});
+        REQUIRE_FALSE(l.add(g, "character", "", 4));
+        J k = fighter_doc();
+        k["id"] = kKitted;
+        k["equipment"] = J::array({J{{"item", "srd51.item.chain_mail"}, {"equipped", true}},
+                                   J{{"item", "srd51.item.longsword"}, {"equipped", true}},
+                                   J{{"item", "test.item.torch"}, {"equipped", true}},
+                                   J{{"item", "srd51.item.javelin"}}, J{{"item", "srd51.item.longbow"}},
+                                   J{{"item", "test.item.arrows"}, {"count", 6}}});
+        J acts = J::array();
+        for (const auto& x : k["actions"]) if (x.value("id", "") == "longsword") acts.push_back(x);
+        acts.push_back(t["actions"][0]);
+        acts.push_back(a["actions"][0]);
+        k["actions"] = acts;
+        REQUIRE_FALSE(l.add(k, "character", "", 4));
+        std::ifstream gf(std::filesystem::path(ENGINE_SOURCE_ROOT) / "content/packs/srd51.core/monsters/goblin.json");
+        J gob = J::parse(gf);
+        gob["id"] = kGoblinKit;
+        gob["equipment"] = J::array({J{{"item", "srd51.item.scimitar"}, {"equipped", true}}, J{{"item", "srd51.item.shortbow"}}});
+        REQUIRE_FALSE(l.add(gob, "monster", "", 4));
     }
     return l;
 }
@@ -663,4 +701,182 @@ TEST_CASE("ItemMoved (v11): equip ops, thrown, death drop; never with equipment 
             if (i) CHECK(m[i - 1].rules.a < m[i].rules.a);
         }
     }
+}
+
+TEST_CASE("gear lights (item@2): srd51 torch / lanterns produce equipment lights with state and resolved radii") {
+    ContentLibrary& l = library();
+    const ItemDefTable& t = *l.items();
+    const auto* lan = t.find("srd51.item.lantern_hooded");
+    REQUIRE(lan);
+    CHECK(lan->kind == rules5e::ItemKind::Light);
+    CHECK(lan->light.extra_states == 1);
+    CHECK(t.light_radii(lan->id, 1)->bright_ft == 0);
+    CHECK(t.light_radii(lan->id, 1)->dim_ft == 5);
+    CHECK_FALSE(t.light_radii(lan->id, 2));
+    const auto* torch = t.find("srd51.item.torch");
+    CHECK(torch->has_weapon);
+    CHECK(torch->weapon_requires_lit);
+    CHECK(torch->weapon.dice.bonus == 1);
+    CHECK(t.find("srd51.item.lantern_bullseye")->light.shape == rules5e::LightShape::Cone);
+    world::Chunk ch = arena(kLanterns);
+    ecs::Registry reg;
+    std::string err;
+    auto c = Combat::create(reg, ch, l, 5, CombatOptions{true}, &err);
+    REQUIRE_MESSAGE(c, err);
+    const CombatantId pc = ch.spawns[0].stable_id;
+    auto lights = c->equipment_lights();
+    REQUIRE(lights.size() == 3);   // instance order: hooded lantern, torch, bullseye (carried)
+    CHECK(lights[0].def == lan->id);
+    CHECK(lights[0].state == 0);
+    CHECK(lights[0].bright_ft == 30);
+    CHECK(lights[0].dim_ft == 30);
+    CHECK_FALSE(lights[0].lit);   // lit_by_default false: no light op yet (#247 has no light / hood toggle)
+    CHECK(lights[1].bright_ft == 20);
+    CHECK(lights[2].shape == rules5e::LightShape::Cone);
+    CHECK(lights[2].holder_id == pc);
+    // A non-default state (set directly: no toggle op exists) is reported with its radii and changes 0xD0.
+    const uint64_t h0 = c->hash();
+    for (auto& lo : CombatTestAccess::state(*c).loadouts)
+        if (lo.owner == pc) lo.view.main.flags = uint8_t(lo.view.main.flags | (1u << kHeldStateShift));
+    lights = c->equipment_lights();
+    CHECK(lights[0].state == 1);
+    CHECK(lights[0].bright_ft == 0);
+    CHECK(lights[0].dim_ft == 5);
+    CHECK(c->hash() != h0);
+}
+
+TEST_CASE("ammunition recovery: half the expended ammunition returns at encounter end (no roll)") {
+    ContentLibrary& l = library();
+    const auto ch = arena(kKitted, 4);
+    ecs::Registry reg;
+    std::string err;
+    auto c = Combat::create(reg, ch, l, 31, CombatOptions{true}, &err);
+    REQUIRE_MESSAGE(c, err);
+    const CombatantId pc = ch.spawns[0].stable_id, gob = ch.spawns[1].stable_id;
+    const uint32_t bow = c->item_defs()->find("srd51.item.longbow")->id;
+    const uint32_t arrows_def = c->item_defs()->find("test.item.arrows")->id;
+    uint32_t bow_inst = 0, sword = c->loadout(pc)->view.main.instance, torch = c->loadout(pc)->view.off.instance;
+    for (const auto& x : c->loadout(pc)->view.carried) if (x.def == bow) bow_inst = x.instance;
+    for (auto& k : CombatTestAccess::state(*c).combatants) if (k.id == gob) { k.ac = 0; }
+    until_turn(*c, pc);
+    REQUIRE(c->submit(rules(equip(pc, EquipOp::Drop, torch))).ok);
+    REQUIRE(c->submit(rules(equip(pc, EquipOp::Stow, sword))).ok);
+    REQUIRE(c->submit(rules(equip(pc, EquipOp::Draw, bow_inst, 1))).ok);   // the action
+    auto stack = [&] { for (const auto& x : c->loadout(pc)->view.carried) if (x.def == arrows_def) return int(x.count); return -1; };
+    int shots = 0;
+    while (!c->ended() && stack() > 0 && shots < 6) {
+        REQUIRE(c->submit(rules({pc, ActionKind::EndTurn})).ok);
+        if (c->ended()) break;
+        until_turn(*c, pc);
+        REQUIRE(c->submit(rules(attack(pc, gob, 2))).ok);
+        ++shots;
+    }
+    REQUIRE(c->ended());
+    REQUIRE(c->loadout(pc)->expended.size() == 1);
+    CHECK(c->loadout(pc)->expended[0].count == shots);
+    CHECK(stack() == 6 - shots + rules5e::recovered_ammo(shots));
+}
+
+namespace {
+struct E2E { uint64_t hash = 0, log_hash = 0, events = 0; bool ended = false; std::size_t ground = 0; int arrows = -1; };
+// A whole scripted combat with equipment on, no state edits (replayable from the log alone): the kitted fighter drops its lit
+// torch, throws its javelin, stows its sword, picks the torch up and drops it again, draws its longbow and shoots; the
+// equipped goblin stows its scimitar, draws its shortbow and shoots back; the goblin's death drops its items and ends the
+// encounter (ammunition recovery).
+E2E run_e2e(Combat& c, CombatantId pc, CombatantId gob) {
+    const ItemDefTable& t = *c.item_defs();
+    auto inst_of = [&](CombatantId who, const char* id) -> uint32_t {
+        const auto* lo = c.loadout(who);
+        const uint32_t d = t.find(id)->id;
+        for (const auto* h : {&lo->view.main, &lo->view.off}) if (h->def == d && h->instance) return h->instance;
+        for (const auto& h : lo->view.carried) if (h.def == d) return h.instance;
+        for (const auto& g : c.state().ground_items) if (g.item.def == d) return g.item.instance;
+        return 0;
+    };
+    const uint32_t torch = inst_of(pc, "test.item.torch"), sword = inst_of(pc, "srd51.item.longsword");
+    const uint32_t bow = inst_of(pc, "srd51.item.longbow");
+    const uint32_t scim = inst_of(gob, "srd51.item.scimitar"), sbow = inst_of(gob, "srd51.item.shortbow");
+    uint8_t gob_bow_attack = 0;
+    for (std::size_t i = 0; i < rules5e::find(c.state(), gob)->attacks.size(); ++i)
+        if (rules5e::find(c.state(), gob)->attacks[i].id == "shortbow") gob_bow_attack = uint8_t(i);
+    auto must = [&](const rules5e::ActionRequest& q) { const auto r = c.submit(rules(q)); REQUIRE_MESSAGE(r.ok, r.error); };
+    int pc_turn = 0, gob_turn = 0;
+    for (int step = 0; step < 60 && !c.ended(); ++step) {
+        const CombatantId who = rules5e::current_actor(c.state());
+        const auto* k = rules5e::find(c.state(), who);
+        if (who == pc && k->hp > 0) {
+            if (pc_turn == 0) {
+                must(equip(pc, EquipOp::Drop, torch));
+                must(equip(pc, EquipOp::Stow, sword));
+                must(attack(pc, gob, 1));   // thrown javelin, drawn from the pack
+            } else if (pc_turn == 1) {
+                must(equip(pc, EquipOp::PickUp, torch, 2));
+                must(equip(pc, EquipOp::Drop, torch));
+                must(equip(pc, EquipOp::Draw, bow, 1));   // the action
+            } else {
+                must(attack(pc, gob, 2));
+            }
+            ++pc_turn;
+        } else if (who == gob && k->hp > 0) {
+            if (gob_turn == 0) {
+                must(equip(gob, EquipOp::Stow, scim));
+                must(equip(gob, EquipOp::Draw, sbow, 1));
+            } else {
+                must(attack(gob, pc, gob_bow_attack));
+            }
+            ++gob_turn;
+        }
+        if (!c.ended()) must({who, ActionKind::EndTurn});
+    }
+    E2E out;
+    out.hash = c.hash();
+    out.log_hash = c.log_hash();
+    out.events = event_stream_hash(c.events());
+    out.ended = c.ended();
+    out.ground = c.state().ground_items.size();
+    for (const auto& h : c.loadout(pc)->view.carried) if (h.def == t.find("test.item.arrows")->id) out.arrows = h.count;
+    return out;
+}
+}  // namespace
+
+TEST_CASE("equipment end-to-end: a scripted combat replays identically and matches pinned cross-platform hashes") {
+    ContentLibrary& l = library();
+    world::Chunk ch = arena(kKitted, 3);
+    ch.spawns[1].archetype = kGoblinKit;
+    ch.content_hash = world::compute_content_hash(ch);
+    const CombatantId pc = ch.spawns[0].stable_id, gob = ch.spawns[1].stable_id;
+    ecs::Registry reg;
+    std::string err;
+    auto c = Combat::create(reg, ch, l, 2026, CombatOptions{true}, &err);
+    REQUIRE_MESSAGE(c, err);
+    REQUIRE(c->loadout(gob));
+    const E2E a = run_e2e(*c, pc, gob);
+    REQUIRE(a.ended);
+    CHECK(rules5e::find(c->state(), gob)->dead);
+    CHECK(a.ground >= 4);   // the torch, the javelin, the goblin's scimitar and shortbow
+    int deaths = 0, thrown = 0;
+    for (const auto& e : c->events())
+        if (e.kind == SimEvent::Kind::ItemMoved) { deaths += e.rules.b == kItemDeathDrop; thrown += e.rules.b == kItemThrown; }
+    CHECK(deaths == 2);
+    CHECK(thrown == 1);
+    const auto lights = c->equipment_lights();
+    REQUIRE(lights.size() == 1);
+    CHECK(lights[0].lit);
+    CHECK(lights[0].holder_id == 0);
+    CHECK_FALSE(c->loadout(pc)->expended.empty());
+    CHECK(a.arrows == 6 - c->loadout(pc)->expended[0].count + rules5e::recovered_ammo(c->loadout(pc)->expended[0].count));
+
+    ecs::Registry rr;
+    auto b = replay(rr, ch, l, 2026, CombatOptions{true}, c->log(), &err);
+    REQUIRE_MESSAGE(b, err);
+    CHECK(b->hash() == a.hash);
+    CHECK(b->log_hash() == a.log_hash);
+    CHECK(event_stream_hash(b->events()) == a.events);
+    CHECK(b->events().size() == c->events().size());
+
+    MESSAGE("e2e hash=" << a.hash << " log_hash=" << a.log_hash << " events=" << a.events);
+    // Pinned (new test, not a golden re-pin): any platform / compiler divergence fails here.
+    CHECK(a.hash == 18080299159498595558ull);
+    CHECK(a.log_hash == 13146101177623128839ull);
+    CHECK(a.events == 12810335167693045063ull);
 }
