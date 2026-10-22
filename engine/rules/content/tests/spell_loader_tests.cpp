@@ -798,3 +798,33 @@ TEST_CASE("loader 7.2ze: modifier sign + applies_to rolls, apply_modifier save g
     j = blind; j["effects"][0]["choices"] = {"blinded", "warded"}; bad(j, "effect choices must be a list of 2..4 conditions");
     j = blind; j["effects"][0]["choices"] = {"blinded", "blinded"}; bad(j, "effect choices items must be unique");
 }
+
+TEST_CASE("loader 7.2zg: haste / slow kinds expand into a marker row plus AC, Dex save and speed rows") {
+    auto haste = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.haste","level":3,"name":"Haste",
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":30},"components":{"v":true,"s":true,"m":{"text":"licorice root"}},
+        "duration":{"kind":"minutes","amount":1,"concentration":true},"effects":[{"kind":"haste"}]})");
+    auto h = spell_from_json(haste); INFO(h.error); REQUIRE(h.def);
+    CHECK(h.def->kind == SpellEffectKind::ApplyModifier);
+    CHECK(h.def->modifier.stat == ModStat::Haste); CHECK_FALSE(h.def->has_modifier_save);
+    REQUIRE(h.def->extra_effects.size() == 3);
+    CHECK(h.def->extra_effects[0].modifier.stat == ModStat::Ac); CHECK(h.def->extra_effects[0].modifier.bonus == 2);
+    CHECK(h.def->extra_effects[1].modifier.stat == ModStat::Save); CHECK(h.def->extra_effects[1].modifier.ability == Ability::Dex);
+    CHECK(h.def->extra_effects[1].modifier.mode == RollMode::Advantage);
+    CHECK(h.def->extra_effects[2].modifier.stat == ModStat::Speed); CHECK(h.def->extra_effects[2].modifier.speed_num == 2);
+    for (const auto& x : h.def->extra_effects) { CHECK(x.affected_only); CHECK(x.modifier.concentration); CHECK(x.modifier.id != h.def->modifier.id); }
+    auto slow = haste; slow["id"] = "srd51.spell.slow"; slow["name"] = "Slow";
+    slow["effects"] = eng::assets::Json::parse(R"([{"kind":"slow","ability":"wis"}])");
+    auto w = spell_from_json(slow); INFO(w.error); REQUIRE(w.def);
+    CHECK(w.def->modifier.stat == ModStat::Slow); CHECK(w.def->has_modifier_save); CHECK(w.def->modifier_save == Ability::Wis);
+    CHECK(w.def->modifier.repeat_save == 1); CHECK(w.def->modifier.repeat_ability == Ability::Wis);
+    REQUIRE(w.def->extra_effects.size() == 3);
+    CHECK(w.def->extra_effects[0].modifier.bonus == -2); CHECK(w.def->extra_effects[1].modifier.bonus == -2);
+    CHECK(w.def->extra_effects[2].modifier.speed_den == 2);
+    auto bad = [](eng::assets::Json x, const std::string& want) {
+        auto r = spell_from_json(x); INFO(want); INFO(r.error); CHECK_FALSE(r.def); CHECK(r.error == want);
+    };
+    auto j = haste; j["duration"]["concentration"] = false; bad(j, "effect haste needs concentration");
+    j = slow; j["duration"]["concentration"] = false; bad(j, "effect slow needs concentration");
+    j = slow; j["effects"][0].erase("ability"); bad(j, "effect slow needs ability");
+    j = haste; j["effects"][0]["ability"] = "wis"; bad(j, "effect haste takes no ability");
+}

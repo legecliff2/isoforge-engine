@@ -1,0 +1,34 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.a",
+  "name": "Haste",
+  "level": 3,
+  "school": "transmutation",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "classes": [
+    "wizard"
+  ],
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 30
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1
+  },
+  "effects": [
+    {
+      "kind": "haste"
+    }
+  ]
+}

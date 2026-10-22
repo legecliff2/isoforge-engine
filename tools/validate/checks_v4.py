@@ -1499,3 +1499,24 @@ def check_race_senses(doc: dict) -> list[str]:
         return [f"race '{race}': senses.darkvision {have} not allowed (the race has no Darkvision in SRD 5.1)"]
     return []
 
+
+
+# ---- VERSION_BUMP_BATCH 7.2zg: the spell@1 key names of this batch, in one place (rules5e_content spell_keys_zg.hpp) ----------
+ZG_KEYS = {"haste": "haste", "slow": "slow", "summon_weapon": "summon_weapon", "temp_hp": "temp_hp", "dice": "dice",
+           "per_slot_above": "per_slot_above", "ability": "ability", "per_turn": "per_turn",
+           "condition_immunity": "condition_immunity", "on_miss": "on_miss", "damaged": "damaged",
+           "damage_type_choices": "damage_type_choices", "exempt_senses": "exempt_senses", "outlined": "outlined",
+           "shake_awake": "shake_awake"}
+
+
+def check_spell_batch_zg(doc: dict) -> list[str]:
+    """7.2zg spell@1 cross-field rules (spell_loader.cpp, same wording and order)."""
+    errs: list[str] = []
+    effs = [e for e in (doc.get("effects") or []) if isinstance(e, dict)]
+    if not effs:
+        return errs
+    e = effs[0]
+    du = doc.get("duration") if isinstance(doc.get("duration"), dict) else {}
+    if e.get("kind") in (ZG_KEYS["haste"], ZG_KEYS["slow"]) and du.get("concentration") is not True:
+        errs.append(f"effect {e['kind']} needs concentration")
+    return errs
