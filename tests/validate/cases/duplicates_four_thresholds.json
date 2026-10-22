@@ -1,0 +1,44 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.a",
+  "name": "Mirror Image",
+  "level": 2,
+  "school": "illusion",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "classes": [
+    "wizard"
+  ],
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "self"
+  },
+  "duration": {
+    "kind": "rounds",
+    "amount": 10
+  },
+  "effects": [
+    {
+      "kind": "duplicates",
+      "count": 3,
+      "thresholds": [
+        11,
+        8,
+        6,
+        4
+      ],
+      "ac": {
+        "base": 10,
+        "ability": "dex"
+      }
+    }
+  ]
+}
