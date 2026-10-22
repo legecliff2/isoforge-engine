@@ -1,6 +1,37 @@
 {
  "_source": "5e-bits/5e-database commit a6212be, src/2014/en/5e-SRD-Spells.json (fields copied verbatim; damage_type / dc ability / school / classes flattened to their index)",
  "spells": {
+  "acid-arrow": {
+   "name": "Acid Arrow",
+   "level": 2,
+   "range": "90 feet",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Instantaneous",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "evocation",
+   "classes": [
+    "wizard"
+   ],
+   "material": "Powdered rhubarb leaf and an adder's stomach.",
+   "attack_type": "ranged",
+   "damage_type": "acid",
+   "damage_at": {
+    "2": "4d4",
+    "3": "5d4",
+    "4": "6d4",
+    "5": "7d4",
+    "6": "8d4",
+    "7": "9d4",
+    "8": "10d4",
+    "9": "11d4"
+   }
+  },
   "aid": {
    "name": "Aid",
    "level": 2,
@@ -231,6 +262,26 @@
     "1": "1d4"
    }
   },
+  "false-life": {
+   "name": "False Life",
+   "level": 1,
+   "range": "Self",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "1 hour",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "necromancy",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ],
+   "material": "A small amount of alcohol or distilled spirits."
+  },
   "fear": {
    "name": "Fear",
    "level": 3,
@@ -343,6 +394,44 @@
     "cleric"
    ],
    "attack_type": "ranged"
+  },
+  "haste": {
+   "name": "Haste",
+   "level": 3,
+   "range": "30 feet",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 minute",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "transmutation",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ],
+   "material": "A shaving of licorice root."
+  },
+  "heroism": {
+   "name": "Heroism",
+   "level": 1,
+   "range": "Touch",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 minute",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "enchantment",
+   "classes": [
+    "bard",
+    "paladin"
+   ]
   },
   "hideous-laughter": {
    "name": "Hideous Laughter",
@@ -815,6 +904,30 @@
     "size": 20
    }
   },
+  "slow": {
+   "name": "Slow",
+   "level": 3,
+   "range": "120 feet",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 minute",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "transmutation",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ],
+   "material": "A drop of molasses.",
+   "area_of_effect": {
+    "type": "cube",
+    "size": 40
+   }
+  },
   "spike-growth": {
    "name": "Spike Growth",
    "level": 2,
@@ -857,6 +970,23 @@
     "cleric"
    ],
    "material": "A holy symbol."
+  },
+  "spiritual-weapon": {
+   "name": "Spiritual Weapon",
+   "level": 2,
+   "range": "60 feet",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "1 minute",
+   "concentration": false,
+   "casting_time": "1 bonus action",
+   "school": "evocation",
+   "classes": [
+    "cleric"
+   ]
   },
   "stinking-cloud": {
    "name": "Stinking Cloud",
