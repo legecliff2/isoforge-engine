@@ -1717,6 +1717,54 @@
    "classes": [
     "wizard"
    ]
+  },
+  "hellish-rebuke": {
+   "name": "Hellish Rebuke",
+   "level": 1,
+   "school": "evocation",
+   "classes": [
+    "warlock"
+   ]
+  },
+  "protection-from-energy": {
+   "name": "Protection From Energy",
+   "level": 3,
+   "school": "abjuration",
+   "classes": [
+    "cleric",
+    "druid",
+    "ranger",
+    "sorcerer",
+    "wizard"
+   ]
+  },
+  "blur": {
+   "name": "Blur",
+   "level": 2,
+   "school": "illusion",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ]
+  },
+  "faerie-fire": {
+   "name": "Faerie Fire",
+   "level": 1,
+   "school": "evocation",
+   "classes": [
+    "druid"
+   ]
+  },
+  "hypnotic-pattern": {
+   "name": "Hypnotic Pattern",
+   "level": 3,
+   "school": "illusion",
+   "classes": [
+    "bard",
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ]
   }
  }
 }

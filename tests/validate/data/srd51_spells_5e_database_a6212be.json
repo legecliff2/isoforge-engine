@@ -139,6 +139,23 @@
     "success": "none"
    }
   },
+  "blur": {
+   "name": "Blur",
+   "level": 2,
+   "range": "Self",
+   "components": [
+    "V"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 minute",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "illusion",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ]
+  },
   "burning-hands": {
    "name": "Burning Hands",
    "level": 1,
@@ -260,6 +277,30 @@
    "damage_type": "radiant",
    "damage_at": {
     "1": "1d4"
+   }
+  },
+  "faerie-fire": {
+   "name": "Faerie Fire",
+   "level": 1,
+   "range": "60 feet",
+   "components": [
+    "V"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 minute",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "evocation",
+   "classes": [
+    "druid"
+   ],
+   "dc": {
+    "ability": "dex",
+    "success": "none"
+   },
+   "area_of_effect": {
+    "type": "cube",
+    "size": 20
    }
   },
   "false-life": {
@@ -415,6 +456,39 @@
    ],
    "material": "A shaving of licorice root."
   },
+  "hellish-rebuke": {
+   "name": "Hellish Rebuke",
+   "level": 1,
+   "range": "60 feet",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Instantaneous",
+   "concentration": false,
+   "casting_time": "1 reaction",
+   "school": "evocation",
+   "classes": [
+    "warlock"
+   ],
+   "dc": {
+    "ability": "dex",
+    "success": "half"
+   },
+   "damage_type": "fire",
+   "damage_at": {
+    "1": "2d10",
+    "2": "3d10",
+    "3": "4d10",
+    "4": "5d10",
+    "5": "6d10",
+    "6": "7d10",
+    "7": "8d10",
+    "8": "9d10",
+    "9": "10d10"
+   }
+  },
   "heroism": {
    "name": "Heroism",
    "level": 1,
@@ -472,6 +546,31 @@
    "classes": [
     "ranger"
    ]
+  },
+  "hypnotic-pattern": {
+   "name": "Hypnotic Pattern",
+   "level": 3,
+   "range": "120 feet",
+   "components": [
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 minute",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "illusion",
+   "classes": [
+    "bard",
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ],
+   "material": "A glowing stick of incense or a crystal vial filled with phosphorescent material.",
+   "dc": {
+    "ability": "wis",
+    "success": "none"
+   }
   },
   "invisibility": {
    "name": "Invisibility",
@@ -666,6 +765,27 @@
     "type": "cylinder",
     "size": 5
    }
+  },
+  "protection-from-energy": {
+   "name": "Protection From Energy",
+   "level": 3,
+   "range": "Touch",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 hour",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "abjuration",
+   "classes": [
+    "cleric",
+    "druid",
+    "ranger",
+    "sorcerer",
+    "wizard"
+   ]
   },
   "protection-from-evil-and-good": {
    "name": "Protection from Evil and Good",
