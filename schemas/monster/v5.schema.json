@@ -97,7 +97,37 @@
     "traits": {
       "type": "array",
       "items": {
-        "$ref": "../common/v2.schema.json#/$defs/trait_active"
+        "allOf": [
+          {
+            "$ref": "../common/v2.schema.json#/$defs/trait_active"
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "weapon_extra_dice"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/weapon_extra_dice_effect"
+                }
+              }
+            }
+          }
+        ]
       },
       "description": "Traits. Effects are mechanically active; never bake their numbers into actions or other stats."
     },
@@ -1085,6 +1115,30 @@
           }
         }
       ]
+    },
+    "weapon_extra_dice_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "dice"
+      ],
+      "description": "monster@5-local trait kind (EQUIPMENT 5.3, Rules #247 brute_dice; common@2 unchanged): a weapon deals `dice` extra dice of its own damage die. Read only by the derivation (derive: true). SRD Bugbear Brute: {kind weapon_extra_dice, dice 1, melee_only true}.",
+      "properties": {
+        "kind": {
+          "const": "weapon_extra_dice"
+        },
+        "dice": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "melee_only": {
+          "type": "boolean",
+          "default": true,
+          "description": "Melee uses only; a thrown use is ranged and gets no extra dice."
+        }
+      }
     }
   }
 }
