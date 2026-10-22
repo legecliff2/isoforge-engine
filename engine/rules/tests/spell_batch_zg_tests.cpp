@@ -216,3 +216,33 @@ TEST_CASE("7.2zg trigger damaged: no offer when the caster cannot see the damage
         CHECK(mut(s, 1).reaction_used == (variant == 2));
     }
 }
+
+TEST_CASE("7.2zg damage_type_choices: Protection from Energy grants resistance to the chosen type only") {
+    const uint32_t kPfe = spell_id_of("test.zg.protection_from_energy");
+    auto h = spell_hooks();
+    auto book = std::make_shared<SpellBook>(*h.spells);
+    SpellDef d; d.id = kPfe; d.content_id = "test.zg.protection_from_energy"; d.level = 3; d.range_ft = 5; d.concentration = true;
+    d.kind = SpellEffectKind::ApplyModifier; d.modifier.id = spell_id_of("test.zg.protection_from_energy#modifier");
+    d.modifier.source = kPfe; d.modifier.stat = ModStat::Resistance; d.modifier.damage_type = DamageType::Acid;
+    d.modifier.has_damage_type = true; d.modifier.concentration = true;
+    d.damage_choices = {DamageType::Acid, DamageType::Cold, DamageType::Fire, DamageType::Lightning, DamageType::Thunder};
+    d.duration = SpellDuration::Hours; d.duration_amount = 1;
+    book->add(d);
+    h.spells = book;
+    auto w = wizard(1); w.spells_known.push_back(kPfe); w.spell_slots_max = {0, 4, 3, 3, 0, 0, 0, 0, 0, 0}; w.spell_slots = w.spell_slots_max;
+    never_react(w);
+    auto m = monster(2); never_react(m);
+    auto s = begin_encounter({w, m}, 7, nullptr, h);
+    end_turns_until(s, 1);
+    auto none = step(s, cast(1, kPfe, 1, 3));
+    CHECK_FALSE(none.ok); CHECK(none.error == "choose a damage type");
+    auto req = cast(1, kPfe, 1, 3); req.damage_choice = 3;   // fire
+    auto r = step(s, req);
+    REQUIRE(r.ok);
+    int fire = 0, other = 0;
+    for (const auto& am : s.modifiers)
+        if (am.target == 1 && am.spec.stat == ModStat::Resistance) (am.spec.damage_type == DamageType::Fire ? fire : other)++;
+    CHECK(fire == 1); CHECK(other == 0);
+    CHECK((mut(s, 1).mod_resist & (1u << unsigned(DamageType::Fire))) != 0);
+    CHECK((mut(s, 1).mod_resist & (1u << unsigned(DamageType::Acid))) == 0);
+}
