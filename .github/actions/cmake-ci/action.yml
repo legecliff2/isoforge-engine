@@ -61,8 +61,18 @@ runs:
           echo "CCACHE_MAXSIZE=1G" >> "$GITHUB_ENV"
           echo "CCACHE_BASEDIR=${{ github.workspace }}" >> "$GITHUB_ENV"
           echo "CCACHE_COMPRESS=true" >> "$GITHUB_ENV"
-          # SDL3 builds with a precompiled header; without this ccache refuses those objects.
+          # The ci presets disable PCH (CMAKE_DISABLE_PRECOMPILE_HEADERS); kept as a safety net.
           echo "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime" >> "$GITHUB_ENV"
+        fi
+
+    - name: Check compiler cache tool
+      shell: bash
+      run: |
+        if ! command -v "$CC_LAUNCHER" >/dev/null; then
+          echo "::warning::$CC_LAUNCHER not found; building without a compiler cache"
+          echo "CC_LAUNCHER=" >> "$GITHUB_ENV"
+        else
+          "$CC_LAUNCHER" --version | head -1
         fi
 
     - name: Restore compiler cache
@@ -77,9 +87,17 @@ runs:
     - name: Configure
       shell: bash
       run: |
+        extra=()
+        if [ "$RUNNER_OS" = Windows ]; then
+          # sccache can't cache /Zi (shared PDB): use /Z7 in configs that have debug info, as CMake's
+          # default does for ProgramDatabase (Release stays without debug info). CMP0141 NEW is the
+          # default in this project (cmake_minimum_required 3.28); the policy default also covers
+          # FetchContent subprojects that declare an older minimum (SDL3 3.16, luau 3.10, doctest 3.0).
+          extra+=('-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>'
+                  -DCMAKE_POLICY_DEFAULT_CMP0141=NEW)
+        fi
         cmake --preset "${{ inputs.preset }}" -DPython3_EXECUTABLE="${{ env.pythonLocation }}/${{ runner.os == 'Windows' && 'python.exe' || 'bin/python' }}" \
-          -DCMAKE_C_COMPILER_LAUNCHER="$CC_LAUNCHER" -DCMAKE_CXX_COMPILER_LAUNCHER="$CC_LAUNCHER" \
-          ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW' || '' }}
+          -DCMAKE_C_COMPILER_LAUNCHER="$CC_LAUNCHER" -DCMAKE_CXX_COMPILER_LAUNCHER="$CC_LAUNCHER" "${extra[@]}"
 
     # ARCHITECTURE.md §2.2: module dependency graph (rule 1, 2) + SDL/src/backend include lint
     # (rules 3-5). Configure-time data only, so run before the build to fail fast.
@@ -103,4 +121,8 @@ runs:
       if: always()
       shell: bash
       run: |
-        if [ "$CC_LAUNCHER" = sccache ]; then sccache --show-stats || true; else ccache -s || true; fi
+        case "$CC_LAUNCHER" in
+          sccache) sccache --show-stats || true ;;
+          ccache) ccache -s || true ;;
+          *) echo "no compiler cache in use" ;;
+        esac

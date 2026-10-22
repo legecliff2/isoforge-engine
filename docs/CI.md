@@ -13,11 +13,15 @@ Workflow: `.github/workflows/ci.yml`; every OS job runs the composite action
 | macOS AppleClang Debug | `ci-mac-clang` | nightly 07:17 UTC, manual dispatch, PRs touching platform/render/determinism paths |
 | ci-required | – | always; the single required check. `success` or `skipped` needs pass, anything else fails |
 
-To run Windows Release on a PR, add the `ci-windows-release` label and then push or re-run the
-workflow (adding a label alone does not trigger CI).
+To run Windows Release on a PR, add the `ci-windows-release` label and then push a commit (or close
+and reopen the PR). Adding a label alone does not trigger CI, and "Re-run jobs" replays the original
+event payload, so it does not see a label added afterwards.
+
+`python3 tools/ci_conditions_test.py` evaluates the real `if:` conditions and the ci-required gate for
+PR (with/without the label, docs-only, mac paths), push, schedule and dispatch.
 
 Minutes savers: ccache (Linux/macOS) / sccache (Windows, with `/Z7` embedded debug info) cached with
-`actions/cache` per OS + preset, keyed on `cmake/Dependencies.cmake` (`CCACHE_SLOPPINESS` lets ccache cache SDL3's precompiled-header objects, and the `ci` presets set `CMAKE_CXX_SCAN_FOR_MODULES=OFF` because GCC's `-fmodules-ts` makes every C++ object uncacheable; the project uses no C++ modules); `ctest --parallel 4`; the
+`actions/cache` per OS + preset, keyed on `cmake/Dependencies.cmake` (the `ci` presets set `CMAKE_DISABLE_PRECOMPILE_HEADERS=ON` because SDL3's precompiled header defeats ccache with Clang and sccache with MSVC `/Yu`, and `CMAKE_CXX_SCAN_FOR_MODULES=OFF` because GCC's `-fmodules-ts` makes every C++ object uncacheable; the project uses no C++ modules); `ctest --parallel 4`; the
 `python_only` label marks the pure-Python validator tests (no compiled code), which only the Debug
 jobs run. `content_validate` itself runs the compiled `script_check` and runs in every job.
 

@@ -4,7 +4,8 @@ name: CI
 # - Linux GCC Debug, Linux Clang Release, Windows MSVC Debug: every PR and every push to main
 #   (skipped for docs-only changes). Windows minutes bill at 2x Linux.
 # - Windows MSVC Release (the slowest job, ~30-46 min x 2): every code push to main, manual
-#   dispatch, and PRs carrying the `ci-windows-release` label (add the label, then push or re-run;
+#   dispatch, and PRs carrying the `ci-windows-release` label (add the label, then push a commit
+#   or close/reopen the PR; "Re-run jobs" reuses the old event payload and won't see a new label;
 #   `labeled` is deliberately not a trigger so unrelated labels don't restart CI). Not on ordinary
 #   PRs; Windows Debug still builds and tests every PR. Every main commit is covered by the push
 #   run, so it is not added to the nightly schedule.
