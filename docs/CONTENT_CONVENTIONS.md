@@ -620,3 +620,21 @@ The validator ties the race string to Darkvision (character@2+, errors):
 
 Other race strings are not checked. The level-1 hit point check adds SRD Dwarven Toughness (+1 per level) for `hill_dwarf`. Sample PCs: `srd51.character.sample_hill_dwarf_cleric_1`, `sample_high_elf_wizard_1`, `sample_tiefling_warlock_1` (`characters/sample_*.json`).
 
+
+## 13. Light gear (item@2 category `gear`, docs/proposals/EQUIPMENT.md 6.2)
+
+srd51.core carries the SRD 5.1 light sources as item@2 `gear` (5e-database a6212be, costs in cp, weights in oz, descriptions verbatim):
+
+| Item | `light` | Notes |
+|---|---|---|
+| `srd51.item.torch` | 20 / 20 radius, 600 rounds, no fuel (consumed) | `torch_attack {damage [{flat 1, fire}], requires_lit}` |
+| `srd51.item.candle` | 5 / 5 radius, 600 rounds, no fuel | |
+| `srd51.item.lamp` | 15 / 30 radius, 3600 rounds, fuel `srd51.item.oil_flask` | |
+| `srd51.item.lantern_hooded` | 30 / 30 radius, 3600 rounds, oil | state `hooded` (bright 0, dim 5), `toggle: action` |
+| `srd51.item.lantern_bullseye` | 60 / 60 cone (length = bright_ft), 3600 rounds, oil | |
+| `srd51.item.oil_flask` | none | the fuel; splash / thrown / pooled-fire effects are not modelled yet |
+| `srd51.item.tinderbox` | none | |
+
+- `dim_ft` is additional beyond `bright_ft`. 1 hour = 600 rounds, and 6 hours per flask = 3600.
+- Every light source has `lit_by_default: false` and `hands: 1`. **Lighting takes an action** (Tinderbox: "Using it to light a torch--or anything else with abundant, exposed fuel--takes an action").
+- **Inert until equipment produces light (after #244).** The sim does not load item documents. Listing these items in `equipment[]` changes no fight, and Session `carried_lights` / `pc_torches` remain the light producers. Tests: `tests/validate/test_srd51_equipment.py` (`LIGHT_GEAR`).
