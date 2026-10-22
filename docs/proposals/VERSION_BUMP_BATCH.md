@@ -2568,6 +2568,8 @@ Additive (11 spells; key names frozen by T&C, all defined once in `engine/rules/
 
 - **Group 4 — Acid Arrow (`on_miss`).** `spell_attack` takes `"on_miss": "half"` (first effect only): a miss deals half the freshly rolled initial damage (rounded down); a miss against a Mirror Image duplicate deals nothing. Riders with `applies_to: affected` (the 2d4 `delayed_damage` at the end of the target's next turn) apply on a hit only. Strings: `effect on_miss must be half`, `effects[<i>]: on_miss is only allowed on the first effect`. No new events; no tags.
 
+- **Group 5 — Hellish Rebuke (`casting_time.trigger.kind: damaged`).** A reaction spell offered in the existing Damaged window (no new window, no new event) to the creature that was damaged, when the damager is a living other creature the caster can see (`requires_sight` is required; rules5e::sight, no sight hook = sees) and within the spell's range (EncounterHooks::sight_facts distance; no hook = in range). One option per available slot (Auto takes the lowest). Taking it spends the reaction and the slot, emits SpellCast (actor caster, target damager, a spell, b slot), opens the counter window, resolves the save effect against the damager after the damage lands (the reactor must still stand), then SpellResolved / SpellCountered. The effect must be `save` and the range `ranged`. Strings: `casting_time.trigger.kind must be being_hit, spell_cast or damaged` (replaces the two-kind wording), `casting_time.trigger.kind damaged needs a save effect`, `casting_time.trigger.kind damaged needs requires_sight`, `casting_time.trigger.kind damaged needs a ranged range`.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
