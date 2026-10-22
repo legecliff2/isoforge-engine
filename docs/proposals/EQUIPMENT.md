@@ -338,6 +338,12 @@ table today.
   (`str` or `dex`; the Wolf, Giant Spider, Snake, Swarm and Medusa's snake hair use Dex). `damage_ability: "none"` for blocks
   that print no modifier (Gelatinous Cube *Pseudopod* 3d6).
 
+- Action `use` (monster@5 and character@5 actions, T&C #252 / #253): `one_hand` | `two_hands` | `thrown` | `off_hand`
+  (exactly #252's schema enum; default `one_hand`). `two_hands` = the versatile die or a two-handed melee weapon, `thrown` = a
+  thrown use of a melee weapon. When present, the derivation uses it as authored; when absent it is `one_hand`. It is never
+  inferred from the action id or the printed dice. Rules: `MonsterAttackSpec::use` / `has_use`, `weapon_use_from_string`,
+  `weapon_use_name`.
+
 ### 5.4 Monster-local weapons
 
 A stat-block weapon with no SRD item (Lizardfolk *Heavy Club* 1d6, *Spiked Shield* 1d6; Grimlock *Spiked Bone Club* 1d4 + 1d4
@@ -612,6 +618,7 @@ Headers: `rules5e/armor.hpp` (extended), `rules5e/item.hpp` (new, POD data + the
 | `equip_legal(state, req) -> EquipCost {Free / Interaction / Action / Refused, refusal}`, `EquipOp` | step (wired), EC | `ActionRequest` appended `equip_op, equip_item, equip_hand, equip_to, equip_in_reach` (on `UseObject`). Interaction falls back to Action (Use an Object) once `interaction_used`. `equip_item` is always an instance id: held / carried instances resolve via `LoadoutView` then `item_def(HeldItem::def)`, PickUp via `ground_item_def`. Hands needed = `ItemDef::hands`, at least 2 for a `two_handed` weapon; applies to Draw, PickUp, DonShield and the HandOver recipient. Refusals: `equip: equipment play is off`, `equip: unknown equip op`, `equip: not your turn`, `equip: the creature cannot act`, `equip: armor cannot be changed in combat`, `equip: no object interaction left`, `equip: the item is already in hand`, `equip: the item is not carried`, `equip: the item is not in hand`, `equip: use don_shield for a shield`, `equip: use doff_shield for a shield`, `equip: no free hand`, `equip: the item is already carried`, `equip: the item is out of reach`, `equip: not a shield`, `equip: a shield is already wielded`, `equip: no action left`, `equip: bad recipient`, `equip: the recipient has no free hand`. In step: Refused fails with the string; no `apply_equip` hook fails `equip: equipment play is off`; Action cost spends the action, then `apply_equip` runs (Interaction / Free bookkeeping is EC's). |
 | `equip_legal_actions(state)` | `legal_actions` (wired) | Draw, Stow, Drop, DonShield, DoffShield for the current actor, order op / instance / hand, appended after every existing entry. PickUp / HandOver need positions: EC lists them. |
 | `hands_needed(const ItemDef*)` | EC, AI | `ItemDef::hands`, at least 2 for a `two_handed` weapon; nullptr = 1. The hands rule used by every equip check. |
+| `weapon_use_from_string(s)`, `weapon_use_name(use)` | EC loader, T&C validator | The action `use` enum spelled as #252: `one_hand`, `two_hands`, `thrown`, `off_hand`; anything else is nullopt. `MonsterAttackSpec::has_use` false = absent, so derive uses `one_hand` (5.3). |
 | `recovered_ammo(expended)` | EC encounter end | `floor(expended / 2)`, 0 for expended <= 0; pure (2.5.1). |
 | `armor_change_rounds(category, don, helper)` | EC exploration layer | 10 / 10, 50 / 10, 100 / 50 rounds; a helper halves. |
 | `derive_monster(MonsterSpec) -> {pb, ac, attacks, errors}`, `proficiency_for_cr`, `format_dice`, `hands_overfull_error(id, held, hands)`, `hand_slot_error(id, hand, n)` | EC loader, T&C validator (same strings) | `MonsterSpec` / `MonsterAttackSpec` carry the 5.3..5.5 fields plus `hands` (-1 = absent) and `held`; `brute_dice` is the monster@5-local `weapon_extra_dice` trait. `errors` are the 5.6 strings in check order (PB, hands, AC, attacks); whitespace-only reasons count as missing. |

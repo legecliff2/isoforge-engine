@@ -413,3 +413,22 @@ TEST_CASE("ground_item_def receives the state being evaluated (AI lookahead copi
     CHECK(seen == &copy);
     equip_legal(s, pick); CHECK(seen == &s);
 }
+
+TEST_CASE("derive_monster: the action `use` (#252 spelling) is used as authored; absent = one_hand") {
+    CHECK(weapon_use_from_string("one_hand") == WeaponUse::OneHand);
+    CHECK(weapon_use_from_string("two_hands") == WeaponUse::TwoHands);
+    CHECK(weapon_use_from_string("thrown") == WeaponUse::Thrown);
+    CHECK(weapon_use_from_string("off_hand") == WeaponUse::OffHand);
+    CHECK_FALSE(weapon_use_from_string("two_hand").has_value());
+    CHECK_FALSE(weapon_use_from_string("Thrown").has_value());
+    for (auto u : {WeaponUse::OneHand, WeaponUse::TwoHands, WeaponUse::Thrown, WeaponUse::OffHand})
+        CHECK(weapon_use_from_string(weapon_use_name(u)) == u);
+    auto ls = weapon("longsword", {1, 8, 0}, kWeaponVersatile); ls.versatile_dice = {1, 10, 0};
+    MonsterSpec k; k.id = "test.knight"; k.abilities = scores(16, 10); k.cr_num = 1; k.printed_ac = 10;
+    k.attacks = {{"longsword", ls, WeaponUse::TwoHands, {}, false, {}, 5, {1, 10, 3}}};
+    CHECK(derive_monster(k).errors.empty());                 // two_hands: the versatile die
+    k.attacks[0].has_use = false;                            // `use` absent: one_hand, not inferred from the printed die
+    CHECK(derive_monster(k).errors == std::vector<std::string>{"test.knight.longsword: derived damage 1d8+3 != printed 1d10+3"});
+    k.attacks[0].printed_damage = {1, 8, 3};
+    CHECK(derive_monster(k).errors.empty());
+}
