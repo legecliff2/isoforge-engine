@@ -6,10 +6,14 @@
 namespace eng::iso2d {
 
 GlowPalette::GlowPalette()
-    : GlowPalette({{"torch", {Color::rgba8(255, 170, 70, 170), 1.f}},
-                   {"brazier", {Color::rgba8(255, 150, 60, 180), 1.f}},
-                   {"lantern", {Color::rgba8(255, 215, 140, 160), 0.9f}},
-                   {"candle", {Color::rgba8(255, 200, 120, 140), 0.6f}}},
+    // Matched in order against the preset's last segment (srd51.core.light.<name>): specific names first.
+    : GlowPalette({{"torch", {Color::rgba8(255, 170, 70, 170), 1.f, GlowFlicker::Torch}},
+                   {"brazier", {Color::rgba8(255, 150, 60, 180), 1.f, GlowFlicker::Torch}},
+                   {"lantern_hooded", {Color::rgba8(255, 210, 130, 160), 0.9f, GlowFlicker::None}},
+                   {"lantern_bullseye", {Color::rgba8(255, 225, 160, 170), 1.f, GlowFlicker::None}},
+                   {"lantern", {Color::rgba8(255, 215, 140, 160), 0.9f, GlowFlicker::None}},
+                   {"lamp", {Color::rgba8(255, 195, 110, 150), 0.75f, GlowFlicker::Candle}},
+                   {"candle", {Color::rgba8(255, 200, 120, 140), 0.6f, GlowFlicker::Candle}}},
                   {Color::rgba8(255, 230, 160, 150), 1.f}, {Color::rgba8(190, 210, 255, 170), 1.f}) {}
 
 GlowPalette::GlowPalette(std::vector<Entry> entries, GlowStyle fallback, GlowStyle magical_fallback)

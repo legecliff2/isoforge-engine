@@ -49,9 +49,12 @@ fs::path make_pack(const std::string& tag, const char* light_item) {
                                           assets::Json{{"item", light_item}, {"equipped", true}}});
     std::ofstream(pack / "characters/fighter_1.json") << f.dump(2);
     fs::create_directories(pack / "items");
+    // item@2 gear light (schema-valid): its light.preset names the lantern def's preset; its visual styles it.
     std::ofstream(pack / "items/lantern_style.json")
-        << R"({"$schema": "item@1", "id": "test.equip.item.lantern_style", "name": "Lantern style", "category": "valuable",
-              "light": {"preset": ")" << kLanternPreset << R"("},
+        << R"({"$schema": "item@2", "id": "test.equip.item.lantern_style", "name": "Blue lantern", "category": "gear",
+              "cost_cp": 500, "weight_oz": 32, "hands": 1,
+              "light": {"bright_ft": 30, "dim_ft": 30, "shape": "radius", "lit_by_default": false, "preset": ")"
+        << kLanternPreset << R"("},
               "visual": {"color": {"r": 51, "g": 102, "b": 255}, "intensity": 400, "flicker": "candle"}})";
     return root;
 }
