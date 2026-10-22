@@ -88,7 +88,7 @@ Three non-human SRD sample PCs sit beside them (`characters/sample_*.json`: hill
 | Font of Inspiration (Bard) | 5 | the pool's `recharge: short_rest`; descriptive feature, no `effect` | yes (pool recharge) |
 | Expertise, Bonus Proficiencies (Bard, Lore) | 3-5 | baked into `skills` (Performance and Persuasion doubled; Arcana, Insight, Perception added); descriptive features, no `effect` | yes (static numbers) |
 | Bard College | 3 | `classes[0].subclass` = `lore` | descriptive |
-| Spellcasting (Druid) | 1-5 | `spellcasting {ability wis, caster_level, slots, spells}`: Produce Flame, Poison Spray; Cure Wounds, Healing Word, Thunderwave; + Barkskin, Hold Person, Lesser Restoration at 3; + Dispel Magic at 5 (every shipped druid spell up to the top slot; the list doubles as the prepared list, within Wis modifier + level) | yes |
+| Spellcasting (Druid) | 1-5 | `spellcasting {ability wis, caster_level, slots, spells}`: Produce Flame, Poison Spray; Cure Wounds, Faerie Fire, Healing Word, Thunderwave; + Barkskin, Hold Person, Lesser Restoration at 3; + Dispel Magic, Protection from Energy at 5 (every shipped druid spell up to the top slot; the list doubles as the prepared list, within Wis modifier + level) | yes |
 | Circle Spells (Land: Mountain) | 3-5 | always prepared, in `spellcasting.spells`: Spike Growth (3), Lightning Bolt (5; not a druid spell, allowed through `subclass_spells`). Mountain is chosen because it gives the most shipped spells that add something (Arctic's two shipped ones are druid spells anyway; Desert, Coast, Forest and Swamp give one; Grassland none). Spider Climb (3) and Meld into Stone (5) are not shipped (see the spells section). Descriptive feature, no `effect` | yes (spell list) |
 | Wild Shape (Druid) | 2-5 | `wild_shape {pool wild_shape, forms [jackal, wolf, boar, axe_beak, giant_poisonous_snake, black_bear], max_cr_by_level [{2, 1/4}, {4, 1/2}]}` (R-G12, EC #176) + `resources[]` `wild_shape {max 2, recharge short_rest}`. `no_fly_below` 8 / `no_swim_below` 4 are left at the engine defaults (= SRD). Forms: every shipped beast of CR 1/2 or below without a fly speed; the engine refuses the giant poisonous snake (swim 30, #184) and the black bear (CR 1/2) below 4th. Not listed: the swarm of rats (a swarm of Tiny beasts, not a single beast you have seen), the dire wolf and giant spider (CR 1: from 8th). Duration (half druid level in hours), revert at 0 HP and no casting in beast form are engine-side | yes |
 | Natural Recovery (Land) | 2-5 | `slot_recovery {class druid, max_slot_level 5, uses 1}` (sim #148); budget ceil(druid level / 2) derived | yes |
@@ -189,7 +189,7 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 |---|---|---|
 | Cleric | 1-2 | Sacred Flame; Bless, Cure Wounds (domain), Healing Word, Inflict Wounds, Sanctuary |
 | Cleric | 3-4 | + Hold Person, Lesser Restoration, Spiritual Weapon (domain) |
-| Cleric | 5 | + Mass Healing Word, Revivify (domain) |
+| Cleric | 5 | + Mass Healing Word, Protection from Energy, Revivify (domain) |
 | Paladin | 2 | Cure Wounds, Heroism, Shield of Faith |
 | Paladin | 3-4 | + Protection from Evil and Good, Sanctuary (oath) |
 | Paladin | 5 | + Lesser Restoration (oath), Magic Weapon |
@@ -198,16 +198,17 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 | Wizard | 1-2 | Acid Splash, Fire Bolt, Poison Spray; False Life, Magic Missile, Shield |
 | Wizard | 3-4 | + Hold Person, Magic Weapon, Mirror Image, Scorching Ray; False Life dropped (Int modifier + level = 6 prepared) |
 | Wizard | 5 | + Counterspell, Haste, False Life again (9 prepared) |
-| Druid | 1-2 | Produce Flame, Poison Spray; Cure Wounds, Healing Word, Thunderwave |
+| Druid | 1-2 | Produce Flame, Poison Spray; Cure Wounds, Faerie Fire, Healing Word, Thunderwave |
 | Druid | 3 | + Barkskin, Hold Person, Lesser Restoration, Spike Growth (circle) |
 | Druid | 4 | + Shillelagh (third cantrip known) |
-| Druid | 5 | + Dispel Magic, Lightning Bolt (circle) |
+| Druid | 5 | + Dispel Magic, Lightning Bolt (circle), Protection from Energy |
 | Warlock | 1-2 | Eldritch Blast, Chill Touch; Burning Hands (expanded) |
 | Warlock | 3 | + Fire Bolt, Ray of Frost, Sacred Flame (Tome); Hold Person, Misty Step, Scorching Ray (expanded) |
 | Warlock | 4 | + Poison Spray |
 | Warlock | 5 | + Fireball (expanded), Counterspell |
 | Sorcerer | 1-2 | Acid Splash, Fire Bolt, Poison Spray; Magic Missile, Shield |
-| Sorcerer | 3-4 | + Hold Person, Scorching Ray |
+| Sorcerer | 3 | + Hold Person, Scorching Ray (4 known) |
+| Sorcerer | 4 | + Blur |
 | Sorcerer | 5 | + Counterspell |
 
 Deferred until the spells are authored (`docs/SRD_SPELLS_DEFERRED.md` gives the reason for each):
