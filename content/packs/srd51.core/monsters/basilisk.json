@@ -1,5 +1,6 @@
 {
-  "$schema": "monster@4",
+  "$schema": "monster@5",
+  "derive": true,
   "id": "srd51.monster.basilisk",
   "name": "Basilisk",
   "source": {
@@ -13,6 +14,11 @@
     "value": 12,
     "note": "natural armor"
   },
+  "natural_armor": {
+    "base": 13,
+    "dex": true
+  },
+  "hands": 0,
   "hit_points": {
     "average": 52,
     "formula": "8d8+16"
@@ -63,6 +69,10 @@
       "id": "bite",
       "name": "Bite",
       "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "str"
+      },
       "to_hit": 5,
       "reach": 5,
       "targets": 1,

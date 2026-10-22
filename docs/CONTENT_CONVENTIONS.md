@@ -620,3 +620,23 @@ The validator ties the race string to Darkvision (character@2+, errors):
 
 Other race strings are not checked. The level-1 hit point check adds SRD Dwarven Toughness (+1 per level) for `hill_dwarf`. Sample PCs: `srd51.character.sample_hill_dwarf_cleric_1`, `sample_high_elf_wizard_1`, `sample_tiefling_warlock_1` (`characters/sample_*.json`).
 
+
+## 14. srd51.core monsters at monster@5 with `derive: true` (docs/proposals/EQUIPMENT.md 5)
+
+All 33 srd51.core monster@4 files are now monster@5 with `derive: true`. `goblin` stays at monster@3 for fl1 compatibility. The printed `armor_class.value`, `to_hit` and `damage[0].dice` are kept and become assertions. The validator (`checks_v4.check_monster_derive`, a mirror of `rules5e::derive_monster`) uses the 5.6 strings.
+
+- **Armor and shield** are `equipment[]` entries with `equipped: true`, taken from the printed AC note.
+- **Weapons:** every weapon attack names its `weapon` (an item id, or `#local`), and the item is listed in `equipment[]`. The melee weapon is equipped; ranged backups and javelins are carried.
+- **`use`** (added to the monster@5 action): `two_hands` for a versatile die or a two-handed melee weapon, `thrown` for a thrown use. The default is `one_hand`. It is explicit, never inferred from the action id.
+- **Natural attacks:** `natural {dice, ability}`. Gelatinous Cube Pseudopod has `damage_ability: "none"`.
+- **Local weapons:** lizardfolk Heavy Club 1d6 and Spiked Shield 1d6, grimlock Spiked Bone Club 1d4. The 1d4 rider stays as `damage[1]`, unchecked.
+- **Structure:**
+  - `natural_armor`: animated armor 18, basilisk 13, black bear 11, black dragon wyrmling 15, boar 11, dire wolf 12, gargoyle 15, giant spider 11, lizardfolk 13, medusa 13, wolf 11.
+  - Ogre: `weapon_dice_multiplier: 2`.
+  - Bugbear Brute: `{kind: weapon_extra_dice, dice: 1, melee_only: true}`. It is read only by the derivation, so the sim still uses the printed dice.
+- **`hands`** is explicit: 0 for beasts, the dragon, the cube, the gargoyle, the swarm, the toad and the spider; 2 otherwise.
+- **The 3 approved adjustments**, which the validator lists as warnings:
+  - skeleton `ac_adjust +1` ("armor scraps");
+  - black bear bite and claws `attack_bonus 3`;
+  - ghoul bite `attack_bonus 2`.
+- **The loader:** until Engine Core wires `derive`, it uses the printed numbers exactly as written, so no fight changes. `rules5e::derive_monster` reproduces all 33 with no errors (cross-checked locally).
