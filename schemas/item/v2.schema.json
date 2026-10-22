@@ -337,6 +337,56 @@
           "type": "boolean"
         }
       }
+    },
+    "visual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "color",
+        "intensity"
+      ],
+      "description": "Presentation only (docs/proposals/LIGHTING.md 10.1): glow colour / intensity / flicker for a light-capable item. Integers only. Excluded from content_hash and never read by sim, so it never feeds log_hash or any golden. Additive (no version bump).",
+      "properties": {
+        "color": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "r",
+            "g",
+            "b"
+          ],
+          "properties": {
+            "r": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "g": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "b": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            }
+          }
+        },
+        "intensity": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Permille (1000 = full)."
+        },
+        "flicker": {
+          "enum": [
+            "none",
+            "torch",
+            "candle"
+          ]
+        }
+      }
     }
   },
   "allOf": [
@@ -377,7 +427,8 @@
             "ammo_kind",
             "attack_magic",
             "damage_magic",
-            "improvised"
+            "improvised",
+            "visual"
           ]
         },
         "allOf": [
@@ -462,7 +513,8 @@
             "dex_cap",
             "str_min",
             "stealth_disadvantage",
-            "magic_bonus"
+            "magic_bonus",
+            "visual"
           ]
         },
         "allOf": [
@@ -535,7 +587,8 @@
             "weight_oz",
             "description",
             "ac_bonus",
-            "magic_bonus"
+            "magic_bonus",
+            "visual"
           ]
         }
       }
@@ -561,7 +614,8 @@
             "category",
             "cost_cp",
             "weight_oz",
-            "description"
+            "description",
+            "visual"
           ]
         }
       }
@@ -590,7 +644,8 @@
             "description",
             "hands",
             "light",
-            "torch_attack"
+            "torch_attack",
+            "visual"
           ]
         }
       }
@@ -618,7 +673,8 @@
             "weight_oz",
             "description",
             "ammo_kind",
-            "magic_bonus"
+            "magic_bonus",
+            "visual"
           ]
         },
         "required": [
