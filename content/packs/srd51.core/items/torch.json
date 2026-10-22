@@ -1,0 +1,31 @@
+{
+  "$schema": "item@2",
+  "id": "srd51.item.torch",
+  "name": "Torch",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "gear",
+  "cost_cp": 1,
+  "weight_oz": 16,
+  "description": "A torch burns for 1 hour, providing bright light in a 20-foot radius and dim light for an additional 20 feet. If you make a melee attack with a burning torch and hit, it deals 1 fire damage.",
+  "hands": 1,
+  "light": {
+    "bright_ft": 20,
+    "dim_ft": 20,
+    "shape": "radius",
+    "duration_rounds": 600,
+    "lit_by_default": false,
+    "preset": "srd51.core.light.torch"
+  },
+  "torch_attack": {
+    "damage": [
+      {
+        "flat": 1,
+        "type": "fire"
+      }
+    ],
+    "requires_lit": true
+  }
+}
