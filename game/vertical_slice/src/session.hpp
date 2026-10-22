@@ -81,6 +81,23 @@ public:
     bool submit_equip(uint32_t actor, uint8_t op, uint32_t item, uint8_t hand = 0, uint8_t state = 0);
     bool end_turns_until(uint32_t actor);
     std::vector<EquippedLight> equipment_lights() const;
+    // One item of a creature's loadout (debug equip view): held, worn or carried, read through sim::Combat::loadout.
+    struct InventoryItem {
+        enum Where : uint8_t { Carried, MainHand, OffHand, BothHands, Worn };
+        uint32_t item = 0;          // instance (0 for worn armor: it has no instance)
+        std::string content_id;
+        Where where = Carried;
+        EquipKind kind = EquipKind::Other;
+        uint16_t count = 1;
+        uint8_t light_states = 0;   // rules5e::LightDef::states size (0: not a light)
+        bool lit = false;
+        uint8_t state = 0;          // rules5e::light_state_index
+        uint16_t bright_ft = 0, dim_ft = 0;
+    };
+    // Worn armor, main hand, off hand, then carried items (loadout order). Empty without a loadout.
+    std::vector<InventoryItem> inventory(uint32_t actor) const;
+    // Combatant whose turn it is (0: none / no fight).
+    uint32_t current_actor() const;
     // Non-fatal load warnings (e.g. two items styling one light preset differently).
     const std::vector<std::string>& warnings() const;
 
