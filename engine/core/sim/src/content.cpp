@@ -1716,6 +1716,9 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 }
             if (e.is_object())
                 if (auto q = e.find("equipped"); q != e.end() && q->is_boolean()) ent.equipped = q->get<bool>();
+            if (e.is_object())
+                if (auto n = e.find("count"); n != e.end() && n->is_number_integer())
+                    ent.count = uint16_t(std::clamp<int64_t>(n->get<int64_t>(), 0, 65535));
             a.equipment.push_back(std::move(ent));
         }
     by_id_[a.id] = std::move(a);

@@ -597,6 +597,11 @@ void Combat::install_hooks() {
         };
         std::shared_ptr<const ItemDefTable> items = items_;
         state_.hooks.item_def = [items](uint32_t def) -> const rules5e::ItemDef* { return items ? items->find(def) : nullptr; };
+        state_.hooks.ground_item_def = [this](uint32_t instance) -> const rules5e::ItemDef* {
+            for (const auto& g : state_.ground_items)
+                if (g.item.instance == instance) return items_ ? items_->find(g.item.def) : nullptr;
+            return nullptr;
+        };
         state_.hooks.apply_equip = [this](rules5e::EncounterState& st, const rules5e::ActionRequest& req, uint8_t cost,
                                           std::vector<rules5e::Event>&) { apply_equip(st, req, cost); };
     }
@@ -1130,7 +1135,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
     if (split < evs.size()) sync_ecs();
     for (auto& sl : slots_)   // gone summons: the entity goes at the end of the step (never mid-step)
         if (sl.gone && reg_->alive(sl.entity)) { reg_->destroy(sl.entity); sl.entity = ecs::kNullEntity; }
-    if (options_.equipment) equipment_after_step();
+    if (options_.equipment) equipment_after_step(ls, evs);
     step_to_.reset();
     ready_to_.reset();
 }
@@ -1547,6 +1552,8 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
         (req.equip_op == uint8_t(rules5e::EquipOp::PickUp) || req.equip_op == uint8_t(rules5e::EquipOp::HandOver))) {
         req.equip_in_reach = false;
         if (req.equip_op == uint8_t(rules5e::EquipOp::PickUp)) {
+            // Not a ground item: reach is moot; rules refuses it as "equip: unknown ground item" (ground_item_def).
+            req.equip_in_reach = true;
             for (const auto& g : state_.ground_items)
                 if (g.item.instance == req.equip_item) req.equip_in_reach = within_5ft(actor, {g.x, g.y});
         } else if (rules5e::find(state_, req.equip_to) && req.equip_to != actor) {

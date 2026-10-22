@@ -207,8 +207,17 @@ Raw derive_raw(const rules5e::Combatant& c, const rules5e::Loadout& l, const Ite
 
 } // namespace
 
+int hands_needed(const ItemDef* d) {
+    if (!d) return 1;
+    int need = std::max<int>(1, d->hands);
+    if (d->kind == ItemKind::Weapon && (d->weapon.properties & rules5e::kWeaponTwoHanded) != 0) need = std::max(need, 2);
+    return need;
+}
+
 bool build_loadout(rules5e::EncounterState& st, rules5e::CombatantId owner, const std::vector<LoadoutSeed>& seeds,
-                   const ItemDefTable& items, uint32_t two_handed_grip) {
+                   const ItemDefTable& items, uint32_t two_handed_grip, std::string_view content_id,
+                   std::vector<std::string>* errors) {
+    int held_slots = 0;   // hand slots the equipped holdables take (#249 _held_slots)
     const rules5e::Combatant* c = combatant_of(st, owner);
     if (!c || find_loadout(st, owner)) return false;
     rules5e::Loadout l;
@@ -219,13 +228,14 @@ bool build_loadout(rules5e::EncounterState& st, rules5e::CombatantId owner, cons
         const ItemDef* d = items.find(sd.def);
         if (!d) continue;
         any = true;
-        rules5e::HeldItem h{st.next_item_id++, sd.def, 1, 0};
+        rules5e::HeldItem h{st.next_item_id++, sd.def, sd.count, 0};
         if (d->kind == ItemKind::Light && d->light.lit_by_default && sd.equipped) h.flags = rules5e::kHeldLit;
         if (sd.equipped && d->kind == ItemKind::Armor && v.armor_def == 0) { v.armor_def = sd.def; continue; }
         const bool holdable = d->kind == ItemKind::Weapon || d->kind == ItemKind::Shield || d->kind == ItemKind::Light ||
                               d->kind == ItemKind::Focus || d->has_weapon;
+        if (sd.equipped && holdable) held_slots += d->kind == ItemKind::Shield ? 1 : hands_needed(d);
         if (sd.equipped && holdable && v.hand_count > 0) {
-            const bool both = d->hands >= 2;
+            const bool both = hands_needed(d) >= 2;
             if (d->kind == ItemKind::Shield && v.off.instance == 0) { v.off = h; continue; }
             if (v.main.instance == 0 && (!both || v.off.instance == 0)) { v.main = h; continue; }
             if (!both && v.off.instance == 0) { v.off = h; continue; }
@@ -233,6 +243,8 @@ bool build_loadout(rules5e::EncounterState& st, rules5e::CombatantId owner, cons
         v.carried.push_back(h);
     }
     if (!any) return false;
+    if (errors && held_slots > v.hand_count)
+        errors->push_back(rules5e::hands_overfull_error(content_id, held_slots, int(v.hand_count)));
     // Attack links: Combatant::attacks[i] uses the loadout weapon whose id words match the attack id (held first).
     std::vector<rules5e::AttackLink> links(c->attacks.size());
     bool linked = false;

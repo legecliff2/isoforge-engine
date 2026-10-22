@@ -154,6 +154,9 @@ public:
     const ItemDefTable* item_defs() const noexcept { return items_.get(); }
     std::vector<EquipmentLight> equipment_lights() const;    // light id order
     uint32_t recomputes() const noexcept { return recomputes_; }   // recompute_derived calls (diagnostics, never hashed)
+    // Setup diagnostics (never hashed): rules5e::hands_overfull_error lines for creatures whose equipped holdables need more
+    // hands than they have (the extra items start carried).
+    const std::vector<std::string>& equipment_errors() const noexcept { return equipment_errors_; }
 
     // Rejected while a decision is pending.
     SubmitResult submit(const Command& cmd);
@@ -359,9 +362,11 @@ private:
     std::vector<std::pair<uint32_t, uint32_t>> item_lights_;   // (item instance, light id), instance order
     std::map<CombatantId, DeriveInputs> derive_seen_;
     uint32_t recomputes_ = 0;
+    std::vector<std::string> equipment_errors_;
+    void ground_drop(rules5e::EncounterState& st, const rules5e::HeldItem& h, Vec2i at) const;
     void setup_equipment(const ContentLibrary& content);
     void apply_equip(rules5e::EncounterState& st, const rules5e::ActionRequest& req, uint8_t cost_kind);
-    void equipment_after_step();
+    void equipment_after_step(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs);
     void refresh_interactions(rules5e::EncounterState& st) const;
     void sync_ground_entities();
     void recompute(rules5e::EncounterState& st, CombatantId id);
