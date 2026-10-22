@@ -894,6 +894,7 @@ TEST_CASE("loader 7.2zg: spell_attack on_miss half (Acid Arrow)") {
     auto r = spell_from_json(aa); INFO(r.error); REQUIRE(r.def);
     CHECK(r.def->miss_half); REQUIRE(r.def->extra_effects.size() == 1);
     CHECK(r.def->extra_effects[0].kind == SpellEffectKind::DelayedDamage); CHECK(r.def->extra_effects[0].affected_only);
+    CHECK(r.def->upcast_dice == 1); CHECK(r.def->extra_effects[0].upcast_dice == 1);   // SRD: both gain 1d4 per slot above 2nd
     auto j = aa; j["effects"][0]["on_miss"] = "none";
     auto q = spell_from_json(j); CHECK_FALSE(q.def); CHECK(q.error == "effect on_miss must be half");
     j = aa; j["effects"] = eng::assets::Json::array({{{"kind", "heal"}, {"dice", "1d4"}},

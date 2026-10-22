@@ -126,6 +126,7 @@ EncounterHooks acid_hooks(int8_t to_hit) {
     d.fixed_attack = to_hit; d.miss_half = true;
     SpellEffect later; later.kind = SpellEffectKind::DelayedDamage; later.affected_only = true; later.dice = DiceExpr{2, 4, 0};
     later.damage_type = DamageType::Acid; later.expiry = 2;
+    d.upcast_dice = 1; later.upcast_dice = 1;   // the loader copies scaling.upcast.dice to the delayed_damage rider
     d.extra_effects = {later};
     book->add(d);
     h.spells = book;
@@ -282,4 +283,19 @@ TEST_CASE("7.2zg exempt_senses: Blur imposes disadvantage unless the attacker ha
         CHECK(first_natural(seed, true, 0, 30, kSenseTremorsense) == plain);                    // listed: not fooled
     }
     CHECK(lower > 0);
+}
+
+TEST_CASE("7.2zg Acid Arrow at slot 3: both the initial damage and the delayed rider gain 1d4 (scaling.upcast.dice)") {
+    auto w = wizard(1); w.spells_known.push_back(kAcidArrow); w.spell_slots_max = {0, 4, 3, 3, 0, 0, 0, 0, 0, 0}; w.spell_slots = w.spell_slots_max;
+    never_react(w);
+    auto m = monster(2); m.hp = m.hp_max = 300; m.ac = 15; never_react(m);
+    auto s = begin_encounter({w, m}, 7, nullptr, acid_hooks(100));
+    end_turns_until(s, 1);
+    auto r = step(s, cast(1, kAcidArrow, 2, 3));
+    REQUIRE(r.ok);
+    const int lost = 300 - mut(s, 2).hp;
+    CHECK(lost >= 5); CHECK(lost <= 40);   // 5d4 (10d4 on a crit)
+    const auto it = std::find_if(s.effects.begin(), s.effects.end(), [](const auto& x) { return x.spell_id == kAcidArrow; });
+    REQUIRE(it != s.effects.end());
+    CHECK(it->damage.count == 3); CHECK(it->damage.sides == 4);   // 2d4 + 1d4
 }
