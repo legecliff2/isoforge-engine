@@ -3606,6 +3606,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     const auto harm_keys = def.is_spell ? ends_on_keys(s, a.id, kEndsOnHarmfulCast) : std::vector<std::pair<uint32_t, CombatantId>>{};   // 7.2zd
     bool countered = def.is_spell && spell_cast_window(s, ctx, a, def.id, lvl, ids[0], out.events);
     bool harmful = false;
+    const bool harm_def = def.is_spell && spell_harmful(def);   // 7.2zd harmful_cast: the same test the ward meets spells with
     if (!countered && !warded_at.empty()) {   // 7.2zd: each ward save in target order; a failure retargets once, else that target is lost
         std::vector<Combatant*> kept;
         for (std::size_t i = 0; i < T.size(); ++i) {
@@ -3633,7 +3634,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         ctx.ranged_disadvantage = req.beyond_normal_range || req.ranged_hostile_within_5ft;   // EC spider follow-up (flagged)
         ctx.slot_cast = inn == nullptr && lvl >= 1; ctx.mark_ability = req.mark_ability;   // 7.2zc
         for (Combatant* x : resolve_spell(s, ctx, a, def, lvl, T, req.target_within_5ft, out.events))
-            harmful = harmful || x->team != a.team;   // 7.2zd harmful_cast: it affected a creature of another team
+            harmful = harmful || (harm_def && x != &a);   // 7.2zd harmful_cast: a harmful spell (spell_harmful) affected another creature
         ctx.slot_cast = false; ctx.mark_ability = 0;
         ctx.ranged_disadvantage = false;
         ctx.spared = nullptr; ctx.spared_no_damage = false; ctx.heighten = 0; ctx.empower = 0;
