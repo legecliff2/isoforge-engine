@@ -4,6 +4,10 @@ inputs:
   preset: { description: Configure preset, required: true }
   build:  { description: Build preset, required: true }
   test:   { description: Test preset, required: true }
+  ctest-args:
+    description: Extra ctest arguments for the Test step (e.g. "-LE python_only" in Release jobs)
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
@@ -22,7 +26,7 @@ runs:
         sudo apt-get update
         sudo apt-get install -y ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
           libxi-dev libxss-dev libxfixes-dev libxtst-dev libxkbcommon-dev libwayland-dev \
-          wayland-protocols libegl-dev libgl-dev libvulkan-dev libudev-dev libdbus-1-dev
+          wayland-protocols libegl-dev libgl-dev libvulkan-dev libudev-dev libdbus-1-dev ccache
 
     - name: MSVC dev environment
       if: runner.os == 'Windows'
@@ -30,19 +34,52 @@ runs:
       with:
         arch: x64
 
-    - name: Install Windows deps (Ninja)
+    - name: Install Windows deps (Ninja, sccache)
       if: runner.os == 'Windows'
       shell: pwsh
-      run: choco install ninja -y --no-progress
+      run: choco install ninja sccache -y --no-progress
 
     - name: Install macOS deps
       if: runner.os == 'macOS'
       shell: bash
-      run: brew install ninja || true
+      run: brew install ninja ccache || true
+
+    # Compiler cache (ccache on Linux/macOS, sccache on Windows; sccache handles cl.exe). Keyed on
+    # OS + preset + build preset + the dependency pins (cmake/Dependencies.cmake is the "lockfile":
+    # it pins SDL3 release-3.4.8, doctest, luau, ...). The run id suffix makes every run save a fresh
+    # cache; restore-keys fall back to the newest cache for the same OS/preset (PRs can read main's).
+    - name: Compiler cache settings
+      shell: bash
+      run: |
+        if [ "$RUNNER_OS" = Windows ]; then
+          echo "CC_LAUNCHER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_DIR=${{ github.workspace }}/.ccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_CACHE_SIZE=1G" >> "$GITHUB_ENV"
+        else
+          echo "CC_LAUNCHER=ccache" >> "$GITHUB_ENV"
+          echo "CCACHE_DIR=${{ github.workspace }}/.ccache" >> "$GITHUB_ENV"
+          echo "CCACHE_MAXSIZE=1G" >> "$GITHUB_ENV"
+          echo "CCACHE_BASEDIR=${{ github.workspace }}" >> "$GITHUB_ENV"
+          echo "CCACHE_COMPRESS=true" >> "$GITHUB_ENV"
+          # SDL3 builds with a precompiled header; without this ccache refuses those objects.
+          echo "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime" >> "$GITHUB_ENV"
+        fi
+
+    - name: Restore compiler cache
+      uses: actions/cache@v4
+      with:
+        path: .ccache
+        key: cc-${{ runner.os }}-${{ inputs.preset }}-${{ inputs.build }}-${{ hashFiles('cmake/Dependencies.cmake') }}-${{ github.run_id }}
+        restore-keys: |
+          cc-${{ runner.os }}-${{ inputs.preset }}-${{ inputs.build }}-${{ hashFiles('cmake/Dependencies.cmake') }}-
+          cc-${{ runner.os }}-${{ inputs.preset }}-${{ inputs.build }}-
 
     - name: Configure
       shell: bash
-      run: cmake --preset "${{ inputs.preset }}" -DPython3_EXECUTABLE="${{ env.pythonLocation }}/${{ runner.os == 'Windows' && 'python.exe' || 'bin/python' }}"
+      run: |
+        cmake --preset "${{ inputs.preset }}" -DPython3_EXECUTABLE="${{ env.pythonLocation }}/${{ runner.os == 'Windows' && 'python.exe' || 'bin/python' }}" \
+          -DCMAKE_C_COMPILER_LAUNCHER="$CC_LAUNCHER" -DCMAKE_CXX_COMPILER_LAUNCHER="$CC_LAUNCHER" \
+          ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW' || '' }}
 
     # ARCHITECTURE.md §2.2: module dependency graph (rule 1, 2) + SDL/src/backend include lint
     # (rules 3-5). Configure-time data only, so run before the build to fail fast.
@@ -60,4 +97,10 @@ runs:
 
     - name: Test
       shell: bash
-      run: ctest --preset "${{ inputs.test }}"
+      run: ctest --preset "${{ inputs.test }}" --parallel 4 ${{ inputs.ctest-args }}
+
+    - name: Compiler cache stats
+      if: always()
+      shell: bash
+      run: |
+        if [ "$CC_LAUNCHER" = sccache ]; then sccache --show-stats || true; else ccache -s || true; fi
