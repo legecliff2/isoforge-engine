@@ -29,6 +29,13 @@ namespace {
 
 constexpr const char* kFighter = "srd51.character.fighter_level_1";
 constexpr const char* kTorchbearer = "test.character.torchbearer";
+constexpr const char* kThrower = "test.character.thrower";
+constexpr const char* kArcher = "test.character.archer";
+
+assets::Json fighter_doc() {
+    std::ifstream f(std::filesystem::path(ENGINE_SOURCE_ROOT) / "content/packs/srd51.core/characters/fighter_level_1.json");
+    return assets::Json::parse(f);
+}
 
 world::Chunk arena(const char* pc, int gap = 3) {
     world::Chunk c{};
@@ -65,6 +72,29 @@ ContentLibrary& library() {
                                                 assets::Json{{"item", "test.item.torch"}, {"equipped", true}},
                                                 assets::Json{{"item", "srd51.item.shield"}}});
         REQUIRE_FALSE(l.add(doc, "character", "", 4));
+        rules5e::ItemDef arrows;
+        arrows.kind = rules5e::ItemKind::Ammunition;
+        arrows.ammo_kind = rules5e::kAmmoArrow;
+        REQUIRE_FALSE(l.items()->add("test.item.arrows", arrows));
+        using J = assets::Json;
+        J t = fighter_doc();
+        t["id"] = kThrower;
+        t["equipment"] = J::array({J{{"item", "srd51.item.chain_mail"}, {"equipped", true}},
+                                   J{{"item", "srd51.item.javelin"}, {"equipped", true}},
+                                   J{{"item", "srd51.item.javelin"}}});
+        t["actions"] = J::array({J{{"id", "javelin"}, {"name", "Javelin"}, {"kind", "ranged_weapon_attack"}, {"to_hit", 5},
+                                   {"range", J::array({30, 120})}, {"targets", 1}, {"properties", J::array({"thrown"})},
+                                   {"damage", J::array({J{{"dice", "1d6+3"}, {"type", "piercing"}}})}}});
+        REQUIRE_FALSE(l.add(t, "character", "", 4));
+        J a = fighter_doc();
+        a["id"] = kArcher;
+        a["equipment"] = J::array({J{{"item", "srd51.item.longbow"}, {"equipped", true}},
+                                   J{{"item", "test.item.arrows"}, {"count", 2}}});
+        a["actions"] = J::array({J{{"id", "longbow"}, {"name", "Longbow"}, {"kind", "ranged_weapon_attack"}, {"to_hit", 4},
+                                   {"range", J::array({150, 600})}, {"targets", 1},
+                                   {"properties", J::array({"ammunition", "heavy", "two_handed"})},
+                                   {"damage", J::array({J{{"dice", "1d8+2"}, {"type", "piercing"}}})}}});
+        REQUIRE_FALSE(l.add(a, "character", "", 4));
     }
     return l;
 }
@@ -365,4 +395,161 @@ TEST_CASE("equipment on: a dropped light keeps its light id (holder 0, still lit
     CHECK_FALSE(lights[0].lit);
     REQUIRE(c->submit(rules(equip(pc, EquipOp::Draw, torch, 2))).ok);   // costs the action (interaction spent)
     CHECK(c->equipment_lights()[0].lit);
+}
+
+namespace {
+rules5e::ActionRequest attack(CombatantId a, CombatantId t, uint8_t idx = 0) {
+    rules5e::ActionRequest r{a, ActionKind::Attack, t};
+    r.attack_index = idx;
+    return r;
+}
+// Puts a ground item (test only) on `at` and returns its new instance id.
+uint32_t place_ground(Combat& c, uint32_t def, Vec2i at) {
+    auto& st = CombatTestAccess::state(c);
+    const uint32_t inst = st.next_item_id++;
+    st.ground_items.push_back({rules5e::HeldItem{inst, def, 1, 0}, at.x, at.y});
+    st.ground_items_seen = true;
+    return inst;
+}
+}  // namespace
+
+TEST_CASE("equipment on: picking up a two-handed item needs two free hands (ground_item_def)") {
+    ContentLibrary& l = library();
+    const auto ch = arena(kFighter);
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, l, 7, CombatOptions{true});
+    REQUIRE(c);
+    const CombatantId pc = ch.spawns[0].stable_id;
+    const uint32_t sword = c->loadout(pc)->view.main.instance, shield = c->loadout(pc)->view.off.instance;
+    until_turn(*c, pc);
+    const uint32_t bow = place_ground(*c, c->item_defs()->find("srd51.item.crossbow_light")->id, c->pos(pc));
+    REQUIRE(c->submit(rules(equip(pc, EquipOp::Stow, sword))).ok);   // one hand free (the shield is in the other)
+    auto r = c->submit(rules(equip(pc, EquipOp::PickUp, bow, 1)));
+    CHECK_FALSE(r.ok);
+    CHECK(r.error == "equip: no free hand");
+    for (const auto& q : c->legal_actions()) CHECK(q.equip_op != uint8_t(EquipOp::PickUp));
+    REQUIRE(c->submit(rules(equip(pc, EquipOp::DoffShield, shield))).ok);   // both free now; interaction spent, action spent
+    REQUIRE(c->submit(rules({pc, ActionKind::EndTurn})).ok);
+    until_turn(*c, pc);
+    bool listed = false;
+    for (const auto& q : c->legal_actions()) listed = listed || (q.equip_op == uint8_t(EquipOp::PickUp) && q.equip_item == bow);
+    CHECK(listed);
+    REQUIRE(c->submit(rules(equip(pc, EquipOp::PickUp, bow, 1))).ok);
+    CHECK(c->loadout(pc)->view.main.instance == bow);
+}
+
+TEST_CASE("equipment on: an unknown ground item is refused") {
+    ContentLibrary& l = library();
+    const auto ch = arena(kFighter);
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, l, 7, CombatOptions{true});
+    REQUIRE(c);
+    const CombatantId pc = ch.spawns[0].stable_id;
+    until_turn(*c, pc);
+    REQUIRE(c->submit(rules(equip(pc, EquipOp::Stow, c->loadout(pc)->view.main.instance))).ok);
+    auto r = c->submit(rules(equip(pc, EquipOp::PickUp, 4242, 1)));   // no such instance
+    CHECK_FALSE(r.ok);
+    CHECK(r.error == "equip: unknown ground item");
+    const uint32_t odd = place_ground(*c, 0xDEADu, c->pos(pc));       // a ground item whose def is not in the table
+    r = c->submit(rules(equip(pc, EquipOp::PickUp, odd, 1)));
+    CHECK_FALSE(r.ok);
+    CHECK(r.error == "equip: unknown ground item");
+}
+
+TEST_CASE("equipment on: a thrown weapon lands on the target's tile; the next one is drawn from the pack") {
+    ContentLibrary& l = library();
+    const auto ch = arena(kThrower);
+    ecs::Registry reg;
+    std::string err;
+    auto c = Combat::create(reg, ch, l, 13, CombatOptions{true}, &err);
+    REQUIRE_MESSAGE(c, err);
+    const CombatantId pc = ch.spawns[0].stable_id, gob = ch.spawns[1].stable_id;
+    REQUIRE(c->loadout(pc)->view.attacks.size() == 1);
+    CHECK(c->loadout(pc)->view.attacks[0].use == rules5e::WeaponUse::Thrown);
+    for (auto& k : CombatTestAccess::state(*c).combatants) if (k.id == gob) { k.hp = 200; k.hp_max = 200; }
+    const uint32_t first = c->loadout(pc)->view.main.instance, second = c->loadout(pc)->view.carried[0].instance;
+    until_turn(*c, pc);
+    const auto r1 = c->submit(rules(attack(pc, gob)));
+    REQUIRE_MESSAGE(r1.ok, r1.error);
+    REQUIRE(c->state().ground_items.size() == 1);
+    CHECK(c->state().ground_items[0].item.instance == first);
+    CHECK(c->state().ground_items[0].x == c->pos(gob).x);
+    CHECK(c->loadout(pc)->view.main.instance == 0);
+    CHECK(reg.find(kGroundItemIdBase + first));
+    REQUIRE_FALSE(c->ended());
+    REQUIRE(c->submit(rules({pc, ActionKind::EndTurn})).ok);
+    until_turn(*c, pc);
+    REQUIRE(c->submit(rules(attack(pc, gob))).ok);   // drawn as part of the attack (Q2)
+    CHECK(c->state().ground_items.size() == 2);
+    CHECK(c->loadout(pc)->view.carried.empty());
+    REQUIRE_FALSE(c->ended());
+    REQUIRE(c->submit(rules({pc, ActionKind::EndTurn})).ok);
+    until_turn(*c, pc);
+    const auto r3 = c->submit(rules(attack(pc, gob)));
+    CHECK_FALSE(r3.ok);
+    CHECK(r3.error == "attack: nothing to throw");
+    (void)second;
+}
+
+TEST_CASE("equipment on: ammunition stacks run down for PCs; no stack or a monster = unlimited") {
+    ContentLibrary& l = library();
+    const auto ch = arena(kArcher, 4);
+    ecs::Registry reg;
+    std::string err;
+    auto c = Combat::create(reg, ch, l, 17, CombatOptions{true}, &err);
+    REQUIRE_MESSAGE(c, err);
+    const CombatantId pc = ch.spawns[0].stable_id, gob = ch.spawns[1].stable_id;
+    auto arrows = [&] { return int(c->loadout(pc)->view.carried.at(0).count); };
+    REQUIRE(arrows() == 2);
+    for (auto& k : CombatTestAccess::state(*c).combatants) if (k.id == gob) { k.hp = 200; k.hp_max = 200; }
+    for (int shot = 0; shot < 2; ++shot) {
+        until_turn(*c, pc);
+        const auto r = c->submit(rules(attack(pc, gob)));
+        REQUIRE_MESSAGE(r.ok, r.error);
+        CHECK(arrows() == 1 - shot);
+        REQUIRE_FALSE(c->ended());
+        REQUIRE(c->submit(rules({pc, ActionKind::EndTurn})).ok);
+    }
+    until_turn(*c, pc);
+    const auto r = c->submit(rules(attack(pc, gob)));
+    CHECK_FALSE(r.ok);
+    CHECK(r.error == "attack: no ammunition");
+    // The same archer as a monster never spends ammunition.
+    ecs::Registry reg2;
+    auto m = Combat::create(reg2, ch, l, 17, CombatOptions{true});
+    for (auto& k : CombatTestAccess::state(*m).combatants) if (k.id == pc) k.is_pc = false;
+    until_turn(*m, pc);
+    REQUIRE(m->submit(rules(attack(pc, gob))).ok);
+    CHECK(int(m->loadout(pc)->view.carried.at(0).count) == 2);
+}
+
+TEST_CASE("equipment on: on death everything held and carried drops to the creature's tile in the same step; lights keep ids") {
+    ContentLibrary& l = library();
+    const auto ch = arena(kTorchbearer, 1);
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, l, 23, CombatOptions{true});
+    REQUIRE(c);
+    const CombatantId pc = ch.spawns[0].stable_id, gob = ch.spawns[1].stable_id;
+    const uint32_t lid = c->equipment_lights().at(0).light_id;
+    auto& st = CombatTestAccess::state(*c);
+    for (auto& k : st.combatants)
+        if (k.id == pc) { k.hp = 1; k.uses_death_saves = false; k.is_pc = false; k.ac = 0; }
+    bool died = false;
+    for (int round = 0; round < 12 && !died; ++round) {
+        until_turn(*c, gob);
+        REQUIRE(c->submit(rules(attack(gob, pc))).ok);
+        died = rules5e::find(c->state(), pc)->dead;
+        if (!died) REQUIRE(c->submit(rules({gob, ActionKind::EndTurn})).ok);
+    }
+    REQUIRE(died);
+    const rules5e::Loadout* lo = c->loadout(pc);
+    CHECK(lo->view.main.instance == 0);
+    CHECK(lo->view.off.instance == 0);
+    CHECK(lo->view.carried.empty());
+    REQUIRE(c->state().ground_items.size() == 3);   // longsword, torch, shield
+    for (const auto& g : c->state().ground_items) { CHECK(g.x == c->pos(pc).x); CHECK(g.y == c->pos(pc).y); }
+    const auto lights = c->equipment_lights();
+    CHECK(lights.at(0).light_id == lid);
+    CHECK(lights.at(0).holder_id == 0);
+    CHECK(lights.at(0).lit);
 }

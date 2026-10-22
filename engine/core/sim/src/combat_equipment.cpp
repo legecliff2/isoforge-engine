@@ -4,6 +4,7 @@
 #include <algorithm>
 
 #include "rules5e/equipment.hpp"
+#include "rules5e/weapon.hpp"
 #include "sim/combat.hpp"
 
 namespace eng::sim {
@@ -20,9 +21,9 @@ void Combat::setup_equipment(const ContentLibrary& content) {
         const Slot& sl = slots_[si];
         std::vector<LoadoutSeed> seeds;
         for (const EquipmentEntry& e : sl.archetype->equipment)
-            if (const rules5e::ItemDef* d = items_->find(e.id)) seeds.push_back({d->id, e.equipped});
+            if (const rules5e::ItemDef* d = items_->find(e.id)) seeds.push_back({d->id, e.equipped, e.count});
         if (seeds.empty()) continue;
-        build_loadout(state_, sl.id, seeds, *items_, sl.archetype->two_handed_grip);
+        build_loadout(state_, sl.id, seeds, *items_, sl.archetype->two_handed_grip, sl.archetype->id, &equipment_errors_);
     }
     // Light ids (LIGHTING 10.1): once, in item instance order; they never change (drop / pick up / hand over keep them).
     std::vector<uint32_t> lights;
@@ -99,14 +100,7 @@ void Combat::apply_equip(rules5e::EncounterState& st, const rules5e::ActionReque
         if (auto h = take_hand(v, req.equip_item)) put_carried(v, stowed(*h));
         break;
     case EquipOp::Drop:
-        if (auto h = take_hand(v, req.equip_item)) {
-            const Vec2i at = pos(req.actor);
-            rules5e::GroundItem g{*h, at.x, at.y};
-            auto it = std::lower_bound(st.ground_items.begin(), st.ground_items.end(), h->instance,
-                                       [](const rules5e::GroundItem& x, uint32_t i) { return x.item.instance < i; });
-            st.ground_items.insert(it, g);
-            st.ground_items_seen = true;
-        }
+        if (auto h = take_hand(v, req.equip_item)) ground_drop(st, *h, pos(req.actor));
         break;
     case EquipOp::PickUp:
         for (auto it = st.ground_items.begin(); it != st.ground_items.end(); ++it)
@@ -131,6 +125,14 @@ void Combat::apply_equip(rules5e::EncounterState& st, const rules5e::ActionReque
     if (other) recompute_derived(st, other, *items_);
 }
 
+void Combat::ground_drop(rules5e::EncounterState& st, const HeldItem& h, Vec2i at) const {
+    rules5e::GroundItem g{h, at.x, at.y};
+    auto it = std::lower_bound(st.ground_items.begin(), st.ground_items.end(), h.instance,
+                               [](const rules5e::GroundItem& x, uint32_t i) { return x.item.instance < i; });
+    st.ground_items.insert(it, g);
+    st.ground_items_seen = true;
+}
+
 void Combat::recompute(rules5e::EncounterState& st, CombatantId id) {
     const auto* c = rules5e::find(st, id);
     if (!c || c->form != rules5e::FormKind::None) return;   // a form's statistics are its own block (R-G12)
@@ -138,10 +140,62 @@ void Combat::recompute(rules5e::EncounterState& st, CombatantId id) {
     ++recomputes_;
 }
 
-// After every completed step (live and replay): the interaction flag, the recompute triggers (EQUIPMENT.md 7.2: ability
-// scores, proficiency / level, AC effects; equip changes recompute in apply_equip; conditions never), and ground entities.
-void Combat::equipment_after_step() {
+// After every completed step (live and replay), in this order:
+//  1. thrown weapons / ammunition of an Attack (EQUIPMENT.md 4.2, Q2 / Q10): per AttackResolved of the actor (reaction depth 0)
+//     of a single (non-multiattack) Attack, the linked weapon: Thrown -> the instance (held first, else carried) lands on the
+//     target's anchor tile; a pure ranged ammunition weapon of a PC -> the first matching stack (instance order) with count > 0
+//     loses one. No stack = unlimited; monsters never spend ammunition.
+//  2. death (EQUIPMENT.md 4.4): a creature with a loadout that died this step drops everything held and carried, in instance
+//     order, onto its anchor tile (worn armor stays on the body). Light ids are per instance, so they are kept.
+//  3. the interaction flag, the recompute triggers (7.2: ability scores, proficiency / level, AC effects; equip changes
+//     recompute in apply_equip; conditions never), and ground entities.
+void Combat::equipment_after_step(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs) {
     if (!items_) return;
+    const rules5e::ActionRequest& q = ls.request;
+    std::vector<CombatantId> touched;
+    if (q.kind == ActionKind::Attack && q.multiattack == 0)
+        if (rules5e::Loadout* l = find_loadout(state_, q.actor); l && q.attack_index < l->view.attacks.size()) {
+            const rules5e::AttackLink link = l->view.attacks[q.attack_index];
+            const rules5e::ItemDef* d = link.def ? items_->find(link.def) : nullptr;
+            const auto* k = rules5e::find(state_, q.actor);
+            for (const auto& e : evs) {
+                if (!d || e.kind != rules5e::EventKind::AttackResolved || e.actor != q.actor || e.reaction_depth != 0) continue;
+                rules5e::LoadoutView& v = l->view;
+                if (link.use == rules5e::WeaponUse::Thrown) {
+                    std::optional<HeldItem> h;
+                    for (HeldItem* x : {&v.main, &v.off})
+                        if (!h && x->instance && x->def == link.def) { h = *x; *x = HeldItem{}; }
+                    if (!h)
+                        for (auto it = v.carried.begin(); it != v.carried.end(); ++it)
+                            if (it->def == link.def) { h = *it; v.carried.erase(it); break; }
+                    if (h) { ground_drop(state_, *h, pos(e.target)); touched.push_back(q.actor); }
+                } else if ((d->weapon.properties & rules5e::kWeaponAmmunition) && d->weapon.reach_ft == 0 && k && k->is_pc &&
+                           d->weapon.ammo_kind != rules5e::kAmmoNone) {
+                    for (auto& x : v.carried) {
+                        const rules5e::ItemDef* ad = items_->find(x.def);
+                        if (ad && ad->kind == ItemKind::Ammunition && ad->ammo_kind == d->weapon.ammo_kind && x.count > 0) {
+                            x.count = uint16_t(x.count - 1);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    for (const auto& e : evs) {
+        if (e.kind != rules5e::EventKind::CombatantDied) continue;
+        rules5e::Loadout* l = find_loadout(state_, e.actor);
+        if (!l) continue;
+        std::vector<HeldItem> all;
+        for (HeldItem* x : {&l->view.main, &l->view.off})
+            if (x->instance) { all.push_back(*x); *x = HeldItem{}; }
+        for (const auto& x : l->view.carried) all.push_back(x);
+        l->view.carried.clear();
+        std::sort(all.begin(), all.end(), [](const HeldItem& a, const HeldItem& b) { return a.instance < b.instance; });
+        const Vec2i at = pos(e.actor);
+        for (const auto& x : all) ground_drop(state_, x, at);
+        if (!all.empty()) touched.push_back(e.actor);
+    }
+    for (const CombatantId id : touched) recompute_derived(state_, id, *items_);
     refresh_interactions(state_);
     for (const auto& l : state_.loadouts) {
         const DeriveInputs in = derive_inputs(state_, l.owner);

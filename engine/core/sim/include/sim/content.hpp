@@ -31,7 +31,8 @@ constexpr uint8_t footprint_of(CreatureSize s) noexcept {
 struct EquipmentEntry {
     std::string id;
     uint32_t value_gp = 0;
-    bool equipped = false;   // appended (EQUIPMENT.md 9): {"item": ..., "equipped": true}; read only by CombatOptions::equipment
+    bool equipped = false;
+    uint16_t count = 1;      // appended (EQUIPMENT.md Q10): {"item": ..., "count": N} stack size (ammunition); default 1   // appended (EQUIPMENT.md 9): {"item": ..., "equipped": true}; read only by CombatOptions::equipment
 };
 
 struct Archetype {
