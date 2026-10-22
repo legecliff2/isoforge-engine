@@ -598,8 +598,8 @@ void Combat::install_hooks() {
         std::shared_ptr<const ItemDefTable> items = items_;
         state_.hooks.item_def = [items](uint32_t def) -> const rules5e::ItemDef* { return items ? items->find(def) : nullptr; };
         item_events_.clear();
-        state_.hooks.ground_item_def = [this](uint32_t instance) -> const rules5e::ItemDef* {
-            for (const auto& g : state_.ground_items)
+        state_.hooks.ground_item_def = [this](const rules5e::EncounterState& st, uint32_t instance) -> const rules5e::ItemDef* {
+            for (const auto& g : st.ground_items)   // the state rules is checking (an AI lookahead copy included)
                 if (g.item.instance == instance) return items_ ? items_->find(g.item.def) : nullptr;
             return nullptr;
         };
@@ -1885,6 +1885,7 @@ uint64_t Combat::log_hash() const {
         if (q.equip_op != 0) {   // 0xD1 (EQUIPMENT.md 4.2, Engine Core): equip request, folded only when equip_op != 0
             h.byte(0xD1); h.byte(q.equip_op); h.u32(q.equip_item); h.byte(q.equip_hand); h.u32(q.equip_to);
             h.byte(q.equip_in_reach ? 1 : 0);
+            if (q.equip_op == uint8_t(rules5e::EquipOp::SetLightState)) h.byte(q.equip_state);   // only for op 10
         }   // Petrifying Gaze averting the eyes: folded only when set (gaze_seen is derived, not folded)
         // Small leftovers (rules #111): bit0 haste_action, bit1 reckless, bit2 aggressive; folded only when some bit is set.
         if (const uint8_t lo = uint8_t((q.haste_action ? 1 : 0) | (q.reckless ? 2 : 0) | (q.aggressive ? 4 : 0)); lo != 0) {

@@ -11,7 +11,7 @@
 
 #include "view_model.hpp"
 
-namespace eng::sim { class ContentLibrary; }
+namespace eng::sim { class ContentLibrary; struct EquipmentLight; struct LightSource; }
 
 namespace slice {
 
@@ -32,7 +32,11 @@ inline constexpr uint32_t kInterimLightIdBase = 0x40000000u;
 class Session {
 public:
     // One light-capable item as the sim's equip state reports it (sim::Combat::equipment_lights()).
-    struct EquippedLight { uint32_t light_id = 0, item = 0, holder_id = 0; eng::Vec2i tile{}; bool lit = false; };
+    struct EquippedLight {
+        uint32_t light_id = 0, item = 0, holder_id = 0; eng::Vec2i tile{}; bool lit = false;
+        uint8_t state = 0;                    // rules5e::light_state_index (item flags bits 4-6)
+        uint16_t bright_ft = 0, dim_ft = 0;   // rules5e::light_radii(def, held): 0 / 0 while unlit or stowed
+    };
     struct Options {
         // assets::PackSet::resolve(pack_roots, packs); depends (e.g. srd51.core) come in through
         // the set, never by being listed. The chunk comes from packs.front()'s chunks/0_0_0.json.
@@ -72,8 +76,9 @@ public:
     bool paused() const;
     const std::string& error() const;
     // Scenario / test commands. submit_equip: one rules equip op (rules5e::EquipOp) by the current actor; false if
-    // refused or not that actor's turn. end_turns_until: ends turns until `actor` acts.
-    bool submit_equip(uint32_t actor, uint8_t op, uint32_t item, uint8_t hand = 0);
+    // refused or not that actor's turn. `state` is ActionRequest::equip_state (EquipOp::SetLightState: a LightDef::states
+    // index or rules5e::kLightDouse). end_turns_until: ends turns until `actor` acts.
+    bool submit_equip(uint32_t actor, uint8_t op, uint32_t item, uint8_t hand = 0, uint8_t state = 0);
     bool end_turns_until(uint32_t actor);
     std::vector<EquippedLight> equipment_lights() const;
     // Non-fatal load warnings (e.g. two items styling one light preset differently).
@@ -86,6 +91,9 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
+
+// Equipment producer, one entry (exposed for tests): sized from the entry's state radii; held -> on the holder.
+eng::sim::LightSource equipment_source(const eng::sim::EquipmentLight& e, eng::Vec2i holder_centre, std::string preset);
 
 // Palette asset id -> placeholder tile kind ("tiles.dungeon.wall_01" -> Wall).
 TileKind classify_tile(const std::string& asset_id);

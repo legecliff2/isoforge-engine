@@ -1,6 +1,7 @@
 #include "rules5e/equipment.hpp"
 
 #include <algorithm>
+#include <set>
 #include "rules5e/abilities.hpp"
 #include "rules5e/conditions.hpp"
 #include "rules5e/weapon.hpp"
@@ -20,12 +21,16 @@ bool pure_ranged(const WeaponDef& w) { return w.reach_ft == 0 && w.range_ft > 0;
 bool has(const WeaponDef& w, WeaponProperty p) { return (w.properties & p) != 0; }
 // Hands to hold an item: ItemDef::hands, and never fewer than 2 for a two-handed weapon (the property is authoritative even
 // if content left `hands` at its default 1). Unknown def = 1.
+} // namespace
+
 int hands_needed(const ItemDef* d) {
     if (!d) return 1;
     int need = std::max<int>(1, d->hands);
     if (d->kind == ItemKind::Weapon && (d->weapon.properties & kWeaponTwoHanded) != 0) need = std::max(need, 2);
     return need;
 }
+
+namespace {
 int empty_hands(const LoadoutView& v) {
     if (v.hand_count == 0) return 0;
     return int(v.main.instance == 0) + int(v.off.instance == 0);
@@ -232,12 +237,19 @@ uint16_t armor_change_rounds(ArmorCategory c, bool don, bool helper) {
     return uint16_t(helper ? r / 2 : r);
 }
 
+LightState light_radii(const ItemDef& d, const HeldItem& h) {
+    if ((h.flags & kHeldLit) == 0) return {};
+    const std::size_t i = light_state_index(h.flags);
+    if (i >= d.light.states.size()) return {};
+    return d.light.states[i];
+}
+
 EquipCost equip_legal(const EncounterState& s, const ActionRequest& r) {
     auto no = [](std::string_view why) { return EquipCost{EquipCost::Refused, why}; };
     const LoadoutView* v = loadout_view(s, r.actor);
     if (!v) return no("equip: equipment play is off");
     const auto op = EquipOp(r.equip_op);
-    if (op == EquipOp::None || r.equip_op > uint8_t(EquipOp::DoffArmor)) return no("equip: unknown equip op");
+    if (op == EquipOp::None || r.equip_op > uint8_t(EquipOp::SetLightState)) return no("equip: unknown equip op");
     if (s.ended || s.order.empty() || current_actor(s) != r.actor) return no("equip: not your turn");
     const Combatant* a = combatant(s, r.actor);
     if (!a || a->dead || a->hp <= 0 || is_incapacitated(*a)) return no("equip: the creature cannot act");
@@ -280,7 +292,7 @@ EquipCost equip_legal(const EncounterState& s, const ActionRequest& r) {
         if (h || c) return no("equip: the item is already carried");
         if (!r.equip_in_reach) return no("equip: the item is out of reach");
         // equip_item is a ground instance id: resolve its def through Engine Core, never through item_def
-        const ItemDef* d = s.hooks.ground_item_def ? s.hooks.ground_item_def(r.equip_item) : nullptr;
+        const ItemDef* d = s.hooks.ground_item_def ? s.hooks.ground_item_def(s, r.equip_item) : nullptr;
         if (!d) return no("equip: unknown ground item");
         if (!hand_ok(d)) return no("equip: no free hand");
         return interaction();
@@ -314,6 +326,19 @@ EquipCost equip_legal(const EncounterState& s, const ActionRequest& r) {
         const ItemDef* d = def_of(s, h->def);
         const int need = hands_needed(d);
         if (!tv || empty_hands(*tv) < need) return no("equip: the recipient has no free hand");
+        return interaction();
+    }
+    case EquipOp::SetLightState: {
+        if (!h) return no("equip: the item is not in hand");
+        const ItemDef* d = def_of(s, h->def);
+        if (!d || d->light.states.empty()) return no("equip: not a light source");
+        const bool lit = (h->flags & kHeldLit) != 0;
+        if (r.equip_state == kLightDouse) {
+            if (!lit) return no("equip: the light is already in that state");
+            return interaction();
+        }
+        if (r.equip_state >= d->light.states.size() || r.equip_state >= kMaxLightStates) return no("equip: unknown light state");
+        if (lit && light_state_index(h->flags) == r.equip_state) return no("equip: the light is already in that state");
         return interaction();
     }
     default: break;
@@ -373,6 +398,24 @@ bool blank(const std::string& r) {
 }
 }
 
+std::optional<WeaponUse> weapon_use_from_string(std::string_view u) {
+    if (u == "one_hand") return WeaponUse::OneHand;
+    if (u == "two_hands") return WeaponUse::TwoHands;
+    if (u == "thrown") return WeaponUse::Thrown;
+    if (u == "off_hand") return WeaponUse::OffHand;
+    return std::nullopt;
+}
+std::string_view weapon_use_name(WeaponUse u) {
+    switch (u) {
+    case WeaponUse::TwoHands: return "two_hands";
+    case WeaponUse::Thrown: return "thrown";
+    case WeaponUse::OffHand: return "off_hand";
+    default: return "one_hand";
+    }
+}
+
+int recovered_ammo(int expended) { return expended > 0 ? expended / 2 : 0; }
+
 std::string hands_overfull_error(std::string_view id, int held, int hands) {
     return std::string(id) + ": holds " + std::to_string(held) + " items but has " + std::to_string(hands) + " hands";
 }
@@ -408,31 +451,32 @@ MonsterDerivation derive_monster(const MonsterSpec& m) {
     // Attacks (2.1, 5.3..5.5)
     bool multiplier_used = false;
     for (const MonsterAttackSpec& as : m.attacks) {
+        const WeaponUse use = as.has_use ? as.use : WeaponUse::OneHand;   // #252: authored, else one_hand; never inferred
         WielderView v;
         v.abilities = m.abilities; v.pb = out.pb; v.proficient = true;
         v.dice_multiplier = m.dice_multiplier; v.extra_melee_dice = m.brute_dice;
         v.ability = as.ability; v.damage_ability_none = as.damage_ability_none;
         const std::string pre = m.id + "." + as.id;
-        DerivedAttack base = derive_weapon_attack(as.weapon, v, as.use);
+        DerivedAttack base = derive_weapon_attack(as.weapon, v, use);
         if (!base.error.empty()) { out.errors.push_back(pre + ": " + std::string(base.error)); out.attacks.push_back(base.attack); continue; }
         if (as.attack_bonus.present) {
             if (blank(as.attack_bonus.reason)) out.errors.push_back(pre + ": attack_bonus needs a reason");
             if (base.attack.to_hit == as.printed_to_hit) out.errors.push_back(pre + ": attack_bonus is not needed");
             v.to_hit_override = as.attack_bonus.value;
         }
-        DerivedAttack d = derive_weapon_attack(as.weapon, v, as.use);
+        DerivedAttack d = derive_weapon_attack(as.weapon, v, use);
         if (d.attack.to_hit != as.printed_to_hit)
             out.errors.push_back(pre + ": derived to-hit " + signed_str(d.attack.to_hit) + " != printed " + signed_str(as.printed_to_hit));
         if (!as.weapon.natural && m.dice_multiplier > 1) {
             WielderView one = v; one.dice_multiplier = 1;
-            if (!(derive_weapon_attack(as.weapon, one, as.use).attack.damage == as.printed_damage)) multiplier_used = true;
+            if (!(derive_weapon_attack(as.weapon, one, use).attack.damage == as.printed_damage)) multiplier_used = true;
         }
         if (!(d.attack.damage == as.printed_damage)) {
             std::string e = pre + ": derived damage " + format_dice(d.attack.damage) + " != printed " + format_dice(as.printed_damage);
             if (!as.weapon.natural)
                 for (uint8_t k = 2; k <= 4; ++k) {
                     WielderView mk = v; mk.dice_multiplier = k;
-                    if (derive_weapon_attack(as.weapon, mk, as.use).attack.damage == as.printed_damage) {
+                    if (derive_weapon_attack(as.weapon, mk, use).attack.damage == as.printed_damage) {
                         e += " (weapon_dice_multiplier " + std::to_string(int(k)) + " would match)"; break;
                     }
                 }
@@ -441,6 +485,122 @@ MonsterDerivation derive_monster(const MonsterSpec& m) {
         out.attacks.push_back(d.attack);
     }
     if (m.dice_multiplier > 1 && !multiplier_used) out.errors.push_back(m.id + ": weapon_dice_multiplier is not needed");
+    return out;
+}
+
+} // namespace rules5e
+
+namespace rules5e {
+namespace {
+using Names = std::set<std::string>;
+struct ClassGrant { const char* cls; std::vector<const char*> weapons; std::vector<const char*> armor; };
+// checks_v4.SRD_CLASS_PROFICIENCIES / SRD_RACE_WEAPON_PROFICIENCIES (#253, 5e-database a6212be)
+const std::vector<ClassGrant>& class_grants() {
+    static const std::vector<ClassGrant> t = {
+        {"barbarian", {"simple", "martial"}, {"light", "medium", "shields"}},
+        {"bard", {"simple", "longsword", "rapier", "shortsword", "crossbow_hand"}, {"light"}},
+        {"cleric", {"simple"}, {"light", "medium", "shields"}},
+        {"druid", {"club", "dagger", "javelin", "mace", "quarterstaff", "sickle", "spear", "dart", "sling", "scimitar"},
+         {"light", "medium", "shields"}},
+        {"fighter", {"simple", "martial"}, {"light", "medium", "heavy", "shields"}},
+        {"monk", {"simple", "shortsword"}, {}},
+        {"paladin", {"simple", "martial"}, {"light", "medium", "heavy", "shields"}},
+        {"ranger", {"simple", "martial"}, {"light", "medium", "shields"}},
+        {"rogue", {"simple", "longsword", "rapier", "shortsword", "crossbow_hand"}, {"light"}},
+        {"sorcerer", {"dagger", "dart", "sling", "quarterstaff", "crossbow_light"}, {}},
+        {"warlock", {"simple"}, {"light"}},
+        {"wizard", {"dagger", "dart", "sling", "quarterstaff", "crossbow_light"}, {}},
+    };
+    return t;
+}
+std::vector<const char*> race_weapons(std::string_view race) {
+    if (race == "dwarf" || race == "hill_dwarf") return {"battleaxe", "handaxe", "light_hammer", "warhammer"};
+    if (race == "high_elf") return {"longsword", "shortsword", "shortbow", "longbow"};
+    return {};
+}
+std::string weapon_name(const char* n) {
+    const std::string_view v(n);
+    return (v == "simple" || v == "martial") ? std::string(v) : "srd51.item." + std::string(v);
+}
+bool covered(const std::string& e, const Names& pool, const std::vector<CharacterItemClass>& items) {
+    if (pool.count(e)) return true;
+    for (const auto& it : items) if (it.id == e) return !it.weapon_class.empty() && pool.count(it.weapon_class) != 0;
+    return false;
+}
+std::string signed_int(int v) { return (v >= 0 ? "+" : "") + std::to_string(v); }
+} // namespace
+
+std::optional<AcBaseCandidate> feature_ac_base(std::string_view c, std::string_view f) {
+    if (c == "barbarian" && f == "unarmored_defense") return AcBaseCandidate{AcBaseKind::UnarmoredDefense, 10, Ability::Con, true, false, 0};
+    if (c == "monk" && f == "unarmored_defense") return AcBaseCandidate{AcBaseKind::UnarmoredDefense, 10, Ability::Wis, true, true, 0};
+    if (c == "sorcerer" && f == "draconic_resilience") return AcBaseCandidate{AcBaseKind::FixedPlusDex, 13, Ability::Con, true, false, 0};
+    if (c == "warlock" && f == "armor_of_shadows") return AcBaseCandidate{AcBaseKind::FixedPlusDex, 13, Ability::Con, true, false, 0};
+    return std::nullopt;
+}
+
+CharacterDerivation derive_character(const CharacterSpec& c) {
+    CharacterDerivation out;
+    // action weapon checks (checks_v4: "/actions/<i>/weapon" and the attack kind)
+    for (std::size_t i = 0; i < c.actions.size(); ++i) {
+        const auto& a = c.actions[i];
+        if (a.weapon.empty()) continue;
+        if (std::find(c.equipment.begin(), c.equipment.end(), a.weapon) == c.equipment.end())
+            out.errors.push_back("/actions/" + std::to_string(i) + "/weapon: '" + a.weapon + "' is not listed in equipment[]");
+        if (!a.weapon_attack_kind)
+            out.errors.push_back("/actions/" + std::to_string(i) +
+                                 ": weapon / natural / attack_bonus need a melee_weapon_attack or ranged_weapon_attack");
+    }
+    // proficiencies: missing = error, extra = warning
+    Names want_w, want_a;
+    for (const auto& cls : c.classes)
+        for (const auto& g : class_grants())
+            if (cls == g.cls) {
+                for (const char* w : g.weapons) want_w.insert(weapon_name(w));
+                for (const char* x : g.armor) want_a.insert(x);
+            }
+    for (const char* w : race_weapons(c.race)) want_w.insert(weapon_name(w));
+    const Names have_w(c.weapon_proficiencies.begin(), c.weapon_proficiencies.end());
+    const Names have_a(c.armor_proficiencies.begin(), c.armor_proficiencies.end());
+    for (const auto& [key, want, have] : {std::tuple<const char*, const Names*, const Names*>{"weapon_proficiencies", &want_w, &have_w},
+                                          std::tuple<const char*, const Names*, const Names*>{"armor_proficiencies", &want_a, &have_a}}) {
+        for (const auto& e : *want)
+            if (!covered(e, *have, c.item_classes)) out.errors.push_back(c.id + ": " + key + " missing '" + e + "' (SRD 5.1 class / race)");
+        for (const auto& e : *have)
+            if (!covered(e, *want, c.item_classes))
+                out.warnings.push_back(c.id + ": " + key + " '" + e + "' is not granted by the SRD 5.1 class / race");
+    }
+    // AC (1.2): armor, or the highest of 10 + Dex and the feature bases; then the shield
+    AcInput in;
+    in.abilities = c.abilities;
+    in.has_armor = c.has_armor; in.armor = c.armor;
+    in.has_shield = c.has_shield; in.shield = c.shield;
+    for (const auto& f : c.features)
+        for (const auto& cls : c.classes)
+            if (auto b = feature_ac_base(cls, f)) in.bases.push_back(*b);
+    out.ac = int16_t(compute_ac(in).ac);
+    if (out.ac != c.printed_ac)
+        out.errors.push_back(c.id + ": derived AC " + std::to_string(int(out.ac)) + " != printed " + std::to_string(int(c.printed_ac)));
+    // weapon actions (2.1): proficiency from the authored lists; Monk Martial Arts picks the higher of Str / Dex
+    const bool monk = std::find(c.classes.begin(), c.classes.end(), "monk") != c.classes.end();
+    for (const auto& a : c.actions) {
+        if (a.weapon.empty() || !a.item_known) continue;
+        WielderView v;
+        v.abilities = c.abilities; v.pb = c.pb;
+        v.proficient = covered(a.weapon, have_w, c.item_classes);
+        const bool monk_weapon = a.weapon == "srd51.item.shortsword" ||
+            (a.weapon_class == "simple" && !a.item_has_range &&
+             (a.weapon_def.properties & (kWeaponTwoHanded | kWeaponHeavy)) == 0);
+        if (monk && monk_weapon)
+            v.ability = modifier(c.abilities, Ability::Dex) > modifier(c.abilities, Ability::Str) ? Ability::Dex : Ability::Str;
+        const std::string pre = c.id + "." + a.id;
+        const DerivedAttack d = derive_weapon_attack(a.weapon_def, v, a.use);
+        if (!d.error.empty()) { out.errors.push_back(pre + ": " + std::string(d.error)); continue; }
+        if (d.attack.to_hit != a.printed_to_hit)
+            out.errors.push_back(pre + ": derived to-hit " + signed_int(d.attack.to_hit) + " != printed " + signed_int(a.printed_to_hit));
+        if (!(d.attack.damage == a.printed_damage))
+            out.errors.push_back(pre + ": derived damage " + format_dice(d.attack.damage) + " != printed " + format_dice(a.printed_damage));
+        out.attacks.push_back(d.attack);
+    }
     return out;
 }
 

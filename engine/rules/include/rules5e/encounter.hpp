@@ -230,7 +230,7 @@ struct ActionRequest {
     // divided (check_heal_split validates it before anything changes).
     std::vector<HealShare> heal_split{};
     // appended (docs/proposals/EQUIPMENT.md 4.2; log_hash 0xD1 when equip_op != 0, folded by Engine Core): UseObject with an
-    // equip op (rules5e::EquipOp: 1 draw, 2 stow, 3 drop, 4 pick up, 5 don shield, 6 doff shield, 7 hand over, 8 / 9 armor).
+    // equip op (rules5e::EquipOp: 1 draw, 2 stow, 3 drop, 4 pick up, 5 don shield, 6 doff shield, 7 hand over, 8 / 9 armor, 10 light state).
     // equip_item: the item instance; equip_hand: 1 main, 2 off, 0 any free; equip_to: HandOver recipient; equip_in_reach: sim's
     // answer for PickUp / HandOver (rules never reads positions). Rules checks legality (equip_legal); Engine Core applies it.
     uint8_t equip_op = 0;
@@ -238,6 +238,8 @@ struct ActionRequest {
     uint8_t equip_hand = 0;
     CombatantId equip_to = 0;
     bool equip_in_reach = false;
+    // appended (EquipOp::SetLightState, 10): the LightDef::states index, or kLightDouse (0xFF). Folded into 0xD1 by Engine Core.
+    uint8_t equip_state = 0;
 };
 
 enum class EventKind : uint8_t {
@@ -747,7 +749,8 @@ struct EncounterHooks {
     std::function<void(EncounterState&, const ActionRequest&, uint8_t cost_kind, std::vector<Event>&)> apply_equip;
     // ground_item_def: the ItemDef of a ground item *instance* (ActionRequest::equip_item on PickUp is a ground instance id,
     // not a def id); nullptr / empty = unknown, and PickUp is refused `equip: unknown ground item`.
-    std::function<const ItemDef*(uint32_t instance)> ground_item_def;
+    std::function<const ItemDef*(const EncounterState&, uint32_t instance)> ground_item_def;   // the state passed is the one being
+    // evaluated (an AI lookahead copy uses its own), like loadout_of
 };
 
 // R-G11: a live zone or aura (ZONES_AURAS.md §2.6). anchor_x / anchor_y: a point zone's sim tile, opaque to rules (Q1).
