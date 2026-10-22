@@ -70,7 +70,7 @@ std::vector<std::string> words(std::string_view s) {
 } // namespace
 
 std::optional<std::string> ItemDefTable::add(const Json& doc) {
-    pending_states_.clear();
+    std::vector<LightRadii> states;
     const std::string cid = doc.value("id", "");
     if (cid.empty()) return std::string("item: missing id");
     const std::string cat = doc.value("category", "");
@@ -139,10 +139,10 @@ std::optional<std::string> ItemDefTable::add(const Json& doc) {
             if (auto st = lj->find("states"); st != lj->end() && st->is_array())
                 for (const Json& x : *st)
                     if (x.is_object())
-                        pending_states_.push_back({uint16_t(std::clamp(int_or(x, "bright_ft", 0), 0, 65535)),
+                        states.push_back({uint16_t(std::clamp(int_or(x, "bright_ft", 0), 0, 65535)),
                                                    uint16_t(std::clamp(int_or(x, "dim_ft", 0), 0, 65535))});
-            L.extra_states = uint8_t(std::min<std::size_t>(pending_states_.size(), 7));   // 3 flag bits (kHeldStateMask)
-            pending_states_.resize(L.extra_states);
+            L.extra_states = uint8_t(std::min<std::size_t>(states.size(), 7));   // 3 flag bits (kHeldStateMask)
+            states.resize(L.extra_states);
         }
         if (auto ta = doc.find("torch_attack"); ta != doc.end() && ta->is_object()) {
             d.has_weapon = true;
@@ -155,13 +155,16 @@ std::optional<std::string> ItemDefTable::add(const Json& doc) {
     } else {
         d.kind = ItemKind::Other;   // valuables (gems): carried, never held
     }
-    return add(cid, d);
+    return insert(cid, d, std::move(states));
 }
 
 std::optional<std::string> ItemDefTable::add(const std::string& content_id, ItemDef def) {
+    return insert(content_id, def, {});
+}
+
+std::optional<std::string> ItemDefTable::insert(const std::string& content_id, ItemDef def, std::vector<LightRadii> states) {
     const uint32_t key = item_def_id(content_id);
     if (auto it = by_id_.find(key); it != by_id_.end()) {
-        pending_states_.clear();
         if (it->second.content_id == content_id) return content_id + ": duplicate item id";
         return content_id + ": item def id collides with '" + it->second.content_id + "'";
     }
@@ -169,8 +172,7 @@ std::optional<std::string> ItemDefTable::add(const std::string& content_id, Item
     strings_.push_back(last_segment(content_id));
     def.weapon.id = strings_.back();
     if (def.kind == ItemKind::Weapon) def.has_weapon = true;
-    by_id_.emplace(key, Entry{content_id, def, std::move(pending_states_)});
-    pending_states_.clear();
+    by_id_.emplace(key, Entry{content_id, def, std::move(states)});
     return std::nullopt;
 }
 
