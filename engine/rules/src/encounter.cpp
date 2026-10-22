@@ -1,4 +1,5 @@
 #include "rules5e/encounter.hpp"
+#include "rules5e/equipment.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -3512,6 +3513,10 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     if ((!inn || inn->as_listed) && (def.components & kComponentV) && !s.zones.empty() && in_silence(s, a.id))
         return fail("silence: no verbal component inside a Silence zone");
     if ((!inn || inn->as_listed) && s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, def)) return fail("components unavailable");
+    if ((!inn || inn->as_listed) && s.hooks.loadout_of) {   // EQUIPMENT.md 3.2: free hands / focus (creatures with a loadout view)
+        const std::string_view why = components_refusal(s, a.id, def);
+        if (!why.empty()) return fail(why);
+    }
     std::vector<CombatantId> ids = req.targets;
     if (ids.empty() && req.target != 0) ids.push_back(req.target);
     if (ids.empty() && (def.kind == SpellEffectKind::Teleport || def.kind == SpellEffectKind::Zone)) ids.push_back(a.id);   // R-G9 / R-G11: self
@@ -4850,6 +4855,10 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             ctx.guess_miss = s.hooks.guess_correct && !s.hooks.guess_correct(s, a, *t, req.guess_x, req.guess_y);
         }
         if (req.attack_index >= a.attacks.size()) return fail("bad attack index");
+        if (s.hooks.loadout_of) {   // EQUIPMENT.md 3: hands / ammunition (only creatures with a loadout view)
+            const std::string_view why = attack_refusal(s, a.id, req.attack_index);
+            if (!why.empty()) return fail(why);
+        }
         const bool warded = ward_index(s, *t, a.id) != 0;   // 7.2zd Sanctuary
         Combatant* ward_alt = nullptr;
         if (req.ward_alternate != 0) {
@@ -4939,6 +4948,17 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         return out;
     }
     case ActionKind::UseObject: {   // 7.2y: Use an Object; Fast Hands also via the bonus action (bonus_action_grants)
+        if (req.equip_op != 0) {   // EQUIPMENT.md 4.2: rules checks legality and spends the action; Engine Core applies the op
+            const EquipCost c = equip_legal(s, req);
+            if (c.kind == EquipCost::Refused) return fail(c.refusal);
+            if (!s.hooks.apply_equip) return fail("equip: equipment play is off");
+            if (c.kind == EquipCost::Action) {
+                if (!spend_action(b, a, req.kind, false)) return fail("equip: no action left");
+                s.budget = b;
+            }
+            s.hooks.apply_equip(s, req, uint8_t(c.kind), out.events);
+            return out;
+        }
         if (req.object_use < 1 || req.object_use > 3) return fail("object_use: 1 use an object, 2 sleight of hand, 3 thieves' tools");
         if (req.object_use != 1 && req.dc <= 0) return fail("object_use: a check needs dc");
         if (!spend_action(b, a, req.kind, req.as_bonus_action)) return fail(req.as_bonus_action ? "no bonus action for this (Fast Hands)" : "no action available");
@@ -5252,6 +5272,10 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     }
     if (!s.effects.empty())   // 7.2v: drop what a control condition refuses
         std::erase_if(out, [&](const ActionRequest& r) { return control_refuses(s, a, r) != nullptr; });
+    if (s.hooks.loadout_of) {   // EQUIPMENT.md 4: equip ops, appended after every existing entry (creatures with a loadout view)
+        auto eq = equip_legal_actions(s);
+        out.insert(out.end(), eq.begin(), eq.end());
+    }
     return out;
 }
 
