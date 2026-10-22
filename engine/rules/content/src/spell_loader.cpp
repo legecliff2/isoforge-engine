@@ -443,7 +443,8 @@ std::string parse_modifier(const Json& m, ModifierSpec& out, const Json** table)
     static const std::map<std::string, ModStat> kStat{{"attack_roll", ModStat::AttackRoll}, {"save", ModStat::Save},
         {"ability_check", ModStat::AbilityCheck}, {"ac", ModStat::Ac}, {"speed", ModStat::Speed}, {"damage", ModStat::Damage},
         {"temp_hp", ModStat::TempHp}, {"resistance", ModStat::Resistance}, {"attacks_against", ModStat::AttacksAgainst},
-        {"no_reactions", ModStat::NoReactions}, {"no_healing", ModStat::NoHealing}};   // 7.2u markers
+        {"no_reactions", ModStat::NoReactions}, {"no_healing", ModStat::NoHealing},   // 7.2u markers
+        {zg::kOutlined, ModStat::Outlined}};   // 7.2zg Faerie Fire (a state)
     out = ModifierSpec{};
     if (!lookup(kStat, m.value("stat", Json()), out.stat)) return "modifier stat invalid";
     if (m.contains("bonus")) { int b = 0; if (!small_int(m["bonus"], -32767, 32767, b)) return "modifier bonus invalid"; out.bonus = int16_t(b); }
