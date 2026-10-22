@@ -18,6 +18,7 @@ const uint32_t kBless = spell_id_of("test.ward.bless");
 const uint32_t kBane = spell_id_of("test.ward.bane");
 const uint32_t kMark = spell_id_of("test.ward.hunters_mark");
 const uint32_t kBolt = spell_id_of("test.ward.bolt");
+const uint32_t kInvis = spell_id_of("test.ward.invisibility");
 
 SpellDef plain(uint32_t id, const char* cid) { SpellDef d; d.id = id; d.content_id = cid; d.level = 1; d.range_ft = 60; return d; }
 EncounterHooks hooks(int8_t ward_dc) {
@@ -51,6 +52,10 @@ EncounterHooks hooks(int8_t ward_dc) {
     SpellDef bolt = plain(kBolt, "test.ward.bolt"); bolt.level = 0; bolt.kind = SpellEffectKind::SpellAttack;
     bolt.dice = DiceExpr{1, 1, 50}; bolt.damage_type = DamageType::Fire; bolt.fixed_attack = 40;
     book->add(bolt);
+    SpellDef iv = plain(kInvis, "test.ward.invisibility"); iv.range_ft = 5; iv.kind = SpellEffectKind::ApplyCondition;
+    iv.condition = Condition::Invisible; iv.applies_condition = true; iv.concentration = true;
+    iv.duration = SpellDuration::Hours; iv.duration_amount = 1; iv.expiry = 1; iv.duration_rounds = 600; iv.ends_on = kEndsOnAttack;
+    book->add(iv);
     h.spells = book;
     return h;
 }
@@ -58,7 +63,7 @@ Combatant caster(CombatantId id, uint8_t team = 0) {
     auto c = wizard(id, team);
     c.hp = c.hp_max = 40;
     c.attacks = {Attack{"blade", 40, {1, 1, 0}, DamageType::Slashing, 5, false, false}};
-    c.spells_known.insert(c.spells_known.end(), {kSanct, kScare, kBall, kBless, kBane, kMark, kBolt, kCureWounds});
+    c.spells_known.insert(c.spells_known.end(), {kSanct, kScare, kBall, kBless, kBane, kMark, kBolt, kCureWounds, kInvis});
     never_react(c);
     return c;
 }
@@ -223,4 +228,42 @@ TEST_CASE("ward follow-ups: the warded creature's own Grapple / Shove ends Sanct
     to_turn(s, 3);
     REQUIRE(step(s, grapple(3, 4, 0, 3)).ok);     // Shove (push): ends
     CHECK_FALSE(mut(s, 3).has(Condition::Warded));
+}
+
+TEST_CASE("ward follow-ups: a failed Grapple still ends the ward; Escape keeps it; a Grapple ends Invisibility") {
+    {   // (a) the contest is lost (the brute's Str 30 holds off a Str 1 grappler more often than not): the ward ends anyway
+        auto s = start({caster(1), caster(2), caster(3), brute(4)});
+        mut(s, 3).abilities.score[0] = 1;
+        mut(s, 4).abilities.score[0] = 30;
+        bool failed = false;
+        for (int i = 0; i < 3 && !failed; ++i) {
+            to_turn(s, 1);
+            REQUIRE(step(s, cast_at(1, kSanct, 3)).ok);
+            to_turn(s, 3);
+            REQUIRE(mut(s, 3).has(Condition::Warded));
+            REQUIRE(step(s, grapple(3, 4)).ok);
+            CHECK_FALSE(mut(s, 3).has(Condition::Warded));   // win or lose
+            failed = !mut(s, 4).has(Condition::Grappled);
+            if (!failed) { s.sourced.clear(); remove_condition(mut(s, 4), Condition::Grappled); }
+        }
+        CHECK(failed);
+    }
+    {   // (b) escaping a grapple is not an attack: the ward stays
+        auto s = start({caster(1), caster(2), caster(3), brute(4)});
+        REQUIRE(step(s, cast_at(1, kSanct, 3)).ok);
+        s.sourced.push_back(SourcedCondition{Condition::Grappled, 3, 4, 0});
+        add_condition(mut(s, 3), Condition::Grappled);
+        to_turn(s, 3);
+        ActionRequest esc = grapple(3, 0, 0, 4);
+        REQUIRE(step(s, esc).ok);
+        CHECK(mut(s, 3).has(Condition::Warded));
+    }
+    {   // (c) a Grapple by an invisible creature ends its Invisibility (ends_on attack)
+        auto s = start({caster(1), caster(2), caster(3), brute(4)});
+        REQUIRE(step(s, cast_at(1, kInvis, 3)).ok);
+        REQUIRE(mut(s, 3).has(Condition::Invisible));
+        to_turn(s, 3);
+        REQUIRE(step(s, grapple(3, 4)).ok);
+        CHECK_FALSE(mut(s, 3).has(Condition::Invisible));
+    }
 }
