@@ -18,6 +18,12 @@ struct NullFrameStats {
     uint32_t draw_calls = 0;
     uint32_t indices = 0;
     std::vector<NullDrawCall> draws;
+    // With NullDevice::set_hash_uploads(true): FNV-1a over every buffer / texture upload of the frame (handle,
+    // offset / rect, bytes) in call order; with `draws`, a byte-exact fingerprint of what the frame would
+    // rasterise (determinism tests). Byte counts are always kept.
+    uint64_t upload_hash = 1469598103934665603ull;
+    uint64_t buffer_bytes = 0, texture_bytes = 0;
+    uint32_t buffer_uploads = 0, texture_uploads = 0;
 };
 
 // Validates API usage (pass nesting, live handles) and records what was drawn.
@@ -39,6 +45,7 @@ public:
 
     const NullFrameStats& last_frame() const { return last_; }
     uint32_t errors() const { return errors_; }
+    void set_hash_uploads(bool on) { hash_uploads_ = on; }   // off by default (benchmarks)
     uint32_t live_textures() const;
     uint32_t live_buffers() const;
 
@@ -59,7 +66,7 @@ private:
     template <class H> bool check(const std::vector<Slot>&, H) const;
 
     std::vector<Slot> textures_{1}, buffers_{1}, pipelines_{1};
-    bool in_frame_ = false, in_pass_ = false;
+    bool in_frame_ = false, in_pass_ = false, hash_uploads_ = false;
     PipelineId pipeline_{};
     TextureId texture_{};
     NullFrameStats cur_, last_;

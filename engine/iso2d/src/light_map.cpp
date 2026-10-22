@@ -56,8 +56,8 @@ bool LightMaps::update(LightChunkKey k, std::span<const uint8_t, kLightTiles> sa
     const int x0 = std::clamp(r.x, 0, kLightChunk), y0 = std::clamp(r.y, 0, kLightChunk);
     const int x1 = std::clamp(r.x + r.w, 0, kLightChunk), y1 = std::clamp(r.y + r.h, 0, kLightChunk);
     if (x1 <= x0 || y1 <= y0) return true;
-    std::vector<std::byte> sub;
-    sub.reserve(size_t((x1 - x0) * (y1 - y0)));
+    std::vector<std::byte>& sub = scratch_;
+    sub.clear();
     for (int y = y0; y < y1; ++y)
         for (int x = x0; x < x1; ++x) sub.push_back(std::byte(it->second.cpu[size_t(y * kLightChunk + x)]));
     dev_.update_texture(it->second.tex, RectI{x0, y0, x1 - x0, y1 - y0}, sub);
@@ -75,6 +75,11 @@ std::vector<LightChunkKey> LightMaps::keys() const {
 render::TextureId LightMaps::texture(LightChunkKey k) const {
     auto it = maps_.find(k);
     return it == maps_.end() ? render::TextureId{} : it->second.tex;
+}
+
+const uint8_t* LightMaps::texels(LightChunkKey k) const {
+    auto it = maps_.find(k);
+    return it == maps_.end() ? nullptr : it->second.cpu.data();
 }
 
 uint8_t LightMaps::sample(LightChunkKey k, Vec2i p) const {
@@ -128,8 +133,8 @@ bool FogMaps::update(LightChunkKey k, std::span<const uint8_t, kLightTiles> texe
             }
     if (x1 < 0) return true;
     std::copy(texels.begin(), texels.end(), cpu.begin());
-    std::vector<std::byte> sub;
-    sub.reserve(size_t((x1 - x0 + 1) * (y1 - y0 + 1)));
+    std::vector<std::byte>& sub = scratch_;
+    sub.clear();
     for (int y = y0; y <= y1; ++y)
         for (int x = x0; x <= x1; ++x) sub.push_back(std::byte(cpu[size_t(y * kLightChunk + x)]));
     dev_.update_texture(it->second.tex, RectI{x0, y0, x1 - x0 + 1, y1 - y0 + 1}, sub);
@@ -147,6 +152,11 @@ bool FogMaps::update(LightChunkKey k, const FogMask& seen, const FogMask& explor
 render::TextureId FogMaps::texture(LightChunkKey k) const {
     auto it = maps_.find(k);
     return it == maps_.end() ? render::TextureId{} : it->second.tex;
+}
+
+const uint8_t* FogMaps::texels(LightChunkKey k) const {
+    auto it = maps_.find(k);
+    return it == maps_.end() ? nullptr : it->second.cpu.data();
 }
 
 Fog FogMaps::fog(LightChunkKey k, Vec2i p) const {
