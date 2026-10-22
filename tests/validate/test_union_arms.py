@@ -117,7 +117,7 @@ _V = {"visual"}
 ITEM2 = {("weapon",): (ITEM[("weapon",)][0], ITEM[("weapon",)][1] | {"ammo_kind", "attack_magic", "damage_magic", "improvised"} | _V),
          ("armor",): (ITEM[("armor",)][0], ITEM[("armor",)][1] | _V), ("shield",): (ITEM[("shield",)][0], ITEM[("shield",)][1] | _V),
          ("valuable",): (ITEM[("valuable",)][0], ITEM[("valuable",)][1] | _V),
-         ("gear",): (_IBASE, S(_ICOMMON | {"hands", "light", "torch_attack"} | _V)),
+         ("gear",): (_IBASE, S(_ICOMMON | {"hands", "light", "torch_attack", "container"} | _V)),
          ("ammunition",): (_IBASE | {"ammo_kind"}, S(_ICOMMON | {"magic_bonus"} | _V))}
 
 # (label, schema locator, discriminator, documented table)
