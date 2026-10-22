@@ -324,7 +324,10 @@ enum class ModStat : uint8_t { AttackRoll, Save, AbilityCheck, Ac, Speed, Damage
                                // appended (7.2za Bardic Inspiration): one held die (`die`) the owner may add to one roll of a kind in
                                // ModifierSpec::held_applies, after the roll and before the outcome (ReactionOptionKind::AddHeldDie).
                                // Spent (ModifierExpired reason 9) or lapsed at expiry; at most one per creature (a new one replaces it).
-                               HeldDie };
+                               HeldDie,
+                               // appended (7.2zg Faerie Fire `outlined`, a state): attack rolls against the creature have
+                               // advantage when the attacker can see it, and it gains no benefit from being invisible.
+                               Outlined };
 // appended (7.2za): roll kinds for HeldDie and SubtractRoll (`applies_to` in content: attack, save, check, damage).
 inline constexpr uint8_t kRollAttack = 1, kRollSave = 2, kRollCheck = 4, kRollDamage = 8;
 enum class ModAppliesTo : uint8_t { Self, Target, AlliesWithin30,

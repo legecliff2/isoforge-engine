@@ -971,3 +971,15 @@ TEST_CASE("loader 7.2zg: exempt_senses, one key for Blur (apply_modifier) and Mi
     a = spell_from_json(mi);
     CHECK(a.error == "effect exempt_senses must be distinct senses (blindsight, tremorsense, truesight), at least one");
 }
+
+TEST_CASE("loader 7.2zg: modifier stat outlined (Faerie Fire), Dex save gate") {
+    auto ff = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.faerie_fire","level":1,"name":"Faerie Fire",
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":60},"components":{"v":true},
+        "area":{"shape":"cube","size_ft":20},"duration":{"kind":"minutes","amount":1,"concentration":true},
+        "effects":[{"kind":"apply_modifier","modifier":{"stat":"outlined","duration":{"kind":"concentration"}},
+                    "save":{"ability":"dex","dc":"caster"}}]})");
+    auto r = spell_from_json(ff); INFO(r.error); REQUIRE(r.def);
+    CHECK(r.def->modifier.stat == ModStat::Outlined); CHECK(r.def->has_modifier_save); CHECK(r.def->modifier_save == Ability::Dex);
+    auto j = ff; j["effects"][0]["modifier"]["stat"] = "outline";
+    auto q = spell_from_json(j); CHECK(q.error == "effect modifier stat invalid");
+}

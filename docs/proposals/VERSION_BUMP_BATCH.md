@@ -2576,6 +2576,8 @@ Additive (11 spells; key names frozen by T&C, all defined once in `engine/rules/
 
 - **T&C follow-ups on #263.** (1) tools/validate now allows `targets` on `haste` and `slow` effects, as the loader does (Slow `targets: {count: 6}`). Positive specimens are in tests/validate/fixtures/spell_batch_zg (test_spell_batch_zg.py); the negative case `targets_on_summon_weapon` keeps the existing wording for kinds still refused. (2) Acid Arrow upcast: content uses `"scaling": {"upcast": {"dice": 1}}` on the spell. The loader copies `upcast_dice` to the `delayed_damage` rider (#120 follow-up), so at slot 3 the initial damage is 5d4 and the delayed damage 3d4 (rules and loader tests).
 
+- **Group 8 — Faerie Fire (`outlined`, a state).** New modifier stat `outlined`: ModStat::Outlined is appended and is a marker with no number (common v2 modifier enum, same allowed keys as `no_reactions`). Content applies it with an `apply_modifier` effect behind the Bane-style save gate (`save: {ability: dex, dc: caster}`). While a creature carries it: attack rolls against it have advantage when the attacker can see it (rules5e::sight with the outlined subject; never for a Blinded attacker); its Invisible condition gives no benefit (AttackContext::target_outlined / attacker_outlined suppress Invisible's attack modes); and rules5e::sight treats it as not invisible (SightFacts::subject_invisible is cleared). No new events or tags; the row is hashed as an ordinary modifier row. Strings: none new (an unknown stat stays `effect modifier stat invalid`).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain

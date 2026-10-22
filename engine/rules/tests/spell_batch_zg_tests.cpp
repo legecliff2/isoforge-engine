@@ -299,3 +299,42 @@ TEST_CASE("7.2zg Acid Arrow at slot 3: both the initial damage and the delayed r
     REQUIRE(it != s.effects.end());
     CHECK(it->damage.count == 3); CHECK(it->damage.sides == 4);   // 2d4 + 1d4
 }
+
+namespace {
+// Natural d20 of monster 2's first attack on wizard 1; outlined: an `outlined` row on the wizard; invisible: the wizard is invisible.
+int outlined_natural(uint64_t seed, bool outlined, bool invisible, bool blind_attacker) {
+    auto w = wizard(1); w.hp = w.hp_max = 400; never_react(w);
+    if (invisible) add_condition(w, Condition::Invisible);
+    auto m = monster(2); never_react(m);
+    if (blind_attacker) add_condition(m, Condition::Blinded);
+    auto s = begin_encounter({w, m}, seed, nullptr, spell_hooks());
+    if (outlined) {
+        ModifierSpec o; o.id = spell_id_of("test.zg.faerie_fire#modifier"); o.source = spell_id_of("test.zg.faerie_fire");
+        o.stat = ModStat::Outlined; o.applies_to = ModAppliesTo::Target;
+        std::vector<Event> sink;
+        REQUIRE(apply_modifier(s, 2, 1, o, sink));
+    }
+    end_turns_until(s, 2);
+    ActionRequest atk{2, ActionKind::Attack, 1}; atk.attack_index = 0;
+    auto r = step(s, atk);
+    REQUIRE(r.ok);
+    for (const auto& e : r.events) if (e.kind == EventKind::AttackResolved && e.actor == 2) return e.a;
+    FAIL("no attack");
+    return 0;
+}
+}  // namespace
+
+TEST_CASE("7.2zg outlined: advantage on attacks against a seen outlined creature; invisibility gives it no benefit") {
+    int higher = 0;
+    for (uint64_t seed = 1; seed <= 40; ++seed) {
+        CAPTURE(seed);
+        const int plain = outlined_natural(seed, false, false, false);
+        const int lit = outlined_natural(seed, true, false, false);
+        CHECK(lit >= plain); higher += lit > plain;
+        CHECK(outlined_natural(seed, true, true, false) == lit);    // invisible + outlined: advantage, no disadvantage
+        CHECK(outlined_natural(seed, false, true, false) <= plain); // invisible alone: disadvantage (as before)
+        // a blinded attacker cannot see it: no advantage from outlined (its own Blinded disadvantage applies as before)
+        CHECK(outlined_natural(seed, true, false, true) == outlined_natural(seed, false, false, true));
+    }
+    CHECK(higher > 0);
+}

@@ -73,6 +73,11 @@ void mod_modes(const EncounterState& s, CombatantId id, ModStat st, int ability,
     }
 }
 
+// 7.2zg Faerie Fire: `id` carries an `outlined` row.
+bool is_outlined(const EncounterState& s, CombatantId id) {
+    return std::any_of(s.modifiers.begin(), s.modifiers.end(), [&](const ActiveModifier& m) { return m.target == id && m.spec.stat == ModStat::Outlined; });
+}
+
 // Dice of the modifiers of `id` for `st`, rolled now in application order (one rng draw per die, none without one).
 int mod_roll(EncounterState& s, CombatantId id, ModStat st, int ability) {
     int total = 0;
@@ -2106,6 +2111,8 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         mod_modes(s, a.id, ModStat::AttackRoll, -1, madv, mdis);
         mod_modes(s, t.id, ModStat::AttacksAgainst, -1, madv, mdis);
         madv = madv || attackers_adv; mdis = mdis || attackers_dis;   // 7.2zd Protection from Evil and Good
+        if (is_outlined(s, t.id) && !a.has(Condition::Blinded) && sight(s, a.id, t.id).can_see) madv = true;   // 7.2zg outlined
+        actx.target_outlined = is_outlined(s, t.id); actx.attacker_outlined = is_outlined(s, a.id);
         if (madv) actx.mode = RollMode::Advantage;
         if (mdis) actx.extra_disadvantage = true;
         actx.cover_ac_bonus = int8_t(std::clamp(int(actx.cover_ac_bonus) + modified_ac_bonus(s, t.id), -128, 127));
@@ -5865,7 +5872,9 @@ Sight sight(const EncounterState& s, CombatantId viewer, CombatantId subject) {
     if (!find(*b, viewer) || !find(*b, subject)) b = &s;   // created during the step (a summon): its current state
     const Combatant* v = find(*b, viewer); const Combatant* t = find(*b, subject);
     if (!v || !t) return Sight{};
-    return derive_sight(*v, s.hooks.sight_facts(*b, *v, *t));
+    SightFacts f = s.hooks.sight_facts(*b, *v, *t);
+    if (f.subject_invisible && is_outlined(s, subject)) f.subject_invisible = false;   // 7.2zg: an outlined creature can't hide in invisibility
+    return derive_sight(*v, f);
 }
 
 bool is_hidden_from(const EncounterState& s, CombatantId who, CombatantId from) {
