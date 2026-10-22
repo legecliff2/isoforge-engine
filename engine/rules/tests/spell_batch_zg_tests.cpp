@@ -126,6 +126,7 @@ EncounterHooks acid_hooks(int8_t to_hit) {
     d.fixed_attack = to_hit; d.miss_half = true;
     SpellEffect later; later.kind = SpellEffectKind::DelayedDamage; later.affected_only = true; later.dice = DiceExpr{2, 4, 0};
     later.damage_type = DamageType::Acid; later.expiry = 2;
+    d.upcast_dice = 1; later.upcast_dice = 1;   // the loader copies scaling.upcast.dice to the delayed_damage rider
     d.extra_effects = {later};
     book->add(d);
     h.spells = book;
@@ -147,5 +148,246 @@ TEST_CASE("7.2zg on_miss half: a miss deals half the initial 4d4, no later damag
         else { CHECK(lost >= 4); CHECK(lost <= 16); }
         const bool rider = std::any_of(s.effects.begin(), s.effects.end(), [](const auto& x) { return x.spell_id == kAcidArrow; });
         CHECK(rider == (to_hit > 0));
+    }
+}
+
+namespace {
+const uint32_t kRebuke = spell_id_of("test.zg.hellish_rebuke");
+EncounterHooks rebuke_hooks() {
+    auto h = spell_hooks();
+    auto book = std::make_shared<SpellBook>(*h.spells);
+    SpellDef d; d.id = kRebuke; d.content_id = "test.zg.hellish_rebuke"; d.level = 1; d.range_ft = 60;
+    d.casting_time = CastingTime::Reaction; d.reaction_trigger = ReactionTrigger::Damaged; d.requires_sight = true;
+    d.kind = SpellEffectKind::Save; d.save_ability = Ability::Dex; d.dice = DiceExpr{2, 10, 0}; d.damage_type = DamageType::Fire;
+    d.on_save = OnSave::Half; d.fixed_dc = 30;
+    book->add(d);
+    h.spells = book;
+    return h;
+}
+// Runs monster attacks on the wizard until one deals damage; returns that step's events.
+std::vector<Event> hit_wizard(EncounterState& s) {
+    for (int i = 0; i < 40; ++i) {
+        end_turns_until(s, 2);
+        const int hp = mut(s, 1).hp;
+        ActionRequest atk{2, ActionKind::Attack, 1}; atk.attack_index = 0;
+        auto r = step(s, atk);
+        REQUIRE(r.ok);
+        if (mut(s, 1).hp < hp) return r.events;
+        (void)step(s, ActionRequest{2, ActionKind::EndTurn});
+    }
+    FAIL("no hit");
+    return {};
+}
+}  // namespace
+
+TEST_CASE("7.2zg trigger damaged: Hellish Rebuke answers damage from a seen creature (slot spent, Dex save vs the damager)") {
+    auto w = wizard(1); w.hp = w.hp_max = 400; w.spells_known.push_back(kRebuke); never_react(w);
+    set_policy(w, ReactionTrigger::Damaged, ReactionPolicy::Auto);
+    auto m = monster(2); m.hp = m.hp_max = 300; never_react(m);
+    auto s = begin_encounter({w, m}, 11, nullptr, rebuke_hooks());
+    const int slots = mut(s, 1).spell_slots[1];
+    auto ev = hit_wizard(s);
+    const Event* cast_ev = nullptr;
+    for (const auto& e : ev) if (e.kind == EventKind::SpellCast && e.actor == 1) cast_ev = &e;
+    REQUIRE(cast_ev);
+    CHECK(cast_ev->a == int32_t(kRebuke)); CHECK(cast_ev->target == 2); CHECK(cast_ev->b == 1);
+    CHECK(mut(s, 1).spell_slots[1] == slots - 1);
+    CHECK(mut(s, 1).reaction_used);
+    CHECK(mut(s, 2).hp < 300);   // DC 30: the save fails, 2d10 fire
+    CHECK(count_kind(ev, EventKind::SpellResolved) == 1);
+}
+
+TEST_CASE("7.2zg trigger damaged: no offer when the caster cannot see the damager, or it is beyond the range") {
+    for (int variant = 0; variant < 3; ++variant) {
+        CAPTURE(variant);
+        auto w = wizard(1); w.hp = w.hp_max = 400; w.spells_known.push_back(kRebuke); never_react(w);
+        set_policy(w, ReactionTrigger::Damaged, ReactionPolicy::Auto);
+        if (variant == 0) add_condition(w, Condition::Blinded);
+        auto m = monster(2); m.hp = m.hp_max = 300; never_react(m);
+        auto h = rebuke_hooks();
+        const uint16_t dist = variant == 1 ? 65 : 60;   // variant 2: exactly 60 ft is in range
+        h.sight_facts = [dist](const EncounterState&, const Combatant&, const Combatant&) {
+            SightFacts f{}; f.line_of_sight = true; f.distance_ft = dist; return f;
+        };
+        h.in_range = [](const EncounterState&, const ReactionWindow& rw, const Combatant& r) { return r.id == rw.target; };
+        auto s = begin_encounter({w, m}, 11, nullptr, h);
+        auto ev = hit_wizard(s);
+        CHECK(count_kind(ev, EventKind::SpellCast) == (variant == 2 ? 1 : 0));
+        CHECK((mut(s, 2).hp == 300) == (variant != 2));
+        CHECK(mut(s, 1).reaction_used == (variant == 2));
+    }
+}
+
+TEST_CASE("7.2zg damage_type_choices: Protection from Energy grants resistance to the chosen type only") {
+    const uint32_t kPfe = spell_id_of("test.zg.protection_from_energy");
+    auto h = spell_hooks();
+    auto book = std::make_shared<SpellBook>(*h.spells);
+    SpellDef d; d.id = kPfe; d.content_id = "test.zg.protection_from_energy"; d.level = 3; d.range_ft = 5; d.concentration = true;
+    d.kind = SpellEffectKind::ApplyModifier; d.modifier.id = spell_id_of("test.zg.protection_from_energy#modifier");
+    d.modifier.source = kPfe; d.modifier.stat = ModStat::Resistance; d.modifier.damage_type = DamageType::Acid;
+    d.modifier.has_damage_type = true; d.modifier.concentration = true;
+    d.damage_choices = {DamageType::Acid, DamageType::Cold, DamageType::Fire, DamageType::Lightning, DamageType::Thunder};
+    d.duration = SpellDuration::Hours; d.duration_amount = 1;
+    book->add(d);
+    h.spells = book;
+    auto w = wizard(1); w.spells_known.push_back(kPfe); w.spell_slots_max = {0, 4, 3, 3, 0, 0, 0, 0, 0, 0}; w.spell_slots = w.spell_slots_max;
+    never_react(w);
+    auto m = monster(2); never_react(m);
+    auto s = begin_encounter({w, m}, 7, nullptr, h);
+    end_turns_until(s, 1);
+    auto none = step(s, cast(1, kPfe, 1, 3));
+    CHECK_FALSE(none.ok); CHECK(none.error == "choose a damage type");
+    auto req = cast(1, kPfe, 1, 3); req.damage_choice = 3;   // fire
+    auto r = step(s, req);
+    REQUIRE(r.ok);
+    int fire = 0, other = 0;
+    for (const auto& am : s.modifiers)
+        if (am.target == 1 && am.spec.stat == ModStat::Resistance) (am.spec.damage_type == DamageType::Fire ? fire : other)++;
+    CHECK(fire == 1); CHECK(other == 0);
+    CHECK((mut(s, 1).mod_resist & (1u << unsigned(DamageType::Fire))) != 0);
+    CHECK((mut(s, 1).mod_resist & (1u << unsigned(DamageType::Acid))) == 0);
+}
+
+namespace {
+// The natural d20 of monster 2's first attack on wizard 1 (seed `seed`); blur: a Blur row on the wizard; senses on the attacker.
+int first_natural(uint64_t seed, bool blur, uint16_t blindsight, uint16_t tremorsense, uint8_t exempt) {
+    auto w = wizard(1); w.hp = w.hp_max = 400; never_react(w);
+    auto m = monster(2); m.blindsight_ft = blindsight; m.tremorsense_ft = tremorsense; never_react(m);
+    auto s = begin_encounter({w, m}, seed, nullptr, spell_hooks());
+    if (blur) {
+        ModifierSpec b; b.id = spell_id_of("test.zg.blur#modifier"); b.source = spell_id_of("test.zg.blur"); b.stat = ModStat::AttacksAgainst;
+        b.mode = RollMode::Disadvantage; b.exempt_senses = exempt; b.applies_to = ModAppliesTo::Target;
+        std::vector<Event> sink;
+        REQUIRE(apply_modifier(s, 1, 1, b, sink));
+    }
+    end_turns_until(s, 2);
+    ActionRequest atk{2, ActionKind::Attack, 1}; atk.attack_index = 0;
+    auto r = step(s, atk);
+    REQUIRE(r.ok);
+    for (const auto& e : r.events) if (e.kind == EventKind::AttackResolved && e.actor == 2) return e.a;
+    FAIL("no attack");
+    return 0;
+}
+}  // namespace
+
+TEST_CASE("7.2zg exempt_senses: Blur imposes disadvantage unless the attacker has an exempt sense") {
+    int lower = 0;
+    for (uint64_t seed = 1; seed <= 40; ++seed) {
+        CAPTURE(seed);
+        const int plain = first_natural(seed, false, 0, 0, 0);
+        const int blurred = first_natural(seed, true, 0, 0, kSenseBlindsight | kSenseTruesight);
+        CHECK(blurred <= plain);   // disadvantage: the lower of the same first d20 and one more
+        lower += blurred < plain;
+        CHECK(first_natural(seed, true, 30, 0, kSenseBlindsight | kSenseTruesight) == plain);   // blindsight: not fooled
+        CHECK(first_natural(seed, true, 0, 30, kSenseBlindsight | kSenseTruesight) <= plain);    // tremorsense not listed: fooled
+        CHECK(first_natural(seed, true, 0, 30, kSenseTremorsense) == plain);                    // listed: not fooled
+    }
+    CHECK(lower > 0);
+}
+
+TEST_CASE("7.2zg Acid Arrow at slot 3: both the initial damage and the delayed rider gain 1d4 (scaling.upcast.dice)") {
+    auto w = wizard(1); w.spells_known.push_back(kAcidArrow); w.spell_slots_max = {0, 4, 3, 3, 0, 0, 0, 0, 0, 0}; w.spell_slots = w.spell_slots_max;
+    never_react(w);
+    auto m = monster(2); m.hp = m.hp_max = 300; m.ac = 15; never_react(m);
+    auto s = begin_encounter({w, m}, 7, nullptr, acid_hooks(100));
+    end_turns_until(s, 1);
+    auto r = step(s, cast(1, kAcidArrow, 2, 3));
+    REQUIRE(r.ok);
+    const int lost = 300 - mut(s, 2).hp;
+    CHECK(lost >= 5); CHECK(lost <= 40);   // 5d4 (10d4 on a crit)
+    const auto it = std::find_if(s.effects.begin(), s.effects.end(), [](const auto& x) { return x.spell_id == kAcidArrow; });
+    REQUIRE(it != s.effects.end());
+    CHECK(it->damage.count == 3); CHECK(it->damage.sides == 4);   // 2d4 + 1d4
+}
+
+namespace {
+// Natural d20 of monster 2's first attack on wizard 1; outlined: an `outlined` row on the wizard; invisible: the wizard is invisible.
+int outlined_natural(uint64_t seed, bool outlined, bool invisible, bool blind_attacker) {
+    auto w = wizard(1); w.hp = w.hp_max = 400; never_react(w);
+    if (invisible) add_condition(w, Condition::Invisible);
+    auto m = monster(2); never_react(m);
+    if (blind_attacker) add_condition(m, Condition::Blinded);
+    auto s = begin_encounter({w, m}, seed, nullptr, spell_hooks());
+    if (outlined) {
+        ModifierSpec o; o.id = spell_id_of("test.zg.faerie_fire#modifier"); o.source = spell_id_of("test.zg.faerie_fire");
+        o.stat = ModStat::Outlined; o.applies_to = ModAppliesTo::Target;
+        std::vector<Event> sink;
+        REQUIRE(apply_modifier(s, 2, 1, o, sink));
+    }
+    end_turns_until(s, 2);
+    ActionRequest atk{2, ActionKind::Attack, 1}; atk.attack_index = 0;
+    auto r = step(s, atk);
+    REQUIRE(r.ok);
+    for (const auto& e : r.events) if (e.kind == EventKind::AttackResolved && e.actor == 2) return e.a;
+    FAIL("no attack");
+    return 0;
+}
+}  // namespace
+
+TEST_CASE("7.2zg outlined: advantage on attacks against a seen outlined creature; invisibility gives it no benefit") {
+    int higher = 0;
+    for (uint64_t seed = 1; seed <= 40; ++seed) {
+        CAPTURE(seed);
+        const int plain = outlined_natural(seed, false, false, false);
+        const int lit = outlined_natural(seed, true, false, false);
+        CHECK(lit >= plain); higher += lit > plain;
+        CHECK(outlined_natural(seed, true, true, false) == lit);    // invisible + outlined: advantage, no disadvantage
+        CHECK(outlined_natural(seed, false, true, false) <= plain); // invisible alone: disadvantage (as before)
+        // a blinded attacker cannot see it: no advantage from outlined (its own Blinded disadvantage applies as before)
+        CHECK(outlined_natural(seed, true, false, true) == outlined_natural(seed, false, false, true));
+    }
+    CHECK(higher > 0);
+}
+
+namespace {
+const uint32_t kHypno = spell_id_of("test.zg.hypnotic_pattern");
+EncounterHooks hypno_hooks() {
+    auto h = spell_hooks();
+    auto book = std::make_shared<SpellBook>(*h.spells);
+    SpellDef d; d.id = kHypno; d.content_id = "test.zg.hypnotic_pattern"; d.level = 3; d.range_ft = 120; d.concentration = true;
+    d.kind = SpellEffectKind::Save; d.save_ability = Ability::Wis; d.condition = Condition::Charmed; d.applies_condition = true;
+    d.fixed_dc = 30; d.duration = SpellDuration::Minutes; d.duration_amount = 1;
+    d.ends_on = kEndsOnDamage | kEndsOnShakeAwake;
+    SpellEffect inc; inc.kind = SpellEffectKind::ApplyCondition; inc.affected_only = true; inc.condition = Condition::Incapacitated;
+    inc.ends_on = kEndsOnDamage | kEndsOnShakeAwake;
+    d.extra_effects = {inc};
+    book->add(d);
+    h.spells = book;
+    return h;
+}
+bool has_hypno(const EncounterState& s, CombatantId id) {
+    return std::any_of(s.effects.begin(), s.effects.end(), [&](const auto& e) { return e.spell_id == kHypno && e.target == id; });
+}
+}  // namespace
+
+TEST_CASE("7.2zg ends_on damage / shake_awake: Hypnotic Pattern ends on a Wake action by an adjacent creature, or on damage") {
+    for (int how = 0; how < 2; ++how) {
+        CAPTURE(how);
+        auto w = wizard(1); w.spells_known.push_back(kHypno); w.spell_slots_max = {0, 4, 3, 3, 0, 0, 0, 0, 0, 0}; w.spell_slots = w.spell_slots_max;
+        never_react(w);
+        auto m = monster(2); m.hp = m.hp_max = 300; never_react(m);
+        auto m3 = monster(3); never_react(m3);
+        auto s = begin_encounter({w, m, m3}, 7, nullptr, hypno_hooks());
+        end_turns_until(s, 1);
+        REQUIRE(step(s, cast(1, kHypno, 2, 3)).ok);
+        REQUIRE(has_hypno(s, 2));
+        CHECK(mut(s, 2).has(Condition::Charmed)); CHECK(mut(s, 2).has(Condition::Incapacitated));
+        if (how == 0) {
+            end_turns_until(s, 3);
+            ActionRequest wake{3, ActionKind::Attack, 2}; wake.special = 5;
+            auto far = wake; far.target_within_5ft = false;
+            CHECK(step(s, far).error == "target must be within 5 ft");
+            wake.target_within_5ft = true;
+            auto r = step(s, wake);
+            INFO(r.error); REQUIRE(r.ok);
+        } else {
+            for (int i = 0; i < 20 && has_hypno(s, 2); ++i) {
+                (void)step(s, ActionRequest{current_actor(s), ActionKind::EndTurn});
+                end_turns_until(s, 1);
+                REQUIRE(step(s, cast(1, kFireBolt, 2)).ok);
+            }
+        }
+        CHECK_FALSE(has_hypno(s, 2));
+        CHECK_FALSE(mut(s, 2).has(Condition::Charmed)); CHECK_FALSE(mut(s, 2).has(Condition::Incapacitated));
     }
 }

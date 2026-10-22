@@ -425,6 +425,15 @@ def check_spell(doc, errs, ctx):
         elif key == "dice" and "dice" not in eff and "damage" not in eff and not zone_has_damage(eff):
             errs.append("scaling.upcast.dice needs effect dice or damage")
     want = REACTION_EFFECT_TRIGGER.get(kind)
+    damaged = ct["kind"] == "reaction" and ct.get("trigger", {}).get("kind") == c4.ZG_KEYS["damaged"]   # 7.2zg Hellish Rebuke
+    if damaged:
+        want = c4.ZG_KEYS["damaged"]
+        if kind != "save":
+            errs.append("casting_time.trigger.kind damaged needs a save effect")
+        elif not ct["trigger"].get("requires_sight", False):
+            errs.append("casting_time.trigger.kind damaged needs requires_sight")
+        elif doc["range"]["kind"] != "ranged":
+            errs.append("casting_time.trigger.kind damaged needs a ranged range")
     if (ct["kind"] == "reaction") != (want is not None):
         errs.append(f"effect kind {kind} and casting_time.kind {ct['kind']} disagree (ac_bonus/counter are reactions, and only they)")
     elif want and ct["trigger"]["kind"] != want:
@@ -434,8 +443,7 @@ def check_spell(doc, errs, ctx):
     if (kind == "ac_bonus") != (doc["duration"]["kind"] == "until_start_of_caster_turn"):
         errs.append("ac_bonus effects last until_start_of_caster_turn (and only they use it)")
     if "targets" in doc and kind not in ("save", "heal", "apply_condition", "polymorph", "max_hp_bonus",
-                                                 "apply_modifier", c4.ZG_KEYS["haste"], c4.ZG_KEYS["slow"]):   # polymorph: its own wording; 7.2zd Aid; 7.2ze Bless / Bane
-        # 7.2zg: haste / slow load as ApplyModifier in spell_loader.cpp, which allows targets (Slow: up to six)
+                                                 "apply_modifier", c4.ZG_KEYS["haste"], c4.ZG_KEYS["slow"]):   # polymorph: its own wording; 7.2zd Aid; 7.2ze Bless / Bane; 7.2zg Slow (6) / Haste (1), as the loader
         errs.append(f"targets not allowed on a {kind} effect (one target, per dart/beam, or self)")
     if kind in TIMED_BY_DURATION and doc["duration"]["kind"] not in ("rounds", "minutes", "hours"):
         errs.append(f"{kind} needs a rounds, minutes or hours duration")
