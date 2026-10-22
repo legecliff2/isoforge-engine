@@ -2,9 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <numeric>
 #include <span>
+#include <cstdio>   // debug-build split log
 
 namespace eng::iso2d {
 
