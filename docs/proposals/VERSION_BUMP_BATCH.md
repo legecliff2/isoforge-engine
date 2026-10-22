@@ -2513,13 +2513,22 @@ Additive (gap list; T&C approved the shapes). No golden changes, integer math on
   is unchanged.
 - **Hash**: `Combat::hash` **0xD3** = per creature with duplicates, the creature id u32 and the remaining count u8 (folded only
   when the count is non-zero).
-- **Events**: a new appended `EventKind::DuplicateRoll` (a = attacker, b = caster,
-  c = the d20, d = 1 when redirected); `DuplicateDestroyed` (b = caster, c = remaining).
-- **Refusals (exact)**: `magic_weapon: the weapon is already magical`; `weapon_imbue: no weapon to imbue`.
+- **Events** (no new EventKind; the event layout is unchanged): the duplicate d20 is `FeatureTriggered{actor = the caster,
+  target = the attacker, a = spell id, b = the d20, c = 1 redirected / 0 not}`; the attack against a duplicate is
+  `AttackResolved` with **c bit 2** set (bit 0 hit, so a hit = a duplicate destroyed); the last one ends the effect
+  (`SpellEffectEnded`). The roll against a duplicate uses the attack's to-hit and flat bonuses with no advantage or
+  disadvantage (v1 simplification).
+- **Rules API**: `effective_attack(state, id, index)` (the attack as imbued), `duplicates_left(state, id)`,
+  `imbue_bonus(spec, slot)`.
+- **Shillelagh's release end** waits for equipment play (EQUIPMENT.md, #247): rules has no hands without a loadout view, so
+  `ends_on_release` is loaded and documented but not yet triggered.
+- **Refusals (exact)**: `magic_weapon: the weapon is already magical`; `weapon_imbue: no weapon to imbue`;
+  `weapon_imbue: self only` (the caster's own weapon in v1); `duplicates: self only`.
 - **Loader and validator (exact, same wording)**: `effect duplicates thresholds must not increase with the remaining count`
   (index = remaining duplicates - 1; exactly 3 entries is the schema's), `effect weapon_imbue at_slot slot levels must ascend`,
   `effect weapon_imbue needs concentration or a rounds, minutes or hours duration`, `effect duplicates needs a rounds, minutes or
-  hours duration`, `effect duplicates is self only`.
+  hours duration`, `effect duplicates is self only`, `effects[<i>]: weapon_imbue is only allowed as the first effect` (and duplicates).
+  Negative cases: `tests/validate/cases/duplicates_*`, `weapon_imbue_*` (8).
 
 ## 8. Migrations and inert markers
 

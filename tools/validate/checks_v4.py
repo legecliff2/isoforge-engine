@@ -1215,6 +1215,35 @@ def check_spell_batch2(doc: dict) -> list[str]:
     return errs
 
 
+def check_spell_imbue_mirror(doc: dict) -> list[str]:
+    """7.2zf spell@1 cross-field rules (rules5e_content spell_loader.cpp, same wording and order): weapon_imbue at_slot slot
+    levels ascend and the imbue lasts; duplicates thresholds (index = remaining duplicates - 1; exactly 3 entries is the
+    schema's) must not increase with the remaining count, and Mirror Image is self with a rounds / minutes / hours duration."""
+    errs: list[str] = []
+    effs = [e for e in (doc.get("effects") or []) if isinstance(e, dict)]
+    if not effs:
+        return errs
+    e = effs[0]
+    du = doc.get("duration") if isinstance(doc.get("duration"), dict) else {}
+    timed = du.get("kind") in SPELL_TIMED_DURATIONS
+    if e.get("kind") == "weapon_imbue":
+        mb = e.get("magic_bonus") if isinstance(e.get("magic_bonus"), dict) else {}
+        slots = [p[0] for p in mb.get("at_slot") or [] if isinstance(p, list) and p]
+        if any(b <= a for a, b in zip(slots, slots[1:])):
+            errs.append("effect weapon_imbue at_slot slot levels must ascend")
+        elif not (du.get("concentration") is True or timed):
+            errs.append("effect weapon_imbue needs concentration or a rounds, minutes or hours duration")
+    elif e.get("kind") == "duplicates":
+        th = e.get("thresholds") or []
+        if len(th) == 3 and (th[1] > th[0] or th[2] > th[1]):
+            errs.append("effect duplicates thresholds must not increase with the remaining count")
+        elif not timed:
+            errs.append("effect duplicates needs a rounds, minutes or hours duration")
+        elif (doc.get("range") or {}).get("kind") != "self":
+            errs.append("effect duplicates is self only")
+    return errs
+
+
 def check_spell_batch3(doc: dict) -> list[str]:
     """7.2ze spell@1 cross-field rules (rules5e_content spell_loader.cpp parse_modifier / parse_effect, same wording and order):
     the modifier sign (Bless / Bane) and an applies_to roll list, the apply_modifier save gate (Bane), and choices (with
