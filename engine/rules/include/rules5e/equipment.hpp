@@ -88,7 +88,9 @@ struct MonsterSpec {
     bool has_shield = false; ShieldPiece shield{};
     bool has_natural_armor = false; int8_t natural_base = 10; bool natural_dex = true;
     uint8_t dice_multiplier = 1;       // explicit, never from size (Q12)
-    uint8_t brute_dice = 0;            // weapon_extra_dice trait (melee only)
+    uint8_t brute_dice = 0;            // monster@5-local trait kind weapon_extra_dice (melee only); not a common@2 kind
+    int hands = -1;                    // monster@5 `hands`; -1 = absent (no check)
+    int held = 0;                      // hand slots the equipped entries take (#249 _held_slots: weapon / shield 1, gear its hands)
     Reasoned ac_adjust{};
     int16_t printed_ac = 10;
     std::vector<MonsterAttackSpec> attacks{};
@@ -99,5 +101,9 @@ struct MonsterDerivation {
     std::vector<std::string> errors{}; // the 5.6 strings, in check order; empty = loads
 };
 MonsterDerivation derive_monster(const MonsterSpec&);
+// The hands strings, byte-identical to the validator (#249 checks_v4): monster `<id>: holds N items but has H hands` (also
+// emitted by derive_monster when MonsterSpec::hands >= 0), character `<id>: hand '<hand>' holds N items` (for the loader).
+std::string hands_overfull_error(std::string_view id, int held, int hands);
+std::string hand_slot_error(std::string_view id, std::string_view hand, int count);
 
 } // namespace rules5e

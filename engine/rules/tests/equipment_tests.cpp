@@ -264,10 +264,36 @@ TEST_CASE("equip_legal: costs, refusals, armor rounds, the step path and legal_a
     CHECK(equip_legal(s, equip(1, EquipOp::DonShield, 31)).refusal == "equip: a shield is already wielded");
     auto pick = equip(1, EquipOp::PickUp, 50);
     CHECK(equip_legal(s, pick).refusal == "equip: the item is out of reach");
+    pick.equip_in_reach = true;
+    CHECK(equip_legal(s, pick).refusal == "equip: unknown ground item");   // no ground_item_def hook
+    s.hooks.ground_item_def = [](uint32_t inst) -> const ItemDef* {
+        static const ItemDef gs = [] { ItemDef d; d.id = dGreatsword; d.kind = ItemKind::Weapon; d.hands = 2; return d; }();
+        static const ItemDef ls = [] { ItemDef d; d.id = dLongsword; d.kind = ItemKind::Weapon; d.hands = 1; return d; }();
+        return inst == 50 ? &gs : inst == 51 ? &ls : nullptr;
+    };
+    w->views[1].main = HeldItem{}; w->views[1].off = HeldItem{}; w->views[1].interaction_used = false;
+    CHECK(equip_legal(s, pick).kind == EquipCost::Interaction);              // two-handed, both hands free
+    w->views[1].main = item(40, dLongsword); w->views[1].off = HeldItem{};
+    CHECK(equip_legal(s, pick).refusal == "equip: no free hand");            // two-handed, one free hand
+    auto pick1 = equip(1, EquipOp::PickUp, 51); pick1.equip_in_reach = true;
+    CHECK(equip_legal(s, pick1).kind == EquipCost::Interaction);             // one-handed, one free hand
+    auto pick_ghost = equip(1, EquipOp::PickUp, 52); pick_ghost.equip_in_reach = true;
+    CHECK(equip_legal(s, pick_ghost).refusal == "equip: unknown ground item");
+    auto pick_def = equip(1, EquipOp::PickUp, dGreatsword); pick_def.equip_in_reach = true;
+    CHECK(equip_legal(s, pick_def).refusal == "equip: unknown ground item");  // a def id is not a ground instance
+    w->views[1].off = item(41, dShieldDef); w->views[1].interaction_used = true;
     auto hand = equip(1, EquipOp::HandOver, 40); hand.equip_to = 2; hand.equip_in_reach = true;
     CHECK(equip_legal(s, hand).kind == EquipCost::Action);
     w->views[2].main = item(60, dLongsword); w->views[2].off = item(61, dShieldDef);
     CHECK(equip_legal(s, hand).refusal == "equip: the recipient has no free hand");
+    w->views[2].off = HeldItem{};
+    CHECK(equip_legal(s, hand).kind == EquipCost::Action);                   // longsword, one free hand
+    w->views[1].main = item(42, dGreatsword);
+    auto hand2 = equip(1, EquipOp::HandOver, 42); hand2.equip_to = 2; hand2.equip_in_reach = true;
+    CHECK(equip_legal(s, hand2).refusal == "equip: the recipient has no free hand");   // two-handed by its def, not instance
+    w->views[2].main = HeldItem{};
+    CHECK(equip_legal(s, hand2).kind == EquipCost::Action);
+    w->views[1].main = item(40, dLongsword); w->views[2].main = item(60, dLongsword); w->views[2].off = item(61, dShieldDef);
     CHECK(armor_change_rounds(ArmorCategory::Light, true, false) == 10);
     CHECK(armor_change_rounds(ArmorCategory::Medium, true, false) == 50);
     CHECK(armor_change_rounds(ArmorCategory::Medium, false, false) == 10);
@@ -318,6 +344,8 @@ TEST_CASE("derive_monster: SRD reproductions and every exact string") {
     CHECK(derive_monster(skel).errors.empty());
     skel.ac_adjust.reason.clear();
     CHECK(derive_monster(skel).errors == std::vector<std::string>{"srd51.monster.skeleton: ac_adjust needs a reason"});
+    skel.ac_adjust.reason = "   ";   // schema minLength 1 passes; whitespace-only still needs a reason
+    CHECK(derive_monster(skel).errors == std::vector<std::string>{"srd51.monster.skeleton: ac_adjust needs a reason"});
     skel.ac_adjust = {true, 1, "x"}; skel.printed_ac = 12;
     auto e = derive_monster(skel).errors;
     REQUIRE(e.size() == 2); CHECK(e[0] == "srd51.monster.skeleton: ac_adjust is not needed");
@@ -333,6 +361,8 @@ TEST_CASE("derive_monster: SRD reproductions and every exact string") {
     CHECK(derive_monster(bear).errors.empty());
     bear.attacks[0].attack_bonus.reason.clear();
     CHECK(derive_monster(bear).errors == std::vector<std::string>{"srd51.monster.black_bear.bite: attack_bonus needs a reason"});
+    bear.attacks[0].attack_bonus.reason = "\n";
+    CHECK(derive_monster(bear).errors == std::vector<std::string>{"srd51.monster.black_bear.bite: attack_bonus needs a reason"});
     bear.attacks[0].attack_bonus = {true, 4, "x"}; bear.attacks[0].printed_to_hit = 4;
     CHECK(derive_monster(bear).errors == std::vector<std::string>{"srd51.monster.black_bear.bite: attack_bonus is not needed"});
     bear.attacks[0].attack_bonus = {}; bear.natural_base = 10; bear.printed_ac = 10;   // 10 + Dex 0 already matches
@@ -345,6 +375,16 @@ TEST_CASE("derive_monster: SRD reproductions and every exact string") {
     CHECK(derive_monster(wolf).errors.empty());
     wolf.has_pb = true; wolf.pb = 3;
     CHECK(derive_monster(wolf).errors[0] == "srd51.monster.wolf: proficiency_bonus 3 != CR table 2");
+    wolf.pb_reason = " \t";                                              // whitespace-only = absent
+    CHECK(derive_monster(wolf).errors[0] == "srd51.monster.wolf: proficiency_bonus 3 != CR table 2");
+    wolf.pb_reason = "SRD prints +3"; CHECK(derive_monster(wolf).errors[0] == "srd51.monster.wolf.bite: derived to-hit +5 != printed +4");
+    wolf.has_pb = false;
+    wolf.hands = 0; wolf.held = 1;   // #249 checks_v4 strings, byte for byte
+    CHECK(derive_monster(wolf).errors == std::vector<std::string>{"srd51.monster.wolf: holds 1 items but has 0 hands"});
+    wolf.hands = 2; wolf.held = 2; CHECK(derive_monster(wolf).errors.empty());
+    wolf.held = 3; CHECK(derive_monster(wolf).errors[0] == "srd51.monster.wolf: holds 3 items but has 2 hands");
+    CHECK(hands_overfull_error("test.v4.bugbear5", 3, 2) == "test.v4.bugbear5: holds 3 items but has 2 hands");
+    CHECK(hand_slot_error("test.v4.fighter5", "main", 2) == "test.v4.fighter5: hand 'main' holds 2 items");
     CHECK(proficiency_for_cr(0, 1) == 2); CHECK(proficiency_for_cr(1, 8) == 2); CHECK(proficiency_for_cr(5, 1) == 3);
     CHECK(proficiency_for_cr(12, 1) == 4); CHECK(proficiency_for_cr(13, 1) == 5); CHECK(proficiency_for_cr(30, 1) == 9);
     CHECK(format_dice({1, 4, -1}) == "1d4-1"); CHECK(format_dice({3, 6, 0}) == "3d6"); CHECK(format_dice({0, 0, 1}) == "1");
