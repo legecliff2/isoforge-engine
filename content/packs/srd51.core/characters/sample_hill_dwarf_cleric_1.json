@@ -1,5 +1,6 @@
 {
-  "$schema": "character@4",
+  "$schema": "character@5",
+  "derive": true,
   "id": "srd51.character.sample_hill_dwarf_cleric_1",
   "name": "Hill Dwarf Cleric, level 1 (Life Domain)",
   "source": {
@@ -109,7 +110,8 @@
   "equipment": [
     {
       "item": "srd51.item.mace",
-      "equipped": true
+      "equipped": true,
+      "hand": "main"
     },
     {
       "item": "srd51.item.chain_mail",
@@ -117,20 +119,35 @@
     },
     {
       "item": "srd51.item.shield",
-      "equipped": true
+      "equipped": true,
+      "hand": "off"
     },
     {
       "item": "srd51.item.crossbow_light"
     },
-    "crossbow_bolts_20",
+    {
+      "item": "srd51.item.crossbow_bolt",
+      "count": 20
+    },
     "priests_pack",
     "holy_symbol"
+  ],
+  "weapon_proficiencies": [
+    "simple",
+    "srd51.item.battleaxe",
+    "srd51.item.warhammer"
+  ],
+  "armor_proficiencies": [
+    "light",
+    "medium",
+    "shields"
   ],
   "actions": [
     {
       "id": "mace",
       "name": "Mace",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.mace",
       "to_hit": 3,
       "reach": 5,
       "targets": 1,
@@ -145,6 +162,7 @@
       "id": "light_crossbow",
       "name": "Light Crossbow",
       "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.crossbow_light",
       "to_hit": 2,
       "range": [
         80,

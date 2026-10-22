@@ -1506,6 +1506,13 @@ def check_equipment_v5(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list[
             n = sum(1 for e in equipment if e.get("hand") == hand)
             if n > 1:
                 errs.append(f"{did}: hand '{hand}' holds {n} items")
+        eq_ids = {e.get("item") for e in equipment}
+        for i, a in enumerate(doc.get("actions") or []):
+            if isinstance(a, dict) and isinstance(a.get("weapon"), str):
+                if a["weapon"] not in eq_ids:
+                    errs.append(f"/actions/{i}/weapon: '{a['weapon']}' is not listed in equipment[]")
+                if a.get("kind") not in ("melee_weapon_attack", "ranged_weapon_attack"):
+                    errs.append(f"/actions/{i}: weapon / natural / attack_bonus need a melee_weapon_attack or ranged_weapon_attack")
         return errs, warns
     # monster@5
     held = sum(_held_slots(e, item_docs) for e in equipment)
@@ -1798,4 +1805,149 @@ def check_monster_derive(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
             errs.append(e)
     if mult > 1 and not used:
         errs.append(f"{did}: weapon_dice_multiplier is not needed")
+    return errs, []
+
+
+# ---- character@5 proficiencies and derive: true (EQUIPMENT 1.2, 2.1; T&C PR C) --------------------------------------------
+# SRD 5.1 class / race weapon and armor proficiencies, from 5e-database a6212be (tests/validate/data/
+# srd51_proficiencies_5e_database_a6212be.json; test_equip_schemas_v5 checks this table against it). Named weapons are item ids.
+
+def _w(*names: str) -> frozenset:
+    return frozenset(n if n in ("simple", "martial") else f"srd51.item.{n}" for n in names)
+
+
+SRD_CLASS_PROFICIENCIES = {   # class: (weapon_proficiencies, armor_proficiencies)
+    "barbarian": (_w("simple", "martial"), frozenset({"light", "medium", "shields"})),
+    "bard": (_w("simple", "longsword", "rapier", "shortsword", "crossbow_hand"), frozenset({"light"})),
+    "cleric": (_w("simple"), frozenset({"light", "medium", "shields"})),
+    "druid": (_w("club", "dagger", "javelin", "mace", "quarterstaff", "sickle", "spear", "dart", "sling", "scimitar"),
+              frozenset({"light", "medium", "shields"})),
+    "fighter": (_w("simple", "martial"), frozenset({"light", "medium", "heavy", "shields"})),
+    "monk": (_w("simple", "shortsword"), frozenset()),
+    "paladin": (_w("simple", "martial"), frozenset({"light", "medium", "heavy", "shields"})),
+    "ranger": (_w("simple", "martial"), frozenset({"light", "medium", "shields"})),
+    "rogue": (_w("simple", "longsword", "rapier", "shortsword", "crossbow_hand"), frozenset({"light"})),
+    "sorcerer": (_w("dagger", "dart", "sling", "quarterstaff", "crossbow_light"), frozenset()),
+    "warlock": (_w("simple"), frozenset({"light"})),
+    "wizard": (_w("dagger", "dart", "sling", "quarterstaff", "crossbow_light"), frozenset()),
+}
+SRD_RACE_WEAPON_PROFICIENCIES = {   # Dwarven Combat Training (dwarf), Elf Weapon Training (high elf)
+    "dwarf": _w("battleaxe", "handaxe", "light_hammer", "warhammer"),
+    "hill_dwarf": _w("battleaxe", "handaxe", "light_hammer", "warhammer"),
+    "high_elf": _w("longsword", "shortsword", "shortbow", "longbow"),
+}
+# Feature-granted AC base candidates (EQUIPMENT 1.2 step 1; rules5e::AcBaseCandidate): (class, feature id) ->
+# (fixed, ability or None, forbids_shield). Armor of Shadows is at-will Mage Armor, counted as in force (the printed AC assumes it).
+FEATURE_AC_BASES = {
+    ("barbarian", "unarmored_defense"): (10, "con", False),
+    ("monk", "unarmored_defense"): (10, "wis", True),
+    ("sorcerer", "draconic_resilience"): (13, None, False),
+    ("warlock", "armor_of_shadows"): (13, None, False),
+}
+
+
+def expected_proficiencies(doc: dict) -> tuple[set, set]:
+    weapons, armor = set(), set()
+    for c in doc.get("classes") or []:
+        w, a = SRD_CLASS_PROFICIENCIES.get(c.get("class"), (frozenset(), frozenset()))
+        weapons |= w
+        armor |= a
+    weapons |= SRD_RACE_WEAPON_PROFICIENCIES.get(doc.get("race"), frozenset())
+    return weapons, armor
+
+
+def _covered(entry: str, pool: set, items: dict) -> bool:
+    if entry in pool:
+        return True
+    it = items.get(entry)
+    return isinstance(it, dict) and it.get("weapon_class") in pool
+
+
+def check_character_proficiencies(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
+    """character@5: authored weapon_proficiencies / armor_proficiencies against the SRD class and race grants. Missing is an
+    error, extra is a warning. A named weapon counts as covered by its weapon_class ('simple' / 'martial')."""
+    errs: list[str] = []
+    warns: list[str] = []
+    if doc.get("derive") is not True and "weapon_proficiencies" not in doc and "armor_proficiencies" not in doc:
+        return errs, warns
+    did = doc.get("id", "")
+    items = ctx.get("item_docs", {})
+    want_w, want_a = expected_proficiencies(doc)
+    have_w, have_a = set(doc.get("weapon_proficiencies") or []), set(doc.get("armor_proficiencies") or [])
+    for key, want, have in (("weapon_proficiencies", want_w, have_w), ("armor_proficiencies", want_a, have_a)):
+        for e in sorted(want):
+            if not _covered(e, have, items):
+                errs.append(f"{did}: {key} missing '{e}' (SRD 5.1 class / race)")
+        for e in sorted(have):
+            if not _covered(e, want, items):
+                warns.append(f"{did}: {key} '{e}' is not granted by the SRD 5.1 class / race")
+    return errs, warns
+
+
+def _weapon_proficient(doc: dict, item_id: str, items: dict) -> bool:
+    return _covered(item_id, set(doc.get("weapon_proficiencies") or []), items)
+
+
+def check_character_derive(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
+    """character@5 with derive: true: AC from equipped armor / shield / feature bases, and each action with a `weapon` from
+    the item, ability, PB (when proficient) and magic, must equal the printed numbers. Feature rows (Defense, Archery,
+    Dueling, ...) are applied by the engine on top of the printed numbers, so they are not part of the derivation. Strings
+    follow rules5e::derive_monster's 5.6 forms."""
+    errs: list[str] = []
+    if doc.get("derive") is not True:
+        return errs, []
+    did = doc.get("id", "")
+    items = ctx.get("item_docs", {})
+    ab = doc["abilities"]
+    dex = _mod(ab["dex"])
+    armor = shield = None
+    for e in doc.get("equipment") or []:
+        it = items.get(e.get("item")) if isinstance(e, dict) and e.get("equipped") else None
+        if isinstance(it, dict) and it.get("category") == "armor" and armor is None:
+            armor = it
+        elif isinstance(it, dict) and it.get("category") == "shield" and shield is None:
+            shield = it
+    if armor is not None:
+        dt = (min(dex, armor["dex_cap"]) if "dex_cap" in armor else dex) if armor.get("dex_bonus") else 0
+        ac = armor["base_ac"] + dt + armor.get("magic_bonus", 0)
+    else:
+        ac = 10 + dex
+        classes = {c.get("class") for c in doc.get("classes") or []}
+        for f in doc.get("features") or []:
+            for cls in classes:
+                base = FEATURE_AC_BASES.get((cls, f.get("id")))
+                if base and not (base[2] and shield is not None):
+                    ac = max(ac, base[0] + dex + (_mod(ab[base[1]]) if base[1] else 0))
+    if shield is not None:
+        ac += shield.get("ac_bonus", 2) + shield.get("magic_bonus", 0)
+    printed_ac = doc["armor_class"]["value"]
+    if ac != printed_ac:
+        errs.append(f"{did}: derived AC {ac} != printed {printed_ac}")
+    pb = doc["proficiency_bonus"]
+    monk = any(c.get("class") == "monk" for c in doc.get("classes") or [])
+    for a in doc.get("actions") or []:
+        if not isinstance(a, dict) or "weapon" not in a:
+            continue
+        src = items.get(a["weapon"])
+        if not isinstance(src, dict):
+            continue
+        w = _weapon_def(src)
+        prof = _weapon_proficient(doc, a["weapon"], items)
+        v = {"abilities": ab, "pb": pb if prof else 0, "mult": 1, "brute": 0}
+        # Monk Martial Arts: Dex instead of Str with unarmed strikes and monk weapons (shortswords, simple melee weapons
+        # without two-handed or heavy); the higher one is used.
+        if monk and (a["weapon"] == "srd51.item.shortsword" or (src.get("weapon_class") == "simple" and "range" not in src
+                     and not ({"two_handed", "heavy"} & w["props"]))):
+            v["ability"] = "dex" if _mod(ab["dex"]) > _mod(ab["str"]) else "str"
+        pre = f"{did}.{a.get('id')}"
+        th, dmg, err = _derive_weapon_attack(w, v, a.get("use", "one_hand"))
+        if err:
+            errs.append(f"{pre}: {err}")
+            continue
+        if th != a.get("to_hit"):
+            errs.append(f"{pre}: derived to-hit {_signed(th)} != printed {_signed(a.get('to_hit', 0))}")
+        d0 = (a.get("damage") or [{}])[0]
+        printed = parse_dice(d0["dice"]) if "dice" in d0 else (0, 0, int(d0.get("flat", 0)))
+        if dmg != printed:
+            errs.append(f"{pre}: derived damage {format_dice(dmg)} != printed {format_dice(printed)}")
     return errs, []
