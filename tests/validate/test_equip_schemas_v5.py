@@ -202,6 +202,34 @@ class TagTable(unittest.TestCase):
         self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice"})
 
 
+class LightPresetAndVisual(unittest.TestCase):
+    """item@2 light.preset (Render's preset key) and the presentation-only `visual` block (item@2 is a superset of item@1)."""
+
+    VIS = {"color": {"r": 255, "g": 170, "b": 70}, "intensity": 1000, "flicker": "torch"}
+
+    def test_valid(self):
+        t = torch(); t["light"]["preset"] = "srd51.core.light.torch"; t["visual"] = self.VIS
+        self.assertEqual(errs_of(pack(**{"items/torch.json": t})), [])
+        for doc in (bow(), arrows(), morningstar()):
+            self.assertEqual(errs_of(pack(**{"items/x.json": dict(doc, visual=self.VIS)})), [], doc["id"])
+
+    def test_bad(self):
+        for preset in ("Torch", "torch", "srd51..light", 7):
+            t = torch(); t["light"]["preset"] = preset
+            self.assertTrue(errs_of(pack(**{"items/torch.json": t})), preset)
+        for vis in ({"color": {"r": 256, "g": 0, "b": 0}, "intensity": 1}, {"color": {"r": 1, "g": 1, "b": 1}},
+                    dict(VIS, intensity=1001), dict(VIS, flicker="strobe"), dict(VIS, extra=1), dict(VIS, intensity="1")):
+            self.assertTrue(errs_of(pack(**{"items/torch.json": dict(torch(), visual=vis)})), vis)
+
+    def test_visual_matches_item1_when_present(self):
+        v1 = schema("item/v1.schema.json")["properties"].get("visual")
+        if v1 is not None:   # item@1 gains it with Render #233
+            self.assertEqual(schema("item/v2.schema.json")["properties"]["visual"], v1)
+
+
+VIS = LightPresetAndVisual.VIS
+
+
 class NewShapes(unittest.TestCase):
     def test_full_pack_valid(self):
         e, w = h.validate_docs(pack())
