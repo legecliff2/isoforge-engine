@@ -246,3 +246,40 @@ TEST_CASE("7.2zg damage_type_choices: Protection from Energy grants resistance t
     CHECK((mut(s, 1).mod_resist & (1u << unsigned(DamageType::Fire))) != 0);
     CHECK((mut(s, 1).mod_resist & (1u << unsigned(DamageType::Acid))) == 0);
 }
+
+namespace {
+// The natural d20 of monster 2's first attack on wizard 1 (seed `seed`); blur: a Blur row on the wizard; senses on the attacker.
+int first_natural(uint64_t seed, bool blur, uint16_t blindsight, uint16_t tremorsense, uint8_t exempt) {
+    auto w = wizard(1); w.hp = w.hp_max = 400; never_react(w);
+    auto m = monster(2); m.blindsight_ft = blindsight; m.tremorsense_ft = tremorsense; never_react(m);
+    auto s = begin_encounter({w, m}, seed, nullptr, spell_hooks());
+    if (blur) {
+        ModifierSpec b; b.id = spell_id_of("test.zg.blur#modifier"); b.source = spell_id_of("test.zg.blur"); b.stat = ModStat::AttacksAgainst;
+        b.mode = RollMode::Disadvantage; b.exempt_senses = exempt; b.applies_to = ModAppliesTo::Target;
+        std::vector<Event> sink;
+        REQUIRE(apply_modifier(s, 1, 1, b, sink));
+    }
+    end_turns_until(s, 2);
+    ActionRequest atk{2, ActionKind::Attack, 1}; atk.attack_index = 0;
+    auto r = step(s, atk);
+    REQUIRE(r.ok);
+    for (const auto& e : r.events) if (e.kind == EventKind::AttackResolved && e.actor == 2) return e.a;
+    FAIL("no attack");
+    return 0;
+}
+}  // namespace
+
+TEST_CASE("7.2zg exempt_senses: Blur imposes disadvantage unless the attacker has an exempt sense") {
+    int lower = 0;
+    for (uint64_t seed = 1; seed <= 40; ++seed) {
+        CAPTURE(seed);
+        const int plain = first_natural(seed, false, 0, 0, 0);
+        const int blurred = first_natural(seed, true, 0, 0, kSenseBlindsight | kSenseTruesight);
+        CHECK(blurred <= plain);   // disadvantage: the lower of the same first d20 and one more
+        lower += blurred < plain;
+        CHECK(first_natural(seed, true, 30, 0, kSenseBlindsight | kSenseTruesight) == plain);   // blindsight: not fooled
+        CHECK(first_natural(seed, true, 0, 30, kSenseBlindsight | kSenseTruesight) <= plain);    // tremorsense not listed: fooled
+        CHECK(first_natural(seed, true, 0, 30, kSenseTremorsense) == plain);                    // listed: not fooled
+    }
+    CHECK(lower > 0);
+}

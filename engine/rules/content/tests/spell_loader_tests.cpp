@@ -940,3 +940,33 @@ TEST_CASE("loader 7.2zg: apply_modifier damage_type_choices (Protection from Ene
     j["range"] = {{"kind", "touch"}};
     q = spell_from_json(j); CHECK(q.error == "effects[1]: damage_type_choices is only allowed on the first effect");
 }
+
+TEST_CASE("loader 7.2zg: exempt_senses, one key for Blur (apply_modifier) and Mirror Image (duplicates)") {
+    auto blur = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.blur","level":2,"name":"Blur",
+        "casting_time":{"kind":"action"},"range":{"kind":"self"},"components":{"v":true},
+        "duration":{"kind":"minutes","amount":1,"concentration":true},
+        "effects":[{"kind":"apply_modifier","modifier":{"stat":"attacks_against","mode":"disadvantage","duration":{"kind":"concentration"}},
+                    "exempt_senses":["blindsight","truesight"]}]})");
+    auto r = spell_from_json(blur); INFO(r.error); REQUIRE(r.def);
+    CHECK(r.def->modifier.stat == ModStat::AttacksAgainst);
+    CHECK(r.def->modifier.exempt_senses == (kSenseBlindsight | kSenseTruesight));
+    auto j = blur; j["effects"][0]["exempt_senses"] = {"blindsight", "blindsight"};
+    auto q = spell_from_json(j);
+    CHECK(q.error == "effect exempt_senses must be distinct senses (blindsight, tremorsense, truesight), at least one");
+    j = blur; j["effects"][0]["exempt_senses"] = {"smell"};
+    q = spell_from_json(j);
+    CHECK(q.error == "effect exempt_senses must be distinct senses (blindsight, tremorsense, truesight), at least one");
+    j = blur; j["effects"][0]["modifier"] = {{"stat", "ac"}, {"bonus", 1}, {"duration", {{"kind", "concentration"}}}};
+    q = spell_from_json(j); CHECK(q.error == "effect exempt_senses needs an attacks_against modifier");
+    auto mi = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.mirror_image","level":2,"name":"Mirror Image",
+        "casting_time":{"kind":"action"},"range":{"kind":"self"},"components":{"v":true,"s":true},"duration":{"kind":"minutes","amount":1},
+        "effects":[{"kind":"duplicates","count":3,"thresholds":[11,8,6],"ac":{"base":10,"ability":"dex"}}]})");
+    auto a = spell_from_json(mi); INFO(a.error); REQUIRE(a.def);
+    CHECK(a.def->duplicates.exempt_senses == (kSenseBlindsight | kSenseTruesight));   // default (7.2zf behaviour)
+    mi["effects"][0]["exempt_senses"] = {"tremorsense"};
+    a = spell_from_json(mi); INFO(a.error); REQUIRE(a.def);
+    CHECK(a.def->duplicates.exempt_senses == kSenseTremorsense);
+    mi["effects"][0]["exempt_senses"] = eng::assets::Json::array();
+    a = spell_from_json(mi);
+    CHECK(a.error == "effect exempt_senses must be distinct senses (blindsight, tremorsense, truesight), at least one");
+}

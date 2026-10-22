@@ -124,6 +124,7 @@ struct DuplicatesSpec {
     std::array<uint8_t, 3> thresholds{{11, 8, 6}};
     int8_t ac_base = 10;
     Ability ac_ability = Ability::Dex;
+    uint8_t exempt_senses = kSenseBlindsight | kSenseTruesight;   // appended (7.2zg `exempt_senses`; the 7.2zf default)
 };
 // The bonus of an imbue cast at `slot` (0 when the spec has no magic bonus).
 int imbue_bonus(const WeaponImbueSpec&, int slot);

@@ -1143,6 +1143,9 @@
                 "maxItems": 13,
                 "uniqueItems": true,
                 "description": "VERSION_BUMP_BATCH 7.2zg (Protection from Energy): a resistance modifier whose type is the caster's cast-time choice (ActionRequest::damage_choice, 1 + index in this order); must include the modifier's damage_type. First effect only."
+              },
+              "exempt_senses": {
+                "$ref": "#/$defs/exempt_senses"
               }
             }
           }
@@ -1898,9 +1901,12 @@
               },
               "description": {
                 "type": "string"
+              },
+              "exempt_senses": {
+                "$ref": "#/$defs/exempt_senses"
               }
             },
-            "description": "VERSION_BUMP_BATCH 7.2zf (Mirror Image): illusory duplicates on the caster. Each attack that targets the caster rolls a d20 first (our PRNG; only when duplicates remain and the attacker is affected); at or above thresholds[remaining - 1] the attack targets a duplicate instead (AC per ac); a hit destroys one duplicate (no damage), a miss does nothing. The effect ends when none remain. Unaffected attackers: no sight of the caster (Blinded or otherwise), blindsight in range, or truesight in range. No dismissal action. Self only; needs a rounds / minutes / hours duration."
+            "description": "VERSION_BUMP_BATCH 7.2zf (Mirror Image): illusory duplicates on the caster. Each attack that targets the caster rolls a d20 first (our PRNG; only when duplicates remain and the attacker is affected); at or above thresholds[remaining - 1] the attack targets a duplicate instead (AC per ac); a hit destroys one duplicate (no damage), a miss does nothing. The effect ends when none remain. Unaffected attackers: no sight of the caster (Blinded or otherwise), or an exempt_senses sense in range (7.2zg; default blindsight and truesight). No dismissal action. Self only; needs a rounds / minutes / hours duration."
           }
         },
         {
@@ -2665,6 +2671,19 @@
           "description": "Scope: saves of this ability only. Absent: every save."
         }
       }
+    },
+    "exempt_senses": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "blindsight",
+          "tremorsense",
+          "truesight"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "VERSION_BUMP_BATCH 7.2zg: one key and one list for illusions that fool sight (Blur, Mirror Image). An attacker that perceives the creature through one of these senses within its range, or cannot see it, is unaffected. duplicates: default [blindsight, truesight]; apply_modifier: attacks_against modifiers only."
     }
   }
 }

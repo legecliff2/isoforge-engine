@@ -1525,6 +1525,13 @@ def check_spell_batch_zg(doc: dict) -> list[str]:
     if (e.get("kind") == ZG_KEYS["temp_hp"] and (e.get(ZG_KEYS["per_turn"]) or e.get(ZG_KEYS["condition_immunity"]))
             and not (du.get("concentration") is True or timed)):
         errs.append("effect temp_hp per_turn or condition_immunity needs concentration or a rounds, minutes or hours duration")
+    es = ZG_KEYS["exempt_senses"]   # Blur (apply_modifier); Mirror Image (duplicates) takes the same key and list
+    for x in effs:
+        if es in x and x.get("kind") == "apply_modifier":
+            mod = x.get("modifier") if isinstance(x.get("modifier"), dict) else {}
+            if mod.get("stat") != "attacks_against":
+                errs.append("effect exempt_senses needs an attacks_against modifier")
+                break
     dtc = ZG_KEYS["damage_type_choices"]   # Protection from Energy
     if dtc in e:
         mod = e.get("modifier") if isinstance(e.get("modifier"), dict) else {}

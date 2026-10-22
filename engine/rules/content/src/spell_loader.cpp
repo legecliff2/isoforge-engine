@@ -421,6 +421,23 @@ std::string parse_predicate(const Json& p, Predicate& out) {
     return "";
 }
 
+// 7.2zg `exempt_senses` (Blur, Mirror Image share the key and the list): distinct sense names -> kSense* bits.
+bool read_exempt_senses(const Json& e, uint8_t& out) {
+    static const std::map<std::string, uint8_t> kSenses{{"blindsight", kSenseBlindsight}, {"tremorsense", kSenseTremorsense},
+                                                        {"truesight", kSenseTruesight}};
+    const Json& v = e[zg::kExemptSenses];
+    if (!v.is_array() || v.empty()) return false;
+    uint8_t m = 0;
+    for (const Json& x : v) {
+        uint8_t b = 0;
+        if (!lookup(kSenses, x, b) || (m & b)) return false;
+        m = uint8_t(m | b);
+    }
+    out = m;
+    return true;
+}
+constexpr const char* kExemptSensesError = "effect exempt_senses must be distinct senses (blindsight, tremorsense, truesight), at least one";
+
 std::string parse_modifier(const Json& m, ModifierSpec& out, const Json** table) {
     if (!m.is_object()) return "modifier must be an object";
     static const std::map<std::string, ModStat> kStat{{"attack_roll", ModStat::AttackRoll}, {"save", ModStat::Save},
@@ -835,6 +852,10 @@ SpellLoad spell_from_json(const Json& j) {
             if (!e.contains("modifier")) return ("effect modifier required");
             if (auto m = parse_modifier(e["modifier"], s.modifier); !m.empty()) return ("effect " + m);
             s.modifier.id = spell_id_of(s.content_id + "#modifier");
+            if (e.contains(zg::kExemptSenses)) {   // 7.2zg Blur
+                if (s.modifier.stat != ModStat::AttacksAgainst) return ("effect exempt_senses needs an attacks_against modifier");
+                if (!read_exempt_senses(e, s.modifier.exempt_senses)) return (kExemptSensesError);
+            }
             if (e.contains(zg::kDamageTypeChoices)) {   // 7.2zg Protection from Energy: ActionRequest::damage_choice picks the type
                 if (s.modifier.stat != ModStat::Resistance) return ("effect damage_type_choices needs a resistance modifier");
                 const Json& dc = e[zg::kDamageTypeChoices];
@@ -1036,6 +1057,7 @@ SpellLoad spell_from_json(const Json& j) {
                 !lookup(kAbility, ac["ability"], d.ac_ability))
                 return ("effect ac must be {base 0..30, ability}");
             d.ac_base = int8_t(base);
+            if (e.contains(zg::kExemptSenses) && !read_exempt_senses(e, d.exempt_senses)) return (kExemptSensesError);   // 7.2zg
         } else if (kind == zg::kSummonWeapon) {   // 7.2zg Spiritual Weapon: a token, not a creature (R-G12 PR 3 rules side)
             s.kind = SpellEffectKind::SummonWeapon;
             s.melee = true;
