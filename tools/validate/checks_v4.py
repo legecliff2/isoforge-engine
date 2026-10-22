@@ -1426,7 +1426,9 @@ def check_grapple_riders(doc: dict, errs: list[str], warns: list[str]) -> None:
 def check_item(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
     errs: list[str] = []
     if doc.get("category") == "gear":
-        return check_item_light(doc), []
+        kinds = [h.get("ammo_kind") for h in (doc.get("container") or {}).get("holds") or []]
+        dup = ["/container/holds: ammo_kind values must be unique"] if len(kinds) != len(set(kinds)) else []
+        return check_item_light(doc) + dup, []
     if doc.get("category") != "weapon":
         return errs, []
     if "ammo_kind" in doc and "ammunition" not in (doc.get("properties") or []):
