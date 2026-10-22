@@ -27,6 +27,9 @@ struct Camera {
 };
 
 // Collects sprites, depth-sorts them, and emits one draw per run of equal texture.
+// Never drops a sprite: `max_sprites` is the size of one vertex page. When a frame holds more, prepare()
+// allocates extra pages and submit() flushes the globally sorted sequence page by page (a texture run that
+// crosses a page boundary becomes two draws), so the draw order is exactly the unsplit order.
 // Usage per frame: begin() → draw()* → prepare(camera) [before begin_pass] → submit(cl) [inside pass].
 class SpriteBatch {
 public:
@@ -47,7 +50,9 @@ public:
     void set_projection(IsoProjection p) { proj_ = p; }
 
     uint32_t sprite_count() const { return uint32_t(items_.size()); }
-    uint32_t batch_count() const { return uint32_t(runs_.size()); }
+    uint32_t batch_count() const { return uint32_t(runs_.size()); }   // texture runs (page splits not counted)
+    uint32_t page_count() const { return pages_used_; }                // vertex pages this frame (>1 = split)
+    uint64_t split_frames() const { return split_frames_; }            // prepare() calls that needed >1 page
     // Draw order after prepare(): indices into submission order (for tests/debug).
     const std::vector<uint32_t>& order() const { return order_; }
 
@@ -59,6 +64,9 @@ private:
     IsoProjection proj_;
     uint32_t max_sprites_;
     render::BufferId vbo_, ibo_;
+    std::vector<render::BufferId> extra_vbos_;   // pages 1.. (created on first overflow, kept for later frames)
+    uint32_t pages_used_ = 0;
+    uint64_t split_frames_ = 0;
     render::PipelineId pipeline_;
     std::vector<Item> items_;
     std::vector<uint32_t> order_;
