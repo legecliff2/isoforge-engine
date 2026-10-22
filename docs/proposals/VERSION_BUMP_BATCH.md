@@ -2546,6 +2546,14 @@ Additive (11 spells; key names frozen by T&C, all defined once in `engine/rules/
   spent, the SRD's completion on the next turn is deferred).
   Strings: `effect haste needs concentration`, `effect slow needs concentration`, `effect slow needs ability`,
   `effect haste takes no ability`, `effects[<i>]: haste is only allowed as the first effect` (same for `slow`).
+- **Spiritual Weapon** (spell@1 kind `summon_weapon`, first effect only): `{damage: {dice: 1d8, type: force},
+  add_spellcasting_modifier: true, upcast_every: 2, reach_ft: 5, move_ft: 20}` + `scaling.upcast.dice 1` maps onto the R-G12
+  PR 3 `SummonWeapon` (a token, not a creature: no HP, not a target, no turn; hashed in 0xAF). The cast may attack at once;
+  every later attack takes a bonus action (`ActionKind::Attack` with the token, rules-side unchanged). Defaults: upcast_every 2,
+  reach_ft 5, move_ft 20. Strings: `effect damage invalid`, `effect upcast_every must be an integer 1..9`,
+  `effect reach_ft must be a positive multiple of 5`, `effect move_ft must be a positive multiple of 5`,
+  `effect summon_weapon needs concentration or a rounds, minutes or hours duration`,
+  `effects[<i>]: summon_weapon is only allowed as the first effect`.
 
 ## 8. Migrations and inert markers
 

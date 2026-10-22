@@ -370,7 +370,8 @@ def runtime_id_collisions(entries: list[tuple[str, str, str]], cross_pack_only: 
 
 
 REACTION_EFFECT_TRIGGER = {"ac_bonus": "being_hit", "counter": "spell_cast"}
-UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "zone", "hp_pool", "delayed_damage", "sustained_damage"),
+UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "zone", "hp_pool", "delayed_damage", "sustained_damage",
+                           "summon_weapon"),   # 7.2zg Spiritual Weapon
                   "darts": ("auto_hit",),
                   "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition", "apply_modifier")}   # 7.2ze Bless / Bane
 
@@ -378,7 +379,7 @@ UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "zone", "
 FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_damage",   # R-G15, spell_loader.cpp
                      "teleport",   # R-G9 (sim #144)
                      "weapon_imbue", "duplicates",   # 7.2zf
-                     c4.ZG_KEYS["haste"], c4.ZG_KEYS["slow"])   # 7.2zg
+                     c4.ZG_KEYS["haste"], c4.ZG_KEYS["slow"], c4.ZG_KEYS["summon_weapon"])   # 7.2zg
 TIMED_BY_DURATION = ("hp_pool", "sustained_damage")   # their timer is the spell's duration in rounds
 
 

@@ -828,3 +828,28 @@ TEST_CASE("loader 7.2zg: haste / slow kinds expand into a marker row plus AC, De
     j = slow; j["effects"][0].erase("ability"); bad(j, "effect slow needs ability");
     j = haste; j["effects"][0]["ability"] = "wis"; bad(j, "effect haste takes no ability");
 }
+
+TEST_CASE("loader 7.2zg: summon_weapon (Spiritual Weapon) maps onto SpellEffectKind::SummonWeapon") {
+    auto sw = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.spiritual_weapon","level":2,"name":"Spiritual Weapon",
+        "casting_time":{"kind":"bonus_action"},"range":{"kind":"ranged","feet":60},"components":{"v":true,"s":true},
+        "duration":{"kind":"minutes","amount":1},
+        "effects":[{"kind":"summon_weapon","damage":{"dice":"1d8","type":"force"},"add_spellcasting_modifier":true,
+                    "upcast_every":2,"reach_ft":5,"move_ft":20}],"scaling":{"upcast":{"dice":1}}})");
+    auto r = spell_from_json(sw); INFO(r.error); REQUIRE(r.def);
+    CHECK(r.def->kind == SpellEffectKind::SummonWeapon); CHECK(r.def->melee); CHECK(r.def->add_spellcasting_modifier);
+    CHECK(r.def->dice.count == 1); CHECK(r.def->dice.sides == 8); CHECK(r.def->damage_type == DamageType::Force);
+    CHECK(r.def->upcast_dice == 1); CHECK(r.def->summon_weapon.upcast_every == 2);
+    CHECK(r.def->summon_weapon.reach_ft == 5); CHECK(r.def->summon_weapon.move_ft == 20);
+    CHECK(r.def->casting_time == CastingTime::BonusAction); CHECK_FALSE(r.def->concentration);
+    auto bad = [](eng::assets::Json x, const std::string& want) {
+        auto q = spell_from_json(x); INFO(want); INFO(q.error); CHECK_FALSE(q.def); CHECK(q.error == want);
+    };
+    auto j = sw; j["effects"][0].erase("damage"); bad(j, "effect damage invalid");
+    j = sw; j["effects"][0]["upcast_every"] = 0; bad(j, "effect upcast_every must be an integer 1..9");
+    j = sw; j["effects"][0]["reach_ft"] = 7; bad(j, "effect reach_ft must be a positive multiple of 5");
+    j = sw; j["effects"][0]["move_ft"] = 0; bad(j, "effect move_ft must be a positive multiple of 5");
+    j = sw; j["duration"] = {{"kind", "instantaneous"}}; bad(j, "effect summon_weapon needs concentration or a rounds, minutes or hours duration");
+    j = sw; j["effects"] = eng::assets::Json::array({{{"kind", "heal"}, {"dice", "1d4"}}, sw["effects"][0]});
+    j.erase("scaling");
+    bad(j, "effects[1]: summon_weapon is only allowed as the first effect");
+}
