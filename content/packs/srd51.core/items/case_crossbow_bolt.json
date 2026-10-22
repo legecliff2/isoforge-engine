@@ -1,0 +1,21 @@
+{
+  "$schema": "item@2",
+  "id": "srd51.item.case_crossbow_bolt",
+  "name": "Case, crossbow bolt",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "gear",
+  "cost_cp": 100,
+  "weight_oz": 16,
+  "description": "This wooden case can hold up to twenty crossbow bolts.",
+  "container": {
+    "holds": [
+      {
+        "ammo_kind": "bolt",
+        "capacity": 20
+      }
+    ]
+  }
+}
