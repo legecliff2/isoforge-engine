@@ -1,7 +1,16 @@
 name: CI
 
 # Cost policy (macOS minutes bill at 10x Linux):
-# - Linux + Windows: every PR and every push to main (skipped for docs-only changes).
+# - Linux GCC Debug, Linux Clang Release, Windows MSVC Debug: every PR and every push to main
+#   (skipped for docs-only changes). Windows minutes bill at 2x Linux.
+# - Windows MSVC Release (the slowest job, ~30-46 min x 2): every code push to main, manual
+#   dispatch, and PRs carrying the `ci-windows-release` label (add the label, then push a commit
+#   or close/reopen the PR; "Re-run jobs" reuses the old event payload and won't see a new label;
+#   `labeled` is deliberately not a trigger so unrelated labels don't restart CI). Not on ordinary
+#   PRs; Windows Debug still builds and tests every PR. Every main commit is covered by the push
+#   run, so it is not added to the nightly schedule.
+# - Release jobs skip the python_only ctest label (pure-Python validator tests; the Debug jobs run them).
+# - Compiler cache: ccache (Linux/macOS) / sccache (Windows) via actions/cache in cmake-ci.
 # - macOS: nightly on main (07:17 UTC, off the hour to avoid GitHub dropping top-of-hour schedules), on manual dispatch, and on PRs whose
 #   changes touch platform / render or determinism-sensitive code (see the `mac` filter below).
 # - `ci-required` is the single aggregate gate for branch protection: it always runs and
@@ -81,10 +90,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: "Linux GCC Debug",       os: ubuntu-latest,  preset: ci-linux-gcc,   build: ci-linux-gcc,        test: ci-linux-gcc }
-          - { name: "Linux Clang Release",   os: ubuntu-latest,  preset: ci-linux-clang, build: ci-linux-clang,      test: ci-linux-clang }
-          - { name: "Windows MSVC Debug",    os: windows-latest, preset: ci-win-msvc,    build: ci-win-msvc-debug,   test: ci-win-msvc-debug }
-          - { name: "Windows MSVC Release",  os: windows-latest, preset: ci-win-msvc,    build: ci-win-msvc-release, test: ci-win-msvc-release }
+          - { name: "Linux GCC Debug",       os: ubuntu-latest,  preset: ci-linux-gcc,   build: ci-linux-gcc,        test: ci-linux-gcc,        ctest-args: "" }
+          - { name: "Linux Clang Release",   os: ubuntu-latest,  preset: ci-linux-clang, build: ci-linux-clang,      test: ci-linux-clang,      ctest-args: "-LE python_only" }
+          - { name: "Windows MSVC Debug",    os: windows-latest, preset: ci-win-msvc,    build: ci-win-msvc-debug,   test: ci-win-msvc-debug,   ctest-args: "" }
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/cmake-ci
@@ -92,6 +100,25 @@ jobs:
           preset: ${{ matrix.preset }}
           build: ${{ matrix.build }}
           test: ${{ matrix.test }}
+          ctest-args: ${{ matrix.ctest-args }}
+
+  windows-release:
+    name: Windows MSVC Release
+    needs: changes
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && needs.changes.outputs.code == 'true') ||
+      (github.event_name == 'pull_request' && needs.changes.outputs.code == 'true' &&
+       contains(github.event.pull_request.labels.*.name, 'ci-windows-release'))
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cmake-ci
+        with:
+          preset: ci-win-msvc
+          build: ci-win-msvc-release
+          test: ci-win-msvc-release
+          ctest-args: "-LE python_only"
 
   macos:
     name: macOS AppleClang Debug
@@ -108,19 +135,19 @@ jobs:
           build: ci-mac-clang
           test: ci-mac-clang
 
-  # The one check to mark required. Skipped jobs (docs-only PR, macOS not needed) count as OK;
-  # failed or cancelled ones fail the gate.
+  # The one check to mark required. Skipped jobs (docs-only PR, macOS not needed, Windows Release
+  # on an unlabelled PR) count as OK; failed or cancelled ones fail the gate.
   ci-required:
     name: ci-required
-    needs: [changes, build-test, macos]
+    needs: [changes, build-test, windows-release, macos]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check job results
         env:
-          RESULTS: ${{ needs.changes.result }} ${{ needs.build-test.result }} ${{ needs.macos.result }}
+          RESULTS: ${{ needs.changes.result }} ${{ needs.build-test.result }} ${{ needs.windows-release.result }} ${{ needs.macos.result }}
         run: |
-          echo "changes build-test macos: $RESULTS"
+          echo "changes build-test windows-release macos: $RESULTS"
           for r in $RESULTS; do
             case "$r" in
               success|skipped) ;;
