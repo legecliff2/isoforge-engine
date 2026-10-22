@@ -117,12 +117,31 @@ void Combat::apply_equip(rules5e::EncounterState& st, const rules5e::ActionReque
         break;
     default: break;
     }
+    if (&st == &state_) {   // live / replayed step only (never an AI lookahead copy): the ItemMoved event
+        const auto op = EquipOp(req.equip_op);
+        const CombatantId holder = op == EquipOp::Drop ? 0 : op == EquipOp::HandOver ? other : req.actor;
+        if (op != EquipOp::HandOver || other != 0) {
+            Vec2i at = pos(holder ? holder : req.actor);
+            item_moved(req.actor, at, req.equip_item, req.equip_op, holder);
+        }
+    }
     if (cost_kind == uint8_t(rules5e::EquipCost::Interaction)) {   // the one free object interaction of this turn
         v.interaction_used = true;
         l->interaction_turn = turns_started_;
     }
     recompute_derived(st, req.actor, *items_);
     if (other) recompute_derived(st, other, *items_);
+}
+
+void Combat::item_moved(CombatantId actor, Vec2i tile, uint32_t instance, uint8_t reason, CombatantId holder) {
+    SimEvent e;
+    e.kind = SimEvent::Kind::ItemMoved;
+    e.actor = actor;
+    e.tile = tile;
+    e.rules.a = int32_t(instance);
+    e.rules.b = reason;
+    e.rules.c = int32_t(holder);
+    item_events_.push_back(e);
 }
 
 void Combat::ground_drop(rules5e::EncounterState& st, const HeldItem& h, Vec2i at) const {
@@ -144,7 +163,8 @@ void Combat::recompute(rules5e::EncounterState& st, CombatantId id) {
 //  1. thrown weapons / ammunition of an Attack (EQUIPMENT.md 4.2, Q2 / Q10): per AttackResolved of the actor (reaction depth 0)
 //     of a single (non-multiattack) Attack, the linked weapon: Thrown -> the instance (held first, else carried) lands on the
 //     target's anchor tile; a pure ranged ammunition weapon of a PC -> the first matching stack (instance order) with count > 0
-//     loses one. No stack = unlimited; monsters never spend ammunition.
+//     loses one. No stack = unlimited; monsters never spend ammunition. Fired ammunition is consumed: it never lands on a
+//     tile and emits no ItemMoved (recovering half after the battle, SRD, is a follow-up pending Rules).
 //  2. death (EQUIPMENT.md 4.4): a creature with a loadout that died this step drops everything held and carried, in instance
 //     order, onto its anchor tile (worn armor stays on the body). Light ids are per instance, so they are kept.
 //  3. the interaction flag, the recompute triggers (7.2: ability scores, proficiency / level, AC effects; equip changes
@@ -168,7 +188,11 @@ void Combat::equipment_after_step(const rules5e::LoggedStep& ls, const std::vect
                     if (!h)
                         for (auto it = v.carried.begin(); it != v.carried.end(); ++it)
                             if (it->def == link.def) { h = *it; v.carried.erase(it); break; }
-                    if (h) { ground_drop(state_, *h, pos(e.target)); touched.push_back(q.actor); }
+                    if (h) {
+                        ground_drop(state_, *h, pos(e.target));
+                        item_moved(q.actor, pos(e.target), h->instance, kItemThrown, 0);
+                        touched.push_back(q.actor);
+                    }
                 } else if ((d->weapon.properties & rules5e::kWeaponAmmunition) && d->weapon.reach_ft == 0 && k && k->is_pc &&
                            d->weapon.ammo_kind != rules5e::kAmmoNone) {
                     for (auto& x : v.carried) {
@@ -192,10 +216,19 @@ void Combat::equipment_after_step(const rules5e::LoggedStep& ls, const std::vect
         l->view.carried.clear();
         std::sort(all.begin(), all.end(), [](const HeldItem& a, const HeldItem& b) { return a.instance < b.instance; });
         const Vec2i at = pos(e.actor);
-        for (const auto& x : all) ground_drop(state_, x, at);
+        for (const auto& x : all) { ground_drop(state_, x, at); item_moved(e.actor, at, x.instance, kItemDeathDrop, 0); }
         if (!all.empty()) touched.push_back(e.actor);
     }
     for (const CombatantId id : touched) recompute_derived(state_, id, *items_);
+    // ItemMoved events (v11): after the step's rules and sim events, before EncounterEnded when the step ended the encounter.
+    if (!item_events_.empty()) {
+        auto at = events_.end();
+        if (!events_.empty() && events_.back().kind == SimEvent::Kind::Rules &&
+            events_.back().rules.kind == rules5e::EventKind::EncounterEnded)
+            at = events_.end() - 1;
+        events_.insert(at, item_events_.begin(), item_events_.end());
+        item_events_.clear();
+    }
     refresh_interactions(state_);
     for (const auto& l : state_.loadouts) {
         const DeriveInputs in = derive_inputs(state_, l.owner);
