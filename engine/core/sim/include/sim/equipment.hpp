@@ -22,11 +22,9 @@ namespace eng::sim {
 // error (ItemDefTable::add).
 uint32_t item_def_id(std::string_view content_id);
 
-// HeldItem::flags bits 4..6 (sim-owned, like kHeldRelight): the light state index (0 = the top-level radii, k = item@2
-// light.states[k - 1], e.g. a hooded lantern's "hooded"). Non-zero only after a state change; folded with the flags (0xD0 /
-// 0xD2), so the default state hashes as before.
-inline constexpr uint8_t kHeldStateShift = 4, kHeldStateMask = 0x70;
-constexpr uint8_t held_light_state(uint8_t flags) { return uint8_t((flags & kHeldStateMask) >> kHeldStateShift); }
+// The light state lives in HeldItem::flags bits 4-6 (rules5e::kHeldLightStateMask, light_state_index / with_light_state;
+// index into rules5e::LightDef::states). Non-zero only after a state change; folded with the flags (0xD0), so the default
+// state hashes as before. Radii: rules5e::light_radii(def, held).
 
 // item@N definitions keyed by def id. Owns the strings WeaponDef::id views into (not copyable: share it by pointer).
 class ItemDefTable {
@@ -35,8 +33,8 @@ public:
     ItemDefTable(const ItemDefTable&) = delete;
     ItemDefTable& operator=(const ItemDefTable&) = delete;
     // One already-migrated item@1 document (weapon / armor / shield / valuable). Error message or nullopt.
-    // item@2 `gear` with a `light` block becomes ItemKind::Light (LightDef: radii, shape, duration, lit_by_default,
-    // extra_states = states.size()); `torch_attack` adds the improvised weapon profile (requires_lit). Other gear: Other.
+    // item@2 `gear` with a `light` block becomes ItemKind::Light (LightDef: states = [top-level radii, states[]...] up to
+    // rules5e::kMaxLightStates, shape, duration, lit_by_default); `torch_attack` adds the improvised weapon profile (requires_lit). Other gear: Other.
     std::optional<std::string> add(const assets::Json& doc);
     // A definition built in code (tests; item@2 light / ammunition kinds before their loader). def.id is set from content_id;
     // def.weapon.id is re-pointed at owned storage (the attack id is the content id's last segment).
@@ -44,17 +42,13 @@ public:
     const rules5e::ItemDef* find(uint32_t def) const;
     const rules5e::ItemDef* find(std::string_view content_id) const { return find(item_def_id(content_id)); }
     const std::string* content_id(uint32_t def) const;
-    // Radii of a light item's state (0 = LightDef bright / dim; k = item@2 light.states[k - 1]). nullopt: not a light, or
-    // no such state. (rules5e::LightDef carries only the state count, so the per-state radii live here.)
-    struct LightRadii { uint16_t bright_ft = 0, dim_ft = 0; };
-    std::optional<LightRadii> light_radii(uint32_t def, uint8_t state) const;
     bool empty() const noexcept { return by_id_.empty(); }
     std::size_t size() const noexcept { return by_id_.size(); }
 
 private:
-    struct Entry { std::string content_id; rules5e::ItemDef def; std::vector<LightRadii> states{}; };
+    struct Entry { std::string content_id; rules5e::ItemDef def; };
     // Both add()s end here. A duplicate (or colliding) id is refused with an error and changes nothing.
-    std::optional<std::string> insert(const std::string& content_id, rules5e::ItemDef def, std::vector<LightRadii> states);
+    std::optional<std::string> insert(const std::string& content_id, rules5e::ItemDef def);
     std::map<uint32_t, Entry> by_id_;
     std::deque<std::string> strings_;
 };

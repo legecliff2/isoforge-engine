@@ -111,13 +111,23 @@ void Combat::apply_equip(rules5e::EncounterState& st, const rules5e::ActionReque
                 break;
             }
         break;
+    case EquipOp::SetLightState:   // EQUIPMENT.md 4.2 op 10: light / switch state (kHeldLit + index) or douse; no event
+        for (HeldItem* h : {&v.main, &v.off})
+            if (h->instance == req.equip_item) {
+                h->flags = req.equip_state == rules5e::kLightDouse
+                               ? uint8_t(rules5e::with_light_state(h->flags, 0) & ~rules5e::kHeldLit)
+                               : uint8_t(rules5e::with_light_state(h->flags, req.equip_state) | rules5e::kHeldLit);
+                break;
+            }
+        break;
     case EquipOp::HandOver:
         if (rules5e::Loadout* to = find_loadout(st, req.equip_to))
             if (auto h = take_hand(v, req.equip_item)) { put_hand(to->view, *h, 0); other = req.equip_to; }
         break;
     default: break;
     }
-    if (&st == &state_) {   // live / replayed step only (never an AI lookahead copy): the ItemMoved event
+    if (&st == &state_ && EquipOp(req.equip_op) != EquipOp::SetLightState) {   // live / replayed step only (never an AI
+        // lookahead copy): the ItemMoved event. SetLightState moves nothing (no event; equipment_lights() shows the change).
         const auto op = EquipOp(req.equip_op);
         const CombatantId holder = op == EquipOp::Drop ? 0 : op == EquipOp::HandOver ? other : req.actor;
         if (op != EquipOp::HandOver || other != 0) {
@@ -311,6 +321,20 @@ std::vector<rules5e::ActionRequest> Combat::legal_actions() {
             r.equip_op = uint8_t(EquipOp::HandOver); r.equip_item = inst; r.equip_to = k.id; r.equip_in_reach = true;
             push(r);
         }
+    // SetLightState (EQUIPMENT.md 4.2 op 10; rules lists none): per held light (instance order), each LightDef::states index,
+    // then douse; equip_legal drops the current state and douse when unlit.
+    for (const uint32_t inst : held_ids) {
+        const HeldItem* h = l->view.main.instance == inst ? &l->view.main : &l->view.off;
+        const rules5e::ItemDef* d = items_ ? items_->find(h->def) : nullptr;
+        if (!d || d->light.states.empty()) continue;
+        auto light_op = [&](uint8_t st) {
+            rules5e::ActionRequest r{actor, ActionKind::UseObject, 0};
+            r.equip_op = uint8_t(EquipOp::SetLightState); r.equip_item = inst; r.equip_state = st;
+            push(r);
+        };
+        for (std::size_t i = 0; i < d->light.states.size() && i < rules5e::kMaxLightStates; ++i) light_op(uint8_t(i));
+        light_op(rules5e::kLightDouse);
+    }
     return out;
 }
 
@@ -340,9 +364,15 @@ std::vector<EquipmentLight> Combat::equipment_lights() const {
             for (const auto& h : l.view.carried) if (h.instance == inst) flags = h.flags;
         }
         for (const auto& g : state_.ground_items) if (g.item.instance == inst) flags = g.item.flags;
-        e.state = held_light_state(flags);
-        if (const auto r = items_->light_radii(e.def, e.state)) { e.bright_ft = r->bright_ft; e.dim_ft = r->dim_ft; }
-        if (const auto* d = items_->find(e.def)) e.shape = d->light.shape;
+        e.state = rules5e::light_state_index(flags);
+        if (const auto* d = items_->find(e.def)) {
+            HeldItem probe;
+            probe.def = e.def;
+            probe.flags = e.lit ? flags : uint8_t(flags & ~rules5e::kHeldLit);   // stowed (covered) lights shed nothing
+            const rules5e::LightState r = rules5e::light_radii(*d, probe);
+            e.bright_ft = r.bright_ft; e.dim_ft = r.dim_ft;
+            e.shape = d->light.shape;
+        }
         out.push_back(e);
     }
     return out;

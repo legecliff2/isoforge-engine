@@ -64,8 +64,7 @@ ContentLibrary& library() {
         rules5e::ItemDef torch;
         torch.kind = rules5e::ItemKind::Light;
         torch.hands = 1;
-        torch.light.bright_ft = 20;
-        torch.light.dim_ft = 20;
+        torch.light.states = {{20, 20}};
         torch.light.lit_by_default = true;
         REQUIRE_FALSE(l.items()->add("test.item.torch", torch));
         std::ifstream f(std::filesystem::path(ENGINE_SOURCE_ROOT) / "content/packs/srd51.core/characters/fighter_level_1.json");
@@ -711,10 +710,10 @@ TEST_CASE("gear lights (item@2): srd51 torch / lanterns produce equipment lights
     const auto* lan = t.find("srd51.item.lantern_hooded");
     REQUIRE(lan);
     CHECK(lan->kind == rules5e::ItemKind::Light);
-    CHECK(lan->light.extra_states == 1);
-    CHECK(t.light_radii(lan->id, 1)->bright_ft == 0);
-    CHECK(t.light_radii(lan->id, 1)->dim_ft == 5);
-    CHECK_FALSE(t.light_radii(lan->id, 2));
+    REQUIRE(lan->light.states.size() == 2);
+    CHECK(lan->light.states[0].bright_ft == 30);
+    CHECK(lan->light.states[1].bright_ft == 0);
+    CHECK(lan->light.states[1].dim_ft == 5);
     const auto* torch = t.find("srd51.item.torch");
     CHECK(torch->has_weapon);
     CHECK(torch->weapon_requires_lit);
@@ -730,16 +729,17 @@ TEST_CASE("gear lights (item@2): srd51 torch / lanterns produce equipment lights
     REQUIRE(lights.size() == 3);   // instance order: hooded lantern, torch, bullseye (carried)
     CHECK(lights[0].def == lan->id);
     CHECK(lights[0].state == 0);
-    CHECK(lights[0].bright_ft == 30);
-    CHECK(lights[0].dim_ft == 30);
-    CHECK_FALSE(lights[0].lit);   // lit_by_default false: no light op yet (#247 has no light / hood toggle)
-    CHECK(lights[1].bright_ft == 20);
+    CHECK_FALSE(lights[0].lit);   // lit_by_default false: unlit sheds nothing (rules5e::light_radii)
+    CHECK(lights[0].bright_ft == 0);
+    CHECK(lights[0].dim_ft == 0);
+    CHECK_FALSE(lights[1].lit);   // srd torch: lit_by_default false
+    CHECK(lights[1].bright_ft == 0);
     CHECK(lights[2].shape == rules5e::LightShape::Cone);
     CHECK(lights[2].holder_id == pc);
-    // A non-default state (set directly: no toggle op exists) is reported with its radii and changes 0xD0.
+    // A non-default lit state (set directly here; SetLightState tests below) is reported with its radii and changes 0xD0.
     const uint64_t h0 = c->hash();
     for (auto& lo : CombatTestAccess::state(*c).loadouts)
-        if (lo.owner == pc) lo.view.main.flags = uint8_t(lo.view.main.flags | (1u << kHeldStateShift));
+        if (lo.owner == pc) lo.view.main.flags = rules5e::with_light_state(uint8_t(lo.view.main.flags | rules5e::kHeldLit), 1);
     lights = c->equipment_lights();
     CHECK(lights[0].state == 1);
     CHECK(lights[0].bright_ft == 0);
@@ -899,12 +899,171 @@ TEST_CASE("ItemDefTable: a duplicate add is an error result and leaves the first
     CHECK(t.size() == 1);
     const auto* d = t.find("test.item.lamp");
     REQUIRE(d);
-    CHECK(d->light.bright_ft == 15);
-    CHECK(d->light.extra_states == 1);
-    CHECK(t.light_radii(d->id, 1)->dim_ft == 5);
+    REQUIRE(d->light.states.size() == 2);
+    CHECK(d->light.states[0].bright_ft == 15);
+    CHECK(d->light.states[1].dim_ft == 5);
     CHECK(d->weapon.id == "lamp");   // the string view still points at live storage
     // A later distinct add still works (no stale pending state from the refused ones).
     REQUIRE_FALSE(t.add(assets::Json::parse(R"({"$schema": "item@2", "id": "test.item.candle", "name": "Candle",
         "category": "gear", "light": {"bright_ft": 5, "dim_ft": 5}})")));
-    CHECK_FALSE(t.light_radii(t.find("test.item.candle")->id, 1));
+    CHECK(t.find("test.item.candle")->light.states.size() == 1);
+}
+
+namespace {
+rules5e::ActionRequest light_req(CombatantId a, uint32_t item, uint8_t st) {
+    rules5e::ActionRequest r = equip(a, EquipOp::SetLightState, item);
+    r.equip_state = st;
+    return r;
+}
+const EquipmentLight& light_of(const std::vector<EquipmentLight>& v, uint32_t inst) {
+    for (const auto& e : v) if (e.item == inst) return e;
+    FAIL("no light for item " << inst);
+    return v.front();
+}
+std::vector<std::pair<uint32_t, uint8_t>> light_ops(Combat& c) {
+    std::vector<std::pair<uint32_t, uint8_t>> out;
+    for (const auto& r : c.legal_actions())
+        if (r.equip_op == uint8_t(EquipOp::SetLightState)) out.emplace_back(r.equip_item, r.equip_state);
+    return out;
+}
+} // namespace
+
+TEST_CASE("SetLightState: light a torch, open / hood / douse a hooded lantern (30/30 -> 0/5), no ItemMoved event") {
+    ContentLibrary& l = library();
+    const auto ch = arena(kLanterns);
+    ecs::Registry reg;
+    std::string err;
+    auto c = Combat::create(reg, ch, l, 5, CombatOptions{true}, &err);
+    REQUIRE_MESSAGE(c, err);
+    const CombatantId pc = ch.spawns[0].stable_id;
+    const uint32_t lantern = c->loadout(pc)->view.main.instance, torch = c->loadout(pc)->view.off.instance;
+    until_turn(*c, pc);
+    const std::size_t events0 = c->events().size();
+    // light the torch (free interaction)
+    REQUIRE(c->submit(rules(light_req(pc, torch, 0))).ok);
+    CHECK(c->loadout(pc)->view.interaction_used);
+    CHECK((c->loadout(pc)->view.off.flags & rules5e::kHeldLit) != 0);
+    CHECK(light_of(c->equipment_lights(), torch).lit);
+    CHECK(light_of(c->equipment_lights(), torch).bright_ft == 20);
+    CHECK(light_of(c->equipment_lights(), torch).dim_ft == 20);
+    // second op this turn: Use an Object (the action)
+    REQUIRE(c->submit(rules(light_req(pc, lantern, 0))).ok);
+    CHECK_FALSE(c->state().budget.action);
+    auto lan = light_of(c->equipment_lights(), lantern);
+    CHECK(lan.lit); CHECK(lan.state == 0); CHECK(lan.bright_ft == 30); CHECK(lan.dim_ft == 30);
+    for (std::size_t i = events0; i < c->events().size(); ++i) CHECK(c->events()[i].kind != SimEvent::Kind::ItemMoved);
+    REQUIRE(c->submit(rules({pc, ActionKind::EndTurn})).ok);
+    until_turn(*c, pc);
+    // hood it
+    REQUIRE(c->submit(rules(light_req(pc, lantern, 1))).ok);
+    lan = light_of(c->equipment_lights(), lantern);
+    CHECK(lan.lit); CHECK(lan.state == 1); CHECK(lan.bright_ft == 0); CHECK(lan.dim_ft == 5);
+    CHECK(rules5e::light_state_index(c->loadout(pc)->view.main.flags) == 1);
+    // douse it: unlit, state bits cleared, sheds nothing
+    REQUIRE(c->submit(rules(light_req(pc, lantern, rules5e::kLightDouse))).ok);
+    lan = light_of(c->equipment_lights(), lantern);
+    CHECK_FALSE(lan.lit); CHECK(lan.state == 0); CHECK(lan.bright_ft == 0); CHECK(lan.dim_ft == 0);
+    CHECK((c->loadout(pc)->view.main.flags & (rules5e::kHeldLit | rules5e::kHeldLightStateMask)) == 0);
+    for (std::size_t i = events0; i < c->events().size(); ++i) CHECK(c->events()[i].kind != SimEvent::Kind::ItemMoved);
+}
+
+TEST_CASE("SetLightState: each refusal string (rules5e::equip_legal) via submit") {
+    ContentLibrary& l = library();
+    {
+        const auto ch = arena(kLanterns);
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, l, 5, CombatOptions{true});
+        REQUIRE(c);
+        const CombatantId pc = ch.spawns[0].stable_id;
+        const auto& v = c->loadout(pc)->view;
+        const uint32_t lantern = v.main.instance, torch = v.off.instance;
+        REQUIRE(v.carried.size() == 1);
+        const uint32_t bullseye = v.carried[0].instance;
+        until_turn(*c, pc);
+        const uint64_t h0 = c->hash();
+        CHECK(c->submit(rules(light_req(pc, bullseye, 0))).error == "equip: the item is not in hand");
+        CHECK(c->submit(rules(light_req(pc, lantern, 2))).error == "equip: unknown light state");
+        CHECK(c->submit(rules(light_req(pc, torch, 1))).error == "equip: unknown light state");
+        CHECK(c->submit(rules(light_req(pc, torch, rules5e::kLightDouse))).error == "equip: the light is already in that state");
+        REQUIRE(c->submit(rules(light_req(pc, lantern, 1))).ok);
+        CHECK(c->submit(rules(light_req(pc, lantern, 1))).error == "equip: the light is already in that state");
+        CHECK(c->hash() != h0);
+    }
+    {
+        const auto ch = arena(kKitted);
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, l, 5, CombatOptions{true});
+        REQUIRE(c);
+        const CombatantId pc = ch.spawns[0].stable_id;
+        until_turn(*c, pc);
+        CHECK(c->submit(rules(light_req(pc, c->loadout(pc)->view.main.instance, 0))).error == "equip: not a light source");
+    }
+}
+
+TEST_CASE("SetLightState: legal_actions lists each valid target state per held light, plus douse when lit") {
+    ContentLibrary& l = library();
+    const auto ch = arena(kLanterns);
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, l, 5, CombatOptions{true});
+    REQUIRE(c);
+    const CombatantId pc = ch.spawns[0].stable_id;
+    const uint32_t lantern = c->loadout(pc)->view.main.instance, torch = c->loadout(pc)->view.off.instance;
+    REQUIRE(lantern < torch);
+    until_turn(*c, pc);
+    using P = std::vector<std::pair<uint32_t, uint8_t>>;
+    CHECK(light_ops(*c) == P{{lantern, 0}, {lantern, 1}, {torch, 0}});   // carried bullseye: not in hand
+    // every listed op is accepted, and they come after every other entry
+    const auto all = c->legal_actions();
+    bool seen = false;
+    for (const auto& r : all) {
+        if (r.equip_op == uint8_t(EquipOp::SetLightState)) seen = true;
+        else CHECK_FALSE(seen);
+    }
+    REQUIRE(c->submit(rules(light_req(pc, lantern, 0))).ok);
+    CHECK(light_ops(*c) == P{{lantern, 1}, {lantern, rules5e::kLightDouse}, {torch, 0}});
+    // with equipment off nothing is listed
+    ecs::Registry r2;
+    auto off = Combat::create(r2, ch, l, 5);
+    REQUIRE(off);
+    CHECK(light_ops(*off).empty());
+}
+
+TEST_CASE("SetLightState hashing: state folds into 0xD0 only when non-default; 0xD1 carries equip_state only for op 10") {
+    ContentLibrary& l = library();
+    const auto ch = arena(kLanterns);
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, l, 5, CombatOptions{true});
+    REQUIRE(c);
+    const CombatantId pc = ch.spawns[0].stable_id;
+    auto& main = [&]() -> rules5e::HeldItem& {
+        for (auto& lo : CombatTestAccess::state(*c).loadouts) if (lo.owner == pc) return lo.view.main;
+        FAIL("no loadout");
+        return CombatTestAccess::state(*c).loadouts.front().view.main;
+    }();
+    const uint8_t f0 = main.flags;
+    const uint64_t h0 = c->hash();
+    main.flags = rules5e::with_light_state(f0, 0);                 // default state: same bits, same hash
+    CHECK(c->hash() == h0);
+    main.flags = uint8_t(f0 | rules5e::kHeldLit);                   // lit, state 0
+    const uint64_t lit0 = c->hash();
+    CHECK(lit0 != h0);
+    main.flags = rules5e::with_light_state(uint8_t(f0 | rules5e::kHeldLit), 1);   // lit, hooded
+    CHECK(c->hash() != lit0);
+    main.flags = f0;
+    CHECK(c->hash() == h0);
+    // 0xD1: two replays differing only in equip_state
+    auto run = [&](EquipOp op, uint8_t st, uint32_t item_of_main_or_off) {
+        ecs::Registry r;
+        auto k = Combat::create(r, ch, l, 5, CombatOptions{true});
+        REQUIRE(k);
+        until_turn(*k, pc);
+        const auto& v = k->loadout(pc)->view;
+        rules5e::ActionRequest q = equip(pc, op, item_of_main_or_off ? v.off.instance : v.main.instance);
+        q.equip_state = st;
+        REQUIRE(k->submit(rules(q)).ok);
+        return std::pair{k->log_hash(), k->hash()};
+    };
+    CHECK(run(EquipOp::SetLightState, 0, 0).first != run(EquipOp::SetLightState, 1, 0).first);
+    CHECK(run(EquipOp::Drop, 0, 1).first == run(EquipOp::Drop, 7, 1).first);   // not folded for other ops
+    CHECK(run(EquipOp::Drop, 0, 1).second == run(EquipOp::Drop, 7, 1).second);
 }
