@@ -363,6 +363,8 @@ private:
     std::map<CombatantId, DeriveInputs> derive_seen_;
     uint32_t recomputes_ = 0;
     std::vector<std::string> equipment_errors_;
+    std::vector<SimEvent> item_events_;   // ItemMoved of the step being resolved (apply_equip on state_ only), pushed by complete
+    void item_moved(CombatantId actor, Vec2i tile, uint32_t instance, uint8_t reason, CombatantId holder);
     void ground_drop(rules5e::EncounterState& st, const rules5e::HeldItem& h, Vec2i at) const;
     void setup_equipment(const ContentLibrary& content);
     void apply_equip(rules5e::EncounterState& st, const rules5e::ActionRequest& req, uint8_t cost_kind);

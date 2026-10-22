@@ -9,6 +9,7 @@
 #include "sample_set.hpp"
 #include "rules5e/equipment.hpp"
 #include "sim/combat.hpp"
+#include "sim/events.hpp"
 #include "world/chunk_codec.hpp"
 
 namespace eng::sim {
@@ -552,4 +553,114 @@ TEST_CASE("equipment on: on death everything held and carried drops to the creat
     CHECK(lights.at(0).light_id == lid);
     CHECK(lights.at(0).holder_id == 0);
     CHECK(lights.at(0).lit);
+}
+
+namespace {
+std::vector<SimEvent> item_moves(const Combat& c) {
+    std::vector<SimEvent> out;
+    for (const auto& e : c.events()) if (e.kind == SimEvent::Kind::ItemMoved) out.push_back(e);
+    return out;
+}
+}  // namespace
+
+TEST_CASE("ItemMoved (v11): equip ops, thrown, death drop; never with equipment off; ammunition emits none") {
+    ContentLibrary& l = library();
+    {   // off: no ItemMoved, the stream version is unchanged
+        const auto ch = arena(kFighter);
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, l, 7);
+        for (int i = 0; i < 3; ++i) REQUIRE(c->submit(rules({rules5e::current_actor(c->state()), ActionKind::EndTurn})).ok);
+        CHECK(item_moves(*c).empty());
+        CHECK(event_stream_version(c->events()) < 11);
+    }
+    {   // equip ops
+        const auto ch = arena(kFighter);
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, l, 7, CombatOptions{true});
+        const CombatantId pc = ch.spawns[0].stable_id;
+        const uint32_t sword = c->loadout(pc)->view.main.instance, shield = c->loadout(pc)->view.off.instance;
+        until_turn(*c, pc);
+        CHECK(item_moves(*c).empty());
+        REQUIRE(c->submit(rules(equip(pc, EquipOp::DoffShield, shield))).ok);
+        REQUIRE(c->submit(rules(equip(pc, EquipOp::Stow, sword))).ok);
+        REQUIRE(c->submit(rules(equip(pc, EquipOp::Drop, sword))).error == "equip: the item is not in hand");
+        REQUIRE(c->submit(rules({pc, ActionKind::EndTurn})).ok);
+        until_turn(*c, pc);
+        REQUIRE(c->submit(rules(equip(pc, EquipOp::Draw, sword, 1))).ok);
+        REQUIRE(c->submit(rules(equip(pc, EquipOp::Drop, sword))).ok);
+        REQUIRE(c->submit(rules(equip(pc, EquipOp::PickUp, sword, 1))).ok);   // costs the action
+        const auto m = item_moves(*c);
+        REQUIRE(m.size() == 5);
+        const int reasons[] = {kItemDoffShield, kItemStow, kItemDraw, kItemDrop, kItemPickUp};
+        const uint32_t items[] = {shield, sword, sword, sword, sword};
+        const CombatantId holders[] = {pc, pc, pc, 0, pc};
+        for (int i = 0; i < 5; ++i) {
+            CHECK(m[i].rules.b == reasons[i]);
+            CHECK(uint32_t(m[i].rules.a) == items[i]);
+            CHECK(CombatantId(m[i].rules.c) == holders[i]);
+            CHECK(m[i].actor == pc);
+            CHECK(m[i].tile == c->pos(pc));
+        }
+        CHECK(c->events().back().kind == SimEvent::Kind::ItemMoved);   // after the step's rules events
+        CHECK(event_stream_version(c->events()) == 11);
+        ecs::Registry rr;
+        std::string err;
+        auto again = replay(rr, ch, l, 7, CombatOptions{true}, c->log(), &err);
+        REQUIRE_MESSAGE(again, err);
+        CHECK(again->hash() == c->hash());   // replay re-emits the same ItemMoved events
+    }
+    {   // thrown: lands on the target's tile
+        const auto ch = arena(kThrower);
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, l, 13, CombatOptions{true});
+        const CombatantId pc = ch.spawns[0].stable_id, gob = ch.spawns[1].stable_id;
+        for (auto& k : CombatTestAccess::state(*c).combatants) if (k.id == gob) { k.hp = 200; k.hp_max = 200; }
+        const uint32_t jav = c->loadout(pc)->view.main.instance;
+        until_turn(*c, pc);
+        REQUIRE(c->submit(rules(attack(pc, gob))).ok);
+        const auto m = item_moves(*c);
+        REQUIRE(m.size() == 1);
+        CHECK(m[0].rules.b == kItemThrown);
+        CHECK(uint32_t(m[0].rules.a) == jav);
+        CHECK(m[0].rules.c == 0);
+        CHECK(m[0].tile == c->pos(gob));
+    }
+    {   // ammunition: consumed, never on the ground, no ItemMoved
+        const auto ch = arena(kArcher, 4);
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, l, 17, CombatOptions{true});
+        const CombatantId pc = ch.spawns[0].stable_id, gob = ch.spawns[1].stable_id;
+        for (auto& k : CombatTestAccess::state(*c).combatants) if (k.id == gob) { k.hp = 200; k.hp_max = 200; }
+        until_turn(*c, pc);
+        REQUIRE(c->submit(rules(attack(pc, gob))).ok);
+        CHECK(c->loadout(pc)->view.carried.at(0).count == 1);
+        CHECK(c->state().ground_items.empty());
+        CHECK_FALSE(c->state().ground_items_seen);
+        CHECK(item_moves(*c).empty());
+    }
+    {   // death drop: one ItemMoved per item, instance order, actor = the dead creature
+        const auto ch = arena(kTorchbearer, 1);
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, l, 23, CombatOptions{true});
+        const CombatantId pc = ch.spawns[0].stable_id, gob = ch.spawns[1].stable_id;
+        for (auto& k : CombatTestAccess::state(*c).combatants)
+            if (k.id == pc) { k.hp = 1; k.uses_death_saves = false; k.is_pc = false; k.ac = 0; }
+        bool died = false;
+        for (int round = 0; round < 12 && !died; ++round) {
+            until_turn(*c, gob);
+            REQUIRE(c->submit(rules(attack(gob, pc))).ok);
+            died = rules5e::find(c->state(), pc)->dead;
+            if (!died) REQUIRE(c->submit(rules({gob, ActionKind::EndTurn})).ok);
+        }
+        REQUIRE(died);
+        const auto m = item_moves(*c);
+        REQUIRE(m.size() == 3);
+        for (std::size_t i = 0; i < m.size(); ++i) {
+            CHECK(m[i].rules.b == kItemDeathDrop);
+            CHECK(m[i].actor == pc);
+            CHECK(m[i].rules.c == 0);
+            CHECK(m[i].tile == c->pos(pc));
+            if (i) CHECK(m[i - 1].rules.a < m[i].rules.a);
+        }
+    }
 }
