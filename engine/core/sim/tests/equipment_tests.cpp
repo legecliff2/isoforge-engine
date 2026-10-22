@@ -100,16 +100,18 @@ ContentLibrary& library() {
                                    {"damage", J::array({J{{"dice", "1d8+2"}, {"type", "piercing"}}})}}});
         REQUIRE_FALSE(l.add(a, "character", "", 4));
         // item@2 gear lights as in #250 (content/light-gear), fed straight to the table (item@2 loads via #246).
-        REQUIRE_FALSE(l.items()->add(J::parse(R"({"$schema": "item@2", "id": "srd51.item.torch", "name": "Torch", "category": "gear",
+        // Stacked with #250 the real srd51 gear is already loaded from the pack: keep that copy (same light blocks).
+        auto add_gear = [&](const J& d) { if (!l.items()->find(d["id"].get<std::string>())) REQUIRE_FALSE(l.items()->add(d)); };
+        add_gear(J::parse(R"({"$schema": "item@2", "id": "srd51.item.torch", "name": "Torch", "category": "gear",
             "hands": 1, "light": {"bright_ft": 20, "dim_ft": 20, "shape": "radius", "duration_rounds": 600, "lit_by_default": false,
-            "preset": "srd51.core.light.torch"}, "torch_attack": {"damage": [{"flat": 1, "type": "fire"}], "requires_lit": true}})")));
-        REQUIRE_FALSE(l.items()->add(J::parse(R"({"$schema": "item@2", "id": "srd51.item.lantern_hooded", "name": "Lantern, hooded",
+            "preset": "srd51.core.light.torch"}, "torch_attack": {"damage": [{"flat": 1, "type": "fire"}], "requires_lit": true}})"));
+        add_gear(J::parse(R"({"$schema": "item@2", "id": "srd51.item.lantern_hooded", "name": "Lantern, hooded",
             "category": "gear", "hands": 1, "light": {"bright_ft": 30, "dim_ft": 30, "shape": "radius", "duration_rounds": 3600,
             "fuel": "srd51.item.oil_flask", "lit_by_default": false, "states": [{"id": "hooded", "bright_ft": 0, "dim_ft": 5,
-            "toggle": "action"}], "preset": "srd51.core.light.lantern_hooded"}})")));
-        REQUIRE_FALSE(l.items()->add(J::parse(R"({"$schema": "item@2", "id": "srd51.item.lantern_bullseye", "name": "Lantern, bullseye",
+            "toggle": "action"}], "preset": "srd51.core.light.lantern_hooded"}})"));
+        add_gear(J::parse(R"({"$schema": "item@2", "id": "srd51.item.lantern_bullseye", "name": "Lantern, bullseye",
             "category": "gear", "hands": 1, "light": {"bright_ft": 60, "dim_ft": 60, "shape": "cone", "duration_rounds": 3600,
-            "fuel": "srd51.item.oil_flask", "lit_by_default": false, "preset": "srd51.core.light.lantern_bullseye"}})")));
+            "fuel": "srd51.item.oil_flask", "lit_by_default": false, "preset": "srd51.core.light.lantern_bullseye"}})"));
         J g = fighter_doc();
         g["id"] = kLanterns;
         g["equipment"] = J::array({J{{"item", "srd51.item.lantern_hooded"}, {"equipped", true}},
@@ -879,4 +881,30 @@ TEST_CASE("equipment end-to-end: a scripted combat replays identically and match
     CHECK(a.hash == 18080299159498595558ull);
     CHECK(a.log_hash == 13146101177623128839ull);
     CHECK(a.events == 12810335167693045063ull);
+}
+
+TEST_CASE("ItemDefTable: a duplicate add is an error result and leaves the first definition intact") {
+    ItemDefTable t;
+    const auto doc = assets::Json::parse(R"({"$schema": "item@2", "id": "test.item.lamp", "name": "Lamp", "category": "gear",
+        "hands": 1, "light": {"bright_ft": 15, "dim_ft": 30, "states": [{"id": "dim", "bright_ft": 0, "dim_ft": 5}]}})");
+    REQUIRE_FALSE(t.add(doc));
+    const auto again = t.add(doc);
+    REQUIRE(again);
+    CHECK(*again == "test.item.lamp: duplicate item id");
+    auto other = doc;
+    other["light"]["states"] = assets::Json::array();   // a different second copy changes nothing either
+    CHECK(t.add(other));
+    rules5e::ItemDef code;
+    CHECK(t.add(std::string("test.item.lamp"), code));
+    CHECK(t.size() == 1);
+    const auto* d = t.find("test.item.lamp");
+    REQUIRE(d);
+    CHECK(d->light.bright_ft == 15);
+    CHECK(d->light.extra_states == 1);
+    CHECK(t.light_radii(d->id, 1)->dim_ft == 5);
+    CHECK(d->weapon.id == "lamp");   // the string view still points at live storage
+    // A later distinct add still works (no stale pending state from the refused ones).
+    REQUIRE_FALSE(t.add(assets::Json::parse(R"({"$schema": "item@2", "id": "test.item.candle", "name": "Candle",
+        "category": "gear", "light": {"bright_ft": 5, "dim_ft": 5}})")));
+    CHECK_FALSE(t.light_radii(t.find("test.item.candle")->id, 1));
 }

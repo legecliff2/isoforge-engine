@@ -53,7 +53,8 @@ public:
 
 private:
     struct Entry { std::string content_id; rules5e::ItemDef def; std::vector<LightRadii> states{}; };
-    std::vector<LightRadii> pending_states_;   // add(doc) -> add(id, def) hand-off
+    // Both add()s end here. A duplicate (or colliding) id is refused with an error and changes nothing.
+    std::optional<std::string> insert(const std::string& content_id, rules5e::ItemDef def, std::vector<LightRadii> states);
     std::map<uint32_t, Entry> by_id_;
     std::deque<std::string> strings_;
 };
