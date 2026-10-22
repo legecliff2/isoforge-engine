@@ -19,7 +19,7 @@ PACK = ROOT / "content/packs/srd51.core"
 TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a6212be.json").read_text(encoding="utf-8"))["monsters"]
 
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
-# Authored in this batch (all monster@4). The goblin stays monster@3 (not part of this batch).
+# Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
 DEFERRED: list[str] = []   # swarm of rats authored after sim #172 (docs/SRD_MONSTERS_DEFERRED.md: 31 / 0)
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
@@ -46,7 +46,7 @@ class MonsterTable(unittest.TestCase):
         for idx in AUTHORED:
             with self.subTest(monster=idx):
                 t, d = TABLE[idx], load(idx)
-                self.assertEqual(d["$schema"], "monster@4")
+                self.assertEqual(d["$schema"], "monster@5")   # EQUIPMENT 7.2: converted with derive on (PR B)
                 self.assertEqual(d["id"], "srd51.monster." + idx.replace("-", "_"))
                 self.assertEqual(d["name"], t["name"])
                 self.assertEqual(d["size"], t["size"].lower())
@@ -162,7 +162,7 @@ class MonsterTable(unittest.TestCase):
         sa = eff("bugbear", "surprise_attack")
         self.assertEqual((sa["on"], sa["when"]), ("hit", [{"kind": "target_surprised"}]))
         self.assertEqual(sa["effects"], [{"kind": "extra_damage", "damage": [{"dice": "2d6", "type": "same_as_weapon"}]}])
-        self.assertIsNone(eff("bugbear", "brute"))   # baked into the printed dice
+        self.assertEqual(eff("bugbear", "brute"), {"kind": "weapon_extra_dice", "dice": 1, "melee_only": True})   # read only by derive; the printed dice stay baked
         ma = eff("hobgoblin", "martial_advantage")
         self.assertEqual((ma["on"], ma["limit"]), ("hit", "once_per_turn"))
         self.assertEqual(ma["when"], [{"kind": "weapon_attack"}, {"kind": "ally_near_target"}])

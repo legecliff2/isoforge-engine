@@ -1,5 +1,6 @@
 {
-  "$schema": "monster@4",
+  "$schema": "monster@5",
+  "derive": true,
   "id": "srd51.monster.bugbear",
   "name": "Bugbear",
   "source": {
@@ -16,6 +17,24 @@
     "value": 16,
     "note": "hide armor, shield"
   },
+  "equipment": [
+    {
+      "item": "srd51.item.hide_armor",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.shield",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.morningstar",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.javelin"
+    }
+  ],
+  "hands": 2,
   "hit_points": {
     "average": 27,
     "formula": "5d8+5"
@@ -52,7 +71,12 @@
     {
       "id": "brute",
       "name": "Brute",
-      "description": "A melee weapon deals one extra die of its damage when the bugbear hits with it (included in the attack)."
+      "description": "A melee weapon deals one extra die of its damage when the bugbear hits with it (included in the attack).",
+      "effect": {
+        "kind": "weapon_extra_dice",
+        "dice": 1,
+        "melee_only": true
+      }
     },
     {
       "id": "surprise_attack",
@@ -85,6 +109,7 @@
       "id": "morningstar",
       "name": "Morningstar",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.morningstar",
       "to_hit": 4,
       "reach": 5,
       "targets": 1,
@@ -100,6 +125,7 @@
       "id": "javelin",
       "name": "Javelin",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.javelin",
       "to_hit": 4,
       "reach": 5,
       "targets": 1,
@@ -115,6 +141,8 @@
       "id": "javelin_thrown",
       "name": "Javelin (thrown)",
       "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.javelin",
+      "use": "thrown",
       "to_hit": 4,
       "range": [
         30,
