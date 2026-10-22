@@ -24,7 +24,7 @@ WeaponDef weapon(const char* id, DiceExpr d, uint16_t props, uint8_t reach = 5, 
 WielderView wielder(AbilityScores a, int pb = 2) { WielderView v; v.abilities = a; v.pb = int8_t(pb); return v; }
 
 // ---- item table + loadout views for the predicates (Engine Core's state, faked here) ----
-enum : uint32_t { dLongsword = 1, dShieldDef, dHolySymbol, dArcaneFocus, dHandCrossbow, dLongbow, dJavelin, dArrows, dTorch, dGreatsword };
+enum : uint32_t { dLongsword = 1, dShieldDef, dHolySymbol, dArcaneFocus, dHandCrossbow, dLongbow, dJavelin, dArrows, dTorch, dGreatsword, dLantern };
 struct World {
     std::map<uint32_t, ItemDef> defs;
     std::map<CombatantId, LoadoutView> views;
@@ -48,8 +48,9 @@ std::shared_ptr<World> make_world() {
     add(dArrows, ItemKind::Ammunition).ammo_kind = kAmmoArrow;
     auto& t = add(dTorch, ItemKind::Light);
     t.has_weapon = true; t.weapon_requires_lit = true; t.weapon = weapon("torch", {0, 0, 1}, 0); t.weapon.improvised = true;
-    t.weapon.type = DamageType::Fire; t.light = LightDef{20, 20, LightShape::Radius, 600, false, 0};
+    t.weapon.type = DamageType::Fire; t.light = LightDef{{{20, 20}}, LightShape::Radius, 600, false};
     add(dGreatsword, ItemKind::Weapon).weapon = weapon("greatsword", {2, 6, 0}, kWeaponHeavy | kWeaponTwoHanded);
+    add(dLantern, ItemKind::Light).light = LightDef{{{30, 30}, {0, 5}}, LightShape::Radius, 0, false};   // SRD hooded lantern
     return w;
 }
 EncounterHooks equip_hooks(std::shared_ptr<World> w) {
@@ -431,4 +432,41 @@ TEST_CASE("derive_monster: the action `use` (#252 spelling) is used as authored;
     CHECK(derive_monster(k).errors == std::vector<std::string>{"test.knight.longsword: derived damage 1d8+3 != printed 1d10+3"});
     k.attacks[0].printed_damage = {1, 8, 3};
     CHECK(derive_monster(k).errors.empty());
+}
+
+TEST_CASE("SetLightState: light, hood, douse; Interaction cost; refusals; radii from flags bits 4-6") {
+    auto w = make_world();
+    auto s = begin_encounter({pc(1), monster(2)}, 7, nullptr, equip_hooks(w));
+    end_turns_until(s, 1);
+    w->views[1] = LoadoutView{};
+    w->views[1].main = item(60, dLantern); w->views[1].off = item(61, dLongsword);
+    w->views[1].carried = {item(62, dTorch)};
+    auto op = [](uint32_t inst, uint8_t st) { auto r = equip(1, EquipOp::SetLightState, inst); r.equip_state = st; return r; };
+    CHECK(equip_legal(s, op(60, 0)).kind == EquipCost::Interaction);                       // light it (open)
+    CHECK(equip_legal(s, op(60, 1)).kind == EquipCost::Interaction);                       // light it hooded
+    CHECK(equip_legal(s, op(60, 2)).refusal == "equip: unknown light state");
+    CHECK(equip_legal(s, op(60, kLightDouse)).refusal == "equip: the light is already in that state");
+    CHECK(equip_legal(s, op(61, 0)).refusal == "equip: not a light source");
+    CHECK(equip_legal(s, op(62, 0)).refusal == "equip: the item is not in hand");
+    const ItemDef& lan = w->defs[dLantern];
+    CHECK(light_radii(lan, w->views[1].main).bright_ft == 0);                               // unlit
+    w->views[1].main.flags = with_light_state(kHeldLit, 0);
+    CHECK(light_radii(lan, w->views[1].main).bright_ft == 30);
+    CHECK(light_radii(lan, w->views[1].main).dim_ft == 30);
+    CHECK(equip_legal(s, op(60, 0)).refusal == "equip: the light is already in that state");
+    CHECK(equip_legal(s, op(60, 1)).kind == EquipCost::Interaction);                       // hood
+    w->views[1].main.flags = with_light_state(kHeldLit, 1);
+    CHECK(light_state_index(w->views[1].main.flags) == 1);
+    CHECK((w->views[1].main.flags & kHeldLightStateMask) == 0x10);
+    CHECK(light_radii(lan, w->views[1].main).bright_ft == 0);
+    CHECK(light_radii(lan, w->views[1].main).dim_ft == 5);
+    CHECK(equip_legal(s, op(60, kLightDouse)).kind == EquipCost::Interaction);
+    w->views[1].main.flags = with_light_state(kHeldLit, 7);                                // stale index: sheds nothing
+    CHECK(light_radii(lan, w->views[1].main).dim_ft == 0);
+    w->views[1].interaction_used = true;
+    CHECK(equip_legal(s, op(60, 0)).kind == EquipCost::Action);                            // then Use an Object
+    auto bad = op(60, 0); bad.equip_op = 11;
+    CHECK(equip_legal(s, bad).refusal == "equip: unknown equip op");
+    // not listed by equip_legal_actions (Engine Core lists light ops, like PickUp): legal_actions unchanged
+    for (const auto& r : equip_legal_actions(s)) CHECK(r.equip_op != uint8_t(EquipOp::SetLightState));
 }

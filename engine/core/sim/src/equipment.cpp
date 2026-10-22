@@ -70,7 +70,6 @@ std::vector<std::string> words(std::string_view s) {
 } // namespace
 
 std::optional<std::string> ItemDefTable::add(const Json& doc) {
-    pending_states_.clear();
     const std::string cid = doc.value("id", "");
     if (cid.empty()) return std::string("item: missing id");
     const std::string cat = doc.value("category", "");
@@ -130,19 +129,17 @@ std::optional<std::string> ItemDefTable::add(const Json& doc) {
         if (auto lj = doc.find("light"); lj != doc.end() && lj->is_object()) {
             d.kind = ItemKind::Light;
             rules5e::LightDef& L = d.light;
-            L.bright_ft = uint16_t(std::clamp(int_or(*lj, "bright_ft", 0), 0, 65535));
-            L.dim_ft = uint16_t(std::clamp(int_or(*lj, "dim_ft", 0), 0, 65535));
+            L.states.push_back({uint16_t(std::clamp(int_or(*lj, "bright_ft", 0), 0, 65535)),
+                                uint16_t(std::clamp(int_or(*lj, "dim_ft", 0), 0, 65535))});   // state 0: top-level radii
             L.shape = lj->value("shape", "radius") == "cone" ? rules5e::LightShape::Cone : rules5e::LightShape::Radius;
             if (auto du = lj->find("duration_rounds"); du != lj->end() && du->is_number_integer())
                 L.duration_rounds = uint32_t(std::clamp<int64_t>(du->get<int64_t>(), 0, 0xFFFFFFFFll));
             L.lit_by_default = lj->value("lit_by_default", false);
             if (auto st = lj->find("states"); st != lj->end() && st->is_array())
                 for (const Json& x : *st)
-                    if (x.is_object())
-                        pending_states_.push_back({uint16_t(std::clamp(int_or(x, "bright_ft", 0), 0, 65535)),
+                    if (x.is_object() && L.states.size() < rules5e::kMaxLightStates)
+                        L.states.push_back({uint16_t(std::clamp(int_or(x, "bright_ft", 0), 0, 65535)),
                                                    uint16_t(std::clamp(int_or(x, "dim_ft", 0), 0, 65535))});
-            L.extra_states = uint8_t(std::min<std::size_t>(pending_states_.size(), 7));   // 3 flag bits (kHeldStateMask)
-            pending_states_.resize(L.extra_states);
         }
         if (auto ta = doc.find("torch_attack"); ta != doc.end() && ta->is_object()) {
             d.has_weapon = true;
@@ -155,13 +152,16 @@ std::optional<std::string> ItemDefTable::add(const Json& doc) {
     } else {
         d.kind = ItemKind::Other;   // valuables (gems): carried, never held
     }
-    return add(cid, d);
+    return insert(cid, d);
 }
 
 std::optional<std::string> ItemDefTable::add(const std::string& content_id, ItemDef def) {
+    return insert(content_id, def);
+}
+
+std::optional<std::string> ItemDefTable::insert(const std::string& content_id, ItemDef def) {
     const uint32_t key = item_def_id(content_id);
     if (auto it = by_id_.find(key); it != by_id_.end()) {
-        pending_states_.clear();
         if (it->second.content_id == content_id) return content_id + ": duplicate item id";
         return content_id + ": item def id collides with '" + it->second.content_id + "'";
     }
@@ -169,22 +169,13 @@ std::optional<std::string> ItemDefTable::add(const std::string& content_id, Item
     strings_.push_back(last_segment(content_id));
     def.weapon.id = strings_.back();
     if (def.kind == ItemKind::Weapon) def.has_weapon = true;
-    by_id_.emplace(key, Entry{content_id, def, std::move(pending_states_)});
-    pending_states_.clear();
+    by_id_.emplace(key, Entry{content_id, def});
     return std::nullopt;
 }
 
 const ItemDef* ItemDefTable::find(uint32_t def) const {
     auto it = by_id_.find(def);
     return it == by_id_.end() ? nullptr : &it->second.def;
-}
-
-std::optional<ItemDefTable::LightRadii> ItemDefTable::light_radii(uint32_t def, uint8_t state) const {
-    auto it = by_id_.find(def);
-    if (it == by_id_.end() || it->second.def.kind != ItemKind::Light) return std::nullopt;
-    if (state == 0) return LightRadii{it->second.def.light.bright_ft, it->second.def.light.dim_ft};
-    if (state > it->second.states.size()) return std::nullopt;
-    return it->second.states[state - 1];
 }
 
 const std::string* ItemDefTable::content_id(uint32_t def) const {
