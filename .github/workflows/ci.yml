@@ -10,6 +10,8 @@ name: CI
 #   PRs; Windows Debug still builds and tests every PR. Every main commit is covered by the push
 #   run, so it is not added to the nightly schedule.
 # - Release jobs skip the python_only ctest label (pure-Python validator tests; the Debug jobs run them).
+# - Linux jobs + nightly gate run on the self-hosted box ([self-hosted, linux, isoforge]); Windows/macOS hosted.
+# - Draft PRs skip CI; ci-required passes for them (changes skipped only on drafts).
 # - Compiler cache: ccache (Linux/macOS) / sccache (Windows) via actions/cache in cmake-ci.
 # - macOS: nightly on main (07:17 UTC, off the hour to avoid GitHub dropping top-of-hour schedules), on manual dispatch, and on PRs whose
 #   changes touch platform / render or determinism-sensitive code (see the `mac` filter below).
@@ -19,6 +21,8 @@ on:
   push:
     branches: [main]
   pull_request:
+    # Draft PRs don't run CI (no ready_for_review = no run until marked ready).
+    types: [opened, synchronize, reopened, ready_for_review]
   schedule:
     - cron: "17 7 * * *"
   workflow_dispatch:
@@ -29,12 +33,16 @@ permissions:
 concurrency:
   # Branches/PRs: a new push cancels the previous run. main (push, schedule, dispatch): every run
   # gets its own group (keyed by sha + event) and is never cancelled.
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && format('{0}-{1}', github.sha, github.event_name) || github.ref }}
+  # PRs are keyed by PR number so all pushes to one PR share a group.
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && format('{0}-{1}', github.sha, github.event_name) || (github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number)) || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   changes:
     name: Detect changes
+    # Draft PRs: skip everything (ci-required treats this as intended, see below).
+    # Fork PRs never reach the self-hosted runner: changes is skipped, so ci-required fails closed.
+    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -85,14 +93,18 @@ jobs:
     name: ${{ matrix.name }}
     needs: changes
     if: (github.event_name == 'push' || github.event_name == 'pull_request') && needs.changes.outputs.code == 'true'
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ fromJSON(matrix.os) }}
+    env:
+      # Self-hosted box is shared: cap parallelism (ignored by hosted Windows: overridden below).
+      CMAKE_BUILD_PARALLEL_LEVEL: ${{ matrix.jobs }}
+      CTEST_PARALLEL_LEVEL: ${{ matrix.tests }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { name: "Linux GCC Debug",       os: ubuntu-latest,  preset: ci-linux-gcc,   build: ci-linux-gcc,        test: ci-linux-gcc,        ctest-args: "" }
-          - { name: "Linux Clang Release",   os: ubuntu-latest,  preset: ci-linux-clang, build: ci-linux-clang,      test: ci-linux-clang,      ctest-args: "-LE python_only" }
-          - { name: "Windows MSVC Debug",    os: windows-latest, preset: ci-win-msvc,    build: ci-win-msvc-debug,   test: ci-win-msvc-debug,   ctest-args: "" }
+          - { name: "Linux GCC Debug",       os: '["self-hosted","linux","isoforge"]', jobs: 4, tests: 2, preset: ci-linux-gcc,   build: ci-linux-gcc,        test: ci-linux-gcc,        ctest-args: "" }
+          - { name: "Linux Clang Release",   os: '["self-hosted","linux","isoforge"]', jobs: 4, tests: 2, preset: ci-linux-clang, build: ci-linux-clang,      test: ci-linux-clang,      ctest-args: "-LE python_only" }
+          - { name: "Windows MSVC Debug",    os: '"windows-latest"', jobs: 4, tests: 4, preset: ci-win-msvc,    build: ci-win-msvc-debug,   test: ci-win-msvc-debug,   ctest-args: "" }
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/cmake-ci
@@ -120,12 +132,38 @@ jobs:
           test: ci-win-msvc-release
           ctest-args: "-LE python_only"
 
+  # Nightly gate: run the scheduled macOS job only if main moved since the last successful
+  # scheduled run (compares head_sha via the Actions API). Dispatch always runs.
+  nightly-gate:
+    name: Nightly gate
+    if: github.event_name == 'schedule'
+    runs-on: [self-hosted, linux, isoforge]
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+    steps:
+      - id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          last=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?branch=main&event=schedule&status=success&per_page=1" \
+                   --jq '.workflow_runs[0].head_sha // ""' || echo "")
+          echo "current=$SHA last-successful-nightly=${last:-none}"
+          if [ "$last" = "$SHA" ]; then echo "run=false" >> "$GITHUB_OUTPUT"; else echo "run=true" >> "$GITHUB_OUTPUT"; fi
+
   macos:
     name: macOS AppleClang Debug
-    needs: changes
+    needs: [changes, nightly-gate]
     if: >-
-      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && needs.changes.outputs.mac == 'true')
+      always() && needs.changes.result == 'success' &&
+      ((github.event_name == 'schedule' && needs.nightly-gate.outputs.run == 'true') ||
+       github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && needs.changes.outputs.mac == 'true'))
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -139,15 +177,21 @@ jobs:
   # on an unlabelled PR) count as OK; failed or cancelled ones fail the gate.
   ci-required:
     name: ci-required
-    needs: [changes, build-test, windows-release, macos]
+    needs: [changes, nightly-gate, build-test, windows-release, macos]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check job results
         env:
-          RESULTS: ${{ needs.changes.result }} ${{ needs.build-test.result }} ${{ needs.windows-release.result }} ${{ needs.macos.result }}
+          RESULTS: ${{ needs.changes.result }} ${{ needs.nightly-gate.result }} ${{ needs.build-test.result }} ${{ needs.windows-release.result }} ${{ needs.macos.result }}
+          # 'changes' may only be skipped on purpose for a draft PR.
+          DRAFT: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
+          CHANGES: ${{ needs.changes.result }}
         run: |
-          echo "changes build-test windows-release macos: $RESULTS"
+          if [ "$CHANGES" = skipped ] && [ "$DRAFT" != true ]; then
+            echo "::error::changes skipped on a non-draft run"; exit 1
+          fi
+          echo "changes nightly-gate build-test windows-release macos: $RESULTS"
           for r in $RESULTS; do
             case "$r" in
               success|skipped) ;;

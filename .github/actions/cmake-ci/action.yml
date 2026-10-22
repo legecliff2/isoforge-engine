@@ -23,6 +23,11 @@ runs:
       if: runner.os == 'Linux'
       shell: bash
       run: |
+        if [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
+          # Persistent runner: deps are preinstalled by tools/runner/setup.sh (no sudo for the runner user).
+          command -v ninja >/dev/null || { echo "::error::ninja missing on self-hosted runner; run tools/runner/setup.sh"; exit 1; }
+          exit 0
+        fi
         sudo apt-get update
         sudo apt-get install -y ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
           libxi-dev libxss-dev libxfixes-dev libxtst-dev libxkbcommon-dev libwayland-dev \
@@ -55,6 +60,14 @@ runs:
           echo "CC_LAUNCHER=sccache" >> "$GITHUB_ENV"
           echo "SCCACHE_DIR=${{ github.workspace }}/.ccache" >> "$GITHUB_ENV"
           echo "SCCACHE_CACHE_SIZE=1G" >> "$GITHUB_ENV"
+        elif [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
+          # Persistent runner: local ccache outside the (cleaned) workspace, shared across runs.
+          echo "CC_LAUNCHER=ccache" >> "$GITHUB_ENV"
+          echo "CCACHE_DIR=$HOME/.cache/isoforge-ccache/${{ inputs.preset }}" >> "$GITHUB_ENV"
+          echo "CCACHE_MAXSIZE=3G" >> "$GITHUB_ENV"
+          echo "CCACHE_BASEDIR=${{ github.workspace }}" >> "$GITHUB_ENV"
+          echo "CCACHE_COMPRESS=true" >> "$GITHUB_ENV"
+          echo "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime" >> "$GITHUB_ENV"
         else
           echo "CC_LAUNCHER=ccache" >> "$GITHUB_ENV"
           echo "CCACHE_DIR=${{ github.workspace }}/.ccache" >> "$GITHUB_ENV"
@@ -76,6 +89,7 @@ runs:
         fi
 
     - name: Restore compiler cache
+      if: runner.environment != 'self-hosted'
       uses: actions/cache@v4
       with:
         path: .ccache
@@ -107,7 +121,7 @@ runs:
 
     - name: Build
       shell: bash
-      run: cmake --build --preset "${{ inputs.build }}" --parallel
+      run: cmake --build --preset "${{ inputs.build }}" --parallel ${CMAKE_BUILD_PARALLEL_LEVEL:-}
 
     - name: Require content_validate to be registered
       shell: bash
@@ -115,7 +129,12 @@ runs:
 
     - name: Test
       shell: bash
-      run: ctest --preset "${{ inputs.test }}" --parallel 4 ${{ inputs.ctest-args }}
+      run: ctest --preset "${{ inputs.test }}" --parallel ${CTEST_PARALLEL_LEVEL:-4} ${{ inputs.ctest-args }}
+
+    - name: Clean workspace (self-hosted)
+      if: always() && runner.environment == 'self-hosted'
+      shell: bash
+      run: rm -rf build .ccache || true
 
     - name: Compiler cache stats
       if: always()
