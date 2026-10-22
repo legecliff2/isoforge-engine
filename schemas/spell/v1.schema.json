@@ -610,6 +610,10 @@
                   "affected"
                 ],
                 "description": "Effects after the first only: 'affected' resolves this effect only for the targets the previous effect affected (spell attack: hit; save: failed; heal: healed; auto_hit: struck; apply_condition: received it). Default 'all'."
+              },
+              "on_miss": {
+                "const": "half",
+                "description": "VERSION_BUMP_BATCH 7.2zg (Acid Arrow): a miss deals half the initial damage (rounded down); riders that follow a hit (delayed_damage applies_to affected) do not apply. First effect only."
               }
             }
           }
