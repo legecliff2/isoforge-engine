@@ -598,8 +598,8 @@ void Combat::install_hooks() {
         std::shared_ptr<const ItemDefTable> items = items_;
         state_.hooks.item_def = [items](uint32_t def) -> const rules5e::ItemDef* { return items ? items->find(def) : nullptr; };
         item_events_.clear();
-        state_.hooks.ground_item_def = [this](uint32_t instance) -> const rules5e::ItemDef* {
-            for (const auto& g : state_.ground_items)
+        state_.hooks.ground_item_def = [this](const rules5e::EncounterState& st, uint32_t instance) -> const rules5e::ItemDef* {
+            for (const auto& g : st.ground_items)   // the state rules is checking (an AI lookahead copy included)
                 if (g.item.instance == instance) return items_ ? items_->find(g.item.def) : nullptr;
             return nullptr;
         };
