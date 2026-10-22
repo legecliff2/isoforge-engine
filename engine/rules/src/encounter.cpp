@@ -1610,13 +1610,19 @@ bool imbued_attack(const EncounterState& s, const Combatant& a, const Attack& at
 }
 // 7.2zf Mirror Image: does the attacker fall for t's duplicates? Not when it can't see t (Blinded, or no sight of it), or
 // perceives t with blindsight or truesight in range (without sim's sight facts: any blindsight / truesight counts).
-bool fooled_by_duplicates(const EncounterState& s, const Combatant& a, const Combatant& t) {
+// 7.2zg `exempt_senses` (shared by Mirror Image duplicates and Blur): is attacker `a` fooled by an illusion on `t`? Not when it
+// cannot see `t` (Blinded or otherwise) or perceives it through an exempt sense in range (truesight: with line of sight;
+// tremorsense: on the same surface). Without a sight hook: any exempt sense the attacker has counts as in range.
+bool fooled_by_illusion(const EncounterState& s, const Combatant& a, const Combatant& t, uint8_t exempt) {
     if (a.has(Condition::Blinded)) return false;
-    if (!s.hooks.sight_facts) return a.blindsight_ft == 0 && a.truesight_ft == 0;
+    const bool bs = (exempt & kSenseBlindsight) && a.blindsight_ft > 0, ts = (exempt & kSenseTruesight) && a.truesight_ft > 0;
+    const bool rs = (exempt & kSenseTremorsense) && a.tremorsense_ft > 0;
+    if (!s.hooks.sight_facts) return !bs && !ts && !rs;
     const SightFacts f = s.hooks.sight_facts(s, a, t);
     if (!derive_sight(a, f).can_see) return false;
-    if (a.blindsight_ft > 0 && f.distance_ft <= a.blindsight_ft) return false;
-    if (a.truesight_ft > 0 && f.distance_ft <= a.truesight_ft && f.line_of_sight) return false;
+    if (bs && f.distance_ft <= a.blindsight_ft) return false;
+    if (ts && f.distance_ft <= a.truesight_ft && f.line_of_sight) return false;
+    if (rs && f.distance_ft <= a.tremorsense_ft && f.subject_grounded) return false;
     return true;
 }
 
@@ -2020,9 +2026,10 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     }
     for (std::size_t di = 0; di < s.effects.size(); ++di) {   // 7.2zf Mirror Image: the d20 only when duplicates can fool it
         ActiveSpellEffect& de = s.effects[di];
-        if (de.target != t.id || de.duplicates == 0 || &a == &t || !fooled_by_duplicates(s, a, t)) continue;
+        if (de.target != t.id || de.duplicates == 0 || &a == &t) continue;
         const SpellDef* dd = spell_def(s, de.spell_id);
         if (!dd) break;
+        if (!fooled_by_illusion(s, a, t, dd->duplicates.exempt_senses)) continue;
         const int d20 = roll_d20(s.rng, 0, RollMode::Normal).natural;
         const bool redirected = d20 >= int(dd->duplicates.thresholds[std::size_t(de.duplicates - 1)]);
         emit(ev, EventKind::FeatureTriggered, t.id, a.id, int32_t(de.spell_id), d20, int32_t(redirected));
@@ -2080,6 +2087,8 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
                 }
                 continue;
             }
+            if (m.spec.exempt_senses != 0 && m.target == t.id && m.spec.stat == ModStat::AttacksAgainst &&
+                !fooled_by_illusion(s, a, t, m.spec.exempt_senses)) { m.gated = true; continue; }   // 7.2zg Blur
             if (m.weapon != 0 && m.target == a.id && (spell_id != 0 || !wields(a, m, atk))) { m.gated = true; continue; }   // 7.2y
             if (m.target == a.id && m.spec.stat == ModStat::AttackRoll && (m.spec.scope != 0 || m.spec.scope_ability != 0) &&
                 (spell_id != 0 || (m.spec.scope == 1 && atk.ranged) || (m.spec.scope == 2 && !atk.ranged) ||
@@ -5699,6 +5708,7 @@ uint64_t modifiers_digest(const EncounterState& s, uint64_t h) {
         }
         if (p.held_applies != 0 || p.range_ft != 0) { byte(0x59); byte(p.held_applies); u32(p.range_ft); }
         if (p.applies_to == ModAppliesTo::Attackers) { byte(0x5B); u32(p.from_types); }
+        if (p.exempt_senses != 0) { byte(0x5E); byte(p.exempt_senses); }   // 7.2zg Blur: only for such rows
         if (p.also_rolls != 0) { byte(0x5C); byte(p.also_rolls); }   // 7.2ze Bless / Bane: only for such rows   // 7.2zd: only for such rows
         if (m.mark_dropped) { byte(0x5D); u32(m.mark_dropped_stamp); }   // ward / mark follow-ups: only when set
         if (m.mark != 0) { byte(0x5A); u32(m.mark); byte(p.mark_scope); byte(uint8_t(p.chosen_ability)); }   // 7.2zc mark: only when set   // 7.2za held die   // 7.2y wielded-scope binding: only when bound (older digests unchanged)
