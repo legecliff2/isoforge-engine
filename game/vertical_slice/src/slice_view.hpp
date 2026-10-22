@@ -3,6 +3,7 @@
 // overlay). Holds only GPU resources and presentation constants, never game state.
 #include <memory>
 #include <string_view>
+#include <vector>
 
 #include "iso2d/light_glow.hpp"
 #include "iso2d/light_map.hpp"
@@ -51,6 +52,12 @@ private:
     int fog_key_ = -1;   // (fog on, team) last uploaded; a change refreshes every fog map
     struct Textures;
     std::unique_ptr<Textures> tex_;
+    struct TintLookup;
+    struct TintEntry { int32_t cx, cy; const uint8_t* light; const uint8_t* fog; };
+    // Per-frame scratch, reused so a steady frame does no heap allocation on the glow path.
+    std::vector<eng::iso2d::GlowSource> glows_;
+    std::vector<eng::iso2d::GlowAnchor> anchors_;
+    std::vector<TintEntry> tint_entries_;
     uint32_t ui_seq_ = 0;
 };
 
