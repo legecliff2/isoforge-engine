@@ -13,6 +13,7 @@
 #include "sim/content.hpp"
 #include "sim/driver.hpp"
 #include "sim/light.hpp"
+#include "sim/light_driver.hpp"
 #include "sim/visibility.hpp"
 #include "world/file_chunk_provider.hpp"
 
@@ -132,26 +133,25 @@ struct Session::Impl {
     FeedState feed;
     std::string error;
     std::vector<TileView> tiles;
-    sim::LightCache light_cache;
-    sim::VisibilityState vis;
+    // R-G13 phase 2: the sim publishes the frames (attach + every committed step); the game only supplies PC torches.
+    std::unique_ptr<sim::LightDriver> light_driver;
     uint8_t fog_team = 0;
     std::shared_ptr<const sim::LightFrame> light, light_prev;
-    uint64_t light_step = 0;
     std::map<std::string, eng::iso2d::GlowStyle, std::less<>> visuals;   // light preset -> glow style
     std::vector<std::string> warnings;   // load-time, non-fatal (e.g. conflicting visuals)
 
-    // Producers of carried lights for this step, in a fixed order (light ids follow it): the interim
-    // pc_torches, then Options::carried_lights. Sim attached lights (phase 3) replace this list.
-    std::vector<CarriedLight> carried_lights() const {
+    // Producers of entity-attached lights for a committed state, in a fixed order (light ids follow it):
+    // the interim pc_torches, then Options::carried_lights. Equipment is just one more producer.
+    static std::vector<CarriedLight> carried_lights(const Options& opt, const sim::Combat& c) {
         std::vector<CarriedLight> out;
         auto alive = [&](uint32_t id) {
-            for (const rules5e::Combatant& cb : combat->state().combatants)
+            for (const rules5e::Combatant& cb : c.state().combatants)
                 if (cb.id == id) return !cb.dead;
             return false;
         };
         if (opt.pc_torches)
-            for (const rules5e::Combatant& cb : combat->state().combatants) {
-                const sim::Archetype* a = combat->archetype(cb.id);
+            for (const rules5e::Combatant& cb : c.state().combatants) {
+                const sim::Archetype* a = c.archetype(cb.id);
                 if (!a || a->schema_type != "character" || cb.dead) continue;
                 CarriedLight t;
                 t.carrier_id = cb.id;
@@ -162,42 +162,35 @@ struct Session::Impl {
         return out;
     }
 
-    // Publishes the sim's LightFrame for the current committed state (start of the next step).
-    void publish_light() {
-        sim::LightWorld w;
-        w.grid = &combat->grid();
-        uint32_t next_id = 1;
-        for (const CarriedLight& cl : carried_lights()) {
-            sim::AttachedLight l;
-            l.id = next_id++;
-            l.carrier = sim::Carrier::Creature;
-            l.carrier_id = cl.carrier_id;
-            l.bright_ft = cl.bright_ft;
-            l.dim_ft = cl.dim_ft;
-            l.flags = uint8_t(sim::light_src::kLit | (cl.magical ? sim::light_src::kMagical : 0));
-            w.sources.push_back(sim::attached_source(
-                l, sim::carrier_centre(combat->pos(cl.carrier_id), combat->footprint_size(cl.carrier_id)), cl.preset));
-        }
-        w.normalise();
-        light_cache.begin_step(std::move(w));
-        const world::ChunkCoord coords[] = {chunk->coord};
-        // Viewers for the sim's visibility pass. Interim: everyone has normal sight (SenseRanges{})
-        // until Engine Core wires creature senses into the frame; the game never decides what is seen.
-        std::vector<sim::Viewer> viewers;
-        for (const rules5e::Combatant& cb : combat->state().combatants) {
-            if (cb.dead) continue;
-            sim::Viewer v;
-            v.id = cb.id;
-            v.team = cb.team;
-            v.tile = sim::carrier_centre(combat->pos(cb.id), combat->footprint_size(cb.id));
-            viewers.push_back(v);
-        }
-        vis.begin_step(light_cache, viewers, coords);
-        sim::LightFrameInputs in;
-        in.chunks = coords;
-        in.visibility = &vis;
+    // Hands the attached-light list to the sim's LightDriver; the driver publishes frames on attach and
+    // every committed step.
+    void attach_light() {
+        sim::LightProviderInputs in;
+        in.chunks = {chunk.get()};
+        in.attached_sources = [o = opt](const sim::Combat& c, std::vector<sim::LightSource>& out) {
+            uint32_t next_id = 1;
+            for (const CarriedLight& cl : carried_lights(o, c)) {
+                sim::AttachedLight l;
+                l.id = next_id++;
+                l.carrier = sim::Carrier::Creature;
+                l.carrier_id = cl.carrier_id;
+                l.bright_ft = cl.bright_ft;
+                l.dim_ft = cl.dim_ft;
+                l.flags = uint8_t(sim::light_src::kLit | (cl.magical ? sim::light_src::kMagical : 0));
+                out.push_back(sim::attached_source(
+                    l, sim::carrier_centre(c.pos(cl.carrier_id), c.footprint_size(cl.carrier_id)), cl.preset));
+            }
+        };
+        light_driver = std::make_unique<sim::LightDriver>(std::move(in));
+        combat->attach_light_driver(light_driver.get());
+        pull_light();
+    }
+    // Picks up the driver's latest frame (new only after a committed step).
+    void pull_light() {
+        auto f = light_driver ? light_driver->latest() : nullptr;
+        if (f == light) return;
         light_prev = light;
-        light = sim::publish_light_frame(light_cache, in, ++light_step, light_prev.get());
+        light = std::move(f);
     }
 
     std::string name_of(sim::CombatantId id) const {
@@ -329,7 +322,7 @@ std::unique_ptr<Session> Session::open(const Options& o, std::string* error) {
             if (a && a->schema_type == "character") { m.fog_team = cb.team; break; }
         }
         if (o.fog_team) m.fog_team = *o.fog_team;
-        m.publish_light();
+        m.attach_light();
     }
     return s;
 }
@@ -358,7 +351,7 @@ bool Session::step() {
     }
     if (!r.ok) m.error = r.error;
     m.drain_events();   // a paused request appended nothing; its events arrive when it completes
-    if (!c.pending()) m.publish_light();   // light follows committed state only
+    m.pull_light();   // the driver publishes on committed steps only
     return r.ok;
 }
 

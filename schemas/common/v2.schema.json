@@ -1807,6 +1807,14 @@
         "die": {
           "$ref": "../common/v1.schema.json#/$defs/dice"
         },
+        "sign": {
+          "enum": [
+            "plus",
+            "minus"
+          ],
+          "default": "plus",
+          "description": "7.2ze Bless (plus) / Bane (minus): the die is added or subtracted; needs die, not with a leading '-' on die (tools/validate and the loader)."
+        },
         "mode": {
           "enum": [
             "advantage",
@@ -1856,13 +1864,28 @@
           "description": "Save / AbilityCheck scope (else all). 7.2zc: \"chosen\" = the caster picks the ability at cast (ActionRequest::mark_ability; Hex); ability_check modifiers of a spell apply_modifier with scope {target: marked} only."
         },
         "applies_to": {
-          "enum": [
-            "self",
-            "target",
-            "allies_within_30",
-            "attackers"
+          "anyOf": [
+            {
+              "enum": [
+                "self",
+                "target",
+                "allies_within_30",
+                "attackers"
+              ]
+            },
+            {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "attack",
+                  "save"
+                ]
+              }
+            }
           ],
-          "description": "7.2zd attackers (Protection from Evil and Good): an attack_roll row on the target that applies to the attack rolls of creatures attacking it; scope from_types filters their creature type."
+          "description": "7.2zd attackers (Protection from Evil and Good): an attack_roll row on the target that applies to the attack rolls of creatures attacking it; scope from_types filters their creature type. 7.2ze: a list of roll kinds (attack, save; roll_kind_list values) instead puts the row on the targets and applies its die to those rolls (Bless / Bane); attack_roll or save modifiers with die only, and the list includes the modifier's own stat."
         },
         "duration": {
           "$ref": "#/$defs/modifier_duration"
@@ -1947,6 +1970,7 @@
                 "stat",
                 "bonus",
                 "die",
+                "sign",
                 "mode",
                 "applies_to",
                 "duration",
@@ -1994,6 +2018,7 @@
                 "stat",
                 "bonus",
                 "die",
+                "sign",
                 "mode",
                 "ability",
                 "applies_to",
@@ -2112,6 +2137,7 @@
                 "bonus",
                 "bonus_table",
                 "die",
+                "sign",
                 "damage_type",
                 "applies_to",
                 "duration",
@@ -2235,6 +2261,9 @@
       "dependentRequired": {
         "ac_floor_dex": [
           "ac_floor"
+        ],
+        "sign": [
+          "die"
         ]
       }
     },

@@ -10,7 +10,9 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules, secti
 
 `character@4` describes one creature: `classes[]` with a `level` and an optional `subclass`, a total `level`, and a stat block. There is no class or level-progression document type. A class level is therefore authored as **one pre-generated character per class per level**: 60 documents, `srd51.character.<class>_level_<n>` (`characters/<class>_level_<n>.json`). The `_level_` infix is deliberate: `srd51.character.fighter_1` already belongs to `sample.vertical_slice`, which depends on `srd51.core`, so a duplicate id would break the pack set.
 
-Every PC is a human (SRD human: +1 to every ability score) built from the standard array (15, 14, 13, 12, 10, 8). The Ability Score Improvement at level 4 is +2 to the class's main ability (Str, Wis, Int, Cha, Dex, Str, Dex, Str, Cha, Wis, Dex, Cha), and level 5 carries it forward. Hit points are the maximum hit die at level 1, then the fixed average (6 / 5 / 4) plus Con for each later level (d8 rogue: 5). XP is the threshold for the level. Weapons, armor and shields are `{item, equipped}` references to the pack's `item@1` documents. AC and every attack are derived from those items (base damage, no feature bonus folded in; `docs/CONTENT_EFFECTS.md` section 2) and are pinned by the test. Packs, foci and ammunition stay descriptive strings.
+Every class-level PC is a human (SRD human: +1 to every ability score) built from the standard array (15, 14, 13, 12, 10, 8). The Ability Score Improvement at level 4 is +2 to the class's main ability (Str, Wis, Int, Cha, Dex, Str, Dex, Str, Cha, Wis, Dex, Cha), and level 5 carries it forward. Hit points are the maximum hit die at level 1, then the fixed average (6 / 5 / 4) plus Con for each later level (d8 rogue: 5). XP is the threshold for the level. Weapons, armor and shields are `{item, equipped}` references to the pack's `item@1` documents. AC and every attack are derived from those items (base damage, no feature bonus folded in; `docs/CONTENT_EFFECTS.md` section 2) and are pinned by the test. Packs, foci and ammunition stay descriptive strings.
+
+Three non-human SRD sample PCs sit beside them (`characters/sample_*.json`: hill dwarf cleric, high elf wizard, tiefling warlock, all level 1). They carry their racial traits (ability increases, speed, resistances, languages, Dwarven Toughness, Keen Senses, the high elf cantrip) and `senses.darkvision` 60; see `docs/CONTENT_CONVENTIONS.md` (character senses).
 
 | class | subclass (from) | build | AC | weapons |
 |---|---|---|---|---|
@@ -38,7 +40,7 @@ Every PC is a human (SRD human: +1 to every ability score) built from the standa
 | Extra Attack | 5 | `extra_attack {attacks_per_action 2}` (character@4, EC #179): the Attack action makes two weapon attacks, any weapon, grapple / shove may replace one | yes (sim #179 `apply_extra_attack`, `Combatant::attacks_per_action`) |
 | Ability Score Improvement | 4-5 | baked into `abilities` (and every derived number) | yes |
 | Spellcasting (Cleric, Wizard) | 1-5 | `spellcasting {ability, caster_level, slots, spells}`; DC and attack bonus derived, no override | yes |
-| Domain Spells (Life) | 1-5 | Cure Wounds in `spellcasting.spells` (always prepared); the others are not shipped (below) | yes |
+| Domain Spells (Life) | 1-5 | Bless and Cure Wounds in `spellcasting.spells` (always prepared); Lesser Restoration and Revivify from 3 and 5; Spiritual Weapon and Beacon of Hope are not shipped (below) | yes |
 | Divine Domain / Martial Archetype / Arcane Tradition | 1 / 3 / 2 | `classes[0].subclass` = `life` / `champion` / `evocation` | descriptive |
 | Bonus Proficiency (Life: heavy armor) | 1-5 | descriptive feature; its only combat effect is the worn chain mail, already in AC | n/a |
 | Disciple of Life (Life) | 1-5 | `heal_bonus {flat 2, per_spell_level true}` (7.2zc, #222): 2 + the slot level more per creature a slot-cast healing spell heals (Cure Wounds, Healing Word, Mass Healing Word). Innate casts do not count (SRD: any spell of 1st level or higher; no innate healing on our documents) | yes |
@@ -185,7 +187,7 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 
 | class | levels | spells listed |
 |---|---|---|
-| Cleric | 1-2 | Sacred Flame; Cure Wounds (domain), Healing Word, Inflict Wounds, Sanctuary |
+| Cleric | 1-2 | Sacred Flame; Bless, Cure Wounds (domain), Healing Word, Inflict Wounds, Sanctuary |
 | Cleric | 3-4 | + Hold Person, Lesser Restoration (domain) |
 | Cleric | 5 | + Mass Healing Word, Revivify (domain) |
 | Paladin | 2 | Cure Wounds, Shield of Faith |
@@ -209,13 +211,13 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 
 Deferred until the spells are authored (`docs/SRD_SPELLS_DEFERRED.md` gives the reason for each):
 
-- **Life domain spells** (always prepared): `srd51.spell.bless` (1), `srd51.spell.spiritual_weapon` (3), `srd51.spell.beacon_of_hope` (5). Lesser Restoration (3) and Revivify (5) ship since spells batch 2 and are listed in the cleric documents.
+- **Life domain spells** (always prepared): `srd51.spell.spiritual_weapon` (3), `srd51.spell.beacon_of_hope` (5). Bless (1, Rules #237), Lesser Restoration (3) and Revivify (5) ship and are listed in the cleric documents.
 - **Oath of Devotion spells** (always prepared): `srd51.spell.zone_of_truth` (5) is not authored; Protection from Evil and Good (3), Sanctuary (3) (spells batch 2, Rules #228) and Lesser Restoration (5) ship and are listed.
 - **Spells batch 2 (Rules #228) on the cleric**: Sanctuary is listed at 1-5 (within Wis modifier + level prepared; domain spells don't count). Protection from Evil and Good and Aid ship in the pack but are not yet in the cleric (or wizard / warlock) lists.
 - **Circle of the Land (Mountain) spells** (always prepared): `srd51.spell.spider_climb` (3), `srd51.spell.meld_into_stone` (5) are not authored; Spike Growth (3) and Lightning Bolt (5) ship and are listed.
 - **Fiend expanded spells** (choices for spells known, not always prepared): Command (1) and Blindness/Deafness (3) are not shipped; Stinking Cloud (5) ships but is not picked (six known at 5th).
 - **Cantrips known**: the Cleric knows 3 (4 from level 4) but the pack ships one cleric cantrip (Sacred Flame). The Wizard knows 3 (4 from level 4), and the pack ships three wizard cantrips. Missing: Guidance, Light, Mending, Resistance, Spare the Dying, Thaumaturgy (cleric); Chill Touch, Ray of Frost, Shocking Grasp, True Strike and the utility cantrips (wizard). The Sorcerer knows 4 cantrips (5 from level 4) and 2-6 spells; the pack ships three sorcerer cantrips and five leveled sorcerer spells (Chill Touch, Ray of Frost, Shocking Grasp, Burning Hands, Chromatic Orb, Sleep, Thunderwave, Misty Step and the rest are not shipped), so each document lists fewer.
-- **Spellbook and prepared spells**: a level 1 wizard's spellbook holds six 1st-level spells, plus two per level after that; a cleric prepares Wis modifier + level spells. The documents list fewer because the rest are not shipped (Burning Hands, Mage Armor, Sleep, Thunderwave, Misty Step, Fireball, Lightning Bolt, Bless, Guiding Bolt, Shield of Faith, Spiritual Weapon, Spirit Guardians, ...). The `spells` list doubles as the prepared list. `character@4` has no separate spellbook.
+- **Spellbook and prepared spells**: a level 1 wizard's spellbook holds six 1st-level spells, plus two per level after that; a cleric prepares Wis modifier + level spells. The documents list fewer because the rest are not shipped (Burning Hands, Mage Armor, Sleep, Thunderwave, Misty Step, Fireball, Lightning Bolt, Guiding Bolt, Shield of Faith, Spiritual Weapon, Spirit Guardians, ...). The `spells` list doubles as the prepared list. `character@4` has no separate spellbook.
 
 ## Notes for Rules / Engine Core
 

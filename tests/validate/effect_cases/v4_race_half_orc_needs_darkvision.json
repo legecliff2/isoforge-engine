@@ -1,0 +1,13 @@
+{
+  "base": "characters/barbarian_level_1.json",
+  "sets": [
+    [
+      [
+        "race"
+      ],
+      "half_orc"
+    ]
+  ],
+  "severity": "error",
+  "expect": "race 'half_orc': senses.darkvision must be 60 (SRD racial Darkvision), got None"
+}

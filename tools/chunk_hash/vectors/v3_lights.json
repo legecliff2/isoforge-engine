@@ -1,0 +1,5 @@
+{"$schema":"chunk@2","format_version":2,"coord":{"x":-2,"y":5,"level":1},"origin":"handcrafted",
+ "palette":["","floor"],"layers":[{},{},{},{}],"spawns":[],"triggers":[],
+ "lights":[{"tile":{"x":3,"y":4},"bright_ft":20,"dim_ft":20,"preset":"srd51.core.light.torch","visual":{"colour":[255,160,64],"flicker":"torch"}},
+           {"tile":{"x":30,"y":1},"bright_ft":60,"dim_ft":60,"magical":true,"sunlight":true,"starts_unlit":true}],
+ "ambient":{"kind":"moon","level":"dim"}}

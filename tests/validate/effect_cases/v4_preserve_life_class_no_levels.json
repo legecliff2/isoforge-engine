@@ -1,0 +1,16 @@
+{
+  "base": "characters/cleric_level_2.json",
+  "sets": [
+    [
+      [
+        "features",
+        4,
+        "effect",
+        "class"
+      ],
+      "paladin"
+    ]
+  ],
+  "severity": "error",
+  "expect": "heal_pool per_class_level has no class level to resolve against"
+}

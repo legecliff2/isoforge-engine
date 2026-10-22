@@ -45,12 +45,15 @@ inline constexpr uint8_t kKnownMask   = 0x3F;
 inline constexpr int cell_index(int x, int y) noexcept { return y * kChunkSize + x; }
 
 uint32_t spawn_stable_id(ChunkCoord coord, uint32_t spawn_index);
+// chunk@2 static light id: StableHash(i32 x, i32 y, i16 level, u32 index, u8 'L'); low ^ high 32 bits.
+uint32_t chunk_light_stable_id(ChunkCoord coord, uint32_t light_index);
+// format_version is hashed as 1 when the chunk has no lights and no ambient, so every chunk@1 hash is unchanged.
 uint64_t compute_content_hash(const Chunk& c);
 std::string_view to_string(Chunk::Origin o);
 std::optional<Chunk::Origin> parse_origin(std::string_view s);
 std::string hash_to_hex(uint64_t h);   // 16 lowercase hex digits
 
-// Registers "chunk" at kChunkFormatVersion (no migrations yet) on reg.
+// Registers "chunk" at kChunkFormatVersion with the identity migration chunk@1 -> chunk@2 on reg.
 void register_chunk_schema(assets::SchemaRegistry& reg);
 
 // Decodes an already schema-loaded (migrated to current) chunk document.

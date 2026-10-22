@@ -1,4 +1,4 @@
-# chunk@1 content_hash and spawn stable_id: byte layout
+# chunk@1 / chunk@2 content_hash and spawn stable_id: byte layout
 
 Reference: `engine/core/world/src/chunk_codec.cpp` (C++) and `tools/chunk_hash/chunk_hash.py`
 (Python, `pip install xxhash`). Test vectors: `tools/chunk_hash/vectors/`. `world_tests` checks
@@ -27,7 +27,12 @@ Fields are written in this order:
 | 5 | spawns | `u32 count`, then for each spawn: `str(archetype)`, `i32 tile.x`, `i32 tile.y`, `u32 stable_id` (computed as above), `str(overrides)` |
 | 6 | triggers | `u32 count`, then `str(canonical(trigger_object))` for each trigger |
 
-- **Not hashed:** `origin`, `content_hash`, `$schema`.
+| 7 | chunk@2 tail (only when the chunk has `lights` or `ambient`) | `u32 count`, then per light (file order): `i32 tile.x`, `i32 tile.y`, `u16 bright_ft`, `u16 dim_ft`, `u8 flags` (1 magical, 2 sunlight, 4 starts_unlit), `str(preset)` (`""` if absent), `u32 stable_id`; then `u8 has_ambient`, and if 1: `u8 kind` (0 none, 1 sun, 2 moon), `u8 level` (0 dark, 1 dim, 2 bright) |
+
+- **chunk@2 (R-G13):** field 1 is written as `1` when the chunk has no `lights` and no `ambient`, so every chunk@1
+  hash is unchanged after the identity migration; otherwise `2`, followed by field 7. Light `stable_id` =
+  `u32(h) ^ u32(h >> 32)` with `h = XXH3_64(i32 x | i32 y | i16 level | u32 light_index | u8 'L')`; never authored.
+- **Not hashed:** `origin`, `content_hash`, `$schema`, and a light's `visual` block (colour, flicker, glow).
 - `overrides`: `""` if the field is absent or `{}`. Otherwise `canonical(obj)`.
 - `canonical(x)` = nlohmann `dump()`: keys sorted (byte order), no whitespace, integers
   in decimal, UTF-8 left unescaped. In Python: `json.dumps(x, sort_keys=True, separators=(",", ":"), ensure_ascii=False)`.
@@ -40,5 +45,6 @@ Fields are written in this order:
 | `tools/chunk_hash/vectors/v1_minimal.json` (empty chunk at 3,4,-1) | `01fa4a2fde49834b` |
 | `tools/chunk_hash/vectors/v2_small.json` (tiles/elevation/flags, 2 spawns with overrides, 1 trigger) | `963a7d22563ff71a` |
 | `engine/core/tests/fixtures/chunks/0_-1_0.json` | `1e0ef519c7654a57` |
+| `tools/chunk_hash/vectors/v3_lights.json` (chunk@2: 2 lights, one with `visual`, moon ambient) | `cb3d7a42055e8f52` |
 
 stable_id: `(0,0,0,#0)` = `0xe9ca1f53`, `(-1,7,-2,#3)` = `0x3660e539`.
