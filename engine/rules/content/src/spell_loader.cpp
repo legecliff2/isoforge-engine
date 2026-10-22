@@ -1019,6 +1019,20 @@ SpellLoad spell_from_json(const Json& j) {
                 !lookup(kAbility, ac["ability"], d.ac_ability))
                 return ("effect ac must be {base 0..30, ability}");
             d.ac_base = int8_t(base);
+        } else if (kind == zg::kSummonWeapon) {   // 7.2zg Spiritual Weapon: a token, not a creature (R-G12 PR 3 rules side)
+            s.kind = SpellEffectKind::SummonWeapon;
+            s.melee = true;
+            if (!e.contains("damage") || !read_damage(e["damage"], s)) return ("effect damage invalid");
+            s.add_spellcasting_modifier = e.value("add_spellcasting_modifier", false);
+            int v = 2;
+            if (e.contains("upcast_every") && !small_int(e["upcast_every"], 1, 9, v)) return ("effect upcast_every must be an integer 1..9");
+            s.summon_weapon.upcast_every = uint8_t(v);
+            v = 5;
+            if (e.contains("reach_ft") && (!feet_5(e["reach_ft"], v) || v > 255)) return ("effect reach_ft must be a positive multiple of 5");
+            s.summon_weapon.reach_ft = uint8_t(v);
+            v = 20;
+            if (e.contains("move_ft") && !feet_5(e["move_ft"], v)) return ("effect move_ft must be a positive multiple of 5");
+            s.summon_weapon.move_ft = uint16_t(v);
         } else if (kind == zg::kHaste || kind == zg::kSlow) {   // 7.2zg: dedicated kinds, expanded into marker + number rows
             const bool haste = kind == zg::kHaste;
             if (!s.concentration) return ("effect " + kind + " needs concentration");
@@ -1141,7 +1155,8 @@ SpellLoad spell_from_json(const Json& j) {
         if (xe.is_object() && xe.value("kind", "") == "polymorph") return err("polymorph: primary effect only");
         if (xe.is_object() && xe.value("kind", "") == "zone")   // the cast refuses an extra effect of kind Zone
             return err("zone must be the primary effect (effects[" + std::to_string(i) + "] is a zone)");
-        if (xe.is_object() && (xe.value("kind", "") == zg::kHaste || xe.value("kind", "") == zg::kSlow))   // 7.2zg
+        if (xe.is_object() && (xe.value("kind", "") == zg::kHaste || xe.value("kind", "") == zg::kSlow ||
+                               xe.value("kind", "") == zg::kSummonWeapon))   // 7.2zg
             return err("effects[" + std::to_string(i) + "]: " + xe.value("kind", "") + " is only allowed as the first effect");
         SpellDef x;
         std::string xk;
@@ -1200,6 +1215,8 @@ SpellLoad spell_from_json(const Json& j) {
         if (hp_bonus && !lasting) return err("effect max_hp_bonus needs concentration or a rounds, minutes or hours duration");
         if (s.kind == SpellEffectKind::WeaponImbue && !lasting)
             return err("effect weapon_imbue needs concentration or a rounds, minutes or hours duration");
+        if (s.kind == SpellEffectKind::SummonWeapon && !lasting)   // 7.2zg Spiritual Weapon: 1 minute
+            return err("effect summon_weapon needs concentration or a rounds, minutes or hours duration");
         if (s.kind == SpellEffectKind::Duplicates) {   // 7.2zf Mirror Image: a timed duration (not concentration), self
             if (s.duration != SpellDuration::Rounds && s.duration != SpellDuration::Minutes && s.duration != SpellDuration::Hours)
                 return err("effect duplicates needs a rounds, minutes or hours duration");
@@ -1276,7 +1293,8 @@ SpellLoad spell_from_json(const Json& j) {
             if (k == "dice") return s.kind == SpellEffectKind::SpellAttack || s.kind == SpellEffectKind::Save ||
                                     s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::AutoHit ||
                                     s.kind == SpellEffectKind::HpPool || s.kind == SpellEffectKind::DelayedDamage ||
-                                    s.kind == SpellEffectKind::SustainedDamage || s.kind == SpellEffectKind::Zone;
+                                    s.kind == SpellEffectKind::SustainedDamage || s.kind == SpellEffectKind::Zone ||
+                                    s.kind == SpellEffectKind::SummonWeapon;   // 7.2zg
             if (k == "darts") return s.kind == SpellEffectKind::AutoHit;
             if (k == "beams") return s.kind == SpellEffectKind::SpellAttack;
             return s.kind == SpellEffectKind::Save || s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::ApplyCondition ||

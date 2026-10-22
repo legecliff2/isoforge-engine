@@ -1519,4 +1519,7 @@ def check_spell_batch_zg(doc: dict) -> list[str]:
     du = doc.get("duration") if isinstance(doc.get("duration"), dict) else {}
     if e.get("kind") in (ZG_KEYS["haste"], ZG_KEYS["slow"]) and du.get("concentration") is not True:
         errs.append(f"effect {e['kind']} needs concentration")
+    timed = du.get("kind") in SPELL_TIMED_DURATIONS
+    if e.get("kind") == ZG_KEYS["summon_weapon"] and not (du.get("concentration") is True or timed):
+        errs.append("effect summon_weapon needs concentration or a rounds, minutes or hours duration")
     return errs

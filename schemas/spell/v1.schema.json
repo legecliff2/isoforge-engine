@@ -561,7 +561,8 @@
             "weapon_imbue",
             "duplicates",
             "haste",
-            "slow"
+            "slow",
+            "summon_weapon"
           ]
         }
       },
@@ -1948,6 +1949,60 @@
               }
             },
             "description": "VERSION_BUMP_BATCH 7.2zg (Slow): each target saves (ability, the caster's spell save DC) or: -2 AC and Dex saves, speed halved, no reactions, an action or a bonus action (not both), one attack per turn, and a d20 when casting a 1-action spell (11+: the spell doesn't take effect; v1 loses it). The save repeats at the end of each of its turns. First effect only; needs concentration."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "summon_weapon"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "damage"
+            ],
+            "properties": {
+              "kind": {
+                "const": "summon_weapon"
+              },
+              "damage": {
+                "$ref": "#/$defs/damage"
+              },
+              "add_spellcasting_modifier": {
+                "type": "boolean"
+              },
+              "upcast_every": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9,
+                "description": "Slot levels per scaling.upcast.dice extra dice (Spiritual Weapon: 2)."
+              },
+              "reach_ft": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 255,
+                "multipleOf": 5
+              },
+              "move_ft": {
+                "type": "integer",
+                "minimum": 5,
+                "multipleOf": 5
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ]
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "description": "VERSION_BUMP_BATCH 7.2zg (Spiritual Weapon): a floating spectral weapon, not a creature (no HP, not a target, no turn). The cast makes it and may attack a creature within reach (melee spell attack, damage + the spellcasting modifier when add_spellcasting_modifier); later attacks each take a bonus action and it may move move_ft first. First effect only; needs concentration or a rounds / minutes / hours duration."
           }
         }
       ],
