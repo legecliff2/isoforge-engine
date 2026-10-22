@@ -102,6 +102,49 @@ struct MonsterDerivation {
     std::vector<std::string> errors{}; // the 5.6 strings, in check order; empty = loads
 };
 MonsterDerivation derive_monster(const MonsterSpec&);
+// ---------------------------------------------------------------- character@5 derive: true (T&C #253, checks_v4)
+// Pure, integer-only mirror of checks_v4.check_character_proficiencies / check_character_derive and the action weapon checks.
+// Strings are #253's, byte for byte. Order: per action the weapon checks (`/actions/<i>/...`), then proficiency errors (weapon,
+// then armor, each sorted), then AC, then each weapon action (to-hit, damage). Proficiency extras are warnings.
+struct CharacterActionSpec {
+    std::string id;                    // action id
+    std::string weapon{};              // action `weapon` (an item id); empty = no weapon key (not derived)
+    bool weapon_attack_kind = true;    // kind is melee_weapon_attack / ranged_weapon_attack
+    bool item_known = true;            // the item document exists (unknown: not derived, like the validator)
+    WeaponDef weapon_def{};
+    std::string weapon_class{};        // item weapon_class: "simple" / "martial"
+    bool item_has_range = false;       // the item has a `range` (Monk Martial Arts excludes it, as checks_v4 does)
+    WeaponUse use = WeaponUse::OneHand; // action `use`, default one_hand
+    int8_t printed_to_hit = 0;
+    DiceExpr printed_damage{0, 0, 0};  // damage[0] (dice, or {flat})
+};
+struct CharacterItemClass { std::string id; std::string weapon_class; };   // pack items, for "covered by simple / martial"
+struct CharacterSpec {
+    std::string id;
+    AbilityScores abilities{};
+    int8_t pb = 2;                     // authored proficiency_bonus
+    std::vector<std::string> classes{};    // class ids, e.g. "monk"
+    std::string race{};
+    std::vector<std::string> features{};   // feature ids, e.g. "unarmored_defense"
+    std::vector<std::string> weapon_proficiencies{}, armor_proficiencies{};
+    std::vector<std::string> equipment{};  // every equipment[] item id (equipped or not)
+    std::vector<CharacterItemClass> item_classes{};
+    bool has_armor = false; ArmorPiece armor{};     // the first equipped armor
+    bool has_shield = false; ShieldPiece shield{};  // the first equipped shield
+    int16_t printed_ac = 10;
+    std::vector<CharacterActionSpec> actions{};
+};
+struct CharacterDerivation {
+    int16_t ac = 10;
+    std::vector<Attack> attacks{};     // the derived weapon actions, in action order
+    std::vector<std::string> errors{}, warnings{};
+};
+// FEATURE_AC_BASES (#253): (class, feature id) -> AcBaseCandidate. Barbarian unarmored_defense 10 + Dex + Con; Monk
+// unarmored_defense 10 + Dex + Wis, forbids a shield; Sorcerer draconic_resilience 13 + Dex; Warlock armor_of_shadows 13 + Dex
+// (Mage Armor counted as in force). nullopt = no base.
+std::optional<AcBaseCandidate> feature_ac_base(std::string_view class_id, std::string_view feature_id);
+CharacterDerivation derive_character(const CharacterSpec&);
+
 // monster@5 / character@5 action `use`, spelled exactly as #252's schema enum: one_hand, two_hands, thrown, off_hand.
 std::optional<WeaponUse> weapon_use_from_string(std::string_view);
 std::string_view weapon_use_name(WeaponUse);

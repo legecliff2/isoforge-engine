@@ -1,6 +1,7 @@
 #include "rules5e/equipment.hpp"
 
 #include <algorithm>
+#include <set>
 #include "rules5e/abilities.hpp"
 #include "rules5e/conditions.hpp"
 #include "rules5e/weapon.hpp"
@@ -464,6 +465,122 @@ MonsterDerivation derive_monster(const MonsterSpec& m) {
         out.attacks.push_back(d.attack);
     }
     if (m.dice_multiplier > 1 && !multiplier_used) out.errors.push_back(m.id + ": weapon_dice_multiplier is not needed");
+    return out;
+}
+
+} // namespace rules5e
+
+namespace rules5e {
+namespace {
+using Names = std::set<std::string>;
+struct ClassGrant { const char* cls; std::vector<const char*> weapons; std::vector<const char*> armor; };
+// checks_v4.SRD_CLASS_PROFICIENCIES / SRD_RACE_WEAPON_PROFICIENCIES (#253, 5e-database a6212be)
+const std::vector<ClassGrant>& class_grants() {
+    static const std::vector<ClassGrant> t = {
+        {"barbarian", {"simple", "martial"}, {"light", "medium", "shields"}},
+        {"bard", {"simple", "longsword", "rapier", "shortsword", "crossbow_hand"}, {"light"}},
+        {"cleric", {"simple"}, {"light", "medium", "shields"}},
+        {"druid", {"club", "dagger", "javelin", "mace", "quarterstaff", "sickle", "spear", "dart", "sling", "scimitar"},
+         {"light", "medium", "shields"}},
+        {"fighter", {"simple", "martial"}, {"light", "medium", "heavy", "shields"}},
+        {"monk", {"simple", "shortsword"}, {}},
+        {"paladin", {"simple", "martial"}, {"light", "medium", "heavy", "shields"}},
+        {"ranger", {"simple", "martial"}, {"light", "medium", "shields"}},
+        {"rogue", {"simple", "longsword", "rapier", "shortsword", "crossbow_hand"}, {"light"}},
+        {"sorcerer", {"dagger", "dart", "sling", "quarterstaff", "crossbow_light"}, {}},
+        {"warlock", {"simple"}, {"light"}},
+        {"wizard", {"dagger", "dart", "sling", "quarterstaff", "crossbow_light"}, {}},
+    };
+    return t;
+}
+std::vector<const char*> race_weapons(std::string_view race) {
+    if (race == "dwarf" || race == "hill_dwarf") return {"battleaxe", "handaxe", "light_hammer", "warhammer"};
+    if (race == "high_elf") return {"longsword", "shortsword", "shortbow", "longbow"};
+    return {};
+}
+std::string weapon_name(const char* n) {
+    const std::string_view v(n);
+    return (v == "simple" || v == "martial") ? std::string(v) : "srd51.item." + std::string(v);
+}
+bool covered(const std::string& e, const Names& pool, const std::vector<CharacterItemClass>& items) {
+    if (pool.count(e)) return true;
+    for (const auto& it : items) if (it.id == e) return !it.weapon_class.empty() && pool.count(it.weapon_class) != 0;
+    return false;
+}
+std::string signed_int(int v) { return (v >= 0 ? "+" : "") + std::to_string(v); }
+} // namespace
+
+std::optional<AcBaseCandidate> feature_ac_base(std::string_view c, std::string_view f) {
+    if (c == "barbarian" && f == "unarmored_defense") return AcBaseCandidate{AcBaseKind::UnarmoredDefense, 10, Ability::Con, true, false, 0};
+    if (c == "monk" && f == "unarmored_defense") return AcBaseCandidate{AcBaseKind::UnarmoredDefense, 10, Ability::Wis, true, true, 0};
+    if (c == "sorcerer" && f == "draconic_resilience") return AcBaseCandidate{AcBaseKind::FixedPlusDex, 13, Ability::Con, true, false, 0};
+    if (c == "warlock" && f == "armor_of_shadows") return AcBaseCandidate{AcBaseKind::FixedPlusDex, 13, Ability::Con, true, false, 0};
+    return std::nullopt;
+}
+
+CharacterDerivation derive_character(const CharacterSpec& c) {
+    CharacterDerivation out;
+    // action weapon checks (checks_v4: "/actions/<i>/weapon" and the attack kind)
+    for (std::size_t i = 0; i < c.actions.size(); ++i) {
+        const auto& a = c.actions[i];
+        if (a.weapon.empty()) continue;
+        if (std::find(c.equipment.begin(), c.equipment.end(), a.weapon) == c.equipment.end())
+            out.errors.push_back("/actions/" + std::to_string(i) + "/weapon: '" + a.weapon + "' is not listed in equipment[]");
+        if (!a.weapon_attack_kind)
+            out.errors.push_back("/actions/" + std::to_string(i) +
+                                 ": weapon / natural / attack_bonus need a melee_weapon_attack or ranged_weapon_attack");
+    }
+    // proficiencies: missing = error, extra = warning
+    Names want_w, want_a;
+    for (const auto& cls : c.classes)
+        for (const auto& g : class_grants())
+            if (cls == g.cls) {
+                for (const char* w : g.weapons) want_w.insert(weapon_name(w));
+                for (const char* x : g.armor) want_a.insert(x);
+            }
+    for (const char* w : race_weapons(c.race)) want_w.insert(weapon_name(w));
+    const Names have_w(c.weapon_proficiencies.begin(), c.weapon_proficiencies.end());
+    const Names have_a(c.armor_proficiencies.begin(), c.armor_proficiencies.end());
+    for (const auto& [key, want, have] : {std::tuple<const char*, const Names*, const Names*>{"weapon_proficiencies", &want_w, &have_w},
+                                          std::tuple<const char*, const Names*, const Names*>{"armor_proficiencies", &want_a, &have_a}}) {
+        for (const auto& e : *want)
+            if (!covered(e, *have, c.item_classes)) out.errors.push_back(c.id + ": " + key + " missing '" + e + "' (SRD 5.1 class / race)");
+        for (const auto& e : *have)
+            if (!covered(e, *want, c.item_classes))
+                out.warnings.push_back(c.id + ": " + key + " '" + e + "' is not granted by the SRD 5.1 class / race");
+    }
+    // AC (1.2): armor, or the highest of 10 + Dex and the feature bases; then the shield
+    AcInput in;
+    in.abilities = c.abilities;
+    in.has_armor = c.has_armor; in.armor = c.armor;
+    in.has_shield = c.has_shield; in.shield = c.shield;
+    for (const auto& f : c.features)
+        for (const auto& cls : c.classes)
+            if (auto b = feature_ac_base(cls, f)) in.bases.push_back(*b);
+    out.ac = int16_t(compute_ac(in).ac);
+    if (out.ac != c.printed_ac)
+        out.errors.push_back(c.id + ": derived AC " + std::to_string(int(out.ac)) + " != printed " + std::to_string(int(c.printed_ac)));
+    // weapon actions (2.1): proficiency from the authored lists; Monk Martial Arts picks the higher of Str / Dex
+    const bool monk = std::find(c.classes.begin(), c.classes.end(), "monk") != c.classes.end();
+    for (const auto& a : c.actions) {
+        if (a.weapon.empty() || !a.item_known) continue;
+        WielderView v;
+        v.abilities = c.abilities; v.pb = c.pb;
+        v.proficient = covered(a.weapon, have_w, c.item_classes);
+        const bool monk_weapon = a.weapon == "srd51.item.shortsword" ||
+            (a.weapon_class == "simple" && !a.item_has_range &&
+             (a.weapon_def.properties & (kWeaponTwoHanded | kWeaponHeavy)) == 0);
+        if (monk && monk_weapon)
+            v.ability = modifier(c.abilities, Ability::Dex) > modifier(c.abilities, Ability::Str) ? Ability::Dex : Ability::Str;
+        const std::string pre = c.id + "." + a.id;
+        const DerivedAttack d = derive_weapon_attack(a.weapon_def, v, a.use);
+        if (!d.error.empty()) { out.errors.push_back(pre + ": " + std::string(d.error)); continue; }
+        if (d.attack.to_hit != a.printed_to_hit)
+            out.errors.push_back(pre + ": derived to-hit " + signed_int(d.attack.to_hit) + " != printed " + signed_int(a.printed_to_hit));
+        if (!(d.attack.damage == a.printed_damage))
+            out.errors.push_back(pre + ": derived damage " + format_dice(d.attack.damage) + " != printed " + format_dice(a.printed_damage));
+        out.attacks.push_back(d.attack);
+    }
     return out;
 }
 

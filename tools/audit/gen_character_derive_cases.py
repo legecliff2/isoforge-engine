@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Emit rules5e::CharacterSpec cases (C++) from srd51.core character@5 PCs (T&C #253) for derive_character tests.
+Usage: gen_character_derive_cases.py <pack dir> [pc file stem ...] > cases.inc   (no stems = every derive: true PC)."""
+import glob, json, os, re, sys
+
+def dice(d):
+    if "dice" in d:
+        m = re.fullmatch(r"(\d+)d(\d+)([+-]\d+)?", d["dice"].replace(" ", ""))
+        return (int(m[1]), int(m[2]), int(m[3] or 0))
+    return (0, 0, int(d.get("flat", 0)))
+
+def q(s): return json.dumps(s)
+
+def main():
+    pack, stems = sys.argv[1], sys.argv[2:]
+    items = {}
+    for f in glob.glob(os.path.join(pack, "items", "*.json")):
+        d = json.load(open(f)); items[d["id"]] = d
+    files = [os.path.join(pack, "characters", s + ".json") for s in stems] or sorted(glob.glob(os.path.join(pack, "characters", "*.json")))
+    out = []
+    for f in files:
+        d = json.load(open(f))
+        if d.get("derive") is not True: continue
+        ab = d["abilities"]
+        L = [f"[] {{ CharacterSpec c; c.id = {q(d['id'])};",
+             f"  c.abilities = scores({ab['str']}, {ab['dex']}, {ab['con']}, {ab['int']}, {ab['wis']}, {ab['cha']}); c.pb = {d['proficiency_bonus']};",
+             f"  c.classes = {{{', '.join(q(x['class']) for x in d.get('classes', []))}}}; c.race = {q(d.get('race', ''))};",
+             f"  c.features = {{{', '.join(q(x['id']) for x in d.get('features', []) if 'id' in x)}}};",
+             f"  c.weapon_proficiencies = {{{', '.join(map(q, d.get('weapon_proficiencies', [])))}}};",
+             f"  c.armor_proficiencies = {{{', '.join(map(q, d.get('armor_proficiencies', [])))}}};",
+             f"  c.equipment = {{{', '.join(q(e['item']) for e in d.get('equipment', []) if isinstance(e, dict))}}};",
+             f"  c.printed_ac = {d['armor_class']['value']};"]
+        used = sorted({e["item"] for e in d.get("equipment", []) if isinstance(e, dict)} |
+                      {a["weapon"] for a in d.get("actions", []) if isinstance(a, dict) and "weapon" in a})
+        for iid in used:
+            it = items.get(iid, {})
+            if it.get("weapon_class"): L.append(f"  c.item_classes.push_back({{{q(iid)}, {q(it['weapon_class'])}}});")
+        armor = shield = None
+        for e in [x for x in d.get("equipment", []) if isinstance(x, dict)]:
+            it = items.get(e.get("item")) if e.get("equipped") else None
+            if it and it.get("category") == "armor" and armor is None: armor = it
+            elif it and it.get("category") == "shield" and shield is None: shield = it
+        if armor:
+            cat = {"light": "Light", "medium": "Medium", "heavy": "Heavy"}[armor["armor_category"]]
+            L.append(f"  c.has_armor = true; c.armor = armor(ArmorCategory::{cat}, {armor['base_ac']}, {str(bool(armor.get('dex_bonus'))).lower()}, "
+                     f"{armor.get('dex_cap', 0)}); c.armor.has_dex_cap = {str('dex_cap' in armor).lower()}; c.armor.magic_bonus = {armor.get('magic_bonus', 0)};")
+        if shield:
+            L.append(f"  c.has_shield = true; c.shield.ac_bonus = {shield.get('ac_bonus', 2)}; c.shield.magic_bonus = {shield.get('magic_bonus', 0)};")
+        for a in d.get("actions", []):
+            if not isinstance(a, dict) or "weapon" not in a: continue
+            it = items.get(a["weapon"])
+            L.append(f"  {{ CharacterActionSpec a; a.id = {q(a.get('id', ''))}; a.weapon = {q(a['weapon'])};")
+            L.append(f"    a.weapon_attack_kind = {str(a.get('kind') in ('melee_weapon_attack', 'ranged_weapon_attack')).lower()};")
+            if it:
+                dd = dice(it["damage"][0]); rng = it.get("range", [0, 0])
+                vd = dice(it["versatile_damage"][0]) if "versatile_damage" in it else (0, 0, 0)
+                props = " | ".join(f"prop({q(p)})" for p in it.get("properties", [])) or "0"
+                L.append(f"    a.weapon_def.properties = uint16_t({props}); a.weapon_def.reach_ft = {it.get('reach', 0)};")
+                L.append(f"    a.weapon_def.range_ft = {rng[0]}; a.weapon_def.long_range_ft = {rng[1]}; a.weapon_def.dice = DiceExpr{{{dd[0]}, {dd[1]}, {dd[2]}}};")
+                L.append(f"    a.weapon_def.versatile_dice = DiceExpr{{{vd[0]}, {vd[1]}, {vd[2]}}}; a.weapon_def.martial = {str(it.get('weapon_class') == 'martial').lower()};")
+                L.append(f"    a.weapon_def.magic_bonus = {it.get('magic_bonus', 0)}; a.weapon_class = {q(it.get('weapon_class', ''))}; a.item_has_range = {str('range' in it).lower()};")
+            else:
+                L.append("    a.item_known = false;")
+            pd = dice((a.get("damage") or [{}])[0])
+            L.append(f"    a.use = *weapon_use_from_string({q(a.get('use', 'one_hand'))}); a.printed_to_hit = {a.get('to_hit', 0)}; a.printed_damage = DiceExpr{{{pd[0]}, {pd[1]}, {pd[2]}}};")
+            L.append("    c.actions.push_back(a); }")
+        L.append("  return c; }(),")
+        out.append("\n".join(L))
+    print("// generated by tools/audit/gen_character_derive_cases.py from srd51.core character@5 (T&C #253); do not edit")
+    print("\n".join(out))
+
+main()
