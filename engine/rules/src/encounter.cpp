@@ -4215,6 +4215,9 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
             defer_forced(s, ctx, ev, s.hooks.shove_forced_flag ? kMovedForced : 0);
         }
     }
+    // SRD 5.1: Grapple and Shove are special melee attacks, so making one ends "ends on attack" effects (Sanctuary on the
+    // shover, Invisibility), as after do_attack
+    if (!s.effects.empty()) end_on_own_action(s, a.id, kEndsOnAttack, ev);
     check_end(s, ev);
     return out;
 }
