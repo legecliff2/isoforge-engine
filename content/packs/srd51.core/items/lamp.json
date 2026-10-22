@@ -1,0 +1,22 @@
+{
+  "$schema": "item@2",
+  "id": "srd51.item.lamp",
+  "name": "Lamp",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "gear",
+  "cost_cp": 50,
+  "weight_oz": 16,
+  "description": "A lamp casts bright light in a 15-foot radius and dim light for an additional 30 feet. Once lit, it burns for 6 hours on a flask (1 pint) of oil.",
+  "hands": 1,
+  "light": {
+    "bright_ft": 15,
+    "dim_ft": 30,
+    "shape": "radius",
+    "duration_rounds": 3600,
+    "fuel": "srd51.item.oil_flask",
+    "lit_by_default": false
+  }
+}

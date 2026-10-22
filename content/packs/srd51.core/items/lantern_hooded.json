@@ -1,0 +1,30 @@
+{
+  "$schema": "item@2",
+  "id": "srd51.item.lantern_hooded",
+  "name": "Lantern, hooded",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "gear",
+  "cost_cp": 500,
+  "weight_oz": 32,
+  "description": "A hooded lantern casts bright light in a 30-foot radius and dim light for an additional 30 feet. Once lit, it burns for 6 hours on a flask (1 pint) of oil. As an action, you can lower the hood, reducing the light to dim light in a 5-foot radius.",
+  "hands": 1,
+  "light": {
+    "bright_ft": 30,
+    "dim_ft": 30,
+    "shape": "radius",
+    "duration_rounds": 3600,
+    "fuel": "srd51.item.oil_flask",
+    "lit_by_default": false,
+    "states": [
+      {
+        "id": "hooded",
+        "bright_ft": 0,
+        "dim_ft": 5,
+        "toggle": "action"
+      }
+    ]
+  }
+}
