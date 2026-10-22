@@ -50,14 +50,22 @@ std::string_view components_refusal(const EncounterState&, CombatantId, const Sp
 bool components_ok(const EncounterState&, CombatantId, const SpellDef&);
 
 // ---- Equip operations (4) ----
-enum class EquipOp : uint8_t { None, Draw, Stow, Drop, PickUp, DonShield, DoffShield, HandOver, DonArmor, DoffArmor };
+enum class EquipOp : uint8_t { None, Draw, Stow, Drop, PickUp, DonShield, DoffShield, HandOver, DonArmor, DoffArmor,
+                               SetLightState };   // 10 (appended): light / douse / hood a held light, equip_state
+// ActionRequest::equip_state for SetLightState: a LightDef::states index (light, or switch state, e.g. hood a lantern), or
+// kLightDouse. Engine Core applies it: kHeldLit plus the index in flags bits 4-6 (with_light_state), or clears kHeldLit.
+inline constexpr uint8_t kLightDouse = 0xFF;
+// The radii a held item sheds now: {0, 0} if it is not a light, not lit, or its stored index is out of range.
+LightState light_radii(const ItemDef&, const HeldItem&);
 struct EquipCost {
     enum Kind : uint8_t { Free, Interaction, Action, Refused } kind = Refused;
     std::string_view refusal{};
 };
 // The cost of ActionRequest{UseObject, equip_op, equip_item, equip_hand, equip_to, equip_in_reach} for the current actor, or the
 // refusal (exact strings in EQUIPMENT.md 4.2 and equipment.cpp). Interaction = the free object interaction if unspent; when it is
-// spent the same op costs the Use an Object action (Action); Free = drop; shield don / doff = Action; armor = refused in combat.
+// spent the same op costs the Use an Object action (Action); Free = drop; shield don / doff = Action; armor = refused in combat;
+// SetLightState = Interaction (refusals "equip: not a light source", "equip: unknown light state",
+// "equip: the light is already in that state"; the light must be in hand).
 EquipCost equip_legal(const EncounterState&, const ActionRequest&);
 // Armor don / doff time in rounds (SRD "Donning and Doffing Armor": 1 minute = 10 rounds); a helper halves it.
 uint16_t armor_change_rounds(ArmorCategory, bool don, bool helper);
