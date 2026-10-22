@@ -3833,6 +3833,8 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
     if (req.damage_choice != 0) {
         if (std::size_t(req.damage_choice) > def.damage_choices.size()) return fail("bad damage choice");
         eff.damage_type = def.damage_choices[std::size_t(req.damage_choice - 1)];
+        if (eff.kind == SpellEffectKind::ApplyModifier && eff.modifier.stat == ModStat::Resistance)   // 7.2zg Protection from Energy
+            eff.modifier.damage_type = eff.damage_type;
     }
     if (req.condition_choice != 0 && def.kind == SpellEffectKind::EndCondition) {
         // Lesser Restoration: 1 + index into ends_condition_list (the spell's JSON list order); each target must have the chosen

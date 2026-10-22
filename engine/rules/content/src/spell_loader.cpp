@@ -835,6 +835,18 @@ SpellLoad spell_from_json(const Json& j) {
             if (!e.contains("modifier")) return ("effect modifier required");
             if (auto m = parse_modifier(e["modifier"], s.modifier); !m.empty()) return ("effect " + m);
             s.modifier.id = spell_id_of(s.content_id + "#modifier");
+            if (e.contains(zg::kDamageTypeChoices)) {   // 7.2zg Protection from Energy: ActionRequest::damage_choice picks the type
+                if (s.modifier.stat != ModStat::Resistance) return ("effect damage_type_choices needs a resistance modifier");
+                const Json& dc = e[zg::kDamageTypeChoices];
+                bool ok = dc.is_array() && dc.size() >= 2 && dc.size() <= 13, listed = false;
+                for (std::size_t k = 0; ok && k < dc.size(); ++k) {
+                    DamageType t{};
+                    ok = lookup(kDamage, dc[k], t) && std::find(s.damage_choices.begin(), s.damage_choices.end(), t) == s.damage_choices.end();
+                    if (ok) { s.damage_choices.push_back(t); listed = listed || t == s.modifier.damage_type; }
+                }
+                if (!ok) return ("effect damage_type_choices must be 2..13 distinct damage types");
+                if (!listed) return ("effect damage_type_choices must include the modifier damage_type");
+            }
             if (e.contains("save")) {   // 7.2ze Bane: {ability, dc: caster}
                 const Json& sv = e["save"];
                 bool ok = sv.is_object() && sv.size() == 2 && sv.contains("ability") && sv.value("dc", Json()) == Json("caster");
@@ -1208,6 +1220,8 @@ SpellLoad spell_from_json(const Json& j) {
             return err("effects[" + std::to_string(i) + "]: " + xk + " is only allowed as the first effect");
         if (x.control != ControlKind::None) return err("effects[" + std::to_string(i) + "]: control is only allowed on the first effect");
         if (!x.condition_choices.empty()) return err("effects[" + std::to_string(i) + "]: choices is only allowed on the first effect");
+        if (!x.damage_choices.empty())
+            return err("effects[" + std::to_string(i) + "]: damage_type_choices is only allowed on the first effect");   // 7.2zg
         if (x.miss_half) return err("effects[" + std::to_string(i) + "]: on_miss is only allowed on the first effect");   // 7.2zg
         if (x.has_modifier_save) return err("effects[" + std::to_string(i) + "]: an apply_modifier save is only allowed on the first effect");
         SpellEffect fx;

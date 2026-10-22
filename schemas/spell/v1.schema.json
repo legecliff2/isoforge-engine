@@ -1133,6 +1133,16 @@
                   }
                 },
                 "description": "7.2ze Bane: each target saves against the caster's spell save DC; a creature that succeeds is not affected. First effect only; the modifier must be on the targets."
+              },
+              "damage_type_choices": {
+                "type": "array",
+                "items": {
+                  "$ref": "../common/v1.schema.json#/$defs/damage_type"
+                },
+                "minItems": 2,
+                "maxItems": 13,
+                "uniqueItems": true,
+                "description": "VERSION_BUMP_BATCH 7.2zg (Protection from Energy): a resistance modifier whose type is the caster's cast-time choice (ActionRequest::damage_choice, 1 + index in this order); must include the modifier's damage_type. First effect only."
               }
             }
           }

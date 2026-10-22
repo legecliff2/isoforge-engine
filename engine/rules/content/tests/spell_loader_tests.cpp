@@ -920,3 +920,23 @@ TEST_CASE("loader 7.2zg: casting_time.trigger damaged (Hellish Rebuke)") {
     j = hr; j["casting_time"]["trigger"]["kind"] = "hurt";
     q = spell_from_json(j); CHECK(q.error == "casting_time.trigger.kind must be being_hit, spell_cast or damaged");
 }
+
+TEST_CASE("loader 7.2zg: apply_modifier damage_type_choices (Protection from Energy)") {
+    auto pe = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.protection_from_energy","level":3,"name":"Protection from Energy",
+        "casting_time":{"kind":"action"},"range":{"kind":"touch"},"components":{"v":true,"s":true},
+        "duration":{"kind":"hours","amount":1,"concentration":true},
+        "effects":[{"kind":"apply_modifier","modifier":{"stat":"resistance","damage_type":"acid","duration":{"kind":"concentration"}},
+                    "damage_type_choices":["acid","cold","fire","lightning","thunder"]}]})");
+    auto r = spell_from_json(pe); INFO(r.error); REQUIRE(r.def);
+    REQUIRE(r.def->damage_choices.size() == 5);
+    CHECK(r.def->damage_choices[2] == DamageType::Fire); CHECK(r.def->modifier.stat == ModStat::Resistance);
+    auto j = pe; j["effects"][0]["damage_type_choices"] = {"cold", "fire"};
+    auto q = spell_from_json(j); CHECK(q.error == "effect damage_type_choices must include the modifier damage_type");
+    j = pe; j["effects"][0]["damage_type_choices"] = {"acid", "acid"};
+    q = spell_from_json(j); CHECK(q.error == "effect damage_type_choices must be 2..13 distinct damage types");
+    j = pe; j["effects"][0]["modifier"] = {{"stat", "ac"}, {"bonus", 1}, {"duration", {{"kind", "concentration"}}}};
+    q = spell_from_json(j); CHECK(q.error == "effect damage_type_choices needs a resistance modifier");
+    j = pe; j["effects"] = eng::assets::Json::array({{{"kind", "heal"}, {"dice", "1d4"}}, pe["effects"][0]});
+    j["range"] = {{"kind", "touch"}};
+    q = spell_from_json(j); CHECK(q.error == "effects[1]: damage_type_choices is only allowed on the first effect");
+}

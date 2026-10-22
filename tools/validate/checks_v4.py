@@ -1525,4 +1525,15 @@ def check_spell_batch_zg(doc: dict) -> list[str]:
     if (e.get("kind") == ZG_KEYS["temp_hp"] and (e.get(ZG_KEYS["per_turn"]) or e.get(ZG_KEYS["condition_immunity"]))
             and not (du.get("concentration") is True or timed)):
         errs.append("effect temp_hp per_turn or condition_immunity needs concentration or a rounds, minutes or hours duration")
+    dtc = ZG_KEYS["damage_type_choices"]   # Protection from Energy
+    if dtc in e:
+        mod = e.get("modifier") if isinstance(e.get("modifier"), dict) else {}
+        if mod.get("stat") != "resistance":
+            errs.append("effect damage_type_choices needs a resistance modifier")
+        elif mod.get("damage_type") not in e[dtc]:
+            errs.append("effect damage_type_choices must include the modifier damage_type")
+    for i, x in enumerate(effs[1:], 1):
+        if dtc in x:
+            errs.append(f"effects[{i}]: damage_type_choices is only allowed on the first effect")
+            break
     return errs

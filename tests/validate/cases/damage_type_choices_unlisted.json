@@ -1,0 +1,45 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.damage_type_choices_unlisted",
+  "name": "Haste",
+  "level": 3,
+  "school": "transmutation",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "classes": [
+    "wizard"
+  ],
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "duration": {
+    "kind": "hours",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "resistance",
+        "damage_type": "acid",
+        "duration": {
+          "kind": "concentration"
+        }
+      },
+      "damage_type_choices": [
+        "cold",
+        "fire"
+      ]
+    }
+  ]
+}
