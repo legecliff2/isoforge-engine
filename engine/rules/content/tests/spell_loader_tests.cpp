@@ -734,7 +734,7 @@ TEST_CASE("loader 7.2zd: warded + ward, ends_on harmful_cast, scope from_types +
     j = sanct; j["effects"][0]["condition"] = "invisible"; bad(j, "effect ward needs condition warded");
     j = sanct; j["effects"][0]["ward"] = {{"save", "wis"}}; bad(j, "effect ward must be {save: <ability>, on_fail: retarget_or_lose}");
     j = sanct; j["effects"][0]["ends_on"] = {"harmful_cast", "harmful_cast"}; bad(j, "effect ends_on items must be unique");
-    j = sanct; j["effects"][0]["ends_on"] = {"spell"}; bad(j, "effect ends_on must be a non-empty list of attack, cast, harmful_cast");
+    j = sanct; j["effects"][0]["ends_on"] = {"spell"}; bad(j, "effect ends_on must be a non-empty list of attack, cast, harmful_cast, damage, shake_awake");
     j = sanct; j["effects"][0].erase("ends_on"); j["duration"] = {{"kind", "instantaneous"}};
     bad(j, "effect ward needs concentration or a rounds, minutes or hours duration");
     j = pfeg; j["effects"][0]["modifier"]["stat"] = "save"; bad(j, "effect modifier applies_to attackers: attack_roll modifiers only");
@@ -982,4 +982,23 @@ TEST_CASE("loader 7.2zg: modifier stat outlined (Faerie Fire), Dex save gate") {
     CHECK(r.def->modifier.stat == ModStat::Outlined); CHECK(r.def->has_modifier_save); CHECK(r.def->modifier_save == Ability::Dex);
     auto j = ff; j["effects"][0]["modifier"]["stat"] = "outline";
     auto q = spell_from_json(j); CHECK(q.error == "effect modifier stat invalid");
+}
+
+TEST_CASE("loader 7.2zg: ends_on damage / shake_awake on save and apply_condition effects (Hypnotic Pattern)") {
+    auto hp = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.hypnotic_pattern","level":3,"name":"Hypnotic Pattern",
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":120},"components":{"s":true,"m":{"text":"a glowing stick of incense"}},
+        "area":{"shape":"cube","size_ft":30},"duration":{"kind":"minutes","amount":1,"concentration":true},
+        "effects":[{"kind":"save","ability":"wis","condition":"charmed","ends_on":["damage","shake_awake"]},
+                   {"kind":"apply_condition","applies_to":"affected","condition":"incapacitated","ends_on":["damage","shake_awake"]}]})");
+    auto r = spell_from_json(hp); INFO(r.error); REQUIRE(r.def);
+    CHECK(r.def->ends_on == (kEndsOnDamage | kEndsOnShakeAwake)); REQUIRE(r.def->extra_effects.size() == 1);
+    CHECK(r.def->extra_effects[0].ends_on == (kEndsOnDamage | kEndsOnShakeAwake));
+    auto j = hp; j["effects"][0]["ends_on"] = {"damage", "damage"};
+    auto q = spell_from_json(j); CHECK(q.error == "effect ends_on items must be unique");
+    j = hp; j["effects"][0]["ends_on"] = {"sneeze"};
+    q = spell_from_json(j); CHECK(q.error == "effect ends_on must be a non-empty list of attack, cast, harmful_cast, damage, shake_awake");
+    j = hp; j["effects"][0].erase("condition"); j["effects"][0]["damage"] = {{"dice", "1d6"}, {"type", "fire"}}; j["effects"][0]["on_success"] = "half";
+    q = spell_from_json(j); CHECK(q.error == "effect ends_on on a save effect needs a condition");
+    j = hp; j["duration"] = {{"kind", "instantaneous"}};
+    q = spell_from_json(j); CHECK(q.error == "effect ends_on needs concentration or a rounds, minutes or hours duration");
 }

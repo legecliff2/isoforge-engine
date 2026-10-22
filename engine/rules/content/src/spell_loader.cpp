@@ -421,6 +421,21 @@ std::string parse_predicate(const Json& p, Predicate& out) {
     return "";
 }
 
+// spell@1 `ends_on` (7.2zc / 7.2zd; 7.2zg adds damage and shake_awake): unique, non-empty -> kEndsOn* bits.
+std::string read_ends_on(const Json& eo, uint8_t& out) {
+    constexpr const char* kBad = "effect ends_on must be a non-empty list of attack, cast, harmful_cast, damage, shake_awake";
+    if (!eo.is_array() || eo.empty()) return kBad;
+    for (const Json& v : eo) {
+        const std::string w = v.is_string() ? v.get<std::string>() : "";
+        const uint8_t b = w == "attack" ? kEndsOnAttack : w == "cast" ? kEndsOnCast : w == "harmful_cast" ? kEndsOnHarmfulCast
+                        : w == "damage" ? kEndsOnDamage : w == zg::kShakeAwake ? kEndsOnShakeAwake : uint8_t(0);
+        if (b == 0) return kBad;
+        if (out & b) return "effect ends_on items must be unique";
+        out = uint8_t(out | b);
+    }
+    return "";
+}
+
 // 7.2zg `exempt_senses` (Blur, Mirror Image share the key and the list): distinct sense names -> kSense* bits.
 bool read_exempt_senses(const Json& e, uint8_t& out) {
     static const std::map<std::string, uint8_t> kSenses{{"blindsight", kSenseBlindsight}, {"tremorsense", kSenseTremorsense},
@@ -743,6 +758,10 @@ SpellLoad spell_from_json(const Json& j) {
         } else if (kind == "save") {
             s.kind = SpellEffectKind::Save;
             if (!e.contains("ability") || !lookup(kAbility, e["ability"], s.save_ability)) return ("effect ability invalid");
+            if (e.contains("ends_on")) {   // 7.2zg Hypnotic Pattern: the condition ends on damage / a shake awake
+                if (!e.contains("condition")) return ("effect ends_on on a save effect needs a condition");
+                if (auto m = read_ends_on(e["ends_on"], s.ends_on); !m.empty()) return m;
+            }
             if (e.contains("damage") != e.contains("on_success"))
                 return (e.contains("damage") ? "'on_success' is a dependency of 'damage'" : "effect on_success needs damage ('damage' is a dependency of 'on_success')");
             if (e.contains("damage") && !read_damage(e["damage"], s)) return ("effect damage invalid");
@@ -922,18 +941,8 @@ SpellLoad spell_from_json(const Json& j) {
             } else if (warded) {
                 return ("effect condition warded needs ward");
             }
-            if (e.contains("ends_on")) {   // 7.2zc Invisibility: [attack, cast]; 7.2zd Sanctuary: harmful_cast; unique, non-empty
-                const Json& eo = e["ends_on"];
-                if (!eo.is_array() || eo.empty()) return ("effect ends_on must be a non-empty list of attack, cast, harmful_cast");
-                for (const Json& v : eo) {
-                    const std::string w = v.is_string() ? v.get<std::string>() : "";
-                    const uint8_t b = w == "attack" ? kEndsOnAttack : w == "cast" ? kEndsOnCast
-                                    : w == "harmful_cast" ? kEndsOnHarmfulCast : uint8_t(0);
-                    if (b == 0) return ("effect ends_on must be a non-empty list of attack, cast, harmful_cast");
-                    if (s.ends_on & b) return ("effect ends_on items must be unique");
-                    s.ends_on = uint8_t(s.ends_on | b);
-                }
-            }
+            if (e.contains("ends_on"))   // 7.2zc Invisibility: [attack, cast]; 7.2zd Sanctuary: harmful_cast; 7.2zg: damage, shake_awake
+                if (auto m = read_ends_on(e["ends_on"], s.ends_on); !m.empty()) return m;
         } else if (kind == "hp_pool") {   // R-G15 (VERSION_BUMP_BATCH 7.2f): Sleep, Color Spray; timer from the spell's duration
             s.kind = SpellEffectKind::HpPool;
             auto d = e.contains("dice") && e["dice"].is_string() ? parse_dice(e["dice"].get<std::string>()) : std::nullopt;

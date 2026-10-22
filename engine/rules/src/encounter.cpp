@@ -3001,7 +3001,8 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, cond, def.save_ability,
                                                       int16_t(dc), at_once ? RepeatSave::None : def.repeat_save, def.concentration,
                                                       at_once ? Timed{} : effect_timed(s, def, a.id, t->id),
-                                                      lvl, false});
+                                                      lvl, (def.ends_on & kEndsOnDamage) != 0});   // 7.2zg Hypnotic Pattern
+                s.effects.back().ends_on = def.ends_on;
                 if (def.escalates && !at_once) { s.effects.back().escalates = true; s.effects.back().escalate_to = def.escalate_to; }
                 s.effects.back().control = uint8_t(def.control);
                 // 7.2v: prone and incapacitated. Incapacitated is this effect's own only if it added it, so ending the
@@ -3051,7 +3052,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, Ability::Wis, 0, RepeatSave::None,
                                                       def.concentration,
                                                       effect_timed(s, def, a.id, t->id),
-                                                      lvl, false});
+                                                      lvl, (def.ends_on & kEndsOnDamage) != 0});   // 7.2zg
                 s.effects.back().ends_on = def.ends_on;   // 7.2zc Invisibility; 7.2zd Sanctuary (harmful_cast)
                 if (def.has_ward) {   // 7.2zd Sanctuary: the ward save is against the caster's spell save DC
                     s.effects.back().save_ability = def.ward_save;
@@ -4256,12 +4257,14 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
         if (!t || t == &a || t->dead) return fail("bad target");
         if (!req.target_within_5ft) return fail("target must be within 5 ft");
         bool asleep = false;
-        for (const auto& e : s.effects) asleep = asleep || (e.target == t->id && e.ends_on_damage);
+        // R-G15 Sleep (ends_on_damage); 7.2zg `ends_on: [shake_awake]` (Hypnotic Pattern)
+        auto wakes = [&](const ActiveSpellEffect& e) { return e.target == t->id && (e.ends_on_damage || (e.ends_on & kEndsOnShakeAwake)); };
+        for (const auto& e : s.effects) asleep = asleep || wakes(e);
         if (!asleep) return fail("target is not under an effect that waking ends");
         if (!spend_action(b, a, ActionKind::Attack, false)) return fail("no action available");
         s.budget = b;
         for (std::size_t i = 0; i < s.effects.size();) {
-            if (s.effects[i].target == t->id && s.effects[i].ends_on_damage) end_effect(s, i, out.events); else ++i;
+            if (wakes(s.effects[i])) end_effect(s, i, out.events); else ++i;
         }
         return out;
     }
