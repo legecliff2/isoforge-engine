@@ -27,6 +27,7 @@
 #include "world/chunk.hpp"
 
 namespace eng::sim {
+class LightDriver;   // sim/light_driver.hpp
 
 using rules5e::CombatantId;
 
@@ -99,6 +100,31 @@ constexpr uint32_t ready_trigger_id(ReadyTriggerKind k, uint8_t tiles) { return 
 // characters / "monsters" for monsters), byte-sorted; id = index. Spawn-order independent.
 std::optional<std::string> spawn_team_name(const world::EntitySpawn& sp, const Archetype& a, std::string* error = nullptr);
 
+// docs/proposals/EQUIPMENT.md 7.2 / 9 (Engine Core): per-combat options. Default = every pre-equipment behaviour and hash.
+//  equipment: build loadouts from character@4 equipment[] entries naming a loaded item@1 (setup order: combatant, then entry),
+//    install the rules hooks loadout_of / item_def / apply_equip, recompute derived stats, keep ground items, and list PickUp /
+//    HandOver in legal_actions(). Off: none of it (no loadout, no hook, no new fold).
+struct CombatOptions {
+    bool equipment = false;
+};
+
+// An equipped light item as a light producer (EQUIPMENT.md 6, LIGHTING 10.1 / #233): the light id is allocated once at setup
+// (item instance order) and never changes; holder_id is the creature holding or carrying it, 0 on the ground (tile = where it
+// lies; carrier stays Item). lit: kHeldLit while held or on the ground (stowed lights are covered).
+struct EquipmentLight {
+    uint32_t light_id = 0;
+    uint32_t item = 0;          // carrier_id (Carrier::Item)
+    uint32_t def = 0;
+    CombatantId holder_id = 0;
+    Vec2i tile{};
+    bool lit = false;
+};
+
+// Ground item ECS entities (EQUIPMENT.md 4.4): StableId kGroundItemIdBase + instance, with TilePos and this component.
+inline constexpr uint8_t kHeldRelight = 0x80;   // sim-only HeldItem flag: a lit light stowed (covered), relit when drawn
+inline constexpr uint64_t kGroundItemIdBase = uint64_t(1) << 40;
+struct GroundItemLink { uint32_t instance = 0, def = 0; };
+
 class Combat {
 public:
     // Spawns every chunk spawn whose archetype is in `content` as an ECS entity (StableId =
@@ -111,6 +137,26 @@ public:
     // (as if the chunk were at (0,0)); this one uses absolute world tiles.
     static std::optional<Combat> create(ecs::Registry& reg, std::span<const world::Chunk* const> chunks,
                                         const ContentLibrary& content, uint64_t seed, std::string* error = nullptr);
+    // As above with options (CombatOptions{} is identical to the overloads without them).
+    static std::optional<Combat> create(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content,
+                                        uint64_t seed, CombatOptions options, std::string* error = nullptr);
+    static std::optional<Combat> create(ecs::Registry& reg, std::span<const world::Chunk* const> chunks,
+                                        const ContentLibrary& content, uint64_t seed, CombatOptions options,
+                                        std::string* error = nullptr);
+    const CombatOptions& options() const noexcept { return options_; }
+
+    // ---- Equipment (CombatOptions::equipment; EQUIPMENT.md 9) ----
+    // rules5e::legal_actions plus, with equipment on, the Engine Core entries appended after them: PickUp (ground items within
+    // 5 ft of the actor, instance order, hand 1 then 2) then HandOver (held instance order, recipient combatant order, to
+    // creatures with a loadout within 5 ft). Each is filtered through rules5e::equip_legal.
+    std::vector<rules5e::ActionRequest> legal_actions();   // re-binds the hooks first (like submit)
+    const rules5e::Loadout* loadout(CombatantId id) const;   // nullptr: no loadout (always with equipment off)
+    const ItemDefTable* item_defs() const noexcept { return items_.get(); }
+    std::vector<EquipmentLight> equipment_lights() const;    // light id order
+    uint32_t recomputes() const noexcept { return recomputes_; }   // recompute_derived calls (diagnostics, never hashed)
+    // Setup diagnostics (never hashed): rules5e::hands_overfull_error lines for creatures whose equipped holdables need more
+    // hands than they have (the extra items start carried).
+    const std::vector<std::string>& equipment_errors() const noexcept { return equipment_errors_; }
 
     // Rejected while a decision is pending.
     SubmitResult submit(const Command& cmd);
@@ -223,8 +269,23 @@ public:
     // empty with *error ("no unoccupied space", ...). Submit fills ActionRequest::summon_tiles from this when it is empty.
     std::vector<Vec2i> summon_tiles_for(CombatantId caster, const rules5e::SpellDef& def, const std::vector<uint8_t>& archetypes,
                                         std::string* error = nullptr) const;
+    // AI queries of rules helpers that read positions through EncounterHooks (targets_within, spell_target_ok): the hooks are
+    // re-bound to this Combat first (as submit does), so the answer matches what rules will check on submit.
+    std::vector<CombatantId> ward_alternates(CombatantId actor, CombatantId warded, uint32_t spell_id, uint8_t attack_index) const;
+    rules5e::HealSplitCheck heal_split_check(CombatantId user, const rules5e::FeatureSpec& spec,
+                                             const std::vector<rules5e::HealShare>& split) const;
     uint8_t feature_uses_left(CombatantId id, uint32_t feature_id) const;
     bool can_use_feature(CombatantId id, uint32_t feature_id) const;
+
+    // R-G13 phase 2 (LIGHTING.md §7, §10): the chunks of this combat in its own tile frame (ascending), and the offset to
+    // world chunk coords (world = frame + offset; zero except for the single-chunk overload, which keeps the chunk-local frame).
+    const std::vector<world::ChunkCoord>& frame_chunks() const noexcept { return frame_chunks_; }
+    world::ChunkCoord frame_offset() const noexcept { return frame_offset_; }
+    // Attach a light driver (not owned; null detaches). It publishes a frame now (the create-time frame) and after every
+    // committed step. While its last step left a wanted halo Pending or Failed, submit() re-evaluates once and refuses
+    // ("light halo pending" / "light halo failed") until the halo completes. Copies of a Combat never carry the driver.
+    void attach_light_driver(LightDriver* d);
+    LightDriver* light_driver() const noexcept { return light_.d; }
 
     // Canonical hash (StableHash) of the event stream + final positions. Golden material.
     uint64_t hash() const;
@@ -293,7 +354,37 @@ private:
     // summoned / gone (R-G12): a summon slot (appended after the create-time slots) and whether it ended; `last` = its anchor
     // when it ended (its entity is destroyed at the end of that step).
     struct Slot { CombatantId id; ecs::Entity entity; const Archetype* archetype; bool summoned = false; bool gone = false; Vec2i last{}; };
-    Combat(ecs::Registry& reg, Grid grid) : reg_(&reg), grid_(std::move(grid)) {}
+    Combat(ecs::Registry& reg, Grid grid, CombatOptions options = {}) : reg_(&reg), grid_(std::move(grid)) { options_ = options; }
+    // Equipment (EQUIPMENT.md 9): options, the item table, light ids per light item, recompute inputs per loadout (sim-only,
+    // derived from the replayed state, not hashed).
+    CombatOptions options_{};
+    std::shared_ptr<const ItemDefTable> items_;
+    std::vector<std::pair<uint32_t, uint32_t>> item_lights_;   // (item instance, light id), instance order
+    std::map<CombatantId, DeriveInputs> derive_seen_;
+    uint32_t recomputes_ = 0;
+    std::vector<std::string> equipment_errors_;
+    std::vector<SimEvent> item_events_;   // ItemMoved of the step being resolved (apply_equip on state_ only), pushed by complete
+    void item_moved(CombatantId actor, Vec2i tile, uint32_t instance, uint8_t reason, CombatantId holder);
+    void ground_drop(rules5e::EncounterState& st, const rules5e::HeldItem& h, Vec2i at) const;
+    void setup_equipment(const ContentLibrary& content);
+    void apply_equip(rules5e::EncounterState& st, const rules5e::ActionRequest& req, uint8_t cost_kind);
+    void equipment_after_step(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs);
+    void refresh_interactions(rules5e::EncounterState& st) const;
+    void sync_ground_entities();
+    void recompute(rules5e::EncounterState& st, CombatantId id);
+    bool within_5ft(CombatantId a, Vec2i tile) const;
+    // Non-owning; a copy (lookahead, replay) starts detached so only the attached Combat drives the light frames.
+    struct LightLink {
+        LightDriver* d = nullptr;
+        LightLink() = default;
+        LightLink(const LightLink&) noexcept {}
+        LightLink& operator=(const LightLink&) noexcept { d = nullptr; return *this; }
+        LightLink(LightLink&& o) noexcept : d(o.d) { o.d = nullptr; }
+        LightLink& operator=(LightLink&& o) noexcept { d = o.d; o.d = nullptr; return *this; }
+    };
+    LightLink light_;
+    std::vector<world::ChunkCoord> frame_chunks_;
+    world::ChunkCoord frame_offset_{0, 0, 0};
     void apply_rules_events(const std::vector<rules5e::Event>& evs);
     void sync_ecs();
     void install_hooks();
@@ -338,7 +429,8 @@ private:
     bool move_tile(CombatantId mover, Vec2i to, const std::vector<rules5e::Event>& evs);
     friend struct CombatTestAccess;
     friend std::optional<Combat> replay(ecs::Registry&, std::span<const world::Chunk* const>, const ContentLibrary&,
-                                        uint64_t, const std::vector<LogEntry>&, std::string*, const std::vector<CombatantId>&);
+                                        uint64_t, CombatOptions, const std::vector<LogEntry>&, std::string*,
+                                        const std::vector<CombatantId>&);
     bool leaves_reach(CombatantId mover, Vec2i from, Vec2i to) const;
     int melee_reach_tiles(CombatantId id) const;   // 0 = no melee attack
     const Slot* slot(CombatantId id) const;
@@ -388,5 +480,12 @@ std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, cons
 std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
                              uint64_t seed, const std::vector<LogEntry>& log, std::string* error = nullptr,
                              const std::vector<CombatantId>& surprised = {});
+// Replays with the original combat's options (equipment on needs them: loadouts are built at create).
+std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content, uint64_t seed,
+                             CombatOptions options, const std::vector<LogEntry>& log, std::string* error = nullptr,
+                             const std::vector<CombatantId>& surprised = {});
+std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
+                             uint64_t seed, CombatOptions options, const std::vector<LogEntry>& log,
+                             std::string* error = nullptr, const std::vector<CombatantId>& surprised = {});
 
 } // namespace eng::sim

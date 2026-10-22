@@ -1,4 +1,5 @@
 #include "sim/combat.hpp"
+#include "sim/light_driver.hpp"
 #include "sim/trace.hpp"
 
 #include <algorithm>
@@ -7,6 +8,7 @@
 #include "assets/schema_registry.hpp"
 #include "base/canonical_hash.hpp"
 #include "rules5e/conditions.hpp"
+#include "rules5e/equipment.hpp"
 
 namespace eng::sim {
 
@@ -38,17 +40,29 @@ std::optional<std::string> spawn_team_name(const world::EntitySpawn& sp, const A
 
 std::optional<Combat> Combat::create(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content,
                                      uint64_t seed, std::string* error) {
+    return create(reg, chunk, content, seed, CombatOptions{}, error);
+}
+
+std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::Chunk* const> chunks_in,
+                                     const ContentLibrary& content, uint64_t seed, std::string* error) {
+    return create(reg, chunks_in, content, seed, CombatOptions{}, error);
+}
+
+std::optional<Combat> Combat::create(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content,
+                                     uint64_t seed, CombatOptions options, std::string* error) {
     // Single-chunk combat keeps the v0 chunk-local frame (local == world tile), whatever the
     // chunk's coord: goldens and existing callers are unchanged.
     world::Chunk local = chunk;
     local.coord.x = 0;
     local.coord.y = 0;
     const world::Chunk* one[] = {&local};
-    return create(reg, std::span<const world::Chunk* const>(one), content, seed, error);
+    auto c = create(reg, std::span<const world::Chunk* const>(one), content, seed, options, error);
+    if (c) c->frame_offset_ = world::ChunkCoord{chunk.coord.x, chunk.coord.y, 0};
+    return c;
 }
 
 std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::Chunk* const> chunks_in,
-                                     const ContentLibrary& content, uint64_t seed, std::string* error) {
+                                     const ContentLibrary& content, uint64_t seed, CombatOptions options, std::string* error) {
     // Canonical chunk order (coord), so callers' order (streamer, threads) cannot matter.
     std::vector<const world::Chunk*> chunks(chunks_in.begin(), chunks_in.end());
     std::sort(chunks.begin(), chunks.end(), [](const world::Chunk* a, const world::Chunk* b) { return a->coord < b->coord; });
@@ -58,7 +72,8 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
     std::vector<WSpawn> spawns;
     for (const world::Chunk* ch : chunks)
         for (const auto& sp : ch->spawns) spawns.push_back({&sp, Grid::to_world(ch->coord, sp.tile)});
-    Combat c(reg, std::move(grid));
+    Combat c(reg, std::move(grid), options);
+    for (const world::Chunk* ch : chunks) c.frame_chunks_.push_back(ch->coord);
     c.seed_ = seed;
     c.content_ = &content;   // R-G12: forms resolve against the library (archetype pointers already live as long)
     for (const auto& [aid, arch] : content.all())   // Polymorph's choices: rated beasts, byte order of ids
@@ -174,6 +189,7 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
             se.rules.a = sl.archetype->footprint;
             c.events_.push_back(se);
         }
+    if (c.options_.equipment) c.setup_equipment(content);   // EQUIPMENT.md 9: nothing at all with the option off
     return c;
 }
 
@@ -573,6 +589,23 @@ void Combat::install_hooks() {
     state_.hooks.decide_reaction = nullptr;
     state_.hooks.poll_order = poll_order_;
     state_.hooks.spells = spells_;
+    if (options_.equipment) {   // EQUIPMENT.md 9: only with the option; off = empty hooks = pre-equipment rules
+        refresh_interactions(state_);
+        state_.hooks.loadout_of = [](const rules5e::EncounterState& st, CombatantId id) -> const rules5e::LoadoutView* {
+            const rules5e::Loadout* l = find_loadout(st, id);
+            return l ? &l->view : nullptr;
+        };
+        std::shared_ptr<const ItemDefTable> items = items_;
+        state_.hooks.item_def = [items](uint32_t def) -> const rules5e::ItemDef* { return items ? items->find(def) : nullptr; };
+        item_events_.clear();
+        state_.hooks.ground_item_def = [this](uint32_t instance) -> const rules5e::ItemDef* {
+            for (const auto& g : state_.ground_items)
+                if (g.item.instance == instance) return items_ ? items_->find(g.item.def) : nullptr;
+            return nullptr;
+        };
+        state_.hooks.apply_equip = [this](rules5e::EncounterState& st, const rules5e::ActionRequest& req, uint8_t cost,
+                                          std::vector<rules5e::Event>&) { apply_equip(st, req, cost); };
+    }
     if (spells_) {
         state_.hooks.can_provide_components = [this](const rules5e::EncounterState&, const rules5e::Combatant& caster,
                                                      const rules5e::SpellDef& d) {
@@ -803,6 +836,20 @@ uint8_t Combat::feature_uses_left(CombatantId id, uint32_t fid) const {
     return rules5e::feature_uses_left(state_, id, fid);
 }
 
+// The hook table is a derived binding to `this` (not hashed, not logged; submit re-installs it before every rules call), so
+// re-binding it from a const query changes nothing observable. It must be bound here: before the first submit it is empty, and
+// after a move of the Combat it points at the old object.
+std::vector<CombatantId> Combat::ward_alternates(CombatantId actor, CombatantId warded, uint32_t spell_id, uint8_t attack_index) const {
+    const_cast<Combat*>(this)->install_hooks();
+    return rules5e::ward_alternate_targets(state_, actor, warded, spell_id, attack_index);
+}
+rules5e::HealSplitCheck Combat::heal_split_check(CombatantId user, const rules5e::FeatureSpec& spec,
+                                                 const std::vector<rules5e::HealShare>& split) const {
+    const auto* u = rules5e::find(state_, user);
+    if (!u) return {0, rules5e::HealSplitReason::BadTarget};
+    const_cast<Combat*>(this)->install_hooks();
+    return rules5e::check_heal_split(state_, *u, spec, split);
+}
 bool Combat::can_use_feature(CombatantId id, uint32_t fid) const {
     const ActiveFeature* f = find_active(archetype(id), fid);
     if (!f || state_.ended || state_.pending || rules5e::current_actor(state_) != id) return false;
@@ -1089,6 +1136,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
     if (split < evs.size()) sync_ecs();
     for (auto& sl : slots_)   // gone summons: the entity goes at the end of the step (never mid-step)
         if (sl.gone && reg_->alive(sl.entity)) { reg_->destroy(sl.entity); sl.entity = ecs::kNullEntity; }
+    if (options_.equipment) equipment_after_step(ls, evs);
     step_to_.reset();
     ready_to_.reset();
 }
@@ -1234,13 +1282,23 @@ SubmitResult Combat::finish(rules5e::StepResult sr) {
     complete(ls, sr.events, to, sr.teardown_begin);
     log_.push_back({ls, to});
     r.reactions = std::move(sr.reactions);
+    if (light_.d) light_.d->step(*this);   // R-G13: the committed state's light frame
     return r;
+}
+
+void Combat::attach_light_driver(LightDriver* d) {
+    light_.d = d;
+    if (d) d->step(*this);
 }
 
 SubmitResult Combat::submit(const Command& cmd) {
     SubmitResult r;
     if (state_.pending) { r.error = "a reaction window is waiting for a decision"; r.needs = pending(); return r; }
     if (state_.ended) { r.error = "encounter ended"; return r; }
+    if (light_.d && light_.d->halted()) {   // R-G13 §7: never step on a partial halo; re-check once (the streamer may have loaded)
+        light_.d->step(*this);
+        if (light_.d->halted()) { r.error = light_.d->failed().empty() ? "light halo pending" : "light halo failed"; return r; }
+    }
     install_hooks();
     return cmd.kind == CommandKind::Step ? do_step(cmd.to, cmd.request.squeeze == 1) : do_rules(cmd.request, cmd.to, cmd.aim);
 }
@@ -1488,6 +1546,21 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
         } else {
             r.error = "only Attack or Move can be readied";
             return r;
+        }
+    }
+    // EQUIPMENT.md 4.2: PickUp / HandOver reach is the sim's fact (the caller's value is replaced; logged with the request).
+    if (req.kind == ActionKind::UseObject && options_.equipment &&
+        (req.equip_op == uint8_t(rules5e::EquipOp::PickUp) || req.equip_op == uint8_t(rules5e::EquipOp::HandOver))) {
+        req.equip_in_reach = false;
+        if (req.equip_op == uint8_t(rules5e::EquipOp::PickUp)) {
+            // Not a ground item: reach is moot; rules refuses it as "equip: unknown ground item" (ground_item_def).
+            req.equip_in_reach = true;
+            for (const auto& g : state_.ground_items)
+                if (g.item.instance == req.equip_item) req.equip_in_reach = within_5ft(actor, {g.x, g.y});
+        } else if (rules5e::find(state_, req.equip_to) && req.equip_to != actor) {
+            const Spot rs = spot(req.equip_to);
+            const Spot as = spot(actor);
+            req.equip_in_reach = rect_distance(as.p, as.n, rs.p, rs.n) <= 1;
         }
     }
     step_to_.reset();
@@ -1739,6 +1812,19 @@ uint64_t Combat::hash() const {
             h.byte(uint8_t(s.archetype->footprint)); h.byte(s.gone ? 1 : 0); h.byte(c ? c->team : 0);
         }
     }
+    // 0xD0 (EQUIPMENT.md 8, Engine Core): loadout_digest, only when a loadout exists (CombatOptions::equipment and a creature
+    // with a loaded item); never with the option off.
+    if (!state_.loadouts.empty()) { h.byte(0xD0); h.u64(loadout_digest(state_)); }
+    // 0xD2 (EQUIPMENT.md 4.4): ground items (count, then instance, def, count, flags, tile x / y in instance order), once a
+    // ground item has existed (sticky ground_items_seen: a picked-up item still differs from one never dropped).
+    if (state_.ground_items_seen) {
+        h.byte(0xD2);
+        h.u32(uint32_t(state_.ground_items.size()));
+        for (const auto& g : state_.ground_items) {
+            h.u32(g.item.instance); h.u32(g.item.def); h.u16(g.item.count); h.byte(g.item.flags);
+            h.i32(g.x); h.i32(g.y);
+        }
+    }
     return h.value();
 }
 
@@ -1795,7 +1881,11 @@ uint64_t Combat::log_hash() const {
             h.byte(0xCE); h.u32(uint32_t(q.heal_split.size()));
             for (const auto& x : q.heal_split) { h.u32(x.target); h.u32(uint32_t(uint16_t(x.amount))); }
         }
-        if (q.avert_gaze) { h.byte(0xBB); h.byte(1); }   // Petrifying Gaze averting the eyes: folded only when set (gaze_seen is derived, not folded)
+        if (q.avert_gaze) { h.byte(0xBB); h.byte(1); }
+        if (q.equip_op != 0) {   // 0xD1 (EQUIPMENT.md 4.2, Engine Core): equip request, folded only when equip_op != 0
+            h.byte(0xD1); h.byte(q.equip_op); h.u32(q.equip_item); h.byte(q.equip_hand); h.u32(q.equip_to);
+            h.byte(q.equip_in_reach ? 1 : 0);
+        }   // Petrifying Gaze averting the eyes: folded only when set (gaze_seen is derived, not folded)
         // Small leftovers (rules #111): bit0 haste_action, bit1 reckless, bit2 aggressive; folded only when some bit is set.
         if (const uint8_t lo = uint8_t((q.haste_action ? 1 : 0) | (q.reckless ? 2 : 0) | (q.aggressive ? 4 : 0)); lo != 0) {
             h.byte(0xB3);
@@ -1812,6 +1902,13 @@ uint64_t Combat::log_hash() const {
             h.byte(q.damage_choice);
             h.byte(q.condition_choice);
         }
+        // 0xCF (7.2ze Blindness/Deafness, `condition: chosen`): the condition the caster picked, only for such spells.
+        if (q.kind == rules5e::ActionKind::CastSpell && q.condition_choice != 0)
+            if (const rules5e::SpellDef* cd = spell_def(q.spell_id);
+                cd && std::size_t(q.condition_choice) <= cd->condition_choices.size()) {
+                h.byte(0xCF);
+                h.byte(uint8_t(cd->condition_choices[std::size_t(q.condition_choice - 1)]));
+            }
         // R-G9: 0xB4 forced_feet / teleport_feet, 0xB2 the teleport destination; each folded only when set.
         if (q.forced_feet != 0 || q.teleport_feet != 0) { h.byte(0xB4); h.u16(q.forced_feet); h.u16(q.teleport_feet); }
         if (q.has_teleport_dest) { h.byte(0xB2); h.i32(q.teleport_x); h.i32(q.teleport_y); }
@@ -2142,17 +2239,29 @@ std::vector<Vec2i> Combat::legal_teleport_tiles(CombatantId actor, const rules5e
 
 std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content, uint64_t seed,
                              const std::vector<LogEntry>& log, std::string* error, const std::vector<CombatantId>& surprised) {
-    world::Chunk local = chunk;   // same chunk-local frame as the single-chunk create
-    local.coord.x = 0;
-    local.coord.y = 0;
-    const world::Chunk* one[] = {&local};
-    return replay(reg, std::span<const world::Chunk* const>(one), content, seed, log, error, surprised);
+    return replay(reg, chunk, content, seed, CombatOptions{}, log, error, surprised);
 }
 
 std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
                              uint64_t seed, const std::vector<LogEntry>& log, std::string* error,
                              const std::vector<CombatantId>& surprised) {
-    auto c = Combat::create(reg, chunks, content, seed, error);
+    return replay(reg, chunks, content, seed, CombatOptions{}, log, error, surprised);
+}
+
+std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content, uint64_t seed,
+                             CombatOptions options, const std::vector<LogEntry>& log, std::string* error,
+                             const std::vector<CombatantId>& surprised) {
+    world::Chunk local = chunk;   // same chunk-local frame as the single-chunk create
+    local.coord.x = 0;
+    local.coord.y = 0;
+    const world::Chunk* one[] = {&local};
+    return replay(reg, std::span<const world::Chunk* const>(one), content, seed, options, log, error, surprised);
+}
+
+std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
+                             uint64_t seed, CombatOptions options, const std::vector<LogEntry>& log, std::string* error,
+                             const std::vector<CombatantId>& surprised) {
+    auto c = Combat::create(reg, chunks, content, seed, options, error);
     if (!c) return std::nullopt;
     if (!surprised.empty() && !c->apply_surprise(surprised, error)) return std::nullopt;
     for (std::size_t i = 0; i < log.size(); ++i) {

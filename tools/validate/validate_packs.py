@@ -116,7 +116,7 @@ def decode_layers(doc: dict) -> list[list[tuple[int, int, int]]]:
 def compute_content_hash(doc: dict) -> int:
     """compute_content_hash(Chunk) over the decoded chunk; origin and content_hash excluded."""
     c, h = doc["coord"], Canon()
-    h.u16(1)  # format_version (kChunkFormatVersion)
+    h.u16(2 if (doc.get("lights") or "ambient" in doc) else 1)  # format_version: 1 unless chunk@2 fields are present
     h.i32(c["x"]); h.i32(c["y"]); h.i16(c["level"])
     h.u32(len(doc["palette"]))
     for p in doc["palette"]:
@@ -133,7 +133,34 @@ def compute_content_hash(doc: dict) -> int:
     h.u32(len(doc["triggers"]))
     for t in doc["triggers"]:
         h.str(compact_json(t))
+    chunk2_tail(doc, h)
     return h.value()
+
+
+AMBIENT_KIND = {"none": 0, "sun": 1, "moon": 2}
+AMBIENT_LEVEL = {"dark": 0, "dim": 1, "bright": 2}
+
+
+def chunk_light_stable_id(x: int, y: int, level: int, index: int) -> int:
+    h = Canon(); h.i32(x); h.i32(y); h.i16(level); h.u32(index); h.u8(ord("L"))
+    v = h.value()
+    return (v & 0xFFFFFFFF) ^ (v >> 32)
+
+
+def chunk2_tail(doc: dict, h: Canon) -> None:
+    """chunk@2 lights + ambient (R-G13), folded only when present; 'visual' is never hashed."""
+    lights, amb = doc.get("lights", []), doc.get("ambient")
+    if not lights and amb is None:
+        return
+    c = doc["coord"]
+    h.u32(len(lights))
+    for i, l in enumerate(lights):
+        flags = (1 if l.get("magical") else 0) | (2 if l.get("sunlight") else 0) | (4 if l.get("starts_unlit") else 0)
+        h.i32(l["tile"]["x"]); h.i32(l["tile"]["y"]); h.u16(l["bright_ft"]); h.u16(l.get("dim_ft", 0)); h.u8(flags)
+        h.str(l.get("preset", "")); h.u32(chunk_light_stable_id(c["x"], c["y"], c["level"], i))
+    h.u8(1 if amb is not None else 0)
+    if amb is not None:
+        h.u8(AMBIENT_KIND[amb["kind"]]); h.u8(AMBIENT_LEVEL[amb["level"]])
 
 
 def hash_hex(v: int) -> str:
@@ -207,9 +234,12 @@ def check_character(doc, errs, ctx):
         want = hd + modifier(doc["abilities"]["con"])
         # SRD Draconic Resilience (Sorcerer, Draconic Bloodline): hit point maximum +1 per sorcerer level.
         extra = sum(1 for c in doc["classes"] if c.get("class") == "sorcerer" and c.get("subclass") == "draconic")
-        if doc["hit_points"]["average"] != want + extra:
-            errs.append(f"level-1 hit_points {doc['hit_points']['average']} != {want + extra} (max hit die + CON"
-                        f"{' + 1 Draconic Resilience' if extra else ''})")
+        # SRD Dwarven Toughness (hill dwarf): hit point maximum +1 per level.
+        tough = doc["level"] if doc.get("race") == "hill_dwarf" else 0
+        if doc["hit_points"]["average"] != want + extra + tough:
+            errs.append(f"level-1 hit_points {doc['hit_points']['average']} != {want + extra + tough} (max hit die + CON"
+                        f"{' + 1 Draconic Resilience' if extra else ''}{' + 1 Dwarven Toughness' if tough else ''})")
+    errs.extend(c4.check_race_senses(doc))
 
 
 # R-G16 chunk `surprise` (docs/CONTENT_CONVENTIONS.md section 8): reserved, no loader reads it yet.
@@ -342,7 +372,7 @@ def runtime_id_collisions(entries: list[tuple[str, str, str]], cross_pack_only: 
 REACTION_EFFECT_TRIGGER = {"ac_bonus": "being_hit", "counter": "spell_cast"}
 UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "zone", "hp_pool", "delayed_damage", "sustained_damage"),
                   "darts": ("auto_hit",),
-                  "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition")}
+                  "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition", "apply_modifier")}   # 7.2ze Bless / Bane
 
 
 FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_damage",   # R-G15, spell_loader.cpp
@@ -357,6 +387,7 @@ def check_spell(doc, errs, ctx):
     errs += c4.check_spell_modifiers(doc)
     errs += c4.check_spell_gaps(doc)   # 7.2zc
     errs += c4.check_spell_batch2(doc)   # 7.2zd
+    errs += c4.check_spell_batch3(doc)   # 7.2ze
     eff = effs[0]   # the first effect carries targeting, scaling and the reaction/duration rules
     if len(effs) > 1 and any(e["kind"] in REACTION_EFFECT_TRIGGER for e in effs):
         errs.append("effects: ac_bonus and counter reactions cannot be combined with other effects")
@@ -394,7 +425,8 @@ def check_spell(doc, errs, ctx):
         errs.append("casting_time.trigger.or_targeted_by is only for being_hit")
     if (kind == "ac_bonus") != (doc["duration"]["kind"] == "until_start_of_caster_turn"):
         errs.append("ac_bonus effects last until_start_of_caster_turn (and only they use it)")
-    if "targets" in doc and kind not in ("save", "heal", "apply_condition", "polymorph", "max_hp_bonus"):   # polymorph: its own wording; 7.2zd Aid
+    if "targets" in doc and kind not in ("save", "heal", "apply_condition", "polymorph", "max_hp_bonus",
+                                                 "apply_modifier"):   # polymorph: its own wording; 7.2zd Aid; 7.2ze Bless / Bane
         errs.append(f"targets not allowed on a {kind} effect (one target, per dart/beam, or self)")
     if kind in TIMED_BY_DURATION and doc["duration"]["kind"] not in ("rounds", "minutes", "hours"):
         errs.append(f"{kind} needs a rounds, minutes or hours duration")

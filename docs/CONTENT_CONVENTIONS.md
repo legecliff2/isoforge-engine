@@ -606,3 +606,17 @@ them, but its `anyOf` message names no field), keys outside the arm as errors, a
 `escalate_to` is omitted (the loader's defaults restrained / end_of_turn / petrified then apply silently). The averting choice, the
 sight check (`gaze_seen`) and the turn-start `GazeResponse` are the sim's (7.2p hand-off), not content. Cases:
 `tests/validate/effect_cases/*gaze*`.
+
+## 12. Character senses and racial Darkvision (EC #236, validator `checks_v4.check_race_senses`)
+
+PC senses use the stat block's existing `senses` object (`common@1 $defs/senses`, required on character@2 / @3 / @4 since those versions): `senses.darkvision` / `blindsight` / `tremorsense` / `truesight` are integer feet, `passive_perception` stays 10 + Perception. No schema change, no version bump: EC #236's loader reads the same block for characters and monsters into `Combatant::darkvision_ft` ... `truesight_ft` (0 when absent; never hashed).
+
+The validator ties the race string to Darkvision (character@2+, errors):
+
+| race strings | rule |
+|---|---|
+| `dwarf`, `hill_dwarf`, `elf`, `high_elf`, `gnome`, `rock_gnome`, `half_elf`, `half_orc`, `tiefling` | `senses.darkvision` must be 60: `race '<race>': senses.darkvision must be 60 (SRD racial Darkvision), got <value>` |
+| `human`, `halfling`, `lightfoot_halfling`, `dragonborn` | no `senses.darkvision`: `race '<race>': senses.darkvision <value> not allowed (the race has no Darkvision in SRD 5.1)` |
+
+Other race strings are not checked. The level-1 hit point check adds SRD Dwarven Toughness (+1 per level) for `hill_dwarf`. Sample PCs: `srd51.character.sample_hill_dwarf_cleric_1`, `sample_high_elf_wizard_1`, `sample_tiefling_warlock_1` (`characters/sample_*.json`).
+

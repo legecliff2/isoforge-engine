@@ -1,4 +1,5 @@
 #include "rules5e/encounter.hpp"
+#include "rules5e/equipment.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -56,7 +57,10 @@ void refresh_mod_cache(EncounterState& s) {
 }
 
 bool mod_in_scope(const ModifierSpec& m, ModStat st, int ability) {
-    if (m.stat != st) return false;
+    // 7.2ze: a Bless / Bane row also applies to the rolls in also_rolls (attack rolls, saving throws)
+    const bool also = (st == ModStat::AttackRoll && (m.also_rolls & kRollAttack) != 0) ||
+                      (st == ModStat::Save && (m.also_rolls & kRollSave) != 0);
+    if (m.stat != st && !also) return false;
     return !(m.has_ability && ability >= 0 && int(m.ability) != ability);
 }
 
@@ -305,8 +309,16 @@ void regurgitation(EncounterState& s, std::vector<Event>& ev) {
     }
 }
 
+uint32_t turn_stamp(const EncounterState& s);   // below
 void check_end(EncounterState& s, std::vector<Event>& ev) {
     if (!s.effects.empty()) release_contained(s, ev);
+    for (auto& m : s.modifiers) {   // ward / mark follow-ups: when the marked creature is first seen at 0 hit points (move_mark)
+        if (m.mark == 0) continue;
+        const Combatant* mc = find(s, m.mark);
+        const bool down = !mc || mc->dead || mc->hp <= 0;
+        if (down && !m.mark_dropped) { m.mark_dropped = true; m.mark_dropped_stamp = turn_stamp(s); }
+        else if (!down && m.mark_dropped) { m.mark_dropped = false; m.mark_dropped_stamp = 0; }
+    }
     if (s.ended) return;
     auto o = s.hooks.end_condition ? s.hooks.end_condition(s) : default_end_condition(s);
     if (!o) return;
@@ -2979,6 +2991,13 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         bool applied = false;
         for (Combatant* t : to) {
             if (t->dead) continue;
+            if (def.has_modifier_save) {   // 7.2ze Bane: a success resists (no modifier, not affected)
+                const SaveSource src{def.magical, 0, 0};
+                auto r = save_roll(s, *t, def.modifier_save, spell_save_dc(a, def), RollMode::Normal, ev, &src);
+                emit(ev, EventKind::SavingThrowRolled, t->id, CombatantId(def.modifier_save), r.roll.natural, r.roll.total,
+                     int32_t(r.success) | 8);
+                if (r.success) continue;
+            }
             if (apply_modifier(s, a.id, t->id, m, ev)) {
                 affected.push_back(t); applied = true;
                 for (auto& am : s.modifiers) if (am.spec.id == m.id && am.target == t->id && am.caster == a.id) {
@@ -3336,6 +3355,9 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (old_mark == 0) return fail("move_mark: no mark of that spell");
         const Combatant* om = find(s, old_mark);
         if (om && !om->dead && om->hp > 0) return fail("move_mark: the marked creature has not dropped to 0 hit points");
+        for (const auto& m : s.modifiers)   // SRD: "on a subsequent turn"
+            if (m.caster == a.id && m.spec.source == def.id && m.mark == old_mark && m.mark_dropped && m.mark_dropped_stamp == turn_stamp(s))
+                return fail("move_mark: the mark dropped this turn");
         Combatant* t = find_mut(s, req.target);
         if (!t || t->dead || t == &a || t->id == old_mark) return fail("bad target");
         if (is_incapacitated(a)) return fail("incapacitated");
@@ -3404,6 +3426,10 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     if ((!inn || inn->as_listed) && (def.components & kComponentV) && !s.zones.empty() && in_silence(s, a.id))
         return fail("silence: no verbal component inside a Silence zone");
     if ((!inn || inn->as_listed) && s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, def)) return fail("components unavailable");
+    if ((!inn || inn->as_listed) && s.hooks.loadout_of) {   // EQUIPMENT.md 3.2: free hands / focus (creatures with a loadout view)
+        const std::string_view why = components_refusal(s, a.id, def);
+        if (!why.empty()) return fail(why);
+    }
     std::vector<CombatantId> ids = req.targets;
     if (ids.empty() && req.target != 0) ids.push_back(req.target);
     if (ids.empty() && (def.kind == SpellEffectKind::Teleport || def.kind == SpellEffectKind::Zone)) ids.push_back(a.id);   // R-G9 / R-G11: self
@@ -3542,11 +3568,11 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     }
     if (def.max_spread_ft > 0 && ids.size() > 1 && s.hooks.targets_within && !s.hooks.targets_within(s, ids, def.max_spread_ft))
         return fail("targets too far apart");
-    // 7.2zd Sanctuary: a spell without an area, cast by a creature of another team at a warded creature, meets the ward
+    // 7.2zd Sanctuary (ward follow-ups): a harmful spell without an area, cast by anyone but the warded creature at it, meets the ward
     std::vector<std::size_t> warded_at;
-    if (def.area == AreaShape::None)
+    if (def.area == AreaShape::None && spell_harmful(def))
         for (std::size_t i = 0; i < T.size(); ++i)
-            if (T[i] != &a && T[i]->team != a.team && ward_index(s, *T[i], a.id) != 0) warded_at.push_back(i);
+            if (T[i] != &a && ward_index(s, *T[i], a.id) != 0) warded_at.push_back(i);
     Combatant* ward_alt = nullptr;
     if (req.ward_alternate != 0) {
         if (warded_at.empty()) return fail("ward_alternate: no target is warded");
@@ -4111,6 +4137,11 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
         if (charmed_by(s, a.id, t->id)) return fail("a charmed creature cannot attack its charmer");
         if (!req.target_within_5ft) return fail("target must be within 5 ft");
         if (!size_within_one(a.size, t->size)) return fail("target is more than one size larger");
+        if (req.ward_alternate != 0) {   // ward follow-ups: Grapple / Shove meet a Sanctuary ward like attacks
+            if (ward_index(s, *t, a.id) == 0) return fail("ward_alternate: the target is not warded");
+            const auto alts = ward_alternate_targets(s, a.id, t->id, 0, kWardSpecialAttack);
+            if (std::find(alts.begin(), alts.end(), req.ward_alternate) == alts.end()) return fail("ward_alternate: not a legal alternate target");
+        }
         if (b.attacks_remaining > 0) --b.attacks_remaining;
         else if (spend_action(b, a, ActionKind::Attack, false)) {
             b.loading_fired = 0;
@@ -4168,6 +4199,10 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
         }
         check_end(s, ev);
         return out;
+    }
+    if (const std::size_t wi = ward_index(s, *t, a.id); wi != 0 && !ward_save(s, a, wi, ev)) {   // ward follow-ups: like an attack
+        if (req.ward_alternate == 0) { check_end(s, ev); return out; }   // lost: the attack of the Attack action is spent
+        t = find_mut(s, req.ward_alternate);
     }
     // contest: the attacker rolls Athletics, the target the better of Athletics / Acrobatics and wins ties
     auto first = roll_check(s, a, Skill::Athletics, 0, RollMode::Normal, ev);
@@ -4722,6 +4757,10 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             ctx.guess_miss = s.hooks.guess_correct && !s.hooks.guess_correct(s, a, *t, req.guess_x, req.guess_y);
         }
         if (req.attack_index >= a.attacks.size()) return fail("bad attack index");
+        if (s.hooks.loadout_of) {   // EQUIPMENT.md 3: hands / ammunition (only creatures with a loadout view)
+            const std::string_view why = attack_refusal(s, a.id, req.attack_index);
+            if (!why.empty()) return fail(why);
+        }
         const bool warded = ward_index(s, *t, a.id) != 0;   // 7.2zd Sanctuary
         Combatant* ward_alt = nullptr;
         if (req.ward_alternate != 0) {
@@ -4811,6 +4850,17 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         return out;
     }
     case ActionKind::UseObject: {   // 7.2y: Use an Object; Fast Hands also via the bonus action (bonus_action_grants)
+        if (req.equip_op != 0) {   // EQUIPMENT.md 4.2: rules checks legality and spends the action; Engine Core applies the op
+            const EquipCost c = equip_legal(s, req);
+            if (c.kind == EquipCost::Refused) return fail(c.refusal);
+            if (!s.hooks.apply_equip) return fail("equip: equipment play is off");
+            if (c.kind == EquipCost::Action) {
+                if (!spend_action(b, a, req.kind, false)) return fail("equip: no action left");
+                s.budget = b;
+            }
+            s.hooks.apply_equip(s, req, uint8_t(c.kind), out.events);
+            return out;
+        }
         if (req.object_use < 1 || req.object_use > 3) return fail("object_use: 1 use an object, 2 sleight of hand, 3 thieves' tools");
         if (req.object_use != 1 && req.dc <= 0) return fail("object_use: a check needs dc");
         if (!spend_action(b, a, req.kind, req.as_bonus_action)) return fail(req.as_bonus_action ? "no bonus action for this (Fast Hands)" : "no action available");
@@ -5086,6 +5136,22 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             }
         }
     }
+    if (b.bonus_action && a.concentration_spell != 0 && !is_incapacitated(a))   // ward / mark follow-ups: move_mark (Hex, Hunter's Mark)
+        if (const SpellDef* d = spell_def(s, a.concentration_spell); d && d->move_mark != 0) {
+            const ActiveModifier* row = nullptr;
+            for (const auto& m : s.modifiers)
+                if (m.caster == a.id && m.spec.source == d->id && m.spec.mark_scope != 0 && m.mark != 0) { row = &m; break; }
+            const Combatant* om = row ? find(s, row->mark) : nullptr;
+            const bool dropped = row && (!om || om->dead || om->hp <= 0);
+            const bool this_turn = row && row->mark_dropped && row->mark_dropped_stamp == turn_stamp(s);
+            if (dropped && !this_turn)
+                for (const Combatant& t : s.combatants) {   // any living creature but the caster and the old mark (no range / sight)
+                    if (t.dead || t.gone || t.id == a.id || t.id == row->mark) continue;
+                    ActionRequest r{a.id, ActionKind::CastSpell, t.id};
+                    r.spell_id = d->id; r.move_mark = true;
+                    out.push_back(r);
+                }
+        }
     if (s.hooks.spells && !is_incapacitated(a))   // R-G11: move a zone (Moonbeam); sim adds the destination (legal_zone_tiles)
         for (const auto& z : s.zones) {
             const SpellDef* d = s.hooks.spells->find(z.spell_id);
@@ -5108,6 +5174,10 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     }
     if (!s.effects.empty())   // 7.2v: drop what a control condition refuses
         std::erase_if(out, [&](const ActionRequest& r) { return control_refuses(s, a, r) != nullptr; });
+    if (s.hooks.loadout_of) {   // EQUIPMENT.md 4: equip ops, appended after every existing entry (creatures with a loadout view)
+        auto eq = equip_legal_actions(s);
+        out.insert(out.end(), eq.begin(), eq.end());
+    }
     return out;
 }
 
@@ -5460,7 +5530,9 @@ uint64_t modifiers_digest(const EncounterState& s, uint64_t h) {
             byte(uint8_t(m.fought)); byte(uint8_t(m.frenzied));
         }
         if (p.held_applies != 0 || p.range_ft != 0) { byte(0x59); byte(p.held_applies); u32(p.range_ft); }
-        if (p.applies_to == ModAppliesTo::Attackers) { byte(0x5B); u32(p.from_types); }   // 7.2zd: only for such rows
+        if (p.applies_to == ModAppliesTo::Attackers) { byte(0x5B); u32(p.from_types); }
+        if (p.also_rolls != 0) { byte(0x5C); byte(p.also_rolls); }   // 7.2ze Bless / Bane: only for such rows   // 7.2zd: only for such rows
+        if (m.mark_dropped) { byte(0x5D); u32(m.mark_dropped_stamp); }   // ward / mark follow-ups: only when set
         if (m.mark != 0) { byte(0x5A); u32(m.mark); byte(p.mark_scope); byte(uint8_t(p.chosen_ability)); }   // 7.2zc mark: only when set   // 7.2za held die   // 7.2y wielded-scope binding: only when bound (older digests unchanged)
     }
     return h;
@@ -5781,13 +5853,17 @@ std::vector<CombatantId> ward_alternate_targets(const EncounterState& s, Combata
     if (!a) return out;
     const SpellDef* def = spell_id != 0 ? spell_def(s, spell_id) : nullptr;
     if (spell_id != 0 && !def) return out;
-    if (spell_id == 0 && attack_index >= a->attacks.size()) return out;
+    const bool special = spell_id == 0 && attack_index == kWardSpecialAttack;   // Grapple / Shove
+    if (spell_id == 0 && !special && attack_index >= a->attacks.size()) return out;
     for (const Combatant& c : s.combatants) {
         if (c.id == actor || c.id == warded || c.dead || c.gone || c.has(Condition::Warded)) continue;
         if (cover_of(s, actor, c.id, false, spell_id) == Cover::Total) continue;
         if (def) {
             if (!valid_target_type(*def, c)) continue;
             if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, *a, *def, c)) continue;
+        } else if (special) {
+            if (charmed_by(s, actor, c.id) || !size_within_one(a->size, c.size)) continue;
+            if (s.hooks.targets_within && !s.hooks.targets_within(s, {actor, c.id}, 5)) continue;
         } else {
             const Attack& atk = a->attacks[attack_index];
             if (charmed_by(s, actor, c.id) || is_hidden_from(s, c.id, actor)) continue;
@@ -5798,6 +5874,55 @@ std::vector<CombatantId> ward_alternate_targets(const EncounterState& s, Combata
     }
     std::sort(out.begin(), out.end());
     return out;
+}
+
+// Ward / mark follow-ups (see encounter.hpp).
+bool spell_harmful(const SpellDef& def) {
+    auto negative_condition = [](Condition c) { return c != Condition::Invisible && c != Condition::Warded; };
+    auto negative_modifier = [](const ModifierSpec& m) {
+        if (m.applies_to == ModAppliesTo::Self || m.applies_to == ModAppliesTo::AlliesWithin30) return false;
+        if (m.applies_to == ModAppliesTo::Attackers) return m.mode == RollMode::Advantage;   // attacks against it get easier
+        if (m.bonus < 0 || (m.die.count > 0 && m.die_mult < 0) || m.repeat_save != 0) return true;
+        switch (m.stat) {
+        case ModStat::AttackRoll: case ModStat::Save: case ModStat::AbilityCheck: return m.mode == RollMode::Disadvantage;
+        case ModStat::AttacksAgainst: return m.mode == RollMode::Advantage;
+        case ModStat::Speed: return m.speed_num < m.speed_den || m.speed_sub > 0;
+        case ModStat::Slow: case ModStat::MaxHp: case ModStat::NoReactions: case ModStat::NoHealing: return true;
+        default: return false;
+        }
+    };
+    auto one = [&](const SpellDef& d) {
+        switch (d.kind) {
+        case SpellEffectKind::SpellAttack: case SpellEffectKind::Save: case SpellEffectKind::AutoHit:
+        case SpellEffectKind::DelayedDamage: case SpellEffectKind::SustainedDamage: case SpellEffectKind::HpPool:
+        case SpellEffectKind::ForcedMove:
+            return true;   // damage, a saving throw, or a condition imposed (Sleep)
+        case SpellEffectKind::ApplyCondition: return d.applies_condition && negative_condition(d.condition);
+        case SpellEffectKind::ApplyModifier: return negative_modifier(d.modifier);
+        default: return false;
+        }
+    };
+    if (one(def)) return true;
+    for (const SpellEffect& e : def.extra_effects)
+        if (one(effect_view(def, e))) return true;
+    return false;
+}
+
+std::optional<std::size_t> meets_ward(const EncounterState& s, const ActionRequest& req) {
+    std::size_t wi = 0;
+    if (req.kind == ActionKind::Attack) {
+        if (req.special > 3 || req.target == 0) return std::nullopt;   // Escape / Wake / the web: no creature attacked
+        if (const Combatant* t = find(s, req.target)) wi = ward_index(s, *t, req.actor);
+    } else if (req.kind == ActionKind::CastSpell && !req.sustain && req.zone_move == 0 && !req.move_mark) {
+        const SpellDef* d = spell_def(s, req.spell_id);
+        if (!d || d->area != AreaShape::None || !spell_harmful(*d)) return std::nullopt;
+        std::vector<CombatantId> ids = req.targets;
+        if (ids.empty() && req.target != 0) ids.push_back(req.target);
+        for (CombatantId id : ids)
+            if (const Combatant* t = find(s, id); t && (wi = ward_index(s, *t, req.actor)) != 0) break;
+    }
+    if (wi == 0) return std::nullopt;
+    return wi - 1;
 }
 
 // 7.2zd Preserve Life (see encounter.hpp).

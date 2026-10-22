@@ -12,7 +12,9 @@
 #include "sim/combat.hpp"
 #include "sim/content.hpp"
 #include "sim/driver.hpp"
+#include "sim/equipment.hpp"
 #include "sim/light.hpp"
+#include "sim/light_driver.hpp"
 #include "sim/visibility.hpp"
 #include "world/file_chunk_provider.hpp"
 
@@ -132,42 +134,71 @@ struct Session::Impl {
     FeedState feed;
     std::string error;
     std::vector<TileView> tiles;
-    sim::LightCache light_cache;
-    sim::VisibilityState vis;
+    // R-G13 phase 2: the sim publishes the frames (attach + every committed step); the game only supplies PC torches.
+    std::unique_ptr<sim::LightDriver> light_driver;
     uint8_t fog_team = 0;
     std::shared_ptr<const sim::LightFrame> light, light_prev;
-    uint64_t light_step = 0;
     std::map<std::string, eng::iso2d::GlowStyle, std::less<>> visuals;   // light preset -> glow style
     std::vector<std::string> warnings;   // load-time, non-fatal (e.g. conflicting visuals)
 
-    // Producers of carried lights for this step, in a fixed order (light ids follow it): the interim
-    // pc_torches, then Options::carried_lights. Sim attached lights (phase 3) replace this list.
-    std::vector<CarriedLight> carried_lights() const {
-        std::vector<CarriedLight> out;
+    // item content id -> light preset (`light.preset` when the item has one, else the item id itself), for equipment glows.
+    std::map<std::string, std::string, std::less<>> light_presets;
+
+    // Equipment producer: one attached source per light-capable item (Combat::equipment_lights(), light id order),
+    // keyed by the sim's light id. Held or carried: Carrier::Creature on the holder (the glow follows the token); on the
+    // ground (unequipped by drop / death / throw): Carrier::Tile at the item's tile. Unlit (stowed, never lit): lit=false,
+    // so no glow and no light. Bright / dim come from the item def; the preset only picks the visual.
+    static void equipment_sources(const sim::Combat& c, const std::map<std::string, std::string, std::less<>>& presets,
+                                  std::vector<sim::LightSource>& out) {
+        const sim::ItemDefTable* table = c.item_defs();
+        for (const sim::EquipmentLight& e : c.equipment_lights()) {
+            const rules5e::ItemDef* def = table ? table->find(e.def) : nullptr;
+            const std::string* cid = table ? table->content_id(e.def) : nullptr;
+            sim::AttachedLight l;
+            l.id = e.light_id;
+            l.bright_ft = def ? def->light.bright_ft : 0;
+            l.dim_ft = def ? def->light.dim_ft : 0;
+            l.flags = e.lit ? sim::light_src::kLit : uint8_t(0);
+            Vec2i at = e.tile;
+            if (e.holder_id != 0) {
+                l.carrier = sim::Carrier::Creature;
+                l.carrier_id = e.holder_id;
+                at = sim::carrier_centre(c.pos(e.holder_id), c.footprint_size(e.holder_id));
+            } else {
+                l.carrier = sim::Carrier::Tile;
+                l.carrier_id = e.item;
+                l.tile = e.tile;
+            }
+            std::string preset;
+            if (cid) {
+                auto it = presets.find(*cid);
+                preset = it != presets.end() ? it->second : *cid;
+            }
+            out.push_back(sim::attached_source(l, at, std::move(preset)));
+        }
+    }
+
+    // Interim carried lights (pc_torches, then Options::carried_lights), as sim attached sources. Their ids live in
+    // kInterimLightIdBase.. so they never collide with sim-allocated equipment light ids. Deterministic in the state.
+    static void interim_sources(const Options& opt, const sim::Combat& c, std::vector<sim::LightSource>& out) {
+        std::vector<CarriedLight> list;
         auto alive = [&](uint32_t id) {
-            for (const rules5e::Combatant& cb : combat->state().combatants)
+            for (const rules5e::Combatant& cb : c.state().combatants)
                 if (cb.id == id) return !cb.dead;
             return false;
         };
         if (opt.pc_torches)
-            for (const rules5e::Combatant& cb : combat->state().combatants) {
-                const sim::Archetype* a = combat->archetype(cb.id);
+            for (const rules5e::Combatant& cb : c.state().combatants) {
+                const sim::Archetype* a = c.archetype(cb.id);
                 if (!a || a->schema_type != "character" || cb.dead) continue;
                 CarriedLight t;
                 t.carrier_id = cb.id;
-                out.push_back(t);
+                list.push_back(t);
             }
         for (const CarriedLight& cl : opt.carried_lights)
-            if (alive(cl.carrier_id)) out.push_back(cl);
-        return out;
-    }
-
-    // Publishes the sim's LightFrame for the current committed state (start of the next step).
-    void publish_light() {
-        sim::LightWorld w;
-        w.grid = &combat->grid();
-        uint32_t next_id = 1;
-        for (const CarriedLight& cl : carried_lights()) {
+            if (alive(cl.carrier_id)) list.push_back(cl);
+        uint32_t next_id = kInterimLightIdBase;
+        for (const CarriedLight& cl : list) {
             sim::AttachedLight l;
             l.id = next_id++;
             l.carrier = sim::Carrier::Creature;
@@ -175,29 +206,30 @@ struct Session::Impl {
             l.bright_ft = cl.bright_ft;
             l.dim_ft = cl.dim_ft;
             l.flags = uint8_t(sim::light_src::kLit | (cl.magical ? sim::light_src::kMagical : 0));
-            w.sources.push_back(sim::attached_source(
-                l, sim::carrier_centre(combat->pos(cl.carrier_id), combat->footprint_size(cl.carrier_id)), cl.preset));
+            out.push_back(sim::attached_source(l, sim::carrier_centre(c.pos(cl.carrier_id), c.footprint_size(cl.carrier_id)),
+                                               cl.preset));
         }
-        w.normalise();
-        light_cache.begin_step(std::move(w));
-        const world::ChunkCoord coords[] = {chunk->coord};
-        // Viewers for the sim's visibility pass. Interim: everyone has normal sight (SenseRanges{})
-        // until Engine Core wires creature senses into the frame; the game never decides what is seen.
-        std::vector<sim::Viewer> viewers;
-        for (const rules5e::Combatant& cb : combat->state().combatants) {
-            if (cb.dead) continue;
-            sim::Viewer v;
-            v.id = cb.id;
-            v.team = cb.team;
-            v.tile = sim::carrier_centre(combat->pos(cb.id), combat->footprint_size(cb.id));
-            viewers.push_back(v);
-        }
-        vis.begin_step(light_cache, viewers, coords);
-        sim::LightFrameInputs in;
-        in.chunks = coords;
-        in.visibility = &vis;
+    }
+
+
+    void attach_light() {
+        sim::LightProviderInputs in;
+        in.chunks = {chunk.get()};
+        // Producers of entity-attached sources, in a fixed order: equipment (sim light ids), then the interim ones.
+        in.attached_sources = [this](const sim::Combat& c, std::vector<sim::LightSource>& out) {
+            if (opt.equipment) equipment_sources(c, light_presets, out);
+            interim_sources(opt, c, out);
+        };
+        light_driver = std::make_unique<sim::LightDriver>(std::move(in));
+        combat->attach_light_driver(light_driver.get());
+        pull_light();
+    }
+    // Picks up the driver's latest frame (new only after a committed step).
+    void pull_light() {
+        auto f = light_driver ? light_driver->latest() : nullptr;
+        if (f == light) return;
         light_prev = light;
-        light = sim::publish_light_frame(light_cache, in, ++light_step, light_prev.get());
+        light = std::move(f);
     }
 
     std::string name_of(sim::CombatantId id) const {
@@ -270,6 +302,11 @@ std::unique_ptr<Session> Session::open(const Options& o, std::string* error) {
     {
         std::map<std::string, std::map<std::string, eng::iso2d::GlowStyle>> by_preset;   // preset -> item id -> style
         for (const assets::PackDocument& d : set.documents()) {
+            // Equipment glows: item id -> light.preset (any item with a light block that names one).
+            if (d.doc.ok && d.doc.data.is_object() && d.doc.current.type == "item" && !d.content_id.empty() &&
+                d.doc.data.contains("light") && d.doc.data["light"].is_object() && d.doc.data["light"].contains("preset") &&
+                d.doc.data["light"]["preset"].is_string())
+                m.light_presets.emplace(d.content_id, d.doc.data["light"]["preset"].get<std::string>());
             if (!d.doc.ok || !d.doc.data.is_object() || !d.doc.data.contains("visual")) continue;
             if (d.doc.current.type != "item" || d.content_id.empty()) continue;
             const auto& j = d.doc.data;
@@ -303,6 +340,7 @@ std::unique_ptr<Session> Session::open(const Options& o, std::string* error) {
     m.content = std::make_unique<sim::ContentLibrary>();
     auto errs = m.content->load(set);
     if (!errs.empty()) return fail("content load failed: " + errs.front());
+    if (o.content_hook) o.content_hook(*m.content);
 
     for (int layer = 0; layer < world::kChunkLayers; ++layer)
         for (int i = 0; i < world::kChunkSize * world::kChunkSize; ++i) {
@@ -319,7 +357,7 @@ std::unique_ptr<Session> Session::open(const Options& o, std::string* error) {
     if (o.with_sim) {
         m.reg = std::make_unique<ecs::Registry>();
         std::string err;
-        m.combat = sim::Combat::create(*m.reg, *m.chunk, *m.content, o.seed, &err);
+        m.combat = sim::Combat::create(*m.reg, *m.chunk, *m.content, o.seed, sim::CombatOptions{o.equipment}, &err);
         if (!m.combat) return fail("sim create failed: " + err);
         for (const rules5e::Combatant& cb : m.combat->state().combatants) m.feed.tiles[cb.id] = m.combat->pos(cb.id);
         m.drain_events();
@@ -329,7 +367,7 @@ std::unique_ptr<Session> Session::open(const Options& o, std::string* error) {
             if (a && a->schema_type == "character") { m.fog_team = cb.team; break; }
         }
         if (o.fog_team) m.fog_team = *o.fog_team;
-        m.publish_light();
+        m.attach_light();
     }
     return s;
 }
@@ -358,8 +396,45 @@ bool Session::step() {
     }
     if (!r.ok) m.error = r.error;
     m.drain_events();   // a paused request appended nothing; its events arrive when it completes
-    if (!c.pending()) m.publish_light();   // light follows committed state only
+    m.pull_light();   // the driver publishes on committed steps only
     return r.ok;
+}
+
+bool Session::submit_equip(uint32_t actor, uint8_t op, uint32_t item, uint8_t hand) {
+    Impl& m = *impl_;
+    if (!m.combat || m.combat->ended() || m.combat->pending() || !m.error.empty()) return false;
+    if (rules5e::current_actor(m.combat->state()) != actor) return false;
+    rules5e::ActionRequest q{actor, rules5e::ActionKind::UseObject, 0};
+    q.equip_op = op;
+    q.equip_item = item;
+    q.equip_hand = hand;
+    sim::Command c;
+    c.request = q;
+    const sim::SubmitResult r = m.combat->submit(c);
+    if (!r.ok) return false;
+    m.drain_events();
+    m.pull_light();
+    return true;
+}
+
+bool Session::end_turns_until(uint32_t actor) {
+    Impl& m = *impl_;
+    for (int i = 0; i < 16 && m.combat && !m.combat->ended() && rules5e::current_actor(m.combat->state()) != actor; ++i) {
+        sim::Command c;
+        c.request = rules5e::ActionRequest{rules5e::current_actor(m.combat->state()), rules5e::ActionKind::EndTurn, 0};
+        if (!m.combat->submit(c).ok) return false;
+        m.drain_events();
+        m.pull_light();
+    }
+    return m.combat && rules5e::current_actor(m.combat->state()) == actor;
+}
+
+std::vector<Session::EquippedLight> Session::equipment_lights() const {
+    std::vector<EquippedLight> out;
+    if (!impl_->combat) return out;
+    for (const sim::EquipmentLight& e : impl_->combat->equipment_lights())
+        out.push_back({e.light_id, e.item, e.holder_id, e.tile, e.lit});
+    return out;
 }
 
 bool Session::paused() const { return impl_->combat && impl_->combat->pending().has_value(); }

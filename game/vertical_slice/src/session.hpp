@@ -3,12 +3,15 @@
 // and, optionally, runs Engine Core's headless sim fight (sim::Combat) one command at a time.
 // Produces ViewModel snapshots; it never touches the renderer.
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "view_model.hpp"
+
+namespace eng::sim { class ContentLibrary; }
 
 namespace slice {
 
@@ -22,8 +25,14 @@ struct CarriedLight {
     std::string preset = "srd51.core.light.torch";   // content key -> render-side glow style
 };
 
+// Ids of the interim attached sources (pc_torches, Options::carried_lights): far above any sim-allocated
+// light id, so they never collide with equipment light ids (LIGHTING.md 10.1, answer 3).
+inline constexpr uint32_t kInterimLightIdBase = 0x40000000u;
+
 class Session {
 public:
+    // One light-capable item as the sim's equip state reports it (sim::Combat::equipment_lights()).
+    struct EquippedLight { uint32_t light_id = 0, item = 0, holder_id = 0; eng::Vec2i tile{}; bool lit = false; };
     struct Options {
         // assets::PackSet::resolve(pack_roots, packs); depends (e.g. srd51.core) come in through
         // the set, never by being listed. The chunk comes from packs.front()'s chunks/0_0_0.json.
@@ -42,6 +51,11 @@ public:
         // team (the team of the first character combatant). fog = false shows everything.
         bool        fog = true;
         std::optional<uint8_t> fog_team = std::nullopt;
+        // Equipment (EQUIPMENT.md; sim::CombatOptions::equipment): loadouts from character equipment[], and light-capable
+        // items become an attached-light producer (held: follows the holder; dropped: on its ground tile).
+        bool        equipment = false;
+        // Called after content load, before the fight is created (tests / tools: e.g. code-built item defs).
+        std::function<void(eng::sim::ContentLibrary&)> content_hook{};
     };
     // Config-file shape {"pack_roots": [...], "packs": [...]} (both optional) -> o. False + *error
     // on malformed input.
@@ -57,6 +71,11 @@ public:
     // answers it. Nothing from the paused request is in the view until it completes.
     bool paused() const;
     const std::string& error() const;
+    // Scenario / test commands. submit_equip: one rules equip op (rules5e::EquipOp) by the current actor; false if
+    // refused or not that actor's turn. end_turns_until: ends turns until `actor` acts.
+    bool submit_equip(uint32_t actor, uint8_t op, uint32_t item, uint8_t hand = 0);
+    bool end_turns_until(uint32_t actor);
+    std::vector<EquippedLight> equipment_lights() const;
     // Non-fatal load warnings (e.g. two items styling one light preset differently).
     const std::vector<std::string>& warnings() const;
 
