@@ -123,13 +123,43 @@ std::optional<std::string> ItemDefTable::add(const Json& doc) {
         d.kind = ItemKind::Shield;
         d.shield.ac_bonus = clamp8(int_or(doc, "ac_bonus", 2));
         d.shield.magic_bonus = clamp8(int_or(doc, "magic_bonus", 0));
+    } else if (cat == "gear") {
+        d.kind = ItemKind::Other;
+        d.hands = uint8_t(std::clamp(int_or(doc, "hands", 1), 0, 2));
+        if (auto lj = doc.find("light"); lj != doc.end() && lj->is_object()) {
+            d.kind = ItemKind::Light;
+            rules5e::LightDef& L = d.light;
+            L.states.push_back({uint16_t(std::clamp(int_or(*lj, "bright_ft", 0), 0, 65535)),
+                                uint16_t(std::clamp(int_or(*lj, "dim_ft", 0), 0, 65535))});   // state 0: top-level radii
+            L.shape = lj->value("shape", "radius") == "cone" ? rules5e::LightShape::Cone : rules5e::LightShape::Radius;
+            if (auto du = lj->find("duration_rounds"); du != lj->end() && du->is_number_integer())
+                L.duration_rounds = uint32_t(std::clamp<int64_t>(du->get<int64_t>(), 0, 0xFFFFFFFFll));
+            L.lit_by_default = lj->value("lit_by_default", false);
+            if (auto st = lj->find("states"); st != lj->end() && st->is_array())
+                for (const Json& x : *st)
+                    if (x.is_object() && L.states.size() < rules5e::kMaxLightStates)
+                        L.states.push_back({uint16_t(std::clamp(int_or(x, "bright_ft", 0), 0, 65535)),
+                                                   uint16_t(std::clamp(int_or(x, "dim_ft", 0), 0, 65535))});
+        }
+        if (auto ta = doc.find("torch_attack"); ta != doc.end() && ta->is_object()) {
+            d.has_weapon = true;
+            d.weapon.improvised = true;
+            d.weapon.reach_ft = 5;
+            d.weapon_requires_lit = ta->value("requires_lit", false);
+            if (auto dm = ta->find("damage"); dm != ta->end())
+                if (auto dice = damage_of(*dm, &d.weapon.type)) d.weapon.dice = *dice;
+        }
     } else {
         d.kind = ItemKind::Other;   // valuables (gems): carried, never held
     }
-    return add(cid, d);
+    return insert(cid, d);
 }
 
 std::optional<std::string> ItemDefTable::add(const std::string& content_id, ItemDef def) {
+    return insert(content_id, def);
+}
+
+std::optional<std::string> ItemDefTable::insert(const std::string& content_id, ItemDef def) {
     const uint32_t key = item_def_id(content_id);
     if (auto it = by_id_.find(key); it != by_id_.end()) {
         if (it->second.content_id == content_id) return content_id + ": duplicate item id";
@@ -207,13 +237,6 @@ Raw derive_raw(const rules5e::Combatant& c, const rules5e::Loadout& l, const Ite
 
 } // namespace
 
-int hands_needed(const ItemDef* d) {
-    if (!d) return 1;
-    int need = std::max<int>(1, d->hands);
-    if (d->kind == ItemKind::Weapon && (d->weapon.properties & rules5e::kWeaponTwoHanded) != 0) need = std::max(need, 2);
-    return need;
-}
-
 bool build_loadout(rules5e::EncounterState& st, rules5e::CombatantId owner, const std::vector<LoadoutSeed>& seeds,
                    const ItemDefTable& items, uint32_t two_handed_grip, std::string_view content_id,
                    std::vector<std::string>* errors) {
@@ -233,9 +256,9 @@ bool build_loadout(rules5e::EncounterState& st, rules5e::CombatantId owner, cons
         if (sd.equipped && d->kind == ItemKind::Armor && v.armor_def == 0) { v.armor_def = sd.def; continue; }
         const bool holdable = d->kind == ItemKind::Weapon || d->kind == ItemKind::Shield || d->kind == ItemKind::Light ||
                               d->kind == ItemKind::Focus || d->has_weapon;
-        if (sd.equipped && holdable) held_slots += d->kind == ItemKind::Shield ? 1 : hands_needed(d);
+        if (sd.equipped && holdable) held_slots += d->kind == ItemKind::Shield ? 1 : rules5e::hands_needed(d);
         if (sd.equipped && holdable && v.hand_count > 0) {
-            const bool both = hands_needed(d) >= 2;
+            const bool both = rules5e::hands_needed(d) >= 2;
             if (d->kind == ItemKind::Shield && v.off.instance == 0) { v.off = h; continue; }
             if (v.main.instance == 0 && (!both || v.off.instance == 0)) { v.main = h; continue; }
             if (!both && v.off.instance == 0) { v.off = h; continue; }
@@ -332,6 +355,16 @@ uint64_t loadout_digest(const rules5e::EncounterState& st) {
             h.byte(uint8_t(i < l.dmg_adjust.size() ? l.dmg_adjust[i] : 0));
         }
         h.byte(uint8_t(l.ac_adjust));
+    }
+    // Expended ammunition (EQUIPMENT.md 2.5.1): only once some loadout has spent any, so earlier digests are unchanged.
+    bool any = false;
+    for (const auto& l : st.loadouts) any = any || !l.expended.empty();
+    if (any) {
+        h.byte(0xE5);
+        for (const auto& l : st.loadouts) {
+            h.u32(uint32_t(l.expended.size()));
+            for (const auto& x : l.expended) { h.u32(x.def); h.u16(x.count); }
+        }
     }
     return h.value();
 }

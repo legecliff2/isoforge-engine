@@ -22,6 +22,10 @@ namespace eng::sim {
 // error (ItemDefTable::add).
 uint32_t item_def_id(std::string_view content_id);
 
+// The light state lives in HeldItem::flags bits 4-6 (rules5e::kHeldLightStateMask, light_state_index / with_light_state;
+// index into rules5e::LightDef::states). Non-zero only after a state change; folded with the flags (0xD0), so the default
+// state hashes as before. Radii: rules5e::light_radii(def, held).
+
 // item@N definitions keyed by def id. Owns the strings WeaponDef::id views into (not copyable: share it by pointer).
 class ItemDefTable {
 public:
@@ -29,6 +33,8 @@ public:
     ItemDefTable(const ItemDefTable&) = delete;
     ItemDefTable& operator=(const ItemDefTable&) = delete;
     // One already-migrated item@1 document (weapon / armor / shield / valuable). Error message or nullopt.
+    // item@2 `gear` with a `light` block becomes ItemKind::Light (LightDef: states = [top-level radii, states[]...] up to
+    // rules5e::kMaxLightStates, shape, duration, lit_by_default); `torch_attack` adds the improvised weapon profile (requires_lit). Other gear: Other.
     std::optional<std::string> add(const assets::Json& doc);
     // A definition built in code (tests; item@2 light / ammunition kinds before their loader). def.id is set from content_id;
     // def.weapon.id is re-pointed at owned storage (the attack id is the content id's last segment).
@@ -41,6 +47,8 @@ public:
 
 private:
     struct Entry { std::string content_id; rules5e::ItemDef def; };
+    // Both add()s end here. A duplicate (or colliding) id is refused with an error and changes nothing.
+    std::optional<std::string> insert(const std::string& content_id, rules5e::ItemDef def);
     std::map<uint32_t, Entry> by_id_;
     std::deque<std::string> strings_;
 };
@@ -62,9 +70,6 @@ bool build_loadout(rules5e::EncounterState& st, rules5e::CombatantId owner, cons
                    const ItemDefTable& items, uint32_t two_handed_grip, std::string_view content_id = {},
                    std::vector<std::string>* errors = nullptr);
 
-// Hands to hold an item, as rules5e's equip_legal counts them (equipment.cpp `hands_needed`, not exported): ItemDef::hands,
-// at least 1, and at least 2 for a two-handed weapon. Unknown def = 1.
-int hands_needed(const rules5e::ItemDef* d);
 
 rules5e::Loadout* find_loadout(rules5e::EncounterState& st, rules5e::CombatantId id);
 const rules5e::Loadout* find_loadout(const rules5e::EncounterState& st, rules5e::CombatantId id);

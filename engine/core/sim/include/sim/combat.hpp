@@ -118,6 +118,11 @@ struct EquipmentLight {
     CombatantId holder_id = 0;
     Vec2i tile{};
     bool lit = false;
+    // Light state (EQUIPMENT.md 6): rules5e::LightDef::states index (0 = top-level radii; a hooded lantern: 1 = hooded), from
+    // HeldItem::flags bits 4-6 (rules5e::light_state_index). bright_ft / dim_ft: rules5e::light_radii (0 / 0 while unlit).
+    uint8_t state = 0;
+    uint16_t bright_ft = 0, dim_ft = 0;
+    rules5e::LightShape shape = rules5e::LightShape::Radius;
 };
 
 // Ground item ECS entities (EQUIPMENT.md 4.4): StableId kGroundItemIdBase + instance, with TilePos and this component.
@@ -147,8 +152,9 @@ public:
 
     // ---- Equipment (CombatOptions::equipment; EQUIPMENT.md 9) ----
     // rules5e::legal_actions plus, with equipment on, the Engine Core entries appended after them: PickUp (ground items within
-    // 5 ft of the actor, instance order, hand 1 then 2) then HandOver (held instance order, recipient combatant order, to
-    // creatures with a loadout within 5 ft). Each is filtered through rules5e::equip_legal.
+    // 5 ft of the actor, instance order, hand 1 then 2), HandOver (held instance order, recipient combatant order, to
+    // creatures with a loadout within 5 ft), then SetLightState (held lights in instance order: each state index, then douse).
+    // Each is filtered through rules5e::equip_legal.
     std::vector<rules5e::ActionRequest> legal_actions();   // re-binds the hooks first (like submit)
     const rules5e::Loadout* loadout(CombatantId id) const;   // nullptr: no loadout (always with equipment off)
     const ItemDefTable* item_defs() const noexcept { return items_.get(); }
