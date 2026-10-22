@@ -229,6 +229,26 @@ class LightPresetAndVisual(unittest.TestCase):
 VIS = LightPresetAndVisual.VIS
 
 
+def pouch() -> dict:
+    return {"$schema": "item@2", "id": "test.v4.pouch", "name": "Pouch", "category": "gear", "cost_cp": 50, "weight_oz": 16,
+            "container": {"holds": [{"ammo_kind": "sling_bullet", "capacity": 20}, {"ammo_kind": "needle", "capacity": 50}]}}
+
+
+class Container(unittest.TestCase):
+    def test_valid(self):
+        self.assertEqual(errs_of(pack(**{"items/pouch.json": pouch()})), [])
+
+    def test_bad(self):
+        for c in ({}, {"holds": []}, {"holds": [{"ammo_kind": "arrow"}]}, {"holds": [{"ammo_kind": "rock", "capacity": 1}]},
+                  {"holds": [{"ammo_kind": "arrow", "capacity": 0}]}, {"holds": [{"ammo_kind": "arrow", "capacity": "20"}]},
+                  {"holds": [{"ammo_kind": "arrow", "capacity": 20}], "extra": 1}):
+            self.assertTrue(errs_of(pack(**{"items/pouch.json": dict(pouch(), container=c)})), c)
+        self.assertTrue(errs_of(pack(**{"items/arrow.json": dict(arrows(), container=pouch()["container"])})))   # gear only
+        dup = pouch(); dup["container"]["holds"].append({"ammo_kind": "needle", "capacity": 10})
+        e = errs_of(pack(**{"items/pouch.json": dup}))
+        self.assertTrue(any("/container/holds: ammo_kind values must be unique" in x for x in e), e)
+
+
 class NewShapes(unittest.TestCase):
     def test_full_pack_valid(self):
         e, w = h.validate_docs(pack())
