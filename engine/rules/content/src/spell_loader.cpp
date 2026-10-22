@@ -956,6 +956,68 @@ SpellLoad spell_from_json(const Json& j) {
             if (e.contains("per_slot_above") && !small_int(e["per_slot_above"], 0, 50, p)) return ("effect per_slot_above must be an integer 0..50");
             if (f == 0 && p == 0) return ("effect max_hp_bonus needs flat or per_slot_above above 0");
             s.hp_bonus_flat = int16_t(f); s.hp_bonus_per_slot = int16_t(p);
+        } else if (kind == "weapon_imbue") {   // 7.2zf Shillelagh, Magic Weapon
+            s.kind = SpellEffectKind::WeaponImbue;
+            WeaponImbueSpec& w = s.imbue;
+            if (e.contains("weapons")) {
+                if (!e["weapons"].is_array() || e["weapons"].empty()) return ("effect weapons must be a non-empty list of item ids");
+                for (const Json& x : e["weapons"]) {
+                    if (!x.is_string()) return ("effect weapons must be a non-empty list of item ids");
+                    w.weapons.push_back(x.get<std::string>());
+                }
+            }
+            if (e.contains("ability")) {
+                if (e["ability"] != Json("spellcasting")) return ("effect ability must be spellcasting");
+                w.spellcasting_ability = true;
+            }
+            if (e.contains("die")) {
+                int d = 0;
+                if (!small_int(e["die"], 4, 12, d) || d % 2 != 0) return ("effect die must be one of 4, 6, 8, 10, 12");
+                w.die = uint8_t(d);
+            }
+            w.magical = e.value("magical", false);
+            if (e.contains("magic_bonus")) {
+                const Json& mb = e["magic_bonus"];
+                int b = 0;
+                if (!mb.is_object() || !mb.contains("base") || !small_int(mb["base"], 1, 3, b)) return ("effect magic_bonus base must be an integer 1..3");
+                w.bonus_base = int8_t(b);
+                if (mb.contains("at_slot")) {
+                    int last = 0;
+                    for (const Json& p2 : mb["at_slot"]) {
+                        int sl = 0, bb = 0;
+                        if (!p2.is_array() || p2.size() != 2 || !small_int(p2[0], 1, 9, sl) || !small_int(p2[1], 1, 3, bb))
+                            return ("effect magic_bonus at_slot entries must be [slot 1..9, bonus 1..3]");
+                        if (sl <= last) return ("effect weapon_imbue at_slot slot levels must ascend");
+                        last = sl;
+                        w.bonus_at_slot.push_back({uint8_t(sl), int8_t(bb)});
+                    }
+                }
+            }
+            w.requires_nonmagical = e.value("requires_nonmagical", false);
+            w.ends_on_release = e.value("ends_on_release", false);
+            if (!w.spellcasting_ability && w.die == 0 && !w.magical && w.bonus_base == 0)
+                return ("effect weapon_imbue needs ability, die, magical or magic_bonus");
+        } else if (kind == "duplicates") {   // 7.2zf Mirror Image
+            s.kind = SpellEffectKind::Duplicates;
+            DuplicatesSpec& d = s.duplicates;
+            int c = 0;
+            if (!e.contains("count") || !small_int(e["count"], 1, 3, c)) return ("effect count must be an integer 1..3");
+            d.count = uint8_t(c);
+            const Json th = e.value("thresholds", Json());
+            if (!th.is_array() || th.size() != 3) return ("effect thresholds must be exactly 3 integers 2..20");
+            for (std::size_t k = 0; k < 3; ++k) {
+                int t = 0;
+                if (!small_int(th[k], 2, 20, t)) return ("effect thresholds must be exactly 3 integers 2..20");
+                d.thresholds[k] = uint8_t(t);
+            }
+            if (d.thresholds[1] > d.thresholds[0] || d.thresholds[2] > d.thresholds[1])
+                return ("effect duplicates thresholds must not increase with the remaining count");
+            const Json ac = e.value("ac", Json());
+            int base = 0;
+            if (!ac.is_object() || !ac.contains("base") || !small_int(ac["base"], 0, 30, base) || !ac.contains("ability") ||
+                !lookup(kAbility, ac["ability"], d.ac_ability))
+                return ("effect ac must be {base 0..30, ability}");
+            d.ac_base = int8_t(base);
         } else if (kind == "teleport") {   // R-G9 (7.2k): self-teleport (Misty Step); the destination is the caller's (sim)
             s.kind = SpellEffectKind::Teleport;
             int ft = 0;
@@ -1060,7 +1122,8 @@ SpellLoad spell_from_json(const Json& j) {
         // R-G15: of the new kinds only delayed_damage rides another effect (Acid Arrow); the others read spell-level fields
         // (pool, dispel DC, revive window, condition mask, sustain) that an extra effect does not carry.
         if (x.kind == SpellEffectKind::HpPool || x.kind == SpellEffectKind::Dispel || x.kind == SpellEffectKind::Revive ||
-            x.kind == SpellEffectKind::EndCondition || x.kind == SpellEffectKind::SustainedDamage || x.kind == SpellEffectKind::Teleport)
+            x.kind == SpellEffectKind::EndCondition || x.kind == SpellEffectKind::SustainedDamage || x.kind == SpellEffectKind::Teleport ||
+            x.kind == SpellEffectKind::WeaponImbue || x.kind == SpellEffectKind::Duplicates)
             return err("effects[" + std::to_string(i) + "]: " + xk + " is only allowed as the first effect");
         if (x.control != ControlKind::None) return err("effects[" + std::to_string(i) + "]: control is only allowed on the first effect");
         if (!x.condition_choices.empty()) return err("effects[" + std::to_string(i) + "]: choices is only allowed on the first effect");
@@ -1106,6 +1169,13 @@ SpellLoad spell_from_json(const Json& j) {
         if (ward && !lasting) return err("effect ward needs concentration or a rounds, minutes or hours duration");
         if (immunity && !lasting) return err("effect condition_immunity_from needs concentration or a rounds, minutes or hours duration");
         if (hp_bonus && !lasting) return err("effect max_hp_bonus needs concentration or a rounds, minutes or hours duration");
+        if (s.kind == SpellEffectKind::WeaponImbue && !lasting)
+            return err("effect weapon_imbue needs concentration or a rounds, minutes or hours duration");
+        if (s.kind == SpellEffectKind::Duplicates) {   // 7.2zf Mirror Image: a timed duration (not concentration), self
+            if (s.duration != SpellDuration::Rounds && s.duration != SpellDuration::Minutes && s.duration != SpellDuration::Hours)
+                return err("effect duplicates needs a rounds, minutes or hours duration");
+            if (s.range_ft != 0) return err("effect duplicates is self only");
+        }
         if (j.contains("move_mark")) {
             const Json& mm = j["move_mark"];
             if (!mm.is_object() || mm.size() != 1 || !mm.contains("action") || !mm["action"].is_string() ||

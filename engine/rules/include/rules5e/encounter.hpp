@@ -450,6 +450,10 @@ struct ActiveSpellEffect {
     // when the effect ends). Derived from the SpellDef and slot level: not hashed (hp_max itself is).
     uint32_t immune_conditions = 0, immune_from_types = 0;
     int16_t max_hp_bonus = 0;
+    // appended (7.2zf): WeaponImbue: the imbued attack index + 1 (0 = none) and the magic bonus at the cast's slot (derived from
+    // the SpellDef and the caster's attack list: not hashed). Duplicates: the duplicates left (Combat::hash 0xD3 while > 0).
+    uint8_t imbue_attack = 0; int8_t imbue_bonus = 0;
+    uint8_t duplicates = 0;
 };
 
 // 7.2w: a creature leaving its container in the last step (EncounterState::contain_exits; cleared when each step starts).
@@ -596,6 +600,11 @@ struct Sight {
 // (range; also ignores Blinded) ignore light, obscurement and invisibility. Tremorsense (range) needs subject_grounded. Order:
 // Sight, Truesight, Blindsight, Tremorsense. perceives = can_see, or audible and not Deafened.
 Sight derive_sight(const Combatant& viewer, const SightFacts& f);
+// 7.2zf: creature `id`'s attack `index` as it resolves now (a Shillelagh / Magic Weapon imbue applied: to-hit, damage die and
+// bonus, magical); the authored attack otherwise. Pure; for AI and UI. index out of range: a default Attack.
+Attack effective_attack(const EncounterState&, CombatantId id, std::size_t index);
+// 7.2zf Mirror Image: duplicates left on `id` (0 = none).
+int duplicates_left(const EncounterState&, CombatantId id);
 // Light obscurement (dim light included): disadvantage on Wisdom (Perception) checks that rely on sight; passive -5. A
 // check relies on sight unless the viewer perceives the subject with a special sense (sense None: it is still looking).
 constexpr bool sight_perception_disadvantage(const Sight& v) {
