@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <numeric>
+#include <span>
 
 namespace eng::iso2d {
 
@@ -30,6 +32,7 @@ SpriteBatch::SpriteBatch(IRenderDevice& dev, uint32_t max_sprites) : dev_(dev), 
 
 SpriteBatch::~SpriteBatch() {
     dev_.destroy(vbo_);
+    for (BufferId b : extra_vbos_) dev_.destroy(b);
     dev_.destroy(ibo_);
     dev_.destroy(pipeline_);
 }
@@ -41,12 +44,10 @@ void SpriteBatch::begin() {
 }
 
 void SpriteBatch::draw(const Sprite& s, Vec2f iso_pos, int32_t layer, uint32_t sort_key, int32_t z) {
-    if (items_.size() >= max_sprites_) return;  // v0: drop overflow
     items_.push_back({s, iso_pos, make_sort_key(iso_pos, layer, z, sort_key)});
 }
 
 void SpriteBatch::draw_px(const Sprite& s, Vec2f px, int32_t layer, uint32_t sort_key, int32_t z) {
-    if (items_.size() >= max_sprites_) return;
     items_.push_back({s, px, SortKey{layer, px.y, z, sort_key}, true});
 }
 
@@ -74,7 +75,22 @@ void SpriteBatch::prepare(const Camera& cam) {
         if (runs_.empty() || !(runs_.back().texture == s.texture)) runs_.push_back({s.texture, q, 1});
         else ++runs_.back().quads;
     }
-    if (!verts_.empty()) dev_.update_buffer(vbo_, 0, bytes(verts_));
+    // Upload page by page (max_sprites_ quads each); extra pages are created on first need and reused.
+    const size_t quads = verts_.size() / 4;
+    pages_used_ = uint32_t((quads + max_sprites_ - 1) / max_sprites_);
+    while (extra_vbos_.size() + 1 < pages_used_) {
+        extra_vbos_.push_back(dev_.create_buffer({uint32_t(max_sprites_ * 4 * sizeof(SpriteVertex)), BufferDesc::Vertex, true}));
+#ifndef NDEBUG   // once per new page, not per frame
+        std::fprintf(stderr, "iso2d::SpriteBatch: %zu sprites > page of %u; batch now splits into %zu pages\n", quads,
+                     max_sprites_, extra_vbos_.size() + 1);
+#endif
+    }
+    for (uint32_t p = 0; p < pages_used_; ++p) {
+        const size_t q0 = size_t(p) * max_sprites_, n = std::min<size_t>(max_sprites_, quads - q0);
+        dev_.update_buffer(p == 0 ? vbo_ : extra_vbos_[p - 1], 0,
+                           std::as_bytes(std::span<const SpriteVertex>(verts_.data() + q0 * 4, n * 4)));
+    }
+    if (pages_used_ > 1) ++split_frames_;
 
     const float w = float(cam.viewport_w), h = float(cam.viewport_h);
     const float z = cam.zoom > 0.f ? cam.zoom : 1.f;
@@ -90,9 +106,17 @@ void SpriteBatch::submit(ICommandList& cl) {
     cl.bind_vertex_buffer(vbo_, 0);
     cl.bind_index_buffer(ibo_, 0);
     cl.push_uniforms(kSpriteUniformSlot, std::as_bytes(std::span(&uniforms_, 1)));
+    uint32_t bound = 0;   // page whose vertex buffer is bound
     for (const Run& r : runs_) {
         cl.bind_texture(kSpriteTextureSlot, r.texture);
-        cl.draw_indexed(r.quads * 6, r.first_quad * 6, 0);
+        // In sorted order; a run crossing a page boundary is drawn as one piece per page.
+        for (uint32_t q = r.first_quad, end = r.first_quad + r.quads; q < end;) {
+            const uint32_t page = q / max_sprites_, local = q % max_sprites_;
+            const uint32_t n = std::min(end - q, max_sprites_ - local);
+            if (page != bound) { cl.bind_vertex_buffer(page == 0 ? vbo_ : extra_vbos_[page - 1], 0); bound = page; }
+            cl.draw_indexed(n * 6, local * 6, 0);
+            q += n;
+        }
     }
 }
 
