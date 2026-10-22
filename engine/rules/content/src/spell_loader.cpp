@@ -1033,6 +1033,38 @@ SpellLoad spell_from_json(const Json& j) {
             v = 20;
             if (e.contains("move_ft") && !feet_5(e["move_ft"], v)) return ("effect move_ft must be a positive multiple of 5");
             s.summon_weapon.move_ft = uint16_t(v);
+        } else if (kind == zg::kTempHp) {   // 7.2zg False Life (dice + per_slot_above), Heroism (ability + per_turn + immunity)
+            s.kind = SpellEffectKind::TempHp;
+            TempHpSpec& th = s.temp_hp;
+            const bool has_dice = e.contains(zg::kDice), has_ab = e.contains(zg::kAbility);
+            if (has_dice == has_ab) return ("effect temp_hp needs exactly one of dice or ability");
+            if (has_dice) {
+                auto d = e[zg::kDice].is_string() ? parse_dice(e[zg::kDice].get<std::string>()) : std::nullopt;
+                if (!d || (d->count == 0 && d->bonus <= 0)) return ("effect dice invalid");
+                th.dice = *d;
+            } else {
+                if (e[zg::kAbility] != Json("spellcasting")) return ("effect ability must be spellcasting");
+                th.ability = true;
+            }
+            if (e.contains(zg::kPerSlotAbove)) {
+                int v = 0;
+                if (!small_int(e[zg::kPerSlotAbove], 1, 50, v)) return ("effect per_slot_above must be an integer 1..50");
+                th.per_slot_above = int16_t(v);
+            }
+            if (e.contains(zg::kPerTurn)) {
+                if (!e[zg::kPerTurn].is_boolean()) return ("effect per_turn must be a boolean");
+                th.per_turn = e[zg::kPerTurn].get<bool>();
+            }
+            if (e.contains(zg::kConditionImmunity)) {
+                const Json& ci = e[zg::kConditionImmunity];
+                if (!ci.is_array() || ci.empty()) return ("effect condition_immunity must be a non-empty list of conditions");
+                for (const Json& x : ci) {
+                    Condition c;
+                    if (!lookup(kCondition, x, c)) return ("effect condition_immunity must be a non-empty list of conditions");
+                    if (th.immune_conditions & bit(c)) return ("effect condition_immunity items must be unique");
+                    th.immune_conditions |= bit(c);
+                }
+            }
         } else if (kind == zg::kHaste || kind == zg::kSlow) {   // 7.2zg: dedicated kinds, expanded into marker + number rows
             const bool haste = kind == zg::kHaste;
             if (!s.concentration) return ("effect " + kind + " needs concentration");
@@ -1156,7 +1188,7 @@ SpellLoad spell_from_json(const Json& j) {
         if (xe.is_object() && xe.value("kind", "") == "zone")   // the cast refuses an extra effect of kind Zone
             return err("zone must be the primary effect (effects[" + std::to_string(i) + "] is a zone)");
         if (xe.is_object() && (xe.value("kind", "") == zg::kHaste || xe.value("kind", "") == zg::kSlow ||
-                               xe.value("kind", "") == zg::kSummonWeapon))   // 7.2zg
+                               xe.value("kind", "") == zg::kSummonWeapon || xe.value("kind", "") == zg::kTempHp))   // 7.2zg
             return err("effects[" + std::to_string(i) + "]: " + xe.value("kind", "") + " is only allowed as the first effect");
         SpellDef x;
         std::string xk;
@@ -1215,6 +1247,8 @@ SpellLoad spell_from_json(const Json& j) {
         if (hp_bonus && !lasting) return err("effect max_hp_bonus needs concentration or a rounds, minutes or hours duration");
         if (s.kind == SpellEffectKind::WeaponImbue && !lasting)
             return err("effect weapon_imbue needs concentration or a rounds, minutes or hours duration");
+        if (s.kind == SpellEffectKind::TempHp && (s.temp_hp.per_turn || s.temp_hp.immune_conditions != 0) && !lasting)
+            return err("effect temp_hp per_turn or condition_immunity needs concentration or a rounds, minutes or hours duration");
         if (s.kind == SpellEffectKind::SummonWeapon && !lasting)   // 7.2zg Spiritual Weapon: 1 minute
             return err("effect summon_weapon needs concentration or a rounds, minutes or hours duration");
         if (s.kind == SpellEffectKind::Duplicates) {   // 7.2zf Mirror Image: a timed duration (not concentration), self

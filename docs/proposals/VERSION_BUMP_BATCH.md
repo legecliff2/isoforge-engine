@@ -2554,6 +2554,17 @@ Additive (11 spells; key names frozen by T&C, all defined once in `engine/rules/
   `effect reach_ft must be a positive multiple of 5`, `effect move_ft must be a positive multiple of 5`,
   `effect summon_weapon needs concentration or a rounds, minutes or hours duration`,
   `effects[<i>]: summon_weapon is only allowed as the first effect`.
+- **False Life / Heroism** (spell@1 kind `temp_hp`, first effect only; `SpellEffectKind::TempHp`, `TempHpSpec`): exactly one of
+  `dice` (rolled, its flat included: False Life `1d4+4`) or `ability: spellcasting` (the caster's modifier: Heroism);
+  `per_slot_above` adds n per slot above the spell's (False Life 5); `per_turn` grants it again at the start of each of the
+  target's turns while the spell lasts (the existing TempHp per_turn row; also granted at the cast); `condition_immunity`
+  (Heroism `[frightened]`) makes the target immune from any source while the spell lasts (`ActiveSpellEffect` with
+  `immune_from_types = kImmuneFromAnySource`, read by `immune_to`; not hashed, derived). The larger temp HP pool is kept.
+  Strings: `effect temp_hp needs exactly one of dice or ability`, `effect dice invalid`, `effect ability must be spellcasting`,
+  `effect per_slot_above must be an integer 1..50`, `effect per_turn must be a boolean`,
+  `effect condition_immunity must be a non-empty list of conditions`, `effect condition_immunity items must be unique`,
+  `effect temp_hp per_turn or condition_immunity needs concentration or a rounds, minutes or hours duration`,
+  `effects[<i>]: temp_hp is only allowed as the first effect`.
 
 ## 8. Migrations and inert markers
 

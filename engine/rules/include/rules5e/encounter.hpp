@@ -417,6 +417,8 @@ bool tick_target_turn_end(Timed&);
 
 // A lasting spell effect on a creature (a condition from a failed save). Ends when the caster's
 // concentration ends, or on a successful repeat save.
+// 7.2zg Heroism: ActiveSpellEffect::immune_from_types sentinel = immune from any source (immune_to reads it).
+inline constexpr uint32_t kImmuneFromAnySource = 0xFFFFFFFFu;
 struct ActiveSpellEffect {
     uint32_t spell_id; CombatantId caster, target;
     Condition condition; Ability save_ability; int16_t dc;

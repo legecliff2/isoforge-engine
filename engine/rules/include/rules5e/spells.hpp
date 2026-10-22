@@ -63,6 +63,8 @@ enum class SpellEffectKind : uint8_t {
     WeaponImbue,
     // appended (7.2zf Mirror Image): illusory duplicates on the caster (`duplicates`); see DuplicatesSpec.
     Duplicates,
+    // appended (7.2zg False Life, Heroism): temporary hit points on each target (`temp_hp`); see TempHpSpec.
+    TempHp,
 };
 // R-G9 forced movement (push / pull) of an effect. mode 1 push (away from the source), 2 pull (toward it), 3 along a line
 // (Gust of Wind: sim's direction; not in R-G9's first scope). feet: exact distance, or the maximum when up_to (the caster
@@ -241,6 +243,17 @@ struct SummonWeaponSpec {
     uint8_t upcast_every = 2;
     uint8_t reach_ft = 5;
     uint16_t move_ft = 20;
+};
+// 7.2zg False Life / Heroism: amount = roll(dice, its flat included) + per_slot_above x (slot - spell level), plus the
+// caster's spellcasting modifier when `ability`. per_turn: granted again at the start of each of the target's turns while the
+// spell lasts (an ActiveModifier TempHp row, Heroism). immune_conditions: Condition bits the target is immune to while it lasts
+// (Heroism: frightened), from any source. Integer only.
+struct TempHpSpec {
+    DiceExpr dice{0, 0, 0};
+    int16_t per_slot_above = 0;
+    bool ability = false;
+    bool per_turn = false;
+    uint32_t immune_conditions = 0;
 };
 struct ZoneSpec {
     AreaShape shape = AreaShape::None;       // Sphere, Cylinder, Cube, Line (walls)
@@ -431,6 +444,8 @@ struct SpellDef {
     // appended (7.2zf): kind WeaponImbue / Duplicates (primary effect only).
     WeaponImbueSpec imbue{};
     DuplicatesSpec duplicates{};
+    // appended (7.2zg): kind TempHp (primary effect only).
+    TempHpSpec temp_hp{};
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
