@@ -366,14 +366,27 @@ std::string format_dice(DiceExpr d) {
 
 namespace {
 std::string signed_str(int v) { return (v >= 0 ? "+" : "") + std::to_string(v); }
+// A reason that is empty or whitespace-only counts as missing (the schema's minLength 1 already rejects empty ones).
+bool blank(const std::string& r) {
+    for (char ch : r) if (ch != ' ' && ch != '\t' && ch != '\n' && ch != '\r' && ch != '\f' && ch != '\v') return false;
+    return true;
+}
+}
+
+std::string hands_overfull_error(std::string_view id, int held, int hands) {
+    return std::string(id) + ": holds " + std::to_string(held) + " items but has " + std::to_string(hands) + " hands";
+}
+std::string hand_slot_error(std::string_view id, std::string_view hand, int count) {
+    return std::string(id) + ": hand '" + std::string(hand) + "' holds " + std::to_string(count) + " items";
 }
 
 MonsterDerivation derive_monster(const MonsterSpec& m) {
     MonsterDerivation out;
     const int table = proficiency_for_cr(m.cr_num, m.cr_den);
     out.pb = int8_t(m.has_pb ? m.pb : table);
-    if (m.has_pb && m.pb != table && m.pb_reason.empty())
+    if (m.has_pb && m.pb != table && blank(m.pb_reason))
         out.errors.push_back(m.id + ": proficiency_bonus " + std::to_string(int(m.pb)) + " != CR table " + std::to_string(table));
+    if (m.hands >= 0 && m.held > m.hands) out.errors.push_back(hands_overfull_error(m.id, m.held, m.hands));
     // AC (1.2)
     AcInput in;
     in.abilities = m.abilities;
@@ -383,7 +396,7 @@ MonsterDerivation derive_monster(const MonsterSpec& m) {
     const int without_adjust = compute_ac(in).ac;
     if (m.ac_adjust.present) in.ac_adjust = m.ac_adjust.value;
     out.ac = compute_ac(in).ac;
-    if (m.ac_adjust.present && m.ac_adjust.reason.empty()) out.errors.push_back(m.id + ": ac_adjust needs a reason");
+    if (m.ac_adjust.present && blank(m.ac_adjust.reason)) out.errors.push_back(m.id + ": ac_adjust needs a reason");
     if (m.ac_adjust.present && without_adjust == m.printed_ac) out.errors.push_back(m.id + ": ac_adjust is not needed");
     if (m.has_natural_armor) {
         AcInput plain = in; plain.bases.clear(); plain.ac_adjust = 0;
@@ -403,7 +416,7 @@ MonsterDerivation derive_monster(const MonsterSpec& m) {
         DerivedAttack base = derive_weapon_attack(as.weapon, v, as.use);
         if (!base.error.empty()) { out.errors.push_back(pre + ": " + std::string(base.error)); out.attacks.push_back(base.attack); continue; }
         if (as.attack_bonus.present) {
-            if (as.attack_bonus.reason.empty()) out.errors.push_back(pre + ": attack_bonus needs a reason");
+            if (blank(as.attack_bonus.reason)) out.errors.push_back(pre + ": attack_bonus needs a reason");
             if (base.attack.to_hit == as.printed_to_hit) out.errors.push_back(pre + ": attack_bonus is not needed");
             v.to_hit_override = as.attack_bonus.value;
         }
