@@ -80,7 +80,7 @@ Windows Debug still run on every ready PR.
   On self-hosted runs `actions/cache` is skipped, because the local ccache is faster.
 - Limits: systemd unit with `Nice=10`, `IOSchedulingClass=idle`, `CPUQuota=400%`, `MemoryMax=8G`.
   Jobs use `CMAKE_BUILD_PARALLEL_LEVEL=4` and `CTEST_PARALLEL_LEVEL=2`. On hosts without systemd
-  the script falls back to `nice -n10 ionice -c3 taskset` (4 CPUs) and `ulimit -v`.
+  the script falls back to `nice -n10 ionice -c3 taskset` (4 CPUs) with `oom_score_adj=500`. That fallback has no hard memory cap: `ulimit -v` breaks the .NET runner, and MemoryMax needs cgroups. This is how the current box (no systemd) runs it; re-run `setup.sh` after a reboot.
 - Build deps (ninja, ccache, X11/Wayland dev headers) are installed by `setup.sh`. cmake-ci skips
   `apt-get` on self-hosted runners and fails fast if ninja is missing.
 - **Security:** the repo is private, so only collaborators can open PRs that run here. Fork PRs

@@ -44,14 +44,15 @@ else
 fi
 if ! [ -d /run/systemd/system ]; then
   # Container without systemd (e.g. tini as PID 1): same limits approximated with nice/ionice,
-  # taskset (CPU_QUOTA as a CPU count) and a ulimit on address space. Re-run after reboot.
+  # taskset (CPU_QUOTA as a CPU count) and a raised oom_score_adj so the runner is killed first
+  # under memory pressure (ulimit -v breaks the .NET runner's GC reservation, and MemoryMax needs
+  # cgroups/systemd). Re-run after reboot.
   ncpu=$(( ${CPU_QUOTA%\%} / 100 )); [ "$ncpu" -ge 1 ] || ncpu=1
   if pgrep -u "$RUNNER_USER" -f "$RUNNER_DIR/bin/Runner.Listener" >/dev/null; then echo "runner already running"; exit 0; fi
-  memk=$(( $(numfmt --from=iec "$MEM_MAX") / 1024 ))
   sudo -u "$RUNNER_USER" CMAKE_BUILD_PARALLEL_LEVEL=4 setsid bash -c \
-    "ulimit -v $memk; cd '$RUNNER_DIR' && exec taskset -c 0-$((ncpu-1)) nice -n 10 ionice -c3 ./run.sh" \
+    "echo 500 > /proc/self/oom_score_adj; cd '$RUNNER_DIR' && exec taskset -c 0-$((ncpu-1)) nice -n 10 ionice -c3 ./run.sh" \
     >>"$RUNNER_DIR/runner-service.log" 2>&1 < /dev/null &
-  echo "started without systemd (nice 10, ionice idle, cpus 0-$((ncpu-1)), ulimit -v ${MEM_MAX})"
+  echo "started without systemd (nice 10, ionice idle, cpus 0-$((ncpu-1)), oom_score_adj 500; MemoryMax needs systemd)"
   exit 0
 fi
 cat > /etc/systemd/system/$SVC.service <<UNIT
