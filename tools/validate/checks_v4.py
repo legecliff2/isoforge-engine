@@ -1204,7 +1204,7 @@ def check_spell_batch2(doc: dict) -> list[str]:
         return errs
     du = doc.get("duration") if isinstance(doc.get("duration"), dict) else {}
     lasting = du.get("concentration") is True or du.get("kind") in SPELL_TIMED_DURATIONS
-    if lasting or any(e.get("kind") == "apply_condition" and "ends_on" in e for e in effs):
+    if lasting or any(e.get("kind") in ("apply_condition", "save") and "ends_on" in e for e in effs):
         return errs   # ends_on without a lasting duration is check_spell_gaps' (it comes first in the loader too)
     if any(e.get("kind") == "apply_condition" and "ward" in e for e in effs):
         errs.append("effect ward needs concentration or a rounds, minutes or hours duration")
@@ -1314,7 +1314,7 @@ def check_spell_gaps(doc: dict) -> list[str]:
         return errs
     du = doc.get("duration") if isinstance(doc.get("duration"), dict) else {}
     conc = du.get("concentration") is True
-    if any(e.get("kind") == "apply_condition" and "ends_on" in e for e in effs) and not conc and du.get("kind") not in SPELL_TIMED_DURATIONS:
+    if any(e.get("kind") in ("apply_condition", "save") and "ends_on" in e for e in effs) and not conc and du.get("kind") not in SPELL_TIMED_DURATIONS:
         errs.append("effect ends_on needs concentration or a rounds, minutes or hours duration")
     elif "move_mark" in doc:
         if not conc:
@@ -1525,6 +1525,8 @@ def check_spell_batch_zg(doc: dict) -> list[str]:
     if (e.get("kind") == ZG_KEYS["temp_hp"] and (e.get(ZG_KEYS["per_turn"]) or e.get(ZG_KEYS["condition_immunity"]))
             and not (du.get("concentration") is True or timed)):
         errs.append("effect temp_hp per_turn or condition_immunity needs concentration or a rounds, minutes or hours duration")
+    if any(x.get("kind") == "save" and "ends_on" in x and "condition" not in x for x in effs):   # Hypnotic Pattern
+        errs.append("effect ends_on on a save effect needs a condition")
     es = ZG_KEYS["exempt_senses"]   # Blur (apply_modifier); Mirror Image (duplicates) takes the same key and list
     for x in effs:
         if es in x and x.get("kind") == "apply_modifier":

@@ -338,3 +338,56 @@ TEST_CASE("7.2zg outlined: advantage on attacks against a seen outlined creature
     }
     CHECK(higher > 0);
 }
+
+namespace {
+const uint32_t kHypno = spell_id_of("test.zg.hypnotic_pattern");
+EncounterHooks hypno_hooks() {
+    auto h = spell_hooks();
+    auto book = std::make_shared<SpellBook>(*h.spells);
+    SpellDef d; d.id = kHypno; d.content_id = "test.zg.hypnotic_pattern"; d.level = 3; d.range_ft = 120; d.concentration = true;
+    d.kind = SpellEffectKind::Save; d.save_ability = Ability::Wis; d.condition = Condition::Charmed; d.applies_condition = true;
+    d.fixed_dc = 30; d.duration = SpellDuration::Minutes; d.duration_amount = 1;
+    d.ends_on = kEndsOnDamage | kEndsOnShakeAwake;
+    SpellEffect inc; inc.kind = SpellEffectKind::ApplyCondition; inc.affected_only = true; inc.condition = Condition::Incapacitated;
+    inc.ends_on = kEndsOnDamage | kEndsOnShakeAwake;
+    d.extra_effects = {inc};
+    book->add(d);
+    h.spells = book;
+    return h;
+}
+bool has_hypno(const EncounterState& s, CombatantId id) {
+    return std::any_of(s.effects.begin(), s.effects.end(), [&](const auto& e) { return e.spell_id == kHypno && e.target == id; });
+}
+}  // namespace
+
+TEST_CASE("7.2zg ends_on damage / shake_awake: Hypnotic Pattern ends on a Wake action by an adjacent creature, or on damage") {
+    for (int how = 0; how < 2; ++how) {
+        CAPTURE(how);
+        auto w = wizard(1); w.spells_known.push_back(kHypno); w.spell_slots_max = {0, 4, 3, 3, 0, 0, 0, 0, 0, 0}; w.spell_slots = w.spell_slots_max;
+        never_react(w);
+        auto m = monster(2); m.hp = m.hp_max = 300; never_react(m);
+        auto m3 = monster(3); never_react(m3);
+        auto s = begin_encounter({w, m, m3}, 7, nullptr, hypno_hooks());
+        end_turns_until(s, 1);
+        REQUIRE(step(s, cast(1, kHypno, 2, 3)).ok);
+        REQUIRE(has_hypno(s, 2));
+        CHECK(mut(s, 2).has(Condition::Charmed)); CHECK(mut(s, 2).has(Condition::Incapacitated));
+        if (how == 0) {
+            end_turns_until(s, 3);
+            ActionRequest wake{3, ActionKind::Attack, 2}; wake.special = 5;
+            auto far = wake; far.target_within_5ft = false;
+            CHECK(step(s, far).error == "target must be within 5 ft");
+            wake.target_within_5ft = true;
+            auto r = step(s, wake);
+            INFO(r.error); REQUIRE(r.ok);
+        } else {
+            for (int i = 0; i < 20 && has_hypno(s, 2); ++i) {
+                (void)step(s, ActionRequest{current_actor(s), ActionKind::EndTurn});
+                end_turns_until(s, 1);
+                REQUIRE(step(s, cast(1, kFireBolt, 2)).ok);
+            }
+        }
+        CHECK_FALSE(has_hypno(s, 2));
+        CHECK_FALSE(mut(s, 2).has(Condition::Charmed)); CHECK_FALSE(mut(s, 2).has(Condition::Incapacitated));
+    }
+}

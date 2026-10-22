@@ -177,6 +177,10 @@ struct SpellEffect {
 // 7.2zc (Invisibility): apply_condition `ends_on` bits: the effect ends when its target makes an attack / casts a spell.
 // kEndsOnHarmfulCast (7.2zd Sanctuary): a spell it cast affected a creature of another team.
 inline constexpr uint8_t kEndsOnAttack = 1, kEndsOnCast = 2, kEndsOnHarmfulCast = 4;
+// 7.2zg (Hypnotic Pattern; also on `save` effects with a condition): kEndsOnDamage: the effect ends when its target takes
+// damage (ActiveSpellEffect::ends_on_damage, as Sleep); kEndsOnShakeAwake: any other creature within 5 ft may end it with its
+// action (the existing Wake action, ActionRequest::special 5).
+inline constexpr uint8_t kEndsOnDamage = 8, kEndsOnShakeAwake = 16;
 
 // ---- R-G11 persistent zones and auras (docs/proposals/ZONES_AURAS.md §2.6) ----
 // Point: fixed at a sim tile (ActionRequest::zone_x / zone_y, kept opaque in ActiveZone); Creature: an aura centred on the
