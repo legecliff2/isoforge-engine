@@ -20,12 +20,16 @@ bool pure_ranged(const WeaponDef& w) { return w.reach_ft == 0 && w.range_ft > 0;
 bool has(const WeaponDef& w, WeaponProperty p) { return (w.properties & p) != 0; }
 // Hands to hold an item: ItemDef::hands, and never fewer than 2 for a two-handed weapon (the property is authoritative even
 // if content left `hands` at its default 1). Unknown def = 1.
+} // namespace
+
 int hands_needed(const ItemDef* d) {
     if (!d) return 1;
     int need = std::max<int>(1, d->hands);
     if (d->kind == ItemKind::Weapon && (d->weapon.properties & kWeaponTwoHanded) != 0) need = std::max(need, 2);
     return need;
 }
+
+namespace {
 int empty_hands(const LoadoutView& v) {
     if (v.hand_count == 0) return 0;
     return int(v.main.instance == 0) + int(v.off.instance == 0);
@@ -280,7 +284,7 @@ EquipCost equip_legal(const EncounterState& s, const ActionRequest& r) {
         if (h || c) return no("equip: the item is already carried");
         if (!r.equip_in_reach) return no("equip: the item is out of reach");
         // equip_item is a ground instance id: resolve its def through Engine Core, never through item_def
-        const ItemDef* d = s.hooks.ground_item_def ? s.hooks.ground_item_def(r.equip_item) : nullptr;
+        const ItemDef* d = s.hooks.ground_item_def ? s.hooks.ground_item_def(s, r.equip_item) : nullptr;
         if (!d) return no("equip: unknown ground item");
         if (!hand_ok(d)) return no("equip: no free hand");
         return interaction();
@@ -373,6 +377,24 @@ bool blank(const std::string& r) {
 }
 }
 
+std::optional<WeaponUse> weapon_use_from_string(std::string_view u) {
+    if (u == "one_hand") return WeaponUse::OneHand;
+    if (u == "two_hands") return WeaponUse::TwoHands;
+    if (u == "thrown") return WeaponUse::Thrown;
+    if (u == "off_hand") return WeaponUse::OffHand;
+    return std::nullopt;
+}
+std::string_view weapon_use_name(WeaponUse u) {
+    switch (u) {
+    case WeaponUse::TwoHands: return "two_hands";
+    case WeaponUse::Thrown: return "thrown";
+    case WeaponUse::OffHand: return "off_hand";
+    default: return "one_hand";
+    }
+}
+
+int recovered_ammo(int expended) { return expended > 0 ? expended / 2 : 0; }
+
 std::string hands_overfull_error(std::string_view id, int held, int hands) {
     return std::string(id) + ": holds " + std::to_string(held) + " items but has " + std::to_string(hands) + " hands";
 }
@@ -408,31 +430,32 @@ MonsterDerivation derive_monster(const MonsterSpec& m) {
     // Attacks (2.1, 5.3..5.5)
     bool multiplier_used = false;
     for (const MonsterAttackSpec& as : m.attacks) {
+        const WeaponUse use = as.has_use ? as.use : WeaponUse::OneHand;   // #252: authored, else one_hand; never inferred
         WielderView v;
         v.abilities = m.abilities; v.pb = out.pb; v.proficient = true;
         v.dice_multiplier = m.dice_multiplier; v.extra_melee_dice = m.brute_dice;
         v.ability = as.ability; v.damage_ability_none = as.damage_ability_none;
         const std::string pre = m.id + "." + as.id;
-        DerivedAttack base = derive_weapon_attack(as.weapon, v, as.use);
+        DerivedAttack base = derive_weapon_attack(as.weapon, v, use);
         if (!base.error.empty()) { out.errors.push_back(pre + ": " + std::string(base.error)); out.attacks.push_back(base.attack); continue; }
         if (as.attack_bonus.present) {
             if (blank(as.attack_bonus.reason)) out.errors.push_back(pre + ": attack_bonus needs a reason");
             if (base.attack.to_hit == as.printed_to_hit) out.errors.push_back(pre + ": attack_bonus is not needed");
             v.to_hit_override = as.attack_bonus.value;
         }
-        DerivedAttack d = derive_weapon_attack(as.weapon, v, as.use);
+        DerivedAttack d = derive_weapon_attack(as.weapon, v, use);
         if (d.attack.to_hit != as.printed_to_hit)
             out.errors.push_back(pre + ": derived to-hit " + signed_str(d.attack.to_hit) + " != printed " + signed_str(as.printed_to_hit));
         if (!as.weapon.natural && m.dice_multiplier > 1) {
             WielderView one = v; one.dice_multiplier = 1;
-            if (!(derive_weapon_attack(as.weapon, one, as.use).attack.damage == as.printed_damage)) multiplier_used = true;
+            if (!(derive_weapon_attack(as.weapon, one, use).attack.damage == as.printed_damage)) multiplier_used = true;
         }
         if (!(d.attack.damage == as.printed_damage)) {
             std::string e = pre + ": derived damage " + format_dice(d.attack.damage) + " != printed " + format_dice(as.printed_damage);
             if (!as.weapon.natural)
                 for (uint8_t k = 2; k <= 4; ++k) {
                     WielderView mk = v; mk.dice_multiplier = k;
-                    if (derive_weapon_attack(as.weapon, mk, as.use).attack.damage == as.printed_damage) {
+                    if (derive_weapon_attack(as.weapon, mk, use).attack.damage == as.printed_damage) {
                         e += " (weapon_dice_multiplier " + std::to_string(int(k)) + " would match)"; break;
                     }
                 }
