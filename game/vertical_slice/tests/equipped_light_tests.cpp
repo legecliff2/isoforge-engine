@@ -24,7 +24,7 @@ using namespace slice;
 
 namespace {
 namespace fs = std::filesystem;
-constexpr const char* kTorch = "test.item.torch";
+constexpr const char* kTorch = "srd51.item.torch";   // the real SRD torch (item@2, lit_by_default false)
 constexpr const char* kLantern = "test.item.lantern";
 constexpr const char* kLanternPreset = "test.item.lantern";   // == the lantern def's preset (its id; no doc)
 
@@ -62,13 +62,12 @@ fs::path make_pack(const std::string& tag, const char* light_item) {
     return root;
 }
 
-// Lit copies of the real srd51 gear (srd51.core/items/*.json, item@2): same light block, only re-id'd and
-// lit_by_default true, since there is no light / hood op yet (Rules). The real items stay loaded, unlit.
+// A re-id'd copy of the real hooded lantern without light.preset (otherwise identical, unlit by default), so the
+// preset falls back to the item id. Creatures light it with EquipOp::SetLightState like any real gear.
 void add_light_defs(sim::ContentLibrary& l) {
-    for (auto [id, file] : {std::pair{kTorch, "torch.json"}, std::pair{kLantern, "lantern_hooded.json"}}) {
+    for (auto [id, file] : {std::pair{kLantern, "lantern_hooded.json"}}) {
         assets::Json d = assets::Json::parse(slurp(fs::path(SLICE_PACK_ROOT) / "srd51.core/items" / file));
         d["id"] = id;
-        d["light"]["lit_by_default"] = true;
         d["light"].erase("preset");   // the preset then falls back to the item id (styled below by light.preset)
         REQUIRE_FALSE(l.items()->add(d));
     }
@@ -90,13 +89,20 @@ uint32_t pc_id(const ViewModel& vm) {
     for (const auto& a : vm.actors) if (a.is_pc) return a.id;
     return 0;
 }
+constexpr auto kSetLight = uint8_t(rules5e::EquipOp::SetLightState);
+// Ends the current turn (if it is pc's) and then turns until pc acts again: a fresh object interaction.
+bool next_turn_of(Session& s, uint32_t pc) {
+    for (const auto& a : s.view().actors)
+        if (a.id != pc && s.end_turns_until(a.id)) break;
+    return s.end_turns_until(pc);
+}
 Vec2i tile_of(const ViewModel& vm, uint32_t id) {
     for (const auto& a : vm.actors) if (a.id == id) return a.tile;
     return {};
 }
 } // namespace
 
-TEST_CASE("equipped torch: glow keyed by the sim light id follows the holder; dropped it lies on the ground; stowed it is gone") {
+TEST_CASE("equipped SRD torch: dark until lit; lit glow keyed by the sim light id follows the holder; dropped it lies on the ground; stowed it is gone, drawn it relights") {
     const fs::path root = make_pack("torch", kTorch);
     std::string err;
     auto s = open_equip(root, false, &err);
@@ -108,14 +114,38 @@ TEST_CASE("equipped torch: glow keyed by the sim light id follows the holder; dr
     ViewModel vm = s->view();
     const uint32_t pc = pc_id(vm);
     CHECK(lights[0].holder_id == pc);
+    // Unlit SRD torch: 0/0, no glow.
+    CHECK_FALSE(lights[0].lit);
+    CHECK(lights[0].bright_ft == 0);
+    CHECK(lights[0].dim_ft == 0);
     REQUIRE(vm.light.present);
     const LightSourceView* src = source_with_index(vm, lid);
+    REQUIRE(src);
+    CHECK_FALSE(src->lit);
+    CHECK(src->bright_ft == 0);
+    CHECK(src->dim_ft == 0);
+    const iso2d::GlowPalette pal;
+    CHECK(glows_from(vm.light, pal).empty());
+
+    // The holder lights it (SetLightState, state 0): 20/20, glowing on the holder.
+    REQUIRE_FALSE(s->ended());
+    REQUIRE(s->end_turns_until(pc));
+    REQUIRE(s->submit_equip(pc, kSetLight, item, 0, 0));
+    lights = s->equipment_lights();
+    REQUIRE(lights.size() == 1);
+    CHECK(lights[0].lit);
+    CHECK(lights[0].state == 0);
+    CHECK(lights[0].bright_ft == 20);
+    CHECK(lights[0].dim_ft == 20);
+    vm = s->view();
+    src = source_with_index(vm, lid);
     REQUIRE(src);
     CHECK(src->carrier == 1);
     CHECK(src->carrier_id == pc);
     CHECK(src->bright_ft == 20);
+    CHECK(src->dim_ft == 20);
     CHECK(src->lit);
-    const iso2d::GlowPalette pal;
+    CHECK(src->preset == "srd51.core.light.torch");
     auto glows = glows_from(vm.light, pal);
     REQUIRE(glows.size() == 1);
     CHECK(glows[0].anchor == iso2d::GlowAnchorKind::Entity);
@@ -131,9 +161,7 @@ TEST_CASE("equipped torch: glow keyed by the sim light id follows the holder; dr
     CHECK(glows[0].tile.x == 7.5f);
     CHECK(glows[0].tile.y == 3.25f);
 
-    // Drop it on the holder's turn: same light id, holder 0, a ground glow at the item's tile (not anchored).
-    REQUIRE_FALSE(s->ended());
-    REQUIRE(s->end_turns_until(pc));
+    // Drop it (free) on the same turn: same light id, holder 0, a ground glow at the item's tile (not anchored).
     {
         const Vec2i at = tile_of(s->view(), pc);
         REQUIRE(s->submit_equip(pc, uint8_t(rules5e::EquipOp::Drop), item));
@@ -151,7 +179,9 @@ TEST_CASE("equipped torch: glow keyed by the sim light id follows the holder; dr
         CHECK(glows[0].anchor == iso2d::GlowAnchorKind::None);
         CHECK(glows[0].tile.x == float(at.x));
         CHECK(glows[0].tile.y == float(at.y));
-        // Pick it up again and stow it: covered, so no glow (the source stays, unlit).
+        // Pick it up again (next turn: lighting spent this turn's interaction) and stow it: covered, so no glow
+        // (the source stays, unlit, 0/0).
+        REQUIRE(next_turn_of(*s, pc));
         REQUIRE(s->submit_equip(pc, uint8_t(rules5e::EquipOp::PickUp), item, 2));
         vm = s->view();
         src = source_with_index(vm, lid);
@@ -159,13 +189,30 @@ TEST_CASE("equipped torch: glow keyed by the sim light id follows the holder; dr
         CHECK(src->carrier == 1);   // back on the holder, same id
         CHECK(src->carrier_id == pc);
         CHECK(glows_from(vm.light, pal).at(0).anchor == iso2d::GlowAnchorKind::Entity);
-        REQUIRE(s->end_turns_until(pc));
+        REQUIRE(next_turn_of(*s, pc));
         REQUIRE(s->submit_equip(pc, uint8_t(rules5e::EquipOp::Stow), item));
         vm = s->view();
         src = source_with_index(vm, lid);
         REQUIRE(src);
         CHECK_FALSE(src->lit);
+        CHECK(src->bright_ft == 0);
+        CHECK(src->dim_ft == 0);
         CHECK(glows_from(vm.light, pal).empty());
+        // Drawn again: relit (stowed while lit), 20/20, glowing on the holder.
+        REQUIRE(next_turn_of(*s, pc));
+        REQUIRE(s->submit_equip(pc, uint8_t(rules5e::EquipOp::Draw), item, 2));
+        lights = s->equipment_lights();
+        REQUIRE(lights.size() == 1);
+        CHECK(lights[0].lit);
+        CHECK(lights[0].bright_ft == 20);
+        vm = s->view();
+        src = source_with_index(vm, lid);
+        REQUIRE(src);
+        CHECK(src->lit);
+        CHECK(src->bright_ft == 20);
+        glows = glows_from(vm.light, pal);
+        REQUIRE(glows.size() == 1);
+        CHECK(glows[0].anchor_id == pc);
     }
     fs::remove_all(root);
 }
@@ -177,9 +224,17 @@ TEST_CASE("equipped lantern: visual via light.preset; pc_torches still a produce
     // preset in light.preset.
     auto s = open_equip(root, true, &err);
     REQUIRE_MESSAGE(s, err);
-    ViewModel vm = s->view();
-    const auto lights = s->equipment_lights();
+    auto lights = s->equipment_lights();
     REQUIRE(lights.size() == 1);
+    CHECK_FALSE(lights[0].lit);   // unlit copy of real gear: lit by its holder below
+    {
+        const uint32_t pc = pc_id(s->view());
+        REQUIRE(s->end_turns_until(pc));
+        REQUIRE(s->submit_equip(pc, kSetLight, lights[0].item, 0, 0));
+    }
+    lights = s->equipment_lights();
+    REQUIRE(lights[0].lit);
+    ViewModel vm = s->view();
     const LightSourceView* lantern = source_with_index(vm, lights[0].light_id);
     REQUIRE(lantern);
     CHECK(lantern->bright_ft == 30);
@@ -208,22 +263,56 @@ TEST_CASE("equipped lantern: visual via light.preset; pc_torches still a produce
     fs::remove_all(root);
 }
 
-TEST_CASE("real srd51 gear: equip lights with state radii and presets, dark until a light op exists") {
+TEST_CASE("real srd51 hooded lantern: unlit 0/0, lit 30/30, hooded 0/5, doused 0/0 via SetLightState") {
     const fs::path root = make_pack("real", "srd51.item.lantern_hooded");
     std::string err;
     auto s = open_equip(root, false, &err);
     REQUIRE_MESSAGE(s, err);
-    const auto lights = s->equipment_lights();
+    const iso2d::GlowPalette pal;
+    auto lights = s->equipment_lights();
     REQUIRE(lights.size() == 1);
-    CHECK_FALSE(lights[0].lit);   // lit_by_default false
-    const ViewModel vm = s->view();
-    const LightSourceView* src = source_with_index(vm, lights[0].light_id);
-    REQUIRE(src);
-    CHECK(src->preset == "srd51.core.light.lantern_hooded");   // from item@2 light.preset
-    CHECK(src->bright_ft == 30);
-    CHECK(src->dim_ft == 30);
-    CHECK_FALSE(src->lit);
-    CHECK(glows_from(vm.light, iso2d::GlowPalette{}).empty());
+    const uint32_t lid = lights[0].light_id, item = lights[0].item;
+    const uint32_t pc = pc_id(s->view());
+    // Checks Session::equipment_lights, the published source and the glow for one state.
+    auto expect = [&](bool lit, uint8_t state, uint16_t bright, uint16_t dim) {
+        const auto ls = s->equipment_lights();
+        REQUIRE(ls.size() == 1);
+        CHECK(ls[0].lit == lit);
+        CHECK(ls[0].state == state);
+        CHECK(ls[0].bright_ft == bright);
+        CHECK(ls[0].dim_ft == dim);
+        const ViewModel vm = s->view();
+        const LightSourceView* src = source_with_index(vm, lid);
+        REQUIRE(src);
+        CHECK(src->preset == "srd51.core.light.lantern_hooded");   // from item@2 light.preset
+        CHECK(src->lit == lit);
+        CHECK(src->bright_ft == bright);
+        CHECK(src->dim_ft == dim);
+        const auto glows = glows_from(vm.light, pal);
+        if (!lit || bright + dim == 0) {
+            CHECK(glows.empty());
+        } else {
+            REQUIRE(glows.size() == 1);
+            CHECK(glows[0].anchor_id == pc);
+            CHECK(glows[0].radius_tiles == doctest::Approx(iso2d::glow_radius_tiles(bright, dim)));
+        }
+    };
+    expect(false, 0, 0, 0);   // lit_by_default false: dark until lit
+    REQUIRE(s->end_turns_until(pc));
+    REQUIRE(s->submit_equip(pc, kSetLight, item, 0, 0));
+    expect(true, 0, 30, 30);
+    REQUIRE(next_turn_of(*s, pc));
+    REQUIRE(s->submit_equip(pc, kSetLight, item, 0, 1));   // lower the hood (states[0] = "hooded")
+    expect(true, 1, 0, 5);
+    REQUIRE(next_turn_of(*s, pc));
+    REQUIRE(s->submit_equip(pc, kSetLight, item, 0, 0));   // raise it again
+    expect(true, 0, 30, 30);
+    REQUIRE(next_turn_of(*s, pc));
+    REQUIRE(s->submit_equip(pc, kSetLight, item, 0, rules5e::kLightDouse));
+    expect(false, 0, 0, 0);
+    REQUIRE(next_turn_of(*s, pc));
+    REQUIRE(s->submit_equip(pc, kSetLight, item, 0, 0));   // relit after dousing
+    expect(true, 0, 30, 30);
     fs::remove_all(root);
 }
 
