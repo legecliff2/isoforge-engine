@@ -16,6 +16,7 @@
     "dim_ft": 5,
     "shape": "radius",
     "duration_rounds": 600,
-    "lit_by_default": false
+    "lit_by_default": false,
+    "preset": "srd51.core.light.candle"
   }
 }
