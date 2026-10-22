@@ -266,7 +266,7 @@ TEST_CASE("equip_legal: costs, refusals, armor rounds, the step path and legal_a
     CHECK(equip_legal(s, pick).refusal == "equip: the item is out of reach");
     pick.equip_in_reach = true;
     CHECK(equip_legal(s, pick).refusal == "equip: unknown ground item");   // no ground_item_def hook
-    s.hooks.ground_item_def = [](uint32_t inst) -> const ItemDef* {
+    s.hooks.ground_item_def = [](const EncounterState&, uint32_t inst) -> const ItemDef* {
         static const ItemDef gs = [] { ItemDef d; d.id = dGreatsword; d.kind = ItemKind::Weapon; d.hands = 2; return d; }();
         static const ItemDef ls = [] { ItemDef d; d.id = dLongsword; d.kind = ItemKind::Weapon; d.hands = 1; return d; }();
         return inst == 50 ? &gs : inst == 51 ? &ls : nullptr;
@@ -388,4 +388,28 @@ TEST_CASE("derive_monster: SRD reproductions and every exact string") {
     CHECK(proficiency_for_cr(0, 1) == 2); CHECK(proficiency_for_cr(1, 8) == 2); CHECK(proficiency_for_cr(5, 1) == 3);
     CHECK(proficiency_for_cr(12, 1) == 4); CHECK(proficiency_for_cr(13, 1) == 5); CHECK(proficiency_for_cr(30, 1) == 9);
     CHECK(format_dice({1, 4, -1}) == "1d4-1"); CHECK(format_dice({3, 6, 0}) == "3d6"); CHECK(format_dice({0, 0, 1}) == "1");
+}
+
+TEST_CASE("hands_needed and recovered_ammo") {
+    auto w = make_world();
+    CHECK(hands_needed(nullptr) == 1);
+    CHECK(hands_needed(&w->defs.at(dLongsword)) == 1);
+    CHECK(hands_needed(&w->defs.at(dGreatsword)) == 2);   // two_handed with hands left at 1
+    CHECK(hands_needed(&w->defs.at(dLongbow)) == 2);
+    CHECK(recovered_ammo(0) == 0); CHECK(recovered_ammo(1) == 0); CHECK(recovered_ammo(2) == 1);
+    CHECK(recovered_ammo(7) == 3); CHECK(recovered_ammo(20) == 10); CHECK(recovered_ammo(-3) == 0);
+}
+
+TEST_CASE("ground_item_def receives the state being evaluated (AI lookahead copies)") {
+    auto w = make_world();
+    auto s = begin_encounter({pc(1), monster(2)}, 7, nullptr, equip_hooks(w));
+    end_turns_until(s, 1);
+    w->views[1] = LoadoutView{};
+    const EncounterState* seen = nullptr;
+    s.hooks.ground_item_def = [&seen, w](const EncounterState& st, uint32_t) -> const ItemDef* { seen = &st; return &w->defs.at(dLongsword); };
+    auto copy = s;
+    auto pick = equip(1, EquipOp::PickUp, 50); pick.equip_in_reach = true;
+    CHECK(equip_legal(copy, pick).kind == EquipCost::Interaction);
+    CHECK(seen == &copy);
+    equip_legal(s, pick); CHECK(seen == &s);
 }

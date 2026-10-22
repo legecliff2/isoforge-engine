@@ -104,6 +104,10 @@ MonsterDerivation derive_monster(const MonsterSpec&);
 // The hands strings, byte-identical to the validator (#249 checks_v4): monster `<id>: holds N items but has H hands` (also
 // emitted by derive_monster when MonsterSpec::hands >= 0), character `<id>: hand '<hand>' holds N items` (for the loader).
 std::string hands_overfull_error(std::string_view id, int held, int hands);
+// Hands to hold an item: ItemDef::hands, at least 2 for a two_handed weapon; nullptr (unknown def) = 1.
+int hands_needed(const ItemDef*);
+// EQUIPMENT.md 3.6: ammunition recovered at encounter end = floor(expended / 2); 0 for expended <= 0. Pure, no roll.
+int recovered_ammo(int expended);
 std::string hand_slot_error(std::string_view id, std::string_view hand, int count);
 
 } // namespace rules5e
