@@ -717,6 +717,10 @@ SpellLoad spell_from_json(const Json& j) {
             int b = 1;
             if (e.contains("beams") && !small_int(e["beams"], 1, 255, b)) return ("effect beams invalid");
             s.beams = uint8_t(b);
+            if (e.contains(zg::kOnMiss)) {   // 7.2zg Acid Arrow
+                if (e[zg::kOnMiss] != Json("half")) return ("effect on_miss must be half");
+                s.miss_half = true;
+            }
         } else if (kind == "save") {
             s.kind = SpellEffectKind::Save;
             if (!e.contains("ability") || !lookup(kAbility, e["ability"], s.save_ability)) return ("effect ability invalid");
@@ -1203,6 +1207,7 @@ SpellLoad spell_from_json(const Json& j) {
             return err("effects[" + std::to_string(i) + "]: " + xk + " is only allowed as the first effect");
         if (x.control != ControlKind::None) return err("effects[" + std::to_string(i) + "]: control is only allowed on the first effect");
         if (!x.condition_choices.empty()) return err("effects[" + std::to_string(i) + "]: choices is only allowed on the first effect");
+        if (x.miss_half) return err("effects[" + std::to_string(i) + "]: on_miss is only allowed on the first effect");   // 7.2zg
         if (x.has_modifier_save) return err("effects[" + std::to_string(i) + "]: an apply_modifier save is only allowed on the first effect");
         SpellEffect fx;
         fx.kind = x.kind; fx.melee = x.melee; fx.beams = x.beams; fx.dice = x.dice; fx.damage_type = x.damage_type;

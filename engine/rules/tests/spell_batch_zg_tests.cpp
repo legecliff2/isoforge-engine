@@ -115,3 +115,37 @@ TEST_CASE("7.2zg temp_hp: False Life 1d4+4 (+5 per slot above 1st); Heroism per 
     REQUIRE(step(s, cast(2, kScareZ, 1, 1)).ok);
     CHECK(mut(s, 1).has(Condition::Frightened));
 }
+
+namespace {
+const uint32_t kAcidArrow = spell_id_of("test.zg.acid_arrow");
+EncounterHooks acid_hooks(int8_t to_hit) {
+    auto h = spell_hooks();
+    auto book = std::make_shared<SpellBook>(*h.spells);
+    SpellDef d; d.id = kAcidArrow; d.content_id = "test.zg.acid_arrow"; d.level = 2; d.range_ft = 90;
+    d.kind = SpellEffectKind::SpellAttack; d.melee = false; d.dice = DiceExpr{4, 4, 0}; d.damage_type = DamageType::Acid;
+    d.fixed_attack = to_hit; d.miss_half = true;
+    SpellEffect later; later.kind = SpellEffectKind::DelayedDamage; later.affected_only = true; later.dice = DiceExpr{2, 4, 0};
+    later.damage_type = DamageType::Acid; later.expiry = 2;
+    d.extra_effects = {later};
+    book->add(d);
+    h.spells = book;
+    return h;
+}
+}  // namespace
+
+TEST_CASE("7.2zg on_miss half: a miss deals half the initial 4d4, no later damage; a hit deals it in full plus the rider") {
+    for (int8_t to_hit : {int8_t(-100), int8_t(100)}) {
+        auto w = wizard(1); w.spells_known.push_back(kAcidArrow); never_react(w);
+        auto m = monster(2); m.hp = m.hp_max = 300; m.ac = 15; never_react(m);
+        auto s = begin_encounter({w, m}, 7, nullptr, acid_hooks(to_hit));
+        end_turns_until(s, 1);
+        auto r = step(s, cast(1, kAcidArrow, 2, 2));
+        REQUIRE(r.ok);
+        const int lost = 300 - mut(s, 2).hp;
+        int dmg_events = 0; for (const auto& e : r.events) dmg_events += e.kind == EventKind::DamageDealt && e.target == 2;
+        if (to_hit < 0) { CHECK(lost >= 2); CHECK(lost <= 8); CHECK(dmg_events == 1); }
+        else { CHECK(lost >= 4); CHECK(lost <= 16); }
+        const bool rider = std::any_of(s.effects.begin(), s.effects.end(), [](const auto& x) { return x.spell_id == kAcidArrow; });
+        CHECK(rider == (to_hit > 0));
+    }
+}

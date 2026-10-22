@@ -883,3 +883,21 @@ TEST_CASE("loader 7.2zg: temp_hp (False Life dice + per_slot_above; Heroism abil
     j = he; j["duration"] = {{"kind", "instantaneous"}};
     bad(j, "effect temp_hp per_turn or condition_immunity needs concentration or a rounds, minutes or hours duration");
 }
+
+TEST_CASE("loader 7.2zg: spell_attack on_miss half (Acid Arrow)") {
+    auto aa = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.acid_arrow","level":2,"name":"Acid Arrow",
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":90},"components":{"v":true,"s":true,"m":{"text":"rhubarb"}},
+        "duration":{"kind":"instantaneous"},
+        "effects":[{"kind":"spell_attack","attack":"ranged","damage":{"dice":"4d4","type":"acid"},"on_miss":"half"},
+                   {"kind":"delayed_damage","applies_to":"affected","damage":{"dice":"2d4","type":"acid"},
+                    "expiry":{"kind":"until_end_of_target_next_turn"}}],"scaling":{"upcast":{"dice":1}}})");
+    auto r = spell_from_json(aa); INFO(r.error); REQUIRE(r.def);
+    CHECK(r.def->miss_half); REQUIRE(r.def->extra_effects.size() == 1);
+    CHECK(r.def->extra_effects[0].kind == SpellEffectKind::DelayedDamage); CHECK(r.def->extra_effects[0].affected_only);
+    auto j = aa; j["effects"][0]["on_miss"] = "none";
+    auto q = spell_from_json(j); CHECK_FALSE(q.def); CHECK(q.error == "effect on_miss must be half");
+    j = aa; j["effects"] = eng::assets::Json::array({{{"kind", "heal"}, {"dice", "1d4"}},
+        {{"kind", "spell_attack"}, {"attack", "ranged"}, {"damage", {{"dice", "4d4"}, {"type", "acid"}}}, {"on_miss", "half"}}});
+    j.erase("scaling");
+    q = spell_from_json(j); CHECK_FALSE(q.def); CHECK(q.error == "effects[1]: on_miss is only allowed on the first effect");
+}

@@ -402,6 +402,9 @@ def check_spell(doc, errs, ctx):
         if e["kind"] in FIRST_EFFECT_ONLY:
             errs.append(f"effects[{i}]: {e['kind']} is only allowed as the first effect")
             return
+        if c4.ZG_KEYS["on_miss"] in e:   # 7.2zg Acid Arrow (spell_loader.cpp wording)
+            errs.append(f"effects[{i}]: on_miss is only allowed on the first effect")
+            return
     if eff.get("applies_to", "all") != "all":
         errs.append("effects[0].applies_to needs a previous effect")
     kind = eff["kind"]

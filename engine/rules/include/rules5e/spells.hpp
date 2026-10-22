@@ -446,6 +446,9 @@ struct SpellDef {
     DuplicatesSpec duplicates{};
     // appended (7.2zg): kind TempHp (primary effect only).
     TempHpSpec temp_hp{};
+    // appended (7.2zg Acid Arrow): kind SpellAttack, `on_miss: half`: a miss deals half the initial damage (dice rolled then,
+    // halved, rounded down); riders that follow a hit (delayed_damage applies_to affected) do not apply.
+    bool miss_half = false;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered

@@ -2847,6 +2847,15 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                     ForcedMoveQuery q; q.mover = t->id; q.source = a.id; q.mode = 1; q.feet = sm->push_ft;
                     ctx.forced_queue.push_back(q);
                 }
+            } else if (def.miss_half && !t->dead) {   // 7.2zg Acid Arrow on_miss half: half the initial damage, no rider
+                bool duplicate = false;   // an attack that went to a Mirror Image duplicate never reaches the caster
+                for (auto it = ev.rbegin(); it != ev.rend(); ++it)
+                    if (it->kind == EventKind::AttackResolved) { duplicate = (it->c & 4) != 0; break; }
+                const int dealt = duplicate ? 0 : std::max(0, roll_dice(s.rng, batk.damage)) / 2;
+                if (dealt > 0) {
+                    const TrigSrc ts{&a, nullptr, true};
+                    damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(dealt), def.damage_type, batk.qualifiers), false, ev, &ts, &ctx);
+                }
             }
         }
         break;
