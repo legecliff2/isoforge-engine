@@ -321,7 +321,7 @@ table today.
 - `weapon_dice_multiplier` (Ogre: 2). SRD 5.1 has **no rules text** for size-scaled weapon dice (it is a stat-block convention);
   it is an explicit integer on the monster, never inferred from `size` by the engine. The audit suggests it when Large+ dice fit.
 - Damage-die rider (Bugbear *Brute*: "A melee weapon deals one extra die of its damage when the bugbear hits with it (included in
-  the attack)"): a trait effect `{"kind": "weapon_extra_dice", "dice": 1, "melee_only": true}` read by the derivation
+  the attack)"): a **monster@5-local** trait kind (common@2 stays unchanged) `{"kind": "weapon_extra_dice", "dice": 1, "melee_only": true}` read by the derivation
   (`WielderView::extra_melee_dice`); thrown uses are ranged and do not get it (the javelin's 1d6+2 thrown line).
 - Natural attacks (`natural {dice, ability, damage_ability?}`): dice are authored (they are not derivable); `ability` is explicit
   (`str` or `dex`; the Wolf, Giant Spider, Snake, Swarm and Medusa's snake hair use Dex). `damage_ability: "none"` for blocks
@@ -354,7 +354,7 @@ At `monster@5` with `derive: true`, the loader derives AC and each derived actio
 `armor_class.value`, `to_hit` and `damage[0].dice`. The validator runs the same check with the same strings (one shared case file
 keeps the C++ loader and the Python validator in sync). A file that fails cannot load, so a derivation bug can never change a fight
 silently. Exact strings (`<id>` = the content id, `<action>` = the action id; to-hit signed, dice as `NdM+K` / `NdM-K` / `NdM` /
-a bare flat integer), produced by `rules5e::derive_monster`:
+a bare flat integer), produced by `rules5e::derive_monster` (hands strings also via `hands_overfull_error` / `hand_slot_error`):
 
 | Case | String |
 |---|---|
@@ -365,6 +365,13 @@ a bare flat integer), produced by `rules5e::derive_monster`:
 | structure not needed | `<id>: weapon_dice_multiplier is not needed` (every weapon derives with 1), `<id>: natural_armor is not needed` (armor is worn, or 10 + Dex already matches) |
 | missing reason | `<id>: ac_adjust needs a reason`, `<id>.<action>: attack_bonus needs a reason` |
 | PB off the CR table | `<id>: proficiency_bonus 3 != CR table 2` (unless `proficiency_bonus_reason` is given) |
+| hands (monster@5) | `<id>: holds 3 items but has 2 hands` (equipped hand slots: weapon / shield 1, gear its `hands`; plural kept: `holds 1 items but has 0 hands`) |
+| hands (character@5) | `<id>: hand 'main' holds 2 items` (`'main'` / `'off'`, N = the count) |
+
+Reasons (`ac_adjust`, `attack_bonus`, `proficiency_bonus_reason`) have schema `minLength 1` (#249), so a missing or empty reason
+fails in the schema; only a whitespace-only reason reaches the `needs a reason` string (and a whitespace-only
+`proficiency_bonus_reason` counts as absent). The hands strings match #249's `checks_v4` byte for byte; rules exposes them as
+`hands_overfull_error` / `hand_slot_error`.
 
 **Second damage components stay authored and unchecked in v1** (T&C review): Basilisk 2d6 poison, Black Dragon Wyrmling 1d4 acid,
 Giant Toad 1d10 poison, Medusa Snake Hair 4d6 and Longbow 2d6 poison, Grimlock 1d4 piercing. Only `damage[0]` is derived and
@@ -594,7 +601,7 @@ Headers: `rules5e/armor.hpp` (extended), `rules5e/item.hpp` (new, POD data + the
 | `equip_legal(state, req) -> EquipCost {Free / Interaction / Action / Refused, refusal}`, `EquipOp` | step (wired), EC | `ActionRequest` appended `equip_op, equip_item, equip_hand, equip_to, equip_in_reach` (on `UseObject`). Interaction falls back to Action (Use an Object) once `interaction_used`. `equip_item` is always an instance id: held / carried instances resolve via `LoadoutView` then `item_def(HeldItem::def)`, PickUp via `ground_item_def`. Hands needed = `ItemDef::hands`, at least 2 for a `two_handed` weapon; applies to Draw, PickUp, DonShield and the HandOver recipient. Refusals: `equip: equipment play is off`, `equip: unknown equip op`, `equip: not your turn`, `equip: the creature cannot act`, `equip: armor cannot be changed in combat`, `equip: no object interaction left`, `equip: the item is already in hand`, `equip: the item is not carried`, `equip: the item is not in hand`, `equip: use don_shield for a shield`, `equip: use doff_shield for a shield`, `equip: no free hand`, `equip: the item is already carried`, `equip: the item is out of reach`, `equip: not a shield`, `equip: a shield is already wielded`, `equip: no action left`, `equip: bad recipient`, `equip: the recipient has no free hand`. In step: Refused fails with the string; no `apply_equip` hook fails `equip: equipment play is off`; Action cost spends the action, then `apply_equip` runs (Interaction / Free bookkeeping is EC's). |
 | `equip_legal_actions(state)` | `legal_actions` (wired) | Draw, Stow, Drop, DonShield, DoffShield for the current actor, order op / instance / hand, appended after every existing entry. PickUp / HandOver need positions: EC lists them. |
 | `armor_change_rounds(category, don, helper)` | EC exploration layer | 10 / 10, 50 / 10, 100 / 50 rounds; a helper halves. |
-| `derive_monster(MonsterSpec) -> {pb, ac, attacks, errors}`, `proficiency_for_cr`, `format_dice` | EC loader, T&C validator (same strings) | `MonsterSpec` / `MonsterAttackSpec` carry the 5.3..5.5 fields; `errors` are the 5.6 strings in check order. |
+| `derive_monster(MonsterSpec) -> {pb, ac, attacks, errors}`, `proficiency_for_cr`, `format_dice`, `hands_overfull_error(id, held, hands)`, `hand_slot_error(id, hand, n)` | EC loader, T&C validator (same strings) | `MonsterSpec` / `MonsterAttackSpec` carry the 5.3..5.5 fields plus `hands` (-1 = absent) and `held`; `brute_dice` is the monster@5-local `weapon_extra_dice` trait. `errors` are the 5.6 strings in check order (PB, hands, AC, attacks); whitespace-only reasons count as missing. |
 
 ### 9.2 Sequencing (T&C review)
 

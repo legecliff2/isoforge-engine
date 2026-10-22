@@ -344,6 +344,8 @@ TEST_CASE("derive_monster: SRD reproductions and every exact string") {
     CHECK(derive_monster(skel).errors.empty());
     skel.ac_adjust.reason.clear();
     CHECK(derive_monster(skel).errors == std::vector<std::string>{"srd51.monster.skeleton: ac_adjust needs a reason"});
+    skel.ac_adjust.reason = "   ";   // schema minLength 1 passes; whitespace-only still needs a reason
+    CHECK(derive_monster(skel).errors == std::vector<std::string>{"srd51.monster.skeleton: ac_adjust needs a reason"});
     skel.ac_adjust = {true, 1, "x"}; skel.printed_ac = 12;
     auto e = derive_monster(skel).errors;
     REQUIRE(e.size() == 2); CHECK(e[0] == "srd51.monster.skeleton: ac_adjust is not needed");
@@ -359,6 +361,8 @@ TEST_CASE("derive_monster: SRD reproductions and every exact string") {
     CHECK(derive_monster(bear).errors.empty());
     bear.attacks[0].attack_bonus.reason.clear();
     CHECK(derive_monster(bear).errors == std::vector<std::string>{"srd51.monster.black_bear.bite: attack_bonus needs a reason"});
+    bear.attacks[0].attack_bonus.reason = "\n";
+    CHECK(derive_monster(bear).errors == std::vector<std::string>{"srd51.monster.black_bear.bite: attack_bonus needs a reason"});
     bear.attacks[0].attack_bonus = {true, 4, "x"}; bear.attacks[0].printed_to_hit = 4;
     CHECK(derive_monster(bear).errors == std::vector<std::string>{"srd51.monster.black_bear.bite: attack_bonus is not needed"});
     bear.attacks[0].attack_bonus = {}; bear.natural_base = 10; bear.printed_ac = 10;   // 10 + Dex 0 already matches
@@ -371,6 +375,16 @@ TEST_CASE("derive_monster: SRD reproductions and every exact string") {
     CHECK(derive_monster(wolf).errors.empty());
     wolf.has_pb = true; wolf.pb = 3;
     CHECK(derive_monster(wolf).errors[0] == "srd51.monster.wolf: proficiency_bonus 3 != CR table 2");
+    wolf.pb_reason = " \t";                                              // whitespace-only = absent
+    CHECK(derive_monster(wolf).errors[0] == "srd51.monster.wolf: proficiency_bonus 3 != CR table 2");
+    wolf.pb_reason = "SRD prints +3"; CHECK(derive_monster(wolf).errors[0] == "srd51.monster.wolf.bite: derived to-hit +5 != printed +4");
+    wolf.has_pb = false;
+    wolf.hands = 0; wolf.held = 1;   // #249 checks_v4 strings, byte for byte
+    CHECK(derive_monster(wolf).errors == std::vector<std::string>{"srd51.monster.wolf: holds 1 items but has 0 hands"});
+    wolf.hands = 2; wolf.held = 2; CHECK(derive_monster(wolf).errors.empty());
+    wolf.held = 3; CHECK(derive_monster(wolf).errors[0] == "srd51.monster.wolf: holds 3 items but has 2 hands");
+    CHECK(hands_overfull_error("test.v4.bugbear5", 3, 2) == "test.v4.bugbear5: holds 3 items but has 2 hands");
+    CHECK(hand_slot_error("test.v4.fighter5", "main", 2) == "test.v4.fighter5: hand 'main' holds 2 items");
     CHECK(proficiency_for_cr(0, 1) == 2); CHECK(proficiency_for_cr(1, 8) == 2); CHECK(proficiency_for_cr(5, 1) == 3);
     CHECK(proficiency_for_cr(12, 1) == 4); CHECK(proficiency_for_cr(13, 1) == 5); CHECK(proficiency_for_cr(30, 1) == 9);
     CHECK(format_dice({1, 4, -1}) == "1d4-1"); CHECK(format_dice({3, 6, 0}) == "3d6"); CHECK(format_dice({0, 0, 1}) == "1");
