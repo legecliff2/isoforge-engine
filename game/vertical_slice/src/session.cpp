@@ -121,6 +121,28 @@ static void copy_light(const sim::LightFrame& f, bool fog, uint8_t fog_team, Lig
     }
 }
 
+// One equipment light -> attached source. Radii are the entry's current state (hooded lantern: 0/5), never the item
+// default. Shape: a cone is published as a radius source (no facing exposed yet; LIGHTING.md 10.2 TODO).
+sim::LightSource equipment_source(const sim::EquipmentLight& e, Vec2i holder_centre, std::string preset) {
+    sim::AttachedLight l;
+    l.id = e.light_id;
+    l.bright_ft = e.bright_ft;
+    l.dim_ft = e.dim_ft;
+    l.state = e.state;
+    l.flags = e.lit ? sim::light_src::kLit : uint8_t(0);
+    Vec2i at = e.tile;
+    if (e.holder_id != 0) {
+        l.carrier = sim::Carrier::Creature;
+        l.carrier_id = e.holder_id;
+        at = holder_centre;
+    } else {
+        l.carrier = sim::Carrier::Tile;
+        l.carrier_id = e.item;
+        l.tile = e.tile;
+    }
+    return sim::attached_source(l, at, std::move(preset));
+}
+
 struct Session::Impl {
     Options opt;
     std::unique_ptr<world::Chunk> chunk;
@@ -152,29 +174,14 @@ struct Session::Impl {
                                   std::vector<sim::LightSource>& out) {
         const sim::ItemDefTable* table = c.item_defs();
         for (const sim::EquipmentLight& e : c.equipment_lights()) {
-            const rules5e::ItemDef* def = table ? table->find(e.def) : nullptr;
             const std::string* cid = table ? table->content_id(e.def) : nullptr;
-            sim::AttachedLight l;
-            l.id = e.light_id;
-            l.bright_ft = def ? def->light.bright_ft : 0;
-            l.dim_ft = def ? def->light.dim_ft : 0;
-            l.flags = e.lit ? sim::light_src::kLit : uint8_t(0);
-            Vec2i at = e.tile;
-            if (e.holder_id != 0) {
-                l.carrier = sim::Carrier::Creature;
-                l.carrier_id = e.holder_id;
-                at = sim::carrier_centre(c.pos(e.holder_id), c.footprint_size(e.holder_id));
-            } else {
-                l.carrier = sim::Carrier::Tile;
-                l.carrier_id = e.item;
-                l.tile = e.tile;
-            }
             std::string preset;
             if (cid) {
                 auto it = presets.find(*cid);
                 preset = it != presets.end() ? it->second : *cid;
             }
-            out.push_back(sim::attached_source(l, at, std::move(preset)));
+            const Vec2i holder = e.holder_id ? sim::carrier_centre(c.pos(e.holder_id), c.footprint_size(e.holder_id)) : e.tile;
+            out.push_back(equipment_source(e, holder, std::move(preset)));
         }
     }
 

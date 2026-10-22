@@ -13,7 +13,10 @@
 #include "rules5e/item.hpp"
 #include "session.hpp"
 #include "sim/content.hpp"
+#include "sim/combat.hpp"
 #include "sim/equipment.hpp"
+#include "sim/light.hpp"
+#include <utility>
 #include "slice_view.hpp"
 
 using namespace eng;
@@ -59,15 +62,15 @@ fs::path make_pack(const std::string& tag, const char* light_item) {
     return root;
 }
 
+// Lit copies of the real srd51 gear (srd51.core/items/*.json, item@2): same light block, only re-id'd and
+// lit_by_default true, since there is no light / hood op yet (Rules). The real items stay loaded, unlit.
 void add_light_defs(sim::ContentLibrary& l) {
-    for (const char* id : {kTorch, kLantern}) {
-        rules5e::ItemDef d;
-        d.kind = rules5e::ItemKind::Light;
-        d.hands = 1;
-        d.light.bright_ft = std::string(id) == kTorch ? 20 : 30;
-        d.light.dim_ft = d.light.bright_ft;
-        d.light.lit_by_default = true;
-        REQUIRE_FALSE(l.items()->add(id, d));
+    for (auto [id, file] : {std::pair{kTorch, "torch.json"}, std::pair{kLantern, "lantern_hooded.json"}}) {
+        assets::Json d = assets::Json::parse(slurp(fs::path(SLICE_PACK_ROOT) / "srd51.core/items" / file));
+        d["id"] = id;
+        d["light"]["lit_by_default"] = true;
+        d["light"].erase("preset");   // the preset then falls back to the item id (styled below by light.preset)
+        REQUIRE_FALSE(l.items()->add(d));
     }
 }
 
@@ -203,4 +206,64 @@ TEST_CASE("equipped lantern: visual via light.preset; pc_torches still a produce
         if (g.radius_tiles == doctest::Approx(iso2d::glow_radius_tiles(30, 30)))
             CHECK(g.intensity == doctest::Approx(iso2d::GlowPalette{}.style_for("x.lantern", false).intensity));
     fs::remove_all(root);
+}
+
+TEST_CASE("real srd51 gear: equip lights with state radii and presets, dark until a light op exists") {
+    const fs::path root = make_pack("real", "srd51.item.lantern_hooded");
+    std::string err;
+    auto s = open_equip(root, false, &err);
+    REQUIRE_MESSAGE(s, err);
+    const auto lights = s->equipment_lights();
+    REQUIRE(lights.size() == 1);
+    CHECK_FALSE(lights[0].lit);   // lit_by_default false
+    const ViewModel vm = s->view();
+    const LightSourceView* src = source_with_index(vm, lights[0].light_id);
+    REQUIRE(src);
+    CHECK(src->preset == "srd51.core.light.lantern_hooded");   // from item@2 light.preset
+    CHECK(src->bright_ft == 30);
+    CHECK(src->dim_ft == 30);
+    CHECK_FALSE(src->lit);
+    CHECK(glows_from(vm.light, iso2d::GlowPalette{}).empty());
+    fs::remove_all(root);
+}
+
+TEST_CASE("equipment_source: state radii (hooded = small dim glow), 0/0 draws nothing, cone drawn as radius") {
+    auto view_of = [](const sim::LightSource& ls) {
+        LightSourceView v;
+        v.attached = true;
+        v.index = ls.id.index;
+        v.tile = ls.tile;
+        v.carrier = ls.carrier == sim::Carrier::Creature ? 1 : ls.carrier == sim::Carrier::Item ? 2 : 0;
+        v.carrier_id = ls.carrier_id;
+        v.bright_ft = ls.bright_ft;
+        v.dim_ft = ls.dim_ft;
+        v.lit = ls.lit;
+        v.preset = ls.preset;
+        LightView L;
+        L.present = true;
+        L.sources = {v};
+        return L;
+    };
+    const iso2d::GlowPalette pal;
+    sim::EquipmentLight e;
+    e.light_id = 3; e.item = 9; e.holder_id = 5; e.tile = {2, 2}; e.lit = true;
+    e.state = 0; e.bright_ft = 30; e.dim_ft = 30;
+    const auto open = glows_from(view_of(equipment_source(e, {4, 4}, "srd51.core.light.lantern_hooded")), pal);
+    REQUIRE(open.size() == 1);
+    CHECK(open[0].anchor_id == 5);
+    CHECK(open[0].radius_tiles == doctest::Approx(9.f));
+    e.state = 1; e.bright_ft = 0; e.dim_ft = 5;   // hooded
+    const sim::LightSource hs = equipment_source(e, {4, 4}, "srd51.core.light.lantern_hooded");
+    CHECK(hs.bright_ft == 0);
+    CHECK(hs.dim_ft == 5);
+    const auto hooded = glows_from(view_of(hs), pal);
+    REQUIRE(hooded.size() == 1);
+    CHECK(hooded[0].radius_tiles == doctest::Approx(0.5f));
+    CHECK(hooded[0].intensity < open[0].intensity);
+    e.bright_ft = 0; e.dim_ft = 0;   // lit, but emits nothing
+    CHECK(glows_from(view_of(equipment_source(e, {4, 4}, "x")), pal).empty());
+    e.state = 0; e.bright_ft = 60; e.dim_ft = 60; e.shape = rules5e::LightShape::Cone;   // bullseye: radius for now
+    const auto cone = glows_from(view_of(equipment_source(e, {4, 4}, "srd51.core.light.lantern_bullseye")), pal);
+    REQUIRE(cone.size() == 1);
+    CHECK(cone[0].radius_tiles == doctest::Approx(iso2d::glow_radius_tiles(60, 60)));
 }
