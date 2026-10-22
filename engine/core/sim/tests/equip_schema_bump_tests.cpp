@@ -77,9 +77,9 @@ Hashes fight(const assets::LoadResult& fighter, const assets::LoadResult& goblin
 } // namespace
 
 TEST_CASE("equip schema bump: @4 and @5 files with the same body load and hash identically") {
-    // The shipped @3 files, migrated to the body an @4 file of today carries.
-    auto g3 = load(load_json("content/packs/srd51.core/monsters/goblin.json"));
-    auto f3 = load(load_json("content/packs/srd51.core/characters/fighter_level_1.json"));
+    // Frozen @3 / @4 copies (tests/data/schema_bump_v4), migrated to the body an @4 file of today carries.
+    auto g3 = load(load_json("engine/core/sim/tests/data/schema_bump_v4/monsters/goblin.json"));
+    auto f3 = load(load_json("engine/core/sim/tests/data/schema_bump_v4/characters/fighter_level_1.json"));
     REQUIRE_MESSAGE(g3.ok, g3.error);
     REQUIRE_MESSAGE(f3.ok, f3.error);
     CHECK(g3.current.version == assets::kMonsterSchemaVersion);
@@ -111,9 +111,9 @@ TEST_CASE("equip schema bump: @4 and @5 files with the same body load and hash i
     }
 }
 
-TEST_CASE("equip schema bump: shipped @4 files load and hash the same as their @5 re-tag") {
-    const Json m4 = load_json("content/packs/srd51.core/monsters/animated_armor.json");
-    const Json c4 = load_json("content/packs/srd51.core/characters/barbarian_level_1.json");
+TEST_CASE("equip schema bump: frozen @4 files load and hash the same as their @5 re-tag") {
+    const Json m4 = load_json("engine/core/sim/tests/data/schema_bump_v4/monsters/animated_armor.json");
+    const Json c4 = load_json("engine/core/sim/tests/data/schema_bump_v4/characters/barbarian_level_1.json");
     REQUIRE(m4["$schema"] == "monster@4");
     REQUIRE(c4["$schema"] == "character@4");
     auto mo = load(m4), mn = load(with_version(m4, "monster", 5));
