@@ -1,5 +1,7 @@
 #include "slice_view.hpp"
 
+#include "equip_visuals.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -391,7 +393,21 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         // Own-team tokens in remembered/unseen tiles still draw, lit as Dark (presentation).
         p.tint = mul(tint_for(a), af == iso2d::Fog::Visible ? at : iso2d::light_tint(0, iso2d::Fog::Visible));
         if (L.present) p.tint = mul(p.tint, {1.6f, 1.6f, 1.6f, 1.f});   // tokens stay readable in dim light (presentation)
-        world_.draw(p, iso, 1, a.id, 1);
+        if (a.equipment.empty()) { world_.draw(p, iso, 1, a.id, kZBody); continue; }
+        // Equipment layers (equip_visuals.hpp): fixed z around the body inside the actor's sort key.
+        Color lit_by = af == iso2d::Fog::Visible ? at : iso2d::light_tint(0, iso2d::Fog::Visible);
+        if (L.present) lit_by = mul(lit_by, {1.6f, 1.6f, 1.6f, 1.f});
+        for (const EquipLayer& l : equip_layers(a)) {
+            if (l.part == EquipPart::Body) { world_.draw(p, iso, 1, a.id, kZBody); continue; }
+            for (const EquipQuad& q : equip_quads(*l.item, l.part, l.at)) {
+                iso2d::Sprite s{tex_->white, q.size.x, q.size.y, 0, 0};
+                s.anchor_x = q.size.x / 2.f   // bottom-centre on the token anchor + q.at (screen px)
+                              - q.at.x;
+                s.anchor_y = q.size.y - q.at.y;
+                s.tint = q.emissive ? q.color : mul(q.color, lit_by);
+                world_.draw(s, iso, 1, a.id, l.z);
+            }
+        }
     }
     world_.prepare(cam);
 
