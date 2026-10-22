@@ -315,6 +315,10 @@
           "items": {
             "$ref": "#/$defs/light_state"
           }
+        },
+        "preset": {
+          "$ref": "../common/v1.schema.json#/$defs/content_id",
+          "description": "Render light preset key (LIGHTING 10.1; Render #233 / #255 key glow styles by it, e.g. 'srd51.core.light.torch'). Presentation only: never read by sim."
         }
       }
     },

@@ -112,10 +112,13 @@ ITEM = {("weapon",): (_IBASE | {"weapon_class"}, S(_ICOMMON | {"reach", "range",
         ("shield",): (_IBASE, S(_ICOMMON | {"ac_bonus", "magic_bonus"})),
         ("valuable",): (_IBASE, S(_ICOMMON))}   # gems (srd51.item.diamond): priced materials, docs/CONTENT_CONVENTIONS.md section 7
 # item@2 (docs/proposals/EQUIPMENT.md 7.1): item@1's arms with optional weapon keys appended, plus gear and ammunition.
-ITEM2 = {("weapon",): (ITEM[("weapon",)][0], ITEM[("weapon",)][1] | {"ammo_kind", "attack_magic", "damage_magic", "improvised"}),
-         ("armor",): ITEM[("armor",)], ("shield",): ITEM[("shield",)], ("valuable",): ITEM[("valuable",)],
-         ("gear",): (_IBASE, S(_ICOMMON | {"hands", "light", "torch_attack"})),
-         ("ammunition",): (_IBASE | {"ammo_kind"}, S(_ICOMMON | {"magic_bonus"}))}
+# Every item@2 arm also accepts the presentation-only `visual` block (as item@1 does with Render #233; superset of item@1).
+_V = {"visual"}
+ITEM2 = {("weapon",): (ITEM[("weapon",)][0], ITEM[("weapon",)][1] | {"ammo_kind", "attack_magic", "damage_magic", "improvised"} | _V),
+         ("armor",): (ITEM[("armor",)][0], ITEM[("armor",)][1] | _V), ("shield",): (ITEM[("shield",)][0], ITEM[("shield",)][1] | _V),
+         ("valuable",): (ITEM[("valuable",)][0], ITEM[("valuable",)][1] | _V),
+         ("gear",): (_IBASE, S(_ICOMMON | {"hands", "light", "torch_attack"} | _V)),
+         ("ammunition",): (_IBASE | {"ammo_kind"}, S(_ICOMMON | {"magic_bonus"} | _V))}
 
 # (label, schema locator, discriminator, documented table)
 def unions():
