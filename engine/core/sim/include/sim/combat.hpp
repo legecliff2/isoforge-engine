@@ -118,6 +118,11 @@ struct EquipmentLight {
     CombatantId holder_id = 0;
     Vec2i tile{};
     bool lit = false;
+    // Light state (EQUIPMENT.md 6, item@2 light.states): 0 = default; k = states[k - 1] (a hooded lantern: 1 = hooded). Carried
+    // in HeldItem::flags bits 4..6 (held_light_state). bright_ft / dim_ft: the radii of that state (dim beyond bright).
+    uint8_t state = 0;
+    uint16_t bright_ft = 0, dim_ft = 0;
+    rules5e::LightShape shape = rules5e::LightShape::Radius;
 };
 
 // Ground item ECS entities (EQUIPMENT.md 4.4): StableId kGroundItemIdBase + instance, with TilePos and this component.
