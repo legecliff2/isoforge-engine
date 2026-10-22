@@ -143,6 +143,9 @@ class AppendOnly(unittest.TestCase):
             for k, v in o["properties"].items():
                 if k in ("$schema", "category", "equipment"):
                     continue   # const bumped / enum widened / object arm widened (tested below)
+                if new == "monster/v5" and k == "traits":   # v4's items plus the monster@5-local weapon_extra_dice arm
+                    self.assertEqual(n["properties"][k]["items"]["allOf"][0], v["items"])
+                    continue
                 self.assertEqual(n["properties"][k], v, f"{new}: {k}")
             self.assertEqual(set(n["required"]), set(o["required"]) | extra_req, new)
         self.assertLessEqual(set(schema("item/v1.schema.json")["properties"]["category"]["enum"]),
@@ -173,7 +176,9 @@ class TagTable(unittest.TestCase):
             declared = set(sb["properties"]) | set(schema(f"{typ}/v5.schema.json")["properties"])
             self.assertEqual(set(checks_v4.TAG_TABLE[tag].top_level_keys), declared, tag)
             r4, r5 = checks_v4.TAG_TABLE[f"{typ}@4"], checks_v4.TAG_TABLE[tag]
-            self.assertEqual((r4.action_kinds, r4.effect_kinds, r4.cost_values), (r5.action_kinds, r5.effect_kinds, r5.cost_values))
+            local = checks_v4.MONSTER_AT5_EFFECT_KINDS if typ == "monster" else frozenset()
+            self.assertEqual((r4.action_kinds, r4.effect_kinds | local, r4.cost_values), (r5.action_kinds, r5.effect_kinds, r5.cost_values))
+        self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice"})
 
 
 class NewShapes(unittest.TestCase):
@@ -198,6 +203,41 @@ class NewShapes(unittest.TestCase):
 
     def test_character_pb_still_required(self):
         self.assertTrue(errs_of(pack(**{"characters/fighter5.json": h.edit(fighter5(), dels=[["proficiency_bonus"]])})))
+
+
+BRUTE = {"kind": "weapon_extra_dice", "dice": 1, "melee_only": True}
+
+
+class WeaponExtraDice(unittest.TestCase):
+    """monster@5-local trait kind weapon_extra_dice (Brute; EQUIPMENT 5.3, #247 MonsterSpec::brute_dice). common@2 is unchanged,
+    so @4 documents and characters keep the open-kind behaviour (unknown-kind warning, never loaded)."""
+
+    def brute(self, eff, schema="monster@5"):
+        b = bugbear5() if schema == "monster@5" else dict(copy.deepcopy(core("monsters/bugbear.json")), id="test.v4.bugbear5")
+        i = next(i for i, t in enumerate(b["traits"]) if t["id"] == "brute")
+        b["traits"][i]["effect"] = eff
+        return h.validate_docs(pack(**{"monsters/bugbear5.json": b}))
+
+    def test_valid(self):
+        for eff in (BRUTE, {"kind": "weapon_extra_dice", "dice": 2}):
+            e, w = self.brute(eff)
+            self.assertEqual(e, [], eff)
+            self.assertFalse(any("weapon_extra_dice" in x for x in w), w)
+
+    def test_closed_arm(self):
+        for eff in (dict(BRUTE, dice=0), dict(BRUTE, dice=5), dict(BRUTE, dice="1d8"), {"kind": "weapon_extra_dice"},
+                    dict(BRUTE, ranged=True), dict(BRUTE, melee_only="yes")):
+            e, _w = self.brute(eff)
+            self.assertTrue(any("/traits/" in x for x in e), (eff, e))
+
+    def test_not_a_kind_outside_monster5(self):
+        e, w = self.brute(BRUTE, schema="monster@4")
+        self.assertEqual(e, [])
+        self.assertTrue(any("unknown effect kind 'weapon_extra_dice'" in x for x in w), w)
+        f = fighter5(); f["features"] = list(f.get("features") or []) + [{"id": "brute", "name": "Brute", "effect": BRUTE}]
+        e, w = h.validate_docs(pack(**{"characters/fighter5.json": f}))
+        self.assertEqual(e, [])
+        self.assertTrue(any("unknown effect kind 'weapon_extra_dice'" in x for x in w), w)
 
 
 class StructuralChecks(unittest.TestCase):
