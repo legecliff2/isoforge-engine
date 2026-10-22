@@ -12,6 +12,7 @@ struct CombatTestAccess {
     static rules5e::EncounterState& state(Combat& c) { return c.state_; }
     static std::vector<LogEntry>& log(Combat& c) { return c.log_; }
     static std::vector<Combat::MaterialUse>& materials(Combat& c) { return c.materials_used_; }
+    static std::shared_ptr<const rules5e::SpellBook>& spells(Combat& c) { return c.spells_; }
 };
 }  // namespace eng::sim
 
@@ -325,4 +326,35 @@ TEST_CASE("Combat::log_hash: ward_alternate (0xCD) and heal_split (0xCE), 7.2zd,
     CHECK(c0->log_hash() != hs);
     log[1].step.request.heal_split.clear();
     CHECK(c0->log_hash() == h0);   // not folded when empty: older logs hash as before
+}
+
+TEST_CASE("Combat::log_hash: the chosen condition (0xCF), 7.2ze Blindness/Deafness, folds only for condition: chosen spells") {
+    ContentLibrary l;
+    REQUIRE(l.load(sample_set()).empty());
+    const auto ch = arena();
+    ecs::Registry r0;
+    auto c0 = Combat::create(r0, ch, l, 9);
+    REQUIRE(c0);
+    auto book = std::make_shared<rules5e::SpellBook>();
+    rules5e::SpellDef bd; bd.id = rules5e::spell_id_of("test.spell.blindness_deafness"); bd.content_id = "test.spell.blindness_deafness";
+    bd.level = 2; bd.kind = rules5e::SpellEffectKind::Save; bd.save_ability = rules5e::Ability::Con; bd.applies_condition = true;
+    bd.condition_choices = {rules5e::Condition::Blinded, rules5e::Condition::Deafened}; bd.condition = rules5e::Condition::Blinded;
+    rules5e::SpellDef plain = bd; plain.id = rules5e::spell_id_of("test.spell.plain"); plain.content_id = "test.spell.plain";
+    plain.condition_choices.clear();
+    REQUIRE(book->add(bd)); REQUIRE(book->add(plain));
+    CombatTestAccess::spells(*c0) = book;
+    Command e;
+    e.request = {rules5e::current_actor(c0->state()), rules5e::ActionKind::EndTurn};
+    REQUIRE(c0->submit(e).ok);
+    auto& log = CombatTestAccess::log(*c0);
+    auto& q = log[0].step.request;
+    q.kind = rules5e::ActionKind::CastSpell; q.spell_id = plain.id; q.condition_choice = 1;
+    const uint64_t hp = c0->log_hash();   // 0xB1 only: no 0xCF for a spell without choices
+    q.spell_id = bd.id;
+    const uint64_t h1 = c0->log_hash();
+    CHECK(h1 != hp);
+    q.condition_choice = 2;
+    CHECK(c0->log_hash() != h1);
+    q.condition_choice = 1;
+    CHECK(c0->log_hash() == h1);
 }

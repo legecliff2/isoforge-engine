@@ -12,6 +12,8 @@
 #include "rng/rng.hpp"
 #include "rules5e/attack.hpp"
 #include "rules5e/initiative.hpp"
+#include "rules5e/item.hpp"
+#include "rules5e/loadout.hpp"
 #include "rules5e/saves.hpp"
 #include "rules5e/spells.hpp"
 #include "rules5e/types.hpp"
@@ -227,6 +229,15 @@ struct ActionRequest {
     // appended (7.2zd Preserve Life; log_hash 0xCE when non-empty): UseFeature of a split heal_pool feature: how the pool is
     // divided (check_heal_split validates it before anything changes).
     std::vector<HealShare> heal_split{};
+    // appended (docs/proposals/EQUIPMENT.md 4.2; log_hash 0xD1 when equip_op != 0, folded by Engine Core): UseObject with an
+    // equip op (rules5e::EquipOp: 1 draw, 2 stow, 3 drop, 4 pick up, 5 don shield, 6 doff shield, 7 hand over, 8 / 9 armor).
+    // equip_item: the item instance; equip_hand: 1 main, 2 off, 0 any free; equip_to: HandOver recipient; equip_in_reach: sim's
+    // answer for PickUp / HandOver (rules never reads positions). Rules checks legality (equip_legal); Engine Core applies it.
+    uint8_t equip_op = 0;
+    uint32_t equip_item = 0;
+    uint8_t equip_hand = 0;
+    CombatantId equip_to = 0;
+    bool equip_in_reach = false;
 };
 
 enum class EventKind : uint8_t {
@@ -471,6 +482,9 @@ struct ActiveModifier {
     // appended (7.2zc; modifiers_digest sub-tag 0x5A when non-zero): ModifierSpec::mark_scope: the marked creature (0 = none).
     // Moving the mark (ActionRequest::move_mark) rewrites it, and `target` too on a row that sat on the old mark.
     CombatantId mark = 0;
+    // appended (ward / mark follow-ups; modifiers_digest sub-tag 0x5D when set): the turn (turn_stamp) the marked creature was
+    // first seen at 0 hit points; move_mark is refused on that turn (SRD: "on a subsequent turn"). Cleared while it is above 0.
+    bool mark_dropped = false; uint32_t mark_dropped_stamp = 0;
 };
 
 // Limited-use features (Second Wind, ...), keyed by (actor, feature_id). Part of the encounter state,
@@ -723,6 +737,17 @@ struct EncounterHooks {
     // appended (7.2x): an Attack on a creature hidden from the attacker names a tile (ActionRequest::has_guess). Is the
     // target there? Pure like `sight`. Empty = yes. A wrong guess misses automatically (the d20 is still rolled).
     std::function<bool(const EncounterState&, const Combatant& attacker, const Combatant& target, int32_t x, int32_t y)> guess_correct;
+    // appended (EQUIPMENT.md 9.1): Engine Core's equipment state, read-only. loadout_of: the creature's loadout view, nullptr for a
+    // creature without one (legacy content, CombatOptions::equipment off: no equipment check, no equip legal action). item_def:
+    // the ItemDef for a def id (nullptr = unknown). apply_equip: called by step after equip_legal allows a UseObject equip op
+    // (rules has already spent the action for EquipCost::Action); Engine Core applies the op and the free-interaction bookkeeping.
+    // All empty = pre-equipment behaviour, goldens unchanged.
+    std::function<const LoadoutView*(const EncounterState&, CombatantId)> loadout_of;
+    std::function<const ItemDef*(uint32_t def)> item_def;
+    std::function<void(EncounterState&, const ActionRequest&, uint8_t cost_kind, std::vector<Event>&)> apply_equip;
+    // ground_item_def: the ItemDef of a ground item *instance* (ActionRequest::equip_item on PickUp is a ground instance id,
+    // not a def id); nullptr / empty = unknown, and PickUp is refused `equip: unknown ground item`.
+    std::function<const ItemDef*(uint32_t instance)> ground_item_def;
 };
 
 // R-G11: a live zone or aura (ZONES_AURAS.md §2.6). anchor_x / anchor_y: a point zone's sim tile, opaque to rules (Q1).
@@ -800,6 +825,12 @@ struct EncounterState {
     // `from` and Stealth >= its passive Perception). Ends when `who` attacks, or when `from` can see it at a step's start.
     struct Hidden { CombatantId who = 0, from = 0; int16_t stealth = 0; friend bool operator==(const Hidden&, const Hidden&) = default; };
     std::vector<Hidden> hidden{};
+    // appended (EQUIPMENT.md 9, Engine Core): equipment state, empty unless CombatOptions::equipment built loadouts. Combat::hash
+    // folds `loadouts` + `next_item_id` under 0xD0 when non-empty and `ground_items` under 0xD2 once `ground_items_seen`.
+    std::vector<Loadout> loadouts{};          // combatant (setup) order
+    std::vector<GroundItem> ground_items{};   // instance order
+    uint32_t next_item_id = 1;                // item instance ids start at 1 (0 = empty hand)
+    bool ground_items_seen = false;           // sticky: a ground item has existed (0xD2 keeps folding after a pick-up)
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call
@@ -1001,6 +1032,17 @@ int32_t modifier_magnitude(const ModifierSpec& spec);
 // attack's reach / long range when EncounterHooks::targets_within is set).
 std::vector<CombatantId> ward_alternate_targets(const EncounterState& s, CombatantId actor, CombatantId warded, uint32_t spell_id,
                                                 uint8_t attack_index);
+// Ward / mark follow-ups: attack_index kWardSpecialAttack = for a Grapple / Shove (ActionRequest::special 1..3): alive, not
+// warded, not its charmer, at most one size larger than the actor, within 5 ft when EncounterHooks::targets_within is set.
+inline constexpr uint8_t kWardSpecialAttack = 0xFF;
+// Ward / mark follow-ups: whether `req` (for the current state, its actor) meets a Sanctuary ward, and which: the index into
+// EncounterState::effects of the ward entry, or none. An Attack (also Grapple / Shove, special 1..3) on a warded creature; a
+// CastSpell of a harmful spell without an area whose targets include a warded creature (the first one in target order).
+// Harmful (spell_harmful): it deals damage, forces a saving throw, or applies a negative condition or modifier to its targets.
+// Any actor but the warded creature itself meets it, whatever its side. Move / Dash / ... and zone_move / sustain: none.
+std::optional<std::size_t> meets_ward(const EncounterState& s, const ActionRequest& req);
+// The harmful test meets_ward uses for a spell (any effect of it; applies_to self modifiers excluded).
+bool spell_harmful(const SpellDef& def);
 
 // 7.2zd Preserve Life: validates a split against the user's FeatureSpec. index = the first failing entry (-1 = valid);
 // reason: OverCap (more than up to half its maximum, or any healing for one already at or above half), OutOfRange,

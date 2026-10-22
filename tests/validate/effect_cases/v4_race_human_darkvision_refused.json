@@ -1,0 +1,14 @@
+{
+  "base": "characters/cleric_level_1.json",
+  "sets": [
+    [
+      [
+        "senses",
+        "darkvision"
+      ],
+      60
+    ]
+  ],
+  "severity": "error",
+  "expect": "race 'human': senses.darkvision 60 not allowed (the race has no Darkvision in SRD 5.1)"
+}
