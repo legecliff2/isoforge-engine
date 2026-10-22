@@ -57,7 +57,7 @@ TEST_CASE("session copies the sim LightFrame: samples, dirty set, sources with s
     REQUIRE(vm.light.sources.size() == 1);
     const LightSourceView& src = vm.light.sources[0];
     CHECK(src.attached);
-    CHECK(src.index == 1);
+    CHECK(src.index == kInterimLightIdBase);   // interim ids never collide with sim light ids
     CHECK(src.carrier == 1);
     CHECK(src.carrier_id == p.id);
     CHECK(src.tile == p.tile);

@@ -11,7 +11,7 @@ target_link_libraries(vertical_slice_view PUBLIC eng::iso2d eng::render_api)
 _engine_warnings(vertical_slice_view)
 
 if(ENGINE_BUILD_TESTS)
-    add_executable(vertical_slice_tests tests/vertical_slice_tests.cpp tests/event_feed_tests.cpp tests/light_view_tests.cpp)
+    add_executable(vertical_slice_tests tests/vertical_slice_tests.cpp tests/event_feed_tests.cpp tests/light_view_tests.cpp tests/equipped_light_tests.cpp)
     target_link_libraries(vertical_slice_tests PRIVATE vertical_slice_session vertical_slice_view eng::render_null
                           eng::sim eng::world eng::ecs
                           doctest::doctest_with_main)
