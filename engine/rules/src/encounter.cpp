@@ -5688,6 +5688,11 @@ int move_allowance(const EncounterState& s, const Combatant& c, uint8_t mode) {
 int modified_speed(const EncounterState& s, const Combatant& c) {
     int sp = effective_speed(c);
     if (sp <= 0) return sp;
+    // 7.2zg Hypnotic Pattern (SRD: incapacitated and a speed of 0): an effect that ends on a shake awake holds speed 0
+    // while it lasts (every mode: mode_speed and move_allowance read this); waking or damage ends it, and the next
+    // turn's budget has the speed again.
+    for (const auto& e : s.effects)
+        if (e.target == c.id && (e.ends_on & kEndsOnShakeAwake)) return 0;
     for (const auto& m : s.modifiers)
         if (m.target == c.id && m.spec.stat == ModStat::Speed && m.spec.speed_den > 0)
             sp = std::max(0, sp * m.spec.speed_num / m.spec.speed_den - int(m.spec.speed_sub));
