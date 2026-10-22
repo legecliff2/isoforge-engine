@@ -276,7 +276,7 @@ class SpellTable(unittest.TestCase):
         hp = load("hypnotic-pattern")
         self.assertEqual([(e["kind"], e["condition"], e["ends_on"]) for e in hp["effects"]],
                          [("save", "charmed", ["damage", "shake_awake"]), ("apply_condition", "incapacitated", ["damage", "shake_awake"])])
-        self.assertIn("speed of 0", hp["description"])   # deferred upstream
+        self.assertNotIn("Not modelled", hp["description"])   # speed 0 is modelled upstream (302f92f)
         loader = (ROOT / "engine/rules/content/src/spell_loader.cpp").read_text(encoding="utf-8")
         for msg in ("casting_time.trigger.kind must be being_hit, spell_cast or damaged",
                     "effect ends_on must be a non-empty list of attack, cast, harmful_cast, damage, shake_awake"):

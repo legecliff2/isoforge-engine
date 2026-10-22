@@ -125,7 +125,7 @@ Spell imbue / mirror rules (7.2zf). Pinned by `tests/validate/test_srd51_spells.
 
 ## Authored after Rules #263 (11)
 
-Spell batch zg rules (7.2zg, Rules #263 at `518c36c`). Pinned by `tests/validate/test_srd51_spells.py` (table rows, `test_spell_batch_zg` and `test_spell_batch_zg_rest`, which also checks the pack files against Rules' specimens in `tests/validate/fixtures/spell_batch_zg/`) and `tests/validate/test_spell_batch_zg.py`. Mirror Image (authored after #257) now lists `exempt_senses [blindsight, truesight]` explicitly.
+Spell batch zg rules (7.2zg, Rules #263 at `302f92f`). Pinned by `tests/validate/test_srd51_spells.py` (table rows, `test_spell_batch_zg` and `test_spell_batch_zg_rest`, which also checks the pack files against Rules' specimens in `tests/validate/fixtures/spell_batch_zg/`) and `tests/validate/test_spell_batch_zg.py`. Mirror Image (authored after #257) now lists `exempt_senses [blindsight, truesight]` explicitly.
 
 | spell | level | `spell@1` shape | notes |
 |---|---|---|---|
@@ -138,7 +138,7 @@ Spell batch zg rules (7.2zg, Rules #263 at `518c36c`). Pinned by `tests/validate
 | Faerie Fire | 1 | `apply_modifier {stat outlined}` + `save` DEX (caster DC); `area cube 20`, range 60, concentration 1 minute | druid (1-5); the mirror lists druid only; advantage when the attacker can see the target, no invisibility benefit; light and objects not modelled |
 | Hellish Rebuke | 1 | reaction, `trigger {kind damaged, requires_sight}`; `save` DEX 2d10 fire half; range 60; `upcast.dice 1` | warlock (no class list room: every shipped warlock is at spells known) |
 | Blur | 2 | `apply_modifier attacks_against disadvantage` + `exempt_senses [blindsight, truesight]`; self, concentration 1 minute | sorcerer (4-5), wizard (full at 3-5) |
-| Hypnotic Pattern | 3 | `save` WIS `charmed` + `apply_condition incapacitated applies_to affected`, both `ends_on [damage, shake_awake]` (the Wake action); `area cube 30`, range 120, concentration 1 minute | bard, sorcerer, warlock, wizard (none have room at 5); **speed 0 deferred** (Rules #263); the mirror has no area_of_effect (cube 30 from the SRD text) |
+| Hypnotic Pattern | 3 | `save` WIS `charmed` + `apply_condition incapacitated applies_to affected`, both `ends_on [damage, shake_awake]` (the Wake action); `area cube 30`, range 120, concentration 1 minute | bard, sorcerer, warlock, wizard (none have room at 5); speed 0 while charmed (Rules #263 @ `302f92f`); the mirror has no area_of_effect (cube 30 from the SRD text) |
 | Protection from Energy | 3 | `apply_modifier {stat resistance, damage_type acid}` + `damage_type_choices [acid, cold, fire, lightning, thunder]`; touch, concentration 1 hour | cleric (5), druid (5); the mirror spells it "Protection From Energy" |
 
 ## Deferred (103 spells; reasons re-checked against main at `8b8d8c9`)
