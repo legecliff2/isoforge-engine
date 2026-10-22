@@ -60,3 +60,58 @@ TEST_CASE("7.2zg slow: one save gates every row; a slowed caster of a 1-action s
     }
     CHECK(lost > 0); CHECK(cast_ok > 0);
 }
+
+namespace {
+const uint32_t kFalseLife = spell_id_of("test.zg.false_life");
+const uint32_t kHeroism = spell_id_of("test.zg.heroism");
+const uint32_t kScareZ = spell_id_of("test.zg.scare");
+EncounterHooks temp_hooks() {
+    auto h = spell_hooks();
+    auto book = std::make_shared<SpellBook>(*h.spells);
+    SpellDef fl; fl.id = kFalseLife; fl.content_id = "test.zg.false_life"; fl.level = 1; fl.range_ft = 0;
+    fl.kind = SpellEffectKind::TempHp; fl.temp_hp.dice = DiceExpr{1, 4, 4}; fl.temp_hp.per_slot_above = 5;
+    fl.duration = SpellDuration::Hours; fl.duration_amount = 1;
+    book->add(fl);
+    SpellDef he; he.id = kHeroism; he.content_id = "test.zg.heroism"; he.level = 1; he.range_ft = 5; he.concentration = true;
+    he.kind = SpellEffectKind::TempHp; he.temp_hp.ability = true; he.temp_hp.per_turn = true;
+    he.temp_hp.immune_conditions = bit(Condition::Frightened);
+    he.duration = SpellDuration::Minutes; he.duration_amount = 1;
+    book->add(he);
+    SpellDef sc; sc.id = kScareZ; sc.content_id = "test.zg.scare"; sc.level = 1; sc.range_ft = 60; sc.kind = SpellEffectKind::Save;
+    sc.save_ability = Ability::Wis; sc.fixed_dc = 100; sc.applies_condition = true; sc.condition = Condition::Frightened;
+    sc.duration = SpellDuration::Minutes; sc.duration_amount = 1;
+    book->add(sc);
+    h.spells = book;
+    return h;
+}
+}  // namespace
+
+TEST_CASE("7.2zg temp_hp: False Life 1d4+4 (+5 per slot above 1st); Heroism per turn + frightened immunity while it lasts") {
+    auto w = wizard(1); w.spells_known.insert(w.spells_known.end(), {kFalseLife, kHeroism}); never_react(w);
+    auto e = wizard(2, 1); e.spells_known.push_back(kScareZ); never_react(e);
+    auto s = begin_encounter({w, e}, 7, nullptr, temp_hooks());
+    end_turns_until(s, 1);
+    REQUIRE(step(s, cast(1, kFalseLife, 1, 1)).ok);
+    const int t1 = mut(s, 1).temp_hp;
+    CHECK(t1 >= 5); CHECK(t1 <= 8);
+    mut(s, 1).temp_hp = 0;
+    (void)step(s, ActionRequest{1, ActionKind::EndTurn}); end_turns_until(s, 1);
+    REQUIRE(step(s, cast(1, kFalseLife, 1, 3)).ok);   // 2 slots above: +10
+    CHECK(mut(s, 1).temp_hp >= 15); CHECK(mut(s, 1).temp_hp <= 18);
+    mut(s, 1).temp_hp = 0;
+    (void)step(s, ActionRequest{1, ActionKind::EndTurn}); end_turns_until(s, 1);
+    const int mod = modifier(mut(s, 1).abilities, mut(s, 1).spellcasting_ability);
+    REQUIRE(step(s, cast(1, kHeroism, 1, 1)).ok);
+    CHECK(mut(s, 1).temp_hp == mod);
+    mut(s, 1).temp_hp = 0;
+    (void)step(s, ActionRequest{1, ActionKind::EndTurn}); end_turns_until(s, 2);
+    REQUIRE(step(s, cast(2, kScareZ, 1, 1)).ok);           // DC 100: would always frighten
+    CHECK_FALSE(mut(s, 1).has(Condition::Frightened));     // immune while Heroism lasts
+    (void)step(s, ActionRequest{2, ActionKind::EndTurn}); end_turns_until(s, 1);
+    CHECK(mut(s, 1).temp_hp == mod);                       // refreshed at the start of the turn
+    s.effects.erase(std::remove_if(s.effects.begin(), s.effects.end(), [](const auto& x) { return x.spell_id == kHeroism; }),
+                    s.effects.end());                     // the spell ended: the immunity goes with its effect
+    (void)step(s, ActionRequest{1, ActionKind::EndTurn}); end_turns_until(s, 2);
+    REQUIRE(step(s, cast(2, kScareZ, 1, 1)).ok);
+    CHECK(mut(s, 1).has(Condition::Frightened));
+}

@@ -837,7 +837,10 @@ bool aura_immune(const EncounterState& s, const Combatant& t, Condition c) {
 }
 // Condition immunity: the creature's own, or an aura's.
 bool immune_to(const EncounterState& s, const Combatant& t, Condition c) {
-    return (t.condition_immunities & bit(c)) != 0 || (!s.zones.empty() && aura_immune(s, t, c));
+    if ((t.condition_immunities & bit(c)) != 0 || (!s.zones.empty() && aura_immune(s, t, c))) return true;
+    for (const auto& e : s.effects)   // 7.2zg Heroism: immune from any source while the spell lasts (immune_from_types = all)
+        if (e.target == t.id && e.immune_from_types == kImmuneFromAnySource && (e.immune_conditions & bit(c)) != 0) return true;
+    return false;
 }
 // 7.2zd Protection from Evil and Good: `t` can't get `c` from `source` while a ConditionImmunityFrom effect of the source's
 // creature type lasts on it (unknown source: not immune).
@@ -3305,6 +3308,30 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         if (def.concentration && applied) a.concentration_spell = def.id;
         break;
     }
+    case SpellEffectKind::TempHp: {   // 7.2zg False Life / Heroism
+        const TempHpSpec& th = def.temp_hp;
+        const int above = std::max(0, int(lvl) - int(def.level));
+        bool applied = false;
+        for (Combatant* t : T) {
+            if (t->dead) continue;
+            int amt = th.dice.count > 0 ? roll_dice(s.rng, th.dice) : int(th.dice.bonus);
+            amt += int(th.per_slot_above) * above;
+            if (th.ability) amt += modifier(a.abilities, a.spellcasting_ability);
+            ModifierSpec m; m.id = def.id; m.source = def.id; m.stat = ModStat::TempHp; m.applies_to = ModAppliesTo::Target;
+            m.bonus = int16_t(std::clamp(amt, 0, 32767)); m.per_turn = th.per_turn; m.concentration = def.concentration;
+            (void)apply_modifier(s, a.id, t->id, m, ev);
+            if (th.immune_conditions != 0) {
+                ActiveSpellEffect x{def.id, a.id, t->id, Condition::Paralyzed, Ability::Wis, 0, RepeatSave::None, def.concentration,
+                                    effect_timed(s, def, a.id, t->id), lvl, false};
+                x.no_condition = true;
+                x.immune_conditions = th.immune_conditions; x.immune_from_types = kImmuneFromAnySource;
+                s.effects.push_back(x);
+            }
+            affected.push_back(t); applied = true;
+        }
+        if (def.concentration && applied) a.concentration_spell = def.id;
+        break;
+    }
     case SpellEffectKind::MaxHpBonus: {   // 7.2zd Aid: maximum and current hit points up; the same spell keeps the higher bonus
         const int above = std::max(0, int(lvl) - int(def.level));
         const int bonus = std::clamp(int(def.hp_bonus_flat) + int(def.hp_bonus_per_slot) * above, 0, 32767);
@@ -3558,6 +3585,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     case SpellEffectKind::HpPool: case SpellEffectKind::Dispel: case SpellEffectKind::Revive:
     case SpellEffectKind::EndCondition: case SpellEffectKind::DelayedDamage: case SpellEffectKind::SustainedDamage:
     case SpellEffectKind::ForcedMove: case SpellEffectKind::ConditionImmunityFrom: case SpellEffectKind::MaxHpBonus:
+    case SpellEffectKind::TempHp:   // 7.2zg
         if ((def.area == AreaShape::None && int(T.size()) > scaled_targets(def, lvl)) || !distinct())
             return fail("too many targets");
         break;

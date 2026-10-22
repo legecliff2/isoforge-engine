@@ -853,3 +853,33 @@ TEST_CASE("loader 7.2zg: summon_weapon (Spiritual Weapon) maps onto SpellEffectK
     j.erase("scaling");
     bad(j, "effects[1]: summon_weapon is only allowed as the first effect");
 }
+
+TEST_CASE("loader 7.2zg: temp_hp (False Life dice + per_slot_above; Heroism ability + per_turn + condition_immunity)") {
+    auto fl = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.false_life","level":1,"name":"False Life",
+        "casting_time":{"kind":"action"},"range":{"kind":"self"},"components":{"v":true,"s":true,"m":{"text":"alcohol"}},
+        "duration":{"kind":"hours","amount":1},"effects":[{"kind":"temp_hp","dice":"1d4+4","per_slot_above":5}]})");
+    auto r = spell_from_json(fl); INFO(r.error); REQUIRE(r.def);
+    CHECK(r.def->kind == SpellEffectKind::TempHp);
+    CHECK(r.def->temp_hp.dice.count == 1); CHECK(r.def->temp_hp.dice.sides == 4); CHECK(r.def->temp_hp.dice.bonus == 4);
+    CHECK(r.def->temp_hp.per_slot_above == 5); CHECK_FALSE(r.def->temp_hp.ability); CHECK_FALSE(r.def->temp_hp.per_turn);
+    auto he = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.heroism","level":1,"name":"Heroism",
+        "casting_time":{"kind":"action"},"range":{"kind":"touch"},"components":{"v":true,"s":true},
+        "duration":{"kind":"minutes","amount":1,"concentration":true},
+        "effects":[{"kind":"temp_hp","ability":"spellcasting","per_turn":true,"condition_immunity":["frightened"]}],
+        "scaling":{"upcast":{"targets":1}}})");
+    auto h = spell_from_json(he); INFO(h.error); REQUIRE(h.def);
+    CHECK(h.def->temp_hp.ability); CHECK(h.def->temp_hp.per_turn); CHECK(h.def->temp_hp.immune_conditions == bit(Condition::Frightened));
+    auto bad = [](eng::assets::Json x, const std::string& want) {
+        auto q = spell_from_json(x); INFO(want); INFO(q.error); CHECK_FALSE(q.def); CHECK(q.error == want);
+    };
+    auto j = fl; j["effects"][0]["ability"] = "spellcasting"; bad(j, "effect temp_hp needs exactly one of dice or ability");
+    j = fl; j["effects"][0].erase("dice"); bad(j, "effect temp_hp needs exactly one of dice or ability");
+    j = fl; j["effects"][0]["dice"] = "xd4"; bad(j, "effect dice invalid");
+    j = fl; j["effects"][0]["per_slot_above"] = 0; bad(j, "effect per_slot_above must be an integer 1..50");
+    j = he; j["effects"][0]["ability"] = "wis"; bad(j, "effect ability must be spellcasting");
+    j = he; j["effects"][0]["per_turn"] = 1; bad(j, "effect per_turn must be a boolean");
+    j = he; j["effects"][0]["condition_immunity"] = eng::assets::Json::array(); bad(j, "effect condition_immunity must be a non-empty list of conditions");
+    j = he; j["effects"][0]["condition_immunity"] = {"frightened", "frightened"}; bad(j, "effect condition_immunity items must be unique");
+    j = he; j["duration"] = {{"kind", "instantaneous"}};
+    bad(j, "effect temp_hp per_turn or condition_immunity needs concentration or a rounds, minutes or hours duration");
+}
