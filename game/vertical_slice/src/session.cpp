@@ -169,7 +169,8 @@ struct Session::Impl {
     // Equipment producer: one attached source per light-capable item (Combat::equipment_lights(), light id order),
     // keyed by the sim's light id. Held or carried: Carrier::Creature on the holder (the glow follows the token); on the
     // ground (unequipped by drop / death / throw): Carrier::Tile at the item's tile. Unlit (stowed, never lit): lit=false,
-    // so no glow and no light. Bright / dim come from the item def; the preset only picks the visual.
+    // so no glow and no light. Bright / dim are rules5e::light_radii(def, held) for the light_state_index (0 / 0 while
+    // unlit or stowed: no glow); the preset only picks the visual.
     static void equipment_sources(const sim::Combat& c, const std::map<std::string, std::string, std::less<>>& presets,
                                   std::vector<sim::LightSource>& out) {
         const sim::ItemDefTable* table = c.item_defs();
@@ -407,7 +408,7 @@ bool Session::step() {
     return r.ok;
 }
 
-bool Session::submit_equip(uint32_t actor, uint8_t op, uint32_t item, uint8_t hand) {
+bool Session::submit_equip(uint32_t actor, uint8_t op, uint32_t item, uint8_t hand, uint8_t state) {
     Impl& m = *impl_;
     if (!m.combat || m.combat->ended() || m.combat->pending() || !m.error.empty()) return false;
     if (rules5e::current_actor(m.combat->state()) != actor) return false;
@@ -415,6 +416,7 @@ bool Session::submit_equip(uint32_t actor, uint8_t op, uint32_t item, uint8_t ha
     q.equip_op = op;
     q.equip_item = item;
     q.equip_hand = hand;
+    q.equip_state = state;
     sim::Command c;
     c.request = q;
     const sim::SubmitResult r = m.combat->submit(c);
@@ -440,7 +442,7 @@ std::vector<Session::EquippedLight> Session::equipment_lights() const {
     std::vector<EquippedLight> out;
     if (!impl_->combat) return out;
     for (const sim::EquipmentLight& e : impl_->combat->equipment_lights())
-        out.push_back({e.light_id, e.item, e.holder_id, e.tile, e.lit});
+        out.push_back({e.light_id, e.item, e.holder_id, e.tile, e.lit, e.state, e.bright_ft, e.dim_ft});
     return out;
 }
 
