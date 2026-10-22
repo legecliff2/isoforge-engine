@@ -102,6 +102,20 @@ for _typ, _keys in (("monster", _SB_KEYS | _MONSTER_KEYS), ("character", _SB_KEY
                                     legacy_stamps=True)
 TAG_TABLE["item@1"] = TagRow(False, frozenset(), frozenset(), frozenset(), frozenset(), cross_refs=True,
                              needs_api_level=2)
+# EQUIPMENT 7.1 (#245/#246): monster@5 / character@5 carry @4 in full plus optional equipment keys; item@2 carries item@1.
+_MONSTER_AT5_KEYS = frozenset({"derive", "equipment", "natural_armor", "ac_adjust", "weapon_dice_multiplier", "weapons", "hands",
+                               "proficiency_bonus_reason", "emits_light"})
+# monster@5-local trait kinds (Rules decision on #247: no common@3): weapon_extra_dice (Brute), closed arm in monster@5 $defs.
+MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice"})
+_CHARACTER_AT5_KEYS = frozenset({"derive", "weapon_proficiencies", "armor_proficiencies"})
+for _typ, _extra in (("monster", _MONSTER_AT5_KEYS), ("character", _CHARACTER_AT5_KEYS)):
+    _r4 = TAG_TABLE[f"{_typ}@4"]
+    TAG_TABLE[f"{_typ}@5"] = TagRow(True, _r4.action_kinds,
+                                    _r4.effect_kinds | (MONSTER_AT5_EFFECT_KINDS if _typ == "monster" else frozenset()),
+                                    _r4.cost_values, _r4.top_level_keys | _extra,
+                                    cross_refs=True, needs_api_level=2, legacy_stamps=True)
+TAG_TABLE["item@2"] = TagRow(False, frozenset(), frozenset(), frozenset(), frozenset(), cross_refs=True,
+                             needs_api_level=2)
 
 FORWARD_COMPAT_KNOWN = frozenset({"elevation"})
 # Reaction windows the sim compiles (content.cpp compile_reactions); every other window is listed as unsupported and
@@ -1411,8 +1425,12 @@ def check_grapple_riders(doc: dict, errs: list[str], warns: list[str]) -> None:
 
 def check_item(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
     errs: list[str] = []
+    if doc.get("category") == "gear":
+        return check_item_light(doc), []
     if doc.get("category") != "weapon":
         return errs, []
+    if "ammo_kind" in doc and "ammunition" not in (doc.get("properties") or []):
+        errs.append("/ammo_kind: only a weapon with the 'ammunition' property fires ammunition (EQUIPMENT 2.5)")
     rng = doc.get("range")
     if rng is not None and rng[1] < rng[0]:
         errs.append(f"/range: long range {rng[1]} is below normal range {rng[0]} (check 15)")
@@ -1430,6 +1448,107 @@ def check_item(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
             errs.append(f"/on_hit/{j}: grapple riders are rejected in items: the sim reads them only from monster@4 / character@4 "
                         "actions[] weapon attacks (check 17, R-G8 grapple)")
     return errs, []
+
+
+def check_item_light(doc: dict) -> list[str]:
+    """item@2 gear light block (EQUIPMENT 6.2): dim is additional beyond bright, so bright + dim <= 120 in every state;
+    state ids are unique; a cone needs a non-zero length (bright_ft)."""
+    errs: list[str] = []
+    lt = doc.get("light")
+    if not isinstance(lt, dict):
+        return errs
+    rows = [("/light", lt)] + [(f"/light/states/{i}", st) for i, st in enumerate(lt.get("states") or [])]
+    for where, r in rows:
+        if r.get("bright_ft", 0) + r.get("dim_ft", 0) > 120:
+            errs.append(f"{where}: bright_ft + dim_ft {r.get('bright_ft', 0) + r.get('dim_ft', 0)} exceeds 120 (dim is additional)")
+    if lt.get("shape") == "cone" and lt.get("bright_ft", 0) == 0:
+        errs.append("/light: a cone's length is bright_ft, which must be above 0")
+    ids = [st.get("id") for st in lt.get("states") or []]
+    if len(ids) != len(set(ids)):
+        errs.append("/light/states: state ids must be unique")
+    return errs
+
+
+# ---- monster@5 / character@5 structure (EQUIPMENT 3.1, 5.3-5.6) ------------------------------------------
+
+CR_PB_TABLE = ((4, 2), (8, 3), (12, 4), (16, 5), (20, 6), (24, 7), (28, 8), (30, 9))   # EQUIPMENT 5.2
+
+
+def cr_table_pb(rating: str) -> int:
+    cr = int(rating) if "/" not in rating else 0
+    return next(pb for top, pb in CR_PB_TABLE if cr <= top)
+
+
+def _held_slots(entry: dict, item_docs: dict) -> int:
+    """Hand slots an equipped entry takes while held (EQUIPMENT 3.1): weapons and shields 1 (a two-handed weapon takes 1 to
+    hold), gear its `hands`; armor, valuables, ammunition and items outside this pack's documents 0."""
+    it = item_docs.get(entry.get("item"))
+    if not isinstance(it, dict) or not entry.get("equipped"):
+        return 0
+    cat = it.get("category")
+    if cat in ("weapon", "shield"):
+        return 1
+    if cat == "gear":
+        return int(it.get("hands", 0))
+    return 0
+
+
+def check_equipment_v5(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
+    """Structural checks of the @5 equipment keys. The derived-vs-printed assertion (EQUIPMENT 5.6: derived AC / to-hit /
+    damage, 'is not needed') needs rules5e::derive_monster (#247) and is not run here."""
+    errs: list[str] = []
+    warns: list[str] = []
+    did = doc.get("id", "")
+    item_docs = ctx.get("item_docs", {})
+    equipment = [e for e in doc.get("equipment") or [] if isinstance(e, dict)]
+    if typ == "character":
+        for hand in ("main", "off"):
+            n = sum(1 for e in equipment if e.get("hand") == hand)
+            if n > 1:
+                errs.append(f"{did}: hand '{hand}' holds {n} items")
+        return errs, warns
+    # monster@5
+    held = sum(_held_slots(e, item_docs) for e in equipment)
+    hands = doc.get("hands")
+    if hands is not None and held > hands:
+        errs.append(f"{did}: holds {held} items but has {hands} hands")
+    ch = doc.get("challenge") or {}
+    pb, want = doc.get("proficiency_bonus"), cr_table_pb(str(ch.get("rating", "0")))
+    if pb is not None and pb != want and not str(doc.get("proficiency_bonus_reason", "")).strip():
+        errs.append(f"{did}: proficiency_bonus {pb} != CR table {want}")
+    adj = doc.get("ac_adjust")
+    if isinstance(adj, dict):
+        if not str(adj.get("reason", "")).strip():
+            errs.append(f"{did}: ac_adjust needs a reason")
+        warns.append(f"{did}: ac_adjust {adj.get('value')} ({adj.get('reason')})")
+    local = [w.get("id") for w in doc.get("weapons") or [] if isinstance(w, dict)]
+    if len(local) != len(set(local)):
+        errs.append("/weapons: local weapon ids must be unique")
+    eq_ids = {e.get("item") for e in equipment}
+    for i, a in enumerate(doc.get("actions") or []):
+        if not isinstance(a, dict):
+            continue
+        aid, where = a.get("id"), f"/actions/{i}"
+        if "weapon" in a and "natural" in a:
+            errs.append(f"{where}: 'weapon' and 'natural' are exclusive")
+        if any(k in a for k in ("weapon", "natural", "attack_bonus")) and a.get("kind") not in ("melee_weapon_attack", "ranged_weapon_attack"):
+            errs.append(f"{where}: weapon / natural / attack_bonus need a melee_weapon_attack or ranged_weapon_attack")
+        w = a.get("weapon")
+        if isinstance(w, str):
+            if w.startswith("#"):
+                if w[1:] not in local:
+                    errs.append(f"{where}/weapon: '{w}' is not a weapons[] id of this document")
+            elif w not in eq_ids:
+                errs.append(f"{where}/weapon: '{w}' is not listed in equipment[]")
+        ab = a.get("attack_bonus")
+        if isinstance(ab, dict):
+            if not str(ab.get("reason", "")).strip():
+                errs.append(f"{did}.{aid}: attack_bonus needs a reason")
+            warns.append(f"{did}.{aid}: attack_bonus {ab.get('value')} ({ab.get('reason')})")
+    el = doc.get("emits_light")
+    if isinstance(el, dict) and el.get("bright_ft", 0) + el.get("dim_ft", 0) > 120:
+        errs.append(f"/emits_light: bright_ft + dim_ft {el.get('bright_ft', 0) + el.get('dim_ft', 0)} exceeds 120 (dim is additional)")
+    return errs, warns
 
 
 # ---- spell@1 additive apply_modifier (check 18) --------------------------------------------------------
