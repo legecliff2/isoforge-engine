@@ -209,11 +209,24 @@ TEST_CASE("equipment on: the fighter's loadout, setup AC / attacks equal the sta
     CHECK(lo->view.armor_def == t.find("srd51.item.chain_mail")->id);
     CHECK(item_of(t, lo->view.main, "srd51.item.longsword") != 0);
     CHECK(item_of(t, lo->view.off, "srd51.item.shield") != 0);
-    REQUIRE(lo->view.carried.size() == 1);
-    CHECK(lo->view.carried[0].def == t.find("srd51.item.crossbow_light")->id);
+    // Count only non-ammo carried items: content may add ammunition stacks (e.g. crossbow bolts).
+    const uint32_t xbow = t.find("srd51.item.crossbow_light")->id, sword_def = t.find("srd51.item.longsword")->id;
+    size_t non_ammo = 0, xbow_n = 0;
+    for (const auto& it : lo->view.carried) {
+        const rules5e::ItemDef* d = t.find(it.def);
+        REQUIRE(d);
+        if (d->kind != rules5e::ItemKind::Ammunition) ++non_ammo;
+        if (it.def == xbow) ++xbow_n;
+    }
+    CHECK(non_ammo == 1);
+    CHECK(xbow_n == 1);
     REQUIRE(lo->view.attacks.size() == 2);   // longsword, light crossbow
-    CHECK(lo->view.attacks[0].def == t.find("srd51.item.longsword")->id);
-    CHECK(lo->view.attacks[1].def == t.find("srd51.item.crossbow_light")->id);
+    auto has_attack = [&](uint32_t def) {
+        for (const auto& a : lo->view.attacks) if (a.def == def) return true;
+        return false;
+    };
+    CHECK(has_attack(sword_def));
+    CHECK(has_attack(xbow));
     const auto* k_on = rules5e::find(on->state(), pc);
     const auto* k_off = rules5e::find(off->state(), pc);
     CHECK(k_on->ac == 18);
@@ -232,7 +245,10 @@ TEST_CASE("equipment on: shield, draw, stow, drop, pick up; the free interaction
     const CombatantId pc = ch.spawns[0].stable_id;
     const ItemDefTable& t = *c->item_defs();
     const uint32_t sword = c->loadout(pc)->view.main.instance, shield = c->loadout(pc)->view.off.instance;
-    const uint32_t bow = c->loadout(pc)->view.carried[0].instance;
+    uint32_t bow = 0;
+    for (const auto& it : c->loadout(pc)->view.carried)
+        if (it.def == t.find("srd51.item.crossbow_light")->id) bow = it.instance;
+    REQUIRE(bow != 0);
     until_turn(*c, pc);
 
     // Doff the shield: an action; AC 18 -> 16 (recompute on equip change).
