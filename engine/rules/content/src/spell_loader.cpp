@@ -1332,7 +1332,7 @@ SpellLoad spell_from_json(const Json& j) {
             if (k == "darts") return s.kind == SpellEffectKind::AutoHit;
             if (k == "beams") return s.kind == SpellEffectKind::SpellAttack;
             return s.kind == SpellEffectKind::Save || s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::ApplyCondition ||
-                   s.kind == SpellEffectKind::ApplyModifier;   // targets (7.2ze Bless / Bane)
+                   s.kind == SpellEffectKind::ApplyModifier || s.kind == SpellEffectKind::TempHp;   // targets (7.2ze; 7.2zg Heroism)
         };
         for (const char* key : {"beams", "darts", "dice", "targets"}) {   // sorted, like the validator
             if (!u.contains(key)) continue;

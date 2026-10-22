@@ -373,7 +373,7 @@ REACTION_EFFECT_TRIGGER = {"ac_bonus": "being_hit", "counter": "spell_cast"}
 UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "zone", "hp_pool", "delayed_damage", "sustained_damage",
                            "summon_weapon"),   # 7.2zg Spiritual Weapon
                   "darts": ("auto_hit",),
-                  "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition", "apply_modifier")}   # 7.2ze Bless / Bane
+                  "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition", "apply_modifier", "temp_hp")}   # 7.2ze Bless / Bane
 
 
 FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_damage",   # R-G15, spell_loader.cpp
