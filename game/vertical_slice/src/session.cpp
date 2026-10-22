@@ -449,6 +449,51 @@ std::vector<Session::EquippedLight> Session::equipment_lights() const {
     return out;
 }
 
+std::vector<Session::InventoryItem> Session::inventory(uint32_t actor) const {
+    std::vector<InventoryItem> out;
+    if (!impl_->combat) return out;
+    const sim::Combat& c = *impl_->combat;
+    const rules5e::Loadout* lo = c.loadout(actor);
+    const sim::ItemDefTable* table = c.item_defs();
+    if (!lo || !table) return out;
+    auto add = [&](const rules5e::HeldItem& h, InventoryItem::Where w) {
+        const rules5e::ItemDef* d = table->find(h.def);
+        if (h.instance == 0 || !d) return;
+        InventoryItem it;
+        it.item = h.instance;
+        it.where = w;
+        it.count = h.count;
+        if (const std::string* cid = table->content_id(h.def)) it.content_id = *cid;
+        it.kind = d->kind == rules5e::ItemKind::Weapon ? EquipKind::Weapon
+                : d->kind == rules5e::ItemKind::Shield ? EquipKind::Shield
+                : !d->light.states.empty()            ? EquipKind::Light : EquipKind::Other;
+        it.light_states = uint8_t(d->light.states.size());
+        it.lit = (h.flags & rules5e::kHeldLit) != 0;
+        it.state = rules5e::light_state_index(h.flags);
+        const rules5e::LightState r = rules5e::light_radii(*d, h);
+        it.bright_ft = r.bright_ft;
+        it.dim_ft = r.dim_ft;
+        out.push_back(std::move(it));
+    };
+    if (lo->view.armor_def != 0) {
+        InventoryItem it;
+        it.where = InventoryItem::Worn;
+        if (const std::string* cid = table->content_id(lo->view.armor_def)) it.content_id = *cid;
+        out.push_back(std::move(it));
+    }
+    const bool both = lo->view.main.instance != 0 && lo->view.main.instance == lo->view.off.instance;
+    add(lo->view.main, both ? InventoryItem::BothHands : InventoryItem::MainHand);
+    if (!both) add(lo->view.off, InventoryItem::OffHand);
+    for (const rules5e::HeldItem& h : lo->view.carried) add(h, InventoryItem::Carried);
+    return out;
+}
+
+uint32_t Session::current_actor() const {
+    const Impl& m = *impl_;
+    if (!m.combat || m.combat->ended()) return 0;
+    return rules5e::current_actor(m.combat->state());
+}
+
 bool Session::paused() const { return impl_->combat && impl_->combat->pending().has_value(); }
 
 bool Session::ended() const { return impl_->combat && impl_->combat->ended(); }
