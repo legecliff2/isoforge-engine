@@ -205,3 +205,22 @@ TEST_CASE("ward follow-ups: Sanctuary's harmful_cast end follows the SRD: a spel
     REQUIRE(step(s, cast_at(3, kCureWounds, 4)).ok);   // a heal on an enemy: ends
     CHECK_FALSE(mut(s, 3).has(Condition::Warded));
 }
+
+TEST_CASE("ward follow-ups: the warded creature's own Grapple / Shove ends Sanctuary (SRD 5.1: special melee attacks)") {
+    auto s = start({caster(1), caster(2), caster(3), brute(4)});
+    REQUIRE(step(s, cast_at(1, kSanct, 3)).ok);
+    to_turn(s, 3);
+    REQUIRE(step(s, grapple(3, 4)).ok);           // Grapple: ends, whatever the contest
+    CHECK_FALSE(mut(s, 3).has(Condition::Warded));
+    to_turn(s, 1);
+    REQUIRE(step(s, cast_at(1, kSanct, 3)).ok);
+    to_turn(s, 3);
+    REQUIRE(mut(s, 3).has(Condition::Warded));
+    REQUIRE(step(s, grapple(3, 4, 0, 2)).ok);     // Shove (prone): ends
+    CHECK_FALSE(mut(s, 3).has(Condition::Warded));
+    to_turn(s, 1);
+    REQUIRE(step(s, cast_at(1, kSanct, 3)).ok);
+    to_turn(s, 3);
+    REQUIRE(step(s, grapple(3, 4, 0, 3)).ok);     // Shove (push): ends
+    CHECK_FALSE(mut(s, 3).has(Condition::Warded));
+}
