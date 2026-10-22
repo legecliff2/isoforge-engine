@@ -16,6 +16,12 @@ ArmorPiece armor(ArmorCategory c, int base, bool dex, int cap = 0) {
     return a;
 }
 uint16_t prop(const char* s) { return weapon_property_from_string(s).value_or(uint16_t{0}); }
+const std::vector<CharacterItemClass>& srd_item_classes() {
+    static const std::vector<CharacterItemClass> v = {
+#include "derive_character_srd_item_classes.inc"
+    };
+    return v;
+}
 const std::vector<CharacterSpec>& srd_cases() {
     static const std::vector<CharacterSpec> v = {
 #include "derive_character_srd_cases.inc"
