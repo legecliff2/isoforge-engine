@@ -271,10 +271,16 @@ bool components_ok(const EncounterState&, CombatantId, const SpellDef&);
 | 4 `pick_up` | ground item within 5 ft into a free hand | free interaction, else Use an Object |
 | 5 `don_shield` / 6 `doff_shield` | shield to or from the off hand, AC recomputed | an action (*Donning and Doffing Armor*: 1 action) |
 | 7 `hand_over` | held item to a willing creature within 5 ft with a free hand | free interaction (*Other Activity* example) |
+| 10 `set_light_state` | light, douse or switch the state of a held light (`equip_state`: a `LightDef::states` index, or `kLightDouse` 0xFF), e.g. hood a lantern | free interaction, else Use an Object |
 
 `TurnBudget` gains `bool object_interaction = true` (one free interaction per turn, reset with the turn). Refusals (exact):
 `equip: no free hand`, `equip: no object interaction left`, `equip: the item is not carried`, `equip: the item is out of reach`, `equip: unknown ground item`,
 `equip: armor cannot be changed in combat`.
+SetLightState refusals (exact): `equip: the item is not in hand`, `equip: not a light source`, `equip: unknown light state`,
+`equip: the light is already in that state`. Engine Core stores the state in `HeldItem::flags` (`kHeldLit` plus the index in bits
+4-6, `with_light_state` / `light_state_index`) and hashes it; `light_radii(def, held)` gives the radii (`LightDef::states`, state 0
+= the item@2 top-level radii; SRD hooded lantern {30, 30} open, {0, 5} hooded). Not listed by `equip_legal_actions` (Engine Core
+lists it, like PickUp), so legal_actions and goldens are unchanged.
 
 Attacking with a weapon not in hand is refused (`attack: the weapon is not in hand`), except thrown weapons: **drawing a thrown
 weapon is part of each attack** (Director, Q2, decided), so Extra Attack can throw two javelins without spending the free
