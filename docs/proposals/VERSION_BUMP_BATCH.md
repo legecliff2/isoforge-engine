@@ -2566,6 +2566,8 @@ Additive (11 spells; key names frozen by T&C, all defined once in `engine/rules/
   `effect temp_hp per_turn or condition_immunity needs concentration or a rounds, minutes or hours duration`,
   `effects[<i>]: temp_hp is only allowed as the first effect`.
 
+- **Group 4 — Acid Arrow (`on_miss`).** `spell_attack` takes `"on_miss": "half"` (first effect only): a miss deals half the freshly rolled initial damage (rounded down); a miss against a Mirror Image duplicate deals nothing. Riders with `applies_to: affected` (the 2d4 `delayed_damage` at the end of the target's next turn) apply on a hit only. Strings: `effect on_miss must be half`, `effects[<i>]: on_miss is only allowed on the first effect`. No new events; no tags.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
