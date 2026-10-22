@@ -161,7 +161,7 @@ std::string_view weapon_use_name(WeaponUse);
 std::string hands_overfull_error(std::string_view id, int held, int hands);
 // Hands to hold an item: ItemDef::hands, at least 2 for a two_handed weapon; nullptr (unknown def) = 1.
 int hands_needed(const ItemDef*);
-// EQUIPMENT.md 3.6: ammunition recovered at encounter end = floor(expended / 2); 0 for expended <= 0. Pure, no roll.
+// EQUIPMENT.md §2.5.1: ammunition recovered at encounter end = floor(expended / 2); 0 for expended <= 0. Pure, no roll.
 int recovered_ammo(int expended);
 std::string hand_slot_error(std::string_view id, std::string_view hand, int count);
 
