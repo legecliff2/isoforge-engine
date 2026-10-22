@@ -21,6 +21,30 @@
    ],
    "material": "A tiny strip of white cloth."
   },
+  "bane": {
+   "name": "Bane",
+   "level": 1,
+   "range": "30 feet",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 minute",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "enchantment",
+   "classes": [
+    "bard",
+    "cleric"
+   ],
+   "material": "A drop of blood.",
+   "dc": {
+    "ability": "cha",
+    "success": "none"
+   }
+  },
   "barkskin": {
    "name": "Barkskin",
    "level": 2,
@@ -40,6 +64,49 @@
     "ranger"
    ],
    "material": "A handful of oak bark."
+  },
+  "bless": {
+   "name": "Bless",
+   "level": 1,
+   "range": "30 feet",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 minute",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "enchantment",
+   "classes": [
+    "cleric",
+    "paladin"
+   ],
+   "material": "A sprinkling of holy water."
+  },
+  "blindness-deafness": {
+   "name": "Blindness/Deafness",
+   "level": 2,
+   "range": "30 feet",
+   "components": [
+    "V"
+   ],
+   "ritual": false,
+   "duration": "1 minute",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "necromancy",
+   "classes": [
+    "bard",
+    "cleric",
+    "sorcerer",
+    "wizard"
+   ],
+   "dc": {
+    "ability": "con",
+    "success": "none"
+   }
   },
   "burning-hands": {
    "name": "Burning Hands",

@@ -1,4 +1,5 @@
 #include "sim/combat.hpp"
+#include "sim/light_driver.hpp"
 #include "sim/trace.hpp"
 
 #include <algorithm>
@@ -44,7 +45,9 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, const world::Chunk& chu
     local.coord.x = 0;
     local.coord.y = 0;
     const world::Chunk* one[] = {&local};
-    return create(reg, std::span<const world::Chunk* const>(one), content, seed, error);
+    auto c = create(reg, std::span<const world::Chunk* const>(one), content, seed, error);
+    if (c) c->frame_offset_ = world::ChunkCoord{chunk.coord.x, chunk.coord.y, 0};
+    return c;
 }
 
 std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::Chunk* const> chunks_in,
@@ -59,6 +62,7 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
     for (const world::Chunk* ch : chunks)
         for (const auto& sp : ch->spawns) spawns.push_back({&sp, Grid::to_world(ch->coord, sp.tile)});
     Combat c(reg, std::move(grid));
+    for (const world::Chunk* ch : chunks) c.frame_chunks_.push_back(ch->coord);
     c.seed_ = seed;
     c.content_ = &content;   // R-G12: forms resolve against the library (archetype pointers already live as long)
     for (const auto& [aid, arch] : content.all())   // Polymorph's choices: rated beasts, byte order of ids
@@ -803,6 +807,20 @@ uint8_t Combat::feature_uses_left(CombatantId id, uint32_t fid) const {
     return rules5e::feature_uses_left(state_, id, fid);
 }
 
+// The hook table is a derived binding to `this` (not hashed, not logged; submit re-installs it before every rules call), so
+// re-binding it from a const query changes nothing observable. It must be bound here: before the first submit it is empty, and
+// after a move of the Combat it points at the old object.
+std::vector<CombatantId> Combat::ward_alternates(CombatantId actor, CombatantId warded, uint32_t spell_id, uint8_t attack_index) const {
+    const_cast<Combat*>(this)->install_hooks();
+    return rules5e::ward_alternate_targets(state_, actor, warded, spell_id, attack_index);
+}
+rules5e::HealSplitCheck Combat::heal_split_check(CombatantId user, const rules5e::FeatureSpec& spec,
+                                                 const std::vector<rules5e::HealShare>& split) const {
+    const auto* u = rules5e::find(state_, user);
+    if (!u) return {0, rules5e::HealSplitReason::BadTarget};
+    const_cast<Combat*>(this)->install_hooks();
+    return rules5e::check_heal_split(state_, *u, spec, split);
+}
 bool Combat::can_use_feature(CombatantId id, uint32_t fid) const {
     const ActiveFeature* f = find_active(archetype(id), fid);
     if (!f || state_.ended || state_.pending || rules5e::current_actor(state_) != id) return false;
@@ -1234,13 +1252,23 @@ SubmitResult Combat::finish(rules5e::StepResult sr) {
     complete(ls, sr.events, to, sr.teardown_begin);
     log_.push_back({ls, to});
     r.reactions = std::move(sr.reactions);
+    if (light_.d) light_.d->step(*this);   // R-G13: the committed state's light frame
     return r;
+}
+
+void Combat::attach_light_driver(LightDriver* d) {
+    light_.d = d;
+    if (d) d->step(*this);
 }
 
 SubmitResult Combat::submit(const Command& cmd) {
     SubmitResult r;
     if (state_.pending) { r.error = "a reaction window is waiting for a decision"; r.needs = pending(); return r; }
     if (state_.ended) { r.error = "encounter ended"; return r; }
+    if (light_.d && light_.d->halted()) {   // R-G13 §7: never step on a partial halo; re-check once (the streamer may have loaded)
+        light_.d->step(*this);
+        if (light_.d->halted()) { r.error = light_.d->failed().empty() ? "light halo pending" : "light halo failed"; return r; }
+    }
     install_hooks();
     return cmd.kind == CommandKind::Step ? do_step(cmd.to, cmd.request.squeeze == 1) : do_rules(cmd.request, cmd.to, cmd.aim);
 }
@@ -1812,6 +1840,13 @@ uint64_t Combat::log_hash() const {
             h.byte(q.damage_choice);
             h.byte(q.condition_choice);
         }
+        // 0xCF (7.2ze Blindness/Deafness, `condition: chosen`): the condition the caster picked, only for such spells.
+        if (q.kind == rules5e::ActionKind::CastSpell && q.condition_choice != 0)
+            if (const rules5e::SpellDef* cd = spell_def(q.spell_id);
+                cd && std::size_t(q.condition_choice) <= cd->condition_choices.size()) {
+                h.byte(0xCF);
+                h.byte(uint8_t(cd->condition_choices[std::size_t(q.condition_choice - 1)]));
+            }
         // R-G9: 0xB4 forced_feet / teleport_feet, 0xB2 the teleport destination; each folded only when set.
         if (q.forced_feet != 0 || q.teleport_feet != 0) { h.byte(0xB4); h.u16(q.forced_feet); h.u16(q.teleport_feet); }
         if (q.has_teleport_dest) { h.byte(0xB2); h.i32(q.teleport_x); h.i32(q.teleport_y); }

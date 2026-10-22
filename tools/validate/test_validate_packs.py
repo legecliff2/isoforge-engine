@@ -373,6 +373,12 @@ class SpellKindsR120(unittest.TestCase):
         errs, warns = self.run_docs({REVIVE: _edit(rv, [], [m + ["cost_cp"], m + ["consumed"]])})
         self.assertEqual(errs, [])
         self.assertTrue(any("item 'srd51.item.diamond' is ignored without cost_cp" in w for w in warns), warns)
+        # 7.2zd follow-up: consumed no longer requires cost_cp (Protection from Evil and Good: holy water or powdered silver
+        # and iron, consumed, no listed cost). Positive: no error and no warning beyond the unpriced-material ones.
+        pfeg = _edit(rv, [(m, {"text": "holy water or powdered silver and iron, which the spell consumes", "consumed": True})], [])
+        errs, warns = self.run_docs({REVIVE: pfeg})
+        self.assertEqual(errs, [])
+        self.assertFalse(any("/components/m" in w for w in warns), warns)
         for bad, want in (("Diamond", "does not match"), ("diamond", "does not match"), (7, "is not of type 'string'")):
             with self.subTest(bad):
                 errs, _ = self.run_docs({REVIVE: _edit(rv, [(m + ["item"], bad)], [])})

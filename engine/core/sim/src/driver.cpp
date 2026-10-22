@@ -21,6 +21,162 @@ std::optional<CombatantId> NearestEnemyPolicy::choose_target(const Combat& c, Co
 }
 
 namespace {
+// The built-in target scoring (NearestEnemyPolicy) over a candidate list sorted by id: conscious hostile, nearest Chebyshev; the
+// strict < keeps the earliest (lowest id) of equally near candidates.
+CombatantId best_scored(const Combat& c, CombatantId self, const std::vector<CombatantId>& ids, CombatantId skip = 0) {
+    CombatantId best = 0;
+    int best_d = 0;
+    for (CombatantId id : ids) {
+        const auto* k = rules5e::find(c.state(), id);
+        if (!k || id == self || id == skip || !c.hostile(self, id) || k->dead || k->gone || !rules5e::is_conscious(*k)) continue;
+        const int d = c.distance_tiles(self, id);
+        if (best == 0 || d < best_d) { best = id; best_d = d; }
+    }
+    return best;
+}
+bool warded_against(const rules5e::EncounterState& s, const rules5e::Combatant& t, CombatantId actor) {   // rules' ward_index
+    if (actor == t.id || !t.has(rules5e::Condition::Warded)) return false;
+    for (const auto& e : s.effects)
+        if (e.target == t.id && !e.no_condition && e.condition == rules5e::Condition::Warded && e.dc > 0) return true;
+    return false;
+}
+}  // namespace
+
+CombatantId ward_target_of(const Combat& c, const rules5e::ActionRequest& q) {
+    const auto& s = c.state();
+    const auto* a = rules5e::find(s, q.actor);
+    if (!a || q.move_mark) return 0;
+    if (q.kind == ActionKind::Attack) {
+        const auto* t = rules5e::find(s, q.target);
+        return t && !t->dead && warded_against(s, *t, q.actor) ? t->id : 0;
+    }
+    if (q.kind != ActionKind::CastSpell || q.sustain) return 0;
+    const auto* def = c.spell_def(q.spell_id);
+    if (!def || def->area != rules5e::AreaShape::None) return 0;
+    const std::vector<CombatantId> ids = q.targets.empty() ? std::vector<CombatantId>{q.target} : q.targets;
+    for (CombatantId id : ids) {
+        const auto* t = rules5e::find(s, id);
+        if (t && t->id != a->id && t->team != a->team && warded_against(s, *t, q.actor)) return t->id;
+    }
+    return 0;
+}
+
+CombatantId choose_ward_alternate(const Combat& c, const rules5e::ActionRequest& q) {
+    const CombatantId warded = ward_target_of(c, q);
+    if (warded == 0) return 0;
+    const bool spell = q.kind == ActionKind::CastSpell;
+    std::vector<CombatantId> alts = c.ward_alternates(q.actor, warded, spell ? q.spell_id : 0u, spell ? uint8_t(0) : q.attack_index);
+    if (spell) {   // rules refuse an alternate that is already one of the spell's targets
+        const std::vector<CombatantId> ids = q.targets.empty() ? std::vector<CombatantId>{q.target} : q.targets;
+        std::erase_if(alts, [&](CombatantId id) { return std::find(ids.begin(), ids.end(), id) != ids.end(); });
+    }
+    return best_scored(c, q.actor, alts);
+}
+
+std::vector<rules5e::HealShare> plan_heal_split(const Combat& c, CombatantId user, const rules5e::FeatureSpec& spec,
+                                                const HealSplitValidator& validate) {
+    const auto& s = c.state();
+    const auto* u = rules5e::find(s, user);
+    if (!u || spec.split_pool == 0) return {};
+    struct Cand { CombatantId id; int hp; int cap; };
+    std::vector<Cand> cands;
+    for (const auto& k : s.combatants) {
+        if (k.dead || k.gone || (k.id != user && c.hostile(user, k.id))) continue;
+        const int hp = std::max(0, int(k.hp));
+        const int room = spec.split_cap_half ? int(k.hp_max) / 2 - hp : int(k.hp_max) - hp;
+        if (room > 0) cands.push_back({k.id, hp, std::min(room, 32767)});
+    }
+    std::sort(cands.begin(), cands.end(), [](const Cand& x, const Cand& y) { return x.hp != y.hp ? x.hp < y.hp : x.id < y.id; });
+    int budget = int(spec.split_pool);
+    std::vector<rules5e::HealShare> split;
+    // Each round drops a candidate, lowers a cap or lowers the budget, so the loop ends; the bound is a backstop only.
+    for (int round = 0; round < 1 << 16; ++round) {
+        split.clear();
+        int left = budget;
+        for (const Cand& k : cands) {
+            if (left <= 0) break;
+            const int amt = std::min(k.cap, left);
+            if (amt < 1) continue;
+            split.push_back({k.id, int16_t(amt)});
+            left -= amt;
+        }
+        if (split.empty()) return split;
+        const rules5e::HealSplitCheck r = validate ? validate(split) : c.heal_split_check(user, spec, split);
+        if (r.index < 0) return split;
+        if (std::size_t(r.index) >= split.size()) return {};
+        const rules5e::HealShare bad = split[std::size_t(r.index)];
+        auto it = std::find_if(cands.begin(), cands.end(), [&](const Cand& k) { return k.id == bad.target; });
+        if (it == cands.end()) return {};
+        if (r.reason == rules5e::HealSplitReason::OverCap) {
+            it->cap = int(bad.amount) - 1;
+            if (it->cap < 1) cands.erase(it);
+        } else if (r.reason == rules5e::HealSplitReason::OverPool) {
+            int before = 0;
+            for (int i = 0; i < r.index; ++i) before += int(split[std::size_t(i)].amount);
+            budget = std::min(budget - 1, before + int(bad.amount) - 1);
+            if (budget < 1) return {};
+        } else {
+            cands.erase(it);   // OutOfRange, ExcludedType, BadTarget (and an unknown reason): that ally cannot take any
+        }
+    }
+    return {};
+}
+
+bool spell_needs_mark_ability(const rules5e::SpellDef& def) {
+    bool chosen = def.kind == rules5e::SpellEffectKind::ApplyModifier && def.modifier.chosen_ability;
+    for (const auto& x : def.extra_effects)
+        chosen = chosen || (x.kind == rules5e::SpellEffectKind::ApplyModifier && x.modifier.chosen_ability);
+    return chosen;
+}
+
+uint8_t choose_mark_ability(const Combat& c, CombatantId target) {
+    const auto* t = rules5e::find(c.state(), target);
+    if (!t) return 1;   // fixed default: Strength
+    int best = 0;
+    for (int i = 1; i < 6; ++i)
+        if (t->abilities.score[std::size_t(i)] < t->abilities.score[std::size_t(best)]) best = i;   // strict <: earlier ability wins ties
+    return uint8_t(best + 1);
+}
+
+std::optional<Command> move_mark_command(const Combat& c, CombatantId self, std::optional<CombatantId> preferred) {
+    const auto& s = c.state();
+    const auto* me = rules5e::find(s, self);
+    if (!me || me->concentration_spell == 0 || !s.budget.bonus_action || s.budget.sequence != 0) return std::nullopt;
+    if (!rules5e::is_conscious(*me) || rules5e::is_incapacitated(*me)) return std::nullopt;
+    const auto* def = c.spell_def(me->concentration_spell);
+    if (!def || def->move_mark == 0) return std::nullopt;
+    CombatantId old_mark = 0;
+    for (const auto& m : s.modifiers)
+        if (m.caster == self && m.spec.source == def->id && m.spec.mark_scope != 0 && m.mark != 0) { old_mark = m.mark; break; }
+    if (old_mark == 0) return std::nullopt;
+    if (const auto* om = rules5e::find(s, old_mark); om && !om->dead && om->hp > 0) return std::nullopt;
+    CombatantId to = 0;
+    if (preferred) to = best_scored(c, self, {*preferred}, old_mark);
+    if (to == 0) {
+        std::vector<CombatantId> ids;
+        for (const auto& k : s.combatants) ids.push_back(k.id);
+        std::sort(ids.begin(), ids.end());
+        to = best_scored(c, self, ids, old_mark);
+    }
+    if (to == 0) return std::nullopt;
+    Command x;
+    x.request = {self, ActionKind::CastSpell, to};
+    x.request.spell_id = def->id;
+    x.request.move_mark = true;
+    return x;
+}
+
+void complete_request(const Combat& c, rules5e::ActionRequest& q) {
+    if (q.kind == ActionKind::CastSpell && !q.move_mark && !q.sustain && q.mark_ability == 0)
+        if (const auto* def = c.spell_def(q.spell_id); def && spell_needs_mark_ability(*def)) {
+            const CombatantId t = q.targets.empty() ? q.target : q.targets[0];
+            q.mark_ability = choose_mark_ability(c, t);
+        }
+    if ((q.kind == ActionKind::Attack || q.kind == ActionKind::CastSpell) && q.ward_alternate == 0 && q.special == 0)
+        q.ward_alternate = choose_ward_alternate(c, q);
+}
+
+namespace {
 // 7.2zb: a costed bonus-action grant (Step of the Wind) is only taken when its pool can pay (else the step would be refused).
 bool bonus_cost_affordable(const rules5e::EncounterState& s, const rules5e::Combatant& me, rules5e::ActionKind k) {
     for (const auto& bc : me.bonus_action_costs)
@@ -148,6 +304,9 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     if (!t || t->dead) return end;
     // R-G8 Charmed: the charmer is never attacked (rules refuse it) or targeted with a harmful spell (sim refuses it).
     if (rules5e::condition_source(s, self, rules5e::Condition::Charmed) == t->id) return end;
+    // 7.2zc: a movable mark whose creature dropped to 0 hp moves (bonus action) before anything else spends the bonus action.
+    if (!beast_form)
+        if (auto mm = move_mark_command(c, self, t->id)) return *mm;
 
     // Pool features (row 13). Lay on Hands (heal_pool): at or below half hp, heal self for min(pool, missing hp); the caller's
     // `amount` and (default self) target come from here. Action Surge (grant_action): once the action is spent with a hostile
@@ -158,6 +317,24 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             if (sp == arch->feature_specs.end() || !c.can_use_feature(self, f.feature_id)) continue;
             const rules5e::FeatureSpec& spec = sp->second;
             const rules5e::ResourcePool* pool = spec.pool ? rules5e::find_pool(s, self, spec.pool) : nullptr;
+            if (spec.split_pool > 0) {   // 7.2zd Preserve Life (AI policy): someone planned is at 0 hp, or the plan uses half the pool
+                if (spec.pool && !rules5e::can_spend(s, self, spec.pool, spec.pool_cost ? spec.pool_cost : 1)) continue;
+                if (spec.cost == 2 ? !s.budget.bonus_action : !s.budget.action) continue;
+                auto split = plan_heal_split(c, self, spec);
+                int total = 0;
+                bool downed = false;
+                for (const auto& sh : split) {
+                    total += sh.amount;
+                    const auto* k = rules5e::find(s, sh.target);
+                    downed = downed || (k && k->hp <= 0);
+                }
+                if (split.empty() || (!downed && total * 2 < int(spec.split_pool))) continue;
+                Command u;
+                u.request = {self, ActionKind::UseFeature};
+                u.request.feature_id = f.feature_id;
+                u.request.heal_split = std::move(split);
+                return u;
+            }
             if (spec.heal_pool) {
                 if (!pool || pool->cur == 0 || int(me->hp) * 2 > int(me->hp_max)) continue;
                 Command u;
@@ -456,6 +633,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
 Command next_command(const Combat& c, std::optional<CombatantId> target) {
     Command cmd = tactical_command(c, target);
     rules5e::ActionRequest& q = cmd.request;
+    if (cmd.kind == CommandKind::Rules) complete_request(c, q);   // 7.2zc mark_ability / 7.2zd ward_alternate
     if (cmd.kind != CommandKind::Rules || q.kind != ActionKind::Attack || q.special != 0 || q.as_bonus_action) return cmd;
     const auto* me = rules5e::find(c.state(), q.actor);
     if (!me || q.attack_index >= me->attacks.size()) return cmd;

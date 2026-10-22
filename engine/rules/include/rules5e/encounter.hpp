@@ -471,6 +471,9 @@ struct ActiveModifier {
     // appended (7.2zc; modifiers_digest sub-tag 0x5A when non-zero): ModifierSpec::mark_scope: the marked creature (0 = none).
     // Moving the mark (ActionRequest::move_mark) rewrites it, and `target` too on a row that sat on the old mark.
     CombatantId mark = 0;
+    // appended (ward / mark follow-ups; modifiers_digest sub-tag 0x5D when set): the turn (turn_stamp) the marked creature was
+    // first seen at 0 hit points; move_mark is refused on that turn (SRD: "on a subsequent turn"). Cleared while it is above 0.
+    bool mark_dropped = false; uint32_t mark_dropped_stamp = 0;
 };
 
 // Limited-use features (Second Wind, ...), keyed by (actor, feature_id). Part of the encounter state,
@@ -1001,6 +1004,17 @@ int32_t modifier_magnitude(const ModifierSpec& spec);
 // attack's reach / long range when EncounterHooks::targets_within is set).
 std::vector<CombatantId> ward_alternate_targets(const EncounterState& s, CombatantId actor, CombatantId warded, uint32_t spell_id,
                                                 uint8_t attack_index);
+// Ward / mark follow-ups: attack_index kWardSpecialAttack = for a Grapple / Shove (ActionRequest::special 1..3): alive, not
+// warded, not its charmer, at most one size larger than the actor, within 5 ft when EncounterHooks::targets_within is set.
+inline constexpr uint8_t kWardSpecialAttack = 0xFF;
+// Ward / mark follow-ups: whether `req` (for the current state, its actor) meets a Sanctuary ward, and which: the index into
+// EncounterState::effects of the ward entry, or none. An Attack (also Grapple / Shove, special 1..3) on a warded creature; a
+// CastSpell of a harmful spell without an area whose targets include a warded creature (the first one in target order).
+// Harmful (spell_harmful): it deals damage, forces a saving throw, or applies a negative condition or modifier to its targets.
+// Any actor but the warded creature itself meets it, whatever its side. Move / Dash / ... and zone_move / sustain: none.
+std::optional<std::size_t> meets_ward(const EncounterState& s, const ActionRequest& req);
+// The harmful test meets_ward uses for a spell (any effect of it; applies_to self modifiers excluded).
+bool spell_harmful(const SpellDef& def);
 
 // 7.2zd Preserve Life: validates a split against the user's FeatureSpec. index = the first failing entry (-1 = valid);
 // reason: OverCap (more than up to half its maximum, or any healing for one already at or above half), OutOfRange,

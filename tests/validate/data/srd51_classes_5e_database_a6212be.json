@@ -1620,6 +1620,24 @@
    "classes": [
     "cleric"
    ]
+  },
+  "bane": {
+   "name": "Bane",
+   "level": 1,
+   "school": "enchantment",
+   "classes": [
+    "bard",
+    "cleric"
+   ]
+  },
+  "bless": {
+   "name": "Bless",
+   "level": 1,
+   "school": "enchantment",
+   "classes": [
+    "cleric",
+    "paladin"
+   ]
   }
  }
 }
