@@ -636,5 +636,5 @@ srd51.core carries the SRD 5.1 light sources as item@2 `gear` (5e-database a6212
 | `srd51.item.tinderbox` | none | |
 
 - `dim_ft` is additional beyond `bright_ft`. 1 hour = 600 rounds, and 6 hours per flask = 3600.
-- Every light source has `lit_by_default: false` and `hands: 1`. **Lighting takes an action** (Tinderbox: "Using it to light a torch--or anything else with abundant, exposed fuel--takes an action").
+- Every light source has `lit_by_default: false`, `hands: 1` and `light.preset` `srd51.core.light.<name>` (`torch`, `candle`, `lamp`, `lantern_hooded`, `lantern_bullseye`), the keys Render's #233 / #255 glow palette uses. No `visual` is authored, so the built-in styles apply. **Lighting takes an action** (Tinderbox: "Using it to light a torch--or anything else with abundant, exposed fuel--takes an action").
 - **Inert until equipment produces light (after #244).** The sim does not load item documents. Listing these items in `equipment[]` changes no fight, and Session `carried_lights` / `pc_torches` remain the light producers. Tests: `tests/validate/test_srd51_equipment.py` (`LIGHT_GEAR`).

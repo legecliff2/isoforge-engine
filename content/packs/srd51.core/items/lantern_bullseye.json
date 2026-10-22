@@ -17,6 +17,7 @@
     "shape": "cone",
     "duration_rounds": 3600,
     "fuel": "srd51.item.oil_flask",
-    "lit_by_default": false
+    "lit_by_default": false,
+    "preset": "srd51.core.light.lantern_bullseye"
   }
 }

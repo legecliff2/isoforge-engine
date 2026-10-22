@@ -196,6 +196,8 @@ class Srd51Equipment(unittest.TestCase):
                     self.assertEqual((lt["bright_ft"], lt["dim_ft"], lt["shape"], lt["duration_rounds"], lt.get("fuel"),
                                       lt.get("states", [])), light)
                     self.assertIs(lt["lit_by_default"], False)   # lighting takes an action (Tinderbox)
+                    # Render preset key (#233 / #255 GlowPalette: 'srd51.core.light.<name>', last segment matched)
+                    self.assertEqual(lt["preset"], f"srd51.core.light.{lid}")
                 self.assertEqual(d["torch_attack"]["damage"] if "torch_attack" in d else None, torch)
                 if torch:
                     self.assertIs(d["torch_attack"]["requires_lit"], True)

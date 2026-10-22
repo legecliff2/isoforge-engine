@@ -16,7 +16,8 @@
     "dim_ft": 20,
     "shape": "radius",
     "duration_rounds": 600,
-    "lit_by_default": false
+    "lit_by_default": false,
+    "preset": "srd51.core.light.torch"
   },
   "torch_attack": {
     "damage": [
