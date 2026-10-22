@@ -186,3 +186,24 @@ TEST_CASE("mark follow-ups: move_mark is refused on the turn the mark dropped, l
     REQUIRE(step(s, mv).ok);
     CHECK(move_marks(s) == 0);   // the bonus action is spent
 }
+
+TEST_CASE("ward follow-ups: Sanctuary's harmful_cast end uses spell_harmful, not the other-team test") {
+    auto s = start({caster(1), caster(2), caster(3), brute(4)});
+    REQUIRE(step(s, cast_at(1, kSanct, 3)).ok);
+    to_turn(s, 3);
+    REQUIRE(step(s, cast_at(3, kBless, 4)).ok);   // helpful spell on an enemy: the ward stays (the old team test ended it)
+    CHECK(mut(s, 3).has(Condition::Warded));
+    to_turn(s, 3);
+    REQUIRE(step(s, cast_at(3, kBane, 2)).ok);    // harmful spell on an ally: the ward ends (the old team test kept it)
+    CHECK_FALSE(mut(s, 3).has(Condition::Warded));
+    to_turn(s, 1);
+    REQUIRE(step(s, cast_at(1, kSanct, 3)).ok);
+    to_turn(s, 3);
+    REQUIRE(step(s, cast_at(3, kScare, 4)).ok);   // harmful on an enemy: ends, as before
+    CHECK_FALSE(mut(s, 3).has(Condition::Warded));
+    to_turn(s, 1);
+    REQUIRE(step(s, cast_at(1, kSanct, 3)).ok);
+    to_turn(s, 3);
+    REQUIRE(step(s, cast_at(3, kMark, 4)).ok);    // its rows are on the caster: not harmful, the ward stays
+    CHECK(mut(s, 3).has(Condition::Warded));
+}
