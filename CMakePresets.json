@@ -25,7 +25,8 @@
       "name": "ci",
       "hidden": true,
       "cacheVariables": {
-        "ENGINE_WARNINGS_AS_ERRORS": "ON"
+        "ENGINE_WARNINGS_AS_ERRORS": "ON",
+        "CMAKE_CXX_SCAN_FOR_MODULES": "OFF"
       }
     },
     {
