@@ -72,12 +72,13 @@ struct Reasoned { bool present = false; int8_t value = 0; std::string reason{}; 
 struct MonsterAttackSpec {
     std::string id;                    // the action id
     WeaponDef weapon{};                // item, monster-local or natural (weapon.natural)
-    WeaponUse use = WeaponUse::OneHand;
+    WeaponUse use = WeaponUse::OneHand; // monster@5 action `use` (#252); has_use = authored. Absent = one_hand, never inferred
     std::optional<Ability> ability{};  // natural attacks: explicit
     bool damage_ability_none = false;
     Reasoned attack_bonus{};           // overrides the total to-hit
     int8_t printed_to_hit = 0;
     DiceExpr printed_damage{0, 0, 0};  // damage[0] only; damage[1..] stay authored and unchecked (5.6)
+    bool has_use = true;               // false = `use` absent in content: derive uses one_hand, ignoring `use` (#252)
 };
 struct MonsterSpec {
     std::string id;                    // content id
@@ -101,6 +102,9 @@ struct MonsterDerivation {
     std::vector<std::string> errors{}; // the 5.6 strings, in check order; empty = loads
 };
 MonsterDerivation derive_monster(const MonsterSpec&);
+// monster@5 / character@5 action `use`, spelled exactly as #252's schema enum: one_hand, two_hands, thrown, off_hand.
+std::optional<WeaponUse> weapon_use_from_string(std::string_view);
+std::string_view weapon_use_name(WeaponUse);
 // The hands strings, byte-identical to the validator (#249 checks_v4): monster `<id>: holds N items but has H hands` (also
 // emitted by derive_monster when MonsterSpec::hands >= 0), character `<id>: hand '<hand>' holds N items` (for the loader).
 std::string hands_overfull_error(std::string_view id, int held, int hands);
