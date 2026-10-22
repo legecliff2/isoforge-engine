@@ -662,3 +662,21 @@ All 63 srd51.core PCs are now character@5 with `derive: true`. The sample pack's
   - Feature rows (Defense, Archery, Dueling) are applied by the engine on top, so they are never part of the printed numbers.
   - The strings follow the 5.6 forms (`<id>: derived AC ...`, `<id>.<action>: derived to-hit ...`, `... derived damage ...`).
   - All 63 PCs reproduce their printed AC and attacks (also cross-checked locally against the rules5e functions).
+
+## 16. Ammunition containers (item@2 gear `container`, EQUIPMENT 2.5)
+
+These are SRD 5.1 containers from 5e-database a6212be, with exact costs, weights and descriptions:
+
+| Item | Cost / weight | `container.holds` |
+|---|---|---|
+| `srd51.item.quiver` | 1 gp / 1 lb | arrow 20 |
+| `srd51.item.case_crossbow_bolt` | 1 gp / 1 lb | bolt 20 |
+| `srd51.item.pouch` | 5 sp / 1 lb | sling_bullet 20 or needle 50 (one kind at a time) |
+
+- The SRD has no blowgun needle case: the Pouch is the needle container.
+- `container` is `{holds: [{ammo_kind, capacity}]}`, gear only, with unique kinds. A list was needed because the Pouch's capacity differs per kind.
+- **Ammunition pieces** (`srd51.item.arrow`, `crossbow_bolt`, `sling_bullet`, `blowgun_needle`):
+  - Arrows and bolts cost 5 cp each, needles 2 cp each.
+  - The sling bullet (0.2 cp) has no `cost_cp`, and no piece has `weight_oz` (none is a whole number of ounces).
+- **Ready for the ammunition recovery rule** (EQUIPMENT 2.5: spend one per attack; recover `floor(spent / 2)` after combat). Stacks are `equipment[]` counts (§15), and these containers give the capacity a stack fits in.
+- **Inert today:** the sim loads no item documents. PCs do not list containers yet; adding them changes no number.
