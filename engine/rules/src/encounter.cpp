@@ -1662,6 +1662,18 @@ std::vector<ReactionOption> reaction_options(const EncounterState& s, const Comb
         }
         out.push_back(o);
     }
+    if (w.trigger == ReactionTrigger::Damaged && has_damager && w.target == r.id && s.hooks.spells) {   // 7.2zg Hellish Rebuke
+        for (uint32_t id : r.spells_known) {
+            const SpellDef* d = s.hooks.spells->find(id);
+            if (!d || d->casting_time != CastingTime::Reaction || d->reaction_trigger != ReactionTrigger::Damaged) continue;
+            if ((d->components & kComponentV) && !s.zones.empty() && in_silence(s, r.id)) continue;
+            if (s.hooks.can_provide_components && !s.hooks.can_provide_components(s, r, *d)) continue;
+            if (!sight(s, r.id, damager->id).can_see) continue;   // a creature the caster can see
+            if (s.hooks.sight_facts && s.hooks.sight_facts(s, r, *damager).distance_ft > d->range_ft) continue;   // within range (60 ft)
+            for (uint8_t L = std::max<uint8_t>(d->level, 1); L <= 9; ++L)
+                if (has_slot(r, L)) out.push_back(ReactionOption{0, ReactionOptionKind::Retaliate, 0, d->id, L});
+        }
+    }
     if (w.trigger != ReactionTrigger::Damaged && w.trigger != ReactionTrigger::AllyAttacked) return out;
     const auto& hook = w.trigger == ReactionTrigger::Damaged ? s.hooks.damaged_options : s.hooks.ally_attacked_options;
     if (hook) { auto extra = hook(s, w, r); out.insert(out.end(), extra.begin(), extra.end()); }
@@ -1787,7 +1799,7 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
     Combatant* attacker = src && src->who && src->who != &t && !src->who->dead ? src->who : nullptr;
     const bool was_up = t.hp > 0;
     std::optional<ReactionOption> after_reaction;   // retaliate / riposte: after the damage lands
-    if (ctx && d.dealt > 0 && !t.dead && (!t.reactions.empty() || s.hooks.damaged_options)) {
+    if (ctx && d.dealt > 0 && !t.dead && (!t.reactions.empty() || s.hooks.damaged_options || (!t.spells_known.empty() && s.hooks.spells))) {
         ReactionWindow w = new_window(s, *ctx, ReactionTrigger::Damaged, attacker ? attacker->id : 0);
         w.target = t.id; w.damage = d.dealt; w.ranged = src && src->atk && src->atk->ranged;
         w.spell_id = src && src->is_spell ? 1u : 0u;
@@ -1846,7 +1858,15 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
         const std::size_t from = ev.size();
         ++ctx->depth;
         if (o.kind == ReactionOptionKind::Retaliate) {
-            if (const SpellDef* def = spell_def(s, o.option_id))
+            const SpellDef* def = spell_def(s, o.option_id);
+            if (def && o.slot_level > 0) {   // 7.2zg Hellish Rebuke: a reaction spell cast at the damager
+                spend_slot(t, o.slot_level);
+                emit(ev, EventKind::SpellCast, t.id, attacker->id, int32_t(def->id), o.slot_level);
+                const bool countered = spell_cast_window(s, *ctx, t, def->id, o.slot_level, attacker->id, ev);
+                if (!countered && !attacker->dead) resolve_effect(s, *ctx, t, *def, o.slot_level, std::vector<Combatant*>{attacker}, false, ev);
+                emit(ev, countered ? EventKind::SpellCountered : EventKind::SpellResolved, t.id, attacker->id, int32_t(def->id), o.slot_level);
+                if (!s.effects.empty()) end_on_own_action(s, t.id, kEndsOnCast, ev);
+            } else if (def)
                 resolve_effect(s, *ctx, t, *def, 0, std::vector<Combatant*>{attacker}, true, ev);
         } else if (o.attack_index < t.attacks.size()) {
             do_attack(s, *ctx, t, *attacker, t.attacks[o.attack_index], true, ev);

@@ -149,3 +149,70 @@ TEST_CASE("7.2zg on_miss half: a miss deals half the initial 4d4, no later damag
         CHECK(rider == (to_hit > 0));
     }
 }
+
+namespace {
+const uint32_t kRebuke = spell_id_of("test.zg.hellish_rebuke");
+EncounterHooks rebuke_hooks() {
+    auto h = spell_hooks();
+    auto book = std::make_shared<SpellBook>(*h.spells);
+    SpellDef d; d.id = kRebuke; d.content_id = "test.zg.hellish_rebuke"; d.level = 1; d.range_ft = 60;
+    d.casting_time = CastingTime::Reaction; d.reaction_trigger = ReactionTrigger::Damaged; d.requires_sight = true;
+    d.kind = SpellEffectKind::Save; d.save_ability = Ability::Dex; d.dice = DiceExpr{2, 10, 0}; d.damage_type = DamageType::Fire;
+    d.on_save = OnSave::Half; d.fixed_dc = 30;
+    book->add(d);
+    h.spells = book;
+    return h;
+}
+// Runs monster attacks on the wizard until one deals damage; returns that step's events.
+std::vector<Event> hit_wizard(EncounterState& s) {
+    for (int i = 0; i < 40; ++i) {
+        end_turns_until(s, 2);
+        const int hp = mut(s, 1).hp;
+        ActionRequest atk{2, ActionKind::Attack, 1}; atk.attack_index = 0;
+        auto r = step(s, atk);
+        REQUIRE(r.ok);
+        if (mut(s, 1).hp < hp) return r.events;
+        (void)step(s, ActionRequest{2, ActionKind::EndTurn});
+    }
+    FAIL("no hit");
+    return {};
+}
+}  // namespace
+
+TEST_CASE("7.2zg trigger damaged: Hellish Rebuke answers damage from a seen creature (slot spent, Dex save vs the damager)") {
+    auto w = wizard(1); w.hp = w.hp_max = 400; w.spells_known.push_back(kRebuke); never_react(w);
+    set_policy(w, ReactionTrigger::Damaged, ReactionPolicy::Auto);
+    auto m = monster(2); m.hp = m.hp_max = 300; never_react(m);
+    auto s = begin_encounter({w, m}, 11, nullptr, rebuke_hooks());
+    const int slots = mut(s, 1).spell_slots[1];
+    auto ev = hit_wizard(s);
+    const Event* cast_ev = nullptr;
+    for (const auto& e : ev) if (e.kind == EventKind::SpellCast && e.actor == 1) cast_ev = &e;
+    REQUIRE(cast_ev);
+    CHECK(cast_ev->a == int32_t(kRebuke)); CHECK(cast_ev->target == 2); CHECK(cast_ev->b == 1);
+    CHECK(mut(s, 1).spell_slots[1] == slots - 1);
+    CHECK(mut(s, 1).reaction_used);
+    CHECK(mut(s, 2).hp < 300);   // DC 30: the save fails, 2d10 fire
+    CHECK(count_kind(ev, EventKind::SpellResolved) == 1);
+}
+
+TEST_CASE("7.2zg trigger damaged: no offer when the caster cannot see the damager, or it is beyond the range") {
+    for (int variant = 0; variant < 3; ++variant) {
+        CAPTURE(variant);
+        auto w = wizard(1); w.hp = w.hp_max = 400; w.spells_known.push_back(kRebuke); never_react(w);
+        set_policy(w, ReactionTrigger::Damaged, ReactionPolicy::Auto);
+        if (variant == 0) add_condition(w, Condition::Blinded);
+        auto m = monster(2); m.hp = m.hp_max = 300; never_react(m);
+        auto h = rebuke_hooks();
+        const uint16_t dist = variant == 1 ? 65 : 60;   // variant 2: exactly 60 ft is in range
+        h.sight_facts = [dist](const EncounterState&, const Combatant&, const Combatant&) {
+            SightFacts f{}; f.line_of_sight = true; f.distance_ft = dist; return f;
+        };
+        h.in_range = [](const EncounterState&, const ReactionWindow& rw, const Combatant& r) { return r.id == rw.target; };
+        auto s = begin_encounter({w, m}, 11, nullptr, h);
+        auto ev = hit_wizard(s);
+        CHECK(count_kind(ev, EventKind::SpellCast) == (variant == 2 ? 1 : 0));
+        CHECK((mut(s, 2).hp == 300) == (variant != 2));
+        CHECK(mut(s, 1).reaction_used == (variant == 2));
+    }
+}

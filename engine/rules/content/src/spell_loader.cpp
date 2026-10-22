@@ -599,7 +599,8 @@ SpellLoad spell_from_json(const Json& j) {
         const std::string tk = tr.value("kind", "");
         if (tk == "being_hit") s.reaction_trigger = ReactionTrigger::BeingHit;
         else if (tk == "spell_cast") s.reaction_trigger = ReactionTrigger::SpellCast;
-        else return err("casting_time.trigger.kind must be being_hit or spell_cast");
+        else if (tk == zg::kTriggerDamaged) s.reaction_trigger = ReactionTrigger::Damaged;   // 7.2zg Hellish Rebuke
+        else return err("casting_time.trigger.kind must be being_hit, spell_cast or damaged");
         if (tr.contains("or_targeted_by")) {
             if (tk != "being_hit") return err("casting_time.trigger.or_targeted_by is only for being_hit");
             for (const Json& r : tr["or_targeted_by"]) {
@@ -1271,10 +1272,17 @@ SpellLoad spell_from_json(const Json& j) {
             s.move_mark = 1;
         }
     }
-    const bool reaction_kind = s.kind == SpellEffectKind::AcBonus || s.kind == SpellEffectKind::Counter;
+    // 7.2zg Hellish Rebuke: a `damaged` reaction is a save effect against the damager, who must be seen and within range.
+    const bool damaged_trigger = s.casting_time == CastingTime::Reaction && s.reaction_trigger == ReactionTrigger::Damaged;
+    if (damaged_trigger) {
+        if (s.kind != SpellEffectKind::Save) return err("casting_time.trigger.kind damaged needs a save effect");
+        if (!s.requires_sight) return err("casting_time.trigger.kind damaged needs requires_sight");
+        if (s.range_ft < 10) return err("casting_time.trigger.kind damaged needs a ranged range");
+    }
+    const bool reaction_kind = s.kind == SpellEffectKind::AcBonus || s.kind == SpellEffectKind::Counter || damaged_trigger;
     if (reaction_kind != (s.casting_time == CastingTime::Reaction))
         return err("effect kind " + kind + " and casting_time.kind " + ck + " disagree (ac_bonus/counter are reactions, and only they)");
-    if (reaction_kind && s.reaction_trigger != (s.kind == SpellEffectKind::AcBonus ? ReactionTrigger::BeingHit : ReactionTrigger::SpellCast))
+    if (reaction_kind && !damaged_trigger && s.reaction_trigger != (s.kind == SpellEffectKind::AcBonus ? ReactionTrigger::BeingHit : ReactionTrigger::SpellCast))
         return err("effect kind " + kind + " needs casting_time.trigger.kind " + (s.kind == SpellEffectKind::AcBonus ? "being_hit" : "spell_cast"));
     if ((s.kind == SpellEffectKind::AcBonus) != (s.duration == SpellDuration::UntilStartOfCasterTurn))
         return err("ac_bonus effects last until_start_of_caster_turn (and only they use it)");

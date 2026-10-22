@@ -901,3 +901,22 @@ TEST_CASE("loader 7.2zg: spell_attack on_miss half (Acid Arrow)") {
     j.erase("scaling");
     q = spell_from_json(j); CHECK_FALSE(q.def); CHECK(q.error == "effects[1]: on_miss is only allowed on the first effect");
 }
+
+TEST_CASE("loader 7.2zg: casting_time.trigger damaged (Hellish Rebuke)") {
+    auto hr = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.hellish_rebuke","level":1,"name":"Hellish Rebuke",
+        "casting_time":{"kind":"reaction","trigger":{"kind":"damaged","requires_sight":true}},"range":{"kind":"ranged","feet":60},
+        "components":{"v":true,"s":true},"duration":{"kind":"instantaneous"},
+        "effects":[{"kind":"save","ability":"dex","damage":{"dice":"2d10","type":"fire"},"on_success":"half"}],
+        "scaling":{"upcast":{"dice":1}}})");
+    auto r = spell_from_json(hr); INFO(r.error); REQUIRE(r.def);
+    CHECK(r.def->casting_time == CastingTime::Reaction); CHECK(r.def->reaction_trigger == ReactionTrigger::Damaged);
+    CHECK(r.def->requires_sight); CHECK(r.def->range_ft == 60);
+    auto j = hr; j["casting_time"]["trigger"].erase("requires_sight");
+    auto q = spell_from_json(j); CHECK(q.error == "casting_time.trigger.kind damaged needs requires_sight");
+    j = hr; j["range"] = {{"kind", "touch"}};
+    q = spell_from_json(j); CHECK(q.error == "casting_time.trigger.kind damaged needs a ranged range");
+    j = hr; j["effects"] = eng::assets::Json::array({{{"kind", "heal"}, {"dice", "1d4"}}}); j.erase("scaling");
+    q = spell_from_json(j); CHECK(q.error == "casting_time.trigger.kind damaged needs a save effect");
+    j = hr; j["casting_time"]["trigger"]["kind"] = "hurt";
+    q = spell_from_json(j); CHECK(q.error == "casting_time.trigger.kind must be being_hit, spell_cast or damaged");
+}

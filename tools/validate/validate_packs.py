@@ -425,6 +425,15 @@ def check_spell(doc, errs, ctx):
         elif key == "dice" and "dice" not in eff and "damage" not in eff and not zone_has_damage(eff):
             errs.append("scaling.upcast.dice needs effect dice or damage")
     want = REACTION_EFFECT_TRIGGER.get(kind)
+    damaged = ct["kind"] == "reaction" and ct.get("trigger", {}).get("kind") == c4.ZG_KEYS["damaged"]   # 7.2zg Hellish Rebuke
+    if damaged:
+        want = c4.ZG_KEYS["damaged"]
+        if kind != "save":
+            errs.append("casting_time.trigger.kind damaged needs a save effect")
+        elif not ct["trigger"].get("requires_sight", False):
+            errs.append("casting_time.trigger.kind damaged needs requires_sight")
+        elif doc["range"]["kind"] != "ranged":
+            errs.append("casting_time.trigger.kind damaged needs a ranged range")
     if (ct["kind"] == "reaction") != (want is not None):
         errs.append(f"effect kind {kind} and casting_time.kind {ct['kind']} disagree (ac_bonus/counter are reactions, and only they)")
     elif want and ct["trigger"]["kind"] != want:

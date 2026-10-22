@@ -101,7 +101,8 @@
             "kind": {
               "enum": [
                 "being_hit",
-                "spell_cast"
+                "spell_cast",
+                "damaged"
               ]
             },
             "or_targeted_by": {
