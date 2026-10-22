@@ -391,3 +391,41 @@ TEST_CASE("7.2zg ends_on damage / shake_awake: Hypnotic Pattern ends on a Wake a
         CHECK_FALSE(mut(s, 2).has(Condition::Charmed)); CHECK_FALSE(mut(s, 2).has(Condition::Incapacitated));
     }
 }
+
+TEST_CASE("7.2zg Hypnotic Pattern: speed 0 while it lasts; movement back once woken or damaged") {
+    for (int how = 0; how < 2; ++how) {
+        CAPTURE(how);
+        auto w = wizard(1); w.spells_known.push_back(kHypno); w.spell_slots_max = {0, 4, 3, 3, 0, 0, 0, 0, 0, 0}; w.spell_slots = w.spell_slots_max;
+        never_react(w);
+        auto m = monster(2); m.hp = m.hp_max = 300; m.fly_ft = 40; never_react(m);
+        auto m3 = monster(3); never_react(m3);
+        auto s = begin_encounter({w, m, m3}, 7, nullptr, hypno_hooks());
+        const int speed = modified_speed(s, mut(s, 2));
+        REQUIRE(speed > 0);
+        end_turns_until(s, 1);
+        REQUIRE(step(s, cast(1, kHypno, 2, 3)).ok);
+        REQUIRE(has_hypno(s, 2));
+        CHECK(modified_speed(s, mut(s, 2)) == 0);
+        CHECK(mode_speed(s, mut(s, 2), 1) == 0);   // every mode (fly)
+        end_turns_until(s, 2);
+        CHECK(s.budget.movement_ft == 0);
+        ActionRequest mv{2, ActionKind::Move}; mv.move_ft = 5;
+        CHECK_FALSE(step(s, mv).ok);
+        if (how == 0) {
+            end_turns_until(s, 3);
+            ActionRequest wake{3, ActionKind::Attack, 2}; wake.special = 5; wake.target_within_5ft = true;
+            REQUIRE(step(s, wake).ok);
+        } else {
+            for (int i = 0; i < 20 && has_hypno(s, 2); ++i) {
+                end_turns_until(s, 1);
+                REQUIRE(step(s, cast(1, kFireBolt, 2)).ok);
+            }
+        }
+        REQUIRE_FALSE(has_hypno(s, 2));
+        CHECK(modified_speed(s, mut(s, 2)) == speed);
+        end_turns_until(s, 2);
+        CHECK(s.budget.movement_ft == speed);
+        auto r = step(s, mv);
+        INFO(r.error); CHECK(r.ok);
+    }
+}
