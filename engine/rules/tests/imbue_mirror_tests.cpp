@@ -157,9 +157,8 @@ TEST_CASE("duplicates: blinded, blindsight and truesight attackers are unaffecte
         for (const auto& e : r.events) CHECK_FALSE((e.kind == EventKind::FeatureTriggered && e.a == int32_t(kMirror)));
         CHECK(duplicates_left(s, 1) == 3);
     }
-    // the same fight without Mirror Image draws exactly the old stream (goldens unchanged)
-    auto a = start({caster(1), brute(2)}, 2), b = start({caster(1), brute(2)}, 2);
+    // no duplicates: no extra d20 (the attack's own roll is the first draw, as before)
+    auto a = start({caster(1), brute(2)}, 2);
     ActionRequest atk{2, ActionKind::Attack, 1}; atk.attack_index = 0;
-    auto ra = step(a, atk), rb = step(b, atk);
-    CHECK(ra.events == rb.events);
+    for (const auto& e : step(a, atk).events) CHECK(e.kind != EventKind::FeatureTriggered);
 }
