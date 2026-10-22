@@ -25,6 +25,7 @@
         "dim_ft": 5,
         "toggle": "action"
       }
-    ]
+    ],
+    "preset": "srd51.core.light.lantern_hooded"
   }
 }
