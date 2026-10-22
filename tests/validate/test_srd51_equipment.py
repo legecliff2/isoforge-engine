@@ -90,6 +90,30 @@ AMMO_KIND = {'blowgun': 'needle', 'crossbow_hand': 'bolt', 'crossbow_heavy': 'bo
              'longbow': 'arrow', 'shortbow': 'arrow', 'sling': 'sling_bullet'}
 AMMUNITION = [('arrow', 'arrow', 5), ('crossbow_bolt', 'bolt', 5), ('sling_bullet', 'sling_bullet', None), ('blowgun_needle', 'needle', 2)]
 
+# item@2 light gear (docs/proposals/EQUIPMENT.md 6.2), from 5e-database a6212be 5e-SRD-Equipment.json (adventuring-gear):
+# (local_id, cost_cp, weight_oz, hands, light (bright_ft, dim_ft, shape, duration_rounds, fuel, states) | None, torch_attack)
+# 1 hour = 600 rounds, 6 hours per flask = 3600. Descriptions are the SRD text verbatim (paragraphs joined by a blank line).
+# Inert until equipment produces light (#244): the sim does not load item documents.
+OIL = "srd51.item.oil_flask"
+LIGHT_GEAR = [
+    ('torch', 1, 16, 1, (20, 20, 'radius', 600, None, []), [{"flat": 1, "type": "fire"}]),
+    ('candle', 1, 0, 1, (5, 5, 'radius', 600, None, []), None),
+    ('lamp', 50, 16, 1, (15, 30, 'radius', 3600, OIL, []), None),
+    ('lantern_hooded', 500, 32, 1, (30, 30, 'radius', 3600, OIL, [{"id": "hooded", "bright_ft": 0, "dim_ft": 5, "toggle": "action"}]), None),
+    ('lantern_bullseye', 1000, 32, 1, (60, 60, 'cone', 3600, OIL, []), None),
+    ('oil_flask', 10, 16, None, None, None),
+    ('tinderbox', 50, 16, None, None, None),
+]
+SRD_DESC = {   # exact SRD wording the descriptions must contain
+    'torch': "A torch burns for 1 hour, providing bright light in a 20-foot radius and dim light for an additional 20 feet.",
+    'candle': "For 1 hour, a candle sheds bright light in a 5-foot radius and dim light for an additional 5 feet.",
+    'lamp': "Once lit, it burns for 6 hours on a flask (1 pint) of oil.",
+    'lantern_hooded': "As an action, you can lower the hood, reducing the light to dim light in a 5-foot radius.",
+    'lantern_bullseye': "A bullseye lantern casts bright light in a 60-foot cone and dim light for an additional 60 feet.",
+    'oil_flask': "Oil usually comes in a clay flask that holds 1 pint.",
+    'tinderbox': "Using it to light a torch--or anything else with abundant, exposed fuel--takes an action.",
+}
+
 
 def load(lid):
     return json.loads((ITEMS / f"{lid}.json").read_text(encoding="utf-8"))
@@ -112,8 +136,9 @@ class Srd51Equipment(unittest.TestCase):
         self.assertEqual(len(VALUABLES), 1)
         files = sorted(p.stem for p in ITEMS.glob("*.json"))
         self.assertEqual(len(AMMUNITION), 4)
+        self.assertEqual(len(LIGHT_GEAR), 7)
         self.assertEqual(files, sorted([w[0] for w in WEAPONS] + [a[0] for a in ARMOR] + [v[0] for v in VALUABLES]
-                                       + [a[0] for a in AMMUNITION]),
+                                       + [a[0] for a in AMMUNITION] + [g[0] for g in LIGHT_GEAR]),
                          "no extra or missing item files")
 
     def test_manifest_lists_every_item(self):
@@ -175,6 +200,28 @@ class Srd51Equipment(unittest.TestCase):
                 self.assertEqual(d.get("cost_cp"), cost)
                 self.assertNotIn("weight_oz", d)
         self.assertEqual(set(AMMO_KIND.values()), {a[1] for a in AMMUNITION})
+
+    def test_light_gear(self):
+        for lid, cost, oz, hands, light, torch in LIGHT_GEAR:
+            with self.subTest(lid):
+                d = load(lid)
+                self.assertEqual((d["$schema"], d["id"], d["category"]), ("item@2", f"srd51.item.{lid}", "gear"))
+                self.assertEqual(d["source"], {"ref": "SRD 5.1", "license": "CC-BY-4.0"})
+                self.assertEqual((d["cost_cp"], d["weight_oz"], d.get("hands")), (cost, oz, hands))
+                self.assertIn(SRD_DESC[lid], d["description"])
+                if light is None:
+                    self.assertNotIn("light", d)
+                else:
+                    lt = d["light"]
+                    self.assertEqual((lt["bright_ft"], lt["dim_ft"], lt["shape"], lt["duration_rounds"], lt.get("fuel"),
+                                      lt.get("states", [])), light)
+                    self.assertIs(lt["lit_by_default"], False)   # lighting takes an action (Tinderbox)
+                    # Render preset key (#233 / #255 GlowPalette: 'srd51.core.light.<name>', last segment matched)
+                    self.assertEqual(lt["preset"], f"srd51.core.light.{lid}")
+                self.assertEqual(d["torch_attack"]["damage"] if "torch_attack" in d else None, torch)
+                if torch:
+                    self.assertIs(d["torch_attack"]["requires_lit"], True)
+        self.assertIn(OIL, {f"srd51.item.{g[0]}" for g in LIGHT_GEAR})
 
     def test_diamond_is_the_priced_material_id(self):
         # spell@1 components.m.item names it (Revivify fixture); the contract matches equipment ids exactly.
