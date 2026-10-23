@@ -386,6 +386,22 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
             r.tint = Color::rgba8(255, 220, 60);
             world_.draw(r, iso, 0, a.id, 9);
         }
+        // Unseen target: a small slate-cyan diamond on the ground. It is not the full-tile current-turn
+        // ring (gold, z 9) and not a Faerie Fire outline (full-tile purple on the actor). Alpha stays
+        // well above the Invisible ghost (~0.38): this is a mark, not a fade of the token.
+        if (!a.seen_by_viewer) {
+            constexpr float k = 0.62f;
+            iso2d::Sprite u{tex_->ring, float(kTileW) * k, float(kTileH) * k, kTileW * k / 2.f, 0};
+            u.tint = Color::rgba8(64, 176, 196, 220);
+            world_.draw(u, iso, 0, a.id, 4);
+        }
+        // Unseen attacker: a coral pip beside the head. They can affect the viewer while the viewer
+        // cannot see them. A pip, not a ring, so it does not stack with the outline above.
+        if (a.unseen_attacker) {
+            iso2d::Sprite pip{tex_->white, 5.f, 9.f, -8.f, 26.f};
+            pip.tint = Color::rgba8(232, 84, 58, 235);
+            world_.draw(pip, iso, 1, a.id, 9);
+        }
         // Pawn feet at the tile centre; drawn on the wall layer so walls in front occlude it.
         iso2d::Sprite p{tex_->pawn, float(kPawnW), float(kPawnH), kPawnW / 2.f, float(kPawnH) - kTileH / 2.f - 4.f};
         iso2d::Fog af;

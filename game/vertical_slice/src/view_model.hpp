@@ -51,6 +51,14 @@ struct ActorView {
     bool        dead = false;
     Facing      facing = Facing::SouthEast;
     std::vector<EquipVisual> equipment;   // held + slung items, slot order then instance order (empty: nothing drawn)
+    // Sight cues for the fog-team camera combatant (presentation only; never written back into sim).
+    // Defaults match an empty EncounterHooks::sight_facts: everyone sees everyone, so no cue is drawn.
+    // seen_by_viewer false = unseen target (attacking-visible: !can_see, or hidden from the viewer).
+    // sees_viewer false = this actor cannot see the camera combatant.
+    // unseen_attacker = a hostile conscious creature that perceives the viewer while the viewer cannot see them.
+    bool seen_by_viewer = true;
+    bool sees_viewer = true;
+    bool unseen_attacker = false;
 };
 
 // ---- Light (LIGHTING.md §10): a plain-data copy of the sim's published sim::LightFrame. ----
