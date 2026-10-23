@@ -33,6 +33,9 @@ struct LightProviderInputs {
     // PC torches and other attached sources (phase 3 commands come later): appended to the world each step. Tiles are in
     // the combat's frame. Must be deterministic in the combat state.
     std::function<void(const Combat&, std::vector<LightSource>&)> attached_sources;
+    // Rebuild only the tiles a changed source, wall or zone can touch (LightCache::begin_step_incremental). Frames are
+    // bit-identical either way; false forces a full rebuild every step (the reference the tests compare against).
+    bool incremental = true;
 };
 
 class LightDriver {
@@ -56,10 +59,13 @@ public:
     std::span<const world::ChunkCoord> failed() const noexcept { return failed_; }
     bool halted() const noexcept { return pending_ || !failed_.empty(); }
     const VisibilityState& visibility() const noexcept { return vis_; }
+    // What the last step's light rebuild did (full or the dirty rects it invalidated).
+    const LightCache::StepStats& last_stats() const noexcept { return stats_; }
 
 private:
     LightProviderInputs in_;
     LightCache cache_;
+    LightCache::StepStats stats_;
     VisibilityState vis_;
     uint64_t step_ = 0;
     bool pending_ = false;
