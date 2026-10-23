@@ -13,10 +13,10 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 | level | in `srd51.core` | deferred: needs a mechanic | deferred: out of combat scope | total |
 |---|---|---|---|---|
 | 0 (cantrips) | 11 | 2 | 11 | 24 |
-| 1 | 26 | 4 | 19 | 49 |
+| 1 | 27 | 3 | 19 | 49 |
 | 2 | 19 | 12 | 23 | 54 |
 | 3 | 13 | 10 | 19 | 42 |
-| **total** | **69** | **28** | **72** | **169** |
+| **total** | **70** | **27** | **72** | **169** |
 
 ## Authored in this change (9)
 
@@ -151,7 +151,15 @@ Zone / `hp_pool` promotions from `tests/validate/fixtures/zones/spells/` and `te
 | Darkness | 2 | `zone` sphere 15, `flags [heavy_obscured, magical_darkness]`; concentration 10 minutes, range 60 | warlock (4), wizard (4); sorcerer has no class list room at 3+; object casting, covering the source, and dispelling lower-level light not expressible |
 | Color Spray | 1 | `hp_pool` 6d10 `blinded`, self cone 15, `rounds 1`; `upcast.dice 2` | wizard (1); sorcerer has no class list room (Fog Cloud took the L2 known slot); "until the end of your next turn" ≈ `rounds 1` (R-G15); skipping unconscious / can't-see not expressible |
 
-## Deferred (100 spells; reasons re-checked against main at `8b8d8c9`)
+## Authored: Entangle (1)
+
+Promote `tests/validate/fixtures/zones/spells/entangle.json` into `srd51.core` (Rules #277). Pinned by `tests/validate/test_srd51_spells.py` (`test_zone_and_kind_spells` vs the fixture) and the 5e-database table. Counts from main's 69 (#274 Fog Cloud / Darkness / Color Spray) + Entangle → 70 authored / 27 NEW / 72 OOS.
+
+| spell | level | `spell@1` shape | notes |
+|---|---|---|---|
+| Entangle | 1 | point `zone` cube 20 (SRD 20-ft square, same cube as Grease), `difficult`; `zone_appear` Strength save or restrained, `while_in_zone`; concentration 1 minute, range 90, V S | druid (2); forced exit also clears the restraint (`while_in_zone`); no new zone key |
+
+## Deferred (99 spells; reasons re-checked against main at `8b8d8c9`)
 
 Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the first-draft ids in brackets: B1 = R-G2 effects array, B2 = R-G3 timed modifiers, B3 = R-G4 damage riders, B4 = R-G5 pools, B6 = R-G7 reactions / roll windows, C1 = R-G8 conditions with source, C2 = R-G9 forced movement / teleport, C3 = R-G10 area templates, C4 = R-G11 zones / auras, C5 = R-G12 summons, C7 = R-G13 cover / lighting / vision, C8 = R-G14 per-cast options, C9 = R-G15 spell kinds). `T&C-G12` / `T&C-G14` are movement modes and creature footprint. `OOS` rows have no gap id.
 
@@ -179,7 +187,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 1 | Detect Magic | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Detect Poison and Disease | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Disguise Self | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
-| 1 | Entangle | NEW | Fixture `tests/validate/fixtures/zones/spells/entangle.json` (README in that directory). Web's zone keys: point cube 20 for the SRD 20-ft square, `difficult`, `zone_appear` Strength save or restrained, `while_in_zone` so the existing Str check escape applies. T&C can author `srd51.spell.entangle` in `srd51.core` from it. | R-G11 (C4) |
 | 1 | Expeditious Retreat | NEW | No spell@1 way to grant a bonus-action Dash for the duration (`grant_action` is a feature effect). | R-G3 (B2) |
 | 1 | Feather Fall | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Find Familiar | NEW | Summons rules (R-G12 PR 2) exist but spell@1 has no summon key; 1-hour cast. | R-G12 (C5) |
