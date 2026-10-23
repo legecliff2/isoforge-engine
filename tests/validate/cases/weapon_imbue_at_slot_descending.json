@@ -1,0 +1,49 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.a",
+  "name": "Magic Weapon",
+  "level": 2,
+  "school": "transmutation",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "classes": [
+    "wizard"
+  ],
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "casting_time": {
+    "kind": "bonus_action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "duration": {
+    "kind": "rounds",
+    "amount": 600,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "weapon_imbue",
+      "magic_bonus": {
+        "base": 1,
+        "at_slot": [
+          [
+            6,
+            3
+          ],
+          [
+            4,
+            2
+          ]
+        ]
+      },
+      "magical": true,
+      "requires_nonmagical": true
+    }
+  ]
+}

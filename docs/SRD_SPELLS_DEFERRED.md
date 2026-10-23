@@ -129,7 +129,7 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 0 | Minor Illusion | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Prestidigitation | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Resistance | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
-| 0 | Shillelagh | NEW | No modifier replaces a weapon's damage die or attack ability (`damage` modifiers only add). | R-G3 (B2) |
+| 0 | Shillelagh | Done (7.2zf) | `weapon_imbue` (spellcasting ability, d8, magical). | R-G3 (B2) |
 | 0 | Spare the Dying | NEW | spell@1 has no stabilize effect kind; Rules models it only as `ActionKind::SpareTheDying` + `hooks.spare_the_dying` (coverage doc marks it DATA via that ActionKind, not via spell@1) | - |
 | 0 | Thaumaturgy | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | True Strike | NEW | `attack_roll` advantage with `consume: next_attack` loads, but the advantage applies to any target; the SRD limits it to the chosen target (no per-target modifier scope). | R-G3 (B2) |
@@ -190,8 +190,8 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Locate Animals or Plants | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Locate Object | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Magic Mouth | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Magic Weapon | NEW | Magic bonus (R-G17, T&C-G2/R-G3). | R-G3, R-G17, T&C-G2 (B2) |
-| 2 | Mirror Image | NEW | Duplicates that absorb attacks (R-G3). | R-G3 (B2) |
+| 2 | Magic Weapon | Done (7.2zf) | `weapon_imbue {magic_bonus {base 1, at_slot [[4, 2], [6, 3]]}, magical, requires_nonmagical}`, concentration, rounds 600; refused on a magical weapon (`magic_weapon: the weapon is already magical`). | R-G3, R-G17, T&C-G2 (B2) |
+| 2 | Mirror Image | Done (7.2zf) | `duplicates {count 3, thresholds [11, 8, 6] (index = remaining - 1), ac {base 10, ability dex}}`, self, rounds 10; d20 from the encounter PRNG only when it applies; a hit destroys a duplicate (no damage); blinded / blindsight / truesight attackers unaffected; no dismissal; Combat::hash 0xD3. | R-G3 (B2) |
 | 2 | Pass Without Trace | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Prayer of Healing | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Protection from Poison | NEW | R-G3. | R-G3 (B2) |
