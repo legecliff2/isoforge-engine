@@ -63,7 +63,7 @@ public:
     // explored of one chunk (all clear when unknown). Explored survives chunks leaving the frame (eviction).
     TileMask explored(TeamId team, world::ChunkCoord c) const;
     // Drop everything (a new world / session). explored is not saved (R&P default).
-    void reset() { explored_.clear(); published_.clear(); los_.reset(); }
+    void reset() { explored_.clear(); published_.clear(); los_.reset(); seen_.clear(); }
 
 private:
     // Memoised line of sight (an optimisation only: answers equal light_reaches). 0 unknown, 1 clear, 2 blocked.
@@ -73,6 +73,14 @@ private:
         std::map<Vec2i, std::vector<uint8_t>> by_tile;
     };
     std::optional<LosMemo> los_;
+    // Incremental seen_now (an optimisation only: equal to recomputing). A chunk's seen_now for a team depends only on
+    // the team's viewers, the chunk's samples and the walls (line of sight), so it is reused while all three are equal.
+    struct SeenMemo {
+        std::vector<Viewer> viewers;   // the team's viewers, sorted by id
+        std::array<LightSample, world::kChunkSize * world::kChunkSize> samples{};
+        TileMask seen;
+    };
+    std::map<TeamId, std::map<world::ChunkCoord, SeenMemo>> seen_;
     std::map<TeamId, std::map<world::ChunkCoord, TileMask>> explored_;
     std::vector<TeamVisibility> published_;
 };
