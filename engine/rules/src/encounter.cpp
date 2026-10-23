@@ -4429,11 +4429,19 @@ StepResult gaze_response(EncounterState& s, Combatant& a, const ActionRequest& r
     for (const auto& slot : s.order) {
         Combatant* g = find_mut(s, slot.id);
         if (!g || g->id == a.id || g->dead || g->gazes.empty() || is_incapacitated(*g)) continue;
+        uint16_t dist_ft = 0;
         if (s.hooks.sight_facts) {   // 7.2x: a gaze needs the actor to see the gazer with sight (not blindsight / tremorsense)
             const Sight v = sight(s, a.id, g->id);
             if (!v.can_see || v.sense != Sense::Sight) continue;
+            // Gaze range_ft (same as Combat::gaze_seen): Hellish Rebuke pattern — distance from SightFacts.
+            const EncounterState* b = g_sight_base ? g_sight_base : &s;
+            if (!find(*b, a.id) || !find(*b, g->id)) b = &s;
+            const Combatant* vv = find(*b, a.id); const Combatant* tt = find(*b, g->id);
+            if (!vv || !tt) continue;
+            dist_ft = s.hooks.sight_facts(*b, *vv, *tt).distance_ft;
         } else if (std::find(req.gaze_seen.begin(), req.gaze_seen.end(), g->id) == req.gaze_seen.end()) continue;
         for (const auto& gz : g->gazes) {
+            if (s.hooks.sight_facts && dist_ft > gz.range_ft) continue;
             const SpellDef* d = spell_def(s, gz.spell_id);
             if (!d || a.dead || a.hp <= 0) continue;
             if (d->escalates && a.has(d->escalate_to)) continue;   // already petrified
