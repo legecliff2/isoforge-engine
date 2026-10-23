@@ -366,6 +366,9 @@ class SpellTable(unittest.TestCase):
         self.assertEqual(strike["effects"][0]["modifier"]["stat"], "attack_roll")
         self.assertEqual(strike["effects"][0]["modifier"]["applies_to"], "self")
         self.assertEqual(retreat["effects"][0]["modifier"]["stat"], "bonus_dash")
+        self.assertEqual(retreat["effects"][0]["dash_on_cast"], True)
+        self.assertEqual(retreat["effects"][0]["modifier"]["applies_to"], "self")
+        self.assertEqual(retreat["classes"], ["sorcerer", "warlock", "wizard"])
         self.assertEqual(retreat["casting_time"], {"kind": "bonus_action"})
         self.assertEqual(poison["effects"][0], {"kind": "end_condition", "conditions": ["poisoned"]})
         self.assertEqual(poison["effects"][2]["save_vs_conditions"], ["poisoned"])
@@ -387,6 +390,8 @@ class SpellTable(unittest.TestCase):
                     "effect hit_only and damage together",
                     "effect on_next_turn must be true",
                     "effect on_next_turn needs an attack_roll modifier",
+                    "effect dash_on_cast must be true",
+                    "effect dash_on_cast needs a bonus_dash modifier on self",
                     "effect save_vs_conditions needs a save modifier with a mode",
                     "effect save_vs_conditions must be a non-empty list of conditions",
                     "effect save_vs_conditions items must be unique",
@@ -408,7 +413,7 @@ class SpellTable(unittest.TestCase):
             self.assertIn(f'"{msg}"', encounter, msg)
         keys_hpp = (ROOT / "engine/rules/content/src/spell_keys_zi.hpp").read_text(encoding="utf-8")
         checks = (ROOT / "tools/validate/checks_v4.py").read_text(encoding="utf-8")
-        for val in ("stabilize", "hit_only", "on_next_turn", "bonus_dash", "save_vs_conditions",
+        for val in ("stabilize", "hit_only", "on_next_turn", "bonus_dash", "dash_on_cast", "save_vs_conditions",
                     "halve_weapon_damage", "death_saves", "heal_maximum", "share_damage", "all_damage",
                     "end_beyond_ft", "end_at_zero", "caster"):
             self.assertIn(f'"{val}"', keys_hpp, val)

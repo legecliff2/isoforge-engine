@@ -199,7 +199,7 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 1 | Detect Magic | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Detect Poison and Disease | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Disguise Self | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
-| 1 | Expeditious Retreat | Done (rules 7.2zi) | `bonus_dash` on the caster for 600 rounds, concentration 10 minutes. The cast does not Dash. Fixture `tests/validate/fixtures/spell_batch_zi/expeditious_retreat.json`. | R-G3 (B2) |
+| 1 | Expeditious Retreat | Done (rules 7.2zi) | `dash_on_cast` grants a Dash as part of the cast. `bonus_dash` on the caster for 600 rounds, concentration 10 minutes, is the later-turn bonus Dash. Classes: sorcerer, warlock, wizard. Fixture `tests/validate/fixtures/spell_batch_zi/expeditious_retreat.json`. | R-G3 (B2) |
 | 1 | Feather Fall | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Find Familiar | NEW | Summons rules (R-G12 PR 2) exist but spell@1 has no summon key; 1-hour cast. | R-G12 (C5) |
 | 1 | Floating Disk | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |

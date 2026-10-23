@@ -345,7 +345,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Cure Wounds | DATA | Shipped (`heal`, excludes undead/construct). |
 | Divine Favor | NEW (wiring) | Rules done (#89): Damage modifier with `damage_type` radiant and a 1d4 die, concentration (weapon attacks only). Spell kind pending (R-G3). |
 | Entangle | NEW | Area zone + restrained (R-G10, R-G11). |
-| Expeditious Retreat | Done (7.2zi) | `bonus_dash`: Dash as a bonus action for the duration. The cast does not Dash. |
+| Expeditious Retreat | Done (7.2zi) | `dash_on_cast`: one Dash as part of the cast. `bonus_dash`: Dash as a bonus action on later turns until concentration ends. Classes: sorcerer, warlock, wizard. |
 | Find Familiar | NEW (wiring) | R-G12 rules PR 2 (7.2r): `Summon` (Own initiative, Telepathic: acts on its own, vanishes at 0 HP). Casting time (1 hour) means sim casts it before the encounter or content marks it; Chain variants are PR 3. |
 | Fog Cloud | NEW | `Zone` (point sphere, 20 ft + 20 ft per slot level above 1 via `upcast_size_ft`, `kZoneHeavyObscured` flag) in rules (R-G11 PR 2, 7.2m); the obscurement itself waits for R-G13 (Q6). |
 | Faerie Fire | NEW (wiring) | Rules done (#89): `AttacksAgainst` advantage modifier applied to each target in the area (sim computes the area, #78). Spell kind pending; the Dex save gate rides the existing Save effect (R-G3). |
