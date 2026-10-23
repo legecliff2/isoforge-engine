@@ -1,6 +1,7 @@
 #pragma once
 // docs/proposals/EQUIPMENT.md 9.1: the POD item data rules reads (weapon / armor / shield / focus / light / ammunition). Engine Core
 // owns the table (ItemDefTable, built from item@N) and passes a lookup in (EncounterHooks::item_def); rules5e never loads items.
+#include <cstddef>
 #include <cstdint>
 #include <string_view>
 #include <vector>
@@ -32,12 +33,15 @@ struct WeaponDef {
     uint8_t ammo_kind = kAmmoNone;     // `ammunition` weapons: which stack they draw from
 };
 
+// One lit state of a light source (item@2: state 0 = the top-level radii, then `states[]`). dim is additional beyond bright
+// (chunk@2). SRD hooded lantern: {30, 30} open, {0, 5} hooded.
+struct LightState { uint16_t bright_ft = 0, dim_ft = 0; };
+inline constexpr std::size_t kMaxLightStates = 8;   // HeldItem::flags bits 4-6 (kHeldLightStateMask)
 struct LightDef {
-    uint16_t bright_ft = 0, dim_ft = 0;   // dim is additional beyond bright (chunk@2)
+    std::vector<LightState> states{};     // empty = not a light source; at most kMaxLightStates
     LightShape shape = LightShape::Radius;
     uint32_t duration_rounds = 0;         // 0 = no burn-down
-    bool lit_by_default = false;
-    uint8_t extra_states = 0;             // item@2 `states[]` (state 0 = the top-level radii)
+    bool lit_by_default = false;          // lit in state 0
 };
 
 struct ItemDef {
@@ -65,6 +69,13 @@ enum class WeaponUse : uint8_t { OneHand, TwoHands, Thrown, OffHand };
 inline constexpr uint8_t kHeldLit = 1;      // a light (or torch) is lit
 inline constexpr uint8_t kHeldEmblem = 2;   // a shield bearing a holy symbol (a focus, Q4)
 inline constexpr uint8_t kHeldWorn = 4;     // a carried holy symbol worn visibly (a focus for M, not a hand)
+// bits 4-6: the light state index (LightDef::states) while kHeldLit; Engine Core stores and hashes it with the flags.
+inline constexpr uint8_t kHeldLightStateShift = 4;
+inline constexpr uint8_t kHeldLightStateMask = 0x70;
+constexpr uint8_t light_state_index(uint8_t flags) { return uint8_t((flags & kHeldLightStateMask) >> kHeldLightStateShift); }
+constexpr uint8_t with_light_state(uint8_t flags, uint8_t index) {
+    return uint8_t((flags & ~kHeldLightStateMask) | ((index << kHeldLightStateShift) & kHeldLightStateMask));
+}
 struct HeldItem { uint32_t instance = 0; uint32_t def = 0; uint16_t count = 1; uint8_t flags = 0; };
 // Combatant::attacks[i] -> the weapon it uses (def 0: natural / unarmed / not equipment-gated). Fixed order (EQUIPMENT.md 7.3):
 // a stowed weapon's attack stays listed and is refused at attack time.
