@@ -1117,6 +1117,7 @@ TEST_CASE("loader 7.2zi: stabilize, chosen-target advantage, bonus Dash, poison 
     CHECK(retreat->modifier.stat == ModStat::BonusDash);
     CHECK(retreat->modifier.applies_to == ModAppliesTo::Self);
     CHECK(retreat->modifier.expiry == 1); CHECK(retreat->modifier.rounds == 600);
+    CHECK(retreat->dash_on_cast);
 
     const auto poison = load("protection_from_poison.json");
     CHECK(poison->kind == SpellEffectKind::EndCondition);
@@ -1190,6 +1191,12 @@ TEST_CASE("loader 7.2zi: stabilize, chosen-target advantage, bonus Dash, poison 
     j["effects"][0]["modifier"].erase("mode"); j["effects"][0]["modifier"].erase("consume");
     j["effects"][0]["modifier"].erase("applies_to"); j["effects"][0].erase("scope");
     bad(j, "effect on_next_turn needs an attack_roll modifier");
+    j = doc("expeditious_retreat.json");
+    j["effects"][0]["modifier"].erase("applies_to");
+    bad(j, "effect dash_on_cast needs a bonus_dash modifier on self");
+    j = doc("expeditious_retreat.json");
+    j["effects"][0]["dash_on_cast"] = false;
+    bad(j, "effect dash_on_cast must be true");
     j = doc("ray_of_enfeeblement.json");
     j["effects"] = eng::assets::Json::array({j["effects"][1]});
     j["effects"][0]["modifier"]["ability"] = "dex";
