@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://isoforge.dev/schemas/character/v5.schema.json",
+  "title": "character@5",
+  "description": "character@5 = character@4 carried in full plus (all optional, docs/proposals/EQUIPMENT.md 7.1): derive, equipment entries hand (main/off) and count, weapon_proficiencies, armor_proficiencies. character@4 -> character@5 is an identity migration with derive absent (= false). Integers only (4.3).",
+  "$ref": "../common/v2.schema.json#/$defs/stat_block",
+  "unevaluatedProperties": false,
+  "required": [
+    "race",
+    "classes",
+    "level"
+  ],
+  "properties": {
+    "spellcasting": {
+      "$ref": "../common/v2.schema.json#/$defs/spellcasting"
+    },
+    "$schema": {
+      "const": "character@5"
+    },
+    "race": {
+      "type": "string",
+      "pattern": "^[a-z_]+$",
+      "description": "SRD race id, e.g. 'human'."
+    },
+    "background": {
+      "type": "string"
+    },
+    "level": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20,
+      "description": "Total character level (sum of classes[].level)."
+    },
+    "classes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "class",
+          "level",
+          "hit_die"
+        ],
+        "properties": {
+          "class": {
+            "enum": [
+              "barbarian",
+              "bard",
+              "cleric",
+              "druid",
+              "fighter",
+              "monk",
+              "paladin",
+              "ranger",
+              "rogue",
+              "sorcerer",
+              "warlock",
+              "wizard"
+            ]
+          },
+          "subclass": {
+            "type": "string"
+          },
+          "level": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "hit_die": {
+            "enum": [
+              "d6",
+              "d8",
+              "d10",
+              "d12"
+            ]
+          }
+        }
+      }
+    },
+    "xp": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Current experience points."
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "$ref": "../common/v2.schema.json#/$defs/trait_active"
+      },
+      "description": "Class/race features. Effects are mechanically active (see schema description); never bake their numbers into actions."
+    },
+    "equipment": {
+      "type": "array",
+      "description": "Bare strings are the descriptive @3 entries (never loaded). {item, equipped?, value_gp?} objects reference an item@1 document by content id and are live (docs/proposals/VERSION_BUMP_BATCH.md 10).",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "item"
+            ],
+            "properties": {
+              "item": {
+                "$ref": "../common/v1.schema.json#/$defs/content_id"
+              },
+              "equipped": {
+                "type": "boolean"
+              },
+              "value_gp": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Value in gp of this entry, default 0. A priced material (spell@1 components.m with cost_cp and item) is provided by the first equipment entry whose id equals components.m.item exactly and whose value_gp * 100 >= cost_cp (docs/CONTENT_CONVENTIONS.md section 7). Such an entry needs no item@1 document."
+              },
+              "hand": {
+                "enum": [
+                  "main",
+                  "off"
+                ],
+                "description": "Held in this hand slot (EQUIPMENT 3.1)."
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 65535,
+                "description": "Stack size (ammunition, javelins); default 1."
+              }
+            }
+          }
+        ]
+      }
+    },
+    "behavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Simulation behaviour hooks.",
+      "properties": {
+        "ai": {
+          "type": "string",
+          "pattern": "^scripts/.+\\.luau$",
+          "description": "Pack-relative strict Luau AI script."
+        }
+      }
+    },
+    "forward_compat": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "elevation"
+        ]
+      },
+      "description": "Opt-in flags for engine features that are not implemented yet (elevation, T&C-G12). Descriptive and ignored by sim; listed with the inert mechanics. New enum values widen the @4 schemas additively."
+    },
+    "inert_mechanics": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      },
+      "description": "Mechanics the document carries but the engine must ignore (e.g. 'reactions', 'bonus_actions', 'equipment', 'damage[1..]'). Written by the 3->4 migration; a hand-written @4 file may carry it too."
+    },
+    "no_breath": {
+      "type": "boolean",
+      "description": "R-G11 creature fact (CONTENT_CONVENTIONS 4.6), default false: the character doesn't need to breathe (Stinking Cloud's automatic success with auto_success_no_breath); maps to Combatant::no_breath. Reserved: the sim archetype loader (engine/core/sim/src/content.cpp, Engine Core) does not read it yet, so the validator warns and it has no effect until then."
+    },
+    "shapechanger": {
+      "type": "boolean",
+      "description": "R-G11 creature fact (CONTENT_CONVENTIONS 4.6), default false: the character is a shapechanger (Moonbeam's shapechanger_disadvantage); maps to Combatant::shapechanger. Reserved: the sim archetype loader (engine/core/sim/src/content.cpp, Engine Core) does not read it yet, so the validator warns and it has no effect until then."
+    },
+    "evil": {
+      "type": "boolean",
+      "description": "R-G11 creature fact (CONTENT_CONVENTIONS 4.6), default false: the character is evil for zone rows (Spirit Guardians' evil_damage_type); maps to Combatant::evil. Reserved: the sim archetype loader (engine/core/sim/src/content.cpp, Engine Core) does not read it yet, so the validator warns and it has no effect until then."
+    },
+    "derive": {
+      "type": "boolean",
+      "description": "Default false: printed AC / to-hit / damage are used as written. true: they are derived and asserted (EQUIPMENT 5.6)."
+    },
+    "weapon_proficiencies": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "anyOf": [
+          {
+            "enum": [
+              "simple",
+              "martial"
+            ]
+          },
+          {
+            "$ref": "../common/v1.schema.json#/$defs/content_id"
+          }
+        ]
+      },
+      "description": "'simple', 'martial' or item@2 content ids (EQUIPMENT 2.1)."
+    },
+    "armor_proficiencies": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "light",
+          "medium",
+          "heavy",
+          "shields"
+        ]
+      }
+    }
+  }
+}
