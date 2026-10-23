@@ -24,7 +24,7 @@ WeaponDef weapon(const char* id, DiceExpr d, uint16_t props, uint8_t reach = 5, 
 WielderView wielder(AbilityScores a, int pb = 2) { WielderView v; v.abilities = a; v.pb = int8_t(pb); return v; }
 
 // ---- item table + loadout views for the predicates (Engine Core's state, faked here) ----
-enum : uint32_t { dLongsword = 1, dShieldDef, dHolySymbol, dArcaneFocus, dHandCrossbow, dLongbow, dJavelin, dArrows, dTorch, dGreatsword };
+enum : uint32_t { dLongsword = 1, dShieldDef, dHolySymbol, dArcaneFocus, dHandCrossbow, dLongbow, dJavelin, dArrows, dTorch, dGreatsword, dLantern };
 struct World {
     std::map<uint32_t, ItemDef> defs;
     std::map<CombatantId, LoadoutView> views;
@@ -48,8 +48,9 @@ std::shared_ptr<World> make_world() {
     add(dArrows, ItemKind::Ammunition).ammo_kind = kAmmoArrow;
     auto& t = add(dTorch, ItemKind::Light);
     t.has_weapon = true; t.weapon_requires_lit = true; t.weapon = weapon("torch", {0, 0, 1}, 0); t.weapon.improvised = true;
-    t.weapon.type = DamageType::Fire; t.light = LightDef{20, 20, LightShape::Radius, 600, false, 0};
+    t.weapon.type = DamageType::Fire; t.light = LightDef{{{20, 20}}, LightShape::Radius, 600, false};
     add(dGreatsword, ItemKind::Weapon).weapon = weapon("greatsword", {2, 6, 0}, kWeaponHeavy | kWeaponTwoHanded);
+    add(dLantern, ItemKind::Light).light = LightDef{{{30, 30}, {0, 5}}, LightShape::Radius, 0, false};   // SRD hooded lantern
     return w;
 }
 EncounterHooks equip_hooks(std::shared_ptr<World> w) {
@@ -266,7 +267,7 @@ TEST_CASE("equip_legal: costs, refusals, armor rounds, the step path and legal_a
     CHECK(equip_legal(s, pick).refusal == "equip: the item is out of reach");
     pick.equip_in_reach = true;
     CHECK(equip_legal(s, pick).refusal == "equip: unknown ground item");   // no ground_item_def hook
-    s.hooks.ground_item_def = [](uint32_t inst) -> const ItemDef* {
+    s.hooks.ground_item_def = [](const EncounterState&, uint32_t inst) -> const ItemDef* {
         static const ItemDef gs = [] { ItemDef d; d.id = dGreatsword; d.kind = ItemKind::Weapon; d.hands = 2; return d; }();
         static const ItemDef ls = [] { ItemDef d; d.id = dLongsword; d.kind = ItemKind::Weapon; d.hands = 1; return d; }();
         return inst == 50 ? &gs : inst == 51 ? &ls : nullptr;
@@ -388,4 +389,84 @@ TEST_CASE("derive_monster: SRD reproductions and every exact string") {
     CHECK(proficiency_for_cr(0, 1) == 2); CHECK(proficiency_for_cr(1, 8) == 2); CHECK(proficiency_for_cr(5, 1) == 3);
     CHECK(proficiency_for_cr(12, 1) == 4); CHECK(proficiency_for_cr(13, 1) == 5); CHECK(proficiency_for_cr(30, 1) == 9);
     CHECK(format_dice({1, 4, -1}) == "1d4-1"); CHECK(format_dice({3, 6, 0}) == "3d6"); CHECK(format_dice({0, 0, 1}) == "1");
+}
+
+TEST_CASE("hands_needed and recovered_ammo") {
+    auto w = make_world();
+    CHECK(hands_needed(nullptr) == 1);
+    CHECK(hands_needed(&w->defs.at(dLongsword)) == 1);
+    CHECK(hands_needed(&w->defs.at(dGreatsword)) == 2);   // two_handed with hands left at 1
+    CHECK(hands_needed(&w->defs.at(dLongbow)) == 2);
+    CHECK(recovered_ammo(0) == 0); CHECK(recovered_ammo(1) == 0); CHECK(recovered_ammo(2) == 1);
+    CHECK(recovered_ammo(7) == 3); CHECK(recovered_ammo(20) == 10); CHECK(recovered_ammo(-3) == 0);
+}
+
+TEST_CASE("ground_item_def receives the state being evaluated (AI lookahead copies)") {
+    auto w = make_world();
+    auto s = begin_encounter({pc(1), monster(2)}, 7, nullptr, equip_hooks(w));
+    end_turns_until(s, 1);
+    w->views[1] = LoadoutView{};
+    const EncounterState* seen = nullptr;
+    s.hooks.ground_item_def = [&seen, w](const EncounterState& st, uint32_t) -> const ItemDef* { seen = &st; return &w->defs.at(dLongsword); };
+    auto copy = s;
+    auto pick = equip(1, EquipOp::PickUp, 50); pick.equip_in_reach = true;
+    CHECK(equip_legal(copy, pick).kind == EquipCost::Interaction);
+    CHECK(seen == &copy);
+    equip_legal(s, pick); CHECK(seen == &s);
+}
+
+TEST_CASE("derive_monster: the action `use` (#252 spelling) is used as authored; absent = one_hand") {
+    CHECK(weapon_use_from_string("one_hand") == WeaponUse::OneHand);
+    CHECK(weapon_use_from_string("two_hands") == WeaponUse::TwoHands);
+    CHECK(weapon_use_from_string("thrown") == WeaponUse::Thrown);
+    CHECK(weapon_use_from_string("off_hand") == WeaponUse::OffHand);
+    CHECK_FALSE(weapon_use_from_string("two_hand").has_value());
+    CHECK_FALSE(weapon_use_from_string("Thrown").has_value());
+    for (auto u : {WeaponUse::OneHand, WeaponUse::TwoHands, WeaponUse::Thrown, WeaponUse::OffHand})
+        CHECK(weapon_use_from_string(weapon_use_name(u)) == u);
+    auto ls = weapon("longsword", {1, 8, 0}, kWeaponVersatile); ls.versatile_dice = {1, 10, 0};
+    MonsterSpec k; k.id = "test.knight"; k.abilities = scores(16, 10); k.cr_num = 1; k.printed_ac = 10;
+    k.attacks = {{"longsword", ls, WeaponUse::TwoHands, {}, false, {}, 5, {1, 10, 3}}};
+    CHECK(derive_monster(k).errors.empty());                 // two_hands: the versatile die
+    k.attacks[0].has_use = false;                            // `use` absent: one_hand, not inferred from the printed die
+    CHECK(derive_monster(k).errors == std::vector<std::string>{"test.knight.longsword: derived damage 1d8+3 != printed 1d10+3"});
+    k.attacks[0].printed_damage = {1, 8, 3};
+    CHECK(derive_monster(k).errors.empty());
+}
+
+TEST_CASE("SetLightState: light, hood, douse; Interaction cost; refusals; radii from flags bits 4-6") {
+    auto w = make_world();
+    auto s = begin_encounter({pc(1), monster(2)}, 7, nullptr, equip_hooks(w));
+    end_turns_until(s, 1);
+    w->views[1] = LoadoutView{};
+    w->views[1].main = item(60, dLantern); w->views[1].off = item(61, dLongsword);
+    w->views[1].carried = {item(62, dTorch)};
+    auto op = [](uint32_t inst, uint8_t st) { auto r = equip(1, EquipOp::SetLightState, inst); r.equip_state = st; return r; };
+    CHECK(equip_legal(s, op(60, 0)).kind == EquipCost::Interaction);                       // light it (open)
+    CHECK(equip_legal(s, op(60, 1)).kind == EquipCost::Interaction);                       // light it hooded
+    CHECK(equip_legal(s, op(60, 2)).refusal == "equip: unknown light state");
+    CHECK(equip_legal(s, op(60, kLightDouse)).refusal == "equip: the light is already in that state");
+    CHECK(equip_legal(s, op(61, 0)).refusal == "equip: not a light source");
+    CHECK(equip_legal(s, op(62, 0)).refusal == "equip: the item is not in hand");
+    const ItemDef& lan = w->defs[dLantern];
+    CHECK(light_radii(lan, w->views[1].main).bright_ft == 0);                               // unlit
+    w->views[1].main.flags = with_light_state(kHeldLit, 0);
+    CHECK(light_radii(lan, w->views[1].main).bright_ft == 30);
+    CHECK(light_radii(lan, w->views[1].main).dim_ft == 30);
+    CHECK(equip_legal(s, op(60, 0)).refusal == "equip: the light is already in that state");
+    CHECK(equip_legal(s, op(60, 1)).kind == EquipCost::Interaction);                       // hood
+    w->views[1].main.flags = with_light_state(kHeldLit, 1);
+    CHECK(light_state_index(w->views[1].main.flags) == 1);
+    CHECK((w->views[1].main.flags & kHeldLightStateMask) == 0x10);
+    CHECK(light_radii(lan, w->views[1].main).bright_ft == 0);
+    CHECK(light_radii(lan, w->views[1].main).dim_ft == 5);
+    CHECK(equip_legal(s, op(60, kLightDouse)).kind == EquipCost::Interaction);
+    w->views[1].main.flags = with_light_state(kHeldLit, 7);                                // stale index: sheds nothing
+    CHECK(light_radii(lan, w->views[1].main).dim_ft == 0);
+    w->views[1].interaction_used = true;
+    CHECK(equip_legal(s, op(60, 0)).kind == EquipCost::Action);                            // then Use an Object
+    auto bad = op(60, 0); bad.equip_op = 11;
+    CHECK(equip_legal(s, bad).refusal == "equip: unknown equip op");
+    // not listed by equip_legal_actions (Engine Core lists light ops, like PickUp): legal_actions unchanged
+    for (const auto& r : equip_legal_actions(s)) CHECK(r.equip_op != uint8_t(EquipOp::SetLightState));
 }
