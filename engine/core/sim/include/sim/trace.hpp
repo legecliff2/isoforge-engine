@@ -52,4 +52,43 @@ template <class F> bool segment_blocked(Vec2i p, Vec2i q, F&& blocks) {
     return false;
 }
 
+// The same test walked as an integer DDA (perf/vis-first-step): visits exactly the probes of segment_blocked (every piece
+// inside a tile, every lattice corner the segment passes through, every unit edge of an axis-aligned segment), so the
+// answer is identical for every predicate; only the visiting order differs (the result is an OR, so order is irrelevant).
+// Crossings are ordered by comparing i * |dy| with j * |dx| instead of dividing. Pinned against segment_blocked and the
+// original trace by tests/vis_first_step_tests.cpp. Used by the visibility pass; cover and light keep segment_blocked.
+template <class F> bool segment_blocked_dda(Vec2i p, Vec2i q, F&& blocks) {
+    const int32_t dx = q.x - p.x, dy = q.y - p.y;
+    const int32_t ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
+    if (ax == 0 && ay == 0) return false;
+    const int32_t sx = dx > 0 ? 1 : -1, sy = dy > 0 ? 1 : -1;
+    if (ax == 0) {
+        for (int32_t k = 0; k < ay; ++k) {
+            const int32_t y = sy > 0 ? p.y + k : p.y - 1 - k;
+            if (blocks(Vec2i{p.x - 1, y}) && blocks(Vec2i{p.x, y})) return true;
+        }
+        return false;
+    }
+    if (ay == 0) {
+        for (int32_t k = 0; k < ax; ++k) {
+            const int32_t x = sx > 0 ? p.x + k : p.x - 1 - k;
+            if (blocks(Vec2i{x, p.y - 1}) && blocks(Vec2i{x, p.y})) return true;
+        }
+        return false;
+    }
+    int32_t tx = sx > 0 ? p.x : p.x - 1, ty = sy > 0 ? p.y : p.y - 1;
+    int64_t i = 1, j = 1;
+    for (;;) {
+        if (blocks(Vec2i{tx, ty})) return true;
+        const int64_t a = i * ay, b = j * ax;
+        if (a < b) { tx += sx; ++i; }
+        else if (b < a) { ty += sy; ++j; }
+        else {
+            if (i == ax) return false;   // reached q (then j == ay)
+            if (blocks(Vec2i{tx + sx, ty}) && blocks(Vec2i{tx, ty + sy})) return true;
+            tx += sx; ty += sy; ++i; ++j;
+        }
+    }
+}
+
 } // namespace eng::sim

@@ -1,5 +1,6 @@
 {
-  "$schema": "monster@4",
+  "$schema": "monster@5",
+  "derive": true,
   "id": "srd51.monster.gelatinous_cube",
   "name": "Gelatinous Cube",
   "source": {
@@ -12,6 +13,7 @@
   "armor_class": {
     "value": 6
   },
+  "hands": 0,
   "hit_points": {
     "average": 84,
     "formula": "8d10+40"
@@ -66,6 +68,11 @@
       "id": "pseudopod",
       "name": "Pseudopod",
       "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "3d6",
+        "ability": "str",
+        "damage_ability": "none"
+      },
       "to_hit": 4,
       "reach": 5,
       "targets": 1,
