@@ -2487,6 +2487,49 @@ Additive (T&C batch 3 shapes). No golden changes, integer math only. SRD 5.1 con
 - Deviation: the modifier keeps `stat` (required); a roll list must include the stat's own roll (Bless: `stat: attack_roll`, `applies_to: [attack, save]`).
 - Hand-off (EC / T&C): no srd51.core spell documents are added here; the sim AI casts these with the existing choice default (condition_choice 1).
 
+### 7.2zf Weapon imbue and Mirror Image (rules side)
+
+Additive (gap list; T&C approved the shapes). No golden changes, integer math only. SRD 5.1 content stays CC-BY-4.0.
+
+- **Shillelagh** (spell@1 `weapon_imbue`): `{kind: weapon_imbue, weapons: [srd51.item.club, srd51.item.quarterstaff],
+  ability: spellcasting, die: 8, magical: true, ends_on_release: true}`, duration `{kind: rounds, amount: 10}`. Melee attacks with
+  the imbued weapon use the caster's spellcasting ability for attack and damage instead of Strength, the damage die becomes a d8,
+  and the attack is magical. Casting it again ends the earlier imbue (one imbue per caster and spell). `ends_on_release`: the
+  holder lets go of the weapon (Stow / Drop / HandOver once an equipment loadout exists, EQUIPMENT.md 4).
+- **Magic Weapon** (spell@1 `weapon_imbue`): `{kind: weapon_imbue, magic_bonus: {base: 1, at_slot: [[4, 2], [6, 3]]}, magical:
+  true, requires_nonmagical: true}`, concentration, duration `{kind: rounds, amount: 600}`. +bonus to attack and damage rolls with
+  the weapon; `at_slot` pairs are [slot level, bonus] (from that slot up). An already magical weapon is refused, so there is no
+  "take the higher bonus" case.
+- **The imbued weapon**: the caster's first weapon attack (`Attack` with a weapon, not a spell or natural attack) whose `id` is in
+  `weapons` (matched as the full item id or its last segment, `club`); absent `weapons` = the first weapon attack. Chosen by rule,
+  so no new ActionRequest field and no hash tag; the imbue is part of the effect state already hashed.
+- **Mirror Image** (spell@1 `duplicates`): `{kind: duplicates, count: 3, thresholds: [11, 8, 6], ac: {base: 10, ability: dex}}`,
+  self, duration `{kind: rounds, amount: 10}`. `thresholds` is indexed by **remaining duplicates - 1**: 1 left needs 11+, 2 left
+  8+, 3 left 6+. Each attack that targets the caster, by an affected attacker while duplicates remain, first rolls a d20 from
+  the encounter PRNG; at or above the threshold the attack targets a duplicate (AC = base + the caster's ability modifier). A hit
+  destroys one duplicate and deals no damage (riders and on-hit effects do not apply); a miss does nothing. When none remain the
+  effect ends. **Unaffected attackers** (no d20 drawn): no sight of the caster (Blinded or otherwise not seeing it), blindsight in
+  range, or truesight in range. **No dismissal action.** The d20 is drawn only in that case, so every existing stream and golden
+  is unchanged.
+- **Hash**: `Combat::hash` **0xD3** = per creature with duplicates, the creature id u32 and the remaining count u8 (folded only
+  when the count is non-zero).
+- **Events** (no new EventKind; the event layout is unchanged): the duplicate d20 is `FeatureTriggered{actor = the caster,
+  target = the attacker, a = spell id, b = the d20, c = 1 redirected / 0 not}`; the attack against a duplicate is
+  `AttackResolved` with **c bit 2** set (bit 0 hit, so a hit = a duplicate destroyed); the last one ends the effect
+  (`SpellEffectEnded`). The roll against a duplicate uses the attack's to-hit and flat bonuses with no advantage or
+  disadvantage (v1 simplification).
+- **Rules API**: `effective_attack(state, id, index)` (the attack as imbued), `duplicates_left(state, id)`,
+  `imbue_bonus(spec, slot)`.
+- **Shillelagh's release end** waits for equipment play (EQUIPMENT.md, #247): rules has no hands without a loadout view, so
+  `ends_on_release` is loaded and documented but not yet triggered.
+- **Refusals (exact)**: `magic_weapon: the weapon is already magical`; `weapon_imbue: no weapon to imbue`;
+  `weapon_imbue: self only` (the caster's own weapon in v1); `duplicates: self only`.
+- **Loader and validator (exact, same wording)**: `effect duplicates thresholds must not increase with the remaining count`
+  (index = remaining duplicates - 1; exactly 3 entries is the schema's), `effect weapon_imbue at_slot slot levels must ascend`,
+  `effect weapon_imbue needs concentration or a rounds, minutes or hours duration`, `effect duplicates needs a rounds, minutes or
+  hours duration`, `effect duplicates is self only`, `effects[<i>]: weapon_imbue is only allowed as the first effect` (and duplicates).
+  Negative cases: `tests/validate/cases/duplicates_*`, `weapon_imbue_*` (8).
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
