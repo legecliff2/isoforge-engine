@@ -1571,6 +1571,52 @@ void sweep_wielded(EncounterState& s, std::vector<Event>& ev) {
 
 std::vector<Combatant*> resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& def, uint8_t lvl,
                                       const std::vector<Combatant*>& T_in, bool within_5ft, std::vector<Event>& ev);
+// 7.2zf: the attack a weapon_imbue binds to (index into a.attacks; -1 = none). Weapon attacks only: an Attack whose id is a
+// listed item id or its last segment (any weapon attack when the list is empty).
+int imbue_attack_index(const Combatant& a, const WeaponImbueSpec& w) {
+    for (std::size_t i = 0; i < a.attacks.size(); ++i) {
+        const std::string_view id = a.attacks[i].id;
+        if (w.weapons.empty()) return int(i);
+        for (const std::string& want : w.weapons) {
+            const std::size_t dot = want.rfind('.');
+            const std::string_view last = dot == std::string::npos ? std::string_view(want) : std::string_view(want).substr(dot + 1);
+            if (id == want || id == last) return int(i);
+        }
+    }
+    return -1;
+}
+// 7.2zf: the attack as imbued (true) when `atk` is the caster's imbued attack, else false.
+bool imbued_attack(const EncounterState& s, const Combatant& a, const Attack& atk, Attack& out) {
+    for (const ActiveSpellEffect& e : s.effects) {
+        if (e.target != a.id || e.imbue_attack == 0 || std::size_t(e.imbue_attack - 1) >= a.attacks.size()) continue;
+        if (&a.attacks[std::size_t(e.imbue_attack - 1)] != &atk) continue;
+        const SpellDef* def = spell_def(s, e.spell_id);
+        if (!def) continue;
+        out = atk;
+        const WeaponImbueSpec& w = def->imbue;
+        int delta = e.imbue_bonus;
+        if (w.spellcasting_ability && !atk.ranged)
+            delta += modifier(a.abilities, a.spellcasting_ability) - modifier(a.abilities, Ability::Str);
+        out.to_hit = int8_t(std::clamp(int(atk.to_hit) + delta, -128, 127));
+        if (w.die > 0) out.damage.sides = w.die;
+        out.damage.bonus = int16_t(int(out.damage.bonus) + delta);
+        if (w.magical) out.qualifiers = uint8_t(out.qualifiers | kAttackMagical);
+        return true;
+    }
+    return false;
+}
+// 7.2zf Mirror Image: does the attacker fall for t's duplicates? Not when it can't see t (Blinded, or no sight of it), or
+// perceives t with blindsight or truesight in range (without sim's sight facts: any blindsight / truesight counts).
+bool fooled_by_duplicates(const EncounterState& s, const Combatant& a, const Combatant& t) {
+    if (a.has(Condition::Blinded)) return false;
+    if (!s.hooks.sight_facts) return a.blindsight_ft == 0 && a.truesight_ft == 0;
+    const SightFacts f = s.hooks.sight_facts(s, a, t);
+    if (!derive_sight(a, f).can_see) return false;
+    if (a.blindsight_ft > 0 && f.distance_ft <= a.blindsight_ft) return false;
+    if (a.truesight_ft > 0 && f.distance_ft <= a.truesight_ft && f.line_of_sight) return false;
+    return true;
+}
+
 bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
                bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage = false,
                uint32_t spell_id = 0, bool ally_near_target = false, const DiceExpr* damage_override = nullptr,
@@ -1944,6 +1990,29 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
 bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
                bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage,
                uint32_t spell_id, bool ally_near_target, const DiceExpr* damage_override, bool two_handed_grip) {
+    if (spell_id == 0 && !s.effects.empty()) {   // 7.2zf Shillelagh / Magic Weapon: attack with the imbued copy
+        Attack imb;
+        if (imbued_attack(s, a, atk, imb))
+            return do_attack(s, ctx, a, t, imb, within_5ft, ev, ranged_disadvantage, spell_id, ally_near_target, damage_override, two_handed_grip);
+    }
+    for (std::size_t di = 0; di < s.effects.size(); ++di) {   // 7.2zf Mirror Image: the d20 only when duplicates can fool it
+        ActiveSpellEffect& de = s.effects[di];
+        if (de.target != t.id || de.duplicates == 0 || &a == &t || !fooled_by_duplicates(s, a, t)) continue;
+        const SpellDef* dd = spell_def(s, de.spell_id);
+        if (!dd) break;
+        const int d20 = roll_d20(s.rng, 0, RollMode::Normal).natural;
+        const bool redirected = d20 >= int(dd->duplicates.thresholds[std::size_t(de.duplicates - 1)]);
+        emit(ev, EventKind::FeatureTriggered, t.id, a.id, int32_t(de.spell_id), d20, int32_t(redirected));
+        if (!redirected) break;
+        // The attack targets a duplicate: one roll vs its AC (base + the caster's ability modifier); a hit destroys it, no damage.
+        const int dup_ac = int(dd->duplicates.ac_base) + modifier(t.abilities, dd->duplicates.ac_ability);
+        const D20Roll r = roll_d20(s.rng, int(atk.to_hit) + modifier_flat(s, a.id, ModStat::AttackRoll) +
+                                   (spell_id != 0 ? 0 : atk.ranged ? int(a.attack_bonus_ranged) : int(a.attack_bonus_melee)), RollMode::Normal);
+        const bool dhit = r.natural == 20 || (r.natural != 1 && int(r.total) >= dup_ac);
+        emit(ev, EventKind::AttackResolved, a.id, t.id, r.natural, r.total, int32_t(dhit) | 4);   // c bit 2: against a duplicate
+        if (dhit && --de.duplicates == 0) end_effect(s, di, ev);
+        return false;
+    }
     bool adv = false;
     if (a.helped_vs == t.id) { adv = true; a.helped_vs = 0; a.helped_by = 0; }
     if (t.reckless_active) adv = true;   // Reckless Attack: attacks against it have advantage
@@ -3269,6 +3338,24 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         if (def.concentration && applied) a.concentration_spell = def.id;
         break;
     }
+    case SpellEffectKind::WeaponImbue: case SpellEffectKind::Duplicates: {   // 7.2zf: on the caster; a new cast replaces the old
+        for (std::size_t i = s.effects.size(); i-- > 0;)
+            if (s.effects[i].target == a.id && s.effects[i].spell_id == def.id) end_effect(s, i, ev);
+        ActiveSpellEffect x{def.id, a.id, a.id, Condition::Paralyzed, Ability::Wis, 0, RepeatSave::None, def.concentration,
+                            effect_timed(s, def, a.id, a.id), lvl, false};
+        x.no_condition = true;
+        if (def.kind == SpellEffectKind::WeaponImbue) {
+            const int wi = imbue_attack_index(a, def.imbue);
+            if (wi < 0) break;
+            x.imbue_attack = uint8_t(wi + 1); x.imbue_bonus = int8_t(imbue_bonus(def.imbue, lvl));
+        } else {
+            x.duplicates = def.duplicates.count;
+        }
+        s.effects.push_back(x);
+        affected.push_back(&a);
+        if (def.concentration) a.concentration_spell = def.id;
+        break;
+    }
     case SpellEffectKind::AcBonus: case SpellEffectKind::Counter: break;   // reactions only
     }
     return affected;
@@ -3484,6 +3571,17 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     }
     case SpellEffectKind::AcBonus: case SpellEffectKind::Counter:
         return fail("reaction spells are cast from reaction windows");
+    case SpellEffectKind::WeaponImbue: {   // 7.2zf Shillelagh, Magic Weapon: the caster's own weapon
+        if (T.size() != 1 || T[0] != &a) return fail("weapon_imbue: self only");
+        const int wi = imbue_attack_index(a, def.imbue);
+        if (wi < 0) return fail("weapon_imbue: no weapon to imbue");
+        if (def.imbue.requires_nonmagical && (a.attacks[std::size_t(wi)].qualifiers & kAttackMagical) != 0)
+            return fail("magic_weapon: the weapon is already magical");
+        break;
+    }
+    case SpellEffectKind::Duplicates:   // 7.2zf Mirror Image
+        if (T.size() != 1 || T[0] != &a) return fail("duplicates: self only");
+        break;
     case SpellEffectKind::Teleport:   // R-G9: self only (Dimension Door companions are deferred)
         if (T.size() != 1 || T[0] != &a) return fail("teleport: self only");
         break;
@@ -3638,7 +3736,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         ctx.ranged_disadvantage = req.beyond_normal_range || req.ranged_hostile_within_5ft;   // EC spider follow-up (flagged)
         ctx.slot_cast = inn == nullptr && lvl >= 1; ctx.mark_ability = req.mark_ability;   // 7.2zc
         for (Combatant* x : resolve_spell(s, ctx, a, def, lvl, T, req.target_within_5ft, out.events))
-            harmful = harmful || x->team != a.team;   // 7.2zd harmful_cast: it affected a creature of another team
+            harmful = harmful || x->team != a.team;   // 7.2zd harmful_cast (SRD): the spell affected an enemy creature, harmful or not
         ctx.slot_cast = false; ctx.mark_ability = 0;
         ctx.ranged_disadvantage = false;
         ctx.spared = nullptr; ctx.spared_no_damage = false; ctx.heighten = 0; ctx.empower = 0;
@@ -4220,6 +4318,9 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
             defer_forced(s, ctx, ev, s.hooks.shove_forced_flag ? kMovedForced : 0);
         }
     }
+    // SRD 5.1: Grapple and Shove are special melee attacks, so making one ends "ends on attack" effects (Sanctuary on the
+    // shover, Invisibility), as after do_attack
+    if (!s.effects.empty()) end_on_own_action(s, a.id, kEndsOnAttack, ev);
     check_end(s, ev);
     return out;
 }
@@ -5964,3 +6065,22 @@ const char* heal_split_reason_text(HealSplitReason r) {
 }
 
 }  // namespace rules5e
+
+namespace rules5e {
+Attack effective_attack(const EncounterState& s, CombatantId id, std::size_t index) {
+    const Combatant* a = find(s, id);
+    if (!a || index >= a->attacks.size()) return Attack{};
+    Attack out;
+    return imbued_attack(s, *a, a->attacks[index], out) ? out : a->attacks[index];
+}
+int duplicates_left(const EncounterState& s, CombatantId id) {
+    int n = 0;
+    for (const ActiveSpellEffect& e : s.effects) if (e.target == id) n += e.duplicates;
+    return n;
+}
+int imbue_bonus(const WeaponImbueSpec& w, int slot) {   // 7.2zf Magic Weapon: base, then the last at_slot pair reached
+    int b = w.bonus_base;
+    for (const auto& [sl, bonus] : w.bonus_at_slot) if (slot >= int(sl)) b = bonus;
+    return w.bonus_base > 0 ? b : 0;
+}
+} // namespace rules5e

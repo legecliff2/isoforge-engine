@@ -620,3 +620,63 @@ The validator ties the race string to Darkvision (character@2+, errors):
 
 Other race strings are not checked. The level-1 hit point check adds SRD Dwarven Toughness (+1 per level) for `hill_dwarf`. Sample PCs: `srd51.character.sample_hill_dwarf_cleric_1`, `sample_high_elf_wizard_1`, `sample_tiefling_warlock_1` (`characters/sample_*.json`).
 
+
+## 13. Light gear (item@2 category `gear`, docs/proposals/EQUIPMENT.md 6.2)
+
+srd51.core carries the SRD 5.1 light sources as item@2 `gear` (5e-database a6212be, costs in cp, weights in oz, descriptions verbatim):
+
+| Item | `light` | Notes |
+|---|---|---|
+| `srd51.item.torch` | 20 / 20 radius, 600 rounds, no fuel (consumed) | `torch_attack {damage [{flat 1, fire}], requires_lit}` |
+| `srd51.item.candle` | 5 / 5 radius, 600 rounds, no fuel | |
+| `srd51.item.lamp` | 15 / 30 radius, 3600 rounds, fuel `srd51.item.oil_flask` | |
+| `srd51.item.lantern_hooded` | 30 / 30 radius, 3600 rounds, oil | state `hooded` (bright 0, dim 5), `toggle: action` |
+| `srd51.item.lantern_bullseye` | 60 / 60 cone (length = bright_ft), 3600 rounds, oil | |
+| `srd51.item.oil_flask` | none | the fuel; splash / thrown / pooled-fire effects are not modelled yet |
+| `srd51.item.tinderbox` | none | |
+
+- `dim_ft` is additional beyond `bright_ft`. 1 hour = 600 rounds, and 6 hours per flask = 3600.
+- Every light source has `lit_by_default: false`, `hands: 1` and `light.preset` `srd51.core.light.<name>` (`torch`, `candle`, `lamp`, `lantern_hooded`, `lantern_bullseye`), the keys Render's #233 / #255 glow palette uses. No `visual` is authored, so the built-in styles apply. **Lighting takes an action** (Tinderbox: "Using it to light a torch--or anything else with abundant, exposed fuel--takes an action").
+- **Inert until equipment produces light (after #244).** The sim does not load item documents. Listing these items in `equipment[]` changes no fight, and Session `carried_lights` / `pc_torches` remain the light producers. Tests: `tests/validate/test_srd51_equipment.py` (`LIGHT_GEAR`).
+
+## 14. srd51.core monsters at monster@5 with `derive: true` (docs/proposals/EQUIPMENT.md 5)
+
+All 33 srd51.core monster@4 files are now monster@5 with `derive: true`. `goblin` stays at monster@3 for fl1 compatibility. The printed `armor_class.value`, `to_hit` and `damage[0].dice` are kept and become assertions. The validator (`checks_v4.check_monster_derive`, a mirror of `rules5e::derive_monster`) uses the 5.6 strings.
+
+- **Armor and shield** are `equipment[]` entries with `equipped: true`, taken from the printed AC note.
+- **Weapons:** every weapon attack names its `weapon` (an item id, or `#local`), and the item is listed in `equipment[]`. The melee weapon is equipped; ranged backups and javelins are carried.
+- **`use`** (added to the monster@5 action): `two_hands` for a versatile die or a two-handed melee weapon, `thrown` for a thrown use. The default is `one_hand`. It is explicit, never inferred from the action id.
+- **Natural attacks:** `natural {dice, ability}`. Gelatinous Cube Pseudopod has `damage_ability: "none"`.
+- **Local weapons:** lizardfolk Heavy Club 1d6 and Spiked Shield 1d6, grimlock Spiked Bone Club 1d4. The 1d4 rider stays as `damage[1]`, unchecked.
+- **Structure:**
+  - `natural_armor`: animated armor 18, basilisk 13, black bear 11, black dragon wyrmling 15, boar 11, dire wolf 12, gargoyle 15, giant spider 11, lizardfolk 13, medusa 13, wolf 11.
+  - Ogre: `weapon_dice_multiplier: 2`.
+  - Bugbear Brute: `{kind: weapon_extra_dice, dice: 1, melee_only: true}`. It is read only by the derivation, so the sim still uses the printed dice.
+- **`hands`** is explicit: 0 for beasts, the dragon, the cube, the gargoyle, the swarm, the toad and the spider; 2 otherwise.
+- **The 3 approved adjustments**, which the validator lists as warnings:
+  - skeleton `ac_adjust +1` ("armor scraps");
+  - black bear bite and claws `attack_bonus 3`;
+  - ghoul bite `attack_bonus 2`.
+- **The loader:** until Engine Core wires `derive`, it uses the printed numbers exactly as written, so no fight changes. `rules5e::derive_monster` reproduces all 33 with no errors (cross-checked locally).
+
+## 15. srd51.core PCs at character@5 with `derive: true` (docs/proposals/EQUIPMENT.md 1, 2, 3; PR C)
+
+All 63 srd51.core PCs are now character@5 with `derive: true`. The sample pack's character@3 stays as it is: @3 -> @5 is not an identity migration, and the vertical slice goldens read it.
+
+- **Equipment:**
+  - The equipped weapon has `hand: "main"` and the equipped shield `hand: "off"`. Backup weapons are carried.
+  - Every weapon attack names its `weapon` (an `equipment[]` item) and `use` (`two_hands` for two-handed and versatile grips, `thrown` for thrown uses). These are character@5 action keys, appended like monster@5's. The monk's `unarmed_strike` stays underived (an engine built-in).
+- **Ammunition:**
+  - Ammunition weapons are item@2 with `ammo_kind`.
+  - Starting ammunition is a stack: 20 `srd51.item.arrow` / `crossbow_bolt` / `sling_bullet`, or 50 `blowgun_needle`, replacing the descriptive `arrows_20` / `crossbow_bolts_20` strings.
+  - The ammunition items are per piece. `weight_oz` is omitted, and so is the sling bullet's `cost_cp` (not whole numbers).
+- **Proficiencies:**
+  - `weapon_proficiencies` / `armor_proficiencies` are the SRD class plus race grants. The mirror is `checks_v4.SRD_CLASS_PROFICIENCIES` / `SRD_RACE_WEAPON_PROFICIENCIES`, pinned to `tests/validate/data/srd51_proficiencies_5e_database_a6212be.json`.
+  - A named weapon covered by `simple` / `martial` is not listed again.
+  - A missing grant is an error: `<id>: <key> missing '<entry>' (SRD 5.1 class / race)`. An extra one is a warning: `<id>: <key> '<entry>' is not granted by the SRD 5.1 class / race`.
+- **Derivation** (`checks_v4.check_character_derive`, rules5e `compute_ac` / `derive_weapon_attack` semantics):
+  - AC comes from the equipped armor and shield, plus feature bases: barbarian and monk `unarmored_defense` (the monk's is lost with a shield), `draconic_resilience` 13 + Dex, and `armor_of_shadows` (Mage Armor counted as in force).
+  - To-hit adds PB only with proficiency. Monk Martial Arts uses the higher of Str / Dex with monk weapons.
+  - Feature rows (Defense, Archery, Dueling) are applied by the engine on top, so they are never part of the printed numbers.
+  - The strings follow the 5.6 forms (`<id>: derived AC ...`, `<id>.<action>: derived to-hit ...`, `... derived damage ...`).
+  - All 63 PCs reproduce their printed AC and attacks (also cross-checked locally against the rules5e functions).

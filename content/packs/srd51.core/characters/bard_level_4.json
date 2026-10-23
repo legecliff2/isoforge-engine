@@ -1,5 +1,6 @@
 {
-  "$schema": "character@4",
+  "$schema": "character@5",
+  "derive": true,
   "id": "srd51.character.bard_level_4",
   "name": "Bard, level 4 (College of Lore)",
   "source": {
@@ -155,16 +156,28 @@
     },
     {
       "item": "srd51.item.rapier",
-      "equipped": true
+      "equipped": true,
+      "hand": "main"
     },
     "lute",
     "entertainers_pack"
+  ],
+  "weapon_proficiencies": [
+    "simple",
+    "srd51.item.crossbow_hand",
+    "srd51.item.longsword",
+    "srd51.item.rapier",
+    "srd51.item.shortsword"
+  ],
+  "armor_proficiencies": [
+    "light"
   ],
   "actions": [
     {
       "id": "rapier",
       "name": "Rapier",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.rapier",
       "to_hit": 4,
       "reach": 5,
       "targets": 1,

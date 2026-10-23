@@ -1,5 +1,5 @@
 {
-  "$schema": "item@1",
+  "$schema": "item@2",
   "id": "srd51.item.sling",
   "name": "Sling",
   "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
@@ -11,5 +11,6 @@
   "damage": [
     {"dice": "1d4", "type": "bludgeoning"}
   ],
-  "properties": ["ammunition"]
+  "properties": ["ammunition"],
+  "ammo_kind": "sling_bullet"
 }
