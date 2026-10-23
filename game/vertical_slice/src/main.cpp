@@ -1,7 +1,9 @@
 // Vertical slice viewer: sample.vertical_slice chunk via world, goblin vs fighter via sim,
 // drawn with iso2d on SDL_GPU. The view only reads ViewModel snapshots.
 //   vertical_slice [--config FILE] [--pack-root DIR]... [--pack ID]... [--seed N] [--static] [--steps K] [--frames N] [--zoom Z] [--debug] [--no-torches]
-//                  [--fog-team T] [--no-fog]
+//                  [--fog-team T] [--no-fog] [--equipment]
+// Keys: SPACE step, A autoplay, arrows/W/S pan, wheel or 1/2 zoom, ESC quit.
+// F3: debug equip / inventory view (debug_equip.hpp): UP/DOWN select, TAB next PC, E equip, U unequip, L light state.
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -17,6 +19,7 @@
 #include "platform/platform.hpp"
 #include "platform/window.hpp"
 #include "render/device.hpp"
+#include "debug_equip.hpp"
 #include "session.hpp"
 #include "slice_view.hpp"
 
@@ -50,6 +53,7 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--no-torches")) opt.pc_torches = false;
         else if (arg("--fog-team")) opt.fog_team = uint8_t(std::atoi(argv[++i]));   // default: player team
         else if (!std::strcmp(argv[i], "--no-fog")) opt.fog = false;
+        else if (!std::strcmp(argv[i], "--equipment")) opt.equipment = true;   // loadouts (debug equip view, F3)
     }
 
     // Defaults, then the config file, then the command line (last wins per field).
@@ -85,6 +89,7 @@ int main(int argc, char** argv) {
     platform::Clock clock;
     platform::FixedTimestep tick(1'000'000'000ull / 60);
     Vec2f pan{0, 0};
+    slice::DebugEquipView equip_view;   // F3 (debug only)
     bool autoplay = false;
     uint32_t auto_timer = 0;
     int frame = 0;
@@ -102,19 +107,31 @@ int main(int argc, char** argv) {
         if (in.is_down(platform::Key::Escape)) break;
         if (in.was_pressed(platform::Key::Space)) session->step();
         if (in.was_pressed(platform::Key::A)) autoplay = !autoplay;
+        using EqCmd = slice::DebugEquipView::Cmd;
+        if (in.was_pressed(platform::Key::F3)) equip_view.handle(EqCmd::Toggle, *session);
+        if (equip_view.open()) {
+            if (in.was_pressed(platform::Key::Up)) equip_view.handle(EqCmd::Up, *session);
+            if (in.was_pressed(platform::Key::Down)) equip_view.handle(EqCmd::Down, *session);
+            if (in.was_pressed(platform::Key::Tab)) equip_view.handle(EqCmd::NextPc, *session);
+            if (in.was_pressed(platform::Key::E)) equip_view.handle(EqCmd::Equip, *session);
+            if (in.was_pressed(platform::Key::U)) equip_view.handle(EqCmd::Unequip, *session);
+            if (in.was_pressed(platform::Key::L)) equip_view.handle(EqCmd::CycleLight, *session);
+        }
 
         for (uint32_t s = tick.advance(clock.tick()); s > 0; --s) {
             const float v = 8.f / zoom;
-            if (in.is_down(platform::Key::Left)) pan.x -= v;
-            if (in.is_down(platform::Key::Right)) pan.x += v;
-            if (in.is_down(platform::Key::Up) || in.is_down(platform::Key::W)) pan.y -= v;
-            if (in.is_down(platform::Key::Down) || in.is_down(platform::Key::S)) pan.y += v;
+            const bool arrows = !equip_view.open();   // the debug equip view owns the arrows while open
+            if (arrows && in.is_down(platform::Key::Left)) pan.x -= v;
+            if (arrows && in.is_down(platform::Key::Right)) pan.x += v;
+            if ((arrows && in.is_down(platform::Key::Up)) || in.is_down(platform::Key::W)) pan.y -= v;
+            if ((arrows && in.is_down(platform::Key::Down)) || in.is_down(platform::Key::S)) pan.y += v;
             if (in.is_down(platform::Key::Num1)) zoom = std::min(4.f, zoom * 1.02f);   // '+' on most layouts needs shift
             if (in.is_down(platform::Key::Num2)) zoom = std::max(0.25f, zoom / 1.02f);
             if (autoplay && ++auto_timer % 20 == 0) session->step();
         }
 
-        const slice::ViewModel vm = session->view();
+        slice::ViewModel vm = session->view();
+        equip_view.decorate(*session, vm);
         const Vec2f target = view->actors_focus_px(vm);
         focus = {focus.x + (target.x - focus.x) * 0.15f, focus.y + (target.y - focus.y) * 0.15f};   // smooth follow
         const Vec2i px = window->size_in_pixels();

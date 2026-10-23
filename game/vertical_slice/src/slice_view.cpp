@@ -449,6 +449,16 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         text(line, {16, y}, s2, a.current ? white : dim);
         y += 20.f;
     }
+    // Top-right: debug panel (e.g. the debug equip view). Nothing is drawn while it is empty.
+    if (!vm.debug_panel.empty()) {
+        const float pw = 420.f, px = float(sw) - pw - 8.f, plh = 14.f;
+        rect({px, 8}, {pw, plh * float(vm.debug_panel.size()) + 12.f}, Color::rgba8(10, 12, 18, 220), 5);
+        float py = 14.f;
+        for (const std::string& l : vm.debug_panel) {
+            text(l, {px + 8.f, py}, 1.5f, !l.empty() && l[0] == '>' ? gold : white);
+            py += plh;
+        }
+    }
     // Bottom-left: combat log + help.
     const float lh = 12.f;
     float ly = float(sh) - 24.f - lh * float(vm.log.size());
