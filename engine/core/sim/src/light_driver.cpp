@@ -126,7 +126,11 @@ std::shared_ptr<const LightFrame> LightDriver::step(const Combat& combat) {
     }
     if (in_.attached_sources) in_.attached_sources(combat, w.sources);
     w.normalise();
-    cache_.begin_step(std::move(w));
+    if (in_.incremental) stats_ = cache_.begin_step_incremental(std::move(w), ready);
+    else {
+        cache_.begin_step(std::move(w));
+        stats_ = LightCache::StepStats{true, 0, 0};
+    }
     vis_.begin_step(cache_, viewers, ready);
 
     LightFrameInputs fi;

@@ -129,6 +129,7 @@ void VisibilityState::begin_step(LightCache& cache, std::span<const Viewer> view
         // Line-of-sight answers are memoised per viewer tile across steps while the walls (and the box) stay the same:
         // a viewer that doesn't move costs no traces. Any wall / opaque zone change or a new box drops them all.
         if (!los_ || los_->lo != walls.lo || los_->hi != walls.hi || los_->wall != walls.wall) {
+            seen_.clear();   // line of sight may differ anywhere
             los_.emplace();
             los_->lo = walls.lo; los_->hi = walls.hi; los_->wall = walls.wall;
         }
@@ -152,14 +153,31 @@ void VisibilityState::begin_step(LightCache& cache, std::span<const Viewer> view
         for (int y = 0; y < N; ++y)
             for (int x = 0; x < N; ++x) samples[ci][std::size_t(y * N + x)] = cache.at(Grid::to_world(coords[ci], {x, y}));
 
+    auto same_viewer = [](const Viewer& a, const Viewer& b) {
+        return a.id == b.id && a.team == b.team && a.tile == b.tile && a.senses == b.senses && a.blinded == b.blinded &&
+               a.anchor == b.anchor && a.footprint == b.footprint;
+    };
     published_.clear();
+    std::map<TeamId, std::map<world::ChunkCoord, SeenMemo>> next_seen;
     for (auto& [team, per_chunk] : explored_) {
         TeamVisibility tv;
         tv.team = team;
+        std::vector<Viewer> team_vs;   // vs is sorted by (team, id)
+        for (const auto& v : vs)
+            if (v.team == team) team_vs.push_back(v);
+        auto prev_team = seen_.find(team);
         for (std::size_t ci = 0; ci < coords.size(); ++ci) {
             ChunkVisibility cv;
             cv.coord = coords[ci];
-            for (const auto& v : vs) {
+            const SeenMemo* old = nullptr;
+            if (prev_team != seen_.end()) {
+                auto it = prev_team->second.find(cv.coord);
+                if (it != prev_team->second.end()) old = &it->second;
+            }
+            const bool reuse = old && old->samples == samples[ci] && old->viewers.size() == team_vs.size() &&
+                               std::equal(team_vs.begin(), team_vs.end(), old->viewers.begin(), same_viewer);
+            if (reuse) cv.seen_now = old->seen;
+            else for (const auto& v : team_vs) {
                 if (v.team != team) continue;
                 for (int y = 0; y < N; ++y)
                     for (int x = 0; x < N; ++x) {
@@ -170,6 +188,13 @@ void VisibilityState::begin_step(LightCache& cache, std::span<const Viewer> view
                             cv.seen_now.set(x, y);
                     }
             }
+            if (!team_vs.empty()) {
+                SeenMemo m;
+                m.viewers = team_vs;
+                m.samples = samples[ci];
+                m.seen = cv.seen_now;
+                next_seen[team].emplace(cv.coord, std::move(m));
+            }
             TileMask& ex = per_chunk[cv.coord];
             ex |= cv.seen_now;
             cv.explored = ex;
@@ -178,6 +203,7 @@ void VisibilityState::begin_step(LightCache& cache, std::span<const Viewer> view
         }
         published_.push_back(std::move(tv));
     }
+    seen_ = std::move(next_seen);
 }
 
 void split_by_halo(std::span<const world::ChunkCoord> wanted, const std::function<world::HaloState(world::ChunkCoord)>& state,
