@@ -1,0 +1,44 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "id": "test.neg.spell.expeditious_retreat",
+  "name": "Expeditious Retreat",
+  "description": "Concentration, 10 minutes. The caster can take the Dash action as a bonus action. The cast itself does not Dash.",
+  "level": 1,
+  "school": "transmutation",
+  "classes": [
+    "sorcerer",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "bonus_action"
+  },
+  "range": {
+    "kind": "self"
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 10,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "bonus_dash",
+        "applies_to": "self",
+        "duration": {
+          "kind": "rounds",
+          "n": 600
+        }
+      }
+    }
+  ]
+}

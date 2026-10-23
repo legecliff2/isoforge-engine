@@ -10,6 +10,7 @@
 #include "rules5e/dice.hpp"
 #include "spell_keys_zg.hpp"
 #include "spell_keys_zh.hpp"
+#include "spell_keys_zi.hpp"
 
 namespace rules5e_content {
 
@@ -475,7 +476,9 @@ std::string parse_modifier(const Json& m, ModifierSpec& out, const Json** table)
         {"ability_check", ModStat::AbilityCheck}, {"ac", ModStat::Ac}, {"speed", ModStat::Speed}, {"damage", ModStat::Damage},
         {"temp_hp", ModStat::TempHp}, {"resistance", ModStat::Resistance}, {"attacks_against", ModStat::AttacksAgainst},
         {"no_reactions", ModStat::NoReactions}, {"no_healing", ModStat::NoHealing},   // 7.2u markers
-        {zg::kOutlined, ModStat::Outlined}};   // 7.2zg Faerie Fire (a state)
+        {zg::kOutlined, ModStat::Outlined},   // 7.2zg Faerie Fire (a state)
+        {zi::kBonusDash, ModStat::BonusDash}, {zi::kHalveWeaponDamage, ModStat::HalveWeaponDamage},
+        {zi::kShareDamage, ModStat::ShareDamage}};   // 7.2zi
     out = ModifierSpec{};
     if (!lookup(kStat, m.value("stat", Json()), out.stat)) return "modifier stat invalid";
     if (m.contains("bonus")) { int b = 0; if (!small_int(m["bonus"], -32767, 32767, b)) return "modifier bonus invalid"; out.bonus = int16_t(b); }
@@ -515,7 +518,12 @@ std::string parse_modifier(const Json& m, ModifierSpec& out, const Json** table)
         out.speed_num = uint8_t(n);
         out.speed_den = uint8_t(d);
     } else if (out.stat == ModStat::Speed) return "speed modifier needs speed_scale";
-    if (m.contains("damage_type")) {
+    if (m.contains(zi::kAllDamage)) {   // 7.2zi Warding Bond: every damage type
+        if (out.stat != ModStat::Resistance || !m[zi::kAllDamage].is_boolean() || !m[zi::kAllDamage].get<bool>())
+            return "modifier all_damage must be true on a resistance modifier";
+        if (m.contains("damage_type")) return "modifier all_damage and damage_type together";
+        out.resist_all = 1;
+    } else if (m.contains("damage_type")) {
         if (!lookup(kDamage, m["damage_type"], out.damage_type)) return "modifier damage_type invalid";
         out.has_damage_type = true;
     } else if (out.stat == ModStat::Resistance) return "resistance modifier needs damage_type";
@@ -527,6 +535,11 @@ std::string parse_modifier(const Json& m, ModifierSpec& out, const Json** table)
             if (!lookup(kAbility, m["ability"], out.ability)) return "modifier ability invalid";
             out.has_ability = true;
         }
+    }
+    if (out.stat == ModStat::HalveWeaponDamage) {   // 7.2zi: Strength weapon attacks only; scope_ability 1, not a save scope
+        if (!out.has_ability || out.ability != Ability::Str) return "halve_weapon_damage needs ability str";
+        out.scope_ability = 1;
+        out.has_ability = false;
     }
     static const std::map<std::string, ModAppliesTo> kApplies{{"self", ModAppliesTo::Self}, {"target", ModAppliesTo::Target},
                                                               {"allies_within_30", ModAppliesTo::AlliesWithin30},
@@ -763,7 +776,11 @@ SpellLoad spell_from_json(const Json& j) {
             const std::string atk = e.value("attack", "");
             if (atk != "melee" && atk != "ranged") return ("effect attack: '" + atk + "' is not one of ['melee', 'ranged']");
             s.melee = atk == "melee";
-            if (!e.contains("damage") || !read_damage(e["damage"], s)) return ("effect damage invalid");
+            if (e.contains(zi::kHitOnly)) {   // 7.2zi Ray of Enfeeblement: the attack deals no hit points
+                if (!e[zi::kHitOnly].is_boolean() || !e[zi::kHitOnly].get<bool>()) return ("effect hit_only must be true");
+                if (e.contains("damage")) return ("effect hit_only and damage together");
+                s.hit_only = true;
+            } else if (!e.contains("damage") || !read_damage(e["damage"], s)) return ("effect damage invalid");
             int b = 1;
             if (e.contains("beams") && !small_int(e["beams"], 1, 255, b)) return ("effect beams invalid");
             s.beams = uint8_t(b);
@@ -933,8 +950,54 @@ SpellLoad spell_from_json(const Json& j) {
                 }
             }
             if (s.modifier.chosen_ability && s.modifier.mark_scope == 0) return ("effect modifier ability chosen needs scope target marked");
+            if (e.contains(zi::kOnNextTurn)) {   // 7.2zi True Strike
+                if (!e[zi::kOnNextTurn].is_boolean() || !e[zi::kOnNextTurn].get<bool>()) return ("effect on_next_turn must be true");
+                if (s.modifier.stat != ModStat::AttackRoll) return ("effect on_next_turn needs an attack_roll modifier");
+                s.modifier.on_next_turn = 1;
+            }
+            if (e.contains(zi::kSaveVsConditions)) {   // 7.2zi Protection from Poison
+                if (s.modifier.stat != ModStat::Save || s.modifier.mode == RollMode::Normal)
+                    return ("effect save_vs_conditions needs a save modifier with a mode");
+                const Json& cv = e[zi::kSaveVsConditions];
+                if (!cv.is_array() || cv.empty()) return ("effect save_vs_conditions must be a non-empty list of conditions");
+                for (const Json& cj : cv) {
+                    Condition cd;
+                    if (!lookup(kCondition, cj, cd)) return ("effect save_vs_conditions must be a non-empty list of conditions");
+                    if (s.modifier.save_vs_conditions & bit(cd)) return ("effect save_vs_conditions items must be unique");
+                    s.modifier.save_vs_conditions |= bit(cd);
+                }
+            }
+            if (e.contains(zi::kDeathSaves)) {
+                if (!e[zi::kDeathSaves].is_boolean() || !e[zi::kDeathSaves].get<bool>()) return ("effect death_saves must be true");
+                s.modifier.death_save_adv = 1;
+            }
+            if (e.contains(zi::kHealMaximum)) {
+                if (!e[zi::kHealMaximum].is_boolean() || !e[zi::kHealMaximum].get<bool>()) return ("effect heal_maximum must be true");
+                s.modifier.heal_maximum = 1;
+            }
+            if (e.contains(zi::kEndBeyondFt)) {
+                int ft = 0;
+                if (!feet_5(e[zi::kEndBeyondFt], ft) || ft > 65535) return ("effect end_beyond_ft must be a positive multiple of 5");
+                s.modifier.end_beyond_ft = uint16_t(ft);
+            }
+            if (e.contains(zi::kEndAtZero)) {
+                if (!e[zi::kEndAtZero].is_string() || e[zi::kEndAtZero].get<std::string>() != zi::kCaster)
+                    return ("effect end_at_zero must be caster");
+                s.modifier.end_caster_at_zero = 1;
+            }
+            if (e.contains("repeat_save")) {   // 7.2zi: object on apply_modifier (end of the target's turn). Save effects keep the string.
+                const Json& rs = e["repeat_save"];
+                Ability ab;
+                std::string bad;
+                if (!rs.is_object() || !only_keys(rs, {"ability"}, bad) || !rs.contains("ability") || !lookup(kAbility, rs["ability"], ab))
+                    return ("effect repeat_save must be {ability: <ability>}");
+                s.modifier.repeat_save = 1;
+                s.modifier.repeat_ability = ab;
+            }
             if (s.modifier.mark_scope != 0) {
-                if (s.modifier.stat != ModStat::Damage && s.modifier.stat != ModStat::AbilityCheck)
+                const bool strike = s.modifier.stat == ModStat::AttackRoll && s.modifier.on_next_turn &&
+                                    s.modifier.applies_to == ModAppliesTo::Self;
+                if (s.modifier.stat != ModStat::Damage && s.modifier.stat != ModStat::AbilityCheck && !strike)
                     return ("effect scope target marked: damage or ability_check modifiers only");
                 if (s.modifier.stat == ModStat::Damage && s.modifier.applies_to != ModAppliesTo::Self)
                     return ("effect scope target marked: a damage modifier needs applies_to self");
@@ -1277,6 +1340,17 @@ SpellLoad spell_from_json(const Json& j) {
                     !lookup(kAbility, sv["ability"], s.polymorph_save))
                     return ("polymorph: save must be {ability}");
             }
+        } else if (kind == zi::kStabilize) {   // 7.2zi Spare the Dying
+            s.kind = SpellEffectKind::Stabilize;
+            if (e.contains("excludes_creature_type")) {
+                if (!e["excludes_creature_type"].is_array() || e["excludes_creature_type"].empty())
+                    return ("effect excludes_creature_type invalid");
+                for (const Json& ty : e["excludes_creature_type"]) {
+                    CreatureType ct2;
+                    if (!lookup(kCreatureType, ty, ct2)) return ("effect excludes_creature_type invalid");
+                    s.excluded_types |= bit(ct2);
+                }
+            }
         } else return ("effect kind invalid");
         return "";
     };
@@ -1292,7 +1366,7 @@ SpellLoad spell_from_json(const Json& j) {
             return err("zone must be the primary effect (effects[" + std::to_string(i) + "] is a zone)");
         if (xe.is_object() && (xe.value("kind", "") == zg::kHaste || xe.value("kind", "") == zg::kSlow ||
                                xe.value("kind", "") == zg::kSummonWeapon || xe.value("kind", "") == zg::kTempHp ||
-                               xe.value("kind", "") == zh::kWeaponSmite))   // 7.2zg, 7.2zh
+                               xe.value("kind", "") == zh::kWeaponSmite || xe.value("kind", "") == zi::kStabilize))   // 7.2zg, 7.2zh, 7.2zi
             return err("effects[" + std::to_string(i) + "]: " + xe.value("kind", "") + " is only allowed as the first effect");
         SpellDef x;
         std::string xk;
@@ -1323,6 +1397,7 @@ SpellLoad spell_from_json(const Json& j) {
             fx.modifier = x.modifier;
             fx.modifier.id = spell_id_of(s.content_id + "#modifier" + std::to_string(i));
         }
+        fx.hit_only = x.hit_only;   // 7.2zi
         fx.ends_on = x.ends_on;   // 7.2zc
         fx.has_ward = x.has_ward; fx.ward_save = x.ward_save; fx.ward_on_fail = x.ward_on_fail;   // 7.2zd
         fx.immune_conditions = x.immune_conditions; fx.immune_from_types = x.immune_from_types;

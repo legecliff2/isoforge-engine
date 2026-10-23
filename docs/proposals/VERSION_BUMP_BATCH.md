@@ -2599,6 +2599,45 @@ Tags (Director, do not skip): **0xD4** `Combat::hash` Branding Smite pending and
 - **Flame Blade** (`summon_weapon` with `held: true`, optional `light: {bright_ft, dim_ft}`). Content shape: `{ kind: summon_weapon, damage: {dice: 3d6, type: fire}, upcast_every: 2, reach_ft: 5, held: true, light: {bright_ft: 10, dim_ft: 10} }`. No `move_ft`, no `add_spellcasting_modifier`. Bonus action, self, concentration. The cast requires a free hand when a loadout view exists (`free_hands` == 0 refuses; no view stays unconstrained). The blade is **not** an equipment instance and does not occupy a hand after the cast (open question). Later attacks are `SummonWeaponAttack` spending the **action**, a melee spell attack from the caster's space, no tile, no move, no spellcasting modifier. `upcast_every` 2 uses the existing summon-weapon dice scaling. A second held blade of the same spell is `summon_weapon: held already active`, except a recast that replaces the caster's own concentration on that spell (checked before the slot is spent; concentration end removes the old blade, `SummonEnded` b = 1). The minute ending removes it (`SummonEnded` b = 0) and drops concentration once nothing of the spell remains.
   Strings: `summon_weapon: held needs no move_ft`, `summon_weapon: held takes no add_spellcasting_modifier`, `summon_weapon: held is self only`, `summon_weapon: held needs a free hand`, `summon_weapon: held does not move`, `summon_weapon: held already active`, `effect summon_weapon held must be a boolean`, `effect summon_weapon light.bright_ft and dim_ft must be positive multiples of 5`.
 
+### 7.2zi Spell batch zi (rules side)
+
+Additive (Spare the Dying, True Strike, Expeditious Retreat, Protection from Poison, Ray of Enfeeblement, Beacon of Hope, Warding Bond). No new `SIM_EVENTS` tag. New modifier fields fold into `modifiers_digest` (**0xA2**) as sub-byte **0x5F**, and only when any of them (or `zi_armed`) is set, so old goldens stay byte-identical. Next free stays **0xD6**. Integer math only. Key names live in `engine/rules/content/src/spell_keys_zi.hpp` and `tools/validate/checks_v4.py` `ZI_KEYS`. Specimens: `tests/validate/fixtures/spell_batch_zi/`. No `srd51.spell.*` packs (T&C). The 73 / 24 / 72 authored counts in `docs/SRD_SPELLS_DEFERRED.md` stay until those packs land.
+
+Keys this batch adds: `stabilize`, `hit_only`, `on_next_turn`, `bonus_dash`, `save_vs_conditions`, `halve_weapon_damage`, `death_saves`, `heal_maximum`, `share_damage`, `all_damage`, `end_beyond_ft`, `end_at_zero`, `caster` (the only `end_at_zero` value).
+
+Reused: `apply_modifier`, `attack_roll`, `mode`, `consume`, `applies_to`, `scope.target` `marked`, `end_condition`, `resistance`, `damage_type`, `save`, `ability`, `ac`, `bonus`, `spell_attack`, `repeat_save` (the new object shape `{ability}` is only on `apply_modifier`; save effects keep the string), `excludes_creature_type`, `duration` `until_end_of_caster_next_turn` / `rounds` / `concentration`, `targets.count`.
+
+`SpellEffectKind::Stabilize` is 26 (`WeaponSmite` stays 25). `ModStat` appends `BonusDash`, `HalveWeaponDamage`, `ShareDamage`.
+
+- **Spare the Dying** (`stabilize`, first effect only). Touch, one living creature other than the caster, at 0 HP and not stable. Undead and constructs are `excludes_creature_type`. A dead target is the existing `bad target`. Does not heal. `ActionKind::SpareTheDying` and `hooks.spare_the_dying` are unchanged.
+  Strings: `stabilize: one living creature`, `stabilize: touch range`, `stabilize: no effect on undead or constructs`, `stabilize: target is not dying`, `stabilize: primary effect only`, `effects[<i>]: stabilize is only allowed as the first effect`.
+
+- **True Strike.** `apply_modifier` with `on_next_turn`, `scope: {target: marked}`, and `{stat: attack_roll, mode: advantage, consume: next_attack, applies_to: self, duration: {kind: until_end_of_caster_next_turn}}`. Spell duration is 1 round, concentration. The row is inactive until the caster's next turn (`zi_armed`), so the cast turn and any attack before that turn do not spend it. Advantage and the consume apply only when the attack's target is the mark. An attack against a different creature does not consume it. `mark_scope` still rejects `attack_roll` unless `on_next_turn` is set, so `tests/validate/cases/mark_attack_roll` and the old `v4/extra/true_strike.json` approximation are unchanged.
+  Strings: `effect on_next_turn must be true`, `effect on_next_turn needs an attack_roll modifier`. The old mark string is unchanged.
+
+- **Expeditious Retreat.** `bonus_dash` on the caster for 600 rounds (the 10-minute cap) plus the spell's concentration. The cast spends the bonus action and does not Dash. The grant is a modifier. `bonus_action_grants` is not mutated, so a class Dash grant stays as it was. `legal_actions` lists a bonus Dash when the marker is present and the class bit is not already set.
+
+- **Protection from Poison.** Not concentration. First effect `end_condition` `[poisoned]` (no failure when the condition is absent). Then, `applies_to` all (not `affected`): poison `resistance` and a `save` advantage with `save_vs_conditions: [poisoned]`, each `rounds` 600. That is not advantage on every Constitution save and not advantage against poison damage. One Poisoned condition flag.
+  Strings: `effect save_vs_conditions needs a save modifier with a mode`, `effect save_vs_conditions must be a non-empty list of conditions`, `effect save_vs_conditions items must be unique`.
+
+- **Ray of Enfeeblement.** `spell_attack` `attack: ranged`, `hit_only: true`, no `damage`. A hit emits `AttackResolved` and deals no hit points (no damage roll, no `DamageDealt`). The `affected` rider is `halve_weapon_damage` with `ability: str` and `repeat_save: {ability: con}`, `rounds` 10, plus the spell's concentration. Each damage component of a weapon attack (`spell_id == 0`) that uses Strength is halved, round down, before the target's resistances. Spell attacks are not halved. A miss does not start concentration. The Constitution save is at the end of the target's turns; success ends the source (reason 6).
+  Strings: `effect hit_only must be true`, `effect hit_only and damage together`, `effect halve_weapon_damage needs ability str`, `effect repeat_save must be {ability: <ability>}`.
+
+- **Beacon of Hope.** One `apply_modifier`: `save` Wisdom advantage, `death_saves`, `heal_maximum`, `rounds` 10, plus concentration. `targets.count` 255 is "any number". Healing dice use `dice_max` and draw no rng. Temporary hit points are not healing. Death-save advantage uses the two-die `roll_d20` path only when the marker is present; the one-die `roll_death_save` path is unchanged.
+  Strings: `effect death_saves must be true`, `effect heal_maximum must be true`.
+
+- **Warding Bond.** Not concentration (SRD). 600 rounds. Touch. Material text only (`a pair of platinum rings`); worn rings and dismiss-as-action are not modeled. Four modifiers on the target: `ac` +1, `save` +1 (no ability, so every save), `resistance` with `all_damage` (resist-all mask, not one type), `share_damage` with `end_beyond_ft: 60` and `end_at_zero: caster`. The caster takes `DamageApplied.dealt` (after the target's resistances, before temporary hit points). The share ignores the caster's resistance, immunity, and vulnerability. The caster's temporary hit points still absorb it. If two bonds are already in place, the share propagates along the chain and stops when a creature is already on the share stack. A legal recast does not leave that chain: casting this spell on either creature already connected by it ends the previous bond first (reason 2). The share's source is null, so the caster does not retaliate against the warded ally. The bond ends (reason 0) when the **caster** drops to 0 HP, or when a sight hook reports more than 60 feet. The warded creature dropping to 0 does not end it. No sight hook means distance does not end it. Distance is checked after a successful step and at `start_turn` (a failed step does not change state). Recasting the same spell on either connected creature ends that bond first (reason 2, replaced). Casting it on a third creature does not end the others.
+  Strings: `effect modifier all_damage must be true on a resistance modifier`, `effect modifier all_damage and damage_type together`, `effect end_beyond_ft must be a positive multiple of 5`, `effect end_at_zero must be caster`.
+
+Director contract notes (no `docs/ARCHITECTURE.md` break; the 7.2zi bullet there is additive):
+
+- No new hash tag. 0xA2 sub-byte 0x5F. Next free remains 0xD6.
+- Warding Bond ends when the caster drops to 0 HP, not when the target does. The assignment text said "either"; the 2014 SRD says the caster.
+- Shared damage is the post-resistance amount dealt to the target. It is not a new event (`DamageDealt`).
+- Non-concentration hour and minute durations are modifier `rounds` (600 and 10). `SpellDef` hours do not tick modifiers.
+- True Strike is armed on the caster's next turn, not on the cast.
+- Expeditious Retreat does not Dash as part of the cast.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain

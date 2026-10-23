@@ -28,6 +28,10 @@ struct DamageApplied {
 // (resistance never stacks).
 DamageApplied apply_damage(const Combatant&, int16_t amount, DamageType, uint8_t qualifiers = 0);
 
+// 7.2zi Warding Bond: `amount` hit points, ignoring immunity, resistance and vulnerability. Temporary hit points still
+// absorb. types_dealt stays 0 (the share is not a typed hit). amount < 0 is 0.
+DamageApplied apply_damage_fixed(const Combatant&, int16_t amount);
+
 // True if a qualified mask entry is active against a source with these AttackQualifier bits.
 constexpr bool qualified_applies(const QualifiedDamageMask& m, DamageType t, uint8_t qualifiers) {
     const uint32_t b = bit(t);

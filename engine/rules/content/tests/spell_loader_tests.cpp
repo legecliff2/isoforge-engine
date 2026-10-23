@@ -1082,3 +1082,129 @@ TEST_CASE("loader 7.2zh: weapon_smite (Branding Smite), summon_weapon held (Flam
     j = hm; j["effects"][0]["kind"] = "delayed_damage"; j["effects"][0]["expiry"] = {{"kind", "until_end_of_target_next_turn"}};
     bad(j, "effect held_object is only for sustained_damage");
 }
+
+TEST_CASE("loader 7.2zi: stabilize, chosen-target advantage, bonus Dash, poison ward, hit_only halve, beacon, warding bond") {
+    const auto root = std::filesystem::path(ENGINE_SOURCE_ROOT) / "tests/validate/fixtures/spell_batch_zi";
+    auto load = [&](const char* name) {
+        std::ifstream in(root / name);
+        REQUIRE(in);
+        const auto j = eng::assets::Json::parse(std::string(std::istreambuf_iterator<char>(in), {}));
+        auto r = spell_from_json(j);
+        INFO(name); INFO(r.error);
+        REQUIRE(r.def);
+        return r.def;
+    };
+    const auto spare = load("spare_the_dying.json");
+    CHECK(spare->kind == SpellEffectKind::Stabilize);
+    CHECK(spare->level == 0); CHECK(spare->range_ft == 5); CHECK_FALSE(spare->concentration);
+    CHECK(spare->excluded_types == (bit(CreatureType::Undead) | bit(CreatureType::Construct)));
+    CHECK(spare->components == (kComponentV | kComponentS));
+
+    const auto strike = load("true_strike.json");
+    CHECK(strike->kind == SpellEffectKind::ApplyModifier);
+    CHECK(strike->concentration); CHECK(strike->duration == SpellDuration::Rounds); CHECK(strike->duration_amount == 1);
+    CHECK(strike->range_ft == 30); CHECK(strike->components == kComponentS);
+    CHECK(strike->modifier.stat == ModStat::AttackRoll);
+    CHECK(strike->modifier.mode == RollMode::Advantage); CHECK(strike->modifier.consume == 1);
+    CHECK(strike->modifier.applies_to == ModAppliesTo::Self);
+    CHECK(strike->modifier.mark_scope == 1); CHECK(strike->modifier.on_next_turn == 1);
+    CHECK(strike->modifier.expiry == 3); CHECK(strike->modifier.rounds == 0);
+
+    const auto retreat = load("expeditious_retreat.json");
+    CHECK(retreat->casting_time == CastingTime::BonusAction);
+    CHECK(retreat->concentration); CHECK(retreat->range_ft == 0);
+    CHECK(retreat->duration == SpellDuration::Minutes); CHECK(retreat->duration_amount == 10);
+    CHECK(retreat->modifier.stat == ModStat::BonusDash);
+    CHECK(retreat->modifier.applies_to == ModAppliesTo::Self);
+    CHECK(retreat->modifier.expiry == 1); CHECK(retreat->modifier.rounds == 600);
+
+    const auto poison = load("protection_from_poison.json");
+    CHECK(poison->kind == SpellEffectKind::EndCondition);
+    CHECK_FALSE(poison->concentration);
+    CHECK(poison->duration == SpellDuration::Hours); CHECK(poison->duration_amount == 1);
+    CHECK(poison->ends_conditions == bit(Condition::Poisoned));
+    REQUIRE(poison->extra_effects.size() == 2);
+    CHECK(poison->extra_effects[0].modifier.stat == ModStat::Resistance);
+    CHECK(poison->extra_effects[0].modifier.has_damage_type);
+    CHECK(poison->extra_effects[0].modifier.damage_type == DamageType::Poison);
+    CHECK(poison->extra_effects[0].modifier.rounds == 600);
+    CHECK_FALSE(poison->extra_effects[0].affected_only);
+    CHECK(poison->extra_effects[1].modifier.stat == ModStat::Save);
+    CHECK(poison->extra_effects[1].modifier.mode == RollMode::Advantage);
+    CHECK_FALSE(poison->extra_effects[1].modifier.has_ability);
+    CHECK(poison->extra_effects[1].modifier.save_vs_conditions == bit(Condition::Poisoned));
+
+    const auto ray = load("ray_of_enfeeblement.json");
+    CHECK(ray->kind == SpellEffectKind::SpellAttack); CHECK(ray->hit_only); CHECK_FALSE(ray->melee);
+    CHECK(ray->concentration); CHECK(ray->range_ft == 60);
+    CHECK(ray->dice == DiceExpr{});
+    REQUIRE(ray->extra_effects.size() == 1);
+    CHECK(ray->extra_effects[0].affected_only);
+    CHECK(ray->extra_effects[0].modifier.stat == ModStat::HalveWeaponDamage);
+    CHECK(ray->extra_effects[0].modifier.scope_ability == 1);
+    CHECK_FALSE(ray->extra_effects[0].modifier.has_ability);
+    CHECK(ray->extra_effects[0].modifier.repeat_save == 1);
+    CHECK(ray->extra_effects[0].modifier.repeat_ability == Ability::Con);
+    CHECK(ray->extra_effects[0].modifier.rounds == 10);
+
+    const auto beacon = load("beacon_of_hope.json");
+    CHECK(beacon->targets == 255); CHECK(beacon->concentration); CHECK(beacon->range_ft == 30);
+    CHECK(beacon->modifier.stat == ModStat::Save);
+    CHECK(beacon->modifier.has_ability); CHECK(beacon->modifier.ability == Ability::Wis);
+    CHECK(beacon->modifier.mode == RollMode::Advantage);
+    CHECK(beacon->modifier.death_save_adv == 1); CHECK(beacon->modifier.heal_maximum == 1);
+    CHECK(beacon->modifier.rounds == 10);
+
+    const auto bond = load("warding_bond.json");
+    CHECK_FALSE(bond->concentration);
+    CHECK(bond->duration == SpellDuration::Hours); CHECK(bond->duration_amount == 1);
+    CHECK(bond->range_ft == 5);
+    CHECK((bond->components & kComponentM) != 0);
+    CHECK(bond->modifier.stat == ModStat::Ac); CHECK(bond->modifier.bonus == 1); CHECK(bond->modifier.rounds == 600);
+    REQUIRE(bond->extra_effects.size() == 3);
+    CHECK(bond->extra_effects[0].modifier.stat == ModStat::Save);
+    CHECK(bond->extra_effects[0].modifier.bonus == 1); CHECK_FALSE(bond->extra_effects[0].modifier.has_ability);
+    CHECK(bond->extra_effects[1].modifier.stat == ModStat::Resistance);
+    CHECK(bond->extra_effects[1].modifier.resist_all == 1);
+    CHECK_FALSE(bond->extra_effects[1].modifier.has_damage_type);
+    CHECK(bond->extra_effects[2].modifier.stat == ModStat::ShareDamage);
+    CHECK(bond->extra_effects[2].modifier.end_beyond_ft == 60);
+    CHECK(bond->extra_effects[2].modifier.end_caster_at_zero == 1);
+
+    auto bad = [](eng::assets::Json x, const std::string& want) {
+        auto q = spell_from_json(x); INFO(want); INFO(q.error); CHECK_FALSE(q.def); CHECK(q.error == want);
+    };
+    auto doc = [&](const char* name) {
+        std::ifstream in(root / name);
+        REQUIRE(in);
+        return eng::assets::Json::parse(std::string(std::istreambuf_iterator<char>(in), {}));
+    };
+    auto j = doc("ray_of_enfeeblement.json");
+    j["effects"][0]["damage"] = {{"dice", "1d8"}, {"type", "necrotic"}};
+    bad(j, "effect hit_only and damage together");
+    j = doc("spare_the_dying.json");
+    j["effects"] = eng::assets::Json::array({{{"kind", "heal"}, {"dice", "1d4"}}, j["effects"][0]});
+    bad(j, "effects[1]: stabilize is only allowed as the first effect");
+    j = doc("true_strike.json");
+    j["effects"][0]["modifier"]["stat"] = "bonus_dash";
+    j["effects"][0]["modifier"].erase("mode"); j["effects"][0]["modifier"].erase("consume");
+    j["effects"][0]["modifier"].erase("applies_to"); j["effects"][0].erase("scope");
+    bad(j, "effect on_next_turn needs an attack_roll modifier");
+    j = doc("ray_of_enfeeblement.json");
+    j["effects"] = eng::assets::Json::array({j["effects"][1]});
+    j["effects"][0]["modifier"]["ability"] = "dex";
+    bad(j, "effect halve_weapon_damage needs ability str");
+    j = doc("warding_bond.json");
+    j["effects"] = eng::assets::Json::array({j["effects"][2]});
+    j["effects"][0]["modifier"]["damage_type"] = "poison";
+    bad(j, "effect modifier all_damage and damage_type together");
+    j = doc("warding_bond.json");
+    j["effects"] = eng::assets::Json::array({j["effects"][3]});
+    j["effects"][0]["end_beyond_ft"] = 7;
+    bad(j, "effect end_beyond_ft must be a positive multiple of 5");
+    j = doc("protection_from_poison.json");
+    j["effects"] = eng::assets::Json::array({j["effects"][2]});
+    j["effects"][0]["modifier"]["stat"] = "attack_roll";
+    j["effects"][0]["modifier"].erase("applies_to");
+    bad(j, "effect save_vs_conditions needs a save modifier with a mode");
+}

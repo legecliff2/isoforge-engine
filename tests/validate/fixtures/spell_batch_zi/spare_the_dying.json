@@ -1,0 +1,37 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "id": "test.neg.spell.spare_the_dying",
+  "name": "Spare the Dying",
+  "description": "Touch a living creature at 0 hit points to stabilize it. No effect on undead or constructs.",
+  "level": 0,
+  "school": "necromancy",
+  "classes": [
+    "cleric"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "stabilize",
+      "excludes_creature_type": [
+        "undead",
+        "construct"
+      ]
+    }
+  ]
+}
