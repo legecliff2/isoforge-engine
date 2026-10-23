@@ -295,6 +295,20 @@ are content-only visuals and stay out of every sim hash.
    by `vertical_slice`). Preset-exists checking is a validator rule Tools & Content adds in `checks_v4`.
    `flicker` is carried through but not animated yet.
 
+### 10.2 Equipment as a light producer (R&P, stacked on EC #248 / T&C #250)
+
+Equipment comes before held lights (Director, 2026-10-21). `vertical_slice` (`Session::Options::equipment`) adds an
+equipment producer to the same generic attached-source list: one source per `Combat::equipment_lights()` entry, keyed by
+the sim light id. Held or carried: `Carrier::Creature` on `holder_id`, so the glow anchors to the holder's token. On the
+ground (drop, throw, death drop): `Carrier::Tile` at the item's tile, unanchored. Stowed (covered) or unlit: `lit = false`,
+no glow. Bright / dim come from the entry's current state (`EquipmentLight::bright_ft` / `dim_ft`; a hooded lantern is 30/30 open, 0/5 hooded), never the item default. A lit source with 0/0 draws no glow; a dim-only one (bright 0) draws a small, half-intensity glow. **TODO:** cones (bullseye lantern) are drawn as a radius glow until the sim exposes a facing / cone direction. Real srd51 gear is `lit_by_default: false` and stays dark until Rules adds a light / hood op. The glow preset is the item doc's `light.preset` when it names one, else
+the item content id; `visual` styles resolve through it (10.1, item 5). The producer reads the equip state, not
+`ItemMoved` events, so a skipped frame can't desync it. The interim pc_torches / `carried_lights` ids moved to
+`kInterimLightIdBase` (0x40000000) and up, so they never collide with sim light ids.
+
+Open for EC / T&C: the sim doesn't build `ItemKind::Light` defs from item@2 `gear` yet (tests use code-built defs), and
+item@2 `light` has neither `preset` nor `visual`.
+
 ## 11. Open questions
 
 Rules (all decided in the Rules review of #195; kept here as the record)
