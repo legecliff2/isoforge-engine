@@ -1,5 +1,6 @@
 {
-  "$schema": "monster@4",
+  "$schema": "monster@5",
+  "derive": true,
   "id": "srd51.monster.kobold",
   "name": "Kobold",
   "source": {
@@ -15,6 +16,16 @@
   "armor_class": {
     "value": 12
   },
+  "equipment": [
+    {
+      "item": "srd51.item.dagger",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.sling"
+    }
+  ],
+  "hands": 2,
   "hit_points": {
     "average": 5,
     "formula": "2d6-2"
@@ -63,6 +74,7 @@
       "id": "dagger",
       "name": "Dagger",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.dagger",
       "to_hit": 4,
       "reach": 5,
       "targets": 1,
@@ -78,6 +90,7 @@
       "id": "sling",
       "name": "Sling",
       "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.sling",
       "to_hit": 4,
       "range": [
         30,

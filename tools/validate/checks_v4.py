@@ -1620,3 +1620,213 @@ def check_race_senses(doc: dict) -> list[str]:
         return [f"race '{race}': senses.darkvision {have} not allowed (the race has no Darkvision in SRD 5.1)"]
     return []
 
+
+
+# ---- monster@5 derive: true (EQUIPMENT 5.6; mirror of rules5e::derive_monster, engine/rules/src/equipment.cpp) ------------
+# Same checks, same order (PB, hands, AC, attacks), same strings. Weapon dice parse as NdM[+-K] or a bare flat integer.
+
+_DICE_RE = re.compile(r"^(\d+)d(\d+)([+-]\d+)?$")
+
+
+def parse_dice(s) -> tuple[int, int, int]:
+    s = str(s).replace(" ", "")
+    m = _DICE_RE.match(s)
+    if m:
+        return int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)
+    return 0, 0, int(s)
+
+
+def format_dice(d: tuple[int, int, int]) -> str:
+    n, sides, k = d
+    if n == 0:
+        return str(k)
+    return f"{n}d{sides}" + (f"+{k}" if k > 0 else (str(k) if k < 0 else ""))
+
+
+def _mod(score: int) -> int:
+    return (score - 10) // 2
+
+
+def _blank(r) -> bool:
+    return not isinstance(r, str) or r.strip(" \t\n\r\f\v") == ""
+
+
+def _cr_fraction(rating: str) -> tuple[int, int]:
+    if "/" in rating:
+        a, b = rating.split("/")
+        return int(a), int(b)
+    return int(rating), 1
+
+
+def proficiency_for_cr(num: int, den: int) -> int:
+    den = den if den > 0 else 1
+    cr = (num + den - 1) // den
+    if cr <= 4:
+        return 2
+    if cr >= 29:
+        return 9
+    return 2 + (cr - 1) // 4
+
+
+def _weapon_def(src: dict, natural: bool = False) -> dict:
+    """item@N weapon / monster-local weapon -> the WeaponDef fields derive_weapon_attack reads."""
+    def first(key):
+        d = (src.get(key) or [None])[0]
+        if not isinstance(d, dict):
+            return (0, 0, 0)
+        return parse_dice(d["dice"]) if "dice" in d else (0, 0, int(d.get("flat", 0)))
+    rng = src.get("range") or [0, 0]
+    return {"props": set(src.get("properties") or []), "reach": src.get("reach", 0 if "range" in src else 5),
+            "range": rng[0], "dice": first("damage"), "vdice": first("versatile_damage"),
+            "magic": int(src.get("magic_bonus", 0)), "atk_magic": src.get("attack_magic"), "dmg_magic": src.get("damage_magic"),
+            "improvised": bool(src.get("improvised")), "natural": natural}
+
+
+def _derive_weapon_attack(w: dict, v: dict, use: str) -> tuple[int, tuple[int, int, int], str]:
+    """(to_hit, damage dice, error) of rules5e::derive_weapon_attack."""
+    pure_ranged = w["reach"] == 0 and w["range"] > 0
+    props = w["props"]
+    if use == "two_hands" and "versatile" not in props and "two_handed" not in props:
+        return 0, (0, 0, 0), "weapon: not a versatile weapon"
+    if use in ("one_hand", "off_hand") and "two_handed" in props and not pure_ranged:
+        return 0, (0, 0, 0), "weapon: a two-handed weapon needs both hands"
+    if use == "thrown" and "thrown" not in props and not w["improvised"]:
+        return 0, (0, 0, 0), "weapon: not a thrown weapon"
+    if use == "off_hand" and ("light" not in props or pure_ranged):
+        return 0, (0, 0, 0), "weapon: the off-hand weapon must be a light melee weapon"
+    melee_use = use != "thrown" and not pure_ranged
+    ab = v["abilities"]
+    if v.get("ability"):
+        abil = v["ability"]
+    elif "finesse" in props:
+        abil = "dex" if _mod(ab["dex"]) > _mod(ab["str"]) else "str"
+    elif pure_ranged:
+        abil = "dex"
+    else:
+        abil = "str"
+    mod = _mod(ab[abil])
+    atk_magic = w["atk_magic"] if w["atk_magic"] is not None else w["magic"]
+    dmg_magic = w["dmg_magic"] if w["dmg_magic"] is not None else w["magic"]
+    proficient = not w["improvised"]
+    to_hit = mod + (v["pb"] if proficient else 0) + atk_magic
+    if v.get("to_hit_override") is not None:
+        to_hit = v["to_hit_override"]
+    n, sides, k = w["vdice"] if (use == "two_hands" and w["vdice"][0] > 0) else w["dice"]
+    if n > 0 and not w["natural"]:
+        n = n * max(1, v["mult"])
+        if melee_use and v["brute"] > 0:
+            n += v["brute"]
+        n = max(0, min(255, n))
+    ab_term = 0 if v.get("damage_ability_none") else mod
+    if use == "off_hand":
+        ab_term = min(0, ab_term)
+    return max(-128, min(127, to_hit)), (n, sides, k + ab_term + dmg_magic), ""
+
+
+def _signed(v: int) -> str:
+    return f"+{v}" if v >= 0 else str(v)
+
+
+def check_monster_derive(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
+    """monster@5 with derive: true: derived AC / to-hit / damage[0] must equal the printed numbers (EQUIPMENT 5.6). Errors are
+    rules5e::derive_monster's strings except the PB and hands checks, which check_equipment_v5 already reports (same strings).
+    Item references that do not resolve are reported by check 6/11 and skipped here."""
+    errs: list[str] = []
+    if doc.get("derive") is not True:
+        return errs, []
+    did = doc.get("id", "")
+    items = ctx.get("item_docs", {})
+    ab = doc["abilities"]
+    num, den = _cr_fraction(str(doc["challenge"]["rating"]))
+    pb = doc.get("proficiency_bonus", proficiency_for_cr(num, den))
+    dex = _mod(ab["dex"])
+    armor = shield = None
+    for e in doc.get("equipment") or []:
+        it = items.get(e.get("item")) if isinstance(e, dict) and e.get("equipped") else None
+        if isinstance(it, dict) and it.get("category") == "armor" and armor is None:
+            armor = it
+        elif isinstance(it, dict) and it.get("category") == "shield" and shield is None:
+            shield = it
+    na = doc.get("natural_armor")
+
+    def ac_of(use_natural: bool, adjust: int) -> int:
+        if armor is not None:
+            dt = 0
+            if armor.get("dex_bonus"):
+                dt = min(dex, armor["dex_cap"]) if "dex_cap" in armor else dex
+            ac = armor["base_ac"] + dt + armor.get("magic_bonus", 0)
+        else:
+            ac = 10 + dex
+            if use_natural and na is not None:
+                ac = max(ac, na["base"] + (dex if na.get("dex", True) else 0))
+        if shield is not None:
+            ac += shield.get("ac_bonus", 2) + shield.get("magic_bonus", 0)
+        return max(0, min(100, ac + adjust))
+
+    printed_ac = doc["armor_class"]["value"]
+    adj = doc.get("ac_adjust")
+    without = ac_of(True, 0)
+    ac = ac_of(True, adj["value"] if adj else 0)
+    if adj and _blank(adj.get("reason")):
+        errs.append(f"{did}: ac_adjust needs a reason")
+    if adj and without == printed_ac:
+        errs.append(f"{did}: ac_adjust is not needed")
+    if na is not None and (armor is not None or ac_of(False, 0) == ac_of(True, 0)):
+        errs.append(f"{did}: natural_armor is not needed")
+    if ac != printed_ac:
+        errs.append(f"{did}: derived AC {ac} != printed {printed_ac}")
+
+    mult = int(doc.get("weapon_dice_multiplier", 1))
+    brute = sum(int(t["effect"].get("dice", 0)) for t in doc.get("traits") or []
+                if isinstance(t, dict) and isinstance(t.get("effect"), dict) and t["effect"].get("kind") == "weapon_extra_dice")
+    local = {w["id"]: w for w in doc.get("weapons") or [] if isinstance(w, dict)}
+    used = False
+    for a in doc.get("actions") or []:
+        if not isinstance(a, dict) or not ("weapon" in a or "natural" in a):
+            continue
+        pre = f"{did}.{a.get('id')}"
+        if "natural" in a:
+            nat = a["natural"]
+            w = {"props": set(), "reach": a.get("reach", 0 if a.get("range") else 5), "range": (a.get("range") or [0])[0],
+                 "dice": parse_dice(nat["dice"]), "vdice": (0, 0, 0), "magic": 0, "atk_magic": None, "dmg_magic": None,
+                 "improvised": False, "natural": True}
+            v = {"abilities": ab, "pb": pb, "mult": mult, "brute": brute, "ability": nat["ability"],
+                 "damage_ability_none": nat.get("damage_ability") == "none"}
+        else:
+            ref = a["weapon"]
+            src = local.get(ref[1:]) if ref.startswith("#") else items.get(ref)
+            if not isinstance(src, dict):
+                continue
+            w = _weapon_def(src)
+            v = {"abilities": ab, "pb": pb, "mult": mult, "brute": brute}
+        use = a.get("use", "one_hand")
+        th, dmg, err = _derive_weapon_attack(w, v, use)
+        if err:
+            errs.append(f"{pre}: {err}")
+            continue
+        ab_ov = a.get("attack_bonus")
+        if ab_ov:
+            if _blank(ab_ov.get("reason")):
+                errs.append(f"{pre}: attack_bonus needs a reason")
+            if th == a.get("to_hit"):
+                errs.append(f"{pre}: attack_bonus is not needed")
+            v = dict(v, to_hit_override=ab_ov["value"])
+            th, dmg, _e = _derive_weapon_attack(w, v, use)
+        if th != a.get("to_hit"):
+            errs.append(f"{pre}: derived to-hit {_signed(th)} != printed {_signed(a.get('to_hit', 0))}")
+        printed = parse_dice((a.get("damage") or [{}])[0].get("dice", "0")) if (a.get("damage") or [{}])[0].get("dice") is not None \
+            else (0, 0, int((a.get("damage") or [{}])[0].get("flat", 0)))
+        if not w["natural"] and mult > 1:
+            if _derive_weapon_attack(w, dict(v, mult=1), use)[1] != printed:
+                used = True
+        if dmg != printed:
+            e = f"{pre}: derived damage {format_dice(dmg)} != printed {format_dice(printed)}"
+            if not w["natural"]:
+                for k in (2, 3, 4):
+                    if _derive_weapon_attack(w, dict(v, mult=k), use)[1] == printed:
+                        e += f" (weapon_dice_multiplier {k} would match)"
+                        break
+            errs.append(e)
+    if mult > 1 and not used:
+        errs.append(f"{did}: weapon_dice_multiplier is not needed")
+    return errs, []
