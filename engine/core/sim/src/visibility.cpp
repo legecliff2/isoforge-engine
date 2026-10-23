@@ -64,16 +64,34 @@ struct WallMap {
         auto P = [&](int x, int y) { return psum[std::size_t(y * (w + 1) + x)]; };
         return P(x1, y1) - P(x0, y1) - P(x1, y0) + P(x0, y0);
     }
-    // == light_reaches(lw, s, t) for s, t inside the box.
-    bool reaches(Vec2i s, Vec2i t) const {
+    // == light_reaches(lw, s, t) for s, t inside the box, batched per viewer tile `s` (perf/vis-first-step). `seg` is s's segment memo, 4 * (w + 1) * (h + 1)
+    // bytes indexed by (s corner, target lattice corner b): 0 unknown, 1 blocked even with the four tiles around b treated
+    // as open, 2 not proven. segment_blocked is monotone in its predicate (an OR of ANDs of wall probes), and the trace's
+    // own predicate differs from that one only on t, which is one of the four tiles around b, so 1 means blocked for every
+    // target t sharing b: each lattice corner is traced once for up to four targets. 2 falls back to the exact trace.
+    bool reaches_batched(Vec2i s, Vec2i t, std::vector<uint8_t>& seg) const {
         if (s == t) return true;
         if (count(s, t) - (at(s) ? 1 : 0) - (at(t) ? 1 : 0) == 0) return true;
+        const std::size_t lw = std::size_t(w) + 1, plane = lw * (std::size_t(h) + 1);
+        if (seg.size() != 4 * plane) seg.assign(4 * plane, 0);
         auto blocks = [&](Vec2i p) { return p != s && p != t && at(p); };
         for (int oy = 0; oy <= 1; ++oy)
-            for (int ox = 0; ox <= 1; ++ox)
+            for (int ox = 0; ox <= 1; ++ox) {
+                const Vec2i a{s.x + ox, s.y + oy};
                 for (int ty = 0; ty <= 1; ++ty)
-                    for (int tx = 0; tx <= 1; ++tx)
-                        if (!segment_blocked(Vec2i{s.x + ox, s.y + oy}, Vec2i{t.x + tx, t.y + ty}, blocks)) return true;
+                    for (int tx = 0; tx <= 1; ++tx) {
+                        const Vec2i b{t.x + tx, t.y + ty};
+                        uint8_t& m = seg[std::size_t(oy * 2 + ox) * plane + std::size_t(b.y - lo.y) * lw + std::size_t(b.x - lo.x)];
+                        if (m == 0) {
+                            auto far = [&](Vec2i p) {
+                                return p != s && !(p.x >= b.x - 1 && p.x <= b.x && p.y >= b.y - 1 && p.y <= b.y) && at(p);
+                            };
+                            m = segment_blocked_dda(a, b, far) ? 1 : 2;
+                        }
+                        if (m == 1) continue;
+                        if (!segment_blocked_dda(a, b, blocks)) return true;
+                    }
+            }
         return false;
     }
 };
@@ -141,9 +159,10 @@ void VisibilityState::begin_step(LightCache& cache, std::span<const Viewer> view
         }
         los_->by_tile = std::move(keep);
     }
+    std::map<Vec2i, std::vector<uint8_t>> seg_memo;   // per viewer tile, this step only (reaches_batched)
     auto los = [&](const Viewer& v, Vec2i t) {
         uint8_t& m = los_->by_tile[v.tile][std::size_t((t.y - walls.lo.y) * walls.w + (t.x - walls.lo.x))];
-        if (m == 0) m = walls.reaches(v.tile, t) ? 1 : 2;
+        if (m == 0) m = walls.reaches_batched(v.tile, t, seg_memo[v.tile]) ? 1 : 2;
         return m == 1;
     };
 
