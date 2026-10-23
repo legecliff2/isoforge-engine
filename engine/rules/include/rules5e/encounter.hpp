@@ -12,6 +12,8 @@
 #include "rng/rng.hpp"
 #include "rules5e/attack.hpp"
 #include "rules5e/initiative.hpp"
+#include "rules5e/item.hpp"
+#include "rules5e/loadout.hpp"
 #include "rules5e/saves.hpp"
 #include "rules5e/spells.hpp"
 #include "rules5e/types.hpp"
@@ -227,6 +229,17 @@ struct ActionRequest {
     // appended (7.2zd Preserve Life; log_hash 0xCE when non-empty): UseFeature of a split heal_pool feature: how the pool is
     // divided (check_heal_split validates it before anything changes).
     std::vector<HealShare> heal_split{};
+    // appended (docs/proposals/EQUIPMENT.md 4.2; log_hash 0xD1 when equip_op != 0, folded by Engine Core): UseObject with an
+    // equip op (rules5e::EquipOp: 1 draw, 2 stow, 3 drop, 4 pick up, 5 don shield, 6 doff shield, 7 hand over, 8 / 9 armor, 10 light state).
+    // equip_item: the item instance; equip_hand: 1 main, 2 off, 0 any free; equip_to: HandOver recipient; equip_in_reach: sim's
+    // answer for PickUp / HandOver (rules never reads positions). Rules checks legality (equip_legal); Engine Core applies it.
+    uint8_t equip_op = 0;
+    uint32_t equip_item = 0;
+    uint8_t equip_hand = 0;
+    CombatantId equip_to = 0;
+    bool equip_in_reach = false;
+    // appended (EquipOp::SetLightState, 10): the LightDef::states index, or kLightDouse (0xFF). Folded into 0xD1 by Engine Core.
+    uint8_t equip_state = 0;
 };
 
 enum class EventKind : uint8_t {
@@ -450,6 +463,10 @@ struct ActiveSpellEffect {
     // when the effect ends). Derived from the SpellDef and slot level: not hashed (hp_max itself is).
     uint32_t immune_conditions = 0, immune_from_types = 0;
     int16_t max_hp_bonus = 0;
+    // appended (7.2zf): WeaponImbue: the imbued attack index + 1 (0 = none) and the magic bonus at the cast's slot (derived from
+    // the SpellDef and the caster's attack list: not hashed). Duplicates: the duplicates left (Combat::hash 0xD3 while > 0).
+    uint8_t imbue_attack = 0; int8_t imbue_bonus = 0;
+    uint8_t duplicates = 0;
 };
 
 // 7.2w: a creature leaving its container in the last step (EncounterState::contain_exits; cleared when each step starts).
@@ -596,6 +613,11 @@ struct Sight {
 // (range; also ignores Blinded) ignore light, obscurement and invisibility. Tremorsense (range) needs subject_grounded. Order:
 // Sight, Truesight, Blindsight, Tremorsense. perceives = can_see, or audible and not Deafened.
 Sight derive_sight(const Combatant& viewer, const SightFacts& f);
+// 7.2zf: creature `id`'s attack `index` as it resolves now (a Shillelagh / Magic Weapon imbue applied: to-hit, damage die and
+// bonus, magical); the authored attack otherwise. Pure; for AI and UI. index out of range: a default Attack.
+Attack effective_attack(const EncounterState&, CombatantId id, std::size_t index);
+// 7.2zf Mirror Image: duplicates left on `id` (0 = none).
+int duplicates_left(const EncounterState&, CombatantId id);
 // Light obscurement (dim light included): disadvantage on Wisdom (Perception) checks that rely on sight; passive -5. A
 // check relies on sight unless the viewer perceives the subject with a special sense (sense None: it is still looking).
 constexpr bool sight_perception_disadvantage(const Sight& v) {
@@ -726,6 +748,18 @@ struct EncounterHooks {
     // appended (7.2x): an Attack on a creature hidden from the attacker names a tile (ActionRequest::has_guess). Is the
     // target there? Pure like `sight`. Empty = yes. A wrong guess misses automatically (the d20 is still rolled).
     std::function<bool(const EncounterState&, const Combatant& attacker, const Combatant& target, int32_t x, int32_t y)> guess_correct;
+    // appended (EQUIPMENT.md 9.1): Engine Core's equipment state, read-only. loadout_of: the creature's loadout view, nullptr for a
+    // creature without one (legacy content, CombatOptions::equipment off: no equipment check, no equip legal action). item_def:
+    // the ItemDef for a def id (nullptr = unknown). apply_equip: called by step after equip_legal allows a UseObject equip op
+    // (rules has already spent the action for EquipCost::Action); Engine Core applies the op and the free-interaction bookkeeping.
+    // All empty = pre-equipment behaviour, goldens unchanged.
+    std::function<const LoadoutView*(const EncounterState&, CombatantId)> loadout_of;
+    std::function<const ItemDef*(uint32_t def)> item_def;
+    std::function<void(EncounterState&, const ActionRequest&, uint8_t cost_kind, std::vector<Event>&)> apply_equip;
+    // ground_item_def: the ItemDef of a ground item *instance* (ActionRequest::equip_item on PickUp is a ground instance id,
+    // not a def id); nullptr / empty = unknown, and PickUp is refused `equip: unknown ground item`.
+    std::function<const ItemDef*(const EncounterState&, uint32_t instance)> ground_item_def;   // the state passed is the one being
+    // evaluated (an AI lookahead copy uses its own), like loadout_of
 };
 
 // R-G11: a live zone or aura (ZONES_AURAS.md §2.6). anchor_x / anchor_y: a point zone's sim tile, opaque to rules (Q1).
@@ -803,6 +837,12 @@ struct EncounterState {
     // `from` and Stealth >= its passive Perception). Ends when `who` attacks, or when `from` can see it at a step's start.
     struct Hidden { CombatantId who = 0, from = 0; int16_t stealth = 0; friend bool operator==(const Hidden&, const Hidden&) = default; };
     std::vector<Hidden> hidden{};
+    // appended (EQUIPMENT.md 9, Engine Core): equipment state, empty unless CombatOptions::equipment built loadouts. Combat::hash
+    // folds `loadouts` + `next_item_id` under 0xD0 when non-empty and `ground_items` under 0xD2 once `ground_items_seen`.
+    std::vector<Loadout> loadouts{};          // combatant (setup) order
+    std::vector<GroundItem> ground_items{};   // instance order
+    uint32_t next_item_id = 1;                // item instance ids start at 1 (0 = empty hand)
+    bool ground_items_seen = false;           // sticky: a ground item has existed (0xD2 keeps folding after a pick-up)
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call
