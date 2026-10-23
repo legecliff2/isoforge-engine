@@ -13,10 +13,10 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 | level | in `srd51.core` | deferred: needs a mechanic | deferred: out of combat scope | total |
 |---|---|---|---|---|
 | 0 (cantrips) | 11 | 2 | 11 | 24 |
-| 1 | 24 | 6 | 19 | 49 |
-| 2 | 18 | 13 | 23 | 54 |
+| 1 | 26 | 4 | 19 | 49 |
+| 2 | 19 | 12 | 23 | 54 |
 | 3 | 13 | 10 | 19 | 42 |
-| **total** | **66** | **31** | **72** | **169** |
+| **total** | **69** | **28** | **72** | **169** |
 
 ## Authored in this change (9)
 
@@ -141,7 +141,17 @@ Spell batch zg rules (7.2zg, Rules #263 at `302f92f`). Pinned by `tests/validate
 | Hypnotic Pattern | 3 | `save` WIS `charmed` + `apply_condition incapacitated applies_to affected`, both `ends_on [damage, shake_awake]` (the Wake action); `area cube 30`, range 120, concentration 1 minute | bard, sorcerer, warlock, wizard (none have room at 5); speed 0 while charmed (Rules #263 @ `302f92f`); the mirror has no area_of_effect (cube 30 from the SRD text) |
 | Protection from Energy | 3 | `apply_modifier {stat resistance, damage_type acid}` + `damage_type_choices [acid, cold, fire, lightning, thunder]`; touch, concentration 1 hour | cleric (5), druid (5); the mirror spells it "Protection From Energy" |
 
-## Deferred (103 spells; reasons re-checked against main at `8b8d8c9`)
+## Authored: Fog Cloud, Darkness, Color Spray (3)
+
+Zone / `hp_pool` promotions from `tests/validate/fixtures/zones/spells/` and `tests/validate/fixtures/spell_kinds/spells/`. Pinned by `tests/validate/test_srd51_spells.py` (`test_zone_and_kind_spells` vs the fixtures) and the 5e-database table.
+
+| spell | level | `spell@1` shape | notes |
+|---|---|---|---|
+| Fog Cloud | 1 | `zone` sphere 20, `flags [heavy_obscured]`, `upcast_size_ft 20`; concentration 1 hour, range 120 | druid (2), ranger (3-4), sorcerer (2), wizard (2); wind dispersal and obscurement's combat effect (R-G13) not modelled |
+| Darkness | 2 | `zone` sphere 15, `flags [heavy_obscured, magical_darkness]`; concentration 10 minutes, range 60 | warlock (4), wizard (4); sorcerer has no class list room at 3+; object casting, covering the source, and dispelling lower-level light not expressible |
+| Color Spray | 1 | `hp_pool` 6d10 `blinded`, self cone 15, `rounds 1`; `upcast.dice 2` | wizard (1); sorcerer has no class list room (Fog Cloud took the L2 known slot); "until the end of your next turn" ≈ `rounds 1` (R-G15); skipping unconscious / can't-see not expressible |
+
+## Deferred (100 spells; reasons re-checked against main at `8b8d8c9`)
 
 Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the first-draft ids in brackets: B1 = R-G2 effects array, B2 = R-G3 timed modifiers, B3 = R-G4 damage riders, B4 = R-G5 pools, B6 = R-G7 reactions / roll windows, C1 = R-G8 conditions with source, C2 = R-G9 forced movement / teleport, C3 = R-G10 area templates, C4 = R-G11 zones / auras, C5 = R-G12 summons, C7 = R-G13 cover / lighting / vision, C8 = R-G14 per-cast options, C9 = R-G15 spell kinds). `T&C-G12` / `T&C-G14` are movement modes and creature footprint. `OOS` rows have no gap id.
 
@@ -163,7 +173,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 1 | Alarm | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Animal Friendship | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Charm Person | NEW | Charmed with source (R-G8). | R-G8 (C1) |
-| 1 | Color Spray | NEW | `hp_pool` (blinded) loads (EC #120) with a self cone; "until the end of your next turn" is approximated by `rounds 1`, not faithful. | R-G15 (C9) |
 | 1 | Comprehend Languages | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Create or Destroy Water | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Detect Evil and Good | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
@@ -175,7 +184,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 1 | Feather Fall | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Find Familiar | NEW | Summons rules (R-G12 PR 2) exist but spell@1 has no summon key; 1-hour cast. | R-G12 (C5) |
 | 1 | Floating Disk | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
-| 1 | Fog Cloud | NEW | Zone loads (`kZoneHeavyObscured`); obscurement has no effect until R-G13. | R-G11, R-G13 (C4, C7) |
 | 1 | Goodberry | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Identify | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Illusory Script | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
@@ -193,7 +201,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Branding Smite | Done (7.2zh) | `weapon_smite`: bonus action, self, concentration. Extra damage on the next weapon-attack hit (not a spell attack); the target is revealed and sheds dim light for the rest of the duration. Hash 0xD4. | R-G4, T&C-G5 (B3) |
 | 2 | Calm Emotions | NEW | Area + suppress condition (R-G10, R-G3). | R-G3, R-G10 (B2, C3) |
 | 2 | Continual Flame | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Darkness | NEW | Zone loads (`kZoneMagicalDarkness`); vision and light dispelling wait for R-G13. | R-G11, R-G13 (C4, C7) |
 | 2 | Darkvision | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Detect Thoughts | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Enhance Ability | NEW | Per-cast ability choice has no spell@1 key; temp-HP / carrying options not modelled. | R-G3, R-G14 (B2, C8) |
@@ -239,7 +246,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 3 | Nondetection | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Phantom Steed | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Plant Growth | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
-| 3 | Protection From Energy | NEW | `resistance` modifier loads, but the damage type is chosen per cast (no spell@1 key). | R-G3, R-G14 (B2, C8) |
 | 3 | Remove Curse | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Sending | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Sleet Storm | NEW | Zone (R-G11). | R-G11 (C4) |
@@ -254,7 +260,7 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 
 ## Follow-ups when the mechanics land
 
-- Acid Arrow stays deferred: `spell_attack` has no miss branch, so "half the initial damage on a miss" cannot be expressed (the `delayed_damage` rider already follows only a hit).
-- Small additive changes that unblock more: `targets` on `apply_modifier` (Bless; with a signed `die` pattern also Bane), a save-only gate (Faerie Fire), a spell@1 condition / damage-type choice key (Blindness/Deafness, Protection from Energy), spell@1 summon keys (Spiritual Weapon, Conjure Animals), haste / slow modifier stats.
+- Acid Arrow authored in 7.2zg (#265): `spell_attack` `on_miss half` + `delayed_damage` (upcast reaches the rider).
+- Small additive changes that unblock more: a spell@1 condition-choice key (Blindness/Deafness). Faerie Fire, Protection from Energy, Spiritual Weapon, Haste / Slow, and `targets` on modifiers landed in 7.2zg (#263 / #265).
 - Every `NEW` row above is additive content once its row lands; ids are `srd51.spell.<snake_case_name>` and are not reserved yet.
 - Spare the Dying: `spell@1` has no stabilize effect, only the Rules `ActionKind::SpareTheDying` hook. If Rules adds an effect kind (additive), it is a one-file change.

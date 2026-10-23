@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <utility>
 
+#include "rules5e/spells.hpp"
 #include "sim/combat.hpp"
 #include "world/chunk_streamer.hpp"
 
@@ -10,6 +11,62 @@ namespace eng::sim {
 
 namespace {
 world::ChunkCoord add(world::ChunkCoord c, world::ChunkCoord off) { return {c.x + off.x, c.y + off.y, c.level}; }
+
+// Flags that affect light composition or occlusion (LIGHTING.md §4). Other zone flags (difficult, silence, …) are ignored.
+constexpr uint8_t kLightZoneFlags = rules5e::kZoneLightObscured | rules5e::kZoneHeavyObscured | rules5e::kZoneMagicalDarkness |
+                                    rules5e::kZoneOpaque;
+
+// Fill `lz.tiles` with every tile Combat::zone_covers reports for `z` (Chebyshev sphere/cylinder, centred cube; walls /
+// rings cover nothing today). Bounding box matches zone_covers so the loop is exact, not approximate.
+void fill_zone_tiles(const Combat& combat, const rules5e::ActiveZone& z, const rules5e::SpellDef& def, LightZone& lz) {
+    if (z.ring) return;
+    const int sz = int(z.size_ft != 0 ? z.size_ft : def.zone.size_ft) / kFeetPerTile;
+    int min_x = 0, max_x = -1, min_y = 0, max_y = -1;
+    if (def.zone.anchor == rules5e::ZoneAnchor::Creature) {
+        if (!rules5e::find(combat.state(), z.owner)) return;
+        const Vec2i op = combat.pos(z.owner);
+        const int on = combat.footprint_size(z.owner);
+        const int pad = (def.zone.shape == rules5e::AreaShape::Cube) ? sz / 2 : sz;
+        min_x = op.x - pad;
+        max_x = op.x + on - 1 + pad;
+        min_y = op.y - pad;
+        max_y = op.y + on - 1 + pad;
+    } else {
+        if (!z.has_anchor_tile) return;
+        const Vec2i a{z.anchor_x, z.anchor_y};
+        if (def.zone.shape == rules5e::AreaShape::Sphere || def.zone.shape == rules5e::AreaShape::Cylinder) {
+            min_x = a.x - sz;
+            max_x = a.x + sz;
+            min_y = a.y - sz;
+            max_y = a.y + sz;
+        } else if (def.zone.shape == rules5e::AreaShape::Cube) {
+            const int lo = -((sz - 1) / 2), hi = sz / 2;
+            min_x = a.x + lo;
+            max_x = a.x + hi;
+            min_y = a.y + lo;
+            max_y = a.y + hi;
+        } else {
+            return;   // walls (Line) are not modelled yet (Combat::zone_covers)
+        }
+    }
+    for (int y = min_y; y <= max_y; ++y)
+        for (int x = min_x; x <= max_x; ++x)
+            if (combat.zone_covers(z, {x, y})) lz.tiles.push_back({x, y});
+}
+
+void append_active_zones(const Combat& combat, std::vector<LightZone>& out) {
+    for (const rules5e::ActiveZone& z : combat.state().zones) {
+        const rules5e::SpellDef* d = combat.spell_def(z.spell_id);
+        if (!d || d->kind != rules5e::SpellEffectKind::Zone) continue;
+        if ((d->zone.flags & kLightZoneFlags) == 0) continue;
+        LightZone lz;
+        lz.zone_id = z.zone_id;
+        lz.flags = d->zone.flags;
+        lz.spell_level = z.slot_level;
+        fill_zone_tiles(combat, z, *d, lz);
+        out.push_back(std::move(lz));
+    }
+}
 } // namespace
 
 std::vector<Viewer> combat_viewers(const Combat& combat) {
@@ -125,6 +182,9 @@ std::shared_ptr<const LightFrame> LightDriver::step(const Combat& combat) {
         if (same && common) w.ambient = Ambient{AmbientKind(common->kind), Light(common->level)};
     }
     if (in_.attached_sources) in_.attached_sources(combat, w.sources);
+    // R-G11 → light: map live ActiveZones that carry obscurement / magical darkness / opaque into LightWorld::zones so
+    // LightSample flags (kObscured*, kMagicalDark) and opaque occlusion match Fog Cloud / Darkness / Web / Wall of Fire.
+    append_active_zones(combat, w.zones);
     w.normalise();
     if (in_.incremental) stats_ = cache_.begin_step_incremental(std::move(w), ready);
     else {
