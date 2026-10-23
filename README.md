@@ -60,3 +60,5 @@ Windows the backend needs a Vulkan driver. Moving to HLSL + SDL_shadercross (ARC
 `content/packs/sample.vertical_slice` through `world::FileChunkProvider`, plays Engine Core's headless
 `sim::Combat` fight one command per SPACE (A = autoplay), and draws it with `iso2d`. Arrows/WASD pan,
 mouse wheel or 1/2 zoom. `--static` shows only the chunk and spawns (no sim).
+`--equipment` turns on loadouts; **F3** opens the debug equip / inventory view (selected PC's worn, held and carried
+items; UP/DOWN select, TAB next PC, E equip, U unequip, L light / hood / douse; arrows stop panning while it is open).

@@ -116,6 +116,8 @@ struct ViewModel {
     std::string status;               // e.g. "SPACE: STEP  A: AUTO"
     std::vector<std::string> log;     // newest last
     LightView   light;
+    // Debug overlay panel (debug equip view, F3): pre-formatted lines, drawn top-right; empty = no panel.
+    std::vector<std::string> debug_panel;
 };
 
 } // namespace slice
