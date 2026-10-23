@@ -16,6 +16,9 @@
 #include "sim/light.hpp"
 #include "sim/light_driver.hpp"
 #include "sim/visibility.hpp"
+#include "rules5e/equipment.hpp"
+#include "rules5e/item.hpp"
+#include "rules5e/loadout.hpp"
 #include "world/file_chunk_provider.hpp"
 
 #include <span>
@@ -453,6 +456,49 @@ bool Session::ended() const { return impl_->combat && impl_->combat->ended(); }
 const std::vector<std::string>& Session::warnings() const { return impl_->warnings; }
 const std::string& Session::error() const { return impl_->error; }
 
+// Loadout -> EquipVisual list (read-only, through sim::Combat::loadout / item_defs): main hand, off hand (a two-handed
+// item, held in both, once at the main hand), then carried weapons / shields slung on the back (instance order).
+// Lit state and radii are rules5e::light_radii, the same values the light producer publishes.
+static void equipment_visuals(const sim::Combat& c, sim::CombatantId id, std::vector<EquipVisual>& out) {
+    out.clear();
+    const rules5e::Loadout* lo = c.loadout(id);
+    const sim::ItemDefTable* table = c.item_defs();
+    if (!lo || !table) return;
+    auto kind_of = [](const rules5e::ItemDef& d) {
+        switch (d.kind) {
+        case rules5e::ItemKind::Weapon: return EquipKind::Weapon;
+        case rules5e::ItemKind::Shield: return EquipKind::Shield;
+        case rules5e::ItemKind::Light: return EquipKind::Light;
+        default: return d.light.states.empty() ? EquipKind::Other : EquipKind::Light;
+        }
+    };
+    auto add = [&](const rules5e::HeldItem& h, AttachSlot slot) {
+        const rules5e::ItemDef* d = table->find(h.def);
+        if (h.instance == 0 || !d) return;
+        EquipVisual e;
+        e.item = h.instance;
+        e.slot = slot;
+        e.kind = kind_of(*d);
+        e.hands = d->hands;
+        const rules5e::LightState r = rules5e::light_radii(*d, h);
+        e.lit = (h.flags & rules5e::kHeldLit) != 0;
+        e.light_state = rules5e::light_state_index(h.flags);
+        e.bright_ft = r.bright_ft;
+        e.dim_ft = r.dim_ft;
+        if (const std::string* cid = table->content_id(h.def)) e.content_id = *cid;
+        out.push_back(std::move(e));
+    };
+    add(lo->view.main, AttachSlot::MainHand);
+    if (lo->view.off.instance != lo->view.main.instance) add(lo->view.off, AttachSlot::OffHand);
+    std::vector<rules5e::HeldItem> slung;
+    for (const rules5e::HeldItem& h : lo->view.carried) {
+        const rules5e::ItemDef* d = table->find(h.def);
+        if (d && (d->kind == rules5e::ItemKind::Weapon || d->kind == rules5e::ItemKind::Shield)) slung.push_back(h);
+    }
+    std::sort(slung.begin(), slung.end(), [](const auto& x, const auto& y) { return x.instance < y.instance; });
+    for (const rules5e::HeldItem& h : slung) add(h, AttachSlot::Back);
+}
+
 ViewModel Session::view() const {
     const Impl& m = *impl_;
     ViewModel v;
@@ -480,6 +526,7 @@ ViewModel Session::view() const {
             a.current = cb.id == cur;
             a.dead = cb.dead;
             a.down = !cb.dead && !rules5e::is_conscious(cb);
+            equipment_visuals(c, cb.id, a.equipment);
             if (a.current) v.turn = a.name;
             v.actors.push_back(std::move(a));
         }
