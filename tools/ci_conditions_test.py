@@ -18,6 +18,10 @@ def ev(expr,ctx):
     return eval(e)
 def gate_ok(ctx):
     if ctx['res']['changes']=='skipped' and not (ctx['event']=='pull_request' and ctx.get('draft')): return False
+    # linux-runner skipped on a schedule, or on a code push/PR, would also skip the Linux
+    # jobs and look green. Mirrors the shell check in ci-required.
+    if ctx['res'].get('linux-runner')=='skipped' and ctx['event']=='schedule': return False
+    if ctx['res'].get('linux-runner')=='skipped' and ctx['out'].get('code')=='true' and ctx['event'] in ('push','pull_request'): return False
     return all(ctx['res'][n] in('success','skipped') for n in J['ci-required']['needs'])
 def run(event,labels=(),code=True,mac=False,fail=None,draft=False,fork=False,moved=True):
     # changes job: outputs only set by steps whose if matches (code: PR/push; mac: PR)
@@ -25,6 +29,8 @@ def run(event,labels=(),code=True,mac=False,fail=None,draft=False,fork=False,mov
     ctx=dict(event=event,labels=set(labels),out=out,res={},draft=draft,fork=fork)
     ctx['res']['changes']='success' if ev(J['changes']['if'],ctx) else 'skipped'
     if ctx['res']['changes']=='skipped': ctx['out']={}
+    lr=ctx['res']['changes']=='success' and ev(J['linux-runner']['if'],ctx)
+    ctx['res']['linux-runner']='success' if lr else 'skipped'
     ng=ev(J['nightly-gate']['if'],ctx); ctx['res']['nightly-gate']='success' if ng else 'skipped'
     ctx['out']['run']='true' if ng and moved else ''
     for j in ['build-test','windows-release','macos']:
@@ -69,7 +75,20 @@ for kw,exp in EXTRA:
     r,g,_=run(**kw); got=(r['build-test'],r['windows-release'],r['macos'],g)
     print(f"{str(kw):70} -> {got}")
     if got!=exp: bad+=1; print('MISMATCH',kw,got,exp)
-assert 'self-hosted' in str([m['os'] for m in J['build-test']['strategy']['matrix']['include'] if m['name'].startswith('Linux')])
+linux=[m for m in J['build-test']['strategy']['matrix']['include'] if m['name'].startswith('Linux')]
+assert linux and all('self-hosted' in str(m['os']) and m['jobs']==4 and m['tests']==2 for m in linux)
+wins=[m for m in J['build-test']['strategy']['matrix']['include'] if m['name'].startswith('Windows')]
+assert [m['os'] for m in wins]==['"windows-latest"']
+assert J['build-test']['needs']==['changes','linux-runner']
+assert 'linux-runner' in str(J['build-test']['runs-on']) and 'linux-runner' in str(J['nightly-gate']['runs-on'])
+assert J['nightly-gate']['needs']==['linux-runner']
+assert 'ubuntu-latest' in str(J['linux-runner']['runs-on'])
+can=yaml.safe_load(open(__import__('pathlib').Path(__file__).resolve().parents[1]/'.github/workflows/linux-runner-canary.yml'))
+assert set(can[True])=={'workflow_dispatch'}
+assert can['permissions']=={}
+assert can['jobs']['ping']['runs-on']==['self-hosted','linux','isoforge']
+assert all('uses' not in s for s in can['jobs']['ping']['steps'])
+assert can['concurrency']['cancel-in-progress'] is True
 assert set(wf[True]['pull_request']['types'])=={'opened','synchronize','reopened','ready_for_review'}
 print('ALL EXPECTATIONS MET' if not bad else f'{bad} FAILED')
 raise SystemExit(1 if bad else 0)
