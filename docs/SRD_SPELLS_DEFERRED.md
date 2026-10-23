@@ -14,9 +14,9 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 |---|---|---|---|---|
 | 0 (cantrips) | 11 | 2 | 11 | 24 |
 | 1 | 27 | 3 | 19 | 49 |
-| 2 | 19 | 12 | 23 | 54 |
+| 2 | 22 | 9 | 23 | 54 |
 | 3 | 13 | 10 | 19 | 42 |
-| **total** | **70** | **27** | **72** | **169** |
+| **total** | **73** | **24** | **72** | **169** |
 
 ## Authored in this change (9)
 
@@ -151,15 +151,25 @@ Zone / `hp_pool` promotions from `tests/validate/fixtures/zones/spells/` and `te
 | Darkness | 2 | `zone` sphere 15, `flags [heavy_obscured, magical_darkness]`; concentration 10 minutes, range 60 | warlock (4), wizard (4); sorcerer has no class list room at 3+; object casting, covering the source, and dispelling lower-level light not expressible |
 | Color Spray | 1 | `hp_pool` 6d10 `blinded`, self cone 15, `rounds 1`; `upcast.dice 2` | wizard (1); sorcerer has no class list room (Fog Cloud took the L2 known slot); "until the end of your next turn" ≈ `rounds 1` (R-G15); skipping unconscious / can't-see not expressible |
 
+## Authored after Rules #276 (3)
+
+Spell batch zh rules (7.2zh, Rules #276). Pinned by `tests/validate/test_srd51_spells.py` (table rows and `test_spell_batch_zh`) and the negative cases under `tests/validate/cases/` (`weapon_smite_*`, `summon_weapon_held_*`).
+
+| spell | level | `spell@1` shape | notes |
+|---|---|---|---|
+| Branding Smite | 2 | `weapon_smite` 2d6 radiant, `reveal_invisible`, `light {dim_ft 5}`; bonus action, self, concentration 1 minute; `upcast.dice 1` | paladin (5); first effect only; brands on the next weapon-attack hit (not a spell attack); a crit doubles the dice |
+| Heat Metal | 2 | `sustained_damage` 2d8 fire + `held_object {save con, on_fail drop, while_held {disadvantage [attack_rolls, ability_checks], until start_of_caster_next_turn}}`; concentration 1 minute; `upcast.dice 1` | bard (3-5), druid (4-5); v1 metal is Weapon/Armor/Shield (worn armor cannot drop) |
+| Flame Blade | 2 | `summon_weapon` `held` 3d6 fire, `upcast_every 2`, `reach_ft 5`, `light {bright_ft 10, dim_ft 10}`; bonus action, self, concentration 10 minutes | druid (4-5); free hand to cast; later attacks spend the action; no `move_ft`, no `add_spellcasting_modifier` |
+
 ## Authored: Entangle (1)
 
-Promote `tests/validate/fixtures/zones/spells/entangle.json` into `srd51.core` (Rules #277). Pinned by `tests/validate/test_srd51_spells.py` (`test_zone_and_kind_spells` vs the fixture) and the 5e-database table. Counts from main's 69 (#274 Fog Cloud / Darkness / Color Spray) + Entangle → 70 authored / 27 NEW / 72 OOS.
+Promote `tests/validate/fixtures/zones/spells/entangle.json` into `srd51.core` (Rules #277 / #278). Pinned by `tests/validate/test_srd51_spells.py` (`test_zone_and_kind_spells` vs the fixture) and the 5e-database table. Counts from main's 69 (#274 Fog Cloud / Darkness / Color Spray) + Branding Smite / Heat Metal / Flame Blade + Entangle → 73 authored / 24 NEW / 72 OOS.
 
 | spell | level | `spell@1` shape | notes |
 |---|---|---|---|
 | Entangle | 1 | point `zone` cube 20 (SRD 20-ft square, same cube as Grease), `difficult`; `zone_appear` Strength save or restrained, `while_in_zone`; concentration 1 minute, range 90, V S | druid (2); forced exit also clears the restraint (`while_in_zone`); no new zone key |
 
-## Deferred (99 spells; reasons re-checked against main at `8b8d8c9`)
+## Deferred (96 spells; reasons re-checked against main at `8b8d8c9`)
 
 Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the first-draft ids in brackets: B1 = R-G2 effects array, B2 = R-G3 timed modifiers, B3 = R-G4 damage riders, B4 = R-G5 pools, B6 = R-G7 reactions / roll windows, C1 = R-G8 conditions with source, C2 = R-G9 forced movement / teleport, C3 = R-G10 area templates, C4 = R-G11 zones / auras, C5 = R-G12 summons, C7 = R-G13 cover / lighting / vision, C8 = R-G14 per-cast options, C9 = R-G15 spell kinds). `T&C-G12` / `T&C-G14` are movement modes and creature footprint. `OOS` rows have no gap id.
 
@@ -205,7 +215,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Arcane Lock | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Arcanist's Magic Aura | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Augury | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Branding Smite | Done (7.2zh) | `weapon_smite`: bonus action, self, concentration. Extra damage on the next weapon-attack hit (not a spell attack); the target is revealed and sheds dim light for the rest of the duration. Hash 0xD4. | R-G4, T&C-G5 (B3) |
 | 2 | Calm Emotions | NEW | Area + suppress condition (R-G10, R-G3). | R-G3, R-G10 (B2, C3) |
 | 2 | Continual Flame | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Darkvision | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
@@ -215,11 +224,9 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Enthrall | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Find Steed | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Find Traps | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Flame Blade | Done (7.2zh) | `summon_weapon` with `held: true` and light 10/10. Free hand to cast, later attacks spend the action, no move, no spellcasting modifier. Folded into 0xAF (held sub-byte), not a new tag. | R-G12 (C5) |
 | 2 | Flaming Sphere | NEW | Object/zone (R-G11/R-G12). | R-G11, R-G12 (C4, C5) |
 | 2 | Gentle Repose | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Gust of Wind | NEW | Line + push (R-G9, R-G10). | R-G9, R-G10 (C2, C3) |
-| 2 | Heat Metal | Done (7.2zh) | `sustained_damage` plus `held_object`: CON save, drop a held Weapon/Armor/Shield (worn armor cannot drop) or disadvantage while still in contact. Metal is the item category in v1, not a metal flag. Hash 0xD5. | R-G15 (C9) |
 | 2 | Knock | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Levitate | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Locate Animals or Plants | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
