@@ -46,6 +46,39 @@ std::string display_name(const std::string& archetype) {
     for (char& ch : s) ch = char(std::toupper(static_cast<unsigned char>(ch)));
     return s;
 }
+
+// Fog-team camera for sight cues. Prefer a conscious combatant, then a character, then the lowest id.
+// 0 when that team has nobody living: cues stay at the empty-hook default (everyone sees everyone).
+uint32_t camera_viewer(const sim::Combat& c, uint8_t team) {
+    const rules5e::Combatant* best = nullptr;
+    bool best_up = false, best_pc = false;
+    for (const rules5e::Combatant& cb : c.state().combatants) {
+        if (cb.dead || cb.team != team) continue;
+        const sim::Archetype* arch = c.archetype(cb.id);
+        const bool pc = arch && arch->schema_type == "character";
+        const bool up = rules5e::is_conscious(cb);
+        if (!best || (up && !best_up) || (up == best_up && pc && !best_pc) ||
+            (up == best_up && pc == best_pc && cb.id < best->id)) {
+            best = &cb;
+            best_up = up;
+            best_pc = pc;
+        }
+    }
+    return best ? best->id : 0;
+}
+
+// Attacking-visible pair (rules5e::sight: derive_sight on the hook's SightFacts, outlined clears Invisible).
+// Hidden-from folds in the same way attack rolls do. No hook: caller leaves the ActorView defaults.
+void fill_sight_cues(const sim::Combat& c, uint32_t eye, uint8_t fog_team, const rules5e::Combatant& cb, ActorView& a) {
+    if (eye == 0 || cb.id == eye) return;
+    const rules5e::EncounterState& st = c.state();
+    const rules5e::Sight to_them = rules5e::sight(st, eye, cb.id);
+    const rules5e::Sight to_us = rules5e::sight(st, cb.id, eye);
+    a.seen_by_viewer = to_them.can_see && !rules5e::is_hidden_from(st, cb.id, eye);
+    a.sees_viewer = to_us.can_see && !rules5e::is_hidden_from(st, eye, cb.id);
+    // Unseen attacker: they can affect the viewer (they perceive them) but the viewer cannot see them.
+    a.unseen_attacker = !a.seen_by_viewer && !cb.dead && rules5e::is_conscious(cb) && cb.team != fog_team && to_us.perceives;
+}
 } // namespace
 
 // item@1 `visual` block (schema: schemas/item/v1.schema.json) -> render style. Validated content is
@@ -558,6 +591,9 @@ ViewModel Session::view() const {
         v.round = c.state().round;
         v.ended = c.ended();
         const sim::CombatantId cur = c.ended() ? 0 : rules5e::current_actor(c.state());
+        // Empty sight_facts (before the first submit, or a Combat that never installed it) is Sight{}:
+        // everyone sees everyone. Do not call install_hooks from here — that would write sim state.
+        const uint32_t eye = c.state().hooks.sight_facts ? camera_viewer(c, m.fog_team) : 0;
         for (const rules5e::Combatant& cb : c.state().combatants) {
             ActorView a;
             a.id = cb.id;
@@ -572,6 +608,7 @@ ViewModel Session::view() const {
             a.dead = cb.dead;
             a.down = !cb.dead && !rules5e::is_conscious(cb);
             equipment_visuals(c, cb.id, a.equipment);
+            if (eye != 0) fill_sight_cues(c, eye, m.fog_team, cb, a);
             if (a.current) v.turn = a.name;
             v.actors.push_back(std::move(a));
         }
