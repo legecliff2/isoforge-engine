@@ -193,20 +193,25 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 | Paladin | 2 | Cure Wounds, Heroism, Shield of Faith |
 | Paladin | 3-4 | + Protection from Evil and Good, Sanctuary (oath) |
 | Paladin | 5 | + Lesser Restoration (oath), Magic Weapon |
-| Ranger | 2-4 | Cure Wounds, Hunter's Mark |
+| Ranger | 2 | Cure Wounds, Hunter's Mark |
+| Ranger | 3-4 | + Fog Cloud |
 | Ranger | 5 | + Barkskin, Lesser Restoration (Spike Growth swapped out for Hunter's Mark) |
-| Wizard | 1-2 | Acid Splash, Fire Bolt, Poison Spray; False Life, Magic Missile, Shield |
-| Wizard | 3-4 | + Hold Person, Magic Weapon, Mirror Image, Scorching Ray; False Life dropped (Int modifier + level = 6 prepared) |
+| Wizard | 1 | Acid Splash, Fire Bolt, Poison Spray; Color Spray, False Life, Magic Missile, Shield |
+| Wizard | 2 | + Fog Cloud |
+| Wizard | 3 | + Hold Person, Magic Weapon, Mirror Image, Scorching Ray; Color Spray / Fog Cloud / False Life dropped (Int modifier + level = 6 prepared) |
+| Wizard | 4 | + Darkness (Int 18 → 8 prepared) |
 | Wizard | 5 | + Counterspell, Haste, False Life again (9 prepared) |
-| Druid | 1-2 | Produce Flame, Poison Spray; Cure Wounds, Faerie Fire, Healing Word, Thunderwave |
+| Druid | 1 | Produce Flame, Poison Spray; Cure Wounds, Faerie Fire, Healing Word, Thunderwave |
+| Druid | 2 | + Fog Cloud |
 | Druid | 3 | + Barkskin, Hold Person, Lesser Restoration, Spike Growth (circle) |
 | Druid | 4 | + Shillelagh (third cantrip known) |
 | Druid | 5 | + Dispel Magic, Lightning Bolt (circle), Protection from Energy |
 | Warlock | 1-2 | Eldritch Blast, Chill Touch; Burning Hands (expanded) |
 | Warlock | 3 | + Fire Bolt, Ray of Frost, Sacred Flame (Tome); Hold Person, Misty Step, Scorching Ray (expanded) |
-| Warlock | 4 | + Poison Spray |
+| Warlock | 4 | + Poison Spray, Darkness |
 | Warlock | 5 | + Fireball (expanded), Counterspell |
-| Sorcerer | 1-2 | Acid Splash, Fire Bolt, Poison Spray; Magic Missile, Shield |
+| Sorcerer | 1 | Acid Splash, Fire Bolt, Poison Spray; Magic Missile, Shield |
+| Sorcerer | 2 | + Fog Cloud |
 | Sorcerer | 3 | + Hold Person, Scorching Ray (4 known) |
 | Sorcerer | 4 | + Blur |
 | Sorcerer | 5 | + Counterspell |
