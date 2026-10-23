@@ -469,6 +469,15 @@ struct ActiveSpellEffect {
     // the SpellDef and the caster's attack list: not hashed). Duplicates: the duplicates left (Combat::hash 0xD3 while > 0).
     uint8_t imbue_attack = 0; int8_t imbue_bonus = 0;
     uint8_t duplicates = 0;
+    // appended (7.2zh Branding Smite; Combat::hash 0xD4 while smite_pending or smite_brand). damage_when stays 0 so 0xAC
+    // ignores the charge. The pending row's target is the caster; a brand retargets the creature that was hit.
+    bool smite_pending = false, smite_brand = false, smite_reveal = false;
+    uint16_t smite_dim_ft = 0;
+    // appended (7.2zh Heat Metal held object; Combat::hash 0xD5 while heated_item != 0 or while_held). heated_item is the
+    // hand instance, or the armor def id when heated_worn (LoadoutView has no armor instance). while_held: disadvantage on
+    // attack rolls and ability checks until the start of the caster's next turn.
+    uint32_t heated_item = 0, heated_def = 0;
+    bool heated_worn = false, while_held = false;
 };
 
 // 7.2w: a creature leaving its container in the last step (EncounterState::contain_exits; cleared when each step starts).
@@ -806,6 +815,11 @@ struct ActiveSummonWeapon {
     // logged by rules (0xBC, 0xAF), validated by sim (20 ft move, reach). has_tile false = no tile given yet.
     bool has_tile = false;
     int32_t tile_x = 0, tile_y = 0;
+    // appended (7.2zh Flame Blade). held: the blade is in the caster's hand (no tile, attacks spend the action).
+    // concentration: ends with the caster's concentration on spell_id (SummonEnded b = 1). Both stay false for Spiritual
+    // Weapon, and summons_digest mixes them only when some row is held (sub-byte 0xE1, not a registry tag).
+    bool held = false;
+    bool concentration = false;
 };
 
 struct EncounterState {
@@ -991,6 +1005,16 @@ uint64_t gaze_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ul
 // base hp_max.
 bool has_summon_state(const EncounterState&);
 uint64_t summons_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
+// 7.2zh Branding Smite (Combat::hash 0xD4): an effect with smite_pending or smite_brand. smite_digest walks those effects
+// in application order: spell u32, caster u32, target u32, flags byte (bit0 pending, bit1 brand, bit2 reveal), dice count
+// and sides bytes, bonus i16, damage type byte, slot level byte, dim_ft u16.
+bool has_smite_state(const EncounterState&);
+uint64_t smite_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
+// 7.2zh Heat Metal held object (Combat::hash 0xD5): an effect with heated_item != 0 or while_held. heat_metal_digest walks
+// those effects in application order: spell u32, caster u32, target u32, heated_item u32, heated_def u32, flags byte
+// (bit0 worn, bit1 while_held).
+bool has_heat_metal_state(const EncounterState&);
+uint64_t heat_metal_digest(const EncounterState&, uint64_t seed = 0xCBF29CE484222325ull);
 // R-G12 pure helpers (also used by the encounter). apply_form saves `c`'s own statistics in `base` and puts on form `f` of
 // `kind` (what is replaced vs kept: VERSION_BUMP_BATCH 7.2q). revert_form restores them; Polymorph / Wild Shape come back with
 // the saved hp, a shapechanger keeps its one HP pool. Both are no-ops on a wrong state (apply_form returns false when already

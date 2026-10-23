@@ -49,6 +49,8 @@ struct ActorView {
     bool        current = false;
     bool        down = false;  // 0 HP / unconscious
     bool        dead = false;
+    bool        outlined = false;   // Faerie Fire / ModStat::Outlined (presentation ring)
+    bool        invisible = false;  // Condition::Invisible (ghost when still drawn)
     Facing      facing = Facing::SouthEast;
     std::vector<EquipVisual> equipment;   // held + slung items, slot order then instance order (empty: nothing drawn)
     // Sight cues for the fog-team camera combatant (presentation only; never written back into sim).

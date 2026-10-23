@@ -1935,6 +1935,10 @@ uint64_t Combat::hash() const {
             h.i32(g.x); h.i32(g.y);
         }
     }
+    // 0xD4 (7.2zh Branding Smite): pending charge and residual brand, only while one exists.
+    if (rules5e::has_smite_state(state_)) { h.byte(0xD4); h.u64(rules5e::smite_digest(state_)); }
+    // 0xD5 (7.2zh Heat Metal): the heated object and the while-held disadvantage, only while one is set.
+    if (rules5e::has_heat_metal_state(state_)) { h.byte(0xD5); h.u64(rules5e::heat_metal_digest(state_)); }
     return h.value();
 }
 

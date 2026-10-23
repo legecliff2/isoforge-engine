@@ -127,6 +127,8 @@ Color tint_for(const ActorView& a) {
     Color c = a.is_pc ? Color::rgba8(90, 150, 255) : Color::rgba8(110, 200, 80);
     if (a.dead) c = Color::rgba8(90, 90, 90, 200);
     else if (a.down) c = Color::rgba8(150, 120, 120, 230);
+    // Invisible tokens that are still drawn (fog-Visible to fog_team, or same-team) ghost out.
+    if (a.invisible && !a.dead) c.a *= 0.38f;
     return c;
 }
 } // namespace
@@ -434,20 +436,31 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         // Own-team tokens in remembered/unseen tiles still draw, lit as Dark (presentation).
         p.tint = mul(tint_for(a), af == iso2d::Fog::Visible ? at : iso2d::light_tint(0, iso2d::Fog::Visible));
         if (L.present) p.tint = mul(p.tint, {1.6f, 1.6f, 1.6f, 1.f});   // tokens stay readable in dim light (presentation)
-        if (a.equipment.empty()) { world_.draw(p, iso, 1, a.id, kZBody); continue; }
-        // Equipment layers (equip_visuals.hpp): fixed z around the body inside the actor's sort key.
         Color lit_by = af == iso2d::Fog::Visible ? at : iso2d::light_tint(0, iso2d::Fog::Visible);
         if (L.present) lit_by = mul(lit_by, {1.6f, 1.6f, 1.6f, 1.f});
-        for (const EquipLayer& l : equip_layers(a)) {
-            if (l.part == EquipPart::Body) { world_.draw(p, iso, 1, a.id, kZBody); continue; }
-            for (const EquipQuad& q : equip_quads(*l.item, l.part, l.at)) {
-                iso2d::Sprite s{tex_->white, q.size.x, q.size.y, 0, 0};
-                s.anchor_x = q.size.x / 2.f   // bottom-centre on the token anchor + q.at (screen px)
-                              - q.at.x;
-                s.anchor_y = q.size.y - q.at.y;
-                s.tint = q.emissive ? q.color : mul(q.color, lit_by);
-                world_.draw(s, iso, 1, a.id, l.z);
+        if (a.invisible && !a.dead) lit_by.a *= 0.38f;   // ghost equipment with the body
+        if (a.equipment.empty()) {
+            world_.draw(p, iso, 1, a.id, kZBody);
+        } else {
+            // Equipment layers (equip_visuals.hpp): fixed z around the body inside the actor's sort key.
+            for (const EquipLayer& l : equip_layers(a)) {
+                if (l.part == EquipPart::Body) { world_.draw(p, iso, 1, a.id, kZBody); continue; }
+                for (const EquipQuad& q : equip_quads(*l.item, l.part, l.at)) {
+                    iso2d::Sprite s{tex_->white, q.size.x, q.size.y, 0, 0};
+                    s.anchor_x = q.size.x / 2.f   // bottom-centre on the token anchor + q.at (screen px)
+                                  - q.at.x;
+                    s.anchor_y = q.size.y - q.at.y;
+                    s.tint = q.emissive ? q.color : mul(q.color, lit_by);
+                    if (a.invisible && !a.dead && q.emissive) s.tint.a *= 0.38f;
+                    world_.draw(s, iso, 1, a.id, l.z);
+                }
             }
+        }
+        // Faerie Fire outline: after body / equip so the ring sits on top of the token.
+        if (a.outlined && !a.dead) {
+            iso2d::Sprite o{tex_->ring, float(kTileW), float(kTileH), kTileW / 2.f, 0};
+            o.tint = Color::rgba8(200, 120, 255, a.invisible ? 140 : 220);
+            world_.draw(o, iso, 1, a.id, kZOutline);
         }
     }
     world_.prepare(cam);

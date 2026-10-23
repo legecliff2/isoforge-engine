@@ -1,0 +1,55 @@
+{
+  "$schema": "spell@1",
+  "id": "test.zone.spell.entangle",
+  "name": "Entangle",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "Grasping plants fill a 20-foot square (a 20-foot cube zone, the same ground area Grease uses for a square) from a point within range and turn the ground into difficult terrain. A creature in the area when the zone appears makes a Strength save or is restrained while it remains in the square or until it breaks free (an action: Strength check against your spell save DC, Web's zone escape). Creatures that enter later are not caught.",
+  "level": 1,
+  "school": "conjuration",
+  "classes": [
+    "druid"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 90
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "zone",
+      "zone": {
+        "shape": "cube",
+        "size_ft": 20,
+        "anchor": "point",
+        "flags": [
+          "difficult"
+        ],
+        "triggers": [
+          {
+            "on": "zone_appear",
+            "while_in_zone": true,
+            "effect": {
+              "kind": "save",
+              "ability": "str",
+              "condition": "restrained"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
