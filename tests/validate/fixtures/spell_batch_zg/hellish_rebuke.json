@@ -1,0 +1,49 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "school": "evocation",
+  "classes": [
+    "wizard"
+  ],
+  "id": "test.neg.spell.hellish_rebuke",
+  "name": "Hellish Rebuke",
+  "description": "Hellish Rebuke (7.2zg positive specimen).",
+  "level": 1,
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "casting_time": {
+    "kind": "reaction",
+    "trigger": {
+      "kind": "damaged",
+      "requires_sight": true
+    }
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "save",
+      "ability": "dex",
+      "damage": {
+        "dice": "2d10",
+        "type": "fire"
+      },
+      "on_success": "half"
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "dice": 1
+    }
+  }
+}

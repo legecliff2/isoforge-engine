@@ -1,0 +1,42 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.targets_on_summon_weapon",
+  "name": "Spiritual Weapon",
+  "level": 2,
+  "school": "evocation",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "classes": [
+    "cleric"
+  ],
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "casting_time": {
+    "kind": "bonus_action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1
+  },
+  "effects": [
+    {
+      "kind": "summon_weapon",
+      "damage": {
+        "dice": "1d8",
+        "type": "force"
+      },
+      "add_spellcasting_modifier": true
+    }
+  ],
+  "targets": {
+    "count": 2
+  }
+}
