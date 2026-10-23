@@ -1,0 +1,350 @@
+#!/usr/bin/env python3
+"""item@2 / monster@5 / character@5 schema and validator tests (ctest: content_validate_equip_v5).
+
+docs/proposals/EQUIPMENT.md (#245) 7.1 (every new key optional) and 7.2 (item@1 -> @2, monster@4 -> @5, character@4 -> @5 are
+identity migrations, #246 in C++): an @4 / item@1 document re-stamped to the new version validates unchanged and the old
+versions still validate as before. Structural validator checks: 3.1 hands, 5.5 reasons, 5.2 PB table (5.6 strings), 6.2 light.
+The derived-vs-printed assertion of 5.6 needs rules5e::derive_monster (#247) and is not tested here.
+"""
+from __future__ import annotations
+
+import copy
+import json
+import shutil
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import v4_helpers as h  # noqa: E402
+import validate_packs as vp  # noqa: E402
+
+ROOT = h.ROOT
+CORE = ROOT / "content" / "packs" / "srd51.core"
+RESTAMP = {"monster@4": "monster@5", "character@4": "character@5", "item@1": "item@2"}
+SRC = {"ref": "SRD 5.1", "license": "CC-BY-4.0"}
+
+
+def core(rel: str) -> dict:
+    return json.loads((CORE / rel).read_text(encoding="utf-8"))
+
+
+def lantern() -> dict:
+    return {"$schema": "item@2", "id": "test.v4.lantern_hooded", "name": "Lantern, hooded", "category": "gear",
+            "cost_cp": 500, "weight_oz": 32, "hands": 1,
+            "light": {"bright_ft": 30, "dim_ft": 30, "shape": "radius", "duration_rounds": 3600, "fuel": "test.v4.oil_flask",
+                      "lit_by_default": False, "states": [{"id": "hooded", "bright_ft": 0, "dim_ft": 5, "toggle": "action"}]}}
+
+
+def torch() -> dict:
+    return {"$schema": "item@2", "id": "test.v4.torch", "name": "Torch", "category": "gear", "cost_cp": 1, "weight_oz": 16,
+            "hands": 1, "light": {"bright_ft": 20, "dim_ft": 20, "duration_rounds": 600, "lit_by_default": True},
+            "torch_attack": {"damage": [{"flat": 1, "type": "fire"}], "requires_lit": True}}
+
+
+def arrows() -> dict:
+    return {"$schema": "item@2", "id": "test.v4.arrow_1", "name": "Arrow, +1", "category": "ammunition", "ammo_kind": "arrow",
+            "magic_bonus": 1, "cost_cp": 5, "weight_oz": 1}
+
+
+def bow() -> dict:
+    d = copy.deepcopy(core("items/longbow.json"))
+    d.update({"$schema": "item@2", "id": "test.v4.longbow_split", "ammo_kind": "arrow", "attack_magic": 1, "damage_magic": 2})
+    return d
+
+
+def bugbear5() -> dict:
+    """srd51.core bugbear re-stamped to monster@5 with every new structural key."""
+    d = copy.deepcopy(core("monsters/bugbear.json"))
+    assert d["$schema"] == "monster@4", d["$schema"]
+    d.update({"$schema": "monster@5", "id": "test.v4.bugbear5", "derive": True, "hands": 2,
+              "equipment": [{"item": "srd51.item.hide_armor", "equipped": True}, {"item": "srd51.item.shield", "equipped": True},
+                            {"item": "test.v4.morningstar", "equipped": True}, {"item": "srd51.item.javelin", "count": 3}],
+              "natural_armor": {"base": 11, "dex": True},
+              "weapons": [{"id": "spiked_club", "name": "Spiked Club", "damage": [{"dice": "1d6", "type": "piercing"}], "reach": 5}],
+              "emits_light": {"bright_ft": 0, "dim_ft": 5}})
+    d.pop("proficiency_bonus")   # optional at @5: the CR table
+    d["actions"][0]["weapon"] = "#spiked_club"
+    return d
+
+
+def morningstar() -> dict:
+    d = copy.deepcopy(core("items/morningstar.json"))
+    d.update({"$schema": "item@2", "id": "test.v4.morningstar"})
+    return d
+
+
+def fighter5() -> dict:
+    d = copy.deepcopy(core("characters/fighter_level_1.json"))
+    assert d["$schema"] == "character@4", d["$schema"]
+    d.update({"$schema": "character@5", "id": "test.v4.fighter5", "derive": True,
+              "weapon_proficiencies": ["simple", "martial"], "armor_proficiencies": ["light", "medium", "heavy", "shields"]})
+    objs = [e for e in d.get("equipment") or [] if isinstance(e, dict)]
+    d["equipment"] = objs + [{"item": "srd51.item.longsword", "equipped": True, "hand": "main"},
+                             {"item": "srd51.item.javelin", "count": 4}]
+    return d
+
+
+def pack(**docs) -> dict:
+    base = {"items/lantern.json": lantern(), "items/torch.json": torch(), "items/arrow.json": arrows(),
+            "items/bow.json": bow(), "items/morningstar.json": morningstar(),
+            "monsters/bugbear5.json": bugbear5(), "characters/fighter5.json": fighter5()}
+    base.update(docs)
+    return base
+
+
+def errs_of(docs) -> list[str]:
+    e, _w = h.validate_docs(docs)
+    return e
+
+
+class IdentityMigration(unittest.TestCase):
+    def test_core_restamped_validates(self):
+        """Every monster@4 / character@4 / item@1 file of srd51.core, re-stamped (identity migration), validates and gives the
+        same findings as the original."""
+        reg, by_tag = h.registry()
+        with tempfile.TemporaryDirectory(prefix="equip_v5_") as tmp:
+            dst = Path(tmp) / CORE.name
+            shutil.copytree(CORE, dst)
+            n = 0
+            for f in dst.rglob("*.json"):
+                d = json.loads(f.read_text(encoding="utf-8"))
+                if isinstance(d, dict) and d.get("$schema") in RESTAMP:
+                    d["$schema"] = RESTAMP[d["$schema"]]
+                    f.write_text(json.dumps(d, indent=2), encoding="utf-8")
+                    n += 1
+            self.assertGreater(n, 100)
+            w_new: list[str] = []
+            self.assertEqual(vp.validate_pack(dst, reg, by_tag, w_new), [])
+        w_old: list[str] = []
+        self.assertEqual(vp.validate_pack(CORE, reg, by_tag, w_old), [])
+        self.assertEqual(len(w_new), len(w_old))
+
+    def test_old_versions_reject_new_keys(self):
+        old = copy.deepcopy(core("monsters/bugbear.json"))
+        old["derive"] = True
+        self.assertTrue(any("derive" in e for e in errs_of({"monsters/b.json": dict(old, id="test.v4.b")})))
+        it = dict(lantern(), **{"$schema": "item@1"})
+        self.assertTrue(errs_of({"items/l.json": it}))
+
+
+def schema(rel: str) -> dict:
+    return json.loads((ROOT / "schemas" / rel).read_text(encoding="utf-8"))
+
+
+class AppendOnly(unittest.TestCase):
+    """The new versions carry the old ones in full: every old key keeps its definition; new keys are optional."""
+
+    def test_properties_carried(self):
+        for old, new, extra_req in (("item/v1", "item/v2", set()), ("monster/v4", "monster/v5", set()),
+                                    ("character/v4", "character/v5", set())):
+            o, n = schema(old + ".schema.json"), schema(new + ".schema.json")
+            for k, v in o["properties"].items():
+                if k in ("$schema", "category", "equipment"):
+                    continue   # const bumped / enum widened / object arm widened (tested below)
+                if new == "monster/v5" and k == "traits":   # v4's items plus the monster@5-local weapon_extra_dice arm
+                    self.assertEqual(n["properties"][k]["items"]["allOf"][0], v["items"])
+                    continue
+                self.assertEqual(n["properties"][k], v, f"{new}: {k}")
+            self.assertEqual(set(n["required"]), set(o["required"]) | extra_req, new)
+        self.assertLessEqual(set(schema("item/v1.schema.json")["properties"]["category"]["enum"]),
+                             set(schema("item/v2.schema.json")["properties"]["category"]["enum"]))
+
+    def test_monster_stat_block_copy_matches_common2(self):
+        """monster@5's own stat_block is common@2's (common@2 unchanged, EQUIPMENT 7.1) except actions[] items and the
+        optional proficiency_bonus; its action def is common@2's plus weapon / natural / attack_bonus."""
+        c2 = schema("common/v2.schema.json")["$defs"]
+        m5 = schema("monster/v5.schema.json")["$defs"]
+        canon = lambda d: json.dumps(d, sort_keys=True).replace("../common/v2.schema.json#/$defs/", "#/$defs/")
+        self.assertEqual(set(m5["stat_block"]["properties"]), set(c2["stat_block"]["properties"]))
+        for k, v in c2["stat_block"]["properties"].items():
+            if k != "actions":
+                self.assertEqual(canon(m5["stat_block"]["properties"][k]), canon(v), k)
+        self.assertEqual(set(c2["stat_block"]["required"]) - set(m5["stat_block"]["required"]), {"proficiency_bonus"})
+        self.assertEqual(set(m5["action"]["properties"]) - set(c2["action"]["properties"]), {"weapon", "natural", "attack_bonus"})
+        for k, v in c2["action"]["properties"].items():
+            self.assertEqual(canon(m5["action"]["properties"][k]), canon(v), k)
+
+
+class TagTable(unittest.TestCase):
+    def test_tag_table_matches_the_schemas(self):
+        import checks_v4
+        c2 = schema("common/v2.schema.json")["$defs"]
+        for typ, sb in (("monster", schema("monster/v5.schema.json")["$defs"]["stat_block"]), ("character", c2["stat_block"])):
+            tag = f"{typ}@5"
+            declared = set(sb["properties"]) | set(schema(f"{typ}/v5.schema.json")["properties"])
+            self.assertEqual(set(checks_v4.TAG_TABLE[tag].top_level_keys), declared, tag)
+            r4, r5 = checks_v4.TAG_TABLE[f"{typ}@4"], checks_v4.TAG_TABLE[tag]
+            local = checks_v4.MONSTER_AT5_EFFECT_KINDS if typ == "monster" else frozenset()
+            self.assertEqual((r4.action_kinds, r4.effect_kinds | local, r4.cost_values), (r5.action_kinds, r5.effect_kinds, r5.cost_values))
+        self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice"})
+
+
+class LightPresetAndVisual(unittest.TestCase):
+    """item@2 light.preset (Render's preset key) and the presentation-only `visual` block (item@2 is a superset of item@1)."""
+
+    VIS = {"color": {"r": 255, "g": 170, "b": 70}, "intensity": 1000, "flicker": "torch"}
+
+    def test_valid(self):
+        t = torch(); t["light"]["preset"] = "srd51.core.light.torch"; t["visual"] = self.VIS
+        self.assertEqual(errs_of(pack(**{"items/torch.json": t})), [])
+        for doc in (bow(), arrows(), morningstar()):
+            self.assertEqual(errs_of(pack(**{"items/x.json": dict(doc, visual=self.VIS)})), [], doc["id"])
+
+    def test_bad(self):
+        for preset in ("Torch", "torch", "srd51..light", 7):
+            t = torch(); t["light"]["preset"] = preset
+            self.assertTrue(errs_of(pack(**{"items/torch.json": t})), preset)
+        for vis in ({"color": {"r": 256, "g": 0, "b": 0}, "intensity": 1}, {"color": {"r": 1, "g": 1, "b": 1}},
+                    dict(VIS, intensity=1001), dict(VIS, flicker="strobe"), dict(VIS, extra=1), dict(VIS, intensity="1")):
+            self.assertTrue(errs_of(pack(**{"items/torch.json": dict(torch(), visual=vis)})), vis)
+
+    def test_visual_matches_item1_when_present(self):
+        v1 = schema("item/v1.schema.json")["properties"].get("visual")
+        if v1 is not None:   # item@1 gains it with Render #233
+            self.assertEqual(schema("item/v2.schema.json")["properties"]["visual"], v1)
+
+
+VIS = LightPresetAndVisual.VIS
+
+
+def pouch() -> dict:
+    return {"$schema": "item@2", "id": "test.v4.pouch", "name": "Pouch", "category": "gear", "cost_cp": 50, "weight_oz": 16,
+            "container": {"holds": [{"ammo_kind": "sling_bullet", "capacity": 20}, {"ammo_kind": "needle", "capacity": 50}]}}
+
+
+class Container(unittest.TestCase):
+    def test_valid(self):
+        self.assertEqual(errs_of(pack(**{"items/pouch.json": pouch()})), [])
+
+    def test_bad(self):
+        for c in ({}, {"holds": []}, {"holds": [{"ammo_kind": "arrow"}]}, {"holds": [{"ammo_kind": "rock", "capacity": 1}]},
+                  {"holds": [{"ammo_kind": "arrow", "capacity": 0}]}, {"holds": [{"ammo_kind": "arrow", "capacity": "20"}]},
+                  {"holds": [{"ammo_kind": "arrow", "capacity": 20}], "extra": 1}):
+            self.assertTrue(errs_of(pack(**{"items/pouch.json": dict(pouch(), container=c)})), c)
+        self.assertTrue(errs_of(pack(**{"items/arrow.json": dict(arrows(), container=pouch()["container"])})))   # gear only
+        dup = pouch(); dup["container"]["holds"].append({"ammo_kind": "needle", "capacity": 10})
+        e = errs_of(pack(**{"items/pouch.json": dup}))
+        self.assertTrue(any("/container/holds: ammo_kind values must be unique" in x for x in e), e)
+
+
+class NewShapes(unittest.TestCase):
+    def test_full_pack_valid(self):
+        e, w = h.validate_docs(pack())
+        self.assertEqual(e, [])
+
+    def test_closed_arms(self):
+        self.assertTrue(errs_of(pack(**{"items/arrow.json": dict(arrows(), hands=1)})))
+        self.assertTrue(errs_of(pack(**{"items/torch.json": dict(torch(), reach=5)})))
+        self.assertTrue(errs_of(pack(**{"items/arrow.json": h.edit(arrows(), dels=[["ammo_kind"]])})))
+        bad = lantern(); bad["light"]["radius_ft"] = 10
+        self.assertTrue(errs_of(pack(**{"items/lantern.json": bad})))
+        bad = lantern(); bad["light"]["dim_ft"] = 7   # integer multiples of 5
+        self.assertTrue(errs_of(pack(**{"items/lantern.json": bad})))
+        b = bugbear5(); b["actions"][0]["natural"] = {"dice": "2d8", "ability": "cha"}
+        self.assertTrue(errs_of(pack(**{"monsters/bugbear5.json": b})))
+        b = bugbear5(); b["hands"] = 1
+        self.assertTrue(errs_of(pack(**{"monsters/bugbear5.json": b})))
+        f = fighter5(); f["equipment"][-1]["hand"] = "left"
+        self.assertTrue(errs_of(pack(**{"characters/fighter5.json": f})))
+
+    def test_character_pb_still_required(self):
+        self.assertTrue(errs_of(pack(**{"characters/fighter5.json": h.edit(fighter5(), dels=[["proficiency_bonus"]])})))
+
+
+BRUTE = {"kind": "weapon_extra_dice", "dice": 1, "melee_only": True}
+
+
+class WeaponExtraDice(unittest.TestCase):
+    """monster@5-local trait kind weapon_extra_dice (Brute; EQUIPMENT 5.3, #247 MonsterSpec::brute_dice). common@2 is unchanged,
+    so @4 documents and characters keep the open-kind behaviour (unknown-kind warning, never loaded)."""
+
+    def brute(self, eff, schema="monster@5"):
+        b = bugbear5() if schema == "monster@5" else dict(copy.deepcopy(core("monsters/bugbear.json")), id="test.v4.bugbear5")
+        i = next(i for i, t in enumerate(b["traits"]) if t["id"] == "brute")
+        b["traits"][i]["effect"] = eff
+        return h.validate_docs(pack(**{"monsters/bugbear5.json": b}))
+
+    def test_valid(self):
+        for eff in (BRUTE, {"kind": "weapon_extra_dice", "dice": 2}):
+            e, w = self.brute(eff)
+            self.assertEqual(e, [], eff)
+            self.assertFalse(any("weapon_extra_dice" in x for x in w), w)
+
+    def test_closed_arm(self):
+        for eff in (dict(BRUTE, dice=0), dict(BRUTE, dice=5), dict(BRUTE, dice="1d8"), {"kind": "weapon_extra_dice"},
+                    dict(BRUTE, ranged=True), dict(BRUTE, melee_only="yes")):
+            e, _w = self.brute(eff)
+            self.assertTrue(any("/traits/" in x for x in e), (eff, e))
+
+    def test_not_a_kind_outside_monster5(self):
+        e, w = self.brute(BRUTE, schema="monster@4")
+        self.assertEqual(e, [])
+        self.assertTrue(any("unknown effect kind 'weapon_extra_dice'" in x for x in w), w)
+        f = fighter5(); f["features"] = list(f.get("features") or []) + [{"id": "brute", "name": "Brute", "effect": BRUTE}]
+        e, w = h.validate_docs(pack(**{"characters/fighter5.json": f}))
+        self.assertEqual(e, [])
+        self.assertTrue(any("unknown effect kind 'weapon_extra_dice'" in x for x in w), w)
+
+
+class StructuralChecks(unittest.TestCase):
+    def expect(self, docs, msg):
+        e = errs_of(docs)
+        self.assertTrue(any(msg in x for x in e), f"{msg!r} not in {e}")
+
+    def test_pb_table(self):
+        b = bugbear5(); b["proficiency_bonus"] = 3   # CR 1
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "test.v4.bugbear5: proficiency_bonus 3 != CR table 2")
+        b["proficiency_bonus_reason"] = "authored deviation (test)"
+        e = errs_of(pack(**{"monsters/bugbear5.json": b}))
+        self.assertFalse(any("proficiency_bonus" in x for x in e), e)
+
+    def test_reasons(self):
+        b = bugbear5(); b["ac_adjust"] = {"value": 1, "reason": " "}
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "test.v4.bugbear5: ac_adjust needs a reason")
+        b = bugbear5(); b["actions"][1]["attack_bonus"] = {"value": 3, "reason": "  "}
+        aid = b["actions"][1]["id"]
+        self.expect(pack(**{"monsters/bugbear5.json": b}), f"test.v4.bugbear5.{aid}: attack_bonus needs a reason")
+
+    def test_adjustments_are_listed(self):
+        b = bugbear5(); b["ac_adjust"] = {"value": 1, "reason": "armor scraps"}
+        e, w = h.validate_docs(pack(**{"monsters/bugbear5.json": b}))
+        self.assertEqual(e, [])
+        self.assertTrue(any("test.v4.bugbear5: ac_adjust 1 (armor scraps)" in x for x in w), w)
+
+    def test_hands(self):
+        b = bugbear5(); b["equipment"].append({"item": "test.v4.torch", "equipped": True})
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "test.v4.bugbear5: holds 3 items but has 2 hands")
+        b["hands"] = 0; b["equipment"] = b["equipment"][:2]
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "test.v4.bugbear5: holds 1 items but has 0 hands")
+        f = fighter5(); f["equipment"].append({"item": "srd51.item.dagger", "hand": "main"})
+        self.expect(pack(**{"characters/fighter5.json": f}), "test.v4.fighter5: hand 'main' holds 2 items")
+
+    def test_weapon_links(self):
+        b = bugbear5(); b["actions"][0]["weapon"] = "#nope"
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "/actions/0/weapon: '#nope' is not a weapons[] id of this document")
+        b = bugbear5(); b["actions"][0]["weapon"] = "srd51.item.greatclub"
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "/actions/0/weapon: 'srd51.item.greatclub' is not listed in equipment[]")
+        b = bugbear5(); b["actions"][0]["natural"] = {"dice": "2d8", "ability": "str"}
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "/actions/0: 'weapon' and 'natural' are exclusive")
+        b = bugbear5(); b["weapons"].append(copy.deepcopy(b["weapons"][0]))
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "/weapons: local weapon ids must be unique")
+
+    def test_light(self):
+        bad = lantern(); bad["light"]["bright_ft"] = 100
+        self.expect(pack(**{"items/lantern.json": bad}), "/light: bright_ft + dim_ft 130 exceeds 120 (dim is additional)")
+        bad = lantern(); bad["light"]["states"].append({"id": "hooded", "bright_ft": 0, "dim_ft": 0})
+        self.expect(pack(**{"items/lantern.json": bad}), "/light/states: state ids must be unique")
+        bad = lantern(); bad["light"].update({"shape": "cone", "bright_ft": 0})
+        self.expect(pack(**{"items/lantern.json": bad}), "/light: a cone's length is bright_ft, which must be above 0")
+        b = bugbear5(); b["emits_light"] = {"bright_ft": 60, "dim_ft": 65}
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "/emits_light: bright_ft + dim_ft 125 exceeds 120")
+
+    def test_ammo_kind_needs_ammunition_property(self):
+        d = copy.deepcopy(core("items/longsword.json")); d.update({"$schema": "item@2", "id": "test.v4.ls", "ammo_kind": "arrow"})
+        self.expect(pack(**{"items/ls.json": d}), "/ammo_kind: only a weapon with the 'ammunition' property fires ammunition")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=1)
