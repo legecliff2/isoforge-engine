@@ -28,7 +28,7 @@ EncounterHooks hooks() {
     book->add(sh);
     SpellDef mw = base(kMagicW, "test.imbue.magic_weapon", 2); mw.casting_time = CastingTime::BonusAction; mw.concentration = true;
     mw.kind = SpellEffectKind::WeaponImbue; mw.duration_amount = 600; mw.duration_rounds = 600;
-    mw.imbue.magical = true; mw.imbue.requires_nonmagical = true; mw.imbue.bonus_base = 1; mw.imbue.bonus_at_slot = {{4, 2}, {6, 3}};
+    mw.imbue.magical = true; mw.imbue.requires_nonmagical = true; mw.imbue.bonus_base = 1; mw.imbue.bonus_at_slot = {{uint8_t{4}, int8_t{2}}, {uint8_t{6}, int8_t{3}}};
     book->add(mw);
     SpellDef mi = base(kMirror, "test.imbue.mirror_image", 2);
     mi.kind = SpellEffectKind::Duplicates; mi.duration_amount = 10; mi.duration_rounds = 10;
@@ -88,7 +88,7 @@ TEST_CASE("weapon_imbue: Shillelagh imbues the club (spellcasting ability, d8, m
 }
 
 TEST_CASE("weapon_imbue: Magic Weapon's bonus by slot; an already magical weapon is refused") {
-    WeaponImbueSpec w; w.bonus_base = 1; w.bonus_at_slot = {{4, 2}, {6, 3}};
+    WeaponImbueSpec w; w.bonus_base = 1; w.bonus_at_slot = {{uint8_t{4}, int8_t{2}}, {uint8_t{6}, int8_t{3}}};
     CHECK(imbue_bonus(w, 2) == 1); CHECK(imbue_bonus(w, 3) == 1); CHECK(imbue_bonus(w, 4) == 2);
     CHECK(imbue_bonus(w, 5) == 2); CHECK(imbue_bonus(w, 6) == 3); CHECK(imbue_bonus(w, 9) == 3);
     CHECK(imbue_bonus(WeaponImbueSpec{}, 6) == 0);
