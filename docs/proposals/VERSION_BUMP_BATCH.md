@@ -2530,6 +2530,56 @@ Additive (gap list; T&C approved the shapes). No golden changes, integer math on
   hours duration`, `effect duplicates is self only`, `effects[<i>]: weapon_imbue is only allowed as the first effect` (and duplicates).
   Negative cases: `tests/validate/cases/duplicates_*`, `weapon_imbue_*` (8).
 
+### 7.2zg Spell batch zg (rules side)
+
+Additive (11 spells; key names frozen by T&C, all defined once in `engine/rules/content/src/spell_keys_zg.hpp` and
+`tools/validate/checks_v4.py` `ZG_KEYS`). No golden changes, integer math only. Groups land one commit each.
+
+- **Haste / Slow** (spell@1 kinds `haste`, `slow`; first effect only; concentration required). The loader expands each into a
+  marker row (`ModStat::Haste` / `ModStat::Slow`, the rules' existing markers) plus three number rows on the same targets:
+  Haste +2 AC, advantage on Dex saves, speed x2 (the restricted extra action and lethargy when it ends are the marker's); Slow
+  -2 AC, -2 on Dex saves, speed x1/2 (no reactions, an action or a bonus action, one attack per turn are the marker's). `slow`
+  takes `ability` (Wis): one save per target gates every row (the Bane gate, 7.2ze; extra rows no longer inherit the gate,
+  `effect_view`), and the save repeats at the end of each of the target's turns. **Spell-failure roll**: a slowed creature that
+  casts a 1-action spell rolls a d20 from the PRNG (only then): `FeatureTriggered{actor = target = the caster, a = Slow's spell
+  id, b = d20, c = 1 if 11+}`; on 11+ the spell doesn't take effect and the stream shows `SpellCountered` (v1: slot and action
+  spent, the SRD's completion on the next turn is deferred).
+  Strings: `effect haste needs concentration`, `effect slow needs concentration`, `effect slow needs ability`,
+  `effect haste takes no ability`, `effects[<i>]: haste is only allowed as the first effect` (same for `slow`).
+- **Spiritual Weapon** (spell@1 kind `summon_weapon`, first effect only): `{damage: {dice: 1d8, type: force},
+  add_spellcasting_modifier: true, upcast_every: 2, reach_ft: 5, move_ft: 20}` + `scaling.upcast.dice 1` maps onto the R-G12
+  PR 3 `SummonWeapon` (a token, not a creature: no HP, not a target, no turn; hashed in 0xAF). The cast may attack at once;
+  every later attack takes a bonus action (`ActionKind::Attack` with the token, rules-side unchanged). Defaults: upcast_every 2,
+  reach_ft 5, move_ft 20. Strings: `effect damage invalid`, `effect upcast_every must be an integer 1..9`,
+  `effect reach_ft must be a positive multiple of 5`, `effect move_ft must be a positive multiple of 5`,
+  `effect summon_weapon needs concentration or a rounds, minutes or hours duration`,
+  `effects[<i>]: summon_weapon is only allowed as the first effect`.
+- **False Life / Heroism** (spell@1 kind `temp_hp`, first effect only; `SpellEffectKind::TempHp`, `TempHpSpec`): exactly one of
+  `dice` (rolled, its flat included: False Life `1d4+4`) or `ability: spellcasting` (the caster's modifier: Heroism);
+  `per_slot_above` adds n per slot above the spell's (False Life 5); `per_turn` grants it again at the start of each of the
+  target's turns while the spell lasts (the existing TempHp per_turn row; also granted at the cast); `condition_immunity`
+  (Heroism `[frightened]`) makes the target immune from any source while the spell lasts (`ActiveSpellEffect` with
+  `immune_from_types = kImmuneFromAnySource`, read by `immune_to`; not hashed, derived). The larger temp HP pool is kept.
+  Strings: `effect temp_hp needs exactly one of dice or ability`, `effect dice invalid`, `effect ability must be spellcasting`,
+  `effect per_slot_above must be an integer 1..50`, `effect per_turn must be a boolean`,
+  `effect condition_immunity must be a non-empty list of conditions`, `effect condition_immunity items must be unique`,
+  `effect temp_hp per_turn or condition_immunity needs concentration or a rounds, minutes or hours duration`,
+  `effects[<i>]: temp_hp is only allowed as the first effect`.
+
+- **Group 4 — Acid Arrow (`on_miss`).** `spell_attack` takes `"on_miss": "half"` (first effect only): a miss deals half the freshly rolled initial damage (rounded down); a miss against a Mirror Image duplicate deals nothing. Riders with `applies_to: affected` (the 2d4 `delayed_damage` at the end of the target's next turn) apply on a hit only. Strings: `effect on_miss must be half`, `effects[<i>]: on_miss is only allowed on the first effect`. No new events; no tags.
+
+- **Group 5 — Hellish Rebuke (`casting_time.trigger.kind: damaged`).** A reaction spell offered in the existing Damaged window (no new window, no new event) to the creature that was damaged, when the damager is a living other creature the caster can see (`requires_sight` is required; rules5e::sight, no sight hook = sees) and within the spell's range (EncounterHooks::sight_facts distance; no hook = in range). One option per available slot (Auto takes the lowest). Taking it spends the reaction and the slot, emits SpellCast (actor caster, target damager, a spell, b slot), opens the counter window, resolves the save effect against the damager after the damage lands (the reactor must still stand), then SpellResolved / SpellCountered. The effect must be `save` and the range `ranged`. Strings: `casting_time.trigger.kind must be being_hit, spell_cast or damaged` (replaces the two-kind wording), `casting_time.trigger.kind damaged needs a save effect`, `casting_time.trigger.kind damaged needs requires_sight`, `casting_time.trigger.kind damaged needs a ranged range`.
+
+- **Group 6 — Protection from Energy (`damage_type_choices`).** An `apply_modifier` effect (first effect only) with a `resistance` modifier may list `damage_type_choices` (2..13 distinct damage types, including the modifier's `damage_type`). The list fills the existing SpellDef::damage_choices: the cast needs ActionRequest::damage_choice (1 + index in JSON order; refused with the existing `choose a damage type` / `bad damage choice`), and the applied resistance row carries the chosen type. AI auto-casts pick the first entry (existing behaviour). No new events; no tags. Strings: `effect damage_type_choices needs a resistance modifier`, `effect damage_type_choices must be 2..13 distinct damage types`, `effect damage_type_choices must include the modifier damage_type`, `effects[<i>]: damage_type_choices is only allowed on the first effect`.
+
+- **Group 7 — Blur, and `exempt_senses` shared with Mirror Image.** One key and one list for illusions that fool sight: `exempt_senses`, distinct entries from `blindsight`, `tremorsense`, `truesight` (schema `#/$defs/exempt_senses`; loader `read_exempt_senses`, constant `zg::kExemptSenses`). Rules: `fooled_by_illusion(s, a, t, mask)` replaces 7.2zf's `fooled_by_duplicates`. An attacker is not fooled when it cannot see the target (Blinded or otherwise), or has a listed sense in range: blindsight by distance, truesight by distance with line of sight, tremorsense by distance on the same surface. Without a sight hook, having the sense counts as in range. `duplicates` reads `exempt_senses` (DuplicatesSpec::exempt_senses); when the key is absent the default is [blindsight, truesight], the 7.2zf behaviour, so the goldens are unchanged. Blur is an `apply_modifier` with an `attacks_against` disadvantage row plus `exempt_senses` (ModifierSpec::exempt_senses). That row is gated off for attackers that are not fooled. It is hashed in modifiers_digest under sub-byte 0x5E, and only when non-zero; this is not a SIM_EVENTS registry tag. Strings: `effect exempt_senses must be distinct senses (blindsight, tremorsense, truesight), at least one`, `effect exempt_senses needs an attacks_against modifier`.
+
+- **T&C follow-ups on #263.** (1) tools/validate now allows `targets` on `haste` and `slow` effects, as the loader does (Slow `targets: {count: 6}`). Positive specimens are in tests/validate/fixtures/spell_batch_zg (test_spell_batch_zg.py); the negative case `targets_on_summon_weapon` keeps the existing wording for kinds still refused. (2) Acid Arrow upcast: content uses `"scaling": {"upcast": {"dice": 1}}` on the spell. The loader copies `upcast_dice` to the `delayed_damage` rider (#120 follow-up), so at slot 3 the initial damage is 5d4 and the delayed damage 3d4 (rules and loader tests).
+
+- **Group 8 — Faerie Fire (`outlined`, a state).** New modifier stat `outlined`: ModStat::Outlined is appended and is a marker with no number (common v2 modifier enum, same allowed keys as `no_reactions`). Content applies it with an `apply_modifier` effect behind the Bane-style save gate (`save: {ability: dex, dc: caster}`). While a creature carries it: attack rolls against it have advantage when the attacker can see it (rules5e::sight with the outlined subject; never for a Blinded attacker); its Invisible condition gives no benefit (AttackContext::target_outlined / attacker_outlined suppress Invisible's attack modes); and rules5e::sight treats it as not invisible (SightFacts::subject_invisible is cleared). No new events or tags; the row is hashed as an ordinary modifier row. Strings: none new (an unknown stat stays `effect modifier stat invalid`).
+
+- **Group 9: Hypnotic Pattern (`ends_on` damage / `shake_awake`).** This reuses the existing `ends_on` vocabulary and adds `damage` (kEndsOnDamage 8, which sets ActiveSpellEffect::ends_on_damage the way Sleep does) and `shake_awake` (kEndsOnShakeAwake 16). `ends_on` is now also allowed on a `save` effect that applies a condition, with the same lasting-duration rule. Shake-awake reuses the existing Wake action (`ActionRequest::special` 5, the action, any creature other than the target, `target_within_5ft`): it now ends a target's effects with `ends_on_damage` (Sleep, unchanged) or with the shake_awake bit. Content: a `save` (Wis, `condition: charmed`) plus an `affected` `apply_condition` (incapacitated), both `ends_on: [damage, shake_awake]`. No new action, event, or tag; 0xD4 stays free. Speed 0 (SRD): while an effect with the shake_awake bit lasts, its target's speed is 0 in every mode (modified_speed, so the turn budget, Dash, mode_speed and move_allowance); once it is woken or damaged the next turn's budget has the speed again. No new key or string. Strings: `effect ends_on must be a non-empty list of attack, cast, harmful_cast, damage, shake_awake` (replaces the three-item wording; the schema-path expect `ends_on_bad_item` is updated), `effect ends_on on a save effect needs a condition`.
+
 ## 8. Migrations and inert markers
 
 ### 8.1 Chain
