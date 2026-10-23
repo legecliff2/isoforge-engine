@@ -658,3 +658,25 @@ All 33 srd51.core monster@4 files are now monster@5 with `derive: true`. `goblin
   - black bear bite and claws `attack_bonus 3`;
   - ghoul bite `attack_bonus 2`.
 - **The loader:** until Engine Core wires `derive`, it uses the printed numbers exactly as written, so no fight changes. `rules5e::derive_monster` reproduces all 33 with no errors (cross-checked locally).
+
+## 15. srd51.core PCs at character@5 with `derive: true` (docs/proposals/EQUIPMENT.md 1, 2, 3; PR C)
+
+All 63 srd51.core PCs are now character@5 with `derive: true`. The sample pack's character@3 stays as it is: @3 -> @5 is not an identity migration, and the vertical slice goldens read it.
+
+- **Equipment:**
+  - The equipped weapon has `hand: "main"` and the equipped shield `hand: "off"`. Backup weapons are carried.
+  - Every weapon attack names its `weapon` (an `equipment[]` item) and `use` (`two_hands` for two-handed and versatile grips, `thrown` for thrown uses). These are character@5 action keys, appended like monster@5's. The monk's `unarmed_strike` stays underived (an engine built-in).
+- **Ammunition:**
+  - Ammunition weapons are item@2 with `ammo_kind`.
+  - Starting ammunition is a stack: 20 `srd51.item.arrow` / `crossbow_bolt` / `sling_bullet`, or 50 `blowgun_needle`, replacing the descriptive `arrows_20` / `crossbow_bolts_20` strings.
+  - The ammunition items are per piece. `weight_oz` is omitted, and so is the sling bullet's `cost_cp` (not whole numbers).
+- **Proficiencies:**
+  - `weapon_proficiencies` / `armor_proficiencies` are the SRD class plus race grants. The mirror is `checks_v4.SRD_CLASS_PROFICIENCIES` / `SRD_RACE_WEAPON_PROFICIENCIES`, pinned to `tests/validate/data/srd51_proficiencies_5e_database_a6212be.json`.
+  - A named weapon covered by `simple` / `martial` is not listed again.
+  - A missing grant is an error: `<id>: <key> missing '<entry>' (SRD 5.1 class / race)`. An extra one is a warning: `<id>: <key> '<entry>' is not granted by the SRD 5.1 class / race`.
+- **Derivation** (`checks_v4.check_character_derive`, rules5e `compute_ac` / `derive_weapon_attack` semantics):
+  - AC comes from the equipped armor and shield, plus feature bases: barbarian and monk `unarmored_defense` (the monk's is lost with a shield), `draconic_resilience` 13 + Dex, and `armor_of_shadows` (Mage Armor counted as in force).
+  - To-hit adds PB only with proficiency. Monk Martial Arts uses the higher of Str / Dex with monk weapons.
+  - Feature rows (Defense, Archery, Dueling) are applied by the engine on top, so they are never part of the printed numbers.
+  - The strings follow the 5.6 forms (`<id>: derived AC ...`, `<id>.<action>: derived to-hit ...`, `... derived damage ...`).
+  - All 63 PCs reproduce their printed AC and attacks (also cross-checked locally against the rules5e functions).

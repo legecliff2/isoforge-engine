@@ -96,13 +96,11 @@ def morningstar() -> dict:
 
 
 def fighter5() -> dict:
+    """srd51.core fighter_level_1 (character@5, derive on) plus a javelin stack."""
     d = copy.deepcopy(core("characters/fighter_level_1.json"))
-    assert d["$schema"] == "character@4", d["$schema"]
-    d.update({"$schema": "character@5", "id": "test.v4.fighter5", "derive": True,
-              "weapon_proficiencies": ["simple", "martial"], "armor_proficiencies": ["light", "medium", "heavy", "shields"]})
-    objs = [e for e in d.get("equipment") or [] if isinstance(e, dict)]
-    d["equipment"] = objs + [{"item": "srd51.item.longsword", "equipped": True, "hand": "main"},
-                             {"item": "srd51.item.javelin", "count": 4}]
+    assert d["$schema"] == "character@5", d["$schema"]
+    d["id"] = "test.v4.fighter5"
+    d["equipment"] = d["equipment"] + [{"item": "srd51.item.javelin", "count": 4}]
     return d
 
 
@@ -134,7 +132,7 @@ class IdentityMigration(unittest.TestCase):
                     d["$schema"] = RESTAMP[d["$schema"]]
                     f.write_text(json.dumps(d, indent=2), encoding="utf-8")
                     n += 1
-            self.assertGreater(n, 100)
+            self.assertGreater(n, 30)   # the item@1 files (monsters and PCs are already @5)
             w_new: list[str] = []
             self.assertEqual(vp.validate_pack(dst, reg, by_tag, w_new), [])
         w_old: list[str] = []
@@ -192,7 +190,8 @@ class TagTable(unittest.TestCase):
     def test_tag_table_matches_the_schemas(self):
         import checks_v4
         c2 = schema("common/v2.schema.json")["$defs"]
-        for typ, sb in (("monster", schema("monster/v5.schema.json")["$defs"]["stat_block"]), ("character", c2["stat_block"])):
+        for typ, sb in (("monster", schema("monster/v5.schema.json")["$defs"]["stat_block"]),
+                        ("character", schema("character/v5.schema.json")["$defs"]["stat_block"])):
             tag = f"{typ}@5"
             declared = set(sb["properties"]) | set(schema(f"{typ}/v5.schema.json")["properties"])
             self.assertEqual(set(checks_v4.TAG_TABLE[tag].top_level_keys), declared, tag)
@@ -403,6 +402,109 @@ class DeriveCheck(unittest.TestCase):
         d = mon("guard"); d["armor_class"]["value"] = 17; d["derive"] = False
         e, _w = self.run_one(d)
         self.assertEqual(e, [])
+
+
+DB_WEAPON = {"simple-weapons": "simple", "martial-weapons": "martial", "hand-crossbows": "srd51.item.crossbow_hand",
+             "crossbows-light": "srd51.item.crossbow_light", "light-hammers": "srd51.item.light_hammer"}
+DB_ARMOR = {"light-armor": {"light"}, "medium-armor": {"medium"}, "all-armor": {"light", "medium", "heavy"}, "shields": {"shields"}}
+AMMO_ITEM = {"arrow": ("srd51.item.arrow", 20), "bolt": ("srd51.item.crossbow_bolt", 20),
+             "sling_bullet": ("srd51.item.sling_bullet", 20), "needle": ("srd51.item.blowgun_needle", 50)}
+
+
+def db_weapon(idx: str) -> str:
+    return DB_WEAPON.get(idx, "srd51.item." + idx[:-1].replace("-", "_"))   # 'longswords' -> srd51.item.longsword
+
+
+def pc(lid: str) -> dict:
+    d = copy.deepcopy(core(f"characters/{lid}.json"))
+    d["id"] = f"test.v4.{lid}"
+    return d
+
+
+class PcConversion(unittest.TestCase):
+    """PR C: the 63 srd51.core PCs at character@5 with derive on (EQUIPMENT 2.1, 2.5, 3.1, 7.2)."""
+
+    def test_proficiency_table_matches_5e_database(self):
+        import checks_v4
+        db = json.loads((ROOT / "tests/validate/data/srd51_proficiencies_5e_database_a6212be.json").read_text(encoding="utf-8"))
+        for cls, profs in db["classes"].items():
+            w = {db_weapon(p) for p in profs if p not in DB_ARMOR}
+            a = set().union(*[DB_ARMOR[p] for p in profs if p in DB_ARMOR])
+            self.assertEqual(checks_v4.SRD_CLASS_PROFICIENCIES[cls], (w, a), cls)
+        self.assertEqual(set(checks_v4.SRD_CLASS_PROFICIENCIES), set(db["classes"]))
+        dwarf = {db_weapon(p) for p in db["traits"]["dwarven-combat-training"]["proficiencies"]}
+        elf = {db_weapon(p) for p in db["traits"]["elf-weapon-training"]["proficiencies"]}
+        self.assertEqual(checks_v4.SRD_RACE_WEAPON_PROFICIENCIES, {"dwarf": dwarf, "hill_dwarf": dwarf, "high_elf": elf})
+
+    def test_all_pcs_converted(self):
+        n = 0
+        for f in sorted((CORE / "characters").glob("*.json")):
+            d = json.loads(f.read_text(encoding="utf-8"))
+            n += 1
+            self.assertEqual((d["$schema"], d["derive"]), ("character@5", True), f.name)
+            self.assertIn("weapon_proficiencies", d)
+            self.assertIn("armor_proficiencies", d)
+            items = {e["item"]: e for e in d["equipment"] if isinstance(e, dict)}
+            for e in items.values():
+                if e.get("equipped"):
+                    cat = json.loads((CORE / "items" / (e["item"].split(".")[-1] + ".json")).read_text())["category"]
+                    if cat in ("weapon", "shield"):
+                        self.assertEqual(e.get("hand"), "off" if cat == "shield" else "main", f"{f.name}: {e}")
+            for a in d["actions"]:
+                if a["kind"] in ("melee_weapon_attack", "ranged_weapon_attack") and a["id"] != "unarmed_strike":
+                    self.assertIn(a.get("weapon"), items, f"{f.name}: {a['id']}")
+            # SRD starting ammunition: 20 arrows / bolts / sling bullets, 50 needles, for every ammunition weapon carried
+            self.assertFalse([e for e in d["equipment"] if isinstance(e, str) and e in ("arrows_20", "crossbow_bolts_20")])
+            for iid in items:
+                it = json.loads((CORE / "items" / (iid.split(".")[-1] + ".json")).read_text())
+                if it.get("ammo_kind") and it["category"] == "weapon":
+                    stack, count = AMMO_ITEM[it["ammo_kind"]]
+                    self.assertEqual(items.get(stack, {}).get("count"), count, f"{f.name}: {iid}")
+        self.assertEqual(n, 63)
+
+    def test_sample_pack_pc_left_at_3(self):
+        sample = ROOT / "content/packs/sample.vertical_slice"
+        tags = {json.loads(f.read_text())["$schema"] for f in sample.glob("characters/*.json")}
+        self.assertEqual(tags, {"character@3"})
+
+    def test_no_proficiency_warnings(self):
+        _e, w = h.validate_docs({"characters/x.json": pc("sample_high_elf_wizard_1")})
+        self.assertFalse([x for x in w if "proficienc" in x], w)
+
+    def expect(self, d, msg, warn=False):
+        e, w = h.validate_docs({f"characters/{d['id'].split('.')[-1]}.json": d})
+        pool = w if warn else e
+        self.assertTrue(any(msg in x for x in pool), (msg, e, w))
+
+    def test_proficiency_findings(self):
+        d = pc("fighter_level_1"); d["armor_proficiencies"].remove("heavy")
+        self.expect(d, "test.v4.fighter_level_1: armor_proficiencies missing 'heavy' (SRD 5.1 class / race)")
+        d = pc("sample_hill_dwarf_cleric_1"); d["weapon_proficiencies"] = ["simple"]
+        self.expect(d, "test.v4.sample_hill_dwarf_cleric_1: weapon_proficiencies missing 'srd51.item.battleaxe' (SRD 5.1 class / race)")
+        d = pc("wizard_level_1"); d["weapon_proficiencies"].append("martial")
+        self.expect(d, "test.v4.wizard_level_1: weapon_proficiencies 'martial' is not granted by the SRD 5.1 class / race", warn=True)
+
+    def test_derive_mismatches(self):
+        d = pc("barbarian_level_1"); d["armor_class"]["value"] = 13
+        self.expect(d, "test.v4.barbarian_level_1: derived AC 14 != printed 13")
+        d = pc("fighter_level_5"); act(d, "longsword")["to_hit"] = 8
+        self.expect(d, "test.v4.fighter_level_5.longsword: derived to-hit +7 != printed +8")
+        d = pc("fighter_level_5"); act(d, "longsword")["damage"][0]["dice"] = "1d8+6"   # Dueling is the engine's, never baked
+        self.expect(d, "test.v4.fighter_level_5.longsword: derived damage 1d8+4 != printed 1d8+6")
+        d = pc("barbarian_level_1"); del act(d, "greataxe")["use"]
+        self.expect(d, "test.v4.barbarian_level_1.greataxe: weapon: a two-handed weapon needs both hands")
+        d = pc("cleric_level_1"); d["weapon_proficiencies"] = []   # not proficient: no PB on the mace (and the missing error)
+        self.expect(d, "test.v4.cleric_level_1.mace: derived to-hit +2 != printed +4")
+        d = pc("wizard_level_1"); act(d, "dagger")["weapon"] = "srd51.item.rapier"
+        self.expect(d, "/actions/0/weapon: 'srd51.item.rapier' is not listed in equipment[]")
+
+    def test_monk_shield_loses_unarmored_defense(self):
+        d = pc("monk_level_5")
+        d["equipment"].append({"item": "srd51.item.shield", "equipped": True, "hand": "off"})
+        # 10 + Dex 4 + shield 2 = 16 (Monk Unarmored Defense is ineligible with a shield): equals the printed 16 by coincidence,
+        # so print 18 (what stacking would give) and expect the mismatch.
+        d["armor_class"]["value"] = 18
+        self.expect(d, "test.v4.monk_level_5: derived AC 16 != printed 18")
 
 
 class StructuralChecks(unittest.TestCase):

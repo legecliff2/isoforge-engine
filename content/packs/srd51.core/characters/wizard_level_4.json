@@ -1,5 +1,6 @@
 {
-  "$schema": "character@4",
+  "$schema": "character@5",
+  "derive": true,
   "id": "srd51.character.wizard_level_4",
   "name": "Wizard, level 4 (School of Evocation)",
   "source": {
@@ -83,17 +84,27 @@
   "equipment": [
     {
       "item": "srd51.item.dagger",
-      "equipped": true
+      "equipped": true,
+      "hand": "main"
     },
     "component_pouch",
     "scholars_pack",
     "spellbook"
   ],
+  "weapon_proficiencies": [
+    "srd51.item.crossbow_light",
+    "srd51.item.dagger",
+    "srd51.item.dart",
+    "srd51.item.quarterstaff",
+    "srd51.item.sling"
+  ],
+  "armor_proficiencies": [],
   "actions": [
     {
       "id": "dagger",
       "name": "Dagger",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.dagger",
       "to_hit": 4,
       "reach": 5,
       "targets": 1,
@@ -113,6 +124,8 @@
       "id": "dagger_thrown",
       "name": "Dagger (thrown)",
       "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.dagger",
+      "use": "thrown",
       "to_hit": 4,
       "range": [
         20,

@@ -83,6 +83,13 @@ VALUABLES = [
     ('diamond', 'valuable', 'Revivify'),
 ]
 
+# Ammunition weapons are item@2 with ammo_kind (EQUIPMENT 2.5); ammunition is item@2 'ammunition', one document per piece.
+# 5e-database a6212be sells by the bundle: arrows / bolts 1 gp per 20 (5 cp each), needles 1 gp per 50 (2 cp each), sling
+# bullets 4 cp per 20 (0.2 cp: no integer cost_cp). No per-piece weight is a whole number of ounces, so weight_oz is omitted.
+AMMO_KIND = {'blowgun': 'needle', 'crossbow_hand': 'bolt', 'crossbow_heavy': 'bolt', 'crossbow_light': 'bolt',
+             'longbow': 'arrow', 'shortbow': 'arrow', 'sling': 'sling_bullet'}
+AMMUNITION = [('arrow', 'arrow', 5), ('crossbow_bolt', 'bolt', 5), ('sling_bullet', 'sling_bullet', None), ('blowgun_needle', 'needle', 2)]
+
 # item@2 light gear (docs/proposals/EQUIPMENT.md 6.2), from 5e-database a6212be 5e-SRD-Equipment.json (adventuring-gear):
 # (local_id, cost_cp, weight_oz, hands, light (bright_ft, dim_ft, shape, duration_rounds, fuel, states) | None, torch_attack)
 # 1 hour = 600 rounds, 6 hours per flask = 3600. Descriptions are the SRD text verbatim (paragraphs joined by a blank line).
@@ -128,9 +135,10 @@ class Srd51Equipment(unittest.TestCase):
         self.assertEqual(sum(1 for a in ARMOR if a[1] == "shield"), 1)
         self.assertEqual(len(VALUABLES), 1)
         files = sorted(p.stem for p in ITEMS.glob("*.json"))
+        self.assertEqual(len(AMMUNITION), 4)
         self.assertEqual(len(LIGHT_GEAR), 7)
         self.assertEqual(files, sorted([w[0] for w in WEAPONS] + [a[0] for a in ARMOR] + [v[0] for v in VALUABLES]
-                                       + [g[0] for g in LIGHT_GEAR]),
+                                       + [a[0] for a in AMMUNITION] + [g[0] for g in LIGHT_GEAR]),
                          "no extra or missing item files")
 
     def test_manifest_lists_every_item(self):
@@ -143,7 +151,10 @@ class Srd51Equipment(unittest.TestCase):
         for lid, cls, reach, rng, dmg, vers, props, cost, oz in WEAPONS:
             with self.subTest(lid):
                 d = load(lid)
-                self.assertEqual((d["$schema"], d["id"], d["category"]), ("item@1", f"srd51.item.{lid}", "weapon"))
+                self.assertEqual((d["$schema"], d["id"], d["category"]),
+                                 ("item@2" if lid in AMMO_KIND else "item@1", f"srd51.item.{lid}", "weapon"))
+                self.assertEqual(d.get("ammo_kind"), AMMO_KIND.get(lid))
+                self.assertEqual("ammunition" in props, lid in AMMO_KIND)
                 self.assertEqual(d["weapon_class"], cls)
                 self.assertEqual(d.get("reach"), reach)
                 self.assertEqual(tuple(d["range"]) if "range" in d else None, rng)
@@ -180,6 +191,15 @@ class Srd51Equipment(unittest.TestCase):
                 self.assertNotIn("weight_oz", d)  # the SRD gives none
                 self.assertIn(mention, d["description"])
                 self.assertEqual(set(d), {"$schema", "id", "name", "source", "category", "description"})
+
+    def test_ammunition(self):
+        for lid, kind, cost in AMMUNITION:
+            with self.subTest(lid):
+                d = load(lid)
+                self.assertEqual((d["$schema"], d["id"], d["category"], d["ammo_kind"]), ("item@2", f"srd51.item.{lid}", "ammunition", kind))
+                self.assertEqual(d.get("cost_cp"), cost)
+                self.assertNotIn("weight_oz", d)
+        self.assertEqual(set(AMMO_KIND.values()), {a[1] for a in AMMUNITION})
 
     def test_light_gear(self):
         for lid, cost, oz, hands, light, torch in LIGHT_GEAR:
