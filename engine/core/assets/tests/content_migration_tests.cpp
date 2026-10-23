@@ -17,15 +17,15 @@ SchemaRegistry make() {
 
 TEST_CASE("content schemas: chains are complete") {
     CHECK(make().check_chains().empty());
-    CHECK(make().current_version("monster") == 4u);
-    CHECK(make().current_version("character") == 4u);
+    CHECK(make().current_version("monster") == 5u);
+    CHECK(make().current_version("character") == 5u);
 }
 
 TEST_CASE("monster 1->2: presentation.ai moves to behavior.ai") {
     auto r = make().load_text(R"({"$schema":"monster@1","id":"x.monster.a",
         "presentation":{"ai":"scripts/ai/a.luau","sprite":"s.png"}})");
     REQUIRE_MESSAGE(r.ok, r.error);
-    CHECK(r.data["$schema"] == "monster@4");
+    CHECK(r.data["$schema"] == "monster@5");
     CHECK(r.data["behavior"] == Json{{"ai", "scripts/ai/a.luau"}});
     CHECK(r.data["presentation"] == Json{{"sprite", "s.png"}});
     CHECK(monster_ai_script(r.data) == "scripts/ai/a.luau");
@@ -44,15 +44,15 @@ TEST_CASE("monster 1->2: no ai is a no-op; v2 passes through; conflicts rejected
     REQUIRE(v2.ok);
     CHECK(monster_ai_script(v2.data) == "scripts/b.luau");
     CHECK_FALSE(make().load_text(R"({"$schema":"monster@1","behavior":{},"presentation":{"ai":"x"}})").ok);
-    CHECK_FALSE(make().load_text(R"({"$schema":"monster@5"})").ok);
+    CHECK_FALSE(make().load_text(R"({"$schema":"monster@6"})").ok);
 }
 
-TEST_CASE("frozen fl1 goblin (monster@1, no ai) migrates to monster@4; only effects marked inert") {
+TEST_CASE("frozen fl1 goblin (monster@1, no ai) migrates to monster@5; only effects marked inert") {
     const std::string path = kRoot + "/tests/compat/fl1/sample.vertical_slice/monsters/goblin.json";
     auto r = make().load_file(path);
     REQUIRE_MESSAGE(r.ok, r.error);
     CHECK(r.declared == SchemaRef{"monster", 1});
-    CHECK(r.data["$schema"] == "monster@4");
+    CHECK(r.data["$schema"] == "monster@5");
     CHECK(r.data["id"] == "srd51.monster.goblin");
     CHECK_FALSE(monster_ai_script(r.data));
     // Everything except $schema and the 2 -> 3 inert markers is identical to the source.
@@ -77,7 +77,7 @@ TEST_CASE("monster 2->3: features/traits effects marked inert; @3 passes through
     auto r = make().load_text(R"({"$schema":"monster@2","traits":[{"id":"t","effect":{"kind":"damage_bonus","amount":2}},
         {"id":"plain"}],"features":[{"id":"f","effect":{"kind":"self_heal"}}],"actions":[{"id":"a"}]})");
     REQUIRE_MESSAGE(r.ok, r.error);
-    CHECK(r.data["$schema"] == "monster@4");
+    CHECK(r.data["$schema"] == "monster@5");
     CHECK(r.data["traits"][0]["effect"]["inert"] == true);
     CHECK_FALSE(r.data["traits"][1].contains("effect"));
     CHECK(r.data["features"][0]["effect"]["inert"] == true);
@@ -94,13 +94,13 @@ TEST_CASE("sample pack goblin (monster@1 with presentation.ai) resolves behavior
     if (r.data.contains("presentation")) CHECK_FALSE(r.data["presentation"].contains("ai"));
 }
 
-TEST_CASE("item@1 documents load (type registered at version 1)") {
-    CHECK(make().current_version("item") == 1u);
+TEST_CASE("item@1 documents load (migrated to item@2)") {
+    CHECK(make().current_version("item") == 2u);
     auto r = make().load_file(kRoot + "/tests/validate/fixtures/v4/pack/items/dagger.json");
     REQUIRE_MESSAGE(r.ok, r.error);
-    CHECK(r.current == SchemaRef{"item", 1});
+    CHECK(r.current == SchemaRef{"item", 2});
     CHECK(r.data.contains("id"));
-    CHECK_FALSE(make().load_text(R"({"$schema":"item@2","id":"x"})").ok);
+    CHECK_FALSE(make().load_text(R"({"$schema":"item@3","id":"x"})").ok);
 }
 
 TEST_CASE("3 -> 4 migration: markers, frozen effect kinds, merged inert_mechanics, purity") {
@@ -115,7 +115,7 @@ TEST_CASE("3 -> 4 migration: markers, frozen effect kinds, merged inert_mechanic
     REQUIRE_MESSAGE(r.ok, r.error);
     CHECK(r.declared == SchemaRef{"monster", 3});
     const Json& d = r.data;
-    CHECK(d["$schema"] == "monster@4");
+    CHECK(d["$schema"] == "monster@5");
     CHECK(d["inert_mechanics"] == Json::array({"bonus_actions", "damage[1..]", "reactions", "spellcasting"}));   // merged, sorted
     CHECK(d["reactions"][0]["inert"] == true);   // every reactions[] entry, special or not
     CHECK(d["reactions"][1]["inert"] == true);
@@ -177,7 +177,42 @@ TEST_CASE("3 -> 4 parity: T&C's at3 fixtures migrate to the Python reference's e
         CHECK(r.declared == SchemaRef{cs.type, 3});
         std::ifstream f(base + "expected4/" + cs.name + ".json");
         REQUIRE(f.good());
-        const Json expected = Json::parse(f);
+        Json expected = Json::parse(f);
+        CHECK(r.data["$schema"] == std::string(cs.type) + "@5");   // 4 -> 5 is identity (EQUIPMENT.md 7)
+        expected["$schema"] = r.data["$schema"];
         CHECK(r.data == expected);   // nlohmann sorts keys: equal as JSON, not byte-identical
+    }
+}
+
+// EQUIPMENT.md section 7 (#245): item 1 -> 2, monster 4 -> 5 and character 4 -> 5 are identity.
+TEST_CASE("item@2 / monster@5 / character@5: identity migrations, same body loads to the same data") {
+    const SchemaRegistry reg = make();
+    CHECK(reg.current_version("item") == 2u);
+    CHECK(reg.current_version("monster") == 5u);
+    CHECK(reg.current_version("character") == 5u);
+    struct Case { const char* type; uint32_t old_v; const char* body; };
+    const Case cases[] = {
+        {"item", 1, R"("id":"t.item.dagger","name":"Dagger","category":"weapon","cost_gp":"2","weight_lb":"1")"},
+        {"monster", 4, R"("id":"t.monster.m","name":"M","inert_mechanics":["reactions"],"reactions":[{"id":"r","inert":true}],"traits":[{"id":"t","effect":{"kind":"damage_bonus","amount":2}}])"},
+        {"character", 4, R"("id":"t.character.c","name":"C","equipment":["longsword",{"item":"srd51.item.shield","equipped":true}])"},
+    };
+    for (const auto& c : cases) {
+        const std::string type = c.type;
+        const std::string old_doc = "{\"$schema\":\"" + type + "@" + std::to_string(c.old_v) + "\"," + c.body + "}";
+        const std::string new_doc = "{\"$schema\":\"" + type + "@" + std::to_string(c.old_v + 1) + "\"," + c.body + "}";
+        auto o = reg.load_text(old_doc);
+        auto n = reg.load_text(new_doc);
+        REQUIRE_MESSAGE(o.ok, o.error);
+        REQUIRE_MESSAGE(n.ok, n.error);
+        CHECK(o.declared == SchemaRef{type, c.old_v});
+        CHECK(n.declared == SchemaRef{type, c.old_v + 1});
+        CHECK(o.current == SchemaRef{type, c.old_v + 1});
+        CHECK(o.data == n.data);                       // the step only rewrites $schema
+        Json src = Json::parse(old_doc);
+        Json body = o.data;
+        src.erase("$schema");
+        body.erase("$schema");
+        CHECK(body == src);                            // and nothing else
+        CHECK(o.data.dump() == n.data.dump());         // byte-identical canonical form
     }
 }

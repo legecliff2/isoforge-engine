@@ -3736,7 +3736,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         ctx.ranged_disadvantage = req.beyond_normal_range || req.ranged_hostile_within_5ft;   // EC spider follow-up (flagged)
         ctx.slot_cast = inn == nullptr && lvl >= 1; ctx.mark_ability = req.mark_ability;   // 7.2zc
         for (Combatant* x : resolve_spell(s, ctx, a, def, lvl, T, req.target_within_5ft, out.events))
-            harmful = harmful || x->team != a.team;   // 7.2zd harmful_cast: it affected a creature of another team
+            harmful = harmful || x->team != a.team;   // 7.2zd harmful_cast (SRD): the spell affected an enemy creature, harmful or not
         ctx.slot_cast = false; ctx.mark_ability = 0;
         ctx.ranged_disadvantage = false;
         ctx.spared = nullptr; ctx.spared_no_damage = false; ctx.heighten = 0; ctx.empower = 0;
@@ -4318,6 +4318,9 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
             defer_forced(s, ctx, ev, s.hooks.shove_forced_flag ? kMovedForced : 0);
         }
     }
+    // SRD 5.1: Grapple and Shove are special melee attacks, so making one ends "ends on attack" effects (Sanctuary on the
+    // shover, Invisibility), as after do_attack
+    if (!s.effects.empty()) end_on_own_action(s, a.id, kEndsOnAttack, ev);
     check_end(s, ev);
     return out;
 }
