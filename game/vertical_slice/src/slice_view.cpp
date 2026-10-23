@@ -520,8 +520,132 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
     for (const std::string& l : vm.log) { text(l, {16, ly}, 1.5f, dim); ly += lh; }
     const std::string help = vm.status.empty() ? std::string("SPACE: STEP  A: AUTO  ARROWS: PAN  WHEEL/+/-: ZOOM  ESC: QUIT") : vm.status;
     text(help, {16, float(sh) - 16.f}, 1.f, dim);
+    draw_cover(vm, cam);
 
     ui_.prepare({{0, 0}, sw, sh, 1.f});
+}
+
+namespace {
+Color cover_color(CoverLevel level) {
+    switch (level) {
+    case CoverLevel::Half: return Color::rgba8(70, 210, 255, 230);
+    case CoverLevel::ThreeQuarters: return Color::rgba8(255, 170, 40, 235);
+    case CoverLevel::Total: return Color::rgba8(255, 64, 72, 240);
+    case CoverLevel::None: break;
+    }
+    return Color::rgba8(170, 176, 188, 190);
+}
+float cover_thickness(CoverLevel level) {
+    switch (level) {
+    case CoverLevel::Half: return 4.f;
+    case CoverLevel::ThreeQuarters: return 6.f;
+    case CoverLevel::Total: return 8.f;
+    case CoverLevel::None: break;
+    }
+    return 3.f;
+}
+const char* cover_plate(CoverLevel level) {
+    switch (level) {
+    case CoverLevel::Half: return "1/2";
+    case CoverLevel::ThreeQuarters: return "3/4";
+    case CoverLevel::Total: return "TOTAL";
+    case CoverLevel::None: break;
+    }
+    return "NONE";
+}
+const char* cover_bonus_label(CoverLevel level) {
+    switch (level) {
+    case CoverLevel::Half: return " +2";
+    case CoverLevel::ThreeQuarters: return " +5";
+    case CoverLevel::None:
+    case CoverLevel::Total: break;
+    }
+    return "";
+}
+} // namespace
+
+void SliceView::draw_cover(const ViewModel& vm, const iso2d::Camera& cam) {
+    const CoverDebugView& c = vm.cover;
+    if (!c.present && c.note.empty()) return;
+    auto name_of = [&](uint32_t id) -> std::string {
+        for (const ActorView& a : vm.actors)
+            if (a.id == id) return a.name;
+        return "?";
+    };
+    // Under the turn panel so the badge on the map and this line don't fight the HP bars.
+    const float panel_h = 30.f + 20.f * float(vm.actors.size());
+    if (!c.present) {
+        text(c.note, {16.f, 12.f + panel_h}, 1.5f, Color::rgba8(170, 176, 188), 32);
+        return;
+    }
+    auto center = [&](Vec2i anchor, int n) {
+        const float o = float(std::max(n, 1) - 1) * 0.5f;
+        return cam.world_to_screen(tile_center_px(float(anchor.x) + o, float(anchor.y) + o));
+    };
+    // Screen px, not a world sprite: a polyline in the iso sort would slip behind walls.
+    const Vec2f a = center(c.origin, c.origin_n);
+    const Vec2f b = center(c.target_tile, c.target_n);
+    const Color col = cover_color(c.level);
+    const float thick = cover_thickness(c.level);
+    const bool dashed = c.level == CoverLevel::None;
+    const float dx = b.x - a.x, dy = b.y - a.y;
+    const float len = std::hypot(dx, dy);
+    auto stroke = [&](Vec2f p, Vec2f q, float w, bool dash) {
+        const float sx = q.x - p.x, sy = q.y - p.y;
+        const float sl = std::hypot(sx, sy);
+        if (sl < 1.f) {
+            rect({p.x - w * 0.5f, p.y - w * 0.5f}, {w, w}, col, 30);
+            return;
+        }
+        const int n = std::max(1, int(std::ceil(sl / 6.f)));
+        for (int i = 0; i <= n; ++i) {
+            if (dash && (i % 2) == 1) continue;
+            const float t = float(i) / float(n);
+            rect({p.x + sx * t - w * 0.5f, p.y + sy * t - w * 0.5f}, {w, w}, col, 30);
+        }
+    };
+    stroke(a, b, thick, dashed);
+    const float px = len >= 1.f ? -dy / len : 0.f;
+    const float py = len >= 1.f ? dx / len : -1.f;
+    const float ux = len >= 1.f ? dx / len : 1.f;
+    const float uy = len >= 1.f ? dy / len : 0.f;
+    const Vec2f mid{(a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f};
+    auto tick = [&](Vec2f at, float half) {
+        stroke({at.x - px * half, at.y - py * half}, {at.x + px * half, at.y + py * half}, 3.f, false);
+    };
+    if (c.level == CoverLevel::Half) tick(mid, 8.f);
+    if (c.level == CoverLevel::ThreeQuarters) {
+        tick({mid.x - ux * 6.f, mid.y - uy * 6.f}, 9.f);
+        tick({mid.x + ux * 6.f, mid.y + uy * 6.f}, 9.f);
+    }
+    if (c.level == CoverLevel::Total) {
+        // A second bar plus a cross, so total cover is not only a redder line.
+        stroke({a.x + px * 4.f, a.y + py * 4.f}, {b.x + px * 4.f, b.y + py * 4.f}, thick, false);
+        tick(mid, 10.f);
+        stroke({mid.x - ux * 10.f, mid.y - uy * 10.f}, {mid.x + ux * 10.f, mid.y + uy * 10.f}, 3.f, false);
+    }
+    const float cap = 8.f;
+    const Color cap_a = c.aim ? Color::rgba8(255, 255, 255, 235) : Color::rgba8(255, 220, 60, 235);
+    rect({a.x - cap * 0.5f, a.y - cap * 0.5f}, {cap, cap}, cap_a, 31);
+    rect({b.x - cap * 0.5f, b.y - cap * 0.5f}, {cap, cap}, col, 31);
+    const char* plate = cover_plate(c.level);
+    const float scale = 2.f;
+    const float tw = float(std::char_traits<char>::length(plate)) * kCellW * scale;
+    const float th = 7.f * scale;
+    const Vec2f plate_at{mid.x - tw * 0.5f, mid.y - 18.f - th};
+    rect({plate_at.x - 4.f, plate_at.y - 3.f}, {tw + 8.f, th + 6.f}, Color::rgba8(10, 12, 18, 220), 31);
+    text(plate, plate_at, scale, col, 32);
+
+    std::string cap_line = c.aim ? "AIM " : "";
+    cap_line += name_of(c.attacker);
+    cap_line += " > ";
+    cap_line += name_of(c.target);
+    cap_line += "  ";
+    cap_line += plate;
+    cap_line += cover_bonus_label(c.level);
+    if (!c.note.empty()) { cap_line += "  "; cap_line += c.note; }
+    cap_line += "   F4 CLOSE  TAB TARGET  N ATTACKER  M AIM";
+    text(cap_line, {16.f, 12.f + panel_h}, 1.5f, col, 32);
 }
 
 void SliceView::submit(ICommandList& cl) {
