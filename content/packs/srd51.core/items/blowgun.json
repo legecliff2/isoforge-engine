@@ -1,5 +1,5 @@
 {
-  "$schema": "item@1",
+  "$schema": "item@2",
   "id": "srd51.item.blowgun",
   "name": "Blowgun",
   "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
@@ -11,5 +11,6 @@
   "damage": [
     {"flat": 1, "type": "piercing"}
   ],
-  "properties": ["ammunition", "loading"]
+  "properties": ["ammunition", "loading"],
+  "ammo_kind": "needle"
 }

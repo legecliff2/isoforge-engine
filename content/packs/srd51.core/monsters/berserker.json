@@ -1,5 +1,6 @@
 {
-  "$schema": "monster@4",
+  "$schema": "monster@5",
+  "derive": true,
   "id": "srd51.monster.berserker",
   "name": "Berserker",
   "source": {
@@ -16,6 +17,17 @@
     "value": 13,
     "note": "hide armor"
   },
+  "equipment": [
+    {
+      "item": "srd51.item.hide_armor",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.greataxe",
+      "equipped": true
+    }
+  ],
+  "hands": 2,
   "hit_points": {
     "average": 67,
     "formula": "9d8+27"
@@ -57,6 +69,8 @@
       "id": "greataxe",
       "name": "Greataxe",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.greataxe",
+      "use": "two_hands",
       "to_hit": 5,
       "reach": 5,
       "targets": 1,

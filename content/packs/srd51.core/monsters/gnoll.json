@@ -1,5 +1,6 @@
 {
-  "$schema": "monster@4",
+  "$schema": "monster@5",
+  "derive": true,
   "id": "srd51.monster.gnoll",
   "name": "Gnoll",
   "source": {
@@ -16,6 +17,24 @@
     "value": 15,
     "note": "hide armor, shield"
   },
+  "equipment": [
+    {
+      "item": "srd51.item.hide_armor",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.shield",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.spear",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.longbow"
+    }
+  ],
+  "hands": 2,
   "hit_points": {
     "average": 22,
     "formula": "5d8"
@@ -72,6 +91,10 @@
       "id": "bite",
       "name": "Bite",
       "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d4",
+        "ability": "str"
+      },
       "to_hit": 4,
       "reach": 5,
       "targets": 1,
@@ -86,6 +109,7 @@
       "id": "spear",
       "name": "Spear",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.spear",
       "to_hit": 4,
       "reach": 5,
       "targets": 1,
@@ -100,6 +124,8 @@
       "id": "spear_two_handed",
       "name": "Spear (two hands)",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.spear",
+      "use": "two_hands",
       "to_hit": 4,
       "reach": 5,
       "targets": 1,
@@ -117,6 +143,8 @@
       "id": "spear_thrown",
       "name": "Spear (thrown)",
       "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.spear",
+      "use": "thrown",
       "to_hit": 4,
       "range": [
         20,
@@ -137,6 +165,7 @@
       "id": "longbow",
       "name": "Longbow",
       "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.longbow",
       "to_hit": 3,
       "range": [
         150,

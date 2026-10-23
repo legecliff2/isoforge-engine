@@ -1,5 +1,6 @@
 {
-  "$schema": "monster@4",
+  "$schema": "monster@5",
+  "derive": true,
   "id": "srd51.monster.swarm_of_rats",
   "name": "Swarm of Rats",
   "source": {
@@ -15,6 +16,7 @@
   "armor_class": {
     "value": 10
   },
+  "hands": 0,
   "hit_points": {
     "average": 24,
     "formula": "7d8-7"
@@ -72,6 +74,10 @@
       "id": "bites",
       "name": "Bites",
       "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "dex"
+      },
       "to_hit": 2,
       "reach": 0,
       "targets": 1,
