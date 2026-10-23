@@ -1,0 +1,45 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.shillelagh",
+  "name": "Shillelagh",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "The wood of a club or a quarterstaff you are holding is imbued with nature's power. For the duration, you can use your spellcasting ability instead of Strength for the attack and damage rolls of melee attacks using that weapon, and the weapon's damage die becomes a d8. The weapon also becomes magical, if it isn't already. The spell ends if you cast it again or if you let go of the weapon.",
+  "level": 0,
+  "school": "transmutation",
+  "classes": [
+    "druid"
+  ],
+  "casting_time": {
+    "kind": "bonus_action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "mistletoe, a shamrock leaf, and a club or quarterstaff"
+    }
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1
+  },
+  "effects": [
+    {
+      "kind": "weapon_imbue",
+      "weapons": [
+        "srd51.item.club",
+        "srd51.item.quarterstaff"
+      ],
+      "ability": "spellcasting",
+      "die": 8,
+      "magical": true,
+      "ends_on_release": true
+    }
+  ]
+}

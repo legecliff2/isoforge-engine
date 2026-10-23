@@ -1,5 +1,6 @@
 {
-  "$schema": "character@4",
+  "$schema": "character@5",
+  "derive": true,
   "id": "srd51.character.druid_level_4",
   "name": "Druid, level 4 (Circle of the Land: Mountain)",
   "source": {
@@ -121,7 +122,8 @@
   "equipment": [
     {
       "item": "srd51.item.scimitar",
-      "equipped": true
+      "equipped": true,
+      "hand": "main"
     },
     {
       "item": "srd51.item.leather_armor",
@@ -129,16 +131,35 @@
     },
     {
       "item": "srd51.item.shield",
-      "equipped": true
+      "equipped": true,
+      "hand": "off"
     },
     "explorers_pack",
     "druidic_focus"
+  ],
+  "weapon_proficiencies": [
+    "srd51.item.club",
+    "srd51.item.dagger",
+    "srd51.item.dart",
+    "srd51.item.javelin",
+    "srd51.item.mace",
+    "srd51.item.quarterstaff",
+    "srd51.item.scimitar",
+    "srd51.item.sickle",
+    "srd51.item.sling",
+    "srd51.item.spear"
+  ],
+  "armor_proficiencies": [
+    "light",
+    "medium",
+    "shields"
   ],
   "actions": [
     {
       "id": "scimitar",
       "name": "Scimitar",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.scimitar",
       "to_hit": 4,
       "reach": 5,
       "targets": 1,
@@ -164,6 +185,7 @@
     "spells": [
       "srd51.spell.produce_flame",
       "srd51.spell.poison_spray",
+      "srd51.spell.shillelagh",
       "srd51.spell.cure_wounds",
       "srd51.spell.healing_word",
       "srd51.spell.thunderwave",

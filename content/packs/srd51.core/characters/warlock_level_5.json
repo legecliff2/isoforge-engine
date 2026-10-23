@@ -1,5 +1,6 @@
 {
-  "$schema": "character@4",
+  "$schema": "character@5",
+  "derive": true,
   "id": "srd51.character.warlock_level_5",
   "name": "Warlock, level 5 (The Fiend)",
   "source": {
@@ -118,20 +119,31 @@
   "equipment": [
     {
       "item": "srd51.item.dagger",
-      "equipped": true
+      "equipped": true,
+      "hand": "main"
     },
     {
       "item": "srd51.item.crossbow_light"
     },
-    "crossbow_bolts_20",
+    {
+      "item": "srd51.item.crossbow_bolt",
+      "count": 20
+    },
     "scholars_pack",
     "arcane_focus"
+  ],
+  "weapon_proficiencies": [
+    "simple"
+  ],
+  "armor_proficiencies": [
+    "light"
   ],
   "actions": [
     {
       "id": "dagger",
       "name": "Dagger",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.dagger",
       "to_hit": 5,
       "reach": 5,
       "targets": 1,
@@ -151,6 +163,7 @@
       "id": "light_crossbow",
       "name": "Light Crossbow",
       "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.crossbow_light",
       "to_hit": 5,
       "range": [
         80,

@@ -485,6 +485,43 @@
    ],
    "material": "A piece of cured leather."
   },
+  "magic-weapon": {
+   "name": "Magic Weapon",
+   "level": 2,
+   "range": "Touch",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 hour",
+   "concentration": true,
+   "casting_time": "1 bonus action",
+   "school": "transmutation",
+   "classes": [
+    "paladin",
+    "wizard"
+   ]
+  },
+  "mirror-image": {
+   "name": "Mirror Image",
+   "level": 2,
+   "range": "Self",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "1 minute",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "illusion",
+   "classes": [
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ]
+  },
   "misty-step": {
    "name": "Misty Step",
    "level": 2,
@@ -688,6 +725,25 @@
     "paladin"
    ],
    "material": "A small parchment with a bit of holy text written on it."
+  },
+  "shillelagh": {
+   "name": "Shillelagh",
+   "level": 0,
+   "range": "Touch",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "1 minute",
+   "concentration": false,
+   "casting_time": "1 bonus action",
+   "school": "transmutation",
+   "classes": [
+    "druid"
+   ],
+   "material": "Mistletoe, a shamrock leaf, and a club or quarterstaff."
   },
   "shocking-grasp": {
    "name": "Shocking Grasp",

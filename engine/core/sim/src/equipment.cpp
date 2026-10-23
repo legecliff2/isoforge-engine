@@ -107,6 +107,12 @@ std::optional<std::string> ItemDefTable::add(const Json& doc) {
         w.martial = doc.value("weapon_class", "") == "martial";
         if (props & rules5e::kWeaponAmmunition) w.ammo_kind = ammo_kind_of(last_segment(cid));
         d.hands = (props & rules5e::kWeaponTwoHanded) ? 2 : 1;
+    } else if (cat == "ammunition") {
+        // item@2 ammunition (EQUIPMENT 2.5): a counted carried stack, never held; ammo_kind names the
+        // launcher family ("bolt", "arrow", ...), falling back to the id's last segment.
+        d.kind = ItemKind::Ammunition;
+        d.hands = 0;
+        d.ammo_kind = ammo_kind_of(doc.value("ammo_kind", last_segment(cid)));
     } else if (cat == "armor") {
         d.kind = ItemKind::Armor;
         d.hands = 0;
