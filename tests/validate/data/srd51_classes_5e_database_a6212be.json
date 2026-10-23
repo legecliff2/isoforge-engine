@@ -1665,6 +1665,106 @@
     "warlock",
     "wizard"
    ]
+  },
+  "haste": {
+   "name": "Haste",
+   "level": 3,
+   "school": "transmutation",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ]
+  },
+  "slow": {
+   "name": "Slow",
+   "level": 3,
+   "school": "transmutation",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ]
+  },
+  "spiritual-weapon": {
+   "name": "Spiritual Weapon",
+   "level": 2,
+   "school": "evocation",
+   "classes": [
+    "cleric"
+   ]
+  },
+  "false-life": {
+   "name": "False Life",
+   "level": 1,
+   "school": "necromancy",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ]
+  },
+  "heroism": {
+   "name": "Heroism",
+   "level": 1,
+   "school": "enchantment",
+   "classes": [
+    "bard",
+    "paladin"
+   ]
+  },
+  "acid-arrow": {
+   "name": "Acid Arrow",
+   "level": 2,
+   "school": "evocation",
+   "classes": [
+    "wizard"
+   ]
+  },
+  "hellish-rebuke": {
+   "name": "Hellish Rebuke",
+   "level": 1,
+   "school": "evocation",
+   "classes": [
+    "warlock"
+   ]
+  },
+  "protection-from-energy": {
+   "name": "Protection From Energy",
+   "level": 3,
+   "school": "abjuration",
+   "classes": [
+    "cleric",
+    "druid",
+    "ranger",
+    "sorcerer",
+    "wizard"
+   ]
+  },
+  "blur": {
+   "name": "Blur",
+   "level": 2,
+   "school": "illusion",
+   "classes": [
+    "sorcerer",
+    "wizard"
+   ]
+  },
+  "faerie-fire": {
+   "name": "Faerie Fire",
+   "level": 1,
+   "school": "evocation",
+   "classes": [
+    "druid"
+   ]
+  },
+  "hypnotic-pattern": {
+   "name": "Hypnotic Pattern",
+   "level": 3,
+   "school": "illusion",
+   "classes": [
+    "bard",
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ]
   }
  }
 }

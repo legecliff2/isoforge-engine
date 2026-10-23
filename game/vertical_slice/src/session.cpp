@@ -219,7 +219,8 @@ struct Session::Impl {
         }
     }
 
-
+    // Hands the attached-light list to the sim's LightDriver; the driver publishes frames on attach and
+    // every committed step.
     void attach_light() {
         sim::LightProviderInputs in;
         in.chunks = {chunk.get()};

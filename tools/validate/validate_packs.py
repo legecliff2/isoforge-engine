@@ -372,14 +372,16 @@ def runtime_id_collisions(entries: list[tuple[str, str, str]], cross_pack_only: 
 
 
 REACTION_EFFECT_TRIGGER = {"ac_bonus": "being_hit", "counter": "spell_cast"}
-UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "zone", "hp_pool", "delayed_damage", "sustained_damage"),
+UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "zone", "hp_pool", "delayed_damage", "sustained_damage",
+                           "summon_weapon"),   # 7.2zg Spiritual Weapon
                   "darts": ("auto_hit",),
-                  "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition", "apply_modifier")}   # 7.2ze Bless / Bane
+                  "beams": ("spell_attack",), "targets": ("save", "heal", "apply_condition", "apply_modifier", "temp_hp")}   # 7.2ze Bless / Bane
 
 
 FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_damage",   # R-G15, spell_loader.cpp
                      "teleport",   # R-G9 (sim #144)
-                     "weapon_imbue", "duplicates")   # 7.2zf
+                     "weapon_imbue", "duplicates",   # 7.2zf
+                     c4.ZG_KEYS["haste"], c4.ZG_KEYS["slow"], c4.ZG_KEYS["summon_weapon"], c4.ZG_KEYS["temp_hp"])   # 7.2zg
 TIMED_BY_DURATION = ("hp_pool", "sustained_damage")   # their timer is the spell's duration in rounds
 
 
@@ -392,6 +394,7 @@ def check_spell(doc, errs, ctx):
     errs += c4.check_spell_batch2(doc)   # 7.2zd
     errs += c4.check_spell_batch3(doc)   # 7.2ze
     errs += c4.check_spell_imbue_mirror(doc)   # 7.2zf
+    errs += c4.check_spell_batch_zg(doc)   # 7.2zg
     eff = effs[0]   # the first effect carries targeting, scaling and the reaction/duration rules
     if len(effs) > 1 and any(e["kind"] in REACTION_EFFECT_TRIGGER for e in effs):
         errs.append("effects: ac_bonus and counter reactions cannot be combined with other effects")
@@ -400,6 +403,9 @@ def check_spell(doc, errs, ctx):
     for i, e in enumerate(effs[1:], 1):
         if e["kind"] in FIRST_EFFECT_ONLY:
             errs.append(f"effects[{i}]: {e['kind']} is only allowed as the first effect")
+            return
+        if c4.ZG_KEYS["on_miss"] in e:   # 7.2zg Acid Arrow (spell_loader.cpp wording)
+            errs.append(f"effects[{i}]: on_miss is only allowed on the first effect")
             return
     if eff.get("applies_to", "all") != "all":
         errs.append("effects[0].applies_to needs a previous effect")
@@ -421,6 +427,15 @@ def check_spell(doc, errs, ctx):
         elif key == "dice" and "dice" not in eff and "damage" not in eff and not zone_has_damage(eff):
             errs.append("scaling.upcast.dice needs effect dice or damage")
     want = REACTION_EFFECT_TRIGGER.get(kind)
+    damaged = ct["kind"] == "reaction" and ct.get("trigger", {}).get("kind") == c4.ZG_KEYS["damaged"]   # 7.2zg Hellish Rebuke
+    if damaged:
+        want = c4.ZG_KEYS["damaged"]
+        if kind != "save":
+            errs.append("casting_time.trigger.kind damaged needs a save effect")
+        elif not ct["trigger"].get("requires_sight", False):
+            errs.append("casting_time.trigger.kind damaged needs requires_sight")
+        elif doc["range"]["kind"] != "ranged":
+            errs.append("casting_time.trigger.kind damaged needs a ranged range")
     if (ct["kind"] == "reaction") != (want is not None):
         errs.append(f"effect kind {kind} and casting_time.kind {ct['kind']} disagree (ac_bonus/counter are reactions, and only they)")
     elif want and ct["trigger"]["kind"] != want:
@@ -430,7 +445,7 @@ def check_spell(doc, errs, ctx):
     if (kind == "ac_bonus") != (doc["duration"]["kind"] == "until_start_of_caster_turn"):
         errs.append("ac_bonus effects last until_start_of_caster_turn (and only they use it)")
     if "targets" in doc and kind not in ("save", "heal", "apply_condition", "polymorph", "max_hp_bonus",
-                                                 "apply_modifier"):   # polymorph: its own wording; 7.2zd Aid; 7.2ze Bless / Bane
+                                                 "apply_modifier", c4.ZG_KEYS["haste"], c4.ZG_KEYS["slow"]):   # polymorph: its own wording; 7.2zd Aid; 7.2ze Bless / Bane; 7.2zg Slow (6) / Haste (1), as the loader
         errs.append(f"targets not allowed on a {kind} effect (one target, per dart/beam, or self)")
     if kind in TIMED_BY_DURATION and doc["duration"]["kind"] not in ("rounds", "minutes", "hours"):
         errs.append(f"{kind} needs a rounds, minutes or hours duration")

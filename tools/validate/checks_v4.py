@@ -1218,7 +1218,7 @@ def check_spell_batch2(doc: dict) -> list[str]:
         return errs
     du = doc.get("duration") if isinstance(doc.get("duration"), dict) else {}
     lasting = du.get("concentration") is True or du.get("kind") in SPELL_TIMED_DURATIONS
-    if lasting or any(e.get("kind") == "apply_condition" and "ends_on" in e for e in effs):
+    if lasting or any(e.get("kind") in ("apply_condition", "save") and "ends_on" in e for e in effs):
         return errs   # ends_on without a lasting duration is check_spell_gaps' (it comes first in the loader too)
     if any(e.get("kind") == "apply_condition" and "ward" in e for e in effs):
         errs.append("effect ward needs concentration or a rounds, minutes or hours duration")
@@ -1328,7 +1328,7 @@ def check_spell_gaps(doc: dict) -> list[str]:
         return errs
     du = doc.get("duration") if isinstance(doc.get("duration"), dict) else {}
     conc = du.get("concentration") is True
-    if any(e.get("kind") == "apply_condition" and "ends_on" in e for e in effs) and not conc and du.get("kind") not in SPELL_TIMED_DURATIONS:
+    if any(e.get("kind") in ("apply_condition", "save") and "ends_on" in e for e in effs) and not conc and du.get("kind") not in SPELL_TIMED_DURATIONS:
         errs.append("effect ends_on needs concentration or a rounds, minutes or hours duration")
     elif "move_mark" in doc:
         if not conc:
@@ -1982,3 +1982,50 @@ def check_character_derive(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
         if dmg != printed:
             errs.append(f"{pre}: derived damage {format_dice(dmg)} != printed {format_dice(printed)}")
     return errs, []
+
+
+# ---- VERSION_BUMP_BATCH 7.2zg: the spell@1 key names of this batch, in one place (rules5e_content spell_keys_zg.hpp) ----------
+ZG_KEYS = {"haste": "haste", "slow": "slow", "summon_weapon": "summon_weapon", "temp_hp": "temp_hp", "dice": "dice",
+           "per_slot_above": "per_slot_above", "ability": "ability", "per_turn": "per_turn",
+           "condition_immunity": "condition_immunity", "on_miss": "on_miss", "damaged": "damaged",
+           "damage_type_choices": "damage_type_choices", "exempt_senses": "exempt_senses", "outlined": "outlined",
+           "shake_awake": "shake_awake"}
+
+
+def check_spell_batch_zg(doc: dict) -> list[str]:
+    """7.2zg spell@1 cross-field rules (spell_loader.cpp, same wording and order)."""
+    errs: list[str] = []
+    effs = [e for e in (doc.get("effects") or []) if isinstance(e, dict)]
+    if not effs:
+        return errs
+    e = effs[0]
+    du = doc.get("duration") if isinstance(doc.get("duration"), dict) else {}
+    if e.get("kind") in (ZG_KEYS["haste"], ZG_KEYS["slow"]) and du.get("concentration") is not True:
+        errs.append(f"effect {e['kind']} needs concentration")
+    timed = du.get("kind") in SPELL_TIMED_DURATIONS
+    if e.get("kind") == ZG_KEYS["summon_weapon"] and not (du.get("concentration") is True or timed):
+        errs.append("effect summon_weapon needs concentration or a rounds, minutes or hours duration")
+    if (e.get("kind") == ZG_KEYS["temp_hp"] and (e.get(ZG_KEYS["per_turn"]) or e.get(ZG_KEYS["condition_immunity"]))
+            and not (du.get("concentration") is True or timed)):
+        errs.append("effect temp_hp per_turn or condition_immunity needs concentration or a rounds, minutes or hours duration")
+    if any(x.get("kind") == "save" and "ends_on" in x and "condition" not in x for x in effs):   # Hypnotic Pattern
+        errs.append("effect ends_on on a save effect needs a condition")
+    es = ZG_KEYS["exempt_senses"]   # Blur (apply_modifier); Mirror Image (duplicates) takes the same key and list
+    for x in effs:
+        if es in x and x.get("kind") == "apply_modifier":
+            mod = x.get("modifier") if isinstance(x.get("modifier"), dict) else {}
+            if mod.get("stat") != "attacks_against":
+                errs.append("effect exempt_senses needs an attacks_against modifier")
+                break
+    dtc = ZG_KEYS["damage_type_choices"]   # Protection from Energy
+    if dtc in e:
+        mod = e.get("modifier") if isinstance(e.get("modifier"), dict) else {}
+        if mod.get("stat") != "resistance":
+            errs.append("effect damage_type_choices needs a resistance modifier")
+        elif mod.get("damage_type") not in e[dtc]:
+            errs.append("effect damage_type_choices must include the modifier damage_type")
+    for i, x in enumerate(effs[1:], 1):
+        if dtc in x:
+            errs.append(f"effects[{i}]: damage_type_choices is only allowed on the first effect")
+            break
+    return errs

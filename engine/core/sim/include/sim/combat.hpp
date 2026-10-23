@@ -156,6 +156,7 @@ public:
     // creatures with a loadout within 5 ft), then SetLightState (held lights in instance order: each state index, then douse).
     // Each is filtered through rules5e::equip_legal.
     std::vector<rules5e::ActionRequest> legal_actions();   // re-binds the hooks first (like submit)
+    std::vector<rules5e::ActionRequest> legal_actions() const;   // the same list for AI queries (re-binds like ward_alternates)
     const rules5e::Loadout* loadout(CombatantId id) const;   // nullptr: no loadout (always with equipment off)
     const ItemDefTable* item_defs() const noexcept { return items_.get(); }
     std::vector<EquipmentLight> equipment_lights() const;    // light id order
