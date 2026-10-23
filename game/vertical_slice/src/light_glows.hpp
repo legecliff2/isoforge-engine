@@ -12,5 +12,7 @@
 namespace slice {
 
 std::vector<eng::iso2d::GlowSource> glows_from(const LightView& L, const eng::iso2d::GlowPalette& palette);
+// Same, into `out` (cleared first; keeps its capacity across frames).
+void glows_from(const LightView& L, const eng::iso2d::GlowPalette& palette, std::vector<eng::iso2d::GlowSource>& out);
 
 } // namespace slice

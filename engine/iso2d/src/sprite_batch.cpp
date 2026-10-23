@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <numeric>
 #include <span>
 #include <cstdio>   // debug-build split log
@@ -14,7 +15,18 @@ namespace {
 template <class T> std::span<const std::byte> bytes(const std::vector<T>& v) {
     return std::as_bytes(std::span<const T>(v));
 }
-uint8_t to8(float f) { return uint8_t(std::lround(std::clamp(f, 0.f, 1.f) * 255.f)); }
+// == lround(clamp(f) * 255.f) for every float (the product is formed in float exactly as before; adding 0.5 in double
+// is exact for values < 2^24, so truncation rounds half away from zero like lround), without the libm call.
+uint8_t to8(float f) { return uint8_t(int(double(std::clamp(f, 0.f, 1.f) * 255.f) + 0.5)); }
+// Order-preserving maps to unsigned: int32 by flipping the sign bit, float by the usual sign-magnitude flip.
+// -0.f is folded into +0.f so keys that compare equal as floats stay equal (and fall to the index tie-break).
+uint32_t ord_i32(int32_t v) { return uint32_t(v) ^ 0x80000000u; }
+uint32_t ord_f32(float f) {
+    if (f == 0.f) f = 0.f;
+    uint32_t u;
+    std::memcpy(&u, &f, sizeof u);
+    return (u & 0x80000000u) ? ~u : (u | 0x80000000u);
+}
 } // namespace
 
 SpriteBatch::SpriteBatch(IRenderDevice& dev, uint32_t max_sprites) : dev_(dev), max_sprites_(max_sprites) {
@@ -52,26 +64,34 @@ void SpriteBatch::draw_px(const Sprite& s, Vec2f px, int32_t layer, uint32_t sor
 }
 
 void SpriteBatch::prepare(const Camera& cam) {
+    // Total order on SortKey, stable on submission order for exact duplicates (index is the last tie-break).
+    packed_.resize(items_.size());
+    for (uint32_t i = 0; i < items_.size(); ++i) {
+        const SortKey& k = items_[i].key;
+        packed_[i] = {uint64_t(ord_i32(k.layer)) << 32 | ord_f32(k.depth), uint64_t(ord_i32(k.z)) << 32 | k.entity_id, i};
+    }
+    // stable_sort (merge sort) on the packed records: submission is mostly in depth order already (tiles row by row),
+    // which merge sort handles with predictable branches; equal keys keep submission order as before.
+    std::stable_sort(packed_.begin(), packed_.end(),
+                     [](const Packed& a, const Packed& b) { return a.hi != b.hi ? a.hi < b.hi : a.lo < b.lo; });
     order_.resize(items_.size());
-    std::iota(order_.begin(), order_.end(), 0u);
-    // Total order on SortKey, stable on submission order for exact duplicates.
-    std::stable_sort(order_.begin(), order_.end(),
-                     [&](uint32_t a, uint32_t b) { return items_[a].key < items_[b].key; });
+    for (size_t i = 0; i < packed_.size(); ++i) order_[i] = packed_[i].index;
 
-    verts_.clear();
+    verts_.resize(items_.size() * 4);
     runs_.clear();
-    verts_.reserve(items_.size() * 4);
+    SpriteVertex* out = verts_.data();
     for (uint32_t i : order_) {
         const Item& it = items_[i];
         const Sprite& s = it.sprite;
         const Vec2f p = it.px ? it.iso : proj_.to_screen(it.iso.x, it.iso.y);
         const float x0 = p.x - s.anchor_x, y0 = p.y - s.anchor_y, x1 = x0 + s.w, y1 = y0 + s.h;
         const uint8_t r = to8(s.tint.r), g = to8(s.tint.g), b = to8(s.tint.b), a = to8(s.tint.a);
-        verts_.push_back({x0, y0, s.u0, s.v0, r, g, b, a});
-        verts_.push_back({x1, y0, s.u1, s.v0, r, g, b, a});
-        verts_.push_back({x1, y1, s.u1, s.v1, r, g, b, a});
-        verts_.push_back({x0, y1, s.u0, s.v1, r, g, b, a});
-        const uint32_t q = uint32_t(verts_.size() / 4 - 1);
+        out[0] = {x0, y0, s.u0, s.v0, r, g, b, a};
+        out[1] = {x1, y0, s.u1, s.v0, r, g, b, a};
+        out[2] = {x1, y1, s.u1, s.v1, r, g, b, a};
+        out[3] = {x0, y1, s.u0, s.v1, r, g, b, a};
+        const uint32_t q = uint32_t((out - verts_.data()) / 4);
+        out += 4;
         if (runs_.empty() || !(runs_.back().texture == s.texture)) runs_.push_back({s.texture, q, 1});
         else ++runs_.back().quads;
     }

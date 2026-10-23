@@ -205,9 +205,10 @@ void SliceView::sync_lights(const LightView& L) {
         for (const LightDirtyView& d : L.dirty) if (same(d.chunk, k)) dirty = true;
         if (!dirty) continue;
         int x0 = 32, y0 = 32, x1 = -1, y1 = -1;
+        const uint8_t* cur = lights_.texels(k);   // resolved once per chunk (was a map lookup per texel)
         for (int y = 0; y < 32; ++y)
             for (int x = 0; x < 32; ++x)
-                if (fresh || lights_.sample(k, {x, y}) != c.samples[size_t(y * 32 + x)]) {
+                if (fresh || (cur ? cur[y * 32 + x] : 0) != c.samples[size_t(y * 32 + x)]) {
                     x0 = std::min(x0, x); x1 = std::max(x1, x); y0 = std::min(y0, y); y1 = std::max(y1, y);
                 }
         const RectI r = x1 < 0 ? RectI{} : RectI{x0, y0, x1 - x0 + 1, y1 - y0 + 1};
@@ -229,6 +230,44 @@ Color SliceView::tile_tint(const LightView& L, Vec2i t, iso2d::Fog* fog_out) con
     if (fog_out) *fog_out = f;
     return iso2d::light_tint(lights_.sample(k, local), f);
 }
+
+// Per-frame fast path for tile_tint: resolves each chunk's level and light / fog texels once (tile_tint scans the
+// chunk lists and does two map lookups per tile). Same result as tile_tint for every tile; chunks it hasn't seen
+// fall back to tile_tint itself.
+struct SliceView::TintLookup {
+    using Entry = TintEntry;
+    const SliceView& v;
+    const LightView& L;
+    std::vector<Entry>& entries;
+    const Entry* last = nullptr;
+    TintLookup(const SliceView& view, const LightView& lv, std::vector<Entry>& scratch) : v(view), L(lv), entries(scratch) {
+        entries.clear();
+        if (!L.present) return;
+        auto add = [&](int32_t cx, int32_t cy) {
+            for (const Entry& e : entries) if (e.cx == cx && e.cy == cy) return;
+            int16_t level = 0;   // same resolution as tile_tint: last match in chunks, then blocked
+            for (const auto& c : L.chunks) if (c.cx == cx && c.cy == cy) level = c.level;
+            for (const auto& c : L.blocked) if (c.cx == cx && c.cy == cy) level = c.level;
+            const iso2d::LightChunkKey k{cx, cy, level};
+            entries.push_back({cx, cy, v.lights_.texels(k), v.fogs_.texels(k)});
+        };
+        for (const auto& c : L.chunks) add(c.cx, c.cy);
+        for (const auto& c : L.blocked) add(c.cx, c.cy);
+    }
+    Color operator()(Vec2i t, iso2d::Fog* fog_out = nullptr) {
+        if (!L.present) return v.tile_tint(L, t, fog_out);
+        const int32_t cx = t.x >= 0 ? t.x / 32 : -((-t.x + 31) / 32), cy = t.y >= 0 ? t.y / 32 : -((-t.y + 31) / 32);
+        if (!last || last->cx != cx || last->cy != cy) {
+            last = nullptr;
+            for (const Entry& e : entries) if (e.cx == cx && e.cy == cy) { last = &e; break; }
+            if (!last) return v.tile_tint(L, t, fog_out);
+        }
+        const int i = floor_mod32(t.y) * 32 + floor_mod32(t.x);
+        const iso2d::Fog f = last->fog ? iso2d::fog_of_texel(last->fog[i]) : iso2d::Fog::Unexplored;
+        if (fog_out) *fog_out = f;
+        return iso2d::light_tint(last->light ? last->light[i] : uint8_t(0), f);
+    }
+};
 
 SliceView::~SliceView() = default;
 
@@ -282,9 +321,10 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
     ui_seq_ = 0;
     sync_lights(vm.light);
     const LightView& L = vm.light;
+    TintLookup tint(*this, L, tint_entries_);
     auto visible = [&](const ActorView& a) {
         iso2d::Fog f;
-        tile_tint(L, a.tile, &f);
+        tint(a.tile, &f);
         return f == iso2d::Fog::Visible || (L.fog && a.team == L.fog_team);   // never draw what the shown team can't see
     };
 
@@ -295,31 +335,38 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         const uint32_t key = uint32_t(t.tile.y * 32 + t.tile.x);
         if (t.kind == TileKind::Wall || t.layer >= 2) {
             iso2d::Sprite s{tex_->wall, float(kTileW), float(kTileH + kWallH), kTileW / 2.f, float(kWallH) + lift};
-            s.tint = tile_tint(L, t.tile);
+            s.tint = tint(t.tile);
             world_.draw(s, iso, 1, key, 0);
         } else if (t.elevation > 0 && t.layer == 0) {
             // Raised ground: a short block so the step has visible sides.
             iso2d::Sprite s{tex_->raised_block, float(kTileW), float(kTileH + kElevPx), kTileW / 2.f, lift};
             s.h = float(kTileH) + lift;   // stretch the side faces for multi-step elevation
-            s.tint = tile_tint(L, t.tile);
+            s.tint = tint(t.tile);
             world_.draw(s, iso, 0, key, t.layer);
         } else {
             iso2d::Sprite s{tex_->ground(t.kind), float(kTileW), float(kTileH), kTileW / 2.f, lift};
-            s.tint = tile_tint(L, t.tile);
+            s.tint = tint(t.tile);
             world_.draw(s, iso, 0, key, t.layer);
         }
     }
     // ---- world: actors (placeholder pawns), current-turn ring ----
     if (L.present) {   // glows under lit sources (presentation; entity-anchored ones follow the drawn token)
-        for (const auto& [id, st] : L.visuals) palette_.set_override(id, st);   // content visual wins; defaults stay the fallback
-        std::vector<iso2d::GlowSource> glows = glows_from(L, palette_);
-        std::vector<iso2d::GlowAnchor> anchors;
-        anchors.reserve(vm.actors.size());
+        for (const auto& [id, st] : L.visuals) {   // content visual wins; defaults stay the fallback
+            const iso2d::GlowStyle* cur = palette_.override_for(id);
+            const bool same = cur && cur->color.r == st.color.r && cur->color.g == st.color.g && cur->color.b == st.color.b &&
+                              cur->color.a == st.color.a && cur->intensity == st.intensity && cur->flicker == st.flicker;
+            if (!same)
+                palette_.set_override(id, st);   // only on change: no per-frame string copies / map inserts
+        }
+        std::vector<iso2d::GlowSource>& glows = glows_;
+        glows_from(L, palette_, glows);
+        std::vector<iso2d::GlowAnchor>& anchors = anchors_;
+        anchors.clear();
         for (const ActorView& a : vm.actors) anchors.push_back({a.id, {float(a.tile.x), float(a.tile.y)}});
         iso2d::follow_anchors(glows, anchors);
         for (const iso2d::GlowSource& gs : glows) {
             iso2d::Fog gf;
-            tile_tint(L, {int(std::floor(gs.tile.x)), int(std::floor(gs.tile.y))}, &gf);
+            tint({int(std::floor(gs.tile.x)), int(std::floor(gs.tile.y))}, &gf);
             if (gf != iso2d::Fog::Visible) continue;   // no glow where the shown team sees nothing now
             // Token-local halo: grows with the source radius but stays capped, so it never paints
             // over tiles the sim's light map leaves Dark (the light map carries the actual area).
@@ -340,7 +387,7 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         // Pawn feet at the tile centre; drawn on the wall layer so walls in front occlude it.
         iso2d::Sprite p{tex_->pawn, float(kPawnW), float(kPawnH), kPawnW / 2.f, float(kPawnH) - kTileH / 2.f - 4.f};
         iso2d::Fog af;
-        const Color at = tile_tint(L, a.tile, &af);
+        const Color at = tint(a.tile, &af);
         // Own-team tokens in remembered/unseen tiles still draw, lit as Dark (presentation).
         p.tint = mul(tint_for(a), af == iso2d::Fog::Visible ? at : iso2d::light_tint(0, iso2d::Fog::Visible));
         if (L.present) p.tint = mul(p.tint, {1.6f, 1.6f, 1.6f, 1.f});   // tokens stay readable in dim light (presentation)
@@ -408,7 +455,13 @@ namespace slice {
 constexpr float kDimOnlyGlow = 0.5f;
 std::vector<eng::iso2d::GlowSource> glows_from(const LightView& L, const eng::iso2d::GlowPalette& palette) {
     std::vector<eng::iso2d::GlowSource> out;
-    if (!L.present) return out;
+    glows_from(L, palette, out);
+    return out;
+}
+
+void glows_from(const LightView& L, const eng::iso2d::GlowPalette& palette, std::vector<eng::iso2d::GlowSource>& out) {
+    out.clear();
+    if (!L.present) return;
     for (const LightSourceView& ls : L.sources) {
         if (!ls.lit) continue;
         if (ls.bright_ft == 0 && ls.dim_ft == 0) continue;   // lit but emitting nothing (a state with no light)
@@ -426,6 +479,5 @@ std::vector<eng::iso2d::GlowSource> glows_from(const LightView& L, const eng::is
         if (ls.bright_ft == 0) g.intensity *= kDimOnlyGlow;   // dim-only (hooded lantern 0/5): small, faint glow
         out.push_back(g);
     }
-    return out;
 }
 } // namespace slice

@@ -68,7 +68,11 @@ private:
     uint32_t pages_used_ = 0;
     uint64_t split_frames_ = 0;
     render::PipelineId pipeline_;
+    // Sort record: SortKey packed into order-preserving integers plus the submission index, sorted stably, so the
+    // order is exactly what stable_sort on SortKey gave, with two integer compares and no indirection per step.
+    struct Packed { uint64_t hi, lo; uint32_t index; };
     std::vector<Item> items_;
+    std::vector<Packed> packed_;
     std::vector<uint32_t> order_;
     std::vector<render::SpriteVertex> verts_;
     std::vector<Run> runs_;
