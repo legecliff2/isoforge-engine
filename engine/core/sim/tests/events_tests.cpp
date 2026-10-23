@@ -34,7 +34,9 @@ world::Chunk sample_chunk() {
 } // namespace
 
 TEST_CASE("event layout: schema version and numeric enum values are locked") {
-    CHECK(kSimEventSchemaVersion == 10);
+    CHECK(kSimEventSchemaVersion == 11);
+    CHECK(int(SimEvent::Kind::ItemMoved) == 6);   // v11
+    CHECK(kItemDraw == 1); CHECK(kItemHandOver == 7); CHECK(kItemThrown == 10); CHECK(kItemDeathDrop == 11);
     CHECK(kMovedForced == 1);     // v8 Moved.c flag bits
     CHECK(kMovedTeleport == 2);
     CHECK(kMovedDrag == 4);
@@ -221,8 +223,10 @@ TEST_CASE("event_stream_version: max over SimEvent::Kind and rules.kind construc
     CHECK(v({zone, moved(kMovedForced)}) == 9);
     CHECK(v({rules_ev(uint8_t(rules5e::EventKind::Transformed)), zone}) == 10);
     CHECK(v({rules_ev(uint8_t(rules5e::EventKind::Reverted))}) == 10);
-    CHECK(kSimEventSchemaVersion == 10);
-    CHECK(v({late}) <= kSimEventSchemaVersion);   // invariant: a stream never claims a version above the contract
+    CHECK(kSimEventSchemaVersion == 11);
+    CHECK(v({late}) <= kSimEventSchemaVersion);
+    CHECK(v({sim_ev(SimEvent::Kind::ItemMoved)}) == 11);   // v11: equipment ItemMoved
+    CHECK(v({sim_ev(SimEvent::Kind::ItemMoved), rules_ev(uint8_t(rules5e::EventKind::Reverted))}) == 11);   // invariant: a stream never claims a version above the contract
     // A non-Rules event's unused rules.kind field is never read as a rules kind.
     SimEvent tile = sim_ev(SimEvent::Kind::TileMoved);
     tile.rules.kind = rules5e::EventKind(200);
