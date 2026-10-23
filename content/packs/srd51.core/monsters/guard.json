@@ -1,5 +1,6 @@
 {
-  "$schema": "monster@4",
+  "$schema": "monster@5",
+  "derive": true,
   "id": "srd51.monster.guard",
   "name": "Guard",
   "source": {
@@ -16,6 +17,21 @@
     "value": 16,
     "note": "chain shirt, shield"
   },
+  "equipment": [
+    {
+      "item": "srd51.item.chain_shirt",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.shield",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.spear",
+      "equipped": true
+    }
+  ],
+  "hands": 2,
   "hit_points": {
     "average": 11,
     "formula": "2d8+2"
@@ -50,6 +66,7 @@
       "id": "spear",
       "name": "Spear",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.spear",
       "to_hit": 3,
       "reach": 5,
       "targets": 1,
@@ -64,6 +81,8 @@
       "id": "spear_two_handed",
       "name": "Spear (two hands)",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.spear",
+      "use": "two_hands",
       "to_hit": 3,
       "reach": 5,
       "targets": 1,
@@ -81,6 +100,8 @@
       "id": "spear_thrown",
       "name": "Spear (thrown)",
       "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.spear",
+      "use": "thrown",
       "to_hit": 3,
       "range": [
         20,

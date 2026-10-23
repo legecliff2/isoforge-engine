@@ -1,0 +1,13 @@
+{
+  "$schema": "item@2",
+  "id": "srd51.item.tinderbox",
+  "name": "Tinderbox",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "gear",
+  "cost_cp": 50,
+  "weight_oz": 16,
+  "description": "This small container holds flint, fire steel, and tinder (usually dry cloth soaked in light oil) used to kindle a fire. Using it to light a torch--or anything else with abundant, exposed fuel--takes an action.\n\nLighting any other fire takes 1 minute."
+}

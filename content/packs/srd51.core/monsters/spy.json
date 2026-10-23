@@ -1,5 +1,6 @@
 {
-  "$schema": "monster@4",
+  "$schema": "monster@5",
+  "derive": true,
   "id": "srd51.monster.spy",
   "name": "Spy",
   "source": {
@@ -15,6 +16,16 @@
   "armor_class": {
     "value": 12
   },
+  "equipment": [
+    {
+      "item": "srd51.item.shortsword",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.crossbow_hand"
+    }
+  ],
+  "hands": 2,
   "hit_points": {
     "average": 27,
     "formula": "6d8"
@@ -112,6 +123,7 @@
       "id": "shortsword",
       "name": "Shortsword",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.shortsword",
       "to_hit": 4,
       "reach": 5,
       "targets": 1,
@@ -126,6 +138,7 @@
       "id": "hand_crossbow",
       "name": "Hand Crossbow",
       "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.crossbow_hand",
       "to_hit": 4,
       "range": [
         30,

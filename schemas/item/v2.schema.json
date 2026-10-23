@@ -1,0 +1,728 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://isoforge.dev/schemas/item/v2.schema.json",
+  "title": "item@2",
+  "description": "item@2 = item@1 carried in full plus (all optional, docs/proposals/EQUIPMENT.md 7.1): categories 'gear' (light, torch_attack, hands) and 'ammunition' (ammo_kind, magic_bonus); weapon ammo_kind, attack_magic, damage_magic, improvised. item@1 -> item@2 is an identity migration. Light invariants (bright_ft + dim_ft <= 120, state ids unique) are validator checks. Each arm is a closed propertyNames allow-list (tests/validate/test_union_arms.py). Integers only (4.3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "id",
+    "name",
+    "category"
+  ],
+  "$defs": {
+    "item_damage": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "dice",
+            "type"
+          ],
+          "properties": {
+            "dice": {
+              "$ref": "../common/v1.schema.json#/$defs/dice"
+            },
+            "type": {
+              "$ref": "../common/v1.schema.json#/$defs/damage_type"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "flat",
+            "type"
+          ],
+          "properties": {
+            "flat": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "type": {
+              "$ref": "../common/v1.schema.json#/$defs/damage_type"
+            }
+          }
+        }
+      ]
+    },
+    "light_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "bright_ft",
+        "dim_ft"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "bright_ft": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 120,
+          "multipleOf": 5
+        },
+        "dim_ft": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 120,
+          "multipleOf": 5
+        },
+        "toggle": {
+          "enum": [
+            "action",
+            "bonus_action",
+            "free"
+          ],
+          "description": "What switching to this state costs (hooded lantern: action)."
+        }
+      }
+    }
+  },
+  "properties": {
+    "$schema": {
+      "const": "item@2"
+    },
+    "id": {
+      "$ref": "../common/v1.schema.json#/$defs/content_id"
+    },
+    "name": {
+      "type": "string"
+    },
+    "source": {
+      "$ref": "../common/v1.schema.json#/$defs/source"
+    },
+    "category": {
+      "enum": [
+        "weapon",
+        "armor",
+        "shield",
+        "valuable",
+        "gear",
+        "ammunition"
+      ]
+    },
+    "cost_cp": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Cost in copper pieces."
+    },
+    "weight_oz": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Weight in ounces (integers only)."
+    },
+    "description": {
+      "type": "string"
+    },
+    "weapon_class": {
+      "enum": [
+        "simple",
+        "martial"
+      ]
+    },
+    "reach": {
+      "$ref": "../common/v1.schema.json#/$defs/feet",
+      "description": "Melee reach in feet (5, or 10 with the reach property); absent for pure ranged weapons."
+    },
+    "range": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        {
+          "$ref": "../common/v1.schema.json#/$defs/range_ft"
+        },
+        {
+          "$ref": "../common/v1.schema.json#/$defs/range_ft"
+        }
+      ],
+      "description": "[normal, long] range in feet; its presence is what makes a weapon ranged (a thrown dagger has reach 5 and range [20, 60])."
+    },
+    "damage": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/item_damage"
+      },
+      "description": "Base damage only. Required unless properties contains 'special'."
+    },
+    "versatile_damage": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/item_damage"
+      },
+      "description": "Required iff properties contains 'versatile'."
+    },
+    "properties": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "ammunition",
+          "finesse",
+          "heavy",
+          "light",
+          "loading",
+          "reach",
+          "special",
+          "thrown",
+          "two_handed",
+          "versatile",
+          "lance"
+        ]
+      },
+      "description": "weapon.hpp's vocabulary; 'two-handed' is not a content spelling."
+    },
+    "qualifiers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "magical",
+          "silvered",
+          "adamantine"
+        ]
+      },
+      "description": "AttackQualifier bits: magical = 1, silvered = 2, adamantine = 4 (the loader ORs them)."
+    },
+    "magic_bonus": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3,
+      "description": "Weapons: adds to to-hit and damage and implies 'magical'. Armor and shields: adds to AC."
+    },
+    "on_hit": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "../common/v2.schema.json#/$defs/rider"
+      },
+      "description": "Riders (e.g. Flame Tongue extra damage); bonus_attack is rejected by the validator (items have no actions[])."
+    },
+    "armor_category": {
+      "enum": [
+        "light",
+        "medium",
+        "heavy"
+      ]
+    },
+    "base_ac": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 127
+    },
+    "dex_bonus": {
+      "type": "boolean"
+    },
+    "dex_cap": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "str_min": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "stealth_disadvantage": {
+      "type": "boolean"
+    },
+    "ac_bonus": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 2
+    },
+    "ammo_kind": {
+      "enum": [
+        "arrow",
+        "bolt",
+        "sling_bullet",
+        "needle"
+      ],
+      "description": "Weapons: the ammunition the weapon fires (with the 'ammunition' property). Ammunition: what the stack is."
+    },
+    "attack_magic": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3,
+      "description": "Replaces magic_bonus for the attack roll (EQUIPMENT 2.3); implies 'magical'."
+    },
+    "damage_magic": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3,
+      "description": "Replaces magic_bonus for the damage roll (EQUIPMENT 2.3); implies 'magical'."
+    },
+    "improvised": {
+      "type": "boolean",
+      "description": "An improvised weapon (1d4, no proficiency unless proficient, EQUIPMENT 2.1)."
+    },
+    "hands": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2,
+      "description": "Gear: hand slots the item occupies while held (EQUIPMENT 3.1; torch, lamp, lantern = 1)."
+    },
+    "light": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bright_ft",
+        "dim_ft"
+      ],
+      "description": "Gear light producer (EQUIPMENT 6.2). dim_ft is additional beyond bright_ft (sum <= 120); a cone's length is bright_ft. states[] lists only the non-default states.",
+      "properties": {
+        "bright_ft": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 120,
+          "multipleOf": 5
+        },
+        "dim_ft": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 120,
+          "multipleOf": 5
+        },
+        "shape": {
+          "enum": [
+            "radius",
+            "cone"
+          ],
+          "default": "radius"
+        },
+        "duration_rounds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "fuel": {
+          "$ref": "../common/v1.schema.json#/$defs/content_id",
+          "description": "Item consumed to refill to duration_rounds; absent for torches and candles."
+        },
+        "lit_by_default": {
+          "type": "boolean"
+        },
+        "states": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/light_state"
+          }
+        },
+        "preset": {
+          "$ref": "../common/v1.schema.json#/$defs/content_id",
+          "description": "Render light preset key (LIGHTING 10.1; Render #233 / #255 key glow styles by it, e.g. 'srd51.core.light.torch'). Presentation only: never read by sim."
+        }
+      }
+    },
+    "torch_attack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "damage"
+      ],
+      "description": "Improvised melee profile of a burning torch (SRD Torch: 1 fire damage).",
+      "properties": {
+        "damage": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/item_damage"
+          }
+        },
+        "requires_lit": {
+          "type": "boolean"
+        }
+      }
+    },
+    "visual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "color",
+        "intensity"
+      ],
+      "description": "Presentation only (docs/proposals/LIGHTING.md 10.1): glow colour / intensity / flicker for a light-capable item. Integers only. Excluded from content_hash and never read by sim, so it never feeds log_hash or any golden. Additive (no version bump).",
+      "properties": {
+        "color": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "r",
+            "g",
+            "b"
+          ],
+          "properties": {
+            "r": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "g": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "b": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            }
+          }
+        },
+        "intensity": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Permille (1000 = full)."
+        },
+        "flicker": {
+          "enum": [
+            "none",
+            "torch",
+            "candle"
+          ]
+        }
+      }
+    },
+    "container": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "holds"
+      ],
+      "description": "Gear: an ammunition container (EQUIPMENT 2.5; SRD Quiver, Case crossbow bolt, Pouch). Each holds[] row is one ammo_kind and how many pieces of it fit; the container holds one kind at a time (SRD Pouch: '20 sling bullets or 50 blowgun needles'). ammo_kind values are unique (validator).",
+      "properties": {
+        "holds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ammo_kind",
+              "capacity"
+            ],
+            "properties": {
+              "ammo_kind": {
+                "enum": [
+                  "arrow",
+                  "bolt",
+                  "sling_bullet",
+                  "needle"
+                ]
+              },
+              "capacity": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "category"
+        ],
+        "properties": {
+          "category": {
+            "const": "weapon"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "weapon_class"
+        ],
+        "propertyNames": {
+          "enum": [
+            "$schema",
+            "id",
+            "name",
+            "source",
+            "category",
+            "cost_cp",
+            "weight_oz",
+            "description",
+            "weapon_class",
+            "reach",
+            "range",
+            "damage",
+            "versatile_damage",
+            "properties",
+            "qualifiers",
+            "magic_bonus",
+            "on_hit",
+            "ammo_kind",
+            "attack_magic",
+            "damage_magic",
+            "improvised",
+            "visual"
+          ]
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "properties"
+              ],
+              "properties": {
+                "properties": {
+                  "contains": {
+                    "const": "special"
+                  }
+                }
+              }
+            },
+            "else": {
+              "required": [
+                "damage"
+              ]
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "properties"
+              ],
+              "properties": {
+                "properties": {
+                  "contains": {
+                    "const": "versatile"
+                  }
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "versatile_damage"
+              ]
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "versatile_damage"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "category"
+        ],
+        "properties": {
+          "category": {
+            "const": "armor"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "armor_category",
+          "base_ac",
+          "dex_bonus"
+        ],
+        "propertyNames": {
+          "enum": [
+            "$schema",
+            "id",
+            "name",
+            "source",
+            "category",
+            "cost_cp",
+            "weight_oz",
+            "description",
+            "armor_category",
+            "base_ac",
+            "dex_bonus",
+            "dex_cap",
+            "str_min",
+            "stealth_disadvantage",
+            "magic_bonus",
+            "visual"
+          ]
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "armor_category"
+              ],
+              "properties": {
+                "armor_category": {
+                  "const": "heavy"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "dex_bonus": {
+                  "const": false
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "armor_category"
+              ],
+              "properties": {
+                "armor_category": {
+                  "const": "medium"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "dex_cap"
+              ]
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "dex_cap"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "category"
+        ],
+        "properties": {
+          "category": {
+            "const": "shield"
+          }
+        }
+      },
+      "then": {
+        "propertyNames": {
+          "enum": [
+            "$schema",
+            "id",
+            "name",
+            "source",
+            "category",
+            "cost_cp",
+            "weight_oz",
+            "description",
+            "ac_bonus",
+            "magic_bonus",
+            "visual"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "category"
+        ],
+        "properties": {
+          "category": {
+            "const": "valuable"
+          }
+        }
+      },
+      "then": {
+        "propertyNames": {
+          "enum": [
+            "$schema",
+            "id",
+            "name",
+            "source",
+            "category",
+            "cost_cp",
+            "weight_oz",
+            "description",
+            "visual"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "category"
+        ],
+        "properties": {
+          "category": {
+            "const": "gear"
+          }
+        }
+      },
+      "then": {
+        "propertyNames": {
+          "enum": [
+            "$schema",
+            "id",
+            "name",
+            "source",
+            "category",
+            "cost_cp",
+            "weight_oz",
+            "description",
+            "hands",
+            "light",
+            "torch_attack",
+            "visual",
+            "container"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "category"
+        ],
+        "properties": {
+          "category": {
+            "const": "ammunition"
+          }
+        }
+      },
+      "then": {
+        "propertyNames": {
+          "enum": [
+            "$schema",
+            "id",
+            "name",
+            "source",
+            "category",
+            "cost_cp",
+            "weight_oz",
+            "description",
+            "ammo_kind",
+            "magic_bonus",
+            "visual"
+          ]
+        },
+        "required": [
+          "ammo_kind"
+        ]
+      }
+    }
+  ]
+}

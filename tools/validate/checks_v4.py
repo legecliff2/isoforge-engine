@@ -102,6 +102,20 @@ for _typ, _keys in (("monster", _SB_KEYS | _MONSTER_KEYS), ("character", _SB_KEY
                                     legacy_stamps=True)
 TAG_TABLE["item@1"] = TagRow(False, frozenset(), frozenset(), frozenset(), frozenset(), cross_refs=True,
                              needs_api_level=2)
+# EQUIPMENT 7.1 (#245/#246): monster@5 / character@5 carry @4 in full plus optional equipment keys; item@2 carries item@1.
+_MONSTER_AT5_KEYS = frozenset({"derive", "equipment", "natural_armor", "ac_adjust", "weapon_dice_multiplier", "weapons", "hands",
+                               "proficiency_bonus_reason", "emits_light"})
+# monster@5-local trait kinds (Rules decision on #247: no common@3): weapon_extra_dice (Brute), closed arm in monster@5 $defs.
+MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice"})
+_CHARACTER_AT5_KEYS = frozenset({"derive", "weapon_proficiencies", "armor_proficiencies"})
+for _typ, _extra in (("monster", _MONSTER_AT5_KEYS), ("character", _CHARACTER_AT5_KEYS)):
+    _r4 = TAG_TABLE[f"{_typ}@4"]
+    TAG_TABLE[f"{_typ}@5"] = TagRow(True, _r4.action_kinds,
+                                    _r4.effect_kinds | (MONSTER_AT5_EFFECT_KINDS if _typ == "monster" else frozenset()),
+                                    _r4.cost_values, _r4.top_level_keys | _extra,
+                                    cross_refs=True, needs_api_level=2, legacy_stamps=True)
+TAG_TABLE["item@2"] = TagRow(False, frozenset(), frozenset(), frozenset(), frozenset(), cross_refs=True,
+                             needs_api_level=2)
 
 FORWARD_COMPAT_KNOWN = frozenset({"elevation"})
 # Reaction windows the sim compiles (content.cpp compile_reactions); every other window is listed as unsupported and
@@ -1440,8 +1454,14 @@ def check_grapple_riders(doc: dict, errs: list[str], warns: list[str]) -> None:
 
 def check_item(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
     errs: list[str] = []
+    if doc.get("category") == "gear":
+        kinds = [h.get("ammo_kind") for h in (doc.get("container") or {}).get("holds") or []]
+        dup = ["/container/holds: ammo_kind values must be unique"] if len(kinds) != len(set(kinds)) else []
+        return check_item_light(doc) + dup, []
     if doc.get("category") != "weapon":
         return errs, []
+    if "ammo_kind" in doc and "ammunition" not in (doc.get("properties") or []):
+        errs.append("/ammo_kind: only a weapon with the 'ammunition' property fires ammunition (EQUIPMENT 2.5)")
     rng = doc.get("range")
     if rng is not None and rng[1] < rng[0]:
         errs.append(f"/range: long range {rng[1]} is below normal range {rng[0]} (check 15)")
@@ -1459,6 +1479,114 @@ def check_item(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
             errs.append(f"/on_hit/{j}: grapple riders are rejected in items: the sim reads them only from monster@4 / character@4 "
                         "actions[] weapon attacks (check 17, R-G8 grapple)")
     return errs, []
+
+
+def check_item_light(doc: dict) -> list[str]:
+    """item@2 gear light block (EQUIPMENT 6.2): dim is additional beyond bright, so bright + dim <= 120 in every state;
+    state ids are unique; a cone needs a non-zero length (bright_ft)."""
+    errs: list[str] = []
+    lt = doc.get("light")
+    if not isinstance(lt, dict):
+        return errs
+    rows = [("/light", lt)] + [(f"/light/states/{i}", st) for i, st in enumerate(lt.get("states") or [])]
+    for where, r in rows:
+        if r.get("bright_ft", 0) + r.get("dim_ft", 0) > 120:
+            errs.append(f"{where}: bright_ft + dim_ft {r.get('bright_ft', 0) + r.get('dim_ft', 0)} exceeds 120 (dim is additional)")
+    if lt.get("shape") == "cone" and lt.get("bright_ft", 0) == 0:
+        errs.append("/light: a cone's length is bright_ft, which must be above 0")
+    ids = [st.get("id") for st in lt.get("states") or []]
+    if len(ids) != len(set(ids)):
+        errs.append("/light/states: state ids must be unique")
+    return errs
+
+
+# ---- monster@5 / character@5 structure (EQUIPMENT 3.1, 5.3-5.6) ------------------------------------------
+
+CR_PB_TABLE = ((4, 2), (8, 3), (12, 4), (16, 5), (20, 6), (24, 7), (28, 8), (30, 9))   # EQUIPMENT 5.2
+
+
+def cr_table_pb(rating: str) -> int:
+    cr = int(rating) if "/" not in rating else 0
+    return next(pb for top, pb in CR_PB_TABLE if cr <= top)
+
+
+def _held_slots(entry: dict, item_docs: dict) -> int:
+    """Hand slots an equipped entry takes while held (EQUIPMENT 3.1): weapons and shields 1 (a two-handed weapon takes 1 to
+    hold), gear its `hands`; armor, valuables, ammunition and items outside this pack's documents 0."""
+    it = item_docs.get(entry.get("item"))
+    if not isinstance(it, dict) or not entry.get("equipped"):
+        return 0
+    cat = it.get("category")
+    if cat in ("weapon", "shield"):
+        return 1
+    if cat == "gear":
+        return int(it.get("hands", 0))
+    return 0
+
+
+def check_equipment_v5(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
+    """Structural checks of the @5 equipment keys. The derived-vs-printed assertion (EQUIPMENT 5.6: derived AC / to-hit /
+    damage, 'is not needed') needs rules5e::derive_monster (#247) and is not run here."""
+    errs: list[str] = []
+    warns: list[str] = []
+    did = doc.get("id", "")
+    item_docs = ctx.get("item_docs", {})
+    equipment = [e for e in doc.get("equipment") or [] if isinstance(e, dict)]
+    if typ == "character":
+        for hand in ("main", "off"):
+            n = sum(1 for e in equipment if e.get("hand") == hand)
+            if n > 1:
+                errs.append(f"{did}: hand '{hand}' holds {n} items")
+        eq_ids = {e.get("item") for e in equipment}
+        for i, a in enumerate(doc.get("actions") or []):
+            if isinstance(a, dict) and isinstance(a.get("weapon"), str):
+                if a["weapon"] not in eq_ids:
+                    errs.append(f"/actions/{i}/weapon: '{a['weapon']}' is not listed in equipment[]")
+                if a.get("kind") not in ("melee_weapon_attack", "ranged_weapon_attack"):
+                    errs.append(f"/actions/{i}: weapon / natural / attack_bonus need a melee_weapon_attack or ranged_weapon_attack")
+        return errs, warns
+    # monster@5
+    held = sum(_held_slots(e, item_docs) for e in equipment)
+    hands = doc.get("hands")
+    if hands is not None and held > hands:
+        errs.append(f"{did}: holds {held} items but has {hands} hands")
+    ch = doc.get("challenge") or {}
+    pb, want = doc.get("proficiency_bonus"), cr_table_pb(str(ch.get("rating", "0")))
+    if pb is not None and pb != want and not str(doc.get("proficiency_bonus_reason", "")).strip():
+        errs.append(f"{did}: proficiency_bonus {pb} != CR table {want}")
+    adj = doc.get("ac_adjust")
+    if isinstance(adj, dict):
+        if not str(adj.get("reason", "")).strip():
+            errs.append(f"{did}: ac_adjust needs a reason")
+        warns.append(f"{did}: ac_adjust {adj.get('value')} ({adj.get('reason')})")
+    local = [w.get("id") for w in doc.get("weapons") or [] if isinstance(w, dict)]
+    if len(local) != len(set(local)):
+        errs.append("/weapons: local weapon ids must be unique")
+    eq_ids = {e.get("item") for e in equipment}
+    for i, a in enumerate(doc.get("actions") or []):
+        if not isinstance(a, dict):
+            continue
+        aid, where = a.get("id"), f"/actions/{i}"
+        if "weapon" in a and "natural" in a:
+            errs.append(f"{where}: 'weapon' and 'natural' are exclusive")
+        if any(k in a for k in ("weapon", "natural", "attack_bonus")) and a.get("kind") not in ("melee_weapon_attack", "ranged_weapon_attack"):
+            errs.append(f"{where}: weapon / natural / attack_bonus need a melee_weapon_attack or ranged_weapon_attack")
+        w = a.get("weapon")
+        if isinstance(w, str):
+            if w.startswith("#"):
+                if w[1:] not in local:
+                    errs.append(f"{where}/weapon: '{w}' is not a weapons[] id of this document")
+            elif w not in eq_ids:
+                errs.append(f"{where}/weapon: '{w}' is not listed in equipment[]")
+        ab = a.get("attack_bonus")
+        if isinstance(ab, dict):
+            if not str(ab.get("reason", "")).strip():
+                errs.append(f"{did}.{aid}: attack_bonus needs a reason")
+            warns.append(f"{did}.{aid}: attack_bonus {ab.get('value')} ({ab.get('reason')})")
+    el = doc.get("emits_light")
+    if isinstance(el, dict) and el.get("bright_ft", 0) + el.get("dim_ft", 0) > 120:
+        errs.append(f"/emits_light: bright_ft + dim_ft {el.get('bright_ft', 0) + el.get('dim_ft', 0)} exceeds 120 (dim is additional)")
+    return errs, warns
 
 
 # ---- spell@1 additive apply_modifier (check 18) --------------------------------------------------------
@@ -1499,6 +1627,361 @@ def check_race_senses(doc: dict) -> list[str]:
         return [f"race '{race}': senses.darkvision {have} not allowed (the race has no Darkvision in SRD 5.1)"]
     return []
 
+
+
+# ---- monster@5 derive: true (EQUIPMENT 5.6; mirror of rules5e::derive_monster, engine/rules/src/equipment.cpp) ------------
+# Same checks, same order (PB, hands, AC, attacks), same strings. Weapon dice parse as NdM[+-K] or a bare flat integer.
+
+_DICE_RE = re.compile(r"^(\d+)d(\d+)([+-]\d+)?$")
+
+
+def parse_dice(s) -> tuple[int, int, int]:
+    s = str(s).replace(" ", "")
+    m = _DICE_RE.match(s)
+    if m:
+        return int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)
+    return 0, 0, int(s)
+
+
+def format_dice(d: tuple[int, int, int]) -> str:
+    n, sides, k = d
+    if n == 0:
+        return str(k)
+    return f"{n}d{sides}" + (f"+{k}" if k > 0 else (str(k) if k < 0 else ""))
+
+
+def _mod(score: int) -> int:
+    return (score - 10) // 2
+
+
+def _blank(r) -> bool:
+    return not isinstance(r, str) or r.strip(" \t\n\r\f\v") == ""
+
+
+def _cr_fraction(rating: str) -> tuple[int, int]:
+    if "/" in rating:
+        a, b = rating.split("/")
+        return int(a), int(b)
+    return int(rating), 1
+
+
+def proficiency_for_cr(num: int, den: int) -> int:
+    den = den if den > 0 else 1
+    cr = (num + den - 1) // den
+    if cr <= 4:
+        return 2
+    if cr >= 29:
+        return 9
+    return 2 + (cr - 1) // 4
+
+
+def _weapon_def(src: dict, natural: bool = False) -> dict:
+    """item@N weapon / monster-local weapon -> the WeaponDef fields derive_weapon_attack reads."""
+    def first(key):
+        d = (src.get(key) or [None])[0]
+        if not isinstance(d, dict):
+            return (0, 0, 0)
+        return parse_dice(d["dice"]) if "dice" in d else (0, 0, int(d.get("flat", 0)))
+    rng = src.get("range") or [0, 0]
+    return {"props": set(src.get("properties") or []), "reach": src.get("reach", 0 if "range" in src else 5),
+            "range": rng[0], "dice": first("damage"), "vdice": first("versatile_damage"),
+            "magic": int(src.get("magic_bonus", 0)), "atk_magic": src.get("attack_magic"), "dmg_magic": src.get("damage_magic"),
+            "improvised": bool(src.get("improvised")), "natural": natural}
+
+
+def _derive_weapon_attack(w: dict, v: dict, use: str) -> tuple[int, tuple[int, int, int], str]:
+    """(to_hit, damage dice, error) of rules5e::derive_weapon_attack."""
+    pure_ranged = w["reach"] == 0 and w["range"] > 0
+    props = w["props"]
+    if use == "two_hands" and "versatile" not in props and "two_handed" not in props:
+        return 0, (0, 0, 0), "weapon: not a versatile weapon"
+    if use in ("one_hand", "off_hand") and "two_handed" in props and not pure_ranged:
+        return 0, (0, 0, 0), "weapon: a two-handed weapon needs both hands"
+    if use == "thrown" and "thrown" not in props and not w["improvised"]:
+        return 0, (0, 0, 0), "weapon: not a thrown weapon"
+    if use == "off_hand" and ("light" not in props or pure_ranged):
+        return 0, (0, 0, 0), "weapon: the off-hand weapon must be a light melee weapon"
+    melee_use = use != "thrown" and not pure_ranged
+    ab = v["abilities"]
+    if v.get("ability"):
+        abil = v["ability"]
+    elif "finesse" in props:
+        abil = "dex" if _mod(ab["dex"]) > _mod(ab["str"]) else "str"
+    elif pure_ranged:
+        abil = "dex"
+    else:
+        abil = "str"
+    mod = _mod(ab[abil])
+    atk_magic = w["atk_magic"] if w["atk_magic"] is not None else w["magic"]
+    dmg_magic = w["dmg_magic"] if w["dmg_magic"] is not None else w["magic"]
+    proficient = not w["improvised"]
+    to_hit = mod + (v["pb"] if proficient else 0) + atk_magic
+    if v.get("to_hit_override") is not None:
+        to_hit = v["to_hit_override"]
+    n, sides, k = w["vdice"] if (use == "two_hands" and w["vdice"][0] > 0) else w["dice"]
+    if n > 0 and not w["natural"]:
+        n = n * max(1, v["mult"])
+        if melee_use and v["brute"] > 0:
+            n += v["brute"]
+        n = max(0, min(255, n))
+    ab_term = 0 if v.get("damage_ability_none") else mod
+    if use == "off_hand":
+        ab_term = min(0, ab_term)
+    return max(-128, min(127, to_hit)), (n, sides, k + ab_term + dmg_magic), ""
+
+
+def _signed(v: int) -> str:
+    return f"+{v}" if v >= 0 else str(v)
+
+
+def check_monster_derive(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
+    """monster@5 with derive: true: derived AC / to-hit / damage[0] must equal the printed numbers (EQUIPMENT 5.6). Errors are
+    rules5e::derive_monster's strings except the PB and hands checks, which check_equipment_v5 already reports (same strings).
+    Item references that do not resolve are reported by check 6/11 and skipped here."""
+    errs: list[str] = []
+    if doc.get("derive") is not True:
+        return errs, []
+    did = doc.get("id", "")
+    items = ctx.get("item_docs", {})
+    ab = doc["abilities"]
+    num, den = _cr_fraction(str(doc["challenge"]["rating"]))
+    pb = doc.get("proficiency_bonus", proficiency_for_cr(num, den))
+    dex = _mod(ab["dex"])
+    armor = shield = None
+    for e in doc.get("equipment") or []:
+        it = items.get(e.get("item")) if isinstance(e, dict) and e.get("equipped") else None
+        if isinstance(it, dict) and it.get("category") == "armor" and armor is None:
+            armor = it
+        elif isinstance(it, dict) and it.get("category") == "shield" and shield is None:
+            shield = it
+    na = doc.get("natural_armor")
+
+    def ac_of(use_natural: bool, adjust: int) -> int:
+        if armor is not None:
+            dt = 0
+            if armor.get("dex_bonus"):
+                dt = min(dex, armor["dex_cap"]) if "dex_cap" in armor else dex
+            ac = armor["base_ac"] + dt + armor.get("magic_bonus", 0)
+        else:
+            ac = 10 + dex
+            if use_natural and na is not None:
+                ac = max(ac, na["base"] + (dex if na.get("dex", True) else 0))
+        if shield is not None:
+            ac += shield.get("ac_bonus", 2) + shield.get("magic_bonus", 0)
+        return max(0, min(100, ac + adjust))
+
+    printed_ac = doc["armor_class"]["value"]
+    adj = doc.get("ac_adjust")
+    without = ac_of(True, 0)
+    ac = ac_of(True, adj["value"] if adj else 0)
+    if adj and _blank(adj.get("reason")):
+        errs.append(f"{did}: ac_adjust needs a reason")
+    if adj and without == printed_ac:
+        errs.append(f"{did}: ac_adjust is not needed")
+    if na is not None and (armor is not None or ac_of(False, 0) == ac_of(True, 0)):
+        errs.append(f"{did}: natural_armor is not needed")
+    if ac != printed_ac:
+        errs.append(f"{did}: derived AC {ac} != printed {printed_ac}")
+
+    mult = int(doc.get("weapon_dice_multiplier", 1))
+    brute = sum(int(t["effect"].get("dice", 0)) for t in doc.get("traits") or []
+                if isinstance(t, dict) and isinstance(t.get("effect"), dict) and t["effect"].get("kind") == "weapon_extra_dice")
+    local = {w["id"]: w for w in doc.get("weapons") or [] if isinstance(w, dict)}
+    used = False
+    for a in doc.get("actions") or []:
+        if not isinstance(a, dict) or not ("weapon" in a or "natural" in a):
+            continue
+        pre = f"{did}.{a.get('id')}"
+        if "natural" in a:
+            nat = a["natural"]
+            w = {"props": set(), "reach": a.get("reach", 0 if a.get("range") else 5), "range": (a.get("range") or [0])[0],
+                 "dice": parse_dice(nat["dice"]), "vdice": (0, 0, 0), "magic": 0, "atk_magic": None, "dmg_magic": None,
+                 "improvised": False, "natural": True}
+            v = {"abilities": ab, "pb": pb, "mult": mult, "brute": brute, "ability": nat["ability"],
+                 "damage_ability_none": nat.get("damage_ability") == "none"}
+        else:
+            ref = a["weapon"]
+            src = local.get(ref[1:]) if ref.startswith("#") else items.get(ref)
+            if not isinstance(src, dict):
+                continue
+            w = _weapon_def(src)
+            v = {"abilities": ab, "pb": pb, "mult": mult, "brute": brute}
+        use = a.get("use", "one_hand")
+        th, dmg, err = _derive_weapon_attack(w, v, use)
+        if err:
+            errs.append(f"{pre}: {err}")
+            continue
+        ab_ov = a.get("attack_bonus")
+        if ab_ov:
+            if _blank(ab_ov.get("reason")):
+                errs.append(f"{pre}: attack_bonus needs a reason")
+            if th == a.get("to_hit"):
+                errs.append(f"{pre}: attack_bonus is not needed")
+            v = dict(v, to_hit_override=ab_ov["value"])
+            th, dmg, _e = _derive_weapon_attack(w, v, use)
+        if th != a.get("to_hit"):
+            errs.append(f"{pre}: derived to-hit {_signed(th)} != printed {_signed(a.get('to_hit', 0))}")
+        printed = parse_dice((a.get("damage") or [{}])[0].get("dice", "0")) if (a.get("damage") or [{}])[0].get("dice") is not None \
+            else (0, 0, int((a.get("damage") or [{}])[0].get("flat", 0)))
+        if not w["natural"] and mult > 1:
+            if _derive_weapon_attack(w, dict(v, mult=1), use)[1] != printed:
+                used = True
+        if dmg != printed:
+            e = f"{pre}: derived damage {format_dice(dmg)} != printed {format_dice(printed)}"
+            if not w["natural"]:
+                for k in (2, 3, 4):
+                    if _derive_weapon_attack(w, dict(v, mult=k), use)[1] == printed:
+                        e += f" (weapon_dice_multiplier {k} would match)"
+                        break
+            errs.append(e)
+    if mult > 1 and not used:
+        errs.append(f"{did}: weapon_dice_multiplier is not needed")
+    return errs, []
+
+
+# ---- character@5 proficiencies and derive: true (EQUIPMENT 1.2, 2.1; T&C PR C) --------------------------------------------
+# SRD 5.1 class / race weapon and armor proficiencies, from 5e-database a6212be (tests/validate/data/
+# srd51_proficiencies_5e_database_a6212be.json; test_equip_schemas_v5 checks this table against it). Named weapons are item ids.
+
+def _w(*names: str) -> frozenset:
+    return frozenset(n if n in ("simple", "martial") else f"srd51.item.{n}" for n in names)
+
+
+SRD_CLASS_PROFICIENCIES = {   # class: (weapon_proficiencies, armor_proficiencies)
+    "barbarian": (_w("simple", "martial"), frozenset({"light", "medium", "shields"})),
+    "bard": (_w("simple", "longsword", "rapier", "shortsword", "crossbow_hand"), frozenset({"light"})),
+    "cleric": (_w("simple"), frozenset({"light", "medium", "shields"})),
+    "druid": (_w("club", "dagger", "javelin", "mace", "quarterstaff", "sickle", "spear", "dart", "sling", "scimitar"),
+              frozenset({"light", "medium", "shields"})),
+    "fighter": (_w("simple", "martial"), frozenset({"light", "medium", "heavy", "shields"})),
+    "monk": (_w("simple", "shortsword"), frozenset()),
+    "paladin": (_w("simple", "martial"), frozenset({"light", "medium", "heavy", "shields"})),
+    "ranger": (_w("simple", "martial"), frozenset({"light", "medium", "shields"})),
+    "rogue": (_w("simple", "longsword", "rapier", "shortsword", "crossbow_hand"), frozenset({"light"})),
+    "sorcerer": (_w("dagger", "dart", "sling", "quarterstaff", "crossbow_light"), frozenset()),
+    "warlock": (_w("simple"), frozenset({"light"})),
+    "wizard": (_w("dagger", "dart", "sling", "quarterstaff", "crossbow_light"), frozenset()),
+}
+SRD_RACE_WEAPON_PROFICIENCIES = {   # Dwarven Combat Training (dwarf), Elf Weapon Training (high elf)
+    "dwarf": _w("battleaxe", "handaxe", "light_hammer", "warhammer"),
+    "hill_dwarf": _w("battleaxe", "handaxe", "light_hammer", "warhammer"),
+    "high_elf": _w("longsword", "shortsword", "shortbow", "longbow"),
+}
+# Feature-granted AC base candidates (EQUIPMENT 1.2 step 1; rules5e::AcBaseCandidate): (class, feature id) ->
+# (fixed, ability or None, forbids_shield). Armor of Shadows is at-will Mage Armor, counted as in force (the printed AC assumes it).
+FEATURE_AC_BASES = {
+    ("barbarian", "unarmored_defense"): (10, "con", False),
+    ("monk", "unarmored_defense"): (10, "wis", True),
+    ("sorcerer", "draconic_resilience"): (13, None, False),
+    ("warlock", "armor_of_shadows"): (13, None, False),
+}
+
+
+def expected_proficiencies(doc: dict) -> tuple[set, set]:
+    weapons, armor = set(), set()
+    for c in doc.get("classes") or []:
+        w, a = SRD_CLASS_PROFICIENCIES.get(c.get("class"), (frozenset(), frozenset()))
+        weapons |= w
+        armor |= a
+    weapons |= SRD_RACE_WEAPON_PROFICIENCIES.get(doc.get("race"), frozenset())
+    return weapons, armor
+
+
+def _covered(entry: str, pool: set, items: dict) -> bool:
+    if entry in pool:
+        return True
+    it = items.get(entry)
+    return isinstance(it, dict) and it.get("weapon_class") in pool
+
+
+def check_character_proficiencies(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
+    """character@5: authored weapon_proficiencies / armor_proficiencies against the SRD class and race grants. Missing is an
+    error, extra is a warning. A named weapon counts as covered by its weapon_class ('simple' / 'martial')."""
+    errs: list[str] = []
+    warns: list[str] = []
+    if doc.get("derive") is not True and "weapon_proficiencies" not in doc and "armor_proficiencies" not in doc:
+        return errs, warns
+    did = doc.get("id", "")
+    items = ctx.get("item_docs", {})
+    want_w, want_a = expected_proficiencies(doc)
+    have_w, have_a = set(doc.get("weapon_proficiencies") or []), set(doc.get("armor_proficiencies") or [])
+    for key, want, have in (("weapon_proficiencies", want_w, have_w), ("armor_proficiencies", want_a, have_a)):
+        for e in sorted(want):
+            if not _covered(e, have, items):
+                errs.append(f"{did}: {key} missing '{e}' (SRD 5.1 class / race)")
+        for e in sorted(have):
+            if not _covered(e, want, items):
+                warns.append(f"{did}: {key} '{e}' is not granted by the SRD 5.1 class / race")
+    return errs, warns
+
+
+def _weapon_proficient(doc: dict, item_id: str, items: dict) -> bool:
+    return _covered(item_id, set(doc.get("weapon_proficiencies") or []), items)
+
+
+def check_character_derive(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
+    """character@5 with derive: true: AC from equipped armor / shield / feature bases, and each action with a `weapon` from
+    the item, ability, PB (when proficient) and magic, must equal the printed numbers. Feature rows (Defense, Archery,
+    Dueling, ...) are applied by the engine on top of the printed numbers, so they are not part of the derivation. Strings
+    follow rules5e::derive_monster's 5.6 forms."""
+    errs: list[str] = []
+    if doc.get("derive") is not True:
+        return errs, []
+    did = doc.get("id", "")
+    items = ctx.get("item_docs", {})
+    ab = doc["abilities"]
+    dex = _mod(ab["dex"])
+    armor = shield = None
+    for e in doc.get("equipment") or []:
+        it = items.get(e.get("item")) if isinstance(e, dict) and e.get("equipped") else None
+        if isinstance(it, dict) and it.get("category") == "armor" and armor is None:
+            armor = it
+        elif isinstance(it, dict) and it.get("category") == "shield" and shield is None:
+            shield = it
+    if armor is not None:
+        dt = (min(dex, armor["dex_cap"]) if "dex_cap" in armor else dex) if armor.get("dex_bonus") else 0
+        ac = armor["base_ac"] + dt + armor.get("magic_bonus", 0)
+    else:
+        ac = 10 + dex
+        classes = {c.get("class") for c in doc.get("classes") or []}
+        for f in doc.get("features") or []:
+            for cls in classes:
+                base = FEATURE_AC_BASES.get((cls, f.get("id")))
+                if base and not (base[2] and shield is not None):
+                    ac = max(ac, base[0] + dex + (_mod(ab[base[1]]) if base[1] else 0))
+    if shield is not None:
+        ac += shield.get("ac_bonus", 2) + shield.get("magic_bonus", 0)
+    printed_ac = doc["armor_class"]["value"]
+    if ac != printed_ac:
+        errs.append(f"{did}: derived AC {ac} != printed {printed_ac}")
+    pb = doc["proficiency_bonus"]
+    monk = any(c.get("class") == "monk" for c in doc.get("classes") or [])
+    for a in doc.get("actions") or []:
+        if not isinstance(a, dict) or "weapon" not in a:
+            continue
+        src = items.get(a["weapon"])
+        if not isinstance(src, dict):
+            continue
+        w = _weapon_def(src)
+        prof = _weapon_proficient(doc, a["weapon"], items)
+        v = {"abilities": ab, "pb": pb if prof else 0, "mult": 1, "brute": 0}
+        # Monk Martial Arts: Dex instead of Str with unarmed strikes and monk weapons (shortswords, simple melee weapons
+        # without two-handed or heavy); the higher one is used.
+        if monk and (a["weapon"] == "srd51.item.shortsword" or (src.get("weapon_class") == "simple" and "range" not in src
+                     and not ({"two_handed", "heavy"} & w["props"]))):
+            v["ability"] = "dex" if _mod(ab["dex"]) > _mod(ab["str"]) else "str"
+        pre = f"{did}.{a.get('id')}"
+        th, dmg, err = _derive_weapon_attack(w, v, a.get("use", "one_hand"))
+        if err:
+            errs.append(f"{pre}: {err}")
+            continue
+        if th != a.get("to_hit"):
+            errs.append(f"{pre}: derived to-hit {_signed(th)} != printed {_signed(a.get('to_hit', 0))}")
+        d0 = (a.get("damage") or [{}])[0]
+        printed = parse_dice(d0["dice"]) if "dice" in d0 else (0, 0, int(d0.get("flat", 0)))
+        if dmg != printed:
+            errs.append(f"{pre}: derived damage {format_dice(dmg)} != printed {format_dice(printed)}")
+    return errs, []
 
 
 # ---- VERSION_BUMP_BATCH 7.2zg: the spell@1 key names of this batch, in one place (rules5e_content spell_keys_zg.hpp) ----------
