@@ -22,7 +22,11 @@ const std::string kRoot = ENGINE_SOURCE_ROOT;
 const char* kFighter = "srd51.character.fighter_1";
 const char* kGoblin = "srd51.monster.goblin";
 const char* kWizard = "test.character.wizard";
+const char* kCleric = "test.character.cleric";
 const char* kFireball = "test.spell.fireball";
+const char* kDexBlast = "test.spell.dex_blast";
+const char* kSacred = "srd51.spell.sacred_flame";
+const char* kFireBolt = "srd51.spell.fire_bolt";
 
 Json load_json(const std::string& rel) {
     std::ifstream f(kRoot + "/" + rel);
@@ -56,6 +60,18 @@ Json fireball() {
     s.erase("scaling");
     return s;
 }
+// Targeted Dex save that does NOT ignore cover (Sacred Flame's opposite for the e2e).
+Json dex_blast() {
+    Json s = load_json("content/packs/srd51.core/spells/poison_spray.json");
+    s["id"] = kDexBlast;
+    s["name"] = "Test Dex Blast";
+    s["range"] = {{"kind", "ranged"}, {"feet", 60}};
+    s["effects"][0]["ability"] = "dex";
+    s["effects"][0]["damage"] = {{"dice", "1d2"}, {"type", "fire"}};
+    s["effects"][0]["on_success"] = "none";
+    s.erase("scaling");
+    return s;
+}
 ContentLibrary lib() {
     ContentLibrary l;
     REQUIRE(l.load(sample_set()).empty());
@@ -65,12 +81,21 @@ ContentLibrary lib() {
     big["size"] = "large";
     REQUIRE_FALSE(l.add(big, "monster"));
     REQUIRE_FALSE(l.add_spell(fireball()));
+    REQUIRE_FALSE(l.add_spell(dex_blast()));
+    // sacred_flame + fire_bolt already in srd51.core via sample_set
     Json w = load_json("content/packs/sample.vertical_slice/characters/fighter_1.json");
     w["id"] = kWizard;
     w["abilities"]["int"] = 16;
     w["hit_points"]["average"] = 30;
-    w["spellcasting"] = {{"ability", "int"}, {"caster_level", 5}, {"spells", Json::array({kFireball})}};
+    w["spellcasting"] = {{"ability", "int"}, {"caster_level", 5},
+                         {"spells", Json::array({kFireball, kDexBlast, kFireBolt})}};
     REQUIRE_FALSE(l.add(w, "character"));
+    Json cl = load_json("content/packs/sample.vertical_slice/characters/fighter_1.json");
+    cl["id"] = kCleric;
+    cl["abilities"]["wis"] = 16;
+    cl["hit_points"]["average"] = 30;
+    cl["spellcasting"] = {{"ability", "wis"}, {"caster_level", 5}, {"spells", Json::array({kSacred, kDexBlast})}};
+    REQUIRE_FALSE(l.add(cl, "character"));
     return l;
 }
 struct Board {
@@ -88,6 +113,22 @@ struct Board {
         CoverQuery q{id(src), id(tgt)};
         q.from_area = area; q.has_origin = true; q.origin_x = o.x; q.origin_y = o.y;
         return c->cover_of(q);
+    }
+    Cover tiles(Vec2i o, int on, Vec2i t, int tn, CombatantId ea = 0, CombatantId eb = 0) const {
+        return c->cover_between(o, on, t, tn, ea, eb);
+    }
+    SubmitResult settle(SubmitResult r) {
+        while (r.needs) r = c->decide({r.needs->window_seq, false, 0});
+        return r;
+    }
+    // SavingThrowRolled: actor=saver; AttackResolved: actor=attacker. Optional `who` filters actor.
+    const rules5e::Event* first(rules5e::EventKind k, CombatantId who = 0) const {
+        for (const auto& e : c->events()) {
+            if (e.kind != SimEvent::Kind::Rules || e.rules.kind != k) continue;
+            if (who && e.rules.actor != who) continue;
+            return &e.rules;
+        }
+        return nullptr;
     }
 };
 void advance_to(Combat& c, CombatantId who) {
@@ -177,4 +218,155 @@ TEST_CASE("cover: an aimed Fireball fills the area origin, cover is taken from t
     CHECK(rep->hash() == b.c->hash());
     CHECK(rep->log_hash() == b.c->log_hash());
     CHECK(rep->cover_of(CoverQuery{b.id(0), b.id(1)}) == Cover::Half);   // replayed board, same answer
+}
+
+TEST_CASE("cover: cover_between matches cover_of for creatures and accepts bare tiles (R&P query)") {
+    auto l = lib();
+    Board open(l, {{kFighter, 2, 5}, {kGoblin, 6, 5}});
+    CHECK(open.tiles({2, 5}, 1, {6, 5}, 1) == Cover::None);
+    CHECK(open.tiles({2, 5}, 1, {6, 5}, 1, open.id(0), open.id(1)) == Cover::None);
+    Board crowd(l, {{kFighter, 2, 5}, {kGoblin, 6, 5}, {kGoblin, 4, 5}});
+    CHECK(crowd.cover(0, 1) == Cover::Half);
+    CHECK(crowd.tiles({2, 5}, 1, {6, 5}, 1, crowd.id(0), crowd.id(1)) == Cover::Half);
+    // Bare tile probe (no except): the three creatures all count as bodies, so the middle goblin still halves.
+    CHECK(crowd.tiles({2, 5}, 1, {6, 5}, 1) == Cover::Half);
+    Board wall(l, {{kFighter, 2, 5}, {kGoblin, 6, 5}}, {{4, 5}});
+    CHECK(wall.tiles({2, 5}, 1, {6, 5}, 1) == Cover::Half);
+    CHECK(wall.tiles({2, 5}, 1, {6, 5}, 1) == wall.cover(0, 1));
+}
+
+TEST_CASE("cover: adjacent and diagonal with nothing between give none; wall between adjacent tiles totals") {
+    auto l = lib();
+    Board adj(l, {{kFighter, 4, 5}, {kGoblin, 5, 5}});
+    CHECK(adj.cover(0, 1) == Cover::None);
+    CHECK(adj.tiles({4, 5}, 1, {5, 5}, 1) == Cover::None);
+    Board diag(l, {{kFighter, 4, 4}, {kGoblin, 5, 5}});
+    CHECK(diag.cover(0, 1) == Cover::None);
+    // A wall filling the only shared edge between adjacent tiles: total (both sides of the edge block).
+    Board blocked(l, {{kFighter, 3, 5}, {kGoblin, 5, 5}}, {{4, 5}});
+    CHECK(blocked.cover(0, 1) == Cover::Half);   // one tile between, not adjacent; best corner slips past
+    Board closed(l, {{kFighter, 3, 3}, {kGoblin, 6, 6}}, {{5, 5}, {5, 6}, {6, 5}});
+    CHECK(closed.cover(0, 1) == Cover::Total);
+}
+
+TEST_CASE("cover: a Large target uses every corner of its footprint") {
+    auto l = lib();
+    // Large at (6,4) covers x 6..7, y 4..5. A two-tile stub at x=5 is only Half (some corner lines clear).
+    Board stub(l, {{kFighter, 2, 5}, {"t.large", 6, 4}}, {{5, 4}, {5, 5}});
+    CHECK(stub.cover(0, 1) == Cover::Half);
+    CHECK(stub.tiles({2, 5}, 1, {6, 4}, 2, stub.id(0), stub.id(1)) == Cover::Half);
+    // A full wall column blocks every corner line into the 2x2.
+    std::vector<Vec2i> col;
+    for (int y = 0; y < 12; ++y) col.push_back({5, y});
+    Board full(l, {{kFighter, 2, 5}, {"t.large", 6, 4}}, col);
+    CHECK(full.cover(0, 1) == Cover::Total);
+    CHECK(full.tiles({2, 5}, 1, {6, 4}, 2, full.id(0), full.id(1)) == Cover::Total);
+}
+
+TEST_CASE("cover: attack through half cover raises effective AC; total cover refuses the attack") {
+    auto l = lib();
+    // Same three combatants so the seed stream matches; third goblin off the line (open) vs between (half).
+    // Creature cover does not block LOS (walls that yield Total also fail spell_target_ok first).
+    Board open(l, {{kWizard, 2, 5}, {kGoblin, 8, 5}, {kGoblin, 5, 8}});
+    Board half(l, {{kWizard, 2, 5}, {kGoblin, 8, 5}, {kGoblin, 5, 5}});
+    CHECK(open.cover(0, 1) == Cover::None);
+    CHECK(half.cover(0, 1) == Cover::Half);
+    auto cast_bolt = [](Board& b) {
+        advance_to(*b.c, b.id(0));
+        Command cmd;
+        cmd.request = {b.id(0), ActionKind::CastSpell, b.id(1)};
+        cmd.request.spell_id = rules5e::spell_id_of(kFireBolt);
+        return b.settle(b.c->submit(cmd));
+    };
+    auto ro = cast_bolt(open);
+    auto rh = cast_bolt(half);
+    REQUIRE_MESSAGE(ro.ok, ro.error);
+    REQUIRE_MESSAGE(rh.ok, rh.error);
+    const auto* eo = open.first(rules5e::EventKind::AttackResolved, open.id(0));
+    const auto* eh = half.first(rules5e::EventKind::AttackResolved, half.id(0));
+    REQUIRE(eo);
+    REQUIRE(eh);
+    CHECK(eo->a == eh->a);   // same natural (same seed, same prior draws)
+    CHECK(eo->b == eh->b);   // attack total unchanged; cover raises the AC the total is compared against
+    // Hit when total >= AC (+ cover). Goblin AC 15; +2 half → miss band [15, 17).
+    const bool open_hit = (eo->c & 1) != 0, half_hit = (eh->c & 1) != 0;
+    if (eo->b >= 15 && eo->b < 17) {
+        CHECK(open_hit);
+        CHECK_FALSE(half_hit);
+    } else {
+        CHECK(open_hit == half_hit);
+    }
+    std::vector<Vec2i> wall;
+    for (int y = 0; y < 12; ++y) wall.push_back({5, y});
+    Board full(l, {{kWizard, 2, 5}, {kGoblin, 8, 5}}, wall);
+    CHECK(full.cover(0, 1) == Cover::Total);
+    advance_to(*full.c, full.id(0));
+    Command atk;
+    atk.request = {full.id(0), ActionKind::CastSpell, full.id(1)};
+    atk.request.spell_id = rules5e::spell_id_of(kFireBolt);
+    auto rt = full.settle(full.c->submit(atk));
+    CHECK_FALSE(rt.ok);
+    // Full wall: sim LOS fails before the cover Total check (rules-layer Total→"target has total cover" is in rules tests).
+    CHECK(rt.error == "invalid spell target");
+}
+
+TEST_CASE("cover: Dex save gets +2 behind half cover; Sacred Flame ignores it; total still blocks Sacred Flame") {
+    auto l = lib();
+    Board open(l, {{kCleric, 2, 5}, {kGoblin, 8, 5}, {kGoblin, 5, 8}});
+    Board half(l, {{kCleric, 2, 5}, {kGoblin, 8, 5}, {kGoblin, 5, 5}});
+    CHECK(open.cover(0, 1) == Cover::None);
+    CHECK(half.cover(0, 1) == Cover::Half);
+    auto cast = [](Board& b, const char* spell) {
+        advance_to(*b.c, b.id(0));
+        Command cmd;
+        cmd.request = {b.id(0), ActionKind::CastSpell, b.id(1)};
+        cmd.request.spell_id = rules5e::spell_id_of(spell);
+        return b.settle(b.c->submit(cmd));
+    };
+    // Dex blast: cover raises the save total by +2 (actor = saver).
+    REQUIRE_MESSAGE(cast(open, kDexBlast).ok, "dex open");
+    REQUIRE_MESSAGE(cast(half, kDexBlast).ok, "dex half");
+    const auto* so = open.first(rules5e::EventKind::SavingThrowRolled, open.id(1));
+    const auto* sh = half.first(rules5e::EventKind::SavingThrowRolled, half.id(1));
+    REQUIRE(so);
+    REQUIRE(sh);
+    CHECK(so->a == sh->a);
+    CHECK(sh->b == so->b + 2);
+    // Sacred Flame: same totals with and without half cover (ignores_cover).
+    Board o2(l, {{kCleric, 2, 5}, {kGoblin, 8, 5}, {kGoblin, 5, 8}});
+    Board h2(l, {{kCleric, 2, 5}, {kGoblin, 8, 5}, {kGoblin, 5, 5}});
+    REQUIRE_MESSAGE(cast(o2, kSacred).ok, "sf open");
+    REQUIRE_MESSAGE(cast(h2, kSacred).ok, "sf half");
+    const auto* fo = o2.first(rules5e::EventKind::SavingThrowRolled, o2.id(1));
+    const auto* fh = h2.first(rules5e::EventKind::SavingThrowRolled, h2.id(1));
+    REQUIRE(fo);
+    REQUIRE(fh);
+    CHECK(fo->a == fh->a);
+    CHECK(fo->b == fh->b);
+    // Total cover (full wall): cover_of is Total; cast refused (LOS before cover string).
+    std::vector<Vec2i> wall;
+    for (int y = 0; y < 12; ++y) wall.push_back({5, y});
+    Board full(l, {{kCleric, 2, 5}, {kGoblin, 8, 5}}, wall);
+    CHECK(full.cover(0, 1) == Cover::Total);
+    advance_to(*full.c, full.id(0));
+    Command cmd;
+    cmd.request = {full.id(0), ActionKind::CastSpell, full.id(1)};
+    cmd.request.spell_id = rules5e::spell_id_of(kSacred);
+    auto r = full.settle(full.c->submit(cmd));
+    CHECK_FALSE(r.ok);
+    CHECK(r.error == "invalid spell target");
+}
+
+TEST_CASE("cover: determinism - cover_between and cover_of agree across two Combats with the same seed") {
+    auto l = lib();
+    const std::vector<Spawn> sp{{kFighter, 2, 5}, {kGoblin, 8, 5}, {kGoblin, 5, 5}};
+    const std::vector<Vec2i> walls{{6, 4}, {6, 6}};
+    Board a(l, sp, walls), b(l, sp, walls);
+    for (std::size_t i = 0; i < 3; ++i)
+        for (std::size_t j = 0; j < 3; ++j) {
+            if (i == j) continue;
+            CHECK(a.cover(i, j) == b.cover(i, j));
+            CHECK(a.tiles({sp[i].x, sp[i].y}, 1, {sp[j].x, sp[j].y}, 1, a.id(i), a.id(j)) == a.cover(i, j));
+        }
+    CHECK(a.c->hash() == b.c->hash());
 }
