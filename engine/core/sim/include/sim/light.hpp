@@ -152,7 +152,20 @@ public:
     // Freeze `w`, keeping memoised tiles outside the dirty rects (incremental invalidation; the caller names every
     // rect whose light may have changed: a source's old and new halo, a zone's bounds + halo, a changed chunk + halo).
     void begin_step(LightWorld w, std::span<const RectI> dirty);
-    void invalidate_all() { memo_.clear(); }
+    // Incremental step (LightDriver; LIGHTING.md §7 invalidation, §12 fallback): freeze `w` and keep every memoised tile
+    // whose sample cannot have changed since the previous begin_step_incremental over the same `chunks` (the tiles that
+    // will be read; memo outside their bounding box is dropped). The cache diffs the inputs itself: a source added,
+    // removed or changed dirties its old and new halo rects; a changed wall tile (blocks_sight or opaque zone) dirties
+    // the halo of every source whose halo holds it; a changed zone dirties the bounding boxes of its old and new tiles.
+    // A different chunk set, ambient, or reach bound (or no previous incremental step) is a full rebuild. Every at(t)
+    // for t in `chunks` then equals what begin_step(w) would give, bit for bit (tested by randomised mutation).
+    struct StepStats {
+        bool full = false;              // memo dropped entirely
+        std::size_t dirty_rects = 0;    // rects invalidated (incremental only)
+        std::size_t wall_changes = 0;   // wall tiles that differ from the previous step
+    };
+    StepStats begin_step_incremental(LightWorld w, std::span<const world::ChunkCoord> chunks);
+    void invalidate_all() { memo_.clear(); inc_.valid = false; }
     void invalidate_rect(RectI r);
     LightSample at(Vec2i t);
     const LightWorld& world() const noexcept { return world_; }
@@ -163,7 +176,15 @@ private:
     void reset_fields();
     void build_field(std::size_t si);
     bool field_reaches(std::size_t si, Vec2i t);
+    struct IncState {   // what the last begin_step_incremental saw (raw walls over `box`, chunk set, reach bound)
+        bool valid = false;
+        std::vector<world::ChunkCoord> chunks;
+        RectI box;
+        int32_t reach = 0;
+        std::vector<uint8_t> walls;
+    };
     LightWorld world_;
+    IncState inc_;
     std::map<Vec2i, LightSample> memo_;
     std::vector<Field> fields_;
 };

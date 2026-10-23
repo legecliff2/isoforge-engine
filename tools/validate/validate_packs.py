@@ -378,7 +378,8 @@ UPCAST_EFFECTS = {"dice": ("spell_attack", "save", "heal", "auto_hit", "zone", "
 
 
 FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_damage",   # R-G15, spell_loader.cpp
-                     "teleport")   # R-G9 (sim #144)
+                     "teleport",   # R-G9 (sim #144)
+                     "weapon_imbue", "duplicates")   # 7.2zf
 TIMED_BY_DURATION = ("hp_pool", "sustained_damage")   # their timer is the spell's duration in rounds
 
 
@@ -390,6 +391,7 @@ def check_spell(doc, errs, ctx):
     errs += c4.check_spell_gaps(doc)   # 7.2zc
     errs += c4.check_spell_batch2(doc)   # 7.2zd
     errs += c4.check_spell_batch3(doc)   # 7.2ze
+    errs += c4.check_spell_imbue_mirror(doc)   # 7.2zf
     eff = effs[0]   # the first effect carries targeting, scaling and the reaction/duration rules
     if len(effs) > 1 and any(e["kind"] in REACTION_EFFECT_TRIGGER for e in effs):
         errs.append("effects: ac_bonus and counter reactions cannot be combined with other effects")
@@ -762,6 +764,13 @@ def validate_doc(rel: str, doc: dict, tag: str, registry: Registry, by_tag: dict
             if tag in ("monster@5", "character@5"):
                 e5, w5 = c4.check_equipment_v5(typ, doc, ctx)
                 e4, w4 = e4 + e5, w4 + w5
+            if tag == "character@5":   # PR C: SRD proficiencies and the derived-vs-printed check
+                for fn in (c4.check_character_proficiencies, c4.check_character_derive):
+                    e7, w7 = fn(doc, ctx)
+                    e4, w4 = e4 + e7, w4 + w7
+            if tag == "monster@5":   # EQUIPMENT 5.6 derived-vs-printed (rules5e::derive_monster mirror)
+                e6, w6 = c4.check_monster_derive(doc, ctx)
+                e4, w4 = e4 + e6, w4 + w6
         errs += e4
         warns += [f"{rel}: {w}" for w in w4]
     if typ in ("monster", "character") and isinstance(doc, dict):
