@@ -73,6 +73,11 @@ void mod_modes(const EncounterState& s, CombatantId id, ModStat st, int ability,
     }
 }
 
+// 7.2zg Faerie Fire: `id` carries an `outlined` row.
+bool is_outlined(const EncounterState& s, CombatantId id) {
+    return std::any_of(s.modifiers.begin(), s.modifiers.end(), [&](const ActiveModifier& m) { return m.target == id && m.spec.stat == ModStat::Outlined; });
+}
+
 // Dice of the modifiers of `id` for `st`, rolled now in application order (one rng draw per die, none without one).
 int mod_roll(EncounterState& s, CombatantId id, ModStat st, int ability) {
     int total = 0;
@@ -837,7 +842,10 @@ bool aura_immune(const EncounterState& s, const Combatant& t, Condition c) {
 }
 // Condition immunity: the creature's own, or an aura's.
 bool immune_to(const EncounterState& s, const Combatant& t, Condition c) {
-    return (t.condition_immunities & bit(c)) != 0 || (!s.zones.empty() && aura_immune(s, t, c));
+    if ((t.condition_immunities & bit(c)) != 0 || (!s.zones.empty() && aura_immune(s, t, c))) return true;
+    for (const auto& e : s.effects)   // 7.2zg Heroism: immune from any source while the spell lasts (immune_from_types = all)
+        if (e.target == t.id && e.immune_from_types == kImmuneFromAnySource && (e.immune_conditions & bit(c)) != 0) return true;
+    return false;
 }
 // 7.2zd Protection from Evil and Good: `t` can't get `c` from `source` while a ConditionImmunityFrom effect of the source's
 // creature type lasts on it (unknown source: not immune).
@@ -1607,13 +1615,19 @@ bool imbued_attack(const EncounterState& s, const Combatant& a, const Attack& at
 }
 // 7.2zf Mirror Image: does the attacker fall for t's duplicates? Not when it can't see t (Blinded, or no sight of it), or
 // perceives t with blindsight or truesight in range (without sim's sight facts: any blindsight / truesight counts).
-bool fooled_by_duplicates(const EncounterState& s, const Combatant& a, const Combatant& t) {
+// 7.2zg `exempt_senses` (shared by Mirror Image duplicates and Blur): is attacker `a` fooled by an illusion on `t`? Not when it
+// cannot see `t` (Blinded or otherwise) or perceives it through an exempt sense in range (truesight: with line of sight;
+// tremorsense: on the same surface). Without a sight hook: any exempt sense the attacker has counts as in range.
+bool fooled_by_illusion(const EncounterState& s, const Combatant& a, const Combatant& t, uint8_t exempt) {
     if (a.has(Condition::Blinded)) return false;
-    if (!s.hooks.sight_facts) return a.blindsight_ft == 0 && a.truesight_ft == 0;
+    const bool bs = (exempt & kSenseBlindsight) && a.blindsight_ft > 0, ts = (exempt & kSenseTruesight) && a.truesight_ft > 0;
+    const bool rs = (exempt & kSenseTremorsense) && a.tremorsense_ft > 0;
+    if (!s.hooks.sight_facts) return !bs && !ts && !rs;
     const SightFacts f = s.hooks.sight_facts(s, a, t);
     if (!derive_sight(a, f).can_see) return false;
-    if (a.blindsight_ft > 0 && f.distance_ft <= a.blindsight_ft) return false;
-    if (a.truesight_ft > 0 && f.distance_ft <= a.truesight_ft && f.line_of_sight) return false;
+    if (bs && f.distance_ft <= a.blindsight_ft) return false;
+    if (ts && f.distance_ft <= a.truesight_ft && f.line_of_sight) return false;
+    if (rs && f.distance_ft <= a.tremorsense_ft && f.subject_grounded) return false;
     return true;
 }
 
@@ -1658,6 +1672,18 @@ std::vector<ReactionOption> reaction_options(const EncounterState& s, const Comb
             o.kind = ReactionOptionKind::SubtractRoll; o.dice = rx.dice; break;
         }
         out.push_back(o);
+    }
+    if (w.trigger == ReactionTrigger::Damaged && has_damager && w.target == r.id && s.hooks.spells) {   // 7.2zg Hellish Rebuke
+        for (uint32_t id : r.spells_known) {
+            const SpellDef* d = s.hooks.spells->find(id);
+            if (!d || d->casting_time != CastingTime::Reaction || d->reaction_trigger != ReactionTrigger::Damaged) continue;
+            if ((d->components & kComponentV) && !s.zones.empty() && in_silence(s, r.id)) continue;
+            if (s.hooks.can_provide_components && !s.hooks.can_provide_components(s, r, *d)) continue;
+            if (!sight(s, r.id, damager->id).can_see) continue;   // a creature the caster can see
+            if (s.hooks.sight_facts && s.hooks.sight_facts(s, r, *damager).distance_ft > d->range_ft) continue;   // within range (60 ft)
+            for (uint8_t L = std::max<uint8_t>(d->level, 1); L <= 9; ++L)
+                if (has_slot(r, L)) out.push_back(ReactionOption{0, ReactionOptionKind::Retaliate, 0, d->id, L});
+        }
     }
     if (w.trigger != ReactionTrigger::Damaged && w.trigger != ReactionTrigger::AllyAttacked) return out;
     const auto& hook = w.trigger == ReactionTrigger::Damaged ? s.hooks.damaged_options : s.hooks.ally_attacked_options;
@@ -1784,7 +1810,7 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
     Combatant* attacker = src && src->who && src->who != &t && !src->who->dead ? src->who : nullptr;
     const bool was_up = t.hp > 0;
     std::optional<ReactionOption> after_reaction;   // retaliate / riposte: after the damage lands
-    if (ctx && d.dealt > 0 && !t.dead && (!t.reactions.empty() || s.hooks.damaged_options)) {
+    if (ctx && d.dealt > 0 && !t.dead && (!t.reactions.empty() || s.hooks.damaged_options || (!t.spells_known.empty() && s.hooks.spells))) {
         ReactionWindow w = new_window(s, *ctx, ReactionTrigger::Damaged, attacker ? attacker->id : 0);
         w.target = t.id; w.damage = d.dealt; w.ranged = src && src->atk && src->atk->ranged;
         w.spell_id = src && src->is_spell ? 1u : 0u;
@@ -1843,7 +1869,15 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
         const std::size_t from = ev.size();
         ++ctx->depth;
         if (o.kind == ReactionOptionKind::Retaliate) {
-            if (const SpellDef* def = spell_def(s, o.option_id))
+            const SpellDef* def = spell_def(s, o.option_id);
+            if (def && o.slot_level > 0) {   // 7.2zg Hellish Rebuke: a reaction spell cast at the damager
+                spend_slot(t, o.slot_level);
+                emit(ev, EventKind::SpellCast, t.id, attacker->id, int32_t(def->id), o.slot_level);
+                const bool countered = spell_cast_window(s, *ctx, t, def->id, o.slot_level, attacker->id, ev);
+                if (!countered && !attacker->dead) resolve_effect(s, *ctx, t, *def, o.slot_level, std::vector<Combatant*>{attacker}, false, ev);
+                emit(ev, countered ? EventKind::SpellCountered : EventKind::SpellResolved, t.id, attacker->id, int32_t(def->id), o.slot_level);
+                if (!s.effects.empty()) end_on_own_action(s, t.id, kEndsOnCast, ev);
+            } else if (def)
                 resolve_effect(s, *ctx, t, *def, 0, std::vector<Combatant*>{attacker}, true, ev);
         } else if (o.attack_index < t.attacks.size()) {
             do_attack(s, *ctx, t, *attacker, t.attacks[o.attack_index], true, ev);
@@ -1997,9 +2031,10 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     }
     for (std::size_t di = 0; di < s.effects.size(); ++di) {   // 7.2zf Mirror Image: the d20 only when duplicates can fool it
         ActiveSpellEffect& de = s.effects[di];
-        if (de.target != t.id || de.duplicates == 0 || &a == &t || !fooled_by_duplicates(s, a, t)) continue;
+        if (de.target != t.id || de.duplicates == 0 || &a == &t) continue;
         const SpellDef* dd = spell_def(s, de.spell_id);
         if (!dd) break;
+        if (!fooled_by_illusion(s, a, t, dd->duplicates.exempt_senses)) continue;
         const int d20 = roll_d20(s.rng, 0, RollMode::Normal).natural;
         const bool redirected = d20 >= int(dd->duplicates.thresholds[std::size_t(de.duplicates - 1)]);
         emit(ev, EventKind::FeatureTriggered, t.id, a.id, int32_t(de.spell_id), d20, int32_t(redirected));
@@ -2057,6 +2092,8 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
                 }
                 continue;
             }
+            if (m.spec.exempt_senses != 0 && m.target == t.id && m.spec.stat == ModStat::AttacksAgainst &&
+                !fooled_by_illusion(s, a, t, m.spec.exempt_senses)) { m.gated = true; continue; }   // 7.2zg Blur
             if (m.weapon != 0 && m.target == a.id && (spell_id != 0 || !wields(a, m, atk))) { m.gated = true; continue; }   // 7.2y
             if (m.target == a.id && m.spec.stat == ModStat::AttackRoll && (m.spec.scope != 0 || m.spec.scope_ability != 0) &&
                 (spell_id != 0 || (m.spec.scope == 1 && atk.ranged) || (m.spec.scope == 2 && !atk.ranged) ||
@@ -2074,6 +2111,8 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         mod_modes(s, a.id, ModStat::AttackRoll, -1, madv, mdis);
         mod_modes(s, t.id, ModStat::AttacksAgainst, -1, madv, mdis);
         madv = madv || attackers_adv; mdis = mdis || attackers_dis;   // 7.2zd Protection from Evil and Good
+        if (is_outlined(s, t.id) && !a.has(Condition::Blinded) && sight(s, a.id, t.id).can_see) madv = true;   // 7.2zg outlined
+        actx.target_outlined = is_outlined(s, t.id); actx.attacker_outlined = is_outlined(s, a.id);
         if (madv) actx.mode = RollMode::Advantage;
         if (mdis) actx.extra_disadvantage = true;
         actx.cover_ac_bonus = int8_t(std::clamp(int(actx.cover_ac_bonus) + modified_ac_bonus(s, t.id), -128, 127));
@@ -2844,6 +2883,15 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                     ForcedMoveQuery q; q.mover = t->id; q.source = a.id; q.mode = 1; q.feet = sm->push_ft;
                     ctx.forced_queue.push_back(q);
                 }
+            } else if (def.miss_half && !t->dead) {   // 7.2zg Acid Arrow on_miss half: half the initial damage, no rider
+                bool duplicate = false;   // an attack that went to a Mirror Image duplicate never reaches the caster
+                for (auto it = ev.rbegin(); it != ev.rend(); ++it)
+                    if (it->kind == EventKind::AttackResolved) { duplicate = (it->c & 4) != 0; break; }
+                const int dealt = duplicate ? 0 : std::max(0, roll_dice(s.rng, batk.damage)) / 2;
+                if (dealt > 0) {
+                    const TrigSrc ts{&a, nullptr, true};
+                    damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(dealt), def.damage_type, batk.qualifiers), false, ev, &ts, &ctx);
+                }
             }
         }
         break;
@@ -2953,7 +3001,8 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, cond, def.save_ability,
                                                       int16_t(dc), at_once ? RepeatSave::None : def.repeat_save, def.concentration,
                                                       at_once ? Timed{} : effect_timed(s, def, a.id, t->id),
-                                                      lvl, false});
+                                                      lvl, (def.ends_on & kEndsOnDamage) != 0});   // 7.2zg Hypnotic Pattern
+                s.effects.back().ends_on = def.ends_on;
                 if (def.escalates && !at_once) { s.effects.back().escalates = true; s.effects.back().escalate_to = def.escalate_to; }
                 s.effects.back().control = uint8_t(def.control);
                 // 7.2v: prone and incapacitated. Incapacitated is this effect's own only if it added it, so ending the
@@ -3003,7 +3052,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                 s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.condition, Ability::Wis, 0, RepeatSave::None,
                                                       def.concentration,
                                                       effect_timed(s, def, a.id, t->id),
-                                                      lvl, false});
+                                                      lvl, (def.ends_on & kEndsOnDamage) != 0});   // 7.2zg
                 s.effects.back().ends_on = def.ends_on;   // 7.2zc Invisibility; 7.2zd Sanctuary (harmful_cast)
                 if (def.has_ward) {   // 7.2zd Sanctuary: the ward save is against the caster's spell save DC
                     s.effects.back().save_ability = def.ward_save;
@@ -3305,6 +3354,30 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         if (def.concentration && applied) a.concentration_spell = def.id;
         break;
     }
+    case SpellEffectKind::TempHp: {   // 7.2zg False Life / Heroism
+        const TempHpSpec& th = def.temp_hp;
+        const int above = std::max(0, int(lvl) - int(def.level));
+        bool applied = false;
+        for (Combatant* t : T) {
+            if (t->dead) continue;
+            int amt = th.dice.count > 0 ? roll_dice(s.rng, th.dice) : int(th.dice.bonus);
+            amt += int(th.per_slot_above) * above;
+            if (th.ability) amt += modifier(a.abilities, a.spellcasting_ability);
+            ModifierSpec m; m.id = def.id; m.source = def.id; m.stat = ModStat::TempHp; m.applies_to = ModAppliesTo::Target;
+            m.bonus = int16_t(std::clamp(amt, 0, 32767)); m.per_turn = th.per_turn; m.concentration = def.concentration;
+            (void)apply_modifier(s, a.id, t->id, m, ev);
+            if (th.immune_conditions != 0) {
+                ActiveSpellEffect x{def.id, a.id, t->id, Condition::Paralyzed, Ability::Wis, 0, RepeatSave::None, def.concentration,
+                                    effect_timed(s, def, a.id, t->id), lvl, false};
+                x.no_condition = true;
+                x.immune_conditions = th.immune_conditions; x.immune_from_types = kImmuneFromAnySource;
+                s.effects.push_back(x);
+            }
+            affected.push_back(t); applied = true;
+        }
+        if (def.concentration && applied) a.concentration_spell = def.id;
+        break;
+    }
     case SpellEffectKind::MaxHpBonus: {   // 7.2zd Aid: maximum and current hit points up; the same spell keeps the higher bonus
         const int above = std::max(0, int(lvl) - int(def.level));
         const int bonus = std::clamp(int(def.hp_bonus_flat) + int(def.hp_bonus_per_slot) * above, 0, 32767);
@@ -3558,6 +3631,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     case SpellEffectKind::HpPool: case SpellEffectKind::Dispel: case SpellEffectKind::Revive:
     case SpellEffectKind::EndCondition: case SpellEffectKind::DelayedDamage: case SpellEffectKind::SustainedDamage:
     case SpellEffectKind::ForcedMove: case SpellEffectKind::ConditionImmunityFrom: case SpellEffectKind::MaxHpBonus:
+    case SpellEffectKind::TempHp:   // 7.2zg
         if ((def.area == AreaShape::None && int(T.size()) > scaled_targets(def, lvl)) || !distinct())
             return fail("too many targets");
         break;
@@ -3707,7 +3781,18 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         emit(out.events, EventKind::ResourceSpent, a.id, 0, int32_t(a.sorcery_pool), meta_cost, find_pool(s, a.id, a.sorcery_pool)->cur);
     const auto ends_keys = def.is_spell ? ends_on_keys(s, a.id, kEndsOnCast) : std::vector<std::pair<uint32_t, CombatantId>>{};   // 7.2zc
     const auto harm_keys = def.is_spell ? ends_on_keys(s, a.id, kEndsOnHarmfulCast) : std::vector<std::pair<uint32_t, CombatantId>>{};   // 7.2zd
-    bool countered = def.is_spell && spell_cast_window(s, ctx, a, def.id, lvl, ids[0], out.events);
+    // 7.2zg Slow: a slowed caster of a 1-action spell rolls a d20 (PRNG, only then); on 11+ the spell doesn't take effect
+    // (FeatureTriggered{caster, caster, Slow's spell id, d20, 1}). v1: the slot and action are spent and the spell is lost; the
+    // SRD's completion on the next turn is deferred.
+    bool slow_lost = false;
+    if (def.is_spell && def.casting_time == CastingTime::Action && !s.modifiers.empty() && has_marker(s, a.id, ModStat::Slow)) {
+        uint32_t src = 0;
+        for (const auto& m : s.modifiers) if (m.target == a.id && m.spec.stat == ModStat::Slow) { src = m.spec.source; break; }
+        const int d20 = roll_d20(s.rng, 0, RollMode::Normal).natural;
+        slow_lost = d20 >= 11;
+        emit(out.events, EventKind::FeatureTriggered, a.id, a.id, int32_t(src), d20, int32_t(slow_lost));
+    }
+    bool countered = slow_lost || (def.is_spell && spell_cast_window(s, ctx, a, def.id, lvl, ids[0], out.events));
     bool harmful = false;
     if (!countered && !warded_at.empty()) {   // 7.2zd: each ward save in target order; a failure retargets once, else that target is lost
         std::vector<Combatant*> kept;
@@ -3765,6 +3850,8 @@ StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, c
     if (req.damage_choice != 0) {
         if (std::size_t(req.damage_choice) > def.damage_choices.size()) return fail("bad damage choice");
         eff.damage_type = def.damage_choices[std::size_t(req.damage_choice - 1)];
+        if (eff.kind == SpellEffectKind::ApplyModifier && eff.modifier.stat == ModStat::Resistance)   // 7.2zg Protection from Energy
+            eff.modifier.damage_type = eff.damage_type;
     }
     if (req.condition_choice != 0 && def.kind == SpellEffectKind::EndCondition) {
         // Lesser Restoration: 1 + index into ends_condition_list (the spell's JSON list order); each target must have the chosen
@@ -4170,12 +4257,14 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
         if (!t || t == &a || t->dead) return fail("bad target");
         if (!req.target_within_5ft) return fail("target must be within 5 ft");
         bool asleep = false;
-        for (const auto& e : s.effects) asleep = asleep || (e.target == t->id && e.ends_on_damage);
+        // R-G15 Sleep (ends_on_damage); 7.2zg `ends_on: [shake_awake]` (Hypnotic Pattern)
+        auto wakes = [&](const ActiveSpellEffect& e) { return e.target == t->id && (e.ends_on_damage || (e.ends_on & kEndsOnShakeAwake)); };
+        for (const auto& e : s.effects) asleep = asleep || wakes(e);
         if (!asleep) return fail("target is not under an effect that waking ends");
         if (!spend_action(b, a, ActionKind::Attack, false)) return fail("no action available");
         s.budget = b;
         for (std::size_t i = 0; i < s.effects.size();) {
-            if (s.effects[i].target == t->id && s.effects[i].ends_on_damage) end_effect(s, i, out.events); else ++i;
+            if (wakes(s.effects[i])) end_effect(s, i, out.events); else ++i;
         }
         return out;
     }
@@ -5602,6 +5691,11 @@ int move_allowance(const EncounterState& s, const Combatant& c, uint8_t mode) {
 int modified_speed(const EncounterState& s, const Combatant& c) {
     int sp = effective_speed(c);
     if (sp <= 0) return sp;
+    // 7.2zg Hypnotic Pattern (SRD: incapacitated and a speed of 0): an effect that ends on a shake awake holds speed 0
+    // while it lasts (every mode: mode_speed and move_allowance read this); waking or damage ends it, and the next
+    // turn's budget has the speed again.
+    for (const auto& e : s.effects)
+        if (e.target == c.id && (e.ends_on & kEndsOnShakeAwake)) return 0;
     for (const auto& m : s.modifiers)
         if (m.target == c.id && m.spec.stat == ModStat::Speed && m.spec.speed_den > 0)
             sp = std::max(0, sp * m.spec.speed_num / m.spec.speed_den - int(m.spec.speed_sub));
@@ -5632,6 +5726,7 @@ uint64_t modifiers_digest(const EncounterState& s, uint64_t h) {
         }
         if (p.held_applies != 0 || p.range_ft != 0) { byte(0x59); byte(p.held_applies); u32(p.range_ft); }
         if (p.applies_to == ModAppliesTo::Attackers) { byte(0x5B); u32(p.from_types); }
+        if (p.exempt_senses != 0) { byte(0x5E); byte(p.exempt_senses); }   // 7.2zg Blur: only for such rows
         if (p.also_rolls != 0) { byte(0x5C); byte(p.also_rolls); }   // 7.2ze Bless / Bane: only for such rows   // 7.2zd: only for such rows
         if (m.mark_dropped) { byte(0x5D); u32(m.mark_dropped_stamp); }   // ward / mark follow-ups: only when set
         if (m.mark != 0) { byte(0x5A); u32(m.mark); byte(p.mark_scope); byte(uint8_t(p.chosen_ability)); }   // 7.2zc mark: only when set   // 7.2za held die   // 7.2y wielded-scope binding: only when bound (older digests unchanged)
@@ -5788,7 +5883,9 @@ Sight sight(const EncounterState& s, CombatantId viewer, CombatantId subject) {
     if (!find(*b, viewer) || !find(*b, subject)) b = &s;   // created during the step (a summon): its current state
     const Combatant* v = find(*b, viewer); const Combatant* t = find(*b, subject);
     if (!v || !t) return Sight{};
-    return derive_sight(*v, s.hooks.sight_facts(*b, *v, *t));
+    SightFacts f = s.hooks.sight_facts(*b, *v, *t);
+    if (f.subject_invisible && is_outlined(s, subject)) f.subject_invisible = false;   // 7.2zg: an outlined creature can't hide in invisibility
+    return derive_sight(*v, f);
 }
 
 bool is_hidden_from(const EncounterState& s, CombatantId who, CombatantId from) {

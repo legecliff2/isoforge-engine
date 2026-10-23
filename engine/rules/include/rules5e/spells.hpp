@@ -63,6 +63,8 @@ enum class SpellEffectKind : uint8_t {
     WeaponImbue,
     // appended (7.2zf Mirror Image): illusory duplicates on the caster (`duplicates`); see DuplicatesSpec.
     Duplicates,
+    // appended (7.2zg False Life, Heroism): temporary hit points on each target (`temp_hp`); see TempHpSpec.
+    TempHp,
 };
 // R-G9 forced movement (push / pull) of an effect. mode 1 push (away from the source), 2 pull (toward it), 3 along a line
 // (Gust of Wind: sim's direction; not in R-G9's first scope). feet: exact distance, or the maximum when up_to (the caster
@@ -122,6 +124,7 @@ struct DuplicatesSpec {
     std::array<uint8_t, 3> thresholds{{11, 8, 6}};
     int8_t ac_base = 10;
     Ability ac_ability = Ability::Dex;
+    uint8_t exempt_senses = kSenseBlindsight | kSenseTruesight;   // appended (7.2zg `exempt_senses`; the 7.2zf default)
 };
 // The bonus of an imbue cast at `slot` (0 when the spec has no magic bonus).
 int imbue_bonus(const WeaponImbueSpec&, int slot);
@@ -174,6 +177,11 @@ struct SpellEffect {
 // 7.2zc (Invisibility): apply_condition `ends_on` bits: the effect ends when its target makes an attack / casts a spell.
 // kEndsOnHarmfulCast (7.2zd Sanctuary): a spell it cast affected a creature of another team.
 inline constexpr uint8_t kEndsOnAttack = 1, kEndsOnCast = 2, kEndsOnHarmfulCast = 4;
+// 7.2zg (Hypnotic Pattern; also on `save` effects with a condition): kEndsOnDamage: the effect ends when its target takes
+// damage (ActiveSpellEffect::ends_on_damage, as Sleep); kEndsOnShakeAwake: any other creature within 5 ft may end it with its
+// action (the existing Wake action, ActionRequest::special 5). While a kEndsOnShakeAwake effect lasts its target's speed is 0
+// (modified_speed; SRD Hypnotic Pattern).
+inline constexpr uint8_t kEndsOnDamage = 8, kEndsOnShakeAwake = 16;
 
 // ---- R-G11 persistent zones and auras (docs/proposals/ZONES_AURAS.md §2.6) ----
 // Point: fixed at a sim tile (ActionRequest::zone_x / zone_y, kept opaque in ActiveZone); Creature: an aura centred on the
@@ -241,6 +249,17 @@ struct SummonWeaponSpec {
     uint8_t upcast_every = 2;
     uint8_t reach_ft = 5;
     uint16_t move_ft = 20;
+};
+// 7.2zg False Life / Heroism: amount = roll(dice, its flat included) + per_slot_above x (slot - spell level), plus the
+// caster's spellcasting modifier when `ability`. per_turn: granted again at the start of each of the target's turns while the
+// spell lasts (an ActiveModifier TempHp row, Heroism). immune_conditions: Condition bits the target is immune to while it lasts
+// (Heroism: frightened), from any source. Integer only.
+struct TempHpSpec {
+    DiceExpr dice{0, 0, 0};
+    int16_t per_slot_above = 0;
+    bool ability = false;
+    bool per_turn = false;
+    uint32_t immune_conditions = 0;
 };
 struct ZoneSpec {
     AreaShape shape = AreaShape::None;       // Sphere, Cylinder, Cube, Line (walls)
@@ -431,6 +450,11 @@ struct SpellDef {
     // appended (7.2zf): kind WeaponImbue / Duplicates (primary effect only).
     WeaponImbueSpec imbue{};
     DuplicatesSpec duplicates{};
+    // appended (7.2zg): kind TempHp (primary effect only).
+    TempHpSpec temp_hp{};
+    // appended (7.2zg Acid Arrow): kind SpellAttack, `on_miss: half`: a miss deals half the initial damage (dice rolled then,
+    // halved, rounded down); riders that follow a hit (delayed_damage applies_to affected) do not apply.
+    bool miss_half = false;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered

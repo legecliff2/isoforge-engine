@@ -734,7 +734,7 @@ TEST_CASE("loader 7.2zd: warded + ward, ends_on harmful_cast, scope from_types +
     j = sanct; j["effects"][0]["condition"] = "invisible"; bad(j, "effect ward needs condition warded");
     j = sanct; j["effects"][0]["ward"] = {{"save", "wis"}}; bad(j, "effect ward must be {save: <ability>, on_fail: retarget_or_lose}");
     j = sanct; j["effects"][0]["ends_on"] = {"harmful_cast", "harmful_cast"}; bad(j, "effect ends_on items must be unique");
-    j = sanct; j["effects"][0]["ends_on"] = {"spell"}; bad(j, "effect ends_on must be a non-empty list of attack, cast, harmful_cast");
+    j = sanct; j["effects"][0]["ends_on"] = {"spell"}; bad(j, "effect ends_on must be a non-empty list of attack, cast, harmful_cast, damage, shake_awake");
     j = sanct; j["effects"][0].erase("ends_on"); j["duration"] = {{"kind", "instantaneous"}};
     bad(j, "effect ward needs concentration or a rounds, minutes or hours duration");
     j = pfeg; j["effects"][0]["modifier"]["stat"] = "save"; bad(j, "effect modifier applies_to attackers: attack_roll modifiers only");
@@ -797,4 +797,208 @@ TEST_CASE("loader 7.2ze: modifier sign + applies_to rolls, apply_modifier save g
     j = blind; j["effects"][0]["choices"] = {"blinded"}; bad(j, "effect choices must be a list of 2..4 conditions");
     j = blind; j["effects"][0]["choices"] = {"blinded", "warded"}; bad(j, "effect choices must be a list of 2..4 conditions");
     j = blind; j["effects"][0]["choices"] = {"blinded", "blinded"}; bad(j, "effect choices items must be unique");
+}
+
+TEST_CASE("loader 7.2zg: haste / slow kinds expand into a marker row plus AC, Dex save and speed rows") {
+    auto haste = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.haste","level":3,"name":"Haste",
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":30},"components":{"v":true,"s":true,"m":{"text":"licorice root"}},
+        "duration":{"kind":"minutes","amount":1,"concentration":true},"effects":[{"kind":"haste"}]})");
+    auto h = spell_from_json(haste); INFO(h.error); REQUIRE(h.def);
+    CHECK(h.def->kind == SpellEffectKind::ApplyModifier);
+    CHECK(h.def->modifier.stat == ModStat::Haste); CHECK_FALSE(h.def->has_modifier_save);
+    REQUIRE(h.def->extra_effects.size() == 3);
+    CHECK(h.def->extra_effects[0].modifier.stat == ModStat::Ac); CHECK(h.def->extra_effects[0].modifier.bonus == 2);
+    CHECK(h.def->extra_effects[1].modifier.stat == ModStat::Save); CHECK(h.def->extra_effects[1].modifier.ability == Ability::Dex);
+    CHECK(h.def->extra_effects[1].modifier.mode == RollMode::Advantage);
+    CHECK(h.def->extra_effects[2].modifier.stat == ModStat::Speed); CHECK(h.def->extra_effects[2].modifier.speed_num == 2);
+    for (const auto& x : h.def->extra_effects) { CHECK(x.affected_only); CHECK(x.modifier.concentration); CHECK(x.modifier.id != h.def->modifier.id); }
+    auto slow = haste; slow["id"] = "srd51.spell.slow"; slow["name"] = "Slow";
+    slow["effects"] = eng::assets::Json::parse(R"([{"kind":"slow","ability":"wis"}])");
+    auto w = spell_from_json(slow); INFO(w.error); REQUIRE(w.def);
+    CHECK(w.def->modifier.stat == ModStat::Slow); CHECK(w.def->has_modifier_save); CHECK(w.def->modifier_save == Ability::Wis);
+    CHECK(w.def->modifier.repeat_save == 1); CHECK(w.def->modifier.repeat_ability == Ability::Wis);
+    REQUIRE(w.def->extra_effects.size() == 3);
+    CHECK(w.def->extra_effects[0].modifier.bonus == -2); CHECK(w.def->extra_effects[1].modifier.bonus == -2);
+    CHECK(w.def->extra_effects[2].modifier.speed_den == 2);
+    auto bad = [](eng::assets::Json x, const std::string& want) {
+        auto r = spell_from_json(x); INFO(want); INFO(r.error); CHECK_FALSE(r.def); CHECK(r.error == want);
+    };
+    auto j = haste; j["duration"]["concentration"] = false; bad(j, "effect haste needs concentration");
+    j = slow; j["duration"]["concentration"] = false; bad(j, "effect slow needs concentration");
+    j = slow; j["effects"][0].erase("ability"); bad(j, "effect slow needs ability");
+    j = haste; j["effects"][0]["ability"] = "wis"; bad(j, "effect haste takes no ability");
+}
+
+TEST_CASE("loader 7.2zg: summon_weapon (Spiritual Weapon) maps onto SpellEffectKind::SummonWeapon") {
+    auto sw = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.spiritual_weapon","level":2,"name":"Spiritual Weapon",
+        "casting_time":{"kind":"bonus_action"},"range":{"kind":"ranged","feet":60},"components":{"v":true,"s":true},
+        "duration":{"kind":"minutes","amount":1},
+        "effects":[{"kind":"summon_weapon","damage":{"dice":"1d8","type":"force"},"add_spellcasting_modifier":true,
+                    "upcast_every":2,"reach_ft":5,"move_ft":20}],"scaling":{"upcast":{"dice":1}}})");
+    auto r = spell_from_json(sw); INFO(r.error); REQUIRE(r.def);
+    CHECK(r.def->kind == SpellEffectKind::SummonWeapon); CHECK(r.def->melee); CHECK(r.def->add_spellcasting_modifier);
+    CHECK(r.def->dice.count == 1); CHECK(r.def->dice.sides == 8); CHECK(r.def->damage_type == DamageType::Force);
+    CHECK(r.def->upcast_dice == 1); CHECK(r.def->summon_weapon.upcast_every == 2);
+    CHECK(r.def->summon_weapon.reach_ft == 5); CHECK(r.def->summon_weapon.move_ft == 20);
+    CHECK(r.def->casting_time == CastingTime::BonusAction); CHECK_FALSE(r.def->concentration);
+    auto bad = [](eng::assets::Json x, const std::string& want) {
+        auto q = spell_from_json(x); INFO(want); INFO(q.error); CHECK_FALSE(q.def); CHECK(q.error == want);
+    };
+    auto j = sw; j["effects"][0].erase("damage"); bad(j, "effect damage invalid");
+    j = sw; j["effects"][0]["upcast_every"] = 0; bad(j, "effect upcast_every must be an integer 1..9");
+    j = sw; j["effects"][0]["reach_ft"] = 7; bad(j, "effect reach_ft must be a positive multiple of 5");
+    j = sw; j["effects"][0]["move_ft"] = 0; bad(j, "effect move_ft must be a positive multiple of 5");
+    j = sw; j["duration"] = {{"kind", "instantaneous"}}; bad(j, "effect summon_weapon needs concentration or a rounds, minutes or hours duration");
+    j = sw; j["effects"] = eng::assets::Json::array({{{"kind", "heal"}, {"dice", "1d4"}}, sw["effects"][0]});
+    j.erase("scaling");
+    bad(j, "effects[1]: summon_weapon is only allowed as the first effect");
+}
+
+TEST_CASE("loader 7.2zg: temp_hp (False Life dice + per_slot_above; Heroism ability + per_turn + condition_immunity)") {
+    auto fl = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.false_life","level":1,"name":"False Life",
+        "casting_time":{"kind":"action"},"range":{"kind":"self"},"components":{"v":true,"s":true,"m":{"text":"alcohol"}},
+        "duration":{"kind":"hours","amount":1},"effects":[{"kind":"temp_hp","dice":"1d4+4","per_slot_above":5}]})");
+    auto r = spell_from_json(fl); INFO(r.error); REQUIRE(r.def);
+    CHECK(r.def->kind == SpellEffectKind::TempHp);
+    CHECK(r.def->temp_hp.dice.count == 1); CHECK(r.def->temp_hp.dice.sides == 4); CHECK(r.def->temp_hp.dice.bonus == 4);
+    CHECK(r.def->temp_hp.per_slot_above == 5); CHECK_FALSE(r.def->temp_hp.ability); CHECK_FALSE(r.def->temp_hp.per_turn);
+    auto he = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.heroism","level":1,"name":"Heroism",
+        "casting_time":{"kind":"action"},"range":{"kind":"touch"},"components":{"v":true,"s":true},
+        "duration":{"kind":"minutes","amount":1,"concentration":true},
+        "effects":[{"kind":"temp_hp","ability":"spellcasting","per_turn":true,"condition_immunity":["frightened"]}],
+        "scaling":{"upcast":{"targets":1}}})");
+    auto h = spell_from_json(he); INFO(h.error); REQUIRE(h.def);
+    CHECK(h.def->temp_hp.ability); CHECK(h.def->temp_hp.per_turn); CHECK(h.def->temp_hp.immune_conditions == bit(Condition::Frightened));
+    auto bad = [](eng::assets::Json x, const std::string& want) {
+        auto q = spell_from_json(x); INFO(want); INFO(q.error); CHECK_FALSE(q.def); CHECK(q.error == want);
+    };
+    auto j = fl; j["effects"][0]["ability"] = "spellcasting"; bad(j, "effect temp_hp needs exactly one of dice or ability");
+    j = fl; j["effects"][0].erase("dice"); bad(j, "effect temp_hp needs exactly one of dice or ability");
+    j = fl; j["effects"][0]["dice"] = "xd4"; bad(j, "effect dice invalid");
+    j = fl; j["effects"][0]["per_slot_above"] = 0; bad(j, "effect per_slot_above must be an integer 1..50");
+    j = he; j["effects"][0]["ability"] = "wis"; bad(j, "effect ability must be spellcasting");
+    j = he; j["effects"][0]["per_turn"] = 1; bad(j, "effect per_turn must be a boolean");
+    j = he; j["effects"][0]["condition_immunity"] = eng::assets::Json::array(); bad(j, "effect condition_immunity must be a non-empty list of conditions");
+    j = he; j["effects"][0]["condition_immunity"] = {"frightened", "frightened"}; bad(j, "effect condition_immunity items must be unique");
+    j = he; j["duration"] = {{"kind", "instantaneous"}};
+    bad(j, "effect temp_hp per_turn or condition_immunity needs concentration or a rounds, minutes or hours duration");
+}
+
+TEST_CASE("loader 7.2zg: spell_attack on_miss half (Acid Arrow)") {
+    auto aa = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.acid_arrow","level":2,"name":"Acid Arrow",
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":90},"components":{"v":true,"s":true,"m":{"text":"rhubarb"}},
+        "duration":{"kind":"instantaneous"},
+        "effects":[{"kind":"spell_attack","attack":"ranged","damage":{"dice":"4d4","type":"acid"},"on_miss":"half"},
+                   {"kind":"delayed_damage","applies_to":"affected","damage":{"dice":"2d4","type":"acid"},
+                    "expiry":{"kind":"until_end_of_target_next_turn"}}],"scaling":{"upcast":{"dice":1}}})");
+    auto r = spell_from_json(aa); INFO(r.error); REQUIRE(r.def);
+    CHECK(r.def->miss_half); REQUIRE(r.def->extra_effects.size() == 1);
+    CHECK(r.def->extra_effects[0].kind == SpellEffectKind::DelayedDamage); CHECK(r.def->extra_effects[0].affected_only);
+    CHECK(r.def->upcast_dice == 1); CHECK(r.def->extra_effects[0].upcast_dice == 1);   // SRD: both gain 1d4 per slot above 2nd
+    auto j = aa; j["effects"][0]["on_miss"] = "none";
+    auto q = spell_from_json(j); CHECK_FALSE(q.def); CHECK(q.error == "effect on_miss must be half");
+    j = aa; j["effects"] = eng::assets::Json::array({{{"kind", "heal"}, {"dice", "1d4"}},
+        {{"kind", "spell_attack"}, {"attack", "ranged"}, {"damage", {{"dice", "4d4"}, {"type", "acid"}}}, {"on_miss", "half"}}});
+    j.erase("scaling");
+    q = spell_from_json(j); CHECK_FALSE(q.def); CHECK(q.error == "effects[1]: on_miss is only allowed on the first effect");
+}
+
+TEST_CASE("loader 7.2zg: casting_time.trigger damaged (Hellish Rebuke)") {
+    auto hr = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.hellish_rebuke","level":1,"name":"Hellish Rebuke",
+        "casting_time":{"kind":"reaction","trigger":{"kind":"damaged","requires_sight":true}},"range":{"kind":"ranged","feet":60},
+        "components":{"v":true,"s":true},"duration":{"kind":"instantaneous"},
+        "effects":[{"kind":"save","ability":"dex","damage":{"dice":"2d10","type":"fire"},"on_success":"half"}],
+        "scaling":{"upcast":{"dice":1}}})");
+    auto r = spell_from_json(hr); INFO(r.error); REQUIRE(r.def);
+    CHECK(r.def->casting_time == CastingTime::Reaction); CHECK(r.def->reaction_trigger == ReactionTrigger::Damaged);
+    CHECK(r.def->requires_sight); CHECK(r.def->range_ft == 60);
+    auto j = hr; j["casting_time"]["trigger"].erase("requires_sight");
+    auto q = spell_from_json(j); CHECK(q.error == "casting_time.trigger.kind damaged needs requires_sight");
+    j = hr; j["range"] = {{"kind", "touch"}};
+    q = spell_from_json(j); CHECK(q.error == "casting_time.trigger.kind damaged needs a ranged range");
+    j = hr; j["effects"] = eng::assets::Json::array({{{"kind", "heal"}, {"dice", "1d4"}}}); j.erase("scaling");
+    q = spell_from_json(j); CHECK(q.error == "casting_time.trigger.kind damaged needs a save effect");
+    j = hr; j["casting_time"]["trigger"]["kind"] = "hurt";
+    q = spell_from_json(j); CHECK(q.error == "casting_time.trigger.kind must be being_hit, spell_cast or damaged");
+}
+
+TEST_CASE("loader 7.2zg: apply_modifier damage_type_choices (Protection from Energy)") {
+    auto pe = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.protection_from_energy","level":3,"name":"Protection from Energy",
+        "casting_time":{"kind":"action"},"range":{"kind":"touch"},"components":{"v":true,"s":true},
+        "duration":{"kind":"hours","amount":1,"concentration":true},
+        "effects":[{"kind":"apply_modifier","modifier":{"stat":"resistance","damage_type":"acid","duration":{"kind":"concentration"}},
+                    "damage_type_choices":["acid","cold","fire","lightning","thunder"]}]})");
+    auto r = spell_from_json(pe); INFO(r.error); REQUIRE(r.def);
+    REQUIRE(r.def->damage_choices.size() == 5);
+    CHECK(r.def->damage_choices[2] == DamageType::Fire); CHECK(r.def->modifier.stat == ModStat::Resistance);
+    auto j = pe; j["effects"][0]["damage_type_choices"] = {"cold", "fire"};
+    auto q = spell_from_json(j); CHECK(q.error == "effect damage_type_choices must include the modifier damage_type");
+    j = pe; j["effects"][0]["damage_type_choices"] = {"acid", "acid"};
+    q = spell_from_json(j); CHECK(q.error == "effect damage_type_choices must be 2..13 distinct damage types");
+    j = pe; j["effects"][0]["modifier"] = {{"stat", "ac"}, {"bonus", 1}, {"duration", {{"kind", "concentration"}}}};
+    q = spell_from_json(j); CHECK(q.error == "effect damage_type_choices needs a resistance modifier");
+    j = pe; j["effects"] = eng::assets::Json::array({{{"kind", "heal"}, {"dice", "1d4"}}, pe["effects"][0]});
+    j["range"] = {{"kind", "touch"}};
+    q = spell_from_json(j); CHECK(q.error == "effects[1]: damage_type_choices is only allowed on the first effect");
+}
+
+TEST_CASE("loader 7.2zg: exempt_senses, one key for Blur (apply_modifier) and Mirror Image (duplicates)") {
+    auto blur = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.blur","level":2,"name":"Blur",
+        "casting_time":{"kind":"action"},"range":{"kind":"self"},"components":{"v":true},
+        "duration":{"kind":"minutes","amount":1,"concentration":true},
+        "effects":[{"kind":"apply_modifier","modifier":{"stat":"attacks_against","mode":"disadvantage","duration":{"kind":"concentration"}},
+                    "exempt_senses":["blindsight","truesight"]}]})");
+    auto r = spell_from_json(blur); INFO(r.error); REQUIRE(r.def);
+    CHECK(r.def->modifier.stat == ModStat::AttacksAgainst);
+    CHECK(r.def->modifier.exempt_senses == (kSenseBlindsight | kSenseTruesight));
+    auto j = blur; j["effects"][0]["exempt_senses"] = {"blindsight", "blindsight"};
+    auto q = spell_from_json(j);
+    CHECK(q.error == "effect exempt_senses must be distinct senses (blindsight, tremorsense, truesight), at least one");
+    j = blur; j["effects"][0]["exempt_senses"] = {"smell"};
+    q = spell_from_json(j);
+    CHECK(q.error == "effect exempt_senses must be distinct senses (blindsight, tremorsense, truesight), at least one");
+    j = blur; j["effects"][0]["modifier"] = {{"stat", "ac"}, {"bonus", 1}, {"duration", {{"kind", "concentration"}}}};
+    q = spell_from_json(j); CHECK(q.error == "effect exempt_senses needs an attacks_against modifier");
+    auto mi = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.mirror_image","level":2,"name":"Mirror Image",
+        "casting_time":{"kind":"action"},"range":{"kind":"self"},"components":{"v":true,"s":true},"duration":{"kind":"minutes","amount":1},
+        "effects":[{"kind":"duplicates","count":3,"thresholds":[11,8,6],"ac":{"base":10,"ability":"dex"}}]})");
+    auto a = spell_from_json(mi); INFO(a.error); REQUIRE(a.def);
+    CHECK(a.def->duplicates.exempt_senses == (kSenseBlindsight | kSenseTruesight));   // default (7.2zf behaviour)
+    mi["effects"][0]["exempt_senses"] = {"tremorsense"};
+    a = spell_from_json(mi); INFO(a.error); REQUIRE(a.def);
+    CHECK(a.def->duplicates.exempt_senses == kSenseTremorsense);
+    mi["effects"][0]["exempt_senses"] = eng::assets::Json::array();
+    a = spell_from_json(mi);
+    CHECK(a.error == "effect exempt_senses must be distinct senses (blindsight, tremorsense, truesight), at least one");
+}
+
+TEST_CASE("loader 7.2zg: modifier stat outlined (Faerie Fire), Dex save gate") {
+    auto ff = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.faerie_fire","level":1,"name":"Faerie Fire",
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":60},"components":{"v":true},
+        "area":{"shape":"cube","size_ft":20},"duration":{"kind":"minutes","amount":1,"concentration":true},
+        "effects":[{"kind":"apply_modifier","modifier":{"stat":"outlined","duration":{"kind":"concentration"}},
+                    "save":{"ability":"dex","dc":"caster"}}]})");
+    auto r = spell_from_json(ff); INFO(r.error); REQUIRE(r.def);
+    CHECK(r.def->modifier.stat == ModStat::Outlined); CHECK(r.def->has_modifier_save); CHECK(r.def->modifier_save == Ability::Dex);
+    auto j = ff; j["effects"][0]["modifier"]["stat"] = "outline";
+    auto q = spell_from_json(j); CHECK(q.error == "effect modifier stat invalid");
+}
+
+TEST_CASE("loader 7.2zg: ends_on damage / shake_awake on save and apply_condition effects (Hypnotic Pattern)") {
+    auto hp = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.hypnotic_pattern","level":3,"name":"Hypnotic Pattern",
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":120},"components":{"s":true,"m":{"text":"a glowing stick of incense"}},
+        "area":{"shape":"cube","size_ft":30},"duration":{"kind":"minutes","amount":1,"concentration":true},
+        "effects":[{"kind":"save","ability":"wis","condition":"charmed","ends_on":["damage","shake_awake"]},
+                   {"kind":"apply_condition","applies_to":"affected","condition":"incapacitated","ends_on":["damage","shake_awake"]}]})");
+    auto r = spell_from_json(hp); INFO(r.error); REQUIRE(r.def);
+    CHECK(r.def->ends_on == (kEndsOnDamage | kEndsOnShakeAwake)); REQUIRE(r.def->extra_effects.size() == 1);
+    CHECK(r.def->extra_effects[0].ends_on == (kEndsOnDamage | kEndsOnShakeAwake));
+    auto j = hp; j["effects"][0]["ends_on"] = {"damage", "damage"};
+    auto q = spell_from_json(j); CHECK(q.error == "effect ends_on items must be unique");
+    j = hp; j["effects"][0]["ends_on"] = {"sneeze"};
+    q = spell_from_json(j); CHECK(q.error == "effect ends_on must be a non-empty list of attack, cast, harmful_cast, damage, shake_awake");
+    j = hp; j["effects"][0].erase("condition"); j["effects"][0]["damage"] = {{"dice", "1d6"}, {"type", "fire"}}; j["effects"][0]["on_success"] = "half";
+    q = spell_from_json(j); CHECK(q.error == "effect ends_on on a save effect needs a condition");
+    j = hp; j["duration"] = {{"kind", "instantaneous"}};
+    q = spell_from_json(j); CHECK(q.error == "effect ends_on needs concentration or a rounds, minutes or hours duration");
 }
