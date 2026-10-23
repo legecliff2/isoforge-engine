@@ -8,7 +8,14 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <system_error>
 #include <vector>
+
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "assets/schema_registry.hpp"
 #include "equip_scene.hpp"
@@ -156,9 +163,20 @@ std::string slurp(const fs::path& p) {
 }
 // Temp pack: the sample pack with the fighter carrying chain mail, a longsword and a hooded lantern (equipped: main + off
 // hand) and an unequipped dagger (carried: slung on the back).
+// Per-process suffix so concurrent/self-hosted runs never collide on a fixed /tmp path (and so a
+// ghrunner-owned leftover cannot Permission-denied the throwing remove_all).
+const std::string& run_suffix() {
+#ifdef _WIN32
+    static const std::string s = std::to_string(_getpid());
+#else
+    static const std::string s = std::to_string(getpid());
+#endif
+    return s;
+}
 fs::path make_kit_pack() {
-    const fs::path root = fs::temp_directory_path() / "isoforge_equip_visuals";
-    fs::remove_all(root);
+    const fs::path root = fs::temp_directory_path() / ("isoforge_equip_visuals_" + run_suffix());
+    std::error_code ec;
+    fs::remove_all(root, ec);   // ignore: leftover from another user/run must not fail the test
     fs::create_directories(root);
     const fs::path pack = root / "test.equip";
     fs::copy(fs::path(SLICE_PACK_ROOT) / SLICE_PACK, pack, fs::copy_options::recursive);
@@ -238,4 +256,5 @@ TEST_CASE("equip visuals: the session reads the sim loadout; stow slings, drop r
     REQUIRE(sword);
     CHECK(sword->slot == AttachSlot::Back);
     for (const EquipVisual& e : actor(vm, pc)->equipment) CHECK(e.slot == AttachSlot::Back);
+    { std::error_code ec; fs::remove_all(root, ec); }   // best-effort; do not fail the test on cleanup
 }
