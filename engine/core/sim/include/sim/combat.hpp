@@ -100,6 +100,36 @@ constexpr uint32_t ready_trigger_id(ReadyTriggerKind k, uint8_t tiles) { return 
 // characters / "monsters" for monsters), byte-sorted; id = index. Spawn-order independent.
 std::optional<std::string> spawn_team_name(const world::EntitySpawn& sp, const Archetype& a, std::string* error = nullptr);
 
+// docs/proposals/EQUIPMENT.md 7.2 / 9 (Engine Core): per-combat options. Default = every pre-equipment behaviour and hash.
+//  equipment: build loadouts from character@4 equipment[] entries naming a loaded item@1 (setup order: combatant, then entry),
+//    install the rules hooks loadout_of / item_def / apply_equip, recompute derived stats, keep ground items, and list PickUp /
+//    HandOver in legal_actions(). Off: none of it (no loadout, no hook, no new fold).
+struct CombatOptions {
+    bool equipment = false;
+};
+
+// An equipped light item as a light producer (EQUIPMENT.md 6, LIGHTING 10.1 / #233): the light id is allocated once at setup
+// (item instance order) and never changes; holder_id is the creature holding or carrying it, 0 on the ground (tile = where it
+// lies; carrier stays Item). lit: kHeldLit while held or on the ground (stowed lights are covered).
+struct EquipmentLight {
+    uint32_t light_id = 0;
+    uint32_t item = 0;          // carrier_id (Carrier::Item)
+    uint32_t def = 0;
+    CombatantId holder_id = 0;
+    Vec2i tile{};
+    bool lit = false;
+    // Light state (EQUIPMENT.md 6): rules5e::LightDef::states index (0 = top-level radii; a hooded lantern: 1 = hooded), from
+    // HeldItem::flags bits 4-6 (rules5e::light_state_index). bright_ft / dim_ft: rules5e::light_radii (0 / 0 while unlit).
+    uint8_t state = 0;
+    uint16_t bright_ft = 0, dim_ft = 0;
+    rules5e::LightShape shape = rules5e::LightShape::Radius;
+};
+
+// Ground item ECS entities (EQUIPMENT.md 4.4): StableId kGroundItemIdBase + instance, with TilePos and this component.
+inline constexpr uint8_t kHeldRelight = 0x80;   // sim-only HeldItem flag: a lit light stowed (covered), relit when drawn
+inline constexpr uint64_t kGroundItemIdBase = uint64_t(1) << 40;
+struct GroundItemLink { uint32_t instance = 0, def = 0; };
+
 class Combat {
 public:
     // Spawns every chunk spawn whose archetype is in `content` as an ECS entity (StableId =
@@ -112,6 +142,27 @@ public:
     // (as if the chunk were at (0,0)); this one uses absolute world tiles.
     static std::optional<Combat> create(ecs::Registry& reg, std::span<const world::Chunk* const> chunks,
                                         const ContentLibrary& content, uint64_t seed, std::string* error = nullptr);
+    // As above with options (CombatOptions{} is identical to the overloads without them).
+    static std::optional<Combat> create(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content,
+                                        uint64_t seed, CombatOptions options, std::string* error = nullptr);
+    static std::optional<Combat> create(ecs::Registry& reg, std::span<const world::Chunk* const> chunks,
+                                        const ContentLibrary& content, uint64_t seed, CombatOptions options,
+                                        std::string* error = nullptr);
+    const CombatOptions& options() const noexcept { return options_; }
+
+    // ---- Equipment (CombatOptions::equipment; EQUIPMENT.md 9) ----
+    // rules5e::legal_actions plus, with equipment on, the Engine Core entries appended after them: PickUp (ground items within
+    // 5 ft of the actor, instance order, hand 1 then 2), HandOver (held instance order, recipient combatant order, to
+    // creatures with a loadout within 5 ft), then SetLightState (held lights in instance order: each state index, then douse).
+    // Each is filtered through rules5e::equip_legal.
+    std::vector<rules5e::ActionRequest> legal_actions();   // re-binds the hooks first (like submit)
+    const rules5e::Loadout* loadout(CombatantId id) const;   // nullptr: no loadout (always with equipment off)
+    const ItemDefTable* item_defs() const noexcept { return items_.get(); }
+    std::vector<EquipmentLight> equipment_lights() const;    // light id order
+    uint32_t recomputes() const noexcept { return recomputes_; }   // recompute_derived calls (diagnostics, never hashed)
+    // Setup diagnostics (never hashed): rules5e::hands_overfull_error lines for creatures whose equipped holdables need more
+    // hands than they have (the extra items start carried).
+    const std::vector<std::string>& equipment_errors() const noexcept { return equipment_errors_; }
 
     // Rejected while a decision is pending.
     SubmitResult submit(const Command& cmd);
@@ -309,7 +360,25 @@ private:
     // summoned / gone (R-G12): a summon slot (appended after the create-time slots) and whether it ended; `last` = its anchor
     // when it ended (its entity is destroyed at the end of that step).
     struct Slot { CombatantId id; ecs::Entity entity; const Archetype* archetype; bool summoned = false; bool gone = false; Vec2i last{}; };
-    Combat(ecs::Registry& reg, Grid grid) : reg_(&reg), grid_(std::move(grid)) {}
+    Combat(ecs::Registry& reg, Grid grid, CombatOptions options = {}) : reg_(&reg), grid_(std::move(grid)) { options_ = options; }
+    // Equipment (EQUIPMENT.md 9): options, the item table, light ids per light item, recompute inputs per loadout (sim-only,
+    // derived from the replayed state, not hashed).
+    CombatOptions options_{};
+    std::shared_ptr<const ItemDefTable> items_;
+    std::vector<std::pair<uint32_t, uint32_t>> item_lights_;   // (item instance, light id), instance order
+    std::map<CombatantId, DeriveInputs> derive_seen_;
+    uint32_t recomputes_ = 0;
+    std::vector<std::string> equipment_errors_;
+    std::vector<SimEvent> item_events_;   // ItemMoved of the step being resolved (apply_equip on state_ only), pushed by complete
+    void item_moved(CombatantId actor, Vec2i tile, uint32_t instance, uint8_t reason, CombatantId holder);
+    void ground_drop(rules5e::EncounterState& st, const rules5e::HeldItem& h, Vec2i at) const;
+    void setup_equipment(const ContentLibrary& content);
+    void apply_equip(rules5e::EncounterState& st, const rules5e::ActionRequest& req, uint8_t cost_kind);
+    void equipment_after_step(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs);
+    void refresh_interactions(rules5e::EncounterState& st) const;
+    void sync_ground_entities();
+    void recompute(rules5e::EncounterState& st, CombatantId id);
+    bool within_5ft(CombatantId a, Vec2i tile) const;
     // Non-owning; a copy (lookahead, replay) starts detached so only the attached Combat drives the light frames.
     struct LightLink {
         LightDriver* d = nullptr;
@@ -366,7 +435,8 @@ private:
     bool move_tile(CombatantId mover, Vec2i to, const std::vector<rules5e::Event>& evs);
     friend struct CombatTestAccess;
     friend std::optional<Combat> replay(ecs::Registry&, std::span<const world::Chunk* const>, const ContentLibrary&,
-                                        uint64_t, const std::vector<LogEntry>&, std::string*, const std::vector<CombatantId>&);
+                                        uint64_t, CombatOptions, const std::vector<LogEntry>&, std::string*,
+                                        const std::vector<CombatantId>&);
     bool leaves_reach(CombatantId mover, Vec2i from, Vec2i to) const;
     int melee_reach_tiles(CombatantId id) const;   // 0 = no melee attack
     const Slot* slot(CombatantId id) const;
@@ -416,5 +486,12 @@ std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, cons
 std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
                              uint64_t seed, const std::vector<LogEntry>& log, std::string* error = nullptr,
                              const std::vector<CombatantId>& surprised = {});
+// Replays with the original combat's options (equipment on needs them: loadouts are built at create).
+std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content, uint64_t seed,
+                             CombatOptions options, const std::vector<LogEntry>& log, std::string* error = nullptr,
+                             const std::vector<CombatantId>& surprised = {});
+std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
+                             uint64_t seed, CombatOptions options, const std::vector<LogEntry>& log,
+                             std::string* error = nullptr, const std::vector<CombatantId>& surprised = {});
 
 } // namespace eng::sim
