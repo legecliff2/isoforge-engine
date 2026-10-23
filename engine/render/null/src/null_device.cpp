@@ -2,6 +2,14 @@
 
 namespace eng::render {
 
+namespace {
+void fnv(uint64_t& h, const void* p, size_t n) {
+    const auto* b = static_cast<const unsigned char*>(p);
+    for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ull; }
+}
+template <class T> void fnv_v(uint64_t& h, T v) { fnv(h, &v, sizeof v); }
+} // namespace
+
 template <class H>
 H NullDevice::alloc(std::vector<Slot>& v, uint32_t size) {
     for (uint32_t i = 1; i < v.size(); ++i) {
@@ -30,9 +38,22 @@ PipelineId NullDevice::create_pipeline(const PipelineDesc&) { return alloc<Pipel
 
 void NullDevice::update_buffer(BufferId b, uint32_t off, std::span<const std::byte> data) {
     if (!check(buffers_, b) || off + data.size() > buffers_[b.index].size || in_pass_) ++errors_;
+    if (hash_uploads_) {
+        fnv_v(cur_.upload_hash, uint32_t(1)); fnv_v(cur_.upload_hash, b.index); fnv_v(cur_.upload_hash, off);
+        fnv(cur_.upload_hash, data.data(), data.size());
+    }
+    cur_.buffer_bytes += data.size();
+    ++cur_.buffer_uploads;
 }
-void NullDevice::update_texture(TextureId t, RectI, std::span<const std::byte>) {
+void NullDevice::update_texture(TextureId t, RectI r, std::span<const std::byte> data) {
     if (!check(textures_, t) || in_pass_) ++errors_;
+    if (hash_uploads_) {
+        fnv_v(cur_.upload_hash, uint32_t(2)); fnv_v(cur_.upload_hash, t.index);
+        fnv_v(cur_.upload_hash, r.x); fnv_v(cur_.upload_hash, r.y); fnv_v(cur_.upload_hash, r.w); fnv_v(cur_.upload_hash, r.h);
+        fnv(cur_.upload_hash, data.data(), data.size());
+    }
+    cur_.texture_bytes += data.size();
+    ++cur_.texture_uploads;
 }
 void NullDevice::destroy(TextureId t) { if (check(textures_, t)) textures_[t.index].live = false; else ++errors_; }
 void NullDevice::destroy(BufferId b) { if (check(buffers_, b)) buffers_[b.index].live = false; else ++errors_; }

@@ -92,6 +92,9 @@ public:
 
     render::TextureId texture(LightChunkKey) const;
     Fog fog(LightChunkKey, Vec2i local) const;   // Unexplored if not resident
+    // Row-major 32x32 CPU copy of chunk `k`'s texels (fog_texel values), nullptr if not resident. Valid until the
+    // next on_stream_delta; lets per-tile readers resolve a chunk once instead of once per tile.
+    const uint8_t* texels(LightChunkKey k) const;
     bool resident(LightChunkKey k) const { return maps_.count(k) != 0; }
     size_t chunks() const noexcept { return maps_.size(); }
     std::vector<LightChunkKey> keys() const;
@@ -102,6 +105,7 @@ private:
     struct Map { render::TextureId tex; std::array<uint8_t, kLightTiles> cpu{}; };
     render::IRenderDevice& dev_;
     std::map<LightChunkKey, Map> maps_;
+    std::vector<std::byte> scratch_;   // dirty-rect staging, reused across uploads
     uint64_t bytes_uploaded_ = 0;
     uint32_t uploads_ = 0;
 };
@@ -121,6 +125,7 @@ public:
 
     render::TextureId texture(LightChunkKey) const;   // invalid handle if not resident
     uint8_t sample(LightChunkKey, Vec2i local) const;  // 0 (Dark) if not resident
+    const uint8_t* texels(LightChunkKey k) const;     // row-major 32x32 packed samples, nullptr if not resident
     size_t chunks() const noexcept { return maps_.size(); }
     std::vector<LightChunkKey> keys() const;          // coord order
     uint64_t bytes_uploaded() const noexcept { return bytes_uploaded_; }
@@ -130,6 +135,7 @@ private:
     struct Map { render::TextureId tex; std::array<uint8_t, kLightTiles> cpu{}; };
     render::IRenderDevice& dev_;
     std::map<LightChunkKey, Map> maps_;
+    std::vector<std::byte> scratch_;
     uint64_t bytes_uploaded_ = 0;
     uint32_t uploads_ = 0;
 };

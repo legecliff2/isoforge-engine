@@ -21,6 +21,11 @@ GlowPalette::GlowPalette(std::vector<Entry> entries, GlowStyle fallback, GlowSty
 
 void GlowPalette::set_override(std::string id, GlowStyle style) { overrides_[std::move(id)] = style; }
 
+const GlowStyle* GlowPalette::override_for(std::string_view id) const {
+    auto it = overrides_.find(id);
+    return it == overrides_.end() ? nullptr : &it->second;
+}
+
 GlowStyle glow_style_from_visual(const GlowVisual& v) noexcept {
     GlowStyle s;
     s.color = Color{v.r / 255.f, v.g / 255.f, v.b / 255.f, kGlowDefaultAlpha};
@@ -45,11 +50,13 @@ float glow_radius_tiles(uint16_t bright_ft, uint16_t dim_ft) noexcept {
 
 void follow_anchors(std::span<GlowSource> glows, std::span<const GlowAnchor> anchors) {
     if (glows.empty() || anchors.empty()) return;
-    std::map<uint32_t, Vec2f> at;
-    for (const GlowAnchor& a : anchors) at.emplace(a.id, a.tile);   // first wins on duplicates
+    // Small sorted copy instead of a node map: first anchor wins on duplicate ids (stable sort keeps input order).
+    std::vector<GlowAnchor> at(anchors.begin(), anchors.end());
+    std::stable_sort(at.begin(), at.end(), [](const GlowAnchor& a, const GlowAnchor& b) { return a.id < b.id; });
     for (GlowSource& g : glows) {
         if (g.anchor != GlowAnchorKind::Entity) continue;
-        if (auto it = at.find(g.anchor_id); it != at.end()) g.tile = it->second;
+        auto it = std::lower_bound(at.begin(), at.end(), g.anchor_id, [](const GlowAnchor& a, uint32_t id) { return a.id < id; });
+        if (it != at.end() && it->id == g.anchor_id) g.tile = it->tile;
     }
 }
 

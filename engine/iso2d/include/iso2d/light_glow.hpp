@@ -69,6 +69,7 @@ public:
     // Exact preset / item id -> style from content `visual` blocks; wins over the built-in entries.
     void set_override(std::string id, GlowStyle style);
     std::size_t override_count() const noexcept { return overrides_.size(); }
+    const GlowStyle* override_for(std::string_view id) const;   // nullptr if none
     GlowStyle style_for(std::string_view preset, bool magical) const;
 
 private:
