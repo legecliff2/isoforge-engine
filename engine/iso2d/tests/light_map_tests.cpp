@@ -67,6 +67,42 @@ TEST_CASE("light map: pack / unpack and tint ordering (Dark never shown lit, fog
     CHECK(fog_of(false, false) == Fog::Unexplored);
 }
 
+TEST_CASE("light map: obscurement and magical-dark tints are distinct; fog still hides current light") {
+    // sim LightFlags -> pack_light second arg: kMagicalDark=1, kSunlight=2, kObscuredLight=4, kObscuredHeavy=8
+    const uint8_t plain = pack_light(LightLevel::Bright, 0);
+    const uint8_t light = pack_light(LightLevel::Bright, 4);   // Web / lightly obscured
+    const uint8_t heavy = pack_light(LightLevel::Bright, 8);   // Fog / Stinking Cloud heavy
+    const uint8_t mag = pack_light(LightLevel::Bright, 1);     // magical darkness
+    const uint8_t dim = pack_light(LightLevel::Dim, 0);
+    const Color p = light_tint(plain, Fog::Visible), l = light_tint(light, Fog::Visible),
+                h = light_tint(heavy, Fog::Visible), m = light_tint(mag, Fog::Visible),
+                d = light_tint(dim, Fog::Visible);
+    CHECK((plain & light_bits::kObscuredLight) == 0);
+    CHECK((light & light_bits::kObscuredLight) != 0);
+    CHECK((heavy & light_bits::kObscuredHeavy) != 0);
+    CHECK((mag & light_bits::kMagicalDark) != 0);
+    // ObscuredLight cools and dims vs plain Bright, but stays brighter than Dim and than Heavy.
+    CHECK(l.r < p.r);
+    CHECK(l.b > l.r);                 // cool cast
+    CHECK(l.r > d.r);
+    CHECK(h.r < l.r);                 // Heavy stronger than Light
+    CHECK(h.b - h.r > l.b - l.r);     // Heavy cooler (larger blue bias)
+    // Magical darkness is darker than Dim and than light obscurement.
+    CHECK(m.r < d.r);
+    CHECK(m.r < l.r);
+    CHECK(m.b > m.r);                 // cool purple-black
+    // Fog: Remembered / Unexplored ignore the packed sample (no current light / FoW inventing).
+    CHECK(light_tint(light, Fog::Remembered).r == light_tint(plain, Fog::Remembered).r);
+    CHECK(light_tint(heavy, Fog::Remembered).r == light_tint(mag, Fog::Remembered).r);
+    CHECK(light_tint(heavy, Fog::Unexplored).r == 0.f);
+    CHECK(light_tint(mag, Fog::Unexplored).b == 0.f);
+    // Dark + any flags still never shown brighter than plain Dark.
+    const uint8_t dark = pack_light(LightLevel::Dark, 0);
+    const float dark_r = light_tint(dark, Fog::Visible).r;
+    for (uint8_t f : {uint8_t(1), uint8_t(4), uint8_t(8), uint8_t(1 | 8)})
+        CHECK(light_tint(pack_light(LightLevel::Dark, f), Fog::Visible).r <= dark_r);
+}
+
 TEST_CASE("light map: one R8 texture per chunk from stream deltas; dirty-rect uploads only") {
     RecDevice dev;
     {
