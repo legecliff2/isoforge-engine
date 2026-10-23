@@ -131,6 +131,10 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
         add_test(NAME content_validate_migrations
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_migrations_v4.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        # item@2 / monster@5 / character@5 (docs/proposals/EQUIPMENT.md 7): identity re-stamps, new shapes, structural checks.
+        add_test(NAME content_validate_equip_v5
+                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_equip_schemas_v5.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # srd51.core monster@4 batch: key stats vs the 5e-database table (tests/validate/data/).
         add_test(NAME content_validate_srd51_monsters
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_srd51_monsters.py"
@@ -150,6 +154,15 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
         add_test(NAME content_validate_equipment
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_srd51_equipment.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        # Pure-Python validator tests: no compiled code involved, so the result cannot differ by
+        # compiler or build type. CI runs them in the Debug jobs and skips them (ctest -LE python_only)
+        # in the Release jobs to save minutes. content_validate itself is NOT labelled: it runs the
+        # compiled script_check, so every job keeps it.
+        set_tests_properties(content_validate_negative content_validate_packset content_validate_tests
+                             content_validate_lint content_validate_arms content_validate_migrations
+                             content_validate_srd51_monsters content_validate_srd51_classes
+                             content_validate_srd51_spells content_validate_v4 content_validate_equipment
+                             PROPERTIES LABELS python_only)
         # Procedurally generated chunks must pass the same validator (schema + content_hash).
         if(TARGET procgen_dump)
             set(_pg_out "${CMAKE_BINARY_DIR}/procgen_preview_pack")

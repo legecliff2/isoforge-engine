@@ -231,7 +231,7 @@ class ClassTable(unittest.TestCase):
         for cls, level, d in docs():
             with self.subTest(cls=cls, level=level):
                 t, row = TABLE[cls], TABLE[cls]["levels"][str(level)]
-                self.assertEqual(d["$schema"], "character@4")
+                self.assertEqual(d["$schema"], "character@5")
                 self.assertEqual(d["id"], f"srd51.character.{cls}_level_{level}")
                 self.assertEqual(d["level"], level)
                 self.assertEqual(len(d["classes"]), 1)
@@ -767,7 +767,7 @@ class ClassTable(unittest.TestCase):
         for stem, (race, walk, resist) in SAMPLE_PCS.items():
             with self.subTest(pc=stem):
                 d = json.loads((PACK / "characters" / f"{stem}.json").read_text(encoding="utf-8"))
-                self.assertEqual((d["$schema"], d["id"], d["race"]), ("character@4", f"srd51.character.{stem}", race))
+                self.assertEqual((d["$schema"], d["id"], d["race"]), ("character@5", f"srd51.character.{stem}", race))
                 self.assertEqual(d["senses"]["darkvision"], 60)
                 perc = d.get("skills", {}).get("perception", mod(d["abilities"]["wis"]))
                 self.assertEqual(d["senses"]["passive_perception"], 10 + perc)
