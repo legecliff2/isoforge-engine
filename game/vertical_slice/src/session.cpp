@@ -571,6 +571,11 @@ ViewModel Session::view() const {
             a.current = cb.id == cur;
             a.dead = cb.dead;
             a.down = !cb.dead && !rules5e::is_conscious(cb);
+            a.invisible = cb.has(rules5e::Condition::Invisible);
+            // is_outlined is rules-internal; scan modifiers (ModStat::Outlined / Faerie Fire).
+            a.outlined = false;
+            for (const rules5e::ActiveModifier& am : c.state().modifiers)
+                if (am.target == cb.id && am.spec.stat == rules5e::ModStat::Outlined) { a.outlined = true; break; }
             equipment_visuals(c, cb.id, a.equipment);
             if (a.current) v.turn = a.name;
             v.actors.push_back(std::move(a));
