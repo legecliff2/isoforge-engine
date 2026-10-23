@@ -170,7 +170,7 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 1 | Detect Magic | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Detect Poison and Disease | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Disguise Self | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
-| 1 | Entangle | NEW | Zones load (R-G11, #122) but no shipped zone fixture covers Entangle's square + Str check vs restrained; author with Web's zone rows after a fixture. | R-G11 (C4) |
+| 1 | Entangle | NEW | Fixture `tests/validate/fixtures/zones/spells/entangle.json` (README in that directory). Web's zone keys: point cube 20 for the SRD 20-ft square, `difficult`, `zone_appear` Strength save or restrained, `while_in_zone` so the existing Str check escape applies. T&C can author `srd51.spell.entangle` in `srd51.core` from it. | R-G11 (C4) |
 | 1 | Expeditious Retreat | NEW | No spell@1 way to grant a bonus-action Dash for the duration (`grant_action` is a feature effect). | R-G3 (B2) |
 | 1 | Feather Fall | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Find Familiar | NEW | Summons rules (R-G12 PR 2) exist but spell@1 has no summon key; 1-hour cast. | R-G12 (C5) |

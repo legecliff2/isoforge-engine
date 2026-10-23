@@ -250,7 +250,7 @@ TEST_CASE("loader: R-G11 zone fixtures (tests/validate/fixtures/zones) map onto 
     INFO((r.errors.empty() ? std::string() : r.errors[0]));
     REQUIRE(r.errors.empty());
     REQUIRE(r.book);
-    CHECK(r.book->all().size() == 8);
+    CHECK(r.book->all().size() == 9);   // spells/ including Entangle (spells_pr2 stays a separate book)
     for (const SpellDef& d : r.book->all()) { CHECK(d.kind == SpellEffectKind::Zone); CHECK(d.extra_effects.empty()); }
 
     const SpellDef* mb = r.book->find(spell_id_of("test.zone.spell.moonbeam"));
@@ -299,6 +299,19 @@ TEST_CASE("loader: R-G11 zone fixtures (tests/validate/fixtures/zones) map onto 
     REQUIRE(gr);
     CHECK_FALSE(gr->concentration); CHECK(gr->expiry == 1);
     CHECK(gr->zone.triggers.front().on == ZoneTrigger::Appear);
+
+    // Entangle: SRD 20-ft square as a cube, Strength save or restrained, Web's while_in_zone escape.
+    const SpellDef* en = r.book->find(spell_id_of("test.zone.spell.entangle"));
+    REQUIRE(en);
+    CHECK(en->level == 1); CHECK(en->concentration); CHECK(en->range_ft == 90);
+    CHECK(en->expiry == 1); CHECK(en->duration_rounds == 10);   // 1 minute
+    CHECK(en->zone.shape == AreaShape::Cube); CHECK(en->zone.size_ft == 20);
+    CHECK(en->zone.anchor == ZoneAnchor::Point); CHECK(en->zone.flags == kZoneDifficult);
+    REQUIRE(en->zone.triggers.size() == 1);
+    const ZoneTriggerRow& er = en->zone.triggers[0];
+    CHECK(er.on == ZoneTrigger::Appear); CHECK(er.while_in_zone); CHECK_FALSE(er.own_turn_only);
+    CHECK(er.effect.kind == SpellEffectKind::Save); CHECK(er.effect.save_ability == Ability::Str);
+    CHECK(er.effect.applies_condition); CHECK(er.effect.condition == Condition::Restrained);
 }
 
 TEST_CASE("loader: R-G11 zone rules match the validator") {

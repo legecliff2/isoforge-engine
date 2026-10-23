@@ -87,7 +87,8 @@ class EffectKinds(unittest.TestCase):
 
 
 ZONE_FIXTURES = vp.ROOT / "tests" / "validate" / "fixtures" / "zones" / "spells"
-# R-G11 rules PR 2 positives kept apart so spell_loader_tests' 8-spell zone fixture book is unchanged (CONTENT_CONVENTIONS 4.5)
+# R-G11 rules PR 2 positives kept apart from the spells/ book spell_loader_tests loads (CONTENT_CONVENTIONS 4.5).
+# Entangle lives in that book (Web's keys only).
 ZONE_FIXTURES_PR2 = ZONE_FIXTURES.parent / "spells_pr2"
 MB, SG, FOG, SPIKE, WEB, GREASE = "moonbeam", "spirit_guardians", "fog_cloud", "spike_growth", "web", "grease"
 SC, WOF, AURA = "stinking_cloud", "wall_of_fire", "warding_aura"   # R-G11 rules PR 2 keys (CONTENT_CONVENTIONS 4.6)
@@ -236,7 +237,7 @@ class SpellZones(unittest.TestCase):
 
     def test_positive_fixtures_validate_clean(self):
         fx = self.all_fixtures()
-        self.assertEqual(sorted(fx), sorted(["darkness", FOG, GREASE, MB, "silence", SPIKE, SG, WEB, SC, WOF, AURA]))
+        self.assertEqual(sorted(fx), sorted(["darkness", "entangle", FOG, GREASE, MB, "silence", SPIKE, SG, WEB, SC, WOF, AURA]))
         self.assertEqual(self.run_docs(fx), ([], []))
 
     def test_cases(self):
