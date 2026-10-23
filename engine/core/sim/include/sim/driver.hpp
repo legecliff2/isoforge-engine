@@ -8,6 +8,7 @@
 #include <string>
 
 #include "sim/combat.hpp"
+#include "sim/light.hpp"
 
 namespace eng::sim {
 
@@ -83,5 +84,25 @@ std::optional<Command> move_mark_command(const Combat& c, CombatantId self, std:
 // Fills the AI-chosen inputs of a request the AI (or a caller) built: mark_ability for a chosen-ability cast and
 // ward_alternate for an Attack / CastSpell that meets a ward. Fields already set are left alone.
 void complete_request(const Combat& c, rules5e::ActionRequest& q);
+
+// ---- Equipment AI (CombatOptions::equipment only; EQUIPMENT.md 9). Off, or a creature without a loadout: never consulted, so
+// every pre-equipment decision, log and golden is unchanged. Deterministic: integer scores, ties to the earlier candidate in a
+// fixed order (fewer ops, Draw before PickUp, ascending instance id). Every command it returns is an entry of
+// Combat::legal_actions() (so rules5e::equip_legal allowed it); multi-op plans are evaluated on an EncounterState copy through
+// the state-taking rules hooks (loadout_of / ground_item_def / equip_legal / attack_refusal), never on the live state.
+bool equipment_ai_active(const Combat& c, CombatantId self);
+// Expected damage x hit chance of Combatant::attacks[i] (recompute_derived's rules5e::derive_weapon_attack values) against
+// `target`: 2 x mean damage (all components) x d20 faces that hit (nat 1 misses, nat 20 hits) x 20, or faces^2 with
+// disadvantage. Integer only.
+int attack_score(const rules5e::Combatant& me, uint8_t attack_index, const rules5e::Combatant& target, bool disadvantage);
+// The weapon plan's first op (Drop / Stow / Draw / PickUp) when a plan strictly improves (score attackable this turn, score
+// next turn) over the current hands; nullopt = keep what is held.
+std::optional<Command> equipment_command(const Combat& c, CombatantId self, CombatantId target);
+// SetLightState for a held light (free object interaction only): light (state 0) when the creature has no darkvision and its
+// tile or its target's tile is Dark in the attached LightDriver's latest frame (no driver / frame: never lights); douse when
+// it has darkvision and no living ally without darkvision is within the light's radius (bright + dim) of it.
+std::optional<Command> light_command(const Combat& c, CombatantId self, std::optional<CombatantId> target);
+// The light level at a combat-frame tile in the attached LightDriver's latest frame; nullopt = no driver / frame / chunk.
+std::optional<Light> ai_light_at(const Combat& c, Vec2i tile);
 
 } // namespace eng::sim

@@ -4,25 +4,60 @@ inputs:
   preset: { description: Configure preset, required: true }
   build:  { description: Build preset, required: true }
   test:   { description: Test preset, required: true }
+  ctest-args:
+    description: Extra ctest arguments for the Test step (e.g. "-LE python_only" in Release jobs)
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
     # content_validate: CMake creates a venv from this interpreter at configure time and
     # pip-installs tools/validate/requirements.txt into it.
+    # Self-hosted has no setup-python toolcache ("The version 3.12 with architecture x64 was
+    # not found"); use system python3 from tools/runner/setup.sh instead.
     - uses: actions/setup-python@v5
+      if: runner.environment != 'self-hosted'
       with:
         python-version: "3.12"
         cache: pip
         cache-dependency-path: tools/validate/requirements.txt
 
+    - name: Resolve Python interpreter
+      shell: bash
+      run: |
+        if [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
+          py=
+          for c in python3.12 python3; do
+            if command -v "$c" >/dev/null \
+              && "$c" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)'; then
+              py=$(command -v "$c"); break
+            fi
+          done
+          if [ -z "$py" ]; then
+            echo "::error::need Python >= 3.12 on self-hosted (python3=$(python3 --version 2>&1 || echo missing)); run tools/runner/setup.sh"
+            exit 1
+          fi
+          echo "PYTHON3_EXECUTABLE=$py" >> "$GITHUB_ENV"
+          "$py" --version
+        elif [ "$RUNNER_OS" = Windows ]; then
+          echo "PYTHON3_EXECUTABLE=${pythonLocation}/python.exe" >> "$GITHUB_ENV"
+        else
+          echo "PYTHON3_EXECUTABLE=${pythonLocation}/bin/python" >> "$GITHUB_ENV"
+        fi
+
     - name: Install Linux deps (SDL3 video backends, Ninja)
       if: runner.os == 'Linux'
       shell: bash
       run: |
+        if [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
+          # Persistent runner: deps are preinstalled by tools/runner/setup.sh (no sudo for the runner user).
+          command -v ninja >/dev/null || { echo "::error::ninja missing on self-hosted runner; run tools/runner/setup.sh"; exit 1; }
+          exit 0
+        fi
         sudo apt-get update
         sudo apt-get install -y ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
           libxi-dev libxss-dev libxfixes-dev libxtst-dev libxkbcommon-dev libwayland-dev \
-          wayland-protocols libegl-dev libgl-dev libvulkan-dev libudev-dev libdbus-1-dev
+          wayland-protocols libegl-dev libgl-dev libvulkan-dev libudev-dev libdbus-1-dev ccache
 
     - name: MSVC dev environment
       if: runner.os == 'Windows'
@@ -30,19 +65,79 @@ runs:
       with:
         arch: x64
 
-    - name: Install Windows deps (Ninja)
+    - name: Install Windows deps (Ninja, sccache)
       if: runner.os == 'Windows'
       shell: pwsh
-      run: choco install ninja -y --no-progress
+      run: choco install ninja sccache -y --no-progress
 
     - name: Install macOS deps
       if: runner.os == 'macOS'
       shell: bash
-      run: brew install ninja || true
+      run: brew install ninja ccache || true
+
+    # Compiler cache (ccache on Linux/macOS, sccache on Windows; sccache handles cl.exe). Keyed on
+    # OS + preset + build preset + the dependency pins (cmake/Dependencies.cmake is the "lockfile":
+    # it pins SDL3 release-3.4.8, doctest, luau, ...). The run id suffix makes every run save a fresh
+    # cache; restore-keys fall back to the newest cache for the same OS/preset (PRs can read main's).
+    - name: Compiler cache settings
+      shell: bash
+      run: |
+        if [ "$RUNNER_OS" = Windows ]; then
+          echo "CC_LAUNCHER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_DIR=${{ github.workspace }}/.ccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_CACHE_SIZE=1G" >> "$GITHUB_ENV"
+        elif [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
+          # Persistent runner: local ccache outside the (cleaned) workspace, shared across runs.
+          echo "CC_LAUNCHER=ccache" >> "$GITHUB_ENV"
+          echo "CCACHE_DIR=$HOME/.cache/isoforge-ccache/${{ inputs.preset }}" >> "$GITHUB_ENV"
+          echo "CCACHE_MAXSIZE=3G" >> "$GITHUB_ENV"
+          echo "CCACHE_BASEDIR=${{ github.workspace }}" >> "$GITHUB_ENV"
+          echo "CCACHE_COMPRESS=true" >> "$GITHUB_ENV"
+          echo "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime" >> "$GITHUB_ENV"
+        else
+          echo "CC_LAUNCHER=ccache" >> "$GITHUB_ENV"
+          echo "CCACHE_DIR=${{ github.workspace }}/.ccache" >> "$GITHUB_ENV"
+          echo "CCACHE_MAXSIZE=1G" >> "$GITHUB_ENV"
+          echo "CCACHE_BASEDIR=${{ github.workspace }}" >> "$GITHUB_ENV"
+          echo "CCACHE_COMPRESS=true" >> "$GITHUB_ENV"
+          # The ci presets disable PCH (CMAKE_DISABLE_PRECOMPILE_HEADERS); kept as a safety net.
+          echo "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime" >> "$GITHUB_ENV"
+        fi
+
+    - name: Check compiler cache tool
+      shell: bash
+      run: |
+        if ! command -v "$CC_LAUNCHER" >/dev/null; then
+          echo "::warning::$CC_LAUNCHER not found; building without a compiler cache"
+          echo "CC_LAUNCHER=" >> "$GITHUB_ENV"
+        else
+          "$CC_LAUNCHER" --version | head -1
+        fi
+
+    - name: Restore compiler cache
+      if: runner.environment != 'self-hosted'
+      uses: actions/cache@v4
+      with:
+        path: .ccache
+        key: cc-${{ runner.os }}-${{ inputs.preset }}-${{ inputs.build }}-${{ hashFiles('cmake/Dependencies.cmake') }}-${{ github.run_id }}
+        restore-keys: |
+          cc-${{ runner.os }}-${{ inputs.preset }}-${{ inputs.build }}-${{ hashFiles('cmake/Dependencies.cmake') }}-
+          cc-${{ runner.os }}-${{ inputs.preset }}-${{ inputs.build }}-
 
     - name: Configure
       shell: bash
-      run: cmake --preset "${{ inputs.preset }}" -DPython3_EXECUTABLE="${{ env.pythonLocation }}/${{ runner.os == 'Windows' && 'python.exe' || 'bin/python' }}"
+      run: |
+        extra=()
+        if [ "$RUNNER_OS" = Windows ]; then
+          # sccache can't cache /Zi (shared PDB): use /Z7 in configs that have debug info, as CMake's
+          # default does for ProgramDatabase (Release stays without debug info). CMP0141 NEW is the
+          # default in this project (cmake_minimum_required 3.28); the policy default also covers
+          # FetchContent subprojects that declare an older minimum (SDL3 3.16, luau 3.10, doctest 3.0).
+          extra+=('-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>'
+                  -DCMAKE_POLICY_DEFAULT_CMP0141=NEW)
+        fi
+        cmake --preset "${{ inputs.preset }}" -DPython3_EXECUTABLE="$PYTHON3_EXECUTABLE" \
+          -DCMAKE_C_COMPILER_LAUNCHER="$CC_LAUNCHER" -DCMAKE_CXX_COMPILER_LAUNCHER="$CC_LAUNCHER" "${extra[@]}"
 
     # ARCHITECTURE.md §2.2: module dependency graph (rule 1, 2) + SDL/src/backend include lint
     # (rules 3-5). Configure-time data only, so run before the build to fail fast.
@@ -52,7 +147,7 @@ runs:
 
     - name: Build
       shell: bash
-      run: cmake --build --preset "${{ inputs.build }}" --parallel
+      run: cmake --build --preset "${{ inputs.build }}" --parallel ${CMAKE_BUILD_PARALLEL_LEVEL:-}
 
     - name: Require content_validate to be registered
       shell: bash
@@ -60,4 +155,19 @@ runs:
 
     - name: Test
       shell: bash
-      run: ctest --preset "${{ inputs.test }}"
+      run: ctest --preset "${{ inputs.test }}" --parallel ${CTEST_PARALLEL_LEVEL:-4} ${{ inputs.ctest-args }}
+
+    - name: Clean workspace (self-hosted)
+      if: always() && runner.environment == 'self-hosted'
+      shell: bash
+      run: rm -rf build .ccache || true
+
+    - name: Compiler cache stats
+      if: always()
+      shell: bash
+      run: |
+        case "$CC_LAUNCHER" in
+          sccache) sccache --show-stats || true ;;
+          ccache) ccache -s || true ;;
+          *) echo "no compiler cache in use" ;;
+        esac

@@ -1,0 +1,13 @@
+{
+  "$schema": "item@2",
+  "id": "srd51.item.arrow",
+  "name": "Arrow",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "ammunition",
+  "cost_cp": 5,
+  "description": "One piece of ammunition; count it with an equipment[] entry's count (EQUIPMENT 2.5). SRD price: Arrows (20): 1 gp, 1 lb. Per-piece weight is not an integer number of ounces, so weight_oz is omitted.",
+  "ammo_kind": "arrow"
+}

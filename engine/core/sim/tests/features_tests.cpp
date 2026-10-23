@@ -285,10 +285,10 @@ TEST_CASE("@4 loader: migrated @3 doc with an unmarked new kind is listed inert;
     assets::register_content_schemas(sreg);
     auto src = assets::Json::parse(std::ifstream(kPack + "/characters/fighter_1.json"));
     src["features"][0]["effect"] = assets::Json{{"kind", "save_effect"}, {"id", "breath"}};
-    auto r = sreg.load(src);   // @3 -> @4: the migration stamps the new kind inert
+    auto r = sreg.load(src);   // @3 -> @4: the migration stamps the new kind inert (4 -> 5 is identity)
     REQUIRE_MESSAGE(r.ok, r.error);
     CHECK(r.declared.version == 3);
-    CHECK(r.data["$schema"] == "character@4");
+    CHECK(r.data["$schema"] == "character@5");
     CHECK(r.data["features"][0]["effect"]["inert"] == true);
     {
         ContentLibrary lib;
