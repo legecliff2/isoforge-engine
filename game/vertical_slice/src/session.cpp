@@ -44,6 +44,39 @@ std::string display_name(const std::string& archetype) {
 }
 } // namespace
 
+// item@1 `visual` block (schema: schemas/item/v1.schema.json) -> render style. Validated content is
+// assumed; anything malformed is skipped (keeps the built-in default) and reported in *why.
+static bool parse_visual(const assets::Json& j, eng::iso2d::GlowStyle& out, std::string* why) {
+    auto bad = [&](const char* w) { if (why) *why = w; return false; };
+    if (!j.is_object() || !j.contains("color") || !j.contains("intensity")) return bad("visual needs color and intensity");
+    const auto& c = j["color"];
+    if (!c.is_object()) return bad("visual.color must be an object");
+    eng::iso2d::GlowVisual v;
+    uint8_t* ch[3] = {&v.r, &v.g, &v.b};
+    const char* names[3] = {"r", "g", "b"};
+    for (int i = 0; i < 3; ++i) {
+        if (!c.contains(names[i]) || !c[names[i]].is_number_integer()) return bad("visual.color channels must be integers");
+        const auto n = c[names[i]].get<int64_t>();
+        if (n < 0 || n > 255) return bad("visual.color channel out of 0..255");
+        *ch[i] = uint8_t(n);
+    }
+    if (!j["intensity"].is_number_integer()) return bad("visual.intensity must be an integer");
+    const auto in = j["intensity"].get<int64_t>();
+    if (in < 0 || in > 1000) return bad("visual.intensity out of 0..1000");
+    v.intensity_permille = uint16_t(in);
+    if (j.contains("flicker")) {
+        const auto& f = j["flicker"];
+        if (!f.is_string()) return bad("visual.flicker must be a string");
+        const std::string fs = f.get<std::string>();
+        if (fs == "none") v.flicker = eng::iso2d::GlowFlicker::None;
+        else if (fs == "torch") v.flicker = eng::iso2d::GlowFlicker::Torch;
+        else if (fs == "candle") v.flicker = eng::iso2d::GlowFlicker::Candle;
+        else return bad("visual.flicker must be none|torch|candle");
+    }
+    out = eng::iso2d::glow_style_from_visual(v);
+    return true;
+}
+
 // sim::LightFrame -> plain-data LightView (packed samples, flattened ids, the shown team's masks).
 // No light or visibility is computed here: both come from the sim's frame.
 static void copy_light(const sim::LightFrame& f, bool fog, uint8_t fog_team, LightView& L) {
@@ -104,27 +137,50 @@ struct Session::Impl {
     std::unique_ptr<sim::LightDriver> light_driver;
     uint8_t fog_team = 0;
     std::shared_ptr<const sim::LightFrame> light, light_prev;
+    std::map<std::string, eng::iso2d::GlowStyle, std::less<>> visuals;   // light preset -> glow style
+    std::vector<std::string> warnings;   // load-time, non-fatal (e.g. conflicting visuals)
 
+    // Producers of entity-attached lights for a committed state, in a fixed order (light ids follow it):
+    // the interim pc_torches, then Options::carried_lights. Equipment is just one more producer.
+    static std::vector<CarriedLight> carried_lights(const Options& opt, const sim::Combat& c) {
+        std::vector<CarriedLight> out;
+        auto alive = [&](uint32_t id) {
+            for (const rules5e::Combatant& cb : c.state().combatants)
+                if (cb.id == id) return !cb.dead;
+            return false;
+        };
+        if (opt.pc_torches)
+            for (const rules5e::Combatant& cb : c.state().combatants) {
+                const sim::Archetype* a = c.archetype(cb.id);
+                if (!a || a->schema_type != "character" || cb.dead) continue;
+                CarriedLight t;
+                t.carrier_id = cb.id;
+                out.push_back(t);
+            }
+        for (const CarriedLight& cl : opt.carried_lights)
+            if (alive(cl.carrier_id)) out.push_back(cl);
+        return out;
+    }
+
+    // Hands the attached-light list to the sim's LightDriver; the driver publishes frames on attach and
+    // every committed step.
     void attach_light() {
         sim::LightProviderInputs in;
         in.chunks = {chunk.get()};
-        if (opt.pc_torches)
-            in.attached_sources = [](const sim::Combat& c, std::vector<sim::LightSource>& out) {
-                uint32_t next_id = 1;
-                for (const rules5e::Combatant& cb : c.state().combatants) {
-                    const sim::Archetype* a = c.archetype(cb.id);
-                    if (!a || a->schema_type != "character" || cb.dead) continue;
-                    sim::AttachedLight l;
-                    l.id = next_id++;
-                    l.carrier = sim::Carrier::Creature;
-                    l.carrier_id = cb.id;
-                    l.bright_ft = 20;
-                    l.dim_ft = 20;
-                    l.flags = sim::light_src::kLit;
-                    out.push_back(sim::attached_source(
-                        l, sim::carrier_centre(c.pos(cb.id), c.footprint_size(cb.id)), "srd51.core.light.torch"));
-                }
-            };
+        in.attached_sources = [o = opt](const sim::Combat& c, std::vector<sim::LightSource>& out) {
+            uint32_t next_id = 1;
+            for (const CarriedLight& cl : carried_lights(o, c)) {
+                sim::AttachedLight l;
+                l.id = next_id++;
+                l.carrier = sim::Carrier::Creature;
+                l.carrier_id = cl.carrier_id;
+                l.bright_ft = cl.bright_ft;
+                l.dim_ft = cl.dim_ft;
+                l.flags = uint8_t(sim::light_src::kLit | (cl.magical ? sim::light_src::kMagical : 0));
+                out.push_back(sim::attached_source(
+                    l, sim::carrier_centre(c.pos(cl.carrier_id), c.footprint_size(cl.carrier_id)), cl.preset));
+            }
+        };
         light_driver = std::make_unique<sim::LightDriver>(std::move(in));
         combat->attach_light_driver(light_driver.get());
         pull_light();
@@ -198,6 +254,45 @@ std::unique_ptr<Session> Session::open(const Options& o, std::string* error) {
     if (r.status != world::ChunkStatus::Ready || !r.chunk) return fail("chunk load failed: " + r.error);
     m.chunk = std::make_unique<world::Chunk>(std::move(*r.chunk));
 
+    // Presentation-only visuals (item@1 `visual`), read straight from the pack documents. The sim never
+    // sees them (ContentLibrary doesn't load item@1), so they can't reach Combat::hash or log_hash.
+    // Keyed by the item's `light.preset` (the preset its light uses), not by the item id. Items with a
+    // `visual` but no `light.preset` are skipped (nothing to attach the style to; the preset default
+    // stays). Several items styling one preset: lowest content id wins, deterministic in any pack
+    // order, with a warning per differing loser.
+    {
+        std::map<std::string, std::map<std::string, eng::iso2d::GlowStyle>> by_preset;   // preset -> item id -> style
+        for (const assets::PackDocument& d : set.documents()) {
+            if (!d.doc.ok || !d.doc.data.is_object() || !d.doc.data.contains("visual")) continue;
+            if (d.doc.current.type != "item" || d.content_id.empty()) continue;
+            const auto& j = d.doc.data;
+            if (!j.contains("light") || !j["light"].is_object() || !j["light"].contains("preset") ||
+                !j["light"]["preset"].is_string() || j["light"]["preset"].get<std::string>().empty()) {
+                m.warnings.push_back("item " + d.content_id + ": visual ignored (no light.preset)");
+                continue;
+            }
+            eng::iso2d::GlowStyle st;
+            std::string why;
+            if (!parse_visual(j["visual"], st, &why)) {
+                m.warnings.push_back("item " + d.content_id + ": visual ignored (" + why + ")");
+                continue;
+            }
+            by_preset[j["light"]["preset"].get<std::string>()][d.content_id] = st;
+        }
+        auto same = [](const eng::iso2d::GlowStyle& a, const eng::iso2d::GlowStyle& b) {
+            return a.color.r == b.color.r && a.color.g == b.color.g && a.color.b == b.color.b && a.color.a == b.color.a &&
+                   a.intensity == b.intensity && a.flicker == b.flicker;
+        };
+        for (const auto& [preset, items] : by_preset) {
+            const auto& [winner, style] = *items.begin();   // lowest content id
+            for (auto it = std::next(items.begin()); it != items.end(); ++it)
+                if (!same(it->second, style))
+                    m.warnings.push_back("light preset " + preset + ": conflicting visual from item " + it->first +
+                                         " ignored; using " + winner + " (lowest content id)");
+            m.visuals[preset] = style;
+        }
+    }
+
     m.content = std::make_unique<sim::ContentLibrary>();
     auto errs = m.content->load(set);
     if (!errs.empty()) return fail("content load failed: " + errs.front());
@@ -263,6 +358,7 @@ bool Session::step() {
 bool Session::paused() const { return impl_->combat && impl_->combat->pending().has_value(); }
 
 bool Session::ended() const { return impl_->combat && impl_->combat->ended(); }
+const std::vector<std::string>& Session::warnings() const { return impl_->warnings; }
 const std::string& Session::error() const { return impl_->error; }
 
 ViewModel Session::view() const {
@@ -311,6 +407,7 @@ ViewModel Session::view() const {
         }
     }
     if (m.light) copy_light(*m.light, m.opt.fog, m.fog_team, v.light);
+    v.light.visuals = m.visuals;
     if (!m.error.empty()) v.status = "SIM ERROR: " + m.error;
     return v;
 }

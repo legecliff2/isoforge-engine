@@ -2,7 +2,7 @@
 # SliceView (iso2d/render_api only) draws it. No game state on the render side.
 add_library(vertical_slice_session STATIC src/session.cpp src/event_feed.cpp)
 target_include_directories(vertical_slice_session PUBLIC src)
-target_link_libraries(vertical_slice_session PUBLIC eng::base eng::sim PRIVATE eng::world eng::ecs eng::rules5e eng::assets)
+target_link_libraries(vertical_slice_session PUBLIC eng::base eng::sim eng::iso2d PRIVATE eng::world eng::ecs eng::rules5e eng::assets)
 _engine_warnings(vertical_slice_session)
 
 add_library(vertical_slice_view STATIC src/slice_view.cpp)

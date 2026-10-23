@@ -1,6 +1,9 @@
 #include <doctest/doctest.h>
 
+#include <filesystem>
+#include <fstream>
 #include <memory>
+#include <string>
 
 #include "render_null/null_device.hpp"
 #include "session.hpp"
@@ -139,6 +142,163 @@ TEST_CASE("render without a LightFrame and fog masks (when present) still behave
         if (!a.is_pc && std::max(std::abs(a.tile.x - p.x), std::abs(a.tile.y - p.y)) > 2) ++far_foes;
     CHECK(v.world_sprites() == vm.tiles.size() + vm.light.sources.size() + vm.actors.size() - size_t(far_foes) + 1);   // +1 current-turn ring
     CHECK(iso2d::light_tint(0xFF, iso2d::Fog::Unexplored).r == 0.f);
+}
+
+TEST_CASE("carried lights: pc_torches is one producer of a generic list; glows anchor to the carrier") {
+    // Torches off, one non-PC carrier with a non-torch preset: the same path as the torches.
+    Session::Options o{{SLICE_PACK_ROOT}, {SLICE_PACK}, 1, true};
+    o.pc_torches = false;
+    std::string err;
+    uint32_t foe = 0;
+    {
+        auto probe = Session::open(o, &err);
+        REQUIRE_MESSAGE(probe, err);
+        for (const auto& a : probe->view().actors) if (!a.is_pc) { foe = a.id; break; }
+    }
+    REQUIRE(foe != 0);
+    CarriedLight lantern;
+    lantern.carrier_id = foe;
+    lantern.bright_ft = 30;
+    lantern.dim_ft = 30;
+    lantern.preset = "srd51.core.light.lantern_hooded";
+    o.carried_lights.push_back(lantern);
+    auto s = Session::open(o, &err);
+    REQUIRE_MESSAGE(s, err);
+    ViewModel vm = s->view();
+    REQUIRE(vm.light.present);
+    REQUIRE(vm.light.sources.size() == 1);
+    const LightSourceView& src = vm.light.sources[0];
+    CHECK(src.attached);
+    CHECK(src.carrier == 1);
+    CHECK(src.carrier_id == foe);
+    CHECK(src.preset == "srd51.core.light.lantern_hooded");
+
+    const iso2d::GlowPalette pal;
+    auto glows = glows_from(vm.light, pal);
+    REQUIRE(glows.size() == 1);
+    CHECK(glows[0].anchor == iso2d::GlowAnchorKind::Entity);
+    CHECK(glows[0].anchor_id == foe);
+    CHECK(glows[0].radius_tiles == doctest::Approx(9.f));
+    CHECK(glows[0].intensity == doctest::Approx(pal.style_for("x.lantern", false).intensity));
+    const iso2d::GlowAnchor moved[] = {{foe, {3.5f, 4.5f}}};
+    iso2d::follow_anchors(glows, moved);
+    CHECK(glows[0].tile.x == 3.5f);
+
+    // pc_torches + the extra light: both producers feed the list (torches first).
+    o.pc_torches = true;
+    auto both = Session::open(o, &err);
+    REQUIRE_MESSAGE(both, err);
+    const ViewModel vb = both->view();
+    size_t torches = 0, lanterns = 0;
+    for (const auto& ls : vb.light.sources) (ls.preset == "srd51.core.light.torch" ? torches : lanterns)++;
+    CHECK(torches >= 1);
+    CHECK(lanterns == 1);
+    CHECK(glows_from(vb.light, pal).size() == vb.light.sources.size());
+
+    // No LightFrame -> no glows.
+    CHECK(glows_from(LightView{}, pal).empty());
+}
+
+namespace {
+// Temp pack "test.visual": the sample pack (same chunk, same fighter) plus item@1 docs. With `with_visual`,
+// two items style the same preset "test.visual.light.lantern" (ids differ from the preset; lowest id wins)
+// and one item has a visual but no light.preset (skipped). Resolved next to the real packs root.
+const char* kPreset = "test.visual.light.lantern";
+std::filesystem::path make_visual_pack(const std::string& tag, bool with_visual) {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / ("isoforge_visual_" + tag);
+    fs::remove_all(root);
+    const fs::path pack = root / "test.visual";
+    fs::create_directories(root);
+    fs::copy(fs::path(SLICE_PACK_ROOT) / SLICE_PACK, pack, fs::copy_options::recursive);
+    std::ifstream mi(pack / "manifest.json");
+    std::string man((std::istreambuf_iterator<char>(mi)), {});
+    mi.close();
+    man.replace(man.find("\"sample.vertical_slice\""), 23, "\"test.visual\"");
+    man.replace(man.find("\"chunks/0_0_0.json\""), 19,
+                "\"chunks/0_0_0.json\",\n    \"items/b_lantern.json\",\n    \"items/a_lantern.json\",\n    \"items/glowstone.json\"");
+    std::ofstream(pack / "manifest.json") << man;
+    fs::create_directories(pack / "items");
+    auto item = [&](const char* file, const char* id, bool preset, const char* visual) {
+        std::ofstream(pack / "items" / file)
+            << "{\"$schema\": \"item@1\", \"id\": \"" << id << "\", \"name\": \"Lantern\", \"category\": \"valuable\", "
+            << "\"cost_cp\": 500" << (preset ? std::string(", \"light\": {\"preset\": \"") + kPreset + "\"}" : std::string())
+            << (with_visual ? std::string(", \"visual\": ") + visual : std::string()) << "}";
+    };
+    // a_lantern (lowest id) wins over b_lantern, whatever the file / manifest order.
+    item("b_lantern.json", "test.visual.item.lantern_b", true, "{\"color\": {\"r\": 255, \"g\": 0, \"b\": 0}, \"intensity\": 900}");
+    item("a_lantern.json", "test.visual.item.lantern_a", true,
+         "{\"color\": {\"r\": 51, \"g\": 102, \"b\": 255}, \"intensity\": 400, \"flicker\": \"candle\"}");
+    item("glowstone.json", "test.visual.item.glowstone", false, "{\"color\": {\"r\": 0, \"g\": 255, \"b\": 0}, \"intensity\": 700}");
+    return root;
+}
+std::unique_ptr<Session> open_visual(const std::filesystem::path& root) {
+    Session::Options o{{root.string(), SLICE_PACK_ROOT}, {"test.visual"}, 1, true};
+    CarriedLight l;
+    l.preset = kPreset;   // the light preset, not an item id
+    o.carried_lights.push_back(l);
+    std::string err;
+    {
+        Session::Options probe = o;
+        probe.carried_lights.clear();
+        auto p = Session::open(probe, &err);
+        REQUIRE_MESSAGE(p, err);
+        for (const auto& a : p->view().actors) if (a.is_pc) o.carried_lights[0].carrier_id = a.id;
+    }
+    auto s = Session::open(o, &err);
+    REQUIRE_MESSAGE(s, err);
+    return s;
+}
+} // namespace
+
+TEST_CASE("item@1 visual: keyed by light.preset, lowest id wins, converted at load, sim untouched") {
+    const auto with = make_visual_pack("with", true), without = make_visual_pack("without", false);
+    auto a = open_visual(with), b = open_visual(without);
+    ViewModel va = a->view(), vb = b->view();
+
+    REQUIRE(va.light.visuals.size() == 1);   // only the preset; no entry under item ids, glowstone skipped
+    REQUIRE(va.light.visuals.count(kPreset) == 1);
+    const iso2d::GlowStyle& st = va.light.visuals.find(kPreset)->second;
+    CHECK(st.color.r == doctest::Approx(0.2f));   // lantern_a (lowest content id), not lantern_b
+    CHECK(st.color.g == doctest::Approx(0.4f));
+    CHECK(st.color.b == doctest::Approx(1.f));
+    CHECK(st.intensity == doctest::Approx(0.4f));
+    CHECK(st.flicker == iso2d::GlowFlicker::Candle);
+    CHECK(vb.light.visuals.empty());
+    bool conflict = false, skipped = false;
+    for (const auto& w : a->warnings()) {
+        if (w.find("conflicting visual from item test.visual.item.lantern_b") != std::string::npos &&
+            w.find("using test.visual.item.lantern_a") != std::string::npos) conflict = true;
+        if (w.find("test.visual.item.glowstone") != std::string::npos && w.find("no light.preset") != std::string::npos) skipped = true;
+    }
+    CHECK(conflict);
+    CHECK(skipped);
+    CHECK(b->warnings().empty());
+
+    // The item id differs from the preset, yet the preset's glow is overridden.
+    iso2d::GlowPalette pa, pb;
+    for (const auto& [id, s] : va.light.visuals) pa.set_override(id, s);
+    const auto ga = glows_from(va.light, pa), gb = glows_from(vb.light, pb);
+    bool found = false;
+    for (const auto& g : ga)
+        if (g.color.b == doctest::Approx(1.f) && g.intensity == doctest::Approx(0.4f)) found = true;
+    CHECK(found);
+    for (const auto& g : gb) CHECK(g.intensity != doctest::Approx(0.4f));   // no visual: built-in default kept
+
+    // Presentation only: the fight and the published light samples are identical with and without it.
+    for (int i = 0; i < 30 && a->step(); ++i) REQUIRE(b->step());
+    va = a->view();
+    vb = b->view();
+    CHECK(va.log == vb.log);
+    REQUIRE(va.actors.size() == vb.actors.size());
+    for (size_t i = 0; i < va.actors.size(); ++i) {
+        CHECK(va.actors[i].tile == vb.actors[i].tile);
+        CHECK(va.actors[i].hp == vb.actors[i].hp);
+    }
+    REQUIRE(va.light.chunks.size() == vb.light.chunks.size());
+    for (size_t i = 0; i < va.light.chunks.size(); ++i) CHECK(va.light.chunks[i].samples == vb.light.chunks[i].samples);
+    std::filesystem::remove_all(with);
+    std::filesystem::remove_all(without);
 }
 
 namespace {

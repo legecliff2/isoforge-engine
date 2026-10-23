@@ -12,6 +12,16 @@
 
 namespace slice {
 
+// One light source carried by an entity (LIGHTING.md §3.4 shape, game-side). Interim input until
+// sim-owned attached lights (lighting phase 3): the session turns each into a sim::AttachedLight
+// (Carrier::Creature) so the sim computes the light; render only sees the published LightFrame.
+struct CarriedLight {
+    uint32_t    carrier_id = 0;        // combatant id; skipped while the carrier is dead or absent
+    uint16_t    bright_ft = 20, dim_ft = 20;
+    bool        magical = false;
+    std::string preset = "srd51.core.light.torch";   // content key -> render-side glow style
+};
+
 class Session {
 public:
     struct Options {
@@ -24,7 +34,10 @@ public:
         // Interim scenario input until lighting phase 3 (attached lights / items from content): give each
         // PC a lit torch (sim::AttachedLight 20/20 ft, preset srd51.core.light.torch). The sim computes
         // all light; this only decides who carries a source. Off = ambient only (underground: Dark).
-        bool        pc_torches = true;
+        bool        pc_torches = true;   // one producer of carried lights (see carried_lights)
+        // Extra carried lights (scenario / tests), merged with the pc_torches producer. Same path as the
+        // torches: sim::AttachedLight -> sim::LightFrame -> ViewModel::light.sources -> glows.
+        std::vector<CarriedLight> carried_lights{};
         // Fog of war (LIGHTING.md §10): show this team's sim visibility masks. Unset = the player
         // team (the team of the first character combatant). fog = false shows everything.
         bool        fog = true;
@@ -44,6 +57,8 @@ public:
     // answers it. Nothing from the paused request is in the view until it completes.
     bool paused() const;
     const std::string& error() const;
+    // Non-fatal load warnings (e.g. two items styling one light preset differently).
+    const std::vector<std::string>& warnings() const;
 
     ViewModel view() const;
 
