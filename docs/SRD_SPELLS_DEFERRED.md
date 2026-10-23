@@ -13,10 +13,10 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 | level | in `srd51.core` | deferred: needs a mechanic | deferred: out of combat scope | total |
 |---|---|---|---|---|
 | 0 (cantrips) | 11 | 2 | 11 | 24 |
-| 1 | 25 | 5 | 19 | 49 |
-| 2 | 18 | 13 | 23 | 54 |
+| 1 | 27 | 3 | 19 | 49 |
+| 2 | 19 | 12 | 23 | 54 |
 | 3 | 13 | 10 | 19 | 42 |
-| **total** | **67** | **30** | **72** | **169** |
+| **total** | **70** | **27** | **72** | **169** |
 
 ## Authored in this change (9)
 
@@ -141,15 +141,25 @@ Spell batch zg rules (7.2zg, Rules #263 at `302f92f`). Pinned by `tests/validate
 | Hypnotic Pattern | 3 | `save` WIS `charmed` + `apply_condition incapacitated applies_to affected`, both `ends_on [damage, shake_awake]` (the Wake action); `area cube 30`, range 120, concentration 1 minute | bard, sorcerer, warlock, wizard (none have room at 5); speed 0 while charmed (Rules #263 @ `302f92f`); the mirror has no area_of_effect (cube 30 from the SRD text) |
 | Protection from Energy | 3 | `apply_modifier {stat resistance, damage_type acid}` + `damage_type_choices [acid, cold, fire, lightning, thunder]`; touch, concentration 1 hour | cleric (5), druid (5); the mirror spells it "Protection From Energy" |
 
+## Authored: Fog Cloud, Darkness, Color Spray (3)
+
+Zone / `hp_pool` promotions from `tests/validate/fixtures/zones/spells/` and `tests/validate/fixtures/spell_kinds/spells/`. Pinned by `tests/validate/test_srd51_spells.py` (`test_zone_and_kind_spells` vs the fixtures) and the 5e-database table.
+
+| spell | level | `spell@1` shape | notes |
+|---|---|---|---|
+| Fog Cloud | 1 | `zone` sphere 20, `flags [heavy_obscured]`, `upcast_size_ft 20`; concentration 1 hour, range 120 | druid (2), ranger (3-4), sorcerer (2), wizard (2); wind dispersal and obscurement's combat effect (R-G13) not modelled |
+| Darkness | 2 | `zone` sphere 15, `flags [heavy_obscured, magical_darkness]`; concentration 10 minutes, range 60 | warlock (4), wizard (4); sorcerer has no class list room at 3+; object casting, covering the source, and dispelling lower-level light not expressible |
+| Color Spray | 1 | `hp_pool` 6d10 `blinded`, self cone 15, `rounds 1`; `upcast.dice 2` | wizard (1); sorcerer has no class list room (Fog Cloud took the L2 known slot); "until the end of your next turn" ≈ `rounds 1` (R-G15); skipping unconscious / can't-see not expressible |
+
 ## Authored: Entangle (1)
 
-Promote `tests/validate/fixtures/zones/spells/entangle.json` into `srd51.core` (Rules #277). Pinned by `tests/validate/test_srd51_spells.py` (`test_zone_and_kind_spells` vs the fixture) and the 5e-database table. #274 Fog Cloud / Darkness / Color Spray is not on main yet (authored count from 66, not 69).
+Promote `tests/validate/fixtures/zones/spells/entangle.json` into `srd51.core` (Rules #277). Pinned by `tests/validate/test_srd51_spells.py` (`test_zone_and_kind_spells` vs the fixture) and the 5e-database table. Counts from main's 69 (#274 Fog Cloud / Darkness / Color Spray) + Entangle → 70 authored / 27 NEW / 72 OOS.
 
 | spell | level | `spell@1` shape | notes |
 |---|---|---|---|
 | Entangle | 1 | point `zone` cube 20 (SRD 20-ft square, same cube as Grease), `difficult`; `zone_appear` Strength save or restrained, `while_in_zone`; concentration 1 minute, range 90, V S | druid (2); forced exit also clears the restraint (`while_in_zone`); no new zone key |
 
-## Deferred (102 spells; reasons re-checked against main at `8b8d8c9`)
+## Deferred (99 spells; reasons re-checked against main at `8b8d8c9`)
 
 Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the first-draft ids in brackets: B1 = R-G2 effects array, B2 = R-G3 timed modifiers, B3 = R-G4 damage riders, B4 = R-G5 pools, B6 = R-G7 reactions / roll windows, C1 = R-G8 conditions with source, C2 = R-G9 forced movement / teleport, C3 = R-G10 area templates, C4 = R-G11 zones / auras, C5 = R-G12 summons, C7 = R-G13 cover / lighting / vision, C8 = R-G14 per-cast options, C9 = R-G15 spell kinds). `T&C-G12` / `T&C-G14` are movement modes and creature footprint. `OOS` rows have no gap id.
 
@@ -171,7 +181,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 1 | Alarm | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Animal Friendship | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Charm Person | NEW | Charmed with source (R-G8). | R-G8 (C1) |
-| 1 | Color Spray | NEW | `hp_pool` (blinded) loads (EC #120) with a self cone; "until the end of your next turn" is approximated by `rounds 1`, not faithful. | R-G15 (C9) |
 | 1 | Comprehend Languages | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Create or Destroy Water | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Detect Evil and Good | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
@@ -182,7 +191,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 1 | Feather Fall | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Find Familiar | NEW | Summons rules (R-G12 PR 2) exist but spell@1 has no summon key; 1-hour cast. | R-G12 (C5) |
 | 1 | Floating Disk | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
-| 1 | Fog Cloud | NEW | Zone loads (`kZoneHeavyObscured`); obscurement has no effect until R-G13. | R-G11, R-G13 (C4, C7) |
 | 1 | Goodberry | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Identify | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Illusory Script | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
@@ -200,7 +208,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Branding Smite | NEW | Weapon-attack rider: extra radiant damage, reveals invisible, concentration (R-G4, T&C-G5). SRD level 2 (the earlier draft also listed it at level 1). | R-G4, T&C-G5 (B3) |
 | 2 | Calm Emotions | NEW | Area + suppress condition (R-G10, R-G3). | R-G3, R-G10 (B2, C3) |
 | 2 | Continual Flame | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Darkness | NEW | Zone loads (`kZoneMagicalDarkness`); vision and light dispelling wait for R-G13. | R-G11, R-G13 (C4, C7) |
 | 2 | Darkvision | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Detect Thoughts | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Enhance Ability | NEW | Per-cast ability choice has no spell@1 key; temp-HP / carrying options not modelled. | R-G3, R-G14 (B2, C8) |

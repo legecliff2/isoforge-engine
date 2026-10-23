@@ -289,6 +289,23 @@ class SpellTable(unittest.TestCase):
         self.assertEqual(load("revivify")["effects"], [{"kind": "revive", "within_rounds": 10}])
         self.assertEqual(load("revivify")["components"]["m"]["cost_cp"], 30000)
         self.assertEqual(load("lesser-restoration")["effects"][0]["conditions"], ["blinded", "deafened", "paralyzed", "poisoned"])
+        # Fog Cloud / Darkness / Color Spray: pack files match the fixtures (zones + spell_kinds)
+        fx_root = ROOT / "tests/validate/fixtures"
+        for idx, fx_dir in (("fog-cloud", "zones/spells"), ("darkness", "zones/spells"), ("color-spray", "spell_kinds/spells")):
+            with self.subTest(spell=idx):
+                d = load(idx)
+                f = json.loads((fx_root / fx_dir / (idx.replace("-", "_") + ".json")).read_text(encoding="utf-8"))
+                for k in ("casting_time", "range", "duration", "area", "scaling"):
+                    self.assertEqual(d.get(k), f.get(k), k)
+                strip = lambda effs: [{k: v for k, v in e.items() if k != "description"} for e in effs]
+                self.assertEqual(strip(d["effects"]), strip(f["effects"]))
+        self.assertEqual(load("fog-cloud")["effects"][0]["zone"]["flags"], ["heavy_obscured"])
+        self.assertEqual(load("fog-cloud")["effects"][0]["zone"]["upcast_size_ft"], 20)
+        self.assertEqual(load("darkness")["effects"][0]["zone"]["flags"], ["heavy_obscured", "magical_darkness"])
+        cs = load("color-spray")
+        self.assertEqual(cs["effects"], [{"kind": "hp_pool", "dice": "6d10", "condition": "blinded"}])
+        self.assertEqual(cs["scaling"], {"upcast": {"dice": 2}})
+        self.assertEqual(cs["area"], {"shape": "cone", "size_ft": 15})
         # Entangle: pack file matches the zone fixture (Rules #277); SRD 20-ft square = point cube 20
         fx = ROOT / "tests/validate/fixtures/zones/spells/entangle.json"
         d, f = load("entangle"), json.loads(fx.read_text(encoding="utf-8"))

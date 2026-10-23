@@ -214,6 +214,33 @@
    ],
    "attack_type": "ranged"
   },
+  "color-spray": {
+    "name": "Color Spray",
+    "level": 1,
+    "range": "Self",
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "ritual": false,
+    "duration": "1 round",
+    "concentration": false,
+    "casting_time": "1 action",
+    "school": "illusion",
+    "classes": [
+      "sorcerer",
+      "wizard"
+    ],
+    "material": "A pinch of powder or sand that is colored red, yellow, and blue.",
+    "damage_at": {
+      "1": "6d10"
+    },
+    "area_of_effect": {
+      "type": "cone",
+      "size": 15
+    }
+  },
   "command": {
    "name": "Command",
    "level": 1,
@@ -234,6 +261,30 @@
     "ability": "wis",
     "success": "none"
    }
+  },
+  "darkness": {
+    "name": "Darkness",
+    "level": 2,
+    "range": "60 feet",
+    "components": [
+      "V",
+      "M"
+    ],
+    "ritual": false,
+    "duration": "Up to 10 minutes",
+    "concentration": true,
+    "casting_time": "1 action",
+    "school": "evocation",
+    "classes": [
+      "sorcerer",
+      "warlock",
+      "wizard"
+    ],
+    "material": "Bat fur and a drop of pitch or piece of coal.",
+    "area_of_effect": {
+      "type": "sphere",
+      "size": 15
+    }
   },
   "dispel-magic": {
    "name": "Dispel Magic",
@@ -415,6 +466,30 @@
     "type": "sphere",
     "size": 20
    }
+  },
+  "fog-cloud": {
+    "name": "Fog Cloud",
+    "level": 1,
+    "range": "120 feet",
+    "components": [
+      "V",
+      "S"
+    ],
+    "ritual": false,
+    "duration": "Up to 1 hour",
+    "concentration": true,
+    "casting_time": "1 action",
+    "school": "conjuration",
+    "classes": [
+      "druid",
+      "ranger",
+      "sorcerer",
+      "wizard"
+    ],
+    "area_of_effect": {
+      "type": "sphere",
+      "size": 20
+    }
   },
   "grease": {
    "name": "Grease",
