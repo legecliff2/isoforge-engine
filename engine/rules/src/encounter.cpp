@@ -518,6 +518,13 @@ void end_concentration(EncounterState& s, CombatantId caster, std::vector<Event>
         if (e.caster == caster && e.concentration && e.spell_id == sp) end_effect(s, i, ev);
         else ++i;
     }
+    for (std::size_t i = 0; i < s.summon_weapons.size();) {   // 7.2zh Flame Blade: a held blade ends with concentration
+        const ActiveSummonWeapon w = s.summon_weapons[i];
+        if (w.owner == caster && w.concentration && w.spell_id == sp) {
+            s.summon_weapons.erase(s.summon_weapons.begin() + std::ptrdiff_t(i));
+            emit(ev, EventKind::SummonEnded, w.owner, w.token_id, int32_t(w.spell_id), 1);
+        } else ++i;
+    }
 }
 
 // 7.2zc Invisibility (SpellEffect::ends_on): `who` made an attack (kEndsOnAttack) or cast a spell (kEndsOnCast): its effects
@@ -845,6 +852,9 @@ bool immune_to(const EncounterState& s, const Combatant& t, Condition c) {
     if ((t.condition_immunities & bit(c)) != 0 || (!s.zones.empty() && aura_immune(s, t, c))) return true;
     for (const auto& e : s.effects)   // 7.2zg Heroism: immune from any source while the spell lasts (immune_from_types = all)
         if (e.target == t.id && e.immune_from_types == kImmuneFromAnySource && (e.immune_conditions & bit(c)) != 0) return true;
+    if (c == Condition::Invisible)   // 7.2zh Branding Smite: a revealed brand cannot become invisible
+        for (const auto& e : s.effects)
+            if (e.target == t.id && e.smite_brand && e.smite_reveal) return true;
     return false;
 }
 // 7.2zd Protection from Evil and Good: `t` can't get `c` from `source` while a ConditionImmunityFrom effect of the source's
@@ -948,6 +958,7 @@ struct Ctx {
     std::vector<std::pair<Combatant, uint8_t>> summons_pending{};
     SummonSpec summon_spec{};
     std::vector<CombatantId> assigned_summon_ids{};
+    uint32_t heat_item = 0;             // 7.2zh: CastSpell equip_item, the heated object (held instance or worn armor def)
     bool ranged_disadvantage = false;   // EC spider follow-up (flagged): the cast's ranged facts (cast_spell around resolve_spell)
     // 7.2t cover: the explicit origin for the attack / area in progress (Spiritual Weapon tile; ActionRequest area origin)
     bool has_cover_origin = false; int32_t cover_x = 0, cover_y = 0;
@@ -2021,6 +2032,65 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
     return out;
 }
 
+bool while_held_disadvantage(const EncounterState& s, CombatantId id) {
+    for (const auto& e : s.effects) if (e.target == id && e.while_held) return true;
+    return false;
+}
+
+// 7.2zh Branding Smite: the brand makes the target visible and ends Invisible effects on it (and that caster's
+// concentration once nothing of the spell remains).
+void reveal_branded(EncounterState& s, Combatant& t, std::vector<Event>& ev) {
+    std::vector<std::pair<uint32_t, CombatantId>> ended;
+    for (std::size_t i = 0; i < s.effects.size();) {
+        const ActiveSpellEffect& e = s.effects[i];
+        if (e.target == t.id && !e.no_condition && e.condition == Condition::Invisible) {
+            ended.push_back({e.spell_id, e.caster});
+            end_effect(s, i, ev);
+        } else ++i;
+    }
+    if (t.has(Condition::Invisible)) {
+        remove_condition(t, Condition::Invisible);
+        emit(ev, EventKind::ConditionRemoved, t.id, 0, int32_t(Condition::Invisible));
+    }
+    for (const auto& k : ended) {
+        Combatant* c = find_mut(s, k.second);
+        if (!c || c->concentration_spell != k.first) continue;
+        bool left = zone_alive(s, k.second, k.first);
+        for (const auto& e : s.effects) left = left || (e.spell_id == k.first && e.caster == k.second);
+        for (const auto& m : s.modifiers) left = left || (m.spec.source == k.first && m.caster == k.second);
+        for (const auto& w : s.summon_weapons) left = left || (w.concentration && w.spell_id == k.first && w.owner == k.second);
+        if (!left) end_concentration(s, k.second, ev);
+    }
+}
+
+// The oldest pending Branding Smite on `attacker` was rolled into this hit. A reveal or a dim radius stays on the
+// target for the remaining duration; otherwise the charge ends (and concentration with it, once nothing remains).
+void settle_weapon_smite(EncounterState& s, Combatant& attacker, Combatant& target, std::vector<Event>& ev) {
+    for (std::size_t i = 0; i < s.effects.size(); ++i) {
+        ActiveSpellEffect& e = s.effects[i];
+        if (!e.smite_pending || e.caster != attacker.id) continue;
+        const uint32_t spell = e.spell_id;
+        const CombatantId caster = e.caster;
+        const bool brand = e.smite_reveal || e.smite_dim_ft > 0;
+        const bool do_reveal = e.smite_reveal;
+        if (brand) {
+            e.smite_pending = false;
+            e.smite_brand = true;
+            e.target = target.id;
+            if (do_reveal) reveal_branded(s, target, ev);
+        } else {
+            end_effect(s, i, ev);
+            bool left = zone_alive(s, caster, spell);
+            for (const auto& o : s.effects) left = left || (o.caster == caster && o.spell_id == spell);
+            for (const auto& m : s.modifiers) left = left || (m.caster == caster && m.spec.source == spell);
+            for (const auto& w : s.summon_weapons) left = left || (w.concentration && w.spell_id == spell && w.owner == caster);
+            Combatant* c = find_mut(s, caster);
+            if (!left && c && c->concentration_spell == spell) end_concentration(s, caster, ev);
+        }
+        return;
+    }
+}
+
 bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const Attack& atk,
                bool within_5ft, std::vector<Event>& ev, bool ranged_disadvantage,
                uint32_t spell_id, bool ally_near_target, const DiceExpr* damage_override, bool two_handed_grip) {
@@ -2078,7 +2148,8 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     actx.ranged = atk.ranged;
     actx.mode = adv ? RollMode::Advantage : RollMode::Normal;
     const bool protected_by_ally = ally_attacked_window(s, ctx, a, t, atk.ranged, spell_id, ev);   // Protection-style reactions
-    actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft) || protected_by_ally || gaze_dis || a.squeezing || unseen_target;   // combined with conditions in one place
+    const bool heat_dis = while_held_disadvantage(s, a.id);   // 7.2zh Heat Metal: attack rolls, weapon and spell
+    actx.extra_disadvantage = (ranged_disadvantage && atk.ranged) || weapon_disadvantage(a, atk, within_5ft) || protected_by_ally || gaze_dis || a.squeezing || unseen_target || heat_dis;   // combined with conditions in one place
     if (!s.modifiers.empty()) {   // timed modifiers (row 12): sources merged into the one advantage/disadvantage resolution
         bool attackers_dis = false, attackers_adv = false;
         for (auto& m : s.modifiers) {   // `when` scope of roll-time modifiers (follow-up): gate the ones that do not hold
@@ -2148,6 +2219,13 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         if (being_hit_window(s, ctx, a, t, w, ev, would_miss)) hit = evaluate_hit(roll, t, actx, crit, crit_min);
     }
     if (hit && within_5ft && (t.has(Condition::Paralyzed) || t.has(Condition::Unconscious))) crit = true;
+    std::optional<DamagePiece> smite_piece;   // 7.2zh: extra dice of the oldest pending weapon smite, crit doubles them
+    if (hit && spell_id == 0)
+        for (const auto& e : s.effects)
+            if (e.smite_pending && e.caster == a.id) {
+                smite_piece = DamagePiece{int16_t(std::max(0, roll_dice(s.rng, e.damage, crit))), e.damage_type};
+                break;
+            }
     emit(ev, EventKind::AttackResolved, a.id, t.id, roll.natural, roll.total,
          int32_t(hit) | (int32_t(crit) << 1));
     if (t.team != a.team && !s.modifiers.empty()) mark_fought(s, a.id);   // 7.2z ends_early: attacked a hostile
@@ -2198,13 +2276,15 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
             for (const HitRiderPiece& r : riders.pieces)
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, r.dice, crit))), r.same_as_weapon ? atk.type : r.type});
             for (const auto& mp : modp) parts.push_back({int16_t(mp.first), mp.second});
+            if (smite_piece) parts.push_back(*smite_piece);
             damage_creature(s, t, zone_apply_damage_parts(s, t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
-        } else if (atk.extra_damage.empty()) {
+        } else if (atk.extra_damage.empty() && !smite_piece) {
             damage_creature(s, t, zone_apply_damage(s, t, int16_t(dmg), atk.type, atk.qualifiers), crit, ev, &tsrc, &ctx);
         } else {   // multi-component hit: one DamageDealt carrying the per-type-modified sum
             std::vector<DamagePiece> parts{{int16_t(dmg), atk.type}};
             for (const DamagePart& p : atk.extra_damage)
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.dice, crit))), p.type});
+            if (smite_piece) parts.push_back(*smite_piece);
             damage_creature(s, t, zone_apply_damage_parts(s, t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
         }
         if (atk.drain_max_hp && !t.dead) life_drain(s, t, drain_before - (int(t.hp) + int(t.temp_hp)), atk.drain_save_dc, a.id, ev);
@@ -2212,6 +2292,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
             if (t.dead) break;
             if (const SpellDef* d = spell_def(s, sid)) resolve_spell(s, ctx, a, *d, 0, std::vector<Combatant*>{&t}, within_5ft, ev);   // 7.2zb: + extra effects
         }
+        if (smite_piece) settle_weapon_smite(s, a, t, ev);   // 7.2zh: the charge is spent on this weapon hit
     }
     if (!s.effects.empty()) end_on_own_action(s, a.id, kEndsOnAttack, ev);   // 7.2zc Invisibility: after the attack resolves
     return hit;
@@ -2535,12 +2616,21 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         emit(ev, EventKind::ReadyExpired, c.id);
     }
     emit(ev, EventKind::TurnStarted, c.id, 0, s.round);
+    for (auto& e : s.effects)   // 7.2zh Heat Metal: disadvantage lasts until the start of the caster's next turn
+        if (e.caster == c.id) e.while_held = false;
     if (c.form != FormKind::None && c.form_end_round != 0 && s.round >= c.form_end_round) form_reverted(c, 0, 0, ev);   // R-G12
     for (std::size_t k = 0; k < s.summon_weapons.size();) {   // R-G12 PR 3: a Spiritual Weapon's minute ends (SummonEnded b = 0)
         const ActiveSummonWeapon w = s.summon_weapons[k];
         if (w.owner != c.id || w.end_round == 0 || s.round < w.end_round) { ++k; continue; }
         s.summon_weapons.erase(s.summon_weapons.begin() + std::ptrdiff_t(k));
         emit(ev, EventKind::SummonEnded, w.owner, w.token_id, int32_t(w.spell_id), 0);
+        if (w.concentration) {   // 7.2zh Flame Blade: the minute ending drops concentration once nothing of the spell remains
+            bool left = zone_alive(s, w.owner, w.spell_id);
+            for (const auto& e : s.effects) left = left || (e.caster == w.owner && e.spell_id == w.spell_id);
+            for (const auto& m : s.modifiers) left = left || (m.caster == w.owner && m.spec.source == w.spell_id);
+            for (const auto& o : s.summon_weapons) left = left || (o.owner == w.owner && o.spell_id == w.spell_id && o.concentration);
+            if (!left && c.concentration_spell == w.spell_id) end_concentration(s, c.id, ev);
+        }
     }
     drop_caster_turn_modifiers(s, c.id, ev);
     if (!s.effects.empty()) {   // EC loader durations (flagged): StartOfTargetNextTurn effects on `c` end as its turn starts
@@ -2740,7 +2830,7 @@ CheckResult roll_check(EncounterState& s, Combatant& c, Skill k, int dc, RollMod
         mode = combine_modes(true, mode == RollMode::Disadvantage);
     }
     {   // modifiers: modes merge, then flat bonus and dice after the d20
-        bool adv = mode == RollMode::Advantage, dis = mode == RollMode::Disadvantage;
+        bool adv = mode == RollMode::Advantage, dis = mode == RollMode::Disadvantage || while_held_disadvantage(s, c.id);
         mod_modes(s, c.id, ModStat::AbilityCheck, int(skill_ability(k)), adv, dis);
         mode = combine_modes(adv, dis);
     }
@@ -2763,7 +2853,7 @@ CheckResult roll_check(EncounterState& s, Combatant& c, Skill k, int dc, RollMod
 CheckResult roll_ability_check(EncounterState& s, Combatant& c, Ability ab, int dc, std::vector<Event>& ev, int bonus = 0) {
     const bool helped = c.check_helped_by != 0;
     if (helped) c.check_helped_by = 0;
-    bool adv = helped, dis = false;
+    bool adv = helped, dis = while_held_disadvantage(s, c.id);   // 7.2zh Heat Metal: ability checks, not saves
     mod_modes(s, c.id, ModStat::AbilityCheck, int(ab), adv, dis);
     const D20Roll roll = roll_d20(s.rng, modifier(c.abilities, ab) + bonus + ((c.half_proficiency & 1) ? c.proficiency_bonus / 2 : 0), check_roll_mode(c, combine_modes(adv, dis)));
     CheckResult r{roll, roll.total >= dc};
@@ -2858,6 +2948,50 @@ void zero_hp_clause(EncounterState& s, const Combatant& a, Combatant& t, const S
     e.no_condition = !main_ok;
     e.has_also = also_ok; e.also = def.zero_hp_while;
     s.effects.push_back(e);
+}
+
+// 7.2zh: v1 "metal" is the item category (Weapon, Armor, Shield), not a metal flag. Hands are matched by instance;
+// worn armor has no instance, so equip_item is the armor def id. A hand match wins over armor.
+struct HeatedPick { uint32_t instance = 0; uint32_t def = 0; bool worn = false; };
+std::optional<HeatedPick> pick_heated_object(const EncounterState& s, const LoadoutView& v, uint32_t equip_item) {
+    if (equip_item == 0 || !s.hooks.item_def) return std::nullopt;
+    auto metal = [&](uint32_t def_id) {
+        const ItemDef* d = s.hooks.item_def(def_id);
+        return d && (d->kind == ItemKind::Weapon || d->kind == ItemKind::Armor || d->kind == ItemKind::Shield);
+    };
+    const HeldItem* hand = nullptr;
+    if (v.main.instance == equip_item) hand = &v.main;
+    else if (v.off.instance == equip_item) hand = &v.off;
+    if (hand) return metal(hand->def) ? std::optional<HeatedPick>{HeatedPick{hand->instance, hand->def, false}} : std::nullopt;
+    if (v.armor_def != 0 && equip_item == v.armor_def && metal(v.armor_def))
+        return HeatedPick{v.armor_def, v.armor_def, true};
+    return std::nullopt;
+}
+bool heated_still_held(const LoadoutView& v, const ActiveSpellEffect& e) {
+    if (e.heated_worn) return e.heated_def != 0 && v.armor_def == e.heated_def;
+    return e.heated_item != 0 && (v.main.instance == e.heated_item || v.off.instance == e.heated_item);
+}
+// After the fire damage: a CON save. Failure drops a held object (worn armor cannot be dropped) and, while the
+// creature is still in contact, imposes disadvantage until the start of the caster's next turn. Success does neither.
+void heat_metal_rider(EncounterState& s, Combatant& caster, Combatant& target, ActiveSpellEffect& e, const SpellDef& def,
+                      std::vector<Event>& ev) {
+    if (!def.held_object || target.dead) return;
+    const LoadoutView* v = s.hooks.loadout_of ? s.hooks.loadout_of(s, target.id) : nullptr;
+    if (!v || !heated_still_held(*v, e)) { e.while_held = false; return; }
+    const SaveSource src{def.magical, 0u, 0u};
+    const SaveResult r = save_roll(s, target, Ability::Con, spell_save_dc(caster, def), RollMode::Normal, ev, &src);
+    emit(ev, EventKind::SavingThrowRolled, target.id, CombatantId(Ability::Con), r.roll.natural, r.roll.total, int32_t(r.success));
+    if (r.success) { e.while_held = false; return; }
+    bool dropped = false;
+    if (!e.heated_worn && s.hooks.apply_equip) {
+        ActionRequest drop{target.id, ActionKind::UseObject};
+        drop.equip_op = uint8_t(EquipOp::Drop);
+        drop.equip_item = e.heated_item;
+        s.hooks.apply_equip(s, drop, 0, ev);
+        const LoadoutView* now = s.hooks.loadout_of ? s.hooks.loadout_of(s, target.id) : nullptr;
+        dropped = !now || !heated_still_held(*now, e);
+    }
+    e.while_held = !dropped;
 }
 
 std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& def, uint8_t lvl,
@@ -3243,7 +3377,14 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                                 effect_timed(s, def, a.id, t->id), lvl, false};
             e.no_condition = true; e.damage_when = sustained ? 2 : 1; e.damage = dice; e.damage_type = def.damage_type;
             e.magical = def.magical; e.cast_stamp = (uint32_t(s.round) << 16) | s.turn_index;
+            if (sustained && def.held_object && s.hooks.loadout_of) {   // 7.2zh: the object named by equip_item
+                if (const LoadoutView* v = s.hooks.loadout_of(s, t->id))
+                    if (const auto pick = pick_heated_object(s, *v, ctx.heat_item)) {
+                        e.heated_item = pick->instance; e.heated_def = pick->def; e.heated_worn = pick->worn;
+                    }
+            }
             s.effects.push_back(e);
+            if (sustained && def.held_object && !t->dead) heat_metal_rider(s, a, *t, s.effects.back(), def, ev);
             affected.push_back(t);
         }
         if (def.concentration && !affected.empty()) a.concentration_spell = def.id;
@@ -3332,11 +3473,18 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         if (ctx.summon_tiles && !ctx.summon_tiles->empty()) {
             w.has_tile = true; w.tile_x = (*ctx.summon_tiles)[0].x; w.tile_y = (*ctx.summon_tiles)[0].y;
         }
+        if (def.summon_weapon.held) {   // 7.2zh Flame Blade: in hand, no attack on the cast, concentration ends it
+            w.held = true;
+            w.concentration = def.concentration;
+        }
         s.summon_weapons.push_back(w);
         s.next_summon_id = id + 1;
         ++s.summons;
         emit(ev, EventKind::Summoned, a.id, id, int32_t(def.id), 0, -1);
-        if (T.size() == 1 && T[0] != &a && !T[0]->dead && summon_weapon_attack(s, ctx, a, def, lvl, *T[0], ev)) affected.push_back(T[0]);
+        if (def.summon_weapon.held) {
+            if (def.concentration) a.concentration_spell = def.id;
+        } else if (T.size() == 1 && T[0] != &a && !T[0]->dead && summon_weapon_attack(s, ctx, a, def, lvl, *T[0], ev))
+            affected.push_back(T[0]);
         break;
     }
     case SpellEffectKind::ConditionImmunityFrom: {   // 7.2zd Protection from Evil and Good: lasts with the spell
@@ -3424,6 +3572,22 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         } else {
             x.duplicates = def.duplicates.count;
         }
+        s.effects.push_back(x);
+        affected.push_back(&a);
+        if (def.concentration) a.concentration_spell = def.id;
+        break;
+    }
+    case SpellEffectKind::WeaponSmite: {   // 7.2zh Branding Smite: the charge waits on the caster for a weapon-attack hit
+        if (T.size() != 1 || T[0] != &a) break;
+        ActiveSpellEffect x{def.id, a.id, a.id, Condition::Paralyzed, Ability::Wis, 0, RepeatSave::None, def.concentration,
+                            effect_timed(s, def, a.id, a.id), lvl, false};
+        x.no_condition = true;
+        x.damage = scaled_dice(def, lvl, a.caster_level);
+        x.damage_type = def.damage_type;
+        x.magical = def.magical;
+        x.smite_pending = true;
+        x.smite_reveal = def.weapon_smite.reveal_invisible;
+        x.smite_dim_ft = def.weapon_smite.dim_ft;
         s.effects.push_back(x);
         affected.push_back(&a);
         if (def.concentration) a.concentration_spell = def.id;
@@ -3551,6 +3715,12 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         const ActiveSpellEffect copy = *e;
         const int dmg = std::max(0, roll_dice(s.rng, copy.damage));
         damage_creature(s, *t, zone_apply_damage(s, *t, int16_t(dmg), copy.damage_type, copy.magical ? uint8_t(kAttackMagical) : uint8_t(0)), false, out.events, nullptr, &ctx);
+        if (def.held_object && !t->dead)   // 7.2zh: the same object, the same save
+            for (auto& x : s.effects)
+                if (x.spell_id == copy.spell_id && x.caster == a.id && x.target == t->id && x.damage_when == 2) {
+                    heat_metal_rider(s, a, *t, x, def, out.events);
+                    break;
+                }
         emit(out.events, EventKind::SpellResolved, a.id, t->id, int32_t(def.id), copy.slot_level);
         check_end(s, out.events);
         return out;
@@ -3634,6 +3804,11 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     case SpellEffectKind::TempHp:   // 7.2zg
         if ((def.area == AreaShape::None && int(T.size()) > scaled_targets(def, lvl)) || !distinct())
             return fail("too many targets");
+        if (def.kind == SpellEffectKind::SustainedDamage && def.held_object) {   // 7.2zh Heat Metal
+            if (T.size() != 1) return fail("heat_metal: no metal object");
+            if (!s.hooks.loadout_of || !s.hooks.loadout_of(s, T[0]->id)) return fail("heat_metal: equipment required");
+            if (!pick_heated_object(s, *s.hooks.loadout_of(s, T[0]->id), req.equip_item)) return fail("heat_metal: no metal object");
+        }
         break;
     case SpellEffectKind::AutoHit: {
         const int darts = scaled_darts(def, lvl);
@@ -3683,11 +3858,26 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         break;
     }
     case SpellEffectKind::SummonWeapon:   // R-G12 PR 3: target = the creature its first attack hits, or the caster (no attack)
-        if (T.size() != 1) return fail("spiritual weapon: one target");
-        if (T[0] != &a && T[0]->dead) return fail("target is dead");
-        if (req.summon_tiles.size() != 1) return fail("spiritual weapon: one tile");   // the spawn tile (sim checks 60 ft)
+        if (def.summon_weapon.held) {   // 7.2zh Flame Blade: self, a free hand, no tile
+            if (T.size() != 1 || T[0] != &a) return fail("summon_weapon: held is self only");
+            if (!req.summon_tiles.empty()) return fail("summon_weapon: held does not move");
+            if (s.hooks.loadout_of && s.hooks.loadout_of(s, a.id) && free_hands(s, a.id) == 0)
+                return fail("summon_weapon: held needs a free hand");
+            for (const auto& w : s.summon_weapons)
+                if (w.owner == a.id && w.held && w.spell_id == def.id) {
+                    const bool replaced = def.concentration && w.concentration && a.concentration_spell == def.id;
+                    if (!replaced) return fail("summon_weapon: held already active");
+                }
+        } else {
+            if (T.size() != 1) return fail("spiritual weapon: one target");
+            if (T[0] != &a && T[0]->dead) return fail("target is dead");
+            if (req.summon_tiles.size() != 1) return fail("spiritual weapon: one tile");   // the spawn tile (sim checks 60 ft)
+        }
         if (!ctx.replay_only && !req.summon_ids.empty()) return fail("summon_ids: assigned by rules (leave empty)");
         if (ctx.replay_only && req.summon_ids != next_summon_ids(s, 1)) return fail("summon_ids: do not match the summon counter");
+        break;
+    case SpellEffectKind::WeaponSmite:   // 7.2zh Branding Smite: the caster only
+        if (T.size() != 1 || T[0] != &a) return fail("weapon_smite: self only");
         break;
     case SpellEffectKind::Zone:   // R-G11: cast at a point (zone_x / zone_y) or on the caster; no creature targets
         if (T.size() != 1 || T[0] != &a) return fail("zone: no creature targets");
@@ -3711,6 +3901,8 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (x.kind == SpellEffectKind::Summon) return fail("summon: primary effect only");
     for (const SpellEffect& x : def.extra_effects)
         if (x.kind == SpellEffectKind::SummonWeapon) return fail("spiritual weapon: primary effect only");
+    for (const SpellEffect& x : def.extra_effects)
+        if (x.kind == SpellEffectKind::WeaponSmite) return fail("weapon_smite: primary effect only");
     if (!req.summon_archetypes.empty() && def.kind != SpellEffectKind::Summon) return fail("summon: not a summon spell");
     if (!req.summon_tiles.empty() && def.kind != SpellEffectKind::Summon && def.kind != SpellEffectKind::SummonWeapon)
         return fail("summon: not a summon spell");
@@ -3817,6 +4009,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         ctx.zone_side = req.zone_side; ctx.zone_ring = req.zone_ring;
         ctx.form_archetype = req.form_archetype; ctx.command_word = req.command_word;
         ctx.summon_archetypes = &req.summon_archetypes; ctx.summon_tiles = &req.summon_tiles;
+        ctx.heat_item = req.equip_item;   // 7.2zh Heat Metal: the object the cast names
         ctx.has_area_origin = req.has_area_origin; ctx.area_x = req.area_x; ctx.area_y = req.area_y;
         ctx.ranged_disadvantage = req.beyond_normal_range || req.ranged_hostile_within_5ft;   // EC spider follow-up (flagged)
         ctx.slot_cast = inn == nullptr && lvl >= 1; ctx.mark_ability = req.mark_ability;   // 7.2zc
@@ -3829,6 +4022,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         ctx.has_zone_dest = false; ctx.zone_x = 0; ctx.zone_y = 0; ctx.zone_excluded = nullptr;
         ctx.has_zone_end = false; ctx.zone_x2 = 0; ctx.zone_y2 = 0; ctx.zone_side = 0; ctx.zone_ring = false;
         ctx.form_archetype = 0; ctx.command_word = 0; ctx.summon_archetypes = nullptr; ctx.summon_tiles = nullptr;
+        ctx.heat_item = 0;
         ctx.has_area_origin = false; ctx.area_x = 0; ctx.area_y = 0;
         defer_forced(s, ctx, out.events);   // R-G9: placeholders after every save and damage of the spell, before SpellResolved
     }
@@ -4778,24 +4972,29 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
     case ActionKind::SummonWeaponAttack: {   // R-G12 PR 3 (D3): bonus action: the weapon moves (sim) and attacks
         ActiveSummonWeapon* w = nullptr;
         for (auto& x : s.summon_weapons) if (x.owner == a.id && x.spell_id == req.spell_id) { w = &x; break; }
-        if (req.summon_tiles.size() > 1) return fail("spiritual weapon: one tile");
         if (!w) return fail("spiritual weapon: none active");
+        if (w->held && !req.summon_tiles.empty()) return fail("summon_weapon: held does not move");   // 7.2zh
+        if (req.summon_tiles.size() > 1) return fail("spiritual weapon: one tile");
         if (is_incapacitated(a)) return fail("incapacitated");
-        if (!b.bonus_action) return fail("no bonus action available");
+        if (w->held) {
+            if (!b.action && b.extra_actions == 0) return fail("no action available");
+        } else if (!b.bonus_action) return fail("no bonus action available");
         Combatant* t = find_mut(s, req.target);
         if (!t || t == &a) return fail("bad target");
         if (t->dead) return fail("target is dead");
         const SpellDef* def = spell_def(s, w->spell_id);
         if (!def) return fail("unknown spell");
         const uint8_t lvl = w->slot_level;
-        {   // 7.2t: from the tile it attacks from (after the move), before anything is spent
-            const bool mv = !req.summon_tiles.empty();
-            const bool ho = mv || w->has_tile;
+        {   // 7.2t: from the tile it attacks from (after the move), before anything is spent. A held blade uses the caster.
+            const bool mv = !w->held && !req.summon_tiles.empty();
+            const bool ho = mv || (!w->held && w->has_tile);
             const int32_t ox = mv ? req.summon_tiles[0].x : w->tile_x, oy = mv ? req.summon_tiles[0].y : w->tile_y;
             if (cover_of(s, a.id, t->id, false, def->id, ho, ox, oy) == Cover::Total) return fail("target has total cover");
         }
-        if (!req.summon_tiles.empty()) { w->has_tile = true; w->tile_x = req.summon_tiles[0].x; w->tile_y = req.summon_tiles[0].y; }
-        b.bonus_action = false;
+        if (!w->held && !req.summon_tiles.empty()) { w->has_tile = true; w->tile_x = req.summon_tiles[0].x; w->tile_y = req.summon_tiles[0].y; }
+        if (w->held) {
+            if (!spend_action(b, a, ActionKind::SummonWeaponAttack, false)) return fail("no action available");
+        } else b.bonus_action = false;
         s.budget = b;
         summon_weapon_attack(s, ctx, a, *def, lvl, *t, out.events);
         check_end(s, out.events);
@@ -5221,17 +5420,29 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (a.form == FormKind::WildShape ? b.bonus_action : (a.form == FormKind::Shapechanger && can_act)) {
         if (!is_incapacitated(a)) add(ActionKind::Revert, a.form == FormKind::WildShape);   // R-G12
     }
-    if (b.bonus_action && !is_incapacitated(a))   // R-G12 PR 3: Spiritual Weapon attacks (sim moves the token first)
+    if (!is_incapacitated(a)) {   // R-G12 PR 3: Spiritual Weapon (bonus). 7.2zh Flame Blade: the action, no move.
+        bool floating_listed = false;
         for (const auto& w : s.summon_weapons) {
             if (w.owner != a.id) continue;
-            for (const auto& t : s.combatants) {
-                if (t.dead || t.id == a.id || t.team == a.team) continue;
-                ActionRequest r{a.id, ActionKind::SummonWeaponAttack, t.id};
-                r.spell_id = w.spell_id; r.as_bonus_action = true;
-                out.push_back(r);
+            if (w.held) {
+                if (!can_act) continue;
+                for (const auto& t : s.combatants) {
+                    if (t.dead || t.id == a.id || t.team == a.team) continue;
+                    ActionRequest r{a.id, ActionKind::SummonWeaponAttack, t.id};
+                    r.spell_id = w.spell_id;
+                    out.push_back(r);
+                }
+            } else if (b.bonus_action && !floating_listed) {
+                for (const auto& t : s.combatants) {
+                    if (t.dead || t.id == a.id || t.team == a.team) continue;
+                    ActionRequest r{a.id, ActionKind::SummonWeaponAttack, t.id};
+                    r.spell_id = w.spell_id; r.as_bonus_action = true;
+                    out.push_back(r);
+                }
+                floating_listed = true;
             }
-            break;
         }
+    }
     if (!is_incapacitated(a)) {   // R-G12 PR 2: command every summon that takes commands (act); bonus action if one needs it
         bool any = false, costs = false;
         for (const auto& c : s.combatants)
@@ -5893,6 +6104,9 @@ Sight sight(const EncounterState& s, CombatantId viewer, CombatantId subject) {
     if (!v || !t) return Sight{};
     SightFacts f = s.hooks.sight_facts(*b, *v, *t);
     if (f.subject_invisible && is_outlined(s, subject)) f.subject_invisible = false;   // 7.2zg: an outlined creature can't hide in invisibility
+    if (f.subject_invisible)   // 7.2zh Branding Smite: a revealed brand is visible
+        for (const auto& e : s.effects)
+            if (e.target == subject && e.smite_brand && e.smite_reveal) { f.subject_invisible = false; break; }
     return derive_sight(*v, f);
 }
 
@@ -6012,6 +6226,12 @@ uint64_t summons_digest(const EncounterState& s, uint64_t h) {
             mix(w.token_id, 4); mix(w.owner, 4); mix(w.spell_id, 4); mix(w.slot_level, 1); mix(w.end_round, 4);
             mix(uint8_t(w.has_tile), 1); mix(uint32_t(w.tile_x), 4); mix(uint32_t(w.tile_y), 4);
         }
+        // 7.2zh Flame Blade: held / concentration only when some row is held (sub-byte 0xE1, not a registry tag).
+        if (std::any_of(s.summon_weapons.begin(), s.summon_weapons.end(), [](const ActiveSummonWeapon& w) { return w.held; })) {
+            mix(uint8_t(0xE1), 1);
+            for (const auto& w : s.summon_weapons)
+                mix(uint8_t((w.held ? 1u : 0u) | (w.concentration ? 2u : 0u)), 1);
+        }
     }
     mix(s.transforms, 4);
     for (const auto& c : s.combatants) {
@@ -6019,6 +6239,41 @@ uint64_t summons_digest(const EncounterState& s, uint64_t h) {
         mix(c.id, 4); mix(uint8_t(c.form), 1); mix(c.form_source, 4); mix(c.form_caster, 4); mix(c.form_archetype, 1);
         mix(c.form_end_round, 4);
         mix(uint16_t(c.base ? c.base->hp : 0), 2); mix(uint16_t(c.base ? c.base->hp_max : 0), 2);
+    }
+    return h;
+}
+
+bool has_smite_state(const EncounterState& s) {
+    return std::any_of(s.effects.begin(), s.effects.end(), [](const ActiveSpellEffect& e) {
+        return e.smite_pending || e.smite_brand; });
+}
+
+uint64_t smite_digest(const EncounterState& s, uint64_t h) {
+    auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
+    auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) byte(uint8_t(v >> (8 * i))); };
+    auto u16 = [&](uint16_t v) { byte(uint8_t(v)); byte(uint8_t(v >> 8)); };
+    for (const auto& e : s.effects) {
+        if (!e.smite_pending && !e.smite_brand) continue;
+        u32(e.spell_id); u32(e.caster); u32(e.target);
+        byte(uint8_t((e.smite_pending ? 1 : 0) | (e.smite_brand ? 2 : 0) | (e.smite_reveal ? 4 : 0)));
+        byte(e.damage.count); byte(e.damage.sides); u16(uint16_t(e.damage.bonus));
+        byte(uint8_t(e.damage_type)); byte(e.slot_level); u16(e.smite_dim_ft);
+    }
+    return h;
+}
+
+bool has_heat_metal_state(const EncounterState& s) {
+    return std::any_of(s.effects.begin(), s.effects.end(), [](const ActiveSpellEffect& e) {
+        return e.heated_item != 0 || e.while_held; });
+}
+
+uint64_t heat_metal_digest(const EncounterState& s, uint64_t h) {
+    auto byte = [&](uint8_t b) { h ^= b; h *= 0x100000001B3ull; };
+    auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; ++i) byte(uint8_t(v >> (8 * i))); };
+    for (const auto& e : s.effects) {
+        if (e.heated_item == 0 && !e.while_held) continue;
+        u32(e.spell_id); u32(e.caster); u32(e.target); u32(e.heated_item); u32(e.heated_def);
+        byte(uint8_t((e.heated_worn ? 1 : 0) | (e.while_held ? 2 : 0)));
     }
     return h;
 }

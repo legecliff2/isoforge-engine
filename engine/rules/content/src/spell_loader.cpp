@@ -9,6 +9,7 @@
 #include "assets/content_migrations.hpp"
 #include "rules5e/dice.hpp"
 #include "spell_keys_zg.hpp"
+#include "spell_keys_zh.hpp"
 
 namespace rules5e_content {
 
@@ -75,6 +76,21 @@ bool only_keys(const Json& o, std::initializer_list<const char*> keys, std::stri
     return true;
 }
 bool feet_5(const Json& v, int& out) { return small_int(v, 5, 65530, out) && out % 5 == 0; }
+// 7.2zh Heat Metal: the only accepted held_object shape (either disadvantage order).
+bool held_object_shape(const Json& ho) {
+    std::string bad;
+    if (!ho.is_object() || !only_keys(ho, {"save", "on_fail", "while_held"}, bad)) return false;
+    if (ho.value("save", "") != "con" || ho.value("on_fail", "") != "drop") return false;
+    const Json wh = ho.value("while_held", Json());
+    if (!wh.is_object() || !only_keys(wh, {"disadvantage", "until"}, bad)) return false;
+    if (wh.value("until", "") != "start_of_caster_next_turn") return false;
+    const Json d = wh.value("disadvantage", Json());
+    if (!d.is_array() || d.size() != 2 || !d[0].is_string() || !d[1].is_string()) return false;
+    const std::string a = d[0].get<std::string>(), b = d[1].get<std::string>();
+    return (a == "attack_rolls" && b == "ability_checks") || (a == "ability_checks" && b == "attack_rolls");
+}
+constexpr const char* kHeldObjectShape =
+    "effect held_object must be {save: con, on_fail: drop, while_held: {disadvantage: [attack_rolls, ability_checks], until: start_of_caster_next_turn}}";
 bool bool_key(const Json& o, const char* k, bool& out) {
     if (!o.contains(k)) return true;
     if (!o[k].is_boolean()) return false;
@@ -1079,9 +1095,42 @@ SpellLoad spell_from_json(const Json& j) {
             v = 5;
             if (e.contains("reach_ft") && (!feet_5(e["reach_ft"], v) || v > 255)) return ("effect reach_ft must be a positive multiple of 5");
             s.summon_weapon.reach_ft = uint8_t(v);
-            v = 20;
-            if (e.contains("move_ft") && !feet_5(e["move_ft"], v)) return ("effect move_ft must be a positive multiple of 5");
-            s.summon_weapon.move_ft = uint16_t(v);
+            if (e.contains(zh::kHeld) && !e[zh::kHeld].is_boolean()) return ("effect summon_weapon held must be a boolean");
+            s.summon_weapon.held = e.value(zh::kHeld, false);
+            if (s.summon_weapon.held) {   // 7.2zh Flame Blade: no move, no spellcasting modifier
+                if (e.contains("move_ft")) return ("summon_weapon: held needs no move_ft");
+                if (s.add_spellcasting_modifier) return ("summon_weapon: held takes no add_spellcasting_modifier");
+                s.summon_weapon.move_ft = 0;
+            } else {
+                v = 20;
+                if (e.contains("move_ft") && !feet_5(e["move_ft"], v)) return ("effect move_ft must be a positive multiple of 5");
+                s.summon_weapon.move_ft = uint16_t(v);
+            }
+            if (e.contains(zh::kLight)) {
+                const Json& L = e[zh::kLight];
+                int b = 0, d = 0;
+                std::string bad;
+                if (!L.is_object() || !only_keys(L, {zh::kBrightFt, zh::kDimFt}, bad) || !L.contains(zh::kBrightFt) ||
+                    !L.contains(zh::kDimFt) || !feet_5(L[zh::kBrightFt], b) || !feet_5(L[zh::kDimFt], d))
+                    return ("effect summon_weapon light.bright_ft and dim_ft must be positive multiples of 5");
+                s.summon_weapon.light_bright_ft = uint16_t(b);
+                s.summon_weapon.light_dim_ft = uint16_t(d);
+            }
+        } else if (kind == zh::kWeaponSmite) {   // 7.2zh Branding Smite
+            s.kind = SpellEffectKind::WeaponSmite;
+            if (!e.contains("damage") || !read_damage(e["damage"], s)) return ("effect damage invalid");
+            if (e.contains(zh::kRevealInvisible)) {
+                if (!e[zh::kRevealInvisible].is_boolean()) return ("effect reveal_invisible must be a boolean");
+                s.weapon_smite.reveal_invisible = e[zh::kRevealInvisible].get<bool>();
+            }
+            if (e.contains(zh::kLight)) {
+                const Json& L = e[zh::kLight];
+                int d = 0;
+                std::string bad;
+                if (!L.is_object() || !only_keys(L, {zh::kDimFt}, bad) || !L.contains(zh::kDimFt) || !feet_5(L[zh::kDimFt], d))
+                    return ("effect weapon_smite light.dim_ft must be a positive multiple of 5");
+                s.weapon_smite.dim_ft = uint16_t(d);
+            }
         } else if (kind == zg::kTempHp) {   // 7.2zg False Life (dice + per_slot_above), Heroism (ability + per_turn + immunity)
             s.kind = SpellEffectKind::TempHp;
             TempHpSpec& th = s.temp_hp;
@@ -1181,6 +1230,11 @@ SpellLoad spell_from_json(const Json& j) {
                     s.duration_rounds = uint16_t(n);
                 } else return ("effect expiry must be {kind: rounds, n} or {kind: until_end_of_target_next_turn}");
             } else if (e.contains("expiry")) return ("effect expiry is only for delayed_damage (sustained_damage lasts the spell's duration)");
+            if (e.contains(zh::kHeldObject)) {   // 7.2zh Heat Metal
+                if (delayed) return ("effect held_object is only for sustained_damage");
+                if (!held_object_shape(e[zh::kHeldObject])) return (kHeldObjectShape);
+                s.held_object = true;
+            }
         } else if (kind == "zone") {   // R-G11 (CONTENT_CONVENTIONS.md section 4): a persistent zone / aura
             s.kind = SpellEffectKind::Zone;
             std::string bad;
@@ -1237,7 +1291,8 @@ SpellLoad spell_from_json(const Json& j) {
         if (xe.is_object() && xe.value("kind", "") == "zone")   // the cast refuses an extra effect of kind Zone
             return err("zone must be the primary effect (effects[" + std::to_string(i) + "] is a zone)");
         if (xe.is_object() && (xe.value("kind", "") == zg::kHaste || xe.value("kind", "") == zg::kSlow ||
-                               xe.value("kind", "") == zg::kSummonWeapon || xe.value("kind", "") == zg::kTempHp))   // 7.2zg
+                               xe.value("kind", "") == zg::kSummonWeapon || xe.value("kind", "") == zg::kTempHp ||
+                               xe.value("kind", "") == zh::kWeaponSmite))   // 7.2zg, 7.2zh
             return err("effects[" + std::to_string(i) + "]: " + xe.value("kind", "") + " is only allowed as the first effect");
         SpellDef x;
         std::string xk;
@@ -1303,6 +1358,8 @@ SpellLoad spell_from_json(const Json& j) {
             return err("effect temp_hp per_turn or condition_immunity needs concentration or a rounds, minutes or hours duration");
         if (s.kind == SpellEffectKind::SummonWeapon && !lasting)   // 7.2zg Spiritual Weapon: 1 minute
             return err("effect summon_weapon needs concentration or a rounds, minutes or hours duration");
+        if (s.kind == SpellEffectKind::WeaponSmite && !lasting)   // 7.2zh Branding Smite
+            return err("weapon_smite: needs concentration or a rounds, minutes or hours duration");
         if (s.kind == SpellEffectKind::Duplicates) {   // 7.2zf Mirror Image: a timed duration (not concentration), self
             if (s.duration != SpellDuration::Rounds && s.duration != SpellDuration::Minutes && s.duration != SpellDuration::Hours)
                 return err("effect duplicates needs a rounds, minutes or hours duration");
@@ -1359,6 +1416,13 @@ SpellLoad spell_from_json(const Json& j) {
         s.expiry = 1;   // rules5e::Expiry::Rounds
         s.duration_rounds = uint16_t(std::min(rounds, 65535));
     }
+    if (s.kind == SpellEffectKind::WeaponSmite) {   // 7.2zh: the charge expires with the spell's duration (concentration may end it sooner)
+        int rounds = 0;
+        if (s.duration == SpellDuration::Rounds) rounds = s.duration_amount;
+        else if (s.duration == SpellDuration::Minutes) rounds = s.duration_amount * 10;
+        else if (s.duration == SpellDuration::Hours) rounds = s.duration_amount * 600;
+        if (rounds > 0) { s.expiry = 1; s.duration_rounds = uint16_t(std::min(rounds, 65535)); }
+    }
 
     const Json sc = j.value("scaling", Json::object());
     if (sc.contains("cantrip")) {
@@ -1387,7 +1451,7 @@ SpellLoad spell_from_json(const Json& j) {
                                     s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::AutoHit ||
                                     s.kind == SpellEffectKind::HpPool || s.kind == SpellEffectKind::DelayedDamage ||
                                     s.kind == SpellEffectKind::SustainedDamage || s.kind == SpellEffectKind::Zone ||
-                                    s.kind == SpellEffectKind::SummonWeapon;   // 7.2zg
+                                    s.kind == SpellEffectKind::SummonWeapon || s.kind == SpellEffectKind::WeaponSmite;   // 7.2zg, 7.2zh
             if (k == "darts") return s.kind == SpellEffectKind::AutoHit;
             if (k == "beams") return s.kind == SpellEffectKind::SpellAttack;
             return s.kind == SpellEffectKind::Save || s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::ApplyCondition ||
