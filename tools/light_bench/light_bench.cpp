@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <vector>
 
 #include "sim/grid.hpp"
@@ -138,6 +139,72 @@ Result run(const Grid& g, int sources, uint16_t bright, uint16_t dim, int reps) 
     std::sort(moved_ms.begin(), moved_ms.end());
     return {ms[ms.size() / 2], ms.back(), pairs, inc[inc.size() / 2], vis_ms[vis_ms.size() / 2], warm_ms[warm_ms.size() / 2], moved_ms[moved_ms.size() / 2], frame_ms[frame_ms.size() / 2]};
 }
+// LightDriver's per-step pipeline (cache rebuild + visibility + frame publish) over `steps` steps in which source 1 and
+// viewer 1 walk one tile per step: full rebuild every step (before) vs begin_step_incremental + seen_now reuse (after).
+// The two frame streams are compared sample for sample (exit 2 on any difference).
+struct StepResult { double full_ms, inc_ms; bool equal; };
+StepResult run_steps(const Grid& g, int sources, uint16_t bright, uint16_t dim, int steps) {
+    std::vector<world::ChunkCoord> coords;
+    for (int cy = -1; cy <= 1; ++cy)
+        for (int cx = -1; cx <= 1; ++cx) coords.push_back({cx, cy, 0});
+    auto world_at = [&](int k) {
+        LightWorld w;
+        w.grid = &g;
+        for (int i = 0; i < sources; ++i) {
+            AttachedLight a;
+            a.id = uint32_t(i + 1); a.carrier = Carrier::Tile;
+            a.tile = Vec2i{-N + 5 + (i * 37) % (3 * N - 10), -N + 5 + (i * 53) % (3 * N - 10)};
+            if (i == 0) a.tile.x += k % 16;
+            a.bright_ft = bright; a.dim_ft = dim; a.flags = light_src::kLit;
+            w.sources.push_back(attached_source(a, a.tile));
+        }
+        return w;
+    };
+    auto viewers_at = [&](int k) {
+        std::vector<Viewer> vs;
+        for (int i = 0; i < 8; ++i) {
+            Viewer v;
+            v.id = uint32_t(i + 1); v.team = TeamId(i % 2);
+            v.tile = Vec2i{-N + 7 + (i * 41) % (3 * N - 14), -N + 9 + (i * 29) % (3 * N - 18)};
+            if (i == 0) v.tile.y += k % 16;
+            if (i >= 4) v.senses.darkvision_ft = 60;
+            vs.push_back(v);
+        }
+        return vs;
+    };
+    double t_full = 0, t_inc = 0;
+    bool equal = true;
+    LightCache cf, ci;
+    VisibilityState vf, vi;
+    std::shared_ptr<const LightFrame> pf, pi;
+    for (int k = 0; k <= steps; ++k) {   // step 0 warms both (a full rebuild either way); not timed
+        LightWorld w = world_at(k);
+        const auto vs = viewers_at(k);
+        LightFrameInputs in;
+        in.chunks = coords;
+        const auto t0 = std::chrono::steady_clock::now();
+        cf.begin_step(w);
+        vf.begin_step(cf, vs, coords);
+        in.visibility = &vf;
+        auto ff = publish_light_frame(cf, in, uint64_t(k + 1), pf.get());
+        const auto t1 = std::chrono::steady_clock::now();
+        ci.begin_step_incremental(std::move(w), coords);
+        vi.begin_step(ci, vs, coords);
+        in.visibility = &vi;
+        auto fi = publish_light_frame(ci, in, uint64_t(k + 1), pi.get());
+        const auto t2 = std::chrono::steady_clock::now();
+        if (k > 0) {
+            t_full += std::chrono::duration<double, std::milli>(t1 - t0).count();
+            t_inc += std::chrono::duration<double, std::milli>(t2 - t1).count();
+        }
+        for (std::size_t c = 0; c < ff->chunks.size(); ++c)
+            if (ff->chunks[c].samples != fi->chunks[c].samples) equal = false;
+        if (ff->visibility != fi->visibility || ff->dirty_rects != fi->dirty_rects || ff->dirty_vis_chunks != fi->dirty_vis_chunks)
+            equal = false;
+        pf = ff; pi = fi;
+    }
+    return {t_full / steps, t_inc / steps, equal};
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -170,5 +237,15 @@ int main(int argc, char** argv) {
                     "", r.vis_median_ms, r.vis_warm_ms, r.vis_moved_ms, r.frame_median_ms);
         if (c.budgeted && r.incr_median_ms > 2.0) over = true;   // the per-step path (full rebuilds only on chunk / clock events)
     }
+    const int steps = quick ? 4 : 32;
+    bool mismatch = false;
+    std::printf("light_bench: LightDriver step pipeline (rebuild + visibility + publish), one source and one viewer move per step, %d steps\n", steps);
+    for (const Case& c : cases) {
+        const StepResult r = run_steps(*c.g, c.n, c.b, c.d, steps);
+        std::printf("  %-40s before (full) %8.3f ms/step  after (incremental) %8.3f ms/step  x%.1f%s\n", c.name, r.full_ms,
+                    r.inc_ms, r.inc_ms > 0 ? r.full_ms / r.inc_ms : 0.0, r.equal ? "" : "  MISMATCH");
+        if (!r.equal) mismatch = true;
+    }
+    if (mismatch) return 2;
     return enforce && over ? 1 : 0;
 }
