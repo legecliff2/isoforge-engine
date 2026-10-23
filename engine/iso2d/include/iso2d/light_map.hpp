@@ -51,6 +51,8 @@ constexpr Fog fog_of(bool seen_now, bool explored) noexcept {
 
 // Sprite tint for a tile. Presentation only. Guarantees (LIGHTING.md §10): a Dark tile is never
 // shown lit (its multiplier is the darkest), and non-visible tiles show no current light at all.
+// Visible samples with kObscuredLight / kObscuredHeavy / kMagicalDark cool and dim distinctly;
+// Remembered / Unexplored ignore those bits (no current light shown).
 Color light_tint(uint8_t packed, Fog fog) noexcept;
 
 // ---- Fog of war (LIGHTING.md §10). Render owns only the visual and the choice of team; the masks
