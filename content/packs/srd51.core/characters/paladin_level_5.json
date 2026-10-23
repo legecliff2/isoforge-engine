@@ -301,6 +301,7 @@
     },
     "spells": [
       "srd51.spell.cure_wounds",
+      "srd51.spell.heroism",
       "srd51.spell.shield_of_faith",
       "srd51.spell.lesser_restoration",
       "srd51.spell.magic_weapon",

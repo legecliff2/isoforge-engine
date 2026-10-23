@@ -101,7 +101,8 @@
             "kind": {
               "enum": [
                 "being_hit",
-                "spell_cast"
+                "spell_cast",
+                "damaged"
               ]
             },
             "or_targeted_by": {
@@ -559,7 +560,11 @@
             "condition_immunity_from",
             "max_hp_bonus",
             "weapon_imbue",
-            "duplicates"
+            "duplicates",
+            "haste",
+            "slow",
+            "summon_weapon",
+            "temp_hp"
           ]
         }
       },
@@ -606,6 +611,10 @@
                   "affected"
                 ],
                 "description": "Effects after the first only: 'affected' resolves this effect only for the targets the previous effect affected (spell attack: hit; save: failed; heal: healed; auto_hit: struck; apply_condition: received it). Default 'all'."
+              },
+              "on_miss": {
+                "const": "half",
+                "description": "VERSION_BUMP_BATCH 7.2zg (Acid Arrow): a miss deals half the initial damage (rounded down); riders that follow a hit (delayed_damage applies_to affected) do not apply. First effect only."
               }
             }
           }
@@ -739,6 +748,21 @@
                   "$ref": "../common/v1.schema.json#/$defs/condition"
                 },
                 "description": "7.2ze: the conditions the caster picks from at cast; only with condition chosen (which needs it). First effect only."
+              },
+              "ends_on": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "attack",
+                    "cast",
+                    "harmful_cast",
+                    "damage",
+                    "shake_awake"
+                  ]
+                },
+                "description": "VERSION_BUMP_BATCH 7.2zg (Hypnotic Pattern): ends_on on a save effect that applies a condition; same vocabulary and rules as apply_condition ends_on."
               }
             },
             "allOf": [
@@ -1027,10 +1051,12 @@
                   "enum": [
                     "attack",
                     "cast",
-                    "harmful_cast"
+                    "harmful_cast",
+                    "damage",
+                    "shake_awake"
                   ]
                 },
-                "description": "VERSION_BUMP_BATCH 7.2zc (Invisibility): the effect on a creature ends once it makes any attack (after the attack resolves) or casts any spell (after the spell is cast), whatever the target; when nothing of the spell is left the caster's concentration on it ends too. Needs concentration or a rounds / minutes / hours duration (tools/validate and the loader, same wording). 7.2zd harmful_cast (Sanctuary): the subject casts a spell that affects a creature of another team."
+                "description": "VERSION_BUMP_BATCH 7.2zc (Invisibility): the effect on a creature ends once it makes any attack (after the attack resolves) or casts any spell (after the spell is cast), whatever the target; when nothing of the spell is left the caster's concentration on it ends too. Needs concentration or a rounds / minutes / hours duration (tools/validate and the loader, same wording). 7.2zd harmful_cast (Sanctuary): the subject casts a spell that affects a creature of another team. 7.2zg (Hypnotic Pattern): damage (ends when the target takes damage) and shake_awake (another creature within 5 ft ends it with its action: the Wake action)."
               }
             },
             "allOf": [
@@ -1124,6 +1150,19 @@
                   }
                 },
                 "description": "7.2ze Bane: each target saves against the caster's spell save DC; a creature that succeeds is not affected. First effect only; the modifier must be on the targets."
+              },
+              "damage_type_choices": {
+                "type": "array",
+                "items": {
+                  "$ref": "../common/v1.schema.json#/$defs/damage_type"
+                },
+                "minItems": 2,
+                "maxItems": 13,
+                "uniqueItems": true,
+                "description": "VERSION_BUMP_BATCH 7.2zg (Protection from Energy): a resistance modifier whose type is the caster's cast-time choice (ActionRequest::damage_choice, 1 + index in this order); must include the modifier's damage_type. First effect only."
+              },
+              "exempt_senses": {
+                "$ref": "#/$defs/exempt_senses"
               }
             }
           }
@@ -1879,9 +1918,199 @@
               },
               "description": {
                 "type": "string"
+              },
+              "exempt_senses": {
+                "$ref": "#/$defs/exempt_senses"
               }
             },
-            "description": "VERSION_BUMP_BATCH 7.2zf (Mirror Image): illusory duplicates on the caster. Each attack that targets the caster rolls a d20 first (our PRNG; only when duplicates remain and the attacker is affected); at or above thresholds[remaining - 1] the attack targets a duplicate instead (AC per ac); a hit destroys one duplicate (no damage), a miss does nothing. The effect ends when none remain. Unaffected attackers: no sight of the caster (Blinded or otherwise), blindsight in range, or truesight in range. No dismissal action. Self only; needs a rounds / minutes / hours duration."
+            "description": "VERSION_BUMP_BATCH 7.2zf (Mirror Image): illusory duplicates on the caster. Each attack that targets the caster rolls a d20 first (our PRNG; only when duplicates remain and the attacker is affected); at or above thresholds[remaining - 1] the attack targets a duplicate instead (AC per ac); a hit destroys one duplicate (no damage), a miss does nothing. The effect ends when none remain. Unaffected attackers: no sight of the caster (Blinded or otherwise), or an exempt_senses sense in range (7.2zg; default blindsight and truesight). No dismissal action. Self only; needs a rounds / minutes / hours duration."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "haste"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "haste"
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ]
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "description": "VERSION_BUMP_BATCH 7.2zg (Haste): on each target, +2 AC, advantage on Dex saves, speed doubled and the restricted extra action (attack (one weapon attack), Dash, Disengage, Hide, or Use an Object); when it ends the target can't move or take actions until after its next turn (lethargy). First effect only; needs concentration."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "slow"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "ability"
+            ],
+            "properties": {
+              "kind": {
+                "const": "slow"
+              },
+              "ability": {
+                "$ref": "../common/v1.schema.json#/$defs/ability"
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ]
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "description": "VERSION_BUMP_BATCH 7.2zg (Slow): each target saves (ability, the caster's spell save DC) or: -2 AC and Dex saves, speed halved, no reactions, an action or a bonus action (not both), one attack per turn, and a d20 when casting a 1-action spell (11+: the spell doesn't take effect; v1 loses it). The save repeats at the end of each of its turns. First effect only; needs concentration."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "summon_weapon"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "damage"
+            ],
+            "properties": {
+              "kind": {
+                "const": "summon_weapon"
+              },
+              "damage": {
+                "$ref": "#/$defs/damage"
+              },
+              "add_spellcasting_modifier": {
+                "type": "boolean"
+              },
+              "upcast_every": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9,
+                "description": "Slot levels per scaling.upcast.dice extra dice (Spiritual Weapon: 2)."
+              },
+              "reach_ft": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 255,
+                "multipleOf": 5
+              },
+              "move_ft": {
+                "type": "integer",
+                "minimum": 5,
+                "multipleOf": 5
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ]
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "description": "VERSION_BUMP_BATCH 7.2zg (Spiritual Weapon): a floating spectral weapon, not a creature (no HP, not a target, no turn). The cast makes it and may attack a creature within reach (melee spell attack, damage + the spellcasting modifier when add_spellcasting_modifier); later attacks each take a bonus action and it may move move_ft first. First effect only; needs concentration or a rounds / minutes / hours duration."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "temp_hp"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "temp_hp"
+              },
+              "dice": {
+                "type": "string",
+                "description": "Rolled amount, flat included (False Life: 1d4+4)."
+              },
+              "per_slot_above": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50,
+                "description": "+ this per slot level above the spell's (False Life: 5)."
+              },
+              "ability": {
+                "const": "spellcasting",
+                "description": "The amount is the caster's spellcasting modifier (Heroism)."
+              },
+              "per_turn": {
+                "type": "boolean",
+                "description": "Granted again at the start of each of the target's turns while the spell lasts (Heroism)."
+              },
+              "condition_immunity": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "$ref": "../common/v1.schema.json#/$defs/condition"
+                },
+                "description": "Conditions the target is immune to while the spell lasts, from any source (Heroism: frightened)."
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ]
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "dice"
+                ]
+              },
+              {
+                "required": [
+                  "ability"
+                ]
+              }
+            ],
+            "description": "VERSION_BUMP_BATCH 7.2zg (False Life, Heroism): temporary hit points on each target (the larger pool is kept). First effect only; per_turn / condition_immunity need concentration or a rounds / minutes / hours duration."
           }
         }
       ],
@@ -2459,6 +2688,19 @@
           "description": "Scope: saves of this ability only. Absent: every save."
         }
       }
+    },
+    "exempt_senses": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "blindsight",
+          "tremorsense",
+          "truesight"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "VERSION_BUMP_BATCH 7.2zg: one key and one list for illusions that fool sight (Blur, Mirror Image). An attacker that perceives the creature through one of these senses within its range, or cannot see it, is unaffected. duplicates: default [blindsight, truesight]; apply_modifier: attacks_against modifiers only."
     }
   }
 }

@@ -1,6 +1,9 @@
 #include "sim/driver.hpp"
 
 #include "rules5e/conditions.hpp"
+#include "rules5e/equipment.hpp"
+#include "sim/equipment.hpp"
+#include "sim/light_driver.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -197,6 +200,264 @@ std::vector<Vec2i> goal_anchors(Vec2i tp, int tn, int mn, int reach) {
 }
 } // namespace
 
+// ---- Equipment AI (CombatOptions::equipment only) ----------------------------------------------------------------------------
+bool equipment_ai_active(const Combat& c, CombatantId self) {
+    return c.options().equipment && c.loadout(self) != nullptr && c.item_defs() != nullptr;
+}
+
+namespace {
+int mean2(rules5e::DiceExpr d) {   // 2 x the mean of a dice expression (count 0 = flat)
+    return d.count == 0 ? 2 * int(d.bonus) : int(d.count) * (int(d.sides) + 1) + 2 * int(d.bonus);
+}
+}  // namespace
+
+int attack_score(const rules5e::Combatant& me, uint8_t attack_index, const rules5e::Combatant& target, bool disadvantage) {
+    if (attack_index >= me.attacks.size()) return 0;
+    const rules5e::Attack& a = me.attacks[attack_index];
+    int dmg = mean2(a.damage);
+    for (const auto& p : a.extra_damage) dmg += mean2(p.dice);
+    if (dmg < 1) dmg = 1;   // a hit is still worth something (flat 0 / negative modifiers)
+    const int faces = std::clamp(21 - (int(target.ac) - int(a.to_hit)), 1, 19);
+    return dmg * (disadvantage ? faces * faces : faces * 20);
+}
+
+namespace {
+bool attack_usable(const rules5e::EncounterState& st, CombatantId self, uint8_t i) {
+    return rules5e::attack_refusal(st, self, i).empty();
+}
+
+// Movement cost to stand within `reach` tiles of `t` (1 << 20 = no path).
+int path_cost_to(const Combat& c, CombatantId self, CombatantId t, int reach) {
+    const Vec2i mp = c.pos(self);
+    const auto p = c.grid().path(mp, goal_anchors(c.pos(t), c.footprint_size(t), c.footprint_size(self), reach),
+                                 c.occupied_except(self), c.footprint_size(self), c.caps_of(self));
+    if (p.empty()) return 1 << 20;
+    int cost = 0;
+    Vec2i prev = mp;
+    for (Vec2i q : p) { cost += c.step_cost_ft(self, prev, q); prev = q; }
+    return cost;
+}
+
+// (attackable this turn, next turn): the best attack_score over the attacks the loadout in `st` allows. Melee counts this turn
+// when in reach or reachable with the movement left; ranged when legal to shoot from here (disadvantage priced in).
+struct PlanValue {
+    int now = 0, later = 0;
+    bool better_than(const PlanValue& o) const { return now != o.now ? now > o.now : later > o.later; }
+};
+PlanValue weapon_value(const Combat& c, const rules5e::EncounterState& st, const rules5e::Combatant& me,
+                       const rules5e::Combatant& t, bool action_left) {
+    PlanValue v;
+    const int d = c.distance_tiles(me.id, t.id);
+    for (std::size_t k = 0; k < me.attacks.size() && k < 255; ++k) {
+        const uint8_t i = uint8_t(k);
+        if (!attack_usable(st, me.id, i)) continue;
+        const rules5e::Attack& a = me.attacks[k];
+        v.later = std::max(v.later, attack_score(me, i, t, false));
+        if (!action_left) continue;
+        int now = 0;
+        if (!a.ranged) {
+            const int reach = reach_tiles(a.reach_or_range_ft);
+            if (d <= reach || path_cost_to(c, me.id, t.id, reach) <= int(st.budget.movement_ft)) now = attack_score(me, i, t, false);
+        } else if (c.can_shoot(me.id, i, t.id)) {
+            now = attack_score(me, i, t, c.ranged_disadvantage(me.id, i, t.id));
+        }
+        v.now = std::max(v.now, now);
+    }
+    return v;
+}
+
+bool def_linked(const rules5e::Loadout& l, uint32_t def) {
+    for (const auto& a : l.view.attacks) if (a.def == def && def != 0) return true;
+    return false;
+}
+
+// Applies one equip op to the lookahead copy (as Combat::apply_equip would, minus events / derived stats). Returns the cost, or
+// Refused when rules5e::equip_legal refuses it on that state.
+rules5e::EquipCost::Kind lookahead_apply(rules5e::EncounterState& st, const rules5e::ActionRequest& r) {
+    const rules5e::EquipCost cost = rules5e::equip_legal(st, r);
+    if (cost.kind == rules5e::EquipCost::Refused) return cost.kind;
+    rules5e::Loadout* l = find_loadout(st, r.actor);
+    if (!l) return rules5e::EquipCost::Refused;
+    rules5e::LoadoutView& v = l->view;
+    auto into_hand = [&](const rules5e::HeldItem& h) {
+        if (r.equip_hand == 2 || (r.equip_hand == 0 && v.main.instance != 0)) v.off = h; else v.main = h;
+    };
+    const auto op = rules5e::EquipOp(r.equip_op);
+    if (op == rules5e::EquipOp::Drop || op == rules5e::EquipOp::Stow) {
+        for (rules5e::HeldItem* h : {&v.main, &v.off})
+            if (h->instance == r.equip_item) {
+                if (op == rules5e::EquipOp::Stow) v.carried.push_back(*h);
+                *h = rules5e::HeldItem{};
+            }
+    } else if (op == rules5e::EquipOp::Draw) {
+        for (auto it = v.carried.begin(); it != v.carried.end(); ++it)
+            if (it->instance == r.equip_item) { const rules5e::HeldItem h = *it; v.carried.erase(it); into_hand(h); break; }
+    } else if (op == rules5e::EquipOp::PickUp) {
+        for (auto it = st.ground_items.begin(); it != st.ground_items.end(); ++it)
+            if (it->item.instance == r.equip_item) { const rules5e::HeldItem h = it->item; st.ground_items.erase(it); into_hand(h); break; }
+    }
+    if (cost.kind == rules5e::EquipCost::Interaction) v.interaction_used = true;
+    return cost.kind;
+}
+
+rules5e::ActionRequest equip_req(CombatantId a, rules5e::EquipOp op, uint32_t item, uint8_t hand) {
+    rules5e::ActionRequest r{a, ActionKind::UseObject, 0};
+    r.equip_op = uint8_t(op);
+    r.equip_item = item;
+    r.equip_hand = hand;
+    r.equip_in_reach = op == rules5e::EquipOp::PickUp;
+    return r;
+}
+
+// The first legal_actions() entry with this op and item (the exact request rules listed), if any.
+std::optional<rules5e::ActionRequest> listed(const std::vector<rules5e::ActionRequest>& legal, rules5e::EquipOp op, uint32_t item) {
+    for (const auto& r : legal)
+        if (r.kind == ActionKind::UseObject && r.equip_op == uint8_t(op) && r.equip_item == item) return r;
+    return std::nullopt;
+}
+}  // namespace
+
+std::optional<Command> equipment_command(const Combat& c, CombatantId self, CombatantId target) {
+    if (!equipment_ai_active(c, self)) return std::nullopt;
+    const auto& s = c.state();
+    const auto* me = rules5e::find(s, self);
+    const auto* t = rules5e::find(s, target);
+    if (!me || !t || t->dead || !rules5e::is_conscious(*t) || s.budget.sequence != 0) return std::nullopt;
+    const bool action_left = s.budget.action || s.budget.extra_actions > 0 || s.budget.attacks_remaining > 0;
+    if (!action_left) return std::nullopt;
+    const rules5e::Loadout* lo = c.loadout(self);
+    const ItemDefTable& items = *c.item_defs();
+    const PlanValue cur = weapon_value(c, s, *me, *t, true);
+    const std::vector<rules5e::ActionRequest> legal = c.legal_actions();
+
+    // Candidate first ops on held items (instance order): stow (keeps the item; spends the interaction) before drop (free).
+    std::vector<uint32_t> held;
+    for (const rules5e::HeldItem* h : {&lo->view.main, &lo->view.off}) if (h->instance) held.push_back(h->instance);
+    std::sort(held.begin(), held.end());
+    // Acquisitions: carried weapons the attacks use (Draw, instance order), then such ground weapons within 5 ft (PickUp).
+    struct Acq { rules5e::EquipOp op; uint32_t item; };
+    std::vector<Acq> acq;
+    for (const auto& h : lo->view.carried)
+        if (const auto* d = items.find(h.def); d && rules5e::is_weapon(*d) && def_linked(*lo, h.def)) acq.push_back({rules5e::EquipOp::Draw, h.instance});
+    const Vec2i mp = c.pos(self);
+    const int mn = c.footprint_size(self);
+    for (const auto& g : s.ground_items)
+        if (const auto* d = items.find(g.item.def);
+            d && rules5e::is_weapon(*d) && def_linked(*lo, g.item.def) && rect_distance(mp, mn, {g.x, g.y}, 1) <= 1)
+            acq.push_back({rules5e::EquipOp::PickUp, g.item.instance});
+    std::sort(acq.begin(), acq.end(), [](const Acq& a, const Acq& b) {
+        return a.op != b.op ? uint8_t(a.op) < uint8_t(b.op) : a.item < b.item;
+    });
+    if (acq.empty()) return std::nullopt;
+
+    // Plans: up to two emptying ops (each held item stowed or dropped), then one acquisition into the first empty hand.
+    struct Plan { std::vector<rules5e::ActionRequest> ops; PlanValue v; };
+    std::optional<Plan> best;
+    std::vector<std::vector<rules5e::ActionRequest>> prefixes{{}};
+    for (const uint32_t inst : held)
+        for (const auto op : {rules5e::EquipOp::Stow, rules5e::EquipOp::Drop}) prefixes.push_back({equip_req(self, op, inst, 0)});
+    if (held.size() == 2)
+        for (const auto op0 : {rules5e::EquipOp::Stow, rules5e::EquipOp::Drop})
+            for (const auto op1 : {rules5e::EquipOp::Stow, rules5e::EquipOp::Drop})
+                prefixes.push_back({equip_req(self, op0, held[0], 0), equip_req(self, op1, held[1], 0)});
+    for (const auto& pre : prefixes)
+        for (const Acq& a : acq) {
+            rules5e::EncounterState st = s;   // lookahead copy: hooks read the copy they are given
+            bool ok = true, spends_action = false;
+            std::vector<rules5e::ActionRequest> ops;
+            for (const auto& r : pre) {
+                const auto k = lookahead_apply(st, r);
+                ok = ok && k != rules5e::EquipCost::Refused;
+                spends_action = spends_action || k == rules5e::EquipCost::Action;
+                ops.push_back(r);
+            }
+            if (!ok) continue;
+            const rules5e::Loadout* ll = find_loadout(st, self);
+            const uint8_t hand = ll->view.main.instance == 0 ? uint8_t(1) : uint8_t(2);
+            const rules5e::ActionRequest ar = equip_req(self, a.op, a.item, hand);
+            const auto k = lookahead_apply(st, ar);
+            if (k == rules5e::EquipCost::Refused) continue;
+            spends_action = spends_action || k == rules5e::EquipCost::Action;
+            ops.push_back(ar);
+            // The first op is the one submitted now: an Action-cost op is only worth it with no usable weapon at all.
+            if (rules5e::equip_legal(s, ops[0]).kind == rules5e::EquipCost::Action && cur.later > 0) continue;
+            const PlanValue v = weapon_value(c, st, *me, *t, !spends_action);
+            if (!v.better_than(cur) || (best && !v.better_than(best->v))) continue;
+            best = Plan{ops, v};
+        }
+    if (!best) return std::nullopt;
+    const rules5e::ActionRequest& first = best->ops[0];
+    const auto entry = listed(legal, rules5e::EquipOp(first.equip_op), first.equip_item);
+    if (!entry) return std::nullopt;   // never bypass rules' listing
+    Command x;
+    x.request = *entry;
+    return x;
+}
+
+std::optional<Light> ai_light_at(const Combat& c, Vec2i tile) {
+    const LightDriver* d = c.light_driver();
+    if (!d) return std::nullopt;
+    const auto f = d->latest();
+    if (!f) return std::nullopt;
+    const int cs = world::kChunkSize;
+    const int cx = tile.x >= 0 ? tile.x / cs : -((-tile.x + cs - 1) / cs);
+    const int cy = tile.y >= 0 ? tile.y / cs : -((-tile.y + cs - 1) / cs);
+    for (const auto& ch : f->chunks)
+        if (ch.coord.x == cx && ch.coord.y == cy) {
+            const int lx = tile.x - cx * cs, ly = tile.y - cy * cs;
+            return ch.samples[std::size_t(ly * cs + lx)].level;
+        }
+    return std::nullopt;
+}
+
+std::optional<Command> light_command(const Combat& c, CombatantId self, std::optional<CombatantId> target) {
+    if (!equipment_ai_active(c, self)) return std::nullopt;
+    const auto& s = c.state();
+    const auto* me = rules5e::find(s, self);
+    if (!me || s.budget.sequence != 0) return std::nullopt;
+    const rules5e::Loadout* lo = c.loadout(self);
+    const ItemDefTable& items = *c.item_defs();
+    const std::vector<rules5e::ActionRequest> legal = c.legal_actions();
+    std::vector<const rules5e::HeldItem*> held;
+    for (const rules5e::HeldItem* h : {&lo->view.main, &lo->view.off}) if (h->instance) held.push_back(h);
+    std::sort(held.begin(), held.end(), [](const rules5e::HeldItem* a, const rules5e::HeldItem* b) { return a->instance < b->instance; });
+    for (const rules5e::HeldItem* h : held) {
+        const rules5e::ItemDef* d = items.find(h->def);
+        if (!d || d->light.states.empty()) continue;
+        const bool lit = (h->flags & rules5e::kHeldLit) != 0;
+        std::optional<rules5e::ActionRequest> want;
+        if (!lit && me->darkvision_ft == 0) {
+            bool dark = ai_light_at(c, c.pos(self)) == Light::Dark;
+            if (const auto* t = target ? rules5e::find(s, *target) : nullptr; t && !t->dead)
+                dark = dark || ai_light_at(c, c.pos(t->id)) == Light::Dark;
+            if (dark) {
+                want = equip_req(self, rules5e::EquipOp::SetLightState, h->instance, 0);
+                want->equip_state = 0;
+            }
+        } else if (lit && me->darkvision_ft > 0 && !def_linked(*lo, h->def)) {   // a torch it fights with stays lit
+            const rules5e::LightState r = rules5e::light_radii(*d, *h);
+            const int radius = (int(r.bright_ft) + int(r.dim_ft)) / kFeetPerTile;
+            bool needed = false;
+            for (const auto& k : s.combatants)
+                needed = needed || (k.id != self && !k.dead && !k.gone && k.team == me->team && k.darkvision_ft == 0 &&
+                                    c.distance_tiles(self, k.id) <= radius);
+            if (!needed) {
+                want = equip_req(self, rules5e::EquipOp::SetLightState, h->instance, 0);
+                want->equip_state = rules5e::kLightDouse;
+            }
+        }
+        if (!want) continue;
+        for (const auto& r : legal)
+            if (r.kind == ActionKind::UseObject && r.equip_op == want->equip_op && r.equip_item == want->equip_item &&
+                r.equip_state == want->equip_state && rules5e::equip_legal(s, r).kind == rules5e::EquipCost::Interaction) {
+                Command x;
+                x.request = r;
+                return x;
+            }
+    }
+    return std::nullopt;
+}
+
 namespace {
 // R-G15 hand-off (VERSION_BUMP_BATCH 7.2g b), only once such an effect is on the board (the AI never casts these spells itself):
 //  * Heat Metal again: a bonus action CastSpell{sustain} on a living creature (not my charmer) holding my sustained-damage
@@ -269,6 +530,9 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // (ids are unique in that list, so the order is total). Shapechanger features are never used by the AI (spawn form kept).
     // Never revert by choice: 0 HP, the timer, concentration or the encounter's end revert it.
     const bool beast_form = me->form == rules5e::FormKind::Polymorph || me->form == rules5e::FormKind::WildShape;
+    // Equipment AI: only with CombatOptions::equipment and a loadout; `usable` is always true otherwise (pre-equipment choices).
+    const bool eq = equipment_ai_active(c, self);
+    auto usable = [&](std::size_t i) { return !eq || (i < 255 && attack_usable(s, self, uint8_t(i))); };
     if (me->form == rules5e::FormKind::None && me->concentration_spell == 0 && s.budget.sequence == 0 && s.budget.moved_ft == 0 &&
         s.budget.attacks_used_mask == 0)
         if (const Archetype* arch = c.archetype(self))
@@ -439,7 +703,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // (grant - 1) against the target if it is in reach (melee) or legal to shoot; otherwise the grant is left unused.
     if (s.budget.bonus_attack_grant != 0 && s.budget.bonus_action && rules5e::is_conscious(*t)) {
         const uint8_t gi = uint8_t(s.budget.bonus_attack_grant - 1);
-        if (gi < me->attacks.size()) {
+        if (gi < me->attacks.size() && usable(gi)) {
             const bool ok = me->attacks[gi].ranged ? c.can_shoot(self, gi, t->id)
                                                    : c.distance_tiles(self, t->id) <= reach_tiles(me->attacks[gi].reach_or_range_ft);
             if (ok) {
@@ -490,7 +754,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
                 bi = -1;
                 for (std::size_t i = 0; i < me->attacks.size() && bi < 0; ++i) if (!me->attacks[i].ranged) bi = int(i);
             }
-            if (bi < 0 || std::size_t(bi) >= me->attacks.size()) return std::nullopt;
+            if (bi < 0 || std::size_t(bi) >= me->attacks.size() || !usable(std::size_t(bi))) return std::nullopt;
             const bool ok = me->attacks[std::size_t(bi)].ranged
                                 ? c.can_shoot(self, uint8_t(bi), t->id)
                                 : c.distance_tiles(self, t->id) <= reach_tiles(me->attacks[std::size_t(bi)].reach_or_range_ft);
@@ -512,10 +776,30 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             }
         }
     }
+    // Equipment AI: a weapon plan (draw / switch / drop / pick up), then held lights, before choosing an attack.
+    if (eq) {
+        if (auto x = equipment_command(c, self, t->id)) return *x;
+        if (auto x = light_command(c, self, t->id)) return *x;
+    }
     // Prefer the first melee attack; fall back to the first attack.
     uint8_t ai = 0;
-    for (uint8_t i = 0; i < me->attacks.size(); ++i)
-        if (!me->attacks[i].ranged) { ai = i; break; }
+    bool no_weapon = false;   // equipment: no attack the loadout allows (move / end instead of a refused attack)
+    if (!eq) {
+        for (uint8_t i = 0; i < me->attacks.size(); ++i)
+            if (!me->attacks[i].ranged) { ai = i; break; }
+    } else {   // the usable melee attack with the best attack_score (earliest on ties), else the first usable attack
+        int best_score = -1;
+        for (std::size_t i = 0; i < me->attacks.size() && i < 255; ++i) {
+            if (me->attacks[i].ranged || !usable(i)) continue;
+            const int sc = attack_score(*me, uint8_t(i), *t, false);
+            if (sc > best_score) { best_score = sc; ai = uint8_t(i); }
+        }
+        if (best_score < 0) {
+            no_weapon = true;
+            for (std::size_t i = 0; i < me->attacks.size() && i < 255 && no_weapon; ++i)
+                if (usable(i)) { ai = uint8_t(i); no_weapon = false; }
+        }
+    }
     if (me->attacks.empty()) return end;
     // Declared multiattack (T&C-G1): continue the sequence in progress, else start the first option made
     // only of melee attacks (declaration order; options with a ranged attack are never picked by the AI).
@@ -527,7 +811,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         for (std::size_t i = 0; i < me->multiattacks.size() && i < 255; ++i) {
             const auto& seq = me->multiattacks[i].attacks;
             bool melee_only = !seq.empty();
-            for (uint8_t k : seq) melee_only = melee_only && k < me->attacks.size() && !me->attacks[k].ranged;
+            for (uint8_t k : seq) melee_only = melee_only && k < me->attacks.size() && !me->attacks[k].ranged && usable(k);
             if (!melee_only) continue;
             ai = seq[0];
             multi = uint8_t(i + 1);
@@ -537,8 +821,10 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     const int reach = reach_tiles(me->attacks[ai].reach_or_range_ft);
     const Vec2i mp = c.pos(self), tp = c.pos(t->id);
     const int mn = c.footprint_size(self), tn = c.footprint_size(t->id);
-    const bool can_attack = s.budget.action || s.budget.extra_actions > 0 || s.budget.attacks_remaining > 0;
-    if (c.distance_tiles(self, t->id) <= reach) {
+    const bool can_attack = (s.budget.action || s.budget.extra_actions > 0 || s.budget.attacks_remaining > 0) && !no_weapon;
+    // Equipment: with no usable melee attack the chosen attack may be ranged; it is never "in reach" (shoot or close in below).
+    const bool eq_ranged = eq && me->attacks[ai].ranged;
+    if (!eq_ranged && c.distance_tiles(self, t->id) <= reach) {
         if (can_attack && rules5e::is_conscious(*t)) {
             Command a;
             a.request = {self, ActionKind::Attack, t->id};
@@ -576,7 +862,49 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             }
         }
     }
-    if (can_attack && melee_path_cost() > s.budget.movement_ft) {
+    if (eq && can_attack && (eq_ranged || melee_path_cost() > s.budget.movement_ft)) {
+        // Equipment: the usable ranged attack (thrown included) with the best attack_score, disadvantage priced in (earliest on
+        // ties). With a hostile within 5 ft (disadvantage) and a usable melee attack, hit that hostile in melee instead.
+        std::optional<uint8_t> best;
+        int best_score = 0;
+        bool best_dis = false;
+        for (std::size_t i = 0; i < me->attacks.size() && i < 255; ++i) {
+            const uint8_t ii = uint8_t(i);
+            if (!me->attacks[i].ranged || !usable(i) || !c.can_shoot(self, ii, t->id)) continue;
+            const bool dis = c.ranged_disadvantage(self, ii, t->id);
+            const int sc = attack_score(*me, ii, *t, dis);
+            if (!best || sc > best_score) { best = ii; best_score = sc; best_dis = dis; }
+        }
+        if (!best || best_dis) {
+            CombatantId near = 0;
+            for (const auto& k : s.combatants)   // combatant order, lowest id wins
+                if (k.id != self && c.hostile(self, k.id) && !k.dead && !k.gone && rules5e::is_conscious(k) &&
+                    c.distance_tiles(self, k.id) <= 1 && (near == 0 || k.id < near))
+                    near = k.id;
+            if (near != 0) {
+                const auto* nk = rules5e::find(s, near);
+                std::optional<uint8_t> mi;
+                int msc = 0;
+                for (std::size_t i = 0; i < me->attacks.size() && i < 255; ++i) {
+                    if (me->attacks[i].ranged || !usable(i) || reach_tiles(me->attacks[i].reach_or_range_ft) < 1) continue;
+                    const int sc = attack_score(*me, uint8_t(i), *nk, false);
+                    if (!mi || sc > msc) { mi = uint8_t(i); msc = sc; }
+                }
+                if (mi && (!best || msc > best_score)) {
+                    Command a;
+                    a.request = {self, ActionKind::Attack, near};
+                    a.request.attack_index = *mi;
+                    return a;
+                }
+            }
+        }
+        if (best) {
+            Command a;
+            a.request = {self, ActionKind::Attack, t->id};
+            a.request.attack_index = *best;
+            return a;
+        }
+    } else if (can_attack && melee_path_cost() > s.budget.movement_ft) {
         std::optional<uint8_t> best;
         bool best_clean = false;
         for (uint8_t i = 0; i < me->attacks.size(); ++i) {
