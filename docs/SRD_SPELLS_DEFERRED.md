@@ -14,9 +14,9 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 |---|---|---|---|---|
 | 0 (cantrips) | 11 | 2 | 11 | 24 |
 | 1 | 24 | 6 | 19 | 49 |
-| 2 | 18 | 13 | 23 | 54 |
+| 2 | 21 | 10 | 23 | 54 |
 | 3 | 13 | 10 | 19 | 42 |
-| **total** | **66** | **31** | **72** | **169** |
+| **total** | **69** | **28** | **72** | **169** |
 
 ## Authored in this change (9)
 
@@ -141,7 +141,17 @@ Spell batch zg rules (7.2zg, Rules #263 at `302f92f`). Pinned by `tests/validate
 | Hypnotic Pattern | 3 | `save` WIS `charmed` + `apply_condition incapacitated applies_to affected`, both `ends_on [damage, shake_awake]` (the Wake action); `area cube 30`, range 120, concentration 1 minute | bard, sorcerer, warlock, wizard (none have room at 5); speed 0 while charmed (Rules #263 @ `302f92f`); the mirror has no area_of_effect (cube 30 from the SRD text) |
 | Protection from Energy | 3 | `apply_modifier {stat resistance, damage_type acid}` + `damage_type_choices [acid, cold, fire, lightning, thunder]`; touch, concentration 1 hour | cleric (5), druid (5); the mirror spells it "Protection From Energy" |
 
-## Deferred (103 spells; reasons re-checked against main at `8b8d8c9`)
+## Authored after Rules #276 (3)
+
+Spell batch zh rules (7.2zh, Rules #276 at `998ffad`). Pinned by `tests/validate/test_srd51_spells.py` (table rows and `test_spell_batch_zh`) and the negative cases under `tests/validate/cases/` (`weapon_smite_*`, `summon_weapon_held_*`).
+
+| spell | level | `spell@1` shape | notes |
+|---|---|---|---|
+| Branding Smite | 2 | `weapon_smite` 2d6 radiant, `reveal_invisible`, `light {dim_ft 5}`; bonus action, self, concentration 1 minute; `upcast.dice 1` | paladin (5); first effect only; brands on the next weapon-attack hit (not a spell attack); a crit doubles the dice |
+| Heat Metal | 2 | `sustained_damage` 2d8 fire + `held_object {save con, on_fail drop, while_held {disadvantage [attack_rolls, ability_checks], until start_of_caster_next_turn}}`; concentration 1 minute; `upcast.dice 1` | bard (3-5), druid (4-5); v1 metal is Weapon/Armor/Shield (worn armor cannot drop) |
+| Flame Blade | 2 | `summon_weapon` `held` 3d6 fire, `upcast_every 2`, `reach_ft 5`, `light {bright_ft 10, dim_ft 10}`; bonus action, self, concentration 10 minutes | druid (4-5); free hand to cast; later attacks spend the action; no `move_ft`, no `add_spellcasting_modifier` |
+
+## Deferred (100 spells; reasons re-checked against main at `8b8d8c9`)
 
 Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the first-draft ids in brackets: B1 = R-G2 effects array, B2 = R-G3 timed modifiers, B3 = R-G4 damage riders, B4 = R-G5 pools, B6 = R-G7 reactions / roll windows, C1 = R-G8 conditions with source, C2 = R-G9 forced movement / teleport, C3 = R-G10 area templates, C4 = R-G11 zones / auras, C5 = R-G12 summons, C7 = R-G13 cover / lighting / vision, C8 = R-G14 per-cast options, C9 = R-G15 spell kinds). `T&C-G12` / `T&C-G14` are movement modes and creature footprint. `OOS` rows have no gap id.
 
@@ -190,7 +200,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Arcane Lock | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Arcanist's Magic Aura | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Augury | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Branding Smite | Done (7.2zh) | `weapon_smite`: bonus action, self, concentration. Extra damage on the next weapon-attack hit (not a spell attack); the target is revealed and sheds dim light for the rest of the duration. Hash 0xD4. | R-G4, T&C-G5 (B3) |
 | 2 | Calm Emotions | NEW | Area + suppress condition (R-G10, R-G3). | R-G3, R-G10 (B2, C3) |
 | 2 | Continual Flame | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Darkness | NEW | Zone loads (`kZoneMagicalDarkness`); vision and light dispelling wait for R-G13. | R-G11, R-G13 (C4, C7) |
@@ -201,11 +210,9 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Enthrall | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Find Steed | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Find Traps | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Flame Blade | Done (7.2zh) | `summon_weapon` with `held: true` and light 10/10. Free hand to cast, later attacks spend the action, no move, no spellcasting modifier. Folded into 0xAF (held sub-byte), not a new tag. | R-G12 (C5) |
 | 2 | Flaming Sphere | NEW | Object/zone (R-G11/R-G12). | R-G11, R-G12 (C4, C5) |
 | 2 | Gentle Repose | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Gust of Wind | NEW | Line + push (R-G9, R-G10). | R-G9, R-G10 (C2, C3) |
-| 2 | Heat Metal | Done (7.2zh) | `sustained_damage` plus `held_object`: CON save, drop a held Weapon/Armor/Shield (worn armor cannot drop) or disadvantage while still in contact. Metal is the item category in v1, not a metal flag. Hash 0xD5. | R-G15 (C9) |
 | 2 | Knock | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Levitate | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Locate Animals or Plants | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
@@ -239,7 +246,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 3 | Nondetection | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Phantom Steed | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Plant Growth | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
-| 3 | Protection From Energy | NEW | `resistance` modifier loads, but the damage type is chosen per cast (no spell@1 key). | R-G3, R-G14 (B2, C8) |
 | 3 | Remove Curse | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Sending | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Sleet Storm | NEW | Zone (R-G11). | R-G11 (C4) |
