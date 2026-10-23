@@ -1,0 +1,60 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.heat_metal",
+  "name": "Heat Metal",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "Choose a manufactured metal object, such as a metal weapon or a suit of heavy or medium metal armor, that you can see within range. You cause the object to glow red-hot. Any creature in physical contact with the object takes 2d8 fire damage when you cast the spell. Until the spell ends, you can use a bonus action on each of your subsequent turns to cause this damage again. If a creature is holding or wearing the object and takes the damage from it, the creature must succeed on a Constitution saving throw or drop the object if it can. If it doesn't drop the object, it has disadvantage on attack rolls and ability checks until the start of your next turn. (Modelled: v1 metal is the item category Weapon/Armor/Shield, not a metal flag; worn armor cannot drop.) At Higher Levels: When you cast this spell using a spell slot of 3rd level or higher, the damage increases by 1d8 for each slot level above 2nd.",
+  "level": 2,
+  "school": "transmutation",
+  "classes": [
+    "bard",
+    "druid"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "a piece of iron and a flame"
+    }
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "sustained_damage",
+      "damage": {
+        "dice": "2d8",
+        "type": "fire"
+      },
+      "held_object": {
+        "save": "con",
+        "on_fail": "drop",
+        "while_held": {
+          "disadvantage": [
+            "attack_rolls",
+            "ability_checks"
+          ],
+          "until": "start_of_caster_next_turn"
+        }
+      }
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "dice": 1
+    }
+  }
+}
