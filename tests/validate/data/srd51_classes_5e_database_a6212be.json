@@ -1638,6 +1638,33 @@
     "cleric",
     "paladin"
    ]
+  },
+  "shillelagh": {
+   "name": "Shillelagh",
+   "level": 0,
+   "school": "transmutation",
+   "classes": [
+    "druid"
+   ]
+  },
+  "magic-weapon": {
+   "name": "Magic Weapon",
+   "level": 2,
+   "school": "transmutation",
+   "classes": [
+    "paladin",
+    "wizard"
+   ]
+  },
+  "mirror-image": {
+   "name": "Mirror Image",
+   "level": 2,
+   "school": "illusion",
+   "classes": [
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ]
   }
  }
 }

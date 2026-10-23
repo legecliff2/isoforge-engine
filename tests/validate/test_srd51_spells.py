@@ -187,6 +187,36 @@ class SpellTable(unittest.TestCase):
                                           "repeat_save": "end_of_turn"}])
         self.assertEqual(bd["scaling"], {"upcast": {"targets": 1}})
 
+    def test_spell_imbue_mirror(self):
+        # Rules #257 (7.2zf): weapon_imbue (Shillelagh, Magic Weapon) and duplicates (Mirror Image)
+        self.assertEqual(load("shillelagh")["effects"], [{"kind": "weapon_imbue", "weapons": ["srd51.item.club", "srd51.item.quarterstaff"],
+                                                         "ability": "spellcasting", "die": 8, "magical": True, "ends_on_release": True}])
+        for item in ("club", "quarterstaff"):
+            self.assertTrue((PACK / "items" / f"{item}.json").is_file())
+        mw = load("magic-weapon")
+        self.assertEqual(mw["effects"], [{"kind": "weapon_imbue", "magical": True, "magic_bonus": {"base": 1, "at_slot": [[4, 2], [6, 3]]},
+                                          "requires_nonmagical": True}])
+        self.assertEqual(mw["duration"], {"kind": "hours", "amount": 1, "concentration": True})
+        self.assertNotIn("scaling", mw)   # the at_slot table is the upcast
+        mi = load("mirror-image")
+        e = dict(mi["effects"][0]); e.pop("description")
+        self.assertEqual(e, {"kind": "duplicates", "count": 3, "thresholds": [11, 8, 6], "ac": {"base": 10, "ability": "dex"}})
+        self.assertEqual((mi["range"], mi["duration"]), ({"kind": "self"}, {"kind": "minutes", "amount": 1}))
+        for word in ("blind", "blindsight", "truesight", "false", "dismiss"):
+            self.assertIn(word, mi["effects"][0]["description"])
+        # the negative-case strings are the loader's (rules5e_content spell_loader.cpp), verbatim
+        loader = (ROOT / "engine/rules/content/src/spell_loader.cpp").read_text(encoding="utf-8")
+        for msg in ("effect duplicates thresholds must not increase with the remaining count", "effect weapon_imbue at_slot slot levels must ascend",
+                    "effect die must be one of 4, 6, 8, 10, 12", "effect weapon_imbue needs ability, die, magical or magic_bonus",
+                    "effect weapon_imbue needs concentration or a rounds, minutes or hours duration",
+                    "effect duplicates needs a rounds, minutes or hours duration", "effect duplicates is self only",
+                    "effect thresholds must be exactly 3 integers 2..20", "magic_weapon: the weapon is already magical"):
+            src = loader if msg != "magic_weapon: the weapon is already magical" else (ROOT / "engine/rules/src/encounter.cpp").read_text(encoding="utf-8")
+            self.assertIn(f'"{msg}"', src, msg)
+        for case in sorted((Path(__file__).parent / "cases").glob("*.expect")):
+            if case.stem.startswith(("weapon_imbue_", "duplicates_")) and not case.read_text(encoding="utf-8").startswith("/"):
+                self.assertIn(case.read_text(encoding="utf-8").strip(), loader, case.name)
+
     def test_zone_and_kind_spells(self):
         self.assertEqual(load("silence")["effects"][0]["zone"]["flags"], ["silence"])
         self.assertEqual(load("spirit-guardians")["effects"][0]["zone"]["anchor"], "creature")

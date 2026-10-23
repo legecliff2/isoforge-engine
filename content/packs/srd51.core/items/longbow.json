@@ -1,5 +1,5 @@
 {
-  "$schema": "item@1",
+  "$schema": "item@2",
   "id": "srd51.item.longbow",
   "name": "Longbow",
   "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
@@ -11,5 +11,6 @@
   "damage": [
     {"dice": "1d8", "type": "piercing"}
   ],
-  "properties": ["ammunition", "heavy", "two_handed"]
+  "properties": ["ammunition", "heavy", "two_handed"],
+  "ammo_kind": "arrow"
 }
