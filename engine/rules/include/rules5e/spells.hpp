@@ -65,6 +65,8 @@ enum class SpellEffectKind : uint8_t {
     Duplicates,
     // appended (7.2zg False Life, Heroism): temporary hit points on each target (`temp_hp`); see TempHpSpec.
     TempHp,
+    // appended (7.2zh Branding Smite): a charge on the caster until their next weapon-attack hit (`weapon_smite`); see WeaponSmiteSpec.
+    WeaponSmite,
 };
 // R-G9 forced movement (push / pull) of an effect. mode 1 push (away from the source), 2 pull (toward it), 3 along a line
 // (Gust of Wind: sim's direction; not in R-G9's first scope). feet: exact distance, or the maximum when up_to (the caster
@@ -249,6 +251,10 @@ struct SummonWeaponSpec {
     uint8_t upcast_every = 2;
     uint8_t reach_ft = 5;
     uint16_t move_ft = 20;
+    // appended (7.2zh Flame Blade): held in the caster's free hand. No token move, no spellcasting modifier on the damage,
+    // later attacks spend the action (not the bonus action). light_*: content radii (0 = none); not hashed (spell content).
+    bool held = false;
+    uint16_t light_bright_ft = 0, light_dim_ft = 0;
 };
 // 7.2zg False Life / Heroism: amount = roll(dice, its flat included) + per_slot_above x (slot - spell level), plus the
 // caster's spellcasting modifier when `ability`. per_turn: granted again at the start of each of the target's turns while the
@@ -260,6 +266,14 @@ struct TempHpSpec {
     bool ability = false;
     bool per_turn = false;
     uint32_t immune_conditions = 0;
+};
+// 7.2zh Branding Smite. The charge waits on the caster. The next weapon-attack hit (spell_id == 0, not a spell attack)
+// deals `dice` of the effect's damage type (a crit doubles the dice) and, when reveal_invisible or dim_ft is set, leaves the
+// brand on that target for the rest of the duration: visible if it was invisible, cannot become invisible, sheds dim light
+// of dim_ft (rules stores the radius; lighting owns the source). dim_ft 0 and reveal false: the charge ends on the hit.
+struct WeaponSmiteSpec {
+    bool reveal_invisible = false;
+    uint16_t dim_ft = 0;
 };
 struct ZoneSpec {
     AreaShape shape = AreaShape::None;       // Sphere, Cylinder, Cube, Line (walls)
@@ -374,6 +388,10 @@ struct SpellDef {
     ZoneSpec zone{};
     SummonSpec summon{};   // appended (R-G12 rules PR 2): kind Summon (primary effect only)
     SummonWeaponSpec summon_weapon{};   // appended (R-G12 rules PR 3): kind SummonWeapon (primary effect only)
+    WeaponSmiteSpec weapon_smite{};     // appended (7.2zh): kind WeaponSmite (primary effect only)
+    // appended (7.2zh Heat Metal): sustained_damage may carry the held-object rider. v1 treats ItemKind Weapon, Armor and
+    // Shield as the heated metal (no item metal flag). See VERSION_BUMP_BATCH 7.2zh.
+    bool held_object = false;
     // appended (priced materials, CONTENT_CONVENTIONS §7): components.m.item, the equipment content id that provides a priced
     // material ("" = none: a priced material without an item is unsatisfiable). rules5e never reads it (sim's components hook does).
     std::string material_item;

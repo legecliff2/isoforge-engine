@@ -1,0 +1,14 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.weapon_smite_instant",
+  "name": "Branding Smite",
+  "level": 2,
+  "school": "evocation",
+  "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
+  "classes": ["paladin"],
+  "components": { "v": true },
+  "casting_time": { "kind": "bonus_action" },
+  "range": { "kind": "self" },
+  "duration": { "kind": "instantaneous" },
+  "effects": [{ "kind": "weapon_smite", "damage": { "dice": "2d6", "type": "radiant" } }]
+}

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://isoforge.dev/schemas/spell/v1.schema.json",
   "title": "spell@1",
-  "description": "SRD 5.1 spell. Rules-facing data: rules5e_content maps it to rules5e::SpellDef (engine/rules/content). 'effects' is an array of one or more effects (reaction kinds stand alone; hp_pool, dispel, revive, end_condition and sustained_damage are first-effect only; a zone is the first effect only; extra effects resolve in order over the same targets and may use applies_to: affected). Cross-field rules are in tools/validate (check_spell) and mirrored by the loader. Integers only (§4.3).",
+  "description": "SRD 5.1 spell. Rules-facing data: rules5e_content maps it to rules5e::SpellDef (engine/rules/content). 'effects' is an array of one or more effects (reaction kinds stand alone; hp_pool, dispel, revive, end_condition, sustained_damage and weapon_smite are first-effect only; a zone is the first effect only; extra effects resolve in order over the same targets and may use applies_to: affected). Cross-field rules are in tools/validate (check_spell) and mirrored by the loader. Integers only (§4.3).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -564,7 +564,8 @@
             "haste",
             "slow",
             "summon_weapon",
-            "temp_hp"
+            "temp_hp",
+            "weapon_smite"
           ]
         }
       },
@@ -1444,16 +1445,41 @@
               "enum": [
                 "kind",
                 "damage",
-                "description"
+                "description",
+                "held_object"
               ]
             },
-            "description": "R-G15 SustainedDamage (Heat Metal): damage now and each time the caster sustains it (a bonus action); lasts the spell's duration (no expiry). First effect only; needs a rounds/minutes/hours duration.",
+            "description": "R-G15 SustainedDamage (Heat Metal): damage now and each time the caster sustains it (a bonus action); lasts the spell's duration (no expiry). First effect only; needs a rounds/minutes/hours duration. 7.2zh: optional held_object rider (CON save, drop or disadvantage while still in contact).",
             "properties": {
               "kind": {
                 "const": "sustained_damage"
               },
               "damage": {
                 "$ref": "#/$defs/damage"
+              },
+              "held_object": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["save", "on_fail", "while_held"],
+                "properties": {
+                  "save": { "const": "con" },
+                  "on_fail": { "const": "drop" },
+                  "while_held": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["disadvantage", "until"],
+                    "properties": {
+                      "disadvantage": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "uniqueItems": true,
+                        "items": { "enum": ["attack_rolls", "ability_checks"] }
+                      },
+                      "until": { "const": "start_of_caster_next_turn" }
+                    }
+                  }
+                }
               },
               "description": {
                 "type": "string"
@@ -2031,6 +2057,20 @@
                 "minimum": 5,
                 "multipleOf": 5
               },
+              "held": {
+                "type": "boolean",
+                "description": "7.2zh Flame Blade: the weapon is in the caster's free hand. No move_ft, no add_spellcasting_modifier; later attacks spend the action."
+              },
+              "light": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["bright_ft", "dim_ft"],
+                "properties": {
+                  "bright_ft": { "type": "integer" },
+                  "dim_ft": { "type": "integer" }
+                },
+                "description": "Radii in feet. Positive multiples of 5 are checked by the loader and tools/validate (the schema stays loose so that string is reached)."
+              },
               "applies_to": {
                 "enum": [
                   "all",
@@ -2111,6 +2151,38 @@
               }
             ],
             "description": "VERSION_BUMP_BATCH 7.2zg (False Life, Heroism): temporary hit points on each target (the larger pool is kept). First effect only; per_turn / condition_immunity need concentration or a rounds / minutes / hours duration."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "weapon_smite"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": ["kind", "damage"],
+            "properties": {
+              "kind": { "const": "weapon_smite" },
+              "damage": { "$ref": "#/$defs/damage" },
+              "reveal_invisible": {
+                "type": "boolean",
+                "description": "On the weapon hit the target becomes visible if invisible and cannot become invisible for the rest of the duration."
+              },
+              "light": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["dim_ft"],
+                "properties": {
+                  "dim_ft": { "type": "integer" }
+                },
+                "description": "Dim light the branded target sheds. A positive multiple of 5 is checked by the loader and tools/validate (no multipleOf here, so that string is reached)."
+              },
+              "description": { "type": "string" }
+            },
+            "description": "VERSION_BUMP_BATCH 7.2zh (Branding Smite): bonus action, self, concentration or a rounds/minutes/hours duration. The next weapon-attack hit (not a spell attack) deals the extra damage; a crit doubles the dice. reveal_invisible and light stay on the target for the remaining duration. First effect only. Upcast is scaling.upcast.dice."
           }
         }
       ],

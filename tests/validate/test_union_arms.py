@@ -93,7 +93,7 @@ SPELL_EFFECT_R120 = {"hp_pool": (S({"kind", "dice", "condition"}), S({"ends_on_d
                      "revive": (S({"kind"}), S({"within_rounds", "description"})),
                      "end_condition": (S({"kind", "conditions"}), S({"description"})),
                      "delayed_damage": (S({"kind", "damage", "expiry"}), S({"applies_to", "description"})),
-                     "sustained_damage": (S({"kind", "damage"}), S({"description"}))}
+                     "sustained_damage": (S({"kind", "damage"}), S({"description", "held_object"}))}
 # R-G9 spell@1 arms (sim #144, spell_loader.cpp forced_move / teleport): same closed if/then pattern.
 SPELL_EFFECT_RG9 = {"forced_move": (S({"kind", "feet"}), S({"mode", "up_to", "max_size", "provokes_oa", "applies_to", "description"})),
                     "teleport": (S({"kind", "max_feet"}), S({"needs_sight", "description"}))}

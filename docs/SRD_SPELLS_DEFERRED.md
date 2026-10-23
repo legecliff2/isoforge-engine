@@ -190,7 +190,7 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Arcane Lock | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Arcanist's Magic Aura | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Augury | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Branding Smite | NEW | Weapon-attack rider: extra radiant damage, reveals invisible, concentration (R-G4, T&C-G5). SRD level 2 (the earlier draft also listed it at level 1). | R-G4, T&C-G5 (B3) |
+| 2 | Branding Smite | Done (7.2zh) | `weapon_smite`: bonus action, self, concentration. Extra damage on the next weapon-attack hit (not a spell attack); the target is revealed and sheds dim light for the rest of the duration. Hash 0xD4. | R-G4, T&C-G5 (B3) |
 | 2 | Calm Emotions | NEW | Area + suppress condition (R-G10, R-G3). | R-G3, R-G10 (B2, C3) |
 | 2 | Continual Flame | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Darkness | NEW | Zone loads (`kZoneMagicalDarkness`); vision and light dispelling wait for R-G13. | R-G11, R-G13 (C4, C7) |
@@ -201,11 +201,11 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Enthrall | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Find Steed | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Find Traps | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Flame Blade | NEW | Summoned weapon (R-G12). | R-G12 (C5) |
+| 2 | Flame Blade | Done (7.2zh) | `summon_weapon` with `held: true` and light 10/10. Free hand to cast, later attacks spend the action, no move, no spellcasting modifier. Folded into 0xAF (held sub-byte), not a new tag. | R-G12 (C5) |
 | 2 | Flaming Sphere | NEW | Object/zone (R-G11/R-G12). | R-G11, R-G12 (C4, C5) |
 | 2 | Gentle Repose | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Gust of Wind | NEW | Line + push (R-G9, R-G10). | R-G9, R-G10 (C2, C3) |
-| 2 | Heat Metal | NEW | `sustained_damage` loads (EC #120); the held-object rider (drop it or disadvantage) is not modelled. | R-G15 (C9) |
+| 2 | Heat Metal | Done (7.2zh) | `sustained_damage` plus `held_object`: CON save, drop a held Weapon/Armor/Shield (worn armor cannot drop) or disadvantage while still in contact. Metal is the item category in v1, not a metal flag. Hash 0xD5. | R-G15 (C9) |
 | 2 | Knock | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Levitate | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Locate Animals or Plants | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
