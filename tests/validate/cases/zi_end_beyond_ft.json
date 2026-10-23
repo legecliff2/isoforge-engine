@@ -1,0 +1,38 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "id": "test.neg.spell.zi_end_beyond",
+  "name": "Zi End Beyond",
+  "description": "negative",
+  "level": 2,
+  "school": "abjuration",
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "components": {
+    "v": true
+  },
+  "duration": {
+    "kind": "hours",
+    "amount": 1
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "end_beyond_ft": 7,
+      "modifier": {
+        "stat": "share_damage",
+        "duration": {
+          "kind": "rounds",
+          "n": 1
+        }
+      }
+    }
+  ]
+}

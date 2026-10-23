@@ -46,6 +46,11 @@ DamageApplied apply_damage(const Combatant& c, int16_t amount, DamageType type, 
     return d;
 }
 
+DamageApplied apply_damage_fixed(const Combatant& c, int16_t amount) {
+    const int dmg = amount < 0 ? 0 : int(amount);
+    return absorb(c, dmg);
+}
+
 DamageApplied apply_damage_parts(const Combatant& c, std::span<const DamagePiece> parts, uint8_t qualifiers) {
     int total = 0;
     uint32_t types = 0;

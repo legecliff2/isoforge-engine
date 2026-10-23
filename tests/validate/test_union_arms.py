@@ -64,9 +64,10 @@ MODIFIER = {("attack_roll",): (S({"stat", "duration"}), S({"bonus", "die", "sign
             ("speed",): (S({"stat", "duration", "speed_scale"}), S({"speed_sub"} | _M)),
             ("damage",): (S({"stat", "duration"}), S({"bonus", "bonus_table", "die", "sign", "damage_type", "when"} | _M)),
             ("temp_hp",): (S({"stat", "duration", "bonus"}), S({"per_turn"} | _M)),
-            ("resistance",): (S({"stat", "duration", "damage_type"}), S(_M)),
+            ("resistance",): (S({"stat", "duration", "damage_type"}), S({"all_damage"} | _M)),   # 7.2zi all_damage or damage_type
             ("attacks_against",): (S({"stat", "duration", "mode"}), S({"when"} | _M)),
-            ("no_reactions", "no_healing", "outlined"): (S({"stat", "duration"}), S(_M))}   # 7.2u markers; 7.2zg outlined
+            ("halve_weapon_damage",): (S({"stat", "duration", "ability"}), S(_M)),   # 7.2zi Ray of Enfeeblement
+            ("no_reactions", "no_healing", "outlined", "bonus_dash", "share_damage"): (S({"stat", "duration"}), S(_M))}   # 7.2u markers; 7.2zg outlined; 7.2zi bonus_dash, share_damage
 REACTION_EFFECT = {("ac_bonus",): (S({"kind", "bonus"}), S()),
                    ("reduce_damage",): (S({"kind"}), S({"fraction", "dice", "applies_to_attack"})),   # 7.2zb applies_to_attack
                    ("impose_disadvantage",): (S({"kind"}), S()),

@@ -1794,7 +1794,10 @@
             "attacks_against",
             "no_reactions",
             "no_healing",
-            "outlined"
+            "outlined",
+            "bonus_dash",
+            "halve_weapon_damage",
+            "share_damage"
           ]
         },
         "bonus": {
@@ -1852,6 +1855,10 @@
         },
         "damage_type": {
           "$ref": "../common/v1.schema.json#/$defs/damage_type"
+        },
+        "all_damage": {
+          "const": true,
+          "description": "7.2zi Warding Bond: resistance to every damage type. Not together with damage_type."
         },
         "ability": {
           "anyOf": [
@@ -2189,13 +2196,23 @@
             }
           },
           "then": {
-            "required": [
-              "damage_type"
+            "anyOf": [
+              {
+                "required": [
+                  "damage_type"
+                ]
+              },
+              {
+                "required": [
+                  "all_damage"
+                ]
+              }
             ],
             "propertyNames": {
               "enum": [
                 "stat",
                 "damage_type",
+                "all_damage",
                 "applies_to",
                 "duration",
                 "stacks",
@@ -2239,10 +2256,40 @@
             ],
             "properties": {
               "stat": {
+                "const": "halve_weapon_damage"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "ability"
+            ],
+            "propertyNames": {
+              "enum": [
+                "stat",
+                "ability",
+                "applies_to",
+                "duration",
+                "stacks",
+                "consume"
+              ]
+            },
+            "description": "7.2zi Ray of Enfeeblement: ability must be str (tools/validate and the loader). Weapon attacks that use Strength deal half damage, round down."
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "stat"
+            ],
+            "properties": {
+              "stat": {
                 "enum": [
                   "no_reactions",
                   "no_healing",
-                  "outlined"
+                  "outlined",
+                  "bonus_dash",
+                  "share_damage"
                 ]
               }
             }

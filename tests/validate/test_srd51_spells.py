@@ -350,6 +350,77 @@ class SpellTable(unittest.TestCase):
             self.assertIn(f'"{val}"', keys_hpp, val)
             self.assertIn(f'"{val}"', checks, val)
 
+    def test_spell_batch_zi(self):
+        # Rules 7.2zi: mechanics only. Content packs are T&C; specimens live in tests/validate/fixtures/spell_batch_zi.
+        fx = ROOT / "tests/validate/fixtures/spell_batch_zi"
+        spare = json.loads((fx / "spare_the_dying.json").read_text(encoding="utf-8"))
+        strike = json.loads((fx / "true_strike.json").read_text(encoding="utf-8"))
+        retreat = json.loads((fx / "expeditious_retreat.json").read_text(encoding="utf-8"))
+        poison = json.loads((fx / "protection_from_poison.json").read_text(encoding="utf-8"))
+        ray = json.loads((fx / "ray_of_enfeeblement.json").read_text(encoding="utf-8"))
+        beacon = json.loads((fx / "beacon_of_hope.json").read_text(encoding="utf-8"))
+        bond = json.loads((fx / "warding_bond.json").read_text(encoding="utf-8"))
+        self.assertEqual(spare["effects"], [{"kind": "stabilize", "excludes_creature_type": ["undead", "construct"]}])
+        self.assertEqual(strike["effects"][0]["on_next_turn"], True)
+        self.assertEqual(strike["effects"][0]["scope"], {"target": "marked"})
+        self.assertEqual(strike["effects"][0]["modifier"]["stat"], "attack_roll")
+        self.assertEqual(strike["effects"][0]["modifier"]["applies_to"], "self")
+        self.assertEqual(retreat["effects"][0]["modifier"]["stat"], "bonus_dash")
+        self.assertEqual(retreat["casting_time"], {"kind": "bonus_action"})
+        self.assertEqual(poison["effects"][0], {"kind": "end_condition", "conditions": ["poisoned"]})
+        self.assertEqual(poison["effects"][2]["save_vs_conditions"], ["poisoned"])
+        self.assertNotIn("concentration", poison["duration"])
+        self.assertEqual(ray["effects"][0], {"kind": "spell_attack", "attack": "ranged", "hit_only": True})
+        self.assertEqual(ray["effects"][1]["modifier"]["stat"], "halve_weapon_damage")
+        self.assertEqual(ray["effects"][1]["repeat_save"], {"ability": "con"})
+        self.assertEqual(beacon["targets"], {"count": 255})
+        self.assertTrue(beacon["effects"][0]["death_saves"])
+        self.assertTrue(beacon["effects"][0]["heal_maximum"])
+        self.assertEqual(bond["effects"][2]["modifier"]["all_damage"], True)
+        self.assertEqual(bond["effects"][3]["end_at_zero"], "caster")
+        self.assertEqual(bond["effects"][3]["end_beyond_ft"], 60)
+        self.assertNotIn("concentration", bond["duration"])
+        self.assertEqual(bond["components"]["m"]["text"], "a pair of platinum rings")
+        loader = (ROOT / "engine/rules/content/src/spell_loader.cpp").read_text(encoding="utf-8")
+        encounter = (ROOT / "engine/rules/src/encounter.cpp").read_text(encoding="utf-8")
+        for msg in ("effect hit_only must be true",
+                    "effect hit_only and damage together",
+                    "effect on_next_turn must be true",
+                    "effect on_next_turn needs an attack_roll modifier",
+                    "effect save_vs_conditions needs a save modifier with a mode",
+                    "effect save_vs_conditions must be a non-empty list of conditions",
+                    "effect save_vs_conditions items must be unique",
+                    "effect death_saves must be true",
+                    "effect heal_maximum must be true",
+                    "effect repeat_save must be {ability: <ability>}",
+                    "effect end_beyond_ft must be a positive multiple of 5",
+                    "effect end_at_zero must be caster",
+                    "modifier all_damage must be true on a resistance modifier",
+                    "modifier all_damage and damage_type together",
+                    "halve_weapon_damage needs ability str"):
+            self.assertIn(f'"{msg}"', loader, msg)
+        self.assertIn("is only allowed as the first effect", loader)
+        for msg in ("stabilize: one living creature",
+                    "stabilize: touch range",
+                    "stabilize: no effect on undead or constructs",
+                    "stabilize: target is not dying",
+                    "stabilize: primary effect only"):
+            self.assertIn(f'"{msg}"', encounter, msg)
+        keys_hpp = (ROOT / "engine/rules/content/src/spell_keys_zi.hpp").read_text(encoding="utf-8")
+        checks = (ROOT / "tools/validate/checks_v4.py").read_text(encoding="utf-8")
+        for val in ("stabilize", "hit_only", "on_next_turn", "bonus_dash", "save_vs_conditions",
+                    "halve_weapon_damage", "death_saves", "heal_maximum", "share_damage", "all_damage",
+                    "end_beyond_ft", "end_at_zero", "caster"):
+            self.assertIn(f'"{val}"', keys_hpp, val)
+            self.assertIn(f'"{val}"', checks, val)
+        for case in sorted((Path(__file__).parent / "cases").glob("zi_*.expect")):
+            msg = case.read_text(encoding="utf-8").strip()
+            if "is only allowed as the first effect" in msg:
+                self.assertIn("is only allowed as the first effect", loader, case.name)
+            else:
+                # parse_modifier returns the tail and spell_from_json prefixes "effect ".
+                needle = msg[len("effect "):] if msg.startswith("effect ") and f'"{msg}"' not in loader else msg
+                self.assertIn(f'"{needle}"', loader, case.name)
 
     def test_zone_and_kind_spells(self):
         self.assertEqual(load("silence")["effects"][0]["zone"]["flags"], ["silence"])

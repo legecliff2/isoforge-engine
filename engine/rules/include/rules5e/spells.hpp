@@ -67,6 +67,9 @@ enum class SpellEffectKind : uint8_t {
     TempHp,
     // appended (7.2zh Branding Smite): a charge on the caster until their next weapon-attack hit (`weapon_smite`); see WeaponSmiteSpec.
     WeaponSmite,
+    // appended (7.2zi Spare the Dying): stabilize one dying living creature within touch. No hook. Undead and constructs
+    // are excluded by excluded_types (the same mask heal uses).
+    Stabilize,
 };
 // R-G9 forced movement (push / pull) of an effect. mode 1 push (away from the source), 2 pull (toward it), 3 along a line
 // (Gust of Wind: sim's direction; not in R-G9's first scope). feet: exact distance, or the maximum when up_to (the caster
@@ -172,6 +175,7 @@ struct SpellEffect {
     int8_t regurgitate_dc = 0; uint8_t regurgitate_damage = 30;   // 7.2w: see SpellDef
     bool excludes_formless = false;                                // 7.2w: see SpellDef
     uint8_t ends_on = 0;                                           // 7.2zc: see SpellDef::ends_on
+    bool hit_only = false;                                        // 7.2zi: spell_attack rider (primary uses SpellDef::hit_only)
     bool has_ward = false; Ability ward_save = Ability::Wis; uint8_t ward_on_fail = 1;   // 7.2zd: see SpellDef
     uint32_t immune_conditions = 0, immune_from_types = 0;                              // 7.2zd: see SpellDef
     int16_t hp_bonus_flat = 0, hp_bonus_per_slot = 0;                                   // 7.2zd: see SpellDef
@@ -473,6 +477,9 @@ struct SpellDef {
     // appended (7.2zg Acid Arrow): kind SpellAttack, `on_miss: half`: a miss deals half the initial damage (dice rolled then,
     // halved, rounded down); riders that follow a hit (delayed_damage applies_to affected) do not apply.
     bool miss_half = false;
+    // appended (7.2zi Ray of Enfeeblement): kind SpellAttack, `hit_only`: the attack roll resolves and a hit is a hit, but
+    // no damage dice are rolled and no hit points are dealt. Riders (applies_to affected) still follow a hit.
+    bool hit_only = false;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
