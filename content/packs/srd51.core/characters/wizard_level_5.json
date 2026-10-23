@@ -158,12 +158,14 @@
       "srd51.spell.fire_bolt",
       "srd51.spell.poison_spray",
       "srd51.spell.magic_missile",
+      "srd51.spell.false_life",
       "srd51.spell.shield",
       "srd51.spell.hold_person",
       "srd51.spell.magic_weapon",
       "srd51.spell.mirror_image",
       "srd51.spell.scorching_ray",
-      "srd51.spell.counterspell"
+      "srd51.spell.counterspell",
+      "srd51.spell.haste"
     ]
   }
 }
