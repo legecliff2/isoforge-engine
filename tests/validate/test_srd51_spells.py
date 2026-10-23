@@ -84,6 +84,8 @@ class SpellTable(unittest.TestCase):
                         self.assertEqual(d["scaling"]["upcast"], {"dice": step})
                 if "dc" in t and eff["kind"] == "apply_modifier":   # 7.2ze Bane: the save gates the modifier (no damage, none on success)
                     self.assertEqual((eff["save"]["ability"], eff["save"]["dc"], t["dc"]["success"]), (t["dc"]["ability"], "caster", "none"))
+                elif "dc" in t and eff["kind"] == "spell_attack":   # 7.2zi Ray of Enfeeblement: the rider's repeat save ends it
+                    self.assertEqual((eff.get("hit_only"), d["effects"][1]["repeat_save"], t["dc"]["success"]), (True, {"ability": t["dc"]["ability"]}, "none"))
                 elif "dc" in t:
                     self.assertEqual((eff["kind"], eff["ability"], eff.get("on_success", "none")), ("save", t["dc"]["ability"], t["dc"]["success"]))   # none: the default (condition / control saves)
                 if "attack_type" in t:
@@ -349,6 +351,40 @@ class SpellTable(unittest.TestCase):
                     "save", "on_fail", "while_held", "disadvantage", "until"):
             self.assertIn(f'"{val}"', keys_hpp, val)
             self.assertIn(f'"{val}"', checks, val)
+
+    def test_spell_batch_zi_packs(self):
+        # Rules #283 (7.2zi): the srd51 packs carry the specimens' mechanics (tests/validate/fixtures/spell_batch_zi)
+        fx = ROOT / "tests/validate/fixtures/spell_batch_zi"
+        for idx in ("spare-the-dying", "true-strike", "protection-from-poison", "ray-of-enfeeblement",
+                    "beacon-of-hope", "warding-bond"):
+            with self.subTest(spell=idx):
+                spec = json.loads((fx / f"{idx.replace('-', '_')}.json").read_text(encoding="utf-8"))
+                d = load(idx)
+                self.assertEqual(d["effects"], spec["effects"])
+                self.assertEqual((d["casting_time"], d["range"], d["duration"], d.get("targets")),
+                                 (spec["casting_time"], spec["range"], spec["duration"], spec.get("targets")))
+        self.assertEqual(load("spare-the-dying")["effects"], [{"kind": "stabilize", "excludes_creature_type": ["undead", "construct"]}])
+        ts = load("true-strike")["effects"][0]
+        self.assertEqual((ts["on_next_turn"], ts["scope"], ts["modifier"]["consume"], ts["modifier"]["duration"]),
+                         (True, {"target": "marked"}, "next_attack", {"kind": "until_end_of_caster_next_turn"}))
+        pp = load("protection-from-poison")
+        self.assertEqual(pp["effects"][0], {"kind": "end_condition", "conditions": ["poisoned"]})
+        self.assertEqual((pp["effects"][1]["modifier"]["damage_type"], pp["effects"][2]["save_vs_conditions"]), ("poison", ["poisoned"]))
+        self.assertEqual({e["modifier"]["duration"]["n"] for e in pp["effects"][1:]}, {600})
+        ray = load("ray-of-enfeeblement")
+        self.assertEqual(ray["effects"][0], {"kind": "spell_attack", "attack": "ranged", "hit_only": True})
+        self.assertEqual((ray["effects"][1]["modifier"]["stat"], ray["effects"][1]["modifier"]["ability"]), ("halve_weapon_damage", "str"))
+        bh = load("beacon-of-hope")
+        self.assertEqual((bh["targets"], bh["effects"][0]["death_saves"], bh["effects"][0]["heal_maximum"],
+                          bh["effects"][0]["modifier"]["ability"]), ({"count": 255}, True, True, "wis"))
+        wb = load("warding-bond")
+        self.assertEqual([e["modifier"]["stat"] for e in wb["effects"]], ["ac", "save", "resistance", "share_damage"])
+        self.assertEqual((wb["effects"][3]["end_beyond_ft"], wb["effects"][3]["end_at_zero"]), (60, "caster"))
+        self.assertFalse(wb["components"]["m"]["consumed"])
+        self.assertNotIn("concentration", wb["duration"])
+        self.assertIn("dismissing the spell as an action", wb["description"])   # not modelled; said in the pack
+        # Expeditious Retreat stays deferred: the SRD Dash on the cast is not modelled (7.2zi bonus_dash is later turns only)
+        self.assertFalse((PACK / "spells" / "expeditious_retreat.json").exists())
 
     def test_spell_batch_zi(self):
         # Rules 7.2zi: mechanics only. Content packs are T&C; specimens live in tests/validate/fixtures/spell_batch_zi.
