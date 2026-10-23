@@ -239,7 +239,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 3 | Nondetection | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Phantom Steed | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Plant Growth | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
-| 3 | Protection From Energy | NEW | `resistance` modifier loads, but the damage type is chosen per cast (no spell@1 key). | R-G3, R-G14 (B2, C8) |
 | 3 | Remove Curse | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Sending | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
 | 3 | Sleet Storm | NEW | Zone (R-G11). | R-G11 (C4) |
@@ -254,7 +253,7 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 
 ## Follow-ups when the mechanics land
 
-- Acid Arrow stays deferred: `spell_attack` has no miss branch, so "half the initial damage on a miss" cannot be expressed (the `delayed_damage` rider already follows only a hit).
-- Small additive changes that unblock more: `targets` on `apply_modifier` (Bless; with a signed `die` pattern also Bane), a save-only gate (Faerie Fire), a spell@1 condition / damage-type choice key (Blindness/Deafness, Protection from Energy), spell@1 summon keys (Spiritual Weapon, Conjure Animals), haste / slow modifier stats.
+- Acid Arrow authored in 7.2zg (#265): `spell_attack` `on_miss half` + `delayed_damage` (upcast reaches the rider).
+- Small additive changes that unblock more: a spell@1 condition-choice key (Blindness/Deafness). Faerie Fire, Protection from Energy, Spiritual Weapon, Haste / Slow, and `targets` on modifiers landed in 7.2zg (#263 / #265).
 - Every `NEW` row above is additive content once its row lands; ids are `srd51.spell.<snake_case_name>` and are not reserved yet.
 - Spare the Dying: `spell@1` has no stabilize effect, only the Rules `ActionKind::SpareTheDying` hook. If Rules adds an effect kind (additive), it is a one-file change.
