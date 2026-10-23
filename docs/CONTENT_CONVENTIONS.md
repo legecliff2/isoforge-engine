@@ -133,6 +133,8 @@ wording (the validator's messages are quoted). Schema, validator and loader now 
 
 (Moonbeam, with `scaling.upcast.dice: 1`. Fixtures for Moonbeam, Spirit Guardians, Fog Cloud, Darkness, Silence, Spike
 Growth, Web and Grease: `tests/validate/fixtures/zones/spells/`. None are in `srd51.core` yet.)
+Entangle's specimen is `tests/validate/fixtures/zones/spells/entangle.json` (differences from Web in that directory's README).
+T&C authors `srd51.spell.entangle` from it.
 
 ### 4.1 `zone` (`ZoneSpec`)
 
