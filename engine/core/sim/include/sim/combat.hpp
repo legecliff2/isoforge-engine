@@ -314,14 +314,18 @@ public:
     std::vector<Vec2i> legal_teleport_tiles(CombatantId actor, const rules5e::SpellDef& def) const;
     bool teleport_dest_ok(CombatantId actor, const rules5e::SpellDef& def, Vec2i dest) const;
     struct Spot { Vec2i p; int n; };   // a creature's footprint: anchor tile and side
-    // ---- Cover (VERSION_BUMP_BATCH 7.2t hand-off; EncounterHooks::cover) ----
-    // The cover q.target has against q.source (or the area origin), from the grid and the current positions. Pure, integer
-    // only. Origin: q.has_origin = that tile; otherwise the source's footprint (for an area: the caster's space). Lines run
-    // from one corner of an origin tile to every corner of the target's footprint (DMG grid rule); the origin corner that gives
-    // the LEAST cover is used. A line is blocked by a tile whose interior it crosses (grazing an edge or a corner does not
-    // block): a blocks_sight tile is a full obstruction, another living creature's footprint (not source / target) half.
-    // Degree: no line blocked = None; every line blocked by full obstructions = Total; at least 3/4 of the lines blocked by
-    // full obstructions = ThreeQuarters; any line blocked (wall or creature) = Half. The highest degree counts.
+    // ---- Cover (VERSION_BUMP_BATCH 7.2t hand-off; EncounterHooks::cover; #187 + feat/cover-from-grid) ----
+    // Pure, integer only. DMG grid rule: lines from one corner of the origin footprint to every corner of the target's
+    // footprint; the origin corner that gives the LEAST cover is used. A line is blocked by a tile whose interior it crosses
+    // (grazing an edge or a corner does not): a blocks_sight tile is a full obstruction, another living creature's footprint
+    // (not except_a / except_b) half. Degree: no line blocked = None; every line blocked by full obstructions = Total; at
+    // least 3/4 of the lines blocked by full obstructions = ThreeQuarters; any line blocked (wall or creature) = Half.
+    // Read-only query for R&P debug overlays and tile probes (no render coupling). origin_n / target_n are footprint sides
+    // (1 = Medium, 2 = Large). except_a / except_b are combatant ids whose footprints do not count as half-cover bodies.
+    rules5e::Cover cover_between(Vec2i origin, int origin_n, Vec2i target, int target_n, CombatantId except_a = 0,
+                                 CombatantId except_b = 0) const;
+    // CoverQuery form used by EncounterHooks::cover: has_origin = that single tile; otherwise the source's footprint.
+    // Returns None when the target (or source, when has_origin is false) is missing, or source == target.
     rules5e::Cover cover_of(const rules5e::CoverQuery& q) const;
     // ---- Vision (VERSION_BUMP_BATCH 7.2x hand-off; EncounterHooks::sight_facts) ----
     // Per-pair facts for viewer -> subject. Pure and integer-only: LightDriver::latest() samples (or Bright / clear
