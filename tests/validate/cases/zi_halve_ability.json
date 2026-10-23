@@ -1,0 +1,40 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "id": "test.neg.spell.zi_halve",
+  "name": "Zi Halve",
+  "description": "negative",
+  "level": 2,
+  "school": "necromancy",
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "components": {
+    "v": true
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "halve_weapon_damage",
+        "ability": "dex",
+        "duration": {
+          "kind": "rounds",
+          "n": 1
+        }
+      }
+    }
+  ]
+}

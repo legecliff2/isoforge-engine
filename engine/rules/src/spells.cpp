@@ -66,6 +66,7 @@ SpellDef effect_view(const SpellDef& base, const SpellEffect& e) {
     v.has_modifier_save = false;   // 7.2zg: the save gate is the first effect's (Slow's rows ride on the creatures that failed)
     v.object_ac = e.object_ac; v.object_hp = e.object_hp;   // EC spider follow-up (flagged)
     v.object_vulnerable = e.object_vulnerable; v.object_immune = e.object_immune;
+    v.hit_only = e.hit_only;   // 7.2zi: a rider does not inherit the primary attack's hit_only
     v.cantrip_scales = false; v.cantrip_adds_beams = false;
     v.upcast_beams = 0; v.upcast_dice = e.upcast_dice; v.upcast_darts = 0; v.upcast_targets = 0;   // upcast_dice: delayed_damage only
     return v;

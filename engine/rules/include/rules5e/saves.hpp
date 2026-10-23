@@ -30,6 +30,9 @@ struct DeathSaveResult { int8_t natural; DeathSaves after; DeathSaveOutcome outc
 // Pure: d20, no modifiers. 10+ success, else failure; nat 1 = two failures; nat 20 = regain
 // 1 HP (counters reset). 3 successes -> stable (counters reset); 3 failures -> dead.
 DeathSaveResult roll_death_save(rng::Rng&, const DeathSaves&);
+// 7.2zi Beacon of Hope: RollMode::Normal is the one-die function above (same rng). Advantage takes the higher of two d20s
+// (roll_d20); the chosen natural is what nat 20 / nat 1 read. Disadvantage takes the lower.
+DeathSaveResult roll_death_save(rng::Rng&, const DeathSaves&, RollMode);
 
 // Damage taken while at 0 HP: one failure, two on a critical hit. Ends stability.
 DeathSaves death_save_failures_from_damage(const DeathSaves&, bool critical);

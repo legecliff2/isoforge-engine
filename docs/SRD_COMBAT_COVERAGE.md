@@ -327,8 +327,8 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Sacred Flame | DATA | `save` DEX, 1d8 radiant, none on success; `ignores_cover: true` (7.2t: no half / three-quarters bonus; total cover still blocks targeting). |
 | Shillelagh | Done (7.2zf) | `weapon_imbue {weapons: [club, quarterstaff], ability: spellcasting, die: 8, magical: true, ends_on_release: true}`, rounds 10; recast replaces it. Release end waits for equipment play (#247). |
 | Shocking Grasp | NEW (wiring) | Rules done (7.2u): `no_reactions` marker (`ModStat::NoReactions`, `may_react` refuses), duration `until_start_of_target_turn` (expiry 4), `affected` rider on the melee spell attack. Advantage vs metal armor: not modelled (no armor material in content or rules; a `TargetTag`-style predicate could carry it later). Content (T&C) pending. |
-| Spare the Dying | DATA | `ActionKind::SpareTheDying` (hook `spare_the_dying`). |
-| True Strike | NEW (wiring) | Rules done (follow-up): AttackRoll advantage modifier with `consume` 1 (spent by the next attack roll). Spell kind pending (R-G3). |
+| Spare the Dying | Done (7.2zi) | `spell@1` `stabilize` (touch, one dying creature, no effect on undead or constructs). `ActionKind::SpareTheDying` (hook `spare_the_dying`) is unchanged. |
+| True Strike | Done (7.2zi) | Chosen-target `attack_roll` advantage (`scope.target marked`, `on_next_turn`, `consume` next attack), concentration until the end of the caster's next turn. |
 | Vicious Mockery | NEW (wiring) | Rules done (verified, 7.2u tests): AttackRoll disadvantage, `consume` 1, `until_end_of_target_turn` (expiry 2), as an `affected` rider on the Wis save effect. Content (T&C) pending. |
 
 ### 8.2 Level 1
@@ -345,7 +345,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Cure Wounds | DATA | Shipped (`heal`, excludes undead/construct). |
 | Divine Favor | NEW (wiring) | Rules done (#89): Damage modifier with `damage_type` radiant and a 1d4 die, concentration (weapon attacks only). Spell kind pending (R-G3). |
 | Entangle | NEW | Area zone + restrained (R-G10, R-G11). |
-| Expeditious Retreat | NEW | Bonus-action Dash for duration (R-G3). |
+| Expeditious Retreat | Done (7.2zi) | `bonus_dash`: Dash as a bonus action for the duration. The cast does not Dash. |
 | Find Familiar | NEW (wiring) | R-G12 rules PR 2 (7.2r): `Summon` (Own initiative, Telepathic: acts on its own, vanishes at 0 HP). Casting time (1 hour) means sim casts it before the encounter or content marks it; Chain variants are PR 3. |
 | Fog Cloud | NEW | `Zone` (point sphere, 20 ft + 20 ft per slot level above 1 via `upcast_size_ft`, `kZoneHeavyObscured` flag) in rules (R-G11 PR 2, 7.2m); the obscurement itself waits for R-G13 (Q6). |
 | Faerie Fire | NEW (wiring) | Rules done (#89): `AttacksAgainst` advantage modifier applied to each target in the area (sim computes the area, #78). Spell kind pending; the Dex save gate rides the existing Save effect (R-G3). |
@@ -394,15 +394,15 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Misty Step | DATA | `Teleport` effect (`max_feet` 30), bonus action, self; destination from the request, validated by sim (R-G9, VERSION_BUMP_BATCH 7.2k). Sim done (R-G9 sim PR): spell@1 `teleport {max_feet, needs_sight}`; `Combat::legal_teleport_tiles`; submit re-validates (range, free footprint, sight, Frightened not closer) and fills `teleport_feet`; log_hash 0xB2 / 0xB4. The built-in AI does not cast it; schema / validator arm pending (T&C). Shipped in `srd51.core` (T&C spells refresh). |
 | Polymorph (L4) | NEW (wiring) | R-G12 rules PR 1 (7.2q): `SpellEffectKind::Polymorph`, unwilling Wis save, beast form via `build_form` (all stats replaced, fresh HP, can't cast), reverts at 0 HP with overflow carried (D12), on death or when concentration ends; refused on a shapechanger or a 0-HP creature (D13). Sim: `build_form` for Polymorph done (R-G12 sim PR 1: choices = rated beasts in id order, CR <= the target's CR or character level, footprint fit). Pending: T&C `polymorph` effect kind / rules loader key, AI. |
 | Moonbeam | NEW (wiring) | `Zone` (point cylinder): Enter / StartTurn once per turn, Con save, 2d10 radiant half, upcast; the action move up to 60 ft on later turns (`zone_move`, D3) (R-G11, 7.2l). Shapechanger disadvantage done (`shapechanger_disadvantage`, PR 2); reverting the form is not modelled (R-G12). Sim: geometry, `legal_zone_tiles`. Sim done (zones sim PR): geometry / `zone_contains`, membership lists, `legal_zone_tiles` destination checks, terrain overlays, 0xAB / 0xB7. |
-| Protection from Poison | NEW | R-G3. |
-| Ray of Enfeeblement | NEW | Attack + damage halving rider (R-G3). |
+| Protection from Poison | Done (7.2zi) | Ends poisoned; poison resistance and advantage on saves against being poisoned for 1 hour. Not concentration. |
+| Ray of Enfeeblement | Done (7.2zi) | Ranged spell attack that deals no hit points; Strength weapon attacks deal half damage until a Constitution save. |
 | Scorching Ray | DATA | `spell_attack` with `beams 3`, 2d6 fire, `upcast.beams 1`. |
 | Shatter | DATA | Sphere template computed by sim (#78); dice/save are data (the inorganic-material disadvantage is not modelled). |
 | Silence | NEW (wiring) | `Zone` with `kZoneSilence` (R-G11 PR 2, 7.2m): a creature completely inside can't cast spells with a V component (casts, `legal_actions`, reaction spells), is immune to thunder damage, and is deafened while it stays inside (zone-bound effect). Sim: `zone_contains`. |
 | Spike Growth | NEW (wiring) | `Zone` (point, 20 ft radius, difficult terrain): MoveWithin 2d4 piercing per 5 ft, no save, no per-turn limit, forced moves included (D6) (R-G11, 7.2l). Camouflage OOS (D6). Sim: membership per tile / forced move. Sim done (zones sim PR): geometry / `zone_contains`, membership lists, `legal_zone_tiles` destination checks, terrain overlays, 0xAB / 0xB7. |
 | Spiritual Weapon | NEW (wiring) | R-G12 rules PR 3 (7.2s, D3): `SummonWeapon` kind, `ActiveSummonWeapon` token (no HP, no turn, id from the summon counter), melee spell attack on the cast and by `SummonWeaponAttack` (bonus action), 1d8 + mod force, +1d8 per two slot levels, 1 minute, no concentration, teardown with summons. Sim: token position / 20 ft move, 0xAF. |
 | Suggestion | NEW | Forced behavior (R-G8). |
-| Warding Bond | NEW | Shared damage (R-G3). |
+| Warding Bond | Done (7.2zi) | +1 AC, +1 saves, resistance to all damage; the caster takes the same damage. Ends if the caster drops to 0 HP or they are more than 60 feet apart. Not concentration. |
 | Web | NEW (wiring) | `Zone` (point, 20 ft cube, difficult terrain, lightly obscured flag): StartTurn / own-turn Enter, Dex save or restrained while in the webs, not re-saved; Strength check (action, `special` 4) to break free; ends on leaving or with the zone (R-G11, 7.2l). Flammability / anchoring OOS (D8). Sim done (zones sim PR): geometry / `zone_contains`, membership lists, `legal_zone_tiles` destination checks, terrain overlays, 0xAB / 0xB7. |
 | Acid Arrow | NEW (wiring) | rules5e `DelayedDamage` rider at end of target's next turn (R-G15, 7.2g). Loader done (EC #120): `delayed_damage {damage, expiry}` as an `applies_to: affected` rider (or primary); both the initial and the later damage gain `scaling.upcast.dice` per slot above 2nd (SRD; the loader copies it to the rider's `SpellEffect::upcast_dice`, applied at cast; the effect stores the scaled dice and slot level, folded under 0xAC). No pack ships it yet; schema / validator pending (T&C). |
 
@@ -411,7 +411,7 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Spell | Status | Notes |
 |---|---|---|
 | Clairvoyance, Create Food and Water, Major Image, Meld into Stone, Nondetection, Phantom Steed, Plant Growth, Sending, Speak with Dead, Speak with Plants, Tongues, Water Breathing, Water Walk, Gaseous Form, Glyph of Warding (trap setup), Remove Curse, Tiny Hut (1 minute), Animate Dead (1 minute; control in an encounter: see its row), Magic Circle (1 minute) | OOS | Utility / out of encounter casting time (1 minute or longer). |
-| Beacon of Hope | NEW | Save advantage, max healing (R-G3). |
+| Beacon of Hope | Done (7.2zi) | Advantage on Wisdom saves and death saves; healing dice are the maximum. Any number of creatures (`targets.count` 255). |
 | Bestow Curse | NEW | Touch + chosen effect (R-G2/R-G3). |
 | Blink | NEW | Phasing (R-G9). |
 | Call Lightning | NEW | Zone + repeating action (R-G11). |
@@ -662,7 +662,7 @@ Gaps that need new rules mechanics (not just Engine Core / T&C wiring, which is 
 
 | Order | Id | Gap | Unlocks | Size |
 |---|---|---|---|---|
-| 1 | R-G3 follow-ups | **Done in rules** (this PR): one-shot / until-damaged expiry (`consume`), speed reduction (`speed_sub`), AC floor (`ac_floor`), per-turn temp HP (`per_turn`), general `when` scope (attack roll, attacks against, AC, damage), and `apply_modifier` as a rider effect. Haste's restricted extra action done in 7.2j. Still open: `when` on saves / checks, a "marked target" scope (Hunter's Mark), "frightened immunity" (Heroism) | Needs only wiring now: True Strike, Guiding Bolt, Vicious Mockery, Ray of Frost, Mage Armor, Barkskin, Heroism | done |
+| 1 | R-G3 follow-ups | **Done in rules** (this PR): one-shot / until-damaged expiry (`consume`), speed reduction (`speed_sub`), AC floor (`ac_floor`), per-turn temp HP (`per_turn`), general `when` scope (attack roll, attacks against, AC, damage), and `apply_modifier` as a rider effect. Haste's restricted extra action done in 7.2j. Still open: `when` on saves / checks, a "marked target" scope (Hunter's Mark), "frightened immunity" (Heroism) | Needs only wiring now: Guiding Bolt, Vicious Mockery, Ray of Frost, Mage Armor, Barkskin, Heroism (True Strike's chosen-target advantage is Done, 7.2zi) | done |
 | 2 | R-G5 rest | **Done in rules**: static feature kinds `attack_bonus`, `ac_bonus`, `crit_range` (loader kinds pending). Dueling stays a baked `damage_bonus` | Archery, Defense, Champion Improved Critical | done |
 | 3 | R-G8 | **Done in rules** (conditions with a source, grapple / shove / escape, drag, one-size limit). Still open: swallow / engulf, web-style restrain, sim wiring of the push / drag | grapple monsters, crocodile, Charm Person, Fear | done |
 | 4 | R-G6 | **Done in rules**: bonus-action attack options (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy) with prerequisites, pool spend and an off-hand damage override. Still open: Open Hand Technique riders, Frenzy's exhaustion, a rules-side `legal_actions` listing | Monk, Berserker, dual wielders need wiring only | done |

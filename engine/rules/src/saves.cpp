@@ -32,9 +32,9 @@ SaveResult saving_throw(rng::Rng& r, const Combatant& c, Ability a, int dc, Roll
     return saving_throw(r, c, a, dc, combine_modes(adv, dis));
 }
 
-DeathSaveResult roll_death_save(rng::Rng& r, const DeathSaves& in) {
+namespace {
+DeathSaveResult death_save_from_natural(const DeathSaves& in, int nat) {
     DeathSaves s = in;
-    int nat = r.d(20);
     if (nat == 20) return {int8_t(nat), DeathSaves{}, DeathSaveOutcome::RegainedHp};
     if (nat == 1) s.failures = uint8_t(s.failures + 2);
     else if (nat >= 10) s.successes = uint8_t(s.successes + 1);
@@ -42,6 +42,16 @@ DeathSaveResult roll_death_save(rng::Rng& r, const DeathSaves& in) {
     if (s.failures >= 3) { s.failures = 3; return {int8_t(nat), s, DeathSaveOutcome::Died}; }
     if (s.successes >= 3) return {int8_t(nat), DeathSaves{0, 0, true}, DeathSaveOutcome::Stabilized};
     return {int8_t(nat), s, DeathSaveOutcome::Pending};
+}
+}  // namespace
+
+DeathSaveResult roll_death_save(rng::Rng& r, const DeathSaves& in) {
+    return death_save_from_natural(in, r.d(20));
+}
+
+DeathSaveResult roll_death_save(rng::Rng& r, const DeathSaves& in, RollMode mode) {
+    if (mode == RollMode::Normal) return roll_death_save(r, in);
+    return death_save_from_natural(in, roll_d20(r, 0, mode).natural);
 }
 
 DeathSaves death_save_failures_from_damage(const DeathSaves& in, bool critical) {

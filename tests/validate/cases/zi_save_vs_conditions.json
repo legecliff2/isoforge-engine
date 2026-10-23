@@ -1,0 +1,41 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "id": "test.neg.spell.zi_save_vs",
+  "name": "Zi Save Vs",
+  "description": "negative",
+  "level": 2,
+  "school": "abjuration",
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "components": {
+    "v": true
+  },
+  "duration": {
+    "kind": "hours",
+    "amount": 1
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "save_vs_conditions": [
+        "poisoned"
+      ],
+      "modifier": {
+        "stat": "attack_roll",
+        "mode": "advantage",
+        "duration": {
+          "kind": "rounds",
+          "n": 1
+        }
+      }
+    }
+  ]
+}

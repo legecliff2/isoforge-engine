@@ -1,0 +1,84 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "id": "test.neg.spell.warding_bond",
+  "name": "Warding Bond",
+  "description": "1 hour, not concentration. The target gains +1 AC, +1 to saves, and resistance to all damage. The caster takes the same damage the target takes. Ends if the caster drops to 0 hit points or the two are more than 60 feet apart.",
+  "level": 2,
+  "school": "abjuration",
+  "classes": [
+    "cleric"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "a pair of platinum rings",
+      "consumed": false
+    }
+  },
+  "duration": {
+    "kind": "hours",
+    "amount": 1
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "ac",
+        "bonus": 1,
+        "applies_to": "target",
+        "duration": {
+          "kind": "rounds",
+          "n": 600
+        }
+      }
+    },
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "save",
+        "bonus": 1,
+        "applies_to": "target",
+        "duration": {
+          "kind": "rounds",
+          "n": 600
+        }
+      }
+    },
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "resistance",
+        "all_damage": true,
+        "applies_to": "target",
+        "duration": {
+          "kind": "rounds",
+          "n": 600
+        }
+      }
+    },
+    {
+      "kind": "apply_modifier",
+      "end_beyond_ft": 60,
+      "end_at_zero": "caster",
+      "modifier": {
+        "stat": "share_damage",
+        "applies_to": "target",
+        "duration": {
+          "kind": "rounds",
+          "n": 600
+        }
+      }
+    }
+  ]
+}

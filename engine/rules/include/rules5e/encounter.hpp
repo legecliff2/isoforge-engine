@@ -502,6 +502,9 @@ struct ActiveModifier {
     // appended (ward / mark follow-ups; modifiers_digest sub-tag 0x5D when set): the turn (turn_stamp) the marked creature was
     // first seen at 0 hit points; move_mark is refused on that turn (SRD: "on a subsequent turn"). Cleared while it is above 0.
     bool mark_dropped = false; uint32_t mark_dropped_stamp = 0;
+    // appended (7.2zi True Strike; modifiers_digest sub-byte 0x5F with ModifierSpec::on_next_turn): false until the caster's
+    // next start_turn. While false the row is gated (no advantage, and consume does not spend it).
+    bool zi_armed = false;
 };
 
 // Limited-use features (Second Wind, ...), keyed by (actor, feature_id). Part of the encounter state,
