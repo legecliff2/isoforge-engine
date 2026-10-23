@@ -1,0 +1,38 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "id": "test.neg.spell.zi_hit_only",
+  "name": "Zi Hit Only",
+  "description": "negative",
+  "level": 2,
+  "school": "necromancy",
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "components": {
+    "v": true
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "spell_attack",
+      "attack": "ranged",
+      "hit_only": true,
+      "damage": {
+        "dice": "1d8",
+        "type": "necrotic"
+      }
+    }
+  ]
+}

@@ -1319,7 +1319,10 @@ def check_spell_gaps(doc: dict) -> list[str]:
             continue
         marked = True
         if stat not in ("damage", "ability_check"):
-            errs.append(f"{pre}effect scope target marked: damage or ability_check modifiers only")
+            # 7.2zi True Strike: attack_roll + on_next_turn + applies_to self. Any other attack_roll mark stays the old error.
+            strike = stat == "attack_roll" and e.get("on_next_turn") is True and applies == "self"
+            if not strike:
+                errs.append(f"{pre}effect scope target marked: damage or ability_check modifiers only")
         elif stat == "damage" and applies != "self":
             errs.append(f"{pre}effect scope target marked: a damage modifier needs applies_to self")
         elif applies == "allies_within_30":
@@ -2084,4 +2087,71 @@ def check_spell_batch_zh(doc: dict) -> list[str]:
             errs.append("effect summon_weapon light.bright_ft and dim_ft must be positive multiples of 5")
     if e.get("kind") == "sustained_damage" and ZH_KEYS["held_object"] in e and not _held_object_shape(e[ZH_KEYS["held_object"]]):
         errs.append(_HELD_OBJECT_SHAPE)
+    return errs
+
+
+# ---- VERSION_BUMP_BATCH 7.2zi: the spell@1 key names of this batch, in one place (rules5e_content spell_keys_zi.hpp) ----------
+ZI_KEYS = {"stabilize": "stabilize", "hit_only": "hit_only", "on_next_turn": "on_next_turn", "bonus_dash": "bonus_dash",
+           "save_vs_conditions": "save_vs_conditions", "halve_weapon_damage": "halve_weapon_damage",
+           "death_saves": "death_saves", "heal_maximum": "heal_maximum", "share_damage": "share_damage",
+           "all_damage": "all_damage", "end_beyond_ft": "end_beyond_ft", "end_at_zero": "end_at_zero", "caster": "caster"}
+
+
+def check_spell_batch_zi(doc: dict) -> list[str]:
+    """7.2zi spell@1 cross-field rules (spell_loader.cpp, same wording). Extra effects are prefixed effects[i]:."""
+    errs: list[str] = []
+    effs = [x for x in (doc.get("effects") or []) if isinstance(x, dict)]
+    for i, e in enumerate(effs):
+        pre = f"effects[{i}]: " if i else ""
+        kind = e.get("kind")
+        if kind == "spell_attack" and ZI_KEYS["hit_only"] in e:
+            if e[ZI_KEYS["hit_only"]] is not True:
+                errs.append(f"{pre}effect hit_only must be true")
+            elif "damage" in e:
+                errs.append(f"{pre}effect hit_only and damage together")
+        if kind != "apply_modifier":
+            continue
+        m = e.get("modifier") if isinstance(e.get("modifier"), dict) else {}
+        if ZI_KEYS["on_next_turn"] in e:
+            if e[ZI_KEYS["on_next_turn"]] is not True:
+                errs.append(f"{pre}effect on_next_turn must be true")
+            elif m.get("stat") != "attack_roll":
+                errs.append(f"{pre}effect on_next_turn needs an attack_roll modifier")
+        if ZI_KEYS["save_vs_conditions"] in e:
+            cv = e[ZI_KEYS["save_vs_conditions"]]
+            if m.get("stat") != "save" or "mode" not in m:
+                errs.append(f"{pre}effect save_vs_conditions needs a save modifier with a mode")
+            elif not isinstance(cv, list) or not cv:
+                errs.append(f"{pre}effect save_vs_conditions must be a non-empty list of conditions")
+            else:
+                seen: set[str] = set()
+                for c in cv:
+                    if not isinstance(c, str) or c not in GAZE_CONDITIONS:
+                        errs.append(f"{pre}effect save_vs_conditions must be a non-empty list of conditions")
+                        break
+                    if c in seen:
+                        errs.append(f"{pre}effect save_vs_conditions items must be unique")
+                        break
+                    seen.add(c)
+        if ZI_KEYS["death_saves"] in e and e[ZI_KEYS["death_saves"]] is not True:
+            errs.append(f"{pre}effect death_saves must be true")
+        if ZI_KEYS["heal_maximum"] in e and e[ZI_KEYS["heal_maximum"]] is not True:
+            errs.append(f"{pre}effect heal_maximum must be true")
+        if ZI_KEYS["end_beyond_ft"] in e:
+            ft = e[ZI_KEYS["end_beyond_ft"]]
+            if not _feet5(ft) or ft > 65535:
+                errs.append(f"{pre}effect end_beyond_ft must be a positive multiple of 5")
+        if ZI_KEYS["end_at_zero"] in e and e[ZI_KEYS["end_at_zero"]] != ZI_KEYS["caster"]:
+            errs.append(f"{pre}effect end_at_zero must be caster")
+        if "repeat_save" in e:
+            rs = e["repeat_save"]
+            if not isinstance(rs, dict) or set(rs) != {"ability"} or rs.get("ability") not in GAZE_ABILITIES:
+                errs.append(f"{pre}effect repeat_save must be {{ability: <ability>}}")
+        if "all_damage" in m:
+            if m.get("stat") != "resistance" or m.get("all_damage") is not True:
+                errs.append(f"{pre}effect modifier all_damage must be true on a resistance modifier")
+            elif "damage_type" in m:
+                errs.append(f"{pre}effect modifier all_damage and damage_type together")
+        if m.get("stat") == ZI_KEYS["halve_weapon_damage"] and m.get("ability") != "str":
+            errs.append(f"{pre}effect halve_weapon_damage needs ability str")
     return errs

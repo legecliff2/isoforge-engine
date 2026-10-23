@@ -1,0 +1,51 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "id": "test.neg.spell.beacon_of_hope",
+  "name": "Beacon of Hope",
+  "description": "Concentration, 1 minute. Chosen creatures have advantage on Wisdom saves and death saves, and healing dice are maximized.",
+  "level": 3,
+  "school": "abjuration",
+  "classes": [
+    "cleric"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 30
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "targets": {
+    "count": 255
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "death_saves": true,
+      "heal_maximum": true,
+      "modifier": {
+        "stat": "save",
+        "ability": "wis",
+        "mode": "advantage",
+        "applies_to": "target",
+        "duration": {
+          "kind": "rounds",
+          "n": 10
+        }
+      }
+    }
+  ]
+}

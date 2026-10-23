@@ -1,0 +1,67 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "id": "test.neg.spell.protection_from_poison",
+  "name": "Protection from Poison",
+  "description": "End the poisoned condition. For 1 hour, resistance to poison damage and advantage on saves against being poisoned.",
+  "level": 2,
+  "school": "abjuration",
+  "classes": [
+    "cleric",
+    "druid",
+    "paladin",
+    "ranger"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "hours",
+    "amount": 1
+  },
+  "effects": [
+    {
+      "kind": "end_condition",
+      "conditions": [
+        "poisoned"
+      ]
+    },
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "resistance",
+        "damage_type": "poison",
+        "applies_to": "target",
+        "duration": {
+          "kind": "rounds",
+          "n": 600
+        }
+      }
+    },
+    {
+      "kind": "apply_modifier",
+      "save_vs_conditions": [
+        "poisoned"
+      ],
+      "modifier": {
+        "stat": "save",
+        "mode": "advantage",
+        "applies_to": "target",
+        "duration": {
+          "kind": "rounds",
+          "n": 600
+        }
+      }
+    }
+  ]
+}

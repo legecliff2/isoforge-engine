@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cassert>
 #include <array>
+#include <utility>
 
 #include "rules5e/abilities.hpp"
 #include "rules5e/checks.hpp"
@@ -52,8 +53,9 @@ void kill(Combatant& c, std::vector<Event>& ev) {
 void refresh_mod_cache(EncounterState& s) {
     for (auto& c : s.combatants) c.mod_resist = 0;
     for (const auto& m : s.modifiers)
-        if (m.spec.stat == ModStat::Resistance && m.spec.has_damage_type)
-            for (auto& c : s.combatants) if (c.id == m.target) c.mod_resist |= bit(m.spec.damage_type);
+        if (m.spec.stat == ModStat::Resistance && (m.spec.has_damage_type || m.spec.resist_all))
+            for (auto& c : s.combatants) if (c.id == m.target)
+                c.mod_resist |= m.spec.resist_all ? uint32_t((1u << 13) - 1u) : bit(m.spec.damage_type);
 }
 
 bool mod_in_scope(const ModifierSpec& m, ModStat st, int ability) {
@@ -169,6 +171,21 @@ struct SaveFromGuard {
 
 SaveResult save_roll_raw(EncounterState& s, const Combatant& t, Ability ab, int dc, RollMode mode, const SaveSource* src,
                          int cover = 0) {
+    // 7.2zi: a Save row with save_vs_conditions applies only when the save is against one of those conditions.
+    // A null source (or one with no condition) does not satisfy the mask. Restored before return.
+    struct Ungate {
+        EncounterState& s; std::vector<std::pair<std::size_t, bool>> prev;
+        ~Ungate() { for (auto [i, g] : prev) if (i < s.modifiers.size()) s.modifiers[i].gated = g; }
+    } ungate{s, {}};
+    const uint32_t cond = src ? src->conditions : 0u;
+    for (std::size_t i = 0; i < s.modifiers.size(); ++i) {
+        auto& m = s.modifiers[i];
+        if (m.target != t.id || m.spec.save_vs_conditions == 0) continue;
+        if (m.spec.stat != ModStat::Save && (m.spec.also_rolls & kRollSave) == 0) continue;
+        if ((m.spec.save_vs_conditions & cond) != 0) continue;
+        ungate.prev.push_back({i, m.gated});
+        m.gated = true;
+    }
     bool adv = mode == RollMode::Advantage, dis = mode == RollMode::Disadvantage;
     for (const SaveAdvantage& sa : t.save_advantages) {   // 7.2z Danger Sense
         if (sa.ability != ab || (t.conditions & sa.not_conditions) != 0) continue;
@@ -1435,7 +1452,12 @@ bool run_event_triggers(EncounterState& s, Combatant& owner, Combatant& subject,
             if (!effect_applies(s, owner, on, e)) continue;
             switch (e.kind) {
             case RiderKind::HealSelf: case RiderKind::TempHp: {
-                const int amt = (e.dice.count > 0 || e.dice.bonus > 0) ? std::max(0, roll_dice(s.rng, e.dice)) : int(e.value);
+                const bool maxed = e.kind == RiderKind::HealSelf && !s.modifiers.empty() &&
+                    std::any_of(s.modifiers.begin(), s.modifiers.end(), [&](const ActiveModifier& m) {
+                        return m.target == owner.id && m.spec.heal_maximum != 0; });
+                const int rolled = (e.dice.count > 0 || e.dice.bonus > 0)
+                                       ? (maxed ? dice_max(e.dice) : roll_dice(s.rng, e.dice)) : int(e.value);
+                const int amt = std::max(0, rolled);
                 if (amt <= 0) break;
                 if (e.kind == RiderKind::TempHp) {   // temporary HP never stack: keep the larger pool
                     if (amt > owner.temp_hp && !owner.no_regain_hp) owner.temp_hp = int16_t(amt);
@@ -1812,6 +1834,74 @@ int roll_window(EncounterState& s, Combatant& a, uint8_t kind, int total, int dc
     return g_ctx ? roll_window(s, *g_ctx, a, 0, kind, total, dc, false, 0, ev) : 0;
 }
 
+// 7.2zi: every modifier of one spell source from one caster (Warding Bond's AC, save, resistance and share rows together).
+void end_linked_source(EncounterState& s, CombatantId caster, uint32_t source, int reason, std::vector<Event>& ev) {
+    for (std::size_t i = 0; i < s.modifiers.size();)
+        if (s.modifiers[i].caster == caster && s.modifiers[i].spec.source == source) remove_modifier(s, i, reason, ev);
+        else ++i;
+}
+void end_caster_zero_bonds(EncounterState& s, const Combatant& c, std::vector<Event>& ev) {
+    if (c.hp > 0 && !c.dead) return;
+    std::vector<std::pair<CombatantId, uint32_t>> srcs;
+    for (const auto& m : s.modifiers)
+        if (m.caster == c.id && m.spec.end_caster_at_zero &&
+            std::find(srcs.begin(), srcs.end(), std::make_pair(m.caster, m.spec.source)) == srcs.end())
+            srcs.push_back({m.caster, m.spec.source});
+    for (const auto& p : srcs) end_linked_source(s, p.first, p.second, 0, ev);
+}
+// Distance uses EncounterHooks::sight_facts. No hook: the bond does not end for distance (rules have no positions).
+void end_distant_bonds(EncounterState& s, std::vector<Event>& ev) {
+    if (!s.hooks.sight_facts || s.modifiers.empty()) return;
+    std::vector<std::pair<CombatantId, uint32_t>> srcs;
+    auto note = [&](CombatantId caster, uint32_t source) {
+        if (std::find(srcs.begin(), srcs.end(), std::make_pair(caster, source)) == srcs.end()) srcs.push_back({caster, source});
+    };
+    for (const auto& m : s.modifiers) {
+        if (m.spec.end_beyond_ft == 0) continue;
+        Combatant* caster = find_mut(s, m.caster);
+        Combatant* tgt = find_mut(s, m.target);
+        if (!caster || !tgt) { note(m.caster, m.spec.source); continue; }
+        if (s.hooks.sight_facts(s, *caster, *tgt).distance_ft > m.spec.end_beyond_ft) note(m.caster, m.spec.source);
+    }
+    for (const auto& p : srcs) end_linked_source(s, p.first, p.second, 0, ev);
+}
+// Recast of the same spell on either creature of an existing bond ends that bond (reason 2, replaced) before the new rows apply.
+void end_recast_bonds(EncounterState& s, const SpellDef& def, CombatantId neu, std::vector<Event>& ev) {
+    if (neu == 0) return;
+    bool bond = def.modifier.stat == ModStat::ShareDamage || def.modifier.end_caster_at_zero != 0;
+    for (const SpellEffect& e : def.extra_effects)
+        bond = bond || e.modifier.stat == ModStat::ShareDamage || e.modifier.end_caster_at_zero != 0;
+    if (!bond) return;
+    std::vector<std::pair<CombatantId, uint32_t>> srcs;
+    for (const auto& m : s.modifiers) {
+        if (m.spec.source != def.id || (m.spec.stat != ModStat::ShareDamage && m.spec.end_caster_at_zero == 0)) continue;
+        if (m.caster != neu && m.target != neu) continue;
+        if (std::find(srcs.begin(), srcs.end(), std::make_pair(m.caster, m.spec.source)) == srcs.end())
+            srcs.push_back({m.caster, m.spec.source});
+    }
+    for (const auto& p : srcs) end_linked_source(s, p.first, p.second, 2, ev);
+}
+thread_local std::vector<CombatantId> g_share_stack;
+void share_ward_damage(EncounterState& s, Combatant& victim, const DamageApplied& applied, std::vector<Event>& ev, Ctx* ctx) {
+    if (applied.dealt <= 0 || s.modifiers.empty()) return;
+    if (std::find(g_share_stack.begin(), g_share_stack.end(), victim.id) != g_share_stack.end()) return;
+    g_share_stack.push_back(victim.id);
+    struct Pop { ~Pop() { if (!g_share_stack.empty()) g_share_stack.pop_back(); } } pop;
+    std::vector<std::pair<CombatantId, uint32_t>> rows;
+    for (const auto& m : s.modifiers)
+        if (m.target == victim.id && m.spec.stat == ModStat::ShareDamage) rows.push_back({m.caster, m.spec.source});
+    for (const auto& row : rows) {
+        if (std::find(g_share_stack.begin(), g_share_stack.end(), row.first) != g_share_stack.end()) continue;
+        bool live = false;
+        for (const auto& m : s.modifiers)
+            live = live || (m.target == victim.id && m.caster == row.first && m.spec.source == row.second && m.spec.stat == ModStat::ShareDamage);
+        if (!live) continue;
+        Combatant* caster = find_mut(s, row.first);
+        if (!caster || caster->dead || caster == &victim) continue;
+        damage_creature(s, *caster, apply_damage_fixed(*caster, applied.dealt), false, ev, nullptr, ctx);
+    }
+}
+
 // Damage plus the Damaged window, triggers and the concentration check (SRD: CON save, DC max(10, half the damage)).
 // Order: Damaged window (reduce_damage) -> drop_to_zero triggers -> commit and DamageDealt -> damage_dealt /
 // reduce_to_zero triggers -> retaliate / riposte reactions -> concentration -> repeat saves.
@@ -1866,6 +1956,8 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
         }
     }
     after_damage(t, applied, critical, ev);
+    share_ward_damage(s, t, applied, ev, ctx);   // 7.2zi Warding Bond: the caster takes applied.dealt, untyped
+    end_caster_zero_bonds(s, t, ev);             // 7.2zi: the caster (not the warded creature) at 0 HP ends the bond
     if (applied.dealt > 0 && !s.modifiers.empty()) consume_modifiers(s, 3, t.id, 4, ev);   // "until damaged"
     if (applied.dealt > 0 && !s.modifiers.empty()) mark_fought(s, t.id);   // 7.2z ends_early: took damage
     if (attacker && !attacker->triggers.empty() && applied.dealt > 0) {
@@ -2154,6 +2246,10 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         bool attackers_dis = false, attackers_adv = false;
         for (auto& m : s.modifiers) {   // `when` scope of roll-time modifiers (follow-up): gate the ones that do not hold
             m.gated = false;
+            if (m.spec.on_next_turn && !m.zi_armed) { m.gated = true; continue; }   // 7.2zi True Strike: not until the caster's next turn
+            if (m.spec.mark_scope != 0 && m.spec.stat == ModStat::AttackRoll && m.target == a.id && m.mark != t.id) {
+                m.gated = true; continue;   // 7.2zi: advantage and consume only against the marked creature
+            }
             if (m.spec.applies_to == ModAppliesTo::Attackers) {   // 7.2zd: a row on the attacked creature, never its own rolls
                 m.gated = true;
                 if (m.target == t.id && m.spec.stat == ModStat::AttackRoll &&
@@ -2229,7 +2325,22 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     emit(ev, EventKind::AttackResolved, a.id, t.id, roll.natural, roll.total,
          int32_t(hit) | (int32_t(crit) << 1));
     if (t.team != a.team && !s.modifiers.empty()) mark_fought(s, a.id);   // 7.2z ends_early: attacked a hostile
+    if (spell_id != 0) {   // 7.2zi hit_only: the roll and the hit stand; no damage dice and no hit points (riders still see the hit)
+        if (const SpellDef* sd = spell_def(s, spell_id); sd && sd->hit_only) {
+            if (!s.effects.empty()) end_on_own_action(s, a.id, kEndsOnAttack, ev);
+            return hit;
+        }
+    }
     const TrigSrc tsrc{&a, &atk, spell_id != 0, atk_mode, ally_near_target};
+    // 7.2zi Ray of Enfeeblement: each component of a Strength weapon attack is halved, round down, before the target's resistances.
+    auto halve_piece = [&](int amt) {
+        if (spell_id != 0 || amt <= 0 || s.modifiers.empty()) return amt;
+        for (const auto& m : s.modifiers)
+            if (!m.gated && m.target == a.id && m.spec.stat == ModStat::HalveWeaponDamage &&
+                (m.spec.scope_ability == 0 || m.spec.scope_ability == scope_ability_of(a, atk)))
+                return amt / 2;
+        return amt;
+    };
     if (hit) {
         // Triggers that fire on this hit (Sneak Attack-style): their FeatureTriggered events come before the damage
         // dice; extra_damage riders are rolled with the attack's damage so a crit doubles them.
@@ -2277,14 +2388,16 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, r.dice, crit))), r.same_as_weapon ? atk.type : r.type});
             for (const auto& mp : modp) parts.push_back({int16_t(mp.first), mp.second});
             if (smite_piece) parts.push_back(*smite_piece);
+            for (auto& p : parts) p.amount = int16_t(halve_piece(p.amount));
             damage_creature(s, t, zone_apply_damage_parts(s, t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
         } else if (atk.extra_damage.empty() && !smite_piece) {
-            damage_creature(s, t, zone_apply_damage(s, t, int16_t(dmg), atk.type, atk.qualifiers), crit, ev, &tsrc, &ctx);
+            damage_creature(s, t, zone_apply_damage(s, t, int16_t(halve_piece(dmg)), atk.type, atk.qualifiers), crit, ev, &tsrc, &ctx);
         } else {   // multi-component hit: one DamageDealt carrying the per-type-modified sum
             std::vector<DamagePiece> parts{{int16_t(dmg), atk.type}};
             for (const DamagePart& p : atk.extra_damage)
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.dice, crit))), p.type});
             if (smite_piece) parts.push_back(*smite_piece);
+            for (auto& p : parts) p.amount = int16_t(halve_piece(p.amount));
             damage_creature(s, t, zone_apply_damage_parts(s, t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
         }
         if (atk.drain_max_hp && !t.dead) life_drain(s, t, drain_before - (int(t.hp) + int(t.temp_hp)), atk.drain_save_dc, a.id, ev);
@@ -2633,6 +2746,9 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         }
     }
     drop_caster_turn_modifiers(s, c.id, ev);
+    for (auto& m : s.modifiers)   // 7.2zi True Strike: the row arms on the caster's next turn, before they act
+        if (m.caster == c.id && m.spec.on_next_turn) m.zi_armed = true;
+    end_distant_bonds(s, ev);   // 7.2zi Warding Bond: farther than end_beyond_ft (no sight hook: unchanged)
     if (!s.effects.empty()) {   // EC loader durations (flagged): StartOfTargetNextTurn effects on `c` end as its turn starts
         std::vector<GoneEffect> gone;
         for (const auto& e : s.effects)
@@ -2708,7 +2824,9 @@ void start_turn(EncounterState& s, std::vector<Event>& ev) {
         run_event_triggers(s, c, c, TriggerOn::TurnStart, x, ev);
     }
     if (is_dying(c) && c.uses_death_saves && !zone_downed) {
-        auto r = roll_death_save(s.rng, c.death);
+        const bool dadv = !s.modifiers.empty() && std::any_of(s.modifiers.begin(), s.modifiers.end(), [&](const ActiveModifier& m) {
+            return m.target == c.id && m.spec.death_save_adv != 0; });   // 7.2zi Beacon of Hope
+        auto r = dadv ? roll_death_save(s.rng, c.death, RollMode::Advantage) : roll_death_save(s.rng, c.death);
         c.death = r.after;
         emit(ev, EventKind::DeathSaveRolled, c.id, 0, r.natural, c.death.successes, c.death.failures);
         switch (r.outcome) {
@@ -2886,9 +3004,9 @@ void pay_bonus_cost(EncounterState& s, const Combatant& a, const ActionRequest& 
         emit(ev, EventKind::ResourceSpent, a.id, 0, int32_t(c->pool), c->cost, find_pool(s, a.id, c->pool)->cur);
 }
 
-bool spend_action(TurnBudget& b, const Combatant& c, ActionKind k, bool bonus) {
+bool spend_action(TurnBudget& b, const Combatant& c, ActionKind k, bool bonus, bool extra_bonus = false) {
     if (bonus) {
-        if (!b.bonus_action || !(c.bonus_action_grants & bit(k))) return false;
+        if (!b.bonus_action || !(extra_bonus || (c.bonus_action_grants & bit(k)))) return false;
         b.bonus_action = false;
         return true;
     }
@@ -3158,7 +3276,9 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         const DiceExpr dice = scaled_dice(def, lvl, a.caster_level);
         for (Combatant* t : T) {
             if (t->dead || (def.excluded_types & bit(t->creature_type))) continue;   // no effect (Cure Wounds: undead)
-            int amt = roll_dice(s.rng, dice) + (def.add_spellcasting_modifier ? modifier(a.abilities, a.spellcasting_ability) : 0);
+            const bool maxed = !s.modifiers.empty() && std::any_of(s.modifiers.begin(), s.modifiers.end(), [&](const ActiveModifier& m) {
+                return m.target == t->id && m.spec.heal_maximum != 0; });   // 7.2zi Beacon of Hope: no rng draw
+            int amt = (maxed ? dice_max(dice) : roll_dice(s.rng, dice)) + (def.add_spellcasting_modifier ? modifier(a.abilities, a.spellcasting_ability) : 0);
             if (a.has_heal_bonus && def.is_spell && ctx.slot_cast && lvl >= 1)   // 7.2zc Disciple of Life: a spell cast with a slot of level 1+
                 amt += int(a.heal_bonus_flat) + (a.heal_bonus_per_level ? int(lvl) : 0);
             if (amt <= 0) continue;
@@ -3577,6 +3697,15 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         if (def.concentration) a.concentration_spell = def.id;
         break;
     }
+    case SpellEffectKind::Stabilize: {   // 7.2zi Spare the Dying: one dying creature; undead and constructs are excluded and unchanged
+        for (Combatant* t : T) {
+            if (t->dead || !is_dying(*t)) continue;
+            if (def.excluded_types & bit(t->creature_type)) continue;
+            stabilize(*t, ev);
+            affected.push_back(t);
+        }
+        break;
+    }
     case SpellEffectKind::WeaponSmite: {   // 7.2zh Branding Smite: the charge waits on the caster for a weapon-attack hit
         if (T.size() != 1 || T[0] != &a) break;
         ActiveSpellEffect x{def.id, a.id, a.id, Condition::Paralyzed, Ability::Wis, 0, RepeatSave::None, def.concentration,
@@ -3608,6 +3737,7 @@ std::vector<Combatant*> resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a,
     for (Combatant* t : T_in)
         if (def.area == AreaShape::None ||
             cover_of(s, a.id, t->id, true, def.id, ctx.has_area_origin, ctx.area_x, ctx.area_y) != Cover::Total) T.push_back(t);
+    if (T.size() == 1) end_recast_bonds(s, def, T[0]->id, ev);   // 7.2zi Warding Bond: cast again on either connected creature
     std::vector<Combatant*> affected = resolve_effect(s, ctx, a, def, lvl, T, within_5ft, ev);
     std::vector<Combatant*> all = affected;
     for (const SpellEffect& e : def.extra_effects) {
@@ -3879,6 +4009,12 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     case SpellEffectKind::WeaponSmite:   // 7.2zh Branding Smite: the caster only
         if (T.size() != 1 || T[0] != &a) return fail("weapon_smite: self only");
         break;
+    case SpellEffectKind::Stabilize:   // 7.2zi Spare the Dying: touch, one dying creature, not the caster
+        if (T.size() != 1 || T[0] == &a) return fail("stabilize: one living creature");
+        if (!req.target_within_5ft) return fail("stabilize: touch range");
+        if (def.excluded_types & bit(T[0]->creature_type)) return fail("stabilize: no effect on undead or constructs");
+        if (!is_dying(*T[0])) return fail("stabilize: target is not dying");
+        break;
     case SpellEffectKind::Zone:   // R-G11: cast at a point (zone_x / zone_y) or on the caster; no creature targets
         if (T.size() != 1 || T[0] != &a) return fail("zone: no creature targets");
         if (req.has_zone_dest && def.zone.anchor == ZoneAnchor::Creature) return fail("zone: an aura has no destination");
@@ -3903,6 +4039,8 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (x.kind == SpellEffectKind::SummonWeapon) return fail("spiritual weapon: primary effect only");
     for (const SpellEffect& x : def.extra_effects)
         if (x.kind == SpellEffectKind::WeaponSmite) return fail("weapon_smite: primary effect only");
+    for (const SpellEffect& x : def.extra_effects)
+        if (x.kind == SpellEffectKind::Stabilize) return fail("stabilize: primary effect only");
     if (!req.summon_archetypes.empty() && def.kind != SpellEffectKind::Summon) return fail("summon: not a summon spell");
     if (!req.summon_tiles.empty() && def.kind != SpellEffectKind::Summon && def.kind != SpellEffectKind::SummonWeapon)
         return fail("summon: not a summon spell");
@@ -4689,6 +4827,11 @@ StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     const bool was_reckless = a->reckless_active;
     if (req.reckless) a->reckless_active = true;   // before the roll: this attack has advantage too
     StepResult r = step_impl_core(s, ctx, req);
+    if (r.ok) {   // 7.2zi: a successful step rechecks bond distance (one step after positions change)
+        std::vector<Event> ended;
+        end_distant_bonds(s, ended);
+        r.events.insert(r.events.end(), ended.begin(), ended.end());
+    }
     a = find_mut(s, req.actor);
     if (!r.ok) {
         s.budget = saved;
@@ -5078,7 +5221,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             b.bonus_action = false; b.aggressive_dash = true;
         } else {
             if (!bonus_cost_ok(s, a, b, req)) return fail("not enough resource for this bonus action");
-            if (!spend_action(b, a, req.kind, req.as_bonus_action)) return fail("no action available");
+            const bool granted = req.as_bonus_action && has_marker(s, a.id, ModStat::BonusDash);   // 7.2zi Expeditious Retreat
+            if (!spend_action(b, a, req.kind, req.as_bonus_action, granted)) return fail("no action available");
             pay_bonus_cost(s, a, req, out.events);
         }
         b.movement_ft = int16_t(b.movement_ft + modified_speed(s, a));   // 7.2u: Dash adds the speed after modifiers (Ray of Frost)
@@ -5408,6 +5552,8 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (b.bonus_action)
         for (ActionKind k : {ActionKind::Dash, ActionKind::Disengage, ActionKind::Dodge, ActionKind::Hide})
             if (a.bonus_action_grants & bit(k)) add(k, true);
+    if (b.bonus_action && !(a.bonus_action_grants & bit(ActionKind::Dash)) && has_marker(s, a.id, ModStat::BonusDash))
+        add(ActionKind::Dash, true);   // 7.2zi Expeditious Retreat: the grant is the modifier, not a class bit
     if (b.bonus_action && a.sorcery_pool != 0 && !is_incapacitated(a)) {   // Font of Magic: every valid conversion
         for (uint8_t dir = 1; dir <= 2; ++dir)
             for (uint8_t lvl = 1; lvl <= 9; ++lvl)
@@ -5949,6 +6095,11 @@ uint64_t modifiers_digest(const EncounterState& s, uint64_t h) {
         if (p.also_rolls != 0) { byte(0x5C); byte(p.also_rolls); }   // 7.2ze Bless / Bane: only for such rows   // 7.2zd: only for such rows
         if (m.mark_dropped) { byte(0x5D); u32(m.mark_dropped_stamp); }   // ward / mark follow-ups: only when set
         if (m.mark != 0) { byte(0x5A); u32(m.mark); byte(p.mark_scope); byte(uint8_t(p.chosen_ability)); }   // 7.2zc mark: only when set   // 7.2za held die   // 7.2y wielded-scope binding: only when bound (older digests unchanged)
+        if (p.on_next_turn || m.zi_armed || p.save_vs_conditions || p.death_save_adv || p.heal_maximum || p.resist_all ||
+            p.end_beyond_ft || p.end_caster_at_zero) {   // 7.2zi: sub-byte 0x5F, not a SIM_EVENTS tag
+            byte(0x5F); byte(p.on_next_turn); byte(uint8_t(m.zi_armed)); u32(p.save_vs_conditions);
+            byte(p.death_save_adv); byte(p.heal_maximum); byte(p.resist_all); u32(p.end_beyond_ft); byte(p.end_caster_at_zero);
+        }
     }
     return h;
 }

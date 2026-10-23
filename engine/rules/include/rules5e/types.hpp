@@ -327,7 +327,11 @@ enum class ModStat : uint8_t { AttackRoll, Save, AbilityCheck, Ac, Speed, Damage
                                HeldDie,
                                // appended (7.2zg Faerie Fire `outlined`, a state): attack rolls against the creature have
                                // advantage when the attacker can see it, and it gains no benefit from being invisible.
-                               Outlined };
+                               Outlined,
+                               // appended (7.2zi): BonusDash: the creature may take Dash as a bonus action (Expeditious Retreat).
+                               // HalveWeaponDamage: weapon attacks using scope_ability (1 Str) deal half damage, round down.
+                               // ShareDamage: when this creature takes damage, the caster takes the same amount (Warding Bond).
+                               BonusDash, HalveWeaponDamage, ShareDamage };
 // appended (7.2za): roll kinds for HeldDie and SubtractRoll (`applies_to` in content: attack, save, check, damage).
 inline constexpr uint8_t kRollAttack = 1, kRollSave = 2, kRollCheck = 4, kRollDamage = 8;
 enum class ModAppliesTo : uint8_t { Self, Target, AlliesWithin30,
@@ -412,6 +416,20 @@ struct ModifierSpec {
     // appended (7.2zg Blur): AttacksAgainst only: kSense* bits; an attacker not fooled (fooled_by_illusion) ignores the row.
     // Hashed in modifiers_digest (sub-byte 0x5E) only when non-zero.
     uint8_t exempt_senses = 0;
+    // appended (7.2zi; modifiers_digest sub-byte 0x5F, only when any of these or ActiveModifier::zi_armed is set — not a
+    // SIM_EVENTS registry tag). on_next_turn: the row does nothing until the caster's next turn starts (True Strike).
+    // save_vs_conditions: a Save mode applies only when the save's SaveSource::conditions overlaps this mask (0 = any save).
+    // death_save_adv: advantage on death saving throws. heal_maximum: healing dice are the maximum, and draw no rng.
+    // resist_all: Resistance to every damage type (no has_damage_type). end_beyond_ft: end every modifier of this source and
+    // caster when the two are farther apart than this (0 = never; needs EncounterHooks::sight_facts). end_caster_at_zero:
+    // end that source when the caster drops to 0 HP (SRD Warding Bond: the caster, not the warded creature).
+    uint8_t on_next_turn = 0;
+    uint32_t save_vs_conditions = 0;
+    uint8_t death_save_adv = 0;
+    uint8_t heal_maximum = 0;
+    uint8_t resist_all = 0;
+    uint16_t end_beyond_ft = 0;
+    uint8_t end_caster_at_zero = 0;
 };
 
 // Row R-G6: a bonus-action attack option (two-weapon fighting, Martial Arts, Flurry of Blows, Frenzy). Requested with

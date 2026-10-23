@@ -1,0 +1,55 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "id": "test.neg.spell.ray_of_enfeeblement",
+  "name": "Ray of Enfeeblement",
+  "description": "Ranged spell attack. On a hit, Strength weapon attacks deal half damage until the target's Constitution save succeeds. The ray deals no hit points.",
+  "level": 2,
+  "school": "necromancy",
+  "classes": [
+    "warlock",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "spell_attack",
+      "attack": "ranged",
+      "hit_only": true
+    },
+    {
+      "kind": "apply_modifier",
+      "applies_to": "affected",
+      "repeat_save": {
+        "ability": "con"
+      },
+      "modifier": {
+        "stat": "halve_weapon_damage",
+        "ability": "str",
+        "applies_to": "target",
+        "duration": {
+          "kind": "rounds",
+          "n": 10
+        }
+      }
+    }
+  ]
+}

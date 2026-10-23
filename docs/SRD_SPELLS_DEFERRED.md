@@ -18,6 +18,8 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 | 3 | 13 | 10 | 19 | 42 |
 | **total** | **73** | **24** | **72** | **169** |
 
+7.2zi (Rules, `feat/rules-spell-batch-zi`) implements Spare the Dying, True Strike, Expeditious Retreat, Protection from Poison, Ray of Enfeeblement, Beacon of Hope, and Warding Bond. Specimens: `tests/validate/fixtures/spell_batch_zi/`. The 73 / 24 / 72 counts stay until T&C authors the `srd51.spell.*` packs.
+
 ## Authored in this change (9)
 
 | spell | level | `spell@1` shape | notes |
@@ -185,9 +187,9 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 0 | Minor Illusion | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Prestidigitation | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Resistance | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
-| 0 | Spare the Dying | NEW | spell@1 has no stabilize effect kind; Rules models it only as `ActionKind::SpareTheDying` + `hooks.spare_the_dying` (coverage doc marks it DATA via that ActionKind, not via spell@1) | - |
+| 0 | Spare the Dying | Done (rules 7.2zi) | `stabilize` (first effect only), touch, excludes undead and constructs. Fixture `tests/validate/fixtures/spell_batch_zi/spare_the_dying.json`. `ActionKind::SpareTheDying` is unchanged. Pack not authored. | - |
 | 0 | Thaumaturgy | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
-| 0 | True Strike | NEW | `attack_roll` advantage with `consume: next_attack` loads, but the advantage applies to any target; the SRD limits it to the chosen target (no per-target modifier scope). | R-G3 (B2) |
+| 0 | True Strike | Done (rules 7.2zi) | `attack_roll` advantage, `consume: next_attack`, `scope.target marked`, `on_next_turn`, duration `until_end_of_caster_next_turn`, concentration 1 round. Fixture `tests/validate/fixtures/spell_batch_zi/true_strike.json`. The old self-only approximation in `tests/validate/fixtures/v4/extra/true_strike.json` still validates. | R-G3 (B2) |
 | 1 | Alarm | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Animal Friendship | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Charm Person | NEW | Charmed with source (R-G8). | R-G8 (C1) |
@@ -197,7 +199,7 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 1 | Detect Magic | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Detect Poison and Disease | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Disguise Self | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
-| 1 | Expeditious Retreat | NEW | No spell@1 way to grant a bonus-action Dash for the duration (`grant_action` is a feature effect). | R-G3 (B2) |
+| 1 | Expeditious Retreat | Done (rules 7.2zi) | `bonus_dash` on the caster for 600 rounds, concentration 10 minutes. The cast does not Dash. Fixture `tests/validate/fixtures/spell_batch_zi/expeditious_retreat.json`. | R-G3 (B2) |
 | 1 | Feather Fall | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Find Familiar | NEW | Summons rules (R-G12 PR 2) exist but spell@1 has no summon key; 1-hour cast. | R-G12 (C5) |
 | 1 | Floating Disk | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
@@ -234,16 +236,16 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Magic Mouth | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Pass Without Trace | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Prayer of Healing | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Protection from Poison | NEW | R-G3. | R-G3 (B2) |
-| 2 | Ray of Enfeeblement | NEW | Attack + damage halving rider (R-G3). | R-G3 (B2) |
+| 2 | Protection from Poison | Done (rules 7.2zi) | `end_condition` poisoned, then poison `resistance` and a `save` advantage limited by `save_vs_conditions: [poisoned]`, 600 rounds, not concentration. Fixture `tests/validate/fixtures/spell_batch_zi/protection_from_poison.json`. | R-G3 (B2) |
+| 2 | Ray of Enfeeblement | Done (rules 7.2zi) | `spell_attack` `hit_only` plus `halve_weapon_damage` (ability str) and `repeat_save: {ability: con}`. Fixture `tests/validate/fixtures/spell_batch_zi/ray_of_enfeeblement.json`. | R-G3 (B2) |
 | 2 | Rope Trick | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | See Invisibility | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Spider Climb | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Suggestion | NEW | Forced behavior (R-G8). | R-G8 (C1) |
-| 2 | Warding Bond | NEW | Shared damage (R-G3). | R-G3 (B2) |
+| 2 | Warding Bond | Done (rules 7.2zi) | +1 `ac`, +1 `save`, `resistance` `all_damage`, `share_damage` with `end_beyond_ft` 60 and `end_at_zero: caster`. 600 rounds, not concentration. Fixture `tests/validate/fixtures/spell_batch_zi/warding_bond.json`. | R-G3 (B2) |
 | 2 | Zone of Truth | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 3 | Animate Dead | OOS | none (out of combat scope): Utility / out of encounter casting time (1 minute or longer). | - |
-| 3 | Beacon of Hope | NEW | Save advantage, max healing (R-G3). | R-G3 (B2) |
+| 3 | Beacon of Hope | Done (rules 7.2zi) | `save` Wisdom advantage, `death_saves`, `heal_maximum`, `targets.count` 255, concentration 1 minute. Fixture `tests/validate/fixtures/spell_batch_zi/beacon_of_hope.json`. | R-G3 (B2) |
 | 3 | Bestow Curse | NEW | Touch + chosen effect (R-G2/R-G3). | R-G2, R-G3 (B1, B2) |
 | 3 | Blink | NEW | Phasing (R-G9). | R-G9 (C2) |
 | 3 | Call Lightning | NEW | Zone + repeating action (R-G11). | R-G11 (C4) |
@@ -277,4 +279,4 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 - Acid Arrow authored in 7.2zg (#265): `spell_attack` `on_miss half` + `delayed_damage` (upcast reaches the rider).
 - Small additive changes that unblock more: a spell@1 condition-choice key (Blindness/Deafness). Faerie Fire, Protection from Energy, Spiritual Weapon, Haste / Slow, and `targets` on modifiers landed in 7.2zg (#263 / #265).
 - Every `NEW` row above is additive content once its row lands; ids are `srd51.spell.<snake_case_name>` and are not reserved yet.
-- Spare the Dying: `spell@1` has no stabilize effect, only the Rules `ActionKind::SpareTheDying` hook. If Rules adds an effect kind (additive), it is a one-file change.
+- Spare the Dying: rules 7.2zi adds `stabilize` (first effect only). `ActionKind::SpareTheDying` is unchanged. T&C authors `srd51.spell.spare_the_dying` from the fixture.

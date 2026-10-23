@@ -1,0 +1,39 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "id": "test.neg.spell.zi_all_damage",
+  "name": "Zi All Damage",
+  "description": "negative",
+  "level": 2,
+  "school": "abjuration",
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "components": {
+    "v": true
+  },
+  "duration": {
+    "kind": "hours",
+    "amount": 1
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "resistance",
+        "damage_type": "poison",
+        "all_damage": true,
+        "duration": {
+          "kind": "rounds",
+          "n": 1
+        }
+      }
+    }
+  ]
+}

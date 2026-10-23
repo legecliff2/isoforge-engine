@@ -382,7 +382,8 @@ FIRST_EFFECT_ONLY = ("hp_pool", "dispel", "revive", "end_condition", "sustained_
                      "teleport",   # R-G9 (sim #144)
                      "weapon_imbue", "duplicates",   # 7.2zf
                      c4.ZG_KEYS["haste"], c4.ZG_KEYS["slow"], c4.ZG_KEYS["summon_weapon"], c4.ZG_KEYS["temp_hp"],   # 7.2zg
-                     c4.ZH_KEYS["weapon_smite"])   # 7.2zh
+                     c4.ZH_KEYS["weapon_smite"],   # 7.2zh
+                     c4.ZI_KEYS["stabilize"])   # 7.2zi
 TIMED_BY_DURATION = ("hp_pool", "sustained_damage")   # their timer is the spell's duration in rounds
 
 
@@ -397,6 +398,7 @@ def check_spell(doc, errs, ctx):
     errs += c4.check_spell_imbue_mirror(doc)   # 7.2zf
     errs += c4.check_spell_batch_zg(doc)   # 7.2zg
     errs += c4.check_spell_batch_zh(doc)   # 7.2zh
+    errs += c4.check_spell_batch_zi(doc)   # 7.2zi
     eff = effs[0]   # the first effect carries targeting, scaling and the reaction/duration rules
     if len(effs) > 1 and any(e["kind"] in REACTION_EFFECT_TRIGGER for e in effs):
         errs.append("effects: ac_bonus and counter reactions cannot be combined with other effects")
