@@ -1,5 +1,6 @@
 {
-  "$schema": "monster@4",
+  "$schema": "monster@5",
+  "derive": true,
   "id": "srd51.monster.giant_toad",
   "name": "Giant Toad",
   "source": {
@@ -12,6 +13,7 @@
   "armor_class": {
     "value": 11
   },
+  "hands": 0,
   "hit_points": {
     "average": 39,
     "formula": "6d10+6"
@@ -55,6 +57,10 @@
       "id": "bite",
       "name": "Bite",
       "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d10",
+        "ability": "str"
+      },
       "to_hit": 4,
       "reach": 5,
       "targets": 1,

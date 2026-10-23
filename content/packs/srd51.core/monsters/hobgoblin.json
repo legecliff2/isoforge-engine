@@ -1,5 +1,6 @@
 {
-  "$schema": "monster@4",
+  "$schema": "monster@5",
+  "derive": true,
   "id": "srd51.monster.hobgoblin",
   "name": "Hobgoblin",
   "source": {
@@ -16,6 +17,24 @@
     "value": 18,
     "note": "chain mail, shield"
   },
+  "equipment": [
+    {
+      "item": "srd51.item.chain_mail",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.shield",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.longsword",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.longbow"
+    }
+  ],
+  "hands": 2,
   "hit_points": {
     "average": 11,
     "formula": "2d8+2"
@@ -80,6 +99,7 @@
       "id": "longsword",
       "name": "Longsword",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.longsword",
       "to_hit": 3,
       "reach": 5,
       "targets": 1,
@@ -95,6 +115,8 @@
       "id": "longsword_two_handed",
       "name": "Longsword (two hands)",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.longsword",
+      "use": "two_hands",
       "to_hit": 3,
       "reach": 5,
       "targets": 1,
@@ -110,6 +132,7 @@
       "id": "longbow",
       "name": "Longbow",
       "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.longbow",
       "to_hit": 3,
       "range": [
         150,
