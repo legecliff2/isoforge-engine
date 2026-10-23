@@ -764,6 +764,9 @@ def validate_doc(rel: str, doc: dict, tag: str, registry: Registry, by_tag: dict
             if tag in ("monster@5", "character@5"):
                 e5, w5 = c4.check_equipment_v5(typ, doc, ctx)
                 e4, w4 = e4 + e5, w4 + w5
+            if tag == "monster@5":   # EQUIPMENT 5.6 derived-vs-printed (rules5e::derive_monster mirror)
+                e6, w6 = c4.check_monster_derive(doc, ctx)
+                e4, w4 = e4 + e6, w4 + w6
         errs += e4
         warns += [f"{rel}: {w}" for w in w4]
     if typ in ("monster", "character") and isinstance(doc, dict):

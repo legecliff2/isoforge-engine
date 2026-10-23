@@ -1,5 +1,6 @@
 {
-  "$schema": "monster@4",
+  "$schema": "monster@5",
+  "derive": true,
   "id": "srd51.monster.zombie",
   "name": "Zombie",
   "source": {
@@ -12,6 +13,7 @@
   "armor_class": {
     "value": 8
   },
+  "hands": 2,
   "hit_points": {
     "average": 22,
     "formula": "3d8+9"
@@ -87,6 +89,10 @@
       "id": "slam",
       "name": "Slam",
       "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d6",
+        "ability": "str"
+      },
       "to_hit": 3,
       "reach": 5,
       "targets": 1,
