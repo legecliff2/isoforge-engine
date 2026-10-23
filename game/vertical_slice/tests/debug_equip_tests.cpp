@@ -6,6 +6,13 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <system_error>
+
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "assets/schema_registry.hpp"
 #include "debug_equip.hpp"
@@ -25,9 +32,20 @@ std::string slurp(const fs::path& p) {
     return {std::istreambuf_iterator<char>(f), {}};
 }
 // The sample pack; the fighter wears chain mail, holds a longsword, and carries a hooded lantern and a shield.
+// Per-process suffix so concurrent/self-hosted runs never collide on a fixed /tmp path (and so a
+// ghrunner-owned leftover cannot Permission-denied the throwing remove_all).
+const std::string& run_suffix() {
+#ifdef _WIN32
+    static const std::string s = std::to_string(_getpid());
+#else
+    static const std::string s = std::to_string(getpid());
+#endif
+    return s;
+}
 fs::path make_pack() {
-    const fs::path root = fs::temp_directory_path() / "isoforge_debug_equip";
-    fs::remove_all(root);
+    const fs::path root = fs::temp_directory_path() / ("isoforge_debug_equip_" + run_suffix());
+    std::error_code ec;
+    fs::remove_all(root, ec);   // ignore: leftover from another user/run must not fail the test
     fs::create_directories(root);
     const fs::path pack = root / "test.equip";
     fs::copy(fs::path(SLICE_PACK_ROOT) / SLICE_PACK, pack, fs::copy_options::recursive);
@@ -172,4 +190,5 @@ TEST_CASE("debug equip view: scripted equip, unequip and light / hood / douse th
     const uint32_t closed = ui_with(false), opened = ui_with(true);
     CHECK(opened > closed);
     CHECK(dev.errors() == 0);
+    { std::error_code ec; fs::remove_all(root, ec); }   // best-effort; do not fail the test on cleanup
 }
