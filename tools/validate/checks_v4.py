@@ -2029,3 +2029,59 @@ def check_spell_batch_zg(doc: dict) -> list[str]:
             errs.append(f"effects[{i}]: damage_type_choices is only allowed on the first effect")
             break
     return errs
+
+
+# ---- VERSION_BUMP_BATCH 7.2zh: the spell@1 key names of this batch, in one place (rules5e_content spell_keys_zh.hpp) ----------
+ZH_KEYS = {"weapon_smite": "weapon_smite", "reveal_invisible": "reveal_invisible", "light": "light", "dim_ft": "dim_ft",
+           "bright_ft": "bright_ft", "held_object": "held_object", "held": "held", "save": "save", "on_fail": "on_fail",
+           "while_held": "while_held", "disadvantage": "disadvantage", "until": "until"}
+
+_HELD_OBJECT_SHAPE = ("effect held_object must be {save: con, on_fail: drop, while_held: "
+                      "{disadvantage: [attack_rolls, ability_checks], until: start_of_caster_next_turn}}")
+
+
+def _feet5(n) -> bool:
+    return isinstance(n, int) and not isinstance(n, bool) and n >= 5 and n % 5 == 0
+
+
+def _held_object_shape(ho) -> bool:
+    if not isinstance(ho, dict) or set(ho) != {"save", "on_fail", "while_held"}:
+        return False
+    if ho.get("save") != "con" or ho.get("on_fail") != "drop":
+        return False
+    wh = ho.get("while_held")
+    if not isinstance(wh, dict) or set(wh) != {"disadvantage", "until"}:
+        return False
+    if wh.get("until") != "start_of_caster_next_turn":
+        return False
+    d = wh.get("disadvantage")
+    return isinstance(d, list) and sorted(d) == ["ability_checks", "attack_rolls"]
+
+
+def check_spell_batch_zh(doc: dict) -> list[str]:
+    """7.2zh spell@1 cross-field rules (spell_loader.cpp, same wording and order)."""
+    errs: list[str] = []
+    effs = [x for x in (doc.get("effects") or []) if isinstance(x, dict)]
+    if not effs:
+        return errs
+    e = effs[0]
+    du = doc.get("duration") if isinstance(doc.get("duration"), dict) else {}
+    timed = du.get("kind") in SPELL_TIMED_DURATIONS
+    conc = du.get("concentration") is True
+    if e.get("kind") == ZH_KEYS["weapon_smite"] and not (conc or timed):
+        errs.append("weapon_smite: needs concentration or a rounds, minutes or hours duration")
+    light = e.get(ZH_KEYS["light"]) if e.get("kind") == ZH_KEYS["weapon_smite"] else None
+    if isinstance(light, dict) and not _feet5(light.get(ZH_KEYS["dim_ft"])):
+        errs.append("effect weapon_smite light.dim_ft must be a positive multiple of 5")
+    if e.get("kind") == "summon_weapon" and e.get(ZH_KEYS["held"]) is True:
+        if "move_ft" in e:
+            errs.append("summon_weapon: held needs no move_ft")
+        if e.get("add_spellcasting_modifier") is True:
+            errs.append("summon_weapon: held takes no add_spellcasting_modifier")
+    if e.get("kind") == "summon_weapon" and isinstance(e.get(ZH_KEYS["light"]), dict):
+        bright = e[ZH_KEYS["light"]]
+        if not _feet5(bright.get(ZH_KEYS["bright_ft"])) or not _feet5(bright.get(ZH_KEYS["dim_ft"])):
+            errs.append("effect summon_weapon light.bright_ft and dim_ft must be positive multiples of 5")
+    if e.get("kind") == "sustained_damage" and ZH_KEYS["held_object"] in e and not _held_object_shape(e[ZH_KEYS["held_object"]]):
+        errs.append(_HELD_OBJECT_SHAPE)
+    return errs

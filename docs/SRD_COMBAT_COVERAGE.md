@@ -377,16 +377,15 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 | Barkskin | DATA | Rules done (follow-up): `Ac` modifier with `ac_floor` 16, concentration. Spell kind pending (R-G3). Shipped in `srd51.core` (T&C spells refresh). |
 | Blindness/Deafness | Done (7.2ze) | `save {ability: con, condition: chosen, choices: [blinded, deafened], repeat_save: end_of_turn}`: the caster picks at cast (`ActionRequest::condition_choice`, log_hash 0xCF); 1 target + `scaling.upcast.targets: 1`, rounds 10, no concentration. |
 | Blur | NEW (wiring) | Rules done (#89): `AttacksAgainst` disadvantage modifier on self, concentration (the blindsight/truesight exception is not modelled). |
-| Branding Smite | NEW | R-G4. |
-| Branding Smite | NEW | Weapon-attack rider: extra radiant damage, reveals invisible, concentration (R-G4, T&C-G5). SRD level 2 (the earlier draft also listed it at level 1). |
+| Branding Smite | Done (7.2zh) | `weapon_smite` (first effect only): weapon-attack hit only, extra damage, reveal + dim light on the target for the remaining duration. `Combat::hash` 0xD4. |
 | Calm Emotions | NEW | Area + suppress condition (R-G10, R-G3). |
 | Darkness | NEW | `Zone` (point sphere 15 ft, `kZoneMagicalDarkness` flag) in rules (R-G11 PR 2, 7.2m); vision, dispelling light (R-G13) and cast on an object (R-G12) still open. |
 | Enhance Ability | NEW (wiring) | Rules done (#89): AbilityCheck advantage scoped to one ability; the temp-HP / carrying options are not modelled (R-G3). |
 | Enlarge/Reduce | NEW | Size/damage change (R-G3, T&C-G12, T&C-G14). |
-| Flame Blade | NEW | Summoned weapon (R-G12). |
+| Flame Blade | Done (7.2zh) | `summon_weapon.held`: free hand, action attacks, no `move_ft`, no spellcasting modifier, `upcast_every` 2, light bright 10 / dim 10. State rides in 0xAF. |
 | Flaming Sphere | NEW | Object/zone (R-G11/R-G12). |
 | Gust of Wind | NEW | Line + push (R-G9, R-G10). |
-| Heat Metal | NEW (wiring) | rules5e `SustainedDamage` + `CastSpell sustain` bonus action (R-G15, VERSION_BUMP_BATCH 7.2g); object rider not modelled. Loader and sim done (EC #120): `sustained_damage {damage}` (+ `scaling.upcast.dice`, `duration.concentration`, timer from `duration`); the AI sustains its own Heat Metal with the bonus action from the next turn; `log_hash` folds `sustain` (0xB8). No pack ships it yet; schema / validator pending (T&C). |
+| Heat Metal | Done (7.2zh) | `sustained_damage` + `CastSpell sustain` (R-G15, 7.2g, `log_hash` 0xB8) and the held-object rider: CON save, drop or disadvantage while the metal object is still in contact. v1 metal = Weapon / Armor / Shield categories. `Combat::hash` 0xD5. `equip_item` on the cast names the object (hand instance, or armor def id). |
 | Hold Person | DATA | Shipped (`save` WIS, paralyzed, repeat end_of_turn, humanoid, upcast targets). |
 | Invisibility | Done (7.2zc) | `apply_condition` invisible with `ends_on: [attack, cast]`; concentration ends when nothing of the spell is left. |
 | Lesser Restoration | NEW (wiring) | rules5e `EndCondition` + `ends_conditions` (R-G15, 7.2g); the caster chooses which listed condition ends (`ActionRequest::condition_choice` = 1 + index into the spell's `conditions` in JSON list order; not listed / not on the target = refused, no state change; no choice and the AI = the lowest listed condition present); no disease model. Loader done (EC #120): `end_condition {conditions[]}` (one def; no per-condition defs). No pack ships it yet; schema / validator pending (T&C). |
