@@ -182,6 +182,7 @@
     "spells/aid.json",
     "spells/bane.json",
     "spells/barkskin.json",
+    "spells/beacon_of_hope.json",
     "spells/bless.json",
     "spells/blindness_deafness.json",
     "spells/blur.json",
@@ -230,6 +231,8 @@
     "spells/produce_flame.json",
     "spells/protection_from_energy.json",
     "spells/protection_from_evil_and_good.json",
+    "spells/protection_from_poison.json",
+    "spells/ray_of_enfeeblement.json",
     "spells/ray_of_frost.json",
     "spells/revivify.json",
     "spells/sacred_flame.json",
@@ -243,12 +246,15 @@
     "spells/silence.json",
     "spells/sleep.json",
     "spells/slow.json",
+    "spells/spare_the_dying.json",
     "spells/spike_growth.json",
     "spells/spirit_guardians.json",
     "spells/spiritual_weapon.json",
     "spells/stinking_cloud.json",
     "spells/thunderwave.json",
+    "spells/true_strike.json",
     "spells/vicious_mockery.json",
+    "spells/warding_bond.json",
     "spells/web.json"
   ]
 }

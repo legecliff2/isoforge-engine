@@ -1,0 +1,37 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.spare_the_dying",
+  "name": "Spare the Dying",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "You touch a living creature that has 0 hit points. The creature becomes stable. This spell has no effect on undead or constructs.",
+  "level": 0,
+  "school": "necromancy",
+  "classes": [
+    "cleric"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "stabilize",
+      "excludes_creature_type": [
+        "undead",
+        "construct"
+      ]
+    }
+  ]
+}
