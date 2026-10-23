@@ -65,3 +65,20 @@ TEST_CASE("glow: content visual integers convert to float colour / intensity and
     CHECK(p.style_for("test.item.torch_blue", false).color.b == doctest::Approx(0.2f));   // exact id wins over "torch"
     CHECK(p.style_for("srd51.core.light.torch", false).color.g == doctest::Approx(torch_default.color.g));   // fallback kept
 }
+
+TEST_CASE("glow: built-in palette resolves the srd51.core.light.* preset ids") {
+    const GlowPalette p;
+    const GlowStyle fallback = p.style_for("x.unknown", false);
+    auto differs = [&](const GlowStyle& s) { return s.color.g != fallback.color.g || s.intensity != fallback.intensity; };
+    for (const char* id : {"srd51.core.light.torch", "srd51.core.light.candle", "srd51.core.light.lamp",
+                           "srd51.core.light.lantern_hooded", "srd51.core.light.lantern_bullseye"}) {
+        CAPTURE(id);
+        CHECK(differs(p.style_for(id, false)));
+    }
+    CHECK(p.style_for("srd51.core.light.torch", false).flicker == GlowFlicker::Torch);
+    CHECK(p.style_for("srd51.core.light.candle", false).intensity == doctest::Approx(0.6f));
+    CHECK(p.style_for("srd51.core.light.lamp", false).intensity == doctest::Approx(0.75f));
+    // specific lantern entries win over the generic "lantern"
+    CHECK(p.style_for("srd51.core.light.lantern_bullseye", false).intensity == doctest::Approx(1.f));
+    CHECK(p.style_for("srd51.core.light.lantern_hooded", false).color.g != doctest::Approx(p.style_for("x.lantern", false).color.g));
+}
