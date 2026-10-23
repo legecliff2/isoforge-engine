@@ -1802,6 +1802,14 @@
     "wizard"
    ]
   },
+  "entangle": {
+   "name": "Entangle",
+   "level": 1,
+   "school": "conjuration",
+   "classes": [
+    "druid"
+   ]
+  },
   "faerie-fire": {
    "name": "Faerie Fire",
    "level": 1,

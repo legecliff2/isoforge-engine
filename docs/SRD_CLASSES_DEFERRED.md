@@ -88,7 +88,7 @@ Three non-human SRD sample PCs sit beside them (`characters/sample_*.json`: hill
 | Font of Inspiration (Bard) | 5 | the pool's `recharge: short_rest`; descriptive feature, no `effect` | yes (pool recharge) |
 | Expertise, Bonus Proficiencies (Bard, Lore) | 3-5 | baked into `skills` (Performance and Persuasion doubled; Arcana, Insight, Perception added); descriptive features, no `effect` | yes (static numbers) |
 | Bard College | 3 | `classes[0].subclass` = `lore` | descriptive |
-| Spellcasting (Druid) | 1-5 | `spellcasting {ability wis, caster_level, slots, spells}`: Produce Flame, Poison Spray; Cure Wounds, Faerie Fire, Healing Word, Thunderwave; + Barkskin, Hold Person, Lesser Restoration at 3; + Shillelagh, Flame Blade, Heat Metal at 4 (Thunderwave dropped); + Dispel Magic, Protection from Energy at 5 (Healing Word and Thunderwave dropped to fit both L2s within Wis modifier + level) | yes |
+| Spellcasting (Druid) | 1-5 | `spellcasting {ability wis, caster_level, slots, spells}`: Produce Flame, Poison Spray; Cure Wounds, Faerie Fire, Healing Word, Thunderwave; + Entangle, Fog Cloud at 2; + Barkskin, Hold Person, Lesser Restoration at 3; + Shillelagh, Flame Blade, Heat Metal at 4 (Thunderwave / Entangle / Fog Cloud dropped); + Dispel Magic, Protection from Energy at 5 (Healing Word dropped; list doubles as prepared, within Wis modifier + level) | yes |
 | Circle Spells (Land: Mountain) | 3-5 | always prepared, in `spellcasting.spells`: Spike Growth (3), Lightning Bolt (5; not a druid spell, allowed through `subclass_spells`). Mountain is chosen because it gives the most shipped spells that add something (Arctic's two shipped ones are druid spells anyway; Desert, Coast, Forest and Swamp give one; Grassland none). Spider Climb (3) and Meld into Stone (5) are not shipped (see the spells section). Descriptive feature, no `effect` | yes (spell list) |
 | Wild Shape (Druid) | 2-5 | `wild_shape {pool wild_shape, forms [jackal, wolf, boar, axe_beak, giant_poisonous_snake, black_bear], max_cr_by_level [{2, 1/4}, {4, 1/2}]}` (R-G12, EC #176) + `resources[]` `wild_shape {max 2, recharge short_rest}`. `no_fly_below` 8 / `no_swim_below` 4 are left at the engine defaults (= SRD). Forms: every shipped beast of CR 1/2 or below without a fly speed; the engine refuses the giant poisonous snake (swim 30, #184) and the black bear (CR 1/2) below 4th. Not listed: the swarm of rats (a swarm of Tiny beasts, not a single beast you have seen), the dire wolf and giant spider (CR 1: from 8th). Duration (half druid level in hours), revert at 0 HP and no casting in beast form are engine-side | yes |
 | Natural Recovery (Land) | 2-5 | `slot_recovery {class druid, max_slot_level 5, uses 1}` (sim #148); budget ceil(druid level / 2) derived | yes |
@@ -206,7 +206,7 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 | Wizard | 4 | + Darkness (Int 18 → 8 prepared) |
 | Wizard | 5 | + Counterspell, Haste, False Life again (9 prepared) |
 | Druid | 1 | Produce Flame, Poison Spray; Cure Wounds, Faerie Fire, Healing Word, Thunderwave |
-| Druid | 2 | + Fog Cloud |
+| Druid | 2 | + Entangle, Fog Cloud |
 | Druid | 3 | + Barkskin, Hold Person, Lesser Restoration, Spike Growth (circle) |
 | Druid | 4 | + Shillelagh (third cantrip known), Flame Blade, Heat Metal (Thunderwave dropped) |
 | Druid | 5 | + Dispel Magic, Lightning Bolt (circle), Protection from Energy; Flame Blade, Heat Metal (Healing Word and Thunderwave dropped) |
