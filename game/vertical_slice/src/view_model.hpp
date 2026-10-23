@@ -21,6 +21,24 @@ struct TileView {
     TileKind   kind = TileKind::Unknown;
 };
 
+// ---- Equipment visuals: a plain-data copy of what the sim's loadout shows on a creature (sim::Combat::loadout). ----
+// Where an item is drawn on its holder's sprite. MainHand / OffHand: the item is held in that hand (a two-handed item is
+// listed once, MainHand). Back: a stowed (carried) weapon or shield, slung on the back. Worn armor is not drawn.
+enum class AttachSlot : uint8_t { Back, MainHand, OffHand };
+enum class EquipKind : uint8_t { Weapon, Shield, Light, Other };
+struct EquipVisual {
+    uint32_t    item = 0;            // item instance id (stable; tie-break inside a slot)
+    AttachSlot  slot = AttachSlot::MainHand;
+    EquipKind   kind = EquipKind::Other;
+    uint8_t     hands = 1;           // 2: two-handed (held in both hands, drawn at the main hand)
+    bool        lit = false;         // kHeldLit (lights / a torch)
+    uint8_t     light_state = 0;     // rules5e::light_state_index
+    uint16_t    bright_ft = 0, dim_ft = 0;   // rules5e::light_radii now (0 / 0 while unlit): the same numbers the glow uses
+    std::string content_id;          // "srd51.item.longsword": picks placeholder art (render side)
+};
+// Presentation facing of a sprite (iso screen directions). East facings hold the main hand on the camera side.
+enum class Facing : uint8_t { SouthEast, SouthWest, NorthEast, NorthWest };
+
 struct ActorView {
     uint32_t    id = 0;        // stable id (sort key tie-break)
     std::string name;          // "FIGHTER", "GOBLIN"
@@ -31,6 +49,8 @@ struct ActorView {
     bool        current = false;
     bool        down = false;  // 0 HP / unconscious
     bool        dead = false;
+    Facing      facing = Facing::SouthEast;
+    std::vector<EquipVisual> equipment;   // held + slung items, slot order then instance order (empty: nothing drawn)
 };
 
 // ---- Light (LIGHTING.md §10): a plain-data copy of the sim's published sim::LightFrame. ----
