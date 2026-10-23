@@ -66,7 +66,7 @@ MODIFIER = {("attack_roll",): (S({"stat", "duration"}), S({"bonus", "die", "sign
             ("temp_hp",): (S({"stat", "duration", "bonus"}), S({"per_turn"} | _M)),
             ("resistance",): (S({"stat", "duration", "damage_type"}), S(_M)),
             ("attacks_against",): (S({"stat", "duration", "mode"}), S({"when"} | _M)),
-            ("no_reactions", "no_healing"): (S({"stat", "duration"}), S(_M))}   # 7.2u markers
+            ("no_reactions", "no_healing", "outlined"): (S({"stat", "duration"}), S(_M))}   # 7.2u markers; 7.2zg outlined
 REACTION_EFFECT = {("ac_bonus",): (S({"kind", "bonus"}), S()),
                    ("reduce_damage",): (S({"kind"}), S({"fraction", "dice", "applies_to_attack"})),   # 7.2zb applies_to_attack
                    ("impose_disadvantage",): (S({"kind"}), S()),
@@ -504,7 +504,7 @@ class ControlConditionsArms(unittest.TestCase):
     """VERSION_BUMP_BATCH 7.2v: additive save-effect keys (spell@1) and their common@2 defs."""
     SAVE = (S({"kind", "ability"}), S({"damage", "on_success", "condition", "repeat_save", "control",
                                          "control_excludes_creature_types", "control_min_int", "destroy_undead_max_cr8",
-                                         "description", "applies_to", "choices"}))   # 7.2ze choices
+                                         "description", "applies_to", "choices", "ends_on"}))   # 7.2ze choices; 7.2zg ends_on
 
     def test_save_arm_keys(self):
         eff = load("spell/v1.schema.json")["$defs"]["effect"]
@@ -571,7 +571,7 @@ class SpellBatch2_72zd(unittest.TestCase):
         for k in ("flat", "per_slot_above"):
             self.assertEqual((hp["properties"][k]["minimum"], hp["properties"][k]["maximum"]), (0, 50))
         ac = self.arm("apply_condition")
-        self.assertEqual(ac["properties"]["ends_on"]["items"]["enum"], ["attack", "cast", "harmful_cast"])
+        self.assertEqual(ac["properties"]["ends_on"]["items"]["enum"], ["attack", "cast", "harmful_cast", "damage", "shake_awake"])   # 7.2zg
         w = ac["properties"]["ward"]
         self.assertFalse(w["additionalProperties"])
         self.assertEqual(set(w["required"]), {"save", "on_fail"})
