@@ -1,5 +1,6 @@
 {
-  "$schema": "monster@4",
+  "$schema": "monster@5",
+  "derive": true,
   "id": "srd51.monster.commoner",
   "name": "Commoner",
   "source": {
@@ -15,6 +16,13 @@
   "armor_class": {
     "value": 10
   },
+  "equipment": [
+    {
+      "item": "srd51.item.club",
+      "equipped": true
+    }
+  ],
+  "hands": 2,
   "hit_points": {
     "average": 4,
     "formula": "1d8"
@@ -46,6 +54,7 @@
       "id": "club",
       "name": "Club",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.club",
       "to_hit": 2,
       "reach": 5,
       "targets": 1,

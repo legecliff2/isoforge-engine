@@ -134,6 +134,8 @@ void migrate_3_to_4(Json& j, bool character) {
 }
 void character_3_to_4(Json& j, MigrationCtx&) { migrate_3_to_4(j, true); }
 void monster_3_to_4(Json& j, MigrationCtx&) { migrate_3_to_4(j, false); }
+// EQUIPMENT.md section 7: identity steps (the registry rewrites $schema; the body is untouched).
+void identity(Json&, MigrationCtx&) {}
 } // namespace
 
 void register_content_schemas(SchemaRegistry& reg) {
@@ -149,6 +151,9 @@ void register_content_schemas(SchemaRegistry& reg) {
     reg.register_migration("monster", 2, 3, monster_2_to_3);
     reg.register_migration("character", 3, 4, character_3_to_4);
     reg.register_migration("monster", 3, 4, monster_3_to_4);
+    reg.register_migration("item", 1, 2, identity);
+    reg.register_migration("monster", 4, 5, identity);
+    reg.register_migration("character", 4, 5, identity);
 }
 
 std::optional<std::string> behavior_ai_script(const Json& doc) {
