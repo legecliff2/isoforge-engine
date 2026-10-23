@@ -440,16 +440,16 @@ int Combat::distance_tiles(CombatantId a, CombatantId b) const {
 }
 
 
-rules5e::Cover Combat::cover_of(const rules5e::CoverQuery& q) const {
+rules5e::Cover Combat::cover_between(Vec2i origin, int origin_n, Vec2i target, int target_n, CombatantId except_a,
+                                      CombatantId except_b) const {
     using rules5e::Cover;
-    if (!rules5e::find(state_, q.target) || q.source == q.target) return Cover::None;
-    const Spot ts = spot(q.target);
-    Spot os{q.has_origin ? Vec2i{q.origin_x, q.origin_y} : pos(q.source), q.has_origin ? 1 : footprint_size(q.source)};
-    if (!q.has_origin && !rules5e::find(state_, q.source)) return Cover::None;
-    // Creature tiles that give half cover (living, present, neither source nor target), sorted for lookup.
+    if (origin_n < 1) origin_n = 1;
+    if (target_n < 1) target_n = 1;
+    const Spot os{origin, origin_n}, ts{target, target_n};
+    // Creature tiles that give half cover (living, present, neither except_a nor except_b), sorted for lookup.
     std::vector<std::pair<int, int>> crowd;
     for (const auto& sl : slots_) {
-        if (sl.gone || sl.id == q.source || sl.id == q.target) continue;
+        if (sl.gone || sl.id == except_a || sl.id == except_b) continue;
         const auto* c = rules5e::find(state_, sl.id);
         if (!c || c->dead) continue;
         const Spot s = spot(sl.id);
@@ -457,7 +457,9 @@ rules5e::Cover Combat::cover_of(const rules5e::CoverQuery& q) const {
             for (int x = 0; x < s.n; ++x) crowd.push_back({s.p.x + x, s.p.y + y});
     }
     std::sort(crowd.begin(), crowd.end());
-    auto inside = [](Spot s, Vec2i t) { return t.x >= s.p.x && t.x < s.p.x + s.n && t.y >= s.p.y && t.y < s.p.y + s.n; };
+    auto inside = [](Spot s, Vec2i t) {
+        return t.x >= s.p.x && t.x < s.p.x + s.n && t.y >= s.p.y && t.y < s.p.y + s.n;
+    };
     auto wall = [&](Vec2i t) { return !inside(ts, t) && !inside(os, t) && grid_.blocks_sight(t); };
     auto body = [&](Vec2i t) {
         return wall(t) || (!inside(ts, t) && !inside(os, t) &&
@@ -472,14 +474,30 @@ rules5e::Cover Combat::cover_of(const rules5e::CoverQuery& q) const {
             for (int ty = 0; ty <= ts.n; ++ty)
                 for (int tx = 0; tx <= ts.n; ++tx) {
                     const Vec2i t{ts.p.x + tx, ts.p.y + ty};
-                    if (segment_blocked(o, t, wall)) { ++walls; ++any; }
-                    else if (segment_blocked(o, t, body)) ++any;
+                    if (segment_blocked(o, t, wall)) {
+                        ++walls;
+                        ++any;
+                    } else if (segment_blocked(o, t, body)) {
+                        ++any;
+                    }
                 }
-            const Cover c = walls == lines ? Cover::Total : 4 * walls >= 3 * lines ? Cover::ThreeQuarters
-                          : any > 0 ? Cover::Half : Cover::None;
+            const Cover c = walls == lines                       ? Cover::Total
+                            : 4 * walls >= 3 * lines             ? Cover::ThreeQuarters
+                            : any > 0                            ? Cover::Half
+                                                                 : Cover::None;
             if (uint8_t(c) < uint8_t(best)) best = c;
         }
     return best;
+}
+
+rules5e::Cover Combat::cover_of(const rules5e::CoverQuery& q) const {
+    using rules5e::Cover;
+    if (!rules5e::find(state_, q.target) || q.source == q.target) return Cover::None;
+    if (!q.has_origin && !rules5e::find(state_, q.source)) return Cover::None;
+    const Spot ts = spot(q.target);
+    const Spot os{q.has_origin ? Vec2i{q.origin_x, q.origin_y} : pos(q.source),
+                  q.has_origin ? 1 : footprint_size(q.source)};
+    return cover_between(os.p, os.n, ts.p, ts.n, q.source, q.target);
 }
 
 bool Combat::los_spots(Spot a, Spot b) const {
