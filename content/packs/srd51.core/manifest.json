@@ -193,6 +193,7 @@
     "spells/dispel_magic.json",
     "spells/divine_favor.json",
     "spells/eldritch_blast.json",
+    "spells/entangle.json",
     "spells/faerie_fire.json",
     "spells/false_life.json",
     "spells/fear.json",
