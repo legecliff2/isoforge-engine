@@ -111,3 +111,47 @@ TEST_CASE("session takes a pack set: errors surface, config shape parses") {
     CHECK_FALSE(Session::apply_pack_config(R"({"packs": "x"})", o, &err));
     CHECK_FALSE(Session::apply_pack_config("[", o, &err));
 }
+
+// #260: views of 3x3 chunks and larger used to overflow the 8192-sprite world batch and drop sprites.
+TEST_CASE("slice view: 3x3 and 4x4 chunk views draw every sprite, in the same order, deterministically") {
+    for (int chunks : {3, 4}) {
+        CAPTURE(chunks);
+        ViewModel vm;
+        for (int y = 0; y < chunks * 32; ++y)
+            for (int x = 0; x < chunks * 32; ++x) {
+                TileView t;
+                t.tile = {x, y};
+                const bool wall = (x * 5 + y) % 23 == 0;
+                t.kind = wall ? TileKind::Wall : TileKind::Floor;
+                t.layer = wall ? 2 : 0;
+                vm.tiles.push_back(t);
+            }
+        auto run = [&] {
+            eng::render::NullDevice dev;
+            SliceView v(dev);
+            std::vector<eng::render::NullDrawCall> draws;
+            for (int f = 0; f < 2; ++f) {
+                REQUIRE(dev.begin_frame());
+                v.prepare(vm, eng::iso2d::Camera{}, 1280, 720);
+                auto& cl = dev.command_list();
+                cl.begin_pass(eng::render::TargetId{}, eng::Color{0, 0, 0, 1});
+                v.submit(cl);
+                cl.end_pass();
+                dev.end_frame();
+            }
+            CHECK(dev.errors() == 0);
+            CHECK(v.world_sprites() == vm.tiles.size());   // nothing dropped
+            uint64_t quads = 0;
+            for (const auto& d : dev.last_frame().draws) quads += d.index_count / 6;
+            CHECK(quads == v.world_sprites() + v.ui_sprites());   // and every one is drawn
+            return dev.last_frame().draws;
+        };
+        const auto a = run(), b = run();
+        REQUIRE(a.size() == b.size());
+        for (size_t i = 0; i < a.size(); ++i) {
+            CHECK(a[i].texture == b[i].texture);
+            CHECK(a[i].index_count == b[i].index_count);
+            CHECK(a[i].first_index == b[i].first_index);
+        }
+    }
+}
