@@ -1256,6 +1256,15 @@
     "ranger"
    ]
   },
+  "color-spray": {
+    "name": "Color Spray",
+    "level": 1,
+    "school": "illusion",
+    "classes": [
+      "sorcerer",
+      "wizard"
+    ]
+  },
   "counterspell": {
    "name": "Counterspell",
    "level": 3,
@@ -1277,6 +1286,16 @@
     "paladin",
     "ranger"
    ]
+  },
+  "darkness": {
+    "name": "Darkness",
+    "level": 2,
+    "school": "evocation",
+    "classes": [
+      "sorcerer",
+      "warlock",
+      "wizard"
+    ]
   },
   "dispel-magic": {
    "name": "Dispel Magic",
@@ -1308,6 +1327,17 @@
     "sorcerer",
     "wizard"
    ]
+  },
+  "fog-cloud": {
+    "name": "Fog Cloud",
+    "level": 1,
+    "school": "conjuration",
+    "classes": [
+      "druid",
+      "ranger",
+      "sorcerer",
+      "wizard"
+    ]
   },
   "healing-word": {
    "name": "Healing Word",

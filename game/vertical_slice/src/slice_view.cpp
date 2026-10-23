@@ -256,18 +256,26 @@ struct SliceView::TintLookup {
         for (const auto& c : L.chunks) add(c.cx, c.cy);
         for (const auto& c : L.blocked) add(c.cx, c.cy);
     }
-    Color operator()(Vec2i t, iso2d::Fog* fog_out = nullptr) {
-        if (!L.present) return v.tile_tint(L, t, fog_out);
+    Color operator()(Vec2i t, iso2d::Fog* fog_out = nullptr, uint8_t* packed_out = nullptr) {
+        if (!L.present) {
+            if (packed_out) *packed_out = 0;
+            return v.tile_tint(L, t, fog_out);
+        }
         const int32_t cx = t.x >= 0 ? t.x / 32 : -((-t.x + 31) / 32), cy = t.y >= 0 ? t.y / 32 : -((-t.y + 31) / 32);
         if (!last || last->cx != cx || last->cy != cy) {
             last = nullptr;
             for (const Entry& e : entries) if (e.cx == cx && e.cy == cy) { last = &e; break; }
-            if (!last) return v.tile_tint(L, t, fog_out);
+            if (!last) {
+                if (packed_out) *packed_out = 0;
+                return v.tile_tint(L, t, fog_out);
+            }
         }
         const int i = floor_mod32(t.y) * 32 + floor_mod32(t.x);
         const iso2d::Fog f = last->fog ? iso2d::fog_of_texel(last->fog[i]) : iso2d::Fog::Unexplored;
+        const uint8_t packed = last->light ? last->light[i] : uint8_t(0);
         if (fog_out) *fog_out = f;
-        return iso2d::light_tint(last->light ? last->light[i] : uint8_t(0), f);
+        if (packed_out) *packed_out = packed;
+        return iso2d::light_tint(packed, f);
     }
 };
 
@@ -349,6 +357,23 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
             iso2d::Sprite s{tex_->ground(t.kind), float(kTileW), float(kTileH), kTileW / 2.f, lift};
             s.tint = tint(t.tile);
             world_.draw(s, iso, 0, key, t.layer);
+        }
+    }
+    // Soft haze on heavily obscured Visible tiles (Fog / Stinking Cloud bits). Tint already cools;
+    // this is a light second pass only — no FoW invention, no zone fill.
+    if (L.present) {
+        for (const TileView& t : vm.tiles) {
+            if (t.kind == TileKind::Wall || t.layer >= 2) continue;
+            iso2d::Fog f;
+            uint8_t packed = 0;
+            tint(t.tile, &f, &packed);
+            if (f != iso2d::Fog::Visible || (packed & iso2d::light_bits::kObscuredHeavy) == 0) continue;
+            const Vec2f iso{float(t.tile.x), float(t.tile.y)};
+            const float lift = float(t.elevation * kElevPx);
+            const uint32_t key = uint32_t(t.tile.y * 32 + t.tile.x);
+            iso2d::Sprite haze{tex_->ground(t.kind), float(kTileW), float(kTileH), kTileW / 2.f, lift};
+            haze.tint = {0.55f, 0.65f, 0.90f, 0.30f};
+            world_.draw(haze, iso, 0, key, 1);
         }
     }
     // ---- world: actors (placeholder pawns), current-turn ring ----
