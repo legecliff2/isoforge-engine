@@ -681,6 +681,7 @@ All 63 srd51.core PCs are now character@5 with `derive: true`. The sample pack's
   - The strings follow the 5.6 forms (`<id>: derived AC ...`, `<id>.<action>: derived to-hit ...`, `... derived damage ...`).
   - All 63 PCs reproduce their printed AC and attacks (also cross-checked locally against the rules5e functions).
 
+
 ## 16. Ammunition containers (item@2 gear `container`, EQUIPMENT 2.5)
 
 These are SRD 5.1 containers from 5e-database a6212be, with exact costs, weights and descriptions:
