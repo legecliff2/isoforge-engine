@@ -218,13 +218,158 @@ void LightCache::begin_step(LightWorld w) {
     world_.normalise();
     reset_fields();
     memo_.clear();
+    inc_.valid = false;
 }
 
 void LightCache::begin_step(LightWorld w, std::span<const RectI> dirty) {
     world_ = std::move(w);
     world_.normalise();
     reset_fields();   // fields are per step (sources may have moved); tiles outside `dirty` keep their samples
+    inc_.valid = false;   // the caller's rects, not the incremental diff, define what is kept
     for (const RectI& r : dirty) invalidate_rect(r);
+}
+
+namespace {
+// The inputs of compose / field_reaches a source contributes (id, preset and carrier are presentation / ordering only).
+bool same_light(const LightSource& a, const LightSource& b) noexcept {
+    return a.tile == b.tile && a.bright_ft == b.bright_ft && a.dim_ft == b.dim_ft && a.flags == b.flags &&
+           a.spell_level == b.spell_level && a.lit == b.lit;
+}
+bool same_zone(const LightZone& a, const LightZone& b) {
+    return a.zone_id == b.zone_id && a.flags == b.flags && a.spell_level == b.spell_level && a.tiles == b.tiles;
+}
+// Every tile a source can light (and every wall its traces can cross): the square of side 2 * reach + 1 around it.
+RectI halo_of(const LightSource& s) {
+    const int32_t r = reach_tiles(s);
+    return RectI{s.tile.x - r, s.tile.y - r, 2 * r + 1, 2 * r + 1};
+}
+bool rect_has(const RectI& r, Vec2i p) noexcept { return p.x >= r.x && p.y >= r.y && p.x < r.x + r.w && p.y < r.y + r.h; }
+RectI tiles_bbox(const std::vector<Vec2i>& ts) {   // non-empty
+    Vec2i lo = ts.front(), hi = ts.front();
+    for (const Vec2i& p : ts) {
+        lo = Vec2i{std::min(lo.x, p.x), std::min(lo.y, p.y)};
+        hi = Vec2i{std::max(hi.x, p.x), std::max(hi.y, p.y)};
+    }
+    return RectI{lo.x, lo.y, hi.x - lo.x + 1, hi.y - lo.y + 1};
+}
+template <class T, class Id> bool unique_ids(const std::vector<T>& v, Id&& id) {
+    for (std::size_t i = 1; i < v.size(); ++i)
+        if (!(id(v[i - 1]) < id(v[i]))) return false;
+    return true;
+}
+} // namespace
+
+LightCache::StepStats LightCache::begin_step_incremental(LightWorld w, std::span<const world::ChunkCoord> chunks) {
+    w.normalise();
+    StepStats st;
+    std::vector<world::ChunkCoord> coords(chunks.begin(), chunks.end());
+    std::sort(coords.begin(), coords.end());
+    coords.erase(std::unique(coords.begin(), coords.end()), coords.end());
+
+    // The read box (bounding box of the chunks) grown by the reach bound: every source and wall a read tile depends on.
+    int32_t reach = int32_t(world::kMaxLightFt) / kFeetPerTile;
+    for (const LightSource& src : w.sources) reach = std::max(reach, reach_tiles(src));
+    RectI read{};
+    if (!coords.empty()) {
+        constexpr int32_t N = world::kChunkSize;
+        int32_t x0 = coords.front().x, x1 = x0, y0 = coords.front().y, y1 = y0;
+        for (const auto& c : coords) {
+            x0 = std::min(x0, c.x); x1 = std::max(x1, c.x); y0 = std::min(y0, c.y); y1 = std::max(y1, c.y);
+        }
+        read = RectI{x0 * N, y0 * N, (x1 - x0 + 1) * N, (y1 - y0 + 1) * N};
+    }
+    const RectI box{read.x - reach, read.y - reach, read.w + 2 * reach, read.h + 2 * reach};
+
+    // Raw walls over the box, as build_field / light_reaches see them (before excluding the trace's end tiles).
+    std::vector<uint8_t> walls;
+    if (!coords.empty()) {
+        std::vector<const LightZone*> opaque;
+        for (const auto& z : w.zones)
+            if (z.flags & rules5e::kZoneOpaque) opaque.push_back(&z);
+        walls.assign(std::size_t(box.w) * std::size_t(box.h), 0);
+        for (int32_t y = 0; y < box.h; ++y)
+            for (int32_t x = 0; x < box.w; ++x) {
+                const Vec2i p{box.x + x, box.y + y};
+                bool b = w.grid && w.grid->blocks_sight(p);
+                for (std::size_t i = 0; !b && i < opaque.size(); ++i) b = covers(*opaque[i], p);
+                walls[std::size_t(y) * std::size_t(box.w) + std::size_t(x)] = b ? 1 : 0;
+            }
+    }
+
+    const bool full = !inc_.valid || coords.empty() || inc_.chunks != coords || inc_.box != box || inc_.reach != reach ||
+                      w.ambient.kind != world_.ambient.kind || w.ambient.level != world_.ambient.level ||
+                      !unique_ids(w.sources, [](const LightSource& a) { return a.id; }) ||
+                      !unique_ids(w.zones, [](const LightZone& a) { return a.zone_id; });
+    std::vector<RectI> dirty;
+    if (!full) {
+        // Sources (both lists ascending id, unique: checked above / last step).
+        const auto& olds = world_.sources;
+        const auto& news = w.sources;
+        std::size_t i = 0, j = 0;
+        while (i < news.size() || j < olds.size()) {
+            if (j == olds.size() || (i < news.size() && news[i].id < olds[j].id)) { if (news[i].lit) dirty.push_back(halo_of(news[i])); ++i; }
+            else if (i == news.size() || olds[j].id < news[i].id) { if (olds[j].lit) dirty.push_back(halo_of(olds[j])); ++j; }
+            else {
+                if (!same_light(news[i], olds[j])) {
+                    if (olds[j].lit) dirty.push_back(halo_of(olds[j]));
+                    if (news[i].lit) dirty.push_back(halo_of(news[i]));
+                }
+                ++i; ++j;
+            }
+        }
+        // Walls: a changed tile can only alter traces of sources whose halo holds it (a trace from s to t stays in the
+        // bounding box of s and t, inside s's halo).
+        std::vector<Vec2i> changed;
+        for (int32_t y = 0; y < box.h; ++y)
+            for (int32_t x = 0; x < box.w; ++x) {
+                const std::size_t k = std::size_t(y) * std::size_t(box.w) + std::size_t(x);
+                if (walls[k] != inc_.walls[k]) changed.push_back(Vec2i{box.x + x, box.y + y});
+            }
+        st.wall_changes = changed.size();
+        if (!changed.empty()) {
+            const RectI cb = tiles_bbox(changed);
+            for (const LightSource& src : news) {
+                if (!src.lit) continue;
+                const RectI h = halo_of(src);
+                if (cb.x >= h.x + h.w || h.x >= cb.x + cb.w || cb.y >= h.y + h.h || h.y >= cb.y + cb.h) continue;
+                for (const Vec2i& p : changed)
+                    if (rect_has(h, p)) { dirty.push_back(h); break; }
+            }
+        }
+        // Zones (ascending id, unique): coverage changes the tiles it covers (opaque walls are handled above).
+        const auto& oz = world_.zones;
+        const auto& nz = w.zones;
+        i = 0; j = 0;
+        auto zone_dirty = [&](const LightZone& z) { if (!z.tiles.empty()) dirty.push_back(tiles_bbox(z.tiles)); };
+        while (i < nz.size() || j < oz.size()) {
+            if (j == oz.size() || (i < nz.size() && nz[i].zone_id < oz[j].zone_id)) zone_dirty(nz[i++]);
+            else if (i == nz.size() || oz[j].zone_id < nz[i].zone_id) zone_dirty(oz[j++]);
+            else {
+                if (!same_zone(nz[i], oz[j])) { zone_dirty(nz[i]); zone_dirty(oz[j]); }
+                ++i; ++j;
+            }
+        }
+    }
+
+    world_ = std::move(w);
+    reset_fields();
+    st.full = full;
+    if (full) memo_.clear();
+    else {
+        // Only tiles inside the read box are guaranteed by the diff above.
+        for (auto it = memo_.begin(); it != memo_.end();) {
+            if (rect_has(read, it->first)) ++it;
+            else it = memo_.erase(it);
+        }
+        for (const RectI& r : dirty) invalidate_rect(r);
+        st.dirty_rects = dirty.size();
+    }
+    inc_.valid = !coords.empty();
+    inc_.chunks = std::move(coords);
+    inc_.box = box;
+    inc_.reach = reach;
+    inc_.walls = std::move(walls);
+    return st;
 }
 
 void LightCache::invalidate_rect(RectI r) {
