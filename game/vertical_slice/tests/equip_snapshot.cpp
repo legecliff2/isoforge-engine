@@ -45,7 +45,13 @@ public:
     void end_frame() override {}
     void on_resize(uint32_t, uint32_t) override {}
     bool write_ppm(const char* path) const {
-        FILE* f = std::fopen(path, "wb");
+        // MSVC /WX treats fopen as C4996; fopen_s is the CRT-safe substitute.
+        FILE* f = nullptr;
+#if defined(_MSC_VER)
+        if (fopen_s(&f, path, "wb") != 0) f = nullptr;
+#else
+        f = std::fopen(path, "wb");
+#endif
         if (!f) return false;
         std::fprintf(f, "P6\n%u %u\n255\n", w_, h_);
         std::fwrite(fb_.data(), 1, fb_.size(), f);

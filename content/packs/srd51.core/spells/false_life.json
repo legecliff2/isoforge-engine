@@ -1,0 +1,40 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.false_life",
+  "name": "False Life",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "Bolstering yourself with a necromantic facsimile of life, you gain 1d4 + 4 temporary hit points for the duration. At Higher Levels: When you cast this spell using a spell slot of 2nd level or higher, you gain 5 additional temporary hit points for each slot level above 1st.",
+  "level": 1,
+  "school": "necromancy",
+  "classes": [
+    "sorcerer",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "self"
+  },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": {
+      "text": "a small amount of alcohol or distilled spirits"
+    }
+  },
+  "duration": {
+    "kind": "hours",
+    "amount": 1
+  },
+  "effects": [
+    {
+      "kind": "temp_hp",
+      "dice": "1d4+4",
+      "per_slot_above": 5
+    }
+  ]
+}

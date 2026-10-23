@@ -1,0 +1,53 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.protection_from_energy",
+  "name": "Protection from Energy",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "For the duration, the willing creature you touch has resistance to one damage type of your choice: acid, cold, fire, lightning, or thunder.",
+  "level": 3,
+  "school": "abjuration",
+  "classes": [
+    "cleric",
+    "druid",
+    "ranger",
+    "sorcerer",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "hours",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "resistance",
+        "damage_type": "acid",
+        "duration": {
+          "kind": "concentration"
+        }
+      },
+      "damage_type_choices": [
+        "acid",
+        "cold",
+        "fire",
+        "lightning",
+        "thunder"
+      ]
+    }
+  ]
+}

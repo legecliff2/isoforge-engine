@@ -1,0 +1,49 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.faerie_fire",
+  "name": "Faerie Fire",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "Each object in a 20-foot cube within range is outlined in blue, green, or violet light (your choice). Any creature in the area when the spell is cast is also outlined in light if it fails a dexterity saving throw. For the duration, objects and affected creatures shed dim light in a 10-foot radius. Any attack roll against an affected creature or object has advantage if the attacker can see it, and the affected creature or object can't benefit from being invisible. Not modelled: the outlined objects and the dim light.",
+  "level": 1,
+  "school": "evocation",
+  "classes": [
+    "druid"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "components": {
+    "v": true
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "area": {
+    "shape": "cube",
+    "size_ft": 20
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "outlined",
+        "duration": {
+          "kind": "concentration"
+        }
+      },
+      "save": {
+        "ability": "dex",
+        "dc": "caster"
+      }
+    }
+  ]
+}

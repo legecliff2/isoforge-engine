@@ -41,7 +41,11 @@
         "base": 10,
         "ability": "dex"
       },
-      "description": "Not modelled: the action to dismiss the duplicates. Attackers that are unaffected (no roll): those that can't see the caster (blinded), that rely on blindsight or truesight in range, or that perceive illusions as false."
+      "description": "Not modelled: the action to dismiss the duplicates. Unaffected attackers (no roll): those that can't see the caster (blinded), and those with blindsight or truesight in range (exempt_senses; they don't rely on sight or perceive illusions as false).",
+      "exempt_senses": [
+        "blindsight",
+        "truesight"
+      ]
     }
   ]
 }

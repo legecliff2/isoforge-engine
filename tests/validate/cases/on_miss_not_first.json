@@ -1,0 +1,43 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.a_onmiss",
+  "name": "Haste",
+  "level": 3,
+  "school": "transmutation",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "classes": [
+    "wizard"
+  ],
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 30
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "heal",
+      "dice": "1d4"
+    },
+    {
+      "kind": "spell_attack",
+      "attack": "ranged",
+      "damage": {
+        "dice": "4d4",
+        "type": "acid"
+      },
+      "on_miss": "half"
+    }
+  ]
+}

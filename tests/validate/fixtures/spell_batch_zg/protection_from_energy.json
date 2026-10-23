@@ -1,0 +1,49 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "school": "abjuration",
+  "classes": [
+    "wizard"
+  ],
+  "id": "test.neg.spell.protection_from_energy",
+  "name": "Protection from Energy",
+  "description": "Protection from Energy (7.2zg positive specimen).",
+  "level": 3,
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "duration": {
+    "kind": "hours",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "resistance",
+        "damage_type": "acid",
+        "duration": {
+          "kind": "concentration"
+        }
+      },
+      "damage_type_choices": [
+        "acid",
+        "cold",
+        "fire",
+        "lightning",
+        "thunder"
+      ]
+    }
+  ]
+}

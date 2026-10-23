@@ -1,0 +1,49 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.hellish_rebuke",
+  "name": "Hellish Rebuke",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "You point your finger, and the creature that damaged you is momentarily surrounded by hellish flames. The creature must make a dexterity saving throw. It takes 2d10 fire damage on a failed save, or half as much damage on a successful one. At Higher Levels: When you cast this spell using a spell slot of 2nd level or higher, the damage increases by 1d10 for each slot level above 1st.",
+  "level": 1,
+  "school": "evocation",
+  "classes": [
+    "warlock"
+  ],
+  "casting_time": {
+    "kind": "reaction",
+    "trigger": {
+      "kind": "damaged",
+      "requires_sight": true
+    }
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "save",
+      "ability": "dex",
+      "damage": {
+        "dice": "2d10",
+        "type": "fire"
+      },
+      "on_success": "half"
+    }
+  ],
+  "scaling": {
+    "upcast": {
+      "dice": 1
+    }
+  }
+}
