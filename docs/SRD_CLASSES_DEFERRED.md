@@ -63,7 +63,7 @@ Three non-human SRD sample PCs sit beside them (`characters/sample_*.json`: hill
 | Thieves' Cant (Rogue) | 1-5 | descriptive feature + `languages` entry (no combat rule) | n/a |
 | Lay on Hands (Paladin) | 1-5 | `resources[]` `lay_on_hands {max {per_level 5, class paladin}, recharge long_rest}` + `heal_pool {cost action, pool lay_on_hands}`. **Partial**: rules do not check touch range or refuse undead / construct targets (`heal_pool` takes any living target), and the 5-point disease / poison cure stays in the description | yes (sim row 13 `apply_heal_pool`) |
 | Fighting Style: Dueling (Paladin) | 2-5 | as the fighter. Defense (`ac_bonus {1, requires_armor}`) also loads; Dueling matches the one-handed longsword + shield build | yes |
-| Spellcasting (Paladin) + Oath Spells | 2-5 | `spellcasting {ability cha, caster_level, slots, spells}` from 2nd level (no block at 1st: the half caster has no slots). Spells: Cure Wounds, Shield of Faith; Protection from Evil and Good, Sanctuary (oath, always prepared) from 3; Lesser Restoration (oath) at 5 | yes |
+| Spellcasting (Paladin) + Oath Spells | 2-5 | `spellcasting {ability cha, caster_level, slots, spells}` from 2nd level (no block at 1st: the half caster has no slots). Spells: Cure Wounds, Shield of Faith; Protection from Evil and Good, Sanctuary (oath, always prepared) from 3; Lesser Restoration (oath), Branding Smite, Magic Weapon at 5 (Heroism dropped at 5 to stay within Cha modifier + half level) | yes |
 | Divine Smite (Paladin) | 2-5 | `on_event {on hit, choice ask, when [weapon melee], effects [spend slot any, extra_damage 2d8 radiant with bonus_vs {creature_types [undead, fiend], dice 1d8}, scale.per_slot_level {base_level 1, add_dice 1d8}]}` (bonus_vs 7.2y, #200). The 5d8 cap is unreachable below 9th level | yes |
 | Sacred Oath (Paladin) | 3 | `classes[0].subclass` = `devotion` | descriptive |
 | Channel Divinity (Paladin, Devotion) | 3-5 | `resources[]` `channel_divinity {max 1, recharge short_rest}`. Sacred Weapon: `apply_modifier {cost action, usage {pool channel_divinity}, scope {weapon wielded}, modifier {attack_roll + Cha mod (min 1), self, rounds 10}}` (7.2y; ends when the weapon leaves the hand or at 0 HP / unconscious). Turn the Unholy: `actions[]` `save_effect {save wis vs the paladin spell save DC, range_ft 30, control turned, target_creature_types [fiend, undead], duration rounds 10, usage {pool channel_divinity}}` (7.2v / 7.2y). **Partial**: Sacred Weapon's magical weapon and light, and ending it early, are not modelled | yes |
@@ -81,14 +81,14 @@ Three non-human SRD sample PCs sit beside them (`characters/sample_*.json`: hill
 | Primal Path | 3 | `classes[0].subclass` = `berserker` | descriptive |
 | Extra Attack (Barbarian) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
 | Fast Movement (Barbarian) | 5 | baked into `speed.walk` 40 (no heavy armor is ever worn); descriptive feature, no `effect` | yes (static number) |
-| Spellcasting (Bard) | 1-5 | `spellcasting {ability cha, caster_level, slots, spells}`: Vicious Mockery; Cure Wounds, Healing Word, Thunderwave; + Hold Person, Lesser Restoration, Silence at 3; + Dispel Magic, Stinking Cloud at 5 (every shipped bard spell up to the top slot; 1 of 2-3 cantrips) | yes |
+| Spellcasting (Bard) | 1-5 | `spellcasting {ability cha, caster_level, slots, spells}`: Vicious Mockery; Cure Wounds, Healing Word, Thunderwave; + Hold Person, Lesser Restoration, Heat Metal at 3; + Dispel Magic, Stinking Cloud at 5 (Silence swapped for Heat Metal within spells known; 1 of 2-3 cantrips) | yes |
 | Cutting Words (Lore) | 3-5 | `reactions[]` `{window roll_attack, effect {subtract_roll 1d6 (1d8 at 5), applies_to [attack, check, damage]}, usage {pool bardic_inspiration, cost 1}}` (R-G7, sim #114; applies_to 7.3a, #214). **Partial**: the can't-hear and charm-immunity exceptions are not modelled | yes |
 | Bardic Inspiration (Bard) | 1-5 | `features[]` `bardic_inspiration` `{grant_die, die 1d6, scale [{5, 1d8}], class bard, range_ft 60, duration {rounds, 100}, applies_to [attack, save, check], cost bonus_action, usage {pool bardic_inspiration, cost 1}}` (7.3a, #214: an ally other than you, not deafened; one held die per creature) + `resources[]` `bardic_inspiration {max {plus_ability cha, min 1}, recharge long_rest}` (short_rest at 5), also spent by Cutting Words from 3rd | yes |
 | Jack of All Trades (Bard) | 2-5 | `half_proficiency {on [checks, initiative]}` (7.3a, #214) | yes |
 | Font of Inspiration (Bard) | 5 | the pool's `recharge: short_rest`; descriptive feature, no `effect` | yes (pool recharge) |
 | Expertise, Bonus Proficiencies (Bard, Lore) | 3-5 | baked into `skills` (Performance and Persuasion doubled; Arcana, Insight, Perception added); descriptive features, no `effect` | yes (static numbers) |
 | Bard College | 3 | `classes[0].subclass` = `lore` | descriptive |
-| Spellcasting (Druid) | 1-5 | `spellcasting {ability wis, caster_level, slots, spells}`: Produce Flame, Poison Spray; Cure Wounds, Faerie Fire, Healing Word, Thunderwave; + Barkskin, Hold Person, Lesser Restoration at 3; + Dispel Magic, Protection from Energy at 5 (every shipped druid spell up to the top slot; the list doubles as the prepared list, within Wis modifier + level) | yes |
+| Spellcasting (Druid) | 1-5 | `spellcasting {ability wis, caster_level, slots, spells}`: Produce Flame, Poison Spray; Cure Wounds, Faerie Fire, Healing Word, Thunderwave; + Barkskin, Hold Person, Lesser Restoration at 3; + Shillelagh, Flame Blade, Heat Metal at 4 (Thunderwave dropped); + Dispel Magic, Protection from Energy at 5 (Healing Word and Thunderwave dropped to fit both L2s within Wis modifier + level) | yes |
 | Circle Spells (Land: Mountain) | 3-5 | always prepared, in `spellcasting.spells`: Spike Growth (3), Lightning Bolt (5; not a druid spell, allowed through `subclass_spells`). Mountain is chosen because it gives the most shipped spells that add something (Arctic's two shipped ones are druid spells anyway; Desert, Coast, Forest and Swamp give one; Grassland none). Spider Climb (3) and Meld into Stone (5) are not shipped (see the spells section). Descriptive feature, no `effect` | yes (spell list) |
 | Wild Shape (Druid) | 2-5 | `wild_shape {pool wild_shape, forms [jackal, wolf, boar, axe_beak, giant_poisonous_snake, black_bear], max_cr_by_level [{2, 1/4}, {4, 1/2}]}` (R-G12, EC #176) + `resources[]` `wild_shape {max 2, recharge short_rest}`. `no_fly_below` 8 / `no_swim_below` 4 are left at the engine defaults (= SRD). Forms: every shipped beast of CR 1/2 or below without a fly speed; the engine refuses the giant poisonous snake (swim 30, #184) and the black bear (CR 1/2) below 4th. Not listed: the swarm of rats (a swarm of Tiny beasts, not a single beast you have seen), the dire wolf and giant spider (CR 1: from 8th). Duration (half druid level in hours), revert at 0 HP and no casting in beast form are engine-side | yes |
 | Natural Recovery (Land) | 2-5 | `slot_recovery {class druid, max_slot_level 5, uses 1}` (sim #148); budget ceil(druid level / 2) derived | yes |
@@ -192,16 +192,20 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 | Cleric | 5 | + Mass Healing Word, Protection from Energy, Revivify (domain) |
 | Paladin | 2 | Cure Wounds, Heroism, Shield of Faith |
 | Paladin | 3-4 | + Protection from Evil and Good, Sanctuary (oath) |
-| Paladin | 5 | + Lesser Restoration (oath), Magic Weapon |
+| Paladin | 5 | + Lesser Restoration (oath), Branding Smite, Magic Weapon (Heroism dropped) |
 | Ranger | 2-4 | Cure Wounds, Hunter's Mark |
 | Ranger | 5 | + Barkskin, Lesser Restoration (Spike Growth swapped out for Hunter's Mark) |
+| Bard | 1-2 | Vicious Mockery; Cure Wounds, Healing Word, Heroism, Thunderwave |
+| Bard | 3 | + Hold Person, Lesser Restoration, Heat Metal (Silence swapped) |
+| Bard | 4 | + Heroism again; Heat Metal (Silence swapped) |
+| Bard | 5 | + Dispel Magic, Stinking Cloud; Heat Metal (Silence swapped) |
 | Wizard | 1-2 | Acid Splash, Fire Bolt, Poison Spray; False Life, Magic Missile, Shield |
 | Wizard | 3-4 | + Hold Person, Magic Weapon, Mirror Image, Scorching Ray; False Life dropped (Int modifier + level = 6 prepared) |
 | Wizard | 5 | + Counterspell, Haste, False Life again (9 prepared) |
 | Druid | 1-2 | Produce Flame, Poison Spray; Cure Wounds, Faerie Fire, Healing Word, Thunderwave |
 | Druid | 3 | + Barkskin, Hold Person, Lesser Restoration, Spike Growth (circle) |
-| Druid | 4 | + Shillelagh (third cantrip known) |
-| Druid | 5 | + Dispel Magic, Lightning Bolt (circle), Protection from Energy |
+| Druid | 4 | + Shillelagh (third cantrip known), Flame Blade, Heat Metal (Thunderwave dropped) |
+| Druid | 5 | + Dispel Magic, Lightning Bolt (circle), Protection from Energy; Flame Blade, Heat Metal (Healing Word and Thunderwave dropped) |
 | Warlock | 1-2 | Eldritch Blast, Chill Touch; Burning Hands (expanded) |
 | Warlock | 3 | + Fire Bolt, Ray of Frost, Sacred Flame (Tome); Hold Person, Misty Step, Scorching Ray (expanded) |
 | Warlock | 4 | + Poison Spray |
@@ -219,7 +223,7 @@ Deferred until the spells are authored (`docs/SRD_SPELLS_DEFERRED.md` gives the 
 - **Circle of the Land (Mountain) spells** (always prepared): `srd51.spell.spider_climb` (3), `srd51.spell.meld_into_stone` (5) are not authored; Spike Growth (3) and Lightning Bolt (5) ship and are listed.
 - **Fiend expanded spells** (choices for spells known, not always prepared): Command (1) and Blindness/Deafness (3) are not shipped; Stinking Cloud (5) ships but is not picked (six known at 5th).
 - **Cantrips known**: the Cleric knows 3 (4 from level 4) but the pack ships one cleric cantrip (Sacred Flame). The Wizard knows 3 (4 from level 4), and the pack ships three wizard cantrips. Missing: Guidance, Light, Mending, Resistance, Spare the Dying, Thaumaturgy (cleric); Chill Touch, Ray of Frost, Shocking Grasp, True Strike and the utility cantrips (wizard). The Sorcerer knows 4 cantrips (5 from level 4) and 2-6 spells; the pack ships three sorcerer cantrips and five leveled sorcerer spells (Chill Touch, Ray of Frost, Shocking Grasp, Burning Hands, Chromatic Orb, Sleep, Thunderwave, Misty Step and the rest are not shipped), so each document lists fewer.
-- **Spellbook and prepared spells**: a level 1 wizard's spellbook holds six 1st-level spells, plus two per level after that; a cleric prepares Wis modifier + level spells. The documents list fewer because the rest are not shipped (Burning Hands, Mage Armor, Sleep, Thunderwave, Misty Step, Fireball, Lightning Bolt, Guiding Bolt, Shield of Faith, Spirit Guardians, ...). Bards list Heroism at 1, 2 and 4 (spells known 4 / 5 / 7; levels 3 and 5 are full). The `spells` list doubles as the prepared list. `character@4` has no separate spellbook.
+- **Spellbook and prepared spells**: a level 1 wizard's spellbook holds six 1st-level spells, plus two per level after that; a cleric prepares Wis modifier + level spells. The documents list fewer because the rest are not shipped (Burning Hands, Mage Armor, Sleep, Thunderwave, Misty Step, Fireball, Lightning Bolt, Guiding Bolt, Shield of Faith, Spirit Guardians, ...). Bards list Heroism at 1, 2 and 4 (spells known 4 / 5 / 7; levels 3 and 5 are full). Heat Metal replaces Silence at 3-5 within spells known. The `spells` list doubles as the prepared list. `character@4` has no separate spellbook.
 
 ## Notes for Rules / Engine Core
 

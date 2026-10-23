@@ -282,6 +282,75 @@ class SpellTable(unittest.TestCase):
                     "effect ends_on must be a non-empty list of attack, cast, harmful_cast, damage, shake_awake"):
             self.assertIn(msg, loader, msg)
 
+
+    def test_spell_batch_zh(self):
+        # Rules #276 (7.2zh): weapon_smite (Branding Smite), sustained_damage held_object (Heat Metal), summon_weapon.held (Flame Blade)
+        bs = load("branding-smite")
+        self.assertEqual(bs["effects"], [{"kind": "weapon_smite", "damage": {"dice": "2d6", "type": "radiant"},
+                                          "reveal_invisible": True, "light": {"dim_ft": 5}}])
+        self.assertEqual((bs["casting_time"], bs["range"], bs["duration"], bs["scaling"]),
+                         ({"kind": "bonus_action"}, {"kind": "self"},
+                          {"kind": "minutes", "amount": 1, "concentration": True}, {"upcast": {"dice": 1}}))
+        hm = load("heat-metal")
+        self.assertEqual(hm["effects"], [{"kind": "sustained_damage", "damage": {"dice": "2d8", "type": "fire"},
+                                          "held_object": {"save": "con", "on_fail": "drop",
+                                                          "while_held": {"disadvantage": ["attack_rolls", "ability_checks"],
+                                                                         "until": "start_of_caster_next_turn"}}}])
+        self.assertEqual((hm["casting_time"], hm["range"], hm["duration"], hm["scaling"]),
+                         ({"kind": "action"}, {"kind": "ranged", "feet": 60},
+                          {"kind": "minutes", "amount": 1, "concentration": True}, {"upcast": {"dice": 1}}))
+        for word in ("Weapon", "Armor", "Shield", "metal"):
+            self.assertIn(word, hm["description"])
+        fb = load("flame-blade")
+        self.assertEqual(fb["effects"], [{"kind": "summon_weapon", "damage": {"dice": "3d6", "type": "fire"},
+                                          "upcast_every": 2, "reach_ft": 5, "held": True,
+                                          "light": {"bright_ft": 10, "dim_ft": 10}}])
+        self.assertEqual((fb["casting_time"], fb["range"], fb["duration"], fb["scaling"]),
+                         ({"kind": "bonus_action"}, {"kind": "self"},
+                          {"kind": "minutes", "amount": 10, "concentration": True}, {"upcast": {"dice": 1}}))
+        self.assertNotIn("move_ft", fb["effects"][0])
+        self.assertNotIn("add_spellcasting_modifier", fb["effects"][0])
+        # loader strings (spell_loader.cpp) and runtime refusals (encounter.cpp), verbatim
+        loader = (ROOT / "engine/rules/content/src/spell_loader.cpp").read_text(encoding="utf-8")
+        encounter = (ROOT / "engine/rules/src/encounter.cpp").read_text(encoding="utf-8")
+        for msg in ("weapon_smite: needs concentration or a rounds, minutes or hours duration",
+                    "effect weapon_smite light.dim_ft must be a positive multiple of 5",
+                    "effect reveal_invisible must be a boolean",
+                    "effect damage invalid",
+                    "effect held_object must be {save: con, on_fail: drop, while_held: {disadvantage: [attack_rolls, ability_checks], until: start_of_caster_next_turn}}",
+                    "effect held_object is only for sustained_damage",
+                    "summon_weapon: held needs no move_ft",
+                    "summon_weapon: held takes no add_spellcasting_modifier",
+                    "effect summon_weapon held must be a boolean",
+                    "effect summon_weapon light.bright_ft and dim_ft must be positive multiples of 5"):
+            self.assertIn(f'"{msg}"', loader, msg)
+        self.assertIn("is only allowed as the first effect", loader)  # effects[i]: <kind> is only allowed as the first effect
+        self.assertIn('" needs a rounds, minutes or hours duration"', loader)  # kind + fragment (sustained_damage, ...)
+        for msg in ("weapon_smite: self only",
+                    "weapon_smite: primary effect only",
+                    "heat_metal: equipment required",
+                    "heat_metal: no metal object",
+                    "summon_weapon: held already active",
+                    "summon_weapon: held is self only",
+                    "summon_weapon: held needs a free hand",
+                    "summon_weapon: held does not move"):
+            self.assertIn(f'"{msg}"', encounter, msg)
+        for case in sorted((Path(__file__).parent / "cases").glob("*.expect")):
+            msg = case.read_text(encoding="utf-8").strip()
+            if case.stem.startswith(("weapon_smite_", "summon_weapon_held_", "held_object_")) and not msg.startswith("/"):
+                if "is only allowed as the first effect" in msg:
+                    self.assertIn("is only allowed as the first effect", loader, case.name)
+                else:
+                    self.assertIn(f'"{msg}"', loader, case.name)
+        # ZH_KEYS (checks_v4.py) match spell_keys_zh.hpp
+        keys_hpp = (ROOT / "engine/rules/content/src/spell_keys_zh.hpp").read_text(encoding="utf-8")
+        checks = (ROOT / "tools/validate/checks_v4.py").read_text(encoding="utf-8")
+        for val in ("weapon_smite", "reveal_invisible", "light", "dim_ft", "bright_ft", "held_object", "held",
+                    "save", "on_fail", "while_held", "disadvantage", "until"):
+            self.assertIn(f'"{val}"', keys_hpp, val)
+            self.assertIn(f'"{val}"', checks, val)
+
+
     def test_zone_and_kind_spells(self):
         self.assertEqual(load("silence")["effects"][0]["zone"]["flags"], ["silence"])
         self.assertEqual(load("spirit-guardians")["effects"][0]["zone"]["anchor"], "creature")

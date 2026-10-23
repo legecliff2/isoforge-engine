@@ -1256,6 +1256,14 @@
     "ranger"
    ]
   },
+  "branding-smite": {
+   "name": "Branding Smite",
+   "level": 2,
+   "school": "evocation",
+   "classes": [
+    "paladin"
+   ]
+  },
   "counterspell": {
    "name": "Counterspell",
    "level": 3,
@@ -1309,6 +1317,14 @@
     "wizard"
    ]
   },
+  "flame-blade": {
+   "name": "Flame Blade",
+   "level": 2,
+   "school": "evocation",
+   "classes": [
+    "druid"
+   ]
+  },
   "healing-word": {
    "name": "Healing Word",
    "level": 1,
@@ -1316,6 +1332,15 @@
    "classes": [
     "bard",
     "cleric",
+    "druid"
+   ]
+  },
+  "heat-metal": {
+   "name": "Heat Metal",
+   "level": 2,
+   "school": "transmutation",
+   "classes": [
+    "bard",
     "druid"
    ]
   },

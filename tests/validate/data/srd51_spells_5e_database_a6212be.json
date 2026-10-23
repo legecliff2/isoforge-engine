@@ -156,6 +156,33 @@
     "wizard"
    ]
   },
+  "branding-smite": {
+   "name": "Branding Smite",
+   "level": 2,
+   "range": "Self",
+   "components": [
+    "V"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 minute",
+   "concentration": true,
+   "casting_time": "1 bonus action",
+   "school": "evocation",
+   "classes": [
+    "paladin"
+   ],
+   "damage_type": "radiant",
+   "damage_at": {
+    "2": "2d6",
+    "3": "3d6",
+    "4": "4d6",
+    "5": "5d6",
+    "6": "6d6",
+    "7": "7d6",
+    "8": "8d6",
+    "9": "9d6"
+   }
+  },
   "burning-hands": {
    "name": "Burning Hands",
    "level": 1,
@@ -391,6 +418,25 @@
     "size": 20
    }
   },
+  "flame-blade": {
+   "name": "Flame Blade",
+   "level": 2,
+   "range": "Self",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Up to 10 minutes",
+   "concentration": true,
+   "casting_time": "1 bonus action",
+   "school": "evocation",
+   "classes": [
+    "druid"
+   ],
+   "material": "leaf of sumac"
+  },
   "grease": {
    "name": "Grease",
    "level": 1,
@@ -455,6 +501,37 @@
     "wizard"
    ],
    "material": "A shaving of licorice root."
+  },
+  "heat-metal": {
+   "name": "Heat Metal",
+   "level": 2,
+   "range": "60 feet",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 minute",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "transmutation",
+   "classes": [
+    "bard",
+    "druid"
+   ],
+   "material": "a piece of iron and a flame",
+   "damage_type": "fire",
+   "damage_at": {
+    "2": "2d8",
+    "3": "3d8",
+    "4": "4d8",
+    "5": "5d8",
+    "6": "6d8",
+    "7": "7d8",
+    "8": "8d8",
+    "9": "9d8"
+   }
   },
   "hellish-rebuke": {
    "name": "Hellish Rebuke",
