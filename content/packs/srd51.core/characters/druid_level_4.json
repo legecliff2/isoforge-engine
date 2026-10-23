@@ -185,6 +185,7 @@
     "spells": [
       "srd51.spell.produce_flame",
       "srd51.spell.poison_spray",
+      "srd51.spell.shillelagh",
       "srd51.spell.cure_wounds",
       "srd51.spell.healing_word",
       "srd51.spell.thunderwave",
