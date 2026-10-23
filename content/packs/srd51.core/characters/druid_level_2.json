@@ -183,7 +183,8 @@
       "srd51.spell.faerie_fire",
       "srd51.spell.fog_cloud",
       "srd51.spell.healing_word",
-      "srd51.spell.thunderwave"
+      "srd51.spell.thunderwave",
+      "srd51.spell.entangle"
     ]
   }
 }

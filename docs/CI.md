@@ -65,9 +65,20 @@ Windows and macOS jobs are not mirrored; use the `win-msvc` / `mac-clang-debug` 
 
 ## Self-hosted Linux runner
 
-All Linux jobs (`Linux GCC Debug`, `Linux Clang Release`) and the nightly gate run on
-`runs-on: [self-hosted, linux, isoforge]`. Windows and macOS stay GitHub-hosted. Linux and
-Windows Debug still run on every ready PR.
+Linux GCC Debug, Linux Clang Release, and the nightly gate prefer
+`runs-on: [self-hosted, linux, isoforge]` and fall back to `ubuntu-latest` for that same run
+when the box does not accept a job. One pick per run: those jobs are never started on both
+runners. Windows and macOS stay GitHub-hosted. Linux and Windows Debug still run on every
+ready PR. `changes` and `ci-required` stay on `ubuntu-latest`.
+
+The box pauses when no agent is active, so a job queued only on the self-hosted runner sits
+until GitHub abandons it. `linux-runner` (a short `ubuntu-latest` job) chooses the runner
+before any Linux build starts. Listing runners needs repository `administration: read`, which
+`GITHUB_TOKEN` cannot be granted, so a 403 is expected. The job then dispatches
+`.github/workflows/linux-runner-canary.yml` on the **default branch** (no checkout, no PR
+code). If the box accepts the canary, Linux stays on the box; if it is still queued when the
+probe window ends, the canary is cancelled and Linux uses `ubuntu-latest`. Fork PRs never
+reach the box: `changes` is skipped, so `linux-runner` is skipped and no canary is dispatched.
 
 - Setup: `sudo RUNNER_TOKEN=<registration token> tools/runner/setup.sh` (idempotent; installs to
   `/opt/actions-runner` as the system user `ghrunner` with labels `self-hosted,linux,x64,isoforge`).
@@ -79,7 +90,8 @@ Windows Debug still run on every ready PR.
   The workspace is cleaned between runs (`actions/checkout` clean plus a final `rm -rf build .ccache`).
   On self-hosted runs `actions/cache` is skipped, because the local ccache is faster.
 - Limits: systemd unit with `Nice=10`, `IOSchedulingClass=idle`, `CPUQuota=400%`, `MemoryMax=8G`.
-  Jobs use `CMAKE_BUILD_PARALLEL_LEVEL=4` and `CTEST_PARALLEL_LEVEL=2`. On hosts without systemd
+  Jobs on the box use `CMAKE_BUILD_PARALLEL_LEVEL=4` and `CTEST_PARALLEL_LEVEL=2`. The hosted
+  fallback keeps the build cap at 4 and uses `CTEST_PARALLEL_LEVEL=4`. On hosts without systemd
   the script falls back to `nice -n10 ionice -c3 taskset` (4 CPUs) with `oom_score_adj=500`. That fallback has no hard memory cap: `ulimit -v` breaks the .NET runner, and MemoryMax needs cgroups. This is how the current box (no systemd) runs it; re-run `setup.sh` after a reboot.
 - Build deps (ninja, ccache, X11/Wayland dev headers, **Python >= 3.12** via distro `python3` /
   `python3-venv`, or `python3.12` from deadsnakes on older Ubuntu) are installed by `setup.sh`.
@@ -94,8 +106,8 @@ Windows Debug still run on every ready PR.
 
 ## Nightly macOS gate
 
-The scheduled run (`17 7 * * *`) starts with `nightly-gate` (on the self-hosted runner,
-`actions: read`). It queries
+The scheduled run (`17 7 * * *`) starts with `changes`, then `linux-runner` (the same runner
+pick as pull requests), then `nightly-gate` on the chosen runner (`actions: read`). It queries
 `GET /repos/{repo}/actions/workflows/ci.yml/runs?branch=main&event=schedule&status=success&per_page=1`
 and skips macOS when that run's `head_sha` equals the current main SHA (main hasn't changed since the
 last successful nightly). `workflow_dispatch` doesn't depend on the gate and always runs macOS.

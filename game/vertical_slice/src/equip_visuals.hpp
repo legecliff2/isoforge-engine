@@ -9,6 +9,7 @@
 //   5, 6        the hands: facing East (SE / NE) off hand 5, main hand 6 (main hand on the camera side);
 //               facing West (SW / NW) mirrored: main hand 5, off hand 6, and every attachment x is mirrored
 //   kZLight (7) held lights (torch, lantern) in either hand, at that hand's attachment point; then its flame
+//   kZOutline (8) Faerie Fire outline ring (after body / equip)
 // Ties inside one z: item instance id. Walls share layer 1 at z 0, so they still sort under every actor layer.
 #include <cstdint>
 #include <vector>
@@ -19,7 +20,8 @@
 
 namespace slice {
 
-inline constexpr int32_t kZBack = 2, kZBody = 4, kZFarHand = 5, kZNearHand = 6, kZLight = 7;
+inline constexpr int32_t kZBack = 2, kZBody = 4, kZFarHand = 5, kZNearHand = 6, kZLight = 7,
+                         kZOutline = 8;   // Faerie Fire outline ring (after body / equip)
 
 enum class EquipPart : uint8_t { Back, Body, OffHand, MainHand, HeldLight };
 
