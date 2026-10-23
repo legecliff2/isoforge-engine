@@ -12,7 +12,7 @@
 namespace eng::sim {
 
 // Version of the event stream contract (SimEvent + rules5e::Event as surfaced by sim).
-inline constexpr uint32_t kSimEventSchemaVersion = 10;
+inline constexpr uint32_t kSimEventSchemaVersion = 11;
 // Last rules5e::EventKind surfaced under this schema version (rules appends; sim bumps).
 inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::Commanded;
 // Last rules kind that existed at v9. A stream carrying a later kind (R-G12 kinds 48-52: Summoned .. Commanded) is a v10 stream.
@@ -46,6 +46,10 @@ struct SimEvent {
         TokenRemoved = 5, // v10. A summon's token goes: `actor` = the summon, `tile` = its last anchor, `rules.a` = the
                           // SummonEnded reason (b). After the step's sim events, except in the encounter-end teardown,
                           // where each one directly follows its SummonEnded{b = 5}.
+        ItemMoved = 6,    // v11 (EQUIPMENT.md, CombatOptions::equipment only): an item changed place. `actor` = the creature
+                          // acting (the dead creature for a death drop), `tile` = where the item is now (its holder's anchor,
+                          // or the ground tile), `rules.a` = item instance, `rules.b` = reason (ItemMoveReason), `rules.c` = new
+                          // holder id, 0 on the ground. After the step's rules events (before EncounterEnded when it ends).
     };
     Kind kind = Kind::Rules;
     rules5e::Event rules{};          // Kind::Rules only; zero otherwise
@@ -61,6 +65,13 @@ struct SimEvent {
 // kSimEventSchemaVersion, so streams without a CastSpell or a multi-tile creature keep their v4 / v5
 // digests bit-identical (docs/SIM_EVENTS.md versioning policy).
 uint32_t event_stream_version(std::span<const SimEvent> events);
+
+// ItemMoved reasons (rules.b): 1..7 = rules5e::EquipOp (draw, stow, drop, pick up, don shield, doff shield, hand over),
+// 10 thrown (lands on the target's tile), 11 death drop. 8, 9 and 12+ are reserved. Fired ammunition is consumed, not moved.
+enum ItemMoveReason : uint8_t {
+    kItemDraw = 1, kItemStow = 2, kItemDrop = 3, kItemPickUp = 4, kItemDonShield = 5, kItemDoffShield = 6, kItemHandOver = 7,
+    kItemThrown = 10, kItemDeathDrop = 11,
+};
 
 // Canonical (StableHash/XXH3-64) digest of an event stream: stream version, count, then every field of
 // every event in order. Equal streams <=> equal digests (up to hash collisions); golden material.
