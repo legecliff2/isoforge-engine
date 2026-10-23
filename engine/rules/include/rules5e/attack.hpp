@@ -17,6 +17,8 @@ struct AttackContext {
     // `ranged` is set from Attack::ranged by do_attack / resolve_attack.
     bool ally_near_target = false;
     bool ranged = false;
+    // appended (7.2zg `outlined`): the target / attacker is outlined, so its Invisible condition gives no benefit.
+    bool target_outlined = false, attacker_outlined = false;
 };
 
 struct AttackResult { D20Roll roll; bool hit, critical; int16_t damage; DamageType type; uint8_t qualifiers = 0; };

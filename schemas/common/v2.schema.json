@@ -1793,7 +1793,8 @@
             "resistance",
             "attacks_against",
             "no_reactions",
-            "no_healing"
+            "no_healing",
+            "outlined"
           ]
         },
         "bonus": {
@@ -2240,7 +2241,8 @@
               "stat": {
                 "enum": [
                   "no_reactions",
-                  "no_healing"
+                  "no_healing",
+                  "outlined"
                 ]
               }
             }
