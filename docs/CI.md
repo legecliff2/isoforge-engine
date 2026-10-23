@@ -48,3 +48,54 @@ sudo apt-get install -y cmake ninja-build clang python3-venv ccache \
 ```
 
 Windows and macOS jobs are not mirrored; use the `win-msvc` / `mac-clang-debug` presets directly.
+
+## Workflow for PRs (minimising CI minutes)
+
+- **Run `tools/ci_local.sh` before marking a PR ready.** It mirrors both Linux jobs locally.
+- **Draft PRs don't run CI.** The `pull_request` trigger only fires on `opened`, `synchronize`,
+  `reopened` and `ready_for_review`, and the `changes` job (which every other job needs) is skipped
+  when `github.event.pull_request.draft` is true. Opening a PR as a draft and marking it ready starts
+  CI once. `ci-required` passes on a draft (`changes` skipped on purpose); on any non-draft run a
+  skipped `changes` fails the gate.
+- **Stacked chains:** keep the lower PRs in draft or don't push them separately; run CI once on the
+  top PR (it contains the whole stack), then merge the chain in order, bottom first.
+- **Concurrency:** one group per workflow + PR number (or ref). A new push cancels the PR's
+  in-progress run. Runs on `main` (push, schedule, dispatch) get a group per sha + event and are never
+  cancelled.
+
+## Self-hosted Linux runner
+
+All Linux jobs (`Linux GCC Debug`, `Linux Clang Release`) and the nightly gate run on
+`runs-on: [self-hosted, linux, isoforge]`. Windows and macOS stay GitHub-hosted. Linux and
+Windows Debug still run on every ready PR.
+
+- Setup: `sudo RUNNER_TOKEN=<registration token> tools/runner/setup.sh` (idempotent; installs to
+  `/opt/actions-runner` as the system user `ghrunner` with labels `self-hosted,linux,x64,isoforge`).
+  Removal: `sudo tools/runner/uninstall.sh` (pass a removal token as `RUNNER_TOKEN` to deregister).
+  Pass the token only through the environment, never as an argument or in a file.
+- One runner, one job at a time, **not ephemeral**. Persistence keeps the local ccache warm
+  (`~ghrunner/.cache/isoforge-ccache/<preset>`, 3 GB per preset, outside the workspace). An ephemeral
+  runner would need a new registration token for every job.
+  The workspace is cleaned between runs (`actions/checkout` clean plus a final `rm -rf build .ccache`).
+  On self-hosted runs `actions/cache` is skipped, because the local ccache is faster.
+- Limits: systemd unit with `Nice=10`, `IOSchedulingClass=idle`, `CPUQuota=400%`, `MemoryMax=8G`.
+  Jobs use `CMAKE_BUILD_PARALLEL_LEVEL=4` and `CTEST_PARALLEL_LEVEL=2`. On hosts without systemd
+  the script falls back to `nice -n10 ionice -c3 taskset` (4 CPUs) with `oom_score_adj=500`. That fallback has no hard memory cap: `ulimit -v` breaks the .NET runner, and MemoryMax needs cgroups. This is how the current box (no systemd) runs it; re-run `setup.sh` after a reboot.
+- Build deps (ninja, ccache, X11/Wayland dev headers, **Python >= 3.12** via distro `python3` /
+  `python3-venv`, or `python3.12` from deadsnakes on older Ubuntu) are installed by `setup.sh`.
+  cmake-ci skips `apt-get` and `actions/setup-python` on self-hosted runners (no Python toolcache
+  there — setup-python fails with "The version 3.12 with architecture x64 was not found") and uses
+  system `python3` / `python3.12` for the `content_validate` venv. It fails fast if ninja or a
+  usable Python is missing. GitHub-hosted jobs still use `actions/setup-python@v5` with 3.12.
+- **Security:** the repo is private, so only collaborators can open PRs that run here. Fork PRs
+  must never run on the self-hosted runner: `changes` is skipped when the PR head repo is not this
+  repo, so no job reaches the runner and `ci-required` fails closed. Keep "Require approval for
+  fork pull request workflows" enabled, and never add `pull_request_target` to this workflow.
+
+## Nightly macOS gate
+
+The scheduled run (`17 7 * * *`) starts with `nightly-gate` (on the self-hosted runner,
+`actions: read`). It queries
+`GET /repos/{repo}/actions/workflows/ci.yml/runs?branch=main&event=schedule&status=success&per_page=1`
+and skips macOS when that run's `head_sha` equals the current main SHA (main hasn't changed since the
+last successful nightly). `workflow_dispatch` doesn't depend on the gate and always runs macOS.

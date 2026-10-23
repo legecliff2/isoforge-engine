@@ -11,15 +11,26 @@ def ev(expr,ctx):
     e=e.replace('always()','True').replace('&&',' and ').replace('||',' or ')
     e=re.sub(r"needs\.(\w[\w-]*)\.outputs\.(\w+)",lambda m:repr(ctx['out'].get(m.group(2),'')),e)
     e=re.sub(r"needs\.(\w[\w-]*)\.result",lambda m:repr(ctx['res'].get(m.group(1),'skipped')),e)
+    e=e.replace("github.event.pull_request.head.repo.full_name == github.repository",repr(not ctx.get('fork',False)))
+    e=e.replace('github.event.pull_request.draft == false',repr(not ctx.get('draft',False)))
     e=e.replace('github.event_name',repr(ctx['event']))
+    e=e.replace(' == ',' == ').replace('!=','!=')
     return eval(e)
-def run(event,labels=(),code=True,mac=False,fail=None):
+def gate_ok(ctx):
+    if ctx['res']['changes']=='skipped' and not (ctx['event']=='pull_request' and ctx.get('draft')): return False
+    return all(ctx['res'][n] in('success','skipped') for n in J['ci-required']['needs'])
+def run(event,labels=(),code=True,mac=False,fail=None,draft=False,fork=False,moved=True):
     # changes job: outputs only set by steps whose if matches (code: PR/push; mac: PR)
     out={'code':'true' if code and event in('pull_request','push') else '', 'mac':'true' if mac and event=='pull_request' else ''}
-    ctx=dict(event=event,labels=set(labels),out=out,res={'changes':'success'})
+    ctx=dict(event=event,labels=set(labels),out=out,res={},draft=draft,fork=fork)
+    ctx['res']['changes']='success' if ev(J['changes']['if'],ctx) else 'skipped'
+    if ctx['res']['changes']=='skipped': ctx['out']={}
+    ng=ev(J['nightly-gate']['if'],ctx); ctx['res']['nightly-gate']='success' if ng else 'skipped'
+    ctx['out']['run']='true' if ng and moved else ''
     for j in ['build-test','windows-release','macos']:
-        ctx['res'][j]=('failure' if fail==j else 'success') if ev(J[j]['if'],ctx) else 'skipped'
-    gate=all(ctx['res'][n] in('success','skipped') for n in J['ci-required']['needs'])
+        c=ctx['res']['changes']=='success' or J[j]['if'].lstrip().startswith('always()')
+        ctx['res'][j]=('failure' if fail==j else 'success') if c and ev(J[j]['if'],ctx) else 'skipped'
+    gate=gate_ok(ctx)
     nr=ev(J['nightly-report']['if'],ctx)
     return ctx['res'],gate,nr
 cases=[('pull_request',(),True,False),('pull_request',('ci-windows-release',),True,False),('pull_request',('other',),True,True),
@@ -46,5 +57,19 @@ for c, exp in EXPECT.items():
     got = (r['build-test'], r['windows-release'], r['macos'])
     if got != exp or not g:
         bad += 1; print('MISMATCH', c, got, exp, g)
+# New conditions: drafts, forks, nightly gate.
+EXTRA = [  # kwargs -> (build-test, windows-release, macos, gate)
+    (dict(event='pull_request',draft=True,mac=True,labels=('ci-windows-release',)), ('skipped','skipped','skipped',True)),
+    (dict(event='pull_request',fork=True), ('skipped','skipped','skipped',False)),
+    (dict(event='schedule',moved=False), ('skipped','skipped','skipped',True)),
+    (dict(event='schedule',moved=True), ('skipped','skipped','success',True)),
+    (dict(event='workflow_dispatch',moved=False), ('skipped','success','success',True)),
+]
+for kw,exp in EXTRA:
+    r,g,_=run(**kw); got=(r['build-test'],r['windows-release'],r['macos'],g)
+    print(f"{str(kw):70} -> {got}")
+    if got!=exp: bad+=1; print('MISMATCH',kw,got,exp)
+assert 'self-hosted' in str([m['os'] for m in J['build-test']['strategy']['matrix']['include'] if m['name'].startswith('Linux')])
+assert set(wf[True]['pull_request']['types'])=={'opened','synchronize','reopened','ready_for_review'}
 print('ALL EXPECTATIONS MET' if not bad else f'{bad} FAILED')
 raise SystemExit(1 if bad else 0)
