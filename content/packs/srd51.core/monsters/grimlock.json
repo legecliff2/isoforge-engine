@@ -1,5 +1,6 @@
 {
-  "$schema": "monster@4",
+  "$schema": "monster@5",
+  "derive": true,
   "id": "srd51.monster.grimlock",
   "name": "Grimlock",
   "source": {
@@ -15,6 +16,20 @@
   "armor_class": {
     "value": 11
   },
+  "hands": 2,
+  "weapons": [
+    {
+      "id": "spiked_bone_club",
+      "name": "Spiked Bone Club",
+      "reach": 5,
+      "damage": [
+        {
+          "dice": "1d4",
+          "type": "bludgeoning"
+        }
+      ]
+    }
+  ],
   "hit_points": {
     "average": 11,
     "formula": "2d8+2"
@@ -72,6 +87,7 @@
       "id": "spiked_bone_club",
       "name": "Spiked Bone Club",
       "kind": "melee_weapon_attack",
+      "weapon": "#spiked_bone_club",
       "to_hit": 5,
       "reach": 5,
       "targets": 1,

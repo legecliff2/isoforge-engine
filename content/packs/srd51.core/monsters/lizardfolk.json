@@ -1,5 +1,6 @@
 {
-  "$schema": "monster@4",
+  "$schema": "monster@5",
+  "derive": true,
   "id": "srd51.monster.lizardfolk",
   "name": "Lizardfolk",
   "source": {
@@ -16,6 +17,45 @@
     "value": 15,
     "note": "natural armor, shield"
   },
+  "equipment": [
+    {
+      "item": "srd51.item.shield",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.javelin",
+      "equipped": true
+    }
+  ],
+  "natural_armor": {
+    "base": 13,
+    "dex": true
+  },
+  "hands": 2,
+  "weapons": [
+    {
+      "id": "heavy_club",
+      "name": "Heavy Club",
+      "reach": 5,
+      "damage": [
+        {
+          "dice": "1d6",
+          "type": "bludgeoning"
+        }
+      ]
+    },
+    {
+      "id": "spiked_shield",
+      "name": "Spiked Shield",
+      "reach": 5,
+      "damage": [
+        {
+          "dice": "1d6",
+          "type": "piercing"
+        }
+      ]
+    }
+  ],
   "hit_points": {
     "average": 22,
     "formula": "4d8+4"
@@ -112,6 +152,10 @@
       "id": "bite",
       "name": "Bite",
       "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d6",
+        "ability": "str"
+      },
       "to_hit": 4,
       "reach": 5,
       "targets": 1,
@@ -126,6 +170,7 @@
       "id": "heavy_club",
       "name": "Heavy Club",
       "kind": "melee_weapon_attack",
+      "weapon": "#heavy_club",
       "to_hit": 4,
       "reach": 5,
       "targets": 1,
@@ -140,6 +185,7 @@
       "id": "javelin",
       "name": "Javelin",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.javelin",
       "to_hit": 4,
       "reach": 5,
       "targets": 1,
@@ -154,6 +200,8 @@
       "id": "javelin_thrown",
       "name": "Javelin (thrown)",
       "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.javelin",
+      "use": "thrown",
       "to_hit": 4,
       "range": [
         30,
@@ -174,6 +222,7 @@
       "id": "spiked_shield",
       "name": "Spiked Shield",
       "kind": "melee_weapon_attack",
+      "weapon": "#spiked_shield",
       "to_hit": 4,
       "reach": 5,
       "targets": 1,
