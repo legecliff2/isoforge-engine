@@ -111,6 +111,14 @@ ITEM = {("weapon",): (_IBASE | {"weapon_class"}, S(_ICOMMON | {"reach", "range",
         ("armor",): (_IBASE | {"armor_category", "base_ac", "dex_bonus"}, S(_ICOMMON | {"dex_cap", "str_min", "stealth_disadvantage", "magic_bonus"})),
         ("shield",): (_IBASE, S(_ICOMMON | {"ac_bonus", "magic_bonus"})),
         ("valuable",): (_IBASE, S(_ICOMMON))}   # gems (srd51.item.diamond): priced materials, docs/CONTENT_CONVENTIONS.md section 7
+# item@2 (docs/proposals/EQUIPMENT.md 7.1): item@1's arms with optional weapon keys appended, plus gear and ammunition.
+# Every item@2 arm also accepts the presentation-only `visual` block (as item@1 does with Render #233; superset of item@1).
+_V = {"visual"}
+ITEM2 = {("weapon",): (ITEM[("weapon",)][0], ITEM[("weapon",)][1] | {"ammo_kind", "attack_magic", "damage_magic", "improvised"} | _V),
+         ("armor",): (ITEM[("armor",)][0], ITEM[("armor",)][1] | _V), ("shield",): (ITEM[("shield",)][0], ITEM[("shield",)][1] | _V),
+         ("valuable",): (ITEM[("valuable",)][0], ITEM[("valuable",)][1] | _V),
+         ("gear",): (_IBASE, S(_ICOMMON | {"hands", "light", "torch_attack", "container"} | _V)),
+         ("ammunition",): (_IBASE | {"ammo_kind"}, S(_ICOMMON | {"magic_bonus"} | _V))}
 
 # (label, schema locator, discriminator, documented table)
 def unions():
@@ -119,6 +127,7 @@ def unions():
             ("common@2 rider", c2["rider"], "kind", RIDER), ("common@2 modifier", c2["modifier"], "stat", MODIFIER),
             ("common@2 reaction_effect", c2["reaction_effect"], "kind", REACTION_EFFECT),
             ("item@1", load("item/v1.schema.json"), "category", ITEM),
+            ("item@2", load("item/v2.schema.json"), "category", ITEM2),
             ("spell@1 zone", load("spell/v1.schema.json")["$defs"]["zone"], "shape", ZONE),
             ("spell@1 zone_effect", load("spell/v1.schema.json")["$defs"]["zone_effect"], "kind", ZONE_EFFECT),
             ("spell@1 delayed_expiry", load("spell/v1.schema.json")["$defs"]["delayed_expiry"], "kind", DELAYED_EXPIRY)]

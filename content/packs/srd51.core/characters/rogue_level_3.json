@@ -1,5 +1,6 @@
 {
-  "$schema": "character@4",
+  "$schema": "character@5",
+  "derive": true,
   "id": "srd51.character.rogue_level_3",
   "name": "Rogue, level 3 (Thief)",
   "source": {
@@ -144,20 +145,35 @@
     },
     {
       "item": "srd51.item.rapier",
-      "equipped": true
+      "equipped": true,
+      "hand": "main"
     },
     {
       "item": "srd51.item.shortbow"
     },
-    "arrows_20",
+    {
+      "item": "srd51.item.arrow",
+      "count": 20
+    },
     "thieves_tools",
     "burglars_pack"
+  ],
+  "weapon_proficiencies": [
+    "simple",
+    "srd51.item.crossbow_hand",
+    "srd51.item.longsword",
+    "srd51.item.rapier",
+    "srd51.item.shortsword"
+  ],
+  "armor_proficiencies": [
+    "light"
   ],
   "actions": [
     {
       "id": "rapier",
       "name": "Rapier",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.rapier",
       "to_hit": 5,
       "reach": 5,
       "targets": 1,
@@ -176,6 +192,7 @@
       "id": "shortbow",
       "name": "Shortbow",
       "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.shortbow",
       "to_hit": 5,
       "range": [
         80,

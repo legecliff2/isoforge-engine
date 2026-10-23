@@ -1,0 +1,1154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://isoforge.dev/schemas/monster/v5.schema.json",
+  "title": "monster@5",
+  "description": "monster@5 = monster@4 carried in full plus (all optional, docs/proposals/EQUIPMENT.md 5 and 7.1): derive, equipment[] (with count), natural_armor, ac_adjust, weapon_dice_multiplier, weapons[] (monster-local), action weapon / natural / attack_bonus, hands, proficiency_bonus optional (default: the CR table) with proficiency_bonus_reason, emits_light (LIGHTING 3.4). monster@4 -> monster@5 is an identity migration with derive absent (= false). Integers only (4.3).",
+  "$ref": "#/$defs/stat_block",
+  "unevaluatedProperties": false,
+  "required": [
+    "challenge"
+  ],
+  "properties": {
+    "spellcasting": {
+      "$ref": "../common/v2.schema.json#/$defs/spellcasting"
+    },
+    "$schema": {
+      "const": "monster@5"
+    },
+    "challenge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rating",
+        "xp"
+      ],
+      "properties": {
+        "rating": {
+          "enum": [
+            "0",
+            "1/8",
+            "1/4",
+            "1/2",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "30"
+          ],
+          "description": "String so fractional CRs need no floats."
+        },
+        "xp": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "legendary_actions": {
+      "type": "array",
+      "items": {
+        "$ref": "../common/v1.schema.json#/$defs/action"
+      },
+      "description": "Descriptive and ignored by the engine (T&C-G11 is deferred); common@1 action list type, never loaded."
+    },
+    "behavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Simulation behaviour hooks.",
+      "properties": {
+        "ai": {
+          "type": "string",
+          "pattern": "^scripts/.+\\.luau$",
+          "description": "Pack-relative strict Luau AI script."
+        }
+      }
+    },
+    "presentation": {
+      "$ref": "../common/v1.schema.json#/$defs/presentation",
+      "properties": {
+        "ai": false
+      },
+      "description": "Presentation-only; 'ai' not allowed in v2 (use behavior.ai)."
+    },
+    "traits": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "../common/v2.schema.json#/$defs/trait_active"
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "weapon_extra_dice"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/weapon_extra_dice_effect"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "description": "Traits. Effects are mechanically active; never bake their numbers into actions or other stats."
+    },
+    "forward_compat": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "elevation"
+        ]
+      },
+      "description": "Opt-in flags for engine features that are not implemented yet (elevation, T&C-G12). Descriptive and ignored by sim; listed with the inert mechanics. New enum values widen the @4 schemas additively."
+    },
+    "inert_mechanics": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      },
+      "description": "Mechanics the document carries but the engine must ignore (e.g. 'reactions', 'bonus_actions', 'equipment', 'damage[1..]'). Written by the 3->4 migration; a hand-written @4 file may carry it too."
+    },
+    "no_breath": {
+      "type": "boolean",
+      "description": "R-G11 creature fact (CONTENT_CONVENTIONS 4.6), default false: the monster doesn't need to breathe (Stinking Cloud's automatic success with auto_success_no_breath); maps to Combatant::no_breath. Reserved: the sim archetype loader (engine/core/sim/src/content.cpp, Engine Core) does not read it yet, so the validator warns and it has no effect until then."
+    },
+    "shapechanger": {
+      "type": "boolean",
+      "description": "R-G11 creature fact (CONTENT_CONVENTIONS 4.6), default false: the monster is a shapechanger (Moonbeam's shapechanger_disadvantage); maps to Combatant::shapechanger. Reserved: the sim archetype loader (engine/core/sim/src/content.cpp, Engine Core) does not read it yet, so the validator warns and it has no effect until then."
+    },
+    "evil": {
+      "type": "boolean",
+      "description": "R-G11 creature fact (CONTENT_CONVENTIONS 4.6), default false: the monster is evil for zone rows (Spirit Guardians' evil_damage_type); maps to Combatant::evil. Reserved: the sim archetype loader (engine/core/sim/src/content.cpp, Engine Core) does not read it yet, so the validator warns and it has no effect until then."
+    },
+    "derive": {
+      "type": "boolean",
+      "description": "Default false: printed AC / to-hit / damage are used as written. true: they are derived and asserted (EQUIPMENT 5.6)."
+    },
+    "equipment": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "item"
+        ],
+        "properties": {
+          "item": {
+            "$ref": "../common/v1.schema.json#/$defs/content_id"
+          },
+          "equipped": {
+            "type": "boolean"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535,
+            "description": "Stack size (ammunition, javelins); default 1."
+          }
+        }
+      },
+      "description": "{item, equipped?, count?} references to item@2 documents."
+    },
+    "natural_armor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "base"
+      ],
+      "properties": {
+        "base": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127
+        },
+        "dex": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "ac_adjust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "reason"
+      ],
+      "properties": {
+        "value": {
+          "type": "integer",
+          "minimum": -128,
+          "maximum": 127
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "description": "Added to the derived AC (step 4 of EQUIPMENT 1.2); needs a reason."
+    },
+    "weapon_dice_multiplier": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4,
+      "default": 1
+    },
+    "weapons": {
+      "type": "array",
+      "description": "Monster-local weapons (EQUIPMENT 5.4): the item@2 weapon fields, weapon_class optional.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "damage"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "../common/v1.schema.json#/$defs/local_id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "weapon_class": {
+            "$ref": "../item/v2.schema.json#/properties/weapon_class"
+          },
+          "reach": {
+            "$ref": "../item/v2.schema.json#/properties/reach"
+          },
+          "range": {
+            "$ref": "../item/v2.schema.json#/properties/range"
+          },
+          "damage": {
+            "$ref": "../item/v2.schema.json#/properties/damage"
+          },
+          "versatile_damage": {
+            "$ref": "../item/v2.schema.json#/properties/versatile_damage"
+          },
+          "properties": {
+            "$ref": "../item/v2.schema.json#/properties/properties"
+          },
+          "qualifiers": {
+            "$ref": "../item/v2.schema.json#/properties/qualifiers"
+          },
+          "magic_bonus": {
+            "$ref": "../item/v2.schema.json#/properties/magic_bonus"
+          },
+          "attack_magic": {
+            "$ref": "../item/v2.schema.json#/properties/attack_magic"
+          },
+          "damage_magic": {
+            "$ref": "../item/v2.schema.json#/properties/damage_magic"
+          },
+          "ammo_kind": {
+            "$ref": "../item/v2.schema.json#/properties/ammo_kind"
+          },
+          "on_hit": {
+            "$ref": "../item/v2.schema.json#/properties/on_hit"
+          }
+        }
+      }
+    },
+    "hands": {
+      "enum": [
+        0,
+        2
+      ],
+      "description": "Explicit hand slots; default 2 when the monster holds a weapon or shield, else 0."
+    },
+    "proficiency_bonus_reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "emits_light": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bright_ft",
+        "dim_ft"
+      ],
+      "properties": {
+        "bright_ft": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 120,
+          "multipleOf": 5
+        },
+        "dim_ft": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 120,
+          "multipleOf": 5
+        }
+      },
+      "description": "Glowing monster (LIGHTING 3.4); dim is additional."
+    }
+  },
+  "$defs": {
+    "stat_block": {
+      "description": "common@2 stat_block (copied; common@2 unchanged) with actions[] items monster@5 action and proficiency_bonus optional.",
+      "type": "object",
+      "required": [
+        "$schema",
+        "id",
+        "name",
+        "source",
+        "size",
+        "type",
+        "alignment",
+        "armor_class",
+        "hit_points",
+        "speed",
+        "abilities",
+        "senses",
+        "languages",
+        "actions"
+      ],
+      "properties": {
+        "$schema": {
+          "$ref": "../common/v1.schema.json#/$defs/schema_tag"
+        },
+        "id": {
+          "$ref": "../common/v1.schema.json#/$defs/content_id"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "$ref": "../common/v1.schema.json#/$defs/source"
+        },
+        "size": {
+          "$ref": "../common/v1.schema.json#/$defs/size"
+        },
+        "type": {
+          "$ref": "../common/v1.schema.json#/$defs/creature_type"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "alignment": {
+          "$ref": "../common/v1.schema.json#/$defs/alignment"
+        },
+        "armor_class": {
+          "$ref": "../common/v1.schema.json#/$defs/armor_class"
+        },
+        "hit_points": {
+          "$ref": "../common/v1.schema.json#/$defs/hit_points"
+        },
+        "speed": {
+          "$ref": "../common/v1.schema.json#/$defs/speed"
+        },
+        "abilities": {
+          "$ref": "../common/v1.schema.json#/$defs/abilities"
+        },
+        "saving_throws": {
+          "$ref": "../common/v1.schema.json#/$defs/saving_throws"
+        },
+        "skills": {
+          "$ref": "../common/v1.schema.json#/$defs/skills"
+        },
+        "damage_vulnerabilities": {
+          "$ref": "../common/v1.schema.json#/$defs/damage_types"
+        },
+        "damage_resistances": {
+          "$ref": "../common/v1.schema.json#/$defs/damage_types"
+        },
+        "damage_immunities": {
+          "$ref": "../common/v1.schema.json#/$defs/damage_types"
+        },
+        "condition_immunities": {
+          "type": "array",
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/condition"
+          },
+          "uniqueItems": true
+        },
+        "senses": {
+          "$ref": "../common/v1.schema.json#/$defs/senses"
+        },
+        "languages": {
+          "$ref": "../common/v1.schema.json#/$defs/languages"
+        },
+        "proficiency_bonus": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 9
+        },
+        "traits": {
+          "type": "array",
+          "items": {
+            "$ref": "../common/v2.schema.json#/$defs/trait_active"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/action"
+          }
+        },
+        "bonus_actions": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "allOf": [
+                  {
+                    "$ref": "../common/v2.schema.json#/$defs/action"
+                  },
+                  {
+                    "properties": {
+                      "kind": {
+                        "not": {
+                          "const": "special"
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "$ref": "../common/v2.schema.json#/$defs/legacy_nonspecial_action"
+              },
+              {
+                "$ref": "../common/v2.schema.json#/$defs/legacy_special_action"
+              }
+            ]
+          }
+        },
+        "reactions": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "../common/v2.schema.json#/$defs/reaction"
+              },
+              {
+                "$ref": "../common/v2.schema.json#/$defs/legacy_action"
+              }
+            ]
+          }
+        },
+        "presentation": {
+          "$ref": "../common/v1.schema.json#/$defs/presentation"
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "$ref": "../common/v2.schema.json#/$defs/resource"
+          }
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "melee_weapon_attack",
+            "ranged_weapon_attack",
+            "melee_spell_attack",
+            "ranged_spell_attack",
+            "special",
+            "save_effect",
+            "attack_effect"
+          ]
+        },
+        "to_hit": {
+          "type": "integer",
+          "minimum": -128,
+          "maximum": 127
+        },
+        "reach": {
+          "$ref": "../common/v1.schema.json#/$defs/feet"
+        },
+        "range": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "$ref": "../common/v1.schema.json#/$defs/range_ft"
+            },
+            {
+              "$ref": "../common/v1.schema.json#/$defs/range_ft"
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[normal, long] range in feet (SRD range 80/320 = [80, 320]); targets beyond normal and up to long range are attacked with disadvantage."
+        },
+        "targets": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "properties": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Weapon properties, e.g. 'finesse', 'light', 'ammunition', 'versatile'."
+        },
+        "damage": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "../common/v2.schema.json#/$defs/damage"
+          },
+          "description": "BASE damage: weapon die + ability modifier (+ magic bonus). Never fold feature bonuses (e.g. Dueling +2) in; feature effects such as damage_bonus are applied by the engine."
+        },
+        "qualifiers": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "magical",
+              "silvered",
+              "adamantine"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "monster@3 / character@3: what the weapon is made of / counts as, for qualified resistances (nonmagical, silvered, adamantine). Inert in earlier versions."
+        },
+        "description": {
+          "type": "string"
+        },
+        "save": {
+          "$ref": "../common/v2.schema.json#/$defs/save"
+        },
+        "area": {
+          "$ref": "../common/v2.schema.json#/$defs/area"
+        },
+        "origin": {
+          "enum": [
+            "self",
+            "point"
+          ],
+          "default": "self"
+        },
+        "range_ft": {
+          "$ref": "../common/v1.schema.json#/$defs/range_ft"
+        },
+        "on_success": {
+          "enum": [
+            "half",
+            "none"
+          ]
+        },
+        "apply": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "../common/v2.schema.json#/$defs/apply"
+          }
+        },
+        "usage": {
+          "$ref": "../common/v2.schema.json#/$defs/usage"
+        },
+        "magical": {
+          "type": "boolean",
+          "default": false
+        },
+        "on_hit": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "../common/v2.schema.json#/$defs/rider"
+          }
+        },
+        "attack": {
+          "enum": [
+            "ranged",
+            "melee"
+          ],
+          "description": "attack_effect (sim #170): the attack roll's mode; default ranged."
+        },
+        "half_hp_damage": {
+          "$ref": "../common/v1.schema.json#/$defs/dice",
+          "description": "Swarm (sim #172): weapon attacks only; replaces the dice of damage[0] while the attacker has half its hit points or fewer (SRD swarm bites: 2d6, or 1d6 at half HP or fewer). Needs at least one die."
+        },
+        "long_range_ft": {
+          "$ref": "../common/v1.schema.json#/$defs/range_ft",
+          "description": "attack_effect (sim #174): ranged only; long range in feet, greater than range_ft. Legal out to long_range_ft, at disadvantage beyond range_ft (giant spider Web 30/60)."
+        },
+        "zero_hp": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "while",
+            "duration"
+          ],
+          "properties": {
+            "condition": {
+              "$ref": "../common/v1.schema.json#/$defs/condition"
+            },
+            "while": {
+              "$ref": "../common/v1.schema.json#/$defs/condition"
+            },
+            "duration": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "n"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "rounds"
+                },
+                "n": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                }
+              }
+            }
+          },
+          "description": "save_effect / save_condition (sim #174): when the damage drops the target to 0 hit points it is stable and gains condition for duration.n rounds (600 = 1 hour, outlasts healing) and while for as long as that lasts (giant spider bite: poisoned 600 rounds, paralyzed while poisoned). Needs damage; condition and while must differ."
+        },
+        "control": {
+          "$ref": "../common/v2.schema.json#/$defs/control_kind",
+          "description": "VERSION_BUMP_BATCH 7.2y: save_effect only (class feature save actions: Turn Undead, Turn the Unholy). command is spell-only (load error)."
+        },
+        "control_excludes_creature_types": {
+          "$ref": "../common/v1.schema.json#/$defs/creature_types",
+          "description": "7.2y: save_effect with control only; creature types the control has no effect on."
+        },
+        "destroy_undead_max_cr8": {
+          "$ref": "../common/v2.schema.json#/$defs/destroy_undead_max_cr8",
+          "description": "7.2y: save_effect with control turned only (Destroy Undead)."
+        },
+        "target_creature_types": {
+          "$ref": "../common/v1.schema.json#/$defs/creature_types",
+          "description": "7.2y: save_effect only; only creatures of these types are targeted (others make no save and take nothing): Turn Undead [undead], Turn the Unholy [fiend, undead]."
+        },
+        "duration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "n"
+          ],
+          "properties": {
+            "kind": {
+              "const": "rounds"
+            },
+            "n": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          },
+          "description": "7.2y: save_effect with control only; the control lasts n rounds (Turn Undead: 1 minute = 10)."
+        },
+        "weapon": {
+          "type": "string",
+          "pattern": "^(#[a-z0-9_]+|[a-z0-9_]+(\\.[a-z0-9_]+)+)$",
+          "description": "The wielded weapon: an item@2 content id (listed in equipment[]) or '#<id>' of a weapons[] entry (EQUIPMENT 5.3 / 5.4)."
+        },
+        "natural": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "dice",
+            "ability"
+          ],
+          "properties": {
+            "dice": {
+              "$ref": "../common/v1.schema.json#/$defs/dice"
+            },
+            "ability": {
+              "enum": [
+                "str",
+                "dex"
+              ]
+            },
+            "damage_ability": {
+              "enum": [
+                "str",
+                "dex",
+                "none"
+              ],
+              "description": "Default: ability. 'none' for blocks that print no modifier."
+            }
+          }
+        },
+        "attack_bonus": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "value",
+            "reason"
+          ],
+          "properties": {
+            "value": {
+              "type": "integer",
+              "minimum": -128,
+              "maximum": 127
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "description": "Overrides the derived total to-hit (not a delta); needs a reason (EQUIPMENT 5.5)."
+        },
+        "use": {
+          "enum": [
+            "one_hand",
+            "two_hands",
+            "thrown",
+            "off_hand"
+          ],
+          "default": "one_hand",
+          "description": "How the `weapon` is used for this action (EQUIPMENT 2.1 WeaponUse): two_hands = versatile die or a two-handed melee weapon, thrown = a thrown use of a melee weapon. Explicit, never inferred from the action id."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "pattern": "_attack$"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "to_hit",
+              "damage"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "pattern": "^melee_"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reach"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "pattern": "^ranged_"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "range"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "save_effect"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "save"
+            ],
+            "dependentRequired": {
+              "on_success": [
+                "damage"
+              ],
+              "control_excludes_creature_types": [
+                "control"
+              ],
+              "destroy_undead_max_cr8": [
+                "control"
+              ],
+              "duration": [
+                "control"
+              ]
+            },
+            "anyOf": [
+              {
+                "required": [
+                  "damage"
+                ]
+              },
+              {
+                "required": [
+                  "apply"
+                ]
+              },
+              {
+                "required": [
+                  "control"
+                ]
+              }
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "to_hit"
+                  ]
+                },
+                {
+                  "required": [
+                    "reach"
+                  ]
+                },
+                {
+                  "required": [
+                    "range"
+                  ]
+                },
+                {
+                  "required": [
+                    "properties"
+                  ]
+                },
+                {
+                  "required": [
+                    "on_hit"
+                  ]
+                },
+                {
+                  "required": [
+                    "long_range_ft"
+                  ]
+                },
+                {
+                  "required": [
+                    "half_hp_damage"
+                  ]
+                }
+              ]
+            }
+          },
+          "else": {
+            "if": {
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "attack_effect"
+                }
+              }
+            },
+            "else": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "save"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "area"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "origin"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "range_ft"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "apply"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "on_success"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "usage"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "magical"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "long_range_ft"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "zero_hp"
+                    ]
+                  }
+                ]
+              }
+            },
+            "then": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "zero_hp"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "half_hp_damage"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind",
+              "damage"
+            ],
+            "properties": {
+              "kind": {
+                "const": "save_effect"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "on_success"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "origin"
+            ],
+            "properties": {
+              "origin": {
+                "const": "point"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "range_ft"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "melee_weapon_attack",
+                  "ranged_weapon_attack"
+                ]
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "on_hit"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "attack_effect"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "id",
+              "to_hit",
+              "apply"
+            ],
+            "properties": {
+              "to_hit": {
+                "minimum": -20,
+                "maximum": 30,
+                "not": {
+                  "const": 0
+                }
+              },
+              "range_ft": {
+                "minimum": 5
+              }
+            },
+            "propertyNames": {
+              "enum": [
+                "id",
+                "name",
+                "kind",
+                "attack",
+                "to_hit",
+                "range_ft",
+                "long_range_ft",
+                "apply",
+                "usage",
+                "description"
+              ]
+            }
+          },
+          "description": "sim #170 compile_attack_effect: an attack roll that only applies conditions (giant spider Web); every apply[] entry has a Strength escape."
+        },
+        {
+          "description": "VERSION_BUMP_BATCH 7.2y: the control / target_creature_types keys are save_effect only.",
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "save_effect"
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "control"
+                  ]
+                },
+                {
+                  "required": [
+                    "control_excludes_creature_types"
+                  ]
+                },
+                {
+                  "required": [
+                    "destroy_undead_max_cr8"
+                  ]
+                },
+                {
+                  "required": [
+                    "target_creature_types"
+                  ]
+                },
+                {
+                  "required": [
+                    "duration"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "weapon_extra_dice_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "dice"
+      ],
+      "description": "monster@5-local trait kind (EQUIPMENT 5.3, Rules #247 brute_dice; common@2 unchanged): a weapon deals `dice` extra dice of its own damage die. Read only by the derivation (derive: true). SRD Bugbear Brute: {kind weapon_extra_dice, dice 1, melee_only true}.",
+      "properties": {
+        "kind": {
+          "const": "weapon_extra_dice"
+        },
+        "dice": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "melee_only": {
+          "type": "boolean",
+          "default": true,
+          "description": "Melee uses only; a thrown use is ranged and gets no extra dice."
+        }
+      }
+    }
+  }
+}

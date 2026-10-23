@@ -1,5 +1,6 @@
 {
-  "$schema": "character@4",
+  "$schema": "character@5",
+  "derive": true,
   "id": "srd51.character.barbarian_level_1",
   "name": "Barbarian, level 1",
   "source": {
@@ -152,7 +153,8 @@
   "equipment": [
     {
       "item": "srd51.item.greataxe",
-      "equipped": true
+      "equipped": true,
+      "hand": "main"
     },
     {
       "item": "srd51.item.handaxe"
@@ -160,11 +162,22 @@
     "explorers_pack",
     "javelins_4"
   ],
+  "weapon_proficiencies": [
+    "simple",
+    "martial"
+  ],
+  "armor_proficiencies": [
+    "light",
+    "medium",
+    "shields"
+  ],
   "actions": [
     {
       "id": "greataxe",
       "name": "Greataxe",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.greataxe",
+      "use": "two_hands",
       "to_hit": 5,
       "reach": 5,
       "targets": 1,
@@ -183,6 +196,8 @@
       "id": "handaxe",
       "name": "Handaxe",
       "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.handaxe",
+      "use": "thrown",
       "to_hit": 5,
       "range": [
         20,

@@ -1,5 +1,6 @@
 {
-  "$schema": "monster@4",
+  "$schema": "monster@5",
+  "derive": true,
   "id": "srd51.monster.medusa",
   "name": "Medusa",
   "source": {
@@ -13,6 +14,20 @@
     "value": 15,
     "note": "natural armor"
   },
+  "equipment": [
+    {
+      "item": "srd51.item.shortsword",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.longbow"
+    }
+  ],
+  "natural_armor": {
+    "base": 13,
+    "dex": true
+  },
+  "hands": 2,
   "hit_points": {
     "average": 127,
     "formula": "17d8+51"
@@ -96,6 +111,10 @@
       "id": "snake_hair",
       "name": "Snake Hair",
       "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d4",
+        "ability": "dex"
+      },
       "to_hit": 5,
       "reach": 5,
       "targets": 1,
@@ -114,6 +133,7 @@
       "id": "shortsword",
       "name": "Shortsword",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.shortsword",
       "to_hit": 5,
       "reach": 5,
       "targets": 1,
@@ -128,6 +148,7 @@
       "id": "longbow",
       "name": "Longbow",
       "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.longbow",
       "to_hit": 5,
       "range": [
         150,

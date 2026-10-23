@@ -1,0 +1,22 @@
+{
+  "$schema": "item@2",
+  "id": "srd51.item.candle",
+  "name": "Candle",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "gear",
+  "cost_cp": 1,
+  "weight_oz": 0,
+  "description": "For 1 hour, a candle sheds bright light in a 5-foot radius and dim light for an additional 5 feet.",
+  "hands": 1,
+  "light": {
+    "bright_ft": 5,
+    "dim_ft": 5,
+    "shape": "radius",
+    "duration_rounds": 600,
+    "lit_by_default": false,
+    "preset": "srd51.core.light.candle"
+  }
+}
