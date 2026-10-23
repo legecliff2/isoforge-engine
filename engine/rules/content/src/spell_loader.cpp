@@ -8,6 +8,7 @@
 
 #include "assets/content_migrations.hpp"
 #include "rules5e/dice.hpp"
+#include "spell_keys_zg.hpp"
 
 namespace rules5e_content {
 
@@ -420,12 +421,45 @@ std::string parse_predicate(const Json& p, Predicate& out) {
     return "";
 }
 
+// spell@1 `ends_on` (7.2zc / 7.2zd; 7.2zg adds damage and shake_awake): unique, non-empty -> kEndsOn* bits.
+std::string read_ends_on(const Json& eo, uint8_t& out) {
+    constexpr const char* kBad = "effect ends_on must be a non-empty list of attack, cast, harmful_cast, damage, shake_awake";
+    if (!eo.is_array() || eo.empty()) return kBad;
+    for (const Json& v : eo) {
+        const std::string w = v.is_string() ? v.get<std::string>() : "";
+        const uint8_t b = w == "attack" ? kEndsOnAttack : w == "cast" ? kEndsOnCast : w == "harmful_cast" ? kEndsOnHarmfulCast
+                        : w == "damage" ? kEndsOnDamage : w == zg::kShakeAwake ? kEndsOnShakeAwake : uint8_t(0);
+        if (b == 0) return kBad;
+        if (out & b) return "effect ends_on items must be unique";
+        out = uint8_t(out | b);
+    }
+    return "";
+}
+
+// 7.2zg `exempt_senses` (Blur, Mirror Image share the key and the list): distinct sense names -> kSense* bits.
+bool read_exempt_senses(const Json& e, uint8_t& out) {
+    static const std::map<std::string, uint8_t> kSenses{{"blindsight", kSenseBlindsight}, {"tremorsense", kSenseTremorsense},
+                                                        {"truesight", kSenseTruesight}};
+    const Json& v = e[zg::kExemptSenses];
+    if (!v.is_array() || v.empty()) return false;
+    uint8_t m = 0;
+    for (const Json& x : v) {
+        uint8_t b = 0;
+        if (!lookup(kSenses, x, b) || (m & b)) return false;
+        m = uint8_t(m | b);
+    }
+    out = m;
+    return true;
+}
+constexpr const char* kExemptSensesError = "effect exempt_senses must be distinct senses (blindsight, tremorsense, truesight), at least one";
+
 std::string parse_modifier(const Json& m, ModifierSpec& out, const Json** table) {
     if (!m.is_object()) return "modifier must be an object";
     static const std::map<std::string, ModStat> kStat{{"attack_roll", ModStat::AttackRoll}, {"save", ModStat::Save},
         {"ability_check", ModStat::AbilityCheck}, {"ac", ModStat::Ac}, {"speed", ModStat::Speed}, {"damage", ModStat::Damage},
         {"temp_hp", ModStat::TempHp}, {"resistance", ModStat::Resistance}, {"attacks_against", ModStat::AttacksAgainst},
-        {"no_reactions", ModStat::NoReactions}, {"no_healing", ModStat::NoHealing}};   // 7.2u markers
+        {"no_reactions", ModStat::NoReactions}, {"no_healing", ModStat::NoHealing},   // 7.2u markers
+        {zg::kOutlined, ModStat::Outlined}};   // 7.2zg Faerie Fire (a state)
     out = ModifierSpec{};
     if (!lookup(kStat, m.value("stat", Json()), out.stat)) return "modifier stat invalid";
     if (m.contains("bonus")) { int b = 0; if (!small_int(m["bonus"], -32767, 32767, b)) return "modifier bonus invalid"; out.bonus = int16_t(b); }
@@ -598,7 +632,8 @@ SpellLoad spell_from_json(const Json& j) {
         const std::string tk = tr.value("kind", "");
         if (tk == "being_hit") s.reaction_trigger = ReactionTrigger::BeingHit;
         else if (tk == "spell_cast") s.reaction_trigger = ReactionTrigger::SpellCast;
-        else return err("casting_time.trigger.kind must be being_hit or spell_cast");
+        else if (tk == zg::kTriggerDamaged) s.reaction_trigger = ReactionTrigger::Damaged;   // 7.2zg Hellish Rebuke
+        else return err("casting_time.trigger.kind must be being_hit, spell_cast or damaged");
         if (tr.contains("or_targeted_by")) {
             if (tk != "being_hit") return err("casting_time.trigger.or_targeted_by is only for being_hit");
             for (const Json& r : tr["or_targeted_by"]) {
@@ -716,9 +751,17 @@ SpellLoad spell_from_json(const Json& j) {
             int b = 1;
             if (e.contains("beams") && !small_int(e["beams"], 1, 255, b)) return ("effect beams invalid");
             s.beams = uint8_t(b);
+            if (e.contains(zg::kOnMiss)) {   // 7.2zg Acid Arrow
+                if (e[zg::kOnMiss] != Json("half")) return ("effect on_miss must be half");
+                s.miss_half = true;
+            }
         } else if (kind == "save") {
             s.kind = SpellEffectKind::Save;
             if (!e.contains("ability") || !lookup(kAbility, e["ability"], s.save_ability)) return ("effect ability invalid");
+            if (e.contains("ends_on")) {   // 7.2zg Hypnotic Pattern: the condition ends on damage / a shake awake
+                if (!e.contains("condition")) return ("effect ends_on on a save effect needs a condition");
+                if (auto m = read_ends_on(e["ends_on"], s.ends_on); !m.empty()) return m;
+            }
             if (e.contains("damage") != e.contains("on_success"))
                 return (e.contains("damage") ? "'on_success' is a dependency of 'damage'" : "effect on_success needs damage ('damage' is a dependency of 'on_success')");
             if (e.contains("damage") && !read_damage(e["damage"], s)) return ("effect damage invalid");
@@ -829,6 +872,22 @@ SpellLoad spell_from_json(const Json& j) {
             if (!e.contains("modifier")) return ("effect modifier required");
             if (auto m = parse_modifier(e["modifier"], s.modifier); !m.empty()) return ("effect " + m);
             s.modifier.id = spell_id_of(s.content_id + "#modifier");
+            if (e.contains(zg::kExemptSenses)) {   // 7.2zg Blur
+                if (s.modifier.stat != ModStat::AttacksAgainst) return ("effect exempt_senses needs an attacks_against modifier");
+                if (!read_exempt_senses(e, s.modifier.exempt_senses)) return (kExemptSensesError);
+            }
+            if (e.contains(zg::kDamageTypeChoices)) {   // 7.2zg Protection from Energy: ActionRequest::damage_choice picks the type
+                if (s.modifier.stat != ModStat::Resistance) return ("effect damage_type_choices needs a resistance modifier");
+                const Json& dc = e[zg::kDamageTypeChoices];
+                bool ok = dc.is_array() && dc.size() >= 2 && dc.size() <= 13, listed = false;
+                for (std::size_t k = 0; ok && k < dc.size(); ++k) {
+                    DamageType t{};
+                    ok = lookup(kDamage, dc[k], t) && std::find(s.damage_choices.begin(), s.damage_choices.end(), t) == s.damage_choices.end();
+                    if (ok) { s.damage_choices.push_back(t); listed = listed || t == s.modifier.damage_type; }
+                }
+                if (!ok) return ("effect damage_type_choices must be 2..13 distinct damage types");
+                if (!listed) return ("effect damage_type_choices must include the modifier damage_type");
+            }
             if (e.contains("save")) {   // 7.2ze Bane: {ability, dc: caster}
                 const Json& sv = e["save"];
                 bool ok = sv.is_object() && sv.size() == 2 && sv.contains("ability") && sv.value("dc", Json()) == Json("caster");
@@ -882,18 +941,8 @@ SpellLoad spell_from_json(const Json& j) {
             } else if (warded) {
                 return ("effect condition warded needs ward");
             }
-            if (e.contains("ends_on")) {   // 7.2zc Invisibility: [attack, cast]; 7.2zd Sanctuary: harmful_cast; unique, non-empty
-                const Json& eo = e["ends_on"];
-                if (!eo.is_array() || eo.empty()) return ("effect ends_on must be a non-empty list of attack, cast, harmful_cast");
-                for (const Json& v : eo) {
-                    const std::string w = v.is_string() ? v.get<std::string>() : "";
-                    const uint8_t b = w == "attack" ? kEndsOnAttack : w == "cast" ? kEndsOnCast
-                                    : w == "harmful_cast" ? kEndsOnHarmfulCast : uint8_t(0);
-                    if (b == 0) return ("effect ends_on must be a non-empty list of attack, cast, harmful_cast");
-                    if (s.ends_on & b) return ("effect ends_on items must be unique");
-                    s.ends_on = uint8_t(s.ends_on | b);
-                }
-            }
+            if (e.contains("ends_on"))   // 7.2zc Invisibility: [attack, cast]; 7.2zd Sanctuary: harmful_cast; 7.2zg: damage, shake_awake
+                if (auto m = read_ends_on(e["ends_on"], s.ends_on); !m.empty()) return m;
         } else if (kind == "hp_pool") {   // R-G15 (VERSION_BUMP_BATCH 7.2f): Sleep, Color Spray; timer from the spell's duration
             s.kind = SpellEffectKind::HpPool;
             auto d = e.contains("dice") && e["dice"].is_string() ? parse_dice(e["dice"].get<std::string>()) : std::nullopt;
@@ -1018,6 +1067,79 @@ SpellLoad spell_from_json(const Json& j) {
                 !lookup(kAbility, ac["ability"], d.ac_ability))
                 return ("effect ac must be {base 0..30, ability}");
             d.ac_base = int8_t(base);
+            if (e.contains(zg::kExemptSenses) && !read_exempt_senses(e, d.exempt_senses)) return (kExemptSensesError);   // 7.2zg
+        } else if (kind == zg::kSummonWeapon) {   // 7.2zg Spiritual Weapon: a token, not a creature (R-G12 PR 3 rules side)
+            s.kind = SpellEffectKind::SummonWeapon;
+            s.melee = true;
+            if (!e.contains("damage") || !read_damage(e["damage"], s)) return ("effect damage invalid");
+            s.add_spellcasting_modifier = e.value("add_spellcasting_modifier", false);
+            int v = 2;
+            if (e.contains("upcast_every") && !small_int(e["upcast_every"], 1, 9, v)) return ("effect upcast_every must be an integer 1..9");
+            s.summon_weapon.upcast_every = uint8_t(v);
+            v = 5;
+            if (e.contains("reach_ft") && (!feet_5(e["reach_ft"], v) || v > 255)) return ("effect reach_ft must be a positive multiple of 5");
+            s.summon_weapon.reach_ft = uint8_t(v);
+            v = 20;
+            if (e.contains("move_ft") && !feet_5(e["move_ft"], v)) return ("effect move_ft must be a positive multiple of 5");
+            s.summon_weapon.move_ft = uint16_t(v);
+        } else if (kind == zg::kTempHp) {   // 7.2zg False Life (dice + per_slot_above), Heroism (ability + per_turn + immunity)
+            s.kind = SpellEffectKind::TempHp;
+            TempHpSpec& th = s.temp_hp;
+            const bool has_dice = e.contains(zg::kDice), has_ab = e.contains(zg::kAbility);
+            if (has_dice == has_ab) return ("effect temp_hp needs exactly one of dice or ability");
+            if (has_dice) {
+                auto d = e[zg::kDice].is_string() ? parse_dice(e[zg::kDice].get<std::string>()) : std::nullopt;
+                if (!d || (d->count == 0 && d->bonus <= 0)) return ("effect dice invalid");
+                th.dice = *d;
+            } else {
+                if (e[zg::kAbility] != Json("spellcasting")) return ("effect ability must be spellcasting");
+                th.ability = true;
+            }
+            if (e.contains(zg::kPerSlotAbove)) {
+                int v = 0;
+                if (!small_int(e[zg::kPerSlotAbove], 1, 50, v)) return ("effect per_slot_above must be an integer 1..50");
+                th.per_slot_above = int16_t(v);
+            }
+            if (e.contains(zg::kPerTurn)) {
+                if (!e[zg::kPerTurn].is_boolean()) return ("effect per_turn must be a boolean");
+                th.per_turn = e[zg::kPerTurn].get<bool>();
+            }
+            if (e.contains(zg::kConditionImmunity)) {
+                const Json& ci = e[zg::kConditionImmunity];
+                if (!ci.is_array() || ci.empty()) return ("effect condition_immunity must be a non-empty list of conditions");
+                for (const Json& x : ci) {
+                    Condition c;
+                    if (!lookup(kCondition, x, c)) return ("effect condition_immunity must be a non-empty list of conditions");
+                    if (th.immune_conditions & bit(c)) return ("effect condition_immunity items must be unique");
+                    th.immune_conditions |= bit(c);
+                }
+            }
+        } else if (kind == zg::kHaste || kind == zg::kSlow) {   // 7.2zg: dedicated kinds, expanded into marker + number rows
+            const bool haste = kind == zg::kHaste;
+            if (!s.concentration) return ("effect " + kind + " needs concentration");
+            Ability save_ab = Ability::Wis;
+            if (!haste) {
+                if (!e.contains("ability") || !lookup(kAbility, e["ability"], save_ab)) return ("effect slow needs ability");
+            } else if (e.contains("ability")) return ("effect haste takes no ability");
+            auto row = [&](ModStat st, const char* tag) {
+                ModifierSpec m; m.stat = st; m.applies_to = ModAppliesTo::Target; m.concentration = true;
+                m.id = spell_id_of(s.content_id + "#" + kind + "_" + tag);
+                return m;
+            };
+            s.kind = SpellEffectKind::ApplyModifier;
+            s.modifier = row(haste ? ModStat::Haste : ModStat::Slow, "marker");   // Haste: extra action + lethargy; Slow: limits
+            if (!haste) {   // Slow: the target's Wis save resists; repeats at the end of each of its turns (rules fill the DC)
+                s.has_modifier_save = true; s.modifier_save = save_ab;
+                s.modifier.repeat_save = 1; s.modifier.repeat_ability = save_ab;
+            }
+            ModifierSpec ac = row(ModStat::Ac, "ac"); ac.bonus = int16_t(haste ? 2 : -2);
+            ModifierSpec sv = row(ModStat::Save, "dex_save"); sv.ability = Ability::Dex; sv.has_ability = true;
+            if (haste) sv.mode = RollMode::Advantage; else sv.bonus = -2;
+            ModifierSpec sp = row(ModStat::Speed, "speed"); sp.speed_num = uint8_t(haste ? 2 : 1); sp.speed_den = uint8_t(haste ? 1 : 2);
+            for (const ModifierSpec& m : {ac, sv, sp}) {
+                SpellEffect fx; fx.kind = SpellEffectKind::ApplyModifier; fx.modifier = m; fx.affected_only = true;
+                s.extra_effects.push_back(fx);
+            }
         } else if (kind == "teleport") {   // R-G9 (7.2k): self-teleport (Misty Step); the destination is the caller's (sim)
             s.kind = SpellEffectKind::Teleport;
             int ft = 0;
@@ -1114,6 +1236,9 @@ SpellLoad spell_from_json(const Json& j) {
         if (xe.is_object() && xe.value("kind", "") == "polymorph") return err("polymorph: primary effect only");
         if (xe.is_object() && xe.value("kind", "") == "zone")   // the cast refuses an extra effect of kind Zone
             return err("zone must be the primary effect (effects[" + std::to_string(i) + "] is a zone)");
+        if (xe.is_object() && (xe.value("kind", "") == zg::kHaste || xe.value("kind", "") == zg::kSlow ||
+                               xe.value("kind", "") == zg::kSummonWeapon || xe.value("kind", "") == zg::kTempHp))   // 7.2zg
+            return err("effects[" + std::to_string(i) + "]: " + xe.value("kind", "") + " is only allowed as the first effect");
         SpellDef x;
         std::string xk;
         if (auto m = parse_effect(j["effects"][i], x, xk); !m.empty()) return err("effects[" + std::to_string(i) + "]: " + m);
@@ -1127,6 +1252,9 @@ SpellLoad spell_from_json(const Json& j) {
             return err("effects[" + std::to_string(i) + "]: " + xk + " is only allowed as the first effect");
         if (x.control != ControlKind::None) return err("effects[" + std::to_string(i) + "]: control is only allowed on the first effect");
         if (!x.condition_choices.empty()) return err("effects[" + std::to_string(i) + "]: choices is only allowed on the first effect");
+        if (!x.damage_choices.empty())
+            return err("effects[" + std::to_string(i) + "]: damage_type_choices is only allowed on the first effect");   // 7.2zg
+        if (x.miss_half) return err("effects[" + std::to_string(i) + "]: on_miss is only allowed on the first effect");   // 7.2zg
         if (x.has_modifier_save) return err("effects[" + std::to_string(i) + "]: an apply_modifier save is only allowed on the first effect");
         SpellEffect fx;
         fx.kind = x.kind; fx.melee = x.melee; fx.beams = x.beams; fx.dice = x.dice; fx.damage_type = x.damage_type;
@@ -1171,6 +1299,10 @@ SpellLoad spell_from_json(const Json& j) {
         if (hp_bonus && !lasting) return err("effect max_hp_bonus needs concentration or a rounds, minutes or hours duration");
         if (s.kind == SpellEffectKind::WeaponImbue && !lasting)
             return err("effect weapon_imbue needs concentration or a rounds, minutes or hours duration");
+        if (s.kind == SpellEffectKind::TempHp && (s.temp_hp.per_turn || s.temp_hp.immune_conditions != 0) && !lasting)
+            return err("effect temp_hp per_turn or condition_immunity needs concentration or a rounds, minutes or hours duration");
+        if (s.kind == SpellEffectKind::SummonWeapon && !lasting)   // 7.2zg Spiritual Weapon: 1 minute
+            return err("effect summon_weapon needs concentration or a rounds, minutes or hours duration");
         if (s.kind == SpellEffectKind::Duplicates) {   // 7.2zf Mirror Image: a timed duration (not concentration), self
             if (s.duration != SpellDuration::Rounds && s.duration != SpellDuration::Minutes && s.duration != SpellDuration::Hours)
                 return err("effect duplicates needs a rounds, minutes or hours duration");
@@ -1186,10 +1318,17 @@ SpellLoad spell_from_json(const Json& j) {
             s.move_mark = 1;
         }
     }
-    const bool reaction_kind = s.kind == SpellEffectKind::AcBonus || s.kind == SpellEffectKind::Counter;
+    // 7.2zg Hellish Rebuke: a `damaged` reaction is a save effect against the damager, who must be seen and within range.
+    const bool damaged_trigger = s.casting_time == CastingTime::Reaction && s.reaction_trigger == ReactionTrigger::Damaged;
+    if (damaged_trigger) {
+        if (s.kind != SpellEffectKind::Save) return err("casting_time.trigger.kind damaged needs a save effect");
+        if (!s.requires_sight) return err("casting_time.trigger.kind damaged needs requires_sight");
+        if (s.range_ft < 10) return err("casting_time.trigger.kind damaged needs a ranged range");
+    }
+    const bool reaction_kind = s.kind == SpellEffectKind::AcBonus || s.kind == SpellEffectKind::Counter || damaged_trigger;
     if (reaction_kind != (s.casting_time == CastingTime::Reaction))
         return err("effect kind " + kind + " and casting_time.kind " + ck + " disagree (ac_bonus/counter are reactions, and only they)");
-    if (reaction_kind && s.reaction_trigger != (s.kind == SpellEffectKind::AcBonus ? ReactionTrigger::BeingHit : ReactionTrigger::SpellCast))
+    if (reaction_kind && !damaged_trigger && s.reaction_trigger != (s.kind == SpellEffectKind::AcBonus ? ReactionTrigger::BeingHit : ReactionTrigger::SpellCast))
         return err("effect kind " + kind + " needs casting_time.trigger.kind " + (s.kind == SpellEffectKind::AcBonus ? "being_hit" : "spell_cast"));
     if ((s.kind == SpellEffectKind::AcBonus) != (s.duration == SpellDuration::UntilStartOfCasterTurn))
         return err("ac_bonus effects last until_start_of_caster_turn (and only they use it)");
@@ -1247,11 +1386,12 @@ SpellLoad spell_from_json(const Json& j) {
             if (k == "dice") return s.kind == SpellEffectKind::SpellAttack || s.kind == SpellEffectKind::Save ||
                                     s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::AutoHit ||
                                     s.kind == SpellEffectKind::HpPool || s.kind == SpellEffectKind::DelayedDamage ||
-                                    s.kind == SpellEffectKind::SustainedDamage || s.kind == SpellEffectKind::Zone;
+                                    s.kind == SpellEffectKind::SustainedDamage || s.kind == SpellEffectKind::Zone ||
+                                    s.kind == SpellEffectKind::SummonWeapon;   // 7.2zg
             if (k == "darts") return s.kind == SpellEffectKind::AutoHit;
             if (k == "beams") return s.kind == SpellEffectKind::SpellAttack;
             return s.kind == SpellEffectKind::Save || s.kind == SpellEffectKind::Heal || s.kind == SpellEffectKind::ApplyCondition ||
-                   s.kind == SpellEffectKind::ApplyModifier;   // targets (7.2ze Bless / Bane)
+                   s.kind == SpellEffectKind::ApplyModifier || s.kind == SpellEffectKind::TempHp;   // targets (7.2ze; 7.2zg Heroism)
         };
         for (const char* key : {"beams", "darts", "dice", "targets"}) {   // sorted, like the validator
             if (!u.contains(key)) continue;

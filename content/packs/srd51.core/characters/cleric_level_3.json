@@ -215,7 +215,8 @@
       "srd51.spell.inflict_wounds",
       "srd51.spell.sanctuary",
       "srd51.spell.hold_person",
-      "srd51.spell.lesser_restoration"
+      "srd51.spell.lesser_restoration",
+      "srd51.spell.spiritual_weapon"
     ]
   },
   "resources": [

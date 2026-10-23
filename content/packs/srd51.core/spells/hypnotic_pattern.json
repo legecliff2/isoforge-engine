@@ -1,0 +1,60 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.hypnotic_pattern",
+  "name": "Hypnotic Pattern",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "You create a twisting pattern of colors that weaves through the air inside a 30-foot cube within range. The pattern appears for a moment and vanishes. Each creature in the area who sees the pattern must make a wisdom saving throw. On a failed save, the creature becomes charmed for the duration. While charmed by this spell, the creature is incapacitated and has a speed of 0. The spell ends for an affected creature if it takes any damage or if someone else uses an action to shake the creature out of its stupor. The 30-foot cube comes from the SRD text (the mirror has no area_of_effect).",
+  "level": 3,
+  "school": "illusion",
+  "classes": [
+    "bard",
+    "sorcerer",
+    "warlock",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 120
+  },
+  "components": {
+    "s": true,
+    "m": {
+      "text": "a glowing stick of incense or a crystal vial filled with phosphorescent material"
+    }
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "area": {
+    "shape": "cube",
+    "size_ft": 30
+  },
+  "effects": [
+    {
+      "kind": "save",
+      "ability": "wis",
+      "condition": "charmed",
+      "ends_on": [
+        "damage",
+        "shake_awake"
+      ]
+    },
+    {
+      "kind": "apply_condition",
+      "applies_to": "affected",
+      "condition": "incapacitated",
+      "ends_on": [
+        "damage",
+        "shake_awake"
+      ]
+    }
+  ]
+}

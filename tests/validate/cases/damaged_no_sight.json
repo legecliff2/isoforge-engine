@@ -1,0 +1,42 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.damaged_no_sight",
+  "name": "Haste",
+  "level": 3,
+  "school": "transmutation",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "classes": [
+    "wizard"
+  ],
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "casting_time": {
+    "kind": "reaction",
+    "trigger": {
+      "kind": "damaged"
+    }
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": [
+    {
+      "kind": "save",
+      "ability": "dex",
+      "damage": {
+        "dice": "2d10",
+        "type": "fire"
+      },
+      "on_success": "half"
+    }
+  ]
+}

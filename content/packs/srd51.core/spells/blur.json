@@ -1,0 +1,46 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.blur",
+  "name": "Blur",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "Your body becomes blurred, shifting and wavering to all who can see you. For the duration, any creature has disadvantage on attack rolls against you. An attacker is immune to this effect if it doesn't rely on sight, as with blindsight, or can see through illusions, as with truesight.",
+  "level": 2,
+  "school": "illusion",
+  "classes": [
+    "sorcerer",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "self"
+  },
+  "components": {
+    "v": true
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "attacks_against",
+        "mode": "disadvantage",
+        "duration": {
+          "kind": "concentration"
+        }
+      },
+      "exempt_senses": [
+        "blindsight",
+        "truesight"
+      ]
+    }
+  ]
+}
