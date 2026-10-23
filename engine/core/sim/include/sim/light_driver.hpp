@@ -1,7 +1,8 @@
 #pragma once
 // R-G13 phase 2 (docs/proposals/LIGHTING.md §7, §10; lighting-p2 API §4): the sim publishes LightFrames on its own. One
 // LightDriver per session: Combat calls step() once when attached (create time) and after every committed step. It
-// builds the LightWorld (grid, ambient, static chunk@2 lights of resident chunks, game-supplied attached sources),
+// builds the LightWorld (grid, ambient, static chunk@2 lights of resident chunks, game-supplied attached sources,
+// R-G11 ActiveZones as LightZones via zone_covers),
 // gates chunks on their 3x3 halo, computes the per-team visibility masks and publishes. Nothing here is hashed.
 #include <cstdint>
 #include <functional>
