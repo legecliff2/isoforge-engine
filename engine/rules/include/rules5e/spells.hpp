@@ -3,6 +3,7 @@
 // definitions come from content (spell@1, loaded by rules5e_content) or are built in code.
 #include <array>
 #include <cstdint>
+#include <utility>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -58,6 +59,10 @@ enum class SpellEffectKind : uint8_t {
     // appended (7.2zd Aid): each target's hit point maximum and current hit points rise by hp_bonus_flat + hp_bonus_per_slot
     // per slot level above the spell's; when the effect ends the maximum drops back and current HP clamps to it.
     MaxHpBonus,
+    // appended (7.2zf Shillelagh, Magic Weapon): imbues the caster's weapon (`imbue`); see WeaponImbueSpec.
+    WeaponImbue,
+    // appended (7.2zf Mirror Image): illusory duplicates on the caster (`duplicates`); see DuplicatesSpec.
+    Duplicates,
 };
 // R-G9 forced movement (push / pull) of an effect. mode 1 push (away from the source), 2 pull (toward it), 3 along a line
 // (Gust of Wind: sim's direction; not in R-G9's first scope). feet: exact distance, or the maximum when up_to (the caster
@@ -94,6 +99,33 @@ enum class CommandWord : uint8_t { None, Approach, Drop, Flee, Grovel, Halt };  
 // Mirrors the per-effect fields of SpellDef. Extra effects resolve in order over the same targets as the
 // first effect and do not scale with slot level or caster level (scaling belongs to the first effect), except a
 // DelayedDamage rider's upcast_dice (Acid Arrow's later damage).
+// 7.2zf: spell@1 `weapon_imbue`. The imbued weapon is the caster's first weapon attack (not a spell attack) whose Attack::id is
+// in `weapons` (the full item id or its last segment), or the first weapon attack when `weapons` is empty. While it lasts:
+// spellcasting_ability: melee attacks with it use the spellcasting modifier instead of Strength (to-hit and damage move by the
+// difference; the authored Attack is assumed Strength-based); die > 0: its damage die becomes a d<die>; magical: AttackQualifier
+// magic; bonus_base / bonus_at_slot: + the bonus to attack and damage rolls ([slot level, bonus] pairs, slots ascending).
+// requires_nonmagical: refused on an already magical weapon. ends_on_release: ends when the holder lets go (equipment play).
+struct WeaponImbueSpec {
+    std::vector<std::string> weapons{};
+    bool spellcasting_ability = false;
+    uint8_t die = 0;
+    bool magical = false;
+    int8_t bonus_base = 0;
+    std::vector<std::pair<uint8_t, int8_t>> bonus_at_slot{};
+    bool requires_nonmagical = false;
+    bool ends_on_release = false;
+};
+// 7.2zf: spell@1 `duplicates` (Mirror Image). thresholds[remaining - 1] is the d20 an attack needs to target a duplicate
+// (1 left: 11, 2 left: 8, 3 left: 6); a duplicate's AC = ac_base + the caster's ac_ability modifier.
+struct DuplicatesSpec {
+    uint8_t count = 0;
+    std::array<uint8_t, 3> thresholds{{11, 8, 6}};
+    int8_t ac_base = 10;
+    Ability ac_ability = Ability::Dex;
+};
+// The bonus of an imbue cast at `slot` (0 when the spec has no magic bonus).
+int imbue_bonus(const WeaponImbueSpec&, int slot);
+
 struct SpellEffect {
     SpellEffectKind kind = SpellEffectKind::Save;
     bool melee = false; uint8_t beams = 1;                    // SpellAttack
@@ -396,6 +428,9 @@ struct SpellDef {
     // appended (7.2ze Bane): ApplyModifier (primary effect) gated per target by a saving throw against the caster's spell save
     // DC; a creature that succeeds is not affected (SavingThrowRolled, c bit 3 set).
     bool has_modifier_save = false; Ability modifier_save = Ability::Cha;
+    // appended (7.2zf): kind WeaponImbue / Duplicates (primary effect only).
+    WeaponImbueSpec imbue{};
+    DuplicatesSpec duplicates{};
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
