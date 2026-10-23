@@ -1,0 +1,13 @@
+{
+  "$schema": "item@2",
+  "id": "srd51.item.crossbow_bolt",
+  "name": "Crossbow bolt",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "ammunition",
+  "cost_cp": 5,
+  "description": "One piece of ammunition; count it with an equipment[] entry's count (EQUIPMENT 2.5). SRD price: Crossbow bolts (20): 1 gp, 1 1/2 lb. Per-piece weight is not an integer number of ounces, so weight_oz is omitted.",
+  "ammo_kind": "bolt"
+}

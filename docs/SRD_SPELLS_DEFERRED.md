@@ -12,11 +12,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 
 | level | in `srd51.core` | deferred: needs a mechanic | deferred: out of combat scope | total |
 |---|---|---|---|---|
-| 0 (cantrips) | 10 | 3 | 11 | 24 |
+| 0 (cantrips) | 11 | 2 | 11 | 24 |
 | 1 | 20 | 10 | 19 | 49 |
-| 2 | 13 | 18 | 23 | 54 |
+| 2 | 15 | 16 | 23 | 54 |
 | 3 | 9 | 14 | 19 | 42 |
-| **total** | **52** | **45** | **72** | **169** |
+| **total** | **55** | **42** | **72** | **169** |
 
 ## Authored in this change (9)
 
@@ -113,7 +113,17 @@ Spell batch 3 rules (7.2ze). Pinned by `tests/validate/test_srd51_spells.py` (ta
 | Bless | 1 | `apply_modifier` modifier `{stat attack_roll, die 1d4, sign plus, applies_to [attack, save]}`; `targets {count 3}`, `upcast.targets 1`; concentration 1 minute | Life domain spell (cleric 1-5) |
 | Blindness/Deafness | 2 | `save` CON, `condition chosen`, `choices [blinded, deafened]`, `repeat_save end_of_turn`; range 30, 1 minute; `upcast.targets 1` | the caster picks at cast (`condition_choice`) |
 
-## Deferred (117 spells; reasons re-checked against main at `8b8d8c9`)
+## Authored after Rules #257 (3)
+
+Spell imbue / mirror rules (7.2zf). Pinned by `tests/validate/test_srd51_spells.py` (table rows and `test_spell_imbue_mirror`) and `tests/validate/test_spell_imbue_mirror.py`.
+
+| spell | level | `spell@1` shape | notes |
+|---|---|---|---|
+| Shillelagh | 0 | `weapon_imbue {weapons [club, quarterstaff], ability spellcasting, die 8, magical, ends_on_release}`; bonus action, touch, 1 minute | druid; casting it again ends the earlier imbue; ends on Stow / Drop / HandOver |
+| Magic Weapon | 2 | `weapon_imbue {magical, magic_bonus {base 1, at_slot [[4, 2], [6, 3]]}, requires_nonmagical}`; bonus action, touch, concentration up to 1 hour | paladin, wizard; refused on a magical weapon (`magic_weapon: the weapon is already magical`) |
+| Mirror Image | 2 | `duplicates {count 3, thresholds [11, 8, 6], ac {base 10, ability dex}}`; self, 1 minute | sorcerer, warlock, wizard; thresholds indexed by remaining - 1; attackers that can't see, rely on blindsight, or have truesight are unaffected; the dismiss action is not modelled |
+
+## Deferred (114 spells; reasons re-checked against main at `8b8d8c9`)
 
 Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the first-draft ids in brackets: B1 = R-G2 effects array, B2 = R-G3 timed modifiers, B3 = R-G4 damage riders, B4 = R-G5 pools, B6 = R-G7 reactions / roll windows, C1 = R-G8 conditions with source, C2 = R-G9 forced movement / teleport, C3 = R-G10 area templates, C4 = R-G11 zones / auras, C5 = R-G12 summons, C7 = R-G13 cover / lighting / vision, C8 = R-G14 per-cast options, C9 = R-G15 spell kinds). `T&C-G12` / `T&C-G14` are movement modes and creature footprint. `OOS` rows have no gap id.
 
@@ -129,7 +139,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 0 | Minor Illusion | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Prestidigitation | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Resistance | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
-| 0 | Shillelagh | NEW | No modifier replaces a weapon's damage die or attack ability (`damage` modifiers only add). | R-G3 (B2) |
 | 0 | Spare the Dying | NEW | spell@1 has no stabilize effect kind; Rules models it only as `ActionKind::SpareTheDying` + `hooks.spare_the_dying` (coverage doc marks it DATA via that ActionKind, not via spell@1) | - |
 | 0 | Thaumaturgy | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | True Strike | NEW | `attack_roll` advantage with `consume: next_attack` loads, but the advantage applies to any target; the SRD limits it to the chosen target (no per-target modifier scope). | R-G3 (B2) |
@@ -190,8 +199,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 2 | Locate Animals or Plants | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Locate Object | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Magic Mouth | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
-| 2 | Magic Weapon | NEW | Magic bonus (R-G17, T&C-G2/R-G3). | R-G3, R-G17, T&C-G2 (B2) |
-| 2 | Mirror Image | NEW | Duplicates that absorb attacks (R-G3). | R-G3 (B2) |
 | 2 | Pass Without Trace | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Prayer of Healing | OOS | none (out of combat scope): Utility / out of encounter casting time. | - |
 | 2 | Protection from Poison | NEW | R-G3. | R-G3 (B2) |

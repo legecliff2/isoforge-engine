@@ -154,7 +154,7 @@ Kept as a `features[]` entry with the SRD text and no `effect` (the test pins th
 | feature (mirror index) | class / level | why it is not mechanical | gap id / owner |
 |---|---|---|---|
 | Druidic (`druidic`) | Druid 1 | A secret language and hidden messages (DC 15 Perception to spot): no combat rule. `Druidic` is also in `languages` | - (out of combat scope) |
-| Bonus Cantrip (`bonus-cantrip`) | Druid (Land) 2 | One extra druid cantrip. Both shipped druid cantrips (Produce Flame, Poison Spray) are already known from 1st; Druidcraft, Guidance, Mending, Resistance and Shillelagh are not shipped, so there is nothing to add | T&C (author a druid cantrip, e.g. Shillelagh) |
+| Bonus Cantrip (`bonus-cantrip`) | Druid (Land) 2 | One extra druid cantrip. Produce Flame and Poison Spray are known from 1st; Shillelagh (Rules #257) ships and is listed from 4th, where the class table's third cantrip makes room (`test_srd51_classes` checks `cantrips_known` without the bonus); listing it at 2-3 as the bonus cantrip needs that check to count the bonus | T&C (count the bonus cantrip in the test) |
 | Circle of the Land terrain (`circle-of-the-land-mountain`) | Druid (Land) 2 | The land choice only selects the Circle Spells list; no rule of its own | - |
 
 ## Descriptive only: mechanic missing (Monk)
@@ -192,14 +192,15 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 | Cleric | 5 | + Mass Healing Word, Revivify (domain) |
 | Paladin | 2 | Cure Wounds, Shield of Faith |
 | Paladin | 3-4 | + Protection from Evil and Good, Sanctuary (oath) |
-| Paladin | 5 | + Lesser Restoration (oath) |
+| Paladin | 5 | + Lesser Restoration (oath), Magic Weapon |
 | Ranger | 2-4 | Cure Wounds, Hunter's Mark |
 | Ranger | 5 | + Barkskin, Lesser Restoration (Spike Growth swapped out for Hunter's Mark) |
 | Wizard | 1-2 | Acid Splash, Fire Bolt, Poison Spray; Magic Missile, Shield |
-| Wizard | 3-4 | + Hold Person, Scorching Ray |
+| Wizard | 3-4 | + Hold Person, Magic Weapon, Mirror Image, Scorching Ray |
 | Wizard | 5 | + Counterspell |
 | Druid | 1-2 | Produce Flame, Poison Spray; Cure Wounds, Healing Word, Thunderwave |
-| Druid | 3-4 | + Barkskin, Hold Person, Lesser Restoration, Spike Growth (circle) |
+| Druid | 3 | + Barkskin, Hold Person, Lesser Restoration, Spike Growth (circle) |
+| Druid | 4 | + Shillelagh (third cantrip known) |
 | Druid | 5 | + Dispel Magic, Lightning Bolt (circle) |
 | Warlock | 1-2 | Eldritch Blast, Chill Touch; Burning Hands (expanded) |
 | Warlock | 3 | + Fire Bolt, Ray of Frost, Sacred Flame (Tome); Hold Person, Misty Step, Scorching Ray (expanded) |

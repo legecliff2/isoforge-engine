@@ -1,5 +1,6 @@
 {
-  "$schema": "character@4",
+  "$schema": "character@5",
+  "derive": true,
   "id": "srd51.character.cleric_level_4",
   "name": "Cleric, level 4 (Life Domain)",
   "source": {
@@ -106,7 +107,8 @@
   "equipment": [
     {
       "item": "srd51.item.mace",
-      "equipped": true
+      "equipped": true,
+      "hand": "main"
     },
     {
       "item": "srd51.item.chain_mail",
@@ -114,20 +116,33 @@
     },
     {
       "item": "srd51.item.shield",
-      "equipped": true
+      "equipped": true,
+      "hand": "off"
     },
     {
       "item": "srd51.item.crossbow_light"
     },
-    "crossbow_bolts_20",
+    {
+      "item": "srd51.item.crossbow_bolt",
+      "count": 20
+    },
     "priests_pack",
     "holy_symbol"
+  ],
+  "weapon_proficiencies": [
+    "simple"
+  ],
+  "armor_proficiencies": [
+    "light",
+    "medium",
+    "shields"
   ],
   "actions": [
     {
       "id": "mace",
       "name": "Mace",
       "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.mace",
       "to_hit": 4,
       "reach": 5,
       "targets": 1,
@@ -142,6 +157,7 @@
       "id": "light_crossbow",
       "name": "Light Crossbow",
       "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.crossbow_light",
       "to_hit": 2,
       "range": [
         80,

@@ -1,5 +1,6 @@
 {
-  "$schema": "monster@4",
+  "$schema": "monster@5",
+  "derive": true,
   "id": "srd51.monster.ghoul",
   "name": "Ghoul",
   "source": {
@@ -12,6 +13,7 @@
   "armor_class": {
     "value": 12
   },
+  "hands": 2,
   "hit_points": {
     "average": 22,
     "formula": "5d8"
@@ -52,6 +54,14 @@
       "id": "bite",
       "name": "Bite",
       "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "dex"
+      },
+      "attack_bonus": {
+        "value": 2,
+        "reason": "SRD Ghoul Bite prints +2; damage 2d6 + 2 fits Dex 15 (+2), Dex + PB 2 = +4 (Str + PB = +3)"
+      },
       "to_hit": 2,
       "reach": 5,
       "targets": 1,
@@ -67,6 +77,10 @@
       "id": "claws",
       "name": "Claws",
       "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d4",
+        "ability": "dex"
+      },
       "to_hit": 4,
       "reach": 5,
       "targets": 1,

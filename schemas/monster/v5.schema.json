@@ -750,6 +750,16 @@
             }
           },
           "description": "Overrides the derived total to-hit (not a delta); needs a reason (EQUIPMENT 5.5)."
+        },
+        "use": {
+          "enum": [
+            "one_hand",
+            "two_hands",
+            "thrown",
+            "off_hand"
+          ],
+          "default": "one_hand",
+          "description": "How the `weapon` is used for this action (EQUIPMENT 2.1 WeaponUse): two_hands = versatile die or a two-handed melee weapon, thrown = a thrown use of a melee weapon. Explicit, never inferred from the action id."
         }
       },
       "allOf": [
