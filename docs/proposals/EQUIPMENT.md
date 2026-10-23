@@ -185,8 +185,19 @@ hand state changes (section 3); the `Combatant::attacks` order is fixed (section
 `item@2 category "ammunition"` (`ammo_kind`: `arrow`, `bolt`, `sling_bullet`, `needle`; `magic_bonus`); weapons gain
 `ammo_kind`. Inventory entries gain `count` (integer). An attack with an `ammunition` weapon needs `count > 0` of a matching stack
 (the first equipped matching stack, then the first unequipped one) and decrements it. Recovery of half (rounded down) is an
-out-of-combat step (`recover_ammunition`, `floor(spent / 2)`), never during `Combat`. **Default when no stack is listed: unlimited**
+out-of-combat step (`rules5e::recovered_ammo`, `floor(spent / 2)`, spec 2.5.1), never during `Combat`. **Default when no stack is listed: unlimited**
 (today's behaviour; every existing file plays the same; T&C decides when srd51.core PCs get explicit stacks).
+
+#### 2.5.1 Ammunition recovery (spec)
+
+- **Tracking**: EC counts expended ammunition per (creature, ammo def), one per attack with an `ammunition` weapon, hit or miss.
+  Thrown weapons are not ammunition and are not counted (they follow the thrown rule, 2.2).
+- **When**: at encounter end, once combat is over and no hostile remains. Each counted (creature, def) gets
+  `rules5e::recovered_ammo(n)` = `floor(n / 2)` back on that creature's stack of that def.
+- **Deterministic**: no roll, no RNG draw, no action cost (the SRD's minute of searching is folded into the end step).
+- **Who**: only creatures alive and conscious at the end recover. Unlimited ammunition (no stack listed) is not tracked at all.
+- **No tiles**: nothing lands on the ground during the fight. The counts are Loadout state and fold into EC's 0xD0 loadout
+  digest (8).
 
 ## 3. Hand slots
 
@@ -260,10 +271,16 @@ bool components_ok(const EncounterState&, CombatantId, const SpellDef&);
 | 4 `pick_up` | ground item within 5 ft into a free hand | free interaction, else Use an Object |
 | 5 `don_shield` / 6 `doff_shield` | shield to or from the off hand, AC recomputed | an action (*Donning and Doffing Armor*: 1 action) |
 | 7 `hand_over` | held item to a willing creature within 5 ft with a free hand | free interaction (*Other Activity* example) |
+| 10 `set_light_state` | light, douse or switch the state of a held light (`equip_state`: a `LightDef::states` index, or `kLightDouse` 0xFF), e.g. hood a lantern | free interaction, else Use an Object |
 
 `TurnBudget` gains `bool object_interaction = true` (one free interaction per turn, reset with the turn). Refusals (exact):
-`equip: no free hand`, `equip: no object interaction left`, `equip: the item is not carried`, `equip: the item is out of reach`,
+`equip: no free hand`, `equip: no object interaction left`, `equip: the item is not carried`, `equip: the item is out of reach`, `equip: unknown ground item`,
 `equip: armor cannot be changed in combat`.
+SetLightState refusals (exact): `equip: the item is not in hand`, `equip: not a light source`, `equip: unknown light state`,
+`equip: the light is already in that state`. Engine Core stores the state in `HeldItem::flags` (`kHeldLit` plus the index in bits
+4-6, `with_light_state` / `light_state_index`) and hashes it; `light_radii(def, held)` gives the radii (`LightDef::states`, state 0
+= the item@2 top-level radii; SRD hooded lantern {30, 30} open, {0, 5} hooded). Not listed by `equip_legal_actions` (Engine Core
+lists it, like PickUp), so legal_actions and goldens are unchanged.
 
 Attacking with a weapon not in hand is refused (`attack: the weapon is not in hand`), except thrown weapons: **drawing a thrown
 weapon is part of each attack** (Director, Q2, decided), so Extra Attack can throw two javelins without spending the free
@@ -321,11 +338,17 @@ table today.
 - `weapon_dice_multiplier` (Ogre: 2). SRD 5.1 has **no rules text** for size-scaled weapon dice (it is a stat-block convention);
   it is an explicit integer on the monster, never inferred from `size` by the engine. The audit suggests it when Large+ dice fit.
 - Damage-die rider (Bugbear *Brute*: "A melee weapon deals one extra die of its damage when the bugbear hits with it (included in
-  the attack)"): a trait effect `{"kind": "weapon_extra_dice", "dice": 1, "melee_only": true}` read by the derivation
+  the attack)"): a **monster@5-local** trait kind (common@2 stays unchanged) `{"kind": "weapon_extra_dice", "dice": 1, "melee_only": true}` read by the derivation
   (`WielderView::extra_melee_dice`); thrown uses are ranged and do not get it (the javelin's 1d6+2 thrown line).
 - Natural attacks (`natural {dice, ability, damage_ability?}`): dice are authored (they are not derivable); `ability` is explicit
   (`str` or `dex`; the Wolf, Giant Spider, Snake, Swarm and Medusa's snake hair use Dex). `damage_ability: "none"` for blocks
   that print no modifier (Gelatinous Cube *Pseudopod* 3d6).
+
+- Action `use` (monster@5 and character@5 actions, T&C #252 / #253): `one_hand` | `two_hands` | `thrown` | `off_hand`
+  (exactly #252's schema enum; default `one_hand`). `two_hands` = the versatile die or a two-handed melee weapon, `thrown` = a
+  thrown use of a melee weapon. When present, the derivation uses it as authored; when absent it is `one_hand`. It is never
+  inferred from the action id or the printed dice. Rules: `MonsterAttackSpec::use` / `has_use`, `weapon_use_from_string`,
+  `weapon_use_name`.
 
 ### 5.4 Monster-local weapons
 
@@ -354,7 +377,7 @@ At `monster@5` with `derive: true`, the loader derives AC and each derived actio
 `armor_class.value`, `to_hit` and `damage[0].dice`. The validator runs the same check with the same strings (one shared case file
 keeps the C++ loader and the Python validator in sync). A file that fails cannot load, so a derivation bug can never change a fight
 silently. Exact strings (`<id>` = the content id, `<action>` = the action id; to-hit signed, dice as `NdM+K` / `NdM-K` / `NdM` /
-a bare flat integer), produced by `rules5e::derive_monster`:
+a bare flat integer), produced by `rules5e::derive_monster` (hands strings also via `hands_overfull_error` / `hand_slot_error`):
 
 | Case | String |
 |---|---|
@@ -365,6 +388,13 @@ a bare flat integer), produced by `rules5e::derive_monster`:
 | structure not needed | `<id>: weapon_dice_multiplier is not needed` (every weapon derives with 1), `<id>: natural_armor is not needed` (armor is worn, or 10 + Dex already matches) |
 | missing reason | `<id>: ac_adjust needs a reason`, `<id>.<action>: attack_bonus needs a reason` |
 | PB off the CR table | `<id>: proficiency_bonus 3 != CR table 2` (unless `proficiency_bonus_reason` is given) |
+| hands (monster@5) | `<id>: holds 3 items but has 2 hands` (equipped hand slots: weapon / shield 1, gear its `hands`; plural kept: `holds 1 items but has 0 hands`) |
+| hands (character@5) | `<id>: hand 'main' holds 2 items` (`'main'` / `'off'`, N = the count) |
+
+Reasons (`ac_adjust`, `attack_bonus`, `proficiency_bonus_reason`) have schema `minLength 1` (#249), so a missing or empty reason
+fails in the schema; only a whitespace-only reason reaches the `needs a reason` string (and a whitespace-only
+`proficiency_bonus_reason` counts as absent). The hands strings match #249's `checks_v4` byte for byte; rules exposes them as
+`hands_overfull_error` / `hand_slot_error`.
 
 **Second damage components stay authored and unchecked in v1** (T&C review): Basilisk 2d6 poison, Black Dragon Wyrmling 1d4 acid,
 Giant Toad 1d10 poison, Medusa Snake Hair 4d6 and Longbow 2d6 poison, Grimlock 1d4 piercing. Only `damage[0]` is derived and
@@ -576,6 +606,29 @@ decrement, and the 0xD0..0xD2 folds. Rules builds **no** ground-item or loadout 
 - `recompute_derived` triggers (EC calls it on each): an equip change (draw, stow, drop, pick up, don / doff shield, hand over);
   an AC effect starting or ending (`ModStat::Ac` modifiers: Mage Armor, Barkskin, Shield, Shield of Faith, Haste); a change to Str,
   Dex, Con or Wis; a proficiency or level change.
+
+### 9.1a Rules API as implemented (`feat/rules-equipment-core`) and hand-off
+
+Headers: `rules5e/armor.hpp` (extended), `rules5e/item.hpp` (new, POD data + the read-only loadout view), `rules5e/equipment.hpp`
+(new, functions). No state, no hash tag, no schema; goldens unchanged (every check is gated on `EncounterHooks::loadout_of`).
+
+| API | For | Notes |
+|---|---|---|
+| `compute_ac(AcInput)` | EC `recompute_derived` | Signature unchanged. Appended `AcInput::bases` (`AcBaseCandidate {kind Natural / UnarmoredDefense / FixedPlusDex, fixed, ability, natural_dex, forbids_shield}`), `bonuses` (`AcBonusRow {source, amount, requires_armor}`, same source = highest), `ac_adjust`, `floor`, `armor_proficient`; `AcResult::base`, `shield_counted`, `nonproficient_armor`. Defaults reproduce the old result (test). |
+| `ItemDef`, `WeaponDef`, `LightDef`, `ItemKind`, `AmmoKind` | EC `ItemDefTable` | POD filled from item@N; EC owns storage (`WeaponDef::id` is a `string_view` into it). |
+| `LoadoutView {hand_count, main, off, armor_def, carried[], attacks[], interaction_used}`, `HeldItem {instance, def, count, flags kHeldLit / kHeldEmblem / kHeldWorn}`, `AttackLink {def, use}` | EC | What EC's `Loadout` state exposes to rules. `attacks[i]` maps `Combatant::attacks[i]` to its weapon (def 0 = not gated). |
+| `EncounterHooks::loadout_of(state, id) -> const LoadoutView*`, `item_def(def) -> const ItemDef*`, `apply_equip(state, req, cost_kind, events)`, `ground_item_def(state, instance) -> const ItemDef*` | EC | Empty / nullptr = legacy (no check, no equip legal action). `ground_item_def` resolves a ground item **instance** id (PickUp's `equip_item`) to its def; empty or nullptr refuses PickUp with `equip: unknown ground item`. |
+| `derive_weapon_attack(WeaponDef, WielderView, WeaponUse) -> {Attack, error}`, `weapon_ability`, `unarmed_strike` | EC `recompute_derived`, loader | `WielderView {abilities, pb, proficient, attack_rows, damage_rows, dice_multiplier, extra_melee_dice, twf_style, ability?, damage_ability_none, to_hit_override?, ammo_magic}`. Errors: `weapon: a two-handed weapon needs both hands`, `weapon: not a versatile weapon`, `weapon: not a thrown weapon`, `weapon: the off-hand weapon must be a light melee weapon`. |
+| `free_hands`, `can_attack_with`, `attack_refusal(state, id, attack_index)` | step (wired), EC, AI | `attack: the weapon is not in hand`, `attack: needs both hands`, `attack: loading needs a free hand`, `attack: no ammunition`, `attack: nothing to throw`, `attack: the torch is not lit`. Thrown: drawn per attack (held, or carried with a free hand). No ammunition stack = unlimited. |
+| `components_ok`, `components_refusal(state, id, SpellDef)` | step (wired, after `can_provide_components`) | `cast: somatic needs a free hand`, `cast: material needs a free hand or a focus`; a held focus or a shield with `kHeldEmblem` covers S+M with a non-priced material; a worn holy symbol (`kHeldWorn`) covers M only. |
+| `equip_legal(state, req) -> EquipCost {Free / Interaction / Action / Refused, refusal}`, `EquipOp` | step (wired), EC | `ActionRequest` appended `equip_op, equip_item, equip_hand, equip_to, equip_in_reach` (on `UseObject`). Interaction falls back to Action (Use an Object) once `interaction_used`. `equip_item` is always an instance id: held / carried instances resolve via `LoadoutView` then `item_def(HeldItem::def)`, PickUp via `ground_item_def`. Hands needed = `ItemDef::hands`, at least 2 for a `two_handed` weapon; applies to Draw, PickUp, DonShield and the HandOver recipient. Refusals: `equip: equipment play is off`, `equip: unknown equip op`, `equip: not your turn`, `equip: the creature cannot act`, `equip: armor cannot be changed in combat`, `equip: no object interaction left`, `equip: the item is already in hand`, `equip: the item is not carried`, `equip: the item is not in hand`, `equip: use don_shield for a shield`, `equip: use doff_shield for a shield`, `equip: no free hand`, `equip: the item is already carried`, `equip: the item is out of reach`, `equip: not a shield`, `equip: a shield is already wielded`, `equip: no action left`, `equip: bad recipient`, `equip: the recipient has no free hand`. In step: Refused fails with the string; no `apply_equip` hook fails `equip: equipment play is off`; Action cost spends the action, then `apply_equip` runs (Interaction / Free bookkeeping is EC's). |
+| `equip_legal_actions(state)` | `legal_actions` (wired) | Draw, Stow, Drop, DonShield, DoffShield for the current actor, order op / instance / hand, appended after every existing entry. PickUp / HandOver need positions: EC lists them. |
+| `hands_needed(const ItemDef*)` | EC, AI | `ItemDef::hands`, at least 2 for a `two_handed` weapon; nullptr = 1. The hands rule used by every equip check. |
+| `derive_character(CharacterSpec) -> {ac, attacks, errors, warnings}`, `feature_ac_base(class, feature)` | EC loader, T&C validator (same strings) | Pure, integer-only mirror of #253's `checks_v4` character@5 checks, byte for byte: `/actions/<i>/weapon: '<w>' is not listed in equipment[]`, `/actions/<i>: weapon / natural / attack_bonus need a melee_weapon_attack or ranged_weapon_attack`, `<id>: <key> missing '<entry>' (SRD 5.1 class / race)` (error), `<id>: <key> '<entry>' is not granted by the SRD 5.1 class / race` (warning), then the 5.6 forms `<id>: derived AC ...`, `<id>.<action>: derived to-hit ...` / `derived damage ...`. Order: action weapon checks, proficiency (weapon then armor, sorted), AC, attacks. Proficient = covered by the authored `weapon_proficiencies` (a named item counts as covered by its `weapon_class`); Monk Martial Arts takes the higher of Str / Dex for shortswords and simple melee weapons without two-handed, heavy or a `range`. FEATURE_AC_BASES -> `AcBaseCandidate`: barbarian `unarmored_defense` 10 + Dex + Con; monk `unarmored_defense` 10 + Dex + Wis, forbids a shield; sorcerer `draconic_resilience` 13 + Dex; warlock `armor_of_shadows` 13 + Dex (Mage Armor in force). Tested on all 63 srd51.core PCs of #253 (`f490fb0`): 63 clean, 0 warnings (`tools/audit/gen_character_derive_cases.py` regenerates the cases). |
+| `weapon_use_from_string(s)`, `weapon_use_name(use)` | EC loader, T&C validator | The action `use` enum spelled as #252: `one_hand`, `two_hands`, `thrown`, `off_hand`; anything else is nullopt. `MonsterAttackSpec::has_use` false = absent, so derive uses `one_hand` (5.3). |
+| `recovered_ammo(expended)` | EC encounter end | `floor(expended / 2)`, 0 for expended <= 0; pure (2.5.1). |
+| `armor_change_rounds(category, don, helper)` | EC exploration layer | 10 / 10, 50 / 10, 100 / 50 rounds; a helper halves. |
+| `derive_monster(MonsterSpec) -> {pb, ac, attacks, errors}`, `proficiency_for_cr`, `format_dice`, `hands_overfull_error(id, held, hands)`, `hand_slot_error(id, hand, n)` | EC loader, T&C validator (same strings) | `MonsterSpec` / `MonsterAttackSpec` carry the 5.3..5.5 fields plus `hands` (-1 = absent) and `held`; `brute_dice` is the monster@5-local `weapon_extra_dice` trait. `errors` are the 5.6 strings in check order (PB, hands, AC, attacks); whitespace-only reasons count as missing. |
 
 ### 9.2 Sequencing (T&C review)
 
