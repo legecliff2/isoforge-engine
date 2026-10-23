@@ -482,6 +482,91 @@ rules5e::Cover Combat::cover_of(const rules5e::CoverQuery& q) const {
     return best;
 }
 
+
+rules5e::SightFacts Combat::sight_facts_of(CombatantId viewer, CombatantId subject) const {
+    rules5e::SightFacts f;
+    if (!rules5e::find(state_, viewer) || !rules5e::find(state_, subject)) {
+        f.line_of_sight = false;
+        return f;
+    }
+    const Vec2i vp = pos(viewer), sp = pos(subject);
+    const int dist = distance_tiles(viewer, subject);
+    f.distance_ft = uint16_t(std::min(dist * kFeetPerTile, 65535));
+    f.line_of_sight = line_of_sight(viewer, subject);
+    if (const auto* t = rules5e::find(state_, subject))
+        f.subject_invisible = t->has(rules5e::Condition::Invisible);
+    f.subject_grounded = true;   // no airborne altitude model yet; tremorsense treats everyone as grounded
+    f.audible = true;            // Silence deafens via rules (kZoneSilence); hearing is not a light fact
+
+    // LightSample -> TileLight. sim::Light is Dark=0..Bright=2; rules5e::Light is Bright=0..Dark=2.
+    auto to_tile = [](LightSample s) {
+        rules5e::TileLight t;
+        t.light = s.level == Light::Bright   ? rules5e::Light::Bright
+                  : s.level == Light::Dim    ? rules5e::Light::Dim
+                                             : rules5e::Light::Dark;
+        t.magical_darkness = (s.flags & light_flags::kMagicalDark) != 0;
+        t.sunlight = (s.flags & light_flags::kSunlight) != 0;
+        t.obscured = (s.flags & light_flags::kObscuredHeavy) != 0   ? rules5e::Obscured::Heavy
+                     : (s.flags & light_flags::kObscuredLight) != 0 ? rules5e::Obscured::Light
+                                                                   : rules5e::Obscured::None;
+        return t;
+    };
+    auto obscured_of = [](LightSample s) {
+        return (s.flags & light_flags::kObscuredHeavy) != 0   ? rules5e::Obscured::Heavy
+               : (s.flags & light_flags::kObscuredLight) != 0 ? rules5e::Obscured::Light
+                                                             : rules5e::Obscured::None;
+    };
+    // Default without a driver: Bright / clear (legacy "everyone can see" lighting).
+    LightSample bright{};
+    bright.level = Light::Bright;
+    auto sample_at = [&](Vec2i tile) -> LightSample {
+        const LightDriver* d = light_.d;
+        if (!d) return bright;
+        const auto frame = d->latest();
+        if (!frame) return bright;
+        const int cs = world::kChunkSize;
+        const int cx = tile.x >= 0 ? tile.x / cs : -((-tile.x + cs - 1) / cs);
+        const int cy = tile.y >= 0 ? tile.y / cs : -((-tile.y + cs - 1) / cs);
+        for (const auto& ch : frame->chunks)
+            if (ch.coord.x == cx && ch.coord.y == cy) {
+                const int lx = tile.x - cx * cs, ly = tile.y - cy * cs;
+                return ch.samples[std::size_t(ly * cs + lx)];
+            }
+        return bright;
+    };
+
+    f.viewer = to_tile(sample_at(vp));
+    f.subject = to_tile(sample_at(sp));
+
+    // `between`: max zone obscurement on mid-tiles of the centre-to-centre supercover (same walk as Grid::line_of_sight).
+    rules5e::Obscured between = rules5e::Obscured::None;
+    if (vp != sp) {
+        const int dx = vp.x < sp.x ? sp.x - vp.x : vp.x - sp.x, dy = vp.y < sp.y ? sp.y - vp.y : vp.y - sp.y;
+        const int sx = sp.x > vp.x ? 1 : -1, sy = sp.y > vp.y ? 1 : -1;
+        int x = vp.x, y = vp.y, ix = 0, iy = 0;
+        while (ix < dx || iy < dy) {
+            const int64_t l = int64_t(1 + 2 * ix) * dy, r = int64_t(1 + 2 * iy) * dx;
+            if (l == r) {
+                x += sx;
+                y += sy;
+                ++ix;
+                ++iy;
+            } else if (l < r) {
+                x += sx;
+                ++ix;
+            } else {
+                y += sy;
+                ++iy;
+            }
+            if (x == sp.x && y == sp.y) break;   // endpoint is subject.obscured, not between
+            const rules5e::Obscured o = obscured_of(sample_at({x, y}));
+            if (uint8_t(o) > uint8_t(between)) between = o;
+        }
+    }
+    f.between = between;
+    return f;
+}
+
 bool Combat::los_spots(Spot a, Spot b) const {
     if (a.n == 1 && b.n == 1) return grid_.line_of_sight(a.p, b.p);   // v0 test
     for (int ay = 0; ay < a.n; ++ay)
@@ -651,6 +736,14 @@ void Combat::install_hooks() {
     // EC #104's placement in complete() (the hook only reports its 5 ft), and rules flags it (shove_forced_flag).
     // 7.2t cover: pure geometry over the current positions (replay recomputes it from the replayed board).
     state_.hooks.cover = [this](const rules5e::EncounterState&, const rules5e::CoverQuery& q) { return cover_of(q); };
+    // 7.2x vision: per-pair SightFacts from light samples + LOS + zones + invisibility (derive_sight in rules).
+    state_.hooks.sight_facts = [this](const rules5e::EncounterState&, const rules5e::Combatant& viewer,
+                                      const rules5e::Combatant& subject) {
+        rules5e::SightFacts f = sight_facts_of(viewer.id, subject.id);
+        // Prefer the combatant rules passed (start-of-step during a step) for Invisible; outlined is cleared in rules.
+        f.subject_invisible = subject.has(rules5e::Condition::Invisible);
+        return f;
+    };
     state_.hooks.forced_move = [this](const rules5e::EncounterState&, const rules5e::ForcedMoveQuery& q) { return resolve_forced(q); };
     state_.hooks.forced_move_order = [this](const rules5e::EncounterState&, std::span<const rules5e::ForcedMoveQuery> qs) {
         std::vector<std::size_t> idx(qs.size());

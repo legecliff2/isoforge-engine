@@ -323,6 +323,11 @@ public:
     // Degree: no line blocked = None; every line blocked by full obstructions = Total; at least 3/4 of the lines blocked by
     // full obstructions = ThreeQuarters; any line blocked (wall or creature) = Half. The highest degree counts.
     rules5e::Cover cover_of(const rules5e::CoverQuery& q) const;
+    // ---- Vision (VERSION_BUMP_BATCH 7.2x hand-off; EncounterHooks::sight_facts) ----
+    // Per-pair facts for viewer -> subject. Pure and integer-only: LightDriver::latest() samples (or Bright / clear
+    // without a driver), LOS, zone obscurement on the line (`between`), distance, Invisible, grounded, audible.
+    // Rules derive Sight via derive_sight; answers are not hashed. Empty hook = Sight{} (everyone sees everyone).
+    rules5e::SightFacts sight_facts_of(CombatantId viewer, CombatantId subject) const;
     // ---- R-G11 zones (VERSION_BUMP_BATCH 7.2l hand-off, ZONES_AURAS.md §3) ----
     // Geometry: a point zone is centred on its anchor tile; an aura (anchor Creature) on its owner's footprint. Sphere /
     // cylinder: Chebyshev radius size_ft (tiles); cube: side size_ft centred on the anchor (an aura: half the side around the
