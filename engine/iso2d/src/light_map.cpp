@@ -18,9 +18,18 @@ Color light_tint(uint8_t packed, Fog fog) noexcept {
     case LightLevel::Dim: m = 0.62f; break;
     case LightLevel::Dark: m = 0.22f; break;
     }
-    if (packed & light_bits::kMagicalDark) m = std::min(m, 0.12f);
+    // Magical darkness clamps harder than plain Dark (presentation; sim still owns the Dark level).
+    if (packed & light_bits::kMagicalDark) m = std::min(m, 0.08f);
     Color c{m, m, m, 1.f};
-    if (packed & light_bits::kObscuredHeavy) c = {m * 0.8f, m * 0.82f, m * 0.86f, 1.f};
+    // Zone bits cool/dim the Visible tint. Heavy (Fog / Stinking Cloud) wins over light (Web); neither
+    // invents FoW and neither fills LightWorld::zones — EC packs the bits (Stinking Cloud / Web already do).
+    if (packed & light_bits::kObscuredHeavy) {
+        c = {m * 0.52f, m * 0.58f, m * 0.78f, 1.f};   // thick cool haze
+    } else if (packed & light_bits::kObscuredLight) {
+        c = {m * 0.78f, m * 0.84f, m * 0.96f, 1.f};   // light cool wash, distinct from heavy
+    } else if (packed & light_bits::kMagicalDark) {
+        c = {m * 0.55f, m * 0.40f, m * 0.85f, 1.f};   // deep cool purple-black
+    }
     return c;
 }
 
