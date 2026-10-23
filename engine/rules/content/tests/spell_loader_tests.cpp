@@ -250,7 +250,7 @@ TEST_CASE("loader: R-G11 zone fixtures (tests/validate/fixtures/zones) map onto 
     INFO((r.errors.empty() ? std::string() : r.errors[0]));
     REQUIRE(r.errors.empty());
     REQUIRE(r.book);
-    CHECK(r.book->all().size() == 8);
+    CHECK(r.book->all().size() == 9);   // spells/ including Entangle (spells_pr2 stays a separate book)
     for (const SpellDef& d : r.book->all()) { CHECK(d.kind == SpellEffectKind::Zone); CHECK(d.extra_effects.empty()); }
 
     const SpellDef* mb = r.book->find(spell_id_of("test.zone.spell.moonbeam"));
@@ -299,6 +299,19 @@ TEST_CASE("loader: R-G11 zone fixtures (tests/validate/fixtures/zones) map onto 
     REQUIRE(gr);
     CHECK_FALSE(gr->concentration); CHECK(gr->expiry == 1);
     CHECK(gr->zone.triggers.front().on == ZoneTrigger::Appear);
+
+    // Entangle: SRD 20-ft square as a cube, Strength save or restrained, Web's while_in_zone escape.
+    const SpellDef* en = r.book->find(spell_id_of("test.zone.spell.entangle"));
+    REQUIRE(en);
+    CHECK(en->level == 1); CHECK(en->concentration); CHECK(en->range_ft == 90);
+    CHECK(en->expiry == 1); CHECK(en->duration_rounds == 10);   // 1 minute
+    CHECK(en->zone.shape == AreaShape::Cube); CHECK(en->zone.size_ft == 20);
+    CHECK(en->zone.anchor == ZoneAnchor::Point); CHECK(en->zone.flags == kZoneDifficult);
+    REQUIRE(en->zone.triggers.size() == 1);
+    const ZoneTriggerRow& er = en->zone.triggers[0];
+    CHECK(er.on == ZoneTrigger::Appear); CHECK(er.while_in_zone); CHECK_FALSE(er.own_turn_only);
+    CHECK(er.effect.kind == SpellEffectKind::Save); CHECK(er.effect.save_ability == Ability::Str);
+    CHECK(er.effect.applies_condition); CHECK(er.effect.condition == Condition::Restrained);
 }
 
 TEST_CASE("loader: R-G11 zone rules match the validator") {
@@ -1001,4 +1014,71 @@ TEST_CASE("loader 7.2zg: ends_on damage / shake_awake on save and apply_conditio
     q = spell_from_json(j); CHECK(q.error == "effect ends_on on a save effect needs a condition");
     j = hp; j["duration"] = {{"kind", "instantaneous"}};
     q = spell_from_json(j); CHECK(q.error == "effect ends_on needs concentration or a rounds, minutes or hours duration");
+}
+
+TEST_CASE("loader 7.2zh: weapon_smite (Branding Smite), summon_weapon held (Flame Blade), sustained_damage held_object") {
+    auto sm = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"test.spell.zh_branding_smite","level":2,"name":"Branding Smite",
+        "casting_time":{"kind":"bonus_action"},"range":{"kind":"self"},"components":{"v":true},
+        "duration":{"kind":"minutes","amount":1,"concentration":true},
+        "effects":[{"kind":"weapon_smite","damage":{"dice":"2d6","type":"radiant"},"reveal_invisible":true,"light":{"dim_ft":5}}],
+        "scaling":{"upcast":{"dice":1}}})");
+    auto r = spell_from_json(sm); INFO(r.error); REQUIRE(r.def);
+    CHECK(r.def->kind == SpellEffectKind::WeaponSmite);
+    CHECK(r.def->dice == DiceExpr{2, 6, 0}); CHECK(r.def->damage_type == DamageType::Radiant);
+    CHECK(r.def->weapon_smite.reveal_invisible); CHECK(r.def->weapon_smite.dim_ft == 5);
+    CHECK(r.def->upcast_dice == 1); CHECK(r.def->concentration);
+    CHECK(r.def->expiry == 1); CHECK(r.def->duration_rounds == 10);
+    CHECK(r.def->casting_time == CastingTime::BonusAction);
+    auto bad = [](eng::assets::Json x, const std::string& want) {
+        auto q = spell_from_json(x); INFO(want); INFO(q.error); CHECK_FALSE(q.def); CHECK(q.error == want);
+    };
+    auto j = sm; j["duration"] = {{"kind", "instantaneous"}};
+    bad(j, "weapon_smite: needs concentration or a rounds, minutes or hours duration");
+    j = sm; j["effects"][0]["light"]["dim_ft"] = 6;
+    bad(j, "effect weapon_smite light.dim_ft must be a positive multiple of 5");
+    j = sm; j["effects"][0]["reveal_invisible"] = "yes"; bad(j, "effect reveal_invisible must be a boolean");
+    j = sm; j["effects"][0]["damage"] = {{"dice", "xd6"}, {"type", "radiant"}}; bad(j, "effect damage invalid");
+    j = sm; j["effects"] = eng::assets::Json::array({{{"kind", "heal"}, {"dice", "1d4"}}, sm["effects"][0]}); j.erase("scaling");
+    bad(j, "effects[1]: weapon_smite is only allowed as the first effect");
+    j = sm; j["duration"] = {{"kind", "minutes"}, {"amount", 1}}; j["effects"][0].erase("reveal_invisible"); j["effects"][0].erase("light");
+    auto timed = spell_from_json(j); INFO(timed.error); REQUIRE(timed.def);
+    CHECK_FALSE(timed.def->concentration); CHECK_FALSE(timed.def->weapon_smite.reveal_invisible); CHECK(timed.def->weapon_smite.dim_ft == 0);
+
+    auto fb = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"test.spell.zh_flame_blade","level":2,"name":"Flame Blade",
+        "casting_time":{"kind":"bonus_action"},"range":{"kind":"self"},"components":{"v":true,"s":true,"m":{"text":"sumac leaf"}},
+        "duration":{"kind":"minutes","amount":10,"concentration":true},
+        "effects":[{"kind":"summon_weapon","damage":{"dice":"3d6","type":"fire"},"upcast_every":2,"reach_ft":5,"held":true,
+                    "light":{"bright_ft":10,"dim_ft":10}}],"scaling":{"upcast":{"dice":1}}})");
+    auto blade = spell_from_json(fb); INFO(blade.error); REQUIRE(blade.def);
+    CHECK(blade.def->kind == SpellEffectKind::SummonWeapon); CHECK(blade.def->summon_weapon.held);
+    CHECK(blade.def->summon_weapon.move_ft == 0); CHECK_FALSE(blade.def->add_spellcasting_modifier);
+    CHECK(blade.def->summon_weapon.upcast_every == 2); CHECK(blade.def->upcast_dice == 1);
+    CHECK(blade.def->summon_weapon.light_bright_ft == 10); CHECK(blade.def->summon_weapon.light_dim_ft == 10);
+    CHECK(blade.def->dice == DiceExpr{3, 6, 0}); CHECK(blade.def->damage_type == DamageType::Fire);
+    j = fb; j["effects"][0]["move_ft"] = 20; bad(j, "summon_weapon: held needs no move_ft");
+    j = fb; j["effects"][0]["add_spellcasting_modifier"] = true; bad(j, "summon_weapon: held takes no add_spellcasting_modifier");
+    j = fb; j["effects"][0]["light"]["bright_ft"] = 6; bad(j, "effect summon_weapon light.bright_ft and dim_ft must be positive multiples of 5");
+    j = fb; j["effects"][0]["held"] = "yes"; bad(j, "effect summon_weapon held must be a boolean");
+    j = fb; j["effects"][0].erase("held"); j["effects"][0].erase("light");
+    auto floating = spell_from_json(j); INFO(floating.error); REQUIRE(floating.def);
+    CHECK_FALSE(floating.def->summon_weapon.held); CHECK(floating.def->summon_weapon.move_ft == 20);
+
+    const char* shape = "effect held_object must be {save: con, on_fail: drop, while_held: {disadvantage: [attack_rolls, ability_checks], until: start_of_caster_next_turn}}";
+    auto hm = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"test.spell.zh_heat_metal","level":2,"name":"Heat Metal",
+        "casting_time":{"kind":"action"},"range":{"kind":"ranged","feet":60},"components":{"v":true,"s":true,"m":{"text":"a piece of iron"}},
+        "duration":{"kind":"minutes","amount":1,"concentration":true},
+        "effects":[{"kind":"sustained_damage","damage":{"dice":"2d8","type":"fire"},
+                    "held_object":{"save":"con","on_fail":"drop","while_held":{"disadvantage":["attack_rolls","ability_checks"],
+                    "until":"start_of_caster_next_turn"}}}],"scaling":{"upcast":{"dice":1}}})");
+    auto heat = spell_from_json(hm); INFO(heat.error); REQUIRE(heat.def);
+    CHECK(heat.def->kind == SpellEffectKind::SustainedDamage); CHECK(heat.def->held_object);
+    CHECK(heat.def->dice == DiceExpr{2, 8, 0}); CHECK(heat.def->upcast_dice == 1);
+    CHECK(heat.def->expiry == 1); CHECK(heat.def->duration_rounds == 10);
+    j = hm; j["effects"][0]["held_object"]["while_held"]["disadvantage"] = {"ability_checks", "attack_rolls"};
+    auto flipped = spell_from_json(j); INFO(flipped.error); REQUIRE(flipped.def); CHECK(flipped.def->held_object);
+    j = hm; j["effects"][0]["held_object"]["save"] = "dex"; bad(j, shape);
+    j = hm; j["duration"] = {{"kind", "until_dispelled"}, {"concentration", true}};
+    bad(j, "sustained_damage needs a rounds, minutes or hours duration");
+    j = hm; j["effects"][0]["kind"] = "delayed_damage"; j["effects"][0]["expiry"] = {{"kind", "until_end_of_target_next_turn"}};
+    bad(j, "effect held_object is only for sustained_damage");
 }

@@ -306,6 +306,17 @@ class SpellTable(unittest.TestCase):
         self.assertEqual(cs["effects"], [{"kind": "hp_pool", "dice": "6d10", "condition": "blinded"}])
         self.assertEqual(cs["scaling"], {"upcast": {"dice": 2}})
         self.assertEqual(cs["area"], {"shape": "cone", "size_ft": 15})
+        # Entangle: pack file matches the zone fixture (Rules #277); SRD 20-ft square = point cube 20
+        fx = ROOT / "tests/validate/fixtures/zones/spells/entangle.json"
+        d, f = load("entangle"), json.loads(fx.read_text(encoding="utf-8"))
+        for k in ("casting_time", "range", "duration", "components", "level", "school", "classes"):
+            self.assertEqual(d.get(k), f.get(k), k)
+        strip = lambda effs: [{k: v for k, v in e.items() if k != "description"} for e in effs]
+        self.assertEqual(strip(d["effects"]), strip(f["effects"]))
+        z = d["effects"][0]["zone"]
+        self.assertEqual((z["shape"], z["size_ft"], z["anchor"], z["flags"]), ("cube", 20, "point", ["difficult"]))
+        self.assertEqual(z["triggers"], [{"on": "zone_appear", "while_in_zone": True,
+                                          "effect": {"kind": "save", "ability": "str", "condition": "restrained"}}])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,19 @@
+{
+  "$schema": "spell@1",
+  "id": "test.neg.spell.flame_blade_light",
+  "name": "Flame Blade",
+  "level": 2,
+  "school": "evocation",
+  "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
+  "classes": ["druid"],
+  "components": { "v": true, "s": true, "m": { "text": "leaf of sumac" } },
+  "casting_time": { "kind": "bonus_action" },
+  "range": { "kind": "self" },
+  "duration": { "kind": "minutes", "amount": 10, "concentration": true },
+  "effects": [{
+    "kind": "summon_weapon",
+    "damage": { "dice": "3d6", "type": "fire" },
+    "held": true,
+    "light": { "bright_ft": 6, "dim_ft": 10 }
+  }]
+}
