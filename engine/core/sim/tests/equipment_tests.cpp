@@ -1027,7 +1027,7 @@ TEST_CASE("SetLightState: legal_actions lists each valid target state per held l
     REQUIRE(lantern < torch);
     until_turn(*c, pc);
     using P = std::vector<std::pair<uint32_t, uint8_t>>;
-    CHECK(light_ops(*c) == P{{lantern, 0}, {lantern, 1}, {torch, 0}});   // carried bullseye: not in hand
+    CHECK(light_ops(*c) == P{{lantern, uint8_t{0}}, {lantern, uint8_t{1}}, {torch, uint8_t{0}}});   // carried bullseye: not in hand
     // every listed op is accepted, and they come after every other entry
     const auto all = c->legal_actions();
     bool seen = false;
@@ -1036,7 +1036,7 @@ TEST_CASE("SetLightState: legal_actions lists each valid target state per held l
         else CHECK_FALSE(seen);
     }
     REQUIRE(c->submit(rules(light_req(pc, lantern, 0))).ok);
-    CHECK(light_ops(*c) == P{{lantern, 1}, {lantern, rules5e::kLightDouse}, {torch, 0}});
+    CHECK(light_ops(*c) == P{{lantern, uint8_t{1}}, {lantern, rules5e::kLightDouse}, {torch, uint8_t{0}}});
     // with equipment off nothing is listed
     ecs::Registry r2;
     auto off = Combat::create(r2, ch, l, 5);
