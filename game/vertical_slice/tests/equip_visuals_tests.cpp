@@ -129,8 +129,20 @@ TEST_CASE("equip visuals: frames are byte-identical across runs and input orders
     const Frame fo = render_frame(one);
     CHECK(fo.world_sprites == f1.world_sprites - (before - quads_of(one.actors[0])));
     CHECK(fo.hash != f1.hash);
-    if (std::getenv("EQUIP_PRINT_GOLDEN")) std::printf("equip golden: 0x%016llxull 0x%016llxull\n",
-                                                       (unsigned long long)f1.hash, (unsigned long long)fb.hash);
+    // MSVC /WX treats getenv as C4996; _dupenv_s is the CRT-safe substitute.
+    bool print_golden = false;
+#if defined(_MSC_VER)
+    char* equip_print = nullptr;
+    size_t equip_print_len = 0;
+    if (_dupenv_s(&equip_print, &equip_print_len, "EQUIP_PRINT_GOLDEN") == 0 && equip_print) {
+        print_golden = equip_print[0] != '\0';
+        std::free(equip_print);
+    }
+#else
+    if (const char* v = std::getenv("EQUIP_PRINT_GOLDEN")) print_golden = v[0] != '\0';
+#endif
+    if (print_golden) std::printf("equip golden: 0x%016llxull 0x%016llxull\n",
+                                  (unsigned long long)f1.hash, (unsigned long long)fb.hash);
     // Golden (null backend draw list + upload bytes) for the fixed scene.
     CHECK(f1.hash == 0xcfd377e872395730ull);
     CHECK(fb.hash == 0x53ccc747bdd098ccull);

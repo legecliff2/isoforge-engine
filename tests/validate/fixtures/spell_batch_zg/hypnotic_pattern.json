@@ -1,0 +1,57 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "school": "illusion",
+  "classes": [
+    "wizard"
+  ],
+  "id": "test.neg.spell.hypnotic_pattern",
+  "name": "Hypnotic Pattern",
+  "description": "Hypnotic Pattern (7.2zg positive specimen).",
+  "level": 3,
+  "components": {
+    "s": true,
+    "m": {
+      "text": "a glowing stick of incense"
+    }
+  },
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 120
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "save",
+      "ability": "wis",
+      "condition": "charmed",
+      "ends_on": [
+        "damage",
+        "shake_awake"
+      ]
+    },
+    {
+      "kind": "apply_condition",
+      "applies_to": "affected",
+      "condition": "incapacitated",
+      "ends_on": [
+        "damage",
+        "shake_awake"
+      ]
+    }
+  ],
+  "area": {
+    "shape": "cube",
+    "size_ft": 30
+  }
+}

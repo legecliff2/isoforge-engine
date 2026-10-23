@@ -190,7 +190,7 @@ DEFERRED: dict[str, str] = {}
 # Life domain spells and class cantrips the pack does not ship yet (listed in the deferred doc).
 # Warlock Pact of the Tome (3rd): three cantrips from any class list, known on top of cantrips_known.
 TOME_CANTRIPS = {"fire-bolt", "ray-of-frost", "sacred-flame"}
-DEFERRED_SPELLS = ["spiritual-weapon", "beacon-of-hope", "zone-of-truth",
+DEFERRED_SPELLS = ["beacon-of-hope", "zone-of-truth",
                    "spider-climb", "meld-into-stone"]   # Mountain circle spells not shipped;   # Lesser Restoration, Revivify: spells batch 2
 
 # Non-human SRD sample PCs (race -> senses.darkvision, checks_v4.check_race_senses; EC #236 loads it as darkvision_ft).

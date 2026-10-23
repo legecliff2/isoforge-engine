@@ -1,0 +1,49 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "school": "evocation",
+  "classes": [
+    "wizard"
+  ],
+  "id": "test.neg.spell.faerie_fire",
+  "name": "Faerie Fire",
+  "description": "Faerie Fire (7.2zg positive specimen).",
+  "level": 1,
+  "components": {
+    "v": true
+  },
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 60
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "outlined",
+        "duration": {
+          "kind": "concentration"
+        }
+      },
+      "save": {
+        "ability": "dex",
+        "dc": "caster"
+      }
+    }
+  ],
+  "area": {
+    "shape": "cube",
+    "size_ft": 20
+  }
+}

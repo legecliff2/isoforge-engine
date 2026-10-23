@@ -1,0 +1,45 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "school": "illusion",
+  "classes": [
+    "wizard"
+  ],
+  "id": "test.neg.spell.blur",
+  "name": "Blur",
+  "description": "Blur (7.2zg positive specimen).",
+  "level": 2,
+  "components": {
+    "v": true
+  },
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "self"
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "modifier": {
+        "stat": "attacks_against",
+        "mode": "disadvantage",
+        "duration": {
+          "kind": "concentration"
+        }
+      },
+      "exempt_senses": [
+        "blindsight",
+        "truesight"
+      ]
+    }
+  ]
+}

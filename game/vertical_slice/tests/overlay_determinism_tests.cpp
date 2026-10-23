@@ -41,7 +41,19 @@ std::vector<uint64_t> run(int glows, int frames) {
         out.push_back(frame_hash(dev.last_frame()));
     }
     CHECK(dev.errors() == 0);
-    if (std::getenv("OVERLAY_PRINT_GOLDEN")) {   // regenerate: OVERLAY_PRINT_GOLDEN=1 vertical_slice_tests -tc="overlay*"
+    // MSVC /WX treats getenv as C4996; _dupenv_s is the CRT-safe substitute.
+    bool print_golden = false;
+#if defined(_MSC_VER)
+    char* overlay_print = nullptr;
+    size_t overlay_print_len = 0;
+    if (_dupenv_s(&overlay_print, &overlay_print_len, "OVERLAY_PRINT_GOLDEN") == 0 && overlay_print) {
+        print_golden = overlay_print[0] != '\0';
+        std::free(overlay_print);
+    }
+#else
+    if (const char* v = std::getenv("OVERLAY_PRINT_GOLDEN")) print_golden = v[0] != '\0';
+#endif
+    if (print_golden) {   // regenerate: OVERLAY_PRINT_GOLDEN=1 vertical_slice_tests -tc="overlay*"
         std::printf("glows %d:", glows);
         for (uint64_t h : out) std::printf(" 0x%016llxull,", (unsigned long long)h);
         std::printf("\n");

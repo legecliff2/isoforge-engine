@@ -63,6 +63,7 @@ SpellDef effect_view(const SpellDef& base, const SpellEffect& e) {
     v.has_ward = e.has_ward; v.ward_save = e.ward_save; v.ward_on_fail = e.ward_on_fail;   // 7.2zd
     v.immune_conditions = e.immune_conditions; v.immune_from_types = e.immune_from_types;
     v.hp_bonus_flat = e.hp_bonus_flat; v.hp_bonus_per_slot = e.hp_bonus_per_slot;
+    v.has_modifier_save = false;   // 7.2zg: the save gate is the first effect's (Slow's rows ride on the creatures that failed)
     v.object_ac = e.object_ac; v.object_hp = e.object_hp;   // EC spider follow-up (flagged)
     v.object_vulnerable = e.object_vulnerable; v.object_immune = e.object_immune;
     v.cantrip_scales = false; v.cantrip_adds_beams = false;

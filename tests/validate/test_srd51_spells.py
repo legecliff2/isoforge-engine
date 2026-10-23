@@ -28,6 +28,9 @@ def dice_count(d):
     return int(re.match(r"(\d+)d", d).group(1))
 
 
+AREA_FROM_TEXT = {"hypnotic-pattern": {"shape": "cube", "size_ft": 30}}
+
+
 class SpellTable(unittest.TestCase):
     def test_every_spell_matches_the_table(self):
         for idx, t in TABLE.items():
@@ -35,7 +38,7 @@ class SpellTable(unittest.TestCase):
                 d = load(idx)
                 self.assertEqual(d["$schema"], "spell@1")
                 self.assertEqual(d["id"], "srd51.spell." + idx.replace("-", "_"))
-                self.assertEqual((d["name"], d["level"], d["school"]), (t["name"], t["level"], t["school"]))
+                self.assertEqual((d["name"].casefold(), d["level"], d["school"]), (t["name"].casefold(), t["level"], t["school"]))   # the mirror spells it "Protection From Energy"
                 self.assertEqual(d["classes"], t["classes"])
                 self.assertEqual(d["casting_time"]["kind"], CAST[t["casting_time"]])
                 rng = d["range"]
@@ -88,6 +91,8 @@ class SpellTable(unittest.TestCase):
                 if "area_of_effect" in t:
                     a = t["area_of_effect"]
                     self.assertEqual((d["area"]["shape"], d["area"]["size_ft"]), (a["type"], a["size"]))
+                elif idx in AREA_FROM_TEXT:   # the mirror has no area_of_effect; the SRD text gives it
+                    self.assertEqual(d["area"], AREA_FROM_TEXT[idx])
                 else:
                     self.assertNotIn("area", d)
 
@@ -200,9 +205,10 @@ class SpellTable(unittest.TestCase):
         self.assertNotIn("scaling", mw)   # the at_slot table is the upcast
         mi = load("mirror-image")
         e = dict(mi["effects"][0]); e.pop("description")
-        self.assertEqual(e, {"kind": "duplicates", "count": 3, "thresholds": [11, 8, 6], "ac": {"base": 10, "ability": "dex"}})
+        self.assertEqual(e, {"kind": "duplicates", "count": 3, "thresholds": [11, 8, 6], "ac": {"base": 10, "ability": "dex"},
+                             "exempt_senses": ["blindsight", "truesight"]})
         self.assertEqual((mi["range"], mi["duration"]), ({"kind": "self"}, {"kind": "minutes", "amount": 1}))
-        for word in ("blind", "blindsight", "truesight", "false", "dismiss"):
+        for word in ("blind", "blindsight", "truesight", "exempt_senses", "dismiss"):
             self.assertIn(word, mi["effects"][0]["description"])
         # the negative-case strings are the loader's (rules5e_content spell_loader.cpp), verbatim
         loader = (ROOT / "engine/rules/content/src/spell_loader.cpp").read_text(encoding="utf-8")
@@ -216,6 +222,65 @@ class SpellTable(unittest.TestCase):
         for case in sorted((Path(__file__).parent / "cases").glob("*.expect")):
             if case.stem.startswith(("weapon_imbue_", "duplicates_")) and not case.read_text(encoding="utf-8").startswith("/"):
                 self.assertIn(case.read_text(encoding="utf-8").strip(), loader, case.name)
+
+    def test_spell_batch_zg(self):
+        # Rules #263 (7.2zg): haste / slow, summon_weapon, temp_hp, spell_attack on_miss
+        self.assertEqual(load("haste")["effects"], [{"kind": "haste"}])
+        sl = load("slow")
+        self.assertEqual(sl["effects"], [{"kind": "slow", "ability": "wis"}])
+        self.assertEqual((sl["targets"], sl["area"]), ({"count": 6}, {"shape": "cube", "size_ft": 40}))
+        for idx in ("haste", "slow", "heroism"):
+            self.assertTrue(load(idx)["duration"]["concentration"])
+        sw = load("spiritual-weapon")
+        self.assertEqual(sw["effects"], [{"kind": "summon_weapon", "damage": {"dice": "1d8", "type": "force"}, "add_spellcasting_modifier": True,
+                                          "upcast_every": 2, "reach_ft": 5, "move_ft": 20}])
+        self.assertEqual((sw["casting_time"], sw["duration"], sw["scaling"]),
+                         ({"kind": "bonus_action"}, {"kind": "minutes", "amount": 1}, {"upcast": {"dice": 1}}))
+        self.assertEqual(load("false-life")["effects"], [{"kind": "temp_hp", "dice": "1d4+4", "per_slot_above": 5}])
+        he = load("heroism")
+        self.assertEqual(he["effects"], [{"kind": "temp_hp", "ability": "spellcasting", "per_turn": True, "condition_immunity": ["frightened"]}])
+        self.assertEqual(he["scaling"], {"upcast": {"targets": 1}})
+        aa = load("acid-arrow")
+        self.assertEqual(aa["effects"][0]["on_miss"], "half")
+        self.assertEqual(aa["effects"][1], {"kind": "delayed_damage", "applies_to": "affected", "damage": {"dice": "2d4", "type": "acid"},
+                                            "expiry": {"kind": "until_end_of_target_next_turn"}})
+        loader = (ROOT / "engine/rules/content/src/spell_loader.cpp").read_text(encoding="utf-8")
+        for msg in ("effect haste needs concentration", "effect slow needs ability", "effect haste takes no ability",   # built as "effect " + kind
+                    "effect on_miss must be half", "on_miss is only allowed on the first effect", "effect upcast_every must be an integer 1..9",
+                    "effect reach_ft must be a positive multiple of 5", "effect move_ft must be a positive multiple of 5",
+                    "effect summon_weapon needs concentration or a rounds, minutes or hours duration",
+                    "effect temp_hp needs exactly one of dice or ability", "effect dice invalid", "effect ability must be spellcasting",
+                    "effect per_slot_above must be an integer 1..50", "effect per_turn must be a boolean",
+                    "effect condition_immunity must be a non-empty list of conditions", "effect condition_immunity items must be unique",
+                    "effect temp_hp per_turn or condition_immunity needs concentration or a rounds, minutes or hours duration"):
+            if msg == "effect haste needs concentration":
+                self.assertIn('"effect " + kind + " needs concentration"', loader)
+            else:
+                self.assertIn(msg, loader, msg)
+
+    def test_spell_batch_zg_rest(self):
+        # Rules #263 (7.2zg) groups 5-9: the pack files carry the same mechanics as Rules' positive specimens
+        fx = ROOT / "tests/validate/fixtures/spell_batch_zg"
+        for idx in ("acid-arrow", "hellish-rebuke", "protection-from-energy", "blur", "faerie-fire", "hypnotic-pattern"):
+            with self.subTest(spell=idx):
+                d, f = load(idx), json.loads((fx / (idx.replace("-", "_") + ".json")).read_text(encoding="utf-8"))
+                for k in ("casting_time", "range", "duration", "area", "targets", "scaling"):
+                    self.assertEqual(d.get(k), f.get(k), k)
+                strip = lambda effs: [{k: v for k, v in e.items() if k != "description"} for e in effs]
+                self.assertEqual(strip(d["effects"]), strip(f["effects"]))
+        self.assertEqual(load("acid-arrow")["scaling"], {"upcast": {"dice": 1}})   # slot 3: 5d4 up front, 3d4 later (Rules' C++ slot-3 test)
+        self.assertEqual(load("hellish-rebuke")["casting_time"], {"kind": "reaction", "trigger": {"kind": "damaged", "requires_sight": True}})
+        self.assertEqual(load("protection-from-energy")["effects"][0]["damage_type_choices"], ["acid", "cold", "fire", "lightning", "thunder"])
+        self.assertEqual(load("blur")["effects"][0]["exempt_senses"], ["blindsight", "truesight"])
+        self.assertEqual(load("faerie-fire")["effects"][0]["modifier"]["stat"], "outlined")
+        hp = load("hypnotic-pattern")
+        self.assertEqual([(e["kind"], e["condition"], e["ends_on"]) for e in hp["effects"]],
+                         [("save", "charmed", ["damage", "shake_awake"]), ("apply_condition", "incapacitated", ["damage", "shake_awake"])])
+        self.assertNotIn("Not modelled", hp["description"])   # speed 0 is modelled upstream (302f92f)
+        loader = (ROOT / "engine/rules/content/src/spell_loader.cpp").read_text(encoding="utf-8")
+        for msg in ("casting_time.trigger.kind must be being_hit, spell_cast or damaged",
+                    "effect ends_on must be a non-empty list of attack, cast, harmful_cast, damage, shake_awake"):
+            self.assertIn(msg, loader, msg)
 
     def test_zone_and_kind_spells(self):
         self.assertEqual(load("silence")["effects"][0]["zone"]["flags"], ["silence"])

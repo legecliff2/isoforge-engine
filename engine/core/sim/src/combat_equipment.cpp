@@ -338,6 +338,8 @@ std::vector<rules5e::ActionRequest> Combat::legal_actions() {
     return out;
 }
 
+std::vector<rules5e::ActionRequest> Combat::legal_actions() const { return const_cast<Combat*>(this)->legal_actions(); }
+
 std::vector<EquipmentLight> Combat::equipment_lights() const {
     std::vector<EquipmentLight> out;
     for (const auto& [inst, lid] : item_lights_) {
