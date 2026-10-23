@@ -1,0 +1,21 @@
+{
+  "$schema": "item@2",
+  "id": "srd51.item.quiver",
+  "name": "Quiver",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "gear",
+  "cost_cp": 100,
+  "weight_oz": 16,
+  "description": "A quiver can hold up to 20 arrows.",
+  "container": {
+    "holds": [
+      {
+        "ammo_kind": "arrow",
+        "capacity": 20
+      }
+    ]
+  }
+}
