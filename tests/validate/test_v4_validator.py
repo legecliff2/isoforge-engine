@@ -137,7 +137,7 @@ CASES = [
     ("item_float_cost", "items/shield.json", [(["cost_cp"], 1.5)], [], "float value"),
     ("item_unknown_category", "items/shield.json", [(["category"], "ring")], [], "is not one of"),
     ("item_gem_is_not_a_category", "items/shield.json", [(["category"], "gem")], [["ac_bonus"]], "/category: 'gem' is not one of ['weapon', 'armor', 'shield', 'valuable']"),
-    ("item_valuable_forbids_ac_bonus", "items/shield.json", [(["category"], "valuable")], [], "/: 'ac_bonus' is not one of ['$schema', 'id', 'name', 'source', 'category', 'cost_cp', 'weight_oz', 'description']"),
+    ("item_valuable_forbids_ac_bonus", "items/shield.json", [(["category"], "valuable")], [], "/: 'ac_bonus' is not one of ['$schema', 'id', 'name', 'source', 'category', 'cost_cp', 'weight_oz', 'description', 'visual']"),
     ("item_valuable_forbids_damage", "items/shield.json", [(["category"], "valuable"), (["damage"], [{"dice": "1d4", "type": "fire"}])], [["ac_bonus"]], "/: 'damage' is not one of"),
     ("item_valuable_forbids_value_gp", "items/shield.json", [(["category"], "valuable"), (["value_gp"], 300)], [["ac_bonus"]], "Additional properties are not allowed ('value_gp'"),
     ("item_valuable_float_cost", "items/shield.json", [(["category"], "valuable"), (["cost_cp"], 1.5)], [["ac_bonus"]], "float value"),

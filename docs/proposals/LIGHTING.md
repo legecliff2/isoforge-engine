@@ -254,6 +254,47 @@ Existing levels untouched; added to `engine.level<N+1>.d.luau` only.
   dirty rect. Render-internal choices (borders, atlas, tint vs shader) don't affect this contract.
 - A headless build has no render dependency on light.
 
+### 10.1 Phase 3 render prep: attached-light glows (R&P proposal, needs EC answer)
+
+Render now consumes a generic list of light sources (`iso2d::GlowSource`: stable key, optional entity anchor, world
+tile, visual radius, colour, intensity), built from `LightFrame::sources` by `slice::glows_from`. Entity-anchored glows
+follow the carrier's *drawn* position (`iso2d::follow_anchors`); colour / intensity come from a render-side
+`iso2d::GlowPalette` keyed by `preset` (presentation only, unhashed, §10). The glow is a capped, token-local halo: the
+lit area itself is always the sim's light map, so a glow never shows a `Dark` tile as lit.
+
+Until phase 3, `vertical_slice` keeps the interim producers in the game session: `pc_torches` (`--no-torches`) and
+`Session::Options::carried_lights`, both turned into `sim::AttachedLight{Carrier::Creature}` and published through
+`publish_light_frame`. No sim code changes. When phase 3 lands, the session stops building `AttachedLight`s and the
+same render path reads the sim's sources.
+
+**Engine Core's answers (2026-10-21), resolved.** Only attachment and position belong to the sim; colour and intensity
+are content-only visuals and stay out of every sim hash.
+
+1. **Ownership (resolved).** `Combat` owns its attached lights. It calls `LightDriver::step` once when created and after
+   each committed step, so every committed step publishes exactly one frame. Render only reads `driver.latest()`. The
+   driver lands in phase 2 PR 2; attached-light ownership arrives in phase 3.
+2. **Item carriers (resolved).** `holder_id` (entity id; 0 = on the ground / unheld) is added to the attached source
+   record. It joins the 0xC7 fold in phase 3, folded only when non-default.
+3. **Lifetime and identity (resolved).** `LightId`s are stable. Each light-capable item gets its `LightId` once, at spawn
+   or load, in deterministic id order. Lit / doused changes only its state; drop / pick-up changes only `holder_id` and
+   position. An id is never reused within a session.
+4. **Dead carriers (resolved).** When the carrier dies the light drops in the same step: it keeps its `LightId`, gets
+   `holder_id` 0, and its position becomes the carrier's tile, in the same frame that removes the token. It stays lit
+   unless content marks it as going out on drop.
+5. **Presentation data (resolved, Tools & Content 2026-10-21).** Optional `visual` block on `item@1` (later on the
+   light-preset schema too), additive, no version bump: `visual: {color: {r, g, b}, intensity, flicker?}` with each
+   channel an integer 0..255, `intensity` an integer 0..1000 (permille) and `flicker` one of `none|torch|candle`;
+   `additionalProperties: false` at every level, integers only (no floats, no hex). Schema:
+   `schemas/item/v1.schema.json`. It is excluded from `content_hash` and never read by sim, so it never feeds
+   `log_hash` or any golden. The game converts it once at load (`iso2d::glow_style_from_visual`: channel / 255,
+   permille / 1000) and registers it under the item's **`light.preset`** (the preset its light uses; the item id need
+   not match). The `GlowPalette` uses it for that preset over the built-in defaults, which stay the fallback.
+   An item with `visual` but no `light.preset` is skipped with a load warning (no fallback to the item id, so a
+   style can never silently attach to the wrong key). If several items style one preset, the lowest content id
+   wins (independent of pack / file order) and each differing loser logs a warning (`Session::warnings()`, printed
+   by `vertical_slice`). Preset-exists checking is a validator rule Tools & Content adds in `checks_v4`.
+   `flicker` is carried through but not animated yet.
+
 ## 11. Open questions
 
 Rules (all decided in the Rules review of #195; kept here as the record)

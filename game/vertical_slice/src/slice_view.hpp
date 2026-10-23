@@ -4,7 +4,9 @@
 #include <memory>
 #include <string_view>
 
+#include "iso2d/light_glow.hpp"
 #include "iso2d/light_map.hpp"
+#include "light_glows.hpp"
 #include "iso2d/sprite_batch.hpp"
 #include "render/device.hpp"
 #include "view_model.hpp"
@@ -43,6 +45,7 @@ private:
 
     eng::iso2d::SpriteBatch world_, ui_;
     eng::iso2d::LightMaps lights_;
+    eng::iso2d::GlowPalette palette_;   // light preset -> glow colour / intensity (presentation only)
     eng::iso2d::FogMaps fogs_;
     uint64_t light_frame_ = 0;
     int fog_key_ = -1;   // (fog on, team) last uploaded; a change refreshes every fog map

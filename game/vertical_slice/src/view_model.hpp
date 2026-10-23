@@ -1,4 +1,6 @@
 #pragma once
+#include <map>
+#include "iso2d/light_glow.hpp"
 // Plain-data snapshot of what the vertical slice shows. The renderer (SliceView) only ever
 // sees this: no sim/world/rules types, no game state lives on the render side.
 #include <array>
@@ -73,6 +75,9 @@ struct LightView {
     std::vector<LightSourceView> sources;
     bool        fog = false;       // fog of war shown (option on and the frame carries visibility)
     uint8_t     fog_team = 0;      // team whose masks are shown (game option)
+    // Content `visual` blocks (item@1 / light presets), converted to render floats at load, keyed by
+    // light preset (an item's `light.preset`, == a source's preset). Presentation only: not part of the LightFrame or any hash.
+    std::map<std::string, eng::iso2d::GlowStyle, std::less<>> visuals;
     const LightChunkView* chunk_of_tile(eng::Vec2i t) const {
         const int32_t cx = t.x >= 0 ? t.x / 32 : -((-t.x + 31) / 32), cy = t.y >= 0 ? t.y / 32 : -((-t.y + 31) / 32);
         for (const auto& c : chunks) if (c.cx == cx && c.cy == cy) return &c;
