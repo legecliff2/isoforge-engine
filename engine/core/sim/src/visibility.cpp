@@ -64,16 +64,34 @@ struct WallMap {
         auto P = [&](int x, int y) { return psum[std::size_t(y * (w + 1) + x)]; };
         return P(x1, y1) - P(x0, y1) - P(x1, y0) + P(x0, y0);
     }
-    // == light_reaches(lw, s, t) for s, t inside the box.
-    bool reaches(Vec2i s, Vec2i t) const {
+    // == light_reaches(lw, s, t) for s, t inside the box, batched per viewer tile `s` (perf/vis-first-step). `seg` is s's segment memo, 4 * (w + 1) * (h + 1)
+    // bytes indexed by (s corner, target lattice corner b): 0 unknown, 1 blocked even with the four tiles around b treated
+    // as open, 2 not proven. segment_blocked is monotone in its predicate (an OR of ANDs of wall probes), and the trace's
+    // own predicate differs from that one only on t, which is one of the four tiles around b, so 1 means blocked for every
+    // target t sharing b: each lattice corner is traced once for up to four targets. 2 falls back to the exact trace.
+    bool reaches_batched(Vec2i s, Vec2i t, std::vector<uint8_t>& seg) const {
         if (s == t) return true;
         if (count(s, t) - (at(s) ? 1 : 0) - (at(t) ? 1 : 0) == 0) return true;
+        const std::size_t lw = std::size_t(w) + 1, plane = lw * (std::size_t(h) + 1);
+        if (seg.size() != 4 * plane) seg.assign(4 * plane, 0);
         auto blocks = [&](Vec2i p) { return p != s && p != t && at(p); };
         for (int oy = 0; oy <= 1; ++oy)
-            for (int ox = 0; ox <= 1; ++ox)
+            for (int ox = 0; ox <= 1; ++ox) {
+                const Vec2i a{s.x + ox, s.y + oy};
                 for (int ty = 0; ty <= 1; ++ty)
-                    for (int tx = 0; tx <= 1; ++tx)
-                        if (!segment_blocked(Vec2i{s.x + ox, s.y + oy}, Vec2i{t.x + tx, t.y + ty}, blocks)) return true;
+                    for (int tx = 0; tx <= 1; ++tx) {
+                        const Vec2i b{t.x + tx, t.y + ty};
+                        uint8_t& m = seg[std::size_t(oy * 2 + ox) * plane + std::size_t(b.y - lo.y) * lw + std::size_t(b.x - lo.x)];
+                        if (m == 0) {
+                            auto far = [&](Vec2i p) {
+                                return p != s && !(p.x >= b.x - 1 && p.x <= b.x && p.y >= b.y - 1 && p.y <= b.y) && at(p);
+                            };
+                            m = segment_blocked_dda(a, b, far) ? 1 : 2;
+                        }
+                        if (m == 1) continue;
+                        if (!segment_blocked_dda(a, b, blocks)) return true;
+                    }
+            }
         return false;
     }
 };
@@ -129,6 +147,7 @@ void VisibilityState::begin_step(LightCache& cache, std::span<const Viewer> view
         // Line-of-sight answers are memoised per viewer tile across steps while the walls (and the box) stay the same:
         // a viewer that doesn't move costs no traces. Any wall / opaque zone change or a new box drops them all.
         if (!los_ || los_->lo != walls.lo || los_->hi != walls.hi || los_->wall != walls.wall) {
+            seen_.clear();   // line of sight may differ anywhere
             los_.emplace();
             los_->lo = walls.lo; los_->hi = walls.hi; los_->wall = walls.wall;
         }
@@ -140,9 +159,10 @@ void VisibilityState::begin_step(LightCache& cache, std::span<const Viewer> view
         }
         los_->by_tile = std::move(keep);
     }
+    std::map<Vec2i, std::vector<uint8_t>> seg_memo;   // per viewer tile, this step only (reaches_batched)
     auto los = [&](const Viewer& v, Vec2i t) {
         uint8_t& m = los_->by_tile[v.tile][std::size_t((t.y - walls.lo.y) * walls.w + (t.x - walls.lo.x))];
-        if (m == 0) m = walls.reaches(v.tile, t) ? 1 : 2;
+        if (m == 0) m = walls.reaches_batched(v.tile, t, seg_memo[v.tile]) ? 1 : 2;
         return m == 1;
     };
 
@@ -152,14 +172,31 @@ void VisibilityState::begin_step(LightCache& cache, std::span<const Viewer> view
         for (int y = 0; y < N; ++y)
             for (int x = 0; x < N; ++x) samples[ci][std::size_t(y * N + x)] = cache.at(Grid::to_world(coords[ci], {x, y}));
 
+    auto same_viewer = [](const Viewer& a, const Viewer& b) {
+        return a.id == b.id && a.team == b.team && a.tile == b.tile && a.senses == b.senses && a.blinded == b.blinded &&
+               a.anchor == b.anchor && a.footprint == b.footprint;
+    };
     published_.clear();
+    std::map<TeamId, std::map<world::ChunkCoord, SeenMemo>> next_seen;
     for (auto& [team, per_chunk] : explored_) {
         TeamVisibility tv;
         tv.team = team;
+        std::vector<Viewer> team_vs;   // vs is sorted by (team, id)
+        for (const auto& v : vs)
+            if (v.team == team) team_vs.push_back(v);
+        auto prev_team = seen_.find(team);
         for (std::size_t ci = 0; ci < coords.size(); ++ci) {
             ChunkVisibility cv;
             cv.coord = coords[ci];
-            for (const auto& v : vs) {
+            const SeenMemo* old = nullptr;
+            if (prev_team != seen_.end()) {
+                auto it = prev_team->second.find(cv.coord);
+                if (it != prev_team->second.end()) old = &it->second;
+            }
+            const bool reuse = old && old->samples == samples[ci] && old->viewers.size() == team_vs.size() &&
+                               std::equal(team_vs.begin(), team_vs.end(), old->viewers.begin(), same_viewer);
+            if (reuse) cv.seen_now = old->seen;
+            else for (const auto& v : team_vs) {
                 if (v.team != team) continue;
                 for (int y = 0; y < N; ++y)
                     for (int x = 0; x < N; ++x) {
@@ -170,6 +207,13 @@ void VisibilityState::begin_step(LightCache& cache, std::span<const Viewer> view
                             cv.seen_now.set(x, y);
                     }
             }
+            if (!team_vs.empty()) {
+                SeenMemo m;
+                m.viewers = team_vs;
+                m.samples = samples[ci];
+                m.seen = cv.seen_now;
+                next_seen[team].emplace(cv.coord, std::move(m));
+            }
             TileMask& ex = per_chunk[cv.coord];
             ex |= cv.seen_now;
             cv.explored = ex;
@@ -178,6 +222,7 @@ void VisibilityState::begin_step(LightCache& cache, std::span<const Viewer> view
         }
         published_.push_back(std::move(tv));
     }
+    seen_ = std::move(next_seen);
 }
 
 void split_by_halo(std::span<const world::ChunkCoord> wanted, const std::function<world::HaloState(world::ChunkCoord)>& state,

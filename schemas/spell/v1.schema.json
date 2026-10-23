@@ -557,7 +557,9 @@
             "forced_move",
             "teleport",
             "condition_immunity_from",
-            "max_hp_bonus"
+            "max_hp_bonus",
+            "weapon_imbue",
+            "duplicates"
           ]
         }
       },
@@ -1684,6 +1686,202 @@
               }
             },
             "description": "VERSION_BUMP_BATCH 7.2zd (Aid): each target's hit point maximum and current hit points rise by flat + per_slot_above per slot level above the spell's; when the spell ends the maximum drops back and current hit points clamp to it. The same spell keeps the higher bonus. Needs concentration or a rounds / minutes / hours duration."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "weapon_imbue"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "weapon_imbue"
+              },
+              "weapons": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)+$"
+                },
+                "description": "Item ids the spell can imbue (Shillelagh: srd51.item.club, srd51.item.quarterstaff). Absent = any weapon."
+              },
+              "ability": {
+                "enum": [
+                  "spellcasting"
+                ],
+                "description": "Attack and damage rolls of melee attacks with the weapon use the caster's spellcasting ability instead of Strength (Shillelagh)."
+              },
+              "die": {
+                "enum": [
+                  4,
+                  6,
+                  8,
+                  10,
+                  12
+                ],
+                "description": "The weapon's damage die becomes a d<die> (Shillelagh: 8)."
+              },
+              "magical": {
+                "type": "boolean",
+                "description": "The weapon becomes magical (AttackQualifier magic) for the duration."
+              },
+              "magic_bonus": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "base"
+                ],
+                "properties": {
+                  "base": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 3
+                  },
+                  "at_slot": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "array",
+                      "prefixItems": [
+                        {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9
+                        },
+                        {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 3
+                        }
+                      ],
+                      "minItems": 2,
+                      "maxItems": 2
+                    },
+                    "description": "[slot level, bonus] pairs: from that slot level up the bonus is this value (Magic Weapon [[4, 2], [6, 3]]). Slots strictly ascending (tools/validate)."
+                  }
+                },
+                "description": "+bonus to attack and damage rolls with the weapon (Magic Weapon)."
+              },
+              "requires_nonmagical": {
+                "type": "boolean",
+                "description": "Refused on a weapon that is already magical: \"magic_weapon: the weapon is already magical\"."
+              },
+              "ends_on_release": {
+                "type": "boolean",
+                "description": "The spell ends when the holder lets go of the weapon (Stow, Drop, HandOver; Shillelagh)."
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ]
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "anyOf": [
+              {
+                "required": [
+                  "ability"
+                ]
+              },
+              {
+                "required": [
+                  "die"
+                ]
+              },
+              {
+                "required": [
+                  "magical"
+                ]
+              },
+              {
+                "required": [
+                  "magic_bonus"
+                ]
+              }
+            ],
+            "description": "VERSION_BUMP_BATCH 7.2zf (Shillelagh, Magic Weapon): imbues the weapon the caster holds (ActionRequest::equip_item names it when the caster has a loadout view; else the caster's first weapon attack). Casting it again ends the earlier imbue. Needs concentration or a rounds / minutes / hours duration."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "duplicates"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "count",
+              "thresholds",
+              "ac"
+            ],
+            "properties": {
+              "kind": {
+                "const": "duplicates"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3,
+                "description": "Duplicates at the start (Mirror Image: 3)."
+              },
+              "thresholds": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 20
+                },
+                "description": "d20 needed to redirect an attack to a duplicate, indexed by remaining duplicates - 1: [1 left, 2 left, 3 left] (Mirror Image [11, 8, 6]). Exactly 3 entries, non-increasing (tools/validate)."
+              },
+              "ac": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "base",
+                  "ability"
+                ],
+                "properties": {
+                  "base": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 30
+                  },
+                  "ability": {
+                    "$ref": "../common/v1.schema.json#/$defs/ability"
+                  }
+                },
+                "description": "A duplicate's AC = base + the caster's ability modifier (Mirror Image: 10 + Dex)."
+              },
+              "applies_to": {
+                "enum": [
+                  "all",
+                  "affected"
+                ]
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "description": "VERSION_BUMP_BATCH 7.2zf (Mirror Image): illusory duplicates on the caster. Each attack that targets the caster rolls a d20 first (our PRNG; only when duplicates remain and the attacker is affected); at or above thresholds[remaining - 1] the attack targets a duplicate instead (AC per ac); a hit destroys one duplicate (no damage), a miss does nothing. The effect ends when none remain. Unaffected attackers: no sight of the caster (Blinded or otherwise), blindsight in range, or truesight in range. No dismissal action. Self only; needs a rounds / minutes / hours duration."
           }
         }
       ],
