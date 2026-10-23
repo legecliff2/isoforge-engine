@@ -81,8 +81,12 @@ Windows Debug still run on every ready PR.
 - Limits: systemd unit with `Nice=10`, `IOSchedulingClass=idle`, `CPUQuota=400%`, `MemoryMax=8G`.
   Jobs use `CMAKE_BUILD_PARALLEL_LEVEL=4` and `CTEST_PARALLEL_LEVEL=2`. On hosts without systemd
   the script falls back to `nice -n10 ionice -c3 taskset` (4 CPUs) with `oom_score_adj=500`. That fallback has no hard memory cap: `ulimit -v` breaks the .NET runner, and MemoryMax needs cgroups. This is how the current box (no systemd) runs it; re-run `setup.sh` after a reboot.
-- Build deps (ninja, ccache, X11/Wayland dev headers) are installed by `setup.sh`. cmake-ci skips
-  `apt-get` on self-hosted runners and fails fast if ninja is missing.
+- Build deps (ninja, ccache, X11/Wayland dev headers, **Python >= 3.12** via distro `python3` /
+  `python3-venv`, or `python3.12` from deadsnakes on older Ubuntu) are installed by `setup.sh`.
+  cmake-ci skips `apt-get` and `actions/setup-python` on self-hosted runners (no Python toolcache
+  there — setup-python fails with "The version 3.12 with architecture x64 was not found") and uses
+  system `python3` / `python3.12` for the `content_validate` venv. It fails fast if ninja or a
+  usable Python is missing. GitHub-hosted jobs still use `actions/setup-python@v5` with 3.12.
 - **Security:** the repo is private, so only collaborators can open PRs that run here. Fork PRs
   must never run on the self-hosted runner: `changes` is skipped when the PR head repo is not this
   repo, so no job reaches the runner and `ci-required` fails closed. Keep "Require approval for

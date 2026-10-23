@@ -19,12 +19,38 @@ LABELS=self-hosted,linux,x64,isoforge
 SVC=actions-runner-isoforge
 [ "$(id -u)" = 0 ] || { echo "run as root (sudo)"; exit 1; }
 
-# Build deps (cmake-ci skips apt on self-hosted).
+# Build deps (cmake-ci skips apt on self-hosted). Python >= 3.12 is required for content_validate:
+# cmake-ci skips actions/setup-python on self-hosted (no toolcache) and uses system python3.
 if command -v apt-get >/dev/null; then
   DEBIAN_FRONTEND=noninteractive apt-get install -y -q ninja-build ccache cmake g++ clang git curl python3-venv \
     libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev libxtst-dev \
     libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libgl-dev libvulkan-dev libudev-dev libdbus-1-dev >/dev/null
 fi
+# Ensure python3 is >= 3.12. Distro python3 is enough on Debian 13 / Ubuntu 24.04+; older Ubuntu
+# gets python3.12 from deadsnakes (python3 may still be older — cmake-ci prefers python3.12).
+py_ok() { command -v "$1" >/dev/null && "$1" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)' 2>/dev/null; }
+if ! py_ok python3 && ! py_ok python3.12; then
+  if ! command -v apt-get >/dev/null; then
+    echo "need python3 >= 3.12 (or python3.12) for content_validate; found $(python3 --version 2>&1 || echo none)"
+    exit 1
+  fi
+  echo "installing Python 3.12 (need >= 3.12 for content_validate; found $(python3 --version 2>&1 || echo none))"
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -q software-properties-common >/dev/null || true
+  if command -v add-apt-repository >/dev/null && add-apt-repository -y ppa:deadsnakes/ppa; then
+    DEBIAN_FRONTEND=noninteractive apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3.12 python3.12-venv >/dev/null
+  else
+    # Debian / no PPA: distro python3 or python3.12 from main if packaged.
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3 python3-venv >/dev/null || true
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3.12 python3.12-venv >/dev/null || true
+  fi
+fi
+if ! py_ok python3 && ! py_ok python3.12; then
+  echo "need python3 >= 3.12 (or python3.12) for content_validate; found $(python3 --version 2>&1 || echo none)"
+  exit 1
+fi
+if py_ok python3.12; then echo "python: $(command -v python3.12) ($(python3.12 --version))"
+else echo "python: $(command -v python3) ($(python3 --version))"; fi
 id "$RUNNER_USER" >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin "$RUNNER_USER"
 install -d -o "$RUNNER_USER" -g "$RUNNER_USER" "$RUNNER_DIR"
 if [ ! -x "$RUNNER_DIR/config.sh" ]; then
