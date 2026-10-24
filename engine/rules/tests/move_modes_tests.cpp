@@ -27,7 +27,9 @@ TEST_CASE("move modes: defaults and no such speed") {
     auto s = start(0);
     CHECK(move_allowance(s, *find(s, 1), 1) == -1);
     CHECK(step(s, move(5, 1)).error == "no such speed");
-    CHECK(step(s, move(5, 4)).error == "bad move_mode");
+    CHECK(move_allowance(s, *find(s, 1), 4) == -1);   // altitude PR2: burrow needs a burrow speed
+    CHECK(step(s, move(5, 4)).error == "no such speed");
+    CHECK(step(s, move(5, 5)).error == "bad move_mode");
 }
 
 TEST_CASE("move modes: switching speeds shares the budget; Dash grants each speed again") {
