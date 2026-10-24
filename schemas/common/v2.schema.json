@@ -85,7 +85,8 @@
             "until_end_of_caster_next_turn",
             "until_start_of_target_turn",
             "concentration",
-            "until_rest"
+            "until_rest",
+            "until_cured"
           ]
         },
         "n": {
@@ -1081,6 +1082,11 @@
           "maximum": 8,
           "description": "grapple (Druid gap G, monster@5 only): how many creatures this attack can hold at once (SRD giant crab: two claws, each grapples one target = 2). A hit past the limit deals its damage and does not grapple. Omitted = no limit."
         },
+        "instead_of_damage": {
+          "type": "boolean",
+          "default": false,
+          "description": "grapple (Tier-A CONTENT_CONVENTIONS §27, monster@5 only): SRD \"Instead of dealing damage, the X can grapple the target\" (vampire spawn Claws). The attacker chooses per hit (ActionRequest::grapple_instead): a hit with the choice deals no damage and grapples; without it, it deals damage and does not grapple. Can't be combined with restrains."
+        },
         "when": {
           "type": "array",
           "minItems": 1,
@@ -1456,7 +1462,8 @@
                 "when",
                 "restrains",
                 "exclusive",
-                "max_grapples"
+                "max_grapples",
+                "instead_of_damage"
               ]
             }
           }

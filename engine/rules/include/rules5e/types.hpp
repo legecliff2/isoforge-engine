@@ -106,7 +106,38 @@ struct Attack {
     DiceExpr half_hp_damage{};
     // appended (7.2y `bonus_vs` on damage[0]): as DamagePart::vs_types / vs_dice for component 1.
     uint32_t vs_types = 0; DiceExpr vs_dice{0, 0, 0};
+    // appended (batch 3, mummy Rotting Fist): on a hit, a Con save vs curse_no_regain_dc when non-zero; on a failure the target
+    // is cursed: "The cursed target can't regain hit points" (sets Combatant::no_regain_hp; the 24-hour maximum loss and
+    // Remove Curse are not modelled). Sim Combat::hash 0xDC folds no_regain_hp while any attack carries this.
+    int8_t curse_no_regain_dc = 0;
+    // appended (batch 3, vampire spawn Bite): drain_damage_type >= 0 (a DamageType) limits the Life Drain amount to the damage of
+    // that type the target took (after immunity / resistance / vulnerability, capped at the hit points actually lost); -1 = all.
+    // drain_heal_self: "the vampire regains hit points equal to that amount" (only when a reduction applies).
+    int8_t drain_damage_type = -1;
+    bool drain_heal_self = false;
+    // appended (batch 3, vampire spawn Bite: "one willing creature, or a creature that is grappled by the vampire, incapacitated,
+    // or restrained"): kTargetGate* bits; non-zero = the target must meet at least one (0 = any target).
+    uint8_t target_requires_any = 0;
+    // appended (batch 3, shadow Strength Drain, SRD 5.1: "the target's Strength score is reduced by 1d4. The target dies if this
+    // reduces its Strength to 0. Otherwise, the reduction lasts until the target finishes a short or long rest."): on a hit,
+    // after the damage, when count > 0 (strength_drain). Static content: not hashed (the reduction itself folds in 0xDF).
+    DiceExpr strength_drain{0, 0, 0};
+    // appended (Lich ruling on Strength Drain): the ability this attack's authored to_hit / damage were built with, so the
+    // modifier change of a reduced score applies when the attack is used (attack_drain_delta; 0 while nothing is reduced):
+    // 0..5 an Ability, kAttackAbilityFinesse the better of Str / Dex, kAttackAbilityNone no ability (no change), -1 not set
+    // (code-built attacks: finesse -> the better of, ranged -> Dex, else Str). damage_ability_used: the same for the damage
+    // bonus (-1 = as ability_used). Content-derived: not hashed.
+    int8_t ability_used = -1;
+    int8_t damage_ability_used = -1;
+    // appended (Tier-A §27, vampire spawn Claws: "Instead of dealing damage, the vampire can grapple the target"): this attack
+    // carries an on_hit grapple rider with instead_of_damage, so ActionRequest::grapple_instead is legal with it. Set by the sim
+    // loader. Content-derived: not hashed.
+    bool grapple_instead_ok = false;
 };
+inline constexpr int8_t kAttackAbilityFinesse = 6;
+inline constexpr int8_t kAttackAbilityNone = 7;
+inline constexpr uint8_t kTargetGateWilling = 1, kTargetGateGrappledBySelf = 2, kTargetGateIncapacitated = 4,
+                         kTargetGateRestrained = 8;
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
 constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
 // Range facts for a ranged attack at `dist_ft`: out of reach entirely, or beyond normal range (disadvantage).
@@ -155,7 +186,23 @@ struct DeathSaves { uint8_t successes = 0, failures = 0; bool stable = false; };
 struct AttackSequence {
     std::string_view id;                  // option id; storage owned by the caller (like Attack::id)
     std::vector<uint8_t> attacks;         // indices into Combatant::attacks, in order (1..255)
+    // Appended (batch-3, violet fungus "makes 1d4 Rotting Touch attacks"): count > 0 = the option names ONE
+    // attack, made this many times; the count is rolled from the encounter RNG when the multiattack starts.
+    DiceExpr count_dice{0, 0, 0};
+    // Appended (batch-3, blink dog Teleport: "Before or after teleporting, the dog can make one bite attack."): nonzero = this
+    // sequence is not a Multiattack option; it is armed (sequence_pos 0) when the creature uses the non-spell action with this
+    // SpellDef id, so its attack(s) follow that action without spending another (teleport-then-bite; "before" is deferred).
+    uint32_t after_action = 0;
 };
+// The attack index the multiattack in progress requires next, or -1 (none in progress / sequence done).
+inline int multiattack_next(const std::vector<AttackSequence>& ms, uint8_t sequence, uint8_t pos) {
+    if (sequence == 0 || sequence > ms.size()) return -1;
+    const AttackSequence& m = ms[std::size_t(sequence - 1)];
+    if (m.attacks.empty()) return -1;
+    if (m.after_action != 0) return pos < m.attacks.size() ? m.attacks[pos] : -1;
+    if (m.count_dice.count > 0) return m.attacks[0];   // attacks_remaining bounds a rolled count
+    return pos < m.attacks.size() ? m.attacks[pos] : -1;
+}
 
 // SRD "Regeneration" (troll, vampire spawn): regains `amount` HP at the start of its turn unless it took damage of
 // a `suppressed_by` type since its last turn started (troll: acid, fire; vampire spawn: radiant). A creature with
@@ -474,6 +521,9 @@ struct FormStats {
     // burrow_ft matches the others (uint8_t feet, 0 = none). Copied with them; move_mode 4 (altitude PR2).
     uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0, burrow_ft = 0;
     bool hover = false;
+    // appended (batch 3 Strength Drain): the reduction of these scores (Combatant::ability_reduction); own_stats / put_stats
+    // carry it with the block, so a form starts unreduced and the true form's reduction returns with it on revert.
+    std::array<uint8_t, 6> ability_reduction{};
     // Wild Shape (D7): the creature's own features (feature ids) the form is not physically capable of using (content:
     // requires_humanoid_form). UseFeature refuses them while the form lasts. Not part of the saved base block.
     std::vector<uint32_t> blocked_features{};
@@ -671,6 +721,15 @@ struct Combatant {
     bool has_heal_bonus = false;
     int8_t heal_bonus_flat = 0;
     bool heal_bonus_per_level = false;
+    // appended (batch 3, shadow Strength Drain; sim Combat::hash 0xDF while any is non-zero): how much each score in `abilities`
+    // is currently reduced by. `abilities` holds the EFFECTIVE score (every check, save, modifier and Str requirement reads it);
+    // the unreduced score is abilities + ability_reduction. Saturates at 127 (Lich ruling: kept; an int8_t score can never be
+    // reduced by more than 127, see the static_assert in encounter.cpp). A short or long rest restores it (rest.cpp).
+    std::array<uint8_t, 6> ability_reduction{};
+    // appended (Tier-A, CONTENT_CONVENTIONS §25; static content, never hashed): the SRD printed passive Perception when it
+    // differs from 10 + Perception (monster@5 with passive_perception_reason "srd_printed"). -1 = derived. It is the value at
+    // the UNREDUCED scores: passive_perception() shifts it by the same effective-Wis modifier delta as the derived value.
+    int8_t passive_perception_override = -1;
 };
 
 void add_condition(Combatant&, Condition);
