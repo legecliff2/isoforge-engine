@@ -755,7 +755,7 @@ SRD stat blocks such as rat, cat, owl, crab, and scorpion print a fixed amount: 
 
 ## 20. SRD tools (item@2 gear `tool_kind`)
 
-(Section 17 is taken by the gear `focus` key in #292.) SRD 5.1 tools are item@2 `gear` with an optional, closed, additive `tool_kind`. It takes one of four values, which mirror the 5e-database `tool_category`:
+(Sections 17 to 19 are taken: 17 burrow (#290), 18 the gear `focus` key (#292), 19 flat damage.) SRD 5.1 tools are item@2 `gear` with an optional, closed, additive `tool_kind`. It takes one of four values, which mirror the 5e-database `tool_category`:
 
 | `tool_kind` | SRD category |
 |---|---|

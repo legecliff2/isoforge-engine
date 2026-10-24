@@ -189,7 +189,7 @@ FOCUS_FAMILY = {f[0]: f[0].split("_")[0] if f[0].startswith(("arcane_", "druidic
 
 
 # SRD 5.1 tools (5e-database a6212be, equipment_category 'tools'), item@2 'gear' with tool_kind = the SRD tool_category
-# (docs/CONTENT_CONVENTIONS.md section 18; inert, no tool-proficiency checks): (local_id, tool_kind, cost_cp, weight_oz).
+# (docs/CONTENT_CONVENTIONS.md section 20; inert, no tool-proficiency checks): (local_id, tool_kind, cost_cp, weight_oz).
 # SRD 5.1 has no disguise, forgery, herbalism or poisoner's kit (not in 5e-database's SRD equipment): none is authored.
 TOOL_KINDS = ("artisans_tools", "gaming_set", "musical_instrument", "other_tools")
 TOOLS = [
@@ -404,7 +404,7 @@ class Srd51Equipment(unittest.TestCase):
             self.assertEqual("tool_kind" in json.loads(p.read_text(encoding="utf-8")), p.stem in {t[0] for t in TOOLS}, p.stem)
 
     def test_tool_kind_schema(self):
-        # item@2 gear `tool_kind` (docs/CONTENT_CONVENTIONS.md section 18): optional, closed enum, gear only.
+        # item@2 gear `tool_kind` (docs/CONTENT_CONVENTIONS.md section 20): optional, closed enum, gear only.
         from jsonschema import Draft202012Validator
         from referencing import Registry, Resource
         schemas = ROOT / "schemas"
