@@ -13,11 +13,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | | count |
 |---|---|
 | inventory candidates | 30 |
-| authored now (`monster@4`, all converted to `monster@5` in §14 of CONTENT_CONVENTIONS) | 53 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189; 9 bestiary v0.1 batch 1 monsters as `monster@5` with `derive: true`: deer, pony, awakened shrub, hyena, cultist, giant weasel, mastiff, noble, tribal warrior; 11 tier B batch d1 monsters as `monster@5` with `derive: true`: baboon, camel, draft horse, riding horse, giant lizard, giant centipede, giant wolf spider, ape, worg, brown bear, giant hyena) |
+| authored now (`monster@4`, all converted to `monster@5` in §14 of CONTENT_CONVENTIONS) | 55 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189; 9 bestiary v0.1 batch 1 monsters as `monster@5` with `derive: true`: deer, pony, awakened shrub, hyena, cultist, giant weasel, mastiff, noble, tribal warrior; 11 tier B batch d1 monsters as `monster@5` with `derive: true`: baboon, camel, draft horse, riding horse, giant lizard, giant centipede, giant wolf spider, ape, worg, brown bear, giant hyena) |
 | goblin (already shipped, left at `monster@3`) | 1 |
 | deferred (mechanic not expressible) | 17 (rat, scorpion: bestiary v0.1 batch 1; 15 tier B batch d1) |
 
-## Authored (53; bestiary v0.1 batch 1 and tier B batch d1 rows below at `monster@5` + `derive: true`)
+## Authored (55; bestiary v0.1 batch 1, tier B batch d1, acolyte and cult fanatic rows below at `monster@5` + `derive: true`)
 
 | monster | CR | mechanics carried as data | notes |
 |---|---|---|---|
@@ -74,6 +74,8 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Worg | 1/2 | bite knock-prone rider (Str DC 13, prone untimed; as dire wolf) | batch d1, Large; Keen Hearing and Smell descriptive |
 | Brown Bear | 1 | Multiattack bite + claws; `attack_bonus` 5 on both (SRD prints +5; Str 19 + PB 2 = +6) | batch d1, Large; Keen Smell descriptive |
 | Giant Hyena | 1 | Rampage as gnoll (`on_event reduce_to_zero` -> `bonus_attack bite`) | batch d1, Large; as gnoll, the half-speed move is not encoded |
+| Acolyte | 1/4 | Club (+2, 1d4 bludgeoning); `spellcasting` Wis, caster level 1, slots 1st x3, DC 12, +4: light, sacred flame, thaumaturgy, bless, cure wounds, sanctuary (light and thaumaturgy are `descriptive`, CONTENT_CONVENTIONS 28) | complete; Spellcasting trait text verbatim |
+| Cult Fanatic | 2 | Dagger ×2 (melee +4, 1d4 + 2, or thrown 20/60); Dark Devotion as `save_advantage` vs charmed / frightened; `spellcasting` Wis, caster level 4, slots 1st x4 / 2nd x3, DC 11, +3: light, sacred flame, thaumaturgy, command, inflict wounds, shield of faith, hold person, spiritual weapon | complete. DEVIATIONS: HP 33 (6d8 + 6) as the SRD prints (Elf ruling); the a6212be mirror's 22 (6d8-5) is a mirror error (test HP_ERRATA) |
 
 The goblin keeps `$schema: monster@3`, its id (`srd51.monster.goblin`, stable id derived from it) and bytes. It is referenced by C++ tests that assert its `@3` form (`content_migration_tests`, `pack_set_tests`, compat goblin tests) and by the fl1 compat corpus, and a schema change could shift digests and goldens; migrating it buys nothing until a `@4`-only feature is needed.
 
