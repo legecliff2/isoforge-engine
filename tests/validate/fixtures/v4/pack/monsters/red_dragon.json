@@ -19,7 +19,6 @@
   },
   "speed": {
     "walk": 40,
-    "burrow": 30,
     "climb": 40,
     "fly": 80
   },
