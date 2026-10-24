@@ -715,3 +715,19 @@ SRD stat blocks such as rat, cat, owl, crab, and scorpion print a fixed amount: 
 - Only monster@5 accepts it. monster@4, character, and common@2 are unchanged. Archetype data is static, so there is no hash
   format change and no SIM_EVENTS tag.
 - Mixed components are fine: `[{"flat": 1, "type": "piercing"}, {"dice": "3d4", "type": "poison"}]`.
+- **Natural weapon source.** monster@5 attacks name their source with `weapon` or `natural`, and that rule is unchanged. For a flat
+  attack, `natural` takes `flat` instead of `dice`: `"natural": {"flat": 1, "ability": "dex"}`. `natural.flat` (1..255) and
+  `natural.dice` (NdM) are exclusive (`oneOf`). Never write `"dice": "1"`. `flat` is the whole amount, so `damage_ability` is not
+  allowed with it. The validator requires `natural.flat` to equal `damage[0].flat`
+  (`/actions/<i>: natural.flat N != damage[0] flat M`). With `derive: true`, the derived damage is the flat amount and the to-hit
+  is derived from `ability` as usual. Use `attack_bonus` with a reason when the printed to-hit differs (the SRD Cat prints +0).
+  Example: `tests/validate/fixtures/monster_flat/monsters/cat.json`:
+
+  ```json
+  {"id": "claws", "name": "Claws", "kind": "melee_weapon_attack",
+   "natural": {"flat": 1, "ability": "dex"},
+   "attack_bonus": {"value": 0, "reason": "SRD Cat Claws prints +0; Dex 15 + PB 2 = +4"},
+   "to_hit": 0, "reach": 5, "targets": 1,
+   "damage": [{"flat": 1, "type": "slashing"}],
+   "description": "Melee Weapon Attack: +0 to hit, reach 5 ft., one target. Hit: 1 slashing damage."}
+  ```

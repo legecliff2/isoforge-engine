@@ -24,6 +24,7 @@ ROOT = h.ROOT
 CORE = ROOT / "content" / "packs" / "srd51.core"
 RESTAMP = {"monster@4": "monster@5", "character@4": "character@5", "item@1": "item@2"}
 SRC = {"ref": "SRD 5.1", "license": "CC-BY-4.0"}
+FLAT_FX = ROOT / "tests" / "validate" / "fixtures" / "monster_flat"
 
 
 def core(rel: str) -> dict:
@@ -340,6 +341,41 @@ class FlatDamage(unittest.TestCase):
                     [{"flat": 1, "type": "piercing", "modifier": 2}]):
             e, _w = self.with_bite(dmg)
             self.assertTrue(any("/damage/" in x for x in e), (dmg, e))
+
+    def cat(self) -> dict:
+        return json.loads((FLAT_FX / "monsters" / "cat.json").read_text(encoding="utf-8"))
+
+    def test_cat_fixture_validates(self):
+        e, w = h.validate_docs({"monsters/cat.json": self.cat()})
+        self.assertEqual(e, [])
+
+    def test_cat_in_a_real_pack(self):
+        """The fixture dropped into a copy of srd51.core as monsters/cat.json validates with validate_pack (derive on)."""
+        reg, by_tag = h.registry()
+        with tempfile.TemporaryDirectory(prefix="flat_cat_") as tmp:
+            dst = Path(tmp) / CORE.name
+            shutil.copytree(CORE, dst)
+            (dst / "monsters" / "cat.json").write_text(json.dumps(dict(self.cat(), id="srd51.monster.cat"), indent=2), encoding="utf-8")
+            man = json.loads((dst / "manifest.json").read_text(encoding="utf-8"))
+            man["contents"] = sorted(man["contents"] + ["monsters/cat.json"])
+            (dst / "manifest.json").write_text(json.dumps(man, indent=2), encoding="utf-8")
+            warns: list[str] = []
+            self.assertEqual(vp.validate_pack(dst, reg, by_tag, warns), [])
+
+    def test_natural_flat_shape(self):
+        def errs(nat, dmg=None):
+            c = self.cat(); c["actions"][0]["natural"] = nat
+            if dmg is not None:
+                c["actions"][0]["damage"] = dmg
+            return h.validate_docs({"monsters/cat.json": c})[0]
+        self.assertEqual(errs({"flat": 1, "ability": "dex"}), [])
+        for nat in ({"flat": 1, "dice": "1d4", "ability": "dex"}, {"flat": 0, "ability": "dex"}, {"flat": 256, "ability": "dex"},
+                    {"flat": 1, "ability": "dex", "damage_ability": "none"}, {"flat": 1}, {"dice": "1", "ability": "dex"}, {"ability": "dex"}):
+            self.assertTrue(errs(nat), nat)
+        # natural.flat must equal the flat damage[0]
+        self.assertTrue(any("natural.flat 2 != damage[0] flat 1" in x for x in errs({"flat": 2, "ability": "dex"})))
+        self.assertTrue(any("natural.flat 1 != damage[0] flat none" in x
+                            for x in errs({"flat": 1, "ability": "dex"}, [{"dice": "1d4", "type": "slashing"}])))
 
     def test_not_in_monster4(self):
         e, _w = self.with_bite([{"flat": 1, "type": "piercing"}], schema="monster@4")
