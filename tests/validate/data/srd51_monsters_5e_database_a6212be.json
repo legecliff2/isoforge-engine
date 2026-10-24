@@ -3615,6 +3615,105 @@
      ]
     }
    ]
+  },
+  "blink-dog": {
+   "name": "Blink Dog",
+   "size": "Medium",
+   "type": "fey",
+   "ac": [
+    13
+   ],
+   "hp": 22,
+   "hp_roll": "4d8+4",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    12,
+    17,
+    12,
+    10,
+    13,
+    11
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "mummy": {
+   "name": "Mummy",
+   "size": "Medium",
+   "type": "undead",
+   "ac": [
+    11
+   ],
+   "hp": 58,
+   "hp_roll": "9d8+18",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "20 ft."
+   },
+   "abilities": [
+    16,
+    8,
+    15,
+    6,
+    10,
+    12
+   ],
+   "damage_vulnerabilities": [
+    "fire"
+   ],
+   "damage_resistances": [
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "damage_immunities": [
+    "necrotic",
+    "poison"
+   ],
+   "condition_immunities": [
+    "charmed",
+    "exhaustion",
+    "frightened",
+    "paralyzed",
+    "poisoned"
+   ],
+   "attacks": [
+    {
+     "name": "Rotting Fist",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "bludgeoning"
+       ],
+       [
+        "3d6",
+        "necrotic"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }

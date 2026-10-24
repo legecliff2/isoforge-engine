@@ -22,7 +22,7 @@ CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
 # Deferred also includes tier B batch d1 (15).
-DEFERRED: list[str] = ["blink-dog", "doppelganger", "duergar", "green-hag", "mimic", "mummy", "rust-monster", "cat", "crab", "poisonous-snake", "quipper", "reef-shark", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 74 / 22
+DEFERRED: list[str] = ["doppelganger", "duergar", "green-hag", "mimic", "rust-monster", "cat", "crab", "poisonous-snake", "quipper", "reef-shark", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 76 / 20
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -34,6 +34,7 @@ DEVIATIONS = {
     "riding-horse": "xp: the table lists 25 XP; SRD 5.1 prints Challenge 1/4 (50 XP), and the SRD is authoritative (CR 1/4 = 50 XP).",
     "wight": "damage_resistances lists necrotic only: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (as gargoyle).",
     "vampire-spawn": "damage_resistances lists necrotic only: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (as gargoyle).",
+    "mummy": "damage_resistances is empty: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (as gargoyle).",
     "shadow": "damage_resistances lists the five plain types: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (as gargoyle).",
     "violet-fungus": "condition_immunities: the table lists blinded twice and omits deafened; the SRD line is blinded, deafened, frightened (as shrieker). Rotting Touch to_hit: the SRD prints +2 (the table agrees); the derivation gives -2 (Str 3 -4, PB +2). Carried as an approved attack_bonus override of +2 (printed value wins).",
     "shrieker": "condition_immunities: the table lists blinded twice and omits deafened; the SRD line is blinded, deafened, frightened.",
@@ -45,7 +46,7 @@ DEVIATIONS = {
 # Mirror errors in hit points: monster -> (average, formula) as printed in the SRD 5.1 block (DEVIATIONS).
 HP_ERRATA = {"cult-fanatic": (33, "6d8+6")}
 
-QUALIFIED_RESISTANCES = ("gargoyle", "wight", "vampire-spawn", "shadow")
+QUALIFIED_RESISTANCES = ("gargoyle", "wight", "vampire-spawn", "shadow", "mummy")
 
 
 def load(idx):
@@ -309,7 +310,8 @@ class MonsterTable(unittest.TestCase):
         vb = act("vampire-spawn", "bite")
         self.assertEqual(vb["drain"], {"max_hp": True, "damage_type": "necrotic", "heal_self": True})
         self.assertEqual(vb["target_requires_any"], ["willing", "grappled_by_self", "incapacitated", "restrained"])
-        self.assertNotIn("on_hit", act("vampire-spawn", "claws"))   # "Instead of dealing damage ... grapple": no instead-of-damage shape
+        self.assertEqual(act("vampire-spawn", "claws")["on_hit"],
+                         [{"kind": "grapple", "escape_dc": 13, "instead_of_damage": True}])   # grapple-instead (§27)
         self.assertEqual(act("shadow", "strength_drain")["ability_drain"], {"ability": "str", "dice": "1d4"})
         self.assertEqual(act("violet-fungus", "rotting_touch")["attack_bonus"]["value"], 2)
         for idx, tid in (("wight", "sunlight_sensitivity"), ("vampire-spawn", "regeneration"), ("vampire-spawn", "vampire_weaknesses"),
