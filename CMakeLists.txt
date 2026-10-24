@@ -214,5 +214,8 @@ if(ENGINE_BUILD_TESTS)
     add_subdirectory(tools/light_bench)
 endif()
 
+# Headless encounter scenarios (tools/encounter_runner). Tests compare each scenarios/* golden.
+add_subdirectory(tools/encounter_runner)
+
 # Module dependency graph + include lint (§2.2 rules 1, 3-5). Must come after all modules.
 include(DepCheck)
