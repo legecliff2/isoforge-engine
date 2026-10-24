@@ -1,0 +1,13 @@
+{
+  "$schema": "item@2",
+  "id": "srd51.item.rope_silk_50_feet",
+  "name": "Rope, silk (50 feet)",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "gear",
+  "cost_cp": 1000,
+  "weight_oz": 80,
+  "description": "Rope, whether made of hemp or silk, has 2 hit points and can be burst with a DC 17 Strength check."
+}
