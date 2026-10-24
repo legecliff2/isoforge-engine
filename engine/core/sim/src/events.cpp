@@ -16,6 +16,7 @@ uint32_t event_stream_version(std::span<const SimEvent> events) {
             case SimEvent::Kind::SpellTarget: v = std::max<uint32_t>(v, 5); break;
             case SimEvent::Kind::TokenSpawned: case SimEvent::Kind::TokenRemoved: v = std::max<uint32_t>(v, 10); break;   // R-G12
             case SimEvent::Kind::ItemMoved: v = std::max<uint32_t>(v, 11); break;   // equipment (CombatOptions::equipment)
+            case SimEvent::Kind::AltitudeChanged: v = std::max<uint32_t>(v, 12); break;   // altitude PR1
             case SimEvent::Kind::Rules:
                 // rules5e kinds appended after v6 (39..44 and anything later): a stream carrying one is
                 // newer than every stream that does not, and hashes at the current contract version (7).
