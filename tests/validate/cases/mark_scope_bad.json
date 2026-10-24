@@ -1,7 +1,7 @@
 {
   "$schema": "spell@1",
   "id": "test.neg.spell.a",
-  "name": "Hex",
+  "name": "Chosen Mark",
   "source": {
     "ref": "SRD 5.1",
     "license": "CC-BY-4.0"

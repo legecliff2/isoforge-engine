@@ -4,6 +4,7 @@
   "name": "Padded Armor",
   "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
   "category": "armor",
+  "material": "cloth",
   "cost_cp": 500,
   "weight_oz": 128,
   "armor_category": "light",

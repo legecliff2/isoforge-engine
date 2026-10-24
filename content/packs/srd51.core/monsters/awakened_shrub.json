@@ -1,0 +1,77 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.awakened_shrub",
+  "name": "Awakened Shrub",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "small",
+  "type": "plant",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 9
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 10,
+    "formula": "3d6"
+  },
+  "speed": {
+    "walk": 20
+  },
+  "abilities": {
+    "str": 3,
+    "dex": 8,
+    "con": 11,
+    "int": 10,
+    "wis": 10,
+    "cha": 6
+  },
+  "senses": {
+    "passive_perception": 10
+  },
+  "languages": [
+    "one language known by its creator"
+  ],
+  "challenge": {
+    "rating": "0",
+    "xp": 10
+  },
+  "proficiency_bonus": 2,
+  "damage_vulnerabilities": [
+    "fire"
+  ],
+  "damage_resistances": [
+    "piercing"
+  ],
+  "traits": [
+    {
+      "id": "false_appearance",
+      "name": "False Appearance",
+      "description": "While the shrub remains motionless, it is indistinguishable from a normal shrub."
+    }
+  ],
+  "actions": [
+    {
+      "id": "rake",
+      "name": "Rake",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d4",
+        "ability": "dex"
+      },
+      "to_hit": 1,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d4-1",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +1 to hit, reach 5 ft., one target. Hit: 1 (1d4 - 1) slashing damage."
+    }
+  ]
+}

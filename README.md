@@ -2,7 +2,13 @@
 Modular, lightweight 2D isometric RPG engine. C++20, SDL3, Luau, D&D 5e SRD 5.1 rules.
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-This work includes material from the System Reference Document 5.1 ("SRD 5.1") by Wizards of the Coast LLC, licensed under CC-BY-4.0.
+## License
+
+Engine source code is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
+
+SRD 5.1 content is used under CC-BY-4.0. The attribution Wizards of the Coast requires, and the paths it covers, are in [NOTICE](NOTICE):
+
+> This work includes material taken from the System Reference Document 5.1 (“SRD 5.1”) by Wizards of the Coast LLC and available at https://dnd.wizards.com/resources/systems-reference-document. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License available at https://creativecommons.org/licenses/by/4.0/legalcode.
 
 ## Content validation
 CTest runs `content_validate`, which checks every pack in `content/packs/` and the frozen
@@ -47,6 +53,9 @@ dev packages listed in `.github/actions/cmake-ci/action.yml` (and in `docs/CI.md
 
 Before pushing, `tools/ci_local.sh` runs the same Linux CI jobs locally (GCC Debug + Clang Release:
 configure, depcheck/include_lint, build, ctest) and exits non-zero on failure. See `docs/CI.md`.
+CI runs those Linux jobs on GitHub-hosted runners for every event. Retiring the old
+self-hosted machine, and the fork-PR approval to set once the repo is public, is in
+[docs/CI_SELF_HOSTED.md](docs/CI_SELF_HOSTED.md).
 
 Headless demo run (software Vulkan): `Xvfb :99 & DISPLAY=:99 VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json ./sandbox`.
 
