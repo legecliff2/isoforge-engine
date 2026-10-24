@@ -704,6 +704,25 @@ def check_sim172_174(doc: dict) -> tuple[list[str], list[str]]:
 
 
 
+GRAPPLE_RIDER_KEYS = ("restrains", "exclusive", "max_grapples")
+
+
+def check_grapple_rider(doc: dict) -> tuple[list[str], list[str]]:
+    """Druid gap G: on_hit grapple riders' restrains / exclusive / max_grapples (common@2 additive) load only for monster@5
+    (the loader reads them on any weapon attack; the validator keeps them to monster@5 like the Director's ruling)."""
+    errs: list[str] = []
+    schema = str(doc.get("$schema", ""))
+    is_m5 = schema.split("@")[0] == "monster" and schema.split("@")[-1].startswith("5")
+    for path, a in mechanical_actions(doc):
+        for j, r in enumerate(a.get("on_hit") or []):
+            if not is_grapple(r):
+                continue
+            used = [k for k in GRAPPLE_RIDER_KEYS if k in r]
+            if used and not is_m5:
+                errs.append(f"{path}/on_hit/{j}: grapple {', '.join(used)} need monster@5 (Druid gap G)")
+    return errs, []
+
+
 GAZE_KEYS = frozenset({"kind", "range_ft", "save", "condition", "repeat_save", "escalates", "escalate_to", "escalate_margin"})
 GAZE_CONDITIONS = frozenset({"blinded", "charmed", "deafened", "frightened", "grappled", "incapacitated", "invisible",
                              "paralyzed", "petrified", "poisoned", "prone", "restrained", "stunned", "unconscious",
@@ -2298,3 +2317,23 @@ def check_spell_batch_zi(doc: dict) -> list[str]:
         if m.get("stat") == ZI_KEYS["halve_weapon_damage"] and m.get("ability") != "str":
             errs.append(f"{pre}effect halve_weapon_damage needs ability str")
     return errs
+
+
+def check_spell_descriptive(doc: dict) -> list[str]:
+    """Text-only spell@1 kind descriptive (spell_loader.cpp, same wording and order).
+
+    The effect object allows no key but kind. It must be the spell's only effect. An empty effects
+    list is still the schema's error (minItems 1; the loader says "effects missing") and is not
+    re-reported here.
+    """
+    raw = doc.get("effects")
+    if not isinstance(raw, list) or not raw:
+        return []
+    first = raw[0]
+    if isinstance(first, dict) and first.get("kind") == "descriptive":
+        for k in first:
+            if k != "kind":
+                return [f"descriptive effect: unknown key '{k}'"]
+    if any(isinstance(e, dict) and e.get("kind") == "descriptive" for e in raw) and len(raw) != 1:
+        return ["descriptive effect must be the spell's only effect"]
+    return []

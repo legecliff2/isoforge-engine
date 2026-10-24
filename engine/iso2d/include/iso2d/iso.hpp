@@ -22,10 +22,16 @@ struct IsoProjection {
     }
 };
 
-// Depth sort key = (layer, iso_y + iso_x, z, entity_id): deterministic, total order (§5.1).
+// Depth sort key = (layer, depth, z, entity_id): deterministic, total order (§5.1).
+// `depth` is the sort sample's iso_x + iso_y. The sample does not have to be the point the
+// sprite is projected from; SpriteBatch::draw takes those positions separately.
+// Absolute height is not applied. One approach under consideration, not a commitment, is to
+// subtract height in tiles from `depth` inside make_sort_key, so a flying actor would sort
+// further back without moving the sprite and without a fifth component. The altitude design
+// is not settled. `z` stays the stack on one sample (floor, body, outline), not altitude.
 struct SortKey {
     int32_t  layer = 0;
-    float    depth = 0.f;   // iso_x + iso_y
+    float    depth = 0.f;   // iso_x + iso_y of the sort sample
     int32_t  z = 0;
     uint32_t entity_id = 0;
 
@@ -34,8 +40,9 @@ struct SortKey {
     }
 };
 
-inline SortKey make_sort_key(Vec2f iso_pos, int32_t layer, int32_t z, uint32_t entity_id) {
-    return {layer, iso_pos.x + iso_pos.y, z, entity_id};
+// `sort_iso` is the depth sample, not necessarily the projected anchor.
+inline SortKey make_sort_key(Vec2f sort_iso, int32_t layer, int32_t z, uint32_t entity_id) {
+    return {layer, sort_iso.x + sort_iso.y, z, entity_id};
 }
 
 } // namespace eng::iso2d
