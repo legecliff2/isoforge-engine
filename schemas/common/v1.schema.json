@@ -87,7 +87,7 @@
     },
     "speed": {
       "type": "object",
-      "description": "Speeds in feet (multiples of 5; 1 tile = 5 ft).",
+      "description": "Speeds in feet (multiples of 5; 1 tile = 5 ft). Optional fly, swim, climb and burrow are stored by the loader (0 when omitted). burrow is data only: tunnelling is not a movement mode.",
       "additionalProperties": false,
       "required": ["walk"],
       "properties": {
