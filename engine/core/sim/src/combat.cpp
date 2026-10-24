@@ -178,6 +178,14 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
     for (const auto& sl : c.slots_)
         for (const auto& tr : sl.archetype->base.triggers)
             if (tr.recharge_min != 0) rules5e::register_action_use(c.state_, sl.id, tr.id, false);
+    // batch 3 ghast Stench (Lich ruling): creature-sourced auras exist from the start of combat, in spawn order (ZoneCreated
+    // events; nothing for archetypes without an aura trait, so every other combat hashes as before).
+    c.state_.hooks.spells = c.spells_;   // add_feature_aura reads the def; install_hooks sets the same pointer later
+    // TODO(deferred, docs/SRD_COMBAT_COVERAGE.md "Auras on summoned creatures"): only creatures present at Combat::create get
+    // their aura. A creature summoned mid-combat (spawn_summon) never gets it; no supported summon target has an aura trait
+    // today (content/packs has no creature-summoning spell and no "aura" trait), so nothing is lost yet.
+    for (const auto& sl : c.slots_)
+        for (uint32_t id : sl.archetype->aura_spell_ids) rules5e::add_feature_aura(c.state_, sl.id, id, &opening);
     c.apply_rules_events(opening);
     // v6: where each multi-tile creature stands, once, in spawn order (nothing for 1x1-only combats).
     for (const auto& sl : c.slots_)
@@ -210,7 +218,7 @@ std::optional<uint8_t> Combat::multiattack_option(CombatantId id, std::string_vi
     const auto* c = rules5e::find(state_, id);
     if (!c) return std::nullopt;
     for (std::size_t i = 0; i < c->multiattacks.size() && i < 255; ++i)
-        if (c->multiattacks[i].id == option_id) return uint8_t(i + 1);
+        if (c->multiattacks[i].id == option_id && c->multiattacks[i].after_action == 0) return uint8_t(i + 1);
     return std::nullopt;
 }
 
@@ -1188,6 +1196,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
             if (auto g = arch->grapple_on_hit.find(q.attack_index); g != arch->grapple_on_hit.end())
                 for (const auto& e : evs)
                     if (e.kind == rules5e::EventKind::AttackResolved && e.reaction_depth == 0 && e.actor == q.actor && (e.c & 1)) {
+                        if (g->second.instead_of_damage && !(e.c & 8)) break;   // Tier-A §27: damage was chosen, no grapple
                         std::vector<rules5e::Event> gev;
                         rules5e::grapple(state_, q.actor, e.target, g->second, q.attack_index, gev);   // false past max_grapples: damage only
                         apply_rules_events(gev);
@@ -1357,6 +1366,7 @@ void Combat::spawn_summon(const rules5e::Event& ev, const rules5e::LoggedStep& l
     slots_.push_back(sl);
     if (!a->equipment.empty()) equipment_[id] = a->equipment;
     register_rows(slots_.back());
+    // TODO(deferred, see Combat::create): a->aura_spell_ids are not attached for a summoned creature (no add_feature_aura here).
     SimEvent se;   // v10: right after its own Summoned; actor = id, tile = anchor, rules.a = footprint side, rules.b = summoner
     se.kind = SimEvent::Kind::TokenSpawned;
     se.actor = id;
@@ -1437,6 +1447,10 @@ SubmitResult Combat::submit(const Command& cmd) {
     if (light_.d && light_.d->halted()) {   // R-G13 §7: never step on a partial halo; re-check once (the streamer may have loaded)
         light_.d->step(*this);
         if (light_.d->halted()) { r.error = light_.d->failed().empty() ? "light halo pending" : "light halo failed"; return r; }
+    }
+    if (cmd.request.grapple_instead && (cmd.kind != CommandKind::Rules || cmd.request.kind != rules5e::ActionKind::Attack)) {
+        r.error = "grapple_instead is only valid on an Attack";   // Tier-A §27: an ignored flag must never reach log_hash 0xE2
+        return r;
     }
     install_hooks();
     return cmd.kind == CommandKind::Step ? do_step(cmd.to, cmd.request.squeeze == 1, cmd.request.alt_to) : do_rules(cmd.request, cmd.to, cmd.aim);
@@ -2031,6 +2045,45 @@ uint64_t Combat::hash() const {
     if (rules5e::has_smite_state(state_)) { h.byte(0xD4); h.u64(rules5e::smite_digest(state_)); }
     // 0xD5 (7.2zh Heat Metal): the heated object and the while-held disadvantage, only while one is set.
     if (rules5e::has_heat_metal_state(state_)) { h.byte(0xD5); h.u64(rules5e::heat_metal_digest(state_)); }
+    // 0xDC (batch 3 mummy rot): no_regain_hp is dynamic once an attack can curse; folded (one byte per combatant, in order) only
+    // while some combatant has an attack with curse_no_regain_dc, so every existing hash is unchanged.
+    bool curse = false;
+    for (const auto& c : state_.combatants)
+        for (const auto& at : c.attacks) curse = curse || at.curse_no_regain_dc > 0;
+    if (curse) {
+        h.byte(0xDC);
+        for (const auto& c : state_.combatants) h.byte(c.no_regain_hp ? 1 : 0);
+    }
+    // 0xDF (batch 3 shadow Strength Drain): ability_reduction, only while some combatant's is non-zero (so every existing hash
+    // is unchanged): count of such combatants (u32), then for each, in combatant order, id (u32) and the six bytes Str..Cha.
+    uint32_t reduced = 0;
+    for (const auto& c : state_.combatants)
+        for (uint8_t r : c.ability_reduction) if (r != 0) { ++reduced; break; }
+    if (reduced != 0) {
+        h.byte(0xDF);
+        h.u32(reduced);
+        for (const auto& c : state_.combatants) {
+            bool any = false;
+            for (uint8_t r : c.ability_reduction) any = any || r != 0;
+            if (!any) continue;
+            h.u32(c.id);
+            for (uint8_t r : c.ability_reduction) h.byte(r);
+        }
+    }
+    // 0xDE (batch 3 ghast Stench): per-creature, per-source aura immunities (creature, source, spell_id, until_round), in
+    // grant order, only while one exists.
+    if (!state_.aura_immunities.empty()) {
+        h.byte(0xDE);
+        h.u32(uint32_t(state_.aura_immunities.size()));
+        for (const auto& im : state_.aura_immunities) { h.u32(im.creature); h.u32(im.source); h.u32(im.spell_id); h.u32(im.until_round); }
+    }
+    // 0xE1 (Tier-A §26 mummy Dreadful Glare): action immunities after a successful save (creature, source 0 = any user,
+    // spell_id, until_round), in grant order, only while one exists.
+    if (!state_.action_immunities.empty()) {
+        h.byte(0xE1);
+        h.u32(uint32_t(state_.action_immunities.size()));
+        for (const auto& im : state_.action_immunities) { h.u32(im.creature); h.u32(im.source); h.u32(im.spell_id); h.u32(im.until_round); }
+    }
     return h.value();
 }
 
@@ -2114,6 +2167,8 @@ uint64_t Combat::log_hash() const {
             for (const auto& x : q.heal_split) { h.u32(x.target); h.u32(uint32_t(uint16_t(x.amount))); }
         }
         if (q.avert_gaze) { h.byte(0xBB); h.byte(1); }
+        if (q.target_willing) { h.byte(0xDD); h.byte(1); }   // batch 3 vampire spawn Bite willing target: only when set
+        if (q.grapple_instead) { h.byte(0xE2); h.byte(1); }  // Tier-A §27 vampire spawn Claws grapple instead: only when set
         if (q.equip_op != 0) {   // 0xD1 (EQUIPMENT.md 4.2, Engine Core): equip request, folded only when equip_op != 0
             h.byte(0xD1); h.byte(q.equip_op); h.u32(q.equip_item); h.byte(q.equip_hand); h.u32(q.equip_to);
             h.byte(q.equip_in_reach ? 1 : 0);

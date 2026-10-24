@@ -110,6 +110,10 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
                  COMMAND "${_venv_py}" "${_ut_runner}"
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/fixtures/zero_tests/empty_test.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        # The runner exits 1 and prints "ZERO TESTS RAN". PASS_REGULAR_EXPRESSION requires
+        # that line and ignores the exit code, so this guard passes when the empty fixture
+        # reports zero tests. WILL_FAIL inverts a passing regex match (ctest 3.28: the run
+        # fails with "Required regular expression found"), so it is not set here.
         set_tests_properties(content_validate_zero_tests_fail PROPERTIES
                              PASS_REGULAR_EXPRESSION "ZERO TESTS RAN" LABELS python_only)
         add_test(NAME content_validate
@@ -146,6 +150,10 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
         # item@2 / monster@5 / character@5 (docs/proposals/EQUIPMENT.md 7): identity re-stamps, new shapes, structural checks.
         add_test(NAME content_validate_equip_v5
                  COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_equip_schemas_v5.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        # batch 3 small monster riders: monster@5 arms + validator mirrors of the sim loader refusals.
+        add_test(NAME content_validate_batch3_riders
+                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_monster_batch3_riders.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # srd51.core monster@4 batch: key stats vs the 5e-database table (tests/validate/data/).
         add_test(NAME content_validate_srd51_monsters

@@ -186,11 +186,13 @@
                   "type": "object", "required": ["id", "attacks"], "additionalProperties": false,
                   "properties": {
                     "id": { "$ref": "#/$defs/local_id" },
-                    "attacks": { "type": "array", "minItems": 1, "maxItems": 255, "items": { "$ref": "#/$defs/local_id" } }
+                    "attacks": { "type": "array", "minItems": 1, "maxItems": 255, "items": { "$ref": "#/$defs/local_id" } },
+                    "count_dice": { "type": "string", "pattern": "^[1-9][0-9]*d[1-9][0-9]*$", "description": "Batch 3 (monster@5 only): attacks names ONE attack, made this many times; rolled when the multiattack starts (SRD 5.1 violet fungus: 'makes 1d4 Rotting Touch attacks')." }
                   }
                 }
               },
-              "attacks": { "type": "array", "minItems": 1, "maxItems": 255, "items": { "$ref": "#/$defs/local_id" } }
+              "attacks": { "type": "array", "minItems": 1, "maxItems": 255, "items": { "$ref": "#/$defs/local_id" } },
+              "count_dice": { "type": "string", "pattern": "^[1-9][0-9]*d[1-9][0-9]*$", "description": "Batch 3 (monster@5 only): with the shorthand attacks[], as on an option." }
             } } },
         { "if": { "properties": { "kind": { "const": "self_heal" } }, "required": ["kind"] },
           "then": {
