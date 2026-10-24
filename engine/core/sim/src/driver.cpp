@@ -229,8 +229,8 @@ bool attack_usable(const rules5e::EncounterState& st, CombatantId self, uint8_t 
 // Movement cost to stand within `reach` tiles of `t` (1 << 20 = no path).
 int path_cost_to(const Combat& c, CombatantId self, CombatantId t, int reach) {
     const Vec2i mp = c.pos(self);
-    const auto p = c.grid().path(mp, goal_anchors(c.pos(t), c.footprint_size(t), c.footprint_size(self), reach),
-                                 c.occupied_except(self), c.footprint_size(self), c.caps_of(self));
+    const auto p = c.path_for(self, mp, goal_anchors(c.pos(t), c.footprint_size(t), c.footprint_size(self), reach),
+                              c.footprint_size(self));   // altitude PR2: chunk@3 ground / airborne rules
     if (p.empty()) return 1 << 20;
     int cost = 0;
     Vec2i prev = mp;
@@ -879,7 +879,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // Can't get into melee reach this turn: shoot if a ranged attack is legal (range + LOS),
     // preferring one without disadvantage.
     auto melee_path_cost = [&]() {
-        const auto p = c.grid().path(mp, goal_anchors(tp, tn, mn, reach), c.occupied_except(self), mn, c.caps_of(self));
+        const auto p = c.path_for(self, mp, goal_anchors(tp, tn, mn, reach), mn);
         if (p.empty()) return 1 << 20;
         int cost = 0;
         Vec2i prev = mp;
@@ -962,7 +962,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         }
     }
     // Goals: tiles within reach of the target.
-    const auto path = c.grid().path(mp, goal_anchors(tp, tn, mn, reach), c.occupied_except(self), mn, c.caps_of(self));
+    const auto path = c.path_for(self, mp, goal_anchors(tp, tn, mn, reach), mn);
     if (path.empty()) return end;
     if (const uint8_t m = c.step_mode(self, mp, path[0], c.step_cost_ft(self, mp, path[0])); m >= 0xFE) return end;   // feat/move-modes
     // About to leave a hostile's reach: Disengage first if a bonus Disengage is available

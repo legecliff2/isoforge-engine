@@ -705,16 +705,29 @@ Audit of #165's footprints against the SRD size rules.
 | Rule | Status |
 |---|---|
 | Fly / swim / climb speeds from stat blocks (`speed.fly/swim/climb/hover`) and Wild Shape / shapechanger forms | done: rules5e `Combatant::fly_ft/swim_ft/climb_ft/hover`, `FormStats` likewise |
-| Burrow speed from stat blocks (`speed.burrow`) and the same form copy | data only: `Combatant::burrow_ft` / `FormStats::burrow_ft` (uint8_t feet, 0 = none), loaded and copied like fly / swim / climb, not folded. Tunnelling and burrow movement are not implemented |
+| Burrow speed from stat blocks (`speed.burrow`) and the same form copy | done: `Combatant::burrow_ft` / `FormStats::burrow_ft` (uint8_t feet, 0 = none), loaded and copied like fly / swim / climb, not folded |
+| Burrow movement (altitude PR2, feat/altitude-move) | **implemented**: `move_mode` 4 spends `burrow_ft` via `move_allowance` (shared budget like the other speeds; no burrow speed = cannot burrow); burrowed creatures pass under difficult ground, ledges and surface creatures. Tunnelling (passable tunnels, solid rock) out of scope unless the stat block says otherwise |
 | Terrain: water (existing chunk flag bit 3), climbable (new bit 4), open air / chasm (new bit 5) | done: `Grid::water/climbable/open_air/enterable` |
 | A creature uses the speed that fits the terrain | done: sim `step_mode` (open air: fly; climb: climb > fly > walk; water: swim > fly > walk; ground: walk, then fly) |
 | Climbing / swimming without the speed: +1 ft per ft (+2 in difficult terrain) | done: `Grid::tile_cost_ft` |
 | Switching speeds subtracts the distance already moved | done: rules `move_allowance` (shared budget; Dash grants every speed again) |
 | A prone creature cannot fly | done (rules refuses `move_mode` 1 while prone) |
 | AI pathing over the modes | done: `Grid::path(..., MoveCaps)`, same deterministic Dijkstra; AI steps only while `step_mode` fits |
-| Falling (prone / speed 0 while flying without hover) and fall damage 1d6 per 10 ft | deferred: the grid has no altitude; a flyer over open air knocked prone stays put (cannot fly) until it stands |
+| Falling (prone / speed 0 while flying without hover) and fall damage 1d6 per 10 ft | deferred to PR4 (fall damage); a flyer over open air knocked prone stays put (cannot fly) until it stands |
 | Climbing / swimming ability checks (Athletics for hard surfaces, rough water) | deferred |
 | Wild Shape `no_fly_below` / `no_swim_below` | unchanged (build_form, #176) |
+
+### 11.8 Altitude (altitude PR2, feat/altitude-move)
+
+| Rule | Status |
+|---|---|
+| Ground height from chunk@3 (`elevation` x 5 ft; chunk@1 / chunk@2 stay flat) | done: `Grid::ground_ft`, footprint ground = max over its tiles (docs/CHUNK_HASH.md "chunk@3 ground") |
+| Ledges: step up of 5 ft or less costs nothing extra | done: `eng::sim::step_cost_ft` returns 0 |
+| Descending costs nothing extra | done: `step_cost_ft` returns 0 for any descent |
+| Rise above 5 ft is a climb (`rise` with climb / fly speed, else `2 * rise`) | done: `step_cost_ft`, `step_mode` picks climb > fly > walk |
+| Falls: stepping off a drop of more than 5 ft | done: AltitudeChanged event (cause `kAltFall`), `Combat::falls()` (current turn only, cleared at each TurnStarted); pathing never plans a fall for a non-flyer. Fall damage deferred to PR4 |
+| Airborne flyers (`alt_ft > 0`, fly speed, not prone) | done: fly over difficult tiles, lower obstacles and creatures whose vertical span they do not overlap; a flyer stepping off a ledge becomes airborne |
+| Swim depth clamp | done: a vertical move below the surface stops at the water depth (`Grid::water_depth_ft`) |
 
 ## 12. Source notes and verification
 
