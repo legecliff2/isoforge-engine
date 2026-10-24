@@ -700,3 +700,18 @@ These are SRD 5.1 containers from 5e-database a6212be, with exact costs, weights
   - The sling bullet (0.2 cp) has no `cost_cp`, and no piece has `weight_oz` (none is a whole number of ounces).
 - **Ready for the ammunition recovery rule** (EQUIPMENT 2.5: spend one per attack; recover `floor(spent / 2)` after combat). Stacks are `equipment[]` counts (§15), and these containers give the capacity a stack fits in.
 - **Inert today:** the sim loads no item documents. PCs do not list containers yet; adding them changes no number.
+
+## 17. Flat action damage (monster@5)
+
+SRD stat blocks such as rat, cat, owl, crab, and scorpion print a fixed amount: "Hit: 1 piercing damage." A monster@5 action
+`damage[]` component (including `extra_damage`) may be written as `{"flat": N, "type": "<damage_type>"}`, with N between 1 and 255.
+
+- `$defs/monster_damage` in `schemas/monster/v5.schema.json` is a `oneOf` of the common@2 `damage` component (`dice`) and the
+  flat arm. A component has `flat` or `dice`, never both. The flat arm is closed: no `bonus_vs`, and no separate modifier field.
+  A modifier belongs in the dice string (`"1d4+2"`), and `flat` is already the whole amount.
+- The loader maps `flat: N` to `DiceExpr{0, 0, N}`. With count 0, `roll_dice` draws no RNG, and a critical hit does not double the
+  amount (only dice double).
+- Use `flat` only for amounts printed without dice. Do not write `"dice": "1d1"`, because a crit doubles it.
+- Only monster@5 accepts it. monster@4, character, and common@2 are unchanged. Archetype data is static, so there is no hash
+  format change and no SIM_EVENTS tag.
+- Mixed components are fine: `[{"flat": 1, "type": "piercing"}, {"dice": "3d4", "type": "poison"}]`.
