@@ -1,10 +1,10 @@
 # SRD 5.1 classes (Fighter, Cleric, Wizard, Sorcerer, Rogue, Paladin, Ranger, Barbarian, Bard, Druid, Monk, Warlock levels 1-5): authored vs deferred
 
-> This work includes material taken from the System Reference Document 5.1 ("SRD 5.1") by Wizards of the Coast LLC, available at <https://dnd.wizards.com/resources/systems-reference-document>. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License, <https://creativecommons.org/licenses/by/4.0/legalcode>.
+> This work includes material taken from the System Reference Document 5.1 (“SRD 5.1”) by Wizards of the Coast LLC and available at https://dnd.wizards.com/resources/systems-reference-document. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License available at https://creativecommons.org/licenses/by/4.0/legalcode.
 
 Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules, section 6), `docs/SRD_MONSTERS_DEFERRED.md` and `docs/SRD_SPELLS_DEFERRED.md`; pack `content/packs/srd51.core`.
 
-**Source.** Class, level, feature and subclass data come from [5e-bits/5e-database](https://github.com/5e-bits/5e-database) commit `a6212be` (`src/2014/en/5e-SRD-Classes.json`, `5e-SRD-Levels.json`, `5e-SRD-Features.json`, `5e-SRD-Subclasses.json`; spell levels and class lists from `5e-SRD-Spells.json`). The fields used are copied verbatim into `tests/validate/data/srd51_classes_5e_database_a6212be.json`, and `tests/validate/test_srd51_classes.py` (ctest `content_validate_srd51_classes`) checks every document against them. The SRD subclasses are Champion (Fighter), Life Domain (Cleric), School of Evocation (Wizard), Draconic Bloodline (Sorcerer), Thief (Rogue), Oath of Devotion (Paladin), Hunter (Ranger), Path of the Berserker (Barbarian) and College of Lore (Bard).
+**Source.** Class, level, feature and subclass data come from [5e-bits/5e-database](https://github.com/5e-bits/5e-database) commit `a6212be` (`src/2014/en/5e-SRD-Classes.json`, `5e-SRD-Levels.json`, `5e-SRD-Features.json`, `5e-SRD-Subclasses.json`; spell levels and class lists from `5e-SRD-Spells.json`). The fields used are copied into `tests/validate/data/srd51_classes_5e_database_a6212be.json` (SRD 5.1, CC-BY-4.0). Provenance: that file is commit `a6212be` with the `hunters-mark` spell entry removed, because Hunter's Mark is PHB-only and not in SRD 5.1; the rest of the file matches the commit. `tests/validate/test_srd51_classes.py` (ctest `content_validate_srd51_classes`) checks every document against it. The SRD subclasses are Champion (Fighter), Life Domain (Cleric), School of Evocation (Wizard), Draconic Bloodline (Sorcerer), Thief (Rogue), Oath of Devotion (Paladin), Hunter (Ranger), Path of the Berserker (Barbarian) and College of Lore (Bard).
 
 ## Representation
 
@@ -69,7 +69,7 @@ Three non-human SRD sample PCs sit beside them (`characters/sample_*.json`: hill
 | Channel Divinity (Paladin, Devotion) | 3-5 | `resources[]` `channel_divinity {max 1, recharge short_rest}`. Sacred Weapon: `apply_modifier {cost action, usage {pool channel_divinity}, scope {weapon wielded}, modifier {attack_roll + Cha mod (min 1), self, rounds 10}}` (7.2y; ends when the weapon leaves the hand or at 0 HP / unconscious). Turn the Unholy: `actions[]` `save_effect {save wis vs the paladin spell save DC, range_ft 30, control turned, target_creature_types [fiend, undead], duration rounds 10, usage {pool channel_divinity}}` (7.2v / 7.2y). **Partial**: Sacred Weapon's magical weapon and light, and ending it early, are not modelled | yes |
 | Extra Attack (Paladin) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
 | Fighting Style: Archery (Ranger) | 2-5 | `attack_bonus {attacks ranged, amount 2}` (R-G5); the longbow `to_hit` stays unbaked (dex + proficiency) | yes (sim #107) |
-| Spellcasting (Ranger) | 2-5 | `spellcasting {ability wis, caster_level, slots, spells}` from 2nd level. Spells known: Cure Wounds, Hunter's Mark (the only shipped 1st-level ranger spells, so 2 of 2-3 known at 2-4); at 5 also Barkskin, Lesser Restoration (4 of 4; Spike Growth swapped out for Hunter's Mark). Hunter's Mark (7.2zc, #222): the extra 1d6 on weapon hits against the marked creature and the bonus-action move after it drops to 0 are data; the Perception / Survival advantage and the 8 / 24 hour upcast durations are not | yes |
+| Spellcasting (Ranger) | 2-5 | `spellcasting {ability wis, caster_level, slots, spells}` from 2nd level. Spells known: Cure Wounds (2-5); Fog Cloud (3-4); Barkskin, Lesser Restoration and Spike Growth (5). Within spells known (2-3 at 2-4, 4 at 5: Cure Wounds, Barkskin, Lesser Restoration, Spike Growth). Hunter's Mark is non-SRD, excluded (not NEW and not Authored), so it is not on these lists. Spike Growth had been swapped out for Hunter's Mark; it is restored at 5, reusing the spell that already ships for the druid | yes |
 | Hunter's Prey: Colossus Slayer (Hunter) | 3-5 | `on_event {on hit, limit once_per_turn, when [weapon_attack, target_below_max_hp], effects [extra_damage 1d8 same_as_weapon]}` (7.2y, #200) | yes |
 | Ranger Archetype | 3 | `classes[0].subclass` = `hunter` | descriptive |
 | Extra Attack (Ranger) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
@@ -102,7 +102,7 @@ Three non-human SRD sample PCs sit beside them (`characters/sample_*.json`: hill
 | Extra Attack (Monk) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
 | Stunning Strike (Monk) | 5 | `on_event {on hit, choice ask, when [weapon is melee], usage {pool ki, cost 1}, effects [save_condition {save con DC 13 (8 + pb + Wis), apply [stunned, duration until_end_of_caster_next_turn]}]}`: the duration loads since EC #212 (ends at the end of the monk's next turn; the current turn does not count) | yes |
 | Monastic Tradition | 3 | `classes[0].subclass` = `open-hand` | descriptive |
-| Pact Magic (Warlock) | 1-5 | `spellcasting {ability cha, caster_level, pact {level, slots}, spells}`: 1 slot of 1st at 1, 2 of 1st at 2, 2 of 2nd at 3-4, 2 of 3rd at 5 (short-rest recovery is the rules' pact-slot rest path). Spells: Eldritch Blast, Chill Touch (+ Poison Spray at 4); Burning Hands (Fiend expanded); + Hold Person, Misty Step, Scorching Ray (expanded) at 3; + Fireball (expanded), Counterspell at 5, within spells known (2-6). At 1-2 the only shipped 1st-level option is Burning Hands, so fewer spells than known are listed | yes |
+| Pact Magic (Warlock) | 1-5 | `spellcasting {ability cha, caster_level, pact {level, slots}, spells}`: 1 slot of 1st at 1, 2 of 1st at 2, 2 of 2nd at 3-4, 2 of 3rd at 5 (short-rest recovery is the rules' pact-slot rest path). Spells: Eldritch Blast, Chill Touch (+ Poison Spray at 4); Burning Hands (Fiend expanded); + Hold Person, Misty Step, Scorching Ray (expanded) at 3; + Fireball (expanded), Counterspell at 5, within spells known (2-6). At 1-2 the only shipped 1st-level option is Burning Hands, so fewer spells than known are listed. Hex is non-SRD, excluded (not NEW and not Authored), so it is not on these lists | yes |
 | Pact Boon: Pact of the Tome | 3-5 | three cantrips from any list in `spellcasting.spells`: Fire Bolt, Ray of Frost, Sacred Flame. Tome is chosen because it is the only boon that is data today: Pact of the Blade needs a summoned, bonded magic weapon (R-G12 / R-G17), and Pact of the Chain needs a familiar the sim cannot load (`pact_of_chain` is rules-only, 7.2s). Descriptive feature, no `effect` | yes (spell list) |
 | Agonizing Blast, Repelling Blast (Warlock invocations) | 2-5, 5 | `spell_mod {spell srd51.spell.eldritch_blast, damage_bonus_ability cha}` and `spell_mod {spell srd51.spell.eldritch_blast, on_hit_push_ft 10}` (7.2zb, #218), per beam that hits. The push is a fixed 10 ft (SRD: up to 10 ft) | yes |
 | Armor of Shadows (invocation) | 2-5 | baked into `armor_class` 13 + Dex with no armor worn (mage armor at will, 8 hours, no slot: always on). Mage Armor itself is not shipped. Descriptive feature, no `effect` | yes (static number) |
@@ -193,9 +193,9 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 | Paladin | 2 | Cure Wounds, Heroism, Shield of Faith |
 | Paladin | 3-4 | + Protection from Evil and Good, Sanctuary (oath) |
 | Paladin | 5 | + Lesser Restoration (oath), Branding Smite, Magic Weapon (Heroism dropped) |
-| Ranger | 2 | Cure Wounds, Hunter's Mark |
+| Ranger | 2 | Cure Wounds. Hunter's Mark is non-SRD, excluded (not NEW and not Authored) |
 | Ranger | 3-4 | + Fog Cloud |
-| Ranger | 5 | + Barkskin, Lesser Restoration (Spike Growth swapped out for Hunter's Mark) |
+| Ranger | 5 | + Barkskin, Lesser Restoration, Spike Growth (restored; it had been swapped out for Hunter's Mark). 4 known |
 | Bard | 1-2 | Vicious Mockery; Cure Wounds, Healing Word, Heroism, Thunderwave |
 | Bard | 3 | + Hold Person, Lesser Restoration, Heat Metal (Silence swapped) |
 | Bard | 4 | + Heroism again; Heat Metal (Silence swapped) |
@@ -210,7 +210,7 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 | Druid | 3 | + Barkskin, Hold Person, Lesser Restoration, Spike Growth (circle) |
 | Druid | 4 | + Shillelagh (third cantrip known), Flame Blade, Heat Metal (Thunderwave dropped) |
 | Druid | 5 | + Dispel Magic, Lightning Bolt (circle), Protection from Energy; Flame Blade, Heat Metal (Healing Word and Thunderwave dropped) |
-| Warlock | 1-2 | Eldritch Blast, Chill Touch; Burning Hands (expanded) |
+| Warlock | 1-2 | Eldritch Blast, Chill Touch; Burning Hands (expanded). Hex is non-SRD, excluded (not NEW and not Authored) |
 | Warlock | 3 | + Fire Bolt, Ray of Frost, Sacred Flame (Tome); Hold Person, Misty Step, Scorching Ray (expanded) |
 | Warlock | 4 | + Poison Spray, Darkness |
 | Warlock | 5 | + Fireball (expanded), Counterspell |

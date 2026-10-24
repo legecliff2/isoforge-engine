@@ -1,5 +1,9 @@
 name: CI
 
+# Linux jobs run on ubuntu-latest for every event, including push to main, schedule,
+# and workflow_dispatch. Nothing in this workflow requests a self-hosted runner.
+# Retiring the old box: docs/CI_SELF_HOSTED.md.
+#
 # Cost policy (macOS minutes bill at 10x Linux):
 # - Linux GCC Debug, Linux Clang Release, Windows MSVC Debug: every PR and every push to main
 #   (skipped for docs-only changes). Windows minutes bill at 2x Linux.
@@ -10,20 +14,11 @@ name: CI
 #   PRs; Windows Debug still builds and tests every PR. Every main commit is covered by the push
 #   run, so it is not added to the nightly schedule.
 # - Release jobs skip the python_only ctest label (pure-Python validator tests; the Debug jobs run them).
-# - Linux GCC Debug, Linux Clang Release, and nightly-gate prefer the self-hosted box
-#   ([self-hosted, linux, isoforge]) and otherwise use ubuntu-latest for that same run.
-#   One pick per run: Linux is never started on both runners. The box pauses when no agent
-#   is active, which used to leave Linux jobs queued until GitHub abandoned them and stalled
-#   the merge queue. changes and ci-required stay on ubuntu-latest; Windows/macOS stay hosted.
-# - linux-runner (ubuntu-latest) makes the pick. Listing runners requires administration:read,
-#   which GITHUB_TOKEN cannot be granted (actions:read is not enough; the API answers 403 with
-#   X-Accepted-Github-Permissions: administration=read). The job tries that API anyway and, on
-#   403, dispatches linux-runner-canary.yml on the default branch (no checkout, no PR code).
-#   If the box accepts the canary, Linux uses the box (compile 4 / test 2). If the canary is
-#   still queued when the probe window ends, it is cancelled and Linux uses ubuntu-latest
-#   (compile 4 / test 4). A paused box, or one too busy to accept the canary within the
-#   window, also falls back, so a run never waits on a runner that is not taking jobs.
-#   Dispatch needs actions:write on the linux-runner job only.
+# - linux-runner does not pick a machine. It only sets Linux compile/test caps, on ubuntu-latest.
+#   CI_BURST 'true': Linux test parallelism 8, compile 4. CI_BURST 'false': Linux test
+#   parallelism 4, compile 4. It never selects a runner. Every Linux job hard-codes
+#   runs-on: ubuntu-latest. In build-test, only the Windows MSVC Debug row is windows-latest.
+# - changes and ci-required stay on ubuntu-latest. Windows and macOS stay hosted.
 # - Draft PRs skip CI; ci-required passes for them (changes skipped only on drafts).
 # - Compiler cache: ccache (Linux/macOS) / sccache (Windows) via actions/cache in cmake-ci.
 # - macOS: nightly on main (07:17 UTC, off the hour to avoid GitHub dropping top-of-hour schedules), on manual dispatch, and on PRs whose
@@ -43,10 +38,18 @@ on:
 permissions:
   contents: read
 
+# CI_BURST only changes Linux test parallelism (8 when 'true', 4 when 'false').
+# It does not select a runner. Compile parallelism stays 4.
+env:
+  CI_BURST: 'false'
+
 concurrency:
-  # Branches/PRs: a new push cancels the previous run. main (push, schedule, dispatch): every run
-  # gets its own group (keyed by sha + event) and is never cancelled.
-  # PRs are keyed by PR number so all pushes to one PR share a group.
+  # Not a global lock. Several PRs run at once: the group is the PR number, or the ref for a
+  # branch that is not a PR. A new push cancels that group only. main (push, schedule, dispatch)
+  # gets its own group per sha + event and is never cancelled.
+  # Linux is ubuntu-latest for every event, so runs overlap on hosted runners. CI_BURST
+  # only changes Linux test parallelism (8 vs 4). It does not choose a runner.
+  # Windows is windows-latest and already overlaps Linux.
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && format('{0}-{1}', github.sha, github.event_name) || (github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number)) || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
@@ -54,10 +57,11 @@ jobs:
   changes:
     name: Detect changes
     # Draft PRs: skip everything (ci-required treats this as intended, see below).
-    # Fork PRs never reach the self-hosted runner: changes is skipped, so linux-runner is
-    # skipped (no canary is dispatched) and ci-required fails closed.
+    # A pull_request whose head repo is not this repo skips changes, so the jobs below
+    # do not run. ci-required fails closed when changes is skipped on a non-draft run.
     if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: read
@@ -103,8 +107,11 @@ jobs:
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
 
-  # One Linux runs-on for this workflow run. Does not build. Forks and drafts never get here:
-  # `changes` is skipped, and this job needs it (and repeats the same guard in `if`).
+  # Sets hosted Linux compile/test caps. Does not build and does not call the
+  # GitHub API. Every Linux job is ubuntu-latest regardless of event or ref.
+  # CI_BURST 'true' uses test parallelism 8; 'false' uses 4. Compile stays 4.
+  # Drafts never get here. A fork PR that does not edit this file never gets here
+  # either (`changes` is skipped, and this job repeats that guard).
   linux-runner:
     name: Linux runner
     needs: changes
@@ -113,120 +120,50 @@ jobs:
       (github.event_name == 'schedule' || ((github.event_name == 'push' || github.event_name == 'pull_request') && needs.changes.outputs.code == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      actions: write
-      contents: read
+    permissions: {}
     outputs:
-      runs_on: ${{ steps.pick.outputs.runs_on }}
-      hosted: ${{ steps.pick.outputs.hosted }}
+      gcc_jobs: ${{ steps.pick.outputs.gcc_jobs }}
+      gcc_tests: ${{ steps.pick.outputs.gcc_tests }}
+      clang_jobs: ${{ steps.pick.outputs.clang_jobs }}
+      clang_tests: ${{ steps.pick.outputs.clang_tests }}
     steps:
       - id: pick
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          # Defaults: ~75s covers one missed runner pickup (GitHub requeues after 60s).
-          # Override only in local tests of this script.
-          PROBE_SECONDS="${PROBE_SECONDS:-75}"
-          SLEEP_SECONDS="${SLEEP_SECONDS:-5}"
-          cid="ci-${GITHUB_RUN_ID}"
-          title="linux-runner-canary ${cid}"
-          tmp=$(mktemp -d)
-          canary_id=""
-          trap 'rm -rf "$tmp"' EXIT
-
-          use_box() {
-            printf 'runs_on=%s\n' '["self-hosted","linux","isoforge"]' >> "$GITHUB_OUTPUT"
-            printf 'hosted=%s\n' false >> "$GITHUB_OUTPUT"
-            echo "linux-runner: box ($1)"
-            exit 0
-          }
-          use_hosted() {
-            if [ -n "$canary_id" ]; then
-              timeout 20 gh api --method POST "repos/${REPO}/actions/runs/${canary_id}/cancel" >/dev/null 2>&1 || true
-            fi
-            printf 'runs_on=%s\n' '"ubuntu-latest"' >> "$GITHUB_OUTPUT"
-            printf 'hosted=%s\n' true >> "$GITHUB_OUTPUT"
-            if [ "${2:-}" = warn ]; then echo "::warning::linux-runner: ubuntu-latest ($1)"; fi
-            echo "linux-runner: ubuntu-latest ($1)"
-            exit 0
-          }
-          brief() { tr '\n' ' ' <"$1" | head -c 180 || true; }
-
-          # Authoritative when the token can read runners. Workflow tokens cannot hold
-          # administration:read; a 403 falls through to the canary. A 200 that shows the
-          # box online (including busy) skips the canary so we still prefer the box.
-          if timeout 20 gh api "repos/${REPO}/actions/runners?per_page=100" >"$tmp/runners.json" 2>"$tmp/runners.err"; then
-            jq -c '.runners[]? | {name,status,busy,labels:[.labels[].name]}' "$tmp/runners.json" || true
-            # index() is 0 for the first label, and jq treats 0 as false, so compare to null.
-            if online=$(jq '[.runners[]? | select(.status=="online") | select(
-                ([.labels[]?.name] | map(ascii_downcase)) as $n
-                | ["self-hosted","linux","isoforge"] | all(.[]; . as $l | $n | index($l) != null)
-              )] | length' "$tmp/runners.json"); then
-              if [ "${online:-0}" -gt 0 ]; then
-                use_box "runners API: ${online} online with self-hosted, linux, isoforge"
-              fi
-              total=$(jq '.total_count // 0' "$tmp/runners.json")
-              shown=$(jq '(.runners // []) | length' "$tmp/runners.json")
-              if [ "$total" -le "$shown" ]; then
-                use_hosted "runners API: no online runner with self-hosted, linux, isoforge"
-              fi
-              echo "runners API page truncated (${shown}/${total}); probing with a canary"
-            else
-              echo "runners API returned JSON the probe could not read; probing with a canary"
-            fi
-          else
-            echo "runners list API not permitted ($(brief "$tmp/runners.err")); probing with a canary"
+          # Caps only. CI_BURST never selects a runner. 'true' is test parallelism 8.
+          # 'false' is test parallelism 4. Compile cap stays 4 either way.
+          tests=4
+          if [ "${CI_BURST:-}" = "true" ]; then
+            tests=8
           fi
-
-          payload=$(jq -n --arg ref "$DEFAULT_BRANCH" --arg cid "$cid" '{ref:$ref, inputs:{cid:$cid}}')
-          if ! timeout 20 gh api --method POST "repos/${REPO}/actions/workflows/linux-runner-canary.yml/dispatches" --input - <<<"$payload" >"$tmp/dispatch.out" 2>"$tmp/dispatch.err"; then
-            use_hosted "canary dispatch failed ($(brief "$tmp/dispatch.err"))" warn
-          fi
-
-          deadline=$((SECONDS + PROBE_SECONDS))
-          while [ "$SECONDS" -lt "$deadline" ]; do
-            if runs_json=$(timeout 20 gh api "repos/${REPO}/actions/workflows/linux-runner-canary.yml/runs?event=workflow_dispatch&per_page=30" 2>"$tmp/list.err"); then
-              found=$(jq -r --arg t "$title" '[.workflow_runs[]? | select(.display_title==$t or .name==$t) | .id] | first // empty' <<<"$runs_json")
-              if [ -n "$found" ] && [ "$found" != "null" ]; then
-                canary_id=$found
-                if jobs_json=$(timeout 20 gh api "repos/${REPO}/actions/runs/${canary_id}/jobs" 2>"$tmp/jobs.err"); then
-                  started=$(jq '[.jobs[]? | select(.started_at != null)] | length' <<<"$jobs_json")
-                  if [ "${started:-0}" -gt 0 ]; then
-                    use_box "canary ${canary_id} accepted by the box"
-                  fi
-                fi
-              fi
-            fi
-            sleep "$SLEEP_SECONDS"
-          done
-          if [ -n "$canary_id" ]; then
-            use_hosted "canary ${canary_id} not accepted within ${PROBE_SECONDS}s"
-          fi
-          use_hosted "dispatched canary never appeared in the runs list within ${PROBE_SECONDS}s" warn
+          {
+            printf 'gcc_jobs=%s\n' 4
+            printf 'gcc_tests=%s\n' "$tests"
+            printf 'clang_jobs=%s\n' 4
+            printf 'clang_tests=%s\n' "$tests"
+          } >> "$GITHUB_OUTPUT"
+          echo "linux-runner: ubuntu-latest (compile 4 / test ${tests}, CI_BURST=${CI_BURST:-unset})"
 
   build-test:
     name: ${{ matrix.name }}
     needs: [changes, linux-runner]
     if: (github.event_name == 'push' || github.event_name == 'pull_request') && needs.changes.outputs.code == 'true'
-    # Linux rows use linux-runner's pick. Windows rows stay on matrix.os.
-    # fromJSON stays outside &&/|| so both branches are JSON text, not mixed types.
-    runs-on: ${{ fromJSON(startsWith(matrix.name, 'Linux') && (needs.linux-runner.outputs.runs_on || '"ubuntu-latest"') || matrix.os) }}
+    # Linux is hard-coded to ubuntu-latest for every event and ref. The Windows
+    # row is windows-latest. This expression does not read a job output or a label list.
+    runs-on: ${{ matrix.name == 'Windows MSVC Debug' && 'windows-latest' || 'ubuntu-latest' }}
+    timeout-minutes: 90
     env:
-      # Box is shared (CPUQuota 400%, MemoryMax 8G): compile 4 / test 2.
-      # Hosted fallback is 4-vCPU ubuntu-latest: same compile cap, test 4 (same as Windows Debug).
-      CMAKE_BUILD_PARALLEL_LEVEL: ${{ matrix.jobs }}
-      CTEST_PARALLEL_LEVEL: ${{ startsWith(matrix.name, 'Linux') && needs.linux-runner.outputs.hosted == 'true' && 4 || matrix.tests }}
+      # Linux caps come from linux-runner. CI_BURST true: compile 4 / test 8.
+      # CI_BURST false: compile 4 / test 4. Windows ignores those outputs and keeps matrix 4 / 4.
+      CMAKE_BUILD_PARALLEL_LEVEL: ${{ (matrix.name == 'Linux GCC Debug' && needs.linux-runner.outputs.gcc_jobs) || (matrix.name == 'Linux Clang Release' && needs.linux-runner.outputs.clang_jobs) || matrix.jobs }}
+      CTEST_PARALLEL_LEVEL: ${{ (matrix.name == 'Linux GCC Debug' && needs.linux-runner.outputs.gcc_tests) || (matrix.name == 'Linux Clang Release' && needs.linux-runner.outputs.clang_tests) || matrix.tests }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux `os` is the preferred box labels (the actual runs-on comes from linux-runner).
-          - { name: "Linux GCC Debug",       os: '["self-hosted","linux","isoforge"]', jobs: 4, tests: 2, preset: ci-linux-gcc,   build: ci-linux-gcc,        test: ci-linux-gcc,        ctest-args: "" }
-          - { name: "Linux Clang Release",   os: '["self-hosted","linux","isoforge"]', jobs: 4, tests: 2, preset: ci-linux-clang, build: ci-linux-clang,      test: ci-linux-clang,      ctest-args: "-LE python_only" }
-          - { name: "Windows MSVC Debug",    os: '"windows-latest"', jobs: 4, tests: 4, preset: ci-win-msvc,    build: ci-win-msvc-debug,   test: ci-win-msvc-debug,   ctest-args: "" }
+          - { name: "Linux GCC Debug",       jobs: 4, tests: 4, preset: ci-linux-gcc,   build: ci-linux-gcc,        test: ci-linux-gcc,        ctest-args: "" }
+          - { name: "Linux Clang Release",   jobs: 4, tests: 4, preset: ci-linux-clang, build: ci-linux-clang,      test: ci-linux-clang,      ctest-args: "-LE python_only" }
+          - { name: "Windows MSVC Debug",    jobs: 4, tests: 4, preset: ci-win-msvc,    build: ci-win-msvc-debug,   test: ci-win-msvc-debug,   ctest-args: "" }
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/cmake-ci
@@ -260,7 +197,8 @@ jobs:
     name: Nightly gate
     needs: [linux-runner]
     if: github.event_name == 'schedule'
-    runs-on: ${{ fromJSON(needs.linux-runner.outputs.runs_on || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       actions: read
       contents: read
@@ -300,11 +238,13 @@ jobs:
   # on an unlabelled PR, linux-runner when no Linux job is needed) count as OK; failed or
   # cancelled ones fail the gate. linux-runner skipped on a code push/PR or on schedule fails
   # the gate: that would also skip build-test / nightly-gate and look green.
+  # linux-runner only publishes hosted caps. It does not choose a machine.
   ci-required:
     name: ci-required
     needs: [changes, linux-runner, nightly-gate, build-test, windows-release, macos]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check job results
         env:
@@ -336,6 +276,7 @@ jobs:
     needs: macos
     if: always() && github.event_name == 'schedule' && needs.macos.result == 'failure'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       issues: write
       actions: read

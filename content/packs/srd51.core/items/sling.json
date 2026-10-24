@@ -4,6 +4,7 @@
   "name": "Sling",
   "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
   "category": "weapon",
+  "material": "leather",
   "cost_cp": 10,
   "weight_oz": 0,
   "weapon_class": "simple",
