@@ -1,5 +1,5 @@
 {
- "_source": "5e-bits/5e-database a6212be: src/2014/en/5e-SRD-Classes.json, 5e-SRD-Levels.json, 5e-SRD-Features.json, 5e-SRD-Subclasses.json, 5e-SRD-Spells.json (the spells shipped in srd51.core; SRD 5.1, CC-BY-4.0). Fields copied verbatim; feature names keyed by the mirror's index.",
+ "_source": "5e-bits/5e-database a6212be: src/2014/en/5e-SRD-Classes.json, 5e-SRD-Levels.json, 5e-SRD-Features.json, 5e-SRD-Subclasses.json, 5e-SRD-Spells.json (the spells shipped in srd51.core; SRD 5.1, CC-BY-4.0). Fields copied from that commit; feature names keyed by the mirror's index. Provenance: this file is a6212be with the hunters-mark spell entry removed. Hunter's Mark is PHB-only and not in SRD 5.1, so it is excluded from the public pack and from this validation table. The SRD text remains CC-BY-4.0. The rest of the file matches a6212be.",
  "classes": {
   "fighter": {
    "name": "Fighter",
@@ -1627,14 +1627,6 @@
     "cleric",
     "sorcerer",
     "wizard"
-   ]
-  },
-  "hunters-mark": {
-   "name": "Hunter's Mark",
-   "level": 1,
-   "school": "divination",
-   "classes": [
-    "ranger"
    ]
   },
   "invisibility": {
