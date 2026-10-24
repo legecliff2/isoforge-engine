@@ -20,6 +20,8 @@ class SpellBatchZiPositive(unittest.TestCase):
         } <= set(docs))
         self.assertEqual(docs["beacon_of_hope"]["targets"]["count"], 255)
         self.assertNotIn("concentration", docs["warding_bond"]["duration"])
+        self.assertEqual(docs["expeditious_retreat"]["classes"], ["sorcerer", "warlock", "wizard"])
+        self.assertTrue(docs["expeditious_retreat"]["effects"][0]["dash_on_cast"])
         self.assertTrue(docs["ray_of_enfeeblement"]["effects"][0]["hit_only"])
         self.assertNotIn("damage", docs["ray_of_enfeeblement"]["effects"][0])
         with tempfile.TemporaryDirectory() as tmp:

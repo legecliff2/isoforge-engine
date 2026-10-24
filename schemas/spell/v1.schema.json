@@ -1213,6 +1213,10 @@
                 "const": true,
                 "description": "VERSION_BUMP_BATCH 7.2zi (True Strike): the attack_roll row does nothing until the caster's next turn, and only against the marked creature. Needs scope target marked and applies_to self."
               },
+              "dash_on_cast": {
+                "const": true,
+                "description": "VERSION_BUMP_BATCH 7.2zi (Expeditious Retreat): when this effect is applied, the cast grants one Dash (movement increases by the caster's speed). The bonus action was spent to cast. Later turns still Dash as a bonus action via bonus_dash. Needs a bonus_dash modifier with applies_to self. Not a modifier field and not a hash tag."
+              },
               "save_vs_conditions": {
                 "type": "array",
                 "items": {

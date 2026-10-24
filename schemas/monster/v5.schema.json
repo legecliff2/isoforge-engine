@@ -604,9 +604,9 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "$ref": "../common/v2.schema.json#/$defs/damage"
+            "$ref": "#/$defs/monster_damage"
           },
-          "description": "BASE damage: weapon die + ability modifier (+ magic bonus). Never fold feature bonuses (e.g. Dueling +2) in; feature effects such as damage_bonus are applied by the engine."
+          "description": "BASE damage: weapon die + ability modifier (+ magic bonus). Never fold feature bonuses (e.g. Dueling +2) in; feature effects such as damage_bonus are applied by the engine. monster@5: a component may be {flat, type} instead of {dice, type} (SRD 'Hit: 1 piercing damage'; CONTENT_CONVENTIONS 19)."
         },
         "qualifiers": {
           "type": "array",
@@ -760,13 +760,15 @@
         "natural": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "dice",
-            "ability"
-          ],
           "properties": {
             "dice": {
               "$ref": "../common/v1.schema.json#/$defs/dice"
+            },
+            "flat": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 255,
+              "description": "CONTENT_CONVENTIONS 19: a fixed amount printed without dice (SRD 'Hit: 1 slashing damage'). The whole amount: no ability term, so damage_ability is not allowed. Must equal the action's flat damage[0]."
             },
             "ability": {
               "enum": [
@@ -782,7 +784,41 @@
               ],
               "description": "Default: ability. 'none' for blocks that print no modifier."
             }
-          }
+          },
+          "oneOf": [
+            {
+              "required": [
+                "dice",
+                "ability"
+              ],
+              "not": {
+                "required": [
+                  "flat"
+                ]
+              }
+            },
+            {
+              "required": [
+                "flat",
+                "ability"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "dice"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "damage_ability"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "description": "Natural or monster-local weapon source: exactly one of dice (NdM) or flat (CONTENT_CONVENTIONS 19)."
         },
         "attack_bonus": {
           "type": "object",
@@ -1511,6 +1547,32 @@
           "maximum": 168
         }
       }
+    },
+    "monster_damage": {
+      "description": "monster@5-local action damage component (common@2 $defs/damage unchanged): either common@2 damage ({dice, type, bonus_vs?}) or flat damage {flat, type}. Exactly one of dice / flat (oneOf). flat maps to rules5e::DiceExpr{0, 0, flat}: no dice are rolled (no rng), and a critical hit does not double it (SRD 5.1). The ability modifier stays in the dice string ('1d6+2'); flat is not a modifier and takes none.",
+      "oneOf": [
+        {
+          "$ref": "../common/v2.schema.json#/$defs/damage"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "flat",
+            "type"
+          ],
+          "properties": {
+            "flat": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 255
+            },
+            "type": {
+              "$ref": "../common/v1.schema.json#/$defs/damage_type"
+            }
+          }
+        }
+      ]
     }
   }
 }
