@@ -5,7 +5,8 @@ Usage:  python3 tools/validate/validate_packs.py [--script-check SCRIPT_CHECK_EX
         python3 tools/validate/validate_packs.py --rehash [PACK_DIR ...]   # update chunk content_hash
                                                                            # (never touches tests/compat)
 With no arguments it validates every pack under content/packs/ and every frozen
-compat pack under tests/compat/fl*/ . Exit code 0 = all valid.
+compat pack under tests/compat/fl*/ , then every scenarios/<name>/scenario.json
+(scenario@1) and its golden.txt. Exit code 0 = all valid.
 
 Each data file declares "$schema": "<type>@<N>", resolved to schemas/<type>/v<N>.schema.json.
 Beyond schema validation it runs cross-checks the schemas can't express. Everything
@@ -411,6 +412,12 @@ TIMED_BY_DURATION = ("hp_pool", "sustained_damage")   # their timer is the spell
 def check_spell(doc, errs, ctx):
     """Cross-checks for spell@1 that the schema can't express. rules5e_content (spell_loader.cpp)
     enforces the same rules with the same wording; keep them in sync."""
+    # descriptive: no key but kind, and the spell's only effect. Same order as spell_loader.cpp
+    # (unknown key on effects[0] before the only-effect check). Empty effects stay a schema error.
+    desc = c4.check_spell_descriptive(doc)
+    if desc:
+        errs += desc
+        return
     lvl, effs, ct = doc["level"], doc["effects"], doc["casting_time"]
     errs += c4.check_spell_modifiers(doc)
     errs += c4.check_spell_gaps(doc)   # 7.2zc
@@ -680,6 +687,7 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
             s_errs, s_warns = c4.check_sim172_174(doc)   # sim #172 swarm / #174 giant spider follow-up
             errs += [f"{rel}: {m}" for m in s_errs]
             warns += [f"{rel}: {m}" for m in s_warns]
+        errs += [f"{rel}: {m}" for m in c4.check_grapple_rider(doc)[0]]   # Druid gap G: grapple rider fields, monster@5 only
         errs += [f"{rel}: {m}" for m in c4.check_slot_recovery(doc)]   # 7.2n slot_recovery (sim #148 load errors)
         if "gaze" in row.effect_kinds:   # 7.2p gaze (@4): loader defaults left implicit
             g_errs, g_warns = c4.check_gaze(doc)
@@ -1010,6 +1018,206 @@ def run_script_check(exe: str, pack: Path) -> list[str]:
     return [f"script_check: {l}" for l in lines] or [f"script_check: exit code {r.returncode}"]
 
 
+def _walkable_cell(doc: dict, x: int, y: int) -> bool:
+    """Ground tile non-zero and no layer sets blocks_move. Omitted arrays are zeros."""
+    layers = doc.get("layers")
+    if not isinstance(layers, list) or not layers or not isinstance(layers[0], dict):
+        return False
+    tiles = layers[0].get("tiles")
+    idx = y * CHUNK_SIZE + x
+    if isinstance(tiles, list):
+        if idx >= len(tiles) or tiles[idx] == 0:
+            return False
+    else:
+        return False
+    for layer in layers:
+        if not isinstance(layer, dict):
+            continue
+        flags = layer.get("flags")
+        if isinstance(flags, list) and idx < len(flags) and int(flags[idx]) & FLAG_BLOCKS_MOVE:
+            return False
+    return True
+
+
+def validate_scenarios(registry: Registry, by_tag: dict) -> int:
+    """scenarios/<name>/scenario.json (scenario@1) plus a non-empty golden.txt.
+
+    Cross-checks the schema cannot express: the pack resolves, party members are characters and
+    monsters are monsters in that pack or its depends, roster ids are unique, tiles are in-bounds
+    and walkable, surprise names a roster id, and a chunk path stays inside the scenario's pack.
+    """
+    root = ROOT / "scenarios"
+    paths = sorted(root.glob("*/scenario.json")) if root.is_dir() else []
+    if not paths:
+        print("ok   scenarios (none)")
+        return 0
+    tag = "scenario@1"
+    if tag not in by_tag:
+        print("FAIL scenarios: schema scenario@1 is not registered")
+        return 1
+    validator = Draft202012Validator(by_tag[tag], registry=registry)
+    packs_root = ROOT / "content" / "packs"
+    pset = packset.PackSet(sorted(p.parent for p in packs_root.glob("*/manifest.json")))
+    failed = 0
+    seen_ids: dict[str, str] = {}
+    for path in paths:
+        rel = path.relative_to(ROOT).as_posix()
+        folder = path.parent.name
+        errs: list[str] = []
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", folder):
+            errs.append(f"directory {folder!r} must match ^[a-z][a-z0-9_]*$")
+        golden = path.parent / "golden.txt"
+        if not golden.is_file() or golden.stat().st_size == 0:
+            errs.append("golden.txt is missing or empty (encounter_runner stdout, no --log)")
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except ValueError as e:
+            errs.append(f"invalid JSON: {e}")
+            doc = None
+        if isinstance(doc, dict):
+            reject_floats(doc, "", errs)
+            schema_errs = sorted(validator.iter_errors(doc), key=lambda e: list(map(str, e.absolute_path)))
+            errs += [f"/{'/'.join(map(str, e.absolute_path))}: {schema_message(e, registry)}" for e in schema_errs]
+            sid = doc.get("id")
+            if isinstance(sid, str):
+                if sid in seen_ids:
+                    errs.append(f"id {sid!r} also used by {seen_ids[sid]}")
+                else:
+                    seen_ids[sid] = rel
+            if not schema_errs:
+                errs += _scenario_refs(doc, pset)
+        elif doc is not None:
+            errs.append("document must be an object")
+        if errs:
+            failed += 1
+            print(f"FAIL {rel}")
+            for e in errs:
+                print(f"  {e}")
+        else:
+            print(f"ok   {rel}")
+    return failed
+
+
+def _scenario_refs(doc: dict, pset: packset.PackSet) -> list[str]:
+    errs: list[str] = []
+    pid = doc.get("pack")
+    if not isinstance(pid, str) or pid not in pset.by_id:
+        return [f"pack {pid!r} is not in content/packs"]
+    order, set_errs = pset.resolve([pid])
+    errs += [str(e) for e in set_errs]
+    if set_errs:
+        return errs
+    pack = pset.by_id[pid]
+
+    def archetype_type(arch: str) -> str | None:
+        owner = packset.owner_of(order, arch)
+        if owner is None:
+            return None
+        return _schema_type(owner.dir / owner.content_ids[arch])
+
+    roster: dict[str, tuple[int, int]] = {}
+    teams: set[str] = set()
+    tiles: dict[tuple[int, int], str] = {}
+
+    def take_actor(side: str, default_team: str, expect: str) -> None:
+        for i, actor in enumerate(doc.get(side, [])):
+            if not isinstance(actor, dict):
+                continue
+            where = f"{side}[{i}]"
+            name = actor.get("id")
+            arch = actor.get("archetype")
+            if isinstance(name, str):
+                if name in roster:
+                    errs.append(f"{where}: id {name!r} is already used")
+                else:
+                    tile = actor.get("tile") if isinstance(actor.get("tile"), dict) else {}
+                    roster[name] = (int(tile.get("x", -1)), int(tile.get("y", -1)))
+            if isinstance(arch, str):
+                typ = archetype_type(arch)
+                if typ is None:
+                    errs.append(f"{where}: archetype {arch!r} is not in {pid} or its depends")
+                elif typ != expect:
+                    errs.append(f"{where}: archetype {arch!r} is a {typ}, expected a {expect}")
+            team = actor.get("team", default_team)
+            if isinstance(team, str):
+                teams.add(team)
+            tile = actor.get("tile")
+            if isinstance(tile, dict) and isinstance(tile.get("x"), int) and isinstance(tile.get("y"), int):
+                key = (tile["x"], tile["y"])
+                if key in tiles:
+                    errs.append(f"{where}: tile {key[0]},{key[1]} is also used by {tiles[key]}")
+                elif isinstance(name, str):
+                    tiles[key] = name
+
+    take_actor("party", "party", "character")
+    take_actor("monsters", "monsters", "monster")
+    if len(teams) < 2:
+        errs.append("party and monsters must cover at least two teams")
+
+    board = doc.get("board")
+    chunk_doc = None
+    blocked: set[tuple[int, int]] = set()
+    if isinstance(board, dict) and "chunk" in board and isinstance(board["chunk"], str):
+        rel = board["chunk"]
+        parts = Path(rel).parts
+        if not rel or rel.startswith("/") or "\\" in rel or ".." in parts:
+            errs.append("board.chunk must be a relative path inside the pack")
+        else:
+            file = pack.dir / rel
+            if not file.is_file():
+                errs.append(f"board.chunk {rel} does not exist in {pid}")
+            else:
+                try:
+                    chunk_doc = json.loads(file.read_text(encoding="utf-8"))
+                except ValueError as e:
+                    errs.append(f"board.chunk: invalid JSON: {e}")
+                else:
+                    if not str(chunk_doc.get("$schema", "")).startswith("chunk@"):
+                        errs.append(f"board.chunk {rel} is not a chunk document")
+                        chunk_doc = None
+    elif isinstance(board, dict) and isinstance(board.get("map"), dict):
+        for i, cell in enumerate(board["map"].get("blocked", [])):
+            if isinstance(cell, dict) and isinstance(cell.get("x"), int) and isinstance(cell.get("y"), int):
+                key = (cell["x"], cell["y"])
+                if key in blocked:
+                    errs.append(f"board.map.blocked[{i}]: duplicate tile {key[0]},{key[1]}")
+                blocked.add(key)
+
+    for name, (x, y) in roster.items():
+        if not (0 <= x <= 31 and 0 <= y <= 31):
+            continue
+        if chunk_doc is not None and not _walkable_cell(chunk_doc, x, y):
+            errs.append(f"{name}: tile {x},{y} is not walkable in board.chunk")
+        if (x, y) in blocked:
+            errs.append(f"{name}: tile {x},{y} is a blocked map tile")
+
+    surprise = doc.get("surprise")
+    if isinstance(surprise, list):
+        seen: set[str] = set()
+        for i, who in enumerate(surprise):
+            if not isinstance(who, str):
+                continue
+            if who not in roster:
+                errs.append(f"surprise[{i}]: {who!r} is not a roster id")
+            elif who in seen:
+                errs.append(f"surprise[{i}]: duplicate {who!r}")
+            else:
+                seen.add(who)
+    elif isinstance(surprise, dict):
+        seen = set()
+        for i, h in enumerate(surprise.get("hiders", [])):
+            if not isinstance(h, dict):
+                continue
+            who = h.get("who")
+            if isinstance(who, str) and who not in roster:
+                errs.append(f"surprise.hiders[{i}]: {who!r} is not a roster id")
+            elif isinstance(who, str) and who in seen:
+                errs.append(f"surprise.hiders[{i}]: duplicate {who!r}")
+            elif isinstance(who, str):
+                seen.add(who)
+    return errs
+
+
 def main(argv: list[str]) -> int:
     self_test()
     registry, by_tag = load_registry()
@@ -1065,6 +1273,7 @@ def main(argv: list[str]) -> int:
         summary = f"FAILED: {summary}, but {len(cross)} pack-set error(s)"
     print(summary)
     sys.stdout.flush()
+    scen_failed = 0
     if not argv:   # default run (ctest content_validate): also the effect negative cases
         import subprocess
         r = subprocess.run([sys.executable, str(ROOT / "tests" / "validate" / "run_effect_cases.py")])
@@ -1077,7 +1286,8 @@ def main(argv: list[str]) -> int:
             if r.returncode != 0:
                 print(r.stdout + r.stderr)
             failed += r.returncode != 0
-    return 1 if failed or cross else 0
+        scen_failed = validate_scenarios(registry, by_tag)
+    return 1 if failed or cross or scen_failed else 0
 
 
 if __name__ == "__main__":

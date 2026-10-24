@@ -199,3 +199,115 @@ TEST_CASE("grapple riders: a monster's hit grapples with its escape DC; Escape r
     gob["actions"][0]["on_hit"] = Json::array({{{"kind", "grapple"}, {"escape_dc", 99}}});
     CHECK(lib.add(gob, "monster"));
 }
+
+// Druid gap G: monster@5 grapple rider fields (restrains / exclusive / max_grapples), loader to sim.
+namespace {
+struct Rig {
+    ContentLibrary lib;
+    world::Chunk ch;
+};
+// The shipped giant toad (bite: grapple DC 13, restrains, exclusive), or a crab-like copy whose bite grapples with
+// max_grapples 2 (SRD giant crab: two claws, each grapples one target), against three tough fighters.
+void rig(Rig& r, bool crab) {
+    REQUIRE(r.lib.load(sample_set()).empty());
+    Json f = load_json("content/packs/sample.vertical_slice/characters/fighter_1.json");
+    f["hit_points"]["average"] = 2000;
+    f["id"] = "t.fighter";
+    REQUIRE_FALSE(r.lib.add(f, "character"));
+    Json toad = load_json("content/packs/srd51.core/monsters/giant_toad.json");
+    toad["hit_points"]["average"] = 2000;
+    toad["id"] = "t.toad";
+    if (crab) toad["actions"][0]["on_hit"] = Json::array({{{"kind", "grapple"}, {"escape_dc", 11}, {"max_grapples", 2}}});
+    REQUIRE_FALSE(r.lib.add(toad, "monster"));
+    r.ch = arena({{"t.toad", Vec2i{6, 5}}, {"t.fighter", Vec2i{5, 5}}, {"t.fighter", Vec2i{5, 6}}, {"t.fighter", Vec2i{8, 5}}});
+}
+// The toad bites `target` until a hit lands (returns false if none in 40 rounds); fighters only end their turns.
+bool bite_until_hit(Combat& c, CombatantId toad, CombatantId target) {
+    for (int round = 0; round < 40; ++round) {
+        to_turn(c, toad);
+        const int hp = rules5e::find(c.state(), target)->hp;
+        Command a;
+        a.request = {toad, ActionKind::Attack, target};
+        a.request.attack_index = 0;
+        REQUIRE(c.submit(a).ok);
+        c.settle(nullptr);
+        const bool hit = rules5e::find(c.state(), target)->hp < hp;
+        end_turn(c);
+        if (hit) return true;
+    }
+    return false;
+}
+}  // namespace
+
+TEST_CASE("grapple rider (monster@5): giant toad bite restrains and can't bite another target; escape clears both") {
+    Rig r;
+    rig(r, false);
+    const auto& g = r.lib.find("t.toad")->grapple_on_hit;
+    REQUIRE(g.size() == 1);
+    CHECK(g.at(0).escape_dc == 13);
+    CHECK(g.at(0).restrains);
+    CHECK(g.at(0).exclusive);
+    CHECK(g.at(0).max_grapples == 0);
+    ecs::Registry reg;
+    auto c = Combat::create(reg, r.ch, r.lib, 5);
+    REQUIRE(c);
+    const CombatantId toad = r.ch.spawns[0].stable_id, a = r.ch.spawns[1].stable_id, b = r.ch.spawns[2].stable_id;
+    REQUIRE(bite_until_hit(*c, toad, a));
+    CHECK(has(*c, a, Condition::Grappled));
+    CHECK(has(*c, a, Condition::Restrained));
+    to_turn(*c, toad);
+    bool other = false, held = false;
+    for (const auto& q : c->legal_actions())
+        if (q.kind == ActionKind::Attack && q.special == 0 && q.attack_index == 0) { other = other || q.target == b; held = held || q.target == a; }
+    CHECK(held);
+    CHECK_FALSE(other);
+    Command bite_b;
+    bite_b.request = {toad, ActionKind::Attack, b};
+    bite_b.request.attack_index = 0;
+    CHECK_FALSE(c->submit(bite_b).ok);
+    end_turn(*c);
+    bool freed = false;
+    for (int round = 0; round < 40 && !freed; ++round) {
+        to_turn(*c, a);
+        Command esc;
+        esc.request = {a, ActionKind::Attack, toad};
+        esc.request.special = 4;
+        REQUIRE(c->submit(esc).ok);
+        c->settle(nullptr);
+        freed = !has(*c, a, Condition::Grappled);
+        if (!freed) CHECK(has(*c, a, Condition::Restrained));
+        end_turn(*c);
+    }
+    REQUIRE(freed);
+    CHECK_FALSE(has(*c, a, Condition::Restrained));
+    CHECK(c->state().sourced.empty());
+}
+
+TEST_CASE("grapple rider (monster@5): max_grapples 2: a third hit deals damage but doesn't grapple") {
+    Rig r;
+    rig(r, true);
+    CHECK(r.lib.find("t.toad")->grapple_on_hit.at(0).max_grapples == 2);
+    ecs::Registry reg;
+    auto c = Combat::create(reg, r.ch, r.lib, 7);
+    REQUIRE(c);
+    const CombatantId toad = r.ch.spawns[0].stable_id;
+    for (int i = 1; i <= 2; ++i) {
+        REQUIRE(bite_until_hit(*c, toad, r.ch.spawns[std::size_t(i)].stable_id));
+        CHECK(has(*c, r.ch.spawns[std::size_t(i)].stable_id, Condition::Grappled));
+    }
+    const CombatantId third = r.ch.spawns[3].stable_id;
+    REQUIRE(bite_until_hit(*c, toad, third));   // the hit dealt damage
+    CHECK_FALSE(has(*c, third, Condition::Grappled));
+    CHECK(c->state().sourced.size() == 2);
+    // a bad max_grapples is a load error
+    Json bad = load_json("content/packs/srd51.core/monsters/giant_toad.json");
+    bad["id"] = "t.badtoad";
+    bad["actions"][0]["on_hit"] = Json::array({{{"kind", "grapple"}, {"max_grapples", 0}}});
+    CHECK(r.lib.add(bad, "monster"));
+}
+
+TEST_CASE("grapple rider: a plain rider leaves the appended fields unset (no 0xDB fold)") {
+    auto lib = make_lib(true);
+    const auto& g = lib.find("srd51.monster.goblin")->grapple_on_hit.at(0);
+    CHECK_FALSE(g.extended());
+}
