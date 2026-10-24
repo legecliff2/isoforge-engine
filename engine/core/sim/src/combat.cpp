@@ -2037,6 +2037,31 @@ bool Combat::apply_surprise(const std::vector<CombatantId>& ids, std::string* er
     return true;
 }
 
+void Combat::set_end_condition(rules5e::EndConditionFn fn) {
+    scenario_end_ = {};
+    state_.hooks.end_condition = std::move(fn);
+}
+
+void Combat::set_scenario_end(ScenarioEnd end) {
+    scenario_end_ = end;
+    const auto kind = end.kind;
+    const auto cap = end.round_cap;
+    state_.hooks.end_condition = [kind, cap](const rules5e::EncounterState& state) -> std::optional<rules5e::EncounterOutcome> {
+        std::optional<rules5e::EncounterOutcome> outcome;
+        switch (kind) {
+        case ScenarioEndKind::Teams: outcome = rules5e::default_end_condition(state); break;
+        case ScenarioEndKind::NoPcConscious: outcome = rules5e::end_when_no_pc_conscious(state); break;
+        case ScenarioEndKind::NoPcOrNoOpponent: outcome = rules5e::end_when_no_pc_or_no_opponent(state); break;
+        }
+        if (outcome) return outcome;
+        // Round cap: when round_cap != 0 and state.round > round_cap, and the built-in policy
+        // returned nothing, the outcome is EndReason::Custom.
+        if (cap != 0 && state.round > cap)
+            return rules5e::EncounterOutcome{rules5e::EndReason::Custom, rules5e::pc_statuses(state), {}};
+        return std::nullopt;
+    };
+}
+
 uint64_t Combat::log_hash() const {
     CanonicalHasher h;
     h.u32(uint32_t(log_.size()));
@@ -2177,6 +2202,45 @@ bool Combat::zone_covers(const rules5e::ActiveZone& z, Vec2i tile, const Spot* o
         return tile.x >= a.x + lo && tile.x <= a.x + hi && tile.y >= a.y + lo && tile.y <= a.y + hi;
     }
     return false;   // walls (Line) are not modelled yet
+}
+
+std::vector<Vec2i> Combat::zone_tiles(const rules5e::ActiveZone& z) const {
+    std::vector<Vec2i> tiles;
+    const rules5e::SpellDef* def = spell_def(z.spell_id);
+    if (!def || def->kind != rules5e::SpellEffectKind::Zone || z.ring) return tiles;
+    const int sz = int(z.size_ft != 0 ? z.size_ft : def->zone.size_ft) / kFeetPerTile;
+    int min_x = 0, max_x = -1, min_y = 0, max_y = -1;
+    if (def->zone.anchor == rules5e::ZoneAnchor::Creature) {
+        if (!rules5e::find(state_, z.owner)) return tiles;
+        const Vec2i op = pos(z.owner);
+        const int on = footprint_size(z.owner);
+        const int pad = (def->zone.shape == AreaShape::Cube) ? sz / 2 : sz;
+        min_x = op.x - pad;
+        max_x = op.x + on - 1 + pad;
+        min_y = op.y - pad;
+        max_y = op.y + on - 1 + pad;
+    } else {
+        if (!z.has_anchor_tile) return tiles;
+        const Vec2i a{z.anchor_x, z.anchor_y};
+        if (def->zone.shape == AreaShape::Sphere || def->zone.shape == AreaShape::Cylinder) {
+            min_x = a.x - sz;
+            max_x = a.x + sz;
+            min_y = a.y - sz;
+            max_y = a.y + sz;
+        } else if (def->zone.shape == AreaShape::Cube) {
+            const int lo = -((sz - 1) / 2), hi = sz / 2;
+            min_x = a.x + lo;
+            max_x = a.x + hi;
+            min_y = a.y + lo;
+            max_y = a.y + hi;
+        } else {
+            return tiles;   // walls (Line) are not modelled yet
+        }
+    }
+    for (int y = min_y; y <= max_y; ++y)
+        for (int x = min_x; x <= max_x; ++x)
+            if (zone_covers(z, {x, y})) tiles.push_back({x, y});
+    return tiles;
 }
 
 bool Combat::zone_holds(const rules5e::ActiveZone& z, CombatantId, Spot at, bool completely, const Spot* owner_at,
@@ -2509,32 +2573,34 @@ std::vector<Vec2i> Combat::legal_teleport_tiles(CombatantId actor, const rules5e
 }
 
 std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content, uint64_t seed,
-                             const std::vector<LogEntry>& log, std::string* error, const std::vector<CombatantId>& surprised) {
-    return replay(reg, chunk, content, seed, CombatOptions{}, log, error, surprised);
+                             const std::vector<LogEntry>& log, std::string* error, const std::vector<CombatantId>& surprised,
+                             ScenarioEnd end) {
+    return replay(reg, chunk, content, seed, CombatOptions{}, log, error, surprised, end);
 }
 
 std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
                              uint64_t seed, const std::vector<LogEntry>& log, std::string* error,
-                             const std::vector<CombatantId>& surprised) {
-    return replay(reg, chunks, content, seed, CombatOptions{}, log, error, surprised);
+                             const std::vector<CombatantId>& surprised, ScenarioEnd end) {
+    return replay(reg, chunks, content, seed, CombatOptions{}, log, error, surprised, end);
 }
 
 std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content, uint64_t seed,
                              CombatOptions options, const std::vector<LogEntry>& log, std::string* error,
-                             const std::vector<CombatantId>& surprised) {
+                             const std::vector<CombatantId>& surprised, ScenarioEnd end) {
     world::Chunk local = chunk;   // same chunk-local frame as the single-chunk create
     local.coord.x = 0;
     local.coord.y = 0;
     const world::Chunk* one[] = {&local};
-    return replay(reg, std::span<const world::Chunk* const>(one), content, seed, options, log, error, surprised);
+    return replay(reg, std::span<const world::Chunk* const>(one), content, seed, options, log, error, surprised, end);
 }
 
 std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
                              uint64_t seed, CombatOptions options, const std::vector<LogEntry>& log, std::string* error,
-                             const std::vector<CombatantId>& surprised) {
+                             const std::vector<CombatantId>& surprised, ScenarioEnd end) {
     auto c = Combat::create(reg, chunks, content, seed, options, error);
     if (!c) return std::nullopt;
     if (!surprised.empty() && !c->apply_surprise(surprised, error)) return std::nullopt;
+    if (end.kind != ScenarioEndKind::Teams || end.round_cap != 0) c->set_scenario_end(end);
     for (std::size_t i = 0; i < log.size(); ++i) {
         const LogEntry& e = log[i];
         c->install_hooks();

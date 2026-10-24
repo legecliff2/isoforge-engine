@@ -1,0 +1,13 @@
+scenario sample.fighter_goblin_surprise
+seed 1
+end_condition teams
+round_cap 20
+outcome team_no_conscious
+round 1
+ended 1
+teams_down monsters
+pcs fighter:conscious
+hp fighter=12 goblin=0
+surprised goblin
+digest 3efc2fe6fbdb60e7
+commands 1
