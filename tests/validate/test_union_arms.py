@@ -56,7 +56,7 @@ RIDER = {("extra_damage",): (S({"kind", "damage"}), S({"scale", "when"})),
          ("spend",): (S({"kind"}), S({"pool", "cost", "slot", "when"})),
          ("forced_move",): (S({"kind", "mode", "feet"}), S({"save", "when"})),   # 7.2zb Open Hand
          ("apply_modifier",): (S({"kind", "modifier"}), S({"when"})),            # 7.2zb Open Hand
-         ("grapple",): (S({"kind"}), S({"escape_dc", "when"}))}   # R-G8 hit rider (sim #104); on_hit[] of actions[] weapon attacks only
+         ("grapple",): (S({"kind"}), S({"escape_dc", "when", "restrains", "exclusive", "max_grapples"}))}   # R-G8 hit rider (sim #104); on_hit[] of actions[] weapon attacks only
 _M = {"applies_to", "stacks", "consume"}   # consume: any stat (section 6.2b, docs/CONTENT_CONVENTIONS.md 1)
 MODIFIER = {("attack_roll",): (S({"stat", "duration"}), S({"bonus", "die", "sign", "mode", "when"} | _M)),   # 7.2ze sign
             ("save", "ability_check"): (S({"stat", "duration"}), S({"bonus", "die", "sign", "mode", "ability"} | _M)),
