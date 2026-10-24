@@ -63,8 +63,7 @@
       "1": 2
     },
     "spells": [
-      "srd51.spell.cure_wounds",
-      "srd51.spell.hunters_mark"
+      "srd51.spell.cure_wounds"
     ]
   },
   "features": [

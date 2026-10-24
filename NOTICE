@@ -40,7 +40,11 @@ That attribution covers the SRD-derived material in these paths:
   tests/validate/data/srd51_spells_5e_database_a6212be.json
   — field-level copies of SRD 5.1 data taken from the 5e-database mirror
   at commit a6212be. The mirror's own code is MIT; the SRD data is
-  CC-BY-4.0.
+  CC-BY-4.0. The classes and spells files are that commit with the
+  hunters-mark entry removed: Hunter's Mark is PHB-only and not in
+  SRD 5.1, so it is not in the public pack or these validation tables.
+  The monsters and proficiencies files still match a6212be. The SRD
+  text in all four stays CC-BY-4.0.
 - tests/validate/cases/ and tests/validate/fixtures/ — validator specimens
   whose documents set source to SRD 5.1 / CC-BY-4.0 (spells, monsters,
   items, and characters).

@@ -3891,7 +3891,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         for (auto& m : s.modifiers) {   // the same rows, retargeted: ModifierExpired reason 10 (moved), then ModifierApplied
             if (m.caster != a.id || m.spec.source != def.id || m.spec.mark_scope == 0 || m.mark != old_mark) continue;
             emit(out.events, EventKind::ModifierExpired, m.caster, m.target, int32_t(m.spec.id), 10);
-            if (m.target == old_mark) m.target = t->id;   // a row on the marked creature (Hex's check) follows the mark
+            if (m.target == old_mark) m.target = t->id;   // a row on the marked creature (the chosen-ability check) follows the mark
             m.mark = t->id;
             emit(out.events, EventKind::ModifierApplied, m.caster, m.target, int32_t(m.spec.id), int32_t(m.spec.stat), modifier_magnitude(m.spec));
         }
@@ -5757,7 +5757,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             append_spell_targets(out, s, a, *d, r);
         }
     }
-    if (b.bonus_action && a.concentration_spell != 0 && !is_incapacitated(a))   // ward / mark follow-ups: move_mark (Hex, Hunter's Mark)
+    if (b.bonus_action && a.concentration_spell != 0 && !is_incapacitated(a))   // ward / mark follow-ups: move_mark (a concentration spell with a movable mark)
         if (const SpellDef* d = spell_def(s, a.concentration_spell); d && d->move_mark != 0) {
             const ActiveModifier* row = nullptr;
             for (const auto& m : s.modifiers)

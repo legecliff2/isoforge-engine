@@ -399,7 +399,7 @@ struct ModifierSpec {
     // an ally other than the user, within this range (EncounterHooks::targets_within; no hook = in range) and not deafened.
     uint8_t held_applies = 0;
     uint16_t range_ft = 0;
-    // appended (7.2zc generic mark; Hunter's Mark, Hex): mark_scope 1 = `scope: {target: "marked"}`: the row follows the creature
+    // appended (7.2zc generic mark): mark_scope 1 = `scope: {target: "marked"}`: the row follows the creature
     // the caster marked at cast (ActiveModifier::mark, the spell's one target). Damage rows sit on the caster and add to its
     // attack hits (weapon or spell) on the marked creature only; check rows sit on the caster (applies_to self) or on the marked
     // creature (applies_to target). chosen_ability: AbilityCheck `ability: "chosen"`: the ability is the caster's cast-time
