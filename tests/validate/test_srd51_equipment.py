@@ -148,7 +148,6 @@ SRD_DESC = {   # exact SRD wording the descriptions must contain
 # No mechanics: rope / chain hit points and burst DCs, crowbar advantage and manacle escape DCs are description text only.
 UTILITY_GEAR = [
     ('backpack', 200, 80, None),
-    ('healers_kit', 500, 48, "As an action, you can expend one use of the kit to stabilize a creature that has 0 hit points"),
     ('bedroll', 100, 112, None),
     ('rope_hempen_50_feet', 100, 160, "has 2 hit points and can be burst with a DC 17 Strength check."),
     ('rope_silk_50_feet', 1000, 80, "has 2 hit points and can be burst with a DC 17 Strength check."),
@@ -158,6 +157,7 @@ UTILITY_GEAR = [
     ('pole_10_foot', 5, 112, None),
     ('piton', 5, 4, None),
     ('hammer', 100, 48, None),
+    ('healers_kit', 500, 48, "As an action, you can expend one use of the kit to stabilize a creature that has 0 hit points"),
     ('grappling_hook', 200, 64, None),
     ('mirror_steel', 500, 8, None),
     ('chain_10_feet', 500, 160, "A chain has 10 hit points."),
@@ -211,8 +211,8 @@ TOOLS = [
     ('tinkers_tools', 'artisans_tools', 5000, 160),
     ('weavers_tools', 'artisans_tools', 100, 80),
     ('woodcarvers_tools', 'artisans_tools', 100, 80),
-    ('dice_set', 'gaming_set', 10, 0),
-    ('playing_card_set', 'gaming_set', 50, 0),
+    ('dice_set', 'gaming_set', 10, None),
+    ('playing_card_set', 'gaming_set', 50, None),
     ('bagpipes', 'musical_instrument', 3000, 96),
     ('drum', 'musical_instrument', 600, 48),
     ('dulcimer', 'musical_instrument', 2500, 160),
@@ -230,7 +230,7 @@ TOOL_SENTENCE = {
     'artisans_tools': "Proficiency with a set of artisan's tools lets you add your proficiency bonus",
     'gaming_set': "This item encompasses a wide range of game pieces",
     'musical_instrument': "If you have proficiency with a given musical instrument",
-    'other_tools': "Proficiency with",
+    'other_tools': "your proficiency bonus to any ability check",
 }
 
 
