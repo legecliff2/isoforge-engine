@@ -13,11 +13,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | | count |
 |---|---|
 | inventory candidates | 30 |
-| authored now as `monster@4` | 33 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189) |
+| authored now as `monster@4` | 33 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189); plus 10 tier B monsters in batch d1 as `monster@5` (`derive: true`) |
 | goblin (already shipped, left at `monster@3`) | 1 |
-| deferred (mechanic not expressible) | 0 |
+| deferred (mechanic not expressible) | 16 (tier B batch d1) |
 
-## Authored (33, all `monster@4`)
+## Authored (43: 33 `monster@4`, converted to `monster@5`; 10 batch d1 authored as `monster@5`)
 
 | monster | CR | mechanics carried as data | notes |
 |---|---|---|---|
@@ -54,6 +54,16 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Medusa | 6 | Petrifying Gaze as `gaze` (Con DC 14, 30 ft, `escalate_margin` 5: failing by 5 or more petrifies at once; otherwise restrained, then petrified on a failed repeat save); Multiattack: snake hair + 2 shortswords, or 2 longbows; snake hair and longbow with a poison damage component | **partial**: as basilisk, the reflection curse is description only; proficiency bonus +3 (CR 6) |
 | Gelatinous Cube | 2 | Engulf as `save_effect` (Dex DC 12, 3d6 acid, no effect on a success) + `apply` restrained, `escape` Str DC 12, `max_size large`, `contain {engulf, 6d6 acid}` (Rules #189, 7.2w: acid at the start of the cube's turns, freed when it dies); Transparent as trait effect `{kind: transparent, dc: 15}`; pseudopod; 6 condition immunities, blindsight 60 | **partial**: the cube's move through spaces, the "pushed instead" choice on a success, the Ooze Cube trait (entering its space, pulling a creature out, capacity of one Large or four Medium) and moving engulfed creatures with the cube are description only (sim movement pending, coverage row 11) |
 | Giant Toad | 1 | bite with two damage components + `on_hit [{kind: grapple, escape_dc: 13}]`; Swallow as `attack_effect` (melee +4, 5 ft) + `apply` restrained, `max_size medium`, `contain {swallow, 3d6 acid}` (Rules #189: blinded, total cover from outside, one at a time, exits prone when the toad dies) | **partial**: "restrained while grappled", "can't bite another target", Swallow being a bite against the creature it is grappling (with the bite's damage) are not modelled (no grappled-by-self predicate; attack_effect carries no damage). Amphibious / Standing Leap descriptive |
+| Baboon | 0 | Pack Tactics (`pack_tactics`), bite (Str, 1d4 - 1), climb 30 | batch d1, `monster@5` |
+| Camel | 1/8 | bite with `natural.damage_ability: "none"` (SRD prints 2 (1d4) with Str 16) | batch d1, Large |
+| Draft Horse | 1/4 | hooves | batch d1, Large |
+| Giant Lizard | 1/4 | bite, climb 30 | batch d1, Large; darkvision 30 recorded in `senses` |
+| Giant Centipede | 1/4 | bite + `on_hit save_condition` (Con DC 11, 3d6 poison, `on_success none`) with `zero_hp` (stable, poisoned 600 rounds, paralyzed while poisoned; as giant spider #174), climb 30 | batch d1; blindsight 30 in `senses` |
+| Giant Wolf Spider | 1/4 | bite + `on_hit save_condition` (Con DC 11, 2d6 poison, half) with `zero_hp` (as giant spider), climb 40 | batch d1; Spider Climb / Web Sense / Web Walker description only (as giant spider) |
+| Ape | 1/2 | Multiattack fist x2; rock as ranged natural attack (Str, 25/50) | batch d1 |
+| Worg | 1/2 | bite knock-prone rider (Str DC 13, prone untimed; as dire wolf) | batch d1, Large; Keen Hearing and Smell descriptive |
+| Brown Bear | 1 | Multiattack bite + claws; `attack_bonus` 5 on both (SRD prints +5; Str 19 + PB 2 = +6) | batch d1, Large; Keen Smell descriptive |
+| Giant Hyena | 1 | Rampage as gnoll (`on_event reduce_to_zero` -> `bonus_attack bite`) | batch d1, Large; as gnoll, the half-speed move is not encoded |
 
 The goblin keeps `$schema: monster@3`, its id (`srd51.monster.goblin`, stable id derived from it) and bytes. It is referenced by C++ tests that assert its `@3` form (`content_migration_tests`, `pack_set_tests`, compat goblin tests) and by the fl1 compat corpus, and a schema change could shift digests and goldens; migrating it buys nothing until a `@4`-only feature is needed.
 
@@ -64,9 +74,30 @@ Not set: `presentation` (the goblin has none; sprite assets for these monsters d
 Played: stats, attacks with every `damage[]` entry (#45), resistances / immunities / vulnerabilities / condition immunities (#45), `multiattack` options (#48/#59), `damage_mitigation` (#47/#58), `bonus_action_grant`, size footprint (#50/#55).
 Carried and validated but **not applied** (the registry reserves the `@4` kinds; the archetype lists them in `unsupported_features` and ignores them): `on_event` (Undead Fortitude, Rampage, Sneak Attack), `on_hit[]` riders (snake poison), `save_effect` actions with `usage` (Acid Breath). Until Engine Core lands the row 6 compile / row 9-10 trigger hooks these monsters play without those effects. No content change is needed when the hooks land.
 
-## Deferred (0)
+## Deferred (16)
 
-None. The last deferred monster, `srd51.monster.swarm_of_rats` (T&C-G7, T&C-G14, T&C-G15), was authored after sim #172 (swarm tag, `half_hp_damage`).
+Tier B batch d1 (content/monsters-d1): in scope (bestiary v0.1 missing list) but not authored, because a combat rule can't be carried faithfully today. Not approximated.
+
+| monster | id | unsupported mechanic |
+|---|---|---|
+| Cat | `srd51.monster.cat` | Claws deal a flat 1 slashing damage: `damage[].dice` / `natural.dice` accept dice only, no flat-damage form for an attack |
+| Crab | `srd51.monster.crab` | Claw deals a flat 1 bludgeoning damage (as cat) |
+| Poisonous Snake | `srd51.monster.poisonous_snake` | Bite deals a flat 1 piercing damage (as cat); the poison rider itself is expressible |
+| Quipper | `srd51.monster.quipper` | Blood Frenzy (advantage on melee attacks vs a creature missing hit points): no construct; also swim-only (schema requires `speed.walk`, SRD lists none); bite flat 1 damage |
+| Reef Shark | `srd51.monster.reef_shark` | swim-only speed: `speed.walk` is required by the schema and the SRD lists no walk speed (writing walk 0 would change the pinned speed) |
+| Riding Horse | `srd51.monster.riding_horse` | not a mechanic: 5e-database a6212be lists 25 XP for CR 1/4 (SRD: 50 XP); the validator rejects the table value. Needs a Director call on a DEVIATIONS entry |
+| Giant Crab | `srd51.monster.giant_crab` | Claw grapple with two claws each grappling one target (per-limb grapple capacity) |
+| Constrictor Snake | `srd51.monster.constrictor_snake` | Constrict: grappled and restrained until the grapple ends, can't constrict another target |
+| Crocodile | `srd51.monster.crocodile` | Bite: grappled and restrained until the grapple ends, can't bite another target; Hold Breath |
+| Giant Frog | `srd51.monster.giant_frog` | Bite grapple + restrained, can't bite another target; Swallow (bite against its grappled target, Small or smaller) |
+| Elk | `srd51.monster.elk` | Charge (straight-line approach); Hooves targets only a prone creature (no target-prone gate) |
+| Giant Goat | `srd51.monster.giant_goat` | Charge (straight-line approach, prone DC 13); Sure-Footed (advantage on Str/Dex saves vs being knocked prone) |
+| Giant Sea Horse | `srd51.monster.giant_sea_horse` | Charge (straight-line approach); walk 0 / swim-only |
+| Warhorse | `srd51.monster.warhorse` | Trampling Charge (prone save, then a bonus-action hooves attack vs the prone target) |
+| Lion | `srd51.monster.lion` | Pounce (prone save, then a bonus-action bite vs the prone target); Running Leap |
+| Tiger | `srd51.monster.tiger` | Pounce (as lion) |
+
+Previously: the last deferred monster of the first batch, `srd51.monster.swarm_of_rats` (T&C-G7, T&C-G14, T&C-G15), was authored after sim #172 (swarm tag, `half_hp_damage`).
 
 ### Re-check at `cfb5eed` (2026-10-19)
 
