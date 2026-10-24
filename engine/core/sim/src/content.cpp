@@ -1630,7 +1630,19 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                     const Json& g = (*oh)[ri];
                     const int dc = g.contains("escape_dc") ? (g["escape_dc"].is_number_integer() ? g["escape_dc"].get<int>() : -1) : 0;
                     if (dc < 0 || dc > 30) return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple escape_dc";
-                    a.grapple_on_hit[uint8_t(ai)] = int16_t(dc);
+                    rules5e::GrappleRider gr;
+                    gr.escape_dc = int16_t(dc);
+                    for (const char* k : {"restrains", "exclusive"})
+                        if (g.contains(k) && !g[k].is_boolean()) return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple " + k;
+                    gr.restrains = g.value("restrains", false);
+                    gr.exclusive = g.value("exclusive", false);
+                    if (g.contains("max_grapples")) {
+                        const Json& m = g["max_grapples"];
+                        if (!m.is_number_integer() || m.get<int>() < 1 || m.get<int>() > 8)
+                            return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple max_grapples";
+                        gr.max_grapples = uint8_t(m.get<int>());
+                    }
+                    a.grapple_on_hit[uint8_t(ai)] = gr;
                     continue;
                 }
                 rules5e::Trigger t;
