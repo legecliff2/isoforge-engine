@@ -47,13 +47,15 @@ inline constexpr int cell_index(int x, int y) noexcept { return y * kChunkSize +
 uint32_t spawn_stable_id(ChunkCoord coord, uint32_t spawn_index);
 // chunk@2 static light id: StableHash(i32 x, i32 y, i16 level, u32 index, u8 'L'); low ^ high 32 bits.
 uint32_t chunk_light_stable_id(ChunkCoord coord, uint32_t light_index);
-// format_version is hashed as 1 when the chunk has no lights and no ambient, so every chunk@1 hash is unchanged.
+// format_version is hashed as 1 when the chunk has no lights and no ambient, so every chunk@1 hash is unchanged; as 3
+// (with the chunk@2 tail always written) when Chunk::elevation_is_ground (chunk@3, docs/CHUNK_HASH.md).
 uint64_t compute_content_hash(const Chunk& c);
 std::string_view to_string(Chunk::Origin o);
 std::optional<Chunk::Origin> parse_origin(std::string_view s);
 std::string hash_to_hex(uint64_t h);   // 16 lowercase hex digits
 
-// Registers "chunk" at kChunkFormatVersion with the identity migration chunk@1 -> chunk@2 on reg.
+// Registers "chunk" at kChunkFormatVersion with the identity migrations chunk@1 -> chunk@2 -> chunk@3 on reg (the
+// document keeps its declared format_version, so migrated chunks stay flat for the sim).
 void register_chunk_schema(assets::SchemaRegistry& reg);
 
 // Decodes an already schema-loaded (migrated to current) chunk document.

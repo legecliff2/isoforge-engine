@@ -14,7 +14,7 @@ namespace eng::world {
 
 inline constexpr int kChunkSize = 32;          // 32x32 tiles, 1 tile = 5 ft
 inline constexpr int kChunkLayers = 4;         // ground, detail, walls, roof
-inline constexpr uint16_t kChunkFormatVersion = 2;   // chunk@2: lights + ambient (R-G13)
+inline constexpr uint16_t kChunkFormatVersion = 3;   // chunk@2: lights + ambient (R-G13); chunk@3: elevation is ground (altitude PR2)
 
 struct ChunkCoord {
     int32_t x, y; int16_t level;               // level = floor / dungeon depth
@@ -25,7 +25,7 @@ using TileId = uint16_t;                        // index into chunk palette
 
 struct TileCell {
     TileId   tile;                              // 0 = empty
-    uint8_t  elevation;                         // height steps for iso stacking
+    uint8_t  elevation;                         // height steps (5 ft each); ground height for the sim only in chunk@3
     uint8_t  flags;                             // blocks_move | blocks_sight | difficult | water ...
 };
 
@@ -60,6 +60,10 @@ struct Chunk {
     };
     std::vector<Light>     lights;
     std::optional<Ambient> ambient;
+    // chunk@3 (altitude PR2, docs/CHUNK_HASH.md): true when the document declared format_version 3 (or "$schema":
+    // "chunk@3" without format_version). Only then does the sim read TileCell::elevation as ground height (elevation * 5
+    // ft); chunk@1 / chunk@2 (and procedural chunks) are flat for the sim and elevation stays render-only.
+    bool elevation_is_ground = false;
 };
 inline constexpr uint16_t kMaxLightFt = 120;    // 24 tiles < kChunkSize: a 1-chunk halo suffices (LIGHTING.md §7)
 
