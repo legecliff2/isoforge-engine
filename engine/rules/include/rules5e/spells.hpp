@@ -29,7 +29,7 @@ enum class SpellEffectKind : uint8_t {
     AcBonus,        // reaction: AC bonus until the start of the caster's next turn (Shield)
     Counter,        // reaction: interrupts a spell being cast (Counterspell)
     ApplyCondition, // a condition on each target with no save (Invisibility); lasts with the spell
-    ApplyModifier,  // row 12: a timed modifier (Bless, Bane, Haste, Slow, Shield of Faith, Faerie Fire, Hunter's Mark); SpellDef::modifier
+    ApplyModifier,  // row 12: a timed modifier (Bless, Bane, Haste, Slow, Shield of Faith, Faerie Fire); SpellDef::modifier
     // appended (R-G15):
     HpPool,         // roll `dice` (scaled) as a hit-point pool; targets by lowest current HP get `condition` while the pool covers them (Sleep, Color Spray)
     Dispel,         // end spells on each target: slot level or lower automatically, higher ones on a check (Dispel Magic)
@@ -400,8 +400,9 @@ struct SpellDef {
     SummonSpec summon{};   // appended (R-G12 rules PR 2): kind Summon (primary effect only)
     SummonWeaponSpec summon_weapon{};   // appended (R-G12 rules PR 3): kind SummonWeapon (primary effect only)
     WeaponSmiteSpec weapon_smite{};     // appended (7.2zh): kind WeaponSmite (primary effect only)
-    // appended (7.2zh Heat Metal): sustained_damage may carry the held-object rider. v1 treats ItemKind Weapon, Armor and
-    // Shield as the heated metal (no item metal flag). See VERSION_BUMP_BATCH 7.2zh.
+    // appended (7.2zh Heat Metal): sustained_damage may carry the held-object rider. The object is a worn or held
+    // weapon, armor, or shield. Absent material falls back to the category rule (any weapon, armor, or shield counts
+    // as metal); only an explicit wood, leather, hide, cloth, or rope removes it as a target. See VERSION_BUMP_BATCH 7.2zh.
     bool held_object = false;
     // appended (priced materials, CONTENT_CONVENTIONS §7): components.m.item, the equipment content id that provides a priced
     // material ("" = none: a priced material without an item is unsatisfiable). rules5e never reads it (sim's components hook does).
