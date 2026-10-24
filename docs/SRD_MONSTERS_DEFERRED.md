@@ -77,7 +77,7 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Owlbear | 3 | Multiattack beak + claws | Keen Sight and Smell descriptive |
 | Awakened Tree | 2 | vulnerability fire, resistances bludgeoning / piercing, slam reach 10 | False Appearance descriptive |
 | Hill Giant | 5 | Multiattack greatclub x2; greatclub as the item with `weapon_dice_multiplier` 3 (Huge), reach 10 as printed; rock (ranged natural 3d10, 60/240) | |
-| Stone Giant | 7 | saving throws Dex +5 / Con +8 / Wis +4; Multiattack greatclub x2 (item, `weapon_dice_multiplier` 3, reach 15 as printed); rock with `on_hit save_condition` (Str DC 17, prone untimed) | Stone Camouflage descriptive |
+| Stone Giant | 7 | saving throws Dex +5 / Con +8 / Wis +4; Multiattack greatclub x2 (item, `weapon_dice_multiplier` 3, reach 15 as printed); rock with `on_hit save_condition` (Str DC 17, prone untimed) | Stone Camouflage descriptive; Rock Catching (reaction, DC 10 Dex to catch a hurled rock, no bludgeoning damage) descriptive: no reaction window for incoming missiles |
 | Giant Ape | 7 | Multiattack fist x2 (reach 10); rock (ranged 7d6, 50/100); climb 40 | |
 | Ettercap | 2 | Multiattack bite + claws; bite (piercing + poison) with `on_hit save_condition` (Con DC 11, poisoned 10 rounds, repeat at end of turn); Web as `attack_effect` (ranged +4, 30/60, restrained, `max_size large`, Str DC 11 escape, webbing AC 10 / hp 5 / vulnerable fire / immune bludgeoning, recharge 5-6) | Spider Climb / Web Sense / Web Walker descriptive |
 | Merfolk | 1/8 | spear: one-handed, two-handed, thrown (guard convention); walk 10, swim 40 | Amphibious descriptive |

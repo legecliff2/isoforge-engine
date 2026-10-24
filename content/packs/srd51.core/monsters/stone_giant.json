@@ -77,6 +77,11 @@
       "id": "stone_camouflage",
       "name": "Stone Camouflage",
       "description": "The giant has advantage on Dexterity (Stealth) checks made to hide in rocky terrain."
+    },
+    {
+      "id": "rock_catching",
+      "name": "Rock Catching",
+      "description": "If a rock or similar object is hurled at the giant, the giant can, with a successful DC 10 Dexterity saving throw, catch the missile and take no bludgeoning damage from it."
     }
   ],
   "actions": [
