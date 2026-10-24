@@ -123,6 +123,28 @@ SRD_DESC = {   # exact SRD wording the descriptions must contain
 }
 
 
+# SRD 5.1 spellcasting foci, component pouch and spellbook (5e-database a6212be: arcane-foci, druidic-foci, holy-symbols,
+# standard-gear), item@2 'gear', passive data only: (local_id, cost_cp, weight_oz, SRD sentence the description must contain).
+# The SRD prices each focus form separately, so each is its own item, id prefixed by its focus family. The item@2 schema has no
+# focus marker yet, so nothing here is a rules5e ItemKind::Focus (deferred); characters keep their descriptive strings.
+FOCI = [
+    ('component_pouch', 2500, 32, "A component pouch is a small, watertight leather belt pouch"),
+    ('spellbook', 5000, 48, "a spellbook is a leather-bound tome with 100 blank vellum pages"),
+    ('arcane_focus_crystal', 1000, 16, "An arcane focus is a special item"),
+    ('arcane_focus_orb', 2000, 48, "An arcane focus is a special item"),
+    ('arcane_focus_rod', 1000, 32, "An arcane focus is a special item"),
+    ('arcane_focus_staff', 500, 64, "An arcane focus is a special item"),
+    ('arcane_focus_wand', 1000, 16, "An arcane focus is a special item"),
+    ('druidic_focus_sprig_of_mistletoe', 100, 0, "A druid can use such an object as a spellcasting focus."),
+    ('druidic_focus_totem', 100, 0, "A druid can use such an object as a spellcasting focus."),
+    ('druidic_focus_wooden_staff', 500, 64, "A druid can use such an object as a spellcasting focus."),
+    ('druidic_focus_yew_wand', 1000, 16, "A druid can use such an object as a spellcasting focus."),
+    ('holy_symbol_amulet', 500, 16, "the caster must hold it in hand, wear it visibly, or bear it on a shield."),
+    ('holy_symbol_emblem', 500, 0, "the caster must hold it in hand, wear it visibly, or bear it on a shield."),
+    ('holy_symbol_reliquary', 500, 32, "the caster must hold it in hand, wear it visibly, or bear it on a shield."),
+]
+
+
 def load(lid):
     return json.loads((ITEMS / f"{lid}.json").read_text(encoding="utf-8"))
 
@@ -146,8 +168,10 @@ class Srd51Equipment(unittest.TestCase):
         self.assertEqual(len(AMMUNITION), 4)
         self.assertEqual(len(LIGHT_GEAR), 7)
         self.assertEqual(len(CONTAINERS), 3)
+        self.assertEqual(len(FOCI), 14)
         self.assertEqual(files, sorted([w[0] for w in WEAPONS] + [a[0] for a in ARMOR] + [v[0] for v in VALUABLES]
-                                       + [a[0] for a in AMMUNITION] + [g[0] for g in LIGHT_GEAR] + [c[0] for c in CONTAINERS]),
+                                       + [a[0] for a in AMMUNITION] + [g[0] for g in LIGHT_GEAR] + [c[0] for c in CONTAINERS]
+                                       + [f[0] for f in FOCI]),
                          "no extra or missing item files")
 
     def test_manifest_lists_every_item(self):
@@ -242,6 +266,16 @@ class Srd51Equipment(unittest.TestCase):
                 if torch:
                     self.assertIs(d["torch_attack"]["requires_lit"], True)
         self.assertIn(OIL, {f"srd51.item.{g[0]}" for g in LIGHT_GEAR})
+
+    def test_foci(self):
+        for lid, cost, oz, sentence in FOCI:
+            with self.subTest(lid):
+                d = load(lid)
+                self.assertEqual((d["$schema"], d["id"], d["category"]), ("item@2", f"srd51.item.{lid}", "gear"))
+                self.assertEqual(d["source"], {"ref": "SRD 5.1", "license": "CC-BY-4.0"})
+                self.assertEqual((d["cost_cp"], d["weight_oz"]), (cost, oz))
+                self.assertIn(sentence, d["description"])
+                self.assertEqual(set(d), {"$schema", "id", "name", "source", "category", "cost_cp", "weight_oz", "description"})
 
     def test_diamond_is_the_priced_material_id(self):
         # spell@1 components.m.item names it (Revivify fixture); the contract matches equipment ids exactly.
