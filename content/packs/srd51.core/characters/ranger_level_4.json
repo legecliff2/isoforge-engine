@@ -65,8 +65,7 @@
     },
     "spells": [
       "srd51.spell.cure_wounds",
-      "srd51.spell.fog_cloud",
-      "srd51.spell.hunters_mark"
+      "srd51.spell.fog_cloud"
     ]
   },
   "features": [
