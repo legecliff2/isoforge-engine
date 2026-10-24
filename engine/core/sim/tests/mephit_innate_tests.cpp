@@ -29,7 +29,7 @@ struct Mephit { const char* id; const char* spell; int dc; bool listed; bool ai;
 const Mephit kMephits[] = {{"t.dust_mephit", "sleep", 10, true, true}, {"t.ice_mephit", "fog_cloud", 0, true, false},
                            {"t.magma_mephit", "heat_metal", 10, true, true}, {"t.steam_mephit", "blur", 11, true, true}};
 constexpr const char* kKitted = "srd51.character.fighter_level_1";   // chain mail, shield, longsword: metal
-constexpr const char* kBare = "t.bare_wizard";                       // nothing worn or held
+constexpr const char* kBare = "t.club_wizard";                       // holds a club (wood), no armor: no metal
 Json mephit(const Mephit& m) {
     Json d = load_json("content/packs/srd51.core/monsters/goblin.json");
     d["$schema"] = "monster@4";
@@ -40,7 +40,7 @@ Json mephit(const Mephit& m) {
     d["spellcasting"] = sc;
     return d;
 }
-// The sample set (srd51.core items and spells) plus the four mephits and a wizard with empty hands and no armor.
+// The sample set (srd51.core items and spells) plus the four mephits and a wizard holding a club (material wood) and wearing no armor.
 ContentLibrary& library() {
     static ContentLibrary l;
     static bool ready = false;
@@ -54,7 +54,7 @@ ContentLibrary& library() {
     Json w = load_json("content/packs/srd51.core/characters/wizard_level_1.json");
     w["id"] = kBare;
     w["derive"] = false;
-    w["equipment"] = Json::array({"component_pouch", "spellbook"});
+    w["equipment"] = Json::array({Json{{"item", "srd51.item.club"}, {"equipped", true}, {"hand", "main"}}, "component_pouch", "spellbook"});
     Json acts = Json::array();
     for (const auto& x : w["actions"]) if (!x.contains("weapon")) acts.push_back(x);
     w["actions"] = acts;
@@ -140,7 +140,7 @@ TEST_CASE("mephit innate 1/day: loads, is legal, the AI casts it, the use is spe
     }
 }
 
-TEST_CASE("magma mephit: no metal on the target -> Heat Metal is not listed and the AI does not cast it") {
+TEST_CASE("magma mephit: target holds only a wooden club -> Heat Metal is not listed and the AI does not cast it") {
     const Mephit& m = kMephits[2];
     auto ch = arena({{m.id, Vec2i{5, 5}}, {kBare, Vec2i{7, 5}}});
     ecs::Registry reg;
