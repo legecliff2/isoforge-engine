@@ -41,6 +41,8 @@ public:
 private:
     void text(std::string_view s, eng::Vec2f px, float scale, eng::Color c, int32_t layer = 20);
     void rect(eng::Vec2f px, eng::Vec2f size, eng::Color c, int32_t layer = 10);
+    // Screen-space cover debug line + badge. No-op unless ViewModel::cover.present (or a note).
+    void draw_cover(const ViewModel&, const eng::iso2d::Camera&);
 
     void sync_lights(const LightView&);
 

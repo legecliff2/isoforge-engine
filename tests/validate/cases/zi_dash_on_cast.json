@@ -1,0 +1,40 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "id": "test.neg.spell.zi_dash_on_cast",
+  "name": "Zi Dash On Cast",
+  "description": "negative",
+  "level": 1,
+  "school": "transmutation",
+  "casting_time": {
+    "kind": "bonus_action"
+  },
+  "range": {
+    "kind": "self"
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 10,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "dash_on_cast": true,
+      "modifier": {
+        "stat": "bonus_dash",
+        "duration": {
+          "kind": "rounds",
+          "n": 600
+        }
+      }
+    }
+  ]
+}

@@ -2609,9 +2609,9 @@ Tags (Director, do not skip): **0xD4** `Combat::hash` Branding Smite pending and
 
 ### 7.2zi Spell batch zi (rules side)
 
-Additive (Spare the Dying, True Strike, Expeditious Retreat, Protection from Poison, Ray of Enfeeblement, Beacon of Hope, Warding Bond). No new `SIM_EVENTS` tag. New modifier fields fold into `modifiers_digest` (**0xA2**) as sub-byte **0x5F**, and only when any of them (or `zi_armed`) is set, so old goldens stay byte-identical. Next free stays **0xD6**. Integer math only. Key names live in `engine/rules/content/src/spell_keys_zi.hpp` and `tools/validate/checks_v4.py` `ZI_KEYS`. Specimens: `tests/validate/fixtures/spell_batch_zi/`. No `srd51.spell.*` packs (T&C). The 73 / 24 / 72 authored counts in `docs/SRD_SPELLS_DEFERRED.md` stay until those packs land.
+Additive (Spare the Dying, True Strike, Expeditious Retreat, Protection from Poison, Ray of Enfeeblement, Beacon of Hope, Warding Bond). No new `SIM_EVENTS` tag. New modifier fields fold into `modifiers_digest` (**0xA2**) as sub-byte **0x5F**, and only when any of them (or `zi_armed`) is set, so old goldens stay byte-identical. This batch takes no tag (`dash_on_cast` is the existing `Dashed` event, not an extension of 0x5F). Altitude PR1 claimed **0xD6** (`alt_ft`); **0xD7** is altitude PR2 `ActionRequest::alt_to` (`log_hash`, already on main). **0xD8**-**0xDA** are reserved for Golem, Area & Size Systems: 0xD8 area resolve, 0xD9 per-target save, 0xDA altitude-aware areas. Next free is **0xDB**. Integer math only. Key names live in `engine/rules/content/src/spell_keys_zi.hpp` and `tools/validate/checks_v4.py` `ZI_KEYS`. Specimens: `tests/validate/fixtures/spell_batch_zi/`. No `srd51.spell.*` packs (T&C). The 73 / 24 / 72 authored counts in `docs/SRD_SPELLS_DEFERRED.md` stay until those packs land.
 
-Keys this batch adds: `stabilize`, `hit_only`, `on_next_turn`, `bonus_dash`, `save_vs_conditions`, `halve_weapon_damage`, `death_saves`, `heal_maximum`, `share_damage`, `all_damage`, `end_beyond_ft`, `end_at_zero`, `caster` (the only `end_at_zero` value).
+Keys this batch adds: `stabilize`, `hit_only`, `on_next_turn`, `bonus_dash`, `dash_on_cast`, `save_vs_conditions`, `halve_weapon_damage`, `death_saves`, `heal_maximum`, `share_damage`, `all_damage`, `end_beyond_ft`, `end_at_zero`, `caster` (the only `end_at_zero` value).
 
 Reused: `apply_modifier`, `attack_roll`, `mode`, `consume`, `applies_to`, `scope.target` `marked`, `end_condition`, `resistance`, `damage_type`, `save`, `ability`, `ac`, `bonus`, `spell_attack`, `repeat_save` (the new object shape `{ability}` is only on `apply_modifier`; save effects keep the string), `excludes_creature_type`, `duration` `until_end_of_caster_next_turn` / `rounds` / `concentration`, `targets.count`.
 
@@ -2623,7 +2623,8 @@ Reused: `apply_modifier`, `attack_roll`, `mode`, `consume`, `applies_to`, `scope
 - **True Strike.** `apply_modifier` with `on_next_turn`, `scope: {target: marked}`, and `{stat: attack_roll, mode: advantage, consume: next_attack, applies_to: self, duration: {kind: until_end_of_caster_next_turn}}`. Spell duration is 1 round, concentration. The row is inactive until the caster's next turn (`zi_armed`), so the cast turn and any attack before that turn do not spend it. Advantage and the consume apply only when the attack's target is the mark. An attack against a different creature does not consume it. `mark_scope` still rejects `attack_roll` unless `on_next_turn` is set, so `tests/validate/cases/mark_attack_roll` and the old `v4/extra/true_strike.json` approximation are unchanged.
   Strings: `effect on_next_turn must be true`, `effect on_next_turn needs an attack_roll modifier`. The old mark string is unchanged.
 
-- **Expeditious Retreat.** `bonus_dash` on the caster for 600 rounds (the 10-minute cap) plus the spell's concentration. The cast spends the bonus action and does not Dash. The grant is a modifier. `bonus_action_grants` is not mutated, so a class Dash grant stays as it was. `legal_actions` lists a bonus Dash when the marker is present and the class bit is not already set.
+- **Expeditious Retreat.** `bonus_dash` on the caster for 600 rounds (the 10-minute cap) plus the spell's concentration, and `dash_on_cast`. SRD 5.1: when you cast the spell, and then as a bonus action on each later turn until it ends, you can take the Dash action. The cast spends the bonus action and grants one Dash as part of that cast (`movement_ft` increases by `modified_speed`, `dashes` increments, `Dashed`). No rng. Not moving afterward is legal. Later turns still list a bonus Dash from the marker. `bonus_action_grants` is not mutated, so a class Dash grant stays as it was. `legal_actions` lists a bonus Dash when the marker is present, the class bit is not already set, and the bonus action remains. `dash_on_cast` is an effect flag, not a modifier field: it is not hashed in 0x5F and does not take a `SIM_EVENTS` tag. The specimen class list is sorcerer, warlock, wizard.
+  Strings: `effect dash_on_cast must be true`, `effect dash_on_cast needs a bonus_dash modifier on self`.
 
 - **Protection from Poison.** Not concentration. First effect `end_condition` `[poisoned]` (no failure when the condition is absent). Then, `applies_to` all (not `affected`): poison `resistance` and a `save` advantage with `save_vs_conditions: [poisoned]`, each `rounds` 600. That is not advantage on every Constitution save and not advantage against poison damage. One Poisoned condition flag.
   Strings: `effect save_vs_conditions needs a save modifier with a mode`, `effect save_vs_conditions must be a non-empty list of conditions`, `effect save_vs_conditions items must be unique`.
@@ -2639,12 +2640,12 @@ Reused: `apply_modifier`, `attack_roll`, `mode`, `consume`, `applies_to`, `scope
 
 Director contract notes (no `docs/ARCHITECTURE.md` break; the 7.2zi bullet there is additive):
 
-- No new hash tag. 0xA2 sub-byte 0x5F. Next free remains 0xD6.
+- No new hash tag. 0xA2 sub-byte 0x5F. `dash_on_cast` is not a hash field. Next free is 0xDB (0xD6 is altitude PR1 `alt_ft`; 0xD7 is altitude PR2 `ActionRequest::alt_to`, `log_hash`, already on main; 0xD8-0xDA are reserved for Golem, Area & Size Systems: 0xD8 area resolve, 0xD9 per-target save, 0xDA altitude-aware areas).
 - Warding Bond ends when the caster drops to 0 HP, not when the target does. The assignment text said "either"; the 2014 SRD says the caster.
 - Shared damage is the post-resistance amount dealt to the target. It is not a new event (`DamageDealt`).
 - Non-concentration hour and minute durations are modifier `rounds` (600 and 10). `SpellDef` hours do not tick modifiers.
 - True Strike is armed on the caster's next turn, not on the cast.
-- Expeditious Retreat does not Dash as part of the cast.
+- Expeditious Retreat grants one Dash as part of the cast (`dash_on_cast`) and a bonus-action Dash on later turns (`bonus_dash`). The cast-turn Dash is not a hash field.
 
 ## 8. Migrations and inert markers
 
