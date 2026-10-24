@@ -114,6 +114,9 @@ DerivedAttack derive_weapon_attack(const WeaponDef& w0, const WielderView& v, We
     a.ranged = use == WeaponUse::Thrown || pure_ranged(w);
     a.finesse = has(w, kWeaponFinesse);
     a.properties = w.properties;
+    // Strength Drain (Lich ruling): the ability the totals were built with (attack_drain_delta)
+    a.ability_used = a.finesse ? kAttackAbilityFinesse : v.ability ? int8_t(*v.ability) : int8_t(ab);
+    if (v.damage_ability_none) a.damage_ability_used = kAttackAbilityNone;
     a.qualifiers = uint8_t(w.qualifiers | ((atk_magic > 0 || dmg_magic > 0) ? kAttackMagical : 0));
     if (a.ranged) {
         a.range_ft = w.range_ft; a.long_range_ft = w.long_range_ft;
@@ -465,6 +468,11 @@ MonsterDerivation derive_monster(const MonsterSpec& m) {
             v.to_hit_override = as.attack_bonus.value;
         }
         DerivedAttack d = derive_weapon_attack(as.weapon, v, use);
+        if (as.has_damage_override) {   // monster@5 damage_override: the printed damage[0] stands, with a reason
+            if (blank(as.damage_override_reason)) out.errors.push_back(pre + ": damage_override needs a reason");
+            if (d.attack.damage == as.damage_override) out.errors.push_back(pre + ": damage_override is not needed");
+            d.attack.damage = as.damage_override;
+        }
         if (d.attack.to_hit != as.printed_to_hit)
             out.errors.push_back(pre + ": derived to-hit " + signed_str(d.attack.to_hit) + " != printed " + signed_str(as.printed_to_hit));
         if (!as.weapon.natural && m.dice_multiplier > 1) {
