@@ -87,6 +87,9 @@ struct MonsterAttackSpec {
     int8_t printed_to_hit = 0;
     DiceExpr printed_damage{0, 0, 0};  // damage[0] only; damage[1..] stay authored and unchecked (5.6)
     bool has_use = true;               // false = `use` absent in content: derive uses one_hand, ignoring `use` (#252)
+    bool has_damage_override = false;  // monster@5 action damage_override {dice, reason}: replaces the derived damage[0]
+    DiceExpr damage_override{0, 0, 0}; //   (a block whose printed damage the derivation can't reach, e.g. SRD Gladiator thrown Spear)
+    std::string damage_override_reason{};
 };
 struct MonsterSpec {
     std::string id;                    // content id

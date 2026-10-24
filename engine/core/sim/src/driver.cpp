@@ -906,7 +906,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         if (need > ai_move_left(s, *me) && need < (1 << 20)) {
             bool shoot = false;
             for (uint8_t i = 0; i < me->attacks.size() && !shoot; ++i) shoot = me->attacks[i].ranged && c.can_shoot(self, i, t->id);
-            if (!can_attack || !shoot || need <= s.budget.movement_ft + rules5e::modified_speed(s, *me)) {   // 7.2u: what the Dash adds
+            if (!can_attack || !shoot || need <= ai_move_left(s, *me) + (me->swim_ft > 0 ? std::max(rules5e::modified_speed(s, *me), rules5e::mode_speed(s, *me, 2)) : rules5e::modified_speed(s, *me))) {   // 7.2u: what the Dash adds
                 Command d;
                 d.request = {self, ActionKind::Dash};
                 d.request.as_bonus_action = true;
