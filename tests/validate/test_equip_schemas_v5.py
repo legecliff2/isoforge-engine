@@ -357,7 +357,7 @@ class FlatDamage(unittest.TestCase):
             shutil.copytree(CORE, dst)
             (dst / "monsters" / "cat.json").write_text(json.dumps(dict(self.cat(), id="srd51.monster.cat"), indent=2), encoding="utf-8")
             man = json.loads((dst / "manifest.json").read_text(encoding="utf-8"))
-            man["contents"] = sorted(man["contents"] + ["monsters/cat.json"])
+            man["contents"] = sorted(set(man["contents"]) | {"monsters/cat.json"})   # union: no duplicate once the pack ships cat.json
             (dst / "manifest.json").write_text(json.dumps(man, indent=2), encoding="utf-8")
             warns: list[str] = []
             self.assertEqual(vp.validate_pack(dst, reg, by_tag, warns), [])
