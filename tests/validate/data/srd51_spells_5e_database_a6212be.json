@@ -1397,6 +1397,121 @@
     "type": "cube",
     "size": 20
    }
+  },
+  "spare-the-dying": {
+   "name": "Spare the Dying",
+   "level": 0,
+   "range": "Touch",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Instantaneous",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "necromancy",
+   "classes": [
+    "cleric"
+   ]
+  },
+  "true-strike": {
+   "name": "True Strike",
+   "level": 0,
+   "range": "30 feet",
+   "components": [
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 round",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "divination",
+   "classes": [
+    "bard",
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ]
+  },
+  "protection-from-poison": {
+   "name": "Protection from Poison",
+   "level": 2,
+   "range": "Touch",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "1 hour",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "abjuration",
+   "classes": [
+    "cleric",
+    "druid",
+    "paladin",
+    "ranger"
+   ]
+  },
+  "ray-of-enfeeblement": {
+   "name": "Ray of Enfeeblement",
+   "level": 2,
+   "range": "60 feet",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 minute",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "necromancy",
+   "classes": [
+    "warlock",
+    "wizard"
+   ],
+   "attack_type": "ranged",
+   "dc": {
+    "ability": "con",
+    "success": "none"
+   }
+  },
+  "beacon-of-hope": {
+   "name": "Beacon of Hope",
+   "level": 3,
+   "range": "30 feet",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Up to 1 minute",
+   "concentration": true,
+   "casting_time": "1 action",
+   "school": "abjuration",
+   "classes": [
+    "cleric"
+   ]
+  },
+  "warding-bond": {
+   "name": "Warding Bond",
+   "level": 2,
+   "range": "Touch",
+   "components": [
+    "V",
+    "S",
+    "M"
+   ],
+   "ritual": false,
+   "duration": "1 hour",
+   "concentration": false,
+   "casting_time": "1 action",
+   "school": "abjuration",
+   "classes": [
+    "cleric"
+   ],
+   "material": "A pair of platinum rings worth at least 50gp each, which you and the target must wear for the duration."
   }
  }
 }
