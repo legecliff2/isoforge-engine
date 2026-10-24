@@ -2553,6 +2553,132 @@
      ]
     }
    ]
+  },
+  "cat": {
+   "name": "Cat",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 2,
+   "hp_roll": "1d4",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "40 ft.",
+    "climb": "30 ft."
+   },
+   "abilities": [
+    3,
+    15,
+    10,
+    3,
+    12,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claws",
+     "attack_bonus": 0,
+     "damage_options": [
+      [
+       [
+        "1",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "crab": {
+   "name": "Crab",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    11
+   ],
+   "hp": 2,
+   "hp_roll": "1d4",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "20 ft.",
+    "swim": "20 ft."
+   },
+   "abilities": [
+    2,
+    11,
+    10,
+    1,
+    8,
+    2
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claw",
+     "attack_bonus": 0,
+     "damage_options": [
+      [
+       [
+        "1",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "poisonous-snake": {
+   "name": "Poisonous Snake",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 2,
+   "hp_roll": "1d4",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "30 ft."
+   },
+   "abilities": [
+    2,
+    16,
+    11,
+    1,
+    10,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
