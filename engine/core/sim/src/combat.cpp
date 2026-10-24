@@ -664,7 +664,7 @@ std::vector<Vec2i> Combat::occupied_except(CombatantId id) const {
 
 void Combat::apply_rules_events(const std::vector<rules5e::Event>& evs) {
     for (const auto& e : evs) {
-        if (e.kind == rules5e::EventKind::TurnStarted) ++turns_started_;
+        if (e.kind == rules5e::EventKind::TurnStarted) { ++turns_started_; falls_.clear(); }   // falls(): this turn only
         SimEvent se;
         se.kind = SimEvent::Kind::Rules;
         se.rules = e;
@@ -1145,11 +1145,11 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
             if (q.alt_to != 0) {   // vertical move in place: no TileMoved
                 if (!std::any_of(evs.begin(), evs.end(), [&](const rules5e::Event& x) {
                         return x.kind == rules5e::EventKind::MoveInterrupted && x.actor == q.actor; }))
-                    step_altitude(q, from, *to, g0, a0, air0);
+                    step_altitude(q, g0, a0, air0);
                 continue;
             }
             const bool stepped = move_tile(q.actor, *to, evs);
-            if (stepped) step_altitude(q, from, *to, g0, a0, air0);
+            if (stepped) step_altitude(q, g0, a0, air0);
             if (stepped)   // drag: creatures the mover holds come along (same step, else into the vacated tile)
                 for (CombatantId held : rules5e::grappled_by(state_, q.actor)) {
                     const Vec2i hp = pos(held);
@@ -1281,7 +1281,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
 }
 
 void Combat::push_rules_event(const rules5e::Event& e, const rules5e::LoggedStep* ls) {
-    if (e.kind == rules5e::EventKind::TurnStarted) ++turns_started_;
+    if (e.kind == rules5e::EventKind::TurnStarted) { ++turns_started_; falls_.clear(); }   // falls(): this turn only
     SimEvent se;
     se.kind = SimEvent::Kind::Rules;
     se.rules = e;
@@ -1730,7 +1730,7 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
             else { r.error = prone && caps.fly ? "cannot fly while prone" : "alt_to: needs flight or climbable terrain"; return r; }
         } else if (caps.burrow && !grid_.water(from)) {   // feat/rules-burrow-speed: down into (or up out of) the ground
             if (!grid_.walkable(from)) { r.error = "alt_to: cannot burrow here"; return r; }
-            mode = 0;   // burrow is not a move mode (PR #290): the walking allowance
+            mode = 4;   // altitude PR2: the burrow speed's allowance (move_allowance refuses a mover without one)
         } else {   // below the surface: water only, down to its depth
             const int depth = grid_.water_depth_ft(from);
             if (!grid_.water(from) || depth == 0) { r.error = "alt_to: cannot go below the ground"; return r; }
@@ -2282,10 +2282,7 @@ std::vector<Vec2i> Combat::path_for(CombatantId id, Vec2i from, const std::vecto
     if (burrowed(id)) return grid_.path(from, goals, occupied_except(id, abs_height_ft(id)), footprint, caps, kPathBurrowed);
     return grid_.path(from, goals, occupied_except(id), footprint, caps);
 }
-void Combat::step_altitude(const rules5e::ActionRequest& q, Vec2i from, Vec2i to, int from_ground_ft, int from_abs_ft,
-                           bool was_airborne) {
-    (void)from;
-    (void)to;
+void Combat::step_altitude(const rules5e::ActionRequest& q, int from_ground_ft, int from_abs_ft, bool was_airborne) {
     const auto* c = rules5e::find(state_, q.actor);
     if (!c) return;
     if (q.alt_to != 0) { set_altitude(q.actor, int16_t(c->alt_ft + q.alt_to), kAltMove); return; }
@@ -2315,7 +2312,7 @@ MoveCaps Combat::caps_of(CombatantId id) const {
     return m;
 }
 
-// feat/move-modes: the move mode for one step (0 walk, 1 fly, 2 swim, 3 climb), 0xFF when no fitting speed has `cost`
+// feat/move-modes: the move mode for one step (0 walk, 1 fly, 2 swim, 3 climb, 4 burrow while burrowed), 0xFF when no fitting speed has `cost`
 // feet left, 0xFE when only flight fits and the mover is prone. The terrain picks the speed: open air needs flight; climb
 // terrain uses a climb speed, else flight, else walking (extra cost already priced); water likewise with a swim speed.
 // On plain ground the walking speed, or flight when walking has too little left.
@@ -2336,6 +2333,7 @@ uint8_t Combat::step_mode(CombatantId mover, Vec2i from, Vec2i to, int cost, int
     const bool high = grid_.has_ground() &&
                       ledge_ft(grid_.footprint_ground_ft(from, fp), grid_.footprint_ground_ft(to, fp)) > kWalkableStepFt;
     if (airborne(mover)) order = {1};   // altitude PR2: an airborne flyer keeps flying
+    else if (burrowed(mover)) order = {4};   // altitude PR2: a burrowed mover tunnels on its burrow speed
     else if (air) order = {1};
     else if (climb || high) order = {3, 1, 0};   // altitude PR2: a rise of more than 5 ft is a climb
     else if (water) order = {2, 1, 0};
@@ -2395,7 +2393,7 @@ int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int fp, bool t
     }
     if (halve) cost *= 2;
     if (zoned) cost = std::min(cost, 20);
-    // altitude PR2 (chunk@3 ground; 0 on flat maps): 5 ft of movement per 5 ft of rise or descent (grid.hpp step_cost_ft);
+    // altitude PR2 (chunk@3 ground; 0 on flat maps): +5 ft for a step up of 5 ft or less (HOUSE RULE), descending free (grid.hpp step_cost_ft);
     // an airborne flyer pays only for ground that rises above its absolute height.
     if (grid_.has_ground()) {
         const int g1 = grid_.footprint_ground_ft(to, fp);

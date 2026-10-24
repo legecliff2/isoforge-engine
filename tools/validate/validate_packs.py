@@ -153,10 +153,10 @@ def ledge_ft(a_ground_ft: int, b_ground_ft: int) -> int:
 def step_extra_ft(from_ground_ft: int, to_ground_ft: int, climb: bool = False, fly: bool = False) -> int:
     """Mirror of eng::sim::step_cost_ft (docs/CHUNK_HASH.md): extra movement for a walking step on chunk@3 ground."""
     r = to_ground_ft - from_ground_ft
-    if r < -5:
-        return 0            # a drop: fall (or an airborne flyer)
+    if r <= 0:
+        return 0            # descending costs nothing extra (a drop > 5 ft is a fall, or an airborne flyer)
     if r <= 5:
-        return abs(r)       # walkable step: 5 ft per 5 ft
+        return 5            # HOUSE RULE: +5 ft for a step up of 5 ft or less
     return r if (climb or fly) else 2 * r
 
 

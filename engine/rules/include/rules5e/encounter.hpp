@@ -206,7 +206,8 @@ struct ActionRequest {
     // (Combatant::squeezing). Sim fact derived from the footprint fit; 0 = unchanged.
     uint8_t squeeze = 0;
     // appended (SRD 5.1 movement modes, feat/move-modes; log_hash 0xC3 when non-zero): on a Move, the speed used:
-    // 0 walk, 1 fly, 2 swim, 3 climb. The mode needs a speed (else "no such speed"); see move_allowance.
+    // 0 walk, 1 fly, 2 swim, 3 climb, 4 burrow (altitude PR2). The mode needs a speed (else "no such speed"); see
+    // move_allowance.
     uint8_t move_mode = 0;
     // altitude PR2: a vertical Move (sim Step to the mover's own tile): signed change of alt_ft in feet (multiple of 5;
     // up needs flight or climbable terrain, down below the ground needs water and stops at its depth). 0 = horizontal.

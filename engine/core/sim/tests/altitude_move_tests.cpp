@@ -86,6 +86,16 @@ struct Fight {
         s.request.alt_to = d;
         return c->submit(s);
     }
+    void next_turn() {   // end turns until it is `me` again
+        for (int i = 0; i < 7; ++i) {
+            Command e;
+            e.request = {rules5e::current_actor(c->state()), rules5e::ActionKind::EndTurn};
+            REQUIRE(c->submit(e).ok);
+            if (rules5e::current_actor(c->state()) == me) return;
+        }
+        FAIL("me never got a turn");
+    }
+    uint8_t last_mode() const { return c->log().back().step.request.move_mode; }
     int alt() const { return rules5e::find(c->state(), me)->alt_ft; }
     int left() const { return c->state().budget.movement_ft; }
     void check_replay() {
@@ -109,7 +119,8 @@ TEST_CASE("altitude PR2: ledge_ft / step_cost_ft rules (mirrored by tools/valida
     static_assert(ledge_ft(0, 10) == 10 && ledge_ft(10, 0) == -10);
     CHECK(step_cost_ft(0, 0, walk) == 0);
     CHECK(step_cost_ft(0, 5, walk) == 5);
-    CHECK(step_cost_ft(5, 0, walk) == 5);
+    CHECK(step_cost_ft(5, 0, walk) == 0);      // descending costs nothing extra
+    CHECK(step_cost_ft(0, 5, climb) == 5);     // HOUSE RULE: +5 ft for a step up of 5 ft or less, any speed
     CHECK(step_cost_ft(0, 10, walk) == 20);    // a climb without a climb speed: double
     CHECK(step_cost_ft(0, 10, climb) == 10);
     CHECK(step_cost_ft(0, 10, fly) == 10);
@@ -145,8 +156,8 @@ TEST_CASE("altitude PR2: chunk@3 step cost up / down, climb over 5 ft, ground = 
     CHECK(f.left() == 20);
     CHECK(f.c->abs_height_ft(f.me) == 5);
     CHECK(f.step({6, 4}).error == "not enough movement");   // rise 10 is a climb: 5 + 2 * 10 = 25 > 20
-    REQUIRE(f.step({5, 5}).ok);   // drop 5: 5 + 5
-    CHECK(f.left() == 10);
+    REQUIRE(f.step({5, 5}).ok);   // drop 5: 5 (descending is free)
+    CHECK(f.left() == 15);
     f.check_replay();
 }
 
@@ -159,6 +170,10 @@ TEST_CASE("altitude PR2: stepping off a drop of more than 5 ft is a fall (flyers
     CHECK(falls_events(*f.c) == 1);
     REQUIRE(f.c->falls().size() == 1);
     CHECK(f.c->falls()[0].fell_ft == 20);
+    f.check_replay();
+    f.next_turn();
+    CHECK(f.c->falls().empty());   // falls() lists the current turn only (cleared at each TurnStarted)
+    CHECK(falls_events(*f.c) == 1);   // the event stays
     f.check_replay();
     Fight g("flyer", {{{4, 4}, 0, 4}}, true);
     REQUIRE(g.step({5, 4}).ok);
@@ -250,22 +265,30 @@ TEST_CASE("altitude PR2: burrowers tunnel under difficult ground and creatures (
     Fight b("burrower", cells, true, Vec2i{3, 4});
     REQUIRE(b.c->state().combatants.size() >= 2);
     CHECK(rules5e::find(b.c->state(), b.me)->burrow_ft == 20);
+    // walk 30, burrow 20: burrowing spends the burrow speed (move_mode 4), sharing the turn's budget
+    CHECK(rules5e::move_allowance(b.c->state(), *rules5e::find(b.c->state(), b.me), 4) == 20);
     REQUIRE(b.vertical(-10).ok);
+    CHECK(b.last_mode() == 4);
     CHECK(b.alt() == -10);
     CHECK(b.c->burrowed(b.me));
     CHECK(b.left() == 20);
     REQUIRE(b.step({5, 4}).ok);   // difficult tile: 5 ft underground
+    CHECK(b.last_mode() == 4);
     CHECK(b.left() == 15);
     REQUIRE(b.step({5, 5}).ok);   // 15 ft rise of the ground above: no ledge cost, stays 10 ft below it
     CHECK(b.left() == 10);
     CHECK(b.alt() == -10);
     CHECK(falls_events(*b.c) == 0);
     CHECK(b.step({4, 6}).error == "tile not walkable");   // no tunnelling into water
+    CHECK(b.step({4, 4}).error == "not enough movement");   // burrow_ft spent; the 10 ft of walking does not apply
+    CHECK(b.vertical(5).error == "not enough movement");
+    b.next_turn();
     REQUIRE(b.step({4, 4}).ok);
     CHECK(b.step({3, 4}).error == "");   // under the ally: spans do not overlap
     b.check_replay();
     const auto path = b.c->path_for(b.me, b.c->pos(b.me), {{6, 4}}, 1);
     CHECK_FALSE(path.empty());
     Fight w("walker", cells, true);
-    CHECK(w.vertical(-5).error == "alt_to: cannot go below the ground");
+    CHECK(w.vertical(-5).error == "alt_to: cannot go below the ground");   // no burrow speed: cannot burrow
+    CHECK(rules5e::move_allowance(w.c->state(), *rules5e::find(w.c->state(), w.me), 4) == -1);
 }
