@@ -2,9 +2,10 @@
 """SRD 5.1 Fighter (Champion), Cleric (Life), Wizard (Evocation), Sorcerer (Draconic Bloodline), Rogue (Thief), Paladin (Oath of Devotion), Ranger (Hunter), Barbarian (Path of the Berserker), Bard (College of Lore) Druid (Circle of the Land: Mountain), Monk (Way of the Open Hand) and Warlock (The Fiend) levels 1-5 in srd51.core vs the 5e-database
 tables (ctest: content_validate_srd51_classes).
 
-`data/srd51_classes_5e_database_a6212be.json` holds fields copied verbatim from 5e-bits/5e-database commit a6212be
+`data/srd51_classes_5e_database_a6212be.json` holds fields copied from 5e-bits/5e-database commit a6212be
 (src/2014/en/5e-SRD-Classes.json, -Levels.json, -Features.json, -Subclasses.json, and -Spells.json for the spells the
-pack ships). One character@4 document per class per level (`srd51.character.<class>_level_<n>`), a human pre-generated
+pack ships; SRD 5.1, CC-BY-4.0). The hunters-mark spell entry is removed: Hunter's Mark is PHB-only and not in SRD 5.1.
+The rest of the file matches a6212be. One character@4 document per class per level (`srd51.character.<class>_level_<n>`), a human pre-generated
 PC built from the standard array (+1 to every score, SRD human) with the ASI at level 4 on the class's main ability.
 
 Asserted per document: class / subclass / hit die / level / proficiency bonus / XP threshold, saving throws and skills
@@ -517,6 +518,11 @@ class ClassTable(unittest.TestCase):
                 if level >= 2:   # base to_hit stays unbaked (test_attacks_from_items); the +2 is the feature
                     self.assertEqual(f["fighting_style_archery"]["effect"], {"kind": "attack_bonus", "attacks": "ranged", "amount": 2})
                     self.assertLessEqual(len(d["spellcasting"]["spells"]), row["spells_known"])
+                    self.assertNotIn("srd51.spell.hunters_mark", d["spellcasting"]["spells"])
+                    # Spike Growth was swapped out for Hunter's Mark and is restored at 5 (4 known; the spell already ships for the druid).
+                    self.assertEqual("srd51.spell.spike_growth" in d["spellcasting"]["spells"], level >= 5)
+                    if level >= 5:
+                        self.assertEqual(len(d["spellcasting"]["spells"]), row["spells_known"])
                 self.assertEqual("extra_attack" in f, level >= 5)
                 if level >= 5:
                     self.assertEqual(f["extra_attack"]["effect"], {"kind": "extra_attack", "attacks_per_action": 2})
