@@ -39,7 +39,7 @@ std::optional<rules5e::DiceExpr> parse_dice(std::string_view s) {
 
 namespace {
 
-// monster@5 action damage component (CONTENT_CONVENTIONS 18): `{flat N, type}` (exactly one of dice / flat, schema oneOf)
+// monster@5 action damage component (CONTENT_CONVENTIONS 19): `{flat N, type}` (exactly one of dice / flat, schema oneOf)
 // maps to DiceExpr{0, 0, N}: no dice, so no rng draw and nothing for a critical hit to double (SRD 5.1). `flat` is refused
 // below monster@5 (allow_flat false), together with dice, with bonus_vs, and outside 1..255. Absent: parse_dice as before.
 std::optional<rules5e::DiceExpr> action_damage_dice(const Json& dmg, bool allow_flat) {
