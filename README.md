@@ -56,7 +56,10 @@ dev packages listed in `.github/actions/cmake-ci/action.yml` (and in `docs/CI.md
 `libstdc++-14-dev` so Clang can link the GCC 14 libstdc++ it selects.
 
 Before pushing, `tools/ci_local.sh` runs the same Linux CI jobs locally (GCC Debug + Clang Release:
-configure, depcheck/include_lint, build, ctest) and exits non-zero on failure. See `docs/CI.md`.
+configure, depcheck/include_lint, build, ctest) and exits non-zero on failure. On a shared machine
+it sets `-j` from `MemAvailable` (default 1536 MB per job, `CI_LOCAL_MB_PER_JOB`; override with
+`CI_LOCAL_JOBS` or `-j`) and queues build/test on an exclusive `/tmp/ci_local.lock`
+(`CI_LOCAL_LOCK`, `CI_LOCAL_NO_LOCK=1` to skip). See `docs/CI.md`.
 CI runs those Linux jobs on GitHub-hosted runners for every event. Retiring the old
 self-hosted machine, and the fork-PR approval to set once the repo is public, is in
 [docs/CI_SELF_HOSTED.md](docs/CI_SELF_HOSTED.md).
