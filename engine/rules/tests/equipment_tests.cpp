@@ -369,6 +369,25 @@ TEST_CASE("derive_monster: SRD reproductions and every exact string") {
     bear.attacks[0].attack_bonus = {}; bear.natural_base = 10; bear.printed_ac = 10;   // 10 + Dex 0 already matches
     CHECK(derive_monster(bear).errors == std::vector<std::string>{"srd51.monster.black_bear: natural_armor is not needed"});
 
+    // monster@5 damage_override (CONTENT_CONVENTIONS 21): SRD Gladiator Spear "Melee or Ranged Weapon Attack ... Hit: 11 (2d6 + 4)":
+    // Brute adds its die on melee use only (the Bugbear Javelin prints 1d6 + 2 at range), so the thrown line needs the override.
+    MonsterSpec glad; glad.id = "srd51.monster.gladiator"; glad.abilities = scores(18, 15, 16, 10, 12, 15); glad.cr_num = 5;
+    glad.has_pb = true; glad.pb = 3; glad.printed_ac = 12; glad.brute_dice = 1;   // no armor here: 10 + Dex 2
+    auto spear = weapon("spear", {1, 6, 0}, kWeaponThrown | kWeaponVersatile, 5, 20, 60); spear.versatile_dice = {1, 8, 0};
+    glad.attacks = {{"spear", spear, WeaponUse::OneHand, Ability::Str, false, {}, 7, {2, 6, 4}},
+                    {"spear_thrown", spear, WeaponUse::Thrown, Ability::Str, false, {}, 7, {2, 6, 4}}};
+    e = derive_monster(glad).errors;
+    REQUIRE(e.size() == 1);
+    CHECK(e[0] == "srd51.monster.gladiator.spear_thrown: derived damage 1d6+4 != printed 2d6+4 (weapon_dice_multiplier 2 would match)");
+    glad.attacks[1].has_damage_override = true; glad.attacks[1].damage_override = {2, 6, 4};
+    glad.attacks[1].damage_override_reason = "SRD 5.1 Gladiator Spear prints 11 (2d6 + 4) for melee or ranged";
+    CHECK(derive_monster(glad).errors.empty());
+    glad.attacks[1].damage_override_reason = " ";
+    CHECK(derive_monster(glad).errors == std::vector<std::string>{"srd51.monster.gladiator.spear_thrown: damage_override needs a reason"});
+    glad.attacks[0].has_damage_override = true; glad.attacks[0].damage_override = {2, 6, 4};
+    glad.attacks[0].damage_override_reason = "x"; glad.attacks[1].damage_override_reason = "x";
+    CHECK(derive_monster(glad).errors == std::vector<std::string>{"srd51.monster.gladiator.spear: damage_override is not needed"});
+
     MonsterSpec wolf; wolf.id = "srd51.monster.wolf"; wolf.abilities = scores(12, 15, 12, 3, 12, 6); wolf.cr_num = 1; wolf.cr_den = 4;
     wolf.has_natural_armor = true; wolf.natural_base = 11; wolf.printed_ac = 13;
     auto wb = weapon("bite", {2, 4, 0}, 0); wb.natural = true;
