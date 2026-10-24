@@ -17,4 +17,4 @@ These items are authored with their passive data (cost, weight, verbatim SRD des
 | `spellbook` | stores wizard spells | spell-storage / known-spells model |
 | `net` | restrains a Large or smaller target; DC 10 Str escape; net AC 10, 5 slashing frees; one attack per action | net special rule in rules / sim |
 | `lance` | two hands unless mounted (the within-5-ft disadvantage is implemented) | mounts |
-| foci (`focus` key, CONTENT_CONVENTIONS section 17) | spellcasting focus for M components | loader maps `focus` to `ItemKind::Focus` |
+| foci (`focus` key, CONTENT_CONVENTIONS section 18) | spellcasting focus for M components | loader maps `focus` to `ItemKind::Focus` |
