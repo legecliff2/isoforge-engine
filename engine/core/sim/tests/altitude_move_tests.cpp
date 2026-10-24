@@ -32,6 +32,7 @@ ContentLibrary lib() {
     REQUIRE_FALSE(l.add(goblin("walker", Json::parse(R"({"walk":30})")), "monster"));
     REQUIRE_FALSE(l.add(goblin("flyer", Json::parse(R"({"walk":30,"fly":60})")), "monster"));
     REQUIRE_FALSE(l.add(goblin("swimmer", Json::parse(R"({"walk":30,"swim":30})")), "monster"));
+    REQUIRE_FALSE(l.add(goblin("burrower", Json::parse(R"({"walk":30,"burrow":20})")), "monster"));
     REQUIRE_FALSE(l.add(goblin("foe", Json::parse(R"({"walk":30})")), "monster"));
     return l;
 }
@@ -242,4 +243,29 @@ TEST_CASE("altitude PR2: pathing never plans a fall for a walker and prices grou
     CHECK(via_ramp);
     const auto fly = g.path({10, 4}, {{12, 4}}, {}, 1, MoveCaps{true, false, false});
     CHECK(fly.size() == 2);   // a flyer may step off
+}
+
+TEST_CASE("altitude PR2: burrowers tunnel under difficult ground and creatures (feat/rules-burrow-speed)") {
+    const std::vector<Cell> cells = {{{5, 4}, tf::kDifficult, 0}, {{5, 5}, 0, 3}, {{4, 6}, tf::kWater, 2}};
+    Fight b("burrower", cells, true, Vec2i{3, 4});
+    REQUIRE(b.c->state().combatants.size() >= 2);
+    CHECK(rules5e::find(b.c->state(), b.me)->burrow_ft == 20);
+    REQUIRE(b.vertical(-10).ok);
+    CHECK(b.alt() == -10);
+    CHECK(b.c->burrowed(b.me));
+    CHECK(b.left() == 20);
+    REQUIRE(b.step({5, 4}).ok);   // difficult tile: 5 ft underground
+    CHECK(b.left() == 15);
+    REQUIRE(b.step({5, 5}).ok);   // 15 ft rise of the ground above: no ledge cost, stays 10 ft below it
+    CHECK(b.left() == 10);
+    CHECK(b.alt() == -10);
+    CHECK(falls_events(*b.c) == 0);
+    CHECK(b.step({4, 6}).error == "tile not walkable");   // no tunnelling into water
+    REQUIRE(b.step({4, 4}).ok);
+    REQUIRE(b.step({3, 4}).ok);   // under the ally: spans do not overlap
+    b.check_replay();
+    const auto path = b.c->path_for(b.me, b.c->pos(b.me), {{6, 4}}, 1);
+    CHECK_FALSE(path.empty());
+    Fight w("walker", cells, true);
+    CHECK(w.vertical(-5).error == "alt_to: cannot go below the ground");
 }

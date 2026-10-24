@@ -400,14 +400,17 @@ std::optional<std::string> Combat::plan_step(CombatantId mover, Vec2i to, StepPl
     const MoveCaps caps = caps_of(mover);
     const bool air = airborne(mover);   // altitude PR2: flies over low obstacles and creatures below / above it
     const int air_abs = air ? abs_height_ft(mover) : -1;
+    const bool under = !air && burrowed(mover);   // tunnels under walkable ground, below surface creatures
+    const int depth = under ? int(me->alt_ft) : 0;
     auto fits = [&](int n, bool& through) -> std::optional<std::string> {
         through = false;
-        const int abs_ft = air ? air_abs : grid_.footprint_ground_ft(to, n);
+        const int abs_ft = air ? air_abs : grid_.footprint_ground_ft(to, n) + depth;
         for (int dy = 0; dy < n; ++dy)
             for (int dx = 0; dx < n; ++dx) {
                 const Vec2i t{to.x + dx, to.y + dy};
                 if (t.x >= from.x && t.x < from.x + cur && t.y >= from.y && t.y < from.y + cur) continue;
-                if (air ? !grid_.passable_over(t, caps, air_abs) : !grid_.enterable(t, caps))
+                if (under ? !(grid_.walkable(t) && !grid_.water(t))
+                          : air ? !grid_.passable_over(t, caps, air_abs) : !grid_.enterable(t, caps))
                     return std::string("tile not walkable");   // feat/move-modes
                 if (const CombatantId o = occupant_at(t, mover, abs_ft)) {
                     if (!may_pass(mover, o)) return std::string("tile occupied");
@@ -1722,7 +1725,10 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
             if (caps.fly && !prone) mode = 1;
             else if (grid_.climbable(from)) { mode = caps.climb ? 3 : 0; mult = caps.climb ? 1 : 2; }
             else { r.error = prone && caps.fly ? "cannot fly while prone" : "alt_to: needs flight or climbable terrain"; return r; }
-        } else {   // below the surface: water only, down to its depth (no burrowing yet)
+        } else if (caps.burrow && !grid_.water(from)) {   // feat/rules-burrow-speed: down into (or up out of) the ground
+            if (!grid_.walkable(from)) { r.error = "alt_to: cannot burrow here"; return r; }
+            mode = 0;   // burrow is not a move mode (PR #290): the walking allowance
+        } else {   // below the surface: water only, down to its depth
             const int depth = grid_.water_depth_ft(from);
             if (!grid_.water(from) || depth == 0) { r.error = "alt_to: cannot go below the ground"; return r; }
             target = std::max(target, -depth);
@@ -2247,6 +2253,10 @@ bool Combat::airborne(CombatantId id) const {
     const auto* c = rules5e::find(state_, id);
     return c && c->alt_ft > 0 && c->fly_ft > 0 && !c->has(rules5e::Condition::Prone);
 }
+bool Combat::burrowed(CombatantId id) const {
+    const auto* c = rules5e::find(state_, id);
+    return c && c->alt_ft < 0 && c->burrow_ft > 0 && !grid_.water(pos(id));
+}
 std::vector<Vec2i> Combat::occupied_except(CombatantId id, int abs_ft) const {
     std::vector<Vec2i> out;
     bool mover_swarm = false;
@@ -2266,6 +2276,7 @@ std::vector<Vec2i> Combat::path_for(CombatantId id, Vec2i from, const std::vecto
         const int abs_ft = abs_height_ft(id);
         return grid_.path(from, goals, occupied_except(id, abs_ft), footprint, caps, abs_ft);
     }
+    if (burrowed(id)) return grid_.path(from, goals, occupied_except(id, abs_height_ft(id)), footprint, caps, kPathBurrowed);
     return grid_.path(from, goals, occupied_except(id), footprint, caps);
 }
 void Combat::step_altitude(const rules5e::ActionRequest& q, Vec2i from, Vec2i to, int from_ground_ft, int from_abs_ft,
@@ -2297,7 +2308,7 @@ void Combat::step_altitude(const rules5e::ActionRequest& q, Vec2i from, Vec2i to
 
 MoveCaps Combat::caps_of(CombatantId id) const {
     MoveCaps m;
-    if (const auto* c = rules5e::find(state_, id)) { m.fly = c->fly_ft > 0; m.swim = c->swim_ft > 0; m.climb = c->climb_ft > 0; }
+    if (const auto* c = rules5e::find(state_, id)) { m.fly = c->fly_ft > 0; m.swim = c->swim_ft > 0; m.climb = c->climb_ft > 0; m.burrow = c->burrow_ft > 0; }
     return m;
 }
 
@@ -2341,7 +2352,8 @@ int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to) const { return
 int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int fp, bool through_creature) const {
     const MoveCaps caps = caps_of(mover);
     // altitude PR2: an airborne flyer ignores difficult tiles and other creatures' space (zones still apply).
-    const bool air = airborne(mover);
+    // A burrowed mover tunnels at 5 ft per tile the same way (feat/rules-burrow-speed; zones still apply).
+    const bool air = airborne(mover) || burrowed(mover);
     bool difficult = through_creature && !air, halve = false, zoned = false;
     if (!state_.zones.empty() && spells_)
         for (const auto& z : state_.zones) {
@@ -2384,7 +2396,8 @@ int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int fp, bool t
     // an airborne flyer pays only for ground that rises above its absolute height.
     if (grid_.has_ground()) {
         const int g1 = grid_.footprint_ground_ft(to, fp);
-        if (air) cost += std::max(0, g1 - abs_height_ft(mover));
+        if (burrowed(mover)) {}   // stays at its depth below the ground: no ledge cost
+        else if (air) cost += std::max(0, g1 - abs_height_ft(mover));
         else cost += eng::sim::step_cost_ft(grid_.footprint_ground_ft(from, fp), g1, caps);
     }
     return cost;

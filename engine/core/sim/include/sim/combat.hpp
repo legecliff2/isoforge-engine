@@ -226,6 +226,8 @@ public:
     // Airborne flyer: alt_ft > 0, a fly speed, not prone. It flies over terrain: difficult tiles and other creatures'
     // space cost nothing extra, obstacles lower than it and creatures it does not overlap vertically do not block.
     bool airborne(CombatantId id) const;
+    // Below the ground (alt_ft < 0) on a non-water tile with a burrow speed (feat/rules-burrow-speed): tunnelling.
+    bool burrowed(CombatantId id) const;
     // The caps search the AI and readied moves use (Grid::path with chunk@3 costs; the airborne variant when airborne).
     std::vector<Vec2i> path_for(CombatantId id, Vec2i from, const std::vector<Vec2i>& goals, int footprint) const;
     // altitude PR2: falls recorded for PR4 (fall damage). Sim-side bookkeeping, not hashed (the AltitudeChanged event

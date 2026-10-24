@@ -210,7 +210,9 @@ std::vector<Vec2i> Grid::path(Vec2i from, const std::vector<Vec2i>& goals, const
 std::vector<Vec2i> Grid::path_impl(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied,
                                    int footprint, const MoveCaps* caps, int airborne_abs_ft) const {
     const bool air = caps && caps->fly && airborne_abs_ft >= 0;
+    const bool under = caps && caps->burrow && airborne_abs_ft == kPathBurrowed;
     auto ok = [&](Vec2i t) {
+        if (under) return walkable(t) && !water(t);
         if (air) return passable_over(t, *caps, airborne_abs_ft);
         return caps ? enterable(t, *caps) : walkable(t);
     };
@@ -253,7 +255,9 @@ std::vector<Vec2i> Grid::path_impl(Vec2i from, const std::vector<Vec2i>& goals, 
                 if (!fits) continue;
             }
             int step = caps ? move_cost_ft(p, q, footprint, *caps) : move_cost_ft(p, q, footprint);
-            if (air) {
+            if (under) {
+                step = kFeetPerTile;
+            } else if (air) {
                 step = kFeetPerTile + std::max(0, footprint_ground_ft(q, footprint) - airborne_abs_ft);
             } else if (vertical) {
                 const int g0 = footprint_ground_ft(p, footprint), g1 = footprint_ground_ft(q, footprint);
