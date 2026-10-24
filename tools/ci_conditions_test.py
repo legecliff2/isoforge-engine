@@ -54,15 +54,25 @@ def gate_ok(ctx):
     LAST_GATE=(proc.returncode, proc.stdout, proc.stderr)
     return proc.returncode==0
 def run(event,labels=(),code=True,mac=False,fail=None,draft=False,fork=False,moved=True,override=None):
-    # changes job: outputs only set by steps whose if matches (code: PR/push; mac: PR)
-    out={'code':'true' if code and event in('pull_request','push') else '', 'mac':'true' if mac and event=='pull_request' else ''}
+    # changes job: outputs only set by steps whose if matches (code: PR/push; mac: PR).
+    # paths-filter writes the strings true and false. Empty is a step that did not run
+    # (schedule, dispatch, or a skipped changes job).
+    code_step=event in('pull_request','push')
+    mac_step=event=='pull_request'
+    out={
+        'code':('true' if code else 'false') if code_step else '',
+        'mac':('true' if mac else 'false') if mac_step else '',
+    }
     ctx=dict(event=event,labels=set(labels),out=out,res={},draft=draft,fork=fork)
     ctx['res']['changes']='success' if ev(J['changes']['if'],ctx) else 'skipped'
     if ctx['res']['changes']=='skipped': ctx['out']={}
     lr=ctx['res']['changes']=='success' and ev(J['linux-runner']['if'],ctx)
     ctx['res']['linux-runner']='success' if lr else 'skipped'
     ng=ev(J['nightly-gate']['if'],ctx); ctx['res']['nightly-gate']='success' if ng else 'skipped'
-    ctx['out']['run']='true' if ng and moved else ''
+    if ng:
+        ctx['out']['run']='true' if moved else 'false'
+    else:
+        ctx['out']['run']=''
     for j in ['build-test','windows-release','macos']:
         c=ctx['res']['changes']=='success' or J[j]['if'].lstrip().startswith('always()')
         ctx['res'][j]=('failure' if fail==j else 'success') if c and ev(J[j]['if'],ctx) else 'skipped'
@@ -135,6 +145,43 @@ FORCED = [  # kwargs, result overrides, gate, label
      False, 'draft fails even if results look green'),
 ]
 for kw, override, expect, label in FORCED:
+    r,g,_=run(override=override, **kw)
+    print(f"{label:42} -> gate {'PASS' if g else 'FAIL'}")
+    if g!=expect:
+        bad+=1; print('MISMATCH', label, g, expect, r); print(LAST_GATE[1], LAST_GATE[2])
+# Docs-only (paths-filter code/mac are the strings false, not empty) must pass when
+# changes succeeded and the build jobs are skipped. A draft that skips every job must
+# still fail, including when the result strings are all skipped. failure and cancelled
+# on a build that this event did not require still fail the gate.
+NAMED = [  # kwargs, (build-test, windows-release, macos), gate, label
+    (dict(event='pull_request', code=False, mac=False), ('skipped','skipped','skipped'), True, 'docs-only pull_request pass'),
+    (dict(event='push', code=False), ('skipped','skipped','skipped'), True, 'docs-only push pass'),
+    (dict(event='pull_request', code=False, mac=False, labels=('ci-windows-release',)), ('skipped','skipped','skipped'), True, 'docs-only pull_request windows label pass'),
+    (dict(event='pull_request', draft=True, code=True, mac=True, labels=('ci-windows-release',)), ('skipped','skipped','skipped'), False, 'draft all-skip fail'),
+    (dict(event='pull_request', fork=True, code=True), ('skipped','skipped','skipped'), False, 'fork all-skip fail'),
+]
+for kw, jobs, expect, label in NAMED:
+    r,g,_=run(**kw)
+    got=(r['build-test'], r['windows-release'], r['macos'])
+    print(f"{label:42} -> jobs={got} gate={'PASS' if g else 'FAIL'}")
+    if got!=jobs or g!=expect:
+        bad+=1; print('MISMATCH', label, got, jobs, g, expect); print(LAST_GATE[1], LAST_GATE[2])
+    if label.startswith('docs-only') and expect and r['changes']!='success':
+        bad+=1; print('MISMATCH', label, 'changes', r['changes'])
+    if label.startswith('docs-only') and expect and 'code=false' not in LAST_GATE[1]:
+        bad+=1; print('MISMATCH', label, 'expected code=false', LAST_GATE[1])
+# Same shell env a docs-only pull_request produces: code=false, every build skipped.
+for kw, override, expect, label in (
+    (dict(event='pull_request', code=False, mac=False),
+     {'linux-runner':'skipped','build-test':'skipped','windows-release':'skipped','macos':'skipped','nightly-gate':'skipped'},
+     True, 'docs-only explicit build skips pass'),
+    (dict(event='pull_request', code=False, mac=False), {'build-test':'failure'}, False, 'docs-only build-test failure fails'),
+    (dict(event='pull_request', code=False, mac=False), {'macos':'cancelled'}, False, 'docs-only macos cancelled fails'),
+    (dict(event='push', code=False), {'build-test':'skipped','windows-release':'skipped','linux-runner':'skipped'}, True, 'docs-only push explicit skips pass'),
+    (dict(event='pull_request', draft=True),
+     {'changes':'skipped','linux-runner':'skipped','nightly-gate':'skipped','build-test':'skipped','windows-release':'skipped','macos':'skipped'},
+     False, 'draft all-skip forced results fail'),
+):
     r,g,_=run(override=override, **kw)
     print(f"{label:42} -> gate {'PASS' if g else 'FAIL'}")
     if g!=expect:
