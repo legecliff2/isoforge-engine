@@ -222,6 +222,14 @@ int attack_score(const rules5e::Combatant& me, uint8_t attack_index, const rules
 }
 
 namespace {
+// Movement left for the AI's reach / approach checks: the walking allowance, or with a swim speed the larger of it and
+// the swimming allowance (SRD "using different speeds"; rules5e::move_allowance). A swim-only creature (walk 0) is not
+// treated as unable to close. Creatures without a swim speed read TurnBudget::movement_ft exactly as before.
+int ai_move_left(const rules5e::EncounterState& st, const rules5e::Combatant& me) {
+    int left = st.budget.movement_ft;
+    if (me.swim_ft > 0) left = std::max(left, rules5e::move_allowance(st, me, 2));
+    return left;
+}
 bool attack_usable(const rules5e::EncounterState& st, CombatantId self, uint8_t i) {
     return rules5e::attack_refusal(st, self, i).empty();
 }
@@ -257,7 +265,7 @@ PlanValue weapon_value(const Combat& c, const rules5e::EncounterState& st, const
         int now = 0;
         if (!a.ranged) {
             const int reach = reach_tiles(a.reach_or_range_ft);
-            if (d <= reach || path_cost_to(c, me.id, t.id, reach) <= int(st.budget.movement_ft)) now = attack_score(me, i, t, false);
+            if (d <= reach || path_cost_to(c, me.id, t.id, reach) <= ai_move_left(st, me)) now = attack_score(me, i, t, false);
         } else if (c.can_shoot(me.id, i, t.id)) {
             now = attack_score(me, i, t, c.ranged_disadvantage(me.id, i, t.id));
         }
@@ -641,7 +649,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
                 for (const auto& am : s.modifiers) active = active || (am.target == self && am.spec.id == m.id);
             }
             const int reach_now = c.distance_tiles(self, t->id) * kFeetPerTile;
-            if (!self_only || active || reach_now > int(me->speed_ft) + 10) continue;
+            if (!self_only || active || reach_now > std::max<int>(me->speed_ft, me->swim_ft) + 10) continue;
             Command u;
             u.request = {self, ActionKind::UseFeature};
             u.request.feature_id = f.feature_id;
@@ -895,10 +903,10 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // `aggressive`) do this, so no other combat changes.
     if (me->aggressive && s.budget.bonus_action && !me->has(rules5e::Condition::Blinded) && c.line_of_sight(self, t->id)) {
         const int need = melee_path_cost();
-        if (need > s.budget.movement_ft && need < (1 << 20)) {
+        if (need > ai_move_left(s, *me) && need < (1 << 20)) {
             bool shoot = false;
             for (uint8_t i = 0; i < me->attacks.size() && !shoot; ++i) shoot = me->attacks[i].ranged && c.can_shoot(self, i, t->id);
-            if (!can_attack || !shoot || need <= s.budget.movement_ft + rules5e::modified_speed(s, *me)) {   // 7.2u: what the Dash adds
+            if (!can_attack || !shoot || need <= ai_move_left(s, *me) + (me->swim_ft > 0 ? std::max(rules5e::modified_speed(s, *me), rules5e::mode_speed(s, *me, 2)) : rules5e::modified_speed(s, *me))) {   // 7.2u: what the Dash adds
                 Command d;
                 d.request = {self, ActionKind::Dash};
                 d.request.as_bonus_action = true;
@@ -907,7 +915,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             }
         }
     }
-    if (eq && can_attack && (eq_ranged || melee_path_cost() > s.budget.movement_ft)) {
+    if (eq && can_attack && (eq_ranged || melee_path_cost() > ai_move_left(s, *me))) {
         // Equipment: the usable ranged attack (thrown included) with the best attack_score, disadvantage priced in (earliest on
         // ties). With a hostile within 5 ft (disadvantage) and a usable melee attack, hit that hostile in melee instead.
         std::optional<uint8_t> best;
@@ -949,7 +957,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             a.request.attack_index = *best;
             return a;
         }
-    } else if (can_attack && melee_path_cost() > s.budget.movement_ft) {
+    } else if (can_attack && melee_path_cost() > ai_move_left(s, *me)) {
         std::optional<uint8_t> best;
         bool best_clean = false;
         for (uint8_t i = 0; i < me->attacks.size(); ++i) {
