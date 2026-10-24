@@ -306,10 +306,10 @@ See `docs/CONTENT_CONVENTIONS.md` for the timed-modifier properties the sim comp
 | `teleport` | Teleport | yes | **`max_feet`** (positive multiple of 5), `needs_sight` (default true); self (Misty Step); R-G9, sim #144 |
 | `polymorph` | Polymorph (R-G12, 7.2q; parsed by the rules spell loader since #171) | yes (`polymorph: primary effect only`) | `forms[]` (beast content ids), `max_cr` (`target_level` or a CR string), `save {ability}` (default wis); one target, concentration; `docs/CONTENT_CONVENTIONS.md` section 9 |
 | `zone` | Zone (`SpellDef::zone`, `ZoneSpec`) | yes (never an extra effect) | `zone {shape (sphere, cylinder, cube, line), size_ft, height_ft, length_ft, anchor, flags[], move, chooses_excluded, needs_conscious_owner, upcast_size_ft, ring_size_ft, sided, side_ft, aura_modifier, aura_bonus_ability, aura_immunity[], aura_allies_only, triggers[]}` (rows add `region`, `loses_action`, `auto_success_damage[]` / `_conditions[]` / `_no_breath`, `shapechanger_disadvantage`, `evil_damage_type`; rules PR 2 keys, section 4.6); needs a lasting duration (the zone's expiry timer); parsed by the loader since R-G11 rules PR 2 (#122); `docs/CONTENT_CONVENTIONS.md` section 4 |
-| `descriptive` | Descriptive (`SpellEffectKind::Descriptive`) | must be the only effect | exactly `{"kind":"descriptive"}` (no other keys). The spell loads and stays on the spell list. `legal_actions` never offers it and `cast_spell` refuses it. No sim event. `docs/CONTENT_CONVENTIONS.md` section 20 |
+| `descriptive` | Descriptive (`SpellEffectKind::Descriptive`) | must be the only effect | exactly `{"kind":"descriptive"}` (no other keys). The spell loads and stays on the spell list. `legal_actions` never offers it and `cast_spell` refuses it. No sim event. `docs/CONTENT_CONVENTIONS.md` section 28 |
 
 Details and loader messages: `docs/CONTENT_CONVENTIONS.md` section 4 (R-G11 zones), section 6 (R-G15 kinds, sim #120), section 6.1 (R-G9 forced_move / teleport, sim #144), section 7 (priced material
-components, character@4 `equipment[].value_gp`) and section 20 (text-only `descriptive`).
+components, character@4 `equipment[].value_gp`) and section 28 (text-only `descriptive`).
 
 ## on_event predicates and usage (mirrors sim #158)
 

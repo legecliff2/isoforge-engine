@@ -902,7 +902,7 @@
                 }
               }
             ],
-            "description": "Text-only (CONTENT_CONVENTIONS section 20). The oneOf arm allows only kind: the object is exactly {kind: descriptive}. It must be the spell's only effect (loader and tools/validate: descriptive effect must be the spell's only effect). Any other key is descriptive effect: unknown key. No spell@1 bump (CONTENT_COMPAT.md §1)."
+            "description": "Text-only (CONTENT_CONVENTIONS section 28). The oneOf arm allows only kind: the object is exactly {kind: descriptive}. It must be the spell's only effect (loader and tools/validate: descriptive effect must be the spell's only effect). Any other key is descriptive effect: unknown key. No spell@1 bump (CONTENT_COMPAT.md §1)."
           }
         },
         {
