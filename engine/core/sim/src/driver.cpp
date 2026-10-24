@@ -237,8 +237,8 @@ bool attack_usable(const rules5e::EncounterState& st, CombatantId self, uint8_t 
 // Movement cost to stand within `reach` tiles of `t` (1 << 20 = no path).
 int path_cost_to(const Combat& c, CombatantId self, CombatantId t, int reach) {
     const Vec2i mp = c.pos(self);
-    const auto p = c.grid().path(mp, goal_anchors(c.pos(t), c.footprint_size(t), c.footprint_size(self), reach),
-                                 c.occupied_except(self), c.footprint_size(self), c.caps_of(self));
+    const auto p = c.path_for(self, mp, goal_anchors(c.pos(t), c.footprint_size(t), c.footprint_size(self), reach),
+                              c.footprint_size(self));   // altitude PR2: chunk@3 ground / airborne rules
     if (p.empty()) return 1 << 20;
     int cost = 0;
     Vec2i prev = mp;
@@ -707,6 +707,48 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             cast.request.targets = {t->id};
             return cast;
         }
+    // Innate spells (monster@4 / character@4 `spellcasting.innate`): the AI picks among what rules legal_actions lists
+    // (uses left, casting time, Silence, components, target type, and since fix/rules-legal-actions-spells self-range
+    // modifiers with target = caster and Heat Metal once per eligible metal item with equip_item set). It goes before a
+    // multiattack or a plain attack, in list order:
+    // - a self-range modifier (Blur) on the caster, if no modifier from that spell is already on it;
+    // - a cast at the target (Heat Metal keeps the listed equip_item) when it is in range and sight. An area one is aimed
+    //   at the target and skipped if it would catch an ally.
+    // Zone spells (Fog Cloud) stay the caller's decision and are skipped.
+    if (!beast_form && s.budget.action && s.budget.sequence == 0 && s.budget.attacks_remaining == 0 && rules5e::is_conscious(*t) &&
+        !me->innate.empty())
+        for (const auto& q : c.legal_actions()) {
+            if (q.kind != ActionKind::CastSpell || !q.innate) continue;
+            const auto* def = c.spell_def(q.spell_id);
+            if (!def || def->kind == rules5e::SpellEffectKind::Zone) continue;
+            if (q.target == self && def->range_ft == 0) {
+                if (def->kind != rules5e::SpellEffectKind::ApplyModifier || def->area != rules5e::AreaShape::None) continue;
+                bool active = false;
+                for (const auto& m : s.modifiers) active = active || (m.target == self && m.spec.source == q.spell_id);
+                if (active) continue;
+                Command cast;
+                cast.request = q;
+                cast.request.targets = {self};
+                return cast;
+            }
+            if (q.target != t->id || def->range_ft == 0 || c.distance_tiles(self, t->id) * kFeetPerTile > int(def->range_ft) ||
+                !c.line_of_sight(self, t->id))
+                continue;
+            Command cast;
+            cast.request = q;
+            if (def->area != rules5e::AreaShape::None) {
+                bool ally = false;
+                const auto hit = c.area_targets(self, *def, c.pos(t->id));
+                for (CombatantId id : hit) ally = ally || !c.hostile(self, id);
+                if (hit.empty() || ally) continue;
+                cast.aim = true;
+                cast.to = c.pos(t->id);
+                cast.request.targets.clear();
+            } else {
+                cast.request.targets = {t->id};
+            }
+            return cast;
+        }
     // Rampage (trigger rider bonus_attack): while a grant is present, the bonus-action attack is the granted attack index
     // (grant - 1) against the target if it is in reach (melee) or legal to shoot; otherwise the grant is left unused.
     if (s.budget.bonus_attack_grant != 0 && s.budget.bonus_action && rules5e::is_conscious(*t)) {
@@ -845,7 +887,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // Can't get into melee reach this turn: shoot if a ranged attack is legal (range + LOS),
     // preferring one without disadvantage.
     auto melee_path_cost = [&]() {
-        const auto p = c.grid().path(mp, goal_anchors(tp, tn, mn, reach), c.occupied_except(self), mn, c.caps_of(self));
+        const auto p = c.path_for(self, mp, goal_anchors(tp, tn, mn, reach), mn);
         if (p.empty()) return 1 << 20;
         int cost = 0;
         Vec2i prev = mp;
@@ -928,7 +970,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
         }
     }
     // Goals: tiles within reach of the target.
-    const auto path = c.grid().path(mp, goal_anchors(tp, tn, mn, reach), c.occupied_except(self), mn, c.caps_of(self));
+    const auto path = c.path_for(self, mp, goal_anchors(tp, tn, mn, reach), mn);
     if (path.empty()) return end;
     if (const uint8_t m = c.step_mode(self, mp, path[0], c.step_cost_ft(self, mp, path[0])); m >= 0xFE) return end;   // feat/move-modes
     // About to leave a hostile's reach: Disengage first if a bonus Disengage is available

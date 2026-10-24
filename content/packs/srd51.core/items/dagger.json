@@ -4,6 +4,7 @@
   "name": "Dagger",
   "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
   "category": "weapon",
+  "material": "metal",
   "cost_cp": 200,
   "weight_oz": 16,
   "weapon_class": "simple",

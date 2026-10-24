@@ -4,6 +4,7 @@
   "name": "Shield",
   "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
   "category": "shield",
+  "material": "metal",
   "cost_cp": 1000,
   "weight_oz": 96,
   "ac_bonus": 2

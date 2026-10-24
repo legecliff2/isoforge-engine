@@ -33,9 +33,11 @@ public:
     ItemDefTable(const ItemDefTable&) = delete;
     ItemDefTable& operator=(const ItemDefTable&) = delete;
     // One already-migrated item@1 document (weapon / armor / shield / valuable). Error message or nullopt.
+    // `warnings`, when set, receives loader diagnostics (an unknown `material` string). ContentLibrary::add_item
+    // passes ContentLibrary::warnings(), the same channel as a summon max_count clip.
     // item@2 `gear` with a `light` block becomes ItemKind::Light (LightDef: states = [top-level radii, states[]...] up to
     // rules5e::kMaxLightStates, shape, duration, lit_by_default); `torch_attack` adds the improvised weapon profile (requires_lit). Other gear: Other.
-    std::optional<std::string> add(const assets::Json& doc);
+    std::optional<std::string> add(const assets::Json& doc, std::vector<std::string>* warnings = nullptr);
     // A definition built in code (tests; item@2 light / ammunition kinds before their loader). def.id is set from content_id;
     // def.weapon.id is re-pointed at owned storage (the attack id is the content id's last segment).
     std::optional<std::string> add(const std::string& content_id, rules5e::ItemDef def);

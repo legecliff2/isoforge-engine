@@ -1,6 +1,6 @@
 # SRD 5.1 monsters, CR 0-2 first batch: authored vs deferred
 
-> This work includes material taken from the System Reference Document 5.1 ("SRD 5.1") by Wizards of the Coast LLC, available at <https://dnd.wizards.com/resources/systems-reference-document>. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License, <https://creativecommons.org/licenses/by/4.0/legalcode>.
+> This work includes material taken from the System Reference Document 5.1 (“SRD 5.1”) by Wizards of the Coast LLC and available at https://dnd.wizards.com/resources/systems-reference-document. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License available at https://creativecommons.org/licenses/by/4.0/legalcode.
 
 Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `docs/SRD_SPELLS_DEFERRED.md`; pack `content/packs/srd51.core`.
 
@@ -13,11 +13,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | | count |
 |---|---|
 | inventory candidates | 30 |
-| authored now as `monster@4` | 33 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189) |
+| authored now (`monster@4`, all converted to `monster@5` in §14 of CONTENT_CONVENTIONS) | 42 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189; 9 bestiary v0.1 batch 1 monsters as `monster@5` with `derive: true`: deer, pony, awakened shrub, hyena, cultist, giant weasel, mastiff, noble, tribal warrior) |
 | goblin (already shipped, left at `monster@3`) | 1 |
-| deferred (mechanic not expressible) | 0 |
+| deferred (mechanic not expressible) | 2 (rat, scorpion: bestiary v0.1 batch 1) |
 
-## Authored (33, all `monster@4`)
+## Authored (42; batch 1 rows below at `monster@5` + `derive: true`)
 
 | monster | CR | mechanics carried as data | notes |
 |---|---|---|---|
@@ -54,6 +54,15 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Medusa | 6 | Petrifying Gaze as `gaze` (Con DC 14, 30 ft, `escalate_margin` 5: failing by 5 or more petrifies at once; otherwise restrained, then petrified on a failed repeat save); Multiattack: snake hair + 2 shortswords, or 2 longbows; snake hair and longbow with a poison damage component | **partial**: as basilisk, the reflection curse is description only; proficiency bonus +3 (CR 6) |
 | Gelatinous Cube | 2 | Engulf as `save_effect` (Dex DC 12, 3d6 acid, no effect on a success) + `apply` restrained, `escape` Str DC 12, `max_size large`, `contain {engulf, 6d6 acid}` (Rules #189, 7.2w: acid at the start of the cube's turns, freed when it dies); Transparent as trait effect `{kind: transparent, dc: 15}`; pseudopod; 6 condition immunities, blindsight 60 | **partial**: the cube's move through spaces, the "pushed instead" choice on a success, the Ooze Cube trait (entering its space, pulling a creature out, capacity of one Large or four Medium) and moving engulfed creatures with the cube are description only (sim movement pending, coverage row 11) |
 | Giant Toad | 1 | bite with two damage components + `on_hit [{kind: grapple, escape_dc: 13}]`; Swallow as `attack_effect` (melee +4, 5 ft) + `apply` restrained, `max_size medium`, `contain {swallow, 3d6 acid}` (Rules #189: blinded, total cover from outside, one at a time, exits prone when the toad dies) | **partial**: "restrained while grappled", "can't bite another target", Swallow being a bite against the creature it is grappling (with the bite's damage) are not modelled (no grappled-by-self predicate; attack_effect carries no damage). Amphibious / Standing Leap descriptive |
+| Deer | 0 | bite (natural 1d4, Str) | |
+| Pony | 1/8 | hooves (natural 2d4, Str) | |
+| Awakened Shrub | 0 | rake (natural 1d4, Dex), vulnerability fire, resistance piercing | False Appearance descriptive |
+| Hyena | 0 | Pack Tactics (`pack_tactics`), bite (natural 1d6, Str) | |
+| Cultist | 1/8 | leather armor, scimitar | **partial**: Dark Devotion (advantage on saving throws against being charmed or frightened) is description only: no monster trait construct grants save advantage keyed on the condition (`advantage_on.saves` is per ability and feature-only; the rules `save_vs_conditions` row of SRD_COMBAT_COVERAGE has no content loader yet), so the cultist saves against charm / fear normally |
+| Giant Weasel | 1/8 | bite (natural 1d4, Dex), darkvision 60 | Keen Hearing and Smell descriptive |
+| Mastiff | 1/8 | bite (natural 1d6, Str) with knock-prone rider (Str DC 11, prone untimed, as wolf) | Keen Hearing and Smell descriptive |
+| Noble | 1/8 | breastplate, rapier; Parry as `reactions[]` (`being_hit`, `melee_only`, `requires_sight`, `ac_bonus 2`) | "be wielding a melee weapon" is not a predicate; the noble's only weapon (rapier) is always equipped |
+| Tribal Warrior | 1/8 | Pack Tactics (`pack_tactics`), hide armor, spear (1h / 2h / thrown, as guard) | |
 
 The goblin keeps `$schema: monster@3`, its id (`srd51.monster.goblin`, stable id derived from it) and bytes. It is referenced by C++ tests that assert its `@3` form (`content_migration_tests`, `pack_set_tests`, compat goblin tests) and by the fl1 compat corpus, and a schema change could shift digests and goldens; migrating it buys nothing until a `@4`-only feature is needed.
 
@@ -64,9 +73,14 @@ Not set: `presentation` (the goblin has none; sprite assets for these monsters d
 Played: stats, attacks with every `damage[]` entry (#45), resistances / immunities / vulnerabilities / condition immunities (#45), `multiattack` options (#48/#59), `damage_mitigation` (#47/#58), `bonus_action_grant`, size footprint (#50/#55).
 Carried and validated but **not applied** (the registry reserves the `@4` kinds; the archetype lists them in `unsupported_features` and ignores them): `on_event` (Undead Fortitude, Rampage, Sneak Attack), `on_hit[]` riders (snake poison), `save_effect` actions with `usage` (Acid Breath). Until Engine Core lands the row 6 compile / row 9-10 trigger hooks these monsters play without those effects. No content change is needed when the hooks land.
 
-## Deferred (0)
+## Deferred (2)
 
-None. The last deferred monster, `srd51.monster.swarm_of_rats` (T&C-G7, T&C-G14, T&C-G15), was authored after sim #172 (swarm tag, `half_hp_damage`).
+The last pre-v0.1 deferred monster, `srd51.monster.swarm_of_rats` (T&C-G7, T&C-G14, T&C-G15), was authored after sim #172 (swarm tag, `half_hp_damage`).
+
+| monster | CR | blocking mechanic |
+|---|---|---|
+| Rat (`srd51.monster.rat`) | 0 | Bite deals a flat **1** piercing damage (no die). monster@5 / common@2 `damage[].dice` must be `NdS[+/-B]` (no `flat` arm on monster damage), and `natural.dice` likewise; the to-hit (+0) would also need an `attack_bonus` override. Not approximated. |
+| Scorpion (`srd51.monster.scorpion`) | 0 | Sting deals a flat **1** piercing damage (same gap as the rat); the Con DC 9 1d8 poison rider itself is expressible. Not approximated. |
 
 ### Re-check at `cfb5eed` (2026-10-19)
 
