@@ -3443,6 +3443,15 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             }
         }
         if (def.concentration && applied) a.concentration_spell = def.id;
+        // 7.2zi Expeditious Retreat: "When you cast this spell ... you can take the Dash action." The bonus action was
+        // already spent to cast, so this Dash is part of the cast, not a second action. Same grant as ActionKind::Dash.
+        // Later turns still Dash as a bonus action via the BonusDash marker. No rng. Unused movement stays legal.
+        // The flag is not a modifier field (not 0x5F, not a new tag). Only the current actor's budget moves.
+        if (def.dash_on_cast && applied && current_actor(s) == a.id) {
+            s.budget.movement_ft = int16_t(s.budget.movement_ft + modified_speed(s, a));
+            if (s.budget.dashes < 255) ++s.budget.dashes;
+            emit(ev, EventKind::Dashed, a.id, 0, s.budget.movement_ft);
+        }
         break;
     }
     case SpellEffectKind::HpPool: {   // Sleep / Color Spray: lowest current HP first while the pool covers them

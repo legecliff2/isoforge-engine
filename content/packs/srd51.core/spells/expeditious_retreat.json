@@ -1,0 +1,46 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.expeditious_retreat",
+  "name": "Expeditious Retreat",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "This spell allows you to move at an incredible pace. When you cast this spell, and then as a bonus action on each of your turns until the spell ends, you can take the Dash action.",
+  "level": 1,
+  "school": "transmutation",
+  "classes": [
+    "sorcerer",
+    "warlock",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "bonus_action"
+  },
+  "range": {
+    "kind": "self"
+  },
+  "components": {
+    "v": true,
+    "s": true
+  },
+  "duration": {
+    "kind": "minutes",
+    "amount": 10,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "dash_on_cast": true,
+      "modifier": {
+        "stat": "bonus_dash",
+        "applies_to": "self",
+        "duration": {
+          "kind": "rounds",
+          "n": 600
+        }
+      }
+    }
+  ]
+}
