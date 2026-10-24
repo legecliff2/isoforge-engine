@@ -254,3 +254,128 @@ TEST_CASE("sourced_digest folds every field and is order-stable") {
     CHECK(s.sourced.size() == 1);
     CHECK(sourced_digest(s) != d1);
 }
+
+// ---- Druid gap G: grapple rider restrains / exclusive / max_grapples (monster@5 on_hit) ----
+namespace {
+EncounterState start4(uint64_t seed = 1) {
+    auto s = begin_encounter({strong(1), foe(2), foe(3), foe(4)}, seed, nullptr, spell_hooks());
+    end_turns_until(s, 1);
+    return s;
+}
+GrappleRider rider(int dc, bool restrains, bool exclusive, uint8_t max = 0) {
+    GrappleRider g; g.escape_dc = int16_t(dc); g.restrains = restrains; g.exclusive = exclusive; g.max_grapples = max; return g;
+}
+bool offers_attack(const EncounterState& s, CombatantId target, uint8_t attack_index) {
+    for (const auto& r : legal_actions(s))
+        if (r.kind == ActionKind::Attack && r.special == 0 && r.target == target && r.attack_index == attack_index) return true;
+    return false;
+}
+}  // namespace
+
+TEST_CASE("grapple rider: a plain rider is exactly grapple() (no appended fields set)") {
+    auto s = start4();
+    std::vector<Event> ev;
+    REQUIRE(grapple(s, 1, 2, rider(12, false, false), 0, ev));
+    REQUIRE(s.sourced.size() == 1);
+    CHECK(s.sourced[0].via_attack == 0xFF);
+    CHECK_FALSE(s.sourced[0].restrains);
+    CHECK_FALSE(s.sourced[0].exclusive);
+    CHECK_FALSE(mut(s, 2).has(Condition::Restrained));
+    CHECK_FALSE(attack_locked(s, 1, 0, 3));
+}
+
+TEST_CASE("grapple rider: restrains while grappled; exclusive blocks the attack on other targets") {
+    auto s = start4();
+    std::vector<Event> ev;
+    REQUIRE(grapple(s, 1, 2, rider(12, true, true), 0, ev));   // crocodile bite: grappled (DC 12), restrained, can't bite another
+    CHECK(mut(s, 2).has(Condition::Grappled));
+    CHECK(mut(s, 2).has(Condition::Restrained));
+    REQUIRE(s.sourced.size() == 1);
+    CHECK(s.sourced[0].via_attack == 0);
+    CHECK(s.sourced[0].owns_restrained);
+    CHECK(attack_locked(s, 1, 0, 3));
+    CHECK_FALSE(attack_locked(s, 1, 0, 2));   // the held creature may still be bitten
+    CHECK_FALSE(attack_locked(s, 2, 0, 3));
+    CHECK(offers_attack(s, 2, 0));
+    CHECK_FALSE(offers_attack(s, 3, 0));
+    ActionRequest other{1, ActionKind::Attack, 3};
+    other.target_within_5ft = true;
+    const auto r = step(s, other);
+    CHECK_FALSE(r.ok);
+    CHECK(s.budget.action);   // refused before anything is spent
+    ActionRequest held{1, ActionKind::Attack, 2};
+    held.target_within_5ft = true;
+    CHECK(step(s, held).ok);
+}
+
+TEST_CASE("grapple rider: Restrained clears on escape, and only on a successful one") {
+    int freed = 0, kept = 0;
+    for (uint64_t seed = 0; seed < 60; ++seed) {
+        auto s = start4(seed);
+        std::vector<Event> sink;
+        REQUIRE(grapple(s, 1, 2, rider(12, true, true), 0, sink));
+        end_turns_until(s, 2);
+        const auto r = step(s, special(4, 2, 1));
+        REQUIRE(r.ok);
+        const bool free = !mut(s, 2).has(Condition::Grappled);
+        CHECK(mut(s, 2).has(Condition::Restrained) == !free);
+        if (free) {
+            CHECK(s.sourced.empty());
+            CHECK_FALSE(attack_locked(s, 1, 0, 3));
+            int removed = 0;
+            for (const auto& e : r.events) removed += e.kind == EventKind::ConditionRemoved && e.actor == 2;
+            CHECK(removed == 2);   // Restrained and Grappled
+        }
+        (free ? freed : kept)++;
+    }
+    CHECK(freed > 0); CHECK(kept > 0);
+}
+
+TEST_CASE("grapple rider: the grapple ending (incapacitated grappler, out of reach) ends the restraint it added only") {
+    auto s = start4();
+    std::vector<Event> ev;
+    REQUIRE(grapple(s, 1, 2, rider(12, true, false), 0, ev));
+    mut(s, 1).conditions |= bit(Condition::Stunned);
+    prune_sourced(s, ev);
+    CHECK_FALSE(mut(s, 2).has(Condition::Grappled));
+    CHECK_FALSE(mut(s, 2).has(Condition::Restrained));
+    // already restrained by something else: the grapple does not own it and leaves it when it ends
+    auto t = start4();
+    mut(t, 2).conditions |= bit(Condition::Restrained);
+    REQUIRE(grapple(t, 1, 2, rider(12, true, false), 0, ev));
+    CHECK_FALSE(t.sourced[0].owns_restrained);
+    mut(t, 1).conditions |= bit(Condition::Stunned);
+    prune_sourced(t, ev);
+    CHECK_FALSE(mut(t, 2).has(Condition::Grappled));
+    CHECK(mut(t, 2).has(Condition::Restrained));
+    // two restraining grapplers: the first to let go hands the restraint to the other
+    auto u = begin_encounter({strong(1), foe(2), strong(5)}, 1, nullptr, spell_hooks());
+    mut(u, 5).team = 0;
+    REQUIRE(grapple(u, 1, 2, rider(12, true, false), 0, ev));
+    REQUIRE(grapple(u, 5, 2, rider(12, true, false), 0, ev));
+    mut(u, 1).conditions |= bit(Condition::Stunned);
+    prune_sourced(u, ev);
+    CHECK(mut(u, 2).has(Condition::Restrained));
+    REQUIRE(u.sourced.size() == 1);
+    CHECK(u.sourced[0].owns_restrained);
+    mut(u, 5).conditions |= bit(Condition::Stunned);
+    prune_sourced(u, ev);
+    CHECK_FALSE(mut(u, 2).has(Condition::Restrained));
+}
+
+TEST_CASE("grapple rider: max_grapples per attack (giant crab claws); past the limit nothing is grappled") {
+    auto s = start4();
+    std::vector<Event> ev;
+    const GrappleRider claw = rider(11, false, false, 2);   // two claws, each grapples one target
+    REQUIRE(grapple(s, 1, 2, claw, 0, ev));
+    REQUIRE(grapple(s, 1, 3, claw, 0, ev));
+    const std::size_t before = ev.size();
+    CHECK_FALSE(grapple(s, 1, 4, claw, 0, ev));
+    CHECK(ev.size() == before);
+    CHECK_FALSE(mut(s, 4).has(Condition::Grappled));
+    CHECK(s.sourced.size() == 2);
+    CHECK(grapple(s, 1, 2, claw, 0, ev));   // re-grappling one already held is not a third
+    CHECK(s.sourced.size() == 2);
+    CHECK_FALSE(attack_locked(s, 1, 0, 4));   // not exclusive: the claw still attacks others
+    CHECK(grapple(s, 1, 4, claw, 1, ev));      // another attack has its own count
+}

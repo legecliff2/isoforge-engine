@@ -195,21 +195,23 @@ Expeditious Retreat (7.2zi follow-up, Rules #285). The pack's `effects` equal `t
 
 ## Deferred (89 spells; reasons re-checked against main at `8b8d8c9`)
 
+**Planned descriptive-only, not yet authored.** `light`, `thaumaturgy`, `dancing_lights` and `minor_illusion` are planned as `{"kind":"descriptive"}` (the spell's only effect; `docs/CONTENT_CONVENTIONS.md` section 28). They are not in `srd51.core`, so the counts in this file are unchanged and the four rows below stay deferred. Light authored this way sheds no light: `append_active_zones` in `engine/core/sim/src/light_driver.cpp` keeps a spell only when its kind is `SpellEffectKind::Zone`. The real light mechanics stay deferred.
+
 Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the first-draft ids in brackets: B1 = R-G2 effects array, B2 = R-G3 timed modifiers, B3 = R-G4 damage riders, B4 = R-G5 pools, B6 = R-G7 reactions / roll windows, C1 = R-G8 conditions with source, C2 = R-G9 forced movement / teleport, C3 = R-G10 area templates, C4 = R-G11 zones / auras, C5 = R-G12 summons, C7 = R-G13 cover / lighting / vision, C8 = R-G14 per-cast options, C9 = R-G15 spell kinds). `T&C-G12` / `T&C-G14` are movement modes and creature footprint. `OOS` rows have no gap id.
 
 | level | spell | kind | missing mechanic (from the coverage doc) | gap id |
 |---|---|---|---|---|
-| 0 | Dancing Lights | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
+| 0 | Dancing Lights | OOS | Planned as descriptive-only (`{"kind":"descriptive"}`), not in the pack, so this row stays OOS and the counts are unchanged. The real mechanics stay deferred. | R-G7 (B6) |
 | 0 | Druidcraft | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Guidance | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
-| 0 | Light | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
+| 0 | Light | OOS | Planned as descriptive-only (`{"kind":"descriptive"}`), not in the pack, so this row stays OOS and the counts are unchanged. Light authored this way sheds no light: `light_driver.cpp` reads only Zone spells. The real light mechanics stay deferred. | R-G7 (B6) |
 | 0 | Mage Hand | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Mending | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Message | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
-| 0 | Minor Illusion | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
+| 0 | Minor Illusion | OOS | Planned as descriptive-only (`{"kind":"descriptive"}`), not in the pack, so this row stays OOS and the counts are unchanged. The real mechanics stay deferred. | R-G7 (B6) |
 | 0 | Prestidigitation | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Resistance | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
-| 0 | Thaumaturgy | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
+| 0 | Thaumaturgy | OOS | Planned as descriptive-only (`{"kind":"descriptive"}`), not in the pack, so this row stays OOS and the counts are unchanged. The real mechanics stay deferred. | R-G7 (B6) |
 | 1 | Alarm | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Animal Friendship | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Charm Person | NEW | Charmed with source (R-G8). | R-G8 (C1) |
