@@ -262,7 +262,7 @@ TEST_CASE("altitude PR2: burrowers tunnel under difficult ground and creatures (
     CHECK(falls_events(*b.c) == 0);
     CHECK(b.step({4, 6}).error == "tile not walkable");   // no tunnelling into water
     REQUIRE(b.step({4, 4}).ok);
-    REQUIRE(b.step({3, 4}).ok);   // under the ally: spans do not overlap
+    CHECK(b.step({3, 4}).error == "");   // under the ally: spans do not overlap
     b.check_replay();
     const auto path = b.c->path_for(b.me, b.c->pos(b.me), {{6, 4}}, 1);
     CHECK_FALSE(path.empty());
