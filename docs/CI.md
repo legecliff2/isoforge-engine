@@ -62,6 +62,31 @@ Same presets and steps as CI: configure, `ctest -R "^(depcheck|include_lint)"`, 
 `content_validate` is registered, full `ctest`. Prints a PASS/FAIL line per step and exits non-zero
 if anything failed. Uses ccache when installed (`--no-ccache` to disable).
 
+Parallelism is sized from free RAM so several agents can share one machine. Unless `-j` /
+`--parallel` or `CI_LOCAL_JOBS` is set, `-j` is `floor(MemAvailable / CI_LOCAL_MB_PER_JOB)`
+(default 1536 MB per job), clamped to `[1, nproc]`. The script logs the chosen `-j` and why at
+startup, then reads memory again before every `cmake --build` and every `ctest`. `CI_LOCAL_JOBS=N`
+replaces the estimate. `-j N` replaces both.
+
+Heavy build and test steps take an exclusive `flock` on `/tmp/ci_local.lock` (`CI_LOCAL_LOCK` to
+use another path). `CI_LOCAL_NO_LOCK=1` skips it. The lock file is created mode `0666` so a
+different Unix user can open it. If the file is not writable (an older `0644` lock, or Linux
+`fs.protected_regular` refusing another user's write in sticky `/tmp` even at mode `0666`), the
+script locks it read-only instead of building with no queue. The lock is skipped only when it
+cannot be opened at all. A second invocation prints `waiting for lock`
+and the holder's PID, then runs when the lock is free. The lock is taken before the first build
+and held until the process exits (so a later GCC/Clang job in the same run stays in the queue),
+and it is released on exit and on `INT`, `TERM`, and `HUP`. A nested `ci_local.sh` skips the lock
+only while the recorded owner is still running. `--job lint` does not take it.
+
+Without `/proc/meminfo` (for example macOS), memory comes from `sysctl` (`vm.page_free_count`
+with `hw.pagesize` when those exist, otherwise total `hw.memsize`) and the CPU count from `nproc`
+or `sysctl hw.ncpu`. If neither memory source exists, `-j` is `nproc`. If `flock` is missing the
+script skips the lock and prints a notice.
+
+`python3 tools/ci_local_jobs_test.py` checks the job arithmetic, the overrides, and that two
+callers serialize on the lock.
+
 Packages (Debian/Ubuntu). `libstdc++-14-dev` is needed on Ubuntu 24.04-era images, where
 Clang selects GCC 14's libstdc++ even when the default `g++` is GCC 13. It is not required on
 every Debian or Ubuntu release. Without it on those images the Clang job fails at link time
