@@ -184,3 +184,31 @@ TEST_CASE("bonus_attack_available is pure and rejects bad options") {
     CHECK(s.budget.attacks_used_mask == before);
     CHECK(s.budget.bonus_action);
 }
+
+TEST_CASE("two-weapon fighting (SRD 5.1): the off-hand adds the effective ability modifier only when negative; drain lowers it") {
+    // "You don't add your ability modifier to the damage of the bonus attack, unless that modifier is negative."
+    auto make = [](bool drained) {
+        auto c = fighter(1);
+        c.attacks[1].finesse = false;
+        c.attacks[1].ability_used = int8_t(Ability::Str);
+        c.abilities.score[0] = 12; c.abilities.score[1] = 10;   // Str +1: not added to the off-hand
+        if (drained) { c.abilities.score[0] = 6; c.ability_reduction[0] = 6; }   // Strength Drain: Str 6, -2
+        BonusAttack b = twf(false); b.damage = DiceExpr{4, 4, 0};   // 4d4 >= 4: never floored at 0 after -2
+        c.bonus_attacks = {b};
+        return c;
+    };
+    int compared = 0;
+    for (uint64_t seed = 0; seed < 40 && compared < 5; ++seed) {
+        auto a = start(make(false), seed);
+        auto b = start(make(true), seed);
+        REQUIRE(step(a, atk(0)).ok); REQUIRE(step(b, atk(0)).ok);
+        const auto ra = step(a, bonus(1, 1));
+        const auto rb = step(b, bonus(1, 1));
+        REQUIRE(ra.ok); REQUIRE(rb.ok);
+        const int da = dealt_to(ra.events, 2), db = dealt_to(rb.events, 2);
+        if (da == 0 || db == 0) continue;
+        CHECK(da - db == 2);   // positive +1 not added; the drained -2 is
+        ++compared;
+    }
+    CHECK(compared > 0);
+}

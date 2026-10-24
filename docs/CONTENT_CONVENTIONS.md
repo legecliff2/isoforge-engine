@@ -700,3 +700,20 @@ These are SRD 5.1 containers from 5e-database a6212be, with exact costs, weights
   - The sling bullet (0.2 cp) has no `cost_cp`, and no piece has `weight_oz` (none is a whole number of ounces).
 - **Ready for the ammunition recovery rule** (EQUIPMENT 2.5: spend one per attack; recover `floor(spent / 2)` after combat). Stacks are `equipment[]` counts (§15), and these containers give the capacity a stack fits in.
 - **Inert today:** the sim loads no item documents. PCs do not list containers yet; adding them changes no number.
+
+<!-- Code, schema and tests cite this section by its title ("Attack ability"), not its number. -->
+## 23. Attack ability (monster@5 action `ability`, Strength Drain ruling)
+
+An optional monster@5 weapon-attack key: `"ability": "str" | "dex" | "none"`. It names the ability the printed `to_hit` and damage
+use; `none` means no ability modifier. It is read only when it matters: when a score is reduced (Strength Drain recomputes the
+attack at use time by the modifier change) and for the two-weapon off-hand.
+
+- **Present: it wins** (over a finesse property and over inference).
+- **Absent: still valid, no version bump.** A finesse weapon (action `properties`, or the item / `weapons[]` entry it names) uses the
+  better of Str / Dex. Otherwise the loader infers it from the number: Str if `to_hit` = Str mod + PB, else Dex if = Dex mod + PB,
+  else none. When both match (an ambiguous Str/Dex tie) it picks Str and emits a loader warning (`ContentLibrary::warnings()`);
+  set `ability` to silence it.
+- Any other value is a load error; on a monster@4 or older file the key is a load error; on a non-weapon action the validator
+  refuses it (`checks_v4.BATCH3_WEAPON_ONLY_KEYS`).
+- Two-weapon fighting (SRD 5.1): the off-hand bonus attack adds the attack's effective ability modifier to damage only when it is
+  negative (the Two-Weapon Fighting style still adds it in full).

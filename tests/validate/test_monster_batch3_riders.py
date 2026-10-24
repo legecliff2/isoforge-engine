@@ -157,6 +157,28 @@ class StrengthDrain(unittest.TestCase):
         self.assertTrue([m for m in e if "read only on weapon attacks" in m], e)
 
 
+class AttackAbility(unittest.TestCase):
+    """CONTENT_CONVENTIONS "Attack ability": optional monster@5 action `ability` (str|dex|none); absent stays valid."""
+
+    def test_valid(self):
+        for v in ("str", "dex", "none"):
+            e, _w = run(bite(ability=v))
+            self.assertEqual(e, [], v)
+        e, _w = run(bite())
+        self.assertEqual(e, [])
+
+    def test_refused(self):
+        for v in ("con", "STR", 1, None):
+            e, _w = run(bite(ability=v))
+            self.assertTrue(e, v)
+
+    def test_weapon_only(self):
+        d = bugbear()
+        d["actions"].append({"id": "x", "name": "X", "kind": "special", "description": "x", "ability": "str"})
+        e, _w = run(d)
+        self.assertTrue([m for m in e if "read only on weapon attacks" in m], e)
+
+
 class VampireDrain(unittest.TestCase):
     GATE = ["willing", "grappled_by_self", "incapacitated", "restrained"]
 

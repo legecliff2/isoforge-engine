@@ -1657,9 +1657,9 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             at.strength_drain = *d;
         }
         // Strength Drain (Lich ruling): the ability the authored to_hit / damage use, read when the attack is used while a score is
-        // reduced (rules5e attack_drain_delta; no effect otherwise). monster@5 `natural.ability` / `damage_ability` when given; a
+        // reduced (rules5e attack_drain_delta; no effect otherwise). monster@5 action `ability` (str|dex|none) when given; a
         // finesse weapon (action `properties`, or the item / weapons[] entry `weapon` names) is the better of Str / Dex; else the
-        // ability whose modifier + proficiency bonus is the printed to_hit (Str on a tie), none when neither is.
+        // ability whose modifier + proficiency bonus is the printed to_hit (Str on a tie, with a warning), none when neither is.
         {
             auto has_finesse = [](const Json* j) {
                 if (!j) return false;
@@ -1681,16 +1681,22 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 return n == "str" ? int8_t(rules5e::Ability::Str) : n == "dex" ? int8_t(rules5e::Ability::Dex)
                      : n == "none" ? rules5e::kAttackAbilityNone : int8_t(-1);
             };
-            if (auto nat = act.find("natural"); nat != act.end() && nat->is_object()) {
-                at.ability_used = code_of(nat->value("ability", ""));
-                if (nat->contains("damage_ability")) at.damage_ability_used = code_of(nat->value("damage_ability", ""));
+            if (auto ex = act.find("ability"); ex != act.end()) {   // explicit (CONTENT_CONVENTIONS "Attack ability"): wins
+                if (declared != 0 && declared < 5) return a.id + ": action " + act.value("id", "?") + ": ability needs a monster@5 file";
+                const int8_t code = ex->is_string() ? code_of(ex->get<std::string>()) : int8_t(-1);
+                if (code < 0) return a.id + ": action " + act.value("id", "?") + ": ability must be str, dex or none";
+                at.ability_used = code;
             } else if (fin) {
                 at.ability_used = rules5e::kAttackAbilityFinesse;
             } else {
                 const int pb = c.proficiency_bonus;
-                const bool s = at.to_hit == rules5e::modifier(c.abilities, rules5e::Ability::Str) + pb;
-                const bool d = at.to_hit == rules5e::modifier(c.abilities, rules5e::Ability::Dex) + pb;
+                const int ms = rules5e::modifier(c.abilities, rules5e::Ability::Str), md = rules5e::modifier(c.abilities, rules5e::Ability::Dex);
+                const bool s = at.to_hit == ms + pb;
+                const bool d = at.to_hit == md + pb;
                 at.ability_used = s ? int8_t(rules5e::Ability::Str) : d ? int8_t(rules5e::Ability::Dex) : rules5e::kAttackAbilityNone;
+                if (s && d)
+                    warnings_.push_back(a.id + ": action " + act.value("id", "?") + ": to_hit matches both Str and Dex; inferred str "
+                                        "(set \"ability\" to disambiguate, CONTENT_CONVENTIONS \"Attack ability\")");
             }
             if (at.ability_used < 0) at.ability_used = rules5e::kAttackAbilityNone;
         }

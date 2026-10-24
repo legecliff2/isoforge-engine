@@ -763,3 +763,47 @@ TEST_CASE("Strength Drain ruling 4 (pinned current behaviour): revival does not 
     CHECK(k.abilities.score[0] == 0);       // still Strength 0: the reduction is not cleared by coming back
     CHECK(k.ability_reduction[0] == 1);
 }
+
+TEST_CASE("monster@5 action ability (CONTENT_CONVENTIONS \"Attack ability\"): explicit wins; none; Str/Dex tie warns; refusals") {
+    auto attack0 = [](const ContentLibrary& lib, const char* id) { return lib.find(id)->base.attacks.at(0); };
+    Json dexy = creature("t.dexy");   // goblin Str 8 / Dex 14, PB 2: to_hit 4 is Dex
+    dexy["actions"][0]["to_hit"] = 4;
+    Json expl = dexy; expl["id"] = "t.expl"; expl["actions"][0]["ability"] = "str";
+    Json none = dexy; none["id"] = "t.none"; none["actions"][0]["ability"] = "none";
+    Json tie = dexy; tie["id"] = "t.tie"; tie["abilities"]["str"] = 14;
+    {
+        auto lib = lib_with({dexy, expl, none});
+        CHECK(attack0(lib, "t.dexy").ability_used == int8_t(rules5e::Ability::Dex));
+        CHECK(attack0(lib, "t.expl").ability_used == int8_t(rules5e::Ability::Str));   // explicit wins over inference
+        CHECK(attack0(lib, "t.none").ability_used == rules5e::kAttackAbilityNone);
+        for (const auto& w : lib.warnings()) CHECK(w.find("t.") != 0);   // no tie among these
+        // none: a drain changes nothing
+        auto ch = arena({{"t.none", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}});
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, lib, 7);
+        REQUIRE(c);
+        const CombatantId a = ch.spawns[0].stable_id;
+        rules5e::EncounterState s = c->state();
+        auto* k = const_cast<rules5e::Combatant*>(rules5e::find(s, a));
+        const auto base = rules5e::effective_attack(s, a, 0);
+        k->abilities.score[0] = 2; k->ability_reduction[0] = 6;
+        k->abilities.score[1] = 4; k->ability_reduction[1] = 10;
+        CHECK(rules5e::effective_attack(s, a, 0).to_hit == base.to_hit);
+    }
+    {
+        auto lib = lib_with({tie});
+        CHECK(attack0(lib, "t.tie").ability_used == int8_t(rules5e::Ability::Str));
+        const std::string a0 = "t.tie: action " + tie["actions"][0].value("id", "?") + ":";
+        int warned = 0;
+        for (const auto& w : lib.warnings()) warned += w.rfind(a0, 0) == 0 && w.find("matches both Str and Dex") != std::string::npos;
+        CHECK(warned == 1);   // one warning per tied action (the goblin's shortbow ties too)
+        Json tie2 = tie; tie2["id"] = "t.tie2"; tie2["actions"][0]["ability"] = "dex";   // explicit silences it
+        auto lib2 = lib_with({tie2});
+        const std::string b0 = "t.tie2: action " + tie2["actions"][0].value("id", "?") + ":";
+        for (const auto& w : lib2.warnings()) CHECK(w.rfind(b0, 0) != 0);
+    }
+    Json bad = dexy; bad["actions"][0]["ability"] = "con";
+    CHECK(load_error(bad).find("ability must be str, dex or none") != std::string::npos);
+    bad["actions"][0]["ability"] = "str"; bad["$schema"] = "monster@4";
+    CHECK(load_error(bad).find("ability needs a monster@5 file") != std::string::npos);
+}

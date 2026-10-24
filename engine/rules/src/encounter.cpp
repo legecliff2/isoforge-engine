@@ -1667,20 +1667,27 @@ int imbue_attack_index(const Combatant& a, const WeaponImbueSpec& w) {
 // ability_reduction) to the effective one (abilities), added to to-hit (which_damage false) or damage (true) when the attack is
 // used. A finesse attack uses the better of Str and Dex on both sides, so a drained Str switches it to Dex. 0 while every
 // reduction is 0 (existing goldens unchanged).
+// The ability code an attack's roll (or damage) uses: Ability, kAttackAbilityFinesse or kAttackAbilityNone.
+int attack_ability_code(const Attack& atk, bool which_damage) {
+    int code = which_damage && atk.damage_ability_used >= 0 ? atk.damage_ability_used : atk.ability_used;
+    if (code < 0) code = is_finesse(atk) ? kAttackAbilityFinesse : atk.ranged ? int(Ability::Dex) : int(Ability::Str);
+    return code;
+}
+// The modifier `code` gives with scores `sc` (finesse: the better of Str / Dex; none: 0).
+int attack_ability_mod(const AbilityScores& sc, int code) {
+    if (code == kAttackAbilityNone) return 0;
+    if (code == kAttackAbilityFinesse) return std::max(modifier(sc, Ability::Str), modifier(sc, Ability::Dex));
+    return modifier(sc, Ability(code));
+}
 int attack_drain_delta(const Combatant& a, const Attack& atk, bool which_damage) {
     bool any = false;
     for (uint8_t r : a.ability_reduction) any = any || r != 0;
     if (!any) return 0;
-    int code = which_damage && atk.damage_ability_used >= 0 ? atk.damage_ability_used : atk.ability_used;
-    if (code < 0) code = is_finesse(atk) ? kAttackAbilityFinesse : atk.ranged ? int(Ability::Dex) : int(Ability::Str);
+    const int code = attack_ability_code(atk, which_damage);
     if (code == kAttackAbilityNone) return 0;
     AbilityScores base = a.abilities;
     for (std::size_t i = 0; i < 6; ++i) base.score[i] = int8_t(std::min(127, int(base.score[i]) + int(a.ability_reduction[i])));
-    auto m = [&](const AbilityScores& sc) {
-        if (code == kAttackAbilityFinesse) return std::max(modifier(sc, Ability::Str), modifier(sc, Ability::Dex));
-        return modifier(sc, Ability(code));
-    };
-    return m(a.abilities) - m(base);
+    return attack_ability_mod(a.abilities, code) - attack_ability_mod(base, code);
 }
 
 // 7.2zf: the attack as imbued (true) when `atk` is the caster's imbued attack, else false.
@@ -2409,7 +2416,12 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         const DiceExpr& wdice0 = damage_override ? *damage_override
                                 : (atk.half_hp_damage.count > 0 && 2 * int(a.hp) <= int(a.hp_max)) ? atk.half_hp_damage : atk.damage;
         DiceExpr wdice = wdice0;   // Strength Drain (Lich ruling): the damage modifier change, 0 unless a score is reduced
-        if (spell_id == 0) wdice.bonus = int16_t(int(wdice.bonus) + attack_drain_delta(a, atk, true));
+        // damage_override is only the two-weapon off-hand without the style (dice, bonus 0). SRD 5.1 Two-Weapon Fighting: "You
+        // don't add your ability modifier to the damage of the bonus attack, unless that modifier is negative." The effective
+        // (possibly drained) modifier, added only when negative; otherwise the Strength Drain delta of the authored total.
+        if (spell_id == 0 && damage_override)
+            wdice.bonus = int16_t(int(wdice.bonus) + std::min(0, attack_ability_mod(a.abilities, attack_ability_code(atk, true))));
+        else if (spell_id == 0) wdice.bonus = int16_t(int(wdice.bonus) + attack_drain_delta(a, atk, true));
         const bool gwf = a.great_weapon_fighting && spell_id == 0 && !atk.ranged &&
                          (has_property(atk, kWeaponTwoHanded) || (two_handed_grip && has_property(atk, kWeaponVersatile)));
         int dmg = gwf ? roll_dice_reroll_low(s.rng, wdice, crit, 2)
