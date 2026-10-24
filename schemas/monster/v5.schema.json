@@ -939,6 +939,31 @@
             }
           }
         },
+        "ability": {
+          "enum": [
+            "str",
+            "dex",
+            "none"
+          ],
+          "description": "CONTENT_CONVENTIONS \"Attack ability\": the ability the attack's to_hit and damage use (none: no ability modifier). Optional; absent = inferred from to_hit (Str on a Str/Dex tie, with a loader warning); a finesse weapon without it uses the better of Str / Dex. Read when a score is reduced (Strength Drain) and by the two-weapon off-hand. Weapon attacks only."
+        },
+        "ability_drain": {
+          "type": "object",
+          "description": "Batch 3 (shadow Strength Drain): on a hit, after the damage, the target's Strength score is reduced by the dice; it dies if this reduces its Strength to 0; a short or long rest restores it. Weapon attacks only.",
+          "additionalProperties": false,
+          "required": [
+            "ability",
+            "dice"
+          ],
+          "properties": {
+            "ability": {
+              "const": "str"
+            },
+            "dice": {
+              "$ref": "../common/v1.schema.json#/$defs/dice"
+            }
+          }
+        },
         "target_requires_any": {
           "type": "array",
           "minItems": 1,

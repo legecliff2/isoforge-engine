@@ -1089,7 +1089,7 @@ def check_aura(doc: dict, tag: str) -> tuple[list[str], list[str]]:
     return errs, []
 
 
-BATCH3_WEAPON_ONLY_KEYS = ("drain", "curse", "target_requires_any")
+BATCH3_WEAPON_ONLY_KEYS = ("drain", "curse", "target_requires_any", "ability_drain", "ability")   # ability: CONTENT_CONVENTIONS "Attack ability"
 
 
 def check_batch3_actions(doc: dict, tag: str) -> list[str]:
