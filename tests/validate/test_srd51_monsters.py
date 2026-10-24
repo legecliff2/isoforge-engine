@@ -64,7 +64,9 @@ class MonsterTable(unittest.TestCase):
                 self.assertEqual(d["challenge"]["xp"], 50 if idx == "riding-horse" else t["xp"])
                 rating = d["challenge"]["rating"]
                 self.assertEqual(CR[rating] if rating in CR else int(rating), t["cr"])
-                self.assertEqual({k: num(v) for k, v in t["speed"].items()}, d["speed"])
+                speed = {k: num(v) for k, v in t["speed"].items()}
+                speed.setdefault("walk", 0)   # the table has no walk key for swim-only creatures (reef shark: swim 40 ft.)
+                self.assertEqual(speed, d["speed"])
                 self.assertEqual([d["abilities"][k] for k in ("str", "dex", "con", "int", "wis", "cha")], t["abilities"])
                 self.assertEqual(d.get("damage_vulnerabilities", []), t["damage_vulnerabilities"])
                 self.assertEqual(d.get("damage_immunities", []), t["damage_immunities"])
