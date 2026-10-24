@@ -556,6 +556,21 @@ class RG8GrappleRider(unittest.TestCase):
                 doc = h.edit(extra("giant_crab_grappler.json"), sets)
                 self.assertEqual(h.validate_docs(self.docs_with(doc)), ([], []))
 
+    def test_size_gated_prone_rider(self):
+        # SRD 5.1 Gladiator Shield Bash ("If the target is a Medium or smaller creature, it must succeed on a DC 15 Strength
+        # saving throw or be knocked prone"): max_size without contain loads on a save_condition rider's first apply[] entry.
+        ok = {"kind": "save_condition", "save": {"ability": "str", "dc": 15}, "apply": [{"condition": "prone", "max_size": "medium"}]}
+        doc = h.edit(extra("giant_crab_grappler.json"), [(["actions", 1, "on_hit", 1], ok)])
+        self.assertEqual(h.validate_docs(self.docs_with(doc)), ([], []))
+        late = {"kind": "save_condition", "save": {"ability": "str", "dc": 15},
+                "apply": [{"condition": "prone"}, {"condition": "prone", "max_size": "medium"}]}
+        errs, _w = h.validate_docs(self.docs_with(h.edit(extra("giant_crab_grappler.json"), [(["actions", 1, "on_hit", 1], late)])))
+        self.assertTrue(any("max_size on a save_condition rider goes on the first apply[] entry" in e for e in errs), errs)
+        act = {"kind": "save_effect", "id": "x", "name": "X", "save": {"ability": "str", "dc": 11},
+               "apply": [{"condition": "prone", "max_size": "medium"}]}
+        errs, _w = h.validate_docs(self.docs_with(h.edit(extra("giant_crab_grappler.json"), [(["actions", 0], act)])))
+        self.assertTrue(any("max_size on a save_effect needs contain" in e for e in errs), errs)
+
     def test_escape_dc_bounds_are_accepted(self):
         for dc in (0, 1, 30):
             with self.subTest(dc):

@@ -202,3 +202,60 @@ TEST_CASE("prone rider combat: a hit and a failed save knock the target prone un
         CHECK(rules5e::find(rp->state(), f)->has(Condition::Prone) == fail);
     }
 }
+
+// SRD 5.1 Gladiator Shield Bash: "If the target is a Medium or smaller creature, it must succeed on a DC 15 Strength saving
+// throw or be knocked prone." A save_condition rider's first apply[] entry may carry max_size without contain: a larger target
+// makes no save and is not knocked prone, but the hit's damage stands. No new state: no hash tag, goldens unchanged.
+TEST_CASE("prone rider size gate: max_size on a save_condition rider (Shield Bash, Medium or smaller)") {
+    auto lib = base_lib();
+    Json big = load_json("content/packs/sample.vertical_slice/characters/fighter_1.json");
+    big["id"] = "t.big_fighter";
+    big["size"] = "large";
+    big["hit_points"]["average"] = 2000;
+    REQUIRE_FALSE(lib.add(big, "character"));
+    const Json gated = Json::array({{{"condition", "prone"}, {"max_size", "medium"}}});
+    REQUIRE_FALSE(lib.add(wolf("t.bash_fail", knock_prone(30, gated)), "monster"));
+    REQUIRE_FALSE(lib.add(wolf("t.bash_pass", knock_prone(1, gated)), "monster"));
+    const auto* d = rider_def(lib, "t.bash_fail");
+    REQUIRE(d);
+    CHECK(d->condition_max_size == int8_t(rules5e::Size::Medium));
+    CHECK(d->contain == 0);
+    // the gate belongs to the whole save: on a later apply[] entry it is a load error
+    const auto e = lib.add(wolf("t.bash_late", knock_prone(11, Json::array({{{"condition", "prone"}},
+                                                                             {{"condition", "prone"}, {"max_size", "medium"}}}))), "monster");
+    REQUIRE(e);
+    CHECK(*e == "t.bash_late: save_effect 'save_condition.0': max_size on a save_condition rider goes on the first apply[] entry");
+
+    struct Case { const char* mon; const char* target; bool large; bool fail; };
+    for (const Case k : {Case{"t.bash_fail", "t.big_fighter", true, true}, Case{"t.bash_pass", "t.big_fighter", true, false},
+                         Case{"t.bash_fail", kFighter, false, true}, Case{"t.bash_pass", kFighter, false, false}}) {
+        CAPTURE(k.large); CAPTURE(k.fail);
+        auto ch = arena({{k.mon, Vec2i{6, 5}}, {k.target, k.large ? Vec2i{4, 5} : Vec2i{5, 5}}});
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, lib, 7);
+        REQUIRE(c);
+        const CombatantId w = ch.spawns[0].stable_id, f = ch.spawns[1].stable_id;
+        REQUIRE(rules5e::find(c->state(), f)->size == (k.large ? rules5e::Size::Large : rules5e::Size::Medium));
+        to_actor(*c, w);
+        const std::size_t ev0 = c->events().size();
+        Command cmd;
+        cmd.request = {w, ActionKind::Attack, f, 0};
+        const auto r = c->submit(cmd);
+        REQUIRE_MESSAGE(r.ok, r.error);
+        c->settle(nullptr);
+        const auto* fk = rules5e::find(c->state(), f);
+        CHECK(fk->hp < fk->hp_max);   // the hit's damage applies either way
+        int saves = 0;
+        for (std::size_t i = ev0; i < c->events().size(); ++i) {
+            const auto& ev = c->events()[i];
+            if (ev.kind == SimEvent::Kind::Rules && ev.rules.kind == EventKind::SavingThrowRolled && ev.rules.actor == f) ++saves;
+        }
+        CHECK(saves == (k.large ? 0 : 1));
+        CHECK(fk->has(Condition::Prone) == (!k.large && k.fail));
+        ecs::Registry reg2;
+        std::string err;
+        auto rp = replay(reg2, ch, lib, 7, c->log(), &err);
+        REQUIRE_MESSAGE(rp, err);
+        CHECK(rp->hash() == c->hash());
+    }
+}
