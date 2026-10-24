@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://isoforge.dev/schemas/item/v2.schema.json",
   "title": "item@2",
-  "description": "item@2 = item@1 carried in full plus (all optional, docs/proposals/EQUIPMENT.md 7.1): categories 'gear' (light, torch_attack, hands) and 'ammunition' (ammo_kind, magic_bonus); weapon ammo_kind, attack_magic, damage_magic, improvised. Optional material on weapon, armor and shield (absent = non-metal), same as item@1. item@1 -> item@2 is an identity migration. Light invariants (bright_ft + dim_ft <= 120, state ids unique) are validator checks. Each arm is a closed propertyNames allow-list (tests/validate/test_union_arms.py). Integers only (4.3).",
+  "description": "item@2 = item@1 carried in full plus (all optional, docs/proposals/EQUIPMENT.md 7.1): categories 'gear' (light, torch_attack, hands) and 'ammunition' (ammo_kind, magic_bonus); weapon ammo_kind, attack_magic, damage_magic, improvised. Optional material on weapon, armor and shield (absent keeps the weapon/armor/shield category rule; CONTENT_CONVENTIONS section 22), same as item@1. item@1 -> item@2 is an identity migration. Light invariants (bright_ft + dim_ft <= 120, state ids unique) are validator checks. Each arm is a closed propertyNames allow-list (tests/validate/test_union_arms.py). Integers only (4.3).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -129,7 +129,7 @@
         "cloth",
         "rope"
       ],
-      "description": "What a weapon, armor, or shield is made of. Absent means non-metal (Heat Metal). Appended on item@1 and item@2; no version bump."
+      "description": "What a weapon, armor, or shield is made of. Absent keeps the category rule (any weapon, armor, or shield counts as manufactured metal). Only wood, leather, hide, cloth, or rope removes a Heat Metal target. Appended on item@1 and item@2; no version bump (CONTENT_CONVENTIONS section 22)."
     },
     "weapon_class": {
       "enum": [

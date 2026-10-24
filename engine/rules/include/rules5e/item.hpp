@@ -11,7 +11,8 @@
 namespace rules5e {
 
 enum class ItemKind : uint8_t { Other, Weapon, Armor, Shield, Focus, Light, Ammunition };
-// item@1 / item@2 optional `material`. Absent is not metal (Heat Metal). Appended; no schema bump.
+// item@1 / item@2 optional `material` (CONTENT_CONVENTIONS §22). Absent keeps the category rule: a weapon, armor, or
+// shield counts as manufactured metal. Only wood, leather, hide, cloth, or rope removes a Heat Metal target. Appended; no schema bump.
 enum class ItemMaterial : uint8_t { Absent = 0, Metal, Wood, Leather, Hide, Cloth, Rope };
 enum class LightShape : uint8_t { Radius, Cone };   // Cone: length = bright_ft, width = length (SRD cone template)
 enum AmmoKind : uint8_t { kAmmoNone = 0, kAmmoArrow = 1, kAmmoBolt = 2, kAmmoSlingBullet = 3, kAmmoNeedle = 4 };
@@ -49,7 +50,7 @@ struct LightDef {
 struct ItemDef {
     uint32_t id = 0;                   // EC's table key (content id hash)
     ItemKind kind = ItemKind::Other;
-    ItemMaterial material = ItemMaterial::Absent;   // absent = non-metal for Heat Metal
+    ItemMaterial material = ItemMaterial::Absent;   // absent: manufactured_metal uses the category rule
     uint8_t hands = 1;                 // hands to hold it (worn items are not held)
     WeaponDef weapon{};                // kind Weapon, or has_weapon (a torch's improvised profile)
     bool has_weapon = false;
