@@ -39,8 +39,9 @@ Same presets and steps as CI: configure, `ctest -R "^(depcheck|include_lint)"`, 
 `content_validate` is registered, full `ctest`. Prints a PASS/FAIL line per step and exits non-zero
 if anything failed. Uses ccache when installed (`--no-ccache` to disable).
 
-Packages (Debian/Ubuntu). `libstdc++-14-dev` is required because Clang selects GCC 14's
-libstdc++ even when the default `g++` is GCC 13. Without it the Clang job fails at link time
+Packages (Debian/Ubuntu). `libstdc++-14-dev` is needed on Ubuntu 24.04-era images, where
+Clang selects GCC 14's libstdc++ even when the default `g++` is GCC 13. It is not required on
+every Debian or Ubuntu release. Without it on those images the Clang job fails at link time
 with `cannot find -lstdc++` (GCC 14 headers and crt files can be present while the library is not):
 
 ```sh
