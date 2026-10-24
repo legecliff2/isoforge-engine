@@ -2605,7 +2605,7 @@ Tags (Director, do not skip): **0xD4** `Combat::hash` Branding Smite pending and
 
 **No version bump.** `docs/CONTENT_COMPAT.md` §1 bumps a schema when a field that used to be descriptive becomes mechanical, or an existing field changes meaning. `material` is a new key, and `category` still means category. The old item@1 and item@2 schemas are `additionalProperties: false`, and their arm `propertyNames` lists did not include `material`, so they rejected the key: no existing file can carry it. That is the same rule `docs/CONTENT_CONVENTIONS.md` §1 uses for optional modifier properties and §7.1 uses for the `valuable` arm: no tag change, no migration, no `api_level` gate. VERSION_BUMP_BATCH §1.1 reserves a bump for a widening that would let an old-version file carry a field the old contract calls inert. `material` has no prior inert meaning. Absent keeps the old category behaviour, so an unmigrated file keeps the meaning it had and does not need an `item@1` or `item@2` bump. `item@1` → `item@2` stays the identity migration (EQUIPMENT.md): both tags gain the same optional key, and a file that omits it migrates unchanged.
 
-**Needs Elf (tools/content) sign-off.** The schemas (`schemas/item/v1.schema.json`, `schemas/item/v2.schema.json`) and `docs/CONTENT_CONVENTIONS.md` §22 are tools/content.
+**approved by Elf, 2026-10-24.** The schemas (`schemas/item/v1.schema.json`, `schemas/item/v2.schema.json`) and `docs/CONTENT_CONVENTIONS.md` §22 are tools/content.
 
 ### 7.2zi Spell batch zi (rules side)
 
