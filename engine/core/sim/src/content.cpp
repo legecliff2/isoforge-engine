@@ -1733,7 +1733,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     // multiattack options -> rules5e::AttackSequence (ids owned by the library, stable addresses).
     for (const auto& m : a.multiattack_decls) {
         strings_.push_back(m.id);
-        c.multiattacks.push_back({strings_.back(), m.attacks});
+        c.multiattacks.push_back({strings_.back(), m.attacks, m.count_dice});
     }
     a.ai = assets::behavior_ai_script(doc);   // monster@2 / character@2
     const std::size_t n_trigger_spells = synth.size();   // the area_save riders' defs come first

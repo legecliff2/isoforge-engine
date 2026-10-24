@@ -805,8 +805,8 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // only of melee attacks (declaration order; options with a ranged attack are never picked by the AI).
     uint8_t multi = 0;   // ActionRequest::multiattack to send (0 = continue / plain attack)
     if (s.budget.sequence != 0 && s.budget.sequence <= me->multiattacks.size()) {
-        const auto& seq = me->multiattacks[std::size_t(s.budget.sequence - 1)].attacks;
-        if (s.budget.sequence_pos < seq.size()) ai = seq[s.budget.sequence_pos];
+        if (const int next = rules5e::multiattack_next(me->multiattacks, s.budget.sequence, s.budget.sequence_pos); next >= 0)
+            ai = uint8_t(next);
     } else {
         for (std::size_t i = 0; i < me->multiattacks.size() && i < 255; ++i) {
             const auto& seq = me->multiattacks[i].attacks;

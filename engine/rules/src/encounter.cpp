@@ -5370,8 +5370,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         } else if (b.sequence != 0) {                                            // multiattack in progress
             if (req.multiattack != 0 && req.multiattack != b.sequence) return fail("another multiattack is in progress");
             if (b.sequence > a.multiattacks.size()) return fail("bad multiattack");
-            const auto& seq = a.multiattacks[std::size_t(b.sequence - 1)].attacks;
-            if (b.sequence_pos >= seq.size() || req.attack_index != seq[b.sequence_pos]) return fail("attack out of multiattack sequence");
+            const int next = multiattack_next(a.multiattacks, b.sequence, b.sequence_pos);
+            if (next < 0 || req.attack_index != uint8_t(next)) return fail("attack out of multiattack sequence");
             ++b.sequence_pos;
             if (--b.attacks_remaining == 0) { b.sequence = 0; b.sequence_pos = 0; }
         } else if (req.multiattack != 0) {                                // start a declared multiattack
@@ -5383,7 +5383,10 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             if (req.attack_index != seq[0]) return fail("attack out of multiattack sequence");
             if (!spend_action(b, a, req.kind, false)) return fail("no action available");
             b.loading_fired = 0;
-            b.attacks_remaining = uint8_t(seq.size() - 1);
+            std::size_t n = seq.size();
+            if (const DiceExpr cd = a.multiattacks[std::size_t(req.multiattack - 1)].count_dice; cd.count > 0)
+                n = std::size_t(std::clamp(roll_dice(s.rng, cd), 1, 255));   // "makes 1d4 ... attacks"
+            b.attacks_remaining = uint8_t(n - 1);
             if (b.attacks_remaining > 0) { b.sequence = req.multiattack; b.sequence_pos = 1; }
         } else if (b.attacks_remaining > 0) --b.attacks_remaining;       // Extra Attack
         else if (spend_action(b, a, req.kind, false)) {
@@ -5561,9 +5564,8 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (!familiar && (can_act || b.attacks_remaining > 0)) {
         for (const auto& t : s.combatants) {
             if (t.dead || t.id == a.id || t.team == a.team) continue;
-            if (b.sequence != 0 && b.sequence <= a.multiattacks.size() &&
-                b.sequence_pos < a.multiattacks[std::size_t(b.sequence - 1)].attacks.size()) {   // multiattack in progress: only the next declared attack
-                ActionRequest r{a.id, ActionKind::Attack, t.id, a.multiattacks[std::size_t(b.sequence - 1)].attacks[b.sequence_pos]};
+            if (const int next = multiattack_next(a.multiattacks, b.sequence, b.sequence_pos); next >= 0) {   // multiattack in progress: only the next declared attack
+                ActionRequest r{a.id, ActionKind::Attack, t.id, uint8_t(next)};
                 r.multiattack = b.sequence;
                 out.push_back(r);
                 continue;

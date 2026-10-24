@@ -169,7 +169,18 @@ struct DeathSaves { uint8_t successes = 0, failures = 0; bool stable = false; };
 struct AttackSequence {
     std::string_view id;                  // option id; storage owned by the caller (like Attack::id)
     std::vector<uint8_t> attacks;         // indices into Combatant::attacks, in order (1..255)
+    // Appended (batch-3, violet fungus "makes 1d4 Rotting Touch attacks"): count > 0 = the option names ONE
+    // attack, made this many times; the count is rolled from the encounter RNG when the multiattack starts.
+    DiceExpr count_dice{0, 0, 0};
 };
+// The attack index the multiattack in progress requires next, or -1 (none in progress / sequence done).
+inline int multiattack_next(const std::vector<AttackSequence>& ms, uint8_t sequence, uint8_t pos) {
+    if (sequence == 0 || sequence > ms.size()) return -1;
+    const AttackSequence& m = ms[std::size_t(sequence - 1)];
+    if (m.attacks.empty()) return -1;
+    if (m.count_dice.count > 0) return m.attacks[0];   // attacks_remaining bounds a rolled count
+    return pos < m.attacks.size() ? m.attacks[pos] : -1;
+}
 
 // SRD "Regeneration" (troll, vampire spawn): regains `amount` HP at the start of its turn unless it took damage of
 // a `suppressed_by` type since its last turn started (troll: acid, fire; vampire spawn: radiant). A creature with

@@ -290,3 +290,58 @@ TEST_CASE("vampire spawn drain: necrotic-only reduction, self-heal, target gate"
     CHECK(ft->hp_max_reduction == necrotic);
     CHECK(rules5e::find(s, a)->hp == 100 + necrotic);
 }
+
+namespace {
+// Violet fungus Multiattack (SRD 5.1): "The violet fungus makes 1d4 Rotting Touch attacks."
+Json violet_fungus(const std::string& id) {
+    Json m = creature(id);
+    m["traits"].push_back({{"id", "multiattack"}, {"name", "Multiattack"}, {"description", "1d4 attacks"},
+                           {"effect", {{"kind", "multiattack"}, {"options", Json::array({{{"id", "touches"}, {"attacks", Json::array({"scimitar"})}, {"count_dice", "1d4"}}})}}}});
+    return m;
+}
+}  // namespace
+
+TEST_CASE("multiattack count_dice (violet fungus 1d4): rolled at start, one attack repeated; refusals") {
+    auto lib = lib_with({violet_fungus("t.violet")});
+    const auto& decl = lib.find("t.violet")->multiattack_decls.at(0);
+    CHECK(decl.count_dice.count == 1);
+    CHECK(decl.count_dice.sides == 4);
+    bool seen[5] = {};
+    for (uint64_t seed = 1; seed <= 40; ++seed) {
+        auto ch = arena({{"t.violet", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}});
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, lib, seed);
+        REQUIRE(c);
+        const CombatantId a = ch.spawns[0].stable_id, f = ch.spawns[1].stable_id;
+        to_actor(*c, a);
+        rules5e::EncounterState s = c->state();
+        rules5e::ActionRequest q{a, ActionKind::Attack, f, 0};
+        q.target_within_5ft = true;
+        q.multiattack = 1;
+        int made = 0;
+        for (; made < 8; ++made) {
+            auto r = rules5e::step(s, q);
+            if (!r.ok) break;
+            q.multiattack = 0;
+            if (s.budget.attacks_remaining == 0) { ++made; break; }
+        }
+        REQUIRE(made >= 1);
+        REQUIRE(made <= 4);
+        CHECK(s.budget.sequence == 0);
+        seen[made] = true;
+        rules5e::ActionRequest more{a, ActionKind::Attack, f, 0};
+        more.target_within_5ft = true;
+        CHECK_FALSE(rules5e::step(s, more).ok);   // the action is spent
+    }
+    CHECK((seen[1] && seen[2] && seen[3] && seen[4]));   // every count 1..4 occurs over 40 seeds
+
+    Json two = violet_fungus("t.bad");
+    two["traits"].back()["effect"]["options"][0]["attacks"] = Json::array({"scimitar", "scimitar"});
+    CHECK(load_error(two).find("count_dice needs exactly one attack") != std::string::npos);
+    Json old = violet_fungus("t.old");
+    old["$schema"] = "monster@4";
+    CHECK(load_error(old).find("count_dice needs a monster@5 file") != std::string::npos);
+    Json bad = violet_fungus("t.bad2");
+    bad["traits"].back()["effect"]["options"][0]["count_dice"] = "1d4+1";
+    CHECK(load_error(bad).find("count_dice must be dice") != std::string::npos);
+}

@@ -162,5 +162,24 @@ class VampireDrain(unittest.TestCase):
         self.assertTrue([m for m in e if "read only on weapon attacks" in m], e)
 
 
+class MultiattackCount(unittest.TestCase):
+    def fungus(self, schema="monster@5", attacks=("morningstar",), count="1d4"):
+        d = bugbear()
+        d["$schema"] = schema
+        d["traits"].append({"id": "multiattack", "name": "Multiattack", "description": "x", "effect": {
+            "kind": "multiattack", "options": [{"id": "touches", "attacks": list(attacks), "count_dice": count}]}})
+        return d
+
+    def test_valid(self):
+        e, _w = run(self.fungus())
+        self.assertEqual(e, [])
+
+    def test_refused(self):
+        e, _w = run(self.fungus(attacks=("morningstar", "morningstar")))
+        self.assertTrue([m for m in e if "count_dice needs exactly one attack" in m], e)
+        e, _w = run(self.fungus(count="1d4+1"))
+        self.assertTrue(e, e)
+
+
 if __name__ == "__main__":
     unittest.main()

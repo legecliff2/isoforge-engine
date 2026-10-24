@@ -1049,6 +1049,23 @@ def check_batch3_actions(doc: dict, tag: str) -> list[str]:
 UNTIL_CURED_CONDITIONS = frozenset({"blinded", "deafened", "paralyzed", "poisoned"})   # Lesser Restoration's list (SRD 5.1)
 
 
+def check_multiattack_count(doc: dict, tag: str) -> list[str]:
+    """Batch 3 multiattack count_dice (violet fungus "makes 1d4 Rotting Touch attacks"): monster@5 only, and the option
+    names exactly one attack (same rule as the sim loader, features.cpp apply_multiattack)."""
+    errs: list[str] = []
+    for path, _owner, eff in live_effects(doc):
+        if eff.get("kind") != "multiattack":
+            continue
+        for sub, o in [("", eff)] + [(f"/options/{j}", o) for j, o in enumerate(eff.get("options") or [])]:
+            if not isinstance(o, dict) or "count_dice" not in o:
+                continue
+            if tag != "monster@5":
+                errs.append(f"{path}{sub}/count_dice: multiattack count_dice needs a monster@5 file")
+            if len(o.get("attacks") or []) != 1:
+                errs.append(f"{path}{sub}/count_dice: count_dice needs exactly one attack")
+    return errs
+
+
 def _walk_until_cured(node, path: str):
     if isinstance(node, dict):
         d = node.get("duration")

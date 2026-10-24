@@ -171,19 +171,23 @@ std::optional<std::string> apply_heal_bonus(Archetype& a, const FeatureDecl& f, 
 // with one Attack action. `options: [{id, attacks: [...]}]`, or the shorthand `attacks: [...]` = one option
 // named "multiattack". Option order is the order content declares them (the AI prefers earlier ones).
 std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
-    std::vector<std::pair<std::string, const Json*>> opts;
+    // Batch 3 (Lich-approved): an option's `count_dice` ("1d4"; monster@5 only) names ONE attack made a rolled number
+    // of times (SRD 5.1 violet fungus: "The violet fungus makes 1d4 Rotting Touch attacks.").
+    struct Opt { std::string id; const Json* list; const Json* count; };
+    std::vector<Opt> opts;
+    auto count_of = [](const Json& o) -> const Json* { auto c = o.find("count_dice"); return c == o.end() ? nullptr : &*c; };
     if (auto o = f.effect.find("options"); o != f.effect.end()) {
         if (!o->is_array() || o->empty()) return f.id + ": multiattack options must be a non-empty array";
         for (const Json& x : *o) {
             if (!x.is_object() || !x.contains("id") || !x["id"].is_string()) return f.id + ": multiattack option needs an id";
-            opts.emplace_back(x["id"].get<std::string>(), &x["attacks"]);
+            opts.push_back({x["id"].get<std::string>(), &x["attacks"], count_of(x)});
         }
     } else if (auto at = f.effect.find("attacks"); at != f.effect.end()) {
-        opts.emplace_back("multiattack", &*at);
+        opts.push_back({"multiattack", &*at, count_of(f.effect)});
     } else {
         return f.id + ": multiattack needs options[] or attacks[]";
     }
-    for (const auto& [oid, list] : opts) {
+    for (const auto& [oid, list, count] : opts) {
         if (oid.empty()) return f.id + ": multiattack option id is empty";
         for (const auto& d : a.multiattack_decls)
             if (d.id == oid) return f.id + ": duplicate multiattack option '" + oid + "'";
@@ -197,6 +201,14 @@ std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f,
             for (std::size_t i = 0; i < ctx.attack_actions.size() && !found; ++i)
                 if (ctx.attack_actions[i]->value("id", "") == aid) { d.attacks.push_back(uint8_t(i)); found = true; }
             if (!found) return f.id + ": multiattack option '" + oid + "' names unknown attack action '" + aid + "'";
+        }
+        if (count) {
+            if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": multiattack count_dice needs a monster@5 file";
+            auto cd = count->is_string() ? parse_dice(count->get<std::string>()) : std::nullopt;
+            if (!cd || cd->count == 0 || cd->sides == 0 || cd->bonus != 0)
+                return f.id + ": multiattack option '" + oid + "': count_dice must be dice like \"1d4\"";
+            if (d.attacks.size() != 1) return f.id + ": multiattack option '" + oid + "': count_dice needs exactly one attack";
+            d.count_dice = *cd;
         }
         a.multiattack_decls.push_back(std::move(d));
     }
