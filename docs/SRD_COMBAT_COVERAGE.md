@@ -704,6 +704,7 @@ Audit of #165's footprints against the SRD size rules.
 | Rule | Status |
 |---|---|
 | Fly / swim / climb speeds from stat blocks (`speed.fly/swim/climb/hover`) and Wild Shape / shapechanger forms | done: rules5e `Combatant::fly_ft/swim_ft/climb_ft/hover`, `FormStats` likewise |
+| Burrow speed from stat blocks (`speed.burrow`) and the same form copy | data only: `Combatant::burrow_ft` / `FormStats::burrow_ft` (uint8_t feet, 0 = none), loaded and copied like fly / swim / climb, not folded. Tunnelling and burrow movement are not implemented |
 | Terrain: water (existing chunk flag bit 3), climbable (new bit 4), open air / chasm (new bit 5) | done: `Grid::water/climbable/open_air/enterable` |
 | A creature uses the speed that fits the terrain | done: sim `step_mode` (open air: fly; climb: climb > fly > walk; water: swim > fly > walk; ground: walk, then fly) |
 | Climbing / swimming without the speed: +1 ft per ft (+2 in difficult terrain) | done: `Grid::tile_cost_ft` |
