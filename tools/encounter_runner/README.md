@@ -16,4 +16,4 @@ Each `scenarios/<name>/` directory holds `scenario.json` and `golden.txt`. `ctes
 
 The end policy is `sim::ScenarioEnd` (`set_scenario_end`): the built-in kind, then a round cap. When `round_cap != 0` and `state.round > round_cap`, and the built-in policy returned nothing, the outcome is `EndReason::Custom`. That value is replay input. `replay(..., surprised_at_start(), scenario_end())` ends on the same step. Omitting it replays under the team rule with no cap, because an end policy is not stored in the command log. `Combat::hash` does not fold `ScenarioEnd`. It folds the `EncounterEnded` event the policy emits (`a` = `EndReason`).
 
-Schema and field rules: `schemas/scenario/v1.schema.json` and `docs/CONTENT_CONVENTIONS.md` section 17. `content_validate` checks scenarios from `tools/validate/validate_packs.py`. The C++ schema registry does not register `scenario@1`.
+Schema and field rules: `schemas/scenario/v1.schema.json` and `docs/CONTENT_CONVENTIONS.md` section 24. `content_validate` checks scenarios from `tools/validate/validate_packs.py`. The C++ schema registry does not register `scenario@1`.

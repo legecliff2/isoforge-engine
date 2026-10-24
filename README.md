@@ -17,7 +17,7 @@ immutable once released), plus cross-checks (CR/XP, saves/skills, chunk sizes, `
 script paths and `contents`), and strict-typechecks every `scripts/**/*.luau` with Engine Core's
 `script_check` (`--script-check <exe>`, passed automatically by CMake). The same default
 run also checks `scenarios/<name>/scenario.json` against `scenario@1`
-(`schemas/scenario/v1.schema.json`; `docs/CONTENT_CONVENTIONS.md` section 17). That schema is
+(`schemas/scenario/v1.schema.json`; `docs/CONTENT_CONVENTIONS.md` section 24). That schema is
 loaded by `tools/validate/validate_packs.py`, not by the C++ schema registry.
 
 ```sh
