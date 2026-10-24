@@ -103,6 +103,9 @@ def main():
             else: L.append("    a.has_use = false;")
             ab_ov = a.get("attack_bonus")
             if ab_ov: L.append(f"    a.attack_bonus = Reasoned{{true, {int(ab_ov['value'])}, {q(str(ab_ov.get('reason') or ''))}}};")
+            dov = a.get("damage_override")
+            if dov: L.append(f"    a.has_damage_override = true; a.damage_override = {de(dice({'dice': dov['dice']}))};"
+                             f" a.damage_override_reason = {q(str(dov.get('reason') or ''))};")
             L.append(f"    a.printed_to_hit = {int(a.get('to_hit', 0))}; a.printed_damage = {de(dice((a.get('damage') or [None])[0]))};")
             L.append("    m.attacks.push_back(a); }")
         L.append("  return m; }(),")
