@@ -48,6 +48,26 @@ Minutes savers: ccache (Linux/macOS) / sccache (Windows, with `/Z7` embedded deb
 `python_only` label marks the pure-Python validator tests (no compiled code), which only the Debug
 jobs run. `content_validate` itself runs the compiled `script_check` and runs in every job.
 
+## Content validator unittests
+
+`content_validate_*` unittest files go through `tools/validate/run_unittest_file.py` instead of
+being executed as scripts. The runner loads the module, collects its `unittest` cases, and exits
+non-zero when no test ran or any test failed. That is what an empty module needs, and what a file
+needs when its `if __name__ == "__main__"` guard calls `unittest.main()` before later cases are
+defined: running the file directly used to exit 0 after the cases above the guard, and ctest
+recorded a pass.
+
+`content_validate_zero_tests_fail` is the negative guard. It runs the same runner on the empty
+fixture `tests/validate/fixtures/zero_tests/empty_test.py`. The runner prints `ZERO TESTS RAN`
+and exits non-zero. The ctest property `PASS_REGULAR_EXPRESSION` requires that line (CMake
+ignores the process exit code for this property, so the non-zero status still counts as a
+passing guard). These unittest ctests carry the `python_only` label, so Release jobs skip them
+with `ctest -LE python_only`. `content_validate` itself runs the compiled `script_check` and
+stays unlabelled, so every job still runs it.
+
+Script-style checks (`content_validate`, `content_validate_negative`, `content_validate_packset`)
+keep their own entry points.
+
 ## Running the Linux jobs locally: `tools/ci_local.sh`
 
 ```sh
