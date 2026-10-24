@@ -358,9 +358,10 @@ bool Combat::may_pass(CombatantId mover, CombatantId other) const {
 }
 
 // The living creature (other than `except`, swarms excluded like occupied_except) whose footprint covers `t`; 0 = none.
-CombatantId Combat::occupant_at(Vec2i t, CombatantId except) const { return occupant_at(t, except, -1); }
+namespace { constexpr int kNoHeightFt = -0x7fffffff; }   // occupant_at: ignore vertical spans
+CombatantId Combat::occupant_at(Vec2i t, CombatantId except) const { return occupant_at(t, except, kNoHeightFt); }
 CombatantId Combat::occupant_at(Vec2i t, CombatantId except, int mover_abs_ft) const {
-    const int mover_fp = mover_abs_ft >= 0 ? footprint_size(except) : 1;
+    const int mover_fp = mover_abs_ft != kNoHeightFt ? footprint_size(except) : 1;
     bool mover_swarm = false;
     for (const auto& s : slots_) if (s.id == except) mover_swarm = s.archetype->swarm;
     if (mover_swarm) return 0;
@@ -370,7 +371,7 @@ CombatantId Combat::occupant_at(Vec2i t, CombatantId except, int mover_abs_ft) c
         const Spot sp = spot(s.id);
         if (t.x >= sp.p.x && t.x < sp.p.x + sp.n && t.y >= sp.p.y && t.y < sp.p.y + sp.n) {
             // altitude PR2: a creature whose vertical span does not overlap the mover's is not in its way.
-            if (mover_abs_ft >= 0 && !spans_overlap(mover_abs_ft, mover_fp, abs_height_ft(s.id), sp.n)) continue;
+            if (mover_abs_ft != kNoHeightFt && !spans_overlap(mover_abs_ft, mover_fp, abs_height_ft(s.id), sp.n)) continue;
             return s.id;
         }
     }
@@ -380,7 +381,9 @@ CombatantId Combat::occupant_at(Vec2i t, CombatantId except, int mover_abs_ft) c
 // Does `id`'s footprint at `anchor` (side n) share a tile with another living creature's space?
 bool Combat::overlaps_other(CombatantId id, Vec2i anchor, int n) const {
     // altitude PR2: at the height the mover would have there (an airborne flyer keeps its absolute height).
-    const int abs_ft = airborne(id) ? abs_height_ft(id) : grid_.footprint_ground_ft(anchor, n);
+    const auto* c = rules5e::find(state_, id);
+    const int abs_ft = airborne(id) ? abs_height_ft(id)
+                                    : grid_.footprint_ground_ft(anchor, n) + (burrowed(id) && c ? int(c->alt_ft) : 0);
     for (int dy = 0; dy < n; ++dy)
         for (int dx = 0; dx < n; ++dx)
             if (occupant_at({anchor.x + dx, anchor.y + dy}, id, abs_ft)) return true;
