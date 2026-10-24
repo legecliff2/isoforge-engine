@@ -722,6 +722,58 @@ It is static content and is not folded into `summons_digest` or `Combat::hash`, 
 - Tests: `tests/validate/test_srd51_equipment.py` (`FOCUS_FAMILY`, `test_focus_field_schema`).
 - Deferred equipment mechanics are listed in `docs/SRD_EQUIPMENT_DEFERRED.md`.
 
+## 19. Flat action damage (monster@5)
+
+SRD stat blocks such as rat, cat, owl, crab, and scorpion print a fixed amount: "Hit: 1 piercing damage." A monster@5 action
+`damage[]` component (including `extra_damage`) may be written as `{"flat": N, "type": "<damage_type>"}`, with N between 1 and 255.
+
+- `$defs/monster_damage` in `schemas/monster/v5.schema.json` is a `oneOf` of the common@2 `damage` component (`dice`) and the
+  flat arm. A component has `flat` or `dice`, never both. The flat arm is closed: no `bonus_vs`, and no separate modifier field.
+  A modifier belongs in the dice string (`"1d4+2"`), and `flat` is already the whole amount.
+- The loader maps `flat: N` to `DiceExpr{0, 0, N}`. With count 0, `roll_dice` draws no RNG, and a critical hit does not double the
+  amount (only dice double).
+- Use `flat` only for amounts printed without dice. Do not write `"dice": "1d1"`, because a crit doubles it.
+- Only monster@5 accepts it. monster@4, character, and common@2 are unchanged. Archetype data is static, so there is no hash
+  format change and no SIM_EVENTS tag.
+- Mixed components are fine: `[{"flat": 1, "type": "piercing"}, {"dice": "3d4", "type": "poison"}]`.
+- **Natural weapon source.** monster@5 attacks name their source with `weapon` or `natural`, and that rule is unchanged. For a flat
+  attack, `natural` takes `flat` instead of `dice`: `"natural": {"flat": 1, "ability": "dex"}`. `natural.flat` (1..255) and
+  `natural.dice` (NdM) are exclusive (`oneOf`). Never write `"dice": "1"`. `flat` is the whole amount, so `damage_ability` is not
+  allowed with it. The validator requires `natural.flat` to equal `damage[0].flat`
+  (`/actions/<i>: natural.flat N != damage[0] flat M`). With `derive: true`, the derived damage is the flat amount and the to-hit
+  is derived from `ability` as usual. Use `attack_bonus` with a reason when the printed to-hit differs (the SRD Cat prints +0).
+  Example: `tests/validate/fixtures/monster_flat/monsters/cat.json`:
+
+  ```json
+  {"id": "claws", "name": "Claws", "kind": "melee_weapon_attack",
+   "natural": {"flat": 1, "ability": "dex"},
+   "attack_bonus": {"value": 0, "reason": "SRD Cat Claws prints +0; Dex 15 + PB 2 = +4"},
+   "to_hit": 0, "reach": 5, "targets": 1,
+   "damage": [{"flat": 1, "type": "slashing"}],
+   "description": "Melee Weapon Attack: +0 to hit, reach 5 ft., one target. Hit: 1 slashing damage."}
+  ```
+
+## 22. Item `material` (item@1 / item@2 weapon, armor, shield)
+
+Optional on the weapon, armor, and shield arms of `item@1` and `item@2`. Gear, ammunition, and valuable do not take it (the arm `propertyNames` lists omit it; `tests/validate/test_union_arms.py`).
+
+| value | meaning |
+|---|---|
+| `metal` | manufactured metal |
+| `wood` | wood |
+| `leather` | leather |
+| `hide` | hide |
+| `cloth` | cloth |
+| `rope` | rope |
+
+**When `material` is absent, `manufactured_metal()` falls back to the old category rule.** Omitting the key is `ItemMaterial::Absent`. The predicate (`engine/rules/src/encounter.cpp`) then uses the category rule that used to sit at encounter.cpp ~3078: any weapon, armor, or shield counts as manufactured metal. Only an explicit non-metal value (`wood`, `leather`, `hide`, `cloth`, `rope`) removes a Heat Metal or rust target. An unknown string is not one of those values. `material_of` (`engine/core/sim/src/equipment.cpp`) leaves it `ItemMaterial::Absent` and emits a loader warning on `ContentLibrary::warnings()` (the same channel as a summon `max_count` that clips a CR band). It does not map the string to a non-metal material. No `item@1` / `item@2` bump: an old file that omits the key keeps the meaning it had.
+
+Heat Metal and rust-type effects key off `manufactured_metal()`. The predicate is true when the kind is weapon, armor, or shield and the material is `metal` or absent. It is false for an explicit non-metal value. `legal_actions` and `cast_spell_impl` share it, so a listed Heat Metal cast is one `equip_item` per object the cast would accept: a hand instance whose def is manufactured metal, or worn armor whose def id is manufactured metal. A hand whose instance equals the armor def id wins, so a non-metal object in that hand does not fall through to the armor. Worn armor cannot be dropped. Ammunition, a light, a focus, and a weapon, armor, or shield with an explicit non-metal material are refused with `heat_metal: no metal object`. Rust Metal is not authored yet; when it is, it uses this predicate rather than item category.
+
+A weapon with a metal head or blade counts as a manufactured metal object. The spear and the javelin are `metal`, matching the pike, the halberd, the glaive, the lance, and the crossbows. All-wood or otherwise non-metal gear stays non-metal: club, greatclub, quarterstaff, shortbow, longbow, sling, blowgun, a dart when it is all wood (otherwise `metal`; the srd51 dart is metal), whip (`leather`) and net (`rope`), and padded, leather, studded leather, and hide armor. The generic shield is `metal` (the SRD allows wood or metal; metal is the default, so the shield is a Heat Metal target). srd51.core sets the key on every weapon, armor, and shield (`tests/validate/test_srd51_equipment.py` `MATERIAL`).
+
+Versioning: appended, no tag change, no migration, no `api_level` gate. The field is not hashed, so goldens are unchanged. The justification and the Elf (tools/content) sign-off are in `docs/proposals/VERSION_BUMP_BATCH.md` (7.2zh follow-up).
+
 ## 24. Headless encounter scenarios (`scenario@1`)
 
 Not a pack document and not a migrated content type. The C++ `SchemaRegistry` does not register it. `tools/validate/validate_packs.py` loads `schemas/scenario/v1.schema.json` on the default `content_validate` run (no pack arguments) and checks each `scenarios/<name>/scenario.json`. `tools/encounter_runner` parses the file itself. See `tools/encounter_runner/README.md`.

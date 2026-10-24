@@ -41,7 +41,7 @@ permissions:
 # CI_BURST only changes Linux test parallelism (8 when 'true', 4 when 'false').
 # It does not select a runner. Compile parallelism stays 4.
 env:
-  CI_BURST: 'true'
+  CI_BURST: 'false'
 
 concurrency:
   # Not a global lock. Several PRs run at once: the group is the PR number, or the ref for a

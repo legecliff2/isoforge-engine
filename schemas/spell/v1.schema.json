@@ -1176,7 +1176,7 @@
                     "$ref": "../common/v1.schema.json#/$defs/creature_types"
                   }
                 },
-                "description": "VERSION_BUMP_BATCH 7.2zc generic mark (Hunter's Mark, Hex): the common@2 closed scope object's target key. The row follows the spell's one target (the marked creature): a damage row (applies_to self) adds to the caster's attack hits on it (combine with when weapon_attack for Hunter's Mark); an ability_check row (ability may be \"chosen\") sits on the caster (self) or the marked creature (target). 7.2zd: from_types (Protection from Evil and Good) for an applies_to attackers row.",
+                "description": "VERSION_BUMP_BATCH 7.2zc generic mark: the common@2 closed scope object's target key. The row follows the spell's one target (the marked creature): a damage row (applies_to self) adds to the caster's attack hits on it (combine with when weapon_attack for a weapon-only rider); an ability_check row (ability may be \"chosen\") sits on the caster (self) or the marked creature (target). 7.2zd: from_types (Protection from Evil and Good) for an applies_to attackers row.",
                 "minProperties": 1
               },
               "save": {
@@ -1212,6 +1212,10 @@
               "on_next_turn": {
                 "const": true,
                 "description": "VERSION_BUMP_BATCH 7.2zi (True Strike): the attack_roll row does nothing until the caster's next turn, and only against the marked creature. Needs scope target marked and applies_to self."
+              },
+              "dash_on_cast": {
+                "const": true,
+                "description": "VERSION_BUMP_BATCH 7.2zi (Expeditious Retreat): when this effect is applied, the cast grants one Dash (movement increases by the caster's speed). The bonus action was spent to cast. Later turns still Dash as a bonus action via bonus_dash. Needs a bonus_dash modifier with applies_to self. Not a modifier field and not a hash tag."
               },
               "save_vs_conditions": {
                 "type": "array",
