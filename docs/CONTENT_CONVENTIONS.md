@@ -788,6 +788,8 @@ A weapon with a metal head or blade counts as a manufactured metal object. The s
 
 Versioning: appended, no tag change, no migration, no `api_level` gate. The field is not hashed, so goldens are unchanged. The justification and the Elf (tools/content) sign-off are in `docs/proposals/VERSION_BUMP_BATCH.md` (7.2zh follow-up).
 
+§20-21 and §25-27 are reserved for in-flight branches.
+
 <!-- Code, schema and tests cite this section by its title ("Attack ability"), not its number. -->
 ## 23. Attack ability (monster@5 action `ability`, Strength Drain ruling)
 
@@ -807,8 +809,6 @@ attack at use time by the modifier change) and for the two-weapon off-hand.
   refuses it (`checks_v4.BATCH3_WEAPON_ONLY_KEYS`).
 - Two-weapon fighting (SRD 5.1): the off-hand bonus attack adds the attack's effective ability modifier to damage only when it is
   negative (the Two-Weapon Fighting style still adds it in full).
-
-§20-21, §23 and §25-27 are reserved for in-flight branches.
 
 ## 24. Headless encounter scenarios (`scenario@1`)
 
