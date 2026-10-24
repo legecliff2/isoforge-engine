@@ -242,10 +242,10 @@ TEST_CASE("area geometry: self-cube touches the footprint edge, 8 directions, 2x
             if (t.x >= box.x0 && t.x <= box.x1 && t.y >= box.y0 && t.y <= box.y1) return;
             probes.push_back({kGoblin, t});
         };
-        add_out(box.x0 - 1, box.y0);
-        add_out(box.x1 + 1, box.y0);
-        add_out(box.x0, box.y0 - 1);
-        add_out(box.x1, box.y1 + 1);
+        // The whole one-tile ring around the cube, corners included. A tile of that ring that the cube
+        // also catches fails the equality below.
+        for (int y = box.y0 - 1; y <= box.y1 + 1; ++y)
+            for (int x = box.x0 - 1; x <= box.x1 + 1; ++x) add_out(x, y);
         Board b(lib, caster_id(box.n), kAnchor, probes);
         expect_tiles(std::string("cube ") + box.dir + " " + std::to_string(box.n), b.hit_tiles(cube, box.aim), inside);
     }
@@ -409,6 +409,25 @@ TEST_CASE("area geometry: cone and line from the footprint centre, 8 directions,
     check_goldens(lib, AreaShape::Cone, 30, 0, cones);
 }
 
+TEST_CASE("area geometry: centre origin stops short of the printed length") {
+    // 30 ft is measured from the footprint centre, so the area dies before the printed length past the
+    // creature's edge. 2x2 line and 3x3 cone: 25 ft past the edge is in, 30 ft is out. 4x4 line: 20 ft is
+    // in, 25 ft is out. An origin on the edge would still cover the farther tile.
+    auto lib = footprint_lib();
+    {
+        Board b(lib, "t.large", kAnchor, {{kGoblin, {16, 9}}, {kGoblin, {17, 9}}});
+        expect_tiles("2x2 line 25 ft", b.hit_tiles(tmpl(AreaShape::Line, 0, 30, 5), {12, 10}), {{16, 9}});
+    }
+    {
+        Board b(lib, "t.huge", kAnchor, {{kGoblin, {17, 11}}, {kGoblin, {18, 11}}});
+        expect_tiles("3x3 cone 25 ft", b.hit_tiles(tmpl(AreaShape::Cone, 0, 30), {13, 11}), {{17, 11}});
+    }
+    {
+        Board b(lib, "t.gargantuan", kAnchor, {{kGoblin, {17, 10}}, {kGoblin, {18, 10}}});
+        expect_tiles("4x4 line 20 ft", b.hit_tiles(tmpl(AreaShape::Line, 0, 30, 5), {14, 11}), {{17, 10}});
+    }
+}
+
 TEST_CASE("area hits a creature once, in slot order, including a partly covered 4x4") {
     auto lib = footprint_lib();
     const auto cone = tmpl(AreaShape::Cone, 0, 15);
@@ -478,8 +497,13 @@ TEST_CASE("area save: half damage on a success, one roll for a multi-tile creatu
     auto run = [](int dc, const char* dice, const char* caster, Vec2i at, std::vector<Placed> probes, Vec2i aim, uint64_t seed) {
         ContentLibrary lib;
         REQUIRE(lib.load(sample_set()).empty());
-        REQUIRE_FALSE(lib.add(drake(caster, cone_breath(dc, dice), caster == std::string("t.large") ? "large" : "medium"), "monster"));
-        if (std::string(caster) != "t.large") {
+        const std::string who(caster);
+        const char* sz = who == "t.large" ? "large"
+                       : who == "t.huge" ? "huge"
+                       : who == "t.gargantuan" ? "gargantuan"
+                       : "medium";
+        REQUIRE_FALSE(lib.add(drake(caster, cone_breath(dc, dice), sz), "monster"));
+        if (who != "t.large" && who != "t.huge" && who != "t.gargantuan") {
             REQUIRE_FALSE(lib.add(drake("t.large", Json(), "large"), "monster"));
             REQUIRE_FALSE(lib.add(drake("t.huge", Json(), "huge"), "monster"));
             REQUIRE_FALSE(lib.add(drake("t.gargantuan", Json(), "gargantuan"), "monster"));
@@ -538,12 +562,22 @@ TEST_CASE("area save: half damage on a success, one roll for a multi-tile creatu
         CHECK(save.damage[0].second == half);
         CHECK(fail.natural == save.natural);
     }
-    // Cast by a Large creature: the cone still resolves through the same save, half on a success.
-    {
-        const auto save = run(1, "1d1+7", "t.large", {8, 8}, {{kFighter, {10, 8}}}, {12, 8}, 9);
+    // Cast by a Large, Huge or Gargantuan creature: one save, full damage on a failure, half on a success.
+    struct Caster { const char* id; Vec2i at; Vec2i aim; Vec2i fighter; uint64_t seed; };
+    const Caster casters[] = {{"t.large", {8, 8}, {12, 8}, {10, 8}, 9},
+                              {"t.huge", {8, 8}, {13, 9}, {12, 9}, 13},
+                              {"t.gargantuan", {8, 8}, {14, 10}, {12, 10}, 17}};
+    for (const Caster& cs : casters) {
+        const auto save = run(1, "1d1+7", cs.id, cs.at, {{kFighter, cs.fighter}}, cs.aim, cs.seed);
+        const auto fail = run(30, "1d1+7", cs.id, cs.at, {{kFighter, cs.fighter}}, cs.aim, cs.seed);
         CHECK(save.savers.size() == 1);
+        CHECK(fail.savers.size() == 1);
         REQUIRE(save.damage.size() == 1);
+        REQUIRE(fail.damage.size() == 1);
         CHECK(save.damage[0].second == half);
+        CHECK(fail.damage[0].second == full);
         CHECK(save.success == std::vector<int>{1});
+        CHECK(fail.success == std::vector<int>{0});
+        CHECK(save.natural == fail.natural);
     }
 }
