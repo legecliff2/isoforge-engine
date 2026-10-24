@@ -65,6 +65,21 @@ That attribution covers the SRD-derived material in these paths:
   docs/proposals/ZONES_AURAS.md
   — design notes that restate SRD 5.1 rules.
 
+Any file whose content is derived from the SRD 5.1 remains under CC-BY-4.0
+regardless of its path, and the path list is illustrative, not exhaustive.
+
 Pack manifests already store the same attribution sentence with ASCII
 quotation marks, which is how the JSON documents are written. The sentence
 in this file uses the quotation marks from the SRD 5.1 PDF.
+
+Third-party components
+----------------------
+cmake/Dependencies.cmake fetches these components. Nothing is vendored
+under third_party/. doctest is included when tests are built, and SDL3 is
+included unless the build is headless. Each keeps its own license:
+
+- nlohmann_json 3.11.3 — MIT
+- xxHash 0.8.2 — BSD-2-Clause
+- Luau 0.742 — MIT
+- doctest 2.4.11 — MIT
+- SDL3 3.4.8 — zlib
