@@ -41,6 +41,27 @@ TEST_CASE("defaults and passive Perception") {
     CHECK(recovery_budget(1) == 1); CHECK(recovery_budget(5) == 3); CHECK(recovery_budget(6) == 3);
 }
 
+TEST_CASE("Tier-A §25: printed passive Perception override, Wis delta, caller bonus, surprise") {
+    auto m = monster(2);
+    m.abilities.score[std::size_t(Ability::Wis)] = int8_t(13);
+    m.skill_proficiencies |= bit(Skill::Perception);
+    m.proficiency_bonus = 2;
+    CHECK(passive_perception(m) == 13);                  // derived 10 + 3
+    m.passive_perception_override = 10;                  // SRD blink dog prints 10
+    CHECK(passive_perception(m) == 10);
+    CHECK(passive_perception(m, -5) == 5);               // the dim-light -5 still applies
+    m.abilities.score[std::size_t(Ability::Wis)] = int8_t(9);   // Wis 13 reduced by 4: mod +1 -> -1
+    m.ability_reduction[std::size_t(Ability::Wis)] = 4;
+    CHECK(passive_perception(m) == 8);                   // the override shifts by the same delta (-2)
+    m.passive_perception_override = -1;
+    CHECK(passive_perception(m) == 11);                  // derived: 10 + (-1 + 2)
+    auto a = pc(1);
+    auto o = monster(3); o.passive_perception_override = 10;
+    // a Stealth 11 hider: the override (10) is beaten, a derived 13 would not be
+    CHECK(surprised_by_stealth({a, o}, {{1, 11}}) == std::vector<CombatantId>{3});
+    CHECK(Combatant{}.passive_perception_override == -1);
+}
+
 TEST_CASE("surprised_by_stealth: surprised only when every living enemy is hidden from it") {
     auto a = pc(1); auto b = pc(3);
     b.abilities.score[std::size_t(Ability::Wis)] = int8_t(20);   // passive 15
