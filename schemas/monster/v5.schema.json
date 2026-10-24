@@ -126,6 +126,32 @@
                 }
               }
             }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "save_advantage"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/save_advantage_effect"
+                }
+              }
+            }
           }
         ]
       },
@@ -510,7 +536,8 @@
             "ranged_spell_attack",
             "special",
             "save_effect",
-            "attack_effect"
+            "attack_effect",
+            "teleport"
           ]
         },
         "to_hit": {
@@ -814,6 +841,102 @@
           ],
           "default": "one_hand",
           "description": "How the `weapon` is used for this action (EQUIPMENT 2.1 WeaponUse): two_hands = versatile die or a two-handed melee weapon, thrown = a thrown use of a melee weapon. Explicit, never inferred from the action id."
+        },
+        "drain": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "max_hp"
+          ],
+          "description": "Batch 3 (Lich ruling; sim content.cpp, rules5e life_drain): weapon attacks only. SRD 5.1 Life Drain: the target's hit point maximum is reduced by an amount equal to the damage taken (after a Constitution save vs save.dc when present; success: no reduction); the reduction lasts until the target finishes a long rest, and a maximum of 0 kills it. Wight: {max_hp true, save {ability con, dc 13}}.",
+          "properties": {
+            "max_hp": {
+              "const": true
+            },
+            "save": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ability",
+                "dc"
+              ],
+              "properties": {
+                "ability": {
+                  "const": "con"
+                },
+                "dc": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 30
+                }
+              }
+            },
+            "damage_type": {
+              "$ref": "../common/v1.schema.json#/$defs/damage_type",
+              "description": "Batch 3 (vampire spawn): only the damage of this type taken counts (after immunity / resistance / vulnerability); must be one of the action's damage[] types."
+            },
+            "heal_self": {
+              "type": "boolean",
+              "description": "Batch 3 (vampire spawn): the attacker regains hit points equal to the reduction."
+            }
+          }
+        },
+        "curse": {
+          "type": "object",
+          "description": "Batch 3 (mummy Rotting Fist): on a hit, a Con save; on a failure the target can't regain hit points (no_regain_hp). Weapon attacks only.",
+          "additionalProperties": false,
+          "required": [
+            "no_regain_hp",
+            "save"
+          ],
+          "properties": {
+            "no_regain_hp": {
+              "const": true
+            },
+            "save": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ability",
+                "dc"
+              ],
+              "properties": {
+                "ability": {
+                  "const": "con"
+                },
+                "dc": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 30
+                }
+              }
+            }
+          }
+        },
+        "target_requires_any": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Batch 3 (vampire spawn Bite: \"one willing creature, or a creature that is grappled by the vampire, incapacitated, or restrained\"): the target must meet at least one. willing counts only for an ally with ActionRequest target_willing. Weapon attacks only.",
+          "items": {
+            "enum": [
+              "willing",
+              "grappled_by_self",
+              "incapacitated",
+              "restrained"
+            ]
+          }
+        },
+        "feet": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 500,
+          "multipleOf": 5,
+          "description": "Batch 3 teleport action (blink dog 40): up to this many feet to an unoccupied space the creature can see."
+        },
+        "with_attack": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id",
+          "description": "Batch 3 teleport action: one attack (an attack action id) made after the teleport without another action (SRD 5.1 blink dog: 'Before or after teleporting, the dog can make one bite attack.'; teleport-then-bite only)."
         }
       },
       "allOf": [
@@ -953,7 +1076,10 @@
               ],
               "properties": {
                 "kind": {
-                  "const": "attack_effect"
+                  "enum": [
+                    "attack_effect",
+                    "teleport"
+                  ]
                 }
               }
             },
@@ -1177,6 +1303,51 @@
               ]
             }
           }
+        },
+        {
+          "description": "Batch 3: feet / with_attack are teleport-action keys; a teleport action needs feet.",
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "teleport"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "feet"
+            ],
+            "propertyNames": {
+              "enum": [
+                "id",
+                "name",
+                "kind",
+                "description",
+                "feet",
+                "usage",
+                "with_attack"
+              ]
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "feet"
+                  ]
+                },
+                {
+                  "required": [
+                    "with_attack"
+                  ]
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -1203,6 +1374,81 @@
           "description": "Melee uses only; a thrown use is ranged and gets no extra dice."
         }
       }
+    },
+    "save_advantage_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "description": "monster@5-local trait kind (batch 3, field_shapes_proposal Gap 2; common@2 unchanged): advantage (or disadvantage) on saving throws matching every listed gate; a gate list matches when the effect imposes one of save_vs_conditions or deals one of vs_damage_types (either set). At least one gate is required. SRD Magic Resistance: {kind save_advantage, magical true}. Dark Devotion: {save_vs_conditions [charmed, frightened]}.",
+      "properties": {
+        "kind": {
+          "const": "save_advantage"
+        },
+        "save_vs_conditions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/condition"
+          }
+        },
+        "vs_damage_types": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/damage_type"
+          }
+        },
+        "magical": {
+          "type": "boolean",
+          "description": "true: only saves against spells and other magical effects."
+        },
+        "abilities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/ability"
+          }
+        },
+        "mode": {
+          "enum": [
+            "advantage",
+            "disadvantage"
+          ],
+          "default": "advantage"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "save_vs_conditions"
+          ]
+        },
+        {
+          "required": [
+            "vs_damage_types"
+          ]
+        },
+        {
+          "required": [
+            "abilities"
+          ]
+        },
+        {
+          "required": [
+            "magical"
+          ],
+          "properties": {
+            "magical": {
+              "const": true
+            }
+          }
+        }
+      ]
     },
     "monster_damage": {
       "description": "monster@5-local action damage component (common@2 $defs/damage unchanged): either common@2 damage ({dice, type, bonus_vs?}) or flat damage {flat, type}. Exactly one of dice / flat (oneOf). flat maps to rules5e::DiceExpr{0, 0, flat}: no dice are rolled (no rng), and a critical hit does not double it (SRD 5.1). The ability modifier stays in the dice string ('1d6+2'); flat is not a modifier and takes none.",

@@ -106,11 +106,12 @@ TAG_TABLE["item@1"] = TagRow(False, frozenset(), frozenset(), frozenset(), froze
 _MONSTER_AT5_KEYS = frozenset({"derive", "equipment", "natural_armor", "ac_adjust", "weapon_dice_multiplier", "weapons", "hands",
                                "proficiency_bonus_reason", "emits_light"})
 # monster@5-local trait kinds (Rules decision on #247: no common@3): weapon_extra_dice (Brute), closed arm in monster@5 $defs.
-MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice"})
+MONSTER_AT5_ACTION_KINDS = frozenset({"teleport"})   # batch 3 (blink dog)
+MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage"})   # + batch 3 save_advantage (Magic Resistance)
 _CHARACTER_AT5_KEYS = frozenset({"derive", "weapon_proficiencies", "armor_proficiencies"})
 for _typ, _extra in (("monster", _MONSTER_AT5_KEYS), ("character", _CHARACTER_AT5_KEYS)):
     _r4 = TAG_TABLE[f"{_typ}@4"]
-    TAG_TABLE[f"{_typ}@5"] = TagRow(True, _r4.action_kinds,
+    TAG_TABLE[f"{_typ}@5"] = TagRow(True, _r4.action_kinds | (MONSTER_AT5_ACTION_KINDS if _typ == "monster" else frozenset()),
                                     _r4.effect_kinds | (MONSTER_AT5_EFFECT_KINDS if _typ == "monster" else frozenset()),
                                     _r4.cost_values, _r4.top_level_keys | _extra,
                                     cross_refs=True, needs_api_level=2, legacy_stamps=True)
@@ -1007,6 +1008,135 @@ def check_transparent(doc: dict, typ: str) -> tuple[list[str], list[str]]:
         else:
             warns.append(f"{path}: transparent declared more than once (first at {first}); the sim keeps the highest dc (7.2w)")
     return errs, warns
+
+
+SAVE_ADVANTAGE_KEYS = frozenset({"kind", "save_vs_conditions", "vs_damage_types", "magical", "abilities", "mode"})
+
+
+def check_save_advantage(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Batch 3 save_advantage (sim features.cpp apply_save_advantage): the loader's refusals as errors (same text), and a
+    warning for an identical second declaration (adds nothing). Distinct save_advantage traits stack (Magic Resistance plus
+    Dark Devotion), so the kind is not in NO_STACK_EFFECT_KINDS."""
+    errs: list[str] = []
+    warns: list[str] = []
+    seen: dict[str, str] = {}
+    for path, _owner, eff in live_effects(doc):
+        if eff.get("kind") != "save_advantage":
+            continue
+        did = f"{path}: {doc.get('id', '?')}"
+        if tag != "monster@5":
+            errs.append(f"{did}: save_advantage needs a monster@5 file")
+            continue
+        extra = sorted(k for k in eff if k not in SAVE_ADVANTAGE_KEYS)
+        if extra:
+            errs.append(f"{did}: save_advantage: unknown key '{extra[0]}'")
+            continue
+        if not any(eff.get(k) for k in ("save_vs_conditions", "vs_damage_types", "abilities")) and eff.get("magical") is not True:
+            errs.append(f"{did}: save_advantage needs at least one of save_vs_conditions, vs_damage_types, abilities, magical: true")
+            continue
+        key = repr(sorted((k, sorted(v) if isinstance(v, list) else v) for k, v in eff.items() if k != "mode")) + str(eff.get("mode", "advantage"))
+        if key in seen:
+            warns.append(f"{path}: duplicate save_advantage (same as {seen[key]}); a second declaration adds nothing")
+        else:
+            seen[key] = path
+    return errs, warns
+
+
+BATCH3_WEAPON_ONLY_KEYS = ("drain", "curse", "target_requires_any")
+
+
+def check_batch3_actions(doc: dict, tag: str) -> list[str]:
+    """Batch 3 monster@5 action keys the sim reads only on weapon attacks (content.cpp attack loop): elsewhere they would be
+    silently ignored, so they are errors."""
+    errs: list[str] = []
+    if tag != "monster@5":
+        return errs
+    for i, a in enumerate(doc.get("actions") or []):
+        if not isinstance(a, dict):
+            continue
+        dr = a.get("drain")
+        if isinstance(dr, dict) and "damage_type" in dr:   # vampire spawn: the loader refuses a type the action does not deal
+            types = {p.get("type") for p in a.get("damage") or [] if isinstance(p, dict)}
+            if dr["damage_type"] not in types:
+                errs.append(f"/actions/{i}: {doc.get('id', '?')}.{a.get('id')}: drain.damage_type is not one of the action's damage types")
+        if a.get("kind") in ("melee_weapon_attack", "ranged_weapon_attack"):
+            continue
+        for k in BATCH3_WEAPON_ONLY_KEYS:
+            if k in a:
+                errs.append(f"/actions/{i}: {doc.get('id', '?')}.{a.get('id')}: {k} is read only on weapon attacks")
+    return errs
+
+
+UNTIL_CURED_CONDITIONS = frozenset({"blinded", "deafened", "paralyzed", "poisoned"})   # Lesser Restoration's list (SRD 5.1)
+
+
+def check_teleport_actions(doc: dict, tag: str) -> list[str]:
+    """Batch 3 monster@5 `teleport` action (blink dog): with_attack names a weapon / spell attack action of this document (same
+    rule as the sim loader, content.cpp compile_teleport_action)."""
+    errs: list[str] = []
+    if tag != "monster@5":
+        return errs
+    attack_ids = {a.get("id") for a in doc.get("actions") or [] if isinstance(a, dict) and str(a.get("kind", "")).endswith("_attack")}
+    for i, a in enumerate(doc.get("actions") or []):
+        if isinstance(a, dict) and a.get("kind") == "teleport" and "with_attack" in a and a["with_attack"] not in attack_ids:
+            errs.append(f"/actions/{i}/with_attack: '{a['with_attack']}' is not an attack action id in actions[]")
+    return errs
+
+
+def check_multiattack_count(doc: dict, tag: str) -> list[str]:
+    """Batch 3 multiattack count_dice (violet fungus "makes 1d4 Rotting Touch attacks"): monster@5 only, and the option
+    names exactly one attack (same rule as the sim loader, features.cpp apply_multiattack)."""
+    errs: list[str] = []
+    for path, _owner, eff in live_effects(doc):
+        if eff.get("kind") != "multiattack":
+            continue
+        for sub, o in [("", eff)] + [(f"/options/{j}", o) for j, o in enumerate(eff.get("options") or [])]:
+            if not isinstance(o, dict) or "count_dice" not in o:
+                continue
+            if tag != "monster@5":
+                errs.append(f"{path}{sub}/count_dice: multiattack count_dice needs a monster@5 file")
+            if len(o.get("attacks") or []) != 1:
+                errs.append(f"{path}{sub}/count_dice: count_dice needs exactly one attack")
+    return errs
+
+
+def _walk_until_cured(node, path: str):
+    if isinstance(node, dict):
+        d = node.get("duration")
+        if isinstance(d, dict) and d.get("kind") == "until_cured":
+            yield path, node
+        for k, v in node.items():
+            yield from _walk_until_cured(v, f"{path}/{k}")
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            yield from _walk_until_cured(v, f"{path}/{i}")
+
+
+def check_until_cured(doc: dict, tag: str) -> list[str]:
+    """Batch 3 duration {kind: until_cured} (Lich ruling, death dog): read only in apply[] of a monster's save_condition /
+    apply_condition riders and save_effect / attack_effect actions (sim compile_save_action). The condition must be one an
+    existing cure ends (Lesser Restoration: blinded, deafened, paralyzed, poisoned); conditions with a natural SRD end are
+    refused, and so are repeat_save / escape (same text as the loader)."""
+    errs: list[str] = []
+    allowed: set[int] = set()
+    if tag.startswith("monster@"):
+        for _p, _o, _j, r in rider_sites(doc):
+            if isinstance(r, dict) and r.get("kind") in ("save_condition", "apply_condition"):
+                allowed.update(id(x) for x in r.get("apply") or [])
+        for _p, a in mechanical_actions(doc):
+            if a.get("kind") in ("save_effect", "attack_effect"):
+                allowed.update(id(x) for x in a.get("apply") or [])
+    for path, x in _walk_until_cured(doc, ""):
+        if id(x) not in allowed:
+            errs.append(f"{path}: until_cured is read only in apply[] of a monster save_condition / apply_condition rider or "
+                        "save_effect / attack_effect action")
+        elif x.get("condition") not in UNTIL_CURED_CONDITIONS:
+            errs.append(f"{path}: until_cured needs blinded, deafened, paralyzed or poisoned (a condition Lesser Restoration ends)")
+        elif "repeat_save" in x:
+            errs.append(f"{path}: until_cured takes no repeat_save")
+        elif "escape" in x:
+            errs.append(f"{path}: until_cured takes no escape")
+    return errs
 
 
 CONTROL_KEYS_7_2Y = ("control", "control_excludes_creature_types", "destroy_undead_max_cr8", "target_creature_types", "duration")

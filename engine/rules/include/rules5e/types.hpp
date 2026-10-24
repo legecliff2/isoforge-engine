@@ -106,7 +106,21 @@ struct Attack {
     DiceExpr half_hp_damage{};
     // appended (7.2y `bonus_vs` on damage[0]): as DamagePart::vs_types / vs_dice for component 1.
     uint32_t vs_types = 0; DiceExpr vs_dice{0, 0, 0};
+    // appended (batch 3, mummy Rotting Fist): on a hit, a Con save vs curse_no_regain_dc when non-zero; on a failure the target
+    // is cursed: "The cursed target can't regain hit points" (sets Combatant::no_regain_hp; the 24-hour maximum loss and
+    // Remove Curse are not modelled). Sim Combat::hash 0xDC folds no_regain_hp while any attack carries this.
+    int8_t curse_no_regain_dc = 0;
+    // appended (batch 3, vampire spawn Bite): drain_damage_type >= 0 (a DamageType) limits the Life Drain amount to the damage of
+    // that type the target took (after immunity / resistance / vulnerability, capped at the hit points actually lost); -1 = all.
+    // drain_heal_self: "the vampire regains hit points equal to that amount" (only when a reduction applies).
+    int8_t drain_damage_type = -1;
+    bool drain_heal_self = false;
+    // appended (batch 3, vampire spawn Bite: "one willing creature, or a creature that is grappled by the vampire, incapacitated,
+    // or restrained"): kTargetGate* bits; non-zero = the target must meet at least one (0 = any target).
+    uint8_t target_requires_any = 0;
 };
+inline constexpr uint8_t kTargetGateWilling = 1, kTargetGateGrappledBySelf = 2, kTargetGateIncapacitated = 4,
+                         kTargetGateRestrained = 8;
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
 constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
 // Range facts for a ranged attack at `dist_ft`: out of reach entirely, or beyond normal range (disadvantage).
@@ -155,7 +169,23 @@ struct DeathSaves { uint8_t successes = 0, failures = 0; bool stable = false; };
 struct AttackSequence {
     std::string_view id;                  // option id; storage owned by the caller (like Attack::id)
     std::vector<uint8_t> attacks;         // indices into Combatant::attacks, in order (1..255)
+    // Appended (batch-3, violet fungus "makes 1d4 Rotting Touch attacks"): count > 0 = the option names ONE
+    // attack, made this many times; the count is rolled from the encounter RNG when the multiattack starts.
+    DiceExpr count_dice{0, 0, 0};
+    // Appended (batch-3, blink dog Teleport: "Before or after teleporting, the dog can make one bite attack."): nonzero = this
+    // sequence is not a Multiattack option; it is armed (sequence_pos 0) when the creature uses the non-spell action with this
+    // SpellDef id, so its attack(s) follow that action without spending another (teleport-then-bite; "before" is deferred).
+    uint32_t after_action = 0;
 };
+// The attack index the multiattack in progress requires next, or -1 (none in progress / sequence done).
+inline int multiattack_next(const std::vector<AttackSequence>& ms, uint8_t sequence, uint8_t pos) {
+    if (sequence == 0 || sequence > ms.size()) return -1;
+    const AttackSequence& m = ms[std::size_t(sequence - 1)];
+    if (m.attacks.empty()) return -1;
+    if (m.after_action != 0) return pos < m.attacks.size() ? m.attacks[pos] : -1;
+    if (m.count_dice.count > 0) return m.attacks[0];   // attacks_remaining bounds a rolled count
+    return pos < m.attacks.size() ? m.attacks[pos] : -1;
+}
 
 // SRD "Regeneration" (troll, vampire spawn): regains `amount` HP at the start of its turn unless it took damage of
 // a `suppressed_by` type since its last turn started (troll: acid, fire; vampire spawn: radiant). A creature with
