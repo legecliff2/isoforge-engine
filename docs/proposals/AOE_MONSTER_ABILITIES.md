@@ -26,7 +26,7 @@ Status: accepted for PR 1 of the stack (tests and this note). Read against main 
 1. **Reuse, don't fork.** A monster area action compiles into a synthetic `SpellDef` that has `area`, `area_size_ft`, `area_width_ft`, `save_ability`, `on_save=Half`, its dice and a fixed `save_dc`. This is the same pattern recharge actions already use (`encounter.hpp:521`, keyed by actor plus synthetic spell id). Targets come from `Combat::area_targets`, so nothing new is needed in rules for geometry.
 2. **Recharge.** Use the existing `ActionUse` with `recharge_min`. Firing it expends the use, and the turn-start d6 restores it, so no new RNG draw site is added. Per-day uses (`uses_max`) take the same path.
 3. **Saves.** Each target in `area_targets` order (slot order, which is deterministic) rolls once. A multi-tile creature is one target and rolls once, however many of its tiles are covered (SRD). Evasion and Legendary Resistance hooks stay where they already are for spells.
-4. **Multi-tile origins.** Cone and Line start at the centre of the footprint. A self-adjacent Cube touches the edge of the footprint. This is already in place. PR 1 pins 2x2, 3x3 and 4x4 (odd and even centres) in every one of the 8 directions.
+4. **Multi-tile origins.** A cone or a line starts at the centre of the footprint. A self-adjacent cube touches the edge of the footprint. The centre is what the sim does; it is not the SRD origin. Length measured from the centre stops short of the creature's edge (section 6). PR 1 pins that behaviour for 2x2, 3x3 and 4x4, odd and even centres, in every one of the 8 directions.
 5. **Altitude forward-compat** (owned by another engineer; this note only reserves the hooks):
    - Absolute height is `h = ground_elev*5 + alt_ft`.
    - Keep `inside()` as the 2D test and add an optional vertical predicate that defaults to true:
@@ -143,6 +143,7 @@ Follow-ups. This PR does not change them, and the tests pin the current behaviou
 - **Cover on area saves.** Cover from footprints is unmodelled (`AttackContext::cover_ac_bonus` is caller-supplied and the area path does not set it), so a Dexterity save against an area never gains a cover bonus.
 - **Square sphere.** Sphere membership is a Chebyshev radius, a square on this grid. That matches the sim's distance metric. It is not a circle.
 - **Cylinder height.** A cylinder is the same 2D test as a sphere. `area_height_ft` is stored and ignored.
+- **Centre origin shortens reach.** Cone and line length is measured from the footprint centre. The SRD origin is the creature's edge, so a Large or bigger caster loses the distance from that edge back to the centre. A 30 ft line from a 2×2 reaches 25 ft past the footprint, a 30 ft cone from a 3×3 reaches 25 ft past it, and a 30 ft line from a 4×4 reaches 20 ft. `area geometry: centre origin stops short of the printed length` pins those three. This PR does not move the origin.
 
 Also, checked at this commit and left as they are:
 
