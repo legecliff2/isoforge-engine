@@ -1828,6 +1828,14 @@
     "warlock",
     "wizard"
    ]
+  },
+  "beacon-of-hope": {
+   "name": "Beacon of Hope",
+   "level": 3,
+   "school": "abjuration",
+   "classes": [
+    "cleric"
+   ]
   }
  }
 }

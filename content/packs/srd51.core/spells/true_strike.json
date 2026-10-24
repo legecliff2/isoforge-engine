@@ -1,0 +1,51 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.true_strike",
+  "name": "True Strike",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "description": "You extend your hand and point a finger at a target in range. Your magic grants you a brief insight into the target's defenses. On your next turn, you gain advantage on your first attack roll against the target, provided that this spell hasn't ended.",
+  "level": 0,
+  "school": "divination",
+  "classes": [
+    "bard",
+    "sorcerer",
+    "warlock",
+    "wizard"
+  ],
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "ranged",
+    "feet": 30
+  },
+  "components": {
+    "s": true
+  },
+  "duration": {
+    "kind": "rounds",
+    "amount": 1,
+    "concentration": true
+  },
+  "effects": [
+    {
+      "kind": "apply_modifier",
+      "on_next_turn": true,
+      "scope": {
+        "target": "marked"
+      },
+      "modifier": {
+        "stat": "attack_roll",
+        "mode": "advantage",
+        "consume": "next_attack",
+        "applies_to": "self",
+        "duration": {
+          "kind": "until_end_of_caster_next_turn"
+        }
+      }
+    }
+  ]
+}
