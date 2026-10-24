@@ -179,6 +179,7 @@ struct SpellEffect {
     bool excludes_formless = false;                                // 7.2w: see SpellDef
     uint8_t ends_on = 0;                                           // 7.2zc: see SpellDef::ends_on
     bool hit_only = false;                                        // 7.2zi: spell_attack rider (primary uses SpellDef::hit_only)
+    bool dash_on_cast = false;                                    // 7.2zi: apply_modifier rider (primary uses SpellDef::dash_on_cast)
     bool has_ward = false; Ability ward_save = Ability::Wis; uint8_t ward_on_fail = 1;   // 7.2zd: see SpellDef
     uint32_t immune_conditions = 0, immune_from_types = 0;                              // 7.2zd: see SpellDef
     int16_t hp_bonus_flat = 0, hp_bonus_per_slot = 0;                                   // 7.2zd: see SpellDef
@@ -484,6 +485,11 @@ struct SpellDef {
     // appended (7.2zi Ray of Enfeeblement): kind SpellAttack, `hit_only`: the attack roll resolves and a hit is a hit, but
     // no damage dice are rolled and no hit points are dealt. Riders (applies_to affected) still follow a hit.
     bool hit_only = false;
+    // appended (7.2zi Expeditious Retreat follow-up): apply_modifier `dash_on_cast`. When the modifier is applied and the
+    // caster is the current actor, the cast grants one Dash (movement += modified speed, dashes += 1, Dashed). The bonus
+    // action was already spent to cast. Not stored on the modifier row, so modifiers_digest is unchanged and no SIM_EVENTS
+    // tag is claimed. A cast that never Moves stays legal.
+    bool dash_on_cast = false;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered

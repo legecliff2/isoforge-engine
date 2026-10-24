@@ -1496,6 +1496,25 @@
     "cleric"
    ],
    "material": "A pair of platinum rings worth at least 50gp each, which you and the target must wear for the duration."
+  },
+  "expeditious-retreat": {
+   "name": "Expeditious Retreat",
+   "level": 1,
+   "range": "Self",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Up to 10 minutes",
+   "concentration": true,
+   "casting_time": "1 bonus action",
+   "school": "transmutation",
+   "classes": [
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ]
   }
  }
 }
