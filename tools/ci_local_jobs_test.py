@@ -8,6 +8,7 @@ exit when an expectation fails. Shellcheck runs when it is on PATH.
 """
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -1081,6 +1082,83 @@ def test_cross_user_lock():
                 pass
 
 
+def test_outer_flock_does_not_deadlock():
+    """`flock <same lock> … ci_local.sh` must not wait on a lock this process already holds."""
+    with tempfile.TemporaryDirectory(prefix="ci-local-outer-flock-") as td:
+        lock = Path(td) / "ci_local.lock"
+        lock.write_text("")
+        script = "\n".join(
+            [
+                "set -uo pipefail",
+                'source "$1"',
+                'export CI_LOCAL_LOCK="$2"',
+                "ci_local_acquire_lock",
+                "echo CONTINUED",
+                'if flock -n "$2"; then echo UNLOCKED; else echo STILL_HELD; fi',
+                "echo DONE",
+            ]
+        )
+        try:
+            proc = subprocess.run(
+                ["flock", str(lock), BASH, "-c", script, "bash", str(SH), str(lock)],
+                capture_output=True,
+                text=True,
+                env=clean_env(),
+                timeout=5,
+            )
+        except subprocess.TimeoutExpired as exc:
+            out = exc.stdout or ""
+            err = exc.stderr or ""
+            note(False, "outer flock does not deadlock", f"timeout out={out!r} err={err!r}")
+            return
+        note(
+            proc.returncode == 0
+            and "lock already held on an inherited fd; not locking again" in proc.stdout
+            and "CONTINUED" in proc.stdout
+            and "STILL_HELD" in proc.stdout
+            and "UNLOCKED" not in proc.stdout
+            and "waiting for lock" not in proc.stdout
+            and "DONE" in proc.stdout,
+            "outer flock does not deadlock",
+            f"rc={proc.returncode} out={proc.stdout!r} err={proc.stderr!r}",
+        )
+
+        hold = subprocess.Popen(
+            ["flock", str(lock), "sleep", "30"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        time.sleep(0.2)
+        try:
+            probe = run(
+                "\n".join(
+                    [
+                        "set -uo pipefail",
+                        'source "$1"',
+                        'export CI_LOCAL_LOCK="$2"',
+                        'if ci_local_inherited_lock "$2"; then echo INHERITED; else echo NOT_INHERITED; fi',
+                    ]
+                ),
+                timeout=5,
+                args=[str(lock)],
+            )
+            lines = probe.stdout.splitlines()
+            note(
+                probe.returncode == 0 and "NOT_INHERITED" in lines and "INHERITED" not in lines,
+                "another process's flock is not an inherited lock",
+                f"out={probe.stdout!r} err={probe.stderr!r}",
+            )
+        finally:
+            os.killpg(hold.pid, signal.SIGTERM)
+            try:
+                hold.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(hold.pid, signal.SIGKILL)
+                hold.wait(timeout=5)
+
+
 def test_shellcheck():
     exe = shutil.which("shellcheck")
     if not exe:
@@ -1098,6 +1176,7 @@ def main():
     test_locks()
     test_lock_permissions()
     test_cross_user_lock()
+    test_outer_flock_does_not_deadlock()
     test_shellcheck()
     print("ALL EXPECTATIONS MET" if not bad else f"{bad} FAILED")
     raise SystemExit(1 if bad else 0)
