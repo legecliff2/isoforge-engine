@@ -1959,6 +1959,10 @@ bool Combat::apply_surprise(const std::vector<CombatantId>& ids, std::string* er
     return true;
 }
 
+void Combat::set_end_condition(rules5e::EndConditionFn fn) {
+    state_.hooks.end_condition = std::move(fn);
+}
+
 uint64_t Combat::log_hash() const {
     CanonicalHasher h;
     h.u32(uint32_t(log_.size()));
