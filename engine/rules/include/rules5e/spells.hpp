@@ -393,8 +393,8 @@ struct SpellDef {
     SummonSpec summon{};   // appended (R-G12 rules PR 2): kind Summon (primary effect only)
     SummonWeaponSpec summon_weapon{};   // appended (R-G12 rules PR 3): kind SummonWeapon (primary effect only)
     WeaponSmiteSpec weapon_smite{};     // appended (7.2zh): kind WeaponSmite (primary effect only)
-    // appended (7.2zh Heat Metal): sustained_damage may carry the held-object rider. v1 treats ItemKind Weapon, Armor and
-    // Shield as the heated metal (no item metal flag). See VERSION_BUMP_BATCH 7.2zh.
+    // appended (7.2zh Heat Metal): sustained_damage may carry the held-object rider. The object is a worn or held
+    // weapon, armor, or shield whose ItemDef::material is Metal (absent is not metal). See VERSION_BUMP_BATCH 7.2zh.
     bool held_object = false;
     // appended (priced materials, CONTENT_CONVENTIONS §7): components.m.item, the equipment content id that provides a priced
     // material ("" = none: a priced material without an item is unsatisfiable). rules5e never reads it (sim's components hook does).
