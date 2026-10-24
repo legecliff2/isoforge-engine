@@ -1013,6 +1013,63 @@ def check_transparent(doc: dict, typ: str) -> tuple[list[str], list[str]]:
 SAVE_ADVANTAGE_KEYS = frozenset({"kind", "save_vs_conditions", "vs_damage_types", "magical", "abilities", "mode"})
 
 
+SAVE_EFFECT_RIDER_KEYS = ("also_on_fail_by", "immune_on_success", "target_must_see_source")
+
+
+def check_save_effect_riders(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Tier-A §26 (mummy Dreadful Glare; sim content.cpp compile_save_action): also_on_fail_by / immune_on_success /
+    target_must_see_source, the loader's refusals as errors (same text). Warning: also_on_fail_by with a repeat_save (a
+    successful repeat save ends both conditions: one effect entry)."""
+    errs: list[str] = []
+    warns: list[str] = []
+    for i, act in enumerate(doc.get("actions") or []):
+        if not isinstance(act, dict) or not any(k in act for k in SAVE_EFFECT_RIDER_KEYS):
+            continue
+        where = f"actions[{i}]: {doc.get('id', '?')}: save_effect '{act.get('id', '')}'"
+        if act.get("kind") != "save_effect":
+            errs.append(f"{where}: also_on_fail_by / immune_on_success / target_must_see_source are save_effect only")
+            continue
+        if tag != "monster@5":
+            errs.append(f"{where}: also_on_fail_by / immune_on_success / target_must_see_source need a monster@5 file")
+            continue
+        if "area" in act:
+            errs.append(f"{where}: also_on_fail_by / immune_on_success / target_must_see_source take no area")
+        apply = [x for x in (act.get("apply") or []) if isinstance(x, dict)]
+        af = act.get("also_on_fail_by")
+        if af is not None:
+            if not isinstance(af, dict):
+                errs.append(f"{where}: bad also_on_fail_by")
+            else:
+                m = af.get("margin")
+                if not isinstance(m, int) or isinstance(m, bool) or not 1 <= m <= 30:
+                    errs.append(f"{where}: bad also_on_fail_by margin (1..30)")
+                if af.get("condition") not in GAZE_CONDITIONS:
+                    errs.append(f"{where}: bad also_on_fail_by condition")
+                prim = apply[0] if apply else None
+                dk = ((prim or {}).get("duration") or {}).get("kind") if isinstance((prim or {}).get("duration"), dict) else None
+                if prim is None or dk == "until_cured" or (prim.get("condition") == "prone" and "duration" not in prim and "repeat_save" not in prim):
+                    errs.append(f"{where}: also_on_fail_by needs a tracked primary condition in apply[]")
+                elif af.get("condition") == prim.get("condition"):
+                    errs.append(f"{where}: also_on_fail_by condition must differ from the primary condition")
+                if act.get("escalates") or "control" in act:
+                    errs.append(f"{where}: also_on_fail_by takes no escalates / control")
+                if prim is not None and (prim.get("repeat_save") or dk == "until_save"):
+                    warns.append(f"{where}: also_on_fail_by with a repeat save: a successful repeat save ends both conditions (one entry, §26)")
+        im = act.get("immune_on_success")
+        if im is not None:
+            h = im.get("hours") if isinstance(im, dict) else None
+            if not isinstance(im, dict):
+                errs.append(f"{where}: bad immune_on_success")
+            elif not isinstance(h, int) or isinstance(h, bool) or not 1 <= h <= 8760:
+                errs.append(f"{where}: bad immune_on_success hours (1..8760)")
+            elif im.get("scope") not in ("same_action", "same_source"):
+                errs.append(f"{where}: bad immune_on_success scope")
+        ts = act.get("target_must_see_source")
+        if ts is not None and not isinstance(ts, bool):
+            errs.append(f"{where}: bad target_must_see_source")
+    return errs, warns
+
+
 def check_save_advantage(doc: dict, tag: str) -> tuple[list[str], list[str]]:
     """Batch 3 save_advantage (sim features.cpp apply_save_advantage): the loader's refusals as errors (same text), and a
     warning for an identical second declaration (adds nothing). Distinct save_advantage traits stack (Magic Resistance plus

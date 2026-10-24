@@ -3351,6 +3351,15 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if ((def.control == ControlKind::Turned || def.control == ControlKind::Command) && s.hooks.sight_facts &&
                 !sight(s, t->id, a.id).perceives)
                 continue;   // 7.2x: Turn Undead / Command need the target to see or hear the user (no hook: sim's target list)
+            if (def.target_sees_source && (t->has(Condition::Blinded) || (s.hooks.sight_facts && !sight(s, t->id, a.id).can_see))) {
+                // Tier-A §26 (Dreadful Glare "that can see the mummy"): no save, no immunity
+                emit(ev, EventKind::FeatureTriggered, a.id, t->id, int32_t(def.id), 0, 3);
+                continue;
+            }
+            if (def.success_immunity_hours > 0 && std::any_of(s.action_immunities.begin(), s.action_immunities.end(),
+                    [&](const ActionImmunity& im) { return im.creature == t->id && im.spell_id == def.id &&
+                                                           (im.source == 0 || im.source == a.id) && uint32_t(s.round) < im.until_round; }))
+                continue;   // Tier-A §26: immune after a success (no roll, no event, like the ghast Stench)
             SaveSource src{def.magical, def.applies_condition ? bit(def.condition) : 0u,
                            (def.dice.count > 0 || def.dice.bonus > 0) ? bit(def.damage_type) : 0u};
             const bool spared = ctx.spared && std::find(ctx.spared->begin(), ctx.spared->end(), t->id) != ctx.spared->end();
@@ -3371,6 +3380,9 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (def.zero_hp_rounds > 0 && dealt > 0 && hp_before > 0 && t->hp <= 0 && !t->dead)   // EC spider follow-up (flagged)
                 zero_hp_clause(s, a, *t, def, ev);
             if (!r.success) affected.push_back(t);
+            if (r.success && def.success_immunity_hours > 0 && !t->dead)   // Tier-A §26: "immune to ... for the next 24 hours"
+                s.action_immunities.push_back(ActionImmunity{t->id, def.success_immunity_scope == 1 ? a.id : CombatantId(0), def.id,
+                                                             uint32_t(s.round) + uint32_t(def.success_immunity_hours) * 600u});
             if (r.success && def.contain == 1 && !t->dead) s.contain_exits.push_back({a.id, t->id, 3});   // 7.2w: sim pushes it 5 ft
             if (!r.success && !t->dead && def.destroy_cr8_max > 0 && t->creature_type == CreatureType::Undead && t->cr8 >= 0 &&
                 t->cr8 <= int(def.destroy_cr8_max)) {   // 7.2v Destroy Undead: destroyed instead of turned
@@ -3390,6 +3402,23 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             // Petrifying Gaze: failing by escalate_margin or more applies escalate_to at once, with no repeat save
             const bool at_once = def.escalates && def.escalate_margin > 0 && !r.success && int(r.roll.total) <= dc - int(def.escalate_margin);
             const Condition cond = at_once ? def.escalate_to : def.condition;
+            // Tier-A §26: failing by also_margin or more also applies also_condition on the same entry, even when the target
+            // is immune to the primary condition (then the entry carries only also_condition).
+            const bool also_hit = def.also_margin > 0 && def.applies_condition && !r.success && !t->dead &&
+                                  int(r.roll.total) <= dc - int(def.also_margin) &&
+                                  !immune_to(s, *t, def.also_condition) && !immune_from(s, *t, def.also_condition, a.id);
+            if (also_hit && (immune_to(s, *t, cond) || immune_from(s, *t, cond, a.id))) {
+                if (!t->has(def.also_condition)) {
+                    add_condition(*t, def.also_condition);
+                    emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.also_condition));
+                }
+                note_source(s, def.also_condition, a.id, t->id);
+                applied = true;
+                s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.also_condition, def.save_ability, int16_t(dc),
+                                                      def.repeat_save, def.concentration, effect_timed(s, def, a.id, t->id), lvl, false});
+                s.effects.back().ends_on = def.ends_on;
+                continue;
+            }
             if (def.applies_condition && !r.success && !t->dead && !immune_to(s, *t, cond) && !immune_from(s, *t, cond, a.id)) {
                 if (!t->has(cond)) {
                     add_condition(*t, cond);
@@ -3411,6 +3440,12 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                     s.effects.back().has_also = true; s.effects.back().also = Condition::Incapacitated;
                     add_condition(*t, Condition::Incapacitated);
                     emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(Condition::Incapacitated));
+                }
+                if (also_hit && !t->has(def.also_condition)) {   // Tier-A §26: one entry, so ending it ends both
+                    s.effects.back().has_also = true; s.effects.back().also = def.also_condition;
+                    add_condition(*t, def.also_condition);
+                    emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.also_condition));
+                    note_source(s, def.also_condition, a.id, t->id);
                 }
                 if (def.escape_dc > 0) { s.effects.back().dc = def.escape_dc; s.effects.back().escape_check = true; }   // 7.2w: Engulf
                 set_contain(s.effects.back(), def, *t, ev);

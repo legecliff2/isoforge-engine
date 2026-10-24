@@ -57,3 +57,43 @@ TEST_CASE("Tier-A §25: passive_perception_reason srd_printed loads the printed 
     bad = m; bad["senses"]["passive_perception"] = 61;
     CHECK(load_error(bad).find("bad senses.passive_perception") != std::string::npos);
 }
+
+namespace {
+Json mummy_glare() {
+    Json m = creature("t.mummy");
+    m["actions"].push_back(Json{{"kind", "save_effect"}, {"id", "dreadful_glare"}, {"name", "Dreadful Glare"}, {"magical", true},
+                                {"range_ft", 60}, {"save", {{"ability", "wis"}, {"dc", 11}}},
+                                {"apply", Json::array({Json{{"condition", "frightened"},
+                                                            {"duration", {{"kind", "until_end_of_caster_next_turn"}}}}})},
+                                {"target_must_see_source", true},
+                                {"also_on_fail_by", {{"margin", 5}, {"condition", "paralyzed"}}},
+                                {"immune_on_success", {{"hours", 24}, {"scope", "same_action"}}}});
+    return m;
+}
+}  // namespace
+
+TEST_CASE("Tier-A §26: Dreadful Glare keys compile onto the synthetic SpellDef; bad shapes refuse") {
+    auto lib = lib_with({mummy_glare()});
+    const rules5e::SpellDef* d = lib.spells()->find(rules5e::spell_id_of("t.mummy#dreadful_glare"));
+    REQUIRE(d);
+    CHECK(d->condition == rules5e::Condition::Frightened);
+    CHECK(d->also_margin == 5);
+    CHECK(d->also_condition == rules5e::Condition::Paralyzed);
+    CHECK(d->success_immunity_hours == 24);
+    CHECK(d->success_immunity_scope == 0);
+    CHECK(d->target_sees_source);
+    Json bad = mummy_glare(); bad["$schema"] = "monster@4";
+    CHECK(load_error(bad).find("need a monster@5 file") != std::string::npos);
+    bad = mummy_glare(); bad["actions"].back()["also_on_fail_by"]["margin"] = 0;
+    CHECK(load_error(bad).find("bad also_on_fail_by margin") != std::string::npos);
+    bad = mummy_glare(); bad["actions"].back()["also_on_fail_by"]["condition"] = "frightened";
+    CHECK(load_error(bad).find("must differ from the primary condition") != std::string::npos);
+    bad = mummy_glare(); bad["actions"].back().erase("apply");
+    CHECK(load_error(bad).find("also_on_fail_by needs a tracked primary condition") != std::string::npos);
+    bad = mummy_glare(); bad["actions"].back()["immune_on_success"]["scope"] = "everyone";
+    CHECK(load_error(bad).find("bad immune_on_success scope") != std::string::npos);
+    bad = mummy_glare(); bad["actions"].back()["immune_on_success"]["hours"] = 0;
+    CHECK(load_error(bad).find("bad immune_on_success hours") != std::string::npos);
+    bad = mummy_glare(); bad["actions"].back()["target_must_see_source"] = 1;
+    CHECK(load_error(bad).find("bad target_must_see_source") != std::string::npos);
+}
