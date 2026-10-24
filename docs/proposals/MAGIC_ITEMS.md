@@ -1,6 +1,6 @@
 # Proposal: SRD 5.1 magic items (metadata, attunement, passive modifiers, consumables, charges, spell-casting items, riders)
 
-Status: **draft for Tech Director review, before any code.** This is docs only (branch `docs/magic-items-proposal`, off main
+Status: **draft revised after Tech Director and Lich review (2026-10-23), before any code.** This is docs only (branch `docs/magic-items-proposal`, off main
 `76c219e`): no schema, loader, rules, sim or content changes. It follows the structure of `docs/proposals/EQUIPMENT.md`
 (approved 2026-10-21), and every mechanic below builds on that proposal's item@2, loadout and `CombatOptions::equipment` model.
 Mechanics marked **[Lich]** need Lich (Rules) to own the predicate or math, per the EQUIPMENT 9.1 boundary: Rules owns predicates
@@ -20,6 +20,31 @@ item today (survey 0). Every mechanic here is reachable only through a registere
 - it is authored with that property named in a file-level `inert_mechanics` list (the existing VERSION_BUMP_BATCH section 8
   convention). The validator then requires every unmodelled property to be named, and `docs/SRD_MAGIC_ITEMS_DEFERRED.md`
   (new, phase M0) records it.
+
+## Review decisions (2026-10-23)
+
+Recorded here and marked **Resolved** where each question appears (section 15 keeps the full list).
+
+**Director:**
+- No `magic_item` category. Magic items reuse `weapon` / `armor` / `shield` / `ammunition` / `gear` plus the `magic` block;
+  rings, rods, wands, potions, scrolls and wondrous items are `gear` (Q1).
+- Templates for +N and variant families, expanded at load time or by a generator (Q2).
+- "Daily at dawn" = recharge at the end of a long rest for now, documented as a simplification (Q11).
+- Items may be authored with unimplemented properties flagged inert and listed explicitly in `inert_mechanics` (Q12).
+- Lich decides whether `attuned` stays on `@5` (optional field) or needs `@6` (if it changes structure) (Q13).
+- No hash tags are proposed here. A tag is claimed through Lich when a PR needs one; the next free tag is 0xDB.
+- Still open, for Lich: shield `magic_bonus` (Q3) and the ring limit (Q6).
+
+**Lich:**
+- Monster attunement to class-restricted items only via explicit class or spellcaster data on the block (Q4).
+- Amulet of Health recomputes max HP from hit dice, keeping damage taken constant (Q5).
+- Armor of Resistance is one item per `damage_type` variant, fixed at authoring (template or variant field), never chosen by
+  the loadout (Q7).
+- Scimitar of Speed reuses the bonus-attack path, gated on having attacked with this weapon this turn (Q8).
+- Scrolls use the class spell lists from the class content, the same source as `spells_known` (Q9).
+- Potion of Speed applies Haste's lethargy when it ends (Q10).
+- Append `ModSource::Item`.
+- Attunement is Lich's work in M2.
 
 ## 0. Survey: what main has today
 
@@ -82,11 +107,10 @@ reads it before phase M2:
 | `paired` | bool | *Paired Items* (boots, bracers, gauntlets, gloves) |
 | `variant_of` | item id | 5e-database `variants` |
 
-- **Why additive item@2 and not item@3:** the block is inert metadata, the same pattern as `focus` (#292) and `tool_kind`
-  (local `content/equipment-tools`).
-- **New category `magic_item`:** `item@2` gains it (enum widening plus one new closed arm) for rings, rods, staffs, wands,
-  potions, scrolls and wondrous items. They are not gear, because they carry `magic` and later `effects`, and keeping them off the
-  gear arm keeps the gear allow-list small. **Open question Q1:** a single `magic_item` category vs. reusing `gear`.
+- **Why additive item@2 and not item@3:** the block is inert metadata, the same pattern as the gear `focus` key (#292). (The gear
+  `tool_kind` key follows the same pattern but is pending, not yet in a PR.)
+- **No new category (Resolved, Q1):** rings, rods, wands, potions, scrolls and wondrous items are `gear` with the `magic` block;
+  `magic.item_type` keeps the SRD type. The gear allow-list gains `magic` (and, at item@3, the mechanics fields).
 - Magic weapons, armor and ammunition stay in their existing categories with `magic` added.
 - The **Staff** items that are also quarterstaffs (Staff of Power, Striking, the Magi, Thunder and Lightning, Withering, the
   Woodlands, Charming, Fire, Frost, Healing, Swarming Insects) are `weapon` with `magic.item_type: staff`. The SRD says each "can
@@ -97,14 +121,14 @@ reads it before phase M2:
 - Mirror check: `rarity`, `attunement` and its prerequisite against 5e-database `a6212be` (the same pattern as T&C's audit).
   Class ids must resolve to class documents, else they are kept as strings with a warning until classes land.
 - `paired` must be true exactly for SRD pairs.
-- The tests extend `test_union_arms.py` (new arm) and `test_srd51_equipment.py` (a `MAGIC_ITEMS` table keyed by id).
+- The tests extend `test_union_arms.py` (gear allow-list gains `magic`) and `test_srd51_equipment.py` (a `MAGIC_ITEMS` table keyed by id).
 
 ### 2.3 Templates: "Weapon (any sword)", "Armor (medium or heavy, but not hide)"
 
 The SRD base row is a **template**: *Weapon, +1* applies to any weapon; *Flame Tongue* to any sword; *Mithral Armor* to medium or
 heavy armor except hide.
 
-Proposal:
+**Resolved (Q2): templates**, expanded at load time or by a generator. Design:
 - Template documents (`template: true`) carry an `applies_to` filter:
   - `category`;
   - `weapon_group` from the SRD name: `sword` = greatsword, longsword, rapier, scimitar, shortsword; `axe` = battleaxe,
@@ -116,8 +140,8 @@ Proposal:
 - **[Lich]** `resolve_template(template, base) -> rules5e::ItemDef` merges base stats and template overrides. It is a pure
   function. Example: Mithral sets `str_min` 0 and `stealth_disadvantage` false.
 - The alternative is expanding every combination as concrete files: 37 weapons × 3 = 111, 12 armor × 3 = 36, 4 ammunition × 3 =
-  12, plus each sword or axe rider × its bases. That is roughly 400 files of duplication. **Recommended: templates.**
-  **Open question Q2.**
+  12, plus each sword or axe rider × its bases. That is roughly 400 files of duplication. A generator may instead expand templates
+  into concrete files from the same template data; either way the template is the authored source.
 
 ## 3. Attunement (group A, cross-cutting; 125 items) [Lich]
 
@@ -162,7 +186,9 @@ Item `magic.attunement` is described in 2.1.
 - A Talisman of Pure Good on a neutral creature is refused.
 - Unattuned Cloak of Protection: AC and saves unchanged.
 - Unattuned magic shield: AC = shield 2, no bonus.
-- Monster class-spell-list qualification (Q4).
+- Monster class-spell-list qualification (**Resolved, Q4**): a monster meets a class prerequisite only through explicit class
+  or spellcaster data on its block. Nothing is inferred from its spells.
+- Owner: Lich, in M2.
 
 ## 4. G1 Plain +N (3 entries, 9 variant files): supported today
 
@@ -177,7 +203,7 @@ Item `magic.attunement` is described in 2.1.
     EQUIPMENT ammunition decrement. Recovered magic ammunition is a follow-up and is **deferred**.
 - **Rules / sim:** none new beyond template resolution. `compute_ac` and `derive_weapon_attack` already add `magic_bonus`.
 - **Not in SRD 5.1:** a *Shield, +1/+2/+3* entry (DMG only). The shield arm keeps `magic_bonus`, but no SRD content uses it.
-  **Open question Q3:** keep the field reserved or document it as non-SRD.
+  **Open question Q3 (for Lich):** keep the field reserved or document it as non-SRD.
 - **Determinism:** no new state; derived numbers only.
 - **Tests:**
   - a template expands to the exact base + N for every eligible base;
@@ -231,20 +257,20 @@ This is only possible on the **derive path** (EQUIPMENT 7.2, `derive: true`).
 - `add` = min(base + n, max).
 
 All derived numbers then follow. For `derive: false` files, any `ability_set` item is a **load error** ("ability override needs
-derive"), never a silent no-op. Constitution changes (Amulet of Health) change max HP. The SRD does not say to recompute it here,
-and the rule for Con changes is the general one (HP max changes with Con modifier) → **Open question Q5**.
+derive"), never a silent no-op. Constitution changes (Amulet of Health) change max HP. **Resolved (Q5):** max HP is recomputed
+from hit dice with the new Con modifier, keeping damage taken constant (current HP = new max − damage taken).
 
 ### 5.3 Rules / sim touchpoints
 
 - `compute_ac` gains `item_ac_bonus` (sum of active `bonus ac` rows) and `unarmored_only_bonus` (Bracers). The defaults keep
   today's result.
 - `save_bonus`, `check_bonus`, `resistances` / `immunities` are built from effects at loadout registration into the existing
-  `Combatant` modifier rows, as `ModifierSpec` rows with source `item` and a new `ModSource::Item` enum value (appended).
+  `Combatant` modifier rows, as `ModifierSpec` rows with source `item` and a new `ModSource::Item` enum value (appended; **Resolved**).
 - Stacking:
   - Different items stack (Cloak + Ring of Protection = +2, the SRD gives no exclusion).
   - The same item id cannot be attuned twice (3.1).
   - Two non-attunement copies of the same id: "the same kind" worn-slot rule (one cloak, one pair of boots, ...). This is
-    enforced by `worn_slot` at load. Rings have **no SRD cap** → **Open question Q6** (10 fingers, 2 by convention).
+    enforced by `worn_slot` at load. Rings have **no SRD cap** → **Open question Q6, for Lich** (10 fingers, 2 by convention).
 
 ### 5.4 Determinism
 
@@ -322,7 +348,7 @@ x-ray vision, invisibility (Ring of Invisibility, a bonus-action toggle), and Gl
   - Dancing Sword (an autonomous weapon);
   - Dwarven Thrower (return);
   - Oathbow (sworn enemy);
-  - Scimitar of Speed (a bonus-action attack: may be M6a after Q8);
+  - Scimitar of Speed (**Resolved, Q8**: reuses the bonus-attack path, gated on having attacked with this weapon this turn; may move to M6a);
   - Luck Blade (Wish);
   - Nine Lives Stealer (charges and an instant kill);
   - Hammer of Thunderbolts;
@@ -372,7 +398,7 @@ x-ray vision, invisibility (Ring of Invisibility, a bonus-action toggle), and Gl
   - Rules: the spell must be on the reader's class list, else the scroll is unusable. Above the caster's level, an ability check DC
     10 + spell level; "on a failed check, the spell disappears from the scroll with no other effect".
   - Save DC and attack bonus come from the scroll table (13 / +5 for cantrip to 2nd ... 19 / +11 for 9th).
-  - Needs class spell lists (Q9). Only scrolls of authored spells are allowed.
+  - Class spell lists come from the class content, the same source as `spells_known` (**Resolved, Q9**). Only scrolls of authored spells are allowed.
 - **M4d (about 6):**
   - Necklace of Fireballs (detach a bead and throw: `fireball` at 3rd level, +1 level per extra bead);
   - Oil of Sharpness (+3 for 1 hour on a slashing or piercing weapon or 5 ammunition);
@@ -398,8 +424,8 @@ x-ray vision, invisibility (Ring of Invisibility, a bonus-action toggle), and Gl
 - No new log tag beyond the activation tag (section 11).
 - **Tests:**
   - Potion of Healing: exact healing per seed.
-  - Potion of Speed grants haste with no concentration for 10 rounds. Whether haste's end-of-effect lethargy applies is **Q10**:
-    the SRD grants "the effect of the haste spell", so the lethargy probably applies.
+  - Potion of Speed grants haste with no concentration for 10 rounds. Haste's lethargy applies when it ends (**Resolved,
+    Q10**: the SRD grants "the effect of the haste spell").
   - A scroll off-list is refused; the higher-level check DC.
 
 ## 9. G5 Charges, activation and spell-casting (65 entries, 72 files) [Lich]
@@ -428,12 +454,12 @@ x-ray vision, invisibility (Ring of Invisibility, a bonus-action toggle), and Gl
 Per-dawn uses without charges (Javelin of Lightning, Dagger of Venom, Helm of Telepathy) are `{ "uses": 1, "recharge": {"when":
 "dawn"} }`.
 
-### 9.3 Dawn vs. rest [Lich] (Q11)
+### 9.3 Dawn vs. rest [Lich] (Q11, Resolved)
 
 The engine has short and long rests, not a clock. **Proposal:**
 - "Daily at dawn" recharges at the **end of a long rest**, the same hook as per-long-rest feature uses (`rest.hpp`), with a
   documented equivalence and **no** in-combat dawn.
-- This is an explicit modelling choice for the Director. The alternative is a campaign clock, which is deferred.
+- **Resolved (Director):** this is a documented simplification for now. A campaign clock is deferred.
 - Recharge dice roll on the **rest RNG stream** (whatever `sim/rest.hpp` uses), never the combat stream, so combat goldens never
   see a recharge.
 
@@ -505,13 +531,13 @@ The engine has short and long rests, not a clock. **Proposal:**
 - **G8 (19 entries, 22 files):** extradimensional storage (Bag of Holding, Handy Haversack, Portable Hole), Rope of Climbing,
   Decanter of Endless Water, Folding Boat, Instant Fortress, Immovable Rod, Chime of Opening, Eyes of Minute Seeing, Lantern of
   Revealing, Eversmoking Bottle, Deck of Illusions, Robe of Useful Items, Efficient Quiver, Broom / Carpet of Flying, Horseshoes.
-  - **Proposal M1b:** author them as `magic_item` with the `magic` block, the verbatim description, cost / weight only where the
+  - **Proposal M1b:** author them as `gear` with the `magic` block, the verbatim description, cost / weight only where the
     SRD gives them (it mostly does not: magic items have no SRD price, so `cost_cp` is omitted), and `inert_mechanics` naming
     each property.
   - Excluded from M1b because they have combat-relevant mechanics: Lantern of Revealing (shows invisible creatures, LIGHTING),
     Eversmoking Bottle (heavy obscurement, ZONES_AURAS), Broom, Carpet and Horseshoes (movement), Immovable Rod (a terrain
-    object). These wait for those systems. **Open question Q12:** is inert authoring acceptable at all, or is everything deferred
-    until modelled.
+    object). These wait for those systems. **Resolved (Q12):** inert authoring is acceptable when every unmodelled property
+    is listed explicitly in `inert_mechanics`.
 
 ## 11. Versioning, determinism and hashing
 
@@ -519,9 +545,9 @@ The engine has short and long rests, not a clock. **Proposal:**
 
 | Schema | Change | Why this version |
 |---|---|---|
-| `item@2` (additive, no bump) | `magic` block on every arm; category `magic_item` (new closed arm); `template` + `applies_to` | Inert metadata, the same precedent as `focus` / `tool_kind`. No loader or rules reader, so old behaviour is unchanged by construction. |
+| `item@2` (additive, no bump) | `magic` block on every arm (magic items without a weapon / armor / ammunition base are `gear`); `template` + `applies_to` | Inert metadata, the same precedent as `focus` / `tool_kind`. No loader or rules reader, so old behaviour is unchanged by construction. |
 | **`item@3`** (justified bump) | `effects[]`, `consumable`, `charges`, `activations`, `inert_mechanics` | These fields **carry mechanics**. Under VERSION_BUMP_BATCH, behaviour-bearing fields arrive with a version, so a loader built before them refuses an `@3` file rather than silently ignoring its effects. Migration `item@2 -> item@3` is identity (no effects = none). |
-| `character@5` / `monster@5` | equipment `attuned`, `base` (template base), `spell` (scroll) | Additive optional fields on the EQUIPMENT bump. **Q13:** whether `@5` has shipped too far for additive changes (then `@6`). |
+| `character@5` / `monster@5` | equipment `attuned`, `base` (template base), `spell` (scroll) | Additive optional fields on the EQUIPMENT bump. **Q13, for Lich:** `attuned` stays on `@5` if it is an optional field, or needs `@6` if it changes structure. |
 | `common@2` | `damage_type`, `condition` enums are reused | Unchanged. |
 
 ### 11.2 Goldens
@@ -543,15 +569,11 @@ The engine has short and long rests, not a clock. **Proposal:**
 - Random-table items (Wand of Wonder, Deck of Many Things, Bag of Tricks, Potion of Resistance "determines it randomly") are
   deferred. Potion of Resistance is authored only as the 10 fixed variants.
 
-### 11.4 Proposed tags (Director to claim; not claimed by this PR)
+### 11.4 Hash tags
 
-| Tag | Stream | Contents | Folded when |
-|---|---|---|---|
-| 0xD6 | `Combat::hash` | `item_state_digest`: per instance with non-default state, in instance order: instance u32, charges u8, uses_left u8, attuned_to u32, flags u8 (bit0 destroyed-pending) | any instance has charges, uses or attunement |
-| 0xD7 | `log_hash` | `item_activation`: instance u32, activation index u8, charges spent u8, upcast level u8 | an activation or consumable use occurs |
-
-Timed item effects (potions, oils) reuse the existing modifier and effect rows, so they need no new tag (source = item, appended
-`ModSource`). Static G2 effects are covered by 0xD0 (item def ids in the loadout).
+This proposal claims and proposes **no** tags. A PR that needs one (item state digest, item activation) claims it through Lich
+at that time; the next free tag is 0xDB. Timed item effects (potions, oils) reuse the existing modifier and effect rows (source =
+item, appended `ModSource::Item`). Static G2 effects are covered by 0xD0 (item def ids in the loadout).
 
 ## 12. Boundary and implementation order
 
@@ -563,7 +585,7 @@ Timed item effects (potions, oils) reuse the existing modifier and effect rows, 
   - consumable resolution (heal, spell effect, scroll checks);
   - rider math.
 - **Engine Core owns:** `ItemInstance` charges / uses / attunement state, `ActionRequest::item_activation`, destroyed-item removal,
-  stack decrement, and the 0xD6 / 0xD7 folds.
+  stack decrement, and any hash folds (tags claimed through Lich when needed).
 - **Validator / content (T&C) owns:** schema arms, the mirror checks against `a6212be`, `SRD_MAGIC_ITEMS_DEFERRED.md`, and item
   authoring.
 
@@ -571,17 +593,17 @@ Timed item effects (potions, oils) reuse the existing modifier and effect rows, 
 
 | Phase | Owner | Content | Files (rough) | Depends on |
 |---|---|---|---|---|
-| **M0** | T&C | `item@2` additive `magic` block, `magic_item` arm, templates; `SRD_MAGIC_ITEMS_DEFERRED.md` ledger seeded with all 239 entries; validator mirror | 0 | Director approval of this doc |
+| **M0** | T&C | `item@2` additive `magic` block (gear allow-list included), templates; `SRD_MAGIC_ITEMS_DEFERRED.md` ledger seeded with all 239 entries; validator mirror | 0 | Director approval of this doc |
 | **M1a** | T&C (+ Lich `resolve_template`) | G1: Weapon / Armor / Ammunition +1/+2/+3 templates | 9 | M0; EQUIPMENT derive + loadout |
-| **M1b** | T&C | G8 inert utility (storage, ropes, boat, fortress, chime, ...); every property in `inert_mechanics` | 12 | M0; Q12 |
-| **M2** | Lich + EC | Attunement: state, the 3 cap, prerequisites, nonmagical fallback; `attuned` on loadouts | 0 (engine) | M0; Q4 |
+| **M1b** | T&C | G8 inert utility (storage, ropes, boat, fortress, chime, ...); every property in `inert_mechanics` | 12 | M0 |
+| **M2** | Lich + EC | Attunement: state, the 3 cap, prerequisites, nonmagical fallback; `attuned` on loadouts | 0 (engine) | M0; Q13 (Lich) |
 | **M3a** | Lich + T&C | `item@3` `effects[]` (bonus / resistance / immunity / condition / spell immunity): Cloak and Ring of Protection, Stone of Good Luck, Ring of Resistance ×10, Periapt of Proof against Poison, Brooch of Shielding, Bracers of Defense, Bracers of Archery, Ioun Stone of Protection; armor templates Adamantine, Mithral, Elven Chain, Glamoured | about 22 | M2 |
-| **M3b** | Lich + T&C | Ability overrides: Belts of Giant Strength ×6, Gauntlets of Ogre Power, Headband of Intellect, Amulet of Health, Ioun Stones (Agility, Fortitude, Insight, Intellect, Leadership, Strength) | about 15 | M3a; derive path; Q5 |
+| **M3b** | Lich + T&C | Ability overrides: Belts of Giant Strength ×6, Gauntlets of Ogre Power, Headband of Intellect, Amulet of Health, Ioun Stones (Agility, Fortitude, Insight, Intellect, Leadership, Strength) | about 15 | M3a; derive path |
 | **M4a** | Lich + EC + T&C | Consumables on existing machinery: Healing ×4, Resistance ×10, Heroism, Speed, Invisibility | 17 | M0 (no attunement); `UseObject` |
 | **M4b** | T&C | Potion of Giant Strength ×6 | 6 | M3b, M4a |
-| **M4c** | Lich + T&C | Spell scrolls (10 levels; instance names an authored spell) | 10 | M4a; class spell lists (Q9) |
+| **M4c** | Lich + T&C | Spell scrolls (10 levels; instance names an authored spell) | 10 | M4a; class spell lists from class content |
 | **M4d** | Lich + T&C | Necklace of Fireballs, Oil of Sharpness, Bead of Force, Dust of Sneezing and Choking, Arrow of Slaying, Restorative Ointment | about 6 | M4a |
-| **M5a** | Lich + EC + T&C | Charges, dawn = long-rest recharge, cast from item: Wands of Magic Missiles, Fireballs, Lightning Bolts, Web; Wand of the War Mage ×3 | 7 | M2, M4a; Q11; tags 0xD6 / 0xD7 |
+| **M5a** | Lich + EC + T&C | Charges, dawn = long-rest recharge, cast from item: Wands of Magic Missiles, Fireballs, Lightning Bolts, Web; Wand of the War Mage ×3 | 7 | M2, M4a; tags claimed through Lich |
 | **M5b** | Lich + T&C | Non-spell activations: Wand of Fear / Paralysis, Staff of Striking / Withering / Thunder and Lightning, Ring of the Ram / Evasion, Scarab, ... | about 10 | M5a |
 | **M6a** | Lich + T&C | Weapon riders: Giant / Dragon Slayer, Vicious, Mace of Smiting / Disruption, Life Stealing, Sun Blade, Flame Tongue, Frost Brand, Javelin of Lightning, Dagger of Venom, Sword of Wounding | about 12 | M1a, M2, M5a (per-dawn uses) |
 | **M7** | Lich + EC | G2b senses / movement (21) | 21 | vision #194, movement modes |
@@ -604,29 +626,27 @@ All of the following are listed in `SRD_MAGIC_ITEMS_DEFERRED.md` (seeded in M0) 
 
 **Director**
 
-- Q1. One `magic_item` category for rings, rods, staffs, wands, potions, scrolls and wondrous items, or several categories, or
-  reuse `gear`?
-- Q2. Templates (`template` + `applies_to` + loadout `base`) or fully expanded concrete files (about 400)?
-- Q3. Shield `magic_bonus` has no SRD 5.1 user (*Shield, +N* is not SRD): keep it reserved or document it as non-SRD?
-- Q6. Ring limit: the SRD sets none ("use common sense"). Cap at 2, at 10, or uncapped?
-- Q11. "Daily at dawn" = end of a long rest (recommended) or a campaign clock?
-- Q12. May items be authored with properties listed in `inert_mechanics` (M1b), or must every item wait until fully modelled?
-- Q13. Are `attuned` / `base` / `spell` additive on `character@5` / `monster@5`, or does that need `@6`?
-- Tags 0xD6 / 0xD7: approve and claim?
+- Q1. **Resolved:** no `magic_item` category; reuse weapon / armor / shield / ammunition / gear plus `magic`, wondrous items
+  under gear.
+- Q2. **Resolved:** templates, expanded at load time or by a generator.
+- Q11. **Resolved:** "daily at dawn" = recharge at the end of a long rest for now, documented as a simplification.
+- Q12. **Resolved:** items may be authored with unimplemented properties flagged inert and listed in `inert_mechanics`.
+- Tags. **Resolved:** no tags proposed; claim through Lich when a PR needs one (next free: 0xDB).
 
 **Lich (Rules)**
 
-- Q4. Monster attunement to class-restricted items: is "has spell slots and uses that class's spell list" derivable from
-  `monster@5` spellcasting data?
-- Q5. Constitution overrides (Amulet of Health): recompute max HP from the new Con modifier while worn (general 5e rule) or leave
-  HP baked?
-- Q7. Armor of Resistance has no 5e-database variants (the type is chosen): author ten local variants (`armor_of_resistance_fire`,
-  ...) like Ring of Resistance, or a loadout-level `damage_type` choice?
-- Q8. Bonus-action extra attack (Scimitar of Speed): reuse the `BonusAttack` (7.2b) path?
-- Q9. Spell scrolls need class spell lists: author them from 5e-database `5e-SRD-Classes.json` / spell `classes`, or wait for class
-  documents?
-- Q10. Potion of Speed / Heroism "no concentration": does haste's lethargy apply when the potion's effect ends?
-- Item modifier source: append `ModSource::Item` (or equivalent) so dispel-like effects and stacking can filter by source?
+- Q3. **Open:** shield `magic_bonus` has no SRD 5.1 user (*Shield, +N* is not SRD): keep it reserved or document it as non-SRD?
+- Q6. **Open:** ring limit: the SRD sets none ("use common sense"). Cap at 2, at 10, or uncapped?
+- Q13. **Open (Lich decides):** `attuned` stays on `@5` as an optional field, or needs `@6` if it changes structure.
+- Q4. **Resolved:** monster attunement to class-restricted items only via explicit class or spellcaster data on the block.
+- Q5. **Resolved:** Amulet of Health recomputes max HP from hit dice, keeping damage taken constant.
+- Q7. **Resolved:** Armor of Resistance is one item per `damage_type` variant, fixed at authoring (template or variant field),
+  never chosen by the loadout.
+- Q8. **Resolved:** Scimitar of Speed reuses the bonus-attack path, gated on having attacked with this weapon this turn.
+- Q9. **Resolved:** scrolls use the class spell lists from the class content (the same source as `spells_known`).
+- Q10. **Resolved:** Potion of Speed applies Haste's lethargy when it ends.
+- `ModSource::Item`. **Resolved:** appended.
+- Attunement owner. **Resolved:** Lich, in M2.
 
 **T&C**
 
