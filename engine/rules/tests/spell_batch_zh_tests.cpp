@@ -33,7 +33,7 @@ std::shared_ptr<World> make_world() {
         ItemDef d; d.id = id; d.kind = k; d.material = mat; w->defs[id] = d;
     };
     add(kItemSword, ItemKind::Weapon, ItemMaterial::Metal); add(kItemTorch, ItemKind::Light); add(kItemArrows, ItemKind::Ammunition);
-    add(kItemClub, ItemKind::Weapon, ItemMaterial::Metal); add(kItemArmor, ItemKind::Armor, ItemMaterial::Metal);
+    add(kItemClub, ItemKind::Weapon, ItemMaterial::Wood); add(kItemArmor, ItemKind::Armor, ItemMaterial::Metal);
     add(kItemShield, ItemKind::Shield, ItemMaterial::Metal); add(kItemFocus, ItemKind::Focus);
     return w;
 }
@@ -283,9 +283,11 @@ TEST_CASE("7.2zh heat metal: worn armor cannot drop; success does neither; disad
     REQUIRE(step(s, passed).ok);   // success again: the armor stays, and there is still no disadvantage
     CHECK_FALSE(effect_of(s, kHeatPass)->while_held); CHECK(w->applied.empty());
     w->drop_removes = false;
-    w->views[2] = LoadoutView{}; w->views[2].main = HeldItem{10, kItemClub, 1, 0};
-    REQUIRE(step(s, heat(kHeatFail, 2, 10)).ok);   // ends the passing spell; the hook leaves the club in hand
-    CHECK(effect_of(s, kHeatFail)->heated_def == kItemClub); CHECK(effect_of(s, kHeatFail)->while_held);
+    w->views[2] = LoadoutView{}; w->views[2].main = HeldItem{11, kItemClub, 1, 0};
+    CHECK(step(s, heat(kHeatFail, 2, 11)).error == "heat_metal: no metal object");   // wood: a club is not a target
+    w->views[2].main = HeldItem{10, kItemSword, 1, 0};
+    REQUIRE(step(s, heat(kHeatFail, 2, 10)).ok);   // ends the passing spell; the hook leaves the metal sword in hand
+    CHECK(effect_of(s, kHeatFail)->heated_def == kItemSword); CHECK(effect_of(s, kHeatFail)->while_held);
     CHECK(w->applied.size() == 1); CHECK(w->views[2].main.instance == 10);
 
     (void)step(s, ActionRequest{1, ActionKind::EndTurn});
