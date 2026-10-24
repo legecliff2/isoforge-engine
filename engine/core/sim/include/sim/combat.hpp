@@ -199,7 +199,8 @@ public:
     int natural_footprint(CombatantId id) const;
     bool may_pass(CombatantId mover, CombatantId other) const;
     CombatantId occupant_at(Vec2i t, CombatantId except) const;
-    // altitude PR2: only creatures whose vertical span overlaps [mover_abs_ft, + mover's height); mover_abs_ft < 0 = any.
+    // altitude PR2: only creatures whose vertical span overlaps [mover_abs_ft, + mover's height); mover_abs_ft == kNoHeightFt
+    // (combat.cpp; what the two-argument overload passes) = any height.
     CombatantId occupant_at(Vec2i t, CombatantId except, int mover_abs_ft) const;
     bool overlaps_other(CombatantId id, Vec2i anchor, int n) const;
     struct StepPlan { int n = 1; int cost = 5; uint8_t squeeze = 0; bool ends_in_other = false; };
@@ -226,12 +227,14 @@ public:
     // Airborne flyer: alt_ft > 0, a fly speed, not prone. It flies over terrain: difficult tiles and other creatures'
     // space cost nothing extra, obstacles lower than it and creatures it does not overlap vertically do not block.
     bool airborne(CombatantId id) const;
-    // Below the ground (alt_ft < 0) on a non-water tile with a burrow speed (feat/rules-burrow-speed): tunnelling.
+    // Below the ground (alt_ft < 0) on a non-water tile with a burrow speed (feat/rules-burrow-speed): tunnelling. Its
+    // steps and vertical moves use move_mode 4 (the burrow speed's allowance), never the walking speed.
     bool burrowed(CombatantId id) const;
     // The caps search the AI and readied moves use (Grid::path with chunk@3 costs; the airborne variant when airborne).
     std::vector<Vec2i> path_for(CombatantId id, Vec2i from, const std::vector<Vec2i>& goals, int footprint) const;
     // altitude PR2: falls recorded for PR4 (fall damage). Sim-side bookkeeping, not hashed (the AltitudeChanged event
-    // with cause kAltFall is): {creature, feet fallen}.
+    // with cause kAltFall is): {creature, feet fallen}. Cleared at the start of every turn (each TurnStarted, live and
+    // replay alike), so it lists only the current turn's falls; PR4 consumes them before the turn ends.
     struct Fall { CombatantId id = 0; int fell_ft = 0; };
     const std::vector<Fall>& falls() const noexcept { return falls_; }
     bool hostile(CombatantId a, CombatantId b) const;
@@ -445,8 +448,7 @@ private:
     SubmitResult do_rules(rules5e::ActionRequest req, Vec2i to, bool aim = false);
     SubmitResult do_step(Vec2i to, bool allow_squeeze = false, int16_t alt_to = 0);
     // altitude PR2: the altitude consequences of a committed Move step (Moved handler; replay runs the same code).
-    void step_altitude(const rules5e::ActionRequest& q, Vec2i from, Vec2i to, int from_ground_ft, int from_abs_ft,
-                       bool was_airborne);
+    void step_altitude(const rules5e::ActionRequest& q, int from_ground_ft, int from_abs_ft, bool was_airborne);
     std::vector<Fall> falls_;
     void complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::Event>& evs, std::optional<Vec2i> to,
                   std::optional<std::size_t> teardown_begin = std::nullopt);
