@@ -1277,9 +1277,11 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     a.fly_ft = uint16_t(std::max(0, geti(doc.at("speed"), "fly", 0)));
     a.swim_ft = uint16_t(std::max(0, geti(doc.at("speed"), "swim", 0)));
     // feat/move-modes: the rules' movement modes (fly / swim / climb speeds, hover).
+    // speed.burrow is the same feet field on the combatant (0 = none, clamped like climb). Data only: not a move mode.
     c.fly_ft = uint8_t(std::min<int>(255, a.fly_ft));
     c.swim_ft = uint8_t(std::min<int>(255, a.swim_ft));
     c.climb_ft = uint8_t(std::clamp(geti(doc.at("speed"), "climb", 0), 0, 255));
+    c.burrow_ft = uint8_t(std::clamp(geti(doc.at("speed"), "burrow", 0), 0, 255));
     if (auto hv = doc.at("speed").find("hover"); hv != doc.at("speed").end() && hv->is_boolean()) c.hover = hv->get<bool>();
     if (auto ch = doc.find("challenge"); ch != doc.end() && ch->is_object())
         if (auto rt = ch->find("rating"); rt != ch->end())

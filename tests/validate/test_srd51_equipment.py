@@ -58,6 +58,26 @@ WEAPONS = [
     ('warhammer', 'martial', 5, None, '1d8 bludgeoning', '1d10 bludgeoning', ('versatile',), 1500, 32),
     ('whip', 'martial', 10, None, '1d4 slashing', None, ('finesse', 'reach'), 200, 48),
 ]
+# item material (Heat Metal, CONTENT_CONVENTIONS section 22). A weapon with a metal head or blade is manufactured
+# metal, so the spear and the javelin are metal, with the pike, halberd, glaive, lance and the crossbows. All-wood or
+# non-metal gear stays non-metal: club, greatclub, quarterstaff, shortbow, longbow, sling, blowgun, a dart only when it
+# is all wood (this dart is metal), whip (leather), net (rope), and padded / leather / studded leather / hide armor.
+# The generic SRD shield is metal (the SRD allows wood or metal; metal is the authoring default). Absent is not a
+# value here: every srd51 weapon, armor and shield sets one.
+MATERIAL = {
+    'battleaxe': 'metal', 'blowgun': 'wood', 'club': 'wood', 'crossbow_hand': 'metal', 'crossbow_heavy': 'metal',
+    'crossbow_light': 'metal', 'dagger': 'metal', 'dart': 'metal', 'flail': 'metal', 'glaive': 'metal',
+    'greataxe': 'metal', 'greatclub': 'wood', 'greatsword': 'metal', 'halberd': 'metal', 'handaxe': 'metal',
+    'javelin': 'metal', 'lance': 'metal', 'light_hammer': 'metal', 'longbow': 'wood', 'longsword': 'metal',
+    'mace': 'metal', 'maul': 'metal', 'morningstar': 'metal', 'net': 'rope', 'pike': 'metal',
+    'quarterstaff': 'wood', 'rapier': 'metal', 'scimitar': 'metal', 'shortbow': 'wood', 'shortsword': 'metal',
+    'sickle': 'metal', 'sling': 'leather', 'spear': 'metal', 'trident': 'metal', 'war_pick': 'metal',
+    'warhammer': 'metal', 'whip': 'leather',
+    'breastplate': 'metal', 'chain_mail': 'metal', 'chain_shirt': 'metal', 'half_plate_armor': 'metal',
+    'hide_armor': 'hide', 'leather_armor': 'leather', 'padded_armor': 'cloth', 'plate_armor': 'metal',
+    'ring_mail': 'metal', 'scale_mail': 'metal', 'shield': 'metal', 'splint_armor': 'metal',
+    'studded_leather_armor': 'leather',
+}
 # (local_id, armor_category | 'shield', base_ac (shield: ac_bonus), dex_bonus, dex_cap, str_min, stealth_disadvantage, cost_cp, weight_oz)
 ARMOR = [
     ('breastplate', 'medium', 14, True, 2, 0, False, 40000, 320),
@@ -123,6 +143,52 @@ SRD_DESC = {   # exact SRD wording the descriptions must contain
 }
 
 
+# SRD 5.1 utility adventuring gear (5e-database a6212be, standard-gear), item@2 'gear' with passive data only:
+# (local_id, cost_cp, weight_oz, SRD sentence the description must contain | None when the SRD has no description).
+# No mechanics: rope / chain hit points and burst DCs, crowbar advantage and manacle escape DCs are description text only.
+UTILITY_GEAR = [
+    ('backpack', 200, 80, None),
+    ('bedroll', 100, 112, None),
+    ('rope_hempen_50_feet', 100, 160, "has 2 hit points and can be burst with a DC 17 Strength check."),
+    ('rope_silk_50_feet', 1000, 80, "has 2 hit points and can be burst with a DC 17 Strength check."),
+    ('waterskin', 20, 80, None),
+    ('rations_1_day', 50, 32, "Rations consist of dry foods suitable for extended travel"),
+    ('crowbar', 200, 80, "Using a crowbar grants advantage to Strength checks"),
+    ('pole_10_foot', 5, 112, None),
+    ('piton', 5, 4, None),
+    ('hammer', 100, 48, None),
+    ('grappling_hook', 200, 64, None),
+    ('mirror_steel', 500, 8, None),
+    ('chain_10_feet', 500, 160, "A chain has 10 hit points."),
+    ('manacles', 200, 96, "Escaping the manacles requires a successful DC 20 Dexterity check."),
+]
+
+# SRD 5.1 spellcasting foci, component pouch and spellbook (5e-database a6212be: arcane-foci, druidic-foci, holy-symbols,
+# standard-gear), item@2 'gear', passive data only: (local_id, cost_cp, weight_oz, SRD sentence the description must contain).
+# The SRD prices each focus form separately, so each is its own item, id prefixed by its focus family. The item@2 schema has no
+# focus marker yet, so nothing here is a rules5e ItemKind::Focus (deferred); characters keep their descriptive strings.
+FOCI = [
+    ('component_pouch', 2500, 32, "A component pouch is a small, watertight leather belt pouch"),
+    ('spellbook', 5000, 48, "a spellbook is a leather-bound tome with 100 blank vellum pages"),
+    ('arcane_focus_crystal', 1000, 16, "An arcane focus is a special item"),
+    ('arcane_focus_orb', 2000, 48, "An arcane focus is a special item"),
+    ('arcane_focus_rod', 1000, 32, "An arcane focus is a special item"),
+    ('arcane_focus_staff', 500, 64, "An arcane focus is a special item"),
+    ('arcane_focus_wand', 1000, 16, "An arcane focus is a special item"),
+    ('druidic_focus_sprig_of_mistletoe', 100, 0, "A druid can use such an object as a spellcasting focus."),
+    ('druidic_focus_totem', 100, 0, "A druid can use such an object as a spellcasting focus."),
+    ('druidic_focus_wooden_staff', 500, 64, "A druid can use such an object as a spellcasting focus."),
+    ('druidic_focus_yew_wand', 1000, 16, "A druid can use such an object as a spellcasting focus."),
+    ('holy_symbol_amulet', 500, 16, "the caster must hold it in hand, wear it visibly, or bear it on a shield."),
+    ('holy_symbol_emblem', 500, 0, "the caster must hold it in hand, wear it visibly, or bear it on a shield."),
+    ('holy_symbol_reliquary', 500, 32, "the caster must hold it in hand, wear it visibly, or bear it on a shield."),
+]
+
+FOCUS_FAMILY = {f[0]: f[0].split("_")[0] if f[0].startswith(("arcane_", "druidic_")) else "holy"
+                for f in FOCI if f[0].startswith(("arcane_focus_", "druidic_focus_", "holy_symbol_"))}
+
+
+
 def load(lid):
     return json.loads((ITEMS / f"{lid}.json").read_text(encoding="utf-8"))
 
@@ -146,8 +212,11 @@ class Srd51Equipment(unittest.TestCase):
         self.assertEqual(len(AMMUNITION), 4)
         self.assertEqual(len(LIGHT_GEAR), 7)
         self.assertEqual(len(CONTAINERS), 3)
+        self.assertEqual(len(UTILITY_GEAR), 14)
+        self.assertEqual(len(FOCI), 14)
         self.assertEqual(files, sorted([w[0] for w in WEAPONS] + [a[0] for a in ARMOR] + [v[0] for v in VALUABLES]
-                                       + [a[0] for a in AMMUNITION] + [g[0] for g in LIGHT_GEAR] + [c[0] for c in CONTAINERS]),
+                                       + [a[0] for a in AMMUNITION] + [g[0] for g in LIGHT_GEAR] + [c[0] for c in CONTAINERS]
+                                       + [g[0] for g in UTILITY_GEAR] + [f[0] for f in FOCI]),
                          "no extra or missing item files")
 
     def test_manifest_lists_every_item(self):
@@ -171,6 +240,7 @@ class Srd51Equipment(unittest.TestCase):
                 self.assertEqual(dmg_text(d["versatile_damage"][0]) if "versatile_damage" in d else None, vers)
                 self.assertEqual(tuple(d.get("properties", [])), props)
                 self.assertEqual((d["cost_cp"], d["weight_oz"]), (cost, oz))
+                self.assertEqual(d["material"], MATERIAL[lid])
                 self.assertEqual(reach == 10, "reach" in props)
                 self.assertEqual("versatile" in props, vers is not None)
                 self.assertEqual("damage" in d, "special" not in props or lid == "lance")
@@ -181,6 +251,7 @@ class Srd51Equipment(unittest.TestCase):
                 d = load(lid)
                 self.assertEqual((d["$schema"], d["id"]), ("item@1", f"srd51.item.{lid}"))
                 self.assertEqual((d["cost_cp"], d["weight_oz"]), (cost, oz))
+                self.assertEqual(d["material"], MATERIAL[lid])
                 if cat == "shield":
                     self.assertEqual((d["category"], d["ac_bonus"]), ("shield", ac))
                     continue
@@ -242,6 +313,53 @@ class Srd51Equipment(unittest.TestCase):
                 if torch:
                     self.assertIs(d["torch_attack"]["requires_lit"], True)
         self.assertIn(OIL, {f"srd51.item.{g[0]}" for g in LIGHT_GEAR})
+
+    def test_utility_gear(self):
+        for lid, cost, oz, sentence in UTILITY_GEAR:
+            with self.subTest(lid):
+                d = load(lid)
+                self.assertEqual((d["$schema"], d["id"], d["category"]), ("item@2", f"srd51.item.{lid}", "gear"))
+                self.assertEqual(d["source"], {"ref": "SRD 5.1", "license": "CC-BY-4.0"})
+                self.assertEqual((d["cost_cp"], d["weight_oz"]), (cost, oz))
+                if sentence is None:
+                    self.assertNotIn("description", d)
+                else:
+                    self.assertIn(sentence, d["description"])
+                self.assertEqual(set(d) - {"description"}, {"$schema", "id", "name", "source", "category", "cost_cp", "weight_oz"})
+
+    def test_foci(self):
+        for lid, cost, oz, sentence in FOCI:
+            with self.subTest(lid):
+                d = load(lid)
+                self.assertEqual((d["$schema"], d["id"], d["category"]), ("item@2", f"srd51.item.{lid}", "gear"))
+                self.assertEqual(d["source"], {"ref": "SRD 5.1", "license": "CC-BY-4.0"})
+                self.assertEqual((d["cost_cp"], d["weight_oz"]), (cost, oz))
+                self.assertIn(sentence, d["description"])
+                self.assertEqual(d.get("focus"), FOCUS_FAMILY.get(lid))
+                self.assertEqual(set(d) - {"focus"}, {"$schema", "id", "name", "source", "category", "cost_cp", "weight_oz", "description"})
+        fams = [FOCUS_FAMILY[f[0]] for f in FOCI if f[0] in FOCUS_FAMILY]
+        self.assertEqual((fams.count("arcane"), fams.count("druidic"), fams.count("holy")), (5, 4, 3))
+        self.assertNotIn("component_pouch", FOCUS_FAMILY)   # a pouch is not a focus (it holds the materials)
+
+    def test_focus_field_schema(self):
+        # item@2 gear `focus` (docs/CONTENT_CONVENTIONS.md section 18): optional, closed enum, gear only.
+        from jsonschema import Draft202012Validator
+        from referencing import Registry, Resource
+        schemas = ROOT / "schemas"
+        res = [(d["$id"], Resource.from_contents(d)) for d in
+               (json.loads(p.read_text(encoding="utf-8")) for p in schemas.rglob("*.schema.json")) if "$id" in d]
+        v = Draft202012Validator(json.loads((schemas / "item/v2.schema.json").read_text(encoding="utf-8")),
+                                 registry=Registry().with_resources(res))
+        base = {"$schema": "item@2", "id": "test.item.orb", "name": "Orb", "category": "gear"}
+        self.assertEqual(list(v.iter_errors(base)), [])
+        for fam in ("arcane", "druidic", "holy"):
+            self.assertEqual(list(v.iter_errors({**base, "focus": fam})), [], fam)
+        for bad in ("Arcane", "divine", "", 1, None, ["arcane"]):
+            self.assertTrue(list(v.iter_errors({**base, "focus": bad})), f"expected rejection: {bad!r}")
+        shield = {"$schema": "item@2", "id": "test.item.s", "name": "S", "category": "shield", "ac_bonus": 2}
+        self.assertTrue(list(v.iter_errors({**shield, "focus": "holy"})), "focus is a gear-only key")
+        for lid, *_ in FOCI:
+            self.assertEqual(list(v.iter_errors(load(lid))), [], lid)
 
     def test_diamond_is_the_priced_material_id(self):
         # spell@1 components.m.item names it (Revivify fixture); the contract matches equipment ids exactly.

@@ -9,6 +9,7 @@ inline constexpr const char* kStabilize = "stabilize";                 // effect
 inline constexpr const char* kHitOnly = "hit_only";                    // spell_attack: the hit deals no hit-point damage (Ray of Enfeeblement)
 inline constexpr const char* kOnNextTurn = "on_next_turn";             // apply_modifier: inactive until the caster's next turn (True Strike)
 inline constexpr const char* kBonusDash = "bonus_dash";                // modifier stat (Expeditious Retreat)
+inline constexpr const char* kDashOnCast = "dash_on_cast";             // apply_modifier: the cast itself takes the Dash action (Expeditious Retreat)
 inline constexpr const char* kSaveVsConditions = "save_vs_conditions"; // apply_modifier: save mode only vs these conditions
 inline constexpr const char* kHalveWeaponDamage = "halve_weapon_damage"; // modifier stat (Ray of Enfeeblement)
 inline constexpr const char* kDeathSaves = "death_saves";              // apply_modifier: advantage on death saving throws

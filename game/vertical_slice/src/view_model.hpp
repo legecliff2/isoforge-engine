@@ -63,6 +63,25 @@ struct ActorView {
     bool unseen_attacker = false;
 };
 
+// Debug cover readout. Numeric values match rules5e::Cover so the session can copy
+// Combat::cover_between without translating. SliceView never includes rules or sim.
+enum class CoverLevel : uint8_t { None = 0, Half = 1, ThreeQuarters = 2, Total = 3 };
+
+// One attacker→target probe (or an aim-tile→target probe). present=false: overlay off, nothing drawn.
+// The line is screen-space, so it does not enter the iso depth sort.
+struct CoverDebugView {
+    bool present = false;
+    bool aim = false;                  // origin is a 1-tile aim point, not the attacker's footprint
+    uint32_t attacker = 0;
+    uint32_t target = 0;
+    eng::Vec2i origin{};               // footprint anchor, or the aim tile
+    int origin_n = 1;                  // footprint side (1 = Medium). Aim uses 1.
+    eng::Vec2i target_tile{};
+    int target_n = 1;
+    CoverLevel level = CoverLevel::None;
+    std::string note;                  // "NO AIM" / "NO PAIR" when the overlay is up but the query is not
+};
+
 // ---- Light (LIGHTING.md §10): a plain-data copy of the sim's published sim::LightFrame. ----
 // Samples are packed bytes (iso2d::pack_light layout: bits 0-1 level Dark|Dim|Bright,
 // bits 2-5 sim LightFlags). Render never computes gameplay light; it only shades these.
@@ -128,6 +147,8 @@ struct ViewModel {
     LightView   light;
     // Debug overlay panel (debug equip view, F3): pre-formatted lines, drawn top-right; empty = no panel.
     std::vector<std::string> debug_panel;
+    // Debug cover overlay (F4). Empty (present=false) draws nothing.
+    CoverDebugView cover;
 };
 
 } // namespace slice

@@ -671,14 +671,14 @@ TEST_CASE("loader 7.2zc: ends_on, scope target marked, ability chosen, move_mark
         "effects":[{"kind":"apply_condition","condition":"invisible","ends_on":["attack","cast"]}]})");
     auto i = spell_from_json(inv); REQUIRE(i.def);
     CHECK(i.def->ends_on == (kEndsOnAttack | kEndsOnCast));
-    auto hex = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"srd51.spell.hex","level":1,"name":"Hex",
+    auto chosen = eng::assets::Json::parse(R"({"$schema":"spell@1","id":"test.spell.chosen_mark","level":1,"name":"Chosen Mark",
         "casting_time":{"kind":"bonus_action"},"range":{"kind":"ranged","feet":90},"components":{"v":true,"s":true,"m":{"text":"eye"}},
         "duration":{"kind":"hours","amount":1,"concentration":true},"move_mark":{"action":"bonus_action"},
         "effects":[{"kind":"apply_modifier","scope":{"target":"marked"},
                     "modifier":{"stat":"damage","die":"1d6","damage_type":"necrotic","applies_to":"self","duration":{"kind":"concentration"}}},
                    {"kind":"apply_modifier","scope":{"target":"marked"},
                     "modifier":{"stat":"ability_check","mode":"disadvantage","ability":"chosen","applies_to":"target","duration":{"kind":"concentration"}}}]})");
-    auto h = spell_from_json(hex); REQUIRE(h.def);
+    auto h = spell_from_json(chosen); REQUIRE(h.def);
     CHECK(h.def->move_mark == 1);
     CHECK(h.def->modifier.mark_scope == 1);
     CHECK(h.def->modifier.stat == ModStat::Damage);
@@ -695,16 +695,16 @@ TEST_CASE("loader 7.2zc: ends_on, scope target marked, ability chosen, move_mark
     j = inv; j["effects"][0]["ends_on"] = eng::assets::Json::array(); bad(j, "effect ends_on must be a non-empty list of attack, cast");
     j = inv; j["duration"] = {{"kind", "instantaneous"}}; bad(j, "effect ends_on needs concentration or a rounds, minutes or hours duration");
     j = inv; j["duration"] = {{"kind", "minutes"}, {"amount", 1}}; CHECK(spell_from_json(j).def);   // a duration without concentration
-    j = hex; j["effects"][0]["scope"] = {{"target", "self"}}; bad(j, "effect scope must be {target: marked}");
-    j = hex; j["effects"][0]["modifier"]["applies_to"] = "target"; bad(j, "effect scope target marked: a damage modifier needs applies_to self");
-    j = hex; j["effects"][0]["modifier"] = {{"stat", "attack_roll"}, {"bonus", 1}, {"applies_to", "self"}, {"duration", {{"kind", "concentration"}}}};
+    j = chosen; j["effects"][0]["scope"] = {{"target", "self"}}; bad(j, "effect scope must be {target: marked}");
+    j = chosen; j["effects"][0]["modifier"]["applies_to"] = "target"; bad(j, "effect scope target marked: a damage modifier needs applies_to self");
+    j = chosen; j["effects"][0]["modifier"] = {{"stat", "attack_roll"}, {"bonus", 1}, {"applies_to", "self"}, {"duration", {{"kind", "concentration"}}}};
     bad(j, "effect scope target marked: damage or ability_check modifiers only");
-    j = hex; j["effects"][1].erase("scope"); bad(j, "effect modifier ability chosen needs scope target marked");
-    j = hex; j["effects"][1]["modifier"]["stat"] = "save"; bad(j, "effect modifier ability chosen: ability_check modifiers only");
-    j = hex; j["effects"][1]["modifier"]["applies_to"] = "allies_within_30"; bad(j, "effect scope target marked: applies_to self or target");
-    j = hex; j["duration"].erase("concentration"); bad(j, "move_mark needs a concentration spell");
-    j = hex; j["move_mark"] = {{"action", "action"}}; bad(j, "move_mark must be {action: bonus_action}");
-    j = hex; j["effects"] = eng::assets::Json::array({inv["effects"][0]}); j["effects"][0].erase("ends_on");
+    j = chosen; j["effects"][1].erase("scope"); bad(j, "effect modifier ability chosen needs scope target marked");
+    j = chosen; j["effects"][1]["modifier"]["stat"] = "save"; bad(j, "effect modifier ability chosen: ability_check modifiers only");
+    j = chosen; j["effects"][1]["modifier"]["applies_to"] = "allies_within_30"; bad(j, "effect scope target marked: applies_to self or target");
+    j = chosen; j["duration"].erase("concentration"); bad(j, "move_mark needs a concentration spell");
+    j = chosen; j["move_mark"] = {{"action", "action"}}; bad(j, "move_mark must be {action: bonus_action}");
+    j = chosen; j["effects"] = eng::assets::Json::array({inv["effects"][0]}); j["effects"][0].erase("ends_on");
     bad(j, "move_mark needs an apply_modifier with scope target marked");
 }
 
@@ -1117,6 +1117,7 @@ TEST_CASE("loader 7.2zi: stabilize, chosen-target advantage, bonus Dash, poison 
     CHECK(retreat->modifier.stat == ModStat::BonusDash);
     CHECK(retreat->modifier.applies_to == ModAppliesTo::Self);
     CHECK(retreat->modifier.expiry == 1); CHECK(retreat->modifier.rounds == 600);
+    CHECK(retreat->dash_on_cast);
 
     const auto poison = load("protection_from_poison.json");
     CHECK(poison->kind == SpellEffectKind::EndCondition);
@@ -1190,6 +1191,12 @@ TEST_CASE("loader 7.2zi: stabilize, chosen-target advantage, bonus Dash, poison 
     j["effects"][0]["modifier"].erase("mode"); j["effects"][0]["modifier"].erase("consume");
     j["effects"][0]["modifier"].erase("applies_to"); j["effects"][0].erase("scope");
     bad(j, "effect on_next_turn needs an attack_roll modifier");
+    j = doc("expeditious_retreat.json");
+    j["effects"][0]["modifier"].erase("applies_to");
+    bad(j, "effect dash_on_cast needs a bonus_dash modifier on self");
+    j = doc("expeditious_retreat.json");
+    j["effects"][0]["dash_on_cast"] = false;
+    bad(j, "effect dash_on_cast must be true");
     j = doc("ray_of_enfeeblement.json");
     j["effects"] = eng::assets::Json::array({j["effects"][1]});
     j["effects"][0]["modifier"]["ability"] = "dex";

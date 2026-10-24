@@ -4,6 +4,7 @@
   "name": "Ring Mail",
   "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
   "category": "armor",
+  "material": "metal",
   "cost_cp": 3000,
   "weight_oz": 640,
   "armor_category": "heavy",
