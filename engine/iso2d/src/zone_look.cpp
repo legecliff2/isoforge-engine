@@ -15,6 +15,7 @@ constexpr ZoneLook kLooks[] = {
      ZoneObscure::None, false},
     {ZoneKind::Grease, "srd51.spell.grease", {0.86f, 0.68f, 0.16f, 0.34f}, ZonePattern::Stripes, ZoneEdge::Soft,
      ZoneObscure::None, true},
+    // SRD: Spike Growth is camouflaged, so the visible specks are a deliberate visual tell.
     {ZoneKind::SpikeGrowth, "srd51.spell.spike_growth", {0.72f, 0.28f, 0.14f, 0.40f}, ZonePattern::Specks,
      ZoneEdge::Jagged, ZoneObscure::None, false},
     {ZoneKind::SpiritGuardians, "srd51.spell.spirit_guardians", {0.72f, 0.62f, 0.98f, 0.38f}, ZonePattern::Pulse,

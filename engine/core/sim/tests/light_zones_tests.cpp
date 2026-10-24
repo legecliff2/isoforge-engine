@@ -171,6 +171,16 @@ TEST_CASE("light zones: Fog Cloud tiles get kObscuredHeavy; outside stays clear"
     CHECK(std::find(tiles.begin(), tiles.end(), Vec2i{10, 10}) != tiles.end());
     CHECK(std::find(tiles.begin(), tiles.end(), Vec2i{14, 10}) != tiles.end());
     CHECK(std::find(tiles.begin(), tiles.end(), Vec2i{15, 10}) == tiles.end());
+    // Row-scan (y, then x), the order fill_zone_tiles emitted before the list moved onto Combat.
+    REQUIRE_FALSE(tiles.empty());
+    CHECK(tiles.front() == Vec2i{6, 6});
+    bool row_scan = true;
+    for (std::size_t i = 1; i < tiles.size(); ++i) {
+        const Vec2i& p = tiles[i - 1];
+        const Vec2i& q = tiles[i];
+        if (!(p.y < q.y || (p.y == q.y && p.x < q.x))) row_scan = false;
+    }
+    CHECK(row_scan);
 }
 
 TEST_CASE("light zones: Darkness sets kMagicalDark (and heavy obscurement from the fixture flags)") {

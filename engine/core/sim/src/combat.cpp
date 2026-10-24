@@ -2215,7 +2215,6 @@ std::vector<Vec2i> Combat::zone_tiles(const rules5e::ActiveZone& z) const {
     for (int y = min_y; y <= max_y; ++y)
         for (int x = min_x; x <= max_x; ++x)
             if (zone_covers(z, {x, y})) tiles.push_back({x, y});
-    std::sort(tiles.begin(), tiles.end());
     return tiles;
 }
 
