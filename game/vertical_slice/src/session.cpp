@@ -667,6 +667,22 @@ ViewModel Session::view() const {
             v.actors.push_back(std::move(a));
         }
     }
+    if (m.combat) {
+        const sim::Combat& c = *m.combat;
+        v.anim_phase = m.light ? uint32_t(m.light->step) : 0u;
+        for (const rules5e::ActiveZone& z : c.state().zones) {
+            const rules5e::SpellDef* d = c.spell_def(z.spell_id);
+            if (!d || d->content_id.empty()) continue;
+            std::vector<Vec2i> tiles = c.zone_tiles(z);
+            if (tiles.empty()) continue;
+            ZoneOverlayView o;
+            o.zone_id = z.zone_id;
+            o.spell_id = z.spell_id;
+            o.content_id = d->content_id;
+            o.tiles = std::move(tiles);
+            v.zones.push_back(std::move(o));
+        }
+    }
     if (m.light) copy_light(*m.light, m.opt.fog, m.fog_team, v.light);
     v.light.visuals = m.visuals;
     if (!m.error.empty()) v.status = "SIM ERROR: " + m.error;

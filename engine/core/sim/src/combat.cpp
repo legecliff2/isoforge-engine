@@ -2179,6 +2179,46 @@ bool Combat::zone_covers(const rules5e::ActiveZone& z, Vec2i tile, const Spot* o
     return false;   // walls (Line) are not modelled yet
 }
 
+std::vector<Vec2i> Combat::zone_tiles(const rules5e::ActiveZone& z) const {
+    std::vector<Vec2i> tiles;
+    const rules5e::SpellDef* def = spell_def(z.spell_id);
+    if (!def || def->kind != rules5e::SpellEffectKind::Zone || z.ring) return tiles;
+    const int sz = int(z.size_ft != 0 ? z.size_ft : def->zone.size_ft) / kFeetPerTile;
+    int min_x = 0, max_x = -1, min_y = 0, max_y = -1;
+    if (def->zone.anchor == rules5e::ZoneAnchor::Creature) {
+        if (!rules5e::find(state_, z.owner)) return tiles;
+        const Vec2i op = pos(z.owner);
+        const int on = footprint_size(z.owner);
+        const int pad = (def->zone.shape == AreaShape::Cube) ? sz / 2 : sz;
+        min_x = op.x - pad;
+        max_x = op.x + on - 1 + pad;
+        min_y = op.y - pad;
+        max_y = op.y + on - 1 + pad;
+    } else {
+        if (!z.has_anchor_tile) return tiles;
+        const Vec2i a{z.anchor_x, z.anchor_y};
+        if (def->zone.shape == AreaShape::Sphere || def->zone.shape == AreaShape::Cylinder) {
+            min_x = a.x - sz;
+            max_x = a.x + sz;
+            min_y = a.y - sz;
+            max_y = a.y + sz;
+        } else if (def->zone.shape == AreaShape::Cube) {
+            const int lo = -((sz - 1) / 2), hi = sz / 2;
+            min_x = a.x + lo;
+            max_x = a.x + hi;
+            min_y = a.y + lo;
+            max_y = a.y + hi;
+        } else {
+            return tiles;   // walls (Line) are not modelled yet
+        }
+    }
+    for (int y = min_y; y <= max_y; ++y)
+        for (int x = min_x; x <= max_x; ++x)
+            if (zone_covers(z, {x, y})) tiles.push_back({x, y});
+    std::sort(tiles.begin(), tiles.end());
+    return tiles;
+}
+
 bool Combat::zone_holds(const rules5e::ActiveZone& z, CombatantId, Spot at, bool completely, const Spot* owner_at,
                         const Vec2i* anchor_at) const {
     bool any = false, all = true;

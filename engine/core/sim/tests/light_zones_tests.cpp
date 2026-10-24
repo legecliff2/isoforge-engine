@@ -167,6 +167,10 @@ TEST_CASE("light zones: Fog Cloud tiles get kObscuredHeavy; outside stays clear"
     const LightSample out = sample_at(*fr, {15, 10});
     CHECK((out.flags & light_flags::kObscuredHeavy) == 0);
     CHECK(out.level == Light::Bright);
+    const std::vector<Vec2i> tiles = f.c->zone_tiles(f.c->state().zones[0]);
+    CHECK(std::find(tiles.begin(), tiles.end(), Vec2i{10, 10}) != tiles.end());
+    CHECK(std::find(tiles.begin(), tiles.end(), Vec2i{14, 10}) != tiles.end());
+    CHECK(std::find(tiles.begin(), tiles.end(), Vec2i{15, 10}) == tiles.end());
 }
 
 TEST_CASE("light zones: Darkness sets kMagicalDark (and heavy obscurement from the fixture flags)") {
@@ -213,6 +217,19 @@ TEST_CASE("light zones: Web sets kObscuredLight; Spike Growth (difficult only) d
     REQUIRE(fr);
     const LightSample s = sample_at(*fr, {10, 10});
     CHECK((s.flags & (light_flags::kObscuredLight | light_flags::kObscuredHeavy | light_flags::kMagicalDark)) == 0);
+    // Difficult-only zones still publish tiles (the renderer draws them; light flags stay clear).
+    const rules5e::ActiveZone& spike = f.c->state().zones[0];
+    const std::vector<Vec2i> tiles = f.c->zone_tiles(spike);
+    CHECK(std::find(tiles.begin(), tiles.end(), Vec2i{10, 10}) != tiles.end());
+    CHECK(std::find(tiles.begin(), tiles.end(), Vec2i{15, 10}) == tiles.end());
+    int disagree = 0;
+    for (int y = 0; y < 32; ++y)
+        for (int x = 0; x < 32; ++x) {
+            const bool in = f.c->zone_covers(spike, {x, y});
+            const bool listed = std::find(tiles.begin(), tiles.end(), Vec2i{x, y}) != tiles.end();
+            if (in != listed) ++disagree;
+        }
+    CHECK(disagree == 0);
 }
 
 TEST_CASE("light zones: zone move updates sample flags; expire clears them") {

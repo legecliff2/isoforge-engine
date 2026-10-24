@@ -1,6 +1,7 @@
 #include "slice_view.hpp"
 
 #include "equip_visuals.hpp"
+#include "iso2d/zone_look.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -361,21 +362,39 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
             world_.draw(s, iso, 0, key, t.layer);
         }
     }
-    // Soft haze on heavily obscured Visible tiles (Fog / Stinking Cloud bits). Tint already cools;
-    // this is a light second pass only — no FoW invention, no zone fill.
-    if (L.present) {
+    // Persistent spell zones, then the generic heavy-obscurement haze for a tile no known heavy
+    // look covers. Same depth slot as the old haze: layer 0, entity key = tile.y * 32 + tile.x, z = 1.
+    // Non-visible tiles stay bare (no current zone, no invented fog of war).
+    if (!vm.zones.empty() || L.present) {
         for (const TileView& t : vm.tiles) {
             if (t.kind == TileKind::Wall || t.layer >= 2) continue;
-            iso2d::Fog f;
+            iso2d::Fog f = iso2d::Fog::Visible;
             uint8_t packed = 0;
-            tint(t.tile, &f, &packed);
-            if (f != iso2d::Fog::Visible || (packed & iso2d::light_bits::kObscuredHeavy) == 0) continue;
+            if (L.present) tint(t.tile, &f, &packed);
+            if (f != iso2d::Fog::Visible) continue;
             const Vec2f iso{float(t.tile.x), float(t.tile.y)};
             const float lift = float(t.elevation * kElevPx);
             const uint32_t key = uint32_t(t.tile.y * 32 + t.tile.x);
-            iso2d::Sprite haze{tex_->ground(t.kind), float(kTileW), float(kTileH), kTileW / 2.f, lift};
-            haze.tint = {0.55f, 0.65f, 0.90f, 0.30f};
-            world_.draw(haze, iso, 0, key, 1);
+            bool heavy_look = false;
+            for (const ZoneOverlayView& z : vm.zones) {
+                if (std::find(z.tiles.begin(), z.tiles.end(), t.tile) == z.tiles.end()) continue;
+                const iso2d::ZoneLook* look = iso2d::zone_look_for(z.content_id);
+                if (!look) continue;
+                iso2d::Sprite fill{tex_->ground(t.kind), float(kTileW), float(kTileH), kTileW / 2.f, lift};
+                fill.tint = iso2d::zone_fill_tint(*look, t.tile.x, t.tile.y, vm.anim_phase);
+                world_.draw(fill, iso, iso2d::kZoneOverlayLayer, key, iso2d::kZoneOverlayZ);
+                if (iso2d::zone_tile_is_edge(z.tiles, t.tile) && iso2d::zone_draws_edge(*look, t.tile)) {
+                    iso2d::Sprite rim{tex_->ring, float(kTileW), float(kTileH), kTileW / 2.f, lift};
+                    rim.tint = iso2d::zone_edge_tint(*look, t.tile.x, t.tile.y);
+                    world_.draw(rim, iso, iso2d::kZoneOverlayLayer, key, iso2d::kZoneOverlayZ);
+                }
+                if (look->obscure == iso2d::ZoneObscure::Heavy) heavy_look = true;
+            }
+            if (L.present && !heavy_look && (packed & iso2d::light_bits::kObscuredHeavy) != 0) {
+                iso2d::Sprite haze{tex_->ground(t.kind), float(kTileW), float(kTileH), kTileW / 2.f, lift};
+                haze.tint = {0.55f, 0.65f, 0.90f, 0.30f};
+                world_.draw(haze, iso, iso2d::kZoneOverlayLayer, key, iso2d::kZoneOverlayZ);
+            }
         }
     }
     // ---- world: actors (placeholder pawns), current-turn ring ----

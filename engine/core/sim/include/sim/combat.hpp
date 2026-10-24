@@ -364,6 +364,9 @@ public:
     // footprint). Walls (shape Line / rings) are not modelled yet: they cover no tile. `owner_at` overrides the owner's
     // footprint and `anchor_at` the anchor tile (a move being evaluated).
     bool zone_covers(const rules5e::ActiveZone& z, Vec2i tile, const Spot* owner_at = nullptr, const Vec2i* anchor_at = nullptr) const;
+    // Every tile zone_covers reports for `z` (row scan of the shape's bounding box, then sorted by x, y).
+    // Empty for rings and shapes that cover nothing (walls). The renderer's zone overlay uses this list.
+    std::vector<Vec2i> zone_tiles(const rules5e::ActiveZone& z) const;
     // Is creature `id` standing at `at` in zone `z` (any footprint tile, or every tile when `completely`)?
     bool zone_holds(const rules5e::ActiveZone& z, CombatantId id, Spot at, bool completely, const Spot* owner_at = nullptr,
                     const Vec2i* anchor_at = nullptr) const;

@@ -134,6 +134,16 @@ struct LightView {
     }
 };
 
+// One live spell zone, as the renderer should draw it. `content_id` selects the iso2d look
+// ("srd51.spell.fog_cloud"); `spell_id` is the rules id that rode with it (spell_id_of). Tiles are
+// the world tiles Combat::zone_tiles reported. Unknown content ids draw nothing.
+struct ZoneOverlayView {
+    uint32_t zone_id = 0;
+    uint32_t spell_id = 0;
+    std::string content_id;
+    std::vector<eng::Vec2i> tiles;
+};
+
 struct ViewModel {
     std::vector<TileView>    tiles;   // static: from the chunk
     std::vector<ActorView>   actors;
@@ -145,6 +155,9 @@ struct ViewModel {
     std::string status;               // e.g. "SPACE: STEP  A: AUTO"
     std::vector<std::string> log;     // newest last
     LightView   light;
+    // Persistent spell zones (presentation). anim_phase is the light-frame step; animated looks read it.
+    uint32_t    anim_phase = 0;
+    std::vector<ZoneOverlayView> zones;
     // Debug overlay panel (debug equip view, F3): pre-formatted lines, drawn top-right; empty = no panel.
     std::vector<std::string> debug_panel;
     // Debug cover overlay (F4). Empty (present=false) draws nothing.
