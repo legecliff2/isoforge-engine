@@ -2393,7 +2393,7 @@ int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int fp, bool t
     }
     if (halve) cost *= 2;
     if (zoned) cost = std::min(cost, 20);
-    // altitude PR2 (chunk@3 ground; 0 on flat maps): +5 ft for a step up of 5 ft or less (HOUSE RULE), descending free (grid.hpp step_cost_ft);
+    // altitude PR2 (chunk@3 ground; 0 on flat maps): a step up of 5 ft or less and descending are free (grid.hpp step_cost_ft);
     // an airborne flyer pays only for ground that rises above its absolute height.
     if (grid_.has_ground()) {
         const int g1 = grid_.footprint_ground_ft(to, fp);

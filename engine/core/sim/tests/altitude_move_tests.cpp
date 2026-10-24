@@ -118,9 +118,10 @@ TEST_CASE("altitude PR2: ledge_ft / step_cost_ft rules (mirrored by tools/valida
     const MoveCaps walk{}, climb{false, false, true}, fly{true, false, false};
     static_assert(ledge_ft(0, 10) == 10 && ledge_ft(10, 0) == -10);
     CHECK(step_cost_ft(0, 0, walk) == 0);
-    CHECK(step_cost_ft(0, 5, walk) == 5);
+    CHECK(step_cost_ft(0, 5, walk) == 0);      // a step up of 5 ft or less costs nothing extra
     CHECK(step_cost_ft(5, 0, walk) == 0);      // descending costs nothing extra
-    CHECK(step_cost_ft(0, 5, climb) == 5);     // HOUSE RULE: +5 ft for a step up of 5 ft or less, any speed
+    CHECK(step_cost_ft(0, 5, climb) == 0);
+    CHECK(step_cost_ft(0, 6, walk) == 12);     // just above 5 ft: a climb
     CHECK(step_cost_ft(0, 10, walk) == 20);    // a climb without a climb speed: double
     CHECK(step_cost_ft(0, 10, climb) == 10);
     CHECK(step_cost_ft(0, 10, fly) == 10);
@@ -152,12 +153,14 @@ TEST_CASE("altitude PR2: chunk@1 / chunk@2 elevation is flat for the sim") {
 TEST_CASE("altitude PR2: chunk@3 step cost up / down, climb over 5 ft, ground = max over the footprint") {
     Fight f("walker", {{{5, 4}, 0, 1}, {{6, 4}, 0, 3}, {{7, 4}, 0, 2}}, true);
     CHECK(f.c->grid().ground_ft({6, 4}) == 15);
-    REQUIRE(f.step({5, 4}).ok);   // rise 5: 5 + 5
-    CHECK(f.left() == 20);
+    REQUIRE(f.step({5, 4}).ok);   // rise 5: 5 (a step up of 5 ft or less costs nothing extra)
+    CHECK(f.left() == 25);
     CHECK(f.c->abs_height_ft(f.me) == 5);
-    CHECK(f.step({6, 4}).error == "not enough movement");   // rise 10 is a climb: 5 + 2 * 10 = 25 > 20
     REQUIRE(f.step({5, 5}).ok);   // drop 5: 5 (descending is free)
-    CHECK(f.left() == 15);
+    CHECK(f.left() == 20);
+    CHECK(f.c->abs_height_ft(f.me) == 0);
+    CHECK(f.step({6, 4}).error == "not enough movement");   // rise 15 is a climb: 5 + 2 * 15 = 35 > 20
+    CHECK(f.left() == 20);
     f.check_replay();
 }
 

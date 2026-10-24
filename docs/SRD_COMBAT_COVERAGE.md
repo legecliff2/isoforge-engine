@@ -721,7 +721,7 @@ Audit of #165's footprints against the SRD size rules.
 | Rule | Status |
 |---|---|
 | Ground height from chunk@3 (`elevation` x 5 ft; chunk@1 / chunk@2 stay flat) | done: `Grid::ground_ft`, footprint ground = max over its tiles (docs/CHUNK_HASH.md "chunk@3 ground") |
-| Ledges: step up of 5 ft or less costs +5 ft | done, **HOUSE RULE** (not SRD): `eng::sim::step_cost_ft` |
+| Ledges: step up of 5 ft or less costs nothing extra | done: `eng::sim::step_cost_ft` returns 0 |
 | Descending costs nothing extra | done: `step_cost_ft` returns 0 for any descent |
 | Rise above 5 ft is a climb (`rise` with climb / fly speed, else `2 * rise`) | done: `step_cost_ft`, `step_mode` picks climb > fly > walk |
 | Falls: stepping off a drop of more than 5 ft | done: AltitudeChanged event (cause `kAltFall`), `Combat::falls()` (current turn only, cleared at each TurnStarted); pathing never plans a fall for a non-flyer. Fall damage deferred to PR4 |
