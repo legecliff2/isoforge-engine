@@ -1,0 +1,79 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.giant_fire_beetle",
+  "name": "Giant Fire Beetle",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "small",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 13,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 13,
+    "dex": true
+  },
+  "emits_light": {
+    "bright_ft": 10,
+    "dim_ft": 10
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 4,
+    "formula": "1d6+1"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 8,
+    "dex": 10,
+    "con": 12,
+    "int": 1,
+    "wis": 7,
+    "cha": 3
+  },
+  "senses": {
+    "blindsight": 30,
+    "passive_perception": 8
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "0",
+    "xp": 10
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "illumination",
+      "name": "Illumination",
+      "description": "The beetle sheds bright light in a 10-foot radius and dim light for an additional 10 feet."
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d6",
+        "ability": "str"
+      },
+      "to_hit": 1,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6-1",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +1 to hit, reach 5 ft., one target. Hit: 2 (1d6 - 1) slashing damage."
+    }
+  ]
+}
