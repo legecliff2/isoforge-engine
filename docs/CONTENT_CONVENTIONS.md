@@ -701,7 +701,7 @@ These are SRD 5.1 containers from 5e-database a6212be, with exact costs, weights
 - **Ready for the ammunition recovery rule** (EQUIPMENT 2.5: spend one per attack; recover `floor(spent / 2)` after combat). Stacks are `equipment[]` counts (§15), and these containers give the capacity a stack fits in.
 - **Inert today:** the sim loads no item documents. PCs do not list containers yet; adding them changes no number.
 
-## 17. Flat action damage (monster@5)
+## 18. Flat action damage (monster@5)
 
 SRD stat blocks such as rat, cat, owl, crab, and scorpion print a fixed amount: "Hit: 1 piercing damage." A monster@5 action
 `damage[]` component (including `extra_damage`) may be written as `{"flat": N, "type": "<damage_type>"}`, with N between 1 and 255.

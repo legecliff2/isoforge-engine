@@ -183,7 +183,7 @@ class AppendOnly(unittest.TestCase):
         self.assertEqual(set(c2["stat_block"]["required"]) - set(m5["stat_block"]["required"]), {"proficiency_bonus"})
         self.assertEqual(set(m5["action"]["properties"]) - set(c2["action"]["properties"]), {"weapon", "natural", "attack_bonus", "use"})
         for k, v in c2["action"]["properties"].items():
-            if k == "damage":   # CONTENT_CONVENTIONS 17: items widened to monster_damage (common@2 damage | {flat, type})
+            if k == "damage":   # CONTENT_CONVENTIONS 18: items widened to monster_damage (common@2 damage | {flat, type})
                 self.assertEqual(m5["action"]["properties"][k]["items"], {"$ref": "#/$defs/monster_damage"})
                 self.assertEqual(m5["monster_damage"]["oneOf"][0], {"$ref": "../common/v2.schema.json#/$defs/damage"})
                 self.assertEqual({x: y for x, y in m5["action"]["properties"][k].items() if x not in ("items", "description")},
@@ -319,7 +319,7 @@ BITE = {"id": "bite", "name": "Bite", "kind": "melee_weapon_attack", "to_hit": 0
 
 
 class FlatDamage(unittest.TestCase):
-    """monster@5-local $defs/monster_damage (CONTENT_CONVENTIONS 17): {flat, type} or common@2 damage, exactly one (oneOf).
+    """monster@5-local $defs/monster_damage (CONTENT_CONVENTIONS 18): {flat, type} or common@2 damage, exactly one (oneOf).
     SRD 'Hit: 1 piercing damage' (rat, cat, scorpion). The loader maps flat to DiceExpr{0, 0, N} (sim flat_damage_tests)."""
 
     def with_bite(self, damage, schema="monster@5"):
