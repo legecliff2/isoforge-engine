@@ -232,7 +232,8 @@ def check_stat_block(doc: dict, errs: list[str], pb_expected: int, rolled_hp: bo
         if v not in (base + pb, base + 2 * pb):
             errs.append(f"skills.{s} = {v}, expected {base + pb} (or {base + 2 * pb} with expertise)")
     perc = doc.get("skills", {}).get("perception", modifier(ab["wis"]))
-    if doc["senses"]["passive_perception"] != 10 + perc:
+    printed_ok = doc.get("$schema") == "monster@5" and doc.get("passive_perception_reason") == "srd_printed"   # Tier-A §25
+    if doc["senses"]["passive_perception"] != 10 + perc and not printed_ok:
         errs.append(f"senses.passive_perception {doc['senses']['passive_perception']} != {10 + perc}")
     hp = doc["hit_points"]
     if rolled_hp and dice_average(hp["formula"]) != hp["average"]:
@@ -687,6 +688,9 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
             s_errs, s_warns = c4.check_sim172_174(doc)   # sim #172 swarm / #174 giant spider follow-up
             errs += [f"{rel}: {m}" for m in s_errs]
             warns += [f"{rel}: {m}" for m in s_warns]
+        gr_errs, gr_warns = c4.check_grapple_rider(doc)   # Druid gap G: grapple rider fields, monster@5 only; Tier-A §27
+        errs += [f"{rel}: {m}" for m in gr_errs]
+        warns += [f"{rel}: {m}" for m in gr_warns]
         errs += [f"{rel}: {m}" for m in c4.check_slot_recovery(doc)]   # 7.2n slot_recovery (sim #148 load errors)
         if "gaze" in row.effect_kinds:   # 7.2p gaze (@4): loader defaults left implicit
             g_errs, g_warns = c4.check_gaze(doc)
@@ -696,6 +700,19 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
             t_errs, t_warns = c4.check_transparent(doc, tag.split("@")[0])
             errs += [f"{rel}: {m}" for m in t_errs]
             warns += [f"{rel}: {m}" for m in t_warns]
+        se_errs, se_warns = c4.check_save_effect_riders(doc, tag)   # Tier-A §26 Dreadful Glare (monster@5 only)
+        errs += [f"{rel}: {m}" for m in se_errs]
+        warns += [f"{rel}: {m}" for m in se_warns]
+        sa_errs, sa_warns = c4.check_save_advantage(doc, tag)   # batch 3 save_advantage (monster@5 only)
+        errs += [f"{rel}: {m}" for m in sa_errs]
+        warns += [f"{rel}: {m}" for m in sa_warns]
+        au_errs, au_warns = c4.check_aura(doc, tag)   # batch 3 aura (ghast Stench, monster@5 only)
+        errs += [f"{rel}: {m}" for m in au_errs]
+        warns += [f"{rel}: {m}" for m in au_warns]
+        errs += [f"{rel}: {m}" for m in c4.check_batch3_actions(doc, tag)]   # batch 3 weapon-only action keys
+        errs += [f"{rel}: {m}" for m in c4.check_until_cured(doc, tag)]   # batch 3 until_cured (death dog)
+        errs += [f"{rel}: {m}" for m in c4.check_multiattack_count(doc, tag)]   # batch 3 count_dice (violet fungus)
+        errs += [f"{rel}: {m}" for m in c4.check_teleport_actions(doc, tag)]   # batch 3 teleport action (blink dog)
         if "extra_attack" in row.effect_kinds:   # EC #179 extra_attack (@4): loader refusals, highest-wins warning
             x_errs, x_warns = c4.check_extra_attack(doc, tag.split("@")[0])
             errs += [f"{rel}: {m}" for m in x_errs]

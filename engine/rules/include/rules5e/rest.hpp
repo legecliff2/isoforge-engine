@@ -42,6 +42,8 @@ RestResult short_rest(Combatant&, rng::Rng&, uint8_t hit_dice_to_spend, const Re
 // Long rest (SRD 5.1): needs at least 1 HP. Exhaustion -1 if `food_and_drink`; then all HP (to the adjusted maximum), temp HP
 // lost, death saves reset; regain spent Hit Dice up to half the maximum (minimum 1); all spell and Pact slots; innate uses;
 // ShortRest and LongRest features and pools; recharge actions. No rng.
+// Batch 3 Strength Drain: adds Combatant::ability_reduction back to the scores and clears it (both rests call it).
+void restore_ability_reduction(Combatant&);
 RestResult long_rest(Combatant&, const RestTables& = {}, bool food_and_drink = true);
 
 // The table part of a rest for `actor` (0 = all rows): features and pools by recharge kind, recharge actions always.

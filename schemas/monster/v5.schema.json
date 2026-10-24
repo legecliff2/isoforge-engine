@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://isoforge.dev/schemas/monster/v5.schema.json",
   "title": "monster@5",
-  "description": "monster@5 = monster@4 carried in full plus (all optional, docs/proposals/EQUIPMENT.md 5 and 7.1): derive, equipment[] (with count), natural_armor, ac_adjust, weapon_dice_multiplier, weapons[] (monster-local), action weapon / natural / attack_bonus, hands, proficiency_bonus optional (default: the CR table) with proficiency_bonus_reason, emits_light (LIGHTING 3.4). monster@4 -> monster@5 is an identity migration with derive absent (= false). Integers only (4.3).",
+  "description": "monster@5 = monster@4 carried in full plus (all optional, docs/proposals/EQUIPMENT.md 5 and 7.1): derive, equipment[] (with count), natural_armor, ac_adjust, weapon_dice_multiplier, weapons[] (monster-local), action weapon / natural / attack_bonus / damage_override, hands, proficiency_bonus optional (default: the CR table) with proficiency_bonus_reason, emits_light (LIGHTING 3.4). monster@4 -> monster@5 is an identity migration with derive absent (= false). Integers only (4.3).",
   "$ref": "#/$defs/stat_block",
   "unevaluatedProperties": false,
   "required": [
@@ -123,6 +123,58 @@
               "properties": {
                 "effect": {
                   "$ref": "#/$defs/weapon_extra_dice_effect"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "save_advantage"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/save_advantage_effect"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "aura"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/aura_effect"
                 }
               }
             }
@@ -302,6 +354,11 @@
     "proficiency_bonus_reason": {
       "type": "string",
       "minLength": 1
+    },
+    "passive_perception_reason": {
+      "type": "string",
+      "enum": ["srd_printed"],
+      "description": "Tier-A (CONTENT_CONVENTIONS 25): senses.passive_perception is the SRD printed value and differs from 10 + Perception; the printed value wins in the sim (Combatant::passive_perception_override). Without it a mismatch is a validator error."
     },
     "emits_light": {
       "type": "object",
@@ -510,7 +567,8 @@
             "ranged_spell_attack",
             "special",
             "save_effect",
-            "attack_effect"
+            "attack_effect",
+            "teleport"
           ]
         },
         "to_hit": {
@@ -787,6 +845,24 @@
           },
           "description": "Overrides the derived total to-hit (not a delta); needs a reason (EQUIPMENT 5.5)."
         },
+        "damage_override": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "dice",
+            "reason"
+          ],
+          "properties": {
+            "dice": {
+              "$ref": "../common/v1.schema.json#/$defs/dice"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "description": "Overrides the derived damage[0] dice (not a delta) when the printed stat block can't be derived; needs a reason citing the SRD 5.1 stat block (CONTENT_CONVENTIONS 21). SRD Gladiator thrown Spear: 2d6 + 4."
+        },
         "use": {
           "enum": [
             "one_hand",
@@ -796,6 +872,151 @@
           ],
           "default": "one_hand",
           "description": "How the `weapon` is used for this action (EQUIPMENT 2.1 WeaponUse): two_hands = versatile die or a two-handed melee weapon, thrown = a thrown use of a melee weapon. Explicit, never inferred from the action id."
+        },
+        "drain": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "max_hp"
+          ],
+          "description": "Batch 3 (Lich ruling; sim content.cpp, rules5e life_drain): weapon attacks only. SRD 5.1 Life Drain: the target's hit point maximum is reduced by an amount equal to the damage taken (after a Constitution save vs save.dc when present; success: no reduction); the reduction lasts until the target finishes a long rest, and a maximum of 0 kills it. Wight: {max_hp true, save {ability con, dc 13}}.",
+          "properties": {
+            "max_hp": {
+              "const": true
+            },
+            "save": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ability",
+                "dc"
+              ],
+              "properties": {
+                "ability": {
+                  "const": "con"
+                },
+                "dc": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 30
+                }
+              }
+            },
+            "damage_type": {
+              "$ref": "../common/v1.schema.json#/$defs/damage_type",
+              "description": "Batch 3 (vampire spawn): only the damage of this type taken counts (after immunity / resistance / vulnerability); must be one of the action's damage[] types."
+            },
+            "heal_self": {
+              "type": "boolean",
+              "description": "Batch 3 (vampire spawn): the attacker regains hit points equal to the reduction."
+            }
+          }
+        },
+        "curse": {
+          "type": "object",
+          "description": "Batch 3 (mummy Rotting Fist): on a hit, a Con save; on a failure the target can't regain hit points (no_regain_hp). Weapon attacks only.",
+          "additionalProperties": false,
+          "required": [
+            "no_regain_hp",
+            "save"
+          ],
+          "properties": {
+            "no_regain_hp": {
+              "const": true
+            },
+            "save": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ability",
+                "dc"
+              ],
+              "properties": {
+                "ability": {
+                  "const": "con"
+                },
+                "dc": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 30
+                }
+              }
+            }
+          }
+        },
+        "ability": {
+          "enum": [
+            "str",
+            "dex",
+            "none"
+          ],
+          "description": "CONTENT_CONVENTIONS \"Attack ability\": the ability the attack's to_hit and damage use (none: no ability modifier). Optional; absent = inferred from to_hit (Str on a Str/Dex tie, with a loader warning); a finesse weapon without it uses the better of Str / Dex. Read when a score is reduced (Strength Drain) and by the two-weapon off-hand. Weapon attacks only."
+        },
+        "ability_drain": {
+          "type": "object",
+          "description": "Batch 3 (shadow Strength Drain): on a hit, after the damage, the target's Strength score is reduced by the dice; it dies if this reduces its Strength to 0; a short or long rest restores it. Weapon attacks only.",
+          "additionalProperties": false,
+          "required": [
+            "ability",
+            "dice"
+          ],
+          "properties": {
+            "ability": {
+              "const": "str"
+            },
+            "dice": {
+              "$ref": "../common/v1.schema.json#/$defs/dice"
+            }
+          }
+        },
+        "target_requires_any": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Batch 3 (vampire spawn Bite: \"one willing creature, or a creature that is grappled by the vampire, incapacitated, or restrained\"): the target must meet at least one. willing counts only for an ally with ActionRequest target_willing. Weapon attacks only.",
+          "items": {
+            "enum": [
+              "willing",
+              "grappled_by_self",
+              "incapacitated",
+              "restrained"
+            ]
+          }
+        },
+        "feet": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 500,
+          "multipleOf": 5,
+          "description": "Batch 3 teleport action (blink dog 40): up to this many feet to an unoccupied space the creature can see."
+        },
+        "with_attack": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id",
+          "description": "Batch 3 teleport action: one attack (an attack action id) made after the teleport without another action (SRD 5.1 blink dog: 'Before or after teleporting, the dog can make one bite attack.'; teleport-then-bite only)."
+        },
+        "also_on_fail_by": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["margin", "condition"],
+          "properties": {
+            "margin": {"type": "integer", "minimum": 1, "maximum": 30},
+            "condition": {"$ref": "../common/v1.schema.json#/$defs/condition"}
+          },
+          "description": "Tier-A §26 (save_effect only; SRD 5.1 mummy Dreadful Glare 'If the target fails the saving throw by 5 or more, it is also paralyzed for the same duration.'): failing the save by margin or more also applies condition on the same effect entry (same duration; ending it ends both), even if the target is immune to the primary condition. Needs a tracked primary condition in apply[] and differs from it; no escalates / control / area."
+        },
+        "immune_on_success": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hours", "scope"],
+          "properties": {
+            "hours": {"type": "integer", "minimum": 1, "maximum": 8760},
+            "scope": {"enum": ["same_action", "same_source"]}
+          },
+          "description": "Tier-A §26 (save_effect only): a success makes the target immune to this action for hours. same_action = from every creature using this archetype's action (SRD 'the dreadful glare of all mummies'); same_source = from this creature only. SIM_EVENTS 0xE1."
+        },
+        "target_must_see_source": {
+          "type": "boolean",
+          "description": "Tier-A §26 (save_effect only; 'One creature ... that can see the mummy'): a target that cannot see the user (blinded, or the sight hook says so) makes no save and gains no immunity (FeatureTriggered c = 3)."
         }
       },
       "allOf": [
@@ -935,7 +1156,10 @@
               ],
               "properties": {
                 "kind": {
-                  "const": "attack_effect"
+                  "enum": [
+                    "attack_effect",
+                    "teleport"
+                  ]
                 }
               }
             },
@@ -1159,6 +1383,51 @@
               ]
             }
           }
+        },
+        {
+          "description": "Batch 3: feet / with_attack are teleport-action keys; a teleport action needs feet.",
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "teleport"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "feet"
+            ],
+            "propertyNames": {
+              "enum": [
+                "id",
+                "name",
+                "kind",
+                "description",
+                "feet",
+                "usage",
+                "with_attack"
+              ]
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "feet"
+                  ]
+                },
+                {
+                  "required": [
+                    "with_attack"
+                  ]
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -1183,6 +1452,146 @@
           "type": "boolean",
           "default": true,
           "description": "Melee uses only; a thrown use is ranged and gets no extra dice."
+        }
+      }
+    },
+    "save_advantage_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "description": "monster@5-local trait kind (batch 3, field_shapes_proposal Gap 2; common@2 unchanged): advantage (or disadvantage) on saving throws matching every listed gate; a gate list matches when the effect imposes one of save_vs_conditions or deals one of vs_damage_types (either set). At least one gate is required. SRD Magic Resistance: {kind save_advantage, magical true}. Dark Devotion: {save_vs_conditions [charmed, frightened]}.",
+      "properties": {
+        "kind": {
+          "const": "save_advantage"
+        },
+        "save_vs_conditions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/condition"
+          }
+        },
+        "vs_damage_types": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/damage_type"
+          }
+        },
+        "magical": {
+          "type": "boolean",
+          "description": "true: only saves against spells and other magical effects."
+        },
+        "abilities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "../common/v1.schema.json#/$defs/ability"
+          }
+        },
+        "mode": {
+          "enum": [
+            "advantage",
+            "disadvantage"
+          ],
+          "default": "advantage"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "save_vs_conditions"
+          ]
+        },
+        {
+          "required": [
+            "vs_damage_types"
+          ]
+        },
+        {
+          "required": [
+            "abilities"
+          ]
+        },
+        {
+          "required": [
+            "magical"
+          ],
+          "properties": {
+            "magical": {
+              "const": true
+            }
+          }
+        }
+      ]
+    },
+    "aura_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "radius_ft",
+        "on",
+        "save",
+        "condition",
+        "duration"
+      ],
+      "description": "monster@5-local trait kind (batch 3, ghast Stench; common@2 unchanged): a creature-sourced aura that exists from the start of combat and works while the creature is alive (incapacitated or unconscious included); it ends when the creature dies. Each creature that starts its turn within radius_ft of it makes the save; on a failure it has the condition until the start of its next turn. On a success with success_immunity_hours, that creature is immune to this creature's aura for that many hours. SRD Stench (ghast): {radius_ft 5, on start_turn, save {con, 10}, condition poisoned, duration until_start_of_next_turn, success_immunity_hours 24}.",
+      "properties": {
+        "kind": {
+          "const": "aura"
+        },
+        "radius_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 120,
+          "multipleOf": 5
+        },
+        "on": {
+          "const": "start_turn"
+        },
+        "save": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ability",
+            "dc"
+          ],
+          "properties": {
+            "ability": {
+              "$ref": "../common/v1.schema.json#/$defs/ability"
+            },
+            "dc": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            }
+          }
+        },
+        "condition": {
+          "allOf": [
+            {
+              "$ref": "../common/v1.schema.json#/$defs/condition"
+            },
+            {
+              "not": {
+                "const": "exhaustion"
+              }
+            }
+          ]
+        },
+        "duration": {
+          "const": "until_start_of_next_turn"
+        },
+        "success_immunity_hours": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 168
         }
       }
     },

@@ -21,8 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 56 authored / 14 deferred): rat, scorpion (flat 1 damage not expressible) + tier B batch d1.
-DEFERRED: list[str] = ["rat", "scorpion", "quipper", "reef-shark", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 66 authored / 13 deferred): rat, scorpion (flat 1 damage not expressible) + tier B batch d1.
+DEFERRED: list[str] = ["rat", "scorpion", "quipper", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -68,7 +68,9 @@ class MonsterTable(unittest.TestCase):
                 self.assertEqual(d["challenge"]["xp"], 50 if idx == "riding-horse" else t["xp"])
                 rating = d["challenge"]["rating"]
                 self.assertEqual(CR[rating] if rating in CR else int(rating), t["cr"])
-                self.assertEqual({k: num(v) for k, v in t["speed"].items()}, d["speed"])
+                speed = {k: num(v) for k, v in t["speed"].items()}
+                speed.setdefault("walk", 0)   # the table has no walk key for swim-only creatures (reef shark: swim 40 ft.)
+                self.assertEqual(speed, d["speed"])
                 self.assertEqual([d["abilities"][k] for k in ("str", "dex", "con", "int", "wis", "cha")], t["abilities"])
                 self.assertEqual(d.get("damage_vulnerabilities", []), t["damage_vulnerabilities"])
                 self.assertEqual(d.get("damage_immunities", []), t["damage_immunities"])
@@ -236,7 +238,7 @@ class MonsterTable(unittest.TestCase):
                          {"ooze_cube": None, "transparent": {"kind": "transparent", "dc": 15}})
         # Swallow (attack_effect + contain swallow: blinded, total cover, no escape; Medium or smaller); bite grapples (escape DC 13)
         toad = {a["id"]: a for a in load("giant-toad")["actions"]}
-        self.assertEqual(toad["bite"]["on_hit"], [{"kind": "grapple", "escape_dc": 13}])
+        self.assertEqual(toad["bite"]["on_hit"], [{"kind": "grapple", "escape_dc": 13, "restrains": True, "exclusive": True}])
         sw = toad["swallow"]
         self.assertEqual((sw["kind"], sw["attack"], sw["to_hit"], sw["range_ft"]), ("attack_effect", "melee", 4, 5))
         self.assertEqual(sw["apply"], [{"condition": "restrained", "max_size": "medium",

@@ -753,6 +753,36 @@ SRD stat blocks such as rat, cat, owl, crab, and scorpion print a fixed amount: 
    "description": "Melee Weapon Attack: +0 to hit, reach 5 ft., one target. Hit: 1 slashing damage."}
   ```
 
+## 20. SRD tools (item@2 gear `tool_kind`)
+
+(Sections 17 to 19 are taken: 17 burrow (#290), 18 the gear `focus` key (#292), 19 flat damage.) SRD 5.1 tools are item@2 `gear` with an optional, closed, additive `tool_kind`. It takes one of four values, which mirror the 5e-database `tool_category`:
+
+| `tool_kind` | SRD category |
+|---|---|
+| `artisans_tools` | Artisan's Tools |
+| `gaming_set` | Gaming Sets |
+| `musical_instrument` | Musical Instrument |
+| `other_tools` | Other Tools (navigator's, thieves') |
+
+- **Why a field, not a new category:** a key on the gear arm keeps every gear key (`hands`, `description`, ...) and needs no union arm. It follows the same pattern as `container` and `focus`, and needs no version bump.
+- **Content:** ids are the snake_case of the 5e-database index; names, costs, weights and descriptions are verbatim.
+- **SRD 5.1 has no** disguise, forgery, herbalism or poisoner's kit, so none is authored.
+- **Inert:** no tool-proficiency checks exist. No validator check, rules code or sim reads `tool_kind`, and characters' tool proficiencies stay descriptive.
+- **Tests:** `tests/validate/test_srd51_equipment.py` (`TOOLS`, `test_tools`, `test_tool_kind_schema`).
+
+## 21. Printed-damage override and size-gated save riders (monster@5, Gladiator)
+
+- **`damage_override {dice, reason}`** is an optional monster@5 action key, the damage counterpart of `attack_bonus`.
+  - It replaces the derived `damage[0]` (it is not a delta) when the derivation can't reach the stat block's printed damage. `reason` is required and must cite the SRD 5.1 stat block.
+  - It is an error when the reason is blank, or when the derived damage already matches ("damage_override is not needed"). The validator lists every override as a warning, as it does for `attack_bonus`.
+  - Brute (`weapon_extra_dice`, `melee_only: true`) adds its die on melee use only. The SRD Bugbear Javelin prints "9 (2d6 + 2) piercing damage in melee or 5 (1d6 + 2) piercing damage at range", so the bugbear stays as printed and needs no override.
+  - The SRD Gladiator Spear prints a single line for both uses: "Melee or Ranged Weapon Attack: +7 to hit, reach 5 ft. or range 20/60 ft., one target. Hit: 11 (2d6 + 4) piercing damage". Its `use: thrown` action therefore carries `damage_override {dice: "2d6+4", reason: ...}`. There is no thrown variant of Brute.
+- **Size gate on a `save_condition` rider.** The first `apply[]` entry may carry `max_size` without `contain`.
+  - SRD Gladiator Shield Bash: "If the target is a Medium or smaller creature, it must succeed on a DC 15 Strength saving throw or be knocked prone."
+  - A target larger than `max_size` makes no save and gets no condition. The hit's damage still applies.
+  - On a later `apply[]` entry, or on a `save_effect` action without `contain`, `max_size` is a load error (`checks_v4.check_save_max_size` mirrors the sim loader).
+  - There is no new state, so no hash change.
+
 ## 22. Item `material` (item@1 / item@2 weapon, armor, shield)
 
 Optional on the weapon, armor, and shield arms of `item@1` and `item@2`. Gear, ammunition, and valuable do not take it (the arm `propertyNames` lists omit it; `tests/validate/test_union_arms.py`).
@@ -774,7 +804,27 @@ A weapon with a metal head or blade counts as a manufactured metal object. The s
 
 Versioning: appended, no tag change, no migration, no `api_level` gate. The field is not hashed, so goldens are unchanged. The justification and the Elf (tools/content) sign-off are in `docs/proposals/VERSION_BUMP_BATCH.md` (7.2zh follow-up).
 
-§20-21, §23 and §25-27 are reserved for in-flight branches.
+§20-21 are reserved for in-flight branches.
+
+<!-- Code, schema and tests cite this section by its title ("Attack ability"), not its number. -->
+## 23. Attack ability (monster@5 action `ability`, Strength Drain ruling)
+
+An optional monster@5 weapon-attack key: `"ability": "str" | "dex" | "none"`. It names the ability the printed `to_hit` and damage
+use; `none` means no ability modifier. It is read only when it matters: when a score is reduced (Strength Drain recomputes the
+attack at use time by the modifier change) and for the two-weapon off-hand.
+
+- **Present: it wins** (over a finesse property and over inference).
+- **Absent: still valid, no version bump.** The loader falls back in this order (Lich ruling):
+  1. a ranged weapon attack (`ranged_weapon_attack`) that is not thrown (no `thrown` on the action, the item, or the `weapons[]`
+     entry it names) uses Dex;
+  2. a finesse weapon (action `properties`, or the item / `weapons[]` entry it names) uses the better of Str / Dex;
+  3. otherwise it is inferred from the number: Str if `to_hit` = Str mod + PB, else Dex if = Dex mod + PB, else none. When both
+     match (an ambiguous Str/Dex tie) it picks Str and emits a loader warning (`ContentLibrary::warnings()`); set `ability` to
+     silence it.
+- Any other value is a load error; on a monster@4 or older file the key is a load error; on a non-weapon action the validator
+  refuses it (`checks_v4.BATCH3_WEAPON_ONLY_KEYS`).
+- Two-weapon fighting (SRD 5.1): the off-hand bonus attack adds the attack's effective ability modifier to damage only when it is
+  negative (the Two-Weapon Fighting style still adds it in full).
 
 ## 24. Headless encounter scenarios (`scenario@1`)
 
@@ -798,6 +848,47 @@ The runner applies surprise before the first command, then `sim::set_scenario_en
 Both sides use `sim::NearestEnemyPolicy`. The same seed and pack contents print the same stdout. `golden.txt` is that stdout without `--log`, LF. `encounter_scenario_<name>` runs it twice against the golden.
 
 Directory name: `^[a-z][a-z0-9_]*$`. Integers only. `golden.txt` must be non-empty. Explicit pack arguments to the validator skip this check, so the pack summary line is unchanged.
+
+## 25. Printed passive Perception (monster@5 `passive_perception_reason`, Tier-A)
+
+- `senses.passive_perception` must equal 10 + Perception (the `skills.perception` value, else the Wis modifier). On a
+  monster@5 file a mismatch is allowed only with top-level `passive_perception_reason: "srd_printed"` (the SRD 5.1 printed
+  value; validator warning instead of an error). The reason on a matching value, any other value, or on a non-monster@5 file
+  is refused.
+- The sim stores the printed value in `Combatant::passive_perception_override` (static content, never hashed) and
+  `rules5e::passive_perception` uses it instead of 10 + Perception (Hide, hidden-from, surprise). It shifts by the same
+  effective-Wis modifier delta as the derived value (a Wis reduction moves both), and caller bonuses (dim light -5) still apply.
+- Printed SRD passives never include Keen Senses (wolf, hell hound: 10 + Perception exactly). The keen hook is deferred
+  (SRD_COMBAT_COVERAGE); it will add situationally, never into the printed number.
+- SRD 5.1 data blocks whose printed passive differs from 10 + Perception (5e-database copy): black bear, blink dog,
+  half-red dragon veteran, spider, swarm of ravens. Blink dog ships without the reason until authored.
+
+## 26. Save-effect fail-by margin, success immunity, must see (monster@5, Tier-A)
+
+- `also_on_fail_by: {margin, condition}` (save_effect, monster@5): failing the save by `margin` (1..30) or more ALSO applies
+  `condition` on the same effect entry, so it has the primary's duration and ending the entry (expiry or a successful repeat
+  save) ends both. It differs from gaze `escalate_margin`, which replaces. It needs a tracked primary condition in apply[]
+  (not prone untracked, not until_cured) that differs from it; no escalates / control / area. When the target is immune to
+  the primary condition, the margin still applies `condition` alone (Lich ruling).
+- `immune_on_success: {hours, scope}`: a success makes the target immune to this action for `hours` (1..8760):
+  `same_action` = every creature using this archetype's action (SRD "all mummies"; keyed by the action's spell_id, so a
+  different archetype's glare is a different action), `same_source` = that creature only. State: `EncounterState::action_immunities`,
+  hashed under 0xE1 only when non-empty (separate from the ghast aura 0xDE). An immune target makes no roll.
+- `target_must_see_source: true`: a target that cannot see the user (blinded, or the sight hook) makes no roll and gains no
+  immunity; FeatureTriggered (actor user, target, a = spell_id, c = 3).
+- Exemptions (undead, elves) are authored only where the SRD text says so; Dreadful Glare has none.
+- Mummy Multiattack (glare + fist) is deferred: the glare is its own action (SRD_COMBAT_COVERAGE).
+
+## 27. Grapple instead of damage (monster@5 grapple rider `instead_of_damage`, Tier-A)
+
+SRD 5.1 vampire spawn Claws: "Instead of dealing damage, the vampire can grapple the target (escape DC 13)." Author it as the
+attack's `on_hit` grapple rider with `"instead_of_damage": true` (a bool; the loader and validator refuse it together with
+`restrains`, and the validator warns when the attack has other on_hit riders). It is a per-attack choice:
+`ActionRequest::grapple_instead` (log_hash 0xE2). With the choice, a hit (a crit too) grapples and deals no damage: no damage
+riders, no concentration save; non-damage on-hit riders still fire; AttackResolved c bit 8 marks it. Without it the attack
+deals damage and does not grapple. The request is refused on an attack without such a rider. The driver AI picks the grapple
+only when a Bite (grappled_by_self gated attack) is still left in the multiattack and in reach, and the target is not already
+grappled by the attacker, incapacitated or restrained, and the claw's average damage would not drop it.
 
 ## 28. Text-only spell effect `descriptive` (spell@1)
 

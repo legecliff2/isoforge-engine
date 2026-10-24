@@ -75,6 +75,16 @@ bool ends_by_own_rules(rules5e::Condition c) {
     for (rules5e::Condition x : kEndsByOwnRules) if (x == c) return true;
     return false;
 }
+// Batch 3 (Lich ruling, death dog): duration {kind: until_cured} = no timer and no repeat save; the condition ends only through
+// an explicit cure. Only conditions an existing cure ends are allowed: Lesser Restoration (SRD 5.1: "The condition can be
+// blinded, deafened, paralyzed, or poisoned"). Applied untracked (rules5e condition_untracked, no ActiveSpellEffect entry), so
+// rules5e EndCondition removes the bare bit. Conditions with a natural SRD end (prone: stand up; grappled: escape) are refused.
+constexpr rules5e::Condition kCuredOnly[] = {rules5e::Condition::Blinded, rules5e::Condition::Deafened,
+                                             rules5e::Condition::Paralyzed, rules5e::Condition::Poisoned};
+bool cured_only_ok(rules5e::Condition c) {
+    for (rules5e::Condition x : kCuredOnly) if (x == c) return true;
+    return false;
+}
 std::optional<rules5e::CreatureType> creature_type_of(const std::string& s) {
     static const char* names[] = {"aberration", "beast", "celestial", "construct", "dragon", "elemental", "fey",
                                   "fiend", "giant", "humanoid", "monstrosity", "ooze", "plant", "undead"};
@@ -672,6 +682,50 @@ std::optional<std::string> compile_action_usage(const std::string& where, const 
     return std::nullopt;
 }
 
+// Batch 3 (Lich ruling): monster@5 action {kind: "teleport", feet, usage?, with_attack?}. SRD 5.1 blink dog: "Teleport (Recharge
+// 4–6). The dog magically teleports, along with any equipment it is wearing or carrying, up to 40 ft. to an unoccupied space it can
+// see. Before or after teleporting, the dog can make one bite attack." A synthetic Teleport SpellDef (is_spell false, magical,
+// self, sim destination checks); with_attack arms a follow-up AttackSequence (after_action) once the teleport is used, so the
+// bite comes after the teleport. "Before" (bite, then teleport in the same action) is deferred: it needs a pending-teleport flag.
+std::optional<std::string> compile_teleport_action(const std::string& arch, const Json& act, uint32_t declared,
+                                                   const std::vector<const Json*>& attack_actions, rules5e::SpellDef& d,
+                                                   Archetype::SaveAction& sa, rules5e::Combatant& c,
+                                                   std::deque<std::string>& strings, const Json& doc) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch + ": action " + aid;
+    if (declared != 0 && declared < 5) return where + ": teleport needs a monster@5 file";
+    for (auto it = act.begin(); it != act.end(); ++it)
+        if (it.key() != "id" && it.key() != "name" && it.key() != "kind" && it.key() != "description" && it.key() != "feet" &&
+            it.key() != "usage" && it.key() != "with_attack")
+            return where + ": teleport: unknown key '" + it.key() + "'";
+    const int ft = act.contains("feet") && act["feet"].is_number_integer() ? act["feet"].get<int>() : 0;
+    if (ft < 5 || ft > 500 || ft % 5 != 0) return where + ": teleport: feet must be 5..500, a multiple of 5";
+    d.content_id = arch + "#" + aid;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0; d.casting_time = rules5e::CastingTime::Action; d.is_spell = false; d.magical = true; d.targets = 1;
+    d.kind = rules5e::SpellEffectKind::Teleport;
+    d.teleport.max_feet = uint16_t(ft);
+    d.teleport.needs_sight = true;   // "to an unoccupied space it can see"
+    bool unsupported = false;
+    if (auto e = compile_action_usage(where, act, doc, d, sa, unsupported)) return e;
+    if (unsupported) return where + ": teleport: pool usage is not supported";
+    sa.id = aid;
+    sa.spell_id = d.id;
+    sa.teleport = true;
+    if (auto w = act.find("with_attack"); w != act.end()) {
+        const std::string wid = w->is_string() ? w->get<std::string>() : "";
+        int idx = -1;
+        for (std::size_t i = 0; i < attack_actions.size() && idx < 0; ++i)
+            if (!wid.empty() && attack_actions[i]->value("id", "") == wid) idx = int(i);
+        if (idx < 0) return where + ": teleport: with_attack names unknown attack action '" + wid + "'";
+        strings.push_back(aid + ".with_attack");
+        rules5e::AttackSequence seq{strings.back(), {uint8_t(idx)}};
+        seq.after_action = d.id;
+        c.multiattacks.push_back(std::move(seq));
+    }
+    return std::nullopt;
+}
+
 // EC deferred monsters (giant spider Web): a monster@4 / character@4 `attack_effect` action, an attack roll that only applies
 // conditions: { id, attack: "ranged" | "melee", to_hit, range_ft, apply: [{ condition, escape: { ability: "str", dc } }],
 // usage }. Compiles to a synthetic SpellAttack SpellDef (is_spell false, not magical, fixed_attack, no damage) whose
@@ -892,7 +946,8 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             // riders): a condition that ends by its own rules (kEndsByOwnRules: prone) is applied untracked, with no timer.
             const std::string rs = x.value("repeat_save", "");
             const bool has_dur = x.contains("duration");
-            const bool untracked = untimed_ok && !has_dur && rs.empty() && ends_by_own_rules(*cond);
+            const bool untracked = (untimed_ok && !has_dur && rs.empty() && ends_by_own_rules(*cond)) ||
+                                   (has_dur && x["duration"].is_object() && x["duration"].value("kind", "") == "until_cured");
             // 7.2w: an escape {ability str, dc} (Engulf) lasts until the creature escapes: no duration needed
             int esc = 0;
             if (auto es = x.find("escape"); es != x.end()) {
@@ -905,7 +960,16 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             const std::string dk = dur.is_object() && dur.contains("kind") && dur["kind"].is_string() ? dur["kind"].get<std::string>() : "";
             uint8_t expiry = 0;
             uint16_t rounds = 0;
-            if (dk == "rounds") {
+            const bool until_cured = dk == "until_cured";
+            if (until_cured) {
+                if (!cured_only_ok(*cond))
+                    return where + ": until_cured needs blinded, deafened, paralyzed or poisoned (a condition Lesser Restoration ends)";
+                if (!rs.empty()) return where + ": until_cured takes no repeat_save";
+                if (esc > 0) return where + ": until_cured takes no escape";
+            }
+            if (until_cured) {
+                // no expiry, no repeat save: untracked below
+            } else if (dk == "rounds") {
                 const int n = geti(dur, "n");
                 if (n < 1 || n > 65535) return where + ": bad duration rounds";
                 expiry = uint8_t(rules5e::Expiry::Rounds);
@@ -930,7 +994,10 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 d.duration_rounds = rounds;
                 d.condition_untracked = untracked;
                 d.escape_dc = int8_t(esc);
-                if (x.contains("max_size") && !x.contains("contain"))
+                // Druid/Gladiator size gate: a save_condition rider (untimed_ok) may name max_size without contain (SRD
+                // Gladiator Shield Bash: "If the target is a Medium or smaller creature, it must succeed on a DC 15 Strength
+                // saving throw or be knocked prone"): a larger target makes no save and gets no condition; the hit's damage stands.
+                if (!untimed_ok && x.contains("max_size") && !x.contains("contain"))
                     return where + ": max_size on a save_effect needs contain (only a containing condition skips a larger target)";
                 if (auto m = read_contain(x, where, d)) return m;
                 first = false;
@@ -945,11 +1012,43 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 e.condition_untracked = untracked;
                 e.affected_only = true;
                 e.escape_dc = int8_t(esc);
-                if (x.contains("max_size") && !x.contains("contain"))
-                    return where + ": max_size on a save_effect needs contain (only a containing condition skips a larger target)";
+                if (x.contains("max_size") && !x.contains("contain"))   // the size gate is the whole save's: first entry only
+                    return where + (untimed_ok ? ": max_size on a save_condition rider goes on the first apply[] entry"
+                                               : ": max_size on a save_effect needs contain (only a containing condition skips a larger target)");
                 if (auto m = read_contain(x, where, e)) return m;
                 d.extra_effects.push_back(e);
             }
+        }
+    }
+    // Tier-A §26 (mummy Dreadful Glare): also_on_fail_by {margin, condition}, immune_on_success {hours, scope},
+    // target_must_see_source. monster@5 only.
+    if (act.contains("also_on_fail_by") || act.contains("immune_on_success") || act.contains("target_must_see_source")) {
+        if (doc.value("$schema", "") != "monster@5") return where + ": also_on_fail_by / immune_on_success / target_must_see_source need a monster@5 file";
+        if (has_area) return where + ": also_on_fail_by / immune_on_success / target_must_see_source take no area";
+        if (auto af = act.find("also_on_fail_by"); af != act.end()) {
+            if (!af->is_object()) return where + ": bad also_on_fail_by";
+            const int m = geti(*af, "margin", 0);
+            auto c = condition_of(af->value("condition", ""));
+            if (m < 1 || m > 30) return where + ": bad also_on_fail_by margin (1..30)";
+            if (!c) return where + ": bad also_on_fail_by condition";
+            if (!d.applies_condition || d.condition_untracked) return where + ": also_on_fail_by needs a tracked primary condition in apply[]";
+            if (*c == d.condition) return where + ": also_on_fail_by condition must differ from the primary condition";
+            if (d.escalates || act.contains("control")) return where + ": also_on_fail_by takes no escalates / control";
+            d.also_margin = uint8_t(m);
+            d.also_condition = *c;
+        }
+        if (auto im = act.find("immune_on_success"); im != act.end()) {
+            if (!im->is_object()) return where + ": bad immune_on_success";
+            const int h = geti(*im, "hours", 0);
+            const std::string sc = im->value("scope", "");
+            if (h < 1 || h > 8760) return where + ": bad immune_on_success hours (1..8760)";
+            if (sc != "same_action" && sc != "same_source") return where + ": bad immune_on_success scope";
+            d.success_immunity_hours = uint16_t(h);
+            d.success_immunity_scope = sc == "same_source" ? 1 : 0;
+        }
+        if (auto ts = act.find("target_must_see_source"); ts != act.end()) {
+            if (!ts->is_boolean()) return where + ": bad target_must_see_source";
+            d.target_sees_source = ts->get<bool>();
         }
     }
     // 7.2y class feature hooks (T&C): the spell@1 control keys, target_creature_types and a control duration.
@@ -1386,6 +1485,20 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     if (declared == 0)
         if (auto s = doc.find("$schema"); s != doc.end() && s->is_string())
             if (auto ref = assets::parse_schema_ref(s->get<std::string>()); ref && ref->type == schema_type) declared = ref->version;   // another type's tag is not this document's version
+    // Tier-A §25 (Lich ruling): a monster@5 with passive_perception_reason "srd_printed" (top level, beside
+    // proficiency_bonus_reason) keeps the SRD printed senses.passive_perception, which wins over 10 + Perception
+    // (Combatant::passive_perception_override; static, never hashed). Without the reason a mismatch is a validator error and
+    // nothing is stored (derived).
+    if (auto r = doc.find("passive_perception_reason"); r != doc.end()) {
+        if (!r->is_string() || r->get<std::string>() != "srd_printed") return a.id + ": bad passive_perception_reason";
+        if (schema_type != "monster" || (declared != 0 && declared < 5))
+            return a.id + ": passive_perception_reason needs a monster@5 file";
+        const auto se = doc.find("senses");
+        const Json* pp = se != doc.end() && se->is_object() && se->contains("passive_perception") ? &(*se)["passive_perception"] : nullptr;
+        if (!pp || !pp->is_number_integer() || pp->get<int64_t>() < 0 || pp->get<int64_t>() > 60)
+            return a.id + ": bad senses.passive_perception";
+        c.passive_perception_override = int8_t(pp->get<int64_t>());
+    }
     if (auto sc = doc.find("spellcasting"); sc != doc.end() && !inert.count("spellcasting")) {
         static const char* sc_abil[] = {"str", "dex", "con", "int", "wis", "cha"};
         const std::string sc_ab = sc->value("ability", "");
@@ -1527,6 +1640,139 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             if (!hd || hd->count == 0) return a.id + ": bad half_hp_damage in action " + act.value("id", "?");
             at.half_hp_damage = *hd;
         }
+        // Batch 3 (Lich ruling): monster@5 `drain` {max_hp: true, save?: {ability: con, dc}}: SRD 5.1 Life Drain (wight, specter):
+        // "its hit point maximum is reduced by an amount equal to the damage taken" (rules5e life_drain; long rest restores,
+        // a maximum of 0 kills). No save = no saving throw. Static attack data: no hash tag (the reduction is already hashed).
+        if (auto dr = act.find("drain"); dr != act.end()) {
+            const std::string aid = act.value("id", "?");
+            if (declared != 0 && declared < 5) return a.id + ": action " + aid + ": drain needs a monster@5 file";
+            if (!dr->is_object()) return a.id + ": action " + aid + ": drain must be an object";
+            for (auto it = dr->begin(); it != dr->end(); ++it)
+                if (it.key() != "max_hp" && it.key() != "save" && it.key() != "damage_type" && it.key() != "heal_self")
+                    return a.id + ": action " + aid + ": drain: unknown key '" + it.key() + "'";
+            const auto mh = dr->find("max_hp");
+            if (mh == dr->end() || !mh->is_boolean() || !mh->get<bool>()) return a.id + ": action " + aid + ": drain needs max_hp: true";
+            at.drain_max_hp = true;
+            if (auto sv = dr->find("save"); sv != dr->end()) {
+                if (!sv->is_object() || sv->value("ability", "") != "con" || sv->size() != 2 || !sv->contains("dc") ||
+                    !(*sv)["dc"].is_number_integer() || (*sv)["dc"].get<int64_t>() < 1 || (*sv)["dc"].get<int64_t>() > 30)
+                    return a.id + ": action " + aid + ": drain.save must be {ability: con, dc: 1..30}";
+                at.drain_save_dc = int8_t((*sv)["dc"].get<int64_t>());
+            }
+            // batch 3 vampire spawn Bite: "reduced by an amount equal to the necrotic damage taken, and the vampire regains hit
+            // points equal to that amount"
+            if (auto dt = dr->find("damage_type"); dt != dr->end()) {
+                const auto ty = dt->is_string() ? damage_type(dt->get<std::string>()) : std::nullopt;
+                if (!ty) return a.id + ": action " + aid + ": drain.damage_type must be a damage type";
+                bool present = false;
+                if (auto dm = act.find("damage"); dm != act.end() && dm->is_array())
+                    for (const Json& p : *dm) present = present || (p.is_object() && p.value("type", "") == dt->get<std::string>());
+                if (!present) return a.id + ": action " + aid + ": drain.damage_type is not one of the action's damage types";
+                at.drain_damage_type = int8_t(*ty);
+            }
+            if (auto hs = dr->find("heal_self"); hs != dr->end()) {
+                if (!hs->is_boolean()) return a.id + ": action " + aid + ": drain.heal_self must be a boolean";
+                at.drain_heal_self = hs->get<bool>();
+            }
+        }
+        // batch 3 vampire spawn Bite: target_requires_any (at least one): willing, grappled_by_self, incapacitated, restrained
+        if (auto tg = act.find("target_requires_any"); tg != act.end()) {
+            const std::string aid = act.value("id", "?");
+            if (declared != 0 && declared < 5) return a.id + ": action " + aid + ": target_requires_any needs a monster@5 file";
+            if (!tg->is_array() || tg->empty()) return a.id + ": action " + aid + ": target_requires_any must be a non-empty array";
+            uint8_t g = 0;
+            for (const Json& v : *tg) {
+                const std::string k = v.is_string() ? v.get<std::string>() : "";
+                const uint8_t b = k == "willing" ? rules5e::kTargetGateWilling : k == "grappled_by_self" ? rules5e::kTargetGateGrappledBySelf
+                                : k == "incapacitated" ? rules5e::kTargetGateIncapacitated : k == "restrained" ? rules5e::kTargetGateRestrained : 0;
+                if (b == 0) return a.id + ": action " + aid + ": target_requires_any: unknown gate '" + k + "'";
+                if (g & b) return a.id + ": action " + aid + ": target_requires_any: duplicate gate '" + k + "'";
+                g |= b;
+            }
+            at.target_requires_any = g;
+        }
+        // Batch 3 (Lich ruling): monster@5 `curse` {no_regain_hp: true, save: {ability: con, dc}}: SRD 5.1 mummy Rotting Fist
+        // ("must succeed on a DC 12 Constitution saving throw or be cursed with mummy rot. The cursed target can't regain hit
+        // points"). Deferred: the 3d6 maximum loss per 24 hours, dust on 0, Remove Curse (no day clock; spell code untouched).
+        if (auto cu = act.find("curse"); cu != act.end()) {
+            const std::string aid = act.value("id", "?");
+            if (declared != 0 && declared < 5) return a.id + ": action " + aid + ": curse needs a monster@5 file";
+            if (!cu->is_object()) return a.id + ": action " + aid + ": curse must be an object";
+            for (auto it = cu->begin(); it != cu->end(); ++it)
+                if (it.key() != "no_regain_hp" && it.key() != "save") return a.id + ": action " + aid + ": curse: unknown key '" + it.key() + "'";
+            const auto nr = cu->find("no_regain_hp");
+            if (nr == cu->end() || !nr->is_boolean() || !nr->get<bool>()) return a.id + ": action " + aid + ": curse needs no_regain_hp: true";
+            const auto sv = cu->find("save");
+            if (sv == cu->end() || !sv->is_object() || sv->value("ability", "") != "con" || sv->size() != 2 || !sv->contains("dc") ||
+                !(*sv)["dc"].is_number_integer() || (*sv)["dc"].get<int64_t>() < 1 || (*sv)["dc"].get<int64_t>() > 30)
+                return a.id + ": action " + aid + ": curse.save must be {ability: con, dc: 1..30}";
+            at.curse_no_regain_dc = int8_t((*sv)["dc"].get<int64_t>());
+        }
+        // Batch 3: monster@5 `ability_drain` {ability: str, dice}: SRD 5.1 shadow Strength Drain ("the target's Strength score is
+        // reduced by 1d4. The target dies if this reduces its Strength to 0. Otherwise, the reduction lasts until the target
+        // finishes a short or long rest."). Only Strength (the one SRD 5.1 attack that reduces a score on a hit). Deferred: the
+        // new shadow rising from a non-evil humanoid 1d4 hours later (no hour clock or spawn-on-death).
+        if (auto ad = act.find("ability_drain"); ad != act.end()) {
+            const std::string aid = act.value("id", "?");
+            if (declared != 0 && declared < 5) return a.id + ": action " + aid + ": ability_drain needs a monster@5 file";
+            if (!ad->is_object() || ad->size() != 2 || ad->value("ability", "") != "str" || !ad->contains("dice") || !(*ad)["dice"].is_string())
+                return a.id + ": action " + aid + ": ability_drain must be {ability: str, dice}";
+            const auto d = parse_dice((*ad)["dice"].get<std::string>());
+            if (!d || d->count < 1) return a.id + ": action " + aid + ": ability_drain: bad dice";
+            at.strength_drain = *d;
+        }
+        // Strength Drain (Lich ruling): the ability the authored to_hit / damage use, read when the attack is used while a score is
+        // reduced (rules5e attack_drain_delta; no effect otherwise). monster@5 action `ability` (str|dex|none) when given; else a
+        // ranged weapon attack that is not thrown is Dex; a finesse weapon (action `properties`, or the item / weapons[] entry
+        // `weapon` names) is the better of Str / Dex; else the
+        // ability whose modifier + proficiency bonus is the printed to_hit (Str on a tie, with a warning), none when neither is.
+        {
+            auto has_prop_j = [](const Json* j, const char* name) {
+                if (!j) return false;
+                if (auto ps = j->find("properties"); ps != j->end() && ps->is_array())
+                    for (const Json& pn : *ps) if (pn.is_string() && pn.get<std::string>() == name) return true;
+                return false;
+            };
+            bool fin = has_prop_j(&act, "finesse"), thrown = has_prop_j(&act, "thrown");
+            if (auto wr = act.find("weapon"); wr != act.end() && wr->is_string()) {
+                const std::string wid = wr->get<std::string>();
+                if (!wid.empty() && wid[0] == '#') {
+                    for (const Json& w : doc.value("weapons", Json::array()))
+                        if (w.is_object() && "#" + w.value("id", "") == wid) {
+                            fin = fin || has_prop_j(&w, "finesse");
+                            thrown = thrown || has_prop_j(&w, "thrown");
+                        }
+                } else if (const auto* item = items_ ? items_->find(wid) : nullptr; item && rules5e::is_weapon(*item)) {
+                    fin = fin || (item->weapon.properties & rules5e::kWeaponFinesse) != 0;
+                    thrown = thrown || (item->weapon.properties & rules5e::kWeaponThrown) != 0;
+                }
+            }
+            const bool ranged_not_thrown = act.value("kind", "") == "ranged_weapon_attack" && !thrown;
+            auto code_of = [](const std::string& n) -> int8_t {
+                return n == "str" ? int8_t(rules5e::Ability::Str) : n == "dex" ? int8_t(rules5e::Ability::Dex)
+                     : n == "none" ? rules5e::kAttackAbilityNone : int8_t(-1);
+            };
+            if (auto ex = act.find("ability"); ex != act.end()) {   // explicit (CONTENT_CONVENTIONS "Attack ability"): wins
+                if (declared != 0 && declared < 5) return a.id + ": action " + act.value("id", "?") + ": ability needs a monster@5 file";
+                const int8_t code = ex->is_string() ? code_of(ex->get<std::string>()) : int8_t(-1);
+                if (code < 0) return a.id + ": action " + act.value("id", "?") + ": ability must be str, dex or none";
+                at.ability_used = code;
+            } else if (ranged_not_thrown) {   // fallback 1: a ranged weapon attack that is not thrown uses Dex
+                at.ability_used = int8_t(rules5e::Ability::Dex);
+            } else if (fin) {                 // fallback 2: finesse, the better of Str / Dex
+                at.ability_used = rules5e::kAttackAbilityFinesse;
+            } else {                          // fallback 3: inferred from to_hit (tie -> Str, warned)
+                const int pb = c.proficiency_bonus;
+                const int ms = rules5e::modifier(c.abilities, rules5e::Ability::Str), md = rules5e::modifier(c.abilities, rules5e::Ability::Dex);
+                const bool s = at.to_hit == ms + pb;
+                const bool d = at.to_hit == md + pb;
+                at.ability_used = s ? int8_t(rules5e::Ability::Str) : d ? int8_t(rules5e::Ability::Dex) : rules5e::kAttackAbilityNone;
+                if (s && d)
+                    warnings_.push_back(a.id + ": action " + act.value("id", "?") + ": to_hit matches both Str and Dex; inferred str "
+                                        "(set \"ability\" to disambiguate, CONTENT_CONVENTIONS \"Attack ability\")");
+            }
+            if (at.ability_used < 0) at.ability_used = rules5e::kAttackAbilityNone;
+        }
         // R-G7: only the grip bits Great Weapon Fighting reads (two_handed, versatile) are carried; other properties (loading,
         // heavy, finesse, ...) stay off so existing behaviour and goldens do not move.
         if (auto ps = act.find("properties"); ps != act.end() && ps->is_array())
@@ -1630,7 +1876,23 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                     const Json& g = (*oh)[ri];
                     const int dc = g.contains("escape_dc") ? (g["escape_dc"].is_number_integer() ? g["escape_dc"].get<int>() : -1) : 0;
                     if (dc < 0 || dc > 30) return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple escape_dc";
-                    a.grapple_on_hit[uint8_t(ai)] = int16_t(dc);
+                    rules5e::GrappleRider gr;
+                    gr.escape_dc = int16_t(dc);
+                    for (const char* k : {"restrains", "exclusive", "instead_of_damage"})
+                        if (g.contains(k) && !g[k].is_boolean()) return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple " + k;
+                    gr.restrains = g.value("restrains", false);
+                    gr.exclusive = g.value("exclusive", false);
+                    gr.instead_of_damage = g.value("instead_of_damage", false);   // Tier-A §27
+                    if (gr.instead_of_damage && gr.restrains)
+                        return a.id + ": " + act.value("id", "?") + " on_hit: grapple instead_of_damage can't be combined with restrains";
+                    if (g.contains("max_grapples")) {
+                        const Json& m = g["max_grapples"];
+                        if (!m.is_number_integer() || m.get<int>() < 1 || m.get<int>() > 8)
+                            return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple max_grapples";
+                        gr.max_grapples = uint8_t(m.get<int>());
+                    }
+                    a.grapple_on_hit[uint8_t(ai)] = gr;
+                    if (gr.instead_of_damage && ai < c.attacks.size()) c.attacks[ai].grapple_instead_ok = true;
                     continue;
                 }
                 rules5e::Trigger t;
@@ -1661,7 +1923,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     // multiattack options -> rules5e::AttackSequence (ids owned by the library, stable addresses).
     for (const auto& m : a.multiattack_decls) {
         strings_.push_back(m.id);
-        c.multiattacks.push_back({strings_.back(), m.attacks});
+        c.multiattacks.push_back({strings_.back(), m.attacks, m.count_dice});
     }
     a.ai = assets::behavior_ai_script(doc);   // monster@2 / character@2
     const std::size_t n_trigger_spells = synth.size();   // the area_save riders' defs come first
@@ -1670,10 +1932,19 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     if (declared == 0 || declared >= 4)
         for (const Json& act : doc.at("actions")) {
             const std::string ak = act.value("kind", "");
-            if (ak != "save_effect" && ak != "attack_effect") continue;
+            if (ak != "save_effect" && ak != "attack_effect" && ak != "teleport") continue;
             rules5e::SpellDef d;
             Archetype::SaveAction sa;
             bool unsupported = false;
+            if (ak == "teleport") {   // batch 3 (Lich ruling, blink dog): synthetic Teleport SpellDef + optional follow-up attack
+                if (auto e = compile_teleport_action(a.id, act, declared, attack_actions, d, sa, c, strings_, doc)) return e;
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": teleport ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
             if (ak == "attack_effect") {   // EC deferred monsters: giant spider Web
                 if (auto e = compile_attack_effect(a.id, act, d, sa, doc, unsupported)) return e;
                 if (unsupported) { a.unsupported_features.push_back(act.value("id", "?") + " (attack_effect: unsupported usage or condition duration)"); continue; }
@@ -1692,6 +1963,14 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             a.save_actions.push_back(sa);
             synth.push_back(std::move(d));
         }
+    // batch 3 ghast Stench: aura traits (built by the "aura" hook) -> synthetic Zone SpellDefs, attached at Combat::create.
+    for (auto& d : a.aura_defs) {
+        for (const auto& prev : synth)
+            if (prev.id == d.id) return a.id + ": aura ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+        a.aura_spell_ids.push_back(d.id);
+        synth.push_back(d);
+    }
+    a.aura_defs.clear();
     // Register in the shared SpellBook, replacing an overridden archetype's entries; all-or-nothing.
     if (!synth.empty() || by_id_.count(a.id)) {
         std::vector<rules5e::SpellDef> old;
@@ -1699,6 +1978,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             for (const auto& sa : prev->second.save_actions)
                 if (const auto* d = spells_->find(sa.spell_id)) old.push_back(*d);
             for (uint32_t id : prev->second.trigger_spell_ids)
+                if (const auto* d = spells_->find(id)) old.push_back(*d);
+            for (uint32_t id : prev->second.aura_spell_ids)
                 if (const auto* d = spells_->find(id)) old.push_back(*d);
         }
         for (const auto& d : old) spells_->erase(d.id);

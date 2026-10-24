@@ -25,6 +25,14 @@ HitDiceSpent spend_hit_dice(Combatant& c, rng::Rng& rng, uint8_t n) {
     return out;
 }
 
+// Batch 3 shadow Strength Drain: "the reduction lasts until the target finishes a short or long rest".
+void restore_ability_reduction(Combatant& c) {
+    for (std::size_t i = 0; i < 6; ++i) {
+        c.abilities.score[i] = int8_t(std::min(127, int(c.abilities.score[i]) + int(c.ability_reduction[i])));
+        c.ability_reduction[i] = 0;
+    }
+}
+
 void recharge_tables(CombatantId actor, bool long_rest, const RestTables& t) {
     auto due = [&](FeatureRecharge r) { return r == FeatureRecharge::ShortRest || (long_rest && r == FeatureRecharge::LongRest); };
     if (t.features)
@@ -41,6 +49,7 @@ RestResult short_rest(Combatant& c, rng::Rng& rng, uint8_t hit_dice_to_spend, co
     r.ok = true;
     r.hit_dice = spend_hit_dice(c, rng, hit_dice_to_spend);
     recover_slots_short_rest(c);
+    restore_ability_reduction(c);
     recharge_tables(c.id, false, t);
     return r;
 }
@@ -66,6 +75,7 @@ RestResult long_rest(Combatant& c, const RestTables& t, bool food_and_drink) {
         c.hit_dice = uint8_t(now);
     }
     recover_slots_long_rest(c);
+    restore_ability_reduction(c);
     for (auto& is : c.innate) is.uses_left = is.uses_max;
     recharge_tables(c.id, true, t);
     return r;

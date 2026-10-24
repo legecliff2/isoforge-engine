@@ -1,6 +1,7 @@
 // R-G11 rules PR 2: Silence, Stinking Cloud, Wall of Fire, Fog Cloud / Darkness flags, and the items PR 1 deferred (Moonbeam's
 // shapechanger disadvantage, Spirit Guardians' evil-caster damage, the D7 feature-aura fields), per
 // docs/proposals/ZONES_AURAS.md §2.10. Sim's geometry is faked as in zones_tests.cpp.
+#include <algorithm>
 #include <doctest/doctest.h>
 
 #include <memory>
@@ -21,6 +22,7 @@ const uint32_t kBeam = spell_id_of("test.spell#moonbeam_shape");
 const uint32_t kGuard = spell_id_of("test.spell#guardians_evil");
 const uint32_t kThunder = spell_id_of("test.spell#thunder");          // S only: 4d1 thunder, no save damage
 const uint32_t kAura = spell_id_of("test.feature#aura_of_protection");
+const uint32_t kStench = spell_id_of("test.feature#stench");
 
 struct Geo {
     std::set<std::pair<uint32_t, CombatantId>> inside, whole, side;
@@ -113,6 +115,18 @@ EncounterHooks hooks(const std::shared_ptr<Geo>& geo) {
         a.zone.aura_modifier.id = 99; a.zone.aura_modifier.stat = ModStat::Save;
         a.zone.has_aura_bonus_ability = true; a.zone.aura_bonus_ability = Ability::Cha;
         a.zone.aura_immunity = bit(Condition::Frightened);
+        book->add(a);
+    }
+    {   // ghast Stench (SRD 5.1): start of turn within 5 ft, DC 10 Con or poisoned until the start of its next turn; a success
+        // gives 24 h immunity to this ghast's Stench. Works while the owner is alive (no needs_conscious_owner).
+        SpellDef a = zone_spell(kStench, "test.feature#stench", 0, false);
+        a.is_spell = false; a.components = 0; a.range_ft = 0; a.fixed_dc = 10;
+        a.zone.shape = AreaShape::Sphere; a.zone.size_ft = 5; a.zone.anchor = ZoneAnchor::Creature;
+        SpellEffect e = save_fx(Ability::Con, {0, 0, 0}, DamageType::Poison, OnSave::None);
+        e.applies_condition = true; e.condition = Condition::Poisoned;
+        ZoneTriggerRow r = row(ZoneTrigger::StartTurn, e);
+        r.condition_until = 1; r.success_immunity_hours = 24;
+        a.zone.triggers = {r};
         book->add(a);
     }
     h.spells = book;
@@ -462,4 +476,125 @@ TEST_CASE("zones_digest covers the PR 2 fields") {
     CHECK(zones_digest(s) != h);
     s.budget.action_lost = false;
     CHECK(zones_digest(s) == h);
+}
+
+// ---- batch 3 ghast Stench (Lich rulings): creature-sourced aura, alive = works (unconscious too), ends at death ----
+namespace {
+int saves_of(const std::vector<Event>& ev, CombatantId who) {
+    int n = 0;
+    for (const auto& e : of_kind(ev, EventKind::SavingThrowRolled)) n += e.actor == who;
+    return n;
+}
+EncounterState stench_start(const std::shared_ptr<Geo>& geo, int16_t dc) {
+    Combatant ghast = dummy(1); ghast.hp = ghast.hp_max = 36;
+    Combatant a = pc(2, 40); never_react(a);
+    Combatant b = pc(3, 40); never_react(b);
+    Combatant other = dummy(4);   // keeps the ghast's side in the fight while the ghast is down
+    auto s = begin_encounter({ghast, a, b, other}, 5, nullptr, hooks(geo));
+    std::vector<Event> ev;
+    REQUIRE(add_feature_aura(s, 1, kStench, &ev) == 1);
+    REQUIRE(ev.size() == 1);
+    CHECK(ev[0].kind == EventKind::ZoneCreated);
+    CHECK(s.zones[0].feature);
+    CHECK(s.zones[0].dc == 10);   // the SRD's fixed DC
+    s.zones[0].dc = dc;           // 30 = always fails, 1 = always succeeds (Con 10)
+    geo->inside = {{1, 2}};       // 2 within 5 ft, 3 outside
+    return s;
+}
+}  // namespace
+
+TEST_CASE("ghast Stench: start-of-turn save inside the radius only; poisoned until the start of its next turn") {
+    auto geo = std::make_shared<Geo>();
+    auto s = stench_start(geo, 30);
+    auto ev = next_turn_of(s, 2);
+    CHECK(saves_of(ev, 2) == 1);
+    CHECK(find(s, 2)->has(Condition::Poisoned));
+    geo->inside.clear();          // leaves the radius: still poisoned until the start of its next turn
+    ev = run_until(s, 3);
+    CHECK(saves_of(ev, 3) == 0);
+    CHECK_FALSE(find(s, 3)->has(Condition::Poisoned));
+    CHECK(find(s, 2)->has(Condition::Poisoned));
+    ev = run_until(s, 2);
+    CHECK(saves_of(ev, 2) == 0);  // outside now: no save
+    CHECK_FALSE(find(s, 2)->has(Condition::Poisoned));   // ended at the start of its turn
+    CHECK(s.aura_immunities.empty());   // failures give no immunity
+}
+
+TEST_CASE("ghast Stench: a success gives 24 h immunity to this ghast's Stench (per source)") {
+    auto geo = std::make_shared<Geo>();
+    auto s = stench_start(geo, 1);
+    auto ev = next_turn_of(s, 2);
+    CHECK(saves_of(ev, 2) == 1);
+    CHECK_FALSE(find(s, 2)->has(Condition::Poisoned));
+    REQUIRE(s.aura_immunities.size() == 1);
+    CHECK(s.aura_immunities[0].creature == 2);
+    CHECK(s.aura_immunities[0].source == 1);
+    CHECK(s.aura_immunities[0].spell_id == kStench);
+    CHECK(s.aura_immunities[0].until_round == uint32_t(s.round) + 24u * 600u);
+    s.zones[0].dc = 30;           // now it would fail, but the creature is immune
+    for (int k = 0; k < 3; ++k) { ev = next_turn_of(s, 2); CHECK(saves_of(ev, 2) == 0); }
+    CHECK_FALSE(find(s, 2)->has(Condition::Poisoned));
+    s.aura_immunities[0].until_round = uint32_t(s.round) + 1;   // 24 h later (the test advances the clock): saves again
+    ev = next_turn_of(s, 2);
+    CHECK(saves_of(ev, 2) == 1);
+    CHECK(find(s, 2)->has(Condition::Poisoned));
+}
+
+TEST_CASE("ghast Stench: works while the ghast is unconscious, stops at its death") {
+    auto geo = std::make_shared<Geo>();
+    auto s = stench_start(geo, 30);
+    add_condition(mut(s, 1), Condition::Unconscious);   // incapacitated / unconscious but alive: still works
+    auto ev = next_turn_of(s, 2);
+    CHECK(saves_of(ev, 2) == 1);
+    CHECK(find(s, 2)->has(Condition::Poisoned));
+    mut(s, 1).dead = true;
+    ev = next_turn_of(s, 2);
+    CHECK(saves_of(ev, 2) == 0);   // dead: no save, even before the round-start removal
+    CHECK_FALSE(find(s, 2)->has(Condition::Poisoned));
+    for (int k = 0; k < 3; ++k) ev = next_turn_of(s, 2);
+    CHECK(s.zones.empty());
+}
+
+// Lich ruling (Stench expiry is per source): when the Stench poison ends it removes only its own instance; poison from
+// another source stays. The instances are ActiveSpellEffects keyed by (spell_id, caster); end_effect clears the condition
+// only when no other effect / sourced condition / untracked prior instance still holds it.
+TEST_CASE("ghast Stench: its poison expiring leaves another source's poison (tracked effect)") {
+    auto geo = std::make_shared<Geo>();
+    auto s = stench_start(geo, 30);
+    const uint32_t kOther = spell_id_of("test.other#poison");
+    add_condition(mut(s, 2), Condition::Poisoned);   // poisoned by another source first (no expiry)
+    s.effects.push_back(ActiveSpellEffect{kOther, 4, 2, Condition::Poisoned, Ability::Con, 12, RepeatSave::None, false,
+                                          Timed{}, 0, false});
+    auto ev = next_turn_of(s, 2);
+    CHECK(saves_of(ev, 2) == 1);                     // then by Stench
+    REQUIRE(std::count_if(s.effects.begin(), s.effects.end(), [](const ActiveSpellEffect& e) { return e.spell_id == kStench; }) == 1);
+    geo->inside.clear();
+    ev = next_turn_of(s, 2);                            // Stench's poison expires at the start of its next turn
+    CHECK(std::none_of(s.effects.begin(), s.effects.end(), [](const ActiveSpellEffect& e) { return e.spell_id == kStench; }));
+    CHECK(find(s, 2)->has(Condition::Poisoned));     // still poisoned by the other source
+    CHECK(of_kind(ev, EventKind::ConditionRemoved).empty());
+}
+
+TEST_CASE("ghast Stench: its poison expiring leaves an untracked prior poison (scenario / content condition)") {
+    auto geo = std::make_shared<Geo>();
+    auto s = stench_start(geo, 30);
+    add_condition(mut(s, 2), Condition::Poisoned);   // poisoned before combat (no effect record)
+    auto ev = next_turn_of(s, 2);
+    CHECK(saves_of(ev, 2) == 1);
+    geo->inside.clear();
+    ev = next_turn_of(s, 2);
+    CHECK(std::none_of(s.effects.begin(), s.effects.end(), [](const ActiveSpellEffect& e) { return e.spell_id == kStench; }));
+    CHECK(find(s, 2)->has(Condition::Poisoned));
+}
+
+TEST_CASE("ghast Stench: its poison expiring leaves a sourced poison") {
+    auto geo = std::make_shared<Geo>();
+    auto s = stench_start(geo, 30);
+    std::vector<Event> sev;
+    REQUIRE(apply_sourced_condition(s, 4, 2, Condition::Poisoned, 0, sev));
+    auto ev = next_turn_of(s, 2);
+    CHECK(saves_of(ev, 2) == 1);
+    geo->inside.clear();
+    ev = next_turn_of(s, 2);
+    CHECK(find(s, 2)->has(Condition::Poisoned));
 }
