@@ -1537,6 +1537,18 @@ void life_drain(EncounterState& s, Combatant& t, int taken, int dc, CombatantId 
     if (cap <= 0) { kill(t, ev); check_end(s, ev); }
 }
 
+// Batch 3 (vampire spawn Bite): an attack with target_requires_any needs one of: a willing target (the request says so and it
+// is on the attacker's team), grappled by the attacker, incapacitated, restrained. Empty = allowed.
+static std::string_view target_gate_refusal(const EncounterState& s, const Combatant& a, const Combatant& t, const Attack& atk, bool willing) {
+    const uint8_t g = atk.target_requires_any;
+    if (g == 0) return {};
+    if ((g & kTargetGateWilling) && willing && t.team == a.team) return {};
+    if ((g & kTargetGateGrappledBySelf) && t.has(Condition::Grappled) && condition_source(s, t.id, Condition::Grappled) == a.id) return {};
+    if ((g & kTargetGateIncapacitated) && is_incapacitated(t)) return {};
+    if ((g & kTargetGateRestrained) && t.has(Condition::Restrained)) return {};
+    return "target must be willing, grappled by the attacker, incapacitated, or restrained";
+}
+
 // 7.2x: the start-of-step state the sight hook is asked about during a step (set by attempt while the hook exists).
 thread_local const EncounterState* g_sight_base = nullptr;
 
@@ -2377,6 +2389,12 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         const uint32_t tbit = bit(t.creature_type);   // 7.2y bonus_vs
         bool vs_any = (atk.vs_types & tbit) != 0;
         for (const DamagePart& p : atk.extra_damage) vs_any = vs_any || (p.vs_types & tbit) != 0;
+        int typed_dealt = 0;   // batch 3: damage of atk.drain_damage_type after immunity / resistance / vulnerability
+        auto note_typed = [&](const std::vector<DamagePiece>& ps) {
+            if (atk.drain_damage_type < 0) return;
+            for (const DamagePiece& p : ps)
+                if (int(p.type) == atk.drain_damage_type) typed_dealt += zone_apply_damage(s, t, p.amount, p.type, atk.qualifiers).dealt;
+        };
         if (!riders.pieces.empty() || !modp.empty() || vs_any) {
             std::vector<DamagePiece> parts{{int16_t(dmg), atk.type}};
             if (atk.vs_types & tbit) parts.push_back({int16_t(std::max(0, roll_dice(s.rng, atk.vs_dice, crit))), atk.type});
@@ -2389,8 +2407,10 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
             for (const auto& mp : modp) parts.push_back({int16_t(mp.first), mp.second});
             if (smite_piece) parts.push_back(*smite_piece);
             for (auto& p : parts) p.amount = int16_t(halve_piece(p.amount));
+            note_typed(parts);
             damage_creature(s, t, zone_apply_damage_parts(s, t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
         } else if (atk.extra_damage.empty() && !smite_piece) {
+            note_typed({{int16_t(halve_piece(dmg)), atk.type}});
             damage_creature(s, t, zone_apply_damage(s, t, int16_t(halve_piece(dmg)), atk.type, atk.qualifiers), crit, ev, &tsrc, &ctx);
         } else {   // multi-component hit: one DamageDealt carrying the per-type-modified sum
             std::vector<DamagePiece> parts{{int16_t(dmg), atk.type}};
@@ -2398,9 +2418,27 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.dice, crit))), p.type});
             if (smite_piece) parts.push_back(*smite_piece);
             for (auto& p : parts) p.amount = int16_t(halve_piece(p.amount));
+            note_typed(parts);
             damage_creature(s, t, zone_apply_damage_parts(s, t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
         }
-        if (atk.drain_max_hp && !t.dead) life_drain(s, t, drain_before - (int(t.hp) + int(t.temp_hp)), atk.drain_save_dc, a.id, ev);
+        if (atk.drain_max_hp && !t.dead) {
+            const int lost = drain_before - (int(t.hp) + int(t.temp_hp));
+            const int amt = atk.drain_damage_type >= 0 ? std::min(lost, typed_dealt) : lost;   // a reaction may have reduced it
+            const int16_t red0 = t.hp_max_reduction;
+            life_drain(s, t, amt, atk.drain_save_dc, a.id, ev);
+            const int reduced = int(t.hp_max_reduction) - int(red0);   // 0 after a successful save
+            if (atk.drain_heal_self && amt > 0 && (reduced > 0 || t.dead) && !a.dead) {   // "regains hit points equal to that amount"
+                auto h = heal_hp(s, a, int16_t(amt));
+                commit_healing(a, h);
+                emit(ev, EventKind::Healed, a.id, a.id, h.healed, h.hp_after, h.from_zero);
+            }
+        }
+        if (atk.curse_no_regain_dc > 0 && !t.dead && !t.no_regain_hp) {   // batch 3 mummy rot: an already cursed target rolls no save
+            const SaveSource ssrc{false, 0, 0};
+            auto r = save_roll(s, t, Ability::Con, atk.curse_no_regain_dc, RollMode::Normal, ev, &ssrc);
+            emit(ev, EventKind::SavingThrowRolled, t.id, CombatantId(Ability::Con), r.roll.natural, r.roll.total, int32_t(r.success));
+            if (!r.success) t.no_regain_hp = true;
+        }
         for (uint32_t sid : riders.after) {   // save_condition / apply_condition riders: after the damage, if it still stands
             if (t.dead) break;
             if (const SpellDef* d = spell_def(s, sid)) resolve_spell(s, ctx, a, *d, 0, std::vector<Combatant*>{&t}, within_5ft, ev);   // 7.2zb: + extra effects
@@ -4159,6 +4197,15 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     if (swap.on) a.spellcasting_ability = inn->ability;
     if (au) au->expended = true;
     if (fu && fu->max > 0) ++fu->used;
+    if (!def.is_spell)   // batch 3 (blink dog): arm the action's follow-up attack(s); no other action is spent
+        for (std::size_t k = 0; k < a.multiattacks.size() && k < 255; ++k)
+            if (a.multiattacks[k].after_action == def.id && !a.multiattacks[k].attacks.empty()) {
+                s.budget.sequence = uint8_t(k + 1);
+                s.budget.sequence_pos = 0;
+                s.budget.attacks_remaining = uint8_t(a.multiattacks[k].attacks.size());
+                s.budget.loading_fired = 0;
+                break;
+            }
     StepResult out{true, {}, {}};
     if (def.concentration && a.concentration_spell != 0) end_concentration(s, a.id, out.events);
     if (def.is_spell) emit(out.events, EventKind::SpellCast, a.id, ids[0], int32_t(def.id), lvl);
@@ -5318,6 +5365,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             if (cover_of(s, f->id, t->id, false, 0) == Cover::Total) return fail("target has total cover");
             if (charmed_by(s, f->id, t->id)) return fail("a charmed creature cannot attack its charmer");
             if (req.attack_index >= f->attacks.size()) return fail("bad attack index");
+            if (const auto why = target_gate_refusal(s, *f, *t, f->attacks[req.attack_index], false); !why.empty()) return fail(why);
             if (b.attacks_remaining > 0) --b.attacks_remaining;
             else if (spend_action(b, a, req.kind, false)) {
                 b.loading_fired = 0;
@@ -5356,6 +5404,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             ctx.guess_miss = s.hooks.guess_correct && !s.hooks.guess_correct(s, a, *t, req.guess_x, req.guess_y);
         }
         if (req.attack_index >= a.attacks.size()) return fail("bad attack index");
+        if (const auto why = target_gate_refusal(s, a, *t, a.attacks[req.attack_index], req.target_willing); !why.empty()) return fail(why);
         if (s.hooks.loadout_of) {   // EQUIPMENT.md 3: hands / ammunition (only creatures with a loadout view)
             const std::string_view why = attack_refusal(s, a.id, req.attack_index);
             if (!why.empty()) return fail(why);
@@ -5388,20 +5437,24 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         } else if (b.sequence != 0) {                                            // multiattack in progress
             if (req.multiattack != 0 && req.multiattack != b.sequence) return fail("another multiattack is in progress");
             if (b.sequence > a.multiattacks.size()) return fail("bad multiattack");
-            const auto& seq = a.multiattacks[std::size_t(b.sequence - 1)].attacks;
-            if (b.sequence_pos >= seq.size() || req.attack_index != seq[b.sequence_pos]) return fail("attack out of multiattack sequence");
+            const int next = multiattack_next(a.multiattacks, b.sequence, b.sequence_pos);
+            if (next < 0 || req.attack_index != uint8_t(next)) return fail("attack out of multiattack sequence");
             ++b.sequence_pos;
             if (--b.attacks_remaining == 0) { b.sequence = 0; b.sequence_pos = 0; }
         } else if (req.multiattack != 0) {                                // start a declared multiattack
             if (b.attacks_remaining > 0) return fail("attack action already in progress");
             if (req.multiattack > a.multiattacks.size()) return fail("bad multiattack");
+            if (a.multiattacks[std::size_t(req.multiattack - 1)].after_action != 0) return fail("bad multiattack");   // an action's follow-up
             const auto& seq = a.multiattacks[std::size_t(req.multiattack - 1)].attacks;
             if (seq.empty()) return fail("bad multiattack");
             for (uint8_t i : seq) if (i >= a.attacks.size()) return fail("bad multiattack");
             if (req.attack_index != seq[0]) return fail("attack out of multiattack sequence");
             if (!spend_action(b, a, req.kind, false)) return fail("no action available");
             b.loading_fired = 0;
-            b.attacks_remaining = uint8_t(seq.size() - 1);
+            std::size_t n = seq.size();
+            if (const DiceExpr cd = a.multiattacks[std::size_t(req.multiattack - 1)].count_dice; cd.count > 0)
+                n = std::size_t(std::clamp(roll_dice(s.rng, cd), 1, 255));   // "makes 1d4 ... attacks"
+            b.attacks_remaining = uint8_t(n - 1);
             if (b.attacks_remaining > 0) { b.sequence = req.multiattack; b.sequence_pos = 1; }
         } else if (b.attacks_remaining > 0) --b.attacks_remaining;       // Extra Attack
         else if (spend_action(b, a, req.kind, false)) {
@@ -5632,9 +5685,8 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (!familiar && (can_act || b.attacks_remaining > 0)) {
         for (const auto& t : s.combatants) {
             if (t.dead || t.id == a.id || t.team == a.team) continue;
-            if (b.sequence != 0 && b.sequence <= a.multiattacks.size() &&
-                b.sequence_pos < a.multiattacks[std::size_t(b.sequence - 1)].attacks.size()) {   // multiattack in progress: only the next declared attack
-                ActionRequest r{a.id, ActionKind::Attack, t.id, a.multiattacks[std::size_t(b.sequence - 1)].attacks[b.sequence_pos]};
+            if (const int next = multiattack_next(a.multiattacks, b.sequence, b.sequence_pos); next >= 0) {   // multiattack in progress: only the next declared attack
+                ActionRequest r{a.id, ActionKind::Attack, t.id, uint8_t(next)};
                 r.multiattack = b.sequence;
                 out.push_back(r);
                 continue;
@@ -5647,7 +5699,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             if (can_act)   // start any declared multiattack (needs a fresh action)
                 for (std::size_t k = 0; k < a.multiattacks.size(); ++k) {
                     const auto& seq = a.multiattacks[k].attacks;
-                    if (seq.empty()) continue;
+                    if (seq.empty() || a.multiattacks[k].after_action != 0) continue;
                     ActionRequest r{a.id, ActionKind::Attack, t.id, seq[0]};
                     r.multiattack = uint8_t(k + 1);
                     out.push_back(r);

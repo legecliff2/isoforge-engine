@@ -139,6 +139,10 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
         add_test(NAME content_validate_equip_v5
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_equip_schemas_v5.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        # batch 3 small monster riders: monster@5 arms + validator mirrors of the sim loader refusals.
+        add_test(NAME content_validate_batch3_riders
+                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_monster_batch3_riders.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # srd51.core monster@4 batch: key stats vs the 5e-database table (tests/validate/data/).
         add_test(NAME content_validate_srd51_monsters
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_srd51_monsters.py"

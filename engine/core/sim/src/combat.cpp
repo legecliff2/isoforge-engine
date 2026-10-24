@@ -210,7 +210,7 @@ std::optional<uint8_t> Combat::multiattack_option(CombatantId id, std::string_vi
     const auto* c = rules5e::find(state_, id);
     if (!c) return std::nullopt;
     for (std::size_t i = 0; i < c->multiattacks.size() && i < 255; ++i)
-        if (c->multiattacks[i].id == option_id) return uint8_t(i + 1);
+        if (c->multiattacks[i].id == option_id && c->multiattacks[i].after_action == 0) return uint8_t(i + 1);
     return std::nullopt;
 }
 
@@ -2017,6 +2017,15 @@ uint64_t Combat::hash() const {
     if (rules5e::has_smite_state(state_)) { h.byte(0xD4); h.u64(rules5e::smite_digest(state_)); }
     // 0xD5 (7.2zh Heat Metal): the heated object and the while-held disadvantage, only while one is set.
     if (rules5e::has_heat_metal_state(state_)) { h.byte(0xD5); h.u64(rules5e::heat_metal_digest(state_)); }
+    // 0xDC (batch 3 mummy rot): no_regain_hp is dynamic once an attack can curse; folded (one byte per combatant, in order) only
+    // while some combatant has an attack with curse_no_regain_dc, so every existing hash is unchanged.
+    bool curse = false;
+    for (const auto& c : state_.combatants)
+        for (const auto& at : c.attacks) curse = curse || at.curse_no_regain_dc > 0;
+    if (curse) {
+        h.byte(0xDC);
+        for (const auto& c : state_.combatants) h.byte(c.no_regain_hp ? 1 : 0);
+    }
     return h.value();
 }
 
@@ -2075,6 +2084,7 @@ uint64_t Combat::log_hash() const {
             for (const auto& x : q.heal_split) { h.u32(x.target); h.u32(uint32_t(uint16_t(x.amount))); }
         }
         if (q.avert_gaze) { h.byte(0xBB); h.byte(1); }
+        if (q.target_willing) { h.byte(0xDD); h.byte(1); }   // batch 3 vampire spawn Bite willing target: only when set
         if (q.equip_op != 0) {   // 0xD1 (EQUIPMENT.md 4.2, Engine Core): equip request, folded only when equip_op != 0
             h.byte(0xD1); h.byte(q.equip_op); h.u32(q.equip_item); h.byte(q.equip_hand); h.u32(q.equip_to);
             h.byte(q.equip_in_reach ? 1 : 0);

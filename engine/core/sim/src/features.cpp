@@ -171,19 +171,23 @@ std::optional<std::string> apply_heal_bonus(Archetype& a, const FeatureDecl& f, 
 // with one Attack action. `options: [{id, attacks: [...]}]`, or the shorthand `attacks: [...]` = one option
 // named "multiattack". Option order is the order content declares them (the AI prefers earlier ones).
 std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
-    std::vector<std::pair<std::string, const Json*>> opts;
+    // Batch 3 (Lich-approved): an option's `count_dice` ("1d4"; monster@5 only) names ONE attack made a rolled number
+    // of times (SRD 5.1 violet fungus: "The violet fungus makes 1d4 Rotting Touch attacks.").
+    struct Opt { std::string id; const Json* list; const Json* count; };
+    std::vector<Opt> opts;
+    auto count_of = [](const Json& o) -> const Json* { auto c = o.find("count_dice"); return c == o.end() ? nullptr : &*c; };
     if (auto o = f.effect.find("options"); o != f.effect.end()) {
         if (!o->is_array() || o->empty()) return f.id + ": multiattack options must be a non-empty array";
         for (const Json& x : *o) {
             if (!x.is_object() || !x.contains("id") || !x["id"].is_string()) return f.id + ": multiattack option needs an id";
-            opts.emplace_back(x["id"].get<std::string>(), &x["attacks"]);
+            opts.push_back({x["id"].get<std::string>(), &x["attacks"], count_of(x)});
         }
     } else if (auto at = f.effect.find("attacks"); at != f.effect.end()) {
-        opts.emplace_back("multiattack", &*at);
+        opts.push_back({"multiattack", &*at, count_of(f.effect)});
     } else {
         return f.id + ": multiattack needs options[] or attacks[]";
     }
-    for (const auto& [oid, list] : opts) {
+    for (const auto& [oid, list, count] : opts) {
         if (oid.empty()) return f.id + ": multiattack option id is empty";
         for (const auto& d : a.multiattack_decls)
             if (d.id == oid) return f.id + ": duplicate multiattack option '" + oid + "'";
@@ -197,6 +201,14 @@ std::optional<std::string> apply_multiattack(Archetype& a, const FeatureDecl& f,
             for (std::size_t i = 0; i < ctx.attack_actions.size() && !found; ++i)
                 if (ctx.attack_actions[i]->value("id", "") == aid) { d.attacks.push_back(uint8_t(i)); found = true; }
             if (!found) return f.id + ": multiattack option '" + oid + "' names unknown attack action '" + aid + "'";
+        }
+        if (count) {
+            if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": multiattack count_dice needs a monster@5 file";
+            auto cd = count->is_string() ? parse_dice(count->get<std::string>()) : std::nullopt;
+            if (!cd || cd->count == 0 || cd->sides == 0 || cd->bonus != 0)
+                return f.id + ": multiattack option '" + oid + "': count_dice must be dice like \"1d4\"";
+            if (d.attacks.size() != 1) return f.id + ": multiattack option '" + oid + "': count_dice needs exactly one attack";
+            d.count_dice = *cd;
         }
         a.multiattack_decls.push_back(std::move(d));
     }
@@ -1103,6 +1115,58 @@ std::optional<std::string> apply_transparent(Archetype& a, const FeatureDecl& f,
     return std::nullopt;
 }
 
+// Batch 3 (Lich-approved shape, field_shapes_proposal Gap 2): monster@5 trait `save_advantage` {save_vs_conditions?,
+// vs_damage_types?, magical?, abilities?, mode?}: one static rules5e RollTrait{Save, mode, when, 0, 0, abilities,
+// conditions, damage types}. Magic Resistance (SRD 5.1: "advantage on saving throws against spells and other magical
+// effects") = {magical: true}; Dark Devotion = {save_vs_conditions: [charmed, frightened]}. At least one gate is required;
+// identical traits are deduped. Static archetype data: no hash tag.
+constexpr std::initializer_list<const char*> kDamageTypesB3 = {"acid", "bludgeoning", "cold", "fire", "force", "lightning",
+    "necrotic", "piercing", "poison", "psychic", "radiant", "slashing", "thunder"};
+std::optional<std::string> apply_save_advantage(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": save_advantage needs a monster@5 file";
+    if (a.schema_type != "monster") return f.id + ": save_advantage: only valid on monsters";
+    for (auto it = f.effect.begin(); it != f.effect.end(); ++it)
+        if (it.key() != "kind" && it.key() != "save_vs_conditions" && it.key() != "vs_damage_types" && it.key() != "magical" &&
+            it.key() != "abilities" && it.key() != "mode")
+            return f.id + ": save_advantage: unknown key '" + it.key() + "'";
+    rules5e::RollTrait t{};
+    t.roll = rules5e::TraitRoll::Save;
+    t.mode = rules5e::RollMode::Advantage;
+    bool gated = false;
+    if (auto m = f.effect.find("mode"); m != f.effect.end()) {
+        const std::string v = m->is_string() ? m->get<std::string>() : "";
+        if (v == "disadvantage") t.mode = rules5e::RollMode::Disadvantage;
+        else if (v != "advantage") return f.id + ": save_advantage: mode must be advantage or disadvantage";
+    }
+    if (auto c = f.effect.find("save_vs_conditions"); c != f.effect.end()) {
+        uint32_t bits = 0;
+        if (!enum_bits(*c, kConditions7z, bits)) return f.id + ": save_advantage: bad save_vs_conditions";
+        t.save_vs_conditions = bits; gated = true;
+    }
+    if (auto d = f.effect.find("vs_damage_types"); d != f.effect.end()) {
+        uint32_t bits = 0;
+        if (!enum_bits(*d, kDamageTypesB3, bits)) return f.id + ": save_advantage: bad vs_damage_types";
+        t.save_vs_damage_types = bits; gated = true;
+    }
+    if (auto ab = f.effect.find("abilities"); ab != f.effect.end()) {
+        uint32_t bits = 0;
+        if (!enum_bits(*ab, kAbilities7z, bits)) return f.id + ": save_advantage: bad abilities";
+        t.save_abilities = uint8_t(bits); gated = true;
+    }
+    if (auto mg = f.effect.find("magical"); mg != f.effect.end()) {
+        if (!mg->is_boolean()) return f.id + ": save_advantage: magical must be a boolean";
+        if (mg->get<bool>()) { t.when |= rules5e::kWhenSourceMagical; gated = true; }
+    }
+    if (!gated) return f.id + ": save_advantage needs at least one of save_vs_conditions, vs_damage_types, abilities, magical: true";
+    for (const rules5e::RollTrait& h : a.base.roll_traits)
+        if (h.roll == t.roll && h.mode == t.mode && h.when == t.when && h.target_conditions == 0 && h.target_types == 0 &&
+            h.save_abilities == t.save_abilities && h.save_vs_conditions == t.save_vs_conditions &&
+            h.save_vs_damage_types == t.save_vs_damage_types)
+            return std::nullopt;
+    a.base.roll_traits.push_back(t);
+    return std::nullopt;
+}
+
 FeatureRegistry make_builtin() {
     FeatureRegistry r;
     r.add_hook("damage_bonus", {apply_damage_bonus});
@@ -1134,7 +1198,8 @@ FeatureRegistry make_builtin() {
     r.add_hook("wild_shape", {apply_wild_shape});     // R-G12 (7.2q)
     r.add_hook("shapechanger", {apply_shapechanger}); // R-G12 (7.2q)
     r.add_hook("extra_attack", {apply_extra_attack});   // character@4: gated in the hook (the 3 -> 4 kind list is frozen)
-    r.add_hook("transparent", {apply_transparent});     // monster@4 (7.2w): gated in the hook, like extra_attack
+    r.add_hook("transparent", {apply_transparent});
+    r.add_hook("save_advantage", {apply_save_advantage});   // monster@5 (batch 3): gated in the hook, like transparent     // monster@4 (7.2w): gated in the hook, like extra_attack
     r.add_hook("grant_die", {apply_grant_die});         // 7.2za Bardic Inspiration: gated in the hook
     r.add_hook("half_proficiency", {apply_half_proficiency});   // 7.2za Jack of All Trades: gated in the hook
     // Kinds the @4 schemas introduce (frozen list of the 3 -> 4 migration; hooks arrive with their rows).
