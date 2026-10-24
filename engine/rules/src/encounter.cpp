@@ -992,6 +992,7 @@ struct Ctx {
     bool zone_fired = false;   // a zone trigger resolved inside finalize_forced (deaths / concentration are swept again)
     uint8_t command_word = 0;     // 7.2v: Command's word (set by cast_spell around resolve_spell only)
     uint8_t form_archetype = 0;   // R-G12: the cast's form choice (set by cast_spell around resolve_spell only)
+    bool grapple_instead = false; // Tier-A §27: the Attack's hit grapples instead of dealing damage (set around do_attack only)
     bool guess_miss = false;      // 7.2x: the Attack guessed the wrong tile for a hidden target (automatic miss)
     // R-G12 PR 2: the cast's creature choices (set around resolve_spell only), the creatures built by the Summon effect (placed
     // by attempt after the step: appending to combatants would move the step's Combatant references), and the ids they took.
@@ -2128,6 +2129,10 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
         if (trigger_recharging(s, a, tr)) continue;   // EC deferred monsters (flagged): usage recharge
         bool any = false;
         for (const RiderEffect& e : tr.effects) if (hit_effect_ok(s, e)) any = true;
+        if (ctx.grapple_instead) {   // Tier-A §27: no damage, so extra_damage riders do not fire; the others still do
+            any = false;
+            for (const RiderEffect& e : tr.effects) if (hit_effect_ok(s, e) && e.kind != RiderKind::ExtraDamage) any = true;
+        }
         if (!any) continue;                                            // no hit effect: other kinds do not fire here
         bool ok = true, failed_save = false;
         for (const Predicate& p : tr.when)
@@ -2179,6 +2184,7 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
             const RiderEffect& e = tr.effects[k];
             if (!hit_effect_ok(s, e)) continue;
             if (tr.pick_one && int(k) != picked) continue;
+            if (ctx.grapple_instead && e.kind == RiderKind::ExtraDamage) continue;
             if (e.kind == RiderKind::ExtraDamage) {
                 out.pieces.push_back({e.dice, e.type, e.same_as_weapon});
                 if (e.vs_types & bit(t.creature_type)) out.pieces.push_back({e.vs_dice, e.type, e.same_as_weapon});   // 7.2y bonus_vs
@@ -2391,14 +2397,26 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
                 smite_piece = DamagePiece{int16_t(std::max(0, roll_dice(s.rng, e.damage, crit))), e.damage_type};
                 break;
             }
+    const bool grab_only = hit && ctx.grapple_instead && spell_id == 0;   // Tier-A §27: c bit 3 (8)
     emit(ev, EventKind::AttackResolved, a.id, t.id, roll.natural, roll.total,
-         int32_t(hit) | (int32_t(crit) << 1));
+         int32_t(hit) | (int32_t(crit) << 1) | (int32_t(grab_only) << 3));
     if (t.team != a.team && !s.modifiers.empty()) mark_fought(s, a.id);   // 7.2z ends_early: attacked a hostile
     if (spell_id != 0) {   // 7.2zi hit_only: the roll and the hit stand; no damage dice and no hit points (riders still see the hit)
         if (const SpellDef* sd = spell_def(s, spell_id); sd && sd->hit_only) {
             if (!s.effects.empty()) end_on_own_action(s, a.id, kEndsOnAttack, ev);
             return hit;
         }
+    }
+    if (grab_only) {   // Tier-A §27: no damage roll (a crit too), no damage, no concentration save; the sim grapples on c & 8.
+        // On-hit riders that do not deal damage still fire (save / apply condition); damage-keyed ones (drain, curse, Strength
+        // Drain, smite) do not.
+        const HitRiders riders = fire_hit_triggers(s, ctx, a, t, atk, false, atk_mode, ally_near_target, crit, roll, ev);
+        for (uint32_t sid : riders.after) {
+            if (t.dead) break;
+            if (const SpellDef* d = spell_def(s, sid)) resolve_spell(s, ctx, a, *d, 0, std::vector<Combatant*>{&t}, within_5ft, ev);
+        }
+        if (!s.effects.empty()) end_on_own_action(s, a.id, kEndsOnAttack, ev);
+        return hit;
     }
     const TrigSrc tsrc{&a, &atk, spell_id != 0, atk_mode, ally_near_target};
     // 7.2zi Ray of Enfeeblement: each component of a Strength weapon attack is halved, round down, before the target's resistances.
@@ -4763,6 +4781,7 @@ ActionRequest decision_request(const NeedsDecision& n, bool react, uint8_t optio
 }
 
 StepResult step(EncounterState& s, const ActionRequest& req) {
+    if (req.grapple_instead && req.kind != ActionKind::Attack) return fail("grapple_instead is only valid on an Attack");   // Tier-A §27: never an ignored, hashed flag
     if (req.kind == ActionKind::ReactionDecision) {
         if (!s.pending) return fail("no pending reaction decision");
         const PendingDecision& p = *s.pending;
@@ -5537,6 +5556,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         if (req.attack_index >= a.attacks.size()) return fail("bad attack index");
         if (const auto why = target_gate_refusal(s, a, *t, a.attacks[req.attack_index], req.target_willing); !why.empty()) return fail(why);
         if (attack_locked(s, a.id, req.attack_index, t->id)) return fail("that attack holds a grappled creature: it can't attack another target");
+        if (req.grapple_instead && !a.attacks[req.attack_index].grapple_instead_ok) return fail("grapple_instead needs an instead_of_damage grapple rider");
         if (s.hooks.loadout_of) {   // EQUIPMENT.md 3: hands / ammunition (only creatures with a loadout view)
             const std::string_view why = attack_refusal(s, a.id, req.attack_index);
             if (!why.empty()) return fail(why);
@@ -5607,10 +5627,12 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             t = ward_alt;
         }
         ctx.bonus_attack_id = bopt ? bopt->id : 0;   // 7.2zb AttackFromFeature
+        ctx.grapple_instead = req.grapple_instead;
         do_attack(s, ctx, a, *t, a.attacks[req.attack_index], req.target_within_5ft, out.events,
                   req.ranged_hostile_within_5ft || req.beyond_normal_range, 0, req.ally_near_target,
                   bopt && bopt->has_damage ? &bopt->damage : nullptr, req.two_handed_grip);
         ctx.bonus_attack_id = 0;
+        ctx.grapple_instead = false;
         check_end(s, out.events);
         return out;
     }
@@ -5815,20 +5837,24 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     }
     const bool can_act = b.action || b.extra_actions > 0;   // row 13: an extra action counts
     const bool familiar = a.summoner != 0 && a.summon_control == uint8_t(SummonControl::Telepathic);   // R-G12 PR 3: no attacks
+    auto push_attack = [&](ActionRequest r) {   // Tier-A §27: an instead_of_damage grapple attack is listed both ways
+        out.push_back(r);
+        if (r.attack_index < a.attacks.size() && a.attacks[r.attack_index].grapple_instead_ok) { r.grapple_instead = true; out.push_back(r); }
+    };
     if (!familiar && (can_act || b.attacks_remaining > 0)) {
         for (const auto& t : s.combatants) {
             if (t.dead || t.id == a.id || t.team == a.team) continue;
             if (const int next = multiattack_next(a.multiattacks, b.sequence, b.sequence_pos); next >= 0) {   // multiattack in progress: only the next declared attack
                 ActionRequest r{a.id, ActionKind::Attack, t.id, uint8_t(next)};
                 r.multiattack = b.sequence;
-                if (!attack_locked(s, a.id, r.attack_index, t.id)) out.push_back(r);
+                if (!attack_locked(s, a.id, r.attack_index, t.id)) push_attack(r);
                 continue;
             }
             for (uint8_t i = 0; i < a.attacks.size(); ++i) {
                 if (!can_act && i < 32 && has_property(a.attacks[i], kWeaponLoading) && (b.loading_fired >> i & 1)) continue;
                 if (attack_locked(s, a.id, i, t.id)) continue;   // Druid gap G: "can't bite another target"
                 ActionRequest r{a.id, ActionKind::Attack, t.id, i};
-                out.push_back(r);
+                push_attack(r);
             }
             if (can_act)   // start any declared multiattack (needs a fresh action)
                 for (std::size_t k = 0; k < a.multiattacks.size(); ++k) {
@@ -5836,7 +5862,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
                     if (seq.empty() || a.multiattacks[k].after_action != 0 || attack_locked(s, a.id, seq[0], t.id)) continue;
                     ActionRequest r{a.id, ActionKind::Attack, t.id, seq[0]};
                     r.multiattack = uint8_t(k + 1);
-                    out.push_back(r);
+                    push_attack(r);
                 }
         }
     }

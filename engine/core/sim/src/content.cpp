@@ -1878,10 +1878,13 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                     if (dc < 0 || dc > 30) return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple escape_dc";
                     rules5e::GrappleRider gr;
                     gr.escape_dc = int16_t(dc);
-                    for (const char* k : {"restrains", "exclusive"})
+                    for (const char* k : {"restrains", "exclusive", "instead_of_damage"})
                         if (g.contains(k) && !g[k].is_boolean()) return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple " + k;
                     gr.restrains = g.value("restrains", false);
                     gr.exclusive = g.value("exclusive", false);
+                    gr.instead_of_damage = g.value("instead_of_damage", false);   // Tier-A §27
+                    if (gr.instead_of_damage && gr.restrains)
+                        return a.id + ": " + act.value("id", "?") + " on_hit: grapple instead_of_damage can't be combined with restrains";
                     if (g.contains("max_grapples")) {
                         const Json& m = g["max_grapples"];
                         if (!m.is_number_integer() || m.get<int>() < 1 || m.get<int>() > 8)
@@ -1889,6 +1892,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                         gr.max_grapples = uint8_t(m.get<int>());
                     }
                     a.grapple_on_hit[uint8_t(ai)] = gr;
+                    if (gr.instead_of_damage && ai < c.attacks.size()) c.attacks[ai].grapple_instead_ok = true;
                     continue;
                 }
                 rules5e::Trigger t;

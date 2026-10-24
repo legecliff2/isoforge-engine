@@ -129,6 +129,10 @@ struct Attack {
     // bonus (-1 = as ability_used). Content-derived: not hashed.
     int8_t ability_used = -1;
     int8_t damage_ability_used = -1;
+    // appended (Tier-A §27, vampire spawn Claws: "Instead of dealing damage, the vampire can grapple the target"): this attack
+    // carries an on_hit grapple rider with instead_of_damage, so ActionRequest::grapple_instead is legal with it. Set by the sim
+    // loader. Content-derived: not hashed.
+    bool grapple_instead_ok = false;
 };
 inline constexpr int8_t kAttackAbilityFinesse = 6;
 inline constexpr int8_t kAttackAbilityNone = 7;

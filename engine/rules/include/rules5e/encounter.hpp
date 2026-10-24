@@ -248,6 +248,9 @@ struct ActionRequest {
     // appended (batch 3, vampire spawn Bite; log_hash 0xDD when set): Attack: the target is willing. Counts only for an attack with
     // kTargetGateWilling and a target on the attacker's team (an enemy is never willing).
     bool target_willing = false;
+    // appended (Tier-A §27, log_hash 0xE2 when set): Attack: on a hit, grapple instead of dealing damage. Legal only with an
+    // attack whose Attack::grapple_instead_ok is set. AttackResolved c bit 3 (8) marks a hit resolved this way.
+    bool grapple_instead = false;
 };
 
 enum class EventKind : uint8_t {
@@ -833,7 +836,10 @@ struct GrappleRider {
     bool restrains = false;
     bool exclusive = false;
     uint8_t max_grapples = 0;
-    bool extended() const { return restrains || exclusive || max_grapples != 0; }
+    // appended (Tier-A §27): "Instead of dealing damage, the X can grapple the target": the hit grapples only when the request
+    // chose ActionRequest::grapple_instead (and then deals no damage); a hit without the choice deals damage and does not grapple.
+    bool instead_of_damage = false;
+    bool extended() const { return restrains || exclusive || max_grapples != 0 || instead_of_damage; }
 };
 
 // R-G12 rules PR 3 (D3): a Spiritual Weapon: not a combatant (no HP, not a target, no turn). token_id comes from the summon

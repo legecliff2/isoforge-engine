@@ -787,7 +787,7 @@ A weapon with a metal head or blade counts as a manufactured metal object. The s
 
 Versioning: appended, no tag change, no migration, no `api_level` gate. The field is not hashed, so goldens are unchanged. The justification and the Elf (tools/content) sign-off are in `docs/proposals/VERSION_BUMP_BATCH.md` (7.2zh follow-up).
 
-§20-21 and §26-27 are reserved for in-flight branches.
+§20-21 are reserved for in-flight branches.
 
 <!-- Code, schema and tests cite this section by its title ("Attack ability"), not its number. -->
 ## 23. Attack ability (monster@5 action `ability`, Strength Drain ruling)
@@ -861,6 +861,17 @@ Directory name: `^[a-z][a-z0-9_]*$`. Integers only. `golden.txt` must be non-emp
   immunity; FeatureTriggered (actor user, target, a = spell_id, c = 3).
 - Exemptions (undead, elves) are authored only where the SRD text says so; Dreadful Glare has none.
 - Mummy Multiattack (glare + fist) is deferred: the glare is its own action (SRD_COMBAT_COVERAGE).
+
+## 27. Grapple instead of damage (monster@5 grapple rider `instead_of_damage`, Tier-A)
+
+SRD 5.1 vampire spawn Claws: "Instead of dealing damage, the vampire can grapple the target (escape DC 13)." Author it as the
+attack's `on_hit` grapple rider with `"instead_of_damage": true` (a bool; the loader and validator refuse it together with
+`restrains`, and the validator warns when the attack has other on_hit riders). It is a per-attack choice:
+`ActionRequest::grapple_instead` (log_hash 0xE2). With the choice, a hit (a crit too) grapples and deals no damage: no damage
+riders, no concentration save; non-damage on-hit riders still fire; AttackResolved c bit 8 marks it. Without it the attack
+deals damage and does not grapple. The request is refused on an attack without such a rider. The driver AI picks the grapple
+only when a Bite (grappled_by_self gated attack) is still left in the multiattack and in reach, and the target is not already
+grappled by the attacker, incapacitated or restrained, and the claw's average damage would not drop it.
 
 ## 28. Text-only spell effect `descriptive` (spell@1)
 
