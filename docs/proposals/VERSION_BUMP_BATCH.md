@@ -2601,7 +2601,7 @@ Tags (Director, do not skip): **0xD4** `Combat::hash` Branding Smite pending and
 
 ### 7.2zi Spell batch zi (rules side)
 
-Additive (Spare the Dying, True Strike, Expeditious Retreat, Protection from Poison, Ray of Enfeeblement, Beacon of Hope, Warding Bond). No new `SIM_EVENTS` tag. New modifier fields fold into `modifiers_digest` (**0xA2**) as sub-byte **0x5F**, and only when any of them (or `zi_armed`) is set, so old goldens stay byte-identical. Next free stays **0xD6**. Integer math only. Key names live in `engine/rules/content/src/spell_keys_zi.hpp` and `tools/validate/checks_v4.py` `ZI_KEYS`. Specimens: `tests/validate/fixtures/spell_batch_zi/`. No `srd51.spell.*` packs (T&C). The 73 / 24 / 72 authored counts in `docs/SRD_SPELLS_DEFERRED.md` stay until those packs land.
+Additive (Spare the Dying, True Strike, Expeditious Retreat, Protection from Poison, Ray of Enfeeblement, Beacon of Hope, Warding Bond). No new `SIM_EVENTS` tag. New modifier fields fold into `modifiers_digest` (**0xA2**) as sub-byte **0x5F**, and only when any of them (or `zi_armed`) is set, so old goldens stay byte-identical. This batch takes no tag (`dash_on_cast` is the existing `Dashed` event, not an extension of 0x5F). Altitude PR1 claimed **0xD6** (`alt_ft`); **0xD7**-**0xDA** are reserved. Next free is **0xDB**. Integer math only. Key names live in `engine/rules/content/src/spell_keys_zi.hpp` and `tools/validate/checks_v4.py` `ZI_KEYS`. Specimens: `tests/validate/fixtures/spell_batch_zi/`. No `srd51.spell.*` packs (T&C). The 73 / 24 / 72 authored counts in `docs/SRD_SPELLS_DEFERRED.md` stay until those packs land.
 
 Keys this batch adds: `stabilize`, `hit_only`, `on_next_turn`, `bonus_dash`, `dash_on_cast`, `save_vs_conditions`, `halve_weapon_damage`, `death_saves`, `heal_maximum`, `share_damage`, `all_damage`, `end_beyond_ft`, `end_at_zero`, `caster` (the only `end_at_zero` value).
 
@@ -2632,7 +2632,7 @@ Reused: `apply_modifier`, `attack_roll`, `mode`, `consume`, `applies_to`, `scope
 
 Director contract notes (no `docs/ARCHITECTURE.md` break; the 7.2zi bullet there is additive):
 
-- No new hash tag. 0xA2 sub-byte 0x5F. Next free remains 0xD6.
+- No new hash tag. 0xA2 sub-byte 0x5F. `dash_on_cast` is not a hash field. Next free is 0xDB (0xD6 is altitude PR1 `alt_ft`; 0xD7-0xDA are reserved).
 - Warding Bond ends when the caster drops to 0 HP, not when the target does. The assignment text said "either"; the 2014 SRD says the caster.
 - Shared damage is the post-resistance amount dealt to the target. It is not a new event (`DamageDealt`).
 - Non-concentration hour and minute durations are modifier `rounds` (600 and 10). `SpellDef` hours do not tick modifiers.
