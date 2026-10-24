@@ -553,7 +553,7 @@
           "items": {
             "$ref": "#/$defs/monster_damage"
           },
-          "description": "BASE damage: weapon die + ability modifier (+ magic bonus). Never fold feature bonuses (e.g. Dueling +2) in; feature effects such as damage_bonus are applied by the engine. monster@5: a component may be {flat, type} instead of {dice, type} (SRD 'Hit: 1 piercing damage'; CONTENT_CONVENTIONS 17)."
+          "description": "BASE damage: weapon die + ability modifier (+ magic bonus). Never fold feature bonuses (e.g. Dueling +2) in; feature effects such as damage_bonus are applied by the engine. monster@5: a component may be {flat, type} instead of {dice, type} (SRD 'Hit: 1 piercing damage'; CONTENT_CONVENTIONS 18)."
         },
         "qualifiers": {
           "type": "array",

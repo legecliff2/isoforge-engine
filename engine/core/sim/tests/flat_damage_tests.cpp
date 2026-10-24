@@ -1,4 +1,4 @@
-// monster@5 flat action damage (CONTENT_CONVENTIONS 17): `{flat N, type}` instead of `{dice, type}` (SRD 5.1 "Hit: 1 piercing
+// monster@5 flat action damage (CONTENT_CONVENTIONS 18): `{flat N, type}` instead of `{dice, type}` (SRD 5.1 "Hit: 1 piercing
 // damage": rat, cat, scorpion, ...). Loads as DiceExpr{0, 0, N}; rolls no dice (no rng draw) and a critical hit does not double
 // it. No new state, no hash tag: existing goldens are untouched (trace_equivalence / hash_fold tests run unchanged).
 #include <doctest/doctest.h>
