@@ -48,6 +48,18 @@ void kill(Combatant& c, std::vector<Event>& ev) {
     emit(ev, EventKind::CombatantDied, c.id);
 }
 
+// Batch 3 shadow Strength Drain (SRD 5.1): the Strength score drops by `amount` (never below 0); "The target dies if this
+// reduces its Strength to 0" (the existing death path, kill). ability_reduction records the drop actually applied (saturating
+// at 127), so a rest restores exactly that much.
+void strength_drain(Combatant& t, int amount, std::vector<Event>& ev) {
+    if (t.dead || amount <= 0) return;
+    auto& score = t.abilities.score[std::size_t(Ability::Str)];
+    const int applied = std::min(amount, std::max(0, int(score)));
+    score = int8_t(int(score) - applied);
+    auto& red = t.ability_reduction[std::size_t(Ability::Str)];
+    red = uint8_t(std::min(127, int(red) + applied));
+    if (score <= 0) kill(t, ev);
+}
 
 // ---- Timed modifiers (row 12) ----
 void refresh_mod_cache(EncounterState& s) {
@@ -2447,6 +2459,8 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
             emit(ev, EventKind::SavingThrowRolled, t.id, CombatantId(Ability::Con), r.roll.natural, r.roll.total, int32_t(r.success));
             if (!r.success) t.no_regain_hp = true;
         }
+        if (atk.strength_drain.count > 0 && !t.dead)   // batch 3 shadow Strength Drain: after the damage, if it still stands
+            strength_drain(t, std::max(0, roll_dice(s.rng, atk.strength_drain)), ev);
         for (uint32_t sid : riders.after) {   // save_condition / apply_condition riders: after the damage, if it still stands
             if (t.dead) break;
             if (const SpellDef* d = spell_def(s, sid)) resolve_spell(s, ctx, a, *d, 0, std::vector<Combatant*>{&t}, within_5ft, ev);   // 7.2zb: + extra effects
@@ -6380,6 +6394,7 @@ FormStats own_stats(const Combatant& c) {
     f.creature_type = c.creature_type; f.roll_traits = c.roll_traits; f.triggers = c.triggers; f.reactions = c.reactions;
     f.bonus_attacks = c.bonus_attacks;
     f.fly_ft = c.fly_ft; f.swim_ft = c.swim_ft; f.climb_ft = c.climb_ft; f.hover = c.hover;   // feat/move-modes
+    f.ability_reduction = c.ability_reduction;   // batch 3 Strength Drain
     return f;
 }
 void put_stats(Combatant& c, const FormStats& f) {   // everything but hp / hp_max
@@ -6391,6 +6406,7 @@ void put_stats(Combatant& c, const FormStats& f) {   // everything but hp / hp_m
     c.creature_type = f.creature_type; c.roll_traits = f.roll_traits; c.triggers = f.triggers; c.reactions = f.reactions;
     c.bonus_attacks = f.bonus_attacks;
     c.fly_ft = f.fly_ft; c.swim_ft = f.swim_ft; c.climb_ft = f.climb_ft; c.hover = f.hover;   // feat/move-modes
+    c.ability_reduction = f.ability_reduction;   // batch 3 Strength Drain
 }
 template <class T> void append_all(std::vector<T>& to, const std::vector<T>& from) { to.insert(to.end(), from.begin(), from.end()); }
 }  // namespace

@@ -1957,6 +1957,22 @@ uint64_t Combat::hash() const {
         h.byte(0xDC);
         for (const auto& c : state_.combatants) h.byte(c.no_regain_hp ? 1 : 0);
     }
+    // 0xDF (batch 3 shadow Strength Drain): ability_reduction, only while some combatant's is non-zero (so every existing hash
+    // is unchanged): count of such combatants (u32), then for each, in combatant order, id (u32) and the six bytes Str..Cha.
+    uint32_t reduced = 0;
+    for (const auto& c : state_.combatants)
+        for (uint8_t r : c.ability_reduction) if (r != 0) { ++reduced; break; }
+    if (reduced != 0) {
+        h.byte(0xDF);
+        h.u32(reduced);
+        for (const auto& c : state_.combatants) {
+            bool any = false;
+            for (uint8_t r : c.ability_reduction) any = any || r != 0;
+            if (!any) continue;
+            h.u32(c.id);
+            for (uint8_t r : c.ability_reduction) h.byte(r);
+        }
+    }
     // 0xDE (batch 3 ghast Stench): per-creature, per-source aura immunities (creature, source, spell_id, until_round), in
     // grant order, only while one exists.
     if (!state_.aura_immunities.empty()) {

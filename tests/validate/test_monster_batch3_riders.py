@@ -137,6 +137,26 @@ class Curse(unittest.TestCase):
         self.assertTrue([m for m in e if "read only on weapon attacks" in m], e)
 
 
+class StrengthDrain(unittest.TestCase):
+    OK = {"ability": "str", "dice": "1d4"}
+
+    def test_valid(self):
+        e, _w = run(bite(ability_drain=self.OK))
+        self.assertEqual(e, [])
+
+    def test_refused(self):
+        for ad in ({"ability": "dex", "dice": "1d4"}, {"ability": "str"}, {"dice": "1d4"}, dict(self.OK, until="rest"),
+                   {"ability": "str", "dice": "d4"}):
+            e, _w = run(bite(ability_drain=ad))
+            self.assertTrue(e, ad)
+
+    def test_weapon_only(self):
+        d = bugbear()
+        d["actions"].append({"id": "x", "name": "X", "kind": "special", "description": "x", "ability_drain": self.OK})
+        e, _w = run(d)
+        self.assertTrue([m for m in e if "read only on weapon attacks" in m], e)
+
+
 class VampireDrain(unittest.TestCase):
     GATE = ["willing", "grappled_by_self", "incapacitated", "restrained"]
 

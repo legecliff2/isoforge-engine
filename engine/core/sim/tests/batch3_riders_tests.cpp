@@ -7,6 +7,7 @@
 
 #include "sample_set.hpp"
 #include "rules5e/healing.hpp"
+#include "rules5e/rest.hpp"
 #include "sim/driver.hpp"
 #include "world/chunk_codec.hpp"
 
@@ -555,4 +556,122 @@ TEST_CASE("ghast Stench: loader refusals; a combat without an aura trait has no 
     auto c = Combat::create(reg, ch, lib, 7);
     REQUIRE(c);
     CHECK(c->state().zones.empty());
+}
+
+// ---- Batch 3: shadow Strength Drain (SRD 5.1 Shadow: "Hit: 9 (2d6 + 2) necrotic damage, and the target's Strength score is
+// reduced by 1d4. The target dies if this reduces its Strength to 0. Otherwise, the reduction lasts until the target finishes a
+// short or long rest.") ----
+namespace {
+Json shadow() {
+    Json m = creature("t.shadow");
+    m["actions"][0]["ability_drain"] = {{"ability", "str"}, {"dice", "1d4"}};
+    return m;
+}
+ContentLibrary lib_str(int fighter_str) {
+    ContentLibrary lib;
+    REQUIRE(lib.load(sample_set()).empty());
+    Json tank = load_json("content/packs/sample.vertical_slice/characters/fighter_1.json");
+    tank["hit_points"]["average"] = 2000;
+    tank["abilities"]["str"] = fighter_str;
+    REQUIRE_FALSE(lib.add(tank, "character"));
+    REQUIRE_FALSE(lib.add(shadow(), "monster"));
+    return lib;
+}
+// The shadow attacks the fighter until one hit lands; returns false if none did.
+bool shadow_hits(Combat& c, CombatantId a, CombatantId f) {
+    for (int i = 0; i < 8; ++i) {
+        to_actor(c, a);
+        const int before = who(c, f).hp;
+        Command cmd;
+        cmd.request = {a, ActionKind::Attack, f, 0};
+        REQUIRE(c.submit(cmd).ok);
+        c.settle(nullptr);
+        if (who(c, f).hp < before || who(c, f).dead) return true;   // stop on the hit (a kill ends the combat)
+        Command e; e.request = {a, ActionKind::EndTurn}; REQUIRE(c.submit(e).ok);
+    }
+    return false;
+}
+}  // namespace
+
+TEST_CASE("ability_drain loader key (shadow Strength Drain): {ability: str, dice}; refusals") {
+    auto lib = lib_str(16);
+    const auto& d = lib.find("t.shadow")->base.attacks.at(0).strength_drain;
+    CHECK(d.count == 1);
+    CHECK(d.sides == 4);
+    Json bad = creature("t.bad");
+    bad["actions"][0]["ability_drain"] = {{"ability", "dex"}, {"dice", "1d4"}};
+    CHECK(load_error(bad).find("ability_drain must be") != std::string::npos);
+    bad["actions"][0]["ability_drain"] = {{"ability", "str"}};
+    CHECK(load_error(bad).find("ability_drain must be") != std::string::npos);
+    bad["actions"][0]["ability_drain"] = {{"ability", "str"}, {"dice", "x"}};
+    CHECK(load_error(bad).find("ability_drain: bad dice") != std::string::npos);
+    bad["$schema"] = "monster@4";
+    bad["actions"][0]["ability_drain"] = {{"ability", "str"}, {"dice", "1d4"}};
+    CHECK(load_error(bad).find("ability_drain needs a monster@5 file") != std::string::npos);
+}
+
+TEST_CASE("shadow Strength Drain: a hit reduces the effective score by 1d4; 0xDF folds; replay matches; a rest restores it") {
+    auto lib = lib_str(16);
+    auto ch = arena({{"t.shadow", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 7);
+    REQUIRE(c);
+    const CombatantId a = ch.spawns[0].stable_id, f = ch.spawns[1].stable_id;
+    const uint64_t h0 = c->hash();
+    CHECK(who(*c, f).ability_reduction[0] == 0);
+    REQUIRE(shadow_hits(*c, a, f));
+    const auto& t = who(*c, f);
+    const int red = t.ability_reduction[0];
+    CHECK(red >= 1);
+    CHECK(red <= 4);
+    CHECK(int(t.abilities.score[0]) + red == 16);   // abilities holds the effective score; true score = effective + reduction
+    CHECK_FALSE(t.dead);
+    CHECK(c->hash() != h0);
+    ecs::Registry reg2;
+    std::string err;
+    auto rp = replay(reg2, ch, lib, 7, c->log(), &err);
+    REQUIRE_MESSAGE(rp, err);
+    CHECK(rp->hash() == c->hash());
+    CHECK(who(*rp, f).ability_reduction == t.ability_reduction);   // the reduction persists across a replay
+    for (int kind = 0; kind < 2; ++kind) {   // short rest, long rest
+        rules5e::Combatant copy = t;
+        rng::Rng r(1, 1);
+        const auto res = kind == 0 ? rules5e::short_rest(copy, r, 0) : rules5e::long_rest(copy);
+        CHECK(res.ok);
+        CHECK(copy.abilities.score[0] == 16);
+        CHECK(copy.ability_reduction[0] == 0);
+    }
+}
+
+TEST_CASE("shadow Strength Drain: reducing Strength to 0 kills through the death path") {
+    auto lib = lib_str(1);   // any 1d4 >= 1 reduces Strength 1 to 0
+    auto ch = arena({{"t.shadow", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 7);
+    REQUIRE(c);
+    const CombatantId a = ch.spawns[0].stable_id, f = ch.spawns[1].stable_id;
+    REQUIRE(shadow_hits(*c, a, f));
+    const auto& t = who(*c, f);
+    CHECK(t.dead);
+    CHECK(t.hp == 0);
+    CHECK(t.abilities.score[0] == 0);
+    CHECK(t.ability_reduction[0] == 1);   // only the drop actually applied
+    ecs::Registry reg2;
+    std::string err;
+    auto rp = replay(reg2, ch, lib, 7, c->log(), &err);
+    REQUIRE_MESSAGE(rp, err);
+    CHECK(rp->hash() == c->hash());
+}
+
+TEST_CASE("Strength Drain: a rest with nothing reduced changes no score") {
+    auto lib = lib_with({creature("t.plain")});
+    auto ch = arena({{"t.plain", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}});
+    ecs::Registry r1;
+    auto c1 = Combat::create(r1, ch, lib, 7);
+    REQUIRE(c1);
+    // a restore with nothing reduced is a no-op
+    rules5e::Combatant k = who(*c1, ch.spawns[1].stable_id);
+    const auto before = k.abilities;
+    rules5e::restore_ability_reduction(k);
+    CHECK(k.abilities.score == before.score);
 }

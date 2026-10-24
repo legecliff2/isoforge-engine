@@ -885,6 +885,23 @@
             }
           }
         },
+        "ability_drain": {
+          "type": "object",
+          "description": "Batch 3 (shadow Strength Drain): on a hit, after the damage, the target's Strength score is reduced by the dice; it dies if this reduces its Strength to 0; a short or long rest restores it. Weapon attacks only.",
+          "additionalProperties": false,
+          "required": [
+            "ability",
+            "dice"
+          ],
+          "properties": {
+            "ability": {
+              "const": "str"
+            },
+            "dice": {
+              "$ref": "../common/v1.schema.json#/$defs/dice"
+            }
+          }
+        },
         "target_requires_any": {
           "type": "array",
           "minItems": 1,

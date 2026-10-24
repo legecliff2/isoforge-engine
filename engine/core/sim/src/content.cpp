@@ -1643,6 +1643,19 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 return a.id + ": action " + aid + ": curse.save must be {ability: con, dc: 1..30}";
             at.curse_no_regain_dc = int8_t((*sv)["dc"].get<int64_t>());
         }
+        // Batch 3: monster@5 `ability_drain` {ability: str, dice}: SRD 5.1 shadow Strength Drain ("the target's Strength score is
+        // reduced by 1d4. The target dies if this reduces its Strength to 0. Otherwise, the reduction lasts until the target
+        // finishes a short or long rest."). Only Strength (the one SRD 5.1 attack that reduces a score on a hit). Deferred: the
+        // new shadow rising from a non-evil humanoid 1d4 hours later (no hour clock or spawn-on-death).
+        if (auto ad = act.find("ability_drain"); ad != act.end()) {
+            const std::string aid = act.value("id", "?");
+            if (declared != 0 && declared < 5) return a.id + ": action " + aid + ": ability_drain needs a monster@5 file";
+            if (!ad->is_object() || ad->size() != 2 || ad->value("ability", "") != "str" || !ad->contains("dice") || !(*ad)["dice"].is_string())
+                return a.id + ": action " + aid + ": ability_drain must be {ability: str, dice}";
+            const auto d = parse_dice((*ad)["dice"].get<std::string>());
+            if (!d || d->count < 1) return a.id + ": action " + aid + ": ability_drain: bad dice";
+            at.strength_drain = *d;
+        }
         // R-G7: only the grip bits Great Weapon Fighting reads (two_handed, versatile) are carried; other properties (loading,
         // heavy, finesse, ...) stay off so existing behaviour and goldens do not move.
         if (auto ps = act.find("properties"); ps != act.end() && ps->is_array())

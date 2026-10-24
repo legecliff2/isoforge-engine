@@ -118,6 +118,10 @@ struct Attack {
     // appended (batch 3, vampire spawn Bite: "one willing creature, or a creature that is grappled by the vampire, incapacitated,
     // or restrained"): kTargetGate* bits; non-zero = the target must meet at least one (0 = any target).
     uint8_t target_requires_any = 0;
+    // appended (batch 3, shadow Strength Drain, SRD 5.1: "the target's Strength score is reduced by 1d4. The target dies if this
+    // reduces its Strength to 0. Otherwise, the reduction lasts until the target finishes a short or long rest."): on a hit,
+    // after the damage, when count > 0 (strength_drain). Static content: not hashed (the reduction itself folds in 0xDF).
+    DiceExpr strength_drain{0, 0, 0};
 };
 inline constexpr uint8_t kTargetGateWilling = 1, kTargetGateGrappledBySelf = 2, kTargetGateIncapacitated = 4,
                          kTargetGateRestrained = 8;
@@ -503,6 +507,9 @@ struct FormStats {
     // appended (SRD 5.1 movement modes, feat/move-modes): the form's fly / swim / climb speeds and hover.
     uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0;
     bool hover = false;
+    // appended (batch 3 Strength Drain): the reduction of these scores (Combatant::ability_reduction); own_stats / put_stats
+    // carry it with the block, so a form starts unreduced and the true form's reduction returns with it on revert.
+    std::array<uint8_t, 6> ability_reduction{};
     // Wild Shape (D7): the creature's own features (feature ids) the form is not physically capable of using (content:
     // requires_humanoid_form). UseFeature refuses them while the form lasts. Not part of the saved base block.
     std::vector<uint32_t> blocked_features{};
@@ -694,6 +701,10 @@ struct Combatant {
     bool has_heal_bonus = false;
     int8_t heal_bonus_flat = 0;
     bool heal_bonus_per_level = false;
+    // appended (batch 3, shadow Strength Drain; sim Combat::hash 0xDF while any is non-zero): how much each score in `abilities`
+    // is currently reduced by. `abilities` holds the EFFECTIVE score (every check, save, modifier and Str requirement reads it);
+    // the unreduced score is abilities + ability_reduction. Saturates at 127. A short or long rest restores it (rest.cpp).
+    std::array<uint8_t, 6> ability_reduction{};
 };
 
 void add_condition(Combatant&, Condition);
