@@ -274,7 +274,7 @@ class MonsterTable(unittest.TestCase):
                          {"ooze_cube": None, "transparent": {"kind": "transparent", "dc": 15}})
         # Swallow (attack_effect + contain swallow: blinded, total cover, no escape; Medium or smaller); bite grapples (escape DC 13)
         toad = {a["id"]: a for a in load("giant-toad")["actions"]}
-        self.assertEqual(toad["bite"]["on_hit"], [{"kind": "grapple", "escape_dc": 13}])
+        self.assertEqual(toad["bite"]["on_hit"], [{"kind": "grapple", "escape_dc": 13, "restrains": True, "exclusive": True}])
         sw = toad["swallow"]
         self.assertEqual((sw["kind"], sw["attack"], sw["to_hit"], sw["range_ft"]), ("attack_effect", "melee", 4, 5))
         self.assertEqual(sw["apply"], [{"condition": "restrained", "max_size": "medium",
