@@ -147,7 +147,7 @@ std::optional<Command> move_mark_command(const Combat& c, CombatantId self, std:
     if (!me || me->concentration_spell == 0 || !s.budget.bonus_action || s.budget.sequence != 0) return std::nullopt;
     if (!rules5e::is_conscious(*me) || rules5e::is_incapacitated(*me)) return std::nullopt;
     const auto* def = c.spell_def(me->concentration_spell);
-    if (!def || def->move_mark == 0) return std::nullopt;
+    if (!def || def->move_mark == 0 || def->kind == rules5e::SpellEffectKind::Descriptive) return std::nullopt;
     CombatantId old_mark = 0;
     for (const auto& m : s.modifiers)
         if (m.caster == self && m.spec.source == def->id && m.spec.mark_scope != 0 && m.mark != 0) { old_mark = m.mark; break; }
@@ -477,7 +477,9 @@ std::optional<Command> spell_kind_command(const Combat& c, const rules5e::Combat
     if (s.budget.bonus_action && s.budget.sequence == 0) {
         const uint32_t now = (uint32_t(s.round) << 16) | s.turn_index;
         for (const auto& e : s.effects) {
-            if (e.caster != me.id || e.damage_when != 2 || e.cast_stamp == now || e.target == charmer || !c.spell_def(e.spell_id)) continue;
+            if (e.caster != me.id || e.damage_when != 2 || e.cast_stamp == now || e.target == charmer) continue;
+            const auto* sdef = c.spell_def(e.spell_id);
+            if (!sdef || sdef->kind == rules5e::SpellEffectKind::Descriptive) continue;
             const auto* v = rules5e::find(s, e.target);
             if (!v || v->dead) continue;
             Command x;
@@ -669,7 +671,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             }
             if (sa.area) {   // area template: aim at a hostile; never catch an ally; >= 2 hostiles (1 if no attack is legal)
                 const auto* def = c.spell_def(sa.spell_id);
-                if (!def) continue;
+                if (!def || def->kind == rules5e::SpellEffectKind::Descriptive) continue;
                 bool attack_legal = false;
                 for (uint8_t i = 0; i < me->attacks.size() && !attack_legal; ++i)
                     attack_legal = me->attacks[i].ranged ? c.can_shoot(self, i, t->id)
@@ -700,6 +702,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             if (sa.range_ft == 0 || c.distance_tiles(self, t->id) * kFeetPerTile > int(sa.range_ft) ||
                 !c.line_of_sight(self, t->id))
                 continue;
+            if (const auto* sd = c.spell_def(sa.spell_id); sd && sd->kind == rules5e::SpellEffectKind::Descriptive) continue;
             Command cast;
             cast.request = {self, ActionKind::CastSpell, t->id};
             cast.request.spell_id = sa.spell_id;
@@ -714,13 +717,13 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // - a self-range modifier (Blur) on the caster, if no modifier from that spell is already on it;
     // - a cast at the target (Heat Metal keeps the listed equip_item) when it is in range and sight. An area one is aimed
     //   at the target and skipped if it would catch an ally.
-    // Zone spells (Fog Cloud) stay the caller's decision and are skipped.
+    // Zone spells (Fog Cloud) stay the caller's decision and are skipped. Text-only descriptive spells are never cast.
     if (!beast_form && s.budget.action && s.budget.sequence == 0 && s.budget.attacks_remaining == 0 && rules5e::is_conscious(*t) &&
         !me->innate.empty())
         for (const auto& q : c.legal_actions()) {
             if (q.kind != ActionKind::CastSpell || !q.innate) continue;
             const auto* def = c.spell_def(q.spell_id);
-            if (!def || def->kind == rules5e::SpellEffectKind::Zone) continue;
+            if (!def || def->kind == rules5e::SpellEffectKind::Zone || def->kind == rules5e::SpellEffectKind::Descriptive) continue;
             if (q.target == self && def->range_ft == 0) {
                 if (def->kind != rules5e::SpellEffectKind::ApplyModifier || def->area != rules5e::AreaShape::None) continue;
                 bool active = false;
