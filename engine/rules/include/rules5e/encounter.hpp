@@ -218,7 +218,7 @@ struct ActionRequest {
     // check vs `dc`, 3 thieves' tools (disarm a trap / open a lock: Dexterity check + proficiency if Combatant::thieves_tools) vs `dc`.
     uint8_t object_use = 0;
     // appended (7.2zc generic mark; log_hash 0xCC when either is set). CastSpell: mark_ability = 1 + Ability (1 Str .. 6 Cha), the
-    // ability a marked `ability: "chosen"` check row uses (Hex); required by such a spell, refused otherwise. move_mark: instead of
+    // ability a marked `ability: "chosen"` check row uses; required by such a spell, refused otherwise. move_mark: instead of
     // casting, move the mark of the actor's concentration spell `spell_id` (SpellDef::move_mark) to `target`: a bonus action, no
     // slot, no SpellCast window, only once the marked creature has dropped to 0 hit points.
     uint8_t mark_ability = 0;

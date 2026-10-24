@@ -31,8 +31,8 @@ const std::string kRoot = ENGINE_SOURCE_ROOT;
 const char* kCleric = "srd51.character.cleric_level_2";
 const char* kFighter = "srd51.character.fighter_1";
 const char* kGoblin = "srd51.monster.goblin";
-const char* kHexer = "test.character.hexer";
-const char* kHex = "test.spell.hex";
+const char* kMarker = "test.character.marker";
+const char* kChosenMark = "test.spell.chosen_mark";
 const char* kMarkedDamage = "test.spell.marked_damage";
 
 Json load_json(const std::string& rel) {
@@ -40,8 +40,8 @@ Json load_json(const std::string& rel) {
     REQUIRE(f.good());
     return Json::parse(f);
 }
-Json hex_doc() {
-    return Json::parse(R"J({"$schema":"spell@1","id":"test.spell.hex","level":1,"name":"Hex","school":"enchantment",
+Json chosen_mark_doc() {
+    return Json::parse(R"J({"$schema":"spell@1","id":"test.spell.chosen_mark","level":1,"name":"Chosen Mark","school":"enchantment",
         "classes":["warlock"],"source":{"ref":"SRD 5.1","license":"CC-BY-4.0"},"description":"x",
         "casting_time":{"kind":"bonus_action"},"range":{"kind":"ranged","feet":90},"components":{"v":true,"s":true},
         "duration":{"kind":"hours","amount":1,"concentration":true},"move_mark":{"action":"bonus_action"},
@@ -62,11 +62,11 @@ const ContentLibrary& lib() {
     static const ContentLibrary l = [] {
         ContentLibrary x;
         REQUIRE(x.load(sample_set()).empty());
-        REQUIRE_FALSE(x.add_spell(hex_doc()));
+        REQUIRE_FALSE(x.add_spell(chosen_mark_doc()));
         REQUIRE_FALSE(x.add_spell(marked_damage_doc()));
         Json h = load_json("content/packs/srd51.core/characters/cleric_level_2.json");
-        h["id"] = kHexer;
-        h["spellcasting"]["spells"] = Json::array({kHex, kMarkedDamage, "srd51.spell.sacred_flame"});
+        h["id"] = kMarker;
+        h["spellcasting"]["spells"] = Json::array({kChosenMark, kMarkedDamage, "srd51.spell.sacred_flame"});
         h["spellcasting"]["slots"] = {{"1", 4}};
         auto e = x.add(h, "character");
         REQUIRE_MESSAGE(!e, (e ? *e : ""));
@@ -354,10 +354,10 @@ TEST_CASE("AI Preserve Life: OverCap / OverPool / BadTarget rejections adjust or
 // ---------------------------------------------------------------- 7.2zc mark_ability / move_mark
 
 TEST_CASE("AI mark: mark_ability is the target's weakest ability, ties to the earlier one; Str by default") {
-    Fight f({{kHexer, 10, 10}, {kGoblin, 12, 10}, {kGoblin, 13, 10}});
-    const auto* hex = f.c->spell_def(rules5e::spell_id_of(kHex));
-    REQUIRE(hex);
-    CHECK(spell_needs_mark_ability(*hex));
+    Fight f({{kMarker, 10, 10}, {kGoblin, 12, 10}, {kGoblin, 13, 10}});
+    const auto* chosen = f.c->spell_def(rules5e::spell_id_of(kChosenMark));
+    REQUIRE(chosen);
+    CHECK(spell_needs_mark_ability(*chosen));
     CHECK_FALSE(spell_needs_mark_ability(*f.c->spell_def(rules5e::spell_id_of(kMarkedDamage))));
     CHECK(choose_mark_ability(*f.c, f.id[1]) == 1);   // goblin: Str 8 = Wis 8 = Cha 8, Str first
     f.who(2).abilities.score[3] = 3;                   // Int 3
@@ -366,7 +366,7 @@ TEST_CASE("AI mark: mark_ability is the target's weakest ability, ties to the ea
     f.advance_to(0);
     Command cast;
     cast.request = {f.id[0], ActionKind::CastSpell, f.id[2]};
-    cast.request.spell_id = rules5e::spell_id_of(kHex);
+    cast.request.spell_id = rules5e::spell_id_of(kChosenMark);
     cast.request.spell_level = 1;
     cast.request.targets = {f.id[2]};
     complete_request(*f.c, cast.request);
@@ -386,11 +386,11 @@ TEST_CASE("AI mark: mark_ability is the target's weakest ability, ties to the ea
 }
 
 TEST_CASE("AI mark: move_mark is offered once the marked creature drops to 0 hp, as a bonus action") {
-    Fight f({{kHexer, 10, 10}, {kGoblin, 12, 10}, {kGoblin, 14, 10}, {kGoblin, 13, 12}});
+    Fight f({{kMarker, 10, 10}, {kGoblin, 12, 10}, {kGoblin, 14, 10}, {kGoblin, 13, 12}});
     f.advance_to(0);
     Command cast;
     cast.request = {f.id[0], ActionKind::CastSpell, f.id[1]};
-    cast.request.spell_id = rules5e::spell_id_of(kHex);
+    cast.request.spell_id = rules5e::spell_id_of(kChosenMark);
     cast.request.spell_level = 1;
     cast.request.targets = {f.id[1]};
     complete_request(*f.c, cast.request);

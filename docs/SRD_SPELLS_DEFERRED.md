@@ -18,7 +18,7 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 | 3 | 14 | 9 | 19 | 42 |
 | **total** | **78** | **18** | **72** | **168** |
 
-Hunter's Mark is non-SRD, excluded (PHB-only; its text is not in SRD 5.1). Not NEW and not Authored. An earlier pass counted it, which is why these totals are one level-1 spell below the old 79 authored / 49 level 1 / 169 overall.
+Hunter's Mark is non-SRD, excluded (PHB-only; its text is not in SRD 5.1). Not NEW and not Authored. An earlier pass counted it, which is why these totals are one level-1 spell below the old 79 authored / 49 level 1 / 169 overall. Hex is non-SRD, excluded (PHB-only; not in SRD 5.1). Not NEW and not Authored. It was never in these counts and is not on the warlock lists.
 
 7.2zi (Rules #283, `feat/rules-spell-batch-zi`) implements Spare the Dying, True Strike, Expeditious Retreat, Protection from Poison, Ray of Enfeeblement, Beacon of Hope, and Warding Bond. Specimens: `tests/validate/fixtures/spell_batch_zi/`. Six are authored below. Expeditious Retreat stays `NEW`: the SRD lets the caster Dash when the spell is cast, and 7.2zi's `bonus_dash` does not Dash on the cast.
 
