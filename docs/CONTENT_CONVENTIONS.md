@@ -701,6 +701,79 @@ These are SRD 5.1 containers from 5e-database a6212be, with exact costs, weights
 - **Ready for the ammunition recovery rule** (EQUIPMENT 2.5: spend one per attack; recover `floor(spent / 2)` after combat). Stacks are `equipment[]` counts (§15), and these containers give the capacity a stack fits in.
 - **Inert today:** the sim loads no item documents. PCs do not list containers yet; adding them changes no number.
 
+## 17. Burrow speed (`speed.burrow`)
+
+`common@1 $defs/speed` already accepts optional `burrow` (the same `feet` def as `fly`, `swim` and `climb`: integer 0..255, multiple of 5). The loader (`ContentLibrary::add`) reads it for monsters and characters into `rules5e::Combatant::burrow_ft` (`uint8_t`, 0 when the key is absent, not an integer, or negative; values above 255 clamp to 255), the same way it reads `speed.climb`. `FormStats::burrow_ft` is copied with the other speeds when a form is saved, applied or built, so a transform replaces it and a revert restores it. A shapechanger form's `speed` object still replaces only `walk`, the same as it does for `climb`.
+
+It is static content and is not folded into `summons_digest` or `Combat::hash`, the same way `fly_ft`, `swim_ft` and `climb_ft` are not. Since altitude PR2 (feat/altitude-move) burrow **is a movement mode**: `ActionRequest::move_mode` 4 spends the burrow speed through `move_allowance`, budgeted like fly / swim / climb (the turn's budget is shared, Dash grants it again), and a creature without a burrow speed cannot burrow (`no such speed`; the sim refuses going below the ground). A burrowed creature (`alt_ft < 0` on walkable, non-water ground) moves under difficult terrain, ledges and surface creatures at 5 ft per tile. **Tunnelling** (leaving a passable tunnel, burrowing through solid rock or walls) is still out of scope unless the stat block says otherwise. No content-schema version bump and no new sim-event tag: the key was already optional, and mode 4 is a new value of the existing 0xC3 `move_mode` fold.
+
+## 18. Spellcasting focus family (item@2 gear `focus`)
+
+`focus: "arcane" | "druidic" | "holy"` is an optional, closed, additive key on item@2 `gear` (no version bump; gear arm only, `test_union_arms.py` row). It marks the SRD spellcasting foci:
+
+| `focus` | srd51.core items |
+|---|---|
+| `arcane` | `arcane_focus_crystal`, `_orb`, `_rod`, `_staff`, `_wand` |
+| `druidic` | `druidic_focus_sprig_of_mistletoe`, `_totem`, `_wooden_staff`, `_yew_wand` |
+| `holy` | `holy_symbol_amulet`, `_emblem`, `_reliquary` |
+
+- The component pouch carries no `focus`: it holds materials, it is not a focus.
+- **Inert until rules reads it.** No C++ reads the key yet. The sim loads gear as `ItemKind::Other`, not `ItemKind::Focus` (EQUIPMENT 3.2: focus hand, worn holy symbol, emblem on a shield). Adding it changes no fight and no hash.
+- Tests: `tests/validate/test_srd51_equipment.py` (`FOCUS_FAMILY`, `test_focus_field_schema`).
+- Deferred equipment mechanics are listed in `docs/SRD_EQUIPMENT_DEFERRED.md`.
+
+## 19. Flat action damage (monster@5)
+
+SRD stat blocks such as rat, cat, owl, crab, and scorpion print a fixed amount: "Hit: 1 piercing damage." A monster@5 action
+`damage[]` component (including `extra_damage`) may be written as `{"flat": N, "type": "<damage_type>"}`, with N between 1 and 255.
+
+- `$defs/monster_damage` in `schemas/monster/v5.schema.json` is a `oneOf` of the common@2 `damage` component (`dice`) and the
+  flat arm. A component has `flat` or `dice`, never both. The flat arm is closed: no `bonus_vs`, and no separate modifier field.
+  A modifier belongs in the dice string (`"1d4+2"`), and `flat` is already the whole amount.
+- The loader maps `flat: N` to `DiceExpr{0, 0, N}`. With count 0, `roll_dice` draws no RNG, and a critical hit does not double the
+  amount (only dice double).
+- Use `flat` only for amounts printed without dice. Do not write `"dice": "1d1"`, because a crit doubles it.
+- Only monster@5 accepts it. monster@4, character, and common@2 are unchanged. Archetype data is static, so there is no hash
+  format change and no SIM_EVENTS tag.
+- Mixed components are fine: `[{"flat": 1, "type": "piercing"}, {"dice": "3d4", "type": "poison"}]`.
+- **Natural weapon source.** monster@5 attacks name their source with `weapon` or `natural`, and that rule is unchanged. For a flat
+  attack, `natural` takes `flat` instead of `dice`: `"natural": {"flat": 1, "ability": "dex"}`. `natural.flat` (1..255) and
+  `natural.dice` (NdM) are exclusive (`oneOf`). Never write `"dice": "1"`. `flat` is the whole amount, so `damage_ability` is not
+  allowed with it. The validator requires `natural.flat` to equal `damage[0].flat`
+  (`/actions/<i>: natural.flat N != damage[0] flat M`). With `derive: true`, the derived damage is the flat amount and the to-hit
+  is derived from `ability` as usual. Use `attack_bonus` with a reason when the printed to-hit differs (the SRD Cat prints +0).
+  Example: `tests/validate/fixtures/monster_flat/monsters/cat.json`:
+
+  ```json
+  {"id": "claws", "name": "Claws", "kind": "melee_weapon_attack",
+   "natural": {"flat": 1, "ability": "dex"},
+   "attack_bonus": {"value": 0, "reason": "SRD Cat Claws prints +0; Dex 15 + PB 2 = +4"},
+   "to_hit": 0, "reach": 5, "targets": 1,
+   "damage": [{"flat": 1, "type": "slashing"}],
+   "description": "Melee Weapon Attack: +0 to hit, reach 5 ft., one target. Hit: 1 slashing damage."}
+  ```
+
+## 22. Item `material` (item@1 / item@2 weapon, armor, shield)
+
+Optional on the weapon, armor, and shield arms of `item@1` and `item@2`. Gear, ammunition, and valuable do not take it (the arm `propertyNames` lists omit it; `tests/validate/test_union_arms.py`).
+
+| value | meaning |
+|---|---|
+| `metal` | manufactured metal |
+| `wood` | wood |
+| `leather` | leather |
+| `hide` | hide |
+| `cloth` | cloth |
+| `rope` | rope |
+
+**When `material` is absent, `manufactured_metal()` falls back to the old category rule.** Omitting the key is `ItemMaterial::Absent`. The predicate (`engine/rules/src/encounter.cpp`) then uses the category rule that used to sit at encounter.cpp ~3078: any weapon, armor, or shield counts as manufactured metal. Only an explicit non-metal value (`wood`, `leather`, `hide`, `cloth`, `rope`) removes a Heat Metal or rust target. An unknown string is not one of those values. `material_of` (`engine/core/sim/src/equipment.cpp`) leaves it `ItemMaterial::Absent` and emits a loader warning on `ContentLibrary::warnings()` (the same channel as a summon `max_count` that clips a CR band). It does not map the string to a non-metal material. No `item@1` / `item@2` bump: an old file that omits the key keeps the meaning it had.
+
+Heat Metal and rust-type effects key off `manufactured_metal()`. The predicate is true when the kind is weapon, armor, or shield and the material is `metal` or absent. It is false for an explicit non-metal value. `legal_actions` and `cast_spell_impl` share it, so a listed Heat Metal cast is one `equip_item` per object the cast would accept: a hand instance whose def is manufactured metal, or worn armor whose def id is manufactured metal. A hand whose instance equals the armor def id wins, so a non-metal object in that hand does not fall through to the armor. Worn armor cannot be dropped. Ammunition, a light, a focus, and a weapon, armor, or shield with an explicit non-metal material are refused with `heat_metal: no metal object`. Rust Metal is not authored yet; when it is, it uses this predicate rather than item category.
+
+A weapon with a metal head or blade counts as a manufactured metal object. The spear and the javelin are `metal`, matching the pike, the halberd, the glaive, the lance, and the crossbows. All-wood or otherwise non-metal gear stays non-metal: club, greatclub, quarterstaff, shortbow, longbow, sling, blowgun, a dart when it is all wood (otherwise `metal`; the srd51 dart is metal), whip (`leather`) and net (`rope`), and padded, leather, studded leather, and hide armor. The generic shield is `metal` (the SRD allows wood or metal; metal is the default, so the shield is a Heat Metal target). srd51.core sets the key on every weapon, armor, and shield (`tests/validate/test_srd51_equipment.py` `MATERIAL`).
+
+Versioning: appended, no tag change, no migration, no `api_level` gate. The field is not hashed, so goldens are unchanged. The justification and the Elf (tools/content) sign-off are in `docs/proposals/VERSION_BUMP_BATCH.md` (7.2zh follow-up).
+
 <!-- Code, schema and tests cite this section by its title ("Attack ability"), not its number. -->
 ## 23. Attack ability (monster@5 action `ability`, Strength Drain ruling)
 

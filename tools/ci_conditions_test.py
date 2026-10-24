@@ -2,7 +2,7 @@
 """Truth-table check of the job if: conditions and the ci-required gate in .github/workflows/ci.yml.
 Evaluates the real if: strings for each event / label / paths-filter combination (no Actions needed).
 Run: python3 tools/ci_conditions_test.py   (needs PyYAML). Exits non-zero if an expectation fails."""
-import yaml,re,itertools
+import json,os,re,shutil,subprocess,tempfile,yaml,itertools
 wf=yaml.safe_load(open(__import__('pathlib').Path(__file__).resolve().parents[1]/'.github/workflows/ci.yml'))
 J=wf['jobs']
 def ev(expr,ctx):
@@ -75,20 +75,103 @@ for kw,exp in EXTRA:
     r,g,_=run(**kw); got=(r['build-test'],r['windows-release'],r['macos'],g)
     print(f"{str(kw):70} -> {got}")
     if got!=exp: bad+=1; print('MISMATCH',kw,got,exp)
-linux=[m for m in J['build-test']['strategy']['matrix']['include'] if m['name'].startswith('Linux')]
-assert linux and all('self-hosted' in str(m['os']) and m['jobs']==4 and m['tests']==2 for m in linux)
-wins=[m for m in J['build-test']['strategy']['matrix']['include'] if m['name'].startswith('Windows')]
-assert [m['os'] for m in wins]==['"windows-latest"']
+include=J['build-test']['strategy']['matrix']['include']
+linux=[m for m in include if m['name'].startswith('Linux')]
+assert [m['name'] for m in include]==['Linux GCC Debug','Linux Clang Release','Windows MSVC Debug']
+assert linux and all(m['jobs']==4 and m['tests']==4 and 'os' not in m for m in linux)
+assert 'os' not in include[2]
 assert J['build-test']['needs']==['changes','linux-runner']
-assert 'linux-runner' in str(J['build-test']['runs-on']) and 'linux-runner' in str(J['nightly-gate']['runs-on'])
+# Linux is the literal ubuntu-latest. Only the Windows check name selects windows-latest.
+# No fromJSON, no job output, no label list.
+bt=str(J['build-test']['runs-on'])
+assert bt=="${{ matrix.name == 'Windows MSVC Debug' && 'windows-latest' || 'ubuntu-latest' }}"
+assert 'fromJSON' not in bt and 'needs.' not in bt and 'self-hosted' not in bt
+for job_id, runs, timeout, name in (
+    ('changes','ubuntu-latest',10,'Detect changes'),
+    ('linux-runner','ubuntu-latest',5,'Linux runner'),
+    ('nightly-gate','ubuntu-latest',10,'Nightly gate'),
+    ('ci-required','ubuntu-latest',10,'ci-required'),
+    ('nightly-report','ubuntu-latest',10,'Report nightly macOS failure'),
+):
+    assert J[job_id]['runs-on']==runs, job_id
+    assert J[job_id]['timeout-minutes']==timeout, job_id
+    assert J[job_id]['name']==name, job_id
+assert J['build-test']['timeout-minutes']==90
+assert J['build-test']['name']=='${{ matrix.name }}'
+assert J['windows-release']['name']=='Windows MSVC Release'
+assert J['windows-release']['runs-on']=='windows-latest'
+assert J['macos']['name']=='macOS AppleClang Debug'
+assert J['macos']['runs-on']=='macos-latest'
 assert J['nightly-gate']['needs']==['linux-runner']
-assert 'ubuntu-latest' in str(J['linux-runner']['runs-on'])
-can=yaml.safe_load(open(__import__('pathlib').Path(__file__).resolve().parents[1]/'.github/workflows/linux-runner-canary.yml'))
-assert set(can[True])=={'workflow_dispatch'}
-assert can['permissions']=={}
-assert can['jobs']['ping']['runs-on']==['self-hosted','linux','isoforge']
-assert all('uses' not in s for s in can['jobs']['ping']['steps'])
-assert can['concurrency']['cancel-in-progress'] is True
-assert set(wf[True]['pull_request']['types'])=={'opened','synchronize','reopened','ready_for_review'}
+assert J['linux-runner'].get('permissions')=={}
+assert 'runs_on' not in (J['linux-runner'].get('outputs') or {})
+assert wf['env']['CI_BURST'] in ('true', 'false')
+root=__import__('pathlib').Path(__file__).resolve().parents[1]
+raw=(root/'.github/workflows/ci.yml').read_text()
+assert "CI_BURST: 'true'" in raw or "CI_BURST: 'false'" in raw
+assert 'box preferred' not in raw and 'linux-runner-canary' not in raw
+assert not (root/'.github/workflows/linux-runner-canary.yml').exists()
+for path in (root/'.github'/'workflows').glob('*.yml'):
+    doc=yaml.safe_load(path.read_text())
+    assert 'pull_request_target' not in set(doc[True]), path
+    for job in doc['jobs'].values():
+        blob=json.dumps(job.get('runs-on'))
+        assert 'self-hosted' not in blob and 'isoforge' not in blob, (path, blob)
+        for row in job.get('strategy',{}).get('matrix',{}).get('include',[]) or []:
+            assert 'self-hosted' not in json.dumps(row) and 'isoforge' not in json.dumps(row)
+
+def eval_runs_on(expr, *, name):
+    e=expr.strip()
+    assert e.startswith('${{') and e.endswith('}}'), expr
+    e=e[3:-2].strip()
+    e=e.replace('&&',' and ').replace('||',' or ').replace('matrix.name', repr(name))
+    return eval(e)
+
+for event, ref in [
+    ('pull_request','refs/pull/7/merge'),
+    ('pull_request_target','refs/heads/main'),
+    ('push','refs/heads/main'),
+    ('push','refs/heads/feature'),
+    ('schedule','refs/heads/main'),
+    ('workflow_dispatch','refs/heads/main'),
+    ('workflow_dispatch','refs/heads/feature'),
+]:
+    for name in ('Linux GCC Debug','Linux Clang Release'):
+        got=eval_runs_on(bt, name=name)
+        if got!='ubuntu-latest':
+            bad+=1; print('RUNS-ON', event, ref, name, got)
+    win=eval_runs_on(bt, name='Windows MSVC Debug')
+    if win!='windows-latest':
+        bad+=1; print('WINDOWS', event, ref, win)
+
+def run_pick(burst):
+    step=J['linux-runner']['steps'][0]
+    assert step['id']=='pick' and 'env' not in step
+    script=step['run']
+    assert 'self-hosted' not in script and 'isoforge' not in script and 'gh ' not in script
+    assert 'runs_on' not in script
+    td=tempfile.mkdtemp(prefix='ci-pick-')
+    try:
+        outp=os.path.join(td,'out')
+        gh=os.path.join(td,'gh')
+        open(gh,'w').write('#!/bin/sh\necho gh-called >&2\nexit 99\n')
+        os.chmod(gh,0o755)
+        env=os.environ.copy()
+        env.update({'GITHUB_OUTPUT':outp,'CI_BURST':'true' if burst else 'false','PATH':td+os.pathsep+env.get('PATH','')})
+        proc=subprocess.run(['bash','-c',script], env=env, capture_output=True, text=True, timeout=15)
+        out={}
+        for line in open(outp):
+            k,v=line.rstrip('\n').split('=',1)
+            out[k]=v
+        return proc.returncode, out, proc.stdout, proc.stderr
+    finally:
+        shutil.rmtree(td)
+
+for burst, tests in ((True,'8'),(False,'4')):
+    code,out,stdout,stderr=run_pick(burst)
+    hosted='runs_on' not in out and 'self-hosted' not in stdout
+    caps=out.get('gcc_tests')==tests and out.get('clang_tests')==tests and out.get('gcc_jobs')=='4' and out.get('clang_jobs')=='4'
+    if code!=0 or not hosted or not caps or 'gh-called' in stderr:
+        bad+=1; print('PICK', burst, code, out, stderr[-300:], stdout[-300:])
 print('ALL EXPECTATIONS MET' if not bad else f'{bad} FAILED')
 raise SystemExit(1 if bad else 0)

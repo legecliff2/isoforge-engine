@@ -4,6 +4,7 @@
   "name": "Blowgun",
   "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
   "category": "weapon",
+  "material": "wood",
   "cost_cp": 1000,
   "weight_oz": 16,
   "weapon_class": "martial",
