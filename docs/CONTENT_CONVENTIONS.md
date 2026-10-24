@@ -700,3 +700,16 @@ These are SRD 5.1 containers from 5e-database a6212be, with exact costs, weights
   - The sling bullet (0.2 cp) has no `cost_cp`, and no piece has `weight_oz` (none is a whole number of ounces).
 - **Ready for the ammunition recovery rule** (EQUIPMENT 2.5: spend one per attack; recover `floor(spent / 2)` after combat). Stacks are `equipment[]` counts (§15), and these containers give the capacity a stack fits in.
 - **Inert today:** the sim loads no item documents. PCs do not list containers yet; adding them changes no number.
+
+## 21. Printed-damage override and size-gated save riders (monster@5, Gladiator)
+
+- **`damage_override {dice, reason}`** is an optional monster@5 action key, the damage counterpart of `attack_bonus`.
+  - It replaces the derived `damage[0]` (it is not a delta) when the derivation can't reach the stat block's printed damage. `reason` is required and must cite the SRD 5.1 stat block.
+  - It is an error when the reason is blank, or when the derived damage already matches ("damage_override is not needed"). The validator lists every override as a warning, as it does for `attack_bonus`.
+  - Brute (`weapon_extra_dice`, `melee_only: true`) adds its die on melee use only. The SRD Bugbear Javelin prints "9 (2d6 + 2) piercing damage in melee or 5 (1d6 + 2) piercing damage at range", so the bugbear stays as printed and needs no override.
+  - The SRD Gladiator Spear prints a single line for both uses: "Melee or Ranged Weapon Attack: +7 to hit, reach 5 ft. or range 20/60 ft., one target. Hit: 11 (2d6 + 4) piercing damage". Its `use: thrown` action therefore carries `damage_override {dice: "2d6+4", reason: ...}`. There is no thrown variant of Brute.
+- **Size gate on a `save_condition` rider.** The first `apply[]` entry may carry `max_size` without `contain`.
+  - SRD Gladiator Shield Bash: "If the target is a Medium or smaller creature, it must succeed on a DC 15 Strength saving throw or be knocked prone."
+  - A target larger than `max_size` makes no save and gets no condition. The hit's damage still applies.
+  - On a later `apply[]` entry, or on a `save_effect` action without `contain`, `max_size` is a load error (`checks_v4.check_save_max_size` mirrors the sim loader).
+  - There is no new state, so no hash change.

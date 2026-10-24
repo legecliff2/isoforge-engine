@@ -445,6 +445,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     errs += check_static_kinds(doc)
     check_grapple_riders(doc, errs, warns)
     check_untimed_save_condition_riders(doc, errs)
+    check_save_max_size(doc, errs)
     check_refused_condition_durations(doc, errs, warns)
     check_transforms(doc, ctx, errs, warns)
     errs += check_class_hooks(doc)   # 7.2y
@@ -1363,6 +1364,26 @@ def check_untimed_save_condition_riders(doc: dict, errs: list[str]) -> None:
                 break
 
 
+# ---- size-gated saves (sim content.cpp compile_save_action) ---------------------------------------------------------
+def check_save_max_size(doc: dict, errs: list[str]) -> None:
+    """Mirror of the sim loader: an apply[] max_size without contain loads only on the first apply[] entry of a
+    save_condition rider (a larger target makes no save and gets no condition; SRD Gladiator Shield Bash, "a Medium or
+    smaller creature"). On a save_effect action, or a later entry, it is a load error with the loader's wording."""
+    def bare(x):
+        return isinstance(x, dict) and "max_size" in x and "contain" not in x
+    for path, _owner, _j, r in rider_sites(doc):
+        if isinstance(r, dict) and r.get("kind") == "save_condition":
+            for k, x in enumerate(r.get("apply") or []):
+                if k > 0 and bare(x):
+                    errs.append(f"{path}/apply/{k}: max_size on a save_condition rider goes on the first apply[] entry")
+    for path, a in mechanical_actions(doc):
+        if a.get("kind") == "save_effect":
+            for k, x in enumerate(a.get("apply") or []):
+                if bare(x):
+                    errs.append(f"{path}/apply/{k}: max_size on a save_effect needs contain "
+                                "(only a containing condition skips a larger target)")
+
+
 # ---- refused condition durations (sim content.cpp compile_save_action / compile_rider, EC #212) -----------------
 # Condition apply[].duration kinds the schema accepts but the sim loader has no rules5e expiry for (docs/CONTENT_EFFECTS.md,
 # "Engine Core loader durations and temp HP"). Loaded since #212: rounds, until_end_of_caster_next_turn,
@@ -1572,7 +1593,7 @@ def check_equipment_v5(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list[
         aid, where = a.get("id"), f"/actions/{i}"
         if "weapon" in a and "natural" in a:
             errs.append(f"{where}: 'weapon' and 'natural' are exclusive")
-        if any(k in a for k in ("weapon", "natural", "attack_bonus")) and a.get("kind") not in ("melee_weapon_attack", "ranged_weapon_attack"):
+        if any(k in a for k in ("weapon", "natural", "attack_bonus", "damage_override")) and a.get("kind") not in ("melee_weapon_attack", "ranged_weapon_attack"):
             errs.append(f"{where}: weapon / natural / attack_bonus need a melee_weapon_attack or ranged_weapon_attack")
         w = a.get("weapon")
         if isinstance(w, str):
@@ -1586,6 +1607,11 @@ def check_equipment_v5(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list[
             if not str(ab.get("reason", "")).strip():
                 errs.append(f"{did}.{aid}: attack_bonus needs a reason")
             warns.append(f"{did}.{aid}: attack_bonus {ab.get('value')} ({ab.get('reason')})")
+        dov = a.get("damage_override")
+        if isinstance(dov, dict):
+            if not str(dov.get("reason", "")).strip():
+                errs.append(f"{did}.{aid}: damage_override needs a reason")
+            warns.append(f"{did}.{aid}: damage_override {dov.get('dice')} ({dov.get('reason')})")
     el = doc.get("emits_light")
     if isinstance(el, dict) and el.get("bright_ft", 0) + el.get("dim_ft", 0) > 120:
         errs.append(f"/emits_light: bright_ft + dim_ft {el.get('bright_ft', 0) + el.get('dim_ft', 0)} exceeds 120 (dim is additional)")
@@ -1822,6 +1848,14 @@ def check_monster_derive(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
                 errs.append(f"{pre}: attack_bonus is not needed")
             v = dict(v, to_hit_override=ab_ov["value"])
             th, dmg, _e = _derive_weapon_attack(w, v, use)
+        dov = a.get("damage_override")
+        if isinstance(dov, dict):   # monster@5: the printed damage[0] stands, with a reason (CONTENT_CONVENTIONS 21)
+            if _blank(dov.get("reason")):
+                errs.append(f"{pre}: damage_override needs a reason")
+            ov = parse_dice(str(dov.get("dice", "0")))
+            if dmg == ov:
+                errs.append(f"{pre}: damage_override is not needed")
+            dmg = ov
         if th != a.get("to_hit"):
             errs.append(f"{pre}: derived to-hit {_signed(th)} != printed {_signed(a.get('to_hit', 0))}")
         printed = parse_dice((a.get("damage") or [{}])[0].get("dice", "0")) if (a.get("damage") or [{}])[0].get("dice") is not None \

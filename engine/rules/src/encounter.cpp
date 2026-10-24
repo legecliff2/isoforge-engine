@@ -3197,7 +3197,8 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (def.control != ControlKind::None && ((def.control_excluded & bit(t->creature_type)) ||
                                                      (def.control_min_int > 0 && t->abilities[Ability::Int] <= def.control_min_int)))
                 continue;   // 7.2v: unaffected (Command: undead; Hideous Laughter: Intelligence 4 or less): no save
-            if (def.contain != 0 && contain_refused(s, a, *t, def)) continue;   // 7.2w: too large / already holding one: no save
+            if ((def.contain != 0 || def.condition_max_size >= 0) && contain_refused(s, a, *t, def))
+                continue;   // 7.2w: too large / already holding one: no save (also a size-gated save_condition rider: Shield Bash)
             if (!def.is_spell && def.target_types != 0 && !valid_target_type(def, *t))
                 continue;   // 7.2y target_creature_types (Turn Undead: undead): others are not affected and make no save
             if ((def.control == ControlKind::Turned || def.control == ControlKind::Command) && s.hooks.sight_facts &&

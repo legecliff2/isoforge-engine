@@ -917,7 +917,10 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 d.duration_rounds = rounds;
                 d.condition_untracked = untracked;
                 d.escape_dc = int8_t(esc);
-                if (x.contains("max_size") && !x.contains("contain"))
+                // Druid/Gladiator size gate: a save_condition rider (untimed_ok) may name max_size without contain (SRD
+                // Gladiator Shield Bash: "If the target is a Medium or smaller creature, it must succeed on a DC 15 Strength
+                // saving throw or be knocked prone"): a larger target makes no save and gets no condition; the hit's damage stands.
+                if (!untimed_ok && x.contains("max_size") && !x.contains("contain"))
                     return where + ": max_size on a save_effect needs contain (only a containing condition skips a larger target)";
                 if (auto m = read_contain(x, where, d)) return m;
                 first = false;
@@ -932,8 +935,9 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 e.condition_untracked = untracked;
                 e.affected_only = true;
                 e.escape_dc = int8_t(esc);
-                if (x.contains("max_size") && !x.contains("contain"))
-                    return where + ": max_size on a save_effect needs contain (only a containing condition skips a larger target)";
+                if (x.contains("max_size") && !x.contains("contain"))   // the size gate is the whole save's: first entry only
+                    return where + (untimed_ok ? ": max_size on a save_condition rider goes on the first apply[] entry"
+                                               : ": max_size on a save_effect needs contain (only a containing condition skips a larger target)");
                 if (auto m = read_contain(x, where, e)) return m;
                 d.extra_effects.push_back(e);
             }
