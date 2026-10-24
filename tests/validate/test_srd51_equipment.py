@@ -58,19 +58,20 @@ WEAPONS = [
     ('warhammer', 'martial', 5, None, '1d8 bludgeoning', '1d10 bludgeoning', ('versatile',), 1500, 32),
     ('whip', 'martial', 10, None, '1d4 slashing', None, ('finesse', 'reach'), 200, 48),
 ]
-# item material (Heat Metal). SRD prose names padded (cloth), leather, hide (furs), chain, scale, breastplate, half plate,
-# splint and plate. Every other value is a construction call recorded in the commit that filled these in. Absent is not
-# a value here: every srd51 weapon, armor and shield sets one.
-# Rulings: the generic SRD shield is metal (the SRD allows wood or metal; metal is the authoring default). The javelin
-# and the spear are wood: the shaft dominates, so neither is a Heat Metal target.
+# item material (Heat Metal, CONTENT_CONVENTIONS section 22). A weapon with a metal head or blade is manufactured
+# metal, so the spear and the javelin are metal, with the pike, halberd, glaive, lance and the crossbows. All-wood or
+# non-metal gear stays non-metal: club, greatclub, quarterstaff, shortbow, longbow, sling, blowgun, a dart only when it
+# is all wood (this dart is metal), whip (leather), net (rope), and padded / leather / studded leather / hide armor.
+# The generic SRD shield is metal (the SRD allows wood or metal; metal is the authoring default). Absent is not a
+# value here: every srd51 weapon, armor and shield sets one.
 MATERIAL = {
     'battleaxe': 'metal', 'blowgun': 'wood', 'club': 'wood', 'crossbow_hand': 'metal', 'crossbow_heavy': 'metal',
     'crossbow_light': 'metal', 'dagger': 'metal', 'dart': 'metal', 'flail': 'metal', 'glaive': 'metal',
     'greataxe': 'metal', 'greatclub': 'wood', 'greatsword': 'metal', 'halberd': 'metal', 'handaxe': 'metal',
-    'javelin': 'wood', 'lance': 'metal', 'light_hammer': 'metal', 'longbow': 'wood', 'longsword': 'metal',
+    'javelin': 'metal', 'lance': 'metal', 'light_hammer': 'metal', 'longbow': 'wood', 'longsword': 'metal',
     'mace': 'metal', 'maul': 'metal', 'morningstar': 'metal', 'net': 'rope', 'pike': 'metal',
     'quarterstaff': 'wood', 'rapier': 'metal', 'scimitar': 'metal', 'shortbow': 'wood', 'shortsword': 'metal',
-    'sickle': 'metal', 'sling': 'leather', 'spear': 'wood', 'trident': 'metal', 'war_pick': 'metal',
+    'sickle': 'metal', 'sling': 'leather', 'spear': 'metal', 'trident': 'metal', 'war_pick': 'metal',
     'warhammer': 'metal', 'whip': 'leather',
     'breastplate': 'metal', 'chain_mail': 'metal', 'chain_shirt': 'metal', 'half_plate_armor': 'metal',
     'hide_armor': 'hide', 'leather_armor': 'leather', 'padded_armor': 'cloth', 'plate_armor': 'metal',

@@ -4,6 +4,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 #include "spell_util.hpp"
 
 using namespace enc;
@@ -216,6 +217,21 @@ TEST_CASE("7.2zh weapon_smite: no reveal and no dim ends the charge on the hit; 
         CHECK(find(t, 1)->concentration_spell == 0);
     }
     CHECK(ended);
+}
+
+TEST_CASE("7.2zh heat metal: a longsword with no material is still a target; the wooden club is not") {
+    auto w = make_world();   // the zh world's club stays wood
+    w->defs[kItemSword].material = ItemMaterial::Absent;   // material_of stores this when the field is omitted
+    w->views[2].main = HeldItem{10, kItemSword, 1, 0};
+    w->views[2].off = HeldItem{11, kItemClub, 1, 0};
+    auto s = start(w, 3);
+    std::vector<uint32_t> items;
+    for (const auto& r : legal_actions(s))
+        if (r.kind == ActionKind::CastSpell && r.spell_id == kHeatFail && r.target == 2 && r.spell_level == 2 && !r.sustain)
+            items.push_back(r.equip_item);
+    CHECK(items == std::vector<uint32_t>{10});
+    CHECK(step(s, heat(kHeatFail, 2, 11)).error == "heat_metal: no metal object");
+    REQUIRE(step(s, heat(kHeatFail, 2, 10)).ok);
 }
 
 TEST_CASE("7.2zh heat metal: a failed save drops a held metal object and not worn armor") {

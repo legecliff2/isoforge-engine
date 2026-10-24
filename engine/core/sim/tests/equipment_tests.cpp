@@ -899,17 +899,21 @@ TEST_CASE("equipment end-to-end: a scripted combat replays identically and match
     CHECK(a.events == 12810335167693045063ull);
 }
 
-TEST_CASE("ItemDefTable: material loads and an absent field is not metal") {
-    ItemDefTable t;
-    REQUIRE_FALSE(t.add(assets::Json::parse(
-        R"({"id":"test.item.longsword","category":"weapon","material":"metal","weapon_class":"martial","damage":[{"dice":"1d8","type":"slashing"}]})")));
-    REQUIRE_FALSE(t.add(assets::Json::parse(
+TEST_CASE("ItemDefTable: omitted material and an unknown string stay Absent; wood stays wood; unknown warns") {
+    // Absent is what manufactured_metal treats as the category rule (a longsword with no field is still a target).
+    // An unknown string warns on ContentLibrary::warnings() and is not stored as a non-metal value.
+    ContentLibrary lib;
+    REQUIRE_FALSE(lib.add_item(assets::Json::parse(
+        R"({"id":"test.item.longsword","category":"weapon","weapon_class":"martial","damage":[{"dice":"1d8","type":"slashing"}]})")));
+    REQUIRE_FALSE(lib.add_item(assets::Json::parse(
         R"({"id":"test.item.club","category":"weapon","material":"wood","weapon_class":"simple","damage":[{"dice":"1d4","type":"bludgeoning"}]})")));
-    REQUIRE_FALSE(t.add(assets::Json::parse(
-        R"({"id":"test.item.bare","category":"weapon","weapon_class":"simple","damage":[{"dice":"1d4","type":"bludgeoning"}]})")));
-    CHECK(t.find("test.item.longsword")->material == rules5e::ItemMaterial::Metal);
-    CHECK(t.find("test.item.club")->material == rules5e::ItemMaterial::Wood);
-    CHECK(t.find("test.item.bare")->material == rules5e::ItemMaterial::Absent);
+    REQUIRE_FALSE(lib.add_item(assets::Json::parse(
+        R"({"id":"test.item.odd","category":"weapon","material":"bone","weapon_class":"simple","damage":[{"dice":"1d4","type":"bludgeoning"}]})")));
+    CHECK(lib.items()->find("test.item.longsword")->material == rules5e::ItemMaterial::Absent);
+    CHECK(lib.items()->find("test.item.club")->material == rules5e::ItemMaterial::Wood);
+    CHECK(lib.items()->find("test.item.odd")->material == rules5e::ItemMaterial::Absent);
+    REQUIRE(lib.warnings().size() == 1);
+    CHECK(lib.warnings()[0] == "test.item.odd: material 'bone' is unknown");
 }
 
 TEST_CASE("ItemDefTable: a duplicate add is an error result and leaves the first definition intact") {
