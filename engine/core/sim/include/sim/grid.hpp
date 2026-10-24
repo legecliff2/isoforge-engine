@@ -23,7 +23,34 @@ inline constexpr int kFeetPerTile = 5;
 // SRD 5.1 movement modes (feat/move-modes): which non-walking speeds a mover has. Default: a walker only.
 struct MoveCaps {
     bool fly = false, swim = false, climb = false;
+    bool burrow = false;   // feat/rules-burrow-speed (PR #290): burrow_ft > 0
 };
+// Grid::path airborne_abs_ft value that plans a burrowed mover (altitude PR2): it tunnels under walkable, non-water
+// ground at 5 ft per tile, ignoring difficult terrain and ledges (it stays at its depth below the ground).
+inline constexpr int kPathBurrowed = -1000;
+
+// ---- altitude PR2: ground height (chunk@3, docs/CHUNK_HASH.md "chunk@3 ground") ----
+// Pure rules, mirrored in Python by tools/validate/validate_packs.py (ledge_ft / step_extra_ft):
+//   ground_ft(tile)  = 5 * max elevation over the cell's layers, only for chunk@3 (0 for chunk@1 / chunk@2).
+//   ledge_ft(a, b)   = b - a: the signed rise in feet from ground a to ground b (negative = a drop).
+//   step_cost_ft(a, b, caps) = EXTRA feet for a step from ground a to ground b, on top of the tile cost:
+//     rise <= 5 (kWalkableStepFt), including any descent: 0 - a step up of 5 ft or less or going down costs nothing extra;
+//     rise  > 5: a climb: rise with a climb or fly speed, else 2 * rise (SRD climbing without a climb speed);
+//     drop  > 5: 0 - the mover falls (walker) or becomes airborne (flyer); the sim records it, pathing avoids it
+//                for non-flyers.
+inline constexpr int kWalkableStepFt = 5;
+constexpr int ledge_ft(int from_ground_ft, int to_ground_ft) noexcept { return to_ground_ft - from_ground_ft; }
+constexpr int step_cost_ft(int from_ground_ft, int to_ground_ft, const MoveCaps& caps) noexcept {
+    const int rise = ledge_ft(from_ground_ft, to_ground_ft);
+    if (rise <= kWalkableStepFt) return 0;                      // descending, or a step up of 5 ft or less: no extra cost
+    return (caps.climb || caps.fly) ? rise : 2 * rise;
+}
+// House rule (altitude design §3): a creature's vertical span is [abs, abs + tiles * 5) ft, where Medium and smaller
+// are 1 tile tall and an N x N creature is N tiles tall.
+constexpr int body_height_ft(int footprint) noexcept { return (footprint < 1 ? 1 : footprint) * kFeetPerTile; }
+constexpr bool spans_overlap(int a_abs_ft, int a_footprint, int b_abs_ft, int b_footprint) noexcept {
+    return a_abs_ft < b_abs_ft + body_height_ft(b_footprint) && b_abs_ft < a_abs_ft + body_height_ft(a_footprint);
+}
 
 class Grid {
 public:
@@ -81,22 +108,47 @@ public:
     // feat/move-modes: the same search over enterable(caps) tiles priced by tile_cost_ft(caps).
     std::vector<Vec2i> path(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied,
                             int footprint, const MoveCaps& caps) const;
+    // altitude PR2: with chunk@3 ground the caps search adds step_cost_ft(ground) per step and never plans a drop of
+    // more than 5 ft for a non-flyer. airborne_abs_ft >= 0 plans an airborne flyer at that absolute height: 5 ft per
+    // tile (difficult ignored), obstacles lower than it are passable, higher ground costs the extra rise.
+    std::vector<Vec2i> path(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied,
+                            int footprint, const MoveCaps& caps, int airborne_abs_ft) const;
+
+    // altitude PR2 ground (chunk@3 only; 0 everywhere on chunk@1 / chunk@2 maps).
+    bool has_ground() const noexcept { return has_ground_; }
+    int  ground_ft(Vec2i p) const noexcept;
+    // Footprint ground = the MAX ground over the n x n tiles (a creature stands on the highest tile it covers).
+    int  footprint_ground_ft(Vec2i anchor, int n) const noexcept;
+    // Top of a blocks_move obstacle in ft (5 * its elevation, chunk@3 only); kFullHeight for a full-height blocker
+    // (elevation 0, or any chunk@1 / chunk@2 blocker): no flyer passes over those.
+    static constexpr int kFullHeight = 1 << 30;
+    int  obstacle_top_ft(Vec2i p) const noexcept;
+    // chunk@3 water: a water cell's elevation is its DEPTH (the surface is ground 0); a swimmer may descend to
+    // alt_ft = -water_depth_ft. 0 on flat maps and dry tiles (no descent).
+    int  water_depth_ft(Vec2i p) const noexcept;
+    // May an airborne creature at abs_ft occupy p: enterable(caps) or an obstacle lower than abs_ft.
+    bool passable_over(Vec2i p, const MoveCaps& caps, int abs_ft) const noexcept;
 
 private:
     struct Cells {
         std::array<uint8_t, world::kChunkSize * world::kChunkSize> walk{};   // 0 blocked, 1 normal, 2 difficult
         std::array<uint8_t, world::kChunkSize * world::kChunkSize> sight{};  // 1 = blocks sight
         std::array<uint8_t, world::kChunkSize * world::kChunkSize> terrain{}; // bit0 water, bit1 climbable, bit2 open air
+        std::array<uint8_t, world::kChunkSize * world::kChunkSize> ground{};  // chunk@3 ground (elevation steps)
+        std::array<uint8_t, world::kChunkSize * world::kChunkSize> top{};     // chunk@3 obstacle top steps (0 = full)
+        std::array<uint8_t, world::kChunkSize * world::kChunkSize> depth{};   // chunk@3 water depth steps
     };
     void add_chunk(const world::Chunk& c);
     std::vector<Vec2i> path_impl(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied,
-                                 int footprint, const MoveCaps* caps) const;
+                                 int footprint, const MoveCaps* caps, int airborne_abs_ft = -1) const;
+    const Cells* cells_at(Vec2i p, std::size_t& idx) const noexcept;
     const uint8_t* walk_at(Vec2i p) const noexcept;
     const uint8_t* sight_at(Vec2i p) const noexcept;
     uint8_t terrain_at(Vec2i p) const noexcept;
 
     std::map<std::pair<int32_t, int32_t>, Cells> chunks_;   // by chunk (x, y)
     int16_t level_ = 0;
+    bool has_ground_ = false;
     std::string error_;
 };
 
