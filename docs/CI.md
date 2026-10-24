@@ -5,20 +5,42 @@ Workflow: `.github/workflows/ci.yml`; every OS job runs the composite action
 
 | Job | Preset | When |
 |---|---|---|
-| Detect changes | – | always (docs-only changes skip the build jobs) |
+| Detect changes | – | every event except draft PRs and fork PRs (docs-only changes skip the build jobs) |
 | Linux GCC Debug | `ci-linux-gcc` | every PR, every push to `main` |
 | Linux Clang Release | `ci-linux-clang` (`ctest -LE python_only`) | every PR, every push to `main` |
 | Windows MSVC Debug | `ci-win-msvc` / `ci-win-msvc-debug` | every PR, every push to `main` |
 | Windows MSVC Release | `ci-win-msvc` / `ci-win-msvc-release` (`ctest -LE python_only`) | every push to `main`, manual dispatch, PRs labelled `ci-windows-release` |
 | macOS AppleClang Debug | `ci-mac-clang` | nightly 07:17 UTC, manual dispatch, PRs touching platform/render/determinism paths |
-| ci-required | – | always; the single required check. `success` or `skipped` needs pass, anything else fails |
+| ci-required | – | always (`if: always()`); the single required check. Passes only when every job this event requires has `result == success`. `skipped` and `cancelled` fail that job. Draft PRs fail the check |
 
 To run Windows Release on a PR, add the `ci-windows-release` label and then push a commit (or close
 and reopen the PR). Adding a label alone does not trigger CI, and "Re-run jobs" replays the original
 event payload, so it does not see a label added afterwards.
 
-`python3 tools/ci_conditions_test.py` evaluates the real `if:` conditions and the ci-required gate for
-PR (with/without the label, docs-only, mac paths), push, schedule and dispatch.
+`python3 tools/ci_conditions_test.py` evaluates the real `if:` conditions and runs the ci-required
+shell for PR (with/without the label, docs-only, mac paths, draft, fork), push, schedule and dispatch.
+
+`ci-required` requires `result == success` for the jobs the event actually runs. A skipped job
+outside that set does not fail the gate. `failure` and `cancelled` on any needed job do.
+
+| Event | State | Must be `success` | ci-required |
+|---|---|---|---|
+| `pull_request` (`opened`, `synchronize`, `reopened`, `ready_for_review`) | draft | (builds are skipped) | failure |
+| `pull_request` | fork | `changes` is skipped | failure |
+| `pull_request` | code, no Windows Release label, mac filter miss | `changes`, `linux-runner`, `build-test` | success when those succeeded |
+| `pull_request` | code + `ci-windows-release` | those, plus `windows-release` | success when those succeeded |
+| `pull_request` | code + mac paths | those, plus `macos` | success when those succeeded |
+| `pull_request` | docs-only | `changes` | success when `changes` succeeded |
+| `push` to `main` | code | `changes`, `linux-runner`, `build-test`, `windows-release` | success when those succeeded |
+| `push` to `main` | docs-only | `changes` | success when `changes` succeeded |
+| `schedule` | main moved since last green nightly | `changes`, `linux-runner`, `nightly-gate`, `macos` | success when those succeeded |
+| `schedule` | main unchanged (`run` is not `true`) | `changes`, `linux-runner`, `nightly-gate` | success when those succeeded |
+| `workflow_dispatch` | any | `changes`, `windows-release`, `macos` | success when those succeeded |
+
+A required job that is `skipped`, `failure`, or `cancelled` fails the gate. `cancelled` or `failure`
+on any needed job fails it, even if that job was not in the set above. The Windows Release label
+and the mac path filter stack: both jobs are required when both match. `ready_for_review` is the
+non-draft `pull_request` row: `draft` is false, so the code rows apply.
 
 Minutes savers: ccache (Linux/macOS) / sccache (Windows, with `/Z7` embedded debug info) cached with
 `actions/cache` per OS + preset, keyed on `cmake/Dependencies.cmake` (the `ci` presets set `CMAKE_DISABLE_PRECOMPILE_HEADERS=ON` because SDL3's precompiled header defeats ccache with Clang and sccache with MSVC `/Yu`, and `CMAKE_CXX_SCAN_FOR_MODULES=OFF` because GCC's `-fmodules-ts` makes every C++ object uncacheable; the project uses no C++ modules); `ctest --parallel 4`; the
@@ -55,11 +77,12 @@ Windows and macOS jobs are not mirrored; use the `win-msvc` / `mac-clang-debug` 
 ## Workflow for PRs (minimising CI minutes)
 
 - **Run `tools/ci_local.sh` before marking a PR ready.** It mirrors both Linux jobs locally.
-- **Draft PRs don't run CI.** The `pull_request` trigger only fires on `opened`, `synchronize`,
-  `reopened` and `ready_for_review`, and the `changes` job (which every other job needs) is skipped
-  when `github.event.pull_request.draft` is true. Opening a PR as a draft and marking it ready starts
-  CI once. `ci-required` passes on a draft (`changes` skipped on purpose); on any non-draft run a
-  skipped `changes` fails the gate.
+- **Draft PRs don't run build/test jobs.** The `pull_request` trigger fires on `opened`,
+  `synchronize`, `reopened` and `ready_for_review`. The `changes` job (which every build needs) is
+  skipped when `github.event.pull_request.draft` is true. `ci-required` still runs and **fails**
+  the draft: GitHub treats a skipped required job as a passing check, so skipping the gate would
+  leave `protect-main` green. Marking the PR ready fires `ready_for_review` (`draft == false`) and
+  runs the full workflow. A non-draft run whose `changes` job did not succeed fails the gate.
 - **Stacked chains:** keep the lower PRs in draft or don't push them separately; run CI once on the
   top PR (it contains the whole stack), then merge the chain in order, bottom first.
 - **Concurrency:** one group per workflow + PR number (or ref). A new push cancels the PR's
