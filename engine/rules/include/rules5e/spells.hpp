@@ -70,6 +70,9 @@ enum class SpellEffectKind : uint8_t {
     // appended (7.2zi Spare the Dying): stabilize one dying living creature within touch. No hook. Undead and constructs
     // are excluded by excluded_types (the same mask heal uses).
     Stabilize,
+    // appended (text-only): the spell loads and stays on a creature's spell list, and has no combat mechanic.
+    // It is never a legal cast. The effect object carries no other fields, and it is the spell's only effect.
+    Descriptive,
 };
 // R-G9 forced movement (push / pull) of an effect. mode 1 push (away from the source), 2 pull (toward it), 3 along a line
 // (Gust of Wind: sim's direction; not in R-G9's first scope). feet: exact distance, or the maximum when up_to (the caster

@@ -807,3 +807,19 @@ attack at use time by the modifier change) and for the two-weapon off-hand.
   refuses it (`checks_v4.BATCH3_WEAPON_ONLY_KEYS`).
 - Two-weapon fighting (SRD 5.1): the off-hand bonus attack adds the attack's effective ability modifier to damage only when it is
   negative (the Two-Weapon Fighting style still adds it in full).
+
+## 28. Text-only spell effect `descriptive` (spell@1)
+
+`{"kind":"descriptive"}` is a spell@1 effect. The object has no other keys, and it is the spell's only effect. An empty `effects` array is still an error (schema `minItems: 1`; the loader says `effects missing`).
+
+The spell loads and stays on a creature's spell list. `legal_actions` never offers it. `cast_spell` refuses it (`descriptive spells cannot be cast`), including an innate cast. The innate AI skips it. Effect resolution does nothing: no roll, no state, no event. There is no `SIM_EVENTS` tag and goldens are unchanged.
+
+`schemas/spell/v1.schema.json` `$defs/effect` adds `descriptive` to the kind enum and a `oneOf` arm that allows only `kind`. `tools/validate/checks_v4.py` `check_spell_descriptive` and `tools/validate/validate_packs.py` `check_spell` use the loader's wording and order (`engine/rules/content/src/spell_loader.cpp`):
+
+| case | error |
+|---|---|
+| any key besides `kind` on the first effect | `descriptive effect: unknown key '<key>'` (the schema also rejects it: additional properties are not allowed) |
+| mixed with another effect, either order | `descriptive effect must be the spell's only effect` |
+| `effects` empty or absent | schema error (`[] should be non-empty`, or `'effects' is a required property`). The loader's string for an empty list is `effects missing` |
+
+**No version bump.** `docs/CONTENT_COMPAT.md` §1 bumps a schema when a field that used to be descriptive becomes mechanical, or an existing field changes meaning. `descriptive` is a new effect-kind value. The previous `spell@1` kind enum did not include it, and the arm is closed, so no existing file can carry it. No tag change, no migration, no `api_level` gate. The decision is recorded in `docs/proposals/VERSION_BUMP_BATCH.md`.

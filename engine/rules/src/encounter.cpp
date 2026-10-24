@@ -1773,7 +1773,8 @@ std::vector<ReactionOption> reaction_options(const EncounterState& s, const Comb
     if (w.trigger == ReactionTrigger::Damaged && has_damager && w.target == r.id && s.hooks.spells) {   // 7.2zg Hellish Rebuke
         for (uint32_t id : r.spells_known) {
             const SpellDef* d = s.hooks.spells->find(id);
-            if (!d || d->casting_time != CastingTime::Reaction || d->reaction_trigger != ReactionTrigger::Damaged) continue;
+            if (!d || d->kind == SpellEffectKind::Descriptive || d->casting_time != CastingTime::Reaction ||
+                d->reaction_trigger != ReactionTrigger::Damaged) continue;
             if ((d->components & kComponentV) && !s.zones.empty() && in_silence(s, r.id)) continue;
             if (s.hooks.can_provide_components && !s.hooks.can_provide_components(s, r, *d)) continue;
             if (!sight(s, r.id, damager->id).can_see) continue;   // a creature the caster can see
@@ -2037,14 +2038,14 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
         ++ctx->depth;
         if (o.kind == ReactionOptionKind::Retaliate) {
             const SpellDef* def = spell_def(s, o.option_id);
-            if (def && o.slot_level > 0) {   // 7.2zg Hellish Rebuke: a reaction spell cast at the damager
+            if (def && def->kind != SpellEffectKind::Descriptive && o.slot_level > 0) {   // 7.2zg Hellish Rebuke: a reaction spell cast at the damager
                 spend_slot(t, o.slot_level);
                 emit(ev, EventKind::SpellCast, t.id, attacker->id, int32_t(def->id), o.slot_level);
                 const bool countered = spell_cast_window(s, *ctx, t, def->id, o.slot_level, attacker->id, ev);
                 if (!countered && !attacker->dead) resolve_effect(s, *ctx, t, *def, o.slot_level, std::vector<Combatant*>{attacker}, false, ev);
                 emit(ev, countered ? EventKind::SpellCountered : EventKind::SpellResolved, t.id, attacker->id, int32_t(def->id), o.slot_level);
                 if (!s.effects.empty()) end_on_own_action(s, t.id, kEndsOnCast, ev);
-            } else if (def)
+            } else if (def && def->kind != SpellEffectKind::Descriptive)
                 resolve_effect(s, *ctx, t, *def, 0, std::vector<Combatant*>{attacker}, true, ev);
         } else if (o.attack_index < t.attacks.size()) {
             do_attack(s, *ctx, t, *attacker, t.attacks[o.attack_index], true, ev);
@@ -3876,6 +3877,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         if (def.concentration) a.concentration_spell = def.id;
         break;
     }
+    case SpellEffectKind::Descriptive: break;   // text-only: no roll, no state, no event
     case SpellEffectKind::AcBonus: case SpellEffectKind::Counter: break;   // reactions only
     }
     return affected;
@@ -3886,6 +3888,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
 // Returns every creature any effect affected (7.2zd harmful_cast), in order, with repeats.
 std::vector<Combatant*> resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& def, uint8_t lvl,
                                       const std::vector<Combatant*>& T_in, bool within_5ft, std::vector<Event>& ev) {
+    if (def.kind == SpellEffectKind::Descriptive) return {};   // text-only: nothing to resolve
     // 7.2t: an area skips every creature with total cover from its point of origin (all effects of the spell)
     std::vector<Combatant*> T;
     for (Combatant* t : T_in)
@@ -3931,6 +3934,7 @@ bool ward_save(EncounterState& s, Combatant& a, std::size_t ward, std::vector<Ev
 // a concentration spell replaces the one already held.
 std::string_view spell_cast_resource_refusal(const EncounterState& s, const Combatant& a, const SpellDef& def,
                                              bool innate, uint8_t level) {
+    if (def.kind == SpellEffectKind::Descriptive) return "descriptive spells cannot be cast";
     const InnateSpell* inn = nullptr;
     if (innate) {
         for (const auto& is : a.innate) if (is.spell_id == def.id) inn = &is;   // last match, as cast_spell_impl
@@ -3971,6 +3975,7 @@ std::string_view spell_cast_resource_refusal(const EncounterState& s, const Comb
 
 StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def,
                            const ActionRequest& req, int meta_cost) {
+    if (def.kind == SpellEffectKind::Descriptive) return fail("descriptive spells cannot be cast");
     if (req.zone_move != 0) {   // R-G11: move the actor's zone (Moonbeam); no slot, no SpellCast window
         if (req.sustain) return fail("zone_move: not with sustain");
         const ActiveZone* z = find_zone(s, req.zone_move);
@@ -4196,6 +4201,8 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (T.size() != 1 || T[0] != &a) return fail("zone: no creature targets");
         if (req.has_zone_dest && def.zone.anchor == ZoneAnchor::Creature) return fail("zone: an aura has no destination");
         break;
+    case SpellEffectKind::Descriptive:   // text-only: refused before a target is considered (also the switch's case)
+        return fail("descriptive spells cannot be cast");
     }
     {   // 7.2zc generic mark: one marked creature other than the caster; mark_ability only for (and required by) a chosen ability
         bool marked = def.kind == SpellEffectKind::ApplyModifier && def.modifier.mark_scope != 0;
@@ -4359,6 +4366,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
 
 // R-G14: validates the per-cast options and resolves the spell as modified by them (a copy of `def`); no option = as before.
 StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def, const ActionRequest& req) {
+    if (def.kind == SpellEffectKind::Descriptive) return fail("descriptive spells cannot be cast");
     const bool any = req.metamagic != 0 || !req.spared.empty() || req.heighten_target != 0 || req.damage_choice != 0 ||
                      req.condition_choice != 0 || !def.damage_choices.empty() || !def.condition_choices.empty();
     if (!any || req.sustain || req.zone_move != 0) return cast_spell_impl(s, ctx, a, b, def, req, 0);
@@ -5694,6 +5702,7 @@ bool self_range_modifier(const SpellDef& d) {
 }
 void append_spell_targets(std::vector<ActionRequest>& out, const EncounterState& s, const Combatant& a,
                           const SpellDef& d, ActionRequest r) {
+    if (d.kind == SpellEffectKind::Descriptive) return;   // text-only: never a legal cast
     auto choices = [](ActionRequest& q, const SpellDef& def) {
         q.damage_choice = uint8_t(def.damage_choices.empty() ? 0 : 1);
         q.condition_choice = uint8_t(def.condition_choices.empty() ? 0 : 1);
@@ -5880,7 +5889,8 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (s.hooks.spells && !is_incapacitated(a) && !no_casting) {
         for (uint32_t id : a.spells_known) {
             const SpellDef* d = s.hooks.spells->find(id);
-            if (d && (d->kind == SpellEffectKind::Polymorph || d->kind == SpellEffectKind::Summon || d->kind == SpellEffectKind::SummonWeapon)) continue;   // R-G12: sim builds Polymorph requests (form choice)
+            if (d && (d->kind == SpellEffectKind::Polymorph || d->kind == SpellEffectKind::Summon ||
+                      d->kind == SpellEffectKind::SummonWeapon || d->kind == SpellEffectKind::Descriptive)) continue;   // R-G12: sim builds Polymorph requests (form choice); descriptive is never cast
             if (!d || (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction)) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !can_act) continue;
             for (uint8_t L = d->level; L <= (d->level == 0 ? 0 : 9); ++L) {
@@ -5894,7 +5904,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (s.hooks.spells && !is_incapacitated(a) && !no_casting) {   // innate spells: no slot, own level, uses left (at will / per-day / recharged)
         for (const InnateSpell& is : a.innate) {
             const SpellDef* d = s.hooks.spells->find(is.spell_id);
-            if (!d || !is.available()) continue;
+            if (!d || d->kind == SpellEffectKind::Descriptive || !is.available()) continue;
             if (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !can_act) continue;
             if (!spell_cast_resource_refusal(s, a, *d, true, d->level).empty()) continue;
@@ -6725,6 +6735,7 @@ bool spell_harmful(const SpellDef& def) {
             return true;   // damage, a saving throw, or a condition imposed (Sleep)
         case SpellEffectKind::ApplyCondition: return d.applies_condition && negative_condition(d.condition);
         case SpellEffectKind::ApplyModifier: return negative_modifier(d.modifier);
+        case SpellEffectKind::Descriptive: return false;   // text-only: not a harmful cast
         default: return false;
         }
     };

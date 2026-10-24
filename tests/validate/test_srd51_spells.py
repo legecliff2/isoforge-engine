@@ -32,6 +32,9 @@ def dice_count(d):
 AREA_FROM_TEXT = {"hypnotic-pattern": {"shape": "cube", "size_ft": 30}}
 
 
+DESCRIPTIVE = ("light", "thaumaturgy", "dancing-lights", "minor-illusion")   # §28 text-only cantrips
+
+
 class SpellTable(unittest.TestCase):
     def test_every_spell_matches_the_table(self):
         for idx, t in TABLE.items():
@@ -59,6 +62,13 @@ class SpellTable(unittest.TestCase):
                     n, unit = t["duration"].replace("Up to ", "").split()
                     self.assertEqual((du["kind"], du["amount"]), (unit.rstrip("s") + "s", int(n)))
                 eff = d["effects"][0]
+                if eff["kind"] == "descriptive":   # CONTENT_CONVENTIONS §28: text only (Light's Dex save is in the text, not modelled)
+                    self.assertIn(idx, DESCRIPTIVE)
+                    self.assertEqual(d["effects"], [{"kind": "descriptive"}])
+                    self.assertNotIn("scaling", d)
+                    self.assertNotIn("area", d)
+                    continue
+                self.assertNotIn(idx, DESCRIPTIVE)
                 zone = eff.get("zone") if eff["kind"] == "zone" else None
                 if zone is not None:   # zone spells: the save sits in the triggers, the area is the zone's shape
                     if "dc" in t:

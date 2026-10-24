@@ -3533,6 +3533,88 @@
      ]
     }
    ]
+  },
+  "acolyte": {
+   "name": "Acolyte",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    10
+   ],
+   "hp": 9,
+   "hp_roll": "2d8",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    10,
+    10,
+    10,
+    10,
+    14,
+    11
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Club",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1d4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "cult-fanatic": {
+   "name": "Cult Fanatic",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    13
+   ],
+   "hp": 22,
+   "hp_roll": "6d8-5",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    11,
+    14,
+    12,
+    10,
+    13,
+    14
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Dagger",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }

@@ -318,7 +318,11 @@ Legend for "DATA" rows: kind used in `spell@1`. "Shipped" = already in `srd51.co
 |---|---|---|
 | Acid Splash | DATA | `save` DEX, 1d6 acid, `on_success none`, `targets {count 2, max_spread_ft 5}`. |
 | Chill Touch | NEW (wiring) | Rules done (7.2u): `no_healing` marker (`ModStat::NoHealing`) checked on every hit point regain path (Heal spells, Heal request, regeneration, heal_self riders, Lay on Hands-style pools, feature heal dice, a natural-20 death save), `until_start_of_caster_turn`; undead disadvantage: AttackRoll disadvantage with `when` [`owner_creature_type` undead, `subject_is_caster`], `until_end_of_caster_next_turn`. Content (T&C) pending. |
-| Dancing Lights, Light, Mage Hand, Mending, Message, Minor Illusion, Prestidigitation, Thaumaturgy, Druidcraft, Guidance, Resistance | OOS | Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. |
+| Mage Hand, Mending, Message, Prestidigitation, Druidcraft, Guidance, Resistance | OOS | Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. |
+| Light | Descriptive | `descriptive` (CONTENT_CONVENTIONS §28): text only, never offered or cast. Deferred mechanic: `emit_light` (bright 20 / dim 20 on a touched object; Dex save if a hostile holds or wears it), with R-G13 lighting. |
+| Dancing Lights | Descriptive | `descriptive` (§28). Deferred mechanic: summoned lights (up to four movable light sources, 10-foot dim light, bonus-action move 60 feet, concentration). |
+| Minor Illusion | Descriptive | `descriptive` (§28). Deferred mechanic: an illusion (sound or 5-foot-cube image) that a creature can discern with an Investigation check vs the spell save DC. |
+| Thaumaturgy | Descriptive | `descriptive` (§28). Descriptive only: no combat mechanic is planned. |
 | Eldritch Blast | DATA | `spell_attack` with `scaling.cantrip {adds: beams}`; range 120. Agonizing Blast: R-G4. |
 | Fire Bolt | DATA | Shipped. Ignites objects: OOS. |
 | Poison Spray | DATA | `save` CON, 1d12 poison, range 10, `on_success none`. |

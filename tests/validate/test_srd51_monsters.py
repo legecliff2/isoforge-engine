@@ -22,12 +22,13 @@ CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
 # Deferred also includes tier B batch d1 (15).
-DEFERRED: list[str] = ["acolyte", "blink-dog", "cult-fanatic", "doppelganger", "duergar", "green-hag", "mimic", "mummy", "rust-monster", "cat", "crab", "poisonous-snake", "quipper", "reef-shark", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 72 / 24
+DEFERRED: list[str] = ["blink-dog", "doppelganger", "duergar", "green-hag", "mimic", "mummy", "rust-monster", "cat", "crab", "poisonous-snake", "quipper", "reef-shark", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 74 / 22
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
 DEVIATIONS = {
     "lizardfolk": "AC: the table lists 13 (natural armor) and 15 (with shield); the SRD line is 15 and the Spiked Shield attack needs the shield.",
+    "cult-fanatic": "HP: the a6212be mirror lists 22 (6d8-5), a mirror error; the SRD 5.1 block prints 33 (6d8 + 6), which Con 12 (+1 x 6 HD) gives. Authored as 33 (6d8+6) per Elf's ruling (HP_ERRATA).",
     "black-bear": "skills: the table omits Perception +3 although passive Perception is 13 (SRD block); the validator requires 10 + skill.",
     "gargoyle": "damage_resistances stays empty: the qualified resistance lives in the damage_mitigation trait effect.",
     "riding-horse": "xp: the table lists 25 XP; SRD 5.1 prints Challenge 1/4 (50 XP), and the SRD is authoritative (CR 1/4 = 50 XP).",
@@ -41,6 +42,8 @@ DEVIATIONS = {
     "mule": "Hooves to_hit: the SRD prints +2 (the table agrees); the derivation gives +4 (Str 14 +2, PB +2). Carried as an approved attack_bonus override of +2 (printed value wins).",
     "swarm-of-rats": "type: the table says 'swarm of Tiny beasts', not in the creature_type enum; convention is beast + tag swarm (T&C-G15, sim #172).",
 }
+# Mirror errors in hit points: monster -> (average, formula) as printed in the SRD 5.1 block (DEVIATIONS).
+HP_ERRATA = {"cult-fanatic": (33, "6d8+6")}
 
 QUALIFIED_RESISTANCES = ("gargoyle", "wight", "vampire-spawn", "shadow")
 
@@ -74,7 +77,12 @@ class MonsterTable(unittest.TestCase):
                 self.assertIn(d["armor_class"]["value"], t["ac"])
                 if idx != "lizardfolk":
                     self.assertEqual(d["armor_class"]["value"], t["ac"][0])
-                self.assertEqual(d["hit_points"], {"average": t["hp"], "formula": t["hp_roll"]})
+                if idx in HP_ERRATA:
+                    self.assertEqual((t["hp"], t["hp_roll"]), (22, "6d8-5"))   # the pinned mirror value stays verbatim
+                    hp, roll = HP_ERRATA[idx]
+                    self.assertEqual(d["hit_points"], {"average": hp, "formula": roll})
+                else:
+                    self.assertEqual(d["hit_points"], {"average": t["hp"], "formula": t["hp_roll"]})
                 self.assertEqual(d["challenge"]["xp"], 50 if idx == "riding-horse" else t["xp"])
                 rating = d["challenge"]["rating"]
                 self.assertEqual(CR[rating] if rating in CR else int(rating), t["cr"])
