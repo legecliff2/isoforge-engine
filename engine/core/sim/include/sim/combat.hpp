@@ -255,6 +255,11 @@ public:
     }
     // The set given to apply_surprise (combatant order), kept after the flags clear: replay input, like the seed.
     const std::vector<CombatantId>& surprised_at_start() const noexcept { return surprised_at_start_; }
+    // Headless scenarios: the end-condition policy rules checks after every later state change.
+    // An empty function restores the built-in team policy. Not applied retroactively to the
+    // begin_encounter check inside create(). A round cap belongs in the function (EndReason::Custom
+    // once round exceeds it). install_hooks() does not replace this field.
+    void set_end_condition(rules5e::EndConditionFn fn);
     // Petrifying Gaze (VERSION_BUMP_BATCH 7.2p): the gazers `viewer` can see now, in combatant order: every other living
     // creature with a gaze that is within that gaze's range_ft (footprint distance), in line of sight, not Invisible, while
     // the viewer is not Blinded. One visibility fact covers both directions (gazer sees viewer, viewer sees gazer) until
