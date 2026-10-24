@@ -38,6 +38,19 @@ std::optional<rules5e::DiceExpr> parse_dice(std::string_view s) {
 }
 
 namespace {
+
+// monster@5 action damage component (CONTENT_CONVENTIONS 17): `{flat N, type}` (exactly one of dice / flat, schema oneOf)
+// maps to DiceExpr{0, 0, N}: no dice, so no rng draw and nothing for a critical hit to double (SRD 5.1). `flat` is refused
+// below monster@5 (allow_flat false), together with dice, with bonus_vs, and outside 1..255. Absent: parse_dice as before.
+std::optional<rules5e::DiceExpr> action_damage_dice(const Json& dmg, bool allow_flat) {
+    if (auto f = dmg.find("flat"); f != dmg.end()) {
+        if (!allow_flat || dmg.contains("dice") || dmg.contains("bonus_vs") || !f->is_number_integer()) return std::nullopt;
+        const int64_t v = f->get<int64_t>();
+        if (v < 1 || v > 255) return std::nullopt;
+        return rules5e::DiceExpr{0, 0, int16_t(v)};
+    }
+    return parse_dice(dmg.value("dice", ""));
+}
 std::optional<rules5e::DamageType> damage_type(const std::string& s) {
     static const char* names[] = {"acid", "bludgeoning", "cold", "fire", "force", "lightning", "necrotic",
                                   "piercing", "poison", "psychic", "radiant", "slashing", "thunder"};
@@ -1493,7 +1506,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         const bool melee = kind == "melee_weapon_attack", ranged = kind == "ranged_weapon_attack";
         if (!melee && !ranged) continue;
         const Json& dmg = act.at("damage").at(0);
-        auto dice = parse_dice(dmg.value("dice", ""));
+        const bool allow_flat = schema_type == "monster" && (declared == 0 || declared >= 5);
+        auto dice = action_damage_dice(dmg, allow_flat);
         auto type = damage_type(dmg.value("type", ""));
         if (!dice || !type) return a.id + ": bad damage in action " + act.value("id", "?");
         strings_.push_back(act.value("id", ""));
@@ -1530,7 +1544,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
         if (multi_damage)   // components 2..n (monster@3 / character@3)
             for (std::size_t i = 1; i < act.at("damage").size(); ++i) {
                 const Json& extra = act.at("damage").at(i);
-                auto xd = parse_dice(extra.value("dice", ""));
+                auto xd = action_damage_dice(extra, allow_flat);
                 auto xt = damage_type(extra.value("type", ""));
                 if (!xd || !xt) return a.id + ": bad damage in action " + act.value("id", "?");
                 rules5e::DamagePart part{*xd, *xt};
