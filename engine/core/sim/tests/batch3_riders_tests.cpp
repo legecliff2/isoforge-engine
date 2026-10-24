@@ -675,3 +675,91 @@ TEST_CASE("Strength Drain: a rest with nothing reduced changes no score") {
     rules5e::restore_ability_reduction(k);
     CHECK(k.abilities.score == before.score);
 }
+
+// ---- Lich rulings on Strength Drain (attack recompute, forms, revival) ----
+namespace {
+const rules5e::Attack* find_attack(const rules5e::Combatant& k, int8_t code, std::size_t* idx) {
+    for (std::size_t i = 0; i < k.attacks.size(); ++i)
+        if (k.attacks[i].ability_used == code && k.attacks[i].damage_ability_used < 0) { *idx = i; return &k.attacks[i]; }
+    return nullptr;
+}
+}  // namespace
+
+TEST_CASE("Strength Drain ruling 1: a drained Str attack's to-hit and damage both drop by the modifier change") {
+    auto lib = lib_str(16);
+    auto ch = arena({{"t.shadow", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 7);
+    REQUIRE(c);
+    const CombatantId f = ch.spawns[1].stable_id;
+    rules5e::EncounterState s = c->state();
+    rules5e::Combatant* k = const_cast<rules5e::Combatant*>(rules5e::find(s, f));
+    std::size_t i = 0;
+    const rules5e::Attack* lsw = find_attack(*k, int8_t(rules5e::Ability::Str), &i);
+    REQUIRE(lsw);
+    const auto undrained = rules5e::effective_attack(s, f, i);
+    k->abilities.score[0] = 12;   // 16 -> 12: modifier +3 -> +1
+    k->ability_reduction[0] = 4;
+    const auto drained = rules5e::effective_attack(s, f, i);
+    CHECK(int(drained.to_hit) == int(undrained.to_hit) - 2);
+    CHECK(int(drained.damage.bonus) == int(undrained.damage.bonus) - 2);
+    // a Str save uses the effective score
+    CHECK(rules5e::modifier(k->abilities.score[0]) == 1);
+}
+
+TEST_CASE("Strength Drain ruling 1: a finesse attack switches to Dex once drained Str falls below it") {
+    Json m = creature("t.fencer");
+    m["abilities"]["str"] = 18;   // +4
+    m["abilities"]["dex"] = 14;   // +2
+    m["actions"][0]["properties"] = Json::array({"finesse"});
+    auto lib = lib_with({m});
+    auto ch = arena({{"t.fencer", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 7);
+    REQUIRE(c);
+    const CombatantId a = ch.spawns[0].stable_id;
+    rules5e::EncounterState s = c->state();
+    rules5e::Combatant* k = const_cast<rules5e::Combatant*>(rules5e::find(s, a));
+    REQUIRE(k->attacks.at(0).ability_used == rules5e::kAttackAbilityFinesse);
+    const auto base = rules5e::effective_attack(s, a, 0);
+    k->abilities.score[0] = 16; k->ability_reduction[0] = 2;   // +3: still above Dex
+    CHECK(int(rules5e::effective_attack(s, a, 0).to_hit) == int(base.to_hit) - 1);
+    k->abilities.score[0] = 10; k->ability_reduction[0] = 8;   // +0: Dex (+2) is now better
+    const auto fin = rules5e::effective_attack(s, a, 0);
+    CHECK(int(fin.to_hit) == int(base.to_hit) - 2);
+    CHECK(int(fin.damage.bonus) == int(base.damage.bonus) - 2);
+}
+
+TEST_CASE("Strength Drain ruling 2: a drain on a polymorph / wild-shape form is lost on revert; the true form keeps its own") {
+    for (auto kind : {rules5e::FormKind::Polymorph, rules5e::FormKind::WildShape}) {
+        rules5e::Combatant k{};
+        k.abilities.score = {14, 12, 12, 10, 10, 10};
+        k.ability_reduction[0] = 2;   // the true form was drained first: true Str 16, effective 14
+        k.hp = k.hp_max = 20;
+        rules5e::FormStats form{};
+        form.abilities.score = {18, 10, 12, 2, 10, 4};
+        form.hp_max = 30;
+        REQUIRE(rules5e::apply_form(k, kind, form));
+        CHECK(k.ability_reduction[0] == 0);   // the form starts unreduced
+        k.abilities.score[0] = 15; k.ability_reduction[0] = 3;   // the form is drained
+        REQUIRE(rules5e::revert_form(k));
+        CHECK(k.abilities.score[0] == 14);    // the form's drain is gone with the form
+        CHECK(k.ability_reduction[0] == 2);   // the true form's own reduction is back
+    }
+}
+
+TEST_CASE("Strength Drain ruling 4 (pinned current behaviour): revival does not clear the reduction (DEFERRED: revived at Str 0)") {
+    auto lib = lib_str(1);
+    auto ch = arena({{"t.shadow", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 7);
+    REQUIRE(c);
+    const CombatantId a = ch.spawns[0].stable_id, f = ch.spawns[1].stable_id;
+    REQUIRE(shadow_hits(*c, a, f));
+    rules5e::Combatant k = who(*c, f);
+    REQUIRE(k.dead);
+    k.dead = false;   // a revival (no rules-level raise exists yet): clear death and restore hit points
+    k.hp = 1;
+    CHECK(k.abilities.score[0] == 0);       // still Strength 0: the reduction is not cleared by coming back
+    CHECK(k.ability_reduction[0] == 1);
+}

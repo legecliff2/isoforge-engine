@@ -122,7 +122,16 @@ struct Attack {
     // reduces its Strength to 0. Otherwise, the reduction lasts until the target finishes a short or long rest."): on a hit,
     // after the damage, when count > 0 (strength_drain). Static content: not hashed (the reduction itself folds in 0xDF).
     DiceExpr strength_drain{0, 0, 0};
+    // appended (Lich ruling on Strength Drain): the ability this attack's authored to_hit / damage were built with, so the
+    // modifier change of a reduced score applies when the attack is used (attack_drain_delta; 0 while nothing is reduced):
+    // 0..5 an Ability, kAttackAbilityFinesse the better of Str / Dex, kAttackAbilityNone no ability (no change), -1 not set
+    // (code-built attacks: finesse -> the better of, ranged -> Dex, else Str). damage_ability_used: the same for the damage
+    // bonus (-1 = as ability_used). Content-derived: not hashed.
+    int8_t ability_used = -1;
+    int8_t damage_ability_used = -1;
 };
+inline constexpr int8_t kAttackAbilityFinesse = 6;
+inline constexpr int8_t kAttackAbilityNone = 7;
 inline constexpr uint8_t kTargetGateWilling = 1, kTargetGateGrappledBySelf = 2, kTargetGateIncapacitated = 4,
                          kTargetGateRestrained = 8;
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
@@ -703,7 +712,8 @@ struct Combatant {
     bool heal_bonus_per_level = false;
     // appended (batch 3, shadow Strength Drain; sim Combat::hash 0xDF while any is non-zero): how much each score in `abilities`
     // is currently reduced by. `abilities` holds the EFFECTIVE score (every check, save, modifier and Str requirement reads it);
-    // the unreduced score is abilities + ability_reduction. Saturates at 127. A short or long rest restores it (rest.cpp).
+    // the unreduced score is abilities + ability_reduction. Saturates at 127 (Lich ruling: kept; an int8_t score can never be
+    // reduced by more than 127, see the static_assert in encounter.cpp). A short or long rest restores it (rest.cpp).
     std::array<uint8_t, 6> ability_reduction{};
 };
 

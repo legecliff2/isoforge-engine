@@ -1656,6 +1656,44 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             if (!d || d->count < 1) return a.id + ": action " + aid + ": ability_drain: bad dice";
             at.strength_drain = *d;
         }
+        // Strength Drain (Lich ruling): the ability the authored to_hit / damage use, read when the attack is used while a score is
+        // reduced (rules5e attack_drain_delta; no effect otherwise). monster@5 `natural.ability` / `damage_ability` when given; a
+        // finesse weapon (action `properties`, or the item / weapons[] entry `weapon` names) is the better of Str / Dex; else the
+        // ability whose modifier + proficiency bonus is the printed to_hit (Str on a tie), none when neither is.
+        {
+            auto has_finesse = [](const Json* j) {
+                if (!j) return false;
+                if (auto ps = j->find("properties"); ps != j->end() && ps->is_array())
+                    for (const Json& pn : *ps) if (pn.is_string() && pn.get<std::string>() == "finesse") return true;
+                return false;
+            };
+            bool fin = has_finesse(&act);
+            if (auto wr = act.find("weapon"); !fin && wr != act.end() && wr->is_string()) {
+                const std::string wid = wr->get<std::string>();
+                if (!wid.empty() && wid[0] == '#') {
+                    for (const Json& w : doc.value("weapons", Json::array()))
+                        if (w.is_object() && "#" + w.value("id", "") == wid) fin = fin || has_finesse(&w);
+                } else if (const auto* item = items_ ? items_->find(wid) : nullptr; item && rules5e::is_weapon(*item)) {
+                    fin = (item->weapon.properties & rules5e::kWeaponFinesse) != 0;
+                }
+            }
+            auto code_of = [](const std::string& n) -> int8_t {
+                return n == "str" ? int8_t(rules5e::Ability::Str) : n == "dex" ? int8_t(rules5e::Ability::Dex)
+                     : n == "none" ? rules5e::kAttackAbilityNone : int8_t(-1);
+            };
+            if (auto nat = act.find("natural"); nat != act.end() && nat->is_object()) {
+                at.ability_used = code_of(nat->value("ability", ""));
+                if (nat->contains("damage_ability")) at.damage_ability_used = code_of(nat->value("damage_ability", ""));
+            } else if (fin) {
+                at.ability_used = rules5e::kAttackAbilityFinesse;
+            } else {
+                const int pb = c.proficiency_bonus;
+                const bool s = at.to_hit == rules5e::modifier(c.abilities, rules5e::Ability::Str) + pb;
+                const bool d = at.to_hit == rules5e::modifier(c.abilities, rules5e::Ability::Dex) + pb;
+                at.ability_used = s ? int8_t(rules5e::Ability::Str) : d ? int8_t(rules5e::Ability::Dex) : rules5e::kAttackAbilityNone;
+            }
+            if (at.ability_used < 0) at.ability_used = rules5e::kAttackAbilityNone;
+        }
         // R-G7: only the grip bits Great Weapon Fighting reads (two_handed, versatile) are carried; other properties (loading,
         // heavy, finesse, ...) stay off so existing behaviour and goldens do not move.
         if (auto ps = act.find("properties"); ps != act.end() && ps->is_array())
