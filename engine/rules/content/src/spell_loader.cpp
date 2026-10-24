@@ -1351,6 +1351,10 @@ SpellLoad spell_from_json(const Json& j) {
                     s.excluded_types |= bit(ct2);
                 }
             }
+        } else if (kind == "descriptive") {   // text-only: no other keys, and (checked by the caller) the spell's only effect
+            s.kind = SpellEffectKind::Descriptive;
+            std::string bad;
+            if (!only_keys(e, {"kind"}, bad)) return ("descriptive effect: unknown key '" + bad + "'");
         } else return ("effect kind invalid");
         return "";
     };
@@ -1358,9 +1362,15 @@ SpellLoad spell_from_json(const Json& j) {
     std::string kind;
     if (auto m = parse_effect(j["effects"][0], s, kind); !m.empty()) return err(m);
     // Effects 2..n: parsed into a scratch SpellDef, then copied into SpellEffect. Reaction kinds stand alone.
+    // A descriptive effect is the whole spell: empty effects stay "effects missing" (minItems 1), and mixing either
+    // order with another effect is refused before the extra effect is parsed.
     const std::size_t n_effects = j["effects"].size();
+    if (s.kind == SpellEffectKind::Descriptive && n_effects != 1)
+        return err("descriptive effect must be the spell's only effect");
     for (std::size_t i = 1; i < n_effects; ++i) {
         const Json& xe = j["effects"][i];
+        if (xe.is_object() && xe.value("kind", "") == "descriptive")
+            return err("descriptive effect must be the spell's only effect");
         if (xe.is_object() && xe.value("kind", "") == "polymorph") return err("polymorph: primary effect only");
         if (xe.is_object() && xe.value("kind", "") == "zone")   // the cast refuses an extra effect of kind Zone
             return err("zone must be the primary effect (effects[" + std::to_string(i) + "] is a zone)");

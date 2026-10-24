@@ -1208,3 +1208,49 @@ TEST_CASE("loader 7.2zi: stabilize, chosen-target advantage, bonus Dash, poison 
     j["effects"][0]["modifier"].erase("applies_to");
     bad(j, "effect save_vs_conditions needs a save modifier with a mode");
 }
+
+TEST_CASE("loader: a bare descriptive effect loads, and extra keys, a mix, or an empty list are refused") {
+    auto doc = eng::assets::Json::parse(R"({
+        "$schema": "spell@1",
+        "id": "test.spell.light",
+        "level": 0,
+        "casting_time": {"kind": "action"},
+        "range": {"kind": "touch"},
+        "components": {"v": true},
+        "duration": {"kind": "instantaneous"},
+        "effects": [{"kind": "descriptive"}]
+    })");
+    auto ok = spell_from_json(doc);
+    INFO(ok.error);
+    REQUIRE(ok.def);
+    CHECK(ok.def->kind == SpellEffectKind::Descriptive);
+    CHECK(ok.def->content_id == "test.spell.light");
+    CHECK(ok.def->level == 0);
+    CHECK(ok.def->extra_effects.empty());
+    CHECK(uint8_t(SpellEffectKind::Stabilize) == 26);
+    CHECK(uint8_t(SpellEffectKind::Descriptive) == 27);
+
+    auto bad = [](eng::assets::Json x, const std::string& want) {
+        auto q = spell_from_json(x);
+        INFO(want); INFO(q.error);
+        CHECK_FALSE(q.def);
+        CHECK(q.error == want);
+    };
+    auto extra = doc;
+    extra["effects"][0]["description"] = "sheds light";
+    bad(extra, "descriptive effect: unknown key 'description'");
+    extra = doc;
+    extra["effects"][0]["damage"] = {{"dice", "1d6"}, {"type", "fire"}};
+    bad(extra, "descriptive effect: unknown key 'damage'");
+
+    auto mixed = doc;
+    mixed["effects"] = eng::assets::Json::array({doc["effects"][0], {{"kind", "heal"}, {"dice", "1d4"}}});
+    bad(mixed, "descriptive effect must be the spell's only effect");
+    mixed = doc;
+    mixed["effects"] = eng::assets::Json::array({{{"kind", "heal"}, {"dice", "1d4"}}, doc["effects"][0]});
+    bad(mixed, "descriptive effect must be the spell's only effect");
+
+    auto empty = doc;
+    empty["effects"] = eng::assets::Json::array();
+    bad(empty, "effects missing");
+}
