@@ -1024,7 +1024,9 @@ void end_grapple_pair(EncounterState& s, CombatantId x, CombatantId y, std::vect
         const SourcedCondition& e = s.sourced[i];
         if (e.condition == Condition::Grappled && ((e.source == x && e.target == y) || (e.source == y && e.target == x))) {
             freed.push_back(e.target);
+            const SourcedCondition gone = e;
             s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i));
+            release_grapple_restraint(s, gone, ev);
         } else ++i;
     }
     for (CombatantId id : freed) {
@@ -2518,10 +2520,10 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
 bool leaving_reach_window(EncounterState& s, Ctx& ctx, Combatant& mover, std::vector<Event>& ev) {
     ReactionWindow w = new_window(s, ctx, ReactionTrigger::LeavingReach, mover.id);
     if (!may_open(s, w) || mover.disengaged) return true;
-    auto options_for = [](const Combatant& r) {
+    auto options_for = [&s, &mover](const Combatant& r) {
         std::vector<ReactionOption> opts;
         for (uint8_t i = 0; i < r.attacks.size(); ++i)
-            if (!r.attacks[i].ranged) opts.push_back({i, ReactionOptionKind::Attack});
+            if (!r.attacks[i].ranged && !attack_locked(s, r.id, i, mover.id)) opts.push_back({i, ReactionOptionKind::Attack});
         return opts;
     };
     auto eligible = [&](const Combatant& r) {
@@ -4905,9 +4907,11 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
         if (free) {
             const CombatantId src = has_held ? held.source : 0;
             for (std::size_t i = 0; i < s.sourced.size();) {
-                if (s.sourced[i].condition == Condition::Grappled && s.sourced[i].target == a.id && (src == 0 || s.sourced[i].source == src))
+                if (s.sourced[i].condition == Condition::Grappled && s.sourced[i].target == a.id && (src == 0 || s.sourced[i].source == src)) {
+                    const SourcedCondition gone = s.sourced[i];
                     s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i));
-                else ++i;
+                    release_grapple_restraint(s, gone, ev);
+                } else ++i;
             }
             bool still = false;
             for (const auto& e : s.sourced) still = still || (e.condition == Condition::Grappled && e.target == a.id);
@@ -5497,6 +5501,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         }
         if (req.attack_index >= a.attacks.size()) return fail("bad attack index");
         if (const auto why = target_gate_refusal(s, a, *t, a.attacks[req.attack_index], req.target_willing); !why.empty()) return fail(why);
+        if (attack_locked(s, a.id, req.attack_index, t->id)) return fail("that attack holds a grappled creature: it can't attack another target");
         if (s.hooks.loadout_of) {   // EQUIPMENT.md 3: hands / ammunition (only creatures with a loadout view)
             const std::string_view why = attack_refusal(s, a.id, req.attack_index);
             if (!why.empty()) return fail(why);
@@ -5781,18 +5786,19 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             if (const int next = multiattack_next(a.multiattacks, b.sequence, b.sequence_pos); next >= 0) {   // multiattack in progress: only the next declared attack
                 ActionRequest r{a.id, ActionKind::Attack, t.id, uint8_t(next)};
                 r.multiattack = b.sequence;
-                out.push_back(r);
+                if (!attack_locked(s, a.id, r.attack_index, t.id)) out.push_back(r);
                 continue;
             }
             for (uint8_t i = 0; i < a.attacks.size(); ++i) {
                 if (!can_act && i < 32 && has_property(a.attacks[i], kWeaponLoading) && (b.loading_fired >> i & 1)) continue;
+                if (attack_locked(s, a.id, i, t.id)) continue;   // Druid gap G: "can't bite another target"
                 ActionRequest r{a.id, ActionKind::Attack, t.id, i};
                 out.push_back(r);
             }
             if (can_act)   // start any declared multiattack (needs a fresh action)
                 for (std::size_t k = 0; k < a.multiattacks.size(); ++k) {
                     const auto& seq = a.multiattacks[k].attacks;
-                    if (seq.empty() || a.multiattacks[k].after_action != 0) continue;
+                    if (seq.empty() || a.multiattacks[k].after_action != 0 || attack_locked(s, a.id, seq[0], t.id)) continue;
                     ActionRequest r{a.id, ActionKind::Attack, t.id, seq[0]};
                     r.multiattack = uint8_t(k + 1);
                     out.push_back(r);
@@ -6382,20 +6388,71 @@ std::vector<CombatantId> grappled_by(const EncounterState& s, CombatantId g) {
 void prune_sourced(EncounterState& s, std::vector<Event>& ev) {
     if (s.sourced.empty()) return;
     std::vector<CombatantId> ended;   // grapple targets whose holder let go
+    std::vector<SourcedCondition> released;   // Druid gap G: dropped grapples (an owned Restrained goes with them)
     for (std::size_t i = 0; i < s.sourced.size();) {
         const SourcedCondition e = s.sourced[i];
         const Combatant* t = find(s, e.target);
         const Combatant* src = find(s, e.source);
         bool drop = !t || t->dead || !t->has(e.condition);
         if (!drop && e.condition == Condition::Grappled && (!src || src->dead || is_incapacitated(*src))) { drop = true; ended.push_back(e.target); }
-        if (drop) s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i)); else ++i;
+        if (drop) {
+            s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i));
+            if (e.condition == Condition::Grappled) released.push_back(e);
+        } else ++i;
     }
+    for (const SourcedCondition& e : released) release_grapple_restraint(s, e, ev);
     for (CombatantId id : ended) {
         bool still = false;
         for (const auto& e : s.sourced) still = still || (e.condition == Condition::Grappled && e.target == id);
         Combatant* t = find_mut(s, id);
         if (!still && t && t->has(Condition::Grappled)) { remove_condition(*t, Condition::Grappled); emit(ev, EventKind::ConditionRemoved, id, 0, int32_t(Condition::Grappled)); }
     }
+}
+
+bool grapple(EncounterState& s, CombatantId grappler, CombatantId target, const GrappleRider& g, uint8_t attack_index, std::vector<Event>& ev) {
+    if (!g.extended()) return grapple(s, grappler, target, g.escape_dc, ev);
+    if (g.max_grapples != 0) {   // giant crab: each claw can grapple only one target; a hit past the limit only deals damage
+        int held = 0;
+        for (const auto& e : s.sourced)
+            if (e.condition == Condition::Grappled && e.source == grappler && e.via_attack == attack_index && e.target != target) ++held;
+        if (held >= g.max_grapples) return false;
+    }
+    if (!apply_sourced_condition(s, grappler, target, Condition::Grappled, g.escape_dc, ev)) return false;
+    SourcedCondition* mine = nullptr;
+    for (auto& e : s.sourced)
+        if (e.condition == Condition::Grappled && e.target == target && e.source == grappler) mine = &e;
+    if (!mine) return true;
+    mine->via_attack = attack_index;
+    mine->exclusive = mine->exclusive || g.exclusive;
+    if (g.restrains && !mine->restrains) {
+        mine->restrains = true;
+        Combatant* t = find_mut(s, target);
+        if (t && !t->has(Condition::Restrained) && !immune_to(s, *t, Condition::Restrained) && !immune_from(s, *t, Condition::Restrained, grappler)) {
+            add_condition(*t, Condition::Restrained);   // owned, like Swallow's blindness: only if it was not already there
+            emit(ev, EventKind::ConditionAdded, target, 0, int32_t(Condition::Restrained));
+            mine->owns_restrained = true;
+        }
+    }
+    return true;
+}
+
+bool attack_locked(const EncounterState& s, CombatantId actor, uint8_t attack_index, CombatantId target) {
+    for (const auto& e : s.sourced)
+        if (e.condition == Condition::Grappled && e.exclusive && e.source == actor && e.via_attack == attack_index && e.target != target)
+            return true;
+    return false;
+}
+
+void release_grapple_restraint(EncounterState& s, const SourcedCondition& ended, std::vector<Event>& ev) {
+    if (ended.condition != Condition::Grappled || !ended.owns_restrained) return;
+    for (auto& e : s.sourced)
+        if (e.condition == Condition::Grappled && e.target == ended.target && e.restrains) { e.owns_restrained = true; return; }
+    for (const auto& e : s.effects)   // another live restraint (Web, a Swallow's contain, Entangle) keeps the condition
+        if (e.target == ended.target && e.condition == Condition::Restrained) return;
+    Combatant* t = find_mut(s, ended.target);
+    if (!t || !t->has(Condition::Restrained)) return;
+    remove_condition(*t, Condition::Restrained);
+    emit(ev, EventKind::ConditionRemoved, ended.target, 0, int32_t(Condition::Restrained));
 }
 
 bool has_sourced_conditions(const EncounterState& s) { return !s.sourced.empty(); }

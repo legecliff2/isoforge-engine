@@ -1,6 +1,8 @@
 #include "slice_view.hpp"
 
 #include "equip_visuals.hpp"
+#include "footprint_visuals.hpp"
+#include "iso2d/zone_look.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -292,11 +294,9 @@ Vec2f SliceView::actors_focus_px(const ViewModel& vm) const {
     if (vm.actors.empty()) return tile_center_px(15.5f, 15.5f);
     float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f;
     for (const ActorView& a : vm.actors) {
-        const Vec2f c = tile_center_px(float(a.tile.x), float(a.tile.y));
-        x0 = std::min(x0, c.x - kTileW / 2.f);
-        x1 = std::max(x1, c.x + kTileW / 2.f);
-        y0 = std::min(y0, c.y - float(kPawnH));     // head + HP bar sit above the tile
-        y1 = std::max(y1, c.y + kTileH / 2.f);
+        const FootprintGeom fp = footprint_geom(a.tile, a.footprint, float(kTileW), float(kTileH));
+        const Vec2f c = tile_center_px(fp.centre_iso.x, fp.centre_iso.y);
+        include_actor_bounds(x0, y0, x1, y1, c, fp, float(kPawnH));
     }
     return {(x0 + x1) * 0.5f, (y0 + y1) * 0.5f};
 }
@@ -335,9 +335,16 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
     const LightView& L = vm.light;
     TintLookup tint(*this, L, tint_entries_);
     auto visible = [&](const ActorView& a) {
-        iso2d::Fog f;
-        tint(a.tile, &f);
-        return f == iso2d::Fog::Visible || (L.fog && a.team == L.fog_team);   // never draw what the shown team can't see
+        // Any footprint tile the shown team can see (or their own team) keeps the token.
+        // Side 1 checks the anchor once, the same tile as before.
+        const int n = footprint_side(a.footprint);
+        for (int y = 0; y < n; ++y)
+            for (int x = 0; x < n; ++x) {
+                iso2d::Fog f;
+                tint({a.tile.x + x, a.tile.y + y}, &f);
+                if (f == iso2d::Fog::Visible || (L.fog && a.team == L.fog_team)) return true;
+            }
+        return false;
     };
 
     // ---- world: tiles ----
@@ -361,21 +368,39 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
             world_.draw(s, iso, 0, key, t.layer);
         }
     }
-    // Soft haze on heavily obscured Visible tiles (Fog / Stinking Cloud bits). Tint already cools;
-    // this is a light second pass only — no FoW invention, no zone fill.
-    if (L.present) {
+    // Persistent spell zones, then the generic heavy-obscurement haze for a tile no known heavy
+    // look covers. Same depth slot as the old haze: layer 0, entity key = tile.y * 32 + tile.x, z = 1.
+    // Non-visible tiles stay bare (no current zone, no invented fog of war).
+    if (!vm.zones.empty() || L.present) {
         for (const TileView& t : vm.tiles) {
             if (t.kind == TileKind::Wall || t.layer >= 2) continue;
-            iso2d::Fog f;
+            iso2d::Fog f = iso2d::Fog::Visible;
             uint8_t packed = 0;
-            tint(t.tile, &f, &packed);
-            if (f != iso2d::Fog::Visible || (packed & iso2d::light_bits::kObscuredHeavy) == 0) continue;
+            if (L.present) tint(t.tile, &f, &packed);
+            if (f != iso2d::Fog::Visible) continue;
             const Vec2f iso{float(t.tile.x), float(t.tile.y)};
             const float lift = float(t.elevation * kElevPx);
             const uint32_t key = uint32_t(t.tile.y * 32 + t.tile.x);
-            iso2d::Sprite haze{tex_->ground(t.kind), float(kTileW), float(kTileH), kTileW / 2.f, lift};
-            haze.tint = {0.55f, 0.65f, 0.90f, 0.30f};
-            world_.draw(haze, iso, 0, key, 1);
+            bool heavy_look = false;
+            for (const ZoneOverlayView& z : vm.zones) {
+                if (std::find(z.tiles.begin(), z.tiles.end(), t.tile) == z.tiles.end()) continue;
+                const iso2d::ZoneLook* look = iso2d::zone_look_for(z.content_id);
+                if (!look) continue;
+                iso2d::Sprite fill{tex_->ground(t.kind), float(kTileW), float(kTileH), kTileW / 2.f, lift};
+                fill.tint = iso2d::zone_fill_tint(*look, t.tile.x, t.tile.y, vm.anim_phase);
+                world_.draw(fill, iso, iso2d::kZoneOverlayLayer, key, iso2d::kZoneOverlayZ);
+                if (iso2d::zone_tile_is_edge(z.tiles, t.tile) && iso2d::zone_draws_edge(*look, t.tile)) {
+                    iso2d::Sprite rim{tex_->ring, float(kTileW), float(kTileH), kTileW / 2.f, lift};
+                    rim.tint = iso2d::zone_edge_tint(*look, t.tile.x, t.tile.y);
+                    world_.draw(rim, iso, iso2d::kZoneOverlayLayer, key, iso2d::kZoneOverlayZ);
+                }
+                if (look->obscure == iso2d::ZoneObscure::Heavy) heavy_look = true;
+            }
+            if (L.present && !heavy_look && (packed & iso2d::light_bits::kObscuredHeavy) != 0) {
+                iso2d::Sprite haze{tex_->ground(t.kind), float(kTileW), float(kTileH), kTileW / 2.f, lift};
+                haze.tint = {0.55f, 0.65f, 0.90f, 0.30f};
+                world_.draw(haze, iso, iso2d::kZoneOverlayLayer, key, iso2d::kZoneOverlayZ);
+            }
         }
     }
     // ---- world: actors (placeholder pawns), current-turn ring ----
@@ -391,7 +416,10 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         glows_from(L, palette_, glows);
         std::vector<iso2d::GlowAnchor>& anchors = anchors_;
         anchors.clear();
-        for (const ActorView& a : vm.actors) anchors.push_back({a.id, {float(a.tile.x), float(a.tile.y)}});
+        for (const ActorView& a : vm.actors) {
+            const FootprintGeom fp = footprint_geom(a.tile, a.footprint, float(kTileW), float(kTileH));
+            anchors.push_back({a.id, fp.centre_iso});   // side 1: the anchor tile, as before
+        }
         iso2d::follow_anchors(glows, anchors);
         for (const iso2d::GlowSource& gs : glows) {
             iso2d::Fog gf;
@@ -402,37 +430,63 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
             const float k = std::clamp(gs.radius_tiles / 4.f, 1.f, kGlowMaxScale);
             iso2d::Sprite g{tex_->ring, kTileW * k, kTileH * k, kTileW * k / 2.f, kTileH * (k - 1.f) / 2.f};
             g.tint = iso2d::glow_tint(gs);
-            world_.draw(g, gs.tile, 0, gs.key, 8);
+            // Entity halos sit on the footprint centre but sort as the front tile, so the creature's
+            // own front floors (same layer) do not cover them. Side 1: bias 0, iso is the tile.
+            Vec2f glow_iso = gs.tile;
+            if (gs.anchor == iso2d::GlowAnchorKind::Entity)
+                for (const ActorView& a : vm.actors)
+                    if (a.id == gs.anchor_id) {
+                        const FootprintGeom fp = footprint_geom(a.tile, a.footprint, float(kTileW), float(kTileH));
+                        glow_iso = fp.sort_iso;
+                        g.anchor_y += fp.centre_anchor_y;
+                        break;
+                    }
+            world_.draw(g, glow_iso, 0, gs.key, 8);
         }
     }
     for (const ActorView& a : vm.actors) {
         if (!visible(a)) continue;
-        const Vec2f iso{float(a.tile.x), float(a.tile.y)};
-        if (a.current) {
-            iso2d::Sprite r{tex_->ring, float(kTileW), float(kTileH), kTileW / 2.f, 0};
-            r.tint = Color::rgba8(255, 220, 60);
-            world_.draw(r, iso, 0, a.id, 9);
-        }
+        // Drawn on the front tile; centre_anchor_y slides art up onto the footprint centre.
+        // Ground rings sort there too. The volume sorts at centre_iso (the 1x1 reference).
+        // Side 1: the two points are the tile and the slide is 0, so the draw matches before.
+        const FootprintGeom fp = footprint_geom(a.tile, a.footprint, float(kTileW), float(kTileH));
+        const Vec2f iso = fp.sort_iso;
+        const Vec2f actor_sort = actor_sort_iso(fp);
+        auto footprint_ring = [&](Color c, int32_t layer, int32_t z, Vec2f sort) {
+            iso2d::Sprite r{tex_->ring, fp.ring_w, fp.ring_h, fp.ring_anchor_x, fp.ring_anchor_y};
+            r.tint = c;
+            world_.draw(r, iso, sort, layer, a.id, z);
+        };
+        // Current-turn selection, or a dim base ring for a multi-tile creature that is not
+        // selected. Either one covers the whole NxN diamond. A 1x1 that is not current draws none.
+        if (a.current) footprint_ring(Color::rgba8(255, 220, 60), 0, 9, iso);
+        else if (fp.n > 1) footprint_ring(Color::rgba8(236, 238, 244, 180), 0, 9, iso);
         // Unseen target: a small slate-cyan diamond on the ground. It is not the full-tile current-turn
         // ring (gold, z 9) and not a Faerie Fire outline (full-tile purple on the actor). Alpha stays
         // well above the Invisible ghost (~0.38): this is a mark, not a fade of the token.
         if (!a.seen_by_viewer) {
             constexpr float k = 0.62f;
-            iso2d::Sprite u{tex_->ring, float(kTileW) * k, float(kTileH) * k, kTileW * k / 2.f, 0};
+            float w = float(kTileW) * k, h = float(kTileH) * k, ax = kTileW * k / 2.f, ay = 0.f;
+            place_on_footprint(w, h, ax, ay, fp, false);
+            iso2d::Sprite u{tex_->ring, w, h, ax, ay};
             u.tint = Color::rgba8(64, 176, 196, 220);
             world_.draw(u, iso, 0, a.id, 4);
         }
         // Unseen attacker: a coral pip beside the head. They can affect the viewer while the viewer
         // cannot see them. A pip, not a ring, so it does not stack with the outline above.
         if (a.unseen_attacker) {
-            iso2d::Sprite pip{tex_->white, 5.f, 9.f, -8.f, 26.f};
+            float w = 5.f, h = 9.f, ax = -8.f, ay = 26.f;
+            place_on_footprint(w, h, ax, ay, fp, true);
+            iso2d::Sprite pip{tex_->white, w, h, ax, ay};
             pip.tint = Color::rgba8(232, 84, 58, 235);
-            world_.draw(pip, iso, 1, a.id, 9);
+            world_.draw(pip, iso, actor_sort, 1, a.id, 9);
         }
-        // Pawn feet at the tile centre; drawn on the wall layer so walls in front occlude it.
-        iso2d::Sprite p{tex_->pawn, float(kPawnW), float(kPawnH), kPawnW / 2.f, float(kPawnH) - kTileH / 2.f - 4.f};
+        // Pawn feet at the footprint centre; drawn on the wall layer so walls in front occlude it.
+        float pw = float(kPawnW), ph = float(kPawnH), pax = kPawnW / 2.f, pay = float(kPawnH) - kTileH / 2.f - 4.f;
+        place_on_footprint(pw, ph, pax, pay, fp, true);
+        iso2d::Sprite p{tex_->pawn, pw, ph, pax, pay};
         iso2d::Fog af;
-        const Color at = tint(a.tile, &af);
+        const Color at = tint(fp.centre_tile, &af);
         // Own-team tokens in remembered/unseen tiles still draw, lit as Dark (presentation).
         p.tint = mul(tint_for(a), af == iso2d::Fog::Visible ? at : iso2d::light_tint(0, iso2d::Fog::Visible));
         if (L.present) p.tint = mul(p.tint, {1.6f, 1.6f, 1.6f, 1.f});   // tokens stay readable in dim light (presentation)
@@ -440,28 +494,25 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         if (L.present) lit_by = mul(lit_by, {1.6f, 1.6f, 1.6f, 1.f});
         if (a.invisible && !a.dead) lit_by.a *= 0.38f;   // ghost equipment with the body
         if (a.equipment.empty()) {
-            world_.draw(p, iso, 1, a.id, kZBody);
+            world_.draw(p, iso, actor_sort, 1, a.id, kZBody);
         } else {
             // Equipment layers (equip_visuals.hpp): fixed z around the body inside the actor's sort key.
             for (const EquipLayer& l : equip_layers(a)) {
-                if (l.part == EquipPart::Body) { world_.draw(p, iso, 1, a.id, kZBody); continue; }
+                if (l.part == EquipPart::Body) { world_.draw(p, iso, actor_sort, 1, a.id, kZBody); continue; }
                 for (const EquipQuad& q : equip_quads(*l.item, l.part, l.at)) {
-                    iso2d::Sprite s{tex_->white, q.size.x, q.size.y, 0, 0};
-                    s.anchor_x = q.size.x / 2.f   // bottom-centre on the token anchor + q.at (screen px)
-                                  - q.at.x;
-                    s.anchor_y = q.size.y - q.at.y;
+                    float w = q.size.x, h = q.size.y, ax = q.size.x / 2.f - q.at.x, ay = q.size.y - q.at.y;
+                    place_on_footprint(w, h, ax, ay, fp, true);   // bottom-centre on the token anchor + q.at
+                    iso2d::Sprite s{tex_->white, w, h, ax, ay};
                     s.tint = q.emissive ? q.color : mul(q.color, lit_by);
                     if (a.invisible && !a.dead && q.emissive) s.tint.a *= 0.38f;
-                    world_.draw(s, iso, 1, a.id, l.z);
+                    world_.draw(s, iso, actor_sort, 1, a.id, l.z);
                 }
             }
         }
         // Faerie Fire outline: after body / equip so the ring sits on top of the token.
-        if (a.outlined && !a.dead) {
-            iso2d::Sprite o{tex_->ring, float(kTileW), float(kTileH), kTileW / 2.f, 0};
-            o.tint = Color::rgba8(200, 120, 255, a.invisible ? 140 : 220);
-            world_.draw(o, iso, 1, a.id, kZOutline);
-        }
+        // The same diamond as the base ring, so it covers the whole footprint.
+        if (a.outlined && !a.dead)
+            footprint_ring(Color::rgba8(200, 120, 255, a.invisible ? 140 : 220), 1, kZOutline, actor_sort);
     }
     world_.prepare(cam);
 
@@ -470,9 +521,10 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
     // HP bars + names above each actor.
     for (const ActorView& a : vm.actors) {
         if (!visible(a)) continue;
-        const Vec2f head = cam.world_to_screen({tile_center_px(float(a.tile.x), float(a.tile.y)).x,
-                                                tile_center_px(float(a.tile.x), float(a.tile.y)).y - (kPawnH - 4) });
-        const float bw = 40.f, bh = 5.f;
+        const FootprintGeom fp = footprint_geom(a.tile, a.footprint, float(kTileW), float(kTileH));
+        const Vec2f head = cam.world_to_screen(
+            footprint_head_px(tile_center_px(fp.centre_iso.x, fp.centre_iso.y), fp, float(kPawnH)));
+        const float bw = 40.f * fp.pawn_scale, bh = 5.f;
         const Vec2f bp{head.x - bw / 2.f, head.y - 12.f};
         rect({bp.x - 1, bp.y - 1}, {bw + 2, bh + 2}, Color::rgba8(0, 0, 0, 200), 10);
         const float frac = a.hp_max > 0 ? std::clamp(float(a.hp) / float(a.hp_max), 0.f, 1.f) : 0.f;

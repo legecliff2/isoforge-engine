@@ -42,7 +42,8 @@ enum class Facing : uint8_t { SouthEast, SouthWest, NorthEast, NorthWest };
 struct ActorView {
     uint32_t    id = 0;        // stable id (sort key tie-break)
     std::string name;          // "FIGHTER", "GOBLIN"
-    eng::Vec2i  tile;
+    eng::Vec2i  tile;          // footprint anchor: min-x / min-y tile (the only tile when footprint == 1)
+    int         footprint = 1; // side in tiles (1 Medium or smaller, 2 Large, 3 Huge, 4 Gargantuan+)
     int         hp = 0, hp_max = 0;
     uint8_t     team = 0;
     bool        is_pc = false;
@@ -134,6 +135,16 @@ struct LightView {
     }
 };
 
+// One live spell zone, as the renderer should draw it. `content_id` selects the iso2d look
+// ("srd51.spell.fog_cloud"); `spell_id` is the rules id that rode with it (spell_id_of). Tiles are
+// the world tiles Combat::zone_tiles reported. Unknown content ids draw nothing.
+struct ZoneOverlayView {
+    uint32_t zone_id = 0;
+    uint32_t spell_id = 0;
+    std::string content_id;
+    std::vector<eng::Vec2i> tiles;
+};
+
 struct ViewModel {
     std::vector<TileView>    tiles;   // static: from the chunk
     std::vector<ActorView>   actors;
@@ -145,6 +156,9 @@ struct ViewModel {
     std::string status;               // e.g. "SPACE: STEP  A: AUTO"
     std::vector<std::string> log;     // newest last
     LightView   light;
+    // Persistent spell zones (presentation). anim_phase is the light-frame step; animated looks read it.
+    uint32_t    anim_phase = 0;
+    std::vector<ZoneOverlayView> zones;
     // Debug overlay panel (debug equip view, F3): pre-formatted lines, drawn top-right; empty = no panel.
     std::vector<std::string> debug_panel;
     // Debug cover overlay (F4). Empty (present=false) draws nothing.

@@ -44,6 +44,128 @@ TEST_CASE("sprite batch sorts by depth and batches by texture") {
     CHECK(dev.last_frame().draws[1].first_index == 18);
 }
 
+namespace {
+// Centre of an NxN footprint anchored at `anchor`: the 1x1 sort reference (its tile when n is 1).
+// The front corner is anchor + (n-1, n-1). Depth is iso_x + iso_y.
+Vec2f footprint_centre(Vec2i anchor, int n) {
+    const float back = float(n - 1) * 0.5f;
+    return {float(anchor.x) + back, float(anchor.y) + back};
+}
+Vec2f footprint_front(Vec2i anchor, int n) {
+    const float back = float(n - 1);
+    return {float(anchor.x) + back, float(anchor.y) + back};
+}
+} // namespace
+
+TEST_CASE("sort position, not the projected anchor, decides order") {
+    NullDevice dev;
+    Sprite s{TextureId{}, 8, 8};
+    SpriteBatch batch(dev, 8);
+    batch.begin();
+    batch.draw(s, {0, 0}, {5, 5}, 0, 1, 0);   // 0 drawn at the back, sorted at the front
+    batch.draw(s, {5, 5}, {0, 0}, 0, 2, 0);   // 1 drawn at the front, sorted at the back
+    batch.prepare({});
+    CHECK(batch.order() == std::vector<uint32_t>{1, 0});
+    // The key is the historical one of the sort sample.
+    CHECK_FALSE(make_sort_key({5, 5}, 0, 0, 1) < make_sort_key({0, 0}, 0, 0, 2));
+    CHECK(make_sort_key({0, 0}, 0, 0, 2) < make_sort_key({5, 5}, 0, 0, 1));
+}
+
+TEST_CASE("1x1 sort is unchanged when the sort point is the draw point") {
+    NullDevice dev;
+    Sprite s{TextureId{}, 8, 8};
+    auto run = [&](bool split) {
+        SpriteBatch batch(dev, 64);
+        batch.begin();
+        for (int y = 0; y < 4; ++y)
+            for (int x = 0; x < 4; ++x) {
+                const Vec2f p{float(x), float(y)};
+                const uint32_t id = uint32_t(y * 4 + x);
+                if (split) batch.draw(s, p, p, 0, id, 0);
+                else batch.draw(s, p, 0, id, 0);
+                if ((x + y) % 3 == 0) {
+                    if (split) batch.draw(s, p, p, 1, 100 + id, 4);
+                    else batch.draw(s, p, 1, 100 + id, 4);
+                }
+            }
+        batch.prepare({});
+        return batch.order();
+    };
+    const auto historical = run(false);
+    CHECK(run(true) == historical);
+    // layer, then x+y, then z, then id. Re-running the split form must not reshuffle ties.
+    CHECK(run(true) == historical);
+}
+
+TEST_CASE("multi-tile sort: 1x1, front and back neighbours, ties") {
+    NullDevice dev;
+    Sprite s{TextureId{}, 8, 8};
+    const Vec2i anchor{4, 5};
+    for (int n : {1, 2, 3, 4}) {
+        CAPTURE(n);
+        const Vec2f centre = footprint_centre(anchor, n);
+        const Vec2f front = footprint_front(anchor, n);
+        const float centre_d = centre.x + centre.y;
+        const float front_d = front.x + front.y;
+        if (n == 1) {
+            CHECK(centre_d == front_d);
+            CHECK(centre.x == float(anchor.x));
+            CHECK(centre.y == float(anchor.y));
+        } else {
+            CHECK(centre_d < front_d);
+        }
+
+        // Back: west of the anchor. Strictly behind the centre for every side.
+        const Vec2f back_n{float(anchor.x - 1), float(anchor.y)};
+        REQUIRE(back_n.x + back_n.y < centre_d);
+
+        // Front: strictly in front of the centre. 3x3 and 4x4 have a whole tile between the
+        // centre and the front corner; that is the neighbour the corner sort put under the body.
+        // 2x2 has no integer depth in between, so the front neighbour is the corner diagonal
+        // itself (in front of the centre, tied with a corner-sorted body). 1x1's front neighbour
+        // is the next tile, the historical order.
+        const Vec2f front_n{float(anchor.x + n), float(anchor.y)};
+        REQUIRE(front_n.x + front_n.y > centre_d);
+        if (n > 2) REQUIRE(front_n.x + front_n.y < front_d);
+        if (n == 2) CHECK(front_n.x + front_n.y == front_d);
+        if (n == 1) CHECK(front_n.x + front_n.y == centre_d + 1.f);
+
+        // Same depth as the centre, off to the side. Lower id draws behind the body, higher in front.
+        const Vec2f tie_n{float(anchor.x + n), float(anchor.y - 1)};
+        CHECK(tie_n.x + tie_n.y == doctest::Approx(centre_d));
+
+        SpriteBatch batch(dev, 16);
+        batch.begin();
+        // Submitted out of order. Draw anchors are deliberately not the sort samples.
+        batch.draw(s, front, centre, 1, /*id*/ 10, 4);   // 0 body
+        batch.draw(s, {9, 9}, front_n, 1, 30, 4);        // 1 front neighbour
+        batch.draw(s, {0, 0}, back_n, 1, 20, 4);         // 2 back neighbour
+        batch.draw(s, tie_n, tie_n, 1, 5, 4);            // 3 tie, lower id
+        batch.draw(s, tie_n, tie_n, 1, 40, 4);           // 4 tie, higher id
+        batch.draw(s, centre, centre, 1, 10, 4);         // 5 same key as the body; stable, after it
+        batch.draw(s, tie_n, 1, 1, 0);                   // 6 same depth, lower z (a wall on that diagonal)
+        batch.prepare({});
+        // back, then the centre diagonal by (z, id, submission), then the front neighbour.
+        CHECK(batch.order() == std::vector<uint32_t>{2, 6, 3, 0, 5, 4, 1});
+
+        if (n == 1) {
+            SpriteBatch historical(dev, 16);
+            historical.begin();
+            historical.draw(s, centre, 1, 10, 4);
+            historical.draw(s, front_n, 1, 30, 4);
+            historical.draw(s, back_n, 1, 20, 4);
+            historical.draw(s, tie_n, 1, 5, 4);
+            historical.draw(s, tie_n, 1, 40, 4);
+            historical.draw(s, centre, 1, 10, 4);
+            historical.draw(s, tie_n, 1, 1, 0);
+            historical.prepare({});
+            CHECK(historical.order() == batch.order());
+            CHECK_FALSE(make_sort_key(centre, 1, 4, 10) < make_sort_key(front, 1, 4, 10));
+            CHECK_FALSE(make_sort_key(front, 1, 4, 10) < make_sort_key(centre, 1, 4, 10));
+        }
+    }
+}
+
 TEST_CASE("sort is deterministic regardless of submission order") {
     NullDevice dev;
     auto t = dev.create_texture(rgba(1, 1));
