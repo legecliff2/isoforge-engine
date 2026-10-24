@@ -3061,6 +3061,132 @@
      ]
     }
    ]
+  },
+  "ghast": {
+   "name": "Ghast",
+   "size": "Medium",
+   "type": "undead",
+   "ac": [
+    13
+   ],
+   "hp": 36,
+   "hp_roll": "8d8",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    16,
+    17,
+    10,
+    11,
+    10,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "necrotic"
+   ],
+   "damage_immunities": [
+    "poison"
+   ],
+   "condition_immunities": [
+    "poisoned",
+    "charmed",
+    "exhaustion"
+   ],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "2d8+3",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "satyr": {
+   "name": "Satyr",
+   "size": "Medium",
+   "type": "fey",
+   "ac": [
+    14
+   ],
+   "hp": 31,
+   "hp_roll": "7d8",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    12,
+    16,
+    11,
+    12,
+    10,
+    14
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Ram",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "2d4+1",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Shortsword",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Shortbow",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
