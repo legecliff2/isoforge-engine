@@ -668,6 +668,9 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
             t_errs, t_warns = c4.check_transparent(doc, tag.split("@")[0])
             errs += [f"{rel}: {m}" for m in t_errs]
             warns += [f"{rel}: {m}" for m in t_warns]
+        sa_errs, sa_warns = c4.check_save_advantage(doc, tag)   # batch 3 save_advantage (monster@5 only)
+        errs += [f"{rel}: {m}" for m in sa_errs]
+        warns += [f"{rel}: {m}" for m in sa_warns]
         if "extra_attack" in row.effect_kinds:   # EC #179 extra_attack (@4): loader refusals, highest-wins warning
             x_errs, x_warns = c4.check_extra_attack(doc, tag.split("@")[0])
             errs += [f"{rel}: {m}" for m in x_errs]

@@ -106,7 +106,7 @@ TAG_TABLE["item@1"] = TagRow(False, frozenset(), frozenset(), frozenset(), froze
 _MONSTER_AT5_KEYS = frozenset({"derive", "equipment", "natural_armor", "ac_adjust", "weapon_dice_multiplier", "weapons", "hands",
                                "proficiency_bonus_reason", "emits_light"})
 # monster@5-local trait kinds (Rules decision on #247: no common@3): weapon_extra_dice (Brute), closed arm in monster@5 $defs.
-MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice"})
+MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage"})   # + batch 3 save_advantage (Magic Resistance)
 _CHARACTER_AT5_KEYS = frozenset({"derive", "weapon_proficiencies", "armor_proficiencies"})
 for _typ, _extra in (("monster", _MONSTER_AT5_KEYS), ("character", _CHARACTER_AT5_KEYS)):
     _r4 = TAG_TABLE[f"{_typ}@4"]
@@ -986,6 +986,38 @@ def check_transparent(doc: dict, typ: str) -> tuple[list[str], list[str]]:
             first = path
         else:
             warns.append(f"{path}: transparent declared more than once (first at {first}); the sim keeps the highest dc (7.2w)")
+    return errs, warns
+
+
+SAVE_ADVANTAGE_KEYS = frozenset({"kind", "save_vs_conditions", "vs_damage_types", "magical", "abilities", "mode"})
+
+
+def check_save_advantage(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Batch 3 save_advantage (sim features.cpp apply_save_advantage): the loader's refusals as errors (same text), and a
+    warning for an identical second declaration (adds nothing). Distinct save_advantage traits stack (Magic Resistance plus
+    Dark Devotion), so the kind is not in NO_STACK_EFFECT_KINDS."""
+    errs: list[str] = []
+    warns: list[str] = []
+    seen: dict[str, str] = {}
+    for path, _owner, eff in live_effects(doc):
+        if eff.get("kind") != "save_advantage":
+            continue
+        did = f"{path}: {doc.get('id', '?')}"
+        if tag != "monster@5":
+            errs.append(f"{did}: save_advantage needs a monster@5 file")
+            continue
+        extra = sorted(k for k in eff if k not in SAVE_ADVANTAGE_KEYS)
+        if extra:
+            errs.append(f"{did}: save_advantage: unknown key '{extra[0]}'")
+            continue
+        if not any(eff.get(k) for k in ("save_vs_conditions", "vs_damage_types", "abilities")) and eff.get("magical") is not True:
+            errs.append(f"{did}: save_advantage needs at least one of save_vs_conditions, vs_damage_types, abilities, magical: true")
+            continue
+        key = repr(sorted((k, sorted(v) if isinstance(v, list) else v) for k, v in eff.items() if k != "mode")) + str(eff.get("mode", "advantage"))
+        if key in seen:
+            warns.append(f"{path}: duplicate save_advantage (same as {seen[key]}); a second declaration adds nothing")
+        else:
+            seen[key] = path
     return errs, warns
 
 
