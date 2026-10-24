@@ -1657,26 +1657,32 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             at.strength_drain = *d;
         }
         // Strength Drain (Lich ruling): the ability the authored to_hit / damage use, read when the attack is used while a score is
-        // reduced (rules5e attack_drain_delta; no effect otherwise). monster@5 action `ability` (str|dex|none) when given; a
-        // finesse weapon (action `properties`, or the item / weapons[] entry `weapon` names) is the better of Str / Dex; else the
+        // reduced (rules5e attack_drain_delta; no effect otherwise). monster@5 action `ability` (str|dex|none) when given; else a
+        // ranged weapon attack that is not thrown is Dex; a finesse weapon (action `properties`, or the item / weapons[] entry
+        // `weapon` names) is the better of Str / Dex; else the
         // ability whose modifier + proficiency bonus is the printed to_hit (Str on a tie, with a warning), none when neither is.
         {
-            auto has_finesse = [](const Json* j) {
+            auto has_prop_j = [](const Json* j, const char* name) {
                 if (!j) return false;
                 if (auto ps = j->find("properties"); ps != j->end() && ps->is_array())
-                    for (const Json& pn : *ps) if (pn.is_string() && pn.get<std::string>() == "finesse") return true;
+                    for (const Json& pn : *ps) if (pn.is_string() && pn.get<std::string>() == name) return true;
                 return false;
             };
-            bool fin = has_finesse(&act);
-            if (auto wr = act.find("weapon"); !fin && wr != act.end() && wr->is_string()) {
+            bool fin = has_prop_j(&act, "finesse"), thrown = has_prop_j(&act, "thrown");
+            if (auto wr = act.find("weapon"); wr != act.end() && wr->is_string()) {
                 const std::string wid = wr->get<std::string>();
                 if (!wid.empty() && wid[0] == '#') {
                     for (const Json& w : doc.value("weapons", Json::array()))
-                        if (w.is_object() && "#" + w.value("id", "") == wid) fin = fin || has_finesse(&w);
+                        if (w.is_object() && "#" + w.value("id", "") == wid) {
+                            fin = fin || has_prop_j(&w, "finesse");
+                            thrown = thrown || has_prop_j(&w, "thrown");
+                        }
                 } else if (const auto* item = items_ ? items_->find(wid) : nullptr; item && rules5e::is_weapon(*item)) {
-                    fin = (item->weapon.properties & rules5e::kWeaponFinesse) != 0;
+                    fin = fin || (item->weapon.properties & rules5e::kWeaponFinesse) != 0;
+                    thrown = thrown || (item->weapon.properties & rules5e::kWeaponThrown) != 0;
                 }
             }
+            const bool ranged_not_thrown = act.value("kind", "") == "ranged_weapon_attack" && !thrown;
             auto code_of = [](const std::string& n) -> int8_t {
                 return n == "str" ? int8_t(rules5e::Ability::Str) : n == "dex" ? int8_t(rules5e::Ability::Dex)
                      : n == "none" ? rules5e::kAttackAbilityNone : int8_t(-1);
@@ -1686,9 +1692,11 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 const int8_t code = ex->is_string() ? code_of(ex->get<std::string>()) : int8_t(-1);
                 if (code < 0) return a.id + ": action " + act.value("id", "?") + ": ability must be str, dex or none";
                 at.ability_used = code;
-            } else if (fin) {
+            } else if (ranged_not_thrown) {   // fallback 1: a ranged weapon attack that is not thrown uses Dex
+                at.ability_used = int8_t(rules5e::Ability::Dex);
+            } else if (fin) {                 // fallback 2: finesse, the better of Str / Dex
                 at.ability_used = rules5e::kAttackAbilityFinesse;
-            } else {
+            } else {                          // fallback 3: inferred from to_hit (tie -> Str, warned)
                 const int pb = c.proficiency_bonus;
                 const int ms = rules5e::modifier(c.abilities, rules5e::Ability::Str), md = rules5e::modifier(c.abilities, rules5e::Ability::Dex);
                 const bool s = at.to_hit == ms + pb;

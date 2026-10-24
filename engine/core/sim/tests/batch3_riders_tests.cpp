@@ -807,3 +807,20 @@ TEST_CASE("monster@5 action ability (CONTENT_CONVENTIONS \"Attack ability\"): ex
     bad["actions"][0]["ability"] = "str"; bad["$schema"] = "monster@4";
     CHECK(load_error(bad).find("ability needs a monster@5 file") != std::string::npos);
 }
+
+TEST_CASE("Attack ability fallback: the hobgoblin longbow (ranged, not thrown) resolves to Dex with no tie warning") {
+    ContentLibrary lib;
+    REQUIRE(lib.load(sample_set()).empty());
+    const auto* h = lib.find("srd51.monster.hobgoblin");
+    REQUIRE(h);
+    bool found = false;
+    for (const auto& at : h->base.attacks)
+        if (at.id == "longbow") { found = true; CHECK(at.ability_used == int8_t(rules5e::Ability::Dex)); }
+    CHECK(found);
+    for (const auto& w : lib.warnings()) CHECK(w.find("srd51.monster.hobgoblin: action longbow:") == std::string::npos);
+    // a thrown ranged attack is not fallback 1: the bugbear's thrown javelin still infers from to_hit (a Str/Dex tie)
+    const auto* b = lib.find("srd51.monster.bugbear");
+    REQUIRE(b);
+    for (const auto& at : b->base.attacks)
+        if (at.id == "javelin_thrown") CHECK(at.ability_used == int8_t(rules5e::Ability::Str));
+}
