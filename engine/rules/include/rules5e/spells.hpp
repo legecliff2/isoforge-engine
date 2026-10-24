@@ -29,7 +29,7 @@ enum class SpellEffectKind : uint8_t {
     AcBonus,        // reaction: AC bonus until the start of the caster's next turn (Shield)
     Counter,        // reaction: interrupts a spell being cast (Counterspell)
     ApplyCondition, // a condition on each target with no save (Invisibility); lasts with the spell
-    ApplyModifier,  // row 12: a timed modifier (Bless, Bane, Haste, Slow, Shield of Faith, Faerie Fire, Hunter's Mark); SpellDef::modifier
+    ApplyModifier,  // row 12: a timed modifier (Bless, Bane, Haste, Slow, Shield of Faith, Faerie Fire); SpellDef::modifier
     // appended (R-G15):
     HpPool,         // roll `dice` (scaled) as a hit-point pool; targets by lowest current HP get `condition` while the pool covers them (Sleep, Color Spray)
     Dispel,         // end spells on each target: slot level or lower automatically, higher ones on a check (Dispel Magic)

@@ -708,22 +708,6 @@
     "success": "none"
    }
   },
-  "hunters-mark": {
-   "name": "Hunter's Mark",
-   "level": 1,
-   "range": "90 feet",
-   "components": [
-    "V"
-   ],
-   "ritual": false,
-   "duration": "Up to 1 hour",
-   "concentration": true,
-   "casting_time": "1 bonus action",
-   "school": "divination",
-   "classes": [
-    "ranger"
-   ]
-  },
   "hypnotic-pattern": {
    "name": "Hypnotic Pattern",
    "level": 3,

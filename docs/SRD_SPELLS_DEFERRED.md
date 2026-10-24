@@ -8,15 +8,17 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 
 **Scope rule.** A spell is authored only if `spell@1` on `main` expresses its combat-relevant behavior faithfully with mechanics the engine implements today (`spell_attack`, `save`, `heal`, `auto_hit`, `ac_bonus`, `counter`, `apply_modifier`, `forced_move`, `teleport`, `zone`, the R-G15 kinds, `area`, `targets`, `scaling`). Anything that needs a mechanic reserved for a later row is deferred, not approximated. The first batch deferred area spells under C3 / R-G10; the sim now computes the templates (#78), and the refresh re-checked every deferred row against the merged loaders (timed modifiers, zones, forced_move / teleport, R-G15 kinds, on_event / predicates; #178 cover merged during this PR; adopting `ignores_cover` on Sacred Flame is a follow-up). Spells with no combat effect (utility, exploration, casting time of 1 minute or more) are listed as `OOS`.
 
-## Counts (169 SRD spells of level 0-3 in the mirror)
+## Counts (168 SRD spells of level 0-3)
 
 | level | in `srd51.core` | deferred: needs a mechanic | deferred: out of combat scope | total |
 |---|---|---|---|---|
 | 0 (cantrips) | 13 | 0 | 11 | 24 |
-| 1 | 27 | 3 | 19 | 49 |
+| 1 | 26 | 3 | 19 | 48 |
 | 2 | 25 | 6 | 23 | 54 |
 | 3 | 14 | 9 | 19 | 42 |
-| **total** | **79** | **18** | **72** | **169** |
+| **total** | **78** | **18** | **72** | **168** |
+
+Hunter's Mark is non-SRD, excluded (PHB-only; its text is not in SRD 5.1). Not NEW and not Authored. An earlier pass counted it, which is why these totals are one level-1 spell below the old 79 authored / 49 level 1 / 169 overall.
 
 7.2zi (Rules #283, `feat/rules-spell-batch-zi`) implements Spare the Dying, True Strike, Expeditious Retreat, Protection from Poison, Ray of Enfeeblement, Beacon of Hope, and Warding Bond. Specimens: `tests/validate/fixtures/spell_batch_zi/`. Six are authored below. Expeditious Retreat stays `NEW`: the SRD lets the caster Dash when the spell is cast, and 7.2zi's `bonus_dash` does not Dash on the cast.
 
@@ -71,15 +73,14 @@ Rules #183 (7.2u) added the next-roll rider keys (`docs/CONTENT_EFFECTS.md`, "Ru
 | Spirit Guardians | 3 | creature-anchored `zone` sphere 15, `halve_speed`, `chooses_excluded`, `needs_conscious_owner`; Wis save 3d8 radiant half on enter / start of turn (group 1: once per turn), `evil_damage_type` necrotic; `upcast.dice 1` | |
 | Stinking Cloud | 3 | point `zone` sphere 20, heavily obscured; start of turn completely within: Con save or `loses_action` (auto-success for poison-immune and no-breath) | wind dispersal OOS |
 
-## Authored after Rules #188 and #222 (5)
+## Authored after Rules #188 and #222 (4)
 
-Hunter's Mark and Invisibility shipped in content #223 (Rules #222, 7.2zc); Command, Fear and Hideous Laughter use the Rules #188 (7.2v) control saves. Pinned by `tests/validate/test_srd51_spells.py` (table rows and `test_control_spells`).
+Invisibility shipped in content #223 (Rules #222, 7.2zc); Command, Fear and Hideous Laughter use the Rules #188 (7.2v) control saves. Pinned by `tests/validate/test_srd51_spells.py` (table rows and `test_control_spells`). Hunter's Mark is non-SRD, excluded (not NEW and not Authored).
 
 | spell | level | `spell@1` shape | notes |
 |---|---|---|---|
 | Command | 1 | `save` WIS, `control command`, `control_excludes_creature_types [undead]`; `targets {count 1, max_spread_ft 30}`, `upcast.targets 1`; duration 1 round | the word (Approach, Drop, Flee, Grovel, Halt) is chosen at cast; **partial**: language, "directly harmful" commands, other words and dropped items are not modelled |
 | Hideous Laughter | 1 | `save` WIS prone, `control laughter` (incapacitated, can't stand), `control_min_int 4`, `repeat_save end_of_turn_or_damage_advantage`; concentration 1 minute | |
-| Hunter's Mark | 1 | `apply_modifier` `scope {target marked}` damage 1d6 `applies_to self`, `when [weapon_attack]`; `move_mark {action bonus_action}`; concentration 1 hour | **partial**: the Perception / Survival advantage and the 8 / 24 hour upcast durations are not modelled |
 | Invisibility | 2 | `apply_condition` invisible, `ends_on [attack, cast]`; touch, concentration 1 hour; `upcast.targets 1` | the spell ends per target (SRD) |
 | Fear | 3 | `save` WIS frightened, `control fear` (Dash away), `repeat_save end_of_turn_unseen`; `area` cone 30 (self); concentration 1 minute | **partial**: dropping held items is not modelled |
 
@@ -173,7 +174,7 @@ Promote `tests/validate/fixtures/zones/spells/entangle.json` into `srd51.core` (
 
 ## Authored after Rules #283 (6)
 
-Spell batch zi (7.2zi, Rules #283). Each pack's `effects`, casting time, range, duration and `targets` equal the Rules specimen in `tests/validate/fixtures/spell_batch_zi/`. Pinned by `tests/validate/test_srd51_spells.py` (table rows and `test_spell_batch_zi_packs`). Counts from 73 + these 6 → 79 authored / 18 NEW / 72 OOS.
+Spell batch zi (7.2zi, Rules #283). Each pack's `effects`, casting time, range, duration and `targets` equal the Rules specimen in `tests/validate/fixtures/spell_batch_zi/`. Pinned by `tests/validate/test_srd51_spells.py` (table rows and `test_spell_batch_zi_packs`). Counts from 73 + these 6 → 79 authored / 18 NEW / 72 OOS, then Hunter's Mark is non-SRD, excluded, leaving 78 authored / 18 NEW / 72 OOS of 168.
 
 | spell | level | `spell@1` shape | notes |
 |---|---|---|---|
