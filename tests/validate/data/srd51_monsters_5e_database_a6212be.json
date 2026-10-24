@@ -2133,6 +2133,47 @@
      ]
     }
    ]
+  },
+  "riding-horse": {
+   "name": "Riding Horse",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 13,
+   "hp_roll": "2d10+2",
+   "cr": 0.25,
+   "xp": 25,
+   "speed": {
+    "walk": "60 ft."
+   },
+   "abilities": [
+    16,
+    10,
+    12,
+    2,
+    11,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Hooves",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d4+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }

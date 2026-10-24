@@ -13,11 +13,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | | count |
 |---|---|
 | inventory candidates | 30 |
-| authored now as `monster@4` | 33 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189); plus 10 tier B monsters in batch d1 as `monster@5` (`derive: true`) |
+| authored now as `monster@4` | 33 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189); plus 11 tier B monsters in batch d1 as `monster@5` (`derive: true`) |
 | goblin (already shipped, left at `monster@3`) | 1 |
-| deferred (mechanic not expressible) | 16 (tier B batch d1) |
+| deferred (mechanic not expressible) | 15 (tier B batch d1) |
 
-## Authored (43: 33 `monster@4`, converted to `monster@5`; 10 batch d1 authored as `monster@5`)
+## Authored (44: 33 `monster@4`, converted to `monster@5`; 11 batch d1 authored as `monster@5`)
 
 | monster | CR | mechanics carried as data | notes |
 |---|---|---|---|
@@ -57,6 +57,7 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Baboon | 0 | Pack Tactics (`pack_tactics`), bite (Str, 1d4 - 1), climb 30 | batch d1, `monster@5` |
 | Camel | 1/8 | bite with `natural.damage_ability: "none"` (SRD prints 2 (1d4) with Str 16) | batch d1, Large |
 | Draft Horse | 1/4 | hooves | batch d1, Large |
+| Riding Horse | 1/4 | hooves | batch d1, Large; XP 50 per SRD 5.1 (CR 1/4); 5e-database a6212be lists 25 XP, documented in `DEVIATIONS` |
 | Giant Lizard | 1/4 | bite, climb 30 | batch d1, Large; darkvision 30 recorded in `senses` |
 | Giant Centipede | 1/4 | bite + `on_hit save_condition` (Con DC 11, 3d6 poison, `on_success none`) with `zero_hp` (stable, poisoned 600 rounds, paralyzed while poisoned; as giant spider #174), climb 30 | batch d1; blindsight 30 in `senses` |
 | Giant Wolf Spider | 1/4 | bite + `on_hit save_condition` (Con DC 11, 2d6 poison, half) with `zero_hp` (as giant spider), climb 40 | batch d1; Spider Climb / Web Sense / Web Walker description only (as giant spider) |
@@ -74,7 +75,7 @@ Not set: `presentation` (the goblin has none; sprite assets for these monsters d
 Played: stats, attacks with every `damage[]` entry (#45), resistances / immunities / vulnerabilities / condition immunities (#45), `multiattack` options (#48/#59), `damage_mitigation` (#47/#58), `bonus_action_grant`, size footprint (#50/#55).
 Carried and validated but **not applied** (the registry reserves the `@4` kinds; the archetype lists them in `unsupported_features` and ignores them): `on_event` (Undead Fortitude, Rampage, Sneak Attack), `on_hit[]` riders (snake poison), `save_effect` actions with `usage` (Acid Breath). Until Engine Core lands the row 6 compile / row 9-10 trigger hooks these monsters play without those effects. No content change is needed when the hooks land.
 
-## Deferred (16)
+## Deferred (15)
 
 Tier B batch d1 (content/monsters-d1): in scope (bestiary v0.1 missing list) but not authored, because a combat rule can't be carried faithfully today. Not approximated.
 
@@ -85,7 +86,6 @@ Tier B batch d1 (content/monsters-d1): in scope (bestiary v0.1 missing list) but
 | Poisonous Snake | `srd51.monster.poisonous_snake` | Bite deals a flat 1 piercing damage (as cat); the poison rider itself is expressible |
 | Quipper | `srd51.monster.quipper` | Blood Frenzy (advantage on melee attacks vs a creature missing hit points): no construct; also swim-only (schema requires `speed.walk`, SRD lists none); bite flat 1 damage |
 | Reef Shark | `srd51.monster.reef_shark` | swim-only speed: `speed.walk` is required by the schema and the SRD lists no walk speed (writing walk 0 would change the pinned speed) |
-| Riding Horse | `srd51.monster.riding_horse` | not a mechanic: 5e-database a6212be lists 25 XP for CR 1/4 (SRD: 50 XP); the validator rejects the table value. Needs a Director call on a DEVIATIONS entry |
 | Giant Crab | `srd51.monster.giant_crab` | Claw grapple with two claws each grappling one target (per-limb grapple capacity) |
 | Constrictor Snake | `srd51.monster.constrictor_snake` | Constrict: grappled and restrained until the grapple ends, can't constrict another target |
 | Crocodile | `srd51.monster.crocodile` | Bite: grappled and restrained until the grapple ends, can't bite another target; Hold Breath |
