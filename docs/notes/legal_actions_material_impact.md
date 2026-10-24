@@ -3,7 +3,7 @@
 Branch `fix/rules-legal-actions-spells`. Two rules changes sit under this note:
 
 - `legal_actions` offers a self-range modifier (Blur, Expeditious Retreat) with `target` = the caster, and offers Heat Metal once per eligible metal item (`equip_item` from `manufactured_metal()`).
-- item `material` decides that eligibility. Absent is non-metal. The field is not hashed.
+- item `material` (CONTENT_CONVENTIONS §22) decides an explicit non-metal exception. When `material` is absent, `manufactured_metal()` falls back to the category rule at encounter.cpp ~3078 (any weapon, armor, or shield). Only `wood`, `leather`, `hide`, `cloth`, or `rope` removes a Heat Metal or rust target. The field is not hashed. An unknown string warns on `ContentLibrary::warnings()` and stays absent, so it is not a non-metal value. No `item@1` / `item@2` bump: an old file that omits the key keeps that category meaning.
 
 ## Goldens
 
@@ -33,7 +33,7 @@ The headless driver (`engine/core/sim/src/driver.cpp`, `next_command` / `run_to_
 
 So a bard, druid, or sorcerer who knows Heat Metal or Blur (`srd51.core` `bard_level_3`–`5`, `druid_level_4`–`5`, `sorcerer_level_4`–`5`) still does not cast them under this policy. Nothing in the AI or playtest replays newly prefers those rows.
 
-The equipment AI replay (`equipment AI replay golden`, hash `363147187033031642`) includes a javelin thrower. Javelin `material` is now `wood`. That value is not an attack input and not a hash input, and the driver does not Heat Metal the javelin, so the thrown attack and the pin stay as they are.
+The equipment AI replay (`equipment AI replay golden`, hash `363147187033031642`) includes a javelin thrower. Javelin `material` is `metal` (a metal head counts, same as the spear, pike, halberd, glaive, lance, and the crossbows). That value is not an attack input and not a hash input, and the driver does not Heat Metal the javelin, so the thrown attack and the pin stay as they are. The absent-field fallback is the category rule those fights already used when the key was missing. Scripted fights do not cast Heat Metal, so the fallback does not move hash `18080299159498595558` or the replay hash `363147187033031642`.
 
 ## Verification
 

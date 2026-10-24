@@ -3068,16 +3068,22 @@ void zero_hp_clause(EncounterState& s, const Combatant& a, Combatant& t, const S
     s.effects.push_back(e);
 }
 
-// 7.2zh: a heatable object is a worn or held weapon, armor, or shield whose material is metal. Hands are matched by
-// instance; worn armor has no instance, so equip_item is the armor def id. A hand match wins over armor.
+// 7.2zh: a heatable object is a worn or held weapon, armor, or shield. Hands are matched by instance; worn armor has
+// no instance, so equip_item is the armor def id. A hand match wins over armor.
 // manufactured_metal is the predicate cast_spell_impl and legal_actions share (a hand whose instance equals the armor
-// def claims that id, so a non-metal hand does not fall through to the armor). Absent material is not metal.
+// def claims that id, so a non-metal hand does not fall through to the armor). Rust-type effects use it too.
+// Absent material falls back to the category rule (any weapon, armor, or shield). Only an explicit non-metal value
+// (wood, leather, hide, cloth, rope) removes the target.
 struct HeatedPick { uint32_t instance = 0; uint32_t def = 0; bool worn = false; };
+bool explicit_non_metal(ItemMaterial m) {
+    return m == ItemMaterial::Wood || m == ItemMaterial::Leather || m == ItemMaterial::Hide ||
+           m == ItemMaterial::Cloth || m == ItemMaterial::Rope;
+}
 bool manufactured_metal(const EncounterState& s, uint32_t def_id) {
     if (def_id == 0 || !s.hooks.item_def) return false;
     const ItemDef* d = s.hooks.item_def(def_id);
-    return d && d->material == ItemMaterial::Metal &&
-           (d->kind == ItemKind::Weapon || d->kind == ItemKind::Armor || d->kind == ItemKind::Shield);
+    if (!d || explicit_non_metal(d->material)) return false;
+    return d->kind == ItemKind::Weapon || d->kind == ItemKind::Armor || d->kind == ItemKind::Shield;
 }
 std::optional<HeatedPick> pick_heated_object(const EncounterState& s, const LoadoutView& v, uint32_t equip_item) {
     if (equip_item == 0 || !s.hooks.item_def) return std::nullopt;
