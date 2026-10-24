@@ -20,7 +20,7 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 
 Hunter's Mark is non-SRD, excluded (PHB-only; its text is not in SRD 5.1). Not NEW and not Authored. An earlier pass counted it, which is why these totals are one level-1 spell below the old 79 authored / 49 level 1 / 169 overall. Hex is non-SRD, excluded (PHB-only; not in SRD 5.1). Not NEW and not Authored. It was never in these counts and is not on the warlock lists. Spike Growth is already in the 78 (authored for the druid); putting it back on the ranger level-5 list does not change these totals. The ranger then knows 4 spells at level 5.
 
-7.2zi (Rules #283, `feat/rules-spell-batch-zi`) implements Spare the Dying, True Strike, Expeditious Retreat, Protection from Poison, Ray of Enfeeblement, Beacon of Hope, and Warding Bond. Specimens: `tests/validate/fixtures/spell_batch_zi/`. Six are authored below. Expeditious Retreat stays `NEW`: the SRD lets the caster Dash when the spell is cast, and 7.2zi's `bonus_dash` does not Dash on the cast.
+7.2zi (Rules #283, `feat/rules-spell-batch-zi`) implements Spare the Dying, True Strike, Expeditious Retreat, Protection from Poison, Ray of Enfeeblement, Beacon of Hope, and Warding Bond. Specimens: `tests/validate/fixtures/spell_batch_zi/`. Six are authored below. Expeditious Retreat stays `NEW`: the specimen's `dash_on_cast` grants the Dash on the cast and `bonus_dash` covers later turns, and the `srd51.core` pack is not authored.
 
 ## Authored in this change (9)
 
@@ -211,7 +211,7 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 1 | Detect Magic | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Detect Poison and Disease | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Disguise Self | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
-| 1 | Expeditious Retreat | NEW | 7.2zi `bonus_dash` (Rules #283, fixture `tests/validate/fixtures/spell_batch_zi/expeditious_retreat.json`) grants a bonus-action Dash on later turns, but the cast does not Dash. The SRD lets the caster Dash when the spell is cast. | R-G3 (B2) |
+| 1 | Expeditious Retreat | NEW | Specimen `tests/validate/fixtures/spell_batch_zi/expeditious_retreat.json`: `dash_on_cast` grants a Dash as part of the cast, and `bonus_dash` for 600 rounds (concentration 10 minutes) is the later-turn bonus Dash. Classes: sorcerer, warlock, wizard. The `srd51.core` pack is not authored. | R-G3 (B2) |
 | 1 | Feather Fall | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Find Familiar | NEW | Summons rules (R-G12 PR 2) exist but spell@1 has no summon key; 1-hour cast. | R-G12 (C5) |
 | 1 | Floating Disk | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
@@ -288,4 +288,4 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 - Small additive changes that unblock more: a spell@1 condition-choice key (Blindness/Deafness). Faerie Fire, Protection from Energy, Spiritual Weapon, Haste / Slow, and `targets` on modifiers landed in 7.2zg (#263 / #265).
 - Every `NEW` row above is additive content once its row lands; ids are `srd51.spell.<snake_case_name>` and are not reserved yet.
 - Spare the Dying: authored from the 7.2zi `stabilize` fixture (Rules #283). `ActionKind::SpareTheDying` is unchanged.
-- Expeditious Retreat: needs the Dash on the cast (additive to 7.2zi `bonus_dash`); then it is a one-file pack from the fixture.
+- Expeditious Retreat: the specimen's `dash_on_cast` grants the Dash on the cast (additive to 7.2zi `bonus_dash`). It stays `NEW` until the one-file pack is authored from the fixture.
