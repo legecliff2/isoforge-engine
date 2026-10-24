@@ -471,7 +471,7 @@ struct FormStats {
     std::vector<Reaction> reactions{};
     std::vector<BonusAttack> bonus_attacks{};
     // appended (SRD 5.1 movement modes, feat/move-modes): the form's fly / swim / climb / burrow speeds and hover.
-    // burrow_ft matches the others (uint8_t feet, 0 = none). Copied with them; not a movement mode.
+    // burrow_ft matches the others (uint8_t feet, 0 = none). Copied with them; move_mode 4 (altitude PR2).
     uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0, burrow_ft = 0;
     bool hover = false;
     // Wild Shape (D7): the creature's own features (feature ids) the form is not physically capable of using (content:
@@ -635,8 +635,8 @@ struct Combatant {
     // appended (SRD 5.1 movement modes, feat/move-modes; static content, not folded): fly / swim / climb
     // speeds (0 = none) and hover. A Move with ActionRequest::move_mode uses that speed: SRD "switching speeds" - the
     // feet already spent this turn count against it (TurnBudget::movement_ft is shared; see move_allowance).
-    // burrow_ft is the same type, default and storage (0 = none, static content, not folded). It is not a move_mode:
-    // tunnelling and burrow movement are not implemented, and no sim-event tag is claimed for it.
+    // burrow_ft is the same type, default and storage (0 = none, static content, not folded). Altitude PR2: move_mode 4
+    // (burrow) uses it like the other speeds; tunnelling through rock is not implemented. No new sim-event tag.
     uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0, burrow_ft = 0;
     bool hover = false;
     // appended (altitude PR1, docs/SIM_EVENTS.md 0xD6; sim fold Combat::hash 0xD6 when non-zero): vertical position in signed
