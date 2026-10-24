@@ -671,6 +671,9 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         sa_errs, sa_warns = c4.check_save_advantage(doc, tag)   # batch 3 save_advantage (monster@5 only)
         errs += [f"{rel}: {m}" for m in sa_errs]
         warns += [f"{rel}: {m}" for m in sa_warns]
+        au_errs, au_warns = c4.check_aura(doc, tag)   # batch 3 aura (ghast Stench, monster@5 only)
+        errs += [f"{rel}: {m}" for m in au_errs]
+        warns += [f"{rel}: {m}" for m in au_warns]
         errs += [f"{rel}: {m}" for m in c4.check_batch3_actions(doc, tag)]   # batch 3 weapon-only action keys
         errs += [f"{rel}: {m}" for m in c4.check_until_cured(doc, tag)]   # batch 3 until_cured (death dog)
         errs += [f"{rel}: {m}" for m in c4.check_multiattack_count(doc, tag)]   # batch 3 count_dice (violet fungus)

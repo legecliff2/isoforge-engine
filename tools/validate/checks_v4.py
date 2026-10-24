@@ -107,7 +107,7 @@ _MONSTER_AT5_KEYS = frozenset({"derive", "equipment", "natural_armor", "ac_adjus
                                "proficiency_bonus_reason", "emits_light"})
 # monster@5-local trait kinds (Rules decision on #247: no common@3): weapon_extra_dice (Brute), closed arm in monster@5 $defs.
 MONSTER_AT5_ACTION_KINDS = frozenset({"teleport"})   # batch 3 (blink dog)
-MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage"})   # + batch 3 save_advantage (Magic Resistance)
+MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage", "aura"})   # + batch 3 save_advantage (Magic Resistance), aura (ghast Stench)
 _CHARACTER_AT5_KEYS = frozenset({"derive", "weapon_proficiencies", "armor_proficiencies"})
 for _typ, _extra in (("monster", _MONSTER_AT5_KEYS), ("character", _CHARACTER_AT5_KEYS)):
     _r4 = TAG_TABLE[f"{_typ}@4"]
@@ -1020,6 +1020,53 @@ def check_save_advantage(doc: dict, tag: str) -> tuple[list[str], list[str]]:
         else:
             seen[key] = path
     return errs, warns
+
+
+AURA_KEYS = frozenset({"kind", "radius_ft", "on", "save", "condition", "duration", "success_immunity_hours"})
+AURA_CONDITIONS = frozenset({"blinded", "charmed", "deafened", "frightened", "grappled", "incapacitated", "invisible",
+                             "paralyzed", "petrified", "poisoned", "prone", "restrained", "stunned", "unconscious"})
+
+
+def _int_in(v, lo: int, hi: int) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi
+
+
+def check_aura(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Batch 3 aura (ghast Stench; sim features.cpp apply_aura): the loader's refusals as errors (same text). A second aura
+    trait is a separate aura (its own zone and immunity rows), so no stacking warning."""
+    errs: list[str] = []
+    for path, _owner, eff in live_effects(doc):
+        if eff.get("kind") != "aura":
+            continue
+        did = f"{path}: {doc.get('id', '?')}"
+        if tag != "monster@5":
+            errs.append(f"{did}: aura needs a monster@5 file")
+            continue
+        extra = sorted(k for k in eff if k not in AURA_KEYS)
+        if extra:
+            errs.append(f"{did}: aura: unknown key '{extra[0]}'")
+            continue
+        r = eff.get("radius_ft")
+        sv = eff.get("save")
+        if not _int_in(r, 5, 120) or r % 5 != 0:
+            errs.append(f"{did}: aura: radius_ft must be a multiple of 5 in 5..120")
+        elif eff.get("on") != "start_turn":
+            errs.append(f"{did}: aura: on must be start_turn")
+        elif not isinstance(sv, dict):
+            errs.append(f"{did}: aura: save {{ability, dc}} required")
+        elif sorted(k for k in sv if k not in ("ability", "dc")):
+            errs.append(f"{did}: aura: unknown save key '{sorted(k for k in sv if k not in ('ability', 'dc'))[0]}'")
+        elif sv.get("ability") not in ("str", "dex", "con", "int", "wis", "cha"):
+            errs.append(f"{did}: aura: bad save.ability")
+        elif not _int_in(sv.get("dc"), 1, 30):
+            errs.append(f"{did}: aura: save.dc must be 1..30")
+        elif eff.get("condition") not in AURA_CONDITIONS:
+            errs.append(f"{did}: aura: bad condition")
+        elif eff.get("duration") != "until_start_of_next_turn":
+            errs.append(f"{did}: aura: duration must be until_start_of_next_turn")
+        elif "success_immunity_hours" in eff and not _int_in(eff["success_immunity_hours"], 1, 168):
+            errs.append(f"{did}: aura: success_immunity_hours must be 1..168")
+    return errs, []
 
 
 BATCH3_WEAPON_ONLY_KEYS = ("drain", "curse", "target_requires_any")

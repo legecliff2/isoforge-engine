@@ -1817,6 +1817,14 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             a.save_actions.push_back(sa);
             synth.push_back(std::move(d));
         }
+    // batch 3 ghast Stench: aura traits (built by the "aura" hook) -> synthetic Zone SpellDefs, attached at Combat::create.
+    for (auto& d : a.aura_defs) {
+        for (const auto& prev : synth)
+            if (prev.id == d.id) return a.id + ": aura ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+        a.aura_spell_ids.push_back(d.id);
+        synth.push_back(d);
+    }
+    a.aura_defs.clear();
     // Register in the shared SpellBook, replacing an overridden archetype's entries; all-or-nothing.
     if (!synth.empty() || by_id_.count(a.id)) {
         std::vector<rules5e::SpellDef> old;
@@ -1824,6 +1832,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             for (const auto& sa : prev->second.save_actions)
                 if (const auto* d = spells_->find(sa.spell_id)) old.push_back(*d);
             for (uint32_t id : prev->second.trigger_spell_ids)
+                if (const auto* d = spells_->find(id)) old.push_back(*d);
+            for (uint32_t id : prev->second.aura_spell_ids)
                 if (const auto* d = spells_->find(id)) old.push_back(*d);
         }
         for (const auto& d : old) spells_->erase(d.id);

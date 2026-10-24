@@ -186,7 +186,7 @@ existing hash is unchanged. Next free: **0xE1** in `Combat::hash` (one tag, one 
 | 0xD5 | `Combat::hash` | Heat Metal held object (VERSION_BUMP_BATCH 7.2zh): `heat_metal_digest`. Per effect with `heated_item != 0` or `while_held`, in effect order: spell u32, caster u32, target u32, heated_item u32, heated_def u32, flags byte (bit0 worn, bit1 while_held). `heated_item` is the hand instance, or the armor def id when worn (LoadoutView has no armor instance). The cast's `equip_item` is not a new log tag | `has_heat_metal_state` | Rules, feat/rules-spell-batch-zh | pending |
 | 0xDC | `Combat::hash` | Batch 3 mummy rot (EC feat/monster-batch3-riders): one `no_regain_hp` byte per combatant in order, folded only while some attack carries `curse_no_regain_dc > 0`. |
 | 0xDD | `log_hash` | Batch 3 vampire spawn Bite (EC feat/monster-batch3-riders): `ActionRequest::target_willing`, byte 1, folded only when set. Moved off 0xDC (Lich: one tag, one meaning). |
-| 0xDE | `Combat::hash` | Batch 3 ghast Stench aura (EC feat/monster-ghast-stench). Layout on that branch. |
+| 0xDE | `Combat::hash` | Batch 3 ghast Stench (EC feat/monster-ghast-stench): `EncounterState::aura_immunities`, folded only while non-empty: u32 count, then per row in grant order u32 creature, u32 source (aura owner), u32 spell_id (the aura's synthetic Zone SpellDef), u32 until_round (grant round + hours x 600). The aura zone itself folds in `zones_digest` as before (feature = 1). |
 | 0xDF | reserved | Batch 3 shadow Strength Drain `ability_reduction` (not built). |
 | 0xE0 | reserved | Batch 3 rust monster Rust Metal / Corrode (not built). |
 
