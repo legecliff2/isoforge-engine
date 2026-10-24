@@ -240,7 +240,7 @@ struct ActionRequest {
     bool equip_in_reach = false;
     // appended (EquipOp::SetLightState, 10): the LightDef::states index, or kLightDouse (0xFF). Folded into 0xD1 by Engine Core.
     uint8_t equip_state = 0;
-    // appended (batch 3, vampire spawn Bite; log_hash 0xDC when set): Attack: the target is willing. Counts only for an attack with
+    // appended (batch 3, vampire spawn Bite; log_hash 0xDD when set): Attack: the target is willing. Counts only for an attack with
     // kTargetGateWilling and a target on the attacker's team (an enemy is never willing).
     bool target_willing = false;
 };
