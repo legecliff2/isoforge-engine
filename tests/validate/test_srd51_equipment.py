@@ -320,7 +320,7 @@ class Srd51Equipment(unittest.TestCase):
         self.assertNotIn("component_pouch", FOCUS_FAMILY)   # a pouch is not a focus (it holds the materials)
 
     def test_focus_field_schema(self):
-        # item@2 gear `focus` (docs/CONTENT_CONVENTIONS.md section 17): optional, closed enum, gear only.
+        # item@2 gear `focus` (docs/CONTENT_CONVENTIONS.md section 18): optional, closed enum, gear only.
         from jsonschema import Draft202012Validator
         from referencing import Registry, Resource
         schemas = ROOT / "schemas"

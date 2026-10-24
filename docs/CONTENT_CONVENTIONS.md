@@ -701,7 +701,7 @@ These are SRD 5.1 containers from 5e-database a6212be, with exact costs, weights
 - **Ready for the ammunition recovery rule** (EQUIPMENT 2.5: spend one per attack; recover `floor(spent / 2)` after combat). Stacks are `equipment[]` counts (§15), and these containers give the capacity a stack fits in.
 - **Inert today:** the sim loads no item documents. PCs do not list containers yet; adding them changes no number.
 
-## 17. Spellcasting focus family (item@2 gear `focus`)
+## 18. Spellcasting focus family (item@2 gear `focus`)
 
 `focus: "arcane" | "druidic" | "holy"` is an optional, closed, additive key on item@2 `gear` (no version bump; gear arm only, `test_union_arms.py` row). It marks the SRD spellcasting foci:
 
