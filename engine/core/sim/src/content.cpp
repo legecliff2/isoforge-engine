@@ -1539,7 +1539,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             if (declared != 0 && declared < 5) return a.id + ": action " + aid + ": drain needs a monster@5 file";
             if (!dr->is_object()) return a.id + ": action " + aid + ": drain must be an object";
             for (auto it = dr->begin(); it != dr->end(); ++it)
-                if (it.key() != "max_hp" && it.key() != "save") return a.id + ": action " + aid + ": drain: unknown key '" + it.key() + "'";
+                if (it.key() != "max_hp" && it.key() != "save" && it.key() != "damage_type" && it.key() != "heal_self")
+                    return a.id + ": action " + aid + ": drain: unknown key '" + it.key() + "'";
             const auto mh = dr->find("max_hp");
             if (mh == dr->end() || !mh->is_boolean() || !mh->get<bool>()) return a.id + ": action " + aid + ": drain needs max_hp: true";
             at.drain_max_hp = true;
@@ -1549,6 +1550,37 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                     return a.id + ": action " + aid + ": drain.save must be {ability: con, dc: 1..30}";
                 at.drain_save_dc = int8_t((*sv)["dc"].get<int64_t>());
             }
+            // batch 3 vampire spawn Bite: "reduced by an amount equal to the necrotic damage taken, and the vampire regains hit
+            // points equal to that amount"
+            if (auto dt = dr->find("damage_type"); dt != dr->end()) {
+                const auto ty = dt->is_string() ? damage_type(dt->get<std::string>()) : std::nullopt;
+                if (!ty) return a.id + ": action " + aid + ": drain.damage_type must be a damage type";
+                bool present = false;
+                if (auto dm = act.find("damage"); dm != act.end() && dm->is_array())
+                    for (const Json& p : *dm) present = present || (p.is_object() && p.value("type", "") == dt->get<std::string>());
+                if (!present) return a.id + ": action " + aid + ": drain.damage_type is not one of the action's damage types";
+                at.drain_damage_type = int8_t(*ty);
+            }
+            if (auto hs = dr->find("heal_self"); hs != dr->end()) {
+                if (!hs->is_boolean()) return a.id + ": action " + aid + ": drain.heal_self must be a boolean";
+                at.drain_heal_self = hs->get<bool>();
+            }
+        }
+        // batch 3 vampire spawn Bite: target_requires_any (at least one): willing, grappled_by_self, incapacitated, restrained
+        if (auto tg = act.find("target_requires_any"); tg != act.end()) {
+            const std::string aid = act.value("id", "?");
+            if (declared != 0 && declared < 5) return a.id + ": action " + aid + ": target_requires_any needs a monster@5 file";
+            if (!tg->is_array() || tg->empty()) return a.id + ": action " + aid + ": target_requires_any must be a non-empty array";
+            uint8_t g = 0;
+            for (const Json& v : *tg) {
+                const std::string k = v.is_string() ? v.get<std::string>() : "";
+                const uint8_t b = k == "willing" ? rules5e::kTargetGateWilling : k == "grappled_by_self" ? rules5e::kTargetGateGrappledBySelf
+                                : k == "incapacitated" ? rules5e::kTargetGateIncapacitated : k == "restrained" ? rules5e::kTargetGateRestrained : 0;
+                if (b == 0) return a.id + ": action " + aid + ": target_requires_any: unknown gate '" + k + "'";
+                if (g & b) return a.id + ": action " + aid + ": target_requires_any: duplicate gate '" + k + "'";
+                g |= b;
+            }
+            at.target_requires_any = g;
         }
         // Batch 3 (Lich ruling): monster@5 `curse` {no_regain_hp: true, save: {ability: con, dc}}: SRD 5.1 mummy Rotting Fist
         // ("must succeed on a DC 12 Constitution saving throw or be cursed with mummy rot. The cursed target can't regain hit

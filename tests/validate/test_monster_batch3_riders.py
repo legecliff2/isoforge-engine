@@ -137,5 +137,30 @@ class Curse(unittest.TestCase):
         self.assertTrue([m for m in e if "read only on weapon attacks" in m], e)
 
 
+class VampireDrain(unittest.TestCase):
+    GATE = ["willing", "grappled_by_self", "incapacitated", "restrained"]
+
+    def bite(self, **keys):
+        d = bugbear()
+        d["actions"][0]["damage"].append({"dice": "2d6", "type": "necrotic"})
+        d["actions"][0].update(keys)
+        return d
+
+    def test_valid(self):
+        e, _w = run(self.bite(drain={"max_hp": True, "damage_type": "necrotic", "heal_self": True}, target_requires_any=self.GATE))
+        self.assertEqual(e, [])
+
+    def test_refused(self):
+        e, _w = run(self.bite(drain={"max_hp": True, "damage_type": "fire"}))
+        self.assertTrue([m for m in e if "drain.damage_type is not one of" in m], e)
+        for g in ([], ["asleep"], ["willing", "willing"]):
+            e, _w = run(self.bite(target_requires_any=g))
+            self.assertTrue([m for m in e if "target_requires_any" in m], (g, e))
+        d = bugbear()
+        d["actions"].append({"id": "x", "name": "X", "kind": "special", "description": "x", "target_requires_any": ["willing"]})
+        e, _w = run(d)
+        self.assertTrue([m for m in e if "read only on weapon attacks" in m], e)
+
+
 if __name__ == "__main__":
     unittest.main()

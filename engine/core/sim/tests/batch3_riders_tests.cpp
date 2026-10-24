@@ -233,3 +233,60 @@ TEST_CASE("0xDC: no_regain_hp folds only while a curse attack exists") {
     REQUIRE(c2);
     CHECK(c1->hash() != c2->hash());   // the fold is present only with the curse attack
 }
+
+namespace {
+// Vampire spawn Bite (SRD 5.1): "Hit: 6 (1d6 + 3) piercing damage plus 7 (2d6) necrotic damage. The target's hit point maximum
+// is reduced by an amount equal to the necrotic damage taken, and the vampire regains hit points equal to that amount."
+Json vampire_spawn(const std::string& id) {
+    Json m = creature(id);
+    auto& act = m["actions"][0];
+    act["damage"].push_back({{"dice", "2d6"}, {"type", "necrotic"}});
+    act["drain"] = {{"max_hp", true}, {"damage_type", "necrotic"}, {"heal_self", true}};
+    act["target_requires_any"] = Json::array({"willing", "grappled_by_self", "incapacitated", "restrained"});
+    m["hit_points"]["average"] = 400;
+    return m;
+}
+}  // namespace
+
+TEST_CASE("vampire spawn drain: necrotic-only reduction, self-heal, target gate") {
+    auto lib = lib_with({vampire_spawn("t.vspawn")});
+    const auto& at = lib.find("t.vspawn")->base.attacks.at(0);
+    CHECK(at.drain_damage_type == int8_t(rules5e::DamageType::Necrotic));
+    CHECK(at.drain_heal_self);
+    CHECK(at.target_requires_any == 15);
+    auto ch = arena({{"t.vspawn", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 7);
+    REQUIRE(c);
+    const CombatantId a = ch.spawns[0].stable_id, f = ch.spawns[1].stable_id;
+    to_actor(*c, a);
+    rules5e::ActionRequest q{a, ActionKind::Attack, f, 0};
+    q.target_within_5ft = true;
+    {   // an enemy that is not grappled, incapacitated or restrained: refused, and "willing" never counts for an enemy
+        rules5e::EncounterState s = c->state();
+        auto r = rules5e::step(s, q);
+        CHECK_FALSE(r.ok);
+        CHECK(std::string(r.error).find("willing, grappled by the attacker, incapacitated, or restrained") != std::string::npos);
+        q.target_willing = true;
+        r = rules5e::step(s, q);
+        CHECK_FALSE(r.ok);
+        q.target_willing = false;
+    }
+    // restrained: allowed; the maximum drops by the necrotic damage only and the spawn heals that much
+    rules5e::EncounterState s = c->state();
+    rules5e::add_condition(*const_cast<rules5e::Combatant*>(rules5e::find(s, f)), rules5e::Condition::Restrained);
+    const_cast<rules5e::Combatant*>(rules5e::find(s, a))->hp = 100;
+    const int before = rules5e::find(s, f)->hp;
+    auto r = rules5e::step(s, q);
+    REQUIRE_MESSAGE(r.ok, std::string(r.error));
+    const auto* ft = rules5e::find(s, f);
+    const int lost = before - ft->hp;
+    int necrotic = -1;
+    for (const auto& e : r.events)
+        if (e.kind == rules5e::EventKind::ModifierApplied && e.target == f && e.b == int32_t(rules5e::ModStat::MaxHp)) necrotic = -e.c;
+    REQUIRE(lost > 0);   // seed 7: the sure-hit bite lands
+    REQUIRE(necrotic > 0);
+    CHECK(necrotic < lost);                      // the scimitar's slashing part (1d6 + 2) is not drained
+    CHECK(ft->hp_max_reduction == necrotic);
+    CHECK(rules5e::find(s, a)->hp == 100 + necrotic);
+}

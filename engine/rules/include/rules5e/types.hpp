@@ -110,7 +110,17 @@ struct Attack {
     // is cursed: "The cursed target can't regain hit points" (sets Combatant::no_regain_hp; the 24-hour maximum loss and
     // Remove Curse are not modelled). Sim Combat::hash 0xDC folds no_regain_hp while any attack carries this.
     int8_t curse_no_regain_dc = 0;
+    // appended (batch 3, vampire spawn Bite): drain_damage_type >= 0 (a DamageType) limits the Life Drain amount to the damage of
+    // that type the target took (after immunity / resistance / vulnerability, capped at the hit points actually lost); -1 = all.
+    // drain_heal_self: "the vampire regains hit points equal to that amount" (only when a reduction applies).
+    int8_t drain_damage_type = -1;
+    bool drain_heal_self = false;
+    // appended (batch 3, vampire spawn Bite: "one willing creature, or a creature that is grappled by the vampire, incapacitated,
+    // or restrained"): kTargetGate* bits; non-zero = the target must meet at least one (0 = any target).
+    uint8_t target_requires_any = 0;
 };
+inline constexpr uint8_t kTargetGateWilling = 1, kTargetGateGrappledBySelf = 2, kTargetGateIncapacitated = 4,
+                         kTargetGateRestrained = 8;
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
 constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
 // Range facts for a ranged attack at `dist_ft`: out of reach entirely, or beyond normal range (disadvantage).

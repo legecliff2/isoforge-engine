@@ -1021,7 +1021,7 @@ def check_save_advantage(doc: dict, tag: str) -> tuple[list[str], list[str]]:
     return errs, warns
 
 
-BATCH3_WEAPON_ONLY_KEYS = ("drain", "curse")
+BATCH3_WEAPON_ONLY_KEYS = ("drain", "curse", "target_requires_any")
 
 
 def check_batch3_actions(doc: dict, tag: str) -> list[str]:
@@ -1031,7 +1031,14 @@ def check_batch3_actions(doc: dict, tag: str) -> list[str]:
     if tag != "monster@5":
         return errs
     for i, a in enumerate(doc.get("actions") or []):
-        if not isinstance(a, dict) or a.get("kind") in ("melee_weapon_attack", "ranged_weapon_attack"):
+        if not isinstance(a, dict):
+            continue
+        dr = a.get("drain")
+        if isinstance(dr, dict) and "damage_type" in dr:   # vampire spawn: the loader refuses a type the action does not deal
+            types = {p.get("type") for p in a.get("damage") or [] if isinstance(p, dict)}
+            if dr["damage_type"] not in types:
+                errs.append(f"/actions/{i}: {doc.get('id', '?')}.{a.get('id')}: drain.damage_type is not one of the action's damage types")
+        if a.get("kind") in ("melee_weapon_attack", "ranged_weapon_attack"):
             continue
         for k in BATCH3_WEAPON_ONLY_KEYS:
             if k in a:

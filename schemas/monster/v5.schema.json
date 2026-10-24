@@ -815,6 +815,14 @@
                   "maximum": 30
                 }
               }
+            },
+            "damage_type": {
+              "$ref": "../common/v1.schema.json#/$defs/damage_type",
+              "description": "Batch 3 (vampire spawn): only the damage of this type taken counts (after immunity / resistance / vulnerability); must be one of the action's damage[] types."
+            },
+            "heal_self": {
+              "type": "boolean",
+              "description": "Batch 3 (vampire spawn): the attacker regains hit points equal to the reduction."
             }
           }
         },
@@ -848,6 +856,20 @@
                 }
               }
             }
+          }
+        },
+        "target_requires_any": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Batch 3 (vampire spawn Bite: \"one willing creature, or a creature that is grappled by the vampire, incapacitated, or restrained\"): the target must meet at least one. willing counts only for an ally with ActionRequest target_willing. Weapon attacks only.",
+          "items": {
+            "enum": [
+              "willing",
+              "grappled_by_self",
+              "incapacitated",
+              "restrained"
+            ]
           }
         }
       },

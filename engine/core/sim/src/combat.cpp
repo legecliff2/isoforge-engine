@@ -2005,6 +2005,7 @@ uint64_t Combat::log_hash() const {
             for (const auto& x : q.heal_split) { h.u32(x.target); h.u32(uint32_t(uint16_t(x.amount))); }
         }
         if (q.avert_gaze) { h.byte(0xBB); h.byte(1); }
+        if (q.target_willing) { h.byte(0xDC); h.byte(1); }   // batch 3 vampire spawn Bite willing target: only when set
         if (q.equip_op != 0) {   // 0xD1 (EQUIPMENT.md 4.2, Engine Core): equip request, folded only when equip_op != 0
             h.byte(0xD1); h.byte(q.equip_op); h.u32(q.equip_item); h.byte(q.equip_hand); h.u32(q.equip_to);
             h.byte(q.equip_in_reach ? 1 : 0);

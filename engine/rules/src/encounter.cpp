@@ -1537,6 +1537,18 @@ void life_drain(EncounterState& s, Combatant& t, int taken, int dc, CombatantId 
     if (cap <= 0) { kill(t, ev); check_end(s, ev); }
 }
 
+// Batch 3 (vampire spawn Bite): an attack with target_requires_any needs one of: a willing target (the request says so and it
+// is on the attacker's team), grappled by the attacker, incapacitated, restrained. Empty = allowed.
+static std::string_view target_gate_refusal(const EncounterState& s, const Combatant& a, const Combatant& t, const Attack& atk, bool willing) {
+    const uint8_t g = atk.target_requires_any;
+    if (g == 0) return {};
+    if ((g & kTargetGateWilling) && willing && t.team == a.team) return {};
+    if ((g & kTargetGateGrappledBySelf) && t.has(Condition::Grappled) && condition_source(s, t.id, Condition::Grappled) == a.id) return {};
+    if ((g & kTargetGateIncapacitated) && is_incapacitated(t)) return {};
+    if ((g & kTargetGateRestrained) && t.has(Condition::Restrained)) return {};
+    return "target must be willing, grappled by the attacker, incapacitated, or restrained";
+}
+
 // 7.2x: the start-of-step state the sight hook is asked about during a step (set by attempt while the hook exists).
 thread_local const EncounterState* g_sight_base = nullptr;
 
@@ -2377,6 +2389,12 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         const uint32_t tbit = bit(t.creature_type);   // 7.2y bonus_vs
         bool vs_any = (atk.vs_types & tbit) != 0;
         for (const DamagePart& p : atk.extra_damage) vs_any = vs_any || (p.vs_types & tbit) != 0;
+        int typed_dealt = 0;   // batch 3: damage of atk.drain_damage_type after immunity / resistance / vulnerability
+        auto note_typed = [&](const std::vector<DamagePiece>& ps) {
+            if (atk.drain_damage_type < 0) return;
+            for (const DamagePiece& p : ps)
+                if (int(p.type) == atk.drain_damage_type) typed_dealt += zone_apply_damage(s, t, p.amount, p.type, atk.qualifiers).dealt;
+        };
         if (!riders.pieces.empty() || !modp.empty() || vs_any) {
             std::vector<DamagePiece> parts{{int16_t(dmg), atk.type}};
             if (atk.vs_types & tbit) parts.push_back({int16_t(std::max(0, roll_dice(s.rng, atk.vs_dice, crit))), atk.type});
@@ -2389,8 +2407,10 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
             for (const auto& mp : modp) parts.push_back({int16_t(mp.first), mp.second});
             if (smite_piece) parts.push_back(*smite_piece);
             for (auto& p : parts) p.amount = int16_t(halve_piece(p.amount));
+            note_typed(parts);
             damage_creature(s, t, zone_apply_damage_parts(s, t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
         } else if (atk.extra_damage.empty() && !smite_piece) {
+            note_typed({{int16_t(halve_piece(dmg)), atk.type}});
             damage_creature(s, t, zone_apply_damage(s, t, int16_t(halve_piece(dmg)), atk.type, atk.qualifiers), crit, ev, &tsrc, &ctx);
         } else {   // multi-component hit: one DamageDealt carrying the per-type-modified sum
             std::vector<DamagePiece> parts{{int16_t(dmg), atk.type}};
@@ -2398,9 +2418,21 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.dice, crit))), p.type});
             if (smite_piece) parts.push_back(*smite_piece);
             for (auto& p : parts) p.amount = int16_t(halve_piece(p.amount));
+            note_typed(parts);
             damage_creature(s, t, zone_apply_damage_parts(s, t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
         }
-        if (atk.drain_max_hp && !t.dead) life_drain(s, t, drain_before - (int(t.hp) + int(t.temp_hp)), atk.drain_save_dc, a.id, ev);
+        if (atk.drain_max_hp && !t.dead) {
+            const int lost = drain_before - (int(t.hp) + int(t.temp_hp));
+            const int amt = atk.drain_damage_type >= 0 ? std::min(lost, typed_dealt) : lost;   // a reaction may have reduced it
+            const int16_t red0 = t.hp_max_reduction;
+            life_drain(s, t, amt, atk.drain_save_dc, a.id, ev);
+            const int reduced = int(t.hp_max_reduction) - int(red0);   // 0 after a successful save
+            if (atk.drain_heal_self && amt > 0 && (reduced > 0 || t.dead) && !a.dead) {   // "regains hit points equal to that amount"
+                auto h = heal_hp(s, a, int16_t(amt));
+                commit_healing(a, h);
+                emit(ev, EventKind::Healed, a.id, a.id, h.healed, h.hp_after, h.from_zero);
+            }
+        }
         if (atk.curse_no_regain_dc > 0 && !t.dead && !t.no_regain_hp) {   // batch 3 mummy rot: an already cursed target rolls no save
             const SaveSource ssrc{false, 0, 0};
             auto r = save_roll(s, t, Ability::Con, atk.curse_no_regain_dc, RollMode::Normal, ev, &ssrc);
@@ -5266,6 +5298,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             if (cover_of(s, f->id, t->id, false, 0) == Cover::Total) return fail("target has total cover");
             if (charmed_by(s, f->id, t->id)) return fail("a charmed creature cannot attack its charmer");
             if (req.attack_index >= f->attacks.size()) return fail("bad attack index");
+            if (const auto why = target_gate_refusal(s, *f, *t, f->attacks[req.attack_index], false); !why.empty()) return fail(why);
             if (b.attacks_remaining > 0) --b.attacks_remaining;
             else if (spend_action(b, a, req.kind, false)) {
                 b.loading_fired = 0;
@@ -5304,6 +5337,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             ctx.guess_miss = s.hooks.guess_correct && !s.hooks.guess_correct(s, a, *t, req.guess_x, req.guess_y);
         }
         if (req.attack_index >= a.attacks.size()) return fail("bad attack index");
+        if (const auto why = target_gate_refusal(s, a, *t, a.attacks[req.attack_index], req.target_willing); !why.empty()) return fail(why);
         if (s.hooks.loadout_of) {   // EQUIPMENT.md 3: hands / ammunition (only creatures with a loadout view)
             const std::string_view why = attack_refusal(s, a.id, req.attack_index);
             if (!why.empty()) return fail(why);
