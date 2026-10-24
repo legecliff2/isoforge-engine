@@ -65,6 +65,7 @@ struct Archetype {
         Recharge recharge = Recharge::None;   // usage_kind 2
         bool area = false;              // has an area template (the AI never picks these before the area-template row)
         uint16_t range_ft = 0;
+        bool teleport = false;          // batch 3 `teleport` action (blink dog): needs a destination, the AI skips it
     };
     std::vector<SaveAction> save_actions;
     // resources[] (row 13): pools Combat::create registers (resolved against the archetype's level / abilities at load).

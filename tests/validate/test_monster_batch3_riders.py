@@ -181,5 +181,35 @@ class MultiattackCount(unittest.TestCase):
         self.assertTrue(e, e)
 
 
+class TeleportAction(unittest.TestCase):
+    def dog(self, schema="monster@5", **keys):
+        d = bugbear()
+        d["$schema"] = schema
+        act = {"id": "teleport", "name": "Teleport", "kind": "teleport", "description": "x", "feet": 40,
+               "usage": {"kind": "recharge", "min": 4}, "with_attack": "morningstar"}
+        act.update(keys)
+        d["actions"].append(act)
+        return d
+
+    def test_valid(self):
+        e, _w = run(self.dog())
+        self.assertEqual(e, [])
+
+    def test_refused(self):
+        e, _w = run(self.dog(with_attack="nope"))
+        self.assertTrue([m for m in e if "with_attack" in m], e)
+        for bad in ({"feet": 42}, {"feet": 0}):
+            e, _w = run(self.dog(**bad))
+            self.assertTrue(e, bad)
+        d = self.dog()
+        del d["actions"][-1]["feet"]
+        e, _w = run(d)
+        self.assertTrue(e)
+        d = bugbear()
+        d["actions"][0]["feet"] = 40
+        e, _w = run(d)
+        self.assertTrue(e)
+
+
 if __name__ == "__main__":
     unittest.main()

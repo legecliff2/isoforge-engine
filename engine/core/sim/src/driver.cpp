@@ -652,6 +652,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     if (const Archetype* arch = c.archetype(self); arch && !beast_form && s.budget.action && s.budget.sequence == 0 &&
                                                    s.budget.attacks_remaining == 0 && rules5e::is_conscious(*t))
         for (const auto& sa : arch->save_actions) {
+            if (sa.teleport) continue;   // batch 3 blink dog: the teleport destination is not guessed (AI deferred)
             if (sa.usage_kind == 1) {
                 const auto* u = rules5e::find_action_use(s, self, sa.spell_id);
                 if (u && u->expended) continue;
@@ -810,7 +811,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     } else {
         for (std::size_t i = 0; i < me->multiattacks.size() && i < 255; ++i) {
             const auto& seq = me->multiattacks[i].attacks;
-            bool melee_only = !seq.empty();
+            bool melee_only = !seq.empty() && me->multiattacks[i].after_action == 0;
             for (uint8_t k : seq) melee_only = melee_only && k < me->attacks.size() && !me->attacks[k].ranged && usable(k);
             if (!melee_only) continue;
             ai = seq[0];

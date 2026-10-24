@@ -4139,6 +4139,15 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     if (swap.on) a.spellcasting_ability = inn->ability;
     if (au) au->expended = true;
     if (fu && fu->max > 0) ++fu->used;
+    if (!def.is_spell)   // batch 3 (blink dog): arm the action's follow-up attack(s); no other action is spent
+        for (std::size_t k = 0; k < a.multiattacks.size() && k < 255; ++k)
+            if (a.multiattacks[k].after_action == def.id && !a.multiattacks[k].attacks.empty()) {
+                s.budget.sequence = uint8_t(k + 1);
+                s.budget.sequence_pos = 0;
+                s.budget.attacks_remaining = uint8_t(a.multiattacks[k].attacks.size());
+                s.budget.loading_fired = 0;
+                break;
+            }
     StepResult out{true, {}, {}};
     if (def.concentration && a.concentration_spell != 0) end_concentration(s, a.id, out.events);
     if (def.is_spell) emit(out.events, EventKind::SpellCast, a.id, ids[0], int32_t(def.id), lvl);
@@ -5377,6 +5386,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         } else if (req.multiattack != 0) {                                // start a declared multiattack
             if (b.attacks_remaining > 0) return fail("attack action already in progress");
             if (req.multiattack > a.multiattacks.size()) return fail("bad multiattack");
+            if (a.multiattacks[std::size_t(req.multiattack - 1)].after_action != 0) return fail("bad multiattack");   // an action's follow-up
             const auto& seq = a.multiattacks[std::size_t(req.multiattack - 1)].attacks;
             if (seq.empty()) return fail("bad multiattack");
             for (uint8_t i : seq) if (i >= a.attacks.size()) return fail("bad multiattack");
@@ -5578,7 +5588,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             if (can_act)   // start any declared multiattack (needs a fresh action)
                 for (std::size_t k = 0; k < a.multiattacks.size(); ++k) {
                     const auto& seq = a.multiattacks[k].attacks;
-                    if (seq.empty()) continue;
+                    if (seq.empty() || a.multiattacks[k].after_action != 0) continue;
                     ActionRequest r{a.id, ActionKind::Attack, t.id, seq[0]};
                     r.multiattack = uint8_t(k + 1);
                     out.push_back(r);

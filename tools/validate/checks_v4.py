@@ -110,7 +110,7 @@ MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage"})   
 _CHARACTER_AT5_KEYS = frozenset({"derive", "weapon_proficiencies", "armor_proficiencies"})
 for _typ, _extra in (("monster", _MONSTER_AT5_KEYS), ("character", _CHARACTER_AT5_KEYS)):
     _r4 = TAG_TABLE[f"{_typ}@4"]
-    TAG_TABLE[f"{_typ}@5"] = TagRow(True, _r4.action_kinds,
+    TAG_TABLE[f"{_typ}@5"] = TagRow(True, _r4.action_kinds | (frozenset({"teleport"}) if _typ == "monster" else frozenset()),
                                     _r4.effect_kinds | (MONSTER_AT5_EFFECT_KINDS if _typ == "monster" else frozenset()),
                                     _r4.cost_values, _r4.top_level_keys | _extra,
                                     cross_refs=True, needs_api_level=2, legacy_stamps=True)
@@ -1047,6 +1047,19 @@ def check_batch3_actions(doc: dict, tag: str) -> list[str]:
 
 
 UNTIL_CURED_CONDITIONS = frozenset({"blinded", "deafened", "paralyzed", "poisoned"})   # Lesser Restoration's list (SRD 5.1)
+
+
+def check_teleport_actions(doc: dict, tag: str) -> list[str]:
+    """Batch 3 monster@5 `teleport` action (blink dog): with_attack names a weapon / spell attack action of this document (same
+    rule as the sim loader, content.cpp compile_teleport_action)."""
+    errs: list[str] = []
+    if tag != "monster@5":
+        return errs
+    attack_ids = {a.get("id") for a in doc.get("actions") or [] if isinstance(a, dict) and str(a.get("kind", "")).endswith("_attack")}
+    for i, a in enumerate(doc.get("actions") or []):
+        if isinstance(a, dict) and a.get("kind") == "teleport" and "with_attack" in a and a["with_attack"] not in attack_ids:
+            errs.append(f"/actions/{i}/with_attack: '{a['with_attack']}' is not an attack action id in actions[]")
+    return errs
 
 
 def check_multiattack_count(doc: dict, tag: str) -> list[str]:

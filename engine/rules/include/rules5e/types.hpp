@@ -172,12 +172,17 @@ struct AttackSequence {
     // Appended (batch-3, violet fungus "makes 1d4 Rotting Touch attacks"): count > 0 = the option names ONE
     // attack, made this many times; the count is rolled from the encounter RNG when the multiattack starts.
     DiceExpr count_dice{0, 0, 0};
+    // Appended (batch-3, blink dog Teleport: "Before or after teleporting, the dog can make one bite attack."): nonzero = this
+    // sequence is not a Multiattack option; it is armed (sequence_pos 0) when the creature uses the non-spell action with this
+    // SpellDef id, so its attack(s) follow that action without spending another (teleport-then-bite; "before" is deferred).
+    uint32_t after_action = 0;
 };
 // The attack index the multiattack in progress requires next, or -1 (none in progress / sequence done).
 inline int multiattack_next(const std::vector<AttackSequence>& ms, uint8_t sequence, uint8_t pos) {
     if (sequence == 0 || sequence > ms.size()) return -1;
     const AttackSequence& m = ms[std::size_t(sequence - 1)];
     if (m.attacks.empty()) return -1;
+    if (m.after_action != 0) return pos < m.attacks.size() ? m.attacks[pos] : -1;
     if (m.count_dice.count > 0) return m.attacks[0];   // attacks_remaining bounds a rolled count
     return pos < m.attacks.size() ? m.attacks[pos] : -1;
 }

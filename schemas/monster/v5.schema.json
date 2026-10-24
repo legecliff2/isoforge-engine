@@ -536,7 +536,8 @@
             "ranged_spell_attack",
             "special",
             "save_effect",
-            "attack_effect"
+            "attack_effect",
+            "teleport"
           ]
         },
         "to_hit": {
@@ -871,6 +872,17 @@
               "restrained"
             ]
           }
+        },
+        "feet": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 500,
+          "multipleOf": 5,
+          "description": "Batch 3 teleport action (blink dog 40): up to this many feet to an unoccupied space the creature can see."
+        },
+        "with_attack": {
+          "$ref": "../common/v1.schema.json#/$defs/local_id",
+          "description": "Batch 3 teleport action: one attack (an attack action id) made after the teleport without another action (SRD 5.1 blink dog: 'Before or after teleporting, the dog can make one bite attack.'; teleport-then-bite only)."
         }
       },
       "allOf": [
@@ -1010,7 +1022,10 @@
               ],
               "properties": {
                 "kind": {
-                  "const": "attack_effect"
+                  "enum": [
+                    "attack_effect",
+                    "teleport"
+                  ]
                 }
               }
             },
@@ -1229,6 +1244,51 @@
                 {
                   "required": [
                     "duration"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "description": "Batch 3: feet / with_attack are teleport-action keys; a teleport action needs feet.",
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "teleport"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "feet"
+            ],
+            "propertyNames": {
+              "enum": [
+                "id",
+                "name",
+                "kind",
+                "description",
+                "feet",
+                "usage",
+                "with_attack"
+              ]
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "feet"
+                  ]
+                },
+                {
+                  "required": [
+                    "with_attack"
                   ]
                 }
               ]

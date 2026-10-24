@@ -210,7 +210,7 @@ std::optional<uint8_t> Combat::multiattack_option(CombatantId id, std::string_vi
     const auto* c = rules5e::find(state_, id);
     if (!c) return std::nullopt;
     for (std::size_t i = 0; i < c->multiattacks.size() && i < 255; ++i)
-        if (c->multiattacks[i].id == option_id) return uint8_t(i + 1);
+        if (c->multiattacks[i].id == option_id && c->multiattacks[i].after_action == 0) return uint8_t(i + 1);
     return std::nullopt;
 }
 

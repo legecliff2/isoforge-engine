@@ -345,3 +345,76 @@ TEST_CASE("multiattack count_dice (violet fungus 1d4): rolled at start, one atta
     bad["traits"].back()["effect"]["options"][0]["count_dice"] = "1d4+1";
     CHECK(load_error(bad).find("count_dice must be dice") != std::string::npos);
 }
+
+namespace {
+// Blink dog Teleport (SRD 5.1): "Teleport (Recharge 4–6). The dog magically teleports, along with any equipment it is wearing or
+// carrying, up to 40 ft. to an unoccupied space it can see. Before or after teleporting, the dog can make one bite attack."
+Json blink_dog(const std::string& id) {
+    Json m = creature(id);
+    m["actions"].push_back({{"id", "teleport"}, {"name", "Teleport"}, {"kind", "teleport"}, {"description", "Teleport (Recharge 4-6)."},
+                            {"feet", 40}, {"usage", {{"kind", "recharge"}, {"min", 4}}}, {"with_attack", "scimitar"}});
+    return m;
+}
+}  // namespace
+
+TEST_CASE("teleport action (blink dog): Recharge 4-6 self-teleport, then one bite without another action; refusals") {
+    auto lib = lib_with({blink_dog("t.blink")});
+    const Archetype* arch = lib.find("t.blink");
+    REQUIRE(arch->save_actions.size() == 1);
+    CHECK(arch->save_actions[0].teleport);
+    CHECK(arch->save_actions[0].usage_kind == 1);
+    const uint32_t sid = rules5e::spell_id_of("t.blink#teleport");
+    REQUIRE(arch->base.multiattacks.size() == 1);
+    CHECK(arch->base.multiattacks[0].after_action == sid);
+    auto ch = arena({{"t.blink", Vec2i{9, 5}}, {kFighter, Vec2i{5, 5}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 7);
+    REQUIRE(c);
+    const CombatantId a = ch.spawns[0].stable_id, f = ch.spawns[1].stable_id;
+    CHECK_FALSE(c->multiattack_option(a, "teleport.with_attack"));   // not a Multiattack option
+    to_actor(*c, a);
+    const auto* def = c->spell_def(sid);
+    REQUIRE(def);
+    CHECK(def->kind == rules5e::SpellEffectKind::Teleport);
+    CHECK(def->teleport.max_feet == 40);
+    CHECK_FALSE(def->is_spell);
+    CHECK(def->magical);
+    {   // the follow-up is armed only by the teleport: starting it as a multiattack is refused
+        rules5e::EncounterState s = c->state();
+        rules5e::ActionRequest q{a, ActionKind::Attack, f, 0};
+        q.target_within_5ft = true;
+        q.multiattack = 1;
+        CHECK_FALSE(rules5e::step(s, q).ok);
+    }
+    Command cast;
+    cast.request = {a, ActionKind::CastSpell, a};
+    cast.request.spell_id = sid;
+    cast.request.spell_level = 0;
+    CHECK_FALSE(c->submit(cast).ok);   // needs a destination
+    cast.request.has_teleport_dest = true; cast.request.teleport_x = 4; cast.request.teleport_y = 5;   // 25 ft, beside the fighter
+    auto r = c->submit(cast);
+    REQUIRE_MESSAGE(r.ok, r.error);
+    CHECK(c->pos(a) == Vec2i{4, 5});
+    CHECK(rules5e::find_action_use(c->state(), a, sid)->expended);
+    CHECK_FALSE(c->state().budget.action);
+    CHECK(c->state().budget.sequence == 1);
+    {   // only the named attack; a second one is refused
+        rules5e::EncounterState s = c->state();
+        rules5e::ActionRequest bow{a, ActionKind::Attack, f, 1};
+        CHECK_FALSE(rules5e::step(s, bow).ok);
+        rules5e::ActionRequest q{a, ActionKind::Attack, f, 0};
+        q.target_within_5ft = true;
+        auto rr = rules5e::step(s, q);
+        REQUIRE_MESSAGE(rr.ok, std::string(rr.error));
+        CHECK(s.budget.sequence == 0);
+        CHECK(s.budget.attacks_remaining == 0);
+        CHECK_FALSE(rules5e::step(s, q).ok);
+    }
+    // loader / validator refusals
+    Json far = blink_dog("t.far");
+    far["actions"].back()["feet"] = 42;
+    CHECK(load_error(far).find("feet must be 5..500") != std::string::npos);
+    Json bad = blink_dog("t.badw");
+    bad["actions"].back()["with_attack"] = "nope";
+    CHECK(load_error(bad).find("with_attack names unknown attack action") != std::string::npos);
+}
