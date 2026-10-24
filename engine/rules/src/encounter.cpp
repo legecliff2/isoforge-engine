@@ -440,7 +440,11 @@ void end_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev) {
     // EC spider follow-up (flagged): an effect's `also` condition holds the condition too, and ends with its effect
     auto held = [&](Condition k) {
         return std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
-            return o.target == e.target && ((!o.no_condition && o.condition == k) || (o.has_also && o.also == k)); });
+            return o.target == e.target && ((!o.no_condition && o.condition == k) || (o.has_also && o.also == k)); }) ||
+               // Lich ruling (Stench expiry is per source): a sourced instance (R-G8) of the same condition from ANOTHER
+               // source still holds it (a spell's Charmed / Frightened sourced entry from its own caster is this instance)
+               std::any_of(s.sourced.begin(), s.sourced.end(), [&](const SourcedCondition& o) {
+            return o.target == e.target && o.condition == k && o.source != e.caster; });
     };
     if (e.has_also && !held(e.also) && t->has(e.also)) {
         remove_condition(*t, e.also);
@@ -821,6 +825,10 @@ const SpellDef* spell_def(const EncounterState& s, uint32_t id) {
 // ---- R-G11 rules PR 2: passive zone queries (Silence, D7 auras). All answer false / 0 at once without zones. ----
 // A needs_conscious_owner zone does nothing while its owner is dead, at 0 HP or unconscious.
 bool zone_suppressed(const EncounterState& s, const ActiveZone& z, const SpellDef& def) {
+    if (z.feature) {   // batch 3 (ghast Stench): a feature aura does nothing once its owner is dead (before the round-start removal)
+        const Combatant* o = find(s, z.owner);
+        if (!o || o->dead) return true;
+    }
     if (!def.zone.needs_conscious_owner) return false;
     const Combatant* o = find(s, z.owner);
     return !o || o->dead || o->hp <= 0 || o->has(Condition::Unconscious);
@@ -2598,6 +2606,9 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
     // A creature already held by this zone's "while in the zone" condition is not saved against it again (Web).
     if (row.while_in_zone && e.applies_condition)
         for (const auto& x : s.effects) if (x.zone_id == zone_id && x.target == who) return;
+    if (row.success_immunity_hours != 0)   // batch 3 ghast Stench: immune to THIS owner's aura after a success (per source)
+        for (const auto& im : s.aura_immunities)
+            if (im.creature == who && im.source == z.owner && im.spell_id == z.spell_id && s.round < im.until_round) return;
     if (row.group != 0) {   // once per creature per zone per turn, per group (D2)
         const uint32_t now = turn_stamp(s);
         ActiveZone* zm = find_zone_mut(s, zone_id);
@@ -2628,6 +2639,8 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
         emit(ev, EventKind::SavingThrowRolled, who, CombatantId(e.save_ability), r.roll.natural, r.roll.total, int32_t(r.success));
         failed = !r.success;
         ev[at].c = failed ? 3 : 0;
+        if (!failed && row.success_immunity_hours != 0)   // batch 3: "immune to the ghast's Stench for 24 hours"
+            s.aura_immunities.push_back(AuraImmunity{who, z.owner, z.spell_id, uint32_t(s.round) + uint32_t(row.success_immunity_hours) * 600u});
     }
     int dealt = failed ? dmg : (e.on_save == OnSave::Half ? dmg / 2 : 0);
     if (e.kind == SpellEffectKind::Save && t->evasion && e.save_ability == Ability::Dex && e.on_save == OnSave::Half)
@@ -2640,6 +2653,14 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
     // Stinking Cloud (D9): the creature spends its action this turn (only on its own turn; movement and bonus action remain)
     if (row.loses_action && failed && !t->dead && current_actor(s) == who) { s.budget.action = false; s.budget.action_lost = true; }
     if (e.applies_condition && failed && !t->dead && !immune_to(s, *t, e.condition) && !(owner && immune_from(s, *t, e.condition, owner->id))) {
+        // Lich ruling (Stench expiry is per source): the condition is already on the creature from a source no effect or
+        // sourced condition tracks (scenario / content state). Then this instance does not own the condition bit: when it
+        // ends it must not clear the other source's condition (end_effect clears only an instance it owns).
+        const bool untracked_prior = t->has(e.condition) &&
+            std::none_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
+                return o.target == who && ((!o.no_condition && o.condition == e.condition) || (o.has_also && o.also == e.condition)); }) &&
+            std::none_of(s.sourced.begin(), s.sourced.end(), [&](const SourcedCondition& o) {
+                return o.target == who && o.condition == e.condition; });
         if (!t->has(e.condition)) {
             add_condition(*t, e.condition);
             emit(ev, EventKind::ConditionAdded, who, 0, int32_t(e.condition));
@@ -2648,6 +2669,11 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
             ActiveSpellEffect x{z.spell_id, z.owner, who, e.condition, e.save_ability, z.dc, RepeatSave::None, z.concentration,
                                 Timed{}, z.slot_level, false};
             x.zone_id = zone_id;
+            s.effects.push_back(x);
+        } else if (row.condition_until == 1) {   // batch 3 ghast Stench: "poisoned until the start of its next turn"
+            ActiveSpellEffect x{z.spell_id, z.owner, who, e.condition, e.save_ability, z.dc, RepeatSave::None, false,
+                                make_timed(Expiry::StartOfTargetNextTurn, 1, current_actor(s) == who), z.slot_level, false};
+            x.no_condition = untracked_prior;   // the instance is keyed (spell_id, owner); it clears only what it owns
             s.effects.push_back(x);
         }
     }

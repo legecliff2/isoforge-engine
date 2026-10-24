@@ -152,6 +152,32 @@
                 }
               }
             }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "aura"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/aura_effect"
+                }
+              }
+            }
           }
         ]
       },
@@ -1449,6 +1475,71 @@
           }
         }
       ]
+    },
+    "aura_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "radius_ft",
+        "on",
+        "save",
+        "condition",
+        "duration"
+      ],
+      "description": "monster@5-local trait kind (batch 3, ghast Stench; common@2 unchanged): a creature-sourced aura that exists from the start of combat and works while the creature is alive (incapacitated or unconscious included); it ends when the creature dies. Each creature that starts its turn within radius_ft of it makes the save; on a failure it has the condition until the start of its next turn. On a success with success_immunity_hours, that creature is immune to this creature's aura for that many hours. SRD Stench (ghast): {radius_ft 5, on start_turn, save {con, 10}, condition poisoned, duration until_start_of_next_turn, success_immunity_hours 24}.",
+      "properties": {
+        "kind": {
+          "const": "aura"
+        },
+        "radius_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 120,
+          "multipleOf": 5
+        },
+        "on": {
+          "const": "start_turn"
+        },
+        "save": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ability",
+            "dc"
+          ],
+          "properties": {
+            "ability": {
+              "$ref": "../common/v1.schema.json#/$defs/ability"
+            },
+            "dc": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            }
+          }
+        },
+        "condition": {
+          "allOf": [
+            {
+              "$ref": "../common/v1.schema.json#/$defs/condition"
+            },
+            {
+              "not": {
+                "const": "exhaustion"
+              }
+            }
+          ]
+        },
+        "duration": {
+          "const": "until_start_of_next_turn"
+        },
+        "success_immunity_hours": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 168
+        }
+      }
     },
     "monster_damage": {
       "description": "monster@5-local action damage component (common@2 $defs/damage unchanged): either common@2 damage ({dice, type, bonus_vs?}) or flat damage {flat, type}. Exactly one of dice / flat (oneOf). flat maps to rules5e::DiceExpr{0, 0, flat}: no dice are rolled (no rng), and a critical hit does not double it (SRD 5.1). The ability modifier stays in the dice string ('1d6+2'); flat is not a modifier and takes none.",

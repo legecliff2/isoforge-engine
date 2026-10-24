@@ -192,7 +192,7 @@ existing hash is unchanged. Next free: **0xE1** in `Combat::hash` (one tag, one 
 | 0xDB | `Combat::hash` | Monster grapple rider (Druid gap G, monster@5 `on_hit` grapple `restrains` / `exclusive` / `max_grapples`): the appended `SourcedCondition` fields. Per Grappled entry with `via_attack != 0xFF`, in `sourced` order: target u32, source u32, via_attack byte, flags byte (bit0 restrains, bit1 exclusive, bit2 owns_restrained). Folded right after 0xA7, inside the same `has_sourced_conditions` block | some Grappled entry has `via_attack != 0xFF` (only a rider with one of the new fields sets it) | Druid, feat/monster-grapple-rider | pending |
 | 0xDC | `Combat::hash` | Batch 3 mummy rot (EC feat/monster-batch3-riders): one `no_regain_hp` byte per combatant in order, folded only while some attack carries `curse_no_regain_dc > 0`. |
 | 0xDD | `log_hash` | Batch 3 vampire spawn Bite (EC feat/monster-batch3-riders): `ActionRequest::target_willing`, byte 1, folded only when set. Moved off 0xDC (Lich: one tag, one meaning). |
-| 0xDE | `Combat::hash` | Batch 3 ghast Stench aura (EC feat/monster-ghast-stench). Layout on that branch. |
+| 0xDE | `Combat::hash` | Batch 3 ghast Stench (EC feat/monster-ghast-stench): `EncounterState::aura_immunities`, folded only while non-empty: u32 count, then per row in grant order u32 creature, u32 source (aura owner), u32 spell_id (the aura's synthetic Zone SpellDef), u32 until_round (grant round + hours x 600). The aura zone itself folds in `zones_digest` as before (feature = 1). |
 | 0xDF | reserved | Batch 3 shadow Strength Drain `ability_reduction` (not built). |
 | 0xE0 | reserved | Batch 3 rust monster Rust Metal / Corrode (not built). |
 

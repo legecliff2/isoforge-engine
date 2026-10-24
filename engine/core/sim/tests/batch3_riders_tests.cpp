@@ -449,3 +449,110 @@ TEST_CASE("multiattack count_dice: the 1d4 count is the FIRST PRNG draw of the m
     const std::vector<int> golden = {3, 2, 3, 1, 4, 2, 4, 4, 3, 2, 2, 2};
     CHECK(got == golden);
 }
+
+// ---- ghast Stench (SRD 5.1): "Any creature that starts its turn within 5 feet of the ghast must succeed on a DC 10
+// Constitution saving throw or be poisoned until the start of its next turn. On a successful saving throw, the creature is
+// immune to the ghast's Stench for 24 hours." Lich: creature-sourced aura from the start of combat; alive = works. ----
+namespace {
+Json stench_effect(int dc) {
+    return Json{{"kind", "aura"}, {"radius_ft", 5}, {"on", "start_turn"}, {"save", {{"ability", "con"}, {"dc", dc}}},
+                {"condition", "poisoned"}, {"duration", "until_start_of_next_turn"}, {"success_immunity_hours", 24}};
+}
+Json ghast(int dc) {
+    Json g = creature("t.ghast");
+    g["traits"].push_back({{"id", "stench"}, {"name", "Stench"}, {"description", "SRD 5.1 Stench"}, {"effect", stench_effect(dc)}});
+    return g;
+}
+int saves_by(const Combat& c, CombatantId who) {
+    int n = 0;
+    for (const auto& e : c.events())
+        n += e.kind == SimEvent::Kind::Rules && e.rules.kind == rules5e::EventKind::SavingThrowRolled && e.rules.actor == who;
+    return n;
+}
+void end_turns(Combat& c, int n) {
+    for (int i = 0; i < n; ++i) {
+        Command e; e.request = {rules5e::current_actor(c.state()), ActionKind::EndTurn}; REQUIRE(c.submit(e).ok);
+    }
+}
+}  // namespace
+
+TEST_CASE("ghast Stench: aura from combat start; start-of-turn save inside the radius only; replay hashes match") {
+    auto lib = lib_with({ghast(30), creature("t.plain")});
+    const auto* a = lib.find("t.ghast");
+    REQUIRE(a->aura_spell_ids.size() == 1);
+    const auto* def = lib.spells()->find(a->aura_spell_ids[0]);
+    REQUIRE(def);
+    CHECK(def->kind == rules5e::SpellEffectKind::Zone);
+    CHECK(def->fixed_dc == 30);
+    CHECK(def->zone.size_ft == 5);
+    CHECK_FALSE(def->zone.needs_conscious_owner);
+    auto ch = arena({{"t.ghast", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}, {"t.plain", Vec2i{12, 12}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 7);
+    REQUIRE(c);
+    const CombatantId g = ch.spawns[0].stable_id, f = ch.spawns[1].stable_id, p = ch.spawns[2].stable_id;
+    REQUIRE(c->state().zones.size() == 1);   // exists from the start of combat
+    CHECK(c->state().zones[0].owner == g);
+    CHECK(c->state().zones[0].feature);
+    to_actor(*c, f);
+    CHECK(saves_by(*c, f) == 1);              // adjacent: within 5 feet
+    CHECK(who(*c, f).has(rules5e::Condition::Poisoned));
+    end_turns(*c, 6);
+    CHECK(saves_by(*c, p) == 0);              // far away: no save
+    CHECK(saves_by(*c, g) == 0);              // not its own aura
+    CHECK(saves_by(*c, f) >= 2);              // fails every time (DC 30): saves at each of its turns
+    CHECK(c->state().aura_immunities.empty());
+    ecs::Registry reg2;
+    std::string err;
+    auto rp = replay(reg2, ch, lib, 7, c->log(), &err);
+    REQUIRE_MESSAGE(rp, err);
+    CHECK(rp->hash() == c->hash());
+}
+
+TEST_CASE("ghast Stench: a success gives 24 h immunity (0xDE folds); replay hashes match") {
+    auto lib = lib_with({ghast(1)});
+    auto ch = arena({{"t.ghast", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 7);
+    REQUIRE(c);
+    const CombatantId g = ch.spawns[0].stable_id, f = ch.spawns[1].stable_id;
+    const uint64_t h0 = c->hash();
+    to_actor(*c, f);
+    CHECK(saves_by(*c, f) == 1);
+    CHECK_FALSE(who(*c, f).has(rules5e::Condition::Poisoned));
+    REQUIRE(c->state().aura_immunities.size() == 1);
+    const auto im = c->state().aura_immunities[0];
+    CHECK(im.creature == f);
+    CHECK(im.source == g);
+    CHECK(im.until_round == uint32_t(c->state().round) + 14400u);   // 24 h = 14400 rounds
+    end_turns(*c, 8);
+    CHECK(saves_by(*c, f) == 1);              // immune: no more saves
+    CHECK(h0 != c->hash());
+    ecs::Registry reg2;
+    std::string err;
+    auto rp = replay(reg2, ch, lib, 7, c->log(), &err);
+    REQUIRE_MESSAGE(rp, err);
+    CHECK(rp->hash() == c->hash());
+    CHECK(rp->state().aura_immunities == c->state().aura_immunities);
+}
+
+TEST_CASE("ghast Stench: loader refusals; a combat without an aura trait has no zone") {
+    Json g = ghast(10);
+    g["traits"].back()["effect"]["radius_ft"] = 7;
+    CHECK(load_error(g).find("radius_ft must be a multiple of 5") != std::string::npos);
+    g = ghast(10);
+    g["traits"].back()["effect"]["duration"] = "1_minute";
+    CHECK(load_error(g).find("duration must be until_start_of_next_turn") != std::string::npos);
+    g = ghast(10);
+    g["$schema"] = "monster@4";
+    CHECK(load_error(g).find("aura") != std::string::npos);
+    g = ghast(10);
+    g["traits"].back()["effect"]["save"]["dc"] = 0;
+    CHECK(load_error(g).find("save.dc must be 1..30") != std::string::npos);
+    auto lib = lib_with({creature("t.plain")});
+    auto ch = arena({{"t.plain", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 7);
+    REQUIRE(c);
+    CHECK(c->state().zones.empty());
+}
