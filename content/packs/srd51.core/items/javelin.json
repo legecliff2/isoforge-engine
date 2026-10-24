@@ -4,7 +4,7 @@
   "name": "Javelin",
   "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
   "category": "weapon",
-  "material": "wood",
+  "material": "metal",
   "cost_cp": 50,
   "weight_oz": 32,
   "weapon_class": "simple",
