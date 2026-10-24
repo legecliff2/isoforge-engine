@@ -69,11 +69,15 @@ startup, then reads memory again before every `cmake --build` and every `ctest`.
 replaces the estimate. `-j N` replaces both.
 
 Heavy build and test steps take an exclusive `flock` on `/tmp/ci_local.lock` (`CI_LOCAL_LOCK` to
-use another path). `CI_LOCAL_NO_LOCK=1` skips it. A second invocation prints `waiting for lock`
+use another path). `CI_LOCAL_NO_LOCK=1` skips it. The lock file is created mode `0666` so a
+different Unix user can open it. If the file is not writable (an older `0644` lock, or Linux
+`fs.protected_regular` refusing another user's write in sticky `/tmp` even at mode `0666`), the
+script locks it read-only instead of building with no queue. The lock is skipped only when it
+cannot be opened at all. A second invocation prints `waiting for lock`
 and the holder's PID, then runs when the lock is free. The lock is taken before the first build
 and held until the process exits (so a later GCC/Clang job in the same run stays in the queue),
-and it is released on exit and on `INT`, `TERM`, and `HUP`. A nested `ci_local.sh` that inherits
-the lock does not take it again. `--job lint` does not take it.
+and it is released on exit and on `INT`, `TERM`, and `HUP`. A nested `ci_local.sh` skips the lock
+only while the recorded owner is still running. `--job lint` does not take it.
 
 Without `/proc/meminfo` (for example macOS), memory comes from `sysctl` (`vm.page_free_count`
 with `hw.pagesize` when those exist, otherwise total `hw.memsize`) and the CPU count from `nproc`

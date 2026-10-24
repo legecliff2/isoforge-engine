@@ -20,9 +20,11 @@
 # CI_LOCAL_JOBS=N wins over that estimate. -j / --parallel wins over CI_LOCAL_JOBS.
 #
 # Heavy build/test steps take an exclusive flock on /tmp/ci_local.lock (CI_LOCAL_LOCK to move it,
-# CI_LOCAL_NO_LOCK=1 to skip). The lock is held until this process exits. A nested invocation that
-# inherits CI_LOCAL_LOCK_HELD does not lock again. Without /proc/meminfo the script uses sysctl
-# (hw.memsize / vm.page_free_count, hw.ncpu) or nproc. Without flock it skips the lock and says so.
+# CI_LOCAL_NO_LOCK=1 to skip). The lock file is mode 0666 so another Unix user can open it. If it
+# is not writable, the script locks the same file read-only instead of skipping the queue. The lock
+# is held until this process exits. A nested invocation skips the lock only while CI_LOCAL_LOCK_OWNER
+# is still running. Without /proc/meminfo the script uses sysctl (hw.memsize / vm.page_free_count,
+# hw.ncpu) or nproc. Without flock it skips the lock and says so.
 #
 # Exit status: 0 if every step of every selected job passed, 1 otherwise, 2 on bad usage.
 :
@@ -192,6 +194,70 @@ ci_local_use_jobs() {
   fi
 }
 
+# True when pid is still a process. kill -0 is not enough across users: EPERM means
+# the pid exists but this uid cannot signal it.
+ci_local_pid_alive() {
+  local pid=$1 err
+  case "$pid" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  if [ "$pid" = "$$" ]; then
+    return 0
+  fi
+  if [ -d "/proc/${pid}" ]; then
+    return 0
+  fi
+  if [ -d /proc ]; then
+    if err=$(kill -0 "$pid" 2>&1); then
+      return 0
+    fi
+    case "$err" in
+      *permitted*) return 0 ;;
+    esac
+    return 1
+  fi
+  if command -v ps >/dev/null 2>&1; then
+    ps -p "$pid" >/dev/null 2>&1
+    return $?
+  fi
+  kill -0 "$pid" 2>/dev/null
+}
+
+# Create the lock 0666 when we can. A 0644 file (default umask) cannot be opened
+# read-write by the next uid, and that used to skip the queue entirely.
+ci_local_prepare_lock_file() {
+  local lock=$1 dir
+  dir=$(dirname -- "$lock")
+  if [ ! -d "$dir" ]; then
+    mkdir -p -- "$dir" 2>/dev/null || true
+  fi
+  if [ ! -e "$lock" ]; then
+    (umask 0; : >>"$lock") 2>/dev/null || true
+  fi
+  if [ -e "$lock" ] && [ -O "$lock" ]; then
+    chmod 0666 "$lock" 2>/dev/null || true
+  fi
+}
+
+# Open the lock on fd 9. Read-write lets us record the holder PID. Linux flock
+# works on a read-only fd, so a 0644 file — or a 0666 file in sticky /tmp, which
+# fs.protected_regular will not let another uid open for write — still queues.
+# Returns 1 only when neither open works.
+ci_local_open_lock_fd() {
+  local lock=$1
+  # A failed exec redirection prints to the shell's stderr before 2> applies,
+  # so wrap it. exec with no command still opens fd 9 in this shell.
+  if { exec 9<>"$lock"; } 2>/dev/null; then
+    return 0
+  fi
+  if { exec 9<"$lock"; } 2>/dev/null; then
+    echo "ci_local: ${lock} is not writable; locking read-only"
+    return 0
+  fi
+  echo "ci_local: cannot open ${lock} read-write or read-only; skipping shared build lock"
+  return 1
+}
+
 ci_local_lock_holder() {
   local lock=$1 pid="" inode=""
   pid=$(awk 'NR == 1 && $1 ~ /^[0-9]+$/ { print $1; exit }' "$lock" 2>/dev/null || true)
@@ -224,7 +290,9 @@ ci_local_release_lock() {
   fi
   lock=${CI_LOCAL_LOCK:-/tmp/ci_local.lock}
   if [ "${_ci_local_lock_owned:-0}" = 1 ]; then
-    : >"$lock" 2>/dev/null || true
+    # Truncate may be refused in a sticky directory even when the mode is 0666
+    # (fs.protected_regular). The flock itself is what releases the queue.
+    { : >"$lock"; } 2>/dev/null || true
     flock -u 9 2>/dev/null || true
     _ci_local_lock_owned=0
   fi
@@ -245,7 +313,7 @@ ci_local_install_traps() {
 # children that inherit CI_LOCAL_LOCK_HELD return without locking (they would deadlock
 # on the parent's fd otherwise).
 ci_local_acquire_lock() {
-  local lock dir holder
+  local lock holder
   if [ "${CI_LOCAL_NO_LOCK:-}" = 1 ]; then
     if [ "${_ci_local_nolock_noted:-0}" != 1 ]; then
       echo "ci_local: shared lock disabled (CI_LOCAL_NO_LOCK=1)"
@@ -254,10 +322,15 @@ ci_local_acquire_lock() {
     return 0
   fi
   if [ "${CI_LOCAL_LOCK_HELD:-}" = 1 ]; then
-    if [ "${CI_LOCAL_LOCK_OWNER:-}" != "$$" ]; then
-      echo "ci_local: nested call; lock already held by PID ${CI_LOCAL_LOCK_OWNER:-unknown}"
+    if ci_local_pid_alive "${CI_LOCAL_LOCK_OWNER:-}"; then
+      if [ "${CI_LOCAL_LOCK_OWNER:-}" != "$$" ]; then
+        echo "ci_local: nested call; lock already held by PID ${CI_LOCAL_LOCK_OWNER:-unknown}"
+      fi
+      return 0
     fi
-    return 0
+    echo "ci_local: lock owner PID ${CI_LOCAL_LOCK_OWNER:-unknown} is not running; taking the lock"
+    unset CI_LOCAL_LOCK_HELD
+    unset CI_LOCAL_LOCK_OWNER
   fi
   if ! command -v flock >/dev/null 2>&1; then
     if [ "${_ci_local_flock_missing:-0}" != 1 ]; then
@@ -267,13 +340,8 @@ ci_local_acquire_lock() {
     return 0
   fi
   lock=${CI_LOCAL_LOCK:-/tmp/ci_local.lock}
-  dir=$(dirname -- "$lock")
-  if [ ! -d "$dir" ]; then
-    mkdir -p -- "$dir" 2>/dev/null || true
-  fi
-  # <> does not truncate, so a waiter can still read the holder's PID.
-  if ! exec 9<>"$lock"; then
-    echo "ci_local: cannot open ${lock}; skipping shared build lock"
+  ci_local_prepare_lock_file "$lock"
+  if ! ci_local_open_lock_fd "$lock"; then
     return 0
   fi
   _ci_local_we_locked=1
@@ -292,7 +360,8 @@ ci_local_acquire_lock() {
     fi
   fi
   _ci_local_lock_owned=1
-  printf '%s\n' "$$" >"$lock" || true
+  # Best-effort holder PID. Another uid often cannot write this file in /tmp.
+  { printf '%s\n' "$$" >"$lock"; } 2>/dev/null || true
   export CI_LOCAL_LOCK_HELD=1
   export CI_LOCAL_LOCK_OWNER=$$
   ci_local_install_traps

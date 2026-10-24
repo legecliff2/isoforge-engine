@@ -713,6 +713,374 @@ def test_locks():
         )
 
 
+def test_lock_permissions():
+    """0666 creation, read-only flock fallback, and a dead inherited owner."""
+    with tempfile.TemporaryDirectory(prefix="ci-local-perm-") as td:
+        tmp = Path(td)
+        created = tmp / "new.lock"
+        proc = run(
+            "\n".join(
+                [
+                    "set -uo pipefail",
+                    'source "$1"',
+                    'export CI_LOCAL_LOCK="$2"',
+                    "ci_local_acquire_lock",
+                    "ci_local_release_lock",
+                    "echo RELEASED",
+                ]
+            ),
+            timeout=5,
+            args=[str(created)],
+        )
+        mode = created.stat().st_mode & 0o777 if created.exists() else 0
+        note(
+            proc.returncode == 0
+            and mode == 0o666
+            and "RELEASED" in proc.stdout
+            and "skipping shared build lock" not in proc.stdout
+            and "not writable" not in proc.stdout,
+            "new lock file is mode 0666",
+            f"mode={oct(mode)} out={proc.stdout!r} err={proc.stderr!r}",
+        )
+
+        repaired = tmp / "old.lock"
+        repaired.write_text("stale\n")
+        repaired.chmod(0o644)
+        proc = run(
+            "\n".join(
+                [
+                    "set -uo pipefail",
+                    'source "$1"',
+                    'export CI_LOCAL_LOCK="$2"',
+                    "ci_local_acquire_lock",
+                    "ci_local_release_lock",
+                    "echo RELEASED",
+                ]
+            ),
+            timeout=5,
+            args=[str(repaired)],
+        )
+        mode = repaired.stat().st_mode & 0o777
+        note(
+            proc.returncode == 0
+            and mode == 0o666
+            and "not writable" not in proc.stdout
+            and "skipping shared build lock" not in proc.stdout,
+            "owner of a 0644 lock widens it to 0666",
+            f"mode={oct(mode)} out={proc.stdout!r} err={proc.stderr!r}",
+        )
+
+        readonly = tmp / "ro.lock"
+        readonly.write_text("7\n")
+        readonly.chmod(0o444)
+        # Hold the read-only fd open across a second flock attempt.
+        hold = "\n".join(
+            [
+                "set -uo pipefail",
+                'source "$1"',
+                'ci_local_open_lock_fd "$2"',
+                "flock -n 9",
+                "echo HELD_RO",
+                "sleep 1.2",
+                "flock -u 9",
+                "echo RELEASED_RO",
+            ]
+        )
+        env = clean_env()
+        first = subprocess.Popen(
+            [BASH, "-c", hold, "bash", str(SH), str(readonly)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+        )
+        held = ""
+        deadline = time.time() + 5
+        while time.time() < deadline and "HELD_RO" not in held:
+            if first.stdout is None:
+                break
+            chunk = first.stdout.readline()
+            if chunk:
+                held += chunk
+            else:
+                time.sleep(0.02)
+        probe = run(
+            "\n".join(
+                [
+                    "set -uo pipefail",
+                    'exec 9<"$2"',
+                    "if flock -n 9; then echo FREE; else echo BUSY; fi",
+                ]
+            ),
+            timeout=5,
+            args=[str(readonly)],
+        )
+        out1, err1 = first.communicate(timeout=5)
+        note(
+            first.returncode == 0
+            and "is not writable; locking read-only" in held
+            and "HELD_RO" in held
+            and "BUSY" in probe.stdout
+            and "FREE" not in probe.stdout,
+            "read-only fd still flocks",
+            f"held={held!r} rest={out1!r} err={err1!r} probe={probe.stdout!r} {probe.stderr!r}",
+        )
+
+        blocked = tmp / "nowrite"
+        blocked.mkdir()
+        blocked.chmod(0o555)
+        try:
+            proc = run(
+                "\n".join(
+                    [
+                        "set -uo pipefail",
+                        'source "$1"',
+                        'export CI_LOCAL_LOCK="$2"',
+                        "ci_local_acquire_lock",
+                        "echo CONTINUED",
+                    ]
+                ),
+                timeout=5,
+                args=[str(blocked / "ci_local.lock")],
+            )
+            note(
+                proc.returncode == 0
+                and "cannot open" in proc.stdout
+                and "read-write or read-only" in proc.stdout
+                and "skipping shared build lock" in proc.stdout
+                and "CONTINUED" in proc.stdout,
+                "skip the lock only when both opens fail",
+                f"out={proc.stdout!r} err={proc.stderr!r}",
+            )
+        finally:
+            blocked.chmod(0o755)
+
+        dead = 1 << 22
+        while Path(f"/proc/{dead}").exists():
+            dead += 1
+        stale = tmp / "stale.lock"
+        proc = run(
+            "\n".join(
+                [
+                    "set -uo pipefail",
+                    'source "$1"',
+                    'export CI_LOCAL_LOCK="$2"',
+                    "export CI_LOCAL_LOCK_HELD=1",
+                    'export CI_LOCAL_LOCK_OWNER="$3"',
+                    "ci_local_acquire_lock",
+                    'if bash -c \'exec 9<>"$1"; if flock -n 9; then echo FREE; else echo BUSY; fi\' bash "$2"; then',
+                    "  :",
+                    "fi",
+                    "echo TOOK",
+                    "ci_local_release_lock",
+                ]
+            ),
+            timeout=5,
+            args=[str(stale), str(dead)],
+        )
+        # args are appended after the script path, so $2 is the lock and $3 is the dead pid.
+        # The inner bash receives the lock as $1 via "$2" of the outer script.
+        note(
+            proc.returncode == 0
+            and f"lock owner PID {dead} is not running" in proc.stdout
+            and "nested call" not in proc.stdout
+            and "BUSY" in proc.stdout
+            and "TOOK" in proc.stdout,
+            "dead CI_LOCAL_LOCK_OWNER takes the lock again",
+            f"out={proc.stdout!r} err={proc.stderr!r}",
+        )
+
+
+def test_cross_user_lock():
+    """Two uids must queue on one lock, including a pre-existing 0644 file."""
+    probe = subprocess.run(
+        ["sudo", "-n", "-u", "nobody", "true"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if probe.returncode != 0:
+        print("ok   cross-user lock skipped (sudo -u nobody unavailable)")
+        return
+
+    tag = f"{os.getpid()}-{time.time_ns()}"
+    shared = Path("/tmp") / f"ci-local-shared-{tag}.lock"
+    legacy = Path("/tmp") / f"ci-local-legacy-{tag}.lock"
+    try:
+        # Fresh lock: creator widens it to 0666, the other uid waits without a read-only fallback.
+        hold = "\n".join(
+            [
+                "set -uo pipefail",
+                'source "$1"',
+                'export CI_LOCAL_LOCK="$2"',
+                "ci_local_acquire_lock",
+                "echo HOLDER_READY",
+                "sleep 1.5",
+                "echo HOLDER_RELEASE",
+                "ci_local_release_lock",
+            ]
+        )
+        holder = subprocess.Popen(
+            [BASH, "-c", hold, "bash", str(SH), str(shared)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=clean_env(),
+        )
+        deadline = time.time() + 5
+        ready = ""
+        while time.time() < deadline and "HOLDER_READY" not in ready:
+            if holder.stdout is None:
+                break
+            line = holder.stdout.readline()
+            if line:
+                ready += line
+            else:
+                time.sleep(0.02)
+        nobody_script = "\n".join(
+            [
+                "set -uo pipefail",
+                'source "$1"',
+                'export CI_LOCAL_LOCK="$2"',
+                "ci_local_acquire_lock",
+                "echo NOBODY_GOT",
+                "ci_local_release_lock",
+            ]
+        )
+        guest = subprocess.Popen(
+            [
+                "sudo",
+                "-n",
+                "-u",
+                "nobody",
+                BASH,
+                "-c",
+                nobody_script,
+                "bash",
+                str(SH),
+                str(shared),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            guest_out, guest_err = guest.communicate(timeout=8)
+            hold_out, hold_err = holder.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            holder.kill()
+            guest.kill()
+            note(False, "other user queues on a 0666 lock", "timed out")
+            return
+        mode = shared.stat().st_mode & 0o777 if shared.exists() else 0
+        # Mode 0666 is necessary but not sufficient on Linux: fs.protected_regular
+        # blocks the other uid's read-write open in sticky /tmp. Read-only flock must
+        # still queue, and it must not skip or spam Permission denied.
+        queued = (
+            holder.returncode == 0
+            and guest.returncode == 0
+            and mode == 0o666
+            and "waiting for lock" in guest_out
+            and "skipping shared build lock" not in guest_out
+            and "NOBODY_GOT" in guest_out
+            and "HOLDER_RELEASE" in (ready + hold_out)
+            and "Permission denied" not in guest_err
+        )
+        note(
+            queued,
+            "other user queues on a 0666 lock",
+            f"mode={oct(mode)} guest={guest_out!r} {guest_err!r} holder={ready!r} {hold_out!r} {hold_err!r}",
+        )
+        print("--- cross-user lock demo (0666) ---")
+        print(f"lock: {shared} mode {oct(mode)}")
+        print(f"ubuntu: {ready.strip()}")
+        for line in guest_out.splitlines():
+            print(f"nobody: {line}")
+        print(f"ubuntu: {hold_out.strip()}")
+        print("--- end 0666 demo ---")
+
+        # Old 0644 lock owned by this user. nobody cannot open it read-write, but must still flock.
+        legacy.write_text("")
+        legacy.chmod(0o644)
+        raw_hold = "\n".join(
+            [
+                "set -uo pipefail",
+                'exec 9<>"$1"',
+                "flock 9",
+                'printf "%s\\n" $$ >"$1"',
+                "echo HOLDER_READY",
+                "sleep 1.5",
+                "echo HOLDER_RELEASE",
+                "flock -u 9",
+            ]
+        )
+        raw = subprocess.Popen(
+            [BASH, "-c", raw_hold, "bash", str(legacy)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=clean_env(),
+        )
+        ready = ""
+        deadline = time.time() + 5
+        while time.time() < deadline and "HOLDER_READY" not in ready:
+            if raw.stdout is None:
+                break
+            line = raw.stdout.readline()
+            if line:
+                ready += line
+            else:
+                time.sleep(0.02)
+        guest = subprocess.Popen(
+            [
+                "sudo",
+                "-n",
+                "-u",
+                "nobody",
+                BASH,
+                "-c",
+                nobody_script,
+                "bash",
+                str(SH),
+                str(legacy),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            guest_out, guest_err = guest.communicate(timeout=8)
+            raw_out, raw_err = raw.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            raw.kill()
+            guest.kill()
+            note(False, "0644 lock is taken read-only by another user", "timed out")
+            return
+        note(
+            raw.returncode == 0
+            and guest.returncode == 0
+            and "is not writable; locking read-only" in guest_out
+            and "waiting for lock" in guest_out
+            and "skipping shared build lock" not in guest_out
+            and "NOBODY_GOT" in guest_out
+            and "Permission denied" not in guest_err,
+            "0644 lock is taken read-only by another user",
+            f"guest={guest_out!r} {guest_err!r} holder={ready!r} {raw_out!r} {raw_err!r}",
+        )
+        print("--- cross-user lock demo (legacy 0644, read-only flock) ---")
+        print(f"lock: {legacy}")
+        print(f"ubuntu: {ready.strip()} {raw_out.strip()}")
+        for line in guest_out.splitlines():
+            print(f"nobody: {line}")
+        print("--- end 0644 demo ---")
+    finally:
+        for path in (shared, legacy):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+
+
 def test_shellcheck():
     exe = shutil.which("shellcheck")
     if not exe:
@@ -728,6 +1096,8 @@ def main():
     test_parse_and_help()
     test_source_shape()
     test_locks()
+    test_lock_permissions()
+    test_cross_user_lock()
     test_shellcheck()
     print("ALL EXPECTATIONS MET" if not bad else f"{bad} FAILED")
     raise SystemExit(1 if bad else 0)
