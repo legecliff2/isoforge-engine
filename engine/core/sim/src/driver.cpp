@@ -959,6 +959,37 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
 //  * R-G7's grip fact: a versatile melee weapon held in two hands (Archetype::two_handed_grip, the v0 wield model; never with a
 //    two-weapon bonus option) is attacked with ActionRequest::two_handed_grip so Great Weapon Fighting applies. Only rules5e's
 //    Great Weapon Fighting reads the flag.
+bool choose_grapple_instead(const Combat& c, const rules5e::ActionRequest& q) {
+    if (q.kind != ActionKind::Attack || q.special != 0) return false;
+    const auto& s = c.state();
+    const auto* me = rules5e::find(s, q.actor);
+    const auto* t = rules5e::find(s, q.target);
+    if (!me || !t || t->dead || q.attack_index >= me->attacks.size() || !me->attacks[q.attack_index].grapple_instead_ok) return false;
+    // (b) already held by me, incapacitated or restrained: the Bite is legal already, so take the damage
+    if (t->has(rules5e::Condition::Grappled) && rules5e::condition_source(s, t->id, rules5e::Condition::Grappled) == me->id) return false;
+    if (rules5e::is_incapacitated(*t) || t->has(rules5e::Condition::Restrained)) return false;
+    // the claw's average damage would drop the target: take the damage
+    const rules5e::DiceExpr& d = me->attacks[q.attack_index].damage;
+    if ((int(d.count) * (int(d.sides) + 1)) / 2 + int(d.bonus) >= int(t->hp) + int(t->temp_hp)) return false;
+    // (a) a grappled_by_self-gated attack still left in this turn's multiattack, after this one
+    const rules5e::TurnBudget& b = s.budget;
+    const std::vector<uint8_t>* seq = nullptr;
+    std::size_t next = 0;
+    if (b.sequence != 0 && b.sequence <= me->multiattacks.size()) { seq = &me->multiattacks[b.sequence - 1].attacks; next = std::size_t(b.sequence_pos) + 1; }
+    else if (b.sequence == 0 && q.multiattack != 0 && q.multiattack <= me->multiattacks.size()) { seq = &me->multiattacks[q.multiattack - 1].attacks; next = 1; }
+    if (!seq) return false;
+    const Vec2i pa = c.pos(me->id), pt = c.pos(t->id);
+    const int dist = 5 * std::max(std::abs(pa.x - pt.x), std::abs(pa.y - pt.y));
+    for (std::size_t i = next; i < seq->size(); ++i) {
+        const uint8_t j = (*seq)[i];
+        if (j >= me->attacks.size() || j == q.attack_index) continue;
+        const rules5e::Attack& bite = me->attacks[j];
+        if (!(bite.target_requires_any & rules5e::kTargetGateGrappledBySelf) || bite.ranged) continue;
+        if (dist <= int(bite.reach_or_range_ft)) return true;
+    }
+    return false;
+}
+
 Command next_command(const Combat& c, std::optional<CombatantId> target) {
     Command cmd = tactical_command(c, target);
     rules5e::ActionRequest& q = cmd.request;
@@ -966,6 +997,7 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
     if (cmd.kind != CommandKind::Rules || q.kind != ActionKind::Attack || q.special != 0 || q.as_bonus_action) return cmd;
     const auto* me = rules5e::find(c.state(), q.actor);
     if (!me || q.attack_index >= me->attacks.size()) return cmd;
+    q.grapple_instead = choose_grapple_instead(c, q);   // Tier-A §27 (driver owner's ack pending)
     const rules5e::TurnBudget& b = c.state().budget;
     if (me->reckless_attack && !me->reckless_active && !me->attacks[q.attack_index].ranged && !q.haste_action && b.action &&
         b.attacks_used_mask == 0 && b.sequence == 0)

@@ -1167,6 +1167,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
             if (auto g = arch->grapple_on_hit.find(q.attack_index); g != arch->grapple_on_hit.end())
                 for (const auto& e : evs)
                     if (e.kind == rules5e::EventKind::AttackResolved && e.reaction_depth == 0 && e.actor == q.actor && (e.c & 1)) {
+                        if (g->second.instead_of_damage && !(e.c & 8)) break;   // Tier-A §27: damage was chosen, no grapple
                         std::vector<rules5e::Event> gev;
                         rules5e::grapple(state_, q.actor, e.target, g->second, q.attack_index, gev);   // false past max_grapples: damage only
                         apply_rules_events(gev);
@@ -2059,6 +2060,7 @@ uint64_t Combat::log_hash() const {
         }
         if (q.avert_gaze) { h.byte(0xBB); h.byte(1); }
         if (q.target_willing) { h.byte(0xDD); h.byte(1); }   // batch 3 vampire spawn Bite willing target: only when set
+        if (q.grapple_instead) { h.byte(0xE2); h.byte(1); }  // Tier-A §27 vampire spawn Claws grapple instead: only when set
         if (q.equip_op != 0) {   // 0xD1 (EQUIPMENT.md 4.2, Engine Core): equip request, folded only when equip_op != 0
             h.byte(0xD1); h.byte(q.equip_op); h.u32(q.equip_item); h.byte(q.equip_hand); h.u32(q.equip_to);
             h.byte(q.equip_in_reach ? 1 : 0);
