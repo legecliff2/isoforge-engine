@@ -122,3 +122,51 @@ TEST_CASE("drain combat: failed save reduces the maximum by the damage taken; a 
     CHECK(t2 > 0);
     CHECK(r2 == 0);
 }
+
+namespace {
+// Death dog Bite rider (SRD 5.1): "must succeed on a DC 12 Constitution saving throw against disease or become poisoned
+// until the disease is cured." The 24-hour hit point maximum reduction is deferred (no day clock in combat).
+Json until_cured_rider(const std::string& cond, int dc) {
+    return Json::array({{{"kind", "save_condition"}, {"save", {{"ability", "con"}, {"dc", dc}}},
+                         {"apply", Json::array({{{"condition", cond}, {"duration", {{"kind", "until_cured"}}}}})}}});
+}
+}  // namespace
+
+TEST_CASE("until_cured duration (death dog): poisoned, untracked, no timer; refusals") {
+    Json d = creature("t.death_dog");
+    d["actions"][0]["on_hit"] = until_cured_rider("poisoned", 30);
+    auto lib = lib_with({d});
+    auto ch = arena({{"t.death_dog", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 7);
+    REQUIRE(c);
+    const CombatantId a = ch.spawns[0].stable_id, f = ch.spawns[1].stable_id;
+    for (int i = 0; i < 6 && !who(*c, f).has(rules5e::Condition::Poisoned); ++i) {
+        to_actor(*c, a);
+        Command cmd;
+        cmd.request = {a, ActionKind::Attack, f, 0};
+        REQUIRE(c->submit(cmd).ok);
+        c->settle(nullptr);
+        Command e; e.request = {a, ActionKind::EndTurn}; REQUIRE(c->submit(e).ok);
+    }
+    REQUIRE(who(*c, f).has(rules5e::Condition::Poisoned));
+    CHECK(c->state().effects.empty());   // no lasting-effect entry: nothing expires it
+    for (int i = 0; i < 24; ++i) {       // 12 rounds later it is still there (no repeat save, no timer)
+        Command e; e.request = {rules5e::current_actor(c->state()), ActionKind::EndTurn}; REQUIRE(c->submit(e).ok);
+    }
+    CHECK(who(*c, f).has(rules5e::Condition::Poisoned));
+    // the cure path: Lesser Restoration's EndCondition removes a bare condition bit with remove_condition
+    rules5e::Combatant copy = who(*c, f);
+    rules5e::remove_condition(copy, rules5e::Condition::Poisoned);
+    CHECK_FALSE(copy.has(rules5e::Condition::Poisoned));
+
+    for (const char* bad : {"prone", "frightened", "grappled", "charmed"}) {
+        Json b = creature("t.bad");
+        b["actions"][0]["on_hit"] = until_cured_rider(bad, 12);
+        CHECK(load_error(b).find("until_cured needs blinded, deafened, paralyzed or poisoned") != std::string::npos);
+    }
+    Json b = creature("t.bad");
+    b["actions"][0]["on_hit"] = until_cured_rider("poisoned", 12);
+    b["actions"][0]["on_hit"][0]["apply"][0]["repeat_save"] = "end_of_turn";
+    CHECK(load_error(b).find("until_cured takes no repeat_save") != std::string::npos);
+}

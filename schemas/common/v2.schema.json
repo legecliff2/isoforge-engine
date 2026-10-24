@@ -85,7 +85,8 @@
             "until_end_of_caster_next_turn",
             "until_start_of_target_turn",
             "concentration",
-            "until_rest"
+            "until_rest",
+            "until_cured"
           ]
         },
         "n": {

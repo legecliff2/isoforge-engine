@@ -91,5 +91,31 @@ class Drain(unittest.TestCase):
         self.assertTrue([m for m in e if "read only on weapon attacks" in m], e)
 
 
+def cured(cond: str, **extra) -> dict:
+    x = {"condition": cond, "duration": {"kind": "until_cured"}, **extra}
+    return bite(on_hit=[{"kind": "save_condition", "save": {"ability": "con", "dc": 12}, "apply": [x]}])
+
+
+class UntilCured(unittest.TestCase):
+    def test_valid(self):
+        for c in ("poisoned", "blinded", "deafened", "paralyzed"):
+            e, _w = run(cured(c))
+            self.assertEqual(e, [], c)
+
+    def test_refused(self):
+        for c in ("prone", "frightened", "grappled"):
+            e, _w = run(cured(c))
+            self.assertTrue([m for m in e if "until_cured needs" in m], (c, e))
+        e, _w = run(cured("poisoned", repeat_save="end_of_turn"))
+        self.assertTrue([m for m in e if "until_cured takes no repeat_save" in m], e)
+
+    def test_outside_monster_apply(self):
+        d = bugbear()
+        d["traits"].append({"id": "t", "name": "T", "description": "t",
+                            "effect": {"kind": "x", "duration": {"kind": "until_cured"}}})
+        e, _w = run(d)
+        self.assertTrue([m for m in e if "until_cured is read only" in m or "/effect" in m], e)
+
+
 if __name__ == "__main__":
     unittest.main()

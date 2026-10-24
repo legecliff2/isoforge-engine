@@ -368,6 +368,7 @@ Additive optional values in `common@2` (no version bump; older content loads and
 |---|---|---|
 | condition `apply[].duration.kind` (save_effect, save_condition, area_save, apply_condition) | `until_end_of_caster_next_turn` | `SpellDef::expiry` 3: the condition ends at the end of the applier's next turn (its own current turn does not count). Was refused as unsupported |
 | condition `apply[].duration.kind` | `until_start_of_target_turn` | expiry 4: the condition ends as the affected creature's next turn starts. Was refused as unsupported |
+| condition `apply[].duration.kind` | `until_cured` | batch 3 (death dog, monster docs only): no timer, no repeat save; applied untracked and ended only by a cure (Lesser Restoration EndCondition). Only blinded, deafened, paralyzed, poisoned; anything else, a repeat_save or an escape is a load error |
 | rider `amount_from` (heal_self / temp_hp only) | `{ability, class?, min?}` | amount = `ability` modifier + level in `class` (omitted: no level term), at least `min` (default 1), computed at load. One of `dice` / `amount` / `amount_from`. Dark One's Blessing: `{"kind": "on_event", "on": "reduce_to_zero", "when": [{"kind": "subject_hostile"}], "effects": [{"kind": "temp_hp", "amount_from": {"ability": "cha", "class": "warlock"}}]}` |
 | predicate `kind` | `subject_hostile` | kind only: the event's subject is on another team than the owner |
 

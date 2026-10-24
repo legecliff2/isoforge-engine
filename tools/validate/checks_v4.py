@@ -1039,6 +1039,48 @@ def check_batch3_actions(doc: dict, tag: str) -> list[str]:
     return errs
 
 
+UNTIL_CURED_CONDITIONS = frozenset({"blinded", "deafened", "paralyzed", "poisoned"})   # Lesser Restoration's list (SRD 5.1)
+
+
+def _walk_until_cured(node, path: str):
+    if isinstance(node, dict):
+        d = node.get("duration")
+        if isinstance(d, dict) and d.get("kind") == "until_cured":
+            yield path, node
+        for k, v in node.items():
+            yield from _walk_until_cured(v, f"{path}/{k}")
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            yield from _walk_until_cured(v, f"{path}/{i}")
+
+
+def check_until_cured(doc: dict, tag: str) -> list[str]:
+    """Batch 3 duration {kind: until_cured} (Lich ruling, death dog): read only in apply[] of a monster's save_condition /
+    apply_condition riders and save_effect / attack_effect actions (sim compile_save_action). The condition must be one an
+    existing cure ends (Lesser Restoration: blinded, deafened, paralyzed, poisoned); conditions with a natural SRD end are
+    refused, and so are repeat_save / escape (same text as the loader)."""
+    errs: list[str] = []
+    allowed: set[int] = set()
+    if tag.startswith("monster@"):
+        for _p, _o, _j, r in rider_sites(doc):
+            if isinstance(r, dict) and r.get("kind") in ("save_condition", "apply_condition"):
+                allowed.update(id(x) for x in r.get("apply") or [])
+        for _p, a in mechanical_actions(doc):
+            if a.get("kind") in ("save_effect", "attack_effect"):
+                allowed.update(id(x) for x in a.get("apply") or [])
+    for path, x in _walk_until_cured(doc, ""):
+        if id(x) not in allowed:
+            errs.append(f"{path}: until_cured is read only in apply[] of a monster save_condition / apply_condition rider or "
+                        "save_effect / attack_effect action")
+        elif x.get("condition") not in UNTIL_CURED_CONDITIONS:
+            errs.append(f"{path}: until_cured needs blinded, deafened, paralyzed or poisoned (a condition Lesser Restoration ends)")
+        elif "repeat_save" in x:
+            errs.append(f"{path}: until_cured takes no repeat_save")
+        elif "escape" in x:
+            errs.append(f"{path}: until_cured takes no escape")
+    return errs
+
+
 CONTROL_KEYS_7_2Y = ("control", "control_excludes_creature_types", "destroy_undead_max_cr8", "target_creature_types", "duration")
 
 

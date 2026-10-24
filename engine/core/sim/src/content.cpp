@@ -62,6 +62,16 @@ bool ends_by_own_rules(rules5e::Condition c) {
     for (rules5e::Condition x : kEndsByOwnRules) if (x == c) return true;
     return false;
 }
+// Batch 3 (Lich ruling, death dog): duration {kind: until_cured} = no timer and no repeat save; the condition ends only through
+// an explicit cure. Only conditions an existing cure ends are allowed: Lesser Restoration (SRD 5.1: "The condition can be
+// blinded, deafened, paralyzed, or poisoned"). Applied untracked (rules5e condition_untracked, no ActiveSpellEffect entry), so
+// rules5e EndCondition removes the bare bit. Conditions with a natural SRD end (prone: stand up; grappled: escape) are refused.
+constexpr rules5e::Condition kCuredOnly[] = {rules5e::Condition::Blinded, rules5e::Condition::Deafened,
+                                             rules5e::Condition::Paralyzed, rules5e::Condition::Poisoned};
+bool cured_only_ok(rules5e::Condition c) {
+    for (rules5e::Condition x : kCuredOnly) if (x == c) return true;
+    return false;
+}
 std::optional<rules5e::CreatureType> creature_type_of(const std::string& s) {
     static const char* names[] = {"aberration", "beast", "celestial", "construct", "dragon", "elemental", "fey",
                                   "fiend", "giant", "humanoid", "monstrosity", "ooze", "plant", "undead"};
@@ -879,7 +889,8 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             // riders): a condition that ends by its own rules (kEndsByOwnRules: prone) is applied untracked, with no timer.
             const std::string rs = x.value("repeat_save", "");
             const bool has_dur = x.contains("duration");
-            const bool untracked = untimed_ok && !has_dur && rs.empty() && ends_by_own_rules(*cond);
+            const bool untracked = (untimed_ok && !has_dur && rs.empty() && ends_by_own_rules(*cond)) ||
+                                   (has_dur && x["duration"].is_object() && x["duration"].value("kind", "") == "until_cured");
             // 7.2w: an escape {ability str, dc} (Engulf) lasts until the creature escapes: no duration needed
             int esc = 0;
             if (auto es = x.find("escape"); es != x.end()) {
@@ -892,7 +903,16 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             const std::string dk = dur.is_object() && dur.contains("kind") && dur["kind"].is_string() ? dur["kind"].get<std::string>() : "";
             uint8_t expiry = 0;
             uint16_t rounds = 0;
-            if (dk == "rounds") {
+            const bool until_cured = dk == "until_cured";
+            if (until_cured) {
+                if (!cured_only_ok(*cond))
+                    return where + ": until_cured needs blinded, deafened, paralyzed or poisoned (a condition Lesser Restoration ends)";
+                if (!rs.empty()) return where + ": until_cured takes no repeat_save";
+                if (esc > 0) return where + ": until_cured takes no escape";
+            }
+            if (until_cured) {
+                // no expiry, no repeat save: untracked below
+            } else if (dk == "rounds") {
                 const int n = geti(dur, "n");
                 if (n < 1 || n > 65535) return where + ": bad duration rounds";
                 expiry = uint8_t(rules5e::Expiry::Rounds);
