@@ -1,0 +1,95 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.noble",
+  "name": "Noble",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "any race"
+  ],
+  "alignment": "any alignment",
+  "armor_class": {
+    "value": 15,
+    "note": "breastplate"
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.breastplate",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.rapier",
+      "equipped": true
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 9,
+    "formula": "2d8"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 11,
+    "dex": 12,
+    "con": 11,
+    "int": 12,
+    "wis": 14,
+    "cha": 16
+  },
+  "skills": {
+    "deception": 5,
+    "insight": 4,
+    "persuasion": 5
+  },
+  "senses": {
+    "passive_perception": 12
+  },
+  "languages": [
+    "any two languages"
+  ],
+  "challenge": {
+    "rating": "1/8",
+    "xp": 25
+  },
+  "proficiency_bonus": 2,
+  "actions": [
+    {
+      "id": "rapier",
+      "name": "Rapier",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.rapier",
+      "to_hit": 3,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+1",
+          "type": "piercing"
+        }
+      ]
+    }
+  ],
+  "reactions": [
+    {
+      "id": "parry",
+      "name": "Parry",
+      "description": "The noble adds 2 to its AC against one melee attack that would hit it. To do so, the noble must see the attacker and be wielding a melee weapon.",
+      "window": {
+        "kind": "being_hit",
+        "melee_only": true,
+        "requires_sight": true
+      },
+      "effect": {
+        "kind": "ac_bonus",
+        "bonus": 2
+      }
+    }
+  ]
+}
