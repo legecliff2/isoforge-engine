@@ -19,6 +19,7 @@ Decisions here are settled. Reopening one needs a new entry that supersedes it; 
 | D-005 | 2026-10-13 | **Scripting: Luau** (not PUC Lua). The built-in Luau sandbox is used. Pack scripts are type-checked against versioned Luau type definitions at pack load. | §3.3 scripting host design. `.luau` files. No sol2; bindings are generated from `api.def`. Type definitions are immutable per API level. |
 | D-006 | 2026-10-13 | **Cross-platform bit-identical determinism** for rules, simulation, streaming, and procedural generation. Seeds are shareable. | §4. Own PRNG, no `std::` distributions, integer/fixed-point math in sim and gen, own noise, stable iteration order. Scripts get randomness and math only through engine APIs. Golden-hash CI runs on all three OSes. |
 | D-007 | 2026-10-13 | **Generator versions are permanent.** `gen_version` is an input to every chunk seed (`derive_seed(world_seed, {tag, gen_version, x, y, level})`), and every shipped generator version stays callable forever, so an old seed string plus its `g<N>` always rebuilds the same world. | `procgen::generate` dispatches through an append-only table keyed by `gen_version`. Each version has golden content hashes that must never change; a test fails if a registered version lacks goldens or a golden version stops generating. Changing output means adding a new version, never editing an old one (§4.6). |
+| D-008 | 2026-10-24 | **Engine code: Apache License 2.0.** SRD-derived content stays CC-BY-4.0 (D-001) and carries the Wizards attribution. | `LICENSE` is the Apache 2.0 text. `NOTICE` states the split and quotes the SRD 5.1 attribution. Supersedes the open license choice in §9 item 10. |
 
 ## 0. Principles
 
@@ -30,10 +31,12 @@ Decisions here are settled. Reopening one needs a new entry that supersedes it; 
 5. **Lightweight, modular.** Each module is a static lib with a narrow public header set. No module may reach into another's `src/`.
 6. **Interfaces before implementations.** Milestone 0 is contracts; code fills them in.
 
-### Licensing note (SRD 5.1)
-SRD 5.1 is licensed CC-BY-4.0. Every distribution that includes SRD-derived data (engine sample content, `rules` data tables, docs) must carry this notice, in `NOTICE.md`, the in-game credits, and any data pack's `manifest.json` (`attribution` field):
+### Licensing note (engine code and SRD 5.1)
+Engine code is Apache License 2.0 (D-008). See `LICENSE` at the repository root.
 
-> This work includes material taken from the System Reference Document 5.1 ("SRD 5.1") by Wizards of the Coast LLC and available at https://dnd.wizards.com/resources/systems-reference-document. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License available at https://creativecommons.org/licenses/by/4.0/legalcode.
+SRD 5.1 content is licensed CC-BY-4.0. Every distribution that includes SRD-derived data (engine sample content, `rules` data tables, docs) must carry this notice, in `NOTICE`, the in-game credits, and any data pack's `manifest.json` (`attribution` field). The wording below is the attribution from the SRD 5.1 CC-BY-4.0 release:
+
+> This work includes material taken from the System Reference Document 5.1 (“SRD 5.1”) by Wizards of the Coast LLC and available at https://dnd.wizards.com/resources/systems-reference-document. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License available at https://creativecommons.org/licenses/by/4.0/legalcode.
 
 Use only SRD terms. Do not use Wizards trademarks or non-SRD content (e.g. "Dungeons & Dragons" branding, non-SRD monsters or subclasses). The pack loader enforces that the attribution field is present (§3.6).
 
@@ -789,7 +792,8 @@ engine/
 │   ├── EngineModule.cmake      # engine_add_module(NAME DEPS ... ) helper + warnings
 │   ├── Dependencies.cmake      # FetchContent / vcpkg pins
 │   └── DepCheck.cmake          # emits target graph for tools/depcheck
-├── NOTICE.md                   # SRD 5.1 CC-BY-4.0 attribution + third-party licenses
+├── LICENSE                     # repo root: Apache License 2.0 (engine code)
+├── NOTICE                      # repo root: Apache-2.0 scope + SRD 5.1 CC-BY-4.0 attribution
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── CONTENT_CONTRACT.md     # human-readable §3, versioned
@@ -861,7 +865,7 @@ Goal: everything that's hard to change later gets frozen as v1 drafts.
 - [ ] Determinism harness: `rng` + `detmath` implemented, golden-hash test runner, cross-OS compare CI job, determinism lint.
 - [ ] Schemas v1: `manifest`, `monster`, `character`, `map`, `chunk`, `tileset`, `sprite_sheet`.
 - [ ] `script_host/api/api.def` level 1 (≈30 functions: entity query, move, say, start_encounter, events) → generated `engine.level1.d.luau`. Luau embedded with `luaL_sandbox`, and the strict typecheck runs at pack load.
-- [ ] `CONTENT_CONTRACT.md` ratified; `NOTICE.md` with the SRD attribution.
+- [ ] `CONTENT_CONTRACT.md` ratified; `NOTICE` with the SRD attribution.
 - [ ] `tools/validate` validates a pack against schemas.
 - **Exit:** headers reviewed by all four bots. Null-renderer app boots, loads a manifest, validates it.
 
@@ -921,7 +925,7 @@ Coordination: a weekly "contract review" checkpoint (any header/schema/API diff)
 
 ## 9. Open Questions
 
-_Resolved items have moved to the Decisions Log (D-001…D-006)._
+_Resolved items have moved to the Decisions Log (D-001…D-008)._
 
 1. **ECS.** EnTT (mature, header-only, heavy templates) vs a small in-house archetype ECS (fewer deps, and deterministic `stable_id` iteration is easier to guarantee).
 2. **Data format at runtime.** JSON everywhere, or JSON for authoring + binary (e.g. FlatBuffers/custom) for shipped packs? This affects load time for streaming.
@@ -932,7 +936,7 @@ _Resolved items have moved to the Decisions Log (D-001…D-006)._
 7. **Save compatibility.** Same guarantees as content (migrate forever), or a shorter window?
 8. **Modding & distribution.** Will third-party packs be supported at v1? That decides how strict the sandbox and pack signing need to be early.
 9. **Native backends trigger.** What measurable criteria (perf, platform reach) justify writing Vulkan/Metal/D3D12 directly instead of SDL_GPU?
-10. **Licensing of engine code itself** (MIT/zlib/proprietary). This also determines which dependencies are acceptable.
+10. **Third-party dependency licenses.** Engine code is Apache-2.0 (D-008, `LICENSE`). Which dependency licenses are acceptable alongside that is still open.
 11. **Fixed-point width for world coordinates.** Is Q16.16 enough (±32k tiles ≈ 30 mi at 5 ft/tile), or do we need `Fx64` Q32.32 for world positions from day one?
 12. **Luau typecheck cost in shipping builds.** Always run `Luau::Frontend` at load (cached), or allow signed first-party packs to skip it with a precomputed "verified" stamp so Analysis isn't linked into the runtime?
 13. **Luau native codegen in sim/gen.** Is the extra speed worth qualifying CodeGen against the golden suite on every target, or should it stay interpreter-only for determinism?
