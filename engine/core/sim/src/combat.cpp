@@ -1168,7 +1168,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
                 for (const auto& e : evs)
                     if (e.kind == rules5e::EventKind::AttackResolved && e.reaction_depth == 0 && e.actor == q.actor && (e.c & 1)) {
                         std::vector<rules5e::Event> gev;
-                        rules5e::grapple(state_, q.actor, e.target, g->second, gev);
+                        rules5e::grapple(state_, q.actor, e.target, g->second, q.attack_index, gev);   // false past max_grapples: damage only
                         apply_rules_events(gev);
                         break;
                     }
@@ -1860,6 +1860,20 @@ uint64_t Combat::hash() const {
                 h.u32(sc.target);
                 h.u32(sc.source);
                 h.i16(sc.escape_dc);
+            }
+        }
+        // 0xDB (Druid gap G, monster grapple rider): the appended SourcedCondition fields, only for Grappled entries a rider
+        // with restrains / exclusive / max_grapples made (via_attack != 0xFF); plain grapples leave every hash unchanged.
+        bool rider = false;
+        for (const auto& sc : state_.sourced) rider = rider || (sc.condition == rules5e::Condition::Grappled && sc.via_attack != 0xFF);
+        if (rider) {
+            h.byte(0xDB);
+            for (const auto& sc : state_.sourced) {
+                if (sc.condition != rules5e::Condition::Grappled || sc.via_attack == 0xFF) continue;
+                h.u32(sc.target);
+                h.u32(sc.source);
+                h.byte(sc.via_attack);
+                h.byte(uint8_t((sc.restrains ? 1 : 0) | (sc.exclusive ? 2 : 0) | (sc.owns_restrained ? 4 : 0)));
             }
         }
     }

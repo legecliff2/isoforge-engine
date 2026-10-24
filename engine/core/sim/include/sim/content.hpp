@@ -82,8 +82,9 @@ struct Archetype {
     std::map<uint32_t, rules5e::FeatureSpec> feature_specs;
     // apply_modifier features (row 12): the modifier rows hooks.feature_modifiers hands to rules, by feature_id (1-based index in features)
     std::map<uint32_t, std::vector<rules5e::ModifierSpec>> feature_modifiers;
-    // on_hit[] kind "grapple" (R-G8): attack index -> escape DC; a hit by that attack grapples the target (sim calls rules5e::grapple).
-    std::map<uint8_t, int16_t> grapple_on_hit;
+    // on_hit[] kind "grapple" (R-G8): attack index -> the rider (escape DC; Druid gap G appends restrains / exclusive /
+    // max_grapples); a hit by that attack grapples the target (sim calls rules5e::grapple).
+    std::map<uint8_t, rules5e::GrappleRider> grapple_on_hit;
     // R-G7 v0 wield model: bit i set = base.attacks[i] is a versatile melee weapon held in two hands (the stat block carries no
     // shield). The AI sets ActionRequest::two_handed_grip for such attacks unless the creature has a two-weapon bonus option.
     uint32_t two_handed_grip = 0;
