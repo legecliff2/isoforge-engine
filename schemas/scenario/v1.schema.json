@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://isoforge.dev/schemas/scenario/v1.schema.json",
+  "title": "scenario@1",
+  "description": "A deterministic headless encounter. encounter_runner loads `pack` (and its depends), builds one chunk from `board` (an authored chunk file, or an open 32x32 map), replaces spawns with `party` then `monsters` in array order, and runs the built-in nearest-enemy policy on every creature from `seed` until the end condition or `round_cap`. Stable ids are spawn_stable_id(chunk coord, index) with the party first. Surprise is applied before the first command. Integers only (4.3). Not a pack document: files live in scenarios/<name>/scenario.json beside golden.txt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "id", "seed", "pack", "board", "party", "monsters", "surprise", "end_condition", "round_cap"],
+  "$defs": {
+    "tile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": {"type": "integer", "minimum": 0, "maximum": 31},
+        "y": {"type": "integer", "minimum": 0, "maximum": 31}
+      }
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "archetype", "tile"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Roster id, unique in the scenario. Used by surprise and the runner's report. Not the combatant id."
+        },
+        "archetype": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)+$",
+          "description": "Content id in the scenario pack or its depends. Party entries must be characters; monster entries must be monsters."
+        },
+        "tile": {"$ref": "#/$defs/tile"},
+        "team": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Faction id (spawn overrides.team). Default: party for party entries, monsters for monster entries."
+        }
+      }
+    }
+  },
+  "properties": {
+    "$schema": {"const": "scenario@1"},
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+      "description": "Scenario id, unique under scenarios/. Example: sample.fighter_vs_goblin."
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615,
+      "description": "Encounter RNG seed (Pcg32). The same seed and content produce byte-identical runner output."
+    },
+    "pack": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+      "description": "Pack id under content/packs whose closure supplies archetypes. A chunk path is relative to this pack."
+    },
+    "board": {
+      "description": "Exactly one of an authored chunk or a flat map. Spawns in a chunk file are replaced by the roster.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["chunk"],
+          "properties": {
+            "chunk": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_./-]+$",
+              "description": "Pack-relative chunk@1 or chunk@2 file. No '..' segments."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["map"],
+          "properties": {
+            "map": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "blocked": {
+                  "type": "array",
+                  "description": "Wall tiles (blocks move and sight) on an otherwise open 32x32 floor. Chunk coord is (0, 0, 0).",
+                  "items": {"$ref": "#/$defs/tile"}
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "party": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/actor"}
+    },
+    "monsters": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/actor"}
+    },
+    "surprise": {
+      "description": "Either roster ids that start surprised, or hiders whose Dexterity (Stealth) totals surprise whoever cannot perceive them (rules5e::surprised_by_stealth). An empty array surprises nobody.",
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hiders"],
+          "properties": {
+            "hiders": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["who", "stealth"],
+                "properties": {
+                  "who": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+                  "stealth": {"type": "integer", "minimum": -32768, "maximum": 32767}
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "end_condition": {
+      "enum": ["teams", "no_pc_conscious", "no_pc_or_no_opponent"],
+      "description": "teams: a team with nobody conscious (the sim default). no_pc_conscious: no conscious PC. no_pc_or_no_opponent: no conscious PC, or every non-PC unconscious or dead. Checked before the round cap."
+    },
+    "round_cap": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000,
+      "description": "When the round becomes greater than this, the encounter ends with EndReason::Custom if the end condition has not already fired."
+    }
+  }
+}

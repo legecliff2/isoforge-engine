@@ -2037,6 +2037,31 @@ bool Combat::apply_surprise(const std::vector<CombatantId>& ids, std::string* er
     return true;
 }
 
+void Combat::set_end_condition(rules5e::EndConditionFn fn) {
+    scenario_end_ = {};
+    state_.hooks.end_condition = std::move(fn);
+}
+
+void Combat::set_scenario_end(ScenarioEnd end) {
+    scenario_end_ = end;
+    const auto kind = end.kind;
+    const auto cap = end.round_cap;
+    state_.hooks.end_condition = [kind, cap](const rules5e::EncounterState& state) -> std::optional<rules5e::EncounterOutcome> {
+        std::optional<rules5e::EncounterOutcome> outcome;
+        switch (kind) {
+        case ScenarioEndKind::Teams: outcome = rules5e::default_end_condition(state); break;
+        case ScenarioEndKind::NoPcConscious: outcome = rules5e::end_when_no_pc_conscious(state); break;
+        case ScenarioEndKind::NoPcOrNoOpponent: outcome = rules5e::end_when_no_pc_or_no_opponent(state); break;
+        }
+        if (outcome) return outcome;
+        // Round cap: when round_cap != 0 and state.round > round_cap, and the built-in policy
+        // returned nothing, the outcome is EndReason::Custom.
+        if (cap != 0 && state.round > cap)
+            return rules5e::EncounterOutcome{rules5e::EndReason::Custom, rules5e::pc_statuses(state), {}};
+        return std::nullopt;
+    };
+}
+
 uint64_t Combat::log_hash() const {
     CanonicalHasher h;
     h.u32(uint32_t(log_.size()));
@@ -2509,32 +2534,34 @@ std::vector<Vec2i> Combat::legal_teleport_tiles(CombatantId actor, const rules5e
 }
 
 std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content, uint64_t seed,
-                             const std::vector<LogEntry>& log, std::string* error, const std::vector<CombatantId>& surprised) {
-    return replay(reg, chunk, content, seed, CombatOptions{}, log, error, surprised);
+                             const std::vector<LogEntry>& log, std::string* error, const std::vector<CombatantId>& surprised,
+                             ScenarioEnd end) {
+    return replay(reg, chunk, content, seed, CombatOptions{}, log, error, surprised, end);
 }
 
 std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
                              uint64_t seed, const std::vector<LogEntry>& log, std::string* error,
-                             const std::vector<CombatantId>& surprised) {
-    return replay(reg, chunks, content, seed, CombatOptions{}, log, error, surprised);
+                             const std::vector<CombatantId>& surprised, ScenarioEnd end) {
+    return replay(reg, chunks, content, seed, CombatOptions{}, log, error, surprised, end);
 }
 
 std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content, uint64_t seed,
                              CombatOptions options, const std::vector<LogEntry>& log, std::string* error,
-                             const std::vector<CombatantId>& surprised) {
+                             const std::vector<CombatantId>& surprised, ScenarioEnd end) {
     world::Chunk local = chunk;   // same chunk-local frame as the single-chunk create
     local.coord.x = 0;
     local.coord.y = 0;
     const world::Chunk* one[] = {&local};
-    return replay(reg, std::span<const world::Chunk* const>(one), content, seed, options, log, error, surprised);
+    return replay(reg, std::span<const world::Chunk* const>(one), content, seed, options, log, error, surprised, end);
 }
 
 std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
                              uint64_t seed, CombatOptions options, const std::vector<LogEntry>& log, std::string* error,
-                             const std::vector<CombatantId>& surprised) {
+                             const std::vector<CombatantId>& surprised, ScenarioEnd end) {
     auto c = Combat::create(reg, chunks, content, seed, options, error);
     if (!c) return std::nullopt;
     if (!surprised.empty() && !c->apply_surprise(surprised, error)) return std::nullopt;
+    if (end.kind != ScenarioEndKind::Teams || end.round_cap != 0) c->set_scenario_end(end);
     for (std::size_t i = 0; i < log.size(); ++i) {
         const LogEntry& e = log[i];
         c->install_hooks();

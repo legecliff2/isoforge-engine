@@ -15,7 +15,10 @@ CTest runs `content_validate`, which checks every pack in `content/packs/` and t
 corpus in `tests/compat/fl*/` against `schemas/<type>/v<N>.schema.json` (JSON Schema 2020-12,
 immutable once released), plus cross-checks (CR/XP, saves/skills, chunk sizes, `content_hash`,
 script paths and `contents`), and strict-typechecks every `scripts/**/*.luau` with Engine Core's
-`script_check` (`--script-check <exe>`, passed automatically by CMake).
+`script_check` (`--script-check <exe>`, passed automatically by CMake). The same default
+run also checks `scenarios/<name>/scenario.json` against `scenario@1`
+(`schemas/scenario/v1.schema.json`; `docs/CONTENT_CONVENTIONS.md` section 24). That schema is
+loaded by `tools/validate/validate_packs.py`, not by the C++ schema registry.
 
 ```sh
 cmake -S . -B build && cmake --build build
