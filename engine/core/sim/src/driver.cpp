@@ -699,6 +699,48 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             cast.request.targets = {t->id};
             return cast;
         }
+    // Innate spells (monster@4 / character@4 `spellcasting.innate`): the AI picks among what rules legal_actions lists
+    // (uses left, casting time, Silence, components, target type, and since fix/rules-legal-actions-spells self-range
+    // modifiers with target = caster and Heat Metal once per eligible metal item with equip_item set). It goes before a
+    // multiattack or a plain attack, in list order:
+    // - a self-range modifier (Blur) on the caster, if no modifier from that spell is already on it;
+    // - a cast at the target (Heat Metal keeps the listed equip_item) when it is in range and sight. An area one is aimed
+    //   at the target and skipped if it would catch an ally.
+    // Zone spells (Fog Cloud) stay the caller's decision and are skipped.
+    if (!beast_form && s.budget.action && s.budget.sequence == 0 && s.budget.attacks_remaining == 0 && rules5e::is_conscious(*t) &&
+        !me->innate.empty())
+        for (const auto& q : c.legal_actions()) {
+            if (q.kind != ActionKind::CastSpell || !q.innate) continue;
+            const auto* def = c.spell_def(q.spell_id);
+            if (!def || def->kind == rules5e::SpellEffectKind::Zone) continue;
+            if (q.target == self && def->range_ft == 0) {
+                if (def->kind != rules5e::SpellEffectKind::ApplyModifier || def->area != rules5e::AreaShape::None) continue;
+                bool active = false;
+                for (const auto& m : s.modifiers) active = active || (m.target == self && m.spec.source == q.spell_id);
+                if (active) continue;
+                Command cast;
+                cast.request = q;
+                cast.request.targets = {self};
+                return cast;
+            }
+            if (q.target != t->id || def->range_ft == 0 || c.distance_tiles(self, t->id) * kFeetPerTile > int(def->range_ft) ||
+                !c.line_of_sight(self, t->id))
+                continue;
+            Command cast;
+            cast.request = q;
+            if (def->area != rules5e::AreaShape::None) {
+                bool ally = false;
+                const auto hit = c.area_targets(self, *def, c.pos(t->id));
+                for (CombatantId id : hit) ally = ally || !c.hostile(self, id);
+                if (hit.empty() || ally) continue;
+                cast.aim = true;
+                cast.to = c.pos(t->id);
+                cast.request.targets.clear();
+            } else {
+                cast.request.targets = {t->id};
+            }
+            return cast;
+        }
     // Rampage (trigger rider bonus_attack): while a grant is present, the bonus-action attack is the granted attack index
     // (grant - 1) against the target if it is in reach (melee) or legal to shoot; otherwise the grant is left unused.
     if (s.budget.bonus_attack_grant != 0 && s.budget.bonus_action && rules5e::is_conscious(*t)) {

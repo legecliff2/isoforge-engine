@@ -721,3 +721,24 @@ It is static content and is not folded into `summons_digest` or `Combat::hash`, 
 - **Inert until rules reads it.** No C++ reads the key yet. The sim loads gear as `ItemKind::Other`, not `ItemKind::Focus` (EQUIPMENT 3.2: focus hand, worn holy symbol, emblem on a shield). Adding it changes no fight and no hash.
 - Tests: `tests/validate/test_srd51_equipment.py` (`FOCUS_FAMILY`, `test_focus_field_schema`).
 - Deferred equipment mechanics are listed in `docs/SRD_EQUIPMENT_DEFERRED.md`.
+
+## 22. Item `material` (item@1 / item@2 weapon, armor, shield)
+
+Optional on the weapon, armor, and shield arms of `item@1` and `item@2`. Gear, ammunition, and valuable do not take it (the arm `propertyNames` lists omit it; `tests/validate/test_union_arms.py`).
+
+| value | meaning |
+|---|---|
+| `metal` | manufactured metal |
+| `wood` | wood |
+| `leather` | leather |
+| `hide` | hide |
+| `cloth` | cloth |
+| `rope` | rope |
+
+**When `material` is absent, `manufactured_metal()` falls back to the old category rule.** Omitting the key is `ItemMaterial::Absent`. The predicate (`engine/rules/src/encounter.cpp`) then uses the category rule that used to sit at encounter.cpp ~3078: any weapon, armor, or shield counts as manufactured metal. Only an explicit non-metal value (`wood`, `leather`, `hide`, `cloth`, `rope`) removes a Heat Metal or rust target. An unknown string is not one of those values. `material_of` (`engine/core/sim/src/equipment.cpp`) leaves it `ItemMaterial::Absent` and emits a loader warning on `ContentLibrary::warnings()` (the same channel as a summon `max_count` that clips a CR band). It does not map the string to a non-metal material. No `item@1` / `item@2` bump: an old file that omits the key keeps the meaning it had.
+
+Heat Metal and rust-type effects key off `manufactured_metal()`. The predicate is true when the kind is weapon, armor, or shield and the material is `metal` or absent. It is false for an explicit non-metal value. `legal_actions` and `cast_spell_impl` share it, so a listed Heat Metal cast is one `equip_item` per object the cast would accept: a hand instance whose def is manufactured metal, or worn armor whose def id is manufactured metal. A hand whose instance equals the armor def id wins, so a non-metal object in that hand does not fall through to the armor. Worn armor cannot be dropped. Ammunition, a light, a focus, and a weapon, armor, or shield with an explicit non-metal material are refused with `heat_metal: no metal object`. Rust Metal is not authored yet; when it is, it uses this predicate rather than item category.
+
+A weapon with a metal head or blade counts as a manufactured metal object. The spear and the javelin are `metal`, matching the pike, the halberd, the glaive, the lance, and the crossbows. All-wood or otherwise non-metal gear stays non-metal: club, greatclub, quarterstaff, shortbow, longbow, sling, blowgun, a dart when it is all wood (otherwise `metal`; the srd51 dart is metal), whip (`leather`) and net (`rope`), and padded, leather, studded leather, and hide armor. The generic shield is `metal` (the SRD allows wood or metal; metal is the default, so the shield is a Heat Metal target). srd51.core sets the key on every weapon, armor, and shield (`tests/validate/test_srd51_equipment.py` `MATERIAL`).
+
+Versioning: appended, no tag change, no migration, no `api_level` gate. The field is not hashed, so goldens are unchanged. The justification and the Elf (tools/content) sign-off are in `docs/proposals/VERSION_BUMP_BATCH.md` (7.2zh follow-up).
