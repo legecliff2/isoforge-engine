@@ -120,7 +120,7 @@ sim::ContentLibrary& library() {
 struct Spawn { const char* arch; int x, y; };
 struct Board {
     ecs::Registry reg;
-    world::Chunk ch;
+    world::Chunk ch{};   // value-init: TileCell flags are otherwise uninitialized and read as walls
     std::optional<sim::Combat> c;
     Board(std::vector<Spawn> sp, std::vector<Vec2i> walls = {}) {
         ch.coord = {1, 2, 0};
