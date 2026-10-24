@@ -774,6 +774,8 @@ A weapon with a metal head or blade counts as a manufactured metal object. The s
 
 Versioning: appended, no tag change, no migration, no `api_level` gate. The field is not hashed, so goldens are unchanged. The justification and the Elf (tools/content) sign-off are in `docs/proposals/VERSION_BUMP_BATCH.md` (7.2zh follow-up).
 
+§20-21, §23 and §25-27 are reserved for in-flight branches.
+
 ## 24. Headless encounter scenarios (`scenario@1`)
 
 Not a pack document and not a migrated content type. The C++ `SchemaRegistry` does not register it. `tools/validate/validate_packs.py` loads `schemas/scenario/v1.schema.json` on the default `content_validate` run (no pack arguments) and checks each `scenarios/<name>/scenario.json`. `tools/encounter_runner` parses the file itself. See `tools/encounter_runner/README.md`.
@@ -796,3 +798,19 @@ The runner applies surprise before the first command, then `sim::set_scenario_en
 Both sides use `sim::NearestEnemyPolicy`. The same seed and pack contents print the same stdout. `golden.txt` is that stdout without `--log`, LF. `encounter_scenario_<name>` runs it twice against the golden.
 
 Directory name: `^[a-z][a-z0-9_]*$`. Integers only. `golden.txt` must be non-empty. Explicit pack arguments to the validator skip this check, so the pack summary line is unchanged.
+
+## 28. Text-only spell effect `descriptive` (spell@1)
+
+`{"kind":"descriptive"}` is a spell@1 effect. The object has no other keys, and it is the spell's only effect. An empty `effects` array is still an error (schema `minItems: 1`; the loader says `effects missing`).
+
+The spell loads and stays on a creature's spell list. `legal_actions` never offers it. `cast_spell` refuses it (`descriptive spells cannot be cast`), including an innate cast. The innate AI skips it. Effect resolution does nothing: no roll, no state, no event. There is no `SIM_EVENTS` tag and goldens are unchanged.
+
+`schemas/spell/v1.schema.json` `$defs/effect` adds `descriptive` to the kind enum and a `oneOf` arm that allows only `kind`. `tools/validate/checks_v4.py` `check_spell_descriptive` and `tools/validate/validate_packs.py` `check_spell` use the loader's wording and order (`engine/rules/content/src/spell_loader.cpp`):
+
+| case | error |
+|---|---|
+| any key besides `kind` on the first effect | `descriptive effect: unknown key '<key>'` (the schema also rejects it: additional properties are not allowed) |
+| mixed with another effect, either order | `descriptive effect must be the spell's only effect` |
+| `effects` empty or absent | schema error (`[] should be non-empty`, or `'effects' is a required property`). The loader's string for an empty list is `effects missing` |
+
+**No version bump.** `docs/CONTENT_COMPAT.md` §1 bumps a schema when a field that used to be descriptive becomes mechanical, or an existing field changes meaning. `descriptive` is a new effect-kind value. The previous `spell@1` kind enum did not include it, and the arm is closed, so no existing file can carry it. No tag change, no migration, no `api_level` gate. The decision is recorded in `docs/proposals/VERSION_BUMP_BATCH.md`.

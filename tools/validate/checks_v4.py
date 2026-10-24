@@ -2168,3 +2168,23 @@ def check_spell_batch_zi(doc: dict) -> list[str]:
         if m.get("stat") == ZI_KEYS["halve_weapon_damage"] and m.get("ability") != "str":
             errs.append(f"{pre}effect halve_weapon_damage needs ability str")
     return errs
+
+
+def check_spell_descriptive(doc: dict) -> list[str]:
+    """Text-only spell@1 kind descriptive (spell_loader.cpp, same wording and order).
+
+    The effect object allows no key but kind. It must be the spell's only effect. An empty effects
+    list is still the schema's error (minItems 1; the loader says "effects missing") and is not
+    re-reported here.
+    """
+    raw = doc.get("effects")
+    if not isinstance(raw, list) or not raw:
+        return []
+    first = raw[0]
+    if isinstance(first, dict) and first.get("kind") == "descriptive":
+        for k in first:
+            if k != "kind":
+                return [f"descriptive effect: unknown key '{k}'"]
+    if any(isinstance(e, dict) and e.get("kind") == "descriptive" for e in raw) and len(raw) != 1:
+        return ["descriptive effect must be the spell's only effect"]
+    return []
