@@ -24,7 +24,7 @@ def weapon_lines(src, natural=None, act=None):
         rng = act.get("range") or [0, 0]
         return [f"    a.weapon.natural = true; a.weapon.reach_ft = {act.get('reach', 0 if act.get('range') else 5)};",
                 f"    a.weapon.range_ft = {rng[0]}; a.weapon.long_range_ft = {rng[1] if len(rng) > 1 else 0};"
-                f" a.weapon.dice = {de(dice({'dice': natural['dice']}))};"]
+                f" a.weapon.dice = {de(dice(natural))};"]
     rng = src.get("range") or [0, 0]
     props = " | ".join(f"prop({q(p)})" for p in src.get("properties") or []) or "0"
     L = [f"    a.weapon.properties = uint16_t({props}); a.weapon.reach_ft = {src.get('reach', 0 if 'range' in src else 5)};",
@@ -98,7 +98,7 @@ def main():
             L += wl
             if "natural" in a:
                 L.append(f"    a.ability = Ability::{ABIL[a['natural']['ability']]};"
-                         f" a.damage_ability_none = {b(a['natural'].get('damage_ability') == 'none')};")
+                         f" a.damage_ability_none = {b(a['natural'].get('damage_ability') == 'none' or 'flat' in a['natural'])};")
             if "use" in a: L.append(f"    a.use = *weapon_use_from_string({q(a['use'])});")
             else: L.append("    a.has_use = false;")
             ab_ov = a.get("attack_bonus")

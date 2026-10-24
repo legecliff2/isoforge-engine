@@ -722,6 +722,37 @@ It is static content and is not folded into `summons_digest` or `Combat::hash`, 
 - Tests: `tests/validate/test_srd51_equipment.py` (`FOCUS_FAMILY`, `test_focus_field_schema`).
 - Deferred equipment mechanics are listed in `docs/SRD_EQUIPMENT_DEFERRED.md`.
 
+## 19. Flat action damage (monster@5)
+
+SRD stat blocks such as rat, cat, owl, crab, and scorpion print a fixed amount: "Hit: 1 piercing damage." A monster@5 action
+`damage[]` component (including `extra_damage`) may be written as `{"flat": N, "type": "<damage_type>"}`, with N between 1 and 255.
+
+- `$defs/monster_damage` in `schemas/monster/v5.schema.json` is a `oneOf` of the common@2 `damage` component (`dice`) and the
+  flat arm. A component has `flat` or `dice`, never both. The flat arm is closed: no `bonus_vs`, and no separate modifier field.
+  A modifier belongs in the dice string (`"1d4+2"`), and `flat` is already the whole amount.
+- The loader maps `flat: N` to `DiceExpr{0, 0, N}`. With count 0, `roll_dice` draws no RNG, and a critical hit does not double the
+  amount (only dice double).
+- Use `flat` only for amounts printed without dice. Do not write `"dice": "1d1"`, because a crit doubles it.
+- Only monster@5 accepts it. monster@4, character, and common@2 are unchanged. Archetype data is static, so there is no hash
+  format change and no SIM_EVENTS tag.
+- Mixed components are fine: `[{"flat": 1, "type": "piercing"}, {"dice": "3d4", "type": "poison"}]`.
+- **Natural weapon source.** monster@5 attacks name their source with `weapon` or `natural`, and that rule is unchanged. For a flat
+  attack, `natural` takes `flat` instead of `dice`: `"natural": {"flat": 1, "ability": "dex"}`. `natural.flat` (1..255) and
+  `natural.dice` (NdM) are exclusive (`oneOf`). Never write `"dice": "1"`. `flat` is the whole amount, so `damage_ability` is not
+  allowed with it. The validator requires `natural.flat` to equal `damage[0].flat`
+  (`/actions/<i>: natural.flat N != damage[0] flat M`). With `derive: true`, the derived damage is the flat amount and the to-hit
+  is derived from `ability` as usual. Use `attack_bonus` with a reason when the printed to-hit differs (the SRD Cat prints +0).
+  Example: `tests/validate/fixtures/monster_flat/monsters/cat.json`:
+
+  ```json
+  {"id": "claws", "name": "Claws", "kind": "melee_weapon_attack",
+   "natural": {"flat": 1, "ability": "dex"},
+   "attack_bonus": {"value": 0, "reason": "SRD Cat Claws prints +0; Dex 15 + PB 2 = +4"},
+   "to_hit": 0, "reach": 5, "targets": 1,
+   "damage": [{"flat": 1, "type": "slashing"}],
+   "description": "Melee Weapon Attack: +0 to hit, reach 5 ft., one target. Hit: 1 slashing damage."}
+  ```
+
 ## 21. Printed-damage override and size-gated save riders (monster@5, Gladiator)
 
 - **`damage_override {dice, reason}`** is an optional monster@5 action key, the damage counterpart of `attack_bonus`.
