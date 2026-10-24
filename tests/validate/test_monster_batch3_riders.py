@@ -137,6 +137,48 @@ class Curse(unittest.TestCase):
         self.assertTrue([m for m in e if "read only on weapon attacks" in m], e)
 
 
+class StrengthDrain(unittest.TestCase):
+    OK = {"ability": "str", "dice": "1d4"}
+
+    def test_valid(self):
+        e, _w = run(bite(ability_drain=self.OK))
+        self.assertEqual(e, [])
+
+    def test_refused(self):
+        for ad in ({"ability": "dex", "dice": "1d4"}, {"ability": "str"}, {"dice": "1d4"}, dict(self.OK, until="rest"),
+                   {"ability": "str", "dice": "d4"}):
+            e, _w = run(bite(ability_drain=ad))
+            self.assertTrue(e, ad)
+
+    def test_weapon_only(self):
+        d = bugbear()
+        d["actions"].append({"id": "x", "name": "X", "kind": "special", "description": "x", "ability_drain": self.OK})
+        e, _w = run(d)
+        self.assertTrue([m for m in e if "read only on weapon attacks" in m], e)
+
+
+class AttackAbility(unittest.TestCase):
+    """CONTENT_CONVENTIONS "Attack ability": optional monster@5 action `ability` (str|dex|none); absent stays valid."""
+
+    def test_valid(self):
+        for v in ("str", "dex", "none"):
+            e, _w = run(bite(ability=v))
+            self.assertEqual(e, [], v)
+        e, _w = run(bite())
+        self.assertEqual(e, [])
+
+    def test_refused(self):
+        for v in ("con", "STR", 1, None):
+            e, _w = run(bite(ability=v))
+            self.assertTrue(e, v)
+
+    def test_weapon_only(self):
+        d = bugbear()
+        d["actions"].append({"id": "x", "name": "X", "kind": "special", "description": "x", "ability": "str"})
+        e, _w = run(d)
+        self.assertTrue([m for m in e if "read only on weapon attacks" in m], e)
+
+
 class VampireDrain(unittest.TestCase):
     GATE = ["willing", "grappled_by_self", "incapacitated", "restrained"]
 
@@ -209,6 +251,38 @@ class TeleportAction(unittest.TestCase):
         d["actions"][0]["feet"] = 40
         e, _w = run(d)
         self.assertTrue(e)
+
+
+STENCH = {"kind": "aura", "radius_ft": 5, "on": "start_turn", "save": {"ability": "con", "dc": 10},
+          "condition": "poisoned", "duration": "until_start_of_next_turn", "success_immunity_hours": 24}
+
+
+class Aura(unittest.TestCase):
+    """Ghast Stench (SRD 5.1): "Any creature that starts its turn within 5 feet of the ghast must succeed on a DC 10
+    Constitution saving throw or be poisoned until the start of its next turn. On a successful saving throw, the creature
+    is immune to the ghast's Stench for 24 hours."""
+
+    def test_valid(self):
+        e, w = run(with_trait(copy.deepcopy(STENCH)))
+        self.assertEqual(e, [])
+        self.assertFalse([m for m in w if "aura" in m], w)
+        no_imm = copy.deepcopy(STENCH)
+        del no_imm["success_immunity_hours"]
+        e, _w = run(with_trait(no_imm))
+        self.assertEqual(e, [])
+
+    def test_refused(self):
+        for patch in ({"radius_ft": 7}, {"radius_ft": 0}, {"on": "end_turn"}, {"save": {"ability": "con"}},
+                      {"save": {"ability": "luck", "dc": 10}}, {"save": {"ability": "con", "dc": 10, "x": 1}},
+                      {"condition": "exhaustion"}, {"duration": "1_minute"}, {"success_immunity_hours": 0}, {"note": 1}):
+            eff = copy.deepcopy(STENCH)
+            eff.update(patch)
+            e, _w = run(with_trait(eff))
+            self.assertTrue(e, patch)
+
+    def test_needs_at5(self):
+        e, _w = run(with_trait(copy.deepcopy(STENCH), schema="monster@4"))
+        self.assertTrue(e, e)
 
 
 if __name__ == "__main__":

@@ -152,6 +152,32 @@
                 }
               }
             }
+          },
+          {
+            "if": {
+              "required": [
+                "effect"
+              ],
+              "properties": {
+                "effect": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "aura"
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "effect": {
+                  "$ref": "#/$defs/aura_effect"
+                }
+              }
+            }
           }
         ]
       },
@@ -328,6 +354,11 @@
     "proficiency_bonus_reason": {
       "type": "string",
       "minLength": 1
+    },
+    "passive_perception_reason": {
+      "type": "string",
+      "enum": ["srd_printed"],
+      "description": "Tier-A (CONTENT_CONVENTIONS 25): senses.passive_perception is the SRD printed value and differs from 10 + Perception; the printed value wins in the sim (Combatant::passive_perception_override). Without it a mismatch is a validator error."
     },
     "emits_light": {
       "type": "object",
@@ -913,6 +944,31 @@
             }
           }
         },
+        "ability": {
+          "enum": [
+            "str",
+            "dex",
+            "none"
+          ],
+          "description": "CONTENT_CONVENTIONS \"Attack ability\": the ability the attack's to_hit and damage use (none: no ability modifier). Optional; absent = inferred from to_hit (Str on a Str/Dex tie, with a loader warning); a finesse weapon without it uses the better of Str / Dex. Read when a score is reduced (Strength Drain) and by the two-weapon off-hand. Weapon attacks only."
+        },
+        "ability_drain": {
+          "type": "object",
+          "description": "Batch 3 (shadow Strength Drain): on a hit, after the damage, the target's Strength score is reduced by the dice; it dies if this reduces its Strength to 0; a short or long rest restores it. Weapon attacks only.",
+          "additionalProperties": false,
+          "required": [
+            "ability",
+            "dice"
+          ],
+          "properties": {
+            "ability": {
+              "const": "str"
+            },
+            "dice": {
+              "$ref": "../common/v1.schema.json#/$defs/dice"
+            }
+          }
+        },
         "target_requires_any": {
           "type": "array",
           "minItems": 1,
@@ -937,6 +993,30 @@
         "with_attack": {
           "$ref": "../common/v1.schema.json#/$defs/local_id",
           "description": "Batch 3 teleport action: one attack (an attack action id) made after the teleport without another action (SRD 5.1 blink dog: 'Before or after teleporting, the dog can make one bite attack.'; teleport-then-bite only)."
+        },
+        "also_on_fail_by": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["margin", "condition"],
+          "properties": {
+            "margin": {"type": "integer", "minimum": 1, "maximum": 30},
+            "condition": {"$ref": "../common/v1.schema.json#/$defs/condition"}
+          },
+          "description": "Tier-A §26 (save_effect only; SRD 5.1 mummy Dreadful Glare 'If the target fails the saving throw by 5 or more, it is also paralyzed for the same duration.'): failing the save by margin or more also applies condition on the same effect entry (same duration; ending it ends both), even if the target is immune to the primary condition. Needs a tracked primary condition in apply[] and differs from it; no escalates / control / area."
+        },
+        "immune_on_success": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hours", "scope"],
+          "properties": {
+            "hours": {"type": "integer", "minimum": 1, "maximum": 8760},
+            "scope": {"enum": ["same_action", "same_source"]}
+          },
+          "description": "Tier-A §26 (save_effect only): a success makes the target immune to this action for hours. same_action = from every creature using this archetype's action (SRD 'the dreadful glare of all mummies'); same_source = from this creature only. SIM_EVENTS 0xE1."
+        },
+        "target_must_see_source": {
+          "type": "boolean",
+          "description": "Tier-A §26 (save_effect only; 'One creature ... that can see the mummy'): a target that cannot see the user (blinded, or the sight hook says so) makes no save and gains no immunity (FeatureTriggered c = 3)."
         }
       },
       "allOf": [
@@ -1449,6 +1529,71 @@
           }
         }
       ]
+    },
+    "aura_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "radius_ft",
+        "on",
+        "save",
+        "condition",
+        "duration"
+      ],
+      "description": "monster@5-local trait kind (batch 3, ghast Stench; common@2 unchanged): a creature-sourced aura that exists from the start of combat and works while the creature is alive (incapacitated or unconscious included); it ends when the creature dies. Each creature that starts its turn within radius_ft of it makes the save; on a failure it has the condition until the start of its next turn. On a success with success_immunity_hours, that creature is immune to this creature's aura for that many hours. SRD Stench (ghast): {radius_ft 5, on start_turn, save {con, 10}, condition poisoned, duration until_start_of_next_turn, success_immunity_hours 24}.",
+      "properties": {
+        "kind": {
+          "const": "aura"
+        },
+        "radius_ft": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 120,
+          "multipleOf": 5
+        },
+        "on": {
+          "const": "start_turn"
+        },
+        "save": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ability",
+            "dc"
+          ],
+          "properties": {
+            "ability": {
+              "$ref": "../common/v1.schema.json#/$defs/ability"
+            },
+            "dc": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            }
+          }
+        },
+        "condition": {
+          "allOf": [
+            {
+              "$ref": "../common/v1.schema.json#/$defs/condition"
+            },
+            {
+              "not": {
+                "const": "exhaustion"
+              }
+            }
+          ]
+        },
+        "duration": {
+          "const": "until_start_of_next_turn"
+        },
+        "success_immunity_hours": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 168
+        }
+      }
     },
     "monster_damage": {
       "description": "monster@5-local action damage component (common@2 $defs/damage unchanged): either common@2 damage ({dice, type, bonus_vs?}) or flat damage {flat, type}. Exactly one of dice / flat (oneOf). flat maps to rules5e::DiceExpr{0, 0, flat}: no dice are rolled (no rng), and a critical hit does not double it (SRD 5.1). The ability modifier stays in the dice string ('1d6+2'); flat is not a modifier and takes none.",

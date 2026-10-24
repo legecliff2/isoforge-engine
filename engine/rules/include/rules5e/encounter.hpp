@@ -248,6 +248,9 @@ struct ActionRequest {
     // appended (batch 3, vampire spawn Bite; log_hash 0xDD when set): Attack: the target is willing. Counts only for an attack with
     // kTargetGateWilling and a target on the attacker's team (an enemy is never willing).
     bool target_willing = false;
+    // appended (Tier-A §27, log_hash 0xE2 when set): Attack: on a hit, grapple instead of dealing damage. Legal only with an
+    // attack whose Attack::grapple_instead_ok is set. AttackResolved c bit 3 (8) marks a hit resolved this way.
+    bool grapple_instead = false;
 };
 
 enum class EventKind : uint8_t {
@@ -833,7 +836,10 @@ struct GrappleRider {
     bool restrains = false;
     bool exclusive = false;
     uint8_t max_grapples = 0;
-    bool extended() const { return restrains || exclusive || max_grapples != 0; }
+    // appended (Tier-A §27): "Instead of dealing damage, the X can grapple the target": the hit grapples only when the request
+    // chose ActionRequest::grapple_instead (and then deals no damage); a hit without the choice deals damage and does not grapple.
+    bool instead_of_damage = false;
+    bool extended() const { return restrains || exclusive || max_grapples != 0 || instead_of_damage; }
 };
 
 // R-G12 rules PR 3 (D3): a Spiritual Weapon: not a combatant (no HP, not a target, no turn). token_id comes from the summon
@@ -852,6 +858,25 @@ struct ActiveSummonWeapon {
     // Weapon, and summons_digest mixes them only when some row is held (sub-byte 0xE1, not a registry tag).
     bool held = false;
     bool concentration = false;
+};
+
+// Batch 3 (Lich ruling, ghast Stench): "On a successful saving throw, the creature is immune to the ghast's Stench for 24
+// hours." One row per (creature, source, aura spell id), in creation order; until_round = the round of the success + 24 h in
+// rounds (ZoneTriggerRow::success_immunity_hours x 600). Sim Combat::hash 0xDE, folded only while non-empty.
+// appended (Tier-A §26): immunity to a save_effect action after a success (mummy Dreadful Glare). source 0 = from every
+// creature using that action (spell_id); else from that creature only. Expires at until_round. Hashed under 0xE1.
+struct ActionImmunity {
+    CombatantId creature = 0, source = 0;
+    uint32_t spell_id = 0;
+    uint32_t until_round = 0;
+    friend bool operator==(const ActionImmunity&, const ActionImmunity&) = default;
+};
+
+struct AuraImmunity {
+    CombatantId creature = 0, source = 0;
+    uint32_t spell_id = 0;
+    uint32_t until_round = 0;
+    friend bool operator==(const AuraImmunity&, const AuraImmunity&) = default;
 };
 
 struct EncounterState {
@@ -891,6 +916,8 @@ struct EncounterState {
     std::vector<GroundItem> ground_items{};   // instance order
     uint32_t next_item_id = 1;                // item instance ids start at 1 (0 = empty hand)
     bool ground_items_seen = false;           // sticky: a ground item has existed (0xD2 keeps folding after a pick-up)
+    std::vector<AuraImmunity> aura_immunities;  // appended (batch 3 ghast Stench): per-source immunity after a success; 0xDE
+    std::vector<ActionImmunity> action_immunities;  // appended (Tier-A §26 Dreadful Glare): 0xE1, folded only when non-empty
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call

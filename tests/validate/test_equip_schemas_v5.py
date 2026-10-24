@@ -72,7 +72,7 @@ def bugbear5() -> dict:
 
 
 AT5_KEYS = ("derive", "equipment", "natural_armor", "ac_adjust", "weapon_dice_multiplier", "weapons", "hands",
-            "proficiency_bonus_reason", "emits_light")
+            "proficiency_bonus_reason", "emits_light", "passive_perception_reason")
 
 
 def as_monster4(d: dict) -> dict:
@@ -184,7 +184,9 @@ class AppendOnly(unittest.TestCase):
         self.assertEqual(set(c2["stat_block"]["required"]) - set(m5["stat_block"]["required"]), {"proficiency_bonus"})
         self.assertEqual(set(m5["action"]["properties"]) - set(c2["action"]["properties"]), {"weapon", "natural", "attack_bonus", "damage_override", "use",
                           # batch 3 riders (monster@5 only)
-                          "drain", "curse", "target_requires_any", "feet", "with_attack"})
+                          "drain", "curse", "target_requires_any", "ability_drain", "feet", "with_attack",
+                          "ability",   # CONTENT_CONVENTIONS "Attack ability"
+                          "also_on_fail_by", "immune_on_success", "target_must_see_source"})   # Tier-A §26
         for k, v in c2["action"]["properties"].items():
             if k == "kind":   # monster@5 appends "teleport" (batch 3, blink dog); common@2's enum is a strict prefix
                 m_enum, c_enum = m5["action"]["properties"][k]["enum"], v["enum"]
@@ -212,7 +214,7 @@ class TagTable(unittest.TestCase):
             local = checks_v4.MONSTER_AT5_EFFECT_KINDS if typ == "monster" else frozenset()
             local_act = checks_v4.MONSTER_AT5_ACTION_KINDS if typ == "monster" else frozenset()
             self.assertEqual((r4.action_kinds | local_act, r4.effect_kinds | local, r4.cost_values), (r5.action_kinds, r5.effect_kinds, r5.cost_values))
-        self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice", "save_advantage"})
+        self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice", "save_advantage", "aura"})
         self.assertEqual(checks_v4.MONSTER_AT5_ACTION_KINDS, {"teleport"})
 
 
@@ -618,6 +620,38 @@ class StructuralChecks(unittest.TestCase):
         b["proficiency_bonus_reason"] = "authored deviation (test)"
         e = errs_of(pack(**{"monsters/bugbear5.json": b}))
         self.assertFalse(any("proficiency_bonus" in x for x in e), e)
+
+    def test_passive_perception_reason(self):   # Tier-A §25 (Lich ruling): mismatch = error unless srd_printed (then a warning)
+        b = bugbear5(); b["senses"]["passive_perception"] += 3
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "senses.passive_perception")
+        b["passive_perception_reason"] = "srd_printed"
+        e, w = h.validate_docs(pack(**{"monsters/bugbear5.json": b}))
+        self.assertFalse(any("passive_perception" in x for x in e), e)
+        self.assertTrue(any("SRD printed value used" in x for x in w), w)
+        b = bugbear5(); b["passive_perception_reason"] = "srd_printed"   # no mismatch: the reason is refused
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "passive_perception_reason given but")
+
+    def test_dreadful_glare_keys(self):   # Tier-A §26 (Lich ruling): save_effect riders, monster@5 only
+        glare = {"kind": "save_effect", "id": "dreadful_glare", "name": "Dreadful Glare", "magical": True, "range_ft": 60,
+                 "save": {"ability": "wis", "dc": 11},
+                 "apply": [{"condition": "frightened", "duration": {"kind": "until_end_of_caster_next_turn"}}],
+                 "target_must_see_source": True, "also_on_fail_by": {"margin": 5, "condition": "paralyzed"},
+                 "immune_on_success": {"hours": 24, "scope": "same_action"}}
+        b = bugbear5(); b["actions"].append(copy.deepcopy(glare))
+        e, _w = h.validate_docs(pack(**{"monsters/bugbear5.json": b}))
+        self.assertEqual(e, [])
+        b = bugbear5(); g = copy.deepcopy(glare); g["also_on_fail_by"]["condition"] = "frightened"; b["actions"].append(g)
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "must differ from the primary condition")
+        b = bugbear5(); g = copy.deepcopy(glare); g["also_on_fail_by"]["margin"] = 0; b["actions"].append(g)
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "also_on_fail_by")
+        b = bugbear5(); g = copy.deepcopy(glare); g["immune_on_success"]["scope"] = "all"; b["actions"].append(g)
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "immune_on_success")
+        b = bugbear5(); g = copy.deepcopy(glare); g["apply"][0]["repeat_save"] = "end_of_turn"; b["actions"].append(g)
+        e, w = h.validate_docs(pack(**{"monsters/bugbear5.json": b}))
+        self.assertTrue(any("ends both conditions" in x for x in w), w)
+        import checks_v4 as c4
+        e, _w = c4.check_save_effect_riders({"id": "x", "actions": [copy.deepcopy(glare)]}, "monster@4")
+        self.assertTrue(any("need a monster@5 file" in x for x in e), e)
 
     def test_reasons(self):
         b = bugbear5(); b["ac_adjust"] = {"value": 1, "reason": " "}
