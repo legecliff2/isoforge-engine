@@ -1693,6 +1693,385 @@
      ]
     }
    ]
+  },
+  "deer": {
+   "name": "Deer",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 4,
+   "hp_roll": "1d8",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "50 ft."
+   },
+   "abilities": [
+    11,
+    16,
+    11,
+    2,
+    14,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1d4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "pony": {
+   "name": "Pony",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 11,
+   "hp_roll": "2d8+2",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    15,
+    10,
+    13,
+    2,
+    11,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Hooves",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d4+2",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "awakened-shrub": {
+   "name": "Awakened Shrub",
+   "size": "Small",
+   "type": "plant",
+   "ac": [
+    9
+   ],
+   "hp": 10,
+   "hp_roll": "3d6",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "20 ft."
+   },
+   "abilities": [
+    3,
+    8,
+    11,
+    10,
+    10,
+    6
+   ],
+   "damage_vulnerabilities": [
+    "fire"
+   ],
+   "damage_resistances": [
+    "piercing"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Rake",
+     "attack_bonus": 1,
+     "damage_options": [
+      [
+       [
+        "1d4-1",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "hyena": {
+   "name": "Hyena",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    11
+   ],
+   "hp": 5,
+   "hp_roll": "1d8+1",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "50 ft."
+   },
+   "abilities": [
+    11,
+    13,
+    12,
+    2,
+    12,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1d6",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "cultist": {
+   "name": "Cultist",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    12
+   ],
+   "hp": 9,
+   "hp_roll": "2d8",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    11,
+    12,
+    10,
+    10,
+    11,
+    10
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Scimitar",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-weasel": {
+   "name": "Giant Weasel",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 9,
+   "hp_roll": "2d8",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    11,
+    16,
+    10,
+    4,
+    12,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d4+3",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "mastiff": {
+   "name": "Mastiff",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 5,
+   "hp_roll": "1d8+1",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    13,
+    14,
+    12,
+    3,
+    12,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "noble": {
+   "name": "Noble",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    15
+   ],
+   "hp": 9,
+   "hp_roll": "2d8",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    11,
+    12,
+    11,
+    12,
+    14,
+    16
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Rapier",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d8+1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "tribal-warrior": {
+   "name": "Tribal Warrior",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    12
+   ],
+   "hp": 11,
+   "hp_roll": "2d8+2",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    13,
+    11,
+    12,
+    8,
+    11,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Spear",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "piercing"
+       ]
+      ],
+      [
+       [
+        "1d8+1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
