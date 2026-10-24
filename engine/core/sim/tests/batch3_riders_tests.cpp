@@ -1,5 +1,6 @@
 // Batch 3 small monster riders (Lich rulings appended to batch3_gaps_proposal.md; SRD 5.1 wording only). Sim loader + combat.
 #include <doctest/doctest.h>
+#include "rules5e/dice.hpp"
 
 #include <fstream>
 #include <string>
@@ -417,4 +418,34 @@ TEST_CASE("teleport action (blink dog): Recharge 4-6 self-teleport, then one bit
     Json bad = blink_dog("t.badw");
     bad["actions"].back()["with_attack"] = "nope";
     CHECK(load_error(bad).find("with_attack names unknown attack action") != std::string::npos);
+}
+
+TEST_CASE("multiattack count_dice: the 1d4 count is the FIRST PRNG draw of the multiattack start (pinned golden)") {
+    // Lich: no event, but the count roll draws from the PRNG at a fixed point in resolution order. Fixed point: after the
+    // action is spent and before the first attack roll, i.e. the first draw of the starting step. Pinned two ways: (a) the
+    // count equals 1d4 rolled from a copy of the pre-step RNG, and (b) a golden over seeds 1..12 (changes if the draw moves).
+    auto lib = lib_with({violet_fungus("t.violet")});
+    std::vector<int> got;
+    for (uint64_t seed = 1; seed <= 12; ++seed) {
+        for (int replay = 0; replay < 2; ++replay) {
+            auto ch = arena({{"t.violet", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}});
+            ecs::Registry reg;
+            auto c = Combat::create(reg, ch, lib, seed);
+            REQUIRE(c);
+            const CombatantId a = ch.spawns[0].stable_id, f = ch.spawns[1].stable_id;
+            to_actor(*c, a);
+            rules5e::EncounterState s = c->state();
+            rng::Rng probe = s.rng;
+            const int expect = rules5e::roll_dice(probe, rules5e::DiceExpr{1, 4, 0});
+            rules5e::ActionRequest q{a, ActionKind::Attack, f, 0};
+            q.target_within_5ft = true;
+            q.multiattack = 1;
+            REQUIRE(rules5e::step(s, q).ok);
+            const int count = int(s.budget.attacks_remaining) + 1;
+            CHECK(count == expect);
+            if (replay == 0) got.push_back(count); else CHECK(got.back() == count);   // replay identical
+        }
+    }
+    const std::vector<int> golden = {3, 2, 3, 1, 4, 2, 4, 4, 3, 2, 2, 2};
+    CHECK(got == golden);
 }
