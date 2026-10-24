@@ -65,20 +65,39 @@ Windows and macOS jobs are not mirrored; use the `win-msvc` / `mac-clang-debug` 
 
 ## Self-hosted Linux runner
 
-Linux GCC Debug, Linux Clang Release, and the nightly gate prefer
-`runs-on: [self-hosted, linux, isoforge]` and fall back to `ubuntu-latest` for that same run
-when the box does not accept a job. One pick per run: those jobs are never started on both
-runners. Windows and macOS stay GitHub-hosted. Linux and Windows Debug still run on every
-ready PR. `changes` and `ci-required` stay on `ubuntu-latest`.
+Pull-request Linux jobs (GCC Debug, Clang Release, and any other Linux row) run on
+`ubuntu-latest`. The box (`[self-hosted, linux, isoforge]`) is eligible only when
+`github.ref == 'refs/heads/main'` and the event is `push`, `schedule`, or
+`workflow_dispatch`. The `runs-on` expression forces that even if the picker outputs the
+box labels. Windows and macOS stay GitHub-hosted. Linux and Windows Debug still run on
+every ready same-repo PR. `changes` and `ci-required` stay on `ubuntu-latest`.
+
+`CI_BURST` (top-level `env` in `ci.yml`) still chooses what a trusted event does:
+
+- `'true'` (until the revert in #299): pull requests are hosted and do not dispatch a
+  canary. A push to `main` may place Linux GCC Debug on the box when the canary accepts
+  it; Clang Release and the nightly gate stay on `ubuntu-latest`. Hosted caps are compile
+  4 / test 8. Box caps stay 4 / 2.
+- `'false'`: a push to `main`, the nightly schedule, and a manual dispatch on `main`
+  prefer the box and fall back to `ubuntu-latest` for that same run when the canary is
+  not accepted (#281). Pull requests stay on `ubuntu-latest` (compile 4 / test 4) and do
+  not dispatch a canary. One pick per trusted run: those jobs are never started on both
+  runners.
 
 The box pauses when no agent is active, so a job queued only on the self-hosted runner sits
 until GitHub abandons it. `linux-runner` (a short `ubuntu-latest` job) chooses the runner
-before any Linux build starts. Listing runners needs repository `administration: read`, which
-`GITHUB_TOKEN` cannot be granted, so a 403 is expected. The job then dispatches
-`.github/workflows/linux-runner-canary.yml` on the **default branch** (no checkout, no PR
-code). If the box accepts the canary, Linux stays on the box; if it is still queued when the
-probe window ends, the canary is cancelled and Linux uses `ubuntu-latest`. Fork PRs never
-reach the box: `changes` is skipped, so `linux-runner` is skipped and no canary is dispatched.
+before any Linux build starts. On a trusted event, listing runners needs repository
+`administration: read`, which `GITHUB_TOKEN` cannot be granted, so a 403 is expected. The
+job then dispatches `.github/workflows/linux-runner-canary.yml` on the **default branch**
+(no checkout, no PR code). If the box accepts the canary, Linux stays on the box; if it is
+still queued when the probe window ends, the canary is cancelled and Linux uses
+`ubuntu-latest`. A `pull_request` run returns hosted immediately and does not dispatch the
+canary.
+
+That does not bind a fork that edits `ci.yml` or adds a workflow. GitHub runs the workflow
+file from the pull request, so the fork's `runs-on` is what gets submitted. The control
+that stops the box accepting that job is an organization runner group pinned to
+`refs/heads/main`. Steps: [CI_SELF_HOSTED.md](CI_SELF_HOSTED.md).
 
 - Setup: `sudo RUNNER_TOKEN=<registration token> tools/runner/setup.sh` (idempotent; installs to
   `/opt/actions-runner` as the system user `ghrunner` with labels `self-hosted,linux,x64,isoforge`).
@@ -91,7 +110,8 @@ reach the box: `changes` is skipped, so `linux-runner` is skipped and no canary 
   On self-hosted runs `actions/cache` is skipped, because the local ccache is faster.
 - Limits: systemd unit with `Nice=10`, `IOSchedulingClass=idle`, `CPUQuota=400%`, `MemoryMax=8G`.
   Jobs on the box use `CMAKE_BUILD_PARALLEL_LEVEL=4` and `CTEST_PARALLEL_LEVEL=2`. The hosted
-  fallback keeps the build cap at 4 and uses `CTEST_PARALLEL_LEVEL=4`. On hosts without systemd
+  fallback keeps the build cap at 4 and uses `CTEST_PARALLEL_LEVEL=4` (`8` while `CI_BURST` is
+  `'true'`). On hosts without systemd
   the script falls back to `nice -n10 ionice -c3 taskset` (4 CPUs) with `oom_score_adj=500`. That fallback has no hard memory cap: `ulimit -v` breaks the .NET runner, and MemoryMax needs cgroups. This is how the current box (no systemd) runs it; re-run `setup.sh` after a reboot.
 - Build deps (ninja, ccache, X11/Wayland dev headers, **Python >= 3.12** via distro `python3` /
   `python3-venv`, or `python3.12` from deadsnakes on older Ubuntu) are installed by `setup.sh`.
@@ -99,15 +119,17 @@ reach the box: `changes` is skipped, so `linux-runner` is skipped and no canary 
   there — setup-python fails with "The version 3.12 with architecture x64 was not found") and uses
   system `python3` / `python3.12` for the `content_validate` venv. It fails fast if ninja or a
   usable Python is missing. GitHub-hosted jobs still use `actions/setup-python@v5` with 3.12.
-- **Security:** the repo is private, so only collaborators can open PRs that run here. Fork PRs
-  must never run on the self-hosted runner: `changes` is skipped when the PR head repo is not this
-  repo, so no job reaches the runner and `ci-required` fails closed. Keep "Require approval for
-  fork pull request workflows" enabled, and never add `pull_request_target` to this workflow.
+- **Security:** [CI_SELF_HOSTED.md](CI_SELF_HOSTED.md). Do not add `pull_request_target`.
+  The canary workflow is `workflow_dispatch` only, runs only when `github.ref` is
+  `refs/heads/main`, and does not check out code. Skipping `changes` on a fork PR is not
+  what keeps a fork that edits `ci.yml` off the box.
 
 ## Nightly macOS gate
 
-The scheduled run (`17 7 * * *`) starts with `changes`, then `linux-runner` (the same runner
-pick as pull requests), then `nightly-gate` on the chosen runner (`actions: read`). It queries
+The scheduled run (`17 7 * * *`) starts with `changes`, then `linux-runner`, then
+`nightly-gate` (`actions: read`). With `CI_BURST` false and `github.ref` `refs/heads/main`,
+the gate runs on the box when the canary is accepted, and on `ubuntu-latest` when it is not.
+With `CI_BURST` true the gate stays on `ubuntu-latest`. It queries
 `GET /repos/{repo}/actions/workflows/ci.yml/runs?branch=main&event=schedule&status=success&per_page=1`
 and skips macOS when that run's `head_sha` equals the current main SHA (main hasn't changed since the
 last successful nightly). `workflow_dispatch` doesn't depend on the gate and always runs macOS.

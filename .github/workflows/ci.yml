@@ -1,5 +1,8 @@
 name: CI
 
+# Public-repo rules for the self-hosted box, and the GitHub settings that enforce
+# them (a workflow file cannot): docs/CI_SELF_HOSTED.md
+#
 # Cost policy (macOS minutes bill at 10x Linux):
 # - Linux GCC Debug, Linux Clang Release, Windows MSVC Debug: every PR and every push to main
 #   (skipped for docs-only changes). Windows minutes bill at 2x Linux.
@@ -11,29 +14,42 @@ name: CI
 #   run, so it is not added to the nightly schedule.
 # - Release jobs skip the python_only ctest label (pure-Python validator tests; the Debug jobs run them).
 # - Linux runner pick is one switch, CI_BURST (top-level env below). linux-runner reads it.
-#   CI_BURST 'false' (pre-burst / #281): Linux GCC Debug, Linux Clang Release, and nightly-gate
-#   share one pick. Prefer the box ([self-hosted, linux, isoforge]); use ubuntu-latest for that
-#   same run only when the box does not accept the canary. One pick per run: those jobs are
-#   never started on both runners. Box caps compile 4 / test 2. Hosted fallback compile 4 / test 4.
-#   CI_BURST 'true' (temporary hosted capacity): every PR's Linux jobs run on ubuntu-latest so
-#   several PRs run Linux at once, in parallel with Windows on windows-latest. The box is not a
-#   queue. It picks up Linux GCC Debug only when its canary is the earliest probe in the window
-#   and the box actually accepts it; Linux Clang Release of that run stays on ubuntu-latest.
-#   Every other run keeps both Linux jobs on ubuntu-latest. A busy, paused, or slow box does not
-#   block the run. Nightly-gate stays on ubuntu-latest during the burst (it is a short API call
-#   and must not take the box). Hosted burst caps: compile 4 / test 8. Box caps stay 4 / 2.
-#   End the burst by setting CI_BURST back to 'false' (that one line restores #281).
+#   The box ([self-hosted, linux, isoforge]) is eligible only when github.ref is
+#   refs/heads/main and the event is push, schedule, or workflow_dispatch. Every
+#   pull_request Linux job (GCC Debug, Clang Release, and any other Linux row) runs
+#   on ubuntu-latest. pull_request_target and every other event do too. The runs-on
+#   expression forces that; it does not trust the picker. A fork PR that edits this
+#   file is not stopped by the expression: GitHub runs the workflow from the PR.
+#   The runner-group pin in docs/CI_SELF_HOSTED.md is what stops that job reaching the box.
+#   CI_BURST 'false' (pre-burst / #281, trusted events only): Linux GCC Debug, Linux
+#   Clang Release, and nightly-gate share one pick. Prefer the box; use ubuntu-latest
+#   for that same run only when the box does not accept the canary. PRs stay on
+#   ubuntu-latest and do not dispatch a canary. One pick per trusted run: those jobs
+#   are never started on both runners. Box caps compile 4 / test 2. Hosted fallback
+#   and PR hosted caps: compile 4 / test 4.
+#   CI_BURST 'true' (temporary hosted capacity, until the revert in #299): every PR's
+#   Linux jobs run on ubuntu-latest with no canary, so several PRs run Linux at once,
+#   in parallel with Windows on windows-latest. The box is not a queue. A push to main
+#   may still put Linux GCC Debug on the box when its canary is the earliest probe in
+#   the window and the box accepts it; Linux Clang Release of that run stays on
+#   ubuntu-latest. Schedule (nightly-gate) stays on ubuntu-latest during the burst.
+#   Every other run keeps Linux on ubuntu-latest. A busy, paused, or slow box does not
+#   block the run. Hosted burst caps: compile 4 / test 8. Box caps stay 4 / 2.
+#   Setting CI_BURST back to 'false' restores the #281 canary for main push, schedule,
+#   and main dispatch. It does not put pull_request jobs back on the box.
 # - The box pauses when no agent is active, which used to leave Linux jobs queued until GitHub
 #   abandoned them and stalled the merge queue. changes and ci-required stay on ubuntu-latest;
-#   Windows/macOS stay hosted.
+#   Windows/macOS stay hosted. Pull-request Linux is ubuntu-latest for that reason and because
+#   untrusted code must not run on the box (docs/CI_SELF_HOSTED.md).
 # - linux-runner (ubuntu-latest) makes the pick. Listing runners requires administration:read,
 #   which GITHUB_TOKEN cannot be granted (actions:read is not enough; the API answers 403 with
-#   X-Accepted-Github-Permissions: administration=read). The job tries that API anyway and, on
-#   403, dispatches linux-runner-canary.yml on the default branch (no checkout, no PR code).
-#   Dispatch needs actions:write on the linux-runner job only. With CI_BURST 'false', if the box
-#   accepts the canary, Linux uses the box; if the canary is still queued when the probe window
-#   ends (~75s), it is cancelled and Linux uses ubuntu-latest. With CI_BURST 'true', the probe
-#   window is ~20s and only the earliest accepted canary claims the box; other probes are
+#   X-Accepted-Github-Permissions: administration=read). On a trusted event the job tries that
+#   API anyway and, on 403, dispatches linux-runner-canary.yml on the default branch (no
+#   checkout, no PR code). A pull_request run does not dispatch it. Dispatch needs actions:write
+#   on the linux-runner job only. With CI_BURST 'false', if the box accepts the canary, Linux
+#   uses the box; if the canary is still queued when the probe window ends (~75s), it is
+#   cancelled and Linux uses ubuntu-latest. With CI_BURST 'true', the probe window is ~20s and
+#   only the earliest accepted canary claims the box (GCC on a main push); other probes are
 #   cancelled and that run uses ubuntu-latest. Burst probes pass isolate=true so they do not
 #   share the canary's one-at-a-time group (that group only protects the box). If the default
 #   branch's canary has no isolate input yet, the dispatch is retried without it.
@@ -56,8 +72,10 @@ on:
 permissions:
   contents: read
 
-# One-line burst switch. 'true' = hosted Linux in parallel with the box (see header).
-# 'false' = box preferred, ubuntu-latest only when the box misses the canary (#281).
+# One-line burst switch. 'true' = PRs hosted, and a main push may still claim the box
+# for one GCC job (see header). 'false' = main push, schedule, and main dispatch
+# prefer the box, ubuntu-latest only when the box misses the canary (#281).
+# Pull requests stay on ubuntu-latest either way.
 env:
   CI_BURST: 'true'
 
@@ -65,8 +83,10 @@ concurrency:
   # Not a global lock. Several PRs run at once: the group is the PR number, or the ref for a
   # branch that is not a PR. A new push cancels that group only. main (push, schedule, dispatch)
   # gets its own group per sha + event and is never cancelled.
-  # Linux used to serialize anyway because every run preferred the one box. CI_BURST stops
-  # sending those overlapping runs to that box unless it is free to take a single GCC job.
+  # Linux used to serialize anyway because every run preferred the one box. Pull
+  # requests stay on ubuntu-latest. A push to main may still place one GCC job on
+  # the box when CI_BURST is true and the box is free, or whenever CI_BURST is false
+  # and the canary is accepted.
   # Windows is windows-latest and is not in any box queue, so it already overlaps Linux.
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && format('{0}-{1}', github.sha, github.event_name) || (github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number)) || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -75,8 +95,11 @@ jobs:
   changes:
     name: Detect changes
     # Draft PRs: skip everything (ci-required treats this as intended, see below).
-    # Fork PRs never reach the self-hosted runner: changes is skipped, so linux-runner is
-    # skipped (no canary is dispatched) and ci-required fails closed.
+    # A pull_request whose head repo is not this repo skips changes, so the jobs below
+    # do not run and no canary is dispatched. A fork that edits this file removes that
+    # guard. pull_request runs-on below is still ubuntu-latest, and a replaced workflow
+    # is kept off the box by the runner group in docs/CI_SELF_HOSTED.md. ci-required
+    # fails closed when changes is skipped on a non-draft run.
     if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
@@ -124,10 +147,16 @@ jobs:
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
 
-  # Picks Linux runs-on for this workflow run. Does not build. Forks and drafts never get
-  # here: `changes` is skipped, and this job needs it (and repeats the same guard in `if`).
-  # CI_BURST false: one pick for every Linux job and the nightly gate.
-  # CI_BURST true: per-job outputs. Hosted unless this run wins the box claim (GCC only).
+  # Picks Linux runs-on for this workflow run. Does not build. Runs on ubuntu-latest.
+  # Pull requests still run this job so hosted compile/test caps are set. The script
+  # returns ubuntu-latest before any runner API call or canary dispatch unless the
+  # event is push, schedule, or workflow_dispatch and github.ref is refs/heads/main.
+  # Drafts never get here. A fork PR that does not edit this file never gets here
+  # either (`changes` is skipped, and this job repeats that guard). A fork that edits
+  # this file is outside this guard (docs/CI_SELF_HOSTED.md).
+  # CI_BURST false, trusted events: one pick for every Linux job and the nightly gate.
+  # CI_BURST true, push to main: per-job outputs. Hosted unless this run wins the box
+  # claim (GCC only). Schedule during the burst stays hosted.
   linux-runner:
     name: Linux runner
     needs: changes
@@ -156,6 +185,7 @@ jobs:
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
         run: |
           set -euo pipefail
           # Defaults: ~75s covers one missed runner pickup (GitHub requeues after 60s).
@@ -328,8 +358,25 @@ jobs:
             use_hosted "burst: dispatched canary never appeared in the runs list within ${BURST_PROBE_SECONDS}s" warn
           }
 
+          # Box only for push, schedule, and workflow_dispatch of refs/heads/main.
+          # pull_request, pull_request_target, and every other event return hosted
+          # here, before any runner API call or canary dispatch. Caps still follow
+          # CI_BURST (hosted test 8 vs 4).
           if [ "${CI_BURST:-}" = "true" ]; then
             HOSTED_TESTS=8
+          fi
+          box_ok=false
+          case "${EVENT_NAME:-}" in
+            push|schedule|workflow_dispatch)
+              if [ "${REF:-}" = "refs/heads/main" ]; then
+                box_ok=true
+              fi
+              ;;
+          esac
+          if [ "$box_ok" != true ]; then
+            use_hosted "event ${EVENT_NAME:-none} ref ${REF:-none}: not a main push, schedule, or main dispatch"
+          fi
+          if [ "${CI_BURST:-}" = "true" ]; then
             burst_main
           fi
 
@@ -389,10 +436,14 @@ jobs:
     name: ${{ matrix.name }}
     needs: [changes, linux-runner]
     if: (github.event_name == 'push' || github.event_name == 'pull_request') && needs.changes.outputs.code == 'true'
-    # Linux rows use linux-runner's per-job pick. Empty outputs fall back to ubuntu-latest,
-    # never to the box. Windows rows stay on matrix.os.
+    # Linux rows: the box is eligible only when github.ref is refs/heads/main and the
+    # event is push, schedule, or workflow_dispatch. pull_request, pull_request_target,
+    # and every other event are ubuntu-latest even if linux-runner outputs the box.
+    # Trusted events use the per-job pick. Empty outputs fall back to ubuntu-latest,
+    # never to the box. Windows rows stay on matrix.os (the guard is inside the Linux
+    # name checks, so a pull_request does not move Windows onto ubuntu-latest).
     # fromJSON stays outside &&/|| so every branch is JSON text, not a bool mixed with text.
-    runs-on: ${{ fromJSON((matrix.name == 'Linux GCC Debug' && needs.linux-runner.outputs.gcc_runs_on) || (matrix.name == 'Linux Clang Release' && needs.linux-runner.outputs.clang_runs_on) || (startsWith(matrix.name, 'Linux') && '"ubuntu-latest"') || matrix.os) }}
+    runs-on: ${{ fromJSON((matrix.name == 'Linux GCC Debug' && ((!(github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) && '"ubuntu-latest"') || needs.linux-runner.outputs.gcc_runs_on)) || (matrix.name == 'Linux Clang Release' && ((!(github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) && '"ubuntu-latest"') || needs.linux-runner.outputs.clang_runs_on)) || (startsWith(matrix.name, 'Linux') && '"ubuntu-latest"') || matrix.os) }}
     env:
       # Numbers come from linux-runner. Box: compile 4 / test 2.
       # Hosted, CI_BURST false: compile 4 / test 4. Hosted, CI_BURST true: compile 4 / test 8.
@@ -403,7 +454,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux `os` is the preferred box labels (the actual runs-on comes from linux-runner).
+          # Linux `os` is the box label set a trusted pick may emit. pull_request runs-on
+          # does not read it: the expression above forces ubuntu-latest for Linux rows.
           - { name: "Linux GCC Debug",       os: '["self-hosted","linux","isoforge"]', jobs: 4, tests: 2, preset: ci-linux-gcc,   build: ci-linux-gcc,        test: ci-linux-gcc,        ctest-args: "" }
           - { name: "Linux Clang Release",   os: '["self-hosted","linux","isoforge"]', jobs: 4, tests: 2, preset: ci-linux-clang, build: ci-linux-clang,      test: ci-linux-clang,      ctest-args: "-LE python_only" }
           - { name: "Windows MSVC Debug",    os: '"windows-latest"', jobs: 4, tests: 4, preset: ci-win-msvc,    build: ci-win-msvc-debug,   test: ci-win-msvc-debug,   ctest-args: "" }
@@ -440,7 +492,9 @@ jobs:
     name: Nightly gate
     needs: [linux-runner]
     if: github.event_name == 'schedule'
-    runs-on: ${{ fromJSON(needs.linux-runner.outputs.nightly_runs_on || '"ubuntu-latest"') }}
+    # Same box rule as build-test. schedule on main may use the picker's choice.
+    # Any other event is ubuntu-latest even if nightly_runs_on names the box.
+    runs-on: ${{ fromJSON((!(github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) && '"ubuntu-latest"') || needs.linux-runner.outputs.nightly_runs_on || '"ubuntu-latest"') }}
     permissions:
       actions: read
       contents: read
