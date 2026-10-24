@@ -144,6 +144,9 @@ FOCI = [
     ('holy_symbol_reliquary', 500, 32, "the caster must hold it in hand, wear it visibly, or bear it on a shield."),
 ]
 
+FOCUS_FAMILY = {f[0]: f[0].split("_")[0] if f[0].startswith(("arcane_", "druidic_")) else "holy"
+                for f in FOCI if f[0].startswith(("arcane_focus_", "druidic_focus_", "holy_symbol_"))}
+
 
 def load(lid):
     return json.loads((ITEMS / f"{lid}.json").read_text(encoding="utf-8"))
@@ -275,7 +278,31 @@ class Srd51Equipment(unittest.TestCase):
                 self.assertEqual(d["source"], {"ref": "SRD 5.1", "license": "CC-BY-4.0"})
                 self.assertEqual((d["cost_cp"], d["weight_oz"]), (cost, oz))
                 self.assertIn(sentence, d["description"])
-                self.assertEqual(set(d), {"$schema", "id", "name", "source", "category", "cost_cp", "weight_oz", "description"})
+                self.assertEqual(d.get("focus"), FOCUS_FAMILY.get(lid))
+                self.assertEqual(set(d) - {"focus"}, {"$schema", "id", "name", "source", "category", "cost_cp", "weight_oz", "description"})
+        fams = [FOCUS_FAMILY[f[0]] for f in FOCI if f[0] in FOCUS_FAMILY]
+        self.assertEqual((fams.count("arcane"), fams.count("druidic"), fams.count("holy")), (5, 4, 3))
+        self.assertNotIn("component_pouch", FOCUS_FAMILY)   # a pouch is not a focus (it holds the materials)
+
+    def test_focus_field_schema(self):
+        # item@2 gear `focus` (docs/CONTENT_CONVENTIONS.md section 17): optional, closed enum, gear only.
+        from jsonschema import Draft202012Validator
+        from referencing import Registry, Resource
+        schemas = ROOT / "schemas"
+        res = [(d["$id"], Resource.from_contents(d)) for d in
+               (json.loads(p.read_text(encoding="utf-8")) for p in schemas.rglob("*.schema.json")) if "$id" in d]
+        v = Draft202012Validator(json.loads((schemas / "item/v2.schema.json").read_text(encoding="utf-8")),
+                                 registry=Registry().with_resources(res))
+        base = {"$schema": "item@2", "id": "test.item.orb", "name": "Orb", "category": "gear"}
+        self.assertEqual(list(v.iter_errors(base)), [])
+        for fam in ("arcane", "druidic", "holy"):
+            self.assertEqual(list(v.iter_errors({**base, "focus": fam})), [], fam)
+        for bad in ("Arcane", "divine", "", 1, None, ["arcane"]):
+            self.assertTrue(list(v.iter_errors({**base, "focus": bad})), f"expected rejection: {bad!r}")
+        shield = {"$schema": "item@2", "id": "test.item.s", "name": "S", "category": "shield", "ac_bonus": 2}
+        self.assertTrue(list(v.iter_errors({**shield, "focus": "holy"})), "focus is a gear-only key")
+        for lid, *_ in FOCI:
+            self.assertEqual(list(v.iter_errors(load(lid))), [], lid)
 
     def test_diamond_is_the_priced_material_id(self):
         # spell@1 components.m.item names it (Revivify fixture); the contract matches equipment ids exactly.

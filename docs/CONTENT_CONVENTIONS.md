@@ -700,3 +700,18 @@ These are SRD 5.1 containers from 5e-database a6212be, with exact costs, weights
   - The sling bullet (0.2 cp) has no `cost_cp`, and no piece has `weight_oz` (none is a whole number of ounces).
 - **Ready for the ammunition recovery rule** (EQUIPMENT 2.5: spend one per attack; recover `floor(spent / 2)` after combat). Stacks are `equipment[]` counts (§15), and these containers give the capacity a stack fits in.
 - **Inert today:** the sim loads no item documents. PCs do not list containers yet; adding them changes no number.
+
+## 17. Spellcasting focus family (item@2 gear `focus`)
+
+`focus: "arcane" | "druidic" | "holy"` is an optional, closed, additive key on item@2 `gear` (no version bump; gear arm only, `test_union_arms.py` row). It marks the SRD spellcasting foci:
+
+| `focus` | srd51.core items |
+|---|---|
+| `arcane` | `arcane_focus_crystal`, `_orb`, `_rod`, `_staff`, `_wand` |
+| `druidic` | `druidic_focus_sprig_of_mistletoe`, `_totem`, `_wooden_staff`, `_yew_wand` |
+| `holy` | `holy_symbol_amulet`, `_emblem`, `_reliquary` |
+
+- The component pouch carries no `focus`: it holds materials, it is not a focus.
+- **Inert until rules reads it.** No C++ reads the key yet. The sim loads gear as `ItemKind::Other`, not `ItemKind::Focus` (EQUIPMENT 3.2: focus hand, worn holy symbol, emblem on a shield). Adding it changes no fight and no hash.
+- Tests: `tests/validate/test_srd51_equipment.py` (`FOCUS_FAMILY`, `test_focus_field_schema`).
+- Deferred equipment mechanics are listed in `docs/SRD_EQUIPMENT_DEFERRED.md`.
