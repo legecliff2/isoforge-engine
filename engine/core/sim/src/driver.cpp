@@ -978,14 +978,15 @@ bool choose_grapple_instead(const Combat& c, const rules5e::ActionRequest& q) {
     if (b.sequence != 0 && b.sequence <= me->multiattacks.size()) { seq = &me->multiattacks[b.sequence - 1].attacks; next = std::size_t(b.sequence_pos) + 1; }
     else if (b.sequence == 0 && q.multiattack != 0 && q.multiattack <= me->multiattacks.size()) { seq = &me->multiattacks[q.multiattack - 1].attacks; next = 1; }
     if (!seq) return false;
-    const Vec2i pa = c.pos(me->id), pt = c.pos(t->id);
-    const int dist = 5 * std::max(std::abs(pa.x - pt.x), std::abs(pa.y - pt.y));
+    // the same reach test Combat::do_rules applies to the Bite (footprint-aware distance_tiles vs grid reach_tiles).
+    // TODO(alt-reach): Dwarf's PR3 moves this to 3D reach; follow the shared helper then.
+    const int dist = c.distance_tiles(me->id, t->id);
     for (std::size_t i = next; i < seq->size(); ++i) {
         const uint8_t j = (*seq)[i];
         if (j >= me->attacks.size() || j == q.attack_index) continue;
         const rules5e::Attack& bite = me->attacks[j];
         if (!(bite.target_requires_any & rules5e::kTargetGateGrappledBySelf) || bite.ranged) continue;
-        if (dist <= int(bite.reach_or_range_ft)) return true;
+        if (dist <= reach_tiles(bite.reach_or_range_ft)) return true;
     }
     return false;
 }

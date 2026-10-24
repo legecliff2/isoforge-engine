@@ -51,10 +51,11 @@ RunResult run_to_end(Combat& c, const PolicyFor& policy_for, uint32_t max_comman
 // One tactical command for the current actor toward `target` (exposed for tests).
 Command next_command(const Combat& c, std::optional<CombatantId> target);
 
-// Tier-A §27 AI rule (proposed; needs the driver owner's ack): should this Attack (an instead_of_damage grapple attack) grapple
+// Tier-A §27 AI rule (acked by Dwarf and Lich 2026-10-24): should this Attack (an instead_of_damage grapple attack) grapple
 // instead of dealing damage? Only when (a) a Bite-style attack gated on grappled_by_self is still left in this turn's
 // multiattack and reaches the target, and (b) the target isn't already grappled by the attacker, incapacitated or restrained;
-// and not when the attack's average damage would drop the target. Pure on state (no RNG). Exposed for tests.
+// and not when the attack's average damage would drop the target (Lich's ack: "take damage in all other cases, including
+// when claw damage would drop the target"). Pure on state (no RNG). Exposed for tests.
 bool choose_grapple_instead(const Combat& c, const rules5e::ActionRequest& q);
 
 // ---- Spell follow-ups (AI side of Rules #222 / #228). Deterministic: integer scoring, ties to the lowest id. ----

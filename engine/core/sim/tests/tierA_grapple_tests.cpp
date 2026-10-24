@@ -178,3 +178,22 @@ TEST_CASE("Tier-A §27 AI fixture 4: the claw would drop the target: damage") {
     x.mut(x.f).hp = 500;
     CHECK(choose_grapple_instead(*x.c, x.req(0, 1)));   // same state with HP to spare: grapple
 }
+
+TEST_CASE("Tier-A §27: grapple_instead is refused on every non-Attack request and never hashed") {
+    Fx x;
+    const uint64_t lh0 = x.c->log_hash();
+    for (ActionKind k : {ActionKind::EndTurn, ActionKind::Dodge, ActionKind::Dash}) {
+        Command cmd; cmd.request = {x.a, k}; cmd.request.grapple_instead = true;
+        const auto r = x.c->submit(cmd);
+        CHECK_FALSE(r.ok);
+        CHECK(std::string(r.error).find("only valid on an Attack") != std::string::npos);
+        rules5e::EncounterState s = x.c->state();
+        const auto rr = rules5e::step(s, cmd.request);
+        CHECK_FALSE(rr.ok);
+    }
+    Command st; st.kind = CommandKind::Step; st.to = Vec2i{6, 6}; st.request.actor = x.a; st.request.grapple_instead = true;
+    CHECK_FALSE(x.c->submit(st).ok);
+    CHECK(x.c->log_hash() == lh0);
+    for (const auto& q : rules5e::legal_actions(x.c->state()))
+        if (q.grapple_instead) CHECK(q.kind == ActionKind::Attack);
+}

@@ -1419,6 +1419,10 @@ SubmitResult Combat::submit(const Command& cmd) {
         light_.d->step(*this);
         if (light_.d->halted()) { r.error = light_.d->failed().empty() ? "light halo pending" : "light halo failed"; return r; }
     }
+    if (cmd.request.grapple_instead && (cmd.kind != CommandKind::Rules || cmd.request.kind != rules5e::ActionKind::Attack)) {
+        r.error = "grapple_instead is only valid on an Attack";   // Tier-A §27: an ignored flag must never reach log_hash 0xE2
+        return r;
+    }
     install_hooks();
     return cmd.kind == CommandKind::Step ? do_step(cmd.to, cmd.request.squeeze == 1) : do_rules(cmd.request, cmd.to, cmd.aim);
 }

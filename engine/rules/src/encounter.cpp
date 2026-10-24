@@ -4715,6 +4715,7 @@ ActionRequest decision_request(const NeedsDecision& n, bool react, uint8_t optio
 }
 
 StepResult step(EncounterState& s, const ActionRequest& req) {
+    if (req.grapple_instead && req.kind != ActionKind::Attack) return fail("grapple_instead is only valid on an Attack");   // Tier-A §27: never an ignored, hashed flag
     if (req.kind == ActionKind::ReactionDecision) {
         if (!s.pending) return fail("no pending reaction decision");
         const PendingDecision& p = *s.pending;
