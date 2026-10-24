@@ -33,6 +33,7 @@ const char* kFighter = "srd51.character.fighter_1";
 const char* kGoblin = "srd51.monster.goblin";
 const char* kHexer = "test.character.hexer";
 const char* kHex = "test.spell.hex";
+const char* kMarkedDamage = "test.spell.marked_damage";
 
 Json load_json(const std::string& rel) {
     std::ifstream f(kRoot + "/" + rel);
@@ -49,14 +50,23 @@ Json hex_doc() {
                    {"kind":"apply_modifier","scope":{"target":"marked"},
                     "modifier":{"stat":"ability_check","mode":"disadvantage","ability":"chosen","applies_to":"target","duration":{"kind":"concentration"}}}]})J");
 }
+Json marked_damage_doc() {
+    return Json::parse(R"J({"$schema":"spell@1","id":"test.spell.marked_damage","level":1,"name":"Marked Damage","school":"divination",
+        "classes":["ranger"],"source":{"ref":"SRD 5.1","license":"CC-BY-4.0"},"description":"x",
+        "casting_time":{"kind":"bonus_action"},"range":{"kind":"ranged","feet":90},"components":{"v":true},
+        "duration":{"kind":"hours","amount":1,"concentration":true},"move_mark":{"action":"bonus_action"},
+        "effects":[{"kind":"apply_modifier","scope":{"target":"marked"},
+                    "modifier":{"stat":"damage","die":"1d6","applies_to":"self","when":[{"kind":"weapon_attack"}],"duration":{"kind":"concentration"}}}]})J");
+}
 const ContentLibrary& lib() {
     static const ContentLibrary l = [] {
         ContentLibrary x;
         REQUIRE(x.load(sample_set()).empty());
         REQUIRE_FALSE(x.add_spell(hex_doc()));
+        REQUIRE_FALSE(x.add_spell(marked_damage_doc()));
         Json h = load_json("content/packs/srd51.core/characters/cleric_level_2.json");
         h["id"] = kHexer;
-        h["spellcasting"]["spells"] = Json::array({kHex, "srd51.spell.hunters_mark", "srd51.spell.sacred_flame"});
+        h["spellcasting"]["spells"] = Json::array({kHex, kMarkedDamage, "srd51.spell.sacred_flame"});
         h["spellcasting"]["slots"] = {{"1", 4}};
         auto e = x.add(h, "character");
         REQUIRE_MESSAGE(!e, (e ? *e : ""));
@@ -348,7 +358,7 @@ TEST_CASE("AI mark: mark_ability is the target's weakest ability, ties to the ea
     const auto* hex = f.c->spell_def(rules5e::spell_id_of(kHex));
     REQUIRE(hex);
     CHECK(spell_needs_mark_ability(*hex));
-    CHECK_FALSE(spell_needs_mark_ability(*f.c->spell_def(rules5e::spell_id_of("srd51.spell.hunters_mark"))));
+    CHECK_FALSE(spell_needs_mark_ability(*f.c->spell_def(rules5e::spell_id_of(kMarkedDamage))));
     CHECK(choose_mark_ability(*f.c, f.id[1]) == 1);   // goblin: Str 8 = Wis 8 = Cha 8, Str first
     f.who(2).abilities.score[3] = 3;                   // Int 3
     CHECK(choose_mark_ability(*f.c, f.id[2]) == 4);
@@ -370,7 +380,7 @@ TEST_CASE("AI mark: mark_ability is the target's weakest ability, ties to the ea
     // A spell without a chosen row gets no mark_ability (rules would refuse one).
     Command hm;
     hm.request = {f.id[0], ActionKind::CastSpell, f.id[1]};
-    hm.request.spell_id = rules5e::spell_id_of("srd51.spell.hunters_mark");
+    hm.request.spell_id = rules5e::spell_id_of(kMarkedDamage);
     complete_request(*f.c, hm.request);
     CHECK(hm.request.mark_ability == 0);
 }

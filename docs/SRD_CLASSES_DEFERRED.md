@@ -69,7 +69,7 @@ Three non-human SRD sample PCs sit beside them (`characters/sample_*.json`: hill
 | Channel Divinity (Paladin, Devotion) | 3-5 | `resources[]` `channel_divinity {max 1, recharge short_rest}`. Sacred Weapon: `apply_modifier {cost action, usage {pool channel_divinity}, scope {weapon wielded}, modifier {attack_roll + Cha mod (min 1), self, rounds 10}}` (7.2y; ends when the weapon leaves the hand or at 0 HP / unconscious). Turn the Unholy: `actions[]` `save_effect {save wis vs the paladin spell save DC, range_ft 30, control turned, target_creature_types [fiend, undead], duration rounds 10, usage {pool channel_divinity}}` (7.2v / 7.2y). **Partial**: Sacred Weapon's magical weapon and light, and ending it early, are not modelled | yes |
 | Extra Attack (Paladin) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
 | Fighting Style: Archery (Ranger) | 2-5 | `attack_bonus {attacks ranged, amount 2}` (R-G5); the longbow `to_hit` stays unbaked (dex + proficiency) | yes (sim #107) |
-| Spellcasting (Ranger) | 2-5 | `spellcasting {ability wis, caster_level, slots, spells}` from 2nd level. Spells known: Cure Wounds, Hunter's Mark (the only shipped 1st-level ranger spells, so 2 of 2-3 known at 2-4); at 5 also Barkskin, Lesser Restoration (4 of 4; Spike Growth swapped out for Hunter's Mark). Hunter's Mark (7.2zc, #222): the extra 1d6 on weapon hits against the marked creature and the bonus-action move after it drops to 0 are data; the Perception / Survival advantage and the 8 / 24 hour upcast durations are not | yes |
+| Spellcasting (Ranger) | 2-5 | `spellcasting {ability wis, caster_level, slots, spells}` from 2nd level. Spells known: Cure Wounds (2-5); Fog Cloud (3-4); Barkskin and Lesser Restoration (5). Within spells known (2-3 at 2-4, 4 at 5). Hunter's Mark is non-SRD, excluded (not NEW and not Authored), so it is not on these lists | yes |
 | Hunter's Prey: Colossus Slayer (Hunter) | 3-5 | `on_event {on hit, limit once_per_turn, when [weapon_attack, target_below_max_hp], effects [extra_damage 1d8 same_as_weapon]}` (7.2y, #200) | yes |
 | Ranger Archetype | 3 | `classes[0].subclass` = `hunter` | descriptive |
 | Extra Attack (Ranger) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
@@ -193,9 +193,9 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 | Paladin | 2 | Cure Wounds, Heroism, Shield of Faith |
 | Paladin | 3-4 | + Protection from Evil and Good, Sanctuary (oath) |
 | Paladin | 5 | + Lesser Restoration (oath), Branding Smite, Magic Weapon (Heroism dropped) |
-| Ranger | 2 | Cure Wounds, Hunter's Mark |
+| Ranger | 2 | Cure Wounds. Hunter's Mark is non-SRD, excluded (not NEW and not Authored) |
 | Ranger | 3-4 | + Fog Cloud |
-| Ranger | 5 | + Barkskin, Lesser Restoration (Spike Growth swapped out for Hunter's Mark) |
+| Ranger | 5 | + Barkskin, Lesser Restoration |
 | Bard | 1-2 | Vicious Mockery; Cure Wounds, Healing Word, Heroism, Thunderwave |
 | Bard | 3 | + Hold Person, Lesser Restoration, Heat Metal (Silence swapped) |
 | Bard | 4 | + Heroism again; Heat Metal (Silence swapped) |

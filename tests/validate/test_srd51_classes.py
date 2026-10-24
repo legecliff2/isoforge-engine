@@ -507,14 +507,6 @@ class ClassTable(unittest.TestCase):
                 self.assertEqual(features(load("cleric", level))["disciple_of_life"]["effect"],
                                  {"kind": "heal_bonus", "flat": 2, "per_spell_level": True})
 
-    def test_hunters_mark(self):
-        # 7.2zc (#222): Hunter's Mark known from ranger 2 (Spike Growth swapped out at 5 to stay within 4 known)
-        for level in LEVELS:
-            with self.subTest(level=level):
-                sc = load("ranger", level).get("spellcasting") or {"spells": []}
-                self.assertEqual("srd51.spell.hunters_mark" in sc["spells"], level >= 2)
-                self.assertNotIn("srd51.spell.spike_growth", sc["spells"])
-
     def test_ranger(self):
         for level in LEVELS:
             with self.subTest(level=level):

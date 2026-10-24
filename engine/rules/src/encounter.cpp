@@ -5691,7 +5691,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             }
         }
     }
-    if (b.bonus_action && a.concentration_spell != 0 && !is_incapacitated(a))   // ward / mark follow-ups: move_mark (Hex, Hunter's Mark)
+    if (b.bonus_action && a.concentration_spell != 0 && !is_incapacitated(a))   // ward / mark follow-ups: move_mark (a concentration spell with a movable mark)
         if (const SpellDef* d = spell_def(s, a.concentration_spell); d && d->move_mark != 0) {
             const ActiveModifier* row = nullptr;
             for (const auto& m : s.modifiers)
