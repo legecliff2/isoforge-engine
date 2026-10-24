@@ -1939,6 +1939,15 @@ uint64_t Combat::hash() const {
     if (rules5e::has_smite_state(state_)) { h.byte(0xD4); h.u64(rules5e::smite_digest(state_)); }
     // 0xD5 (7.2zh Heat Metal): the heated object and the while-held disadvantage, only while one is set.
     if (rules5e::has_heat_metal_state(state_)) { h.byte(0xD5); h.u64(rules5e::heat_metal_digest(state_)); }
+    // 0xDC (batch 3 mummy rot): no_regain_hp is dynamic once an attack can curse; folded (one byte per combatant, in order) only
+    // while some combatant has an attack with curse_no_regain_dc, so every existing hash is unchanged.
+    bool curse = false;
+    for (const auto& c : state_.combatants)
+        for (const auto& at : c.attacks) curse = curse || at.curse_no_regain_dc > 0;
+    if (curse) {
+        h.byte(0xDC);
+        for (const auto& c : state_.combatants) h.byte(c.no_regain_hp ? 1 : 0);
+    }
     return h.value();
 }
 

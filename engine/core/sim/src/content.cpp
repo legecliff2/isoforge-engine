@@ -1550,6 +1550,23 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 at.drain_save_dc = int8_t((*sv)["dc"].get<int64_t>());
             }
         }
+        // Batch 3 (Lich ruling): monster@5 `curse` {no_regain_hp: true, save: {ability: con, dc}}: SRD 5.1 mummy Rotting Fist
+        // ("must succeed on a DC 12 Constitution saving throw or be cursed with mummy rot. The cursed target can't regain hit
+        // points"). Deferred: the 3d6 maximum loss per 24 hours, dust on 0, Remove Curse (no day clock; spell code untouched).
+        if (auto cu = act.find("curse"); cu != act.end()) {
+            const std::string aid = act.value("id", "?");
+            if (declared != 0 && declared < 5) return a.id + ": action " + aid + ": curse needs a monster@5 file";
+            if (!cu->is_object()) return a.id + ": action " + aid + ": curse must be an object";
+            for (auto it = cu->begin(); it != cu->end(); ++it)
+                if (it.key() != "no_regain_hp" && it.key() != "save") return a.id + ": action " + aid + ": curse: unknown key '" + it.key() + "'";
+            const auto nr = cu->find("no_regain_hp");
+            if (nr == cu->end() || !nr->is_boolean() || !nr->get<bool>()) return a.id + ": action " + aid + ": curse needs no_regain_hp: true";
+            const auto sv = cu->find("save");
+            if (sv == cu->end() || !sv->is_object() || sv->value("ability", "") != "con" || sv->size() != 2 || !sv->contains("dc") ||
+                !(*sv)["dc"].is_number_integer() || (*sv)["dc"].get<int64_t>() < 1 || (*sv)["dc"].get<int64_t>() > 30)
+                return a.id + ": action " + aid + ": curse.save must be {ability: con, dc: 1..30}";
+            at.curse_no_regain_dc = int8_t((*sv)["dc"].get<int64_t>());
+        }
         // R-G7: only the grip bits Great Weapon Fighting reads (two_handed, versatile) are carried; other properties (loading,
         // heavy, finesse, ...) stay off so existing behaviour and goldens do not move.
         if (auto ps = act.find("properties"); ps != act.end() && ps->is_array())

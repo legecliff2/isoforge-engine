@@ -817,6 +817,38 @@
               }
             }
           }
+        },
+        "curse": {
+          "type": "object",
+          "description": "Batch 3 (mummy Rotting Fist): on a hit, a Con save; on a failure the target can't regain hit points (no_regain_hp). Weapon attacks only.",
+          "additionalProperties": false,
+          "required": [
+            "no_regain_hp",
+            "save"
+          ],
+          "properties": {
+            "no_regain_hp": {
+              "const": true
+            },
+            "save": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ability",
+                "dc"
+              ],
+              "properties": {
+                "ability": {
+                  "const": "con"
+                },
+                "dc": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 30
+                }
+              }
+            }
+          }
         }
       },
       "allOf": [

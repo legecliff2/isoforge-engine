@@ -2401,6 +2401,12 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
             damage_creature(s, t, zone_apply_damage_parts(s, t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
         }
         if (atk.drain_max_hp && !t.dead) life_drain(s, t, drain_before - (int(t.hp) + int(t.temp_hp)), atk.drain_save_dc, a.id, ev);
+        if (atk.curse_no_regain_dc > 0 && !t.dead && !t.no_regain_hp) {   // batch 3 mummy rot: an already cursed target rolls no save
+            const SaveSource ssrc{false, 0, 0};
+            auto r = save_roll(s, t, Ability::Con, atk.curse_no_regain_dc, RollMode::Normal, ev, &ssrc);
+            emit(ev, EventKind::SavingThrowRolled, t.id, CombatantId(Ability::Con), r.roll.natural, r.roll.total, int32_t(r.success));
+            if (!r.success) t.no_regain_hp = true;
+        }
         for (uint32_t sid : riders.after) {   // save_condition / apply_condition riders: after the damage, if it still stands
             if (t.dead) break;
             if (const SpellDef* d = spell_def(s, sid)) resolve_spell(s, ctx, a, *d, 0, std::vector<Combatant*>{&t}, within_5ft, ev);   // 7.2zb: + extra effects

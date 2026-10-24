@@ -1021,7 +1021,7 @@ def check_save_advantage(doc: dict, tag: str) -> tuple[list[str], list[str]]:
     return errs, warns
 
 
-BATCH3_WEAPON_ONLY_KEYS = ("drain",)
+BATCH3_WEAPON_ONLY_KEYS = ("drain", "curse")
 
 
 def check_batch3_actions(doc: dict, tag: str) -> list[str]:

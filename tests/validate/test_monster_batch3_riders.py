@@ -117,5 +117,25 @@ class UntilCured(unittest.TestCase):
         self.assertTrue([m for m in e if "until_cured is read only" in m or "/effect" in m], e)
 
 
+class Curse(unittest.TestCase):
+    OK = {"no_regain_hp": True, "save": {"ability": "con", "dc": 12}}
+
+    def test_valid(self):
+        e, _w = run(bite(curse=self.OK))
+        self.assertEqual(e, [])
+
+    def test_refused(self):
+        for cu in ({"no_regain_hp": True}, {"no_regain_hp": False, "save": {"ability": "con", "dc": 12}},
+                   {"no_regain_hp": True, "save": {"ability": "wis", "dc": 12}}, dict(self.OK, max_hp_loss="3d6")):
+            e, _w = run(bite(curse=cu))
+            self.assertTrue([m for m in e if "curse" in m], (cu, e))
+
+    def test_weapon_only(self):
+        d = bugbear()
+        d["actions"].append({"id": "x", "name": "X", "kind": "special", "description": "x", "curse": self.OK})
+        e, _w = run(d)
+        self.assertTrue([m for m in e if "read only on weapon attacks" in m], e)
+
+
 if __name__ == "__main__":
     unittest.main()

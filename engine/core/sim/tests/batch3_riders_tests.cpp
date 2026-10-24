@@ -5,6 +5,7 @@
 #include <string>
 
 #include "sample_set.hpp"
+#include "rules5e/healing.hpp"
 #include "sim/driver.hpp"
 #include "world/chunk_codec.hpp"
 
@@ -169,4 +170,66 @@ TEST_CASE("until_cured duration (death dog): poisoned, untracked, no timer; refu
     b["actions"][0]["on_hit"] = until_cured_rider("poisoned", 12);
     b["actions"][0]["on_hit"][0]["apply"][0]["repeat_save"] = "end_of_turn";
     CHECK(load_error(b).find("until_cured takes no repeat_save") != std::string::npos);
+}
+
+TEST_CASE("curse loader key (mummy Rotting Fist): failed Con save sets no_regain_hp; 0xDC folds; refusals") {
+    auto run = [](int dc) {
+        Json m = creature("t.mummy");
+        m["actions"][0]["curse"] = {{"no_regain_hp", true}, {"save", {{"ability", "con"}, {"dc", dc}}}};
+        auto lib = lib_with({m});
+        CHECK(lib.find("t.mummy")->base.attacks.at(0).curse_no_regain_dc == dc);
+        auto ch = arena({{"t.mummy", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}});
+        ecs::Registry reg;
+        auto c = Combat::create(reg, ch, lib, 7);
+        REQUIRE(c);
+        const CombatantId a = ch.spawns[0].stable_id, f = ch.spawns[1].stable_id;
+        const uint64_t h0 = c->hash();
+        bool hit = false;
+        for (int i = 0; i < 6 && !hit; ++i) {
+            to_actor(*c, a);
+            const int before = who(*c, f).hp;
+            Command cmd;
+            cmd.request = {a, ActionKind::Attack, f, 0};
+            REQUIRE(c->submit(cmd).ok);
+            c->settle(nullptr);
+            hit = who(*c, f).hp < before;
+            Command e; e.request = {a, ActionKind::EndTurn}; REQUIRE(c->submit(e).ok);
+        }
+        REQUIRE(hit);
+        rules5e::Combatant copy = who(*c, f);
+        if (copy.no_regain_hp) CHECK(rules5e::apply_healing(copy, 5).healed == 0);   // "can't regain hit points"
+        ecs::Registry reg2;
+        std::string err;
+        auto rp = replay(reg2, ch, lib, 7, c->log(), &err);
+        REQUIRE_MESSAGE(rp, err);
+        CHECK(rp->hash() == c->hash());
+        CHECK(h0 != 0);
+        return who(*c, f).no_regain_hp;
+    };
+    CHECK(run(30));         // fighter_1 cannot reach DC 30
+    CHECK_FALSE(run(1));    // every save total reaches DC 1
+
+    Json bad = creature("t.bad");
+    bad["actions"][0]["curse"] = {{"no_regain_hp", true}};
+    CHECK(load_error(bad).find("curse.save must be") != std::string::npos);
+    bad["actions"][0]["curse"] = {{"no_regain_hp", false}, {"save", {{"ability", "con"}, {"dc", 12}}}};
+    CHECK(load_error(bad).find("curse needs no_regain_hp: true") != std::string::npos);
+    bad["$schema"] = "monster@4";
+    bad["actions"][0]["curse"] = {{"no_regain_hp", true}, {"save", {{"ability", "con"}, {"dc", 12}}}};
+    CHECK(load_error(bad).find("curse needs a monster@5 file") != std::string::npos);
+}
+
+TEST_CASE("0xDC: no_regain_hp folds only while a curse attack exists") {
+    auto lib = lib_with({creature("t.plain")});
+    auto ch = arena({{"t.plain", Vec2i{6, 5}}, {kFighter, Vec2i{5, 5}}});
+    ecs::Registry r1, r2;
+    auto c1 = Combat::create(r1, ch, lib, 7);
+    REQUIRE(c1);
+    // no curse attack: flipping no_regain_hp does not reach Combat::hash through 0xDC (existing hashes unchanged)
+    Json m = creature("t.plain");
+    m["actions"][0]["curse"] = {{"no_regain_hp", true}, {"save", {{"ability", "con"}, {"dc", 12}}}};
+    auto lib2 = lib_with({m});
+    auto c2 = Combat::create(r2, ch, lib2, 7);
+    REQUIRE(c2);
+    CHECK(c1->hash() != c2->hash());   // the fold is present only with the curse attack
 }

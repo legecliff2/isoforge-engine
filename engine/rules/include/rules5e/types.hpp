@@ -106,6 +106,10 @@ struct Attack {
     DiceExpr half_hp_damage{};
     // appended (7.2y `bonus_vs` on damage[0]): as DamagePart::vs_types / vs_dice for component 1.
     uint32_t vs_types = 0; DiceExpr vs_dice{0, 0, 0};
+    // appended (batch 3, mummy Rotting Fist): on a hit, a Con save vs curse_no_regain_dc when non-zero; on a failure the target
+    // is cursed: "The cursed target can't regain hit points" (sets Combatant::no_regain_hp; the 24-hour maximum loss and
+    // Remove Curse are not modelled). Sim Combat::hash 0xDC folds no_regain_hp while any attack carries this.
+    int8_t curse_no_regain_dc = 0;
 };
 constexpr int normal_range_ft(const Attack& a) { return a.range_ft ? a.range_ft : a.reach_or_range_ft; }
 constexpr int long_range_ft(const Attack& a) { return a.long_range_ft ? a.long_range_ft : normal_range_ft(a); }
