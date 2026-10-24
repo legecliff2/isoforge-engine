@@ -1,6 +1,6 @@
 # SRD 5.1 combat coverage audit (levels 1-5 party vs SRD monsters)
 
-> This work includes material taken from the System Reference Document 5.1 ("SRD 5.1") by Wizards of the Coast LLC, available at <https://dnd.wizards.com/resources/systems-reference-document>. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License, <https://creativecommons.org/licenses/by/4.0/legalcode>.
+> This work includes material taken from the System Reference Document 5.1 (“SRD 5.1”) by Wizards of the Coast LLC and available at https://dnd.wizards.com/resources/systems-reference-document. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License available at https://creativecommons.org/licenses/by/4.0/legalcode.
 
 Goal: a complete level 1-5 party (Fighter, Cleric, Wizard in full; the other nine classes as a lower tier) fighting SRD monsters, deterministically, from content data. This audit lists every combat-relevant SRD element and says what the code does **today** (first written at `6012567`, after #23 spellcasting, #34 follow-ups, #41 PackSet; statuses refreshed for the version-bump batch after #91, with row 15 `compute_ac` in #93, see 11.5). SRD text was cross-checked against the 5e-database mirror at `a6212be` (see 12). It is not a plan of record; section 11 is a proposed priority list that includes the Director's decisions.
 
@@ -704,6 +704,7 @@ Audit of #165's footprints against the SRD size rules.
 | Rule | Status |
 |---|---|
 | Fly / swim / climb speeds from stat blocks (`speed.fly/swim/climb/hover`) and Wild Shape / shapechanger forms | done: rules5e `Combatant::fly_ft/swim_ft/climb_ft/hover`, `FormStats` likewise |
+| Burrow speed from stat blocks (`speed.burrow`) and the same form copy | data only: `Combatant::burrow_ft` / `FormStats::burrow_ft` (uint8_t feet, 0 = none), loaded and copied like fly / swim / climb, not folded. Tunnelling and burrow movement are not implemented |
 | Terrain: water (existing chunk flag bit 3), climbable (new bit 4), open air / chasm (new bit 5) | done: `Grid::water/climbable/open_air/enterable` |
 | A creature uses the speed that fits the terrain | done: sim `step_mode` (open air: fly; climb: climb > fly > walk; water: swim > fly > walk; ground: walk, then fly) |
 | Climbing / swimming without the speed: +1 ft per ft (+2 in difficult terrain) | done: `Grid::tile_cost_ft` |

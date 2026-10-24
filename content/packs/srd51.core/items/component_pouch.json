@@ -1,0 +1,13 @@
+{
+  "$schema": "item@2",
+  "id": "srd51.item.component_pouch",
+  "name": "Component pouch",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "gear",
+  "cost_cp": 2500,
+  "weight_oz": 32,
+  "description": "A component pouch is a small, watertight leather belt pouch that has compartments to hold all the material components and other special items you need to cast your spells, except for those components that have a specific cost (as indicated in a spell's description)."
+}

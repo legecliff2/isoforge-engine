@@ -12,7 +12,7 @@
 namespace eng::sim {
 
 // Version of the event stream contract (SimEvent + rules5e::Event as surfaced by sim).
-inline constexpr uint32_t kSimEventSchemaVersion = 11;
+inline constexpr uint32_t kSimEventSchemaVersion = 12;
 // Last rules5e::EventKind surfaced under this schema version (rules appends; sim bumps).
 inline constexpr rules5e::EventKind kLastRulesEventKind = rules5e::EventKind::Commanded;
 // Last rules kind that existed at v9. A stream carrying a later kind (R-G12 kinds 48-52: Summoned .. Commanded) is a v10 stream.
@@ -27,6 +27,9 @@ inline constexpr rules5e::EventKind kLastRulesEventKindV6 = rules5e::EventKind::
 inline constexpr int32_t kMovedForced = rules5e::kMovedForced;       // bit0: forced movement (shove push, R-G9 spell pushes)
 inline constexpr int32_t kMovedTeleport = rules5e::kMovedTeleport;   // bit1: teleport (R-G9 Misty Step)
 inline constexpr int32_t kMovedDrag = rules5e::kMovedDrag;           // bit2: dragged along by a grappler's own Move
+
+// SimEvent::Kind::AltitudeChanged `rules.b` (v12).
+inline constexpr uint8_t kAltMove = 0, kAltFall = 1, kAltFlyEnded = 2, kAltForced = 3;
 
 struct SimEvent {
     // Append-only. Numeric values are part of the contract.
@@ -50,6 +53,8 @@ struct SimEvent {
                           // acting (the dead creature for a death drop), `tile` = where the item is now (its holder's anchor,
                           // or the ground tile), `rules.a` = item instance, `rules.b` = reason (ItemMoveReason), `rules.c` = new
                           // holder id, 0 on the ground. After the step's rules events (before EncounterEnded when it ends).
+        AltitudeChanged = 7, // v12 (altitude PR1): a creature's alt_ft changed (only on change). `actor` = the creature, `tile` =
+                             // its anchor, `rules.a` = new alt_ft (i16 as u16), `rules.b` = cause (AltitudeCause).
     };
     Kind kind = Kind::Rules;
     rules5e::Event rules{};          // Kind::Rules only; zero otherwise
