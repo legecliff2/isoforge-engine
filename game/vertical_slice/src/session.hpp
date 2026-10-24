@@ -98,6 +98,16 @@ public:
     std::vector<InventoryItem> inventory(uint32_t actor) const;
     // Combatant whose turn it is (0: none / no fight).
     uint32_t current_actor() const;
+    // Living combatants (not dead, not gone), ascending id. Empty without a fight.
+    std::vector<uint32_t> living_ids() const;
+    // NearestEnemyPolicy's target for `self` (the turn driver's selection). 0 when there is none.
+    uint32_t suggested_target(uint32_t self) const;
+    // Latest committed point-of-origin aim for `actor` (ActionRequest::has_area_origin). False when the log has none.
+    bool last_aim_tile(uint32_t actor, eng::Vec2i* out) const;
+    // Read-only Combat::cover_between. Creature pair: both footprints, those two ids excluded as bodies.
+    // Aim: origin is `aim_tile` with side 1 (the attacker's body is still excluded). present=false when
+    // there is no fight, either id is missing / dead / gone, or attacker == target.
+    CoverDebugView query_cover(uint32_t attacker, uint32_t target, bool aim, eng::Vec2i aim_tile) const;
     // Non-fatal load warnings (e.g. two items styling one light preset differently).
     const std::vector<std::string>& warnings() const;
 
