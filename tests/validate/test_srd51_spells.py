@@ -301,7 +301,10 @@ class SpellTable(unittest.TestCase):
         self.assertEqual((hm["casting_time"], hm["range"], hm["duration"], hm["scaling"]),
                          ({"kind": "action"}, {"kind": "ranged", "feet": 60},
                           {"kind": "minutes", "amount": 1, "concentration": True}, {"upcast": {"dice": 1}}))
-        for word in ("weapon", "armor", "shield", "material is metal", "absent material is not metal"):
+        for word in ("weapon", "armor", "shield",
+                     "absent material falls back to the category rule",
+                     "any weapon, armor, or shield counts as metal",
+                     "wood, leather, hide, cloth, or rope"):
             self.assertIn(word, hm["description"])
         fb = load("flame-blade")
         self.assertEqual(fb["effects"], [{"kind": "summon_weapon", "damage": {"dice": "3d6", "type": "fire"},
