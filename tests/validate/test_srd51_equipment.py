@@ -123,6 +123,27 @@ SRD_DESC = {   # exact SRD wording the descriptions must contain
 }
 
 
+# SRD 5.1 utility adventuring gear (5e-database a6212be, standard-gear), item@2 'gear' with passive data only:
+# (local_id, cost_cp, weight_oz, SRD sentence the description must contain | None when the SRD has no description).
+# No mechanics: rope / chain hit points and burst DCs, crowbar advantage and manacle escape DCs are description text only.
+UTILITY_GEAR = [
+    ('backpack', 200, 80, None),
+    ('bedroll', 100, 112, None),
+    ('rope_hempen_50_feet', 100, 160, "has 2 hit points and can be burst with a DC 17 Strength check."),
+    ('rope_silk_50_feet', 1000, 80, "has 2 hit points and can be burst with a DC 17 Strength check."),
+    ('waterskin', 20, 80, None),
+    ('rations_1_day', 50, 32, "Rations consist of dry foods suitable for extended travel"),
+    ('crowbar', 200, 80, "Using a crowbar grants advantage to Strength checks"),
+    ('pole_10_foot', 5, 112, None),
+    ('piton', 5, 4, None),
+    ('hammer', 100, 48, None),
+    ('grappling_hook', 200, 64, None),
+    ('mirror_steel', 500, 8, None),
+    ('chain_10_feet', 500, 160, "A chain has 10 hit points."),
+    ('manacles', 200, 96, "Escaping the manacles requires a successful DC 20 Dexterity check."),
+]
+
+
 def load(lid):
     return json.loads((ITEMS / f"{lid}.json").read_text(encoding="utf-8"))
 
@@ -146,8 +167,10 @@ class Srd51Equipment(unittest.TestCase):
         self.assertEqual(len(AMMUNITION), 4)
         self.assertEqual(len(LIGHT_GEAR), 7)
         self.assertEqual(len(CONTAINERS), 3)
+        self.assertEqual(len(UTILITY_GEAR), 14)
         self.assertEqual(files, sorted([w[0] for w in WEAPONS] + [a[0] for a in ARMOR] + [v[0] for v in VALUABLES]
-                                       + [a[0] for a in AMMUNITION] + [g[0] for g in LIGHT_GEAR] + [c[0] for c in CONTAINERS]),
+                                       + [a[0] for a in AMMUNITION] + [g[0] for g in LIGHT_GEAR] + [c[0] for c in CONTAINERS]
+                                       + [g[0] for g in UTILITY_GEAR]),
                          "no extra or missing item files")
 
     def test_manifest_lists_every_item(self):
@@ -242,6 +265,19 @@ class Srd51Equipment(unittest.TestCase):
                 if torch:
                     self.assertIs(d["torch_attack"]["requires_lit"], True)
         self.assertIn(OIL, {f"srd51.item.{g[0]}" for g in LIGHT_GEAR})
+
+    def test_utility_gear(self):
+        for lid, cost, oz, sentence in UTILITY_GEAR:
+            with self.subTest(lid):
+                d = load(lid)
+                self.assertEqual((d["$schema"], d["id"], d["category"]), ("item@2", f"srd51.item.{lid}", "gear"))
+                self.assertEqual(d["source"], {"ref": "SRD 5.1", "license": "CC-BY-4.0"})
+                self.assertEqual((d["cost_cp"], d["weight_oz"]), (cost, oz))
+                if sentence is None:
+                    self.assertNotIn("description", d)
+                else:
+                    self.assertIn(sentence, d["description"])
+                self.assertEqual(set(d) - {"description"}, {"$schema", "id", "name", "source", "category", "cost_cp", "weight_oz"})
 
     def test_diamond_is_the_priced_material_id(self):
         # spell@1 components.m.item names it (Revivify fixture); the contract matches equipment ids exactly.
