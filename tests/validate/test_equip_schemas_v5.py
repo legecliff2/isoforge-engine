@@ -181,8 +181,14 @@ class AppendOnly(unittest.TestCase):
             if k != "actions":
                 self.assertEqual(canon(m5["stat_block"]["properties"][k]), canon(v), k)
         self.assertEqual(set(c2["stat_block"]["required"]) - set(m5["stat_block"]["required"]), {"proficiency_bonus"})
-        self.assertEqual(set(m5["action"]["properties"]) - set(c2["action"]["properties"]), {"weapon", "natural", "attack_bonus", "use"})
+        self.assertEqual(set(m5["action"]["properties"]) - set(c2["action"]["properties"]), {"weapon", "natural", "attack_bonus", "use",
+                          # batch 3 riders (monster@5 only)
+                          "drain", "curse", "target_requires_any", "feet", "with_attack"})
         for k, v in c2["action"]["properties"].items():
+            if k == "kind":   # monster@5 appends "teleport" (batch 3, blink dog); common@2's enum is a strict prefix
+                m_enum, c_enum = m5["action"]["properties"][k]["enum"], v["enum"]
+                self.assertEqual(m_enum, c_enum + ["teleport"], k)
+                continue
             self.assertEqual(canon(m5["action"]["properties"][k]), canon(v), k)
 
 
@@ -197,8 +203,10 @@ class TagTable(unittest.TestCase):
             self.assertEqual(set(checks_v4.TAG_TABLE[tag].top_level_keys), declared, tag)
             r4, r5 = checks_v4.TAG_TABLE[f"{typ}@4"], checks_v4.TAG_TABLE[tag]
             local = checks_v4.MONSTER_AT5_EFFECT_KINDS if typ == "monster" else frozenset()
-            self.assertEqual((r4.action_kinds, r4.effect_kinds | local, r4.cost_values), (r5.action_kinds, r5.effect_kinds, r5.cost_values))
-        self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice"})
+            local_act = checks_v4.MONSTER_AT5_ACTION_KINDS if typ == "monster" else frozenset()
+            self.assertEqual((r4.action_kinds | local_act, r4.effect_kinds | local, r4.cost_values), (r5.action_kinds, r5.effect_kinds, r5.cost_values))
+        self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice", "save_advantage"})
+        self.assertEqual(checks_v4.MONSTER_AT5_ACTION_KINDS, {"teleport"})
 
 
 class LightPresetAndVisual(unittest.TestCase):

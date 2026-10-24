@@ -106,11 +106,12 @@ TAG_TABLE["item@1"] = TagRow(False, frozenset(), frozenset(), frozenset(), froze
 _MONSTER_AT5_KEYS = frozenset({"derive", "equipment", "natural_armor", "ac_adjust", "weapon_dice_multiplier", "weapons", "hands",
                                "proficiency_bonus_reason", "emits_light"})
 # monster@5-local trait kinds (Rules decision on #247: no common@3): weapon_extra_dice (Brute), closed arm in monster@5 $defs.
+MONSTER_AT5_ACTION_KINDS = frozenset({"teleport"})   # batch 3 (blink dog)
 MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage"})   # + batch 3 save_advantage (Magic Resistance)
 _CHARACTER_AT5_KEYS = frozenset({"derive", "weapon_proficiencies", "armor_proficiencies"})
 for _typ, _extra in (("monster", _MONSTER_AT5_KEYS), ("character", _CHARACTER_AT5_KEYS)):
     _r4 = TAG_TABLE[f"{_typ}@4"]
-    TAG_TABLE[f"{_typ}@5"] = TagRow(True, _r4.action_kinds | (frozenset({"teleport"}) if _typ == "monster" else frozenset()),
+    TAG_TABLE[f"{_typ}@5"] = TagRow(True, _r4.action_kinds | (MONSTER_AT5_ACTION_KINDS if _typ == "monster" else frozenset()),
                                     _r4.effect_kinds | (MONSTER_AT5_EFFECT_KINDS if _typ == "monster" else frozenset()),
                                     _r4.cost_values, _r4.top_level_keys | _extra,
                                     cross_refs=True, needs_api_level=2, legacy_stamps=True)
