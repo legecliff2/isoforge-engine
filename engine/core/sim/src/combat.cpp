@@ -358,7 +358,9 @@ bool Combat::may_pass(CombatantId mover, CombatantId other) const {
 }
 
 // The living creature (other than `except`, swarms excluded like occupied_except) whose footprint covers `t`; 0 = none.
-CombatantId Combat::occupant_at(Vec2i t, CombatantId except) const {
+CombatantId Combat::occupant_at(Vec2i t, CombatantId except) const { return occupant_at(t, except, -1); }
+CombatantId Combat::occupant_at(Vec2i t, CombatantId except, int mover_abs_ft) const {
+    const int mover_fp = mover_abs_ft >= 0 ? footprint_size(except) : 1;
     bool mover_swarm = false;
     for (const auto& s : slots_) if (s.id == except) mover_swarm = s.archetype->swarm;
     if (mover_swarm) return 0;
@@ -366,16 +368,22 @@ CombatantId Combat::occupant_at(Vec2i t, CombatantId except) const {
         const auto* c = rules5e::find(state_, s.id);
         if (s.id == except || !c || c->dead || s.archetype->swarm) continue;
         const Spot sp = spot(s.id);
-        if (t.x >= sp.p.x && t.x < sp.p.x + sp.n && t.y >= sp.p.y && t.y < sp.p.y + sp.n) return s.id;
+        if (t.x >= sp.p.x && t.x < sp.p.x + sp.n && t.y >= sp.p.y && t.y < sp.p.y + sp.n) {
+            // altitude PR2: a creature whose vertical span does not overlap the mover's is not in its way.
+            if (mover_abs_ft >= 0 && !spans_overlap(mover_abs_ft, mover_fp, abs_height_ft(s.id), sp.n)) continue;
+            return s.id;
+        }
     }
     return 0;
 }
 
 // Does `id`'s footprint at `anchor` (side n) share a tile with another living creature's space?
 bool Combat::overlaps_other(CombatantId id, Vec2i anchor, int n) const {
+    // altitude PR2: at the height the mover would have there (an airborne flyer keeps its absolute height).
+    const int abs_ft = airborne(id) ? abs_height_ft(id) : grid_.footprint_ground_ft(anchor, n);
     for (int dy = 0; dy < n; ++dy)
         for (int dx = 0; dx < n; ++dx)
-            if (occupant_at({anchor.x + dx, anchor.y + dy}, id)) return true;
+            if (occupant_at({anchor.x + dx, anchor.y + dy}, id, abs_ft)) return true;
     return false;
 }
 
@@ -390,14 +398,18 @@ std::optional<std::string> Combat::plan_step(CombatantId mover, Vec2i to, StepPl
     const auto* me = rules5e::find(state_, mover);
     const bool squeezing = me && me->squeezing;
     const MoveCaps caps = caps_of(mover);
+    const bool air = airborne(mover);   // altitude PR2: flies over low obstacles and creatures below / above it
+    const int air_abs = air ? abs_height_ft(mover) : -1;
     auto fits = [&](int n, bool& through) -> std::optional<std::string> {
         through = false;
+        const int abs_ft = air ? air_abs : grid_.footprint_ground_ft(to, n);
         for (int dy = 0; dy < n; ++dy)
             for (int dx = 0; dx < n; ++dx) {
                 const Vec2i t{to.x + dx, to.y + dy};
                 if (t.x >= from.x && t.x < from.x + cur && t.y >= from.y && t.y < from.y + cur) continue;
-                if (!grid_.enterable(t, caps)) return std::string("tile not walkable");   // feat/move-modes
-                if (const CombatantId o = occupant_at(t, mover)) {
+                if (air ? !grid_.passable_over(t, caps, air_abs) : !grid_.enterable(t, caps))
+                    return std::string("tile not walkable");   // feat/move-modes
+                if (const CombatantId o = occupant_at(t, mover, abs_ft)) {
                     if (!may_pass(mover, o)) return std::string("tile occupied");
                     through = true;
                 }
@@ -1121,7 +1133,18 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
                 fe.rules.a = footprint_size(q.actor);
                 events_.push_back(fe);
             }
-            if (move_tile(q.actor, *to, evs))   // drag: creatures the mover holds come along (same step, else into the vacated tile)
+            // altitude PR2: the board before the step (step_altitude derives the new alt_ft from it; replay runs the same code).
+            const int g0 = grid_.footprint_ground_ft(from, footprint_size(q.actor)), a0 = abs_height_ft(q.actor);
+            const bool air0 = airborne(q.actor);
+            if (q.alt_to != 0) {   // vertical move in place: no TileMoved
+                if (!std::any_of(evs.begin(), evs.end(), [&](const rules5e::Event& x) {
+                        return x.kind == rules5e::EventKind::MoveInterrupted && x.actor == q.actor; }))
+                    step_altitude(q, from, *to, g0, a0, air0);
+                continue;
+            }
+            const bool stepped = move_tile(q.actor, *to, evs);
+            if (stepped) step_altitude(q, from, *to, g0, a0, air0);
+            if (stepped)   // drag: creatures the mover holds come along (same step, else into the vacated tile)
                 for (CombatantId held : rules5e::grappled_by(state_, q.actor)) {
                     const Vec2i hp = pos(held);
                     const Vec2i same{hp.x + to->x - from.x, hp.y + to->y - from.y};
@@ -1410,7 +1433,7 @@ SubmitResult Combat::submit(const Command& cmd) {
         if (light_.d->halted()) { r.error = light_.d->failed().empty() ? "light halo pending" : "light halo failed"; return r; }
     }
     install_hooks();
-    return cmd.kind == CommandKind::Step ? do_step(cmd.to, cmd.request.squeeze == 1) : do_rules(cmd.request, cmd.to, cmd.aim);
+    return cmd.kind == CommandKind::Step ? do_step(cmd.to, cmd.request.squeeze == 1, cmd.request.alt_to) : do_rules(cmd.request, cmd.to, cmd.aim);
 }
 
 SubmitResult Combat::decide(const ReactionDecision& d) {
@@ -1643,7 +1666,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
             const Vec2i from = pos(actor);
             const int fp = footprint_size(actor);
             if (!grid_.footprint_walkable(to, fp) || to == from) { r.error = "bad readied move destination"; return r; }
-            const auto path = grid_.path(from, {to}, occupied_except(actor), fp, caps_of(actor));
+            const auto path = path_for(actor, from, {to}, fp);
             if (path.empty()) { r.error = "readied move destination unreachable"; return r; }
             int cost = 0;
             Vec2i prev = from;
@@ -1679,11 +1702,47 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     return finish(rules5e::step(state_, req));
 }
 
-SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze) {
+SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
     SubmitResult r;
     const CombatantId mover = rules5e::current_actor(state_);
     if (state_.budget.gaze_pending) { r.error = "gaze pending: answer with GazeResponse first"; return r; }
     const Vec2i from = pos(mover);
+    if (alt_to != 0) {   // altitude PR2: vertical movement in place (5 ft per 5 ft from the shared budget)
+        if (to != from) { r.error = "alt_to: a vertical move is a Step to the mover's own tile"; return r; }
+        if (alt_to % kFeetPerTile != 0) { r.error = "alt_to: multiple of 5 ft"; return r; }
+        const auto* me = rules5e::find(state_, mover);
+        if (!me) { r.error = "no mover"; return r; }
+        const MoveCaps caps = caps_of(mover);
+        const bool prone = me->has(rules5e::Condition::Prone);
+        const int cur = me->alt_ft;
+        int target = cur + alt_to;
+        uint8_t mode = 0;
+        int mult = 1;
+        if (target > 0 || (target >= 0 && cur > 0)) {   // in the air (or on a wall): flight, else climbing terrain
+            if (caps.fly && !prone) mode = 1;
+            else if (grid_.climbable(from)) { mode = caps.climb ? 3 : 0; mult = caps.climb ? 1 : 2; }
+            else { r.error = prone && caps.fly ? "cannot fly while prone" : "alt_to: needs flight or climbable terrain"; return r; }
+        } else {   // below the surface: water only, down to its depth (no burrowing yet)
+            const int depth = grid_.water_depth_ft(from);
+            if (!grid_.water(from) || depth == 0) { r.error = "alt_to: cannot go below the ground"; return r; }
+            target = std::max(target, -depth);
+            mode = caps.swim ? 2 : 0;
+            mult = caps.swim ? 1 : 2;
+        }
+        if (target == cur) { r.error = "alt_to: no altitude change"; return r; }
+        const int cost = (target > cur ? target - cur : cur - target) * mult;
+        const int allow = rules5e::move_allowance(state_, *me, mode);
+        if (allow < 0 || cost > allow) { r.error = "not enough movement"; return r; }
+        ActionRequest mv{mover, ActionKind::Move};
+        mv.move_ft = int16_t(cost);
+        mv.move_tiles = 0;
+        mv.move_mode = mode;
+        mv.alt_to = int16_t(target - cur);
+        step_to_ = from;
+        set_step_context(mv);
+        forced_placed_.clear();
+        return finish(rules5e::step(state_, mv));
+    }
     StepPlan plan;
     if (auto e = plan_step(mover, to, plan, allow_squeeze)) { r.error = *e; return r; }
     const int fp = plan.n;
@@ -1996,6 +2055,7 @@ uint64_t Combat::log_hash() const {
         if (q.flexible != 0) { h.byte(0xBA); h.byte(q.flexible); h.byte(q.flexible_level); }
         if (q.squeeze != 0) { h.byte(0xC2); h.byte(q.squeeze); }   // SRD Squeezing on a Move (feat/size-space)
         if (q.move_mode != 0) { h.byte(0xC3); h.byte(q.move_mode); }   // feat/move-modes: the speed a Move used
+        if (q.alt_to != 0) { h.byte(0xD7); h.i16(q.alt_to); }   // altitude PR2: vertical Move delta, only when non-zero
         if (q.command_word != 0) { h.byte(0xC4); h.byte(q.command_word); }   // 7.2v Command's word on a CastSpell: folded only when set
         if (q.has_guess) { h.byte(0xC6); h.i32(q.guess_x); h.i32(q.guess_y); }   // vision 7.2x: guessed tile of a hidden target
         if (q.object_use != 0) { h.byte(0xCB); h.byte(q.object_use); h.i16(q.dc); }   // 7.2y UseObject (Fast Hands): folded only when set
@@ -2178,6 +2238,63 @@ std::vector<Vec2i> Combat::legal_zone_tiles(CombatantId actor, const rules5e::Sp
     return out;
 }
 
+// ---- altitude PR2 ----
+int Combat::abs_height_ft(CombatantId id) const {
+    const auto* c = rules5e::find(state_, id);
+    return grid_.footprint_ground_ft(pos(id), footprint_size(id)) + (c ? int(c->alt_ft) : 0);
+}
+bool Combat::airborne(CombatantId id) const {
+    const auto* c = rules5e::find(state_, id);
+    return c && c->alt_ft > 0 && c->fly_ft > 0 && !c->has(rules5e::Condition::Prone);
+}
+std::vector<Vec2i> Combat::occupied_except(CombatantId id, int abs_ft) const {
+    std::vector<Vec2i> out;
+    bool mover_swarm = false;
+    for (const auto& s : slots_) if (s.id == id) mover_swarm = s.archetype->swarm;
+    const int n = footprint_size(id);
+    for (const auto& s : slots_) {
+        const auto* c = rules5e::find(state_, s.id);
+        if (s.id == id || !c || c->dead || s.archetype->swarm || mover_swarm) continue;
+        if (!spans_overlap(abs_ft, n, abs_height_ft(s.id), footprint_size(s.id))) continue;
+        for (Vec2i t : footprint_tiles(s.id)) out.push_back(t);
+    }
+    return out;
+}
+std::vector<Vec2i> Combat::path_for(CombatantId id, Vec2i from, const std::vector<Vec2i>& goals, int footprint) const {
+    const MoveCaps caps = caps_of(id);
+    if (airborne(id)) {
+        const int abs_ft = abs_height_ft(id);
+        return grid_.path(from, goals, occupied_except(id, abs_ft), footprint, caps, abs_ft);
+    }
+    return grid_.path(from, goals, occupied_except(id), footprint, caps);
+}
+void Combat::step_altitude(const rules5e::ActionRequest& q, Vec2i from, Vec2i to, int from_ground_ft, int from_abs_ft,
+                           bool was_airborne) {
+    (void)from;
+    (void)to;
+    const auto* c = rules5e::find(state_, q.actor);
+    if (!c) return;
+    if (q.alt_to != 0) { set_altitude(q.actor, int16_t(c->alt_ft + q.alt_to), kAltMove); return; }
+    if (!grid_.has_ground()) return;   // chunk@1 / chunk@2 maps are flat: alt_ft is unchanged by a step
+    const int g1 = grid_.footprint_ground_ft(pos(q.actor), footprint_size(q.actor));
+    if (was_airborne) { set_altitude(q.actor, int16_t(std::max(0, from_abs_ft - g1)), kAltMove); return; }
+    if (c->alt_ft != 0) return;   // on a wall / in water: the step keeps its alt_ft
+    const int drop = from_ground_ft - g1;
+    if (drop <= kWalkableStepFt) return;
+    const MoveCaps caps = caps_of(q.actor);
+    if (caps.fly && !c->has(rules5e::Condition::Prone)) { set_altitude(q.actor, int16_t(drop), kAltMove); return; }
+    // A fall (altitude design §3): alt_ft stays 0 at the new ground; the event says so and the distance is recorded for
+    // PR4's fall damage.
+    falls_.push_back({q.actor, drop});
+    SimEvent e;
+    e.kind = SimEvent::Kind::AltitudeChanged;
+    e.actor = q.actor;
+    e.tile = pos(q.actor);
+    e.rules.a = 0;
+    e.rules.b = kAltFall;
+    events_.push_back(e);
+}
+
 MoveCaps Combat::caps_of(CombatantId id) const {
     MoveCaps m;
     if (const auto* c = rules5e::find(state_, id)) { m.fly = c->fly_ft > 0; m.swim = c->swim_ft > 0; m.climb = c->climb_ft > 0; }
@@ -2202,8 +2319,11 @@ uint8_t Combat::step_mode(CombatantId mover, Vec2i from, Vec2i to, int cost, int
             else if (grid_.water(t)) water = true;
         }
     std::vector<uint8_t> order;
-    if (air) order = {1};
-    else if (climb) order = {3, 1, 0};
+    const bool high = grid_.has_ground() &&
+                      ledge_ft(grid_.footprint_ground_ft(from, fp), grid_.footprint_ground_ft(to, fp)) > kWalkableStepFt;
+    if (airborne(mover)) order = {1};   // altitude PR2: an airborne flyer keeps flying
+    else if (air) order = {1};
+    else if (climb || high) order = {3, 1, 0};   // altitude PR2: a rise of more than 5 ft is a climb
     else if (water) order = {2, 1, 0};
     else order = {0, 1};
     const bool prone = c->has(rules5e::Condition::Prone);
@@ -2220,7 +2340,9 @@ uint8_t Combat::step_mode(CombatantId mover, Vec2i from, Vec2i to, int cost, int
 int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to) const { return step_cost_ft(mover, from, to, footprint_size(mover)); }
 int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int fp, bool through_creature) const {
     const MoveCaps caps = caps_of(mover);
-    bool difficult = through_creature, halve = false, zoned = false;
+    // altitude PR2: an airborne flyer ignores difficult tiles and other creatures' space (zones still apply).
+    const bool air = airborne(mover);
+    bool difficult = through_creature && !air, halve = false, zoned = false;
     if (!state_.zones.empty() && spells_)
         for (const auto& z : state_.zones) {
             const rules5e::SpellDef* d = spells_->find(z.spell_id);
@@ -2233,7 +2355,7 @@ int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int fp, bool t
         }
     int cost = 0;
     if (!difficult) {
-        cost = grid_.move_cost_ft(from, to, fp, caps);   // feat/move-modes: water / climb / open air
+        cost = air ? kFeetPerTile : grid_.move_cost_ft(from, to, fp, caps);   // feat/move-modes: water / climb / open air
     } else {
         // Difficult terrain (a zone, another creature's space, a difficult tile) is +1 ft per ft once: it never stacks with
         // itself, but it stacks with swimming without a swim speed (+1 ft per ft), priced per newly entered tile: plain water
@@ -2244,7 +2366,9 @@ int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int fp, bool t
                 const bool was_inside = fp > 1 && t.x >= from.x && t.x < from.x + fp && t.y >= from.y && t.y < from.y + fp;
                 if (was_inside) continue;
                 int tile = 0;
-                if (!grid_.walkable(t)) {
+                if (air) {
+                    tile = 2 * kFeetPerTile;   // a zone's difficult terrain only
+                } else if (!grid_.walkable(t)) {
                     tile = std::max(grid_.tile_cost_ft(t, caps), 2 * kFeetPerTile);
                 } else {
                     const int base = grid_.step_cost_ft(t);
@@ -2255,7 +2379,15 @@ int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int fp, bool t
             }
     }
     if (halve) cost *= 2;
-    return zoned ? std::min(cost, 20) : cost;
+    if (zoned) cost = std::min(cost, 20);
+    // altitude PR2 (chunk@3 ground; 0 on flat maps): 5 ft of movement per 5 ft of rise or descent (grid.hpp step_cost_ft);
+    // an airborne flyer pays only for ground that rises above its absolute height.
+    if (grid_.has_ground()) {
+        const int g1 = grid_.footprint_ground_ft(to, fp);
+        if (air) cost += std::max(0, g1 - abs_height_ft(mover));
+        else cost += eng::sim::step_cost_ft(grid_.footprint_ground_ft(from, fp), g1, caps);
+    }
+    return cost;
 }
 
 // ---- R-G9 forced movement / teleport (FORCED_MOVEMENT.md §3) ----
