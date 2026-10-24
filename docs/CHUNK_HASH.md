@@ -1,4 +1,4 @@
-# chunk@1 / chunk@2 content_hash and spawn stable_id: byte layout
+# chunk@1 / chunk@2 / chunk@3 content_hash and spawn stable_id: byte layout
 
 Reference: `engine/core/world/src/chunk_codec.cpp` (C++) and `tools/chunk_hash/chunk_hash.py`
 (Python, `pip install xxhash`). Test vectors: `tools/chunk_hash/vectors/`. `world_tests` checks
@@ -32,6 +32,10 @@ Fields are written in this order:
 - **chunk@2 (R-G13):** field 1 is written as `1` when the chunk has no `lights` and no `ambient`, so every chunk@1
   hash is unchanged after the identity migration; otherwise `2`, followed by field 7. Light `stable_id` =
   `u32(h) ^ u32(h >> 32)` with `h = XXH3_64(i32 x | i32 y | i16 level | u32 light_index | u8 'L')`; never authored.
+- **chunk@3 (altitude PR2):** no new field. Field 1 is written as `3` when the chunk is chunk@3 (`format_version` 3,
+  or `"$schema": "chunk@3"` without `format_version`), and field 7 is then **always** written (an empty tail is
+  `u32 0`, `u8 0`). chunk@1 / chunk@2 hashes are unchanged: the identity migrations keep the declared
+  `format_version` (1 or 2), and only a declared 3 changes field 1.
 - **Not hashed:** `origin`, `content_hash`, `$schema`, and a light's `visual` block (colour, flicker, glow).
 - `overrides`: `""` if the field is absent or `{}`. Otherwise `canonical(obj)`.
 - `canonical(x)` = nlohmann `dump()`: keys sorted (byte order), no whitespace, integers
@@ -47,4 +51,26 @@ Fields are written in this order:
 | `engine/core/tests/fixtures/chunks/0_-1_0.json` | `1e0ef519c7654a57` |
 | `tools/chunk_hash/vectors/v3_lights.json` (chunk@2: 2 lights, one with `visual`, moon ambient) | `cb3d7a42055e8f52` |
 
+| `tools/chunk_hash/vectors/v4_ground.json` (chunk@3: ground elevation 0..3 on every 7th cell) | `c13bac9f6120463f` |
+
 stable_id: `(0,0,0,#0)` = `0xe9ca1f53`, `(-1,7,-2,#3)` = `0x3660e539`.
+
+## chunk@3 ground (sim rule; altitude PR2)
+
+`elevation` (`u8` per layer cell) is the **ground height in 5 ft steps**: ground_ft = 5 × elevation (0..1275 ft).
+The sim reads it as ground **only for chunk@3**; chunk@1 / chunk@2 chunks (and procedural ones) are flat for the
+sim and `elevation` stays render-only (iso stacking), so older maps and the compat goldens behave identically.
+
+Per cell (chunk@3), over the 4 layers:
+- **ground_ft** = 5 × max `elevation` over the layers. On a **water** cell the value is instead the water **depth**
+  (the surface is ground 0): a swimmer may descend to `alt_ft = -depth`.
+- **obstacle top** of a `blocks_move` cell = 5 × max `elevation` over its blocking layers; 0 means full height (no
+  flyer passes over it). chunk@1 / chunk@2 blockers are always full height.
+- A creature's ground is the **max** over its footprint; `Combat::abs_height_ft(id)` = that + `alt_ft`.
+
+Walking step from ground `a` to ground `b` (Python mirrors: `tools/validate/validate_packs.py`
+`ledge_ft` / `step_extra_ft`; C++ `eng::sim::ledge_ft` / `eng::sim::step_cost_ft` in `sim/grid.hpp`):
+- `ledge_ft(a, b) = b - a` (signed rise; negative = drop).
+- extra movement: descending (`rise <= 0`) and a step up of 5 ft or less cost nothing extra.
+  A rise above 5 ft is a climb: `rise` with a climb or fly speed, else `2 * rise`.
+  A drop of more than 5 ft is a **fall** (a flyer becomes airborne instead).

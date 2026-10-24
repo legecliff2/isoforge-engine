@@ -4,6 +4,7 @@
   "name": "Mace",
   "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
   "category": "weapon",
+  "material": "metal",
   "cost_cp": 500,
   "weight_oz": 64,
   "weapon_class": "simple",
