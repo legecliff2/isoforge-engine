@@ -14,7 +14,7 @@ namespace {
 const uint32_t kInvis = spell_id_of("test.spell.invisibility");
 const uint32_t kInvisCast = spell_id_of("test.spell.invisibility_cast_only");
 const uint32_t kMark = spell_id_of("test.spell.marked_damage");
-const uint32_t kHex = spell_id_of("test.spell.hex");
+const uint32_t kChosenMark = spell_id_of("test.spell.chosen_mark");
 const uint32_t kBolt = spell_id_of("test.spell.bolt");
 const uint32_t kHealFeature = spell_id_of("test.feature.heal");
 
@@ -41,10 +41,10 @@ EncounterHooks hooks() {
                                                                         DamageType::Force, false);
     hm.move_mark = 1;
     book->add(hm);
-    SpellDef hx = hm; hx.id = kHex; hx.content_id = "test.spell.hex";
-    hx.modifier = mark_damage(spell_id_of("test.spell.hex#modifier"), false, DamageType::Necrotic, true);
+    SpellDef hx = hm; hx.id = kChosenMark; hx.content_id = "test.spell.chosen_mark";
+    hx.modifier = mark_damage(spell_id_of("test.spell.chosen_mark#modifier"), false, DamageType::Necrotic, true);
     SpellEffect chk; chk.kind = SpellEffectKind::ApplyModifier;
-    chk.modifier.id = spell_id_of("test.spell.hex#modifier1"); chk.modifier.stat = ModStat::AbilityCheck;
+    chk.modifier.id = spell_id_of("test.spell.chosen_mark#modifier1"); chk.modifier.stat = ModStat::AbilityCheck;
     chk.modifier.mode = RollMode::Disadvantage; chk.modifier.applies_to = ModAppliesTo::Target; chk.modifier.mark_scope = 1;
     chk.modifier.chosen_ability = true;
     hx.extra_effects = {chk};
@@ -60,7 +60,7 @@ EncounterHooks hooks() {
 Combatant caster(CombatantId id) {
     auto c = wizard(id);
     c.attacks = {Attack{"blade", 40, {1, 1, 2}, DamageType::Slashing, 5, false, false}};
-    c.spells_known.insert(c.spells_known.end(), {kInvis, kInvisCast, kMark, kHex, kBolt, kCureWounds, kHealFeature});
+    c.spells_known.insert(c.spells_known.end(), {kInvis, kInvisCast, kMark, kChosenMark, kBolt, kCureWounds, kHealFeature});
     return c;
 }
 Combatant target(CombatantId id) {
@@ -186,27 +186,27 @@ TEST_CASE("7.2zc mark: cast-time checks (one creature other than the caster, mar
     CHECK_FALSE(step(s, two).ok);
     auto with_ability = cast_req(kMark, 2, 1); with_ability.mark_ability = 2;
     CHECK_FALSE(step(s, with_ability).ok);
-    CHECK_FALSE(step(s, cast_req(kHex, 2, 1)).ok);
-    auto hex_bad = cast_req(kHex, 2, 1); hex_bad.mark_ability = 7;
-    CHECK_FALSE(step(s, hex_bad).ok);
+    CHECK_FALSE(step(s, cast_req(kChosenMark, 2, 1)).ok);
+    auto chosen_bad = cast_req(kChosenMark, 2, 1); chosen_bad.mark_ability = 7;
+    CHECK_FALSE(step(s, chosen_bad).ok);
     CHECK(s.budget.bonus_action);
     CHECK(s.combatants[0].spell_slots[1] == 4);
 }
 
-TEST_CASE("7.2zc mark: Hex marks any attack's damage and the chosen check; the mark moves after the creature drops to 0") {
+TEST_CASE("7.2zc mark: a chosen-ability mark adds its die to any attack on the marked creature; the mark moves after the creature drops to 0") {
     auto s = start({caster(1), target(2), target(3)});
-    auto rq = cast_req(kHex, 2, 1); rq.mark_ability = 3;   // Con
+    auto rq = cast_req(kChosenMark, 2, 1); rq.mark_ability = 3;   // Con
     REQUIRE(step(s, rq).ok);
-    const uint32_t dmg_id = spell_id_of("test.spell.hex#modifier"), chk_id = spell_id_of("test.spell.hex#modifier1");
+    const uint32_t dmg_id = spell_id_of("test.spell.chosen_mark#modifier"), chk_id = spell_id_of("test.spell.chosen_mark#modifier1");
     const ActiveModifier* chk = mod_of(s, chk_id);
     REQUIRE(chk);
     CHECK(chk->target == 2); CHECK(chk->mark == 2);
     CHECK(chk->spec.has_ability); CHECK(chk->spec.ability == Ability::Con);
-    auto b = step(s, cast_req(kBolt, 2, 0));   // spell attacks count for Hex
+    auto b = step(s, cast_req(kBolt, 2, 0));   // spell attacks count for this rider
     REQUIRE(b.ok);
     CHECK(dealt_to(b.events, 2) >= 6);
     next_turn(s);
-    ActionRequest mv{1, ActionKind::CastSpell, 3}; mv.spell_id = kHex; mv.move_mark = true;
+    ActionRequest mv{1, ActionKind::CastSpell, 3}; mv.spell_id = kChosenMark; mv.move_mark = true;
     CHECK_FALSE(step(s, mv).ok);   // the marked creature still stands
     mut(s, 2).hp = 0;
     auto bad = mv; bad.target = 2;
@@ -263,12 +263,12 @@ TEST_CASE("7.2zc replay: the same seed gives the same events (heal bonus, ends_o
         auto s = start({c, target(2), target(3)}, 31);
         std::vector<Event> all;
         auto put = [&](const StepResult& r) { all.insert(all.end(), r.events.begin(), r.events.end()); };
-        auto hx = cast_req(kHex, 2, 1); hx.mark_ability = 5;
+        auto hx = cast_req(kChosenMark, 2, 1); hx.mark_ability = 5;
         put(step(s, hx));
         put(step(s, hit(2)));
         next_turn(s);
         mut(s, 2).hp = 0;
-        ActionRequest mv{1, ActionKind::CastSpell, 3}; mv.spell_id = kHex; mv.move_mark = true;
+        ActionRequest mv{1, ActionKind::CastSpell, 3}; mv.spell_id = kChosenMark; mv.move_mark = true;
         put(step(s, mv));
         put(step(s, hit(3)));
         next_turn(s);

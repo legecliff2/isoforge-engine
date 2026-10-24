@@ -102,7 +102,7 @@ Three non-human SRD sample PCs sit beside them (`characters/sample_*.json`: hill
 | Extra Attack (Monk) | 5 | `extra_attack {attacks_per_action 2}` (EC #179) | yes |
 | Stunning Strike (Monk) | 5 | `on_event {on hit, choice ask, when [weapon is melee], usage {pool ki, cost 1}, effects [save_condition {save con DC 13 (8 + pb + Wis), apply [stunned, duration until_end_of_caster_next_turn]}]}`: the duration loads since EC #212 (ends at the end of the monk's next turn; the current turn does not count) | yes |
 | Monastic Tradition | 3 | `classes[0].subclass` = `open-hand` | descriptive |
-| Pact Magic (Warlock) | 1-5 | `spellcasting {ability cha, caster_level, pact {level, slots}, spells}`: 1 slot of 1st at 1, 2 of 1st at 2, 2 of 2nd at 3-4, 2 of 3rd at 5 (short-rest recovery is the rules' pact-slot rest path). Spells: Eldritch Blast, Chill Touch (+ Poison Spray at 4); Burning Hands (Fiend expanded); + Hold Person, Misty Step, Scorching Ray (expanded) at 3; + Fireball (expanded), Counterspell at 5, within spells known (2-6). At 1-2 the only shipped 1st-level option is Burning Hands, so fewer spells than known are listed | yes |
+| Pact Magic (Warlock) | 1-5 | `spellcasting {ability cha, caster_level, pact {level, slots}, spells}`: 1 slot of 1st at 1, 2 of 1st at 2, 2 of 2nd at 3-4, 2 of 3rd at 5 (short-rest recovery is the rules' pact-slot rest path). Spells: Eldritch Blast, Chill Touch (+ Poison Spray at 4); Burning Hands (Fiend expanded); + Hold Person, Misty Step, Scorching Ray (expanded) at 3; + Fireball (expanded), Counterspell at 5, within spells known (2-6). At 1-2 the only shipped 1st-level option is Burning Hands, so fewer spells than known are listed. Hex is non-SRD, excluded (not NEW and not Authored), so it is not on these lists | yes |
 | Pact Boon: Pact of the Tome | 3-5 | three cantrips from any list in `spellcasting.spells`: Fire Bolt, Ray of Frost, Sacred Flame. Tome is chosen because it is the only boon that is data today: Pact of the Blade needs a summoned, bonded magic weapon (R-G12 / R-G17), and Pact of the Chain needs a familiar the sim cannot load (`pact_of_chain` is rules-only, 7.2s). Descriptive feature, no `effect` | yes (spell list) |
 | Agonizing Blast, Repelling Blast (Warlock invocations) | 2-5, 5 | `spell_mod {spell srd51.spell.eldritch_blast, damage_bonus_ability cha}` and `spell_mod {spell srd51.spell.eldritch_blast, on_hit_push_ft 10}` (7.2zb, #218), per beam that hits. The push is a fixed 10 ft (SRD: up to 10 ft) | yes |
 | Armor of Shadows (invocation) | 2-5 | baked into `armor_class` 13 + Dex with no armor worn (mage armor at will, 8 hours, no slot: always on). Mage Armor itself is not shipped. Descriptive feature, no `effect` | yes (static number) |
@@ -210,7 +210,7 @@ Each listed feature is **left out of `features[]`**: no descriptive stand-in, sa
 | Druid | 3 | + Barkskin, Hold Person, Lesser Restoration, Spike Growth (circle) |
 | Druid | 4 | + Shillelagh (third cantrip known), Flame Blade, Heat Metal (Thunderwave dropped) |
 | Druid | 5 | + Dispel Magic, Lightning Bolt (circle), Protection from Energy; Flame Blade, Heat Metal (Healing Word and Thunderwave dropped) |
-| Warlock | 1-2 | Eldritch Blast, Chill Touch; Burning Hands (expanded) |
+| Warlock | 1-2 | Eldritch Blast, Chill Touch; Burning Hands (expanded). Hex is non-SRD, excluded (not NEW and not Authored) |
 | Warlock | 3 | + Fire Bolt, Ray of Frost, Sacred Flame (Tome); Hold Person, Misty Step, Scorching Ray (expanded) |
 | Warlock | 4 | + Poison Spray, Darkness |
 | Warlock | 5 | + Fireball (expanded), Counterspell |
