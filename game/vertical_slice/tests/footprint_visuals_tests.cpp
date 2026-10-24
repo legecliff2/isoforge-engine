@@ -1,5 +1,5 @@
-// Footprint presentation: anchor, centre (odd and even), the NxN base ring, and front-tile
-// depth under the existing make_sort_key (iso.x + iso.y). No sim writes and no sort-key change.
+// Footprint presentation: anchor, centre (odd and even), the NxN base ring, and depth.
+// Ground rings sort on the front tile. The body is drawn there and sorted at the centre.
 #include <doctest/doctest.h>
 
 #include <cmath>
@@ -42,6 +42,8 @@ TEST_CASE("footprint geom: 1x1 is the anchor tile, with no slide and no scale") 
     CHECK(g.ring_anchor_x == kW / 2.f);
     CHECK(g.ring_anchor_y == 0.f);
     CHECK(g.sort_iso.x + g.sort_iso.y == 11.f);
+    CHECK(actor_sort_iso(g).x == g.sort_iso.x);
+    CHECK(actor_sort_iso(g).y == g.sort_iso.y);
 
     float w = 28.f, h = 44.f, ax = 14.f, ay = 24.f;
     place_on_footprint(w, h, ax, ay, g, true);
@@ -76,6 +78,8 @@ TEST_CASE("footprint centre and ring: 1x1, 2x2, 3x3 and 4x4, odd and even") {
                     max_depth = std::max(max_depth, float(anchor.x + x + anchor.y + y));
             CHECK(g.sort_iso.x + g.sort_iso.y == max_depth);
             if (n > 1) CHECK(g.centre_iso.x + g.centre_iso.y < g.sort_iso.x + g.sort_iso.y);
+            CHECK(actor_sort_iso(g).x == g.centre_iso.x);
+            CHECK(actor_sort_iso(g).y == g.centre_iso.y);
 
             // The historical anchor pixel, drawn at the front tile with centre_anchor_y, lands on
             // centre_iso. Feet (half a tile below that pixel) are the footprint centre: the centre
@@ -141,14 +145,56 @@ TEST_CASE("footprint sort: front tile draws after its own floors and before the 
     batch.draw(s, {4.f, 5.f}, 0, 2, 0);    // 1 anchor floor, depth 9
     batch.draw(s, {6.f, 7.f}, 0, 3, 0);    // 2 front floor, same depth as the ring, lower z
     batch.draw(s, {7.f, 7.f}, 0, 4, 0);    // 3 the tile past the front, depth 14
-    batch.draw(s, {6.f, 6.f}, 1, 5, 4);    // 4 neighbour on a lesser diagonal, layer 1, depth 12
-    batch.draw(s, g.sort_iso, 1, 6, 4);    // 5 body at the front tile
-    batch.draw(s, {7.f, 8.f}, 1, 7, 0);    // 6 wall strictly in front, depth 15
+    batch.draw(s, {6.f, 6.f}, 1, 5, 4);    // 4 neighbour between centre (11) and the front corner (13)
+    batch.draw(s, g.sort_iso, actor_sort_iso(g), 1, 6, 4);   // 5 body drawn on the front anchor, sorted at the centre
+    batch.draw(s, {7.f, 8.f}, 1, 7, 0);    // 6 wall strictly in front of the corner, depth 15
     iso2d::Camera cam;
     cam.viewport_w = 64;
     cam.viewport_h = 64;
     batch.prepare(cam);
-    CHECK(batch.order() == std::vector<uint32_t>{1, 2, 0, 3, 4, 5, 6});
+    // The ring still covers the footprint floors. The neighbour in front of the centre paints over the body.
+    CHECK(batch.order() == std::vector<uint32_t>{1, 2, 0, 3, 5, 4, 6});
+}
+
+TEST_CASE("footprint actor sort: 1x1 matches the tile, and 2x2 3x3 4x4 front, back and ties") {
+    render::NullDevice dev;
+    iso2d::Sprite s;
+    s.w = 1.f;
+    s.h = 1.f;
+    const Vec2i anchor{4, 5};
+    for (int n : {1, 2, 3, 4}) {
+        CAPTURE(n);
+        const FootprintGeom g = footprint_geom(anchor, n, kW, kH);
+        const Vec2f back{float(anchor.x - 1), float(anchor.y)};
+        const Vec2f front_n{float(anchor.x + n), float(anchor.y)};
+        const Vec2f tie{float(anchor.x + n), float(anchor.y - 1)};
+        REQUIRE(back.x + back.y < actor_sort_iso(g).x + actor_sort_iso(g).y);
+        REQUIRE(front_n.x + front_n.y > actor_sort_iso(g).x + actor_sort_iso(g).y);
+        if (n > 2) REQUIRE(front_n.x + front_n.y < g.sort_iso.x + g.sort_iso.y);
+        CHECK(tie.x + tie.y == doctest::Approx(actor_sort_iso(g).x + actor_sort_iso(g).y));
+
+        iso2d::SpriteBatch batch(dev, 16);
+        batch.begin();
+        batch.draw(s, g.sort_iso, actor_sort_iso(g), 1, 10, 4);   // 0 body
+        batch.draw(s, front_n, 1, 30, 4);                         // 1 in front of the centre
+        batch.draw(s, back, 1, 20, 4);                            // 2 behind the centre
+        batch.draw(s, tie, 1, 5, 4);                              // 3 tie, lower id
+        batch.draw(s, tie, 1, 40, 4);                             // 4 tie, higher id
+        batch.prepare({});
+        CHECK(batch.order() == std::vector<uint32_t>{2, 3, 0, 4, 1});
+
+        if (n == 1) {
+            iso2d::SpriteBatch historical(dev, 16);
+            historical.begin();
+            historical.draw(s, g.sort_iso, 1, 10, 4);
+            historical.draw(s, front_n, 1, 30, 4);
+            historical.draw(s, back, 1, 20, 4);
+            historical.draw(s, tie, 1, 5, 4);
+            historical.draw(s, tie, 1, 40, 4);
+            historical.prepare({});
+            CHECK(historical.order() == batch.order());
+        }
+    }
 }
 
 TEST_CASE("slice view: a multi-tile base ring is one extra sprite; side 1 is unchanged and stable") {

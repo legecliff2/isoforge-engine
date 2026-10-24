@@ -427,20 +427,21 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
     }
     for (const ActorView& a : vm.actors) {
         if (!visible(a)) continue;
-        // sort_iso is the front tile (depth = max x+y under the existing key). centre_anchor_y
-        // slides art authored on the anchor tile up onto the footprint centre. Side 1: iso is
-        // the tile and the slide is 0, so every sprite below matches the old 1x1 draw.
+        // Drawn on the front tile; centre_anchor_y slides art up onto the footprint centre.
+        // Ground rings sort there too. The volume sorts at centre_iso (the 1x1 reference).
+        // Side 1: the two points are the tile and the slide is 0, so the draw matches before.
         const FootprintGeom fp = footprint_geom(a.tile, a.footprint, float(kTileW), float(kTileH));
         const Vec2f iso = fp.sort_iso;
-        auto footprint_ring = [&](Color c, int32_t layer, int32_t z) {
+        const Vec2f actor_sort = actor_sort_iso(fp);
+        auto footprint_ring = [&](Color c, int32_t layer, int32_t z, Vec2f sort) {
             iso2d::Sprite r{tex_->ring, fp.ring_w, fp.ring_h, fp.ring_anchor_x, fp.ring_anchor_y};
             r.tint = c;
-            world_.draw(r, iso, layer, a.id, z);
+            world_.draw(r, iso, sort, layer, a.id, z);
         };
         // Current-turn selection, or a dim base ring for a multi-tile creature that is not
         // selected. Either one covers the whole NxN diamond. A 1x1 that is not current draws none.
-        if (a.current) footprint_ring(Color::rgba8(255, 220, 60), 0, 9);
-        else if (fp.n > 1) footprint_ring(Color::rgba8(236, 238, 244, 180), 0, 9);
+        if (a.current) footprint_ring(Color::rgba8(255, 220, 60), 0, 9, iso);
+        else if (fp.n > 1) footprint_ring(Color::rgba8(236, 238, 244, 180), 0, 9, iso);
         // Unseen target: a small slate-cyan diamond on the ground. It is not the full-tile current-turn
         // ring (gold, z 9) and not a Faerie Fire outline (full-tile purple on the actor). Alpha stays
         // well above the Invisible ghost (~0.38): this is a mark, not a fade of the token.
@@ -459,7 +460,7 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
             place_on_footprint(w, h, ax, ay, fp, true);
             iso2d::Sprite pip{tex_->white, w, h, ax, ay};
             pip.tint = Color::rgba8(232, 84, 58, 235);
-            world_.draw(pip, iso, 1, a.id, 9);
+            world_.draw(pip, iso, actor_sort, 1, a.id, 9);
         }
         // Pawn feet at the footprint centre; drawn on the wall layer so walls in front occlude it.
         float pw = float(kPawnW), ph = float(kPawnH), pax = kPawnW / 2.f, pay = float(kPawnH) - kTileH / 2.f - 4.f;
@@ -474,25 +475,25 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         if (L.present) lit_by = mul(lit_by, {1.6f, 1.6f, 1.6f, 1.f});
         if (a.invisible && !a.dead) lit_by.a *= 0.38f;   // ghost equipment with the body
         if (a.equipment.empty()) {
-            world_.draw(p, iso, 1, a.id, kZBody);
+            world_.draw(p, iso, actor_sort, 1, a.id, kZBody);
         } else {
             // Equipment layers (equip_visuals.hpp): fixed z around the body inside the actor's sort key.
             for (const EquipLayer& l : equip_layers(a)) {
-                if (l.part == EquipPart::Body) { world_.draw(p, iso, 1, a.id, kZBody); continue; }
+                if (l.part == EquipPart::Body) { world_.draw(p, iso, actor_sort, 1, a.id, kZBody); continue; }
                 for (const EquipQuad& q : equip_quads(*l.item, l.part, l.at)) {
                     float w = q.size.x, h = q.size.y, ax = q.size.x / 2.f - q.at.x, ay = q.size.y - q.at.y;
                     place_on_footprint(w, h, ax, ay, fp, true);   // bottom-centre on the token anchor + q.at
                     iso2d::Sprite s{tex_->white, w, h, ax, ay};
                     s.tint = q.emissive ? q.color : mul(q.color, lit_by);
                     if (a.invisible && !a.dead && q.emissive) s.tint.a *= 0.38f;
-                    world_.draw(s, iso, 1, a.id, l.z);
+                    world_.draw(s, iso, actor_sort, 1, a.id, l.z);
                 }
             }
         }
         // Faerie Fire outline: after body / equip so the ring sits on top of the token.
         // The same diamond as the base ring, so it covers the whole footprint.
         if (a.outlined && !a.dead)
-            footprint_ring(Color::rgba8(200, 120, 255, a.invisible ? 140 : 220), 1, kZOutline);
+            footprint_ring(Color::rgba8(200, 120, 255, a.invisible ? 140 : 220), 1, kZOutline, actor_sort);
     }
     world_.prepare(cam);
 
