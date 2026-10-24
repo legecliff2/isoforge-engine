@@ -2072,6 +2072,487 @@
      ]
     }
    ]
+  },
+  "baboon": {
+   "name": "Baboon",
+   "size": "Small",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 3,
+   "hp_roll": "1d6",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "30 ft.",
+    "climb": "30 ft."
+   },
+   "abilities": [
+    8,
+    14,
+    11,
+    4,
+    12,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 1,
+     "damage_options": [
+      [
+       [
+        "1d4-1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "camel": {
+   "name": "Camel",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    9
+   ],
+   "hp": 15,
+   "hp_roll": "2d10+4",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "50 ft."
+   },
+   "abilities": [
+    16,
+    8,
+    14,
+    2,
+    8,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "draft-horse": {
+   "name": "Draft Horse",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 19,
+   "hp_roll": "3d10+3",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    18,
+    10,
+    12,
+    2,
+    11,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Hooves",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d4+4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-lizard": {
+   "name": "Giant Lizard",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 19,
+   "hp_roll": "3d10+3",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "30 ft.",
+    "climb": "30 ft."
+   },
+   "abilities": [
+    15,
+    12,
+    13,
+    2,
+    10,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d8+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "ape": {
+   "name": "Ape",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 19,
+   "hp_roll": "3d8+6",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "30 ft.",
+    "climb": "30 ft."
+   },
+   "abilities": [
+    16,
+    14,
+    14,
+    6,
+    12,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Fist",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Rock",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "brown-bear": {
+   "name": "Brown Bear",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    11
+   ],
+   "hp": 34,
+   "hp_roll": "4d10+12",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "40 ft.",
+    "climb": "30 ft."
+   },
+   "abilities": [
+    19,
+    10,
+    16,
+    2,
+    13,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d8+4",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "worg": {
+   "name": "Worg",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    13
+   ],
+   "hp": 26,
+   "hp_roll": "4d10+4",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "50 ft."
+   },
+   "abilities": [
+    16,
+    13,
+    13,
+    7,
+    11,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-hyena": {
+   "name": "Giant Hyena",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 45,
+   "hp_roll": "6d10+12",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "50 ft."
+   },
+   "abilities": [
+    16,
+    14,
+    14,
+    2,
+    12,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-centipede": {
+   "name": "Giant Centipede",
+   "size": "Small",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 4,
+   "hp_roll": "1d6+1",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "30 ft.",
+    "climb": "30 ft."
+   },
+   "abilities": [
+    5,
+    14,
+    12,
+    1,
+    7,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-wolf-spider": {
+   "name": "Giant Wolf Spider",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 11,
+   "hp_roll": "2d8+2",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "40 ft.",
+    "climb": "40 ft."
+   },
+   "abilities": [
+    12,
+    16,
+    13,
+    3,
+    12,
+    4
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "riding-horse": {
+   "name": "Riding Horse",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 13,
+   "hp_roll": "2d10+2",
+   "cr": 0.25,
+   "xp": 25,
+   "speed": {
+    "walk": "60 ft."
+   },
+   "abilities": [
+    16,
+    10,
+    12,
+    2,
+    11,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Hooves",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d4+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
