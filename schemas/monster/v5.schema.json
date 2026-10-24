@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://isoforge.dev/schemas/monster/v5.schema.json",
   "title": "monster@5",
-  "description": "monster@5 = monster@4 carried in full plus (all optional, docs/proposals/EQUIPMENT.md 5 and 7.1): derive, equipment[] (with count), natural_armor, ac_adjust, weapon_dice_multiplier, weapons[] (monster-local), action weapon / natural / attack_bonus, hands, proficiency_bonus optional (default: the CR table) with proficiency_bonus_reason, emits_light (LIGHTING 3.4). monster@4 -> monster@5 is an identity migration with derive absent (= false). Integers only (4.3).",
+  "description": "monster@5 = monster@4 carried in full plus (all optional, docs/proposals/EQUIPMENT.md 5 and 7.1): derive, equipment[] (with count), natural_armor, ac_adjust, weapon_dice_multiplier, weapons[] (monster-local), action weapon / natural / attack_bonus / damage_override, hands, proficiency_bonus optional (default: the CR table) with proficiency_bonus_reason, emits_light (LIGHTING 3.4). monster@4 -> monster@5 is an identity migration with derive absent (= false). Integers only (4.3).",
   "$ref": "#/$defs/stat_block",
   "unevaluatedProperties": false,
   "required": [
@@ -844,6 +844,24 @@
             }
           },
           "description": "Overrides the derived total to-hit (not a delta); needs a reason (EQUIPMENT 5.5)."
+        },
+        "damage_override": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "dice",
+            "reason"
+          ],
+          "properties": {
+            "dice": {
+              "$ref": "../common/v1.schema.json#/$defs/dice"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "description": "Overrides the derived damage[0] dice (not a delta) when the printed stat block can't be derived; needs a reason citing the SRD 5.1 stat block (CONTENT_CONVENTIONS 21). SRD Gladiator thrown Spear: 2d6 + 4."
         },
         "use": {
           "enum": [
