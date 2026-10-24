@@ -232,7 +232,8 @@ def check_stat_block(doc: dict, errs: list[str], pb_expected: int, rolled_hp: bo
         if v not in (base + pb, base + 2 * pb):
             errs.append(f"skills.{s} = {v}, expected {base + pb} (or {base + 2 * pb} with expertise)")
     perc = doc.get("skills", {}).get("perception", modifier(ab["wis"]))
-    if doc["senses"]["passive_perception"] != 10 + perc:
+    printed_ok = doc.get("$schema") == "monster@5" and doc.get("passive_perception_reason") == "srd_printed"   # Tier-A §25
+    if doc["senses"]["passive_perception"] != 10 + perc and not printed_ok:
         errs.append(f"senses.passive_perception {doc['senses']['passive_perception']} != {10 + perc}")
     hp = doc["hit_points"]
     if rolled_hp and dice_average(hp["formula"]) != hp["average"]:

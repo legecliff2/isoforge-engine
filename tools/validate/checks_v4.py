@@ -104,7 +104,7 @@ TAG_TABLE["item@1"] = TagRow(False, frozenset(), frozenset(), frozenset(), froze
                              needs_api_level=2)
 # EQUIPMENT 7.1 (#245/#246): monster@5 / character@5 carry @4 in full plus optional equipment keys; item@2 carries item@1.
 _MONSTER_AT5_KEYS = frozenset({"derive", "equipment", "natural_armor", "ac_adjust", "weapon_dice_multiplier", "weapons", "hands",
-                               "proficiency_bonus_reason", "emits_light"})
+                               "proficiency_bonus_reason", "emits_light", "passive_perception_reason"})
 # monster@5-local trait kinds (Rules decision on #247: no common@3): weapon_extra_dice (Brute), closed arm in monster@5 $defs.
 MONSTER_AT5_ACTION_KINDS = frozenset({"teleport"})   # batch 3 (blink dog)
 MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage", "aura"})   # + batch 3 save_advantage (Magic Resistance), aura (ghast Stench)
@@ -1774,6 +1774,17 @@ def check_equipment_v5(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list[
     pb, want = doc.get("proficiency_bonus"), cr_table_pb(str(ch.get("rating", "0")))
     if pb is not None and pb != want and not str(doc.get("proficiency_bonus_reason", "")).strip():
         errs.append(f"{did}: proficiency_bonus {pb} != CR table {want}")
+    # Tier-A §25: printed passive Perception (validate_packs.check_stat_block skips its mismatch error only with this reason)
+    if "passive_perception_reason" in doc:
+        ab = doc.get("abilities") or {}
+        perc = (doc.get("skills") or {}).get("perception", (int(ab.get("wis", 10)) - 10) // 2)
+        printed = (doc.get("senses") or {}).get("passive_perception")
+        if doc["passive_perception_reason"] != "srd_printed":
+            errs.append(f"{did}: passive_perception_reason must be \"srd_printed\"")
+        elif printed == 10 + perc:
+            errs.append(f"{did}: passive_perception_reason given but senses.passive_perception {printed} == derived {10 + perc}")
+        else:
+            warns.append(f"{did}: senses.passive_perception {printed} != derived {10 + perc} (SRD printed value used, §25)")
     adj = doc.get("ac_adjust")
     if isinstance(adj, dict):
         if not str(adj.get("reason", "")).strip():

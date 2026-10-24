@@ -787,7 +787,7 @@ A weapon with a metal head or blade counts as a manufactured metal object. The s
 
 Versioning: appended, no tag change, no migration, no `api_level` gate. The field is not hashed, so goldens are unchanged. The justification and the Elf (tools/content) sign-off are in `docs/proposals/VERSION_BUMP_BATCH.md` (7.2zh follow-up).
 
-§20-21 and §25-27 are reserved for in-flight branches.
+§20-21 and §26-27 are reserved for in-flight branches.
 
 <!-- Code, schema and tests cite this section by its title ("Attack ability"), not its number. -->
 ## 23. Attack ability (monster@5 action `ability`, Strength Drain ruling)
@@ -831,6 +831,20 @@ The runner applies surprise before the first command, then `sim::set_scenario_en
 Both sides use `sim::NearestEnemyPolicy`. The same seed and pack contents print the same stdout. `golden.txt` is that stdout without `--log`, LF. `encounter_scenario_<name>` runs it twice against the golden.
 
 Directory name: `^[a-z][a-z0-9_]*$`. Integers only. `golden.txt` must be non-empty. Explicit pack arguments to the validator skip this check, so the pack summary line is unchanged.
+
+## 25. Printed passive Perception (monster@5 `passive_perception_reason`, Tier-A)
+
+- `senses.passive_perception` must equal 10 + Perception (the `skills.perception` value, else the Wis modifier). On a
+  monster@5 file a mismatch is allowed only with top-level `passive_perception_reason: "srd_printed"` (the SRD 5.1 printed
+  value; validator warning instead of an error). The reason on a matching value, any other value, or on a non-monster@5 file
+  is refused.
+- The sim stores the printed value in `Combatant::passive_perception_override` (static content, never hashed) and
+  `rules5e::passive_perception` uses it instead of 10 + Perception (Hide, hidden-from, surprise). It shifts by the same
+  effective-Wis modifier delta as the derived value (a Wis reduction moves both), and caller bonuses (dim light -5) still apply.
+- Printed SRD passives never include Keen Senses (wolf, hell hound: 10 + Perception exactly). The keen hook is deferred
+  (SRD_COMBAT_COVERAGE); it will add situationally, never into the printed number.
+- SRD 5.1 data blocks whose printed passive differs from 10 + Perception (5e-database copy): black bear, blink dog,
+  half-red dragon veteran, spider, swarm of ravens. Blink dog ships without the reason until authored.
 
 ## 28. Text-only spell effect `descriptive` (spell@1)
 
