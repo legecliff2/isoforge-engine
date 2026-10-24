@@ -2733,9 +2733,6 @@ void Combat::form_footprint(const rules5e::Event& e, std::vector<SimEvent>& out)
     out.push_back(fe);
 }
 
-} // namespace eng::sim
-
-namespace eng::sim {
 bool Combat::set_altitude(CombatantId id, int16_t alt_ft, uint8_t cause) {
     for (auto& c : state_.combatants) {
         if (c.id != id) continue;
