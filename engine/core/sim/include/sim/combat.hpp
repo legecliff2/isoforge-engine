@@ -296,6 +296,9 @@ public:
 
     // Canonical hash (StableHash) of the event stream + final positions. Golden material.
     uint64_t hash() const;
+    // Altitude PR1: set a creature's Combatant::alt_ft (feet, multiple of 5) and emit SimEvent::AltitudeChanged (v12) with
+    // `cause` (AltitudeCause) only when the value changes. Returns whether it changed. No gameplay path calls it yet.
+    bool set_altitude(CombatantId id, int16_t alt_ft, uint8_t cause);
     // Canonical hash of the command log alone.
     uint64_t log_hash() const;
 
