@@ -26,8 +26,14 @@ name: CI
 # - macOS: nightly on main (07:17 UTC, off the hour to avoid GitHub dropping top-of-hour schedules), on manual dispatch, and on PRs whose
 #   changes touch platform / render or determinism-sensitive code (see the `mac` filter below).
 # - `ci-required` is the single aggregate gate for branch protection. It always runs
-#   (`if: always()`) and succeeds only when every job this event requires has
-#   result == success. skipped and cancelled are not success.
+#   (`if: always()`) and succeeds when every job this event requires has
+#   result == success. A job this event does not run may be skipped: docs-only
+#   pull_request and push (paths-filter `code` is not `true`) require only
+#   `changes`; build-test, windows-release, linux-runner, and macos may be
+#   skipped. The same is true for an unlabelled Windows Release, macOS when the
+#   nightly gate says main did not move, and build-test on schedule or dispatch.
+#   failure and cancelled on any needed job fail the gate. skipped is not
+#   success for a job the event requires. Drafts and fork PRs fail the gate.
 on:
   push:
     branches: [main]
@@ -244,8 +250,11 @@ jobs:
   # `if: always()` is required: without it, a failed or skipped need skips this job, and
   # GitHub treats a skipped required check as success (same for conclusion `skipped`).
   # The result checks therefore live in the step, which exits 1. Each
-  # `needs.<job>.result == 'success'` expression is bound below; skipped and cancelled
-  # are not success.
+  # `needs.<job>.result == 'success'` expression is bound below. skipped is
+  # allowed when this event did not require that job (a docs-only run, where
+  # paths-filter `code` is the string `false` or empty, requires only `changes`).
+  # skipped and cancelled are not success for a job the event requires.
+  # failure and cancelled fail the gate for every needed job.
   #
   # Required set (a skipped job in this set fails the gate; a skipped job outside it
   # does not — that is a docs-only push, an unlabelled Windows Release, macOS when the
@@ -327,6 +336,10 @@ jobs:
           done
 
           # ok is the workflow expression needs.<job>.result == 'success'.
+          # paths-filter emits code and mac as the strings true or false. Empty means
+          # that step did not run. Only the string true adds the matching build job
+          # to the required set, so a docs-only pull_request or push (code is not
+          # true) may skip build-test, windows-release, linux-runner, and macos.
           require_success() {
             name=$1
             ok=$2
