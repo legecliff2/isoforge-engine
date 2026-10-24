@@ -1,0 +1,85 @@
+isoforge-engine
+Copyright 2026 Zach Nava
+
+Engine code
+-----------
+The source code of isoforge-engine is licensed under the Apache License,
+Version 2.0. See the LICENSE file in this directory. The rules implementation
+under engine/rules/ is that engine code. It expresses SRD mechanics in
+original source; it is not a copy of the System Reference Document.
+
+SRD 5.1 content (CC-BY-4.0)
+---------------------------
+This repository includes material taken from the System Reference Document
+5.1 ("SRD 5.1"), used under the Creative Commons Attribution 4.0
+International License (CC-BY-4.0).
+
+Wizards of the Coast requires the following attribution. It is quoted from
+the Legal Information page of the SRD 5.1 CC-BY-4.0 release,
+https://media.wizards.com/2023/downloads/dnd/SRD_CC_v5.1.pdf
+(the same statement is in
+https://www.dndbeyond.com/attachments/39j2li89/SRD5.1-CCBY4.0License.pdf):
+
+This work includes material taken from the System Reference Document 5.1 (“SRD 5.1”) by Wizards of the Coast LLC and available at https://dnd.wizards.com/resources/systems-reference-document. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License available at https://creativecommons.org/licenses/by/4.0/legalcode.
+
+That attribution covers the SRD-derived material in these paths:
+
+- content/packs/srd51.core/ — authored SRD 5.1 spells, monsters, items, and
+  characters (each document's source.ref is "SRD 5.1", license CC-BY-4.0).
+  The pack manifest's attribution field carries the statement above.
+  content/packs/srd51.core/scripts/ is original behavior code that refers to
+  those stat blocks; it is engine code under Apache-2.0.
+- content/packs/sample.vertical_slice/characters/ and that pack's manifest
+  attribution. The chunk under content/packs/sample.vertical_slice/chunks/
+  is an original map, not SRD text.
+- tests/compat/fl1/sample.vertical_slice/ — frozen copy of the sample pack,
+  including the SRD fighter, the SRD goblin, and the manifest attribution.
+- tests/validate/data/srd51_classes_5e_database_a6212be.json
+  tests/validate/data/srd51_monsters_5e_database_a6212be.json
+  tests/validate/data/srd51_proficiencies_5e_database_a6212be.json
+  tests/validate/data/srd51_spells_5e_database_a6212be.json
+  — field-level copies of SRD 5.1 data taken from the 5e-database mirror
+  at commit a6212be. The mirror's own code is MIT; the SRD data is
+  CC-BY-4.0.
+- tests/validate/cases/ and tests/validate/fixtures/ — validator specimens
+  whose documents set source to SRD 5.1 / CC-BY-4.0 (spells, monsters,
+  items, and characters).
+- engine/core/tests/fixtures/monster/goblin.v1.json
+- engine/core/sim/tests/data/schema_bump_v4/ — SRD-derived character and
+  monster fixtures (barbarian, fighter, animated armor, goblin).
+- engine/rules/tests/derive_character_srd_cases.inc
+  engine/rules/tests/derive_character_srd_item_classes.inc
+  engine/rules/tests/derive_monster_srd_cases.inc
+  — generated expectations taken from those SRD stat blocks.
+- docs/SRD_COMBAT_COVERAGE.md
+  docs/SRD_MONSTERS_DEFERRED.md
+  docs/SRD_SPELLS_DEFERRED.md
+  docs/SRD_CLASSES_DEFERRED.md
+  — audits that quote SRD 5.1 material.
+- docs/proposals/EQUIPMENT.md
+  docs/proposals/FORCED_MOVEMENT.md
+  docs/proposals/LARGE_CREATURE_FOOTPRINT_AUDIT.md
+  docs/proposals/LIGHTING.md
+  docs/proposals/SUMMONS_TRANSFORMS.md
+  docs/proposals/VERSION_BUMP_BATCH.md
+  docs/proposals/ZONES_AURAS.md
+  — design notes that restate SRD 5.1 rules.
+
+Any file whose content is derived from the SRD 5.1 remains under CC-BY-4.0
+regardless of its path, and the path list is illustrative, not exhaustive.
+
+Pack manifests already store the same attribution sentence with ASCII
+quotation marks, which is how the JSON documents are written. The sentence
+in this file uses the quotation marks from the SRD 5.1 PDF.
+
+Third-party components
+----------------------
+cmake/Dependencies.cmake fetches these components. Nothing is vendored
+under third_party/. doctest is included when tests are built, and SDL3 is
+included unless the build is headless. Each keeps its own license:
+
+- nlohmann_json 3.11.3 — MIT
+- xxHash 0.8.2 — BSD-2-Clause
+- Luau 0.742 — MIT
+- doctest 2.4.11 — MIT
+- SDL3 3.4.8 — zlib

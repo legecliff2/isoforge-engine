@@ -1,6 +1,6 @@
 # SRD 5.1 combat coverage audit (levels 1-5 party vs SRD monsters)
 
-> This work includes material taken from the System Reference Document 5.1 ("SRD 5.1") by Wizards of the Coast LLC, available at <https://dnd.wizards.com/resources/systems-reference-document>. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License, <https://creativecommons.org/licenses/by/4.0/legalcode>.
+> This work includes material taken from the System Reference Document 5.1 (“SRD 5.1”) by Wizards of the Coast LLC and available at https://dnd.wizards.com/resources/systems-reference-document. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License available at https://creativecommons.org/licenses/by/4.0/legalcode.
 
 Goal: a complete level 1-5 party (Fighter, Cleric, Wizard in full; the other nine classes as a lower tier) fighting SRD monsters, deterministically, from content data. This audit lists every combat-relevant SRD element and says what the code does **today** (first written at `6012567`, after #23 spellcasting, #34 follow-ups, #41 PackSet; statuses refreshed for the version-bump batch after #91, with row 15 `compute_ac` in #93, see 11.5). SRD text was cross-checked against the 5e-database mirror at `a6212be` (see 12). It is not a plan of record; section 11 is a proposed priority list that includes the Director's decisions.
 
