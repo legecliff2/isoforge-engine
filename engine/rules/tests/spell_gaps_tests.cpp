@@ -1,5 +1,5 @@
 // VERSION_BUMP_BATCH 7.2zc: spell and feature gap batch 1 (T&C agreed shapes). Disciple of Life (Combatant::heal_bonus_*),
-// Invisibility's ends_on (attack / cast), and the generic mark of Hunter's Mark / Hex (ModifierSpec::mark_scope /
+// Invisibility's ends_on (attack / cast), and the generic mark (ModifierSpec::mark_scope /
 // chosen_ability, ActiveModifier::mark, SpellDef::move_mark, ActionRequest::mark_ability / move_mark), plus replay determinism.
 #include <doctest/doctest.h>
 
@@ -13,8 +13,8 @@ namespace {
 
 const uint32_t kInvis = spell_id_of("test.spell.invisibility");
 const uint32_t kInvisCast = spell_id_of("test.spell.invisibility_cast_only");
-const uint32_t kMark = spell_id_of("test.spell.hunters_mark");
-const uint32_t kHex = spell_id_of("test.spell.hex");
+const uint32_t kMark = spell_id_of("test.spell.marked_damage");
+const uint32_t kChosenMark = spell_id_of("test.spell.chosen_mark");
 const uint32_t kBolt = spell_id_of("test.spell.bolt");
 const uint32_t kHealFeature = spell_id_of("test.feature.heal");
 
@@ -35,16 +35,16 @@ EncounterHooks hooks() {
     auto book = std::make_shared<SpellBook>(*h.spells);
     book->add(invisibility(kInvis, "test.spell.invisibility", kEndsOnAttack | kEndsOnCast));
     book->add(invisibility(kInvisCast, "test.spell.invisibility_cast_only", kEndsOnCast));
-    SpellDef hm; hm.id = kMark; hm.content_id = "test.spell.hunters_mark"; hm.level = 1; hm.range_ft = 90;
+    SpellDef hm; hm.id = kMark; hm.content_id = "test.spell.marked_damage"; hm.level = 1; hm.range_ft = 90;
     hm.casting_time = CastingTime::BonusAction; hm.concentration = true; hm.duration = SpellDuration::Hours; hm.duration_amount = 1;
-    hm.kind = SpellEffectKind::ApplyModifier; hm.modifier = mark_damage(spell_id_of("test.spell.hunters_mark#modifier"), true,
+    hm.kind = SpellEffectKind::ApplyModifier; hm.modifier = mark_damage(spell_id_of("test.spell.marked_damage#modifier"), true,
                                                                         DamageType::Force, false);
     hm.move_mark = 1;
     book->add(hm);
-    SpellDef hx = hm; hx.id = kHex; hx.content_id = "test.spell.hex";
-    hx.modifier = mark_damage(spell_id_of("test.spell.hex#modifier"), false, DamageType::Necrotic, true);
+    SpellDef hx = hm; hx.id = kChosenMark; hx.content_id = "test.spell.chosen_mark";
+    hx.modifier = mark_damage(spell_id_of("test.spell.chosen_mark#modifier"), false, DamageType::Necrotic, true);
     SpellEffect chk; chk.kind = SpellEffectKind::ApplyModifier;
-    chk.modifier.id = spell_id_of("test.spell.hex#modifier1"); chk.modifier.stat = ModStat::AbilityCheck;
+    chk.modifier.id = spell_id_of("test.spell.chosen_mark#modifier1"); chk.modifier.stat = ModStat::AbilityCheck;
     chk.modifier.mode = RollMode::Disadvantage; chk.modifier.applies_to = ModAppliesTo::Target; chk.modifier.mark_scope = 1;
     chk.modifier.chosen_ability = true;
     hx.extra_effects = {chk};
@@ -60,7 +60,7 @@ EncounterHooks hooks() {
 Combatant caster(CombatantId id) {
     auto c = wizard(id);
     c.attacks = {Attack{"blade", 40, {1, 1, 2}, DamageType::Slashing, 5, false, false}};
-    c.spells_known.insert(c.spells_known.end(), {kInvis, kInvisCast, kMark, kHex, kBolt, kCureWounds, kHealFeature});
+    c.spells_known.insert(c.spells_known.end(), {kInvis, kInvisCast, kMark, kChosenMark, kBolt, kCureWounds, kHealFeature});
     return c;
 }
 Combatant target(CombatantId id) {
@@ -159,10 +159,10 @@ TEST_CASE("7.2zc ends_on cast only: an attack keeps it, casting any spell ends i
     CHECK(removed > resolved);
 }
 
-TEST_CASE("7.2zc mark: Hunter's Mark adds its die to weapon hits on the marked creature only") {
+TEST_CASE("7.2zc mark: a weapon-only marked damage rider adds its die to weapon hits on the marked creature only") {
     auto s = start({caster(1), target(2), target(3)});
     REQUIRE(step(s, cast_req(kMark, 2, 1)).ok);
-    const ActiveModifier* m = mod_of(s, spell_id_of("test.spell.hunters_mark#modifier"));
+    const ActiveModifier* m = mod_of(s, spell_id_of("test.spell.marked_damage#modifier"));
     REQUIRE(m);
     CHECK(m->target == 1);
     CHECK(m->mark == 2);
@@ -174,7 +174,7 @@ TEST_CASE("7.2zc mark: Hunter's Mark adds its die to weapon hits on the marked c
     REQUIRE(b.ok);
     CHECK(dealt_to(b.events, 3) <= 4);
     next_turn(s);
-    auto c = step(s, cast_req(kBolt, 2, 0));   // a spell attack: Hunter's Mark is weapon_attack only
+    auto c = step(s, cast_req(kBolt, 2, 0));   // a spell attack: the rider is weapon_attack only
     REQUIRE(c.ok);
     CHECK(dealt_to(c.events, 2) <= 2);
 }
@@ -186,27 +186,27 @@ TEST_CASE("7.2zc mark: cast-time checks (one creature other than the caster, mar
     CHECK_FALSE(step(s, two).ok);
     auto with_ability = cast_req(kMark, 2, 1); with_ability.mark_ability = 2;
     CHECK_FALSE(step(s, with_ability).ok);
-    CHECK_FALSE(step(s, cast_req(kHex, 2, 1)).ok);
-    auto hex_bad = cast_req(kHex, 2, 1); hex_bad.mark_ability = 7;
-    CHECK_FALSE(step(s, hex_bad).ok);
+    CHECK_FALSE(step(s, cast_req(kChosenMark, 2, 1)).ok);
+    auto chosen_bad = cast_req(kChosenMark, 2, 1); chosen_bad.mark_ability = 7;
+    CHECK_FALSE(step(s, chosen_bad).ok);
     CHECK(s.budget.bonus_action);
     CHECK(s.combatants[0].spell_slots[1] == 4);
 }
 
-TEST_CASE("7.2zc mark: Hex marks any attack's damage and the chosen check; the mark moves after the creature drops to 0") {
+TEST_CASE("7.2zc mark: a chosen-ability mark adds its die to any attack on the marked creature; the mark moves after the creature drops to 0") {
     auto s = start({caster(1), target(2), target(3)});
-    auto rq = cast_req(kHex, 2, 1); rq.mark_ability = 3;   // Con
+    auto rq = cast_req(kChosenMark, 2, 1); rq.mark_ability = 3;   // Con
     REQUIRE(step(s, rq).ok);
-    const uint32_t dmg_id = spell_id_of("test.spell.hex#modifier"), chk_id = spell_id_of("test.spell.hex#modifier1");
+    const uint32_t dmg_id = spell_id_of("test.spell.chosen_mark#modifier"), chk_id = spell_id_of("test.spell.chosen_mark#modifier1");
     const ActiveModifier* chk = mod_of(s, chk_id);
     REQUIRE(chk);
     CHECK(chk->target == 2); CHECK(chk->mark == 2);
     CHECK(chk->spec.has_ability); CHECK(chk->spec.ability == Ability::Con);
-    auto b = step(s, cast_req(kBolt, 2, 0));   // spell attacks count for Hex
+    auto b = step(s, cast_req(kBolt, 2, 0));   // spell attacks count for this rider
     REQUIRE(b.ok);
     CHECK(dealt_to(b.events, 2) >= 6);
     next_turn(s);
-    ActionRequest mv{1, ActionKind::CastSpell, 3}; mv.spell_id = kHex; mv.move_mark = true;
+    ActionRequest mv{1, ActionKind::CastSpell, 3}; mv.spell_id = kChosenMark; mv.move_mark = true;
     CHECK_FALSE(step(s, mv).ok);   // the marked creature still stands
     mut(s, 2).hp = 0;
     auto bad = mv; bad.target = 2;
@@ -263,12 +263,12 @@ TEST_CASE("7.2zc replay: the same seed gives the same events (heal bonus, ends_o
         auto s = start({c, target(2), target(3)}, 31);
         std::vector<Event> all;
         auto put = [&](const StepResult& r) { all.insert(all.end(), r.events.begin(), r.events.end()); };
-        auto hx = cast_req(kHex, 2, 1); hx.mark_ability = 5;
+        auto hx = cast_req(kChosenMark, 2, 1); hx.mark_ability = 5;
         put(step(s, hx));
         put(step(s, hit(2)));
         next_turn(s);
         mut(s, 2).hp = 0;
-        ActionRequest mv{1, ActionKind::CastSpell, 3}; mv.spell_id = kHex; mv.move_mark = true;
+        ActionRequest mv{1, ActionKind::CastSpell, 3}; mv.spell_id = kChosenMark; mv.move_mark = true;
         put(step(s, mv));
         put(step(s, hit(3)));
         next_turn(s);

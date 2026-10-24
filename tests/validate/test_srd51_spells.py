@@ -2,7 +2,8 @@
 """srd51.core spell@1 batch (spells refresh) vs the 5e-database table (ctest: content_validate_srd51_spells).
 
 `data/srd51_spells_5e_database_a6212be.json` holds fields copied from 5e-bits/5e-database commit a6212be
-(src/2014/en/5e-SRD-Spells.json). For every spell in the table this asserts level, school, classes, casting time, range,
+(src/2014/en/5e-SRD-Spells.json; SRD 5.1, CC-BY-4.0). The hunters-mark entry is removed: Hunter's Mark is PHB-only and
+not in SRD 5.1. The rest of the file matches a6212be. For every spell in the table this asserts level, school, classes, casting time, range,
 components, duration / concentration, damage dice and type at the base level, upcast / cantrip scaling, the save, the
 attack type and the area. The mechanics the loaders read (forced_move push, teleport, timed modifiers) are pinned in
 test_mechanics. docs/SRD_SPELLS_DEFERRED.md lists the authored / deferred split.
@@ -301,7 +302,10 @@ class SpellTable(unittest.TestCase):
         self.assertEqual((hm["casting_time"], hm["range"], hm["duration"], hm["scaling"]),
                          ({"kind": "action"}, {"kind": "ranged", "feet": 60},
                           {"kind": "minutes", "amount": 1, "concentration": True}, {"upcast": {"dice": 1}}))
-        for word in ("Weapon", "Armor", "Shield", "metal"):
+        for word in ("weapon", "armor", "shield",
+                     "absent material falls back to the category rule",
+                     "any weapon, armor, or shield counts as metal",
+                     "wood, leather, hide, cloth, or rope"):
             self.assertIn(word, hm["description"])
         fb = load("flame-blade")
         self.assertEqual(fb["effects"], [{"kind": "summon_weapon", "damage": {"dice": "3d6", "type": "fire"},

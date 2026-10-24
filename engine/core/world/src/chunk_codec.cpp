@@ -31,8 +31,10 @@ uint32_t chunk_light_stable_id(ChunkCoord coord, uint32_t light_index) {
 
 uint64_t compute_content_hash(const Chunk& c) {
     CanonicalHasher h;
-    const bool v2 = !c.lights.empty() || c.ambient.has_value();
-    h.u16(v2 ? uint16_t(2) : uint16_t(1));   // chunk@1 content (no lights, no ambient) keeps its chunk@1 hash
+    const bool v3 = c.elevation_is_ground;   // chunk@3: written as 3 and always carries the chunk@2 tail
+    const bool v2 = v3 || !c.lights.empty() || c.ambient.has_value();
+    // chunk@1 content (no lights, no ambient) keeps its chunk@1 hash; chunk@2 keeps its chunk@2 hash.
+    h.u16(v3 ? uint16_t(3) : v2 ? uint16_t(2) : uint16_t(1));
     h.i32(c.coord.x);
     h.i32(c.coord.y);
     h.i16(c.coord.level);
@@ -54,7 +56,7 @@ uint64_t compute_content_hash(const Chunk& c) {
     }
     h.u32(uint32_t(c.triggers.size()));
     for (const auto& t : c.triggers) h.str(t);
-    if (v2) {   // chunk@2 fields, only when present
+    if (v2) {   // chunk@2 fields, only when present (always for chunk@3)
         h.u32(uint32_t(c.lights.size()));
         for (const auto& l : c.lights) {
             h.i32(l.tile.x);
@@ -100,6 +102,12 @@ void register_chunk_schema(assets::SchemaRegistry& reg) {
     reg.register_migration("chunk", 1, 2, [](Json& j, assets::MigrationCtx&) {
         if (auto fv = j.find("format_version"); fv != j.end()) *fv = 2;
     });
+    // chunk@2 -> chunk@3: the document keeps its declared version in format_version (2 unless already set), so a migrated
+    // chunk@1 / chunk@2 stays flat for the sim (elevation render-only) and keeps its hash. Only an authored chunk@3 reads
+    // elevation as ground.
+    reg.register_migration("chunk", 2, 3, [](Json& j, assets::MigrationCtx&) {
+        if (!j.contains("format_version")) j["format_version"] = 2;
+    });
 }
 
 namespace {
@@ -138,14 +146,22 @@ template <class F> void dense_array(const Json& layer, const char* key, int l, i
 
 Chunk decode(const Json& doc) {
     Chunk c{};   // value-init: all cells zero
-    // 1 (chunk@1, e.g. procgen output decoded directly) or 2; chunk@1 has no lights / ambient.
+    // 1 (chunk@1, e.g. procgen output decoded directly), 2 or 3; chunk@1 has no lights / ambient. Without format_version
+    // "$schema" chunk@3 means 3 and chunk@1 / chunk@2 mean 2 (as before), else the current version. Only 3 makes elevation
+    // the sim's ground.
     int64_t declared = kChunkFormatVersion;
+    if (auto sc = doc.find("$schema"); sc != doc.end() && sc->is_string()) {
+        const std::string& sv = sc->get_ref<const std::string&>();
+        if (sv == "chunk@1" || sv == "chunk@2") declared = 2;   // as before chunk@3: lights / ambient allowed
+        else if (sv == "chunk@3") declared = 3;
+    }
     if (auto fv = doc.find("format_version"); fv != doc.end()) {
-        if (!fv->is_number_integer() || (fv->get<int64_t>() != 1 && fv->get<int64_t>() != kChunkFormatVersion))
-            throw DecodeError{"format_version must be 1 or " + std::to_string(kChunkFormatVersion)};
+        if (!fv->is_number_integer() || fv->get<int64_t>() < 1 || fv->get<int64_t>() > kChunkFormatVersion)
+            throw DecodeError{"format_version must be 1, 2 or " + std::to_string(kChunkFormatVersion)};
         declared = fv->get<int64_t>();
     }
     c.format_version = kChunkFormatVersion;
+    c.elevation_is_ground = declared >= 3;
 
     const Json& coord = field(doc, "coord", &Json::is_object, "an object");
     c.coord.x = int_field<int32_t>(coord, "x", std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max());

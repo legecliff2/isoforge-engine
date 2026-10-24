@@ -4,19 +4,21 @@
 
 Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; section 8 and 10.2) and the `content/packs/srd51.core` pack.
 
-**Source.** Spell text, levels, schools, classes, components, ranges and dice come from the [5e-bits/5e-database](https://github.com/5e-bits/5e-database) JSON mirror (`src/2014/en/5e-SRD-Spells.json`, commit `a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f`; the mirror's code is MIT, the SRD data is CC-BY-4.0), the same snapshot as `docs/SRD_COMBAT_COVERAGE.md`. The 9 spells authored here were cross-checked field by field (level, range, casting time, duration, classes) against the Open5e `wotc-srd` document (api.open5e.com). One difference: Open5e lists Cleric and Warlock for Scorching Ray; the mirror (and the SRD 5.1 spell list) gives Sorcerer and Wizard, which is what the file uses. The published PDF was not re-read. The pack manifest's `attribution` string already carries the SRD notice; every spell has `source {ref: "SRD 5.1", license: "CC-BY-4.0"}`.
+**Source.** Spell text, levels, schools, classes, components, ranges and dice come from the [5e-bits/5e-database](https://github.com/5e-bits/5e-database) JSON mirror (`src/2014/en/5e-SRD-Spells.json`, commit `a6212beb4b278917c2cff41c2b04c4ef4f3e0d6f`; the mirror's code is MIT, the SRD data is CC-BY-4.0), the same snapshot as `docs/SRD_COMBAT_COVERAGE.md`. The validation copy `tests/validate/data/srd51_spells_5e_database_a6212be.json` is that commit with the `hunters-mark` entry removed (PHB-only, not in SRD 5.1); the SRD text stays CC-BY-4.0 and the rest of the file matches `a6212be`. The 9 spells authored here were cross-checked field by field (level, range, casting time, duration, classes) against the Open5e `wotc-srd` document (api.open5e.com). One difference: Open5e lists Cleric and Warlock for Scorching Ray; the mirror (and the SRD 5.1 spell list) gives Sorcerer and Wizard, which is what the file uses. The published PDF was not re-read. The pack manifest's `attribution` string already carries the SRD notice; every spell has `source {ref: "SRD 5.1", license: "CC-BY-4.0"}`.
 
 **Scope rule.** A spell is authored only if `spell@1` on `main` expresses its combat-relevant behavior faithfully with mechanics the engine implements today (`spell_attack`, `save`, `heal`, `auto_hit`, `ac_bonus`, `counter`, `apply_modifier`, `forced_move`, `teleport`, `zone`, the R-G15 kinds, `area`, `targets`, `scaling`). Anything that needs a mechanic reserved for a later row is deferred, not approximated. The first batch deferred area spells under C3 / R-G10; the sim now computes the templates (#78), and the refresh re-checked every deferred row against the merged loaders (timed modifiers, zones, forced_move / teleport, R-G15 kinds, on_event / predicates; #178 cover merged during this PR; adopting `ignores_cover` on Sacred Flame is a follow-up). Spells with no combat effect (utility, exploration, casting time of 1 minute or more) are listed as `OOS`.
 
-## Counts (169 SRD spells of level 0-3 in the mirror)
+## Counts (168 SRD spells of level 0-3)
 
 | level | in `srd51.core` | deferred: needs a mechanic | deferred: out of combat scope | total |
 |---|---|---|---|---|
 | 0 (cantrips) | 13 | 0 | 11 | 24 |
-| 1 | 27 | 3 | 19 | 49 |
+| 1 | 26 | 3 | 19 | 48 |
 | 2 | 25 | 6 | 23 | 54 |
 | 3 | 14 | 9 | 19 | 42 |
-| **total** | **79** | **18** | **72** | **169** |
+| **total** | **78** | **18** | **72** | **168** |
+
+Hunter's Mark is non-SRD, excluded (PHB-only; its text is not in SRD 5.1). Not NEW and not Authored. An earlier pass counted it, which is why these totals are one level-1 spell below the old 79 authored / 49 level 1 / 169 overall. Hex is non-SRD, excluded (PHB-only; not in SRD 5.1). Not NEW and not Authored. It was never in these counts and is not on the warlock lists. Spike Growth is already in the 78 (authored for the druid); putting it back on the ranger level-5 list does not change these totals. The ranger then knows 4 spells at level 5.
 
 7.2zi (Rules #283, `feat/rules-spell-batch-zi`) implements Spare the Dying, True Strike, Expeditious Retreat, Protection from Poison, Ray of Enfeeblement, Beacon of Hope, and Warding Bond. Specimens: `tests/validate/fixtures/spell_batch_zi/`. Six are authored below. Expeditious Retreat stays `NEW`: the specimen's `dash_on_cast` grants the Dash on the cast and `bonus_dash` covers later turns, and the `srd51.core` pack is not authored.
 
@@ -38,7 +40,7 @@ Already shipped (unchanged): Fire Bolt, Magic Missile, Cure Wounds, Shield, Hold
 
 ## Authored in the spells refresh (8, main at `6df51a2`)
 
-Area templates are computed by the sim (`Combat::area_targets`, #78: cone / line from the caster, cube from the caster or the aim tile, sphere around the aim point), so the area-spell deferral of the first batch no longer applies. Pinned by `tests/validate/test_srd51_spells.py` against `tests/validate/data/srd51_spells_5e_database_a6212be.json`.
+Area templates are computed by the sim (`Combat::area_targets`, #78: cone / line from the caster, cube from the caster or the aim tile, sphere around the aim point), so the area-spell deferral of the first batch no longer applies. Pinned by `tests/validate/test_srd51_spells.py` against `tests/validate/data/srd51_spells_5e_database_a6212be.json` (a6212be with the `hunters-mark` entry removed; SRD 5.1, CC-BY-4.0; see Source).
 
 | spell | level | `spell@1` shape | notes |
 |---|---|---|---|
@@ -71,15 +73,14 @@ Rules #183 (7.2u) added the next-roll rider keys (`docs/CONTENT_EFFECTS.md`, "Ru
 | Spirit Guardians | 3 | creature-anchored `zone` sphere 15, `halve_speed`, `chooses_excluded`, `needs_conscious_owner`; Wis save 3d8 radiant half on enter / start of turn (group 1: once per turn), `evil_damage_type` necrotic; `upcast.dice 1` | |
 | Stinking Cloud | 3 | point `zone` sphere 20, heavily obscured; start of turn completely within: Con save or `loses_action` (auto-success for poison-immune and no-breath) | wind dispersal OOS |
 
-## Authored after Rules #188 and #222 (5)
+## Authored after Rules #188 and #222 (4)
 
-Hunter's Mark and Invisibility shipped in content #223 (Rules #222, 7.2zc); Command, Fear and Hideous Laughter use the Rules #188 (7.2v) control saves. Pinned by `tests/validate/test_srd51_spells.py` (table rows and `test_control_spells`).
+Invisibility shipped in content #223 (Rules #222, 7.2zc); Command, Fear and Hideous Laughter use the Rules #188 (7.2v) control saves. Pinned by `tests/validate/test_srd51_spells.py` (table rows and `test_control_spells`). Hunter's Mark is non-SRD, excluded (not NEW and not Authored).
 
 | spell | level | `spell@1` shape | notes |
 |---|---|---|---|
 | Command | 1 | `save` WIS, `control command`, `control_excludes_creature_types [undead]`; `targets {count 1, max_spread_ft 30}`, `upcast.targets 1`; duration 1 round | the word (Approach, Drop, Flee, Grovel, Halt) is chosen at cast; **partial**: language, "directly harmful" commands, other words and dropped items are not modelled |
 | Hideous Laughter | 1 | `save` WIS prone, `control laughter` (incapacitated, can't stand), `control_min_int 4`, `repeat_save end_of_turn_or_damage_advantage`; concentration 1 minute | |
-| Hunter's Mark | 1 | `apply_modifier` `scope {target marked}` damage 1d6 `applies_to self`, `when [weapon_attack]`; `move_mark {action bonus_action}`; concentration 1 hour | **partial**: the Perception / Survival advantage and the 8 / 24 hour upcast durations are not modelled |
 | Invisibility | 2 | `apply_condition` invisible, `ends_on [attack, cast]`; touch, concentration 1 hour; `upcast.targets 1` | the spell ends per target (SRD) |
 | Fear | 3 | `save` WIS frightened, `control fear` (Dash away), `repeat_save end_of_turn_unseen`; `area` cone 30 (self); concentration 1 minute | **partial**: dropping held items is not modelled |
 
@@ -160,7 +161,7 @@ Spell batch zh rules (7.2zh, Rules #276). Pinned by `tests/validate/test_srd51_s
 | spell | level | `spell@1` shape | notes |
 |---|---|---|---|
 | Branding Smite | 2 | `weapon_smite` 2d6 radiant, `reveal_invisible`, `light {dim_ft 5}`; bonus action, self, concentration 1 minute; `upcast.dice 1` | paladin (5); first effect only; brands on the next weapon-attack hit (not a spell attack); a crit doubles the dice |
-| Heat Metal | 2 | `sustained_damage` 2d8 fire + `held_object {save con, on_fail drop, while_held {disadvantage [attack_rolls, ability_checks], until start_of_caster_next_turn}}`; concentration 1 minute; `upcast.dice 1` | bard (3-5), druid (4-5); v1 metal is Weapon/Armor/Shield (worn armor cannot drop) |
+| Heat Metal | 2 | `sustained_damage` 2d8 fire + `held_object {save con, on_fail drop, while_held {disadvantage [attack_rolls, ability_checks], until start_of_caster_next_turn}}`; concentration 1 minute; `upcast.dice 1` | bard (3-5), druid (4-5); absent material falls back to the category rule (any weapon, armor, or shield counts as metal); only an explicit wood, leather, hide, cloth, or rope removes it as a target; worn armor cannot drop |
 | Flame Blade | 2 | `summon_weapon` `held` 3d6 fire, `upcast_every 2`, `reach_ft 5`, `light {bright_ft 10, dim_ft 10}`; bonus action, self, concentration 10 minutes | druid (4-5); free hand to cast; later attacks spend the action; no `move_ft`, no `add_spellcasting_modifier` |
 
 ## Authored: Entangle (1)
@@ -173,7 +174,7 @@ Promote `tests/validate/fixtures/zones/spells/entangle.json` into `srd51.core` (
 
 ## Authored after Rules #283 (6)
 
-Spell batch zi (7.2zi, Rules #283). Each pack's `effects`, casting time, range, duration and `targets` equal the Rules specimen in `tests/validate/fixtures/spell_batch_zi/`. Pinned by `tests/validate/test_srd51_spells.py` (table rows and `test_spell_batch_zi_packs`). Counts from 73 + these 6 → 79 authored / 18 NEW / 72 OOS.
+Spell batch zi (7.2zi, Rules #283). Each pack's `effects`, casting time, range, duration and `targets` equal the Rules specimen in `tests/validate/fixtures/spell_batch_zi/`. Pinned by `tests/validate/test_srd51_spells.py` (table rows and `test_spell_batch_zi_packs`). Counts from 73 + these 6 → 79 authored / 18 NEW / 72 OOS, then Hunter's Mark is non-SRD, excluded, leaving 78 authored / 18 NEW / 72 OOS of 168.
 
 | spell | level | `spell@1` shape | notes |
 |---|---|---|---|
