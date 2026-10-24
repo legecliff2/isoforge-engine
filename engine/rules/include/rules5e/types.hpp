@@ -636,6 +636,10 @@ struct Combatant {
     // feet already spent this turn count against it (TurnBudget::movement_ft is shared; see move_allowance).
     uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0;
     bool hover = false;
+    // appended (altitude PR1, docs/SIM_EVENTS.md 0xD6; sim fold Combat::hash 0xD6 when non-zero): vertical position in signed
+    // integer feet, always a multiple of 5 (kFeetPerTile). Positive = flying / climbing, negative = burrowed or underwater.
+    // Every spawn starts at 0; nothing changes it yet (movement, falling and Fly arrive in later altitude PRs).
+    int16_t alt_ft = 0;
     // appended (grab and contain, 7.2w; content-derived, not hashed): SRD Transparent (gelatinous cube): the DC of the Wisdom
     // (Perception) check to spot it while it has neither moved nor attacked (15; 0 = not transparent). Sim reads it when it
     // sets up surprise (rules5e surprise helper: compare with the observer's Perception); rules does not track "moved".

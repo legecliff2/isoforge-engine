@@ -1907,6 +1907,16 @@ uint64_t Combat::hash() const {
             for (const auto& c : state_.combatants) if (c.squeezing) h.u64(c.id);
         }
     }
+    {   // 0xD6 (altitude PR1): {id u64, alt_ft i16} per creature off the ground, only when some creature is; altitude-0 combats unchanged
+        bool any = false;
+        for (const auto& c : state_.combatants) any = any || c.alt_ft != 0;
+        if (any) {
+            h.byte(0xD6);
+            for (const auto& c : state_.combatants) {
+                if (c.alt_ft != 0) { h.u64(c.id); h.u16(uint16_t(c.alt_ft)); }
+            }
+        }
+    }
     // 0xAF (R-G12, SUMMONS_TRANSFORMS.md §3.2): rules' summons_digest, then sim's part: summon slot count, then per summon slot
     // (creation order) id, anchor x / y, footprint side, gone, team. Only while has_summon_state (something was summoned or
     // transformed); no older combat does either.
@@ -2575,4 +2585,20 @@ void Combat::form_footprint(const rules5e::Event& e, std::vector<SimEvent>& out)
     out.push_back(fe);
 }
 
+bool Combat::set_altitude(CombatantId id, int16_t alt_ft, uint8_t cause) {
+    for (auto& c : state_.combatants) {
+        if (c.id != id) continue;
+        if (c.alt_ft == alt_ft) return false;
+        c.alt_ft = alt_ft;
+        SimEvent e;
+        e.kind = SimEvent::Kind::AltitudeChanged;
+        e.actor = id;
+        e.tile = pos(id);
+        e.rules.a = int32_t(uint16_t(alt_ft));
+        e.rules.b = cause;
+        events_.push_back(e);
+        return true;
+    }
+    return false;
+}
 } // namespace eng::sim
