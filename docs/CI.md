@@ -40,7 +40,8 @@ outside that set does not fail the gate. `failure` and `cancelled` on any needed
 A required job that is `skipped`, `failure`, or `cancelled` fails the gate. `cancelled` or `failure`
 on any needed job fails it, even if that job was not in the set above. The Windows Release label
 and the mac path filter stack: both jobs are required when both match. `ready_for_review` is the
-non-draft `pull_request` row: `draft` is false, so the code rows apply.
+non-draft `pull_request` row: `draft` is false, so the code rows apply. External (fork) PRs fail
+`ci-required` by design; see the workflow section for how a maintainer re-runs them.
 
 Minutes savers: ccache (Linux/macOS) / sccache (Windows, with `/Z7` embedded debug info) cached with
 `actions/cache` per OS + preset, keyed on `cmake/Dependencies.cmake` (the `ci` presets set `CMAKE_DISABLE_PRECOMPILE_HEADERS=ON` because SDL3's precompiled header defeats ccache with Clang and sccache with MSVC `/Yu`, and `CMAKE_CXX_SCAN_FOR_MODULES=OFF` because GCC's `-fmodules-ts` makes every C++ object uncacheable; the project uses no C++ modules); `ctest --parallel 4`; the
@@ -83,6 +84,10 @@ Windows and macOS jobs are not mirrored; use the `win-msvc` / `mac-clang-debug` 
   the draft: GitHub treats a skipped required job as a passing check, so skipping the gate would
   leave `protect-main` green. Marking the PR ready fires `ready_for_review` (`draft == false`) and
   runs the full workflow. A non-draft run whose `changes` job did not succeed fails the gate.
+- **Fork PRs fail `ci-required` by design.** External pull requests do not run builds (`changes`
+  is skipped when the head repository is not this one). A maintainer re-runs CI by pushing the
+  contributor's commits to an internal branch and opening a pull request from that branch, using
+  merge commits and no rebase.
 - **Stacked chains:** keep the lower PRs in draft or don't push them separately; run CI once on the
   top PR (it contains the whole stack), then merge the chain in order, bottom first.
 - **Concurrency:** one group per workflow + PR number (or ref). A new push cancels the PR's
