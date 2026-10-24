@@ -22,7 +22,7 @@ Color light_tint(uint8_t packed, Fog fog) noexcept {
     if (packed & light_bits::kMagicalDark) m = std::min(m, 0.08f);
     Color c{m, m, m, 1.f};
     // Zone bits cool/dim the Visible tint. Heavy (Fog / Stinking Cloud) wins over light (Web); neither
-    // invents FoW and neither fills LightWorld::zones — EC packs the bits (Stinking Cloud / Web already do).
+    // invents FoW. Per-spell overlays (zone_look) distinguish those spells; this tint stays flag-level.
     if (packed & light_bits::kObscuredHeavy) {
         c = {m * 0.52f, m * 0.58f, m * 0.78f, 1.f};   // thick cool haze
     } else if (packed & light_bits::kObscuredLight) {
