@@ -410,7 +410,8 @@
         "holy"
       ],
       "description": "Gear: the spellcasting focus family (SRD arcane focus / druidic focus / holy symbol; docs/CONTENT_CONVENTIONS.md section 18). Optional, additive, no version bump. Inert until rules / the sim loader read it (rules5e ItemKind::Focus, EQUIPMENT 3.2)."
-    },    "tool_kind": {
+    },
+    "tool_kind": {
       "enum": [
         "artisans_tools",
         "gaming_set",
