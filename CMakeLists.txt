@@ -104,6 +104,14 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
             message(WARNING "content_validate: ENGINE_SCRIPT_CHECK_EXECUTABLE not set, "
                             "pack scripts will not be type-checked")
         endif()
+        # Unittest files go through run_unittest_file.py, which fails if a file ran zero tests.
+        set(_ut_runner "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/run_unittest_file.py")
+        add_test(NAME content_validate_zero_tests_fail
+                 COMMAND "${_venv_py}" "${_ut_runner}"
+                         "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/fixtures/zero_tests/empty_test.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        set_tests_properties(content_validate_zero_tests_fail PROPERTIES
+                             PASS_REGULAR_EXPRESSION "ZERO TESTS RAN" LABELS python_only)
         add_test(NAME content_validate
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/validate_packs.py"
                          ${_script_check_args}
@@ -118,26 +126,26 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
                  COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/run_packset_cases.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         add_test(NAME content_validate_tests
-                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/test_validate_packs.py"
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/validate/test_validate_packs.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # @4 / item@1 (docs/proposals/VERSION_BUMP_BATCH.md row 2): common@2 stray-ref lint, per-arm allowed ==
         # required + optional, 3->4 migration reference + @4 schema shapes, and the @4 validator cross-reference cases.
         add_test(NAME content_validate_lint
-                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_common2_lint.py"
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_common2_lint.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # item@1 optional `visual` block (LIGHTING.md 10.1): accept / reject cases, content_hash unchanged.
         add_test(NAME content_validate_item_visual
-                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_item_visual.py"
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_item_visual.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         add_test(NAME content_validate_arms
-                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_union_arms.py"
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_union_arms.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         add_test(NAME content_validate_migrations
-                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_migrations_v4.py"
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_migrations_v4.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # item@2 / monster@5 / character@5 (docs/proposals/EQUIPMENT.md 7): identity re-stamps, new shapes, structural checks.
         add_test(NAME content_validate_equip_v5
-                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_equip_schemas_v5.py"
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_equip_schemas_v5.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # batch 3 small monster riders: monster@5 arms + validator mirrors of the sim loader refusals.
         add_test(NAME content_validate_batch3_riders
@@ -145,22 +153,35 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # srd51.core monster@4 batch: key stats vs the 5e-database table (tests/validate/data/).
         add_test(NAME content_validate_srd51_monsters
-                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_srd51_monsters.py"
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_srd51_monsters.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # srd51.core character@4 class levels (Fighter / Cleric / Wizard 1-5) vs the 5e-database class tables.
         add_test(NAME content_validate_srd51_classes
-                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_srd51_classes.py"
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_srd51_classes.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # srd51.core spell@1 batch vs the 5e-database spell table.
         add_test(NAME content_validate_srd51_spells
-                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_srd51_spells.py"
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_srd51_spells.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         add_test(NAME content_validate_v4
-                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_v4_validator.py"
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_v4_validator.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # srd51.core weapons/armor/shields (item@1) against an independent data table.
         add_test(NAME content_validate_equipment
-                 COMMAND "${_venv_py}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_srd51_equipment.py"
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_srd51_equipment.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        # Spell batch / imbue-mirror unittest files.
+        add_test(NAME content_validate_spell_batch3
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_spell_batch3.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(NAME content_validate_spell_batch_zg
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_spell_batch_zg.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(NAME content_validate_spell_batch_zi
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_spell_batch_zi.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(NAME content_validate_spell_imbue_mirror
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_spell_imbue_mirror.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # Pure-Python validator tests: no compiled code involved, so the result cannot differ by
         # compiler or build type. CI runs them in the Debug jobs and skips them (ctest -LE python_only)
@@ -170,6 +191,7 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
                              content_validate_lint content_validate_arms content_validate_migrations
                              content_validate_srd51_monsters content_validate_srd51_classes
                              content_validate_srd51_spells content_validate_v4 content_validate_equipment
+                             content_validate_spell_batch3 content_validate_spell_batch_zg content_validate_spell_batch_zi content_validate_spell_imbue_mirror
                              PROPERTIES LABELS python_only)
         # Procedurally generated chunks must pass the same validator (schema + content_hash).
         if(TARGET procgen_dump)
@@ -217,6 +239,9 @@ add_subdirectory(game/vertical_slice)
 if(ENGINE_BUILD_TESTS)
     add_subdirectory(tools/light_bench)
 endif()
+
+# Headless encounter scenarios (tools/encounter_runner). Tests compare each scenarios/* golden.
+add_subdirectory(tools/encounter_runner)
 
 # Module dependency graph + include lint (§2.2 rules 1, 3-5). Must come after all modules.
 include(DepCheck)
