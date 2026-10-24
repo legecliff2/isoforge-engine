@@ -1,0 +1,12 @@
+{
+  "$schema": "item@2",
+  "id": "srd51.item.piton",
+  "name": "Piton",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "gear",
+  "cost_cp": 5,
+  "weight_oz": 4
+}

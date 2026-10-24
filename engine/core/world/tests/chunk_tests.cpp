@@ -123,7 +123,7 @@ TEST_CASE("decode errors") {
     j = minimal(); j["triggers"] = Json::parse(R"([{"id":"t"}])");          err(j);   // kind required
     j = minimal(); j["triggers"] = Json::parse(R"(["raw string"])");        err(j);
     j = minimal(); j["content_hash"] = "deadbeefdeadbeef";                   CHECK(err(j).find("mismatch") != std::string::npos);
-    j = minimal(); j["format_version"] = 3;                                  err(j);
+    j = minimal(); j["format_version"] = 4;                                  err(j);
 }
 
 TEST_CASE("provider errors: missing file, coord mismatch, wrong origin, uncovered coord") {
@@ -167,6 +167,7 @@ TEST_CASE("content_hash test vectors match tools/chunk_hash/chunk_hash.py") {
         {"v1_minimal.json", "01fa4a2fde49834b"},
         {"v2_small.json", "963a7d22563ff71a"},
         {"v3_lights.json", "cb3d7a42055e8f52"},   // chunk@2: lights (one with a 'visual' block) + ambient
+        {"v4_ground.json", "c13bac9f6120463f"},   // chunk@3: elevation is ground (format_version 3 + chunk@2 tail)
     };
     for (auto [file, hex] : vectors) {
         auto lr = reg.load_file(std::string(CHUNK_HASH_VECTORS) + "/" + file);
@@ -233,4 +234,40 @@ TEST_CASE("chunk@2: lights + ambient decode; visual is dropped and never hashed;
     REQUIRE_MESSAGE(lr.ok, lr.error);
     CHECK(lr.data["format_version"] == 2);
     CHECK(chunk_from_json(lr.data).chunk->content_hash == h1);
+}
+
+TEST_CASE("chunk@3: elevation is ground only for chunk@3; chunk@1 / chunk@2 stay flat and keep their hashes") {
+    auto j = minimal();
+    j["layers"][0]["elevation"] = std::vector<int>(1024, 2);
+    auto flat = chunk_from_json(j);
+    REQUIRE_MESSAGE(flat.chunk, flat.error);
+    CHECK_FALSE(flat.chunk->elevation_is_ground);
+    const uint64_t h1 = flat.chunk->content_hash;
+    j["$schema"] = "chunk@2";
+    j["format_version"] = 2;
+    CHECK_FALSE(chunk_from_json(j).chunk->elevation_is_ground);
+    CHECK(chunk_from_json(j).chunk->content_hash == h1);
+    j["$schema"] = "chunk@3";
+    CHECK_FALSE(chunk_from_json(j).chunk->elevation_is_ground);   // format_version wins: a migrated chunk@2 stays flat
+    j["format_version"] = 3;
+    auto g = chunk_from_json(j);
+    REQUIRE_MESSAGE(g.chunk, g.error);
+    CHECK(g.chunk->elevation_is_ground);
+    CHECK(g.chunk->content_hash != h1);   // hashed as format_version 3 (+ the chunk@2 tail)
+    j.erase("format_version");
+    CHECK(chunk_from_json(j).chunk->elevation_is_ground);   // $schema chunk@3 alone
+    CHECK(chunk_from_json(j).chunk->content_hash == g.chunk->content_hash);
+    // The registry migrates chunk@1 / chunk@2 to chunk@3 keeping the declared version: still flat, same hash.
+    eng::assets::SchemaRegistry reg;
+    register_chunk_schema(reg);
+    auto m = minimal();
+    m["layers"][0]["elevation"] = std::vector<int>(1024, 2);
+    auto lr = reg.load(m);
+    REQUIRE_MESSAGE(lr.ok, lr.error);
+    CHECK(lr.data["$schema"] == "chunk@3");
+    CHECK(lr.data["format_version"] == 2);
+    auto mc = chunk_from_json(lr.data);
+    REQUIRE_MESSAGE(mc.chunk, mc.error);
+    CHECK_FALSE(mc.chunk->elevation_is_ground);
+    CHECK(mc.chunk->content_hash == h1);
 }
