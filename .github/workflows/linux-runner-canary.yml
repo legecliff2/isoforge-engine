@@ -12,13 +12,23 @@ on:
         description: Correlation id from the ci.yml linux-runner job
         required: true
         type: string
+      isolate:
+        description: >-
+          When true (CI_BURST), this probe uses its own concurrency group so other
+          PRs are not cancelled. Omit or false for the shared one-at-a-time group.
+        required: false
+        default: "false"
+        type: string
 
 permissions: {}
 
 concurrency:
-  # One canary at a time. A new probe cancels a canary still queued on a paused box.
-  group: linux-runner-canary
-  cancel-in-progress: true
+  # Shared group (isolate not true): one canary at a time. A new probe cancels a canary
+  # still queued on a paused box. That lock only exists to protect the single box.
+  # CI_BURST passes isolate=true: one group per probe, and cancel-in-progress is off, so
+  # several PRs' probes can be in flight. linux-runner then keeps at most one run on the box.
+  group: ${{ inputs.isolate == 'true' && format('linux-runner-canary-{0}', inputs.cid) || 'linux-runner-canary' }}
+  cancel-in-progress: ${{ inputs.isolate != 'true' }}
 
 jobs:
   ping:

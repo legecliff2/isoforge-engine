@@ -81,14 +81,22 @@ wins=[m for m in J['build-test']['strategy']['matrix']['include'] if m['name'].s
 assert [m['os'] for m in wins]==['"windows-latest"']
 assert J['build-test']['needs']==['changes','linux-runner']
 assert 'linux-runner' in str(J['build-test']['runs-on']) and 'linux-runner' in str(J['nightly-gate']['runs-on'])
+assert 'gcc_runs_on' in str(J['build-test']['runs-on']) and 'clang_runs_on' in str(J['build-test']['runs-on'])
+assert 'nightly_runs_on' in str(J['nightly-gate']['runs-on'])
 assert J['nightly-gate']['needs']==['linux-runner']
 assert 'ubuntu-latest' in str(J['linux-runner']['runs-on'])
+assert wf['env']['CI_BURST'] in ('true', 'false')
 can=yaml.safe_load(open(__import__('pathlib').Path(__file__).resolve().parents[1]/'.github/workflows/linux-runner-canary.yml'))
 assert set(can[True])=={'workflow_dispatch'}
 assert can['permissions']=={}
 assert can['jobs']['ping']['runs-on']==['self-hosted','linux','isoforge']
 assert all('uses' not in s for s in can['jobs']['ping']['steps'])
-assert can['concurrency']['cancel-in-progress'] is True
+# Shared group still cancels in progress. Burst passes isolate=true, which turns it off.
+cip = can['concurrency']['cancel-in-progress']
+assert cip is True or cip == "${{ inputs.isolate != 'true' }}"
+assert 'linux-runner-canary' in str(can['concurrency']['group'])
+assert can[True]['workflow_dispatch']['inputs']['cid']['required'] is True
+assert can[True]['workflow_dispatch']['inputs']['isolate']['default'] == 'false'
 assert set(wf[True]['pull_request']['types'])=={'opened','synchronize','reopened','ready_for_review'}
 print('ALL EXPECTATIONS MET' if not bad else f'{bad} FAILED')
 raise SystemExit(1 if bad else 0)

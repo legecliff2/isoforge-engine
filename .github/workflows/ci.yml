@@ -10,20 +10,33 @@ name: CI
 #   PRs; Windows Debug still builds and tests every PR. Every main commit is covered by the push
 #   run, so it is not added to the nightly schedule.
 # - Release jobs skip the python_only ctest label (pure-Python validator tests; the Debug jobs run them).
-# - Linux GCC Debug, Linux Clang Release, and nightly-gate prefer the self-hosted box
-#   ([self-hosted, linux, isoforge]) and otherwise use ubuntu-latest for that same run.
-#   One pick per run: Linux is never started on both runners. The box pauses when no agent
-#   is active, which used to leave Linux jobs queued until GitHub abandoned them and stalled
-#   the merge queue. changes and ci-required stay on ubuntu-latest; Windows/macOS stay hosted.
+# - Linux runner pick is one switch, CI_BURST (top-level env below). linux-runner reads it.
+#   CI_BURST 'false' (pre-burst / #281): Linux GCC Debug, Linux Clang Release, and nightly-gate
+#   share one pick. Prefer the box ([self-hosted, linux, isoforge]); use ubuntu-latest for that
+#   same run only when the box does not accept the canary. One pick per run: those jobs are
+#   never started on both runners. Box caps compile 4 / test 2. Hosted fallback compile 4 / test 4.
+#   CI_BURST 'true' (temporary hosted capacity): every PR's Linux jobs run on ubuntu-latest so
+#   several PRs run Linux at once, in parallel with Windows on windows-latest. The box is not a
+#   queue. It picks up Linux GCC Debug only when its canary is the earliest probe in the window
+#   and the box actually accepts it; Linux Clang Release of that run stays on ubuntu-latest.
+#   Every other run keeps both Linux jobs on ubuntu-latest. A busy, paused, or slow box does not
+#   block the run. Nightly-gate stays on ubuntu-latest during the burst (it is a short API call
+#   and must not take the box). Hosted burst caps: compile 4 / test 8. Box caps stay 4 / 2.
+#   End the burst by setting CI_BURST back to 'false' (that one line restores #281).
+# - The box pauses when no agent is active, which used to leave Linux jobs queued until GitHub
+#   abandoned them and stalled the merge queue. changes and ci-required stay on ubuntu-latest;
+#   Windows/macOS stay hosted.
 # - linux-runner (ubuntu-latest) makes the pick. Listing runners requires administration:read,
 #   which GITHUB_TOKEN cannot be granted (actions:read is not enough; the API answers 403 with
 #   X-Accepted-Github-Permissions: administration=read). The job tries that API anyway and, on
 #   403, dispatches linux-runner-canary.yml on the default branch (no checkout, no PR code).
-#   If the box accepts the canary, Linux uses the box (compile 4 / test 2). If the canary is
-#   still queued when the probe window ends, it is cancelled and Linux uses ubuntu-latest
-#   (compile 4 / test 4). A paused box, or one too busy to accept the canary within the
-#   window, also falls back, so a run never waits on a runner that is not taking jobs.
-#   Dispatch needs actions:write on the linux-runner job only.
+#   Dispatch needs actions:write on the linux-runner job only. With CI_BURST 'false', if the box
+#   accepts the canary, Linux uses the box; if the canary is still queued when the probe window
+#   ends (~75s), it is cancelled and Linux uses ubuntu-latest. With CI_BURST 'true', the probe
+#   window is ~20s and only the earliest accepted canary claims the box; other probes are
+#   cancelled and that run uses ubuntu-latest. Burst probes pass isolate=true so they do not
+#   share the canary's one-at-a-time group (that group only protects the box). If the default
+#   branch's canary has no isolate input yet, the dispatch is retried without it.
 # - Draft PRs skip CI; ci-required passes for them (changes skipped only on drafts).
 # - Compiler cache: ccache (Linux/macOS) / sccache (Windows) via actions/cache in cmake-ci.
 # - macOS: nightly on main (07:17 UTC, off the hour to avoid GitHub dropping top-of-hour schedules), on manual dispatch, and on PRs whose
@@ -43,10 +56,18 @@ on:
 permissions:
   contents: read
 
+# One-line burst switch. 'true' = hosted Linux in parallel with the box (see header).
+# 'false' = box preferred, ubuntu-latest only when the box misses the canary (#281).
+env:
+  CI_BURST: 'true'
+
 concurrency:
-  # Branches/PRs: a new push cancels the previous run. main (push, schedule, dispatch): every run
-  # gets its own group (keyed by sha + event) and is never cancelled.
-  # PRs are keyed by PR number so all pushes to one PR share a group.
+  # Not a global lock. Several PRs run at once: the group is the PR number, or the ref for a
+  # branch that is not a PR. A new push cancels that group only. main (push, schedule, dispatch)
+  # gets its own group per sha + event and is never cancelled.
+  # Linux used to serialize anyway because every run preferred the one box. CI_BURST stops
+  # sending those overlapping runs to that box unless it is free to take a single GCC job.
+  # Windows is windows-latest and is not in any box queue, so it already overlaps Linux.
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && format('{0}-{1}', github.sha, github.event_name) || (github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number)) || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
@@ -103,8 +124,10 @@ jobs:
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
 
-  # One Linux runs-on for this workflow run. Does not build. Forks and drafts never get here:
-  # `changes` is skipped, and this job needs it (and repeats the same guard in `if`).
+  # Picks Linux runs-on for this workflow run. Does not build. Forks and drafts never get
+  # here: `changes` is skipped, and this job needs it (and repeats the same guard in `if`).
+  # CI_BURST false: one pick for every Linux job and the nightly gate.
+  # CI_BURST true: per-job outputs. Hosted unless this run wins the box claim (GCC only).
   linux-runner:
     name: Linux runner
     needs: changes
@@ -119,27 +142,55 @@ jobs:
     outputs:
       runs_on: ${{ steps.pick.outputs.runs_on }}
       hosted: ${{ steps.pick.outputs.hosted }}
+      gcc_runs_on: ${{ steps.pick.outputs.gcc_runs_on }}
+      clang_runs_on: ${{ steps.pick.outputs.clang_runs_on }}
+      nightly_runs_on: ${{ steps.pick.outputs.nightly_runs_on }}
+      gcc_jobs: ${{ steps.pick.outputs.gcc_jobs }}
+      gcc_tests: ${{ steps.pick.outputs.gcc_tests }}
+      clang_jobs: ${{ steps.pick.outputs.clang_jobs }}
+      clang_tests: ${{ steps.pick.outputs.clang_tests }}
     steps:
       - id: pick
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           # Defaults: ~75s covers one missed runner pickup (GitHub requeues after 60s).
-          # Override only in local tests of this script.
+          # Override only in local tests of this script. Burst uses a shorter claim window.
           PROBE_SECONDS="${PROBE_SECONDS:-75}"
           SLEEP_SECONDS="${SLEEP_SECONDS:-5}"
+          BURST_PROBE_SECONDS="${BURST_PROBE_SECONDS:-20}"
+          BURST_SLEEP_SECONDS="${BURST_SLEEP_SECONDS:-2}"
+          BURST_CONFIRM_SECONDS="${BURST_CONFIRM_SECONDS:-3}"
+          # Box caps stay 4/2. Hosted fallback (CI_BURST false) stays compile 4 / test 4.
+          # CI_BURST hosted uses compile 4 (4 vCPU, debug compiles are memory-heavy) / test 8.
+          HOSTED_JOBS=4
+          HOSTED_TESTS=4
           cid="ci-${GITHUB_RUN_ID}"
           title="linux-runner-canary ${cid}"
           tmp=$(mktemp -d)
           canary_id=""
           trap 'rm -rf "$tmp"' EXIT
 
+          write_uniform() {
+            # $1 runs_on JSON, $2 hosted, $3 jobs, $4 tests. Same runner for every Linux job.
+            {
+              printf 'runs_on=%s\n' "$1"
+              printf 'hosted=%s\n' "$2"
+              printf 'gcc_runs_on=%s\n' "$1"
+              printf 'clang_runs_on=%s\n' "$1"
+              printf 'nightly_runs_on=%s\n' "$1"
+              printf 'gcc_jobs=%s\n' "$3"
+              printf 'gcc_tests=%s\n' "$4"
+              printf 'clang_jobs=%s\n' "$3"
+              printf 'clang_tests=%s\n' "$4"
+            } >> "$GITHUB_OUTPUT"
+          }
           use_box() {
-            printf 'runs_on=%s\n' '["self-hosted","linux","isoforge"]' >> "$GITHUB_OUTPUT"
-            printf 'hosted=%s\n' false >> "$GITHUB_OUTPUT"
+            write_uniform '["self-hosted","linux","isoforge"]' false 4 2
             echo "linux-runner: box ($1)"
             exit 0
           }
@@ -147,13 +198,140 @@ jobs:
             if [ -n "$canary_id" ]; then
               timeout 20 gh api --method POST "repos/${REPO}/actions/runs/${canary_id}/cancel" >/dev/null 2>&1 || true
             fi
-            printf 'runs_on=%s\n' '"ubuntu-latest"' >> "$GITHUB_OUTPUT"
-            printf 'hosted=%s\n' true >> "$GITHUB_OUTPUT"
+            write_uniform '"ubuntu-latest"' true "$HOSTED_JOBS" "$HOSTED_TESTS"
             if [ "${2:-}" = warn ]; then echo "::warning::linux-runner: ubuntu-latest ($1)"; fi
             echo "linux-runner: ubuntu-latest ($1)"
             exit 0
           }
+          # Burst only: GCC on the box (4/2), Clang and nightly on hosted.
+          claim_box() {
+            {
+              printf 'runs_on=%s\n' '["self-hosted","linux","isoforge"]'
+              printf 'hosted=%s\n' false
+              printf 'gcc_runs_on=%s\n' '["self-hosted","linux","isoforge"]'
+              printf 'clang_runs_on=%s\n' '"ubuntu-latest"'
+              printf 'nightly_runs_on=%s\n' '"ubuntu-latest"'
+              printf 'gcc_jobs=%s\n' 4
+              printf 'gcc_tests=%s\n' 2
+              printf 'clang_jobs=%s\n' "$HOSTED_JOBS"
+              printf 'clang_tests=%s\n' "$HOSTED_TESTS"
+            } >> "$GITHUB_OUTPUT"
+            echo "linux-runner: burst gcc=box (4/2) clang=ubuntu-latest (${HOSTED_JOBS}/${HOSTED_TESTS}) ($1)"
+            exit 0
+          }
           brief() { tr '\n' ' ' <"$1" | head -c 180 || true; }
+
+          # Lower non-cancelled canary ids in the recent window. 0 means we are the earliest.
+          lower_probes() {
+            jq -r --argjson id "$canary_id" --arg cutoff "$cutoff" '
+              [.workflow_runs[]?
+                | select((.display_title // .name // "") | startswith("linux-runner-canary"))
+                | select((.created_at // "") >= $cutoff)
+                | select((.conclusion // "") as $c | $c != "cancelled" and $c != "failure" and $c != "timed_out")
+                | select(.id < $id)
+              ] | length' <<<"$1"
+          }
+
+          burst_main() {
+            # Nightly gate is a short API call. Do not spend the box claim on it.
+            if [ "${EVENT_NAME:-}" = "schedule" ]; then
+              use_hosted "burst schedule: nightly gate on ubuntu-latest"
+            fi
+
+            # Runners API when the token can read it (it usually cannot). Busy or offline:
+            # hosted immediately, no canary. Idle: still claim with a canary so one run
+            # lands on the box instead of every idle observation doing so.
+            if timeout 20 gh api "repos/${REPO}/actions/runners?per_page=100" >"$tmp/runners.json" 2>"$tmp/runners.err"; then
+              jq -c '.runners[]? | {name,status,busy,labels:[.labels[].name]}' "$tmp/runners.json" || true
+              if online=$(jq '[.runners[]? | select(.status=="online") | select(
+                  ([.labels[]?.name] | map(ascii_downcase)) as $n
+                  | ["self-hosted","linux","isoforge"] | all(.[]; . as $l | $n | index($l) != null)
+                )] | length' "$tmp/runners.json"); then
+                idle=$(jq '[.runners[]? | select(.status=="online" and .busy==false) | select(
+                    ([.labels[]?.name] | map(ascii_downcase)) as $n
+                    | ["self-hosted","linux","isoforge"] | all(.[]; . as $l | $n | index($l) != null)
+                  )] | length' "$tmp/runners.json" || echo "")
+                if [ -z "${idle}" ]; then
+                  echo "burst: could not count idle runners; probing with a canary"
+                elif [ "${online:-0}" -eq 0 ]; then
+                  total=$(jq '.total_count // 0' "$tmp/runners.json")
+                  shown=$(jq '(.runners // []) | length' "$tmp/runners.json")
+                  if [ "$total" -le "$shown" ]; then
+                    use_hosted "burst: runners API: no online runner with self-hosted, linux, isoforge"
+                  fi
+                  echo "burst: runners API page truncated (${shown}/${total}); probing with a canary"
+                elif [ "${idle:-0}" -eq 0 ]; then
+                  use_hosted "burst: runners API: box online but busy"
+                else
+                  echo "burst: runners API: box idle; claiming with a canary so only one run uses it"
+                fi
+              else
+                echo "burst: runners API returned JSON the probe could not read; probing with a canary"
+              fi
+            else
+              echo "burst: runners list API not permitted ($(brief "$tmp/runners.err")); probing with a canary"
+            fi
+
+            # isolate=true loosens the canary's one-at-a-time group. The default-branch
+            # canary rejects unknown inputs until this lands, so retry without it.
+            payload=$(jq -n --arg ref "$DEFAULT_BRANCH" --arg cid "$cid" '{ref:$ref, inputs:{cid:$cid, isolate:"true"}}')
+            if ! timeout 20 gh api --method POST "repos/${REPO}/actions/workflows/linux-runner-canary.yml/dispatches" --input - <<<"$payload" >"$tmp/dispatch.out" 2>"$tmp/dispatch.err"; then
+              echo "burst: isolate dispatch failed ($(brief "$tmp/dispatch.err")); retrying without isolate"
+              payload=$(jq -n --arg ref "$DEFAULT_BRANCH" --arg cid "$cid" '{ref:$ref, inputs:{cid:$cid}}')
+              if ! timeout 20 gh api --method POST "repos/${REPO}/actions/workflows/linux-runner-canary.yml/dispatches" --input - <<<"$payload" >"$tmp/dispatch.out" 2>"$tmp/dispatch.err"; then
+                use_hosted "burst: canary dispatch failed ($(brief "$tmp/dispatch.err"))" warn
+              fi
+            fi
+
+            # Recent probes only. A completed canary ages out quickly so a later run can
+            # claim the box again after the previous GCC job has had time to start.
+            cutoff=$(date -u -d '60 seconds ago' +%Y-%m-%dT%H:%M:%SZ)
+            deadline=$((SECONDS + BURST_PROBE_SECONDS))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              if runs_json=$(timeout 20 gh api "repos/${REPO}/actions/workflows/linux-runner-canary.yml/runs?event=workflow_dispatch&per_page=30" 2>"$tmp/list.err"); then
+                found=$(jq -r --arg t "$title" '[.workflow_runs[]? | select(.display_title==$t or .name==$t) | .id] | first // empty' <<<"$runs_json")
+                if [ -n "$found" ] && [ "$found" != "null" ]; then
+                  canary_id=$found
+                  conclusion=$(jq -r --arg t "$title" '[.workflow_runs[]? | select(.display_title==$t or .name==$t) | .conclusion // ""] | first // ""' <<<"$runs_json")
+                  if [ "$conclusion" = "cancelled" ] || [ "$conclusion" = "failure" ] || [ "$conclusion" = "timed_out" ]; then
+                    use_hosted "burst: canary ${canary_id} ${conclusion}"
+                  fi
+                  lower=$(lower_probes "$runs_json" || echo 1)
+                  if [ "${lower:-1}" -gt 0 ]; then
+                    use_hosted "burst: canary ${canary_id} lost the claim to an earlier probe"
+                  fi
+                  if jobs_json=$(timeout 20 gh api "repos/${REPO}/actions/runs/${canary_id}/jobs" 2>"$tmp/jobs.err"); then
+                    started=$(jq '[.jobs[]? | select(.started_at != null)] | length' <<<"$jobs_json")
+                    if [ "${started:-0}" -gt 0 ]; then
+                      if [ "$BURST_CONFIRM_SECONDS" -gt 0 ]; then sleep "$BURST_CONFIRM_SECONDS"; fi
+                      if ! runs_json=$(timeout 20 gh api "repos/${REPO}/actions/workflows/linux-runner-canary.yml/runs?event=workflow_dispatch&per_page=30" 2>"$tmp/list.err"); then
+                        use_hosted "burst: could not recheck canaries before claim" warn
+                      fi
+                      conclusion=$(jq -r --arg t "$title" '[.workflow_runs[]? | select(.display_title==$t or .name==$t) | .conclusion // ""] | first // ""' <<<"$runs_json")
+                      if [ "$conclusion" = "cancelled" ] || [ "$conclusion" = "failure" ] || [ "$conclusion" = "timed_out" ]; then
+                        use_hosted "burst: canary ${canary_id} ${conclusion} before claim"
+                      fi
+                      lower=$(lower_probes "$runs_json" || echo 1)
+                      if [ "${lower:-1}" -gt 0 ]; then
+                        use_hosted "burst: canary ${canary_id} lost the claim to an earlier probe"
+                      fi
+                      claim_box "burst: canary ${canary_id} accepted and is the earliest probe"
+                    fi
+                  fi
+                fi
+              fi
+              sleep "$BURST_SLEEP_SECONDS"
+            done
+            if [ -n "$canary_id" ]; then
+              use_hosted "burst: canary ${canary_id} not accepted within ${BURST_PROBE_SECONDS}s"
+            fi
+            use_hosted "burst: dispatched canary never appeared in the runs list within ${BURST_PROBE_SECONDS}s" warn
+          }
+
+          if [ "${CI_BURST:-}" = "true" ]; then
+            HOSTED_TESTS=8
+            burst_main
+          fi
 
           # Authoritative when the token can read runners. Workflow tokens cannot hold
           # administration:read; a 403 falls through to the canary. A 200 that shows the
@@ -211,14 +389,16 @@ jobs:
     name: ${{ matrix.name }}
     needs: [changes, linux-runner]
     if: (github.event_name == 'push' || github.event_name == 'pull_request') && needs.changes.outputs.code == 'true'
-    # Linux rows use linux-runner's pick. Windows rows stay on matrix.os.
-    # fromJSON stays outside &&/|| so both branches are JSON text, not mixed types.
-    runs-on: ${{ fromJSON(startsWith(matrix.name, 'Linux') && (needs.linux-runner.outputs.runs_on || '"ubuntu-latest"') || matrix.os) }}
+    # Linux rows use linux-runner's per-job pick. Empty outputs fall back to ubuntu-latest,
+    # never to the box. Windows rows stay on matrix.os.
+    # fromJSON stays outside &&/|| so every branch is JSON text, not a bool mixed with text.
+    runs-on: ${{ fromJSON((matrix.name == 'Linux GCC Debug' && needs.linux-runner.outputs.gcc_runs_on) || (matrix.name == 'Linux Clang Release' && needs.linux-runner.outputs.clang_runs_on) || (startsWith(matrix.name, 'Linux') && '"ubuntu-latest"') || matrix.os) }}
     env:
-      # Box is shared (CPUQuota 400%, MemoryMax 8G): compile 4 / test 2.
-      # Hosted fallback is 4-vCPU ubuntu-latest: same compile cap, test 4 (same as Windows Debug).
-      CMAKE_BUILD_PARALLEL_LEVEL: ${{ matrix.jobs }}
-      CTEST_PARALLEL_LEVEL: ${{ startsWith(matrix.name, 'Linux') && needs.linux-runner.outputs.hosted == 'true' && 4 || matrix.tests }}
+      # Numbers come from linux-runner. Box: compile 4 / test 2.
+      # Hosted, CI_BURST false: compile 4 / test 4. Hosted, CI_BURST true: compile 4 / test 8.
+      # Windows ignores the Linux outputs and keeps matrix 4 / 4.
+      CMAKE_BUILD_PARALLEL_LEVEL: ${{ (matrix.name == 'Linux GCC Debug' && needs.linux-runner.outputs.gcc_jobs) || (matrix.name == 'Linux Clang Release' && needs.linux-runner.outputs.clang_jobs) || matrix.jobs }}
+      CTEST_PARALLEL_LEVEL: ${{ (matrix.name == 'Linux GCC Debug' && needs.linux-runner.outputs.gcc_tests) || (matrix.name == 'Linux Clang Release' && needs.linux-runner.outputs.clang_tests) || matrix.tests }}
     strategy:
       fail-fast: false
       matrix:
@@ -260,7 +440,7 @@ jobs:
     name: Nightly gate
     needs: [linux-runner]
     if: github.event_name == 'schedule'
-    runs-on: ${{ fromJSON(needs.linux-runner.outputs.runs_on || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(needs.linux-runner.outputs.nightly_runs_on || '"ubuntu-latest"') }}
     permissions:
       actions: read
       contents: read
