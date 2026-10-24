@@ -21,7 +21,7 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-DEFERRED: list[str] = []   # swarm of rats authored after sim #172 (docs/SRD_MONSTERS_DEFERRED.md: 31 / 0)
+DEFERRED: list[str] = ["rat", "scorpion"]   # flat 1 damage not expressible (docs/SRD_MONSTERS_DEFERRED.md: 42 / 2)
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -141,13 +141,13 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual((bite["on_hit"][0]["save"], bite["on_hit"][0]["on_success"]), ({"ability": "con", "dc": 11}, "half"))
         self.assertEqual(load("skeleton")["damage_vulnerabilities"], ["bludgeoning"])
         # Pack Tactics (common@1 open kind pack_tactics, sim #127): one declaration, no fields
-        for idx in ("jackal", "kobold", "wolf", "dire-wolf"):
+        for idx in ("jackal", "kobold", "wolf", "dire-wolf", "hyena", "tribal-warrior"):
             with self.subTest(monster=idx):
                 effs = [t["effect"] for t in load(idx)["traits"] if "effect" in t]
                 self.assertEqual(effs, [{"kind": "pack_tactics"}])
         # bite knock-prone rider (sim #133): on_hit save_condition, Str DC 11 / 13, prone untimed (ends when the target
         # stands up; applied untracked like Shove)
-        for idx, dc in (("wolf", 11), ("dire-wolf", 13)):
+        for idx, dc in (("wolf", 11), ("dire-wolf", 13), ("mastiff", 11)):
             with self.subTest(monster=idx):
                 bite = load(idx)["actions"][0]
                 self.assertEqual(bite["on_hit"], [{"kind": "save_condition", "save": {"ability": "str", "dc": dc},
@@ -209,6 +209,11 @@ class MonsterTable(unittest.TestCase):
         med = {t["id"]: t for t in load("medusa")["traits"]}["multiattack"]["effect"]
         self.assertEqual(med["options"], [{"id": "melee", "attacks": ["snake_hair", "shortsword", "shortsword"]},
                                           {"id": "ranged", "attacks": ["longbow", "longbow"]}])
+        # Noble Parry (reactions[], R-G7): +2 AC against one melee attack it sees
+        self.assertEqual(load("noble")["reactions"][0]["window"], {"kind": "being_hit", "melee_only": True, "requires_sight": True})
+        self.assertEqual(load("noble")["reactions"][0]["effect"], {"kind": "ac_bonus", "bonus": 2})
+        # Cultist Dark Devotion: partial, description only (no condition-keyed save advantage construct)
+        self.assertNotIn("effect", {t["id"]: t for t in load("cultist")["traits"]}["dark_devotion"])
         # Sunlight Sensitivity / Keen Hearing and Smell: descriptive (no light model, no perception checks in the sim)
         self.assertNotIn("effect", {t["id"]: t for t in load("kobold")["traits"]}["sunlight_sensitivity"])
 
