@@ -25,9 +25,11 @@ Json load_json(const std::string& rel) {
 // listed: rules legal_actions lists the cast; ai: the built-in AI picks it. With fix/rules-legal-actions-spells, Blur (range
 // self, modifier) is listed with target = the caster and Heat Metal once per eligible metal item (equip_item set); the AI
 // picks both. Fog Cloud (zone) is listed but stays the caller's decision.
+// dc: the SRD 5.1 stat block's spell save DC, 0 when it gives none. Only the magma mephit's Heat Metal has one (DC 10);
+// Sleep, Blur and Fog Cloud have no saving throw.
 struct Mephit { const char* id; const char* spell; int dc; bool listed; bool ai; };
-const Mephit kMephits[] = {{"t.dust_mephit", "sleep", 10, true, true}, {"t.ice_mephit", "fog_cloud", 0, true, false},
-                           {"t.magma_mephit", "heat_metal", 10, true, true}, {"t.steam_mephit", "blur", 11, true, true}};
+const Mephit kMephits[] = {{"t.dust_mephit", "sleep", 0, true, true}, {"t.ice_mephit", "fog_cloud", 0, true, false},
+                           {"t.magma_mephit", "heat_metal", 10, true, true}, {"t.steam_mephit", "blur", 0, true, true}};
 constexpr const char* kKitted = "srd51.character.fighter_level_1";   // chain mail, shield, longsword: metal
 constexpr const char* kBare = "t.club_wizard";                       // holds a club (wood), no armor: no metal
 Json mephit(const Mephit& m) {
