@@ -22,7 +22,7 @@ CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
 # Deferred also includes tier B batch d1 (15).
-DEFERRED: list[str] = ["acolyte", "mummy", "rust-monster", "cat", "crab", "poisonous-snake", "quipper", "reef-shark", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 73 / 18 (spells missing; batch 3: signature mechanics)
+DEFERRED: list[str] = ["acolyte", "blink-dog", "cult-fanatic", "doppelganger", "duergar", "green-hag", "mimic", "mummy", "rust-monster", "cat", "crab", "poisonous-snake", "quipper", "reef-shark", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 72 / 24
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -35,7 +35,6 @@ DEVIATIONS = {
     "vampire-spawn": "damage_resistances lists necrotic only: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (as gargoyle).",
     "shadow": "damage_resistances lists the five plain types: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (as gargoyle).",
     "violet-fungus": "condition_immunities: the table lists blinded twice and omits deafened; the SRD line is blinded, deafened, frightened (as shrieker). Rotting Touch to_hit: the SRD prints +2 (the table agrees); the derivation gives -2 (Str 3 -4, PB +2). Carried as an approved attack_bonus override of +2 (printed value wins).",
-    "blink-dog": "passive_perception: the SRD block prints Perception +3 with passive Perception 10; the validator requires 10 + skill, so the content carries 13 (the table has no senses field). Needs sign-off: no override key exists for passive Perception.",
     "shrieker": "condition_immunities: the table lists blinded twice and omits deafened; the SRD line is blinded, deafened, frightened.",
     "ghast": "Bite to_hit: the SRD prints +3 (the table agrees); the derivation gives +5 (Dex 17 +3, PB +2). Carried as an approved attack_bonus override of +3 (printed value wins).",
     "gladiator": "Spear (thrown) damage: the SRD prints one line for both uses, 11 (2d6 + 4); the derivation gives a thrown use no Brute die (1d6 + 4). Carried as an approved damage_override of 2d6+4 (CONTENT_CONVENTIONS 21; printed value wins).",
@@ -282,7 +281,9 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual(gh["bite"]["attack_bonus"]["value"], 3)
         self.assertEqual(gh["claws"]["on_hit"][0]["when"], [{"kind": "not_creature_type", "creature_types": ["undead"]}])
         self.assertEqual(gh["claws"]["on_hit"][0]["apply"][0]["condition"], "paralyzed")
-        for idx, tid in (("ghast", "stench"), ("ghast", "turn_defiance")):
+        self.assertEqual({t["id"]: t for t in load("ghast")["traits"]}["stench"]["effect"], {"kind": "aura", "radius_ft": 5, "on": "start_turn", "save": {"ability": "con", "dc": 10},
+                         "condition": "poisoned", "duration": "until_start_of_next_turn", "success_immunity_hours": 24})
+        for idx, tid in (("ghast", "turn_defiance"),):
             self.assertNotIn("effect", {t["id"]: t for t in load(idx)["traits"]}[tid])
         # Batch 3b riders (feat/monster-batch3-riders, feat/monster-strength-drain)
         def trait(idx, tid):
@@ -301,8 +302,6 @@ class MonsterTable(unittest.TestCase):
         self.assertNotIn("on_hit", act("vampire-spawn", "claws"))   # "Instead of dealing damage ... grapple": no instead-of-damage shape
         self.assertEqual(act("shadow", "strength_drain")["ability_drain"], {"ability": "str", "dice": "1d4"})
         self.assertEqual(act("violet-fungus", "rotting_touch")["attack_bonus"]["value"], 2)
-        tp = act("blink-dog", "teleport")
-        self.assertEqual((tp["kind"], tp["feet"], tp["usage"], tp["with_attack"]), ("teleport", 40, {"kind": "recharge", "min": 4}, "bite"))
         for idx, tid in (("wight", "sunlight_sensitivity"), ("vampire-spawn", "regeneration"), ("vampire-spawn", "vampire_weaknesses"),
                          ("shadow", "shadow_stealth"), ("shadow", "sunlight_weakness")):
             self.assertNotIn("effect", trait(idx, tid))

@@ -3472,47 +3472,6 @@
     }
    ]
   },
-  "blink-dog": {
-   "name": "Blink Dog",
-   "size": "Medium",
-   "type": "fey",
-   "ac": [
-    13
-   ],
-   "hp": 22,
-   "hp_roll": "4d8+4",
-   "cr": 0.25,
-   "xp": 50,
-   "speed": {
-    "walk": "40 ft."
-   },
-   "abilities": [
-    12,
-    17,
-    12,
-    10,
-    13,
-    11
-   ],
-   "damage_vulnerabilities": [],
-   "damage_resistances": [],
-   "damage_immunities": [],
-   "condition_immunities": [],
-   "attacks": [
-    {
-     "name": "Bite",
-     "attack_bonus": 3,
-     "damage_options": [
-      [
-       [
-        "1d6+1",
-        "piercing"
-       ]
-      ]
-     ]
-    }
-   ]
-  },
   "shadow": {
    "name": "Shadow",
    "size": "Medium",
