@@ -82,7 +82,7 @@ def as_monster4(d: dict) -> dict:
     for k in AT5_KEYS:
         d.pop(k, None)
     for a in d["actions"]:
-        for k in ("weapon", "natural", "attack_bonus", "damage_override", "use"):
+        for k in ("weapon", "natural", "attack_bonus", "damage_override", "use", "ability"):
             a.pop(k, None)
     for t in d.get("traits") or []:
         if isinstance(t.get("effect"), dict) and t["effect"].get("kind") == "weapon_extra_dice":
@@ -422,7 +422,7 @@ class DeriveCheck(unittest.TestCase):
                     if a["kind"] in ("melee_weapon_attack", "ranged_weapon_attack"):
                         flat = all("flat" in c for c in a["damage"][:1])   # CONTENT_CONVENTIONS 19: no die to derive from
                         self.assertTrue("weapon" in a or "natural" in a or flat, f"{f.name}: {a['id']}")
-        self.assertEqual(n, 67)   # 33 converted (PR B) + 9 bestiary v0.1 batch 1 + 9 batch 2 + rat, scorpion (flat) + satyr, ghast (batch 3) + gladiator (riders, §21) + 11 tier B batch d1
+        self.assertEqual(n, 73)   # 33 converted (PR B) + 9 bestiary v0.1 batch 1 + 9 batch 2 + rat, scorpion (flat) + satyr, ghast (batch 3) + gladiator (riders, §21) + 6 batch 3b + 11 tier B batch d1
         self.assertEqual(core("monsters/goblin.json")["$schema"], "monster@3")   # fl1 compat: left at @3
 
     def test_valid_conversions(self):

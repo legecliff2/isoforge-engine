@@ -1,0 +1,127 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.shadow",
+  "name": "Shadow",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "undead",
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 12
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 16,
+    "formula": "3d8+3"
+  },
+  "speed": {
+    "walk": 40
+  },
+  "abilities": {
+    "str": 6,
+    "dex": 14,
+    "con": 13,
+    "int": 6,
+    "wis": 10,
+    "cha": 8
+  },
+  "skills": {
+    "stealth": 4
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 10
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "1/2",
+    "xp": 100
+  },
+  "proficiency_bonus": 2,
+  "damage_vulnerabilities": [
+    "radiant"
+  ],
+  "damage_resistances": [
+    "acid",
+    "cold",
+    "fire",
+    "lightning",
+    "thunder"
+  ],
+  "damage_immunities": [
+    "necrotic",
+    "poison"
+  ],
+  "condition_immunities": [
+    "exhaustion",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+  ],
+  "traits": [
+    {
+      "id": "damage_resistances_nonmagical",
+      "name": "Damage Resistances",
+      "description": "Resistant to bludgeoning, piercing, and slashing from nonmagical weapons.",
+      "effect": {
+        "kind": "damage_mitigation",
+        "resistances": {
+          "nonmagical": [
+            "bludgeoning",
+            "piercing",
+            "slashing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "amorphous",
+      "name": "Amorphous",
+      "description": "The shadow can move through a space as narrow as 1 inch wide without squeezing."
+    },
+    {
+      "id": "shadow_stealth",
+      "name": "Shadow Stealth",
+      "description": "While in dim light or darkness, the shadow can take the Hide action as a bonus action. Its stealth bonus is also improved to +6. (Descriptive only: no light-gated bonus action or skill bonus.)"
+    },
+    {
+      "id": "sunlight_weakness",
+      "name": "Sunlight Weakness",
+      "description": "While in sunlight, the shadow has disadvantage on attack rolls, ability checks, and saving throws. (Descriptive only: the engine has no light/sunlight model yet, R-G13.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": "strength_drain",
+      "name": "Strength Drain",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "dex"
+      },
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+2",
+          "type": "necrotic"
+        }
+      ],
+      "ability": "dex",
+      "ability_drain": {
+        "ability": "str",
+        "dice": "1d4"
+      },
+      "description": "Melee Weapon Attack: +4 to hit, reach 5 ft., one creature. Hit: 9 (2d6 + 2) necrotic damage, and the target's Strength score is reduced by 1d4. The target dies if this reduces its Strength to 0. Otherwise, the reduction lasts until the target finishes a short or long rest.\n\nIf a non-evil humanoid dies from this attack, a new shadow rises from the corpse 1d4 hours later."
+    }
+  ]
+}
