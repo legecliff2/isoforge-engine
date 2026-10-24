@@ -675,6 +675,11 @@ struct Combatant {
     bool has_heal_bonus = false;
     int8_t heal_bonus_flat = 0;
     bool heal_bonus_per_level = false;
+    // appended (altitude PR4, Fly spell hook; sim fold Combat::hash 0xD6 only when non-zero): a temporary fly speed granted by
+    // an effect (rules5e::grant_fly / revoke_fly), 0 = none. The creature's fly speed is max(fly_ft, granted_fly_ft).
+    uint8_t granted_fly_ft = 0;
+    uint32_t granted_fly_src = 0;   // the grant's source (folded with it); revoke_fly(source) only removes a matching grant
+    uint8_t fly_speed() const { return fly_ft > granted_fly_ft ? fly_ft : granted_fly_ft; }
 };
 
 void add_condition(Combatant&, Condition);
