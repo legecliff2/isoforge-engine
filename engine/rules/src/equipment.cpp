@@ -114,6 +114,9 @@ DerivedAttack derive_weapon_attack(const WeaponDef& w0, const WielderView& v, We
     a.ranged = use == WeaponUse::Thrown || pure_ranged(w);
     a.finesse = has(w, kWeaponFinesse);
     a.properties = w.properties;
+    // Strength Drain (Lich ruling): the ability the totals were built with (attack_drain_delta)
+    a.ability_used = a.finesse ? kAttackAbilityFinesse : v.ability ? int8_t(*v.ability) : int8_t(ab);
+    if (v.damage_ability_none) a.damage_ability_used = kAttackAbilityNone;
     a.qualifiers = uint8_t(w.qualifiers | ((atk_magic > 0 || dmg_magic > 0) ? kAttackMagical : 0));
     if (a.ranged) {
         a.range_ft = w.range_ft; a.long_range_ft = w.long_range_ft;
