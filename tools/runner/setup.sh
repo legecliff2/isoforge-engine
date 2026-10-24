@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # Idempotent install of one GitHub Actions self-hosted runner for isoforge-engine.
 #   sudo RUNNER_TOKEN=<registration token> tools/runner/setup.sh
-# Env: RUNNER_TOKEN (required unless already configured), REPO_URL, RUNNER_DIR (/opt/actions-runner),
-#      RUNNER_USER (ghrunner), RUNNER_NAME (isoforge-<host>), RUNNER_VERSION, CPU_QUOTA (400%), MEM_MAX (8G).
+# Env: RUNNER_TOKEN (required unless already configured), REPO_URL, RUNNER_GROUP (optional),
+#      RUNNER_DIR (/opt/actions-runner), RUNNER_USER (ghrunner), RUNNER_NAME (isoforge-<host>),
+#      RUNNER_VERSION, CPU_QUOTA (400%), MEM_MAX (8G).
 # Non-ephemeral on purpose: one persistent runner keeps its ccache warm (that is the point of
 # self-hosting), and an ephemeral runner would need a fresh registration token per job (an
 # auto-re-register loop holding a PAT). Workspace hygiene is done by checkout clean + the
-# cleanup step in cmake-ci, and the runner only takes jobs from this private repo.
+# cleanup step in cmake-ci. A repository-level runner cannot limit which workflow ref is
+# allowed to use it. Before this repo is public, register it on an organization runner
+# group pinned to main (docs/CI_SELF_HOSTED.md). Optional: REPO_URL=https://github.com/ORG
+# and RUNNER_GROUP=<group> (the group must already exist; config.sh --runnergroup).
 set -euo pipefail
 REPO_URL=${REPO_URL:-https://github.com/legecliff2/isoforge-engine}
 RUNNER_DIR=${RUNNER_DIR:-/opt/actions-runner}
@@ -61,9 +65,10 @@ if [ ! -x "$RUNNER_DIR/config.sh" ]; then
 fi
 if [ ! -f "$RUNNER_DIR/.runner" ]; then
   : "${RUNNER_TOKEN:?set RUNNER_TOKEN (registration token) in the environment}"
+  # $3 is RUNNER_GROUP. Empty means config.sh's default group (Default on an org URL).
   ( cd "$RUNNER_DIR" && sudo -u "$RUNNER_USER" --preserve-env=RUNNER_TOKEN bash -c \
-      './config.sh --unattended --url "$0" --token "$RUNNER_TOKEN" --name "$1" --labels "$2" --work _work --replace' \
-      "$REPO_URL" "$RUNNER_NAME" "$LABELS" >/dev/null )
+      'args=(--unattended --url "$0" --token "$RUNNER_TOKEN" --name "$1" --labels "$2" --work _work --replace); if [ -n "$3" ]; then args+=(--runnergroup "$3"); fi; ./config.sh "${args[@]}"' \
+      "$REPO_URL" "$RUNNER_NAME" "$LABELS" "${RUNNER_GROUP:-}" >/dev/null )
   echo "registered $RUNNER_NAME"
 else
   echo "already configured: $(sed -n 's/.*"agentName": *"\([^"]*\)".*/\1/p' "$RUNNER_DIR/.runner" | tr -d '\0')"
