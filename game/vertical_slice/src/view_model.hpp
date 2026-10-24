@@ -42,7 +42,8 @@ enum class Facing : uint8_t { SouthEast, SouthWest, NorthEast, NorthWest };
 struct ActorView {
     uint32_t    id = 0;        // stable id (sort key tie-break)
     std::string name;          // "FIGHTER", "GOBLIN"
-    eng::Vec2i  tile;
+    eng::Vec2i  tile;          // footprint anchor: min-x / min-y tile (the only tile when footprint == 1)
+    int         footprint = 1; // side in tiles (1 Medium or smaller, 2 Large, 3 Huge, 4 Gargantuan+)
     int         hp = 0, hp_max = 0;
     uint8_t     team = 0;
     bool        is_pc = false;
