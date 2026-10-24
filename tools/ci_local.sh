@@ -61,11 +61,29 @@ missing=()
 for t in cmake ninja ctest python3 gcc g++ clang clang++; do command -v "$t" >/dev/null || missing+=("$t"); done
 if [ ${#missing[@]} -gt 0 ]; then
   echo "${R}missing tools: ${missing[*]}${N}"
-  echo "Debian/Ubuntu: sudo apt-get install -y cmake ninja-build clang python3-venv ccache \\"
+  echo "Debian/Ubuntu: sudo apt-get install -y cmake ninja-build clang python3-venv ccache libstdc++-14-dev \\"
   echo "  libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev libxtst-dev \\"
   echo "  libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libgl-dev libvulkan-dev libudev-dev libdbus-1-dev"
   exit 1
 fi
+
+# Clang selects the newest installed GCC for libstdc++. On Ubuntu cloud images
+# that is GCC 14, while the default g++ is GCC 13. Without libstdc++-14-dev the
+# Clang job configures, then fails to link with "cannot find -lstdc++".
+link_err=$(mktemp)
+probe=$(mktemp)
+if ! printf 'int main(){return 0;}\n' | clang++ -x c++ - -o "$probe" >"$link_err" 2>&1; then
+  echo "${R}clang++ cannot link libstdc++${N}"
+  if grep -q 'cannot find -lstdc++' "$link_err"; then
+    echo "Clang selected a GCC whose libstdc++ dev package is not installed."
+  else
+    sed 's/^/    /' "$link_err"
+  fi
+  echo "Debian/Ubuntu: sudo apt-get install -y libstdc++-14-dev"
+  rm -f "$probe" "$link_err"
+  exit 1
+fi
+rm -f "$probe" "$link_err"
 
 run_job() {  # run_job <label> <preset> <lint_only> <extra ctest args...>
   local j="$1" preset="$2" lint_only="$3"; shift 3

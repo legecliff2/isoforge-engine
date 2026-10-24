@@ -49,7 +49,8 @@ ctest --preset linux-gcc-debug
 
 SDL3 is fetched and pinned (`release-3.4.8`) by `cmake/Dependencies.cmake`. Configure with
 `-DENGINE_HEADLESS=ON` to build only SDL-free modules (null renderer). Linux needs the X11/Wayland
-dev packages listed in `.github/actions/cmake-ci/action.yml` (and in `docs/CI.md`).
+dev packages listed in `.github/actions/cmake-ci/action.yml` (and in `docs/CI.md`), plus
+`libstdc++-14-dev` so Clang can link the GCC 14 libstdc++ it selects.
 
 Before pushing, `tools/ci_local.sh` runs the same Linux CI jobs locally (GCC Debug + Clang Release:
 configure, depcheck/include_lint, build, ctest) and exits non-zero on failure. See `docs/CI.md`.
