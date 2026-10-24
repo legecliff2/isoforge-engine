@@ -4940,8 +4940,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         if (req.move_ft <= 0) return fail("move_ft must be positive");
         int cost = req.move_ft * (a.has(Condition::Prone) ? 2 : 1);   // crawling
         if (drags_grappled(s, a)) cost *= 2;                           // SRD: half speed while moving a grappled creature
-        if (req.move_mode > 3) return fail("bad move_mode");
-        if (req.move_mode != 0) {   // feat/move-modes: fly / swim / climb speed; the shared budget may go below 0
+        if (req.move_mode > 4) return fail("bad move_mode");
+        if (req.move_mode != 0) {   // feat/move-modes: fly / swim / climb / burrow speed; the shared budget may go below 0
             const int allow = move_allowance(s, a, req.move_mode);
             if (allow < 0) return fail("no such speed");
             if (req.move_mode == 1 && a.has(Condition::Prone)) return fail("cannot fly while prone");
@@ -6037,7 +6037,7 @@ int modified_ac_bonus(const EncounterState& s, CombatantId id) {
 
 int mode_speed(const EncounterState& s, const Combatant& c, uint8_t mode) {
     if (mode == 0) return modified_speed(s, c);
-    const uint8_t base = mode == 1 ? c.fly_ft : mode == 2 ? c.swim_ft : mode == 3 ? c.climb_ft : 0;
+    const uint8_t base = mode == 1 ? c.fly_ft : mode == 2 ? c.swim_ft : mode == 3 ? c.climb_ft : mode == 4 ? c.burrow_ft : 0;
     if (base == 0) return -1;
     Combatant k = c;
     k.speed_ft = base;
@@ -6301,7 +6301,7 @@ FormStats own_stats(const Combatant& c) {
     f.attacks = c.attacks; f.multiattacks = c.multiattacks; f.attacks_per_action = c.attacks_per_action; f.size = c.size;
     f.creature_type = c.creature_type; f.roll_traits = c.roll_traits; f.triggers = c.triggers; f.reactions = c.reactions;
     f.bonus_attacks = c.bonus_attacks;
-    f.fly_ft = c.fly_ft; f.swim_ft = c.swim_ft; f.climb_ft = c.climb_ft; f.hover = c.hover;   // feat/move-modes
+    f.fly_ft = c.fly_ft; f.swim_ft = c.swim_ft; f.climb_ft = c.climb_ft; f.burrow_ft = c.burrow_ft; f.hover = c.hover;   // feat/move-modes
     return f;
 }
 void put_stats(Combatant& c, const FormStats& f) {   // everything but hp / hp_max
@@ -6312,7 +6312,7 @@ void put_stats(Combatant& c, const FormStats& f) {   // everything but hp / hp_m
     c.attacks = f.attacks; c.multiattacks = f.multiattacks; c.attacks_per_action = f.attacks_per_action; c.size = f.size;
     c.creature_type = f.creature_type; c.roll_traits = f.roll_traits; c.triggers = f.triggers; c.reactions = f.reactions;
     c.bonus_attacks = f.bonus_attacks;
-    c.fly_ft = f.fly_ft; c.swim_ft = f.swim_ft; c.climb_ft = f.climb_ft; c.hover = f.hover;   // feat/move-modes
+    c.fly_ft = f.fly_ft; c.swim_ft = f.swim_ft; c.climb_ft = f.climb_ft; c.burrow_ft = f.burrow_ft; c.hover = f.hover;   // feat/move-modes
 }
 template <class T> void append_all(std::vector<T>& to, const std::vector<T>& from) { to.insert(to.end(), from.begin(), from.end()); }
 }  // namespace

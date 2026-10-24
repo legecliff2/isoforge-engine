@@ -701,7 +701,28 @@ These are SRD 5.1 containers from 5e-database a6212be, with exact costs, weights
 - **Ready for the ammunition recovery rule** (EQUIPMENT 2.5: spend one per attack; recover `floor(spent / 2)` after combat). Stacks are `equipment[]` counts (§15), and these containers give the capacity a stack fits in.
 - **Inert today:** the sim loads no item documents. PCs do not list containers yet; adding them changes no number.
 
-## 17. Headless encounter scenarios (`scenario@1`)
+## 17. Burrow speed (`speed.burrow`)
+
+`common@1 $defs/speed` already accepts optional `burrow` (the same `feet` def as `fly`, `swim` and `climb`: integer 0..255, multiple of 5). The loader (`ContentLibrary::add`) reads it for monsters and characters into `rules5e::Combatant::burrow_ft` (`uint8_t`, 0 when the key is absent, not an integer, or negative; values above 255 clamp to 255), the same way it reads `speed.climb`. `FormStats::burrow_ft` is copied with the other speeds when a form is saved, applied or built, so a transform replaces it and a revert restores it. A shapechanger form's `speed` object still replaces only `walk`, the same as it does for `climb`.
+
+It is static content and is not folded into `summons_digest` or `Combat::hash`, the same way `fly_ft`, `swim_ft` and `climb_ft` are not. Since altitude PR2 (feat/altitude-move) burrow **is a movement mode**: `ActionRequest::move_mode` 4 spends the burrow speed through `move_allowance`, budgeted like fly / swim / climb (the turn's budget is shared, Dash grants it again), and a creature without a burrow speed cannot burrow (`no such speed`; the sim refuses going below the ground). A burrowed creature (`alt_ft < 0` on walkable, non-water ground) moves under difficult terrain, ledges and surface creatures at 5 ft per tile. **Tunnelling** (leaving a passable tunnel, burrowing through solid rock or walls) is still out of scope unless the stat block says otherwise. No content-schema version bump and no new sim-event tag: the key was already optional, and mode 4 is a new value of the existing 0xC3 `move_mode` fold.
+
+## 18. Spellcasting focus family (item@2 gear `focus`)
+
+`focus: "arcane" | "druidic" | "holy"` is an optional, closed, additive key on item@2 `gear` (no version bump; gear arm only, `test_union_arms.py` row). It marks the SRD spellcasting foci:
+
+| `focus` | srd51.core items |
+|---|---|
+| `arcane` | `arcane_focus_crystal`, `_orb`, `_rod`, `_staff`, `_wand` |
+| `druidic` | `druidic_focus_sprig_of_mistletoe`, `_totem`, `_wooden_staff`, `_yew_wand` |
+| `holy` | `holy_symbol_amulet`, `_emblem`, `_reliquary` |
+
+- The component pouch carries no `focus`: it holds materials, it is not a focus.
+- **Inert until rules reads it.** No C++ reads the key yet. The sim loads gear as `ItemKind::Other`, not `ItemKind::Focus` (EQUIPMENT 3.2: focus hand, worn holy symbol, emblem on a shield). Adding it changes no fight and no hash.
+- Tests: `tests/validate/test_srd51_equipment.py` (`FOCUS_FAMILY`, `test_focus_field_schema`).
+- Deferred equipment mechanics are listed in `docs/SRD_EQUIPMENT_DEFERRED.md`.
+
+## 24. Headless encounter scenarios (`scenario@1`)
 
 Not a pack document and not a migrated content type. The C++ `SchemaRegistry` does not register it. `tools/validate/validate_packs.py` loads `schemas/scenario/v1.schema.json` on the default `content_validate` run (no pack arguments) and checks each `scenarios/<name>/scenario.json`. `tools/encounter_runner` parses the file itself. See `tools/encounter_runner/README.md`.
 
