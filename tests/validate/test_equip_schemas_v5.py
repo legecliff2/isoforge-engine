@@ -82,7 +82,7 @@ def as_monster4(d: dict) -> dict:
     for k in AT5_KEYS:
         d.pop(k, None)
     for a in d["actions"]:
-        for k in ("weapon", "natural", "attack_bonus", "use"):
+        for k in ("weapon", "natural", "attack_bonus", "damage_override", "use"):
             a.pop(k, None)
     for t in d.get("traits") or []:
         if isinstance(t.get("effect"), dict) and t["effect"].get("kind") == "weapon_extra_dice":
@@ -182,7 +182,7 @@ class AppendOnly(unittest.TestCase):
             if k != "actions":
                 self.assertEqual(canon(m5["stat_block"]["properties"][k]), canon(v), k)
         self.assertEqual(set(c2["stat_block"]["required"]) - set(m5["stat_block"]["required"]), {"proficiency_bonus"})
-        self.assertEqual(set(m5["action"]["properties"]) - set(c2["action"]["properties"]), {"weapon", "natural", "attack_bonus", "use",
+        self.assertEqual(set(m5["action"]["properties"]) - set(c2["action"]["properties"]), {"weapon", "natural", "attack_bonus", "damage_override", "use",
                           # batch 3 riders (monster@5 only)
                           "drain", "curse", "target_requires_any", "ability_drain", "feet", "with_attack",
                           "ability"})   # CONTENT_CONVENTIONS "Attack ability"
@@ -434,6 +434,24 @@ class DeriveCheck(unittest.TestCase):
         self.assertEqual(sum("attack_bonus 3 (" in x for x in w), 2, w)
         _e, w = self.run_one(mon("skeleton"))
         self.assertTrue(any("test.v4.skeleton: ac_adjust 1 (" in x for x in w), w)
+
+    def test_damage_override(self):
+        # CONTENT_CONVENTIONS 21: an explicit printed damage[0] with a reason (SRD Gladiator thrown Spear 2d6 + 4). Brute adds
+        # its die on melee use only, so a thrown line printed with the extra die needs the override; bugbear stays as printed.
+        d = mon("bugbear"); a = act(d, "javelin_thrown")
+        a["damage"][0]["dice"] = "2d6+2"
+        self.expect(d, "test.v4.bugbear.javelin_thrown: derived damage 1d6+2 != printed 2d6+2 (weapon_dice_multiplier 2 would match)")
+        a["damage_override"] = {"dice": "2d6+2", "reason": "test: printed with the Brute die at range"}
+        e, w = self.run_one(d)
+        self.assertEqual(e, [])
+        self.assertTrue(any("test.v4.bugbear.javelin_thrown: damage_override 2d6+2 (" in x for x in w), w)
+        a["damage_override"]["reason"] = "  "
+        self.expect(d, "test.v4.bugbear.javelin_thrown: damage_override needs a reason")
+        d = mon("bugbear"); act(d, "javelin_thrown")["damage_override"] = {"dice": "1d6+2", "reason": "x"}
+        self.expect(d, "test.v4.bugbear.javelin_thrown: damage_override is not needed")
+        d = mon("bugbear"); act(d, "javelin_thrown")["damage_override"] = {"dice": "1d6+2"}
+        e, _w = self.run_one(d)
+        self.assertTrue(any("'reason' is a required property" in x for x in e), e)
 
     def test_ac_mismatch(self):
         d = mon("guard"); d["armor_class"]["value"] = 17
