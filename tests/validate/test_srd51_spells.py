@@ -355,8 +355,8 @@ class SpellTable(unittest.TestCase):
     def test_spell_batch_zi_packs(self):
         # Rules #283 (7.2zi): the srd51 packs carry the specimens' mechanics (tests/validate/fixtures/spell_batch_zi)
         fx = ROOT / "tests/validate/fixtures/spell_batch_zi"
-        for idx in ("spare-the-dying", "true-strike", "protection-from-poison", "ray-of-enfeeblement",
-                    "beacon-of-hope", "warding-bond"):
+        for idx in ("spare-the-dying", "true-strike", "expeditious-retreat", "protection-from-poison",
+                    "ray-of-enfeeblement", "beacon-of-hope", "warding-bond"):
             with self.subTest(spell=idx):
                 spec = json.loads((fx / f"{idx.replace('-', '_')}.json").read_text(encoding="utf-8"))
                 d = load(idx)
@@ -383,8 +383,12 @@ class SpellTable(unittest.TestCase):
         self.assertFalse(wb["components"]["m"]["consumed"])
         self.assertNotIn("concentration", wb["duration"])
         self.assertIn("dismissing the spell as an action", wb["description"])   # not modelled; said in the pack
-        # Expeditious Retreat stays deferred: the SRD Dash on the cast is not modelled (7.2zi bonus_dash is later turns only)
-        self.assertFalse((PACK / "spells" / "expeditious_retreat.json").exists())
+        # Expeditious Retreat (Rules #285): dash_on_cast is the Dash on the cast; bonus_dash covers later turns
+        er = load("expeditious-retreat")
+        self.assertEqual(er["effects"], [{"kind": "apply_modifier", "dash_on_cast": True,
+                                          "modifier": {"stat": "bonus_dash", "applies_to": "self",
+                                                       "duration": {"kind": "rounds", "n": 600}}}])
+        self.assertEqual(er["classes"], ["sorcerer", "warlock", "wizard"])
 
     def test_spell_batch_zi(self):
         # Rules 7.2zi: mechanics only. Content packs are T&C; specimens live in tests/validate/fixtures/spell_batch_zi.

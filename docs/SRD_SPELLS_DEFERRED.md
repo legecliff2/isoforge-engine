@@ -13,12 +13,12 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 | level | in `srd51.core` | deferred: needs a mechanic | deferred: out of combat scope | total |
 |---|---|---|---|---|
 | 0 (cantrips) | 13 | 0 | 11 | 24 |
-| 1 | 27 | 3 | 19 | 49 |
+| 1 | 28 | 2 | 19 | 49 |
 | 2 | 25 | 6 | 23 | 54 |
 | 3 | 14 | 9 | 19 | 42 |
-| **total** | **79** | **18** | **72** | **169** |
+| **total** | **80** | **17** | **72** | **169** |
 
-7.2zi (Rules #283, `feat/rules-spell-batch-zi`) implements Spare the Dying, True Strike, Expeditious Retreat, Protection from Poison, Ray of Enfeeblement, Beacon of Hope, and Warding Bond. Specimens: `tests/validate/fixtures/spell_batch_zi/`. Six are authored below. Expeditious Retreat stays `NEW`: the SRD lets the caster Dash when the spell is cast, and 7.2zi's `bonus_dash` does not Dash on the cast.
+7.2zi (Rules #283, `feat/rules-spell-batch-zi`) implements Spare the Dying, True Strike, Expeditious Retreat, Protection from Poison, Ray of Enfeeblement, Beacon of Hope, and Warding Bond. Specimens: `tests/validate/fixtures/spell_batch_zi/`. Six are authored below. Expeditious Retreat follows after Rules #285 (`dash_on_cast`).
 
 ## Authored in this change (9)
 
@@ -184,7 +184,15 @@ Spell batch zi (7.2zi, Rules #283). Each pack's `effects`, casting time, range, 
 | Beacon of Hope | 3 | `apply_modifier` `save` wis advantage, `death_saves`, `heal_maximum`, `rounds 10`; `targets.count 255`; concentration 1 minute, range 30 | cleric; temporary hit points are not healing |
 | Warding Bond | 2 | target `ac` +1, `save` +1, `resistance` `all_damage`, `share_damage` with `end_beyond_ft 60`, `end_at_zero caster`; `rounds 600`; 1 hour, not concentration, touch, V S M | cleric; material text only (rings, 50 gp each, not consumed); recasting on either creature ends the old bond; wearing the rings and dismissing as an action are not modelled |
 
-## Deferred (90 spells; reasons re-checked against main at `8b8d8c9`)
+## Authored after Rules #285 (1)
+
+Expeditious Retreat (7.2zi follow-up, Rules #285). The pack's `effects` equal `tests/validate/fixtures/spell_batch_zi/expeditious_retreat.json`. Pinned by `tests/validate/test_srd51_spells.py` (table row and `test_spell_batch_zi_packs`). Counts from 79 → 80 authored / 17 NEW / 72 OOS.
+
+| spell | level | `spell@1` shape | notes |
+|---|---|---|---|
+| Expeditious Retreat | 1 | `apply_modifier` `dash_on_cast`, `bonus_dash` on self, `rounds 600`; bonus action, self, concentration 10 minutes, V S | sorcerer, warlock, wizard; the cast includes a Dash, later turns Dash as a bonus action |
+
+## Deferred (89 spells; reasons re-checked against main at `8b8d8c9`)
 
 Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the first-draft ids in brackets: B1 = R-G2 effects array, B2 = R-G3 timed modifiers, B3 = R-G4 damage riders, B4 = R-G5 pools, B6 = R-G7 reactions / roll windows, C1 = R-G8 conditions with source, C2 = R-G9 forced movement / teleport, C3 = R-G10 area templates, C4 = R-G11 zones / auras, C5 = R-G12 summons, C7 = R-G13 cover / lighting / vision, C8 = R-G14 per-cast options, C9 = R-G15 spell kinds). `T&C-G12` / `T&C-G14` are movement modes and creature footprint. `OOS` rows have no gap id.
 
@@ -210,7 +218,6 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 | 1 | Detect Magic | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Detect Poison and Disease | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Disguise Self | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
-| 1 | Expeditious Retreat | NEW | 7.2zi `bonus_dash` (Rules #283, fixture `tests/validate/fixtures/spell_batch_zi/expeditious_retreat.json`) grants a bonus-action Dash on later turns, but the cast does not Dash. The SRD lets the caster Dash when the spell is cast. | R-G3 (B2) |
 | 1 | Feather Fall | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Find Familiar | NEW | Summons rules (R-G12 PR 2) exist but spell@1 has no summon key; 1-hour cast. | R-G12 (C5) |
 | 1 | Floating Disk | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
@@ -287,4 +294,3 @@ Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the
 - Small additive changes that unblock more: a spell@1 condition-choice key (Blindness/Deafness). Faerie Fire, Protection from Energy, Spiritual Weapon, Haste / Slow, and `targets` on modifiers landed in 7.2zg (#263 / #265).
 - Every `NEW` row above is additive content once its row lands; ids are `srd51.spell.<snake_case_name>` and are not reserved yet.
 - Spare the Dying: authored from the 7.2zi `stabilize` fixture (Rules #283). `ActionKind::SpareTheDying` is unchanged.
-- Expeditious Retreat: needs the Dash on the cast (additive to 7.2zi `bonus_dash`); then it is a one-file pack from the fixture.
