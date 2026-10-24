@@ -1980,6 +1980,13 @@ uint64_t Combat::hash() const {
         h.u32(uint32_t(state_.aura_immunities.size()));
         for (const auto& im : state_.aura_immunities) { h.u32(im.creature); h.u32(im.source); h.u32(im.spell_id); h.u32(im.until_round); }
     }
+    // 0xE1 (Tier-A §26 mummy Dreadful Glare): action immunities after a successful save (creature, source 0 = any user,
+    // spell_id, until_round), in grant order, only while one exists.
+    if (!state_.action_immunities.empty()) {
+        h.byte(0xE1);
+        h.u32(uint32_t(state_.action_immunities.size()));
+        for (const auto& im : state_.action_immunities) { h.u32(im.creature); h.u32(im.source); h.u32(im.spell_id); h.u32(im.until_round); }
+    }
     return h.value();
 }
 

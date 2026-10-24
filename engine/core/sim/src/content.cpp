@@ -1003,6 +1003,37 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             }
         }
     }
+    // Tier-A §26 (mummy Dreadful Glare): also_on_fail_by {margin, condition}, immune_on_success {hours, scope},
+    // target_must_see_source. monster@5 only.
+    if (act.contains("also_on_fail_by") || act.contains("immune_on_success") || act.contains("target_must_see_source")) {
+        if (doc.value("$schema", "") != "monster@5") return where + ": also_on_fail_by / immune_on_success / target_must_see_source need a monster@5 file";
+        if (has_area) return where + ": also_on_fail_by / immune_on_success / target_must_see_source take no area";
+        if (auto af = act.find("also_on_fail_by"); af != act.end()) {
+            if (!af->is_object()) return where + ": bad also_on_fail_by";
+            const int m = geti(*af, "margin", 0);
+            auto c = condition_of(af->value("condition", ""));
+            if (m < 1 || m > 30) return where + ": bad also_on_fail_by margin (1..30)";
+            if (!c) return where + ": bad also_on_fail_by condition";
+            if (!d.applies_condition || d.condition_untracked) return where + ": also_on_fail_by needs a tracked primary condition in apply[]";
+            if (*c == d.condition) return where + ": also_on_fail_by condition must differ from the primary condition";
+            if (d.escalates || act.contains("control")) return where + ": also_on_fail_by takes no escalates / control";
+            d.also_margin = uint8_t(m);
+            d.also_condition = *c;
+        }
+        if (auto im = act.find("immune_on_success"); im != act.end()) {
+            if (!im->is_object()) return where + ": bad immune_on_success";
+            const int h = geti(*im, "hours", 0);
+            const std::string sc = im->value("scope", "");
+            if (h < 1 || h > 8760) return where + ": bad immune_on_success hours (1..8760)";
+            if (sc != "same_action" && sc != "same_source") return where + ": bad immune_on_success scope";
+            d.success_immunity_hours = uint16_t(h);
+            d.success_immunity_scope = sc == "same_source" ? 1 : 0;
+        }
+        if (auto ts = act.find("target_must_see_source"); ts != act.end()) {
+            if (!ts->is_boolean()) return where + ": bad target_must_see_source";
+            d.target_sees_source = ts->get<bool>();
+        }
+    }
     // 7.2y class feature hooks (T&C): the spell@1 control keys, target_creature_types and a control duration.
     if (auto tt = act.find("target_creature_types"); tt != act.end()) {
         if (!tt->is_array() || tt->empty()) return where + ": bad target_creature_types";

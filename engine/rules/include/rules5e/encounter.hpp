@@ -831,6 +831,15 @@ struct ActiveSummonWeapon {
 // Batch 3 (Lich ruling, ghast Stench): "On a successful saving throw, the creature is immune to the ghast's Stench for 24
 // hours." One row per (creature, source, aura spell id), in creation order; until_round = the round of the success + 24 h in
 // rounds (ZoneTriggerRow::success_immunity_hours x 600). Sim Combat::hash 0xDE, folded only while non-empty.
+// appended (Tier-A §26): immunity to a save_effect action after a success (mummy Dreadful Glare). source 0 = from every
+// creature using that action (spell_id); else from that creature only. Expires at until_round. Hashed under 0xE1.
+struct ActionImmunity {
+    CombatantId creature = 0, source = 0;
+    uint32_t spell_id = 0;
+    uint32_t until_round = 0;
+    friend bool operator==(const ActionImmunity&, const ActionImmunity&) = default;
+};
+
 struct AuraImmunity {
     CombatantId creature = 0, source = 0;
     uint32_t spell_id = 0;
@@ -876,6 +885,7 @@ struct EncounterState {
     uint32_t next_item_id = 1;                // item instance ids start at 1 (0 = empty hand)
     bool ground_items_seen = false;           // sticky: a ground item has existed (0xD2 keeps folding after a pick-up)
     std::vector<AuraImmunity> aura_immunities;  // appended (batch 3 ghast Stench): per-source immunity after a success; 0xDE
+    std::vector<ActionImmunity> action_immunities;  // appended (Tier-A §26 Dreadful Glare): 0xE1, folded only when non-empty
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call

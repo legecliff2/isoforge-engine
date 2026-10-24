@@ -734,3 +734,19 @@ attack at use time by the modifier change) and for the two-weapon off-hand.
   (SRD_COMBAT_COVERAGE); it will add situationally, never into the printed number.
 - SRD 5.1 data blocks whose printed passive differs from 10 + Perception (5e-database copy): black bear, blink dog,
   half-red dragon veteran, spider, swarm of ravens. Blink dog ships without the reason until authored.
+
+## 26. Save-effect fail-by margin, success immunity, must see (monster@5, Tier-A)
+
+- `also_on_fail_by: {margin, condition}` (save_effect, monster@5): failing the save by `margin` (1..30) or more ALSO applies
+  `condition` on the same effect entry, so it has the primary's duration and ending the entry (expiry or a successful repeat
+  save) ends both. It differs from gaze `escalate_margin`, which replaces. It needs a tracked primary condition in apply[]
+  (not prone untracked, not until_cured) that differs from it; no escalates / control / area. When the target is immune to
+  the primary condition, the margin still applies `condition` alone (Lich ruling).
+- `immune_on_success: {hours, scope}`: a success makes the target immune to this action for `hours` (1..8760):
+  `same_action` = every creature using this archetype's action (SRD "all mummies"; keyed by the action's spell_id, so a
+  different archetype's glare is a different action), `same_source` = that creature only. State: `EncounterState::action_immunities`,
+  hashed under 0xE1 only when non-empty (separate from the ghast aura 0xDE). An immune target makes no roll.
+- `target_must_see_source: true`: a target that cannot see the user (blinded, or the sight hook) makes no roll and gains no
+  immunity; FeatureTriggered (actor user, target, a = spell_id, c = 3).
+- Exemptions (undead, elves) are authored only where the SRD text says so; Dreadful Glare has none.
+- Mummy Multiattack (glare + fist) is deferred: the glare is its own action (SRD_COMBAT_COVERAGE).
