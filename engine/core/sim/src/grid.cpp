@@ -51,6 +51,17 @@ void Grid::add_chunk(const world::Chunk& c) {
             }
             cells.terrain[ui] = uint8_t((water ? 1 : 0) | (climb ? 2 : 0) | (air && !blocks ? 4 : 0));
         }
+        if (c.elevation_is_ground) {   // altitude PR2: chunk@3 ground + obstacle tops
+            uint8_t g = 0, t = 0;
+            for (const auto& layer : c.layers) {
+                g = std::max(g, layer[ui].elevation);
+                if (layer[ui].flags & world::tile_flags::kBlocksMove) t = std::max(t, layer[ui].elevation);
+            }
+            if (cells.terrain[ui] & 1) { cells.depth[ui] = g; g = 0; }   // water: elevation = depth, surface at 0
+            cells.ground[ui] = g;
+            cells.top[ui] = t;
+            if (g != 0) has_ground_ = true;
+        }
         if (c.layers[0][ui].tile == 0) continue;
         bool blocked = false, diff = false;
         for (const auto& layer : c.layers) {
@@ -74,6 +85,40 @@ const uint8_t* Grid::sight_at(Vec2i p) const noexcept {
     auto it = chunks_.find(k);
     if (it == chunks_.end()) return nullptr;
     return &it->second.sight[std::size_t((p.y - k.second * N) * N + (p.x - k.first * N))];
+}
+
+const Grid::Cells* Grid::cells_at(Vec2i p, std::size_t& idx) const noexcept {
+    const auto k = chunk_of(p);
+    auto it = chunks_.find(k);
+    if (it == chunks_.end()) return nullptr;
+    idx = std::size_t((p.y - k.second * N) * N + (p.x - k.first * N));
+    return &it->second;
+}
+int Grid::ground_ft(Vec2i p) const noexcept {
+    std::size_t i = 0;
+    const Cells* c = cells_at(p, i);
+    return c ? int(c->ground[i]) * kFeetPerTile : 0;
+}
+int Grid::footprint_ground_ft(Vec2i anchor, int n) const noexcept {
+    int g = 0;
+    for (int dy = 0; dy < std::max(n, 1); ++dy)
+        for (int dx = 0; dx < std::max(n, 1); ++dx) g = std::max(g, ground_ft({anchor.x + dx, anchor.y + dy}));
+    return g;
+}
+int Grid::water_depth_ft(Vec2i p) const noexcept {
+    std::size_t i = 0;
+    const Cells* c = cells_at(p, i);
+    return c && water(p) ? int(c->depth[i]) * kFeetPerTile : 0;
+}
+int Grid::obstacle_top_ft(Vec2i p) const noexcept {
+    std::size_t i = 0;
+    const Cells* c = cells_at(p, i);
+    if (!c || c->top[i] == 0) return kFullHeight;
+    return int(c->top[i]) * kFeetPerTile;
+}
+bool Grid::passable_over(Vec2i p, const MoveCaps& caps, int abs_ft) const noexcept {
+    if (enterable(p, caps)) return true;
+    return in_bounds(p) && obstacle_top_ft(p) < abs_ft;   // over a low wall / boulder / pillar
 }
 
 bool Grid::in_bounds(Vec2i p) const noexcept { return walk_at(p) != nullptr; }
@@ -158,9 +203,18 @@ std::vector<Vec2i> Grid::path(Vec2i from, const std::vector<Vec2i>& goals, const
                               int footprint, const MoveCaps& caps) const {
     return path_impl(from, goals, occupied, footprint, &caps);
 }
+std::vector<Vec2i> Grid::path(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied,
+                              int footprint, const MoveCaps& caps, int airborne_abs_ft) const {
+    return path_impl(from, goals, occupied, footprint, &caps, airborne_abs_ft);
+}
 std::vector<Vec2i> Grid::path_impl(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied,
-                                   int footprint, const MoveCaps* caps) const {
-    auto ok = [&](Vec2i t) { return caps ? enterable(t, *caps) : walkable(t); };
+                                   int footprint, const MoveCaps* caps, int airborne_abs_ft) const {
+    const bool air = caps && caps->fly && airborne_abs_ft >= 0;
+    auto ok = [&](Vec2i t) {
+        if (air) return passable_over(t, *caps, airborne_abs_ft);
+        return caps ? enterable(t, *caps) : walkable(t);
+    };
+    const bool vertical = caps && has_ground_;   // chunk@3 ground: vertical costs (flat maps: the old search)
     // Same search as v0 (Dijkstra, ordered set (cost, y, x), fixed neighbour order), over world
     // tiles with sparse bookkeeping so paths cross chunk boundaries.
     using Key = std::pair<int32_t, int32_t>;   // (y, x)
@@ -198,7 +252,15 @@ std::vector<Vec2i> Grid::path_impl(Vec2i from, const std::vector<Vec2i>& goals, 
                     }
                 if (!fits) continue;
             }
-            const int nd = d + (caps ? move_cost_ft(p, q, footprint, *caps) : move_cost_ft(p, q, footprint));
+            int step = caps ? move_cost_ft(p, q, footprint, *caps) : move_cost_ft(p, q, footprint);
+            if (air) {
+                step = kFeetPerTile + std::max(0, footprint_ground_ft(q, footprint) - airborne_abs_ft);
+            } else if (vertical) {
+                const int g0 = footprint_ground_ft(p, footprint), g1 = footprint_ground_ft(q, footprint);
+                if (!caps->fly && ledge_ft(g0, g1) < -kWalkableStepFt) continue;   // never plan a fall
+                step += eng::sim::step_cost_ft(g0, g1, *caps);
+            }
+            const int nd = d + step;
             auto it = dist.find(key(q));
             if (it == dist.end() || nd < it->second) {
                 dist[key(q)] = nd;
