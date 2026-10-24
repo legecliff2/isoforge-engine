@@ -1435,6 +1435,20 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     if (declared == 0)
         if (auto s = doc.find("$schema"); s != doc.end() && s->is_string())
             if (auto ref = assets::parse_schema_ref(s->get<std::string>()); ref && ref->type == schema_type) declared = ref->version;   // another type's tag is not this document's version
+    // Tier-A §25 (Lich ruling): a monster@5 with passive_perception_reason "srd_printed" (top level, beside
+    // proficiency_bonus_reason) keeps the SRD printed senses.passive_perception, which wins over 10 + Perception
+    // (Combatant::passive_perception_override; static, never hashed). Without the reason a mismatch is a validator error and
+    // nothing is stored (derived).
+    if (auto r = doc.find("passive_perception_reason"); r != doc.end()) {
+        if (!r->is_string() || r->get<std::string>() != "srd_printed") return a.id + ": bad passive_perception_reason";
+        if (schema_type != "monster" || (declared != 0 && declared < 5))
+            return a.id + ": passive_perception_reason needs a monster@5 file";
+        const auto se = doc.find("senses");
+        const Json* pp = se != doc.end() && se->is_object() && se->contains("passive_perception") ? &(*se)["passive_perception"] : nullptr;
+        if (!pp || !pp->is_number_integer() || pp->get<int64_t>() < 0 || pp->get<int64_t>() > 60)
+            return a.id + ": bad senses.passive_perception";
+        c.passive_perception_override = int8_t(pp->get<int64_t>());
+    }
     if (auto sc = doc.find("spellcasting"); sc != doc.end() && !inert.count("spellcasting")) {
         static const char* sc_abil[] = {"str", "dex", "con", "int", "wis", "cha"};
         const std::string sc_ab = sc->value("ability", "");

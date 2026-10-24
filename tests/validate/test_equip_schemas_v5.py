@@ -71,7 +71,7 @@ def bugbear5() -> dict:
 
 
 AT5_KEYS = ("derive", "equipment", "natural_armor", "ac_adjust", "weapon_dice_multiplier", "weapons", "hands",
-            "proficiency_bonus_reason", "emits_light")
+            "proficiency_bonus_reason", "emits_light", "passive_perception_reason")
 
 
 def as_monster4(d: dict) -> dict:
@@ -527,6 +527,16 @@ class StructuralChecks(unittest.TestCase):
         b["proficiency_bonus_reason"] = "authored deviation (test)"
         e = errs_of(pack(**{"monsters/bugbear5.json": b}))
         self.assertFalse(any("proficiency_bonus" in x for x in e), e)
+
+    def test_passive_perception_reason(self):   # Tier-A §25 (Lich ruling): mismatch = error unless srd_printed (then a warning)
+        b = bugbear5(); b["senses"]["passive_perception"] += 3
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "senses.passive_perception")
+        b["passive_perception_reason"] = "srd_printed"
+        e, w = h.validate_docs(pack(**{"monsters/bugbear5.json": b}))
+        self.assertFalse(any("passive_perception" in x for x in e), e)
+        self.assertTrue(any("SRD printed value used" in x for x in w), w)
+        b = bugbear5(); b["passive_perception_reason"] = "srd_printed"   # no mismatch: the reason is refused
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "passive_perception_reason given but")
 
     def test_reasons(self):
         b = bugbear5(); b["ac_adjust"] = {"value": 1, "reason": " "}

@@ -355,6 +355,11 @@
       "type": "string",
       "minLength": 1
     },
+    "passive_perception_reason": {
+      "type": "string",
+      "enum": ["srd_printed"],
+      "description": "Tier-A (CONTENT_CONVENTIONS 25): senses.passive_perception is the SRD printed value and differs from 10 + Perception; the printed value wins in the sim (Combatant::passive_perception_override). Without it a mismatch is a validator error."
+    },
     "emits_light": {
       "type": "object",
       "additionalProperties": false,
