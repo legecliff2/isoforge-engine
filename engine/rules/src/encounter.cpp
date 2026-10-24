@@ -2415,7 +2415,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
 // is stopped (mover dead, at 0 HP, or speed 0).
 bool leaving_reach_window(EncounterState& s, Ctx& ctx, Combatant& mover, std::vector<Event>& ev) {
     ReactionWindow w = new_window(s, ctx, ReactionTrigger::LeavingReach, mover.id);
-    if (!may_open(s, w) || mover.disengaged) return true;
+    if (!may_open(s, w) || mover.disengaged || mover.flyby) return true;   // altitude PR3: Flyby never provokes
     auto options_for = [](const Combatant& r) {
         std::vector<ReactionOption> opts;
         for (uint8_t i = 0; i < r.attacks.size(); ++i)

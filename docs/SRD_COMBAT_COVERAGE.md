@@ -729,6 +729,22 @@ Audit of #165's footprints against the SRD size rules.
 | Airborne flyers (`alt_ft > 0`, fly speed, not prone) | done: fly over difficult tiles, lower obstacles and creatures whose vertical span they do not overlap; a flyer stepping off a ledge becomes airborne |
 | Swim depth clamp | done: a vertical move below the surface stops at the water depth (`Grid::water_depth_ft`) |
 
+#### Altitude engine conventions (approved)
+
+The SRD is silent on these; they are documented engine conventions approved by the project owner (the single source
+of truth; other docs and code comments point here):
+
+1. Medium and smaller creatures are 5 ft tall; N×N creatures are N tiles tall.
+2. Zones cover every altitude.
+3. Ground is elevation×5 ft on chunk@3 maps, using the highest point under the footprint; on water, elevation is the depth.
+4. A blocking cell's top is elevation×5 ft; 0 means full height.
+5. A rise of 5 ft or less is free; a rise over 5 ft must be climbed or flown.
+6. Airborne flyers pass over difficult ground, lower obstacles and creatures whose height doesn't overlap theirs; a flyer that steps off a ledge stays airborne.
+7. Swimmers can't descend below the water depth.
+8. Burrowed creatures pass under the surface.
+
+**KNOWN DEVIATION from SRD (fixed by PR4):** a flyer knocked prone stays airborne (the SRD has it fall unless it can hover).
+
 ## 12. Source notes and verification
 
 - **SRD source**: SRD 5.1 (CC-BY-4.0) as mirrored by <https://github.com/5e-bits/5e-database> at commit `a6212be` (`src/2014/en`: Spells, Monsters, Features, Subclasses, Classes, Conditions, Equipment, Weapon-Properties, Rule-Sections, Traits). The published PDF was **not** re-read; the first draft's statement that it was checked against the PDF was inaccurate and is removed.

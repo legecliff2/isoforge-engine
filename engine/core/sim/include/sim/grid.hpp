@@ -45,7 +45,7 @@ constexpr int step_cost_ft(int from_ground_ft, int to_ground_ft, const MoveCaps&
     if (rise <= kWalkableStepFt) return 0;                      // descending, or a step up of 5 ft or less: no extra cost
     return (caps.climb || caps.fly) ? rise : 2 * rise;
 }
-// House rule (altitude design §3): a creature's vertical span is [abs, abs + tiles * 5) ft, where Medium and smaller
+// Engine convention (approved; docs/SRD_COMBAT_COVERAGE.md §11.8): a creature's vertical span is [abs, abs + tiles * 5) ft, where Medium and smaller
 // are 1 tile tall and an N x N creature is N tiles tall.
 constexpr int body_height_ft(int footprint) noexcept { return (footprint < 1 ? 1 : footprint) * kFeetPerTile; }
 constexpr bool spans_overlap(int a_abs_ft, int a_footprint, int b_abs_ft, int b_footprint) noexcept {
@@ -164,6 +164,18 @@ constexpr int rect_distance(Vec2i a, int na, Vec2i b, int nb) noexcept {
     const int dx = a.x > b.x + nb - 1 ? a.x - (b.x + nb - 1) : (b.x > a.x + na - 1 ? b.x - (a.x + na - 1) : 0);
     const int dy = a.y > b.y + nb - 1 ? a.y - (b.y + nb - 1) : (b.y > a.y + na - 1 ? b.y - (a.y + na - 1) : 0);
     return dx > dy ? dx : dy;
+}
+// Altitude PR3 (design §4): the 3D form. za_ft / zb_ft are absolute heights in feet (Combat::abs_height_ft, multiples of 5);
+// each body spans body_height_ft(n) upward (engine convention, docs/SRD_COMBAT_COVERAGE.md §11.8: Medium and smaller 1 tile, N x N creatures N tiles). dz counts the
+// vertical gap in tiles the same way dx / dy count the horizontal one: 0 when the spans overlap, 1 when they touch.
+// Chebyshev max(dx, dy, dz). With za_ft == zb_ft (e.g. both 0) dz is 0 and the result equals the 2D form exactly.
+constexpr int floor_tiles(int ft) noexcept { return ft >= 0 ? ft / kFeetPerTile : -((-ft + kFeetPerTile - 1) / kFeetPerTile); }
+constexpr int rect_distance(Vec2i a, int na, int za_ft, Vec2i b, int nb, int zb_ft) noexcept {
+    const int xy = rect_distance(a, na, b, nb);
+    const int a0 = floor_tiles(za_ft), a1 = a0 + body_height_ft(na) / kFeetPerTile - 1;
+    const int b0 = floor_tiles(zb_ft), b1 = b0 + body_height_ft(nb) / kFeetPerTile - 1;
+    const int dz = a0 > b1 ? a0 - b1 : (b0 > a1 ? b0 - a1 : 0);
+    return xy > dz ? xy : dz;
 }
 // Reach in tiles from feet (5 ft = adjacent).
 constexpr int reach_tiles(int feet) noexcept { return feet / kFeetPerTile; }
