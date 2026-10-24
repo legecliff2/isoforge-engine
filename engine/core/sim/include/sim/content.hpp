@@ -10,6 +10,7 @@
 #include "assets/pack_set.hpp"
 #include "assets/schema_registry.hpp"
 #include "sim/equipment.hpp"
+#include "rules5e/spells.hpp"
 #include "sim/features.hpp"
 #include "rules5e/spells.hpp"
 #include "rules5e/encounter.hpp"
@@ -87,7 +88,11 @@ struct Archetype {
     // R-G7 v0 wield model: bit i set = base.attacks[i] is a versatile melee weapon held in two hands (the stat block carries no
     // shield). The AI sets ActionRequest::two_handed_grip for such attacks unless the creature has a two-weapon bonus option.
     uint32_t two_handed_grip = 0;
-    std::vector<uint32_t> trigger_spell_ids;   // synthetic Save SpellDefs of area_save riders and gaze features (SpellBook only, not spells_known)
+    std::vector<uint32_t> trigger_spell_ids;
+    // batch 3 ghast Stench: monster@5 "aura" traits -> synthetic Zone SpellDefs (built by the hook, registered by
+    // ContentLibrary::add); Combat::create attaches one feature aura per id to each spawn of this archetype.
+    std::vector<rules5e::SpellDef> aura_defs;
+    std::vector<uint32_t> aura_spell_ids;   // synthetic Save SpellDefs of area_save riders and gaze features (SpellBook only, not spells_known)
     std::vector<std::string> forward_compat;         // monster@4 / character@4 "forward_compat" flags: listed, ignored
     CreatureSize size = CreatureSize::Medium;        // stat block "size"
     // Side of the footprint in tiles: footprint_of(size) for monster@3 / character@3, always 1 for
