@@ -3,16 +3,16 @@
 Status: design only. Nothing here is implemented on main. The implementation lands later as its own determinism PR in a
 VERSION_BUMP batch that does nothing else, and Wizard approves its golden regen.
 
-## Problem (evidence, origin/main 7a0e59d)
+## Problem (evidence, refreshed against origin/main 5e38517)
 
 No loader reads a stat block's `skills` object. `Combatant::skill_proficiencies`
 (engine/rules/include/rules5e/types.hpp:510) is never set from content. The only non-test code touching it copies or merges
-it: engine/core/sim/src/combat.cpp:2591, engine/rules/src/encounter.cpp:6373, 6384 and 6403. Only the Python validator reads
-`skills` (tools/validate/validate_packs.py:229-233). `skill_modifier` (engine/rules/include/rules5e/checks.hpp:12) adds
+it: engine/core/sim/src/combat.cpp:2671, engine/rules/src/encounter.cpp:6440, 6451 and 6470. Only the Python validator reads
+`skills` (tools/validate/validate_packs.py:230-234). `skill_modifier` (engine/rules/include/rules5e/checks.hpp:12) adds
 proficiency only when that bit is set. So every monster's skill checks today use the ability modifier alone. That covers
-Hide's Stealth roll (encounter.cpp:5473), passive Perception against hiders (encounter.cpp:5482, checks.hpp:19), surprise
-(encounter.cpp:6272), and the grapple/shove Athletics/Acrobatics contests (encounter.cpp:4638, 4760-4785). Printed totals
-such as the goblin's `"stealth": 6` are dropped, and so are expertise totals. (On the Tier-A stack the same lines sit at
+Hide's Stealth roll (encounter.cpp:5486), passive Perception against hiders (encounter.cpp:5495, checks.hpp:19), surprise
+(encounter.cpp:6339), and the grapple/shove Athletics/Acrobatics contests (encounter.cpp:4648, 4773-4796). Printed totals
+such as the goblin's `"stealth": 6` are dropped, and so are expertise totals. (Historical, from the original 7a0e59d survey: on the Tier-A stack the same lines sit at
 checks.hpp:12-22 and encounter.cpp:5615/5624/6451, with the §25 override in passive_perception.)
 
 ## Rulings
@@ -46,12 +46,12 @@ mismatch means printed passive != 10 + printed Perception (or 10 + Wis mod when 
 
 Result: the same five names as before. Under the engine today (Wis mod only) 167 of the 333 would mismatch. With rule 3
 the only remaining mismatches are blink dog, plus the four where the table carries no Perception skill. Of the five, only
-black bear is authored in srd51.core, and it matches through its printed skill. On origin/main, 0 of the 54 authored
+black bear is authored in srd51.core, and it matches through its printed skill. At origin/main 7a0e59d (historical), 0 of the 54 authored
 monster files mismatch under rule 3.
 
 ## Impact estimate (scratch implementation, discarded)
 
-I implemented rules 1-2 on origin/main 7a0e59d in a throwaway worktree (override mask and value on Combatant, a
+Historical (measured at origin/main 7a0e59d, not re-run on 5e38517): I implemented rules 1-2 on origin/main 7a0e59d in a throwaway worktree (override mask and value on Combatant, a
 `skills` parse for monster documents in ContentLibrary::add, the early return in skill_modifier; main has no
 ability_reduction, so the delta is 0 there). Then I ran the full ctest on linux-clang-release: 48/48 passed, including
 rules golden_tests, the tests/goldens stream goldens, and the sim compat and replay tests. A probe confirmed the change was
