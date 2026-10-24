@@ -1,5 +1,6 @@
 // Offscreen snapshot of one multi-tile creature (2x2, 3x3 or 4x4) with a 1x1 neighbour in front,
-// one behind, and a wall past the front corner. CPU rasteriser, same path as equip_snapshot.
+// one behind, one on the near side, a wall past the front corner, and a wall on the front
+// corner's diagonal (the body overlaps that wall). CPU rasteriser, same path as equip_snapshot.
 // Built with the tests, never run by ctest.
 //   vertical_slice_footprint_snapshot out.ppm <side> [zoom]
 #include <algorithm>
@@ -134,20 +135,28 @@ slice::ViewModel scene(int n) {
     const Vec2i anchor{6, 6};
     const char* name = n == 2 ? "LARGE" : n == 3 ? "HUGE" : "GARGANTUAN";
     slice::ViewModel vm;
-    const Vec2i wall{anchor.x + n, anchor.y + n - 1};
+    const Vec2i wall{anchor.x + n, anchor.y + n - 1};          // strictly past the front corner
+    // Same tile sum as the front corner, so a body sorted on that corner ties this wall and
+    // then paints over it (actor z > wall z). The centre sample puts the wall in front.
+    const Vec2i side_wall{anchor.x + n, anchor.y + n - 2};
     const Vec2i front{anchor.x + n - 1, anchor.y + n};
     const Vec2i back{anchor.x - 1, anchor.y + n / 2};
+    // East of the footprint, one step in front of the centre. For a 2x2 that tile is the
+    // side wall; step clear of it.
+    Vec2i side{anchor.x + n, anchor.y};
+    if (side == side_wall) side.x += 1;
     for (int y = anchor.y - 3; y <= anchor.y + n + 3; ++y)
         for (int x = anchor.x - 3; x <= anchor.x + n + 3; ++x) {
             slice::TileView t;
             t.tile = {x, y};
-            if (t.tile == wall) { t.kind = slice::TileKind::Wall; t.layer = 2; }
+            if (t.tile == wall || t.tile == side_wall) { t.kind = slice::TileKind::Wall; t.layer = 2; }
             else t.kind = ((x + y) & 1) ? slice::TileKind::Floor : slice::TileKind::Rubble;
             vm.tiles.push_back(t);
         }
     vm.actors.push_back(pawn(1, "BACK", back, 1, false, false));
     vm.actors.push_back(pawn(2, name, anchor, n, true, false));
     vm.actors.push_back(pawn(3, "FRONT", front, 1, false, true));
+    vm.actors.push_back(pawn(4, "SIDE", side, 1, false, false));
     vm.status = std::string(name) + " " + std::to_string(n) + "x" + std::to_string(n);
     return vm;
 }

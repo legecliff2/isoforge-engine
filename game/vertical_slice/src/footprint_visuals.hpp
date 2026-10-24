@@ -4,17 +4,23 @@
 // ActorView::tile (the anchor, min-x / min-y) and ActorView::footprint (the side). It does not
 // consume SimEvent::Kind::Footprint; that event is a log, and the snapshot copies the live side.
 //
-// Depth. SpriteBatch::draw passes one iso position to make_sort_key, and that key's depth is
-// iso.x + iso.y. This file does not change the key. sort_iso is the front-most footprint tile
-// (maximum x+y), so a body or a base ring drawn there paints after every tile of its own
-// footprint and before anything strictly in front of that corner. A sprite authored on the
-// anchor tile's top is shifted by centre_anchor_y — screen y only, because the centre and the
-// front tile share x-y — so the art still sits on the footprint centre.
+// Depth. SpriteBatch::draw can project one iso point and sort by another. sort_iso is the
+// front-most footprint tile (maximum x+y). Ground rings are drawn and sorted there, so a
+// layer-0 decal paints after every floor of the footprint and before a tile strictly past
+// that corner. A sprite authored on the anchor tile's top is shifted by centre_anchor_y —
+// screen y only, because the centre and the front tile share x-y — so the art still sits on
+// the footprint centre.
 //
-// One sprite still has one depth. A neighbour whose tile sums to less than the front corner,
-// but who stands in front of the visual centre, sorts behind the whole quad. Giving draw
-// position and sort position separate fields would be an iso2d change (make_sort_key /
-// sprite_batch) and is intentionally not done here.
+// The creature volume (body, equipment, outline) is drawn on that same anchor and sorted at
+// centre_iso (actor_sort_iso). That is the reference a 1x1 already uses: its tile. A neighbour
+// whose tile sum is past the centre draws over the whole volume, including one who is still
+// behind the front corner. Side 1: centre_iso == sort_iso and the slide is 0, so the key and
+// the pixels match the old 1x1 draw.
+//
+// One sprite still has one depth. Someone in front of the centre covers the whole quad, and
+// someone behind it is covered by the whole quad, even where the quad sticks the other way.
+// Slicing the body per tile is not done here. Altitude is not applied; a later flying term
+// subtracts height in tiles from the sort depth inside make_sort_key, without moving the anchor.
 
 #include <algorithm>
 
@@ -27,7 +33,7 @@ inline int footprint_side(int n) noexcept { return n < 1 ? 1 : n; }
 
 struct FootprintGeom {
     int n = 1;
-    eng::Vec2f sort_iso{};        // front tile; make_sort_key depth = x + y
+    eng::Vec2f sort_iso{};        // front tile; ground rings sort at x + y
     eng::Vec2f centre_iso{};      // iso point the 1x1 pawn anchor treats as the tile top
     float centre_anchor_y = 0.f;  // added to anchor_y when the sprite is drawn at sort_iso
     eng::Vec2i centre_tile{};     // integer light sample: anchor + (n - 1) / 2
@@ -38,6 +44,9 @@ struct FootprintGeom {
     float ring_w = 0.f, ring_h = 0.f;
     float ring_anchor_x = 0.f, ring_anchor_y = 0.f;   // diamond top on the anchor tile's top
 };
+
+// Sort sample for the creature volume. Ground decals stay on sort_iso. Side 1 returns the tile.
+inline eng::Vec2f actor_sort_iso(const FootprintGeom& g) noexcept { return g.centre_iso; }
 
 inline FootprintGeom footprint_geom(eng::Vec2i anchor, int side, float tile_w, float tile_h) noexcept {
     FootprintGeom g;
