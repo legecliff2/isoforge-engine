@@ -71,6 +71,6 @@ Per cell (chunk@3), over the 4 layers:
 Walking step from ground `a` to ground `b` (Python mirrors: `tools/validate/validate_packs.py`
 `ledge_ft` / `step_extra_ft`; C++ `eng::sim::ledge_ft` / `eng::sim::step_cost_ft` in `sim/grid.hpp`):
 - `ledge_ft(a, b) = b - a` (signed rise; negative = drop).
-- extra movement: descending (`rise <= 0`) costs nothing extra. A step up of 5 ft or less costs **+5 ft**
-  (**HOUSE RULE**, not SRD 5.1). A rise above 5 ft is a climb: `rise` with a climb or fly speed, else `2 * rise`.
+- extra movement: descending (`rise <= 0`) and a step up of 5 ft or less cost nothing extra.
+  A rise above 5 ft is a climb: `rise` with a climb or fly speed, else `2 * rise`.
   A drop of more than 5 ft is a **fall** (a flyer becomes airborne instead).

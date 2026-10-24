@@ -34,8 +34,7 @@ inline constexpr int kPathBurrowed = -1000;
 //   ground_ft(tile)  = 5 * max elevation over the cell's layers, only for chunk@3 (0 for chunk@1 / chunk@2).
 //   ledge_ft(a, b)   = b - a: the signed rise in feet from ground a to ground b (negative = a drop).
 //   step_cost_ft(a, b, caps) = EXTRA feet for a step from ground a to ground b, on top of the tile cost:
-//     0 < rise <= 5 (kWalkableStepFt): +5 ft. HOUSE RULE (not SRD; docs/CHUNK_HASH.md, SRD_COMBAT_COVERAGE 11.8);
-//     descent (rise <= 0) of any size: 0 - going down costs nothing extra;
+//     rise <= 5 (kWalkableStepFt), including any descent: 0 - a step up of 5 ft or less or going down costs nothing extra;
 //     rise  > 5: a climb: rise with a climb or fly speed, else 2 * rise (SRD climbing without a climb speed);
 //     drop  > 5: 0 - the mover falls (walker) or becomes airborne (flyer); the sim records it, pathing avoids it
 //                for non-flyers.
@@ -43,8 +42,7 @@ inline constexpr int kWalkableStepFt = 5;
 constexpr int ledge_ft(int from_ground_ft, int to_ground_ft) noexcept { return to_ground_ft - from_ground_ft; }
 constexpr int step_cost_ft(int from_ground_ft, int to_ground_ft, const MoveCaps& caps) noexcept {
     const int rise = ledge_ft(from_ground_ft, to_ground_ft);
-    if (rise <= 0) return 0;                                    // descending: no extra cost
-    if (rise <= kWalkableStepFt) return kWalkableStepFt;        // HOUSE RULE: +5 ft for a step up of 5 ft or less
+    if (rise <= kWalkableStepFt) return 0;                      // descending, or a step up of 5 ft or less: no extra cost
     return (caps.climb || caps.fly) ? rise : 2 * rise;
 }
 // House rule (altitude design §3): a creature's vertical span is [abs, abs + tiles * 5) ft, where Medium and smaller
