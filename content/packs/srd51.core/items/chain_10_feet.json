@@ -1,0 +1,13 @@
+{
+  "$schema": "item@2",
+  "id": "srd51.item.chain_10_feet",
+  "name": "Chain (10 feet)",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "gear",
+  "cost_cp": 500,
+  "weight_oz": 160,
+  "description": "A chain has 10 hit points. It can be burst with a successful DC 20 Strength check."
+}
