@@ -359,8 +359,8 @@ class SpellTable(unittest.TestCase):
     def test_spell_batch_zi_packs(self):
         # Rules #283 (7.2zi): the srd51 packs carry the specimens' mechanics (tests/validate/fixtures/spell_batch_zi)
         fx = ROOT / "tests/validate/fixtures/spell_batch_zi"
-        for idx in ("spare-the-dying", "true-strike", "protection-from-poison", "ray-of-enfeeblement",
-                    "beacon-of-hope", "warding-bond"):
+        for idx in ("spare-the-dying", "true-strike", "expeditious-retreat", "protection-from-poison",
+                    "ray-of-enfeeblement", "beacon-of-hope", "warding-bond"):
             with self.subTest(spell=idx):
                 spec = json.loads((fx / f"{idx.replace('-', '_')}.json").read_text(encoding="utf-8"))
                 d = load(idx)
@@ -387,8 +387,12 @@ class SpellTable(unittest.TestCase):
         self.assertFalse(wb["components"]["m"]["consumed"])
         self.assertNotIn("concentration", wb["duration"])
         self.assertIn("dismissing the spell as an action", wb["description"])   # not modelled; said in the pack
-        # Expeditious Retreat stays deferred: the SRD Dash on the cast is not modelled (7.2zi bonus_dash is later turns only)
-        self.assertFalse((PACK / "spells" / "expeditious_retreat.json").exists())
+        # Expeditious Retreat (Rules #285): dash_on_cast is the Dash on the cast; bonus_dash covers later turns
+        er = load("expeditious-retreat")
+        self.assertEqual(er["effects"], [{"kind": "apply_modifier", "dash_on_cast": True,
+                                          "modifier": {"stat": "bonus_dash", "applies_to": "self",
+                                                       "duration": {"kind": "rounds", "n": 600}}}])
+        self.assertEqual(er["classes"], ["sorcerer", "warlock", "wizard"])
 
     def test_spell_batch_zi(self):
         # Rules 7.2zi: mechanics only. Content packs are T&C; specimens live in tests/validate/fixtures/spell_batch_zi.
@@ -406,6 +410,9 @@ class SpellTable(unittest.TestCase):
         self.assertEqual(strike["effects"][0]["modifier"]["stat"], "attack_roll")
         self.assertEqual(strike["effects"][0]["modifier"]["applies_to"], "self")
         self.assertEqual(retreat["effects"][0]["modifier"]["stat"], "bonus_dash")
+        self.assertEqual(retreat["effects"][0]["dash_on_cast"], True)
+        self.assertEqual(retreat["effects"][0]["modifier"]["applies_to"], "self")
+        self.assertEqual(retreat["classes"], ["sorcerer", "warlock", "wizard"])
         self.assertEqual(retreat["casting_time"], {"kind": "bonus_action"})
         self.assertEqual(poison["effects"][0], {"kind": "end_condition", "conditions": ["poisoned"]})
         self.assertEqual(poison["effects"][2]["save_vs_conditions"], ["poisoned"])
@@ -427,6 +434,8 @@ class SpellTable(unittest.TestCase):
                     "effect hit_only and damage together",
                     "effect on_next_turn must be true",
                     "effect on_next_turn needs an attack_roll modifier",
+                    "effect dash_on_cast must be true",
+                    "effect dash_on_cast needs a bonus_dash modifier on self",
                     "effect save_vs_conditions needs a save modifier with a mode",
                     "effect save_vs_conditions must be a non-empty list of conditions",
                     "effect save_vs_conditions items must be unique",
@@ -448,7 +457,7 @@ class SpellTable(unittest.TestCase):
             self.assertIn(f'"{msg}"', encounter, msg)
         keys_hpp = (ROOT / "engine/rules/content/src/spell_keys_zi.hpp").read_text(encoding="utf-8")
         checks = (ROOT / "tools/validate/checks_v4.py").read_text(encoding="utf-8")
-        for val in ("stabilize", "hit_only", "on_next_turn", "bonus_dash", "save_vs_conditions",
+        for val in ("stabilize", "hit_only", "on_next_turn", "bonus_dash", "dash_on_cast", "save_vs_conditions",
                     "halve_weapon_damage", "death_saves", "heal_maximum", "share_damage", "all_damage",
                     "end_beyond_ft", "end_at_zero", "caster"):
             self.assertIn(f'"{val}"', keys_hpp, val)
