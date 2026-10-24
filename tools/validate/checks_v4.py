@@ -2092,6 +2092,7 @@ def check_spell_batch_zh(doc: dict) -> list[str]:
 
 # ---- VERSION_BUMP_BATCH 7.2zi: the spell@1 key names of this batch, in one place (rules5e_content spell_keys_zi.hpp) ----------
 ZI_KEYS = {"stabilize": "stabilize", "hit_only": "hit_only", "on_next_turn": "on_next_turn", "bonus_dash": "bonus_dash",
+           "dash_on_cast": "dash_on_cast",
            "save_vs_conditions": "save_vs_conditions", "halve_weapon_damage": "halve_weapon_damage",
            "death_saves": "death_saves", "heal_maximum": "heal_maximum", "share_damage": "share_damage",
            "all_damage": "all_damage", "end_beyond_ft": "end_beyond_ft", "end_at_zero": "end_at_zero", "caster": "caster"}
@@ -2117,6 +2118,12 @@ def check_spell_batch_zi(doc: dict) -> list[str]:
                 errs.append(f"{pre}effect on_next_turn must be true")
             elif m.get("stat") != "attack_roll":
                 errs.append(f"{pre}effect on_next_turn needs an attack_roll modifier")
+        if ZI_KEYS["dash_on_cast"] in e:
+            applies = m.get("applies_to", "target")
+            if e[ZI_KEYS["dash_on_cast"]] is not True:
+                errs.append(f"{pre}effect dash_on_cast must be true")
+            elif m.get("stat") != ZI_KEYS["bonus_dash"] or applies != "self":
+                errs.append(f"{pre}effect dash_on_cast needs a bonus_dash modifier on self")
         if ZI_KEYS["save_vs_conditions"] in e:
             cv = e[ZI_KEYS["save_vs_conditions"]]
             if m.get("stat") != "save" or "mode" not in m:
