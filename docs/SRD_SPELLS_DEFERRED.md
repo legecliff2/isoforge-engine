@@ -160,7 +160,7 @@ Spell batch zh rules (7.2zh, Rules #276). Pinned by `tests/validate/test_srd51_s
 | spell | level | `spell@1` shape | notes |
 |---|---|---|---|
 | Branding Smite | 2 | `weapon_smite` 2d6 radiant, `reveal_invisible`, `light {dim_ft 5}`; bonus action, self, concentration 1 minute; `upcast.dice 1` | paladin (5); first effect only; brands on the next weapon-attack hit (not a spell attack); a crit doubles the dice |
-| Heat Metal | 2 | `sustained_damage` 2d8 fire + `held_object {save con, on_fail drop, while_held {disadvantage [attack_rolls, ability_checks], until start_of_caster_next_turn}}`; concentration 1 minute; `upcast.dice 1` | bard (3-5), druid (4-5); v1 metal is Weapon/Armor/Shield (worn armor cannot drop) |
+| Heat Metal | 2 | `sustained_damage` 2d8 fire + `held_object {save con, on_fail drop, while_held {disadvantage [attack_rolls, ability_checks], until start_of_caster_next_turn}}`; concentration 1 minute; `upcast.dice 1` | bard (3-5), druid (4-5); metal is item material `metal` on a weapon, armor, or shield (absent is not; worn armor cannot drop) |
 | Flame Blade | 2 | `summon_weapon` `held` 3d6 fire, `upcast_every 2`, `reach_ft 5`, `light {bright_ft 10, dim_ft 10}`; bonus action, self, concentration 10 minutes | druid (4-5); free hand to cast; later attacks spend the action; no `move_ft`, no `add_spellcasting_modifier` |
 
 ## Authored: Entangle (1)

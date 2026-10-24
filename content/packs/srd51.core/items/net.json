@@ -4,6 +4,7 @@
   "name": "Net",
   "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
   "category": "weapon",
+  "material": "rope",
   "cost_cp": 100,
   "weight_oz": 48,
   "weapon_class": "martial",

@@ -899,6 +899,19 @@ TEST_CASE("equipment end-to-end: a scripted combat replays identically and match
     CHECK(a.events == 12810335167693045063ull);
 }
 
+TEST_CASE("ItemDefTable: material loads and an absent field is not metal") {
+    ItemDefTable t;
+    REQUIRE_FALSE(t.add(assets::Json::parse(
+        R"({"id":"test.item.longsword","category":"weapon","material":"metal","weapon_class":"martial","damage":[{"dice":"1d8","type":"slashing"}]})")));
+    REQUIRE_FALSE(t.add(assets::Json::parse(
+        R"({"id":"test.item.club","category":"weapon","material":"wood","weapon_class":"simple","damage":[{"dice":"1d4","type":"bludgeoning"}]})")));
+    REQUIRE_FALSE(t.add(assets::Json::parse(
+        R"({"id":"test.item.bare","category":"weapon","weapon_class":"simple","damage":[{"dice":"1d4","type":"bludgeoning"}]})")));
+    CHECK(t.find("test.item.longsword")->material == rules5e::ItemMaterial::Metal);
+    CHECK(t.find("test.item.club")->material == rules5e::ItemMaterial::Wood);
+    CHECK(t.find("test.item.bare")->material == rules5e::ItemMaterial::Absent);
+}
+
 TEST_CASE("ItemDefTable: a duplicate add is an error result and leaves the first definition intact") {
     ItemDefTable t;
     const auto doc = assets::Json::parse(R"({"$schema": "item@2", "id": "test.item.lamp", "name": "Lamp", "category": "gear",

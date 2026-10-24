@@ -58,6 +58,23 @@ WEAPONS = [
     ('warhammer', 'martial', 5, None, '1d8 bludgeoning', '1d10 bludgeoning', ('versatile',), 1500, 32),
     ('whip', 'martial', 10, None, '1d4 slashing', None, ('finesse', 'reach'), 200, 48),
 ]
+# item material (Heat Metal). SRD prose names padded (cloth), leather, hide (furs), chain, scale, breastplate, half plate,
+# splint and plate. Every other value is a construction call recorded in the commit that filled these in. Absent is not
+# a value here: every srd51 weapon, armor and shield sets one.
+MATERIAL = {
+    'battleaxe': 'metal', 'blowgun': 'wood', 'club': 'wood', 'crossbow_hand': 'metal', 'crossbow_heavy': 'metal',
+    'crossbow_light': 'metal', 'dagger': 'metal', 'dart': 'metal', 'flail': 'metal', 'glaive': 'metal',
+    'greataxe': 'metal', 'greatclub': 'wood', 'greatsword': 'metal', 'halberd': 'metal', 'handaxe': 'metal',
+    'javelin': 'metal', 'lance': 'metal', 'light_hammer': 'metal', 'longbow': 'wood', 'longsword': 'metal',
+    'mace': 'metal', 'maul': 'metal', 'morningstar': 'metal', 'net': 'rope', 'pike': 'metal',
+    'quarterstaff': 'wood', 'rapier': 'metal', 'scimitar': 'metal', 'shortbow': 'wood', 'shortsword': 'metal',
+    'sickle': 'metal', 'sling': 'leather', 'spear': 'metal', 'trident': 'metal', 'war_pick': 'metal',
+    'warhammer': 'metal', 'whip': 'leather',
+    'breastplate': 'metal', 'chain_mail': 'metal', 'chain_shirt': 'metal', 'half_plate_armor': 'metal',
+    'hide_armor': 'hide', 'leather_armor': 'leather', 'padded_armor': 'cloth', 'plate_armor': 'metal',
+    'ring_mail': 'metal', 'scale_mail': 'metal', 'shield': 'metal', 'splint_armor': 'metal',
+    'studded_leather_armor': 'leather',
+}
 # (local_id, armor_category | 'shield', base_ac (shield: ac_bonus), dex_bonus, dex_cap, str_min, stealth_disadvantage, cost_cp, weight_oz)
 ARMOR = [
     ('breastplate', 'medium', 14, True, 2, 0, False, 40000, 320),
@@ -194,6 +211,7 @@ class Srd51Equipment(unittest.TestCase):
                 self.assertEqual(dmg_text(d["versatile_damage"][0]) if "versatile_damage" in d else None, vers)
                 self.assertEqual(tuple(d.get("properties", [])), props)
                 self.assertEqual((d["cost_cp"], d["weight_oz"]), (cost, oz))
+                self.assertEqual(d["material"], MATERIAL[lid])
                 self.assertEqual(reach == 10, "reach" in props)
                 self.assertEqual("versatile" in props, vers is not None)
                 self.assertEqual("damage" in d, "special" not in props or lid == "lance")
@@ -204,6 +222,7 @@ class Srd51Equipment(unittest.TestCase):
                 d = load(lid)
                 self.assertEqual((d["$schema"], d["id"]), ("item@1", f"srd51.item.{lid}"))
                 self.assertEqual((d["cost_cp"], d["weight_oz"]), (cost, oz))
+                self.assertEqual(d["material"], MATERIAL[lid])
                 if cat == "shield":
                     self.assertEqual((d["category"], d["ac_bonus"]), ("shield", ac))
                     continue
