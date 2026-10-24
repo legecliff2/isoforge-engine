@@ -166,6 +166,19 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
         add_test(NAME content_validate_equipment
                  COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_srd51_equipment.py"
                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        # Spell batch / imbue-mirror unittest files.
+        add_test(NAME content_validate_spell_batch3
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_spell_batch3.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(NAME content_validate_spell_batch_zg
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_spell_batch_zg.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(NAME content_validate_spell_batch_zi
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_spell_batch_zi.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(NAME content_validate_spell_imbue_mirror
+                 COMMAND "${_venv_py}" "${_ut_runner}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate/test_spell_imbue_mirror.py"
+                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         # Pure-Python validator tests: no compiled code involved, so the result cannot differ by
         # compiler or build type. CI runs them in the Debug jobs and skips them (ctest -LE python_only)
         # in the Release jobs to save minutes. content_validate itself is NOT labelled: it runs the
@@ -174,6 +187,7 @@ if(ENGINE_BUILD_TESTS AND ENGINE_CONTENT_VALIDATE)
                              content_validate_lint content_validate_arms content_validate_migrations
                              content_validate_srd51_monsters content_validate_srd51_classes
                              content_validate_srd51_spells content_validate_v4 content_validate_equipment
+                             content_validate_spell_batch3 content_validate_spell_batch_zg content_validate_spell_batch_zi content_validate_spell_imbue_mirror
                              PROPERTIES LABELS python_only)
         # Procedurally generated chunks must pass the same validator (schema + content_hash).
         if(TARGET procgen_dump)
