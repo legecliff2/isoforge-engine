@@ -29,8 +29,8 @@ TEST_CASE("static view: chunk tiles, walls and both spawns through the world mod
     REQUIRE(v.actors.size() == 2);
     bool fighter = false, goblin = false;
     for (auto& a : v.actors) {
-        fighter |= a.name == "FIGHTER" && a.is_pc && a.tile == eng::Vec2i{10, 15} && a.hp_max > 0;
-        goblin |= a.name == "GOBLIN" && !a.is_pc && a.tile == eng::Vec2i{20, 15} && a.hp_max > 0;
+        fighter |= a.name == "FIGHTER" && a.is_pc && a.tile == eng::Vec2i{10, 15} && a.hp_max > 0 && a.footprint == 1;
+        goblin |= a.name == "GOBLIN" && !a.is_pc && a.tile == eng::Vec2i{20, 15} && a.hp_max > 0 && a.footprint == 1;
     }
     CHECK(fighter);
     CHECK(goblin);
@@ -44,6 +44,7 @@ TEST_CASE("sim view: stepping the headless fight to the end updates the snapshot
     ViewModel v0 = s->view();
     CHECK(v0.sim_live);
     CHECK_FALSE(v0.turn.empty());
+    for (const ActorView& a : v0.actors) CHECK(a.footprint == 1);   // sample fight is Medium; side comes from Combat
     int steps = 0;
     while (!s->ended() && steps < 5000 && s->step()) ++steps;
     CHECK_MESSAGE(s->error().empty(), s->error());

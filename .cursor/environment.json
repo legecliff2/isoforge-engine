@@ -1,0 +1,4 @@
+{
+  "name": "isoforge-engine",
+  "install": "bash .cursor/install.sh"
+}

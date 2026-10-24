@@ -1,4 +1,4 @@
-# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G11 zones, R-G8 grapple rider, R-G15 spell kinds, priced materials, R-G16 encounter surprise, slot recovery)
+# Content conventions the sim compiles (timed modifiers, bonus-attack options, R-G7 reactions and feature kinds, R-G11 zones, R-G8 grapple rider, R-G15 spell kinds, priced materials, R-G16 encounter surprise, slot recovery, headless scenario@1)
 
 Owner: Tools & Content. Source of truth is the C++ loader; this file records what it reads and what the validator checks.
 All numbers are integers.
@@ -773,6 +773,31 @@ Heat Metal and rust-type effects key off `manufactured_metal()`. The predicate i
 A weapon with a metal head or blade counts as a manufactured metal object. The spear and the javelin are `metal`, matching the pike, the halberd, the glaive, the lance, and the crossbows. All-wood or otherwise non-metal gear stays non-metal: club, greatclub, quarterstaff, shortbow, longbow, sling, blowgun, a dart when it is all wood (otherwise `metal`; the srd51 dart is metal), whip (`leather`) and net (`rope`), and padded, leather, studded leather, and hide armor. The generic shield is `metal` (the SRD allows wood or metal; metal is the default, so the shield is a Heat Metal target). srd51.core sets the key on every weapon, armor, and shield (`tests/validate/test_srd51_equipment.py` `MATERIAL`).
 
 Versioning: appended, no tag change, no migration, no `api_level` gate. The field is not hashed, so goldens are unchanged. The justification and the Elf (tools/content) sign-off are in `docs/proposals/VERSION_BUMP_BATCH.md` (7.2zh follow-up).
+
+§20-21, §23 and §25-27 are reserved for in-flight branches.
+
+## 24. Headless encounter scenarios (`scenario@1`)
+
+Not a pack document and not a migrated content type. The C++ `SchemaRegistry` does not register it. `tools/validate/validate_packs.py` loads `schemas/scenario/v1.schema.json` on the default `content_validate` run (no pack arguments) and checks each `scenarios/<name>/scenario.json`. `tools/encounter_runner` parses the file itself. See `tools/encounter_runner/README.md`.
+
+| field | rule |
+|---|---|
+| `id` | dotted id, unique under `scenarios/` |
+| `seed` | integer 0 .. 2^64-1. The encounter RNG seed |
+| `pack` | pack id under `content/packs`. Archetypes resolve through that pack and its depends |
+| `board` | exactly one of `chunk` (pack-relative `chunk@` file, no `..`) or `map` (open 32×32 floor, optional `blocked` tiles that block move and sight) |
+| `party`, `monsters` | at least one each. `id`, `archetype`, `tile` `{x,y}` in 0..31, optional `team` (default `party` / `monsters`). Party archetypes are characters; monster archetypes are monsters. Ids and tiles are unique. At least two teams |
+| `surprise` | roster ids, or `{hiders: [{who, stealth}]}` (`stealth` is a Dexterity (Stealth) total, -32768..32767). An empty array surprises nobody |
+| `end_condition` | `teams` (a team with nobody conscious), `no_pc_conscious`, or `no_pc_or_no_opponent` |
+| `round_cap` | integer 1..10000 |
+
+Roster order is party, then monsters. Stable ids are `spawn_stable_id(chunk coord, index)` in that order. A chunk file's own spawns are replaced. An open map is chunk coord `(0,0,0)`.
+
+The runner applies surprise before the first command, then `sim::set_scenario_end`. The built-in policy runs first. Round cap: when `round_cap != 0` and `state.round > round_cap`, and the built-in policy returned nothing, the outcome is `EndReason::Custom` (a cap of N fires at the start of round N+1). `ScenarioEnd` is replay input (`replay(..., surprised_at_start(), scenario_end())`). It is not an input to `Combat::hash`. The `EncounterEnded` event it emits (`a` = `EndReason`) is folded with the rest of the event stream, so a custom end changes the digest only through that event.
+
+Both sides use `sim::NearestEnemyPolicy`. The same seed and pack contents print the same stdout. `golden.txt` is that stdout without `--log`, LF. `encounter_scenario_<name>` runs it twice against the golden.
+
+Directory name: `^[a-z][a-z0-9_]*$`. Integers only. `golden.txt` must be non-empty. Explicit pack arguments to the validator skip this check, so the pack summary line is unchanged.
 
 ## 28. Text-only spell effect `descriptive` (spell@1)
 

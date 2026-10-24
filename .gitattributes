@@ -1,3 +1,5 @@
 # Frozen corpus: byte-exact on every OS (checked by compat_freeze).
 tests/compat/** -text
 engine/core/script_host/api/*.d.luau -text
+# Encounter goldens are compared byte-for-byte (LF) by encounter_scenario_* tests.
+scenarios/**/golden.txt text eol=lf

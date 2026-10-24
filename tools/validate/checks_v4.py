@@ -703,6 +703,25 @@ def check_sim172_174(doc: dict) -> tuple[list[str], list[str]]:
 
 
 
+GRAPPLE_RIDER_KEYS = ("restrains", "exclusive", "max_grapples")
+
+
+def check_grapple_rider(doc: dict) -> tuple[list[str], list[str]]:
+    """Druid gap G: on_hit grapple riders' restrains / exclusive / max_grapples (common@2 additive) load only for monster@5
+    (the loader reads them on any weapon attack; the validator keeps them to monster@5 like the Director's ruling)."""
+    errs: list[str] = []
+    schema = str(doc.get("$schema", ""))
+    is_m5 = schema.split("@")[0] == "monster" and schema.split("@")[-1].startswith("5")
+    for path, a in mechanical_actions(doc):
+        for j, r in enumerate(a.get("on_hit") or []):
+            if not is_grapple(r):
+                continue
+            used = [k for k in GRAPPLE_RIDER_KEYS if k in r]
+            if used and not is_m5:
+                errs.append(f"{path}/on_hit/{j}: grapple {', '.join(used)} need monster@5 (Druid gap G)")
+    return errs, []
+
+
 GAZE_KEYS = frozenset({"kind", "range_ft", "save", "condition", "repeat_save", "escalates", "escalate_to", "escalate_margin"})
 GAZE_CONDITIONS = frozenset({"blinded", "charmed", "deafened", "frightened", "grappled", "incapacitated", "invisible",
                              "paralyzed", "petrified", "poisoned", "prone", "restrained", "stunned", "unconscious",
