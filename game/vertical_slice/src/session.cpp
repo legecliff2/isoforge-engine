@@ -1,5 +1,6 @@
 #include "session.hpp"
 
+#include "debug_cover.hpp"
 #include "event_feed.hpp"
 
 #include <algorithm>
@@ -526,6 +527,40 @@ uint32_t Session::current_actor() const {
     const Impl& m = *impl_;
     if (!m.combat || m.combat->ended()) return 0;
     return rules5e::current_actor(m.combat->state());
+}
+
+std::vector<uint32_t> Session::living_ids() const {
+    std::vector<uint32_t> out;
+    if (!impl_->combat) return out;
+    for (const rules5e::Combatant& cb : impl_->combat->state().combatants)
+        if (!cb.dead && !cb.gone) out.push_back(cb.id);
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+uint32_t Session::suggested_target(uint32_t self) const {
+    if (!impl_->combat || self == 0) return 0;
+    sim::NearestEnemyPolicy policy;   // stateless; the same pick the turn driver stores on a new turn
+    if (const auto t = policy.choose_target(*impl_->combat, self)) return *t;
+    return 0;
+}
+
+bool Session::last_aim_tile(uint32_t actor, Vec2i* out) const {
+    if (!impl_->combat || actor == 0) return false;
+    const auto& log = impl_->combat->log();
+    for (auto it = log.rbegin(); it != log.rend(); ++it) {
+        const rules5e::ActionRequest& q = it->step.request;
+        if (q.actor == actor && q.has_area_origin) {
+            if (out) *out = {q.area_x, q.area_y};
+            return true;
+        }
+    }
+    return false;
+}
+
+CoverDebugView Session::query_cover(uint32_t attacker, uint32_t target, bool aim, Vec2i aim_tile) const {
+    if (!impl_->combat) return {};
+    return cover_probe(*impl_->combat, attacker, target, aim, aim_tile);
 }
 
 bool Session::paused() const { return impl_->combat && impl_->combat->pending().has_value(); }
