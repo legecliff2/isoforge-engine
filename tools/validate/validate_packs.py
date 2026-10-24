@@ -411,6 +411,12 @@ TIMED_BY_DURATION = ("hp_pool", "sustained_damage")   # their timer is the spell
 def check_spell(doc, errs, ctx):
     """Cross-checks for spell@1 that the schema can't express. rules5e_content (spell_loader.cpp)
     enforces the same rules with the same wording; keep them in sync."""
+    # descriptive: no key but kind, and the spell's only effect. Same order as spell_loader.cpp
+    # (unknown key on effects[0] before the only-effect check). Empty effects stay a schema error.
+    desc = c4.check_spell_descriptive(doc)
+    if desc:
+        errs += desc
+        return
     lvl, effs, ct = doc["level"], doc["effects"], doc["casting_time"]
     errs += c4.check_spell_modifiers(doc)
     errs += c4.check_spell_gaps(doc)   # 7.2zc

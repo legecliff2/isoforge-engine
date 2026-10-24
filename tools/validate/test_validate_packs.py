@@ -599,6 +599,78 @@ class CreatureFacts(unittest.TestCase):
         self.assertTrue(any("'yes' is not of type 'boolean'" in e for e in errs), errs)
 
 
+class SpellDescriptive(unittest.TestCase):
+    """Text-only spell@1 kind descriptive. The schema oneOf allows only kind; the validator mirrors the loader."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.registry, cls.by_tag = vp.load_registry()
+        cls.attribution = json.loads((CORE / "manifest.json").read_text(encoding="utf-8"))["attribution"]
+
+    run_docs = SpellKindsR120.run_docs
+
+    def spell(self, effects):
+        return {
+            "$schema": "spell@1",
+            "id": "test.kinds.spell.light",
+            "name": "Light",
+            "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
+            "level": 0,
+            "school": "evocation",
+            "casting_time": {"kind": "action"},
+            "range": {"kind": "touch"},
+            "components": {"v": True},
+            "duration": {"kind": "instantaneous"},
+            "effects": effects,
+        }
+
+    def test_schema_oneOf_allows_only_kind(self):
+        eff = json.loads((vp.ROOT / "schemas/spell/v1.schema.json").read_text(encoding="utf-8"))["$defs"]["effect"]
+        self.assertIn("descriptive", eff["properties"]["kind"]["enum"])
+        arm = [a["then"] for a in eff["allOf"] if a["if"]["properties"]["kind"].get("const") == "descriptive"][0]
+        self.assertEqual(len(arm["oneOf"]), 1)
+        only = arm["oneOf"][0]
+        self.assertIs(only["additionalProperties"], False)
+        self.assertEqual(set(only["required"]), {"kind"})
+        self.assertEqual(set(only["properties"]), {"kind"})
+        self.assertEqual(only["properties"]["kind"]["const"], "descriptive")
+
+    def test_bare_descriptive_validates(self):
+        self.assertEqual(self.run_docs({"light": self.spell([{"kind": "descriptive"}])}), ([], []))
+
+    def test_extra_key_rejected(self):
+        extra = self.spell([{"kind": "descriptive", "description": "sheds light"}])
+        errs, _ = self.run_docs({"light": extra})
+        self.assertTrue(any("Additional properties are not allowed ('description' was unexpected)" in e for e in errs), errs)
+        self.assertEqual(vp.c4.check_spell_descriptive(extra), ["descriptive effect: unknown key 'description'"])
+        damage = self.spell([{"kind": "descriptive", "damage": {"dice": "1d6", "type": "fire"}}])
+        self.assertEqual(vp.c4.check_spell_descriptive(damage), ["descriptive effect: unknown key 'damage'"])
+        reported = []
+        vp.check_spell(extra, reported, {})
+        self.assertEqual(reported, ["descriptive effect: unknown key 'description'"])
+
+    def test_mixed_rejected(self):
+        heal = {"kind": "heal", "dice": "1d4"}
+        text = {"kind": "descriptive"}
+        for effects in ([text, heal], [heal, text]):
+            with self.subTest(first=effects[0]["kind"]):
+                doc = self.spell(effects)
+                errs, _ = self.run_docs({"light": doc})
+                self.assertTrue(any(e.endswith("descriptive effect must be the spell's only effect") for e in errs), errs)
+                self.assertEqual(vp.c4.check_spell_descriptive(doc), ["descriptive effect must be the spell's only effect"])
+                reported = []
+                vp.check_spell(doc, reported, {})
+                self.assertEqual(reported, ["descriptive effect must be the spell's only effect"])
+        # extra key on effects[0] wins over the only-effect check, matching spell_loader.cpp
+        both = self.spell([{"kind": "descriptive", "description": "sheds light"}, heal])
+        self.assertEqual(vp.c4.check_spell_descriptive(both), ["descriptive effect: unknown key 'description'"])
+
+    def test_empty_effects_still_rejected(self):
+        errs, _ = self.run_docs({"light": self.spell([])})
+        self.assertTrue(any("/effects: [] should be non-empty" in e for e in errs), errs)
+        self.assertEqual(vp.c4.check_spell_descriptive(self.spell([])), [])
+
+
 if __name__ == "__main__":
     unittest.main()
 

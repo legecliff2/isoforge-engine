@@ -773,3 +773,19 @@ Heat Metal and rust-type effects key off `manufactured_metal()`. The predicate i
 A weapon with a metal head or blade counts as a manufactured metal object. The spear and the javelin are `metal`, matching the pike, the halberd, the glaive, the lance, and the crossbows. All-wood or otherwise non-metal gear stays non-metal: club, greatclub, quarterstaff, shortbow, longbow, sling, blowgun, a dart when it is all wood (otherwise `metal`; the srd51 dart is metal), whip (`leather`) and net (`rope`), and padded, leather, studded leather, and hide armor. The generic shield is `metal` (the SRD allows wood or metal; metal is the default, so the shield is a Heat Metal target). srd51.core sets the key on every weapon, armor, and shield (`tests/validate/test_srd51_equipment.py` `MATERIAL`).
 
 Versioning: appended, no tag change, no migration, no `api_level` gate. The field is not hashed, so goldens are unchanged. The justification and the Elf (tools/content) sign-off are in `docs/proposals/VERSION_BUMP_BATCH.md` (7.2zh follow-up).
+
+## 28. Text-only spell effect `descriptive` (spell@1)
+
+`{"kind":"descriptive"}` is a spell@1 effect. The object has no other keys, and it is the spell's only effect. An empty `effects` array is still an error (schema `minItems: 1`; the loader says `effects missing`).
+
+The spell loads and stays on a creature's spell list. `legal_actions` never offers it. `cast_spell` refuses it (`descriptive spells cannot be cast`), including an innate cast. The innate AI skips it. Effect resolution does nothing: no roll, no state, no event. There is no `SIM_EVENTS` tag and goldens are unchanged.
+
+`schemas/spell/v1.schema.json` `$defs/effect` adds `descriptive` to the kind enum and a `oneOf` arm that allows only `kind`. `tools/validate/checks_v4.py` `check_spell_descriptive` and `tools/validate/validate_packs.py` `check_spell` use the loader's wording and order (`engine/rules/content/src/spell_loader.cpp`):
+
+| case | error |
+|---|---|
+| any key besides `kind` on the first effect | `descriptive effect: unknown key '<key>'` (the schema also rejects it: additional properties are not allowed) |
+| mixed with another effect, either order | `descriptive effect must be the spell's only effect` |
+| `effects` empty or absent | schema error (`[] should be non-empty`, or `'effects' is a required property`). The loader's string for an empty list is `effects missing` |
+
+**No version bump.** `docs/CONTENT_COMPAT.md` §1 bumps a schema when a field that used to be descriptive becomes mechanical, or an existing field changes meaning. `descriptive` is a new effect-kind value. The previous `spell@1` kind enum did not include it, and the arm is closed, so no existing file can carry it. No tag change, no migration, no `api_level` gate. The decision is recorded in `docs/proposals/VERSION_BUMP_BATCH.md`.
