@@ -403,6 +403,14 @@
         }
       }
     },
+    "focus": {
+      "enum": [
+        "arcane",
+        "druidic",
+        "holy"
+      ],
+      "description": "Gear: the spellcasting focus family (SRD arcane focus / druidic focus / holy symbol; docs/CONTENT_CONVENTIONS.md section 18). Optional, additive, no version bump. Inert until rules / the sim loader read it (rules5e ItemKind::Focus, EQUIPMENT 3.2)."
+    },
     "container": {
       "type": "object",
       "additionalProperties": false,
@@ -701,7 +709,8 @@
             "light",
             "torch_attack",
             "visual",
-            "container"
+            "container",
+            "focus"
           ]
         }
       }
