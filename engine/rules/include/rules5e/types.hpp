@@ -129,6 +129,10 @@ struct Attack {
     // bonus (-1 = as ability_used). Content-derived: not hashed.
     int8_t ability_used = -1;
     int8_t damage_ability_used = -1;
+    // appended (Tier-A §27, vampire spawn Claws: "Instead of dealing damage, the vampire can grapple the target"): this attack
+    // carries an on_hit grapple rider with instead_of_damage, so ActionRequest::grapple_instead is legal with it. Set by the sim
+    // loader. Content-derived: not hashed.
+    bool grapple_instead_ok = false;
 };
 inline constexpr int8_t kAttackAbilityFinesse = 6;
 inline constexpr int8_t kAttackAbilityNone = 7;
@@ -722,6 +726,10 @@ struct Combatant {
     // the unreduced score is abilities + ability_reduction. Saturates at 127 (Lich ruling: kept; an int8_t score can never be
     // reduced by more than 127, see the static_assert in encounter.cpp). A short or long rest restores it (rest.cpp).
     std::array<uint8_t, 6> ability_reduction{};
+    // appended (Tier-A, CONTENT_CONVENTIONS §25; static content, never hashed): the SRD printed passive Perception when it
+    // differs from 10 + Perception (monster@5 with passive_perception_reason "srd_printed"). -1 = derived. It is the value at
+    // the UNREDUCED scores: passive_perception() shifts it by the same effective-Wis modifier delta as the derived value.
+    int8_t passive_perception_override = -1;
 };
 
 void add_condition(Combatant&, Condition);

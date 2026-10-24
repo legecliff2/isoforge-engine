@@ -1020,6 +1020,37 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
             }
         }
     }
+    // Tier-A §26 (mummy Dreadful Glare): also_on_fail_by {margin, condition}, immune_on_success {hours, scope},
+    // target_must_see_source. monster@5 only.
+    if (act.contains("also_on_fail_by") || act.contains("immune_on_success") || act.contains("target_must_see_source")) {
+        if (doc.value("$schema", "") != "monster@5") return where + ": also_on_fail_by / immune_on_success / target_must_see_source need a monster@5 file";
+        if (has_area) return where + ": also_on_fail_by / immune_on_success / target_must_see_source take no area";
+        if (auto af = act.find("also_on_fail_by"); af != act.end()) {
+            if (!af->is_object()) return where + ": bad also_on_fail_by";
+            const int m = geti(*af, "margin", 0);
+            auto c = condition_of(af->value("condition", ""));
+            if (m < 1 || m > 30) return where + ": bad also_on_fail_by margin (1..30)";
+            if (!c) return where + ": bad also_on_fail_by condition";
+            if (!d.applies_condition || d.condition_untracked) return where + ": also_on_fail_by needs a tracked primary condition in apply[]";
+            if (*c == d.condition) return where + ": also_on_fail_by condition must differ from the primary condition";
+            if (d.escalates || act.contains("control")) return where + ": also_on_fail_by takes no escalates / control";
+            d.also_margin = uint8_t(m);
+            d.also_condition = *c;
+        }
+        if (auto im = act.find("immune_on_success"); im != act.end()) {
+            if (!im->is_object()) return where + ": bad immune_on_success";
+            const int h = geti(*im, "hours", 0);
+            const std::string sc = im->value("scope", "");
+            if (h < 1 || h > 8760) return where + ": bad immune_on_success hours (1..8760)";
+            if (sc != "same_action" && sc != "same_source") return where + ": bad immune_on_success scope";
+            d.success_immunity_hours = uint16_t(h);
+            d.success_immunity_scope = sc == "same_source" ? 1 : 0;
+        }
+        if (auto ts = act.find("target_must_see_source"); ts != act.end()) {
+            if (!ts->is_boolean()) return where + ": bad target_must_see_source";
+            d.target_sees_source = ts->get<bool>();
+        }
+    }
     // 7.2y class feature hooks (T&C): the spell@1 control keys, target_creature_types and a control duration.
     if (auto tt = act.find("target_creature_types"); tt != act.end()) {
         if (!tt->is_array() || tt->empty()) return where + ": bad target_creature_types";
@@ -1454,6 +1485,20 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     if (declared == 0)
         if (auto s = doc.find("$schema"); s != doc.end() && s->is_string())
             if (auto ref = assets::parse_schema_ref(s->get<std::string>()); ref && ref->type == schema_type) declared = ref->version;   // another type's tag is not this document's version
+    // Tier-A §25 (Lich ruling): a monster@5 with passive_perception_reason "srd_printed" (top level, beside
+    // proficiency_bonus_reason) keeps the SRD printed senses.passive_perception, which wins over 10 + Perception
+    // (Combatant::passive_perception_override; static, never hashed). Without the reason a mismatch is a validator error and
+    // nothing is stored (derived).
+    if (auto r = doc.find("passive_perception_reason"); r != doc.end()) {
+        if (!r->is_string() || r->get<std::string>() != "srd_printed") return a.id + ": bad passive_perception_reason";
+        if (schema_type != "monster" || (declared != 0 && declared < 5))
+            return a.id + ": passive_perception_reason needs a monster@5 file";
+        const auto se = doc.find("senses");
+        const Json* pp = se != doc.end() && se->is_object() && se->contains("passive_perception") ? &(*se)["passive_perception"] : nullptr;
+        if (!pp || !pp->is_number_integer() || pp->get<int64_t>() < 0 || pp->get<int64_t>() > 60)
+            return a.id + ": bad senses.passive_perception";
+        c.passive_perception_override = int8_t(pp->get<int64_t>());
+    }
     if (auto sc = doc.find("spellcasting"); sc != doc.end() && !inert.count("spellcasting")) {
         static const char* sc_abil[] = {"str", "dex", "con", "int", "wis", "cha"};
         const std::string sc_ab = sc->value("ability", "");
@@ -1833,10 +1878,13 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                     if (dc < 0 || dc > 30) return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple escape_dc";
                     rules5e::GrappleRider gr;
                     gr.escape_dc = int16_t(dc);
-                    for (const char* k : {"restrains", "exclusive"})
+                    for (const char* k : {"restrains", "exclusive", "instead_of_damage"})
                         if (g.contains(k) && !g[k].is_boolean()) return a.id + ": " + act.value("id", "?") + " on_hit: bad grapple " + k;
                     gr.restrains = g.value("restrains", false);
                     gr.exclusive = g.value("exclusive", false);
+                    gr.instead_of_damage = g.value("instead_of_damage", false);   // Tier-A §27
+                    if (gr.instead_of_damage && gr.restrains)
+                        return a.id + ": " + act.value("id", "?") + " on_hit: grapple instead_of_damage can't be combined with restrains";
                     if (g.contains("max_grapples")) {
                         const Json& m = g["max_grapples"];
                         if (!m.is_number_integer() || m.get<int>() < 1 || m.get<int>() > 8)
@@ -1844,6 +1892,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                         gr.max_grapples = uint8_t(m.get<int>());
                     }
                     a.grapple_on_hit[uint8_t(ai)] = gr;
+                    if (gr.instead_of_damage && ai < c.attacks.size()) c.attacks[ai].grapple_instead_ok = true;
                     continue;
                 }
                 rules5e::Trigger t;
