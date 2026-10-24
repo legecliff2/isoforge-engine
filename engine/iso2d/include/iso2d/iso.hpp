@@ -25,9 +25,10 @@ struct IsoProjection {
 // Depth sort key = (layer, depth, z, entity_id): deterministic, total order (§5.1).
 // `depth` is the sort sample's iso_x + iso_y. The sample does not have to be the point the
 // sprite is projected from; SpriteBatch::draw takes those positions separately.
-// Absolute height is not applied. A later flying term subtracts height in tiles from `depth`
-// here, so the actor sorts further back without moving the sprite and without a fifth
-// component. `z` stays the stack on one sample (floor, body, outline), not altitude.
+// Absolute height is not applied. One approach under consideration, not a commitment, is to
+// subtract height in tiles from `depth` inside make_sort_key, so a flying actor would sort
+// further back without moving the sprite and without a fifth component. The altitude design
+// is not settled. `z` stays the stack on one sample (floor, body, outline), not altitude.
 struct SortKey {
     int32_t  layer = 0;
     float    depth = 0.f;   // iso_x + iso_y of the sort sample
