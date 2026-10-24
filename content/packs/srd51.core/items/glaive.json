@@ -4,6 +4,7 @@
   "name": "Glaive",
   "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
   "category": "weapon",
+  "material": "metal",
   "cost_cp": 2000,
   "weight_oz": 96,
   "weapon_class": "martial",

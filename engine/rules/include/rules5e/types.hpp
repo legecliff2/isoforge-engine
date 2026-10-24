@@ -429,7 +429,7 @@ struct ModifierSpec {
     // an ally other than the user, within this range (EncounterHooks::targets_within; no hook = in range) and not deafened.
     uint8_t held_applies = 0;
     uint16_t range_ft = 0;
-    // appended (7.2zc generic mark; Hunter's Mark, Hex): mark_scope 1 = `scope: {target: "marked"}`: the row follows the creature
+    // appended (7.2zc generic mark): mark_scope 1 = `scope: {target: "marked"}`: the row follows the creature
     // the caster marked at cast (ActiveModifier::mark, the spell's one target). Damage rows sit on the caster and add to its
     // attack hits (weapon or spell) on the marked creature only; check rows sit on the caster (applies_to self) or on the marked
     // creature (applies_to target). chosen_ability: AbilityCheck `ability: "chosen"`: the ability is the caster's cast-time
@@ -500,8 +500,9 @@ struct FormStats {
     std::vector<Trigger> triggers{};
     std::vector<Reaction> reactions{};
     std::vector<BonusAttack> bonus_attacks{};
-    // appended (SRD 5.1 movement modes, feat/move-modes): the form's fly / swim / climb speeds and hover.
-    uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0;
+    // appended (SRD 5.1 movement modes, feat/move-modes): the form's fly / swim / climb / burrow speeds and hover.
+    // burrow_ft matches the others (uint8_t feet, 0 = none). Copied with them; move_mode 4 (altitude PR2).
+    uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0, burrow_ft = 0;
     bool hover = false;
     // Wild Shape (D7): the creature's own features (feature ids) the form is not physically capable of using (content:
     // requires_humanoid_form). UseFeature refuses them while the form lasts. Not part of the saved base block.
@@ -664,8 +665,14 @@ struct Combatant {
     // appended (SRD 5.1 movement modes, feat/move-modes; static content, not folded): fly / swim / climb
     // speeds (0 = none) and hover. A Move with ActionRequest::move_mode uses that speed: SRD "switching speeds" - the
     // feet already spent this turn count against it (TurnBudget::movement_ft is shared; see move_allowance).
-    uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0;
+    // burrow_ft is the same type, default and storage (0 = none, static content, not folded). Altitude PR2: move_mode 4
+    // (burrow) uses it like the other speeds; tunnelling through rock is not implemented. No new sim-event tag.
+    uint8_t fly_ft = 0, swim_ft = 0, climb_ft = 0, burrow_ft = 0;
     bool hover = false;
+    // appended (altitude PR1, docs/SIM_EVENTS.md 0xD6; sim fold Combat::hash 0xD6 when non-zero): vertical position in signed
+    // integer feet, always a multiple of 5 (kFeetPerTile). Positive = flying / climbing, negative = burrowed or underwater.
+    // Every spawn starts at 0; nothing changes it yet (movement, falling and Fly arrive in later altitude PRs).
+    int16_t alt_ft = 0;
     // appended (grab and contain, 7.2w; content-derived, not hashed): SRD Transparent (gelatinous cube): the DC of the Wisdom
     // (Perception) check to spot it while it has neither moved nor attacked (15; 0 = not transparent). Sim reads it when it
     // sets up surprise (rules5e surprise helper: compare with the observer's Perception); rules does not track "moved".

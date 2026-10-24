@@ -116,7 +116,8 @@ def decode_layers(doc: dict) -> list[list[tuple[int, int, int]]]:
 def compute_content_hash(doc: dict) -> int:
     """compute_content_hash(Chunk) over the decoded chunk; origin and content_hash excluded."""
     c, h = doc["coord"], Canon()
-    h.u16(2 if (doc.get("lights") or "ambient" in doc) else 1)  # format_version: 1 unless chunk@2 fields are present
+    v3 = chunk_elevation_is_ground(doc)  # chunk@3: version 3 + always the chunk@2 tail (docs/CHUNK_HASH.md)
+    h.u16(3 if v3 else 2 if (doc.get("lights") or "ambient" in doc) else 1)  # 1 unless chunk@2 fields are present
     h.i32(c["x"]); h.i32(c["y"]); h.i16(c["level"])
     h.u32(len(doc["palette"]))
     for p in doc["palette"]:
@@ -133,8 +134,28 @@ def compute_content_hash(doc: dict) -> int:
     h.u32(len(doc["triggers"]))
     for t in doc["triggers"]:
         h.str(compact_json(t))
-    chunk2_tail(doc, h)
+    chunk2_tail(doc, h, force=v3)
     return h.value()
+
+
+def chunk_elevation_is_ground(doc: dict) -> bool:
+    """Mirror of Chunk::elevation_is_ground: format_version wins, else "$schema" chunk@N (only 3 = ground for the sim)."""
+    if "format_version" in doc:
+        return doc["format_version"] >= 3
+    return doc.get("$schema") == "chunk@3"
+
+
+def ledge_ft(a_ground_ft: int, b_ground_ft: int) -> int:
+    """Mirror of eng::sim::ledge_ft: signed rise in feet from a to b (negative = drop)."""
+    return b_ground_ft - a_ground_ft
+
+
+def step_extra_ft(from_ground_ft: int, to_ground_ft: int, climb: bool = False, fly: bool = False) -> int:
+    """Mirror of eng::sim::step_cost_ft (docs/CHUNK_HASH.md): extra movement for a walking step on chunk@3 ground."""
+    r = to_ground_ft - from_ground_ft
+    if r <= 5:
+        return 0            # descending, or a step up of 5 ft or less, costs nothing extra (a drop > 5 ft is a fall)
+    return r if (climb or fly) else 2 * r
 
 
 AMBIENT_KIND = {"none": 0, "sun": 1, "moon": 2}
@@ -147,10 +168,10 @@ def chunk_light_stable_id(x: int, y: int, level: int, index: int) -> int:
     return (v & 0xFFFFFFFF) ^ (v >> 32)
 
 
-def chunk2_tail(doc: dict, h: Canon) -> None:
-    """chunk@2 lights + ambient (R-G13), folded only when present; 'visual' is never hashed."""
+def chunk2_tail(doc: dict, h: Canon, force: bool = False) -> None:
+    """chunk@2 lights + ambient (R-G13), folded only when present (always for chunk@3); 'visual' is never hashed."""
     lights, amb = doc.get("lights", []), doc.get("ambient")
-    if not lights and amb is None:
+    if not force and not lights and amb is None:
         return
     c = doc["coord"]
     h.u32(len(lights))
