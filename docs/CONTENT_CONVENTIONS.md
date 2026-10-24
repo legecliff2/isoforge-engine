@@ -768,6 +768,7 @@ SRD stat blocks such as rat, cat, owl, crab, and scorpion print a fixed amount: 
 - **Content:** ids are the snake_case of the 5e-database index; names, costs, weights and descriptions are verbatim.
 - **SRD 5.1 has no** disguise, forgery, herbalism or poisoner's kit, so none is authored.
 - **Inert:** no tool-proficiency checks exist. No validator check, rules code or sim reads `tool_kind`, and characters' tool proficiencies stay descriptive.
+- **Healer's kit** is SRD adventuring gear (kits), not a tool, so it is plain gear with no `tool_kind`.
 - **Tests:** `tests/validate/test_srd51_equipment.py` (`TOOLS`, `test_tools`, `test_tool_kind_schema`).
 
 ## 22. Item `material` (item@1 / item@2 weapon, armor, shield)
