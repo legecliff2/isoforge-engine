@@ -1,5 +1,5 @@
 {
- "_source": "5e-bits/5e-database commit a6212be, src/2014/en/5e-SRD-Spells.json (fields copied verbatim; damage_type / dc ability / school / classes flattened to their index)",
+ "_source": "5e-bits/5e-database commit a6212be, src/2014/en/5e-SRD-Spells.json (SRD 5.1, CC-BY-4.0; damage_type / dc ability / school / classes flattened to their index). Provenance: this file is a6212be with the hunters-mark entry removed. Hunter's Mark is PHB-only and not in SRD 5.1, so it is excluded from the public pack and from this validation table. The SRD text remains CC-BY-4.0. The rest of the file matches a6212be.",
  "spells": {
   "acid-arrow": {
    "name": "Acid Arrow",
@@ -707,22 +707,6 @@
     "ability": "wis",
     "success": "none"
    }
-  },
-  "hunters-mark": {
-   "name": "Hunter's Mark",
-   "level": 1,
-   "range": "90 feet",
-   "components": [
-    "V"
-   ],
-   "ritual": false,
-   "duration": "Up to 1 hour",
-   "concentration": true,
-   "casting_time": "1 bonus action",
-   "school": "divination",
-   "classes": [
-    "ranger"
-   ]
   },
   "hypnotic-pattern": {
    "name": "Hypnotic Pattern",
@@ -1512,6 +1496,25 @@
     "cleric"
    ],
    "material": "A pair of platinum rings worth at least 50gp each, which you and the target must wear for the duration."
+  },
+  "expeditious-retreat": {
+   "name": "Expeditious Retreat",
+   "level": 1,
+   "range": "Self",
+   "components": [
+    "V",
+    "S"
+   ],
+   "ritual": false,
+   "duration": "Up to 10 minutes",
+   "concentration": true,
+   "casting_time": "1 bonus action",
+   "school": "transmutation",
+   "classes": [
+    "sorcerer",
+    "warlock",
+    "wizard"
+   ]
   }
  }
 }

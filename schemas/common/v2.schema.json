@@ -1895,7 +1895,7 @@
               "const": "chosen"
             }
           ],
-          "description": "Save / AbilityCheck scope (else all). 7.2zc: \"chosen\" = the caster picks the ability at cast (ActionRequest::mark_ability; Hex); ability_check modifiers of a spell apply_modifier with scope {target: marked} only."
+          "description": "Save / AbilityCheck scope (else all). 7.2zc: \"chosen\" = the caster picks the ability at cast (ActionRequest::mark_ability); ability_check modifiers of a spell apply_modifier with scope {target: marked} only."
         },
         "applies_to": {
           "anyOf": [

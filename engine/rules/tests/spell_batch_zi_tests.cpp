@@ -67,6 +67,7 @@ SpellDef retreat_def() {
     d.kind = SpellEffectKind::ApplyModifier;
     d.modifier = rounds_on(ModStat::BonusDash, 600, ModAppliesTo::Self);
     d.modifier.id = kRetreatMod;
+    d.dash_on_cast = true;
     return d;
 }
 SpellDef poison_def() {
@@ -306,31 +307,55 @@ TEST_CASE("7.2zi True Strike: advantage only on the caster's next turn, and only
     CHECK_FALSE(mod_id(s, kStrikeMod));
 }
 
-TEST_CASE("7.2zi Expeditious Retreat: Dash as a bonus action for the duration, not as part of the cast") {
+TEST_CASE("7.2zi Expeditious Retreat: Dash on the cast, then as a bonus action until concentration ends") {
     auto s = start({wiz(1), foe(2)});
     const int before = s.budget.movement_ft;
+    const int speed = modified_speed(s, *find(s, 1));
     CHECK_FALSE(lists_bonus_dash(s));
-    REQUIRE(step(s, cast(1, kRetreat, 1, 1)).ok);
-    CHECK(s.budget.movement_ft == before);
+    auto casted = step(s, cast(1, kRetreat, 1, 1));
+    REQUIRE(casted.ok);
+    CHECK(s.budget.movement_ft == int16_t(before + speed));
+    CHECK(s.budget.dashes == 1);
+    CHECK(natural_of(casted.events, EventKind::Dashed, 1) == s.budget.movement_ft);
     CHECK_FALSE(s.budget.bonus_action); CHECK(s.budget.action);
+    CHECK_FALSE(lists_bonus_dash(s));   // the cast already took the Dash; the bonus action is spent
     CHECK(find(s, 1)->concentration_spell == kRetreat);
     CHECK((find(s, 1)->bonus_action_grants & bit(ActionKind::Dash)) == 0);
     REQUIRE(mod_id(s, kRetreatMod)); CHECK(mod_id(s, kRetreatMod)->timed.rounds_left == 600);
-    (void)step(s, {1, ActionKind::EndTurn});
+    REQUIRE(step(s, {1, ActionKind::EndTurn}).ok);   // not moving the extra feet is legal
     end_turns_until(s, 1);
     CHECK(lists_bonus_dash(s));
-    const int speed = modified_speed(s, *find(s, 1));
+    CHECK(s.budget.dashes == 0);
+    const int speed2 = modified_speed(s, *find(s, 1));
     const int move0 = s.budget.movement_ft;
     ActionRequest dash{1, ActionKind::Dash}; dash.as_bonus_action = true;
     auto r = step(s, dash);
     REQUIRE(r.ok);
-    CHECK(s.budget.movement_ft == int16_t(move0 + speed));
+    CHECK(s.budget.movement_ft == int16_t(move0 + speed2));
+    CHECK(s.budget.dashes == 1);
     CHECK(s.budget.action);
+    CHECK(natural_of(r.events, EventKind::Dashed, 1) == s.budget.movement_ft);
+    REQUIRE(step(s, {1, ActionKind::EndTurn}).ok);
+    end_turns_until(s, 1);
+    CHECK(lists_bonus_dash(s));
+    CHECK(s.budget.bonus_action);
+    REQUIRE(step(s, cast(1, kStrike, 2)).ok);   // True Strike is concentration: the retreat ends
+    CHECK(find(s, 1)->concentration_spell == kStrike);
+    CHECK_FALSE(mod_id(s, kRetreatMod));
+    CHECK_FALSE(lists_bonus_dash(s));
+    ActionRequest again{1, ActionKind::Dash}; again.as_bonus_action = true;
+    CHECK_FALSE(step(s, again).ok);
     auto bare = start({wiz(1), foe(2)});
     ActionRequest no{1, ActionKind::Dash}; no.as_bonus_action = true;
     CHECK_FALSE(step(bare, no).ok);
-    ActionRequest act{1, ActionKind::Dash};
-    CHECK(step(s, act).ok);
+    auto act = start({wiz(1), foe(2)});
+    REQUIRE(step(act, cast(1, kRetreat, 1, 1)).ok);
+    const int after_cast = act.budget.movement_ft;
+    ActionRequest ad{1, ActionKind::Dash};
+    auto acted = step(act, ad);
+    REQUIRE(acted.ok);
+    CHECK(act.budget.movement_ft == int16_t(after_cast + modified_speed(act, *find(act, 1))));
+    CHECK(act.budget.dashes == 2);
 }
 
 TEST_CASE("7.2zi Protection from Poison: ends poisoned, resists poison damage, advantage only against being poisoned") {

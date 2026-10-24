@@ -184,7 +184,7 @@ public:
     // item@1 definitions of every item document loaded by load() (EQUIPMENT.md 9, Engine Core). Read by Combat only when
     // CombatOptions::equipment is on. add_item: one already-migrated item@1 document.
     const std::shared_ptr<ItemDefTable>& items() const noexcept { return items_; }
-    std::optional<std::string> add_item(const assets::Json& doc) { return items_->add(doc); }
+    std::optional<std::string> add_item(const assets::Json& doc) { return items_->add(doc, &warnings_); }
 
     const Archetype* find(const std::string& id) const;
     const std::map<std::string, Archetype>& all() const noexcept { return by_id_; }

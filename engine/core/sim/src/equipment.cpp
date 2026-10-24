@@ -54,6 +54,27 @@ int int_or(const Json& doc, const char* key, int dflt) {
     return it != doc.end() && it->is_number_integer() ? int(std::clamp<int64_t>(it->get<int64_t>(), -32768, 32767)) : dflt;
 }
 
+// item@N `material`. Absent stays ItemMaterial::Absent, and manufactured_metal falls back to the category rule.
+// An unknown string warns and stays Absent. It is not stored as a non-metal value, so it does not remove a target.
+rules5e::ItemMaterial material_of(const Json& doc, std::string_view id, std::string& warning) {
+    warning.clear();
+    const auto it = doc.find("material");
+    if (it == doc.end() || it->is_null()) return rules5e::ItemMaterial::Absent;
+    if (!it->is_string()) {
+        warning = std::string(id) + ": material is not a string";
+        return rules5e::ItemMaterial::Absent;
+    }
+    const std::string m = it->get<std::string>();
+    if (m == "metal") return rules5e::ItemMaterial::Metal;
+    if (m == "wood") return rules5e::ItemMaterial::Wood;
+    if (m == "leather") return rules5e::ItemMaterial::Leather;
+    if (m == "hide") return rules5e::ItemMaterial::Hide;
+    if (m == "cloth") return rules5e::ItemMaterial::Cloth;
+    if (m == "rope") return rules5e::ItemMaterial::Rope;
+    warning = std::string(id) + ": material '" + m + "' is unknown";
+    return rules5e::ItemMaterial::Absent;
+}
+
 // Attack ids and item ids name the same weapon with the words in either order ("light_crossbow" / "crossbow_light").
 std::vector<std::string> words(std::string_view s) {
     std::vector<std::string> out;
@@ -69,13 +90,15 @@ std::vector<std::string> words(std::string_view s) {
 
 } // namespace
 
-std::optional<std::string> ItemDefTable::add(const Json& doc) {
+std::optional<std::string> ItemDefTable::add(const Json& doc, std::vector<std::string>* warnings) {
     const std::string cid = doc.value("id", "");
     if (cid.empty()) return std::string("item: missing id");
     const std::string cat = doc.value("category", "");
     ItemDef d;
+    std::string material_warning;
     if (cat == "weapon") {
         d.kind = ItemKind::Weapon;
+        d.material = material_of(doc, cid, material_warning);
         rules5e::WeaponDef& w = d.weapon;
         uint16_t props = 0;
         if (auto p = doc.find("properties"); p != doc.end() && p->is_array())
@@ -115,6 +138,7 @@ std::optional<std::string> ItemDefTable::add(const Json& doc) {
         d.ammo_kind = ammo_kind_of(doc.value("ammo_kind", last_segment(cid)));
     } else if (cat == "armor") {
         d.kind = ItemKind::Armor;
+        d.material = material_of(doc, cid, material_warning);
         d.hands = 0;
         const std::string ac = doc.value("armor_category", "light");
         d.armor.category = ac == "heavy" ? rules5e::ArmorCategory::Heavy
@@ -127,6 +151,7 @@ std::optional<std::string> ItemDefTable::add(const Json& doc) {
         d.armor.magic_bonus = clamp8(int_or(doc, "magic_bonus", 0));
     } else if (cat == "shield") {
         d.kind = ItemKind::Shield;
+        d.material = material_of(doc, cid, material_warning);
         d.shield.ac_bonus = clamp8(int_or(doc, "ac_bonus", 2));
         d.shield.magic_bonus = clamp8(int_or(doc, "magic_bonus", 0));
     } else if (cat == "gear") {
@@ -158,7 +183,9 @@ std::optional<std::string> ItemDefTable::add(const Json& doc) {
     } else {
         d.kind = ItemKind::Other;   // valuables (gems): carried, never held
     }
-    return insert(cid, d);
+    auto err = insert(cid, d);
+    if (!err && warnings && !material_warning.empty()) warnings->push_back(std::move(material_warning));
+    return err;
 }
 
 std::optional<std::string> ItemDefTable::add(const std::string& content_id, ItemDef def) {

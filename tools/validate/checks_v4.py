@@ -1846,6 +1846,12 @@ def check_equipment_v5(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list[
             errs.append(f"{where}: 'weapon' and 'natural' are exclusive")
         if any(k in a for k in ("weapon", "natural", "attack_bonus")) and a.get("kind") not in ("melee_weapon_attack", "ranged_weapon_attack"):
             errs.append(f"{where}: weapon / natural / attack_bonus need a melee_weapon_attack or ranged_weapon_attack")
+        nat = a.get("natural")
+        if isinstance(nat, dict) and "flat" in nat:   # CONTENT_CONVENTIONS 19: natural.flat is the printed flat damage[0]
+            d0 = (a.get("damage") or [{}])[0]
+            got = d0.get("flat") if isinstance(d0, dict) else None
+            if got != nat["flat"]:
+                errs.append(f"{where}: natural.flat {nat['flat']} != damage[0] flat {got if got is not None else 'none'}")
         w = a.get("weapon")
         if isinstance(w, str):
             if w.startswith("#"):
@@ -2070,10 +2076,10 @@ def check_monster_derive(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
         if "natural" in a:
             nat = a["natural"]
             w = {"props": set(), "reach": a.get("reach", 0 if a.get("range") else 5), "range": (a.get("range") or [0])[0],
-                 "dice": parse_dice(nat["dice"]), "vdice": (0, 0, 0), "magic": 0, "atk_magic": None, "dmg_magic": None,
+                 "dice": parse_dice(nat["dice"]) if "dice" in nat else (0, 0, int(nat.get("flat", 0))), "vdice": (0, 0, 0), "magic": 0, "atk_magic": None, "dmg_magic": None,
                  "improvised": False, "natural": True}
             v = {"abilities": ab, "pb": pb, "mult": mult, "brute": brute, "ability": nat["ability"],
-                 "damage_ability_none": nat.get("damage_ability") == "none"}
+                 "damage_ability_none": nat.get("damage_ability") == "none" or "flat" in nat}   # flat: the whole amount
         else:
             ref = a["weapon"]
             src = local.get(ref[1:]) if ref.startswith("#") else items.get(ref)
@@ -2364,6 +2370,7 @@ def check_spell_batch_zh(doc: dict) -> list[str]:
 
 # ---- VERSION_BUMP_BATCH 7.2zi: the spell@1 key names of this batch, in one place (rules5e_content spell_keys_zi.hpp) ----------
 ZI_KEYS = {"stabilize": "stabilize", "hit_only": "hit_only", "on_next_turn": "on_next_turn", "bonus_dash": "bonus_dash",
+           "dash_on_cast": "dash_on_cast",
            "save_vs_conditions": "save_vs_conditions", "halve_weapon_damage": "halve_weapon_damage",
            "death_saves": "death_saves", "heal_maximum": "heal_maximum", "share_damage": "share_damage",
            "all_damage": "all_damage", "end_beyond_ft": "end_beyond_ft", "end_at_zero": "end_at_zero", "caster": "caster"}
@@ -2389,6 +2396,12 @@ def check_spell_batch_zi(doc: dict) -> list[str]:
                 errs.append(f"{pre}effect on_next_turn must be true")
             elif m.get("stat") != "attack_roll":
                 errs.append(f"{pre}effect on_next_turn needs an attack_roll modifier")
+        if ZI_KEYS["dash_on_cast"] in e:
+            applies = m.get("applies_to", "target")
+            if e[ZI_KEYS["dash_on_cast"]] is not True:
+                errs.append(f"{pre}effect dash_on_cast must be true")
+            elif m.get("stat") != ZI_KEYS["bonus_dash"] or applies != "self":
+                errs.append(f"{pre}effect dash_on_cast needs a bonus_dash modifier on self")
         if ZI_KEYS["save_vs_conditions"] in e:
             cv = e[ZI_KEYS["save_vs_conditions"]]
             if m.get("stat") != "save" or "mode" not in m:

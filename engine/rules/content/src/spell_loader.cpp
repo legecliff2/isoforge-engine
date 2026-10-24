@@ -955,6 +955,12 @@ SpellLoad spell_from_json(const Json& j) {
                 if (s.modifier.stat != ModStat::AttackRoll) return ("effect on_next_turn needs an attack_roll modifier");
                 s.modifier.on_next_turn = 1;
             }
+            if (e.contains(zi::kDashOnCast)) {   // 7.2zi Expeditious Retreat: the cast takes the Dash action
+                if (!e[zi::kDashOnCast].is_boolean() || !e[zi::kDashOnCast].get<bool>()) return ("effect dash_on_cast must be true");
+                if (s.modifier.stat != ModStat::BonusDash || s.modifier.applies_to != ModAppliesTo::Self)
+                    return ("effect dash_on_cast needs a bonus_dash modifier on self");
+                s.dash_on_cast = true;
+            }
             if (e.contains(zi::kSaveVsConditions)) {   // 7.2zi Protection from Poison
                 if (s.modifier.stat != ModStat::Save || s.modifier.mode == RollMode::Normal)
                     return ("effect save_vs_conditions needs a save modifier with a mode");
@@ -1398,6 +1404,7 @@ SpellLoad spell_from_json(const Json& j) {
             fx.modifier.id = spell_id_of(s.content_id + "#modifier" + std::to_string(i));
         }
         fx.hit_only = x.hit_only;   // 7.2zi
+        fx.dash_on_cast = x.dash_on_cast;   // 7.2zi Expeditious Retreat
         fx.ends_on = x.ends_on;   // 7.2zc
         fx.has_ward = x.has_ward; fx.ward_save = x.ward_save; fx.ward_on_fail = x.ward_on_fail;   // 7.2zd
         fx.immune_conditions = x.immune_conditions; fx.immune_from_types = x.immune_from_types;
