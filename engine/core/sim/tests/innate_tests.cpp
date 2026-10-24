@@ -3,6 +3,7 @@
 // the innate state under 0xA4 only when it exists, log_hash folds `ActionRequest::innate` only when set.
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <fstream>
 #include <string>
 
@@ -195,4 +196,53 @@ TEST_CASE("innate state is hashed only when it exists: an archetype without it h
     auto b = mk("t.with");
     CHECK(rules5e::has_innate_state(b.second.state()));
     CHECK(a.second.hash() != b.second.hash());   // 0xA4 section present only for the innate caster
+}
+
+TEST_CASE("descriptive innate spell stays listed and the AI never selects it") {
+    Json light = {{"$schema", "spell@1"}, {"id", "test.spell.light"}, {"level", 0},
+                  {"casting_time", {{"kind", "action"}}}, {"range", {{"kind", "touch"}}},
+                  {"components", {{"v", true}}}, {"duration", {{"kind", "instantaneous"}}},
+                  {"effects", Json::array({Json{{"kind", "descriptive"}}})}};
+    ContentLibrary lib;
+    for (const char* n : kSpellFiles)
+        REQUIRE_FALSE(lib.add_spell(load_json(std::string("content/packs/srd51.core/spells/") + n + ".json")));
+    REQUIRE_FALSE(lib.add_spell(light));
+    REQUIRE_FALSE(lib.add(load_json("content/packs/sample.vertical_slice/characters/fighter_1.json"), "character"));
+    const auto* loaded = lib.spells()->find(spell_id_of("test.spell.light"));
+    REQUIRE(loaded);
+    CHECK(loaded->kind == rules5e::SpellEffectKind::Descriptive);
+    Json sc = {{"ability", "cha"}, {"caster_level", 1},
+               {"spells", Json::array({"test.spell.light"})},
+               {"innate", {{"ability", "cha"}, {"at_will", Json::array({"test.spell.light"})}}}};
+    REQUIRE_FALSE(lib.add(mage("t.light", sc), "monster"));
+    const auto* arch = lib.find("t.light");
+    REQUIRE(arch);
+    CHECK(std::find(arch->base.spells_known.begin(), arch->base.spells_known.end(), spell_id_of("test.spell.light")) !=
+          arch->base.spells_known.end());
+    REQUIRE(arch->base.innate.size() == 1);
+    CHECK(arch->base.innate[0].spell_id == spell_id_of("test.spell.light"));
+    CHECK(arch->base.innate[0].at_will());
+
+    auto ch = arena({{"t.light", Vec2i{5, 5}}, {kFighter, Vec2i{6, 5}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 4);
+    REQUIRE(c);
+    const CombatantId m = ch.spawns[0].stable_id, f = ch.spawns[1].stable_id;
+    advance_to(*c, m);
+    const auto* me = rules5e::find(c->state(), m);
+    REQUIRE(me);
+    CHECK(std::find(me->spells_known.begin(), me->spells_known.end(), spell_id_of("test.spell.light")) != me->spells_known.end());
+    REQUIRE(me->innate.size() == 1);
+    for (const auto& q : c->legal_actions()) CHECK(q.spell_id != spell_id_of("test.spell.light"));
+    const Command cmd = next_command(*c, f);
+    CHECK(cmd.request.spell_id != spell_id_of("test.spell.light"));
+    CHECK(cmd.request.kind != ActionKind::CastSpell);
+    const uint64_t hash = c->hash(), log = c->log_hash();
+    auto refused = c->submit(innate_cast(m, f, "test.spell.light", 0));
+    CHECK_FALSE(refused.ok);
+    CHECK(refused.error == "descriptive spells cannot be cast");
+    CHECK(c->hash() == hash);
+    CHECK(c->log_hash() == log);
+    CHECK(rules5e::find(c->state(), m)->innate[0].at_will());
+    CHECK(c->state().budget.action);
 }
