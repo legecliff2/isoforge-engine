@@ -259,8 +259,9 @@ class MonsterTable(unittest.TestCase):
         # Noble Parry (reactions[], R-G7): +2 AC against one melee attack it sees
         self.assertEqual(load("noble")["reactions"][0]["window"], {"kind": "being_hit", "melee_only": True, "requires_sight": True})
         self.assertEqual(load("noble")["reactions"][0]["effect"], {"kind": "ac_bonus", "bonus": 2})
-        # Cultist Dark Devotion: partial, description only (no condition-keyed save advantage construct)
-        self.assertNotIn("effect", {t["id"]: t for t in load("cultist")["traits"]}["dark_devotion"])
+        # Cultist Dark Devotion: save_advantage vs charmed / frightened, the cult fanatic shape
+        self.assertEqual({t["id"]: t for t in load("cultist")["traits"]}["dark_devotion"]["effect"],
+                         {"kind": "save_advantage", "save_vs_conditions": ["charmed", "frightened"]})
         # Batch 2: Parry (bandit captain / knight +2), goat Charge
         for idx, b in (("bandit-captain", 2), ("knight", 2), ("gladiator", 3)):
             self.assertEqual(load(idx)["reactions"][0]["effect"], {"kind": "ac_bonus", "bonus": b})

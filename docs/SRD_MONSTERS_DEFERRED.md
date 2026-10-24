@@ -58,7 +58,7 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Pony | 1/8 | hooves (natural 2d4, Str) | |
 | Awakened Shrub | 0 | rake (natural 1d4, Dex), vulnerability fire, resistance piercing | False Appearance descriptive |
 | Hyena | 0 | Pack Tactics (`pack_tactics`), bite (natural 1d6, Str) | |
-| Cultist | 1/8 | leather armor, scimitar | **partial**: Dark Devotion (advantage on saving throws against being charmed or frightened) is description only: no monster trait construct grants save advantage keyed on the condition (`advantage_on.saves` is per ability and feature-only; the rules `save_vs_conditions` row of SRD_COMBAT_COVERAGE has no content loader yet), so the cultist saves against charm / fear normally |
+| Cultist | 1/8 | leather armor, scimitar; Dark Devotion as `save_advantage` vs charmed / frightened (as cult fanatic) | complete |
 | Giant Weasel | 1/8 | bite (natural 1d4, Dex), darkvision 60 | Keen Hearing and Smell descriptive |
 | Mastiff | 1/8 | bite (natural 1d6, Str) with knock-prone rider (Str DC 11, prone untimed, as wolf) | Keen Hearing and Smell descriptive |
 | Noble | 1/8 | breastplate, rapier; Parry as `reactions[]` (`being_hit`, `melee_only`, `requires_sight`, `ac_bonus 2`) | "be wielding a melee weapon" is not a predicate; the noble's only weapon (rapier) is always equipped |
@@ -75,7 +75,7 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Brown Bear | 1 | Multiattack bite + claws; `attack_bonus` 5 on both (SRD prints +5; Str 19 + PB 2 = +6) | batch d1, Large; Keen Smell descriptive |
 | Giant Hyena | 1 | Rampage as gnoll (`on_event reduce_to_zero` -> `bonus_attack bite`) | batch d1, Large; as gnoll, the half-speed move is not encoded |
 | Giant Fire Beetle | 0 | bite (natural 1d6, Str); `natural_armor` 13; Illumination as `emits_light` (bright 10, dim 10; LIGHTING 3.4); blindsight 30 | |
-| Goat | 0 | ram (natural 1d4, Str); Charge as `on_event hit` once per turn (`weapon melee` + `moved_at_least_ft 20`: +1d4 bludgeoning, Str DC 10 prone untimed), as boar | **partial**: "straight toward" isn't checked (as boar); Sure-Footed (advantage on Str / Dex saves against being knocked prone) is description only: no construct grants save advantage keyed on the effect (as cultist Dark Devotion) |
+| Goat | 0 | ram (natural 1d4, Str); Charge as `on_event hit` once per turn (`weapon melee` + `moved_at_least_ft 20`: +1d4 bludgeoning, Str DC 10 prone untimed), as boar | **partial**: "straight toward" isn't checked (as boar); Sure-Footed (advantage on Str / Dex saves against being knocked prone) is description only: no construct grants save advantage keyed on the effect (cultist / cult fanatic Dark Devotion is keyed on conditions, not on an effect like prone) |
 | Shrieker | 0 | AC 5 (10 + Dex -5), speed 0, blindsight 30, condition immunities blinded / deafened / frightened; no attacks | **partial**: Shriek (an SRD reaction: a 300 ft alarm while light or a creature is within 30 ft) is a description-only trait: `reactions[]` needs a window / effect pair and there is no noise / alert model. The table lists blinded twice and omits deafened; the content follows the SRD line (test DEVIATIONS). False Appearance descriptive |
 | Giant Rat | 1/8 | Pack Tactics (`pack_tactics`), bite (natural 1d4, Dex), darkvision 60 | Keen Smell descriptive |
 | Thug | 1/2 | leather armor, mace, heavy crossbow (`crossbow_heavy`); Multiattack mace x2; Pack Tactics (`pack_tactics`) | |
