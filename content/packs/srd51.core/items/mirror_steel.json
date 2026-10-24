@@ -1,0 +1,12 @@
+{
+  "$schema": "item@2",
+  "id": "srd51.item.mirror_steel",
+  "name": "Mirror, steel",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "gear",
+  "cost_cp": 500,
+  "weight_oz": 8
+}
