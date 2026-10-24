@@ -13,11 +13,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | | count |
 |---|---|
 | inventory candidates | 30 |
-| authored now (`monster@4`, all converted to `monster@5` in §14 of CONTENT_CONVENTIONS) | 62 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189; 9 bestiary v0.1 batch 1 monsters as `monster@5` with `derive: true`: deer, pony, awakened shrub, hyena, cultist, giant weasel, mastiff, noble, tribal warrior; 11 tier B batch d1 monsters as `monster@5` with `derive: true`: baboon, camel, draft horse, riding horse, giant lizard, giant centipede, giant wolf spider, ape, worg, brown bear, giant hyena; 9 bestiary v0.1 batch 2 monsters, same form: giant fire beetle, goat, shrieker, giant rat, thug, bandit captain, veteran, knight, mule) |
+| authored now (`monster@4`, all converted to `monster@5` in §14 of CONTENT_CONVENTIONS) | 64 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189; 9 bestiary v0.1 batch 1 monsters as `monster@5` with `derive: true`: deer, pony, awakened shrub, hyena, cultist, giant weasel, mastiff, noble, tribal warrior; 11 tier B batch d1 monsters as `monster@5` with `derive: true`: baboon, camel, draft horse, riding horse, giant lizard, giant centipede, giant wolf spider, ape, worg, brown bear, giant hyena; 9 bestiary v0.1 batch 2 monsters, same form: giant fire beetle, goat, shrieker, giant rat, thug, bandit captain, veteran, knight, mule; rat and scorpion with flat damage, CONTENT_CONVENTIONS 19) |
 | goblin (already shipped, left at `monster@3`) | 1 |
-| deferred (mechanic not expressible) | 19 (rat, scorpion: bestiary v0.1 batch 1; 15 tier B batch d1; acolyte, gladiator: batch 2) |
+| deferred (mechanic not expressible) | 17 (15 tier B batch d1; acolyte, gladiator: bestiary v0.1 batch 2) |
 
-## Authored (62; bestiary v0.1 batch 1 and 2 and tier B batch d1 rows below at `monster@5` + `derive: true`)
+## Authored (64; bestiary v0.1 batch 1 and 2 and tier B batch d1 rows below at `monster@5` + `derive: true`)
 
 | monster | CR | mechanics carried as data | notes |
 |---|---|---|---|
@@ -83,6 +83,8 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Veteran | 3 | splint, longsword (1h / 2h), shortsword, heavy crossbow; Multiattack: longsword x2 + shortsword, or two-handed longsword x2 | "if it has a shortsword drawn" is not a predicate: the shortsword is always equipped |
 | Knight | 3 | plate, greatsword (two hands), heavy crossbow; Multiattack greatsword x2; Parry (`ac_bonus 2`); saving throws | **partial**: Brave (advantage on saves vs frightened) is description only (no condition-keyed save advantage construct; SRD_COMBAT_COVERAGE `save_vs_conditions` has no content loader). Leadership is a `special` action, description only: its rules (AlliesWithin30 1d4, #89/#91) have no content shape yet (T&C-G4 / R-G3), so the knight never uses it |
 | Mule | 1/8 | hooves (natural 1d4, Str) with an approved `attack_bonus` override of **+2** (the SRD print; the derivation gives +4 = Str +2 and PB +2; test DEVIATIONS) | **partial**: Sure-Footed is description only (as goat); Beast of Burden is descriptive (no carrying-capacity model) |
+| Rat | 0 | bite as flat damage `{"flat": 1, "type": "piercing"}` (CONTENT_CONVENTIONS 19), to-hit +0 as printed, darkvision 30 | no `natural` block: the derivation needs a die, so a flat-only attack keeps its printed to-hit and damage (as the #295 validator fixture). Keen Smell descriptive. Was deferred in batch 1 |
+| Scorpion | 0 | sting as flat 1 piercing + `on_hit save_condition` (Con DC 9, 1d8 poison, half); `natural_armor` 11; blindsight 10 | as rat (no `natural` block). Was deferred in batch 1 |
 
 The goblin keeps `$schema: monster@3`, its id (`srd51.monster.goblin`, stable id derived from it) and bytes. It is referenced by C++ tests that assert its `@3` form (`content_migration_tests`, `pack_set_tests`, compat goblin tests) and by the fl1 compat corpus, and a schema change could shift digests and goldens; migrating it buys nothing until a `@4`-only feature is needed.
 
@@ -93,14 +95,12 @@ Not set: `presentation` (the goblin has none; sprite assets for these monsters d
 Played: stats, attacks with every `damage[]` entry (#45), resistances / immunities / vulnerabilities / condition immunities (#45), `multiattack` options (#48/#59), `damage_mitigation` (#47/#58), `bonus_action_grant`, size footprint (#50/#55).
 Carried and validated but **not applied** (the registry reserves the `@4` kinds; the archetype lists them in `unsupported_features` and ignores them): `on_event` (Undead Fortitude, Rampage, Sneak Attack), `on_hit[]` riders (snake poison), `save_effect` actions with `usage` (Acid Breath). Until Engine Core lands the row 6 compile / row 9-10 trigger hooks these monsters play without those effects. No content change is needed when the hooks land.
 
-## Deferred (19)
+## Deferred (17)
 
 The last pre-v0.1 deferred monster, `srd51.monster.swarm_of_rats` (T&C-G7, T&C-G14, T&C-G15), was authored after sim #172 (swarm tag, `half_hp_damage`).
 
 | monster | CR | blocking mechanic |
 |---|---|---|
-| Rat (`srd51.monster.rat`) | 0 | Bite deals a flat **1** piercing damage (no die). monster@5 / common@2 `damage[].dice` must be `NdS[+/-B]` (no `flat` arm on monster damage), and `natural.dice` likewise; the to-hit (+0) would also need an `attack_bonus` override. Not approximated. |
-| Scorpion (`srd51.monster.scorpion`) | 0 | Sting deals a flat **1** piercing damage (same gap as the rat); the Con DC 9 1d8 poison rider itself is expressible. Not approximated. |
 | Cat (`srd51.monster.cat`) | 0 | Claws deal a flat 1 slashing damage: `damage[].dice` / `natural.dice` accept dice only, no flat-damage form for an attack |
 | Crab (`srd51.monster.crab`) | 0 | Claw deals a flat 1 bludgeoning damage (as cat) |
 | Poisonous Snake (`srd51.monster.poisonous_snake`) | 1/8 | Bite deals a flat 1 piercing damage (as cat); the poison rider itself is expressible |
