@@ -23,7 +23,11 @@ inline constexpr int kFeetPerTile = 5;
 // SRD 5.1 movement modes (feat/move-modes): which non-walking speeds a mover has. Default: a walker only.
 struct MoveCaps {
     bool fly = false, swim = false, climb = false;
+    bool burrow = false;   // feat/rules-burrow-speed (PR #290): burrow_ft > 0
 };
+// Grid::path airborne_abs_ft value that plans a burrowed mover (altitude PR2): it tunnels under walkable, non-water
+// ground at 5 ft per tile, ignoring difficult terrain and ledges (it stays at its depth below the ground).
+inline constexpr int kPathBurrowed = -1000;
 
 // ---- altitude PR2: ground height (chunk@3, docs/CHUNK_HASH.md "chunk@3 ground") ----
 // Pure rules, mirrored in Python by tools/validate/validate_packs.py (ledge_ft / step_extra_ft):
