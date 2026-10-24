@@ -59,7 +59,7 @@ permissions:
 # One-line burst switch. 'true' = hosted Linux in parallel with the box (see header).
 # 'false' = box preferred, ubuntu-latest only when the box misses the canary (#281).
 env:
-  CI_BURST: 'true'
+  CI_BURST: 'false'
 
 concurrency:
   # Not a global lock. Several PRs run at once: the group is the PR number, or the ref for a
