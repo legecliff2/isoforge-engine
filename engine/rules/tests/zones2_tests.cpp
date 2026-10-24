@@ -1,6 +1,7 @@
 // R-G11 rules PR 2: Silence, Stinking Cloud, Wall of Fire, Fog Cloud / Darkness flags, and the items PR 1 deferred (Moonbeam's
 // shapechanger disadvantage, Spirit Guardians' evil-caster damage, the D7 feature-aura fields), per
 // docs/proposals/ZONES_AURAS.md §2.10. Sim's geometry is faked as in zones_tests.cpp.
+#include <algorithm>
 #include <doctest/doctest.h>
 
 #include <memory>
@@ -552,4 +553,48 @@ TEST_CASE("ghast Stench: works while the ghast is unconscious, stops at its deat
     CHECK_FALSE(find(s, 2)->has(Condition::Poisoned));
     for (int k = 0; k < 3; ++k) ev = next_turn_of(s, 2);
     CHECK(s.zones.empty());
+}
+
+// Lich ruling (Stench expiry is per source): when the Stench poison ends it removes only its own instance; poison from
+// another source stays. The instances are ActiveSpellEffects keyed by (spell_id, caster); end_effect clears the condition
+// only when no other effect / sourced condition / untracked prior instance still holds it.
+TEST_CASE("ghast Stench: its poison expiring leaves another source's poison (tracked effect)") {
+    auto geo = std::make_shared<Geo>();
+    auto s = stench_start(geo, 30);
+    const uint32_t kOther = spell_id_of("test.other#poison");
+    add_condition(mut(s, 2), Condition::Poisoned);   // poisoned by another source first (no expiry)
+    s.effects.push_back(ActiveSpellEffect{kOther, 4, 2, Condition::Poisoned, Ability::Con, 12, RepeatSave::None, false,
+                                          Timed{}, 0, false});
+    auto ev = next_turn_of(s, 2);
+    CHECK(saves_of(ev, 2) == 1);                     // then by Stench
+    REQUIRE(std::count_if(s.effects.begin(), s.effects.end(), [](const ActiveSpellEffect& e) { return e.spell_id == kStench; }) == 1);
+    geo->inside.clear();
+    ev = next_turn_of(s, 2);                            // Stench's poison expires at the start of its next turn
+    CHECK(std::none_of(s.effects.begin(), s.effects.end(), [](const ActiveSpellEffect& e) { return e.spell_id == kStench; }));
+    CHECK(find(s, 2)->has(Condition::Poisoned));     // still poisoned by the other source
+    CHECK(of_kind(ev, EventKind::ConditionRemoved).empty());
+}
+
+TEST_CASE("ghast Stench: its poison expiring leaves an untracked prior poison (scenario / content condition)") {
+    auto geo = std::make_shared<Geo>();
+    auto s = stench_start(geo, 30);
+    add_condition(mut(s, 2), Condition::Poisoned);   // poisoned before combat (no effect record)
+    auto ev = next_turn_of(s, 2);
+    CHECK(saves_of(ev, 2) == 1);
+    geo->inside.clear();
+    ev = next_turn_of(s, 2);
+    CHECK(std::none_of(s.effects.begin(), s.effects.end(), [](const ActiveSpellEffect& e) { return e.spell_id == kStench; }));
+    CHECK(find(s, 2)->has(Condition::Poisoned));
+}
+
+TEST_CASE("ghast Stench: its poison expiring leaves a sourced poison") {
+    auto geo = std::make_shared<Geo>();
+    auto s = stench_start(geo, 30);
+    std::vector<Event> sev;
+    REQUIRE(apply_sourced_condition(s, 4, 2, Condition::Poisoned, 0, sev));
+    auto ev = next_turn_of(s, 2);
+    CHECK(saves_of(ev, 2) == 1);
+    geo->inside.clear();
+    ev = next_turn_of(s, 2);
+    CHECK(find(s, 2)->has(Condition::Poisoned));
 }

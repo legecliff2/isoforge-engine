@@ -181,6 +181,9 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
     // batch 3 ghast Stench (Lich ruling): creature-sourced auras exist from the start of combat, in spawn order (ZoneCreated
     // events; nothing for archetypes without an aura trait, so every other combat hashes as before).
     c.state_.hooks.spells = c.spells_;   // add_feature_aura reads the def; install_hooks sets the same pointer later
+    // TODO(deferred, docs/SRD_COMBAT_COVERAGE.md "Auras on summoned creatures"): only creatures present at Combat::create get
+    // their aura. A creature summoned mid-combat (spawn_summon) never gets it; no supported summon target has an aura trait
+    // today (content/packs has no creature-summoning spell and no "aura" trait), so nothing is lost yet.
     for (const auto& sl : c.slots_)
         for (uint32_t id : sl.archetype->aura_spell_ids) rules5e::add_feature_aura(c.state_, sl.id, id, &opening);
     c.apply_rules_events(opening);
@@ -1333,6 +1336,7 @@ void Combat::spawn_summon(const rules5e::Event& ev, const rules5e::LoggedStep& l
     slots_.push_back(sl);
     if (!a->equipment.empty()) equipment_[id] = a->equipment;
     register_rows(slots_.back());
+    // TODO(deferred, see Combat::create): a->aura_spell_ids are not attached for a summoned creature (no add_feature_aura here).
     SimEvent se;   // v10: right after its own Summoned; actor = id, tile = anchor, rules.a = footprint side, rules.b = summoner
     se.kind = SimEvent::Kind::TokenSpawned;
     se.actor = id;
