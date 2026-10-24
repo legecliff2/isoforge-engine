@@ -39,6 +39,11 @@ def load(idx):
     return json.loads((PACK / "monsters" / f"{idx.replace('-', '_')}.json").read_text(encoding="utf-8"))
 
 
+def dmg(x, y):
+    # CONTENT_CONVENTIONS 19 (#295): the table's bare-integer dice ("1") is authored as monster@5 flat damage
+    return {"flat": int(x), "type": y} if x.isdigit() else {"dice": x, "type": y}
+
+
 def num(s):
     return int(str(s).split()[0])
 
@@ -79,12 +84,12 @@ class MonsterTable(unittest.TestCase):
             for ta in t["attacks"]:
                 for opt in ta["damage_options"]:
                     with self.subTest(monster=idx, attack=ta["name"], damage=opt):
-                        want = [{"dice": x, "type": y} for x, y in opt]
+                        want = [dmg(x, y) for x, y in opt]
                         self.assertTrue(
                             any(a["to_hit"] == ta["attack_bonus"] and a["damage"] == want for a in attacks),
                             f"no action with to_hit {ta['attack_bonus']} and damage {want}")
             # no invented attack: every authored attack action matches some table option
-            known = [(ta["attack_bonus"], [{"dice": x, "type": y} for x, y in opt]) for ta in t["attacks"] for opt in ta["damage_options"]]
+            known = [(ta["attack_bonus"], [dmg(x, y) for x, y in opt]) for ta in t["attacks"] for opt in ta["damage_options"]]
             for a in attacks:
                 if (idx, a["id"]) in EXTRA_ATTACKS:
                     continue
