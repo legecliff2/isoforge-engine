@@ -3187,22 +3187,47 @@ void zero_hp_clause(EncounterState& s, const Combatant& a, Combatant& t, const S
     s.effects.push_back(e);
 }
 
-// 7.2zh: v1 "metal" is the item category (Weapon, Armor, Shield), not a metal flag. Hands are matched by instance;
-// worn armor has no instance, so equip_item is the armor def id. A hand match wins over armor.
+// 7.2zh: a heatable object is a worn or held weapon, armor, or shield. Hands are matched by instance; worn armor has
+// no instance, so equip_item is the armor def id. A hand match wins over armor.
+// manufactured_metal is the predicate cast_spell_impl and legal_actions share (a hand whose instance equals the armor
+// def claims that id, so a non-metal hand does not fall through to the armor). Rust-type effects use it too.
+// Absent material falls back to the category rule (any weapon, armor, or shield). Only an explicit non-metal value
+// (wood, leather, hide, cloth, rope) removes the target.
 struct HeatedPick { uint32_t instance = 0; uint32_t def = 0; bool worn = false; };
+bool explicit_non_metal(ItemMaterial m) {
+    return m == ItemMaterial::Wood || m == ItemMaterial::Leather || m == ItemMaterial::Hide ||
+           m == ItemMaterial::Cloth || m == ItemMaterial::Rope;
+}
+bool manufactured_metal(const EncounterState& s, uint32_t def_id) {
+    if (def_id == 0 || !s.hooks.item_def) return false;
+    const ItemDef* d = s.hooks.item_def(def_id);
+    if (!d || explicit_non_metal(d->material)) return false;
+    return d->kind == ItemKind::Weapon || d->kind == ItemKind::Armor || d->kind == ItemKind::Shield;
+}
 std::optional<HeatedPick> pick_heated_object(const EncounterState& s, const LoadoutView& v, uint32_t equip_item) {
     if (equip_item == 0 || !s.hooks.item_def) return std::nullopt;
-    auto metal = [&](uint32_t def_id) {
-        const ItemDef* d = s.hooks.item_def(def_id);
-        return d && (d->kind == ItemKind::Weapon || d->kind == ItemKind::Armor || d->kind == ItemKind::Shield);
-    };
     const HeldItem* hand = nullptr;
     if (v.main.instance == equip_item) hand = &v.main;
     else if (v.off.instance == equip_item) hand = &v.off;
-    if (hand) return metal(hand->def) ? std::optional<HeatedPick>{HeatedPick{hand->instance, hand->def, false}} : std::nullopt;
-    if (v.armor_def != 0 && equip_item == v.armor_def && metal(v.armor_def))
+    if (hand) return manufactured_metal(s, hand->def) ? std::optional<HeatedPick>{HeatedPick{hand->instance, hand->def, false}} : std::nullopt;
+    if (v.armor_def != 0 && equip_item == v.armor_def && manufactured_metal(s, v.armor_def))
         return HeatedPick{v.armor_def, v.armor_def, true};
     return std::nullopt;
+}
+bool heat_metal_eligible(const EncounterState& s, const LoadoutView& v, uint32_t equip_item) {
+    return pick_heated_object(s, v, equip_item).has_value();
+}
+// Deterministic equip_item ids pick_heated_object accepts: main instance, off instance, then worn armor def.
+std::vector<uint32_t> heat_metal_equip_items(const EncounterState& s, const LoadoutView& v) {
+    std::vector<uint32_t> ids;
+    auto add = [&](uint32_t id) {
+        if (id == 0 || std::find(ids.begin(), ids.end(), id) != ids.end()) return;
+        if (heat_metal_eligible(s, v, id)) ids.push_back(id);
+    };
+    add(v.main.instance);
+    add(v.off.instance);
+    add(v.armor_def);
+    return ids;
 }
 bool heated_still_held(const LoadoutView& v, const ActiveSpellEffect& e) {
     if (e.heated_worn) return e.heated_def != 0 && v.armor_def == e.heated_def;
@@ -3534,6 +3559,15 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             }
         }
         if (def.concentration && applied) a.concentration_spell = def.id;
+        // 7.2zi Expeditious Retreat: "When you cast this spell ... you can take the Dash action." The bonus action was
+        // already spent to cast, so this Dash is part of the cast, not a second action. Same grant as ActionKind::Dash.
+        // Later turns still Dash as a bonus action via the BonusDash marker. No rng. Unused movement stays legal.
+        // The flag is not a modifier field (not 0x5F, not a new tag). Only the current actor's budget moves.
+        if (def.dash_on_cast && applied && current_actor(s) == a.id) {
+            s.budget.movement_ft = int16_t(s.budget.movement_ft + modified_speed(s, a));
+            if (s.budget.dashes < 255) ++s.budget.dashes;
+            emit(ev, EventKind::Dashed, a.id, 0, s.budget.movement_ft);
+        }
         break;
     }
     case SpellEffectKind::HpPool: {   // Sleep / Color Spray: lowest current HP first while the pool covers them
@@ -3925,6 +3959,50 @@ bool ward_save(EncounterState& s, Combatant& a, std::size_t ward, std::vector<Ev
     return r.success;
 }
 
+// Shared by cast_spell_impl and legal_actions, before a target is considered. Empty when the cast may proceed:
+// the spell is known or an innate use remains (at its own level), a slot is available, usage rows allow it, and
+// components can be provided (Silence, the component hook, free hands / focus). Concentration is not a refusal:
+// a concentration spell replaces the one already held.
+std::string_view spell_cast_resource_refusal(const EncounterState& s, const Combatant& a, const SpellDef& def,
+                                             bool innate, uint8_t level) {
+    const InnateSpell* inn = nullptr;
+    if (innate) {
+        for (const auto& is : a.innate) if (is.spell_id == def.id) inn = &is;   // last match, as cast_spell_impl
+        if (!inn) return "not an innate spell";
+        if (!inn->available()) return "innate spell has no uses left";
+        if (level != def.level) return "innate spells cannot be upcast";
+    } else if (!knows_spell(a, def.id)) return "spell not known";
+    if (def.casting_time == CastingTime::Reaction) return "reaction spells are cast from reaction windows";
+    if (def.casting_time == CastingTime::Minute || def.casting_time == CastingTime::Hour)
+        return "casting time too long for an encounter";
+    if (is_incapacitated(a)) return "incapacitated";
+    if (def.level == 0 && level != 0) return "cantrips use no slot";
+    if (def.level > 0 && (level < def.level || level > 9)) return "bad slot level";
+    if (!inn && !has_slot(a, level)) return "no spell slot of that level";
+    if (def.usage_kind == 1) {
+        const ActionUse* au = nullptr;
+        for (const auto& u : s.action_uses) if (u.actor == a.id && u.spell_id == def.id) au = &u;
+        if (au && au->expended) return "action has not recharged";
+    } else if (def.usage_kind == 2) {
+        const FeatureUses* fu = nullptr;
+        for (const auto& f : s.features) if (f.actor == a.id && f.feature_id == def.id) fu = &f;
+        if (fu && fu->max > 0 && fu->used >= fu->max) return "no uses left";
+    } else if (def.usage_kind == 3) {
+        const uint16_t pcost = def.pool_cost ? def.pool_cost : 1;
+        if (find_pool(s, a.id, def.pool_id) && !can_spend(s, a.id, def.pool_id, pcost)) return "not enough resource";
+    }
+    const bool listed = !inn || inn->as_listed;
+    if (listed && (def.components & kComponentV) && !s.zones.empty() && in_silence(s, a.id))
+        return "silence: no verbal component inside a Silence zone";
+    if (listed && s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, def))
+        return "components unavailable";
+    if (listed && s.hooks.loadout_of) {
+        const std::string_view why = components_refusal(s, a.id, def);
+        if (!why.empty()) return why;
+    }
+    return {};
+}
+
 StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def,
                            const ActionRequest& req, int meta_cost) {
     if (req.zone_move != 0) {   // R-G11: move the actor's zone (Moonbeam); no slot, no SpellCast window
@@ -3976,7 +4054,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         for (auto& m : s.modifiers) {   // the same rows, retargeted: ModifierExpired reason 10 (moved), then ModifierApplied
             if (m.caster != a.id || m.spec.source != def.id || m.spec.mark_scope == 0 || m.mark != old_mark) continue;
             emit(out.events, EventKind::ModifierExpired, m.caster, m.target, int32_t(m.spec.id), 10);
-            if (m.target == old_mark) m.target = t->id;   // a row on the marked creature (Hex's check) follows the mark
+            if (m.target == old_mark) m.target = t->id;   // a row on the marked creature (the chosen-ability check) follows the mark
             m.mark = t->id;
             emit(out.events, EventKind::ModifierApplied, m.caster, m.target, int32_t(m.spec.id), int32_t(m.spec.stat), modifier_magnitude(m.spec));
         }
@@ -4009,40 +4087,18 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         check_end(s, out.events);
         return out;
     }
-    InnateSpell* inn = nullptr;
-    if (req.innate) {
-        for (auto& is : a.innate) if (is.spell_id == def.id) inn = &is;
-        if (!inn) return fail("not an innate spell");
-        if (!inn->available()) return fail("innate spell has no uses left");
-        if (req.spell_level != def.level) return fail("innate spells cannot be upcast");
-    } else if (!knows_spell(a, def.id)) return fail("spell not known");
-    if (def.casting_time == CastingTime::Reaction) return fail("reaction spells are cast from reaction windows");
-    if (def.casting_time == CastingTime::Minute || def.casting_time == CastingTime::Hour)
-        return fail("casting time too long for an encounter");
-    if (is_incapacitated(a)) return fail("incapacitated");
     const uint8_t lvl = req.spell_level;
-    if (def.level == 0 && lvl != 0) return fail("cantrips use no slot");
-    if (def.level > 0 && (lvl < def.level || lvl > 9)) return fail("bad slot level");
-    if (!inn && !has_slot(a, lvl)) return fail("no spell slot of that level");
-    // Usage limits (registered rows only; no row = unlimited, like features).
+    if (const std::string_view why = spell_cast_resource_refusal(s, a, def, req.innate, lvl); !why.empty()) return fail(why);
+    InnateSpell* inn = nullptr;
+    if (req.innate)
+        for (auto& is : a.innate) if (is.spell_id == def.id) inn = &is;
+    // Usage rows (registered only; no row = unlimited). spell_cast_resource_refusal already accepted them.
     ActionUse* au = nullptr; FeatureUses* fu = nullptr;
     const uint16_t pcost = def.pool_cost ? def.pool_cost : 1;
     if (def.usage_kind == 1) {
         for (auto& u : s.action_uses) if (u.actor == a.id && u.spell_id == def.id) au = &u;
-        if (au && au->expended) return fail("action has not recharged");
     } else if (def.usage_kind == 2) {
         for (auto& f : s.features) if (f.actor == a.id && f.feature_id == def.id) fu = &f;
-        if (fu && fu->max > 0 && fu->used >= fu->max) return fail("no uses left");
-    } else if (def.usage_kind == 3) {
-        if (find_pool(s, a.id, def.pool_id) && !can_spend(s, a.id, def.pool_id, pcost)) return fail("not enough resource");
-    }
-    // R-G11 PR 2: no verbal component while completely inside a Silence zone (checked before sim's component hook; no roll)
-    if ((!inn || inn->as_listed) && (def.components & kComponentV) && !s.zones.empty() && in_silence(s, a.id))
-        return fail("silence: no verbal component inside a Silence zone");
-    if ((!inn || inn->as_listed) && s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, def)) return fail("components unavailable");
-    if ((!inn || inn->as_listed) && s.hooks.loadout_of) {   // EQUIPMENT.md 3.2: free hands / focus (creatures with a loadout view)
-        const std::string_view why = components_refusal(s, a.id, def);
-        if (!why.empty()) return fail(why);
     }
     std::vector<CombatantId> ids = req.targets;
     if (ids.empty() && req.target != 0) ids.push_back(req.target);
@@ -4090,8 +4146,9 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
             return fail("too many targets");
         if (def.kind == SpellEffectKind::SustainedDamage && def.held_object) {   // 7.2zh Heat Metal
             if (T.size() != 1) return fail("heat_metal: no metal object");
-            if (!s.hooks.loadout_of || !s.hooks.loadout_of(s, T[0]->id)) return fail("heat_metal: equipment required");
-            if (!pick_heated_object(s, *s.hooks.loadout_of(s, T[0]->id), req.equip_item)) return fail("heat_metal: no metal object");
+            const LoadoutView* hv = s.hooks.loadout_of ? s.hooks.loadout_of(s, T[0]->id) : nullptr;
+            if (!hv) return fail("heat_metal: equipment required");
+            if (!heat_metal_eligible(s, *hv, req.equip_item)) return fail("heat_metal: no metal object");
         }
         break;
     case SpellEffectKind::AutoHit: {
@@ -5106,8 +5163,8 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         if (req.move_ft <= 0) return fail("move_ft must be positive");
         int cost = req.move_ft * (a.has(Condition::Prone) ? 2 : 1);   // crawling
         if (drags_grappled(s, a)) cost *= 2;                           // SRD: half speed while moving a grappled creature
-        if (req.move_mode > 3) return fail("bad move_mode");
-        if (req.move_mode != 0) {   // feat/move-modes: fly / swim / climb speed; the shared budget may go below 0
+        if (req.move_mode > 4) return fail("bad move_mode");
+        if (req.move_mode != 0) {   // feat/move-modes: fly / swim / climb / burrow speed; the shared budget may go below 0
             const int allow = move_allowance(s, a, req.move_mode);
             if (allow < 0) return fail("no such speed");
             if (req.move_mode == 1 && a.has(Condition::Prone)) return fail("cannot fly while prone");
@@ -5665,6 +5722,59 @@ void push_zone_forms(std::vector<ActionRequest>& out, const ActionRequest& base,
         }
     }
 }
+// range_ft 0 is self. A mark still names another creature (True Strike). An area template is sim's.
+bool self_range_modifier(const SpellDef& d) {
+    return d.kind == SpellEffectKind::ApplyModifier && d.range_ft == 0 && d.area == AreaShape::None && d.modifier.mark_scope == 0;
+}
+void append_spell_targets(std::vector<ActionRequest>& out, const EncounterState& s, const Combatant& a,
+                          const SpellDef& d, ActionRequest r) {
+    auto choices = [](ActionRequest& q, const SpellDef& def) {
+        q.damage_choice = uint8_t(def.damage_choices.empty() ? 0 : 1);
+        q.condition_choice = uint8_t(def.condition_choices.empty() ? 0 : 1);
+    };
+    auto creature_ok = [&](const Combatant& t) {
+        if (!valid_target_type(d, t) || (d.excluded_types & bit(t.creature_type))) return false;
+        if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, a, d, t)) return false;
+        return true;
+    };
+    if (d.kind == SpellEffectKind::Teleport || d.kind == SpellEffectKind::Zone) {   // R-G9 / R-G11: self; sim adds the destination
+        r.target = a.id;
+        push_zone_forms(out, r, d);
+        return;
+    }
+    if (self_range_modifier(d)) {   // Blur, Expeditious Retreat: target = the caster (the hostile loop never offered self)
+        if (!creature_ok(a)) return;
+        r.target = a.id;
+        choices(r, d);
+        out.push_back(r);
+        return;
+    }
+    const bool heal = d.kind == SpellEffectKind::Heal ||
+                      (d.kind == SpellEffectKind::ApplyCondition && d.condition == Condition::Invisible);
+    const bool heat = d.kind == SpellEffectKind::SustainedDamage && d.held_object;
+    for (const auto& t : s.combatants) {
+        if (t.dead) continue;
+        if (heal ? t.team != a.team : (t.team == a.team || t.id == a.id)) continue;
+        if (!creature_ok(t)) continue;
+        if (heat) {   // one action per eligible worn or held metal item; none when submit would refuse the cast
+            if (!s.hooks.loadout_of) continue;
+            const LoadoutView* v = s.hooks.loadout_of(s, t.id);
+            if (!v) continue;
+            for (uint32_t item : heat_metal_equip_items(s, *v)) {
+                ActionRequest q = r;
+                q.target = t.id;
+                q.equip_item = item;
+                choices(q, d);
+                out.push_back(q);
+            }
+            continue;
+        }
+        ActionRequest q = r;
+        q.target = t.id;
+        choices(q, d);
+        out.push_back(q);
+    }
+}
 } // namespace
 
 std::vector<ActionRequest> legal_actions(const EncounterState& s) {
@@ -5795,10 +5905,11 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
         r.move_ft = 5;
         out.push_back(r);
     }
-    const bool silenced = !s.zones.empty() && in_silence(s, a.id);   // R-G11 PR 2: no verbal components (Silence)
-    // Spells: every known non-reaction SpellBook spell, at every slot level available, at each
-    // valid target (hostile for attacks/saves/darts, same team for healing). Range and sight are
-    // sim's (hooks.spell_target_ok); multi-target / split-dart requests are built by sim or AI.
+    // Spells: every known non-reaction SpellBook spell, at every slot level spell_cast_resource_refusal allows
+    // (slot or innate uses, components, and concentration — an existing concentration spell is not a refusal),
+    // at each valid target (hostile for attacks/saves/darts, same team for healing, self for a self-range
+    // modifier). Heat Metal is one action per eligible metal item (equip_item). Range and sight are sim's
+    // (hooks.spell_target_ok); multi-target / split-dart requests are built by sim or AI.
     const bool no_casting = a.form == FormKind::Polymorph || a.form == FormKind::WildShape;   // R-G12: can't cast in the form
     if (s.hooks.spells && !is_incapacitated(a) && !no_casting) {
         for (uint32_t id : a.spells_known) {
@@ -5806,32 +5917,11 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             if (d && (d->kind == SpellEffectKind::Polymorph || d->kind == SpellEffectKind::Summon || d->kind == SpellEffectKind::SummonWeapon)) continue;   // R-G12: sim builds Polymorph requests (form choice)
             if (!d || (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction)) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !can_act) continue;
-            if ((d->components & kComponentV) && silenced) continue;   // R-G11 PR 2: Silence
-            if (s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, *d)) continue;
-            if (d->usage_kind == 1) { const ActionUse* u = find_action_use(s, a.id, d->id); if (u && u->expended) continue; }
-            if (d->usage_kind == 2 && feature_uses_left(s, a.id, d->id) == 0) continue;
-            if (d->usage_kind == 3 && find_pool(s, a.id, d->pool_id) &&
-                !can_spend(s, a.id, d->pool_id, d->pool_cost ? d->pool_cost : 1)) continue;
             for (uint8_t L = d->level; L <= (d->level == 0 ? 0 : 9); ++L) {
-                if (!has_slot(a, L)) continue;
-                if (d->kind == SpellEffectKind::Teleport || d->kind == SpellEffectKind::Zone) {   // R-G9 / R-G11: self; sim adds the destination (legal_teleport_tiles / zone tiles)
-                    ActionRequest r{a.id, ActionKind::CastSpell, a.id};
-                    r.spell_id = d->id; r.spell_level = L;
-                    push_zone_forms(out, r, *d);
-                    continue;
-                }
-                for (const auto& t : s.combatants) {
-                    if (t.dead) continue;
-                    // Heal, and Invisibility-style conditions (the only beneficial SRD condition), go on allies.
-                    const bool heal = d->kind == SpellEffectKind::Heal ||
-                                      (d->kind == SpellEffectKind::ApplyCondition && d->condition == Condition::Invisible);
-                    if (heal ? t.team != a.team : (t.team == a.team || t.id == a.id)) continue;
-                    if (!valid_target_type(*d, t) || (d->excluded_types & bit(t.creature_type))) continue;
-                    if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, a, *d, t)) continue;
-                    ActionRequest r{a.id, ActionKind::CastSpell, t.id};
-                    r.spell_id = d->id; r.spell_level = L; r.damage_choice = uint8_t(d->damage_choices.empty() ? 0 : 1); r.condition_choice = uint8_t(d->condition_choices.empty() ? 0 : 1);
-                    out.push_back(r);
-                }
+                if (!spell_cast_resource_refusal(s, a, *d, false, L).empty()) continue;
+                ActionRequest r{a.id, ActionKind::CastSpell};
+                r.spell_id = d->id; r.spell_level = L;
+                append_spell_targets(out, s, a, *d, r);
             }
         }
     }
@@ -5841,28 +5931,13 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
             if (!d || !is.available()) continue;
             if (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !can_act) continue;
-            if (is.as_listed && (d->components & kComponentV) && silenced) continue;   // R-G11 PR 2: Silence
-            if (is.as_listed && s.hooks.can_provide_components && !s.hooks.can_provide_components(s, a, *d)) continue;
-            if (d->kind == SpellEffectKind::Teleport || d->kind == SpellEffectKind::Zone) {   // R-G9 / R-G11: self (sim adds a destination)
-                ActionRequest r{a.id, ActionKind::CastSpell, a.id};
-                r.spell_id = d->id; r.spell_level = d->level; r.innate = true;
-                push_zone_forms(out, r, *d);
-                continue;
-            }
-            for (const auto& t : s.combatants) {
-                if (t.dead) continue;
-                const bool heal = d->kind == SpellEffectKind::Heal ||
-                                  (d->kind == SpellEffectKind::ApplyCondition && d->condition == Condition::Invisible);
-                if (heal ? t.team != a.team : (t.team == a.team || t.id == a.id)) continue;
-                if (!valid_target_type(*d, t) || (d->excluded_types & bit(t.creature_type))) continue;
-                if (s.hooks.spell_target_ok && !s.hooks.spell_target_ok(s, a, *d, t)) continue;
-                ActionRequest r{a.id, ActionKind::CastSpell, t.id};
-                r.spell_id = d->id; r.spell_level = d->level; r.innate = true; r.damage_choice = uint8_t(d->damage_choices.empty() ? 0 : 1); r.condition_choice = uint8_t(d->condition_choices.empty() ? 0 : 1);
-                out.push_back(r);
-            }
+            if (!spell_cast_resource_refusal(s, a, *d, true, d->level).empty()) continue;
+            ActionRequest r{a.id, ActionKind::CastSpell};
+            r.spell_id = d->id; r.spell_level = d->level; r.innate = true;
+            append_spell_targets(out, s, a, *d, r);
         }
     }
-    if (b.bonus_action && a.concentration_spell != 0 && !is_incapacitated(a))   // ward / mark follow-ups: move_mark (Hex, Hunter's Mark)
+    if (b.bonus_action && a.concentration_spell != 0 && !is_incapacitated(a))   // ward / mark follow-ups: move_mark (a concentration spell with a movable mark)
         if (const SpellDef* d = spell_def(s, a.concentration_spell); d && d->move_mark != 0) {
             const ActiveModifier* row = nullptr;
             for (const auto& m : s.modifiers)
@@ -6208,7 +6283,7 @@ int modified_ac_bonus(const EncounterState& s, CombatantId id) {
 
 int mode_speed(const EncounterState& s, const Combatant& c, uint8_t mode) {
     if (mode == 0) return modified_speed(s, c);
-    const uint8_t base = mode == 1 ? c.fly_ft : mode == 2 ? c.swim_ft : mode == 3 ? c.climb_ft : 0;
+    const uint8_t base = mode == 1 ? c.fly_ft : mode == 2 ? c.swim_ft : mode == 3 ? c.climb_ft : mode == 4 ? c.burrow_ft : 0;
     if (base == 0) return -1;
     Combatant k = c;
     k.speed_ft = base;
@@ -6472,7 +6547,7 @@ FormStats own_stats(const Combatant& c) {
     f.attacks = c.attacks; f.multiattacks = c.multiattacks; f.attacks_per_action = c.attacks_per_action; f.size = c.size;
     f.creature_type = c.creature_type; f.roll_traits = c.roll_traits; f.triggers = c.triggers; f.reactions = c.reactions;
     f.bonus_attacks = c.bonus_attacks;
-    f.fly_ft = c.fly_ft; f.swim_ft = c.swim_ft; f.climb_ft = c.climb_ft; f.hover = c.hover;   // feat/move-modes
+    f.fly_ft = c.fly_ft; f.swim_ft = c.swim_ft; f.climb_ft = c.climb_ft; f.burrow_ft = c.burrow_ft; f.hover = c.hover;   // feat/move-modes
     f.ability_reduction = c.ability_reduction;   // batch 3 Strength Drain
     return f;
 }
@@ -6484,7 +6559,7 @@ void put_stats(Combatant& c, const FormStats& f) {   // everything but hp / hp_m
     c.attacks = f.attacks; c.multiattacks = f.multiattacks; c.attacks_per_action = f.attacks_per_action; c.size = f.size;
     c.creature_type = f.creature_type; c.roll_traits = f.roll_traits; c.triggers = f.triggers; c.reactions = f.reactions;
     c.bonus_attacks = f.bonus_attacks;
-    c.fly_ft = f.fly_ft; c.swim_ft = f.swim_ft; c.climb_ft = f.climb_ft; c.hover = f.hover;   // feat/move-modes
+    c.fly_ft = f.fly_ft; c.swim_ft = f.swim_ft; c.climb_ft = f.climb_ft; c.burrow_ft = f.burrow_ft; c.hover = f.hover;   // feat/move-modes
     c.ability_reduction = f.ability_reduction;   // batch 3 Strength Drain
 }
 template <class T> void append_all(std::vector<T>& to, const std::vector<T>& from) { to.insert(to.end(), from.begin(), from.end()); }

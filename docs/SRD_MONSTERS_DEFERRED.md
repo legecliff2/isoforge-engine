@@ -1,6 +1,6 @@
 # SRD 5.1 monsters, CR 0-2 first batch: authored vs deferred
 
-> This work includes material taken from the System Reference Document 5.1 ("SRD 5.1") by Wizards of the Coast LLC, available at <https://dnd.wizards.com/resources/systems-reference-document>. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License, <https://creativecommons.org/licenses/by/4.0/legalcode>.
+> This work includes material taken from the System Reference Document 5.1 (“SRD 5.1”) by Wizards of the Coast LLC and available at https://dnd.wizards.com/resources/systems-reference-document. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License available at https://creativecommons.org/licenses/by/4.0/legalcode.
 
 Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `docs/SRD_SPELLS_DEFERRED.md`; pack `content/packs/srd51.core`.
 
@@ -13,11 +13,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | | count |
 |---|---|
 | inventory candidates | 30 |
-| authored now (`monster@4`, all converted to `monster@5` in §14 of CONTENT_CONVENTIONS) | 42 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189; 9 bestiary v0.1 batch 1 monsters as `monster@5` with `derive: true`: deer, pony, awakened shrub, hyena, cultist, giant weasel, mastiff, noble, tribal warrior) |
+| authored now (`monster@4`, all converted to `monster@5` in §14 of CONTENT_CONVENTIONS) | 53 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189; 9 bestiary v0.1 batch 1 monsters as `monster@5` with `derive: true`: deer, pony, awakened shrub, hyena, cultist, giant weasel, mastiff, noble, tribal warrior; 11 tier B batch d1 monsters as `monster@5` with `derive: true`: baboon, camel, draft horse, riding horse, giant lizard, giant centipede, giant wolf spider, ape, worg, brown bear, giant hyena) |
 | goblin (already shipped, left at `monster@3`) | 1 |
-| deferred (mechanic not expressible) | 2 (rat, scorpion: bestiary v0.1 batch 1) |
+| deferred (mechanic not expressible) | 17 (rat, scorpion: bestiary v0.1 batch 1; 15 tier B batch d1) |
 
-## Authored (42; batch 1 rows below at `monster@5` + `derive: true`)
+## Authored (53; bestiary v0.1 batch 1 and tier B batch d1 rows below at `monster@5` + `derive: true`)
 
 | monster | CR | mechanics carried as data | notes |
 |---|---|---|---|
@@ -63,6 +63,17 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Mastiff | 1/8 | bite (natural 1d6, Str) with knock-prone rider (Str DC 11, prone untimed, as wolf) | Keen Hearing and Smell descriptive |
 | Noble | 1/8 | breastplate, rapier; Parry as `reactions[]` (`being_hit`, `melee_only`, `requires_sight`, `ac_bonus 2`) | "be wielding a melee weapon" is not a predicate; the noble's only weapon (rapier) is always equipped |
 | Tribal Warrior | 1/8 | Pack Tactics (`pack_tactics`), hide armor, spear (1h / 2h / thrown, as guard) | |
+| Baboon | 0 | Pack Tactics (`pack_tactics`), bite (Str, 1d4 - 1), climb 30 | batch d1, `monster@5` |
+| Camel | 1/8 | bite with `natural.damage_ability: "none"` (SRD prints 2 (1d4) with Str 16) | batch d1, Large |
+| Draft Horse | 1/4 | hooves | batch d1, Large |
+| Riding Horse | 1/4 | hooves | batch d1, Large; XP 50 per SRD 5.1 (CR 1/4); 5e-database a6212be lists 25 XP, documented in `DEVIATIONS` |
+| Giant Lizard | 1/4 | bite, climb 30 | batch d1, Large; darkvision 30 recorded in `senses` |
+| Giant Centipede | 1/4 | bite + `on_hit save_condition` (Con DC 11, 3d6 poison, `on_success none`) with `zero_hp` (stable, poisoned 600 rounds, paralyzed while poisoned; as giant spider #174), climb 30 | batch d1; blindsight 30 in `senses` |
+| Giant Wolf Spider | 1/4 | bite + `on_hit save_condition` (Con DC 11, 2d6 poison, half) with `zero_hp` (as giant spider), climb 40 | batch d1; Spider Climb / Web Sense / Web Walker description only (as giant spider) |
+| Ape | 1/2 | Multiattack fist x2; rock as ranged natural attack (Str, 25/50) | batch d1 |
+| Worg | 1/2 | bite knock-prone rider (Str DC 13, prone untimed; as dire wolf) | batch d1, Large; Keen Hearing and Smell descriptive |
+| Brown Bear | 1 | Multiattack bite + claws; `attack_bonus` 5 on both (SRD prints +5; Str 19 + PB 2 = +6) | batch d1, Large; Keen Smell descriptive |
+| Giant Hyena | 1 | Rampage as gnoll (`on_event reduce_to_zero` -> `bonus_attack bite`) | batch d1, Large; as gnoll, the half-speed move is not encoded |
 
 The goblin keeps `$schema: monster@3`, its id (`srd51.monster.goblin`, stable id derived from it) and bytes. It is referenced by C++ tests that assert its `@3` form (`content_migration_tests`, `pack_set_tests`, compat goblin tests) and by the fl1 compat corpus, and a schema change could shift digests and goldens; migrating it buys nothing until a `@4`-only feature is needed.
 
@@ -73,7 +84,7 @@ Not set: `presentation` (the goblin has none; sprite assets for these monsters d
 Played: stats, attacks with every `damage[]` entry (#45), resistances / immunities / vulnerabilities / condition immunities (#45), `multiattack` options (#48/#59), `damage_mitigation` (#47/#58), `bonus_action_grant`, size footprint (#50/#55).
 Carried and validated but **not applied** (the registry reserves the `@4` kinds; the archetype lists them in `unsupported_features` and ignores them): `on_event` (Undead Fortitude, Rampage, Sneak Attack), `on_hit[]` riders (snake poison), `save_effect` actions with `usage` (Acid Breath). Until Engine Core lands the row 6 compile / row 9-10 trigger hooks these monsters play without those effects. No content change is needed when the hooks land.
 
-## Deferred (2)
+## Deferred (17)
 
 The last pre-v0.1 deferred monster, `srd51.monster.swarm_of_rats` (T&C-G7, T&C-G14, T&C-G15), was authored after sim #172 (swarm tag, `half_hp_damage`).
 
@@ -81,6 +92,22 @@ The last pre-v0.1 deferred monster, `srd51.monster.swarm_of_rats` (T&C-G7, T&C-G
 |---|---|---|
 | Rat (`srd51.monster.rat`) | 0 | Bite deals a flat **1** piercing damage (no die). monster@5 / common@2 `damage[].dice` must be `NdS[+/-B]` (no `flat` arm on monster damage), and `natural.dice` likewise; the to-hit (+0) would also need an `attack_bonus` override. Not approximated. |
 | Scorpion (`srd51.monster.scorpion`) | 0 | Sting deals a flat **1** piercing damage (same gap as the rat); the Con DC 9 1d8 poison rider itself is expressible. Not approximated. |
+| Cat (`srd51.monster.cat`) | 0 | Claws deal a flat 1 slashing damage: `damage[].dice` / `natural.dice` accept dice only, no flat-damage form for an attack |
+| Crab (`srd51.monster.crab`) | 0 | Claw deals a flat 1 bludgeoning damage (as cat) |
+| Poisonous Snake (`srd51.monster.poisonous_snake`) | 1/8 | Bite deals a flat 1 piercing damage (as cat); the poison rider itself is expressible |
+| Quipper (`srd51.monster.quipper`) | 0 | Blood Frenzy (advantage on melee attacks vs a creature missing hit points): no construct; also swim-only (schema requires `speed.walk`, SRD lists none); bite flat 1 damage |
+| Reef Shark (`srd51.monster.reef_shark`) | 1/2 | swim-only speed: `speed.walk` is required by the schema and the SRD lists no walk speed (writing walk 0 would change the pinned speed) |
+| Giant Crab (`srd51.monster.giant_crab`) | 1/8 | Claw grapple with two claws each grappling one target (per-limb grapple capacity) |
+| Constrictor Snake (`srd51.monster.constrictor_snake`) | 1/4 | Constrict: grappled and restrained until the grapple ends, can't constrict another target |
+| Crocodile (`srd51.monster.crocodile`) | 1/2 | Bite: grappled and restrained until the grapple ends, can't bite another target; Hold Breath |
+| Giant Frog (`srd51.monster.giant_frog`) | 1/4 | Bite grapple + restrained, can't bite another target; Swallow (bite against its grappled target, Small or smaller) |
+| Elk (`srd51.monster.elk`) | 1/4 | Charge (straight-line approach); Hooves targets only a prone creature (no target-prone gate) |
+| Giant Goat (`srd51.monster.giant_goat`) | 1/2 | Charge (straight-line approach, prone DC 13); Sure-Footed (advantage on Str/Dex saves vs being knocked prone) |
+| Giant Sea Horse (`srd51.monster.giant_sea_horse`) | 1/2 | Charge (straight-line approach); walk 0 / swim-only |
+| Warhorse (`srd51.monster.warhorse`) | 1/2 | Trampling Charge (prone save, then a bonus-action hooves attack vs the prone target) |
+| Lion (`srd51.monster.lion`) | 1 | Pounce (prone save, then a bonus-action bite vs the prone target); Running Leap |
+| Tiger (`srd51.monster.tiger`) | 1 | Pounce (as lion) |
+
 
 ### Re-check at `cfb5eed` (2026-10-19)
 
