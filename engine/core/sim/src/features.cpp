@@ -1122,6 +1122,77 @@ std::optional<std::string> apply_transparent(Archetype& a, const FeatureDecl& f,
 // identical traits are deduped. Static archetype data: no hash tag.
 constexpr std::initializer_list<const char*> kDamageTypesB3 = {"acid", "bludgeoning", "cold", "fire", "force", "lightning",
     "necrotic", "piercing", "poison", "psychic", "radiant", "slashing", "thunder"};
+// batch 3 ghast Stench (Lich ruling): a creature-sourced aura that exists from the start of combat. monster@5 trait effect
+//   {kind: "aura", radius_ft, on: "start_turn", save: {ability, dc}, condition, duration: "until_start_of_next_turn",
+//    success_immunity_hours}
+// compiles to a synthetic Zone SpellDef (anchor Creature, Sphere radius_ft, fixed DC, one StartTurn Save row) that
+// Combat::create attaches with rules5e::add_feature_aura. It works while the owner is alive (unconscious or incapacitated
+// included: needs_conscious_owner false) and ends at its death. A success makes that creature immune to this owner's aura
+// for success_immunity_hours (EncounterState::aura_immunities, hashed under 0xDE). content.cpp registers a.aura_defs.
+std::optional<std::string> apply_aura(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
+    if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": aura needs a monster@5 file";
+    if (a.schema_type != "monster") return f.id + ": aura: only valid on monsters";
+    const Json& e = f.effect;
+    for (auto it = e.begin(); it != e.end(); ++it)
+        if (it.key() != "kind" && it.key() != "radius_ft" && it.key() != "on" && it.key() != "save" && it.key() != "condition" &&
+            it.key() != "duration" && it.key() != "success_immunity_hours")
+            return f.id + ": aura: unknown key '" + it.key() + "'";
+    const auto r = e.find("radius_ft");
+    if (r == e.end() || !r->is_number_integer() || r->get<int>() < 5 || r->get<int>() > 120 || r->get<int>() % 5 != 0)
+        return f.id + ": aura: radius_ft must be a multiple of 5 in 5..120";
+    if (e.value("on", "") != "start_turn") return f.id + ": aura: on must be start_turn";
+    const auto sv = e.find("save");
+    if (sv == e.end() || !sv->is_object()) return f.id + ": aura: save {ability, dc} required";
+    for (auto it = sv->begin(); it != sv->end(); ++it)
+        if (it.key() != "ability" && it.key() != "dc") return f.id + ": aura: unknown save key '" + it.key() + "'";
+    int ab = -1;
+    {
+        const std::string v = sv->value("ability", "");
+        int i = 0;
+        for (const char* n : kAbilities7z) { if (v == n) ab = i; ++i; }
+    }
+    if (ab < 0) return f.id + ": aura: bad save.ability";
+    const auto dc = sv->find("dc");
+    if (dc == sv->end() || !dc->is_number_integer() || dc->get<int>() < 1 || dc->get<int>() > 30) return f.id + ": aura: save.dc must be 1..30";
+    int cond = -1;
+    {
+        const std::string v = e.value("condition", "");
+        int i = 0;
+        for (const char* n : kConditions7z) { if (v == n) cond = i; ++i; }
+    }
+    if (cond < 0 || cond == int(rules5e::Condition::Exhaustion)) return f.id + ": aura: bad condition";
+    if (e.value("duration", "") != "until_start_of_next_turn") return f.id + ": aura: duration must be until_start_of_next_turn";
+    int hours = 0;
+    if (auto h = e.find("success_immunity_hours"); h != e.end()) {
+        if (!h->is_number_integer() || h->get<int>() < 1 || h->get<int>() > 168) return f.id + ": aura: success_immunity_hours must be 1..168";
+        hours = h->get<int>();
+    }
+    rules5e::SpellDef d{};
+    d.content_id = a.id + "#" + f.id;
+    d.id = rules5e::spell_id_of(d.content_id);
+    d.level = 0;
+    d.kind = rules5e::SpellEffectKind::Zone;
+    d.is_spell = false;   // a trait, not a spell: no SpellCast window, not Counterspellable, not dispellable
+    d.fixed_dc = int8_t(dc->get<int>());
+    d.zone.shape = rules5e::AreaShape::Sphere;
+    d.zone.anchor = rules5e::ZoneAnchor::Creature;
+    d.zone.size_ft = uint16_t(r->get<int>());
+    d.zone.needs_conscious_owner = false;   // Lich: works while unconscious / incapacitated, ends at death
+    rules5e::ZoneTriggerRow row{};
+    row.on = rules5e::ZoneTrigger::StartTurn;
+    row.group = 1;
+    row.effect.kind = rules5e::SpellEffectKind::Save;
+    row.effect.save_ability = rules5e::Ability(ab);
+    row.effect.on_save = rules5e::OnSave::None;
+    row.effect.applies_condition = true;
+    row.effect.condition = rules5e::Condition(cond);
+    row.condition_until = 1;
+    row.success_immunity_hours = uint16_t(hours);
+    d.zone.triggers.push_back(row);
+    a.aura_defs.push_back(std::move(d));
+    return std::nullopt;
+}
+
 std::optional<std::string> apply_save_advantage(Archetype& a, const FeatureDecl& f, uint32_t, const FeatureBuildCtx& ctx) {
     if (ctx.declared_version != 0 && ctx.declared_version < 5) return f.id + ": save_advantage needs a monster@5 file";
     if (a.schema_type != "monster") return f.id + ": save_advantage: only valid on monsters";
@@ -1199,7 +1270,8 @@ FeatureRegistry make_builtin() {
     r.add_hook("shapechanger", {apply_shapechanger}); // R-G12 (7.2q)
     r.add_hook("extra_attack", {apply_extra_attack});   // character@4: gated in the hook (the 3 -> 4 kind list is frozen)
     r.add_hook("transparent", {apply_transparent});
-    r.add_hook("save_advantage", {apply_save_advantage});   // monster@5 (batch 3): gated in the hook, like transparent     // monster@4 (7.2w): gated in the hook, like extra_attack
+    r.add_hook("save_advantage", {apply_save_advantage});   // monster@5 (batch 3): gated in the hook, like transparent
+    r.add_hook("aura", {apply_aura});                       // monster@5 (batch 3 ghast Stench): gated in the hook
     r.add_hook("grant_die", {apply_grant_die});         // 7.2za Bardic Inspiration: gated in the hook
     r.add_hook("half_proficiency", {apply_half_proficiency});   // 7.2za Jack of All Trades: gated in the hook
     // Kinds the @4 schemas introduce (frozen list of the 3 -> 4 migration; hooks arrive with their rows).

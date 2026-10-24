@@ -236,6 +236,13 @@ struct ZoneTriggerRow {
     // Spirit Guardians: the damage is evil_damage_type instead when the zone's owner is evil (Combatant::evil).
     bool has_evil_damage_type = false;
     DamageType evil_damage_type = DamageType::Necrotic;
+    // ---- appended (batch 3, ghast Stench; Lich ruling) ----
+    // condition_until 1: a failed save's condition lasts until the start of the creature's next turn (a timed effect,
+    // Expiry::StartOfTargetNextTurn, not bound to the zone: it lasts after leaving). 0 = as before.
+    // success_immunity_hours > 0: a successful save makes the creature immune to this row's aura FROM THIS OWNER for that many
+    // hours (EncounterState::aura_immunities, per source): later rows of the aura skip it (no FeatureTriggered, no roll).
+    uint8_t condition_until = 0;
+    uint16_t success_immunity_hours = 0;
 };
 // R-G12 rules PR 2 (SUMMONS_TRANSFORMS.md §2.2 A): how summoned creatures act. initiative: Own = each rolls (Find Familiar),
 // Group = one roll for the cast, consecutive turns ordered by id (conjure family, Animate Dead: D2). control: None = acts on

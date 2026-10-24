@@ -184,7 +184,8 @@ class AppendOnly(unittest.TestCase):
         self.assertEqual(set(c2["stat_block"]["required"]) - set(m5["stat_block"]["required"]), {"proficiency_bonus"})
         self.assertEqual(set(m5["action"]["properties"]) - set(c2["action"]["properties"]), {"weapon", "natural", "attack_bonus", "damage_override", "use",
                           # batch 3 riders (monster@5 only)
-                          "drain", "curse", "target_requires_any", "feet", "with_attack"})
+                          "drain", "curse", "target_requires_any", "ability_drain", "feet", "with_attack",
+                          "ability"})   # CONTENT_CONVENTIONS "Attack ability"
         for k, v in c2["action"]["properties"].items():
             if k == "kind":   # monster@5 appends "teleport" (batch 3, blink dog); common@2's enum is a strict prefix
                 m_enum, c_enum = m5["action"]["properties"][k]["enum"], v["enum"]
@@ -212,7 +213,7 @@ class TagTable(unittest.TestCase):
             local = checks_v4.MONSTER_AT5_EFFECT_KINDS if typ == "monster" else frozenset()
             local_act = checks_v4.MONSTER_AT5_ACTION_KINDS if typ == "monster" else frozenset()
             self.assertEqual((r4.action_kinds | local_act, r4.effect_kinds | local, r4.cost_values), (r5.action_kinds, r5.effect_kinds, r5.cost_values))
-        self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice", "save_advantage"})
+        self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice", "save_advantage", "aura"})
         self.assertEqual(checks_v4.MONSTER_AT5_ACTION_KINDS, {"teleport"})
 
 

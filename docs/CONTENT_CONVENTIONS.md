@@ -787,3 +787,23 @@ Heat Metal and rust-type effects key off `manufactured_metal()`. The predicate i
 A weapon with a metal head or blade counts as a manufactured metal object. The spear and the javelin are `metal`, matching the pike, the halberd, the glaive, the lance, and the crossbows. All-wood or otherwise non-metal gear stays non-metal: club, greatclub, quarterstaff, shortbow, longbow, sling, blowgun, a dart when it is all wood (otherwise `metal`; the srd51 dart is metal), whip (`leather`) and net (`rope`), and padded, leather, studded leather, and hide armor. The generic shield is `metal` (the SRD allows wood or metal; metal is the default, so the shield is a Heat Metal target). srd51.core sets the key on every weapon, armor, and shield (`tests/validate/test_srd51_equipment.py` `MATERIAL`).
 
 Versioning: appended, no tag change, no migration, no `api_level` gate. The field is not hashed, so goldens are unchanged. The justification and the Elf (tools/content) sign-off are in `docs/proposals/VERSION_BUMP_BATCH.md` (7.2zh follow-up).
+
+<!-- Code, schema and tests cite this section by its title ("Attack ability"), not its number. -->
+## 23. Attack ability (monster@5 action `ability`, Strength Drain ruling)
+
+An optional monster@5 weapon-attack key: `"ability": "str" | "dex" | "none"`. It names the ability the printed `to_hit` and damage
+use; `none` means no ability modifier. It is read only when it matters: when a score is reduced (Strength Drain recomputes the
+attack at use time by the modifier change) and for the two-weapon off-hand.
+
+- **Present: it wins** (over a finesse property and over inference).
+- **Absent: still valid, no version bump.** The loader falls back in this order (Lich ruling):
+  1. a ranged weapon attack (`ranged_weapon_attack`) that is not thrown (no `thrown` on the action, the item, or the `weapons[]`
+     entry it names) uses Dex;
+  2. a finesse weapon (action `properties`, or the item / `weapons[]` entry it names) uses the better of Str / Dex;
+  3. otherwise it is inferred from the number: Str if `to_hit` = Str mod + PB, else Dex if = Dex mod + PB, else none. When both
+     match (an ambiguous Str/Dex tie) it picks Str and emits a loader warning (`ContentLibrary::warnings()`); set `ability` to
+     silence it.
+- Any other value is a load error; on a monster@4 or older file the key is a load error; on a non-weapon action the validator
+  refuses it (`checks_v4.BATCH3_WEAPON_ONLY_KEYS`).
+- Two-weapon fighting (SRD 5.1): the off-hand bonus attack adds the attack's effective ability modifier to damage only when it is
+  negative (the Two-Weapon Fighting style still adds it in full).

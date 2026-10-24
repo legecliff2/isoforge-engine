@@ -1663,6 +1663,71 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 return a.id + ": action " + aid + ": curse.save must be {ability: con, dc: 1..30}";
             at.curse_no_regain_dc = int8_t((*sv)["dc"].get<int64_t>());
         }
+        // Batch 3: monster@5 `ability_drain` {ability: str, dice}: SRD 5.1 shadow Strength Drain ("the target's Strength score is
+        // reduced by 1d4. The target dies if this reduces its Strength to 0. Otherwise, the reduction lasts until the target
+        // finishes a short or long rest."). Only Strength (the one SRD 5.1 attack that reduces a score on a hit). Deferred: the
+        // new shadow rising from a non-evil humanoid 1d4 hours later (no hour clock or spawn-on-death).
+        if (auto ad = act.find("ability_drain"); ad != act.end()) {
+            const std::string aid = act.value("id", "?");
+            if (declared != 0 && declared < 5) return a.id + ": action " + aid + ": ability_drain needs a monster@5 file";
+            if (!ad->is_object() || ad->size() != 2 || ad->value("ability", "") != "str" || !ad->contains("dice") || !(*ad)["dice"].is_string())
+                return a.id + ": action " + aid + ": ability_drain must be {ability: str, dice}";
+            const auto d = parse_dice((*ad)["dice"].get<std::string>());
+            if (!d || d->count < 1) return a.id + ": action " + aid + ": ability_drain: bad dice";
+            at.strength_drain = *d;
+        }
+        // Strength Drain (Lich ruling): the ability the authored to_hit / damage use, read when the attack is used while a score is
+        // reduced (rules5e attack_drain_delta; no effect otherwise). monster@5 action `ability` (str|dex|none) when given; else a
+        // ranged weapon attack that is not thrown is Dex; a finesse weapon (action `properties`, or the item / weapons[] entry
+        // `weapon` names) is the better of Str / Dex; else the
+        // ability whose modifier + proficiency bonus is the printed to_hit (Str on a tie, with a warning), none when neither is.
+        {
+            auto has_prop_j = [](const Json* j, const char* name) {
+                if (!j) return false;
+                if (auto ps = j->find("properties"); ps != j->end() && ps->is_array())
+                    for (const Json& pn : *ps) if (pn.is_string() && pn.get<std::string>() == name) return true;
+                return false;
+            };
+            bool fin = has_prop_j(&act, "finesse"), thrown = has_prop_j(&act, "thrown");
+            if (auto wr = act.find("weapon"); wr != act.end() && wr->is_string()) {
+                const std::string wid = wr->get<std::string>();
+                if (!wid.empty() && wid[0] == '#') {
+                    for (const Json& w : doc.value("weapons", Json::array()))
+                        if (w.is_object() && "#" + w.value("id", "") == wid) {
+                            fin = fin || has_prop_j(&w, "finesse");
+                            thrown = thrown || has_prop_j(&w, "thrown");
+                        }
+                } else if (const auto* item = items_ ? items_->find(wid) : nullptr; item && rules5e::is_weapon(*item)) {
+                    fin = fin || (item->weapon.properties & rules5e::kWeaponFinesse) != 0;
+                    thrown = thrown || (item->weapon.properties & rules5e::kWeaponThrown) != 0;
+                }
+            }
+            const bool ranged_not_thrown = act.value("kind", "") == "ranged_weapon_attack" && !thrown;
+            auto code_of = [](const std::string& n) -> int8_t {
+                return n == "str" ? int8_t(rules5e::Ability::Str) : n == "dex" ? int8_t(rules5e::Ability::Dex)
+                     : n == "none" ? rules5e::kAttackAbilityNone : int8_t(-1);
+            };
+            if (auto ex = act.find("ability"); ex != act.end()) {   // explicit (CONTENT_CONVENTIONS "Attack ability"): wins
+                if (declared != 0 && declared < 5) return a.id + ": action " + act.value("id", "?") + ": ability needs a monster@5 file";
+                const int8_t code = ex->is_string() ? code_of(ex->get<std::string>()) : int8_t(-1);
+                if (code < 0) return a.id + ": action " + act.value("id", "?") + ": ability must be str, dex or none";
+                at.ability_used = code;
+            } else if (ranged_not_thrown) {   // fallback 1: a ranged weapon attack that is not thrown uses Dex
+                at.ability_used = int8_t(rules5e::Ability::Dex);
+            } else if (fin) {                 // fallback 2: finesse, the better of Str / Dex
+                at.ability_used = rules5e::kAttackAbilityFinesse;
+            } else {                          // fallback 3: inferred from to_hit (tie -> Str, warned)
+                const int pb = c.proficiency_bonus;
+                const int ms = rules5e::modifier(c.abilities, rules5e::Ability::Str), md = rules5e::modifier(c.abilities, rules5e::Ability::Dex);
+                const bool s = at.to_hit == ms + pb;
+                const bool d = at.to_hit == md + pb;
+                at.ability_used = s ? int8_t(rules5e::Ability::Str) : d ? int8_t(rules5e::Ability::Dex) : rules5e::kAttackAbilityNone;
+                if (s && d)
+                    warnings_.push_back(a.id + ": action " + act.value("id", "?") + ": to_hit matches both Str and Dex; inferred str "
+                                        "(set \"ability\" to disambiguate, CONTENT_CONVENTIONS \"Attack ability\")");
+            }
+            if (at.ability_used < 0) at.ability_used = rules5e::kAttackAbilityNone;
+        }
         // R-G7: only the grip bits Great Weapon Fighting reads (two_handed, versatile) are carried; other properties (loading,
         // heavy, finesse, ...) stay off so existing behaviour and goldens do not move.
         if (auto ps = act.find("properties"); ps != act.end() && ps->is_array())
@@ -1837,6 +1902,14 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             a.save_actions.push_back(sa);
             synth.push_back(std::move(d));
         }
+    // batch 3 ghast Stench: aura traits (built by the "aura" hook) -> synthetic Zone SpellDefs, attached at Combat::create.
+    for (auto& d : a.aura_defs) {
+        for (const auto& prev : synth)
+            if (prev.id == d.id) return a.id + ": aura ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+        a.aura_spell_ids.push_back(d.id);
+        synth.push_back(d);
+    }
+    a.aura_defs.clear();
     // Register in the shared SpellBook, replacing an overridden archetype's entries; all-or-nothing.
     if (!synth.empty() || by_id_.count(a.id)) {
         std::vector<rules5e::SpellDef> old;
@@ -1844,6 +1917,8 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             for (const auto& sa : prev->second.save_actions)
                 if (const auto* d = spells_->find(sa.spell_id)) old.push_back(*d);
             for (uint32_t id : prev->second.trigger_spell_ids)
+                if (const auto* d = spells_->find(id)) old.push_back(*d);
+            for (uint32_t id : prev->second.aura_spell_ids)
                 if (const auto* d = spells_->find(id)) old.push_back(*d);
         }
         for (const auto& d : old) spells_->erase(d.id);

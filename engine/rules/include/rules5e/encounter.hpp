@@ -833,6 +833,16 @@ struct ActiveSummonWeapon {
     bool concentration = false;
 };
 
+// Batch 3 (Lich ruling, ghast Stench): "On a successful saving throw, the creature is immune to the ghast's Stench for 24
+// hours." One row per (creature, source, aura spell id), in creation order; until_round = the round of the success + 24 h in
+// rounds (ZoneTriggerRow::success_immunity_hours x 600). Sim Combat::hash 0xDE, folded only while non-empty.
+struct AuraImmunity {
+    CombatantId creature = 0, source = 0;
+    uint32_t spell_id = 0;
+    uint32_t until_round = 0;
+    friend bool operator==(const AuraImmunity&, const AuraImmunity&) = default;
+};
+
 struct EncounterState {
     std::vector<Combatant>       combatants;
     std::vector<InitiativeEntry> order;
@@ -870,6 +880,7 @@ struct EncounterState {
     std::vector<GroundItem> ground_items{};   // instance order
     uint32_t next_item_id = 1;                // item instance ids start at 1 (0 = empty hand)
     bool ground_items_seen = false;           // sticky: a ground item has existed (0xD2 keeps folding after a pick-up)
+    std::vector<AuraImmunity> aura_immunities;  // appended (batch 3 ghast Stench): per-source immunity after a success; 0xDE
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call
