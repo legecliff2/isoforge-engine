@@ -4,6 +4,7 @@
 //                  [--fog-team T] [--no-fog] [--equipment]
 // Keys: SPACE step, A autoplay, arrows/W/S pan, wheel or 1/2 zoom, ESC quit.
 // F3: debug equip / inventory view (debug_equip.hpp): UP/DOWN select, TAB next PC, E equip, U unequip, L light state.
+// F4: debug cover overlay (debug_cover.hpp). While it is open and F3 is closed: TAB target, N attacker, M aim tile.
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -19,6 +20,7 @@
 #include "platform/platform.hpp"
 #include "platform/window.hpp"
 #include "render/device.hpp"
+#include "debug_cover.hpp"
 #include "debug_equip.hpp"
 #include "session.hpp"
 #include "slice_view.hpp"
@@ -90,6 +92,7 @@ int main(int argc, char** argv) {
     platform::FixedTimestep tick(1'000'000'000ull / 60);
     Vec2f pan{0, 0};
     slice::DebugEquipView equip_view;   // F3 (debug only)
+    slice::DebugCoverView cover_view;   // F4 (debug only)
     bool autoplay = false;
     uint32_t auto_timer = 0;
     int frame = 0;
@@ -109,6 +112,13 @@ int main(int argc, char** argv) {
         if (in.was_pressed(platform::Key::A)) autoplay = !autoplay;
         using EqCmd = slice::DebugEquipView::Cmd;
         if (in.was_pressed(platform::Key::F3)) equip_view.handle(EqCmd::Toggle, *session);
+        if (in.was_pressed(platform::Key::F4)) cover_view.handle(slice::DebugCoverView::Cmd::Toggle, *session);
+        if (cover_view.open() && !equip_view.open()) {
+            using Cv = slice::DebugCoverView::Cmd;
+            if (in.was_pressed(platform::Key::Tab)) cover_view.handle(Cv::NextTarget, *session);
+            if (in.was_pressed(platform::Key::N)) cover_view.handle(Cv::NextAttacker, *session);
+            if (in.was_pressed(platform::Key::M)) cover_view.handle(Cv::ToggleAim, *session);
+        }
         if (equip_view.open()) {
             if (in.was_pressed(platform::Key::Up)) equip_view.handle(EqCmd::Up, *session);
             if (in.was_pressed(platform::Key::Down)) equip_view.handle(EqCmd::Down, *session);
@@ -132,6 +142,7 @@ int main(int argc, char** argv) {
 
         slice::ViewModel vm = session->view();
         equip_view.decorate(*session, vm);
+        cover_view.decorate(*session, vm);
         const Vec2f target = view->actors_focus_px(vm);
         focus = {focus.x + (target.x - focus.x) * 0.15f, focus.y + (target.y - focus.y) * 0.15f};   // smooth follow
         const Vec2i px = window->size_in_pixels();
