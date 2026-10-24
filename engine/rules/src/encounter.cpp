@@ -3068,15 +3068,16 @@ void zero_hp_clause(EncounterState& s, const Combatant& a, Combatant& t, const S
     s.effects.push_back(e);
 }
 
-// 7.2zh: v1 "metal" is the item category (Weapon, Armor, Shield), not a metal flag. Hands are matched by instance;
-// worn armor has no instance, so equip_item is the armor def id. A hand match wins over armor.
-// manufactured_metal is the category check; heat_metal_eligible is the predicate cast_spell_impl and legal_actions share
-// (a hand whose instance equals the armor def claims that id, so a non-metal hand does not fall through to the armor).
+// 7.2zh: a heatable object is a worn or held weapon, armor, or shield whose material is metal. Hands are matched by
+// instance; worn armor has no instance, so equip_item is the armor def id. A hand match wins over armor.
+// manufactured_metal is the predicate cast_spell_impl and legal_actions share (a hand whose instance equals the armor
+// def claims that id, so a non-metal hand does not fall through to the armor). Absent material is not metal.
 struct HeatedPick { uint32_t instance = 0; uint32_t def = 0; bool worn = false; };
 bool manufactured_metal(const EncounterState& s, uint32_t def_id) {
     if (def_id == 0 || !s.hooks.item_def) return false;
     const ItemDef* d = s.hooks.item_def(def_id);
-    return d && (d->kind == ItemKind::Weapon || d->kind == ItemKind::Armor || d->kind == ItemKind::Shield);
+    return d && d->material == ItemMaterial::Metal &&
+           (d->kind == ItemKind::Weapon || d->kind == ItemKind::Armor || d->kind == ItemKind::Shield);
 }
 std::optional<HeatedPick> pick_heated_object(const EncounterState& s, const LoadoutView& v, uint32_t equip_item) {
     if (equip_item == 0 || !s.hooks.item_def) return std::nullopt;

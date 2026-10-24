@@ -54,6 +54,18 @@ int int_or(const Json& doc, const char* key, int dflt) {
     return it != doc.end() && it->is_number_integer() ? int(std::clamp<int64_t>(it->get<int64_t>(), -32768, 32767)) : dflt;
 }
 
+// item@N `material`. Absent or unknown stays ItemMaterial::Absent, which Heat Metal treats as non-metal.
+rules5e::ItemMaterial material_of(const Json& doc) {
+    const std::string m = doc.value("material", "");
+    if (m == "metal") return rules5e::ItemMaterial::Metal;
+    if (m == "wood") return rules5e::ItemMaterial::Wood;
+    if (m == "leather") return rules5e::ItemMaterial::Leather;
+    if (m == "hide") return rules5e::ItemMaterial::Hide;
+    if (m == "cloth") return rules5e::ItemMaterial::Cloth;
+    if (m == "rope") return rules5e::ItemMaterial::Rope;
+    return rules5e::ItemMaterial::Absent;
+}
+
 // Attack ids and item ids name the same weapon with the words in either order ("light_crossbow" / "crossbow_light").
 std::vector<std::string> words(std::string_view s) {
     std::vector<std::string> out;
@@ -76,6 +88,7 @@ std::optional<std::string> ItemDefTable::add(const Json& doc) {
     ItemDef d;
     if (cat == "weapon") {
         d.kind = ItemKind::Weapon;
+        d.material = material_of(doc);
         rules5e::WeaponDef& w = d.weapon;
         uint16_t props = 0;
         if (auto p = doc.find("properties"); p != doc.end() && p->is_array())
@@ -115,6 +128,7 @@ std::optional<std::string> ItemDefTable::add(const Json& doc) {
         d.ammo_kind = ammo_kind_of(doc.value("ammo_kind", last_segment(cid)));
     } else if (cat == "armor") {
         d.kind = ItemKind::Armor;
+        d.material = material_of(doc);
         d.hands = 0;
         const std::string ac = doc.value("armor_category", "light");
         d.armor.category = ac == "heavy" ? rules5e::ArmorCategory::Heavy
@@ -127,6 +141,7 @@ std::optional<std::string> ItemDefTable::add(const Json& doc) {
         d.armor.magic_bonus = clamp8(int_or(doc, "magic_bonus", 0));
     } else if (cat == "shield") {
         d.kind = ItemKind::Shield;
+        d.material = material_of(doc);
         d.shield.ac_bonus = clamp8(int_or(doc, "ac_bonus", 2));
         d.shield.magic_bonus = clamp8(int_or(doc, "magic_bonus", 0));
     } else if (cat == "gear") {
