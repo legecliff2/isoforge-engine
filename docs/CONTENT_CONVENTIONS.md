@@ -700,3 +700,24 @@ These are SRD 5.1 containers from 5e-database a6212be, with exact costs, weights
   - The sling bullet (0.2 cp) has no `cost_cp`, and no piece has `weight_oz` (none is a whole number of ounces).
 - **Ready for the ammunition recovery rule** (EQUIPMENT 2.5: spend one per attack; recover `floor(spent / 2)` after combat). Stacks are `equipment[]` counts (§15), and these containers give the capacity a stack fits in.
 - **Inert today:** the sim loads no item documents. PCs do not list containers yet; adding them changes no number.
+
+## 17. Item `material` (item@1 / item@2 weapon, armor, shield)
+
+Optional on the weapon, armor, and shield arms of `item@1` and `item@2`. Gear, ammunition, and valuable do not take it (the arm `propertyNames` lists omit it; `tests/validate/test_union_arms.py`).
+
+| value | meaning |
+|---|---|
+| `metal` | manufactured metal |
+| `wood` | wood |
+| `leather` | leather |
+| `hide` | hide |
+| `cloth` | cloth |
+| `rope` | rope |
+
+**Absent means non-metal.** Omitting the key is `ItemMaterial::Absent`, and that is not a Heat Metal target. An unknown string loads the same way (`material_of` in `engine/core/sim/src/equipment.cpp`).
+
+Heat Metal and rust-type effects key off `manufactured_metal()` (`engine/rules/src/encounter.cpp`). The predicate is true only when `ItemDef::material == Metal` and the kind is weapon, armor, or shield. `legal_actions` and `cast_spell_impl` share it, so a listed Heat Metal cast is one `equip_item` per object the cast would accept: a hand instance whose def is manufactured metal, or worn armor whose def id is manufactured metal. A hand whose instance equals the armor def id wins, so a non-metal object in that hand does not fall through to the armor. Worn armor cannot be dropped. Ammunition, a light, a focus, and a weapon, armor, or shield of any other material (or of no material) are refused with `heat_metal: no metal object`. Rust Metal is not authored yet; when it is, it uses this predicate rather than item category.
+
+srd51.core sets the key on every weapon, armor, and shield (`tests/validate/test_srd51_equipment.py` `MATERIAL`). Two authoring rulings that the SRD text does not settle: the generic shield is `metal` (the SRD allows wood or metal; metal is the default, so the shield is a Heat Metal target); the javelin and the spear are `wood` (the shaft dominates, so neither is a Heat Metal target).
+
+Versioning: appended, no tag change, no migration, no `api_level` gate. The field is not hashed, so goldens are unchanged. The justification and the Elf (tools/content) sign-off are in `docs/proposals/VERSION_BUMP_BATCH.md` (7.2zh follow-up).
