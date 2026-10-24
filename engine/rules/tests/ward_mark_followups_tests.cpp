@@ -16,7 +16,7 @@ const uint32_t kScare = spell_id_of("test.ward.scare");
 const uint32_t kBall = spell_id_of("test.ward.ball");
 const uint32_t kBless = spell_id_of("test.ward.bless");
 const uint32_t kBane = spell_id_of("test.ward.bane");
-const uint32_t kMark = spell_id_of("test.ward.hunters_mark");
+const uint32_t kMark = spell_id_of("test.ward.marked_damage");
 const uint32_t kBolt = spell_id_of("test.ward.bolt");
 const uint32_t kInvis = spell_id_of("test.ward.invisibility");
 
@@ -43,9 +43,9 @@ EncounterHooks hooks(int8_t ward_dc) {
     SpellDef bn = bl; bn.id = kBane; bn.content_id = "test.ward.bane"; bn.modifier.id = spell_id_of("test.ward.bane#modifier");
     bn.modifier.die_mult = -1;
     book->add(bn);
-    SpellDef hm = plain(kMark, "test.ward.hunters_mark"); hm.casting_time = CastingTime::BonusAction; hm.concentration = true;
+    SpellDef hm = plain(kMark, "test.ward.marked_damage"); hm.casting_time = CastingTime::BonusAction; hm.concentration = true;
     hm.duration = SpellDuration::Hours; hm.duration_amount = 1; hm.kind = SpellEffectKind::ApplyModifier; hm.move_mark = 1;
-    hm.modifier.id = spell_id_of("test.ward.hunters_mark#modifier"); hm.modifier.stat = ModStat::Damage;
+    hm.modifier.id = spell_id_of("test.ward.marked_damage#modifier"); hm.modifier.stat = ModStat::Damage;
     hm.modifier.die = DiceExpr{1, 1, 0}; hm.modifier.applies_to = ModAppliesTo::Self; hm.modifier.concentration = true;
     hm.modifier.mark_scope = 1;
     book->add(hm);
@@ -199,7 +199,7 @@ TEST_CASE("ward follow-ups: Sanctuary's harmful_cast end follows the SRD: a spel
     REQUIRE(step(s, cast_at(3, kBane, 2)).ok);    // affects only an ally: the ward stays
     CHECK(mut(s, 3).has(Condition::Warded));
     to_turn(s, 3);
-    REQUIRE(step(s, cast_at(3, kMark, 4)).ok);    // Hunter's Mark: its rows are on the caster; the ward stays
+    REQUIRE(step(s, cast_at(3, kMark, 4)).ok);    // a marked damage rider: its rows are on the caster; the ward stays
     CHECK(mut(s, 3).has(Condition::Warded));
     to_turn(s, 3);
     REQUIRE(step(s, cast_at(3, kBless, 4)).ok);   // a helpful spell on an enemy: ends

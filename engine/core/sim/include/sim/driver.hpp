@@ -72,7 +72,7 @@ using HealSplitValidator = std::function<rules5e::HealSplitCheck(const std::vect
 std::vector<rules5e::HealShare> plan_heal_split(const Combat& c, CombatantId user, const rules5e::FeatureSpec& spec,
                                                 const HealSplitValidator& validate = {});
 
-// 7.2zc Hex: does the spell have a marked `ability: "chosen"` row (ActionRequest::mark_ability required)?
+// 7.2zc: does the spell have a marked `ability: "chosen"` row (ActionRequest::mark_ability required)?
 bool spell_needs_mark_ability(const rules5e::SpellDef& def);
 // 7.2zc: mark_ability (1 + Ability) for a cast at `target`: the target's weakest ability check (lowest ability score; the
 // check bonus is the score's modifier), ties to the earlier ability (Str .. Cha). No such target: Str (1), the fixed default.

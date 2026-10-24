@@ -32,6 +32,9 @@ ContentLibrary lib() {
     REQUIRE_FALSE(l.add(goblin("flyer", Json::parse(R"({"walk":30,"fly":60})")), "monster"));
     REQUIRE_FALSE(l.add(goblin("swimmer", Json::parse(R"({"walk":30,"swim":30})")), "monster"));
     REQUIRE_FALSE(l.add(goblin("climber", Json::parse(R"({"walk":30,"climb":30})")), "monster"));
+    REQUIRE_FALSE(l.add(goblin("burrower", Json::parse(R"({"walk":30,"burrow":20})")), "monster"));
+    REQUIRE_FALSE(l.add(goblin("burrow_hi", Json::parse(R"({"walk":30,"burrow":300})")), "monster"));
+    REQUIRE_FALSE(l.add(goblin("burrow_neg", Json::parse(R"({"walk":30,"burrow":-10})")), "monster"));
     REQUIRE_FALSE(l.add(goblin("foe", Json::parse(R"({"walk":30})")), "monster"));
     Json big = goblin("large_swimmer", Json::parse(R"({"walk":30,"swim":30})"));
     big["size"] = "large";
@@ -101,6 +104,38 @@ TEST_CASE("move modes: content speeds reach the rules") {
     CHECK(f.c->caps_of(f.me).fly);
     Fight w("walker", {});
     CHECK_FALSE(w.c->caps_of(w.me).fly);
+    CHECK(rules5e::find(w.c->state(), w.me)->burrow_ft == 0);
+}
+
+TEST_CASE("burrow speed: the loader parses speed.burrow; walking replay and hash match a walker") {
+    ContentLibrary l = lib();
+    const Archetype* bur = l.find("test.monster.burrower");
+    const Archetype* hi = l.find("test.monster.burrow_hi");
+    const Archetype* neg = l.find("test.monster.burrow_neg");
+    REQUIRE(bur); REQUIRE(hi); REQUIRE(neg);
+    CHECK(bur->base.burrow_ft == 20);
+    CHECK(bur->base.fly_ft == 0);
+    CHECK(bur->base.swim_ft == 0);
+    CHECK(bur->base.climb_ft == 0);
+    CHECK(hi->base.burrow_ft == 255);    // same clamp as climb
+    CHECK(neg->base.burrow_ft == 0);
+    Fight b("burrower", {});
+    const auto* me = rules5e::find(b.c->state(), b.me);
+    REQUIRE(me);
+    CHECK(me->burrow_ft == 20);
+    CHECK(me->speed_ft == 30);
+    CHECK_FALSE(b.c->caps_of(b.me).fly);
+    CHECK_FALSE(b.c->caps_of(b.me).swim);
+    CHECK_FALSE(b.c->caps_of(b.me).climb);
+    REQUIRE(b.step({5, 4}).ok);
+    CHECK(b.last_mode() == 0);   // still walking: burrow is not a move mode
+    CHECK(b.left() == 25);
+    CHECK(rules5e::find(b.c->state(), b.me)->burrow_ft == 20);
+    b.check_replay();
+    Fight w("walker", {});
+    REQUIRE(w.step({5, 4}).ok);
+    CHECK(b.c->hash() == w.c->hash());
+    CHECK(b.c->log_hash() == w.c->log_hash());
 }
 
 TEST_CASE("move modes: water costs a walker 1 extra foot per foot; a swimmer or flyer pays the normal cost") {
