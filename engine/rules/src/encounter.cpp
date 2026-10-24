@@ -999,7 +999,9 @@ void end_grapple_pair(EncounterState& s, CombatantId x, CombatantId y, std::vect
         const SourcedCondition& e = s.sourced[i];
         if (e.condition == Condition::Grappled && ((e.source == x && e.target == y) || (e.source == y && e.target == x))) {
             freed.push_back(e.target);
+            const SourcedCondition gone = e;
             s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i));
+            release_grapple_restraint(s, gone, ev);
         } else ++i;
     }
     for (CombatantId id : freed) {
@@ -1709,7 +1711,8 @@ std::vector<ReactionOption> reaction_options(const EncounterState& s, const Comb
     if (w.trigger == ReactionTrigger::Damaged && has_damager && w.target == r.id && s.hooks.spells) {   // 7.2zg Hellish Rebuke
         for (uint32_t id : r.spells_known) {
             const SpellDef* d = s.hooks.spells->find(id);
-            if (!d || d->casting_time != CastingTime::Reaction || d->reaction_trigger != ReactionTrigger::Damaged) continue;
+            if (!d || d->kind == SpellEffectKind::Descriptive || d->casting_time != CastingTime::Reaction ||
+                d->reaction_trigger != ReactionTrigger::Damaged) continue;
             if ((d->components & kComponentV) && !s.zones.empty() && in_silence(s, r.id)) continue;
             if (s.hooks.can_provide_components && !s.hooks.can_provide_components(s, r, *d)) continue;
             if (!sight(s, r.id, damager->id).can_see) continue;   // a creature the caster can see
@@ -1973,14 +1976,14 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
         ++ctx->depth;
         if (o.kind == ReactionOptionKind::Retaliate) {
             const SpellDef* def = spell_def(s, o.option_id);
-            if (def && o.slot_level > 0) {   // 7.2zg Hellish Rebuke: a reaction spell cast at the damager
+            if (def && def->kind != SpellEffectKind::Descriptive && o.slot_level > 0) {   // 7.2zg Hellish Rebuke: a reaction spell cast at the damager
                 spend_slot(t, o.slot_level);
                 emit(ev, EventKind::SpellCast, t.id, attacker->id, int32_t(def->id), o.slot_level);
                 const bool countered = spell_cast_window(s, *ctx, t, def->id, o.slot_level, attacker->id, ev);
                 if (!countered && !attacker->dead) resolve_effect(s, *ctx, t, *def, o.slot_level, std::vector<Combatant*>{attacker}, false, ev);
                 emit(ev, countered ? EventKind::SpellCountered : EventKind::SpellResolved, t.id, attacker->id, int32_t(def->id), o.slot_level);
                 if (!s.effects.empty()) end_on_own_action(s, t.id, kEndsOnCast, ev);
-            } else if (def)
+            } else if (def && def->kind != SpellEffectKind::Descriptive)
                 resolve_effect(s, *ctx, t, *def, 0, std::vector<Combatant*>{attacker}, true, ev);
         } else if (o.attack_index < t.attacks.size()) {
             do_attack(s, *ctx, t, *attacker, t.attacks[o.attack_index], true, ev);
@@ -2416,10 +2419,10 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
 bool leaving_reach_window(EncounterState& s, Ctx& ctx, Combatant& mover, std::vector<Event>& ev) {
     ReactionWindow w = new_window(s, ctx, ReactionTrigger::LeavingReach, mover.id);
     if (!may_open(s, w) || mover.disengaged) return true;
-    auto options_for = [](const Combatant& r) {
+    auto options_for = [&s, &mover](const Combatant& r) {
         std::vector<ReactionOption> opts;
         for (uint8_t i = 0; i < r.attacks.size(); ++i)
-            if (!r.attacks[i].ranged) opts.push_back({i, ReactionOptionKind::Attack});
+            if (!r.attacks[i].ranged && !attack_locked(s, r.id, i, mover.id)) opts.push_back({i, ReactionOptionKind::Attack});
         return opts;
     };
     auto eligible = [&](const Combatant& r) {
@@ -3757,6 +3760,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         if (def.concentration) a.concentration_spell = def.id;
         break;
     }
+    case SpellEffectKind::Descriptive: break;   // text-only: no roll, no state, no event
     case SpellEffectKind::AcBonus: case SpellEffectKind::Counter: break;   // reactions only
     }
     return affected;
@@ -3767,6 +3771,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
 // Returns every creature any effect affected (7.2zd harmful_cast), in order, with repeats.
 std::vector<Combatant*> resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& def, uint8_t lvl,
                                       const std::vector<Combatant*>& T_in, bool within_5ft, std::vector<Event>& ev) {
+    if (def.kind == SpellEffectKind::Descriptive) return {};   // text-only: nothing to resolve
     // 7.2t: an area skips every creature with total cover from its point of origin (all effects of the spell)
     std::vector<Combatant*> T;
     for (Combatant* t : T_in)
@@ -3812,6 +3817,7 @@ bool ward_save(EncounterState& s, Combatant& a, std::size_t ward, std::vector<Ev
 // a concentration spell replaces the one already held.
 std::string_view spell_cast_resource_refusal(const EncounterState& s, const Combatant& a, const SpellDef& def,
                                              bool innate, uint8_t level) {
+    if (def.kind == SpellEffectKind::Descriptive) return "descriptive spells cannot be cast";
     const InnateSpell* inn = nullptr;
     if (innate) {
         for (const auto& is : a.innate) if (is.spell_id == def.id) inn = &is;   // last match, as cast_spell_impl
@@ -3852,6 +3858,7 @@ std::string_view spell_cast_resource_refusal(const EncounterState& s, const Comb
 
 StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def,
                            const ActionRequest& req, int meta_cost) {
+    if (def.kind == SpellEffectKind::Descriptive) return fail("descriptive spells cannot be cast");
     if (req.zone_move != 0) {   // R-G11: move the actor's zone (Moonbeam); no slot, no SpellCast window
         if (req.sustain) return fail("zone_move: not with sustain");
         const ActiveZone* z = find_zone(s, req.zone_move);
@@ -4077,6 +4084,8 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (T.size() != 1 || T[0] != &a) return fail("zone: no creature targets");
         if (req.has_zone_dest && def.zone.anchor == ZoneAnchor::Creature) return fail("zone: an aura has no destination");
         break;
+    case SpellEffectKind::Descriptive:   // text-only: refused before a target is considered (also the switch's case)
+        return fail("descriptive spells cannot be cast");
     }
     {   // 7.2zc generic mark: one marked creature other than the caster; mark_ability only for (and required by) a chosen ability
         bool marked = def.kind == SpellEffectKind::ApplyModifier && def.modifier.mark_scope != 0;
@@ -4231,6 +4240,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
 
 // R-G14: validates the per-cast options and resolves the spell as modified by them (a copy of `def`); no option = as before.
 StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def, const ActionRequest& req) {
+    if (def.kind == SpellEffectKind::Descriptive) return fail("descriptive spells cannot be cast");
     const bool any = req.metamagic != 0 || !req.spared.empty() || req.heighten_target != 0 || req.damage_choice != 0 ||
                      req.condition_choice != 0 || !def.damage_choices.empty() || !def.condition_choices.empty();
     if (!any || req.sustain || req.zone_move != 0) return cast_spell_impl(s, ctx, a, b, def, req, 0);
@@ -4766,9 +4776,11 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
         if (free) {
             const CombatantId src = has_held ? held.source : 0;
             for (std::size_t i = 0; i < s.sourced.size();) {
-                if (s.sourced[i].condition == Condition::Grappled && s.sourced[i].target == a.id && (src == 0 || s.sourced[i].source == src))
+                if (s.sourced[i].condition == Condition::Grappled && s.sourced[i].target == a.id && (src == 0 || s.sourced[i].source == src)) {
+                    const SourcedCondition gone = s.sourced[i];
                     s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i));
-                else ++i;
+                    release_grapple_restraint(s, gone, ev);
+                } else ++i;
             }
             bool still = false;
             for (const auto& e : s.sourced) still = still || (e.condition == Condition::Grappled && e.target == a.id);
@@ -5356,6 +5368,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             ctx.guess_miss = s.hooks.guess_correct && !s.hooks.guess_correct(s, a, *t, req.guess_x, req.guess_y);
         }
         if (req.attack_index >= a.attacks.size()) return fail("bad attack index");
+        if (attack_locked(s, a.id, req.attack_index, t->id)) return fail("that attack holds a grappled creature: it can't attack another target");
         if (s.hooks.loadout_of) {   // EQUIPMENT.md 3: hands / ammunition (only creatures with a loadout view)
             const std::string_view why = attack_refusal(s, a.id, req.attack_index);
             if (!why.empty()) return fail(why);
@@ -5557,6 +5570,7 @@ bool self_range_modifier(const SpellDef& d) {
 }
 void append_spell_targets(std::vector<ActionRequest>& out, const EncounterState& s, const Combatant& a,
                           const SpellDef& d, ActionRequest r) {
+    if (d.kind == SpellEffectKind::Descriptive) return;   // text-only: never a legal cast
     auto choices = [](ActionRequest& q, const SpellDef& def) {
         q.damage_choice = uint8_t(def.damage_choices.empty() ? 0 : 1);
         q.condition_choice = uint8_t(def.condition_choices.empty() ? 0 : 1);
@@ -5636,18 +5650,19 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
                 b.sequence_pos < a.multiattacks[std::size_t(b.sequence - 1)].attacks.size()) {   // multiattack in progress: only the next declared attack
                 ActionRequest r{a.id, ActionKind::Attack, t.id, a.multiattacks[std::size_t(b.sequence - 1)].attacks[b.sequence_pos]};
                 r.multiattack = b.sequence;
-                out.push_back(r);
+                if (!attack_locked(s, a.id, r.attack_index, t.id)) out.push_back(r);
                 continue;
             }
             for (uint8_t i = 0; i < a.attacks.size(); ++i) {
                 if (!can_act && i < 32 && has_property(a.attacks[i], kWeaponLoading) && (b.loading_fired >> i & 1)) continue;
+                if (attack_locked(s, a.id, i, t.id)) continue;   // Druid gap G: "can't bite another target"
                 ActionRequest r{a.id, ActionKind::Attack, t.id, i};
                 out.push_back(r);
             }
             if (can_act)   // start any declared multiattack (needs a fresh action)
                 for (std::size_t k = 0; k < a.multiattacks.size(); ++k) {
                     const auto& seq = a.multiattacks[k].attacks;
-                    if (seq.empty()) continue;
+                    if (seq.empty() || attack_locked(s, a.id, seq[0], t.id)) continue;
                     ActionRequest r{a.id, ActionKind::Attack, t.id, seq[0]};
                     r.multiattack = uint8_t(k + 1);
                     out.push_back(r);
@@ -5744,7 +5759,8 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (s.hooks.spells && !is_incapacitated(a) && !no_casting) {
         for (uint32_t id : a.spells_known) {
             const SpellDef* d = s.hooks.spells->find(id);
-            if (d && (d->kind == SpellEffectKind::Polymorph || d->kind == SpellEffectKind::Summon || d->kind == SpellEffectKind::SummonWeapon)) continue;   // R-G12: sim builds Polymorph requests (form choice)
+            if (d && (d->kind == SpellEffectKind::Polymorph || d->kind == SpellEffectKind::Summon ||
+                      d->kind == SpellEffectKind::SummonWeapon || d->kind == SpellEffectKind::Descriptive)) continue;   // R-G12: sim builds Polymorph requests (form choice); descriptive is never cast
             if (!d || (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction)) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !can_act) continue;
             for (uint8_t L = d->level; L <= (d->level == 0 ? 0 : 9); ++L) {
@@ -5758,7 +5774,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (s.hooks.spells && !is_incapacitated(a) && !no_casting) {   // innate spells: no slot, own level, uses left (at will / per-day / recharged)
         for (const InnateSpell& is : a.innate) {
             const SpellDef* d = s.hooks.spells->find(is.spell_id);
-            if (!d || !is.available()) continue;
+            if (!d || d->kind == SpellEffectKind::Descriptive || !is.available()) continue;
             if (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !can_act) continue;
             if (!spell_cast_resource_refusal(s, a, *d, true, d->level).empty()) continue;
@@ -6236,20 +6252,71 @@ std::vector<CombatantId> grappled_by(const EncounterState& s, CombatantId g) {
 void prune_sourced(EncounterState& s, std::vector<Event>& ev) {
     if (s.sourced.empty()) return;
     std::vector<CombatantId> ended;   // grapple targets whose holder let go
+    std::vector<SourcedCondition> released;   // Druid gap G: dropped grapples (an owned Restrained goes with them)
     for (std::size_t i = 0; i < s.sourced.size();) {
         const SourcedCondition e = s.sourced[i];
         const Combatant* t = find(s, e.target);
         const Combatant* src = find(s, e.source);
         bool drop = !t || t->dead || !t->has(e.condition);
         if (!drop && e.condition == Condition::Grappled && (!src || src->dead || is_incapacitated(*src))) { drop = true; ended.push_back(e.target); }
-        if (drop) s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i)); else ++i;
+        if (drop) {
+            s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i));
+            if (e.condition == Condition::Grappled) released.push_back(e);
+        } else ++i;
     }
+    for (const SourcedCondition& e : released) release_grapple_restraint(s, e, ev);
     for (CombatantId id : ended) {
         bool still = false;
         for (const auto& e : s.sourced) still = still || (e.condition == Condition::Grappled && e.target == id);
         Combatant* t = find_mut(s, id);
         if (!still && t && t->has(Condition::Grappled)) { remove_condition(*t, Condition::Grappled); emit(ev, EventKind::ConditionRemoved, id, 0, int32_t(Condition::Grappled)); }
     }
+}
+
+bool grapple(EncounterState& s, CombatantId grappler, CombatantId target, const GrappleRider& g, uint8_t attack_index, std::vector<Event>& ev) {
+    if (!g.extended()) return grapple(s, grappler, target, g.escape_dc, ev);
+    if (g.max_grapples != 0) {   // giant crab: each claw can grapple only one target; a hit past the limit only deals damage
+        int held = 0;
+        for (const auto& e : s.sourced)
+            if (e.condition == Condition::Grappled && e.source == grappler && e.via_attack == attack_index && e.target != target) ++held;
+        if (held >= g.max_grapples) return false;
+    }
+    if (!apply_sourced_condition(s, grappler, target, Condition::Grappled, g.escape_dc, ev)) return false;
+    SourcedCondition* mine = nullptr;
+    for (auto& e : s.sourced)
+        if (e.condition == Condition::Grappled && e.target == target && e.source == grappler) mine = &e;
+    if (!mine) return true;
+    mine->via_attack = attack_index;
+    mine->exclusive = mine->exclusive || g.exclusive;
+    if (g.restrains && !mine->restrains) {
+        mine->restrains = true;
+        Combatant* t = find_mut(s, target);
+        if (t && !t->has(Condition::Restrained) && !immune_to(s, *t, Condition::Restrained) && !immune_from(s, *t, Condition::Restrained, grappler)) {
+            add_condition(*t, Condition::Restrained);   // owned, like Swallow's blindness: only if it was not already there
+            emit(ev, EventKind::ConditionAdded, target, 0, int32_t(Condition::Restrained));
+            mine->owns_restrained = true;
+        }
+    }
+    return true;
+}
+
+bool attack_locked(const EncounterState& s, CombatantId actor, uint8_t attack_index, CombatantId target) {
+    for (const auto& e : s.sourced)
+        if (e.condition == Condition::Grappled && e.exclusive && e.source == actor && e.via_attack == attack_index && e.target != target)
+            return true;
+    return false;
+}
+
+void release_grapple_restraint(EncounterState& s, const SourcedCondition& ended, std::vector<Event>& ev) {
+    if (ended.condition != Condition::Grappled || !ended.owns_restrained) return;
+    for (auto& e : s.sourced)
+        if (e.condition == Condition::Grappled && e.target == ended.target && e.restrains) { e.owns_restrained = true; return; }
+    for (const auto& e : s.effects)   // another live restraint (Web, a Swallow's contain, Entangle) keeps the condition
+        if (e.target == ended.target && e.condition == Condition::Restrained) return;
+    Combatant* t = find_mut(s, ended.target);
+    if (!t || !t->has(Condition::Restrained)) return;
+    remove_condition(*t, Condition::Restrained);
+    emit(ev, EventKind::ConditionRemoved, ended.target, 0, int32_t(Condition::Restrained));
 }
 
 bool has_sourced_conditions(const EncounterState& s) { return !s.sourced.empty(); }
@@ -6587,6 +6654,7 @@ bool spell_harmful(const SpellDef& def) {
             return true;   // damage, a saving throw, or a condition imposed (Sleep)
         case SpellEffectKind::ApplyCondition: return d.applies_condition && negative_condition(d.condition);
         case SpellEffectKind::ApplyModifier: return negative_modifier(d.modifier);
+        case SpellEffectKind::Descriptive: return false;   // text-only: not a harmful cast
         default: return false;
         }
     };
