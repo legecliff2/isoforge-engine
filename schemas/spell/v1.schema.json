@@ -1176,7 +1176,7 @@
                     "$ref": "../common/v1.schema.json#/$defs/creature_types"
                   }
                 },
-                "description": "VERSION_BUMP_BATCH 7.2zc generic mark (Hunter's Mark, Hex): the common@2 closed scope object's target key. The row follows the spell's one target (the marked creature): a damage row (applies_to self) adds to the caster's attack hits on it (combine with when weapon_attack for Hunter's Mark); an ability_check row (ability may be \"chosen\") sits on the caster (self) or the marked creature (target). 7.2zd: from_types (Protection from Evil and Good) for an applies_to attackers row.",
+                "description": "VERSION_BUMP_BATCH 7.2zc generic mark: the common@2 closed scope object's target key. The row follows the spell's one target (the marked creature): a damage row (applies_to self) adds to the caster's attack hits on it (combine with when weapon_attack for a weapon-only rider); an ability_check row (ability may be \"chosen\") sits on the caster (self) or the marked creature (target). 7.2zd: from_types (Protection from Evil and Good) for an applies_to attackers row.",
                 "minProperties": 1
               },
               "save": {
