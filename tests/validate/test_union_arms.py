@@ -108,9 +108,10 @@ COMMON2_RG12 = {"wild_shape_effect": (S({"kind", "pool", "forms", "max_cr_by_lev
                 "shapechanger_form": (S({"id", "name"}), S({"size", "armor_class", "speed", "actions", "creature_type"}))}
 _ICOMMON = {"source", "cost_cp", "weight_oz", "description", "visual"}   # visual: presentation only (LIGHTING.md 10.1)
 _IBASE = S({"$schema", "id", "name", "category"})
-ITEM = {("weapon",): (_IBASE | {"weapon_class"}, S(_ICOMMON | {"reach", "range", "damage", "versatile_damage", "properties", "qualifiers", "magic_bonus", "on_hit"})),
-        ("armor",): (_IBASE | {"armor_category", "base_ac", "dex_bonus"}, S(_ICOMMON | {"dex_cap", "str_min", "stealth_disadvantage", "magic_bonus"})),
-        ("shield",): (_IBASE, S(_ICOMMON | {"ac_bonus", "magic_bonus"})),
+_IMAT = {"material"}   # weapon / armor / shield; absent = non-metal (Heat Metal). Appended on item@1 and item@2.
+ITEM = {("weapon",): (_IBASE | {"weapon_class"}, S(_ICOMMON | _IMAT | {"reach", "range", "damage", "versatile_damage", "properties", "qualifiers", "magic_bonus", "on_hit"})),
+        ("armor",): (_IBASE | {"armor_category", "base_ac", "dex_bonus"}, S(_ICOMMON | _IMAT | {"dex_cap", "str_min", "stealth_disadvantage", "magic_bonus"})),
+        ("shield",): (_IBASE, S(_ICOMMON | _IMAT | {"ac_bonus", "magic_bonus"})),
         ("valuable",): (_IBASE, S(_ICOMMON))}   # gems (srd51.item.diamond): priced materials, docs/CONTENT_CONVENTIONS.md section 7
 # item@2 (docs/proposals/EQUIPMENT.md 7.1): item@1's arms with optional weapon keys appended, plus gear and ammunition.
 # Every item@2 arm also accepts the presentation-only `visual` block (as item@1 does with Render #233; superset of item@1).

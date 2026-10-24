@@ -29,9 +29,12 @@ struct World {
 
 std::shared_ptr<World> make_world() {
     auto w = std::make_shared<World>();
-    auto add = [&](uint32_t id, ItemKind k) { ItemDef d; d.id = id; d.kind = k; w->defs[id] = d; };
-    add(kItemSword, ItemKind::Weapon); add(kItemTorch, ItemKind::Light); add(kItemArrows, ItemKind::Ammunition);
-    add(kItemClub, ItemKind::Weapon); add(kItemArmor, ItemKind::Armor); add(kItemShield, ItemKind::Shield); add(kItemFocus, ItemKind::Focus);
+    auto add = [&](uint32_t id, ItemKind k, ItemMaterial mat = ItemMaterial::Absent) {
+        ItemDef d; d.id = id; d.kind = k; d.material = mat; w->defs[id] = d;
+    };
+    add(kItemSword, ItemKind::Weapon, ItemMaterial::Metal); add(kItemTorch, ItemKind::Light); add(kItemArrows, ItemKind::Ammunition);
+    add(kItemClub, ItemKind::Weapon, ItemMaterial::Metal); add(kItemArmor, ItemKind::Armor, ItemMaterial::Metal);
+    add(kItemShield, ItemKind::Shield, ItemMaterial::Metal); add(kItemFocus, ItemKind::Focus);
     return w;
 }
 
@@ -215,7 +218,7 @@ TEST_CASE("7.2zh weapon_smite: no reveal and no dim ends the charge on the hit; 
     CHECK(ended);
 }
 
-TEST_CASE("7.2zh heat metal: metal is weapon, armor, or shield; a failed save drops a held object and not worn armor") {
+TEST_CASE("7.2zh heat metal: a failed save drops a held metal object and not worn armor") {
     auto w = make_world();
     auto s = start(w, 3);
     const auto slots = find(s, 1)->spell_slots;

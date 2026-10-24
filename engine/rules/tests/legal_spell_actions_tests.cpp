@@ -18,7 +18,7 @@ const uint32_t kRetreat = spell_id_of("test.legal.retreat");
 const uint32_t kHeat = spell_id_of("test.legal.heat_metal");
 const uint32_t kHands = spell_id_of("test.legal.hands");
 
-enum : uint32_t { kItemSword = 1, kItemTorch = 2, kItemArmor = 5, kItemShield = 6 };
+enum : uint32_t { kItemSword = 1, kItemTorch = 2, kItemArmor = 5, kItemShield = 6, kItemClub = 7 };
 
 struct World {
     std::map<uint32_t, ItemDef> defs;
@@ -27,8 +27,12 @@ struct World {
 
 std::shared_ptr<World> make_world() {
     auto w = std::make_shared<World>();
-    auto add = [&](uint32_t id, ItemKind k) { ItemDef d; d.id = id; d.kind = k; w->defs[id] = d; };
-    add(kItemSword, ItemKind::Weapon); add(kItemTorch, ItemKind::Light); add(kItemArmor, ItemKind::Armor); add(kItemShield, ItemKind::Shield);
+    auto add = [&](uint32_t id, ItemKind k, ItemMaterial mat = ItemMaterial::Absent) {
+        ItemDef d; d.id = id; d.kind = k; d.material = mat; w->defs[id] = d;
+    };
+    add(kItemSword, ItemKind::Weapon, ItemMaterial::Metal); add(kItemTorch, ItemKind::Light);
+    add(kItemArmor, ItemKind::Armor, ItemMaterial::Metal); add(kItemShield, ItemKind::Shield, ItemMaterial::Metal);
+    add(kItemClub, ItemKind::Weapon, ItemMaterial::Wood);
     return w;
 }
 
@@ -123,6 +127,7 @@ TEST_CASE("legal_actions spell specimens submit: self-range modifiers and heat m
     w->views[5].main = HeldItem{30, kItemSword, 1, 0};
     w->views[6].main = HeldItem{kItemArmor, kItemTorch, 1, 0};
     w->views[6].armor_def = kItemArmor;
+    w->views[7].main = HeldItem{40, kItemClub, 1, 0};   // wood: not a manufactured metal object
 
     auto wiz = wizard(1);
     wiz.spells_known = {kBlur, kRetreat, kHeat, kFireBolt};
@@ -130,7 +135,7 @@ TEST_CASE("legal_actions spell specimens submit: self-range modifiers and heat m
     never_react(wiz);
     auto foe = [](CombatantId id) { auto m = monster(id); m.hp = m.hp_max = 80; m.ac = 10; never_react(m); return m; };
     auto ally = foe(5); ally.team = 0;
-    auto s = begin_encounter({wiz, foe(2), foe(3), foe(4), ally, foe(6)}, 1, nullptr,
+    auto s = begin_encounter({wiz, foe(2), foe(3), foe(4), ally, foe(6), foe(7)}, 1, nullptr,
                              hooks_for(w, {blur_def(), retreat_def(), heat_def()}));
     end_turns_until(s, 1);
     mut(s, 1).concentration_spell = kFireBolt;   // already concentrating: still legal, the cast replaces it
@@ -151,10 +156,12 @@ TEST_CASE("legal_actions spell specimens submit: self-range modifiers and heat m
         (r.spell_level == 2 ? heat2 : heat3).push_back(r.equip_item);
         CHECK((r.spell_level == 2 || r.spell_level == 3));
     }
-    CHECK(heat2 == std::vector<uint32_t>{10, 14, kItemArmor});
+    CHECK(heat2 == std::vector<uint32_t>{10, 14, kItemArmor});   // 10 is the longsword
     CHECK(heat3 == std::vector<uint32_t>{10, 14, kItemArmor});
-    for (CombatantId id : {CombatantId{3}, CombatantId{4}, CombatantId{5}, CombatantId{6}})
+    for (CombatantId id : {CombatantId{3}, CombatantId{4}, CombatantId{5}, CombatantId{6}, CombatantId{7}})
         CHECK(std::none_of(la.begin(), la.end(), [&](const ActionRequest& r) { return r.spell_id == kHeat && r.target == id; }));
+    auto club = cast(1, kHeat, 7, 2); club.equip_item = 40;
+    CHECK(std::string(step(s, club).error) == "heat_metal: no metal object");
 
     auto bare = cast(1, kHeat, 4, 2); bare.equip_item = 10;
     auto no_kit = step(s, bare);

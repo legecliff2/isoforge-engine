@@ -4,6 +4,7 @@
   "name": "Quarterstaff",
   "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
   "category": "weapon",
+  "material": "wood",
   "cost_cp": 20,
   "weight_oz": 64,
   "weapon_class": "simple",
