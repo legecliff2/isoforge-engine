@@ -23,12 +23,20 @@ def spawn_stable_id(x, y, level, index):
     h = xxh3(struct.pack("<iihI", x, y, level, index))
     return (h & 0xFFFFFFFF) ^ (h >> 32)
 
+def elevation_is_ground(doc) -> bool:
+    """Mirror of Chunk::elevation_is_ground: format_version wins, else "$schema" chunk@N (only 3 = ground)."""
+    if "format_version" in doc:
+        return doc["format_version"] >= 3
+    return doc.get("$schema") == "chunk@3"
+
+
 def content_hash(doc) -> int:
     c = doc["coord"]
     b = bytearray()
     lights, amb = doc.get("lights", []), doc.get("ambient")
-    v2 = bool(lights) or amb is not None
-    b += struct.pack("<Hiih", 2 if v2 else 1, c["x"], c["y"], c["level"])   # format_version (1 without chunk@2 fields), coord
+    v3 = elevation_is_ground(doc)   # chunk@3: version 3 and always the chunk@2 tail (docs/CHUNK_HASH.md)
+    v2 = v3 or bool(lights) or amb is not None
+    b += struct.pack("<Hiih", 3 if v3 else 2 if v2 else 1, c["x"], c["y"], c["level"])   # format_version (1 without chunk@2 fields), coord
     b += struct.pack("<I", len(doc["palette"]))
     for p in doc["palette"]:
         s(b, p)

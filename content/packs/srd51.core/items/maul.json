@@ -4,6 +4,7 @@
   "name": "Maul",
   "source": {"ref": "SRD 5.1", "license": "CC-BY-4.0"},
   "category": "weapon",
+  "material": "metal",
   "cost_cp": 1000,
   "weight_oz": 160,
   "weapon_class": "martial",
