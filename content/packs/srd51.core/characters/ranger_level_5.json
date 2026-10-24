@@ -67,7 +67,8 @@
     "spells": [
       "srd51.spell.cure_wounds",
       "srd51.spell.barkskin",
-      "srd51.spell.lesser_restoration"
+      "srd51.spell.lesser_restoration",
+      "srd51.spell.spike_growth"
     ]
   },
   "features": [
