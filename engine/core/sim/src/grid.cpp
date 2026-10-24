@@ -52,11 +52,13 @@ void Grid::add_chunk(const world::Chunk& c) {
             cells.terrain[ui] = uint8_t((water ? 1 : 0) | (climb ? 2 : 0) | (air && !blocks ? 4 : 0));
         }
         if (c.elevation_is_ground) {   // altitude PR2: chunk@3 ground + obstacle tops
-            uint8_t g = 0, t = 0;
+            uint8_t g = 0, t = 0, st = 0;
             for (const auto& layer : c.layers) {
                 g = std::max(g, layer[ui].elevation);
                 if (layer[ui].flags & world::tile_flags::kBlocksMove) t = std::max(t, layer[ui].elevation);
+                if (layer[ui].flags & world::tile_flags::kBlocksSight) st = std::max(st, layer[ui].elevation);
             }
+            cells.stop[ui] = st;
             if (cells.terrain[ui] & 1) { cells.depth[ui] = g; g = 0; }   // water: elevation = depth, surface at 0
             cells.ground[ui] = g;
             cells.top[ui] = t;
@@ -177,20 +179,38 @@ int Grid::move_cost_ft(Vec2i from, Vec2i to, int n) const noexcept {
     return cost;
 }
 
-bool Grid::line_of_sight(Vec2i a, Vec2i b) const noexcept {
+int Grid::sight_top_ft(Vec2i p) const noexcept {
+    std::size_t i = 0;
+    const Cells* c = cells_at(p, i);
+    if (!c) return 0;
+    int top = 0;
+    if (c->sight[i] != 0) top = c->stop[i] == 0 ? kFullHeight : int(c->stop[i]) * kFeetPerTile;
+    return std::max(top, int(c->ground[i]) * kFeetPerTile);   // ground is 0 off chunk@3
+}
+
+bool Grid::line_of_sight(Vec2i a, Vec2i b) const noexcept { return line_of_sight(a, b, ground_ft(a), ground_ft(b)); }
+
+bool Grid::line_of_sight(Vec2i a, Vec2i b, int a_ft, int b_ft) const noexcept {
     const int dx = a.x < b.x ? b.x - a.x : a.x - b.x, dy = a.y < b.y ? b.y - a.y : a.y - b.y;
     const int sx = b.x > a.x ? 1 : -1, sy = b.y > a.y ? 1 : -1;
+    const int64_t n = int64_t(dx) + dy;
     int x = a.x, y = a.y, ix = 0, iy = 0;
-    auto blocked_mid = [&](Vec2i p) { return !(p == b) && blocks_sight(p); };
+    // Blocked where the line's height at step k is below the tile's sight top (all heights 0: exactly blocks_sight).
+    auto blocked_mid = [&](Vec2i p, int64_t k) {
+        if (p == b) return false;
+        const int top = sight_top_ft(p);
+        return top > 0 && int64_t(a_ft) * (n - k) + int64_t(b_ft) * k < int64_t(top) * n;
+    };
     while (ix < dx || iy < dy) {
         // Next boundary crossed along the centre-to-centre segment: compare (1+2ix)/dx vs (1+2iy)/dy.
         const int64_t l = int64_t(1 + 2 * ix) * dy, r = int64_t(1 + 2 * iy) * dx;
         if (l == r) {   // exactly through a corner
-            if (blocked_mid({x + sx, y}) && blocked_mid({x, y + sy})) return false;
+            const int64_t kc = int64_t(ix) + iy + 1;
+            if (blocked_mid({x + sx, y}, kc) && blocked_mid({x, y + sy}, kc)) return false;
             x += sx; y += sy; ++ix; ++iy;
         } else if (l < r) { x += sx; ++ix; }
         else { y += sy; ++iy; }
-        if (blocked_mid({x, y})) return false;
+        if (blocked_mid({x, y}, int64_t(ix) + iy)) return false;
     }
     return true;
 }

@@ -460,28 +460,56 @@ int Combat::distance_tiles(CombatantId a, CombatantId b) const {
 
 rules5e::Cover Combat::cover_between(Vec2i origin, int origin_n, Vec2i target, int target_n, CombatantId except_a,
                                       CombatantId except_b) const {
+    return cover_between(origin, origin_n, grid_.footprint_ground_ft(origin, std::max(origin_n, 1)), target, target_n,
+                         grid_.footprint_ground_ft(target, std::max(target_n, 1)), except_a, except_b);
+}
+
+rules5e::Cover Combat::cover_between(Vec2i origin, int origin_n, int origin_ft, Vec2i target, int target_n, int target_ft,
+                                      CombatantId except_a, CombatantId except_b) const {
     using rules5e::Cover;
     if (origin_n < 1) origin_n = 1;
     if (target_n < 1) target_n = 1;
     const Spot os{origin, origin_n}, ts{target, target_n};
-    // Creature tiles that give half cover (living, present, neither except_a nor except_b), sorted for lookup.
-    std::vector<std::pair<int, int>> crowd;
+    // Creature tiles that give half cover (living, present, neither except_a nor except_b), sorted for lookup, each with
+    // its vertical span [lo, hi) in ft (altitude PR5).
+    std::vector<std::pair<std::pair<int, int>, std::pair<int, int>>> crowd;
     for (const auto& sl : slots_) {
         if (sl.gone || sl.id == except_a || sl.id == except_b) continue;
         const auto* c = rules5e::find(state_, sl.id);
         if (!c || c->dead) continue;
         const Spot s = spot(sl.id);
+        const int lo = abs_height_ft(sl.id), hi = lo + body_height_ft(s.n);
         for (int y = 0; y < s.n; ++y)
-            for (int x = 0; x < s.n; ++x) crowd.push_back({s.p.x + x, s.p.y + y});
+            for (int x = 0; x < s.n; ++x) crowd.push_back({{s.p.x + x, s.p.y + y}, {lo, hi}});
     }
     std::sort(crowd.begin(), crowd.end());
     auto inside = [](Spot s, Vec2i t) {
         return t.x >= s.p.x && t.x < s.p.x + s.n && t.y >= s.p.y && t.y < s.p.y + s.n;
     };
-    auto wall = [&](Vec2i t) { return !inside(ts, t) && !inside(os, t) && grid_.blocks_sight(t); };
+    // The current line, origin corner o to target corner t; heights at t' interpolated by doubled Manhattan distance.
+    Vec2i lo_c{};
+    int64_t len2 = 1;
+    auto num_at = [&](Vec2i c) {   // line height at tile c, scaled by len2
+        const int64_t ex = 2 * int64_t(c.x) + 1 - 2 * int64_t(lo_c.x), ey = 2 * int64_t(c.y) + 1 - 2 * int64_t(lo_c.y);
+        const int64_t k = std::min(len2, (ex < 0 ? -ex : ex) + (ey < 0 ? -ey : ey));
+        return int64_t(origin_ft) * (len2 - k) + int64_t(target_ft) * k;
+    };
+    auto wall = [&](Vec2i t) {
+        if (inside(ts, t) || inside(os, t)) return false;
+        const int top = grid_.sight_top_ft(t);
+        return top > 0 && num_at(t) < int64_t(top) * len2;
+    };
     auto body = [&](Vec2i t) {
-        return wall(t) || (!inside(ts, t) && !inside(os, t) &&
-                           std::binary_search(crowd.begin(), crowd.end(), std::pair<int, int>{t.x, t.y}));
+        if (wall(t)) return true;
+        if (inside(ts, t) || inside(os, t)) return false;
+        const std::pair<int, int> key{t.x, t.y};
+        auto it = std::lower_bound(crowd.begin(), crowd.end(), key,
+                                   [](const auto& e, const std::pair<int, int>& k) { return e.first < k; });
+        for (; it != crowd.end() && it->first == key; ++it) {
+            const int64_t h = num_at(t);
+            if (int64_t(it->second.first) * len2 <= h && h < int64_t(it->second.second) * len2) return true;
+        }
+        return false;
     };
     const int lines = (ts.n + 1) * (ts.n + 1);
     Cover best = Cover::Total;
@@ -492,6 +520,9 @@ rules5e::Cover Combat::cover_between(Vec2i origin, int origin_n, Vec2i target, i
             for (int ty = 0; ty <= ts.n; ++ty)
                 for (int tx = 0; tx <= ts.n; ++tx) {
                     const Vec2i t{ts.p.x + tx, ts.p.y + ty};
+                    lo_c = o;
+                    const int64_t ldx = int64_t(t.x) - o.x, ldy = int64_t(t.y) - o.y;
+                    len2 = std::max<int64_t>(1, 2 * ((ldx < 0 ? -ldx : ldx) + (ldy < 0 ? -ldy : ldy)));
                     if (segment_blocked(o, t, wall)) {
                         ++walls;
                         ++any;
@@ -517,7 +548,7 @@ rules5e::SightFacts Combat::sight_facts_of(CombatantId viewer, CombatantId subje
     const Vec2i vp = pos(viewer), sp = pos(subject);
     const int dist = distance_tiles(viewer, subject);
     f.distance_ft = uint16_t(std::min(dist * kFeetPerTile, 65535));
-    f.line_of_sight = line_of_sight(viewer, subject);
+    f.line_of_sight = line_of_sight(viewer, subject);   // altitude PR5: 3D LoS (absolute heights at both ends)
     if (const auto* t = rules5e::find(state_, subject))
         f.subject_invisible = t->has(rules5e::Condition::Invisible);
     f.subject_grounded = true;   // no airborne altitude model yet; tremorsense treats everyone as grounded
@@ -599,16 +630,21 @@ rules5e::Cover Combat::cover_of(const rules5e::CoverQuery& q) const {
     const Spot ts = spot(q.target);
     const Spot os{q.has_origin ? Vec2i{q.origin_x, q.origin_y} : pos(q.source),
                   q.has_origin ? 1 : footprint_size(q.source)};
-    return cover_between(os.p, os.n, ts.p, ts.n, q.source, q.target);
+    // altitude PR5: absolute heights; a point origin (has_origin) sits on its tile's ground.
+    const int ofz = q.has_origin ? grid_.ground_ft(os.p) : abs_height_ft(q.source);
+    return cover_between(os.p, os.n, ofz, ts.p, ts.n, abs_height_ft(q.target), q.source, q.target);
 }
 
 bool Combat::los_spots(Spot a, Spot b) const {
-    if (a.n == 1 && b.n == 1) return grid_.line_of_sight(a.p, b.p);   // v0 test
+    return los_spots(a, grid_.footprint_ground_ft(a.p, a.n), b, grid_.footprint_ground_ft(b.p, b.n));
+}
+bool Combat::los_spots(Spot a, int a_ft, Spot b, int b_ft) const {
+    if (a.n == 1 && b.n == 1) return grid_.line_of_sight(a.p, b.p, a_ft, b_ft);   // v0 test (3D since altitude PR5)
     for (int ay = 0; ay < a.n; ++ay)
         for (int ax = 0; ax < a.n; ++ax)
             for (int by = 0; by < b.n; ++by)
                 for (int bx = 0; bx < b.n; ++bx)
-                    if (grid_.line_of_sight({a.p.x + ax, a.p.y + ay}, {b.p.x + bx, b.p.y + by})) return true;
+                    if (grid_.line_of_sight({a.p.x + ax, a.p.y + ay}, {b.p.x + bx, b.p.y + by}, a_ft, b_ft)) return true;
     return false;
 }
 
@@ -630,7 +666,9 @@ bool Combat::ally_near_target(CombatantId attacker, CombatantId target) const {
     return ally_near(attacker, spot(target));
 }
 
-bool Combat::line_of_sight(CombatantId a, CombatantId b) const { return los_spots(spot(a), spot(b)); }
+bool Combat::line_of_sight(CombatantId a, CombatantId b) const {   // altitude PR5: absolute heights at both ends
+    return los_spots(spot(a), abs_height_ft(a), spot(b), abs_height_ft(b));
+}
 
 std::vector<CombatantId> Combat::gaze_seen(CombatantId viewer) const {
     std::vector<CombatantId> out;
@@ -924,7 +962,7 @@ void Combat::install_hooks() {
             if (a->attacks[ra.response.attack_index].ranged) {
                 const Archetype* arch = attack_archetype(ra.actor);
                 const int lt = arch ? reach_tiles(arch->long_range_ft[ra.response.attack_index]) : 0;
-                return td <= lt && los_spots(rs, ts);
+                return td <= lt && los_spots(rs, rz, ts, ra.response.target == e.actor ? mz : abs_height_ft(ra.response.target));
             }
             return td <= reach_tiles(a->attacks[ra.response.attack_index].reach_or_range_ft);
         }
@@ -1393,7 +1431,7 @@ bool Combat::ranged_attack_facts(CombatantId actor, uint8_t ai, Spot from, Spot 
     const int za = abs_height_ft(actor);
     const int d = spot_distance(from, za, tp, target_abs_ft);   // altitude PR3: 3D range
     if (d > reach_tiles(arch->long_range_ft[ai])) { if (error) *error = "target beyond long range"; return false; }
-    if (!los_spots(from, tp)) { if (error) *error = "no line of sight"; return false; }
+    if (!los_spots(from, za, tp, target_abs_ft)) { if (error) *error = "no line of sight"; return false; }
     req.beyond_normal_range = d > reach_tiles(arch->normal_range_ft[ai]);
     req.ranged_hostile_within_5ft = false;
     for (const auto& sl : slots_) {

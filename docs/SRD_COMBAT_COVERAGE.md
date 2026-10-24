@@ -717,7 +717,7 @@ Audit of #165's footprints against the SRD size rules.
 | Climbing / swimming ability checks (Athletics for hard surfaces, rough water) | deferred |
 | Wild Shape `no_fly_below` / `no_swim_below` | unchanged (build_form, #176) |
 
-### 11.8 Altitude (altitude PR2, feat/altitude-move)
+### 11.8 Altitude (altitude PR2-PR5, feat/altitude-move .. feat/altitude-sight)
 
 | Rule | Status |
 |---|---|
@@ -731,6 +731,11 @@ Audit of #165's footprints against the SRD size rules.
 | Flyers fall when knocked prone, at speed 0, or on losing their fly speed (altitude PR4) | done: checked at the end of every rules step and by `settle_falls` / `revoke_fly`; a creature with `hover` never falls; a creature held aloft by a granted fly speed (magic, e.g. the Fly spell) does not fall from prone / speed 0 (SRD), only when the grant ends. The landing sets `alt_ft` to 0 and sim emits AltitudeChanged (cause `kAltFall`) and lists it in `Combat::falls()` |
 | Fly speed hook (altitude PR4) | done: `rules5e::grant_fly(state, id, fly_ft, source)` / `revoke_fly(state, id, source, events)`; fly speed = max(`fly_ft`, `granted_fly_ft`); revoking mid-air runs the fall check. Grants hash under 0xD6 (sub-byte 1) only while non-zero |
 | Swim depth clamp | done: a vertical move below the surface stops at the water depth (`Grid::water_depth_ft`) |
+| Line of sight with heights (altitude PR5) | done: `Grid::line_of_sight(a, b, a_ft, b_ft)` and `Combat::line_of_sight` / `los_spots` use absolute heights (`abs_height_ft`: feet, no eye height) at both ends. A mid tile blocks only where the line's height there is below `Grid::sight_top_ft`: a blocks_sight cell's top (convention 4: elevation x 5 ft, 0 = full height; always full on chunk@1 / chunk@2) or, on chunk@3, higher ground (its ground_ft). Height at a tile = integer interpolation by supercover step (Manhattan steps k of n), compared exactly as `a*(n-k) + b*k < top*n` (int64, no division, symmetric); corner pass-through tiles use k+1 |
+| Cover with heights (altitude PR5) | done: `cover_between(origin, n, origin_ft, target, n, target_ft, ...)`; every DMG corner line runs origin_ft -> target_ft, a tile's height interpolated by its centre's doubled Manhattan distance from the origin corner over the line's doubled Manhattan length. Walls / higher ground obstruct only below their top; a creature footprint gives half cover only when the line height there is inside its span [abs, abs + height). `cover_of` uses absolute heights (a point origin sits on its tile's ground); the 6-arg form uses ground heights |
+| `sight_facts_of` (altitude PR5) | done: `line_of_sight` is the 3D LoS. `between` obscurement and `subject_grounded` unchanged (zones cover every altitude, convention 2) |
+| Lighting with heights (altitude PR5) | per-tile 2D by design: `LightDriver` / `light_reaches` ignore height (walls block light at any height, no height attenuation); a flyer is lit by the tile under it. The visibility (fog) pass stays 2D too |
+| Flat equivalence (altitude PR5) | every height 0 (all chunk@1 / chunk@2 maps) gives exactly the 2D LoS and cover (tests/altitude_sight_tests.cpp; cover_tests and sight_facts_tests unchanged) |
 
 #### Altitude engine conventions (approved)
 

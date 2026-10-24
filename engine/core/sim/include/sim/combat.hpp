@@ -350,6 +350,13 @@ public:
     // (1 = Medium, 2 = Large). except_a / except_b are combatant ids whose footprints do not count as half-cover bodies.
     rules5e::Cover cover_between(Vec2i origin, int origin_n, Vec2i target, int target_n, CombatantId except_a = 0,
                                  CombatantId except_b = 0) const;
+    // altitude PR5: the same with absolute heights (ft) at the origin and target. Every DMG corner line runs from
+    // origin_ft to target_ft; a tile's line height is interpolated by its centre's Manhattan distance from the origin
+    // corner over the line's Manhattan length (integer, exact). A wall / higher ground (Grid::sight_top_ft) obstructs a
+    // line only below its top; a creature footprint gives half cover only where the line height is within its vertical
+    // span [abs, abs + body_height_ft). The 6-arg form uses each spot's ground height (0 on flat maps: unchanged).
+    rules5e::Cover cover_between(Vec2i origin, int origin_n, int origin_ft, Vec2i target, int target_n, int target_ft,
+                                 CombatantId except_a, CombatantId except_b) const;
     // CoverQuery form used by EncounterHooks::cover: has_origin = that single tile; otherwise the source's footprint.
     // Returns None when the target (or source, when has_origin is false) is missing, or source == target.
     rules5e::Cover cover_of(const rules5e::CoverQuery& q) const;
@@ -466,7 +473,8 @@ private:
     // A footprint at a position: anchor + side.
     Spot spot(CombatantId id) const { return {pos(id), footprint_size(id)}; }
     Spot spot_at(CombatantId id, Vec2i anchor) const { return {anchor, footprint_size(id)}; }
-    bool los_spots(Spot a, Spot b) const;
+    bool los_spots(Spot a, Spot b) const;   // each spot at its footprint ground height
+    bool los_spots(Spot a, int a_ft, Spot b, int b_ft) const;   // altitude PR5: absolute heights (Grid 3D LoS)
     bool summon_spot_ok(CombatantId caster, const rules5e::SpellDef& def, Spot sp, const std::vector<Spot>& placed) const;
     // Pack Tactics / Sneak Attack fact (ActionRequest::ally_near_target): a creature on the attacker's team,
     // other than the attacker, conscious and not incapacitated, within 5 ft (nearest tile) of `target`.
