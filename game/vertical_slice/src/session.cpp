@@ -638,6 +638,9 @@ ViewModel Session::view() const {
             // Tile from the committed event stream (v3: readied moves, TileMoved after rules events).
             auto it = m.feed.tiles.find(cb.id);
             a.tile = it != m.feed.tiles.end() ? it->second : c.pos(cb.id);
+            // Live side, including a squeeze or a form change. Not SimEvent::Kind::Footprint:
+            // the view keeps no event-driven size. The anchor above is the min tile.
+            a.footprint = c.footprint_size(cb.id);
             a.hp = cb.hp; a.hp_max = cb.hp_max; a.team = cb.team;
             a.current = cb.id == cur;
             a.dead = cb.dead;
@@ -662,9 +665,26 @@ ViewModel Session::view() const {
             if (const sim::Archetype* arch = m.content->find(sp.archetype)) {
                 a.hp = a.hp_max = arch->base.hp_max;
                 a.is_pc = arch->schema_type == "character";
+                a.footprint = int(arch->footprint);
             }
             a.team = a.is_pc ? 0 : 1;
             v.actors.push_back(std::move(a));
+        }
+    }
+    if (m.combat) {
+        const sim::Combat& c = *m.combat;
+        v.anim_phase = m.light ? uint32_t(m.light->step) : 0u;
+        for (const rules5e::ActiveZone& z : c.state().zones) {
+            const rules5e::SpellDef* d = c.spell_def(z.spell_id);
+            if (!d || d->content_id.empty()) continue;
+            std::vector<Vec2i> tiles = c.zone_tiles(z);
+            if (tiles.empty()) continue;
+            ZoneOverlayView o;
+            o.zone_id = z.zone_id;
+            o.spell_id = z.spell_id;
+            o.content_id = d->content_id;
+            o.tiles = std::move(tiles);
+            v.zones.push_back(std::move(o));
         }
     }
     if (m.light) copy_light(*m.light, m.opt.fog, m.fog_team, v.light);

@@ -39,7 +39,13 @@ public:
     SpriteBatch& operator=(const SpriteBatch&) = delete;
 
     void begin();
+    // Projects `iso_pos` and sorts by it (depth = iso_x + iso_y).
     void draw(const Sprite&, Vec2f iso_pos, int32_t layer, uint32_t sort_key, int32_t z = 0);
+    // Projects `draw_iso`. Depth is `sort_iso.x + sort_iso.y`, so the sprite can sit on one
+    // point and sort as another. The same point for both is identical to the one-position draw,
+    // including a 1x1 token. Altitude is not a parameter: a later flying term subtracts height
+    // in tiles inside make_sort_key, without moving `draw_iso`.
+    void draw(const Sprite&, Vec2f draw_iso, Vec2f sort_iso, int32_t layer, uint32_t sort_key, int32_t z = 0);
     // Places the sprite's anchor at a pixel position (no iso projection), e.g. for UI drawn
     // with an identity camera. Sort key = (layer, px.y, z, sort_key).
     void draw_px(const Sprite&, Vec2f px, int32_t layer, uint32_t sort_key, int32_t z = 0);
