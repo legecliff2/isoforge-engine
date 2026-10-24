@@ -1021,6 +1021,24 @@ def check_save_advantage(doc: dict, tag: str) -> tuple[list[str], list[str]]:
     return errs, warns
 
 
+BATCH3_WEAPON_ONLY_KEYS = ("drain",)
+
+
+def check_batch3_actions(doc: dict, tag: str) -> list[str]:
+    """Batch 3 monster@5 action keys the sim reads only on weapon attacks (content.cpp attack loop): elsewhere they would be
+    silently ignored, so they are errors."""
+    errs: list[str] = []
+    if tag != "monster@5":
+        return errs
+    for i, a in enumerate(doc.get("actions") or []):
+        if not isinstance(a, dict) or a.get("kind") in ("melee_weapon_attack", "ranged_weapon_attack"):
+            continue
+        for k in BATCH3_WEAPON_ONLY_KEYS:
+            if k in a:
+                errs.append(f"/actions/{i}: {doc.get('id', '?')}.{a.get('id')}: {k} is read only on weapon attacks")
+    return errs
+
+
 CONTROL_KEYS_7_2Y = ("control", "control_excludes_creature_types", "destroy_undead_max_cr8", "target_creature_types", "duration")
 
 

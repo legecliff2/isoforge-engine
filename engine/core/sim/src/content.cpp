@@ -1511,6 +1511,25 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
             if (!hd || hd->count == 0) return a.id + ": bad half_hp_damage in action " + act.value("id", "?");
             at.half_hp_damage = *hd;
         }
+        // Batch 3 (Lich ruling): monster@5 `drain` {max_hp: true, save?: {ability: con, dc}}: SRD 5.1 Life Drain (wight, specter):
+        // "its hit point maximum is reduced by an amount equal to the damage taken" (rules5e life_drain; long rest restores,
+        // a maximum of 0 kills). No save = no saving throw. Static attack data: no hash tag (the reduction is already hashed).
+        if (auto dr = act.find("drain"); dr != act.end()) {
+            const std::string aid = act.value("id", "?");
+            if (declared != 0 && declared < 5) return a.id + ": action " + aid + ": drain needs a monster@5 file";
+            if (!dr->is_object()) return a.id + ": action " + aid + ": drain must be an object";
+            for (auto it = dr->begin(); it != dr->end(); ++it)
+                if (it.key() != "max_hp" && it.key() != "save") return a.id + ": action " + aid + ": drain: unknown key '" + it.key() + "'";
+            const auto mh = dr->find("max_hp");
+            if (mh == dr->end() || !mh->is_boolean() || !mh->get<bool>()) return a.id + ": action " + aid + ": drain needs max_hp: true";
+            at.drain_max_hp = true;
+            if (auto sv = dr->find("save"); sv != dr->end()) {
+                if (!sv->is_object() || sv->value("ability", "") != "con" || sv->size() != 2 || !sv->contains("dc") ||
+                    !(*sv)["dc"].is_number_integer() || (*sv)["dc"].get<int64_t>() < 1 || (*sv)["dc"].get<int64_t>() > 30)
+                    return a.id + ": action " + aid + ": drain.save must be {ability: con, dc: 1..30}";
+                at.drain_save_dc = int8_t((*sv)["dc"].get<int64_t>());
+            }
+        }
         // R-G7: only the grip bits Great Weapon Fighting reads (two_handed, versatile) are carried; other properties (loading,
         // heavy, finesse, ...) stay off so existing behaviour and goldens do not move.
         if (auto ps = act.find("properties"); ps != act.end() && ps->is_array())

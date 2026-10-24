@@ -66,5 +66,30 @@ class SaveAdvantage(unittest.TestCase):
         self.assertTrue(e or [m for m in w if "save_advantage" in m])
 
 
+def bite(**keys) -> dict:
+    d = bugbear()
+    d["actions"][0].update(keys)
+    return d
+
+
+class Drain(unittest.TestCase):
+    def test_valid(self):
+        for dr in ({"max_hp": True, "save": {"ability": "con", "dc": 13}}, {"max_hp": True}):
+            e, _w = run(bite(drain=dr))
+            self.assertEqual(e, [], dr)
+
+    def test_refused(self):
+        for dr in ({"max_hp": False}, {}, {"max_hp": True, "save": {"ability": "wis", "dc": 13}},
+                   {"max_hp": True, "save": {"ability": "con"}}, {"max_hp": True, "heal": True}):
+            e, _w = run(bite(drain=dr))
+            self.assertTrue([m for m in e if "drain" in m], (dr, e))
+
+    def test_weapon_only(self):
+        d = bugbear()
+        d["actions"].append({"id": "x", "name": "X", "kind": "special", "description": "x", "drain": {"max_hp": True}})
+        e, _w = run(d)
+        self.assertTrue([m for m in e if "read only on weapon attacks" in m], e)
+
+
 if __name__ == "__main__":
     unittest.main()

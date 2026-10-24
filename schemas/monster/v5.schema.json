@@ -786,6 +786,37 @@
           ],
           "default": "one_hand",
           "description": "How the `weapon` is used for this action (EQUIPMENT 2.1 WeaponUse): two_hands = versatile die or a two-handed melee weapon, thrown = a thrown use of a melee weapon. Explicit, never inferred from the action id."
+        },
+        "drain": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "max_hp"
+          ],
+          "description": "Batch 3 (Lich ruling; sim content.cpp, rules5e life_drain): weapon attacks only. SRD 5.1 Life Drain: the target's hit point maximum is reduced by an amount equal to the damage taken (after a Constitution save vs save.dc when present; success: no reduction); the reduction lasts until the target finishes a long rest, and a maximum of 0 kills it. Wight: {max_hp true, save {ability con, dc 13}}.",
+          "properties": {
+            "max_hp": {
+              "const": true
+            },
+            "save": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ability",
+                "dc"
+              ],
+              "properties": {
+                "ability": {
+                  "const": "con"
+                },
+                "dc": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 30
+                }
+              }
+            }
+          }
         }
       },
       "allOf": [
