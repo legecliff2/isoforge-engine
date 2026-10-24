@@ -11,7 +11,7 @@ target_link_libraries(vertical_slice_view PUBLIC eng::iso2d eng::render_api)
 _engine_warnings(vertical_slice_view)
 
 if(ENGINE_BUILD_TESTS)
-    add_executable(vertical_slice_tests tests/vertical_slice_tests.cpp tests/event_feed_tests.cpp tests/light_view_tests.cpp tests/equipped_light_tests.cpp tests/overlay_determinism_tests.cpp tests/equip_visuals_tests.cpp tests/debug_equip_tests.cpp tests/faerie_fire_outline_tests.cpp tests/unseen_feedback_tests.cpp tests/cover_debug_tests.cpp tests/zone_overlay_tests.cpp)
+    add_executable(vertical_slice_tests tests/vertical_slice_tests.cpp tests/event_feed_tests.cpp tests/light_view_tests.cpp tests/equipped_light_tests.cpp tests/overlay_determinism_tests.cpp tests/equip_visuals_tests.cpp tests/debug_equip_tests.cpp tests/faerie_fire_outline_tests.cpp tests/unseen_feedback_tests.cpp tests/cover_debug_tests.cpp tests/footprint_visuals_tests.cpp tests/zone_overlay_tests.cpp)
     target_link_libraries(vertical_slice_tests PRIVATE vertical_slice_session vertical_slice_view eng::render_null
                           eng::sim eng::world eng::ecs eng::assets
                           doctest::doctest_with_main)
@@ -29,6 +29,11 @@ if(ENGINE_BUILD_TESTS)
     add_executable(vertical_slice_equip_snapshot tests/equip_snapshot.cpp)
     target_link_libraries(vertical_slice_equip_snapshot PRIVATE vertical_slice_view)
     _engine_warnings(vertical_slice_equip_snapshot)
+
+    # Offscreen snapshot of a 2x2 / 3x3 / 4x4 footprint. Built with the tests, never run by ctest.
+    add_executable(vertical_slice_footprint_snapshot tests/footprint_snapshot.cpp)
+    target_link_libraries(vertical_slice_footprint_snapshot PRIVATE vertical_slice_view)
+    _engine_warnings(vertical_slice_footprint_snapshot)
 endif()
 
 if(ENGINE_WITH_SDL AND ENGINE_BACKEND_SDLGPU)

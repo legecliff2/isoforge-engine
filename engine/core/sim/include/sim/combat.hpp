@@ -40,6 +40,17 @@ using rules5e::ReactionTrigger;
 using rules5e::StepStatus;
 using rules5e::default_poll_order;
 class Combat;
+
+// Built-in end policies a headless scenario can name. Teams is rules5e::default_end_condition.
+enum class ScenarioEndKind : uint8_t { Teams, NoPcConscious, NoPcOrNoOpponent };
+
+// Replay input for a built-in end policy plus a round cap (parallel to surprised_at_start()).
+// round_cap 0 means no cap. The value is not an input to Combat::hash; see set_scenario_end.
+struct ScenarioEnd {
+    ScenarioEndKind kind = ScenarioEndKind::Teams;
+    uint16_t round_cap = 0;
+    friend bool operator==(const ScenarioEnd&, const ScenarioEnd&) = default;
+};
 struct CombatTestAccess;   // tests only (sim_tests): lets a test register state rows; not part of the contract
 // Sync decision adapter (AI, tests). Empty = decline.
 using ReactionDeciderFn = std::function<ReactionDecision(const Combat&, const NeedsDecision&)>;
@@ -278,6 +289,22 @@ public:
     }
     // The set given to apply_surprise (combatant order), kept after the flags clear: replay input, like the seed.
     const std::vector<CombatantId>& surprised_at_start() const noexcept { return surprised_at_start_; }
+    // Replaces the policy rules checks after every later state change. An empty function restores
+    // the built-in team policy and clears scenario_end(). Not applied to the begin_encounter check
+    // inside create(). install_hooks() does not replace this field.
+    // The function is not an input to Combat::hash. A policy that ends the fight emits EncounterEnded
+    // (a = EndReason), and hash() folds that event with the rest of the stream, so a custom end
+    // changes the digest only by changing the events.
+    // An arbitrary function is not replay input: replay() uses the team rule with no cap unless the
+    // caller passes scenario_end(). A round cap is not stored here.
+    void set_end_condition(rules5e::EndConditionFn fn);
+    // Records `end` and installs it. The built-in policy runs first. Round cap: when round_cap != 0
+    // and state.round > round_cap, and the built-in policy returned nothing, the outcome is
+    // EndReason::Custom. replay() must be given scenario_end() so it ends on the same step.
+    // Teams with round_cap 0 matches the built-in policy. Hash: same as set_end_condition (the
+    // EncounterEnded event, not this struct).
+    void set_scenario_end(ScenarioEnd end);
+    const ScenarioEnd& scenario_end() const noexcept { return scenario_end_; }
     // Petrifying Gaze (VERSION_BUMP_BATCH 7.2p): the gazers `viewer` can see now, in combatant order: every other living
     // creature with a gaze that is within that gaze's range_ft (footprint distance), in line of sight, not Invisible, while
     // the viewer is not Blinded. One visibility fact covers both directions (gazer sees viewer, viewer sees gazer) until
@@ -478,7 +505,7 @@ private:
     friend struct CombatTestAccess;
     friend std::optional<Combat> replay(ecs::Registry&, std::span<const world::Chunk* const>, const ContentLibrary&,
                                         uint64_t, CombatOptions, const std::vector<LogEntry>&, std::string*,
-                                        const std::vector<CombatantId>&);
+                                        const std::vector<CombatantId>&, ScenarioEnd);
     bool leaves_reach(CombatantId mover, Vec2i from, Vec2i to) const;
     int melee_reach_tiles(CombatantId id) const;   // 0 = no melee attack
     const Slot* slot(CombatantId id) const;
@@ -517,23 +544,28 @@ private:
     std::vector<MaterialUse> materials_used_;   // consumed materials, in cast order (0xAD)
     int material_entry(CombatantId caster, const rules5e::SpellDef& d) const;   // -1 = no entry provides it
     std::vector<CombatantId> surprised_at_start_;   // R-G16: apply_surprise input (combatant order)
+    ScenarioEnd scenario_end_{};                    // set_scenario_end input; empty fn clears it
 };
 
 // Replays a command log from scratch (same chunk, content and seed) into `reg`.
 // Returns the rebuilt combat, or nullopt + error if any command is rejected (desync).
 // `surprised` (R-G16): the original combat's surprised_at_start(), applied before the first entry (empty = no surprise).
+// `end`: the original combat's scenario_end(), installed before the log (Teams and round_cap 0 = the built-in
+// team policy, no cap). An arbitrary set_end_condition function is not in the log; omit `end` and the replay
+// uses the team rule.
 std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content,
                              uint64_t seed, const std::vector<LogEntry>& log, std::string* error = nullptr,
-                             const std::vector<CombatantId>& surprised = {});
+                             const std::vector<CombatantId>& surprised = {}, ScenarioEnd end = {});
 std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
                              uint64_t seed, const std::vector<LogEntry>& log, std::string* error = nullptr,
-                             const std::vector<CombatantId>& surprised = {});
+                             const std::vector<CombatantId>& surprised = {}, ScenarioEnd end = {});
 // Replays with the original combat's options (equipment on needs them: loadouts are built at create).
 std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content, uint64_t seed,
                              CombatOptions options, const std::vector<LogEntry>& log, std::string* error = nullptr,
-                             const std::vector<CombatantId>& surprised = {});
+                             const std::vector<CombatantId>& surprised = {}, ScenarioEnd end = {});
 std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
                              uint64_t seed, CombatOptions options, const std::vector<LogEntry>& log,
-                             std::string* error = nullptr, const std::vector<CombatantId>& surprised = {});
+                             std::string* error = nullptr, const std::vector<CombatantId>& surprised = {},
+                             ScenarioEnd end = {});
 
 } // namespace eng::sim

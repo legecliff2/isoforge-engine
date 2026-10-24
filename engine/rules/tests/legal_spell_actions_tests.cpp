@@ -244,3 +244,55 @@ TEST_CASE("legal_actions spell specimens submit: self-range modifiers and heat m
     CHECK(std::string(step(qs, blocked).error) == "components unavailable");
     submit_all(qs);
 }
+
+TEST_CASE("descriptive spells stay known, legal_actions omits them, and a direct cast is refused") {
+    CHECK(uint8_t(SpellEffectKind::Stabilize) == 26);
+    CHECK(uint8_t(SpellEffectKind::Descriptive) == 27);
+    SpellDef text; text.kind = SpellEffectKind::Descriptive;
+    CHECK_FALSE(spell_harmful(text));
+    const uint32_t kLight = spell_id_of("test.spell.light");
+    SpellDef light;
+    light.id = kLight; light.content_id = "test.spell.light"; light.level = 0; light.range_ft = 120;
+    light.components = kComponentV; light.kind = SpellEffectKind::Descriptive;
+    auto wiz = wizard(1);
+    wiz.spells_known.push_back(kLight);
+    wiz.innate = {at_will(kLight, true)};
+    never_react(wiz);
+    auto foe = monster(2); foe.hp = foe.hp_max = 40; never_react(foe);
+    auto s = begin_encounter({wiz, foe}, 1, nullptr, hooks_for(nullptr, {light}));
+    end_turns_until(s, 1);
+    const auto* me = find(s, 1);
+    REQUIRE(me);
+    CHECK(std::find(me->spells_known.begin(), me->spells_known.end(), kLight) != me->spells_known.end());
+    REQUIRE(me->innate.size() == 1);
+    CHECK(me->innate[0].spell_id == kLight);
+    CHECK(me->innate[0].at_will());
+    bool bolt = false;
+    for (const auto& r : legal_actions(s)) {
+        CHECK(r.spell_id != kLight);
+        bolt = bolt || (r.kind == ActionKind::CastSpell && r.spell_id == kFireBolt);
+    }
+    CHECK(bolt);
+    const bool action = s.budget.action;
+    const auto slots = me->spell_slots;
+    auto refused = step(s, cast(1, kLight, 2));
+    CHECK_FALSE(refused.ok);
+    CHECK(std::string(refused.error) == "descriptive spells cannot be cast");
+    CHECK(refused.events.empty());
+    CHECK(s.budget.action == action);
+    CHECK(find(s, 1)->spell_slots == slots);
+    auto innate = cast(1, kLight, 2); innate.innate = true;
+    auto refused_innate = step(s, innate);
+    CHECK_FALSE(refused_innate.ok);
+    CHECK(std::string(refused_innate.error) == "descriptive spells cannot be cast");
+    CHECK(find(s, 1)->innate[0].at_will());
+    CHECK(find(s, 1)->innate[0].uses_left == 0);
+    auto zone_move = cast(1, kLight, 1); zone_move.zone_move = 1;
+    CHECK(std::string(step(s, zone_move).error) == "descriptive spells cannot be cast");
+    auto sustain = cast(1, kLight, 2); sustain.sustain = true;
+    CHECK(std::string(step(s, sustain).error) == "descriptive spells cannot be cast");
+    auto moved = cast(1, kLight, 2); moved.move_mark = true;
+    CHECK(std::string(step(s, moved).error) == "descriptive spells cannot be cast");
+    CHECK(std::find(find(s, 1)->spells_known.begin(), find(s, 1)->spells_known.end(), kLight) != find(s, 1)->spells_known.end());
+    CHECK(s.budget.action == action);
+}
