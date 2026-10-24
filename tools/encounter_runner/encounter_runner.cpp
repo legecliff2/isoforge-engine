@@ -152,17 +152,26 @@ std::uint32_t id_of(const std::vector<std::pair<std::string, std::uint32_t>>& ro
 std::filesystem::path find_pack(const std::filesystem::path& root, const std::string& id) {
     const auto packs = root / "content" / "packs";
     if (!std::filesystem::is_directory(packs)) throw Fail("no content/packs under " + root.generic_string());
+    // directory_iterator order is not stable. Sort, then reject a duplicated id so the
+    // directory that wins cannot depend on the filesystem.
     std::vector<std::filesystem::path> dirs;
     for (const auto& entry : std::filesystem::directory_iterator(packs))
         if (entry.is_directory()) dirs.push_back(entry.path());
     std::sort(dirs.begin(), dirs.end());
+    std::vector<std::filesystem::path> found;
     for (const auto& dir : dirs) {
         const auto man_path = dir / "manifest.json";
         if (!std::filesystem::is_regular_file(man_path)) continue;
         const auto man = eng::assets::Json::parse(read_text(man_path), nullptr, false);
-        if (man.is_object() && man.value("id", std::string{}) == id) return dir;
+        if (man.is_object() && man.value("id", std::string{}) == id) found.push_back(dir);
     }
-    throw Fail("pack '" + id + "' was not found under content/packs");
+    if (found.size() > 1) {
+        std::string message = "duplicate pack id '" + id + "'";
+        for (const auto& dir : found) message += "\n  " + dir.generic_string();
+        throw Fail(message);
+    }
+    if (found.empty()) throw Fail("pack '" + id + "' was not found under content/packs");
+    return found[0];
 }
 
 bool path_escapes(std::string_view rel) {
@@ -242,19 +251,15 @@ void require_archetype(const eng::sim::ContentLibrary& lib, const Actor& actor, 
     if (arch->schema_type != expect) throw Fail(actor.archetype + " is not a " + expect);
 }
 
-rules5e::EndConditionFn make_end(EndKind kind, std::uint16_t cap) {
-    return [kind, cap](const rules5e::EncounterState& state) -> std::optional<rules5e::EncounterOutcome> {
-        std::optional<rules5e::EncounterOutcome> outcome;
-        switch (kind) {
-        case EndKind::Teams: outcome = rules5e::default_end_condition(state); break;
-        case EndKind::NoPc: outcome = rules5e::end_when_no_pc_conscious(state); break;
-        case EndKind::NoPcOrFoes: outcome = rules5e::end_when_no_pc_or_no_opponent(state); break;
-        }
-        if (outcome) return outcome;
-        if (state.round > cap)
-            return rules5e::EncounterOutcome{rules5e::EndReason::Custom, rules5e::pc_statuses(state), {}};
-        return std::nullopt;
-    };
+eng::sim::ScenarioEnd scenario_end_of(EndKind kind, std::uint16_t cap) {
+    eng::sim::ScenarioEnd end;
+    switch (kind) {
+    case EndKind::Teams: end.kind = eng::sim::ScenarioEndKind::Teams; break;
+    case EndKind::NoPc: end.kind = eng::sim::ScenarioEndKind::NoPcConscious; break;
+    case EndKind::NoPcOrFoes: end.kind = eng::sim::ScenarioEndKind::NoPcOrNoOpponent; break;
+    }
+    end.round_cap = cap;
+    return end;
 }
 
 void print_list_prefix(const char* key, bool empty) {
@@ -444,7 +449,7 @@ int run(int argc, char** argv) {
             throw Fail(surprise_error.empty() ? "apply_surprise failed" : surprise_error);
     }
 
-    combat->set_end_condition(make_end(end, cap));
+    combat->set_scenario_end(scenario_end_of(end, cap));
     eng::sim::NearestEnemyPolicy policy;
     const auto result = eng::sim::run_to_end(*combat, [&](rules5e::CombatantId) { return &policy; });
     if (!result.error.empty()) throw Fail(result.error);
