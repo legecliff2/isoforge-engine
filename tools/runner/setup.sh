@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Idempotent install of one GitHub Actions self-hosted runner for isoforge-engine.
+# CI does not use this runner. Workflows are hosted-only. Unregister with
+# uninstall.sh right before the repository is public (docs/CI_SELF_HOSTED.md).
 #   sudo RUNNER_TOKEN=<registration token> tools/runner/setup.sh
 # Env: RUNNER_TOKEN (required unless already configured), REPO_URL, RUNNER_GROUP (optional),
 #      RUNNER_DIR (/opt/actions-runner), RUNNER_USER (ghrunner), RUNNER_NAME (isoforge-<host>),
@@ -7,10 +9,10 @@
 # Non-ephemeral on purpose: one persistent runner keeps its ccache warm (that is the point of
 # self-hosting), and an ephemeral runner would need a fresh registration token per job (an
 # auto-re-register loop holding a PAT). Workspace hygiene is done by checkout clean + the
-# cleanup step in cmake-ci. A repository-level runner cannot limit which workflow ref is
-# allowed to use it. Before this repo is public, register it on an organization runner
-# group pinned to main (docs/CI_SELF_HOSTED.md). Optional: REPO_URL=https://github.com/ORG
-# and RUNNER_GROUP=<group> (the group must already exist; config.sh --runnergroup).
+# cleanup step in cmake-ci. CI does not call this script. Do not register a runner
+# for the public repository; unregister with uninstall.sh (docs/CI_SELF_HOSTED.md).
+# RUNNER_GROUP is optional and only used if this script is run anyway (config.sh
+# --runnergroup; the group must already exist).
 set -euo pipefail
 REPO_URL=${REPO_URL:-https://github.com/legecliff2/isoforge-engine}
 RUNNER_DIR=${RUNNER_DIR:-/opt/actions-runner}
