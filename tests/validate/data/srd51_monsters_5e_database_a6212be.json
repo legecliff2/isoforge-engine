@@ -3187,6 +3187,65 @@
      ]
     }
    ]
+  },
+  "gladiator": {
+   "name": "Gladiator",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    16
+   ],
+   "hp": 112,
+   "hp_roll": "15d8+45",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    18,
+    15,
+    16,
+    10,
+    12,
+    15
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Spear",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "piercing"
+       ]
+      ],
+      [
+       [
+        "2d8+4",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Shield Bash",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d4+4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
