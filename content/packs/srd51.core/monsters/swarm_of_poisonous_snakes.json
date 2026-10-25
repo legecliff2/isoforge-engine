@@ -1,0 +1,107 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.swarm_of_poisonous_snakes",
+  "name": "Swarm of Poisonous Snakes",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "beast",
+  "tags": [
+    "swarm"
+  ],
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 14
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 36,
+    "formula": "8d8"
+  },
+  "speed": {
+    "walk": 30,
+    "swim": 30
+  },
+  "abilities": {
+    "str": 8,
+    "dex": 18,
+    "con": 11,
+    "int": 1,
+    "wis": 10,
+    "cha": 3
+  },
+  "damage_resistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "condition_immunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+  ],
+  "senses": {
+    "blindsight": 10,
+    "passive_perception": 10
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "swarm",
+      "name": "Swarm",
+      "description": "The swarm can occupy another creature's space and vice versa, and the swarm can move through any opening large enough for a Tiny snake. The swarm can't regain hit points or gain temporary hit points."
+    }
+  ],
+  "actions": [
+    {
+      "id": "bites",
+      "name": "Bites",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "dex",
+        "damage_ability": "none"
+      },
+      "to_hit": 6,
+      "reach": 0,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6",
+          "type": "piercing"
+        }
+      ],
+      "half_hp_damage": "1d6",
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "con",
+            "dc": 10
+          },
+          "damage": [
+            {
+              "dice": "4d6",
+              "type": "poison"
+            }
+          ],
+          "on_success": "half"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 0 ft., one creature in the swarm's space. Hit: 7 (2d6) piercing damage, or 3 (1d6) piercing damage if the swarm has half of its hit points or fewer. The target must make a DC 10 Constitution saving throw, taking 14 (4d6) poison damage on a failed save, or half as much damage on a successful one."
+    }
+  ]
+}

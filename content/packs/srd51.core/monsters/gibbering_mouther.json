@@ -1,0 +1,127 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.gibbering_mouther",
+  "name": "Gibbering Mouther",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "aberration",
+  "alignment": "neutral",
+  "armor_class": {
+    "value": 9
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 67,
+    "formula": "9d8+27"
+  },
+  "speed": {
+    "walk": 10,
+    "swim": 10
+  },
+  "abilities": {
+    "str": 10,
+    "dex": 8,
+    "con": 16,
+    "int": 3,
+    "wis": 10,
+    "cha": 6
+  },
+  "condition_immunities": [
+    "prone"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 10
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "aberrant_ground",
+      "name": "Aberrant Ground",
+      "description": "The ground in a 10-foot radius around the mouther is doughlike difficult terrain. Each creature that starts its turn in that area must succeed on a DC 10 Strength saving throw or have its speed reduced to 0 until the start of its next turn. (Descriptive only: no difficult-terrain aura and no start-of-turn speed reduction. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "gibbering",
+      "name": "Gibbering",
+      "description": "The mouther babbles incoherently while it can see any creature and isn't incapacitated. Each creature that starts its turn within 20 feet of the mouther and can hear the gibbering must succeed on a DC 10 Wisdom saving throw. On a failure, the creature can't take reactions until the start of its next turn and rolls a d8 to determine what it does during its turn. On a 1 to 4, the creature does nothing. On a 5 or 6, the creature takes no action or bonus action and uses all its movement to move in a randomly determined direction. On a 7 or 8, the creature makes a melee attack against a randomly determined creature within its reach or does nothing if it can't make such an attack. (Descriptive only: no start-of-turn babble save and no d8 turn table. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The gibbering mouther makes one bite attack and, if it can, uses its Blinding Spittle. (Descriptive only: a multiattack of a save_effect and an attack is deferred, CONTENT_CONVENTIONS 26; the bite and the spittle are separate actions.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": "bites",
+      "name": "Bites",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "5d6",
+        "ability": "str"
+      },
+      "to_hit": 2,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "5d6",
+          "type": "piercing"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "str",
+            "dc": 10
+          },
+          "apply": [
+            {
+              "condition": "prone",
+              "max_size": "medium"
+            }
+          ]
+        }
+      ],
+      "description": "Melee Weapon Attack: +2 to hit, reach 5 ft., one creature. Hit: 17 (5d6) piercing damage. If the target is Medium or smaller, it must succeed on a DC 10 Strength saving throw or be knocked prone. If the target is killed by this damage, it is absorbed into the mouther. (Absorbing a creature killed by this damage is descriptive only: no on-kill absorb. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "blinding_spittle",
+      "name": "Blinding Spittle",
+      "kind": "save_effect",
+      "description": "The mouther spits a chemical glob at a point it can see within 15 feet of it. The glob explodes in a blinding flash of light on impact. Each creature within 5 feet of the flash must succeed on a DC 13 Dexterity saving throw or be blinded until the end of the mouther's next turn.",
+      "save": {
+        "ability": "dex",
+        "dc": 13
+      },
+      "origin": "point",
+      "range_ft": 15,
+      "area": {
+        "shape": "sphere",
+        "size_ft": 5
+      },
+      "apply": [
+        {
+          "condition": "blinded",
+          "duration": {
+            "kind": "until_end_of_caster_next_turn"
+          }
+        }
+      ],
+      "usage": {
+        "kind": "recharge",
+        "min": 5
+      }
+    }
+  ]
+}
