@@ -21,8 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 112 authored / 11 deferred): batch 3 and tier-A triage (5) + tier B batch d1 still open (6). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row.
-DEFERRED: list[str] = ["doppelganger", "duergar", "green-hag", "mimic", "rust-monster", "crocodile", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 112 / 11
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 117 authored / 8 deferred): batch 3 and tier-A triage (5) + tier B still open (3: crocodile, lion, tiger). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row. Giant Goat, Giant Sea Horse and Warhorse left in CR 1/2 batch D. Lion and tiger stay deferred (bonus-bite gap, as panther's note).
+DEFERRED: list[str] = ["doppelganger", "duergar", "green-hag", "mimic", "rust-monster", "crocodile", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 117 / 8
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -45,6 +45,8 @@ DEVIATIONS = {
     "swarm-of-bats": "type: as swarm-of-rats (beast + tag swarm). Speed is walk 0 and fly 30, the printed line.",
     "swarm-of-ravens": "type: as swarm-of-rats (beast + tag swarm). skills: a6212be lists no proficiencies, but passive Perception is 15 and the SRD 5.1 block prints Perception +5 (Wis +1 and expertise). Authored as perception 5 (as black bear: the validator requires 10 + skill).",
     "panther": "One SRD 5.1 stat block. Leopard and Cougar are aliases of srd51.monster.panther, not separate documents.",
+    "giant-wasp": "speed: a6212be lists walk 10 ft., fly 50 ft., and swim 50 ft. SRD 5.1 prints 10 ft., fly 50 ft. and no swim. Authored without swim (the SRD is authoritative, as riding-horse XP).",
+    "swarm-of-insects": "type: as swarm-of-rats (beast + tag swarm). The base block is bites only (no poison). Variant insect swarms (beetle, centipede, spider, wasp) are an SRD sidebar and are not authored.",
 }
 # Mirror errors in hit points: monster -> (average, formula) as printed in the SRD 5.1 block (DEVIATIONS).
 HP_ERRATA = {"cult-fanatic": (33, "6d8+6")}
@@ -74,7 +76,7 @@ class MonsterTable(unittest.TestCase):
                 self.assertEqual(d["id"], "srd51.monster." + idx.replace("-", "_"))
                 self.assertEqual(d["name"], t["name"])
                 self.assertEqual(d["size"], t["size"].lower())
-                if idx in ("swarm-of-rats", "swarm-of-bats", "swarm-of-ravens"):
+                if idx in ("swarm-of-rats", "swarm-of-bats", "swarm-of-ravens", "swarm-of-insects"):
                     self.assertEqual((d["type"], d["tags"]), ("beast", ["swarm"]))
                 else:
                     self.assertEqual(d["type"], t["type"])
@@ -90,9 +92,14 @@ class MonsterTable(unittest.TestCase):
                 self.assertEqual(d["challenge"]["xp"], 50 if idx == "riding-horse" else t["xp"])
                 rating = d["challenge"]["rating"]
                 self.assertEqual(CR[rating] if rating in CR else int(rating), t["cr"])
-                speed = {k: num(v) for k, v in t["speed"].items()}
-                speed.setdefault("walk", 0)   # the table has no walk key for swim-only creatures (reef shark: swim 40 ft.)
-                self.assertEqual(speed, d["speed"])
+                if idx == "giant-wasp":
+                    # a6212be lists swim 50 ft.; SRD 5.1 prints walk 10 / fly 50 only (DEVIATIONS).
+                    self.assertEqual(t["speed"], {"walk": "10 ft.", "fly": "50 ft.", "swim": "50 ft."})
+                    self.assertEqual(d["speed"], {"walk": 10, "fly": 50})
+                else:
+                    speed = {k: num(v) for k, v in t["speed"].items()}
+                    speed.setdefault("walk", 0)   # the table has no walk key for swim-only creatures (reef shark: swim 40 ft.)
+                    self.assertEqual(speed, d["speed"])
                 self.assertEqual([d["abilities"][k] for k in ("str", "dex", "con", "int", "wis", "cha")], t["abilities"])
                 self.assertEqual(d.get("damage_vulnerabilities", []), t["damage_vulnerabilities"])
                 self.assertEqual(d.get("damage_immunities", []), t["damage_immunities"])
@@ -466,6 +473,58 @@ class MonsterTable(unittest.TestCase):
                          ("save_effect", {"ability": "dex", "dc": 10}, "half", {"kind": "recharge", "min": 6}))
         self.assertEqual(breath["area"], {"shape": "cone", "size_ft": 15})
         self.assertEqual(breath["damage"], [{"dice": "1d8", "type": "fire"}])
+
+    def test_cr_half_batch_d(self):
+        # CR 1/2 batch D. Charge is the goat trait on_event (not elk's ram on_hit). Warhorse is that shape
+        # with the prone save only. Wasp poison is the giant spider bite rider. Insects is bites only.
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        when = [{"kind": "weapon", "is": "melee"}, {"kind": "moved_at_least_ft", "ft": 20}]
+        goat = trait("giant-goat", "charge")["effect"]
+        self.assertEqual((goat["kind"], goat["on"], goat["limit"], goat["when"]), ("on_event", "hit", "once_per_turn", when))
+        self.assertEqual(goat["effects"], [
+            {"kind": "extra_damage", "damage": [{"dice": "2d4", "type": "bludgeoning"}]},
+            {"kind": "save_condition", "save": {"ability": "str", "dc": 13}, "apply": [{"condition": "prone"}]}])
+        self.assertNotIn("effect", trait("giant-goat", "sure_footed"))
+        self.assertEqual(act("giant-goat", "ram")["natural"], {"dice": "2d4", "ability": "str"})
+        self.assertNotIn("on_hit", act("giant-goat", "ram"))
+        sea = trait("giant-sea-horse", "charge")["effect"]
+        self.assertEqual((sea["kind"], sea["on"], sea["limit"], sea["when"]), ("on_event", "hit", "once_per_turn", when))
+        self.assertEqual(sea["effects"], [
+            {"kind": "extra_damage", "damage": [{"dice": "2d6", "type": "bludgeoning"}]},
+            {"kind": "save_condition", "save": {"ability": "str", "dc": 11}, "apply": [{"condition": "prone"}]}])
+        self.assertEqual(load("giant-sea-horse")["speed"], {"walk": 0, "swim": 40})
+        self.assertNotIn("effect", trait("giant-sea-horse", "water_breathing"))
+        sting = act("giant-wasp", "sting")
+        self.assertEqual(sting["on_hit"], [{"kind": "save_condition", "save": {"ability": "con", "dc": 11},
+                                            "damage": [{"dice": "3d6", "type": "poison"}], "on_success": "half",
+                                            "zero_hp": {"condition": "poisoned", "while": "paralyzed",
+                                                        "duration": {"kind": "rounds", "n": 600}}}])
+        self.assertEqual(load("giant-wasp")["speed"], {"walk": 10, "fly": 50})
+        self.assertNotIn("swim", load("giant-wasp")["speed"])
+        insects = load("swarm-of-insects")
+        self.assertEqual((insects["tags"], insects["speed"]), (["swarm"], {"walk": 20, "climb": 20}))
+        bites = act("swarm-of-insects", "bites")
+        self.assertEqual(bites["natural"], {"dice": "4d4", "ability": "dex", "damage_ability": "none"})
+        self.assertEqual((bites["reach"], bites["half_hp_damage"], bites["damage"]),
+                         (0, "2d4", [{"dice": "4d4", "type": "piercing"}]))
+        self.assertNotIn("on_hit", bites)
+        self.assertNotIn("effect", trait("swarm-of-insects", "swarm"))
+        # Variant sidebars (beetle / centipede / spider / wasp) are out of scope: one bites-only document.
+        for slug in ("swarm_of_beetles", "swarm_of_centipedes", "swarm_of_spiders", "swarm_of_wasps"):
+            self.assertFalse((PACK / "monsters" / f"{slug}.json").exists(), slug)
+        horse = trait("warhorse", "trampling_charge")["effect"]
+        self.assertEqual((horse["kind"], horse["on"], horse["limit"], horse["when"]), ("on_event", "hit", "once_per_turn", when))
+        self.assertEqual(horse["effects"], [
+            {"kind": "save_condition", "save": {"ability": "str", "dc": 14}, "apply": [{"condition": "prone"}]}])
+        self.assertNotIn("extra_damage", str(horse["effects"]))
+        self.assertIn("bonus action", trait("warhorse", "trampling_charge")["description"])
+        self.assertNotIn("on_hit", act("warhorse", "hooves"))
+        self.assertEqual(act("warhorse", "hooves")["natural"], {"dice": "2d6", "ability": "str"})
 
     def test_engulf_swallow_transparent(self):
         # Rules 7.2w (#189): Engulf (save_effect + contain engulf, Str DC 12 escape, Large or smaller), Transparent DC 15
