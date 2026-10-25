@@ -21,8 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 107 authored / 13 deferred): batch 3 and tier-A triage (5) + tier B batch d1 (8). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Giant Frog left once the giant toad Swallow pattern was packed (Rules #189; Swallow-as-bite-with-damage still partial).
-DEFERRED: list[str] = ["doppelganger", "duergar", "green-hag", "mimic", "rust-monster", "constrictor-snake", "crocodile", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 107 / 13
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 112 authored / 11 deferred): batch 3 and tier-A triage (5) + tier B batch d1 still open (6). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row.
+DEFERRED: list[str] = ["doppelganger", "duergar", "green-hag", "mimic", "rust-monster", "crocodile", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 112 / 11
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -42,6 +42,9 @@ DEVIATIONS = {
     "gladiator": "Spear (thrown) damage: the SRD prints one line for both uses, 11 (2d6 + 4); the derivation gives a thrown use no Brute die (1d6 + 4). Carried as an approved damage_override of 2d6+4 (CONTENT_CONVENTIONS 21; printed value wins).",
     "mule": "Hooves to_hit: the SRD prints +2 (the table agrees); the derivation gives +4 (Str 14 +2, PB +2). Carried as an approved attack_bonus override of +2 (printed value wins).",
     "swarm-of-rats": "type: the table says 'swarm of Tiny beasts', not in the creature_type enum; convention is beast + tag swarm (T&C-G15, sim #172).",
+    "swarm-of-bats": "type: as swarm-of-rats (beast + tag swarm). Speed is walk 0 and fly 30, the printed line.",
+    "swarm-of-ravens": "type: as swarm-of-rats (beast + tag swarm). skills: a6212be lists no proficiencies, but passive Perception is 15 and the SRD 5.1 block prints Perception +5 (Wis +1 and expertise). Authored as perception 5 (as black bear: the validator requires 10 + skill).",
+    "panther": "One SRD 5.1 stat block. Leopard and Cougar are aliases of srd51.monster.panther, not separate documents.",
 }
 # Mirror errors in hit points: monster -> (average, formula) as printed in the SRD 5.1 block (DEVIATIONS).
 HP_ERRATA = {"cult-fanatic": (33, "6d8+6")}
@@ -71,7 +74,7 @@ class MonsterTable(unittest.TestCase):
                 self.assertEqual(d["id"], "srd51.monster." + idx.replace("-", "_"))
                 self.assertEqual(d["name"], t["name"])
                 self.assertEqual(d["size"], t["size"].lower())
-                if idx == "swarm-of-rats":
+                if idx in ("swarm-of-rats", "swarm-of-bats", "swarm-of-ravens"):
                     self.assertEqual((d["type"], d["tags"]), ("beast", ["swarm"]))
                 else:
                     self.assertEqual(d["type"], t["type"])
@@ -333,6 +336,47 @@ class MonsterTable(unittest.TestCase):
             return {t["id"]: t for t in load(idx)["traits"]}[tid]
         def act(idx, aid):
             return {a["id"]: a for a in load(idx)["actions"]}[aid]
+        # CR 0.25 batch B. Constrictor: giant-toad grapple (restrains + exclusive). Str/Dex tie, explicit str.
+        constrict = act("constrictor-snake", "constrict")
+        self.assertEqual(constrict["on_hit"], [{"kind": "grapple", "escape_dc": 14, "restrains": True, "exclusive": True}])
+        self.assertEqual(act("constrictor-snake", "bite").get("ability"), "str")
+        self.assertEqual(constrict.get("ability"), "str")
+        # Elk: Charge is the ram's on_hit only (a melee on_event would also fire on hooves). Hooves has no prone gate.
+        self.assertNotIn("effect", trait("elk", "charge"))
+        self.assertEqual(act("elk", "ram")["on_hit"], [
+            {"kind": "extra_damage", "damage": [{"dice": "2d6", "type": "bludgeoning"}],
+             "when": [{"kind": "moved_at_least_ft", "ft": 20}]},
+            {"kind": "save_condition", "save": {"ability": "str", "dc": 13}, "apply": [{"condition": "prone"}],
+             "when": [{"kind": "moved_at_least_ft", "ft": 20}]}])
+        hooves = act("elk", "hooves")
+        self.assertNotIn("on_hit", hooves)
+        self.assertNotIn("target_requires_any", hooves)
+        self.assertIn("one prone creature", hooves["description"])
+        # Panther: one slug (Leopard / Cougar are aliases, not documents). Pounce prone save is on the claw.
+        # The bonus-action bite vs the prone target is description only (no prone gate on bonus_attack).
+        self.assertEqual(load("panther")["id"], "srd51.monster.panther")
+        self.assertFalse((PACK / "monsters" / "leopard.json").exists())
+        self.assertFalse((PACK / "monsters" / "cougar.json").exists())
+        self.assertNotIn("effect", trait("panther", "pounce"))
+        self.assertNotIn("effect", trait("panther", "keen_smell"))
+        self.assertIn("bonus action", trait("panther", "pounce")["description"])
+        self.assertEqual(act("panther", "claw")["on_hit"], [
+            {"kind": "save_condition", "save": {"ability": "str", "dc": 12}, "apply": [{"condition": "prone"}],
+             "when": [{"kind": "moved_at_least_ft", "ft": 20}]}])
+        self.assertNotIn("on_hit", act("panther", "bite"))
+        # Flying swarms: swarm tag + printed fly (not a walk stand-in). Half-HP dice. Reach as printed (bats 0, ravens 5).
+        bats = load("swarm-of-bats")
+        self.assertEqual((bats["tags"], bats["speed"]), (["swarm"], {"walk": 0, "fly": 30}))
+        self.assertEqual(act("swarm-of-bats", "bites")["natural"]["damage_ability"], "none")
+        self.assertEqual((act("swarm-of-bats", "bites")["reach"], act("swarm-of-bats", "bites")["half_hp_damage"]), (0, "1d4"))
+        self.assertNotIn("effect", trait("swarm-of-bats", "swarm"))
+        self.assertNotIn("effect", trait("swarm-of-bats", "echolocation"))
+        self.assertNotIn("effect", trait("swarm-of-bats", "keen_hearing"))
+        ravens = load("swarm-of-ravens")
+        self.assertEqual((ravens["tags"], ravens["speed"], ravens["skills"]["perception"]), (["swarm"], {"walk": 10, "fly": 50}, 5))
+        self.assertEqual(act("swarm-of-ravens", "beaks")["natural"]["damage_ability"], "none")
+        self.assertEqual((act("swarm-of-ravens", "beaks")["reach"], act("swarm-of-ravens", "beaks")["half_hp_damage"]), (5, "1d6"))
+        self.assertNotIn("effect", trait("swarm-of-ravens", "swarm"))
         self.assertEqual(trait("satyr", "magic_resistance")["effect"], {"kind": "save_advantage", "magical": True})
         self.assertEqual(trait("death-dog", "two_headed")["effect"], {"kind": "save_advantage", "save_vs_conditions":
                          ["blinded", "charmed", "deafened", "frightened", "stunned", "unconscious"]})
@@ -356,7 +400,9 @@ class MonsterTable(unittest.TestCase):
                              ("hobgoblin", "longsword_two_handed", "str"), ("hobgoblin", "longbow", "dex"),
                              ("wight", "life_drain", "str"), ("wight", "longsword", "str"), ("wight", "longsword_two_handed", "str"),
                              ("wight", "longbow", "dex"), ("vampire-spawn", "bite", "str"), ("vampire-spawn", "claws", "str"),
-                             ("death-dog", "bite", "str")):
+                             ("death-dog", "bite", "str"),
+                             ("constrictor-snake", "bite", "str"), ("constrictor-snake", "constrict", "str"),
+                             ("panther", "bite", "str"), ("panther", "claw", "str")):
             self.assertEqual(act(idx, aid).get("ability"), ab, (idx, aid))
         # Sunlight Sensitivity / Keen Hearing and Smell: descriptive (no light model, no perception checks in the sim)
         self.assertNotIn("effect", {t["id"]: t for t in load("kobold")["traits"]}["sunlight_sensitivity"])
