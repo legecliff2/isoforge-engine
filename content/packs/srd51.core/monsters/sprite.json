@@ -1,0 +1,134 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.sprite",
+  "name": "Sprite",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "tiny",
+  "type": "fey",
+  "alignment": "neutral good",
+  "armor_class": {
+    "value": 15,
+    "note": "leather armor"
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.leather_armor",
+      "equipped": true
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 2,
+    "formula": "1d4"
+  },
+  "speed": {
+    "walk": 10,
+    "fly": 40
+  },
+  "abilities": {
+    "str": 3,
+    "dex": 18,
+    "con": 10,
+    "int": 14,
+    "wis": 13,
+    "cha": 11
+  },
+  "skills": {
+    "perception": 3,
+    "stealth": 8
+  },
+  "senses": {
+    "passive_perception": 13
+  },
+  "languages": [
+    "Common",
+    "Elvish",
+    "Sylvan"
+  ],
+  "challenge": {
+    "rating": "1/4",
+    "xp": 50
+  },
+  "proficiency_bonus": 2,
+  "actions": [
+    {
+      "id": "longsword",
+      "name": "Longsword",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "flat": 1,
+        "ability": "str"
+      },
+      "attack_bonus": {
+        "value": 2,
+        "reason": "SRD Sprite Longsword prints +2 and flat 1 slashing; Str 3 (-4) + PB 2 = -2 (CONTENT_CONVENTIONS 19; Tiny weapon, not srd51.item.longsword)"
+      },
+      "to_hit": 2,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "flat": 1,
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +2 to hit, reach 5 ft., one target. Hit: 1 slashing damage."
+    },
+    {
+      "id": "shortbow",
+      "name": "Shortbow",
+      "kind": "ranged_weapon_attack",
+      "natural": {
+        "flat": 1,
+        "ability": "dex"
+      },
+      "to_hit": 6,
+      "range": [
+        40,
+        160
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "flat": 1,
+          "type": "piercing"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "con",
+            "dc": 10
+          },
+          "apply": [
+            {
+              "condition": "poisoned",
+              "duration": {
+                "kind": "rounds",
+                "n": 10
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Ranged Weapon Attack: +6 to hit, range 40/160 ft., one target. Hit: 1 piercing damage, and the target must succeed on a DC 10 Constitution saving throw or become poisoned for 1 minute. If its saving throw result is 5 or lower, the poisoned target falls unconscious for the same duration, or until it takes damage or another creature takes an action to shake it awake. (The result-5-or-lower unconscious clause is descriptive only: also_on_fail_by is save_effect-only and is a fail-by margin, not a result ceiling, CONTENT_CONVENTIONS 26; see docs/SRD_MONSTERS_DEFERRED.md. Range is the printed 40/160, a ranged natural, not srd51.item.shortbow 80/320.)"
+    },
+    {
+      "id": "heart_sight",
+      "name": "Heart Sight",
+      "kind": "special",
+      "description": "The sprite touches a creature and magically knows the creature's current emotional state. If the target fails a DC 10 Charisma saving throw, the sprite also knows the creature's alignment. Celestials, fiends, and undead automatically fail the saving throw. (Descriptive only: no heart-sight save construct; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "invisibility",
+      "name": "Invisibility",
+      "kind": "special",
+      "description": "The sprite magically turns invisible until it attacks or casts a spell, or until its concentration ends (as if concentrating on a spell). Any equipment the sprite wears or carries is invisible with it. (Descriptive only: no invisibility action construct; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ]
+}

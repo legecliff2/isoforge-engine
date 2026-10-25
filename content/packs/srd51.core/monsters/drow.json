@@ -1,0 +1,146 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.drow",
+  "name": "Drow",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "elf"
+  ],
+  "alignment": "neutral evil",
+  "armor_class": {
+    "value": 15,
+    "note": "chain shirt"
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.chain_shirt",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.shortsword",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.crossbow_hand"
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 13,
+    "formula": "3d8"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 10,
+    "dex": 14,
+    "con": 10,
+    "int": 11,
+    "wis": 11,
+    "cha": 12
+  },
+  "skills": {
+    "perception": 2,
+    "stealth": 4
+  },
+  "senses": {
+    "darkvision": 120,
+    "passive_perception": 12
+  },
+  "languages": [
+    "Elvish",
+    "Undercommon"
+  ],
+  "challenge": {
+    "rating": "1/4",
+    "xp": 50
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "fey_ancestry",
+      "name": "Fey Ancestry",
+      "description": "The drow has advantage on saving throws against being charmed, and magic can't put the drow to sleep. (The charmed clause is save_advantage. Magic can't put the drow to sleep is descriptive only: no sleep-immunity construct; see docs/SRD_MONSTERS_DEFERRED.md.)",
+      "effect": {
+        "kind": "save_advantage",
+        "save_vs_conditions": [
+          "charmed"
+        ]
+      }
+    },
+    {
+      "id": "innate_spellcasting",
+      "name": "Innate Spellcasting",
+      "description": "The drow's spellcasting ability is Charisma (spell save DC 11). It can innately cast the following spells, requiring no material components:\nAt will: dancing lights\n1/day each: darkness, faerie fire\n(Descriptive only: monster spellcasting is slot-based, so this innate list is not a spellcasting entry; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "sunlight_sensitivity",
+      "name": "Sunlight Sensitivity",
+      "description": "While in sunlight, the drow has disadvantage on attack rolls, as well as on Wisdom (Perception) checks that rely on sight. (Descriptive only: the engine has no light/sunlight model yet, R-G13; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": "shortsword",
+      "name": "Shortsword",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.shortsword",
+      "ability": "dex",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 5 (1d6 + 2) piercing damage."
+    },
+    {
+      "id": "hand_crossbow",
+      "name": "Hand Crossbow",
+      "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.crossbow_hand",
+      "ability": "dex",
+      "to_hit": 4,
+      "range": [
+        30,
+        120
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "con",
+            "dc": 13
+          },
+          "apply": [
+            {
+              "condition": "poisoned",
+              "duration": {
+                "kind": "rounds",
+                "n": 600
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Ranged Weapon Attack: +4 to hit, range 30/120 ft., one target. Hit: 5 (1d6 + 2) piercing damage, and the target must succeed on a DC 13 Constitution saving throw or be poisoned for 1 hour. If the saving throw fails by 5 or more, the target is also unconscious while poisoned in this way. The target wakes up if it takes damage or if another creature takes an action to shake it awake. (The fail-by-5 unconscious clause is descriptive only: also_on_fail_by is save_effect-only, CONTENT_CONVENTIONS 26; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ]
+}

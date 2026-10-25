@@ -4933,6 +4933,218 @@
      ]
     }
    ]
+  },
+  "drow": {
+   "name": "Drow",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    15
+   ],
+   "hp": 13,
+   "hp_roll": "3d8",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    10,
+    14,
+    10,
+    11,
+    11,
+    12
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Shortsword",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Hand Crossbow",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "pseudodragon": {
+   "name": "Pseudodragon",
+   "size": "Tiny",
+   "type": "dragon",
+   "ac": [
+    13
+   ],
+   "hp": 7,
+   "hp_roll": "2d4+2",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "15 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    6,
+    15,
+    13,
+    10,
+    12,
+    10
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Sting",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "sprite": {
+   "name": "Sprite",
+   "size": "Tiny",
+   "type": "fey",
+   "ac": [
+    15
+   ],
+   "hp": 2,
+   "hp_roll": "1d4",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "40 ft."
+   },
+   "abilities": [
+    3,
+    18,
+    10,
+    14,
+    13,
+    11
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Longsword",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Shortbow",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "steam-mephit": {
+   "name": "Steam Mephit",
+   "size": "Small",
+   "type": "elemental",
+   "ac": [
+    10
+   ],
+   "hp": 21,
+   "hp_roll": "6d6",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "30 ft."
+   },
+   "abilities": [
+    5,
+    11,
+    10,
+    11,
+    10,
+    12
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "fire",
+    "poison"
+   ],
+   "condition_immunities": [
+    "poisoned"
+   ],
+   "attacks": [
+    {
+     "name": "Claws",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1d4",
+        "slashing"
+       ],
+       [
+        "1d4",
+        "fire"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
