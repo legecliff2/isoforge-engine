@@ -1,0 +1,159 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.cult_fanatic",
+  "name": "Cult Fanatic",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "any race"
+  ],
+  "alignment": "any non-good alignment",
+  "armor_class": {
+    "value": 13,
+    "note": "leather armor"
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.leather_armor",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.dagger",
+      "equipped": true
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 33,
+    "formula": "6d8+6"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 11,
+    "dex": 14,
+    "con": 12,
+    "int": 10,
+    "wis": 13,
+    "cha": 14
+  },
+  "skills": {
+    "deception": 4,
+    "persuasion": 4,
+    "religion": 2
+  },
+  "senses": {
+    "passive_perception": 11
+  },
+  "languages": [
+    "any one language (usually Common)"
+  ],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "dark_devotion",
+      "name": "Dark Devotion",
+      "description": "The fanatic has advantage on saving throws against being charmed or frightened.",
+      "effect": {
+        "kind": "save_advantage",
+        "save_vs_conditions": [
+          "charmed",
+          "frightened"
+        ]
+      }
+    },
+    {
+      "id": "spellcasting",
+      "name": "Spellcasting",
+      "description": "The fanatic is a 4th-level spellcaster. Its spell casting ability is Wisdom (spell save DC 11, +3 to hit with spell attacks). The fanatic has the following cleric spells prepared:\n\nCantrips (at will): light, sacred flame, thaumaturgy\n- 1st level (4 slots): command, inflict wounds, shield of faith\n- 2nd level (3 slots): hold person, spiritual weapon"
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The fanatic makes two melee attacks.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "dagger_x2",
+            "attacks": [
+              "dagger",
+              "dagger"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "dagger",
+      "name": "Dagger",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.dagger",
+      "to_hit": 4,
+      "reach": 5,
+      "description": "Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 20/60 ft., one creature. Hit: 4 (1d4 + 2) piercing damage.",
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d4+2",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "dagger_thrown",
+      "name": "Dagger (thrown)",
+      "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.dagger",
+      "use": "thrown",
+      "to_hit": 4,
+      "range": [
+        20,
+        60
+      ],
+      "properties": [
+        "thrown"
+      ],
+      "description": "Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 20/60 ft., one creature. Hit: 4 (1d4 + 2) piercing damage.",
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d4+2",
+          "type": "piercing"
+        }
+      ]
+    }
+  ],
+  "spellcasting": {
+    "ability": "wis",
+    "caster_level": 4,
+    "slots": {
+      "1": 4,
+      "2": 3
+    },
+    "spells": [
+      "srd51.spell.light",
+      "srd51.spell.sacred_flame",
+      "srd51.spell.thaumaturgy",
+      "srd51.spell.command",
+      "srd51.spell.inflict_wounds",
+      "srd51.spell.shield_of_faith",
+      "srd51.spell.hold_person",
+      "srd51.spell.spiritual_weapon"
+    ],
+    "dc": 11,
+    "attack_bonus": 3
+  }
+}
