@@ -13,11 +13,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | | count |
 |---|---|
 | inventory candidates | 30 |
-| authored now (`monster@4`, all converted to `monster@5` in §14 of CONTENT_CONVENTIONS) | 77 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189; 9 bestiary v0.1 batch 1 monsters as `monster@5` with `derive: true`: deer, pony, awakened shrub, hyena, cultist, giant weasel, mastiff, noble, tribal warrior; 11 tier B batch d1 monsters as `monster@5` with `derive: true`: baboon, camel, draft horse, riding horse, giant lizard, giant centipede, giant wolf spider, ape, worg, brown bear, giant hyena; 10 batch D2 monsters as `monster@5` with `derive: true`: owlbear, awakened tree, hill giant, stone giant, giant ape, ettercap, merfolk, plesiosaurus, reef shark and killer whale (swim-only `walk: 0` after feat/monster-swim-only); 3 flat-damage batch d3 monsters as `monster@5` with `derive: true`: cat, crab, poisonous snake (flat damage after #295); 9 bestiary v0.1 batch 2 monsters, same form: giant fire beetle, goat, shrieker, giant rat, thug, bandit captain, veteran, knight, mule; acolyte and cult fanatic with `spellcasting`) |
+| authored now (`monster@4`, all converted to `monster@5` in §14 of CONTENT_CONVENTIONS) | 79 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189; 9 bestiary v0.1 batch 1 monsters as `monster@5` with `derive: true`: deer, pony, awakened shrub, hyena, cultist, giant weasel, mastiff, noble, tribal warrior; 11 tier B batch d1 monsters as `monster@5` with `derive: true`: baboon, camel, draft horse, riding horse, giant lizard, giant centipede, giant wolf spider, ape, worg, brown bear, giant hyena; 10 batch D2 monsters as `monster@5` with `derive: true`: owlbear, awakened tree, hill giant, stone giant, giant ape, ettercap, merfolk, plesiosaurus, reef shark and killer whale (swim-only `walk: 0` after feat/monster-swim-only); 3 flat-damage batch d3 monsters as `monster@5` with `derive: true`: cat, crab, poisonous snake (flat damage after #295); 9 bestiary v0.1 batch 2 monsters, same form: giant fire beetle, goat, shrieker, giant rat, thug, bandit captain, veteran, knight, mule; rat and scorpion with flat damage, CONTENT_CONVENTIONS 19; acolyte and cult fanatic with `spellcasting`) |
 | goblin (already shipped, left at `monster@3`) | 1 |
-| deferred (mechanic not expressible) | 14 (see Deferred) |
+| deferred (mechanic not expressible) | 12 (see Deferred) |
 
-## Authored (77; bestiary v0.1 batch 1 and 2 and tier B batch d1 and batch D2 and flat-damage batch d3, acolyte and cult fanatic rows below at `monster@5` + `derive: true`)
+## Authored (79; bestiary v0.1 batch 1 and 2 and tier B batch d1 and batch D2 and flat-damage batch d3, rat, scorpion, acolyte and cult fanatic rows below at `monster@5` + `derive: true`)
 
 | monster | CR | mechanics carried as data | notes |
 |---|---|---|---|
@@ -83,6 +83,8 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Veteran | 3 | splint, longsword (1h / 2h), shortsword, heavy crossbow; Multiattack: longsword x2 + shortsword, or two-handed longsword x2 | "if it has a shortsword drawn" is not a predicate: the shortsword is always equipped |
 | Knight | 3 | plate, greatsword (two hands), heavy crossbow; Multiattack greatsword x2; Parry (`ac_bonus 2`); saving throws | **partial**: Brave (advantage on saves vs frightened) is description only (no condition-keyed save advantage construct; SRD_COMBAT_COVERAGE `save_vs_conditions` has no content loader). Leadership is a `special` action, description only: its rules (AlliesWithin30 1d4, #89/#91) have no content shape yet (T&C-G4 / R-G3), so the knight never uses it |
 | Mule | 1/8 | hooves (natural 1d4, Str) with an approved `attack_bonus` override of **+2** (the SRD print; the derivation gives +4 = Str +2 and PB +2; test DEVIATIONS) | **partial**: Sure-Footed is description only (as goat); Beast of Burden is descriptive (no carrying-capacity model) |
+| Rat | 0 | bite as flat damage `{"flat": 1, "type": "piercing"}` (CONTENT_CONVENTIONS 19), to-hit +0 as printed, darkvision 30 | no `natural` block: the derivation needs a die, so a flat-only attack keeps its printed to-hit and damage (as the #295 validator fixture). Keen Smell descriptive. Was deferred in batch 1 |
+| Scorpion | 0 | sting as flat 1 piercing + `on_hit save_condition` (Con DC 9, 1d8 poison, half); `natural_armor` 11; blindsight 10 | as rat (no `natural` block). Was deferred in batch 1 |
 | Acolyte | 1/4 | Club (+2, 1d4 bludgeoning); `spellcasting` Wis, caster level 1, slots 1st x3, DC 12, +4: light, sacred flame, thaumaturgy, bless, cure wounds, sanctuary (light and thaumaturgy are `descriptive`, CONTENT_CONVENTIONS 28) | complete; Spellcasting trait text verbatim |
 | Cult Fanatic | 2 | Dagger ×2 (melee +4, 1d4 + 2, or thrown 20/60); Dark Devotion as `save_advantage` vs charmed / frightened; `spellcasting` Wis, caster level 4, slots 1st x4 / 2nd x3, DC 11, +3: light, sacred flame, thaumaturgy, command, inflict wounds, shield of faith, hold person, spiritual weapon | complete. DEVIATIONS: HP 33 (6d8 + 6) as the SRD prints (Elf ruling); the a6212be mirror's 22 (6d8-5) is a mirror error (test HP_ERRATA) |
 | Owlbear | 3 | Multiattack beak + claws | Keen Sight and Smell descriptive |
@@ -108,14 +110,12 @@ Not set: `presentation` (the goblin has none; sprite assets for these monsters d
 Played: stats, attacks with every `damage[]` entry (#45), resistances / immunities / vulnerabilities / condition immunities (#45), `multiattack` options (#48/#59), `damage_mitigation` (#47/#58), `bonus_action_grant`, size footprint (#50/#55).
 Carried and validated but **not applied** (the registry reserves the `@4` kinds; the archetype lists them in `unsupported_features` and ignores them): `on_event` (Undead Fortitude, Rampage, Sneak Attack), `on_hit[]` riders (snake poison), `save_effect` actions with `usage` (Acid Breath). Until Engine Core lands the row 6 compile / row 9-10 trigger hooks these monsters play without those effects. No content change is needed when the hooks land.
 
-## Deferred (14)
+## Deferred (12)
 
 The last pre-v0.1 deferred monster, `srd51.monster.swarm_of_rats` (T&C-G7, T&C-G14, T&C-G15), was authored after sim #172 (swarm tag, `half_hp_damage`).
 
 | monster | CR | blocking mechanic |
 |---|---|---|
-| Rat (`srd51.monster.rat`) | 0 | Bite deals a flat **1** piercing damage (no die). monster@5 / common@2 `damage[].dice` must be `NdS[+/-B]` (no `flat` arm on monster damage), and `natural.dice` likewise; the to-hit (+0) would also need an `attack_bonus` override. Not approximated. |
-| Scorpion (`srd51.monster.scorpion`) | 0 | Sting deals a flat **1** piercing damage (same gap as the rat); the Con DC 9 1d8 poison rider itself is expressible. Not approximated. |
 | Quipper (`srd51.monster.quipper`) | 0 | Blood Frenzy (advantage on melee attacks vs a creature missing hit points): no construct; also swim-only (schema requires `speed.walk`, SRD lists none); bite flat 1 damage |
 | Giant Crab (`srd51.monster.giant_crab`) | 1/8 | Claw grapple with two claws each grappling one target (per-limb grapple capacity) |
 | Constrictor Snake (`srd51.monster.constrictor_snake`) | 1/4 | Constrict: grappled and restrained until the grapple ends, can't constrict another target |

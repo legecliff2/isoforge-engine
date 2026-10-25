@@ -21,9 +21,9 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 77 authored / 14 deferred): rat, scorpion (flat 1 damage not expressible) + tier B batch d1
-# + batch 2: gladiator (thrown-spear damage + Shield Bash rider).
-DEFERRED: list[str] = ["gladiator", "rat", "scorpion", "quipper", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 79 authored / 12 deferred): tier B batch d1
+# + batch 2: gladiator (thrown-spear damage + Shield Bash rider). Rat, scorpion authored (flat damage).
+DEFERRED: list[str] = ["gladiator", "quipper", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -46,7 +46,7 @@ def load(idx):
 
 
 def dmg(x, y):
-    # CONTENT_CONVENTIONS 19 (#295): the table's bare-integer dice ("1") is authored as monster@5 flat damage
+    """A bare integer in the table ('Hit: 1 piercing damage') is a flat component (CONTENT_CONVENTIONS 19)."""
     return {"flat": int(x), "type": y} if x.isdigit() else {"dice": x, "type": y}
 
 
@@ -256,6 +256,12 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual({a["id"]: a for a in load("mule")["actions"]}["hooves"]["attack_bonus"]["value"], 2)
         self.assertEqual({a["id"]: a for a in load("knight")["actions"]}["leadership"]["kind"], "special")
         self.assertNotIn("effect", {t["id"]: t for t in load("shrieker")["traits"]}["shriek"])
+        # Flat damage (CONTENT_CONVENTIONS 19): rat bite, scorpion sting (+ Con DC 9 1d8 poison rider, half)
+        self.assertEqual(load("rat")["actions"][0]["damage"], [{"flat": 1, "type": "piercing"}])
+        sting = load("scorpion")["actions"][0]
+        self.assertEqual(sting["damage"], [{"flat": 1, "type": "piercing"}])
+        self.assertEqual(sting["on_hit"], [{"kind": "save_condition", "save": {"ability": "con", "dc": 9},
+                                            "damage": [{"dice": "1d8", "type": "poison"}], "on_success": "half"}])
         # Sunlight Sensitivity / Keen Hearing and Smell: descriptive (no light model, no perception checks in the sim)
         self.assertNotIn("effect", {t["id"]: t for t in load("kobold")["traits"]}["sunlight_sensitivity"])
 
