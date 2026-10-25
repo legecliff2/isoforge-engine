@@ -23,8 +23,12 @@
 # CI_LOCAL_NO_LOCK=1 to skip). The lock file is mode 0666 so another Unix user can open it. If it
 # is not writable, the script locks the same file read-only instead of skipping the queue. The lock
 # is held until this process exits. A nested invocation skips the lock only while CI_LOCAL_LOCK_OWNER
-# is still running. Without /proc/meminfo the script uses sysctl (hw.memsize / vm.page_free_count,
-# hw.ncpu) or nproc. Without flock it skips the lock and says so.
+# is still running. Run this script directly. Never wrap it in flock on the same path
+# (`flock /tmp/ci_local.lock tools/ci_local.sh`): that outer flock holds the lock on an inherited
+# fd and does not set CI_LOCAL_LOCK_OWNER, so a second flock waits forever. If an inherited fd
+# already holds the lock, this script does not take it again. Without /proc/meminfo the script
+# uses sysctl (hw.memsize / vm.page_free_count, hw.ncpu) or nproc. Without flock it skips the lock
+# and says so.
 #
 # Exit status: 0 if every step of every selected job passed, 1 otherwise, 2 on bad usage.
 :
@@ -309,9 +313,103 @@ ci_local_install_traps() {
   trap 'ci_local_release_lock; trap - HUP; kill -s HUP $$' HUP
 }
 
+# Decimal st_dev to the major:minor hex pair /proc/locks prints (Linux new_encode_dev).
+ci_local_dev_majmin() {
+  local dev=$1 major minor
+  case "$dev" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  major=$(( (dev & 0xfff00) >> 8 ))
+  minor=$(( (dev & 0xff) | ((dev >> 12) & 0xfff00) ))
+  printf '%x:%x\n' "$major" "$minor"
+}
+
+# True when pid is this process or an ancestor (the flock(1) parent).
+ci_local_pid_is_self_or_ancestor() {
+  local want=$1 cur=$$ guard=0 ppid
+  case "$want" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  while [ "$guard" -lt 40 ]; do
+    if [ "$cur" = "$want" ]; then
+      return 0
+    fi
+    case "$cur" in
+      ''|0|1) return 1 ;;
+    esac
+    ppid=$(awk '/^PPid:/ { print $2; exit }' "/proc/${cur}/status" 2>/dev/null || true)
+    case "$ppid" in
+      ''|*[!0-9]*) return 1 ;;
+    esac
+    if [ "$ppid" = "$cur" ]; then
+      return 1
+    fi
+    cur=$ppid
+    guard=$((guard + 1))
+  done
+  return 1
+}
+
+# True when some fd of this process already refers to the lock file.
+ci_local_fd_targets_lock() {
+  local lock=$1 dev inode fdpath fd st
+  [ -d /proc/self/fd ] || return 1
+  dev=$(stat -c '%d' -- "$lock" 2>/dev/null || true)
+  inode=$(stat -c '%i' -- "$lock" 2>/dev/null || true)
+  [ -n "$dev" ] && [ -n "$inode" ] || return 1
+  for fdpath in /proc/self/fd/*; do
+    fd=${fdpath##*/}
+    case "$fd" in
+      ''|*[!0-9]*) continue ;;
+    esac
+    # stat(1) lstats /proc/self/fd/N unless -L. The proc inode is not the lock file.
+    st=$(stat -L -c '%d %i' -- "$fdpath" 2>/dev/null || true)
+    if [ "$st" = "$dev $inode" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# True when an inherited fd already holds an flock on this path. `flock file cmd`
+# does not set CI_LOCAL_LOCK_OWNER; /proc/locks names the parent that called flock(2).
+# A second flock on a new fd would wait on that inherited lock forever.
+ci_local_inherited_lock() {
+  local lock=$1 dev inode hex pids pid
+  ci_local_fd_targets_lock "$lock" || return 1
+  [ -r /proc/locks ] || return 1
+  dev=$(stat -c '%d' -- "$lock" 2>/dev/null || true)
+  inode=$(stat -c '%i' -- "$lock" 2>/dev/null || true)
+  [ -n "$dev" ] && [ -n "$inode" ] || return 1
+  hex=$(ci_local_dev_majmin "$dev") || return 1
+  pids=$(awk -v hex="$hex" -v ino="$inode" '
+    function norm(s) {
+      sub(/^0+/, "", s)
+      if (s == "") s = "0"
+      return tolower(s)
+    }
+    $2 == "FLOCK" {
+      n = split($6, a, ":")
+      if (n >= 3 && norm(a[1]) ":" norm(a[2]) == hex && a[n] == ino)
+        print $5
+    }
+  ' /proc/locks)
+  [ -n "$pids" ] || return 1
+  while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    if ci_local_pid_is_self_or_ancestor "$pid"; then
+      return 0
+    fi
+  done <<EOF
+$pids
+EOF
+  return 1
+}
+
 # Exclusive flock around later build/test work. Re-entrant in this process, and nested
 # children that inherit CI_LOCAL_LOCK_HELD return without locking (they would deadlock
-# on the parent's fd otherwise).
+# on the parent's fd otherwise). An outer flock on the same path is detected via the
+# inherited fd and is not taken again.
 ci_local_acquire_lock() {
   local lock holder
   if [ "${CI_LOCAL_NO_LOCK:-}" = 1 ]; then
@@ -340,6 +438,14 @@ ci_local_acquire_lock() {
     return 0
   fi
   lock=${CI_LOCAL_LOCK:-/tmp/ci_local.lock}
+  # Before opening a new fd. Replacing an inherited lock fd (often not 9, but do
+  # not assume) and then blocking on flock would wait for our own parent.
+  if ci_local_inherited_lock "$lock"; then
+    echo "ci_local: lock already held on an inherited fd; not locking again"
+    export CI_LOCAL_LOCK_HELD=1
+    export CI_LOCAL_LOCK_OWNER=$$
+    return 0
+  fi
   ci_local_prepare_lock_file "$lock"
   if ! ci_local_open_lock_fd "$lock"; then
     return 0

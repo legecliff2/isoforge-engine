@@ -104,7 +104,7 @@ TAG_TABLE["item@1"] = TagRow(False, frozenset(), frozenset(), frozenset(), froze
                              needs_api_level=2)
 # EQUIPMENT 7.1 (#245/#246): monster@5 / character@5 carry @4 in full plus optional equipment keys; item@2 carries item@1.
 _MONSTER_AT5_KEYS = frozenset({"derive", "equipment", "natural_armor", "ac_adjust", "weapon_dice_multiplier", "weapons", "hands",
-                               "proficiency_bonus_reason", "emits_light"})
+                               "proficiency_bonus_reason", "emits_light", "passive_perception_reason"})
 # monster@5-local trait kinds (Rules decision on #247: no common@3): weapon_extra_dice (Brute), closed arm in monster@5 $defs.
 MONSTER_AT5_ACTION_KINDS = frozenset({"teleport"})   # batch 3 (blink dog)
 MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage", "aura"})   # + batch 3 save_advantage (Magic Resistance), aura (ghast Stench)
@@ -705,13 +705,14 @@ def check_sim172_174(doc: dict) -> tuple[list[str], list[str]]:
 
 
 
-GRAPPLE_RIDER_KEYS = ("restrains", "exclusive", "max_grapples")
+GRAPPLE_RIDER_KEYS = ("restrains", "exclusive", "max_grapples", "instead_of_damage")
 
 
 def check_grapple_rider(doc: dict) -> tuple[list[str], list[str]]:
     """Druid gap G: on_hit grapple riders' restrains / exclusive / max_grapples (common@2 additive) load only for monster@5
     (the loader reads them on any weapon attack; the validator keeps them to monster@5 like the Director's ruling)."""
     errs: list[str] = []
+    warns: list[str] = []
     schema = str(doc.get("$schema", ""))
     is_m5 = schema.split("@")[0] == "monster" and schema.split("@")[-1].startswith("5")
     for path, a in mechanical_actions(doc):
@@ -721,7 +722,14 @@ def check_grapple_rider(doc: dict) -> tuple[list[str], list[str]]:
             used = [k for k in GRAPPLE_RIDER_KEYS if k in r]
             if used and not is_m5:
                 errs.append(f"{path}/on_hit/{j}: grapple {', '.join(used)} need monster@5 (Druid gap G)")
-    return errs, []
+            if r.get("instead_of_damage") is True:   # Tier-A §27 (the loader's refusal, in its wording)
+                if r.get("restrains") is True:
+                    errs.append(f"{path}/on_hit/{j}: grapple instead_of_damage can't be combined with restrains")
+                others = [k for k, o in enumerate(a.get("on_hit") or []) if k != j and not is_grapple(o)]
+                if others:
+                    warns.append(f"{path}/on_hit/{j}: grapple instead_of_damage: a hit that grapples instead deals no damage, "
+                                 "so the attack's other on_hit riders fire only when they deal no damage (Tier-A §27)")
+    return errs, warns
 
 
 GAZE_KEYS = frozenset({"kind", "range_ft", "save", "condition", "repeat_save", "escalates", "escalate_to", "escalate_margin"})
@@ -1011,6 +1019,63 @@ def check_transparent(doc: dict, typ: str) -> tuple[list[str], list[str]]:
 
 
 SAVE_ADVANTAGE_KEYS = frozenset({"kind", "save_vs_conditions", "vs_damage_types", "magical", "abilities", "mode"})
+
+
+SAVE_EFFECT_RIDER_KEYS = ("also_on_fail_by", "immune_on_success", "target_must_see_source")
+
+
+def check_save_effect_riders(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Tier-A §26 (mummy Dreadful Glare; sim content.cpp compile_save_action): also_on_fail_by / immune_on_success /
+    target_must_see_source, the loader's refusals as errors (same text). Warning: also_on_fail_by with a repeat_save (a
+    successful repeat save ends both conditions: one effect entry)."""
+    errs: list[str] = []
+    warns: list[str] = []
+    for i, act in enumerate(doc.get("actions") or []):
+        if not isinstance(act, dict) or not any(k in act for k in SAVE_EFFECT_RIDER_KEYS):
+            continue
+        where = f"actions[{i}]: {doc.get('id', '?')}: save_effect '{act.get('id', '')}'"
+        if act.get("kind") != "save_effect":
+            errs.append(f"{where}: also_on_fail_by / immune_on_success / target_must_see_source are save_effect only")
+            continue
+        if tag != "monster@5":
+            errs.append(f"{where}: also_on_fail_by / immune_on_success / target_must_see_source need a monster@5 file")
+            continue
+        if "area" in act:
+            errs.append(f"{where}: also_on_fail_by / immune_on_success / target_must_see_source take no area")
+        apply = [x for x in (act.get("apply") or []) if isinstance(x, dict)]
+        af = act.get("also_on_fail_by")
+        if af is not None:
+            if not isinstance(af, dict):
+                errs.append(f"{where}: bad also_on_fail_by")
+            else:
+                m = af.get("margin")
+                if not isinstance(m, int) or isinstance(m, bool) or not 1 <= m <= 30:
+                    errs.append(f"{where}: bad also_on_fail_by margin (1..30)")
+                if af.get("condition") not in GAZE_CONDITIONS:
+                    errs.append(f"{where}: bad also_on_fail_by condition")
+                prim = apply[0] if apply else None
+                dk = ((prim or {}).get("duration") or {}).get("kind") if isinstance((prim or {}).get("duration"), dict) else None
+                if prim is None or dk == "until_cured" or (prim.get("condition") == "prone" and "duration" not in prim and "repeat_save" not in prim):
+                    errs.append(f"{where}: also_on_fail_by needs a tracked primary condition in apply[]")
+                elif af.get("condition") == prim.get("condition"):
+                    errs.append(f"{where}: also_on_fail_by condition must differ from the primary condition")
+                if act.get("escalates") or "control" in act:
+                    errs.append(f"{where}: also_on_fail_by takes no escalates / control")
+                if prim is not None and (prim.get("repeat_save") or dk == "until_save"):
+                    warns.append(f"{where}: also_on_fail_by with a repeat save: a successful repeat save ends both conditions (one entry, §26)")
+        im = act.get("immune_on_success")
+        if im is not None:
+            h = im.get("hours") if isinstance(im, dict) else None
+            if not isinstance(im, dict):
+                errs.append(f"{where}: bad immune_on_success")
+            elif not isinstance(h, int) or isinstance(h, bool) or not 1 <= h <= 8760:
+                errs.append(f"{where}: bad immune_on_success hours (1..8760)")
+            elif im.get("scope") not in ("same_action", "same_source"):
+                errs.append(f"{where}: bad immune_on_success scope")
+        ts = act.get("target_must_see_source")
+        if ts is not None and not isinstance(ts, bool):
+            errs.append(f"{where}: bad target_must_see_source")
+    return errs, warns
 
 
 def check_save_advantage(doc: dict, tag: str) -> tuple[list[str], list[str]]:
@@ -1774,6 +1839,17 @@ def check_equipment_v5(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list[
     pb, want = doc.get("proficiency_bonus"), cr_table_pb(str(ch.get("rating", "0")))
     if pb is not None and pb != want and not str(doc.get("proficiency_bonus_reason", "")).strip():
         errs.append(f"{did}: proficiency_bonus {pb} != CR table {want}")
+    # Tier-A §25: printed passive Perception (validate_packs.check_stat_block skips its mismatch error only with this reason)
+    if "passive_perception_reason" in doc:
+        ab = doc.get("abilities") or {}
+        perc = (doc.get("skills") or {}).get("perception", (int(ab.get("wis", 10)) - 10) // 2)
+        printed = (doc.get("senses") or {}).get("passive_perception")
+        if doc["passive_perception_reason"] != "srd_printed":
+            errs.append(f"{did}: passive_perception_reason must be \"srd_printed\"")
+        elif printed == 10 + perc:
+            errs.append(f"{did}: passive_perception_reason given but senses.passive_perception {printed} == derived {10 + perc}")
+        else:
+            warns.append(f"{did}: senses.passive_perception {printed} != derived {10 + perc} (SRD printed value used, §25)")
     adj = doc.get("ac_adjust")
     if isinstance(adj, dict):
         if not str(adj.get("reason", "")).strip():

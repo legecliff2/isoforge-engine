@@ -11,7 +11,7 @@ Workflow: `.github/workflows/ci.yml`; every OS job runs the composite action
 | Windows MSVC Debug | `ci-win-msvc` / `ci-win-msvc-debug` | every PR, every push to `main` |
 | Windows MSVC Release | `ci-win-msvc` / `ci-win-msvc-release` (`ctest -LE python_only`) | every push to `main`, manual dispatch, PRs labelled `ci-windows-release` |
 | macOS AppleClang Debug | `ci-mac-clang` | nightly 07:17 UTC, manual dispatch, PRs touching platform/render/determinism paths |
-| ci-required | – | always (`if: always()`); the single required check. Passes only when every job this event requires has `result == success`. `skipped` and `cancelled` fail that job. Draft PRs fail the check |
+| ci-required | – | always (`if: always()`); the single required check. Passes when every job this event requires has `result == success`. A job this event does not require may be `skipped` (docs-only builds, where only `changes` must succeed; unlabelled Windows Release; macOS when the nightly gate says main did not move). `failure` and `cancelled` on any needed job fail the gate. Draft PRs and fork PRs fail the check |
 
 To run Windows Release on a PR, add the `ci-windows-release` label and then push a commit (or close
 and reopen the PR). Adding a label alone does not trigger CI, and "Re-run jobs" replays the original
@@ -48,6 +48,26 @@ Minutes savers: ccache (Linux/macOS) / sccache (Windows, with `/Z7` embedded deb
 `python_only` label marks the pure-Python validator tests (no compiled code), which only the Debug
 jobs run. `content_validate` itself runs the compiled `script_check` and runs in every job.
 
+## Content validator unittests
+
+`content_validate_*` unittest files go through `tools/validate/run_unittest_file.py` instead of
+being executed as scripts. The runner loads the module, collects its `unittest` cases, and exits
+non-zero when no test ran or any test failed. That is what an empty module needs, and what a file
+needs when its `if __name__ == "__main__"` guard calls `unittest.main()` before later cases are
+defined: running the file directly used to exit 0 after the cases above the guard, and ctest
+recorded a pass.
+
+`content_validate_zero_tests_fail` is the negative guard. It runs the same runner on the empty
+fixture `tests/validate/fixtures/zero_tests/empty_test.py`. The runner prints `ZERO TESTS RAN`
+and exits non-zero. The ctest property `PASS_REGULAR_EXPRESSION` requires that line (CMake
+ignores the process exit code for this property, so the non-zero status still counts as a
+passing guard). These unittest ctests carry the `python_only` label, so Release jobs skip them
+with `ctest -LE python_only`. `content_validate` itself runs the compiled `script_check` and
+stays unlabelled, so every job still runs it.
+
+Script-style checks (`content_validate`, `content_validate_negative`, `content_validate_packset`)
+keep their own entry points.
+
 ## Running the Linux jobs locally: `tools/ci_local.sh`
 
 ```sh
@@ -69,7 +89,11 @@ startup, then reads memory again before every `cmake --build` and every `ctest`.
 replaces the estimate. `-j N` replaces both.
 
 Heavy build and test steps take an exclusive `flock` on `/tmp/ci_local.lock` (`CI_LOCAL_LOCK` to
-use another path). `CI_LOCAL_NO_LOCK=1` skips it. The lock file is created mode `0666` so a
+use another path). `CI_LOCAL_NO_LOCK=1` skips it. Run `tools/ci_local.sh` directly. Never wrap it
+in an outer `flock` on that same path (`flock /tmp/ci_local.lock tools/ci_local.sh`): the outer
+`flock` holds the lock on an inherited fd and does not set `CI_LOCAL_LOCK_OWNER`, so the script
+locks the file again and waits on itself. If this process already holds the lock on an inherited
+fd, it does not take the lock a second time. The lock file is created mode `0666` so a
 different Unix user can open it. If the file is not writable (an older `0644` lock, or Linux
 `fs.protected_regular` refusing another user's write in sticky `/tmp` even at mode `0666`), the
 script locks it read-only instead of building with no queue. The lock is skipped only when it

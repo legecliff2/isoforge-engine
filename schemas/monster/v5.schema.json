@@ -355,6 +355,11 @@
       "type": "string",
       "minLength": 1
     },
+    "passive_perception_reason": {
+      "type": "string",
+      "enum": ["srd_printed"],
+      "description": "Tier-A (CONTENT_CONVENTIONS 25): senses.passive_perception is the SRD printed value and differs from 10 + Perception; the printed value wins in the sim (Combatant::passive_perception_override). Without it a mismatch is a validator error."
+    },
     "emits_light": {
       "type": "object",
       "additionalProperties": false,
@@ -988,6 +993,30 @@
         "with_attack": {
           "$ref": "../common/v1.schema.json#/$defs/local_id",
           "description": "Batch 3 teleport action: one attack (an attack action id) made after the teleport without another action (SRD 5.1 blink dog: 'Before or after teleporting, the dog can make one bite attack.'; teleport-then-bite only)."
+        },
+        "also_on_fail_by": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["margin", "condition"],
+          "properties": {
+            "margin": {"type": "integer", "minimum": 1, "maximum": 30},
+            "condition": {"$ref": "../common/v1.schema.json#/$defs/condition"}
+          },
+          "description": "Tier-A §26 (save_effect only; SRD 5.1 mummy Dreadful Glare 'If the target fails the saving throw by 5 or more, it is also paralyzed for the same duration.'): failing the save by margin or more also applies condition on the same effect entry (same duration; ending it ends both), even if the target is immune to the primary condition. Needs a tracked primary condition in apply[] and differs from it; no escalates / control / area."
+        },
+        "immune_on_success": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hours", "scope"],
+          "properties": {
+            "hours": {"type": "integer", "minimum": 1, "maximum": 8760},
+            "scope": {"enum": ["same_action", "same_source"]}
+          },
+          "description": "Tier-A §26 (save_effect only): a success makes the target immune to this action for hours. same_action = from every creature using this archetype's action (SRD 'the dreadful glare of all mummies'); same_source = from this creature only. SIM_EVENTS 0xE1."
+        },
+        "target_must_see_source": {
+          "type": "boolean",
+          "description": "Tier-A §26 (save_effect only; 'One creature ... that can see the mummy'): a target that cannot see the user (blinded, or the sight hook says so) makes no save and gains no immunity (FeatureTriggered c = 3)."
         }
       },
       "allOf": [
