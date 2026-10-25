@@ -1,0 +1,108 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.giant_ape",
+  "name": "Giant Ape",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "huge",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 12
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 157,
+    "formula": "15d12+60"
+  },
+  "speed": {
+    "walk": 40,
+    "climb": 40
+  },
+  "abilities": {
+    "str": 23,
+    "dex": 14,
+    "con": 18,
+    "int": 7,
+    "wis": 12,
+    "cha": 7
+  },
+  "skills": {
+    "athletics": 9,
+    "perception": 4
+  },
+  "senses": {
+    "passive_perception": 14
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "7",
+    "xp": 2900
+  },
+  "proficiency_bonus": 3,
+  "traits": [
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The ape makes two fist attacks.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "fist_x2",
+            "attacks": [
+              "fist",
+              "fist"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "fist",
+      "name": "Fist",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "3d10",
+        "ability": "str"
+      },
+      "to_hit": 9,
+      "reach": 10,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "3d10+6",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +9 to hit, reach 10 ft., one target. Hit: 22 (3d10 + 6) bludgeoning damage."
+    },
+    {
+      "id": "rock",
+      "name": "Rock",
+      "kind": "ranged_weapon_attack",
+      "natural": {
+        "dice": "7d6",
+        "ability": "str"
+      },
+      "to_hit": 9,
+      "range": [
+        50,
+        100
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "7d6+6",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Ranged Weapon Attack: +9 to hit, range 50/100 ft., one target. Hit: 30 (7d6 + 6) bludgeoning damage."
+    }
+  ]
+}
