@@ -1,0 +1,101 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.swarm_of_bats",
+  "name": "Swarm of Bats",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "beast",
+  "tags": [
+    "swarm"
+  ],
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 12
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 22,
+    "formula": "5d8"
+  },
+  "speed": {
+    "walk": 0,
+    "fly": 30
+  },
+  "abilities": {
+    "str": 5,
+    "dex": 15,
+    "con": 10,
+    "int": 2,
+    "wis": 12,
+    "cha": 4
+  },
+  "damage_resistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "condition_immunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+  ],
+  "senses": {
+    "blindsight": 60,
+    "passive_perception": 11
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "1/4",
+    "xp": 50
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "echolocation",
+      "name": "Echolocation",
+      "description": "The swarm can't use its blindsight while deafened."
+    },
+    {
+      "id": "keen_hearing",
+      "name": "Keen Hearing",
+      "description": "The swarm has advantage on Wisdom (Perception) checks that rely on hearing."
+    },
+    {
+      "id": "swarm",
+      "name": "Swarm",
+      "description": "The swarm can occupy another creature's space and vice versa, and the swarm can move through any opening large enough for a Tiny bat. The swarm can't regain hit points or gain temporary hit points."
+    }
+  ],
+  "actions": [
+    {
+      "id": "bites",
+      "name": "Bites",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d4",
+        "ability": "dex",
+        "damage_ability": "none"
+      },
+      "to_hit": 4,
+      "reach": 0,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d4",
+          "type": "piercing"
+        }
+      ],
+      "half_hp_damage": "1d4",
+      "description": "Melee Weapon Attack: +4 to hit, reach 0 ft., one creature in the swarm's space. Hit: 5 (2d4) piercing damage, or 2 (1d4) piercing damage if the swarm has half of its hit points or fewer."
+    }
+  ]
+}
