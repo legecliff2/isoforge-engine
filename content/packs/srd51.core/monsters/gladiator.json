@@ -1,0 +1,254 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.gladiator",
+  "name": "Gladiator",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "any race"
+  ],
+  "alignment": "any alignment",
+  "armor_class": {
+    "value": 16,
+    "note": "studded leather, shield"
+  },
+  "weapons": [
+    {
+      "id": "shield_bash",
+      "name": "Shield Bash",
+      "reach": 5,
+      "damage": [
+        {
+          "dice": "1d4",
+          "type": "bludgeoning"
+        }
+      ]
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.studded_leather_armor",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.shield",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.spear",
+      "equipped": true
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 112,
+    "formula": "15d8+45"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 18,
+    "dex": 15,
+    "con": 16,
+    "int": 10,
+    "wis": 12,
+    "cha": 15
+  },
+  "skills": {
+    "athletics": 10,
+    "intimidation": 5
+  },
+  "senses": {
+    "passive_perception": 11
+  },
+  "languages": [
+    "any one language (usually Common)"
+  ],
+  "challenge": {
+    "rating": "5",
+    "xp": 1800
+  },
+  "proficiency_bonus": 3,
+  "saving_throws": {
+    "str": 7,
+    "dex": 5,
+    "con": 6
+  },
+  "traits": [
+    {
+      "id": "brave",
+      "name": "Brave",
+      "description": "The gladiator has advantage on saving throws against being frightened."
+    },
+    {
+      "id": "brute",
+      "name": "Brute",
+      "description": "A melee weapon deals one extra die of its damage when the gladiator hits with it (included in the attack).",
+      "effect": {
+        "kind": "weapon_extra_dice",
+        "dice": 1,
+        "melee_only": true
+      }
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The gladiator makes three melee attacks or two ranged attacks.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "spear_x3",
+            "attacks": [
+              "spear",
+              "spear",
+              "spear"
+            ]
+          },
+          {
+            "id": "spear_x2_bash",
+            "attacks": [
+              "spear",
+              "spear",
+              "shield_bash"
+            ]
+          },
+          {
+            "id": "spear_bash_x2",
+            "attacks": [
+              "spear",
+              "shield_bash",
+              "shield_bash"
+            ]
+          },
+          {
+            "id": "bash_x3",
+            "attacks": [
+              "shield_bash",
+              "shield_bash",
+              "shield_bash"
+            ]
+          },
+          {
+            "id": "ranged",
+            "attacks": [
+              "spear_thrown",
+              "spear_thrown"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "spear",
+      "name": "Spear",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.spear",
+      "to_hit": 7,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+4",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "spear_two_handed",
+      "name": "Spear (two hands)",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.spear",
+      "use": "two_hands",
+      "to_hit": 7,
+      "reach": 5,
+      "properties": [
+        "two_handed"
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d8+4",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "spear_thrown",
+      "name": "Spear (thrown)",
+      "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.spear",
+      "use": "thrown",
+      "to_hit": 7,
+      "range": [
+        20,
+        60
+      ],
+      "damage": [
+        {
+          "dice": "2d6+4",
+          "type": "piercing"
+        }
+      ],
+      "damage_override": {
+        "dice": "2d6+4",
+        "reason": "SRD 5.1 Gladiator Spear: 'Melee or Ranged Weapon Attack ... Hit: 11 (2d6 + 4) piercing damage' (Brute is melee-only in the derivation)"
+      }
+    },
+    {
+      "id": "shield_bash",
+      "name": "Shield Bash",
+      "kind": "melee_weapon_attack",
+      "weapon": "#shield_bash",
+      "to_hit": 7,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d4+4",
+          "type": "bludgeoning"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "str",
+            "dc": 15
+          },
+          "apply": [
+            {
+              "condition": "prone",
+              "max_size": "medium"
+            }
+          ]
+        }
+      ],
+      "description": "Melee Weapon Attack: +7 to hit, reach 5 ft., one creature. Hit: 9 (2d4 + 4) bludgeoning damage. If the target is a Medium or smaller creature, it must succeed on a DC 15 Strength saving throw or be knocked prone."
+    }
+  ],
+  "reactions": [
+    {
+      "id": "parry",
+      "name": "Parry",
+      "description": "The gladiator adds 3 to its AC against one melee attack that would hit it. To do so, the gladiator must see the attacker and be wielding a melee weapon.",
+      "window": {
+        "kind": "being_hit",
+        "melee_only": true,
+        "requires_sight": true
+      },
+      "effect": {
+        "kind": "ac_bonus",
+        "bonus": 3
+      }
+    }
+  ]
+}

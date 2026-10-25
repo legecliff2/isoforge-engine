@@ -21,10 +21,10 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 79 authored / 21 deferred): tier B batch d1 (11)
-# + batch 2: acolyte (spells missing), gladiator (thrown-spear damage + Shield Bash rider). Rat, scorpion authored (flat damage).
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 80 authored / 20 deferred): tier B batch d1 (11)
+# + batch 2: acolyte (spells missing); gladiator authored (riders, CONTENT_CONVENTIONS 21). Rat, scorpion authored (flat damage).
 # + batch 3: blink dog, death dog, mummy, rust monster, shadow, vampire spawn, violet fungus, wight.
-DEFERRED: list[str] = ["acolyte", "blink-dog", "death-dog", "gladiator", "mummy", "rust-monster", "shadow", "vampire-spawn", "violet-fungus", "wight", "quipper", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]
+DEFERRED: list[str] = ["acolyte", "blink-dog", "death-dog", "mummy", "rust-monster", "shadow", "vampire-spawn", "violet-fungus", "wight", "quipper", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -35,6 +35,7 @@ DEVIATIONS = {
     "riding-horse": "xp: the table lists 25 XP; SRD 5.1 prints Challenge 1/4 (50 XP), and the SRD is authoritative (CR 1/4 = 50 XP).",
     "shrieker": "condition_immunities: the table lists blinded twice and omits deafened; the SRD line is blinded, deafened, frightened.",
     "ghast": "Bite to_hit: the SRD prints +3 (the table agrees); the derivation gives +5 (Dex 17 +3, PB +2). Carried as an approved attack_bonus override of +3 (printed value wins).",
+    "gladiator": "Spear (thrown) damage: the SRD prints one line for both uses, 11 (2d6 + 4); the derivation gives a thrown use no Brute die (1d6 + 4). Carried as an approved damage_override of 2d6+4 (CONTENT_CONVENTIONS 21; printed value wins).",
     "mule": "Hooves to_hit: the SRD prints +2 (the table agrees); the derivation gives +4 (Str 14 +2, PB +2). Carried as an approved attack_bonus override of +2 (printed value wins).",
     "swarm-of-rats": "type: the table says 'swarm of Tiny beasts', not in the creature_type enum; convention is beast + tag swarm (T&C-G15, sim #172).",
 }
@@ -141,6 +142,8 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual(opts("veteran"), {"longsword_shortsword": ["longsword", "longsword", "shortsword"],
                                            "longsword_two_handed": ["longsword_two_handed"] * 2})
         self.assertEqual(opts("knight"), {"greatsword_x2": ["greatsword"] * 2})
+        self.assertEqual(len(opts("gladiator")), 5)   # three melee attacks (any mix of spear and shield bash) or two thrown spears
+        self.assertEqual(opts("gladiator")["ranged"], ["spear_thrown"] * 2)
         lf = opts("lizardfolk")
         self.assertEqual(len(lf), 6)   # every unordered pair of the four melee weapons ("each one with a different weapon")
         self.assertTrue(all(len(set(v)) == 2 for v in lf.values()))
@@ -237,14 +240,20 @@ class MonsterTable(unittest.TestCase):
         # Cultist Dark Devotion: partial, description only (no condition-keyed save advantage construct)
         self.assertNotIn("effect", {t["id"]: t for t in load("cultist")["traits"]}["dark_devotion"])
         # Batch 2: Parry (bandit captain / knight +2), goat Charge
-        for idx, b in (("bandit-captain", 2), ("knight", 2)):
+        for idx, b in (("bandit-captain", 2), ("knight", 2), ("gladiator", 3)):
             self.assertEqual(load(idx)["reactions"][0]["effect"], {"kind": "ac_bonus", "bonus": b})
         goat = {t["id"]: t for t in load("goat")["traits"]}
         self.assertEqual(goat["charge"]["effect"]["effects"][1], {"kind": "save_condition", "save": {"ability": "str", "dc": 10}, "apply": [{"condition": "prone"}]})
         self.assertEqual(load("giant-fire-beetle")["emits_light"], {"bright_ft": 10, "dim_ft": 10})
         # partial, description only: Sure-Footed, Brave, Leadership, Shriek
         self.assertNotIn("effect", goat["sure_footed"])
-        self.assertNotIn("effect", {t["id"]: t for t in load("knight")["traits"]}["brave"])
+        for idx in ("knight", "gladiator"):
+            self.assertNotIn("effect", {t["id"]: t for t in load(idx)["traits"]}["brave"])
+        # Gladiator (CONTENT_CONVENTIONS 21): Shield Bash size-gated prone rider, thrown spear damage_override, Brute melee only
+        gl = {a["id"]: a for a in load("gladiator")["actions"]}
+        self.assertEqual(gl["shield_bash"]["on_hit"], [{"kind": "save_condition", "save": {"ability": "str", "dc": 15}, "apply": [{"condition": "prone", "max_size": "medium"}]}])
+        self.assertEqual(gl["spear_thrown"]["damage_override"]["dice"], "2d6+4")
+        self.assertEqual({t["id"]: t for t in load("gladiator")["traits"]}["brute"]["effect"], {"kind": "weapon_extra_dice", "dice": 1, "melee_only": True})
         self.assertNotIn("effect", {t["id"]: t for t in load("mule")["traits"]}["sure_footed"])
         # Mule: approved attack_bonus override, printed +2 over the derived +4 (DEVIATIONS)
         self.assertEqual({a["id"]: a for a in load("mule")["actions"]}["hooves"]["attack_bonus"]["value"], 2)
