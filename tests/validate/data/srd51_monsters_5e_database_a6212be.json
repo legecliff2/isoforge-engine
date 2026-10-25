@@ -6142,6 +6142,274 @@
      ]
     }
    ]
+  },
+  "lion": {
+   "name": "Lion",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 26,
+   "hp_roll": "4d10+4",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "50 ft."
+   },
+   "abilities": [
+    17,
+    15,
+    13,
+    3,
+    12,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "tiger": {
+   "name": "Tiger",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 37,
+   "hp_roll": "5d10+10",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    17,
+    15,
+    14,
+    3,
+    12,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d10+3",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-eagle": {
+   "name": "Giant Eagle",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 26,
+   "hp_roll": "4d10+4",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "80 ft."
+   },
+   "abilities": [
+    16,
+    17,
+    13,
+    8,
+    14,
+    10
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Beak",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Talons",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-vulture": {
+   "name": "Giant Vulture",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 22,
+   "hp_roll": "3d10+6",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    15,
+    10,
+    15,
+    6,
+    12,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Beak",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d4+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Talons",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d6+2",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "hippogriff": {
+   "name": "Hippogriff",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    11
+   ],
+   "hp": 19,
+   "hp_roll": "3d10+3",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "40 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    17,
+    13,
+    13,
+    2,
+    12,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Beak",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d10+3",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
