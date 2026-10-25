@@ -1,0 +1,125 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.specter",
+  "name": "Specter",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "undead",
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 12
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 22,
+    "formula": "5d8"
+  },
+  "speed": {
+    "walk": 0,
+    "fly": 50,
+    "hover": true
+  },
+  "abilities": {
+    "str": 1,
+    "dex": 14,
+    "con": 11,
+    "int": 10,
+    "wis": 10,
+    "cha": 11
+  },
+  "damage_resistances": [
+    "acid",
+    "cold",
+    "fire",
+    "lightning",
+    "thunder"
+  ],
+  "damage_immunities": [
+    "necrotic",
+    "poison"
+  ],
+  "condition_immunities": [
+    "charmed",
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained",
+    "unconscious"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 10
+  },
+  "languages": [
+    "understands all languages it knew in life but can't speak"
+  ],
+  "challenge": {
+    "rating": "1",
+    "xp": 200
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "damage_resistances_nonmagical",
+      "name": "Damage Resistances",
+      "description": "Resistant to bludgeoning, piercing, and slashing from nonmagical weapons.",
+      "effect": {
+        "kind": "damage_mitigation",
+        "resistances": {
+          "nonmagical": [
+            "bludgeoning",
+            "piercing",
+            "slashing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "incorporeal_movement",
+      "name": "Incorporeal Movement",
+      "description": "The specter can move through other creatures and objects as if they were difficult terrain. It takes 5 (1d10) force damage if it ends its turn inside an object. (Descriptive only: no pass-through and no end-of-turn force damage. No ethereal form. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "sunlight_sensitivity",
+      "name": "Sunlight Sensitivity",
+      "description": "While in sunlight, the specter has disadvantage on attack rolls, as well as on Wisdom (Perception) checks that rely on sight. (Descriptive only: the engine has no light/sunlight model yet, R-G13; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": "life_drain",
+      "name": "Life Drain",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "3d6",
+        "ability": "dex",
+        "damage_ability": "none"
+      },
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "3d6",
+          "type": "necrotic"
+        }
+      ],
+      "ability": "dex",
+      "drain": {
+        "max_hp": true,
+        "save": {
+          "ability": "con",
+          "dc": 10
+        }
+      },
+      "description": "Melee Spell Attack: +4 to hit, reach 5 ft., one creature. Hit: 10 (3d6) necrotic damage. The target must succeed on a DC 10 Constitution saving throw or its hit point maximum is reduced by an amount equal to the damage taken. This reduction lasts until the creature finishes a long rest. The target dies if this effect reduces its hit point maximum to 0."
+    }
+  ]
+}

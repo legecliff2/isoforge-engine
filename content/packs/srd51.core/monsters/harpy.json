@@ -1,0 +1,114 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.harpy",
+  "name": "Harpy",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "monstrosity",
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 11
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.club",
+      "equipped": true
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 38,
+    "formula": "7d8+7"
+  },
+  "speed": {
+    "walk": 20,
+    "fly": 40
+  },
+  "abilities": {
+    "str": 12,
+    "dex": 13,
+    "con": 12,
+    "int": 7,
+    "wis": 10,
+    "cha": 13
+  },
+  "senses": {
+    "passive_perception": 10
+  },
+  "languages": [
+    "Common"
+  ],
+  "challenge": {
+    "rating": "1",
+    "xp": 200
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The harpy makes two attacks: one with its claws and one with its club.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "claws_club",
+            "attacks": [
+              "claws",
+              "club"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "claws",
+      "name": "Claws",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d4",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 3,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d4+1",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +3 to hit, reach 5 ft., one target. Hit: 6 (2d4 + 1) slashing damage."
+    },
+    {
+      "id": "club",
+      "name": "Club",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.club",
+      "ability": "str",
+      "to_hit": 3,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d4+1",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +3 to hit, reach 5 ft., one target. Hit: 3 (1d4 + 1) bludgeoning damage."
+    },
+    {
+      "id": "luring_song",
+      "name": "Luring Song",
+      "kind": "special",
+      "description": "The harpy sings a magical melody. Every humanoid and giant within 300 ft. of the harpy that can hear the song must succeed on a DC 11 Wisdom saving throw or be charmed until the song ends. The harpy must take a bonus action on its subsequent turns to continue singing. It can stop singing at any time. The song ends if the harpy is incapacitated.\nWhile charmed by the harpy, a target is incapacitated and ignores the songs of other harpies. If the charmed target is more than 5 ft. away from the harpy, the target must move on its turn toward the harpy by the most direct route. It doesn't avoid opportunity attacks, but before moving into damaging terrain, such as lava or a pit, and whenever it takes damage from a source other than the harpy, a target can repeat the saving throw. A creature can also repeat the saving throw at the end of each of its turns. If a creature's saving throw is successful, the effect ends on it.\nA target that successfully saves is immune to this harpy's song for the next 24 hours. (Descriptive only: the charm, the incapacitated condition, the forced approach, maintaining the song, the 300 ft. range, and the 24-hour immunity are not encoded. No lure construct and no save_effect charm. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ]
+}

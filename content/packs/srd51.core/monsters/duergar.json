@@ -1,0 +1,153 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.duergar",
+  "name": "Duergar",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "dwarf"
+  ],
+  "alignment": "lawful evil",
+  "armor_class": {
+    "value": 16,
+    "note": "scale mail, shield"
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.scale_mail",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.shield",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.war_pick",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.javelin"
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 26,
+    "formula": "4d8+8"
+  },
+  "speed": {
+    "walk": 25
+  },
+  "abilities": {
+    "str": 14,
+    "dex": 11,
+    "con": 14,
+    "int": 11,
+    "wis": 10,
+    "cha": 9
+  },
+  "damage_resistances": [
+    "poison"
+  ],
+  "senses": {
+    "darkvision": 120,
+    "passive_perception": 10
+  },
+  "languages": [
+    "Dwarvish",
+    "Undercommon"
+  ],
+  "challenge": {
+    "rating": "1",
+    "xp": 200
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "duergar_resilience",
+      "name": "Duergar Resilience",
+      "description": "The duergar has advantage on saving throws against poison, spells, and illusions, as well as to resist being charmed or paralyzed. (Descriptive only: that mix is not a save_advantage. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "sunlight_sensitivity",
+      "name": "Sunlight Sensitivity",
+      "description": "While in sunlight, the duergar has disadvantage on attack rolls, as well as on Wisdom (Perception) checks that rely on sight. (Descriptive only: the engine has no light/sunlight model yet, R-G13; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": "enlarge",
+      "name": "Enlarge (Recharges after a Short or Long Rest)",
+      "kind": "special",
+      "description": "For 1 minute, the duergar magically increases in size, along with anything it is wearing or carrying. While enlarged, the duergar is Large, doubles its damage dice on Strength-based weapon attacks (included in the attacks), and makes Strength checks and Strength saving throws with advantage. If the duergar lacks the room to become Large, it attains the maximum size possible in the space available. (Descriptive only: no enlarge, size change, or damage-dice doubling. The weapon attacks below are the printed non-enlarged lines only. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "war_pick",
+      "name": "War Pick",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.war_pick",
+      "ability": "str",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 6 (1d8 + 2) piercing damage, or 11 (2d8 + 2) piercing damage while enlarged. (The enlarged 2d8 + 2 line is descriptive only. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "javelin",
+      "name": "Javelin",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.javelin",
+      "ability": "str",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 30/120 ft., one target. Hit: 5 (1d6 + 2) piercing damage, or 9 (2d6 + 2) piercing damage while enlarged. (The enlarged 2d6 + 2 line is descriptive only. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "javelin_thrown",
+      "name": "Javelin (thrown)",
+      "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.javelin",
+      "use": "thrown",
+      "ability": "str",
+      "to_hit": 4,
+      "range": [
+        30,
+        120
+      ],
+      "targets": 1,
+      "properties": [
+        "thrown"
+      ],
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee or Ranged Weapon Attack: +4 to hit, reach 5 ft. or range 30/120 ft., one target. Hit: 5 (1d6 + 2) piercing damage, or 9 (2d6 + 2) piercing damage while enlarged. (The enlarged 2d6 + 2 line is descriptive only. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "invisibility",
+      "name": "Invisibility (Recharges after a Short or Long Rest)",
+      "kind": "special",
+      "description": "The duergar magically turns invisible until it attacks, casts a spell, or uses its Enlarge, or until its concentration is broken, up to 1 hour (as if concentrating on a spell). Any equipment the duergar wears or carries is invisible with it. (Descriptive only: no invisibility construct. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ]
+}

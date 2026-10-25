@@ -6142,6 +6142,585 @@
      ]
     }
    ]
+  },
+  "harpy": {
+   "name": "Harpy",
+   "size": "Medium",
+   "type": "monstrosity",
+   "ac": [
+    11
+   ],
+   "hp": 38,
+   "hp_roll": "7d8+7",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "20 ft.",
+    "fly": "40 ft."
+   },
+   "abilities": [
+    12,
+    13,
+    12,
+    7,
+    10,
+    13
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claws",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "2d4+1",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Club",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d4+1",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "dryad": {
+   "name": "Dryad",
+   "size": "Medium",
+   "type": "fey",
+   "ac": [
+    11,
+    16
+   ],
+   "hp": 22,
+   "hp_roll": "5d8",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    10,
+    12,
+    11,
+    14,
+    15,
+    18
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Club",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1d4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "duergar": {
+   "name": "Duergar",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    16
+   ],
+   "hp": 26,
+   "hp_roll": "4d8+8",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "25 ft."
+   },
+   "abilities": [
+    14,
+    11,
+    14,
+    11,
+    10,
+    9
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "poison"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "War Pick",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d8+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Javelin",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "specter": {
+   "name": "Specter",
+   "size": "Medium",
+   "type": "undead",
+   "ac": [
+    12
+   ],
+   "hp": 22,
+   "hp_roll": "5d8",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "0 ft.",
+    "fly": "50 ft.",
+    "hover": true
+   },
+   "abilities": [
+    1,
+    14,
+    11,
+    10,
+    10,
+    11
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "acid",
+    "cold",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "damage_immunities": [
+    "necrotic",
+    "poison"
+   ],
+   "condition_immunities": [
+    "charmed",
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained",
+    "unconscious"
+   ],
+   "attacks": [
+    {
+     "name": "Life Drain",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "3d6",
+        "necrotic"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-octopus": {
+   "name": "Giant Octopus",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    11
+   ],
+   "hp": 52,
+   "hp_roll": "8d10+8",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "10 ft.",
+    "swim": "60 ft."
+   },
+   "abilities": [
+    17,
+    13,
+    13,
+    4,
+    10,
+    4
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Tentacles",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "swarm-of-quippers": {
+   "name": "Swarm of Quippers",
+   "size": "Medium",
+   "type": "swarm of Tiny beasts",
+   "ac": [
+    13
+   ],
+   "hp": 28,
+   "hp_roll": "8d8-8",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "0 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    13,
+    16,
+    9,
+    1,
+    7,
+    2
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+   ],
+   "attacks": [
+    {
+     "name": "Bites",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "4d6",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "lion": {
+   "name": "Lion",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 26,
+   "hp_roll": "4d10+4",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "50 ft."
+   },
+   "abilities": [
+    17,
+    15,
+    13,
+    3,
+    12,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "tiger": {
+   "name": "Tiger",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 37,
+   "hp_roll": "5d10+10",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    17,
+    15,
+    14,
+    3,
+    12,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d10+3",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-eagle": {
+   "name": "Giant Eagle",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 26,
+   "hp_roll": "4d10+4",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "80 ft."
+   },
+   "abilities": [
+    16,
+    17,
+    13,
+    8,
+    14,
+    10
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Beak",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Talons",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-vulture": {
+   "name": "Giant Vulture",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 22,
+   "hp_roll": "3d10+6",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    15,
+    10,
+    15,
+    6,
+    12,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Beak",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d4+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Talons",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d6+2",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "hippogriff": {
+   "name": "Hippogriff",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    11
+   ],
+   "hp": 19,
+   "hp_roll": "3d10+3",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "40 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    17,
+    13,
+    13,
+    2,
+    12,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Beak",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d10+3",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
