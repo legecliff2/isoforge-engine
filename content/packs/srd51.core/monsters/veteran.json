@@ -1,0 +1,164 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.veteran",
+  "name": "Veteran",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "any race"
+  ],
+  "alignment": "any alignment",
+  "armor_class": {
+    "value": 17,
+    "note": "splint"
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.splint_armor",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.longsword",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.shortsword",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.crossbow_heavy"
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 58,
+    "formula": "9d8+18"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 16,
+    "dex": 13,
+    "con": 14,
+    "int": 10,
+    "wis": 11,
+    "cha": 10
+  },
+  "skills": {
+    "athletics": 5,
+    "perception": 2
+  },
+  "senses": {
+    "passive_perception": 12
+  },
+  "languages": [
+    "any one language (usually Common)"
+  ],
+  "challenge": {
+    "rating": "3",
+    "xp": 700
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The veteran makes two longsword attacks. If it has a shortsword drawn, it can also make a shortsword attack.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "longsword_shortsword",
+            "attacks": [
+              "longsword",
+              "longsword",
+              "shortsword"
+            ]
+          },
+          {
+            "id": "longsword_two_handed",
+            "attacks": [
+              "longsword_two_handed",
+              "longsword_two_handed"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "longsword",
+      "name": "Longsword",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.longsword",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+3",
+          "type": "slashing"
+        }
+      ]
+    },
+    {
+      "id": "longsword_two_handed",
+      "name": "Longsword (two hands)",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.longsword",
+      "use": "two_hands",
+      "to_hit": 5,
+      "reach": 5,
+      "properties": [
+        "two_handed"
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d10+3",
+          "type": "slashing"
+        }
+      ]
+    },
+    {
+      "id": "shortsword",
+      "name": "Shortsword",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.shortsword",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+3",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "heavy_crossbow",
+      "name": "Heavy Crossbow",
+      "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.crossbow_heavy",
+      "to_hit": 3,
+      "range": [
+        100,
+        400
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d10+1",
+          "type": "piercing"
+        }
+      ]
+    }
+  ]
+}

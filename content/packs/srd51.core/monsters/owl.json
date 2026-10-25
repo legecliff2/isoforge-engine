@@ -1,0 +1,80 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.owl",
+  "name": "Owl",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "tiny",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 11
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 1,
+    "formula": "1d4-1"
+  },
+  "speed": {
+    "walk": 5,
+    "fly": 60
+  },
+  "abilities": {
+    "str": 3,
+    "dex": 13,
+    "con": 8,
+    "int": 2,
+    "wis": 12,
+    "cha": 7
+  },
+  "skills": {
+    "perception": 3,
+    "stealth": 3
+  },
+  "senses": {
+    "darkvision": 120,
+    "passive_perception": 13
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "0",
+    "xp": 10
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "flyby",
+      "name": "Flyby",
+      "description": "The owl doesn't provoke opportunity attacks when it flies out of an enemy's reach."
+    },
+    {
+      "id": "keen_hearing_and_sight",
+      "name": "Keen Hearing and Sight",
+      "description": "The owl has advantage on Wisdom (Perception) checks that rely on hearing or sight."
+    }
+  ],
+  "actions": [
+    {
+      "id": "talons",
+      "name": "Talons",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "flat": 1,
+        "ability": "dex"
+      },
+      "to_hit": 3,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "flat": 1,
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +3 to hit, reach 5 ft., one target. Hit: 1 slashing damage."
+    }
+  ]
+}

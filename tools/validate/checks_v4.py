@@ -104,13 +104,14 @@ TAG_TABLE["item@1"] = TagRow(False, frozenset(), frozenset(), frozenset(), froze
                              needs_api_level=2)
 # EQUIPMENT 7.1 (#245/#246): monster@5 / character@5 carry @4 in full plus optional equipment keys; item@2 carries item@1.
 _MONSTER_AT5_KEYS = frozenset({"derive", "equipment", "natural_armor", "ac_adjust", "weapon_dice_multiplier", "weapons", "hands",
-                               "proficiency_bonus_reason", "emits_light"})
+                               "proficiency_bonus_reason", "emits_light", "passive_perception_reason"})
 # monster@5-local trait kinds (Rules decision on #247: no common@3): weapon_extra_dice (Brute), closed arm in monster@5 $defs.
-MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice"})
+MONSTER_AT5_ACTION_KINDS = frozenset({"teleport"})   # batch 3 (blink dog)
+MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage", "aura"})   # + batch 3 save_advantage (Magic Resistance), aura (ghast Stench)
 _CHARACTER_AT5_KEYS = frozenset({"derive", "weapon_proficiencies", "armor_proficiencies"})
 for _typ, _extra in (("monster", _MONSTER_AT5_KEYS), ("character", _CHARACTER_AT5_KEYS)):
     _r4 = TAG_TABLE[f"{_typ}@4"]
-    TAG_TABLE[f"{_typ}@5"] = TagRow(True, _r4.action_kinds,
+    TAG_TABLE[f"{_typ}@5"] = TagRow(True, _r4.action_kinds | (MONSTER_AT5_ACTION_KINDS if _typ == "monster" else frozenset()),
                                     _r4.effect_kinds | (MONSTER_AT5_EFFECT_KINDS if _typ == "monster" else frozenset()),
                                     _r4.cost_values, _r4.top_level_keys | _extra,
                                     cross_refs=True, needs_api_level=2, legacy_stamps=True)
@@ -445,6 +446,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     errs += check_static_kinds(doc)
     check_grapple_riders(doc, errs, warns)
     check_untimed_save_condition_riders(doc, errs)
+    check_save_max_size(doc, errs)
     check_refused_condition_durations(doc, errs, warns)
     check_transforms(doc, ctx, errs, warns)
     errs += check_class_hooks(doc)   # 7.2y
@@ -701,6 +703,33 @@ def check_sim172_174(doc: dict) -> tuple[list[str], list[str]]:
             errs.append(f"{path}: bad zero_hp condition / while (they must differ) (sim #174)")
     return errs, warns
 
+
+
+GRAPPLE_RIDER_KEYS = ("restrains", "exclusive", "max_grapples", "instead_of_damage")
+
+
+def check_grapple_rider(doc: dict) -> tuple[list[str], list[str]]:
+    """Druid gap G: on_hit grapple riders' restrains / exclusive / max_grapples (common@2 additive) load only for monster@5
+    (the loader reads them on any weapon attack; the validator keeps them to monster@5 like the Director's ruling)."""
+    errs: list[str] = []
+    warns: list[str] = []
+    schema = str(doc.get("$schema", ""))
+    is_m5 = schema.split("@")[0] == "monster" and schema.split("@")[-1].startswith("5")
+    for path, a in mechanical_actions(doc):
+        for j, r in enumerate(a.get("on_hit") or []):
+            if not is_grapple(r):
+                continue
+            used = [k for k in GRAPPLE_RIDER_KEYS if k in r]
+            if used and not is_m5:
+                errs.append(f"{path}/on_hit/{j}: grapple {', '.join(used)} need monster@5 (Druid gap G)")
+            if r.get("instead_of_damage") is True:   # Tier-A §27 (the loader's refusal, in its wording)
+                if r.get("restrains") is True:
+                    errs.append(f"{path}/on_hit/{j}: grapple instead_of_damage can't be combined with restrains")
+                others = [k for k, o in enumerate(a.get("on_hit") or []) if k != j and not is_grapple(o)]
+                if others:
+                    warns.append(f"{path}/on_hit/{j}: grapple instead_of_damage: a hit that grapples instead deals no damage, "
+                                 "so the attack's other on_hit riders fire only when they deal no damage (Tier-A §27)")
+    return errs, warns
 
 
 GAZE_KEYS = frozenset({"kind", "range_ft", "save", "condition", "repeat_save", "escalates", "escalate_to", "escalate_margin"})
@@ -987,6 +1016,239 @@ def check_transparent(doc: dict, typ: str) -> tuple[list[str], list[str]]:
         else:
             warns.append(f"{path}: transparent declared more than once (first at {first}); the sim keeps the highest dc (7.2w)")
     return errs, warns
+
+
+SAVE_ADVANTAGE_KEYS = frozenset({"kind", "save_vs_conditions", "vs_damage_types", "magical", "abilities", "mode"})
+
+
+SAVE_EFFECT_RIDER_KEYS = ("also_on_fail_by", "immune_on_success", "target_must_see_source")
+
+
+def check_save_effect_riders(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Tier-A §26 (mummy Dreadful Glare; sim content.cpp compile_save_action): also_on_fail_by / immune_on_success /
+    target_must_see_source, the loader's refusals as errors (same text). Warning: also_on_fail_by with a repeat_save (a
+    successful repeat save ends both conditions: one effect entry)."""
+    errs: list[str] = []
+    warns: list[str] = []
+    for i, act in enumerate(doc.get("actions") or []):
+        if not isinstance(act, dict) or not any(k in act for k in SAVE_EFFECT_RIDER_KEYS):
+            continue
+        where = f"actions[{i}]: {doc.get('id', '?')}: save_effect '{act.get('id', '')}'"
+        if act.get("kind") != "save_effect":
+            errs.append(f"{where}: also_on_fail_by / immune_on_success / target_must_see_source are save_effect only")
+            continue
+        if tag != "monster@5":
+            errs.append(f"{where}: also_on_fail_by / immune_on_success / target_must_see_source need a monster@5 file")
+            continue
+        if "area" in act:
+            errs.append(f"{where}: also_on_fail_by / immune_on_success / target_must_see_source take no area")
+        apply = [x for x in (act.get("apply") or []) if isinstance(x, dict)]
+        af = act.get("also_on_fail_by")
+        if af is not None:
+            if not isinstance(af, dict):
+                errs.append(f"{where}: bad also_on_fail_by")
+            else:
+                m = af.get("margin")
+                if not isinstance(m, int) or isinstance(m, bool) or not 1 <= m <= 30:
+                    errs.append(f"{where}: bad also_on_fail_by margin (1..30)")
+                if af.get("condition") not in GAZE_CONDITIONS:
+                    errs.append(f"{where}: bad also_on_fail_by condition")
+                prim = apply[0] if apply else None
+                dk = ((prim or {}).get("duration") or {}).get("kind") if isinstance((prim or {}).get("duration"), dict) else None
+                if prim is None or dk == "until_cured" or (prim.get("condition") == "prone" and "duration" not in prim and "repeat_save" not in prim):
+                    errs.append(f"{where}: also_on_fail_by needs a tracked primary condition in apply[]")
+                elif af.get("condition") == prim.get("condition"):
+                    errs.append(f"{where}: also_on_fail_by condition must differ from the primary condition")
+                if act.get("escalates") or "control" in act:
+                    errs.append(f"{where}: also_on_fail_by takes no escalates / control")
+                if prim is not None and (prim.get("repeat_save") or dk == "until_save"):
+                    warns.append(f"{where}: also_on_fail_by with a repeat save: a successful repeat save ends both conditions (one entry, §26)")
+        im = act.get("immune_on_success")
+        if im is not None:
+            h = im.get("hours") if isinstance(im, dict) else None
+            if not isinstance(im, dict):
+                errs.append(f"{where}: bad immune_on_success")
+            elif not isinstance(h, int) or isinstance(h, bool) or not 1 <= h <= 8760:
+                errs.append(f"{where}: bad immune_on_success hours (1..8760)")
+            elif im.get("scope") not in ("same_action", "same_source"):
+                errs.append(f"{where}: bad immune_on_success scope")
+        ts = act.get("target_must_see_source")
+        if ts is not None and not isinstance(ts, bool):
+            errs.append(f"{where}: bad target_must_see_source")
+    return errs, warns
+
+
+def check_save_advantage(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Batch 3 save_advantage (sim features.cpp apply_save_advantage): the loader's refusals as errors (same text), and a
+    warning for an identical second declaration (adds nothing). Distinct save_advantage traits stack (Magic Resistance plus
+    Dark Devotion), so the kind is not in NO_STACK_EFFECT_KINDS."""
+    errs: list[str] = []
+    warns: list[str] = []
+    seen: dict[str, str] = {}
+    for path, _owner, eff in live_effects(doc):
+        if eff.get("kind") != "save_advantage":
+            continue
+        did = f"{path}: {doc.get('id', '?')}"
+        if tag != "monster@5":
+            errs.append(f"{did}: save_advantage needs a monster@5 file")
+            continue
+        extra = sorted(k for k in eff if k not in SAVE_ADVANTAGE_KEYS)
+        if extra:
+            errs.append(f"{did}: save_advantage: unknown key '{extra[0]}'")
+            continue
+        if not any(eff.get(k) for k in ("save_vs_conditions", "vs_damage_types", "abilities")) and eff.get("magical") is not True:
+            errs.append(f"{did}: save_advantage needs at least one of save_vs_conditions, vs_damage_types, abilities, magical: true")
+            continue
+        key = repr(sorted((k, sorted(v) if isinstance(v, list) else v) for k, v in eff.items() if k != "mode")) + str(eff.get("mode", "advantage"))
+        if key in seen:
+            warns.append(f"{path}: duplicate save_advantage (same as {seen[key]}); a second declaration adds nothing")
+        else:
+            seen[key] = path
+    return errs, warns
+
+
+AURA_KEYS = frozenset({"kind", "radius_ft", "on", "save", "condition", "duration", "success_immunity_hours"})
+AURA_CONDITIONS = frozenset({"blinded", "charmed", "deafened", "frightened", "grappled", "incapacitated", "invisible",
+                             "paralyzed", "petrified", "poisoned", "prone", "restrained", "stunned", "unconscious"})
+
+
+def _int_in(v, lo: int, hi: int) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi
+
+
+def check_aura(doc: dict, tag: str) -> tuple[list[str], list[str]]:
+    """Batch 3 aura (ghast Stench; sim features.cpp apply_aura): the loader's refusals as errors (same text). A second aura
+    trait is a separate aura (its own zone and immunity rows), so no stacking warning."""
+    errs: list[str] = []
+    for path, _owner, eff in live_effects(doc):
+        if eff.get("kind") != "aura":
+            continue
+        did = f"{path}: {doc.get('id', '?')}"
+        if tag != "monster@5":
+            errs.append(f"{did}: aura needs a monster@5 file")
+            continue
+        extra = sorted(k for k in eff if k not in AURA_KEYS)
+        if extra:
+            errs.append(f"{did}: aura: unknown key '{extra[0]}'")
+            continue
+        r = eff.get("radius_ft")
+        sv = eff.get("save")
+        if not _int_in(r, 5, 120) or r % 5 != 0:
+            errs.append(f"{did}: aura: radius_ft must be a multiple of 5 in 5..120")
+        elif eff.get("on") != "start_turn":
+            errs.append(f"{did}: aura: on must be start_turn")
+        elif not isinstance(sv, dict):
+            errs.append(f"{did}: aura: save {{ability, dc}} required")
+        elif sorted(k for k in sv if k not in ("ability", "dc")):
+            errs.append(f"{did}: aura: unknown save key '{sorted(k for k in sv if k not in ('ability', 'dc'))[0]}'")
+        elif sv.get("ability") not in ("str", "dex", "con", "int", "wis", "cha"):
+            errs.append(f"{did}: aura: bad save.ability")
+        elif not _int_in(sv.get("dc"), 1, 30):
+            errs.append(f"{did}: aura: save.dc must be 1..30")
+        elif eff.get("condition") not in AURA_CONDITIONS:
+            errs.append(f"{did}: aura: bad condition")
+        elif eff.get("duration") != "until_start_of_next_turn":
+            errs.append(f"{did}: aura: duration must be until_start_of_next_turn")
+        elif "success_immunity_hours" in eff and not _int_in(eff["success_immunity_hours"], 1, 168):
+            errs.append(f"{did}: aura: success_immunity_hours must be 1..168")
+    return errs, []
+
+
+BATCH3_WEAPON_ONLY_KEYS = ("drain", "curse", "target_requires_any", "ability_drain", "ability")   # ability: CONTENT_CONVENTIONS "Attack ability"
+
+
+def check_batch3_actions(doc: dict, tag: str) -> list[str]:
+    """Batch 3 monster@5 action keys the sim reads only on weapon attacks (content.cpp attack loop): elsewhere they would be
+    silently ignored, so they are errors."""
+    errs: list[str] = []
+    if tag != "monster@5":
+        return errs
+    for i, a in enumerate(doc.get("actions") or []):
+        if not isinstance(a, dict):
+            continue
+        dr = a.get("drain")
+        if isinstance(dr, dict) and "damage_type" in dr:   # vampire spawn: the loader refuses a type the action does not deal
+            types = {p.get("type") for p in a.get("damage") or [] if isinstance(p, dict)}
+            if dr["damage_type"] not in types:
+                errs.append(f"/actions/{i}: {doc.get('id', '?')}.{a.get('id')}: drain.damage_type is not one of the action's damage types")
+        if a.get("kind") in ("melee_weapon_attack", "ranged_weapon_attack"):
+            continue
+        for k in BATCH3_WEAPON_ONLY_KEYS:
+            if k in a:
+                errs.append(f"/actions/{i}: {doc.get('id', '?')}.{a.get('id')}: {k} is read only on weapon attacks")
+    return errs
+
+
+UNTIL_CURED_CONDITIONS = frozenset({"blinded", "deafened", "paralyzed", "poisoned"})   # Lesser Restoration's list (SRD 5.1)
+
+
+def check_teleport_actions(doc: dict, tag: str) -> list[str]:
+    """Batch 3 monster@5 `teleport` action (blink dog): with_attack names a weapon / spell attack action of this document (same
+    rule as the sim loader, content.cpp compile_teleport_action)."""
+    errs: list[str] = []
+    if tag != "monster@5":
+        return errs
+    attack_ids = {a.get("id") for a in doc.get("actions") or [] if isinstance(a, dict) and str(a.get("kind", "")).endswith("_attack")}
+    for i, a in enumerate(doc.get("actions") or []):
+        if isinstance(a, dict) and a.get("kind") == "teleport" and "with_attack" in a and a["with_attack"] not in attack_ids:
+            errs.append(f"/actions/{i}/with_attack: '{a['with_attack']}' is not an attack action id in actions[]")
+    return errs
+
+
+def check_multiattack_count(doc: dict, tag: str) -> list[str]:
+    """Batch 3 multiattack count_dice (violet fungus "makes 1d4 Rotting Touch attacks"): monster@5 only, and the option
+    names exactly one attack (same rule as the sim loader, features.cpp apply_multiattack)."""
+    errs: list[str] = []
+    for path, _owner, eff in live_effects(doc):
+        if eff.get("kind") != "multiattack":
+            continue
+        for sub, o in [("", eff)] + [(f"/options/{j}", o) for j, o in enumerate(eff.get("options") or [])]:
+            if not isinstance(o, dict) or "count_dice" not in o:
+                continue
+            if tag != "monster@5":
+                errs.append(f"{path}{sub}/count_dice: multiattack count_dice needs a monster@5 file")
+            if len(o.get("attacks") or []) != 1:
+                errs.append(f"{path}{sub}/count_dice: count_dice needs exactly one attack")
+    return errs
+
+
+def _walk_until_cured(node, path: str):
+    if isinstance(node, dict):
+        d = node.get("duration")
+        if isinstance(d, dict) and d.get("kind") == "until_cured":
+            yield path, node
+        for k, v in node.items():
+            yield from _walk_until_cured(v, f"{path}/{k}")
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            yield from _walk_until_cured(v, f"{path}/{i}")
+
+
+def check_until_cured(doc: dict, tag: str) -> list[str]:
+    """Batch 3 duration {kind: until_cured} (Lich ruling, death dog): read only in apply[] of a monster's save_condition /
+    apply_condition riders and save_effect / attack_effect actions (sim compile_save_action). The condition must be one an
+    existing cure ends (Lesser Restoration: blinded, deafened, paralyzed, poisoned); conditions with a natural SRD end are
+    refused, and so are repeat_save / escape (same text as the loader)."""
+    errs: list[str] = []
+    allowed: set[int] = set()
+    if tag.startswith("monster@"):
+        for _p, _o, _j, r in rider_sites(doc):
+            if isinstance(r, dict) and r.get("kind") in ("save_condition", "apply_condition"):
+                allowed.update(id(x) for x in r.get("apply") or [])
+        for _p, a in mechanical_actions(doc):
+            if a.get("kind") in ("save_effect", "attack_effect"):
+                allowed.update(id(x) for x in a.get("apply") or [])
+    for path, x in _walk_until_cured(doc, ""):
+        if id(x) not in allowed:
+            errs.append(f"{path}: until_cured is read only in apply[] of a monster save_condition / apply_condition rider or "
+                        "save_effect / attack_effect action")
+        elif x.get("condition") not in UNTIL_CURED_CONDITIONS:
+            errs.append(f"{path}: until_cured needs blinded, deafened, paralyzed or poisoned (a condition Lesser Restoration ends)")
+        elif "repeat_save" in x:
+            errs.append(f"{path}: until_cured takes no repeat_save")
+        elif "escape" in x:
+            errs.append(f"{path}: until_cured takes no escape")
+    return errs
 
 
 CONTROL_KEYS_7_2Y = ("control", "control_excludes_creature_types", "destroy_undead_max_cr8", "target_creature_types", "duration")
@@ -1363,6 +1625,26 @@ def check_untimed_save_condition_riders(doc: dict, errs: list[str]) -> None:
                 break
 
 
+# ---- size-gated saves (sim content.cpp compile_save_action) ---------------------------------------------------------
+def check_save_max_size(doc: dict, errs: list[str]) -> None:
+    """Mirror of the sim loader: an apply[] max_size without contain loads only on the first apply[] entry of a
+    save_condition rider (a larger target makes no save and gets no condition; SRD Gladiator Shield Bash, "a Medium or
+    smaller creature"). On a save_effect action, or a later entry, it is a load error with the loader's wording."""
+    def bare(x):
+        return isinstance(x, dict) and "max_size" in x and "contain" not in x
+    for path, _owner, _j, r in rider_sites(doc):
+        if isinstance(r, dict) and r.get("kind") == "save_condition":
+            for k, x in enumerate(r.get("apply") or []):
+                if k > 0 and bare(x):
+                    errs.append(f"{path}/apply/{k}: max_size on a save_condition rider goes on the first apply[] entry")
+    for path, a in mechanical_actions(doc):
+        if a.get("kind") == "save_effect":
+            for k, x in enumerate(a.get("apply") or []):
+                if bare(x):
+                    errs.append(f"{path}/apply/{k}: max_size on a save_effect needs contain "
+                                "(only a containing condition skips a larger target)")
+
+
 # ---- refused condition durations (sim content.cpp compile_save_action / compile_rider, EC #212) -----------------
 # Condition apply[].duration kinds the schema accepts but the sim loader has no rules5e expiry for (docs/CONTENT_EFFECTS.md,
 # "Engine Core loader durations and temp HP"). Loaded since #212: rounds, until_end_of_caster_next_turn,
@@ -1557,6 +1839,17 @@ def check_equipment_v5(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list[
     pb, want = doc.get("proficiency_bonus"), cr_table_pb(str(ch.get("rating", "0")))
     if pb is not None and pb != want and not str(doc.get("proficiency_bonus_reason", "")).strip():
         errs.append(f"{did}: proficiency_bonus {pb} != CR table {want}")
+    # Tier-A §25: printed passive Perception (validate_packs.check_stat_block skips its mismatch error only with this reason)
+    if "passive_perception_reason" in doc:
+        ab = doc.get("abilities") or {}
+        perc = (doc.get("skills") or {}).get("perception", (int(ab.get("wis", 10)) - 10) // 2)
+        printed = (doc.get("senses") or {}).get("passive_perception")
+        if doc["passive_perception_reason"] != "srd_printed":
+            errs.append(f"{did}: passive_perception_reason must be \"srd_printed\"")
+        elif printed == 10 + perc:
+            errs.append(f"{did}: passive_perception_reason given but senses.passive_perception {printed} == derived {10 + perc}")
+        else:
+            warns.append(f"{did}: senses.passive_perception {printed} != derived {10 + perc} (SRD printed value used, §25)")
     adj = doc.get("ac_adjust")
     if isinstance(adj, dict):
         if not str(adj.get("reason", "")).strip():
@@ -1572,7 +1865,7 @@ def check_equipment_v5(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list[
         aid, where = a.get("id"), f"/actions/{i}"
         if "weapon" in a and "natural" in a:
             errs.append(f"{where}: 'weapon' and 'natural' are exclusive")
-        if any(k in a for k in ("weapon", "natural", "attack_bonus")) and a.get("kind") not in ("melee_weapon_attack", "ranged_weapon_attack"):
+        if any(k in a for k in ("weapon", "natural", "attack_bonus", "damage_override")) and a.get("kind") not in ("melee_weapon_attack", "ranged_weapon_attack"):
             errs.append(f"{where}: weapon / natural / attack_bonus need a melee_weapon_attack or ranged_weapon_attack")
         nat = a.get("natural")
         if isinstance(nat, dict) and "flat" in nat:   # CONTENT_CONVENTIONS 19: natural.flat is the printed flat damage[0]
@@ -1592,6 +1885,11 @@ def check_equipment_v5(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list[
             if not str(ab.get("reason", "")).strip():
                 errs.append(f"{did}.{aid}: attack_bonus needs a reason")
             warns.append(f"{did}.{aid}: attack_bonus {ab.get('value')} ({ab.get('reason')})")
+        dov = a.get("damage_override")
+        if isinstance(dov, dict):
+            if not str(dov.get("reason", "")).strip():
+                errs.append(f"{did}.{aid}: damage_override needs a reason")
+            warns.append(f"{did}.{aid}: damage_override {dov.get('dice')} ({dov.get('reason')})")
     el = doc.get("emits_light")
     if isinstance(el, dict) and el.get("bright_ft", 0) + el.get("dim_ft", 0) > 120:
         errs.append(f"/emits_light: bright_ft + dim_ft {el.get('bright_ft', 0) + el.get('dim_ft', 0)} exceeds 120 (dim is additional)")
@@ -1828,6 +2126,14 @@ def check_monster_derive(doc: dict, ctx: dict) -> tuple[list[str], list[str]]:
                 errs.append(f"{pre}: attack_bonus is not needed")
             v = dict(v, to_hit_override=ab_ov["value"])
             th, dmg, _e = _derive_weapon_attack(w, v, use)
+        dov = a.get("damage_override")
+        if isinstance(dov, dict):   # monster@5: the printed damage[0] stands, with a reason (CONTENT_CONVENTIONS 21)
+            if _blank(dov.get("reason")):
+                errs.append(f"{pre}: damage_override needs a reason")
+            ov = parse_dice(str(dov.get("dice", "0")))
+            if dmg == ov:
+                errs.append(f"{pre}: damage_override is not needed")
+            dmg = ov
         if th != a.get("to_hit"):
             errs.append(f"{pre}: derived to-hit {_signed(th)} != printed {_signed(a.get('to_hit', 0))}")
         printed = parse_dice((a.get("damage") or [{}])[0].get("dice", "0")) if (a.get("damage") or [{}])[0].get("dice") is not None \
@@ -2168,3 +2474,23 @@ def check_spell_batch_zi(doc: dict) -> list[str]:
         if m.get("stat") == ZI_KEYS["halve_weapon_damage"] and m.get("ability") != "str":
             errs.append(f"{pre}effect halve_weapon_damage needs ability str")
     return errs
+
+
+def check_spell_descriptive(doc: dict) -> list[str]:
+    """Text-only spell@1 kind descriptive (spell_loader.cpp, same wording and order).
+
+    The effect object allows no key but kind. It must be the spell's only effect. An empty effects
+    list is still the schema's error (minItems 1; the loader says "effects missing") and is not
+    re-reported here.
+    """
+    raw = doc.get("effects")
+    if not isinstance(raw, list) or not raw:
+        return []
+    first = raw[0]
+    if isinstance(first, dict) and first.get("kind") == "descriptive":
+        for k in first:
+            if k != "kind":
+                return [f"descriptive effect: unknown key '{k}'"]
+    if any(isinstance(e, dict) and e.get("kind") == "descriptive" for e in raw) and len(raw) != 1:
+        return ["descriptive effect must be the spell's only effect"]
+    return []

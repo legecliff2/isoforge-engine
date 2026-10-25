@@ -19,17 +19,27 @@ name: CI
 #   parallelism 4, compile 4. It never selects a runner. Every Linux job hard-codes
 #   runs-on: ubuntu-latest. In build-test, only the Windows MSVC Debug row is windows-latest.
 # - changes and ci-required stay on ubuntu-latest. Windows and macOS stay hosted.
-# - Draft PRs skip CI; ci-required passes for them (changes skipped only on drafts).
+# - Draft PRs skip build/test jobs. ci-required fails those runs: a skipped required
+#   check counts as success in a ruleset, so the gate must not go green and must not
+#   skip itself. ready_for_review is a pull_request type; marking the PR ready runs CI.
 # - Compiler cache: ccache (Linux/macOS) / sccache (Windows) via actions/cache in cmake-ci.
 # - macOS: nightly on main (07:17 UTC, off the hour to avoid GitHub dropping top-of-hour schedules), on manual dispatch, and on PRs whose
 #   changes touch platform / render or determinism-sensitive code (see the `mac` filter below).
-# - `ci-required` is the single aggregate gate for branch protection: it always runs and
-#   succeeds when every needed job passed or was skipped on purpose.
+# - `ci-required` is the single aggregate gate for branch protection. It always runs
+#   (`if: always()`) and succeeds when every job this event requires has
+#   result == success. A job this event does not run may be skipped: docs-only
+#   pull_request and push (paths-filter `code` is not `true`) require only
+#   `changes`; build-test, windows-release, linux-runner, and macos may be
+#   skipped. The same is true for an unlabelled Windows Release, macOS when the
+#   nightly gate says main did not move, and build-test on schedule or dispatch.
+#   failure and cancelled on any needed job fail the gate. skipped is not
+#   success for a job the event requires. Drafts and fork PRs fail the gate.
 on:
   push:
     branches: [main]
   pull_request:
-    # Draft PRs don't run CI (no ready_for_review = no run until marked ready).
+    # opened/synchronize/reopened also fire on drafts: changes is skipped and
+    # ci-required fails. ready_for_review (draft == false) runs the full workflow.
     types: [opened, synchronize, reopened, ready_for_review]
   schedule:
     - cron: "17 7 * * *"
@@ -56,9 +66,11 @@ concurrency:
 jobs:
   changes:
     name: Detect changes
-    # Draft PRs: skip everything (ci-required treats this as intended, see below).
+    # Draft PRs skip this job, which skips every build. ci-required still runs and
+    # fails the draft (a skipped required check would pass the ruleset).
+    # ready_for_review has draft == false, so this job runs on that event.
     # A pull_request whose head repo is not this repo skips changes, so the jobs below
-    # do not run. ci-required fails closed when changes is skipped on a non-draft run.
+    # do not run. ci-required fails closed when changes did not succeed.
     if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -234,11 +246,32 @@ jobs:
           build: ci-mac-clang
           test: ci-mac-clang
 
-  # The one check to mark required. Skipped jobs (docs-only PR, macOS not needed, Windows Release
-  # on an unlabelled PR, linux-runner when no Linux job is needed) count as OK; failed or
-  # cancelled ones fail the gate. linux-runner skipped on a code push/PR or on schedule fails
-  # the gate: that would also skip build-test / nightly-gate and look green.
-  # linux-runner only publishes hosted caps. It does not choose a machine.
+  # The one check to mark required. Job name stays `ci-required`.
+  # `if: always()` is required: without it, a failed or skipped need skips this job, and
+  # GitHub treats a skipped required check as success (same for conclusion `skipped`).
+  # The result checks therefore live in the step, which exits 1. Each
+  # `needs.<job>.result == 'success'` expression is bound below. skipped is
+  # allowed when this event did not require that job (a docs-only run, where
+  # paths-filter `code` is the string `false` or empty, requires only `changes`).
+  # skipped and cancelled are not success for a job the event requires.
+  # failure and cancelled fail the gate for every needed job.
+  #
+  # Required set (a skipped job in this set fails the gate; a skipped job outside it
+  # does not — that is a docs-only push, an unlabelled Windows Release, macOS when the
+  # nightly gate says main did not move, build-test on schedule/dispatch):
+  # - changes: every non-draft run. Drafts fail before this, with an explicit message.
+  # - linux-runner: schedule, or push/pull_request with code changes.
+  # - nightly-gate: schedule.
+  # - build-test: push/pull_request with code changes.
+  # - windows-release: workflow_dispatch, push with code, or a PR with code and the
+  #   ci-windows-release label.
+  # - macos: workflow_dispatch, a PR whose mac filter matches, or schedule when the
+  #   nightly gate output run is true.
+  # Any needed job that finished cancelled or failure fails the gate, including one
+  # this event would otherwise not have required.
+  # Fork PRs skip `changes`; the gate fails closed.
+  # ready_for_review is in on.pull_request.types. draft is false on that event, so
+  # `changes` and the jobs it gates run.
   ci-required:
     name: ci-required
     needs: [changes, linux-runner, nightly-gate, build-test, windows-release, macos]
@@ -248,27 +281,93 @@ jobs:
     steps:
       - name: Check job results
         env:
-          RESULTS: ${{ needs.changes.result }} ${{ needs.linux-runner.result }} ${{ needs.nightly-gate.result }} ${{ needs.build-test.result }} ${{ needs.windows-release.result }} ${{ needs.macos.result }}
-          # 'changes' may only be skipped on purpose for a draft PR.
-          DRAFT: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
           CHANGES: ${{ needs.changes.result }}
           LINUX_RUNNER: ${{ needs.linux-runner.result }}
+          NIGHTLY_GATE: ${{ needs.nightly-gate.result }}
+          BUILD_TEST: ${{ needs.build-test.result }}
+          WINDOWS_RELEASE: ${{ needs.windows-release.result }}
+          MACOS: ${{ needs.macos.result }}
+          CHANGES_SUCCESS: ${{ needs.changes.result == 'success' }}
+          LINUX_RUNNER_SUCCESS: ${{ needs.linux-runner.result == 'success' }}
+          NIGHTLY_GATE_SUCCESS: ${{ needs.nightly-gate.result == 'success' }}
+          BUILD_TEST_SUCCESS: ${{ needs.build-test.result == 'success' }}
+          WINDOWS_RELEASE_SUCCESS: ${{ needs.windows-release.result == 'success' }}
+          MACOS_SUCCESS: ${{ needs.macos.result == 'success' }}
           EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
+          FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
           CODE: ${{ needs.changes.outputs.code }}
+          MAC: ${{ needs.changes.outputs.mac }}
+          NIGHTLY_RUN: ${{ needs.nightly-gate.outputs.run }}
+          WIN_LABEL: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-windows-release') }}
         run: |
-          if [ "$CHANGES" = skipped ] && [ "$DRAFT" != true ]; then
-            echo "::error::changes skipped on a non-draft run"; exit 1
+          set -euo pipefail
+          echo "changes=${CHANGES} (${CHANGES_SUCCESS}) linux-runner=${LINUX_RUNNER} (${LINUX_RUNNER_SUCCESS}) nightly-gate=${NIGHTLY_GATE} (${NIGHTLY_GATE_SUCCESS}) build-test=${BUILD_TEST} (${BUILD_TEST_SUCCESS}) windows-release=${WINDOWS_RELEASE} (${WINDOWS_RELEASE_SUCCESS}) macos=${MACOS} (${MACOS_SUCCESS})"
+          echo "event=${EVENT} draft=${DRAFT} fork=${FORK} code=${CODE} mac=${MAC} nightly_run=${NIGHTLY_RUN} win_label=${WIN_LABEL}"
+
+          fail() {
+            echo "::error::$1"
+            exit 1
+          }
+
+          # A skipped ci-required job would satisfy the ruleset. Fail the job.
+          if [ "$DRAFT" = "true" ]; then
+            fail "draft pull request skips build and test jobs; ci-required fails until ready_for_review runs the workflow"
           fi
-          if [ "$LINUX_RUNNER" = skipped ] && { [ "$EVENT" = schedule ] || { [ "$CODE" = true ] && { [ "$EVENT" = push ] || [ "$EVENT" = pull_request ]; }; }; }; then
-            echo "::error::linux-runner skipped while a Linux job was required"; exit 1
+          if [ "$FORK" = "true" ]; then
+            fail "fork pull request skips the changes job, so build and test jobs did not run"
           fi
-          echo "changes linux-runner nightly-gate build-test windows-release macos: $RESULTS"
-          for r in $RESULTS; do
-            case "$r" in
-              success|skipped) ;;
-              *) echo "::error::a required job ended as '$r'"; exit 1 ;;
-            esac
+
+          # failure and cancelled are never success, including a job this event
+          # does not otherwise require. skipped is handled per required job below.
+          for pair in \
+            "changes:${CHANGES}" \
+            "linux-runner:${LINUX_RUNNER}" \
+            "nightly-gate:${NIGHTLY_GATE}" \
+            "build-test:${BUILD_TEST}" \
+            "windows-release:${WINDOWS_RELEASE}" \
+            "macos:${MACOS}"
+          do
+            name=${pair%%:*}
+            result=${pair#*:}
+            if [ "$result" = "cancelled" ] || [ "$result" = "failure" ]; then
+              fail "${name} ended as ${result}"
+            fi
           done
+
+          # ok is the workflow expression needs.<job>.result == 'success'.
+          # paths-filter emits code and mac as the strings true or false. Empty means
+          # that step did not run. Only the string true adds the matching build job
+          # to the required set, so a docs-only pull_request or push (code is not
+          # true) may skip build-test, windows-release, linux-runner, and macos.
+          require_success() {
+            name=$1
+            ok=$2
+            result=$3
+            if [ "$ok" != "true" ]; then
+              fail "${name} result is '${result}'; expected success (skipped and cancelled fail the gate)"
+            fi
+          }
+
+          require_success changes "$CHANGES_SUCCESS" "$CHANGES"
+
+          if [ "$EVENT" = "schedule" ] || { [ "$CODE" = "true" ] && { [ "$EVENT" = "push" ] || [ "$EVENT" = "pull_request" ]; }; }; then
+            require_success linux-runner "$LINUX_RUNNER_SUCCESS" "$LINUX_RUNNER"
+          fi
+          if [ "$EVENT" = "schedule" ]; then
+            require_success nightly-gate "$NIGHTLY_GATE_SUCCESS" "$NIGHTLY_GATE"
+          fi
+          if { [ "$EVENT" = "push" ] || [ "$EVENT" = "pull_request" ]; } && [ "$CODE" = "true" ]; then
+            require_success build-test "$BUILD_TEST_SUCCESS" "$BUILD_TEST"
+          fi
+          if [ "$EVENT" = "workflow_dispatch" ] || { [ "$CODE" = "true" ] && [ "$EVENT" = "push" ]; } || { [ "$EVENT" = "pull_request" ] && [ "$CODE" = "true" ] && [ "$WIN_LABEL" = "true" ]; }; then
+            require_success windows-release "$WINDOWS_RELEASE_SUCCESS" "$WINDOWS_RELEASE"
+          fi
+          if [ "$EVENT" = "workflow_dispatch" ] || { [ "$EVENT" = "pull_request" ] && [ "$MAC" = "true" ]; } || { [ "$EVENT" = "schedule" ] && [ "$NIGHTLY_RUN" = "true" ]; }; then
+            require_success macos "$MACOS_SUCCESS" "$MACOS"
+          fi
+
+          echo "ci-required: every required job result is success"
 
   # Nightly macOS failure -> open or update one tracking issue (last green sha vs current sha).
   nightly-report:

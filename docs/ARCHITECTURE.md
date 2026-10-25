@@ -802,7 +802,8 @@ engine/
 │   ├── manifest/v1.schema.json
 │   ├── monster/v1.schema.json
 │   ├── map/v1.schema.json
-│   └── chunk/v1.schema.json
+│   ├── chunk/v1.schema.json
+│   └── scenario/v1.schema.json # headless encounter; not a pack document (CONTENT_CONVENTIONS §24)
 ├── modules/
 │   ├── base/        {include/base/, src/, tests/, CMakeLists.txt}
 │   ├── rng/

@@ -1,0 +1,24 @@
+{
+  "$schema": "spell@1",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "id": "test.neg.spell.descriptive_empty",
+  "name": "Descriptive Empty",
+  "level": 0,
+  "school": "evocation",
+  "casting_time": {
+    "kind": "action"
+  },
+  "range": {
+    "kind": "touch"
+  },
+  "components": {
+    "v": true
+  },
+  "duration": {
+    "kind": "instantaneous"
+  },
+  "effects": []
+}

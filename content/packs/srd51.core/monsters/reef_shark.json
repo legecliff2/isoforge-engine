@@ -1,0 +1,87 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.reef_shark",
+  "name": "Reef Shark",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 12,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 11,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 22,
+    "formula": "4d8+4"
+  },
+  "speed": {
+    "walk": 0,
+    "swim": 40
+  },
+  "abilities": {
+    "str": 14,
+    "dex": 13,
+    "con": 13,
+    "int": 1,
+    "wis": 10,
+    "cha": 4
+  },
+  "skills": {
+    "perception": 2
+  },
+  "senses": {
+    "blindsight": 30,
+    "passive_perception": 12
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "1/2",
+    "xp": 100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "pack_tactics",
+      "name": "Pack Tactics",
+      "description": "The shark has advantage on an attack roll against a creature if at least one of the shark's allies is within 5 ft. of the creature and the ally isn't incapacitated.",
+      "effect": {
+        "kind": "pack_tactics"
+      }
+    },
+    {
+      "id": "water_breathing",
+      "name": "Water Breathing",
+      "description": "The shark can breathe only underwater."
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d8",
+        "ability": "str"
+      },
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 6 (1d8 + 2) piercing damage."
+    }
+  ]
+}

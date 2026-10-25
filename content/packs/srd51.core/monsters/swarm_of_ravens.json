@@ -1,0 +1,93 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.swarm_of_ravens",
+  "name": "Swarm of Ravens",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "beast",
+  "tags": [
+    "swarm"
+  ],
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 12
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 24,
+    "formula": "7d8-7"
+  },
+  "speed": {
+    "walk": 10,
+    "fly": 50
+  },
+  "abilities": {
+    "str": 6,
+    "dex": 14,
+    "con": 8,
+    "int": 3,
+    "wis": 12,
+    "cha": 6
+  },
+  "skills": {
+    "perception": 5
+  },
+  "damage_resistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "condition_immunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+  ],
+  "senses": {
+    "passive_perception": 15
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "1/4",
+    "xp": 50
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "swarm",
+      "name": "Swarm",
+      "description": "The swarm can occupy another creature's space and vice versa, and the swarm can move through any opening large enough for a Tiny raven. The swarm can't regain hit points or gain temporary hit points."
+    }
+  ],
+  "actions": [
+    {
+      "id": "beaks",
+      "name": "Beaks",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "dex",
+        "damage_ability": "none"
+      },
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6",
+          "type": "piercing"
+        }
+      ],
+      "half_hp_damage": "1d6",
+      "description": "Melee Weapon Attack: +4 to hit, reach 5 ft., one target in the swarm's space. Hit: 7 (2d6) piercing damage, or 3 (1d6) piercing damage if the swarm has half of its hit points or fewer."
+    }
+  ]
+}

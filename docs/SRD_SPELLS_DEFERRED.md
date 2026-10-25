@@ -12,11 +12,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules; secti
 
 | level | in `srd51.core` | deferred: needs a mechanic | deferred: out of combat scope | total |
 |---|---|---|---|---|
-| 0 (cantrips) | 13 | 0 | 11 | 24 |
+| 0 (cantrips) | 17 | 0 | 7 | 24 |
 | 1 | 27 | 2 | 19 | 48 |
 | 2 | 25 | 6 | 23 | 54 |
 | 3 | 14 | 9 | 19 | 42 |
-| **total** | **79** | **17** | **72** | **168** |
+| **total** | **83** | **17** | **68** | **168** |
 
 Hunter's Mark is non-SRD, excluded (PHB-only; its text is not in SRD 5.1). Not NEW and not Authored. An earlier pass counted it, which is why the level-1 total and the overall total are one spell below the old 49 level 1 / 169 overall. Authored is 79: Expeditious Retreat is in the pack, and Hunter's Mark is not. Hex is non-SRD, excluded (PHB-only; not in SRD 5.1). Not NEW and not Authored. It was never in these counts and is not on the warlock lists. Spike Growth is already in the 79 (authored for the druid); putting it back on the ranger level-5 list does not change these totals. The ranger then knows 4 spells at level 5.
 
@@ -193,23 +193,34 @@ Expeditious Retreat (7.2zi follow-up, Rules #285). The pack's `effects` equal `t
 |---|---|---|---|
 | Expeditious Retreat | 1 | `apply_modifier` `dash_on_cast`, `bonus_dash` on self, `rounds 600`; bonus action, self, concentration 10 minutes, V S | sorcerer, warlock, wizard; the cast includes a Dash, later turns Dash as a bonus action |
 
-## Deferred (89 spells; reasons re-checked against main at `8b8d8c9`)
+## Authored: descriptive cantrips (4)
+
+Text-only spells (CONTENT_CONVENTIONS §28; Rules PR #309, feat/rules-spell-descriptive @ cdd2b09). `effects` is `[{"kind": "descriptive"}]`; verbatim SRD 5.1 text, `source {ref: "SRD 5.1", license: "CC-BY-4.0"}`. They load and stay on spell lists, but `legal_actions` never offers them. Pinned by `tests/validate/test_srd51_spells.py` (table rows) and `tests/validate/test_spell_descriptive.py`. Listed as Descriptive (not Authored) in `docs/SRD_COMBAT_COVERAGE.md` 8.1.
+
+| spell | level | `spell@1` shape | classes (5e-database a6212be) | deferred mechanic |
+|---|---|---|---|---|
+| Light | 0 | `descriptive`; touch, 1 hour, V M (`A firefly or phosphorescent moss`) | bard, cleric, sorcerer, wizard | `emit_light`; the Dex save against a hostile holder is text only |
+| Dancing Lights | 0 | `descriptive`; range 120, concentration 1 minute, V S M (`A bit of phosphorus or wychwood, or a glowworm`) | bard, sorcerer, wizard | summoned lights |
+| Minor Illusion | 0 | `descriptive`; range 30, 1 minute, S M (`A bit of fleece`) | bard, sorcerer, warlock, wizard | illusion with an Investigation check vs spell DC |
+| Thaumaturgy | 0 | `descriptive`; range 30, 1 minute, V | cleric | descriptive only |
+
+No character class list in srd51.core is changed by this batch: the spells are on the SRD class lists above, and the acolyte and cult fanatic (authored on this branch) are their first users.
+
+## Deferred (85 spells; reasons re-checked against main at `8b8d8c9`)
+
+**Planned descriptive-only, not yet authored.** `light`, `thaumaturgy`, `dancing_lights` and `minor_illusion` are planned as `{"kind":"descriptive"}` (the spell's only effect; `docs/CONTENT_CONVENTIONS.md` section 28). They are not in `srd51.core`, so the counts in this file are unchanged and the four rows below stay deferred. Light authored this way sheds no light: `append_active_zones` in `engine/core/sim/src/light_driver.cpp` keeps a spell only when its kind is `SpellEffectKind::Zone`. The real light mechanics stay deferred.
 
 Gap ids are Rules' ids from `docs/SRD_COMBAT_COVERAGE.md` (section 11.2 maps the first-draft ids in brackets: B1 = R-G2 effects array, B2 = R-G3 timed modifiers, B3 = R-G4 damage riders, B4 = R-G5 pools, B6 = R-G7 reactions / roll windows, C1 = R-G8 conditions with source, C2 = R-G9 forced movement / teleport, C3 = R-G10 area templates, C4 = R-G11 zones / auras, C5 = R-G12 summons, C7 = R-G13 cover / lighting / vision, C8 = R-G14 per-cast options, C9 = R-G15 spell kinds). `T&C-G12` / `T&C-G14` are movement modes and creature footprint. `OOS` rows have no gap id.
 
 | level | spell | kind | missing mechanic (from the coverage doc) | gap id |
 |---|---|---|---|---|
-| 0 | Dancing Lights | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Druidcraft | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Guidance | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
-| 0 | Light | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Mage Hand | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Mending | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Message | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
-| 0 | Minor Illusion | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Prestidigitation | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 0 | Resistance | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
-| 0 | Thaumaturgy | OOS | none (out of combat scope): Utility/out of combat. Guidance and Resistance add d4 to a check/save: NEW R-G7 if wanted in combat. | R-G7 (B6) |
 | 1 | Alarm | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Animal Friendship | OOS | none (out of combat scope): Utility / exploration. Goodberry heals items, not in-fight; Feather Fall is a falling reaction (falling not simulated). | - |
 | 1 | Charm Person | NEW | Charmed with source (R-G8). | R-G8 (C1) |

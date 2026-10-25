@@ -147,7 +147,7 @@ std::optional<Command> move_mark_command(const Combat& c, CombatantId self, std:
     if (!me || me->concentration_spell == 0 || !s.budget.bonus_action || s.budget.sequence != 0) return std::nullopt;
     if (!rules5e::is_conscious(*me) || rules5e::is_incapacitated(*me)) return std::nullopt;
     const auto* def = c.spell_def(me->concentration_spell);
-    if (!def || def->move_mark == 0) return std::nullopt;
+    if (!def || def->move_mark == 0 || def->kind == rules5e::SpellEffectKind::Descriptive) return std::nullopt;
     CombatantId old_mark = 0;
     for (const auto& m : s.modifiers)
         if (m.caster == self && m.spec.source == def->id && m.spec.mark_scope != 0 && m.mark != 0) { old_mark = m.mark; break; }
@@ -222,6 +222,14 @@ int attack_score(const rules5e::Combatant& me, uint8_t attack_index, const rules
 }
 
 namespace {
+// Movement left for the AI's reach / approach checks: the walking allowance, or with a swim speed the larger of it and
+// the swimming allowance (SRD "using different speeds"; rules5e::move_allowance). A swim-only creature (walk 0) is not
+// treated as unable to close. Creatures without a swim speed read TurnBudget::movement_ft exactly as before.
+int ai_move_left(const rules5e::EncounterState& st, const rules5e::Combatant& me) {
+    int left = st.budget.movement_ft;
+    if (me.swim_ft > 0) left = std::max(left, rules5e::move_allowance(st, me, 2));
+    return left;
+}
 bool attack_usable(const rules5e::EncounterState& st, CombatantId self, uint8_t i) {
     return rules5e::attack_refusal(st, self, i).empty();
 }
@@ -257,7 +265,7 @@ PlanValue weapon_value(const Combat& c, const rules5e::EncounterState& st, const
         int now = 0;
         if (!a.ranged) {
             const int reach = reach_tiles(a.reach_or_range_ft);
-            if (d <= reach || path_cost_to(c, me.id, t.id, reach) <= int(st.budget.movement_ft)) now = attack_score(me, i, t, false);
+            if (d <= reach || path_cost_to(c, me.id, t.id, reach) <= ai_move_left(st, me)) now = attack_score(me, i, t, false);
         } else if (c.can_shoot(me.id, i, t.id)) {
             now = attack_score(me, i, t, c.ranged_disadvantage(me.id, i, t.id));
         }
@@ -469,7 +477,9 @@ std::optional<Command> spell_kind_command(const Combat& c, const rules5e::Combat
     if (s.budget.bonus_action && s.budget.sequence == 0) {
         const uint32_t now = (uint32_t(s.round) << 16) | s.turn_index;
         for (const auto& e : s.effects) {
-            if (e.caster != me.id || e.damage_when != 2 || e.cast_stamp == now || e.target == charmer || !c.spell_def(e.spell_id)) continue;
+            if (e.caster != me.id || e.damage_when != 2 || e.cast_stamp == now || e.target == charmer) continue;
+            const auto* sdef = c.spell_def(e.spell_id);
+            if (!sdef || sdef->kind == rules5e::SpellEffectKind::Descriptive) continue;
             const auto* v = rules5e::find(s, e.target);
             if (!v || v->dead) continue;
             Command x;
@@ -639,7 +649,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
                 for (const auto& am : s.modifiers) active = active || (am.target == self && am.spec.id == m.id);
             }
             const int reach_now = c.distance_tiles(self, t->id) * kFeetPerTile;
-            if (!self_only || active || reach_now > int(me->speed_ft) + 10) continue;
+            if (!self_only || active || reach_now > std::max<int>(me->speed_ft, me->swim_ft) + 10) continue;
             Command u;
             u.request = {self, ActionKind::UseFeature};
             u.request.feature_id = f.feature_id;
@@ -652,6 +662,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     if (const Archetype* arch = c.archetype(self); arch && !beast_form && s.budget.action && s.budget.sequence == 0 &&
                                                    s.budget.attacks_remaining == 0 && rules5e::is_conscious(*t))
         for (const auto& sa : arch->save_actions) {
+            if (sa.teleport) continue;   // batch 3 blink dog: the teleport destination is not guessed (AI deferred)
             if (sa.usage_kind == 1) {
                 const auto* u = rules5e::find_action_use(s, self, sa.spell_id);
                 if (u && u->expended) continue;
@@ -661,7 +672,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             }
             if (sa.area) {   // area template: aim at a hostile; never catch an ally; >= 2 hostiles (1 if no attack is legal)
                 const auto* def = c.spell_def(sa.spell_id);
-                if (!def) continue;
+                if (!def || def->kind == rules5e::SpellEffectKind::Descriptive) continue;
                 bool attack_legal = false;
                 for (uint8_t i = 0; i < me->attacks.size() && !attack_legal; ++i)
                     attack_legal = me->attacks[i].ranged ? c.can_shoot(self, i, t->id)
@@ -692,6 +703,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             if (sa.range_ft == 0 || c.distance_tiles(self, t->id) * kFeetPerTile > int(sa.range_ft) ||
                 !c.line_of_sight(self, t->id))
                 continue;
+            if (const auto* sd = c.spell_def(sa.spell_id); sd && sd->kind == rules5e::SpellEffectKind::Descriptive) continue;
             Command cast;
             cast.request = {self, ActionKind::CastSpell, t->id};
             cast.request.spell_id = sa.spell_id;
@@ -706,13 +718,13 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // - a self-range modifier (Blur) on the caster, if no modifier from that spell is already on it;
     // - a cast at the target (Heat Metal keeps the listed equip_item) when it is in range and sight. An area one is aimed
     //   at the target and skipped if it would catch an ally.
-    // Zone spells (Fog Cloud) stay the caller's decision and are skipped.
+    // Zone spells (Fog Cloud) stay the caller's decision and are skipped. Text-only descriptive spells are never cast.
     if (!beast_form && s.budget.action && s.budget.sequence == 0 && s.budget.attacks_remaining == 0 && rules5e::is_conscious(*t) &&
         !me->innate.empty())
         for (const auto& q : c.legal_actions()) {
             if (q.kind != ActionKind::CastSpell || !q.innate) continue;
             const auto* def = c.spell_def(q.spell_id);
-            if (!def || def->kind == rules5e::SpellEffectKind::Zone) continue;
+            if (!def || def->kind == rules5e::SpellEffectKind::Zone || def->kind == rules5e::SpellEffectKind::Descriptive) continue;
             if (q.target == self && def->range_ft == 0) {
                 if (def->kind != rules5e::SpellEffectKind::ApplyModifier || def->area != rules5e::AreaShape::None) continue;
                 bool active = false;
@@ -847,12 +859,12 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // only of melee attacks (declaration order; options with a ranged attack are never picked by the AI).
     uint8_t multi = 0;   // ActionRequest::multiattack to send (0 = continue / plain attack)
     if (s.budget.sequence != 0 && s.budget.sequence <= me->multiattacks.size()) {
-        const auto& seq = me->multiattacks[std::size_t(s.budget.sequence - 1)].attacks;
-        if (s.budget.sequence_pos < seq.size()) ai = seq[s.budget.sequence_pos];
+        if (const int next = rules5e::multiattack_next(me->multiattacks, s.budget.sequence, s.budget.sequence_pos); next >= 0)
+            ai = uint8_t(next);
     } else {
         for (std::size_t i = 0; i < me->multiattacks.size() && i < 255; ++i) {
             const auto& seq = me->multiattacks[i].attacks;
-            bool melee_only = !seq.empty();
+            bool melee_only = !seq.empty() && me->multiattacks[i].after_action == 0;
             for (uint8_t k : seq) melee_only = melee_only && k < me->attacks.size() && !me->attacks[k].ranged && usable(k);
             if (!melee_only) continue;
             ai = seq[0];
@@ -892,10 +904,10 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
     // `aggressive`) do this, so no other combat changes.
     if (me->aggressive && s.budget.bonus_action && !me->has(rules5e::Condition::Blinded) && c.line_of_sight(self, t->id)) {
         const int need = melee_path_cost();
-        if (need > s.budget.movement_ft && need < (1 << 20)) {
+        if (need > ai_move_left(s, *me) && need < (1 << 20)) {
             bool shoot = false;
             for (uint8_t i = 0; i < me->attacks.size() && !shoot; ++i) shoot = me->attacks[i].ranged && c.can_shoot(self, i, t->id);
-            if (!can_attack || !shoot || need <= s.budget.movement_ft + rules5e::modified_speed(s, *me)) {   // 7.2u: what the Dash adds
+            if (!can_attack || !shoot || need <= ai_move_left(s, *me) + (me->swim_ft > 0 ? std::max(rules5e::modified_speed(s, *me), rules5e::mode_speed(s, *me, 2)) : rules5e::modified_speed(s, *me))) {   // 7.2u: what the Dash adds
                 Command d;
                 d.request = {self, ActionKind::Dash};
                 d.request.as_bonus_action = true;
@@ -904,7 +916,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             }
         }
     }
-    if (eq && can_attack && (eq_ranged || melee_path_cost() > s.budget.movement_ft)) {
+    if (eq && can_attack && (eq_ranged || melee_path_cost() > ai_move_left(s, *me))) {
         // Equipment: the usable ranged attack (thrown included) with the best attack_score, disadvantage priced in (earliest on
         // ties). With a hostile within 5 ft (disadvantage) and a usable melee attack, hit that hostile in melee instead.
         std::optional<uint8_t> best;
@@ -946,7 +958,7 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
             a.request.attack_index = *best;
             return a;
         }
-    } else if (can_attack && melee_path_cost() > s.budget.movement_ft) {
+    } else if (can_attack && melee_path_cost() > ai_move_left(s, *me)) {
         std::optional<uint8_t> best;
         bool best_clean = false;
         for (uint8_t i = 0; i < me->attacks.size(); ++i) {
@@ -1000,6 +1012,38 @@ Command tactical_command(const Combat& c, std::optional<CombatantId> target) {
 //  * R-G7's grip fact: a versatile melee weapon held in two hands (Archetype::two_handed_grip, the v0 wield model; never with a
 //    two-weapon bonus option) is attacked with ActionRequest::two_handed_grip so Great Weapon Fighting applies. Only rules5e's
 //    Great Weapon Fighting reads the flag.
+bool choose_grapple_instead(const Combat& c, const rules5e::ActionRequest& q) {
+    if (q.kind != ActionKind::Attack || q.special != 0) return false;
+    const auto& s = c.state();
+    const auto* me = rules5e::find(s, q.actor);
+    const auto* t = rules5e::find(s, q.target);
+    if (!me || !t || t->dead || q.attack_index >= me->attacks.size() || !me->attacks[q.attack_index].grapple_instead_ok) return false;
+    // (b) already held by me, incapacitated or restrained: the Bite is legal already, so take the damage
+    if (t->has(rules5e::Condition::Grappled) && rules5e::condition_source(s, t->id, rules5e::Condition::Grappled) == me->id) return false;
+    if (rules5e::is_incapacitated(*t) || t->has(rules5e::Condition::Restrained)) return false;
+    // the claw's average damage would drop the target: take the damage
+    const rules5e::DiceExpr& d = me->attacks[q.attack_index].damage;
+    if ((int(d.count) * (int(d.sides) + 1)) / 2 + int(d.bonus) >= int(t->hp) + int(t->temp_hp)) return false;
+    // (a) a grappled_by_self-gated attack still left in this turn's multiattack, after this one
+    const rules5e::TurnBudget& b = s.budget;
+    const std::vector<uint8_t>* seq = nullptr;
+    std::size_t next = 0;
+    if (b.sequence != 0 && b.sequence <= me->multiattacks.size()) { seq = &me->multiattacks[b.sequence - 1].attacks; next = std::size_t(b.sequence_pos) + 1; }
+    else if (b.sequence == 0 && q.multiattack != 0 && q.multiattack <= me->multiattacks.size()) { seq = &me->multiattacks[q.multiattack - 1].attacks; next = 1; }
+    if (!seq) return false;
+    // the same reach test Combat::do_rules applies to the Bite (footprint-aware distance_tiles vs grid reach_tiles).
+    // TODO(alt-reach): Dwarf's PR3 moves this to 3D reach; follow the shared helper then.
+    const int dist = c.distance_tiles(me->id, t->id);
+    for (std::size_t i = next; i < seq->size(); ++i) {
+        const uint8_t j = (*seq)[i];
+        if (j >= me->attacks.size() || j == q.attack_index) continue;
+        const rules5e::Attack& bite = me->attacks[j];
+        if (!(bite.target_requires_any & rules5e::kTargetGateGrappledBySelf) || bite.ranged) continue;
+        if (dist <= reach_tiles(bite.reach_or_range_ft)) return true;
+    }
+    return false;
+}
+
 Command next_command(const Combat& c, std::optional<CombatantId> target) {
     Command cmd = tactical_command(c, target);
     rules5e::ActionRequest& q = cmd.request;
@@ -1007,6 +1051,7 @@ Command next_command(const Combat& c, std::optional<CombatantId> target) {
     if (cmd.kind != CommandKind::Rules || q.kind != ActionKind::Attack || q.special != 0 || q.as_bonus_action) return cmd;
     const auto* me = rules5e::find(c.state(), q.actor);
     if (!me || q.attack_index >= me->attacks.size()) return cmd;
+    q.grapple_instead = choose_grapple_instead(c, q);   // Tier-A §27 (driver owner's ack pending)
     const rules5e::TurnBudget& b = c.state().budget;
     if (me->reckless_attack && !me->reckless_active && !me->attacks[q.attack_index].ranged && !q.haste_action && b.action &&
         b.attacks_used_mask == 0 && b.sequence == 0)

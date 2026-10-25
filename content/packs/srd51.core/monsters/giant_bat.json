@@ -1,0 +1,76 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.giant_bat",
+  "name": "Giant Bat",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 13
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 22,
+    "formula": "4d10"
+  },
+  "speed": {
+    "walk": 10,
+    "fly": 60
+  },
+  "abilities": {
+    "str": 15,
+    "dex": 16,
+    "con": 11,
+    "int": 2,
+    "wis": 12,
+    "cha": 6
+  },
+  "senses": {
+    "blindsight": 60,
+    "passive_perception": 11
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "1/4",
+    "xp": 50
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "echolocation",
+      "name": "Echolocation",
+      "description": "The bat can't use its blindsight while deafened."
+    },
+    {
+      "id": "keen_hearing",
+      "name": "Keen Hearing",
+      "description": "The bat has advantage on Wisdom (Perception) checks that rely on hearing."
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d6",
+        "ability": "str"
+      },
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +4 to hit, reach 5 ft., one creature. Hit: 5 (1d6 + 2) piercing damage."
+    }
+  ]
+}

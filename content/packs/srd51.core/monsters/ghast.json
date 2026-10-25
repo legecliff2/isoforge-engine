@@ -1,0 +1,150 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.ghast",
+  "name": "Ghast",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "undead",
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 13
+  },
+  "hands": 2,
+  "hit_points": {
+    "average": 36,
+    "formula": "8d8"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 16,
+    "dex": 17,
+    "con": 10,
+    "int": 11,
+    "wis": 10,
+    "cha": 8
+  },
+  "damage_resistances": [
+    "necrotic"
+  ],
+  "damage_immunities": [
+    "poison"
+  ],
+  "condition_immunities": [
+    "poisoned",
+    "charmed",
+    "exhaustion"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 10
+  },
+  "languages": [
+    "Common"
+  ],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "stench",
+      "name": "Stench",
+      "description": "Any creature that starts its turn within 5 ft. of the ghast must succeed on a DC 10 Constitution saving throw or be poisoned until the start of its next turn. On a successful saving throw, the creature is immune to the ghast's Stench for 24 hours.",
+      "effect": {
+        "kind": "aura",
+        "radius_ft": 5,
+        "on": "start_turn",
+        "save": {
+          "ability": "con",
+          "dc": 10
+        },
+        "condition": "poisoned",
+        "duration": "until_start_of_next_turn",
+        "success_immunity_hours": 24
+      }
+    },
+    {
+      "id": "turn_defiance",
+      "name": "Turn Defiance",
+      "description": "The ghast and any ghouls within 30 ft. of it have advantage on saving throws against effects that turn undead."
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d8",
+        "ability": "dex"
+      },
+      "attack_bonus": {
+        "value": 3,
+        "reason": "SRD Ghast Bite prints +3; damage 2d8 + 3 fits Dex 17 (+3) or Str 16 (+3), ability + PB 2 = +5 (approved: match the SRD print)"
+      },
+      "to_hit": 3,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d8+3",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +3 to hit, reach 5 ft., one creature. Hit: 12 (2d8 + 3) piercing damage."
+    },
+    {
+      "id": "claws",
+      "name": "Claws",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "dex"
+      },
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+3",
+          "type": "slashing"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "con",
+            "dc": 10
+          },
+          "apply": [
+            {
+              "condition": "paralyzed",
+              "duration": {
+                "kind": "rounds",
+                "n": 10
+              },
+              "repeat_save": "end_of_turn"
+            }
+          ],
+          "when": [
+            {
+              "kind": "not_creature_type",
+              "creature_types": [
+                "undead"
+              ]
+            }
+          ]
+        }
+      ],
+      "description": "Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 10 (2d6 + 3) slashing damage. If the target is a creature other than an undead, it must succeed on a DC 10 Constitution saving throw or be paralyzed for 1 minute. The target can repeat the saving throw at the end of each of its turns, ending the effect on itself on a success."
+    }
+  ]
+}

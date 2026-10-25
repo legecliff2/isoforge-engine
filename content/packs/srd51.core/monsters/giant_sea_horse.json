@@ -1,0 +1,118 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.giant_sea_horse",
+  "name": "Giant Sea Horse",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 13,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 11,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 16,
+    "formula": "3d10"
+  },
+  "speed": {
+    "walk": 0,
+    "swim": 40
+  },
+  "abilities": {
+    "str": 12,
+    "dex": 15,
+    "con": 11,
+    "int": 2,
+    "wis": 12,
+    "cha": 5
+  },
+  "senses": {
+    "passive_perception": 11
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "1/2",
+    "xp": 100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "charge",
+      "name": "Charge",
+      "description": "If the sea horse moves at least 20 ft. straight toward a target and then hits it with a ram attack on the same turn, the target takes an extra 7 (2d6) bludgeoning damage. If the target is a creature, it must succeed on a DC 11 Strength saving throw or be knocked prone.",
+      "effect": {
+        "kind": "on_event",
+        "on": "hit",
+        "limit": "once_per_turn",
+        "when": [
+          {
+            "kind": "weapon",
+            "is": "melee"
+          },
+          {
+            "kind": "moved_at_least_ft",
+            "ft": 20
+          }
+        ],
+        "effects": [
+          {
+            "kind": "extra_damage",
+            "damage": [
+              {
+                "dice": "2d6",
+                "type": "bludgeoning"
+              }
+            ]
+          },
+          {
+            "kind": "save_condition",
+            "save": {
+              "ability": "str",
+              "dc": 11
+            },
+            "apply": [
+              {
+                "condition": "prone"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "water_breathing",
+      "name": "Water Breathing",
+      "description": "The sea horse can breathe only underwater."
+    }
+  ],
+  "actions": [
+    {
+      "id": "ram",
+      "name": "Ram",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d6",
+        "ability": "str"
+      },
+      "to_hit": 3,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+1",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +3 to hit, reach 5 ft., one target. Hit: 4 (1d6 + 1) bludgeoning damage."
+    }
+  ]
+}

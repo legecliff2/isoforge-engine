@@ -72,7 +72,7 @@ def bugbear5() -> dict:
 
 
 AT5_KEYS = ("derive", "equipment", "natural_armor", "ac_adjust", "weapon_dice_multiplier", "weapons", "hands",
-            "proficiency_bonus_reason", "emits_light")
+            "proficiency_bonus_reason", "emits_light", "passive_perception_reason")
 
 
 def as_monster4(d: dict) -> dict:
@@ -82,7 +82,7 @@ def as_monster4(d: dict) -> dict:
     for k in AT5_KEYS:
         d.pop(k, None)
     for a in d["actions"]:
-        for k in ("weapon", "natural", "attack_bonus", "use"):
+        for k in ("weapon", "natural", "attack_bonus", "damage_override", "use", "ability"):
             a.pop(k, None)
     for t in d.get("traits") or []:
         if isinstance(t.get("effect"), dict) and t["effect"].get("kind") == "weapon_extra_dice":
@@ -182,8 +182,16 @@ class AppendOnly(unittest.TestCase):
             if k != "actions":
                 self.assertEqual(canon(m5["stat_block"]["properties"][k]), canon(v), k)
         self.assertEqual(set(c2["stat_block"]["required"]) - set(m5["stat_block"]["required"]), {"proficiency_bonus"})
-        self.assertEqual(set(m5["action"]["properties"]) - set(c2["action"]["properties"]), {"weapon", "natural", "attack_bonus", "use"})
+        self.assertEqual(set(m5["action"]["properties"]) - set(c2["action"]["properties"]), {"weapon", "natural", "attack_bonus", "damage_override", "use",
+                          # batch 3 riders (monster@5 only)
+                          "drain", "curse", "target_requires_any", "ability_drain", "feet", "with_attack",
+                          "ability",   # CONTENT_CONVENTIONS "Attack ability"
+                          "also_on_fail_by", "immune_on_success", "target_must_see_source"})   # Tier-A §26
         for k, v in c2["action"]["properties"].items():
+            if k == "kind":   # monster@5 appends "teleport" (batch 3, blink dog); common@2's enum is a strict prefix
+                m_enum, c_enum = m5["action"]["properties"][k]["enum"], v["enum"]
+                self.assertEqual(m_enum, c_enum + ["teleport"], k)
+                continue
             if k == "damage":   # CONTENT_CONVENTIONS 19: items widened to monster_damage (common@2 damage | {flat, type})
                 self.assertEqual(m5["action"]["properties"][k]["items"], {"$ref": "#/$defs/monster_damage"})
                 self.assertEqual(m5["monster_damage"]["oneOf"][0], {"$ref": "../common/v2.schema.json#/$defs/damage"})
@@ -204,8 +212,10 @@ class TagTable(unittest.TestCase):
             self.assertEqual(set(checks_v4.TAG_TABLE[tag].top_level_keys), declared, tag)
             r4, r5 = checks_v4.TAG_TABLE[f"{typ}@4"], checks_v4.TAG_TABLE[tag]
             local = checks_v4.MONSTER_AT5_EFFECT_KINDS if typ == "monster" else frozenset()
-            self.assertEqual((r4.action_kinds, r4.effect_kinds | local, r4.cost_values), (r5.action_kinds, r5.effect_kinds, r5.cost_values))
-        self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice"})
+            local_act = checks_v4.MONSTER_AT5_ACTION_KINDS if typ == "monster" else frozenset()
+            self.assertEqual((r4.action_kinds | local_act, r4.effect_kinds | local, r4.cost_values), (r5.action_kinds, r5.effect_kinds, r5.cost_values))
+        self.assertEqual(checks_v4.MONSTER_AT5_EFFECT_KINDS, {"weapon_extra_dice", "save_advantage", "aura"})
+        self.assertEqual(checks_v4.MONSTER_AT5_ACTION_KINDS, {"teleport"})
 
 
 class LightPresetAndVisual(unittest.TestCase):
@@ -411,8 +421,9 @@ class DeriveCheck(unittest.TestCase):
                 self.assertIs(d["derive"], True, f.name)
                 for a in d["actions"]:
                     if a["kind"] in ("melee_weapon_attack", "ranged_weapon_attack"):
-                        self.assertTrue("weapon" in a or "natural" in a, f"{f.name}: {a['id']}")
-        self.assertEqual(n, 53)   # 33 converted (PR B) + 9 bestiary v0.1 batch 1 + 11 tier B batch d1
+                        flat = all("flat" in c for c in a["damage"][:1])   # CONTENT_CONVENTIONS 19: no die to derive from
+                        self.assertTrue("weapon" in a or "natural" in a or flat, f"{f.name}: {a['id']}")
+        self.assertEqual(n, 127)   # 33 converted (PR B) + 9 bestiary v0.1 batch 1 + 9 batch 2 + rat, scorpion (flat) + satyr, ghast (batch 3) + gladiator (riders, §21) + 5 batch 3b (blink dog deferred) + 11 tier B batch d1 + 10 batch D2 + 3 flat-damage batch d3 + acolyte, cult fanatic (casters) + blink dog, mummy (Tier-A b3c) + 6 CR 0 beasts (badger, eagle, owl, quipper, raven, vulture) + 4 CR 1/8 beasts (blood hawk, flying snake, giant crab, stirge) + 5 CR 1/4 batch B (constrictor snake, elk, panther, swarm of bats, swarm of ravens) + 4 CR 1/4 batch A beasts (giant badger, giant bat, giant frog, giant owl) + 4 CR 1/4 batch C (drow, pseudodragon, sprite, steam mephit) + 5 CR 1/2 batch D (giant goat, giant sea horse, giant wasp, swarm of insects, warhorse) + 5 CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) + 5 CR 1/2 batch F (crocodile, darkmantle, rust monster, gray ooze, deep gnome)
         self.assertEqual(core("monsters/goblin.json")["$schema"], "monster@3")   # fl1 compat: left at @3
 
     def test_valid_conversions(self):
@@ -425,6 +436,24 @@ class DeriveCheck(unittest.TestCase):
         self.assertEqual(sum("attack_bonus 3 (" in x for x in w), 2, w)
         _e, w = self.run_one(mon("skeleton"))
         self.assertTrue(any("test.v4.skeleton: ac_adjust 1 (" in x for x in w), w)
+
+    def test_damage_override(self):
+        # CONTENT_CONVENTIONS 21: an explicit printed damage[0] with a reason (SRD Gladiator thrown Spear 2d6 + 4). Brute adds
+        # its die on melee use only, so a thrown line printed with the extra die needs the override; bugbear stays as printed.
+        d = mon("bugbear"); a = act(d, "javelin_thrown")
+        a["damage"][0]["dice"] = "2d6+2"
+        self.expect(d, "test.v4.bugbear.javelin_thrown: derived damage 1d6+2 != printed 2d6+2 (weapon_dice_multiplier 2 would match)")
+        a["damage_override"] = {"dice": "2d6+2", "reason": "test: printed with the Brute die at range"}
+        e, w = self.run_one(d)
+        self.assertEqual(e, [])
+        self.assertTrue(any("test.v4.bugbear.javelin_thrown: damage_override 2d6+2 (" in x for x in w), w)
+        a["damage_override"]["reason"] = "  "
+        self.expect(d, "test.v4.bugbear.javelin_thrown: damage_override needs a reason")
+        d = mon("bugbear"); act(d, "javelin_thrown")["damage_override"] = {"dice": "1d6+2", "reason": "x"}
+        self.expect(d, "test.v4.bugbear.javelin_thrown: damage_override is not needed")
+        d = mon("bugbear"); act(d, "javelin_thrown")["damage_override"] = {"dice": "1d6+2"}
+        e, _w = self.run_one(d)
+        self.assertTrue(any("'reason' is a required property" in x for x in e), e)
 
     def test_ac_mismatch(self):
         d = mon("guard"); d["armor_class"]["value"] = 17
@@ -592,6 +621,38 @@ class StructuralChecks(unittest.TestCase):
         b["proficiency_bonus_reason"] = "authored deviation (test)"
         e = errs_of(pack(**{"monsters/bugbear5.json": b}))
         self.assertFalse(any("proficiency_bonus" in x for x in e), e)
+
+    def test_passive_perception_reason(self):   # Tier-A §25 (Lich ruling): mismatch = error unless srd_printed (then a warning)
+        b = bugbear5(); b["senses"]["passive_perception"] += 3
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "senses.passive_perception")
+        b["passive_perception_reason"] = "srd_printed"
+        e, w = h.validate_docs(pack(**{"monsters/bugbear5.json": b}))
+        self.assertFalse(any("passive_perception" in x for x in e), e)
+        self.assertTrue(any("SRD printed value used" in x for x in w), w)
+        b = bugbear5(); b["passive_perception_reason"] = "srd_printed"   # no mismatch: the reason is refused
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "passive_perception_reason given but")
+
+    def test_dreadful_glare_keys(self):   # Tier-A §26 (Lich ruling): save_effect riders, monster@5 only
+        glare = {"kind": "save_effect", "id": "dreadful_glare", "name": "Dreadful Glare", "magical": True, "range_ft": 60,
+                 "save": {"ability": "wis", "dc": 11},
+                 "apply": [{"condition": "frightened", "duration": {"kind": "until_end_of_caster_next_turn"}}],
+                 "target_must_see_source": True, "also_on_fail_by": {"margin": 5, "condition": "paralyzed"},
+                 "immune_on_success": {"hours": 24, "scope": "same_action"}}
+        b = bugbear5(); b["actions"].append(copy.deepcopy(glare))
+        e, _w = h.validate_docs(pack(**{"monsters/bugbear5.json": b}))
+        self.assertEqual(e, [])
+        b = bugbear5(); g = copy.deepcopy(glare); g["also_on_fail_by"]["condition"] = "frightened"; b["actions"].append(g)
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "must differ from the primary condition")
+        b = bugbear5(); g = copy.deepcopy(glare); g["also_on_fail_by"]["margin"] = 0; b["actions"].append(g)
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "also_on_fail_by")
+        b = bugbear5(); g = copy.deepcopy(glare); g["immune_on_success"]["scope"] = "all"; b["actions"].append(g)
+        self.expect(pack(**{"monsters/bugbear5.json": b}), "immune_on_success")
+        b = bugbear5(); g = copy.deepcopy(glare); g["apply"][0]["repeat_save"] = "end_of_turn"; b["actions"].append(g)
+        e, w = h.validate_docs(pack(**{"monsters/bugbear5.json": b}))
+        self.assertTrue(any("ends both conditions" in x for x in w), w)
+        import checks_v4 as c4
+        e, _w = c4.check_save_effect_riders({"id": "x", "actions": [copy.deepcopy(glare)]}, "monster@4")
+        self.assertTrue(any("need a monster@5 file" in x for x in e), e)
 
     def test_reasons(self):
         b = bugbear5(); b["ac_adjust"] = {"value": 1, "reason": " "}
