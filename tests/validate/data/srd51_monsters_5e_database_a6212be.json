@@ -5638,6 +5638,241 @@
      ]
     }
    ]
+  },
+  "crocodile": {
+   "name": "Crocodile",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 19,
+   "hp_roll": "3d10+3",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "20 ft.",
+    "swim": "20 ft."
+   },
+   "abilities": [
+    15,
+    10,
+    13,
+    2,
+    10,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d10+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "darkmantle": {
+   "name": "Darkmantle",
+   "size": "Small",
+   "type": "monstrosity",
+   "ac": [
+    11
+   ],
+   "hp": 22,
+   "hp_roll": "5d6+5",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "30 ft."
+   },
+   "abilities": [
+    16,
+    12,
+    13,
+    2,
+    10,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Crush",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "rust-monster": {
+   "name": "Rust Monster",
+   "size": "Medium",
+   "type": "monstrosity",
+   "ac": [
+    14
+   ],
+   "hp": 27,
+   "hp_roll": "5d8+5",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    13,
+    12,
+    13,
+    2,
+    13,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d8+1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "gray-ooze": {
+   "name": "Gray Ooze",
+   "size": "Medium",
+   "type": "ooze",
+   "ac": [
+    8
+   ],
+   "hp": 22,
+   "hp_roll": "3d8+9",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "10 ft.",
+    "climb": "10 ft."
+   },
+   "abilities": [
+    12,
+    6,
+    16,
+    1,
+    6,
+    2
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "acid",
+    "cold",
+    "fire"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "blinded",
+    "charmed",
+    "deafened",
+    "exhaustion",
+    "frightened",
+    "prone"
+   ],
+   "attacks": [
+    {
+     "name": "Pseudopod",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "bludgeoning"
+       ],
+       [
+        "2d6",
+        "acid"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "deep-gnome": {
+   "name": "Deep Gnome (Svirfneblin)",
+   "size": "Small",
+   "type": "humanoid",
+   "ac": [
+    15
+   ],
+   "hp": 16,
+   "hp_roll": "3d6+6",
+   "cr": 0.5,
+   "xp": 50,
+   "speed": {
+    "walk": "20 ft."
+   },
+   "abilities": [
+    15,
+    14,
+    14,
+    12,
+    10,
+    9
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "War Pick",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d8+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Poisoned Dart",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
