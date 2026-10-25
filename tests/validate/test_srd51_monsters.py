@@ -21,8 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 95 authored / 15 deferred): batch 3 and tier-A triage (5) + tier B batch d1 (10). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0).
-DEFERRED: list[str] = ["doppelganger", "duergar", "green-hag", "mimic", "rust-monster", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 95 / 15
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 99 authored / 14 deferred): batch 3 and tier-A triage (5) + tier B batch d1 (9). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G).
+DEFERRED: list[str] = ["doppelganger", "duergar", "green-hag", "mimic", "rust-monster", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 99 / 14
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -188,7 +188,7 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual((bite["on_hit"][0]["save"], bite["on_hit"][0]["on_success"]), ({"ability": "con", "dc": 11}, "half"))
         self.assertEqual(load("skeleton")["damage_vulnerabilities"], ["bludgeoning"])
         # Pack Tactics (common@1 open kind pack_tactics, sim #127): one declaration, no fields
-        for idx in ("jackal", "kobold", "wolf", "dire-wolf", "hyena", "tribal-warrior", "vulture"):
+        for idx in ("jackal", "kobold", "wolf", "dire-wolf", "hyena", "tribal-warrior", "vulture", "blood-hawk"):
             with self.subTest(monster=idx):
                 effs = [t["effect"] for t in load(idx)["traits"] if "effect" in t]
                 self.assertEqual(effs, [{"kind": "pack_tactics"}])
@@ -273,6 +273,22 @@ class MonsterTable(unittest.TestCase):
         for idx in ("knight", "gladiator"):
             self.assertNotIn("effect", {t["id"]: t for t in load(idx)["traits"]}["brave"])
         self.assertNotIn("effect", {t["id"]: t for t in load("owl")["traits"]}["flyby"])
+        self.assertNotIn("effect", {t["id"]: t for t in load("flying-snake")["traits"]}["flyby"])
+        # Flying Snake: automatic poison is a second damage component, not a save (SRD: no save)
+        fsb = load("flying-snake")["actions"][0]
+        self.assertEqual(fsb["damage"], [{"flat": 1, "type": "piercing"}, {"dice": "3d4", "type": "poison"}])
+        self.assertNotIn("on_hit", fsb)
+        # Giant Crab: grappled only, two claws (max_grapples 2). Do not set restrains (unlike giant toad).
+        claw = load("giant-crab")["actions"][0]
+        self.assertEqual(claw["on_hit"], [{"kind": "grapple", "escape_dc": 11, "max_grapples": 2}])
+        self.assertNotIn("restrains", claw["on_hit"][0])
+        self.assertNotIn("effect", {t["id"]: t for t in load("giant-crab")["traits"]}["amphibious"])
+        # Stirge: the attack is data; attach / ongoing drain / detach stay in the description (no attach effect)
+        drain = load("stirge")["actions"][0]
+        self.assertEqual((drain["id"], drain["to_hit"], drain["damage"]),
+                         ("blood_drain", 5, [{"dice": "1d4+3", "type": "piercing"}]))
+        self.assertNotIn("on_hit", drain)
+        self.assertNotIn("effect", drain)
         self.assertNotIn("effect", {t["id"]: t for t in load("quipper")["traits"]}["blood_frenzy"])
         self.assertNotIn("effect", {t["id"]: t for t in load("raven")["traits"]}["mimicry"])
         # Gladiator (CONTENT_CONVENTIONS 21): Shield Bash size-gated prone rider, thrown spear damage_override, Brute melee only

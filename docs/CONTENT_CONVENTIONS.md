@@ -306,9 +306,7 @@ count toward the 32-trigger limit. Other riders in the same `on_hit[]` keep thei
 | `on_event` `effects[]` | reaches `compile_rider`: **load error** `unknown rider kind 'grapple'` | error (`grapple is an on_hit[] rider of a weapon attack only`) |
 | `item@1` `on_hit[]` | not read by the sim | error (check 17, like `bonus_attack`): items carry no attack of their own; put the rider on the wielder's action |
 
-Not expressible (content keeps it in `description`): "until this grapple ends, the target is restrained" (crocodile, constrictor
-snake: no condition tied to a grapple), "can't bite another target" / "can grapple only one target per claw", and Restrained with
-an escape (giant spider Web, R-G8 restrain source).
+Druid gap G (monster@5) carries the clauses this section used to leave in `description`: `restrains` ("until this grapple ends, the target is restrained"), `exclusive` ("can't bite another target"), and `max_grapples` ("each claw can grapple only one target"). Giant Crab's Claw is `max_grapples: 2` with `escape_dc` 11 and no `restrains` (the SRD grapples only). Restrained with an escape on a non-grapple attack (giant spider Web) stays an `attack_effect` apply, not this rider.
 
 Versioning: an additive kind with a new closed arm in `common@2 $defs/rider` and one new base property (`escape_dc`). No tag change,
 no migration, no api_level gate: the old schema rejected kind `grapple`, so no existing file can carry it (`tests/compat` and the

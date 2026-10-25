@@ -4580,6 +4580,179 @@
      ]
     }
    ]
+  },
+  "blood-hawk": {
+   "name": "Blood Hawk",
+   "size": "Small",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 7,
+   "hp_roll": "2d6",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    6,
+    14,
+    10,
+    3,
+    14,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Beak",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "flying-snake": {
+   "name": "Flying Snake",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    14
+   ],
+   "hp": 5,
+   "hp_roll": "2d4",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "60 ft.",
+    "swim": "30 ft."
+   },
+   "abilities": [
+    4,
+    18,
+    11,
+    2,
+    12,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "1",
+        "piercing"
+       ],
+       [
+        "3d4",
+        "poison"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-crab": {
+   "name": "Giant Crab",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    15
+   ],
+   "hp": 13,
+   "hp_roll": "3d8",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "30 ft."
+   },
+   "abilities": [
+    13,
+    15,
+    11,
+    1,
+    9,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claw",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "stirge": {
+   "name": "Stirge",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    14
+   ],
+   "hp": 2,
+   "hp_roll": "1d4",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "40 ft."
+   },
+   "abilities": [
+    4,
+    16,
+    11,
+    2,
+    8,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Blood Drain",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d4+3",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
