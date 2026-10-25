@@ -1,0 +1,14 @@
+{
+  "$schema": "item@2",
+  "id": "srd51.item.navigators_tools",
+  "name": "Navigator's Tools",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "gear",
+  "cost_cp": 2500,
+  "weight_oz": 32,
+  "description": "This set of instruments is used for navigation at sea. Proficiency with navigator's tools lets you chart a ship's course and follow navigation charts. In addition, these tools allow you to add your proficiency bonus to any ability check you make to avoid getting lost at sea.",
+  "tool_kind": "other_tools"
+}
