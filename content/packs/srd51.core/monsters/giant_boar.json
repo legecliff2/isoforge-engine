@@ -1,0 +1,138 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.giant_boar",
+  "name": "Giant Boar",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 12,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 12,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 42,
+    "formula": "5d10+15"
+  },
+  "speed": {
+    "walk": 40
+  },
+  "abilities": {
+    "str": 17,
+    "dex": 10,
+    "con": 16,
+    "int": 2,
+    "wis": 7,
+    "cha": 5
+  },
+  "senses": {
+    "passive_perception": 8
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "charge",
+      "name": "Charge",
+      "description": "If the boar moves at least 20 ft. straight toward a target and then hits it with a tusk attack on the same turn, the target takes an extra 7 (2d6) slashing damage. If the target is a creature, it must succeed on a DC 13 Strength saving throw or be knocked prone.",
+      "effect": {
+        "kind": "on_event",
+        "on": "hit",
+        "limit": "once_per_turn",
+        "when": [
+          {
+            "kind": "weapon",
+            "is": "melee"
+          },
+          {
+            "kind": "moved_at_least_ft",
+            "ft": 20
+          }
+        ],
+        "effects": [
+          {
+            "kind": "extra_damage",
+            "damage": [
+              {
+                "dice": "2d6",
+                "type": "slashing"
+              }
+            ]
+          },
+          {
+            "kind": "save_condition",
+            "save": {
+              "ability": "str",
+              "dc": 13
+            },
+            "apply": [
+              {
+                "condition": "prone"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "relentless",
+      "name": "Relentless (Recharges after a Short or Long Rest)",
+      "description": "If the boar takes 10 damage or less that would reduce it to 0 hit points, it is reduced to 1 hit point instead.",
+      "effect": {
+        "kind": "on_event",
+        "on": "drop_to_zero",
+        "when": [
+          {
+            "kind": "damage_at_most",
+            "amount": 10
+          }
+        ],
+        "usage": {
+          "kind": "per_rest",
+          "uses": 1,
+          "rest": "short"
+        },
+        "effects": [
+          {
+            "kind": "set_hp",
+            "value": 1
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "tusk",
+      "name": "Tusk",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "str"
+      },
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+3",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 10 (2d6 + 3) slashing damage."
+    }
+  ]
+}

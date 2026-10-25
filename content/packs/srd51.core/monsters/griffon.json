@@ -1,0 +1,110 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.griffon",
+  "name": "Griffon",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "monstrosity",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 12
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 59,
+    "formula": "7d10+21"
+  },
+  "speed": {
+    "walk": 30,
+    "fly": 80
+  },
+  "abilities": {
+    "str": 18,
+    "dex": 15,
+    "con": 16,
+    "int": 2,
+    "wis": 13,
+    "cha": 8
+  },
+  "skills": {
+    "perception": 5
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 15
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "keen_sight",
+      "name": "Keen Sight",
+      "description": "The griffon has advantage on Wisdom (Perception) checks that rely on sight."
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The griffon makes two attacks: one with its beak and one with its claws.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "beak_claws",
+            "attacks": [
+              "beak",
+              "claws"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "beak",
+      "name": "Beak",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d8",
+        "ability": "str"
+      },
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+4",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one target. Hit: 8 (1d8 + 4) piercing damage."
+    },
+    {
+      "id": "claws",
+      "name": "Claws",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "str"
+      },
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+4",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one target. Hit: 11 (2d6 + 4) slashing damage."
+    }
+  ]
+}

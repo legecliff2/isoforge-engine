@@ -21,8 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 138 authored / 3 deferred): batch 3 and tier-A triage (3: mimic, doppelganger, green hag). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row. Giant Goat, Giant Sea Horse and Warhorse left in CR 1/2 batch D. CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) is authored; Cockatrice petrify and Sahuagin Blood Frenzy stay partial on those rows, not new deferred monsters. Crocodile and Rust Monster left in CR 1/2 batch F (explicit partials, not a silent re-defer). Lion and tiger left in CR 1 batch G (explicit partials, same bonus-bite gap as panther, not a silent re-defer). Giant eagle, giant vulture and hippogriff are authored in that batch; none of them has Flyby on the SRD block. Duergar left in CR 1 batch H (Enlarge, Invisibility, and Duergar Resilience stay partials on the authored monster).
-DEFERRED: list[str] = ["doppelganger", "green-hag", "mimic"]   # docs/SRD_MONSTERS_DEFERRED.md: 138 / 3
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 150 authored / 3 deferred): batch 3 and tier-A triage (3: mimic, doppelganger, green hag). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row. Giant Goat, Giant Sea Horse and Warhorse left in CR 1/2 batch D. CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) is authored; Cockatrice petrify and Sahuagin Blood Frenzy stay partial on those rows, not new deferred monsters. Crocodile and Rust Monster left in CR 1/2 batch F (explicit partials, not a silent re-defer). Lion and tiger left in CR 1 batch G (explicit partials, same bonus-bite gap as panther, not a silent re-defer). Giant eagle, giant vulture and hippogriff are authored in that batch; none of them has Flyby on the SRD block. Duergar left in CR 1 batch H (Enlarge, Invisibility, and Duergar Resilience stay partials on the authored monster). CR 2 batch I authored polar bear, giant boar, giant elk, rhinoceros, saber-toothed tiger and hunter shark; polar bear is complete, and the other five stay partials on the authored rows (straight-toward, elk hooves, tiger bonus bite, quipper Blood Frenzy). CR 2 batch J authored centaur, griffon, pegasus, ankheg, giant constrictor snake and minotaur skeleton; Centaur Charge is pike on_hit only (not a melee on_event). Minotaur Skeleton's 10-foot push stays description only. Mimic stays deferred.
+DEFERRED: list[str] = ["doppelganger", "green-hag", "mimic"]   # docs/SRD_MONSTERS_DEFERRED.md: 150 / 3
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -51,6 +51,8 @@ DEVIATIONS = {
     "swarm-of-quippers": "type: as swarm-of-rats (beast + tag swarm).",
     "crocodile": "speed: a6212be lists walk 20 ft. and swim 20 ft. SRD 5.1 prints 20 ft., swim 30 ft. Authored as swim 30 (the SRD is authoritative, as giant-wasp).",
     "deep-gnome": "xp: the table lists 50 XP; SRD 5.1 prints Challenge 1/2 (100 XP), and the SRD is authoritative (CR 1/2 = 100 XP, as riding-horse). One stat block: the a6212be index is deep-gnome-svirfneblin; Svirfneblin is an alias of srd51.monster.deep_gnome, not a separate document.",
+    "polar-bear": "One SRD 5.1 stat block. Cave Bear is an alias of srd51.monster.polar_bear, not a separate document.",
+    "saber-toothed-tiger": "Bite and Claw damage: the SRD prints +5 (1d10 + 5 / 2d6 + 5); Str 18 derives +4. Carried as an approved damage_override (CONTENT_CONVENTIONS 21; printed value wins). To-hit +6 derives (Str +4 and PB +2) and needs no attack_bonus.",
 }
 # Mirror errors in hit points: monster -> (average, formula) as printed in the SRD 5.1 block (DEVIATIONS).
 HP_ERRATA = {"cult-fanatic": (33, "6d8+6")}
@@ -170,10 +172,13 @@ class MonsterTable(unittest.TestCase):
             return {o["id"]: o["attacks"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "multiattack"
                     for o in t["effect"]["options"]}
         self.assertEqual(opts("black-bear"), {"bite_claws": ["bite", "claws"]})
+        self.assertEqual(opts("polar-bear"), {"bite_claws": ["bite", "claws"]})
         self.assertEqual(opts("giant-badger"), {"bite_claws": ["bite", "claws"]})
         self.assertEqual(opts("giant-eagle"), {"beak_talons": ["beak", "talons"]})
         self.assertEqual(opts("giant-vulture"), {"beak_talons": ["beak", "talons"]})
         self.assertEqual(opts("hippogriff"), {"beak_claws": ["beak", "claws"]})
+        self.assertEqual(opts("centaur"), {"pike_hooves": ["pike", "hooves"], "longbow_x2": ["longbow", "longbow"]})
+        self.assertEqual(opts("griffon"), {"beak_claws": ["beak", "claws"]})
         self.assertEqual(opts("gargoyle"), {"bite_claws": ["bite", "claws"]})
         self.assertEqual(opts("animated-armor"), {"slam_slam": ["slam", "slam"]})
         self.assertEqual(opts("scout"), {"melee": ["shortsword"] * 2, "ranged": ["longbow"] * 2})
@@ -873,9 +878,230 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual(fr["apply"], [{"condition": "restrained", "max_size": "small",
                                         "contain": {"kind": "swallow", "damage": {"dice": "2d4", "type": "acid"}}}])
 
+    def test_cr2_batch_j(self):
+        # CR 2 batch J. Centaur Charge is pike on_hit only (extra 3d6 piercing after 30 ft; no prone, no melee
+        # on_event). Minotaur Skeleton Charge is gore on_hit (extra 2d8 piercing, Str DC 14 prone); the 10 ft push
+        # stays in the trait text. Ankheg Acid Spray is the wyrmling line. Mimic stays deferred.
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        cen = load("centaur")
+        self.assertEqual(cen["speed"], {"walk": 50})
+        self.assertEqual([e["item"] for e in cen["equipment"]], ["srd51.item.pike", "srd51.item.longbow"])
+        self.assertEqual(cen["hands"], 2)
+        self.assertNotIn("effect", trait("centaur", "charge"))
+        self.assertNotIn("on_event", json.dumps(trait("centaur", "charge")))
+        pike = act("centaur", "pike")
+        self.assertEqual(pike["weapon"], "srd51.item.pike")
+        self.assertEqual(pike["use"], "two_hands")
+        self.assertEqual((pike["to_hit"], pike["reach"]), (6, 10))
+        self.assertEqual(pike["damage"], [{"dice": "1d10+4", "type": "piercing"}])
+        self.assertEqual(pike["on_hit"], [{"kind": "extra_damage", "damage": [{"dice": "3d6", "type": "piercing"}],
+                                           "when": [{"kind": "moved_at_least_ft", "ft": 30}]}])
+        self.assertNotIn("save_condition", json.dumps(pike))
+        self.assertNotIn("prone", json.dumps(pike))
+        self.assertNotIn("on_hit", act("centaur", "hooves"))
+        self.assertEqual(act("centaur", "hooves")["natural"], {"dice": "2d6", "ability": "str"})
+        bow = act("centaur", "longbow")
+        self.assertEqual(bow["weapon"], "srd51.item.longbow")
+        self.assertEqual((bow["to_hit"], bow["range"]), (4, [150, 600]))
+        self.assertNotIn("natural", bow)
+
+        gr = load("griffon")
+        self.assertEqual(gr["speed"], {"walk": 30, "fly": 80})
+        self.assertEqual(gr["skills"], {"perception": 5})
+        self.assertEqual(gr["senses"]["darkvision"], 60)
+        self.assertNotIn("effect", trait("griffon", "keen_sight"))
+        self.assertEqual(act("griffon", "beak")["natural"], {"dice": "1d8", "ability": "str"})
+        self.assertEqual(act("griffon", "claws")["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertNotIn("ability", act("griffon", "beak"))
+        self.assertNotIn("ability", act("griffon", "claws"))
+        self.assertEqual(len(trait("griffon", "multiattack")["effect"]["options"]), 1)
+
+        peg = load("pegasus")
+        self.assertEqual((peg["type"], peg["speed"], peg["hands"]),
+                         ("celestial", {"walk": 60, "fly": 90}, 0))
+        self.assertEqual(peg["saving_throws"], {"dex": 4, "wis": 4, "cha": 3})
+        self.assertEqual(peg["skills"], {"perception": 6})
+        self.assertEqual(act("pegasus", "hooves")["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertNotIn("traits", peg)
+        self.assertNotIn("weapon", act("pegasus", "hooves"))
+
+        ank = load("ankheg")
+        self.assertEqual(ank["speed"], {"walk": 30, "burrow": 10})
+        self.assertEqual(ank["natural_armor"], {"base": 14, "dex": True})
+        self.assertEqual(ank["senses"]["darkvision"], 60)
+        self.assertEqual(ank["senses"]["tremorsense"], 60)
+        bite = act("ankheg", "bite")
+        self.assertEqual(bite["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual(bite["damage"], [{"dice": "2d6+3", "type": "slashing"}, {"dice": "1d6", "type": "acid"}])
+        self.assertEqual(bite["on_hit"], [{"kind": "grapple", "escape_dc": 13, "exclusive": True}])
+        self.assertNotIn("restrains", bite["on_hit"][0])
+        self.assertIn("advantage", bite["description"])
+        self.assertIn("Large or smaller", bite["description"])
+        spray = act("ankheg", "acid_spray")
+        self.assertEqual(spray["kind"], "save_effect")
+        self.assertEqual(spray["save"], {"ability": "dex", "dc": 13})
+        self.assertEqual(spray["area"], {"shape": "line", "size_ft": 30, "width_ft": 5})
+        self.assertEqual(spray["damage"], [{"dice": "3d6", "type": "acid"}])
+        self.assertEqual((spray["on_success"], spray["usage"]), ("half", {"kind": "recharge", "min": 6}))
+        self.assertIn("no creature grappled", spray["description"])
+        self.assertNotIn("when", spray)
+        self.assertIn("11 while prone", ank["armor_class"]["note"])
+
+        snake = load("giant-constrictor-snake")
+        self.assertEqual((snake["size"], snake["speed"], snake["hands"]),
+                         ("huge", {"walk": 30, "swim": 30}, 0))
+        self.assertEqual(snake["senses"]["blindsight"], 10)
+        self.assertEqual(act("giant-constrictor-snake", "bite")["reach"], 10)
+        self.assertNotIn("on_hit", act("giant-constrictor-snake", "bite"))
+        con = act("giant-constrictor-snake", "constrict")
+        self.assertEqual(con["natural"], {"dice": "2d8", "ability": "str"})
+        self.assertEqual(con["on_hit"], [{"kind": "grapple", "escape_dc": 16, "restrains": True, "exclusive": True}])
+
+        sk = load("minotaur-skeleton")
+        self.assertEqual(sk["damage_vulnerabilities"], ["bludgeoning"])
+        self.assertEqual(sk["damage_immunities"], ["poison"])
+        self.assertEqual(sk["condition_immunities"], ["poisoned", "exhaustion"])
+        self.assertEqual(sk["hands"], 2)
+        self.assertEqual(sk["weapon_dice_multiplier"], 2)
+        self.assertEqual([e["item"] for e in sk["equipment"]], ["srd51.item.greataxe"])
+        axe = act("minotaur-skeleton", "greataxe")
+        self.assertEqual(axe["weapon"], "srd51.item.greataxe")
+        self.assertEqual(axe["use"], "two_hands")
+        self.assertNotIn("natural", axe)
+        self.assertEqual(axe["damage"], [{"dice": "2d12+4", "type": "slashing"}])
+        self.assertNotIn("effect", trait("minotaur-skeleton", "charge"))
+        self.assertIn("pushed up to 10 feet", trait("minotaur-skeleton", "charge")["description"])
+        gore = act("minotaur-skeleton", "gore")
+        self.assertEqual(gore["natural"], {"dice": "2d8", "ability": "str"})
+        self.assertEqual(gore["on_hit"], [
+            {"kind": "extra_damage", "damage": [{"dice": "2d8", "type": "piercing"}],
+             "when": [{"kind": "moved_at_least_ft", "ft": 10}]},
+            {"kind": "save_condition", "save": {"ability": "str", "dc": 14},
+             "apply": [{"condition": "prone"}], "when": [{"kind": "moved_at_least_ft", "ft": 10}]},
+        ])
+        self.assertNotIn("forced_move", json.dumps(sk))
+
+    def test_cr2_batch_i(self):
+        # CR 2 batch I. Polar bear is the brown-bear multiattack (printed +7 derives; Keen Smell descriptive;
+        # Cave Bear is an alias, not a file). Giant boar and rhinoceros are the boar/goat trait-level Charge.
+        # Giant elk is the elk ram on_hit (not a trait on_event, so hooves do not charge). Saber-toothed tiger
+        # is the tiger claw Pounce; printed damage +5 is a damage_override over Str 18. Hunter shark is the
+        # quipper Blood Frenzy partial with reef-shark swim-only speed and no Pack Tactics.
+
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        when = [{"kind": "weapon", "is": "melee"}, {"kind": "moved_at_least_ft", "ft": 20}]
+        moved = [{"kind": "moved_at_least_ft", "ft": 20}]
+
+        bear = load("polar-bear")
+        self.assertEqual(bear["speed"], {"walk": 40, "swim": 30})
+        self.assertEqual(bear["skills"], {"perception": 3})
+        self.assertEqual(bear["natural_armor"], {"base": 12, "dex": True})
+        self.assertEqual((act("polar-bear", "bite")["to_hit"], act("polar-bear", "claws")["to_hit"]), (7, 7))
+        self.assertEqual(act("polar-bear", "bite")["natural"], {"dice": "1d8", "ability": "str"})
+        self.assertEqual(act("polar-bear", "claws")["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual(act("polar-bear", "bite")["damage"], [{"dice": "1d8+5", "type": "piercing"}])
+        self.assertEqual(act("polar-bear", "claws")["damage"], [{"dice": "2d6+5", "type": "slashing"}])
+        self.assertNotIn("attack_bonus", act("polar-bear", "bite"))
+        self.assertNotIn("attack_bonus", act("polar-bear", "claws"))
+        self.assertNotIn("effect", trait("polar-bear", "keen_smell"))
+        self.assertEqual([t["id"] for t in bear["traits"] if "effect" in t], ["multiattack"])
+        self.assertFalse((PACK / "monsters" / "cave_bear.json").exists())
+
+        boar = trait("giant-boar", "charge")["effect"]
+        self.assertEqual((boar["kind"], boar["on"], boar["limit"], boar["when"]), ("on_event", "hit", "once_per_turn", when))
+        self.assertEqual(boar["effects"], [
+            {"kind": "extra_damage", "damage": [{"dice": "2d6", "type": "slashing"}]},
+            {"kind": "save_condition", "save": {"ability": "str", "dc": 13}, "apply": [{"condition": "prone"}]}])
+        rel = trait("giant-boar", "relentless")["effect"]
+        self.assertEqual((rel["on"], rel["when"]), ("drop_to_zero", [{"kind": "damage_at_most", "amount": 10}]))
+        self.assertEqual((rel["usage"], rel["effects"]),
+                         ({"kind": "per_rest", "uses": 1, "rest": "short"}, [{"kind": "set_hp", "value": 1}]))
+        self.assertIn("Recharges", trait("giant-boar", "relentless")["name"])
+        self.assertEqual(act("giant-boar", "tusk")["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual((act("giant-boar", "tusk")["to_hit"], act("giant-boar", "tusk")["damage"]),
+                         (5, [{"dice": "2d6+3", "type": "slashing"}]))
+        self.assertEqual(load("giant-boar")["natural_armor"], {"base": 12, "dex": True})
+        self.assertEqual(load("giant-boar")["speed"], {"walk": 40})
+
+        self.assertNotIn("effect", trait("giant-elk", "charge"))
+        ram = act("giant-elk", "ram")
+        self.assertEqual(ram["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual((ram["to_hit"], ram["reach"]), (6, 10))
+        self.assertEqual(ram["on_hit"], [
+            {"kind": "extra_damage", "damage": [{"dice": "2d6", "type": "bludgeoning"}], "when": moved},
+            {"kind": "save_condition", "save": {"ability": "str", "dc": 14}, "apply": [{"condition": "prone"}], "when": moved}])
+        hooves = act("giant-elk", "hooves")
+        self.assertEqual(hooves["natural"], {"dice": "4d8", "ability": "str"})
+        self.assertEqual((hooves["to_hit"], hooves["reach"]), (6, 5))
+        self.assertNotIn("on_hit", hooves)
+        self.assertIn("one prone creature", hooves["description"])
+        self.assertEqual(load("giant-elk")["speed"], {"walk": 60})
+        self.assertEqual(load("giant-elk")["skills"], {"perception": 4})
+        self.assertEqual(load("giant-elk")["natural_armor"], {"base": 11, "dex": True})
+        self.assertEqual(load("giant-elk")["languages"],
+                         ["Giant Elk", "understands Common, Elvish, and Sylvan but can't speak"])
+
+        rhino = trait("rhinoceros", "charge")["effect"]
+        self.assertEqual((rhino["kind"], rhino["on"], rhino["limit"], rhino["when"]), ("on_event", "hit", "once_per_turn", when))
+        self.assertEqual(rhino["effects"], [
+            {"kind": "extra_damage", "damage": [{"dice": "2d8", "type": "bludgeoning"}]},
+            {"kind": "save_condition", "save": {"ability": "str", "dc": 15}, "apply": [{"condition": "prone"}]}])
+        self.assertEqual(act("rhinoceros", "gore")["natural"], {"dice": "2d8", "ability": "str"})
+        self.assertEqual((act("rhinoceros", "gore")["to_hit"], act("rhinoceros", "gore")["damage"]),
+                         (7, [{"dice": "2d8+5", "type": "bludgeoning"}]))
+        self.assertEqual(load("rhinoceros")["natural_armor"], {"base": 12, "dex": True})
+        self.assertEqual(load("rhinoceros")["armor_class"], {"value": 11, "note": "natural armor"})
+
+        pounce = [{"kind": "save_condition", "save": {"ability": "str", "dc": 14}, "apply": [{"condition": "prone"}],
+                   "when": moved}]
+        tiger = load("saber-toothed-tiger")
+        self.assertEqual(tiger["skills"], {"perception": 3, "stealth": 6})
+        self.assertNotIn("darkvision", tiger["senses"])
+        self.assertNotIn("natural_armor", tiger)
+        self.assertEqual(act("saber-toothed-tiger", "bite")["natural"], {"dice": "1d10", "ability": "str"})
+        self.assertEqual(act("saber-toothed-tiger", "claw")["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual((act("saber-toothed-tiger", "bite")["to_hit"], act("saber-toothed-tiger", "claw")["to_hit"]), (6, 6))
+        self.assertNotIn("attack_bonus", act("saber-toothed-tiger", "bite"))
+        self.assertNotIn("attack_bonus", act("saber-toothed-tiger", "claw"))
+        self.assertEqual(act("saber-toothed-tiger", "bite")["damage_override"]["dice"], "1d10+5")
+        self.assertEqual(act("saber-toothed-tiger", "claw")["damage_override"]["dice"], "2d6+5")
+        self.assertEqual(act("saber-toothed-tiger", "bite")["damage"], [{"dice": "1d10+5", "type": "piercing"}])
+        self.assertEqual(act("saber-toothed-tiger", "claw")["damage"], [{"dice": "2d6+5", "type": "slashing"}])
+        self.assertNotIn("on_hit", act("saber-toothed-tiger", "bite"))
+        self.assertEqual(act("saber-toothed-tiger", "claw")["on_hit"], pounce)
+        self.assertNotIn("effect", trait("saber-toothed-tiger", "pounce"))
+        self.assertNotIn("effect", trait("saber-toothed-tiger", "keen_smell"))
+        self.assertIn("bonus action", trait("saber-toothed-tiger", "pounce")["description"])
+        self.assertNotIn("bonus_attack", str(tiger))
+        self.assertNotIn("bonus_actions", tiger)
+        self.assertNotIn("pack_tactics", {t["id"] for t in tiger["traits"]})
+
+        shark = load("hunter-shark")
+        self.assertEqual(shark["speed"], {"walk": 0, "swim": 40})
+        self.assertEqual(shark["senses"]["darkvision"], 30)
+        self.assertEqual(shark["skills"], {"perception": 2})
+        self.assertEqual(shark["natural_armor"], {"base": 11, "dex": True})
+        self.assertEqual(act("hunter-shark", "bite")["natural"], {"dice": "2d8", "ability": "str"})
+        self.assertEqual((act("hunter-shark", "bite")["to_hit"], act("hunter-shark", "bite")["damage"]),
+                         (6, [{"dice": "2d8+4", "type": "piercing"}]))
+        self.assertNotIn("effect", trait("hunter-shark", "blood_frenzy"))
+        self.assertNotIn("effect", trait("hunter-shark", "water_breathing"))
+        self.assertNotIn("pack_tactics", {t["id"] for t in shark["traits"]})
+        self.assertFalse((PACK / "monsters" / "mimic.json").exists())
+
     def test_authored_and_deferred_split(self):
         have = sorted(p.stem for p in (PACK / "monsters").glob("*.json"))
-        self.assertEqual((len(AUTHORED), len(DEFERRED)), (138, 3))
+        self.assertEqual((len(AUTHORED), len(DEFERRED)), (150, 3))
         self.assertEqual(have, sorted([i.replace("-", "_") for i in AUTHORED] + ["goblin"]))
         for idx in DEFERRED:
             self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)

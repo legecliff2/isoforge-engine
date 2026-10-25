@@ -1,0 +1,108 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.ankheg",
+  "name": "Ankheg",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "monstrosity",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 14,
+    "note": "natural armor; 11 while prone"
+  },
+  "natural_armor": {
+    "base": 14,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 39,
+    "formula": "6d10+6"
+  },
+  "speed": {
+    "walk": 30,
+    "burrow": 10
+  },
+  "abilities": {
+    "str": 17,
+    "dex": 11,
+    "con": 13,
+    "int": 1,
+    "wis": 13,
+    "cha": 6
+  },
+  "senses": {
+    "darkvision": 60,
+    "tremorsense": 60,
+    "passive_perception": 11
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "str"
+      },
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+3",
+          "type": "slashing"
+        },
+        {
+          "dice": "1d6",
+          "type": "acid"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "grapple",
+          "escape_dc": 13,
+          "exclusive": true
+        }
+      ],
+      "description": "Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 10 (2d6 + 3) slashing damage plus 3 (1d6) acid damage. If the target is a Large or smaller creature, it is grappled (escape DC 13). Until this grapple ends, the ankheg can bite only the grappled creature and has advantage on attack rolls to do so."
+    },
+    {
+      "id": "acid_spray",
+      "name": "Acid Spray",
+      "kind": "save_effect",
+      "description": "The ankheg spits acid in a line that is 30 ft. long and 5 ft. wide, provided that it has no creature grappled. Each creature in that line must make a DC 13 Dexterity saving throw, taking 10 (3d6) acid damage on a failed save, or half as much damage on a successful one.",
+      "save": {
+        "ability": "dex",
+        "dc": 13
+      },
+      "origin": "self",
+      "area": {
+        "shape": "line",
+        "size_ft": 30,
+        "width_ft": 5
+      },
+      "damage": [
+        {
+          "dice": "3d6",
+          "type": "acid"
+        }
+      ],
+      "on_success": "half",
+      "usage": {
+        "kind": "recharge",
+        "min": 6
+      }
+    }
+  ]
+}
