@@ -39,6 +39,8 @@ struct LightProviderInputs {
     bool incremental = true;
 };
 
+// altitude PR5 (docs/SRD_COMBAT_COVERAGE.md §11.8): lighting stays per-tile 2D. Walls block light at any height and
+// light is not attenuated by height; an airborne creature is lit by the tile under it (sight_facts_of samples pos()).
 class LightDriver {
 public:
     explicit LightDriver(LightProviderInputs in = {});

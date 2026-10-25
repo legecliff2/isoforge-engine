@@ -78,7 +78,17 @@ public:
     // Line of sight between tile centres (integer supercover traversal, symmetric). Blocked if a
     // tile strictly between the endpoints blocks sight; where the line passes exactly through a
     // corner it is blocked only if both tiles beside the corner block sight.
+    // altitude PR5: the 2-arg form uses each endpoint's ground height (0 on chunk@1 / chunk@2: the v0 test, unchanged).
     bool line_of_sight(Vec2i a, Vec2i b) const noexcept;
+    // altitude PR5 3D LoS: the line runs from absolute height a_ft at a's centre to b_ft at b's centre. A mid tile blocks
+    // only where the line's height there is below sight_top_ft(tile). The height at a tile is the integer interpolation
+    // a_ft + (b_ft - a_ft) * k / n, k = Manhattan steps from a (the supercover step count), n = |dx| + |dy|, compared
+    // exactly as a_ft * (n - k) + b_ft * k < top * n (int64, no division, symmetric). Corners: both side tiles at k + 1.
+    bool line_of_sight(Vec2i a, Vec2i b, int a_ft, int b_ft) const noexcept;
+    // altitude PR5: the height below which p blocks a sight line. blocks_sight: 5 * its blocks_sight elevation (chunk@3;
+    // 0 = full height, kFullHeight; always kFullHeight on chunk@1 / chunk@2). Higher ground (chunk@3) blocks below
+    // ground_ft. The max of both; 0 = never blocks.
+    int  sight_top_ft(Vec2i p) const noexcept;
     int  step_cost_ft(Vec2i to) const noexcept { return difficult(to) ? 2 * kFeetPerTile : kFeetPerTile; }
     // Square footprints (side n, anchored at the min-x/min-y tile). All n*n tiles walkable.
     bool footprint_walkable(Vec2i anchor, int n) const noexcept;
@@ -137,6 +147,7 @@ private:
         std::array<uint8_t, world::kChunkSize * world::kChunkSize> ground{};  // chunk@3 ground (elevation steps)
         std::array<uint8_t, world::kChunkSize * world::kChunkSize> top{};     // chunk@3 obstacle top steps (0 = full)
         std::array<uint8_t, world::kChunkSize * world::kChunkSize> depth{};   // chunk@3 water depth steps
+        std::array<uint8_t, world::kChunkSize * world::kChunkSize> stop{};    // chunk@3 blocks_sight top steps (0 = full)
     };
     void add_chunk(const world::Chunk& c);
     std::vector<Vec2i> path_impl(Vec2i from, const std::vector<Vec2i>& goals, const std::vector<Vec2i>& occupied,
