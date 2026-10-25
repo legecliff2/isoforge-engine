@@ -1,0 +1,134 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.pseudodragon",
+  "name": "Pseudodragon",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "tiny",
+  "type": "dragon",
+  "alignment": "neutral good",
+  "armor_class": {
+    "value": 13,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 11,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 7,
+    "formula": "2d4+2"
+  },
+  "speed": {
+    "walk": 15,
+    "fly": 60
+  },
+  "abilities": {
+    "str": 6,
+    "dex": 15,
+    "con": 13,
+    "int": 10,
+    "wis": 12,
+    "cha": 10
+  },
+  "skills": {
+    "perception": 3,
+    "stealth": 4
+  },
+  "senses": {
+    "blindsight": 10,
+    "darkvision": 60,
+    "passive_perception": 13
+  },
+  "languages": [
+    "understands Common and Draconic but can't speak"
+  ],
+  "challenge": {
+    "rating": "1/4",
+    "xp": 50
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "keen_senses",
+      "name": "Keen Senses",
+      "description": "The pseudodragon has advantage on Wisdom (Perception) checks that rely on sight, hearing, or smell."
+    },
+    {
+      "id": "magic_resistance",
+      "name": "Magic Resistance",
+      "description": "The pseudodragon has advantage on saving throws against spells and other magical effects.",
+      "effect": {
+        "kind": "save_advantage",
+        "magical": true
+      }
+    },
+    {
+      "id": "limited_telepathy",
+      "name": "Limited Telepathy",
+      "description": "The pseudodragon can magically communicate simple ideas, emotions, and images telepathically with any creature within 100 ft. of it that can understand a language."
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d4",
+        "ability": "dex"
+      },
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d4+2",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 4 (1d4 + 2) piercing damage."
+    },
+    {
+      "id": "sting",
+      "name": "Sting",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d4",
+        "ability": "dex"
+      },
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d4+2",
+          "type": "piercing"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "con",
+            "dc": 11
+          },
+          "apply": [
+            {
+              "condition": "poisoned",
+              "duration": {
+                "kind": "rounds",
+                "n": 600
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Melee Weapon Attack: +4 to hit, reach 5 ft., one creature. Hit: 4 (1d4 + 2) piercing damage, and the target must succeed on a DC 11 Constitution saving throw or become poisoned for 1 hour. If the saving throw fails by 5 or more, the target falls unconscious for the same duration, or until it takes damage or another creature uses an action to shake it awake. (The fail-by-5 unconscious clause is descriptive only: also_on_fail_by is save_effect-only, CONTENT_CONVENTIONS 26; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ]
+}

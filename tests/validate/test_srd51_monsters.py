@@ -21,8 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 108 authored / 11 deferred): batch 3 and tier-A triage (5) + tier B batch d1 still open (6). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Giant Frog left once the giant toad Swallow pattern was packed (Rules #189; Swallow-as-bite-with-damage still partial). Constrictor Snake and Elk left in CR 0.25 batch B (restrains + exclusive; Charge on the ram, hooves prone gate description-only).
-DEFERRED: list[str] = ["doppelganger", "duergar", "green-hag", "mimic", "rust-monster", "crocodile", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 108 / 11
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 112 authored / 11 deferred): batch 3 and tier-A triage (5) + tier B batch d1 still open (6). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row.
+DEFERRED: list[str] = ["doppelganger", "duergar", "green-hag", "mimic", "rust-monster", "crocodile", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 112 / 11
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -406,6 +406,66 @@ class MonsterTable(unittest.TestCase):
             self.assertEqual(act(idx, aid).get("ability"), ab, (idx, aid))
         # Sunlight Sensitivity / Keen Hearing and Smell: descriptive (no light model, no perception checks in the sim)
         self.assertNotIn("effect", {t["id"]: t for t in load("kobold")["traits"]}["sunlight_sensitivity"])
+
+    def test_cr_quarter_batch_c(self):
+        # Bestiary v0.1 CR 1/4 batch C. Poison fail-by-5 / result-5 unconscious stays in the description:
+        # also_on_fail_by is save_effect-only (CONTENT_CONVENTIONS 26). Innate casting is not a slot spellcasting entry.
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        hour = {"condition": "poisoned", "duration": {"kind": "rounds", "n": 600}}
+        minute = {"condition": "poisoned", "duration": {"kind": "rounds", "n": 10}}
+        drow = load("drow")
+        self.assertEqual(drow["tags"], ["elf"])
+        self.assertEqual(drow["senses"]["darkvision"], 120)
+        self.assertNotIn("spellcasting", drow)
+        self.assertEqual(trait("drow", "fey_ancestry")["effect"],
+                         {"kind": "save_advantage", "save_vs_conditions": ["charmed"]})
+        self.assertNotIn("effect", trait("drow", "sunlight_sensitivity"))
+        self.assertNotIn("effect", trait("drow", "innate_spellcasting"))
+        hx = act("drow", "hand_crossbow")
+        self.assertEqual((hx["weapon"], hx["range"]), ("srd51.item.crossbow_hand", [30, 120]))
+        self.assertEqual(hx["on_hit"], [{"kind": "save_condition", "save": {"ability": "con", "dc": 13}, "apply": [hour]}])
+        self.assertNotIn("also_on_fail_by", hx)
+        self.assertNotIn("also_on_fail_by", hx["on_hit"][0])
+        self.assertEqual(load("pseudodragon")["natural_armor"], {"base": 11, "dex": True})
+        self.assertEqual(load("pseudodragon")["hands"], 0)
+        self.assertEqual(trait("pseudodragon", "magic_resistance")["effect"], {"kind": "save_advantage", "magical": True})
+        self.assertNotIn("effect", trait("pseudodragon", "keen_senses"))
+        self.assertNotIn("effect", trait("pseudodragon", "limited_telepathy"))
+        sting = act("pseudodragon", "sting")
+        self.assertEqual(sting["on_hit"], [{"kind": "save_condition", "save": {"ability": "con", "dc": 11}, "apply": [hour]}])
+        self.assertNotIn("also_on_fail_by", sting["on_hit"][0])
+        self.assertEqual(act("sprite", "longsword")["attack_bonus"]["value"], 2)
+        self.assertEqual(act("sprite", "longsword")["natural"], {"flat": 1, "ability": "str"})
+        self.assertNotIn("weapon", act("sprite", "longsword"))
+        bow = act("sprite", "shortbow")
+        self.assertEqual(bow["natural"], {"flat": 1, "ability": "dex"})
+        self.assertEqual(bow["range"], [40, 160])
+        self.assertNotIn("weapon", bow)
+        self.assertEqual(bow["on_hit"], [{"kind": "save_condition", "save": {"ability": "con", "dc": 10}, "apply": [minute]}])
+        self.assertNotIn("also_on_fail_by", bow["on_hit"][0])
+        self.assertEqual(act("sprite", "heart_sight")["kind"], "special")
+        self.assertNotIn("effect", act("sprite", "heart_sight"))
+        self.assertEqual(act("sprite", "invisibility")["kind"], "special")
+        self.assertNotIn("effect", act("sprite", "invisibility"))
+        self.assertNotIn("spellcasting", load("sprite"))
+        meph = load("steam-mephit")
+        self.assertEqual(meph["hands"], 0)
+        self.assertNotIn("spellcasting", meph)
+        self.assertNotIn("effect", trait("steam-mephit", "death_burst"))
+        self.assertNotIn("effect", trait("steam-mephit", "innate_spellcasting"))
+        claws = act("steam-mephit", "claws")
+        self.assertEqual(claws["natural"], {"dice": "1d4", "ability": "dex", "damage_ability": "none"})
+        self.assertEqual(claws["ability"], "dex")
+        breath = act("steam-mephit", "steam_breath")
+        self.assertEqual((breath["kind"], breath["save"], breath["on_success"], breath["usage"]),
+                         ("save_effect", {"ability": "dex", "dc": 10}, "half", {"kind": "recharge", "min": 6}))
+        self.assertEqual(breath["area"], {"shape": "cone", "size_ft": 15})
+        self.assertEqual(breath["damage"], [{"dice": "1d8", "type": "fire"}])
 
     def test_engulf_swallow_transparent(self):
         # Rules 7.2w (#189): Engulf (save_effect + contain engulf, Str DC 12 escape, Large or smaller), Transparent DC 15
