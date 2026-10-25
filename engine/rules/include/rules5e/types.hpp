@@ -735,6 +735,11 @@ struct Combatant {
     // differs from 10 + Perception (monster@5 with passive_perception_reason "srd_printed"). -1 = derived. It is the value at
     // the UNREDUCED scores: passive_perception() shifts it by the same effective-Wis modifier delta as the derived value.
     int8_t passive_perception_override = -1;
+    // appended (altitude PR4, Fly spell hook; sim fold Combat::hash 0xD6 only when non-zero): a temporary fly speed granted by
+    // an effect (rules5e::grant_fly / revoke_fly), 0 = none. The creature's fly speed is max(fly_ft, granted_fly_ft).
+    uint8_t granted_fly_ft = 0;
+    uint32_t granted_fly_src = 0;   // the grant's source (folded with it); revoke_fly(source) only removes a matching grant
+    uint8_t fly_speed() const { return fly_ft > granted_fly_ft ? fly_ft : granted_fly_ft; }
 };
 
 void add_condition(Combatant&, Condition);

@@ -384,7 +384,8 @@ using EndConditionFn = std::function<std::optional<EncounterOutcome>(const Encou
 
 // The hook's answer: feet actually moved (Moved.a), whether it stopped short, and every creature the mover was grappling or
 // grappled by that is no longer within reach (rules ends those grapples). hazard: sim's "entered a zone or hazard tile" (R-G11;
-// rules reads the membership lists, not this bool); fell_ft stays reserved until elevation exists.
+// rules reads the membership lists, not this bool). fell_ft (altitude PR4): feet the mover fell at the end of the move (a ground
+// drop of more than 5 ft); rules applies SRD falling damage (1d6 bludgeoning per 10 ft, max 20d6) and the creature lands prone.
 struct ForcedMoveResult {
     uint16_t feet_moved = 0; bool stopped_short = false; bool hazard = false; uint16_t fell_ft = 0;
     std::vector<CombatantId> out_of_reach_of{};
@@ -495,6 +496,10 @@ struct ActiveSpellEffect {
 // kind 1 released (the container died: exits prone, sim spends 5 ft of its movement / places it in the container's space);
 // 2 regurgitated (exits prone, sim places it within 10 ft of the container); 3 avoided an Engulf with a successful save
 // (sim pushes it 5 ft back or to a side, out of the cube's space).
+// altitude PR4 (SRD 5.1 Falling): a creature that fell in rules during the last step (EncounterState::landed; cleared when each
+// step starts): a flyer knocked prone / to speed 0 / losing its fly speed, a revoke_fly, or a forced move with fell_ft. It is
+// at the ground now (alt_ft = 0); sim emits AltitudeChanged{a = 0, b = kAltFall} and records Combat::falls() for each.
+struct Landing { CombatantId id = 0; uint16_t fell_ft = 0; friend bool operator==(const Landing&, const Landing&) = default; };
 struct ContainExit { CombatantId container = 0, creature = 0; uint8_t kind = 0;
                      friend bool operator==(const ContainExit&, const ContainExit&) = default; };
 
@@ -892,6 +897,7 @@ struct EncounterState {
     std::optional<PendingDecision> pending;   // set while an action waits for a reaction decision
     std::vector<ActiveSpellEffect> effects;   // lasting spell effects, in the order applied
     std::vector<ContainExit> contain_exits;   // 7.2w (appended in place of use; see ContainExit): output of the last step only
+    std::vector<Landing> landed;              // altitude PR4 (see Landing): output of the last step only; not hashed
     std::vector<ActiveModifier> modifiers;    // row 12 (appended): timed modifiers in application order; empty for old content
     EncounterHooks hooks;                // behaviour, not state: never serialized/hashed
     std::vector<FeatureUses> features;   // appended: limited-use features (register_feature)
@@ -983,6 +989,20 @@ StepResult step(EncounterState&, const ActionRequest&);
 // 2 swim, 3 climb): movement_ft plus, for another speed, (its turn-start speed - the walking one) * (1 + Dashes). -1 when the
 // creature has no such speed. Speed modifiers (Slow, Ray of Frost) and conditions apply to every speed alike.
 int move_allowance(const EncounterState&, const Combatant&, uint8_t mode);
+// altitude PR4 (SRD 5.1 Falling, docs/SRD_COMBAT_COVERAGE.md 11.8). fall: `id` falls `fell_ft` feet (sim's ledge drops):
+// 1d6 bludgeoning per 10 ft fallen, max 20d6, from the rules RNG; it lands prone (unless it took no damage from the fall) at
+// the ground (alt_ft = 0). Deaths, concentration and the end check settle as after a step. Not recorded in `landed` (sim
+// emits its own AltitudeChanged for the drop).
+void fall(EncounterState&, CombatantId id, int fell_ft, std::vector<Event>& out);
+// Fly spell hook: a temporary fly speed from an effect (`source`, opaque to rules: e.g. the caster). The creature's fly speed
+// is max(fly_ft, granted_fly_ft). grant_fly replaces an earlier grant; false when the creature is missing / dead or
+// fly_ft == 0. revoke_fly removes the grant (source 0 = any; else only that source's); a creature still off the ground
+// without another fly speed (and no hover) then falls (recorded in `landed`). False when there was no matching grant.
+// The fall check alone (for sim's out-of-step rules calls, e.g. a grapple rider that leaves an airborne flyer at speed 0):
+// fallers are recorded in `landed`. True when someone fell.
+bool settle_falls(EncounterState&, std::vector<Event>& out);
+bool grant_fly(EncounterState&, CombatantId id, uint8_t fly_ft, uint32_t source);
+bool revoke_fly(EncounterState&, CombatantId id, uint32_t source, std::vector<Event>& out);
 int mode_speed(const EncounterState&, const Combatant&, uint8_t mode);   // modified speed of that mode (walk = modified_speed)
 
 // step() and, when a request completes (Done), append {request, decisions} to `log`.

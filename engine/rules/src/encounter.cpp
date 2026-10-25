@@ -834,6 +834,7 @@ bool run_event_triggers(EncounterState& s, Combatant& owner, Combatant& subject,
 struct Ctx;
 void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bool critical, std::vector<Event>& ev,
                      const TrigSrc* src = nullptr, Ctx* ctx = nullptr);
+void land_fall(EncounterState& s, CombatantId id, int fell_ft, std::vector<Event>& ev, bool record);   // altitude PR4
 
 const SpellDef* spell_def(const EncounterState& s, uint32_t id) {
     return s.hooks.spells ? s.hooks.spells->find(id) : nullptr;
@@ -1121,6 +1122,7 @@ void finalize_forced(EncounterState& s, Ctx& ctx, std::vector<Event>& events) {
             if (rec || (m && !m->dead && s.hooks.forced_move)) ctx.forced_results.emplace_back(d.q.step_seq, res);
             std::vector<Event> tail;
             emit(tail, EventKind::Moved, d.q.mover, d.q.source, int32_t(res.feet_moved), 0, d.flags);
+            if (res.fell_ft > 0 && m && !m->dead) land_fall(s, d.q.mover, int(res.fell_ft), tail, true);   // altitude PR4
             for (CombatantId other : res.out_of_reach_of) end_grapple_pair(s, d.q.mover, other, tail);
             const uint8_t saved_depth = ctx.depth;
             if (!s.zones.empty() && m && !m->dead &&   // R-G11: the move's zone triggers, before the next forced move
@@ -2068,6 +2070,42 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
         }
     }
     repeat_saves(s, t.id, RepeatSave::OnDamage, ev);
+}
+
+// altitude PR4 (SRD 5.1 Falling): 1d6 bludgeoning per 10 ft fallen, max 20d6 (rules RNG); the creature lands prone unless it
+// takes no damage from the fall. It ends at the ground (alt_ft = 0); `record` adds it to s.landed (sim's AltitudeChanged).
+// No reaction window: nothing in the SRD reacts to falling damage (ctx = nullptr).
+void land_fall(EncounterState& s, CombatantId id, int fell_ft, std::vector<Event>& ev, bool record) {
+    Combatant* c = find_mut(s, id);
+    if (!c) return;
+    c->alt_ft = 0;
+    if (record) s.landed.push_back({id, uint16_t(std::clamp(fell_ft, 0, 0xFFFF))});
+    const int dice = std::min(fell_ft / 10, 20);
+    if (c->dead || dice <= 0) return;
+    const int rolled = roll_dice(s.rng, DiceExpr{uint8_t(dice), 6, 0});
+    const DamageApplied d = apply_damage(*c, int16_t(rolled), DamageType::Bludgeoning, 0);
+    damage_creature(s, *c, d, false, ev, nullptr, nullptr);
+    Combatant* t = find_mut(s, id);
+    if (t && !t->dead && d.dealt > 0 && !t->has(Condition::Prone) && !immune_to(s, *t, Condition::Prone)) {
+        add_condition(*t, Condition::Prone);
+        emit(ev, EventKind::ConditionAdded, id, 0, int32_t(Condition::Prone));
+    }
+}
+// SRD 5.1: a flying creature knocked prone, with its speed reduced to 0 or deprived of its fly speed falls, unless it can
+// hover or is held aloft by magic (a granted fly speed). `before` (the state when the step began) detects a lost fly speed.
+// True when someone fell.
+bool fall_check(EncounterState& s, const EncounterState* before, std::vector<Event>& ev) {
+    std::vector<CombatantId> due;
+    for (const auto& c : s.combatants) {
+        if (c.alt_ft <= 0 || c.hover) continue;
+        bool falls = c.fly_speed() > 0 && c.granted_fly_ft == 0 && (c.has(Condition::Prone) || mode_speed(s, c, 1) <= 0);
+        if (!falls && c.fly_speed() == 0 && before)
+            if (const Combatant* b = find(*before, c.id)) falls = b->fly_speed() > 0;
+        if (falls) due.push_back(c.id);
+    }
+    for (CombatantId id : due)
+        if (const Combatant* c = find(s, id)) land_fall(s, id, c->alt_ft, ev, true);
+    return !due.empty();
 }
 
 // What the Hit / Crit triggers of one attack contribute: damage dice rolled with the attack, and synthetic
@@ -4685,8 +4723,13 @@ StepResult attempt(EncounterState& s, const ActionRequest& req, const std::vecto
     prune_sourced(s, r.events);
     for (auto& c : s.combatants) if (c.dead && c.died_round == 0) c.died_round = s.round;   // R-G15: Revivify's window
     if (!ctx.need) {
+        const std::size_t landed0 = s.landed.size();
         finalize_forced(s, ctx, r.events);   // R-G9: after every decision point of the step
-        if (ctx.zone_fired) {   // R-G11: zone triggers of the forced moves (damage, conditions) settle like the step's own
+        // altitude PR4: flyers knocked prone, to speed 0 or out of their fly speed by the step fall (only when someone is
+        // off the ground: an altitude-0 step is unchanged)
+        bool fell = s.landed.size() != landed0;
+        for (const auto& c : s.combatants) if (c.alt_ft > 0) { fell = fall_check(s, &before, r.events) || fell; break; }
+        if (ctx.zone_fired || fell) {   // R-G11: zone triggers of the forced moves (damage, conditions) settle like the step's own
             process_deaths(s, r.events, &ctx);
             sweep_concentration(s, r.events);
             sweep_summons(s, r.events);
@@ -5052,6 +5095,7 @@ StepResult gaze_response(EncounterState& s, Combatant& a, const ActionRequest& r
 StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req);
 StepResult step_impl(EncounterState& s, Ctx& ctx, const ActionRequest& req) {
     s.contain_exits.clear();   // 7.2w: the exits of this step only
+    s.landed.clear();          // altitude PR4: the falls of this step only
     const bool own_turn = !s.ended && !s.order.empty() && req.actor == current_actor(s) &&
                           req.kind != ActionKind::Heal && req.kind != ActionKind::AbilityCheck &&
                           req.kind != ActionKind::ReactionDecision && req.kind != ActionKind::OpportunityAttack;
@@ -6332,7 +6376,7 @@ int modified_ac_bonus(const EncounterState& s, CombatantId id) {
 
 int mode_speed(const EncounterState& s, const Combatant& c, uint8_t mode) {
     if (mode == 0) return modified_speed(s, c);
-    const uint8_t base = mode == 1 ? c.fly_ft : mode == 2 ? c.swim_ft : mode == 3 ? c.climb_ft : mode == 4 ? c.burrow_ft : 0;
+    const uint8_t base = mode == 1 ? c.fly_speed() : mode == 2 ? c.swim_ft : mode == 3 ? c.climb_ft : mode == 4 ? c.burrow_ft : 0;
     if (base == 0) return -1;
     Combatant k = c;
     k.speed_ft = base;
@@ -6948,3 +6992,55 @@ int imbue_bonus(const WeaponImbueSpec& w, int slot) {   // 7.2zf Magic Weapon: b
     return w.bonus_base > 0 ? b : 0;
 }
 } // namespace rules5e
+
+namespace rules5e {
+// ---- altitude PR4: falling and the Fly spell hook (SRD 5.1 Falling; docs/SRD_COMBAT_COVERAGE.md 11.8) ----
+void fall(EncounterState& s, CombatantId id, int fell_ft, std::vector<Event>& out) {
+    if (!find(s, id) || fell_ft <= 0) return;
+    land_fall(s, id, fell_ft, out, false);
+    process_deaths(s, out, nullptr);
+    sweep_concentration(s, out);
+    sweep_summons(s, out);
+    prune_sourced(s, out);
+    for (auto& c : s.combatants) if (c.dead && c.died_round == 0) c.died_round = s.round;
+    check_end(s, out);
+}
+
+bool settle_falls(EncounterState& s, std::vector<Event>& out) {
+    bool any = false;
+    for (const auto& c : s.combatants) any = any || c.alt_ft > 0;
+    if (!any || !fall_check(s, nullptr, out)) return false;
+    process_deaths(s, out, nullptr);
+    sweep_concentration(s, out);
+    sweep_summons(s, out);
+    prune_sourced(s, out);
+    for (auto& c : s.combatants) if (c.dead && c.died_round == 0) c.died_round = s.round;
+    check_end(s, out);
+    return true;
+}
+
+bool grant_fly(EncounterState& s, CombatantId id, uint8_t fly_ft, uint32_t source) {
+    Combatant* c = find_mut(s, id);
+    if (!c || c->dead || fly_ft == 0) return false;
+    c->granted_fly_ft = fly_ft;
+    c->granted_fly_src = source;
+    return true;
+}
+
+bool revoke_fly(EncounterState& s, CombatantId id, uint32_t source, std::vector<Event>& out) {
+    Combatant* c = find_mut(s, id);
+    if (!c || c->granted_fly_ft == 0 || (source != 0 && c->granted_fly_src != source)) return false;
+    const EncounterState before = s;
+    c->granted_fly_ft = 0;
+    c->granted_fly_src = 0;
+    if (c->alt_ft > 0 && fall_check(s, &before, out)) {
+        process_deaths(s, out, nullptr);
+        sweep_concentration(s, out);
+        sweep_summons(s, out);
+        prune_sourced(s, out);
+        for (auto& k : s.combatants) if (k.dead && k.died_round == 0) k.died_round = s.round;
+        check_end(s, out);
+    }
+    return true;
+}
+}  // namespace rules5e

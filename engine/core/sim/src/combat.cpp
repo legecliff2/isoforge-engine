@@ -1205,6 +1205,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
                         if (g->second.instead_of_damage && !(e.c & 8)) break;   // Tier-A §27: damage was chosen, no grapple
                         std::vector<rules5e::Event> gev;
                         rules5e::grapple(state_, q.actor, e.target, g->second, q.attack_index, gev);   // false past max_grapples: damage only
+                        rules5e::settle_falls(state_, gev);   // altitude PR4: an airborne flyer grappled (speed 0) falls
                         apply_rules_events(gev);
                         break;
                     }
@@ -1287,6 +1288,19 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
     }
     for (const auto& e : pending_removed_) events_.push_back(token_removed(e));   // none expected (every teardown one is inline)
     pending_removed_.clear();
+    // altitude PR4: creatures that fell in rules this step (EncounterState::landed): now at the ground; AltitudeChanged
+    // {a = 0, b = kAltFall} after the step's rules events, and Combat::falls() records the distance.
+    for (const auto& l : state_.landed) {
+        falls_.push_back({l.id, int(l.fell_ft)});
+        SimEvent ae;
+        ae.kind = SimEvent::Kind::AltitudeChanged;
+        ae.actor = l.id;
+        ae.tile = pos(l.id);
+        ae.rules.a = 0;
+        ae.rules.b = kAltFall;
+        events_.push_back(ae);
+    }
+    state_.landed.clear();
     if (split < evs.size()) sync_ecs();
     for (auto& sl : slots_)   // gone summons: the entity goes at the end of the step (never mid-step)
         if (sl.gone && reg_->alive(sl.entity)) { reg_->destroy(sl.entity); sl.entity = ecs::kNullEntity; }
@@ -2009,13 +2023,20 @@ uint64_t Combat::hash() const {
             for (const auto& c : state_.combatants) if (c.squeezing) h.u64(c.id);
         }
     }
-    {   // 0xD6 (altitude PR1): {id u64, alt_ft i16} per creature off the ground, only when some creature is; altitude-0 combats unchanged
-        bool any = false;
-        for (const auto& c : state_.combatants) any = any || c.alt_ft != 0;
-        if (any) {
+    {   // 0xD6 (altitude PR1): {id u64, alt_ft i16} per creature off the ground, only when some creature is; altitude-0 combats unchanged.
+        // PR4 (Fly spell hook): then, only when some creature has a granted fly speed, byte 1 and {id u64, granted_fly_ft u8,
+        // granted_fly_src u32} per such creature. Without a grant the bytes are PR1's exactly.
+        bool any = false, granted = false;
+        for (const auto& c : state_.combatants) { any = any || c.alt_ft != 0; granted = granted || c.granted_fly_ft != 0; }
+        if (any || granted) {
             h.byte(0xD6);
             for (const auto& c : state_.combatants) {
                 if (c.alt_ft != 0) { h.u64(c.id); h.u16(uint16_t(c.alt_ft)); }
+            }
+            if (granted) {
+                h.byte(1);
+                for (const auto& c : state_.combatants)
+                    if (c.granted_fly_ft != 0) { h.u64(c.id); h.byte(c.granted_fly_ft); h.u32(c.granted_fly_src); }
             }
         }
     }
@@ -2405,7 +2426,7 @@ int Combat::moving_abs_height(CombatantId id, Vec2i anchor) const {
 }
 bool Combat::airborne(CombatantId id) const {
     const auto* c = rules5e::find(state_, id);
-    return c && c->alt_ft > 0 && c->fly_ft > 0 && !c->has(rules5e::Condition::Prone);
+    return c && c->alt_ft > 0 && c->fly_speed() > 0 && !c->has(rules5e::Condition::Prone);   // PR4: a granted fly speed counts
 }
 bool Combat::burrowed(CombatantId id) const {
     const auto* c = rules5e::find(state_, id);
@@ -2445,8 +2466,8 @@ void Combat::step_altitude(const rules5e::ActionRequest& q, int from_ground_ft, 
     if (drop <= kWalkableStepFt) return;
     const MoveCaps caps = caps_of(q.actor);
     if (caps.fly && !c->has(rules5e::Condition::Prone)) { set_altitude(q.actor, int16_t(drop), kAltMove); return; }
-    // A fall (altitude design §3): alt_ft stays 0 at the new ground; the event says so and the distance is recorded for
-    // PR4's fall damage.
+    // A fall (altitude design §3): alt_ft stays 0 at the new ground; the event says so and the distance is recorded.
+    // PR4: then the SRD falling damage (rules5e::fall: 1d6 per 10 ft, max 20d6, lands prone), its rules events after it.
     falls_.push_back({q.actor, drop});
     SimEvent e;
     e.kind = SimEvent::Kind::AltitudeChanged;
@@ -2455,11 +2476,14 @@ void Combat::step_altitude(const rules5e::ActionRequest& q, int from_ground_ft, 
     e.rules.a = 0;
     e.rules.b = kAltFall;
     events_.push_back(e);
+    std::vector<rules5e::Event> fev;
+    rules5e::fall(state_, q.actor, drop, fev);
+    apply_rules_events(fev);
 }
 
 MoveCaps Combat::caps_of(CombatantId id) const {
     MoveCaps m;
-    if (const auto* c = rules5e::find(state_, id)) { m.fly = c->fly_ft > 0; m.swim = c->swim_ft > 0; m.climb = c->climb_ft > 0; m.burrow = c->burrow_ft > 0; }
+    if (const auto* c = rules5e::find(state_, id)) { m.fly = c->fly_speed() > 0; m.swim = c->swim_ft > 0; m.climb = c->climb_ft > 0; m.burrow = c->burrow_ft > 0; }
     return m;
 }
 
@@ -2616,6 +2640,14 @@ rules5e::ForcedMoveResult Combat::resolve_forced(const rules5e::ForcedMoveQuery&
         }
         res.feet_moved = uint16_t(moved * kFeetPerTile);
         res.stopped_short = moved < steps;
+        // altitude PR4: pushed off a drop of more than 5 ft (chunk@3 ground), a creature on the ground falls the drop; rules
+        // applies the SRD falling damage and lands it prone. A flyer that can fly (fly speed, not prone) does not fall.
+        if (moved > 0 && grid_.has_ground())
+            if (const auto* mc = rules5e::find(state_, q.mover); mc && mc->alt_ft == 0) {
+                const int drop = grid_.footprint_ground_ft(start, fp) - grid_.footprint_ground_ft(cur, fp);
+                const bool can_fly = caps_of(q.mover).fly && !mc->has(rules5e::Condition::Prone);
+                if (drop > kWalkableStepFt && !can_fly) res.fell_ft = uint16_t(drop);
+            }
         if (moved > 0) commit(q.mover, cur);
         else forced_placed_.push_back({q.mover, start});
     }
