@@ -111,6 +111,7 @@
       "kind": "melee_weapon_attack",
       "weapon": "srd51.item.morningstar",
       "to_hit": 4,
+      "ability": "str",
       "reach": 5,
       "targets": 1,
       "damage": [
@@ -127,6 +128,7 @@
       "kind": "melee_weapon_attack",
       "weapon": "srd51.item.javelin",
       "to_hit": 4,
+      "ability": "str",
       "reach": 5,
       "targets": 1,
       "damage": [
@@ -144,6 +146,7 @@
       "weapon": "srd51.item.javelin",
       "use": "thrown",
       "to_hit": 4,
+      "ability": "str",
       "range": [
         30,
         120

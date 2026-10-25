@@ -487,7 +487,7 @@ GRAPPLE_CASES = [
     ("grapple_escape_dc_float", CRAB, [(GR + ["escape_dc"], 11.0)], [], "grapple escape_dc must be an integer 0..30, got 11.0"),
     ("grapple_escape_dc_string", CRAB, [(GR + ["escape_dc"], "11")], [], "is not of type 'integer'"),
     ("grapple_escape_dc_bool", CRAB, [(GR + ["escape_dc"], True)], [], "is not of type 'integer'"),
-    ("grapple_extra_field", CRAB, [(GR + ["condition"], "restrained")], [], "'condition' is not one of ['kind', 'escape_dc', 'when']"),
+    ("grapple_extra_field", CRAB, [(GR + ["condition"], "restrained")], [], "'condition' is not one of ['kind', 'escape_dc', 'when', 'restrains', 'exclusive', 'max_grapples', 'instead_of_damage']"),
     ("grapple_escape_dc_on_other_rider", CRAB, [(["actions", 1, "on_hit", 1, "escape_dc"], 12)], [], "'escape_dc' is not one of ['kind', 'damage', 'scale', 'when']"),
     ("grapple_in_on_event_effects", CRAB, [(["traits"], [{"id": "hold", "name": "Hold", "description": "x",
                                                           "effect": {"kind": "on_event", "on": "hit", "effects": [{"kind": "grapple", "escape_dc": 11}]}}])],
@@ -556,6 +556,21 @@ class RG8GrappleRider(unittest.TestCase):
                 doc = h.edit(extra("giant_crab_grappler.json"), sets)
                 self.assertEqual(h.validate_docs(self.docs_with(doc)), ([], []))
 
+    def test_size_gated_prone_rider(self):
+        # SRD 5.1 Gladiator Shield Bash ("If the target is a Medium or smaller creature, it must succeed on a DC 15 Strength
+        # saving throw or be knocked prone"): max_size without contain loads on a save_condition rider's first apply[] entry.
+        ok = {"kind": "save_condition", "save": {"ability": "str", "dc": 15}, "apply": [{"condition": "prone", "max_size": "medium"}]}
+        doc = h.edit(extra("giant_crab_grappler.json"), [(["actions", 1, "on_hit", 1], ok)])
+        self.assertEqual(h.validate_docs(self.docs_with(doc)), ([], []))
+        late = {"kind": "save_condition", "save": {"ability": "str", "dc": 15},
+                "apply": [{"condition": "prone"}, {"condition": "prone", "max_size": "medium"}]}
+        errs, _w = h.validate_docs(self.docs_with(h.edit(extra("giant_crab_grappler.json"), [(["actions", 1, "on_hit", 1], late)])))
+        self.assertTrue(any("max_size on a save_condition rider goes on the first apply[] entry" in e for e in errs), errs)
+        act = {"kind": "save_effect", "id": "x", "name": "X", "save": {"ability": "str", "dc": 11},
+               "apply": [{"condition": "prone", "max_size": "medium"}]}
+        errs, _w = h.validate_docs(self.docs_with(h.edit(extra("giant_crab_grappler.json"), [(["actions", 0], act)])))
+        self.assertTrue(any("max_size on a save_effect needs contain" in e for e in errs), errs)
+
     def test_escape_dc_bounds_are_accepted(self):
         for dc in (0, 1, 30):
             with self.subTest(dc):
@@ -581,6 +596,23 @@ class RG8GrappleRider(unittest.TestCase):
         clash = h.edit(doc, [(GR, {"kind": "extra_damage", "damage": [{"dice": "1d4", "type": "fire"}]})])
         errs, _warns = h.validate_docs(self.docs_with(clash))
         self.assertTrue(any("derived trigger id 'claw#0'" in e for e in errs), errs)
+
+    def test_grapple_instead_of_damage(self):
+        # Tier-A §27: monster@5 only; refused with restrains; a warning when the attack has other on_hit riders.
+        def doc(schema, rider, more=()):
+            return {"$schema": schema, "actions": [{"kind": "attack", "id": "claws", "name": "Claws", "to_hit": 6, "reach": 5,
+                                                     "damage": [{"dice": "2d4+3", "type": "slashing"}],
+                                                     "on_hit": [rider, *more]}]}
+        ok = {"kind": "grapple", "escape_dc": 13, "instead_of_damage": True}
+        self.assertEqual(checks_v4.check_grapple_rider(doc("monster@5", ok)), ([], []))
+        errs, _ = checks_v4.check_grapple_rider(doc("monster@4", ok))
+        self.assertTrue(any("instead_of_damage need monster@5" in e for e in errs), errs)
+        errs, _ = checks_v4.check_grapple_rider(doc("monster@5", dict(ok, restrains=True)))
+        self.assertTrue(any("can't be combined with restrains" in e for e in errs), errs)
+        extra_r = {"kind": "extra_damage", "damage": [{"dice": "1d6", "type": "necrotic"}]}
+        errs, warns = checks_v4.check_grapple_rider(doc("monster@5", ok, [extra_r]))
+        self.assertEqual(errs, [])
+        self.assertTrue(any("other on_hit riders" in w for w in warns), warns)
 
     def test_grapple_is_a_rider_kind_only_in_common2(self):
         import json

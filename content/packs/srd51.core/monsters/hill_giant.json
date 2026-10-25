@@ -1,0 +1,118 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.hill_giant",
+  "name": "Hill Giant",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "huge",
+  "type": "giant",
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 13,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 14,
+    "dex": true
+  },
+  "hands": 2,
+  "hit_points": {
+    "average": 105,
+    "formula": "10d12+40"
+  },
+  "speed": {
+    "walk": 40
+  },
+  "abilities": {
+    "str": 21,
+    "dex": 8,
+    "con": 19,
+    "int": 5,
+    "wis": 9,
+    "cha": 6
+  },
+  "skills": {
+    "perception": 2
+  },
+  "senses": {
+    "passive_perception": 12
+  },
+  "languages": [
+    "Giant"
+  ],
+  "challenge": {
+    "rating": "5",
+    "xp": 1800
+  },
+  "proficiency_bonus": 3,
+  "traits": [
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The giant makes two greatclub attacks.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "greatclub_x2",
+            "attacks": [
+              "greatclub",
+              "greatclub"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "greatclub",
+      "name": "Greatclub",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.greatclub",
+      "use": "two_hands",
+      "to_hit": 8,
+      "reach": 10,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "3d8+5",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +8 to hit, reach 10 ft., one target. Hit: 18 (3d8 + 5) bludgeoning damage."
+    },
+    {
+      "id": "rock",
+      "name": "Rock",
+      "kind": "ranged_weapon_attack",
+      "natural": {
+        "dice": "3d10",
+        "ability": "str"
+      },
+      "to_hit": 8,
+      "range": [
+        60,
+        240
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "3d10+5",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Ranged Weapon Attack: +8 to hit, range 60/240 ft., one target. Hit: 21 (3d10 + 5) bludgeoning damage."
+    }
+  ],
+  "equipment": [
+    {
+      "item": "srd51.item.greatclub",
+      "equipped": true
+    }
+  ],
+  "weapon_dice_multiplier": 3
+}

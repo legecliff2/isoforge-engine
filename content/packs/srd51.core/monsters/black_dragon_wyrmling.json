@@ -79,6 +79,7 @@
         "ability": "str"
       },
       "to_hit": 4,
+      "ability": "str",
       "reach": 5,
       "targets": 1,
       "damage": [

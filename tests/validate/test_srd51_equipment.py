@@ -157,6 +157,7 @@ UTILITY_GEAR = [
     ('pole_10_foot', 5, 112, None),
     ('piton', 5, 4, None),
     ('hammer', 100, 48, None),
+    ('healers_kit', 500, 48, "As an action, you can expend one use of the kit to stabilize a creature that has 0 hit points"),
     ('grappling_hook', 200, 64, None),
     ('mirror_steel', 500, 8, None),
     ('chain_10_feet', 500, 160, "A chain has 10 hit points."),
@@ -188,6 +189,50 @@ FOCUS_FAMILY = {f[0]: f[0].split("_")[0] if f[0].startswith(("arcane_", "druidic
                 for f in FOCI if f[0].startswith(("arcane_focus_", "druidic_focus_", "holy_symbol_"))}
 
 
+# SRD 5.1 tools (5e-database a6212be, equipment_category 'tools'), item@2 'gear' with tool_kind = the SRD tool_category
+# (docs/CONTENT_CONVENTIONS.md section 20; inert, no tool-proficiency checks): (local_id, tool_kind, cost_cp, weight_oz).
+# SRD 5.1 has no disguise, forgery, herbalism or poisoner's kit (not in 5e-database's SRD equipment): none is authored.
+TOOL_KINDS = ("artisans_tools", "gaming_set", "musical_instrument", "other_tools")
+TOOLS = [
+    ('alchemists_supplies', 'artisans_tools', 5000, 128),
+    ('brewers_supplies', 'artisans_tools', 2000, 144),
+    ('calligraphers_supplies', 'artisans_tools', 1000, 80),
+    ('carpenters_tools', 'artisans_tools', 800, 96),
+    ('cartographers_tools', 'artisans_tools', 1500, 96),
+    ('cobblers_tools', 'artisans_tools', 500, 80),
+    ('cooks_utensils', 'artisans_tools', 100, 128),
+    ('glassblowers_tools', 'artisans_tools', 3000, 80),
+    ('jewelers_tools', 'artisans_tools', 2500, 32),
+    ('leatherworkers_tools', 'artisans_tools', 500, 80),
+    ('masons_tools', 'artisans_tools', 1000, 128),
+    ('painters_supplies', 'artisans_tools', 1000, 80),
+    ('potters_tools', 'artisans_tools', 1000, 48),
+    ('smiths_tools', 'artisans_tools', 2000, 128),
+    ('tinkers_tools', 'artisans_tools', 5000, 160),
+    ('weavers_tools', 'artisans_tools', 100, 80),
+    ('woodcarvers_tools', 'artisans_tools', 100, 80),
+    ('dice_set', 'gaming_set', 10, None),
+    ('playing_card_set', 'gaming_set', 50, None),
+    ('bagpipes', 'musical_instrument', 3000, 96),
+    ('drum', 'musical_instrument', 600, 48),
+    ('dulcimer', 'musical_instrument', 2500, 160),
+    ('flute', 'musical_instrument', 200, 16),
+    ('lute', 'musical_instrument', 3500, 32),
+    ('lyre', 'musical_instrument', 3000, 32),
+    ('horn', 'musical_instrument', 300, 32),
+    ('pan_flute', 'musical_instrument', 1200, 32),
+    ('shawm', 'musical_instrument', 200, 16),
+    ('viol', 'musical_instrument', 3000, 16),
+    ('navigators_tools', 'other_tools', 2500, 32),
+    ('thieves_tools', 'other_tools', 2500, 16),
+]
+TOOL_SENTENCE = {
+    'artisans_tools': "Proficiency with a set of artisan's tools lets you add your proficiency bonus",
+    'gaming_set': "This item encompasses a wide range of game pieces",
+    'musical_instrument': "If you have proficiency with a given musical instrument",
+    'other_tools': "your proficiency bonus to any ability check",
+}
+
 
 def load(lid):
     return json.loads((ITEMS / f"{lid}.json").read_text(encoding="utf-8"))
@@ -212,11 +257,13 @@ class Srd51Equipment(unittest.TestCase):
         self.assertEqual(len(AMMUNITION), 4)
         self.assertEqual(len(LIGHT_GEAR), 7)
         self.assertEqual(len(CONTAINERS), 3)
-        self.assertEqual(len(UTILITY_GEAR), 14)
+        self.assertEqual(len(UTILITY_GEAR), 15)
         self.assertEqual(len(FOCI), 14)
+        self.assertEqual(len(TOOLS), 31)
         self.assertEqual(files, sorted([w[0] for w in WEAPONS] + [a[0] for a in ARMOR] + [v[0] for v in VALUABLES]
                                        + [a[0] for a in AMMUNITION] + [g[0] for g in LIGHT_GEAR] + [c[0] for c in CONTAINERS]
-                                       + [g[0] for g in UTILITY_GEAR] + [f[0] for f in FOCI]),
+                                       + [g[0] for g in UTILITY_GEAR] + [f[0] for f in FOCI]
+                                       + [t[0] for t in TOOLS]),
                          "no extra or missing item files")
 
     def test_manifest_lists_every_item(self):
@@ -359,6 +406,39 @@ class Srd51Equipment(unittest.TestCase):
         shield = {"$schema": "item@2", "id": "test.item.s", "name": "S", "category": "shield", "ac_bonus": 2}
         self.assertTrue(list(v.iter_errors({**shield, "focus": "holy"})), "focus is a gear-only key")
         for lid, *_ in FOCI:
+            self.assertEqual(list(v.iter_errors(load(lid))), [], lid)
+
+    def test_tools(self):
+        for lid, kind, cost, oz in TOOLS:
+            with self.subTest(lid):
+                d = load(lid)
+                self.assertEqual((d["$schema"], d["id"], d["category"], d["tool_kind"]), ("item@2", f"srd51.item.{lid}", "gear", kind))
+                self.assertEqual(d["source"], {"ref": "SRD 5.1", "license": "CC-BY-4.0"})
+                self.assertEqual((d.get("cost_cp"), d.get("weight_oz")), (cost, oz))
+                self.assertIn(TOOL_SENTENCE[kind], d["description"])
+                self.assertLessEqual(set(d), {"$schema", "id", "name", "source", "category", "cost_cp", "weight_oz", "description", "tool_kind"})
+        self.assertLessEqual({t[1] for t in TOOLS}, set(TOOL_KINDS))
+        for p in ITEMS.glob("*.json"):   # tool_kind marks exactly the TOOLS rows
+            self.assertEqual("tool_kind" in json.loads(p.read_text(encoding="utf-8")), p.stem in {t[0] for t in TOOLS}, p.stem)
+
+    def test_tool_kind_schema(self):
+        # item@2 gear `tool_kind` (docs/CONTENT_CONVENTIONS.md section 20): optional, closed enum, gear only.
+        from jsonschema import Draft202012Validator
+        from referencing import Registry, Resource
+        schemas = ROOT / "schemas"
+        res = [(d["$id"], Resource.from_contents(d)) for d in
+               (json.loads(p.read_text(encoding="utf-8")) for p in schemas.rglob("*.schema.json")) if "$id" in d]
+        v = Draft202012Validator(json.loads((schemas / "item/v2.schema.json").read_text(encoding="utf-8")),
+                                 registry=Registry().with_resources(res))
+        base = {"$schema": "item@2", "id": "test.item.kit", "name": "Kit", "category": "gear"}
+        self.assertEqual(list(v.iter_errors(base)), [])
+        for k in TOOL_KINDS:
+            self.assertEqual(list(v.iter_errors({**base, "tool_kind": k})), [], k)
+        for bad in ("Artisan's Tools", "tools", "kit", "", 1, None, ["gaming_set"]):
+            self.assertTrue(list(v.iter_errors({**base, "tool_kind": bad})), f"expected rejection: {bad!r}")
+        weapon = {"$schema": "item@2", "id": "test.item.w", "name": "W", "category": "weapon"}
+        self.assertTrue(list(v.iter_errors({**weapon, "tool_kind": "other_tools"})), "tool_kind is a gear-only key")
+        for lid, *_ in TOOLS:
             self.assertEqual(list(v.iter_errors(load(lid))), [], lid)
 
     def test_diamond_is_the_priced_material_id(self):

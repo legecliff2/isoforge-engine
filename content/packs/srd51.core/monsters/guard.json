@@ -68,6 +68,7 @@
       "kind": "melee_weapon_attack",
       "weapon": "srd51.item.spear",
       "to_hit": 3,
+      "ability": "str",
       "reach": 5,
       "targets": 1,
       "damage": [
@@ -84,6 +85,7 @@
       "weapon": "srd51.item.spear",
       "use": "two_hands",
       "to_hit": 3,
+      "ability": "str",
       "reach": 5,
       "targets": 1,
       "properties": [
@@ -103,6 +105,7 @@
       "weapon": "srd51.item.spear",
       "use": "thrown",
       "to_hit": 3,
+      "ability": "str",
       "range": [
         20,
         60

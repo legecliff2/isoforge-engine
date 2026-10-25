@@ -1,0 +1,152 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.deep_gnome",
+  "name": "Deep Gnome (Svirfneblin)",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "small",
+  "type": "humanoid",
+  "tags": [
+    "gnome"
+  ],
+  "alignment": "neutral good",
+  "armor_class": {
+    "value": 15,
+    "note": "chain shirt"
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.chain_shirt",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.war_pick",
+      "equipped": true
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 16,
+    "formula": "3d6+6"
+  },
+  "speed": {
+    "walk": 20
+  },
+  "abilities": {
+    "str": 15,
+    "dex": 14,
+    "con": 14,
+    "int": 12,
+    "wis": 10,
+    "cha": 9
+  },
+  "skills": {
+    "investigation": 3,
+    "perception": 2,
+    "stealth": 4
+  },
+  "senses": {
+    "darkvision": 120,
+    "passive_perception": 12
+  },
+  "languages": [
+    "Gnomish",
+    "Terran",
+    "Undercommon"
+  ],
+  "challenge": {
+    "rating": "1/2",
+    "xp": 100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "stone_camouflage",
+      "name": "Stone Camouflage",
+      "description": "The gnome has advantage on Dexterity (Stealth) checks made to hide in rocky terrain."
+    },
+    {
+      "id": "gnome_cunning",
+      "name": "Gnome Cunning",
+      "description": "The gnome has advantage on Intelligence, Wisdom, and Charisma saving throws against magic.",
+      "effect": {
+        "kind": "save_advantage",
+        "magical": true,
+        "abilities": [
+          "int",
+          "wis",
+          "cha"
+        ]
+      }
+    },
+    {
+      "id": "innate_spellcasting",
+      "name": "Innate Spellcasting",
+      "description": "The gnome's innate spellcasting ability is Intelligence (spell save DC 11). It can innately cast the following spells, requiring no material components:\nAt will: nondetection (self only)\n1/day each: blindness/deafness, blur, disguise self\n(Descriptive only: monster spellcasting is slot-based, so this innate list is not a spellcasting entry; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": "war_pick",
+      "name": "War Pick",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.war_pick",
+      "ability": "str",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 6 (1d8 + 2) piercing damage."
+    },
+    {
+      "id": "poisoned_dart",
+      "name": "Poisoned Dart",
+      "kind": "ranged_weapon_attack",
+      "natural": {
+        "dice": "1d4",
+        "ability": "dex"
+      },
+      "ability": "dex",
+      "to_hit": 4,
+      "range": [
+        30,
+        120
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d4+2",
+          "type": "piercing"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "con",
+            "dc": 12
+          },
+          "apply": [
+            {
+              "condition": "poisoned",
+              "duration": {
+                "kind": "rounds",
+                "n": 10
+              },
+              "repeat_save": "end_of_turn"
+            }
+          ]
+        }
+      ],
+      "description": "Ranged Weapon Attack: +4 to hit, range 30/120 ft., one creature. Hit: 4 (1d4 + 2) piercing damage, and the target must succeed on a DC 12 Constitution saving throw or be poisoned for 1 minute. The target can repeat the saving throw at the end of each of its turns, ending the effect on itself on a success. (Range is the printed 30/120, a ranged natural, not srd51.item.dart 20/60.)"
+    }
+  ]
+}

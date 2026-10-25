@@ -1,0 +1,80 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.scorpion",
+  "name": "Scorpion",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "tiny",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 11,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 11,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 1,
+    "formula": "1d4-1"
+  },
+  "speed": {
+    "walk": 10
+  },
+  "abilities": {
+    "str": 2,
+    "dex": 11,
+    "con": 8,
+    "int": 1,
+    "wis": 8,
+    "cha": 2
+  },
+  "senses": {
+    "blindsight": 10,
+    "passive_perception": 9
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "0",
+    "xp": 10
+  },
+  "proficiency_bonus": 2,
+  "actions": [
+    {
+      "id": "sting",
+      "name": "Sting",
+      "kind": "melee_weapon_attack",
+      "to_hit": 2,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "flat": 1,
+          "type": "piercing"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "con",
+            "dc": 9
+          },
+          "damage": [
+            {
+              "dice": "1d8",
+              "type": "poison"
+            }
+          ],
+          "on_success": "half"
+        }
+      ],
+      "description": "Melee Weapon Attack: +2 to hit, reach 5 ft., one creature. Hit: 1 piercing damage, and the target must make a DC 9 Constitution saving throw, taking 4 (1d8) poison damage on a failed save, or half as much damage on a successful one."
+    }
+  ]
+}

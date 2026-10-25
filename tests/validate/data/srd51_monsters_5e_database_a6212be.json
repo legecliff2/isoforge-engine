@@ -2553,6 +2553,3595 @@
      ]
     }
    ]
+  },
+  "owlbear": {
+   "name": "Owlbear",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    13
+   ],
+   "hp": 59,
+   "hp_roll": "7d10+21",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    20,
+    12,
+    17,
+    3,
+    12,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Beak",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "1d10+5",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d8+5",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "awakened-tree": {
+   "name": "Awakened Tree",
+   "size": "Huge",
+   "type": "plant",
+   "ac": [
+    13
+   ],
+   "hp": 59,
+   "hp_roll": "7d12+14",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "20 ft."
+   },
+   "abilities": [
+    19,
+    6,
+    15,
+    10,
+    10,
+    7
+   ],
+   "damage_vulnerabilities": [
+    "fire"
+   ],
+   "damage_resistances": [
+    "bludgeoning",
+    "piercing"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Slam",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "3d6+4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "hill-giant": {
+   "name": "Hill Giant",
+   "size": "Huge",
+   "type": "giant",
+   "ac": [
+    13
+   ],
+   "hp": 105,
+   "hp_roll": "10d12+40",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    21,
+    8,
+    19,
+    5,
+    9,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Greatclub",
+     "attack_bonus": 8,
+     "damage_options": [
+      [
+       [
+        "3d8+5",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Rock",
+     "attack_bonus": 8,
+     "damage_options": [
+      [
+       [
+        "3d10+5",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "stone-giant": {
+   "name": "Stone Giant",
+   "size": "Huge",
+   "type": "giant",
+   "ac": [
+    17
+   ],
+   "hp": 126,
+   "hp_roll": "11d12+55",
+   "cr": 7,
+   "xp": 2900,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    23,
+    15,
+    20,
+    10,
+    12,
+    9
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Greatclub",
+     "attack_bonus": 9,
+     "damage_options": [
+      [
+       [
+        "3d8+6",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Rock",
+     "attack_bonus": 9,
+     "damage_options": [
+      [
+       [
+        "4d10+6",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-ape": {
+   "name": "Giant Ape",
+   "size": "Huge",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 157,
+   "hp_roll": "15d12+60",
+   "cr": 7,
+   "xp": 2900,
+   "speed": {
+    "walk": "40 ft.",
+    "climb": "40 ft."
+   },
+   "abilities": [
+    23,
+    14,
+    18,
+    7,
+    12,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Fist",
+     "attack_bonus": 9,
+     "damage_options": [
+      [
+       [
+        "3d10+6",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Rock",
+     "attack_bonus": 9,
+     "damage_options": [
+      [
+       [
+        "7d6+6",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "ettercap": {
+   "name": "Ettercap",
+   "size": "Medium",
+   "type": "monstrosity",
+   "ac": [
+    13
+   ],
+   "hp": 44,
+   "hp_roll": "8d8+8",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "30 ft.",
+    "climb": "30 ft."
+   },
+   "abilities": [
+    14,
+    15,
+    13,
+    7,
+    12,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d8+2",
+        "piercing"
+       ],
+       [
+        "1d8",
+        "poison"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d4+2",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "merfolk": {
+   "name": "Merfolk",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    11
+   ],
+   "hp": 11,
+   "hp_roll": "2d8+2",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "10 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    10,
+    13,
+    12,
+    11,
+    11,
+    12
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Spear",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1d6",
+        "piercing"
+       ]
+      ],
+      [
+       [
+        "1d8",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "plesiosaurus": {
+   "name": "Plesiosaurus",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 68,
+   "hp_roll": "8d10+24",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "20 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    18,
+    15,
+    16,
+    2,
+    12,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "3d6+4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "reef-shark": {
+   "name": "Reef Shark",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 22,
+   "hp_roll": "4d8+4",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "swim": "40 ft."
+   },
+   "abilities": [
+    14,
+    13,
+    13,
+    1,
+    10,
+    4
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d8+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "killer-whale": {
+   "name": "Killer Whale",
+   "size": "Huge",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 90,
+   "hp_roll": "12d12+12",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "swim": "60 ft."
+   },
+   "abilities": [
+    19,
+    10,
+    13,
+    3,
+    12,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "5d6+4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "cat": {
+   "name": "Cat",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 2,
+   "hp_roll": "1d4",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "40 ft.",
+    "climb": "30 ft."
+   },
+   "abilities": [
+    3,
+    15,
+    10,
+    3,
+    12,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claws",
+     "attack_bonus": 0,
+     "damage_options": [
+      [
+       [
+        "1",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "crab": {
+   "name": "Crab",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    11
+   ],
+   "hp": 2,
+   "hp_roll": "1d4",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "20 ft.",
+    "swim": "20 ft."
+   },
+   "abilities": [
+    2,
+    11,
+    10,
+    1,
+    8,
+    2
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claw",
+     "attack_bonus": 0,
+     "damage_options": [
+      [
+       [
+        "1",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "poisonous-snake": {
+   "name": "Poisonous Snake",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 2,
+   "hp_roll": "1d4",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "30 ft."
+   },
+   "abilities": [
+    2,
+    16,
+    11,
+    1,
+    10,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "veteran": {
+   "name": "Veteran",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    17
+   ],
+   "hp": 58,
+   "hp_roll": "9d8+18",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    16,
+    13,
+    14,
+    10,
+    11,
+    10
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Longsword",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
+        "slashing"
+       ]
+      ],
+      [
+       [
+        "1d10+3",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Shortsword",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Heavy Crossbow",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d10+1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "thug": {
+   "name": "Thug",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    11
+   ],
+   "hp": 32,
+   "hp_roll": "5d8+10",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    15,
+    11,
+    14,
+    10,
+    10,
+    11
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Mace",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Heavy Crossbow",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1d10",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-rat": {
+   "name": "Giant Rat",
+   "size": "Small",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 7,
+   "hp_roll": "2d6",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    7,
+    15,
+    11,
+    2,
+    10,
+    4
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "knight": {
+   "name": "Knight",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    18
+   ],
+   "hp": 52,
+   "hp_roll": "8d8+16",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    16,
+    11,
+    14,
+    11,
+    11,
+    15
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Greatsword",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Heavy Crossbow",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1d10",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "goat": {
+   "name": "Goat",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 4,
+   "hp_roll": "1d8",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    12,
+    10,
+    11,
+    2,
+    10,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Ram",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d4+1",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "mule": {
+   "name": "Mule",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 11,
+   "hp_roll": "2d8+2",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    14,
+    10,
+    13,
+    2,
+    10,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Hooves",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "bandit-captain": {
+   "name": "Bandit Captain",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    15
+   ],
+   "hp": 65,
+   "hp_roll": "10d8+20",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    15,
+    16,
+    14,
+    14,
+    11,
+    14
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Scimitar",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Dagger",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d4+3",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-fire-beetle": {
+   "name": "Giant Fire Beetle",
+   "size": "Small",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 4,
+   "hp_roll": "1d6+1",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    8,
+    10,
+    12,
+    1,
+    7,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 1,
+     "damage_options": [
+      [
+       [
+        "1d6-1",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "shrieker": {
+   "name": "Shrieker",
+   "size": "Medium",
+   "type": "plant",
+   "ac": [
+    5
+   ],
+   "hp": 13,
+   "hp_roll": "3d8",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "0 ft."
+   },
+   "abilities": [
+    1,
+    1,
+    10,
+    1,
+    3,
+    1
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "blinded",
+    "blinded",
+    "frightened"
+   ],
+   "attacks": []
+  },
+  "scorpion": {
+   "name": "Scorpion",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    11
+   ],
+   "hp": 1,
+   "hp_roll": "1d4-1",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "10 ft."
+   },
+   "abilities": [
+    2,
+    11,
+    8,
+    1,
+    8,
+    2
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Sting",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "rat": {
+   "name": "Rat",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 1,
+   "hp_roll": "1d4-1",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "20 ft."
+   },
+   "abilities": [
+    2,
+    11,
+    9,
+    2,
+    10,
+    4
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 0,
+     "damage_options": [
+      [
+       [
+        "1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "ghast": {
+   "name": "Ghast",
+   "size": "Medium",
+   "type": "undead",
+   "ac": [
+    13
+   ],
+   "hp": 36,
+   "hp_roll": "8d8",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    16,
+    17,
+    10,
+    11,
+    10,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "necrotic"
+   ],
+   "damage_immunities": [
+    "poison"
+   ],
+   "condition_immunities": [
+    "poisoned",
+    "charmed",
+    "exhaustion"
+   ],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "2d8+3",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "satyr": {
+   "name": "Satyr",
+   "size": "Medium",
+   "type": "fey",
+   "ac": [
+    14
+   ],
+   "hp": 31,
+   "hp_roll": "7d8",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    12,
+    16,
+    11,
+    12,
+    10,
+    14
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Ram",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "2d4+1",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Shortsword",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Shortbow",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "gladiator": {
+   "name": "Gladiator",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    16
+   ],
+   "hp": 112,
+   "hp_roll": "15d8+45",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    18,
+    15,
+    16,
+    10,
+    12,
+    15
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Spear",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "piercing"
+       ]
+      ],
+      [
+       [
+        "2d8+4",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Shield Bash",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d4+4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "wight": {
+   "name": "Wight",
+   "size": "Medium",
+   "type": "undead",
+   "ac": [
+    14
+   ],
+   "hp": 45,
+   "hp_roll": "6d8+18",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    15,
+    14,
+    16,
+    10,
+    13,
+    15
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "necrotic",
+    "bludgeoning, piercing, and slashing from nonmagical weapons that aren't silvered"
+   ],
+   "damage_immunities": [
+    "poison"
+   ],
+   "condition_immunities": [
+    "exhaustion",
+    "poisoned"
+   ],
+   "attacks": [
+    {
+     "name": "Life Drain",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "necrotic"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Longsword",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d8+2",
+        "slashing"
+       ]
+      ],
+      [
+       [
+        "1d10+2",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Longbow",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d8+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "vampire-spawn": {
+   "name": "Vampire Spawn",
+   "size": "Medium",
+   "type": "undead",
+   "ac": [
+    15
+   ],
+   "hp": 82,
+   "hp_roll": "11d8+33",
+   "cr": 5,
+   "xp": 1800,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    16,
+    16,
+    16,
+    11,
+    10,
+    12
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "necrotic",
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "piercing"
+       ],
+       [
+        "2d6",
+        "necrotic"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d4+3",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "death-dog": {
+   "name": "Death Dog",
+   "size": "Medium",
+   "type": "monstrosity",
+   "ac": [
+    12
+   ],
+   "hp": 39,
+   "hp_roll": "6d8+12",
+   "cr": 1,
+   "xp": 200,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    15,
+    14,
+    14,
+    3,
+    13,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "violet-fungus": {
+   "name": "Violet Fungus",
+   "size": "Medium",
+   "type": "plant",
+   "ac": [
+    5
+   ],
+   "hp": 18,
+   "hp_roll": "4d8",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "5 ft."
+   },
+   "abilities": [
+    3,
+    1,
+    10,
+    1,
+    3,
+    1
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "blinded",
+    "blinded",
+    "frightened"
+   ],
+   "attacks": [
+    {
+     "name": "Rotting Touch",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1d8",
+        "necrotic"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "shadow": {
+   "name": "Shadow",
+   "size": "Medium",
+   "type": "undead",
+   "ac": [
+    12
+   ],
+   "hp": 16,
+   "hp_roll": "3d8+3",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    6,
+    14,
+    13,
+    6,
+    10,
+    8
+   ],
+   "damage_vulnerabilities": [
+    "radiant"
+   ],
+   "damage_resistances": [
+    "acid",
+    "cold",
+    "fire",
+    "lightning",
+    "thunder",
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "damage_immunities": [
+    "necrotic",
+    "poison"
+   ],
+   "condition_immunities": [
+    "exhaustion",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained"
+   ],
+   "attacks": [
+    {
+     "name": "Strength Drain",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d6+2",
+        "necrotic"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "acolyte": {
+   "name": "Acolyte",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    10
+   ],
+   "hp": 9,
+   "hp_roll": "2d8",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    10,
+    10,
+    10,
+    10,
+    14,
+    11
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Club",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1d4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "cult-fanatic": {
+   "name": "Cult Fanatic",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    13
+   ],
+   "hp": 22,
+   "hp_roll": "6d8-5",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    11,
+    14,
+    12,
+    10,
+    13,
+    14
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Dagger",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "blink-dog": {
+   "name": "Blink Dog",
+   "size": "Medium",
+   "type": "fey",
+   "ac": [
+    13
+   ],
+   "hp": 22,
+   "hp_roll": "4d8+4",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    12,
+    17,
+    12,
+    10,
+    13,
+    11
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "mummy": {
+   "name": "Mummy",
+   "size": "Medium",
+   "type": "undead",
+   "ac": [
+    11
+   ],
+   "hp": 58,
+   "hp_roll": "9d8+18",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "20 ft."
+   },
+   "abilities": [
+    16,
+    8,
+    15,
+    6,
+    10,
+    12
+   ],
+   "damage_vulnerabilities": [
+    "fire"
+   ],
+   "damage_resistances": [
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "damage_immunities": [
+    "necrotic",
+    "poison"
+   ],
+   "condition_immunities": [
+    "charmed",
+    "exhaustion",
+    "frightened",
+    "paralyzed",
+    "poisoned"
+   ],
+   "attacks": [
+    {
+     "name": "Rotting Fist",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "bludgeoning"
+       ],
+       [
+        "3d6",
+        "necrotic"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "badger": {
+   "name": "Badger",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 3,
+   "hp_roll": "1d4+1",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "20 ft.",
+    "burrow": "5 ft."
+   },
+   "abilities": [
+    4,
+    11,
+    12,
+    2,
+    12,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "eagle": {
+   "name": "Eagle",
+   "size": "Small",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 3,
+   "hp_roll": "1d6",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    6,
+    15,
+    10,
+    2,
+    14,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Talons",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "owl": {
+   "name": "Owl",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    11
+   ],
+   "hp": 1,
+   "hp_roll": "1d4-1",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "5 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    3,
+    13,
+    8,
+    2,
+    12,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Talons",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "quipper": {
+   "name": "Quipper",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 1,
+   "hp_roll": "1d4-1",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "swim": "40 ft."
+   },
+   "abilities": [
+    2,
+    16,
+    9,
+    1,
+    7,
+    2
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "raven": {
+   "name": "Raven",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 1,
+   "hp_roll": "1d4-1",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "50 ft."
+   },
+   "abilities": [
+    2,
+    14,
+    8,
+    2,
+    12,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Beak",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "vulture": {
+   "name": "Vulture",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 5,
+   "hp_roll": "1d8+1",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "50 ft."
+   },
+   "abilities": [
+    7,
+    10,
+    13,
+    2,
+    12,
+    4
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Beak",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1d4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "blood-hawk": {
+   "name": "Blood Hawk",
+   "size": "Small",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 7,
+   "hp_roll": "2d6",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    6,
+    14,
+    10,
+    3,
+    14,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Beak",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "flying-snake": {
+   "name": "Flying Snake",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    14
+   ],
+   "hp": 5,
+   "hp_roll": "2d4",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "60 ft.",
+    "swim": "30 ft."
+   },
+   "abilities": [
+    4,
+    18,
+    11,
+    2,
+    12,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "1",
+        "piercing"
+       ],
+       [
+        "3d4",
+        "poison"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-crab": {
+   "name": "Giant Crab",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    15
+   ],
+   "hp": 13,
+   "hp_roll": "3d8",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "30 ft."
+   },
+   "abilities": [
+    13,
+    15,
+    11,
+    1,
+    9,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claw",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "stirge": {
+   "name": "Stirge",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    14
+   ],
+   "hp": 2,
+   "hp_roll": "1d4",
+   "cr": 0.125,
+   "xp": 25,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "40 ft."
+   },
+   "abilities": [
+    4,
+    16,
+    11,
+    2,
+    8,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Blood Drain",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d4+3",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-badger": {
+   "name": "Giant Badger",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 13,
+   "hp_roll": "2d8+4",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "30 ft.",
+    "burrow": "10 ft."
+   },
+   "abilities": [
+    13,
+    10,
+    15,
+    2,
+    12,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "2d4+1",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-bat": {
+   "name": "Giant Bat",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 22,
+   "hp_roll": "4d10",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    15,
+    16,
+    11,
+    2,
+    12,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-frog": {
+   "name": "Giant Frog",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    11
+   ],
+   "hp": 18,
+   "hp_roll": "4d8",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "30 ft."
+   },
+   "abilities": [
+    12,
+    13,
+    11,
+    2,
+    10,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-owl": {
+   "name": "Giant Owl",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 19,
+   "hp_roll": "3d10+3",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "5 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    13,
+    15,
+    12,
+    8,
+    13,
+    10
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Talons",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "2d6+1",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "drow": {
+   "name": "Drow",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    15
+   ],
+   "hp": 13,
+   "hp_roll": "3d8",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    10,
+    14,
+    10,
+    11,
+    11,
+    12
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Shortsword",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Hand Crossbow",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "pseudodragon": {
+   "name": "Pseudodragon",
+   "size": "Tiny",
+   "type": "dragon",
+   "ac": [
+    13
+   ],
+   "hp": 7,
+   "hp_roll": "2d4+2",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "15 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    6,
+    15,
+    13,
+    10,
+    12,
+    10
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Sting",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "sprite": {
+   "name": "Sprite",
+   "size": "Tiny",
+   "type": "fey",
+   "ac": [
+    15
+   ],
+   "hp": 2,
+   "hp_roll": "1d4",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "40 ft."
+   },
+   "abilities": [
+    3,
+    18,
+    10,
+    14,
+    13,
+    11
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Longsword",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Shortbow",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "steam-mephit": {
+   "name": "Steam Mephit",
+   "size": "Small",
+   "type": "elemental",
+   "ac": [
+    10
+   ],
+   "hp": 21,
+   "hp_roll": "6d6",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "30 ft."
+   },
+   "abilities": [
+    5,
+    11,
+    10,
+    11,
+    10,
+    12
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "fire",
+    "poison"
+   ],
+   "condition_immunities": [
+    "poisoned"
+   ],
+   "attacks": [
+    {
+     "name": "Claws",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1d4",
+        "slashing"
+       ],
+       [
+        "1d4",
+        "fire"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "constrictor-snake": {
+   "name": "Constrictor Snake",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 13,
+   "hp_roll": "2d10+2",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "30 ft."
+   },
+   "abilities": [
+    15,
+    14,
+    12,
+    1,
+    10,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Constrict",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d8+2",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "elk": {
+   "name": "Elk",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 13,
+   "hp_roll": "2d10+2",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "50 ft."
+   },
+   "abilities": [
+    16,
+    10,
+    12,
+    2,
+    10,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Ram",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Hooves",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d4+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "panther": {
+   "name": "Panther",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 13,
+   "hp_roll": "3d8",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "50 ft.",
+    "climb": "40 ft."
+   },
+   "abilities": [
+    14,
+    15,
+    10,
+    3,
+    14,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "swarm-of-bats": {
+   "name": "Swarm of Bats",
+   "size": "Medium",
+   "type": "swarm of Tiny beasts",
+   "ac": [
+    12
+   ],
+   "hp": 22,
+   "hp_roll": "5d8",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "0 ft.",
+    "fly": "30 ft."
+   },
+   "abilities": [
+    5,
+    15,
+    10,
+    2,
+    12,
+    4
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+   ],
+   "attacks": [
+    {
+     "name": "Bites",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "swarm-of-ravens": {
+   "name": "Swarm of Ravens",
+   "size": "Medium",
+   "type": "swarm of Tiny beasts",
+   "ac": [
+    12
+   ],
+   "hp": 24,
+   "hp_roll": "7d8-7",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "50 ft."
+   },
+   "abilities": [
+    6,
+    14,
+    8,
+    3,
+    12,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+   ],
+   "attacks": [
+    {
+     "name": "Beaks",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d6",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "ice-mephit": {
+   "name": "Ice Mephit",
+   "size": "Small",
+   "type": "elemental",
+   "ac": [
+    11
+   ],
+   "hp": 21,
+   "hp_roll": "6d6",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "30 ft."
+   },
+   "abilities": [
+    7,
+    13,
+    10,
+    9,
+    11,
+    12
+   ],
+   "damage_vulnerabilities": [
+    "bludgeoning",
+    "fire"
+   ],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "cold",
+    "poison"
+   ],
+   "condition_immunities": [
+    "poisoned"
+   ],
+   "attacks": [
+    {
+     "name": "Claws",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d4+1",
+        "slashing"
+       ],
+       [
+        "1d4",
+        "cold"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "dust-mephit": {
+   "name": "Dust Mephit",
+   "size": "Small",
+   "type": "elemental",
+   "ac": [
+    12
+   ],
+   "hp": 17,
+   "hp_roll": "5d6",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "30 ft."
+   },
+   "abilities": [
+    5,
+    14,
+    10,
+    9,
+    11,
+    10
+   ],
+   "damage_vulnerabilities": [
+    "fire"
+   ],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "poison"
+   ],
+   "condition_immunities": [
+    "poisoned"
+   ],
+   "attacks": [
+    {
+     "name": "Claws",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "magma-mephit": {
+   "name": "Magma Mephit",
+   "size": "Small",
+   "type": "elemental",
+   "ac": [
+    11
+   ],
+   "hp": 22,
+   "hp_roll": "5d6+5",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "30 ft."
+   },
+   "abilities": [
+    8,
+    12,
+    12,
+    7,
+    10,
+    10
+   ],
+   "damage_vulnerabilities": [
+    "cold"
+   ],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "fire",
+    "poison"
+   ],
+   "condition_immunities": [
+    "poisoned"
+   ],
+   "attacks": [
+    {
+     "name": "Claws",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d4+1",
+        "slashing"
+       ],
+       [
+        "1d4",
+        "fire"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "cockatrice": {
+   "name": "Cockatrice",
+   "size": "Small",
+   "type": "monstrosity",
+   "ac": [
+    11
+   ],
+   "hp": 27,
+   "hp_roll": "6d6+6",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "20 ft.",
+    "fly": "40 ft."
+   },
+   "abilities": [
+    6,
+    12,
+    12,
+    2,
+    13,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d4+1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "sahuagin": {
+   "name": "Sahuagin",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    12
+   ],
+   "hp": 22,
+   "hp_roll": "4d8+4",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    13,
+    11,
+    12,
+    12,
+    13,
+    9
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d4+1",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d4+1",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Spear",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "piercing"
+       ]
+      ],
+      [
+       [
+        "1d8+1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-goat": {
+   "name": "Giant Goat",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    11
+   ],
+   "hp": 19,
+   "hp_roll": "3d10+3",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    17,
+    11,
+    12,
+    3,
+    12,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Ram",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d4+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-sea-horse": {
+   "name": "Giant Sea Horse",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 16,
+   "hp_roll": "3d10",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "0 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    12,
+    15,
+    11,
+    2,
+    12,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Ram",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-wasp": {
+   "name": "Giant Wasp",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 13,
+   "hp_roll": "3d8",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "50 ft.",
+    "swim": "50 ft."
+   },
+   "abilities": [
+    10,
+    14,
+    10,
+    1,
+    10,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Sting",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "swarm-of-insects": {
+   "name": "Swarm of Insects",
+   "size": "Medium",
+   "type": "swarm of Tiny beasts",
+   "ac": [
+    12
+   ],
+   "hp": 22,
+   "hp_roll": "5d8",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "20 ft.",
+    "climb": "20 ft."
+   },
+   "abilities": [
+    3,
+    13,
+    10,
+    1,
+    7,
+    1
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+   ],
+   "attacks": [
+    {
+     "name": "Bites",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "4d4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "warhorse": {
+   "name": "Warhorse",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    11
+   ],
+   "hp": 19,
+   "hp_roll": "3d10+3",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "60 ft."
+   },
+   "abilities": [
+    18,
+    12,
+    13,
+    2,
+    12,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Hooves",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "crocodile": {
+   "name": "Crocodile",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 19,
+   "hp_roll": "3d10+3",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "20 ft.",
+    "swim": "20 ft."
+   },
+   "abilities": [
+    15,
+    10,
+    13,
+    2,
+    10,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d10+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "darkmantle": {
+   "name": "Darkmantle",
+   "size": "Small",
+   "type": "monstrosity",
+   "ac": [
+    11
+   ],
+   "hp": 22,
+   "hp_roll": "5d6+5",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "30 ft."
+   },
+   "abilities": [
+    16,
+    12,
+    13,
+    2,
+    10,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Crush",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "rust-monster": {
+   "name": "Rust Monster",
+   "size": "Medium",
+   "type": "monstrosity",
+   "ac": [
+    14
+   ],
+   "hp": 27,
+   "hp_roll": "5d8+5",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    13,
+    12,
+    13,
+    2,
+    13,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d8+1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "gray-ooze": {
+   "name": "Gray Ooze",
+   "size": "Medium",
+   "type": "ooze",
+   "ac": [
+    8
+   ],
+   "hp": 22,
+   "hp_roll": "3d8+9",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "10 ft.",
+    "climb": "10 ft."
+   },
+   "abilities": [
+    12,
+    6,
+    16,
+    1,
+    6,
+    2
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "acid",
+    "cold",
+    "fire"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "blinded",
+    "charmed",
+    "deafened",
+    "exhaustion",
+    "frightened",
+    "prone"
+   ],
+   "attacks": [
+    {
+     "name": "Pseudopod",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "bludgeoning"
+       ],
+       [
+        "2d6",
+        "acid"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "deep-gnome": {
+   "name": "Deep Gnome (Svirfneblin)",
+   "size": "Small",
+   "type": "humanoid",
+   "ac": [
+    15
+   ],
+   "hp": 16,
+   "hp_roll": "3d6+6",
+   "cr": 0.5,
+   "xp": 50,
+   "speed": {
+    "walk": "20 ft."
+   },
+   "abilities": [
+    15,
+    14,
+    14,
+    12,
+    10,
+    9
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "War Pick",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d8+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Poisoned Dart",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }

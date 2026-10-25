@@ -5,25 +5,68 @@ Workflow: `.github/workflows/ci.yml`; every OS job runs the composite action
 
 | Job | Preset | When |
 |---|---|---|
-| Detect changes | – | always (docs-only changes skip the build jobs) |
+| Detect changes | – | every event except draft PRs and fork PRs (docs-only changes skip the build jobs) |
 | Linux GCC Debug | `ci-linux-gcc` | every PR, every push to `main` |
 | Linux Clang Release | `ci-linux-clang` (`ctest -LE python_only`) | every PR, every push to `main` |
 | Windows MSVC Debug | `ci-win-msvc` / `ci-win-msvc-debug` | every PR, every push to `main` |
 | Windows MSVC Release | `ci-win-msvc` / `ci-win-msvc-release` (`ctest -LE python_only`) | every push to `main`, manual dispatch, PRs labelled `ci-windows-release` |
 | macOS AppleClang Debug | `ci-mac-clang` | nightly 07:17 UTC, manual dispatch, PRs touching platform/render/determinism paths |
-| ci-required | – | always; the single required check. `success` or `skipped` needs pass, anything else fails |
+| ci-required | – | always (`if: always()`); the single required check. Passes when every job this event requires has `result == success`. A job this event does not require may be `skipped` (docs-only builds, where only `changes` must succeed; unlabelled Windows Release; macOS when the nightly gate says main did not move). `failure` and `cancelled` on any needed job fail the gate. Draft PRs and fork PRs fail the check |
 
 To run Windows Release on a PR, add the `ci-windows-release` label and then push a commit (or close
 and reopen the PR). Adding a label alone does not trigger CI, and "Re-run jobs" replays the original
 event payload, so it does not see a label added afterwards.
 
-`python3 tools/ci_conditions_test.py` evaluates the real `if:` conditions and the ci-required gate for
-PR (with/without the label, docs-only, mac paths), push, schedule and dispatch.
+`python3 tools/ci_conditions_test.py` evaluates the real `if:` conditions and runs the ci-required
+shell for PR (with/without the label, docs-only, mac paths, draft, fork), push, schedule and dispatch.
+
+`ci-required` requires `result == success` for the jobs the event actually runs. A skipped job
+outside that set does not fail the gate. `failure` and `cancelled` on any needed job do.
+
+| Event | State | Must be `success` | ci-required |
+|---|---|---|---|
+| `pull_request` (`opened`, `synchronize`, `reopened`, `ready_for_review`) | draft | (builds are skipped) | failure |
+| `pull_request` | fork | `changes` is skipped | failure |
+| `pull_request` | code, no Windows Release label, mac filter miss | `changes`, `linux-runner`, `build-test` | success when those succeeded |
+| `pull_request` | code + `ci-windows-release` | those, plus `windows-release` | success when those succeeded |
+| `pull_request` | code + mac paths | those, plus `macos` | success when those succeeded |
+| `pull_request` | docs-only | `changes` | success when `changes` succeeded |
+| `push` to `main` | code | `changes`, `linux-runner`, `build-test`, `windows-release` | success when those succeeded |
+| `push` to `main` | docs-only | `changes` | success when `changes` succeeded |
+| `schedule` | main moved since last green nightly | `changes`, `linux-runner`, `nightly-gate`, `macos` | success when those succeeded |
+| `schedule` | main unchanged (`run` is not `true`) | `changes`, `linux-runner`, `nightly-gate` | success when those succeeded |
+| `workflow_dispatch` | any | `changes`, `windows-release`, `macos` | success when those succeeded |
+
+A required job that is `skipped`, `failure`, or `cancelled` fails the gate. `cancelled` or `failure`
+on any needed job fails it, even if that job was not in the set above. The Windows Release label
+and the mac path filter stack: both jobs are required when both match. `ready_for_review` is the
+non-draft `pull_request` row: `draft` is false, so the code rows apply. External (fork) PRs fail
+`ci-required` by design; see the workflow section for how a maintainer re-runs them.
 
 Minutes savers: ccache (Linux/macOS) / sccache (Windows, with `/Z7` embedded debug info) cached with
 `actions/cache` per OS + preset, keyed on `cmake/Dependencies.cmake` (the `ci` presets set `CMAKE_DISABLE_PRECOMPILE_HEADERS=ON` because SDL3's precompiled header defeats ccache with Clang and sccache with MSVC `/Yu`, and `CMAKE_CXX_SCAN_FOR_MODULES=OFF` because GCC's `-fmodules-ts` makes every C++ object uncacheable; the project uses no C++ modules); `ctest --parallel 4`; the
 `python_only` label marks the pure-Python validator tests (no compiled code), which only the Debug
 jobs run. `content_validate` itself runs the compiled `script_check` and runs in every job.
+
+## Content validator unittests
+
+`content_validate_*` unittest files go through `tools/validate/run_unittest_file.py` instead of
+being executed as scripts. The runner loads the module, collects its `unittest` cases, and exits
+non-zero when no test ran or any test failed. That is what an empty module needs, and what a file
+needs when its `if __name__ == "__main__"` guard calls `unittest.main()` before later cases are
+defined: running the file directly used to exit 0 after the cases above the guard, and ctest
+recorded a pass.
+
+`content_validate_zero_tests_fail` is the negative guard. It runs the same runner on the empty
+fixture `tests/validate/fixtures/zero_tests/empty_test.py`. The runner prints `ZERO TESTS RAN`
+and exits non-zero. The ctest property `PASS_REGULAR_EXPRESSION` requires that line (CMake
+ignores the process exit code for this property, so the non-zero status still counts as a
+passing guard). These unittest ctests carry the `python_only` label, so Release jobs skip them
+with `ctest -LE python_only`. `content_validate` itself runs the compiled `script_check` and
+stays unlabelled, so every job still runs it.
+
+Script-style checks (`content_validate`, `content_validate_negative`, `content_validate_packset`)
+keep their own entry points.
 
 ## Running the Linux jobs locally: `tools/ci_local.sh`
 
@@ -39,10 +82,42 @@ Same presets and steps as CI: configure, `ctest -R "^(depcheck|include_lint)"`, 
 `content_validate` is registered, full `ctest`. Prints a PASS/FAIL line per step and exits non-zero
 if anything failed. Uses ccache when installed (`--no-ccache` to disable).
 
-Packages (Debian/Ubuntu):
+Parallelism is sized from free RAM so several agents can share one machine. Unless `-j` /
+`--parallel` or `CI_LOCAL_JOBS` is set, `-j` is `floor(MemAvailable / CI_LOCAL_MB_PER_JOB)`
+(default 1536 MB per job), clamped to `[1, nproc]`. The script logs the chosen `-j` and why at
+startup, then reads memory again before every `cmake --build` and every `ctest`. `CI_LOCAL_JOBS=N`
+replaces the estimate. `-j N` replaces both.
+
+Heavy build and test steps take an exclusive `flock` on `/tmp/ci_local.lock` (`CI_LOCAL_LOCK` to
+use another path). `CI_LOCAL_NO_LOCK=1` skips it. Run `tools/ci_local.sh` directly. Never wrap it
+in an outer `flock` on that same path (`flock /tmp/ci_local.lock tools/ci_local.sh`): the outer
+`flock` holds the lock on an inherited fd and does not set `CI_LOCAL_LOCK_OWNER`, so the script
+locks the file again and waits on itself. If this process already holds the lock on an inherited
+fd, it does not take the lock a second time. The lock file is created mode `0666` so a
+different Unix user can open it. If the file is not writable (an older `0644` lock, or Linux
+`fs.protected_regular` refusing another user's write in sticky `/tmp` even at mode `0666`), the
+script locks it read-only instead of building with no queue. The lock is skipped only when it
+cannot be opened at all. A second invocation prints `waiting for lock`
+and the holder's PID, then runs when the lock is free. The lock is taken before the first build
+and held until the process exits (so a later GCC/Clang job in the same run stays in the queue),
+and it is released on exit and on `INT`, `TERM`, and `HUP`. A nested `ci_local.sh` skips the lock
+only while the recorded owner is still running. `--job lint` does not take it.
+
+Without `/proc/meminfo` (for example macOS), memory comes from `sysctl` (`vm.page_free_count`
+with `hw.pagesize` when those exist, otherwise total `hw.memsize`) and the CPU count from `nproc`
+or `sysctl hw.ncpu`. If neither memory source exists, `-j` is `nproc`. If `flock` is missing the
+script skips the lock and prints a notice.
+
+`python3 tools/ci_local_jobs_test.py` checks the job arithmetic, the overrides, and that two
+callers serialize on the lock.
+
+Packages (Debian/Ubuntu). `libstdc++-14-dev` is needed on Ubuntu 24.04-era images, where
+Clang selects GCC 14's libstdc++ even when the default `g++` is GCC 13. It is not required on
+every Debian or Ubuntu release. Without it on those images the Clang job fails at link time
+with `cannot find -lstdc++` (GCC 14 headers and crt files can be present while the library is not):
 
 ```sh
-sudo apt-get install -y cmake ninja-build clang python3-venv ccache \
+sudo apt-get install -y cmake ninja-build clang python3-venv ccache libstdc++-14-dev \
   libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev libxtst-dev \
   libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libgl-dev libvulkan-dev libudev-dev libdbus-1-dev
 ```
@@ -52,11 +127,16 @@ Windows and macOS jobs are not mirrored; use the `win-msvc` / `mac-clang-debug` 
 ## Workflow for PRs (minimising CI minutes)
 
 - **Run `tools/ci_local.sh` before marking a PR ready.** It mirrors both Linux jobs locally.
-- **Draft PRs don't run CI.** The `pull_request` trigger only fires on `opened`, `synchronize`,
-  `reopened` and `ready_for_review`, and the `changes` job (which every other job needs) is skipped
-  when `github.event.pull_request.draft` is true. Opening a PR as a draft and marking it ready starts
-  CI once. `ci-required` passes on a draft (`changes` skipped on purpose); on any non-draft run a
-  skipped `changes` fails the gate.
+- **Draft PRs don't run build/test jobs.** The `pull_request` trigger fires on `opened`,
+  `synchronize`, `reopened` and `ready_for_review`. The `changes` job (which every build needs) is
+  skipped when `github.event.pull_request.draft` is true. `ci-required` still runs and **fails**
+  the draft: GitHub treats a skipped required job as a passing check, so skipping the gate would
+  leave `protect-main` green. Marking the PR ready fires `ready_for_review` (`draft == false`) and
+  runs the full workflow. A non-draft run whose `changes` job did not succeed fails the gate.
+- **Fork PRs fail `ci-required` by design.** External pull requests do not run builds (`changes`
+  is skipped when the head repository is not this one). A maintainer re-runs CI by pushing the
+  contributor's commits to an internal branch and opening a pull request from that branch, using
+  merge commits and no rebase.
 - **Stacked chains:** keep the lower PRs in draft or don't push them separately; run CI once on the
   top PR (it contains the whole stack), then merge the chain in order, bottom first.
 - **Concurrency:** one group per workflow + PR number (or ref). A new push cancels the PR's

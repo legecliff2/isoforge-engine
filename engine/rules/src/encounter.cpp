@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <limits>
 #include <array>
 #include <utility>
 
@@ -48,6 +49,22 @@ void kill(Combatant& c, std::vector<Event>& ev) {
     emit(ev, EventKind::CombatantDied, c.id);
 }
 
+// Batch 3 shadow Strength Drain (SRD 5.1): the Strength score drops by `amount` (never below 0); "The target dies if this
+// reduces its Strength to 0" (the existing death path, kill). ability_reduction records the drop actually applied (saturating
+// at 127), so a rest restores exactly that much.
+static_assert(std::numeric_limits<decltype(AbilityScores{}.score)::value_type>::max() == 127,
+              "ability_reduction saturates at 127: the largest drop an int8_t score can take");
+// TODO(deferred, SRD_COMBAT_COVERAGE "Shadow spawn"): a non-evil humanoid killed by Strength Drain rises as a new shadow
+// 1d4 hours later (needs an hour clock and spawn-on-death).
+void strength_drain(Combatant& t, int amount, std::vector<Event>& ev) {
+    if (t.dead || amount <= 0) return;
+    auto& score = t.abilities.score[std::size_t(Ability::Str)];
+    const int applied = std::min(amount, std::max(0, int(score)));
+    score = int8_t(int(score) - applied);
+    auto& red = t.ability_reduction[std::size_t(Ability::Str)];
+    red = uint8_t(std::min(127, int(red) + applied));
+    if (score <= 0) kill(t, ev);
+}
 
 // ---- Timed modifiers (row 12) ----
 void refresh_mod_cache(EncounterState& s) {
@@ -440,7 +457,11 @@ void end_effect(EncounterState& s, std::size_t i, std::vector<Event>& ev) {
     // EC spider follow-up (flagged): an effect's `also` condition holds the condition too, and ends with its effect
     auto held = [&](Condition k) {
         return std::any_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
-            return o.target == e.target && ((!o.no_condition && o.condition == k) || (o.has_also && o.also == k)); });
+            return o.target == e.target && ((!o.no_condition && o.condition == k) || (o.has_also && o.also == k)); }) ||
+               // Lich ruling (Stench expiry is per source): a sourced instance (R-G8) of the same condition from ANOTHER
+               // source still holds it (a spell's Charmed / Frightened sourced entry from its own caster is this instance)
+               std::any_of(s.sourced.begin(), s.sourced.end(), [&](const SourcedCondition& o) {
+            return o.target == e.target && o.condition == k && o.source != e.caster; });
     };
     if (e.has_also && !held(e.also) && t->has(e.also)) {
         remove_condition(*t, e.also);
@@ -822,6 +843,10 @@ const SpellDef* spell_def(const EncounterState& s, uint32_t id) {
 // ---- R-G11 rules PR 2: passive zone queries (Silence, D7 auras). All answer false / 0 at once without zones. ----
 // A needs_conscious_owner zone does nothing while its owner is dead, at 0 HP or unconscious.
 bool zone_suppressed(const EncounterState& s, const ActiveZone& z, const SpellDef& def) {
+    if (z.feature) {   // batch 3 (ghast Stench): a feature aura does nothing once its owner is dead (before the round-start removal)
+        const Combatant* o = find(s, z.owner);
+        if (!o || o->dead) return true;
+    }
     if (!def.zone.needs_conscious_owner) return false;
     const Combatant* o = find(s, z.owner);
     return !o || o->dead || o->hp <= 0 || o->has(Condition::Unconscious);
@@ -968,6 +993,7 @@ struct Ctx {
     bool zone_fired = false;   // a zone trigger resolved inside finalize_forced (deaths / concentration are swept again)
     uint8_t command_word = 0;     // 7.2v: Command's word (set by cast_spell around resolve_spell only)
     uint8_t form_archetype = 0;   // R-G12: the cast's form choice (set by cast_spell around resolve_spell only)
+    bool grapple_instead = false; // Tier-A §27: the Attack's hit grapples instead of dealing damage (set around do_attack only)
     bool guess_miss = false;      // 7.2x: the Attack guessed the wrong tile for a hidden target (automatic miss)
     // R-G12 PR 2: the cast's creature choices (set around resolve_spell only), the creatures built by the Summon effect (placed
     // by attempt after the step: appending to combatants would move the step's Combatant references), and the ids they took.
@@ -1000,7 +1026,9 @@ void end_grapple_pair(EncounterState& s, CombatantId x, CombatantId y, std::vect
         const SourcedCondition& e = s.sourced[i];
         if (e.condition == Condition::Grappled && ((e.source == x && e.target == y) || (e.source == y && e.target == x))) {
             freed.push_back(e.target);
+            const SourcedCondition gone = e;
             s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i));
+            release_grapple_restraint(s, gone, ev);
         } else ++i;
     }
     for (CombatantId id : freed) {
@@ -1539,6 +1567,18 @@ void life_drain(EncounterState& s, Combatant& t, int taken, int dc, CombatantId 
     if (cap <= 0) { kill(t, ev); check_end(s, ev); }
 }
 
+// Batch 3 (vampire spawn Bite): an attack with target_requires_any needs one of: a willing target (the request says so and it
+// is on the attacker's team), grappled by the attacker, incapacitated, restrained. Empty = allowed.
+static std::string_view target_gate_refusal(const EncounterState& s, const Combatant& a, const Combatant& t, const Attack& atk, bool willing) {
+    const uint8_t g = atk.target_requires_any;
+    if (g == 0) return {};
+    if ((g & kTargetGateWilling) && willing && t.team == a.team) return {};
+    if ((g & kTargetGateGrappledBySelf) && t.has(Condition::Grappled) && condition_source(s, t.id, Condition::Grappled) == a.id) return {};
+    if ((g & kTargetGateIncapacitated) && is_incapacitated(t)) return {};
+    if ((g & kTargetGateRestrained) && t.has(Condition::Restrained)) return {};
+    return "target must be willing, grappled by the attacker, incapacitated, or restrained";
+}
+
 // 7.2x: the start-of-step state the sight hook is asked about during a step (set by attempt while the hook exists).
 thread_local const EncounterState* g_sight_base = nullptr;
 
@@ -1628,6 +1668,33 @@ int imbue_attack_index(const Combatant& a, const WeaponImbueSpec& w) {
     }
     return -1;
 }
+// Lich ruling (Strength Drain): the change of the attack's ability modifier from the unreduced score (abilities +
+// ability_reduction) to the effective one (abilities), added to to-hit (which_damage false) or damage (true) when the attack is
+// used. A finesse attack uses the better of Str and Dex on both sides, so a drained Str switches it to Dex. 0 while every
+// reduction is 0 (existing goldens unchanged).
+// The ability code an attack's roll (or damage) uses: Ability, kAttackAbilityFinesse or kAttackAbilityNone.
+int attack_ability_code(const Attack& atk, bool which_damage) {
+    int code = which_damage && atk.damage_ability_used >= 0 ? atk.damage_ability_used : atk.ability_used;
+    if (code < 0) code = is_finesse(atk) ? kAttackAbilityFinesse : atk.ranged ? int(Ability::Dex) : int(Ability::Str);
+    return code;
+}
+// The modifier `code` gives with scores `sc` (finesse: the better of Str / Dex; none: 0).
+int attack_ability_mod(const AbilityScores& sc, int code) {
+    if (code == kAttackAbilityNone) return 0;
+    if (code == kAttackAbilityFinesse) return std::max(modifier(sc, Ability::Str), modifier(sc, Ability::Dex));
+    return modifier(sc, Ability(code));
+}
+int attack_drain_delta(const Combatant& a, const Attack& atk, bool which_damage) {
+    bool any = false;
+    for (uint8_t r : a.ability_reduction) any = any || r != 0;
+    if (!any) return 0;
+    const int code = attack_ability_code(atk, which_damage);
+    if (code == kAttackAbilityNone) return 0;
+    AbilityScores base = a.abilities;
+    for (std::size_t i = 0; i < 6; ++i) base.score[i] = int8_t(std::min(127, int(base.score[i]) + int(a.ability_reduction[i])));
+    return attack_ability_mod(a.abilities, code) - attack_ability_mod(base, code);
+}
+
 // 7.2zf: the attack as imbued (true) when `atk` is the caster's imbued attack, else false.
 bool imbued_attack(const EncounterState& s, const Combatant& a, const Attack& atk, Attack& out) {
     for (const ActiveSpellEffect& e : s.effects) {
@@ -1711,7 +1778,8 @@ std::vector<ReactionOption> reaction_options(const EncounterState& s, const Comb
     if (w.trigger == ReactionTrigger::Damaged && has_damager && w.target == r.id && s.hooks.spells) {   // 7.2zg Hellish Rebuke
         for (uint32_t id : r.spells_known) {
             const SpellDef* d = s.hooks.spells->find(id);
-            if (!d || d->casting_time != CastingTime::Reaction || d->reaction_trigger != ReactionTrigger::Damaged) continue;
+            if (!d || d->kind == SpellEffectKind::Descriptive || d->casting_time != CastingTime::Reaction ||
+                d->reaction_trigger != ReactionTrigger::Damaged) continue;
             if ((d->components & kComponentV) && !s.zones.empty() && in_silence(s, r.id)) continue;
             if (s.hooks.can_provide_components && !s.hooks.can_provide_components(s, r, *d)) continue;
             if (!sight(s, r.id, damager->id).can_see) continue;   // a creature the caster can see
@@ -1975,14 +2043,14 @@ void damage_creature(EncounterState& s, Combatant& t, const DamageApplied& d, bo
         ++ctx->depth;
         if (o.kind == ReactionOptionKind::Retaliate) {
             const SpellDef* def = spell_def(s, o.option_id);
-            if (def && o.slot_level > 0) {   // 7.2zg Hellish Rebuke: a reaction spell cast at the damager
+            if (def && def->kind != SpellEffectKind::Descriptive && o.slot_level > 0) {   // 7.2zg Hellish Rebuke: a reaction spell cast at the damager
                 spend_slot(t, o.slot_level);
                 emit(ev, EventKind::SpellCast, t.id, attacker->id, int32_t(def->id), o.slot_level);
                 const bool countered = spell_cast_window(s, *ctx, t, def->id, o.slot_level, attacker->id, ev);
                 if (!countered && !attacker->dead) resolve_effect(s, *ctx, t, *def, o.slot_level, std::vector<Combatant*>{attacker}, false, ev);
                 emit(ev, countered ? EventKind::SpellCountered : EventKind::SpellResolved, t.id, attacker->id, int32_t(def->id), o.slot_level);
                 if (!s.effects.empty()) end_on_own_action(s, t.id, kEndsOnCast, ev);
-            } else if (def)
+            } else if (def && def->kind != SpellEffectKind::Descriptive)
                 resolve_effect(s, *ctx, t, *def, 0, std::vector<Combatant*>{attacker}, true, ev);
         } else if (o.attack_index < t.attacks.size()) {
             do_attack(s, *ctx, t, *attacker, t.attacks[o.attack_index], true, ev);
@@ -2099,6 +2167,10 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
         if (trigger_recharging(s, a, tr)) continue;   // EC deferred monsters (flagged): usage recharge
         bool any = false;
         for (const RiderEffect& e : tr.effects) if (hit_effect_ok(s, e)) any = true;
+        if (ctx.grapple_instead) {   // Tier-A §27: no damage, so extra_damage riders do not fire; the others still do
+            any = false;
+            for (const RiderEffect& e : tr.effects) if (hit_effect_ok(s, e) && e.kind != RiderKind::ExtraDamage) any = true;
+        }
         if (!any) continue;                                            // no hit effect: other kinds do not fire here
         bool ok = true, failed_save = false;
         for (const Predicate& p : tr.when)
@@ -2150,6 +2222,7 @@ HitRiders fire_hit_triggers(EncounterState& s, Ctx& ctx, Combatant& a, Combatant
             const RiderEffect& e = tr.effects[k];
             if (!hit_effect_ok(s, e)) continue;
             if (tr.pick_one && int(k) != picked) continue;
+            if (ctx.grapple_instead && e.kind == RiderKind::ExtraDamage) continue;
             if (e.kind == RiderKind::ExtraDamage) {
                 out.pieces.push_back({e.dice, e.type, e.same_as_weapon});
                 if (e.vs_types & bit(t.creature_type)) out.pieces.push_back({e.vs_dice, e.type, e.same_as_weapon});   // 7.2y bonus_vs
@@ -2242,6 +2315,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         // The attack targets a duplicate: one roll vs its AC (base + the caster's ability modifier); a hit destroys it, no damage.
         const int dup_ac = int(dd->duplicates.ac_base) + modifier(t.abilities, dd->duplicates.ac_ability);
         const D20Roll r = roll_d20(s.rng, int(atk.to_hit) + modifier_flat(s, a.id, ModStat::AttackRoll) +
+                                   (spell_id != 0 ? 0 : attack_drain_delta(a, atk, false)) +
                                    (spell_id != 0 ? 0 : atk.ranged ? int(a.attack_bonus_ranged) : int(a.attack_bonus_melee)), RollMode::Normal);
         const bool dhit = r.natural == 20 || (r.natural != 1 && int(r.total) >= dup_ac);
         emit(ev, EventKind::AttackResolved, a.id, t.id, r.natural, r.total, int32_t(dhit) | 4);   // c bit 2: against a duplicate
@@ -2324,6 +2398,7 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
     }
     const RollMode atk_mode = attack_roll_mode(a, t, actx);
     D20Roll roll = roll_d20(s.rng, int(atk.to_hit) + modifier_flat(s, a.id, ModStat::AttackRoll) +
+                                (spell_id != 0 ? 0 : attack_drain_delta(a, atk, false)) +   // Strength Drain (0 unless reduced)
                                 (spell_id != 0 ? 0 : atk.ranged ? int(a.attack_bonus_ranged) : int(a.attack_bonus_melee)), atk_mode);
     if (a.reroll_ones & 1) reroll_natural_one(s.rng, roll);   // Lucky
     if (!s.modifiers.empty()) {
@@ -2360,14 +2435,26 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
                 smite_piece = DamagePiece{int16_t(std::max(0, roll_dice(s.rng, e.damage, crit))), e.damage_type};
                 break;
             }
+    const bool grab_only = hit && ctx.grapple_instead && spell_id == 0;   // Tier-A §27: c bit 3 (8)
     emit(ev, EventKind::AttackResolved, a.id, t.id, roll.natural, roll.total,
-         int32_t(hit) | (int32_t(crit) << 1));
+         int32_t(hit) | (int32_t(crit) << 1) | (int32_t(grab_only) << 3));
     if (t.team != a.team && !s.modifiers.empty()) mark_fought(s, a.id);   // 7.2z ends_early: attacked a hostile
     if (spell_id != 0) {   // 7.2zi hit_only: the roll and the hit stand; no damage dice and no hit points (riders still see the hit)
         if (const SpellDef* sd = spell_def(s, spell_id); sd && sd->hit_only) {
             if (!s.effects.empty()) end_on_own_action(s, a.id, kEndsOnAttack, ev);
             return hit;
         }
+    }
+    if (grab_only) {   // Tier-A §27: no damage roll (a crit too), no damage, no concentration save; the sim grapples on c & 8.
+        // On-hit riders that do not deal damage still fire (save / apply condition); damage-keyed ones (drain, curse, Strength
+        // Drain, smite) do not.
+        const HitRiders riders = fire_hit_triggers(s, ctx, a, t, atk, false, atk_mode, ally_near_target, crit, roll, ev);
+        for (uint32_t sid : riders.after) {
+            if (t.dead) break;
+            if (const SpellDef* d = spell_def(s, sid)) resolve_spell(s, ctx, a, *d, 0, std::vector<Combatant*>{&t}, within_5ft, ev);
+        }
+        if (!s.effects.empty()) end_on_own_action(s, a.id, kEndsOnAttack, ev);
+        return hit;
     }
     const TrigSrc tsrc{&a, &atk, spell_id != 0, atk_mode, ally_near_target};
     // 7.2zi Ray of Enfeeblement: each component of a Strength weapon attack is halved, round down, before the target's resistances.
@@ -2385,8 +2472,15 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         const HitRiders riders = fire_hit_triggers(s, ctx, a, t, atk, spell_id != 0, atk_mode, ally_near_target, crit, roll, ev);
         // EC swarm: the half-HP damage variant (only when authored)
         // Uses base max HP, not exhaustion-reduced max (Director ruling).
-        const DiceExpr& wdice = damage_override ? *damage_override
+        const DiceExpr& wdice0 = damage_override ? *damage_override
                                 : (atk.half_hp_damage.count > 0 && 2 * int(a.hp) <= int(a.hp_max)) ? atk.half_hp_damage : atk.damage;
+        DiceExpr wdice = wdice0;   // Strength Drain (Lich ruling): the damage modifier change, 0 unless a score is reduced
+        // damage_override is only the two-weapon off-hand without the style (dice, bonus 0). SRD 5.1 Two-Weapon Fighting: "You
+        // don't add your ability modifier to the damage of the bonus attack, unless that modifier is negative." The effective
+        // (possibly drained) modifier, added only when negative; otherwise the Strength Drain delta of the authored total.
+        if (spell_id == 0 && damage_override)
+            wdice.bonus = int16_t(int(wdice.bonus) + std::min(0, attack_ability_mod(a.abilities, attack_ability_code(atk, true))));
+        else if (spell_id == 0) wdice.bonus = int16_t(int(wdice.bonus) + attack_drain_delta(a, atk, true));
         const bool gwf = a.great_weapon_fighting && spell_id == 0 && !atk.ranged &&
                          (has_property(atk, kWeaponTwoHanded) || (two_handed_grip && has_property(atk, kWeaponVersatile)));
         int dmg = gwf ? roll_dice_reroll_low(s.rng, wdice, crit, 2)
@@ -2415,6 +2509,12 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
         const uint32_t tbit = bit(t.creature_type);   // 7.2y bonus_vs
         bool vs_any = (atk.vs_types & tbit) != 0;
         for (const DamagePart& p : atk.extra_damage) vs_any = vs_any || (p.vs_types & tbit) != 0;
+        int typed_dealt = 0;   // batch 3: damage of atk.drain_damage_type after immunity / resistance / vulnerability
+        auto note_typed = [&](const std::vector<DamagePiece>& ps) {
+            if (atk.drain_damage_type < 0) return;
+            for (const DamagePiece& p : ps)
+                if (int(p.type) == atk.drain_damage_type) typed_dealt += zone_apply_damage(s, t, p.amount, p.type, atk.qualifiers).dealt;
+        };
         if (!riders.pieces.empty() || !modp.empty() || vs_any) {
             std::vector<DamagePiece> parts{{int16_t(dmg), atk.type}};
             if (atk.vs_types & tbit) parts.push_back({int16_t(std::max(0, roll_dice(s.rng, atk.vs_dice, crit))), atk.type});
@@ -2427,8 +2527,10 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
             for (const auto& mp : modp) parts.push_back({int16_t(mp.first), mp.second});
             if (smite_piece) parts.push_back(*smite_piece);
             for (auto& p : parts) p.amount = int16_t(halve_piece(p.amount));
+            note_typed(parts);
             damage_creature(s, t, zone_apply_damage_parts(s, t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
         } else if (atk.extra_damage.empty() && !smite_piece) {
+            note_typed({{int16_t(halve_piece(dmg)), atk.type}});
             damage_creature(s, t, zone_apply_damage(s, t, int16_t(halve_piece(dmg)), atk.type, atk.qualifiers), crit, ev, &tsrc, &ctx);
         } else {   // multi-component hit: one DamageDealt carrying the per-type-modified sum
             std::vector<DamagePiece> parts{{int16_t(dmg), atk.type}};
@@ -2436,9 +2538,29 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
                 parts.push_back({int16_t(std::max(0, roll_dice(s.rng, p.dice, crit))), p.type});
             if (smite_piece) parts.push_back(*smite_piece);
             for (auto& p : parts) p.amount = int16_t(halve_piece(p.amount));
+            note_typed(parts);
             damage_creature(s, t, zone_apply_damage_parts(s, t, parts, atk.qualifiers), crit, ev, &tsrc, &ctx);
         }
-        if (atk.drain_max_hp && !t.dead) life_drain(s, t, drain_before - (int(t.hp) + int(t.temp_hp)), atk.drain_save_dc, a.id, ev);
+        if (atk.drain_max_hp && !t.dead) {
+            const int lost = drain_before - (int(t.hp) + int(t.temp_hp));
+            const int amt = atk.drain_damage_type >= 0 ? std::min(lost, typed_dealt) : lost;   // a reaction may have reduced it
+            const int16_t red0 = t.hp_max_reduction;
+            life_drain(s, t, amt, atk.drain_save_dc, a.id, ev);
+            const int reduced = int(t.hp_max_reduction) - int(red0);   // 0 after a successful save
+            if (atk.drain_heal_self && amt > 0 && (reduced > 0 || t.dead) && !a.dead) {   // "regains hit points equal to that amount"
+                auto h = heal_hp(s, a, int16_t(amt));
+                commit_healing(a, h);
+                emit(ev, EventKind::Healed, a.id, a.id, h.healed, h.hp_after, h.from_zero);
+            }
+        }
+        if (atk.curse_no_regain_dc > 0 && !t.dead && !t.no_regain_hp) {   // batch 3 mummy rot: an already cursed target rolls no save
+            const SaveSource ssrc{false, 0, 0};
+            auto r = save_roll(s, t, Ability::Con, atk.curse_no_regain_dc, RollMode::Normal, ev, &ssrc);
+            emit(ev, EventKind::SavingThrowRolled, t.id, CombatantId(Ability::Con), r.roll.natural, r.roll.total, int32_t(r.success));
+            if (!r.success) t.no_regain_hp = true;
+        }
+        if (atk.strength_drain.count > 0 && !t.dead)   // batch 3 shadow Strength Drain: after the damage, if it still stands
+            strength_drain(t, std::max(0, roll_dice(s.rng, atk.strength_drain)), ev);
         for (uint32_t sid : riders.after) {   // save_condition / apply_condition riders: after the damage, if it still stands
             if (t.dead) break;
             if (const SpellDef* d = spell_def(s, sid)) resolve_spell(s, ctx, a, *d, 0, std::vector<Combatant*>{&t}, within_5ft, ev);   // 7.2zb: + extra effects
@@ -2454,10 +2576,10 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
 bool leaving_reach_window(EncounterState& s, Ctx& ctx, Combatant& mover, std::vector<Event>& ev) {
     ReactionWindow w = new_window(s, ctx, ReactionTrigger::LeavingReach, mover.id);
     if (!may_open(s, w) || mover.disengaged || mover.flyby) return true;   // altitude PR3: Flyby never provokes
-    auto options_for = [](const Combatant& r) {
+    auto options_for = [&s, &mover](const Combatant& r) {
         std::vector<ReactionOption> opts;
         for (uint8_t i = 0; i < r.attacks.size(); ++i)
-            if (!r.attacks[i].ranged) opts.push_back({i, ReactionOptionKind::Attack});
+            if (!r.attacks[i].ranged && !attack_locked(s, r.id, i, mover.id)) opts.push_back({i, ReactionOptionKind::Attack});
         return opts;
     };
     auto eligible = [&](const Combatant& r) {
@@ -2595,6 +2717,9 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
     // A creature already held by this zone's "while in the zone" condition is not saved against it again (Web).
     if (row.while_in_zone && e.applies_condition)
         for (const auto& x : s.effects) if (x.zone_id == zone_id && x.target == who) return;
+    if (row.success_immunity_hours != 0)   // batch 3 ghast Stench: immune to THIS owner's aura after a success (per source)
+        for (const auto& im : s.aura_immunities)
+            if (im.creature == who && im.source == z.owner && im.spell_id == z.spell_id && s.round < im.until_round) return;
     if (row.group != 0) {   // once per creature per zone per turn, per group (D2)
         const uint32_t now = turn_stamp(s);
         ActiveZone* zm = find_zone_mut(s, zone_id);
@@ -2625,6 +2750,8 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
         emit(ev, EventKind::SavingThrowRolled, who, CombatantId(e.save_ability), r.roll.natural, r.roll.total, int32_t(r.success));
         failed = !r.success;
         ev[at].c = failed ? 3 : 0;
+        if (!failed && row.success_immunity_hours != 0)   // batch 3: "immune to the ghast's Stench for 24 hours"
+            s.aura_immunities.push_back(AuraImmunity{who, z.owner, z.spell_id, uint32_t(s.round) + uint32_t(row.success_immunity_hours) * 600u});
     }
     int dealt = failed ? dmg : (e.on_save == OnSave::Half ? dmg / 2 : 0);
     if (e.kind == SpellEffectKind::Save && t->evasion && e.save_ability == Ability::Dex && e.on_save == OnSave::Half)
@@ -2637,6 +2764,14 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
     // Stinking Cloud (D9): the creature spends its action this turn (only on its own turn; movement and bonus action remain)
     if (row.loses_action && failed && !t->dead && current_actor(s) == who) { s.budget.action = false; s.budget.action_lost = true; }
     if (e.applies_condition && failed && !t->dead && !immune_to(s, *t, e.condition) && !(owner && immune_from(s, *t, e.condition, owner->id))) {
+        // Lich ruling (Stench expiry is per source): the condition is already on the creature from a source no effect or
+        // sourced condition tracks (scenario / content state). Then this instance does not own the condition bit: when it
+        // ends it must not clear the other source's condition (end_effect clears only an instance it owns).
+        const bool untracked_prior = t->has(e.condition) &&
+            std::none_of(s.effects.begin(), s.effects.end(), [&](const ActiveSpellEffect& o) {
+                return o.target == who && ((!o.no_condition && o.condition == e.condition) || (o.has_also && o.also == e.condition)); }) &&
+            std::none_of(s.sourced.begin(), s.sourced.end(), [&](const SourcedCondition& o) {
+                return o.target == who && o.condition == e.condition; });
         if (!t->has(e.condition)) {
             add_condition(*t, e.condition);
             emit(ev, EventKind::ConditionAdded, who, 0, int32_t(e.condition));
@@ -2645,6 +2780,11 @@ void zone_row(EncounterState& s, Ctx* ctx, uint32_t zone_id, std::size_t row_ind
             ActiveSpellEffect x{z.spell_id, z.owner, who, e.condition, e.save_ability, z.dc, RepeatSave::None, z.concentration,
                                 Timed{}, z.slot_level, false};
             x.zone_id = zone_id;
+            s.effects.push_back(x);
+        } else if (row.condition_until == 1) {   // batch 3 ghast Stench: "poisoned until the start of its next turn"
+            ActiveSpellEffect x{z.spell_id, z.owner, who, e.condition, e.save_ability, z.dc, RepeatSave::None, false,
+                                make_timed(Expiry::StartOfTargetNextTurn, 1, current_actor(s) == who), z.slot_level, false};
+            x.no_condition = untracked_prior;   // the instance is keyed (spell_id, owner); it clears only what it owns
             s.effects.push_back(x);
         }
     }
@@ -3260,12 +3400,22 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (def.control != ControlKind::None && ((def.control_excluded & bit(t->creature_type)) ||
                                                      (def.control_min_int > 0 && t->abilities[Ability::Int] <= def.control_min_int)))
                 continue;   // 7.2v: unaffected (Command: undead; Hideous Laughter: Intelligence 4 or less): no save
-            if (def.contain != 0 && contain_refused(s, a, *t, def)) continue;   // 7.2w: too large / already holding one: no save
+            if ((def.contain != 0 || def.condition_max_size >= 0) && contain_refused(s, a, *t, def))
+                continue;   // 7.2w: too large / already holding one: no save (also a size-gated save_condition rider: Shield Bash)
             if (!def.is_spell && def.target_types != 0 && !valid_target_type(def, *t))
                 continue;   // 7.2y target_creature_types (Turn Undead: undead): others are not affected and make no save
             if ((def.control == ControlKind::Turned || def.control == ControlKind::Command) && s.hooks.sight_facts &&
                 !sight(s, t->id, a.id).perceives)
                 continue;   // 7.2x: Turn Undead / Command need the target to see or hear the user (no hook: sim's target list)
+            if (def.target_sees_source && (t->has(Condition::Blinded) || (s.hooks.sight_facts && !sight(s, t->id, a.id).can_see))) {
+                // Tier-A §26 (Dreadful Glare "that can see the mummy"): no save, no immunity
+                emit(ev, EventKind::FeatureTriggered, a.id, t->id, int32_t(def.id), 0, 3);
+                continue;
+            }
+            if (def.success_immunity_hours > 0 && std::any_of(s.action_immunities.begin(), s.action_immunities.end(),
+                    [&](const ActionImmunity& im) { return im.creature == t->id && im.spell_id == def.id &&
+                                                           (im.source == 0 || im.source == a.id) && uint32_t(s.round) < im.until_round; }))
+                continue;   // Tier-A §26: immune after a success (no roll, no event, like the ghast Stench)
             SaveSource src{def.magical, def.applies_condition ? bit(def.condition) : 0u,
                            (def.dice.count > 0 || def.dice.bonus > 0) ? bit(def.damage_type) : 0u};
             const bool spared = ctx.spared && std::find(ctx.spared->begin(), ctx.spared->end(), t->id) != ctx.spared->end();
@@ -3286,6 +3436,9 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             if (def.zero_hp_rounds > 0 && dealt > 0 && hp_before > 0 && t->hp <= 0 && !t->dead)   // EC spider follow-up (flagged)
                 zero_hp_clause(s, a, *t, def, ev);
             if (!r.success) affected.push_back(t);
+            if (r.success && def.success_immunity_hours > 0 && !t->dead)   // Tier-A §26: "immune to ... for the next 24 hours"
+                s.action_immunities.push_back(ActionImmunity{t->id, def.success_immunity_scope == 1 ? a.id : CombatantId(0), def.id,
+                                                             uint32_t(s.round) + uint32_t(def.success_immunity_hours) * 600u});
             if (r.success && def.contain == 1 && !t->dead) s.contain_exits.push_back({a.id, t->id, 3});   // 7.2w: sim pushes it 5 ft
             if (!r.success && !t->dead && def.destroy_cr8_max > 0 && t->creature_type == CreatureType::Undead && t->cr8 >= 0 &&
                 t->cr8 <= int(def.destroy_cr8_max)) {   // 7.2v Destroy Undead: destroyed instead of turned
@@ -3305,6 +3458,23 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
             // Petrifying Gaze: failing by escalate_margin or more applies escalate_to at once, with no repeat save
             const bool at_once = def.escalates && def.escalate_margin > 0 && !r.success && int(r.roll.total) <= dc - int(def.escalate_margin);
             const Condition cond = at_once ? def.escalate_to : def.condition;
+            // Tier-A §26: failing by also_margin or more also applies also_condition on the same entry, even when the target
+            // is immune to the primary condition (then the entry carries only also_condition).
+            const bool also_hit = def.also_margin > 0 && def.applies_condition && !r.success && !t->dead &&
+                                  int(r.roll.total) <= dc - int(def.also_margin) &&
+                                  !immune_to(s, *t, def.also_condition) && !immune_from(s, *t, def.also_condition, a.id);
+            if (also_hit && (immune_to(s, *t, cond) || immune_from(s, *t, cond, a.id))) {
+                if (!t->has(def.also_condition)) {
+                    add_condition(*t, def.also_condition);
+                    emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.also_condition));
+                }
+                note_source(s, def.also_condition, a.id, t->id);
+                applied = true;
+                s.effects.push_back(ActiveSpellEffect{def.id, a.id, t->id, def.also_condition, def.save_ability, int16_t(dc),
+                                                      def.repeat_save, def.concentration, effect_timed(s, def, a.id, t->id), lvl, false});
+                s.effects.back().ends_on = def.ends_on;
+                continue;
+            }
             if (def.applies_condition && !r.success && !t->dead && !immune_to(s, *t, cond) && !immune_from(s, *t, cond, a.id)) {
                 if (!t->has(cond)) {
                     add_condition(*t, cond);
@@ -3326,6 +3496,12 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
                     s.effects.back().has_also = true; s.effects.back().also = Condition::Incapacitated;
                     add_condition(*t, Condition::Incapacitated);
                     emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(Condition::Incapacitated));
+                }
+                if (also_hit && !t->has(def.also_condition)) {   // Tier-A §26: one entry, so ending it ends both
+                    s.effects.back().has_also = true; s.effects.back().also = def.also_condition;
+                    add_condition(*t, def.also_condition);
+                    emit(ev, EventKind::ConditionAdded, t->id, 0, int32_t(def.also_condition));
+                    note_source(s, def.also_condition, a.id, t->id);
                 }
                 if (def.escape_dc > 0) { s.effects.back().dc = def.escape_dc; s.effects.back().escape_check = true; }   // 7.2w: Engulf
                 set_contain(s.effects.back(), def, *t, ev);
@@ -3794,6 +3970,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
         if (def.concentration) a.concentration_spell = def.id;
         break;
     }
+    case SpellEffectKind::Descriptive: break;   // text-only: no roll, no state, no event
     case SpellEffectKind::AcBonus: case SpellEffectKind::Counter: break;   // reactions only
     }
     return affected;
@@ -3804,6 +3981,7 @@ std::vector<Combatant*> resolve_effect(EncounterState& s, Ctx& ctx, Combatant& a
 // Returns every creature any effect affected (7.2zd harmful_cast), in order, with repeats.
 std::vector<Combatant*> resolve_spell(EncounterState& s, Ctx& ctx, Combatant& a, const SpellDef& def, uint8_t lvl,
                                       const std::vector<Combatant*>& T_in, bool within_5ft, std::vector<Event>& ev) {
+    if (def.kind == SpellEffectKind::Descriptive) return {};   // text-only: nothing to resolve
     // 7.2t: an area skips every creature with total cover from its point of origin (all effects of the spell)
     std::vector<Combatant*> T;
     for (Combatant* t : T_in)
@@ -3849,6 +4027,7 @@ bool ward_save(EncounterState& s, Combatant& a, std::size_t ward, std::vector<Ev
 // a concentration spell replaces the one already held.
 std::string_view spell_cast_resource_refusal(const EncounterState& s, const Combatant& a, const SpellDef& def,
                                              bool innate, uint8_t level) {
+    if (def.kind == SpellEffectKind::Descriptive) return "descriptive spells cannot be cast";
     const InnateSpell* inn = nullptr;
     if (innate) {
         for (const auto& is : a.innate) if (is.spell_id == def.id) inn = &is;   // last match, as cast_spell_impl
@@ -3889,6 +4068,7 @@ std::string_view spell_cast_resource_refusal(const EncounterState& s, const Comb
 
 StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def,
                            const ActionRequest& req, int meta_cost) {
+    if (def.kind == SpellEffectKind::Descriptive) return fail("descriptive spells cannot be cast");
     if (req.zone_move != 0) {   // R-G11: move the actor's zone (Moonbeam); no slot, no SpellCast window
         if (req.sustain) return fail("zone_move: not with sustain");
         const ActiveZone* z = find_zone(s, req.zone_move);
@@ -4114,6 +4294,8 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
         if (T.size() != 1 || T[0] != &a) return fail("zone: no creature targets");
         if (req.has_zone_dest && def.zone.anchor == ZoneAnchor::Creature) return fail("zone: an aura has no destination");
         break;
+    case SpellEffectKind::Descriptive:   // text-only: refused before a target is considered (also the switch's case)
+        return fail("descriptive spells cannot be cast");
     }
     {   // 7.2zc generic mark: one marked creature other than the caster; mark_ability only for (and required by) a chosen ability
         bool marked = def.kind == SpellEffectKind::ApplyModifier && def.modifier.mark_scope != 0;
@@ -4196,6 +4378,15 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
     if (swap.on) a.spellcasting_ability = inn->ability;
     if (au) au->expended = true;
     if (fu && fu->max > 0) ++fu->used;
+    if (!def.is_spell)   // batch 3 (blink dog): arm the action's follow-up attack(s); no other action is spent
+        for (std::size_t k = 0; k < a.multiattacks.size() && k < 255; ++k)
+            if (a.multiattacks[k].after_action == def.id && !a.multiattacks[k].attacks.empty()) {
+                s.budget.sequence = uint8_t(k + 1);
+                s.budget.sequence_pos = 0;
+                s.budget.attacks_remaining = uint8_t(a.multiattacks[k].attacks.size());
+                s.budget.loading_fired = 0;
+                break;
+            }
     StepResult out{true, {}, {}};
     if (def.concentration && a.concentration_spell != 0) end_concentration(s, a.id, out.events);
     if (def.is_spell) emit(out.events, EventKind::SpellCast, a.id, ids[0], int32_t(def.id), lvl);
@@ -4268,6 +4459,7 @@ StepResult cast_spell_impl(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget
 
 // R-G14: validates the per-cast options and resolves the spell as modified by them (a copy of `def`); no option = as before.
 StepResult cast_spell(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget b, const SpellDef& def, const ActionRequest& req) {
+    if (def.kind == SpellEffectKind::Descriptive) return fail("descriptive spells cannot be cast");
     const bool any = req.metamagic != 0 || !req.spared.empty() || req.heighten_target != 0 || req.damage_choice != 0 ||
                      req.condition_choice != 0 || !def.damage_choices.empty() || !def.condition_choices.empty();
     if (!any || req.sustain || req.zone_move != 0) return cast_spell_impl(s, ctx, a, b, def, req, 0);
@@ -4632,6 +4824,7 @@ ActionRequest decision_request(const NeedsDecision& n, bool react, uint8_t optio
 }
 
 StepResult step(EncounterState& s, const ActionRequest& req) {
+    if (req.grapple_instead && req.kind != ActionKind::Attack) return fail("grapple_instead is only valid on an Attack");   // Tier-A §27: never an ignored, hashed flag
     if (req.kind == ActionKind::ReactionDecision) {
         if (!s.pending) return fail("no pending reaction decision");
         const PendingDecision& p = *s.pending;
@@ -4721,7 +4914,8 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
         // blinded, prone (melee too: simplified), and the ranged facts.
         const bool dis = a.has(Condition::Poisoned) || a.has(Condition::Restrained) || a.has(Condition::Blinded) || a.has(Condition::Prone) ||
                          (atk.ranged && (req.beyond_normal_range || req.ranged_hostile_within_5ft));
-        const D20Roll roll = roll_d20(s.rng, atk.to_hit + (atk.ranged ? a.attack_bonus_ranged : a.attack_bonus_melee),
+        const D20Roll roll = roll_d20(s.rng, atk.to_hit + attack_drain_delta(a, atk, false) +
+                                      (atk.ranged ? a.attack_bonus_ranged : a.attack_bonus_melee),
                                       dis ? RollMode::Disadvantage : RollMode::Normal);
         ActiveSpellEffect& w = s.effects[wi];
         const bool crit = roll.natural == 20, hit = crit || (roll.natural != 1 && roll.total >= int(w.object_ac));
@@ -4734,7 +4928,9 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
                 if (w.object_vulnerable & (1u << unsigned(ty))) n *= 2;
                 return n;
             };
-            int dmg = part(atk.damage, atk.type);
+            DiceExpr d0 = atk.damage;
+            d0.bonus = int16_t(int(d0.bonus) + attack_drain_delta(a, atk, true));   // Strength Drain
+            int dmg = part(d0, atk.type);
             for (const DamagePart& p : atk.extra_damage) dmg += part(p.dice, p.type);
             w.object_hp = int16_t(std::max(0, int(w.object_hp) - dmg));
             if (w.object_hp == 0) end_effect(s, wi, out.events);   // destroyed: the restraint ends
@@ -4808,9 +5004,11 @@ StepResult special_action(EncounterState& s, Ctx& ctx, Combatant& a, TurnBudget 
         if (free) {
             const CombatantId src = has_held ? held.source : 0;
             for (std::size_t i = 0; i < s.sourced.size();) {
-                if (s.sourced[i].condition == Condition::Grappled && s.sourced[i].target == a.id && (src == 0 || s.sourced[i].source == src))
+                if (s.sourced[i].condition == Condition::Grappled && s.sourced[i].target == a.id && (src == 0 || s.sourced[i].source == src)) {
+                    const SourcedCondition gone = s.sourced[i];
                     s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i));
-                else ++i;
+                    release_grapple_restraint(s, gone, ev);
+                } else ++i;
             }
             bool still = false;
             for (const auto& e : s.sourced) still = still || (e.condition == Condition::Grappled && e.target == a.id);
@@ -5361,6 +5559,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             if (cover_of(s, f->id, t->id, false, 0) == Cover::Total) return fail("target has total cover");
             if (charmed_by(s, f->id, t->id)) return fail("a charmed creature cannot attack its charmer");
             if (req.attack_index >= f->attacks.size()) return fail("bad attack index");
+            if (const auto why = target_gate_refusal(s, *f, *t, f->attacks[req.attack_index], false); !why.empty()) return fail(why);
             if (b.attacks_remaining > 0) --b.attacks_remaining;
             else if (spend_action(b, a, req.kind, false)) {
                 b.loading_fired = 0;
@@ -5399,6 +5598,9 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             ctx.guess_miss = s.hooks.guess_correct && !s.hooks.guess_correct(s, a, *t, req.guess_x, req.guess_y);
         }
         if (req.attack_index >= a.attacks.size()) return fail("bad attack index");
+        if (const auto why = target_gate_refusal(s, a, *t, a.attacks[req.attack_index], req.target_willing); !why.empty()) return fail(why);
+        if (attack_locked(s, a.id, req.attack_index, t->id)) return fail("that attack holds a grappled creature: it can't attack another target");
+        if (req.grapple_instead && !a.attacks[req.attack_index].grapple_instead_ok) return fail("grapple_instead needs an instead_of_damage grapple rider");
         if (s.hooks.loadout_of) {   // EQUIPMENT.md 3: hands / ammunition (only creatures with a loadout view)
             const std::string_view why = attack_refusal(s, a.id, req.attack_index);
             if (!why.empty()) return fail(why);
@@ -5431,20 +5633,24 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
         } else if (b.sequence != 0) {                                            // multiattack in progress
             if (req.multiattack != 0 && req.multiattack != b.sequence) return fail("another multiattack is in progress");
             if (b.sequence > a.multiattacks.size()) return fail("bad multiattack");
-            const auto& seq = a.multiattacks[std::size_t(b.sequence - 1)].attacks;
-            if (b.sequence_pos >= seq.size() || req.attack_index != seq[b.sequence_pos]) return fail("attack out of multiattack sequence");
+            const int next = multiattack_next(a.multiattacks, b.sequence, b.sequence_pos);
+            if (next < 0 || req.attack_index != uint8_t(next)) return fail("attack out of multiattack sequence");
             ++b.sequence_pos;
             if (--b.attacks_remaining == 0) { b.sequence = 0; b.sequence_pos = 0; }
         } else if (req.multiattack != 0) {                                // start a declared multiattack
             if (b.attacks_remaining > 0) return fail("attack action already in progress");
             if (req.multiattack > a.multiattacks.size()) return fail("bad multiattack");
+            if (a.multiattacks[std::size_t(req.multiattack - 1)].after_action != 0) return fail("bad multiattack");   // an action's follow-up
             const auto& seq = a.multiattacks[std::size_t(req.multiattack - 1)].attacks;
             if (seq.empty()) return fail("bad multiattack");
             for (uint8_t i : seq) if (i >= a.attacks.size()) return fail("bad multiattack");
             if (req.attack_index != seq[0]) return fail("attack out of multiattack sequence");
             if (!spend_action(b, a, req.kind, false)) return fail("no action available");
             b.loading_fired = 0;
-            b.attacks_remaining = uint8_t(seq.size() - 1);
+            std::size_t n = seq.size();
+            if (const DiceExpr cd = a.multiattacks[std::size_t(req.multiattack - 1)].count_dice; cd.count > 0)
+                n = std::size_t(std::clamp(roll_dice(s.rng, cd), 1, 255));   // "makes 1d4 ... attacks"
+            b.attacks_remaining = uint8_t(n - 1);
             if (b.attacks_remaining > 0) { b.sequence = req.multiattack; b.sequence_pos = 1; }
         } else if (b.attacks_remaining > 0) --b.attacks_remaining;       // Extra Attack
         else if (spend_action(b, a, req.kind, false)) {
@@ -5465,10 +5671,12 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             t = ward_alt;
         }
         ctx.bonus_attack_id = bopt ? bopt->id : 0;   // 7.2zb AttackFromFeature
+        ctx.grapple_instead = req.grapple_instead;
         do_attack(s, ctx, a, *t, a.attacks[req.attack_index], req.target_within_5ft, out.events,
                   req.ranged_hostile_within_5ft || req.beyond_normal_range, 0, req.ally_near_target,
                   bopt && bopt->has_damage ? &bopt->damage : nullptr, req.two_handed_grip);
         ctx.bonus_attack_id = 0;
+        ctx.grapple_instead = false;
         check_end(s, out.events);
         return out;
     }
@@ -5600,6 +5808,7 @@ bool self_range_modifier(const SpellDef& d) {
 }
 void append_spell_targets(std::vector<ActionRequest>& out, const EncounterState& s, const Combatant& a,
                           const SpellDef& d, ActionRequest r) {
+    if (d.kind == SpellEffectKind::Descriptive) return;   // text-only: never a legal cast
     auto choices = [](ActionRequest& q, const SpellDef& def) {
         q.damage_choice = uint8_t(def.damage_choices.empty() ? 0 : 1);
         q.condition_choice = uint8_t(def.condition_choices.empty() ? 0 : 1);
@@ -5672,28 +5881,32 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     }
     const bool can_act = b.action || b.extra_actions > 0;   // row 13: an extra action counts
     const bool familiar = a.summoner != 0 && a.summon_control == uint8_t(SummonControl::Telepathic);   // R-G12 PR 3: no attacks
+    auto push_attack = [&](ActionRequest r) {   // Tier-A §27: an instead_of_damage grapple attack is listed both ways
+        out.push_back(r);
+        if (r.attack_index < a.attacks.size() && a.attacks[r.attack_index].grapple_instead_ok) { r.grapple_instead = true; out.push_back(r); }
+    };
     if (!familiar && (can_act || b.attacks_remaining > 0)) {
         for (const auto& t : s.combatants) {
             if (t.dead || t.id == a.id || t.team == a.team) continue;
-            if (b.sequence != 0 && b.sequence <= a.multiattacks.size() &&
-                b.sequence_pos < a.multiattacks[std::size_t(b.sequence - 1)].attacks.size()) {   // multiattack in progress: only the next declared attack
-                ActionRequest r{a.id, ActionKind::Attack, t.id, a.multiattacks[std::size_t(b.sequence - 1)].attacks[b.sequence_pos]};
+            if (const int next = multiattack_next(a.multiattacks, b.sequence, b.sequence_pos); next >= 0) {   // multiattack in progress: only the next declared attack
+                ActionRequest r{a.id, ActionKind::Attack, t.id, uint8_t(next)};
                 r.multiattack = b.sequence;
-                out.push_back(r);
+                if (!attack_locked(s, a.id, r.attack_index, t.id)) push_attack(r);
                 continue;
             }
             for (uint8_t i = 0; i < a.attacks.size(); ++i) {
                 if (!can_act && i < 32 && has_property(a.attacks[i], kWeaponLoading) && (b.loading_fired >> i & 1)) continue;
+                if (attack_locked(s, a.id, i, t.id)) continue;   // Druid gap G: "can't bite another target"
                 ActionRequest r{a.id, ActionKind::Attack, t.id, i};
-                out.push_back(r);
+                push_attack(r);
             }
             if (can_act)   // start any declared multiattack (needs a fresh action)
                 for (std::size_t k = 0; k < a.multiattacks.size(); ++k) {
                     const auto& seq = a.multiattacks[k].attacks;
-                    if (seq.empty()) continue;
+                    if (seq.empty() || a.multiattacks[k].after_action != 0 || attack_locked(s, a.id, seq[0], t.id)) continue;
                     ActionRequest r{a.id, ActionKind::Attack, t.id, seq[0]};
                     r.multiattack = uint8_t(k + 1);
-                    out.push_back(r);
+                    push_attack(r);
                 }
         }
     }
@@ -5787,7 +6000,8 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (s.hooks.spells && !is_incapacitated(a) && !no_casting) {
         for (uint32_t id : a.spells_known) {
             const SpellDef* d = s.hooks.spells->find(id);
-            if (d && (d->kind == SpellEffectKind::Polymorph || d->kind == SpellEffectKind::Summon || d->kind == SpellEffectKind::SummonWeapon)) continue;   // R-G12: sim builds Polymorph requests (form choice)
+            if (d && (d->kind == SpellEffectKind::Polymorph || d->kind == SpellEffectKind::Summon ||
+                      d->kind == SpellEffectKind::SummonWeapon || d->kind == SpellEffectKind::Descriptive)) continue;   // R-G12: sim builds Polymorph requests (form choice); descriptive is never cast
             if (!d || (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction)) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !can_act) continue;
             for (uint8_t L = d->level; L <= (d->level == 0 ? 0 : 9); ++L) {
@@ -5801,7 +6015,7 @@ std::vector<ActionRequest> legal_actions(const EncounterState& s) {
     if (s.hooks.spells && !is_incapacitated(a) && !no_casting) {   // innate spells: no slot, own level, uses left (at will / per-day / recharged)
         for (const InnateSpell& is : a.innate) {
             const SpellDef* d = s.hooks.spells->find(is.spell_id);
-            if (!d || !is.available()) continue;
+            if (!d || d->kind == SpellEffectKind::Descriptive || !is.available()) continue;
             if (d->casting_time != CastingTime::Action && d->casting_time != CastingTime::BonusAction) continue;
             if (d->casting_time == CastingTime::BonusAction ? !b.bonus_action : !can_act) continue;
             if (!spell_cast_resource_refusal(s, a, *d, true, d->level).empty()) continue;
@@ -6279,20 +6493,71 @@ std::vector<CombatantId> grappled_by(const EncounterState& s, CombatantId g) {
 void prune_sourced(EncounterState& s, std::vector<Event>& ev) {
     if (s.sourced.empty()) return;
     std::vector<CombatantId> ended;   // grapple targets whose holder let go
+    std::vector<SourcedCondition> released;   // Druid gap G: dropped grapples (an owned Restrained goes with them)
     for (std::size_t i = 0; i < s.sourced.size();) {
         const SourcedCondition e = s.sourced[i];
         const Combatant* t = find(s, e.target);
         const Combatant* src = find(s, e.source);
         bool drop = !t || t->dead || !t->has(e.condition);
         if (!drop && e.condition == Condition::Grappled && (!src || src->dead || is_incapacitated(*src))) { drop = true; ended.push_back(e.target); }
-        if (drop) s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i)); else ++i;
+        if (drop) {
+            s.sourced.erase(s.sourced.begin() + std::ptrdiff_t(i));
+            if (e.condition == Condition::Grappled) released.push_back(e);
+        } else ++i;
     }
+    for (const SourcedCondition& e : released) release_grapple_restraint(s, e, ev);
     for (CombatantId id : ended) {
         bool still = false;
         for (const auto& e : s.sourced) still = still || (e.condition == Condition::Grappled && e.target == id);
         Combatant* t = find_mut(s, id);
         if (!still && t && t->has(Condition::Grappled)) { remove_condition(*t, Condition::Grappled); emit(ev, EventKind::ConditionRemoved, id, 0, int32_t(Condition::Grappled)); }
     }
+}
+
+bool grapple(EncounterState& s, CombatantId grappler, CombatantId target, const GrappleRider& g, uint8_t attack_index, std::vector<Event>& ev) {
+    if (!g.extended()) return grapple(s, grappler, target, g.escape_dc, ev);
+    if (g.max_grapples != 0) {   // giant crab: each claw can grapple only one target; a hit past the limit only deals damage
+        int held = 0;
+        for (const auto& e : s.sourced)
+            if (e.condition == Condition::Grappled && e.source == grappler && e.via_attack == attack_index && e.target != target) ++held;
+        if (held >= g.max_grapples) return false;
+    }
+    if (!apply_sourced_condition(s, grappler, target, Condition::Grappled, g.escape_dc, ev)) return false;
+    SourcedCondition* mine = nullptr;
+    for (auto& e : s.sourced)
+        if (e.condition == Condition::Grappled && e.target == target && e.source == grappler) mine = &e;
+    if (!mine) return true;
+    mine->via_attack = attack_index;
+    mine->exclusive = mine->exclusive || g.exclusive;
+    if (g.restrains && !mine->restrains) {
+        mine->restrains = true;
+        Combatant* t = find_mut(s, target);
+        if (t && !t->has(Condition::Restrained) && !immune_to(s, *t, Condition::Restrained) && !immune_from(s, *t, Condition::Restrained, grappler)) {
+            add_condition(*t, Condition::Restrained);   // owned, like Swallow's blindness: only if it was not already there
+            emit(ev, EventKind::ConditionAdded, target, 0, int32_t(Condition::Restrained));
+            mine->owns_restrained = true;
+        }
+    }
+    return true;
+}
+
+bool attack_locked(const EncounterState& s, CombatantId actor, uint8_t attack_index, CombatantId target) {
+    for (const auto& e : s.sourced)
+        if (e.condition == Condition::Grappled && e.exclusive && e.source == actor && e.via_attack == attack_index && e.target != target)
+            return true;
+    return false;
+}
+
+void release_grapple_restraint(EncounterState& s, const SourcedCondition& ended, std::vector<Event>& ev) {
+    if (ended.condition != Condition::Grappled || !ended.owns_restrained) return;
+    for (auto& e : s.sourced)
+        if (e.condition == Condition::Grappled && e.target == ended.target && e.restrains) { e.owns_restrained = true; return; }
+    for (const auto& e : s.effects)   // another live restraint (Web, a Swallow's contain, Entangle) keeps the condition
+        if (e.target == ended.target && e.condition == Condition::Restrained) return;
+    Combatant* t = find_mut(s, ended.target);
+    if (!t || !t->has(Condition::Restrained)) return;
+    remove_condition(*t, Condition::Restrained);
+    emit(ev, EventKind::ConditionRemoved, ended.target, 0, int32_t(Condition::Restrained));
 }
 
 bool has_sourced_conditions(const EncounterState& s) { return !s.sourced.empty(); }
@@ -6421,6 +6686,7 @@ FormStats own_stats(const Combatant& c) {
     f.creature_type = c.creature_type; f.roll_traits = c.roll_traits; f.triggers = c.triggers; f.reactions = c.reactions;
     f.bonus_attacks = c.bonus_attacks;
     f.fly_ft = c.fly_ft; f.swim_ft = c.swim_ft; f.climb_ft = c.climb_ft; f.burrow_ft = c.burrow_ft; f.hover = c.hover;   // feat/move-modes
+    f.ability_reduction = c.ability_reduction;   // batch 3 Strength Drain
     return f;
 }
 void put_stats(Combatant& c, const FormStats& f) {   // everything but hp / hp_max
@@ -6432,6 +6698,7 @@ void put_stats(Combatant& c, const FormStats& f) {   // everything but hp / hp_m
     c.creature_type = f.creature_type; c.roll_traits = f.roll_traits; c.triggers = f.triggers; c.reactions = f.reactions;
     c.bonus_attacks = f.bonus_attacks;
     c.fly_ft = f.fly_ft; c.swim_ft = f.swim_ft; c.climb_ft = f.climb_ft; c.burrow_ft = f.burrow_ft; c.hover = f.hover;   // feat/move-modes
+    c.ability_reduction = f.ability_reduction;   // batch 3 Strength Drain
 }
 template <class T> void append_all(std::vector<T>& to, const std::vector<T>& from) { to.insert(to.end(), from.begin(), from.end()); }
 }  // namespace
@@ -6630,6 +6897,7 @@ bool spell_harmful(const SpellDef& def) {
             return true;   // damage, a saving throw, or a condition imposed (Sleep)
         case SpellEffectKind::ApplyCondition: return d.applies_condition && negative_condition(d.condition);
         case SpellEffectKind::ApplyModifier: return negative_modifier(d.modifier);
+        case SpellEffectKind::Descriptive: return false;   // text-only: not a harmful cast
         default: return false;
         }
     };
@@ -6701,7 +6969,11 @@ Attack effective_attack(const EncounterState& s, CombatantId id, std::size_t ind
     const Combatant* a = find(s, id);
     if (!a || index >= a->attacks.size()) return Attack{};
     Attack out;
-    return imbued_attack(s, *a, a->attacks[index], out) ? out : a->attacks[index];
+    if (!imbued_attack(s, *a, a->attacks[index], out)) out = a->attacks[index];
+    // Strength Drain (Lich ruling): as the attack is used
+    out.to_hit = int8_t(std::clamp(int(out.to_hit) + attack_drain_delta(*a, out, false), -128, 127));
+    out.damage.bonus = int16_t(int(out.damage.bonus) + attack_drain_delta(*a, out, true));
+    return out;
 }
 int duplicates_left(const EncounterState& s, CombatantId id) {
     int n = 0;
