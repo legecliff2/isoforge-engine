@@ -2572,10 +2572,16 @@ bool do_attack(EncounterState& s, Ctx& ctx, Combatant& a, Combatant& t, const At
 }
 
 // LeavingReach: polls hostile reactors before the mover leaves reach. Returns false if the move
-// is stopped (mover dead, at 0 HP, or speed 0).
-bool leaving_reach_window(EncounterState& s, Ctx& ctx, Combatant& mover, std::vector<Event>& ev) {
+// is stopped (mover dead, at 0 HP, or speed 0). `move` is the Move being resolved (mode and alt_to).
+bool leaving_reach_window(EncounterState& s, Ctx& ctx, Combatant& mover, const ActionRequest& move, std::vector<Event>& ev) {
     ReactionWindow w = new_window(s, ctx, ReactionTrigger::LeavingReach, mover.id);
-    if (!may_open(s, w) || mover.disengaged || mover.flyby) return true;   // altitude PR3: Flyby never provokes
+    // SRD 5.1 Flyby: no opportunity attack when it flies out of an enemy's reach. A fly leave is
+    // move_mode 1: a horizontal fly, or a vertical alt_to that spends the fly speed. Walk, climb,
+    // swim, and burrow still open the window. leaves_reach stays set.
+    const bool horizontal_fly = move.move_mode == 1 && move.alt_to == 0;
+    const bool vertical_fly = move.alt_to != 0 && move.move_mode == 1;
+    const bool flies_out = mover.flyby && (horizontal_fly || vertical_fly);
+    if (!may_open(s, w) || mover.disengaged || flies_out) return true;
     auto options_for = [&s, &mover](const Combatant& r) {
         std::vector<ReactionOption> opts;
         for (uint8_t i = 0; i < r.attacks.size(); ++i)
@@ -3098,7 +3104,7 @@ void fire_readies(EncounterState& s, Ctx& ctx, std::vector<Event>& ev) {
                 if (r.response.leaves_reach) {
                     uint8_t saved = ctx.depth;
                     ctx.depth = 0;
-                    go = leaving_reach_window(s, ctx, *a, ev);
+                    go = leaving_reach_window(s, ctx, *a, r.response, ev);
                     ctx.depth = saved;
                 }
                 if (go) {
@@ -5247,7 +5253,7 @@ StepResult step_impl_core(EncounterState& s, Ctx& ctx, const ActionRequest& req)
             if (cost > allow) return fail("not enough movement");
         } else if (cost > b.movement_ft) return fail("not enough movement");
         // Pause before leaving reach; opportunity attacks may stop the move.
-        if (req.leaves_reach && !leaving_reach_window(s, ctx, a, out.events)) {
+        if (req.leaves_reach && !leaving_reach_window(s, ctx, a, req, out.events)) {
             emit(out.events, EventKind::MoveInterrupted, a.id, 0, req.move_ft);
             check_end(s, out.events);
             return out;
