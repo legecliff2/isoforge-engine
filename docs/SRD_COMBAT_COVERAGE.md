@@ -724,7 +724,7 @@ Audit of #165's footprints against the SRD size rules.
 | Switching speeds subtracts the distance already moved | done: rules `move_allowance` (shared budget; Dash grants every speed again) |
 | A prone creature cannot fly | done (rules refuses `move_mode` 1 while prone) |
 | AI pathing over the modes | done: `Grid::path(..., MoveCaps)`, same deterministic Dijkstra; AI steps only while `step_mode` fits |
-| Falling (prone / speed 0 while flying without hover) and fall damage 1d6 per 10 ft | deferred to PR4 (fall damage); a flyer over open air knocked prone stays put (cannot fly) until it stands |
+| Falling (prone / speed 0 while flying without hover) and fall damage 1d6 per 10 ft | done (altitude PR4): see 11.8 "Falling" |
 | Climbing / swimming ability checks (Athletics for hard surfaces, rough water) | deferred |
 | Wild Shape `no_fly_below` / `no_swim_below` | unchanged (build_form, #176) |
 
@@ -736,8 +736,11 @@ Audit of #165's footprints against the SRD size rules.
 | Ledges: step up of 5 ft or less costs nothing extra | done: `eng::sim::step_cost_ft` returns 0 |
 | Descending costs nothing extra | done: `step_cost_ft` returns 0 for any descent |
 | Rise above 5 ft is a climb (`rise` with climb / fly speed, else `2 * rise`) | done: `step_cost_ft`, `step_mode` picks climb > fly > walk |
-| Falls: stepping off a drop of more than 5 ft | done: AltitudeChanged event (cause `kAltFall`), `Combat::falls()` (current turn only, cleared at each TurnStarted); pathing never plans a fall for a non-flyer. Fall damage deferred to PR4 |
+| Falls: stepping off a drop of more than 5 ft | done: AltitudeChanged event (cause `kAltFall`), `Combat::falls()` (current turn only, cleared at each TurnStarted); pathing never plans a fall for a non-flyer. Falling damage applies (altitude PR4, row below) |
 | Airborne flyers (`alt_ft > 0`, fly speed, not prone) | done: fly over difficult tiles, lower obstacles and creatures whose vertical span they do not overlap; a flyer stepping off a ledge becomes airborne |
+| Falling damage (altitude PR4) | done: 1d6 bludgeoning per 10 ft fallen, max 20d6, rolled on the rules RNG; the creature lands prone (not when the fall deals no damage: under 10 ft or immune). Applied to ledge falls (sim `step_altitude` -> `rules5e::fall`), to `ForcedMoveResult::fell_ft` (after the Moved event), and to flyers that fall. No reaction window opens for falling damage |
+| Flyers fall when knocked prone, at speed 0, or on losing their fly speed (altitude PR4) | done: checked at the end of every rules step and by `settle_falls` / `revoke_fly`; a creature with `hover` never falls; a creature held aloft by a granted fly speed (magic, e.g. the Fly spell) does not fall from prone / speed 0 (SRD), only when the grant ends. The landing sets `alt_ft` to 0 and sim emits AltitudeChanged (cause `kAltFall`) and lists it in `Combat::falls()` |
+| Fly speed hook (altitude PR4) | done: `rules5e::grant_fly(state, id, fly_ft, source)` / `revoke_fly(state, id, source, events)`; fly speed = max(`fly_ft`, `granted_fly_ft`); revoking mid-air runs the fall check. Grants hash under 0xD6 (sub-byte 1) only while non-zero |
 | Swim depth clamp | done: a vertical move below the surface stops at the water depth (`Grid::water_depth_ft`) |
 
 #### Altitude engine conventions (approved)
@@ -754,7 +757,9 @@ of truth; other docs and code comments point here):
 7. Swimmers can't descend below the water depth.
 8. Burrowed creatures pass under the surface.
 
-**KNOWN DEVIATION from SRD (fixed by PR4):** a flyer knocked prone stays airborne (the SRD has it fall unless it can hover).
+~~KNOWN DEVIATION from SRD: a flyer knocked prone stays airborne.~~ Fixed by altitude PR4 (feat/altitude-fall): a non-hover flyer knocked prone, at speed 0 or without its fly speed falls and takes falling damage.
+
+Open follow-up: a flyer pushed off a ledge by forced movement does not fall and its altitude is not adjusted to the lower ground.
 
 ## 12. Source notes and verification
 
