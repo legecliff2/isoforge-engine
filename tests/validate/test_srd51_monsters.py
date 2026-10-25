@@ -21,8 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 89 authored / 16 deferred): batch 3 and tier-A triage (5) + tier B batch d1 (11).
-DEFERRED: list[str] = ["doppelganger", "duergar", "green-hag", "mimic", "rust-monster", "quipper", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 82 / 23
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 95 authored / 15 deferred): batch 3 and tier-A triage (5) + tier B batch d1 (10). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0).
+DEFERRED: list[str] = ["doppelganger", "duergar", "green-hag", "mimic", "rust-monster", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 95 / 15
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -188,7 +188,7 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual((bite["on_hit"][0]["save"], bite["on_hit"][0]["on_success"]), ({"ability": "con", "dc": 11}, "half"))
         self.assertEqual(load("skeleton")["damage_vulnerabilities"], ["bludgeoning"])
         # Pack Tactics (common@1 open kind pack_tactics, sim #127): one declaration, no fields
-        for idx in ("jackal", "kobold", "wolf", "dire-wolf", "hyena", "tribal-warrior"):
+        for idx in ("jackal", "kobold", "wolf", "dire-wolf", "hyena", "tribal-warrior", "vulture"):
             with self.subTest(monster=idx):
                 effs = [t["effect"] for t in load(idx)["traits"] if "effect" in t]
                 self.assertEqual(effs, [{"kind": "pack_tactics"}])
@@ -268,10 +268,13 @@ class MonsterTable(unittest.TestCase):
         goat = {t["id"]: t for t in load("goat")["traits"]}
         self.assertEqual(goat["charge"]["effect"]["effects"][1], {"kind": "save_condition", "save": {"ability": "str", "dc": 10}, "apply": [{"condition": "prone"}]})
         self.assertEqual(load("giant-fire-beetle")["emits_light"], {"bright_ft": 10, "dim_ft": 10})
-        # partial, description only: Sure-Footed, Brave, Leadership, Shriek
+        # partial, description only: Sure-Footed, Brave, Leadership, Shriek, Flyby, Blood Frenzy, Mimicry
         self.assertNotIn("effect", goat["sure_footed"])
         for idx in ("knight", "gladiator"):
             self.assertNotIn("effect", {t["id"]: t for t in load(idx)["traits"]}["brave"])
+        self.assertNotIn("effect", {t["id"]: t for t in load("owl")["traits"]}["flyby"])
+        self.assertNotIn("effect", {t["id"]: t for t in load("quipper")["traits"]}["blood_frenzy"])
+        self.assertNotIn("effect", {t["id"]: t for t in load("raven")["traits"]}["mimicry"])
         # Gladiator (CONTENT_CONVENTIONS 21): Shield Bash size-gated prone rider, thrown spear damage_override, Brute melee only
         gl = {a["id"]: a for a in load("gladiator")["actions"]}
         self.assertEqual(gl["shield_bash"]["on_hit"], [{"kind": "save_condition", "save": {"ability": "str", "dc": 15}, "apply": [{"condition": "prone", "max_size": "medium"}]}])
