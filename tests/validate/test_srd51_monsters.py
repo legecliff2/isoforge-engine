@@ -21,8 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 63 authored / 16 deferred): rat, scorpion (flat 1 damage not expressible) + tier B batch d1.
-DEFERRED: list[str] = ["rat", "scorpion", "cat", "crab", "poisonous-snake", "quipper", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 66 authored / 13 deferred): rat, scorpion (flat 1 damage not expressible) + tier B batch d1.
+DEFERRED: list[str] = ["rat", "scorpion", "quipper", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -37,6 +37,11 @@ DEVIATIONS = {
 
 def load(idx):
     return json.loads((PACK / "monsters" / f"{idx.replace('-', '_')}.json").read_text(encoding="utf-8"))
+
+
+def dmg(x, y):
+    # CONTENT_CONVENTIONS 19 (#295): the table's bare-integer dice ("1") is authored as monster@5 flat damage
+    return {"flat": int(x), "type": y} if x.isdigit() else {"dice": x, "type": y}
 
 
 def num(s):
@@ -81,12 +86,12 @@ class MonsterTable(unittest.TestCase):
             for ta in t["attacks"]:
                 for opt in ta["damage_options"]:
                     with self.subTest(monster=idx, attack=ta["name"], damage=opt):
-                        want = [{"dice": x, "type": y} for x, y in opt]
+                        want = [dmg(x, y) for x, y in opt]
                         self.assertTrue(
                             any(a["to_hit"] == ta["attack_bonus"] and a["damage"] == want for a in attacks),
                             f"no action with to_hit {ta['attack_bonus']} and damage {want}")
             # no invented attack: every authored attack action matches some table option
-            known = [(ta["attack_bonus"], [{"dice": x, "type": y} for x, y in opt]) for ta in t["attacks"] for opt in ta["damage_options"]]
+            known = [(ta["attack_bonus"], [dmg(x, y) for x, y in opt]) for ta in t["attacks"] for opt in ta["damage_options"]]
             for a in attacks:
                 if (idx, a["id"]) in EXTRA_ATTACKS:
                     continue
