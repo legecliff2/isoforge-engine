@@ -13,11 +13,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | | count |
 |---|---|
 | inventory candidates | 30 |
-| authored now (`monster@4`, all converted to `monster@5` in §14 of CONTENT_CONVENTIONS) | 74 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189; 9 bestiary v0.1 batch 1 monsters as `monster@5` with `derive: true`: deer, pony, awakened shrub, hyena, cultist, giant weasel, mastiff, noble, tribal warrior; 9 bestiary v0.1 batch 2 monsters, same form: giant fire beetle, goat, shrieker, giant rat, thug, bandit captain, veteran, knight, mule; rat and scorpion after flat damage, #295; bestiary v0.1 batch 3: satyr, ghast; gladiator after the riders unblock, CONTENT_CONVENTIONS 21; wight, vampire spawn, death dog, violet fungus and shadow in batch 3b after feat/monster-batch3-riders + feat/monster-strength-drain; 11 tier B batch d1 monsters as `monster@5` with `derive: true`: baboon, camel, draft horse, riding horse, giant lizard, giant centipede, giant wolf spider, ape, worg, brown bear, giant hyena; acolyte and cult fanatic after the utility cantrips, CONTENT_CONVENTIONS 28) |
+| authored now (`monster@4`, all converted to `monster@5` in §14 of CONTENT_CONVENTIONS) | 84 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189; 9 bestiary v0.1 batch 1 monsters as `monster@5` with `derive: true`: deer, pony, awakened shrub, hyena, cultist, giant weasel, mastiff, noble, tribal warrior; 9 bestiary v0.1 batch 2 monsters, same form: giant fire beetle, goat, shrieker, giant rat, thug, bandit captain, veteran, knight, mule; rat and scorpion after flat damage, #295; bestiary v0.1 batch 3: satyr, ghast; gladiator after the riders unblock, CONTENT_CONVENTIONS 21; wight, vampire spawn, death dog, violet fungus and shadow in batch 3b after feat/monster-batch3-riders + feat/monster-strength-drain; 11 tier B batch d1 monsters as `monster@5` with `derive: true`: baboon, camel, draft horse, riding horse, giant lizard, giant centipede, giant wolf spider, ape, worg, brown bear, giant hyena; 10 batch D2 monsters as `monster@5` with `derive: true`: owlbear, awakened tree, hill giant, stone giant, giant ape, ettercap, merfolk, plesiosaurus, reef shark and killer whale (swim-only `walk: 0` after feat/monster-swim-only); acolyte and cult fanatic after the utility cantrips, CONTENT_CONVENTIONS 28) |
 | goblin (already shipped, left at `monster@3`) | 1 |
-| deferred (mechanic not expressible) | 22 (rust monster, mummy: batch 3; blink dog: batch 3b; duergar, mimic, doppelganger, green hag: tier-A triage; 15 tier B batch d1) |
+| deferred (mechanic not expressible) | 21 (rust monster, mummy: batch 3; blink dog: batch 3b; duergar, mimic, doppelganger, green hag: tier-A triage; 14 tier B batch d1) |
 
-## Authored (74; bestiary v0.1 batch 1 and 2, tier B batch d1, acolyte and cult fanatic rows below at `monster@5` + `derive: true`)
+## Authored (84; bestiary v0.1 batch 1 and 2, tier B batch d1, batch D2, acolyte and cult fanatic rows below at `monster@5` + `derive: true`)
 
 | monster | CR | mechanics carried as data | notes |
 |---|---|---|---|
@@ -95,6 +95,16 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Ghast | 2 | bite (natural 2d8, Dex) with an approved `attack_bonus` override of **+3** (SRD print; derived +5 = Dex +3 and PB +2; test DEVIATIONS); claws (natural 2d6, Dex) + `on_hit save_condition` (Con DC 10, paralyzed 10 rounds, repeat at end of turn) gated by `not_creature_type undead` (as ghoul, no elf clause); necrotic resistance, poison immunity, poisoned / charmed / exhaustion immunity, darkvision 60 | **partial**: Stench as trait `aura` {radius 5, start_turn, Con DC 10, poisoned until_start_of_next_turn, success_immunity_hours 24} (batch 3b, exact SRD). Turn Defiance is description only (no turn-undead effect in the pack) |
 | Acolyte | 1/4 | Club (+2, 1d4 bludgeoning); `spellcasting` Wis, caster level 1, slots 1st x3, DC 12, +4: light, sacred flame, thaumaturgy, bless, cure wounds, sanctuary (light and thaumaturgy are `descriptive`, CONTENT_CONVENTIONS 28) | complete; Spellcasting trait text verbatim |
 | Cult Fanatic | 2 | Dagger ×2 (melee +4, 1d4 + 2, or thrown 20/60); Dark Devotion as `save_advantage` vs charmed / frightened; `spellcasting` Wis, caster level 4, slots 1st x4 / 2nd x3, DC 11, +3: light, sacred flame, thaumaturgy, command, inflict wounds, shield of faith, hold person, spiritual weapon | complete. DEVIATIONS: HP 33 (6d8 + 6) as the SRD prints (Elf ruling); the a6212be mirror's 22 (6d8-5) is a mirror error (test HP_ERRATA) |
+| Owlbear | 3 | Multiattack beak + claws | Keen Sight and Smell descriptive |
+| Awakened Tree | 2 | vulnerability fire, resistances bludgeoning / piercing, slam reach 10 | False Appearance descriptive |
+| Hill Giant | 5 | Multiattack greatclub x2; greatclub as the item with `weapon_dice_multiplier` 3 (Huge), reach 10 as printed; rock (ranged natural 3d10, 60/240) | |
+| Stone Giant | 7 | saving throws Dex +5 / Con +8 / Wis +4; Multiattack greatclub x2 (item, `weapon_dice_multiplier` 3, reach 15 as printed); rock with `on_hit save_condition` (Str DC 17, prone untimed) | Stone Camouflage descriptive; Rock Catching (reaction, DC 10 Dex to catch a hurled rock, no bludgeoning damage) descriptive: no reaction window for incoming missiles |
+| Giant Ape | 7 | Multiattack fist x2 (reach 10); rock (ranged 7d6, 50/100); climb 40 | |
+| Ettercap | 2 | Multiattack bite + claws; bite (piercing + poison) with `on_hit save_condition` (Con DC 11, poisoned 10 rounds, repeat at end of turn); Web as `attack_effect` (ranged +4, 30/60, restrained, `max_size large`, Str DC 11 escape, webbing AC 10 / hp 5 / vulnerable fire / immune bludgeoning, poison, and psychic, recharge 5-6) | Spider Climb / Web Sense / Web Walker descriptive |
+| Merfolk | 1/8 | spear: one-handed, two-handed, thrown (guard convention); walk 10, swim 40 | Amphibious descriptive |
+| Plesiosaurus | 2 | bite reach 10; walk 20, swim 40 | Hold Breath descriptive (as lizardfolk) |
+| Reef Shark | 1/2 | Pack Tactics (`pack_tactics`); bite; swim-only speed `{walk: 0, swim: 40}`; blindsight 30 | Water Breathing descriptive |
+| Killer Whale | 3 | bite 5d6 + 4; swim-only speed `{walk: 0, swim: 60}`; blindsight 120 | Echolocation / Hold Breath / Keen Hearing descriptive |
 
 The goblin keeps `$schema: monster@3`, its id (`srd51.monster.goblin`, stable id derived from it) and bytes. It is referenced by C++ tests that assert its `@3` form (`content_migration_tests`, `pack_set_tests`, compat goblin tests) and by the fl1 compat corpus, and a schema change could shift digests and goldens; migrating it buys nothing until a `@4`-only feature is needed.
 
@@ -105,7 +115,7 @@ Not set: `presentation` (the goblin has none; sprite assets for these monsters d
 Played: stats, attacks with every `damage[]` entry (#45), resistances / immunities / vulnerabilities / condition immunities (#45), `multiattack` options (#48/#59), `damage_mitigation` (#47/#58), `bonus_action_grant`, size footprint (#50/#55).
 Carried and validated but **not applied** (the registry reserves the `@4` kinds; the archetype lists them in `unsupported_features` and ignores them): `on_event` (Undead Fortitude, Rampage, Sneak Attack), `on_hit[]` riders (snake poison), `save_effect` actions with `usage` (Acid Breath). Until Engine Core lands the row 6 compile / row 9-10 trigger hooks these monsters play without those effects. No content change is needed when the hooks land.
 
-## Deferred (22)
+## Deferred (21)
 
 The last pre-v0.1 deferred monster, `srd51.monster.swarm_of_rats` (T&C-G7, T&C-G14, T&C-G15), was authored after sim #172 (swarm tag, `half_hp_damage`).
 
@@ -115,7 +125,6 @@ The last pre-v0.1 deferred monster, `srd51.monster.swarm_of_rats` (T&C-G7, T&C-G
 | Crab (`srd51.monster.crab`) | 0 | Claw deals a flat 1 bludgeoning damage (as cat) |
 | Poisonous Snake (`srd51.monster.poisonous_snake`) | 1/8 | Bite deals a flat 1 piercing damage (as cat); the poison rider itself is expressible |
 | Quipper (`srd51.monster.quipper`) | 0 | Blood Frenzy (advantage on melee attacks vs a creature missing hit points): no construct; also swim-only (schema requires `speed.walk`, SRD lists none); bite flat 1 damage |
-| Reef Shark (`srd51.monster.reef_shark`) | 1/2 | swim-only speed: `speed.walk` is required by the schema and the SRD lists no walk speed (writing walk 0 would change the pinned speed) |
 | Giant Crab (`srd51.monster.giant_crab`) | 1/8 | Claw grapple with two claws each grappling one target (per-limb grapple capacity) |
 | Constrictor Snake (`srd51.monster.constrictor_snake`) | 1/4 | Constrict: grappled and restrained until the grapple ends, can't constrict another target |
 | Crocodile (`srd51.monster.crocodile`) | 1/2 | Bite: grappled and restrained until the grapple ends, can't bite another target; Hold Breath |

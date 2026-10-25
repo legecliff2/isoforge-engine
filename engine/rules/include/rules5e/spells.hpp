@@ -497,6 +497,14 @@ struct SpellDef {
     // action was already spent to cast. Not stored on the modifier row, so modifiers_digest is unchanged and no SIM_EVENTS
     // tag is claimed. A cast that never Moves stays legal.
     bool dash_on_cast = false;
+    // appended (Tier-A §26, mummy Dreadful Glare; primary Save with a condition, not a spell): also_margin > 0 = failing the
+    // save by that much or more ALSO applies also_condition on the same effect entry (same duration; ending it ends both).
+    // It applies even when the target is immune to the primary condition. success_immunity_hours > 0 = a success makes the
+    // target immune to this action (EncounterState::action_immunities, 0xE1): scope 0 = every user of the action (source 0),
+    // 1 = this user only. target_sees_source = a target that cannot see the user (sight hook) makes no save and gains nothing.
+    uint8_t also_margin = 0; Condition also_condition = Condition::Paralyzed;
+    uint16_t success_immunity_hours = 0; uint8_t success_immunity_scope = 0;
+    bool target_sees_source = false;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered
