@@ -1,0 +1,101 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.swarm_of_quippers",
+  "name": "Swarm of Quippers",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "beast",
+  "tags": [
+    "swarm"
+  ],
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 13
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 28,
+    "formula": "8d8-8"
+  },
+  "speed": {
+    "walk": 0,
+    "swim": 40
+  },
+  "abilities": {
+    "str": 13,
+    "dex": 16,
+    "con": 9,
+    "int": 1,
+    "wis": 7,
+    "cha": 2
+  },
+  "damage_resistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "condition_immunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 8
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "1",
+    "xp": 200
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "blood_frenzy",
+      "name": "Blood Frenzy",
+      "description": "The swarm has advantage on melee attack rolls against any creature that doesn't have all its hit points."
+    },
+    {
+      "id": "swarm",
+      "name": "Swarm",
+      "description": "The swarm can occupy another creature's space and vice versa, and the swarm can move through any opening large enough for a Tiny quipper. The swarm can't regain hit points or gain temporary hit points."
+    },
+    {
+      "id": "water_breathing",
+      "name": "Water Breathing",
+      "description": "The swarm can breathe only underwater."
+    }
+  ],
+  "actions": [
+    {
+      "id": "bites",
+      "name": "Bites",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "4d6",
+        "ability": "dex",
+        "damage_ability": "none"
+      },
+      "to_hit": 5,
+      "reach": 0,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "4d6",
+          "type": "piercing"
+        }
+      ],
+      "half_hp_damage": "2d6",
+      "description": "Melee Weapon Attack: +5 to hit, reach 0 ft., one creature in the swarm's space. Hit: 14 (4d6) piercing damage, or 7 (2d6) piercing damage if the swarm has half of its hit points or fewer."
+    }
+  ]
+}

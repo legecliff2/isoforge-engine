@@ -1,0 +1,99 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.giant_octopus",
+  "name": "Giant Octopus",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 11
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 52,
+    "formula": "8d10+8"
+  },
+  "speed": {
+    "walk": 10,
+    "swim": 60
+  },
+  "abilities": {
+    "str": 17,
+    "dex": 13,
+    "con": 13,
+    "int": 4,
+    "wis": 10,
+    "cha": 4
+  },
+  "skills": {
+    "perception": 4,
+    "stealth": 5
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 14
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "1",
+    "xp": 200
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "hold_breath",
+      "name": "Hold Breath",
+      "description": "While out of water, the octopus can hold its breath for 1 hour."
+    },
+    {
+      "id": "underwater_camouflage",
+      "name": "Underwater Camouflage",
+      "description": "The octopus has advantage on Dexterity (Stealth) checks made while underwater."
+    },
+    {
+      "id": "water_breathing",
+      "name": "Water Breathing",
+      "description": "The octopus can breathe only underwater."
+    }
+  ],
+  "actions": [
+    {
+      "id": "tentacles",
+      "name": "Tentacles",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "str"
+      },
+      "to_hit": 5,
+      "reach": 15,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+3",
+          "type": "bludgeoning"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "grapple",
+          "escape_dc": 16,
+          "restrains": true,
+          "exclusive": true
+        }
+      ],
+      "description": "Melee Weapon Attack: +5 to hit, reach 15 ft., one target. Hit: 10 (2d6 + 3) bludgeoning damage. If the target is a creature, it is grappled (escape DC 16). Until this grapple ends, the target is restrained, and the octopus can't use its tentacles on another target."
+    },
+    {
+      "id": "ink_cloud",
+      "name": "Ink Cloud (Recharges after a Short or Long Rest)",
+      "kind": "special",
+      "description": "A 20-foot-radius cloud of ink extends all around the octopus if it is underwater. The area is heavily obscured for 1 minute, although a significant current can disperse the ink. After releasing the ink, the octopus can use the Dash action as a bonus action. (Descriptive only: the heavily obscured cloud and the bonus-action Dash are not encoded. No zone, no heavy_obscured, and no save_effect. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ]
+}
