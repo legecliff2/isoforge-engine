@@ -157,6 +157,7 @@ UTILITY_GEAR = [
     ('pole_10_foot', 5, 112, None),
     ('piton', 5, 4, None),
     ('hammer', 100, 48, None),
+    ('healers_kit', 500, 48, "As an action, you can expend one use of the kit to stabilize a creature that has 0 hit points"),
     ('grappling_hook', 200, 64, None),
     ('mirror_steel', 500, 8, None),
     ('chain_10_feet', 500, 160, "A chain has 10 hit points."),
@@ -210,9 +211,26 @@ TOOLS = [
     ('tinkers_tools', 'artisans_tools', 5000, 160),
     ('weavers_tools', 'artisans_tools', 100, 80),
     ('woodcarvers_tools', 'artisans_tools', 100, 80),
+    ('dice_set', 'gaming_set', 10, None),
+    ('playing_card_set', 'gaming_set', 50, None),
+    ('bagpipes', 'musical_instrument', 3000, 96),
+    ('drum', 'musical_instrument', 600, 48),
+    ('dulcimer', 'musical_instrument', 2500, 160),
+    ('flute', 'musical_instrument', 200, 16),
+    ('lute', 'musical_instrument', 3500, 32),
+    ('lyre', 'musical_instrument', 3000, 32),
+    ('horn', 'musical_instrument', 300, 32),
+    ('pan_flute', 'musical_instrument', 1200, 32),
+    ('shawm', 'musical_instrument', 200, 16),
+    ('viol', 'musical_instrument', 3000, 16),
+    ('navigators_tools', 'other_tools', 2500, 32),
+    ('thieves_tools', 'other_tools', 2500, 16),
 ]
 TOOL_SENTENCE = {
     'artisans_tools': "Proficiency with a set of artisan's tools lets you add your proficiency bonus",
+    'gaming_set': "This item encompasses a wide range of game pieces",
+    'musical_instrument': "If you have proficiency with a given musical instrument",
+    'other_tools': "your proficiency bonus to any ability check",
 }
 
 
@@ -239,9 +257,9 @@ class Srd51Equipment(unittest.TestCase):
         self.assertEqual(len(AMMUNITION), 4)
         self.assertEqual(len(LIGHT_GEAR), 7)
         self.assertEqual(len(CONTAINERS), 3)
-        self.assertEqual(len(UTILITY_GEAR), 14)
+        self.assertEqual(len(UTILITY_GEAR), 15)
         self.assertEqual(len(FOCI), 14)
-        self.assertEqual(len(TOOLS), 17)
+        self.assertEqual(len(TOOLS), 31)
         self.assertEqual(files, sorted([w[0] for w in WEAPONS] + [a[0] for a in ARMOR] + [v[0] for v in VALUABLES]
                                        + [a[0] for a in AMMUNITION] + [g[0] for g in LIGHT_GEAR] + [c[0] for c in CONTAINERS]
                                        + [g[0] for g in UTILITY_GEAR] + [f[0] for f in FOCI]
