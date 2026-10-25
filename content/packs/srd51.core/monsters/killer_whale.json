@@ -1,0 +1,89 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.killer_whale",
+  "name": "Killer Whale",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "huge",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 12,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 12,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 90,
+    "formula": "12d12+12"
+  },
+  "speed": {
+    "walk": 0,
+    "swim": 60
+  },
+  "abilities": {
+    "str": 19,
+    "dex": 10,
+    "con": 13,
+    "int": 3,
+    "wis": 12,
+    "cha": 7
+  },
+  "skills": {
+    "perception": 3
+  },
+  "senses": {
+    "blindsight": 120,
+    "passive_perception": 13
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "3",
+    "xp": 700
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "echolocation",
+      "name": "Echolocation",
+      "description": "The whale can't use its blindsight while deafened."
+    },
+    {
+      "id": "hold_breath",
+      "name": "Hold Breath",
+      "description": "The whale can hold its breath for 30 minutes"
+    },
+    {
+      "id": "keen_hearing",
+      "name": "Keen Hearing",
+      "description": "The whale has advantage on Wisdom (Perception) checks that rely on hearing."
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "5d6",
+        "ability": "str"
+      },
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "5d6+4",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one target. Hit: 21 (5d6 + 4) piercing damage."
+    }
+  ]
+}
