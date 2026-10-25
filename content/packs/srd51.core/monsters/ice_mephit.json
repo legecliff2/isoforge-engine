@@ -1,0 +1,131 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.ice_mephit",
+  "name": "Ice Mephit",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "small",
+  "type": "elemental",
+  "alignment": "neutral evil",
+  "armor_class": {
+    "value": 11
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 21,
+    "formula": "6d6"
+  },
+  "speed": {
+    "walk": 30,
+    "fly": 30
+  },
+  "abilities": {
+    "str": 7,
+    "dex": 13,
+    "con": 10,
+    "int": 9,
+    "wis": 11,
+    "cha": 12
+  },
+  "skills": {
+    "perception": 2,
+    "stealth": 3
+  },
+  "damage_vulnerabilities": [
+    "bludgeoning",
+    "fire"
+  ],
+  "damage_immunities": [
+    "cold",
+    "poison"
+  ],
+  "condition_immunities": [
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 12
+  },
+  "languages": [
+    "Aquan",
+    "Auran"
+  ],
+  "challenge": {
+    "rating": "1/2",
+    "xp": 100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "death_burst",
+      "name": "Death Burst",
+      "description": "When the mephit dies, it explodes in a burst of jagged ice. Each creature within 5 ft. of it must make a DC 10 Dexterity saving throw, taking 4 (1d8) slashing damage on a failed save, or half as much damage on a successful one. (Descriptive only: no on-death area construct; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "false_appearance",
+      "name": "False Appearance",
+      "description": "While the mephit remains motionless, it is indistinguishable from an ordinary shard of ice."
+    },
+    {
+      "id": "innate_spellcasting",
+      "name": "Innate Spellcasting",
+      "description": "The mephit can innately cast fog cloud, requiring no material components. Its innate spellcasting ability is Charisma. (Descriptive only: the 2014 block lists fog cloud 1/day. Monster spellcasting is slot-based, so innate fog cloud is not a spellcasting entry; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": "claws",
+      "name": "Claws",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d4",
+        "ability": "dex",
+        "damage_ability": "dex"
+      },
+      "ability": "dex",
+      "to_hit": 3,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d4+1",
+          "type": "slashing"
+        },
+        {
+          "dice": "1d4",
+          "type": "cold"
+        }
+      ],
+      "description": "Melee Weapon Attack: +3 to hit, reach 5 ft., one creature. Hit: 3 (1d4 + 1) slashing damage plus 2 (1d4) cold damage."
+    },
+    {
+      "id": "frost_breath",
+      "name": "Frost Breath",
+      "kind": "save_effect",
+      "description": "The mephit exhales a 15-foot cone of cold air. Each creature in that area must succeed on a DC 10 Dexterity saving throw, taking 5 (2d4) cold damage on a failed save, or half as much damage on a successful one.",
+      "save": {
+        "ability": "dex",
+        "dc": 10
+      },
+      "origin": "self",
+      "area": {
+        "shape": "cone",
+        "size_ft": 15
+      },
+      "damage": [
+        {
+          "dice": "2d4",
+          "type": "cold"
+        }
+      ],
+      "on_success": "half",
+      "usage": {
+        "kind": "recharge",
+        "min": 6
+      }
+    }
+  ]
+}

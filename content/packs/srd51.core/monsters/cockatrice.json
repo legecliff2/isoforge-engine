@@ -1,0 +1,65 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.cockatrice",
+  "name": "Cockatrice",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "small",
+  "type": "monstrosity",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 11
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 27,
+    "formula": "6d6+6"
+  },
+  "speed": {
+    "walk": 20,
+    "fly": 40
+  },
+  "abilities": {
+    "str": 6,
+    "dex": 12,
+    "con": 12,
+    "int": 2,
+    "wis": 13,
+    "cha": 5
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 11
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "1/2",
+    "xp": 100
+  },
+  "proficiency_bonus": 2,
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d4",
+        "ability": "dex"
+      },
+      "ability": "dex",
+      "to_hit": 3,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d4+1",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +3 to hit, reach 5 ft., one creature. Hit: 3 (1d4 + 1) piercing damage, and the target must succeed on a DC 11 Constitution saving throw against being magically petrified. On a failed save, the creature begins to turn to stone and is restrained. It must repeat the saving throw at the end of its next turn. On a success, the effect ends. On a failure, the creature is petrified for 24 hours. (Descriptive only: the petrifying rider is not encoded. escalates is a gaze trait, and on_hit save_condition has no escalate, so this is not a restrained-only or instant-petrified stand-in; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ]
+}

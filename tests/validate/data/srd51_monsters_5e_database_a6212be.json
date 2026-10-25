@@ -5417,6 +5417,275 @@
     }
    ]
   },
+  "ice-mephit": {
+   "name": "Ice Mephit",
+   "size": "Small",
+   "type": "elemental",
+   "ac": [
+    11
+   ],
+   "hp": 21,
+   "hp_roll": "6d6",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "30 ft."
+   },
+   "abilities": [
+    7,
+    13,
+    10,
+    9,
+    11,
+    12
+   ],
+   "damage_vulnerabilities": [
+    "bludgeoning",
+    "fire"
+   ],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "cold",
+    "poison"
+   ],
+   "condition_immunities": [
+    "poisoned"
+   ],
+   "attacks": [
+    {
+     "name": "Claws",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d4+1",
+        "slashing"
+       ],
+       [
+        "1d4",
+        "cold"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "dust-mephit": {
+   "name": "Dust Mephit",
+   "size": "Small",
+   "type": "elemental",
+   "ac": [
+    12
+   ],
+   "hp": 17,
+   "hp_roll": "5d6",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "30 ft."
+   },
+   "abilities": [
+    5,
+    14,
+    10,
+    9,
+    11,
+    10
+   ],
+   "damage_vulnerabilities": [
+    "fire"
+   ],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "poison"
+   ],
+   "condition_immunities": [
+    "poisoned"
+   ],
+   "attacks": [
+    {
+     "name": "Claws",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "magma-mephit": {
+   "name": "Magma Mephit",
+   "size": "Small",
+   "type": "elemental",
+   "ac": [
+    11
+   ],
+   "hp": 22,
+   "hp_roll": "5d6+5",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "30 ft."
+   },
+   "abilities": [
+    8,
+    12,
+    12,
+    7,
+    10,
+    10
+   ],
+   "damage_vulnerabilities": [
+    "cold"
+   ],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "fire",
+    "poison"
+   ],
+   "condition_immunities": [
+    "poisoned"
+   ],
+   "attacks": [
+    {
+     "name": "Claws",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d4+1",
+        "slashing"
+       ],
+       [
+        "1d4",
+        "fire"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "cockatrice": {
+   "name": "Cockatrice",
+   "size": "Small",
+   "type": "monstrosity",
+   "ac": [
+    11
+   ],
+   "hp": 27,
+   "hp_roll": "6d6+6",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "20 ft.",
+    "fly": "40 ft."
+   },
+   "abilities": [
+    6,
+    12,
+    12,
+    2,
+    13,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d4+1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "sahuagin": {
+   "name": "Sahuagin",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    12
+   ],
+   "hp": 22,
+   "hp_roll": "4d8+4",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    13,
+    11,
+    12,
+    12,
+    13,
+    9
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d4+1",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d4+1",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Spear",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "piercing"
+       ]
+      ],
+      [
+       [
+        "1d8+1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
   "giant-goat": {
    "name": "Giant Goat",
    "size": "Large",
