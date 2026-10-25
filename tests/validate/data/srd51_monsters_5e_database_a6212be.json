@@ -5685,6 +5685,228 @@
      ]
     }
    ]
+  },
+  "giant-goat": {
+   "name": "Giant Goat",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    11
+   ],
+   "hp": 19,
+   "hp_roll": "3d10+3",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    17,
+    11,
+    12,
+    3,
+    12,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Ram",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d4+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-sea-horse": {
+   "name": "Giant Sea Horse",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 16,
+   "hp_roll": "3d10",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "0 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    12,
+    15,
+    11,
+    2,
+    12,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Ram",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-wasp": {
+   "name": "Giant Wasp",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 13,
+   "hp_roll": "3d8",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "50 ft.",
+    "swim": "50 ft."
+   },
+   "abilities": [
+    10,
+    14,
+    10,
+    1,
+    10,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Sting",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "swarm-of-insects": {
+   "name": "Swarm of Insects",
+   "size": "Medium",
+   "type": "swarm of Tiny beasts",
+   "ac": [
+    12
+   ],
+   "hp": 22,
+   "hp_roll": "5d8",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "20 ft.",
+    "climb": "20 ft."
+   },
+   "abilities": [
+    3,
+    13,
+    10,
+    1,
+    7,
+    1
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+   ],
+   "attacks": [
+    {
+     "name": "Bites",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "4d4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "warhorse": {
+   "name": "Warhorse",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    11
+   ],
+   "hp": 19,
+   "hp_roll": "3d10+3",
+   "cr": 0.5,
+   "xp": 100,
+   "speed": {
+    "walk": "60 ft."
+   },
+   "abilities": [
+    18,
+    12,
+    13,
+    2,
+    12,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Hooves",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }

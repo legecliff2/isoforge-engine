@@ -1,0 +1,96 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.swarm_of_insects",
+  "name": "Swarm of Insects",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "beast",
+  "tags": [
+    "swarm"
+  ],
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 12,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 11,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 22,
+    "formula": "5d8"
+  },
+  "speed": {
+    "walk": 20,
+    "climb": 20
+  },
+  "abilities": {
+    "str": 3,
+    "dex": 13,
+    "con": 10,
+    "int": 1,
+    "wis": 7,
+    "cha": 1
+  },
+  "damage_resistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "condition_immunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+  ],
+  "senses": {
+    "blindsight": 10,
+    "passive_perception": 8
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "1/2",
+    "xp": 100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "swarm",
+      "name": "Swarm",
+      "description": "The swarm can occupy another creature's space and vice versa, and the swarm can move through any opening large enough for a Tiny insect. The swarm can't regain hit points or gain temporary hit points."
+    }
+  ],
+  "actions": [
+    {
+      "id": "bites",
+      "name": "Bites",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "4d4",
+        "ability": "dex",
+        "damage_ability": "none"
+      },
+      "to_hit": 3,
+      "reach": 0,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "4d4",
+          "type": "piercing"
+        }
+      ],
+      "half_hp_damage": "2d4",
+      "description": "Melee Weapon Attack: +3 to hit, reach 0 ft., one target in the swarm's space. Hit: 10 (4d4) piercing damage, or 5 (2d4) piercing damage if the swarm has half of its hit points or fewer."
+    }
+  ]
+}
