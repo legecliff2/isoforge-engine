@@ -1,0 +1,101 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.gray_ooze",
+  "name": "Gray Ooze",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "ooze",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 8
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 22,
+    "formula": "3d8+9"
+  },
+  "speed": {
+    "walk": 10,
+    "climb": 10
+  },
+  "abilities": {
+    "str": 12,
+    "dex": 6,
+    "con": 16,
+    "int": 1,
+    "wis": 6,
+    "cha": 2
+  },
+  "skills": {
+    "stealth": 2
+  },
+  "damage_resistances": [
+    "acid",
+    "cold",
+    "fire"
+  ],
+  "condition_immunities": [
+    "blinded",
+    "charmed",
+    "deafened",
+    "exhaustion",
+    "frightened",
+    "prone"
+  ],
+  "senses": {
+    "blindsight": 60,
+    "passive_perception": 8
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "1/2",
+    "xp": 100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "amorphous",
+      "name": "Amorphous",
+      "description": "The ooze can move through a space as narrow as 1 inch wide without squeezing."
+    },
+    {
+      "id": "corrode_metal",
+      "name": "Corrode Metal",
+      "description": "Any nonmagical weapon made of metal that hits the ooze corrodes. After dealing damage, the weapon takes a permanent and cumulative -1 penalty to damage rolls. If its penalty drops to -5, the weapon is destroyed. Nonmagical ammunition made of metal that hits the ooze is destroyed after dealing damage.\nThe ooze can eat through 2-inch-thick, nonmagical metal in 1 round. (Descriptive only: same gap as Rust Metal; no item-degradation effect. manufactured_metal is the predicate for when it lands. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "false_appearance",
+      "name": "False Appearance",
+      "description": "While the ooze remains motionless, it is indistinguishable from an oily pool or wet rock."
+    }
+  ],
+  "actions": [
+    {
+      "id": "pseudopod",
+      "name": "Pseudopod",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d6",
+        "ability": "str"
+      },
+      "to_hit": 3,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+1",
+          "type": "bludgeoning"
+        },
+        {
+          "dice": "2d6",
+          "type": "acid"
+        }
+      ],
+      "description": "Melee Weapon Attack: +3 to hit, reach 5 ft., one target. Hit: 4 (1d6 + 1) bludgeoning damage plus 7 (2d6) acid damage, and if the target is wearing nonmagical metal armor, its armor is partly corroded and takes a permanent and cumulative -1 penalty to the AC it offers. The armor is destroyed if the penalty reduces its AC to 10. (The armor penalty is descriptive only: no item-degradation rider. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ]
+}

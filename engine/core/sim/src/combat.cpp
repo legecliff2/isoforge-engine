@@ -178,6 +178,14 @@ std::optional<Combat> Combat::create(ecs::Registry& reg, std::span<const world::
     for (const auto& sl : c.slots_)
         for (const auto& tr : sl.archetype->base.triggers)
             if (tr.recharge_min != 0) rules5e::register_action_use(c.state_, sl.id, tr.id, false);
+    // batch 3 ghast Stench (Lich ruling): creature-sourced auras exist from the start of combat, in spawn order (ZoneCreated
+    // events; nothing for archetypes without an aura trait, so every other combat hashes as before).
+    c.state_.hooks.spells = c.spells_;   // add_feature_aura reads the def; install_hooks sets the same pointer later
+    // TODO(deferred, docs/SRD_COMBAT_COVERAGE.md "Auras on summoned creatures"): only creatures present at Combat::create get
+    // their aura. A creature summoned mid-combat (spawn_summon) never gets it; no supported summon target has an aura trait
+    // today (content/packs has no creature-summoning spell and no "aura" trait), so nothing is lost yet.
+    for (const auto& sl : c.slots_)
+        for (uint32_t id : sl.archetype->aura_spell_ids) rules5e::add_feature_aura(c.state_, sl.id, id, &opening);
     c.apply_rules_events(opening);
     // v6: where each multi-tile creature stands, once, in spawn order (nothing for 1x1-only combats).
     for (const auto& sl : c.slots_)
@@ -210,7 +218,7 @@ std::optional<uint8_t> Combat::multiattack_option(CombatantId id, std::string_vi
     const auto* c = rules5e::find(state_, id);
     if (!c) return std::nullopt;
     for (std::size_t i = 0; i < c->multiattacks.size() && i < 255; ++i)
-        if (c->multiattacks[i].id == option_id) return uint8_t(i + 1);
+        if (c->multiattacks[i].id == option_id && c->multiattacks[i].after_action == 0) return uint8_t(i + 1);
     return std::nullopt;
 }
 
@@ -1194,8 +1202,9 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
             if (auto g = arch->grapple_on_hit.find(q.attack_index); g != arch->grapple_on_hit.end())
                 for (const auto& e : evs)
                     if (e.kind == rules5e::EventKind::AttackResolved && e.reaction_depth == 0 && e.actor == q.actor && (e.c & 1)) {
+                        if (g->second.instead_of_damage && !(e.c & 8)) break;   // Tier-A §27: damage was chosen, no grapple
                         std::vector<rules5e::Event> gev;
-                        rules5e::grapple(state_, q.actor, e.target, g->second, gev);
+                        rules5e::grapple(state_, q.actor, e.target, g->second, q.attack_index, gev);   // false past max_grapples: damage only
                         apply_rules_events(gev);
                         break;
                     }
@@ -1363,6 +1372,7 @@ void Combat::spawn_summon(const rules5e::Event& ev, const rules5e::LoggedStep& l
     slots_.push_back(sl);
     if (!a->equipment.empty()) equipment_[id] = a->equipment;
     register_rows(slots_.back());
+    // TODO(deferred, see Combat::create): a->aura_spell_ids are not attached for a summoned creature (no add_feature_aura here).
     SimEvent se;   // v10: right after its own Summoned; actor = id, tile = anchor, rules.a = footprint side, rules.b = summoner
     se.kind = SimEvent::Kind::TokenSpawned;
     se.actor = id;
@@ -1443,6 +1453,10 @@ SubmitResult Combat::submit(const Command& cmd) {
     if (light_.d && light_.d->halted()) {   // R-G13 §7: never step on a partial halo; re-check once (the streamer may have loaded)
         light_.d->step(*this);
         if (light_.d->halted()) { r.error = light_.d->failed().empty() ? "light halo pending" : "light halo failed"; return r; }
+    }
+    if (cmd.request.grapple_instead && (cmd.kind != CommandKind::Rules || cmd.request.kind != rules5e::ActionKind::Attack)) {
+        r.error = "grapple_instead is only valid on an Attack";   // Tier-A §27: an ignored flag must never reach log_hash 0xE2
+        return r;
     }
     install_hooks();
     return cmd.kind == CommandKind::Step ? do_step(cmd.to, cmd.request.squeeze == 1, cmd.request.alt_to) : do_rules(cmd.request, cmd.to, cmd.aim);
@@ -1927,6 +1941,20 @@ uint64_t Combat::hash() const {
                 h.i16(sc.escape_dc);
             }
         }
+        // 0xDB (Druid gap G, monster grapple rider): the appended SourcedCondition fields, only for Grappled entries a rider
+        // with restrains / exclusive / max_grapples made (via_attack != 0xFF); plain grapples leave every hash unchanged.
+        bool rider = false;
+        for (const auto& sc : state_.sourced) rider = rider || (sc.condition == rules5e::Condition::Grappled && sc.via_attack != 0xFF);
+        if (rider) {
+            h.byte(0xDB);
+            for (const auto& sc : state_.sourced) {
+                if (sc.condition != rules5e::Condition::Grappled || sc.via_attack == 0xFF) continue;
+                h.u32(sc.target);
+                h.u32(sc.source);
+                h.byte(sc.via_attack);
+                h.byte(uint8_t((sc.restrains ? 1 : 0) | (sc.exclusive ? 2 : 0) | (sc.owns_restrained ? 4 : 0)));
+            }
+        }
     }
     // 0xAA (small leftovers, rules #111): Life Drain max-HP reductions, Haste lethargy, active Reckless Attack and escalating
     // (Petrifying Gaze) effects, only when some is present; content that uses none hashes as before.
@@ -2023,6 +2051,45 @@ uint64_t Combat::hash() const {
     if (rules5e::has_smite_state(state_)) { h.byte(0xD4); h.u64(rules5e::smite_digest(state_)); }
     // 0xD5 (7.2zh Heat Metal): the heated object and the while-held disadvantage, only while one is set.
     if (rules5e::has_heat_metal_state(state_)) { h.byte(0xD5); h.u64(rules5e::heat_metal_digest(state_)); }
+    // 0xDC (batch 3 mummy rot): no_regain_hp is dynamic once an attack can curse; folded (one byte per combatant, in order) only
+    // while some combatant has an attack with curse_no_regain_dc, so every existing hash is unchanged.
+    bool curse = false;
+    for (const auto& c : state_.combatants)
+        for (const auto& at : c.attacks) curse = curse || at.curse_no_regain_dc > 0;
+    if (curse) {
+        h.byte(0xDC);
+        for (const auto& c : state_.combatants) h.byte(c.no_regain_hp ? 1 : 0);
+    }
+    // 0xDF (batch 3 shadow Strength Drain): ability_reduction, only while some combatant's is non-zero (so every existing hash
+    // is unchanged): count of such combatants (u32), then for each, in combatant order, id (u32) and the six bytes Str..Cha.
+    uint32_t reduced = 0;
+    for (const auto& c : state_.combatants)
+        for (uint8_t r : c.ability_reduction) if (r != 0) { ++reduced; break; }
+    if (reduced != 0) {
+        h.byte(0xDF);
+        h.u32(reduced);
+        for (const auto& c : state_.combatants) {
+            bool any = false;
+            for (uint8_t r : c.ability_reduction) any = any || r != 0;
+            if (!any) continue;
+            h.u32(c.id);
+            for (uint8_t r : c.ability_reduction) h.byte(r);
+        }
+    }
+    // 0xDE (batch 3 ghast Stench): per-creature, per-source aura immunities (creature, source, spell_id, until_round), in
+    // grant order, only while one exists.
+    if (!state_.aura_immunities.empty()) {
+        h.byte(0xDE);
+        h.u32(uint32_t(state_.aura_immunities.size()));
+        for (const auto& im : state_.aura_immunities) { h.u32(im.creature); h.u32(im.source); h.u32(im.spell_id); h.u32(im.until_round); }
+    }
+    // 0xE1 (Tier-A §26 mummy Dreadful Glare): action immunities after a successful save (creature, source 0 = any user,
+    // spell_id, until_round), in grant order, only while one exists.
+    if (!state_.action_immunities.empty()) {
+        h.byte(0xE1);
+        h.u32(uint32_t(state_.action_immunities.size()));
+        for (const auto& im : state_.action_immunities) { h.u32(im.creature); h.u32(im.source); h.u32(im.spell_id); h.u32(im.until_round); }
+    }
     return h.value();
 }
 
@@ -2041,6 +2108,31 @@ bool Combat::apply_surprise(const std::vector<CombatantId>& ids, std::string* er
     for (const auto& k : state_.combatants)
         if (k.surprised) surprised_at_start_.push_back(k.id);
     return true;
+}
+
+void Combat::set_end_condition(rules5e::EndConditionFn fn) {
+    scenario_end_ = {};
+    state_.hooks.end_condition = std::move(fn);
+}
+
+void Combat::set_scenario_end(ScenarioEnd end) {
+    scenario_end_ = end;
+    const auto kind = end.kind;
+    const auto cap = end.round_cap;
+    state_.hooks.end_condition = [kind, cap](const rules5e::EncounterState& state) -> std::optional<rules5e::EncounterOutcome> {
+        std::optional<rules5e::EncounterOutcome> outcome;
+        switch (kind) {
+        case ScenarioEndKind::Teams: outcome = rules5e::default_end_condition(state); break;
+        case ScenarioEndKind::NoPcConscious: outcome = rules5e::end_when_no_pc_conscious(state); break;
+        case ScenarioEndKind::NoPcOrNoOpponent: outcome = rules5e::end_when_no_pc_or_no_opponent(state); break;
+        }
+        if (outcome) return outcome;
+        // Round cap: when round_cap != 0 and state.round > round_cap, and the built-in policy
+        // returned nothing, the outcome is EndReason::Custom.
+        if (cap != 0 && state.round > cap)
+            return rules5e::EncounterOutcome{rules5e::EndReason::Custom, rules5e::pc_statuses(state), {}};
+        return std::nullopt;
+    };
 }
 
 uint64_t Combat::log_hash() const {
@@ -2081,6 +2173,8 @@ uint64_t Combat::log_hash() const {
             for (const auto& x : q.heal_split) { h.u32(x.target); h.u32(uint32_t(uint16_t(x.amount))); }
         }
         if (q.avert_gaze) { h.byte(0xBB); h.byte(1); }
+        if (q.target_willing) { h.byte(0xDD); h.byte(1); }   // batch 3 vampire spawn Bite willing target: only when set
+        if (q.grapple_instead) { h.byte(0xE2); h.byte(1); }  // Tier-A §27 vampire spawn Claws grapple instead: only when set
         if (q.equip_op != 0) {   // 0xD1 (EQUIPMENT.md 4.2, Engine Core): equip request, folded only when equip_op != 0
             h.byte(0xD1); h.byte(q.equip_op); h.u32(q.equip_item); h.byte(q.equip_hand); h.u32(q.equip_to);
             h.byte(q.equip_in_reach ? 1 : 0);
@@ -2183,6 +2277,45 @@ bool Combat::zone_covers(const rules5e::ActiveZone& z, Vec2i tile, const Spot* o
         return tile.x >= a.x + lo && tile.x <= a.x + hi && tile.y >= a.y + lo && tile.y <= a.y + hi;
     }
     return false;   // walls (Line) are not modelled yet
+}
+
+std::vector<Vec2i> Combat::zone_tiles(const rules5e::ActiveZone& z) const {
+    std::vector<Vec2i> tiles;
+    const rules5e::SpellDef* def = spell_def(z.spell_id);
+    if (!def || def->kind != rules5e::SpellEffectKind::Zone || z.ring) return tiles;
+    const int sz = int(z.size_ft != 0 ? z.size_ft : def->zone.size_ft) / kFeetPerTile;
+    int min_x = 0, max_x = -1, min_y = 0, max_y = -1;
+    if (def->zone.anchor == rules5e::ZoneAnchor::Creature) {
+        if (!rules5e::find(state_, z.owner)) return tiles;
+        const Vec2i op = pos(z.owner);
+        const int on = footprint_size(z.owner);
+        const int pad = (def->zone.shape == AreaShape::Cube) ? sz / 2 : sz;
+        min_x = op.x - pad;
+        max_x = op.x + on - 1 + pad;
+        min_y = op.y - pad;
+        max_y = op.y + on - 1 + pad;
+    } else {
+        if (!z.has_anchor_tile) return tiles;
+        const Vec2i a{z.anchor_x, z.anchor_y};
+        if (def->zone.shape == AreaShape::Sphere || def->zone.shape == AreaShape::Cylinder) {
+            min_x = a.x - sz;
+            max_x = a.x + sz;
+            min_y = a.y - sz;
+            max_y = a.y + sz;
+        } else if (def->zone.shape == AreaShape::Cube) {
+            const int lo = -((sz - 1) / 2), hi = sz / 2;
+            min_x = a.x + lo;
+            max_x = a.x + hi;
+            min_y = a.y + lo;
+            max_y = a.y + hi;
+        } else {
+            return tiles;   // walls (Line) are not modelled yet
+        }
+    }
+    for (int y = min_y; y <= max_y; ++y)
+        for (int x = min_x; x <= max_x; ++x)
+            if (zone_covers(z, {x, y})) tiles.push_back({x, y});
+    return tiles;
 }
 
 bool Combat::zone_holds(const rules5e::ActiveZone& z, CombatantId, Spot at, bool completely, const Spot* owner_at,
@@ -2527,32 +2660,34 @@ std::vector<Vec2i> Combat::legal_teleport_tiles(CombatantId actor, const rules5e
 }
 
 std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content, uint64_t seed,
-                             const std::vector<LogEntry>& log, std::string* error, const std::vector<CombatantId>& surprised) {
-    return replay(reg, chunk, content, seed, CombatOptions{}, log, error, surprised);
+                             const std::vector<LogEntry>& log, std::string* error, const std::vector<CombatantId>& surprised,
+                             ScenarioEnd end) {
+    return replay(reg, chunk, content, seed, CombatOptions{}, log, error, surprised, end);
 }
 
 std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
                              uint64_t seed, const std::vector<LogEntry>& log, std::string* error,
-                             const std::vector<CombatantId>& surprised) {
-    return replay(reg, chunks, content, seed, CombatOptions{}, log, error, surprised);
+                             const std::vector<CombatantId>& surprised, ScenarioEnd end) {
+    return replay(reg, chunks, content, seed, CombatOptions{}, log, error, surprised, end);
 }
 
 std::optional<Combat> replay(ecs::Registry& reg, const world::Chunk& chunk, const ContentLibrary& content, uint64_t seed,
                              CombatOptions options, const std::vector<LogEntry>& log, std::string* error,
-                             const std::vector<CombatantId>& surprised) {
+                             const std::vector<CombatantId>& surprised, ScenarioEnd end) {
     world::Chunk local = chunk;   // same chunk-local frame as the single-chunk create
     local.coord.x = 0;
     local.coord.y = 0;
     const world::Chunk* one[] = {&local};
-    return replay(reg, std::span<const world::Chunk* const>(one), content, seed, options, log, error, surprised);
+    return replay(reg, std::span<const world::Chunk* const>(one), content, seed, options, log, error, surprised, end);
 }
 
 std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* const> chunks, const ContentLibrary& content,
                              uint64_t seed, CombatOptions options, const std::vector<LogEntry>& log, std::string* error,
-                             const std::vector<CombatantId>& surprised) {
+                             const std::vector<CombatantId>& surprised, ScenarioEnd end) {
     auto c = Combat::create(reg, chunks, content, seed, options, error);
     if (!c) return std::nullopt;
     if (!surprised.empty() && !c->apply_surprise(surprised, error)) return std::nullopt;
+    if (end.kind != ScenarioEndKind::Teams || end.round_cap != 0) c->set_scenario_end(end);
     for (std::size_t i = 0; i < log.size(); ++i) {
         const LogEntry& e = log[i];
         c->install_hooks();

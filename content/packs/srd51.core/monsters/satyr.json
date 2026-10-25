@@ -1,0 +1,130 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.satyr",
+  "name": "Satyr",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "fey",
+  "alignment": "chaotic neutral",
+  "armor_class": {
+    "value": 14,
+    "note": "leather armor"
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.leather_armor",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.shortsword",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.shortbow",
+      "equipped": true
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 31,
+    "formula": "7d8"
+  },
+  "speed": {
+    "walk": 40
+  },
+  "abilities": {
+    "str": 12,
+    "dex": 16,
+    "con": 11,
+    "int": 12,
+    "wis": 10,
+    "cha": 14
+  },
+  "skills": {
+    "perception": 2,
+    "performance": 6,
+    "stealth": 5
+  },
+  "senses": {
+    "passive_perception": 12
+  },
+  "languages": [
+    "Common",
+    "Elvish",
+    "Sylvan"
+  ],
+  "challenge": {
+    "rating": "1/2",
+    "xp": 100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "magic_resistance",
+      "name": "Magic Resistance",
+      "description": "The satyr has advantage on saving throws against spells and other magical effects.",
+      "effect": {
+        "kind": "save_advantage",
+        "magical": true
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "ram",
+      "name": "Ram",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d4",
+        "ability": "str"
+      },
+      "to_hit": 3,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d4+1",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +3 to hit, reach 5 ft., one target. Hit: 6 (2d4 + 1) bludgeoning damage."
+    },
+    {
+      "id": "shortsword",
+      "name": "Shortsword",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.shortsword",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+3",
+          "type": "piercing"
+        }
+      ]
+    },
+    {
+      "id": "shortbow",
+      "name": "Shortbow",
+      "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.shortbow",
+      "to_hit": 5,
+      "range": [
+        80,
+        320
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+3",
+          "type": "piercing"
+        }
+      ]
+    }
+  ]
+}

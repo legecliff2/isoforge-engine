@@ -245,6 +245,12 @@ struct ActionRequest {
     bool equip_in_reach = false;
     // appended (EquipOp::SetLightState, 10): the LightDef::states index, or kLightDouse (0xFF). Folded into 0xD1 by Engine Core.
     uint8_t equip_state = 0;
+    // appended (batch 3, vampire spawn Bite; log_hash 0xDD when set): Attack: the target is willing. Counts only for an attack with
+    // kTargetGateWilling and a target on the attacker's team (an enemy is never willing).
+    bool target_willing = false;
+    // appended (Tier-A §27, log_hash 0xE2 when set): Attack: on a hit, grapple instead of dealing damage. Legal only with an
+    // attack whose Attack::grapple_instead_ok is set. AttackResolved c bit 3 (8) marks a hit resolved this way.
+    bool grapple_instead = false;
 };
 
 enum class EventKind : uint8_t {
@@ -810,6 +816,30 @@ struct ActiveZone {
 struct SourcedCondition {
     Condition condition = Condition::Grappled; CombatantId target = 0, source = 0;
     int16_t escape_dc = 0;   // Grappled: 0 = escape by a contest against the grappler's Athletics
+    // appended (monster@5 grapple rider, Druid gap G). Set only by a rider with restrains / exclusive / max_grapples (else the
+    // entry is exactly as before and Combat::hash is unchanged; 0xDB folds these only when some entry has via_attack != 0xFF).
+    // via_attack: the attack index whose hit made this grapple. restrains: the target is restrained until this grapple ends.
+    // exclusive: the grappler can't use via_attack against another target while this grapple lasts. owns_restrained: this
+    // grapple added the Restrained condition (it was not already there), so it removes it when it ends.
+    uint8_t via_attack = 0xFF;
+    bool restrains = false;
+    bool exclusive = false;
+    bool owns_restrained = false;
+};
+
+// monster@5 on_hit kind "grapple" (R-G8, appended fields for Druid gap G): the shared grapple rider. escape_dc 0 = contest.
+// restrains: "until this grapple ends, the target is restrained". exclusive: "can't <attack> another target". max_grapples:
+// how many creatures this attack can hold at once (giant crab claw: 1 per claw); 0 = no limit. A hit past the limit deals its
+// damage and does not grapple.
+struct GrappleRider {
+    int16_t escape_dc = 0;
+    bool restrains = false;
+    bool exclusive = false;
+    uint8_t max_grapples = 0;
+    // appended (Tier-A §27): "Instead of dealing damage, the X can grapple the target": the hit grapples only when the request
+    // chose ActionRequest::grapple_instead (and then deals no damage); a hit without the choice deals damage and does not grapple.
+    bool instead_of_damage = false;
+    bool extended() const { return restrains || exclusive || max_grapples != 0 || instead_of_damage; }
 };
 
 // R-G12 rules PR 3 (D3): a Spiritual Weapon: not a combatant (no HP, not a target, no turn). token_id comes from the summon
@@ -828,6 +858,25 @@ struct ActiveSummonWeapon {
     // Weapon, and summons_digest mixes them only when some row is held (sub-byte 0xE1, not a registry tag).
     bool held = false;
     bool concentration = false;
+};
+
+// Batch 3 (Lich ruling, ghast Stench): "On a successful saving throw, the creature is immune to the ghast's Stench for 24
+// hours." One row per (creature, source, aura spell id), in creation order; until_round = the round of the success + 24 h in
+// rounds (ZoneTriggerRow::success_immunity_hours x 600). Sim Combat::hash 0xDE, folded only while non-empty.
+// appended (Tier-A §26): immunity to a save_effect action after a success (mummy Dreadful Glare). source 0 = from every
+// creature using that action (spell_id); else from that creature only. Expires at until_round. Hashed under 0xE1.
+struct ActionImmunity {
+    CombatantId creature = 0, source = 0;
+    uint32_t spell_id = 0;
+    uint32_t until_round = 0;
+    friend bool operator==(const ActionImmunity&, const ActionImmunity&) = default;
+};
+
+struct AuraImmunity {
+    CombatantId creature = 0, source = 0;
+    uint32_t spell_id = 0;
+    uint32_t until_round = 0;
+    friend bool operator==(const AuraImmunity&, const AuraImmunity&) = default;
 };
 
 struct EncounterState {
@@ -867,6 +916,8 @@ struct EncounterState {
     std::vector<GroundItem> ground_items{};   // instance order
     uint32_t next_item_id = 1;                // item instance ids start at 1 (0 = empty hand)
     bool ground_items_seen = false;           // sticky: a ground item has existed (0xD2 keeps folding after a pick-up)
+    std::vector<AuraImmunity> aura_immunities;  // appended (batch 3 ghast Stench): per-source immunity after a success; 0xDE
+    std::vector<ActionImmunity> action_immunities;  // appended (Tier-A §26 Dreadful Glare): 0xE1, folded only when non-empty
 };
 
 // Action log entry: the request plus the reaction decisions it needed. Every state-changing call
@@ -977,6 +1028,15 @@ bool apply_sourced_condition(EncounterState&, CombatantId source, CombatantId ta
 inline bool grapple(EncounterState& s, CombatantId grappler, CombatantId target, int escape_dc, std::vector<Event>& ev) {
     return apply_sourced_condition(s, grappler, target, Condition::Grappled, escape_dc, ev);
 }
+// Druid gap G: a grapple rider on attack `attack_index`. Without extended fields this is exactly grapple() above. With them it
+// refuses past max_grapples (false, nothing changes), records via_attack / restrains / exclusive, and adds an owned Restrained.
+bool grapple(EncounterState&, CombatantId grappler, CombatantId target, const GrappleRider&, uint8_t attack_index, std::vector<Event>&);
+// Druid gap G: true if `actor` may not use attack `attack_index` against `target` because an exclusive grapple made with that
+// attack holds another creature ("can't bite another target").
+bool attack_locked(const EncounterState&, CombatantId actor, uint8_t attack_index, CombatantId target);
+// Druid gap G: a Grappled entry just left s.sourced: if it owned Restrained, hand it to another restraining grapple on the
+// same target, else remove Restrained (ConditionRemoved).
+void release_grapple_restraint(EncounterState&, const SourcedCondition& ended, std::vector<Event>&);
 CombatantId condition_source(const EncounterState&, CombatantId target, Condition);   // 0 = none recorded
 std::vector<CombatantId> grappled_by(const EncounterState&, CombatantId grappler);     // creatures the grappler is holding
 // Drops entries whose condition is gone; a grapple also ends when the grappler is dead or incapacitated. Called after every step.

@@ -56,7 +56,7 @@ RIDER = {("extra_damage",): (S({"kind", "damage"}), S({"scale", "when"})),
          ("spend",): (S({"kind"}), S({"pool", "cost", "slot", "when"})),
          ("forced_move",): (S({"kind", "mode", "feet"}), S({"save", "when"})),   # 7.2zb Open Hand
          ("apply_modifier",): (S({"kind", "modifier"}), S({"when"})),            # 7.2zb Open Hand
-         ("grapple",): (S({"kind"}), S({"escape_dc", "when"}))}   # R-G8 hit rider (sim #104); on_hit[] of actions[] weapon attacks only
+         ("grapple",): (S({"kind"}), S({"escape_dc", "when", "restrains", "exclusive", "max_grapples", "instead_of_damage"}))}   # R-G8 hit rider (sim #104); on_hit[] of actions[] weapon attacks only
 _M = {"applies_to", "stacks", "consume"}   # consume: any stat (section 6.2b, docs/CONTENT_CONVENTIONS.md 1)
 MODIFIER = {("attack_roll",): (S({"stat", "duration"}), S({"bonus", "die", "sign", "mode", "when"} | _M)),   # 7.2ze sign
             ("save", "ability_check"): (S({"stat", "duration"}), S({"bonus", "die", "sign", "mode", "ability"} | _M)),
@@ -119,7 +119,7 @@ _V = {"visual"}
 ITEM2 = {("weapon",): (ITEM[("weapon",)][0], ITEM[("weapon",)][1] | {"ammo_kind", "attack_magic", "damage_magic", "improvised"} | _V),
          ("armor",): (ITEM[("armor",)][0], ITEM[("armor",)][1] | _V), ("shield",): (ITEM[("shield",)][0], ITEM[("shield",)][1] | _V),
          ("valuable",): (ITEM[("valuable",)][0], ITEM[("valuable",)][1] | _V),
-         ("gear",): (_IBASE, S(_ICOMMON | {"hands", "light", "torch_attack", "container", "focus"} | _V)),
+         ("gear",): (_IBASE, S(_ICOMMON | {"hands", "light", "torch_attack", "container", "focus", "tool_kind"} | _V)),
          ("ammunition",): (_IBASE | {"ammo_kind"}, S(_ICOMMON | {"magic_bonus"} | _V))}
 
 # (label, schema locator, discriminator, documented table)

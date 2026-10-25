@@ -56,7 +56,11 @@ void SpriteBatch::begin() {
 }
 
 void SpriteBatch::draw(const Sprite& s, Vec2f iso_pos, int32_t layer, uint32_t sort_key, int32_t z) {
-    items_.push_back({s, iso_pos, make_sort_key(iso_pos, layer, z, sort_key)});
+    draw(s, iso_pos, iso_pos, layer, sort_key, z);
+}
+
+void SpriteBatch::draw(const Sprite& s, Vec2f draw_iso, Vec2f sort_iso, int32_t layer, uint32_t sort_key, int32_t z) {
+    items_.push_back({s, draw_iso, make_sort_key(sort_iso, layer, z, sort_key)});
 }
 
 void SpriteBatch::draw_px(const Sprite& s, Vec2f px, int32_t layer, uint32_t sort_key, int32_t z) {

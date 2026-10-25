@@ -70,6 +70,9 @@ enum class SpellEffectKind : uint8_t {
     // appended (7.2zi Spare the Dying): stabilize one dying living creature within touch. No hook. Undead and constructs
     // are excluded by excluded_types (the same mask heal uses).
     Stabilize,
+    // appended (text-only): the spell loads and stays on a creature's spell list, and has no combat mechanic.
+    // It is never a legal cast. The effect object carries no other fields, and it is the spell's only effect.
+    Descriptive,
 };
 // R-G9 forced movement (push / pull) of an effect. mode 1 push (away from the source), 2 pull (toward it), 3 along a line
 // (Gust of Wind: sim's direction; not in R-G9's first scope). feet: exact distance, or the maximum when up_to (the caster
@@ -236,6 +239,13 @@ struct ZoneTriggerRow {
     // Spirit Guardians: the damage is evil_damage_type instead when the zone's owner is evil (Combatant::evil).
     bool has_evil_damage_type = false;
     DamageType evil_damage_type = DamageType::Necrotic;
+    // ---- appended (batch 3, ghast Stench; Lich ruling) ----
+    // condition_until 1: a failed save's condition lasts until the start of the creature's next turn (a timed effect,
+    // Expiry::StartOfTargetNextTurn, not bound to the zone: it lasts after leaving). 0 = as before.
+    // success_immunity_hours > 0: a successful save makes the creature immune to this row's aura FROM THIS OWNER for that many
+    // hours (EncounterState::aura_immunities, per source): later rows of the aura skip it (no FeatureTriggered, no roll).
+    uint8_t condition_until = 0;
+    uint16_t success_immunity_hours = 0;
 };
 // R-G12 rules PR 2 (SUMMONS_TRANSFORMS.md §2.2 A): how summoned creatures act. initiative: Own = each rolls (Find Familiar),
 // Group = one roll for the cast, consecutive turns ordered by id (conjure family, Animate Dead: D2). control: None = acts on
@@ -487,6 +497,14 @@ struct SpellDef {
     // action was already spent to cast. Not stored on the modifier row, so modifiers_digest is unchanged and no SIM_EVENTS
     // tag is claimed. A cast that never Moves stays legal.
     bool dash_on_cast = false;
+    // appended (Tier-A §26, mummy Dreadful Glare; primary Save with a condition, not a spell): also_margin > 0 = failing the
+    // save by that much or more ALSO applies also_condition on the same effect entry (same duration; ending it ends both).
+    // It applies even when the target is immune to the primary condition. success_immunity_hours > 0 = a success makes the
+    // target immune to this action (EncounterState::action_immunities, 0xE1): scope 0 = every user of the action (source 0),
+    // 1 = this user only. target_sees_source = a target that cannot see the user (sight hook) makes no save and gains nothing.
+    uint8_t also_margin = 0; Condition also_condition = Condition::Paralyzed;
+    uint16_t success_immunity_hours = 0; uint8_t success_immunity_scope = 0;
+    bool target_sees_source = false;
 };
 
 // R-G14 Metamagic options (Combatant::metamagic_known, ActionRequest::metamagic). One option per spell, except that Empowered

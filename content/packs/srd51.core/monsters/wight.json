@@ -1,0 +1,223 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.wight",
+  "name": "Wight",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "undead",
+  "alignment": "neutral evil",
+  "armor_class": {
+    "value": 14,
+    "note": "studded leather"
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.studded_leather_armor",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.longsword",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.longbow"
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 45,
+    "formula": "6d8+18"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 15,
+    "dex": 14,
+    "con": 16,
+    "int": 10,
+    "wis": 13,
+    "cha": 15
+  },
+  "skills": {
+    "perception": 3,
+    "stealth": 4
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 13
+  },
+  "languages": [
+    "the languages it knew in life"
+  ],
+  "challenge": {
+    "rating": "3",
+    "xp": 700
+  },
+  "proficiency_bonus": 2,
+  "damage_resistances": [
+    "necrotic"
+  ],
+  "damage_immunities": [
+    "poison"
+  ],
+  "condition_immunities": [
+    "exhaustion",
+    "poisoned"
+  ],
+  "traits": [
+    {
+      "id": "damage_resistances_nonmagical",
+      "name": "Damage Resistances",
+      "description": "Resistant to bludgeoning, piercing, and slashing from nonmagical weapons that aren't silvered.",
+      "effect": {
+        "kind": "damage_mitigation",
+        "resistances": {
+          "nonmagical_not_silvered": [
+            "bludgeoning",
+            "piercing",
+            "slashing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "sunlight_sensitivity",
+      "name": "Sunlight Sensitivity",
+      "description": "While in sunlight, the wight has disadvantage on attack rolls, as well as on Wisdom (Perception) checks that rely on sight. (Descriptive only: the engine has no light/sunlight model yet, R-G13; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The wight makes two longsword attacks or two longbow attacks. It can use its Life Drain in place of one longsword attack.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "longsword_x2",
+            "attacks": [
+              "longsword",
+              "longsword"
+            ]
+          },
+          {
+            "id": "longsword_two_handed_x2",
+            "attacks": [
+              "longsword_two_handed",
+              "longsword_two_handed"
+            ]
+          },
+          {
+            "id": "longbow_x2",
+            "attacks": [
+              "longbow",
+              "longbow"
+            ]
+          },
+          {
+            "id": "life_drain_longsword",
+            "attacks": [
+              "life_drain",
+              "longsword"
+            ]
+          },
+          {
+            "id": "life_drain_longsword_two_handed",
+            "attacks": [
+              "life_drain",
+              "longsword_two_handed"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "life_drain",
+      "name": "Life Drain",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d6",
+        "ability": "str"
+      },
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "necrotic"
+        }
+      ],
+      "ability": "str",
+      "drain": {
+        "max_hp": true,
+        "save": {
+          "ability": "con",
+          "dc": 13
+        }
+      },
+      "description": "Melee Weapon Attack: +4 to hit, reach 5 ft., one creature. Hit: 5 (1d6 + 2) necrotic damage. The target must succeed on a DC 13 Constitution saving throw or its hit point maximum is reduced by an amount equal to the damage taken. This reduction lasts until the target finishes a long rest. The target dies if this effect reduces its hit point maximum to 0.\n\nA humanoid slain by this attack rises 24 hours later as a zombie under the wight's control, unless the humanoid is restored to life or its body is destroyed. The wight can have no more than twelve zombies under its control at one time."
+    },
+    {
+      "id": "longsword",
+      "name": "Longsword",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.longsword",
+      "to_hit": 4,
+      "reach": 5,
+      "ability": "str",
+      "description": "Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 6 (1d8 + 2) slashing damage, or 7 (1d10 + 2) slashing damage if used with two hands.",
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "slashing"
+        }
+      ]
+    },
+    {
+      "id": "longsword_two_handed",
+      "name": "Longsword (two hands)",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.longsword",
+      "use": "two_hands",
+      "to_hit": 4,
+      "reach": 5,
+      "ability": "str",
+      "description": "Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 6 (1d8 + 2) slashing damage, or 7 (1d10 + 2) slashing damage if used with two hands.",
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d10+2",
+          "type": "slashing"
+        }
+      ]
+    },
+    {
+      "id": "longbow",
+      "name": "Longbow",
+      "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.longbow",
+      "to_hit": 4,
+      "range": [
+        150,
+        600
+      ],
+      "ability": "dex",
+      "description": "Ranged Weapon Attack: +4 to hit, range 150/600 ft., one target. Hit: 6 (1d8 + 2) piercing damage.",
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ]
+    }
+  ]
+}

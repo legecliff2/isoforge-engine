@@ -1,0 +1,98 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.acolyte",
+  "name": "Acolyte",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "any race"
+  ],
+  "alignment": "any alignment",
+  "armor_class": {
+    "value": 10
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.club",
+      "equipped": true
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 9,
+    "formula": "2d8"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 10,
+    "dex": 10,
+    "con": 10,
+    "int": 10,
+    "wis": 14,
+    "cha": 11
+  },
+  "skills": {
+    "medicine": 4,
+    "religion": 2
+  },
+  "senses": {
+    "passive_perception": 12
+  },
+  "languages": [
+    "any one language (usually Common)"
+  ],
+  "challenge": {
+    "rating": "1/4",
+    "xp": 50
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "spellcasting",
+      "name": "Spellcasting",
+      "description": "The acolyte is a 1st-level spellcaster. Its spellcasting ability is Wisdom (spell save DC 12, +4 to hit with spell attacks). The acolyte has following cleric spells prepared:\n\n- Cantrips (at will): light, sacred flame, thaumaturgy\n- 1st level (3 slots): bless, cure wounds, sanctuary"
+    }
+  ],
+  "actions": [
+    {
+      "id": "club",
+      "name": "Club",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.club",
+      "to_hit": 2,
+      "reach": 5,
+      "description": "Melee Weapon Attack: +2 to hit, reach 5 ft., one target. Hit: 2 (1d4) bludgeoning damage.",
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d4",
+          "type": "bludgeoning"
+        }
+      ]
+    }
+  ],
+  "spellcasting": {
+    "ability": "wis",
+    "caster_level": 1,
+    "slots": {
+      "1": 3
+    },
+    "spells": [
+      "srd51.spell.light",
+      "srd51.spell.sacred_flame",
+      "srd51.spell.thaumaturgy",
+      "srd51.spell.bless",
+      "srd51.spell.cure_wounds",
+      "srd51.spell.sanctuary"
+    ],
+    "dc": 12,
+    "attack_bonus": 4
+  }
+}

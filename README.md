@@ -15,7 +15,10 @@ CTest runs `content_validate`, which checks every pack in `content/packs/` and t
 corpus in `tests/compat/fl*/` against `schemas/<type>/v<N>.schema.json` (JSON Schema 2020-12,
 immutable once released), plus cross-checks (CR/XP, saves/skills, chunk sizes, `content_hash`,
 script paths and `contents`), and strict-typechecks every `scripts/**/*.luau` with Engine Core's
-`script_check` (`--script-check <exe>`, passed automatically by CMake).
+`script_check` (`--script-check <exe>`, passed automatically by CMake). The same default
+run also checks `scenarios/<name>/scenario.json` against `scenario@1`
+(`schemas/scenario/v1.schema.json`; `docs/CONTENT_CONVENTIONS.md` section 24). That schema is
+loaded by `tools/validate/validate_packs.py`, not by the C++ schema registry.
 
 ```sh
 cmake -S . -B build && cmake --build build
@@ -49,10 +52,16 @@ ctest --preset linux-gcc-debug
 
 SDL3 is fetched and pinned (`release-3.4.8`) by `cmake/Dependencies.cmake`. Configure with
 `-DENGINE_HEADLESS=ON` to build only SDL-free modules (null renderer). Linux needs the X11/Wayland
-dev packages listed in `.github/actions/cmake-ci/action.yml` (and in `docs/CI.md`).
+dev packages listed in `.github/actions/cmake-ci/action.yml` (and in `docs/CI.md`), plus
+`libstdc++-14-dev` so Clang can link the GCC 14 libstdc++ it selects.
 
-Before pushing, `tools/ci_local.sh` runs the same Linux CI jobs locally (GCC Debug + Clang Release:
-configure, depcheck/include_lint, build, ctest) and exits non-zero on failure. See `docs/CI.md`.
+Before pushing, run `tools/ci_local.sh` directly. It runs the same Linux CI jobs locally (GCC Debug +
+Clang Release: configure, depcheck/include_lint, build, ctest) and exits non-zero on failure. Never
+wrap that command in `flock` on the same lock path (`flock /tmp/ci_local.lock tools/ci_local.sh`
+deadlocks). On a shared machine it sets `-j` from `MemAvailable` (default 1536 MB per job,
+`CI_LOCAL_MB_PER_JOB`; override with `CI_LOCAL_JOBS` or `-j`) and queues build/test on an exclusive
+`/tmp/ci_local.lock` (`CI_LOCAL_LOCK`, mode `0666` so other users can join the queue,
+`CI_LOCAL_NO_LOCK=1` to skip). See `docs/CI.md`.
 CI runs those Linux jobs on GitHub-hosted runners for every event. Retiring the old
 self-hosted machine, and the fork-PR approval to set once the repo is public, is in
 [docs/CI_SELF_HOSTED.md](docs/CI_SELF_HOSTED.md).

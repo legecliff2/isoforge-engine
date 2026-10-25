@@ -1,0 +1,123 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.dust_mephit",
+  "name": "Dust Mephit",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "small",
+  "type": "elemental",
+  "alignment": "neutral evil",
+  "armor_class": {
+    "value": 12
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 17,
+    "formula": "5d6"
+  },
+  "speed": {
+    "walk": 30,
+    "fly": 30
+  },
+  "abilities": {
+    "str": 5,
+    "dex": 14,
+    "con": 10,
+    "int": 9,
+    "wis": 11,
+    "cha": 10
+  },
+  "skills": {
+    "perception": 2,
+    "stealth": 4
+  },
+  "damage_vulnerabilities": [
+    "fire"
+  ],
+  "damage_immunities": [
+    "poison"
+  ],
+  "condition_immunities": [
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 12
+  },
+  "languages": [
+    "Auran",
+    "Terran"
+  ],
+  "challenge": {
+    "rating": "1/2",
+    "xp": 100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "death_burst",
+      "name": "Death Burst",
+      "description": "When the mephit dies, it explodes in a burst of dust. Each creature within 5 ft. of it must then succeed on a DC 10 Constitution saving throw or be blinded for 1 minute. A blinded creature can repeat the saving throw on each of its turns, ending the effect on itself on a success. (Descriptive only: no on-death area construct; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "innate_spellcasting",
+      "name": "Innate Spellcasting",
+      "description": "The mephit can innately cast sleep, requiring no material components. Its innate spellcasting ability is Charisma. (Descriptive only: the 2014 block lists sleep 1/day. Monster spellcasting is slot-based, so innate sleep is not a spellcasting entry; see docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": "claws",
+      "name": "Claws",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d4",
+        "ability": "dex",
+        "damage_ability": "dex"
+      },
+      "ability": "dex",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d4+2",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +4 to hit, reach 5 ft., one creature. Hit: 4 (1d4 + 2) slashing damage."
+    },
+    {
+      "id": "blinding_breath",
+      "name": "Blinding Breath",
+      "kind": "save_effect",
+      "description": "The mephit exhales a 15-foot cone of blinding dust. Each creature in that area must succeed on a DC 10 Dexterity saving throw or be blinded for 1 minute. A creature can repeat the saving throw at the end of each of its turns, ending the effect on itself on a success.",
+      "save": {
+        "ability": "dex",
+        "dc": 10
+      },
+      "origin": "self",
+      "area": {
+        "shape": "cone",
+        "size_ft": 15
+      },
+      "apply": [
+        {
+          "condition": "blinded",
+          "duration": {
+            "kind": "rounds",
+            "n": 10
+          },
+          "repeat_save": "end_of_turn"
+        }
+      ],
+      "usage": {
+        "kind": "recharge",
+        "min": 6
+      }
+    }
+  ]
+}

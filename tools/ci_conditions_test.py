@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Truth-table check of the job if: conditions and the ci-required gate in .github/workflows/ci.yml.
-Evaluates the real if: strings for each event / label / paths-filter combination (no Actions needed).
+Evaluates the real if: strings for each event / label / paths-filter combination, then runs the
+ci-required shell (the same script the workflow step runs) with needs.*.result == 'success'
+booleans filled the way Actions would. No Actions needed.
 Run: python3 tools/ci_conditions_test.py   (needs PyYAML). Exits non-zero if an expectation fails."""
 import json,os,re,shutil,subprocess,tempfile,yaml,itertools
 wf=yaml.safe_load(open(__import__('pathlib').Path(__file__).resolve().parents[1]/'.github/workflows/ci.yml'))
@@ -16,26 +18,66 @@ def ev(expr,ctx):
     e=e.replace('github.event_name',repr(ctx['event']))
     e=e.replace(' == ',' == ').replace('!=','!=')
     return eval(e)
+LAST_GATE=('', '', '')
 def gate_ok(ctx):
-    if ctx['res']['changes']=='skipped' and not (ctx['event']=='pull_request' and ctx.get('draft')): return False
-    # linux-runner skipped on a schedule, or on a code push/PR, would also skip the Linux
-    # jobs and look green. Mirrors the shell check in ci-required.
-    if ctx['res'].get('linux-runner')=='skipped' and ctx['event']=='schedule': return False
-    if ctx['res'].get('linux-runner')=='skipped' and ctx['out'].get('code')=='true' and ctx['event'] in ('push','pull_request'): return False
-    return all(ctx['res'][n] in('success','skipped') for n in J['ci-required']['needs'])
-def run(event,labels=(),code=True,mac=False,fail=None,draft=False,fork=False,moved=True):
-    # changes job: outputs only set by steps whose if matches (code: PR/push; mac: PR)
-    out={'code':'true' if code and event in('pull_request','push') else '', 'mac':'true' if mac and event=='pull_request' else ''}
+    """Run the ci-required step script. True only when that script exits 0."""
+    global LAST_GATE
+    step=J['ci-required']['steps'][0]
+    script=step['run']
+    res=ctx['res']
+    out=ctx.get('out') or {}
+    def flag(name):
+        return 'true' if res.get(name)=='success' else 'false'
+    env=os.environ.copy()
+    env.update({
+        'CHANGES': res.get('changes',''),
+        'LINUX_RUNNER': res.get('linux-runner',''),
+        'NIGHTLY_GATE': res.get('nightly-gate',''),
+        'BUILD_TEST': res.get('build-test',''),
+        'WINDOWS_RELEASE': res.get('windows-release',''),
+        'MACOS': res.get('macos',''),
+        'CHANGES_SUCCESS': flag('changes'),
+        'LINUX_RUNNER_SUCCESS': flag('linux-runner'),
+        'NIGHTLY_GATE_SUCCESS': flag('nightly-gate'),
+        'BUILD_TEST_SUCCESS': flag('build-test'),
+        'WINDOWS_RELEASE_SUCCESS': flag('windows-release'),
+        'MACOS_SUCCESS': flag('macos'),
+        'EVENT': ctx['event'],
+        'DRAFT': 'true' if ctx.get('draft') else 'false',
+        'FORK': 'true' if ctx.get('fork') else 'false',
+        'CODE': out.get('code',''),
+        'MAC': out.get('mac',''),
+        'NIGHTLY_RUN': out.get('run',''),
+        'WIN_LABEL': 'true' if 'ci-windows-release' in ctx.get('labels',()) else 'false',
+    })
+    proc=subprocess.run(['bash','-c',script], env=env, capture_output=True, text=True)
+    LAST_GATE=(proc.returncode, proc.stdout, proc.stderr)
+    return proc.returncode==0
+def run(event,labels=(),code=True,mac=False,fail=None,draft=False,fork=False,moved=True,override=None):
+    # changes job: outputs only set by steps whose if matches (code: PR/push; mac: PR).
+    # paths-filter writes the strings true and false. Empty is a step that did not run
+    # (schedule, dispatch, or a skipped changes job).
+    code_step=event in('pull_request','push')
+    mac_step=event=='pull_request'
+    out={
+        'code':('true' if code else 'false') if code_step else '',
+        'mac':('true' if mac else 'false') if mac_step else '',
+    }
     ctx=dict(event=event,labels=set(labels),out=out,res={},draft=draft,fork=fork)
     ctx['res']['changes']='success' if ev(J['changes']['if'],ctx) else 'skipped'
     if ctx['res']['changes']=='skipped': ctx['out']={}
     lr=ctx['res']['changes']=='success' and ev(J['linux-runner']['if'],ctx)
     ctx['res']['linux-runner']='success' if lr else 'skipped'
     ng=ev(J['nightly-gate']['if'],ctx); ctx['res']['nightly-gate']='success' if ng else 'skipped'
-    ctx['out']['run']='true' if ng and moved else ''
+    if ng:
+        ctx['out']['run']='true' if moved else 'false'
+    else:
+        ctx['out']['run']=''
     for j in ['build-test','windows-release','macos']:
         c=ctx['res']['changes']=='success' or J[j]['if'].lstrip().startswith('always()')
         ctx['res'][j]=('failure' if fail==j else 'success') if c and ev(J[j]['if'],ctx) else 'skipped'
+    if override:
+        ctx['res'].update(override)
     gate=gate_ok(ctx)
     nr=ev(J['nightly-report']['if'],ctx)
     return ctx['res'],gate,nr
@@ -62,10 +104,11 @@ for c, exp in EXPECT.items():
     r, g, _ = run(*c)
     got = (r['build-test'], r['windows-release'], r['macos'])
     if got != exp or not g:
-        bad += 1; print('MISMATCH', c, got, exp, g)
+        bad += 1; print('MISMATCH', c, got, exp, g); print(LAST_GATE[1], LAST_GATE[2])
 # New conditions: drafts, forks, nightly gate.
+# Draft gate is failure: run 40114128710 (PR 318) was all-skipped with DRAFT=true and a green ci-required.
 EXTRA = [  # kwargs -> (build-test, windows-release, macos, gate)
-    (dict(event='pull_request',draft=True,mac=True,labels=('ci-windows-release',)), ('skipped','skipped','skipped',True)),
+    (dict(event='pull_request',draft=True,mac=True,labels=('ci-windows-release',)), ('skipped','skipped','skipped',False)),
     (dict(event='pull_request',fork=True), ('skipped','skipped','skipped',False)),
     (dict(event='schedule',moved=False), ('skipped','skipped','skipped',True)),
     (dict(event='schedule',moved=True), ('skipped','skipped','success',True)),
@@ -74,7 +117,75 @@ EXTRA = [  # kwargs -> (build-test, windows-release, macos, gate)
 for kw,exp in EXTRA:
     r,g,_=run(**kw); got=(r['build-test'],r['windows-release'],r['macos'],g)
     print(f"{str(kw):70} -> {got}")
-    if got!=exp: bad+=1; print('MISMATCH',kw,got,exp)
+    if got!=exp:
+        bad+=1; print('MISMATCH',kw,got,exp); print(LAST_GATE[1], LAST_GATE[2])
+# Result combinations the job ifs would not produce on their own: skipped or cancelled
+# where the event required the job, and skipped where it did not.
+FORCED = [  # kwargs, result overrides, gate, label
+    (dict(event='push', code=True), {'build-test':'skipped'}, False, 'push code build-test skipped'),
+    (dict(event='push', code=True), {'build-test':'cancelled'}, False, 'push code build-test cancelled'),
+    (dict(event='push', code=True), {'build-test':'failure'}, False, 'push code build-test failure'),
+    (dict(event='push', code=True), {'windows-release':'skipped'}, False, 'push code windows-release skipped'),
+    (dict(event='push', code=True), {'linux-runner':'skipped'}, False, 'push code linux-runner skipped'),
+    (dict(event='push', code=False), {'macos':'skipped'}, True, 'push docs macos skipped'),
+    (dict(event='push', code=False), {'macos':'cancelled'}, False, 'push docs macos cancelled'),
+    (dict(event='pull_request', code=True), {'build-test':'skipped'}, False, 'pr code build-test skipped'),
+    (dict(event='pull_request', code=True, mac=True), {'macos':'skipped'}, False, 'pr mac macos skipped'),
+    (dict(event='pull_request', code=True, labels=('ci-windows-release',)), {'windows-release':'skipped'}, False, 'pr label windows skipped'),
+    (dict(event='pull_request', code=True), {'windows-release':'skipped','macos':'skipped','nightly-gate':'skipped'}, True, 'pr code optional skips'),
+    (dict(event='schedule', moved=True), {'macos':'skipped'}, False, 'schedule moved macos skipped'),
+    (dict(event='schedule', moved=False), {'macos':'skipped'}, True, 'schedule idle macos skipped'),
+    (dict(event='schedule'), {'nightly-gate':'skipped'}, False, 'schedule nightly-gate skipped'),
+    (dict(event='schedule'), {'linux-runner':'failure'}, False, 'schedule linux-runner failure'),
+    (dict(event='workflow_dispatch'), {'macos':'skipped'}, False, 'dispatch macos skipped'),
+    (dict(event='workflow_dispatch'), {'windows-release':'cancelled'}, False, 'dispatch windows cancelled'),
+    (dict(event='workflow_dispatch'), {'build-test':'skipped','linux-runner':'skipped','nightly-gate':'skipped'}, True, 'dispatch optional skips'),
+    (dict(event='pull_request', draft=True, code=True, mac=True, labels=('ci-windows-release',)),
+     {'changes':'success','linux-runner':'success','build-test':'success','windows-release':'success','macos':'success','nightly-gate':'success'},
+     False, 'draft fails even if results look green'),
+]
+for kw, override, expect, label in FORCED:
+    r,g,_=run(override=override, **kw)
+    print(f"{label:42} -> gate {'PASS' if g else 'FAIL'}")
+    if g!=expect:
+        bad+=1; print('MISMATCH', label, g, expect, r); print(LAST_GATE[1], LAST_GATE[2])
+# Docs-only (paths-filter code/mac are the strings false, not empty) must pass when
+# changes succeeded and the build jobs are skipped. A draft that skips every job must
+# still fail, including when the result strings are all skipped. failure and cancelled
+# on a build that this event did not require still fail the gate.
+NAMED = [  # kwargs, (build-test, windows-release, macos), gate, label
+    (dict(event='pull_request', code=False, mac=False), ('skipped','skipped','skipped'), True, 'docs-only pull_request pass'),
+    (dict(event='push', code=False), ('skipped','skipped','skipped'), True, 'docs-only push pass'),
+    (dict(event='pull_request', code=False, mac=False, labels=('ci-windows-release',)), ('skipped','skipped','skipped'), True, 'docs-only pull_request windows label pass'),
+    (dict(event='pull_request', draft=True, code=True, mac=True, labels=('ci-windows-release',)), ('skipped','skipped','skipped'), False, 'draft all-skip fail'),
+    (dict(event='pull_request', fork=True, code=True), ('skipped','skipped','skipped'), False, 'fork all-skip fail'),
+]
+for kw, jobs, expect, label in NAMED:
+    r,g,_=run(**kw)
+    got=(r['build-test'], r['windows-release'], r['macos'])
+    print(f"{label:42} -> jobs={got} gate={'PASS' if g else 'FAIL'}")
+    if got!=jobs or g!=expect:
+        bad+=1; print('MISMATCH', label, got, jobs, g, expect); print(LAST_GATE[1], LAST_GATE[2])
+    if label.startswith('docs-only') and expect and r['changes']!='success':
+        bad+=1; print('MISMATCH', label, 'changes', r['changes'])
+    if label.startswith('docs-only') and expect and 'code=false' not in LAST_GATE[1]:
+        bad+=1; print('MISMATCH', label, 'expected code=false', LAST_GATE[1])
+# Same shell env a docs-only pull_request produces: code=false, every build skipped.
+for kw, override, expect, label in (
+    (dict(event='pull_request', code=False, mac=False),
+     {'linux-runner':'skipped','build-test':'skipped','windows-release':'skipped','macos':'skipped','nightly-gate':'skipped'},
+     True, 'docs-only explicit build skips pass'),
+    (dict(event='pull_request', code=False, mac=False), {'build-test':'failure'}, False, 'docs-only build-test failure fails'),
+    (dict(event='pull_request', code=False, mac=False), {'macos':'cancelled'}, False, 'docs-only macos cancelled fails'),
+    (dict(event='push', code=False), {'build-test':'skipped','windows-release':'skipped','linux-runner':'skipped'}, True, 'docs-only push explicit skips pass'),
+    (dict(event='pull_request', draft=True),
+     {'changes':'skipped','linux-runner':'skipped','nightly-gate':'skipped','build-test':'skipped','windows-release':'skipped','macos':'skipped'},
+     False, 'draft all-skip forced results fail'),
+):
+    r,g,_=run(override=override, **kw)
+    print(f"{label:42} -> gate {'PASS' if g else 'FAIL'}")
+    if g!=expect:
+        bad+=1; print('MISMATCH', label, g, expect, r); print(LAST_GATE[1], LAST_GATE[2])
 include=J['build-test']['strategy']['matrix']['include']
 linux=[m for m in include if m['name'].startswith('Linux')]
 assert [m['name'] for m in include]==['Linux GCC Debug','Linux Clang Release','Windows MSVC Debug']
@@ -96,6 +207,35 @@ for job_id, runs, timeout, name in (
     assert J[job_id]['runs-on']==runs, job_id
     assert J[job_id]['timeout-minutes']==timeout, job_id
     assert J[job_id]['name']==name, job_id
+assert J['ci-required']['if']=='always()'
+assert J['ci-required']['needs']==['changes','linux-runner','nightly-gate','build-test','windows-release','macos']
+step=J['ci-required']['steps'][0]
+assert step['name']=='Check job results' and 'if' not in step
+env=step['env']
+for job, key in (
+    ('changes','CHANGES_SUCCESS'),
+    ('linux-runner','LINUX_RUNNER_SUCCESS'),
+    ('nightly-gate','NIGHTLY_GATE_SUCCESS'),
+    ('build-test','BUILD_TEST_SUCCESS'),
+    ('windows-release','WINDOWS_RELEASE_SUCCESS'),
+    ('macos','MACOS_SUCCESS'),
+):
+    assert env[key]=="${{ needs.%s.result == 'success' }}"%job, env[key]
+    assert key in step['run']
+for key, expr in (
+    ('CHANGES',"${{ needs.changes.result }}"),
+    ('LINUX_RUNNER',"${{ needs.linux-runner.result }}"),
+    ('NIGHTLY_GATE',"${{ needs.nightly-gate.result }}"),
+    ('BUILD_TEST',"${{ needs.build-test.result }}"),
+    ('WINDOWS_RELEASE',"${{ needs.windows-release.result }}"),
+    ('MACOS',"${{ needs.macos.result }}"),
+):
+    assert env[key]==expr, env[key]
+assert 'success|skipped' not in step['run']
+assert "expected success" in step['run']
+on=wf[True]
+for t in ('opened','synchronize','reopened','ready_for_review'):
+    assert t in on['pull_request']['types'], t
 assert J['build-test']['timeout-minutes']==90
 assert J['build-test']['name']=='${{ matrix.name }}'
 assert J['windows-release']['name']=='Windows MSVC Release'
