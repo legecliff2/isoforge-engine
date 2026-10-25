@@ -422,7 +422,7 @@ class DeriveCheck(unittest.TestCase):
                 for a in d["actions"]:
                     if a["kind"] in ("melee_weapon_attack", "ranged_weapon_attack"):
                         self.assertTrue("weapon" in a or "natural" in a, f"{f.name}: {a['id']}")
-        self.assertEqual(n, 62)   # 33 converted (PR B) + 9 bestiary v0.1 batch 1 + 11 tier B batch d1 + 9 batch 2
+        self.assertEqual(n, 75)   # 33 converted (PR B) + 9 bestiary v0.1 batch 1 + 11 tier B batch d1 + 10 batch D2 + 3 flat-damage batch d3 + 9 batch 2
         self.assertEqual(core("monsters/goblin.json")["$schema"], "monster@3")   # fl1 compat: left at @3
 
     def test_valid_conversions(self):

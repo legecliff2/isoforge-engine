@@ -1,0 +1,14 @@
+{
+  "$schema": "item@2",
+  "id": "srd51.item.pan_flute",
+  "name": "Pan flute",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "category": "gear",
+  "cost_cp": 1200,
+  "weight_oz": 32,
+  "description": "Several of the most common types of musical instruments are shown on the table as examples. If you have proficiency with a given musical instrument, you can add your proficiency bonus to any ability checks you make to play music with the instrument. A bard can use a musical instrument as a spellcasting focus. Each type of musical instrument requires a separate proficiency.",
+  "tool_kind": "musical_instrument"
+}
