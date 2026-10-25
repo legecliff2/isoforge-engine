@@ -1,5 +1,5 @@
 // Altitude PR3 (design §4): 3D distance (max(dx, dy, dz) over absolute heights and vertical spans), melee reach, ranges
-// and opportunity attacks in 3D (rising out of reach provokes), and the SRD Flyby trait (no OA when leaving reach).
+// and opportunity attacks in 3D (rising out of reach provokes), and the SRD Flyby trait (no OA when it flies out of reach).
 #include <doctest/doctest.h>
 
 #include <fstream>
@@ -171,25 +171,46 @@ TEST_CASE("altitude PR3: rising out of reach provokes an opportunity attack") {
     CHECK_FALSE(g.c->would_leave_reach(g.me, {4, 4}, {3, 4}));
 }
 
-TEST_CASE("altitude PR3: Flyby (traits[].id flyby) never provokes when leaving reach; sim still flags the move") {
+TEST_CASE("altitude PR3: Flyby skips an OA only when flying out of reach; a ground walk still provokes") {
     Fight f("owlish");
     CHECK(rules5e::find(f.c->state(), f.me)->flyby);
     CHECK_FALSE(rules5e::find(f.c->state(), f.foe)->flyby);
+    // vertical fly (move_mode 1, alt_to): out of reach, no window; the fact stays set
     REQUIRE(f.vertical(5).ok);
     auto r = f.vertical(5);
     REQUIRE_MESSAGE(r.ok, r.error);
     CHECK(r.status == StepStatus::Done);
     CHECK_FALSE(r.needs);
-    CHECK(f.c->log().back().step.request.leaves_reach);   // the fact is unchanged; rules skip the window
+    CHECK(f.c->log().back().step.request.leaves_reach);
+    CHECK(f.c->log().back().step.request.move_mode == 1);
+    CHECK(f.c->log().back().step.request.alt_to == 5);
     CHECK_FALSE(rules5e::find(f.c->state(), f.foe)->reaction_used);
     CHECK(f.alt() == 10);
-    // horizontally too
+    // horizontal fly while airborne: also a fly leave, so no window
+    Fight air("owlish");
+    REQUIRE(air.vertical(5).ok);
+    auto side = air.step({3, 4});
+    REQUIRE_MESSAGE(side.ok, side.error);
+    CHECK(side.status == StepStatus::Done);
+    CHECK_FALSE(side.needs);
+    CHECK(air.c->log().back().step.request.leaves_reach);
+    CHECK(air.c->log().back().step.request.move_mode == 1);
+    CHECK(air.c->log().back().step.request.alt_to == 0);
+    CHECK_FALSE(rules5e::find(air.c->state(), air.foe)->reaction_used);
+    // ground walk-out still provokes; sim still flags leaves_reach
     Fight g("owlish");
-    auto r2 = g.step({3, 4});
-    REQUIRE_MESSAGE(r2.ok, r2.error);
-    CHECK(r2.status == StepStatus::Done);
+    auto walk = g.step({3, 4});
+    REQUIRE_MESSAGE(walk.ok, walk.error);
+    REQUIRE(oa_window(walk));
+    CHECK(walk.needs->reactor == g.foe);
+    auto taken = g.c->decide({walk.needs->window_seq, true, 0});
+    REQUIRE_MESSAGE(taken.ok, taken.error);
+    CHECK(taken.reactions.size() == 1);
+    CHECK(rules5e::find(g.c->state(), g.foe)->reaction_used);
     CHECK(g.c->log().back().step.request.leaves_reach);
-    // the plain flyer does provoke on the same horizontal step
+    CHECK(g.c->log().back().step.request.move_mode == 0);
+    CHECK(g.c->log().back().step.request.alt_to == 0);
+    // the plain flyer does provoke on the same ground step
     Fight h("flyer");
     CHECK(oa_window(h.step({3, 4})));
 }
