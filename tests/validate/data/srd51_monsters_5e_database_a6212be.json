@@ -4753,6 +4753,277 @@
      ]
     }
    ]
+  },
+  "constrictor-snake": {
+   "name": "Constrictor Snake",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 13,
+   "hp_roll": "2d10+2",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "30 ft."
+   },
+   "abilities": [
+    15,
+    14,
+    12,
+    1,
+    10,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Constrict",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d8+2",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "elk": {
+   "name": "Elk",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 13,
+   "hp_roll": "2d10+2",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "50 ft."
+   },
+   "abilities": [
+    16,
+    10,
+    12,
+    2,
+    10,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Ram",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Hooves",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d4+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "panther": {
+   "name": "Panther",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 13,
+   "hp_roll": "3d8",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "50 ft.",
+    "climb": "40 ft."
+   },
+   "abilities": [
+    14,
+    15,
+    10,
+    3,
+    14,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "swarm-of-bats": {
+   "name": "Swarm of Bats",
+   "size": "Medium",
+   "type": "swarm of Tiny beasts",
+   "ac": [
+    12
+   ],
+   "hp": 22,
+   "hp_roll": "5d8",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "0 ft.",
+    "fly": "30 ft."
+   },
+   "abilities": [
+    5,
+    15,
+    10,
+    2,
+    12,
+    4
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+   ],
+   "attacks": [
+    {
+     "name": "Bites",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "swarm-of-ravens": {
+   "name": "Swarm of Ravens",
+   "size": "Medium",
+   "type": "swarm of Tiny beasts",
+   "ac": [
+    12
+   ],
+   "hp": 24,
+   "hp_roll": "7d8-7",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "50 ft."
+   },
+   "abilities": [
+    6,
+    14,
+    8,
+    3,
+    12,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+   ],
+   "attacks": [
+    {
+     "name": "Beaks",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d6",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
