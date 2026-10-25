@@ -754,6 +754,24 @@ SRD stat blocks such as rat, cat, owl, crab, and scorpion print a fixed amount: 
    "description": "Melee Weapon Attack: +0 to hit, reach 5 ft., one target. Hit: 1 slashing damage."}
   ```
 
+## 20. SRD tools (item@2 gear `tool_kind`)
+
+(Sections 17 to 19 are taken: 17 burrow (#290), 18 the gear `focus` key (#292), 19 flat damage.) SRD 5.1 tools are item@2 `gear` with an optional, closed, additive `tool_kind`. It takes one of four values, which mirror the 5e-database `tool_category`:
+
+| `tool_kind` | SRD category |
+|---|---|
+| `artisans_tools` | Artisan's Tools |
+| `gaming_set` | Gaming Sets |
+| `musical_instrument` | Musical Instrument |
+| `other_tools` | Other Tools (navigator's, thieves') |
+
+- **Why a field, not a new category:** a key on the gear arm keeps every gear key (`hands`, `description`, ...) and needs no union arm. It follows the same pattern as `container` and `focus`, and needs no version bump.
+- **Content:** ids are the snake_case of the 5e-database index; names, costs, weights and descriptions are verbatim.
+- **SRD 5.1 has no** disguise, forgery, herbalism or poisoner's kit, so none is authored.
+- **Inert:** no tool-proficiency checks exist. No validator check, rules code or sim reads `tool_kind`, and characters' tool proficiencies stay descriptive.
+- **Healer's kit** is SRD adventuring gear (kits), not a tool, so it is plain gear with no `tool_kind`.
+- **Tests:** `tests/validate/test_srd51_equipment.py` (`TOOLS`, `test_tools`, `test_tool_kind_schema`).
+
 ## 21. Printed-damage override and size-gated save riders (monster@5, Gladiator)
 
 - **`damage_override {dice, reason}`** is an optional monster@5 action key, the damage counterpart of `attack_bonus`.

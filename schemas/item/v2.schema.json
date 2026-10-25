@@ -411,6 +411,15 @@
       ],
       "description": "Gear: the spellcasting focus family (SRD arcane focus / druidic focus / holy symbol; docs/CONTENT_CONVENTIONS.md section 18). Optional, additive, no version bump. Inert until rules / the sim loader read it (rules5e ItemKind::Focus, EQUIPMENT 3.2)."
     },
+    "tool_kind": {
+      "enum": [
+        "artisans_tools",
+        "gaming_set",
+        "musical_instrument",
+        "other_tools"
+      ],
+      "description": "Gear: marks an SRD 5.1 tool and its SRD tool category (5e-database tool_category: Artisan's Tools, Gaming Sets, Musical Instrument, Other Tools; docs/CONTENT_CONVENTIONS.md section 20). Optional, additive, no version bump. Inert: no tool-proficiency checks read it."
+    },
     "container": {
       "type": "object",
       "additionalProperties": false,
@@ -710,7 +719,8 @@
             "torch_attack",
             "visual",
             "container",
-            "focus"
+            "focus",
+            "tool_kind"
           ]
         }
       }

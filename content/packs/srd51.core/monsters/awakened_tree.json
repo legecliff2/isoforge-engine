@@ -1,0 +1,83 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.awakened_tree",
+  "name": "Awakened Tree",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "huge",
+  "type": "plant",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 13,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 15,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 59,
+    "formula": "7d12+14"
+  },
+  "speed": {
+    "walk": 20
+  },
+  "abilities": {
+    "str": 19,
+    "dex": 6,
+    "con": 15,
+    "int": 10,
+    "wis": 10,
+    "cha": 7
+  },
+  "senses": {
+    "passive_perception": 10
+  },
+  "languages": [
+    "one language known by its creator"
+  ],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "false_appearance",
+      "name": "False Appearance",
+      "description": "While the tree remains motionless, it is indistinguishable from a normal tree."
+    }
+  ],
+  "actions": [
+    {
+      "id": "slam",
+      "name": "Slam",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "3d6",
+        "ability": "str"
+      },
+      "to_hit": 6,
+      "reach": 10,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "3d6+4",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 10 ft., one target. Hit: 14 (3d6 + 4) bludgeoning damage."
+    }
+  ],
+  "damage_vulnerabilities": [
+    "fire"
+  ],
+  "damage_resistances": [
+    "bludgeoning",
+    "piercing"
+  ]
+}
