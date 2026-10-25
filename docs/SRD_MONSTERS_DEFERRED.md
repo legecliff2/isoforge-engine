@@ -13,11 +13,11 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | | count |
 |---|---|
 | inventory candidates | 30 |
-| authored now (`monster@4`, all converted to `monster@5` in §14 of CONTENT_CONVENTIONS) | 89 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189; 9 bestiary v0.1 batch 1 monsters as `monster@5` with `derive: true`: deer, pony, awakened shrub, hyena, cultist, giant weasel, mastiff, noble, tribal warrior; 9 bestiary v0.1 batch 2 monsters, same form: giant fire beetle, goat, shrieker, giant rat, thug, bandit captain, veteran, knight, mule; rat and scorpion after flat damage, #295; bestiary v0.1 batch 3: satyr, ghast; gladiator after the riders unblock, CONTENT_CONVENTIONS 21; wight, vampire spawn, death dog, violet fungus and shadow in batch 3b after feat/monster-batch3-riders + feat/monster-strength-drain; 11 tier B batch d1 monsters as `monster@5` with `derive: true`: baboon, camel, draft horse, riding horse, giant lizard, giant centipede, giant wolf spider, ape, worg, brown bear, giant hyena; 10 batch D2 monsters as `monster@5` with `derive: true`: owlbear, awakened tree, hill giant, stone giant, giant ape, ettercap, merfolk, plesiosaurus, reef shark and killer whale (swim-only `walk: 0` after feat/monster-swim-only); 3 flat-damage batch d3 monsters as `monster@5` with `derive: true`: cat, crab, poisonous snake (flat damage after #295); acolyte and cult fanatic with `spellcasting`; blink dog and mummy, Tier-A b3c) |
+| authored now (`monster@4`, all converted to `monster@5` in §14 of CONTENT_CONVENTIONS) | 95 (17 in batch 1, 4 Pack Tactics monsters after #127, orc and berserker after #129, boar, hobgoblin and bugbear after #158, ghoul and giant spider after #170, basilisk and medusa after #153, swarm of rats after #172, gelatinous cube and giant toad after Rules #189; 9 bestiary v0.1 batch 1 monsters as `monster@5` with `derive: true`: deer, pony, awakened shrub, hyena, cultist, giant weasel, mastiff, noble, tribal warrior; 9 bestiary v0.1 batch 2 monsters, same form: giant fire beetle, goat, shrieker, giant rat, thug, bandit captain, veteran, knight, mule; rat and scorpion after flat damage, #295; bestiary v0.1 batch 3: satyr, ghast; gladiator after the riders unblock, CONTENT_CONVENTIONS 21; wight, vampire spawn, death dog, violet fungus and shadow in batch 3b after feat/monster-batch3-riders + feat/monster-strength-drain; 11 tier B batch d1 monsters as `monster@5` with `derive: true`: baboon, camel, draft horse, riding horse, giant lizard, giant centipede, giant wolf spider, ape, worg, brown bear, giant hyena; 10 batch D2 monsters as `monster@5` with `derive: true`: owlbear, awakened tree, hill giant, stone giant, giant ape, ettercap, merfolk, plesiosaurus, reef shark and killer whale (swim-only `walk: 0` after feat/monster-swim-only); 3 flat-damage batch d3 monsters as `monster@5` with `derive: true`: cat, crab, poisonous snake (flat damage after #295); acolyte and cult fanatic with `spellcasting`; blink dog and mummy, Tier-A b3c; 6 bestiary v0.1 CR 0 beasts as `monster@5` with `derive: true`: badger, eagle, owl, quipper, raven and vulture) |
 | goblin (already shipped, left at `monster@3`) | 1 |
-| deferred (mechanic not expressible) | 16 (rust monster: batch 3; duergar, mimic, doppelganger, green hag: tier-A triage; 11 tier B batch d1) |
+| deferred (mechanic not expressible) | 15 (rust monster: batch 3; duergar, mimic, doppelganger, green hag: tier-A triage; 10 tier B batch d1) |
 
-## Authored (89; bestiary v0.1 batch 1 and 2, tier B batch d1, batch D2, flat-damage batch d3, acolyte, cult fanatic, blink dog and mummy rows below at `monster@5` + `derive: true`)
+## Authored (95; bestiary v0.1 batch 1 and 2, tier B batch d1, batch D2, flat-damage batch d3, acolyte, cult fanatic, blink dog and mummy, and the CR 0 beasts badger, eagle, owl, quipper, raven and vulture rows below at `monster@5` + `derive: true`)
 
 | monster | CR | mechanics carried as data | notes |
 |---|---|---|---|
@@ -110,6 +110,12 @@ Owner: Tools & Content. Companion to `docs/SRD_COMBAT_COVERAGE.md` (Rules) and `
 | Cat | 0 | claws as flat damage `{flat: 1, type: slashing}` (#295, CONTENT_CONVENTIONS 19); `attack_bonus` 0 (printed +0 does not derive); climb 30 | Keen Smell descriptive |
 | Crab | 0 | claw as flat damage `{flat: 1, type: bludgeoning}` (#295), `natural {flat: 1, ability: dex}`; `attack_bonus` 0 (printed +0 does not derive); swim 20, blindsight 30 | Amphibious descriptive |
 | Poisonous Snake | 1/8 | bite as flat damage `{flat: 1, type: piercing}` (#295) + `on_hit save_condition` (Con DC 10, 2d4 poison, half on success); swim 30, blindsight 10 | |
+| Badger | 0 | bite as flat damage `{flat: 1, type: piercing}` (CONTENT_CONVENTIONS 19), `natural {flat: 1, ability: dex}` (printed +2 = Dex +0 and PB +2); burrow 5 (CONTENT_CONVENTIONS 17); darkvision 30 | Keen Smell descriptive |
+| Eagle | 0 | talons (natural 1d4, Dex, +4 / 1d4 + 2); fly 60 | Keen Sight descriptive |
+| Owl | 0 | talons as flat damage `{flat: 1, type: slashing}`, `natural {flat: 1, ability: dex}` (printed +3 = Dex +1 and PB +2); fly 60; darkvision 120; Perception +3, Stealth +3 | **partial**: Flyby (no opportunity attacks when it flies out of an enemy's reach) is description only (no OA-immunity construct). Keen Hearing and Sight descriptive |
+| Quipper | 0 | bite as flat damage `{flat: 1, type: piercing}`, `natural {flat: 1, ability: dex}` (printed +5 = Dex +3 and PB +2); swim-only speed `{walk: 0, swim: 40}` (as reef shark); darkvision 60 | **partial**: Blood Frenzy (advantage on melee attacks vs a creature that doesn't have all its hit points) is description only (no missing-HP advantage construct; as gladiator Brave). Water Breathing descriptive. Was deferred until swim-only (`walk: 0`) landed |
+| Raven | 0 | beak as flat damage `{flat: 1, type: piercing}`, `natural {flat: 1, ability: dex}` (printed +4 = Dex +2 and PB +2); fly 50 | Mimicry descriptive |
+| Vulture | 0 | Pack Tactics (`pack_tactics`); beak (natural 1d4, Dex: printed +2 and 2 (1d4); Dex 10 is +0, so the printed line derives with no `attack_bonus` or `damage_override`); fly 50 | Keen Sight and Smell descriptive |
 
 The goblin keeps `$schema: monster@3`, its id (`srd51.monster.goblin`, stable id derived from it) and bytes. It is referenced by C++ tests that assert its `@3` form (`content_migration_tests`, `pack_set_tests`, compat goblin tests) and by the fl1 compat corpus, and a schema change could shift digests and goldens; migrating it buys nothing until a `@4`-only feature is needed.
 
@@ -120,13 +126,12 @@ Not set: `presentation` (the goblin has none; sprite assets for these monsters d
 Played: stats, attacks with every `damage[]` entry (#45), resistances / immunities / vulnerabilities / condition immunities (#45), `multiattack` options (#48/#59), `damage_mitigation` (#47/#58), `bonus_action_grant`, size footprint (#50/#55).
 Carried and validated but **not applied** (the registry reserves the `@4` kinds; the archetype lists them in `unsupported_features` and ignores them): `on_event` (Undead Fortitude, Rampage, Sneak Attack), `on_hit[]` riders (snake poison), `save_effect` actions with `usage` (Acid Breath). Until Engine Core lands the row 6 compile / row 9-10 trigger hooks these monsters play without those effects. No content change is needed when the hooks land.
 
-## Deferred (16)
+## Deferred (15)
 
 The last pre-v0.1 deferred monster, `srd51.monster.swarm_of_rats` (T&C-G7, T&C-G14, T&C-G15), was authored after sim #172 (swarm tag, `half_hp_damage`).
 
 | monster | CR | blocking mechanic |
 |---|---|---|
-| Quipper (`srd51.monster.quipper`) | 0 | Blood Frenzy (advantage on melee attacks vs a creature missing hit points): no construct; also swim-only (schema requires `speed.walk`, SRD lists none); bite flat 1 damage |
 | Giant Crab (`srd51.monster.giant_crab`) | 1/8 | Claw grapple with two claws each grappling one target (per-limb grapple capacity) |
 | Constrictor Snake (`srd51.monster.constrictor_snake`) | 1/4 | Constrict: grappled and restrained until the grapple ends, can't constrict another target |
 | Crocodile (`srd51.monster.crocodile`) | 1/2 | Bite: grappled and restrained until the grapple ends, can't bite another target; Hold Breath |

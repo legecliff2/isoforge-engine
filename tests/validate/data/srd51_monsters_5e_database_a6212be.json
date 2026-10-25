@@ -4329,6 +4329,257 @@
      ]
     }
    ]
+  },
+  "badger": {
+   "name": "Badger",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 3,
+   "hp_roll": "1d4+1",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "20 ft.",
+    "burrow": "5 ft."
+   },
+   "abilities": [
+    4,
+    11,
+    12,
+    2,
+    12,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "eagle": {
+   "name": "Eagle",
+   "size": "Small",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 3,
+   "hp_roll": "1d6",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    6,
+    15,
+    10,
+    2,
+    14,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Talons",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d4+2",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "owl": {
+   "name": "Owl",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    11
+   ],
+   "hp": 1,
+   "hp_roll": "1d4-1",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "5 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    3,
+    13,
+    8,
+    2,
+    12,
+    7
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Talons",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "quipper": {
+   "name": "Quipper",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 1,
+   "hp_roll": "1d4-1",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "swim": "40 ft."
+   },
+   "abilities": [
+    2,
+    16,
+    9,
+    1,
+    7,
+    2
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "raven": {
+   "name": "Raven",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 1,
+   "hp_roll": "1d4-1",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "50 ft."
+   },
+   "abilities": [
+    2,
+    14,
+    8,
+    2,
+    12,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Beak",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "vulture": {
+   "name": "Vulture",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 5,
+   "hp_roll": "1d8+1",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "50 ft."
+   },
+   "abilities": [
+    7,
+    10,
+    13,
+    2,
+    12,
+    4
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Beak",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1d4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
