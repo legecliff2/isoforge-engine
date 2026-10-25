@@ -655,10 +655,11 @@ All 33 srd51.core monster@4 files are now monster@5 with `derive: true`. `goblin
   - Ogre: `weapon_dice_multiplier: 2`.
   - Bugbear Brute: `{kind: weapon_extra_dice, dice: 1, melee_only: true}`. It is read only by the derivation, so the sim still uses the printed dice.
 - **`hands`** is explicit: 0 for beasts, the dragon, the cube, the gargoyle, the swarm, the toad and the spider; 2 otherwise.
-- **The 3 approved adjustments**, which the validator lists as warnings:
+- **The 4 approved adjustments**, which the validator lists as warnings:
   - skeleton `ac_adjust +1` ("armor scraps");
   - black bear bite and claws `attack_bonus 3`;
-  - ghoul bite `attack_bonus 2`.
+  - ghoul bite `attack_bonus 2`;
+  - mule hooves `attack_bonus 2` (bestiary v0.1 batch 2: SRD prints +2, derived +4; the printed value wins wherever printed and derived differ, with a test DEVIATIONS entry).
 - **The loader:** until Engine Core wires `derive`, it uses the printed numbers exactly as written, so no fight changes. `rules5e::derive_monster` reproduces all 33 with no errors (cross-checked locally).
 
 ## 15. srd51.core PCs at character@5 with `derive: true` (docs/proposals/EQUIPMENT.md 1, 2, 3; PR C)

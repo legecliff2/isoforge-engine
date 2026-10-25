@@ -21,8 +21,9 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 66 authored / 13 deferred): rat, scorpion (flat 1 damage not expressible) + tier B batch d1.
-DEFERRED: list[str] = ["rat", "scorpion", "quipper", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 75 authored / 15 deferred): rat, scorpion (flat 1 damage not expressible) + tier B batch d1
+# + batch 2: acolyte (spells missing), gladiator (thrown-spear damage + Shield Bash rider).
+DEFERRED: list[str] = ["acolyte", "gladiator", "rat", "scorpion", "quipper", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -31,6 +32,8 @@ DEVIATIONS = {
     "black-bear": "skills: the table omits Perception +3 although passive Perception is 13 (SRD block); the validator requires 10 + skill.",
     "gargoyle": "damage_resistances stays empty: the qualified resistance lives in the damage_mitigation trait effect.",
     "riding-horse": "xp: the table lists 25 XP; SRD 5.1 prints Challenge 1/4 (50 XP), and the SRD is authoritative (CR 1/4 = 50 XP).",
+    "shrieker": "condition_immunities: the table lists blinded twice and omits deafened; the SRD line is blinded, deafened, frightened.",
+    "mule": "Hooves to_hit: the SRD prints +2 (the table agrees); the derivation gives +4 (Str 14 +2, PB +2). Carried as an approved attack_bonus override of +2 (printed value wins).",
     "swarm-of-rats": "type: the table says 'swarm of Tiny beasts', not in the creature_type enum; convention is beast + tag swarm (T&C-G15, sim #172).",
 }
 
@@ -76,7 +79,10 @@ class MonsterTable(unittest.TestCase):
                 self.assertEqual(d.get("damage_immunities", []), t["damage_immunities"])
                 if idx != "gargoyle":
                     self.assertEqual(d.get("damage_resistances", []), t["damage_resistances"])
-                self.assertEqual(d.get("condition_immunities", []), t["condition_immunities"])
+                if idx == "shrieker":
+                    self.assertEqual(d["condition_immunities"], ["blinded", "deafened", "frightened"])
+                else:
+                    self.assertEqual(d.get("condition_immunities", []), t["condition_immunities"])
                 self.assertEqual(d["proficiency_bonus"], 2 if t["cr"] <= 4 else 3)   # SRD: CR 0-4 +2, CR 5-8 +3 (medusa, CR 6)
 
     def test_every_attack_matches_the_table(self):
@@ -128,6 +134,11 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual(opts("animated-armor"), {"slam_slam": ["slam", "slam"]})
         self.assertEqual(opts("scout"), {"melee": ["shortsword"] * 2, "ranged": ["longbow"] * 2})
         self.assertEqual(opts("spy"), {"shortsword_x2": ["shortsword"] * 2})
+        self.assertEqual(opts("thug"), {"mace_x2": ["mace"] * 2})
+        self.assertEqual(opts("bandit-captain"), {"melee": ["scimitar", "scimitar", "dagger"], "ranged": ["dagger_thrown"] * 2})
+        self.assertEqual(opts("veteran"), {"longsword_shortsword": ["longsword", "longsword", "shortsword"],
+                                           "longsword_two_handed": ["longsword_two_handed"] * 2})
+        self.assertEqual(opts("knight"), {"greatsword_x2": ["greatsword"] * 2})
         lf = opts("lizardfolk")
         self.assertEqual(len(lf), 6)   # every unordered pair of the four melee weapons ("each one with a different weapon")
         self.assertTrue(all(len(set(v)) == 2 for v in lf.values()))
@@ -223,6 +234,20 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual(load("noble")["reactions"][0]["effect"], {"kind": "ac_bonus", "bonus": 2})
         # Cultist Dark Devotion: partial, description only (no condition-keyed save advantage construct)
         self.assertNotIn("effect", {t["id"]: t for t in load("cultist")["traits"]}["dark_devotion"])
+        # Batch 2: Parry (bandit captain / knight +2), goat Charge
+        for idx, b in (("bandit-captain", 2), ("knight", 2)):
+            self.assertEqual(load(idx)["reactions"][0]["effect"], {"kind": "ac_bonus", "bonus": b})
+        goat = {t["id"]: t for t in load("goat")["traits"]}
+        self.assertEqual(goat["charge"]["effect"]["effects"][1], {"kind": "save_condition", "save": {"ability": "str", "dc": 10}, "apply": [{"condition": "prone"}]})
+        self.assertEqual(load("giant-fire-beetle")["emits_light"], {"bright_ft": 10, "dim_ft": 10})
+        # partial, description only: Sure-Footed, Brave, Leadership, Shriek
+        self.assertNotIn("effect", goat["sure_footed"])
+        self.assertNotIn("effect", {t["id"]: t for t in load("knight")["traits"]}["brave"])
+        self.assertNotIn("effect", {t["id"]: t for t in load("mule")["traits"]}["sure_footed"])
+        # Mule: approved attack_bonus override, printed +2 over the derived +4 (DEVIATIONS)
+        self.assertEqual({a["id"]: a for a in load("mule")["actions"]}["hooves"]["attack_bonus"]["value"], 2)
+        self.assertEqual({a["id"]: a for a in load("knight")["actions"]}["leadership"]["kind"], "special")
+        self.assertNotIn("effect", {t["id"]: t for t in load("shrieker")["traits"]}["shriek"])
         # Sunlight Sensitivity / Keen Hearing and Smell: descriptive (no light model, no perception checks in the sim)
         self.assertNotIn("effect", {t["id"]: t for t in load("kobold")["traits"]}["sunlight_sensitivity"])
 
