@@ -1,0 +1,80 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.poisonous_snake",
+  "name": "Poisonous Snake",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "tiny",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 13
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 2,
+    "formula": "1d4"
+  },
+  "speed": {
+    "walk": 30,
+    "swim": 30
+  },
+  "abilities": {
+    "str": 2,
+    "dex": 16,
+    "con": 11,
+    "int": 1,
+    "wis": 10,
+    "cha": 3
+  },
+  "senses": {
+    "blindsight": 10,
+    "passive_perception": 10
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "1/8",
+    "xp": 25
+  },
+  "proficiency_bonus": 2,
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "flat": 1,
+        "ability": "dex"
+      },
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "flat": 1,
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 1 piercing damage, and the target must make a DC 10 Constitution saving throw, taking 5 (2d4) poison damage on a failed save, or half as much damage on a successful one.",
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "con",
+            "dc": 10
+          },
+          "damage": [
+            {
+              "dice": "2d4",
+              "type": "poison"
+            }
+          ],
+          "on_success": "half"
+        }
+      ]
+    }
+  ]
+}
