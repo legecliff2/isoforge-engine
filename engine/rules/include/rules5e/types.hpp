@@ -693,6 +693,11 @@ struct Combatant {
     // integer feet, always a multiple of 5 (kFeetPerTile). Positive = flying / climbing, negative = burrowed or underwater.
     // Every spawn starts at 0; nothing changes it yet (movement, falling and Fly arrive in later altitude PRs).
     int16_t alt_ft = 0;
+    // appended (altitude PR3, SRD Flyby; static content, not folded - same pattern as hover): the creature doesn't provoke
+    // opportunity attacks when it flies out of an enemy's reach (Move move_mode 1, including a vertical alt_to that spends
+    // the fly speed). Sim still flags Move::leaves_reach; leaving_reach_window skips the window only for that fly leave.
+    // A walk, climb, swim, or burrow out of reach still provokes. Content: a monster trait with id "flyby" (sim content.cpp).
+    bool flyby = false;
     // appended (grab and contain, 7.2w; content-derived, not hashed): SRD Transparent (gelatinous cube): the DC of the Wisdom
     // (Perception) check to spot it while it has neither moved nor attacked (15; 0 = not transparent). Sim reads it when it
     // sets up surprise (rules5e surprise helper: compare with the observer's Perception); rules does not track "moved".

@@ -1382,6 +1382,10 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     c.climb_ft = uint8_t(std::clamp(geti(doc.at("speed"), "climb", 0), 0, 255));
     c.burrow_ft = uint8_t(std::clamp(geti(doc.at("speed"), "burrow", 0), 0, 255));
     if (auto hv = doc.at("speed").find("hover"); hv != doc.at("speed").end() && hv->is_boolean()) c.hover = hv->get<bool>();
+    // altitude PR3: SRD Flyby is a descriptive monster trait (traits[].id == "flyby", no effect object needed).
+    if (auto ts = doc.find("traits"); ts != doc.end() && ts->is_array())
+        for (const Json& t : *ts)
+            if (t.is_object() && t.value("id", "") == "flyby") c.flyby = true;
     if (auto ch = doc.find("challenge"); ch != doc.end() && ch->is_object())
         if (auto rt = ch->find("rating"); rt != ch->end())
             if (auto x = cr_x8_of(*rt)) a.cr_x8 = int16_t(*x);

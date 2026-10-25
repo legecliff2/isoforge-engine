@@ -462,7 +462,7 @@ std::vector<Vec2i> Combat::footprint_tiles_at(CombatantId id, Vec2i anchor) cons
 
 int Combat::distance_tiles(CombatantId a, CombatantId b) const {
     const Spot sa = spot(a), sb = spot(b);
-    return rect_distance(sa.p, sa.n, sb.p, sb.n);
+    return rect_distance(sa.p, sa.n, abs_height_ft(a), sb.p, sb.n, abs_height_ft(b));   // altitude PR3: 3D
 }
 
 
@@ -696,8 +696,10 @@ int Combat::melee_reach_tiles(CombatantId id) const {
     return best;
 }
 
-bool Combat::leaves_reach(CombatantId mover, Vec2i from, Vec2i to) const {
-    // Facts only; rules5e decides eligibility (reaction used, incapacitated, policy, Disengage).
+bool Combat::leaves_reach(CombatantId mover, Vec2i from, Vec2i to, int alt_delta_ft) const {
+    // Facts only; rules5e decides eligibility (reaction used, incapacitated, policy, Disengage, Flyby).
+    // altitude PR3: 3D distances, so rising (alt_delta_ft) out of reach counts too.
+    const int zf = abs_height_at(mover, from), zt = abs_height_at(mover, to, alt_delta_ft);
     for (const auto& s : slots_) {
         if (s.id == mover || !hostile(s.id, mover)) continue;
         const auto* c = rules5e::find(state_, s.id);
@@ -706,7 +708,8 @@ bool Combat::leaves_reach(CombatantId mover, Vec2i from, Vec2i to) const {
         if (reach == 0) continue;
         // Nearest-tile distances between the footprints: the mover's before and after the step.
         const Spot rs = spot(s.id), f = spot_at(mover, from), t = spot_at(mover, to);
-        if (rect_distance(f.p, f.n, rs.p, rs.n) <= reach && rect_distance(t.p, t.n, rs.p, rs.n) > reach) return true;
+        const int zr = abs_height_ft(s.id);
+        if (spot_distance(f, zf, rs, zr) <= reach && spot_distance(t, zt, rs, zr) > reach) return true;
     }
     return false;
 }
@@ -877,7 +880,8 @@ void Combat::install_hooks() {
         const int reach = melee_reach_tiles(r.id);
         if (reach == 0) return false;
         const Spot rs = spot(r.id), f = spot(w.trigger_actor), t = spot_at(w.trigger_actor, *to);
-        return rect_distance(f.p, f.n, rs.p, rs.n) <= reach && rect_distance(t.p, t.n, rs.p, rs.n) > reach;
+        const int zr = abs_height_ft(r.id), zf = abs_height_ft(w.trigger_actor), zt = moving_abs_height(w.trigger_actor, *to);
+        return spot_distance(f, zf, rs, zr) <= reach && spot_distance(t, zt, rs, zr) > reach;   // altitude PR3: 3D
     };
     // A readied ranged attack's facts are taken when it fires, not when it was readied.
     state_.hooks.refresh_ready = [this](const rules5e::EncounterState&, const rules5e::ReadiedAction& ra,
@@ -901,8 +905,9 @@ void Combat::install_hooks() {
         ActionRequest q = ra.response;
         q.ally_near_target = ally_near(ra.actor, tp);   // facts are taken when the readied attack fires
         if (!a->attacks[ra.response.attack_index].ranged) return q;   // melee: only the ally fact is refreshed
-        if (!ranged_attack_facts(ra.actor, ra.response.attack_index, rp, tp, q, nullptr)) return std::nullopt;
-        q.target_within_5ft = rect_distance(rp.p, rp.n, tp.p, tp.n) <= 1;
+        const int tz = ra.response.target == e.actor ? moving_abs_height(e.actor, tp.p) : abs_height_ft(ra.response.target);
+        if (!ranged_attack_facts(ra.actor, ra.response.attack_index, rp, tp, tz, q, nullptr)) return std::nullopt;
+        q.target_within_5ft = spot_distance(rp, abs_height_ft(ra.actor), tp, tz) <= 1;
         return q;
     };
     state_.hooks.ready_trigger = [this](const rules5e::EncounterState&, const rules5e::ReadiedAction& ra,
@@ -916,13 +921,14 @@ void Combat::install_hooks() {
         if (kind == ReadyTriggerKind::HostileWithin && !hostile(e.actor, ra.actor)) return false;
         const Vec2i mp = moving_to(e.actor).value_or(pos(e.actor));
         const Spot ms = spot_at(e.actor, mp), rs = spot(ra.actor);
-        if (rect_distance(ms.p, ms.n, rs.p, rs.n) > tiles) return false;
+        const int mz = moving_abs_height(e.actor, mp), rz = abs_height_ft(ra.actor);   // altitude PR3: 3D
+        if (spot_distance(ms, mz, rs, rz) > tiles) return false;
         if (ra.response.kind == ActionKind::Attack) {
             const auto* a = rules5e::find(state_, ra.actor);
             const auto* t = rules5e::find(state_, ra.response.target);
             if (!a || !t || t->dead || ra.response.attack_index >= a->attacks.size()) return false;
             const Spot ts = ra.response.target == e.actor ? ms : spot(ra.response.target);
-            const int td = rect_distance(rs.p, rs.n, ts.p, ts.n);
+            const int td = spot_distance(rs, rz, ts, ra.response.target == e.actor ? mz : abs_height_ft(ra.response.target));
             if (a->attacks[ra.response.attack_index].ranged) {
                 const Archetype* arch = attack_archetype(ra.actor);
                 const int lt = arch ? reach_tiles(arch->long_range_ft[ra.response.attack_index]) : 0;
@@ -1376,11 +1382,12 @@ void Combat::spawn_summon(const rules5e::Event& ev, const rules5e::LoggedStep& l
     events_.push_back(se);
 }
 
-bool Combat::ranged_attack_facts(CombatantId actor, uint8_t ai, Spot from, Spot tp, ActionRequest& req,
+bool Combat::ranged_attack_facts(CombatantId actor, uint8_t ai, Spot from, Spot tp, int target_abs_ft, ActionRequest& req,
                                  std::string* error) const {
     const Archetype* arch = attack_archetype(actor);
     if (!arch || ai >= arch->long_range_ft.size()) { if (error) *error = "bad attack"; return false; }
-    const int d = rect_distance(from.p, from.n, tp.p, tp.n);
+    const int za = abs_height_ft(actor);
+    const int d = spot_distance(from, za, tp, target_abs_ft);   // altitude PR3: 3D range
     if (d > reach_tiles(arch->long_range_ft[ai])) { if (error) *error = "target beyond long range"; return false; }
     if (!los_spots(from, tp)) { if (error) *error = "no line of sight"; return false; }
     req.beyond_normal_range = d > reach_tiles(arch->normal_range_ft[ai]);
@@ -1390,15 +1397,14 @@ bool Combat::ranged_attack_facts(CombatantId actor, uint8_t ai, Spot from, Spot 
         if (sl.id == actor || !c || c->dead || !hostile(sl.id, actor) || !rules5e::is_conscious(*c) ||
             rules5e::is_incapacitated(*c))
             continue;
-        const Spot hs = spot(sl.id);
-        if (rect_distance(from.p, from.n, hs.p, hs.n) <= 1) req.ranged_hostile_within_5ft = true;
+        if (spot_distance(from, za, spot(sl.id), abs_height_ft(sl.id)) <= 1) req.ranged_hostile_within_5ft = true;
     }
     return true;
 }
 
 bool Combat::ranged_disadvantage(CombatantId actor, uint8_t ai, CombatantId target) const {
     ActionRequest q{};
-    if (!ranged_attack_facts(actor, ai, spot(actor), spot(target), q, nullptr)) return false;
+    if (!ranged_attack_facts(actor, ai, spot(actor), spot(target), abs_height_ft(target), q, nullptr)) return false;
     return q.beyond_normal_range || q.ranged_hostile_within_5ft;
 }
 
@@ -1406,7 +1412,7 @@ bool Combat::can_shoot(CombatantId actor, uint8_t ai, CombatantId target) const 
     const auto* a = rules5e::find(state_, actor);
     if (!a || ai >= a->attacks.size() || !a->attacks[ai].ranged || !rules5e::find(state_, target)) return false;
     ActionRequest scratch{};
-    return ranged_attack_facts(actor, ai, spot(actor), spot(target), scratch, nullptr);
+    return ranged_attack_facts(actor, ai, spot(actor), spot(target), abs_height_ft(target), scratch, nullptr);
 }
 
 SubmitResult Combat::finish(rules5e::StepResult sr) {
@@ -1529,7 +1535,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
         }
         const int d = distance_tiles(actor, req.target);
         if (a->attacks[req.attack_index].ranged) {
-            if (!ranged_attack_facts(actor, req.attack_index, spot(actor), spot(req.target), req, &r.error)) return r;
+            if (!ranged_attack_facts(actor, req.attack_index, spot(actor), spot(req.target), abs_height_ft(req.target), req, &r.error)) return r;
         } else if (d > reach_tiles(a->attacks[req.attack_index].reach_or_range_ft)) {
             r.error = "target out of reach";
             return r;
@@ -1549,8 +1555,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
             for (const auto& sl : slots_) {
                 const auto* c = rules5e::find(state_, sl.id);
                 if (sl.id == actor || !c || c->dead || !hostile(sl.id, actor) || !rules5e::is_conscious(*c) || rules5e::is_incapacitated(*c)) continue;
-                const Spot hs = spot(sl.id);
-                if (rect_distance(from.p, from.n, hs.p, hs.n) <= 1) req.ranged_hostile_within_5ft = true;
+                if (spot_distance(from, abs_height_ft(actor), spot(sl.id), abs_height_ft(sl.id)) <= 1) req.ranged_hostile_within_5ft = true;
             }
         }
         // R-G12 summons (§3.0 / §3.1): ids come from rules' counter; sim refuses an exhausted id space or ids another system
@@ -1761,6 +1766,7 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
         mv.move_tiles = 0;
         mv.move_mode = mode;
         mv.alt_to = int16_t(target - cur);
+        mv.leaves_reach = leaves_reach(mover, from, from, target - cur);   // altitude PR3: rising / sinking out of reach
         step_to_ = from;
         set_step_context(mv);
         forced_placed_.clear();
@@ -2384,6 +2390,18 @@ std::vector<Vec2i> Combat::legal_zone_tiles(CombatantId actor, const rules5e::Sp
 int Combat::abs_height_ft(CombatantId id) const {
     const auto* c = rules5e::find(state_, id);
     return grid_.footprint_ground_ft(pos(id), footprint_size(id)) + (c ? int(c->alt_ft) : 0);
+}
+int Combat::abs_height_at(CombatantId id, Vec2i anchor, int alt_delta_ft) const {
+    if (anchor == pos(id)) return abs_height_ft(id) + alt_delta_ft;
+    const auto* c = rules5e::find(state_, id);
+    const int g = grid_.footprint_ground_ft(anchor, footprint_size(id));
+    // An airborne mover keeps its absolute height (step_altitude), never below the new ground; others follow the ground.
+    if (airborne(id)) return std::max(abs_height_ft(id), g) + alt_delta_ft;
+    return g + (c ? int(c->alt_ft) : 0) + alt_delta_ft;
+}
+int Combat::moving_abs_height(CombatantId id, Vec2i anchor) const {
+    const bool resolving = step_to_ && id == rules5e::current_actor(state_);
+    return abs_height_at(id, anchor, resolving ? int(step_alt_) : 0);
 }
 bool Combat::airborne(CombatantId id) const {
     const auto* c = rules5e::find(state_, id);

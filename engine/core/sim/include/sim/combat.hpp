@@ -229,7 +229,7 @@ public:
     bool line_of_sight(CombatantId a, CombatantId b) const;
     std::vector<Vec2i> occupied_except(CombatantId id) const;   // tiles (every footprint tile) of other non-dead combatants
     // altitude PR2: the same list without creatures whose vertical span does not overlap [abs_ft, abs_ft + id's height)
-    // (house rule: Medium and smaller are 1 tile tall, N x N is N tiles). Used for an airborne flyer's paths.
+    // (engine convention, docs/SRD_COMBAT_COVERAGE.md §11.8: Medium and smaller are 1 tile tall, N x N is N tiles). Used for an airborne flyer's paths.
     std::vector<Vec2i> occupied_except(CombatantId id, int abs_ft) const;
     // altitude PR2 (docs/SIM_EVENTS.md "Altitude"): absolute height of a creature's feet = ground under it + alt_ft. The
     // ground is the MAX chunk@3 ground over its footprint (a creature stands on the highest tile it covers; 0 on chunk@1 /
@@ -465,7 +465,9 @@ private:
     void set_step_context(const rules5e::ActionRequest& q) {   // which step the hook runs in (shove detection)
         shove_actor_ = q.kind == rules5e::ActionKind::Attack && q.special == 3 ? q.actor : 0;
         shove_target_ = shove_actor_ ? q.target : 0;
+        step_alt_ = q.kind == rules5e::ActionKind::Move ? q.alt_to : int16_t(0);   // altitude PR3: vertical Move delta
     }
+    int16_t step_alt_ = 0;
     CombatantId shove_actor_ = 0, shove_target_ = 0;
     // R-G11: membership lists of a move of `mover` from `from` to `to` (ascending zone ids; its own auras skipped), and the
     // membership changes of other creatures when `mover` owns auras (aura owner's move) or zone `moved_zone` moves to `anchor_to`.
@@ -499,14 +501,20 @@ private:
     // Pack Tactics / Sneak Attack fact (ActionRequest::ally_near_target): a creature on the attacker's team,
     // other than the attacker, conscious and not incapacitated, within 5 ft (nearest tile) of `target`.
     bool ally_near(CombatantId attacker, Spot target) const;
-    bool ranged_attack_facts(CombatantId actor, uint8_t attack_index, Spot from, Spot target,
+    // altitude PR3: target_abs_ft is the target's absolute height (ft); the attacker's is abs_height_ft(actor).
+    bool ranged_attack_facts(CombatantId actor, uint8_t attack_index, Spot from, Spot target, int target_abs_ft,
                              rules5e::ActionRequest& req, std::string* error) const;
     bool move_tile(CombatantId mover, Vec2i to, const std::vector<rules5e::Event>& evs);
     friend struct CombatTestAccess;
     friend std::optional<Combat> replay(ecs::Registry&, std::span<const world::Chunk* const>, const ContentLibrary&,
                                         uint64_t, CombatOptions, const std::vector<LogEntry>&, std::string*,
                                         const std::vector<CombatantId>&, ScenarioEnd);
-    bool leaves_reach(CombatantId mover, Vec2i from, Vec2i to) const;
+    bool leaves_reach(CombatantId mover, Vec2i from, Vec2i to, int alt_delta_ft = 0) const;
+    // altitude PR3: absolute height (ft) of `id` with its anchor at `anchor` (+ alt_delta_ft), and the 3D distance in tiles
+    // between two creatures at given anchors / heights (grid.hpp rect_distance, 3D form).
+    int abs_height_at(CombatantId id, Vec2i anchor, int alt_delta_ft = 0) const;
+    int moving_abs_height(CombatantId id, Vec2i anchor) const;   // includes the pending vertical delta of the resolving Move
+    int spot_distance(Spot a, int za_ft, Spot b, int zb_ft) const { return rect_distance(a.p, a.n, za_ft, b.p, b.n, zb_ft); }
     int melee_reach_tiles(CombatantId id) const;   // 0 = no melee attack
     const Slot* slot(CombatantId id) const;
     bool spell_in_reach(const rules5e::SpellDef& def, CombatantId caster, CombatantId target) const;

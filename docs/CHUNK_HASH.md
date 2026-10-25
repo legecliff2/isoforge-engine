@@ -57,6 +57,8 @@ stable_id: `(0,0,0,#0)` = `0xe9ca1f53`, `(-1,7,-2,#3)` = `0x3660e539`.
 
 ## chunk@3 ground (sim rule; altitude PR2)
 
+An approved engine convention; the full list is docs/SRD_COMBAT_COVERAGE.md §11.8 "Altitude engine conventions (approved)".
+
 `elevation` (`u8` per layer cell) is the **ground height in 5 ft steps**: ground_ft = 5 × elevation (0..1275 ft).
 The sim reads it as ground **only for chunk@3**; chunk@1 / chunk@2 chunks (and procedural ones) are flat for the
 sim and `elevation` stays render-only (iso stacking), so older maps and the compat goldens behave identically.
