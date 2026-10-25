@@ -7326,6 +7326,216 @@
      ]
     }
    ]
+  },
+  "druid": {
+   "name": "Druid",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    11,
+    16
+   ],
+   "hp": 27,
+   "hp_roll": "5d8+5",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    10,
+    12,
+    13,
+    12,
+    15,
+    11
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Quarterstaff",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1d6",
+        "bludgeoning"
+       ]
+      ],
+      [
+       [
+        "1d8",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "priest": {
+   "name": "Priest",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    13
+   ],
+   "hp": 27,
+   "hp_roll": "5d8+5",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "25 ft."
+   },
+   "abilities": [
+    10,
+    10,
+    12,
+    13,
+    16,
+    13
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Mace",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1d6",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "merrow": {
+   "name": "Merrow",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    13
+   ],
+   "hp": 45,
+   "hp_roll": "6d10+12",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "10 ft.",
+    "swim": "40 ft."
+   },
+   "abilities": [
+    18,
+    10,
+    15,
+    8,
+    10,
+    9
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "1d8+4",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d4+4",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Harpoon",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "wererat": {
+   "name": "Wererat",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    12
+   ],
+   "hp": 33,
+   "hp_roll": "6d8+6",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    10,
+    15,
+    12,
+    11,
+    10,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "bludgeoning, piercing, and slashing from nonmagical weapons that aren't silvered"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Shortsword",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Hand Crossbow",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }

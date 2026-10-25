@@ -21,8 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 150 authored / 3 deferred): batch 3 and tier-A triage (3: mimic, doppelganger, green hag). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row. Giant Goat, Giant Sea Horse and Warhorse left in CR 1/2 batch D. CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) is authored; Cockatrice petrify and Sahuagin Blood Frenzy stay partial on those rows, not new deferred monsters. Crocodile and Rust Monster left in CR 1/2 batch F (explicit partials, not a silent re-defer). Lion and tiger left in CR 1 batch G (explicit partials, same bonus-bite gap as panther, not a silent re-defer). Giant eagle, giant vulture and hippogriff are authored in that batch; none of them has Flyby on the SRD block. Duergar left in CR 1 batch H (Enlarge, Invisibility, and Duergar Resilience stay partials on the authored monster). CR 2 batch I authored polar bear, giant boar, giant elk, rhinoceros, saber-toothed tiger and hunter shark; polar bear is complete, and the other five stay partials on the authored rows (straight-toward, elk hooves, tiger bonus bite, quipper Blood Frenzy). CR 2 batch J authored centaur, griffon, pegasus, ankheg, giant constrictor snake and minotaur skeleton; Centaur Charge is pike on_hit only (not a melee on_event). Minotaur Skeleton's 10-foot push stays description only. Mimic stays deferred.
-DEFERRED: list[str] = ["doppelganger", "green-hag", "mimic"]   # docs/SRD_MONSTERS_DEFERRED.md: 150 / 3
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 154 authored / 4 deferred): batch 3 and tier-A triage (3: mimic, doppelganger, green hag). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row. Giant Goat, Giant Sea Horse and Warhorse left in CR 1/2 batch D. CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) is authored; Cockatrice petrify and Sahuagin Blood Frenzy stay partial on those rows, not new deferred monsters. Crocodile and Rust Monster left in CR 1/2 batch F (explicit partials, not a silent re-defer). Lion and tiger left in CR 1 batch G (explicit partials, same bonus-bite gap as panther, not a silent re-defer). Giant eagle, giant vulture and hippogriff are authored in that batch; none of them has Flyby on the SRD block. Duergar left in CR 1 batch H (Enlarge, Invisibility, and Duergar Resilience stay partials on the authored monster). CR 2 batch I authored polar bear, giant boar, giant elk, rhinoceros, saber-toothed tiger and hunter shark; polar bear is complete, and the other five stay partials on the authored rows (straight-toward, elk hooves, tiger bonus bite, quipper Blood Frenzy). CR 2 batch J authored centaur, griffon, pegasus, ankheg, giant constrictor snake and minotaur skeleton; Centaur Charge is pike on_hit only (not a melee on_event). Minotaur Skeleton's 10-foot push stays description only. CR 2 batch K authored druid, priest, merrow and wererat (druid's four missing spells stay in the trait text only; priest Divine Eminence is text only and Religion +4 is the printed total; merrow Pull is text only; wererat is the humanoid form, with shapechange, bite and the curse as text). Sea hag is a new deferral. Mimic stays deferred.
+DEFERRED: list[str] = ["doppelganger", "green-hag", "mimic", "sea-hag"]   # docs/SRD_MONSTERS_DEFERRED.md: 154 / 4
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -53,11 +53,14 @@ DEVIATIONS = {
     "deep-gnome": "xp: the table lists 50 XP; SRD 5.1 prints Challenge 1/2 (100 XP), and the SRD is authoritative (CR 1/2 = 100 XP, as riding-horse). One stat block: the a6212be index is deep-gnome-svirfneblin; Svirfneblin is an alias of srd51.monster.deep_gnome, not a separate document.",
     "polar-bear": "One SRD 5.1 stat block. Cave Bear is an alias of srd51.monster.polar_bear, not a separate document.",
     "saber-toothed-tiger": "Bite and Claw damage: the SRD prints +5 (1d10 + 5 / 2d6 + 5); Str 18 derives +4. Carried as an approved damage_override (CONTENT_CONVENTIONS 21; printed value wins). To-hit +6 derives (Str +4 and PB +2) and needs no attack_bonus.",
+    "wererat": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, CONTENT_EFFECTS werewolf example; as gargoyle, but an immunity). The pin is the humanoid form (a6212be wererat-human); bite is not a weapon attack on that form.",
+    "priest": "skills.religion is the SRD print +4. Int 13 (+1) with PB 2 is proficiency +3 or expertise +5; neither matches. validate_packs.PRINTED_SKILL_TOTALS allowlists this one printed total. Medicine +7 is expertise and Persuasion +3 is proficiency.",
 }
 # Mirror errors in hit points: monster -> (average, formula) as printed in the SRD 5.1 block (DEVIATIONS).
 HP_ERRATA = {"cult-fanatic": (33, "6d8+6")}
 
 QUALIFIED_RESISTANCES = ("gargoyle", "wight", "vampire-spawn", "shadow", "mummy", "specter")
+QUALIFIED_IMMUNITIES = ("wererat",)
 
 
 def load(idx):
@@ -116,7 +119,10 @@ class MonsterTable(unittest.TestCase):
                     self.assertEqual(speed, d["speed"])
                 self.assertEqual([d["abilities"][k] for k in ("str", "dex", "con", "int", "wis", "cha")], t["abilities"])
                 self.assertEqual(d.get("damage_vulnerabilities", []), t["damage_vulnerabilities"])
-                self.assertEqual(d.get("damage_immunities", []), t["damage_immunities"])
+                if idx in QUALIFIED_IMMUNITIES:   # the qualified "nonmagical weapons" entry is a damage_mitigation immunity (DEVIATIONS)
+                    self.assertEqual(d.get("damage_immunities", []), [r for r in t["damage_immunities"] if "nonmagical" not in r])
+                else:
+                    self.assertEqual(d.get("damage_immunities", []), t["damage_immunities"])
                 if idx in QUALIFIED_RESISTANCES:   # the qualified "nonmagical weapons" entry is a damage_mitigation trait (DEVIATIONS)
                     self.assertEqual(d.get("damage_resistances", []), [r for r in t["damage_resistances"] if "nonmagical" not in r])
                 else:
@@ -1099,9 +1105,125 @@ class MonsterTable(unittest.TestCase):
         self.assertNotIn("pack_tactics", {t["id"] for t in shark["traits"]})
         self.assertFalse((PACK / "monsters" / "mimic.json").exists())
 
+    def test_cr2_batch_k(self):
+        # CR 2 batch K. Druid spellcasting lists only pack-present spells; the trait text keeps the four
+        # missing names, and barkskin / shillelagh stay off the numbers (as dryad). Priest Divine Eminence
+        # is text only. Merrow's harpoon is natural (no item) and the pull stays text. Wererat is the
+        # humanoid form; shapechange, bite and the curse stay text. Sea hag is parked. Mimic stays deferred.
+
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        def opts(idx):
+            return {o["id"]: o["attacks"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "multiattack"
+                    for o in t["effect"]["options"]}
+
+        druid = load("druid")
+        self.assertEqual(druid["armor_class"], {"value": 11})
+        self.assertNotIn("natural_armor", druid)
+        self.assertEqual(druid["skills"], {"medicine": 4, "nature": 3, "perception": 4})
+        self.assertEqual(druid["spellcasting"]["ability"], "wis")
+        self.assertEqual(druid["spellcasting"]["caster_level"], 4)
+        self.assertEqual(druid["spellcasting"]["slots"], {"1": 4, "2": 3})
+        self.assertEqual((druid["spellcasting"]["dc"], druid["spellcasting"]["attack_bonus"]), (12, 4))
+        self.assertEqual(druid["spellcasting"]["spells"], [
+            "srd51.spell.produce_flame", "srd51.spell.shillelagh", "srd51.spell.entangle",
+            "srd51.spell.thunderwave", "srd51.spell.barkskin"])
+        spell_text = trait("druid", "spellcasting")["description"]
+        for missing in ("druidcraft", "longstrider", "speak with animals", "animal messenger"):
+            self.assertIn(missing, spell_text)
+        self.assertNotIn("effect", trait("druid", "spellcasting"))
+        self.assertNotIn("srd51.spell.druidcraft", json.dumps(druid))
+        staff = act("druid", "quarterstaff")
+        staff2 = act("druid", "quarterstaff_two_handed")
+        self.assertEqual(staff["weapon"], "srd51.item.quarterstaff")
+        self.assertEqual(staff2["use"], "two_hands")
+        self.assertEqual((staff["to_hit"], staff["damage"]), (2, [{"dice": "1d6", "type": "bludgeoning"}]))
+        self.assertEqual((staff2["to_hit"], staff2["damage"]), (2, [{"dice": "1d8", "type": "bludgeoning"}]))
+        self.assertIn("shillelagh", staff["description"])
+        self.assertNotIn("1d8+2", json.dumps(staff["damage"]))
+        self.assertFalse((PACK / "spells" / "druidcraft.json").exists())
+
+        priest = load("priest")
+        self.assertEqual(priest["armor_class"], {"value": 13, "note": "chain shirt"})
+        self.assertEqual(priest["speed"], {"walk": 25})
+        self.assertEqual([e["item"] for e in priest["equipment"]], ["srd51.item.chain_shirt", "srd51.item.mace"])
+        self.assertEqual(priest["skills"], {"medicine": 7, "persuasion": 3, "religion": 4})
+        self.assertEqual(priest["spellcasting"]["caster_level"], 5)
+        self.assertEqual(priest["spellcasting"]["slots"], {"1": 4, "2": 3, "3": 2})
+        self.assertEqual((priest["spellcasting"]["dc"], priest["spellcasting"]["attack_bonus"]), (13, 5))
+        self.assertEqual(priest["spellcasting"]["spells"], [
+            "srd51.spell.light", "srd51.spell.sacred_flame", "srd51.spell.thaumaturgy",
+            "srd51.spell.cure_wounds", "srd51.spell.guiding_bolt", "srd51.spell.sanctuary",
+            "srd51.spell.lesser_restoration", "srd51.spell.spiritual_weapon",
+            "srd51.spell.dispel_magic", "srd51.spell.spirit_guardians"])
+        self.assertNotIn("effect", trait("priest", "divine_eminence"))
+        self.assertNotIn("bonus_actions", priest)
+        self.assertIn("spell slot", trait("priest", "divine_eminence")["description"])
+        mace = act("priest", "mace")
+        self.assertEqual(mace["weapon"], "srd51.item.mace")
+        self.assertEqual(mace["ability"], "str")
+        self.assertEqual((mace["to_hit"], mace["damage"]), (2, [{"dice": "1d6", "type": "bludgeoning"}]))
+
+        merrow = load("merrow")
+        self.assertEqual((merrow["size"], merrow["type"], merrow["hands"]), ("large", "monstrosity", 0))
+        self.assertEqual(merrow["natural_armor"], {"base": 13, "dex": True})
+        self.assertEqual(merrow["speed"], {"walk": 10, "swim": 40})
+        self.assertEqual(merrow["senses"]["darkvision"], 60)
+        self.assertNotIn("effect", trait("merrow", "amphibious"))
+        self.assertEqual(opts("merrow"), {
+            "bite_claws": ["bite", "claws"],
+            "bite_harpoon": ["bite", "harpoon"],
+            "bite_harpoon_thrown": ["bite", "harpoon_thrown"],
+        })
+        self.assertEqual(act("merrow", "bite")["natural"], {"dice": "1d8", "ability": "str"})
+        self.assertEqual(act("merrow", "claws")["natural"], {"dice": "2d4", "ability": "str"})
+        self.assertEqual(act("merrow", "harpoon")["natural"], {"dice": "2d6", "ability": "str"})
+        thrown = act("merrow", "harpoon_thrown")
+        self.assertEqual(thrown["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual(thrown["range"], [20, 60])
+        self.assertNotIn("weapon", thrown)
+        self.assertNotIn("use", thrown)
+        self.assertIn("pulled up to 20 feet", thrown["description"])
+        self.assertNotIn("forced_move", json.dumps(merrow))
+        self.assertFalse((PACK / "items" / "harpoon.json").exists())
+
+        rat = load("wererat")
+        self.assertIs(rat["shapechanger"], True)
+        self.assertEqual((rat["armor_class"]["value"], rat["speed"]), (12, {"walk": 30}))
+        self.assertEqual(rat["skills"], {"perception": 2, "stealth": 4})
+        self.assertNotIn("darkvision", rat["senses"])
+        self.assertNotIn("damage_immunities", rat)
+        self.assertEqual(trait("wererat", "damage_immunities_nonmagical")["effect"], {
+            "kind": "damage_mitigation",
+            "immunities": {"nonmagical_not_silvered": ["bludgeoning", "piercing", "slashing"]},
+        })
+        self.assertNotIn("effect", trait("wererat", "shapechanger"))
+        self.assertNotIn("forms", trait("wererat", "shapechanger"))
+        self.assertEqual(opts("wererat"), {
+            "shortsword_x2": ["shortsword", "shortsword"],
+            "hand_crossbow_x2": ["hand_crossbow", "hand_crossbow"],
+            "shortsword_hand_crossbow": ["shortsword", "hand_crossbow"],
+        })
+        self.assertEqual(act("wererat", "bite")["kind"], "special")
+        self.assertNotIn("natural", act("wererat", "bite"))
+        self.assertIn("lycanthropy", act("wererat", "bite")["description"])
+        sword = act("wererat", "shortsword")
+        bow = act("wererat", "hand_crossbow")
+        self.assertEqual(sword["weapon"], "srd51.item.shortsword")
+        self.assertEqual(bow["weapon"], "srd51.item.crossbow_hand")
+        self.assertEqual((sword["to_hit"], sword["damage"]), (4, [{"dice": "1d6+2", "type": "piercing"}]))
+        self.assertEqual((bow["to_hit"], bow["range"], bow["damage"]),
+                         (4, [30, 120], [{"dice": "1d6+2", "type": "piercing"}]))
+        self.assertFalse((PACK / "monsters" / "sea_hag.json").exists())
+        self.assertFalse((PACK / "monsters" / "mimic.json").exists())
+
     def test_authored_and_deferred_split(self):
         have = sorted(p.stem for p in (PACK / "monsters").glob("*.json"))
-        self.assertEqual((len(AUTHORED), len(DEFERRED)), (150, 3))
+        self.assertEqual((len(AUTHORED), len(DEFERRED)), (154, 4))
         self.assertEqual(have, sorted([i.replace("-", "_") for i in AUTHORED] + ["goblin"]))
         for idx in DEFERRED:
             self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
