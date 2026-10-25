@@ -21,8 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 112 authored / 11 deferred): batch 3 and tier-A triage (5) + tier B batch d1 still open (6). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row.
-DEFERRED: list[str] = ["doppelganger", "duergar", "green-hag", "mimic", "rust-monster", "crocodile", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 112 / 11
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 117 authored / 11 deferred): batch 3 and tier-A triage (5) + tier B batch d1 still open (6). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row. CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) is authored; Cockatrice petrify and Sahuagin Blood Frenzy stay partial on those rows, not new deferred monsters.
+DEFERRED: list[str] = ["doppelganger", "duergar", "green-hag", "mimic", "rust-monster", "crocodile", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 117 / 11
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -466,6 +466,71 @@ class MonsterTable(unittest.TestCase):
                          ("save_effect", {"ability": "dex", "dc": 10}, "half", {"kind": "recharge", "min": 6}))
         self.assertEqual(breath["area"], {"shape": "cone", "size_ft": 15})
         self.assertEqual(breath["damage"], [{"dice": "1d8", "type": "fire"}])
+
+    def test_cr_half_batch_e(self):
+        # Bestiary v0.1 CR 1/2 batch E. Death Burst and innate stay descriptive (as steam mephit).
+        # Dust Blinding Breath is a real save_effect apply (no damage). Cockatrice petrify is not an on_hit
+        # stand-in: escalates is gaze-only. Sahuagin Blood Frenzy is description only (as quipper).
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        minute = {"condition": "blinded", "duration": {"kind": "rounds", "n": 10}, "repeat_save": "end_of_turn"}
+        for idx in ("ice-mephit", "dust-mephit", "magma-mephit"):
+            meph = load(idx)
+            self.assertEqual(meph["hands"], 0)
+            self.assertNotIn("spellcasting", meph)
+            self.assertNotIn("effect", trait(idx, "death_burst"))
+            self.assertNotIn("effect", trait(idx, "innate_spellcasting"))
+        self.assertNotIn("effect", trait("ice-mephit", "false_appearance"))
+        self.assertNotIn("effect", trait("magma-mephit", "false_appearance"))
+        self.assertNotIn("false_appearance", {t["id"] for t in load("dust-mephit")["traits"]})
+        self.assertEqual(act("ice-mephit", "claws")["natural"],
+                         {"dice": "1d4", "ability": "dex", "damage_ability": "dex"})
+        self.assertEqual(act("dust-mephit", "claws")["natural"],
+                         {"dice": "1d4", "ability": "dex", "damage_ability": "dex"})
+        self.assertEqual(act("magma-mephit", "claws")["natural"],
+                         {"dice": "1d4", "ability": "dex", "damage_ability": "dex"})
+        frost = act("ice-mephit", "frost_breath")
+        self.assertEqual((frost["kind"], frost["save"], frost["on_success"], frost["usage"]),
+                         ("save_effect", {"ability": "dex", "dc": 10}, "half", {"kind": "recharge", "min": 6}))
+        self.assertEqual(frost["area"], {"shape": "cone", "size_ft": 15})
+        self.assertEqual(frost["damage"], [{"dice": "2d4", "type": "cold"}])
+        self.assertNotIn("apply", frost)
+        blind = act("dust-mephit", "blinding_breath")
+        self.assertEqual((blind["kind"], blind["save"], blind["usage"]),
+                         ("save_effect", {"ability": "dex", "dc": 10}, {"kind": "recharge", "min": 6}))
+        self.assertEqual(blind["area"], {"shape": "cone", "size_ft": 15})
+        self.assertNotIn("damage", blind)
+        self.assertNotIn("on_success", blind)
+        self.assertEqual(blind["apply"], [minute])
+        fire = act("magma-mephit", "fire_breath")
+        self.assertEqual((fire["kind"], fire["save"], fire["on_success"], fire["usage"]),
+                         ("save_effect", {"ability": "dex", "dc": 11}, "half", {"kind": "recharge", "min": 6}))
+        self.assertEqual(fire["area"], {"shape": "cone", "size_ft": 15})
+        self.assertEqual(fire["damage"], [{"dice": "2d6", "type": "fire"}])
+        bite = act("cockatrice", "bite")
+        self.assertEqual(bite["natural"], {"dice": "1d4", "ability": "dex"})
+        self.assertEqual(bite["damage"], [{"dice": "1d4+1", "type": "piercing"}])
+        self.assertNotIn("on_hit", bite)
+        self.assertEqual(load("cockatrice")["speed"], {"walk": 20, "fly": 40})
+        self.assertIn("petrified for 24 hours", bite["description"])
+        sah = load("sahuagin")
+        self.assertEqual((sah["tags"], sah["speed"], sah["natural_armor"]),
+                         (["sahuagin"], {"walk": 30, "swim": 40}, {"base": 12, "dex": True}))
+        self.assertNotIn("effect", trait("sahuagin", "blood_frenzy"))
+        self.assertNotIn("effect", trait("sahuagin", "limited_amphibiousness"))
+        self.assertNotIn("effect", trait("sahuagin", "shark_telepathy"))
+        self.assertIn("4 hours", trait("sahuagin", "limited_amphibiousness")["description"])
+        self.assertNotIn("pack_tactics", [t.get("effect", {}).get("kind") for t in sah["traits"]])
+        opts = {o["id"]: o["attacks"] for t in sah["traits"] if t.get("effect", {}).get("kind") == "multiattack"
+                for o in t["effect"]["options"]}
+        self.assertEqual(opts, {"bite_claws": ["bite", "claws"], "bite_spear": ["bite", "spear"]})
+        self.assertEqual(act("sahuagin", "spear")["weapon"], "srd51.item.spear")
+        self.assertEqual(act("sahuagin", "spear_two_handed")["use"], "two_hands")
+        self.assertEqual(act("sahuagin", "spear_thrown")["range"], [20, 60])
 
     def test_engulf_swallow_transparent(self):
         # Rules 7.2w (#189): Engulf (save_effect + contain engulf, Str DC 12 escape, Large or smaller), Transparent DC 15
