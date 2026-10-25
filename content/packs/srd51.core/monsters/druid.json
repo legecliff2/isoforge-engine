@@ -1,0 +1,121 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.druid",
+  "name": "Druid",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "any race"
+  ],
+  "alignment": "any alignment",
+  "armor_class": {
+    "value": 11
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.quarterstaff",
+      "equipped": true
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 27,
+    "formula": "5d8+5"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 10,
+    "dex": 12,
+    "con": 13,
+    "int": 12,
+    "wis": 15,
+    "cha": 11
+  },
+  "skills": {
+    "medicine": 4,
+    "nature": 3,
+    "perception": 4
+  },
+  "senses": {
+    "passive_perception": 14
+  },
+  "languages": [
+    "Druidic plus any two languages"
+  ],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "spellcasting",
+      "name": "Spellcasting",
+      "description": "The druid is a 4th-level spellcaster. Its spellcasting ability is Wisdom (spell save DC 12, +4 to hit with spell attacks). It has the following druid spells prepared:\n\n- Cantrips (at will): druidcraft, produce flame, shillelagh\n- 1st level (4 slots): entangle, longstrider, speak with animals, thunderwave\n- 2nd level (3 slots): animal messenger, barkskin\n(spellcasting.spells lists only the pack-present spells: produce flame, shillelagh, entangle, thunderwave, barkskin. druidcraft, longstrider, speak with animals, and animal messenger are not in srd51.core/spells and are omitted; no descriptive spell stubs. Barkskin is not baked into AC, and shillelagh is not baked into the quarterstaff. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": "quarterstaff",
+      "name": "Quarterstaff",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.quarterstaff",
+      "to_hit": 2,
+      "ability": "str",
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +2 to hit (+4 to hit with shillelagh), reach 5 ft., one target. Hit: 3 (1d6) bludgeoning damage, 4 (1d8) bludgeoning damage if wielded with two hands, or 6 (1d8 + 2) bludgeoning damage with shillelagh. (The shillelagh line is descriptive only: the authored attacks are the printed non-shillelagh +2 / 1d6 and the two-handed +2 / 1d8. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "quarterstaff_two_handed",
+      "name": "Quarterstaff (two hands)",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.quarterstaff",
+      "use": "two_hands",
+      "to_hit": 2,
+      "ability": "str",
+      "reach": 5,
+      "targets": 1,
+      "properties": [
+        "two_handed"
+      ],
+      "damage": [
+        {
+          "dice": "1d8",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +2 to hit (+4 to hit with shillelagh), reach 5 ft., one target. Hit: 3 (1d6) bludgeoning damage, 4 (1d8) bludgeoning damage if wielded with two hands, or 6 (1d8 + 2) bludgeoning damage with shillelagh. (The shillelagh line is descriptive only: the authored attacks are the printed non-shillelagh +2 / 1d6 and the two-handed +2 / 1d8. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ],
+  "spellcasting": {
+    "ability": "wis",
+    "caster_level": 4,
+    "slots": {
+      "1": 4,
+      "2": 3
+    },
+    "spells": [
+      "srd51.spell.produce_flame",
+      "srd51.spell.shillelagh",
+      "srd51.spell.entangle",
+      "srd51.spell.thunderwave",
+      "srd51.spell.barkskin"
+    ],
+    "dc": 12,
+    "attack_bonus": 4
+  }
+}

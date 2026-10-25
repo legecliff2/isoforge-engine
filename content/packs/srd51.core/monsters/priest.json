@@ -1,0 +1,116 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.priest",
+  "name": "Priest",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "any race"
+  ],
+  "alignment": "any alignment",
+  "armor_class": {
+    "value": 13,
+    "note": "chain shirt"
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.chain_shirt",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.mace",
+      "equipped": true
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 27,
+    "formula": "5d8+5"
+  },
+  "speed": {
+    "walk": 25
+  },
+  "abilities": {
+    "str": 10,
+    "dex": 10,
+    "con": 12,
+    "int": 13,
+    "wis": 16,
+    "cha": 13
+  },
+  "skills": {
+    "medicine": 7,
+    "persuasion": 3,
+    "religion": 4
+  },
+  "senses": {
+    "passive_perception": 13
+  },
+  "languages": [
+    "any two languages"
+  ],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "divine_eminence",
+      "name": "Divine Eminence",
+      "description": "As a bonus action, the priest can expend a spell slot to cause its melee weapon attacks to magically deal an extra 10 (3d6) radiant damage to a target on a hit. This benefit lasts until the end of the turn. If the priest expends a spell slot of 2nd level or higher, the extra damage increases by 1d6 for each level above 1st. (Descriptive only: no slot-spend shape. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "spellcasting",
+      "name": "Spellcasting",
+      "description": "The priest is a 5th-level spellcaster. Its spellcasting ability is Wisdom (spell save DC 13, +5 to hit with spell attacks). The priest has the following cleric spells prepared:\n\n- Cantrips (at will): light, sacred flame, thaumaturgy\n- 1st level (4 slots): cure wounds, guiding bolt, sanctuary\n- 2nd level (3 slots): lesser restoration, spiritual weapon\n- 3rd level (2 slots): dispel magic, spirit guardians"
+    }
+  ],
+  "actions": [
+    {
+      "id": "mace",
+      "name": "Mace",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.mace",
+      "to_hit": 2,
+      "ability": "str",
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +2 to hit, reach 5 ft., one target. Hit: 3 (1d6) bludgeoning damage."
+    }
+  ],
+  "spellcasting": {
+    "ability": "wis",
+    "caster_level": 5,
+    "slots": {
+      "1": 4,
+      "2": 3,
+      "3": 2
+    },
+    "spells": [
+      "srd51.spell.light",
+      "srd51.spell.sacred_flame",
+      "srd51.spell.thaumaturgy",
+      "srd51.spell.cure_wounds",
+      "srd51.spell.guiding_bolt",
+      "srd51.spell.sanctuary",
+      "srd51.spell.lesser_restoration",
+      "srd51.spell.spiritual_weapon",
+      "srd51.spell.dispel_magic",
+      "srd51.spell.spirit_guardians"
+    ],
+    "dc": 13,
+    "attack_bonus": 5
+  }
+}

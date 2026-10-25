@@ -1,0 +1,174 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.merrow",
+  "name": "Merrow",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "monstrosity",
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 13,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 13,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 45,
+    "formula": "6d10+12"
+  },
+  "speed": {
+    "walk": 10,
+    "swim": 40
+  },
+  "abilities": {
+    "str": 18,
+    "dex": 10,
+    "con": 15,
+    "int": 8,
+    "wis": 10,
+    "cha": 9
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 10
+  },
+  "languages": [
+    "Abyssal",
+    "Aquan"
+  ],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "amphibious",
+      "name": "Amphibious",
+      "description": "The merrow can breathe air and water."
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The merrow makes two attacks: one with its bite and one with its claws or harpoon.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "bite_claws",
+            "attacks": [
+              "bite",
+              "claws"
+            ]
+          },
+          {
+            "id": "bite_harpoon",
+            "attacks": [
+              "bite",
+              "harpoon"
+            ]
+          },
+          {
+            "id": "bite_harpoon_thrown",
+            "attacks": [
+              "bite",
+              "harpoon_thrown"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d8",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+4",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one target. Hit: 8 (1d8 + 4) piercing damage."
+    },
+    {
+      "id": "claws",
+      "name": "Claws",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d4",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d4+4",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one target. Hit: 9 (2d4 + 4) slashing damage."
+    },
+    {
+      "id": "harpoon",
+      "name": "Harpoon",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+4",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee or Ranged Weapon Attack: +6 to hit, reach 5 ft. or range 20/60 ft., one target. Hit: 11 (2d6 + 4) piercing damage. If the target is a Huge or smaller creature, it must succeed on a Strength contest against the merrow or be pulled up to 20 feet toward the merrow. (The pull is descriptive only. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "harpoon_thrown",
+      "name": "Harpoon (thrown)",
+      "kind": "ranged_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "str"
+      },
+      "ability": "str",
+      "to_hit": 6,
+      "range": [
+        20,
+        60
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+4",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee or Ranged Weapon Attack: +6 to hit, reach 5 ft. or range 20/60 ft., one target. Hit: 11 (2d6 + 4) piercing damage. If the target is a Huge or smaller creature, it must succeed on a Strength contest against the merrow or be pulled up to 20 feet toward the merrow. (The pull is descriptive only. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ]
+}

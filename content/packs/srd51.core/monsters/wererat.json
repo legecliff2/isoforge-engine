@@ -1,0 +1,164 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.wererat",
+  "name": "Wererat",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "human",
+    "shapechanger"
+  ],
+  "alignment": "lawful evil",
+  "shapechanger": true,
+  "armor_class": {
+    "value": 12
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.shortsword",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.crossbow_hand"
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 33,
+    "formula": "6d8+6"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 10,
+    "dex": 15,
+    "con": 12,
+    "int": 11,
+    "wis": 10,
+    "cha": 8
+  },
+  "skills": {
+    "perception": 2,
+    "stealth": 4
+  },
+  "senses": {
+    "passive_perception": 12
+  },
+  "languages": [
+    "Common"
+  ],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "damage_immunities_nonmagical",
+      "name": "Damage Immunities",
+      "description": "Immune to bludgeoning, piercing, and slashing from nonmagical weapons that aren't silvered.",
+      "effect": {
+        "kind": "damage_mitigation",
+        "immunities": {
+          "nonmagical_not_silvered": [
+            "bludgeoning",
+            "piercing",
+            "slashing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "shapechanger",
+      "name": "Shapechanger",
+      "description": "The wererat can use its action to polymorph into a rat-humanoid hybrid or into a giant rat, or back into its true form, which is humanoid. Its statistics, other than its size, are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (Descriptive only: no shapechanger forms. The humanoid form is the authored stat block. Hybrid and rat, including the rat form's darkvision 60 ft., are not separate statistics. shapechanger: true is the Moonbeam fact. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "keen_smell",
+      "name": "Keen Smell",
+      "description": "The wererat has advantage on Wisdom (Perception) checks that rely on smell."
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The wererat makes two attacks, only one of which can be a bite. (Humanoid form, authored: two shortswords, two hand crossbows, or one shortsword and one hand crossbow. The bite is not one of those attacks. See docs/SRD_MONSTERS_DEFERRED.md.)",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "shortsword_x2",
+            "attacks": [
+              "shortsword",
+              "shortsword"
+            ]
+          },
+          {
+            "id": "hand_crossbow_x2",
+            "attacks": [
+              "hand_crossbow",
+              "hand_crossbow"
+            ]
+          },
+          {
+            "id": "shortsword_hand_crossbow",
+            "attacks": [
+              "shortsword",
+              "hand_crossbow"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "special",
+      "description": "Bite (Rat or Hybrid Form Only). Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 4 (1d4 + 2) piercing damage. If the target is a humanoid, it must succeed on a DC 11 Constitution saving throw or be cursed with wererat lycanthropy. (Descriptive only: not a weapon attack on the authored humanoid form. The lycanthropy curse is not encoded. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "shortsword",
+      "name": "Shortsword",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.shortsword",
+      "ability": "dex",
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 5 (1d6 + 2) piercing damage."
+    },
+    {
+      "id": "hand_crossbow",
+      "name": "Hand Crossbow",
+      "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.crossbow_hand",
+      "ability": "dex",
+      "to_hit": 4,
+      "range": [
+        30,
+        120
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+2",
+          "type": "piercing"
+        }
+      ],
+      "description": "Ranged Weapon Attack: +4 to hit, range 30/120 ft., one target. Hit: 5 (1d6 + 2) piercing damage."
+    }
+  ]
+}

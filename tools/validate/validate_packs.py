@@ -49,6 +49,10 @@ SKILL_ABILITY = {"athletics": "str", "acrobatics": "dex", "sleight_of_hand": "de
                  "religion": "int", "animal_handling": "wis", "insight": "wis", "medicine": "wis",
                  "perception": "wis", "survival": "wis", "deception": "cha", "intimidation": "cha",
                  "performance": "cha", "persuasion": "cha"}
+# SRD 5.1 / a6212be printed skill totals that are neither proficiency (mod + PB) nor expertise
+# (mod + 2*PB). Priest Religion +4: Int 13 is +1, so proficiency is +3 and expertise is +5.
+# The print is the authored total (packing lock). Medicine +7 and Persuasion +3 already match.
+PRINTED_SKILL_TOTALS = {("srd51.monster.priest", "religion"): 4}
 
 
 def modifier(score: int) -> int:
@@ -229,6 +233,8 @@ def check_stat_block(doc: dict, errs: list[str], pb_expected: int, rolled_hp: bo
             errs.append(f"saving_throws.{a} = {v}, expected {modifier(ab[a]) + pb} (mod + proficiency)")
     for s, v in sorted(doc.get("skills", {}).items()):
         base = modifier(ab[SKILL_ABILITY[s]])
+        if PRINTED_SKILL_TOTALS.get((doc.get("id"), s)) == v:
+            continue
         if v not in (base + pb, base + 2 * pb):
             errs.append(f"skills.{s} = {v}, expected {base + pb} (or {base + 2 * pb} with expertise)")
     perc = doc.get("skills", {}).get("perception", modifier(ab["wis"]))
