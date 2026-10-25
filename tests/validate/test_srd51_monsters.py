@@ -21,8 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 122 authored / 8 deferred): batch 3 and tier-A triage (5) + tier B still open (3: crocodile, lion, tiger). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row. Giant Goat, Giant Sea Horse and Warhorse left in CR 1/2 batch D. Lion and tiger stay deferred (bonus-bite gap, as panther's note). CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) is authored; Cockatrice petrify and Sahuagin Blood Frenzy stay partial on those rows, not new deferred monsters.
-DEFERRED: list[str] = ["doppelganger", "duergar", "green-hag", "mimic", "rust-monster", "crocodile", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 122 / 8
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 127 authored / 6 deferred): batch 3 and tier-A triage (4: duergar, mimic, doppelganger, green hag) + tier B still open (2: lion, tiger). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row. Giant Goat, Giant Sea Horse and Warhorse left in CR 1/2 batch D. CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) is authored; Cockatrice petrify and Sahuagin Blood Frenzy stay partial on those rows, not new deferred monsters. Crocodile and Rust Monster left in CR 1/2 batch F (explicit partials, not a silent re-defer). Lion and tiger stay deferred (bonus-bite gap, as panther's note).
+DEFERRED: list[str] = ["doppelganger", "duergar", "green-hag", "mimic", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 127 / 6
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -47,6 +47,8 @@ DEVIATIONS = {
     "panther": "One SRD 5.1 stat block. Leopard and Cougar are aliases of srd51.monster.panther, not separate documents.",
     "giant-wasp": "speed: a6212be lists walk 10 ft., fly 50 ft., and swim 50 ft. SRD 5.1 prints 10 ft., fly 50 ft. and no swim. Authored without swim (the SRD is authoritative, as riding-horse XP).",
     "swarm-of-insects": "type: as swarm-of-rats (beast + tag swarm). The base block is bites only (no poison). Variant insect swarms (beetle, centipede, spider, wasp) are an SRD sidebar and are not authored.",
+    "crocodile": "speed: a6212be lists walk 20 ft. and swim 20 ft. SRD 5.1 prints 20 ft., swim 30 ft. Authored as swim 30 (the SRD is authoritative, as giant-wasp).",
+    "deep-gnome": "xp: the table lists 50 XP; SRD 5.1 prints Challenge 1/2 (100 XP), and the SRD is authoritative (CR 1/2 = 100 XP, as riding-horse). One stat block: the a6212be index is deep-gnome-svirfneblin; Svirfneblin is an alias of srd51.monster.deep_gnome, not a separate document.",
 }
 # Mirror errors in hit points: monster -> (average, formula) as printed in the SRD 5.1 block (DEVIATIONS).
 HP_ERRATA = {"cult-fanatic": (33, "6d8+6")}
@@ -89,13 +91,19 @@ class MonsterTable(unittest.TestCase):
                     self.assertEqual(d["hit_points"], {"average": hp, "formula": roll})
                 else:
                     self.assertEqual(d["hit_points"], {"average": t["hp"], "formula": t["hp_roll"]})
-                self.assertEqual(d["challenge"]["xp"], 50 if idx == "riding-horse" else t["xp"])
+                if idx == "deep-gnome":
+                    self.assertEqual(t["xp"], 50)   # the pinned mirror value stays verbatim (DEVIATIONS)
+                self.assertEqual(d["challenge"]["xp"], 100 if idx == "deep-gnome" else 50 if idx == "riding-horse" else t["xp"])
                 rating = d["challenge"]["rating"]
                 self.assertEqual(CR[rating] if rating in CR else int(rating), t["cr"])
                 if idx == "giant-wasp":
                     # a6212be lists swim 50 ft.; SRD 5.1 prints walk 10 / fly 50 only (DEVIATIONS).
                     self.assertEqual(t["speed"], {"walk": "10 ft.", "fly": "50 ft.", "swim": "50 ft."})
                     self.assertEqual(d["speed"], {"walk": 10, "fly": 50})
+                elif idx == "crocodile":
+                    # a6212be lists swim 20 ft.; SRD 5.1 prints walk 20 / swim 30 (DEVIATIONS).
+                    self.assertEqual(t["speed"], {"walk": "20 ft.", "swim": "20 ft."})
+                    self.assertEqual(d["speed"], {"walk": 20, "swim": 30})
                 else:
                     speed = {k: num(v) for k, v in t["speed"].items()}
                     speed.setdefault("walk", 0)   # the table has no walk key for swim-only creatures (reef shark: swim 40 ft.)
@@ -409,7 +417,9 @@ class MonsterTable(unittest.TestCase):
                              ("wight", "longbow", "dex"), ("vampire-spawn", "bite", "str"), ("vampire-spawn", "claws", "str"),
                              ("death-dog", "bite", "str"),
                              ("constrictor-snake", "bite", "str"), ("constrictor-snake", "constrict", "str"),
-                             ("panther", "bite", "str"), ("panther", "claw", "str")):
+                             ("panther", "bite", "str"), ("panther", "claw", "str"),
+                             ("rust-monster", "bite", "str"),
+                             ("deep-gnome", "war_pick", "str"), ("deep-gnome", "poisoned_dart", "dex")):
             self.assertEqual(act(idx, aid).get("ability"), ab, (idx, aid))
         # Sunlight Sensitivity / Keen Hearing and Smell: descriptive (no light model, no perception checks in the sim)
         self.assertNotIn("effect", {t["id"]: t for t in load("kobold")["traits"]}["sunlight_sensitivity"])
@@ -593,6 +603,74 @@ class MonsterTable(unittest.TestCase):
         self.assertNotIn("on_hit", act("warhorse", "hooves"))
         self.assertEqual(act("warhorse", "hooves")["natural"], {"dice": "2d6", "ability": "str"})
 
+    def test_cr_half_batch_f(self):
+        # CR 1/2 batch F. Crocodile is the constrictor-snake grapple. Darkmantle attach and Darkness Aura stay text
+        # (no attach construct, no magical_darkness zone). Rust Metal / Antennae / Corrode Metal stay text: the
+        # manufactured_metal predicate is for when item degradation lands, and is not wired here.
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        self.assertNotIn("effect", trait("crocodile", "hold_breath"))
+        self.assertEqual(act("crocodile", "bite")["on_hit"],
+                         [{"kind": "grapple", "escape_dc": 12, "restrains": True, "exclusive": True}])
+        self.assertEqual(act("crocodile", "bite")["natural"], {"dice": "1d10", "ability": "str"})
+        self.assertEqual(load("darkmantle")["speed"], {"walk": 10, "fly": 30})
+        self.assertEqual(load("darkmantle")["senses"]["blindsight"], 60)
+        crush = act("darkmantle", "crush")
+        self.assertEqual(crush["natural"], {"dice": "1d6", "ability": "str"})
+        self.assertEqual(crush["damage"], [{"dice": "1d6+3", "type": "bludgeoning"}])
+        self.assertNotIn("on_hit", crush)
+        self.assertNotIn("effect", trait("darkmantle", "echolocation"))
+        self.assertNotIn("effect", trait("darkmantle", "false_appearance"))
+        aura = act("darkmantle", "darkness_aura")
+        self.assertEqual(aura["kind"], "special")
+        self.assertNotIn("effect", aura)
+        self.assertNotIn("usage", aura)
+        self.assertNotIn("area", aura)
+        self.assertEqual(set(aura), {"id", "name", "kind", "description"})
+        self.assertEqual(act("rust-monster", "bite")["natural"], {"dice": "1d8", "ability": "str"})
+        self.assertEqual(act("rust-monster", "bite")["ability"], "str")
+        self.assertEqual(act("rust-monster", "antennae")["kind"], "special")
+        self.assertNotIn("effect", act("rust-monster", "antennae"))
+        self.assertEqual(set(act("rust-monster", "antennae")), {"id", "name", "kind", "description"})
+        self.assertNotIn("effect", trait("rust-monster", "rust_metal"))
+        self.assertNotIn("effect", trait("rust-monster", "iron_scent"))
+        ooze = load("gray-ooze")
+        self.assertEqual(ooze["speed"], {"walk": 10, "climb": 10})
+        self.assertEqual(ooze["senses"]["blindsight"], 60)
+        self.assertEqual(ooze["condition_immunities"],
+                         ["blinded", "charmed", "deafened", "exhaustion", "frightened", "prone"])
+        self.assertEqual(ooze["damage_resistances"], ["acid", "cold", "fire"])
+        pod = act("gray-ooze", "pseudopod")
+        self.assertEqual(pod["natural"], {"dice": "1d6", "ability": "str"})
+        self.assertEqual(pod["damage"], [{"dice": "1d6+1", "type": "bludgeoning"}, {"dice": "2d6", "type": "acid"}])
+        self.assertNotIn("on_hit", pod)
+        self.assertNotIn("effect", trait("gray-ooze", "corrode_metal"))
+        self.assertNotIn("effect", trait("gray-ooze", "amorphous"))
+        self.assertNotIn("effect", trait("gray-ooze", "false_appearance"))
+        self.assertNotIn("engulf", {a["id"] for a in ooze["actions"]})
+        self.assertNotIn("transparent", {t["id"] for t in ooze["traits"]})
+        gnome = load("deep-gnome")
+        self.assertEqual(gnome["tags"], ["gnome"])
+        self.assertEqual(gnome["senses"]["darkvision"], 120)
+        self.assertEqual([e["item"] for e in gnome["equipment"]], ["srd51.item.chain_shirt", "srd51.item.war_pick"])
+        self.assertNotIn("spellcasting", gnome)
+        self.assertNotIn("effect", trait("deep-gnome", "stone_camouflage"))
+        self.assertNotIn("effect", trait("deep-gnome", "innate_spellcasting"))
+        self.assertEqual(trait("deep-gnome", "gnome_cunning")["effect"],
+                         {"kind": "save_advantage", "magical": True, "abilities": ["int", "wis", "cha"]})
+        self.assertEqual(act("deep-gnome", "war_pick")["weapon"], "srd51.item.war_pick")
+        dart = act("deep-gnome", "poisoned_dart")
+        self.assertEqual(dart["natural"], {"dice": "1d4", "ability": "dex"})
+        self.assertEqual(dart["range"], [30, 120])
+        self.assertNotIn("weapon", dart)
+        self.assertEqual(dart["on_hit"], [{"kind": "save_condition", "save": {"ability": "con", "dc": 12},
+                                           "apply": [{"condition": "poisoned", "duration": {"kind": "rounds", "n": 10},
+                                                      "repeat_save": "end_of_turn"}]}])
+
     def test_engulf_swallow_transparent(self):
         # Rules 7.2w (#189): Engulf (save_effect + contain engulf, Str DC 12 escape, Large or smaller), Transparent DC 15
         cube = load("gelatinous-cube")
@@ -620,6 +698,7 @@ class MonsterTable(unittest.TestCase):
 
     def test_authored_and_deferred_split(self):
         have = sorted(p.stem for p in (PACK / "monsters").glob("*.json"))
+        self.assertEqual((len(AUTHORED), len(DEFERRED)), (127, 6))
         self.assertEqual(have, sorted([i.replace("-", "_") for i in AUTHORED] + ["goblin"]))
         for idx in DEFERRED:
             self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
