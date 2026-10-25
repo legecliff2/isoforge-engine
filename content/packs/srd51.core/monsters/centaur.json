@@ -1,0 +1,163 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.centaur",
+  "name": "Centaur",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "monstrosity",
+  "alignment": "neutral good",
+  "armor_class": {
+    "value": 12
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.pike",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.longbow"
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 45,
+    "formula": "6d10+12"
+  },
+  "speed": {
+    "walk": 50
+  },
+  "abilities": {
+    "str": 18,
+    "dex": 14,
+    "con": 14,
+    "int": 9,
+    "wis": 13,
+    "cha": 11
+  },
+  "skills": {
+    "athletics": 6,
+    "perception": 3,
+    "survival": 3
+  },
+  "senses": {
+    "passive_perception": 13
+  },
+  "languages": [
+    "Elvish",
+    "Sylvan"
+  ],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "charge",
+      "name": "Charge",
+      "description": "If the centaur moves at least 30 ft. straight toward a target and then hits it with a pike attack on the same turn, the target takes an extra 10 (3d6) piercing damage."
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The centaur makes two attacks: one with its pike and one with its hooves or two with its longbow.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "pike_hooves",
+            "attacks": [
+              "pike",
+              "hooves"
+            ]
+          },
+          {
+            "id": "longbow_x2",
+            "attacks": [
+              "longbow",
+              "longbow"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "pike",
+      "name": "Pike",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.pike",
+      "use": "two_hands",
+      "to_hit": 6,
+      "reach": 10,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d10+4",
+          "type": "piercing"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "extra_damage",
+          "damage": [
+            {
+              "dice": "3d6",
+              "type": "piercing"
+            }
+          ],
+          "when": [
+            {
+              "kind": "moved_at_least_ft",
+              "ft": 30
+            }
+          ]
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 10 ft., one target. Hit: 9 (1d10 + 4) piercing damage."
+    },
+    {
+      "id": "hooves",
+      "name": "Hooves",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "str"
+      },
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+4",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one target. Hit: 11 (2d6 + 4) bludgeoning damage."
+    },
+    {
+      "id": "longbow",
+      "name": "Longbow",
+      "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.longbow",
+      "to_hit": 4,
+      "range": [
+        150,
+        600
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ],
+      "description": "Ranged Weapon Attack: +4 to hit, range 150/600 ft., one target. Hit: 6 (1d8 + 2) piercing damage."
+    }
+  ]
+}

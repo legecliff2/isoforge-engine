@@ -6722,6 +6722,328 @@
     }
    ]
   },
+  "centaur": {
+   "name": "Centaur",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    12
+   ],
+   "hp": 45,
+   "hp_roll": "6d10+12",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "50 ft."
+   },
+   "abilities": [
+    18,
+    14,
+    14,
+    9,
+    13,
+    11
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Pike",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "1d10+4",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Hooves",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Longbow",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d8+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "griffon": {
+   "name": "Griffon",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    12
+   ],
+   "hp": 59,
+   "hp_roll": "7d10+21",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "80 ft."
+   },
+   "abilities": [
+    18,
+    15,
+    16,
+    2,
+    13,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Beak",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "1d8+4",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "pegasus": {
+   "name": "Pegasus",
+   "size": "Large",
+   "type": "celestial",
+   "ac": [
+    12
+   ],
+   "hp": 59,
+   "hp_roll": "7d10+21",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "60 ft.",
+    "fly": "90 ft."
+   },
+   "abilities": [
+    18,
+    15,
+    16,
+    10,
+    15,
+    13
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Hooves",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "ankheg": {
+   "name": "Ankheg",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    14,
+    11
+   ],
+   "hp": 39,
+   "hp_roll": "6d10+6",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "30 ft.",
+    "burrow": "10 ft."
+   },
+   "abilities": [
+    17,
+    11,
+    13,
+    1,
+    13,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "slashing"
+       ],
+       [
+        "1d6",
+        "acid"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-constrictor-snake": {
+   "name": "Giant Constrictor Snake",
+   "size": "Huge",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 60,
+   "hp_roll": "8d12+8",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "30 ft."
+   },
+   "abilities": [
+    19,
+    14,
+    12,
+    1,
+    10,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d6+4",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Constrict",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d8+4",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "minotaur-skeleton": {
+   "name": "Minotaur Skeleton",
+   "size": "Large",
+   "type": "undead",
+   "ac": [
+    12
+   ],
+   "hp": 67,
+   "hp_roll": "9d10+18",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    18,
+    11,
+    15,
+    6,
+    8,
+    5
+   ],
+   "damage_vulnerabilities": [
+    "bludgeoning"
+   ],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "poison"
+   ],
+   "condition_immunities": [
+    "poisoned",
+    "exhaustion"
+   ],
+   "attacks": [
+    {
+     "name": "Greataxe",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d12+4",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Gore",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d8+4",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
   "polar-bear": {
    "name": "Polar Bear",
    "size": "Large",
