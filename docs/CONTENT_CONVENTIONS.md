@@ -863,7 +863,7 @@ Directory name: `^[a-z][a-z0-9_]*$`. Integers only. `golden.txt` must be non-emp
 - Printed SRD passives never include Keen Senses (wolf, hell hound: 10 + Perception exactly). The keen hook is deferred
   (SRD_COMBAT_COVERAGE); it will add situationally, never into the printed number.
 - SRD 5.1 data blocks whose printed passive differs from 10 + Perception (5e-database copy): black bear, blink dog,
-  half-red dragon veteran, spider, swarm of ravens. Blink dog ships without the reason until authored.
+  half-red dragon veteran, spider, swarm of ravens. Blink dog carries the reason (`srd_printed`, Perception +3, passive 10); the others are not authored.
 
 ## 26. Save-effect fail-by margin, success immunity, must see (monster@5, Tier-A)
 

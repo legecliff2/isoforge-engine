@@ -174,6 +174,13 @@
         }
       ],
       "ability": "str",
+      "on_hit": [
+        {
+          "kind": "grapple",
+          "escape_dc": 13,
+          "instead_of_damage": true
+        }
+      ],
       "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one creature. Hit: 8 (2d4 + 3) slashing damage. Instead of dealing damage, the vampire can grapple the target (escape DC 13)."
     }
   ]
