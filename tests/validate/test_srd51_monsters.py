@@ -21,8 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 99 authored / 14 deferred): batch 3 and tier-A triage (5) + tier B batch d1 (9). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G).
-DEFERRED: list[str] = ["doppelganger", "duergar", "green-hag", "mimic", "rust-monster", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 99 / 14
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 103 authored / 13 deferred): batch 3 and tier-A triage (5) + tier B batch d1 (8). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Giant Frog left once the giant toad Swallow pattern was packed (Rules #189; Swallow-as-bite-with-damage still partial).
+DEFERRED: list[str] = ["doppelganger", "duergar", "green-hag", "mimic", "rust-monster", "constrictor-snake", "crocodile", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 103 / 13
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -148,6 +148,7 @@ class MonsterTable(unittest.TestCase):
             return {o["id"]: o["attacks"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "multiattack"
                     for o in t["effect"]["options"]}
         self.assertEqual(opts("black-bear"), {"bite_claws": ["bite", "claws"]})
+        self.assertEqual(opts("giant-badger"), {"bite_claws": ["bite", "claws"]})
         self.assertEqual(opts("gargoyle"), {"bite_claws": ["bite", "claws"]})
         self.assertEqual(opts("animated-armor"), {"slam_slam": ["slam", "slam"]})
         self.assertEqual(opts("scout"), {"melee": ["shortsword"] * 2, "ranged": ["longbow"] * 2})
@@ -274,6 +275,17 @@ class MonsterTable(unittest.TestCase):
             self.assertNotIn("effect", {t["id"]: t for t in load(idx)["traits"]}["brave"])
         self.assertNotIn("effect", {t["id"]: t for t in load("owl")["traits"]}["flyby"])
         self.assertNotIn("effect", {t["id"]: t for t in load("flying-snake")["traits"]}["flyby"])
+        self.assertNotIn("effect", {t["id"]: t for t in load("giant-owl")["traits"]}["flyby"])
+        self.assertNotIn("effect", {t["id"]: t for t in load("giant-owl")["traits"]}["keen_hearing_and_sight"])
+        self.assertEqual(load("giant-owl")["skills"], {"perception": 5, "stealth": 4})
+        self.assertEqual(load("giant-owl")["languages"],
+                         ["Giant Owl", "understands Common, Elvish, and Sylvan but can't speak"])
+        self.assertNotIn("effect", {t["id"]: t for t in load("giant-bat")["traits"]}["echolocation"])
+        self.assertNotIn("effect", {t["id"]: t for t in load("giant-bat")["traits"]}["keen_hearing"])
+        self.assertEqual(load("giant-bat")["actions"][0]["natural"]["ability"], "str")
+        self.assertNotIn("effect", {t["id"]: t for t in load("giant-badger")["traits"]}["keen_smell"])
+        self.assertNotIn("effect", {t["id"]: t for t in load("giant-frog")["traits"]}["amphibious"])
+        self.assertNotIn("effect", {t["id"]: t for t in load("giant-frog")["traits"]}["standing_leap"])
         # Flying Snake: automatic poison is a second damage component, not a save (SRD: no save)
         fsb = load("flying-snake")["actions"][0]
         self.assertEqual(fsb["damage"], [{"flat": 1, "type": "piercing"}, {"dice": "3d4", "type": "poison"}])
@@ -366,6 +378,13 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual((sw["kind"], sw["attack"], sw["to_hit"], sw["range_ft"]), ("attack_effect", "melee", 4, 5))
         self.assertEqual(sw["apply"], [{"condition": "restrained", "max_size": "medium",
                                         "contain": {"kind": "swallow", "damage": {"dice": "3d6", "type": "acid"}}}])
+        # Giant Frog: the toad pattern (Rules #189), Small or smaller, 5 (2d4) acid, bite grapple DC 11
+        frog = {a["id"]: a for a in load("giant-frog")["actions"]}
+        self.assertEqual(frog["bite"]["on_hit"], [{"kind": "grapple", "escape_dc": 11, "restrains": True, "exclusive": True}])
+        fr = frog["swallow"]
+        self.assertEqual((fr["kind"], fr["attack"], fr["to_hit"], fr["range_ft"]), ("attack_effect", "melee", 3, 5))
+        self.assertEqual(fr["apply"], [{"condition": "restrained", "max_size": "small",
+                                        "contain": {"kind": "swallow", "damage": {"dice": "2d4", "type": "acid"}}}])
 
     def test_authored_and_deferred_split(self):
         have = sorted(p.stem for p in (PACK / "monsters").glob("*.json"))

@@ -4753,6 +4753,186 @@
      ]
     }
    ]
+  },
+  "giant-badger": {
+   "name": "Giant Badger",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 13,
+   "hp_roll": "2d8+4",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "30 ft.",
+    "burrow": "10 ft."
+   },
+   "abilities": [
+    13,
+    10,
+    15,
+    2,
+    12,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claws",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "2d4+1",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-bat": {
+   "name": "Giant Bat",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    13
+   ],
+   "hp": 22,
+   "hp_roll": "4d10",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "10 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    15,
+    16,
+    11,
+    2,
+    12,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-frog": {
+   "name": "Giant Frog",
+   "size": "Medium",
+   "type": "beast",
+   "ac": [
+    11
+   ],
+   "hp": 18,
+   "hp_roll": "4d8",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "30 ft."
+   },
+   "abilities": [
+    12,
+    13,
+    11,
+    2,
+    10,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "1d6+1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "giant-owl": {
+   "name": "Giant Owl",
+   "size": "Large",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 19,
+   "hp_roll": "3d10+3",
+   "cr": 0.25,
+   "xp": 50,
+   "speed": {
+    "walk": "5 ft.",
+    "fly": "60 ft."
+   },
+   "abilities": [
+    13,
+    15,
+    12,
+    8,
+    13,
+    10
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Talons",
+     "attack_bonus": 3,
+     "damage_options": [
+      [
+       [
+        "2d6+1",
+        "slashing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
