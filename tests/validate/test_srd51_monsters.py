@@ -21,9 +21,10 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 79 authored / 12 deferred): tier B batch d1
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 81 authored / 20 deferred): tier B batch d1 (11)
 # + batch 2: gladiator (thrown-spear damage + Shield Bash rider). Rat, scorpion authored (flat damage).
-DEFERRED: list[str] = ["gladiator", "quipper", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]
+# + batch 3: blink dog, death dog, mummy, rust monster, shadow, vampire spawn, violet fungus, wight.
+DEFERRED: list[str] = ["blink-dog", "death-dog", "gladiator", "mummy", "rust-monster", "shadow", "vampire-spawn", "violet-fungus", "wight", "quipper", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -34,6 +35,7 @@ DEVIATIONS = {
     "gargoyle": "damage_resistances stays empty: the qualified resistance lives in the damage_mitigation trait effect.",
     "riding-horse": "xp: the table lists 25 XP; SRD 5.1 prints Challenge 1/4 (50 XP), and the SRD is authoritative (CR 1/4 = 50 XP).",
     "shrieker": "condition_immunities: the table lists blinded twice and omits deafened; the SRD line is blinded, deafened, frightened.",
+    "ghast": "Bite to_hit: the SRD prints +3 (the table agrees); the derivation gives +5 (Dex 17 +3, PB +2). Carried as an approved attack_bonus override of +3 (printed value wins).",
     "mule": "Hooves to_hit: the SRD prints +2 (the table agrees); the derivation gives +4 (Str 14 +2, PB +2). Carried as an approved attack_bonus override of +2 (printed value wins).",
     "swarm-of-rats": "type: the table says 'swarm of Tiny beasts', not in the creature_type enum; convention is beast + tag swarm (T&C-G15, sim #172).",
 }
@@ -262,6 +264,13 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual(sting["damage"], [{"flat": 1, "type": "piercing"}])
         self.assertEqual(sting["on_hit"], [{"kind": "save_condition", "save": {"ability": "con", "dc": 9},
                                             "damage": [{"dice": "1d8", "type": "poison"}], "on_success": "half"}])
+        # Batch 3: ghast claws paralysis (undead exempt, no elf clause), approved bite override; Stench / Turn Defiance / Magic Resistance text only
+        gh = {a["id"]: a for a in load("ghast")["actions"]}
+        self.assertEqual(gh["bite"]["attack_bonus"]["value"], 3)
+        self.assertEqual(gh["claws"]["on_hit"][0]["when"], [{"kind": "not_creature_type", "creature_types": ["undead"]}])
+        self.assertEqual(gh["claws"]["on_hit"][0]["apply"][0]["condition"], "paralyzed")
+        for idx, tid in (("ghast", "stench"), ("ghast", "turn_defiance"), ("satyr", "magic_resistance")):
+            self.assertNotIn("effect", {t["id"]: t for t in load(idx)["traits"]}[tid])
         # Sunlight Sensitivity / Keen Hearing and Smell: descriptive (no light model, no perception checks in the sim)
         self.assertNotIn("effect", {t["id"]: t for t in load("kobold")["traits"]}["sunlight_sensitivity"])
 
