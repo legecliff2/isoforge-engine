@@ -101,6 +101,7 @@
       "kind": "melee_weapon_attack",
       "weapon": "srd51.item.longsword",
       "to_hit": 3,
+      "ability": "str",
       "reach": 5,
       "targets": 1,
       "damage": [
@@ -118,6 +119,7 @@
       "weapon": "srd51.item.longsword",
       "use": "two_hands",
       "to_hit": 3,
+      "ability": "str",
       "reach": 5,
       "targets": 1,
       "damage": [
@@ -134,6 +136,7 @@
       "kind": "ranged_weapon_attack",
       "weapon": "srd51.item.longbow",
       "to_hit": 3,
+      "ability": "dex",
       "range": [
         150,
         600

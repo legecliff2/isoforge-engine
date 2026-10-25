@@ -21,10 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 82 authored / 19 deferred): tier B batch d1 (11)
-# + batch 2: none (gladiator authored: riders, CONTENT_CONVENTIONS 21; acolyte authored with spellcasting). Rat, scorpion authored (flat damage).
-# + batch 3: blink dog, death dog, mummy, rust monster, shadow, vampire spawn, violet fungus, wight.
-DEFERRED: list[str] = ["blink-dog", "death-dog", "mummy", "rust-monster", "shadow", "vampire-spawn", "violet-fungus", "wight", "quipper", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 87 authored / 18 deferred): batch 2, 3, 3b and tier-A triage (9) + tier B batch d1 (11).
+DEFERRED: list[str] = ["blink-dog", "doppelganger", "duergar", "green-hag", "mimic", "mummy", "rust-monster", "quipper", "giant-crab", "constrictor-snake", "crocodile", "giant-frog", "elk", "giant-goat", "giant-sea-horse", "warhorse", "lion", "tiger"]   # docs/SRD_MONSTERS_DEFERRED.md: 82 / 23
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -34,6 +32,10 @@ DEVIATIONS = {
     "black-bear": "skills: the table omits Perception +3 although passive Perception is 13 (SRD block); the validator requires 10 + skill.",
     "gargoyle": "damage_resistances stays empty: the qualified resistance lives in the damage_mitigation trait effect.",
     "riding-horse": "xp: the table lists 25 XP; SRD 5.1 prints Challenge 1/4 (50 XP), and the SRD is authoritative (CR 1/4 = 50 XP).",
+    "wight": "damage_resistances lists necrotic only: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (as gargoyle).",
+    "vampire-spawn": "damage_resistances lists necrotic only: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (as gargoyle).",
+    "shadow": "damage_resistances lists the five plain types: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (as gargoyle).",
+    "violet-fungus": "condition_immunities: the table lists blinded twice and omits deafened; the SRD line is blinded, deafened, frightened (as shrieker). Rotting Touch to_hit: the SRD prints +2 (the table agrees); the derivation gives -2 (Str 3 -4, PB +2). Carried as an approved attack_bonus override of +2 (printed value wins).",
     "shrieker": "condition_immunities: the table lists blinded twice and omits deafened; the SRD line is blinded, deafened, frightened.",
     "ghast": "Bite to_hit: the SRD prints +3 (the table agrees); the derivation gives +5 (Dex 17 +3, PB +2). Carried as an approved attack_bonus override of +3 (printed value wins).",
     "gladiator": "Spear (thrown) damage: the SRD prints one line for both uses, 11 (2d6 + 4); the derivation gives a thrown use no Brute die (1d6 + 4). Carried as an approved damage_override of 2d6+4 (CONTENT_CONVENTIONS 21; printed value wins).",
@@ -42,6 +44,8 @@ DEVIATIONS = {
 }
 # Mirror errors in hit points: monster -> (average, formula) as printed in the SRD 5.1 block (DEVIATIONS).
 HP_ERRATA = {"cult-fanatic": (33, "6d8+6")}
+
+QUALIFIED_RESISTANCES = ("gargoyle", "wight", "vampire-spawn", "shadow")
 
 
 def load(idx):
@@ -88,9 +92,11 @@ class MonsterTable(unittest.TestCase):
                 self.assertEqual([d["abilities"][k] for k in ("str", "dex", "con", "int", "wis", "cha")], t["abilities"])
                 self.assertEqual(d.get("damage_vulnerabilities", []), t["damage_vulnerabilities"])
                 self.assertEqual(d.get("damage_immunities", []), t["damage_immunities"])
-                if idx != "gargoyle":
+                if idx in QUALIFIED_RESISTANCES:   # the qualified "nonmagical weapons" entry is a damage_mitigation trait (DEVIATIONS)
+                    self.assertEqual(d.get("damage_resistances", []), [r for r in t["damage_resistances"] if "nonmagical" not in r])
+                else:
                     self.assertEqual(d.get("damage_resistances", []), t["damage_resistances"])
-                if idx == "shrieker":
+                if idx in ("shrieker", "violet-fungus"):
                     self.assertEqual(d["condition_immunities"], ["blinded", "deafened", "frightened"])
                 else:
                     self.assertEqual(d.get("condition_immunities", []), t["condition_immunities"])
@@ -152,6 +158,13 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual(opts("knight"), {"greatsword_x2": ["greatsword"] * 2})
         self.assertEqual(len(opts("gladiator")), 5)   # three melee attacks (any mix of spear and shield bash) or two thrown spears
         self.assertEqual(opts("gladiator")["ranged"], ["spear_thrown"] * 2)
+        # Batch 3b: Life Drain in place of one longsword; only one bite; 1d4 touches (count_dice); two bites
+        self.assertEqual(opts("wight"), {"longsword_x2": ["longsword"] * 2, "longsword_two_handed_x2": ["longsword_two_handed"] * 2,
+                                         "longbow_x2": ["longbow"] * 2, "life_drain_longsword": ["life_drain", "longsword"],
+                                         "life_drain_longsword_two_handed": ["life_drain", "longsword_two_handed"]})
+        self.assertEqual(opts("vampire-spawn"), {"claws_x2": ["claws"] * 2, "claws_bite": ["claws", "bite"], "bite_claws": ["bite", "claws"]})
+        self.assertEqual(opts("violet-fungus"), {"rotting_touch_1d4": ["rotting_touch"]})
+        self.assertEqual(opts("death-dog"), {"bite_x2": ["bite"] * 2})
         lf = opts("lizardfolk")
         self.assertEqual(len(lf), 6)   # every unordered pair of the four melee weapons ("each one with a different weapon")
         self.assertTrue(all(len(set(v)) == 2 for v in lf.values()))
@@ -278,8 +291,39 @@ class MonsterTable(unittest.TestCase):
         self.assertEqual(gh["bite"]["attack_bonus"]["value"], 3)
         self.assertEqual(gh["claws"]["on_hit"][0]["when"], [{"kind": "not_creature_type", "creature_types": ["undead"]}])
         self.assertEqual(gh["claws"]["on_hit"][0]["apply"][0]["condition"], "paralyzed")
-        for idx, tid in (("ghast", "stench"), ("ghast", "turn_defiance"), ("satyr", "magic_resistance")):
+        self.assertEqual({t["id"]: t for t in load("ghast")["traits"]}["stench"]["effect"], {"kind": "aura", "radius_ft": 5, "on": "start_turn", "save": {"ability": "con", "dc": 10},
+                         "condition": "poisoned", "duration": "until_start_of_next_turn", "success_immunity_hours": 24})
+        for idx, tid in (("ghast", "turn_defiance"),):
             self.assertNotIn("effect", {t["id"]: t for t in load(idx)["traits"]}[tid])
+        # Batch 3b riders (feat/monster-batch3-riders, feat/monster-strength-drain)
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+        self.assertEqual(trait("satyr", "magic_resistance")["effect"], {"kind": "save_advantage", "magical": True})
+        self.assertEqual(trait("death-dog", "two_headed")["effect"], {"kind": "save_advantage", "save_vs_conditions":
+                         ["blinded", "charmed", "deafened", "frightened", "stunned", "unconscious"]})
+        self.assertEqual(act("death-dog", "bite")["on_hit"], [{"kind": "save_condition", "save": {"ability": "con", "dc": 12},
+                         "apply": [{"condition": "poisoned", "duration": {"kind": "until_cured"}}]}])
+        self.assertEqual(act("wight", "life_drain")["drain"], {"max_hp": True, "save": {"ability": "con", "dc": 13}})
+        vb = act("vampire-spawn", "bite")
+        self.assertEqual(vb["drain"], {"max_hp": True, "damage_type": "necrotic", "heal_self": True})
+        self.assertEqual(vb["target_requires_any"], ["willing", "grappled_by_self", "incapacitated", "restrained"])
+        self.assertNotIn("on_hit", act("vampire-spawn", "claws"))   # "Instead of dealing damage ... grapple": no instead-of-damage shape
+        self.assertEqual(act("shadow", "strength_drain")["ability_drain"], {"ability": "str", "dice": "1d4"})
+        self.assertEqual(act("violet-fungus", "rotting_touch")["attack_bonus"]["value"], 2)
+        for idx, tid in (("wight", "sunlight_sensitivity"), ("vampire-spawn", "regeneration"), ("vampire-spawn", "vampire_weaknesses"),
+                         ("shadow", "shadow_stealth"), ("shadow", "sunlight_weakness")):
+            self.assertNotIn("effect", trait(idx, tid))
+        # CONTENT_CONVENTIONS 23: Str/Dex ties carry an explicit ability (thrown uses Str; a non-finesse longbow uses Dex)
+        for idx, aid, ab in (("black-dragon-wyrmling", "bite", "str"), ("bugbear", "morningstar", "str"), ("bugbear", "javelin", "str"),
+                             ("bugbear", "javelin_thrown", "str"), ("commoner", "club", "str"), ("guard", "spear", "str"),
+                             ("guard", "spear_two_handed", "str"), ("guard", "spear_thrown", "str"), ("hobgoblin", "longsword", "str"),
+                             ("hobgoblin", "longsword_two_handed", "str"), ("hobgoblin", "longbow", "dex"),
+                             ("wight", "life_drain", "str"), ("wight", "longsword", "str"), ("wight", "longsword_two_handed", "str"),
+                             ("wight", "longbow", "dex"), ("vampire-spawn", "bite", "str"), ("vampire-spawn", "claws", "str"),
+                             ("death-dog", "bite", "str")):
+            self.assertEqual(act(idx, aid).get("ability"), ab, (idx, aid))
         # Sunlight Sensitivity / Keen Hearing and Smell: descriptive (no light model, no perception checks in the sim)
         self.assertNotIn("effect", {t["id"]: t for t in load("kobold")["traits"]}["sunlight_sensitivity"])
 
