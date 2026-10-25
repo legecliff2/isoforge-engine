@@ -1,0 +1,73 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.pegasus",
+  "name": "Pegasus",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "celestial",
+  "alignment": "chaotic good",
+  "armor_class": {
+    "value": 12
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 59,
+    "formula": "7d10+21"
+  },
+  "speed": {
+    "walk": 60,
+    "fly": 90
+  },
+  "abilities": {
+    "str": 18,
+    "dex": 15,
+    "con": 16,
+    "int": 10,
+    "wis": 15,
+    "cha": 13
+  },
+  "saving_throws": {
+    "dex": 4,
+    "wis": 4,
+    "cha": 3
+  },
+  "skills": {
+    "perception": 6
+  },
+  "senses": {
+    "passive_perception": 16
+  },
+  "languages": [
+    "understands Celestial, Common, Elvish, and Sylvan but can't speak"
+  ],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "actions": [
+    {
+      "id": "hooves",
+      "name": "Hooves",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "str"
+      },
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+4",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one target. Hit: 11 (2d6 + 4) bludgeoning damage."
+    }
+  ]
+}
