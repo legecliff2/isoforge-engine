@@ -7536,6 +7536,280 @@
      ]
     }
    ]
+  },
+  "grick": {
+   "name": "Grick",
+   "size": "Medium",
+   "type": "monstrosity",
+   "ac": [
+    14
+   ],
+   "hp": 27,
+   "hp_roll": "6d8",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "30 ft.",
+    "climb": "30 ft."
+   },
+   "abilities": [
+    14,
+    14,
+    11,
+    3,
+    14,
+    5
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Tentacles",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d6+2",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Beak",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "swarm-of-poisonous-snakes": {
+   "name": "Swarm of Poisonous Snakes",
+   "size": "Medium",
+   "type": "swarm of Tiny beasts",
+   "ac": [
+    14
+   ],
+   "hp": 36,
+   "hp_roll": "8d8",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "30 ft.",
+    "swim": "30 ft."
+   },
+   "abilities": [
+    8,
+    18,
+    11,
+    1,
+    10,
+    3
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+   ],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+   ],
+   "attacks": [
+    {
+     "name": "Bites",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d6",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "gibbering-mouther": {
+   "name": "Gibbering Mouther",
+   "size": "Medium",
+   "type": "aberration",
+   "ac": [
+    9
+   ],
+   "hp": 67,
+   "hp_roll": "9d8+27",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "10 ft.",
+    "swim": "10 ft."
+   },
+   "abilities": [
+    10,
+    8,
+    16,
+    3,
+    10,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [
+    "prone"
+   ],
+   "attacks": [
+    {
+     "name": "Bites",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "5d6",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "will-o-wisp": {
+   "name": "Will-o'-Wisp",
+   "size": "Tiny",
+   "type": "undead",
+   "ac": [
+    19
+   ],
+   "hp": 22,
+   "hp_roll": "9d4",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "0 ft.",
+    "fly": "50 ft.",
+    "hover": true
+   },
+   "abilities": [
+    1,
+    28,
+    10,
+    13,
+    14,
+    11
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "acid",
+    "cold",
+    "fire",
+    "necrotic",
+    "thunder",
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "damage_immunities": [
+    "lightning",
+    "poison"
+   ],
+   "condition_immunities": [
+    "exhaustion",
+    "grappled",
+    "paralyzed",
+    "poisoned",
+    "prone",
+    "restrained",
+    "unconscious"
+   ],
+   "attacks": [
+    {
+     "name": "Shock",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d8",
+        "lightning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "ochre-jelly": {
+   "name": "Ochre Jelly",
+   "size": "Large",
+   "type": "ooze",
+   "ac": [
+    8
+   ],
+   "hp": 45,
+   "hp_roll": "6d10+12",
+   "cr": 2,
+   "xp": 450,
+   "speed": {
+    "walk": "10 ft.",
+    "climb": "10 ft."
+   },
+   "abilities": [
+    15,
+    6,
+    14,
+    2,
+    6,
+    1
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "acid"
+   ],
+   "damage_immunities": [
+    "lightning",
+    "slashing"
+   ],
+   "condition_immunities": [
+    "blinded",
+    "charmed",
+    "blinded",
+    "exhaustion",
+    "frightened",
+    "prone"
+   ],
+   "attacks": [
+    {
+     "name": "Pseudopod",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "2d6+2",
+        "bludgeoning"
+       ],
+       [
+        "1d6",
+        "acid"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }

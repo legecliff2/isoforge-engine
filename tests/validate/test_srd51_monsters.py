@@ -21,8 +21,8 @@ TABLE = json.loads((Path(__file__).parent / "data/srd51_monsters_5e_database_a62
 CR = {"0": 0, "1/8": 0.125, "1/4": 0.25, "1/2": 0.5}
 # Authored in this batch (monster@4, converted to monster@5 with derive: true). The goblin stays monster@3 (not part of this batch).
 AUTHORED = sorted(TABLE)
-# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 154 authored / 4 deferred): batch 3 and tier-A triage (3: mimic, doppelganger, green hag). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row. Giant Goat, Giant Sea Horse and Warhorse left in CR 1/2 batch D. CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) is authored; Cockatrice petrify and Sahuagin Blood Frenzy stay partial on those rows, not new deferred monsters. Crocodile and Rust Monster left in CR 1/2 batch F (explicit partials, not a silent re-defer). Lion and tiger left in CR 1 batch G (explicit partials, same bonus-bite gap as panther, not a silent re-defer). Giant eagle, giant vulture and hippogriff are authored in that batch; none of them has Flyby on the SRD block. Duergar left in CR 1 batch H (Enlarge, Invisibility, and Duergar Resilience stay partials on the authored monster). CR 2 batch I authored polar bear, giant boar, giant elk, rhinoceros, saber-toothed tiger and hunter shark; polar bear is complete, and the other five stay partials on the authored rows (straight-toward, elk hooves, tiger bonus bite, quipper Blood Frenzy). CR 2 batch J authored centaur, griffon, pegasus, ankheg, giant constrictor snake and minotaur skeleton; Centaur Charge is pike on_hit only (not a melee on_event). Minotaur Skeleton's 10-foot push stays description only. CR 2 batch K authored druid, priest, merrow and wererat (druid's four missing spells stay in the trait text only; priest Divine Eminence is text only and Religion +4 is the printed total; merrow Pull is text only; wererat is the humanoid form, with shapechange, bite and the curse as text). Sea hag is a new deferral. Mimic stays deferred.
-DEFERRED: list[str] = ["doppelganger", "green-hag", "mimic", "sea-hag"]   # docs/SRD_MONSTERS_DEFERRED.md: 154 / 4
+# Deferred (docs/SRD_MONSTERS_DEFERRED.md "Deferred", 159 authored / 4 deferred): batch 3 and tier-A triage (3: mimic, doppelganger, green hag). Quipper left the deferred list (Blood Frenzy description-only, swim-only walk 0). Giant Crab left once max_grapples landed (Druid gap G). Constrictor Snake and Elk left in CR 0.25 batch B. Giant Frog left in batch A (Swallow pattern); it stays authored and is not restored from batch B's stale deferred row. Giant Goat, Giant Sea Horse and Warhorse left in CR 1/2 batch D. CR 1/2 batch E (ice mephit, dust mephit, magma mephit, cockatrice, sahuagin) is authored; Cockatrice petrify and Sahuagin Blood Frenzy stay partial on those rows, not new deferred monsters. Crocodile and Rust Monster left in CR 1/2 batch F (explicit partials, not a silent re-defer). Lion and tiger left in CR 1 batch G (explicit partials, same bonus-bite gap as panther, not a silent re-defer). Giant eagle, giant vulture and hippogriff are authored in that batch; none of them has Flyby on the SRD block. Duergar left in CR 1 batch H (Enlarge, Invisibility, and Duergar Resilience stay partials on the authored monster). CR 2 batch I authored polar bear, giant boar, giant elk, rhinoceros, saber-toothed tiger and hunter shark; polar bear is complete, and the other five stay partials on the authored rows (straight-toward, elk hooves, tiger bonus bite, quipper Blood Frenzy). CR 2 batch J authored centaur, griffon, pegasus, ankheg, giant constrictor snake and minotaur skeleton; Centaur Charge is pike on_hit only (not a melee on_event). Minotaur Skeleton's 10-foot push stays description only. CR 2 batch K authored druid, priest, merrow and wererat (druid's four missing spells stay in the trait text only; priest Divine Eminence is text only and Religion +4 is the printed total; merrow Pull is text only; wererat is the humanoid form, with shapechange, bite and the curse as text). Sea hag is a new deferral. Mimic stays deferred. CR 2 batch L authored grick, swarm of poisonous snakes, gibbering mouther, will-o'-wisp and ochre jelly. Grick's beak-if-tentacles-hit gate stays in the Multiattack description. Gibbering Mouther Blinding Spittle is a point-origin sphere save_effect (recharge 5-6). Will-o'-wisp Consume Life, Ephemeral, Incorporeal Movement, Variable Illumination and Invisibility stay description only on the authored monster. Ochre Jelly Split stays a description-only trait. Sea hag, mimic, doppelganger and green hag stay deferred.
+DEFERRED: list[str] = ["doppelganger", "green-hag", "mimic", "sea-hag"]   # docs/SRD_MONSTERS_DEFERRED.md: 159 / 4
 # Authored attacks with no table damage option: the table copies one damage line per attack, the SRD text has a second.
 EXTRA_ATTACKS = {("bugbear", "javelin_thrown"): "SRD: 5 (1d6 + 2) piercing damage at range; the table lists only the melee 2d6 + 2."}
 # Documented deviations: monster -> why the content differs from the raw table.
@@ -55,11 +55,14 @@ DEVIATIONS = {
     "saber-toothed-tiger": "Bite and Claw damage: the SRD prints +5 (1d10 + 5 / 2d6 + 5); Str 18 derives +4. Carried as an approved damage_override (CONTENT_CONVENTIONS 21; printed value wins). To-hit +6 derives (Str +4 and PB +2) and needs no attack_bonus.",
     "wererat": "damage_immunities stays empty: the qualified 'nonmagical weapons that aren't silvered' entry lives in the damage_mitigation trait effect (immunities.nonmagical_not_silvered, CONTENT_EFFECTS werewolf example; as gargoyle, but an immunity). The pin is the humanoid form (a6212be wererat-human); bite is not a weapon attack on that form.",
     "priest": "skills.religion is the SRD print +4. Int 13 (+1) with PB 2 is proficiency +3 or expertise +5; neither matches. validate_packs.PRINTED_SKILL_TOTALS allowlists this one printed total. Medicine +7 is expertise and Persuasion +3 is proficiency.",
+    "grick": "damage_resistances stays empty: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (as specter).",
+    "will-o-wisp": "damage_resistances lists the five plain types: the qualified 'nonmagical weapons' entry lives in the damage_mitigation trait effect (as specter). speed.hover is the printed fly hover flag. Shock to_hit: the SRD prints +4 (the table agrees); Dex 28 + PB 2 = +11. Carried as an approved attack_bonus override of +4 (printed value wins).",
+    "ochre-jelly": "condition_immunities: the table lists blinded twice and omits deafened; the SRD line is blinded, charmed, deafened, exhaustion, frightened, prone (as gray ooze / gelatinous cube; same mirror shape as shrieker).",
 }
 # Mirror errors in hit points: monster -> (average, formula) as printed in the SRD 5.1 block (DEVIATIONS).
 HP_ERRATA = {"cult-fanatic": (33, "6d8+6")}
 
-QUALIFIED_RESISTANCES = ("gargoyle", "wight", "vampire-spawn", "shadow", "mummy", "specter")
+QUALIFIED_RESISTANCES = ("gargoyle", "wight", "vampire-spawn", "shadow", "mummy", "specter", "grick", "will-o-wisp")
 QUALIFIED_IMMUNITIES = ("wererat",)
 
 
@@ -85,7 +88,7 @@ class MonsterTable(unittest.TestCase):
                 self.assertEqual(d["id"], "srd51.monster." + idx.replace("-", "_"))
                 self.assertEqual(d["name"], t["name"])
                 self.assertEqual(d["size"], t["size"].lower())
-                if idx in ("swarm-of-rats", "swarm-of-bats", "swarm-of-ravens", "swarm-of-insects", "swarm-of-quippers"):
+                if idx in ("swarm-of-rats", "swarm-of-bats", "swarm-of-ravens", "swarm-of-insects", "swarm-of-quippers", "swarm-of-poisonous-snakes"):
                     self.assertEqual((d["type"], d["tags"]), ("beast", ["swarm"]))
                 else:
                     self.assertEqual(d["type"], t["type"])
@@ -129,6 +132,9 @@ class MonsterTable(unittest.TestCase):
                     self.assertEqual(d.get("damage_resistances", []), t["damage_resistances"])
                 if idx in ("shrieker", "violet-fungus"):
                     self.assertEqual(d["condition_immunities"], ["blinded", "deafened", "frightened"])
+                elif idx == "ochre-jelly":
+                    self.assertEqual(t["condition_immunities"], ["blinded", "charmed", "blinded", "exhaustion", "frightened", "prone"])
+                    self.assertEqual(d["condition_immunities"], ["blinded", "charmed", "deafened", "exhaustion", "frightened", "prone"])
                 else:
                     self.assertEqual(d.get("condition_immunities", []), t["condition_immunities"])
                 self.assertEqual(d["proficiency_bonus"], 2 if t["cr"] <= 4 else 3)   # SRD: CR 0-4 +2, CR 5-8 +3 (medusa, CR 6)
@@ -1221,9 +1227,129 @@ class MonsterTable(unittest.TestCase):
         self.assertFalse((PACK / "monsters" / "sea_hag.json").exists())
         self.assertFalse((PACK / "monsters" / "mimic.json").exists())
 
+    def test_cr2_batch_l(self):
+        # CR 2 batch L. Grick's multiattack is unconditional; the hit-gate stays text. Swarm poison
+        # rides the same Bites as half_hp_damage. Blinding Spittle is a point sphere, recharge 5.
+        # Will-o'-wisp's other actions stay text. Ochre Jelly Split is a trait, not a spawn.
+        # Sea hag, mimic, doppelganger and green hag stay deferred.
+
+        def trait(idx, tid):
+            return {t["id"]: t for t in load(idx)["traits"]}[tid]
+
+        def act(idx, aid):
+            return {a["id"]: a for a in load(idx)["actions"]}[aid]
+
+        def opts(idx):
+            return {o["id"]: o["attacks"] for t in load(idx)["traits"] if t.get("effect", {}).get("kind") == "multiattack"
+                    for o in t["effect"]["options"]}
+
+        grick = load("grick")
+        self.assertEqual(grick["natural_armor"], {"base": 12, "dex": True})
+        self.assertEqual(grick["speed"], {"walk": 30, "climb": 30})
+        self.assertNotIn("damage_resistances", grick)
+        self.assertEqual(trait("grick", "damage_resistances_nonmagical")["effect"], {
+            "kind": "damage_mitigation",
+            "resistances": {"nonmagical": ["bludgeoning", "piercing", "slashing"]},
+        })
+        self.assertNotIn("effect", trait("grick", "stone_camouflage"))
+        self.assertEqual(opts("grick"), {"tentacles_beak": ["tentacles", "beak"]})
+        self.assertIn("if that attack hits", trait("grick", "multiattack")["description"])
+        self.assertNotIn("when", json.dumps(trait("grick", "multiattack")["effect"]))
+        self.assertEqual(act("grick", "tentacles")["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual(act("grick", "beak")["natural"], {"dice": "1d6", "ability": "str"})
+        self.assertEqual((act("grick", "beak")["to_hit"], act("grick", "beak")["damage"]),
+                         (4, [{"dice": "1d6+2", "type": "piercing"}]))
+
+        snakes = load("swarm-of-poisonous-snakes")
+        self.assertEqual((snakes["type"], snakes["tags"]), ("beast", ["swarm"]))
+        self.assertEqual(snakes["speed"], {"walk": 30, "swim": 30})
+        self.assertEqual(snakes["damage_resistances"], ["bludgeoning", "piercing", "slashing"])
+        self.assertEqual(len(snakes["condition_immunities"]), 8)
+        bites = act("swarm-of-poisonous-snakes", "bites")
+        self.assertEqual(bites["natural"], {"dice": "2d6", "ability": "dex", "damage_ability": "none"})
+        self.assertEqual(bites["reach"], 0)
+        self.assertEqual(bites["half_hp_damage"], "1d6")
+        self.assertEqual(bites["on_hit"], [{
+            "kind": "save_condition",
+            "save": {"ability": "con", "dc": 10},
+            "damage": [{"dice": "4d6", "type": "poison"}],
+            "on_success": "half",
+        }])
+        self.assertNotIn("zero_hp", bites["on_hit"][0])
+
+        mouther = load("gibbering-mouther")
+        self.assertEqual((mouther["type"], mouther["armor_class"]), ("aberration", {"value": 9}))
+        self.assertEqual(mouther["speed"], {"walk": 10, "swim": 10})
+        self.assertEqual(mouther["condition_immunities"], ["prone"])
+        self.assertNotIn("effect", trait("gibbering-mouther", "aberrant_ground"))
+        self.assertNotIn("effect", trait("gibbering-mouther", "gibbering"))
+        self.assertNotIn("effect", trait("gibbering-mouther", "multiattack"))
+        self.assertIn("Blinding Spittle", trait("gibbering-mouther", "multiattack")["description"])
+        mb = act("gibbering-mouther", "bites")
+        self.assertEqual(mb["natural"], {"dice": "5d6", "ability": "str"})
+        self.assertEqual(mb["on_hit"][0]["apply"], [{"condition": "prone", "max_size": "medium"}])
+        self.assertIn("absorbed", mb["description"])
+        spit = act("gibbering-mouther", "blinding_spittle")
+        self.assertEqual(spit["kind"], "save_effect")
+        self.assertEqual(spit["origin"], "point")
+        self.assertEqual(spit["range_ft"], 15)
+        self.assertEqual(spit["area"], {"shape": "sphere", "size_ft": 5})
+        self.assertEqual(spit["save"], {"ability": "dex", "dc": 13})
+        self.assertEqual(spit["apply"], [{
+            "condition": "blinded",
+            "duration": {"kind": "until_end_of_caster_next_turn"},
+        }])
+        self.assertEqual(spit["usage"], {"kind": "recharge", "min": 5})
+        self.assertNotIn("cone", json.dumps(spit["area"]))
+
+        wisp = load("will-o-wisp")
+        self.assertEqual(wisp["speed"], {"walk": 0, "fly": 50, "hover": True})
+        self.assertEqual(wisp["armor_class"], {"value": 19})
+        self.assertEqual(wisp["damage_resistances"], ["acid", "cold", "fire", "necrotic", "thunder"])
+        self.assertEqual(wisp["damage_immunities"], ["lightning", "poison"])
+        self.assertEqual(trait("will-o-wisp", "damage_resistances_nonmagical")["effect"], {
+            "kind": "damage_mitigation",
+            "resistances": {"nonmagical": ["bludgeoning", "piercing", "slashing"]},
+        })
+        for tid in ("consume_life", "ephemeral", "incorporeal_movement", "variable_illumination"):
+            self.assertNotIn("effect", trait("will-o-wisp", tid))
+        self.assertNotIn("bonus_actions", wisp)
+        self.assertNotIn("emits_light", wisp)
+        shock = act("will-o-wisp", "shock")
+        self.assertEqual(shock["kind"], "melee_weapon_attack")
+        self.assertEqual(shock["natural"], {"dice": "2d8", "ability": "dex", "damage_ability": "none"})
+        self.assertEqual(shock["attack_bonus"]["value"], 4)
+        self.assertEqual((shock["to_hit"], shock["damage"]), (4, [{"dice": "2d8", "type": "lightning"}]))
+        self.assertIn("Melee Spell Attack", shock["description"])
+        self.assertEqual(act("will-o-wisp", "invisibility")["kind"], "special")
+        self.assertNotIn("effect", act("will-o-wisp", "invisibility"))
+
+        jelly = load("ochre-jelly")
+        self.assertEqual((jelly["size"], jelly["type"]), ("large", "ooze"))
+        self.assertEqual(jelly["damage_resistances"], ["acid"])
+        self.assertEqual(jelly["damage_immunities"], ["lightning", "slashing"])
+        self.assertEqual(jelly["condition_immunities"],
+                         ["blinded", "charmed", "deafened", "exhaustion", "frightened", "prone"])
+        self.assertEqual(jelly["senses"]["blindsight"], 60)
+        self.assertNotIn("effect", trait("ochre-jelly", "amorphous"))
+        self.assertNotIn("effect", trait("ochre-jelly", "spider_climb"))
+        self.assertNotIn("effect", trait("ochre-jelly", "split"))
+        self.assertIn("no creature-spawn", trait("ochre-jelly", "split")["description"])
+        self.assertNotIn("reactions", jelly)
+        pod = act("ochre-jelly", "pseudopod")
+        self.assertEqual(pod["natural"], {"dice": "2d6", "ability": "str"})
+        self.assertEqual(pod["damage"], [
+            {"dice": "2d6+2", "type": "bludgeoning"},
+            {"dice": "1d6", "type": "acid"},
+        ])
+        self.assertFalse((PACK / "monsters" / "sea_hag.json").exists())
+        self.assertFalse((PACK / "monsters" / "mimic.json").exists())
+        self.assertFalse((PACK / "monsters" / "doppelganger.json").exists())
+        self.assertFalse((PACK / "monsters" / "green_hag.json").exists())
+
     def test_authored_and_deferred_split(self):
         have = sorted(p.stem for p in (PACK / "monsters").glob("*.json"))
-        self.assertEqual((len(AUTHORED), len(DEFERRED)), (154, 4))
+        self.assertEqual((len(AUTHORED), len(DEFERRED)), (159, 4))
         self.assertEqual(have, sorted([i.replace("-", "_") for i in AUTHORED] + ["goblin"]))
         for idx in DEFERRED:
             self.assertFalse((PACK / "monsters" / f"{idx.replace('-', '_')}.json").exists(), idx)
