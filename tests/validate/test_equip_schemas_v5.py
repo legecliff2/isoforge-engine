@@ -421,8 +421,9 @@ class DeriveCheck(unittest.TestCase):
                 self.assertIs(d["derive"], True, f.name)
                 for a in d["actions"]:
                     if a["kind"] in ("melee_weapon_attack", "ranged_weapon_attack"):
-                        self.assertTrue("weapon" in a or "natural" in a, f"{f.name}: {a['id']}")
-        self.assertEqual(n, 75)   # 33 converted (PR B) + 9 bestiary v0.1 batch 1 + 11 tier B batch d1 + 10 batch D2 + 3 flat-damage batch d3 + 9 batch 2
+                        flat = all("flat" in c for c in a["damage"][:1])   # CONTENT_CONVENTIONS 19: no die to derive from
+                        self.assertTrue("weapon" in a or "natural" in a or flat, f"{f.name}: {a['id']}")
+        self.assertEqual(n, 77)   # 33 converted (PR B) + 9 bestiary v0.1 batch 1 + 11 tier B batch d1 + 10 batch D2 + 3 flat-damage batch d3 + 9 batch 2 + rat, scorpion (flat)
         self.assertEqual(core("monsters/goblin.json")["$schema"], "monster@3")   # fl1 compat: left at @3
 
     def test_valid_conversions(self):

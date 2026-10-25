@@ -3594,6 +3594,88 @@
     "frightened"
    ],
    "attacks": []
+  },
+  "scorpion": {
+   "name": "Scorpion",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    11
+   ],
+   "hp": 1,
+   "hp_roll": "1d4-1",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "10 ft."
+   },
+   "abilities": [
+    2,
+    11,
+    8,
+    1,
+    8,
+    2
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Sting",
+     "attack_bonus": 2,
+     "damage_options": [
+      [
+       [
+        "1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "rat": {
+   "name": "Rat",
+   "size": "Tiny",
+   "type": "beast",
+   "ac": [
+    10
+   ],
+   "hp": 1,
+   "hp_roll": "1d4-1",
+   "cr": 0,
+   "xp": 10,
+   "speed": {
+    "walk": "20 ft."
+   },
+   "abilities": [
+    2,
+    11,
+    9,
+    2,
+    10,
+    4
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 0,
+     "damage_options": [
+      [
+       [
+        "1",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
