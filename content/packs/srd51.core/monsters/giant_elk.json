@@ -1,0 +1,134 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.giant_elk",
+  "name": "Giant Elk",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "huge",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 14,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 11,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 42,
+    "formula": "5d12+10"
+  },
+  "speed": {
+    "walk": 60
+  },
+  "abilities": {
+    "str": 19,
+    "dex": 16,
+    "con": 14,
+    "int": 7,
+    "wis": 14,
+    "cha": 10
+  },
+  "skills": {
+    "perception": 4
+  },
+  "senses": {
+    "passive_perception": 14
+  },
+  "languages": [
+    "Giant Elk",
+    "understands Common, Elvish, and Sylvan but can't speak"
+  ],
+  "challenge": {
+    "rating": "2",
+    "xp": 450
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "charge",
+      "name": "Charge",
+      "description": "If the elk moves at least 20 ft. straight toward a target and then hits it with a ram attack on the same turn, the target takes an extra 7 (2d6) damage. If the target is a creature, it must succeed on a DC 14 Strength saving throw or be knocked prone."
+    }
+  ],
+  "actions": [
+    {
+      "id": "ram",
+      "name": "Ram",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "str"
+      },
+      "to_hit": 6,
+      "reach": 10,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+4",
+          "type": "bludgeoning"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "extra_damage",
+          "damage": [
+            {
+              "dice": "2d6",
+              "type": "bludgeoning"
+            }
+          ],
+          "when": [
+            {
+              "kind": "moved_at_least_ft",
+              "ft": 20
+            }
+          ]
+        },
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "str",
+            "dc": 14
+          },
+          "apply": [
+            {
+              "condition": "prone"
+            }
+          ],
+          "when": [
+            {
+              "kind": "moved_at_least_ft",
+              "ft": 20
+            }
+          ]
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 10 ft., one target. Hit: 11 (2d6 + 4) bludgeoning damage."
+    },
+    {
+      "id": "hooves",
+      "name": "Hooves",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "4d8",
+        "ability": "str"
+      },
+      "to_hit": 6,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "4d8+4",
+          "type": "bludgeoning"
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 5 ft., one prone creature. Hit: 22 (4d8 + 4) bludgeoning damage."
+    }
+  ]
+}
