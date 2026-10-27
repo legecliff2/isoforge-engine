@@ -1,0 +1,130 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.giant_scorpion",
+  "name": "Giant Scorpion",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "beast",
+  "alignment": "unaligned",
+  "armor_class": {
+    "value": 15,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 14,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 52,
+    "formula": "7d10+14"
+  },
+  "speed": {
+    "walk": 40
+  },
+  "abilities": {
+    "str": 15,
+    "dex": 13,
+    "con": 15,
+    "int": 1,
+    "wis": 9,
+    "cha": 3
+  },
+  "senses": {
+    "blindsight": 60,
+    "passive_perception": 9
+  },
+  "languages": [],
+  "challenge": {
+    "rating": "3",
+    "xp": 700
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The scorpion makes three attacks: two with its claws and one with its sting.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "claws_sting",
+            "attacks": [
+              "claw",
+              "claw",
+              "sting"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "claw",
+      "name": "Claw",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d8",
+        "ability": "str"
+      },
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "bludgeoning"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "grapple",
+          "escape_dc": 12,
+          "max_grapples": 2
+        }
+      ],
+      "description": "Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 6 (1d8 + 2) bludgeoning damage, and the target is grappled (escape DC 12). The scorpion has two claws, each of which can grapple only one target."
+    },
+    {
+      "id": "sting",
+      "name": "Sting",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d10",
+        "ability": "str"
+      },
+      "to_hit": 4,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d10+2",
+          "type": "piercing"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "con",
+            "dc": 12
+          },
+          "damage": [
+            {
+              "dice": "4d10",
+              "type": "poison"
+            }
+          ],
+          "on_success": "half"
+        }
+      ],
+      "description": "Melee Weapon Attack: +4 to hit, reach 5 ft., one creature. Hit: 7 (1d10 + 2) piercing damage, and the target must make a DC 12 Constitution saving throw, taking 22 (4d10) poison damage on a failed save, or half as much damage on a successful one."
+    }
+  ]
+}
