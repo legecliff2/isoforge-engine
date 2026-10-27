@@ -1,0 +1,21 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.fly",
+  "name": "Fly",
+  "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
+  "description": "A willing creature you touch gains a fly speed of 60 feet for 10 minutes, concentration. Willing is the caster's team, including the caster. An unwilling creature is refused. The grant replaces an earlier fly speed from this spell; ending it drops a creature that is still aloft.",
+  "level": 3,
+  "school": "transmutation",
+  "classes": ["sorcerer", "warlock", "wizard"],
+  "casting_time": { "kind": "action" },
+  "range": { "kind": "touch" },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": { "text": "a wing feather from any bird" }
+  },
+  "duration": { "kind": "minutes", "amount": 10, "concentration": true },
+  "targets": { "count": 1 },
+  "effects": [{ "kind": "grant_fly", "fly_ft": 60 }],
+  "scaling": { "upcast": { "targets": 1 } }
+}

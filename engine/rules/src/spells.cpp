@@ -68,6 +68,10 @@ SpellDef effect_view(const SpellDef& base, const SpellEffect& e) {
     v.object_vulnerable = e.object_vulnerable; v.object_immune = e.object_immune;
     v.hit_only = e.hit_only;   // 7.2zi: a rider does not inherit the primary attack's hit_only
     v.dash_on_cast = e.dash_on_cast;   // 7.2zi: a rider does not inherit the primary effect's cast-turn Dash
+    v.hostile_save_advantage = false; v.ends_on_ally_harm = false; v.suppress_conditions = 0;   // 7.2zj: primary only
+    v.has_also_damage = false; v.also_dice = {}; v.also_damage_type = DamageType::Cold; v.difficult_until = 0;
+    v.fly_ft = 0; v.restore_options.clear(); v.ends_on_restoration = false;
+    v.charm_immune = false; v.caster_sees_target = false; v.requires_hearing = false;
     v.cantrip_scales = false; v.cantrip_adds_beams = false;
     v.upcast_beams = 0; v.upcast_dice = e.upcast_dice; v.upcast_darts = 0; v.upcast_targets = 0;   // upcast_dice: delayed_damage only
     return v;

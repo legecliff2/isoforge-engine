@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://isoforge.dev/schemas/spell/v1.schema.json",
   "title": "spell@1",
-  "description": "SRD 5.1 spell. Rules-facing data: rules5e_content maps it to rules5e::SpellDef (engine/rules/content). 'effects' is an array of one or more effects (reaction kinds stand alone; hp_pool, dispel, revive, end_condition, sustained_damage, weapon_smite and stabilize are first-effect only; descriptive allows no key but kind and must be the spell's only effect; a zone is the first effect only; extra effects resolve in order over the same targets and may use applies_to: affected). Cross-field rules are in tools/validate (check_spell) and mirrored by the loader. Integers only (§4.3).",
+  "description": "SRD 5.1 spell. Rules-facing data: rules5e_content maps it to rules5e::SpellDef (engine/rules/content). 'effects' is an array of one or more effects (reaction kinds stand alone; hp_pool, dispel, revive, end_condition, sustained_damage, weapon_smite, stabilize, grant_fly and restore are first-effect only; descriptive allows no key but kind and must be the spell's only effect; a zone is the first effect only; extra effects resolve in order over the same targets and may use applies_to: affected). Cross-field rules are in tools/validate (check_spell) and mirrored by the loader. Integers only (§4.3).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -567,7 +567,9 @@
             "temp_hp",
             "weapon_smite",
             "stabilize",
-            "descriptive"
+            "descriptive",
+            "grant_fly",
+            "restore"
           ]
         }
       },
@@ -666,6 +668,11 @@
                 "required": [
                   "control"
                 ]
+              },
+              {
+                "required": [
+                  "suppress_conditions"
+                ]
               }
             ],
             "dependentRequired": {
@@ -686,6 +693,15 @@
               ],
               "destroy_undead_max_cr8": [
                 "control"
+              ],
+              "also_damage": [
+                "damage"
+              ],
+              "charm_immune": [
+                "condition"
+              ],
+              "ends_on_restoration": [
+                "condition"
               ]
             },
             "properties": {
@@ -781,6 +797,59 @@
                   ]
                 },
                 "description": "VERSION_BUMP_BATCH 7.2zg (Hypnotic Pattern): ends_on on a save effect that applies a condition; same vocabulary and rules as apply_condition ends_on."
+              },
+              "hostile_save_advantage": {
+                "const": true,
+                "description": "VERSION_BUMP_BATCH 7.2zj (Charm Person): an opposite-team target saves at advantage."
+              },
+              "ends_on_ally_harm": {
+                "const": true,
+                "description": "VERSION_BUMP_BATCH 7.2zj: the effect ends when a creature of the caster's team deals the target damage."
+              },
+              "suppress_conditions": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "charmed",
+                    "frightened"
+                  ]
+                },
+                "description": "VERSION_BUMP_BATCH 7.2zj (Calm Emotions): a failed save suppresses these conditions for the spell. Not together with condition."
+              },
+              "also_damage": {
+                "$ref": "#/$defs/damage",
+                "description": "VERSION_BUMP_BATCH 7.2zj (Ice Storm): a second damage packet on the same save. Not scaled by upcast dice. Needs damage."
+              },
+              "difficult_terrain": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "until"
+                ],
+                "properties": {
+                  "until": {
+                    "const": "until_end_of_caster_next_turn"
+                  }
+                },
+                "description": "VERSION_BUMP_BATCH 7.2zj (Ice Storm): the spell's area is difficult terrain until the end of the caster's next turn. Needs an area."
+              },
+              "charm_immune": {
+                "const": true,
+                "description": "VERSION_BUMP_BATCH 7.2zj (Suggestion): a creature immune to charmed is unaffected and makes no save. Needs condition charmed."
+              },
+              "ends_on_restoration": {
+                "const": true,
+                "description": "VERSION_BUMP_BATCH 7.2zj (Geas): Greater Restoration ends the effect whichever option was chosen. Needs condition charmed."
+              },
+              "caster_sees_target": {
+                "const": true,
+                "description": "VERSION_BUMP_BATCH 7.2zj: with a sight hook, the caster must see the target."
+              },
+              "requires_hearing": {
+                "const": true,
+                "description": "VERSION_BUMP_BATCH 7.2zj (Suggestion): a deafened creature is unaffected."
               }
             },
             "allOf": [
@@ -903,6 +972,83 @@
               }
             ],
             "description": "Text-only (CONTENT_CONVENTIONS section 28). The oneOf arm allows only kind: the object is exactly {kind: descriptive}. It must be the spell's only effect (loader and tools/validate: descriptive effect must be the spell's only effect). Any other key is descriptive effect: unknown key. No spell@1 bump (CONTENT_COMPAT.md §1)."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "grant_fly"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "fly_ft"
+            ],
+            "properties": {
+              "kind": {
+                "const": "grant_fly"
+              },
+              "fly_ft": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 255,
+                "multipleOf": 5,
+                "description": "VERSION_BUMP_BATCH 7.2zj (Fly): fly speed in feet."
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "description": "VERSION_BUMP_BATCH 7.2zj (Fly): first effect only. A willing creature (the caster's team, including the caster) gains fly_ft. Needs concentration or a rounds, minutes or hours duration."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "restore"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "options"
+            ],
+            "properties": {
+              "kind": {
+                "const": "restore"
+              },
+              "options": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "exhaustion",
+                    "charmed",
+                    "petrified",
+                    "ability_str",
+                    "ability_dex",
+                    "ability_con",
+                    "ability_int",
+                    "ability_wis",
+                    "ability_cha",
+                    "hit_point_maximum"
+                  ]
+                },
+                "description": "VERSION_BUMP_BATCH 7.2zj (Greater Restoration): ActionRequest::condition_choice is 1 + index."
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "description": "VERSION_BUMP_BATCH 7.2zj (Greater Restoration): first effect only. One option per cast. Touch. Instantaneous."
           }
         },
         {

@@ -1,0 +1,28 @@
+{
+  "$schema": "spell@1",
+  "id": "srd51.spell.cone_of_cold",
+  "name": "Cone of Cold",
+  "source": { "ref": "SRD 5.1", "license": "CC-BY-4.0" },
+  "description": "A 60-foot cone. Each creature makes a Constitution save, taking 8d8 cold damage on a failure or half on a success. At Higher Levels: +1d8 per slot level above 5th. A creature killed by this spell becoming a frozen statue is deferred.",
+  "level": 5,
+  "school": "evocation",
+  "classes": ["sorcerer", "wizard"],
+  "casting_time": { "kind": "action" },
+  "range": { "kind": "self" },
+  "components": {
+    "v": true,
+    "s": true,
+    "m": { "text": "a small crystal or glass cone" }
+  },
+  "duration": { "kind": "instantaneous" },
+  "area": { "shape": "cone", "size_ft": 60 },
+  "effects": [
+    {
+      "kind": "save",
+      "ability": "con",
+      "damage": { "dice": "8d8", "type": "cold" },
+      "on_success": "half"
+    }
+  ],
+  "scaling": { "upcast": { "dice": 1 } }
+}
