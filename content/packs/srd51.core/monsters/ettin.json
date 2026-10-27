@@ -1,0 +1,133 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.ettin",
+  "name": "Ettin",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "large",
+  "type": "giant",
+  "alignment": "chaotic evil",
+  "armor_class": {
+    "value": 12,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 13,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 85,
+    "formula": "10d10+30"
+  },
+  "speed": {
+    "walk": 40
+  },
+  "abilities": {
+    "str": 21,
+    "dex": 8,
+    "con": 17,
+    "int": 6,
+    "wis": 10,
+    "cha": 8
+  },
+  "skills": {
+    "perception": 4
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 14
+  },
+  "languages": [
+    "Giant",
+    "Orc"
+  ],
+  "challenge": {
+    "rating": "4",
+    "xp": 1100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "two_heads",
+      "name": "Two Heads",
+      "description": "The ettin has advantage on Wisdom (Perception) checks and on saving throws against being blinded, charmed, deafened, frightened, stunned, and knocked unconscious.",
+      "effect": {
+        "kind": "save_advantage",
+        "save_vs_conditions": [
+          "blinded",
+          "charmed",
+          "deafened",
+          "frightened",
+          "stunned",
+          "unconscious"
+        ]
+      }
+    },
+    {
+      "id": "wakeful",
+      "name": "Wakeful",
+      "description": "When one of the ettin's heads is asleep, its other head is awake."
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "The ettin makes two attacks: one with its battleaxe and one with its morningstar.",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "battleaxe_morningstar",
+            "attacks": [
+              "battleaxe",
+              "morningstar"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "battleaxe",
+      "name": "Battleaxe",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d8",
+        "ability": "str"
+      },
+      "to_hit": 7,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d8+5",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +7 to hit, reach 5 ft., one target. Hit: 14 (2d8 + 5) slashing damage."
+    },
+    {
+      "id": "morningstar",
+      "name": "Morningstar",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d8",
+        "ability": "str"
+      },
+      "to_hit": 7,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d8+5",
+          "type": "piercing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +7 to hit, reach 5 ft., one target. Hit: 14 (2d8 + 5) piercing damage."
+    }
+  ]
+}

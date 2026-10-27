@@ -8164,6 +8164,169 @@
     }
    ]
   },
+  "black-pudding": {
+   "name": "Black Pudding",
+   "size": "Large",
+   "type": "ooze",
+   "ac": [
+    7
+   ],
+   "hp": 85,
+   "hp_roll": "10d10+30",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "20 ft.",
+    "climb": "20 ft."
+   },
+   "abilities": [
+    16,
+    5,
+    16,
+    1,
+    6,
+    1
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "acid",
+    "cold",
+    "lightning",
+    "slashing"
+   ],
+   "condition_immunities": [
+    "blinded",
+    "charmed",
+    "exhaustion",
+    "frightened",
+    "prone"
+   ],
+   "attacks": [
+    {
+     "name": "Pseudopod",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "bludgeoning"
+       ],
+       [
+        "4d8",
+        "acid"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "elephant": {
+   "name": "Elephant",
+   "size": "Huge",
+   "type": "beast",
+   "ac": [
+    12
+   ],
+   "hp": 76,
+   "hp_roll": "8d12+24",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    22,
+    9,
+    17,
+    3,
+    11,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Gore",
+     "attack_bonus": 8,
+     "damage_options": [
+      [
+       [
+        "3d8+6",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Stomp",
+     "attack_bonus": 8,
+     "damage_options": [
+      [
+       [
+        "3d10+6",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "ettin": {
+   "name": "Ettin",
+   "size": "Large",
+   "type": "giant",
+   "ac": [
+    12
+   ],
+   "hp": 85,
+   "hp_roll": "10d10+30",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "40 ft."
+   },
+   "abilities": [
+    21,
+    8,
+    17,
+    6,
+    10,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Battleaxe",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d8+5",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Morningstar",
+     "attack_bonus": 7,
+     "damage_options": [
+      [
+       [
+        "2d8+5",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
   "wereboar": {
    "name": "Wereboar",
    "size": "Medium",
