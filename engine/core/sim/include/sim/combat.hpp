@@ -491,6 +491,8 @@ private:
     bool space_free(CombatantId id, Vec2i t) const;
     struct LedgeAdj { uint16_t fell_ft = 0; bool set_alt = false; int16_t alt_ft = 0; };
     LedgeAdj ledge_adjust(CombatantId id, Vec2i from, Vec2i to) const;
+    // alt_ft > 0, not airborne: in contact with a non-walkable climbable surface (no walkable tile in the footprint).
+    bool on_climb_wall(Vec2i anchor, int fp) const;
     void note_ledge(CombatantId id, Vec2i from, Vec2i to, rules5e::ForcedMoveResult& res);
     SubmitResult finish(rules5e::StepResult sr);
     SubmitResult do_rules(rules5e::ActionRequest req, Vec2i to, bool aim = false);

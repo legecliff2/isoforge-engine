@@ -34,6 +34,7 @@ ContentLibrary lib() {
     REQUIRE_FALSE(l.add(goblin("flyer", Json::parse(R"({"walk":30,"fly":60})")), "monster"));
     REQUIRE_FALSE(l.add(goblin("swimmer", Json::parse(R"({"walk":30,"swim":30})")), "monster"));
     REQUIRE_FALSE(l.add(goblin("burrower", Json::parse(R"({"walk":30,"burrow":20})")), "monster"));
+    REQUIRE_FALSE(l.add(goblin("climber", Json::parse(R"({"walk":30,"climb":30})")), "monster"));
     REQUIRE_FALSE(l.add(goblin("foe", Json::parse(R"({"walk":30})")), "monster"));
     return l;
 }
@@ -160,7 +161,8 @@ struct Shove {
             Command x;
             x.request = {shover, rules5e::ActionKind::Attack, target};
             x.request.special = 3;
-            REQUIRE(c->submit(x).ok);
+            const SubmitResult r = c->submit(x);
+            REQUIRE_MESSAGE(r.ok, r.error);
             c->settle(nullptr);
             if (c->pos(target) == Vec2i{6, 4}) return at;
             end_current(*c);
@@ -353,4 +355,29 @@ TEST_CASE("forced move off a ledge: a spell push drops a walker and holds a flye
     CHECK(f.fell == 0);
     CHECK(f.falls == 0);
     CHECK(f.forced == 1);
+}
+
+TEST_CASE("forced move off a ledge: a climber falls the absolute drop, or lands within 5 ft") {
+    Shove fell("climber", 0, 0);
+    REQUIRE(fell.c->set_altitude(fell.shover, 20, kAltForced));   // same height, so the shove is within reach
+    REQUIRE(fell.c->set_altitude(fell.target, 20, kAltForced));
+    const std::size_t at = fell.push();
+    CHECK(rules5e::find(fell.c->state(), fell.target)->alt_ft == 0);
+    CHECK(rules5e::find(fell.c->state(), fell.target)->has(rules5e::Condition::Prone));
+    REQUIRE_FALSE(fell.c->falls().empty());
+    CHECK(fell.c->falls().back().fell_ft == 20);
+    CHECK(cause_events(*fell.c, kAltFall, at) == 1);
+    CHECK(cause_events(*fell.c, kAltForced, at) == 0);
+
+    Shove land("climber", 0, 4);   // dest ground is the climber's absolute height
+    REQUIRE(land.c->set_altitude(land.shover, 20, kAltForced));
+    REQUIRE(land.c->set_altitude(land.target, 20, kAltForced));
+    const std::size_t al = land.push();
+    CHECK(land.c->pos(land.target) == Vec2i{6, 4});
+    CHECK(rules5e::find(land.c->state(), land.target)->alt_ft == 0);
+    CHECK_FALSE(rules5e::find(land.c->state(), land.target)->has(rules5e::Condition::Prone));
+    CHECK(land.c->abs_height_ft(land.target) == 20);
+    CHECK(land.c->falls().empty());
+    CHECK(cause_events(*land.c, kAltFall, al) == 0);
+    CHECK(cause_events(*land.c, kAltForced, al) == 1);
 }

@@ -1790,6 +1790,8 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
         int target = cur + alt_to;
         uint8_t mode = 0;
         int mult = 1;
+        // A climb down stops at the ground, the way a swim descent stops at the water's bottom. Flyers are not clamped.
+        if (cur > 0 && target < 0 && grid_.climbable(from) && !(caps.fly && !prone)) target = 0;
         if (target > 0 || (target >= 0 && cur > 0)) {   // in the air (or on a wall): flight, else climbing terrain
             if (caps.fly && !prone) mode = 1;
             else if (grid_.climbable(from)) { mode = caps.climb ? 3 : 0; mult = caps.climb ? 1 : 2; }
@@ -2487,31 +2489,62 @@ std::vector<Vec2i> Combat::path_for(CombatantId id, Vec2i from, const std::vecto
     if (burrowed(id)) return grid_.path(from, goals, occupied_except(id, abs_height_ft(id)), footprint, caps, kPathBurrowed);
     return grid_.path(from, goals, occupied_except(id), footprint, caps);
 }
+bool Combat::on_climb_wall(Vec2i anchor, int fp) const {
+    bool wall = false, floor = false;
+    for (int dy = 0; dy < std::max(fp, 1); ++dy)
+        for (int dx = 0; dx < std::max(fp, 1); ++dx) {
+            const Vec2i t{anchor.x + dx, anchor.y + dy};
+            if (grid_.walkable(t)) floor = true;
+            else if (grid_.climbable(t)) wall = true;
+        }
+    return wall && !floor;
+}
 void Combat::step_altitude(const rules5e::ActionRequest& q, int from_ground_ft, int from_abs_ft, bool was_airborne) {
     const auto* c = rules5e::find(state_, q.actor);
     if (!c) return;
     if (q.alt_to != 0) { set_altitude(q.actor, int16_t(c->alt_ft + q.alt_to), kAltMove); return; }
+    const int alt0 = c->alt_ft;
+    // A fall: alt_ft ends at 0 on the new ground. The event is emitted even when alt was already 0 (a walker).
+    // Then the SRD falling damage (rules5e::fall: 1d6 per 10 ft, max 20d6, lands prone).
+    auto land = [&](int drop) {
+        falls_.push_back({q.actor, drop});
+        if (!set_altitude(q.actor, 0, kAltFall)) {
+            SimEvent e;
+            e.kind = SimEvent::Kind::AltitudeChanged;
+            e.actor = q.actor;
+            e.tile = pos(q.actor);
+            e.rules.a = 0;
+            e.rules.b = kAltFall;
+            events_.push_back(e);
+        }
+        std::vector<rules5e::Event> fev;
+        rules5e::fall(state_, q.actor, drop, fev);
+        apply_rules_events(fev);
+    };
+    if (was_airborne) {
+        if (!grid_.has_ground()) return;   // flat maps: an airborne step does not change alt_ft
+        const int g1 = grid_.footprint_ground_ft(pos(q.actor), footprint_size(q.actor));
+        set_altitude(q.actor, int16_t(std::max(0, from_abs_ft - g1)), kAltMove);
+        return;
+    }
+    if (alt0 < 0) return;   // swimming / burrowing: the step keeps its depth
+    if (alt0 > 0) {         // climbing: keep alt_ft on a wall; leaving it lands or falls
+        const int fp = footprint_size(q.actor);
+        const Vec2i at = pos(q.actor);
+        if (on_climb_wall(at, fp)) return;
+        const int g1 = grid_.has_ground() ? grid_.footprint_ground_ft(at, fp) : 0;
+        const int drop = from_abs_ft - g1;
+        if (drop > kWalkableStepFt) land(drop);
+        else set_altitude(q.actor, 0, kAltMove);
+        return;
+    }
     if (!grid_.has_ground()) return;   // chunk@1 / chunk@2 maps are flat: alt_ft is unchanged by a step
     const int g1 = grid_.footprint_ground_ft(pos(q.actor), footprint_size(q.actor));
-    if (was_airborne) { set_altitude(q.actor, int16_t(std::max(0, from_abs_ft - g1)), kAltMove); return; }
-    if (c->alt_ft != 0) return;   // on a wall / in water: the step keeps its alt_ft
     const int drop = from_ground_ft - g1;
     if (drop <= kWalkableStepFt) return;
     const MoveCaps caps = caps_of(q.actor);
     if (caps.fly && !c->has(rules5e::Condition::Prone)) { set_altitude(q.actor, int16_t(drop), kAltMove); return; }
-    // A fall (altitude design §3): alt_ft stays 0 at the new ground; the event says so and the distance is recorded.
-    // PR4: then the SRD falling damage (rules5e::fall: 1d6 per 10 ft, max 20d6, lands prone), its rules events after it.
-    falls_.push_back({q.actor, drop});
-    SimEvent e;
-    e.kind = SimEvent::Kind::AltitudeChanged;
-    e.actor = q.actor;
-    e.tile = pos(q.actor);
-    e.rules.a = 0;
-    e.rules.b = kAltFall;
-    events_.push_back(e);
-    std::vector<rules5e::Event> fev;
-    rules5e::fall(state_, q.actor, drop, fev);
-    apply_rules_events(fev);
+    land(drop);
 }
 
 MoveCaps Combat::caps_of(CombatantId id) const {
@@ -2538,8 +2571,10 @@ uint8_t Combat::step_mode(CombatantId mover, Vec2i from, Vec2i to, int cost, int
             else if (grid_.water(t)) water = true;
         }
     std::vector<uint8_t> order;
-    const bool high = grid_.has_ground() &&
-                      ledge_ft(grid_.footprint_ground_ft(from, fp), grid_.footprint_ground_ft(to, fp)) > kWalkableStepFt;
+    int g_from = grid_.footprint_ground_ft(from, fp);
+    const int g_to = grid_.footprint_ground_ft(to, fp);
+    if (c->alt_ft > 0 && !airborne(mover) && !burrowed(mover)) g_from += int(c->alt_ft);   // a climber's feet, not the wall's base
+    const bool high = grid_.has_ground() && ledge_ft(g_from, g_to) > kWalkableStepFt;
     if (airborne(mover)) order = {1};   // altitude PR2: an airborne flyer keeps flying
     else if (burrowed(mover)) order = {4};   // altitude PR2: a burrowed mover tunnels on its burrow speed
     else if (air) order = {1};
@@ -2604,10 +2639,20 @@ int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int fp, bool t
     // altitude PR2 (chunk@3 ground; 0 on flat maps): a step up of 5 ft or less and descending are free (grid.hpp step_cost_ft);
     // an airborne flyer pays only for ground that rises above its absolute height.
     if (grid_.has_ground()) {
+        const int g0 = grid_.footprint_ground_ft(from, fp);
         const int g1 = grid_.footprint_ground_ft(to, fp);
+        const auto* mc = rules5e::find(state_, mover);
+        const bool climbing = mc && mc->alt_ft > 0 && !airborne(mover) && !burrowed(mover);
         if (burrowed(mover)) {}   // stays at its depth below the ground: no ledge cost
-        else if (air) cost += std::max(0, g1 - abs_height_ft(mover));
-        else cost += eng::sim::step_cost_ft(grid_.footprint_ground_ft(from, fp), g1, caps);
+        else if (airborne(mover)) cost += std::max(0, g1 - abs_height_ft(mover));
+        else if (climbing) {
+            // Along a wall the tile cost is the whole price. Leaving it, a rise of the new ground more than 5 ft
+            // above the climber's feet is a climb; a drop (including a fall) is free.
+            if (!on_climb_wall(to, fp)) {
+                const int abs0 = g0 + int(mc->alt_ft);
+                if (g1 - abs0 > kWalkableStepFt) cost += eng::sim::step_cost_ft(abs0, g1, caps);
+            }
+        } else cost += eng::sim::step_cost_ft(g0, g1, caps);
     }
     return cost;
 }
@@ -2631,13 +2676,19 @@ Combat::LedgeAdj Combat::ledge_adjust(CombatantId id, Vec2i from, Vec2i to) cons
     if (!grid_.has_ground()) return a;
     const auto* c = rules5e::find(state_, id);
     if (!c || c->alt_ft < 0) return a;                 // swimming / burrowing: depth unchanged
-    if (c->alt_ft > 0 && !airborne(id)) return a;      // on a wall: climbing adjusts this (later)
     const int fp = footprint_size(id);
     const int g0 = grid_.footprint_ground_ft(from, fp);
     const int g1 = grid_.footprint_ground_ft(to, fp);
     if (airborne(id)) {                                // keep absolute height; rising ground lands at 0, no damage
         const int neu = std::max(0, (g0 + int(c->alt_ft)) - g1);
         if (neu != int(c->alt_ft)) { a.set_alt = true; a.alt_ft = int16_t(neu); }
+        return a;
+    }
+    if (c->alt_ft > 0) {                               // climbing: stay on a wall; otherwise land or fall
+        if (on_climb_wall(to, fp)) return a;
+        const int drop = (g0 + int(c->alt_ft)) - g1;
+        if (drop > kWalkableStepFt) a.fell_ft = uint16_t(drop);
+        else { a.set_alt = true; a.alt_ft = 0; }
         return a;
     }
     const int drop = g0 - g1;                          // on the ground (alt_ft == 0)
