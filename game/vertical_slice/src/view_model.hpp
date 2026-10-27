@@ -83,6 +83,33 @@ struct CoverDebugView {
     std::string note;                  // "NO AIM" / "NO PAIR" when the overlay is up but the query is not
 };
 
+// Player area-spell aim (presentation). Not a persistent zone and not the cover overlay.
+// present=false and note empty: nothing is drawn. `tiles` is the shape's tile set. It stays
+// empty, with tiles_pending, until Combat::area_preview exists; the draw path already paints
+// whatever list it is given. `hits` is one creature each (a multi-tile body is one entry).
+// pulse_ms is the frame clock in milliseconds, never a sim step or round.
+enum class AreaPreviewShape : uint8_t { None, Cone, Cube, Cylinder, Line, Sphere };
+enum class AreaHitSide : uint8_t { Ally, Enemy };
+
+struct AreaHitView {
+    uint32_t id = 0;
+    AreaHitSide side = AreaHitSide::Enemy;
+};
+
+struct AreaPreviewView {
+    bool present = false;
+    bool tiles_pending = false;        // true while the tile set waits on Combat::area_preview
+    AreaPreviewShape shape = AreaPreviewShape::None;
+    uint32_t caster = 0;
+    uint32_t spell_id = 0;
+    std::string spell_label;           // short content name, underscores as spaces ("burning hands")
+    eng::Vec2i aim{};
+    std::vector<eng::Vec2i> tiles;
+    std::vector<AreaHitView> hits;
+    uint32_t pulse_ms = 0;
+    std::string note;                  // aim rejected, or "NO AREA SPELL" / "NOT YOUR TURN"
+};
+
 // ---- Light (LIGHTING.md §10): a plain-data copy of the sim's published sim::LightFrame. ----
 // Samples are packed bytes (iso2d::pack_light layout: bits 0-1 level Dark|Dim|Bright,
 // bits 2-5 sim LightFlags). Render never computes gameplay light; it only shades these.
@@ -163,6 +190,8 @@ struct ViewModel {
     std::vector<std::string> debug_panel;
     // Debug cover overlay (F4). Empty (present=false) draws nothing.
     CoverDebugView cover;
+    // Player area-spell preview (F5). Empty (present=false, note empty) draws nothing.
+    AreaPreviewView area;
 };
 
 } // namespace slice

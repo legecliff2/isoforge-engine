@@ -108,6 +108,14 @@ public:
     // Aim: origin is `aim_tile` with side 1 (the attacker's body is still excluded). present=false when
     // there is no fight, either id is missing / dead / gone, or attacker == target.
     CoverDebugView query_cover(uint32_t attacker, uint32_t target, bool aim, eng::Vec2i aim_tile) const;
+    // True when `actor` is a living or downed character archetype (a player creature). False for
+    // monsters, a missing id, or no fight. Area preview uses this to stay player-side.
+    bool actor_is_pc(uint32_t actor) const;
+    // Area spells `actor` can cast (spells_known, then innate). Empty without a fight.
+    std::vector<uint32_t> area_spell_ids(uint32_t actor) const;
+    // Read-only Combat::area_targets for `spell_id`, plus the pending tile list. Does not cast.
+    // frame_ms is stored on the view for the overlay pulse; the sim is not read for time.
+    AreaPreviewView query_area(uint32_t caster, uint32_t spell_id, eng::Vec2i aim, uint32_t frame_ms) const;
     // Non-fatal load warnings (e.g. two items styling one light preset differently).
     const std::vector<std::string>& warnings() const;
 

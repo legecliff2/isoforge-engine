@@ -1,5 +1,6 @@
 #include "session.hpp"
 
+#include "aoe_preview.hpp"
 #include "debug_cover.hpp"
 #include "event_feed.hpp"
 
@@ -561,6 +562,22 @@ bool Session::last_aim_tile(uint32_t actor, Vec2i* out) const {
 CoverDebugView Session::query_cover(uint32_t attacker, uint32_t target, bool aim, Vec2i aim_tile) const {
     if (!impl_->combat) return {};
     return cover_probe(*impl_->combat, attacker, target, aim, aim_tile);
+}
+
+bool Session::actor_is_pc(uint32_t actor) const {
+    if (!impl_->combat || actor == 0) return false;
+    const sim::Archetype* a = impl_->combat->archetype(actor);
+    return a && a->schema_type == "character";
+}
+
+std::vector<uint32_t> Session::area_spell_ids(uint32_t actor) const {
+    if (!impl_->combat) return {};
+    return slice::area_spell_ids(*impl_->combat, actor);
+}
+
+AreaPreviewView Session::query_area(uint32_t caster, uint32_t spell_id, Vec2i aim, uint32_t frame_ms) const {
+    if (!impl_->combat) return {};
+    return area_probe(*impl_->combat, caster, spell_id, aim, frame_ms);
 }
 
 bool Session::paused() const { return impl_->combat && impl_->combat->pending().has_value(); }

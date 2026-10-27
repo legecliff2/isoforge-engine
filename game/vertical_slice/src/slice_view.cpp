@@ -1,5 +1,6 @@
 #include "slice_view.hpp"
 
+#include "aoe_overlay.hpp"
 #include "equip_visuals.hpp"
 #include "footprint_visuals.hpp"
 #include "iso2d/zone_look.hpp"
@@ -290,6 +291,13 @@ Vec2f SliceView::tile_center_px(float x, float y) const {
     return {p.x, p.y + kTileH / 2.f};
 }
 
+Vec2i SliceView::tile_at_screen(Vec2f screen_px, const iso2d::Camera& cam) const {
+    // tile_center_px(tx, ty) is to_screen(tx + 0.5, ty + 0.5). Floor of that iso point is the tile.
+    const Vec2f world = cam.screen_to_world(screen_px);
+    const Vec2f iso = world_.projection().to_iso(world.x, world.y);
+    return {int32_t(std::floor(iso.x)), int32_t(std::floor(iso.y))};
+}
+
 Vec2f SliceView::actors_focus_px(const ViewModel& vm) const {
     if (vm.actors.empty()) return tile_center_px(15.5f, 15.5f);
     float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f;
@@ -514,6 +522,8 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
         if (a.outlined && !a.dead)
             footprint_ring(Color::rgba8(200, 120, 255, a.invisible ? 140 : 220), 1, kZOutline, actor_sort);
     }
+    // Area-spell preview. Own z slots (aoe_overlay.hpp); not the zone loop and not draw_cover.
+    paint_area_overlay(AreaOverlayGfx{world_, tex_->floor, tex_->ring, kTileW, kTileH, kElevPx}, vm);
     world_.prepare(cam);
 
     // ---- overlay (screen px) ----
@@ -573,6 +583,14 @@ void SliceView::prepare(const ViewModel& vm, const iso2d::Camera& cam, uint32_t 
     const std::string help = vm.status.empty() ? std::string("SPACE: STEP  A: AUTO  ARROWS: PAN  WHEEL/+/-: ZOOM  ESC: QUIT") : vm.status;
     text(help, {16, float(sh) - 16.f}, 1.f, dim);
     draw_cover(vm, cam);
+    if (const std::string cap = area_caption_line(vm); !cap.empty()) {
+        const float panel_h = 30.f + 20.f * float(vm.actors.size());
+        float y = 12.f + panel_h;
+        if (vm.cover.present || !vm.cover.note.empty()) y += 16.f;
+        const Color col = vm.area.present ? area_fill_tint(vm.area.shape, vm.area.pulse_ms) : Color::rgba8(170, 176, 188);
+        const Color ink = col.a > 0.f ? Color{col.r, col.g, col.b, 1.f} : Color::rgba8(170, 176, 188);
+        text(cap, {16.f, y}, 1.5f, ink, 32);
+    }
 
     ui_.prepare({{0, 0}, sw, sh, 1.f});
 }
