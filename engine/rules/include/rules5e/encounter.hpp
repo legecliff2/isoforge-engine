@@ -622,7 +622,7 @@ struct SightFacts {
     uint16_t distance_ft = 0;
     bool line_of_sight = true;                // no total cover / wall in between
     bool subject_invisible = false;
-    bool subject_grounded = true;             // touching the same surface as the viewer (tremorsense)
+    bool subject_grounded = true;             // subject in contact with the ground or a climbable surface (tremorsense); airborne is not
     bool audible = true;                      // the viewer could hear it (rules adds Deafened)
 };
 // Rules' answer (derive_sight).
