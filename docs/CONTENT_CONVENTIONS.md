@@ -620,6 +620,8 @@ The validator ties the race string to Darkvision (character@2+, errors):
 
 Other race strings are not checked. The level-1 hit point check adds SRD Dwarven Toughness (+1 per level) for `hill_dwarf`. Sample PCs: `srd51.character.sample_hill_dwarf_cleric_1`, `sample_high_elf_wizard_1`, `sample_tiefling_warlock_1` (`characters/sample_*.json`).
 
+Elf Keen Senses is proficiency in Perception, already carried by `skills.perception`. It is not the monster trait in §29.
+
 
 ## 13. Light gear (item@2 category `gear`, docs/proposals/EQUIPMENT.md 6.2)
 
@@ -860,8 +862,9 @@ Directory name: `^[a-z][a-z0-9_]*$`. Integers only. `golden.txt` must be non-emp
 - The sim stores the printed value in `Combatant::passive_perception_override` (static content, never hashed) and
   `rules5e::passive_perception` uses it instead of 10 + Perception (Hide, hidden-from, surprise). It shifts by the same
   effective-Wis modifier delta as the derived value (a Wis reduction moves both), and caller bonuses (dim light -5) still apply.
-- Printed SRD passives never include Keen Senses (wolf, hell hound: 10 + Perception exactly). The keen hook is deferred
-  (SRD_COMBAT_COVERAGE); it will add situationally, never into the printed number.
+- Printed SRD passives never include Keen Senses (wolf, hell hound: 10 + Perception exactly). The keen hook (§29) adds
+  +5 only on a Wisdom (Perception) check that relies on a listed sense, and on the Hide / surprise passives described there.
+  It never changes `passive_perception` or the printed number.
 - SRD 5.1 data blocks whose printed passive differs from 10 + Perception (5e-database copy): black bear, blink dog,
   half-red dragon veteran, spider, swarm of ravens. Blink dog carries the reason (`srd_printed`, Perception +3, passive 10); the others are not authored.
 
@@ -907,3 +910,40 @@ The spell loads and stays on a creature's spell list. `legal_actions` never offe
 | `effects` empty or absent | schema error (`[] should be non-empty`, or `'effects' is a required property`). The loader's string for an empty list is `effects missing` |
 
 **No version bump.** `docs/CONTENT_COMPAT.md` §1 bumps a schema when a field that used to be descriptive becomes mechanical, or an existing field changes meaning. `descriptive` is a new effect-kind value. The previous `spell@1` kind enum did not include it, and the arm is closed, so no existing file can carry it. No tag change, no migration, no `api_level` gate. The decision is recorded in `docs/proposals/VERSION_BUMP_BATCH.md`.
+
+## 29. Keen Senses (monster@5 trait `keen_senses`)
+
+SRD 5.1 wolf: "The wolf has advantage on Wisdom (Perception) checks that rely on hearing or smell." The same sentence, with a different sense list, is Keen Sight, Keen Smell, Keen Hearing, Keen Hearing and Sight, Keen Sight and Smell, and the pseudodragon's Keen Senses (sight, hearing, or smell). The list is the mechanic. The trait name is not.
+
+This is not the elf racial trait of the same name (§12: proficiency in Perception). Death dog Two-Headed is advantage on every Wisdom (Perception) check, not on a named sense; that blanket advantage stays deferred (the save half is already `save_advantage`).
+
+Author it on a monster@5 trait:
+
+```json
+"effect": { "kind": "keen_senses", "senses": ["hearing", "smell"] }
+```
+
+`senses` is a non-empty set of `sight`, `hearing`, and `smell` (unique). Several traits on one creature union the bits. A second trait that adds no new sense does nothing (validator warning). The loader refuses the kind on a character and on a file below monster@5. Wolf is stamped (`hearing`, `smell`). Other stat blocks that still carry the sentence as description only do not gain the bonus until an author adds the effect. Hell hound is not in the pack; its printed passive, like the wolf's, is 10 + Perception and stays that.
+
+The loader stores `Combatant::keen_senses` (bits `kKeenSight` 1, `kKeenHearing` 2, `kKeenSmell` 4). Static content, not hashed. No `SIM_EVENTS` tag. `perception_senses` on an ability check is not folded into `log_hash` (same as `skill`, `dc`, and `check_mode`). Replay stores the request. A fight that never sets the mask hashes as before. When the mask changes who is hidden, that is the existing 0xC5 fold.
+
+`rules5e::passive_perception` is unchanged: 10 + Perception, or the §25 printed override, shifted by a Wisdom reduction. Keen Senses never adds 5 to that number. SRD passive checks add 5 only for a check that has advantage, and only on the paths below. Two listed senses on one check are still one advantage (+5), never +10.
+
+**Named sense.** Advantage applies only when the Wisdom (Perception) check relies on a sense the creature has. A smell-only check does not gain Keen Hearing. A sight-only check does not gain Keen Smell.
+
+**Sight, and the vision hook.** Dim light, other light obscurement, and Sunlight Sensitivity still impose the existing −5 (`passive_sight_penalty`); those two sources do not stack. Keen Sight's advantage applies only when the viewer perceives the subject with sight (`Sight::sense == Sight`). On that same sight check, advantage and the −5 cancel (passive +0, a normal roll). While the subject is unseen, Keen Sight does not raise the opposing passive: the viewer is not seeing them. The engine still does not auto-fail a sight check for the blinded condition, or a hearing check for the deafened condition. Deafened only removes the hearing path (no Keen Hearing, and Hide will not treat the subject as heard).
+
+**Hide / unseen.** The creature is still hidden only from a hostile that cannot see it. The Stealth total is compared with the better of:
+
+- the sight passive: `passive_perception` plus the existing sight penalty (0 or −5). Keen Sight does not add +5 on this unseen path;
+- the keen non-sight passive: `passive_perception` + 5, when a listed non-sight sense can be used.
+
+Hearing can be used when the subject is audible and the viewer is not Deafened. On this path the viewer cannot see the subject, so `Sight::perceives` is that fact. Smell can be used on this opposing check whenever the creature has Keen Smell. SRD Keen Smell states no range, and the vision model has no smell fact, so range, wind, and cover for smell are deferred rather than invented. The two passives are never summed. A creature with no keen senses is unchanged (the sight passive only, including the −5).
+
+**Surprise.** `surprised_by_stealth` has no per-pair light or audible fact. Keen Hearing (unless Deafened) and Keen Smell add +5 to the passive it compares, still not stacked, and still not written into the printed passive. Keen Sight does not: there is no light fact, and dim light might have cancelled it. Audible gating is the Hide hook only.
+
+**Active Perception.** `ActionKind::AbilityCheck` with `skill` Perception and `perception_senses` naming the senses that check relies on (the same bits). Zero means the check names no sense, and Keen Senses does not apply; the caller may still pass `check_mode`. With a target, light, sunlight, and whether sight works come from `sight(actor, target)` (no sight hook: everyone sees everyone, as today). With no target there is no light penalty, and a named sight check is treated as sight working. The field is refused on any other action or skill, and if any other bit is set. Active Search as its own action stays unmodelled; this is the roll.
+
+**Forms.** Wild Shape and Polymorph copy the beast's `keen_senses` through `FormStats` and restore the creature's own on revert. A druid in wolf form uses the wolf's hearing and smell. The druid's Wisdom is still the one Wild Shape keeps.
+
+**Not this.** Magic Resistance, elf Perception proficiency, death dog's blanket Perception advantage, revealing a hidden creature by noise, and a smell range.

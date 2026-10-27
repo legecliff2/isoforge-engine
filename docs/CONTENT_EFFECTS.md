@@ -27,7 +27,7 @@ schemas accept it so an in-memory migration result validates; a file on disk tha
 |---|---|---|
 | `character@4`, `monster@4` | the `@3` kinds unchanged, plus `on_event`, `apply_modifier`, `grant_action`, `heal_pool`, `gaze` (closed arms of `common@2 $defs/effect`; `gaze`: VERSION_BUMP_BATCH 7.2p, `docs/CONTENT_CONVENTIONS.md` section 11); `cost: reaction` is legal | `checks_v4.TAG_TABLE` row; cross-reference checks 1-18 of the proposal's section 8.3 |
 | a `3 -> 4` migrated file | effects of the frozen new-kind list (`on_event`, `apply_modifier`, `grant_action`, `heal_pool`, `save_effect`, `reaction`) carry `"inert": true`; parameters are **not** validated | accepted in memory; an authored `inert` is an error |
-| `monster@5` (batch 3) | monster-local trait kinds `weapon_extra_dice`, `save_advantage`, and `aura` (ghast Stench: `{radius_ft, on: start_turn, save {ability, dc}, condition, duration: until_start_of_next_turn, success_immunity_hours?}`, a creature-anchored aura from the start of combat; sim features.cpp `apply_aura`) | `checks_v4.check_aura` mirrors the loader refusals |
+| `monster@5` (batch 3) | monster-local trait kinds `weapon_extra_dice`, `save_advantage`, `aura` (ghast Stench: `{radius_ft, on: start_turn, save {ability, dc}, condition, duration: until_start_of_next_turn, success_immunity_hours?}`, a creature-anchored aura from the start of combat; sim features.cpp `apply_aura`), and `keen_senses` (`{senses: [sight\|hearing\|smell]}`; CONTENT_CONVENTIONS §29; sim features.cpp `apply_keen_senses`) | `checks_v4.check_aura` and `check_keen_senses` mirror the loader refusals |
 
 The engine does not apply any `@4`-only construct yet (loader: row 3); until then these documents are
 validated, not played. `@4` packs and `item@1` documents need `api_level >= 2` in the manifest.
@@ -144,6 +144,12 @@ is not incapacitated is within 5 ft of it (sim #127: rules5e `RollTrait {Attack,
 declaration adds nothing (the validator warns).
 
 Example: `{ "kind": "pack_tactics" }`
+
+### `keen_senses` (static, monster@5)
+
+`senses` (required): a non-empty unique list of `sight`, `hearing`, `smell`. SRD Keen Hearing and Smell and the other named-sense traits (CONTENT_CONVENTIONS §29). The loader ORs the bits into `Combatant::keen_senses`. Advantage on a Wisdom (Perception) check that relies on a listed sense; the printed passive is not increased. A second declaration that adds no new sense does nothing (the validator warns). Refused below monster@5 and on a character. No `SIM_EVENTS` tag.
+
+Example: `{ "kind": "keen_senses", "senses": ["hearing", "smell"] }`
 
 ### `aggressive` (static, T&C-G7)
 

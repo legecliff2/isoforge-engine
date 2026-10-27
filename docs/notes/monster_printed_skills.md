@@ -28,7 +28,7 @@ checks.hpp:12-22 and encounter.cpp:5615/5624/6451, with the §25 override in pas
    comparison (`passive_perception_reason: srd_printed`, validator and loader) is rebased on that rule. The census is below.
 4. **Static content, so no hash tag.** The override is archetype data, like `passive_perception_override` (§25, never
    hashed). It changes outcomes only through rolls and comparisons, which the existing hashes already cover.
-5. **Keen senses** (Keen Hearing/Smell/Sight: advantage on Perception checks) stay deferred.
+5. **Keen senses** are mechanical in CONTENT_CONVENTIONS §29 (advantage on a Wisdom (Perception) check that relies on a listed sense). They do not change the printed passive, and this note does not specify them.
 
 ## Passive Perception census under rule 3
 
