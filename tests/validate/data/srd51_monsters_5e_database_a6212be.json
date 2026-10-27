@@ -8326,6 +8326,216 @@
      ]
     }
    ]
+  },
+  "wereboar": {
+   "name": "Wereboar",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    10
+   ],
+   "hp": 78,
+   "hp_roll": "12d8+24",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    17,
+    10,
+    15,
+    10,
+    11,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "bludgeoning, piercing, and slashing from nonmagical weapons that aren't silvered"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Maul",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "weretiger": {
+   "name": "Weretiger",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    12
+   ],
+   "hp": 120,
+   "hp_roll": "16d8+48",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    17,
+    15,
+    16,
+    10,
+    13,
+    11
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "bludgeoning, piercing, and slashing from nonmagical weapons that aren't silvered"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Scimitar",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Longbow",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d8+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "lamia": {
+   "name": "Lamia",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    13
+   ],
+   "hp": 97,
+   "hp_roll": "13d10+26",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    16,
+    13,
+    15,
+    14,
+    15,
+    16
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Claws",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "2d10+3",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Dagger",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d4+3",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "couatl": {
+   "name": "Couatl",
+   "size": "Medium",
+   "type": "celestial",
+   "ac": [
+    19
+   ],
+   "hp": 97,
+   "hp_roll": "13d8+39",
+   "cr": 4,
+   "xp": 1100,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "90 ft."
+   },
+   "abilities": [
+    16,
+    20,
+    17,
+    18,
+    20,
+    18
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [
+    "radiant"
+   ],
+   "damage_immunities": [
+    "psychic",
+    "bludgeoning, piercing, and slashing from nonmagical weapons"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 8,
+     "damage_options": [
+      [
+       [
+        "1d6+5",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Constrict",
+     "attack_bonus": 6,
+     "damage_options": [
+      [
+       [
+        "2d6+3",
+        "bludgeoning"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
