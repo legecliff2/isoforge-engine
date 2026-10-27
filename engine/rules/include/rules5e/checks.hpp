@@ -29,7 +29,7 @@ constexpr int passive_perception(const Combatant& c, int bonus = 0) {
 // (Poisoned/Frightened/exhaustion). Natural 20/1 have no special meaning (SRD 5.1).
 CheckResult skill_check(rng::Rng&, const Combatant&, Skill, int dc, RollMode = RollMode::Normal);
 
-// Keen Senses (CONTENT_CONVENTIONS §29). `keen` is Combatant::keen_senses. `relies_on` is the senses this Wisdom
+// Keen Senses (CONTENT_CONVENTIONS §30). `keen` is Combatant::keen_senses. `relies_on` is the senses this Wisdom
 // (Perception) check relies on (the same bits). `sight_penalty` is 0 or -5 from passive_sight_penalty, and matters only
 // when the check relies on sight. `sight_works` is true when the viewer perceives the subject with Sense::Sight: Keen
 // Sight's advantage applies only then. Advantage and a sight penalty on that same sight check cancel. A keen hearing or
@@ -58,8 +58,8 @@ constexpr KeenPerception keen_perception(uint8_t keen, uint8_t relies_on, int si
     return {};
 }
 // Hide, once the viewer cannot see the subject (so Keen Sight does not apply). hearing_ok: audible and not Deafened
-// (Sight::perceives on that path). Smell is a candidate whenever listed; the caller passes kKeenSmell in the mask by
-// always offering it here. A creature with no keen senses gets sight_penalty and nothing else.
+// (Sight::perceives on that path). Smell is always offered (no range model). A creature with no keen senses gets
+// sight_penalty and nothing else.
 constexpr int unseen_perception_bonus(uint8_t keen, int sight_penalty, bool hearing_ok) {
     uint8_t relies = uint8_t(kKeenSight | kKeenSmell);
     if (hearing_ok) relies = uint8_t(relies | kKeenHearing);

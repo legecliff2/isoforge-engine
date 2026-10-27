@@ -620,7 +620,7 @@ The validator ties the race string to Darkvision (character@2+, errors):
 
 Other race strings are not checked. The level-1 hit point check adds SRD Dwarven Toughness (+1 per level) for `hill_dwarf`. Sample PCs: `srd51.character.sample_hill_dwarf_cleric_1`, `sample_high_elf_wizard_1`, `sample_tiefling_warlock_1` (`characters/sample_*.json`).
 
-Elf Keen Senses is proficiency in Perception, already carried by `skills.perception`. It is not the monster trait in §29.
+Elf Keen Senses is proficiency in Perception, already carried by `skills.perception`. It is not the monster trait in §30.
 
 
 ## 13. Light gear (item@2 category `gear`, docs/proposals/EQUIPMENT.md 6.2)
@@ -862,7 +862,7 @@ Directory name: `^[a-z][a-z0-9_]*$`. Integers only. `golden.txt` must be non-emp
 - The sim stores the printed value in `Combatant::passive_perception_override` (static content, never hashed) and
   `rules5e::passive_perception` uses it instead of 10 + Perception (Hide, hidden-from, surprise). It shifts by the same
   effective-Wis modifier delta as the derived value (a Wis reduction moves both), and caller bonuses (dim light -5) still apply.
-- Printed SRD passives never include Keen Senses (wolf, hell hound: 10 + Perception exactly). The keen hook (§29) adds
+- Printed SRD passives never include Keen Senses (wolf, hell hound: 10 + Perception exactly). The keen hook (§30) adds
   +5 only on a Wisdom (Perception) check that relies on a listed sense, and on the Hide / surprise passives described there.
   It never changes `passive_perception` or the printed number.
 - SRD 5.1 data blocks whose printed passive differs from 10 + Perception (5e-database copy): black bear, blink dog,
@@ -911,7 +911,19 @@ The spell loads and stays on a creature's spell list. `legal_actions` never offe
 
 **No version bump.** `docs/CONTENT_COMPAT.md` §1 bumps a schema when a field that used to be descriptive becomes mechanical, or an existing field changes meaning. `descriptive` is a new effect-kind value. The previous `spell@1` kind enum did not include it, and the arm is closed, so no existing file can carry it. No tag change, no migration, no `api_level` gate. The decision is recorded in `docs/proposals/VERSION_BUMP_BATCH.md`.
 
-## 29. Keen Senses (monster@5 trait `keen_senses`)
+## 29. Monster area action (`area_effect`, monster@5)
+
+A monster area ability is an action of kind `area_effect`. The loader (`compile_area_action`) builds one synthetic `SpellDef` (`is_spell` false, kind `Save`, fixed `save.dc`) and a `SaveAction` row, the same path a `save_effect` with an `area` already uses. Targets come from `Combat::area_targets`. No new recharge roll and no `SIM_EVENTS` tag.
+
+- **Shapes.** `area.shape` is `cone`, `line`, `cube`, `sphere`, or `cylinder`. `size_ft` is the cone or line length, the cube side, or the sphere or cylinder radius, a multiple of 5. A line needs `width_ft`. A cylinder needs `height_ft`; that height is stored on the spell and still ignored by membership (the cylinder-height gap). Other shapes must not carry the other shape's extra field.
+- **Origin.** `self` (the default) starts at the caster. `range_ft` is forbidden then. `point` needs `range_ft` and centres a cube or a sphere on the aim tile.
+- **Save and damage.** `save` `{ability, dc}` is required. `damage[]` needs `on_success` `half` (`OnSave::Half`, integer division) or `none` (`OnSave::None`). A breath that deals no damage (blinding, sleep, slow) uses `apply[]` and no `on_success`.
+- **Uses.** `usage` is the existing object: `recharge` with `min` 2..6 (`ActionUse`, the turn-start d6), or `per_day` / `per_rest` (`FeatureUses`). One action is one use. Two shapes that share a recharge (young brass, young copper) are not two `area_effect` actions; that choice is not this key.
+- **Not this kind.** `save_effect` is unchanged, including breaths already authored that way. Whirlwind, Whelm, and ghast Stench stay on the zones work. Cover on area saves, the square sphere, and cylinder height are not changed here.
+
+monster@4 and character files cannot carry `area_effect`. No schema version bump: the kind is a new monster@5 enum value, and no existing file uses it.
+
+## 30. Keen Senses (monster@5 trait `keen_senses`)
 
 SRD 5.1 wolf: "The wolf has advantage on Wisdom (Perception) checks that rely on hearing or smell." The same sentence, with a different sense list, is Keen Sight, Keen Smell, Keen Hearing, Keen Hearing and Sight, Keen Sight and Smell, and the pseudodragon's Keen Senses (sight, hearing, or smell). The list is the mechanic. The trait name is not.
 
@@ -923,7 +935,7 @@ Author it on a monster@5 trait:
 "effect": { "kind": "keen_senses", "senses": ["hearing", "smell"] }
 ```
 
-`senses` is a non-empty set of `sight`, `hearing`, and `smell` (unique). Several traits on one creature union the bits. A second trait that adds no new sense does nothing (validator warning). The loader refuses the kind on a character and on a file below monster@5. Wolf is stamped (`hearing`, `smell`). Other stat blocks that still carry the sentence as description only do not gain the bonus until an author adds the effect. Hell hound is not in the pack; its printed passive, like the wolf's, is 10 + Perception and stays that.
+`senses` is a non-empty set of `sight`, `hearing`, and `smell` (unique). Several traits on one creature union the bits. A second trait that adds no new sense does nothing (validator warning). The loader refuses the kind on a character and on a file below monster@5. Wolf is stamped (`hearing`, `smell`). Other stat blocks that still carry the sentence as description only do not gain the bonus until an author adds the effect. Hell hound and winter wolf are in the pack with that sentence and no effect (the monster tests pin it); their printed passives, like the wolf's, are 10 + Perception and stay that.
 
 The loader stores `Combatant::keen_senses` (bits `kKeenSight` 1, `kKeenHearing` 2, `kKeenSmell` 4). Static content, not hashed. No `SIM_EVENTS` tag. `perception_senses` on an ability check is not folded into `log_hash` (same as `skill`, `dc`, and `check_mode`). Replay stores the request. A fight that never sets the mask hashes as before. When the mask changes who is hidden, that is the existing 0xC5 fold.
 

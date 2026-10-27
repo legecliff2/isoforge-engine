@@ -143,7 +143,7 @@ int owner_level(const Json& doc, const Json& per_levels) {
 // rules (kEndsByOwnRules), applied untracked; only save_condition riders pass true.
 std::optional<std::string> compile_save_action(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
                                                Archetype::SaveAction& sa, const Json& doc, bool& unsupported,
-                                               bool untimed_ok = false);
+                                               bool untimed_ok = false, const char* kind_label = "save_effect");
 
 // What a rider needs beyond its own JSON: the owner's attacks (bonus_attack resolves attack_id) and the list the
 // synthetic Save SpellDefs of area_save riders go to (registered in the SpellBook by ContentLibrary::add).
@@ -849,9 +849,9 @@ std::optional<std::string> compile_attack_effect(const std::string& arch_id, con
 
 std::optional<std::string> compile_save_action(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
                                                Archetype::SaveAction& sa, const Json& doc, bool& unsupported,
-                                               bool untimed_ok) {
+                                               bool untimed_ok, const char* kind_label) {
     const std::string aid = act.value("id", "");
-    const std::string where = arch_id + ": save_effect '" + aid + "'";
+    const std::string where = arch_id + ": " + kind_label + " '" + aid + "'";
     if (aid.empty() || aid.find('#') != std::string::npos || arch_id.find('#') != std::string::npos)
         return where + ": id must be non-empty and contain no '#'";
     d = rules5e::SpellDef{};
@@ -998,7 +998,7 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 // Gladiator Shield Bash: "If the target is a Medium or smaller creature, it must succeed on a DC 15 Strength
                 // saving throw or be knocked prone"): a larger target makes no save and gets no condition; the hit's damage stands.
                 if (!untimed_ok && x.contains("max_size") && !x.contains("contain"))
-                    return where + ": max_size on a save_effect needs contain (only a containing condition skips a larger target)";
+                    return where + ": max_size on a " + std::string(kind_label) + " needs contain (only a containing condition skips a larger target)";
                 if (auto m = read_contain(x, where, d)) return m;
                 first = false;
             } else {       // further conditions: ApplyCondition on the creatures that failed the save
@@ -1013,8 +1013,8 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
                 e.affected_only = true;
                 e.escape_dc = int8_t(esc);
                 if (x.contains("max_size") && !x.contains("contain"))   // the size gate is the whole save's: first entry only
-                    return where + (untimed_ok ? ": max_size on a save_condition rider goes on the first apply[] entry"
-                                               : ": max_size on a save_effect needs contain (only a containing condition skips a larger target)");
+                    return where + (untimed_ok ? std::string(": max_size on a save_condition rider goes on the first apply[] entry")
+                                               : ": max_size on a " + std::string(kind_label) + " needs contain (only a containing condition skips a larger target)");
                 if (auto m = read_contain(x, where, e)) return m;
                 d.extra_effects.push_back(e);
             }
@@ -1093,6 +1093,70 @@ std::optional<std::string> compile_save_action(const std::string& arch_id, const
         return where + ": needs damage[], apply[] or control";
     if (auto e = compile_action_usage(where, act, doc, d, sa, unsupported); e || unsupported) return e;
     sa.usage_kind = d.usage_kind;
+    return std::nullopt;
+}
+
+// Monster area action (docs/proposals/AOE_MONSTER_ABILITIES.md, PR 2). monster@5 `area_effect` compiles to the same
+// synthetic Save SpellDef a save_effect with an area already does, so targets come from Combat::area_targets, half
+// damage is OnSave::Half, and recharge / per-day uses are the existing ActionUse / FeatureUses rows. One action is
+// one SpellDef and one use. Two shapes that share a recharge (brass / copper Breath Weapons) are not two of these.
+std::optional<std::string> compile_area_action(const std::string& arch_id, const Json& act, rules5e::SpellDef& d,
+                                               Archetype::SaveAction& sa, const Json& doc, bool& unsupported,
+                                               const std::string& schema_type, uint32_t declared) {
+    const std::string aid = act.value("id", "");
+    const std::string where = arch_id + ": area_effect '" + aid + "'";
+    if (schema_type != "monster" || (declared != 0 && declared < 5))
+        return where + ": area_effect needs a monster@5 file";
+    for (auto it = act.begin(); it != act.end(); ++it) {
+        const std::string k = it.key();
+        if (k != "id" && k != "name" && k != "kind" && k != "description" && k != "save" && k != "area" &&
+            k != "origin" && k != "range_ft" && k != "on_success" && k != "damage" && k != "apply" &&
+            k != "usage" && k != "magical")
+            return where + ": unknown key '" + k + "'";
+    }
+    const auto ar = act.find("area");
+    if (ar == act.end() || !ar->is_object()) return where + ": needs an area";
+    for (auto it = ar->begin(); it != ar->end(); ++it)
+        if (it.key() != "shape" && it.key() != "size_ft" && it.key() != "width_ft" && it.key() != "height_ft")
+            return where + ": area: unknown key '" + it.key() + "'";
+    const std::string shape = ar->value("shape", "");
+    if (shape != "cone" && shape != "cube" && shape != "line" && shape != "sphere" && shape != "cylinder")
+        return where + ": bad area shape";
+    if (!ar->contains("size_ft") || !(*ar)["size_ft"].is_number_integer()) return where + ": bad area size";
+    const int size = (*ar)["size_ft"].get<int>();
+    if (size < 5 || size > 65535 || size % 5 != 0) return where + ": bad area size";
+    const bool line = shape == "line", cyl = shape == "cylinder";
+    if (ar->contains("width_ft") != line) return where + (line ? ": line needs width_ft" : ": width_ft is line only");
+    if (line) {
+        if (!(*ar)["width_ft"].is_number_integer()) return where + ": bad area size";
+        const int w = (*ar)["width_ft"].get<int>();
+        if (w < 5 || w > 65535 || w % 5 != 0) return where + ": bad area size";
+    }
+    if (ar->contains("height_ft") != cyl) return where + (cyl ? ": cylinder needs height_ft" : ": height_ft is cylinder only");
+    if (cyl) {
+        if (!(*ar)["height_ft"].is_number_integer()) return where + ": bad area size";
+        const int h = (*ar)["height_ft"].get<int>();
+        if (h < 5 || h > 65535 || h % 5 != 0) return where + ": bad area size";
+        // area_height_ft is stored and ignored by area_targets (the cylinder-height gap). This loader does not use it.
+    }
+    const std::string origin = act.value("origin", "self");
+    if (origin != "self" && origin != "point") return where + ": bad origin";
+    if (origin == "self" && act.contains("range_ft"))
+        return where + ": range_ft is forbidden when origin is self and area is present";
+    if (origin == "point" && !act.contains("range_ft")) return where + ": point origin needs range_ft";
+    if (act.contains("damage") && (!act["damage"].is_array() || act["damage"].empty())) return where + ": bad damage";
+    const bool has_dmg = act.contains("damage") && act["damage"].is_array() && !act["damage"].empty();
+    const bool has_apply = act.contains("apply") && act["apply"].is_array() && !act["apply"].empty();
+    if (has_dmg) {
+        const std::string os = act.value("on_success", "");
+        if (os != "half" && os != "none") return where + ": damage needs on_success half or none";
+    } else if (act.contains("on_success")) {
+        return where + ": on_success needs damage[]";
+    }
+    if (!has_dmg && !has_apply) return where + ": needs damage[] or apply[]";
+    if (auto e = compile_save_action(arch_id, act, d, sa, doc, unsupported, false, "area_effect")) return e;
+    if (unsupported) return std::nullopt;
+    if (!sa.area) return where + ": needs an area";
     return std::nullopt;
 }
 
@@ -1936,7 +2000,7 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
     if (declared == 0 || declared >= 4)
         for (const Json& act : doc.at("actions")) {
             const std::string ak = act.value("kind", "");
-            if (ak != "save_effect" && ak != "attack_effect" && ak != "teleport") continue;
+            if (ak != "save_effect" && ak != "attack_effect" && ak != "teleport" && ak != "area_effect") continue;
             rules5e::SpellDef d;
             Archetype::SaveAction sa;
             bool unsupported = false;
@@ -1954,6 +2018,16 @@ std::optional<std::string> ContentLibrary::add(const Json& doc, const std::strin
                 if (unsupported) { a.unsupported_features.push_back(act.value("id", "?") + " (attack_effect: unsupported usage or condition duration)"); continue; }
                 for (const auto& prev : synth)
                     if (prev.id == d.id) return a.id + ": attack_effect ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
+                c.spells_known.push_back(d.id);
+                a.save_actions.push_back(sa);
+                synth.push_back(std::move(d));
+                continue;
+            }
+            if (ak == "area_effect") {   // monster area ability: synthetic Save SpellDef on the spell area path
+                if (auto e = compile_area_action(a.id, act, d, sa, doc, unsupported, schema_type, declared)) return e;
+                if (unsupported) { a.unsupported_features.push_back(act.value("id", "?") + " (area_effect: unsupported usage or condition duration)"); continue; }
+                for (const auto& prev : synth)
+                    if (prev.id == d.id) return a.id + ": area_effect ids '" + prev.content_id + "' and '" + d.content_id + "' collide";
                 c.spells_known.push_back(d.id);
                 a.save_actions.push_back(sa);
                 synth.push_back(std::move(d));

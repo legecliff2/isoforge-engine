@@ -710,11 +710,11 @@ def effect_findings(rel: str, doc: dict, tag: str, registry: Registry, on_disk: 
         errs += [f"{rel}: {m}" for m in se_errs]
         warns += [f"{rel}: {m}" for m in se_warns]
         sa_errs, sa_warns = c4.check_save_advantage(doc, tag)   # batch 3 save_advantage (monster@5 only)
-        ks_errs, ks_warns = c4.check_keen_senses(doc, tag)   # Keen Senses (CONTENT_CONVENTIONS §29, monster@5 only)
-        errs += [f"{rel}: {m}" for m in ks_errs]
-        warns += [f"{rel}: {m}" for m in ks_warns]
         errs += [f"{rel}: {m}" for m in sa_errs]
         warns += [f"{rel}: {m}" for m in sa_warns]
+        ks_errs, ks_warns = c4.check_keen_senses(doc, tag)   # Keen Senses (CONTENT_CONVENTIONS §30, monster@5 only)
+        errs += [f"{rel}: {m}" for m in ks_errs]
+        warns += [f"{rel}: {m}" for m in ks_warns]
         au_errs, au_warns = c4.check_aura(doc, tag)   # batch 3 aura (ghast Stench, monster@5 only)
         errs += [f"{rel}: {m}" for m in au_errs]
         warns += [f"{rel}: {m}" for m in au_warns]

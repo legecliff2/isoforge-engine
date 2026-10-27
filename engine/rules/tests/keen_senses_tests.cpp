@@ -1,4 +1,4 @@
-// Keen Senses (CONTENT_CONVENTIONS §29). Advantage on a Wisdom (Perception) check that relies on a listed sense.
+// Keen Senses (CONTENT_CONVENTIONS §30). Advantage on a Wisdom (Perception) check that relies on a listed sense.
 // The printed passive is never increased. Hide takes the better of the sight passive and a keen hearing/smell passive.
 #include <doctest/doctest.h>
 

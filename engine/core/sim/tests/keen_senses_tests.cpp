@@ -1,4 +1,4 @@
-// Keen Senses (CONTENT_CONVENTIONS §29): monster@5 loader, the wolf stamp, and no hash fold.
+// Keen Senses (CONTENT_CONVENTIONS §30): monster@5 loader, the wolf stamp, and no hash fold.
 // Static content, like darkvision. perception_senses is not folded into log_hash (same as skill, dc, check_mode).
 #include <doctest/doctest.h>
 
@@ -155,4 +155,60 @@ TEST_CASE("keen_senses: no hash fold; perception_senses is not in log_hash; a ch
     REQUIRE(rp);
     CHECK(rp->hash() == fight->hash());
     CHECK(rp->log_hash() == fight->log_hash());
+}
+
+TEST_CASE("keen_senses: Wild Shape into srd51.monster.wolf copies the mask through stats_of") {
+    ContentLibrary lib;
+    REQUIRE(lib.load(sample_set()).empty());
+    const Archetype* druid = lib.find("srd51.character.druid_level_2");
+    REQUIRE(druid);
+    CHECK(druid->base.keen_senses == 0);
+    uint32_t feature = 0;
+    uint8_t form = 0;
+    for (const auto& [id, ff] : druid->form_features) {
+        if (ff.kind != uint8_t(rules5e::FormKind::WildShape)) continue;
+        for (std::size_t i = 0; i < ff.forms.size(); ++i)
+            if (ff.forms[i] == "srd51.monster.wolf") { feature = id; form = uint8_t(i + 1); }
+    }
+    REQUIRE(feature != 0);
+    REQUIRE(form == 2);   // forms: jackal, wolf, ...
+    auto ch = arena({{"srd51.character.druid_level_2", Vec2i{2, 2}}, {"srd51.monster.goblin", Vec2i{28, 28}}});
+    ecs::Registry reg;
+    auto c = Combat::create(reg, ch, lib, 3);
+    REQUIRE(c);
+    const CombatantId d = ch.spawns[0].stable_id;
+    poke(*c, d)->hp = poke(*c, d)->hp_max = 200;   // the goblin is only here so the fight has two teams
+    to_actor(*c, d);
+    const auto* before = rules5e::find(c->state(), d);
+    REQUIRE(before);
+    const int wis = before->abilities[rules5e::Ability::Wis];
+    CHECK(wis != 12);   // the wolf's Wisdom; Wild Shape keeps the druid's
+    CHECK(before->keen_senses == 0);
+    auto settle = [&](SubmitResult r) {
+        while (r.ok && r.needs) r = c->decide({r.needs->window_seq, false, 0});
+        return r;
+    };
+    Command u;
+    u.request.actor = d;
+    u.request.kind = ActionKind::UseFeature;
+    u.request.feature_id = feature;
+    u.request.form_archetype = form;
+    const SubmitResult shaped = settle(c->submit(u));
+    REQUIRE_MESSAGE(shaped.ok, shaped.error);
+    const auto* beast = rules5e::find(c->state(), d);
+    REQUIRE(beast);
+    CHECK(beast->form == rules5e::FormKind::WildShape);
+    CHECK(beast->keen_senses == uint8_t(rules5e::kKeenHearing | rules5e::kKeenSmell));
+    CHECK(beast->abilities[rules5e::Ability::Wis] == wis);
+    Command rv;
+    rv.request.actor = d;
+    rv.request.kind = ActionKind::Revert;
+    rv.request.as_bonus_action = true;
+    const SubmitResult back = settle(c->submit(rv));
+    REQUIRE_MESSAGE(back.ok, back.error);
+    const auto* me = rules5e::find(c->state(), d);
+    REQUIRE(me);
+    CHECK(me->form == rules5e::FormKind::None);
+    CHECK(me->keen_senses == 0);
+    CHECK(me->abilities[rules5e::Ability::Wis] == wis);
 }

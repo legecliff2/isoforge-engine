@@ -287,7 +287,7 @@ class Aura(unittest.TestCase):
 
 class KeenSenses(unittest.TestCase):
     """SRD 5.1 wolf: "The wolf has advantage on Wisdom (Perception) checks that rely on hearing or smell."
-    monster@5 keen_senses (CONTENT_CONVENTIONS §29)."""
+    monster@5 keen_senses (CONTENT_CONVENTIONS §30)."""
 
     def test_valid(self):
         for senses in (["hearing", "smell"], ["sight"]):
@@ -315,6 +315,65 @@ class KeenSenses(unittest.TestCase):
     def test_needs_at5(self):
         e, _w = run(with_trait({"kind": "keen_senses", "senses": ["smell"]}, schema="monster@4"))
         self.assertTrue([m for m in e if "keen_senses" in m or "monster@5" in m or "/effect" in m], e)
+
+
+class AreaEffect(unittest.TestCase):
+    """monster@5 area_effect (AOE_MONSTER_ABILITIES PR2): cone, line, cube, sphere, recharge, save."""
+
+    def breath(self, schema="monster@5", **keys):
+        d = bugbear()
+        d["$schema"] = schema
+        act = {"id": "breath", "name": "Breath", "kind": "area_effect", "description": "x",
+               "save": {"ability": "dex", "dc": 14},
+               "area": {"shape": "cone", "size_ft": 30}, "origin": "self",
+               "damage": [{"dice": "6d6", "type": "fire"}], "on_success": "half",
+               "usage": {"kind": "recharge", "min": 5}}
+        act.update(keys)
+        d["actions"].append(act)
+        return d
+
+    def test_shapes_and_recharge(self):
+        for shape, area in (("cone", {"shape": "cone", "size_ft": 30}),
+                            ("line", {"shape": "line", "size_ft": 30, "width_ft": 5}),
+                            ("cube", {"shape": "cube", "size_ft": 15}),
+                            ("sphere", {"shape": "sphere", "size_ft": 5}),
+                            ("cylinder", {"shape": "cylinder", "size_ft": 10, "height_ft": 20})):
+            e, _w = run(self.breath(area=area, usage={"kind": "recharge", "min": 6}))
+            self.assertEqual(e, [], shape)
+        e, _w = run(self.breath(damage=[{"dice": "2d4", "type": "cold"}], on_success="half",
+                                usage={"kind": "recharge", "min": 6}, area={"shape": "cone", "size_ft": 15}))
+        self.assertEqual(e, [])
+        blind = self.breath()
+        del blind["actions"][-1]["damage"]
+        del blind["actions"][-1]["on_success"]
+        blind["actions"][-1]["apply"] = [{"condition": "blinded", "duration": {"kind": "rounds", "n": 10},
+                                          "repeat_save": "end_of_turn"}]
+        blind["actions"][-1]["usage"] = {"kind": "recharge", "min": 6}
+        e, _w = run(blind)
+        self.assertEqual(e, [], e)
+
+    def test_refused(self):
+        e, _w = run(self.breath(area={"shape": "cone", "size_ft": 15, "width_ft": 5}))
+        self.assertTrue(e, e)
+        line = self.breath(area={"shape": "line", "size_ft": 30})
+        e, _w = run(line)
+        self.assertTrue(e, e)
+        e, _w = run(self.breath(usage={"kind": "recharge", "min": 1}))
+        self.assertTrue(e, e)
+        d = self.breath()
+        d["actions"][-1]["range_ft"] = 30
+        e, _w = run(d)
+        self.assertTrue([m for m in e if "range_ft" in m], e)
+        d = self.breath()
+        d["actions"].append(dict(d["actions"][-1]))
+        e, _w = run(d)
+        self.assertTrue([m for m in e if "already used" in m], e)
+        e, _w = run(self.breath(schema="monster@4"))
+        self.assertTrue(e, e)
+        d = self.breath()
+        d["actions"][-1]["apply"] = [{"condition": "stunned", "duration": {"kind": "concentration"}}]
+        _e, w = run(d)
+        self.assertTrue([m for m in w if "area_effect: unsupported usage or condition duration" in m], w)
 
 
 if __name__ == "__main__":
