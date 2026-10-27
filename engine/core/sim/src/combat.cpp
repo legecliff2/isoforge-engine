@@ -2476,6 +2476,16 @@ bool Combat::burrowed(CombatantId id) const {
     const auto* c = rules5e::find(state_, id);
     return c && c->alt_ft < 0 && c->burrow_ft > 0 && !grid_.water(pos(id));
 }
+bool Combat::on_climb_wall(Vec2i anchor, int fp) const {
+    bool wall = false, floor = false;
+    for (int dy = 0; dy < std::max(fp, 1); ++dy)
+        for (int dx = 0; dx < std::max(fp, 1); ++dx) {
+            const Vec2i t{anchor.x + dx, anchor.y + dy};
+            if (grid_.walkable(t)) floor = true;
+            else if (grid_.climbable(t)) wall = true;
+        }
+    return wall && !floor;
+}
 std::vector<Vec2i> Combat::occupied_except(CombatantId id, int abs_ft) const {
     std::vector<Vec2i> out;
     bool mover_swarm = false;
@@ -2497,16 +2507,6 @@ std::vector<Vec2i> Combat::path_for(CombatantId id, Vec2i from, const std::vecto
     }
     if (burrowed(id)) return grid_.path(from, goals, occupied_except(id, abs_height_ft(id)), footprint, caps, kPathBurrowed);
     return grid_.path(from, goals, occupied_except(id), footprint, caps);
-}
-bool Combat::on_climb_wall(Vec2i anchor, int fp) const {
-    bool wall = false, floor = false;
-    for (int dy = 0; dy < std::max(fp, 1); ++dy)
-        for (int dx = 0; dx < std::max(fp, 1); ++dx) {
-            const Vec2i t{anchor.x + dx, anchor.y + dy};
-            if (grid_.walkable(t)) floor = true;
-            else if (grid_.climbable(t)) wall = true;
-        }
-    return wall && !floor;
 }
 void Combat::step_altitude(const rules5e::ActionRequest& q, int from_ground_ft, int from_abs_ft, bool was_airborne) {
     const auto* c = rules5e::find(state_, q.actor);
