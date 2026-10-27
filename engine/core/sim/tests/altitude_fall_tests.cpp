@@ -140,7 +140,7 @@ void end_current(Combat& c) {
 // Shover at (4,4), target at (5,4), the push lands on (6,4). `high` is the ledge elevation of the two standing tiles.
 struct Shove {
     ecs::Registry reg;
-    world::Chunk chunk;
+    world::Chunk chunk{};   // value-init: other layers must be zero, or a stale water flag zeroes ground height
     ContentLibrary l = lib();
     std::optional<Combat> c;
     CombatantId shover = 0, target = 0;
