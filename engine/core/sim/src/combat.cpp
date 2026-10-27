@@ -1799,10 +1799,11 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
         uint8_t mode = 0;
         int mult = 1;
         // A climb down stops at the ground, the way a swim descent stops at the water's bottom. Flyers are not clamped.
-        if (cur > 0 && target < 0 && grid_.climbable(from) && !(caps.fly && !prone)) target = 0;
-        if (target > 0 || (target >= 0 && cur > 0)) {   // in the air (or on a wall): flight, else climbing terrain
+        const int fp = footprint_size(mover);
+        if (cur > 0 && target < 0 && on_climb_wall(from, fp) && !(caps.fly && !prone)) target = 0;
+        if (target > 0 || (target >= 0 && cur > 0)) {   // in the air (or on a wall): flight, else a climbable wall
             if (caps.fly && !prone) mode = 1;
-            else if (grid_.climbable(from)) { mode = caps.climb ? 3 : 0; mult = caps.climb ? 1 : 2; }
+            else if (on_climb_wall(from, fp)) { mode = caps.climb ? 3 : 0; mult = caps.climb ? 1 : 2; }
             else { r.error = prone && caps.fly ? "cannot fly while prone" : "alt_to: needs flight or climbable terrain"; return r; }
         } else if (caps.burrow && !grid_.water(from)) {   // feat/rules-burrow-speed: down into (or up out of) the ground
             if (!grid_.walkable(from)) { r.error = "alt_to: cannot burrow here"; return r; }
@@ -2562,22 +2563,23 @@ MoveCaps Combat::caps_of(CombatantId id) const {
 }
 
 // feat/move-modes: the move mode for one step (0 walk, 1 fly, 2 swim, 3 climb, 4 burrow while burrowed), 0xFF when no fitting speed has `cost`
-// feet left, 0xFE when only flight fits and the mover is prone. The terrain picks the speed: open air needs flight; climb
-// terrain uses a climb speed, else flight, else walking (extra cost already priced); water likewise with a swim speed.
+// feet left, 0xFE when only flight fits and the mover is prone. The terrain picks the speed: open air needs flight; a
+// destination that is on_climb_wall (climbable, and no walkable tile) uses a climb speed, else flight, else walking
+// (extra cost already priced); a rise of more than 5 ft is a climb too; water likewise with a swim speed.
 // On plain ground the walking speed, or flight when walking has too little left.
 uint8_t Combat::step_mode(CombatantId mover, Vec2i from, Vec2i to, int cost, int fp_in) const {
     const auto* c = rules5e::find(state_, mover);
     if (!c) return 0xFF;
     const int fp = fp_in > 0 ? fp_in : footprint_size(mover);
-    bool air = false, climb = false, water = false;
+    bool air = false, water = false;
     for (int dy = 0; dy < fp; ++dy)
         for (int dx = 0; dx < fp; ++dx) {
             const Vec2i t{to.x + dx, to.y + dy};
             if (fp > 1 && t.x >= from.x && t.x < from.x + fp && t.y >= from.y && t.y < from.y + fp) continue;
             if (grid_.open_air(t)) air = true;
-            else if (!grid_.walkable(t) && grid_.climbable(t)) climb = true;
             else if (grid_.water(t)) water = true;
         }
+    const bool climb = on_climb_wall(to, fp);   // the whole destination, same predicate as subject_grounded
     std::vector<uint8_t> order;
     int g_from = grid_.footprint_ground_ft(from, fp);
     const int g_to = grid_.footprint_ground_ft(to, fp);
