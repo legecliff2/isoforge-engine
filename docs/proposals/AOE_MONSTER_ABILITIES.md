@@ -1,6 +1,6 @@
 # Design note: monster area abilities on the spell area code
 
-Status: accepted for PR 1 of the stack (tests and this note). Read against main `1103708` (#284). This PR does not change behaviour, and it does not edit `docs/SIM_EVENTS.md`.
+Status: PR 1 accepted (footprint tests). PR 2 is the monster `area_effect` loader. Altitude is on main (0xD6 / 0xD7). This PR does not edit `docs/SIM_EVENTS.md`.
 
 ## 1. What exists today
 - Shapes: `rules5e::AreaShape {None, Cone, Cube, Cylinder, Line, Sphere}` (`engine/rules/include/rules5e/spells.hpp:21`). `SpellDef::area` / `area_size_ft` / `area_width_ft` / `area_height_ft` (`:361`). Content parse: `engine/core/sim/src/content.cpp:816`.
@@ -118,7 +118,7 @@ Turn Defiance (ghouls within 30 ft have advantage on saves against turning) is n
 
 ## 4. Proposed SIM_EVENTS tags (from 0xD8)
 
-Not allocated by this PR. `docs/SIM_EVENTS.md` is left as it is on main. #287 claims 0xD6 (`Combat::hash`, `alt_ft`) and reserves 0xD7 (`log_hash`, `ActionRequest::alt_to`). That PR's draft also reserves the three rows below for this stack and moves the next free tag to 0xDB. Fill 0xD8 and 0xD9 in the sim-wiring PR, and 0xDA only with the altitude hook, after #287 has landed.
+Not allocated by PR 1 or PR 2. `docs/SIM_EVENTS.md` is left as it is on main. Altitude has landed: 0xD6 is `Combatant::alt_ft` and 0xD7 is `ActionRequest::alt_to`. 0xD8–0xDA stay reserved for Golem (area resolve, per-target save, altitude-aware areas) and are PR 3's to claim. Next free on main is **0xE3** (0xDB–0xE2 are taken elsewhere). Fill 0xD8 and 0xD9 in the sim-wiring PR, and 0xDA only with the altitude hook.
 
 | Tag | Where | Payload | Gate |
 |---|---|---|---|
@@ -130,7 +130,7 @@ Not allocated by this PR. `docs/SIM_EVENTS.md` is left as it is on main. #287 cl
 
 ## 5. PR stack (small, each one keeps goldens green)
 1. **Tests only.** This PR. `engine/core/sim/tests/area_footprint_tests.cpp` pins footprint-origin `area_targets` for Cone, Line, Cube and Sphere/Cylinder, cast by and hitting 2x2, 3x3 and 4x4 creatures, in each of the 8 directions where the shape has a direction. A target is one id even when several of its tiles are inside, including a partly covered 4x4. Line of sight is per tile. A save deals half on a success, one roll per creature, and the same seed repeats the event, state and log hashes. Existing goldens are not retuned. Cylinder height and the Chebyshev sphere are pinned as they work today and called out as follow-ups.
-2. **Content.** Monster `area_effect` action block in the schema and loader that builds the synthetic `SpellDef`, reusing `recharge`/`uses`. No behaviour change for existing creatures.
+2. **Content.** This PR. monster@5 `area_effect` compiles to one synthetic `SpellDef` (`is_spell` false, `Save`, fixed DC, `area` / `area_size_ft` / `area_width_ft` / `area_height_ft`) and a `SaveAction` with `area` set, so `Combat::area_targets` and the existing recharge / per-day registration apply. Shapes: cone, line, cube, sphere, and cylinder (height is stored and still ignored). `on_success: half` is `OnSave::Half`; `none` is `OnSave::None` (a condition breath uses `apply[]`). Existing `save_effect` creatures are unchanged. One action is one use. Brass and copper's shared breath (two shapes, one recharge) is not two `area_effect` rows; that choice waits for the content batch. No `SIM_EVENTS` edit.
 3. **Sim wiring.** The AI driver picks the aim tile by maximising enemies minus allies on a deterministic tile scan. Add tags 0xD8/0xD9, gated, and update the VERSION_BUMP_BATCH entry. Do this after #287.
 4. **Content batches.** Dragons and hell hound, then mephits (breath plus death burst), then ankheg, gorgon (petrify uses the condition path) and chimera. Add a golden per batch.
 5. **Elemental space effects** (Whirlwind and Whelm) and the ghast Stench aura. These need "creatures in or entering its space", or a start-of-turn radius, on footprints, so stack them on the zones/auras code.

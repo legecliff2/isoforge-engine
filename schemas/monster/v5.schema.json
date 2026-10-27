@@ -568,7 +568,8 @@
             "special",
             "save_effect",
             "attack_effect",
-            "teleport"
+            "teleport",
+            "area_effect"
           ]
         },
         "to_hit": {
@@ -1158,7 +1159,8 @@
                 "kind": {
                   "enum": [
                     "attack_effect",
-                    "teleport"
+                    "teleport",
+                    "area_effect"
                   ]
                 }
               }
@@ -1245,7 +1247,10 @@
             ],
             "properties": {
               "kind": {
-                "const": "save_effect"
+                "enum": [
+                  "save_effect",
+                  "area_effect"
+                ]
               }
             }
           },
@@ -1253,6 +1258,59 @@
             "required": [
               "on_success"
             ]
+          }
+        },
+        {
+          "description": "Monster area action (AOE_MONSTER_ABILITIES PR2): one shape, one save, one synthetic SpellDef on the spell area path. Cone, line, cube, sphere, or cylinder (height is stored and still ignored). on_success half is half damage. Recharge and per-day uses are the existing usage object.",
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "area_effect"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "save",
+              "area"
+            ],
+            "dependentRequired": {
+              "on_success": [
+                "damage"
+              ]
+            },
+            "anyOf": [
+              {
+                "required": [
+                  "damage"
+                ]
+              },
+              {
+                "required": [
+                  "apply"
+                ]
+              }
+            ],
+            "propertyNames": {
+              "enum": [
+                "id",
+                "name",
+                "kind",
+                "description",
+                "save",
+                "area",
+                "origin",
+                "range_ft",
+                "on_success",
+                "damage",
+                "apply",
+                "usage",
+                "magical"
+              ]
+            }
           }
         },
         {
