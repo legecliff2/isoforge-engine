@@ -907,3 +907,15 @@ The spell loads and stays on a creature's spell list. `legal_actions` never offe
 | `effects` empty or absent | schema error (`[] should be non-empty`, or `'effects' is a required property`). The loader's string for an empty list is `effects missing` |
 
 **No version bump.** `docs/CONTENT_COMPAT.md` §1 bumps a schema when a field that used to be descriptive becomes mechanical, or an existing field changes meaning. `descriptive` is a new effect-kind value. The previous `spell@1` kind enum did not include it, and the arm is closed, so no existing file can carry it. No tag change, no migration, no `api_level` gate. The decision is recorded in `docs/proposals/VERSION_BUMP_BATCH.md`.
+
+## 29. Monster area action (`area_effect`, monster@5)
+
+A monster area ability is an action of kind `area_effect`. The loader (`compile_area_action`) builds one synthetic `SpellDef` (`is_spell` false, kind `Save`, fixed `save.dc`) and a `SaveAction` row, the same path a `save_effect` with an `area` already uses. Targets come from `Combat::area_targets`. No new recharge roll and no `SIM_EVENTS` tag.
+
+- **Shapes.** `area.shape` is `cone`, `line`, `cube`, `sphere`, or `cylinder`. `size_ft` is the cone or line length, the cube side, or the sphere or cylinder radius, a multiple of 5. A line needs `width_ft`. A cylinder needs `height_ft`; that height is stored on the spell and still ignored by membership (the cylinder-height gap). Other shapes must not carry the other shape's extra field.
+- **Origin.** `self` (the default) starts at the caster. `range_ft` is forbidden then. `point` needs `range_ft` and centres a cube or a sphere on the aim tile.
+- **Save and damage.** `save` `{ability, dc}` is required. `damage[]` needs `on_success` `half` (`OnSave::Half`, integer division) or `none` (`OnSave::None`). A breath that deals no damage (blinding, sleep, slow) uses `apply[]` and no `on_success`.
+- **Uses.** `usage` is the existing object: `recharge` with `min` 2..6 (`ActionUse`, the turn-start d6), or `per_day` / `per_rest` (`FeatureUses`). One action is one use. Two shapes that share a recharge (young brass, young copper) are not two `area_effect` actions; that choice is not this key.
+- **Not this kind.** `save_effect` is unchanged, including breaths already authored that way. Whirlwind, Whelm, and ghast Stench stay on the zones work. Cover on area saves, the square sphere, and cylinder height are not changed here.
+
+monster@4 and character files cannot carry `area_effect`. No schema version bump: the kind is a new monster@5 enum value, and no existing file uses it.

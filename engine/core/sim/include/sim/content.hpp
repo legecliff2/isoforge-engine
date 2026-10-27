@@ -64,7 +64,8 @@ struct Archetype {
         Recharge pool_recharge = Recharge::None;
         uint8_t uses = 0;               // usage_kind 2
         Recharge recharge = Recharge::None;   // usage_kind 2
-        bool area = false;              // has an area template (the AI never picks these before the area-template row)
+        bool area = false;              // has an area template (the AI never picks these before the area-template row).
+                                        // monster@5 area_effect always sets this: one synthetic SpellDef on the spell area path.
         uint16_t range_ft = 0;
         bool teleport = false;          // batch 3 `teleport` action (blink dog): needs a destination, the AI skips it
     };
