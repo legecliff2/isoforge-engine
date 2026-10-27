@@ -106,7 +106,7 @@ TAG_TABLE["item@1"] = TagRow(False, frozenset(), frozenset(), frozenset(), froze
 _MONSTER_AT5_KEYS = frozenset({"derive", "equipment", "natural_armor", "ac_adjust", "weapon_dice_multiplier", "weapons", "hands",
                                "proficiency_bonus_reason", "emits_light", "passive_perception_reason"})
 # monster@5-local trait kinds (Rules decision on #247: no common@3): weapon_extra_dice (Brute), closed arm in monster@5 $defs.
-MONSTER_AT5_ACTION_KINDS = frozenset({"teleport"})   # batch 3 (blink dog)
+MONSTER_AT5_ACTION_KINDS = frozenset({"teleport", "area_effect"})   # teleport: batch 3 blink dog; area_effect: monster area loader
 MONSTER_AT5_EFFECT_KINDS = frozenset({"weapon_extra_dice", "save_advantage", "aura"})   # + batch 3 save_advantage (Magic Resistance), aura (ghast Stench)
 _CHARACTER_AT5_KEYS = frozenset({"derive", "weapon_proficiencies", "armor_proficiencies"})
 for _typ, _extra in (("monster", _MONSTER_AT5_KEYS), ("character", _CHARACTER_AT5_KEYS)):
@@ -347,7 +347,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
     # check 4: save_effect ids (one '#' in "<archetype id>#<id>")
     seen: dict[str, str] = {}
     for path, a in mechanical_actions(doc):
-        if a.get("kind") in ("save_effect", "attack_effect"):   # one synthetic-spell id space (sim #170)
+        if a.get("kind") in ("save_effect", "attack_effect", "area_effect"):   # one synthetic-spell id space (sim #170; area_effect shares it)
             sid = str(a.get("id"))
             if sid in seen:
                 errs.append(f"{path}: {a.get('kind')} id '{sid}' is already used by {seen[sid]} (check 4)")
@@ -403,7 +403,7 @@ def check_stat_block_v4(typ: str, doc: dict, ctx: dict) -> tuple[list[str], list
             add_trigger(f"{owner}#0", path)
     # check 13: range_ft iff not (origin self and area present)
     for path, a in mechanical_actions(doc):
-        if a.get("kind") == "save_effect" and "range_ft" in a and "area" in a and a.get("origin", "self") == "self":
+        if a.get("kind") in ("save_effect", "area_effect") and "range_ft" in a and "area" in a and a.get("origin", "self") == "self":
             errs.append(f"{path}: range_ft is forbidden when origin is self and area is present (check 13)")
     # check 14 / 16.4 / 16.5: resource.max forms
     for i, r in enumerate(resources):
@@ -1638,10 +1638,10 @@ def check_save_max_size(doc: dict, errs: list[str]) -> None:
                 if k > 0 and bare(x):
                     errs.append(f"{path}/apply/{k}: max_size on a save_condition rider goes on the first apply[] entry")
     for path, a in mechanical_actions(doc):
-        if a.get("kind") == "save_effect":
+        if a.get("kind") in ("save_effect", "area_effect"):
             for k, x in enumerate(a.get("apply") or []):
                 if bare(x):
-                    errs.append(f"{path}/apply/{k}: max_size on a save_effect needs contain "
+                    errs.append(f"{path}/apply/{k}: max_size on a {a.get('kind')} needs contain "
                                 "(only a containing condition skips a larger target)")
 
 
@@ -1681,7 +1681,7 @@ def check_refused_condition_durations(doc: dict, errs: list[str], warns: list[st
             break
     for path, a in mechanical_actions(doc):
         ak = a.get("kind")
-        if ak not in ("save_effect", "attack_effect"):
+        if ak not in ("save_effect", "attack_effect", "area_effect"):
             continue
         for k, dk in _refused_durations(a.get("apply")):
             warns.append(f"{path}: {a.get('id', '?')} ({ak}: unsupported usage or condition duration) (apply[{k}] duration "
