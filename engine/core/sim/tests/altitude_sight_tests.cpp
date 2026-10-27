@@ -10,10 +10,23 @@
 #include "sim/combat.hpp"
 #include "world/chunk_codec.hpp"
 
+namespace eng::sim {
+struct CombatTestAccess {   // same definition as hash_fold_tests.cpp (ODR)
+    static rules5e::EncounterState& state(Combat& c) { return c.state_; }
+};
+}  // namespace eng::sim
+
 using namespace eng;
 using namespace eng::sim;
 using Json = assets::Json;
 namespace tf = world::tile_flags;
+
+static rules5e::Combatant& mut(Combat& c, CombatantId id) {
+    for (auto& x : CombatTestAccess::state(c).combatants)
+        if (x.id == id) return x;
+    FAIL("missing combatant");
+    return CombatTestAccess::state(c).combatants.front();
+}
 
 namespace {
 const std::string kRoot = ENGINE_SOURCE_ROOT;
@@ -153,6 +166,49 @@ TEST_CASE("altitude PR5: cover across heights (walls and creatures by vertical s
     Fight flat({{{7, 3}, tf::kBlocksSight, 2}, {{7, 4}, tf::kBlocksSight, 2}, {{7, 5}, tf::kBlocksSight, 2}}, false);
     flat.fly(40);                                                     // chunk@1: full-height wall regardless of altitude
     CHECK(flat.cover() == rules5e::Cover::Total);
+}
+
+TEST_CASE("altitude: subject_grounded follows contact, so tremorsense misses flyers") {
+    Fight flat({}, false);
+    CHECK(flat.c->sight_facts_of(flat.foe, flat.me).subject_grounded);   // chunk@1, alt 0
+
+    Fight g({}, true);
+    CHECK(g.c->sight_facts_of(g.foe, g.me).subject_grounded);
+    CHECK(g.c->line_of_sight(g.me, g.foe));                               // eye height is not part of this change
+    g.fly(30);
+    CHECK(g.c->airborne(g.me));
+    CHECK_FALSE(g.c->sight_facts_of(g.foe, g.me).subject_grounded);
+    CHECK(g.c->line_of_sight(g.me, g.foe));
+    mut(*g.c, g.me).conditions |= rules5e::bit(rules5e::Condition::Prone);   // prone: not airborne, not on a wall
+    CHECK_FALSE(g.c->airborne(g.me));
+    CHECK_FALSE(g.c->sight_facts_of(g.foe, g.me).subject_grounded);
+
+    REQUIRE(g.c->set_altitude(g.foe, 15, kAltForced));                    // above a plain floor, no fly speed
+    CHECK_FALSE(g.c->sight_facts_of(g.me, g.foe).subject_grounded);
+    REQUIRE(g.c->set_altitude(g.foe, -10, kAltForced));                   // below the surface: in contact
+    CHECK(g.c->sight_facts_of(g.me, g.foe).subject_grounded);
+
+    Fight floor({{{10, 4}, tf::kClimbable, 0}}, true);                    // climbable but walkable: not a wall
+    REQUIRE(floor.c->set_altitude(floor.foe, 20, kAltForced));
+    CHECK_FALSE(floor.c->airborne(floor.foe));
+    CHECK_FALSE(floor.c->sight_facts_of(floor.me, floor.foe).subject_grounded);
+    Fight wall({{{10, 4}, uint8_t(tf::kBlocksMove | tf::kClimbable), 0}}, true);
+    REQUIRE(wall.c->set_altitude(wall.foe, 20, kAltForced));
+    CHECK(wall.c->sight_facts_of(wall.me, wall.foe).subject_grounded);
+    Fight aloft({{{4, 4}, uint8_t(tf::kBlocksMove | tf::kClimbable), 0}}, true);   // a flyer on that wall is still airborne
+    aloft.fly(20);
+    CHECK_FALSE(aloft.c->sight_facts_of(aloft.foe, aloft.me).subject_grounded);
+
+    Fight sense({}, true);
+    mut(*sense.c, sense.foe).tremorsense_ft = 60;
+    mut(*sense.c, sense.me).conditions |= rules5e::bit(rules5e::Condition::Invisible);
+    const auto seen = [&] {
+        const rules5e::SightFacts f = sense.c->sight_facts_of(sense.foe, sense.me);
+        return rules5e::derive_sight(*rules5e::find(sense.c->state(), sense.foe), f).sense;
+    };
+    CHECK(seen() == rules5e::Sense::Tremorsense);
+    sense.fly(30);
+    CHECK(seen() == rules5e::Sense::None);
 }
 
 TEST_CASE("altitude PR5: flat equivalence - all heights 0 (or chunk@1 / chunk@2) give the 2D results") {

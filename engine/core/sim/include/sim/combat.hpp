@@ -483,6 +483,11 @@ private:
     std::vector<rules5e::ZoneChange> zone_changes_for(CombatantId mover, Spot from, Spot to, uint32_t moved_zone = 0,
                                                       const Vec2i* anchor_to = nullptr) const;
     std::vector<std::pair<CombatantId, Vec2i>> forced_placed_;   // hook commits of the step being resolved, in order
+    // Some footprint tile is climbable and none is walkable. A walkable climbable floor is not a wall.
+    // subject_grounded, alt_to's climb branch, and step_mode's wall branch all use this. A ground rise of
+    // more than 5 ft still selects climb mode without this predicate. subject_grounded still requires
+    // alt_ft > 0 and not airborne; alt_to uses the predicate on the tile being climbed.
+    bool on_climb_wall(Vec2i anchor, int fp) const;
     SubmitResult finish(rules5e::StepResult sr);
     SubmitResult do_rules(rules5e::ActionRequest req, Vec2i to, bool aim = false);
     SubmitResult do_step(Vec2i to, bool allow_squeeze = false, int16_t alt_to = 0);
