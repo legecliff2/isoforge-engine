@@ -10,12 +10,6 @@
 #include "sim/combat.hpp"
 #include "world/chunk_codec.hpp"
 
-namespace eng::sim {
-struct CombatTestAccess {   // same definition as hash_fold_tests.cpp (ODR)
-    static rules5e::EncounterState& state(Combat& c) { return c.state_; }
-};
-}  // namespace eng::sim
-
 using namespace eng;
 using namespace eng::sim;
 using Json = assets::Json;
@@ -119,12 +113,6 @@ int falls_events(const Combat& c) {
     for (const auto& e : c.events()) n += (e.kind == SimEvent::Kind::AltitudeChanged && e.rules.b == kAltFall) ? 1 : 0;
     return n;
 }
-rules5e::Combatant& mut(Combat& c, CombatantId id) {
-    for (auto& x : CombatTestAccess::state(c).combatants)
-        if (x.id == id) return x;
-    FAIL("missing combatant");
-    return CombatTestAccess::state(c).combatants.front();
-}
 int cause_events(const Combat& c, uint8_t cause, std::size_t from = 0) {
     int n = 0;
     const auto& ev = c.events();
@@ -160,9 +148,6 @@ struct Shove {
         REQUIRE(c);
         shover = chunk.spawns[0].stable_id;
         target = chunk.spawns[1].stable_id;
-        mut(*c, shover).abilities.score[std::size_t(rules5e::Ability::Str)] = 30;
-        mut(*c, target).abilities.score[std::size_t(rules5e::Ability::Str)] = 1;
-        mut(*c, target).abilities.score[std::size_t(rules5e::Ability::Dex)] = 1;
         for (int i = 0; i < 6 && rules5e::current_actor(c->state()) != shover; ++i) end_current(*c);
         REQUIRE(rules5e::current_actor(c->state()) == shover);
     }
