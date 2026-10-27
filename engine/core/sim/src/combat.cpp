@@ -1085,7 +1085,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
         if (v10) split = teardown_begin ? std::min(*teardown_begin, evs.size() - 1) : evs.size() - 1;
     }
     pending_removed_.clear();
-    struct ClearPlaced { std::vector<std::pair<CombatantId, Vec2i>>& v; ~ClearPlaced() { v.clear(); } } clear_placed{forced_placed_};
+    struct ClearPlaced { Combat* self; ~ClearPlaced() { self->clear_forced(); } } clear_placed{this};
     // Priced material consumed by a completed cast (rule 4): the entry that satisfied it, one per cast. Rules checked the
     // components for this cast unless it was a sustain or an innate spell not cast as listed; replay runs the same code.
     if (q.kind == ActionKind::CastSpell && !q.sustain && spells_) {
@@ -1121,15 +1121,7 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
         se.tile = t;
         events_.push_back(se);
     };
-    auto free_for = [this](CombatantId id, Vec2i t) {
-        const int fp = footprint_size(id);
-        if (!grid_.footprint_walkable(t, fp)) return false;
-        const auto occ = occupied_except(id);
-        for (int dy = 0; dy < fp; ++dy)
-            for (int dx = 0; dx < fp; ++dx)
-                if (std::find(occ.begin(), occ.end(), Vec2i{t.x + dx, t.y + dy}) != occ.end()) return false;
-        return true;
-    };
+    auto free_for = [this](CombatantId id, Vec2i t) { return space_free(id, t); };
     auto release_out_of_reach = [this](CombatantId moved) {
         std::vector<CombatantId> released;
         for (const auto& sc : state_.sourced) {
@@ -1339,6 +1331,9 @@ void Combat::complete(const rules5e::LoggedStep& ls, const std::vector<rules5e::
         events_.push_back(ae);
     }
     state_.landed.clear();
+    // A flyer a forced move kept aloft (absolute height preserved). After the fall events, and after the tile is the
+    // destination, so the event's tile matches. fall_check already ran against the pre-move alt_ft.
+    for (const auto& a : forced_alt_) set_altitude(a.id, a.alt_ft, kAltForced);
     if (split < evs.size()) sync_ecs();
     for (auto& sl : slots_)   // gone summons: the entity goes at the end of the step (never mid-step)
         if (sl.gone && reg_->alive(sl.entity)) { reg_->destroy(sl.entity); sl.entity = ecs::kNullEntity; }
@@ -1521,7 +1516,7 @@ SubmitResult Combat::decide(const ReactionDecision& d) {
     if (d.window_seq != nd->window_seq) { r.error = "decision for a different window"; r.needs = nd; return r; }
     install_hooks();
     if (state_.pending) set_step_context(state_.pending->request);
-    forced_placed_.clear();
+    clear_forced();
     return finish(rules5e::step(state_, rules5e::decision_request(*nd, d)));
 }
 
@@ -1775,7 +1770,7 @@ SubmitResult Combat::do_rules(ActionRequest req, Vec2i to, bool aim) {
     }
     step_to_.reset();
     set_step_context(req);
-    forced_placed_.clear();
+    clear_forced();
     return finish(rules5e::step(state_, req));
 }
 
@@ -1821,7 +1816,7 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
         mv.leaves_reach = leaves_reach(mover, from, from, target - cur);   // altitude PR3: rising / sinking out of reach
         step_to_ = from;
         set_step_context(mv);
-        forced_placed_.clear();
+        clear_forced();
         return finish(rules5e::step(state_, mv));
     }
     StepPlan plan;
@@ -1856,7 +1851,7 @@ SubmitResult Combat::do_step(Vec2i to, bool allow_squeeze, int16_t alt_to) {
     }
     step_to_ = to;
     set_step_context(mv);
-    forced_placed_.clear();
+    clear_forced();
     return finish(rules5e::step(state_, mv));
 }
 
@@ -2618,10 +2613,57 @@ int Combat::step_cost_ft(CombatantId mover, Vec2i from, Vec2i to, int fp, bool t
 }
 
 // ---- R-G9 forced movement / teleport (FORCED_MOVEMENT.md §3) ----
+void Combat::clear_forced() {
+    forced_placed_.clear();
+    forced_alt_.clear();
+}
+bool Combat::space_free(CombatantId id, Vec2i t) const {
+    const int fp = footprint_size(id);
+    if (!grid_.footprint_walkable(t, fp)) return false;
+    const auto occ = occupied_except(id);
+    for (int dy = 0; dy < fp; ++dy)
+        for (int dx = 0; dx < fp; ++dx)
+            if (std::find(occ.begin(), occ.end(), Vec2i{t.x + dx, t.y + dy}) != occ.end()) return false;
+    return true;
+}
+Combat::LedgeAdj Combat::ledge_adjust(CombatantId id, Vec2i from, Vec2i to) const {
+    LedgeAdj a;
+    if (!grid_.has_ground()) return a;
+    const auto* c = rules5e::find(state_, id);
+    if (!c || c->alt_ft < 0) return a;                 // swimming / burrowing: depth unchanged
+    if (c->alt_ft > 0 && !airborne(id)) return a;      // on a wall: climbing adjusts this (later)
+    const int fp = footprint_size(id);
+    const int g0 = grid_.footprint_ground_ft(from, fp);
+    const int g1 = grid_.footprint_ground_ft(to, fp);
+    if (airborne(id)) {                                // keep absolute height; rising ground lands at 0, no damage
+        const int neu = std::max(0, (g0 + int(c->alt_ft)) - g1);
+        if (neu != int(c->alt_ft)) { a.set_alt = true; a.alt_ft = int16_t(neu); }
+        return a;
+    }
+    const int drop = g0 - g1;                          // on the ground (alt_ft == 0)
+    if (drop <= kWalkableStepFt) return a;             // a short drop or a rise: stand on the new ground
+    if (caps_of(id).fly && !c->has(rules5e::Condition::Prone)) {
+        a.set_alt = true;                              // step off and fly: absolute height kept, no falling damage
+        a.alt_ft = int16_t(drop);
+        return a;
+    }
+    a.fell_ft = uint16_t(drop);
+    return a;
+}
+void Combat::note_ledge(CombatantId id, Vec2i from, Vec2i to, rules5e::ForcedMoveResult& res) {
+    const LedgeAdj adj = ledge_adjust(id, from, to);
+    if (adj.fell_ft > 0) res.fell_ft = adj.fell_ft;
+    if (adj.set_alt) forced_alt_.push_back({id, adj.alt_ft});
+}
 rules5e::ForcedMoveResult Combat::resolve_forced(const rules5e::ForcedMoveQuery& q) {
     rules5e::ForcedMoveResult res;
     if (shove_actor_ != 0 && q.source == shove_actor_ && q.mover == shove_target_ && !q.teleport) {
         res.feet_moved = q.feet;   // EC #104's shove placement stays in complete(); report the 5 ft as before
+        // Same dest complete() will use. Altitude only when that tile is free; a blocked shove still reports the 5 ft.
+        const Vec2i sp = pos(q.source), tp = pos(q.mover);
+        const Vec2i d{(tp.x > sp.x) - (tp.x < sp.x), (tp.y > sp.y) - (tp.y < sp.y)};
+        const Vec2i dest{tp.x + d.x, tp.y + d.y};
+        if ((d.x != 0 || d.y != 0) && space_free(q.mover, dest)) note_ledge(q.mover, tp, dest, res);
         return res;
     }
     auto commit = [this](CombatantId id, Vec2i t) {
@@ -2678,14 +2720,9 @@ rules5e::ForcedMoveResult Combat::resolve_forced(const rules5e::ForcedMoveQuery&
         }
         res.feet_moved = uint16_t(moved * kFeetPerTile);
         res.stopped_short = moved < steps;
-        // altitude PR4: pushed off a drop of more than 5 ft (chunk@3 ground), a creature on the ground falls the drop; rules
-        // applies the SRD falling damage and lands it prone. A flyer that can fly (fly speed, not prone) does not fall.
-        if (moved > 0 && grid_.has_ground())
-            if (const auto* mc = rules5e::find(state_, q.mover); mc && mc->alt_ft == 0) {
-                const int drop = grid_.footprint_ground_ft(start, fp) - grid_.footprint_ground_ft(cur, fp);
-                const bool can_fly = caps_of(q.mover).fly && !mc->has(rules5e::Condition::Prone);
-                if (drop > kWalkableStepFt && !can_fly) res.fell_ft = uint16_t(drop);
-            }
+        // A drop of more than 5 ft: a non-flyer on the ground falls (fell_ft; rules lands it). A flyer that can fly
+        // becomes airborne at that drop (applied in complete, cause kAltForced). Already airborne: absolute height kept.
+        if (moved > 0) note_ledge(q.mover, start, cur, res);
         if (moved > 0) commit(q.mover, cur);
         else forced_placed_.push_back({q.mover, start});
     }
@@ -2767,7 +2804,7 @@ std::optional<Combat> replay(ecs::Registry& reg, std::span<const world::Chunk* c
         if (e.step.request.kind == ActionKind::Ready) c->ready_to_ = e.to;
         c->derived_area_ = e.step.request.kind == ActionKind::CastSpell && e.to;   // logged targets came from an aim tile
         c->set_step_context(e.step.request);
-        c->forced_placed_.clear();
+        c->clear_forced();
         rules5e::StepResult sr = rules5e::replay_step(c->state_, e.step);   // rules' replay; no decider
         if (!sr.ok || sr.desync || sr.status != StepStatus::Done) {
             if (error) *error = "replay desync at entry " + std::to_string(i) + ": " +

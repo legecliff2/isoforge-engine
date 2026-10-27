@@ -747,6 +747,7 @@ Audit of #165's footprints against the SRD size rules.
 | `sight_facts_of` (altitude PR5) | done: `line_of_sight` is the 3D LoS. `between` obscurement and `subject_grounded` unchanged (zones cover every altitude, convention 2) |
 | Lighting with heights (altitude PR5) | per-tile 2D by design: `LightDriver` / `light_reaches` ignore height (walls block light at any height, no height attenuation); a flyer is lit by the tile under it. The visibility (fog) pass stays 2D too |
 | Flat equivalence (altitude PR5) | every height 0 (all chunk@1 / chunk@2 maps) gives exactly the 2D LoS and cover (tests/altitude_sight_tests.cpp; cover_tests and sight_facts_tests unchanged) |
+| Forced movement off a ledge | done: a creature on the ground (`alt_ft == 0`) shoved or pushed off a drop of more than 5 ft falls (`ForcedMoveResult::fell_ft`, cause `kAltFall`) unless it can fly (fly speed, not prone). A flyer that can fly becomes airborne at that drop (cause `kAltForced`): absolute height is kept, so `alt_ft` is the drop against the lower ground. An already airborne flyer keeps its absolute height the same way; ground that rises into it lands it at `alt_ft` 0 with no falling damage. A rise, a drop of 5 ft or less, and a creature swimming, burrowing, or climbing (`alt_ft != 0` and not airborne) is unchanged. Drag is not forced movement and does not adjust the held creature's altitude |
 
 #### Altitude engine conventions (approved)
 
@@ -763,8 +764,6 @@ of truth; other docs and code comments point here):
 8. Burrowed creatures pass under the surface.
 
 ~~KNOWN DEVIATION from SRD: a flyer knocked prone stays airborne.~~ Fixed by altitude PR4 (feat/altitude-fall): a non-hover flyer knocked prone, at speed 0 or without its fly speed falls and takes falling damage.
-
-Open follow-up: a flyer pushed off a ledge by forced movement does not fall and its altitude is not adjusted to the lower ground.
 
 ## 12. Source notes and verification
 

@@ -483,6 +483,15 @@ private:
     std::vector<rules5e::ZoneChange> zone_changes_for(CombatantId mover, Spot from, Spot to, uint32_t moved_zone = 0,
                                                       const Vec2i* anchor_to = nullptr) const;
     std::vector<std::pair<CombatantId, Vec2i>> forced_placed_;   // hook commits of the step being resolved, in order
+    // Altitude a forced move keeps (a flyer held aloft). Applied in complete(), after placement, so fall_check still
+    // sees the pre-move alt_ft. Cleared with forced_placed_.
+    struct ForcedAlt { CombatantId id = 0; int16_t alt_ft = 0; };
+    std::vector<ForcedAlt> forced_alt_;
+    void clear_forced();
+    bool space_free(CombatantId id, Vec2i t) const;
+    struct LedgeAdj { uint16_t fell_ft = 0; bool set_alt = false; int16_t alt_ft = 0; };
+    LedgeAdj ledge_adjust(CombatantId id, Vec2i from, Vec2i to) const;
+    void note_ledge(CombatantId id, Vec2i from, Vec2i to, rules5e::ForcedMoveResult& res);
     SubmitResult finish(rules5e::StepResult sr);
     SubmitResult do_rules(rules5e::ActionRequest req, Vec2i to, bool aim = false);
     SubmitResult do_step(Vec2i to, bool allow_squeeze = false, int16_t alt_to = 0);
