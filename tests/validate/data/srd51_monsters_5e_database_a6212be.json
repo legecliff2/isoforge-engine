@@ -8006,6 +8006,163 @@
      ]
     }
    ]
+  },
+  "manticore": {
+   "name": "Manticore",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    14
+   ],
+   "hp": 68,
+   "hp_roll": "8d10+24",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "30 ft.",
+    "fly": "50 ft."
+   },
+   "abilities": [
+    17,
+    16,
+    17,
+    7,
+    12,
+    8
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
+        "piercing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Claw",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d6+3",
+        "slashing"
+       ]
+      ]
+     ]
+    },
+    {
+     "name": "Tail Spike",
+     "attack_bonus": 5,
+     "damage_options": [
+      [
+       [
+        "1d8+3",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "werewolf": {
+   "name": "Werewolf",
+   "size": "Medium",
+   "type": "humanoid",
+   "ac": [
+    11
+   ],
+   "hp": 58,
+   "hp_roll": "9d8+18",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "30 ft."
+   },
+   "abilities": [
+    15,
+    13,
+    14,
+    10,
+    11,
+    10
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [
+    "bludgeoning, piercing, and slashing from nonmagical weapons that aren't silvered"
+   ],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Spear",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d6+2",
+        "piercing"
+       ]
+      ],
+      [
+       [
+        "1d8+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
+  },
+  "phase-spider": {
+   "name": "Phase Spider",
+   "size": "Large",
+   "type": "monstrosity",
+   "ac": [
+    13
+   ],
+   "hp": 32,
+   "hp_roll": "5d10+5",
+   "cr": 3,
+   "xp": 700,
+   "speed": {
+    "walk": "30 ft.",
+    "climb": "30 ft."
+   },
+   "abilities": [
+    15,
+    15,
+    12,
+    6,
+    10,
+    6
+   ],
+   "damage_vulnerabilities": [],
+   "damage_resistances": [],
+   "damage_immunities": [],
+   "condition_immunities": [],
+   "attacks": [
+    {
+     "name": "Bite",
+     "attack_bonus": 4,
+     "damage_options": [
+      [
+       [
+        "1d10+2",
+        "piercing"
+       ]
+      ]
+     ]
+    }
+   ]
   }
  }
 }
