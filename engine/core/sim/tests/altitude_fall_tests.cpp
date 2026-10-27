@@ -263,6 +263,7 @@ TEST_CASE("forced move off a ledge: a shove drops a walker and holds a flyer alo
     flyer.replay();
 
     Shove aloft("flyer", 4, 0);   // already 10 ft up: absolute height (30 ft) is kept over the drop
+    REQUIRE(aloft.c->set_altitude(aloft.shover, 10, kAltForced));   // same absolute height, so the shove is in reach
     REQUIRE(aloft.c->set_altitude(aloft.target, 10, kAltForced));
     const std::size_t aa = aloft.push();
     CHECK(rules5e::find(aloft.c->state(), aloft.target)->alt_ft == 30);
@@ -276,6 +277,7 @@ TEST_CASE("forced move off a ledge: a shove drops a walker and holds a flyer alo
     CHECK(rules5e::find(step.c->state(), step.target)->alt_ft == 0);
     CHECK_FALSE(rules5e::find(step.c->state(), step.target)->has(rules5e::Condition::Prone));
     CHECK(step.c->falls().empty());
+    step.replay();
 
     Shove up("walker", 0, 4);   // shoved onto higher ground: stands there, alt stays 0
     up.push();
@@ -284,6 +286,7 @@ TEST_CASE("forced move off a ledge: a shove drops a walker and holds a flyer alo
     CHECK_FALSE(rules5e::find(up.c->state(), up.target)->has(rules5e::Condition::Prone));
     CHECK(up.c->falls().empty());
     CHECK(up.c->abs_height_ft(up.target) == 20);
+    up.replay();
 }
 
 TEST_CASE("forced move off a ledge: a spell push drops a walker and holds a flyer aloft") {
