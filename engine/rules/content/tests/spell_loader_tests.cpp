@@ -1356,7 +1356,7 @@ TEST_CASE("loader 7.2zj: monster-combat spells") {
     CHECK(geas->duration_amount == 720);
     CHECK(geas->expiry == 0);
     CHECK(geas->duration_rounds == 0);
-    CHECK(geas->ends_on_ally_harm);
+    CHECK_FALSE(geas->ends_on_ally_harm);
     CHECK(geas->ends_on_restoration);
     CHECK(geas->caster_sees_target);
 

@@ -109,7 +109,8 @@ SpellDef restore_def() {
 }
 SpellDef geas_def(bool minute) {
     SpellDef d = charm_def(minute ? kGeasMinute : kGeas, minute ? "test.zj.geas_minute" : "test.zj.geas", 30);
-    d.level = 5; d.range_ft = 60; d.ends_on_restoration = true; d.target_types = 0; d.upcast_targets = 0;
+    d.level = 5; d.range_ft = 60; d.ends_on_restoration = true; d.ends_on_ally_harm = false;
+    d.target_types = 0; d.upcast_targets = 0;
     d.duration_amount = 720; d.expiry = 0; d.duration_rounds = 0;   // 30 days do not fit the round counter
     if (minute) d.casting_time = CastingTime::Minute;
     return d;
@@ -544,6 +545,15 @@ TEST_CASE("7.2zj Greater Restoration: one option, refusals, and geas ends with a
     auto minute = begin({wiz(1), foe(2)});
     CHECK(std::string(step(minute, cast(1, kGeasMinute, 2, 5)).error) == "casting time too long for an encounter");
     for (const auto& r : legal_actions(minute)) CHECK(r.spell_id != kGeasMinute);
+
+    auto stays = begin({wiz(1), foe(2), wiz(3)});
+    REQUIRE(step(stays, cast(1, kGeas, 2, 5)).ok);
+    end_turns_until(stays, 3);
+    mut(stays, 3).attacks[0].to_hit = 30;
+    mut(stays, 3).attacks[0].damage = DiceExpr{0, 0, 4};
+    REQUIRE(step(stays, ActionRequest{3, ActionKind::Attack, 2}).ok);
+    CHECK(effect_on(stays, kGeas, 2));
+    CHECK(find(stays, 2)->has(Condition::Charmed));
 
     auto obey = begin({wiz(1), foe(2), wiz(3)});
     REQUIRE(step(obey, cast(1, kGeas, 2, 5)).ok);
