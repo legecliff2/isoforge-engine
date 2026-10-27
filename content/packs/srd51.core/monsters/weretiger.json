@@ -1,0 +1,169 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.weretiger",
+  "name": "Weretiger",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "humanoid",
+  "tags": [
+    "human",
+    "shapechanger"
+  ],
+  "alignment": "neutral",
+  "shapechanger": true,
+  "armor_class": {
+    "value": 12
+  },
+  "equipment": [
+    {
+      "item": "srd51.item.scimitar",
+      "equipped": true
+    },
+    {
+      "item": "srd51.item.longbow"
+    }
+  ],
+  "hands": 2,
+  "hit_points": {
+    "average": 120,
+    "formula": "16d8+48"
+  },
+  "speed": {
+    "walk": 30
+  },
+  "abilities": {
+    "str": 17,
+    "dex": 15,
+    "con": 16,
+    "int": 10,
+    "wis": 13,
+    "cha": 11
+  },
+  "skills": {
+    "perception": 5,
+    "stealth": 4
+  },
+  "senses": {
+    "darkvision": 60,
+    "passive_perception": 15
+  },
+  "languages": [
+    "Common"
+  ],
+  "challenge": {
+    "rating": "4",
+    "xp": 1100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "damage_immunities_nonmagical",
+      "name": "Damage Immunities",
+      "description": "Immune to bludgeoning, piercing, and slashing from nonmagical weapons that aren't silvered.",
+      "effect": {
+        "kind": "damage_mitigation",
+        "immunities": {
+          "nonmagical_not_silvered": [
+            "bludgeoning",
+            "piercing",
+            "slashing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "shapechanger",
+      "name": "Shapechanger",
+      "description": "The weretiger can use its action to polymorph into a tiger-humanoid hybrid or into a tiger, or back into its true form, which is humanoid. Its statistics, other than its size, are the same in each form. Any equipment it is wearing or carrying isn't transformed. It reverts to its true form if it dies. (Descriptive only: no shapechanger forms. The humanoid form is the authored stat block. Hybrid and tiger, including the tiger form speed 40, are not separate statistics. shapechanger: true is the Moonbeam fact. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "keen_hearing_and_smell",
+      "name": "Keen Hearing and Smell",
+      "description": "The weretiger has advantage on Wisdom (Perception) checks that rely on hearing or smell."
+    },
+    {
+      "id": "pounce",
+      "name": "Pounce (Tiger or Hybrid Form Only)",
+      "description": "If the weretiger moves at least 15 feet straight toward a creature and then hits it with a claw attack on the same turn, that target must succeed on a DC 14 Strength saving throw or be knocked prone. If the target is prone, the weretiger can make one bite attack against it as a bonus action. (Descriptive only: claws and bite are not weapon attacks on the authored humanoid form. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "multiattack",
+      "name": "Multiattack",
+      "description": "In humanoid form, the weretiger makes two scimitar attacks or two longbow attacks. In hybrid form, it can attack like a humanoid or make two claw attacks. (Humanoid form, authored: two scimitars or two longbows. Claws are hybrid or tiger form. See docs/SRD_MONSTERS_DEFERRED.md.)",
+      "effect": {
+        "kind": "multiattack",
+        "options": [
+          {
+            "id": "scimitar_x2",
+            "attacks": [
+              "scimitar",
+              "scimitar"
+            ]
+          },
+          {
+            "id": "longbow_x2",
+            "attacks": [
+              "longbow",
+              "longbow"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "special",
+      "description": "Bite (Tiger or Hybrid Form Only). Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 8 (1d10 + 3) piercing damage. If the target is a humanoid, it must succeed on a DC 13 Constitution saving throw or be cursed with weretiger lycanthropy. (Descriptive only: not a weapon attack on the authored humanoid form. The lycanthropy curse is not encoded. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "claw",
+      "name": "Claw",
+      "kind": "special",
+      "description": "Claw (Tiger or Hybrid Form Only). Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 7 (1d8 + 3) slashing damage. (Descriptive only: not a weapon attack on the authored humanoid form. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "scimitar",
+      "name": "Scimitar",
+      "kind": "melee_weapon_attack",
+      "weapon": "srd51.item.scimitar",
+      "ability": "str",
+      "to_hit": 5,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+3",
+          "type": "slashing"
+        }
+      ],
+      "description": "Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 6 (1d6 + 3) slashing damage."
+    },
+    {
+      "id": "longbow",
+      "name": "Longbow",
+      "kind": "ranged_weapon_attack",
+      "weapon": "srd51.item.longbow",
+      "ability": "dex",
+      "to_hit": 4,
+      "range": [
+        150,
+        600
+      ],
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d8+2",
+          "type": "piercing"
+        }
+      ],
+      "description": "Ranged Weapon Attack: +4 to hit, range 150/600 ft., one target. Hit: 6 (1d8 + 2) piercing damage."
+    }
+  ]
+}

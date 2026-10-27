@@ -1,0 +1,177 @@
+{
+  "$schema": "monster@5",
+  "derive": true,
+  "id": "srd51.monster.couatl",
+  "name": "Couatl",
+  "source": {
+    "ref": "SRD 5.1",
+    "license": "CC-BY-4.0"
+  },
+  "size": "medium",
+  "type": "celestial",
+  "alignment": "lawful good",
+  "armor_class": {
+    "value": 19,
+    "note": "natural armor"
+  },
+  "natural_armor": {
+    "base": 14,
+    "dex": true
+  },
+  "hands": 0,
+  "hit_points": {
+    "average": 97,
+    "formula": "13d8+39"
+  },
+  "speed": {
+    "walk": 30,
+    "fly": 90
+  },
+  "abilities": {
+    "str": 16,
+    "dex": 20,
+    "con": 17,
+    "int": 18,
+    "wis": 20,
+    "cha": 18
+  },
+  "saving_throws": {
+    "con": 5,
+    "wis": 7,
+    "cha": 6
+  },
+  "damage_resistances": [
+    "radiant"
+  ],
+  "damage_immunities": [
+    "psychic"
+  ],
+  "senses": {
+    "truesight": 120,
+    "passive_perception": 15
+  },
+  "languages": [
+    "all",
+    "telepathy 120 ft."
+  ],
+  "challenge": {
+    "rating": "4",
+    "xp": 1100
+  },
+  "proficiency_bonus": 2,
+  "traits": [
+    {
+      "id": "damage_immunities_nonmagical",
+      "name": "Damage Immunities",
+      "description": "Immune to bludgeoning, piercing, and slashing from nonmagical weapons.",
+      "effect": {
+        "kind": "damage_mitigation",
+        "immunities": {
+          "nonmagical": [
+            "bludgeoning",
+            "piercing",
+            "slashing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "innate_spellcasting",
+      "name": "Innate Spellcasting",
+      "description": "The couatl's spellcasting ability is Charisma (spell save DC 14). It can innately cast the following spells, requiring only verbal components:\nAt will: detect evil and good, detect magic, detect thoughts\n3/day each: bless, create food and water, cure wounds, lesser restoration, protection from poison, sanctuary, shield\n1/day each: dream, greater restoration, scrying\n(Descriptive only: monster spellcasting is slot-based, so this innate list is not a spellcasting entry. No partial spell list. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "magic_weapons",
+      "name": "Magic Weapons",
+      "description": "The couatl's weapon attacks are magical.",
+      "effect": {
+        "kind": "magic_weapons"
+      }
+    },
+    {
+      "id": "shielded_mind",
+      "name": "Shielded Mind",
+      "description": "The couatl is immune to scrying and to any effect that would sense its emotions, read its thoughts, or detect its location. (Descriptive only. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ],
+  "actions": [
+    {
+      "id": "bite",
+      "name": "Bite",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "1d6",
+        "ability": "dex"
+      },
+      "attack_bonus": {
+        "value": 8,
+        "reason": "SRD Couatl Bite prints +8; Dex 20 (+5) + PB 2 = +7 (approved: match the SRD print)"
+      },
+      "to_hit": 8,
+      "reach": 5,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "1d6+5",
+          "type": "piercing"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "save_condition",
+          "save": {
+            "ability": "con",
+            "dc": 13
+          },
+          "apply": [
+            {
+              "condition": "poisoned",
+              "duration": {
+                "kind": "rounds",
+                "n": 14400
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Melee Weapon Attack: +8 to hit, reach 5 ft., one creature. Hit: 8 (1d6 + 5) piercing damage, and the target must succeed on a DC 13 Constitution saving throw or be poisoned for 24 hours. Until this poison ends, the target is unconscious. Another creature can use an action to shake the target awake. (The unconscious-while-poisoned clause and the action to wake the target are descriptive only: no zero_hp.while. The poisoned condition for 24 hours is the save. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "constrict",
+      "name": "Constrict",
+      "kind": "melee_weapon_attack",
+      "natural": {
+        "dice": "2d6",
+        "ability": "str"
+      },
+      "attack_bonus": {
+        "value": 6,
+        "reason": "SRD Couatl Constrict prints +6; Str 16 (+3) + PB 2 = +5 (approved: match the SRD print)"
+      },
+      "to_hit": 6,
+      "reach": 10,
+      "targets": 1,
+      "damage": [
+        {
+          "dice": "2d6+3",
+          "type": "bludgeoning"
+        }
+      ],
+      "on_hit": [
+        {
+          "kind": "grapple",
+          "escape_dc": 15,
+          "restrains": true,
+          "exclusive": true
+        }
+      ],
+      "description": "Melee Weapon Attack: +6 to hit, reach 10 ft., one Medium or smaller creature. Hit: 10 (2d6 + 3) bludgeoning damage, and the target is grappled (escape DC 15). Until this grapple ends, the target is restrained, and the couatl can't constrict another target. (The Medium or smaller size gate is descriptive only: grapple has no max_size. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    },
+    {
+      "id": "change_shape",
+      "name": "Change Shape",
+      "kind": "special",
+      "description": "The couatl magically polymorphs into a humanoid or beast that has a challenge rating equal to or less than its own, or back into its true form. It reverts to its true form if it dies. Any equipment it is wearing or carrying is absorbed or borne by the new form (the couatl's choice).\nIn a new form, the couatl retains its game statistics and ability to speak, but its AC, movement modes, Strength, Dexterity, and other actions are replaced by those of the new form, and it gains any statistics and capabilities (except class features, legendary actions, and lair actions) that the new form has but that it lacks. If the new form has a bite attack, the couatl can use its bite in that form. (Descriptive only: no shapechanger forms, and shapechanger is not set. See docs/SRD_MONSTERS_DEFERRED.md.)"
+    }
+  ]
+}
